@@ -1,24 +1,24 @@
 import { describe, expect, it } from "vitest";
 import {
-  comparerMemoire,
-  LONGUEUR_MAX,
+  compareMemory,
+  LENGTH_MAX,
   masquerEnTetes,
   masquerUrl,
-  resumerInstantane,
-  resumerProfil,
-  texteMemoire,
-  tronquer,
-  type ProfilCpu,
+  summarizeSnapshot,
+  summarizeProfile,
+  memoryText,
+  truncate,
+  type CpuProfile,
 } from "../../src/outils-dev/resumes.js";
 
 describe("tronquer", () => {
   it("keeps short strings", () => {
-    expect(tronquer("salut")).toBe("salut");
+    expect(truncate("salut")).toBe("salut");
   });
   it("cuts long strings with the suffix", () => {
-    const r = tronquer("a".repeat(LONGUEUR_MAX + 10));
-    expect(r).toBe("a".repeat(LONGUEUR_MAX) + "… [tronqué]");
-    expect(tronquer("abcdef", 3)).toBe("abc… [tronqué]");
+    const r = truncate("a".repeat(LENGTH_MAX + 10));
+    expect(r).toBe("a".repeat(LENGTH_MAX) + "… [tronqué]");
+    expect(truncate("abcdef", 3)).toBe("abc… [tronqué]");
   });
 });
 
@@ -60,7 +60,7 @@ describe("masquerUrl", () => {
   });
 });
 
-const profil: ProfilCpu = {
+const profil: CpuProfile = {
   nodes: [
     { id: 1, callFrame: { functionName: "(root)", url: "", lineNumber: -1 }, children: [2, 3] },
     { id: 2, callFrame: { functionName: "calculer", url: "http://x/a.js", lineNumber: 3 } },
@@ -74,7 +74,7 @@ const profil: ProfilCpu = {
 
 describe("resumerProfil", () => {
   it("names the most expensive function first, with its ms", () => {
-    const t = resumerProfil(profil, {
+    const t = summarizeProfile(profil, {
       Nodes: 120,
       JSHeapUsedSize: 5 * 1024 * 1024,
       LayoutCount: 4,
@@ -93,13 +93,13 @@ describe("resumerProfil", () => {
     expect(t).toContain("TaskDuration : 500 ms");
   });
   it("limits to n functions", () => {
-    const t = resumerProfil(profil, {}, 1);
+    const t = summarizeProfile(profil, {}, 1);
     expect(t).not.toContain("(anonyme)");
     expect(t.split("\n")).toHaveLength(1);
   });
   it("charges each sample to the interval that follows it", () => {
     // uneven gaps: the old computation (gap before) would give 31 ms to the anonymous one and 2 ms to « calculer »
-    const t = resumerProfil({ ...profil, samples: [3, 2, 3], timeDeltas: [1000, 2000, 30000], endTime: 38000 }, {});
+    const t = summarizeProfile({ ...profil, samples: [3, 2, 3], timeDeltas: [1000, 2000, 30000], endTime: 38000 }, {});
     expect(t.split("\n")[0]).toContain("calculer (http://x/a.js:4) — 30 ms");
     expect(t).toContain("(anonyme) (http://x/b.js:8) — 7 ms");
   });
@@ -128,7 +128,7 @@ function instantane(noeuds: [string, string, number][]): string {
 }
 
 describe("memory summary", () => {
-  const a = resumerInstantane(
+  const a = summarizeSnapshot(
     instantane([
       ["object", "Fuite", 100],
       ["object", "Fuite", 50],
@@ -142,7 +142,7 @@ describe("memory summary", () => {
     expect(a.parConstructeur.map((c) => c.nom)).not.toContain("Code");
   });
   it("does not pass on the content of strings", () => {
-    const r = resumerInstantane(
+    const r = summarizeSnapshot(
       instantane([
         ["string", "mot-de-passe-secret", 10],
         ["string", "autre contenu", 20],
@@ -151,16 +151,16 @@ describe("memory summary", () => {
     expect(r.parConstructeur).toEqual([{ nom: "(chaîne)", nombre: 2, taille: 30 }]);
   });
   it("texteMemoire lists the constructors", () => {
-    expect(texteMemoire(a)).toContain("Fuite");
+    expect(memoryText(a)).toContain("Fuite");
   });
   it("comparerMemoire flags the growth", () => {
-    const b = resumerInstantane(
+    const b = summarizeSnapshot(
       instantane([
         ...Array.from({ length: 5 }, () => ["object", "Fuite", 100] as [string, string, number]),
         ["object", "Autre", 30],
       ]),
     );
-    const t = comparerMemoire(a, b);
+    const t = compareMemory(a, b);
     expect(t).toContain("Fuite +3");
     expect(t).not.toContain("Autre");
   });
@@ -175,7 +175,7 @@ const recensement = (objets: Record<string, [number, number]>, total: number): s
 
 describe("recensement Firefox", () => {
   it("resumerInstantane reads a Firefox census: total and constructors sorted by size", () => {
-    const r = resumerInstantane(
+    const r = summarizeSnapshot(
       recensement({ Function: [10, 500], Object: [40, 4000], Array: [5, 900], strings: [20, 2000] }, 9000),
     );
     expect(r.total).toBe(9000);
@@ -183,9 +183,9 @@ describe("recensement Firefox", () => {
     expect(r.parConstructeur[0]).toEqual({ nom: "Object", nombre: 40, taille: 4000 });
   });
   it("comparerMemoire on two Firefox censuses: the type that grows comes first", () => {
-    const a = resumerInstantane(recensement({ Object: [40, 4000], Array: [5, 900] }, 5000));
-    const b = resumerInstantane(recensement({ Object: [400, 40000], Array: [5, 900] }, 41000));
-    const t = comparerMemoire(a, b);
+    const a = summarizeSnapshot(recensement({ Object: [40, 4000], Array: [5, 900] }, 5000));
+    const b = summarizeSnapshot(recensement({ Object: [400, 40000], Array: [5, 900] }, 41000));
+    const t = compareMemory(a, b);
     expect(t.split("\n")[1]).toContain("Object +360");
     expect(t).not.toContain("Array");
   });

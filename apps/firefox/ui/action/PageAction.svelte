@@ -1,6 +1,6 @@
 <script lang="ts">
   import { untrack } from "svelte";
-  import type { EtatActions, PageAction, ResumeExecution } from "@webaios/noyau";
+  import type { ActionsState, PageAction, ResumeExecution } from "@webaios/noyau";
   import { ACTION_INCONNUE, AUCUN_RESULTAT, RESULTAT_DISPARU, type ActionAffichee } from "../../shared/actions";
   import CarteAccordCompte from "../composants/CarteAccordCompte.svelte";
   import { api } from "../etat.svelte";
@@ -25,7 +25,7 @@
    * last result. Its message shows above that result, like a widget in error.
    */
   let derniereSansResultat = $state<PageAction | null>(null);
-  let direct = $state<EtatActions>({ courantes: [], enAttente: [] });
+  let direct = $state<ActionsState>({ courantes: [], enAttente: [] });
   /** A launch requested from this page, whose outcome has not come back yet. */
   let lancement = $state(false);
   let erreurLancement = $state<string | null>(null);

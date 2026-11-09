@@ -6,8 +6,8 @@ import type { Cadre } from "../../shared/modele";
 import { DUREE_AVIS_INFO_MS, ECART_OUVERTURE_ACCUEIL_MS, ICONE_MAX, type AvisBarre, type EtatFenetreSite, type MessageVersLAccueil } from "../../shared/sites";
 import type { ErreurRetouche } from "../../core/sites/injection";
 import { decisionNavigation, decisionOuverture, type ContexteNavigation } from "../../core/sites/navigation";
-import { adresseRelative, adresseSurDomaine, hoteDansSite } from "../../../../packages/noyau/src/sites/adresses";
-import type { RetouchesLues } from "../../../../packages/noyau/src/sites/lire";
+import { relativeUrl, urlOnDomain, hostInSite } from "../../../../packages/noyau/src/sites/adresses";
+import type { TweaksRead } from "../../../../packages/noyau/src/sites/lire";
 import { ID_SITE } from "../../../../packages/noyau/src/sites/schemas";
 import type { SiteChrome } from "../../noyau/sites";
 import { gardienGestes } from "../../shared/geste-widget";
@@ -89,7 +89,7 @@ export interface SiteDesignView {
 interface OpenSite {
   site: SiteChrome;
   /** The app's tweaks' files, as the host last read them. */
-  retouches: RetouchesLues;
+  retouches: TweaksRead;
   /** The tweaks' console (site-frames.ts frameError), until the window closes. */
   erreurs: ErreurRetouche[];
   userContextId: number;
@@ -424,7 +424,7 @@ function controllerOf(s: OpenSite): SiteWindowController {
       if (open.get(id) !== s || s.vue !== "site" || !s.site.declaration.suiviAdresse) return;
       // The page shown if it is on the site, else (error page, blocked link…) the start address.
       const url: string = s.view?.currentURI?.spec ?? "";
-      follow(s, url && adresseRelative(url, s.site.domaines) !== null ? url : null);
+      follow(s, url && relativeUrl(url, s.site.domaines) !== null ? url : null);
     },
     blocked: (url) => block(s, url),
     openBlocked() {
@@ -444,7 +444,7 @@ function controllerOf(s: OpenSite): SiteWindowController {
       if (open.get(id) !== s || typeof adresse !== "string") return false;
       const now = Date.now();
       if (now - s.lastHomeOpen < ECART_OUVERTURE_ACCUEIL_MS) return false;
-      const url = adresseSurDomaine(adresse, httpHost(s.site.depart) ?? "", s.site.domaines, s.site.depart, { adressesLocales: !!context(s).adressesLocales });
+      const url = urlOnDomain(adresse, httpHost(s.site.depart) ?? "", s.site.domaines, s.site.depart, { adressesLocales: !!context(s).adressesLocales });
       // Without a recent real gesture nothing opens: a home that asks on load would send back to the site at each ⌂.
       if (!url || !gestures.accepter(id, id) || s.vue !== "accueil") return false;
       loadInView(s, url);
@@ -587,7 +587,7 @@ export const sites = {
    * Opens the app's window, or brings it to the front without reloading it (its declaration and domains are taken
    * over). False if the id is not a site app's.
    */
-  open(site: SiteChrome, cadre: Cadre | null | undefined, retouches: RetouchesLues): boolean {
+  open(site: SiteChrome, cadre: Cadre | null | undefined, retouches: TweaksRead): boolean {
     if (typeof site?.id !== "string" || !ID_SITE.test(site.id)) return false;
     const known = open.get(site.id);
     if (known && !known.window.closed) {
@@ -646,7 +646,7 @@ export const sites = {
    * the tweaks it had. The grant is no longer needed: the next view. The home is gone: the site. True if the page was
    * reloaded.
    */
-  update(site: SiteChrome, retouches: RetouchesLues): boolean {
+  update(site: SiteChrome, retouches: TweaksRead): boolean {
     const s = open.get(site?.id);
     if (!s || s.window.closed) return false;
     const before = s.site;
@@ -785,7 +785,7 @@ export const sites = {
       !win.document.documentElement.hasAttribute("inDOMFullscreen") &&
       (s.vue === "accueil"
         ? home !== null
-        : s.vue === "site" && decisionOuverture(url, context(s)) === "dans-l-appli" && hote !== null && !hoteDansSite(hote, context(s).connexion));
+        : s.vue === "site" && decisionOuverture(url, context(s)) === "dans-l-appli" && hote !== null && !hostInSite(hote, context(s).connexion));
     return { win, nom: s.site.declaration.nom, vue: s.vue, browser: s.view, home, bounds, available };
   },
   /** A passing mention in the bar, gone after DUREE_AVIS_INFO_MS or at the next page; never over a blocked link's. */
@@ -867,10 +867,10 @@ export const sites = {
   },
   /** The host's requests (noyau/sites.ts SitesChrome), positional params. */
   handlers: {
-    "sites.ouvrir": ([site, cadre, retouches]: [SiteChrome, Cadre | null, RetouchesLues]) => sites.open(site, cadre, retouches),
+    "sites.ouvrir": ([site, cadre, retouches]: [SiteChrome, Cadre | null, TweaksRead]) => sites.open(site, cadre, retouches),
     "sites.fermer": ([id]: [string]) => sites.close(id),
     "sites.effacer": ([id]: [string]) => sites.erase(id),
-    "sites.mettreAJour": ([site, retouches]: [SiteChrome, RetouchesLues]) => sites.update(site, retouches),
+    "sites.mettreAJour": ([site, retouches]: [SiteChrome, TweaksRead]) => sites.update(site, retouches),
     "sites.rechargerVue": ([id]: [string]) => sites.reloadView(id),
     "sites.erreurs": ([id]: [string]) => sites.errors(id),
     "sites.vue": ([id]: [string]) => sites.viewOf(id),

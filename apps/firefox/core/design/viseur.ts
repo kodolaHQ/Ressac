@@ -1,6 +1,6 @@
-import { HTML_MAX, MARGE_CAPTURE, STYLES_UTILES, TRONQUE, type ContexteDesign } from "@webaios/noyau";
+import { HTML_MAX, MARGE_CAPTURE, STYLES_UTILES, TRUNCATED, type DesignContext } from "@webaios/noyau";
 
-export interface CaptureViseur extends Omit<ContexteDesign, "source"> {
+export interface CaptureViseur extends Omit<DesignContext, "source"> {
   rect: { x: number; y: number; largeur: number; hauteur: number };
 }
 type RectCss = CaptureViseur["rect"];
@@ -16,7 +16,7 @@ export function scriptViseur(): string {
   if (typeof globalThis.__viseurAvaler === "function") globalThis.__viseurAvaler();
   const STYLES = ${JSON.stringify(STYLES_UTILES)};
   const HTML_MAX = ${HTML_MAX};
-  const TRONQUE = ${JSON.stringify(TRONQUE)};
+  const TRONQUE = ${JSON.stringify(TRUNCATED)};
   return new Promise((resolve) => {
     const hote = document.createElement("webaios-viseur");
     const ombre = hote.attachShadow({ mode: "closed" });

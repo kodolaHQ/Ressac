@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { COMPOSANTS_INTEGRES, type DefinitionComposant } from "../../src/pages/catalogue.js";
+import { BUILTIN_COMPONENTS, type ComponentDefinition } from "../../src/pages/catalogue.js";
 import type { BlocPlan, PlanPage } from "../../src/pages/plan.js";
-import { COMPOSANT_INDISPONIBLE, ELEMENTS_MAX, TEXTE_MAX, chainesDe, resoudrePage, type BlocRendu } from "../../src/pages/resoudre.js";
-import { validerPlan } from "../../src/pages/valider.js";
+import { COMPONENT_UNAVAILABLE, ELEMENTS_MAX, TEXT_MAX, chainsOf, resolvePage, type RenderedBlock } from "../../src/pages/resoudre.js";
+import { validatePlan } from "../../src/pages/valider.js";
 
-const graphique: DefinitionComposant = {
+const graphique: ComponentDefinition = {
   nom: "graphique-barres", description: "Barres", origine: "agent",
   proprietes: {
     donnees: { genre: "reference", description: "Les données", requis: true },
@@ -14,7 +14,7 @@ const graphique: DefinitionComposant = {
     empile: { genre: "case", description: "Empilé", requis: false },
   },
 };
-const catalogue = [...COMPOSANTS_INTEGRES, graphique];
+const catalogue = [...BUILTIN_COMPONENTS, graphique];
 const fr = new Intl.NumberFormat("fr-FR");
 
 const resultats = {
@@ -30,8 +30,8 @@ const resultats = {
 };
 
 const rendre = (blocs: BlocPlan[], o: { compte?: boolean; secours?: boolean; r?: unknown } = {}) =>
-  resoudrePage({ blocs }, o.r ?? resultats, { compte: o.compte ?? false, catalogue, secours: o.secours ?? false });
-const un = (bloc: BlocPlan, o?: Parameters<typeof rendre>[1]) => rendre([bloc], o).blocs[0] as BlocRendu & { props: Record<string, any> };
+  resolvePage({ blocs }, o.r ?? resultats, { compte: o.compte ?? false, catalogue, secours: o.secours ?? false });
+const un = (bloc: BlocPlan, o?: Parameters<typeof rendre>[1]) => rendre([bloc], o).blocs[0] as RenderedBlock & { props: Record<string, any> };
 
 describe("resoudrePage", () => {
   it("link whose url is in the results: url kept", () => {
@@ -43,7 +43,7 @@ describe("resoudrePage", () => {
 
   it("literal link written by Gemma: property refused at validation", () => {
     for (const url of ["https://tiers.example/?d=x", '"https://tiers.example/?d=" + nom', "javascript:alert(1)"]) {
-      const r = validerPlan({ blocs: [{ composant: "lien", props: { objet: "projet", url } }, { composant: "chiffre", props: { valeur: "compter(annonces)", libelle: "n" } }] }, { catalogue, resultats });
+      const r = validatePlan({ blocs: [{ composant: "lien", props: { objet: "projet", url } }, { composant: "chiffre", props: { valeur: "compter(annonces)", libelle: "n" } }] }, { catalogue, resultats });
       expect(r.ok).toBe(true);
       if (r.ok) {
         expect(r.plan.blocs.map((b) => b.composant)).toEqual(["chiffre"]);
@@ -87,7 +87,7 @@ describe("resoudrePage", () => {
   it("10,000 tickets in a table: 200 rows, cuts 9800", () => {
     const tickets = Array.from({ length: 10_000 }, (_, i) => ({ id: i, titre: `t${i}`, url: `https://gitlab.com/t/${i}` }));
     const page = rendre([{ composant: "tableau", props: { elements: "tickets", colonnes: [{ champ: "id", libelle: "N°" }, { champ: "titre", libelle: "Titre" }], lien: "url" } }], { r: { tickets } });
-    const b = page.blocs[0] as BlocRendu & { props: Record<string, any> };
+    const b = page.blocs[0] as RenderedBlock & { props: Record<string, any> };
     expect(b.props.elements).toHaveLength(ELEMENTS_MAX);
     expect(b.props.autres).toBe(9800);
     expect(page.coupes).toBe(9800);
@@ -120,25 +120,25 @@ describe("resoudrePage", () => {
   });
 
   it("agent component: bounded value (lists to 200, texts cut)", () => {
-    const l = Array.from({ length: 250 }, () => "x".repeat(TEXTE_MAX + 50));
+    const l = Array.from({ length: 250 }, () => "x".repeat(TEXT_MAX + 50));
     const page = rendre([{ composant: "graphique-barres", props: { donnees: "l" } }], { r: { l } });
-    const b = page.blocs[0] as BlocRendu & { props: Record<string, any> };
+    const b = page.blocs[0] as RenderedBlock & { props: Record<string, any> };
     expect(b.props.donnees).toHaveLength(ELEMENTS_MAX);
-    expect(b.props.donnees[0].length).toBeLessThanOrEqual(TEXTE_MAX);
+    expect(b.props.donnees[0].length).toBeLessThanOrEqual(TEXT_MAX);
     expect(page.coupes).toBe(50);
   });
 
   it("component missing from the catalog: error callout, the rest displays", () => {
     const page = rendre([{ composant: "camembert", props: { donnees: "annonces" } }, { composant: "titre", props: { texte: "Après" } }]);
-    expect(page.blocs).toEqual([{ composant: "erreur", message: COMPOSANT_INDISPONIBLE("camembert") }, { composant: "titre", props: { texte: "Après" } }]);
-    expect(COMPOSANT_INDISPONIBLE("camembert")).toBe("Composant indisponible : camembert");
+    expect(page.blocs).toEqual([{ composant: "erreur", message: COMPONENT_UNAVAILABLE("camembert") }, { composant: "titre", props: { texte: "Après" } }]);
+    expect(COMPONENT_UNAVAILABLE("camembert")).toBe("Composant indisponible : camembert");
   });
 
   it("texts: numbers in fr-FR, long ones cut to TEXTE_MAX, simple values", () => {
     expect(un({ composant: "chiffre", props: { valeur: "projet.total", libelle: "Total" } }).props).toEqual({ valeur: fr.format(1234.5), libelle: "Total" });
     expect(un({ composant: "chiffre", props: { valeur: "compter(annonces)", libelle: "n" } }).props.valeur).toBe("3");
     const long = un({ composant: "paragraphe", props: { valeur: "t" } }, { r: { t: "a".repeat(100_000) } });
-    expect(long.props.texte.length).toBe(TEXTE_MAX);
+    expect(long.props.texte.length).toBe(TEXT_MAX);
     expect(long.props.texte.endsWith("…")).toBe(true);
   });
 
@@ -182,7 +182,7 @@ describe("resoudrePage", () => {
   });
 
   it("damaged plan (no block list, nesting too deep): no exception", () => {
-    expect(resoudrePage({} as PlanPage, resultats, { compte: false, catalogue, secours: false }).blocs).toEqual([]);
+    expect(resolvePage({} as PlanPage, resultats, { compte: false, catalogue, secours: false }).blocs).toEqual([]);
     let b: BlocPlan = { composant: "titre", props: { texte: "fond" } };
     for (let i = 0; i < 20_000; i++) b = { composant: "groupe", props: { titre: "g" }, blocs: [b] };
     expect(() => rendre([b])).not.toThrow();
@@ -191,12 +191,12 @@ describe("resoudrePage", () => {
 
 describe("chainesDe", () => {
   it("all the strings of the results, at any depth, not the keys", () => {
-    const s = chainesDe({ a: "x", b: [1, "y", { c: "z", "clé-seule": 2 }], d: null });
+    const s = chainsOf({ a: "x", b: [1, "y", { c: "z", "clé-seule": 2 }], d: null });
     expect([...s].sort()).toEqual(["x", "y", "z"]);
   });
   it("results nested 20,000 levels deep: no exception", () => {
     let r: unknown = "fond";
     for (let i = 0; i < 20_000; i++) r = [r];
-    expect(chainesDe(r).has("fond")).toBe(true);
+    expect(chainsOf(r).has("fond")).toBe(true);
   });
 });

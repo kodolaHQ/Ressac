@@ -3,8 +3,8 @@ import { spawn } from "node:child_process";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { dossierTemporaire } from "./temporaire.js";
-import { CONTEXTE_PAR_DEFAUT, validerWorkflow, type ContexteValidation } from "../../src/workflows/valider.js";
-import type { MemoireBlocs } from "../../src/workflows/memoire.js";
+import { DEFAULT_CONTEXT, validateWorkflow, type ValidationContext } from "../../src/workflows/valider.js";
+import type { BlocksMemory } from "../../src/workflows/memoire.js";
 
 export const MOTEUR = join(import.meta.dirname, "..", "..", "docker", "moteur");
 export const SCRIPT = join(MOTEUR, "recolteur.mjs");
@@ -16,8 +16,8 @@ export type Repondeur = (appel: Appel) => Promise<{ ok: unknown } | { erreur: st
  * The workflow as the kernel sends it: validated (with what the widget declares, the earlier rules without it),
  * default parameters filled in, with the order.
  */
-export function workflowEnvoye(brut: unknown, contexte: ContexteValidation = CONTEXTE_PAR_DEFAUT) {
-  const r = validerWorkflow(brut, contexte);
+export function workflowEnvoye(brut: unknown, contexte: ValidationContext = DEFAULT_CONTEXT) {
+  const r = validateWorkflow(brut, contexte);
   if (!r.ok) throw new Error(r.erreur);
   return { blocs: r.valide.workflow.blocs, liens: r.valide.workflow.liens, ordre: r.valide.ordre };
 }
@@ -25,13 +25,13 @@ export function workflowEnvoye(brut: unknown, contexte: ContexteValidation = CON
 export async function lancer(o: {
   workflow: unknown;
   fichiers?: Record<string, string>;
-  memoire?: MemoireBlocs;
+  memoire?: BlocksMemory;
   config?: unknown;
   precedent?: unknown;
   repondre?: Repondeur;
   rejeu?: { relances: string[]; sorties: Record<string, unknown> };
   /** What the widget declares (`web`, `dureeMaxMinutes`): the validation of the workflow sent. */
-  contexte?: ContexteValidation;
+  contexte?: ValidationContext;
   /** Keys added to the `debut` line (absent otherwise, like for a widget today). */
   debut?: { progressif?: true; limiteMs?: number; saisie?: string; avancement?: true };
 }) {

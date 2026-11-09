@@ -3,7 +3,7 @@ import { chmod, mkdir, readFile, readdir, rm, stat, symlink, writeFile } from "n
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import {
-  DOSSIER_ESPACE, DOSSIER_INTROUVABLE, DOSSIER_NON_ABSOLU, DOSSIER_TROP_LARGE, RegistreExternes, portRefuse,
+  SPACE_FOLDER, FOLDER_NOT_FOUND, FOLDER_NOT_ABSOLUTE, FOLDER_TOO_LARGE, ExternalRegistry, portRefuse,
 } from "../../src/design/externes.js";
 import { dossierTemporaire } from "../aide/temporaire.js";
 
@@ -24,7 +24,7 @@ async function cadre() {
 describe("RegistreExternes", () => {
   test("brancher creates a client of which only the sha256 of the token is written; clientDuJeton returns it", async () => {
     const c = await cadre();
-    const r = await RegistreExternes.ouvrir(c.prive);
+    const r = await ExternalRegistry.ouvrir(c.prive);
     const { client, jeton } = await r.brancher("Mon Claude");
     expect(client.nom).toBe("Mon Claude");
     expect(client.empreinte).toBe(createHash("sha256").update(jeton).digest("hex"));
@@ -35,13 +35,13 @@ describe("RegistreExternes", () => {
     expect(brut).not.toContain(jeton);
     expect(brut).toContain(client.empreinte);
     expect((await r.brancher("  ")).client.nom).toBe("Claude Code");
-    const relu = await RegistreExternes.ouvrir(c.prive);
+    const relu = await ExternalRegistry.ouvrir(c.prive);
     expect(relu.clientDuJeton(jeton)?.id).toBe(client.id);
   });
 
   test("the files have mode 0600, their folder 0700", async () => {
     const c = await cadre();
-    const r = await RegistreExternes.ouvrir(c.prive);
+    const r = await ExternalRegistry.ouvrir(c.prive);
     const { client } = await r.brancher("x");
     await r.declarer(client.id, { dossier: await c.projet("p"), ports: [4321] }, c.options);
     expect((await stat(join(c.prive, "clients-externes.json"))).mode & 0o777).toBe(0o600);
@@ -51,7 +51,7 @@ describe("RegistreExternes", () => {
 
   test("revoquer: the token no longer works, the projects stay with client null", async () => {
     const c = await cadre();
-    const r = await RegistreExternes.ouvrir(c.prive);
+    const r = await ExternalRegistry.ouvrir(c.prive);
     const { client, jeton } = await r.brancher("x");
     const { projet } = await r.declarer(client.id, { dossier: await c.projet("p"), ports: [4321] }, c.options);
     await r.revoquer(client.id);
@@ -62,31 +62,31 @@ describe("RegistreExternes", () => {
 
   test("declarer refuses invalid folders with the exact messages", async () => {
     const c = await cadre();
-    const r = await RegistreExternes.ouvrir(c.prive);
+    const r = await ExternalRegistry.ouvrir(c.prive);
     const { client } = await r.brancher("x");
     const refus = (dossier: string) => r.declarer(client.id, { dossier, ports: [4321] }, c.options);
-    await expect(refus("relatif")).rejects.toThrow(DOSSIER_NON_ABSOLU);
-    await expect(refus(join(c.maison, "absent"))).rejects.toThrow(DOSSIER_INTROUVABLE);
+    await expect(refus("relatif")).rejects.toThrow(FOLDER_NOT_ABSOLUTE);
+    await expect(refus(join(c.maison, "absent"))).rejects.toThrow(FOLDER_NOT_FOUND);
     const fichier = join(c.maison, "f.txt");
     await writeFile(fichier, "x");
-    await expect(refus(fichier)).rejects.toThrow(DOSSIER_INTROUVABLE);
-    await expect(refus("/")).rejects.toThrow(DOSSIER_TROP_LARGE);
-    await expect(refus(c.maison)).rejects.toThrow(DOSSIER_TROP_LARGE);
-    await expect(refus(c.racineEspace)).rejects.toThrow(DOSSIER_ESPACE);
+    await expect(refus(fichier)).rejects.toThrow(FOLDER_NOT_FOUND);
+    await expect(refus("/")).rejects.toThrow(FOLDER_TOO_LARGE);
+    await expect(refus(c.maison)).rejects.toThrow(FOLDER_TOO_LARGE);
+    await expect(refus(c.racineEspace)).rejects.toThrow(SPACE_FOLDER);
     const sous = join(c.racineEspace, "projets", "x");
     await mkdir(sous, { recursive: true });
-    await expect(refus(sous)).rejects.toThrow(DOSSIER_ESPACE);
+    await expect(refus(sous)).rejects.toThrow(SPACE_FOLDER);
     const pointpoint = join(c.racineEspace, "..x", "p");
     await mkdir(pointpoint, { recursive: true });
-    await expect(refus(pointpoint)).rejects.toThrow(DOSSIER_ESPACE);
-    expect(DOSSIER_NON_ABSOLU).toBe("Le dossier doit être un chemin absolu.");
-    expect(DOSSIER_ESPACE).toBe("Ce dossier est dans l'espace de WebAiOs : ses applis se relisent depuis la page Applications.");
+    await expect(refus(pointpoint)).rejects.toThrow(SPACE_FOLDER);
+    expect(FOLDER_NOT_ABSOLUTE).toBe("Le dossier doit être un chemin absolu.");
+    expect(SPACE_FOLDER).toBe("Ce dossier est dans l'espace de WebAiOs : ses applis se relisent depuis la page Applications.");
     expect(r.projets()).toEqual([]);
   });
 
   test("declarer refuses out-of-range, non-integer or container ports; accepts 4321", async () => {
     const c = await cadre();
-    const r = await RegistreExternes.ouvrir(c.prive);
+    const r = await ExternalRegistry.ouvrir(c.prive);
     const { client } = await r.brancher("x");
     const dossier = await c.projet("p");
     for (const p of [80, 70000, 1.5, 5285, 15281]) {
@@ -100,7 +100,7 @@ describe("RegistreExternes", () => {
 
   test("declaring the same folder twice (including through a symbolic link): a single project updated", async () => {
     const c = await cadre();
-    const r = await RegistreExternes.ouvrir(c.prive);
+    const r = await ExternalRegistry.ouvrir(c.prive);
     const a = (await r.brancher("a")).client;
     const b = (await r.brancher("b")).client;
     const dossier = await c.projet("p");
@@ -119,7 +119,7 @@ describe("RegistreExternes", () => {
 
   test("a reclaimed port is removed from the other project", async () => {
     const c = await cadre();
-    const r = await RegistreExternes.ouvrir(c.prive);
+    const r = await ExternalRegistry.ouvrir(c.prive);
     const { client } = await r.brancher("x");
     const pa = await r.declarer(client.id, { dossier: await c.projet("a"), ports: [4321, 4400] }, c.options);
     await r.declarer(client.id, { dossier: await c.projet("b"), ports: [4321] }, c.options);
@@ -128,7 +128,7 @@ describe("RegistreExternes", () => {
 
   test("projetDe: only for the project's client, folder with trailing / accepted", async () => {
     const c = await cadre();
-    const r = await RegistreExternes.ouvrir(c.prive);
+    const r = await ExternalRegistry.ouvrir(c.prive);
     const a = (await r.brancher("a")).client;
     const b = (await r.brancher("b")).client;
     const dossier = await c.projet("p");
@@ -140,7 +140,7 @@ describe("RegistreExternes", () => {
 
   test.skipIf(process.getuid?.() === 0)("folder chmod 000: declarer succeeds with lisible false", async () => {
     const c = await cadre();
-    const r = await RegistreExternes.ouvrir(c.prive);
+    const r = await ExternalRegistry.ouvrir(c.prive);
     const { client } = await r.brancher("x");
     const dossier = await c.projet("ferme");
     expect((await r.declarer(client.id, { dossier: await c.projet("ouvert"), ports: [4400] }, c.options)).lisible).toBe(true);
@@ -158,7 +158,7 @@ describe("RegistreExternes", () => {
     await writeFile(join(c.racineEspace, ".webaios", "clients-externes.json"), JSON.stringify([
       { id: "pirate", nom: "p", empreinte: createHash("sha256").update(jeton).digest("hex"), cree: "2026-11-02T10:00:00Z" },
     ]));
-    const r = await RegistreExternes.ouvrir(c.prive);
+    const r = await ExternalRegistry.ouvrir(c.prive);
     expect(r.clients()).toEqual([]);
     expect(r.clientDuJeton(jeton)).toBeNull();
   });
@@ -167,14 +167,14 @@ describe("RegistreExternes", () => {
     const c = await cadre();
     await mkdir(c.prive, { recursive: true });
     await writeFile(join(c.prive, "projets-externes.json"), "{pas du json");
-    const r = await RegistreExternes.ouvrir(c.prive);
+    const r = await ExternalRegistry.ouvrir(c.prive);
     expect(r.projets()).toEqual([]);
     expect((await readdir(c.prive)).some((f) => f.startsWith("projets-externes.json.abime-"))).toBe(true);
   });
 
   test("oublier removes the project; surChange is called after each write", async () => {
     const c = await cadre();
-    const r = await RegistreExternes.ouvrir(c.prive);
+    const r = await ExternalRegistry.ouvrir(c.prive);
     let n = 0;
     const arret = r.surChange(() => { n++; });
     const { client } = await r.brancher("x");
@@ -189,7 +189,7 @@ describe("RegistreExternes", () => {
 
   test("revoquer: if the write fails, the call is rejected and the client stays consistent with the disk", async () => {
     const c = await cadre();
-    const r = await RegistreExternes.ouvrir(c.prive);
+    const r = await ExternalRegistry.ouvrir(c.prive);
     const { client, jeton } = await r.brancher("x");
     const fichier = join(c.prive, "clients-externes.json");
     const contenu = await readFile(fichier, "utf8");
@@ -199,6 +199,6 @@ describe("RegistreExternes", () => {
     expect(r.clientDuJeton(jeton)?.id).toBe(client.id);
     await rm(fichier, { recursive: true });
     await writeFile(fichier, contenu);
-    expect((await RegistreExternes.ouvrir(c.prive)).clientDuJeton(jeton)?.id).toBe(client.id);
+    expect((await ExternalRegistry.ouvrir(c.prive)).clientDuJeton(jeton)?.id).toBe(client.id);
   });
 });

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { resoudrePage } from "../../src/pages/resoudre.js";
-import { COMPOSANTS_INTEGRES } from "../../src/pages/catalogue.js";
-import { miseEnPageSecours } from "../../src/pages/secours.js";
-import { validerPlan } from "../../src/pages/valider.js";
+import { resolvePage } from "../../src/pages/resoudre.js";
+import { BUILTIN_COMPONENTS } from "../../src/pages/catalogue.js";
+import { fallbackLayout } from "../../src/pages/secours.js";
+import { validatePlan } from "../../src/pages/valider.js";
 
 const tickets = [
   { titre: "Panne", priorite: "haute", url: "https://gitlab.com/t/1", auteur: { nom: "Ana" } },
@@ -12,30 +12,30 @@ const annonces = [
   { titre: "Vélo", prix: 120, photo: "https://img.example/1.jpg", lien: "https://lbc.fr/1" },
   { titre: "Table", prix: 40, photo: "https://img.example/2.jpg", lien: "https://lbc.fr/2" },
 ];
-const valide = (r: unknown) => validerPlan(miseEnPageSecours(r), { catalogue: COMPOSANTS_INTEGRES, resultats: r });
-const composants = (r: unknown) => miseEnPageSecours(r).blocs.map((b) => b.composant);
+const valide = (r: unknown) => validatePlan(fallbackLayout(r), { catalogue: BUILTIN_COMPONENTS, resultats: r });
+const composants = (r: unknown) => fallbackLayout(r).blocs.map((b) => b.composant);
 
 describe("miseEnPageSecours", () => {
   it("list of listings with https…jpg photo: cards", () => {
-    const plan = miseEnPageSecours(annonces);
+    const plan = fallbackLayout(annonces);
     expect(plan.blocs).toHaveLength(1);
     expect(plan.blocs[0]).toMatchObject({ composant: "cartes", props: { elements: "$", titre: "titre", image: "photo", lien: "lien" } });
   });
 
   it("an image recognized by its address, without a field named image", () => {
     const r = [{ nom: "A", visuel: "https://x.fr/a.png", a: 1 }];
-    expect(miseEnPageSecours(r).blocs[0]).toMatchObject({ composant: "cartes", props: { image: "visuel" } });
+    expect(fallbackLayout(r).blocs[0]).toMatchObject({ composant: "cartes", props: { image: "visuel" } });
   });
 
   it("liste de tickets : tableau, lien = url", () => {
-    const plan = miseEnPageSecours(tickets);
+    const plan = fallbackLayout(tickets);
     expect(plan.blocs[0]).toMatchObject({ composant: "tableau", props: { elements: "$", lien: "url" } });
     expect((plan.blocs[0]!.props.colonnes as unknown[]).length).toBe(3);
   });
 
   it("the table keeps the first 6 simple fields", () => {
     const r = [{ a: 1, b: 2, c: 3, d: 4, e: 5, f: 6, g: 7, h: { x: 1 } }];
-    expect((miseEnPageSecours(r).blocs[0]!.props.colonnes as unknown[]).length).toBe(6);
+    expect((fallbackLayout(r).blocs[0]!.props.colonnes as unknown[]).length).toBe(6);
   });
 
   it("list of texts: labels", () => {
@@ -55,8 +55,8 @@ describe("miseEnPageSecours", () => {
   });
 
   it("texte seul : paragraphe ; nombre seul : chiffre", () => {
-    expect(miseEnPageSecours("bonjour").blocs[0]).toMatchObject({ composant: "paragraphe", props: { valeur: "$" } });
-    expect(miseEnPageSecours(42).blocs[0]).toMatchObject({ composant: "chiffre", props: { valeur: "$" } });
+    expect(fallbackLayout("bonjour").blocs[0]).toMatchObject({ composant: "paragraphe", props: { valeur: "$" } });
+    expect(fallbackLayout(42).blocs[0]).toMatchObject({ composant: "chiffre", props: { valeur: "$" } });
   });
 
   it("each fallback passes validerPlan", () => {
@@ -82,10 +82,10 @@ describe("fallback: never an empty page when there are results", () => {
   ];
   for (const [nom, r] of cas) {
     it(`${nom}: valid and visible`, () => {
-      const plan = miseEnPageSecours(r);
+      const plan = fallbackLayout(r);
       expect(plan.blocs.some((b) => b.composant !== "titre")).toBe(true);
-      expect(validerPlan(plan, { catalogue: COMPOSANTS_INTEGRES, resultats: r }).ok).toBe(true);
-      const page = resoudrePage(plan, r, { compte: false, catalogue: COMPOSANTS_INTEGRES, secours: true });
+      expect(validatePlan(plan, { catalogue: BUILTIN_COMPONENTS, resultats: r }).ok).toBe(true);
+      const page = resolvePage(plan, r, { compte: false, catalogue: BUILTIN_COMPONENTS, secours: true });
       const visible = page.blocs.some((b) => {
         const p = (b as { props?: Record<string, unknown> }).props ?? {};
         if (b.composant === "paragraphe") return typeof p.texte === "string" && p.texte.length > 0;
@@ -98,7 +98,7 @@ describe("fallback: never an empty page when there are results", () => {
 
   it("a last-resort paragraph bounds the text", () => {
     const r = { a: { b: "x".repeat(10_000) } };
-    const page = resoudrePage(miseEnPageSecours(r), r, { compte: false, catalogue: COMPOSANTS_INTEGRES, secours: true });
+    const page = resolvePage(fallbackLayout(r), r, { compte: false, catalogue: BUILTIN_COMPONENTS, secours: true });
     const t = (page.blocs[0] as unknown as { props: { texte: string } }).props.texte;
     expect(t.length).toBeLessThanOrEqual(2000);
   });

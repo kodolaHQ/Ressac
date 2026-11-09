@@ -14,7 +14,7 @@ import type { DefinitionBloc } from "./communs.js";
 export type { DefinitionBloc } from "./communs.js";
 
 /** The block types known to the engine, by type. The container has one run module per type. */
-export const REGISTRE_BLOCS: ReadonlyMap<string, DefinitionBloc> = new Map(
+export const BLOCK_REGISTRY: ReadonlyMap<string, DefinitionBloc> = new Map(
   [sourcePage, sourceFlux, sourceRecuperer, webChercher, listeNouveaux, listeDedoublonner, listeGarder, iaTrier, iaRediger, code, sortie].map(
     (d) => [d.type, d] as const,
   ),

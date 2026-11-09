@@ -15,13 +15,13 @@ export class SessionAgent {
   }
 
   static demarrer(
-    commande: string[],
+    command: string[],
     o: { cols: number; rows: number; env?: Record<string, string>; arreterDistant?: () => void | Promise<void> },
   ): SessionAgent {
-    const [fichier, ...args] = commande;
-    if (!fichier) throw new Error("Commande vide");
+    const [file, ...args] = command;
+    if (!file) throw new Error("Commande vide");
     return new SessionAgent(
-      spawn(fichier, args, {
+      spawn(file, args, {
         name: "xterm-256color",
         cols: o.cols,
         rows: o.rows,
@@ -35,8 +35,8 @@ export class SessionAgent {
     return this.actif;
   }
 
-  ecrire(donnees: string): void {
-    if (this.actif) this.pty.write(donnees);
+  ecrire(data: string): void {
+    if (this.actif) this.pty.write(data);
   }
 
   redimensionner(cols: number, rows: number): void {
@@ -44,13 +44,13 @@ export class SessionAgent {
   }
 
   surDonnees(rappel: (d: string) => void): () => void {
-    const abonnement = this.pty.onData(rappel);
-    return () => abonnement.dispose();
+    const subscription = this.pty.onData(rappel);
+    return () => subscription.dispose();
   }
 
   surFin(rappel: (code: number) => void): () => void {
-    const abonnement = this.pty.onExit(({ exitCode }) => rappel(exitCode));
-    return () => abonnement.dispose();
+    const subscription = this.pty.onExit(({ exitCode }) => rappel(exitCode));
+    return () => subscription.dispose();
   }
 
   /** Returns once the agent is stopped where it runs (the container), not only the local terminal. */

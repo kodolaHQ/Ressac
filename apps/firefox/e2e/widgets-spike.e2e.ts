@@ -5,8 +5,8 @@ import { mkdir, mkdtemp, readdir, readFile, realpath, rm, symlink, writeFile } f
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, it } from "vitest";
-import { lireAccueil } from "../../../packages/noyau/src/accueil/lire";
-import { cheminsEspace } from "../../../packages/noyau/src/chemins";
+import { readHome } from "../../../packages/noyau/src/accueil/lire";
+import { spacePaths } from "../../../packages/noyau/src/chemins";
 import type { Action } from "../shared/api";
 import { dispatch, state, waitFor } from "./firefox";
 import { FAKE_TOOLS, launchWebAiOs, type LaunchedWebAiOs } from "./launch";
@@ -492,8 +492,8 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("widget home spike", () => {
     await writeFile(path.join(accueil, "disposition.json"), JSON.stringify({ version: 2, widgets: [{ id: "demo", x: 0, y: 0, l: 3, h: 2 }] }));
     await writeFile(path.join(accueil, "theme.json"), JSON.stringify({ version: 1, fond: "#101014", rayon: 6 }));
 
-    const chemins = cheminsEspace(racine);
-    const etat = await lireAccueil(chemins, donnees);
+    const chemins = spacePaths(racine);
+    const etat = await readHome(chemins, donnees);
     note("P6 lireAccueil", {
       cheminWidgets: chemins.widgets,
       dossierDonnees: donnees,
@@ -508,7 +508,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("widget home spike", () => {
     await mkdir(path.join(widgets, "fuite-affichage"));
     await writeFile(path.join(widgets, "fuite-affichage", "widget.json"), JSON.stringify(declaration));
     await symlink("/etc/hosts", path.join(widgets, "fuite-affichage", "affichage.html"));
-    const after = await lireAccueil(chemins, donnees);
+    const after = await readHome(chemins, donnees);
     const dossier = await realpath(path.join(widgets, "fuite-affichage"));
     const affichage = await realpath(path.join(widgets, "fuite-affichage", "affichage.html")).catch((e) => String(e));
     note("P6 confinement", {
@@ -572,7 +572,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("widget home spike", () => {
       fakeTools: FAKE_TOOLS,
       container: "webaios-atelier-firefox",
       ports: "5300-5319",
-      harvestStates: (await lireAccueil(cheminsEspace(path.join(w.dataDir, "espace")), path.join(w.dataDir, "widgets"))).widgets.flatMap((x) => ("erreur" in x ? [] : [{ id: x.id, etat: x.etat }])),
+      harvestStates: (await readHome(spacePaths(path.join(w.dataDir, "espace")), path.join(w.dataDir, "widgets"))).widgets.flatMap((x) => ("erreur" in x ? [] : [{ id: x.id, etat: x.etat }])),
     });
   });
 });

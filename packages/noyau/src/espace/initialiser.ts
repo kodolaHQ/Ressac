@@ -3,17 +3,17 @@ import { constants } from "node:fs";
 import { copyFile, lstat, mkdir, readdir, readFile, rename } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
-import type { CheminsEspace } from "../chemins.js";
+import type { SpacePaths } from "../chemins.js";
 
 /** Templates folder of the package; a browser that embeds the kernel can provide another. */
-export const MODELES_PAR_DEFAUT = join(import.meta.dirname, "..", "..", "modeles");
+export const DEFAULT_MODELS = join(import.meta.dirname, "..", "..", "modeles");
 
 /**
  * sha256 hashes of old versions of the AGENTS.md template. An AGENTS.md that has one is left as
  * is: it is replaced by the current template. To complete with each new template version: add
  * the old version's hash (`shasum -a 256 modeles/AGENTS.md`) before modifying it.
  */
-export const ANCIENS_AGENTS = new Set([
+export const OLD_AGENTS = new Set([
   "4cb44a141c2e0865ae472910b3f1026b918c2d09d12b96732b7a5556ffcc4681",
   "fc35b4b096def3e0850796b6bf784947adb2092aad8f71da879865891fbb7a27",
   "3117019dee9b14b0cc47dd8aa33edcfbf8f476a9ea521479c15e7a0c1004eca1",
@@ -52,24 +52,24 @@ export const ANCIENS_AGENTS = new Set([
   "eaf40a1f51b1e62226e5087c7d7a73cf8b48b84e1e4fb214e89a119d0eb71d96",
 ]);
 
-const empreinte = (contenu: Buffer) => createHash("sha256").update(contenu).digest("hex");
+const hash = (content: Buffer) => createHash("sha256").update(content).digest("hex");
 
-async function agentsRestePourAncien(chemin: string): Promise<boolean> {
+async function agentsRestForOld(path: string): Promise<boolean> {
   try {
-    return ANCIENS_AGENTS.has(empreinte(await readFile(chemin)));
+    return OLD_AGENTS.has(hash(await readFile(path)));
   } catch {
     return false;
   }
 }
 
 /** ISO timestamp without « : » (valid as a folder name). */
-function horodatage(): string {
+function timestamp(): string {
   return new Date().toISOString().replaceAll(":", "-");
 }
 
-async function renommerSiPresent(de: string, vers: string): Promise<void> {
+async function renameIfPresent(de: string, to: string): Promise<void> {
   try {
-    await rename(de, vers);
+    await rename(de, to);
   } catch (e) {
     // Absent, or already moved by a simultaneous launch: nothing to do.
     if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
@@ -80,9 +80,9 @@ async function renommerSiPresent(de: string, vers: string): Promise<void> {
  * A `disposition.json` in another format (old `{ ordre }` or unknown version). v2 (the 12-column grid) and v3 (the free
  * layout) are kept. Unreadable: left in place.
  */
-async function dispositionAncienne(chemin: string): Promise<boolean> {
+async function oldLayout(path: string): Promise<boolean> {
   try {
-    const v: unknown = JSON.parse(await readFile(chemin, "utf8"));
+    const v: unknown = JSON.parse(await readFile(path, "utf8"));
     if (typeof v !== "object" || v === null) return true;
     const version = (v as { version?: unknown }).version;
     return version !== 2 && version !== 3;
@@ -92,24 +92,24 @@ async function dispositionAncienne(chemin: string): Promise<boolean> {
 }
 
 /** Old blocks and the old layout are set aside in `accueil/.corbeille/blocs-<timestamp>`, never destroyed. */
-async function mettreDeCoteLesBlocs(c: CheminsEspace): Promise<void> {
+async function setAsideBlocks(c: SpacePaths): Promise<void> {
   const blocs = existsSync(c.blocs);
-  const dispo = existsSync(c.disposition) && (await dispositionAncienne(c.disposition));
-  if (!blocs && !dispo) return;
-  const cible = join(c.accueil, ".corbeille", `blocs-${horodatage()}`);
-  await mkdir(dirname(cible), { recursive: true });
-  if (blocs) await renommerSiPresent(c.blocs, cible);
-  if (dispo) {
-    await mkdir(cible, { recursive: true });
-    await renommerSiPresent(c.disposition, join(cible, "disposition.json"));
+  const available = existsSync(c.disposition) && (await oldLayout(c.disposition));
+  if (!blocs && !available) return;
+  const target = join(c.accueil, ".corbeille", `blocs-${timestamp()}`);
+  await mkdir(dirname(target), { recursive: true });
+  if (blocs) await renameIfPresent(c.blocs, target);
+  if (available) {
+    await mkdir(target, { recursive: true });
+    await renameIfPresent(c.disposition, join(target, "disposition.json"));
   }
 }
 
-async function fichiersDe(dossier: string, prefixe = ""): Promise<string[]> {
+async function filesOf(dossier: string, prefix = ""): Promise<string[]> {
   const sortie: string[] = [];
   for (const e of await readdir(dossier, { withFileTypes: true })) {
-    const rel = join(prefixe, e.name);
-    if (e.isDirectory()) sortie.push(...(await fichiersDe(join(dossier, e.name), rel)));
+    const rel = join(prefix, e.name);
+    if (e.isDirectory()) sortie.push(...(await filesOf(join(dossier, e.name), rel)));
     else sortie.push(rel);
   }
   return sortie;
@@ -119,24 +119,24 @@ async function fichiersDe(dossier: string, prefixe = ""): Promise<string[]> {
  * Template file → destination in the workspace. Starter widgets are only placed if `accueil/widgets/`
  * does not exist: a widget deleted by the user must not come back.
  */
-async function correspondances(c: CheminsEspace, modeles: string): Promise<[string, string][]> {
-  const paires: [string, string][] = [
+async function matches(c: SpacePaths, models: string): Promise<[string, string][]> {
+  const pairs: [string, string][] = [
     ["AGENTS.md", join(c.racine, "AGENTS.md")],
     ["CLAUDE.md", join(c.racine, "CLAUDE.md")],
     ["profil-claude.json", join(c.profils, "claude.json")],
     ["disposition.json", c.disposition],
   ];
   if (!existsSync(c.widgets)) {
-    for (const f of await fichiersDe(join(modeles, "widgets"))) paires.push([join("widgets", f), join(c.widgets, f)]);
+    for (const f of await filesOf(join(models, "widgets"))) pairs.push([join("widgets", f), join(c.widgets, f)]);
   }
-  return paires;
+  return pairs;
 }
 
 /**
  * sha256 hashes of each shipped version of the starter widgets' `recolte.mjs` (before workflows). A
  * starter widget whose `recolte.mjs` has one is left as is: it switches to a workflow at launch.
  */
-export const RECOLTES_LIVREES: Record<"meteo" | "actus-tech" | "daily-dev", ReadonlySet<string>> = {
+export const HARVESTS_SHIPPED: Record<"meteo" | "actus-tech" | "daily-dev", ReadonlySet<string>> = {
   meteo: new Set(["c30b449bd9bce4addd59be19e0bdf7bf4010bdc796ce29ca57805be536652f98"]),
   "actus-tech": new Set([
     "64a3c44433f8682395ca70f1586157105a35991ce2bc8ab5b1eff8e332b298d0",
@@ -155,7 +155,7 @@ export const RECOLTES_LIVREES: Record<"meteo" | "actus-tech" | "daily-dev", Read
  * forms, listening without comparing `e.source`, links through `webaiosOuvrir`). A display left at one of them is replaced by the
  * current template; a display modified by the user or the agent (unknown hash) is not touched.
  */
-export const AFFICHAGES_LIVREES: Record<"meteo" | "actus-tech" | "daily-dev", ReadonlySet<string>> = {
+export const DISPLAYS_SHIPPED: Record<"meteo" | "actus-tech" | "daily-dev", ReadonlySet<string>> = {
   meteo: new Set([
     "437c53d9ec9db7261bf1b90258ebfc4a2febed3b0c44fc49e5a79e68a022f449",
     "41b7f74fbbd384ab88ba8e31a57d0c2b7ee4df1f6081a588f23c888fa3721257",
@@ -174,18 +174,18 @@ export const AFFICHAGES_LIVREES: Record<"meteo" | "actus-tech" | "daily-dev", Re
 };
 
 /** The content of an ordinary file (never a symbolic link); null if it is absent or something else. */
-async function fichierOrdinaire(chemin: string): Promise<Buffer | null> {
+async function ordinaryFile(path: string): Promise<Buffer | null> {
   try {
-    if (!(await lstat(chemin)).isFile()) return null;
-    return await readFile(chemin);
+    if (!(await lstat(path)).isFile()) return null;
+    return await readFile(path);
   } catch {
     return null;
   }
 }
 
-async function absent(chemin: string): Promise<boolean> {
+async function absent(path: string): Promise<boolean> {
   try {
-    await lstat(chemin);
+    await lstat(path);
     return false;
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code === "ENOENT") return true;
@@ -200,31 +200,31 @@ async function absent(chemin: string): Promise<boolean> {
  * of the template already exists with other content, is not touched. Nothing other than this folder and the trash. With
  * the template's `workflow.json` already there (interrupted switch), only `recolte.mjs` is put away.
  */
-async function basculerWidgetDeDepart(c: CheminsEspace, modeles: string, id: keyof typeof RECOLTES_LIVREES): Promise<string[]> {
+async function toggleStartWidget(c: SpacePaths, models: string, id: keyof typeof HARVESTS_SHIPPED): Promise<string[]> {
   const dossier = join(c.widgets, id);
   try {
     if (!(await lstat(dossier)).isDirectory()) return [];
   } catch {
     return [];
   }
-  const recolte = await fichierOrdinaire(join(dossier, "recolte.mjs"));
-  if (!recolte || !RECOLTES_LIVREES[id].has(empreinte(recolte))) return [];
+  const harvest = await ordinaryFile(join(dossier, "recolte.mjs"));
+  if (!harvest || !HARVESTS_SHIPPED[id].has(hash(harvest))) return [];
   // The template is read only afterwards: templates without this widget, and nothing moves.
-  const modele = join(modeles, "widgets", id);
-  if (!existsSync(join(modele, "workflow.json"))) return [];
+  const model = join(models, "widgets", id);
+  if (!existsSync(join(model, "workflow.json"))) return [];
   if (!(await absent(join(dossier, "workflow.json")))) {
     // template's workflow.json already there: a switch interrupted before putting recolte.mjs away, which it finishes.
-    const present = await fichierOrdinaire(join(dossier, "workflow.json"));
-    if (present && present.equals(await readFile(join(modele, "workflow.json")))) await rangerRecolte(c, id);
+    const present = await ordinaryFile(join(dossier, "workflow.json"));
+    if (present && present.equals(await readFile(join(model, "workflow.json")))) await storeHarvest(c, id);
     return [];
   }
-  const codes = (await readdir(modele)).filter((f) => f.endsWith(".mjs")).sort();
+  const codes = (await readdir(model)).filter((f) => f.endsWith(".mjs")).sort();
   // A .mjs of the same name already there: only if identical to the template (an interrupted switch), otherwise it is the user's.
   for (const f of codes) {
     const present = join(dossier, f);
     if (await absent(present)) continue;
-    const contenu = await fichierOrdinaire(present);
-    if (!contenu || !contenu.equals(await readFile(join(modele, f)))) return [];
+    const content = await ordinaryFile(present);
+    if (!content || !content.equals(await readFile(join(model, f)))) return [];
   }
 
   const crees: string[] = [];
@@ -232,65 +232,65 @@ async function basculerWidgetDeDepart(c: CheminsEspace, modeles: string, id: key
   for (const f of [...codes, "workflow.json"]) {
     const destination = join(dossier, f);
     try {
-      await copyFile(join(modele, f), destination, constants.COPYFILE_EXCL);
+      await copyFile(join(model, f), destination, constants.COPYFILE_EXCL);
       crees.push(destination);
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
     }
   }
-  await rangerRecolte(c, id);
+  await storeHarvest(c, id);
   return crees;
 }
 
 /** `recolte.mjs` of a switched starter widget goes to `accueil/.corbeille/<id>-recolte-<timestamp>.mjs`. */
-async function rangerRecolte(c: CheminsEspace, id: string): Promise<void> {
-  const corbeille = join(c.accueil, ".corbeille");
-  await mkdir(corbeille, { recursive: true });
-  await renommerSiPresent(join(c.widgets, id, "recolte.mjs"), join(corbeille, `${id}-recolte-${horodatage()}.mjs`));
+async function storeHarvest(c: SpacePaths, id: string): Promise<void> {
+  const trash = join(c.accueil, ".corbeille");
+  await mkdir(trash, { recursive: true });
+  await renameIfPresent(join(c.widgets, id, "recolte.mjs"), join(trash, `${id}-recolte-${timestamp()}.mjs`));
 }
 
 /**
  * Replaces the `affichage.html` of a starter widget left at a shipped version (known hash) with the template's.
  * A modified display, a symbolic link or an absent widget are not touched.
  */
-async function migrerAffichageDeDepart(c: CheminsEspace, modeles: string, id: keyof typeof AFFICHAGES_LIVREES): Promise<boolean> {
-  const fichier = join(c.widgets, id, "affichage.html");
-  const contenu = await fichierOrdinaire(fichier);
-  if (!contenu || !AFFICHAGES_LIVREES[id].has(empreinte(contenu))) return false;
-  const modele = join(modeles, "widgets", id, "affichage.html");
-  if (!existsSync(modele)) return false;
-  await copyFile(modele, fichier);
+async function migrateStartDisplay(c: SpacePaths, models: string, id: keyof typeof DISPLAYS_SHIPPED): Promise<boolean> {
+  const file = join(c.widgets, id, "affichage.html");
+  const content = await ordinaryFile(file);
+  if (!content || !DISPLAYS_SHIPPED[id].has(hash(content))) return false;
+  const model = join(models, "widgets", id, "affichage.html");
+  if (!existsSync(model)) return false;
+  await copyFile(model, file);
   return true;
 }
 
 /** Creates the workspace from the templates, without overwriting an existing file (except an AGENTS.md of an old template). */
-export async function initialiserEspace(c: CheminsEspace, modeles = MODELES_PAR_DEFAUT): Promise<{ crees: string[] }> {
+export async function initSpace(c: SpacePaths, models = DEFAULT_MODELS): Promise<{ crees: string[] }> {
   const crees: string[] = [];
-  await mettreDeCoteLesBlocs(c);
-  for (const [modele, destination] of await correspondances(c, modeles)) {
-    const miseAJour = modele === "AGENTS.md" && (await agentsRestePourAncien(destination));
-    if (existsSync(destination) && !miseAJour) continue;
+  await setAsideBlocks(c);
+  for (const [model, destination] of await matches(c, models)) {
+    const update = model === "AGENTS.md" && (await agentsRestForOld(destination));
+    if (existsSync(destination) && !update) continue;
     await mkdir(dirname(destination), { recursive: true });
     try {
       // COPYFILE_EXCL: if the file appears in the meantime, we do not overwrite it.
-      await copyFile(join(modeles, modele), destination, miseAJour ? 0 : constants.COPYFILE_EXCL);
+      await copyFile(join(models, model), destination, update ? 0 : constants.COPYFILE_EXCL);
       crees.push(destination);
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
     }
   }
-  for (const id of Object.keys(AFFICHAGES_LIVREES) as (keyof typeof AFFICHAGES_LIVREES)[]) {
+  for (const id of Object.keys(DISPLAYS_SHIPPED) as (keyof typeof DISPLAYS_SHIPPED)[]) {
     // Best effort, widget by widget: a failed display never blocks launch.
     try {
-      if (await migrerAffichageDeDepart(c, modeles, id)) crees.push(join(c.widgets, id, "affichage.html"));
+      if (await migrateStartDisplay(c, models, id)) crees.push(join(c.widgets, id, "affichage.html"));
     } catch (e) {
       console.error(`[webaios] migration de l'affichage du widget ${id} :`, e);
     }
   }
-  for (const id of Object.keys(RECOLTES_LIVREES) as (keyof typeof RECOLTES_LIVREES)[]) {
+  for (const id of Object.keys(HARVESTS_SHIPPED) as (keyof typeof HARVESTS_SHIPPED)[]) {
     // Best effort, widget by widget: a failed switch never blocks launch (the widget keeps its recolte.mjs).
     try {
-      crees.push(...(await basculerWidgetDeDepart(c, modeles, id)));
+      crees.push(...(await toggleStartWidget(c, models, id)));
     } catch (e) {
       console.error(`[webaios] bascule du widget ${id} en workflow :`, e);
     }

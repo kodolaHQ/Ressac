@@ -1,4 +1,4 @@
-import { ACTION_INCONNUE as ACTION_INCONNUE_NOYAU, AUCUN_RESULTAT as AUCUN_RESULTAT_NOYAU, MENTION_SECOURS as MENTION_SECOURS_NOYAU } from "@webaios/noyau";
+import { ACTION_UNKNOWN as ACTION_INCONNUE_NOYAU, NO_RESULT as AUCUN_RESULTAT_NOYAU, FALLBACK_MENTION as MENTION_SECOURS_NOYAU } from "@webaios/noyau";
 import { expect, test } from "vitest";
 import { ACTION_INCONNUE, AUCUN_RESULTAT, MENTION_SECOURS } from "../../shared/actions";
 import { trierLignes } from "../../ui/action/tri";

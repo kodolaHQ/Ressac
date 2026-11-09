@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Proprietaire } from "../../../packages/noyau/src/index";
+  import type { Owner } from "../../../packages/noyau/src/index";
   import Constructeur from "../ui/constructeur/Constructeur.svelte";
   import { suivreDisparitions } from "../ui/constructeur/edition.svelte";
   import { api } from "../ui/etat.svelte";
@@ -7,7 +7,7 @@
 
   // The builder page. Its own suivreDisparitions(api.accueil) comes second and is ignored (first call wins): the
   // Firefox home read also carries the theme.
-  let { cible }: { cible: Proprietaire } = $props();
+  let { cible }: { cible: Owner } = $props();
   suivreDisparitions(homeListForBuilder(api));
 </script>
 

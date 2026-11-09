@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { WidgetAffiche } from "../shared/api";
-  import type { PlacementLibre } from "../../../packages/noyau/src/accueil/schemas";
-  import type { ThemeAccueil } from "../../../packages/noyau/src/accueil/theme";
+  import type { FreePlacement } from "../../../packages/noyau/src/accueil/schemas";
+  import type { HomeTheme } from "../../../packages/noyau/src/accueil/theme";
   import { api } from "../ui/etat.svelte";
   import CarteAccordCompte from "./CarteAccordCompte.svelte";
   import WidgetAccueil from "./WidgetAccueil.svelte";
@@ -16,7 +16,7 @@
 
   // Replaced as a whole on each read: no deep proxy (the data goes to the frames as is).
   let widgets = $state.raw<WidgetAffiche[]>([]);
-  let theme = $state.raw<ThemeAccueil | null>(null);
+  let theme = $state.raw<HomeTheme | null>(null);
   /** The first read is done: the empty screen does not flash before it. */
   let charge = $state(false);
   // Overlapping reads (burst of changes): only the last one counts.
@@ -89,10 +89,10 @@
 
   // Drag and resize: a live free preview, then the layout sent on release.
   let largeurPx = $state(0);
-  let geste: { id: string; mode: "deplacer" | "taille"; x0: number; y0: number; depart: PlacementLibre[]; p0: PlacementLibre; tailles: { min: { l: number; h: number }; max: { l: number; h: number } } } | null =
+  let geste: { id: string; mode: "deplacer" | "taille"; x0: number; y0: number; depart: FreePlacement[]; p0: FreePlacement; tailles: { min: { l: number; h: number }; max: { l: number; h: number } } } | null =
     null;
   let enGeste = $state(false);
-  let apercu = $state.raw<PlacementLibre[] | null>(null);
+  let apercu = $state.raw<FreePlacement[] | null>(null);
   let guides = $state.raw<{ x: number[]; y: number[] }>({ x: [], y: [] });
   const placements = $derived(new Map((apercu ?? widgets.map((w) => w.placement)).map((p) => [p.id, p])));
   const hauteur = $derived(Math.max(0, ...[...placements.values()].map((p) => p.y + p.h)));

@@ -1,17 +1,17 @@
 import { rm } from "node:fs/promises";
 import {
-  AVERTISSEMENT_ILLISIBLE,
-  commandeBranchement,
-  demarrerServeurExterne,
-  DepotRelecture,
-  depotRelecture,
-  fichierCommentaires,
-  portPris,
-  projetExterne,
+  UNREADABLE_WARNING,
+  pluggedCommand,
+  startExternalServer,
+  ReviewStore,
+  reviewStore,
+  commentsFile,
+  portTaken,
+  externalProject,
   type DossiersDesign,
-  type RegistreExternes,
+  type ExternalRegistry,
   type Remarques,
-  type ResultatDeclaration,
+  type DeclarationResult,
 } from "@webaios/noyau";
 import type { EtatExternes } from "../../shared/api";
 
@@ -34,7 +34,7 @@ export interface ServiceExternes {
  * Code (registry, first review snapshot, notification) and the Applications page's gestures.
  */
 export async function demarrerExternes(o: {
-  registre: RegistreExternes;
+  registre: ExternalRegistry;
   remarques: Remarques;
   dossiers: DossiersDesign;
   port: number;
@@ -47,27 +47,27 @@ export async function demarrerExternes(o: {
   let serveur: { port: number; arreter(): Promise<void> } | null = null;
   let etatServeur: EtatExternes["serveur"];
   try {
-    serveur = await demarrerServeurExterne({
+    serveur = await startExternalServer({
       registre: o.registre,
       remarques: o.remarques,
       port: o.port,
-      declarer: async (client, d): Promise<ResultatDeclaration> => {
+      declarer: async (client, d): Promise<DeclarationResult> => {
         const r = await o.registre.declarer(client.id, d, { plages: o.plages, racineEspace: o.racineEspace, maison: o.maison });
         if (r.lisible) {
           // The review's first snapshot is taken in the background: an error does not prevent the declaration.
-          const id = projetExterne(r.projet.id);
-          void new DepotRelecture({ depot: depotRelecture(o.dossiers, id), dossier: r.projet.dossier })
+          const id = externalProject(r.projet.id);
+          void new ReviewStore({ depot: reviewStore(o.dossiers, id), dossier: r.projet.dossier })
             .assurerReference()
             .catch((e) => console.error("[externes] première photo de relecture impossible :", e));
         }
         if (r.premiere) o.notifier({ titre: "WebAiOs", texte: `${client.nom} a branché le projet ${r.projet.nom}` });
-        return { projet: r.projet, ...(r.lisible ? {} : { avertissement: AVERTISSEMENT_ILLISIBLE }) };
+        return { projet: r.projet, ...(r.lisible ? {} : { avertissement: UNREADABLE_WARNING }) };
       },
     });
     etatServeur = { etat: "pret", port: serveur.port };
   } catch (e) {
     // Port taken or any other error: the section says so, never « démarre » endlessly.
-    if ((e as NodeJS.ErrnoException).code === "EADDRINUSE") etatServeur = { etat: "eteint", raison: portPris(o.port) };
+    if ((e as NodeJS.ErrnoException).code === "EADDRINUSE") etatServeur = { etat: "eteint", raison: portTaken(o.port) };
     else {
       console.error("[externes] démarrage impossible :", e);
       etatServeur = { etat: "eteint", raison: raisonEchec(e) };
@@ -87,17 +87,17 @@ export async function demarrerExternes(o: {
       if (etatServeur.etat !== "pret") throw new Error(etatServeur.raison);
       const propre = nom.trim().slice(0, NOM_MAX) || NOM_PAR_DEFAUT;
       const { jeton } = await o.registre.brancher(propre);
-      return { commande: commandeBranchement(etatServeur.port, jeton) };
+      return { commande: pluggedCommand(etatServeur.port, jeton) };
     },
     revoquer: (id) => o.registre.revoquer(id),
     oublier: async (id) => {
-      const projet = projetExterne(id);
+      const projet = externalProject(id);
       await o.registre.oublier(id);
       await o.remarques.oublier(projet);
       await Promise.all([
         // Through the repository queue: goes after a first snapshot in progress, which would otherwise recreate it.
-        new DepotRelecture({ depot: depotRelecture(o.dossiers, projet), dossier: o.racineEspace }).supprimer(),
-        rm(fichierCommentaires(o.dossiers, projet), { force: true }),
+        new ReviewStore({ depot: reviewStore(o.dossiers, projet), dossier: o.racineEspace }).supprimer(),
+        rm(commentsFile(o.dossiers, projet), { force: true }),
       ]);
     },
     arreter: async () => {

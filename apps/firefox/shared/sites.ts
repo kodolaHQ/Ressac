@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { EntreeMemoire, PositionVideo } from "@webaios/noyau";
+import type { MemoryEntry, PositionVideo } from "@webaios/noyau";
 
 /** Messages and types of a site app's window, also read by the UI (`site.html`, Applications page). */
 
@@ -89,7 +89,7 @@ export const MessageDeLAccueil = z.discriminatedUnion("type", [
 export type MessageDeLAccueil = z.infer<typeof MessageDeLAccueil>;
 
 export type MessageVersLAccueil =
-  | { type: "memoire"; valeurs: Record<string, EntreeMemoire>; positions: Record<string, PositionVideo>; domaine: string }
+  | { type: "memoire"; valeurs: Record<string, MemoryEntry>; positions: Record<string, PositionVideo>; domaine: string }
   | { type: "image"; n: number; data: string | null };
 
 /** Console errors of the tweaks kept per open app (the most recent). */

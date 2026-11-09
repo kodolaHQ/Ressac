@@ -4,14 +4,14 @@
 type Bloc = { id: string; type: string; parametres: Record<string, unknown> };
 type Lien = { de: string; vers: string };
 
-import type { ContexteValidation } from "../../src/workflows/valider.js";
+import type { ValidationContext } from "../../src/workflows/valider.js";
 
 export type CasChaine = {
   nom: string;
   brut: { version: 1; blocs: Bloc[]; liens: Lien[] };
   attendu: string[];
   /** What the widget declares (web.chercher requires `web`); the earlier rules without it. */
-  contexte?: ContexteValidation;
+  contexte?: ValidationContext;
 };
 
 const b = (id: string, type: string, parametres: Record<string, unknown>): Bloc => ({ id, type, parametres });
@@ -19,7 +19,7 @@ const page = (id: string, parElement = true) => b(id, "source.page", { url: "htt
 const recuperer = (id: string, parElement = true) => b(id, "source.recuperer", { url: "https://x.fr/{url}/api", parElement });
 const rediger = (id: string, parElement = true) => b(id, "ia.rediger", { consigne: "Résume : {page}", parElement });
 const chercher = (id: string, parElement = true) => b(id, "web.chercher", { requete: "{titre} avis", parElement, champ: "recherche" });
-const WEB: ContexteValidation = { web: true, dureeMaxMinutes: null, proprietaire: "widget", saisie: false };
+const WEB: ValidationContext = { web: true, dureeMaxMinutes: null, proprietaire: "widget", saisie: false };
 const sortie = (auFilDeLEau?: boolean) => b("sortie", "sortie", auFilDeLEau === undefined ? { vers: "widget" } : { vers: "widget", auFilDeLEau });
 const suite = (...ids: string[]): Lien[] => ids.slice(1).map((id, i) => ({ de: ids[i]!, vers: id }));
 const wf = (blocs: Bloc[], liens: Lien[]) => ({ version: 1 as const, blocs, liens });

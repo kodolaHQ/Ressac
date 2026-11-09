@@ -1,8 +1,8 @@
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { expect, test } from "vitest";
-import { chaineAuFilDeLEau, validerWorkflow } from "../../src/index.js";
-import { REGISTRE_BLOCS } from "../../src/workflows/blocs/index.js";
+import { streamingChain, validateWorkflow } from "../../src/index.js";
+import { BLOCK_REGISTRY } from "../../src/workflows/blocs/index.js";
 import { CAS_CHAINE } from "../aide/cas-chaine.js";
 import { MOTEUR, workflowEnvoye } from "../aide/moteur.js";
 
@@ -11,9 +11,9 @@ const { chaineDe, BLOCS_LIVRES } = await import(pathToFileURL(join(MOTEUR, "inte
 
 for (const cas of CAS_CHAINE) {
   test(`streaming chain: ${cas.nom}`, () => {
-    const r = validerWorkflow(cas.brut, cas.contexte);
+    const r = validateWorkflow(cas.brut, cas.contexte);
     if (!r.ok) throw new Error(r.erreur);
-    expect(chaineAuFilDeLEau(r.valide)).toEqual(cas.attendu);
+    expect(streamingChain(r.valide)).toEqual(cas.attendu);
   });
 
   test(`streaming chain, the same in the container: ${cas.nom}`, () => {
@@ -22,12 +22,12 @@ for (const cas of CAS_CHAINE) {
 }
 
 test("the chainable blocks: source.page, source.recuperer, ia.rediger, web.chercher", () => {
-  const chainables = [...REGISTRE_BLOCS.values()].filter((d) => d.chaine).map((d) => d.type).sort();
+  const chainables = [...BLOCK_REGISTRY.values()].filter((d) => d.chaine).map((d) => d.type).sort();
   expect(chainables).toEqual(["ia.rediger", "source.page", "source.recuperer", "web.chercher"]);
 });
 
 test("DefinitionBloc.chaine is consistent with the container's modules", () => {
-  for (const d of REGISTRE_BLOCS.values()) {
+  for (const d of BLOCK_REGISTRY.values()) {
     const module = BLOCS_LIVRES[d.type];
     expect(module, d.type).toBeDefined();
     const chainable = module.parElement === "option" && !module.finaliser && module.echecSiTousEchouent !== true;

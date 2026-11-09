@@ -1,4 +1,4 @@
-import { navigationHorsSite, OngletIntrouvable, OngletPrive, type DroitDev, type OngletInfo, type OptionsLecturePage } from "../shims/noyau";
+import { navigationOutsideSite, TabNotFound, PrivateTab, type DroitDev, type TabInfo, type OptionsLecturePage } from "../shims/noyau";
 import type { EtatNavigateur, IdFenetre, Onglet } from "../../shared/modele";
 import { ongletPrive, PREFIXE_WORKFLOW } from "../../shared/modele";
 import { changementsPolitique, infosOnglets, ongletActifDe, ongletApplication, ongletSite, origineDe, PREFIXE_SITE, resoudreEspace } from "../../core/agent/pont";
@@ -58,8 +58,8 @@ export function bridgeHandlers(
   const tab = (id: string): Onglet => {
     const state = store.state;
     const o = state.onglets[id];
-    if (!o) throw new OngletIntrouvable(id);
-    if (ongletPrive(state, o)) throw new OngletPrive(id);
+    if (!o) throw new TabNotFound(id);
+    if (ongletPrive(state, o)) throw new PrivateTab(id);
     return o;
   };
   /** A tab whose page can be read: Firefox's crash or error page is not the page. */
@@ -94,9 +94,9 @@ export function bridgeHandlers(
   const onSiteView = <T>(id: string, read: (browser: any, win: Window) => Promise<T>): Promise<T> | undefined => {
     const view = windowView(id);
     if (view === null) return undefined;
-    if (!view) return Promise.reject(new OngletIntrouvable(id));
+    if (!view) return Promise.reject(new TabNotFound(id));
     return read(view.browser, view.window).catch((e) => {
-      if (windowView(id)?.browser !== view.browser) throw new OngletIntrouvable(id);
+      if (windowView(id)?.browser !== view.browser) throw new TabNotFound(id);
       throw e;
     });
   };
@@ -121,7 +121,7 @@ export function bridgeHandlers(
   };
 
   /** The agent's demos open in the foreground, marked ✦. With no window open, in the kept one. */
-  const openTab = ([url, espace]: [string, string?]): OngletInfo => {
+  const openTab = ([url, espace]: [string, string?]): TabInfo => {
     const state = store.state;
     const f = state.fenetres.find((x) => x.id === windows.active()) ?? state.fenetres[0];
     if (!f) throw new Error("Aucune fenêtre ouverte");
@@ -141,15 +141,15 @@ export function bridgeHandlers(
     ouvrirOnglet: openTab,
     naviguer: ([id, url]: [string, string]) => {
       if (id.startsWith(PREFIXE_SITE)) {
-        if (!sites.viewFor(id.slice(PREFIXE_SITE.length))) throw new OngletIntrouvable(id);
+        if (!sites.viewFor(id.slice(PREFIXE_SITE.length))) throw new TabNotFound(id);
         // Never a tab instead: off the app's domains nothing loads (the kernel checked it already).
         const r = sites.navigateForAgent(id.slice(PREFIXE_SITE.length), url);
-        if (r === "refuse") throw new Error(navigationHorsSite(url));
+        if (r === "refuse") throw new Error(navigationOutsideSite(url));
         return r === "en-attente" ? r : undefined;
       }
       if (id.startsWith(PREFIXE_APP)) {
         const dossier = id.slice(PREFIXE_APP.length);
-        if (!apps.viewFor(dossier)) throw new OngletIntrouvable(id);
+        if (!apps.viewFor(dossier)) throw new TabNotFound(id);
         // The app window never leaves its origin: elsewhere, a tab of the main window.
         if (!apps.navigateForAgent(dossier, url)) openTab([url]);
         return;
@@ -161,13 +161,13 @@ export function bridgeHandlers(
     capturer: ([id]: [string]) => onSiteView(id, snapshot) ?? outsidePrivate(id, (browser) => snapshot(browser, windowOf(id).window)),
     // « L'agent veut lire l'onglet … » in the active window; refused with none to show it. The signal aborts when the
     // host goes: the card falls.
-    demanderAutorisation: ([o]: [OngletInfo], signal) => {
+    demanderAutorisation: ([o]: [TabInfo], signal) => {
       const f = windows.active();
       return f ? questions.ask(o, f, signal) : false;
     },
     // The dev tools card, in the active window; refused with none to show it. The kernel takes it down (signal) when a
     // new conversation starts.
-    demanderOutilsDev: ([o, d]: [OngletInfo, { droits: DroitDev[]; raison: string; agent: string }], signal) => {
+    demanderOutilsDev: ([o, d]: [TabInfo, { droits: DroitDev[]; raison: string; agent: string }], signal) => {
       const f = windows.active();
       return f ? questions.askDevTools(o, d, f, signal) : [];
     },

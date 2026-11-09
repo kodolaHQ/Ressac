@@ -4,15 +4,15 @@ import { existsSync } from "node:fs";
 import { mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
-import { cheminsEspace, type CheminsEspace } from "../../src/chemins.js";
+import { spacePaths, type SpacePaths } from "../../src/chemins.js";
 import { PontFactice } from "../../src/mcp/pont-factice.js";
 import { accorder, retirerAccord } from "../../src/widgets/accords.js";
-import { ACTION_ARRETEE, lireExecution, listerExecutions } from "../../src/workflows/executions.js";
-import { avecMemoire, lireMemoire } from "../../src/workflows/memoire.js";
-import type { LanceurProcessus, TraceDirecte } from "../../src/workflows/executer.js";
-import type { AccesIaExecution } from "../../src/ia/repartiteur.js";
-import { dernierResultat, lireResultat } from "../../src/actions/donnees.js";
-import { ACTION_INCONNUE, accordRequisAction, executerAction, saisieRequise, type OptionsAction, type TraceAction } from "../../src/actions/executer.js";
+import { ACTION_STOPPED, lireExecution, listerExecutions } from "../../src/workflows/executions.js";
+import { withMemory, readMemory } from "../../src/workflows/memoire.js";
+import type { ProcessLauncher, DirectTrace } from "../../src/workflows/executer.js";
+import type { AiAccessRun } from "../../src/ia/repartiteur.js";
+import { lastResult, readResult } from "../../src/actions/donnees.js";
+import { ACTION_UNKNOWN, actionGrantRequired, executerAction, requiredInput, type OptionsAction, type TraceAction } from "../../src/actions/executer.js";
 import { DeclarationAction } from "../../src/actions/schemas.js";
 import { dossierTemporaire } from "../aide/temporaire.js";
 
@@ -32,7 +32,7 @@ const PLAN = {
 /** A fake Gemma (a run's access): `reponse` returns the plan; its calls are counted. */
 function fauxGemma(reponse: (o?: { signal?: AbortSignal; auDemarrage?: () => void }) => Promise<unknown> = async () => PLAN) {
   const appels: string[] = [];
-  const ia: AccesIaExecution & { appels: string[] } = {
+  const ia: AiAccessRun & { appels: string[] } = {
     appels,
     kev: async () => ({}),
     gemma: async (g, o) => {
@@ -51,13 +51,13 @@ afterEach(async () => {
 });
 
 interface Banc {
-  c: CheminsEspace;
+  c: SpacePaths;
   dossierActions: string;
   dossier: string;
   commandes: string[][];
   supprimes: unknown[];
   pont: PontFactice;
-  lancer: LanceurProcessus;
+  lancer: ProcessLauncher;
 }
 
 const workflow = () =>
@@ -69,7 +69,7 @@ const workflow = () =>
 
 async function preparer(id: string, declaration: unknown, code: string, o: { suspendues?: string[] } = {}): Promise<Banc> {
   const racine = await dossierTemporaire();
-  const c = cheminsEspace(racine);
+  const c = spacePaths(racine);
   const dossier = join(c.actions, id);
   await mkdir(dossier, { recursive: true });
   await mkdir(c.composants, { recursive: true });
@@ -136,7 +136,7 @@ describe("executerAction", () => {
     expect(r.execution).toBeDefined();
     const e = await lireExecution(join(b.dossierActions, "gitlab"), r.execution!);
     expect(e).toMatchObject({ statut: "reussie", proprietaire: { type: "action", id: "gitlab" }, declencheur: "manuelle" });
-    const res = await lireResultat(b.dossierActions, "gitlab", r.execution!);
+    const res = await readResult(b.dossierActions, "gitlab", r.execution!);
     expect(res).toEqual({
       version: 1,
       execution: r.execution,
@@ -155,7 +155,7 @@ describe("executerAction", () => {
   it("without a grant: accord-requis, no container launched, nothing written", async () => {
     const b = await preparer("gitlab", GITLAB, CODE_GITLAB);
     const r = await executerAction(options(b, "gitlab"));
-    expect(r).toEqual({ statut: "accord-requis", erreur: accordRequisAction(DeclarationAction.parse(GITLAB)), erreurNoyau: true });
+    expect(r).toEqual({ statut: "accord-requis", erreur: actionGrantRequired(DeclarationAction.parse(GITLAB)), erreurNoyau: true });
     expect(r.erreur).toBe("Accord requis pour lire avec ton compte : gitlab.com");
     expect(b.commandes).toEqual([]);
     expect(existsSync(join(b.dossierActions, "gitlab"))).toBe(false);
@@ -175,7 +175,7 @@ describe("executerAction", () => {
   it("unknown action: ACTION_INCONNUE, nothing written", async () => {
     const b = await preparer("gitlab", GITLAB, CODE_GITLAB);
     const r = await executerAction(options(b, "absente"));
-    expect(r).toMatchObject({ statut: "invalide", erreur: ACTION_INCONNUE });
+    expect(r).toMatchObject({ statut: "invalide", erreur: ACTION_UNKNOWN });
     expect(existsSync(join(b.dossierActions, "absente"))).toBe(false);
   });
 
@@ -193,9 +193,9 @@ describe("executerAction", () => {
     const b = await preparer("leboncoin", { nom: "Leboncoin", sources: {}, saisie: { libelle: "Recherche" } }, `export default async (e, w) => ({ q: w.saisie });`);
     for (const saisie of [null, "   "]) {
       const r = await executerAction(options(b, "leboncoin", { saisie }));
-      expect(r).toEqual({ statut: "invalide", erreur: saisieRequise("Recherche"), erreurNoyau: true });
+      expect(r).toEqual({ statut: "invalide", erreur: requiredInput("Recherche"), erreurNoyau: true });
     }
-    expect(saisieRequise("Recherche")).toBe("Saisie requise : Recherche");
+    expect(requiredInput("Recherche")).toBe("Saisie requise : Recherche");
     expect(b.commandes).toEqual([]);
   });
 
@@ -205,7 +205,7 @@ describe("executerAction", () => {
     expect(r.statut).toBe("reussie");
     const e = await lireExecution(join(b.dossierActions, "leboncoin"), r.execution!);
     expect(e?.saisie).toBe("clio lyon");
-    const res = await lireResultat(b.dossierActions, "leboncoin", r.execution!);
+    const res = await readResult(b.dossierActions, "leboncoin", r.execution!);
     // The agent's code received the input (sent in debut).
     expect(res?.resultats).toEqual({ annonces: [{ titre: "clio lyon" }] });
     expect(res?.saisie).toBe("clio lyon");
@@ -225,7 +225,7 @@ describe("executerAction", () => {
     const ia = fauxGemma();
     const r = await executerAction(options(b, "vide", { ia }));
     expect(r.statut).toBe("reussie");
-    const res = await lireResultat(b.dossierActions, "vide", r.execution!);
+    const res = await readResult(b.dossierActions, "vide", r.execution!);
     expect(res).toMatchObject({ vide: true, plan: null, secours: false });
     expect(ia.appels).toEqual([]);
   });
@@ -234,7 +234,7 @@ describe("executerAction", () => {
     const b = await preparer("simple", { nom: "S", sources: {} }, `export default async () => ({ tickets: [{ titre: "a" }] });`);
     const r = await executerAction(options(b, "simple", { ia: null }));
     expect(r.statut).toBe("reussie");
-    const res = await lireResultat(b.dossierActions, "simple", r.execution!);
+    const res = await readResult(b.dossierActions, "simple", r.execution!);
     expect(res?.secours).toBe(true);
     expect(res?.plan?.blocs.length).toBeGreaterThan(0);
   });
@@ -251,10 +251,10 @@ describe("executerAction", () => {
     ];
     const r = await executerAction(options(b, "memo", { lancer: lanceurLignes(lignes({ t: "fin", donnees: { tickets: [{ titre: "a" }] } })) }));
     expect(r.statut).toBe("reussie");
-    expect((await lireMemoire(join(b.dossierActions, "memo"))).lire).toMatchObject({ type: "code", valeur: { vu: 1 } });
+    expect((await readMemory(join(b.dossierActions, "memo"))).lire).toMatchObject({ type: "code", valeur: { vu: 1 } });
     const echec = await executerAction(options(b, "memo", { lancer: lanceurLignes([{ t: "memoire", memoire: { lire: { type: "code", valeur: { vu: 2 } } } }, { t: "echec", erreur: "cassé" }]) }));
     expect(echec.statut).toBe("echouee");
-    expect((await lireMemoire(join(b.dossierActions, "memo"))).lire).toMatchObject({ valeur: { vu: 1 } });
+    expect((await readMemory(join(b.dossierActions, "memo"))).lire).toMatchObject({ valeur: { vu: 1 } });
   });
 
   it("action deleted just before the memory write: the memory is not written", async () => {
@@ -270,7 +270,7 @@ describe("executerAction", () => {
     const dossierDonnees = join(b.dossierActions, "memo");
     // The memory is held (as during the erasing of its data): the run waits its turn to write it.
     let relacher!: () => void;
-    const tenue = avecMemoire(dossierDonnees, () => new Promise<void>((ok) => (relacher = ok)));
+    const tenue = withMemory(dossierDonnees, () => new Promise<void>((ok) => (relacher = ok)));
     const fin = executerAction(options(b, "memo", { lancer: lanceurLignes(lignes) }));
     await attendreQue(() => existsSync(join(dossierDonnees, "resultats")));
     // The time the re-read that follows the result takes: the action is still there.
@@ -279,8 +279,8 @@ describe("executerAction", () => {
     relacher();
     await tenue;
     const r = await fin;
-    expect(r.erreur).toBe(ACTION_INCONNUE);
-    expect(await lireMemoire(dossierDonnees)).toEqual({});
+    expect(r.erreur).toBe(ACTION_UNKNOWN);
+    expect(await readMemory(dossierDonnees)).toEqual({});
     expect(await listerExecutions(dossierDonnees)).toEqual([]);
   });
 
@@ -295,7 +295,7 @@ describe("executerAction", () => {
     expect(r.statut).toBe("accord-requis");
     expect(r.execution).toBeUndefined();
     expect(await listerExecutions(join(b.dossierActions, "gitlab"))).toEqual([]);
-    expect(await dernierResultat(b.dossierActions, "gitlab")).toBeNull();
+    expect(await lastResult(b.dossierActions, "gitlab")).toBeNull();
   });
 
   it("folder deleted during: nothing is written", async () => {
@@ -309,7 +309,7 @@ describe("executerAction", () => {
     const r = await fin;
     expect(r.execution).toBeUndefined();
     expect(r.statut).toBe("invalide");
-    expect(r.erreur).toBe(ACTION_INCONNUE);
+    expect(r.erreur).toBe(ACTION_UNKNOWN);
     expect(await listerExecutions(join(b.dossierActions, "public"))).toEqual([]);
   });
 
@@ -317,7 +317,7 @@ describe("executerAction", () => {
     const b = await preparer("public", { nom: "P", sources: { publiques: ["gitlab.com"] } }, `export default async (e, w) => ({ tickets: [{ titre: (await w.lirePage("https://gitlab.com/tickets")).titre }] });`);
     const premiere = await executerAction(options(b, "public"));
     expect(premiere.statut).toBe("reussie");
-    const avantMemoire = await lireMemoire(join(b.dossierActions, "public"));
+    const avantMemoire = await readMemory(join(b.dossierActions, "public"));
     // During the second one's layout, the actions folder disappears (volume unmounted, renamed…).
     const ailleurs = `${b.c.actions}-ailleurs`;
     const ia = fauxGemma(async () => {
@@ -326,10 +326,10 @@ describe("executerAction", () => {
     });
     const r = await executerAction(options(b, "public", { ia }));
     await rename(ailleurs, b.c.actions);
-    expect(r).toMatchObject({ statut: "invalide", erreur: ACTION_INCONNUE });
+    expect(r).toMatchObject({ statut: "invalide", erreur: ACTION_UNKNOWN });
     expect((await listerExecutions(join(b.dossierActions, "public"))).map((e) => e.id)).toEqual([premiere.execution]);
-    expect((await dernierResultat(b.dossierActions, "public"))?.execution).toBe(premiere.execution);
-    expect(await lireMemoire(join(b.dossierActions, "public"))).toEqual(avantMemoire);
+    expect((await lastResult(b.dossierActions, "public"))?.execution).toBe(premiere.execution);
+    expect(await readMemory(join(b.dossierActions, "public"))).toEqual(avantMemoire);
   });
 
   it("kernel stop during the layout: run interrupted, without a result", async () => {
@@ -349,7 +349,7 @@ describe("executerAction", () => {
     const r = await executerAction(options(b, "simple", { ia, signal: arret.signal, interrompue: () => quitte }));
     expect(r).toMatchObject({ statut: "interrompue", erreur: "Interrompue : WebAiOs s'est arrêté", erreurNoyau: true });
     expect(await lireExecution(join(b.dossierActions, "simple"), r.execution!)).toMatchObject({ statut: "interrompue" });
-    expect(await lireResultat(b.dossierActions, "simple", r.execution!)).toBeNull();
+    expect(await readResult(b.dossierActions, "simple", r.execution!)).toBeNull();
   });
 
   it("signal raised during the workflow: interrompue, ACTION_ARRETEE; during the layout: reussie with fallback plan", async () => {
@@ -361,10 +361,10 @@ describe("executerAction", () => {
     await attendreQue(() => b.pont.appels.some((a) => a.methode === "lirePageInvisible"));
     arret.abort();
     const r = await fin;
-    expect(r).toMatchObject({ statut: "interrompue", erreur: ACTION_ARRETEE, erreurNoyau: true });
+    expect(r).toMatchObject({ statut: "interrompue", erreur: ACTION_STOPPED, erreurNoyau: true });
     const e = await lireExecution(join(b.dossierActions, "public"), r.execution!);
-    expect(e).toMatchObject({ statut: "interrompue", erreur: ACTION_ARRETEE });
-    expect(await lireResultat(b.dossierActions, "public", r.execution!)).toBeNull();
+    expect(e).toMatchObject({ statut: "interrompue", erreur: ACTION_STOPPED });
+    expect(await readResult(b.dossierActions, "public", r.execution!)).toBeNull();
 
     // During the layout: Gemma waits, the stop gives the fallback layout.
     const b2 = await preparer("simple", { nom: "S", sources: {} }, `export default async () => ({ tickets: [{ titre: "a" }] });`);
@@ -378,7 +378,7 @@ describe("executerAction", () => {
     );
     const r2 = await executerAction(options(b2, "simple", { ia, signal: arret2.signal }));
     expect(r2.statut).toBe("reussie");
-    expect((await lireResultat(b2.dossierActions, "simple", r2.execution!))?.secours).toBe(true);
+    expect((await readResult(b2.dossierActions, "simple", r2.execution!))?.secours).toBe(true);
   });
 
   it("kernel stop (interrompue): written run interrupted", async () => {
@@ -408,16 +408,16 @@ describe("executerAction", () => {
     const b = await preparer("simple", { nom: "S", sources: {} }, `export default async () => ({ tickets: [{ titre: "a" }] });`);
     const vraie = await executerAction(options(b, "simple"));
     expect(vraie.statut).toBe("reussie");
-    const memoireAvant = await lireMemoire(join(b.dossierActions, "simple"));
+    const memoireAvant = await readMemory(join(b.dossierActions, "simple"));
     const ia = fauxGemma();
     const r = await executerAction(options(b, "simple", { ia, declencheur: "rejeu", essai: { origine: vraie.execution!, depart: "lire" } }));
     expect(r.statut).toBe("reussie");
     expect(r.execution).toMatch(/-essai$/);
     const e = await lireExecution(join(b.dossierActions, "simple"), r.execution!);
     expect(e).toMatchObject({ declencheur: "rejeu", essai: { depart: "lire", origine: vraie.execution } });
-    expect((await lireResultat(b.dossierActions, "simple", r.execution!))?.plan).toEqual(PLAN);
-    expect((await dernierResultat(b.dossierActions, "simple"))?.execution).toBe(vraie.execution);
-    expect(await lireMemoire(join(b.dossierActions, "simple"))).toEqual(memoireAvant);
+    expect((await readResult(b.dossierActions, "simple", r.execution!))?.plan).toEqual(PLAN);
+    expect((await lastResult(b.dossierActions, "simple"))?.execution).toBe(vraie.execution);
+    expect(await readMemory(join(b.dossierActions, "simple"))).toEqual(memoireAvant);
   });
 
   it("trial from a missing run: refused, nothing written", async () => {
@@ -429,7 +429,7 @@ describe("executerAction", () => {
 });
 
 /** A fake container that writes these lines then exits with 0. */
-function lanceurLignes(lignes: unknown[]): LanceurProcessus {
+function lanceurLignes(lignes: unknown[]): ProcessLauncher {
   return () => {
     const stdout = new PassThrough();
     const stderr = new PassThrough();

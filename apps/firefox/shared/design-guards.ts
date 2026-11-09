@@ -1,6 +1,6 @@
 // The design guards, loadable under tsx and in the sidebar bundle (no value import): ID_PROJET lives in a kernel file
 // that needs node:crypto, raisonEchec in core/design/externes.ts needs node:fs. test/review-host.test.ts checks them.
-import type { ContexteDesign } from "../../../packages/noyau/src/design/remarques";
+import type { DesignContext } from "../../../packages/noyau/src/design/remarques";
 
 /** Copy of kernel's ID_PROJET. */
 export const ID_PROJECT = /^(app-[A-Za-z0-9][A-Za-z0-9._-]*|ext-[0-9a-f]{16}|demo-\d{1,5}|site-[a-z0-9][a-z0-9-]{0,59})$/;
@@ -84,7 +84,7 @@ const invalid = (): never => {
 };
 
 /** viseur.ts's propreCapture rules (a bad shape refuses the context) and sourceSaine's (a bad source field is dropped), rebuilt with known keys only. */
-export function checkDesignContext(c: unknown): ContexteDesign {
+export function checkDesignContext(c: unknown): DesignContext {
   if (!record(c) || !record(c.vue) || !record(c.voisinage) || !record(c.styles)) return invalid();
   const { selecteur, etiquette, html, adresse, vue, voisinage, styles, source } = c as Record<string, any>;
   if (![vue.largeur, vue.hauteur].every(finite)) return invalid();
@@ -92,7 +92,7 @@ export function checkDesignContext(c: unknown): ContexteDesign {
   if (!Array.isArray(voisinage.freres) || !voisinage.freres.every((f: unknown) => str(f))) return invalid();
   if (!Object.values(styles).every((x) => str(x))) return invalid();
   // As sourceSaine: a bad file gives no source, a bad line or column is dropped; the remark stays.
-  const src: ContexteDesign["source"] =
+  const src: DesignContext["source"] =
     !record(source) || !str(source.fichier, 1024) || source.fichier === ""
       ? null
       : { fichier: source.fichier, ...(positiveInt(source.ligne) ? { ligne: source.ligne } : {}), ...(positiveInt(source.colonne) ? { colonne: source.colonne } : {}) };

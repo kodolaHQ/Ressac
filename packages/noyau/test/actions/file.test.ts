@@ -2,14 +2,14 @@ import { afterEach, describe, expect, it } from "vitest";
 import { spawn } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { cheminsEspace } from "../../src/chemins.js";
+import { spacePaths } from "../../src/chemins.js";
 import { PontFactice } from "../../src/mcp/pont-factice.js";
-import { creerRepartiteurIa } from "../../src/ia/repartiteur.js";
+import { createAiDispatcher } from "../../src/ia/repartiteur.js";
 import { lireExecution } from "../../src/workflows/executions.js";
-import { PlanificateurWidgets } from "../../src/widgets/planificateur.js";
-import type { OptionsRecolte } from "../../src/widgets/recolte.js";
-import type { OptionsAction, ResultatLancement } from "../../src/actions/executer.js";
-import { ACTIONS_SIMULTANEES, FileActions, type EtatActions, type OptionsFileActions } from "../../src/actions/file.js";
+import { WidgetsScheduler } from "../../src/widgets/planificateur.js";
+import type { HarvestOptions } from "../../src/widgets/recolte.js";
+import type { OptionsAction, LaunchResult } from "../../src/actions/executer.js";
+import { CONCURRENT_ACTIONS, FileActions, type ActionsState, type OptionsFileActions } from "../../src/actions/file.js";
 import { dossierTemporaire } from "../aide/temporaire.js";
 import { declarationWidget, ecrireWidget } from "../aide/accueil.js";
 
@@ -32,9 +32,9 @@ afterEach(async () => {
 });
 
 async function preparer(o: Partial<OptionsFileActions> = {}) {
-  const c = cheminsEspace(await dossierTemporaire());
+  const c = spacePaths(await dossierTemporaire());
   const dossierActions = await dossierTemporaire();
-  const directs: EtatActions[] = [];
+  const directs: ActionsState[] = [];
   const supprimes: unknown[] = [];
   const f = new FileActions({
     chemins: c,
@@ -53,11 +53,11 @@ async function preparer(o: Partial<OptionsFileActions> = {}) {
 
 /** A fake run per action, which waits for `liberer(id)`. */
 function retenues() {
-  const fins = new Map<string, (r: ResultatLancement) => void>();
+  const fins = new Map<string, (r: LaunchResult) => void>();
   const lancees: OptionsAction[] = [];
   const executer = (o: OptionsAction) => {
     lancees.push(o);
-    const d = differe<ResultatLancement>();
+    const d = differe<LaunchResult>();
     fins.set(o.id, d.resoudre);
     return d.promesse;
   };
@@ -75,7 +75,7 @@ const attendreQue = async (f: () => boolean, ms = 5000) => {
 
 describe("FileActions", () => {
   it("three actions: two run, the third waits and appears in enAttente", async () => {
-    expect(ACTIONS_SIMULTANEES).toBe(2);
+    expect(CONCURRENT_ACTIONS).toBe(2);
     const r = retenues();
     const { f } = await preparer({ executer: r.executer });
     const a = f.lancer("a", { saisie: null, declencheur: "manuelle" });
@@ -149,7 +149,7 @@ describe("FileActions", () => {
 
   it("each action has its priority AI access, forgotten at the end", async () => {
     const r = retenues();
-    const repartiteur = creerRepartiteurIa({ kev: async () => ({}), gemma: async () => "ok" } as never);
+    const repartiteur = createAiDispatcher({ kev: async () => ({}), gemma: async () => "ok" } as never);
     const cles: { cle: string; prioritaire?: boolean }[] = [];
     let oublies = 0;
     const espion = {
@@ -177,14 +177,14 @@ describe("FileActions", () => {
     await ecrireWidget(c, "lent", declarationWidget(undefined, { recolte: { minutes: 60 } }), { "recolte.mjs": "export default () => 1" });
     const recolteRetenue = differe<void>();
     let recolteCommencee = false;
-    const p = new PlanificateurWidgets({
+    const p = new WidgetsScheduler({
       chemins: c,
       dossierWidgets: await dossierTemporaire(),
       moteur: MOTEUR,
       atelier: { etat: async () => "demarre", commandeRecolte: () => ["docker"], supprimerRecolte: async () => {} },
       pont: new PontFactice([], { actif: null, autoriser: false }),
       ia: null,
-      recolter: async (_o: OptionsRecolte) => {
+      recolter: async (_o: HarvestOptions) => {
         recolteCommencee = true;
         await recolteRetenue.promesse;
         return { etat: { statut: "ok", derniereMaj: null, derniereTentative: null } };
@@ -241,7 +241,7 @@ describe("FileActions", () => {
   });
 
   it("arreterTout: written run interrupted", async () => {
-    const c0 = cheminsEspace(await dossierTemporaire());
+    const c0 = spacePaths(await dossierTemporaire());
     const dossier = join(c0.actions, "public");
     await mkdir(dossier, { recursive: true });
     await writeFile(join(dossier, "action.json"), JSON.stringify({ nom: "P", sources: { publiques: ["gitlab.com"] } }));

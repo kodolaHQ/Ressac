@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CHAMP_PAR_ELEMENT, champsParElementSeulement, Gabarit, ParametresParElement, type DefinitionBloc } from "./communs.js";
+import { CHAMP_PAR_ELEMENT, fieldsPerElementOnly, Template, ParamsPerElement, type DefinitionBloc } from "./communs.js";
 
 export const definition: DefinitionBloc = {
   type: "ia.rediger",
@@ -13,17 +13,17 @@ export const definition: DefinitionBloc = {
     { nom: "json", libelle: "Réponse en JSON", requis: false, defaut: false, genre: "case" },
     { nom: "texteMax", libelle: "Taille maximale du texte", requis: false, defaut: 12_000, genre: "nombre", min: 1, max: 200_000, entier: true },
     CHAMP_PAR_ELEMENT,
-    ...champsParElementSeulement(),
+    ...fieldsPerElementOnly(),
   ],
   parElement: "option",
   chaine: true,
   parametres: z
     .object({
-      consigne: Gabarit,
+      consigne: Template,
       champ: z.string().min(1).max(40).default("texte"),
       json: z.boolean().default(false),
       texteMax: z.number().int().min(1).max(200_000).default(12_000),
-      ...ParametresParElement,
+      ...ParamsPerElement,
     })
     .strict(),
 };

@@ -6,7 +6,7 @@
 import type { ApiCalque, ContexteCalque, ElementAffiche, EtatDesign, LotAffiche, ResultatExtension } from "../../shared/api";
 import type { IdFenetre } from "../../shared/modele";
 import { HAUTEUR_BARRE_SITE } from "../../shared/sites";
-import type { ContexteDesign } from "../../../../packages/noyau/src/design/remarques";
+import type { DesignContext } from "../../../../packages/noyau/src/design/remarques";
 import { choisirCibleDesign } from "../../core/design/premier-plan";
 import type { SuiviDesign } from "../../noyau/design";
 import { CAPTURE_WARNING_SITE, DESIGN_ID_MAX, ID_PROJECT, INVALID_REQUEST, NOTHING_AIMED, REMARK_TEXT_MAX, UNAVAILABLE_DESIGN, UNAVAILABLE_DESIGN_SITE } from "../../shared/design-guards";
@@ -92,7 +92,7 @@ interface Session {
   memeDocument: boolean;
   /** An arm query is pending. */
   armed: boolean;
-  attente: { contexte: ContexteDesign; capture: string | null } | null;
+  attente: { contexte: DesignContext; capture: string | null } | null;
   destination: { destination: string | null; sansDestination: string | null };
   /** The page's viewfinder: the actor of `wgp`, or the chrome's own on a site app's home frame (spike S6). */
   query(name: "arm" | "stop" | "source" | "unguard", data?: { code?: string }): Promise<unknown>;
@@ -118,7 +118,7 @@ const within = <T>(p: Promise<T>, ms: number, late: T): Promise<T> => {
   return Promise.race([p, new Promise<T>((ok) => (timer = setTimeout(() => ok(late), ms)))]).finally(() => clearTimeout(timer));
 };
 
-const sourceText = (s: ContexteDesign["source"]): string | null => (s ? (s.ligne !== undefined ? `${s.fichier}:${s.ligne}` : s.fichier) : null);
+const sourceText = (s: DesignContext["source"]): string | null => (s ? (s.ligne !== undefined ? `${s.fichier}:${s.ligne}` : s.fichier) : null);
 
 /**
  * The element's PNG (base64, no prefix): rectCapture's rectangle in view pixels × zoom,

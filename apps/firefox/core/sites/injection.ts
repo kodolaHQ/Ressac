@@ -1,4 +1,4 @@
-import { adresseLocale, adresseRelative, correspondMotif, retouchesPour, type DeclarationSite, type RetouchesLues } from "@webaios/noyau";
+import { localUrl, relativeUrl, correspondMotif, tweaksFor, type DeclarationSite, type TweaksRead } from "@webaios/noyau";
 import {
   CONSOLE_RETOUCHE_SOURCE_MAX,
   CONSOLE_RETOUCHE_TEXTE_MAX,
@@ -42,7 +42,7 @@ function analyser(url: string): URL | null {
  */
 function urlPourMotifs(url: string, adressesLocales: boolean): string {
   const u = analyser(url);
-  if (!adressesLocales || !u || u.protocol !== "http:" || !adresseLocale(u.hostname)) return url;
+  if (!adressesLocales || !u || u.protocol !== "http:" || !localUrl(u.hostname)) return url;
   return `https:${url.slice("http:".length)}`;
 }
 
@@ -68,7 +68,7 @@ export function repriseDansCadre(d: DeclarationSite, cadre: { url: string; princ
  * the frames of a login page receive nothing. Resume (WebAiOs code): see `repriseDansCadre`.
  */
 export function injectionPour(
-  o: { site: SiteOuvrable; retouches: RetouchesLues; accorde: boolean; garde: string; adressesLocales?: boolean },
+  o: { site: SiteOuvrable; retouches: TweaksRead; accorde: boolean; garde: string; adressesLocales?: boolean },
   cadre: { url: string; principal: boolean; page?: string | null },
 ): InjectionCadre | null {
   if (!o.accorde) return null;
@@ -77,14 +77,14 @@ export function injectionPour(
   const adressesLocales = o.adressesLocales === true;
   const u = analyser(cadre.url);
   // https, or (tests) http of a local host; never credentials: like the tweak patterns.
-  const permise = !!u && !u.username && !u.password && (u.protocol === "https:" || (u.protocol === "http:" && adressesLocales && adresseLocale(u.hostname)));
+  const permise = !!u && !u.username && !u.password && (u.protocol === "https:" || (u.protocol === "http:" && adressesLocales && localUrl(u.hostname)));
   if (!u || !permise) return rien();
   // Main page outside the effective domains (login domain): it is not an app page.
-  if (cadre.principal && adresseRelative(cadre.url, site.domaines) === null) return rien();
+  if (cadre.principal && relativeUrl(cadre.url, site.domaines) === null) return rien();
   // Subframe of a page outside the effective domains (login), or of an unknown page: nothing either.
-  if (!cadre.principal && (!cadre.page || adresseRelative(cadre.page, site.domaines) === null)) return rien();
+  if (!cadre.principal && (!cadre.page || relativeUrl(cadre.page, site.domaines) === null)) return rien();
   const hote = u.hostname;
-  const retenues = retouchesPour(d, cadre.principal ? cadre : { ...cadre, url: urlPourMotifs(cadre.url, adressesLocales) }, site.domaines, { adressesLocales });
+  const retenues = tweaksFor(d, cadre.principal ? cadre : { ...cadre, url: urlPourMotifs(cadre.url, adressesLocales) }, site.domaines, { adressesLocales });
   const css: string[] = [];
   const js: InjectionCadre["js"] = [];
   const vus = new Set<string>();

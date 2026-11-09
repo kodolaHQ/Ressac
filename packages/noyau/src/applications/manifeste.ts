@@ -3,10 +3,10 @@ import { readdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { watch } from "chokidar";
 import { z } from "zod";
-import type { CheminsEspace } from "../chemins.js";
+import type { SpacePaths } from "../chemins.js";
 
-const REGROUPEMENT_MS = 150;
-const NOM_DOSSIER = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+const GROUPING_MS = 150;
+const FOLDER_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
 const urlWeb = z.string().refine((u) => {
   try {
@@ -17,7 +17,7 @@ const urlWeb = z.string().refine((u) => {
 }, "URL http(s) attendue");
 
 /** Unknown fields are kept (`passthrough`) so the rewrite does not lose them. */
-export const Manifeste = z
+export const Manifest = z
   .object({
     nom: z.string().optional(),
     type: z.enum(["application", "poc"]),
@@ -25,42 +25,42 @@ export const Manifeste = z
     origine: urlWeb.optional(),
   })
   .passthrough();
-export type Manifeste = z.infer<typeof Manifeste>;
+export type Manifest = z.infer<typeof Manifest>;
 
-export type ProjetLu = { dossier: string; chemin: string; creeLe: string; nom: string } & (
-  | { manifeste: Manifeste }
+export type ProjectRead = { dossier: string; chemin: string; creeLe: string; nom: string } & (
+  | { manifeste: Manifest }
   | { sansFiche: string }
 );
 
 /** A folder is launched only if its name passes in a shell command without quotes. */
-export function dossierValide(dossier: string): boolean {
-  return NOM_DOSSIER.test(dossier);
+export function validFolder(dossier: string): boolean {
+  return FOLDER_NAME.test(dossier);
 }
 
-async function lireProjet(c: CheminsEspace, dossier: string): Promise<ProjetLu> {
-  const chemin = join(c.projets, dossier);
-  const fichier = join(chemin, "webaios.json");
+async function readProject(c: SpacePaths, dossier: string): Promise<ProjectRead> {
+  const path = join(c.projets, dossier);
+  const file = join(path, "webaios.json");
   let creeLe: Date;
-  let contenu: string | undefined;
+  let content: string | undefined;
   try {
-    contenu = await readFile(fichier, "utf8");
-    creeLe = (await stat(fichier)).mtime;
+    content = await readFile(file, "utf8");
+    creeLe = (await stat(file)).mtime;
   } catch {
-    creeLe = (await stat(chemin)).mtime;
+    creeLe = (await stat(path)).mtime;
   }
-  const base = { dossier, chemin, creeLe: creeLe.toISOString() };
-  if (!dossierValide(dossier)) return { ...base, nom: dossier, sansFiche: "nom de dossier non pris en charge" };
-  if (contenu === undefined) return { ...base, nom: dossier, sansFiche: "pas de webaios.json" };
+  const base = { dossier, chemin: path, creeLe: creeLe.toISOString() };
+  if (!validFolder(dossier)) return { ...base, nom: dossier, sansFiche: "nom de dossier non pris en charge" };
+  if (content === undefined) return { ...base, nom: dossier, sansFiche: "pas de webaios.json" };
   try {
-    const manifeste = Manifeste.parse(JSON.parse(contenu));
-    return { ...base, nom: manifeste.nom ?? dossier, manifeste };
+    const manifest = Manifest.parse(JSON.parse(content));
+    return { ...base, nom: manifest.nom ?? dossier, manifeste: manifest };
   } catch (e) {
     return { ...base, nom: dossier, sansFiche: `webaios.json invalide : ${(e as Error).message}` };
   }
 }
 
 /** Lists the projects. A missing or broken manifest gives a project « sans fiche », never an error. */
-export async function lireProjets(c: CheminsEspace): Promise<ProjetLu[]> {
+export async function readProjects(c: SpacePaths): Promise<ProjectRead[]> {
   let entrees;
   try {
     entrees = await readdir(c.projets, { withFileTypes: true });
@@ -71,36 +71,36 @@ export async function lireProjets(c: CheminsEspace): Promise<ProjetLu[]> {
     .filter((e) => e.isDirectory() && !e.name.startsWith("."))
     .map((e) => e.name)
     .sort();
-  return Promise.all(dossiers.map((d) => lireProjet(c, d)));
+  return Promise.all(dossiers.map((d) => readProject(c, d)));
 }
 
 /** Calls `rappel` after each burst of changes of the projects. Returns the stop function. */
-export function surveillerProjets(c: CheminsEspace, rappel: () => void): () => Promise<void> {
+export function watchProjects(c: SpacePaths, rappel: () => void): () => Promise<void> {
   mkdirSync(c.projets, { recursive: true });
-  let minuterie: NodeJS.Timeout | undefined;
-  const observateur = watch(c.projets, {
+  let timer: NodeJS.Timeout | undefined;
+  const observer = watch(c.projets, {
     ignoreInitial: true,
     depth: 1,
     ignored: (p) => p.split(/[\\/]/).includes("node_modules") || p.endsWith(".tmp"),
   });
-  observateur.on("all", (evenement, chemin) => {
-    const nom = chemin.split(/[\\/]/).pop();
-    const pertinent = evenement === "addDir" || evenement === "unlinkDir" || nom === "webaios.json";
+  observer.on("all", (event, path) => {
+    const name = path.split(/[\\/]/).pop();
+    const pertinent = event === "addDir" || event === "unlinkDir" || name === "webaios.json";
     if (!pertinent) return;
-    clearTimeout(minuterie);
-    minuterie = setTimeout(rappel, REGROUPEMENT_MS);
+    clearTimeout(timer);
+    timer = setTimeout(rappel, GROUPING_MS);
   });
   return async () => {
-    clearTimeout(minuterie);
-    await observateur.close();
+    clearTimeout(timer);
+    await observer.close();
   };
 }
 
 /** Changes a project's type, keeping the other fields of the manifest. */
-export async function ecrireType(c: CheminsEspace, dossier: string, type: "application" | "poc"): Promise<void> {
-  const cible = join(c.projets, dossier, "webaios.json");
-  const manifeste = Manifeste.parse(JSON.parse(await readFile(cible, "utf8")));
-  const temporaire = `${cible}.${process.pid}.tmp`;
-  await writeFile(temporaire, JSON.stringify({ ...manifeste, type }, null, 2));
-  await rename(temporaire, cible);
+export async function writeType(c: SpacePaths, dossier: string, type: "application" | "poc"): Promise<void> {
+  const target = join(c.projets, dossier, "webaios.json");
+  const manifest = Manifest.parse(JSON.parse(await readFile(target, "utf8")));
+  const temp = `${target}.${process.pid}.tmp`;
+  await writeFile(temp, JSON.stringify({ ...manifest, type }, null, 2));
+  await rename(temp, target);
 }

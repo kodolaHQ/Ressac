@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { IA_ABANDONNEE } from "../../src/ia/repartiteur.js";
+import { AI_ABANDONED } from "../../src/ia/repartiteur.js";
 import { mkdir, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { IaLocale, lancerProcessusIa, type ProcessusIa } from "../../src/ia/ia-locale.js";
+import { IaLocale, launchAiProcess, type AiProcess } from "../../src/ia/ia-locale.js";
 import { dossierTemporaire } from "../aide/temporaire.js";
 import { executeurFactice, type Reponse } from "../aide/executeur-factice.js";
-import type { Executeur } from "../../src/conteneur/executeur.js";
+import type { Runner } from "../../src/conteneur/executeur.js";
 import { fauxKev, fauxOllama, fauxOllamaMuet, urlInjoignable, type FauxServeur } from "../aide/faux-ia.js";
 
 const COMMIT = "6b719c3c3f367295f6ef336f4f751cf5ff970abc";
@@ -86,10 +86,10 @@ describe("IaLocale", () => {
     const appel = ia.gemma({ prompt: "x", json: true, signal: controleur.signal });
     await vi.waitFor(() => expect(ollama.requetes).toHaveLength(1));
     controleur.abort();
-    await expect(appel).rejects.toThrow(IA_ABANDONNEE);
+    await expect(appel).rejects.toThrow(AI_ABANDONED);
     await vi.waitFor(() => expect(ollama.coupees()).toBe(1));
     // Already raised: nothing leaves.
-    await expect(ia.gemma({ prompt: "y", signal: controleur.signal })).rejects.toThrow(IA_ABANDONNEE);
+    await expect(ia.gemma({ prompt: "y", signal: controleur.signal })).rejects.toThrow(AI_ABANDONED);
     expect(ollama.requetes).toHaveLength(1);
   });
 
@@ -100,7 +100,7 @@ describe("IaLocale", () => {
     aArreter.push(ia);
     const controleur = new AbortController();
     controleur.abort();
-    await expect(ia.kev({ state: "", questions: {} }, { signal: controleur.signal })).rejects.toThrow(IA_ABANDONNEE);
+    await expect(ia.kev({ state: "", questions: {} }, { signal: controleur.signal })).rejects.toThrow(AI_ABANDONED);
     expect(kev.requetes).toHaveLength(0);
   });
 
@@ -125,7 +125,7 @@ describe("IaLocale", () => {
     const lancements: { cmd: string; args: string[]; cwd: string }[] = [];
     const etats: string[] = [];
     let ia!: IaLocale;
-    const lancer = (cmd: string, args: string[], o: { cwd: string }): ProcessusIa => {
+    const lancer = (cmd: string, args: string[], o: { cwd: string }): AiProcess => {
       lancements.push({ cmd, args, cwd: o.cwd });
       // Kev takes a while to answer: we plug it to the fake server's address.
       (ia as any).kevUrl = kev.url;
@@ -147,7 +147,7 @@ describe("IaLocale", () => {
     const dossier = await dossierTemporaire();
     await mkdir(join(dossier, "kev", ".git"), { recursive: true });
     const { executer } = executeurFactice([]);
-    const lancer = (): ProcessusIa => ({
+    const lancer = (): AiProcess => ({
       arreter() {},
       surLigne(r) { r("ligne 1"); r("boum"); },
       surSortie(r) { setTimeout(() => r(1), 5); },
@@ -164,7 +164,7 @@ describe("IaLocale", () => {
     const { executer } = executeurFactice([]);
     let n = 0;
     let ia!: IaLocale;
-    const lancer = (): ProcessusIa => {
+    const lancer = (): AiProcess => {
       n++;
       setTimeout(() => { (ia as any).kevUrl = kev.url; }, 60);
       return { arreter() {}, surSortie() {} };
@@ -182,7 +182,7 @@ describe("IaLocale", () => {
     await mkdir(join(dossier, "kev", ".git"), { recursive: true });
     const { executer } = executeurFactice([]);
     let sortie!: (c: number | null) => void;
-    const lancer = (): ProcessusIa => ({
+    const lancer = (): AiProcess => ({
       arreter() { setTimeout(() => sortie(null), 1); },
       surSortie(r) { sortie = r; },
     });
@@ -206,7 +206,7 @@ describe("IaLocale", () => {
     let maintenant = 1000;
     let arrete = 0;
     let ia!: IaLocale;
-    const lancer = (): ProcessusIa => {
+    const lancer = (): AiProcess => {
       (ia as any).kevUrl = kev.url;
       return { arreter() { arrete++; }, surSortie() {} };
     };
@@ -231,7 +231,7 @@ describe("IaLocale", () => {
     const { executer } = executeurFactice([]);
     let lances = 0;
     let ia!: IaLocale;
-    const lancer = (): ProcessusIa => {
+    const lancer = (): AiProcess => {
       lances++;
       (ia as any).kevUrl = kev.url;
       return { arreter() {}, surSortie() {} };
@@ -260,7 +260,7 @@ describe("IaLocale", () => {
     let lances = 0;
     let arretes = 0;
     let ia!: IaLocale;
-    const lancer = (): ProcessusIa => {
+    const lancer = (): AiProcess => {
       lances++;
       (ia as any).kevUrl = kev.url;
       return { arreter() { arretes++; }, surSortie() {} };
@@ -331,7 +331,7 @@ describe("IaLocale : quitter annule l'installation", () => {
     const recus: (AbortSignal | undefined)[] = [];
     let demarre!: () => void;
     const enCours = new Promise<void>((ok) => (demarre = ok));
-    const executer: Executeur = async (commande, args, opts) => {
+    const executer: Runner = async (commande, args, opts) => {
       if (commande === "uv" && args[0] === "--version") return { code: 0, stdout: "uv 0.5", stderr: "" };
       if (commande === "git" && args[0] === "clone") {
         recus.push(opts?.signal);
@@ -378,7 +378,7 @@ describe("IaLocale : quitter annule l'installation", () => {
     const faux = executeurFactice([
       [/rev-parse HEAD/, { code: 0, stdout: COMMIT }],
     ]);
-    const executer: Executeur = (c, a, o) => {
+    const executer: Runner = (c, a, o) => {
       if (c === "ollama") {
         pull = o?.signal;
         return new Promise((ok) => o?.signal?.addEventListener("abort", () => ok({ code: 143, stdout: "", stderr: "" })));
@@ -435,7 +435,7 @@ describe("lancerProcessusIa (Kev: uv launches a Python child)", () => {
   };
   /** Launches `sh -c script`; the script writes its child's pid on the first line. */
   async function lancerAvecEnfant(script: string, delaiKillMs?: number) {
-    const p = lancerProcessusIa("sh", ["-c", script], { cwd: process.cwd(), ...(delaiKillMs ? { delaiKillMs } : {}) });
+    const p = launchAiProcess("sh", ["-c", script], { cwd: process.cwd(), ...(delaiKillMs ? { delaiKillMs } : {}) });
     const pid = await new Promise<number>((ok) => p.surLigne?.((l) => ok(Number(l))));
     let sorti = false;
     p.surSortie(() => (sorti = true));

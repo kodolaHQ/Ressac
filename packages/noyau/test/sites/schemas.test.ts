@@ -1,12 +1,12 @@
 import { expect, test } from "vitest";
 import {
-  ADRESSE_HORS_DOMAINES,
+  URL_OUTSIDE_DOMAINS,
   CADRES_MOTIFS,
-  CORRESPOND_CHEMIN,
+  PATH_MATCHES,
   DeclarationSite,
-  DOMAINE_INVALIDE,
+  INVALID_DOMAIN,
   ID_SITE,
-  HTTPS_SEULEMENT,
+  HTTPS_ONLY,
   verifierDeclarationSite,
 } from "../../src/sites/schemas.js";
 
@@ -52,7 +52,7 @@ test("cadres: true donne CADRES_MOTIFS", () => {
 });
 
 test('correspond "series/*" donne CORRESPOND_CHEMIN', () => {
-  expect(messages({ ...vidola, retouches: [{ correspond: ["series/*"] }] })).toContain(CORRESPOND_CHEMIN);
+  expect(messages({ ...vidola, retouches: [{ correspond: ["series/*"] }] })).toContain(PATH_MATCHES);
 });
 
 test("a tweak path with .. or absolute is refused", () => {
@@ -90,24 +90,24 @@ const strict = { adressesLocales: false };
 
 test("verifierDeclarationSite: https only, never a local address", () => {
   expect(verifierDeclarationSite(decl({}), strict)).toBeNull();
-  expect(verifierDeclarationSite(decl({ adresse: "http://vidola-a.example/" }), strict)).toBe(HTTPS_SEULEMENT);
-  expect(verifierDeclarationSite(decl({ adresse: "https://192.168.1.2/", domaines: ["192.168.1.2"] }), strict)).toBe(HTTPS_SEULEMENT);
-  expect(verifierDeclarationSite(decl({ suiviAdresse: { page: "http://adresses.example/", motif: "vidola" } }), strict)).toBe(HTTPS_SEULEMENT);
-  expect(verifierDeclarationSite(decl({ suiviAdresse: { page: "https://127.0.0.1/", motif: "vidola" } }), strict)).toBe(HTTPS_SEULEMENT);
+  expect(verifierDeclarationSite(decl({ adresse: "http://vidola-a.example/" }), strict)).toBe(HTTPS_ONLY);
+  expect(verifierDeclarationSite(decl({ adresse: "https://192.168.1.2/", domaines: ["192.168.1.2"] }), strict)).toBe(HTTPS_ONLY);
+  expect(verifierDeclarationSite(decl({ suiviAdresse: { page: "http://adresses.example/", motif: "vidola" } }), strict)).toBe(HTTPS_ONLY);
+  expect(verifierDeclarationSite(decl({ suiviAdresse: { page: "https://127.0.0.1/", motif: "vidola" } }), strict)).toBe(HTTPS_ONLY);
 });
 
 test("verifierDeclarationSite: with adressesLocales, http of a local host is allowed", () => {
   const d = decl({ adresse: "http://vidola-a.localhost:5000/", domaines: ["vidola-a.localhost"], suiviAdresse: { page: "http://adresses.localhost:5001/", motif: "vidola" } });
   expect(verifierDeclarationSite(d, { adressesLocales: true })).toBeNull();
-  expect(verifierDeclarationSite(d, strict)).toBe(HTTPS_SEULEMENT);
+  expect(verifierDeclarationSite(d, strict)).toBe(HTTPS_ONLY);
   // http of a public host stays refused.
-  expect(verifierDeclarationSite(decl({ adresse: "http://vidola-a.example/" }), { adressesLocales: true })).toBe(HTTPS_SEULEMENT);
+  expect(verifierDeclarationSite(decl({ adresse: "http://vidola-a.example/" }), { adressesLocales: true })).toBe(HTTPS_ONLY);
 });
 
 test("verifierDeclarationSite : domaine de l'adresse", () => {
-  expect(verifierDeclarationSite(decl({ adresse: "https://autre.example/" }), strict)).toBe(ADRESSE_HORS_DOMAINES);
+  expect(verifierDeclarationSite(decl({ adresse: "https://autre.example/" }), strict)).toBe(URL_OUTSIDE_DOMAINS);
   expect(verifierDeclarationSite(decl({ adresse: "https://www.vidola-a.example/" }), strict)).toBeNull();
-  expect(verifierDeclarationSite(decl({ adresse: "https://xvidola-a.example/" }), strict)).toBe(ADRESSE_HORS_DOMAINES);
+  expect(verifierDeclarationSite(decl({ adresse: "https://xvidola-a.example/" }), strict)).toBe(URL_OUTSIDE_DOMAINS);
 });
 
 test("js accepts only .js and .mjs, css only .css; ./ and // refused", () => {
@@ -126,12 +126,12 @@ test("ID_SITE: lowercase, digits, dashes, 60 at most", () => {
 
 test("verifierDeclarationSite: domains and login without IP, local address or dotless name", () => {
   for (const d of ["localhost", "127.0.0.1", "192.168.1.1", "com", "monsite", "intranet.local", "exemple.123"]) {
-    expect(verifierDeclarationSite(decl({ domaines: ["vidola-a.example", d] }), strict), d).toBe(DOMAINE_INVALIDE);
-    expect(verifierDeclarationSite(decl({ connexion: [d] }), strict), d).toBe(DOMAINE_INVALIDE);
+    expect(verifierDeclarationSite(decl({ domaines: ["vidola-a.example", d] }), strict), d).toBe(INVALID_DOMAIN);
+    expect(verifierDeclarationSite(decl({ connexion: [d] }), strict), d).toBe(INVALID_DOMAIN);
   }
   expect(verifierDeclarationSite(decl({ connexion: ["accounts.google.com"] }), strict)).toBeNull();
   const test_ = decl({ adresse: "http://vidola-a.localhost:5000/", domaines: ["vidola-a.localhost"], suiviAdresse: undefined });
   expect(verifierDeclarationSite(test_, { adressesLocales: true })).toBeNull();
-  expect(verifierDeclarationSite(decl({ domaines: ["vidola-a.example", "127.0.0.1"] }), { adressesLocales: true })).toBe(DOMAINE_INVALIDE);
-  expect(verifierDeclarationSite(decl({ domaines: ["vidola-a.example", "localhost"] }), { adressesLocales: true })).toBe(DOMAINE_INVALIDE);
+  expect(verifierDeclarationSite(decl({ domaines: ["vidola-a.example", "127.0.0.1"] }), { adressesLocales: true })).toBe(INVALID_DOMAIN);
+  expect(verifierDeclarationSite(decl({ domaines: ["vidola-a.example", "localhost"] }), { adressesLocales: true })).toBe(INVALID_DOMAIN);
 });

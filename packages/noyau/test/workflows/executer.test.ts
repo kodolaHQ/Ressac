@@ -10,33 +10,33 @@ import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { PontFactice } from "../../src/mcp/pont-factice.js";
 import {
-  DELAI_EXECUTION_MS,
-  ECART_MEMOIRE_MS,
-  ECART_PUBLICATIONS_MS,
-  MEMOIRE_NON_GARDEE,
-  PROFIL_REFUSE,
+  RUN_DELAY_MS,
+  MEMORY_GAP_MS,
+  PUBLICATIONS_GAP_MS,
+  MEMORY_NOT_KEPT,
+  PROFILE_DENIED,
   executerWorkflow,
-  type ContexteWorkflow,
+  type WorkflowContext,
   type InfraWorkflow,
-  type LanceurProcessus,
+  type ProcessLauncher,
 } from "../../src/workflows/executer.js";
 import { SORTIE_MAX_OCTETS } from "../../src/workflows/executions.js";
-import { PLAFOND_RECHERCHES, RECHERCHES_ARRETEES, TROP_DE_LECTURES, recuperer } from "../../src/workflows/acces.js";
-import { RECHERCHE_REFUSEE, RESULTATS_ILLISIBLES, extraireResultats, urlRecherche } from "../../src/workflows/duckduckgo.js";
-import { Menagement } from "../../src/workflows/menagement.js";
-import { WEB_REQUIS } from "../../src/workflows/valider.js";
-import { LIGNE_MAX_OCTETS, TAILLE_MAX_DONNEES } from "../../src/workflows/protocole.js";
-import { TAILLE_MAX_DONNEES as TAILLE_MAX_DONNEES_ACCUEIL } from "../../src/accueil/schemas.js";
-import { REJEU_TROP_GROS } from "../../src/workflows/rejeu.js";
-import { empreinteParametres, type MemoireBlocs } from "../../src/workflows/memoire.js";
-import { validerWorkflow } from "../../src/workflows/valider.js";
+import { SEARCHES_CAP, SEARCHES_STOPPED, TOO_MANY_READS, fetch } from "../../src/workflows/acces.js";
+import { SEARCH_DENIED, UNREADABLE_RESULTS, extractResults, urlRecherche } from "../../src/workflows/duckduckgo.js";
+import { Pacing } from "../../src/workflows/menagement.js";
+import { WEB_REQUIRED } from "../../src/workflows/valider.js";
+import { LIGNE_MAX_OCTETS, DATA_MAX_SIZE } from "../../src/workflows/protocole.js";
+import { DATA_MAX_SIZE as TAILLE_MAX_DONNEES_ACCUEIL } from "../../src/accueil/schemas.js";
+import { REPLAY_TOO_BIG } from "../../src/workflows/rejeu.js";
+import { paramsHash, type BlocksMemory } from "../../src/workflows/memoire.js";
+import { validateWorkflow } from "../../src/workflows/valider.js";
 import { dossierTemporaire } from "../aide/temporaire.js";
 import { Atelier } from "../../src/conteneur/atelier.js";
-import { cheminsEspace } from "../../src/chemins.js";
-import { chaineAuFilDeLEau } from "../../src/workflows/chaine.js";
-import { ACTION_ARRETEE } from "../../src/workflows/executions.js";
-import type { Proprietaire } from "../../src/workflows/schema.js";
-import type { TraceDirecte } from "../../src/workflows/executer.js";
+import { spacePaths } from "../../src/chemins.js";
+import { streamingChain } from "../../src/workflows/chaine.js";
+import { ACTION_STOPPED } from "../../src/workflows/executions.js";
+import type { Owner } from "../../src/workflows/schema.js";
+import type { DirectTrace } from "../../src/workflows/executer.js";
 
 const MOTEUR = join(import.meta.dirname, "..", "..", "docker", "moteur");
 const SCRIPT = join(MOTEUR, "recolteur.mjs");
@@ -71,7 +71,7 @@ async function serveurWeb(routes: Record<string, (res: import("node:http").Serve
 }
 
 const valide = (brut: unknown) => {
-  const r = validerWorkflow(brut);
+  const r = validateWorkflow(brut);
   if (!r.ok) throw new Error(r.erreur);
   return r.valide;
 };
@@ -84,10 +84,10 @@ const chaine = (...ids: string[]) => ({
 });
 
 /** The owner as the bench records it: a widget's id (as before), `action:<id>` for an action. */
-const nomDe = (p: string | Proprietaire) => (typeof p === "string" ? p : p.type === "widget" ? p.id : `action:${p.id}`);
+const nomDe = (p: string | Owner) => (typeof p === "string" ? p : p.type === "widget" ? p.id : `action:${p.id}`);
 
 interface Banc {
-  ctx: ContexteWorkflow;
+  ctx: WorkflowContext;
   infra: InfraWorkflow;
   commandes: string[][];
   supprimes: string[];
@@ -99,7 +99,7 @@ interface Banc {
 async function banc(
   workflow: unknown,
   fichiers: Record<string, string> = {},
-  o: { compte?: string[]; publiques?: string[]; accord?: { profil: string } | null; pont?: PontFactice; memoire?: MemoireBlocs; delaiMs?: number; lancer?: LanceurProcessus } = {},
+  o: { compte?: string[]; publiques?: string[]; accord?: { profil: string } | null; pont?: PontFactice; memoire?: BlocksMemory; delaiMs?: number; lancer?: ProcessLauncher } = {},
 ): Promise<Banc> {
   const dossier = await dossierTemporaire();
   for (const [nom, contenu] of Object.entries(fichiers)) await writeFile(join(dossier, nom), contenu);
@@ -158,7 +158,7 @@ async function banc(
 }
 
 /** A fake process that writes these lines on stdout then exits with `code`. */
-const lanceurScripte = (lignes: unknown[], code = 0): LanceurProcessus => () => {
+const lanceurScripte = (lignes: unknown[], code = 0): ProcessLauncher => () => {
   const stdout = new PassThrough();
   const stderr = new PassThrough();
   const stdin = new PassThrough();
@@ -328,7 +328,7 @@ describe("executerWorkflow", () => {
       ]),
     });
     const r = await executerWorkflow(b.ctx, b.infra);
-    expect(r.issue).toEqual({ t: "fin", sortie: { vers: "widget", valeur: [] }, memoire: { nouveaux: { type: "liste.nouveaux", valeur: ["x"], empreinte: empreinteParametres({ cle: "url" }) } } });
+    expect(r.issue).toEqual({ t: "fin", sortie: { vers: "widget", valeur: [] }, memoire: { nouveaux: { type: "liste.nouveaux", valeur: ["x"], empreinte: paramsHash({ cle: "url" }) } } });
     // No block trace received: a block never started stays pas-lance.
     expect(r.execution.blocs.map((x) => x.statut)).toEqual(["pas-lance", "pas-lance", "pas-lance"]);
   });
@@ -342,9 +342,9 @@ describe("executerWorkflow", () => {
     });
     const r = await executerWorkflow(b.ctx, b.infra);
     expect(r.issue).toMatchObject({ t: "fin", memoire: null });
-    expect(r.journal).toContain(MEMOIRE_NON_GARDEE);
+    expect(r.journal).toContain(MEMORY_NOT_KEPT);
     // Also in the run, in the output block's log.
-    expect(r.execution.blocs.find((x) => x.id === "sortie")!.journal).toEqual([MEMOIRE_NON_GARDEE]);
+    expect(r.execution.blocs.find((x) => x.id === "sortie")!.journal).toEqual([MEMORY_NOT_KEPT]);
   });
 
   it("a trace of a started block without an end gives it failed; block log bounded to 200 lines of 500 characters", async () => {
@@ -402,7 +402,7 @@ describe("executerWorkflow", () => {
     const b = await banc(chaine("a"), { "a.mjs": `export default async (e, w) => w.lirePage("https://app.daily.dev/", { compte: true });` }, { compte: ["app.daily.dev"], accord: { profil: "perso" }, pont });
     const r = await executerWorkflow(b.ctx, b.infra);
     expect(b.refusEnCours).toBe(1);
-    expect(r.issue).toEqual({ t: "arret", statut: "accord-requis", erreur: PROFIL_REFUSE });
+    expect(r.issue).toEqual({ t: "arret", statut: "accord-requis", erreur: PROFILE_DENIED });
     expect(r.execution.statut).toBe("accord-requis");
   });
 
@@ -518,7 +518,7 @@ describe("executerWorkflow", () => {
     expect(r.execution.blocs.map((x) => x.statut)).toEqual(["echoue", "pas-lance"]);
     expect(b.tues).toBeGreaterThan(0);
     expect(b.supprimes).toEqual(["essai", "essai"]);
-    expect(DELAI_EXECUTION_MS).toBe(200_000);
+    expect(RUN_DELAY_MS).toBe(200_000);
   });
 
   it("the debut carries the validated workflow and the config; the memory follows", async () => {
@@ -545,7 +545,7 @@ describe("executerWorkflow", () => {
   });
 
   /** The lines the container receives (start, memory) and the returned memory, for a workflow `a` → `sortie`. */
-  async function memoireVueParLeConteneur(workflow: unknown, memoire: MemoireBlocs, rendue: MemoireBlocs = {}) {
+  async function memoireVueParLeConteneur(workflow: unknown, memoire: BlocksMemory, rendue: BlocksMemory = {}) {
     const recu: string[] = [];
     const b = await banc(workflow, {}, {
       lancer: () => {
@@ -557,7 +557,7 @@ describe("executerWorkflow", () => {
     });
     const r = await executerWorkflow(b.ctx, b.infra);
     const lignes = recu.join("").trim().split("\n").map((l) => JSON.parse(l));
-    return { envoyee: lignes[1].memoire as MemoireBlocs, rendue: r.issue.t === "fin" ? r.issue.memoire : null, ctx: b.ctx };
+    return { envoyee: lignes[1].memoire as BlocksMemory, rendue: r.issue.t === "fin" ? r.issue.memoire : null, ctx: b.ctx };
   }
 
   it("a memory whose hash no longer matches the parameters is not sent to the container", async () => {
@@ -570,8 +570,8 @@ describe("executerWorkflow", () => {
       ],
       liens: [{ de: "a", vers: "n" }, { de: "n", vers: "sortie" }],
     });
-    const memoire: MemoireBlocs = {
-      n: { type: "liste.nouveaux", valeur: ["x"], empreinte: empreinteParametres({ cle: "url" }) },
+    const memoire: BlocksMemory = {
+      n: { type: "liste.nouveaux", valeur: ["x"], empreinte: paramsHash({ cle: "url" }) },
       a: { type: "code", valeur: 1 }, // old memory without a hash: accepted once
     };
     const memes = await memoireVueParLeConteneur(wf("url"), memoire);
@@ -593,7 +593,7 @@ describe("executerWorkflow", () => {
       liens: [{ de: "a", vers: "n" }, { de: "n", vers: "sortie" }],
     });
     const premiere = await memoireVueParLeConteneur(wf("url"), {}, { n: { type: "liste.nouveaux", valeur: ["vu"] } });
-    expect(premiere.rendue).toEqual({ n: { type: "liste.nouveaux", valeur: ["vu"], empreinte: empreinteParametres({ cle: "url" }) } });
+    expect(premiere.rendue).toEqual({ n: { type: "liste.nouveaux", valeur: ["vu"], empreinte: paramsHash({ cle: "url" }) } });
     // workflow.json changed (cle: titre): the second run receives an empty memory for this block.
     const seconde = await memoireVueParLeConteneur(wf("titre"), premiere.rendue!);
     expect(seconde.envoyee).toEqual({});
@@ -673,10 +673,10 @@ describe("executerWorkflow", () => {
       const b = await banc(chaine("a", "b", "c"));
       b.ctx.rejeu = { ...rejeuDepuisC, sorties: { b: "x".repeat(LIGNE_MAX_OCTETS) } };
       const r = await executerWorkflow(b.ctx, b.infra);
-      expect(r.issue).toEqual({ t: "arret", statut: "erreur", erreur: REJEU_TROP_GROS });
-      expect(REJEU_TROP_GROS).toBe("Rejeu impossible : les sorties à reprendre dépassent 4 Mo");
+      expect(r.issue).toEqual({ t: "arret", statut: "erreur", erreur: REPLAY_TOO_BIG });
+      expect(REPLAY_TOO_BIG).toBe("Rejeu impossible : les sorties à reprendre dépassent 4 Mo");
       expect(b.commandes).toEqual([]);
-      expect(r.execution).toMatchObject({ statut: "echouee", erreur: REJEU_TROP_GROS, erreurNoyau: true });
+      expect(r.execution).toMatchObject({ statut: "echouee", erreur: REPLAY_TOO_BIG, erreurNoyau: true });
     });
   });
 
@@ -726,7 +726,7 @@ describe("executerWorkflow: web search and open reads", () => {
   const BASE = "https://ddg.test/html/";
   const page = (nom: string) => readFileSync(new URL(`./fixtures/duckduckgo/${nom}`, import.meta.url), "utf8");
   const resultatsFixture = (() => {
-    const r = extraireResultats(page("resultats.html"), 20);
+    const r = extractResults(page("resultats.html"), 20);
     if (!("resultats" in r)) throw new Error("attendu : des résultats");
     return r.resultats;
   })();
@@ -735,7 +735,7 @@ describe("executerWorkflow: web search and open reads", () => {
   const menagementFactice = () => {
     let t = 0;
     const attentes: number[] = [];
-    const menagement = new Menagement({
+    const menagement = new Pacing({
       maintenant: () => t,
       attendre: async (ms) => {
         attentes.push(ms);
@@ -746,7 +746,7 @@ describe("executerWorkflow: web search and open reads", () => {
   };
 
   /** A widget `a` → sortie whose code is given; `web` and the throttle set. */
-  async function bancWeb(code: string, o: { web?: boolean; compte?: string[]; html?: Record<string, string>; pages?: { url: string; titre: string; texte: string; liens: [] }[]; menagement?: Menagement; delaiMs?: number } = {}) {
+  async function bancWeb(code: string, o: { web?: boolean; compte?: string[]; html?: Record<string, string>; pages?: { url: string; titre: string; texte: string; liens: [] }[]; menagement?: Pacing; delaiMs?: number } = {}) {
     const pont = new PontFactice([], { actif: null, autoriser: false, lecture: { pages: o.pages ?? [], html: o.html ?? {} } });
     const b = await banc(chaine("a"), { "a.mjs": code }, { pont, compte: o.compte, accord: { profil: "perso" }, delaiMs: o.delaiMs });
     b.ctx.sources = { ...b.ctx.sources, ...(o.web !== undefined ? { web: o.web } : {}) };
@@ -789,7 +789,7 @@ describe("executerWorkflow: web search and open reads", () => {
   it("without web: WEB_REQUIS, no call to the bridge", async () => {
     const { b, pont } = await bancWeb(enSuite([`w.chercherWeb("x")`]), { html: { [urlRecherche("x", BASE)]: page("resultats.html") } });
     const r = await executerWorkflow(b.ctx, b.infra);
-    expect(valeur(r)).toEqual([`erreur: ${WEB_REQUIS}`]);
+    expect(valeur(r)).toEqual([`erreur: ${WEB_REQUIRED}`]);
     expect(pont.appels).toEqual([]);
   });
 
@@ -801,7 +801,7 @@ describe("executerWorkflow: web search and open reads", () => {
       html: { [urlRecherche("x", BASE)]: page("resultats.html") },
     });
     const r = await executerWorkflow(b.ctx, b.infra);
-    expect(valeur(r)).toEqual([`erreur: ${WEB_REQUIS}`]);
+    expect(valeur(r)).toEqual([`erreur: ${WEB_REQUIRED}`]);
     expect(html()).toEqual([]);
   });
 
@@ -815,7 +815,7 @@ describe("executerWorkflow: web search and open reads", () => {
     const r = await executerWorkflow(b.ctx, b.infra);
     const sortie = valeur(r) as unknown[];
     expect(sortie.slice(0, 30)).toEqual(Array.from({ length: 30 }, () => resultatsFixture.slice(0, 1)));
-    expect(sortie[30]).toBe(`erreur: ${PLAFOND_RECHERCHES}`);
+    expect(sortie[30]).toBe(`erreur: ${SEARCHES_CAP}`);
     expect(html()).toHaveLength(30);
     // Throttled: 2 s between two searches.
     expect(attentes).toEqual(Array.from({ length: 29 }, () => 2000));
@@ -827,7 +827,7 @@ describe("executerWorkflow: web search and open reads", () => {
       html: { [urlRecherche("a", BASE)]: page("verification.html"), [urlRecherche("b", BASE)]: page("resultats.html") },
     });
     const r = await executerWorkflow(b.ctx, b.infra);
-    expect(valeur(r)).toEqual([`erreur: ${RECHERCHE_REFUSEE}`, `erreur: ${RECHERCHES_ARRETEES}`]);
+    expect(valeur(r)).toEqual([`erreur: ${SEARCH_DENIED}`, `erreur: ${SEARCHES_STOPPED}`]);
     expect(html()).toHaveLength(1);
   });
 
@@ -839,7 +839,7 @@ describe("executerWorkflow: web search and open reads", () => {
       { web: true, menagement, html: { [urlRecherche("a", BASE)]: page("verification.html"), [urlRecherche("b", BASE)]: page("resultats.html") } },
     );
     const r = await executerWorkflow(b.ctx, b.infra);
-    expect(valeur(r)).toEqual([`erreur: ${RECHERCHE_REFUSEE}`, `erreur: ${RECHERCHES_ARRETEES}`]);
+    expect(valeur(r)).toEqual([`erreur: ${SEARCH_DENIED}`, `erreur: ${SEARCHES_STOPPED}`]);
     expect(html()).toHaveLength(1);
     // « b » waited for nothing; the next search waits 2 s from the end of « a », the only one that was played (not 2 s more).
     await menagement.rechercher(async () => {});
@@ -852,7 +852,7 @@ describe("executerWorkflow: web search and open reads", () => {
       html: { [urlRecherche("a", BASE)]: page("changee.html"), [urlRecherche("b", BASE)]: page("aucun-resultat.html") },
     });
     const r = await executerWorkflow(b.ctx, b.infra);
-    expect(valeur(r)).toEqual([`erreur: ${RESULTATS_ILLISIBLES}`, []]);
+    expect(valeur(r)).toEqual([`erreur: ${UNREADABLE_RESULTS}`, []]);
   });
 
   it("web widget: the 101st open read (pages and feeds) throws TROP_DE_LECTURES", async () => {
@@ -875,7 +875,7 @@ describe("executerWorkflow: web search and open reads", () => {
     const r = await executerWorkflow(b.ctx, b.infra);
     const sortie = valeur(r) as string[];
     expect(sortie.slice(0, 100).every((x) => x === "ok")).toBe(true);
-    expect(sortie.slice(100)).toEqual([`erreur: ${TROP_DE_LECTURES}`, `erreur: ${TROP_DE_LECTURES}`]);
+    expect(sortie.slice(100)).toEqual([`erreur: ${TOO_MANY_READS}`, `erreur: ${TOO_MANY_READS}`]);
     expect(pont.appels.filter((a) => a.methode === "lirePageInvisible")).toHaveLength(40);
     expect(web.requetes).toHaveLength(60);
     // Each goes through the throttle, per host: 1 s between two reads of the same host.
@@ -953,7 +953,7 @@ describe("executerWorkflow: web search and open reads", () => {
     cible = `http://localhost:${web.port}/f`;
     const arret = new AbortController();
     const changerHote = vi.fn(() => new Promise<void>(() => {}));
-    const p = recuperer(`${web.url}/vers-localhost`, "texte", null, true, arret.signal, changerHote);
+    const p = fetch(`${web.url}/vers-localhost`, "texte", null, true, arret.signal, changerHote);
     p.catch(() => {});
     await vi.waitFor(() => expect(changerHote).toHaveBeenCalledWith("localhost"));
     arret.abort(new Error("Exécution arrêtée"));
@@ -967,7 +967,7 @@ describe("executerWorkflow: web search and open reads", () => {
     const resolution = vi.spyOn(dns, "lookup").mockImplementation(((_h: string, _o: unknown, rappel: (e: null, a: dns.LookupAddress[]) => void) =>
       rappel(null, [{ address: "127.0.0.1", family: 4 }])) as unknown as typeof dns.lookup);
     try {
-      await expect(recuperer(`http://piege.example:${web.port}/`, "texte", null, false)).rejects.toThrow("Adresse locale refusée");
+      await expect(fetch(`http://piege.example:${web.port}/`, "texte", null, false)).rejects.toThrow("Adresse locale refusée");
     } finally {
       resolution.mockRestore();
     }
@@ -975,7 +975,7 @@ describe("executerWorkflow: web search and open reads", () => {
   });
 
   it("widget without web: 150 reads go through, no throttle wait", async () => {
-    const espion = new Menagement({ attendre: async () => { throw new Error("aucune attente attendue"); } });
+    const espion = new Pacing({ attendre: async () => { throw new Error("aucune attente attendue"); } });
     const lire = vi.spyOn(espion, "lire");
     const rechercher = vi.spyOn(espion, "rechercher");
     const { b, pont } = await bancWeb(
@@ -992,7 +992,7 @@ describe("executerWorkflow: web search and open reads", () => {
   it("run stop: a read waiting for the throttle does not leave", async () => {
     let t = 0;
     const enAttente: (() => void)[] = [];
-    const menagement = new Menagement({ maintenant: () => t, attendre: () => new Promise<void>((ok) => enAttente.push(ok)) });
+    const menagement = new Pacing({ maintenant: () => t, attendre: () => new Promise<void>((ok) => enAttente.push(ok)) });
     const { b, pont } = await bancWeb(
       `export default async (e, w) => { await w.lirePage("https://pages.example/1"); return w.lirePage("https://pages.example/2"); };`,
       { web: true, menagement, delaiMs: 300 },
@@ -1009,7 +1009,7 @@ describe("executerWorkflow: web search and open reads", () => {
   it("end of the run: a search still queued does not leave", async () => {
     let t = 0;
     const enAttente: (() => void)[] = [];
-    const menagement = new Menagement({ maintenant: () => t, attendre: () => new Promise<void>((ok) => enAttente.push(ok)) });
+    const menagement = new Pacing({ maintenant: () => t, attendre: () => new Promise<void>((ok) => enAttente.push(ok)) });
     const { b, html } = await bancWeb(
       `export default async (e, w) => { await w.chercherWeb("a"); w.chercherWeb("b").catch(() => {}); return "fini"; };`,
       { web: true, menagement, html: { [urlRecherche("a", BASE)]: page("resultats.html") } },
@@ -1029,7 +1029,7 @@ describe("executerWorkflow: a stop cancels the reads in progress", () => {
   const conteneurAppels = (appels: { f: string; a: unknown }[]) => {
     const recu: string[] = [];
     let tuer = () => {};
-    const lancer: LanceurProcessus = () => {
+    const lancer: ProcessLauncher = () => {
       const stdout = new PassThrough();
       const stderr = new PassThrough();
       const stdin = new PassThrough();
@@ -1098,7 +1098,7 @@ describe("executerWorkflow: a stop cancels the reads in progress", () => {
   it("web widget: a read and a search in progress cancelled free their turn, the gap counts from the cancellation", async () => {
     let t = 0;
     const attentes: number[] = [];
-    const menagement = new Menagement({
+    const menagement = new Pacing({
       maintenant: () => t,
       attendre: async (ms) => {
         attentes.push(ms);
@@ -1159,7 +1159,7 @@ describe("executerWorkflow: watch (duration, chain, publications, memory along t
    * is written as is, several lines at once);
    * `recu` receives what the kernel writes to it; `bloque`: it never exits on its own (only killed).
    */
-  const lanceurPas = (pas: unknown[], o: { recu?: string[]; bloque?: boolean } = {}): LanceurProcessus => () => {
+  const lanceurPas = (pas: unknown[], o: { recu?: string[]; bloque?: boolean } = {}): ProcessLauncher => () => {
     const stdout = new PassThrough();
     const stderr = new PassThrough();
     const stdin = new PassThrough();
@@ -1194,7 +1194,7 @@ describe("executerWorkflow: watch (duration, chain, publications, memory along t
 
   /** The workshop's real command, kept to read its `timeout`. */
   const brancherAtelier = (b: Banc) => {
-    const atelier = new Atelier({ chemins: cheminsEspace("/Users/t/WebAiOs"), docker: "/usr/local/bin/docker" });
+    const atelier = new Atelier({ chemins: spacePaths("/Users/t/WebAiOs"), docker: "/usr/local/bin/docker" });
     const commandes: string[][] = [];
     b.infra.atelier = {
       commandeRecolte: (id, d, m, s) => {
@@ -1230,7 +1230,7 @@ describe("executerWorkflow: watch (duration, chain, publications, memory along t
   };
 
   it("the watch() chain is fiche → avis", () => {
-    expect(chaineAuFilDeLEau(valide(veille({ auFilDeLEau: true })))).toEqual(["fiche", "avis"]);
+    expect(streamingChain(valide(veille({ auFilDeLEau: true })))).toEqual(["fiche", "avis"]);
   });
 
   it("widget without the new fields: debut line identical to today, timeout 180, delay 200 s", async () => {
@@ -1442,7 +1442,7 @@ describe("executerWorkflow: watch (duration, chain, publications, memory along t
 
   it("progressive: surMemoire at most every 30 s; an echec carries the last memory received; non-progressive: neither surMemoire nor memoire in the outcome", async () => {
     // The hash of the validated parameters (defaults included) of the liste block.
-    const empreinte = empreinteParametres(valide(veille()).workflow.blocs.find((x) => x.id === "liste")!.parametres);
+    const empreinte = paramsHash(valide(veille()).workflow.blocs.find((x) => x.id === "liste")!.parametres);
     const m = (n: number) => ({ t: "memoire", memoire: { liste: { type: "code", valeur: n }, inconnu: { type: "code", valeur: n } } });
     const marquee = (n: number) => ({ liste: { type: "code", valeur: n, empreinte } });
     const lancerAvec = async (d: number | undefined, fin: unknown = { t: "echec", erreur: "cassé" }) => {
@@ -1473,7 +1473,7 @@ describe("executerWorkflow: watch (duration, chain, publications, memory along t
 
   it("progressive: a stop (timeout) carries the last memory received; a memory still held (nothing received after) does not count; non-progressive: none", async () => {
     // The hash of the validated parameters (defaults included) of the liste block.
-    const empreinte = empreinteParametres(valide(veille()).workflow.blocs.find((x) => x.id === "liste")!.parametres);
+    const empreinte = paramsHash(valide(veille()).workflow.blocs.find((x) => x.id === "liste")!.parametres);
     const lancerAvec = async (d: number | undefined) => {
       const b = await banc(veille(), {}, { delaiMs: 300 });
       if (d !== undefined) b.ctx.dureeMaxMinutes = d;
@@ -1493,7 +1493,7 @@ describe("executerWorkflow: watch (duration, chain, publications, memory along t
   });
 
   describe("the memory that precedes a publication follows its fate (R34)", () => {
-    const empreinte = () => empreinteParametres(valide(veille()).workflow.blocs.find((x) => x.id === "liste")!.parametres);
+    const empreinte = () => paramsHash(valide(veille()).workflow.blocs.find((x) => x.id === "liste")!.parametres);
     const mem = (n: number) => ({ t: "memoire", memoire: { liste: { type: "code", valeur: n } } });
     const marquee = (n: number) => ({ liste: { type: "code", valeur: n, empreinte: empreinte() } });
     const ouvrirChaine = [debutBloc("liste"), finBloc("liste"), debutBloc("fiche"), debutBloc("avis")];
@@ -1633,23 +1633,23 @@ describe("executerWorkflow: watch (duration, chain, publications, memory along t
 
   it("interpreteur.mjs's TAILLE_MAX_DONNEES equals the kernel's, re-exported by accueil", async () => {
     const interpreteur = await import(pathToFileURL(join(MOTEUR, "interpreteur.mjs")).href);
-    expect(interpreteur.TAILLE_MAX_DONNEES).toBe(TAILLE_MAX_DONNEES);
-    expect(TAILLE_MAX_DONNEES_ACCUEIL).toBe(TAILLE_MAX_DONNEES);
-    expect(TAILLE_MAX_DONNEES).toBe(2 * 1024 * 1024);
+    expect(interpreteur.TAILLE_MAX_DONNEES).toBe(DATA_MAX_SIZE);
+    expect(TAILLE_MAX_DONNEES_ACCUEIL).toBe(DATA_MAX_SIZE);
+    expect(DATA_MAX_SIZE).toBe(2 * 1024 * 1024);
   });
 
   it("executer.ts's ECART_PUBLICATIONS_MS and ECART_MEMOIRE_MS equal those of interpreteur.mjs", async () => {
     const interpreteur = await import(pathToFileURL(join(MOTEUR, "interpreteur.mjs")).href);
-    expect(ECART_PUBLICATIONS_MS).toBe(5000);
-    expect(ECART_MEMOIRE_MS).toBe(30_000);
-    expect(interpreteur.ECART_PUBLICATIONS_MS).toBe(ECART_PUBLICATIONS_MS);
-    expect(interpreteur.ECART_MEMOIRE_MS).toBe(ECART_MEMOIRE_MS);
+    expect(PUBLICATIONS_GAP_MS).toBe(5000);
+    expect(MEMORY_GAP_MS).toBe(30_000);
+    expect(interpreteur.ECART_PUBLICATIONS_MS).toBe(PUBLICATIONS_GAP_MS);
+    expect(interpreteur.ECART_MEMOIRE_MS).toBe(MEMORY_GAP_MS);
   });
 });
 
 describe("executerWorkflow: input, progress, reads and stop (actions)", () => {
   /** A fake container: writes its lines, then waits to be killed (`bloque`) or exits with 0. `recu`: what it receives. */
-  const lanceurLignes = (lignes: unknown[], o: { recu?: string[]; bloque?: boolean; tue?: () => void } = {}): LanceurProcessus => () => {
+  const lanceurLignes = (lignes: unknown[], o: { recu?: string[]; bloque?: boolean; tue?: () => void } = {}): ProcessLauncher => () => {
     const stdout = new PassThrough();
     const stderr = new PassThrough();
     const stdin = new PassThrough();
@@ -1710,7 +1710,7 @@ describe("executerWorkflow: input, progress, reads and stop (actions)", () => {
       { pont },
     );
     b.ctx.proprietaire = { type: "action", id: "gitlab" };
-    const relayees: TraceDirecte[] = [];
+    const relayees: DirectTrace[] = [];
     b.infra.surTrace = (t) => relayees.push(t);
     const r = await executerWorkflow(b.ctx, b.infra);
     expect(r.issue).toMatchObject({ t: "fin", sortie: { valeur: "X" } });
@@ -1727,7 +1727,7 @@ describe("executerWorkflow: input, progress, reads and stop (actions)", () => {
 
   it("a refused read (undeclared domain) emits no lecture", async () => {
     const b = await banc(chaine("a"), { "a.mjs": `export default async (e, w) => { try { await w.lirePage("https://tiers.example/"); } catch { return "refusée"; } };` }, { compte: ["gitlab.com"], publiques: [] });
-    const relayees: TraceDirecte[] = [];
+    const relayees: DirectTrace[] = [];
     b.infra.surTrace = (t) => relayees.push(t);
     const r = await executerWorkflow(b.ctx, b.infra);
     expect(r.issue).toMatchObject({ t: "fin", sortie: { valeur: "refusée" } });
@@ -1745,8 +1745,8 @@ describe("executerWorkflow: input, progress, reads and stop (actions)", () => {
     };
     const r = await executerWorkflow(b.ctx, b.infra);
     expect(tue).toBe(1);
-    expect(r.issue).toEqual({ t: "arret", statut: "erreur", erreur: ACTION_ARRETEE });
-    expect(r.execution).toMatchObject({ statut: "interrompue", erreur: ACTION_ARRETEE, erreurNoyau: true });
+    expect(r.issue).toEqual({ t: "arret", statut: "erreur", erreur: ACTION_STOPPED });
+    expect(r.execution).toMatchObject({ statut: "interrompue", erreur: ACTION_STOPPED, erreurNoyau: true });
     expect(r.execution.blocs[0]!.statut).toBe("interrompu");
     expect(b.supprimes).toEqual(["action:gitlab", "action:gitlab"]);
   });
@@ -1758,7 +1758,7 @@ describe("executerWorkflow: input, progress, reads and stop (actions)", () => {
     b.ctx.signal = arret.signal;
     const r = await executerWorkflow(b.ctx, b.infra);
     expect(b.commandes).toEqual([]);
-    expect(r.execution).toMatchObject({ statut: "interrompue", erreur: ACTION_ARRETEE, erreurNoyau: true });
+    expect(r.execution).toMatchObject({ statut: "interrompue", erreur: ACTION_STOPPED, erreurNoyau: true });
   });
 
   it("an avancement line with faits > total is rejected", async () => {
@@ -1777,7 +1777,7 @@ describe("executerWorkflow: input, progress, reads and stop (actions)", () => {
       ]),
     });
     b.ctx.avancement = true;
-    const relayees: TraceDirecte[] = [];
+    const relayees: DirectTrace[] = [];
     b.infra.surTrace = (t) => relayees.push(t);
     await executerWorkflow(b.ctx, b.infra);
     // Only that of the current block, with faits ≤ total, passes; an avancement outside its block is ignored.
@@ -1798,7 +1798,7 @@ describe("executerWorkflow: input, progress, reads and stop (actions)", () => {
     avec.ctx.avancement = true;
     // 300 ms between two received lines.
     avec.infra.horloge = () => new Date(MAINTENANT.getTime() + (t += 300));
-    const relayees: TraceDirecte[] = [];
+    const relayees: DirectTrace[] = [];
     avec.infra.surTrace = (x) => relayees.push(x);
     await executerWorkflow(avec.ctx, avec.infra);
     const faits = relayees.flatMap((x) => (x.etape === "avancement" ? [x.faits] : []));
@@ -1807,7 +1807,7 @@ describe("executerWorkflow: input, progress, reads and stop (actions)", () => {
     expect(faits.length).toBeLessThan(4);
 
     const sans = await banc(chaine("a"), {}, { lancer: lanceurLignes(lignes) });
-    const relayees2: TraceDirecte[] = [];
+    const relayees2: DirectTrace[] = [];
     sans.infra.surTrace = (x) => relayees2.push(x);
     await executerWorkflow(sans.ctx, sans.infra);
     expect(relayees2.some((x) => x.etape === "avancement")).toBe(false);

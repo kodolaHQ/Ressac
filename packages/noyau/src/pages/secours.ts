@@ -4,31 +4,31 @@ import type { BlocPlan, PlanPage } from "./plan.js";
 // It only references paths that exist and that the reference language can write; it passes validerPlan.
 
 type Dict = Record<string, unknown>;
-const estObjet = (v: unknown): v is Dict => v !== null && typeof v === "object" && !Array.isArray(v);
+const isObject = (v: unknown): v is Dict => v !== null && typeof v === "object" && !Array.isArray(v);
 const MOT = /^[\p{L}\p{N}_]+$/u;
 const simple = (v: unknown) => typeof v === "string" || typeof v === "number" || typeof v === "boolean";
 const IMAGE = /\.(?:jpe?g|png|webp|gif)(?:\?[^\s]*)?$/i;
-const NOMS_IMAGE = ["image", "photo", "vignette"];
-const NOMS_LIEN = ["url", "lien", "href"];
-const NOMS_TITRE = ["titre", "title", "nom", "name", "libelle", "label"];
-const NOMS_VALEUR = ["prix", "price", "valeur", "montant"];
-const ECHANTILLON = 20;
-const COLONNES = 6;
-const CLES_MAX = 12;
+const IMAGE_NAMES = ["image", "photo", "vignette"];
+const LINK_NAMES = ["url", "lien", "href"];
+const TITLE_NAMES = ["titre", "title", "nom", "name", "libelle", "label"];
+const VALUE_NAMES = ["prix", "price", "valeur", "montant"];
+const SAMPLE = 20;
+const COLUMNS = 6;
+const KEYS_MAX = 12;
 const TITRE_MAX = 80;
-const LIBELLE_MAX = 60;
+const LABEL_MAX = 60;
 
 const coupe = (s: string, max: number) => (s.length > max ? s.slice(0, max - 1) + "…" : s);
-const bloc = (composant: string, props: Record<string, unknown>): BlocPlan => ({ composant, props });
-const cleValide = (k: string) => MOT.test(k);
-const parNom = (champs: string[], noms: string[]) => champs.find((c) => noms.includes(c.toLowerCase()));
+const bloc = (component: string, props: Record<string, unknown>): BlocPlan => ({ composant: component, props });
+const keyValid = (k: string) => MOT.test(k);
+const byName = (champs: string[], names: string[]) => champs.find((c) => names.includes(c.toLowerCase()));
 
 /** The plain fields (text, number, boolean) of a list of objects, in order of appearance. */
 function champsSimples(elements: Dict[]): { champ: string; urlImage: boolean; texte: boolean }[] {
   const vus = new Map<string, { urlImage: boolean; texte: boolean }>();
-  for (const e of elements.slice(0, ECHANTILLON)) {
+  for (const e of elements.slice(0, SAMPLE)) {
     for (const k of Object.keys(e)) {
-      if (!cleValide(k) || !simple(e[k])) continue;
+      if (!keyValid(k) || !simple(e[k])) continue;
       const v = e[k];
       const f = vus.get(k) ?? { urlImage: false, texte: false };
       if (typeof v === "string") {
@@ -42,22 +42,22 @@ function champsSimples(elements: Dict[]): { champ: string; urlImage: boolean; te
 }
 
 /** The block of a list referenced by `ref`, or null if nothing readable. */
-function blocListe(liste: unknown[], ref: string): BlocPlan | null {
-  if (liste.length === 0) return null;
-  const echantillon = liste.slice(0, ECHANTILLON);
-  if (echantillon.every(simple)) return bloc("etiquettes", { valeurs: ref });
-  const objets = echantillon.filter(estObjet);
-  if (objets.length === 0) return null;
-  const champs = champsSimples(objets);
+function listBlock(list: unknown[], ref: string): BlocPlan | null {
+  if (list.length === 0) return null;
+  const sample = list.slice(0, SAMPLE);
+  if (sample.every(simple)) return bloc("etiquettes", { valeurs: ref });
+  const objects = sample.filter(isObject);
+  if (objects.length === 0) return null;
+  const champs = champsSimples(objects);
   if (champs.length === 0) return null;
-  const noms = champs.map((c) => c.champ);
-  const lien = parNom(noms, NOMS_LIEN);
-  const image = parNom(noms, NOMS_IMAGE) ?? champs.find((c) => c.urlImage)?.champ;
+  const names = champs.map((c) => c.champ);
+  const lien = byName(names, LINK_NAMES);
+  const image = byName(names, IMAGE_NAMES) ?? champs.find((c) => c.urlImage)?.champ;
   if (image) {
-    const textes = champs.filter((c) => c.texte && c.champ !== image && c.champ !== lien).map((c) => c.champ);
-    const titre = parNom(textes, NOMS_TITRE) ?? textes[0] ?? noms.find((n) => n !== image) ?? image;
-    const sousTitre = textes.find((c) => c !== titre);
-    const valeur = parNom(noms, NOMS_VALEUR);
+    const texts = champs.filter((c) => c.texte && c.champ !== image && c.champ !== lien).map((c) => c.champ);
+    const titre = byName(texts, TITLE_NAMES) ?? texts[0] ?? names.find((n) => n !== image) ?? image;
+    const sousTitre = texts.find((c) => c !== titre);
+    const valeur = byName(names, VALUE_NAMES);
     const props: Record<string, unknown> = { elements: ref, titre, image };
     if (sousTitre) props.sousTitre = sousTitre;
     if (valeur && valeur !== titre) props.valeur = valeur;
@@ -66,45 +66,45 @@ function blocListe(liste: unknown[], ref: string): BlocPlan | null {
   }
   const props: Record<string, unknown> = {
     elements: ref,
-    colonnes: noms.slice(0, COLONNES).map((champ) => ({ champ, libelle: coupe(champ, LIBELLE_MAX) })),
+    colonnes: names.slice(0, COLUMNS).map((champ) => ({ champ, libelle: coupe(champ, LABEL_MAX) })),
   };
   if (lien) props.lien = lien;
   return bloc("tableau", props);
 }
 
-function blocsObjet(o: Dict): BlocPlan[] {
+function objectBlocks(o: Dict): BlocPlan[] {
   const blocs: BlocPlan[] = [bloc("titre", { texte: "Résultats" })];
-  for (const cle of Object.keys(o)) {
-    if (blocs.length >= CLES_MAX * 2) break;
-    if (!cleValide(cle)) continue;
-    const v = o[cle];
-    if (typeof v === "number" && Number.isFinite(v)) blocs.push(bloc("chiffre", { valeur: cle, libelle: coupe(cle, LIBELLE_MAX) }));
-    else if (typeof v === "string" && v !== "" || typeof v === "boolean") blocs.push(bloc("paragraphe", { valeur: cle }));
+  for (const key of Object.keys(o)) {
+    if (blocs.length >= KEYS_MAX * 2) break;
+    if (!keyValid(key)) continue;
+    const v = o[key];
+    if (typeof v === "number" && Number.isFinite(v)) blocs.push(bloc("chiffre", { valeur: key, libelle: coupe(key, LABEL_MAX) }));
+    else if (typeof v === "string" && v !== "" || typeof v === "boolean") blocs.push(bloc("paragraphe", { valeur: key }));
     else if (Array.isArray(v)) {
-      const b = blocListe(v, cle);
-      if (b) blocs.push(bloc("titre", { texte: coupe(cle, TITRE_MAX) }), b);
-    } else if (estObjet(v)) {
-      if (Object.keys(v).some((k) => cleValide(k) && simple(v[k]))) blocs.push(bloc("champs", { objet: cle }));
+      const b = listBlock(v, key);
+      if (b) blocs.push(bloc("titre", { texte: coupe(key, TITRE_MAX) }), b);
+    } else if (isObject(v)) {
+      if (Object.keys(v).some((k) => keyValid(k) && simple(v[k]))) blocs.push(bloc("champs", { objet: key }));
     }
   }
   // Keys that a reference cannot write: their plain fields are read through the whole object.
   const reference = () => blocs.some((b) => b.composant !== "titre");
-  if (Object.keys(o).some((k) => !cleValide(k) && simple(o[k]))) blocs.push(bloc("champs", { objet: "$" }));
-  if (!reference()) blocs.push(DERNIER_RECOURS);
+  if (Object.keys(o).some((k) => !keyValid(k) && simple(o[k]))) blocs.push(bloc("champs", { objet: "$" }));
+  if (!reference()) blocs.push(LAST_RESORT);
   return blocs;
 }
 
 /** The last resort: all the results in a bounded text. Reference "$", so always valid. */
-const DERNIER_RECOURS = bloc("paragraphe", { valeur: "$" });
-export const miseEnPageDernierRecours = (): PlanPage => ({ blocs: [{ ...DERNIER_RECOURS, props: { ...DERNIER_RECOURS.props } }] });
+const LAST_RESORT = bloc("paragraphe", { valeur: "$" });
+export const lastResortLayout = (): PlanPage => ({ blocs: [{ ...LAST_RESORT, props: { ...LAST_RESORT.props } }] });
 
-export function miseEnPageSecours(resultats: unknown): PlanPage {
-  if (Array.isArray(resultats)) {
-    const b = blocListe(resultats, "$");
-    return b ? { blocs: [b] } : miseEnPageDernierRecours();
+export function fallbackLayout(results: unknown): PlanPage {
+  if (Array.isArray(results)) {
+    const b = listBlock(results, "$");
+    return b ? { blocs: [b] } : lastResortLayout();
   }
-  if (estObjet(resultats)) return { blocs: blocsObjet(resultats) };
-  if (typeof resultats === "number") return { blocs: [bloc("chiffre", { valeur: "$", libelle: "Résultat" })] };
-  if (simple(resultats)) return { blocs: [bloc("paragraphe", { valeur: "$" })] };
-  return miseEnPageDernierRecours();
+  if (isObject(results)) return { blocs: objectBlocks(results) };
+  if (typeof results === "number") return { blocs: [bloc("chiffre", { valeur: "$", libelle: "Résultat" })] };
+  if (simple(results)) return { blocs: [bloc("paragraphe", { valeur: "$" })] };
+  return lastResortLayout();
 }

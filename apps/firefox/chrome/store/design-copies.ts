@@ -1,9 +1,9 @@
 // The design mode's pure pieces: core/design/viseur.ts's scriptViseur, adapted for the actor's guard, and the checks
 // on what comes back from the page.
-import type { ContexteDesign } from "../../../../packages/noyau/src/design/remarques";
+import type { DesignContext } from "../../../../packages/noyau/src/design/remarques";
 import type { CibleDesign } from "../../core/design/premier-plan";
 import { scriptViseur, type CaptureViseur } from "../../core/design/viseur";
-import { tronquerHtml } from "../shims/noyau";
+import { truncateHtml } from "../shims/noyau";
 
 export { rectCapture } from "../../core/design/viseur";
 export type { CaptureViseur };
@@ -92,7 +92,7 @@ function propreCapture(v: unknown): CaptureViseur | null {
 }
 
 /** What comes from the page's world is never trusted: short file, positive integer numbers, the rest is dropped. */
-function sourceSaine(r: unknown): ContexteDesign["source"] {
+function sourceSaine(r: unknown): DesignContext["source"] {
   const o = r as { fichier?: unknown; ligne?: unknown; colonne?: unknown } | null;
   if (!o || typeof o !== "object" || !chaine(o.fichier, 1024) || o.fichier === "") return null;
   return { fichier: o.fichier, ...(entierPositif(o.ligne) ? { ligne: o.ligne } : {}), ...(entierPositif(o.colonne) ? { colonne: o.colonne } : {}) };
@@ -101,10 +101,10 @@ function sourceSaine(r: unknown): ContexteDesign["source"] {
 /** The viewfinder script's answer: the shape checked, the html cut. */
 export function cleanCapture(v: unknown): CaptureViseur | null {
   const c = propreCapture(v);
-  return c ? { ...c, html: tronquerHtml(c.html) } : null;
+  return c ? { ...c, html: truncateHtml(c.html) } : null;
 }
 
-export const cleanSource = (r: unknown): ContexteDesign["source"] => sourceSaine(r);
+export const cleanSource = (r: unknown): DesignContext["source"] => sourceSaine(r);
 
 /** lireSource's expression (run in the actor's sandbox with Xrays waived): no effect, no global. */
 export function sourceExpression(selecteur: string): string {

@@ -1,24 +1,24 @@
 import { afterEach, expect, test } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { PolitiqueAcces } from "../../src/acces/politique.js";
-import type { ResultatHistorique } from "../../src/mcp/pont.js";
+import { AccessPolicy } from "../../src/acces/politique.js";
+import type { HistoryResult } from "../../src/mcp/pont.js";
 import { PontFactice } from "../../src/mcp/pont-factice.js";
-import { demarrerServeurMcp, genererJeton } from "../../src/mcp/serveur.js";
+import { startMcpServer, generateToken } from "../../src/mcp/serveur.js";
 
-const jeton = genererJeton();
-let serveur: Awaited<ReturnType<typeof demarrerServeurMcp>> | undefined;
+const jeton = generateToken();
+let serveur: Awaited<ReturnType<typeof startMcpServer>> | undefined;
 let client: Client | undefined;
 let pont: PontFactice;
 
-const runes: ResultatHistorique = {
+const runes: HistoryResult = {
   url: "https://svelte.dev/blog/runes",
   titre: "Introducing runes",
   derniereVisite: "2026-10-21T09:30:00.000Z",
   visites: 3,
   extrait: "… les runes remplacent les stores …",
 };
-const sansTexte: ResultatHistorique = {
+const sansTexte: HistoryResult = {
   url: "https://exemple.test/",
   titre: "Exemple",
   derniereVisite: "2026-10-20T08:00:00.000Z",
@@ -28,7 +28,7 @@ const sansTexte: ResultatHistorique = {
 
 async function demarrer(historique?: ConstructorParameters<typeof PontFactice>[1]["historique"]) {
   pont = new PontFactice([], { actif: null, autoriser: false, ...(historique ? { historique } : {}) });
-  serveur = await demarrerServeurMcp({ pont, politique: new PolitiqueAcces(), jeton });
+  serveur = await startMcpServer({ pont, politique: new AccessPolicy(), jeton });
   client = new Client({ name: "test", version: "0" });
   await client.connect(
     new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${serveur.port}/mcp`), {

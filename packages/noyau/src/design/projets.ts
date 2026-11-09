@@ -1,23 +1,23 @@
 import { createHash } from "node:crypto";
 import { join } from "node:path";
-import { plagePortsConteneur } from "../conteneur/atelier.js";
+import { containerPortRange } from "../conteneur/atelier.js";
 
-export const ID_PROJET = /^(app-[A-Za-z0-9][A-Za-z0-9._-]*|ext-[0-9a-f]{16}|demo-\d{1,5}|site-[a-z0-9][a-z0-9-]{0,59})$/;
+export const PROJECT_ID = /^(app-[A-Za-z0-9][A-Za-z0-9._-]*|ext-[0-9a-f]{16}|demo-\d{1,5}|site-[a-z0-9][a-z0-9-]{0,59})$/;
 
-export const INDISPONIBLE_DESIGN = "Le mode design marche sur les applis de l'agent, les applis de site et les projets branchés par un Claude Code";
-export const INDISPONIBLE_DESIGN_SITE = "Le mode design marche dans les pages du site et sur l'accueil, pas sur la carte d'accord, une page de connexion ni en plein écran";
-export const AVERTISSEMENT_CAPTURE_SITE = "L'extrait et la capture de cet élément iront à l'agent.";
+export const DESIGN_UNAVAILABLE = "Le mode design marche sur les applis de l'agent, les applis de site et les projets branchés par un Claude Code";
+export const SITE_DESIGN_UNAVAILABLE = "Le mode design marche dans les pages du site et sur l'accueil, pas sur la carte d'accord, une page de connexion ni en plein écran";
+export const SITE_CAPTURE_WARNING = "L'extrait et la capture de cet élément iront à l'agent.";
 export const SANS_CLIENT = "Aucun Claude Code branché pour ce projet : il doit le redéclarer";
 
-export type IdProjet = string;
+export type ProjectId = string;
 
-export type ProjetSuivi =
-  | { type: "app"; projet: IdProjet; dossier: string; nom: string }
-  | { type: "demo"; projet: IdProjet; port: number }
-  | { type: "site"; projet: IdProjet; id: string; nom: string }
-  | { type: "externe"; projet: IdProjet; dossier: string; nom: string; client: string | null };
+export type TrackedProject =
+  | { type: "app"; projet: ProjectId; dossier: string; nom: string }
+  | { type: "demo"; projet: ProjectId; port: number }
+  | { type: "site"; projet: ProjectId; id: string; nom: string }
+  | { type: "externe"; projet: ProjectId; dossier: string; nom: string; client: string | null };
 
-export interface ProjetExterne { id: string; nom: string; dossier: string; ports: number[]; client: string | null; declare: string }
+export interface ExternalProject { id: string; nom: string; dossier: string; ports: number[]; client: string | null; declare: string }
 export interface ClientExterne { id: string; nom: string; empreinte: string; cree: string }
 
 export interface DossiersDesign {
@@ -25,61 +25,61 @@ export interface DossiersDesign {
   prive: string;
 }
 
-export interface ContexteDisponibilite {
+export interface AvailabilityContext {
   appsLancees: { dossier: string; nom: string; port: number }[];
   plages: [number, number][];
-  externes: ProjetExterne[];
+  externes: ExternalProject[];
 }
 
-export const projetApp = (dossier: string): IdProjet => `app-${dossier}`;
-export const projetExterne = (id: string): IdProjet => `ext-${id}`;
-export const projetSite = (id: string): IdProjet => `site-${id}`;
-export const projetDemo = (port: number): IdProjet => `demo-${port}`;
+export const appProject = (dossier: string): ProjectId => `app-${dossier}`;
+export const externalProject = (id: string): ProjectId => `ext-${id}`;
+export const siteProject = (id: string): ProjectId => `site-${id}`;
+export const demoProject = (port: number): ProjectId => `demo-${port}`;
 export const idExterne = (dossierReel: string): string => createHash("sha256").update(dossierReel).digest("hex").slice(0, 16);
 
-export function dossierRemarques(d: DossiersDesign, p: IdProjet): string {
+export function dossierRemarques(d: DossiersDesign, p: ProjectId): string {
   return p.startsWith("ext-") ? join(d.prive, "remarques", p) : join(d.remarquesEspace, p);
 }
-export const depotRelecture = (d: DossiersDesign, p: IdProjet): string => join(d.prive, "relecture", `${p}.git`);
-export const fichierCommentaires = (d: DossiersDesign, p: IdProjet): string => join(d.prive, "relecture", `${p}.commentaires.json`);
+export const reviewStore = (d: DossiersDesign, p: ProjectId): string => join(d.prive, "relecture", `${p}.git`);
+export const commentsFile = (d: DossiersDesign, p: ProjectId): string => join(d.prive, "relecture", `${p}.commentaires.json`);
 
-function lirePlage(texte: string): [number, number] | null {
-  const m = /^(\d{1,5})-(\d{1,5})$/.exec(texte.trim());
+function lirePlage(text: string): [number, number] | null {
+  const m = /^(\d{1,5})-(\d{1,5})$/.exec(text.trim());
   if (!m) return null;
   const [min, max] = [Number(m[1]), Number(m[2])];
   return min >= 1 && max <= 65535 && min <= max ? [min, max] : null;
 }
 
-export function plagesConteneur(portsApps: string | undefined): [number, number][] {
-  const base = plagePortsConteneur();
+export function containerRanges(portsApps: string | undefined): [number, number][] {
+  const base = containerPortRange();
   const plages: [number, number][] = [base];
-  const autre = portsApps === undefined ? null : lirePlage(portsApps);
-  if (autre && (autre[0] !== base[0] || autre[1] !== base[1])) plages.push(autre);
+  const other = portsApps === undefined ? null : lirePlage(portsApps);
+  if (other && (other[0] !== base[0] || other[1] !== base[1])) plages.push(other);
   return plages;
 }
 
-export function projetPourAdresse(url: string, c: ContexteDisponibilite): ProjetSuivi | null {
+export function projectForUrl(url: string, c: AvailabilityContext): TrackedProject | null {
   let u: URL;
   try { u = new URL(url); } catch { return null; }
   if (u.protocol !== "http:" || (u.hostname !== "localhost" && u.hostname !== "127.0.0.1") || u.port === "") return null;
   const port = Number(u.port);
-  const appli = c.appsLancees.find((a) => a.port === port);
-  if (appli) return projetPourFenetreApp(appli.dossier, appli.nom);
-  if (c.plages.some(([min, max]) => port >= min && port <= max)) return { type: "demo", projet: projetDemo(port), port };
+  const app = c.appsLancees.find((a) => a.port === port);
+  if (app) return projectForAppWindow(app.dossier, app.nom);
+  if (c.plages.some(([min, max]) => port >= min && port <= max)) return { type: "demo", projet: demoProject(port), port };
   const ext = c.externes.find((e) => e.ports.includes(port));
-  if (ext) return { type: "externe", projet: projetExterne(ext.id), dossier: ext.dossier, nom: ext.nom, client: ext.client };
+  if (ext) return { type: "externe", projet: externalProject(ext.id), dossier: ext.dossier, nom: ext.nom, client: ext.client };
   return null;
 }
 
-export function projetPourFenetreApp(dossier: string, nom: string): ProjetSuivi {
-  return { type: "app", projet: projetApp(dossier), dossier, nom };
+export function projectForAppWindow(dossier: string, name: string): TrackedProject {
+  return { type: "app", projet: appProject(dossier), dossier, nom: name };
 }
 
-export function projetPourSite(id: string, nom: string): ProjetSuivi {
-  return { type: "site", projet: projetSite(id), id, nom };
+export function projectForSite(id: string, name: string): TrackedProject {
+  return { type: "site", projet: siteProject(id), id, nom: name };
 }
 
-export function destinationDe(p: ProjetSuivi, clients: ClientExterne[]): { libelle: string } | { indisponible: string } {
+export function destinationDe(p: TrackedProject, clients: ClientExterne[]): { libelle: string } | { indisponible: string } {
   if (p.type !== "externe") return { libelle: "l'agent" };
   const client = p.client === null ? undefined : clients.find((k) => k.id === p.client);
   return client ? { libelle: `Claude Code (${client.nom})` } : { indisponible: SANS_CLIENT };

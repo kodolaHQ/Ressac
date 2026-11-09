@@ -3,7 +3,7 @@ import { mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { AUCUN_WORKFLOW_OUVERT } from "../../../packages/noyau/src/index";
+import { NO_WORKFLOW_OPEN } from "../../../packages/noyau/src/index";
 import { inWindow, newWindow, waitFor, waitReady, waitWindowCount } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
@@ -300,7 +300,7 @@ describe("workflow_ouvert", () => {
     await homeAgent();
     let session = lastSessionConfig();
     const open = () => workflowOpen(session);
-    await poll(open, AUCUN_WORKFLOW_OUVERT);
+    await poll(open, NO_WORKFLOW_OPEN);
 
     await builder("veille");
     await poll(open, '{"widget":"veille","bloc":null}');
@@ -317,10 +317,10 @@ describe("workflow_ouvert", () => {
     session = lastSessionConfig();
     await poll(open, '{"widget":"veille","bloc":"tri"}');
     // The main token (no window) sees no builder.
-    expect((await callTool(dataDir, "workflow_ouvert")).texte).toBe(AUCUN_WORKFLOW_OUVERT);
+    expect((await callTool(dataDir, "workflow_ouvert")).texte).toBe(NO_WORKFLOW_OPEN);
     // Builder left: nothing open.
     await newTab();
-    await poll(open, AUCUN_WORKFLOW_OUVERT);
+    await poll(open, NO_WORKFLOW_OPEN);
   });
 
   it("workflow_ouvert per window: each window's session gets its own widget and block; a closed window's session is gone", async () => {

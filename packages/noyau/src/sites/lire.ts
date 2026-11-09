@@ -3,14 +3,14 @@ import { constants } from "node:fs";
 import { lstat, open, readdir, realpath } from "node:fs/promises";
 import { join, sep } from "node:path";
 import { watch } from "chokidar";
-import type { CheminsEspace } from "../chemins.js";
+import type { SpacePaths } from "../chemins.js";
 import {
   DeclarationSite,
-  ERREUR_ID_SITE,
-  fichierRetoucheIntrouvable,
+  SITE_ID_ERROR,
+  tweakFileNotFound,
   ID_SITE,
-  RETOUCHE_MAX,
-  RETOUCHES_MAX_TOTAL,
+  TWEAK_MAX,
+  TWEAKS_MAX_TOTAL,
   SITE_JSON_MAX,
   verifierDeclarationSite,
 } from "./schemas.js";
@@ -18,14 +18,14 @@ import {
 export type SiteLu =
   | { id: string; dossier: string; declaration: DeclarationSite; aAccueil: boolean }
   | { id: string; dossier: string; erreur: string };
-export type RetouchesLues = { js: Record<string, string>; css: Record<string, string> };
+export type TweaksRead = { js: Record<string, string>; css: Record<string, string> };
 
-const ERREUR_MAX = 300;
-const REGROUPEMENT_MS = 150;
+const MAX_ERROR = 300;
+const GROUPING_MS = 150;
 
 /** Reads an ordinary file (never a link: O_NOFOLLOW), at most `max` bytes; fails if it is bigger. */
-async function lireBorne(chemin: string, max: number): Promise<string> {
-  const f = await open(chemin, constants.O_RDONLY | constants.O_NOFOLLOW);
+async function lireBorne(path: string, max: number): Promise<string> {
+  const f = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
     const st = await f.stat();
     if (!st.isFile()) throw new Error("pas un fichier ordinaire");
@@ -45,13 +45,13 @@ async function lireBorne(chemin: string, max: number): Promise<string> {
 }
 
 async function lireDeclaration(dossier: string, o: { adressesLocales: boolean }): Promise<{ declaration: DeclarationSite } | { erreur: string }> {
-  const fichier = join(dossier, "site.json");
+  const file = join(dossier, "site.json");
   let brut: unknown;
   try {
-    const s = await lstat(fichier);
+    const s = await lstat(file);
     if (!s.isFile()) return { erreur: "site.json n'est pas un fichier ordinaire" };
     if (s.size > SITE_JSON_MAX) return { erreur: `site.json dépasse ${SITE_JSON_MAX / 1024} Ko` };
-    brut = JSON.parse((await lireBorne(fichier, SITE_JSON_MAX)).replace(/^\uFEFF/, ""));
+    brut = JSON.parse((await lireBorne(file, SITE_JSON_MAX)).replace(/^\uFEFF/, ""));
   } catch (e) {
     if ((e as Error).message === "trop gros") return { erreur: `site.json dépasse ${SITE_JSON_MAX / 1024} Ko` };
     // Fixed text: the system's message would quote Mac paths.
@@ -60,29 +60,29 @@ async function lireDeclaration(dossier: string, o: { adressesLocales: boolean })
   const r = DeclarationSite.safeParse(brut);
   if (!r.success) {
     const p = r.error.issues[0]!;
-    const texte = `site.json invalide : ${[...p.path, p.message].join(" : ")}`;
-    return { erreur: texte.length > ERREUR_MAX ? texte.slice(0, ERREUR_MAX - 1) + "…" : texte };
+    const text = `site.json invalide : ${[...p.path, p.message].join(" : ")}`;
+    return { erreur: text.length > MAX_ERROR ? text.slice(0, MAX_ERROR - 1) + "…" : text };
   }
-  const refus = verifierDeclarationSite(r.data, o);
-  return refus ? { erreur: `site.json invalide : ${refus}` } : { declaration: r.data };
+  const denial = verifierDeclarationSite(r.data, o);
+  return denial ? { erreur: `site.json invalide : ${denial}` } : { declaration: r.data };
 }
 
-async function lireUn(c: CheminsEspace, id: string, o: { adressesLocales: boolean }): Promise<SiteLu> {
+async function lireUn(c: SpacePaths, id: string, o: { adressesLocales: boolean }): Promise<SiteLu> {
   const dossier = join(c.sites, id);
-  if (!ID_SITE.test(id)) return { id, dossier, erreur: ERREUR_ID_SITE };
+  if (!ID_SITE.test(id)) return { id, dossier, erreur: SITE_ID_ERROR };
   const lu = await lireDeclaration(dossier, o);
   if ("erreur" in lu) return { id, dossier, erreur: lu.erreur };
-  let aAccueil = false;
+  let hasHome = false;
   try {
-    aAccueil = (await lstat(join(dossier, "accueil", "index.html"))).isFile();
+    hasHome = (await lstat(join(dossier, "accueil", "index.html"))).isFile();
   } catch {
     // no home
   }
-  return { id, dossier, declaration: lu.declaration, aAccueil };
+  return { id, dossier, declaration: lu.declaration, aAccueil: hasHome };
 }
 
 /** The site apps on disk, sorted by id; a broken app is reported, it does not prevent reading the others. */
-export async function lireSites(c: CheminsEspace, o: { adressesLocales: boolean }): Promise<SiteLu[]> {
+export async function lireSites(c: SpacePaths, o: { adressesLocales: boolean }): Promise<SiteLu[]> {
   let ids: string[];
   try {
     // `isDirectory` is false for a symbolic link: a link to a folder is ignored.
@@ -97,7 +97,7 @@ export async function lireSites(c: CheminsEspace, o: { adressesLocales: boolean 
 }
 
 /** An app by its id; null if the folder does not exist (or is hidden, a symbolic link, an invalid name). */
-export async function lireSite(c: CheminsEspace, id: string, o: { adressesLocales: boolean }): Promise<SiteLu | null> {
+export async function lireSite(c: SpacePaths, id: string, o: { adressesLocales: boolean }): Promise<SiteLu | null> {
   if (!id || id.startsWith(".") || /[\\/\0]/.test(id)) return null;
   try {
     if (!(await lstat(join(c.sites, id))).isDirectory()) return null;
@@ -108,21 +108,21 @@ export async function lireSite(c: CheminsEspace, id: string, o: { adressesLocale
 }
 
 /** The files cited by the tweaks, read under `retouches/`: never a link, never outside the folder, bounded. */
-export async function lireRetouches(s: Extract<SiteLu, { declaration: DeclarationSite }>): Promise<RetouchesLues | { erreur: string }> {
+export async function readTweaks(s: Extract<SiteLu, { declaration: DeclarationSite }>): Promise<TweaksRead | { erreur: string }> {
   const base = join(s.dossier, "retouches");
   const manque = { erreur: "retouches : dossier de l'appli introuvable" };
-  let racineReelle: string;
+  let realRoot: string;
   try {
     // Neither the app's folder nor `retouches/` can be a link (even replaced since the site was read).
     if (!(await lstat(s.dossier)).isDirectory()) return manque;
     const dossierReel = await realpath(s.dossier);
     if (!(await lstat(base)).isDirectory()) throw new Error("pas un dossier");
-    racineReelle = await realpath(base);
-    if (!racineReelle.startsWith(dossierReel + sep)) throw new Error("hors du dossier");
+    realRoot = await realpath(base);
+    if (!realRoot.startsWith(dossierReel + sep)) throw new Error("hors du dossier");
   } catch {
-    racineReelle = "";
+    realRoot = "";
   }
-  const sortie: RetouchesLues = { js: {}, css: {} };
+  const sortie: TweaksRead = { js: {}, css: {} };
   let total = 0;
   for (const genre of ["js", "css"] as const) {
     const lues = new Set<string>();
@@ -130,16 +130,16 @@ export async function lireRetouches(s: Extract<SiteLu, { declaration: Declaratio
       for (const f of r[genre]) {
         if (lues.has(f)) continue;
         lues.add(f);
-        const chemin = join(base, f);
+        const path = join(base, f);
         try {
-          const st = await lstat(chemin);
-          if (!st.isFile() || st.size > RETOUCHE_MAX) throw new Error("refusé");
-          if (!racineReelle || !(await realpath(chemin)).startsWith(racineReelle + sep)) throw new Error("hors du dossier");
+          const st = await lstat(path);
+          if (!st.isFile() || st.size > TWEAK_MAX) throw new Error("refusé");
+          if (!realRoot || !(await realpath(path)).startsWith(realRoot + sep)) throw new Error("hors du dossier");
           total += st.size;
-          if (total > RETOUCHES_MAX_TOTAL) throw new Error("trop gros");
-          sortie[genre][f] = await lireBorne(chemin, RETOUCHE_MAX);
+          if (total > TWEAKS_MAX_TOTAL) throw new Error("trop gros");
+          sortie[genre][f] = await lireBorne(path, TWEAK_MAX);
         } catch {
-          return { erreur: fichierRetoucheIntrouvable(f) };
+          return { erreur: tweakFileNotFound(f) };
         }
       }
     }
@@ -151,41 +151,41 @@ export async function lireRetouches(s: Extract<SiteLu, { declaration: Declaratio
  * Calls `rappel(id, quoi)` after each burst of changes: « declaration » (site.json, or the folder itself
  * appearing or disappearing), « retouches » or « accueil ». Returns the stop function.
  */
-export function surveillerSites(
-  c: CheminsEspace,
-  rappel: (id: string, quoi: "declaration" | "retouches" | "accueil") => void,
+export function watchSites(
+  c: SpacePaths,
+  rappel: (id: string, what: "declaration" | "retouches" | "accueil") => void,
 ): () => Promise<void> {
   mkdirSync(c.sites, { recursive: true });
-  const minuteries = new Map<string, NodeJS.Timeout>();
-  const observateur = watch(c.sites, {
+  const timers = new Map<string, NodeJS.Timeout>();
+  const observer = watch(c.sites, {
     ignoreInitial: true,
     followSymlinks: false,
     ignored: (p) => p.split(/[\\/]/).some((s) => s === "node_modules" || s === ".corbeille") || p.endsWith(".tmp"),
   });
-  observateur.on("all", (evenement, chemin) => {
-    const parts = chemin.slice(c.sites.length).split(/[\\/]/).filter(Boolean);
+  observer.on("all", (event, path) => {
+    const parts = path.slice(c.sites.length).split(/[\\/]/).filter(Boolean);
     const id = parts[0];
     if (!id || id.startsWith(".")) return;
-    let quoi: "declaration" | "retouches" | "accueil" | null = null;
-    if (parts.length === 1) quoi = evenement === "addDir" || evenement === "unlinkDir" ? "declaration" : null;
-    else if (parts[1] === "site.json" && parts.length === 2) quoi = "declaration";
-    else if (parts[1] === "retouches") quoi = "retouches";
-    else if (parts[1] === "accueil") quoi = "accueil";
-    if (!quoi) return;
-    const cle = `${id}\0${quoi}`;
-    clearTimeout(minuteries.get(cle));
-    const q = quoi;
-    minuteries.set(
-      cle,
+    let what: "declaration" | "retouches" | "accueil" | null = null;
+    if (parts.length === 1) what = event === "addDir" || event === "unlinkDir" ? "declaration" : null;
+    else if (parts[1] === "site.json" && parts.length === 2) what = "declaration";
+    else if (parts[1] === "retouches") what = "retouches";
+    else if (parts[1] === "accueil") what = "accueil";
+    if (!what) return;
+    const key = `${id}\0${what}`;
+    clearTimeout(timers.get(key));
+    const q = what;
+    timers.set(
+      key,
       setTimeout(() => {
-        minuteries.delete(cle);
+        timers.delete(key);
         rappel(id, q);
-      }, REGROUPEMENT_MS),
+      }, GROUPING_MS),
     );
   });
   return async () => {
-    for (const m of minuteries.values()) clearTimeout(m);
-    minuteries.clear();
-    await observateur.close();
+    for (const m of timers.values()) clearTimeout(m);
+    timers.clear();
+    await observer.close();
   };
 }

@@ -1,5 +1,5 @@
 import { expect, test, vi } from "vitest";
-import { ErreurAtelier } from "@webaios/noyau";
+import { WorkshopError } from "@webaios/noyau";
 import { REGROUPEMENT_MS, SessionsAgent, TAMPON_MAX, Tampon, type SessionLike } from "../../core/agent/sessions";
 
 class FausseSession implements SessionLike {
@@ -98,7 +98,7 @@ test("the buffer cuts a newline-free output exactly at the character", () => {
 });
 
 test("Docker absent → docker-absent; other error → error with message", async () => {
-  const absent = preparer(() => Promise.reject(new ErreurAtelier("docker-absent")));
+  const absent = preparer(() => Promise.reject(new WorkshopError("docker-absent")));
   await absent.gestion.demarrer("F", taille);
   expect(absent.etats()).toEqual([{ etat: "preparation" }, { etat: "docker-absent" }]);
   const casse = preparer(() => Promise.reject(new Error("x")));

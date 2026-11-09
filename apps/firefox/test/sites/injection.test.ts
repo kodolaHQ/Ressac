@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { accordCouvre, accordNecessaire, DeclarationSite, type RetouchesLues } from "@webaios/noyau";
+import { grantCovers, grantNeeded, DeclarationSite, type TweaksRead } from "@webaios/noyau";
 import { CONSOLE_RETOUCHES_TOTAL, type InjectionCadre } from "../../shared/sites";
 import { ajouterConsoleRetouche, injectionPour, repriseDansCadre, type SiteOuvrable } from "../../core/sites/injection";
 
@@ -24,7 +24,7 @@ const site: SiteOuvrable = {
   depart: "https://vidola-b.example/",
   accordRequis: false,
 };
-const retouches: RetouchesLues = { js: { "a.js": "window.a = 1", "lecteur.js": "window.l = 1" }, css: { "a.css": ".shorts{display:none}" } };
+const retouches: TweaksRead = { js: { "a.js": "window.a = 1", "lecteur.js": "window.l = 1" }, css: { "a.css": ".shorts{display:none}" } };
 const avec = (accorde = true) => ({ site, retouches, accorde, garde: GARDE });
 /** The view's main page, on the site: the sub-frames'. */
 const PAGE = "https://vidola-b.example/series/x";
@@ -112,13 +112,13 @@ test("a grant covering fewer rights than the declaration (frames added): no inje
   const plus = DeclarationSite.parse({ ...declaration, retouches: [...declaration.retouches, { correspond: ["/x"], cadres: ["https://*.autre.example/*"] }] });
   const accord = { domaines: ["vidola-a.example"], connexion: ["compte.example"], cadres: ["https://*.lecteur.example/*"], reprise: true };
   // What the service does: accorde = !accordRequis, accordRequis = accordNecessaire && !accordCouvre.
-  const requis = accordNecessaire(plus) && !accordCouvre(accord, plus);
+  const requis = grantNeeded(plus) && !grantCovers(accord, plus);
   expect(requis).toBe(true);
   const o = { ...avec(!requis), site: { ...site, declaration: plus, accordRequis: requis } };
   expect(injectionPour(o, { url: "https://vidola-b.example/series/x", principal: true })).toBeNull();
   expect(injectionPour(o, { url: "https://www.lecteur.example/v", principal: false, page: PAGE })).toBeNull();
   // With the old declaration, the same grant is enough.
-  expect(accordCouvre(accord, declaration)).toBe(true);
+  expect(grantCovers(accord, declaration)).toBe(true);
 });
 
 test("tweaks console: text truncated to 2000 characters, source to 500, total bounded, 50 at most, never verified", () => {

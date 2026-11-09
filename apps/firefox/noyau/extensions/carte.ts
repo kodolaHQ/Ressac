@@ -1,10 +1,10 @@
-import { accordRenforce, empreintePortee, libellesPortee, type AnalyseManifeste } from "../../../../packages/noyau/src/index.ts";
+import { grantStrengthened, scopeHash, scopeLabels, type ManifestAnalysis } from "../../../../packages/noyau/src/index.ts";
 import type { CarteExtension } from "../../shared/extensions.ts";
 import type { Espace } from "../../shared/modele.ts";
 
 /** The grant card of an agent extension, to activate it in `espace` (pure). */
 export function carteDe(
-  a: AnalyseManifeste,
+  a: ManifestAnalysis,
   o: { cle: string; espace: Espace; espaces: Espace[]; maj?: { de: string }; remplaceAussi?: string[] },
 ): CarteExtension {
   const p = a.portee;
@@ -13,17 +13,17 @@ export function carteDe(
     nom: a.nom,
     source: "agent",
     version: a.version,
-    droits: libellesPortee(p, "agent"),
+    droits: scopeLabels(p, "agent"),
     sites: [...p.hotes],
     tousLesSites: p.tousLesSites,
     reseau: [...p.reseau],
-    renforce: accordRenforce(p, "agent"),
+    renforce: grantStrengthened(p, "agent"),
     espace: o.espace.nom,
     espaceId: o.espace.id,
     autresEspaces: o.espaces.filter((e) => e.profil === o.espace.profil && e.id !== o.espace.id).map((e) => e.nom),
     remplaceAussi: [...(o.remplaceAussi ?? [])],
     maj: o.maj ? { de: o.maj.de } : null,
-    empreinte: empreintePortee(p),
+    empreinte: scopeHash(p),
   };
 }
 

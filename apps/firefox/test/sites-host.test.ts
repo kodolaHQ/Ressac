@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpath
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { accorderSite, cheminsEspace, DeclarationSite, lireAccordsSites, MemoireSite } from "../../../packages/noyau/src/index";
+import { accorderSite, spacePaths, DeclarationSite, lireAccordsSites, SiteMemory } from "../../../packages/noyau/src/index";
 import { modifierAvecAgent } from "../shared/sites";
 import { createSites, demandeAccord, empreinteDroits, SiteSouvenirs, type SitesChrome } from "../noyau/sites";
 import { SchemaActionSite } from "../shared/api";
@@ -44,7 +44,7 @@ const declaration = {
 
 function mount(gateOuvrir?: { reached: () => void; open: Promise<void> }, lireLiens: (page: string, signal?: AbortSignal) => Promise<string[]> = async () => []) {
   const racine = realpathSync(mkdtempSync(join(tmpdir(), "sites-host-")));
-  const chemins = cheminsEspace(join(racine, "espace"));
+  const chemins = spacePaths(join(racine, "espace"));
   const dataDir = join(racine, "profil");
   mkdirSync(dataDir, { recursive: true });
   const write = (id: string, texte: string) => {
@@ -249,7 +249,7 @@ describe("agir", () => {
 
   it("oublier deletes memoire.json and tells a subscribed home screen the memory is empty", async () => {
     const m = mount();
-    const mem = await MemoireSite.ouvrir(join(m.dataDir, "sites"), "vidola");
+    const mem = await SiteMemory.ouvrir(join(m.dataDir, "sites"), "vidola");
     mem.retenir("serie", { a: 1 }, "/s");
     await mem.vider();
     const fichier = join(m.dataDir, "sites", "vidola", "memoire.json");
@@ -511,7 +511,7 @@ describe("outils", () => {
     expect(l.find((s) => s.id === "vidola")!.empreinte).toMatch(/\S/);
     expect(l.find((s) => s.id === "casse")).toMatchObject({ erreur: expect.any(String) });
     expect(l.find((s) => s.id === "casse")).not.toHaveProperty("empreinte");
-    const mem = await MemoireSite.ouvrir(join(m.dataDir, "sites"), "vidola");
+    const mem = await SiteMemory.ouvrir(join(m.dataDir, "sites"), "vidola");
     mem.retenir("serie", 1, "/s");
     await mem.vider();
     expect((await m.sites.outils.memoire("vidola"))!.valeurs).toHaveProperty("serie");

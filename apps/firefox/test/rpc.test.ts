@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { OngletIntrouvable } from "../../../packages/noyau/src/mcp/pont";
+import { TabNotFound } from "../../../packages/noyau/src/mcp/pont";
 import { createRpc, type Handler } from "../shared/rpc";
 
 /** Two RPC ends wired in memory; messages are delivered on a later microtask, like a pipe. */
@@ -19,7 +19,7 @@ describe("rpc", () => {
   it("rejects with the handler error name and own properties", async () => {
     const { a } = pair({
       read: () => {
-        throw new OngletIntrouvable("t9");
+        throw new TabNotFound("t9");
       },
     });
     const e = await a.request("read").catch((x: unknown) => x);

@@ -1,15 +1,15 @@
 import { expect, test, vi } from "vitest";
-import { cheminsEspace } from "../../src/chemins.js";
+import { spacePaths } from "../../src/chemins.js";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { Atelier, DELAI_CONSTRUCTION_MS, IMAGE, empreinteDockerfile, nomRecolte, plagePortsConteneur, scriptArretSession, trouverDocker } from "../../src/conteneur/atelier.js";
+import { Atelier, BUILD_DELAY_MS, IMAGE, dockerfileHash, harvestName, containerPortRange, sessionStopScript, findDocker } from "../../src/conteneur/atelier.js";
 import { execFile, spawn } from "node:child_process";
 import { existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { DOSSIERS_OUTILS } from "../../src/conteneur/executeur.js";
+import { TOOLS_FOLDERS } from "../../src/conteneur/executeur.js";
 import { executeurFactice } from "../aide/executeur-factice.js";
 
-const chemins = cheminsEspace("/Users/t/WebAiOs");
+const chemins = spacePaths("/Users/t/WebAiOs");
 
 test("docker not found → docker-absent, without an exception", async () => {
   expect(await new Atelier({ chemins, docker: null }).etat()).toBe("docker-absent");
@@ -22,16 +22,16 @@ test("docker info failing → docker-absent", async () => {
 });
 
 test("trouverDocker finds OrbStack outside the PATH", () => {
-  expect(trouverDocker({ PATH: "/usr/bin", HOME: "/Users/t" }, (p) => p === "/Users/t/.orbstack/bin/docker")).toBe(
+  expect(findDocker({ PATH: "/usr/bin", HOME: "/Users/t" }, (p) => p === "/Users/t/.orbstack/bin/docker")).toBe(
     "/Users/t/.orbstack/bin/docker",
   );
 });
 
 test("trouverDocker prefers the PATH, and returns null if nothing", () => {
-  expect(trouverDocker({ PATH: "/a:/b", HOME: "/h" }, (p) => p === "/b/docker" || p === "/usr/local/bin/docker")).toBe(
+  expect(findDocker({ PATH: "/a:/b", HOME: "/h" }, (p) => p === "/b/docker" || p === "/usr/local/bin/docker")).toBe(
     "/b/docker",
   );
-  expect(trouverDocker({ PATH: "/a", HOME: "/h" }, () => false)).toBeNull();
+  expect(findDocker({ PATH: "/a", HOME: "/h" }, () => false)).toBeNull();
 });
 
 test("etat selon docker inspect", async () => {
@@ -71,7 +71,7 @@ test("assurerDemarre on absent: build if the image is missing then run with the 
 test("assurerDemarre on arrete → docker start", async () => {
   let demarre = false;
   const { executer, appels } = executeurFactice([
-    [/ inspect -f .*Mounts/, { code: 0, stdout: `${chemins.racine}|${empreinteDockerfile()}\n` }],
+    [/ inspect -f .*Mounts/, { code: 0, stdout: `${chemins.racine}|${dockerfileHash()}\n` }],
     [/ inspect -f/, () => ({ code: 0, stdout: demarre ? "true\n" : "false\n" })],
     [/ start /, () => ((demarre = true), { code: 0 })],
   ]);
@@ -106,13 +106,13 @@ test("the published ports avoid Vite's (5173…): 5280-5299", async () => {
 });
 
 test("trouverDocker finds Docker Desktop installed per user (~/.docker/bin)", () => {
-  expect(trouverDocker({ PATH: "/usr/bin", HOME: "/Users/t" }, (p) => p === "/Users/t/.docker/bin/docker")).toBe(
+  expect(findDocker({ PATH: "/usr/bin", HOME: "/Users/t" }, (p) => p === "/Users/t/.docker/bin/docker")).toBe(
     "/Users/t/.docker/bin/docker",
   );
 });
 
 test("executeurParDefaut adds ~/.docker/bin to the PATH (credential helpers)", () => {
-  expect(DOSSIERS_OUTILS).toContain(join(homedir(), ".docker", "bin"));
+  expect(TOOLS_FOLDERS).toContain(join(homedir(), ".docker", "bin"));
 });
 
 // Existing container created on another folder or with an old Dockerfile → recreated.
@@ -129,14 +129,14 @@ function fauxDocker(o: { source: string; empreinteConteneur: string; empreinteIm
 }
 
 test("existing container on the right folder and the right image → kept", async () => {
-  const e = empreinteDockerfile();
+  const e = dockerfileHash();
   const { executer, appels } = fauxDocker({ source: chemins.racine, empreinteConteneur: e, empreinteImage: e });
   expect(await new Atelier({ chemins, docker: "docker", executer }).assurerDemarre()).toBe("demarre");
   expect(appels.some((a) => a.args[0] === "rm")).toBe(false);
 });
 
 test("existing container mounted on another folder → removed then recreated", async () => {
-  const e = empreinteDockerfile();
+  const e = dockerfileHash();
   const { executer, appels } = fauxDocker({ source: "/tmp/ailleurs", empreinteConteneur: e, empreinteImage: e });
   await new Atelier({ chemins, docker: "docker", executer }).assurerDemarre();
   expect(appels.some((a) => a.args.join(" ") === "rm -f webaios-atelier")).toBe(true);
@@ -147,7 +147,7 @@ test("modified Dockerfile → image rebuilt and container recreated", async () =
   const { executer, appels } = fauxDocker({ source: chemins.racine, empreinteConteneur: "ancienne", empreinteImage: "ancienne" });
   await new Atelier({ chemins, docker: "docker", executer }).assurerDemarre();
   const build = appels.find((a) => a.args[0] === "build")!;
-  expect(build.args).toContain(`webaios.dockerfile=${empreinteDockerfile()}`);
+  expect(build.args).toContain(`webaios.dockerfile=${dockerfileHash()}`);
   expect(appels.some((a) => a.args.join(" ") === "rm -f webaios-atelier")).toBe(true);
 });
 
@@ -163,7 +163,7 @@ test("interactive session: its PID is noted in the container, and stopping it ki
   const appel = appels.find((x) => x.args[0] === "exec")!;
   expect(appel.args.slice(0, 4)).toEqual(["exec", "webaios-atelier", "sh", "-c"]);
   expect(appel.args[4]).toContain(`cat ${pid}`);
-  expect(appel.args[4]).toBe(scriptArretSession(pid, "ab12"));
+  expect(appel.args[4]).toBe(sessionStopScript(pid, "ab12"));
   expect(() => a.commandeSession("../x", ["claude"])).toThrow();
 });
 
@@ -208,7 +208,7 @@ test("building and launching the container have a maximum timeout", async () => 
   ]);
   await new Atelier({ chemins, docker: "docker", executer }).assurerDemarre();
   for (const a of appels) expect(a.opts?.delaiMs, a.args.join(" ")).toBeGreaterThan(0);
-  expect(appels.find((a) => a.args[0] === "build")!.opts?.delaiMs).toBe(DELAI_CONSTRUCTION_MS);
+  expect(appels.find((a) => a.args[0] === "build")!.opts?.delaiMs).toBe(BUILD_DELAY_MS);
 });
 
 const vivant = (pid: number) => {
@@ -230,7 +230,7 @@ test("the stop script kills an agent that ignores HUP and TERM (claude intercept
   const fini = new Promise((ok) => agent.on("exit", ok));
   await expect.poll(() => existsSync(f)).toBe(true);
   const debut = Date.now();
-  await new Promise<void>((ok, ko) => execFile("sh", ["-c", scriptArretSession(f, "local")], (e) => (e ? ko(e) : ok())));
+  await new Promise<void>((ok, ko) => execFile("sh", ["-c", sessionStopScript(f, "local")], (e) => (e ? ko(e) : ok())));
   await fini;
   expect(Date.now() - debut).toBeLessThan(8000);
   expect(vivant(agent.pid!)).toBe(false);
@@ -307,9 +307,9 @@ test("commandeRecolte of an action names the container webaios-action-<id>; of a
   expect(nom(atelier.commandeRecolte({ type: "action", id: "gitlab" }, "/d", "/app/docker/moteur"))).toBe("webaios-action-gitlab");
   expect(nom(atelier.commandeRecolte({ type: "widget", id: "meteo" }, "/d", "/app/docker/moteur"))).toBe("webaios-recolte-meteo");
   expect(nom(atelier.commandeRecolte("meteo", "/d", "/app/docker/moteur"))).toBe("webaios-recolte-meteo");
-  expect(nomRecolte({ type: "action", id: "gitlab" })).toBe("webaios-action-gitlab");
-  expect(nomRecolte("meteo")).toBe("webaios-recolte-meteo");
-  expect(() => nomRecolte({ type: "action", id: "../x" })).toThrow();
+  expect(harvestName({ type: "action", id: "gitlab" })).toBe("webaios-action-gitlab");
+  expect(harvestName("meteo")).toBe("webaios-recolte-meteo");
+  expect(() => harvestName({ type: "action", id: "../x" })).toThrow();
   // The removal targets the same name.
   const appels: string[][] = [];
   const supprimeur = new Atelier({ chemins, docker: "/usr/local/bin/docker", executer: async (_c, args) => (appels.push(args), { code: 0, stdout: "", stderr: "" }) });
@@ -373,11 +373,11 @@ test("WEBAIOS_PORTS_CONTENEUR gives the published range and tells it to the cont
   };
   try {
     vi.stubEnv("WEBAIOS_PORTS_CONTENEUR", "5300-5319");
-    expect(plagePortsConteneur()).toEqual([5300, 5319]);
+    expect(containerPortRange()).toEqual([5300, 5319]);
     expect(await runArgs()).toEqual(expect.arrayContaining(["127.0.0.1:5300-5319:5300-5319", "WEBAIOS_PORTS=5300-5319"]));
     for (const invalide of ["", "abc", "5319-5300", "80-90"]) {
       vi.stubEnv("WEBAIOS_PORTS_CONTENEUR", invalide);
-      expect(plagePortsConteneur()).toEqual([5280, 5299]);
+      expect(containerPortRange()).toEqual([5280, 5299]);
     }
     expect(await runArgs()).toEqual(expect.arrayContaining(["127.0.0.1:5280-5299:5280-5299", "WEBAIOS_PORTS=5280-5299"]));
   } finally {

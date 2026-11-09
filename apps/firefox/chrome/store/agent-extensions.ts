@@ -1,4 +1,4 @@
-import type { Portee } from "../../../../packages/noyau/src/index.ts";
+import type { Scope } from "../../../../packages/noyau/src/index.ts";
 import type { CarteExtension } from "../../shared/extensions";
 import { hotePermisAgent, urlPermiseAgent } from "../../core/extensions/reseau";
 import type { EtatAcces, IdFenetre, IdProfil } from "../../shared/modele";
@@ -34,7 +34,7 @@ const BACKGROUND_PAGE = "/_generated_background_page.html";
 export const SCOPES_WAIT_MS = 5_000;
 
 export type CheckKind = "urlPermise" | "hotePermis" | "estOnglet";
-type Scopes = Record<string, { cle: string; accord: Portee; profils: IdProfil[]; actif: boolean }>;
+type Scopes = Record<string, { cle: string; accord: Scope; profils: IdProfil[]; actif: boolean }>;
 
 export interface AgentExtensions {
   /** The requests the kernel host sends about its extensions (extensions.*, navigateur.espaces). */

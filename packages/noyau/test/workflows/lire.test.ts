@@ -2,9 +2,9 @@ import { afterEach, beforeEach, expect, test } from "vitest";
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { lireWorkflow, type ResultatValidation } from "../../src/index.js";
+import { lireWorkflow, type ValidationResult } from "../../src/index.js";
 
-const erreurDe = (r: ResultatValidation | undefined) => (r && !r.ok ? r.erreur : undefined);
+const erreurDe = (r: ValidationResult | undefined) => (r && !r.ok ? r.erreur : undefined);
 
 let racine: string;
 let dossier: string;

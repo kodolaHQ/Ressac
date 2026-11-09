@@ -1,11 +1,11 @@
-import { cheminDansConteneur, prefixeRemarques, type CheminsEspace, type IdProjet, type Lot, type ProjetSuivi } from "@webaios/noyau";
+import { pathInContainer, remarksPrefix, type SpacePaths, type ProjectId, type Lot, type TrackedProject } from "@webaios/noyau";
 import type { IdFenetre } from "../../shared/modele";
 
 export interface OptionsEnvoi {
-  chemins: CheminsEspace;
+  chemins: SpacePaths;
   /** The main window the agent considers active. */
   fenetreAgent(): IdFenetre | undefined;
-  dossierLot(p: IdProjet, lot: string): string;
+  dossierLot(p: ProjectId, lot: string): string;
   /** `agent.preRemplir`: opens the panel and puts the text in the input, without sending it. */
   preRemplir(f: IdFenetre, texte: string): void;
   /** Like ⌘J: the agent's terminal takes the keyboard. */
@@ -23,7 +23,7 @@ export const AUCUNE_FENETRE = "Aucune fenêtre principale pour l'agent : le lot 
  * After writing a batch: for an agent batch (app, demo), a line is pre-filled in its session, never
  * sent. An external project has nothing more: its batch is already in the queue of the connected Claude Code.
  */
-export function creerEnvoi(o: OptionsEnvoi): (p: ProjetSuivi, lot: Lot) => Promise<void> {
+export function creerEnvoi(o: OptionsEnvoi): (p: TrackedProject, lot: Lot) => Promise<void> {
   return async (p, lot) => {
     if (p.type === "externe") return;
     let f = o.fenetreAgent();
@@ -32,12 +32,12 @@ export function creerEnvoi(o: OptionsEnvoi): (p: ProjetSuivi, lot: Lot) => Promi
       f = o.fenetreAgent();
     }
     if (f === undefined) throw new Error(AUCUNE_FENETRE);
-    const cheminLot = cheminDansConteneur(o.dossierLot(lot.projet, lot.id), o.chemins);
+    const cheminLot = pathInContainer(o.dossierLot(lot.projet, lot.id), o.chemins);
     const projet =
       p.type === "app" ? ({ type: "app", nom: p.nom, dossier: p.dossier } as const)
       : p.type === "site" ? ({ type: "site", nom: p.nom, id: p.id } as const)
       : ({ type: "demo", port: p.port } as const);
-    o.preRemplir(f, prefixeRemarques({ projet, lot, cheminLot }));
+    o.preRemplir(f, remarksPrefix({ projet, lot, cheminLot }));
     o.donnerLeTerminal(f);
     o.devant(f);
   };

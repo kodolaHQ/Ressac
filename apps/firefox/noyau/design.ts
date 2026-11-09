@@ -5,8 +5,8 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import {
-  destinationDe, etatLot, PORT_MCP_EXTERNE, plagesConteneur, projetDemo, projetPourAdresse, projetPourFenetreApp, projetPourSite, RegistreExternes, Remarques,
-  REMARQUE_VIDE, SANS_CLIENT, type Application, type CheminsEspace, type ContexteDesign, type Element, type IdProjet, type Lot, type ProjetSuivi,
+  destinationDe, batchState, PORT_MCP_EXTERNE, containerRanges, demoProject, projectForUrl, projectForAppWindow, projectForSite, ExternalRegistry, Remarques,
+  EMPTY_REMARK, SANS_CLIENT, type Application, type SpacePaths, type DesignContext, type Element, type ProjectId, type Lot, type TrackedProject,
 } from "../../../packages/noyau/src/index.ts";
 import { demarrerExternes, raisonEchec, type ServiceExternes } from "../core/design/externes.ts";
 import { creerEnvoi } from "../core/design/envoi.ts";
@@ -20,7 +20,7 @@ import {
 /** The external MCP port: the asked one, else 5279; a bad value gives NaN, which the server refuses. */
 export const externalMcpPort = (v: string | undefined): number => Number(v ?? PORT_MCP_EXTERNE);
 
-export function sourceTexte(s: ContexteDesign["source"]): string | null {
+export function sourceTexte(s: DesignContext["source"]): string | null {
   if (!s) return null;
   return s.ligne !== undefined ? `${s.fichier}:${s.ligne}` : s.fichier;
 }
@@ -33,12 +33,12 @@ export function elementAffiche(e: Element): ElementAffiche {
 }
 
 export function lotAffiche(l: Lot): LotAffiche {
-  return { id: l.id, cree: l.cree, etat: etatLot(l), destination: l.destination, elements: l.elements.map(elementAffiche) };
+  return { id: l.id, cree: l.cree, etat: batchState(l), destination: l.destination, elements: l.elements.map(elementAffiche) };
 }
 
 /** A followed project as the chrome shows it: its cart count, its destination, its name (ServiceDesign.etat). */
 export interface SuiviDesign {
-  projet: ProjetSuivi;
+  projet: TrackedProject;
   panier: number;
   destination: string | null;
   sansDestination: string | null;
@@ -67,7 +67,7 @@ export const DESIGN_METHODS = [
 
 export function createDesignHost(o: {
   dataDir: string;
-  chemins: CheminsEspace;
+  chemins: SpacePaths;
   port: number;
   maison?: string;
   sites(): Promise<{ id: string; nom: string }[]>;
@@ -82,13 +82,13 @@ export function createDesignHost(o: {
   // repositories and batches go under <dataDir>/design, never mounted in the container.
   const dossiers = { remarquesEspace: join(o.chemins.interne, "remarques"), prive: join(o.dataDir, "design") };
   const remarques = new Remarques({ dossiers });
-  let registre: RegistreExternes | null = null;
+  let registre: ExternalRegistry | null = null;
   let externes: ServiceExternes | null = null;
   let echec: string | null = null;
 
   // The batch sent to the agent: one pre-filled line in its session, never sent. The chrome reopens a window if needed
   // and design.donnerAgent brings it to the front.
-  const envoiLot = async (p: ProjetSuivi, lot: Lot): Promise<void> => {
+  const envoiLot = async (p: TrackedProject, lot: Lot): Promise<void> => {
     if (p.type === "externe") return;
     const f = await o.chrome.fenetreAgent();
     await creerEnvoi({
@@ -125,7 +125,7 @@ export function createDesignHost(o: {
   const purge = setInterval(() => void remarques.purger().catch(() => undefined), 24 * 60 * 60 * 1000);
   purge.unref();
   remarques.surChange(o.diffuser);
-  const started = RegistreExternes.ouvrir(dossiers.prive)
+  const started = ExternalRegistry.ouvrir(dossiers.prive)
     .then((r) => {
       registre = r;
       r.surChange(o.diffuser);
@@ -135,7 +135,7 @@ export function createDesignHost(o: {
         remarques,
         dossiers,
         port: o.port,
-        plages: plagesConteneur(process.env.WEBAIOS_PORTS_APPS),
+        plages: containerRanges(process.env.WEBAIOS_PORTS_APPS),
         // Stricter than the space root: nothing under the profile folder can be declared.
         racineEspace: o.dataDir,
         maison: o.maison ?? homedir(),
@@ -153,28 +153,28 @@ export function createDesignHost(o: {
 
   // The design service's project logic: applis() is the running apps with a port.
   const running = async () => (await o.applis()).flatMap((a) => (a.etat === "en-marche" && a.port !== undefined ? [{ dossier: a.dossier, nom: a.nom, port: a.port }] : []));
-  const projetSuivi = async (p: IdProjet): Promise<ProjetSuivi | null> => {
+  const projetSuivi = async (p: ProjectId): Promise<TrackedProject | null> => {
     if (p.startsWith("app-")) {
       const dossier = p.slice(4);
-      return projetPourFenetreApp(dossier, (await running()).find((a) => a.dossier === dossier)?.nom ?? dossier);
+      return projectForAppWindow(dossier, (await running()).find((a) => a.dossier === dossier)?.nom ?? dossier);
     }
     if (p.startsWith("site-")) {
       const id = p.slice(5);
       const site = (await o.sites()).find((x) => x.id === id);
-      return site ? projetPourSite(id, site.nom) : null;
+      return site ? projectForSite(id, site.nom) : null;
     }
-    if (p.startsWith("demo-")) return { type: "demo", projet: projetDemo(Number(p.slice(5))), port: Number(p.slice(5)) };
+    if (p.startsWith("demo-")) return { type: "demo", projet: demoProject(Number(p.slice(5))), port: Number(p.slice(5)) };
     const e = registre?.projets().find((x) => `ext-${x.id}` === p);
     return e ? { type: "externe", projet: p, dossier: e.dossier, nom: e.nom, client: e.client } : null;
   };
-  const destination = (p: ProjetSuivi) => {
+  const destination = (p: TrackedProject) => {
     const d = destinationDe(p, registre?.clients() ?? []);
     return "libelle" in d ? { destination: d.libelle, sansDestination: null } : { destination: null, sansDestination: d.indisponible };
   };
   const suivi = async (p: Params): Promise<SuiviDesign | null> => {
-    let projet: ProjetSuivi | null;
+    let projet: TrackedProject | null;
     if (typeof p?.url === "string" && p.url.length <= URL_MAX)
-      projet = projetPourAdresse(p.url, { appsLancees: await running(), plages: plagesConteneur(process.env.WEBAIOS_PORTS_APPS), externes: registre?.projets() ?? [] });
+      projet = projectForUrl(p.url, { appsLancees: await running(), plages: containerRanges(process.env.WEBAIOS_PORTS_APPS), externes: registre?.projets() ?? [] });
     else if (p?.url === undefined && p?.projet !== undefined) projet = await projetSuivi(checkProject(p.projet));
     else throw new Error(INVALID_REQUEST);
     if (!projet) return null;
@@ -183,7 +183,7 @@ export function createDesignHost(o: {
   };
   const erreur = (e: unknown): ResultatExtension => ({ ok: false, erreur: e instanceof Error ? e.message : String(e) });
   const ajouter = async (p: Params): Promise<ResultatExtension> => {
-    let projet: IdProjet, contexte: ContexteDesign, capture: Buffer | null;
+    let projet: ProjectId, contexte: DesignContext, capture: Buffer | null;
     const texte = p?.texte;
     try {
       if (typeof texte !== "string" || texte.length > REMARK_TEXT_MAX) throw new Error(INVALID_REQUEST);
@@ -195,7 +195,7 @@ export function createDesignHost(o: {
     } catch {
       return { ok: false, erreur: INVALID_REQUEST };
     }
-    if (texte.trim() === "") return { ok: false, erreur: REMARQUE_VIDE };
+    if (texte.trim() === "") return { ok: false, erreur: EMPTY_REMARK };
     try {
       await remarques.ajouterAuPanier(projet, { texte, contexte, capture });
       return { ok: true };
@@ -224,7 +224,7 @@ export function createDesignHost(o: {
     }
   };
   const id = (v: unknown): v is string => typeof v === "string" && v.length <= DESIGN_ID_MAX;
-  const projetId = (v: unknown): v is IdProjet => typeof v === "string" && ID_PROJECT.test(v);
+  const projetId = (v: unknown): v is ProjectId => typeof v === "string" && ID_PROJECT.test(v);
 
   const handlers: Record<(typeof DESIGN_METHODS)[number], (p: Params) => unknown> = {
     "externes.liste": (): EtatExternes =>

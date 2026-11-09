@@ -2,8 +2,8 @@
 // webaios-site: scheme cannot be registered here: a resource:// substitution serves a sanitized
 // copy), and the site images it asks for, loaded in the app's container.
 import { IMAGE_SITE_MAX } from "../../shared/sites";
-import { adresseLocale } from "../../../../packages/noyau/src/workflows/acces";
-import { hoteDansSite } from "../../../../packages/noyau/src/sites/adresses";
+import { localUrl } from "../../../../packages/noyau/src/workflows/acces";
+import { hostInSite } from "../../../../packages/noyau/src/sites/adresses";
 import { ID_SITE } from "../../../../packages/noyau/src/sites/schemas";
 import { CSP_WIDGET, affichageServi } from "../window/widget-frame";
 
@@ -279,8 +279,8 @@ export function loadImage(ouvrir: OpenRequest, url: string, o: { permise: (url: 
 function imageAllowed(url: string, domaines: readonly string[]): boolean {
   try {
     const u = new URL(url);
-    const scheme = u.protocol === "https:" || (u.protocol === "http:" && adresseLocale(u.hostname));
-    return scheme && !u.username && !u.password && hoteDansSite(u.hostname, domaines);
+    const scheme = u.protocol === "https:" || (u.protocol === "http:" && localUrl(u.hostname));
+    return scheme && !u.username && !u.password && hostInSite(u.hostname, domaines);
   } catch {
     return false;
   }

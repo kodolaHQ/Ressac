@@ -2,11 +2,11 @@ import { readdir, readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
-import type { CheminsEspace } from "../chemins.js";
+import type { SpacePaths } from "../chemins.js";
 
 const JOKERS = { mcpConfig: "{mcpConfig}", consigne: "{consigne}" } as const;
 
-export const Profil = z.object({
+export const Profile = z.object({
   id: z.string().min(1),
   nom: z.string().min(1),
   interactif: z.array(z.string()).min(1),
@@ -16,40 +16,40 @@ export const Profil = z.object({
   }),
   configMcp: z.literal("claude-json"),
 });
-export type Profil = z.infer<typeof Profil>;
+export type Profile = z.infer<typeof Profile>;
 
-export async function chargerProfils(
-  c: CheminsEspace,
-): Promise<{ profils: Profil[]; erreurs: { fichier: string; message: string }[] }> {
-  const profils: Profil[] = [];
-  const erreurs: { fichier: string; message: string }[] = [];
-  if (!existsSync(c.profils)) return { profils, erreurs };
-  for (const nom of (await readdir(c.profils)).filter((n) => n.endsWith(".json")).sort()) {
-    const fichier = join(c.profils, nom);
+export async function loadProfiles(
+  c: SpacePaths,
+): Promise<{ profils: Profile[]; erreurs: { fichier: string; message: string }[] }> {
+  const profiles: Profile[] = [];
+  const errors: { fichier: string; message: string }[] = [];
+  if (!existsSync(c.profils)) return { profils: profiles, erreurs: errors };
+  for (const name of (await readdir(c.profils)).filter((n) => n.endsWith(".json")).sort()) {
+    const file = join(c.profils, name);
     try {
-      profils.push(Profil.parse(JSON.parse(await readFile(fichier, "utf8"))));
+      profiles.push(Profile.parse(JSON.parse(await readFile(file, "utf8"))));
     } catch (e) {
-      erreurs.push({ fichier, message: (e as Error).message });
+      errors.push({ fichier: file, message: (e as Error).message });
     }
   }
-  return { profils, erreurs };
+  return { profils: profiles, erreurs: errors };
 }
 
 /** Builds a profile's command; each wildcard replaces a whole argument. */
-export function construireCommande(
-  p: Profil,
+export function buildCommand(
+  p: Profile,
   mode: "interactif" | "nonInteractif",
   vars: { mcpConfig?: string; consigne?: string },
 ): string[] {
-  const modele = p[mode];
-  if (mode === "nonInteractif" && modele.includes(JOKERS.mcpConfig)) {
+  const model = p[mode];
+  if (mode === "nonInteractif" && model.includes(JOKERS.mcpConfig)) {
     throw new Error(`Profil ${p.id} : nonInteractif ne doit pas recevoir {mcpConfig}`);
   }
-  return modele.map((arg) => {
-    for (const [cle, joker] of Object.entries(JOKERS) as [keyof typeof JOKERS, string][]) {
+  return model.map((arg) => {
+    for (const [key, joker] of Object.entries(JOKERS) as [keyof typeof JOKERS, string][]) {
       if (arg !== joker) continue;
-      const valeur = vars[cle];
-      if (valeur === undefined) throw new Error(`Profil ${p.id} : variable ${cle} manquante`);
+      const valeur = vars[key];
+      if (valeur === undefined) throw new Error(`Profil ${p.id} : variable ${key} manquante`);
       return valeur;
     }
     return arg;

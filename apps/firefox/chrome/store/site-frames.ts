@@ -1,8 +1,8 @@
 // What goes into each frame of a site app's view (core/sites/injection.ts): decided from
 // the frame's WindowGlobalParent (its document's address, whether it is the view's main frame, the view's page), never
 // from what the frame says. Also the tweaks' console and the memory relay to the host.
-import type { RetouchesLues } from "../../../../packages/noyau/src/sites/lire";
-import { adresseRelative } from "../../../../packages/noyau/src/sites/adresses";
+import type { TweaksRead } from "../../../../packages/noyau/src/sites/lire";
+import { relativeUrl } from "../../../../packages/noyau/src/sites/adresses";
 import GARDE from "../../../../packages/noyau/extensions/webaios-garde-page.js?raw";
 import { sourceRetouche, type InjectionCadre } from "../../shared/sites";
 import { ajouterConsoleRetouche, injectionPour, repriseDansCadre, type ErreurRetouche, type ReponseMemoire } from "../../core/sites/injection";
@@ -12,7 +12,7 @@ import type { SiteChrome } from "../../noyau/sites";
 /** What these decisions need of an open app (store/sites.ts OpenSite). */
 export interface FrameSite {
   site: SiteChrome;
-  retouches: RetouchesLues;
+  retouches: TweaksRead;
   /** The app view's <browser>. */
   view: any;
   /** The tweaks' console, kept until the window closes. */
@@ -52,7 +52,7 @@ export function frameInjection(wgp: any, s: FrameSite | undefined, adressesLocal
   const i = injectionPour({ site: s.site, retouches: s.retouches, accorde: true, garde: GARDE, adressesLocales }, f.principal ? { url: f.url, principal: true } : f);
   // A player written into an about:srcdoc / about:blank frame of an app page has no address of its own for injectionPour
   // (nothing is injected there), but the resume goes into it like into any other frame of that page.
-  if (i && !f.principal && /^about:(srcdoc|blank)$/.test(f.url) && f.page !== null && adresseRelative(f.page, s.site.domaines) !== null)
+  if (i && !f.principal && /^about:(srcdoc|blank)$/.test(f.url) && f.page !== null && relativeUrl(f.page, s.site.domaines) !== null)
     i.reprise = repriseDansCadre(s.site.declaration, f, adressesLocales);
   return i;
 }
@@ -65,7 +65,7 @@ export async function frameMemory(wgp: any, s: FrameSite | undefined, demande: u
   const refus: ReponseMemoire = { ok: false, erreur: REFUS_MEMOIRE };
   if (!s || s.site.accordRequis) return refus;
   const f = frameOf(wgp, s.view);
-  const adresse = f?.principal ? adresseRelative(f.url, s.site.domaines) : null;
+  const adresse = f?.principal ? relativeUrl(f.url, s.site.domaines) : null;
   if (adresse === null || !demande || typeof demande !== "object") return refus;
   const { op, cle, valeur } = demande as { op?: unknown; cle?: unknown; valeur?: unknown };
   return request({ id: s.site.id, adresse, op, cle, valeur });
@@ -94,7 +94,7 @@ function resumePage(wgp: any, s: FrameSite | undefined, adressesLocales: boolean
   if (!s || s.site.accordRequis) return null;
   const f = frameOf(wgp, s.view);
   if (!f || !repriseDansCadre(s.site.declaration, f, adressesLocales)) return null;
-  const adresse = f.principal ? adresseRelative(f.url, s.site.domaines) : f.page === null ? null : adresseRelative(f.page, s.site.domaines);
+  const adresse = f.principal ? relativeUrl(f.url, s.site.domaines) : f.page === null ? null : relativeUrl(f.page, s.site.domaines);
   return adresse === null ? null : { id: s.site.id, adresse };
 }
 

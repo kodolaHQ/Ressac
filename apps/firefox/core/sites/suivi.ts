@@ -1,7 +1,7 @@
-import { changerAdresse, lireEtatAdresse, trouverAdresse, type DeclarationSite, type EtatAdresse } from "@webaios/noyau";
+import { changeUrl, readUrlState, findUrl, type DeclarationSite, type UrlState } from "@webaios/noyau";
 import { INTERVALLE_SUIVI_MS } from "../../shared/sites";
 
-export type ResultatSuivi = { t: "change"; domaine: string; etat: EtatAdresse } | { t: "introuvable" } | { t: "inchangee" } | { t: "trop-tot" };
+export type ResultatSuivi = { t: "change"; domaine: string; etat: UrlState } | { t: "introuvable" } | { t: "inchangee" } | { t: "trop-tot" };
 
 /** The host of an address, lowercase and without a trailing dot; "" if it is unreadable. */
 function hoteDe(url: string): string {
@@ -51,16 +51,16 @@ export class SuiviAdresse {
     } catch {
       return { t: "introuvable" };
     }
-    const trouvee = trouverAdresse(liens, { page: suivi.page, motif: suivi.motif, adressesLocales: this.o.adressesLocales });
+    const trouvee = findUrl(liens, { page: suivi.page, motif: suivi.motif, adressesLocales: this.o.adressesLocales });
     if (!trouvee) return { t: "introuvable" };
     if (signal?.aborted) return { t: "introuvable" };
-    const courant = await lireEtatAdresse(this.o.dossierSites, id);
+    const courant = await readUrlState(this.o.dossierSites, id);
     // Cancelled during the re-reading of the state (app deletion): nothing is written.
     if (signal?.aborted) return { t: "introuvable" };
     const actuel = courant?.actuel ?? hoteDe(d.adresse);
     if (trouvee.hostname === actuel) return { t: "inchangee" };
     try {
-      const etat = await changerAdresse(this.o.dossierSites, id, d, trouvee.hostname);
+      const etat = await changeUrl(this.o.dossierSites, id, d, trouvee.hostname);
       return { t: "change", domaine: etat.actuel, etat };
     } catch {
       return { t: "introuvable" };

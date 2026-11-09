@@ -2,12 +2,12 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createContext, runInContext, runInNewContext } from "node:vm";
 import { expect, test, vi } from "vitest";
-import type { Portee } from "@webaios/noyau";
+import type { Scope } from "@webaios/noyau";
 import { hotePermisAgent, motifCouvre, urlPermiseAgent } from "../../core/extensions/reseau";
 
 const ID = "a".repeat(32);
 const AUTRE = "b".repeat(32);
-const accord: Portee = {
+const accord: Scope = {
   permissions: ["tabs"],
   hotes: ["https://*.hote.test/*", "http://127.0.0.1/*"],
   reseau: ["api.accorde.test"],

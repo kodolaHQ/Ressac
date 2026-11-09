@@ -1,5 +1,5 @@
 import { isIP } from "../shims/net";
-import { adresseLocale } from "../shims/noyau";
+import { localUrl } from "../shims/noyau";
 
 const TEST_PUBLIC = "WEBAIOS_TEST_ADRESSES_PUBLIQUES";
 
@@ -17,7 +17,7 @@ function testPublic(): Set<string> {
 
 /** A local address or name from its text alone (`adresseLocale`), unless tests declared it public. */
 export function localLiteral(host: string): boolean {
-  return adresseLocale(host) && !testPublic().has(host.replace(/^\[|\]$/g, ""));
+  return localUrl(host) && !testPublic().has(host.replace(/^\[|\]$/g, ""));
 }
 
 /**

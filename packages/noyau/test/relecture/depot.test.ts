@@ -2,21 +2,21 @@ import { execFileSync } from "node:child_process";
 import { chmod, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { ACCES_REFUSE, DepotRelecture, ErreurRelecture, GIT_NECESSAIRE, gitDisponible } from "../../src/relecture/depot.js";
+import { ACCESS_DENIED, ReviewStore, ReviewError, GIT_REQUIRED, gitAvailable } from "../../src/relecture/depot.js";
 import { dossierTemporaire } from "../aide/temporaire.js";
 
 const GIT = process.env.WEBAIOS_GIT ?? "/usr/bin/git";
 let racine: string;
 let dossier: string;
 let depot: string;
-let r: DepotRelecture;
+let r: ReviewStore;
 
 beforeEach(async () => {
   racine = await dossierTemporaire();
   dossier = join(racine, "projet");
   depot = join(racine, "prive", "p.git");
   await mkdir(dossier, { recursive: true });
-  r = new DepotRelecture({ depot, dossier });
+  r = new ReviewStore({ depot, dossier });
 });
 afterEach(async () => {
   await chmod(dossier, 0o755).catch(() => {});
@@ -28,8 +28,8 @@ const numerotees = (n: number, f = (i: number) => `ligne ${i}`) => Array.from({ 
 
 describe("reference", () => {
   test("gitDisponible", async () => {
-    expect(await gitDisponible()).toBe(true);
-    expect(await gitDisponible("/chemin/absent")).toBe(false);
+    expect(await gitAvailable()).toBe(true);
+    expect(await gitAvailable("/chemin/absent")).toBe(false);
   });
   test("assurerReference creates refs/webaios/relu in the private repo; a second call returns false; no .git in the folder", async () => {
     await ecrire("a.txt", "a\n");
@@ -187,20 +187,20 @@ describe("the project's repo is never touched", () => {
 
 describe("erreurs", () => {
   test("git absent : GIT_NECESSAIRE", async () => {
-    const sans = new DepotRelecture({ depot, dossier, git: "/chemin/absent" });
-    await expect(sans.assurerReference()).rejects.toMatchObject({ raison: GIT_NECESSAIRE });
-    await expect(sans.assurerReference()).rejects.toBeInstanceOf(ErreurRelecture);
+    const sans = new ReviewStore({ depot, dossier, git: "/chemin/absent" });
+    await expect(sans.assurerReference()).rejects.toMatchObject({ raison: GIT_REQUIRED });
+    await expect(sans.assurerReference()).rejects.toBeInstanceOf(ReviewError);
   });
   test("git whose --version fails: GIT_NECESSAIRE", async () => {
     const faux = join(racine, "faux-git");
     await writeFile(faux, "#!/bin/sh\necho 'xcrun: error' >&2\nexit 1\n", { mode: 0o755 });
-    await expect(new DepotRelecture({ depot, dossier, git: faux }).assurerReference()).rejects.toMatchObject({ raison: GIT_NECESSAIRE });
+    await expect(new ReviewStore({ depot, dossier, git: faux }).assurerReference()).rejects.toMatchObject({ raison: GIT_REQUIRED });
   });
   test("WEBAIOS_GIT=/chemin/absent : GIT_NECESSAIRE", async () => {
     const avant = process.env.WEBAIOS_GIT;
     process.env.WEBAIOS_GIT = "/chemin/absent";
     try {
-      await expect(new DepotRelecture({ depot, dossier }).assurerReference()).rejects.toMatchObject({ raison: GIT_NECESSAIRE });
+      await expect(new ReviewStore({ depot, dossier }).assurerReference()).rejects.toMatchObject({ raison: GIT_REQUIRED });
     } finally {
       if (avant === undefined) delete process.env.WEBAIOS_GIT; else process.env.WEBAIOS_GIT = avant;
     }
@@ -211,7 +211,7 @@ describe("erreurs", () => {
     await writeFile(join(dossier, "sub", "x.txt"), "x");
     await chmod(join(dossier, "sub"), 0o000);
     try {
-      await expect(r.assurerReference()).rejects.toMatchObject({ raison: ACCES_REFUSE });
+      await expect(r.assurerReference()).rejects.toMatchObject({ raison: ACCESS_DENIED });
     } finally {
       await chmod(join(dossier, "sub"), 0o755);
     }
@@ -219,6 +219,6 @@ describe("erreurs", () => {
   test.skipIf(process.getuid?.() === 0)("dossier chmod 000 : ACCES_REFUSE", async () => {
     await ecrire("a.txt", "a");
     await chmod(dossier, 0o000);
-    await expect(r.assurerReference()).rejects.toMatchObject({ raison: ACCES_REFUSE });
+    await expect(r.assurerReference()).rejects.toMatchObject({ raison: ACCESS_DENIED });
   });
 });

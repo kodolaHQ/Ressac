@@ -757,7 +757,7 @@ test("ouvrirRelecture opens webaios://relecture/app-essai titled Â« Relecture â€
 
 test("projetDeUrlRelecture refuses webaios://relecture/../x and webaios://relecture/app-", async () => {
   const { projetDeUrlRelecture } = await import("../../shared/modele");
-  const { ID_PROJET } = await import("@webaios/noyau");
+  const { PROJECT_ID: ID_PROJET } = await import("@webaios/noyau");
   expect(projetDeUrlRelecture("webaios://relecture/../x")).toBeNull();
   expect(projetDeUrlRelecture("webaios://relecture/app-")).toBeNull();
   expect(projetDeUrlRelecture("webaios://relecture/app-essai/x")).toBeNull();
@@ -766,10 +766,10 @@ test("projetDeUrlRelecture refuses webaios://relecture/../x and webaios://relect
   expect(projetDeUrlRelecture("webaios://relecture/ext-0123456789abcdef")).toBe("ext-0123456789abcdef");
   // The UI copies follow the kernel.
   const { NON_AFFICHABLE } = await import("../../shared/modele");
-  const { FICHIER_BINAIRE, FICHIER_TROP_GROS } = await import("@webaios/noyau");
+  const { BINARY_FILE: FICHIER_BINAIRE, FILE_TOO_BIG: FICHIER_TROP_GROS } = await import("@webaios/noyau");
   expect(NON_AFFICHABLE).toEqual({ binaire: FICHIER_BINAIRE, "trop-gros": FICHIER_TROP_GROS });
   const { LIGNE_CHANGEE_PAGE } = await import("../../shared/modele");
-  const { LIGNE_CHANGEE } = await import("@webaios/noyau");
+  const { LINE_CHANGED: LIGNE_CHANGEE } = await import("@webaios/noyau");
   expect(LIGNE_CHANGEE_PAGE).toBe(LIGNE_CHANGEE);
   for (const p of ["app-essai", "app-.x", "ext-0123456789abcdef", "ext-0123", "demo-15283", "demo-", "app-a/b", "site-tuning", "site-", "site-A", "site-../x"])
     expect(projetDeUrlRelecture(`webaios://relecture/${p}`) !== null).toBe(ID_PROJET.test(p));

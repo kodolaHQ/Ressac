@@ -1,4 +1,4 @@
-import type { EtatWidget } from "@webaios/noyau";
+import type { WidgetState } from "@webaios/noyau";
 
 const deux = (n: number) => String(n).padStart(2, "0");
 const MINUTE = 60_000;
@@ -10,7 +10,7 @@ const REESSAI_MS = 15 * MINUTE;
 const REESSAIS_HEURE_MAX = 3;
 
 /** What « prochaine » reads from the widget's state: the scheduler's rules after a failure. */
-export type EtatProchaine = Pick<EtatWidget, "statut" | "derniereTentative" | "heures">;
+export type EtatProchaine = Pick<WidgetState, "statut" | "derniereTentative" | "heures">;
 
 /** « aujourd'hui HH:MM » or « demain HH:MM » (never further: a fixed hour comes back tomorrow at the latest). */
 function libelle(quand: Date, maintenant: Date): string {

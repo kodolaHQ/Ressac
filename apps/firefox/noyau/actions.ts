@@ -1,25 +1,25 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
-  ACTION_INCONNUE,
-  chainesDe,
+  ACTION_UNKNOWN,
+  chainsOf,
   ID_ACTION,
   ID_EXECUTION,
   lireAccords,
   lireAction,
   lireActions,
   lireExecution,
-  lireResultat,
+  readResult,
   listerExecutions,
   retirerAccord,
-  supprimerDonneesAction,
+  deleteDataAction,
   type ActionLue,
-  type CheminsEspace,
-  type EtatActions,
+  type SpacePaths,
+  type ActionsState,
   type Execution,
   type Noyau,
   type PageAction,
-  type ResultatLancement,
+  type LaunchResult,
   type ResumeExecution,
 } from "../../../packages/noyau/src/index.ts";
 import type { ActionAffichee } from "../shared/actions.ts";
@@ -29,7 +29,7 @@ import { urlOuvrable } from "../ui/accueil-profils.ts";
 // The disk and kernel half of the actions service.
 
 export const MESSAGE_SANS_NOYAU = "Le service des actions ne répond pas (agent arrêté ?)";
-const NO_ACTION: EtatActions = { courantes: [], enAttente: [] };
+const NO_ACTION: ActionsState = { courantes: [], enAttente: [] };
 
 /** https only, never the machine. Keep in sync with chrome/store/action-media.ts. */
 const imageAddressAllowed = (url: string) => url.startsWith("https://") && urlOuvrable(url);
@@ -50,19 +50,19 @@ export async function actionImageAllowed(
   // An action rewritten without account may keep results read with it: a grant still there is enough to refuse.
   const accords = await lireAccords(o.dossierActions).catch(() => null);
   if (!accords || Object.hasOwn(accords, id)) return false;
-  const [resultat, exec] = await Promise.all([lireResultat(o.dossierActions, id, execution), lireExecution(join(o.dossierActions, id), execution)]);
-  return !!resultat && !!exec && chainesDe(resultat.resultats).has(url);
+  const [resultat, exec] = await Promise.all([readResult(o.dossierActions, id, execution), lireExecution(join(o.dossierActions, id), execution)]);
+  return !!resultat && !!exec && chainsOf(resultat.resultats).has(url);
 }
 
 /** A link of an action's page opens only if its address is, as is, in the run's results, in http(s). */
 export async function linkAllowed(dossierActions: string, id: string, execution: string, url: string): Promise<boolean> {
   if (!urlOuvrable(url)) return false;
-  const r = await lireResultat(dossierActions, id, execution);
-  return !!r && chainesDe(r.resultats).has(url);
+  const r = await readResult(dossierActions, id, execution);
+  return !!r && chainsOf(r.resultats).has(url);
 }
 
 /** The action's folder goes to actions/.corbeille (nothing is destroyed), then `oublier` drops its grant and data. */
-export async function trashAction(c: CheminsEspace, id: string, oublier: (id: string) => Promise<void>): Promise<void> {
+export async function trashAction(c: SpacePaths, id: string, oublier: (id: string) => Promise<void>): Promise<void> {
   if (!ID_ACTION.test(id)) throw new Error(`id d'action invalide : ${id}`);
   const corbeille = join(c.actions, ".corbeille");
   await mkdir(corbeille, { recursive: true });
@@ -71,7 +71,7 @@ export async function trashAction(c: CheminsEspace, id: string, oublier: (id: st
 }
 
 /** The disk's actions, ready to show: declaration, grant and last real run. Read without the kernel. */
-export async function readShownActions(c: CheminsEspace, dossierActions: string): Promise<ActionAffichee[]> {
+export async function readShownActions(c: SpacePaths, dossierActions: string): Promise<ActionAffichee[]> {
   const [lues, accords] = await Promise.all([lireActions(c), lireAccords(dossierActions).catch(() => ({}) as Record<string, unknown>)]);
   return Promise.all(
     lues.map(async (a): Promise<ActionAffichee> => {
@@ -98,7 +98,7 @@ type Prepared = { ok: true; nom: string; lancer: boolean } | { ok: false; erreur
 
 /** The actions service without the window state (private spaces, tabs, links' pace: the chrome's) and `agir`. */
 export function createActionsHost(o: {
-  chemins: CheminsEspace;
+  chemins: SpacePaths;
   dossierActions: string;
   noyau: () => Noyau | null;
   /** A launch refused without a run written was just noted: the actions pages read again. */
@@ -130,8 +130,8 @@ export function createActionsHost(o: {
       .catch((e) => console.error("[webaios] refus des actions non enregistrés :", e));
   };
   /** Followed launches, per action: a deletion forgets them, their end notes nothing (action made again under the same id). */
-  const lancementsSuivis = new Map<string, Set<Promise<ResultatLancement>>>();
-  const suivreLancement = (id: string, fin: Promise<ResultatLancement>): Promise<ResultatLancement> => {
+  const lancementsSuivis = new Map<string, Set<Promise<LaunchResult>>>();
+  const suivreLancement = (id: string, fin: Promise<LaunchResult>): Promise<LaunchResult> => {
     const pret = charge.then(() => refusLancement.delete(id) && enregistrerRefus());
     const suivis = lancementsSuivis.get(id) ?? new Set();
     lancementsSuivis.set(id, suivis.add(fin));
@@ -163,7 +163,7 @@ export function createActionsHost(o: {
       const noyau = o.noyau();
       if (!noyau) return { ok: false, erreur: MESSAGE_SANS_NOYAU };
       const a = await lire(id);
-      if (!a) return { ok: false, erreur: ACTION_INCONNUE };
+      if (!a) return { ok: false, erreur: ACTION_UNKNOWN };
       const d = noyau.actions.direct();
       const tourne = d.courantes.some((x) => x.action === id) || d.enAttente.some((x) => x.action === id);
       // Required input missing: the page opens with its field to fill, nothing is launched.
@@ -175,7 +175,7 @@ export function createActionsHost(o: {
       const a = await lire(id);
       return a ? nomDe(a).slice(0, 60) : null;
     },
-    async lancer(id: string, saisie: string | null): Promise<ResultatLancement> {
+    async lancer(id: string, saisie: string | null): Promise<LaunchResult> {
       const noyau = o.noyau();
       if (!noyau) return { statut: "invalide", erreur: MESSAGE_SANS_NOYAU };
       return suivreLancement(id, noyau.actions.lancer(id, { ...(saisie?.trim() ? { saisie } : {}), declencheur: "manuelle" }).fin);
@@ -199,7 +199,7 @@ export function createActionsHost(o: {
       const noyau = o.noyau();
       return noyau ? noyau.actions.execution(id, execution) : lireExecution(join(o.dossierActions, id), execution);
     },
-    async direct(): Promise<EtatActions> {
+    async direct(): Promise<ActionsState> {
       return o.noyau()?.actions.direct() ?? NO_ACTION;
     },
     lienPermis: (id: string, execution: string, url: string) => linkAllowed(o.dossierActions, id, execution, url),
@@ -222,7 +222,7 @@ export function createActionsHost(o: {
       await noyau?.actions.refuserAccord(id);
     },
     async supprimer(id: string): Promise<{ ok: true } | { ok: false; erreur: string }> {
-      if (!(await lire(id))) return { ok: false, erreur: ACTION_INCONNUE };
+      if (!(await lire(id))) return { ok: false, erreur: ACTION_UNKNOWN };
       // Stopped first: otherwise it would run to its maximum duration with nothing left to stop it.
       o.noyau()?.actions.arreter(id);
       // Removed from disk too: an action made again under the same id would find this refusal at the next start.
@@ -233,7 +233,7 @@ export function createActionsHost(o: {
         const noyau = o.noyau();
         if (noyau) return noyau.actions.refuserAccord(x);
         await retirerAccord(o.dossierActions, x);
-        await supprimerDonneesAction(o.dossierActions, x);
+        await deleteDataAction(o.dossierActions, x);
       };
       try {
         await trashAction(o.chemins, id, oublier);
@@ -244,7 +244,7 @@ export function createActionsHost(o: {
       }
     },
     /** A finished action has a new last result (written outside the watched space): the list reads again. */
-    directVu(e: EtatActions): void {
+    directVu(e: ActionsState): void {
       const courantes = new Set(e.courantes.map((c) => c.action));
       const quitte = [...actionsCourantes].some((a) => !courantes.has(a));
       actionsCourantes = courantes;

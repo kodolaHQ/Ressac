@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ThemeAccueil } from "../../../packages/noyau/src/accueil/theme";
+import type { HomeTheme } from "../../../packages/noyau/src/accueil/theme";
 import { variablesTheme } from "../ui/theme";
 
 describe("variablesTheme", () => {
@@ -18,11 +18,11 @@ describe("variablesTheme", () => {
   });
 
   it("ignores an invalid color and a missing theme", () => {
-    expect(variablesTheme({ version: 1, fond: "red", carte: "#12345" } as ThemeAccueil)).toEqual({});
+    expect(variablesTheme({ version: 1, fond: "red", carte: "#12345" } as HomeTheme)).toEqual({});
     expect(variablesTheme(null)).toEqual({});
   });
 
   it("does not accept a prototype key as a font", () => {
-    expect(variablesTheme({ version: 1, police: "toString" } as unknown as ThemeAccueil)).toEqual({});
+    expect(variablesTheme({ version: 1, police: "toString" } as unknown as HomeTheme)).toEqual({});
   });
 });

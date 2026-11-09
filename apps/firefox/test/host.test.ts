@@ -5,8 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { afterEach, describe, expect, it } from "vitest";
-import { AUCUN_WORKFLOW_OUVERT, CONSOLE_DEBLOQUEE, CONSOLE_FOND_MASQUEE, CONSOLE_FOND_OBSERVE, DEMANDE_RETIREE, ERREUR_PROFIL_PRIVE, masquesOnglets, navigationHorsSite } from "../../../packages/noyau/src/index";
-import { TEXTE_PRIVE } from "../../../packages/noyau/src/mcp/pont";
+import { NO_WORKFLOW_OPEN, CONSOLE_UNLOCKED, CONSOLE_BACKGROUND_HIDDEN, CONSOLE_FOND_OBSERVE, REQUEST_REMOVED, PRIVATE_PROFILE_ERROR, hiddenTabs, navigationOutsideSite } from "../../../packages/noyau/src/index";
+import { PRIVATE_TEXT } from "../../../packages/noyau/src/mcp/pont";
 import { DESACTIVEE_PLANTAGES } from "../shared/extensions-messages";
 import { hostPath, nodePath, tsxPath } from "../scripts/paths";
 import { createRpc, type Handler, type Rpc } from "../shared/rpc";
@@ -142,11 +142,11 @@ describe("agent host", { timeout: 30_000 }, () => {
   it("a private tab is hidden from the agent", async () => {
     const h = startHost();
     await h.rpc.request("demarrer", { profilAgent: "claude" });
-    expect((await appelerOutil(h.racine, "lire_onglet", { id: "t3" })).texte).not.toBe(TEXTE_PRIVE);
+    expect((await appelerOutil(h.racine, "lire_onglet", { id: "t3" })).texte).not.toBe(PRIVATE_TEXT);
     h.rpc.notify("prives", { prives: ["t3"], actifPrive: true });
     await h.rpc.request("acces.etat"); // stdin is read in order: the notification is applied
-    expect((await appelerOutil(h.racine, "lire_onglet", { id: "t3" })).texte).toBe(TEXTE_PRIVE);
-    expect((await appelerOutil(h.racine, "page_courante")).texte).toBe(TEXTE_PRIVE);
+    expect((await appelerOutil(h.racine, "lire_onglet", { id: "t3" })).texte).toBe(PRIVATE_TEXT);
+    expect((await appelerOutil(h.racine, "page_courante")).texte).toBe(PRIVATE_TEXT);
   });
 
   it("capture_ecran returns the PNG Firefox sent", async () => {
@@ -266,7 +266,7 @@ describe("agent host", { timeout: 30_000 }, () => {
     expect((await appelerOutil(h.racine, "workflow_ouvert", {}, first)).texte).toBe(JSON.stringify({ widget: "veille", bloc: "tri" }));
     h.rpc.notify("agent.fermerFenetre", { fenetre: "w1" });
     await until(() => !existsSync(first));
-    expect((await appelerOutil(h.racine, "workflow_ouvert", {}, await session())).texte).toBe(AUCUN_WORKFLOW_OUVERT);
+    expect((await appelerOutil(h.racine, "workflow_ouvert", {}, await session())).texte).toBe(NO_WORKFLOW_OPEN);
   });
 
   it("workflow.* answer a bad input with the UI's shapes", async () => {
@@ -302,11 +302,11 @@ describe("agent host", { timeout: 30_000 }, () => {
     const naviguer = (url: string) => appelerOutil(h.racine, "naviguer", { id: "site:vidola", url });
     expect((await naviguer("https://vidola.test/film/2")).texte).toBe("Appli de site site:vidola → https://vidola.test/film/2");
     // Sign-in domains and other sites are not the app's: nothing loads.
-    expect(await naviguer("https://compte.test/connexion")).toEqual({ texte: navigationHorsSite("https://compte.test/connexion"), erreur: true });
-    expect(await naviguer("https://pub.test/x")).toEqual({ texte: navigationHorsSite("https://pub.test/x"), erreur: true });
+    expect(await naviguer("https://compte.test/connexion")).toEqual({ texte: navigationOutsideSite("https://compte.test/connexion"), erreur: true });
+    expect(await naviguer("https://pub.test/x")).toEqual({ texte: navigationOutsideSite("https://pub.test/x"), erreur: true });
     h.rpc.notify("sites.ferme", { id: "vidola" });
     await h.rpc.request("acces.etat"); // stdin is read in order: the notification is applied
-    expect(await naviguer("https://vidola.test/film/3")).toEqual({ texte: navigationHorsSite("https://vidola.test/film/3"), erreur: true });
+    expect(await naviguer("https://vidola.test/film/3")).toEqual({ texte: navigationOutsideSite("https://vidola.test/film/3"), erreur: true });
     expect(navigations).toEqual(["https://vidola.test/film/2"]);
   });
 
@@ -655,11 +655,11 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     expect(t).toContain("contenu:/b.html");
     expect(t).not.toContain("contenu:/a.html");
     expect(t).not.toContain("contenu:/lecture");
-    expect(t).toContain(masquesOnglets(2));
-    expect(t).not.toContain(CONSOLE_FOND_MASQUEE);
+    expect(t).toContain(hiddenTabs(2));
+    expect(t).not.toContain(CONSOLE_BACKGROUND_HIDDEN);
     await h.rpc.request("extensions.aTourne", { addonId: ID, profil: "defaut", lisible: false });
     t = await outil(h, "console_extension", { id: "agent:ma-ext" });
-    expect(t).toContain(CONSOLE_FOND_MASQUEE);
+    expect(t).toContain(CONSOLE_BACKGROUND_HIDDEN);
     expect(t).not.toContain("fond démarré");
     expect(t).toContain("contenu:/b.html");
   });
@@ -679,7 +679,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     expect(demandes).toEqual([{ nom: "Cacheur", espaces: ["Perso"], raison: "r".repeat(200), agent: expect.any(String), fenetre: null }]);
     let t = await outil(h, "console_extension", { id: "ma-ext" });
     expect(t).toContain("fond démarré");
-    expect(t).toContain(CONSOLE_DEBLOQUEE);
+    expect(t).toContain(CONSOLE_UNLOCKED);
     expect(await outil(h, "refermer_console", { id: "ma-ext" })).toContain("refermée");
     expect(await outil(h, "console_extension", { id: "ma-ext" })).toContain(CONSOLE_FOND_OBSERVE);
     // Unlocked again, then reloaded (a new copy): masked again.
@@ -760,10 +760,10 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     const jamais = { cle: "agent:jamais", nom: "jamais", source: "agent", active: false, aussiDans: [], grisee: null, profils: [] };
     expect(await h.rpc.request("extensions.pourEspace", { espaceId: "e1" })).toEqual([ligne, jamais]);
     expect(await h.rpc.request("extensions.pourEspace", { espaceId: "e3" })).toEqual([
-      { ...ligne, active: false, aussiDans: [], grisee: ERREUR_PROFIL_PRIVE },
-      { ...jamais, grisee: ERREUR_PROFIL_PRIVE },
+      { ...ligne, active: false, aussiDans: [], grisee: PRIVATE_PROFILE_ERROR },
+      { ...jamais, grisee: PRIVATE_PROFILE_ERROR },
     ]);
-    expect(await h.rpc.request("extensions.basculer", { cle: "agent:ma-ext", espaceId: "e3", actif: true })).toEqual({ ok: false, erreur: ERREUR_PROFIL_PRIVE });
+    expect(await h.rpc.request("extensions.basculer", { cle: "agent:ma-ext", espaceId: "e3", actif: true })).toEqual({ ok: false, erreur: PRIVATE_PROFILE_ERROR });
     expect(await h.rpc.request("extensions.basculer", { cle: "agent:ma-ext", espaceId: "e1", actif: false })).toEqual({ ok: true });
     expect(entree(h.dataDir).profils).toEqual([]);
     expect(f.activations.at(-1)).toEqual({ addonId: ID, actif: false });
@@ -922,7 +922,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     const h = launch(amo, f, { prepare });
     await h.rpc.request("extensions.pret", {});
     source(h.dataDir, { hotes: [HOTE, "https://exemple.com/*"] });
-    expect(await outil(h, "demander_extension", { id: "ma-ext", espace: "Travail" })).toBe(ERREUR_PROFIL_PRIVE);
+    expect(await outil(h, "demander_extension", { id: "ma-ext", espace: "Travail" })).toBe(PRIVATE_PROFILE_ERROR);
     expect(entree(h.dataDir)).toMatchObject({ accord: ACCORD, profils: ["defaut"], desactivee: { raison: "portee-elargie" } });
     expect(f.activations.at(-1)).toEqual({ addonId: ID, actif: false });
   });
@@ -953,7 +953,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     const appel = outil(h, "demander_extension", { id: "ma-ext" });
     await until(() => f.cartes.length === 1);
     await h.rpc.request("agent.demarrer", { fenetre: "f1", taille: { cols: 80, rows: 24 } });
-    expect(await appel).toBe(DEMANDE_RETIREE);
+    expect(await appel).toBe(REQUEST_REMOVED);
     expect(amo.envois).toEqual([]);
     expect(existsSync(join(h.dataDir, "extensions", "etat.json")) && entree(h.dataDir)).toBeFalsy();
     expect(existsSync(join(h.dataDir, "extensions", "copies", "ma-ext.attente"))).toBe(false);

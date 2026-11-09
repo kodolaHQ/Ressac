@@ -6,7 +6,7 @@ import { connect, createServer as tcpServer } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, expect, it } from "vitest";
-import { DOSSIER_ESPACE } from "../../../packages/noyau/src/design/externes";
+import { SPACE_FOLDER } from "../../../packages/noyau/src/design/externes";
 import { HOST_STOPPED } from "../chrome/agent/host";
 import { raisonEchec } from "../shared/design-guards";
 import { waitFor } from "./firefox";
@@ -249,7 +249,7 @@ it("a folder under <dataDir> is refused with DOSSIER_ESPACE", async () => {
     for (const d of inside) mkdirSync(d, { recursive: true });
     for (const dossier of [w!.dataDir, ...inside]) {
       const r = (await c.callTool({ name: "declarer_projet", arguments: { dossier, ports: [18765] } })) as { isError?: boolean };
-      expect(textOf(r), dossier).toContain(DOSSIER_ESPACE);
+      expect(textOf(r), dossier).toContain(SPACE_FOLDER);
       expect(r.isError).toBe(true);
     }
     await new Promise((r) => setTimeout(r, 500));

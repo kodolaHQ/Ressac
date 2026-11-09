@@ -13,10 +13,10 @@ import type { Marionette } from "./marionette";
 import { callTool } from "./mcp";
 import { cleanupXpis, installAddon, uninstallAddon } from "./addons";
 import { click, inUi, pressKeys, waitUi } from "./ui";
-import { TEXTE_COUPE, TEXTE_SITE_CHANGE } from "../../../packages/noyau/src/mcp/outils-dev";
+import { TEXT_CUT, SITE_CHANGED_TEXT } from "../../../packages/noyau/src/mcp/outils-dev";
 
 // Which one the kernel answers depends on whether the new page committed before it read the tab list.
-const CUT_BY_OWN_NAVIGATION = [TEXTE_COUPE, TEXTE_SITE_CHANGE];
+const CUT_BY_OWN_NAVIGATION = [TEXT_CUT, SITE_CHANGED_TEXT];
 
 // The agent's dev tools on a WebAiOs-Firefox tab (plan 28, task 3): console, network,
 // evaluation and reload; task 4 for profiling and memory; task 5 for the consent card of a third-party tab, the badge and cuts.
@@ -497,7 +497,7 @@ it("cutting « Agir » during an executer_js: the call answers the cut text", as
   await waitUi(m, `return !!doc.querySelector(arguments[0])?.classList.contains("pulse")`, [tabBadge(id)]);
   await clickBadge(id);
   await click(m, `${BUBBLE} button[data-droit="agir"]`);
-  expect(await pending).toBe(TEXTE_COUPE);
+  expect(await pending).toBe(TEXT_CUT);
   expect(Date.now() - t0).toBeLessThan(6000);
   // Console is kept: the badge goes back to 👁, still and quiet.
   await waitUi(m, `const p = doc.querySelector(arguments[0]); return p?.dataset.niveau === "lecture" && !p.classList.contains("pulse")`, [tabBadge(id)]);

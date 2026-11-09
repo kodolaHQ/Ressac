@@ -2,14 +2,14 @@ import { randomUUID } from "node:crypto";
 import { copyFile, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
-import type { Portee, SourceExtension } from "./manifeste.js";
+import type { Scope, SourceExtension } from "./manifeste.js";
 
-export type IdProfil = string;
+export type ProfileId = string;
 export type IdSite = string;
 
-export const ERREUR_PROFIL_PRIVE = "Donne à cet espace privé son propre profil pour y utiliser des extensions de l'agent";
+export const PRIVATE_PROFILE_ERROR = "Donne à cet espace privé son propre profil pour y utiliser des extensions de l'agent";
 
-const SchemaPortee = z.object({
+const ScopeSchema = z.object({
   permissions: z.array(z.string()),
   hotes: z.array(z.string()),
   reseau: z.array(z.string()),
@@ -23,12 +23,12 @@ const EntreeSchema = z.object({
   idChrome: z.string().nullable(),
   nom: z.string(),
   version: z.string(),
-  accord: SchemaPortee.nullable(),
+  accord: ScopeSchema.nullable(),
   profils: z.array(z.string()),
   epinglee: z.boolean(),
   modifieeLe: z.string().nullable(),
   desactivee: z.object({ raison: z.enum(["portee-elargie", "plantages"]), le: z.string() }).nullable(),
-  majEnAttente: z.object({ version: z.string(), portee: SchemaPortee, chemin: z.string() }).nullable(),
+  majEnAttente: z.object({ version: z.string(), portee: ScopeSchema, chemin: z.string() }).nullable(),
   vues: z.record(z.string(), z.string()),
   applis: z.record(z.string(), z.string()).optional(),
   consoleMasquee: z.array(z.string()).optional(),
@@ -41,17 +41,17 @@ export interface EntreeExtension {
   nom: string;
   version: string;
   /** Scope accepted by the user; null: never granted. */
-  accord: Portee | null;
+  accord: Scope | null;
   /** Profiles where the extension is active. */
-  profils: IdProfil[];
+  profils: ProfileId[];
   epinglee: boolean;
   /** ISO; agent: last copy reloaded. */
   modifieeLe: string | null;
   desactivee: { raison: "portee-elargie" | "plantages"; le: string } | null;
   /** Store. */
-  majEnAttente: { version: string; portee: Portee; chemin: string } | null;
+  majEnAttente: { version: string; portee: Scope; chemin: string } | null;
   /** Last version started in each profile. */
-  vues: Record<IdProfil, string>;
+  vues: Record<ProfileId, string>;
   /**
    * Store: site apps where it is active, with the hash of their domains (`empreinteExtensionsSite`) at the time
    * of activation. Absent: none.
@@ -61,10 +61,10 @@ export interface EntreeExtension {
    * Agent: profiles where it ran in a tab the agent cannot read. Its service worker and pages console
    * stays hidden from it; never reset (its storage may have kept what it read there), erased with the entry.
    */
-  consoleMasquee?: IdProfil[];
+  consoleMasquee?: ProfileId[];
 }
 
-export interface EtatExtensions {
+export interface ExtensionsState {
   version: 1;
   toutesCoupees: boolean;
   extensions: Record<string, EntreeExtension>;
@@ -81,87 +81,87 @@ const ID_AGENT = /^[a-z0-9-]{1,40}$/;
 /** WebAiOs-Firefox: an agent extension's add-on id (`<id>@agent.webaios`), its id in `consolesMasquees`. */
 const ID_FIREFOX_AGENT = /^[a-z0-9-]{1,40}@agent\.webaios$/;
 
-export function lireCle(cle: string): { source: SourceExtension; id: string } | null {
-  const i = cle.indexOf(":");
+export function readKey(key: string): { source: SourceExtension; id: string } | null {
+  const i = key.indexOf(":");
   if (i < 0) return null;
-  const source = cle.slice(0, i);
-  const id = cle.slice(i + 1);
+  const source = key.slice(0, i);
+  const id = key.slice(i + 1);
   if (source === "store" && ID_STORE.test(id)) return { source, id };
   if (source === "agent" && ID_AGENT.test(id)) return { source, id };
   return null;
 }
 
-export function cleExtension(source: SourceExtension, id: string): string {
-  const cle = `${source}:${id}`;
-  if (!lireCle(cle)) throw new Error(`identifiant d'extension invalide : ${cle}`);
-  return cle;
+export function extensionKey(source: SourceExtension, id: string): string {
+  const key = `${source}:${id}`;
+  if (!readKey(key)) throw new Error(`identifiant d'extension invalide : ${key}`);
+  return key;
 }
 
-const vide = (): EtatExtensions => ({ version: 1, toutesCoupees: false, extensions: {} });
+const empty = (): ExtensionsState => ({ version: 1, toutesCoupees: false, extensions: {} });
 
-function entreeDe(e: EtatExtensions, cle: string): EntreeExtension {
-  const x = e.extensions[cle];
-  if (!x) throw new Error(`extension inconnue : ${cle}`);
+function entreeDe(e: ExtensionsState, key: string): EntreeExtension {
+  const x = e.extensions[key];
+  if (!x) throw new Error(`extension inconnue : ${key}`);
   return x;
 }
 
-function avec(e: EtatExtensions, cle: string, changer: (x: EntreeExtension) => EntreeExtension): EtatExtensions {
-  return { ...e, extensions: { ...e.extensions, [cle]: changer(entreeDe(e, cle)) } };
+function updateEntry(e: ExtensionsState, key: string, changer: (x: EntreeExtension) => EntreeExtension): ExtensionsState {
+  return { ...e, extensions: { ...e.extensions, [key]: changer(entreeDe(e, key)) } };
 }
 
-export function activer(e: EtatExtensions, cle: string, profil: IdProfil, profilsPrives: ReadonlySet<IdProfil>): EtatExtensions {
-  const x = entreeDe(e, cle);
-  if (x.source === "agent" && profilsPrives.has(profil)) throw new Error(ERREUR_PROFIL_PRIVE);
-  if (!x.accord) throw new Error(`extension sans accord : ${cle}`);
-  return avec(e, cle, (y) => (y.profils.includes(profil) ? y : { ...y, profils: [...y.profils, profil] }));
+export function enable(e: ExtensionsState, key: string, profile: ProfileId, privateProfiles: ReadonlySet<ProfileId>): ExtensionsState {
+  const x = entreeDe(e, key);
+  if (x.source === "agent" && privateProfiles.has(profile)) throw new Error(PRIVATE_PROFILE_ERROR);
+  if (!x.accord) throw new Error(`extension sans accord : ${key}`);
+  return updateEntry(e, key, (y) => (y.profils.includes(profile) ? y : { ...y, profils: [...y.profils, profile] }));
 }
 
-export function desactiver(e: EtatExtensions, cle: string, profil: IdProfil): EtatExtensions {
-  return avec(e, cle, (y) => ({ ...y, profils: y.profils.filter((p) => p !== profil) }));
+export function disable(e: ExtensionsState, key: string, profile: ProfileId): ExtensionsState {
+  return updateEntry(e, key, (y) => ({ ...y, profils: y.profils.filter((p) => p !== profile) }));
 }
 
-export function desactiverPartout(e: EtatExtensions, cle: string): EtatExtensions {
-  return avec(e, cle, (y) => {
-    const { applis: _, ...reste } = y;
-    return { ...reste, profils: [] };
+export function disableEverywhere(e: ExtensionsState, key: string): ExtensionsState {
+  return updateEntry(e, key, (y) => {
+    const { applis: _, ...rest } = y;
+    return { ...rest, profils: [] };
   });
 }
 
-export function couperTout(e: EtatExtensions, oui: boolean): EtatExtensions {
-  return { ...e, toutesCoupees: oui };
+export function couperTout(e: ExtensionsState, yes: boolean): ExtensionsState {
+  return { ...e, toutesCoupees: yes };
 }
 
-export function retirer(e: EtatExtensions, cle: string): EtatExtensions {
-  const { [cle]: _, ...reste } = e.extensions;
-  return { ...e, extensions: reste };
+export function retirer(e: ExtensionsState, key: string): ExtensionsState {
+  const { [key]: _, ...rest } = e.extensions;
+  return { ...e, extensions: rest };
 }
 
-export function epingler(e: EtatExtensions, cle: string, oui: boolean): EtatExtensions {
-  return avec(e, cle, (y) => ({ ...y, epinglee: oui }));
+export function pin(e: ExtensionsState, key: string, yes: boolean): ExtensionsState {
+  return updateEntry(e, key, (y) => ({ ...y, epinglee: yes }));
 }
 
 /** Removes each agent extension from private profiles; the Store ones stay. */
-export function appliquerProfilsPrives(
-  e: EtatExtensions,
-  profilsPrives: ReadonlySet<IdProfil>,
-): { etat: EtatExtensions; retirees: { cle: string; profil: IdProfil }[] } {
-  const retirees: { cle: string; profil: IdProfil }[] = [];
+export function applyPrivateProfiles(
+  e: ExtensionsState,
+  privateProfiles: ReadonlySet<ProfileId>,
+): { etat: ExtensionsState; retirees: { cle: string; profil: ProfileId }[] } {
+  const removed: { cle: string; profil: ProfileId }[] = [];
   const extensions: Record<string, EntreeExtension> = {};
-  for (const [cle, x] of Object.entries(e.extensions)) {
+  for (const [key, x] of Object.entries(e.extensions)) {
     if (x.source !== "agent") {
-      extensions[cle] = x;
+      extensions[key] = x;
       continue;
     }
-    for (const profil of x.profils) if (profilsPrives.has(profil)) retirees.push({ cle, profil });
-    extensions[cle] = { ...x, profils: x.profils.filter((p) => !profilsPrives.has(p)) };
+    for (const profile of x.profils) if (privateProfiles.has(profile)) removed.push({ cle: key, profil: profile });
+    extensions[key] = { ...x, profils: x.profils.filter((p) => !privateProfiles.has(p)) };
   }
-  return { etat: { ...e, extensions }, retirees };
+  return { etat: { ...e, extensions }, retirees: removed };
 }
 
-const fichier = (dossier: string) => join(dossier, "etat.json");
+const file = (dossier: string) => join(dossier, "etat.json");
 
 interface Lecture {
-  etat: EtatExtensions;
+  etat: ExtensionsState;
   /** File present but unreadable, of unknown shape, or with entries that were ignored. */
   abime: boolean;
   /** File of a newer version: empty read, write denied. */
@@ -169,44 +169,44 @@ interface Lecture {
 }
 
 async function lire(dossier: string): Promise<Lecture> {
-  let texte: string;
+  let text: string;
   try {
-    texte = await readFile(fichier(dossier), "utf8");
-  } catch (erreur) {
-    if ((erreur as NodeJS.ErrnoException).code === "ENOENT") return { etat: vide(), abime: false, futur: false };
-    throw erreur;
+    text = await readFile(file(dossier), "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return { etat: empty(), abime: false, futur: false };
+    throw error;
   }
   let brut: unknown;
   try {
-    brut = JSON.parse(texte);
+    brut = JSON.parse(text);
   } catch {
-    return { etat: vide(), abime: true, futur: false };
+    return { etat: empty(), abime: true, futur: false };
   }
-  if (!brut || typeof brut !== "object" || Array.isArray(brut)) return { etat: vide(), abime: true, futur: false };
+  if (!brut || typeof brut !== "object" || Array.isArray(brut)) return { etat: empty(), abime: true, futur: false };
   const b = brut as { version?: unknown; toutesCoupees?: unknown; extensions?: unknown; consolesMasquees?: unknown };
-  if (typeof b.version === "number" && b.version > 1) return { etat: vide(), abime: false, futur: true };
-  if (b.version !== 1) return { etat: vide(), abime: true, futur: false };
+  if (typeof b.version === "number" && b.version > 1) return { etat: empty(), abime: false, futur: true };
+  if (b.version !== 1) return { etat: empty(), abime: true, futur: false };
   const extensions: Record<string, EntreeExtension> = {};
-  let abime = false;
+  let damaged = false;
   if (b.extensions && typeof b.extensions === "object" && !Array.isArray(b.extensions)) {
-    for (const [cle, valeur] of Object.entries(b.extensions)) {
-      const cleLue = lireCle(cle);
+    for (const [key, valeur] of Object.entries(b.extensions)) {
+      const parsedKey = readKey(key);
       const r = EntreeSchema.safeParse(valeur);
-      if (cleLue && r.success && r.data.source === cleLue.source) extensions[cle] = r.data;
-      else abime = true;
+      if (parsedKey && r.success && r.data.source === parsedKey.source) extensions[key] = r.data;
+      else damaged = true;
     }
-  } else if (b.extensions !== undefined) abime = true;
-  const masquees = Array.isArray(b.consolesMasquees) ? b.consolesMasquees.filter((x): x is string => typeof x === "string" && (ID_STORE.test(x) || ID_FIREFOX_AGENT.test(x))) : [];
-  const etat: EtatExtensions = { version: 1, toutesCoupees: b.toutesCoupees === true, extensions };
-  if (masquees.length) etat.consolesMasquees = [...new Set(masquees)];
-  return { etat, abime, futur: false };
+  } else if (b.extensions !== undefined) damaged = true;
+  const hidden = Array.isArray(b.consolesMasquees) ? b.consolesMasquees.filter((x): x is string => typeof x === "string" && (ID_STORE.test(x) || ID_FIREFOX_AGENT.test(x))) : [];
+  const state: ExtensionsState = { version: 1, toutesCoupees: b.toutesCoupees === true, extensions };
+  if (hidden.length) state.consolesMasquees = [...new Set(hidden)];
+  return { etat: state, abime: damaged, futur: false };
 }
 
 /**
  * The state of the file. Absent (ENOENT): empty state. Damaged or of a future version: empty state too, erasing nothing
  * (see `modifierEtatExtensions`). Throws for any read error other than ENOENT.
  */
-export async function lireEtatExtensions(dossier: string): Promise<EtatExtensions> {
+export async function readExtensionsState(dossier: string): Promise<ExtensionsState> {
   return (await lire(dossier)).etat;
 }
 
@@ -219,31 +219,31 @@ const files = new Map<string, Promise<unknown>>();
  * re-applied to the result. A damaged file (or one with ignored entries) is copied to `etat.json.abime-<timestamp>` before
  * being replaced; a file of a newer version refuses the write.
  */
-export function modifierEtatExtensions(
+export function changeExtensionsState(
   dossier: string,
-  changer: (e: EtatExtensions, profilsPrives: ReadonlySet<IdProfil>) => EtatExtensions,
-  profilsPrives: () => ReadonlySet<IdProfil>,
-): Promise<EtatExtensions> {
-  const precedente = files.get(dossier) ?? Promise.resolve();
-  const suivante = precedente.catch(() => {}).then(async () => {
+  changer: (e: ExtensionsState, privateProfiles: ReadonlySet<ProfileId>) => ExtensionsState,
+  privateProfiles: () => ReadonlySet<ProfileId>,
+): Promise<ExtensionsState> {
+  const previous = files.get(dossier) ?? Promise.resolve();
+  const next = previous.catch(() => {}).then(async () => {
     const lu = await lire(dossier);
     if (lu.futur) throw new Error("état des extensions d'une version plus récente");
-    const prives = profilsPrives();
-    const nouveau = appliquerProfilsPrives(changer(lu.etat, prives), prives).etat;
+    const privates = privateProfiles();
+    const fresh = applyPrivateProfiles(changer(lu.etat, privates), privates).etat;
     await mkdir(dossier, { recursive: true });
-    if (lu.abime) await copyFile(fichier(dossier), `${fichier(dossier)}.abime-${new Date().toISOString().replace(/[:.]/g, "-")}`);
-    const temporaire = `${fichier(dossier)}.${randomUUID()}.tmp`;
+    if (lu.abime) await copyFile(file(dossier), `${file(dossier)}.abime-${new Date().toISOString().replace(/[:.]/g, "-")}`);
+    const temp = `${file(dossier)}.${randomUUID()}.tmp`;
     try {
-      await writeFile(temporaire, JSON.stringify(nouveau, null, 2));
-      await rename(temporaire, fichier(dossier));
+      await writeFile(temp, JSON.stringify(fresh, null, 2));
+      await rename(temp, file(dossier));
     } finally {
-      await rm(temporaire, { force: true });
+      await rm(temp, { force: true });
     }
-    return nouveau;
+    return fresh;
   });
-  files.set(dossier, suivante);
-  void suivante.finally(() => {
-    if (files.get(dossier) === suivante) files.delete(dossier);
+  files.set(dossier, next);
+  void next.finally(() => {
+    if (files.get(dossier) === next) files.delete(dossier);
   }).catch(() => {});
-  return suivante;
+  return next;
 }

@@ -1,15 +1,15 @@
 import { constants } from "node:fs";
 import { chmod, lstat, mkdir, open, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import { cheminConfigSession, dossierSessions, type CheminsEspace } from "../chemins.js";
-import type { Profil } from "./profil.js";
+import { sessionConfigPath, dossierSessions, type SpacePaths } from "../chemins.js";
+import type { Profile } from "./profil.js";
 
-function contenuConfig(format: Profil["configMcp"], serveur: { url: string; jeton: string }): string {
+function configContent(format: Profile["configMcp"], server: { url: string; jeton: string }): string {
   return JSON.stringify(
     {
       "claude-json": {
         mcpServers: {
-          webaios: { type: "http", url: serveur.url, headers: { Authorization: `Bearer ${serveur.jeton}` } },
+          webaios: { type: "http", url: server.url, headers: { Authorization: `Bearer ${server.jeton}` } },
         },
       },
     }[format],
@@ -19,15 +19,15 @@ function contenuConfig(format: Profil["configMcp"], serveur: { url: string; jeto
 }
 
 /** Writes the browser's MCP server declaration, readable by the container's agent. */
-export async function ecrireConfigMcp(
-  c: CheminsEspace,
-  format: Profil["configMcp"],
-  serveur: { url: string; jeton: string },
-  chemin: string = c.configMcp,
+export async function writeMcpConfig(
+  c: SpacePaths,
+  format: Profile["configMcp"],
+  server: { url: string; jeton: string },
+  path: string = c.configMcp,
 ): Promise<void> {
-  await mkdir(dirname(chemin), { recursive: true });
-  await writeFile(chemin, contenuConfig(format, serveur), { mode: 0o600 });
-  await chmod(chemin, 0o600);
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, configContent(format, server), { mode: 0o600 });
+  await chmod(path, 0o600);
 }
 
 /**
@@ -35,10 +35,10 @@ export async function ecrireConfigMcp(
  * links in it, so the sessions folder is never followed if it is a link, and the file is created new, without
  * following a link (the token does not go elsewhere). (The main `mcp.json` still follows a link: existing debt.)
  */
-export async function ecrireConfigSession(
-  c: CheminsEspace,
-  format: Profil["configMcp"],
-  serveur: { url: string; jeton: string },
+export async function writeSessionConfig(
+  c: SpacePaths,
+  format: Profile["configMcp"],
+  server: { url: string; jeton: string },
   session: string,
 ): Promise<void> {
   const dossier = dossierSessions(c);
@@ -49,9 +49,9 @@ export async function ecrireConfigSession(
   });
   if (!info) await mkdir(dossier, { mode: 0o700 });
   else if (!info.isDirectory()) throw new Error(`Dossier des sessions invalide (lien ou fichier) : ${dossier}`);
-  const f = await open(cheminConfigSession(c, session), constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW, 0o600);
+  const f = await open(sessionConfigPath(c, session), constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW, 0o600);
   try {
-    await f.writeFile(contenuConfig(format, serveur));
+    await f.writeFile(configContent(format, server));
   } finally {
     await f.close();
   }

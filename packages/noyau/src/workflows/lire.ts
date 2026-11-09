@@ -1,14 +1,14 @@
 import { lstat, readFile, realpath, stat } from "node:fs/promises";
 import { join, sep } from "node:path";
 import { TAILLE_MAX_WORKFLOW } from "./schema.js";
-import { CONTEXTE_PAR_DEFAUT, erreurWorkflow, validerWorkflow, workflowImplicite, type ContexteValidation, type ResultatValidation } from "./valider.js";
+import { DEFAULT_CONTEXT, workflowError, validateWorkflow, implicitWorkflow, type ValidationContext, type ValidationResult } from "./valider.js";
 
-export type WorkflowLu = { origine: "fichier" | "implicite"; resultat: ResultatValidation };
+export type WorkflowLu = { origine: "fichier" | "implicite"; resultat: ValidationResult };
 
 /** The name exists in the folder, even as a broken symbolic link (a broken workflow.json is invalid, not absent). */
-export async function existe(chemin: string): Promise<boolean> {
+export async function exists(path: string): Promise<boolean> {
   try {
-    await lstat(chemin);
+    await lstat(path);
     return true;
   } catch {
     return false;
@@ -18,8 +18,8 @@ export async function existe(chemin: string): Promise<boolean> {
 /** Reads workflow.json as JSON, without following a symbolic link that would leave the widget's folder. */
 export async function lireBrutWorkflow(dossier: string): Promise<{ brut: unknown } | { erreur: string }> {
   try {
-    const [racine, reel] = await Promise.all([realpath(dossier), realpath(join(dossier, "workflow.json"))]);
-    if (!reel.startsWith(racine + sep)) return { erreur: "workflow.json sort du dossier du widget" };
+    const [root, reel] = await Promise.all([realpath(dossier), realpath(join(dossier, "workflow.json"))]);
+    if (!reel.startsWith(root + sep)) return { erreur: "workflow.json sort du dossier du widget" };
     if ((await stat(reel)).size > TAILLE_MAX_WORKFLOW) return { erreur: `workflow.json dépasse ${TAILLE_MAX_WORKFLOW / 1024} Ko` };
     return { brut: JSON.parse(await readFile(reel, "utf8")) };
   } catch (e) {
@@ -28,9 +28,9 @@ export async function lireBrutWorkflow(dossier: string): Promise<{ brut: unknown
   }
 }
 
-async function lireFichier(dossier: string, ctx: ContexteValidation): Promise<ResultatValidation> {
+async function readTextFile(dossier: string, ctx: ValidationContext): Promise<ValidationResult> {
   const lu = await lireBrutWorkflow(dossier);
-  return "erreur" in lu ? erreurWorkflow(lu.erreur) : validerWorkflow(lu.brut, ctx);
+  return "erreur" in lu ? workflowError(lu.erreur) : validateWorkflow(lu.brut, ctx);
 }
 
 /**
@@ -38,12 +38,12 @@ async function lireFichier(dossier: string, ctx: ContexteValidation): Promise<Re
  * `recolte.mjs`, otherwise null. Nothing is run here: the file is only read as JSON. `ctx`: what the widget
  * declares (`contexteValidation`).
  */
-export async function lireWorkflow(dossierFichiers: string, ctx: ContexteValidation = CONTEXTE_PAR_DEFAUT): Promise<WorkflowLu | null> {
-  if (await existe(join(dossierFichiers, "workflow.json"))) {
-    return { origine: "fichier", resultat: await lireFichier(dossierFichiers, ctx) };
+export async function lireWorkflow(filesFolder: string, ctx: ValidationContext = DEFAULT_CONTEXT): Promise<WorkflowLu | null> {
+  if (await exists(join(filesFolder, "workflow.json"))) {
+    return { origine: "fichier", resultat: await readTextFile(filesFolder, ctx) };
   }
-  if (await existe(join(dossierFichiers, "recolte.mjs"))) {
-    return { origine: "implicite", resultat: validerWorkflow(workflowImplicite(), ctx) };
+  if (await exists(join(filesFolder, "recolte.mjs"))) {
+    return { origine: "implicite", resultat: validateWorkflow(implicitWorkflow(), ctx) };
   }
   return null;
 }

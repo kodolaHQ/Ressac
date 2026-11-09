@@ -3,7 +3,7 @@ import { spawn } from "node:child_process";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { dossierTemporaire } from "../aide/temporaire.js";
-import { workflowImplicite } from "../../src/workflows/valider.js";
+import { implicitWorkflow } from "../../src/workflows/valider.js";
 import { pathToFileURL } from "node:url";
 import { MOTEUR, bloc, chaine, lancer as lancerWorkflow, sortie, workflowEnvoye } from "../aide/moteur.js";
 
@@ -40,7 +40,7 @@ async function lancer(code: string, repondre: Repondeur = () => ({ ok: null }), 
     }
   });
   enfant.stdin.write(
-    JSON.stringify({ t: "debut", precedent: { v: 1 }, maintenant: "2026-10-28T10:00:00.000Z", config, workflow: workflowEnvoye(workflowImplicite()) }) + "\n",
+    JSON.stringify({ t: "debut", precedent: { v: 1 }, maintenant: "2026-10-28T10:00:00.000Z", config, workflow: workflowEnvoye(implicitWorkflow()) }) + "\n",
   );
   enfant.stdin.write(JSON.stringify({ t: "memoire", memoire: {} }) + "\n");
   await fini;

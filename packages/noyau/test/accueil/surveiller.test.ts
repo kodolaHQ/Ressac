@@ -2,15 +2,15 @@ import { expect, test } from "vitest";
 import { writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as attendre } from "node:timers/promises";
-import { cheminsEspace } from "../../src/chemins.js";
-import { surveillerAccueil, surveillerActions } from "../../src/accueil/surveiller.js";
+import { spacePaths } from "../../src/chemins.js";
+import { watchHome, watchActions } from "../../src/accueil/surveiller.js";
 import { dossierTemporaire } from "../aide/temporaire.js";
 
 test("surveillerAccueil calls the callback only once for a burst of writes", async () => {
-  const c = cheminsEspace(await dossierTemporaire());
+  const c = spacePaths(await dossierTemporaire());
   await mkdir(join(c.widgets, "x"), { recursive: true });
   let appels = 0;
-  const arreter = surveillerAccueil(c, () => appels++);
+  const arreter = watchHome(c, () => appels++);
   await attendre(300); // laisse chokidar s'initialiser
   for (let i = 0; i < 5; i++) {
     await writeFile(join(c.widgets, "x", "affichage.html"), `<p>${i}</p>`);
@@ -22,9 +22,9 @@ test("surveillerAccueil calls the callback only once for a burst of writes", asy
 });
 
 test("surveillerActions follows ~/WebAiOs/actions and components, once per burst", async () => {
-  const c = cheminsEspace(await dossierTemporaire());
+  const c = spacePaths(await dossierTemporaire());
   let appels = 0;
-  const arreter = surveillerActions(c, () => appels++);
+  const arreter = watchActions(c, () => appels++);
   await attendre(300);
   await mkdir(join(c.actions, "gitlab"), { recursive: true });
   await writeFile(join(c.actions, "gitlab", "action.json"), "{}");

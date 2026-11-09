@@ -1,4 +1,4 @@
-import { adresseLocale, hoteDansSite } from "@webaios/noyau";
+import { localUrl, hostInSite } from "@webaios/noyau";
 
 /**
  * Effective domains of the app, and those of its login (OAuth…). `adressesLocales` (tests only,
@@ -18,7 +18,7 @@ function hoteWeb(url: string, adressesLocales: boolean): string | null {
     return null;
   }
   if (u.username || u.password) return null;
-  const local = adresseLocale(u.hostname);
+  const local = localUrl(u.hostname);
   if (local && !adressesLocales) return null;
   if (u.protocol === "https:") return u.hostname;
   return u.protocol === "http:" && local ? u.hostname : null;
@@ -27,7 +27,7 @@ function hoteWeb(url: string, adressesLocales: boolean): string | null {
 /** Main page: followed to the site or its login, blocked elsewhere (notice in the bar). */
 export function decisionNavigation(url: string, c: ContexteNavigation): "suivre" | "bloquer" {
   const hote = hoteWeb(url, c.adressesLocales === true);
-  return hote !== null && (hoteDansSite(hote, c.domaines) || hoteDansSite(hote, c.connexion)) ? "suivre" : "bloquer";
+  return hote !== null && (hostInSite(hote, c.domaines) || hostInSite(hote, c.connexion)) ? "suivre" : "bloquer";
 }
 
 /**
@@ -37,6 +37,6 @@ export function decisionNavigation(url: string, c: ContexteNavigation): "suivre"
 export function decisionOuverture(url: string, c: ContexteNavigation): "dans-l-appli" | "petite-fenetre" | "bloquer" {
   const hote = hoteWeb(url, c.adressesLocales === true);
   if (hote === null) return "bloquer";
-  if (hoteDansSite(hote, c.domaines)) return "dans-l-appli";
-  return hoteDansSite(hote, c.connexion) ? "petite-fenetre" : "bloquer";
+  if (hostInSite(hote, c.domaines)) return "dans-l-appli";
+  return hostInSite(hote, c.connexion) ? "petite-fenetre" : "bloquer";
 }

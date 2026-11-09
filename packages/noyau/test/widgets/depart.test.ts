@@ -5,7 +5,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { dossierTemporaire } from "../aide/temporaire.js";
 import { lireWorkflow } from "../../src/workflows/lire.js";
-import type { MemoireBlocs } from "../../src/workflows/memoire.js";
+import type { BlocksMemory } from "../../src/workflows/memoire.js";
 
 const SCRIPT = join(import.meta.dirname, "..", "..", "docker", "moteur", "recolteur.mjs");
 const MODELES = join(import.meta.dirname, "..", "..", "modeles", "widgets");
@@ -21,7 +21,7 @@ type Repondeur = (appel: Appel) => Promise<{ ok: unknown } | { erreur: string }>
 async function lancer(
   id: string,
   repondre: Repondeur,
-  o: { memoire?: MemoireBlocs; config?: Record<string, unknown>; modifier?: (w: any) => void } = {},
+  o: { memoire?: BlocksMemory; config?: Record<string, unknown>; modifier?: (w: any) => void } = {},
 ) {
   const dossier = await dossierTemporaire();
   await cp(join(MODELES, id), dossier, { recursive: true });
@@ -62,7 +62,7 @@ async function lancer(
   return {
     appels,
     terminal: lignes.find((l) => l.t === "fin" || l.t === "echec"),
-    memoire: lignes.find((l) => l.t === "memoire")?.memoire as MemoireBlocs | undefined,
+    memoire: lignes.find((l) => l.t === "memoire")?.memoire as BlocksMemory | undefined,
     finBloc: (b: string) => lignes.find((l) => l.t === "bloc" && l.id === b && l.etape === "fin"),
   };
 }

@@ -15,7 +15,7 @@ export const Accord = z.object({
 export type Accord = z.infer<typeof Accord>;
 
 const ID = /^[a-z0-9-]+$/;
-const fichier = (dossierWidgets: string) => join(dossierWidgets, "accords.json");
+const file = (dossierWidgets: string) => join(dossierWidgets, "accords.json");
 
 function verifierId(id: string): void {
   if (!ID.test(id)) throw new Error(`id de widget invalide : ${id}`);
@@ -25,7 +25,7 @@ function verifierId(id: string): void {
 export async function lireAccords(dossierWidgets: string): Promise<Record<string, Accord>> {
   let brut: unknown;
   try {
-    brut = JSON.parse(await readFile(fichier(dossierWidgets), "utf8"));
+    brut = JSON.parse(await readFile(file(dossierWidgets), "utf8"));
   } catch {
     return {};
   }
@@ -42,24 +42,24 @@ export async function lireAccords(dossierWidgets: string): Promise<Record<string
 const files = new Map<string, Promise<unknown>>();
 
 function modifier(dossierWidgets: string, changer: (a: Record<string, Accord>) => void): Promise<void> {
-  const precedente = files.get(dossierWidgets) ?? Promise.resolve();
-  const suivante = precedente.catch(() => {}).then(async () => {
+  const previous = files.get(dossierWidgets) ?? Promise.resolve();
+  const next = previous.catch(() => {}).then(async () => {
     const accords = await lireAccords(dossierWidgets);
     changer(accords);
     await mkdir(dossierWidgets, { recursive: true });
-    const temporaire = `${fichier(dossierWidgets)}.${randomUUID()}.tmp`;
+    const temp = `${file(dossierWidgets)}.${randomUUID()}.tmp`;
     try {
-      await writeFile(temporaire, JSON.stringify(accords, null, 2));
-      await rename(temporaire, fichier(dossierWidgets));
+      await writeFile(temp, JSON.stringify(accords, null, 2));
+      await rename(temp, file(dossierWidgets));
     } finally {
-      await rm(temporaire, { force: true });
+      await rm(temp, { force: true });
     }
   });
-  files.set(dossierWidgets, suivante);
-  void suivante.finally(() => {
-    if (files.get(dossierWidgets) === suivante) files.delete(dossierWidgets);
+  files.set(dossierWidgets, next);
+  void next.finally(() => {
+    if (files.get(dossierWidgets) === next) files.delete(dossierWidgets);
   }).catch(() => {});
-  return suivante;
+  return next;
 }
 
 export async function accorder(dossierWidgets: string, id: string, accord: Accord): Promise<void> {
@@ -77,7 +77,7 @@ export async function retirerAccord(dossierWidgets: string, id: string): Promise
   });
 }
 
-const memes = (a: string[], b: string[]) => {
+const same = (a: string[], b: string[]) => {
   const x = [...a].sort();
   const y = [...b].sort();
   return x.length === y.length && x.every((v, i) => v === y[i]);
@@ -87,7 +87,7 @@ const memes = (a: string[], b: string[]) => {
  * The grant holds as long as the declaration (of a widget or an action) announces exactly the same domains
  * (`compte` and `publiques`).
  */
-export function accordValide(declaration: { sources: { compte: string[]; publiques: string[] } }, accord?: Accord): accord is Accord {
+export function grantValid(declaration: { sources: { compte: string[]; publiques: string[] } }, accord?: Accord): accord is Accord {
   if (!accord) return false;
-  return memes(declaration.sources.compte, accord.domaines) && memes(declaration.sources.publiques, accord.publiques);
+  return same(declaration.sources.compte, accord.domaines) && same(declaration.sources.publiques, accord.publiques);
 }

@@ -4,38 +4,38 @@ import { readdir, writeFile, mkdir, symlink, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { PolitiqueAcces, type DroitDev } from "../../src/acces/politique.js";
-import { TEXTE_PRIVE, type OngletInfo } from "../../src/mcp/pont.js";
+import { AccessPolicy, type DroitDev } from "../../src/acces/politique.js";
+import { PRIVATE_TEXT, type TabInfo } from "../../src/mcp/pont.js";
 import { PontFactice } from "../../src/mcp/pont-factice.js";
-import { demarrerServeurMcp, genererJeton } from "../../src/mcp/serveur.js";
-import { SuiviOutilsDev } from "../../src/outils-dev/suivi.js";
-import { cheminsEspace } from "../../src/chemins.js";
-import { fichiersProfils } from "../../src/noyau.js";
+import { startMcpServer, generateToken } from "../../src/mcp/serveur.js";
+import { DevToolsTracking } from "../../src/outils-dev/suivi.js";
+import { spacePaths } from "../../src/chemins.js";
+import { profileFiles } from "../../src/noyau.js";
 import { dossierTemporaire } from "../aide/temporaire.js";
 
-const github: OngletInfo = { id: "github", titre: "sveltejs/svelte", url: "https://github.com/sveltejs/svelte", espace: "perso" };
-const gmail: OngletInfo = { id: "gmail", titre: "Gmail", url: "https://mail.google.com/mail/u/0/", espace: "perso" };
-const vidola: OngletInfo = { id: "site:vidola", titre: "Vidola", url: "https://vidola-a.example/film/1", espace: "", site: "vidola" };
-const appTodo: OngletInfo = { id: "app:todo", titre: "Todo", url: "http://localhost:5280/", espace: "perso", application: "todo" };
+const github: TabInfo = { id: "github", titre: "sveltejs/svelte", url: "https://github.com/sveltejs/svelte", espace: "perso" };
+const gmail: TabInfo = { id: "gmail", titre: "Gmail", url: "https://mail.google.com/mail/u/0/", espace: "perso" };
+const vidola: TabInfo = { id: "site:vidola", titre: "Vidola", url: "https://vidola-a.example/film/1", espace: "", site: "vidola" };
+const appTodo: TabInfo = { id: "app:todo", titre: "Todo", url: "http://localhost:5280/", espace: "perso", application: "todo" };
 
 const REFUS = "Accès refusé par l'utilisateur à cet outil sur cet onglet.";
 const COUPE = "Accès coupé par l'utilisateur.";
 
-let serveur: Awaited<ReturnType<typeof demarrerServeurMcp>> | undefined;
+let serveur: Awaited<ReturnType<typeof startMcpServer>> | undefined;
 let client: Client | undefined;
-let suivi: SuiviOutilsDev | undefined;
+let suivi: DevToolsTracking | undefined;
 let pont: PontFactice;
-let politique: PolitiqueAcces;
+let politique: AccessPolicy;
 let racine: string;
 /** Folder outside the space (browser profile) for the profiles of sites the agent did not build. */
 let prive: string;
-const jeton = genererJeton();
+const jeton = generateToken();
 
 async function demarrer(o: {
   outilsDev?: boolean;
   accorderDev?: DroitDev[];
   bloquer?: boolean;
-  profils?: Partial<ReturnType<typeof fichiersProfils>>;
+  profils?: Partial<ReturnType<typeof profileFiles>>;
   /** Answer of the site app's card (absent: no card, refusal). */
   site?: boolean;
 } = {}) {
@@ -47,11 +47,11 @@ async function demarrer(o: {
     ...(o.bloquer ? { bloquer: true } : {}),
     ...(o.site !== undefined ? { donneesWidget: o.site } : {}),
   });
-  politique = new PolitiqueAcces();
+  politique = new AccessPolicy();
   racine = await dossierTemporaire();
   prive = join(await dossierTemporaire(), "profilage");
-  const profils = { ...fichiersProfils(cheminsEspace(racine), prive), ...o.profils };
-  serveur = await demarrerServeurMcp({ pont, politique, jeton, agent: "Claude", profils });
+  const profils = { ...profileFiles(spacePaths(racine), prive), ...o.profils };
+  serveur = await startMcpServer({ pont, politique, jeton, agent: "Claude", profils });
   client = new Client({ name: "test", version: "0" });
   await client.connect(
     new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${serveur.port}/mcp`), {
@@ -103,7 +103,7 @@ test('lire_console on a third-party tab without the right: a request with rights
   ]);
   const r = await appeler("lire_console", { id: "github" });
   expect(demandesDev()).toHaveLength(1);
-  const [o, d] = demandesDev()[0]!.args as [OngletInfo, { droits: DroitDev[]; raison: string; agent: string }];
+  const [o, d] = demandesDev()[0]!.args as [TabInfo, { droits: DroitDev[]; raison: string; agent: string }];
   expect(o.id).toBe("github");
   expect(d).toEqual({ droits: ["console"], raison: "L'agent veut utiliser lire_console.", agent: "Claude" });
   expect(r).toContain("2026-10-27T10:00:00.000Z");
@@ -315,7 +315,7 @@ test("two simultaneous requests for the same tab: a single card", async () => {
 
 test("SuiviOutilsDev: attaches at the first right, detaches when everything is cut; OutilsDevOccupes → the tool returns the message", async () => {
   await demarrer({ accorderDev: ["console"] });
-  suivi = new SuiviOutilsDev(politique, pont.outilsDev!, () => pont.listerOnglets());
+  suivi = new DevToolsTracking(politique, pont.outilsDev!, () => pont.listerOnglets());
   const appelsDe = (m: string, id: string) => pont.appels.filter((a) => a.methode === m && a.args[0] === id).length;
 
   politique.accorderDev(github, ["console"], []);
@@ -341,7 +341,7 @@ test("SuiviOutilsDev: attaches at the first right, detaches when everything is c
 
 test("fichiersProfils: refuses a path outside the profile folders", async () => {
   const r = await dossierTemporaire();
-  const p = fichiersProfils(cheminsEspace(r));
+  const p = profileFiles(spacePaths(r));
   const chemin = await p.ecrireProfil(appTodo, "x.heapsnapshot", "{}", true);
   expect(chemin).toBe("/workspace/projets/todo/.webaios/profilage/x.heapsnapshot");
   expect(await p.lireProfil(chemin)).toBe("{}");
@@ -364,7 +364,7 @@ test("fichiersProfils: a profiling folder as a symbolic link is refused, on writ
   await writeFile(join(dehors, "x.heapsnapshot"), "secret");
   await mkdir(join(r, ".webaios"), { recursive: true });
   await symlink(dehors, join(r, ".webaios", "profilage"));
-  const p = fichiersProfils(cheminsEspace(r));
+  const p = profileFiles(spacePaths(r));
   await expect(p.ecrireProfil(github, "y.cpuprofile", "{}", true)).rejects.toThrow(/hors des profils/);
   expect(existsSync(join(dehors, "y.cpuprofile"))).toBe(false);
   await expect(p.lireProfil("/workspace/.webaios/profilage/x.heapsnapshot")).rejects.toThrow(/hors des profils/);
@@ -385,7 +385,7 @@ test("fichiersProfils: a file as a symbolic link is neither read, nor erased, no
   const dossier = join(r, ".webaios", "profilage");
   await mkdir(dossier, { recursive: true });
   await symlink(cible, join(dossier, "lien.heapsnapshot"));
-  const p = fichiersProfils(cheminsEspace(r));
+  const p = profileFiles(spacePaths(r));
   await expect(p.lireProfil("/workspace/.webaios/profilage/lien.heapsnapshot")).rejects.toThrow(/hors des profils/);
   await expect(p.supprimerProfil("/workspace/.webaios/profilage/lien.heapsnapshot")).rejects.toThrow(/hors des profils/);
   await expect(p.ecrireProfil(github, "lien.heapsnapshot", "écrasé", true)).rejects.toThrow();
@@ -478,7 +478,7 @@ test("cut answers right away even if the bridge ignores the signal; its late res
 test("fichiersProfils: a third-party site writes in the private folder and receives a reference profil:<name>", async () => {
   const r = await dossierTemporaire();
   const dossier = join(await dossierTemporaire(), "profilage");
-  const p = fichiersProfils(cheminsEspace(r), dossier);
+  const p = profileFiles(spacePaths(r), dossier);
   const ref = await p.ecrireProfil(github, "x.heapsnapshot", "{}", false);
   expect(ref).toBe("profil:x.heapsnapshot");
   expect(existsSync(join(dossier, "x.heapsnapshot"))).toBe(true);
@@ -558,7 +558,7 @@ test("lire_console masks the tokens in URLs in the messages and stacks of a thir
 
 test("SuiviOutilsDev: a tab that keeps its rights on another origin (relaunched app) is detached then reattached", async () => {
   await demarrer();
-  suivi = new SuiviOutilsDev(politique, pont.outilsDev!, () => pont.listerOnglets());
+  suivi = new DevToolsTracking(politique, pont.outilsDev!, () => pont.listerOnglets());
   const appels = () => pont.appels.filter((a) => ["attacher", "detacher"].includes(a.methode) && a.args[0] === "app:todo").map((a) => a.methode);
   politique.construite(appTodo);
   await vi.waitFor(() => expect(appels()).toEqual(["attacher"]));
@@ -591,7 +591,7 @@ test("private space: each dev tool answers TEXTE_PRIVE, without a card or a debu
   ];
   for (const [name, args] of appels) {
     const r = await client!.callTool({ name, arguments: args });
-    expect((r.content as { text: string }[])[0]!.text, name).toBe(TEXTE_PRIVE);
+    expect((r.content as { text: string }[])[0]!.text, name).toBe(PRIVATE_TEXT);
     expect(r.isError, name).toBeFalsy();
   }
   expect(demandesDev()).toHaveLength(0);
@@ -604,7 +604,7 @@ test("private space during a call: it is cut and answers TEXTE_PRIVE", async () 
   await vi.waitFor(() => expect(pont.appels.some((a) => a.methode === "profiler")).toBe(true));
   pont.rendrePrive("github");
   politique.ongletFerme("github"); // what the browser does when the tab becomes private
-  expect(await r).toBe(TEXTE_PRIVE);
+  expect(await r).toBe(PRIVATE_TEXT);
 });
 
 // ——— Site app windows: the app's grant AND the dev tools' ———

@@ -1,28 +1,28 @@
 import {
-  type ChangerHote,
-  OngletIntrouvable,
-  OngletPrive,
-  OutilsDevOccupes,
-  ProfilRefuse,
+  type ChangeHost,
+  TabNotFound,
+  PrivateTab,
+  DevToolsBusy,
+  ProfileDenied,
   type DroitDev,
-  type HistoriqueNavigateur,
-  type OngletInfo,
+  type BrowserHistory,
+  type TabInfo,
   type OptionsLecturePage,
-  type OutilsDevNavigateur,
-  type OutilsDevProprietaire,
+  type BrowserDevTools,
+  type DevToolsOwner,
   type PageLue,
-  type PontNavigateur,
+  type BrowserBridge,
 } from "../../../packages/noyau/src/index.ts";
 import type { Historique } from "../core/historique.ts";
 import type { Rpc } from "../shared/rpc.ts";
 
 /** The kernel's browser bridge, answered by Firefox over JSON-RPC. Only the private-tab mirror lives here. */
-export class RemoteBridge implements PontNavigateur {
+export class RemoteBridge implements BrowserBridge {
   private prives = new Set<string>();
   private actifPrive = false;
 
   /** The agent's history tools; absent, it has none. */
-  readonly historique?: HistoriqueNavigateur;
+  readonly historique?: BrowserHistory;
 
   constructor(
     private readonly rpc: Rpc,
@@ -56,23 +56,23 @@ export class RemoteBridge implements PontNavigateur {
       // The kernel expects an aborted read to reject with the signal's own reason.
       if (signal?.aborted) throw signal.reason;
       const x = e as Error & { id?: string; profil?: string };
-      if (x.name === "OngletIntrouvable") throw new OngletIntrouvable(x.id!);
-      if (x.name === "OngletPrive") throw new OngletPrive(x.id!);
-      if (x.name === "ProfilRefuse") throw new ProfilRefuse(x.profil!);
-      if (x.name === "OutilsDevOccupes") throw new OutilsDevOccupes();
+      if (x.name === "OngletIntrouvable") throw new TabNotFound(x.id!);
+      if (x.name === "OngletPrive") throw new PrivateTab(x.id!);
+      if (x.name === "ProfilRefuse") throw new ProfileDenied(x.profil!);
+      if (x.name === "OutilsDevOccupes") throw new DevToolsBusy();
       throw e;
     }
   }
 
-  ongletActif = () => this.call<OngletInfo | null>("ongletActif", []);
-  listerOnglets = () => this.call<OngletInfo[]>("listerOnglets", []);
+  ongletActif = () => this.call<TabInfo | null>("ongletActif", []);
+  listerOnglets = () => this.call<TabInfo[]>("listerOnglets", []);
   lireTexte = (id: string) => this.call<{ texte: string; selection?: string }>("lireTexte", [id]);
-  ouvrirOnglet = (url: string, espace?: string) => this.call<OngletInfo>("ouvrirOnglet", espace === undefined ? [url] : [url, espace]);
+  ouvrirOnglet = (url: string, espace?: string) => this.call<TabInfo>("ouvrirOnglet", espace === undefined ? [url] : [url, espace]);
   naviguer = (id: string, url: string) => this.call<void | "en-attente">("naviguer", [id, url]);
   capturer = async (id: string) => Buffer.from(await this.call<string>("capturer", [id]), "base64");
-  demanderAutorisation = (o: OngletInfo) => this.call<boolean>("demanderAutorisation", [o]);
+  demanderAutorisation = (o: TabInfo) => this.call<boolean>("demanderAutorisation", [o]);
   // Taken down (signal) when a new conversation starts: no rights.
-  demanderOutilsDev = (o: OngletInfo, d: { droits: DroitDev[]; raison: string; agent: string }, signal?: AbortSignal) =>
+  demanderOutilsDev = (o: TabInfo, d: { droits: DroitDev[]; raison: string; agent: string }, signal?: AbortSignal) =>
     this.call<DroitDev[]>("demanderOutilsDev", [o, d], signal).catch((e) => {
       if (signal?.aborted) return [];
       throw e;
@@ -91,7 +91,7 @@ export class RemoteBridge implements PontNavigateur {
    * The tab dev tools, run by Firefox (chrome/store/devtools.ts). Only an owner's are usable: Firefox keeps its
    * attachments across kernel starts, a new owner revokes the previous one.
    */
-  readonly outilsDev: OutilsDevNavigateur = {
+  readonly outilsDev: BrowserDevTools = {
     // Without an owner's token Firefox refuses every call.
     ...this.devTools(Promise.resolve("")),
     proprietaire: () => {
@@ -102,9 +102,9 @@ export class RemoteBridge implements PontNavigateur {
   };
 
   /** Each method sends its arguments with the owner's token; a trailing AbortSignal cancels the request instead. */
-  private devTools(token: Promise<string>): Omit<OutilsDevProprietaire, "liberer"> {
+  private devTools(token: Promise<string>): Omit<DevToolsOwner, "liberer"> {
     const f =
-      (method: keyof OutilsDevNavigateur) =>
+      (method: keyof BrowserDevTools) =>
       async (...a: unknown[]): Promise<any> => {
         const signal = a.at(-1) instanceof AbortSignal ? (a.pop() as AbortSignal) : undefined;
         return this.call("outilsDev.call", [await token, method, a], signal);
@@ -123,7 +123,7 @@ export class RemoteBridge implements PontNavigateur {
   }
 
   /** The waits of the paced reads in progress, by the id Firefox echoes back (`lecture.changerHote`). */
-  private readonly lecturesMenagees = new Map<string, ChangerHote>();
+  private readonly lecturesMenagees = new Map<string, ChangeHost>();
 
   lirePageInvisible = async (url: string, o: OptionsLecturePage): Promise<PageLue> => {
     const { signal, changerHote, ...options } = o;

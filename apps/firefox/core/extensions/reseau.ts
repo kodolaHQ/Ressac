@@ -3,7 +3,7 @@
 // This module holds the pure checks the chrome asks: the addresses an agent extension's pages and its calls to
 // `tabs.create`, `tabs.update`, `windows.create` may open (`urlPermiseAgent`, asked by the guard webaios-garde-fond.js),
 // and the hosts it may script (`hotePermisAgent`).
-import type { Portee } from "@webaios/noyau";
+import type { Scope } from "@webaios/noyau";
 
 function lire(url: string): URL | null {
   try {
@@ -44,7 +44,7 @@ export function motifCouvre(motif: string, u: URL): boolean {
 }
 
 /** A host of `accord.reseau` (exact name). */
-function dansReseau(u: URL, accord: Portee): boolean {
+function dansReseau(u: URL, accord: Scope): boolean {
   return accord.reseau.includes(u.hostname.toLowerCase());
 }
 
@@ -53,7 +53,7 @@ function dansReseau(u: URL, accord: Portee): boolean {
  * `chrome-extension://` page of itself, or http(s) to a host of `accord.reseau` or covered by `accord.hotes`. Everything
  * else is refused (`data:`, `javascript:`, `file:`, `blob:`, another extension…).
  */
-export function urlPermiseAgent(url: string, accord: Portee, idChrome: string): boolean {
+export function urlPermiseAgent(url: string, accord: Scope, idChrome: string): boolean {
   const u = lire(url);
   if (!u) return false;
   if (u.protocol === "chrome-extension:") return u.host === idChrome;
@@ -63,7 +63,7 @@ export function urlPermiseAgent(url: string, accord: Portee, idChrome: string): 
 }
 
 /** Is the tab at address `url` a site of the granted hosts (scripts, CSS)? */
-export function hotePermisAgent(url: string, accord: Portee): boolean {
+export function hotePermisAgent(url: string, accord: Scope): boolean {
   const u = lire(url);
   return !!u && accord.hotes.some((m) => motifCouvre(m, u));
 }

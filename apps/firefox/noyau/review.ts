@@ -2,27 +2,27 @@
 import { lstat, realpath, rm } from "node:fs/promises";
 import { join, sep } from "node:path";
 import {
-  CommentairesRelecture,
-  DepotRelecture,
-  depotRelecture,
+  ReviewComments,
+  ReviewStore,
+  reviewStore,
   destinationDe,
-  ErreurRelecture,
-  fichierCommentaires,
-  ID_PROJET,
+  ReviewError,
+  commentsFile,
+  PROJECT_ID,
   ID_SITE,
-  projetPourSite,
-  positionNouvelle,
-  REMARQUE_VIDE,
+  projectForSite,
+  newPosition,
+  EMPTY_REMARK,
   SANS_CLIENT,
-  type CheminsEspace,
-  type Commentaire,
-  type Comparaison,
-  type DiffFichier,
+  type SpacePaths,
+  type Comment,
+  type Comparison,
+  type DiffFile,
   type DossiersDesign,
-  type IdProjet,
+  type ProjectId,
   type Lot,
-  type ProjetSuivi,
-  type RegistreExternes,
+  type TrackedProject,
+  type ExternalRegistry,
   type Remarques,
 } from "../../../packages/noyau/src/index.ts";
 import type { ResultatExtension, VueRelecture } from "../shared/api.ts";
@@ -38,7 +38,7 @@ export const COMPARAISONS_GARDEES = 8;
 export const COMPARAISON_INCONNUE = "Cette comparaison n'est plus gardée : Rafraîchis la relecture.";
 /** A comparison's token: its two trees (reviewed, current). */
 export const JETON_RELECTURE = /^[0-9a-f]{40}:[0-9a-f]{40}$/;
-const jetonDe = (c: Comparaison) => `${c.arbreRelu}:${c.arbreCourant}`;
+const jetonDe = (c: Comparison) => `${c.arbreRelu}:${c.arbreCourant}`;
 export { PLAGE_HORS_BLOC };
 /** "Send" with no unresolved comment. */
 export const AUCUN_COMMENTAIRE = "Aucun commentaire à envoyer.";
@@ -47,10 +47,10 @@ export const AUCUN_COMMENTAIRE = "Aucun commentaire à envoyer.";
  * A comment's lines, read from the kept diff: those of a single block whose position (new number, that of the next
  * line for a removal) runs from `debut` to `fin`, every position present. null if no block fits.
  */
-export function lignesDuBloc(diff: DiffFichier, debut: number, fin: number): Commentaire["lignes"] | null {
+export function lignesDuBloc(diff: DiffFile, debut: number, fin: number): Comment["lignes"] | null {
   if (!Number.isSafeInteger(debut) || !Number.isSafeInteger(fin) || debut < 1 || fin < debut) return null;
   for (const b of diff.blocs) {
-    const lignes = b.lignes.map((l, i) => ({ marque: l.marque, texte: l.texte, position: positionNouvelle(b, i) }));
+    const lignes = b.lignes.map((l, i) => ({ marque: l.marque, texte: l.texte, position: newPosition(b, i) }));
     const dedans = lignes.filter((l) => l.position >= debut && l.position <= fin);
     const positions = new Set(dedans.map((l) => l.position));
     let complet = true;
@@ -68,16 +68,16 @@ export function lignesDuBloc(diff: DiffFichier, debut: number, fin: number): Com
  */
 export class ReviewService {
   /** Per project, the kept comparisons, the most recent first. */
-  private readonly comparaisons = new Map<IdProjet, { jeton: string; depot: DepotRelecture; comparaison: Comparaison }[]>();
+  private readonly comparaisons = new Map<ProjectId, { jeton: string; depot: ReviewStore; comparaison: Comparison }[]>();
   private priseEnCours: Promise<void> = Promise.resolve();
   /** Each project's comments (one instance per project). */
-  private readonly listes = new Map<IdProjet, CommentairesRelecture>();
+  private readonly listes = new Map<ProjectId, ReviewComments>();
 
   constructor(
     private readonly o: {
       dossiers: DossiersDesign;
-      chemins: CheminsEspace;
-      registre: () => RegistreExternes | null;
+      chemins: SpacePaths;
+      registre: () => ExternalRegistry | null;
       git?: string;
       /** The agent apps' names (their card); the folder name otherwise. */
       applis?: () => Promise<{ dossier: string; nom: string }[]>;
@@ -86,12 +86,12 @@ export class ReviewService {
       /** The batches of sent comments. */
       remarques: Remarques;
       /** After a batch is written (as in design mode: pre-fill the agent's session; nothing for an external project). */
-      envoyer(p: ProjetSuivi, lot: Lot): Promise<void>;
+      envoyer(p: TrackedProject, lot: Lot): Promise<void>;
     },
   ) {}
 
-  private depot(p: IdProjet, dossier: string): DepotRelecture {
-    return new DepotRelecture({ depot: depotRelecture(this.o.dossiers, p), dossier, ...(this.o.git ? { git: this.o.git } : {}) });
+  private depot(p: ProjectId, dossier: string): ReviewStore {
+    return new ReviewStore({ depot: reviewStore(this.o.dossiers, p), dossier, ...(this.o.git ? { git: this.o.git } : {}) });
   }
 
   /**
@@ -133,13 +133,13 @@ export class ReviewService {
   }
 
   /** A project's first snapshot in its folder, if missing; an error is swallowed (the page will say it). */
-  private async photo(p: IdProjet, dossier: string | null): Promise<void> {
+  private async photo(p: ProjectId, dossier: string | null): Promise<void> {
     if (!dossier) return;
     try {
       await this.depot(p, dossier).assurerReference();
     } catch (e) {
       // git missing, folder unreadable or gone: the page will say so when opened.
-      if (!(e instanceof ErreurRelecture)) console.error(`[relecture] prise en charge de ${p} :`, e);
+      if (!(e instanceof ReviewError)) console.error(`[relecture] prise en charge de ${p} :`, e);
     }
   }
 
@@ -148,7 +148,7 @@ export class ReviewService {
     return this.enFile(async () => {
       for (const d of dossiers) {
         const p = `app-${d}`;
-        if (!ID_PROJET.test(p)) continue;
+        if (!PROJECT_ID.test(p)) continue;
         await this.photo(p, await this.dossierApp(d));
       }
     });
@@ -165,8 +165,8 @@ export class ReviewService {
   }
 
   /** A site app's first snapshot if missing (before a batch is sent), through the same queue; no effect otherwise. */
-  assurer(p: IdProjet): Promise<void> {
-    if (!ID_PROJET.test(p) || !p.startsWith("site-")) return Promise.resolve();
+  assurer(p: ProjectId): Promise<void> {
+    if (!PROJECT_ID.test(p) || !p.startsWith("site-")) return Promise.resolve();
     const id = p.slice(5);
     return this.enFile(async () => this.photo(p, await this.dossierSite(id)));
   }
@@ -175,21 +175,21 @@ export class ReviewService {
    * A deleted site app: its comparisons and comments forgotten, its review repository and comments file erased. After
    * the queued snapshots (which would otherwise recreate the repository), and through the repository's queue.
    */
-  effacer(p: IdProjet): Promise<void> {
-    if (!ID_PROJET.test(p)) return Promise.resolve();
+  effacer(p: ProjectId): Promise<void> {
+    if (!PROJECT_ID.test(p)) return Promise.resolve();
     this.oublier(p);
     return this.enFile(async () => {
       this.oublier(p);
       await Promise.all([
-        new DepotRelecture({ depot: depotRelecture(this.o.dossiers, p), dossier: this.o.chemins.sites, ...(this.o.git ? { git: this.o.git } : {}) }).supprimer(),
-        rm(fichierCommentaires(this.o.dossiers, p), { force: true }),
+        new ReviewStore({ depot: reviewStore(this.o.dossiers, p), dossier: this.o.chemins.sites, ...(this.o.git ? { git: this.o.git } : {}) }).supprimer(),
+        rm(commentsFile(this.o.dossiers, p), { force: true }),
       ]);
     });
   }
 
   /** The name and folder of a reviewable project; null for a demo, a forgotten external project or a missing folder. */
-  async projet(p: IdProjet): Promise<{ nom: string; dossier: string } | null> {
-    if (!ID_PROJET.test(p)) return null;
+  async projet(p: ProjectId): Promise<{ nom: string; dossier: string } | null> {
+    if (!PROJECT_ID.test(p)) return null;
     if (p.startsWith("app-")) {
       const d = p.slice(4);
       const dossier = await this.dossierApp(d);
@@ -215,7 +215,7 @@ export class ReviewService {
    * With the token of a kept comparison: that one, without comparing again (a remounted page shows the same thing).
    * Without a token (or if it is no longer kept): a new comparison, kept at the head.
    */
-  async ouvrir(p: IdProjet, jeton?: string): Promise<VueRelecture> {
+  async ouvrir(p: ProjectId, jeton?: string): Promise<VueRelecture> {
     const projet = await this.projet(p);
     if (!projet) {
       this.comparaisons.delete(p);
@@ -236,13 +236,13 @@ export class ReviewService {
         ...this.destination(await this.suivi(p)),
       };
     } catch (e) {
-      if (e instanceof ErreurRelecture) return { etat: "indisponible", nom: projet.nom, raison: e.raison };
+      if (e instanceof ReviewError) return { etat: "indisponible", nom: projet.nom, raison: e.raison };
       console.error(`[relecture] comparaison de ${p} :`, e);
       return { etat: "indisponible", nom: projet.nom, raison: "la comparaison a échoué" };
     }
   }
 
-  private garde(p: IdProjet, jeton: string, chemin: string) {
+  private garde(p: ProjectId, jeton: string, chemin: string) {
     const g = this.comparaisons.get(p)?.find((x) => x.jeton === jeton);
     if (!g) throw new Error(COMPARAISON_INCONNUE);
     const f = g.comparaison.fichiers.find((x) => x.chemin === chemin);
@@ -251,11 +251,11 @@ export class ReviewService {
   }
 
   /** The comparison of a kept token ("Marquer comme relu" keeps the tree the page showed). */
-  comparaison(p: IdProjet, jeton: string): { depot: DepotRelecture; comparaison: Comparaison } | null {
+  comparaison(p: ProjectId, jeton: string): { depot: ReviewStore; comparaison: Comparison } | null {
     return this.comparaisons.get(p)?.find((x) => x.jeton === jeton) ?? null;
   }
 
-  async fichier(p: IdProjet, jeton: string, chemin: string): Promise<DiffFichier> {
+  async fichier(p: ProjectId, jeton: string, chemin: string): Promise<DiffFile> {
     const g = this.garde(p, jeton, chemin);
     const diff = await g.depot.fichier(g.comparaison, chemin);
     // Not displayable: its comments stay as they are.
@@ -264,7 +264,7 @@ export class ReviewService {
   }
 
   /** Lines of the current version (never of a deleted or non-displayable file). */
-  async lignes(p: IdProjet, jeton: string, chemin: string, debut: number, fin: number): Promise<string[]> {
+  async lignes(p: ProjectId, jeton: string, chemin: string, debut: number, fin: number): Promise<string[]> {
     const g = this.garde(p, jeton, chemin);
     if (g.fichier.statut === "supprime" || g.fichier.affichable !== true) return [];
     const a = Math.max(1, Math.floor(debut));
@@ -277,10 +277,10 @@ export class ReviewService {
   }
 
   /** A single instance per project: its write queue serialises every change to its comments. */
-  private commentairesDe(p: IdProjet): CommentairesRelecture {
+  private commentairesDe(p: ProjectId): ReviewComments {
     let c = this.listes.get(p);
     if (!c) {
-      c = new CommentairesRelecture(fichierCommentaires(this.o.dossiers, p));
+      c = new ReviewComments(commentsFile(this.o.dossiers, p));
       this.listes.set(p, c);
     }
     return c;
@@ -290,7 +290,7 @@ export class ReviewService {
    * The comments re-anchored to the shown comparison's diff. Those of a file absent from the comparison (reviewed,
    * unchanged since) or not displayable stay as they are: nothing says their lines changed.
    */
-  private async recollerTout(p: IdProjet, g: { depot: DepotRelecture; comparaison: Comparaison }): Promise<Commentaire[]> {
+  private async recollerTout(p: ProjectId, g: { depot: ReviewStore; comparaison: Comparison }): Promise<Comment[]> {
     const commentaires = this.commentairesDe(p);
     const fichiers = new Set((await commentaires.liste()).map((c) => c.fichier));
     for (const chemin of fichiers) {
@@ -303,30 +303,30 @@ export class ReviewService {
   }
 
   /** The followed project (destination of the send); null for an unknown project. */
-  private async suivi(p: IdProjet): Promise<ProjetSuivi | null> {
+  private async suivi(p: ProjectId): Promise<TrackedProject | null> {
     const projet = await this.projet(p);
     if (!projet) return null;
     if (p.startsWith("app-")) return { type: "app", projet: p, dossier: p.slice(4), nom: projet.nom };
-    if (p.startsWith("site-")) return projetPourSite(p.slice(5), projet.nom);
+    if (p.startsWith("site-")) return projectForSite(p.slice(5), projet.nom);
     const e = this.o.registre()?.projets().find((x) => `ext-${x.id}` === p);
     return e ? { type: "externe", projet: p, dossier: e.dossier, nom: e.nom, client: e.client } : null;
   }
 
-  private destination(s: ProjetSuivi | null): { destination: string | null; sansDestination: string | null } {
+  private destination(s: TrackedProject | null): { destination: string | null; sansDestination: string | null } {
     if (!s) return { destination: null, sansDestination: PROJET_INCONNU };
     const d = destinationDe(s, this.o.registre()?.clients() ?? []);
     return "libelle" in d ? { destination: d.libelle, sansDestination: null } : { destination: null, sansDestination: d.indisponible };
   }
 
   /** The project's comments, as stored (without re-anchoring). */
-  commentaires(p: IdProjet): Promise<Commentaire[]> {
+  commentaires(p: ProjectId): Promise<Comment[]> {
     return this.commentairesDe(p).liste();
   }
 
   /** A comment on lines `debut`..`fin` of a file of the token's comparison, read here from the kept diff. */
-  async commenter(p: IdProjet, jeton: string, c: { fichier: string; debut: number; fin: number; texte: string }): Promise<ResultatExtension> {
+  async commenter(p: ProjectId, jeton: string, c: { fichier: string; debut: number; fin: number; texte: string }): Promise<ResultatExtension> {
     try {
-      if (c.texte.trim() === "") return { ok: false, erreur: REMARQUE_VIDE };
+      if (c.texte.trim() === "") return { ok: false, erreur: EMPTY_REMARK };
       const g = this.garde(p, jeton, c.fichier);
       const diff = await g.depot.fichier(g.comparaison, c.fichier);
       const lignes = diff.affichable === true ? lignesDuBloc(diff, c.debut, c.fin) : null;
@@ -338,20 +338,20 @@ export class ReviewService {
     }
   }
 
-  modifierCommentaire(p: IdProjet, id: string, texte: string): Promise<void> {
+  modifierCommentaire(p: ProjectId, id: string, texte: string): Promise<void> {
     return this.commentairesDe(p).modifier(id, texte);
   }
 
-  resoudre(p: IdProjet, id: string, resolu: boolean): Promise<void> {
+  resoudre(p: ProjectId, id: string, resolu: boolean): Promise<void> {
     return this.commentairesDe(p).resoudre(id, resolu);
   }
 
-  supprimerCommentaire(p: IdProjet, id: string): Promise<void> {
+  supprimerCommentaire(p: ProjectId, id: string): Promise<void> {
     return this.commentairesDe(p).supprimer(id);
   }
 
   /** The unresolved comments (already-sent ones included) become a batch for the agent or the connected Claude Code. */
-  async envoyer(p: IdProjet): Promise<ResultatExtension> {
+  async envoyer(p: ProjectId): Promise<ResultatExtension> {
     try {
       const s = await this.suivi(p);
       if (!s) return { ok: false, erreur: PROJET_INCONNU };
@@ -383,7 +383,7 @@ export class ReviewService {
    * review. Resolved comments go; the project's kept comparisons drop (another page can no longer keep an older tree);
    * then a new comparison.
    */
-  async relu(p: IdProjet, jeton: string): Promise<VueRelecture> {
+  async relu(p: ProjectId, jeton: string): Promise<VueRelecture> {
     const g = this.comparaison(p, jeton);
     if (!g) throw new Error(COMPARAISON_INCONNUE);
     await g.depot.retenir(g.comparaison.arbreCourant);
@@ -393,7 +393,7 @@ export class ReviewService {
   }
 
   /** A forgotten project: its kept comparisons drop. */
-  oublier(p: IdProjet): void {
+  oublier(p: ProjectId): void {
     this.comparaisons.delete(p);
     this.listes.delete(p);
   }

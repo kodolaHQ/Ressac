@@ -2,15 +2,15 @@ import { afterEach, expect, test, vi } from "vitest";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as attendre } from "node:timers/promises";
-import { cheminsEspace, type CheminsEspace } from "../../src/chemins.js";
+import { spacePaths, type SpacePaths } from "../../src/chemins.js";
 import { Atelier } from "../../src/conteneur/atelier.js";
 import { createServer as serveurHttp } from "node:http";
 import { createServer as serveurTcp, type AddressInfo, type Server } from "node:net";
-import { GestionnaireApplications, sonderParDefaut, type EtatApplication, type Lanceur } from "../../src/applications/gestionnaire.js";
+import { ApplicationManager, probeByDefault, type AppState, type Launcher } from "../../src/applications/gestionnaire.js";
 import { executeurFactice, type Reponse } from "../aide/executeur-factice.js";
 import { dossierTemporaire } from "../aide/temporaire.js";
 
-const gestionnaires: GestionnaireApplications[] = [];
+const gestionnaires: ApplicationManager[] = [];
 afterEach(async () => {
   for (const g of gestionnaires.splice(0)) await g.arreterSurveillance();
 });
@@ -18,7 +18,7 @@ afterEach(async () => {
 /** Fake launcher: keeps the argv, and each process ends when the test calls `finir`. */
 function lanceurFactice() {
   const processus: { argv: string[]; tue: boolean; finir: (code: number | null) => void }[] = [];
-  const lanceur: Lanceur = (argv) => {
+  const lanceur: Launcher = (argv) => {
     const rappels: ((code: number | null) => void)[] = [];
     const p = { argv, tue: false, finir: (code: number | null) => rappels.forEach((r) => r(code)) };
     processus.push(p);
@@ -41,7 +41,7 @@ function sondeScriptee(script: Record<number, ("http" | "occupe" | "libre")[]>) 
 }
 
 async function espace(projets: Record<string, string | null> = { todo: '{"nom":"Todo","type":"application","lancement":"npx vite --port {port}"}' }) {
-  const c = cheminsEspace(await dossierTemporaire());
+  const c = spacePaths(await dossierTemporaire());
   for (const [dossier, manifeste] of Object.entries(projets)) {
     await mkdir(join(c.projets, dossier), { recursive: true });
     if (manifeste !== null) await writeFile(join(c.projets, dossier, "webaios.json"), manifeste);
@@ -50,7 +50,7 @@ async function espace(projets: Record<string, string | null> = { todo: '{"nom":"
 }
 
 function preparer(o: {
-  chemins: CheminsEspace;
+  chemins: SpacePaths;
   sonder?: (port: number) => Promise<"http" | "occupe" | "libre">;
   ports?: [number, number];
   inspect?: Reponse;
@@ -62,8 +62,8 @@ function preparer(o: {
   ]);
   const atelier = new Atelier({ chemins: o.chemins, docker: "docker", executer });
   const { lanceur, processus } = lanceurFactice();
-  const etats: EtatApplication[] = [];
-  const g: GestionnaireApplications = new GestionnaireApplications({
+  const etats: AppState[] = [];
+  const g: ApplicationManager = new ApplicationManager({
     chemins: o.chemins,
     atelier,
     lanceur,
@@ -364,13 +364,13 @@ test("default probe: closed port → libre", async () => {
   const serveur = serveurTcp();
   const port = await ecouter(serveur);
   await new Promise((r) => serveur.close(r));
-  expect(await sonderParDefaut(port)).toBe("libre");
+  expect(await probeByDefault(port)).toBe("libre");
 });
 
 test("default probe: connection accepted then cut (Docker proxy without a server) → libre", async () => {
   const serveur = serveurTcp((s) => s.resetAndDestroy());
   try {
-    expect(await sonderParDefaut(await ecouter(serveur))).toBe("libre");
+    expect(await probeByDefault(await ecouter(serveur))).toBe("libre");
   } finally {
     serveur.close();
   }
@@ -379,7 +379,7 @@ test("default probe: connection accepted then cut (Docker proxy without a server
 test("default probe: HTTP server → http", async () => {
   const serveur = serveurHttp((_, res) => res.writeHead(404).end());
   try {
-    expect(await sonderParDefaut(await ecouter(serveur))).toBe("http");
+    expect(await probeByDefault(await ecouter(serveur))).toBe("http");
   } finally {
     serveur.closeAllConnections();
     serveur.close();
@@ -390,7 +390,7 @@ test("default probe: connection accepted without an answer in 1 s → occupe", a
   const sockets: import("node:net").Socket[] = [];
   const serveur = serveurTcp((s) => sockets.push(s));
   try {
-    expect(await sonderParDefaut(await ecouter(serveur))).toBe("occupe");
+    expect(await probeByDefault(await ecouter(serveur))).toBe("occupe");
   } finally {
     for (const s of sockets) s.destroy();
     serveur.close();

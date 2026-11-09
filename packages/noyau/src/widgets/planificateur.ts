@@ -1,32 +1,32 @@
 import { existsSync } from "node:fs";
 import { readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
-import type { CheminsEspace } from "../chemins.js";
-import { ecrireEtatWidget, lireEtatWidget, modifierEtatWidget } from "../accueil/donnees.js";
-import { lireAccueil } from "../accueil/lire.js";
-import type { EtatWidget, WidgetLu } from "../accueil/schemas.js";
+import type { SpacePaths } from "../chemins.js";
+import { writeWidgetState, readWidgetState, changeWidgetState } from "../accueil/donnees.js";
+import { readHome } from "../accueil/lire.js";
+import type { WidgetState, WidgetLu } from "../accueil/schemas.js";
 import type { Atelier } from "../conteneur/atelier.js";
 import type { IaLocale } from "../ia/ia-locale.js";
-import { creerRepartiteurIa, type RepartiteurIa } from "../ia/repartiteur.js";
-import type { PontNavigateur } from "../mcp/pont.js";
+import { createAiDispatcher, type AiDispatcher } from "../ia/repartiteur.js";
+import type { BrowserBridge } from "../mcp/pont.js";
 import { lireAccords, retirerAccord } from "./accords.js";
-import { creneauCourant, heureDue, suiviApres, type IssueHeure, type SuiviHeures } from "./heures.js";
-import type { TraceDirecte } from "../workflows/executer.js";
+import { currentSlot, dueHour, trackingAfter, type HourOutcome, type HoursTracking } from "./heures.js";
+import type { DirectTrace } from "../workflows/executer.js";
 import { lireExecution, type Execution } from "../workflows/executions.js";
-import type { Menagement } from "../workflows/menagement.js";
-import { texteNotification, type NotificationWidget } from "./nouveautes.js";
+import type { Pacing } from "../workflows/menagement.js";
+import { notificationText, type NotificationWidget } from "./nouveautes.js";
 import {
-  ERREUR_ATELIER_ARRETE,
-  ERREUR_INTERROMPUE,
-  ERREUR_RECOLTE_INTERNE,
-  executerEssai,
-  executerRecolte,
-  type OptionsRecolte,
-  type ResultatEssai,
-  type ResultatRecolte,
+  WORKSHOP_STOPPED_ERROR,
+  INTERRUPTED_ERROR,
+  INTERNAL_HARVEST_ERROR,
+  runAttempt,
+  runHarvest,
+  type HarvestOptions,
+  type AttemptResult,
+  type HarvestResult,
 } from "./recolte.js";
 
-export { ERREUR_ATELIER_ARRETE, ERREUR_RECOLTE_INTERNE, type ResultatEssai };
+export { WORKSHOP_STOPPED_ERROR, INTERNAL_HARVEST_ERROR, type AttemptResult };
 
 /** A block of the run in progress, from its traces. */
 export type BlocDirect = { statut: "en-cours" | "reussi" | "partiel" | "echoue"; elements: number | null };
@@ -36,33 +36,33 @@ export type DirectWidget = { widget: string; genre: "execution" | "essai"; debut
  * `courants`: the runs that are running (one per lane at most, in the order they started). `enAttente`:
  * widgets with a request (manual harvest, try) waiting for its turn.
  */
-export type EtatDirect = { courants: DirectWidget[]; enAttente: string[] };
+export type DirectState = { courants: DirectWidget[]; enAttente: string[] };
 
 /** Beyond this maximum duration (in minutes), a widget runs in the long lane. */
-export const VOIE_LONGUE_MINUTES = 3;
-export type Voie = "courte" | "longue";
+export const LONG_ROUTE_MINUTES = 3;
+export type Route = "courte" | "longue";
 
 /**
  * The watches (`dureeMaxMinutes` > 3) have their own lane: one at a time in the application, without holding back the short
  * widgets, which keep theirs.
  */
-export function voieDe(w: WidgetLu): Voie {
+export function routeOf(w: WidgetLu): Route {
   if ("erreur" in w) return "courte";
-  return (w.declaration.recolte?.dureeMaxMinutes ?? 0) > VOIE_LONGUE_MINUTES ? "longue" : "courte";
+  return (w.declaration.recolte?.dureeMaxMinutes ?? 0) > LONG_ROUTE_MINUTES ? "longue" : "courte";
 }
 
 /** Returned by a request whose widget changed lanes while it was waiting. */
-class AutreVoie {
-  constructor(readonly voie: Voie) {}
+class OtherRoute {
+  constructor(readonly voie: Route) {}
 }
 
 const MINUTE = 60_000;
 /** A harvest in error is retried at the earliest 15 min after its last attempt. */
-const REESSAI_ERREUR_MS = 15 * MINUTE;
-const ATTENTE_ARRET_MS = 15_000;
+const RETRY_ERROR_MS = 15 * MINUTE;
+const STOP_WAIT_MS = 15_000;
 const ID_WIDGET = /^[a-z0-9-]+$/;
 
-const age = (iso: string | null, maintenant: Date) => (iso ? maintenant.getTime() - Date.parse(iso) : Infinity);
+const age = (iso: string | null, now: Date) => (iso ? now.getTime() - Date.parse(iso) : Infinity);
 
 /**
  * Is the widget to be harvested now? It needs a harvest (declared, and `workflow.json` or `recolte.mjs` present), a status other
@@ -71,47 +71,47 @@ const age = (iso: string | null, maintenant: Date) => (iso ? maintenant.getTime(
  * attempt. `en-cours` is only relaunched at launch (the previous harvest was interrupted), and only if it has a
  * frequency or an hour to do: otherwise, ours is the one running.
  */
-export function widgetDu(w: WidgetLu, maintenant: Date, o: { auLancement: boolean }): boolean {
+export function widgetDu(w: WidgetLu, now: Date, o: { auLancement: boolean }): boolean {
   if ("erreur" in w || !w.aRecolte || !w.declaration.recolte) return false;
-  const { minutes, heures } = w.declaration.recolte;
-  const { statut, derniereMaj, derniereTentative } = w.etat;
-  if (statut === "accord-requis") return false;
-  const parHeure = heures !== undefined && heureDue(heures, w.etat.heures, derniereTentative, maintenant);
-  if (statut === "en-cours") return o.auLancement && (minutes !== undefined || parHeure);
-  if (parHeure) return true;
+  const { minutes, heures: hours } = w.declaration.recolte;
+  const { statut: status, derniereMaj: lastUpdate, derniereTentative: lastAttempt } = w.etat;
+  if (status === "accord-requis") return false;
+  const byHour = hours !== undefined && dueHour(hours, w.etat.heures, lastAttempt, now);
+  if (status === "en-cours") return o.auLancement && (minutes !== undefined || byHour);
+  if (byHour) return true;
   if (minutes === undefined) return false; // fixed hours only: never due by frequency
-  if (age(derniereMaj, maintenant) < minutes * MINUTE) return false;
-  return statut !== "erreur" || age(derniereTentative, maintenant) >= REESSAI_ERREUR_MS;
+  if (age(lastUpdate, now) < minutes * MINUTE) return false;
+  return status !== "erreur" || age(lastAttempt, now) >= RETRY_ERROR_MS;
 }
 
-export type Recolteuse = (o: OptionsRecolte) => Promise<ResultatRecolte>;
-export type Essayeuse = (o: OptionsRecolte & { origine: string; depart: string }) => Promise<ResultatEssai>;
+export type Harvester = (o: HarvestOptions) => Promise<HarvestResult>;
+export type Tryer = (o: HarvestOptions & { origine: string; depart: string }) => Promise<AttemptResult>;
 
-export interface OptionsPlanificateur {
-  chemins: CheminsEspace;
+export interface SchedulerOptions {
+  chemins: SpacePaths;
   dossierWidgets: string;
   /** Folder of the workflow engine (`docker/moteur`), mounted read-only in the container. */
   moteur: string;
   atelier: Pick<Atelier, "etat" | "commandeRecolte" | "supprimerRecolte">;
-  pont: PontNavigateur;
+  pont: BrowserBridge;
   ia: Pick<IaLocale, "kev" | "gemma"> | null;
   /** The dispatcher of AI calls, shared with the actions; absent: the scheduler creates its own on `ia`. */
-  repartiteur?: ReturnType<typeof creerRepartiteurIa>;
+  repartiteur?: ReturnType<typeof createAiDispatcher>;
   horloge?: () => Date;
   /** Check of the due harvests (every minute by default). */
   intervalleMs?: number;
   /** Called after each write of a widget's state or data. */
   surChange?: () => void;
   /** Tests: replaces the real run of the harvest. */
-  recolter?: Recolteuse;
+  recolter?: Harvester;
   /** Tests: replaces the real run of a try. */
-  recolterEssai?: Essayeuse;
+  recolterEssai?: Tryer;
   /** Called at each entry and exit of the queue, and at each trace of the run in progress. */
-  surDirect?: (e: EtatDirect) => void;
+  surDirect?: (e: DirectState) => void;
   /** Tests only: the harvests may read local addresses (see OptionsRecolte). */
   adressesLocales?: boolean;
   /** Pacing of the searches and open reads, shared by all the harvests and all the tries. */
-  menagement?: Menagement;
+  menagement?: Pacing;
   /** Tests only: the base of the DuckDuckGo searches (see OptionsRecolte). */
   urlRecherche?: string;
   /**
@@ -132,11 +132,11 @@ export interface OptionsPlanificateur {
  * Launches the widgets' harvests in the background as long as the browser is open: one at a time in each lane
  * (short, long), and never two at once for the same widget.
  */
-export class PlanificateurWidgets {
-  private readonly o: OptionsPlanificateur & { horloge: () => Date; intervalleMs: number; recolter: Recolteuse; recolterEssai: Essayeuse };
+export class WidgetsScheduler {
+  private readonly o: SchedulerOptions & { horloge: () => Date; intervalleMs: number; recolter: Harvester; recolterEssai: Tryer };
   private minuterie: NodeJS.Timeout | undefined;
   /** One harvest at a time per lane: each harvest chains onto the previous one of its lane. */
-  private files: Record<Voie, Promise<unknown>> = { courte: Promise.resolve(), longue: Promise.resolve() };
+  private files: Record<Route, Promise<unknown>> = { courte: Promise.resolve(), longue: Promise.resolve() };
   /** Per widget, the last request (waiting or in progress, all lanes): the next one waits for it. */
   private parWidget = new Map<string, Promise<unknown>>();
   /** Per widget, its long-lane requests (or whose lane is not yet chosen) waiting or in progress. */
@@ -148,7 +148,7 @@ export class PlanificateurWidgets {
   /** The runs followed live (those that really run, not a check without harvest). */
   private enDirect: DirectWidget[] = [];
   /** AI calls served in turn between the runs; none without AI. */
-  private readonly repartiteur: RepartiteurIa | null;
+  private readonly repartiteur: AiDispatcher | null;
   /** Widgets of the queued requests, not yet started (one per request). */
   private attente: string[] = [];
   /** Startup: the workshop ready and the « en-cours » states from before launch reset. Before any run. */
@@ -156,20 +156,20 @@ export class PlanificateurWidgets {
   /** Widgets found en-cours at startup (interrupted) and reset, not yet relaunched. */
   private interrompus = new Set<string>();
 
-  constructor(o: OptionsPlanificateur) {
+  constructor(o: SchedulerOptions) {
     // `??` rather than a spread: an option explicitly passed as undefined keeps its default value.
     this.o = {
       ...o,
       horloge: o.horloge ?? (() => new Date()),
       intervalleMs: o.intervalleMs ?? MINUTE,
-      recolter: o.recolter ?? executerRecolte,
-      recolterEssai: o.recolterEssai ?? executerEssai,
+      recolter: o.recolter ?? runHarvest,
+      recolterEssai: o.recolterEssai ?? runAttempt,
     };
-    this.repartiteur = o.repartiteur ?? (o.ia ? creerRepartiteurIa(o.ia) : null);
+    this.repartiteur = o.repartiteur ?? (o.ia ? createAiDispatcher(o.ia) : null);
   }
 
   /** What is running right now, and the requests waiting for their turn. */
-  direct(): EtatDirect {
+  direct(): DirectState {
     // A copy: the caller does not see the tracked state move, and cannot modify it.
     return structuredClone({ courants: this.enDirect, enAttente: [...new Set(this.attente)] });
   }
@@ -188,11 +188,11 @@ export class PlanificateurWidgets {
   private demande(id: string): { commencee(): void } {
     this.attente.push(id);
     this.signalerDirect();
-    let faite = false;
+    let done = false;
     return {
       commencee: () => {
-        if (faite) return;
-        faite = true;
+        if (done) return;
+        done = true;
         const i = this.attente.indexOf(id);
         if (i >= 0) this.attente.splice(i, 1);
         this.signalerDirect();
@@ -208,20 +208,20 @@ export class PlanificateurWidgets {
   private async suivre<T>(
     widget: string,
     genre: DirectWidget["genre"],
-    f: (surTrace: (t: TraceDirecte) => void, ia: OptionsRecolte["ia"]) => Promise<T>,
+    f: (surTrace: (t: DirectTrace) => void, ia: HarvestOptions["ia"]) => Promise<T>,
     executionDe: (r: T) => string | undefined,
   ): Promise<T> {
-    const suivi: DirectWidget = { widget, genre, debut: this.o.horloge().toISOString(), blocs: {} };
-    this.enDirect = [...this.enDirect, suivi];
+    const tracking: DirectWidget = { widget, genre, debut: this.o.horloge().toISOString(), blocs: {} };
+    this.enDirect = [...this.enDirect, tracking];
     this.signalerDirect();
-    const surTrace = (t: TraceDirecte) => {
+    const surTrace = (t: DirectTrace) => {
       // The `avancement` and `lecture` traces (for the actions) change nothing in a widget's tracking.
-      if (!this.enDirect.includes(suivi) || (t.etape !== "debut" && t.etape !== "fin")) return;
-      suivi.blocs[t.bloc] = t.etape === "debut" ? { statut: "en-cours", elements: null } : { statut: t.statut, elements: t.elements };
+      if (!this.enDirect.includes(tracking) || (t.etape !== "debut" && t.etape !== "fin")) return;
+      tracking.blocs[t.bloc] = t.etape === "debut" ? { statut: "en-cours", elements: null } : { statut: t.statut, elements: t.elements };
       this.signalerDirect();
     };
     // Each run has its own queue of AI calls.
-    const ia = this.repartiteur?.pour(`${widget}:${suivi.debut}`) ?? null;
+    const ia = this.repartiteur?.pour(`${widget}:${tracking.debut}`) ?? null;
     let r: T | undefined;
     try {
       r = await f(surTrace, ia);
@@ -229,27 +229,27 @@ export class PlanificateurWidgets {
     } finally {
       // Its calls still in the queue no longer go out: they would take the place of the other runs.
       ia?.oublier();
-      await this.resynchroniser(suivi, r === undefined ? undefined : executionDe(r));
-      this.enDirect = this.enDirect.filter((x) => x !== suivi);
+      await this.resynchroniser(tracking, r === undefined ? undefined : executionDe(r));
+      this.enDirect = this.enDirect.filter((x) => x !== tracking);
       this.signalerDirect();
     }
   }
 
-  private async resynchroniser(suivi: DirectWidget, execution: string | undefined): Promise<void> {
-    const e = execution ? await lireExecution(join(this.o.dossierWidgets, suivi.widget), execution).catch(() => null) : null;
+  private async resynchroniser(tracking: DirectWidget, execution: string | undefined): Promise<void> {
+    const e = execution ? await lireExecution(join(this.o.dossierWidgets, tracking.widget), execution).catch(() => null) : null;
     if (e) {
       const blocs: Record<string, BlocDirect> = {};
       for (const b of e.blocs) {
         if (b.debut === null) continue;
-        const statut = b.statut === "reussi" || b.statut === "partiel" ? b.statut : "echoue";
-        blocs[b.id] = { statut, elements: b.elements };
+        const status = b.statut === "reussi" || b.statut === "partiel" ? b.statut : "echoue";
+        blocs[b.id] = { statut: status, elements: b.elements };
       }
-      suivi.blocs = blocs;
+      tracking.blocs = blocs;
     } else {
       // Nothing written (denial, grant withdrawn…): a block still in progress will not finish.
-      for (const b of Object.values(suivi.blocs)) if (b.statut === "en-cours") b.statut = "echoue";
+      for (const b of Object.values(tracking.blocs)) if (b.statut === "en-cours") b.statut = "echoue";
     }
-    if (this.enDirect.includes(suivi)) this.signalerDirect();
+    if (this.enDirect.includes(tracking)) this.signalerDirect();
   }
 
   /** Checks at launch, in the background (a harvest takes time), then at regular intervals. */
@@ -275,13 +275,13 @@ export class PlanificateurWidgets {
   }
 
   private async widgets(): Promise<WidgetLu[]> {
-    return (await lireAccueil(this.o.chemins, this.o.dossierWidgets)).widgets;
+    return (await readHome(this.o.chemins, this.o.dossierWidgets)).widgets;
   }
 
   /** The widget's lane from its declaration read now (short if unknown or unreadable). */
-  private async voieActuelle(id: string): Promise<Voie> {
+  private async voieActuelle(id: string): Promise<Route> {
     const w = (await this.widgets().catch(() => [])).find((x) => x.id === id);
-    return w ? voieDe(w) : "courte";
+    return w ? routeOf(w) : "courte";
   }
 
   /**
@@ -290,9 +290,9 @@ export class PlanificateurWidgets {
    * goes into the other one without losing its turn in the widget.
    */
   private dansSaVoie<T>(id: string, f: (w: WidgetLu | undefined) => Promise<T>): Promise<T> {
-    return this.seul(id, "a-choisir", async (voie): Promise<T | AutreVoie> => {
+    return this.seul(id, "a-choisir", async (route): Promise<T | OtherRoute> => {
       const w = (await this.widgets()).find((x) => x.id === id);
-      if (w && voieDe(w) !== voie) return new AutreVoie(voieDe(w));
+      if (w && routeOf(w) !== route) return new OtherRoute(routeOf(w));
       return f(w);
     });
   }
@@ -315,10 +315,10 @@ export class PlanificateurWidgets {
     let change = false;
     for (const d of dossiers) {
       if (!d.isDirectory() || !ID_WIDGET.test(d.name)) continue;
-      const remis = await modifierEtatWidget(dossierWidgets, d.name, (e) => {
+      const remis = await changeWidgetState(dossierWidgets, d.name, (e) => {
         if (e.statut !== "en-cours") return null;
-        const avant = e.avant && e.avant.statut !== "en-cours" && e.avant.statut !== "accord-requis" ? e.avant : { statut: "ok" as const };
-        return { ...avant, derniereMaj: e.derniereMaj, derniereTentative: e.derniereTentative, ...(e.heures ? { heures: e.heures } : {}) };
+        const before = e.avant && e.avant.statut !== "en-cours" && e.avant.statut !== "accord-requis" ? e.avant : { statut: "ok" as const };
+        return { ...before, derniereMaj: e.derniereMaj, derniereTentative: e.derniereTentative, ...(e.heures ? { heures: e.heures } : {}) };
       }).catch((e) => {
         console.error(`[webaios] état du widget ${d.name} :`, e);
         return null;
@@ -338,8 +338,8 @@ export class PlanificateurWidgets {
 
   /** `widgetDu`, where a widget reset at startup counts, at launch, as still en-cours. */
   private du(w: WidgetLu, o: { auLancement: boolean }): boolean {
-    const interrompu = o.auLancement && this.interrompus.has(w.id) && !("erreur" in w) && w.etat.statut !== "accord-requis";
-    return widgetDu(interrompu ? { ...w, etat: { ...w.etat, statut: "en-cours" } } : w, this.o.horloge(), o);
+    const interrupted = o.auLancement && this.interrompus.has(w.id) && !("erreur" in w) && w.etat.statut !== "accord-requis";
+    return widgetDu(interrupted ? { ...w, etat: { ...w.etat, statut: "en-cours" } } : w, this.o.horloge(), o);
   }
 
   private async verifierMaintenant(o: { auLancement: boolean }): Promise<string[]> {
@@ -347,22 +347,22 @@ export class PlanificateurWidgets {
     if (this.arrete) return [];
     await this.enchainer("courte", () => this.oublierWidgetsDisparus());
     // The long ones first: launched without being waited for, they do not stay behind the short ones of this check.
-    const dus = (await this.widgets())
+    const due = (await this.widgets())
       .filter((w) => this.du(w, o))
-      .sort((a, b) => Number(voieDe(b) === "longue") - Number(voieDe(a) === "longue"));
-    if (!dus.length) return [];
-    const recoltes: string[] = [];
-    for (const du of dus) {
+      .sort((a, b) => Number(routeOf(b) === "longue") - Number(routeOf(a) === "longue"));
+    if (!due.length) return [];
+    const harvests: string[] = [];
+    for (const du of due) {
       if (this.arrete) break;
       const { id } = du;
       if (this.longues.has(id)) continue;
-      const voie = voieDe(du);
+      const route = routeOf(du);
       // Read again under the lock: a harvest requested in the meantime may have updated it.
-      const tache = this.seul(id, voie, async () => {
+      const tache = this.seul(id, route, async () => {
         const w = (await this.widgets()).find((x) => x.id === id);
         if (!w || !this.du(w, o) || this.arrete) return false;
         // Moved to the other lane since the read: the next check will launch it there.
-        if (voieDe(w) !== voie) return false;
+        if (routeOf(w) !== route) return false;
         if (!(await this.atelierDemarre())) {
           await this.marquerAtelierArrete(w);
           return false;
@@ -371,13 +371,13 @@ export class PlanificateurWidgets {
         await this.recolter(w, "planifiee");
         return true;
       });
-      if (voie === "longue") {
+      if (route === "longue") {
         tache.catch((e) => console.error(`[webaios] récolte du widget ${id} :`, e));
         continue;
       }
-      if (await tache) recoltes.push(id);
+      if (await tache) harvests.push(id);
     }
-    return recoltes;
+    return harvests;
   }
 
   /**
@@ -419,10 +419,10 @@ export class PlanificateurWidgets {
     }
   }
 
-  private enchainer<T>(voie: Voie, f: () => Promise<T>): Promise<T> {
-    const suivante = this.files[voie].catch(() => {}).then(f);
-    this.files[voie] = suivante;
-    return suivante;
+  private enchainer<T>(route: Route, f: () => Promise<T>): Promise<T> {
+    const next = this.files[route].catch(() => {}).then(f);
+    this.files[route] = next;
+    return next;
   }
 
   private compterLongue(id: string, d: 1 | -1): void {
@@ -438,27 +438,27 @@ export class PlanificateurWidgets {
    * widgets there while waiting. `"a-choisir"`: the lane is read at that moment; if `f` returns `AutreVoie` (changed during
    * the wait for the lane), the request goes into the other one, still at its turn in the widget.
    */
-  private seul<T>(id: string, voie: Voie | "a-choisir", f: (voie: Voie) => Promise<T | AutreVoie>): Promise<T> {
+  private seul<T>(id: string, route: Route | "a-choisir", f: (route: Route) => Promise<T | OtherRoute>): Promise<T> {
     // A request whose lane is not yet chosen counts as long: a check does not wait for it.
-    let comptee = voie !== "courte";
-    if (comptee) this.compterLongue(id, 1);
-    const precedente = this.parWidget.get(id) ?? Promise.resolve();
-    const tache = precedente.then(async () => {
+    let counted = route !== "courte";
+    if (counted) this.compterLongue(id, 1);
+    const previous = this.parWidget.get(id) ?? Promise.resolve();
+    const tache = previous.then(async () => {
       try {
-        let v = voie === "a-choisir" ? await this.voieActuelle(id) : voie;
+        let v = route === "a-choisir" ? await this.voieActuelle(id) : route;
         for (;;) {
-          if (comptee !== (v === "longue")) {
-            comptee = v === "longue";
-            this.compterLongue(id, comptee ? 1 : -1);
+          if (counted !== (v === "longue")) {
+            counted = v === "longue";
+            this.compterLongue(id, counted ? 1 : -1);
           }
           const prevue = v;
           const r = await this.enchainer(prevue, () => this.enCours(id, () => f(prevue)));
-          if (!(r instanceof AutreVoie)) return r;
+          if (!(r instanceof OtherRoute)) return r;
           v = r.voie;
         }
       } finally {
-        if (comptee) this.compterLongue(id, -1);
-        comptee = false;
+        if (counted) this.compterLongue(id, -1);
+        counted = false;
       }
     });
     const fin = tache.catch(() => {});
@@ -474,22 +474,22 @@ export class PlanificateurWidgets {
   }
 
   /** Without a workshop, nothing runs: the widget keeps its data and says so (a single write). */
-  private async marquerAtelierArrete(w: WidgetLu): Promise<EtatWidget> {
-    const avant = await lireEtatWidget(this.o.dossierWidgets, w.id);
-    if (avant.statut === "atelier-arrete") return avant;
-    const etat: EtatWidget = {
+  private async marquerAtelierArrete(w: WidgetLu): Promise<WidgetState> {
+    const before = await readWidgetState(this.o.dossierWidgets, w.id);
+    if (before.statut === "atelier-arrete") return before;
+    const state: WidgetState = {
       statut: "atelier-arrete",
-      derniereMaj: avant.derniereMaj,
-      derniereTentative: avant.derniereTentative,
-      erreur: ERREUR_ATELIER_ARRETE,
+      derniereMaj: before.derniereMaj,
+      derniereTentative: before.derniereTentative,
+      erreur: WORKSHOP_STOPPED_ERROR,
       erreurNoyau: true,
     };
-    await ecrireEtatWidget(this.o.dossierWidgets, w.id, etat);
+    await writeWidgetState(this.o.dossierWidgets, w.id, state);
     this.o.surChange?.();
-    return etat;
+    return state;
   }
 
-  private optionsRecolte(w: WidgetLu, surTrace: (t: TraceDirecte) => void, ia: OptionsRecolte["ia"]): OptionsRecolte {
+  private optionsRecolte(w: WidgetLu, surTrace: (t: DirectTrace) => void, ia: HarvestOptions["ia"]): HarvestOptions {
     return {
       id: w.id,
       widget: w,
@@ -512,75 +512,75 @@ export class PlanificateurWidgets {
    * A real run. For a widget with hours, its outcome is noted in the tracking, for the slot where it started
    * (tries never go through here).
    */
-  private async recolter(w: WidgetLu, declencheur: Execution["declencheur"]): Promise<EtatWidget & { execution?: string }> {
+  private async recolter(w: WidgetLu, trigger: Execution["declencheur"]): Promise<WidgetState & { execution?: string }> {
     const debut = this.o.horloge();
     this.interrompus.delete(w.id);
-    const { resultat, issue } = await this.executer(w, declencheur, debut);
-    const heures = "erreur" in w ? undefined : w.declaration.recolte?.heures;
-    if (!heures) return resultat;
-    const suivi = await this.noterHeure(w.id, creneauCourant(heures, debut), issue, this.o.horloge());
-    return suivi ? { ...resultat, heures: suivi } : resultat;
+    const { resultat: result, issue } = await this.executer(w, trigger, debut);
+    const hours = "erreur" in w ? undefined : w.declaration.recolte?.heures;
+    if (!hours) return result;
+    const tracking = await this.noterHeure(w.id, currentSlot(hours, debut), issue, this.o.horloge());
+    return tracking ? { ...result, heures: tracking } : result;
   }
 
   /**
    * Writes the hours tracking on the re-read state (nothing before the day's first hour, nor for a run with no effect).
    * `fin`: the end of the run, from which the wait before a retry counts.
    */
-  private async noterHeure(id: string, creneau: string | null, issue: IssueHeure, fin: Date): Promise<SuiviHeures | null> {
-    if (!creneau || issue === "sans-effet") return null;
+  private async noterHeure(id: string, slot: string | null, issue: HourOutcome, fin: Date): Promise<HoursTracking | null> {
+    if (!slot || issue === "sans-effet") return null;
     try {
-      const etat = await modifierEtatWidget(this.o.dossierWidgets, id, (e) => ({ ...e, heures: suiviApres(e.heures, creneau, issue, fin.toISOString()) }));
+      const state = await changeWidgetState(this.o.dossierWidgets, id, (e) => ({ ...e, heures: trackingAfter(e.heures, slot, issue, fin.toISOString()) }));
       this.o.surChange?.();
-      return etat?.heures ?? null;
+      return state?.heures ?? null;
     } catch (e) {
       console.error(`[webaios] suivi des heures du widget ${id} :`, e);
       return null;
     }
   }
 
-  private async executer(w: WidgetLu, declencheur: Execution["declencheur"], debut: Date): Promise<{ resultat: EtatWidget & { execution?: string }; issue: IssueHeure }> {
-    const avant = await lireEtatWidget(this.o.dossierWidgets, w.id);
-    let etat: EtatWidget;
+  private async executer(w: WidgetLu, trigger: Execution["declencheur"], debut: Date): Promise<{ resultat: WidgetState & { execution?: string }; issue: HourOutcome }> {
+    const before = await readWidgetState(this.o.dossierWidgets, w.id);
+    let state: WidgetState;
     let execution: string | undefined;
-    let nouveaux: number | undefined;
+    let fresh: number | undefined;
     try {
-      ({ etat, execution, nouveaux } = await this.suivre(
+      ({ etat: state, execution, nouveaux: fresh } = await this.suivre(
         w.id,
         "execution",
-        (surTrace, ia) => this.o.recolter({ ...this.optionsRecolte(w, surTrace, ia), declencheur }),
+        (surTrace, ia) => this.o.recolter({ ...this.optionsRecolte(w, surTrace, ia), declencheur: trigger }),
         (r) => r.execution,
       ));
     } catch (e) {
       // The harvest may have written en-cours before failing (disk, container…): the widget must not stay there. The exception's
       // text is not kept (it may quote what the widget read): only a fixed kernel message is.
       console.error(`[webaios] récolte du widget ${w.id} :`, e);
-      etat = this.arrete
-        ? avant
+      state = this.arrete
+        ? before
         : // `derniereTentative` is always the start of the attempt, as in the harvest.
-          { statut: "erreur", derniereMaj: avant.derniereMaj, derniereTentative: debut.toISOString(), erreur: ERREUR_RECOLTE_INTERNE, erreurNoyau: true };
-      await ecrireEtatWidget(this.o.dossierWidgets, w.id, etat);
+          { statut: "erreur", derniereMaj: before.derniereMaj, derniereTentative: debut.toISOString(), erreur: INTERNAL_HARVEST_ERROR, erreurNoyau: true };
+      await writeWidgetState(this.o.dossierWidgets, w.id, state);
       this.o.surChange?.();
-      return { resultat: etat, issue: this.arrete ? "sans-effet" : "echec" };
+      return { resultat: state, issue: this.arrete ? "sans-effet" : "echec" };
     }
     // Kernel stop during the harvest (exit, profile change): it did not fail, it will resume later.
-    if (this.arrete && etat.statut === "erreur") {
-      await ecrireEtatWidget(this.o.dossierWidgets, w.id, avant);
+    if (this.arrete && state.statut === "erreur") {
+      await writeWidgetState(this.o.dossierWidgets, w.id, before);
       this.o.surChange?.();
-      return { resultat: { ...avant, ...(execution ? { execution } : {}) }, issue: "sans-effet" };
+      return { resultat: { ...before, ...(execution ? { execution } : {}) }, issue: "sans-effet" };
     }
-    if (etat.statut === "ok" && nouveaux !== undefined && nouveaux > 0) this.notifierFin(w, nouveaux);
+    if (state.statut === "ok" && fresh !== undefined && fresh > 0) this.notifierFin(w, fresh);
     // Grant required, workshop stopped: the run did not really take place.
-    const issue: IssueHeure = etat.statut === "ok" ? "reussie" : etat.statut === "erreur" ? "echec" : "sans-effet";
-    return { resultat: { ...etat, ...(execution ? { execution } : {}) }, issue };
+    const issue: HourOutcome = state.statut === "ok" ? "reussie" : state.statut === "erreur" ? "echec" : "sans-effet";
+    return { resultat: { ...state, ...(execution ? { execution } : {}) }, issue };
   }
 
   /** End notification: title = widget name, text = number of new items, never anything from the data. */
-  private notifierFin(w: WidgetLu, nouveaux: number): void {
+  private notifierFin(w: WidgetLu, fresh: number): void {
     if (!this.o.notifier || "erreur" in w || w.declaration.recolte?.notifier !== true) return;
     try {
       // `nom` is written by the agent: control and invisible characters replaced, on a single line.
       const titre = w.declaration.nom.replace(/[\p{Cc}\p{Cf}]/gu, " ").replace(/\s+/g, " ").trim() || w.id;
-      this.o.notifier({ widget: w.id, titre, texte: texteNotification(nouveaux) });
+      this.o.notifier({ widget: w.id, titre, texte: notificationText(fresh) });
     } catch (e) {
       console.error(`[webaios] notification du widget ${w.id} :`, e);
     }
@@ -590,20 +590,20 @@ export class PlanificateurWidgets {
    * Harvests this widget right away (after the harvest in progress) and returns its new state, with the id of the written run
    * (none if nothing ran: workshop stopped, kernel stopping, grant withdrawn meanwhile).
    */
-  async recolterMaintenant(id: string, declencheur: Execution["declencheur"] = "manuelle"): Promise<EtatWidget & { execution?: string }> {
-    const demande = this.demande(id);
+  async recolterMaintenant(id: string, trigger: Execution["declencheur"] = "manuelle"): Promise<WidgetState & { execution?: string }> {
+    const request = this.demande(id);
     await this.attendrePret();
     try {
       return await this.dansSaVoie(id, async (w) => {
-        demande.commencee();
+        request.commencee();
         if (!w) throw new Error(`Widget inconnu : ${id}`);
-        if (this.arrete) return lireEtatWidget(this.o.dossierWidgets, id);
+        if (this.arrete) return readWidgetState(this.o.dossierWidgets, id);
         if (!(await this.atelierDemarre())) return this.marquerAtelierArrete(w);
-        if (this.arrete) return lireEtatWidget(this.o.dossierWidgets, id);
-        return this.recolter(w, declencheur);
+        if (this.arrete) return readWidgetState(this.o.dossierWidgets, id);
+        return this.recolter(w, trigger);
       });
     } finally {
-      demande.commencee();
+      request.commencee();
     }
   }
 
@@ -612,32 +612,32 @@ export class PlanificateurWidgets {
    * `origine`, in the same queue as the real runs (the container carries the widget's id). Without a workshop, refused
    * without touching the widget's state.
    */
-  async rejouer(id: string, origine: string, depart: string): Promise<ResultatEssai> {
-    const demande = this.demande(id);
+  async rejouer(id: string, origin: string, depart: string): Promise<AttemptResult> {
+    const request = this.demande(id);
     await this.attendrePret();
     // The try follows its widget's lane.
     try {
-      return await this.dansSaVoie(id, async (w): Promise<ResultatEssai> => {
-        demande.commencee();
+      return await this.dansSaVoie(id, async (w): Promise<AttemptResult> => {
+        request.commencee();
         if (!w) return { ok: false, erreur: `Widget inconnu : ${id}` };
-        if (this.arrete) return { ok: false, erreur: ERREUR_INTERROMPUE };
-        if (!(await this.atelierDemarre())) return { ok: false, erreur: ERREUR_ATELIER_ARRETE };
-        if (this.arrete) return { ok: false, erreur: ERREUR_INTERROMPUE };
+        if (this.arrete) return { ok: false, erreur: INTERRUPTED_ERROR };
+        if (!(await this.atelierDemarre())) return { ok: false, erreur: WORKSHOP_STOPPED_ERROR };
+        if (this.arrete) return { ok: false, erreur: INTERRUPTED_ERROR };
         try {
           return await this.suivre(
             id,
             "essai",
-            (surTrace, ia) => this.o.recolterEssai({ ...this.optionsRecolte(w, surTrace, ia), declencheur: "rejeu", origine, depart }),
+            (surTrace, ia) => this.o.recolterEssai({ ...this.optionsRecolte(w, surTrace, ia), declencheur: "rejeu", origine: origin, depart }),
             (r) => (r.ok ? r.execution : undefined),
           );
         } catch (e) {
           // The exception's text may quote what the widget read: only a fixed kernel message is returned.
           console.error(`[webaios] essai du widget ${id} :`, e);
-          return { ok: false, erreur: ERREUR_RECOLTE_INTERNE };
+          return { ok: false, erreur: INTERNAL_HARVEST_ERROR };
         }
       });
     } finally {
-      demande.commencee();
+      request.commencee();
     }
   }
 
@@ -655,9 +655,9 @@ export class PlanificateurWidgets {
     await this.supprimerConteneurs();
     // Bounded: quitting the browser must not wait for a harvest that escaped the shutdown.
     const tout = Promise.all([this.files.courte, this.files.longue, ...this.parWidget.values()].map((x) => x.catch(() => {})));
-    let minuterie: NodeJS.Timeout | undefined;
-    await Promise.race([tout, new Promise((ok) => (minuterie = setTimeout(ok, this.o.attenteArretMs ?? ATTENTE_ARRET_MS)))]);
-    clearTimeout(minuterie);
+    let timer: NodeJS.Timeout | undefined;
+    await Promise.race([tout, new Promise((ok) => (timer = setTimeout(ok, this.o.attenteArretMs ?? STOP_WAIT_MS)))]);
+    clearTimeout(timer);
     // Still not finished: their container may have started after the first removal.
     await this.supprimerConteneurs();
   }

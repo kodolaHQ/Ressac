@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { parserDiff, positionNouvelle } from "../../src/relecture/diff.js";
+import { parserDiff, newPosition } from "../../src/relecture/diff.js";
 
 const patch = [
   "diff --git a/f.txt b/f.txt",
@@ -42,8 +42,8 @@ describe("parserDiff", () => {
   });
   test("positionNouvelle of a deleted line = number of the new line that follows", () => {
     const b = parserDiff(patch)[0]!;
-    expect(positionNouvelle(b, 1)).toBe(2);
-    expect(positionNouvelle(b, 2)).toBe(2);
-    expect(positionNouvelle(parserDiff("@@ -1,2 +1,1 @@\n a\n-b\n")[0]!, 1)).toBe(2);
+    expect(newPosition(b, 1)).toBe(2);
+    expect(newPosition(b, 2)).toBe(2);
+    expect(newPosition(parserDiff("@@ -1,2 +1,1 @@\n a\n-b\n")[0]!, 1)).toBe(2);
   });
 });

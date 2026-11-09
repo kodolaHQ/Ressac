@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
-import { DeclarationWidget, WEB_AVEC_COMPTE } from "../../src/accueil/schemas.js";
-import { lireAccueil } from "../../src/accueil/lire.js";
-import { cheminsEspace } from "../../src/chemins.js";
+import { DeclarationWidget, WEB_WITH_ACCOUNT } from "../../src/accueil/schemas.js";
+import { readHome } from "../../src/accueil/lire.js";
+import { spacePaths } from "../../src/chemins.js";
 import { mkdir } from "node:fs/promises";
 import { declarationWidget, ecrireWidget } from "../aide/accueil.js";
 import { dossierTemporaire } from "../aide/temporaire.js";
@@ -14,14 +14,14 @@ test("web with an account is refused with WEB_AVEC_COMPTE; lireAccueil shows the
   expect(r.success).toBe(false);
   if (!r.success) {
     expect(r.error.issues[0]!.path).toEqual(["sources", "web"]);
-    expect(r.error.issues[0]!.message).toBe(WEB_AVEC_COMPTE);
+    expect(r.error.issues[0]!.message).toBe(WEB_WITH_ACCOUNT);
   }
-  const c = cheminsEspace(await dossierTemporaire());
+  const c = spacePaths(await dossierTemporaire());
   await mkdir(c.widgets, { recursive: true });
   await ecrireWidget(c, "w", declarationWidget(undefined, { sources: { compte: ["mail.test"], publiques: [], web: true } }));
-  const { widgets } = await lireAccueil(c, await dossierTemporaire());
+  const { widgets } = await readHome(c, await dossierTemporaire());
   const w = widgets[0]!;
-  expect("erreur" in w && w.erreur).toContain(WEB_AVEC_COMPTE);
+  expect("erreur" in w && w.erreur).toContain(WEB_WITH_ACCOUNT);
 });
 
 test("web without an account is accepted; without web, sources.web is false", () => {

@@ -1,4 +1,4 @@
-import type { Avertissement, CatalogueBloc } from "@webaios/noyau";
+import type { Warning, CatalogueBloc } from "@webaios/noyau";
 import type { ApiWebaios, EditionWorkflow } from "../../shared/api";
 import { MODELE_CODE, parametresNeufs } from "./ajout";
 import { ajouterBloc, deplacer, Historique, memeBrouillon, suivreFichier, versBrouillon, type Brouillon } from "./brouillon";
@@ -32,7 +32,7 @@ const memeJson = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringif
 export class Edition {
   brouillon = $state.raw<Brouillon | null>(null);
   validation = $state.raw<Validation>({ ok: true });
-  avertissements = $state.raw<Avertissement[]>([]);
+  avertissements = $state.raw<Warning[]>([]);
   etatEnregistrement = $state.raw<EtatEnregistrement>("enregistre");
   /** The latest version seen on disk (or confirmed by a save). */
   dernierConnu = $state.raw<Brouillon | null>(null);

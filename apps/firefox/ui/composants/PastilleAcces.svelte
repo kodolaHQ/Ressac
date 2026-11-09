@@ -1,8 +1,8 @@
 <script lang="ts">
-  import type { EtatAccesOnglet } from "@webaios/noyau";
+  import type { TabAccessState } from "@webaios/noyau";
   import BulleAcces from "./BulleAcces.svelte";
 
-  let { id, etat }: { id: string; etat: EtatAccesOnglet } = $props();
+  let { id, etat }: { id: string; etat: TabAccessState } = $props();
   const niveau = $derived(etat.droits.includes("agir") ? "agir" : "lecture");
   let ouverte = $state(false);
   let racine = $state<HTMLSpanElement>();

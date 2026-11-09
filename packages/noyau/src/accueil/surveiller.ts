@@ -1,32 +1,32 @@
 import { mkdirSync } from "node:fs";
 import { watch } from "chokidar";
-import type { CheminsEspace } from "../chemins.js";
+import type { SpacePaths } from "../chemins.js";
 
-const REGROUPEMENT_MS = 150;
+const GROUPING_MS = 150;
 
 /** Calls `rappel` after each burst of changes in these folders (created if missing). Returns the stop. */
-function surveiller(dossiers: string[], rappel: () => void): () => Promise<void> {
+function watchDirs(dossiers: string[], rappel: () => void): () => Promise<void> {
   for (const d of dossiers) mkdirSync(d, { recursive: true });
-  let minuterie: NodeJS.Timeout | undefined;
-  const observateur = watch(dossiers, { ignoreInitial: true, ignored: (p) => p.endsWith(".tmp") || p.endsWith(".nouveau") });
+  let timer: NodeJS.Timeout | undefined;
+  const observer = watch(dossiers, { ignoreInitial: true, ignored: (p) => p.endsWith(".tmp") || p.endsWith(".nouveau") });
   // Chokidar emits its errors rather than throwing them: without a listener, they would be lost.
-  observateur.on("error", (e) => console.error("[webaios] la surveillance des dossiers a échoué :", e));
-  observateur.on("all", () => {
-    clearTimeout(minuterie);
-    minuterie = setTimeout(rappel, REGROUPEMENT_MS);
+  observer.on("error", (e) => console.error("[webaios] la surveillance des dossiers a échoué :", e));
+  observer.on("all", () => {
+    clearTimeout(timer);
+    timer = setTimeout(rappel, GROUPING_MS);
   });
   return async () => {
-    clearTimeout(minuterie);
-    await observateur.close();
+    clearTimeout(timer);
+    await observer.close();
   };
 }
 
 /** Calls `rappel` after each burst of changes in `accueil/`. Returns the stop function. */
-export function surveillerAccueil(c: CheminsEspace, rappel: () => void): () => Promise<void> {
-  return surveiller([c.accueil], rappel);
+export function watchHome(c: SpacePaths, rappel: () => void): () => Promise<void> {
+  return watchDirs([c.accueil], rappel);
 }
 
 /** Calls `rappel` after each burst of changes in `actions/` or `composants/`. Returns the stop function. */
-export function surveillerActions(c: CheminsEspace, rappel: () => void): () => Promise<void> {
-  return surveiller([c.actions, c.composants], rappel);
+export function watchActions(c: SpacePaths, rappel: () => void): () => Promise<void> {
+  return watchDirs([c.actions, c.composants], rappel);
 }

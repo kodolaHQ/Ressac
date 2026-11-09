@@ -4,18 +4,18 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   accorder,
-  cheminsEspace,
-  ecrireExecution,
-  ecrireResultat,
+  spacePaths,
+  writeRun,
+  writeResult,
   idExecution,
   lireAction,
   type ActionsNoyau,
-  type CheminsEspace,
-  type EtatActions,
+  type SpacePaths,
+  type ActionsState,
   type Execution,
-  type LancementAction,
+  type ActionLaunch,
   type Noyau,
-  type ResultatLancement,
+  type LaunchResult,
 } from "../../../packages/noyau/src/index";
 import { actionImageAllowed, createActionsHost, linkAllowed, MESSAGE_SANS_NOYAU, readShownActions, trashAction } from "../noyau/actions";
 import { SchemaAccord, SchemaIdAction, SchemaSaisieAction } from "../shared/api";
@@ -27,10 +27,10 @@ afterEach(() => {
 });
 
 /** A temporary space with these actions (`action.json`), and the folder of their data outside the space. */
-function espace(declarations: Record<string, object>): { c: CheminsEspace; dossierActions: string } {
+function espace(declarations: Record<string, object>): { c: SpacePaths; dossierActions: string } {
   const racine = mkdtempSync(join(tmpdir(), "webaios-actions-host-"));
   dirs.push(racine);
-  const c = cheminsEspace(join(racine, "WebAiOs"));
+  const c = spacePaths(join(racine, "WebAiOs"));
   for (const [id, d] of Object.entries(declarations)) {
     mkdirSync(join(c.actions, id), { recursive: true });
     writeFileSync(join(c.actions, id, "action.json"), JSON.stringify(d));
@@ -42,8 +42,8 @@ function espace(declarations: Record<string, object>): { c: CheminsEspace; dossi
 async function executer(dossierActions: string, id: string, resultats: unknown, debut = DEBUT): Promise<string> {
   const ex = idExecution(debut);
   const e: Execution = { version: 1, id: ex, proprietaire: { type: "action", id }, declencheur: "manuelle", debut, fin: debut, statut: "reussie", blocs: [] };
-  await ecrireExecution(join(dossierActions, id), e);
-  await ecrireResultat(dossierActions, id, { version: 1, execution: ex, saisie: null, resultats, plan: null, secours: true, vide: false });
+  await writeRun(join(dossierActions, id), e);
+  await writeResult(dossierActions, id, { version: 1, execution: ex, saisie: null, resultats, plan: null, secours: true, vide: false });
   return ex;
 }
 
@@ -122,13 +122,13 @@ describe("pure helpers", () => {
 });
 
 /** A fake kernel of the actions: notes the launches and stops. */
-function fauxNoyau(direct: EtatActions = { courantes: [], enAttente: [] }, issue: ResultatLancement | Promise<ResultatLancement> = { statut: "reussie", execution: "x" }) {
+function fauxNoyau(direct: ActionsState = { courantes: [], enAttente: [] }, issue: LaunchResult | Promise<LaunchResult> = { statut: "reussie", execution: "x" }) {
   const lances: { id: string; saisie?: string }[] = [];
   const arretes: string[] = [];
   /** Stops and grant removals, in order. */
   const appels: string[] = [];
   const actions = {
-    lancer: (id: string, o: { saisie?: string }): LancementAction => {
+    lancer: (id: string, o: { saisie?: string }): ActionLaunch => {
       lances.push({ id, ...(o.saisie !== undefined ? { saisie: o.saisie } : {}) });
       return { deja: false, fin: Promise.resolve(issue) };
     },
@@ -145,7 +145,7 @@ function fauxNoyau(direct: EtatActions = { courantes: [], enAttente: [] }, issue
   return { lances, arretes, appels, noyau: { actions } as unknown as Noyau };
 }
 
-function host(o: { direct?: EtatActions; issue?: ResultatLancement | Promise<ResultatLancement>; sansNoyau?: boolean } = {}) {
+function host(o: { direct?: ActionsState; issue?: LaunchResult | Promise<LaunchResult>; sansNoyau?: boolean } = {}) {
   const { c, dossierActions } = espace({
     gitlab: { nom: "GitLab", sources: { compte: ["gitlab.com"] } },
     leboncoin: { nom: "Leboncoin", saisie: { libelle: "Recherche" }, sources: { web: true } },
@@ -166,7 +166,7 @@ describe("preparer", () => {
     expect(await h.preparer("leboncoin", "clio lyon")).toEqual({ ok: true, nom: "Leboncoin", lancer: true });
     expect(await h.preparer("leboncoin", null)).toEqual({ ok: true, nom: "Leboncoin", lancer: false });
     expect(await h.preparer("leboncoin", "  ")).toEqual({ ok: true, nom: "Leboncoin", lancer: false });
-    const courante = { action: "gitlab", debut: DEBUT, saisie: null, essai: false, etape: "workflow", blocs: {} } as unknown as EtatActions["courantes"][number];
+    const courante = { action: "gitlab", debut: DEBUT, saisie: null, essai: false, etape: "workflow", blocs: {} } as unknown as ActionsState["courantes"][number];
     expect(await host({ direct: { courantes: [courante], enAttente: [] } }).h.preparer("gitlab", null)).toEqual({ ok: true, nom: "GitLab", lancer: false });
     expect(await host({ direct: { courantes: [], enAttente: [{ action: "gitlab", depuis: DEBUT }] } }).h.preparer("gitlab", null)).toMatchObject({ lancer: false });
     expect(lances).toEqual([]);
@@ -209,7 +209,7 @@ describe("lancer, refusals and deletion", () => {
 
   // actions.test.ts:462
   it("a launch refused without a run written is shown by the list, until a more recent run", async () => {
-    const issue: ResultatLancement = { statut: "echouee", erreur: "Docker n'est pas démarré", erreurNoyau: true };
+    const issue: LaunchResult = { statut: "echouee", erreur: "Docker n'est pas démarré", erreurNoyau: true };
     const { h, dossierActions, changes, avancer } = host({ issue });
     await h.lancer("gitlab", null);
     expect(changes()).toBe(1);
@@ -222,7 +222,7 @@ describe("lancer, refusals and deletion", () => {
 
   // actions.test.ts:476
   it("a launch refusal survives a restart; launching again clears it from the disk too", async () => {
-    const issue: ResultatLancement = { statut: "echouee", erreur: "Docker n'est pas démarré", erreurNoyau: true };
+    const issue: LaunchResult = { statut: "echouee", erreur: "Docker n'est pas démarré", erreurNoyau: true };
     const { h, creer } = host({ issue });
     await h.lancer("gitlab", null);
     await expect.poll(async () => (await h.liste()).find((a) => a.id === "gitlab")?.refus).toBe("Docker n'est pas démarré");
@@ -234,7 +234,7 @@ describe("lancer, refusals and deletion", () => {
 
   // actions.test.ts:491
   it("deleting also clears the refusal from the disk: an action made again has none at the next start", async () => {
-    const issue: ResultatLancement = { statut: "echouee", erreur: "Docker n'est pas démarré", erreurNoyau: true };
+    const issue: LaunchResult = { statut: "echouee", erreur: "Docker n'est pas démarré", erreurNoyau: true };
     const { h, c, creer } = host({ issue });
     await h.lancer("gitlab", null);
     await expect.poll(async () => (await h.liste()).find((a) => a.id === "gitlab")?.refus).toBe("Docker n'est pas démarré");
@@ -275,8 +275,8 @@ describe("lancer, refusals and deletion", () => {
 
   // actions.test.ts:532
   it("deleting during a launch: the stopped run that ends writing nothing leaves no refusal for an action made again", async () => {
-    let finir!: (r: ResultatLancement) => void;
-    const issue = new Promise<ResultatLancement>((ok) => (finir = ok));
+    let finir!: (r: LaunchResult) => void;
+    const issue = new Promise<LaunchResult>((ok) => (finir = ok));
     const { h, changes } = host({ issue });
     void h.lancer("gitlab", null);
     expect(await h.supprimer("gitlab")).toEqual({ ok: true });
@@ -296,7 +296,7 @@ describe("lancer, refusals and deletion", () => {
 describe("directVu", () => {
   it("calls surChange once when a run leaves courantes", () => {
     const { h, changes } = host();
-    const courante = { action: "gitlab", debut: DEBUT, saisie: null, essai: false, etape: "workflow", blocs: {} } as unknown as EtatActions["courantes"][number];
+    const courante = { action: "gitlab", debut: DEBUT, saisie: null, essai: false, etape: "workflow", blocs: {} } as unknown as ActionsState["courantes"][number];
     h.directVu({ courantes: [courante], enAttente: [] });
     expect(changes()).toBe(0);
     h.directVu({ courantes: [courante], enAttente: [] });

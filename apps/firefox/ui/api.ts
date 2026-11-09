@@ -1,8 +1,8 @@
 import type { SiteAffiche } from "../shared/sites";
 import type { ApiWebaios, EtatPanneauAgent, ListeApplications, ResultatExtension, WidgetAffiche } from "../shared/api";
 import type { LigneExtension, LigneExtensionEspace } from "../shared/extensions";
-import type { ThemeAccueil } from "../../../packages/noyau/src/accueil/theme.ts";
-import type { PlacementLibre } from "../../../packages/noyau/src/accueil/schemas.ts";
+import type { HomeTheme } from "../../../packages/noyau/src/accueil/theme.ts";
+import type { FreePlacement } from "../../../packages/noyau/src/accueil/schemas.ts";
 import type { Execution, ResumeExecution } from "../../../packages/noyau/src/workflows/executions.ts";
 import { HOST_EXITED } from "../chrome/agent/host";
 import { dossierValide } from "../chrome/store/app-folder";
@@ -16,7 +16,7 @@ import { createDesignApi, createExternesApi, createRelectureApi } from "./design
 /** What the Firefox page reads: the widgets, plus the theme the ApiWebaios type does not carry. */
 export interface AccueilLu {
   widgets: WidgetAffiche[];
-  theme: ThemeAccueil | null;
+  theme: HomeTheme | null;
 }
 
 /**
@@ -27,7 +27,7 @@ export interface ApiFirefox extends Omit<ApiWebaios, "accueil" | "actions"> {
   actions: ActionsFirefox;
   accueil: Omit<ApiWebaios["accueil"], "lire" | "placer"> & {
     lire(): Promise<AccueilLu>;
-    placer(placements: PlacementLibre[]): void;
+    placer(placements: FreePlacement[]): void;
     /** A real pointerdown in a widget's display, seen by the UI's chrome listener (not in the ApiWebaios type). */
     geste(id: string): void;
   };

@@ -1,5 +1,5 @@
-import { REGISTRE_BLOCS } from "./blocs/index.js";
-import type { WorkflowValide } from "./valider.js";
+import { BLOCK_REGISTRY } from "./blocs/index.js";
+import type { ValidWorkflow } from "./valider.js";
 
 // The same rule is copied into the container's interpreter (docker/moteur): a test checks that they agree.
 
@@ -12,36 +12,36 @@ import type { WorkflowValide } from "./valider.js";
  * predecessor, and stop after it if it has several. Finally, blocks are removed at the start as long as the rest
  * is not a contiguous slice of the run order. A try has no chain: it is up to the caller to judge.
  */
-export function chaineAuFilDeLEau(v: WorkflowValide): string[] {
+export function streamingChain(v: ValidWorkflow): string[] {
   const blocs = new Map(v.workflow.blocs.map((b) => [b.id, b]));
   if (blocs.get(v.sortie.id)?.parametres.auFilDeLEau !== true) return [];
-  const amont = v.predecesseurs[v.sortie.id]!;
-  if (amont.length !== 1) return [];
+  const upstream = v.predecesseurs[v.sortie.id]!;
+  if (upstream.length !== 1) return [];
 
-  const successeurs = new Map<string, string[]>();
+  const successors = new Map<string, string[]>();
   for (const [id, preds] of Object.entries(v.predecesseurs)) {
-    for (const p of preds) successeurs.set(p, [...(successeurs.get(p) ?? []), id]);
+    for (const p of preds) successors.set(p, [...(successors.get(p) ?? []), id]);
   }
 
-  const chaine: string[] = [];
-  let suivant = v.sortie.id;
-  let courant: string | undefined = amont[0];
+  const chain: string[] = [];
+  let next = v.sortie.id;
+  let courant: string | undefined = upstream[0];
   while (courant !== undefined) {
     const b = blocs.get(courant)!;
-    if (REGISTRE_BLOCS.get(b.type)?.chaine !== true || b.parametres.parElement !== true) break;
-    const apres = successeurs.get(courant) ?? [];
-    if (apres.length !== 1 || apres[0] !== suivant) break;
-    chaine.unshift(courant);
-    const avant: string[] = v.predecesseurs[courant]!;
-    if (avant.length !== 1) break;
-    suivant = courant;
-    courant = avant[0];
+    if (BLOCK_REGISTRY.get(b.type)?.chaine !== true || b.parametres.parElement !== true) break;
+    const after = successors.get(courant) ?? [];
+    if (after.length !== 1 || after[0] !== next) break;
+    chain.unshift(courant);
+    const before: string[] = v.predecesseurs[courant]!;
+    if (before.length !== 1) break;
+    next = courant;
+    courant = before[0];
   }
 
-  while (chaine.length > 0) {
-    const debut = v.ordre.indexOf(chaine[0]!);
-    if (chaine.every((id, i) => v.ordre[debut + i] === id)) break;
-    chaine.shift();
+  while (chain.length > 0) {
+    const debut = v.ordre.indexOf(chain[0]!);
+    if (chain.every((id, i) => v.ordre[debut + i] === id)) break;
+    chain.shift();
   }
-  return chaine;
+  return chain;
 }

@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { Action } from "../shared/api";
 import { ecrireExtensionAgent } from "./extensions/fixtures";
-import { CONSOLE_FOND_MASQUEE, CONSOLE_FOND_OBSERVE, PREFIXE_CONSOLE_EXTENSION } from "../../../packages/noyau/src/index";
+import { CONSOLE_BACKGROUND_HIDDEN, CONSOLE_FOND_OBSERVE, EXTENSION_CONSOLE_PREFIX } from "../../../packages/noyau/src/index";
 import { signatureRefusee } from "../noyau/extensions/amo";
 import { agentAddons, launchWithAmo, openTab } from "./agent-extensions";
 import { dispatch, newWindow, state, waitFor, waitWindowCount } from "./firefox";
@@ -96,7 +96,7 @@ describe("the agent's tools and their card", () => {
     expect((await w.call("lister_extensions")).texte).toMatch(/^agent:fond · Fond de l'agent · 1\.0\.0 · agent · actives dans : [^·]+ · erreurs : aucune$/m);
     // console_extension gives its background's console.log.
     const texte = await consoleUntil(w, "fond", "fond démarré");
-    expect(texte.startsWith(PREFIXE_CONSOLE_EXTENSION)).toBe(true);
+    expect(texte.startsWith(EXTENSION_CONSOLE_PREFIX)).toBe(true);
     expect((await w.call("console_extension", { id: `store:${"a".repeat(32)}` })).texte).toBe("Réservé aux extensions que tu as écrites.");
   });
 
@@ -310,7 +310,7 @@ describe("the console", () => {
     let texte = (await w.call("console_extension", { id: "journal" })).texte;
     expect(texte).not.toContain("contenu:/a.html");
     // It ran in an unshared tab: its background is masked too.
-    expect(texte).toContain(CONSOLE_FOND_MASQUEE);
+    expect(texte).toContain(CONSOLE_BACKGROUND_HIDDEN);
     expect(texte).not.toContain("fond démarré");
     // A tab the agent opens itself is readable: its message passes, the other stays masked.
     await w.call("ouvrir_onglet", { url: `${server.url}/b.html` });
@@ -319,7 +319,7 @@ describe("the console", () => {
     expect(texte).toMatch(/^1 message\(s\) masqué\(s\)/m);
     // A reload does not reset the masking (its storage may have kept what it read).
     expect((await w.call("recharger_extension", { id: "journal" })).texte).toBe("etat : rechargee");
-    expect((await w.call("console_extension", { id: "journal" })).texte).toContain(CONSOLE_FOND_MASQUEE);
+    expect((await w.call("console_extension", { id: "journal" })).texte).toContain(CONSOLE_BACKGROUND_HIDDEN);
   });
 
   it("debloquer_console granted → whole; refermer_console → masked again", async () => {
@@ -340,7 +340,7 @@ describe("the console", () => {
     let texte = await consoleUntil(w, "journal", "contenu:/a.html");
     expect(texte).toContain("fond démarré");
     expect(texte).not.toContain("message(s) masqué(s)");
-    expect(texte).not.toContain(CONSOLE_FOND_MASQUEE);
+    expect(texte).not.toContain(CONSOLE_BACKGROUND_HIDDEN);
     expect((await w.call("refermer_console", { id: "journal" })).texte).toContain("refermée");
     texte = (await w.call("console_extension", { id: "journal" })).texte;
     expect(texte).not.toContain("contenu:/a.html");
@@ -401,7 +401,7 @@ r.onsuccess = () => { const t = r.result.transaction("s", "readwrite"); t.object
     expect(await activerParLAgent(w, "journal", "Journal de l'agent")).toMatch(/^Activée/);
     await cardGone(m);
     // Its console stays masked: the old one ran in an unshared tab (same add-on id).
-    expect(await consoleUntil(w, "journal", CONSOLE_FOND_MASQUEE)).not.toContain("lu:");
+    expect(await consoleUntil(w, "journal", CONSOLE_BACKGROUND_HIDDEN)).not.toContain("lu:");
     // Unlocked: what it read, nothing of the old one.
     await debloquer(w, "journal");
     expect(await consoleUntil(w, "journal", 'lu:{"l":{},"idb":null}')).not.toContain("secret");

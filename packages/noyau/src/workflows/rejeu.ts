@@ -1,16 +1,16 @@
 import type { Execution } from "./executions.js";
-import type { WorkflowValide } from "./valider.js";
+import type { ValidWorkflow } from "./valider.js";
 
-export const PREFIXE_REJEU = "Rejeu impossible : ";
+export const REPLAY_PREFIX = "Rejeu impossible : ";
 /** Refusal when a replay's start line exceeds 4 MB (measured by `debutTropGros`, before any launch). */
-export const REJEU_TROP_GROS = `${PREFIXE_REJEU}les sorties à reprendre dépassent 4 Mo`;
+export const REPLAY_TOO_BIG = `${REPLAY_PREFIX}les sorties à reprendre dépassent 4 Mo`;
 
-export type PlanRejeu =
+export type ReplayPlan =
   | { ok: true; relances: string[]; sorties: Record<string, unknown>; repris: Record<string, number | null>; origine: string }
   | { ok: false; erreur: string };
 
 /** How many runs a replay goes back at most to find a taken output (try of a try of a try…). */
-export const PROFONDEUR_REJEU = 8;
+export const REPLAY_DEPTH = 8;
 
 /**
  * What a replay from `depart` reruns (the block and all its descendants, in run order) and what it
@@ -20,39 +20,39 @@ export const PROFONDEUR_REJEU = 8;
  * the taken outputs come from when there is only one, otherwise the given origin. Pure: no file
  * read, the size of what is taken is measured separately (`debutTropGros`).
  */
-export function planRejeu(valide: WorkflowValide, origine: Execution | null, depart: string, anterieures: Execution[] = []): PlanRejeu {
-  const refus = (cause: string): PlanRejeu => ({ ok: false, erreur: PREFIXE_REJEU + cause });
-  if (!origine) return refus("exécution introuvable");
-  if (!valide.ordre.includes(depart)) return refus(`le bloc « ${depart} » n'est pas dans le workflow`);
+export function replayPlan(valid: ValidWorkflow, origin: Execution | null, depart: string, earlier: Execution[] = []): ReplayPlan {
+  const denial = (cause: string): ReplayPlan => ({ ok: false, erreur: REPLAY_PREFIX + cause });
+  if (!origin) return denial("exécution introuvable");
+  if (!valid.ordre.includes(depart)) return denial(`le bloc « ${depart} » n'est pas dans le workflow`);
 
-  const suivants = new Map<string, string[]>();
-  for (const l of valide.workflow.liens) suivants.set(l.de, [...(suivants.get(l.de) ?? []), l.vers]);
-  const atteints = new Set<string>([depart]);
+  const next = new Map<string, string[]>();
+  for (const l of valid.workflow.liens) next.set(l.de, [...(next.get(l.de) ?? []), l.vers]);
+  const reachedList = new Set<string>([depart]);
   const pile = [depart];
-  while (pile.length) for (const s of suivants.get(pile.pop()!) ?? []) if (!atteints.has(s)) (atteints.add(s), pile.push(s));
-  const relances = valide.ordre.filter((id) => atteints.has(id));
+  while (pile.length) for (const s of next.get(pile.pop()!) ?? []) if (!reachedList.has(s)) (reachedList.add(s), pile.push(s));
+  const relaunches = valid.ordre.filter((id) => reachedList.has(id));
 
-  const amont = new Set<string>();
-  for (const id of relances) for (const p of valide.predecesseurs[id] ?? []) if (!atteints.has(p)) amont.add(p);
+  const upstream = new Set<string>();
+  for (const id of relaunches) for (const p of valid.predecesseurs[id] ?? []) if (!reachedList.has(p)) upstream.add(p);
 
   const sorties: Record<string, unknown> = {};
-  const repris: Record<string, number | null> = {};
-  const chaine = [origine, ...anterieures].slice(0, PROFONDEUR_REJEU);
+  const resumed: Record<string, number | null> = {};
+  const chain = [origin, ...earlier].slice(0, REPLAY_DEPTH);
   const sources = new Set<string>();
-  for (const id of valide.ordre.filter((b) => amont.has(b))) {
+  for (const id of valid.ordre.filter((b) => upstream.has(b))) {
     let trace: Execution["blocs"][number] | undefined;
-    for (const e of chaine) {
+    for (const e of chain) {
       trace = e.blocs.find((b) => b.id === id);
       if (trace?.statut !== "repris" || !e.essai) {
         if (trace) sources.add(e.id);
         break;
       }
     }
-    if (!trace || (trace.statut !== "reussi" && trace.statut !== "partiel")) return refus(`la sortie de « ${id} » manque dans cette exécution`);
-    if (trace.sortieTronquee) return refus(`la sortie de « ${id} » a été tronquée dans cette exécution`);
-    if (trace.sortie === undefined) return refus(`la sortie de « ${id} » manque dans cette exécution`);
+    if (!trace || (trace.statut !== "reussi" && trace.statut !== "partiel")) return denial(`la sortie de « ${id} » manque dans cette exécution`);
+    if (trace.sortieTronquee) return denial(`la sortie de « ${id} » a été tronquée dans cette exécution`);
+    if (trace.sortie === undefined) return denial(`la sortie de « ${id} » manque dans cette exécution`);
     sorties[id] = trace.sortie;
-    repris[id] = trace.elements;
+    resumed[id] = trace.elements;
   }
-  return { ok: true, relances, sorties, repris, origine: sources.size === 1 ? [...sources][0]! : origine.id };
+  return { ok: true, relances: relaunches, sorties, repris: resumed, origine: sources.size === 1 ? [...sources][0]! : origin.id };
 }

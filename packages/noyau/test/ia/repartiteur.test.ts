@@ -1,5 +1,5 @@
 import { expect, test, vi } from "vitest";
-import { creerRepartiteurIa, IA_ABANDONNEE, IA_SIMULTANES } from "../../src/ia/repartiteur.js";
+import { createAiDispatcher, AI_ABANDONED, AI_SIMULTANEOUS } from "../../src/ia/repartiteur.js";
 
 /** A fake AI: each call waits to be finished from the outside. */
 function iaFactice() {
@@ -38,12 +38,12 @@ function iaFactice() {
 const attendre = () => new Promise((r) => setImmediate(r));
 
 test("IA_SIMULTANES vaut 4", () => {
-  expect(IA_SIMULTANES).toBe(4);
+  expect(AI_SIMULTANEOUS).toBe(4);
 });
 
 test("two runs: the short one's call goes through between two calls of the long one", async () => {
   const f = iaFactice();
-  const r = creerRepartiteurIa(f.ia, { simultanes: 1 });
+  const r = createAiDispatcher(f.ia, { simultanes: 1 });
   const longue = r.pour("veille:2026-10-29T10:00:00.000Z");
   const courte = r.pour("meteo:2026-10-29T10:01:00.000Z");
   const appels = [longue.gemma({ prompt: "L1" }), longue.gemma({ prompt: "L2" }), longue.gemma({ prompt: "L3" })];
@@ -58,7 +58,7 @@ test("two runs: the short one's call goes through between two calls of the long 
 
 test("never more than 4 calls in flight", async () => {
   const f = iaFactice();
-  const r = creerRepartiteurIa(f.ia);
+  const r = createAiDispatcher(f.ia);
   const appels: Promise<unknown>[] = [];
   for (const cle of ["a", "b", "c"]) for (let i = 0; i < 4; i++) appels.push(r.pour(cle).kev({ state: `${cle}${i}`, questions: {} }));
   await attendre();
@@ -73,7 +73,7 @@ test("never more than 4 calls in flight", async () => {
 
 test("a failing call does not stop its queue", async () => {
   const f = iaFactice();
-  const r = creerRepartiteurIa(f.ia, { simultanes: 1 });
+  const r = createAiDispatcher(f.ia, { simultanes: 1 });
   const ia = r.pour("x");
   const premier = ia.gemma({ prompt: "1" });
   const second = ia.gemma({ prompt: "2" });
@@ -87,7 +87,7 @@ test("a failing call does not stop its queue", async () => {
 
 test("a call that throws right away does not stop its queue", async () => {
   let n = 0;
-  const r = creerRepartiteurIa(
+  const r = createAiDispatcher(
     {
       kev: () => {
         n++;
@@ -105,17 +105,17 @@ test("a call that throws right away does not stop its queue", async () => {
 
 test("oublier: the run's queued calls are refused without leaving, like those that come after", async () => {
   const f = iaFactice();
-  const r = creerRepartiteurIa(f.ia, { simultanes: 1 });
+  const r = createAiDispatcher(f.ia, { simultanes: 1 });
   const a = r.pour("a");
   const b = r.pour("b");
   const a1 = a.gemma({ prompt: "a1" });
   const a2 = a.gemma({ prompt: "a2" });
   const b1 = b.gemma({ prompt: "b1" });
   await attendre();
-  const refus = expect(a2).rejects.toThrow(IA_ABANDONNEE);
+  const refus = expect(a2).rejects.toThrow(AI_ABANDONED);
   a.oublier();
   await refus;
-  await expect(a.gemma({ prompt: "a3" })).rejects.toThrow(IA_ABANDONNEE);
+  await expect(a.gemma({ prompt: "a3" })).rejects.toThrow(AI_ABANDONED);
   // The call already in flight ends normally; the slot then goes to « b ».
   await f.finirPremier();
   expect(await a1).toBe("gemma a1");
@@ -126,7 +126,7 @@ test("oublier: the run's queued calls are refused without leaving, like those th
 
 test("4 in flight, 2 widgets queued, then a priority action: the freed slot goes to the action", async () => {
   const f = iaFactice();
-  const r = creerRepartiteurIa(f.ia);
+  const r = createAiDispatcher(f.ia);
   const appels: Promise<unknown>[] = [];
   for (let i = 0; i < 4; i++) appels.push(r.pour(`w${i}`).gemma({ prompt: `w${i}` }));
   appels.push(r.pour("w4").gemma({ prompt: "w4" }), r.pour("w5").gemma({ prompt: "w5" }));
@@ -143,7 +143,7 @@ test("4 in flight, 2 widgets queued, then a priority action: the freed slot goes
 
 test("without a priority one, the order is today's (existing tests unchanged)", async () => {
   const f = iaFactice();
-  const r = creerRepartiteurIa(f.ia, { simultanes: 1 });
+  const r = createAiDispatcher(f.ia, { simultanes: 1 });
   const appels = [r.pour("x").gemma({ prompt: "x1" }), r.pour("a").gemma({ prompt: "a1" }), r.pour("a").gemma({ prompt: "a2" }), r.pour("b").gemma({ prompt: "b1" }), r.pour("c").gemma({ prompt: "c1" })];
   await attendre();
   while (f.enCours.length) await f.finirPremier();
@@ -153,7 +153,7 @@ test("without a priority one, the order is today's (existing tests unchanged)", 
 
 test("two priority actions share the slots in turn", async () => {
   const f = iaFactice();
-  const r = creerRepartiteurIa(f.ia, { simultanes: 1 });
+  const r = createAiDispatcher(f.ia, { simultanes: 1 });
   const w = r.pour("widget");
   const a = r.pour("action:a", { prioritaire: true });
   const b = r.pour("action:b", { prioritaire: true });
@@ -169,7 +169,7 @@ test("two priority actions share the slots in turn", async () => {
 
 test("auDemarrage called at the real start, not when queued", async () => {
   const f = iaFactice();
-  const r = creerRepartiteurIa(f.ia, { simultanes: 1 });
+  const r = createAiDispatcher(f.ia, { simultanes: 1 });
   const premier = r.pour("a").gemma({ prompt: "1" });
   const demarre = vi.fn();
   const second = r.pour("b", { prioritaire: true }).gemma({ prompt: "2" }, { auDemarrage: demarre });
@@ -184,18 +184,18 @@ test("auDemarrage called at the real start, not when queued", async () => {
 
 test("signal raised in the queue: IA_ABANDONNEE refusal, the AI is not called", async () => {
   const f = iaFactice();
-  const r = creerRepartiteurIa(f.ia, { simultanes: 1 });
+  const r = createAiDispatcher(f.ia, { simultanes: 1 });
   const premier = r.pour("a").gemma({ prompt: "1" });
   const controleur = new AbortController();
   const demarre = vi.fn();
   const enFile = r.pour("b", { prioritaire: true }).gemma({ prompt: "2" }, { signal: controleur.signal, auDemarrage: demarre });
   const apres = r.pour("c").gemma({ prompt: "3" });
   await attendre();
-  const refus = expect(enFile).rejects.toThrow(IA_ABANDONNEE);
+  const refus = expect(enFile).rejects.toThrow(AI_ABANDONED);
   controleur.abort();
   await refus;
   // Already raised: refused right away.
-  await expect(r.pour("b").kev({ state: 0, questions: {} }, { signal: controleur.signal })).rejects.toThrow(IA_ABANDONNEE);
+  await expect(r.pour("b").kev({ state: 0, questions: {} }, { signal: controleur.signal })).rejects.toThrow(AI_ABANDONED);
   await f.finirPremier();
   await f.finirPremier();
   await Promise.all([premier, apres]);
@@ -205,7 +205,7 @@ test("signal raised in the queue: IA_ABANDONNEE refusal, the AI is not called", 
 
 test("signal raised in flight: passed to the AI", async () => {
   const recus: (AbortSignal | undefined)[] = [];
-  const r = creerRepartiteurIa({
+  const r = createAiDispatcher({
     kev: async (_c: unknown, o?: { signal?: AbortSignal }) => (recus.push(o?.signal), "k"),
     gemma: async (g: { prompt: string; signal?: AbortSignal }) => (recus.push(g.signal), "g"),
   });

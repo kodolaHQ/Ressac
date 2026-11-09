@@ -1,33 +1,33 @@
 // Pacing of the sites: one DuckDuckGo search at a time in the whole instance, one read at a time per host,
 // with a minimal gap between the end of one request and the start of the next. Pure: clock and wait injectable.
 
-export const ECART_RECHERCHES_MS = 2000;
-export const ECART_LECTURES_MS = 1000;
+export const SEARCHES_GAP_MS = 2000;
+export const READS_GAP_MS = 1000;
 
-type Voie = { queue: Promise<unknown>; fin: number | null; en_cours: number };
+type Route = { queue: Promise<unknown>; fin: number | null; en_cours: number };
 
-const nouvelleVoie = (): Voie => ({ queue: Promise.resolve(), fin: null, en_cours: 0 });
+const newRoute = (): Route => ({ queue: Promise.resolve(), fin: null, en_cours: 0 });
 
 /** A host's site for the pacing: lowercase host name, without « www. » or trailing dot (no public suffix list). */
-export const siteMenage = (hote: string) => hote.toLowerCase().replace(/\.+$/, "").replace(/^www\./, "");
+export const siteMenage = (host: string) => host.toLowerCase().replace(/\.+$/, "").replace(/^www\./, "");
 
 /**
  * Moves a read already started onto another site's lane (redirect): the current lane is released (its
  * request has gone), then the new site's is taken in its turn, after its gap. No effect for the same site.
  * Rejected if the read's signal is raised during the wait: the read then holds no lane at all.
  */
-export type ChangerHote = (hote: string) => Promise<void>;
+export type ChangeHost = (host: string) => Promise<void>;
 
 /** Releases the lane taken: `partie` false for a request that never went out (the gap is not consumed). */
-type Rendre = (partie: boolean) => void;
+type Render = (part: boolean) => void;
 
 const interruption = (signal?: AbortSignal) => signal?.reason ?? new Error("Demande interrompue");
 
-export class Menagement {
+export class Pacing {
   private readonly maintenant: () => number;
   private readonly attendre: (ms: number) => Promise<void>;
-  private readonly recherches: Voie = nouvelleVoie();
-  private readonly lectures = new Map<string, Voie>();
+  private readonly recherches: Route = newRoute();
+  private readonly lectures = new Map<string, Route>();
 
   constructor(o: { maintenant?: () => number; attendre?: (ms: number) => Promise<void> } = {}) {
     this.maintenant = o.maintenant ?? Date.now;
@@ -39,58 +39,58 @@ export class Menagement {
    * with its error without having gone out, and the lane's gap is not consumed (the next one does not wait for it).
    */
   async rechercher<T>(f: () => Promise<T>, signal?: AbortSignal, verifier?: () => void): Promise<T> {
-    const rendre = await this.prendre(this.recherches, ECART_RECHERCHES_MS, signal, verifier);
-    return this.executer(() => f(), signal, () => rendre(true));
+    const render = await this.prendre(this.recherches, SEARCHES_GAP_MS, signal, verifier);
+    return this.executer(() => f(), signal, () => render(true));
   }
 
   /**
    * A read of `hote`, in its turn on its site's lane. `f` receives `changerHote`: to call before following
    * a redirect to another site, to respect that one's pacing.
    */
-  async lire<T>(hote: string, f: (changerHote: ChangerHote) => Promise<T>, signal?: AbortSignal): Promise<T> {
-    let site = siteMenage(hote);
-    let rendre: Rendre | null = await this.prendre(this.voieLecture(site), ECART_LECTURES_MS, signal);
+  async lire<T>(host: string, f: (changeHost: ChangeHost) => Promise<T>, signal?: AbortSignal): Promise<T> {
+    let site = siteMenage(host);
+    let render: Render | null = await this.prendre(this.voieLecture(site), READS_GAP_MS, signal);
     // Lane changes follow one another: never two at once for the same read.
     let changements: Promise<void> = Promise.resolve();
-    let finie = false;
-    const changerHote: ChangerHote = (autre) => {
+    let finished = false;
+    const changeHost: ChangeHost = (other) => {
       const changement = changements.then(async () => {
-        const nouveau = siteMenage(autre);
-        if (finie) throw new Error("Lecture déjà finie");
-        if (nouveau === site && rendre) return;
-        rendre?.(true);
-        rendre = null;
-        site = nouveau;
-        rendre = await this.prendre(this.voieLecture(nouveau), ECART_LECTURES_MS, signal);
+        const fresh = siteMenage(other);
+        if (finished) throw new Error("Lecture déjà finie");
+        if (fresh === site && render) return;
+        render?.(true);
+        render = null;
+        site = fresh;
+        render = await this.prendre(this.voieLecture(fresh), READS_GAP_MS, signal);
         // The read has finished (abandoned) during the wait: the lane taken is released right away.
-        if (finie) {
-          rendre(false);
-          rendre = null;
+        if (finished) {
+          render(false);
+          render = null;
         }
       });
       changements = changement.catch(() => undefined);
       return changement;
     };
-    return this.executer(() => f(changerHote), signal, () => {
-      finie = true;
-      rendre?.(true);
-      rendre = null;
+    return this.executer(() => f(changeHost), signal, () => {
+      finished = true;
+      render?.(true);
+      render = null;
     });
   }
 
   /** A site's read lane, created as needed (lanes without a request whose gap has elapsed are removed). */
-  private voieLecture(site: string): Voie {
+  private voieLecture(site: string): Route {
     this.nettoyer();
-    let voie = this.lectures.get(site);
-    if (!voie) this.lectures.set(site, (voie = nouvelleVoie()));
-    return voie;
+    let route = this.lectures.get(site);
+    if (!route) this.lectures.set(site, (route = newRoute()));
+    return route;
   }
 
   /** Removes the lanes without a request in progress whose gap has elapsed: nothing left to pace there. */
   private nettoyer() {
     const t = this.maintenant();
-    for (const [cle, v] of this.lectures) {
-      if (v.en_cours === 0 && (v.fin === null || t - v.fin >= ECART_LECTURES_MS || t < v.fin)) this.lectures.delete(cle);
+    for (const [key, v] of this.lectures) {
+      if (v.en_cours === 0 && (v.fin === null || t - v.fin >= READS_GAP_MS || t < v.fin)) this.lectures.delete(key);
     }
   }
 
@@ -98,14 +98,14 @@ export class Menagement {
    * Launches `f`; `liberer` is called at its end, whatever it is. With a signal, the promise rejects as soon as it is
    * raised (the lane, though, is only released at the real end of `f`).
    */
-  private executer<T>(f: () => Promise<T>, signal: AbortSignal | undefined, liberer: () => void): Promise<T> {
+  private executer<T>(f: () => Promise<T>, signal: AbortSignal | undefined, release: () => void): Promise<T> {
     let execution: Promise<T>;
     try {
       execution = f();
     } catch (e) {
       execution = Promise.reject(e);
     }
-    execution = execution.finally(liberer);
+    execution = execution.finally(release);
     if (!signal) return execution;
     return new Promise<T>((resolve, reject) => {
       const stop = () => reject(interruption(signal));
@@ -119,17 +119,17 @@ export class Menagement {
    * Takes the lane: waits for the end of the previous request then the gap. Returns what is needed to release it. A request whose
    * signal is raised in the queue rejects right away; when its turn comes, it passes without consuming anything.
    */
-  private prendre(voie: Voie, ecart: number, signal?: AbortSignal, verifier?: () => void): Promise<Rendre> {
-    voie.en_cours++;
-    let ouvrir!: () => void;
-    const rendue = new Promise<void>((r) => (ouvrir = r));
-    let faite = false;
-    const rendre: Rendre = (partie) => {
-      if (faite) return;
-      faite = true;
-      if (partie) voie.fin = this.maintenant();
-      voie.en_cours--;
-      ouvrir();
+  private prendre(route: Route, gap: number, signal?: AbortSignal, verifier?: () => void): Promise<Render> {
+    route.en_cours++;
+    let open!: () => void;
+    const rendered = new Promise<void>((r) => (open = r));
+    let done = false;
+    const render: Render = (part) => {
+      if (done) return;
+      done = true;
+      if (part) route.fin = this.maintenant();
+      route.en_cours--;
+      open();
     };
     const tour = async (): Promise<void> => {
       // Waits until the gap has elapsed; a clock set back never lengthens the wait beyond the gap,
@@ -137,39 +137,39 @@ export class Menagement {
       for (;;) {
         if (signal?.aborted) throw interruption(signal);
         verifier?.();
-        if (voie.fin === null) break;
+        if (route.fin === null) break;
         const t = this.maintenant();
-        if (t < voie.fin) voie.fin = t; // clock set back: we restart from now
-        const reste = voie.fin + ecart - t;
-        if (reste <= 0) break;
-        await this.attendreOuInterrompre(reste, signal);
+        if (t < route.fin) route.fin = t; // clock set back: we restart from now
+        const rest = route.fin + gap - t;
+        if (rest <= 0) break;
+        await this.attendreOuInterrompre(rest, signal);
       }
     };
-    const prise = voie.queue.then(tour);
+    const taken = route.queue.then(tour);
     // The next one waits for this one to release the lane; a request that has not had its turn releases it without consuming anything.
-    voie.queue = prise.then(
-      () => rendue,
-      () => rendre(false),
+    route.queue = taken.then(
+      () => rendered,
+      () => render(false),
     );
-    return new Promise<Rendre>((resolve, reject) => {
-      let reglee = false;
+    return new Promise<Render>((resolve, reject) => {
+      let set = false;
       const stop = () => {
-        if (reglee) return;
-        reglee = true;
+        if (set) return;
+        set = true;
         reject(interruption(signal));
       };
-      prise.then(
+      taken.then(
         () => {
           signal?.removeEventListener("abort", stop);
           // Interrupted in the queue but its turn came anyway: it does nothing with it.
-          if (reglee) return rendre(false);
-          reglee = true;
-          resolve(rendre);
+          if (set) return render(false);
+          set = true;
+          resolve(render);
         },
         (e) => {
           signal?.removeEventListener("abort", stop);
-          if (reglee) return;
-          reglee = true;
+          if (set) return;
+          set = true;
           reject(e);
         },
       );

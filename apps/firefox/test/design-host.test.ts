@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpath
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cheminsEspace, DepotRelecture, depotRelecture, DOSSIER_ESPACE, PORT_MCP_EXTERNE, projetExterne, REMARQUE_VIDE, SANS_CLIENT } from "../../../packages/noyau/src/index";
+import { spacePaths, ReviewStore, reviewStore, SPACE_FOLDER, PORT_MCP_EXTERNE, externalProject, EMPTY_REMARK, SANS_CLIENT } from "../../../packages/noyau/src/index";
 import { AUCUNE_FENETRE } from "../core/design/envoi";
 import { createDesignHost, DESIGN_METHODS, externalMcpPort, sourceTexte, type DesignHost, type SuiviDesign } from "../noyau/design";
 import { INVALID_REQUEST } from "../shared/design-guards";
@@ -24,7 +24,7 @@ const app = (dossier: string, type: App["type"] = "application"): App => ({ doss
 function prepare(o: { port?: number; fenetre?: string | null; sites?: { id: string; nom: string }[]; applis?: App[] } = {}) {
   const dataDir = realpathSync(mkdtempSync(join(tmpdir(), "webaios-design-")));
   cleanup.push(() => rmSync(dataDir, { recursive: true, force: true }));
-  const chemins = cheminsEspace(join(dataDir, "espace"));
+  const chemins = spacePaths(join(dataDir, "espace"));
   mkdirSync(chemins.sites, { recursive: true });
   // Outside <dataDir>: a project under it would be refused.
   const maison = realpathSync(mkdtempSync(join(tmpdir(), "webaios-maison-")));
@@ -118,7 +118,7 @@ describe("design host", { timeout: 20_000 }, () => {
     for (const d of dossiers.slice(1)) mkdirSync(d, { recursive: true });
     for (const dossier of dossiers) {
       const r = await callTool(s.design, "declarer_projet", { dossier, ports: [3000] });
-      expect(r.texte).toContain(DOSSIER_ESPACE);
+      expect(r.texte).toContain(SPACE_FOLDER);
     }
     expect((await liste(s.design)).projets).toEqual([]);
   });
@@ -132,7 +132,7 @@ describe("design host", { timeout: 20_000 }, () => {
     const lien = join(dehors, "lien");
     symlinkSync(join(s.dataDir, "design"), lien);
     const r = await callTool(s.design, "declarer_projet", { dossier: lien, ports: [3000] });
-    expect(r.texte).toContain(DOSSIER_ESPACE);
+    expect(r.texte).toContain(SPACE_FOLDER);
     expect((await liste(s.design)).projets).toEqual([]);
     expect(existsSync(join(s.dataDir, "design", "projets-externes.json"))).toBe(false);
     expect(existsSync(join(s.dataDir, "design", "relecture"))).toBe(false);
@@ -214,8 +214,8 @@ describe("design host", { timeout: 20_000 }, () => {
     for (let i = 0; i < 50; i++) writeFileSync(join(projet, `f${i}.txt`), `${i}\n`);
     const id = "0123456789abcdef";
     const dossiers = { remarquesEspace: join(s.chemins.interne, "remarques"), prive: join(s.dataDir, "design") };
-    const depot = depotRelecture(dossiers, projetExterne(id));
-    const photo = new DepotRelecture({ depot, dossier: projet }).assurerReference().catch(() => undefined);
+    const depot = reviewStore(dossiers, externalProject(id));
+    const photo = new ReviewStore({ depot, dossier: projet }).assurerReference().catch(() => undefined);
     await s.design.handlers["externes.oublier"]!({ id });
     await photo;
     expect(existsSync(depot)).toBe(false);
@@ -356,7 +356,7 @@ describe("design host, the carts", { timeout: 20_000 }, () => {
       { projet: "ext-0123456789abcdef" },
     ];
     for (const r of refused) expect(await add(r), JSON.stringify(r).slice(0, 80)).toEqual({ ok: false, erreur: INVALID_REQUEST });
-    expect(await add({ texte: "  \n" })).toEqual({ ok: false, erreur: REMARQUE_VIDE });
+    expect(await add({ texte: "  \n" })).toEqual({ ok: false, erreur: EMPTY_REMARK });
     expect(existsSync(dossier)).toBe(false);
 
     expect(await add({ texte: "a".repeat(4000), contexte: contexte({ extra: "x", source: null }) })).toEqual({ ok: true });

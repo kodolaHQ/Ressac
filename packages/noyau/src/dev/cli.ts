@@ -4,12 +4,12 @@ import { execFile } from "node:child_process";
 import { appendFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { creerNoyau, ErreurAtelier } from "../noyau.js";
+import { createKernel, WorkshopError } from "../noyau.js";
 import { PontFactice } from "../mcp/pont-factice.js";
-import type { OngletInfo, PontNavigateur } from "../mcp/pont.js";
+import type { TabInfo, BrowserBridge } from "../mcp/pont.js";
 
-const github: OngletInfo = { id: "github", titre: "sveltejs/svelte", url: "https://github.com/sveltejs/svelte", espace: "perso" };
-const gmail: OngletInfo = { id: "gmail", titre: "Gmail — Boîte de réception", url: "https://mail.google.com/mail/u/0/", espace: "perso" };
+const github: TabInfo = { id: "github", titre: "sveltejs/svelte", url: "https://github.com/sveltejs/svelte", espace: "perso" };
+const gmail: TabInfo = { id: "gmail", titre: "Gmail — Boîte de réception", url: "https://mail.google.com/mail/u/0/", espace: "perso" };
 const CTRL_CROCHET = "\x1d";
 
 const factice = new PontFactice([github, gmail], { actif: "github", autoriser: false });
@@ -17,20 +17,20 @@ let journal = "";
 
 // The call log goes into a file: writing on stderr would damage the display of the agent's terminal.
 const pont = new Proxy(factice, {
-  get(cible, cle, recepteur) {
-    const valeur = Reflect.get(cible, cle, recepteur);
+  get(target, key, receiver) {
+    const valeur = Reflect.get(target, key, receiver);
     if (typeof valeur !== "function") return valeur;
     return (...args: unknown[]) => {
-      if (journal) appendFileSync(journal, `${new Date().toISOString()} ${String(cle)} ${JSON.stringify(args)}\n`);
+      if (journal) appendFileSync(journal, `${new Date().toISOString()} ${String(key)} ${JSON.stringify(args)}\n`);
       // No real browser yet: the tabs opened by the agent open in the default browser.
-      if (cle === "ouvrirOnglet") execFile("open", [String(args[0])]);
-      return valeur.apply(cible, args);
+      if (key === "ouvrirOnglet") execFile("open", [String(args[0])]);
+      return valeur.apply(target, args);
     };
   },
-}) as PontNavigateur;
+}) as BrowserBridge;
 
 // Widgets' and actions' data: outside the workspace, in a temporary folder (no browser profile here).
-const noyau = await creerNoyau({ pont, dossierWidgets: join(tmpdir(), "webaios-dev-widgets"), dossierActions: join(tmpdir(), "webaios-dev-actions") });
+const noyau = await createKernel({ pont, dossierWidgets: join(tmpdir(), "webaios-dev-widgets"), dossierActions: join(tmpdir(), "webaios-dev-actions") });
 journal = join(noyau.chemins.interne, "dev-pont.log");
 console.log(`Espace : ${noyau.chemins.racine}\nAppels du navigateur factice : tail -f ${journal}\nCtrl-] pour quitter.\n`);
 
@@ -40,7 +40,7 @@ try {
   // After opening: a new session starts without authorization.
   noyau.politique.interactionUtilisateur(github); // the user « talks to the agent » from the GitHub tab
 } catch (e) {
-  console.error(e instanceof ErreurAtelier ? `Agent indisponible : ${e.message}` : e);
+  console.error(e instanceof WorkshopError ? `Agent indisponible : ${e.message}` : e);
   await noyau.arreter();
   process.exit(1);
 }

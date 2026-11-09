@@ -1,7 +1,7 @@
 import { z } from "zod";
-import { dossierValide, ID_EXECUTION, ID_SITE, type Application, type Avertissement, type CatalogueBloc, type DeclarationWidget, type EtatDirect, type LectureBrouillon, type ResultatEnregistrement, type ResultatEssai, type DroitDev, type EtatIa, type EtatWidget, type Execution, type ResumeExecution, type EtatActions, type PageAction, type ResultatLancement, type Proprietaire } from "@webaios/noyau";
-import type { EtatLot, IdProjet, ProjetExterne, ProjetSuivi } from "@webaios/noyau";
-import { ID_PROJET, type Commentaire, type DiffFichier, type FichierModifie } from "@webaios/noyau";
+import { validFolder, ID_EXECUTION, ID_SITE, type Application, type Warning, type CatalogueBloc, type DeclarationWidget, type DirectState, type DraftRead, type SaveResult, type AttemptResult, type DroitDev, type AiState, type WidgetState, type Execution, type ResumeExecution, type ActionsState, type PageAction, type LaunchResult, type Owner } from "@webaios/noyau";
+import type { BatchState, ProjectId, ExternalProject, TrackedProject } from "@webaios/noyau";
+import { PROJECT_ID, type Comment, type DiffFile, type ModifiedFile } from "@webaios/noyau";
 import type { ActionAffichee } from "./actions";
 import type { ActionSite, EtatFenetreSite, MessageVersLAccueil, SiteAffiche } from "./sites";
 import type { BarreExtensions, LigneExtension, LigneExtensionEspace, LigneExtensionSite } from "./extensions";
@@ -96,7 +96,7 @@ export const SchemaAction = z.discriminatedUnion("type", [
   z.object({ type: z.literal("choisirProfilAgent"), profil: z.string().regex(/^[\w-]+$/).max(64) }),
   z.object({ type: z.literal("largeurPanneauAgent"), largeur: z.number().finite() }),
   /** Activates this window's project Review page, or opens it (one per project and per window). */
-  z.object({ type: z.literal("ouvrirRelecture"), fenetreId: id, projet: z.string().regex(ID_PROJET), nom: z.string().max(80) }),
+  z.object({ type: z.literal("ouvrirRelecture"), fenetreId: id, projet: z.string().regex(PROJECT_ID), nom: z.string().max(80) }),
 ]);
 export type Action = z.infer<typeof SchemaAction>;
 
@@ -229,22 +229,22 @@ export interface ApiWebaios {
   workflow: {
     catalogue(): Promise<CatalogueBloc[]>;
     /** null: unknown widget or action, or without a workflow. */
-    lire(cible: Proprietaire): Promise<EditionWorkflow | null>;
-    enregistrer(cible: Proprietaire, brouillon: Brouillon): Promise<ResultatEnregistrement & { avertissements: Avertissement[] }>;
-    lireCode(cible: Proprietaire, nom: string): Promise<{ texte: string } | { absent: true } | { erreur: string }>;
-    enregistrerCode(cible: Proprietaire, nom: string, texte: string): Promise<{ ok: true } | { ok: false; erreur: string }>;
+    lire(cible: Owner): Promise<EditionWorkflow | null>;
+    enregistrer(cible: Owner, brouillon: Brouillon): Promise<SaveResult & { avertissements: Warning[] }>;
+    lireCode(cible: Owner, nom: string): Promise<{ texte: string } | { absent: true } | { erreur: string }>;
+    enregistrerCode(cible: Owner, nom: string, texte: string): Promise<{ ok: true } | { ok: false; erreur: string }>;
     /** A trial; for an action, its page shows in the preview, never as the latest result. */
-    rejouer(cible: Proprietaire, execution: string, bloc: string): Promise<ResultatEssai>;
+    rejouer(cible: Owner, execution: string, bloc: string): Promise<AttemptResult>;
     /**
      * Starts a real execution now; returns its id (absent if the agent is stopped or nothing ran). An action
      * receives `saisie` and may return the refusal (`erreur`: required input, required grant…).
      */
-    lancer(cible: Proprietaire, saisie?: string | null): Promise<{ execution?: string; erreur?: string }>;
+    lancer(cible: Owner, saisie?: string | null): Promise<{ execution?: string; erreur?: string }>;
     /** The block selected in this window's builder (for workflow_ouvert). */
-    selection(cible: Proprietaire, bloc: string | null): void;
+    selection(cible: Owner, bloc: string | null): void;
     /** The executions of the running widgets (those of actions: `actions.direct`). */
-    direct(): Promise<EtatDirect>;
-    surDirect(rappel: (e: EtatDirect) => void): () => void;
+    direct(): Promise<DirectState>;
+    surDirect(rappel: (e: DirectState) => void): () => void;
   };
   /** Local AI (Kev and Gemma) of the harvests. */
   ia: {
@@ -269,15 +269,15 @@ export interface ApiWebaios {
      */
     ouvrir(id: string, saisie: string | null): Promise<{ ok: true } | { ok: false; erreur: string }>;
     /** « Relancer » from the page: returns the outcome of the execution, when it ends. */
-    lancer(id: string, saisie: string | null): Promise<ResultatLancement>;
+    lancer(id: string, saisie: string | null): Promise<LaunchResult>;
     arreter(id: string): void;
     /** This result (null: the latest), without rerunning anything; null if there is none. */
     page(id: string, execution: string | null): Promise<PageAction | null>;
     executions(id: string): Promise<ResumeExecution[]>;
     /** A complete execution (blocks, outputs, logs), for the builder; null if it no longer exists. */
     execution(id: string, execution: string): Promise<Execution | null>;
-    direct(): Promise<EtatActions>;
-    surDirect(rappel: (e: EtatActions) => void): () => void;
+    direct(): Promise<ActionsState>;
+    surDirect(rappel: (e: ActionsState) => void): () => void;
     /** A link from the page: opened in a tab only if the address appears as is in the results. */
     ouvrirLien(id: string, execution: string, url: string): void;
     /** Login profiles a grant can use (never a private space's). */
@@ -362,7 +362,7 @@ export const SchemaActionApplication = z
     dossier: z.string(),
     action: z.enum(["lancer", "arreter", "relancer", "ouvrir", "deboguer", "supprimer", "promouvoir", "dossier", "relire"]),
   })
-  .refine(({ dossier, action }) => (SUR_TOUT_DOSSIER.has(action) ? segmentValide(dossier) : dossierValide(dossier)));
+  .refine(({ dossier, action }) => (SUR_TOUT_DOSSIER.has(action) ? segmentValide(dossier) : validFolder(dossier)));
 export type ActionApplication = z.infer<typeof SchemaActionApplication>["action"];
 
 /** An action on a site app: its id follows `ID_SITE` (never a path). */
@@ -457,8 +457,8 @@ export function selectionConstructeur(v: unknown): SelectionConstructeur | null 
 }
 export type Brouillon = z.infer<typeof SchemaBrouillon>;
 
-export type EditionWorkflow = LectureBrouillon & {
-  avertissements: Avertissement[];
+export type EditionWorkflow = DraftRead & {
+  avertissements: Warning[];
   /** What `widget.json` declares, read-only; `recolte` null: the widget declares none. Absent for an action. */
   widget?: {
     nom: string;
@@ -509,7 +509,7 @@ export type WidgetAffiche =
       src: string | null;
       donnees: unknown | null;
       exemple: unknown | null;
-      etat: EtatWidget;
+      etat: WidgetState;
       /** Domains read with the user's account (empty: public sources only). */
       compte: string[];
       /** Public domains the widget may contact; for a widget with an account, covered by the same grant. */
@@ -533,7 +533,7 @@ export interface ProfilPourAccord {
 
 /** State of the local AI for the indicator; `verification`: what is in place (absent if not checked). */
 export interface EtatIaAffiche {
-  etat: EtatIa;
+  etat: AiState;
   erreur?: string;
   verification?: { kev: boolean; uv: boolean; ollama: boolean; gemma: boolean };
 }
@@ -614,7 +614,7 @@ export interface ApiSite {
 /** The design mode of a target (a window's active tab, or an app window). */
 export interface EtatDesign {
   actif: boolean;
-  projet: ProjetSuivi | null;
+  projet: TrackedProject | null;
   /** Reason why design mode is not offered here; null if it is. */
   indisponible: string | null;
   /** « l'agent », « Claude Code (<nom>) »; null if nobody can receive the notes. */
@@ -638,7 +638,7 @@ export interface ElementAffiche {
 export interface LotAffiche {
   id: string;
   cree: string;
-  etat: EtatLot;
+  etat: BatchState;
   destination: "agent" | "mcp";
   elements: ElementAffiche[];
 }
@@ -646,11 +646,11 @@ export interface ApiDesign {
   etat(): Promise<EtatDesign>;
   /** ⌘⇧D: no effect where the mode is unavailable. */
   basculer(): void;
-  panier(projet: IdProjet): Promise<ElementAffiche[]>;
-  retirer(projet: IdProjet, id: string): Promise<void>;
-  envoyer(projet: IdProjet): Promise<ResultatExtension>;
-  lots(projet: IdProjet): Promise<LotAffiche[]>;
-  traite(projet: IdProjet, lot: string): Promise<void>;
+  panier(projet: ProjectId): Promise<ElementAffiche[]>;
+  retirer(projet: ProjectId, id: string): Promise<void>;
+  envoyer(projet: ProjectId): Promise<ResultatExtension>;
+  lots(projet: ProjectId): Promise<LotAffiche[]>;
+  traite(projet: ProjectId, lot: string): Promise<void>;
   /** « Relire ce projet » (`app` and `externe` projects). */
   relire(): void;
   surChange(rappel: () => void): () => void;
@@ -661,7 +661,7 @@ export interface ContexteCalque {
   mode: "bulle" | "panier" | "message";
   /** The text of the « message » mode; null elsewhere. */
   message: string | null;
-  projet: IdProjet;
+  projet: ProjectId;
   etiquette: string;
   source: string | null;
   destination: string | null;
@@ -682,7 +682,7 @@ export const TEXTE_REMARQUE_MAX = 4000;
 /** « Projets externes » section of the Applications page: the external MCP, its projects and its clients (never a token). */
 export interface EtatExternes {
   serveur: { etat: "pret"; port: number } | { etat: "eteint"; raison: string };
-  projets: (ProjetExterne & { client: string | null; nomClient: string | null })[];
+  projets: (ExternalProject & { client: string | null; nomClient: string | null })[];
   clients: { id: string; nom: string; cree: string }[];
 }
 export interface ApiExternes {
@@ -699,31 +699,31 @@ export interface ApiExternes {
 /** Review page: what it shows of a project (the diff since the last review), or why it cannot. */
 export type VueRelecture =
   | {
-      etat: "ok"; nom: string; jeton: string; comparaison: { fichiers: FichierModifie[] }; commentaires: Commentaire[];
+      etat: "ok"; nom: string; jeton: string; comparaison: { fichiers: ModifiedFile[] }; commentaires: Comment[];
       /** Who the comments go to (« l'agent », « Claude Code (…) »); otherwise why they cannot be sent. */
       destination: string | null; sansDestination: string | null;
     }
   | { etat: "indisponible"; nom: string; raison: string };
-export type { DiffFichier, FichierModifie, Commentaire };
+export type { DiffFile as DiffFichier, ModifiedFile as FichierModifie, Comment as Commentaire };
 export interface ApiRelecture {
   /**
    * Compares the project to its last review and returns the token of that comparison (kept by the main process).
    * With the token of a comparison still kept: that one, without comparing again; « Rafraîchir » does not pass one.
    */
-  ouvrir(projet: IdProjet, jeton?: string): Promise<VueRelecture>;
+  ouvrir(projet: ProjectId, jeton?: string): Promise<VueRelecture>;
   /** The diff of one file of the token's comparison (never another path); a token no longer kept is refused. */
-  fichier(projet: IdProjet, jeton: string, chemin: string): Promise<DiffFichier>;
+  fichier(projet: ProjectId, jeton: string, chemin: string): Promise<DiffFile>;
   /** Lines `debut`..`fin` (from 1) of the current version of a file of the token's comparison. */
-  lignes(projet: IdProjet, jeton: string, chemin: string, debut: number, fin: number): Promise<string[]>;
+  lignes(projet: ProjectId, jeton: string, chemin: string, debut: number, fin: number): Promise<string[]>;
   /** The project's comments, as saved. */
-  commentaires(projet: IdProjet): Promise<Commentaire[]>;
+  commentaires(projet: ProjectId): Promise<Comment[]>;
   /** A comment on lines of a single block of the token's diff; the lines are read by the main process. */
-  commenter(projet: IdProjet, jeton: string, c: { fichier: string; debut: number; fin: number; texte: string }): Promise<ResultatExtension>;
-  modifierCommentaire(projet: IdProjet, id: string, texte: string): Promise<void>;
-  resoudre(projet: IdProjet, id: string, resolu: boolean): Promise<void>;
-  supprimerCommentaire(projet: IdProjet, id: string): Promise<void>;
+  commenter(projet: ProjectId, jeton: string, c: { fichier: string; debut: number; fin: number; texte: string }): Promise<ResultatExtension>;
+  modifierCommentaire(projet: ProjectId, id: string, texte: string): Promise<void>;
+  resoudre(projet: ProjectId, id: string, resolu: boolean): Promise<void>;
+  supprimerCommentaire(projet: ProjectId, id: string): Promise<void>;
   /** Unresolved comments go out as one batch (agent: pre-filled, never sent; external: MCP queue). */
-  envoyer(projet: IdProjet): Promise<ResultatExtension>;
+  envoyer(projet: ProjectId): Promise<ResultatExtension>;
   /** « Marquer comme relu »: keeps the tree shown by the token's comparison, then returns a new comparison. */
-  relu(projet: IdProjet, jeton: string): Promise<VueRelecture>;
+  relu(projet: ProjectId, jeton: string): Promise<VueRelecture>;
 }

@@ -1,50 +1,50 @@
 import { readFile, realpath, stat } from "node:fs/promises";
 import { join, sep } from "node:path";
-import { ecrireAtomique } from "./executions.js";
-import { existe, lireBrutWorkflow } from "./lire.js";
-import { avecMemoire, ecrireMemoire, empreinteParametres, jsonCanonique, lireMemoire } from "./memoire.js";
+import { writeAtomic } from "./executions.js";
+import { exists, lireBrutWorkflow } from "./lire.js";
+import { withMemory, writeMemory, paramsHash, canonicalJson, readMemory } from "./memoire.js";
 import { TAILLE_MAX_WORKFLOW } from "./schema.js";
 import {
-  CONTEXTE_PAR_DEFAUT,
-  erreurWorkflow,
-  validerWorkflow,
-  workflowImplicite,
-  type ContexteValidation,
-  type ResultatValidation,
-  type WorkflowValide,
+  DEFAULT_CONTEXT,
+  workflowError,
+  validateWorkflow,
+  implicitWorkflow,
+  type ValidationContext,
+  type ValidationResult,
+  type ValidWorkflow,
 } from "./valider.js";
 
 // The builder only reads and writes `workflow.json` and the `.mjs` as text: nothing is run here.
 
 export const CODE_MAX_OCTETS = 256 * 1024;
-export const NOM_CODE = /^[a-z0-9-]+\.mjs$/;
+export const CODE_NAME = /^[a-z0-9-]+\.mjs$/;
 
-const WIDGET_INTROUVABLE = "Widget introuvable";
+const WIDGET_NOT_FOUND = "Widget introuvable";
 
-export type LectureBrouillon = {
+export type DraftRead = {
   origine: "fichier" | "implicite";
   /** null: not JSON, unreadable, over 256 KB, or a link that leaves the folder. */
   brut: unknown | null;
   validation: { ok: true } | { ok: false; erreur: string; bloc?: string };
 };
 
-export type ResultatEnregistrement =
+export type SaveResult =
   | { ok: true; ecrit: boolean; memoireEffacee: string[] }
   | { ok: false; erreur: string; bloc?: string };
 
-const resume = (r: ResultatValidation): LectureBrouillon["validation"] => (r.ok ? { ok: true } : { ok: false, erreur: r.erreur, ...(r.bloc === undefined ? {} : { bloc: r.bloc }) });
+const resume = (r: ValidationResult): DraftRead["validation"] => (r.ok ? { ok: true } : { ok: false, erreur: r.erreur, ...(r.bloc === undefined ? {} : { bloc: r.bloc }) });
 
 /** The file exists (link only checked by its name) and its real path stays in the folder. */
-async function dansLeDossier(dossier: string, nom: string): Promise<boolean> {
+async function dansLeDossier(dossier: string, name: string): Promise<boolean> {
   try {
-    const [racine, reel] = await Promise.all([realpath(dossier), realpath(join(dossier, nom))]);
-    return reel.startsWith(racine + sep);
+    const [root, reel] = await Promise.all([realpath(dossier), realpath(join(dossier, name))]);
+    return reel.startsWith(root + sep);
   } catch {
     return false;
   }
 }
 
-async function dossierExiste(dossier: string): Promise<boolean> {
+async function folderExists(dossier: string): Promise<boolean> {
   try {
     return (await stat(dossier)).isDirectory();
   } catch {
@@ -56,15 +56,15 @@ async function dossierExiste(dossier: string): Promise<boolean> {
  * What the builder opens: `workflow.json` even if invalid, otherwise the implicit one of a `recolte.mjs`, otherwise null.
  * Writes nothing. `ctx`: what the widget declares (`contexteValidation`).
  */
-export async function lireBrouillon(dossierFichiers: string, ctx: ContexteValidation = CONTEXTE_PAR_DEFAUT): Promise<LectureBrouillon | null> {
-  if (await existe(join(dossierFichiers, "workflow.json"))) {
-    const lu = await lireBrutWorkflow(dossierFichiers);
-    if ("erreur" in lu) return { origine: "fichier", brut: null, validation: resume(erreurWorkflow(lu.erreur)) };
-    return { origine: "fichier", brut: lu.brut, validation: resume(validerWorkflow(lu.brut, ctx)) };
+export async function readDraft(filesFolder: string, ctx: ValidationContext = DEFAULT_CONTEXT): Promise<DraftRead | null> {
+  if (await exists(join(filesFolder, "workflow.json"))) {
+    const lu = await lireBrutWorkflow(filesFolder);
+    if ("erreur" in lu) return { origine: "fichier", brut: null, validation: resume(workflowError(lu.erreur)) };
+    return { origine: "fichier", brut: lu.brut, validation: resume(validateWorkflow(lu.brut, ctx)) };
   }
-  if (await existe(join(dossierFichiers, "recolte.mjs"))) {
-    const brut = workflowImplicite();
-    return { origine: "implicite", brut, validation: resume(validerWorkflow(brut, ctx)) };
+  if (await exists(join(filesFolder, "recolte.mjs"))) {
+    const brut = implicitWorkflow();
+    return { origine: "implicite", brut, validation: resume(validateWorkflow(brut, ctx)) };
   }
   return null;
 }
@@ -74,10 +74,10 @@ export async function lireBrouillon(dossierFichiers: string, ctx: ContexteValida
  * with the same context as the new one: otherwise, for a `web` or long widget, the old one would look invalid (memory of the
  * changed blocks kept, identical file rewritten).
  */
-async function workflowActuel(dossier: string, ctx: ContexteValidation): Promise<WorkflowValide | null> {
-  const l = await lireBrouillon(dossier, ctx);
+async function currentWorkflow(dossier: string, ctx: ValidationContext): Promise<ValidWorkflow | null> {
+  const l = await readDraft(dossier, ctx);
   if (!l || l.brut === null) return null;
-  const r = validerWorkflow(l.brut, ctx);
+  const r = validateWorkflow(l.brut, ctx);
   return r.ok ? r.valide : null;
 }
 
@@ -86,86 +86,86 @@ async function workflowActuel(dossier: string, ctx: ContexteValidation): Promise
  * exist and if it differs from the current one. First erases the memory of the blocks whose params change. `contexte`:
  * what the widget declares (`contexteValidation`), the rules from before without it.
  */
-export async function enregistrerWorkflow(o: {
+export async function saveWorkflow(o: {
   dossierFichiers: string;
   dossierDonnees: string;
   brut: unknown;
-  contexte?: ContexteValidation;
-}): Promise<ResultatEnregistrement> {
-  const contexte = o.contexte ?? CONTEXTE_PAR_DEFAUT;
-  const r = validerWorkflow(o.brut, contexte);
+  contexte?: ValidationContext;
+}): Promise<SaveResult> {
+  const context = o.contexte ?? DEFAULT_CONTEXT;
+  const r = validateWorkflow(o.brut, context);
   if (!r.ok) return { ok: false, erreur: r.erreur, ...(r.bloc === undefined ? {} : { bloc: r.bloc }) };
-  if (!(await dossierExiste(o.dossierFichiers))) return { ok: false, erreur: WIDGET_INTROUVABLE };
+  if (!(await folderExists(o.dossierFichiers))) return { ok: false, erreur: WIDGET_NOT_FOUND };
 
   for (const b of r.valide.workflow.blocs) {
     if (b.type !== "code") continue;
     const source = String(b.parametres.source);
-    if (!(await existe(join(o.dossierFichiers, source)))) return { ok: false, erreur: `Non enregistré : fichier ${source} absent`, bloc: b.id };
+    if (!(await exists(join(o.dossierFichiers, source)))) return { ok: false, erreur: `Non enregistré : fichier ${source} absent`, bloc: b.id };
   }
 
-  const texte = JSON.stringify(o.brut, null, 2) + "\n";
-  if (Buffer.byteLength(texte) > TAILLE_MAX_WORKFLOW) return { ok: false, erreur: `Workflow trop gros : ${TAILLE_MAX_WORKFLOW / 1024} Ko au plus` };
-  const cible = join(o.dossierFichiers, "workflow.json");
-  if ((await existe(cible)) && !(await dansLeDossier(o.dossierFichiers, "workflow.json"))) {
+  const text = JSON.stringify(o.brut, null, 2) + "\n";
+  if (Buffer.byteLength(text) > TAILLE_MAX_WORKFLOW) return { ok: false, erreur: `Workflow trop gros : ${TAILLE_MAX_WORKFLOW / 1024} Ko au plus` };
+  const target = join(o.dossierFichiers, "workflow.json");
+  if ((await exists(target)) && !(await dansLeDossier(o.dossierFichiers, "workflow.json"))) {
     return { ok: false, erreur: "workflow.json sort du dossier du widget" };
   }
 
-  const avant = await workflowActuel(o.dossierFichiers, contexte);
-  if (avant && jsonCanonique(avant.workflow) === jsonCanonique(r.valide.workflow)) return { ok: true, ecrit: false, memoireEffacee: [] };
+  const before = await currentWorkflow(o.dossierFichiers, context);
+  if (before && canonicalJson(before.workflow) === canonicalJson(r.valide.workflow)) return { ok: true, ecrit: false, memoireEffacee: [] };
 
   // The memory of the changed blocks goes before the workflow is written: a run that reads the new workflow necessarily
   // reads the already-erased memory. Only the entries marked with the new settings remain (a run that has
   // already run with them); an entry without a hash (from before the hashes) goes too.
-  const memoireEffacee = avant
-    ? await avecMemoire(o.dossierDonnees, async () => {
-        const anciens = new Map(avant.workflow.blocs.map((b) => [b.id, b]));
-        const memoire = await lireMemoire(o.dossierDonnees);
+  const erasedMemory = before
+    ? await withMemory(o.dossierDonnees, async () => {
+        const oldMemory = new Map(before.workflow.blocs.map((b) => [b.id, b]));
+        const memory = await readMemory(o.dossierDonnees);
         const effaces: string[] = [];
         for (const b of r.valide.workflow.blocs) {
-          const ancien = anciens.get(b.id);
-          const entree = memoire[b.id];
-          if (!ancien || ancien.type !== b.type || !entree) continue;
-          const nouvelle = empreinteParametres(b.parametres);
-          if (empreinteParametres(ancien.parametres) !== nouvelle && entree.empreinte !== nouvelle) {
-            delete memoire[b.id];
+          const old = oldMemory.get(b.id);
+          const entree = memory[b.id];
+          if (!old || old.type !== b.type || !entree) continue;
+          const fresh = paramsHash(b.parametres);
+          if (paramsHash(old.parametres) !== fresh && entree.empreinte !== fresh) {
+            delete memory[b.id];
             effaces.push(b.id);
           }
         }
-        if (effaces.length > 0) await ecrireMemoire(o.dossierDonnees, memoire);
+        if (effaces.length > 0) await writeMemory(o.dossierDonnees, memory);
         return effaces;
       })
     : [];
 
-  await ecrireAtomique(cible, texte);
-  return { ok: true, ecrit: true, memoireEffacee };
+  await writeAtomic(target, text);
+  return { ok: true, ecrit: true, memoireEffacee: erasedMemory };
 }
 
-const NOM_INVALIDE = "Nom de fichier invalide";
-const TROP_GROS = `Fichier trop gros : ${CODE_MAX_OCTETS / 1024} Ko au plus`;
+const INVALID_NAME = "Nom de fichier invalide";
+const TOO_BIG = `Fichier trop gros : ${CODE_MAX_OCTETS / 1024} Ko au plus`;
 const SORT_DU_DOSSIER = "Le fichier sort du dossier du widget";
 
-export async function lireCode(dossierFichiers: string, nom: string): Promise<{ texte: string } | { absent: true } | { erreur: string }> {
-  if (!NOM_CODE.test(nom)) return { erreur: NOM_INVALIDE };
-  const chemin = join(dossierFichiers, nom);
-  if (!(await existe(chemin))) return { absent: true };
+export async function lireCode(filesFolder: string, name: string): Promise<{ texte: string } | { absent: true } | { erreur: string }> {
+  if (!CODE_NAME.test(name)) return { erreur: INVALID_NAME };
+  const path = join(filesFolder, name);
+  if (!(await exists(path))) return { absent: true };
   try {
-    if (!(await dansLeDossier(dossierFichiers, nom))) return { erreur: SORT_DU_DOSSIER };
-    if ((await stat(chemin)).size > CODE_MAX_OCTETS) return { erreur: TROP_GROS };
-    return { texte: await readFile(chemin, "utf8") };
+    if (!(await dansLeDossier(filesFolder, name))) return { erreur: SORT_DU_DOSSIER };
+    if ((await stat(path)).size > CODE_MAX_OCTETS) return { erreur: TOO_BIG };
+    return { texte: await readFile(path, "utf8") };
   } catch {
     return { erreur: "Fichier illisible" };
   }
 }
 
 /** Writes a widget's `.mjs` as is: its content is neither checked nor run. */
-export async function enregistrerCode(dossierFichiers: string, nom: string, texte: string): Promise<{ ok: true } | { ok: false; erreur: string }> {
-  if (!NOM_CODE.test(nom)) return { ok: false, erreur: NOM_INVALIDE };
-  if (Buffer.byteLength(texte) > CODE_MAX_OCTETS) return { ok: false, erreur: TROP_GROS };
-  if (!(await dossierExiste(dossierFichiers))) return { ok: false, erreur: WIDGET_INTROUVABLE };
-  const chemin = join(dossierFichiers, nom);
-  if ((await existe(chemin)) && !(await dansLeDossier(dossierFichiers, nom))) return { ok: false, erreur: SORT_DU_DOSSIER };
+export async function storeCode(filesFolder: string, name: string, text: string): Promise<{ ok: true } | { ok: false; erreur: string }> {
+  if (!CODE_NAME.test(name)) return { ok: false, erreur: INVALID_NAME };
+  if (Buffer.byteLength(text) > CODE_MAX_OCTETS) return { ok: false, erreur: TOO_BIG };
+  if (!(await folderExists(filesFolder))) return { ok: false, erreur: WIDGET_NOT_FOUND };
+  const path = join(filesFolder, name);
+  if ((await exists(path)) && !(await dansLeDossier(filesFolder, name))) return { ok: false, erreur: SORT_DU_DOSSIER };
   try {
-    await ecrireAtomique(chemin, texte);
+    await writeAtomic(path, text);
   } catch {
     return { ok: false, erreur: "Écriture impossible" };
   }

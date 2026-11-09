@@ -4,11 +4,11 @@ import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { dossierTemporaire } from "../aide/temporaire.js";
-import type { MemoireBlocs } from "../../src/workflows/memoire.js";
-import { workflowImplicite } from "../../src/workflows/valider.js";
+import type { BlocksMemory } from "../../src/workflows/memoire.js";
+import { implicitWorkflow } from "../../src/workflows/valider.js";
 import { MOTEUR, SCRIPT, bloc, chaine, lancer, sortie } from "../aide/moteur.js";
-import { PLAFOND_RECHERCHES, RECHERCHES_ARRETEES } from "../../src/workflows/acces.js";
-import { RECHERCHE_REFUSEE } from "../../src/workflows/duckduckgo.js";
+import { SEARCHES_CAP, SEARCHES_STOPPED } from "../../src/workflows/acces.js";
+import { SEARCH_DENIED } from "../../src/workflows/duckduckgo.js";
 
 // The engine is the container's JavaScript: imported as is, without types.
 const { executerWorkflow } = await import(pathToFileURL(join(MOTEUR, "interpreteur.mjs")).href);
@@ -274,7 +274,7 @@ describe("interpreter (in the container)", () => {
 
   it("the implicit workflow of a recolte.mjs: default(webaios) with the debut config, log on stderr", async () => {
     const r = await lancer({
-      workflow: workflowImplicite(),
+      workflow: implicitWorkflow(),
       config: { a: 1 },
       precedent: { v: 1 },
       fichiers: { "recolte.mjs": `export default async (w) => { w.journal("j"); return { cfg: w.config, prec: w.precedent, quand: w.maintenant }; };` },
@@ -378,7 +378,7 @@ async function executer(o: {
   blocs: { id: string; type: string; parametres?: Record<string, unknown> }[];
   registre: Record<string, unknown>;
   entree: unknown;
-  memoire?: MemoireBlocs;
+  memoire?: BlocksMemory;
   echeance?: number;
   horloge?: () => number;
   rejeu?: { relances: string[]; sorties: Record<string, unknown> };
@@ -400,7 +400,7 @@ async function executer(o: {
     ...o.registre,
   };
   let erreur: Error | null = null;
-  let resultat: { donnees: unknown; memoire: MemoireBlocs } | null = null;
+  let resultat: { donnees: unknown; memoire: BlocksMemory } | null = null;
   try {
     resultat = await executerWorkflow({
       workflow,
@@ -518,7 +518,7 @@ describe("interpreter: input and progress (actions)", () => {
 
   it("ECART_AVANCEMENT_MS equal in interpreteur.mjs and executer.ts", async () => {
     const interpreteur = await import(pathToFileURL(join(MOTEUR, "interpreteur.mjs")).href);
-    const { ECART_AVANCEMENT_MS } = await import("../../src/workflows/executer.js");
+    const { PROGRESS_GAP_MS: ECART_AVANCEMENT_MS } = await import("../../src/workflows/executer.js");
     expect(ECART_AVANCEMENT_MS).toBe(1000);
     expect(interpreteur.ECART_AVANCEMENT_MS).toBe(ECART_AVANCEMENT_MS);
   });
@@ -911,7 +911,7 @@ describe("interpreter: web.chercher", () => {
       workflow: workflow({ siErreur: "echouer" }),
       fichiers,
       contexte: WEB,
-      repondre: (a) => (++n === 1 ? { ok: resultat(a.a.requete) } : { erreur: PLAFOND_RECHERCHES }),
+      repondre: (a) => (++n === 1 ? { ok: resultat(a.a.requete) } : { erreur: SEARCHES_CAP }),
     });
     expect(r.terminal.t).toBe("fin");
     const donnees = r.terminal.donnees as Record<string, unknown>[];
@@ -920,7 +920,7 @@ describe("interpreter: web.chercher", () => {
     expect(r.finBloc("cherche")).toMatchObject({ statut: "partiel" });
     const journal = journalDe(r, "cherche");
     // One line for the first refusal, one for the elements that follow: not one per element.
-    expect(journal.filter((t) => /^élément \d : /.test(t))).toEqual([expect.stringContaining(` : ${PLAFOND_RECHERCHES}`)]);
+    expect(journal.filter((t) => /^élément \d : /.test(t))).toEqual([expect.stringContaining(` : ${SEARCHES_CAP}`)]);
     expect(journal.length).toBeLessThanOrEqual(2);
     // The sortie block did run.
     expect(r.finBloc("sortie")).toMatchObject({ statut: "reussi" });
@@ -934,7 +934,7 @@ describe("interpreter: web.chercher", () => {
       contexte: WEB,
       // M15 is already known: it is reused without a search, even after the refusal.
       memoire: { cherche: { type: "web.chercher", valeur: { reutilises: [["M15", [{ titre: "Connu", url: "https://avis.fr/15", extrait: "" }]]] } } },
-      repondre: (a) => (a.a.requete.startsWith("M0 ") ? { ok: resultat(a.a.requete) } : { erreur: RECHERCHES_ARRETEES }),
+      repondre: (a) => (a.a.requete.startsWith("M0 ") ? { ok: resultat(a.a.requete) } : { erreur: SEARCHES_STOPPED }),
     });
     expect(r.terminal.t).toBe("fin");
     // M0 and M1 leave together (two at a time); M1 refused, M2 at most could leave before the refusal was known.
@@ -944,7 +944,7 @@ describe("interpreter: web.chercher", () => {
     expect(r.finBloc("cherche")).toMatchObject({ statut: "partiel" });
     const journal = journalDe(r, "cherche");
     expect(journal).toHaveLength(2);
-    expect(journal[0]).toMatch(new RegExp(`^élément \\d+ : ${RECHERCHES_ARRETEES.replace(/[()]/g, "\\$&")}$`));
+    expect(journal[0]).toMatch(new RegExp(`^élément \\d+ : ${SEARCHES_STOPPED.replace(/[()]/g, "\\$&")}$`));
     expect(journal[1]).toBe("17 autre(s) élément(s) non lancé(s)");
   });
 
@@ -987,10 +987,10 @@ describe("interpreter: web.chercher", () => {
       workflow: workflow({ siErreur: "echouer" }),
       fichiers,
       contexte: WEB,
-      repondre: (a) => (a.a.requete.startsWith("Renault") ? { erreur: RECHERCHE_REFUSEE } : { ok: resultat(a.a.requete) }),
+      repondre: (a) => (a.a.requete.startsWith("Renault") ? { erreur: SEARCH_DENIED } : { ok: resultat(a.a.requete) }),
     });
-    expect(r.finBloc("cherche")).toMatchObject({ statut: "echoue", erreur: RECHERCHE_REFUSEE });
-    expect(r.terminal).toEqual({ t: "echec", erreur: RECHERCHE_REFUSEE });
+    expect(r.finBloc("cherche")).toMatchObject({ statut: "echoue", erreur: SEARCH_DENIED });
+    expect(r.terminal).toEqual({ t: "echec", erreur: SEARCH_DENIED });
   });
 
   it("in simple mode, the ceiling is an ordinary error", async () => {
@@ -1002,11 +1002,11 @@ describe("interpreter: web.chercher", () => {
       },
       config: { sujet: "Rust" },
       contexte: WEB,
-      repondre: () => ({ erreur: PLAFOND_RECHERCHES }),
+      repondre: () => ({ erreur: SEARCHES_CAP }),
     });
     expect(r.appels.map((a) => a.a)).toEqual([{ requete: "Rust actualité", nombre: 8 }]);
-    expect(r.finBloc("cherche")).toMatchObject({ statut: "echoue", erreur: PLAFOND_RECHERCHES });
-    expect(r.terminal).toEqual({ t: "echec", erreur: PLAFOND_RECHERCHES });
+    expect(r.finBloc("cherche")).toMatchObject({ statut: "echoue", erreur: SEARCHES_CAP });
+    expect(r.terminal).toEqual({ t: "echec", erreur: SEARCHES_CAP });
   });
 
   it("replay from the block after web.chercher: no chercherWeb call", async () => {
@@ -1339,7 +1339,7 @@ describe("interpreter: progressive run", () => {
         "test.cherche": {
           parElement: "toujours",
           async traiterElement(ctx: any) {
-            if (ctx.element.n === 2) throw new ElementNonLance(PLAFOND_RECHERCHES);
+            if (ctx.element.n === 2) throw new ElementNonLance(SEARCHES_CAP);
             return "ok";
           },
         },
@@ -1521,7 +1521,7 @@ describe("interpreter: progressive run", () => {
           async traiterElement(ctx: any) {
             lances.push(ctx.element.n);
             await attendre(10);
-            throw new ElementNonLance(PLAFOND_RECHERCHES);
+            throw new ElementNonLance(SEARCHES_CAP);
           },
         },
       },

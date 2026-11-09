@@ -1,4 +1,4 @@
-import { catalogueBlocs, validerWorkflow, workflowImplicite } from "@webaios/noyau";
+import { catalogueBlocs, validateWorkflow, implicitWorkflow } from "@webaios/noyau";
 import { expect, test } from "vitest";
 import type { Brouillon, EditionWorkflow } from "../../shared/api";
 import { MODELE_CODE, parametresNeufs, placeLibre } from "../../ui/constructeur/ajout";
@@ -35,7 +35,7 @@ function faux(initial: unknown, fichiers: Record<string, string> = {}) {
   const lecture = (): EditionWorkflow | null => {
     if (etat.introuvable) return null;
     const brut = etat.lisible ? structuredClone(etat.disque) : null;
-    const v = brut === null ? { ok: false as const, erreur: "Workflow invalide : JSON coupé" } : validerWorkflow(structuredClone(brut));
+    const v = brut === null ? { ok: false as const, erreur: "Workflow invalide : JSON coupé" } : validateWorkflow(structuredClone(brut));
     return {
       origine: "fichier",
       brut,
@@ -48,7 +48,7 @@ function faux(initial: unknown, fichiers: Record<string, string> = {}) {
     lire: async () => lecture(),
     enregistrer: async (_id, b) => {
       if (etat.suspendu) await new Promise<void>((ok) => enAttente.push(ok));
-      const v = validerWorkflow(structuredClone(b));
+      const v = validateWorkflow(structuredClone(b));
       if (!v.ok) return { ok: false, erreur: v.erreur, ...(v.bloc ? { bloc: v.bloc } : {}), avertissements: [] };
       ecritures.push(structuredClone(b));
       etat.disque = structuredClone(b);
@@ -213,7 +213,7 @@ test("on first open: not found, or unreadable with the error", async () => {
 });
 
 test("the implicit workflow (Gmail) opens laid out, without a write", async () => {
-  const f = faux(workflowImplicite());
+  const f = faux(implicitWorkflow());
   const e = await ouverte(f);
   expect(e.positions).toEqual({ recolte: { x: 0, y: 0 }, sortie: { x: 260, y: 0 } });
   e.deplacer({ ...e.positions });

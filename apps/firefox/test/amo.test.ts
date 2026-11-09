@@ -6,7 +6,7 @@ import { promisify } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AMO_URL, ErreurSignature, SIGNATURE_LENTE, lireCleAmo, signatureImpossible, signatureRefusee, signer } from "../noyau/extensions/amo";
 import { addonIdDe, manifesteFirefox, refusFirefox, zipper } from "../noyau/extensions/copie-firefox";
-import { GARDES_PAR_DEFAUT, preparerCopie } from "../../../packages/noyau/src/index.ts";
+import { DEFAULT_GUARDS, prepareCopy } from "../../../packages/noyau/src/index.ts";
 import { startFakeAmo } from "./fake-amo";
 
 const cle = { emetteur: "user:1:abc", secret: "s3cr3t-do-not-leak" };
@@ -124,7 +124,7 @@ describe("AMO client", () => {
         }),
       );
       const staging = join(d, `copie-${n}`);
-      const r = await preparerCopie({ source, cible: staging, dossierGardes: GARDES_PAR_DEFAUT });
+      const r = await prepareCopy({ source, cible: staging, dossierGardes: DEFAULT_GUARDS });
       expect(r.analyse.refus).toEqual([]);
       const brut = JSON.parse(readFileSync(join(staging, "manifest.json"), "utf8"));
       expect(refusFirefox(brut, readdirSync(staging, { recursive: true }) as string[])).toEqual([]);

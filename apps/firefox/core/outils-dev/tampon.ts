@@ -1,4 +1,4 @@
-import { tronquer, type MessageConsole, type RequeteReseau } from "@webaios/noyau";
+import { truncate, type MessageConsole, type NetworkRequest } from "@webaios/noyau";
 
 /** Value of a console argument or an exception (the protocol's Runtime.RemoteObject). */
 interface ObjetDistant {
@@ -65,7 +65,7 @@ const ms = (secondes: number) => secondes * 1000;
 export class TamponOnglet {
   private messages: MessageConsole[] = [];
   /** By request id, in sending order. */
-  private readonly requetes = new Map<string, RequeteReseau>();
+  private readonly requetes = new Map<string, NetworkRequest>();
   /** Start of each request, on the protocol's monotonic clock (for the duration). */
   private readonly debuts = new Map<string, number>();
   private readonly maxConsole: number;
@@ -85,7 +85,7 @@ export class TamponOnglet {
 
   private ajouter(m: MessageConsole): void {
     if (m.horodatage < this.depuis) return;
-    this.messages.push({ ...m, texte: tronquer(m.texte), ...(m.pile !== undefined ? { pile: tronquer(m.pile) } : {}) });
+    this.messages.push({ ...m, texte: truncate(m.texte), ...(m.pile !== undefined ? { pile: truncate(m.pile) } : {}) });
     if (this.messages.length > this.maxConsole) this.messages.splice(0, this.messages.length - this.maxConsole);
   }
 
@@ -204,7 +204,7 @@ export class TamponOnglet {
     return this.messages.map((m) => ({ ...m }));
   }
 
-  reseau(): RequeteReseau[] {
+  reseau(): NetworkRequest[] {
     return [...this.requetes.values()].map((r) => ({ ...r, enTetesRequete: { ...r.enTetesRequete }, enTetesReponse: { ...r.enTetesReponse } }));
   }
 

@@ -1,4 +1,4 @@
-import type { ThemeAccueil } from "../../../packages/noyau/src/accueil/theme";
+import type { HomeTheme } from "../../../packages/noyau/src/accueil/theme";
 
 // The theme validated by the kernel becomes CSS variables on the home root; when absent, home keeps the
 // application's variables (and follows light/dark mode). A color is re-checked here: nothing but a
@@ -14,7 +14,7 @@ const POLICES = {
   mono: "ui-monospace, monospace",
 } as const;
 
-export function variablesTheme(t: ThemeAccueil | null): Record<string, string> {
+export function variablesTheme(t: HomeTheme | null): Record<string, string> {
   const variables: Record<string, string> = {};
   if (!t) return variables;
   for (const [cle, suffixe] of Object.entries(COULEURS)) {

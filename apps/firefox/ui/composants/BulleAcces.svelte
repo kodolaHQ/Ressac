@@ -1,9 +1,9 @@
 <script lang="ts">
   import { untrack } from "svelte";
-  import type { DroitDev, EtatAccesOnglet } from "@webaios/noyau";
+  import type { DroitDev, TabAccessState } from "@webaios/noyau";
   import { acces, apiAcces } from "../acces.svelte";
 
-  let { id, etat, ancre }: { id: string; etat: EtatAccesOnglet; ancre: HTMLElement } = $props();
+  let { id, etat, ancre }: { id: string; etat: TabAccessState; ancre: HTMLElement } = $props();
 
   const MARGE = 8;
   const DROITS: Record<DroitDev, { icone: string; nom: string }> = {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { COMPOSANTS_INTEGRES, type DefinitionComposant } from "../../src/pages/catalogue.js";
-import { validerPlan } from "../../src/pages/valider.js";
+import { BUILTIN_COMPONENTS, type ComponentDefinition } from "../../src/pages/catalogue.js";
+import { validatePlan } from "../../src/pages/valider.js";
 
 const tickets = [
   { id: 1, titre: "Panne", priorite: "haute", url: "https://gitlab.com/t/1", auteur: { nom: "Ana" } },
@@ -8,7 +8,7 @@ const tickets = [
   { id: 3, titre: "Lent", priorite: "haute", url: "https://gitlab.com/t/3", auteur: { nom: "Cy" } },
 ];
 const resultats = { tickets, projet: { nom: "WebAiOs", url: "https://gitlab.com/p" } };
-const graphique: DefinitionComposant = {
+const graphique: ComponentDefinition = {
   nom: "graphique-barres", description: "Barres", origine: "agent",
   proprietes: {
     donnees: { genre: "reference", description: "Les données", requis: true },
@@ -16,8 +16,8 @@ const graphique: DefinitionComposant = {
     titre: { genre: "texte", description: "Le titre", requis: false },
   },
 };
-const catalogue = [...COMPOSANTS_INTEGRES, graphique];
-const valider = (brut: unknown, r: unknown = resultats) => validerPlan(brut, { catalogue, resultats: r });
+const catalogue = [...BUILTIN_COMPONENTS, graphique];
+const valider = (brut: unknown, r: unknown = resultats) => validatePlan(brut, { catalogue, resultats: r });
 const chiffre = { composant: "chiffre", props: { valeur: "compter(tickets)", libelle: "Tickets" } };
 
 describe("validerPlan", () => {
@@ -64,7 +64,7 @@ describe("validerPlan", () => {
 
   it("unknown component « graphique-barres »: kept", () => {
     const inconnu = { composant: "graphique-barres", props: { donnees: "tickets" } };
-    const r = validerPlan({ blocs: [chiffre, inconnu] }, { catalogue: COMPOSANTS_INTEGRES, resultats });
+    const r = validatePlan({ blocs: [chiffre, inconnu] }, { catalogue: BUILTIN_COMPONENTS, resultats });
     expect(r).toEqual({ ok: true, plan: { blocs: [chiffre, inconnu] }, ecartes: [] });
   });
 

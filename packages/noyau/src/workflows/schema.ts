@@ -5,9 +5,9 @@ export const GENRES_SORTIE = ["widget", "page"] as const;
 export type GenreSortie = (typeof GENRES_SORTIE)[number];
 
 /** Who owns a workflow: a widget or an action. */
-export type Proprietaire = { type: "widget"; id: string } | { type: "action"; id: string };
+export type Owner = { type: "widget"; id: string } | { type: "action"; id: string };
 
-export const PREFIXE_WORKFLOW_INVALIDE = "Workflow invalide : ";
+export const INVALID_WORKFLOW_PREFIX = "Workflow invalide : ";
 export const TAILLE_MAX_WORKFLOW = 256 * 1024;
 export const MAX_BLOCS = 100;
 export const MAX_LIENS = 400;

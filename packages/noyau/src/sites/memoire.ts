@@ -1,43 +1,43 @@
 import { readFile, rename, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { ecrireAtomique } from "../workflows/executions.js";
+import { writeAtomic } from "../workflows/executions.js";
 import { ID_SITE } from "./schemas.js";
 
 /** First name `<base>.bak`, `<base>.1.bak`… that does not exist yet (a backup never overwrites another). */
-async function nomLibre(base: string): Promise<string | null> {
+async function freeName(base: string): Promise<string | null> {
   for (let i = 0; i < 100; i++) {
-    const nom = i === 0 ? `${base}.bak` : `${base}.${i}.bak`;
-    if (!(await stat(nom).then(() => true, () => false))) return nom;
+    const name = i === 0 ? `${base}.bak` : `${base}.${i}.bak`;
+    if (!(await stat(name).then(() => true, () => false))) return name;
   }
   return null;
 }
 
-export const TAILLE_MEMOIRE_SITE = 256 * 1024;
+export const SITE_MEMORY_SIZE = 256 * 1024;
 export const POSITIONS_MAX = 500;
-export const CLE_MAX = 200;
+export const KEY_MAX = 200;
 export const FIN_VIDEO = 0.95;
-export const ECRITURE_MEMOIRE_MS = 500;
+export const MEMORY_WRITE_MS = 500;
 /** Maximum nesting of a kept value (arrays and objects). */
-export const PROFONDEUR_MEMOIRE_MAX = 32;
+export const MEMORY_DEPTH_MAX = 32;
 /** Number of nodes visited at most before refusing a value (bomb of shared references). */
-const NOEUDS_MAX = 200_000;
-const ADRESSE_POSITION_MAX = 2048;
+const NODES_MAX = 200_000;
+const URL_POSITION_MAX = 2048;
 
-export const MEMOIRE_PLEINE = "Mémoire de l'appli pleine (256 Ko)";
+export const MEMORY_FULL = "Mémoire de l'appli pleine (256 Ko)";
 export const VALEUR_NON_JSON = "Valeur refusée : JSON seulement";
-export const CLE_INVALIDE = "Clé refusée : 1 à 200 caractères";
+export const KEY_INVALID = "Clé refusée : 1 à 200 caractères";
 
-export type EntreeMemoire = { valeur: unknown; adresse: string | null; quand: string };
+export type MemoryEntry = { valeur: unknown; adresse: string | null; quand: string };
 export type PositionVideo = { t: number; duree: number; quand: string };
-export type ContenuMemoire = {
+export type MemoryContent = {
   version: 1;
-  valeurs: Record<string, EntreeMemoire>;
+  valeurs: Record<string, MemoryEntry>;
   positions: Record<string, PositionVideo>;
 };
 
 const BASE_OCTETS = Buffer.byteLength('{"version":1,"valeurs":{},"positions":{}}');
-const nombre = (x: unknown): x is number => typeof x === "number" && Number.isFinite(x);
-const octets = (texte: string) => Buffer.byteLength(texte);
+const count = (x: unknown): x is number => typeof x === "number" && Number.isFinite(x);
+const octets = (text: string) => Buffer.byteLength(text);
 const sansPrototype = <T>() => Object.create(null) as Record<string, T>;
 
 type Examen = "ok" | "non-json" | "pleine";
@@ -45,27 +45,27 @@ type Examen = "ok" | "non-json" | "pleine";
 /** Iterative walk (never a call stack): depth, number of nodes and estimated size, before any stringify. */
 function examiner(valeur: unknown): Examen {
   const pile: [unknown, number][] = [[valeur, 0]];
-  let noeuds = 0;
+  let nodes = 0;
   let estimation = 0;
   while (pile.length > 0) {
-    const [v, profondeur] = pile.pop()!;
-    if (++noeuds > NOEUDS_MAX) return "pleine";
+    const [v, depth] = pile.pop()!;
+    if (++nodes > NODES_MAX) return "pleine";
     if (typeof v === "string") {
       estimation += v.length;
     } else if (v !== null && typeof v === "object") {
-      if (profondeur >= PROFONDEUR_MEMOIRE_MAX) return "non-json";
+      if (depth >= MEMORY_DEPTH_MAX) return "non-json";
       if (Array.isArray(v)) {
         estimation += v.length;
-        if (v.length > NOEUDS_MAX) return "pleine";
-        for (const x of v) pile.push([x, profondeur + 1]);
+        if (v.length > NODES_MAX) return "pleine";
+        for (const x of v) pile.push([x, depth + 1]);
       } else {
         for (const k of Object.keys(v)) {
           estimation += k.length;
-          pile.push([(v as Record<string, unknown>)[k], profondeur + 1]);
+          pile.push([(v as Record<string, unknown>)[k], depth + 1]);
         }
       }
     }
-    if (estimation > TAILLE_MEMOIRE_SITE) return "pleine";
+    if (estimation > SITE_MEMORY_SIZE) return "pleine";
   }
   return "ok";
 }
@@ -74,30 +74,30 @@ function examiner(valeur: unknown): Examen {
 function copierJson(valeur: unknown): { ok: true; copie: unknown; texte: string } | { ok: false; erreur: string } {
   try {
     const examen = examiner(valeur);
-    if (examen === "pleine") return { ok: false, erreur: MEMOIRE_PLEINE };
+    if (examen === "pleine") return { ok: false, erreur: MEMORY_FULL };
     if (examen === "non-json") return { ok: false, erreur: VALEUR_NON_JSON };
-    const texte = JSON.stringify(valeur) as string | undefined;
-    if (texte === undefined) return { ok: false, erreur: VALEUR_NON_JSON };
-    if (texte.length > TAILLE_MEMOIRE_SITE) return { ok: false, erreur: MEMOIRE_PLEINE };
-    return { ok: true, copie: JSON.parse(texte), texte };
+    const text = JSON.stringify(valeur) as string | undefined;
+    if (text === undefined) return { ok: false, erreur: VALEUR_NON_JSON };
+    if (text.length > SITE_MEMORY_SIZE) return { ok: false, erreur: MEMORY_FULL };
+    return { ok: true, copie: JSON.parse(text), texte: text };
   } catch {
     return { ok: false, erreur: VALEUR_NON_JSON };
   }
 }
 
-type SlotValeur = { e: EntreeMemoire; taille: number };
+type SlotValeur = { e: MemoryEntry; taille: number };
 type SlotPosition = { p: PositionVideo; taille: number };
 
-const tailleValeur = (cle: string, adresse: string | null, quand: string, texte: string) =>
-  octets(JSON.stringify(cle)) + 1 + octets(`{"valeur":,"adresse":${JSON.stringify(adresse)},"quand":${JSON.stringify(quand)}}`) + octets(texte) + 1;
-const taillePosition = (cle: string, p: PositionVideo) => octets(JSON.stringify(cle)) + 1 + octets(JSON.stringify(p)) + 1;
+const tailleValeur = (key: string, url: string | null, when: string, text: string) =>
+  octets(JSON.stringify(key)) + 1 + octets(`{"valeur":,"adresse":${JSON.stringify(url)},"quand":${JSON.stringify(when)}}`) + octets(text) + 1;
+const taillePosition = (key: string, p: PositionVideo) => octets(JSON.stringify(key)) + 1 + octets(JSON.stringify(p)) + 1;
 
 /**
  * `<dossierSites>/<id>/memoire.json`, outside ~/WebAiOs. Written at most once per `ECRITURE_MEMOIRE_MS`.
  * A write that fails keeps the data in memory: the next change (or `vider()`) tries again.
  * The consumer must call `vider()` when the app closes, otherwise the pending deferred write is lost.
  */
-export class MemoireSite {
+export class SiteMemory {
   private valeurs = new Map<string, SlotValeur>();
   private positions = new Map<string, SlotPosition>();
   private total = BASE_OCTETS;
@@ -112,19 +112,19 @@ export class MemoireSite {
     private readonly maintenant: () => string,
   ) {}
 
-  static async ouvrir(dossierSites: string, id: string, options: { maintenant?: () => string } = {}): Promise<MemoireSite> {
+  static async ouvrir(dossierSites: string, id: string, options: { maintenant?: () => string } = {}): Promise<SiteMemory> {
     if (!ID_SITE.test(id)) throw new Error(`id d'appli de site invalide : ${id}`);
-    const chemin = join(dossierSites, id, "memoire.json");
-    const m = new MemoireSite(chemin, options.maintenant ?? (() => new Date().toISOString()));
+    const path = join(dossierSites, id, "memoire.json");
+    const m = new SiteMemory(path, options.maintenant ?? (() => new Date().toISOString()));
     try {
-      if ((await stat(chemin)).size <= TAILLE_MEMOIRE_SITE * 2) {
-        const brut: unknown = JSON.parse(await readFile(chemin, "utf8"));
+      if ((await stat(path)).size <= SITE_MEMORY_SIZE * 2) {
+        const brut: unknown = JSON.parse(await readFile(path, "utf8"));
         const version = brut && typeof brut === "object" ? (brut as { version?: unknown }).version : undefined;
         if (version === 1) m.charger(brut as Record<string, unknown>);
         else if (brut && typeof brut === "object" && !Array.isArray(brut) && "version" in brut) {
           const n = /^[A-Za-z0-9]{1,10}$/.test(String(version)) ? String(version) : "x";
-          const libre = await nomLibre(`${chemin}.v${n}`);
-          if (libre) await rename(chemin, libre).catch(() => {});
+          const free = await freeName(`${path}.v${n}`);
+          if (free) await rename(path, free).catch(() => {});
         }
       }
     } catch {
@@ -138,13 +138,13 @@ export class MemoireSite {
     const { valeurs, positions } = brut;
     if (valeurs && typeof valeurs === "object" && !Array.isArray(valeurs)) {
       for (const [k, e] of Object.entries(valeurs)) {
-        const x = e as Partial<EntreeMemoire> | null;
-        if (k.length < 1 || k.length > CLE_MAX || !x || typeof x !== "object" || !("valeur" in x)) continue;
+        const x = e as Partial<MemoryEntry> | null;
+        if (k.length < 1 || k.length > KEY_MAX || !x || typeof x !== "object" || !("valeur" in x)) continue;
         if (typeof x.quand !== "string" || (x.adresse !== null && typeof x.adresse !== "string")) continue;
         const c = copierJson(x.valeur);
         if (!c.ok) continue;
         const taille = tailleValeur(k, x.adresse, x.quand, c.texte);
-        if (this.total + taille > TAILLE_MEMOIRE_SITE) continue;
+        if (this.total + taille > SITE_MEMORY_SIZE) continue;
         this.valeurs.set(k, { e: { valeur: c.copie, adresse: x.adresse, quand: x.quand }, taille });
         this.total += taille;
       }
@@ -153,19 +153,19 @@ export class MemoireSite {
       const lues: [string, PositionVideo][] = [];
       for (const [k, p] of Object.entries(positions)) {
         const x = p as Partial<PositionVideo> | null;
-        if (k.length < 1 || k.length > ADRESSE_POSITION_MAX) continue;
-        if (!x || typeof x !== "object" || !nombre(x.t) || !nombre(x.duree) || typeof x.quand !== "string") continue;
+        if (k.length < 1 || k.length > URL_POSITION_MAX) continue;
+        if (!x || typeof x !== "object" || !count(x.t) || !count(x.duree) || typeof x.quand !== "string") continue;
         lues.push([k, { t: x.t, duree: x.duree, quand: x.quand }]);
       }
-      const recentes = lues.map((l, i) => ({ l, i })).sort((a, b) => (a.l[1].quand < b.l[1].quand ? 1 : a.l[1].quand > b.l[1].quand ? -1 : b.i - a.i));
-      const gardees: [string, PositionVideo, number][] = [];
-      for (const { l: [k, p] } of recentes.slice(0, POSITIONS_MAX)) {
+      const recent = lues.map((l, i) => ({ l, i })).sort((a, b) => (a.l[1].quand < b.l[1].quand ? 1 : a.l[1].quand > b.l[1].quand ? -1 : b.i - a.i));
+      const kept: [string, PositionVideo, number][] = [];
+      for (const { l: [k, p] } of recent.slice(0, POSITIONS_MAX)) {
         const taille = taillePosition(k, p);
-        if (this.total + taille > TAILLE_MEMOIRE_SITE) continue;
+        if (this.total + taille > SITE_MEMORY_SIZE) continue;
         this.total += taille;
-        gardees.push([k, p, taille]);
+        kept.push([k, p, taille]);
       }
-      for (const [k, p, taille] of gardees.reverse()) this.positions.set(k, { p, taille });
+      for (const [k, p, taille] of kept.reverse()) this.positions.set(k, { p, taille });
     }
   }
 
@@ -173,43 +173,43 @@ export class MemoireSite {
    * Positions to forget (the oldest by `quand`, never `sauf`) so that `ajout` more bytes fit,
    * or null if even without positions it does not fit. Changes nothing.
    */
-  private evincer(ajout: number, sauf: string | null, maxPositions: boolean): string[] | null {
-    const candidats = [...this.positions.entries()].map(([k, s], i) => ({ k, q: s.p.quand, t: s.taille, i })).filter((c) => c.k !== sauf);
+  private evincer(addition: number, sauf: string | null, maxPositions: boolean): string[] | null {
+    const candidates = [...this.positions.entries()].map(([k, s], i) => ({ k, q: s.p.quand, t: s.taille, i })).filter((c) => c.k !== sauf);
     const dehors: string[] = [];
-    let total = this.total + ajout;
-    let restantes = this.positions.size + (maxPositions ? 1 : 0);
-    if (total <= TAILLE_MEMOIRE_SITE && restantes <= POSITIONS_MAX) return dehors;
-    candidats.sort((a, b) => (a.q < b.q ? -1 : a.q > b.q ? 1 : a.i - b.i));
-    for (const c of candidats) {
-      if (total <= TAILLE_MEMOIRE_SITE && restantes <= POSITIONS_MAX) break;
+    let total = this.total + addition;
+    let remaining = this.positions.size + (maxPositions ? 1 : 0);
+    if (total <= SITE_MEMORY_SIZE && remaining <= POSITIONS_MAX) return dehors;
+    candidates.sort((a, b) => (a.q < b.q ? -1 : a.q > b.q ? 1 : a.i - b.i));
+    for (const c of candidates) {
+      if (total <= SITE_MEMORY_SIZE && remaining <= POSITIONS_MAX) break;
       dehors.push(c.k);
       total -= c.t;
-      restantes--;
+      remaining--;
     }
-    return total <= TAILLE_MEMOIRE_SITE && restantes <= POSITIONS_MAX ? dehors : null;
+    return total <= SITE_MEMORY_SIZE && remaining <= POSITIONS_MAX ? dehors : null;
   }
 
-  private oublierPositions(cles: string[]): void {
-    for (const k of cles) {
+  private oublierPositions(keys: string[]): void {
+    for (const k of keys) {
       this.total -= this.positions.get(k)!.taille;
       this.positions.delete(k);
     }
   }
 
-  retenir(cle: string, valeur: unknown, adresse: string | null): { ok: true } | { ok: false; erreur: string } {
+  retenir(key: string, valeur: unknown, url: string | null): { ok: true } | { ok: false; erreur: string } {
     try {
-      if (typeof cle !== "string" || cle.length < 1 || cle.length > CLE_MAX) return { ok: false, erreur: CLE_INVALIDE };
-      if (adresse !== null && (typeof adresse !== "string" || adresse.length > ADRESSE_POSITION_MAX)) return { ok: false, erreur: VALEUR_NON_JSON };
+      if (typeof key !== "string" || key.length < 1 || key.length > KEY_MAX) return { ok: false, erreur: KEY_INVALID };
+      if (url !== null && (typeof url !== "string" || url.length > URL_POSITION_MAX)) return { ok: false, erreur: VALEUR_NON_JSON };
       const c = copierJson(valeur);
       if (!c.ok) return c;
-      const quand = this.maintenant();
-      const taille = tailleValeur(cle, adresse, quand, c.texte);
-      const ancien = this.valeurs.get(cle)?.taille ?? 0;
-      const dehors = this.evincer(taille - ancien, null, false);
-      if (!dehors) return { ok: false, erreur: MEMOIRE_PLEINE };
+      const when = this.maintenant();
+      const taille = tailleValeur(key, url, when, c.texte);
+      const old = this.valeurs.get(key)?.taille ?? 0;
+      const dehors = this.evincer(taille - old, null, false);
+      if (!dehors) return { ok: false, erreur: MEMORY_FULL };
       this.oublierPositions(dehors);
-      this.valeurs.set(cle, { e: { valeur: c.copie, adresse, quand }, taille });
-      this.total += taille - ancien;
+      this.valeurs.set(key, { e: { valeur: c.copie, adresse: url, quand: when }, taille });
+      this.total += taille - old;
       this.changer();
       return { ok: true };
     } catch {
@@ -217,37 +217,37 @@ export class MemoireSite {
     }
   }
 
-  lire(cle: string): unknown | null {
-    const s = this.valeurs.get(cle);
+  lire(key: string): unknown | null {
+    const s = this.valeurs.get(key);
     return s === undefined ? null : structuredClone(s.e.valeur);
   }
 
-  oublier(cle: string): void {
-    const s = this.valeurs.get(cle);
+  oublier(key: string): void {
+    const s = this.valeurs.get(key);
     if (!s) return;
-    this.valeurs.delete(cle);
+    this.valeurs.delete(key);
     this.total -= s.taille;
     this.changer();
   }
 
-  noterPosition(adresse: string, t: number, duree: number): void {
+  noterPosition(url: string, t: number, duration: number): void {
     try {
-      if (typeof adresse !== "string" || adresse.length < 1 || adresse.length > ADRESSE_POSITION_MAX) return;
-      if (!nombre(t) || !nombre(duree) || duree <= 0 || t < 0) return;
-      const ancien = this.positions.get(adresse);
-      if (t / duree >= FIN_VIDEO) {
-        if (!ancien) return;
-        this.total -= ancien.taille;
-        this.positions.delete(adresse);
+      if (typeof url !== "string" || url.length < 1 || url.length > URL_POSITION_MAX) return;
+      if (!count(t) || !count(duration) || duration <= 0 || t < 0) return;
+      const old = this.positions.get(url);
+      if (t / duration >= FIN_VIDEO) {
+        if (!old) return;
+        this.total -= old.taille;
+        this.positions.delete(url);
       } else {
-        const p = { t, duree, quand: this.maintenant() };
-        const taille = taillePosition(adresse, p);
-        const dehors = this.evincer(taille - (ancien?.taille ?? 0), adresse, !ancien);
+        const p = { t, duree: duration, quand: this.maintenant() };
+        const taille = taillePosition(url, p);
+        const dehors = this.evincer(taille - (old?.taille ?? 0), url, !old);
         if (!dehors) return;
         this.oublierPositions(dehors);
-        if (ancien) this.total -= ancien.taille;
-        this.positions.delete(adresse);
-        this.positions.set(adresse, { p, taille });
+        if (old) this.total -= old.taille;
+        this.positions.delete(url);
+        this.positions.set(url, { p, taille });
         this.total += taille;
       }
       this.changer();
@@ -256,14 +256,14 @@ export class MemoireSite {
     }
   }
 
-  position(adresse: string): PositionVideo | null {
-    const s = this.positions.get(adresse);
+  position(url: string): PositionVideo | null {
+    const s = this.positions.get(url);
     return s ? { ...s.p } : null;
   }
 
   /** A copy of the content: modifying it changes nothing in the memory. */
-  contenu(): ContenuMemoire {
-    const c: ContenuMemoire = { version: 1, valeurs: sansPrototype(), positions: sansPrototype() };
+  contenu(): MemoryContent {
+    const c: MemoryContent = { version: 1, valeurs: sansPrototype(), positions: sansPrototype() };
     for (const [k, s] of this.valeurs) c.valeurs[k] = structuredClone(s.e);
     for (const [k, s] of this.positions) c.positions[k] = { ...s.p };
     return c;
@@ -309,7 +309,7 @@ export class MemoireSite {
     this.timer = setTimeout(() => {
       this.timer = null;
       this.programmerEcriture();
-    }, ECRITURE_MEMOIRE_MS);
+    }, MEMORY_WRITE_MS);
     this.timer.unref();
   }
 
@@ -319,7 +319,7 @@ export class MemoireSite {
         const rev = this.rev;
         if (this.ecritRev === rev) return;
         const c = this.contenu();
-        await ecrireAtomique(this.chemin, JSON.stringify(c));
+        await writeAtomic(this.chemin, JSON.stringify(c));
         this.ecritRev = rev;
       })
       .catch(() => {

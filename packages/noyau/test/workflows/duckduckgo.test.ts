@@ -1,12 +1,12 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { extraireResultats, urlRecherche } from "../../src/workflows/duckduckgo.js";
+import { extractResults, urlRecherche } from "../../src/workflows/duckduckgo.js";
 
 const page = (nom: string) => readFileSync(new URL(`./fixtures/duckduckgo/${nom}`, import.meta.url), "utf8");
 
 describe("extraireResultats", () => {
   it("resultats.html: 9 results in order, the ad dropped, javascript: dropped, uddg decoded, entities decoded", () => {
-    const r = extraireResultats(page("resultats.html"), 20);
+    const r = extractResults(page("resultats.html"), 20);
     if (!("resultats" in r)) throw new Error("attendu : des résultats");
     expect(r.resultats).toHaveLength(9);
     expect(r.resultats.map((x) => x.url)).not.toContain("https://annonce.example/pub");
@@ -23,27 +23,27 @@ describe("extraireResultats", () => {
   });
 
   it("nombre 3: the first 3", () => {
-    const tous = extraireResultats(page("resultats.html"), 20);
-    const trois = extraireResultats(page("resultats.html"), 3);
+    const tous = extractResults(page("resultats.html"), 20);
+    const trois = extractResults(page("resultats.html"), 3);
     if (!("resultats" in tous) || !("resultats" in trois)) throw new Error("attendu");
     expect(trois.resultats).toEqual(tous.resultats.slice(0, 3));
   });
 
   it("aucun-resultat.html: empty list", () => {
-    expect(extraireResultats(page("aucun-resultat.html"), 5)).toEqual({ resultats: [] });
+    expect(extractResults(page("aucun-resultat.html"), 5)).toEqual({ resultats: [] });
   });
 
   it("verification.html : refus", () => {
-    expect(extraireResultats(page("verification.html"), 5)).toEqual({ refus: true });
+    expect(extractResults(page("verification.html"), 5)).toEqual({ refus: true });
   });
 
   it("changee.html : illisible", () => {
-    expect(extraireResultats(page("changee.html"), 5)).toEqual({ illisible: true });
+    expect(extractResults(page("changee.html"), 5)).toEqual({ illisible: true });
   });
 
   it("duplicate urls are dropped", () => {
     const bloc = (u: string) => `<div class="result"><a class="result__a" href="${u}">T</a><a class="result__snippet">E</a></div>`;
-    const r = extraireResultats(bloc("https://a.example/") + bloc("https://a.example/") + bloc("https://b.example/"), 5);
+    const r = extractResults(bloc("https://a.example/") + bloc("https://a.example/") + bloc("https://b.example/"), 5);
     if (!("resultats" in r)) throw new Error("attendu");
     expect(r.resultats.map((x) => x.url)).toEqual(["https://a.example/", "https://b.example/"]);
   });
@@ -51,7 +51,7 @@ describe("extraireResultats", () => {
   it("a 5,000-character title is cut to 300", () => {
     const html = `<div class="result results_links"><a class="result__a" href="https://x.example/">${"a".repeat(5000)}</a>
       <a class="result__snippet" href="#">${"b".repeat(3000)}</a></div>`;
-    const r = extraireResultats(html, 5);
+    const r = extractResults(html, 5);
     if (!("resultats" in r)) throw new Error("attendu");
     expect(r.resultats[0]!.titre.length).toBe(300);
     expect(r.resultats[0]!.extrait.length).toBe(1000);
@@ -63,7 +63,7 @@ describe("extraireResultats: hostile pages and edge cases", () => {
     `<div class="result"><a class="result__a" href="${href}">${titre}</a><a class="result__snippet">${extrait}</a></div>`;
   const rapide = (html: string) => {
     const t = Date.now();
-    const r = extraireResultats(html, 5);
+    const r = extractResults(html, 5);
     expect(Date.now() - t).toBeLessThan(200);
     return r;
   };
@@ -80,28 +80,28 @@ describe("extraireResultats: hostile pages and edge cases", () => {
     rapide(bloc("T") + "<a ".repeat(1_000_000));
   });
   it("« anomaly-modal » in a title or an excerpt is not a refusal", () => {
-    const r = extraireResultats(bloc("anomaly-modal challenge-form /anomaly.js", "https://a.example/", "challenge-form"), 5);
+    const r = extractResults(bloc("anomaly-modal challenge-form /anomaly.js", "https://a.example/", "challenge-form"), 5);
     expect(r).toMatchObject({ resultats: [{ url: "https://a.example/" }] });
   });
   it("real results win over a no-results marker; exact no-results only", () => {
-    expect(extraireResultats('<div class="no-results"></div>' + bloc("T"), 5)).toMatchObject({ resultats: [{ titre: "T" }] });
-    expect(extraireResultats('<div class="not-no-results"></div>', 5)).toEqual({ illisible: true });
+    expect(extractResults('<div class="no-results"></div>' + bloc("T"), 5)).toMatchObject({ resultats: [{ titre: "T" }] });
+    expect(extractResults('<div class="not-no-results"></div>', 5)).toEqual({ illisible: true });
   });
   it("the url is normalized: controls removed, non-http(s) and credentials refused", () => {
     const u = (v: string) => `//duckduckgo.com/l/?uddg=${encodeURIComponent(v)}`;
-    const r = extraireResultats(
+    const r = extractResults(
       bloc("a", u("https://x.fr/a%0Ab")) + bloc("b", u("ftp://x.fr/")) + bloc("c", u("https://u:p@x.fr/")) + bloc("d", "//exemple.fr/"),
       9,
     );
     expect(r).toEqual({ resultats: [{ titre: "a", url: "https://x.fr/a%0Ab", extrait: "E" }] });
   });
   it("title and excerpt: controls, bidi and half-pairs removed", () => {
-    const r = extraireResultats(bloc("A&#8238;B&#x0;C&#xD800;D&#10;E", "https://a.example/", "x&#x202E;y"), 5);
+    const r = extractResults(bloc("A&#8238;B&#x0;C&#xD800;D&#10;E", "https://a.example/", "x&#x202E;y"), 5);
     expect(r).toMatchObject({ resultats: [{ titre: "A BCD E", extrait: "x y" }] });
   });
   it("an excerpt with a nested tag of the same name is not cut", () => {
     const html = '<div class="result"><a class="result__a" href="https://a.example/">T</a><span class="result__snippet">un <span>deux</span> trois</span></div>';
-    expect(extraireResultats(html, 5)).toMatchObject({ resultats: [{ extrait: "un deux trois" }] });
+    expect(extractResults(html, 5)).toMatchObject({ resultats: [{ extrait: "un deux trois" }] });
   });
 });
 

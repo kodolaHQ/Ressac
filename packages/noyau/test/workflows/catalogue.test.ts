@@ -1,14 +1,14 @@
 import { expect, test } from "vitest";
 import { catalogueBlocs } from "../../src/index.js";
-import { REGISTRE_BLOCS } from "../../src/workflows/blocs/index.js";
+import { BLOCK_REGISTRY } from "../../src/workflows/blocs/index.js";
 
 const catalogue = catalogueBlocs();
 const de = (type: string) => catalogue.find((b) => b.type === type)!;
 const champ = (type: string, nom: string) => de(type).champs.find((c) => c.nom === nom)!;
 
 test("each registry type has a label, a family and a field per key of its schema, and nothing else", () => {
-  expect(catalogue.map((b) => b.type).sort()).toEqual([...REGISTRE_BLOCS.keys()].sort());
-  for (const [type, definition] of REGISTRE_BLOCS) {
+  expect(catalogue.map((b) => b.type).sort()).toEqual([...BLOCK_REGISTRY.keys()].sort());
+  for (const [type, definition] of BLOCK_REGISTRY) {
     const bloc = de(type);
     expect(bloc.libelle.length, type).toBeGreaterThan(0);
     expect(bloc.famille, type).toBeTruthy();
@@ -112,5 +112,5 @@ test("web.chercher is in the Sources family, after Récupérer une adresse", () 
   expect(champ("web.chercher", "requete")).toMatchObject({ genre: "gabarit", requis: true });
   expect(champ("web.chercher", "nombre")).toMatchObject({ genre: "nombre", requis: false, defaut: 8, min: 1, max: 20, entier: true });
   expect(champ("web.chercher", "champ")).toMatchObject({ genre: "texte", requis: false, defaut: "recherche" });
-  expect(REGISTRE_BLOCS.get("web.chercher")!.chaine).toBe(true);
+  expect(BLOCK_REGISTRY.get("web.chercher")!.chaine).toBe(true);
 });

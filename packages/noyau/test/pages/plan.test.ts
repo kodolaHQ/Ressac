@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { MAX_BLOCS_PAGE, MAX_OPERATIONS, PlanPage, evaluer, lireChemin, lireReference } from "../../src/pages/plan.js";
+import { MAX_BLOCS_PAGE, MAX_OPERATIONS, PlanPage, evaluate, readPath, lireReference } from "../../src/pages/plan.js";
 
 const tickets = [
   { id: 1, projet: "B", priorite: "haute", titre: "a" },
@@ -17,7 +17,7 @@ const racine = { tickets, annonces, priorité: "ok", sans: { x: 1 } };
 const val = (texte: string, r: unknown = racine) => {
   const ref = lireReference(texte);
   if ("erreur" in ref) throw new Error(ref.erreur);
-  return evaluer(ref, r);
+  return evaluate(ref, r);
 };
 
 test("compter on 7 tickets", () => expect(val("compter(tickets)")).toEqual({ valeur: 7 }));
@@ -71,17 +71,17 @@ test("operations on a non-list: error « liste attendue »", () => {
   expect(val("compter(sans)")).toHaveProperty("erreur");
 });
 test("__proto__ and constructor are never read", () => {
-  expect(lireChemin({}, "__proto__")).toBeUndefined();
-  expect(lireChemin({}, "constructor")).toBeUndefined();
-  expect(lireChemin({ a: {} }, "a.constructor.name")).toBeUndefined();
-  expect(lireChemin("abc", "length")).toBeUndefined();
-  expect(lireChemin([1], "length")).toBeUndefined();
+  expect(readPath({}, "__proto__")).toBeUndefined();
+  expect(readPath({}, "constructor")).toBeUndefined();
+  expect(readPath({ a: {} }, "a.constructor.name")).toBeUndefined();
+  expect(readPath("abc", "length")).toBeUndefined();
+  expect(readPath([1], "length")).toBeUndefined();
   expect(val("constructor")).toHaveProperty("erreur");
   expect(val("filtrer(tickets, __proto__ = x)")).toEqual({ valeur: [] });
-  expect(lireChemin(JSON.parse('{"__proto__":{"a":1}}'), "__proto__.a")).toBe(1);
+  expect(readPath(JSON.parse('{"__proto__":{"a":1}}'), "__proto__.a")).toBe(1);
 });
 test("lireChemin: $ is the root", () => {
-  expect(lireChemin(5, "$")).toBe(5);
+  expect(readPath(5, "$")).toBe(5);
 });
 test("accented key read", () => expect(val("priorité")).toEqual({ valeur: "ok" }));
 test("MAX_OPERATIONS", () => {
@@ -124,10 +124,10 @@ test("10,000 elements in under 50 ms", () => {
   const ref = lireReference("garder(trier(l, k), 200)");
   if ("erreur" in ref) throw new Error(ref.erreur);
   const t = performance.now();
-  evaluer(ref, gros);
+  evaluate(ref, gros);
   const r2 = lireReference("regrouper(l, g)");
   if ("erreur" in r2) throw new Error(r2.erreur);
-  evaluer(r2, gros);
+  evaluate(r2, gros);
   expect(performance.now() - t).toBeLessThan(50);
 });
 

@@ -1,12 +1,12 @@
 import { beforeEach, expect, test, vi } from "vitest";
-import { DROITS_DEV, PolitiqueAcces } from "../../src/acces/politique.js";
-import type { OngletInfo } from "../../src/mcp/pont.js";
+import { DROITS_DEV, AccessPolicy } from "../../src/acces/politique.js";
+import type { TabInfo } from "../../src/mcp/pont.js";
 
-const github: OngletInfo = { id: "1", titre: "svelte", url: "https://github.com/sveltejs/svelte", espace: "perso" };
-const gmail: OngletInfo = { id: "2", titre: "Gmail", url: "https://mail.google.com/mail/u/0/", espace: "perso" };
-const demo: OngletInfo = { id: "3", titre: "Démo", url: "http://localhost:5280/", espace: "perso" };
-let p: PolitiqueAcces;
-beforeEach(() => (p = new PolitiqueAcces()));
+const github: TabInfo = { id: "1", titre: "svelte", url: "https://github.com/sveltejs/svelte", espace: "perso" };
+const gmail: TabInfo = { id: "2", titre: "Gmail", url: "https://mail.google.com/mail/u/0/", espace: "perso" };
+const demo: TabInfo = { id: "3", titre: "Démo", url: "http://localhost:5280/", espace: "perso" };
+let p: AccessPolicy;
+beforeEach(() => (p = new AccessPolicy()));
 
 test("no access by default", () => {
   expect(p.peutLire(gmail)).toBe(false);
@@ -93,8 +93,8 @@ test("the agent navigates on the same site a tab the user gave it → access kep
 
 // --- Dev tools rights ---
 
-const app: OngletInfo = { id: "4", titre: "Mon app", url: "http://localhost:8123/", espace: "perso", application: "mon-app" };
-const port3000: OngletInfo = { id: "5", titre: "Dev", url: "http://localhost:3000/", espace: "perso" };
+const app: TabInfo = { id: "4", titre: "Mon app", url: "http://localhost:8123/", espace: "perso", application: "mon-app" };
+const port3000: TabInfo = { id: "5", titre: "Dev", url: "http://localhost:3000/", espace: "perso" };
 
 test("built: app:<folder> and localhost:5285 opened by the agent have the four rights; localhost:3000 has none", () => {
   const demo5285 = { ...demo, url: "http://localhost:5285/" };
@@ -111,7 +111,7 @@ test("built: app:<folder> and localhost:5285 opened by the agent have the four r
 test("built: the default demo range follows WEBAIOS_PORTS_CONTENEUR", () => {
   vi.stubEnv("WEBAIOS_PORTS_CONTENEUR", "5300-5319");
   try {
-    const q = new PolitiqueAcces();
+    const q = new AccessPolicy();
     const d5305 = { ...demo, url: "http://localhost:5305/" };
     const d5285 = { ...demo, id: "6", url: "http://localhost:5285/" };
     q.ongletOuvertParAgent(d5305);
@@ -124,7 +124,7 @@ test("built: the default demo range follows WEBAIOS_PORTS_CONTENEUR", () => {
 });
 
 test("built: the port predicate is configurable", () => {
-  const q = new PolitiqueAcces({ portConstruit: (port) => port === 3000 });
+  const q = new AccessPolicy({ portConstruit: (port) => port === 3000 });
   q.ongletOuvertParAgent(port3000);
   expect(q.estConstruite(port3000)).toBe(true);
 });
@@ -219,7 +219,7 @@ test("surChange called on each mutation, unsubscribe effective", () => {
 });
 
 test("cut built: relaunching the app (closing then reopening app:x) does not restore the rights; reinitialiser does", () => {
-  const app: OngletInfo = { id: "app:x", titre: "X", url: "http://localhost:5281/", espace: "", application: "x" };
+  const app: TabInfo = { id: "app:x", titre: "X", url: "http://localhost:5281/", espace: "", application: "x" };
   p.construite(app);
   p.couper("app:x");
   p.ongletFerme("app:x");
@@ -229,7 +229,7 @@ test("cut built: relaunching the app (closing then reopening app:x) does not res
   expect(p.estConstruite(relancee)).toBe(true);
   expect(p.droitsDev(relancee)).toEqual([]);
   // the agent opens the app's old origin in a tab: cut as well
-  const onglet: OngletInfo = { id: "9", titre: "X", url: "http://localhost:5281/", espace: "" };
+  const onglet: TabInfo = { id: "9", titre: "X", url: "http://localhost:5281/", espace: "" };
   p.ongletOuvertParAgent(onglet);
   expect(p.droitsDev(onglet)).toEqual([]);
   p.reinitialiser();
@@ -241,15 +241,15 @@ test("cut demo: a new agent tab on the same origin has no right; another origin 
   p.ongletOuvertParAgent(demo);
   p.couper(demo.id, "agir");
   p.ongletFerme(demo.id);
-  const nouveau: OngletInfo = { ...demo, id: "4" };
+  const nouveau: TabInfo = { ...demo, id: "4" };
   p.ongletOuvertParAgent(nouveau);
   expect(p.droitsDev(nouveau)).toEqual(["console", "reseau", "performances"]);
   p.couper(nouveau.id);
   p.ongletFerme(nouveau.id);
-  const encore: OngletInfo = { ...demo, id: "5" };
+  const encore: TabInfo = { ...demo, id: "5" };
   p.ongletOuvertParAgent(encore);
   expect(p.droitsDev(encore)).toEqual([]);
-  const autre: OngletInfo = { ...demo, id: "6", url: "http://localhost:5281/" };
+  const autre: TabInfo = { ...demo, id: "6", url: "http://localhost:5281/" };
   p.ongletOuvertParAgent(autre);
   expect(p.droitsDev(autre)).toEqual(DROITS_DEV);
   // The user grants again themselves: the right comes back
@@ -274,8 +274,8 @@ test("accorder signals the change (the read badge follows); nothing if access is
   expect(n).toBe(1);
 });
 
-const vidola: OngletInfo = { id: "site:vidola", titre: "Vidola", url: "https://vidola-a.example/film/1", espace: "", site: "vidola" };
-const youtube: OngletInfo = { id: "site:youtube", titre: "YouTube", url: "https://www.youtube.com/", espace: "", site: "youtube" };
+const vidola: TabInfo = { id: "site:vidola", titre: "Vidola", url: "https://vidola-a.example/film/1", espace: "", site: "vidola" };
+const youtube: TabInfo = { id: "site:youtube", titre: "YouTube", url: "https://www.youtube.com/", espace: "", site: "youtube" };
 
 test("accorderLectureSite(\"vidola\") : peutLire de site:vidola vrai, de site:youtube faux ; nouvelle conversation : faux", () => {
   expect(p.peutLire(vidola)).toBe(false);
@@ -294,7 +294,7 @@ test("accorderLectureSite(\"vidola\") : peutLire de site:vidola vrai, de site:yo
 });
 
 test("site app: an origin authorization (tab of the same domain, or accorder on the window) does not open it", () => {
-  const onglet: OngletInfo = { id: "7", titre: "Vidola", url: "https://vidola-a.example/film/1", espace: "perso" };
+  const onglet: TabInfo = { id: "7", titre: "Vidola", url: "https://vidola-a.example/film/1", espace: "perso" };
   p.accorder(onglet);
   p.interactionUtilisateur(onglet);
   expect(p.peutLire(onglet)).toBe(true);

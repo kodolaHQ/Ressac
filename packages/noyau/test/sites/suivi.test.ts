@@ -1,11 +1,11 @@
 import { expect, test } from "vitest";
 import { mkdir, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { adresseDeDepart, domainesEffectifs } from "../../src/sites/adresses.js";
+import { startUrl, effectiveDomains } from "../../src/sites/adresses.js";
 import { accorderSite, lireAccordsSites } from "../../src/sites/accords.js";
-import { MemoireSite } from "../../src/sites/memoire.js";
+import { SiteMemory } from "../../src/sites/memoire.js";
 import type { DeclarationSite } from "../../src/sites/schemas.js";
-import { changerAdresse, lireEtatAdresse, supprimerDonneesSite } from "../../src/sites/suivi.js";
+import { changeUrl, readUrlState, deleteSiteData } from "../../src/sites/suivi.js";
 import { dossierTemporaire } from "../aide/temporaire.js";
 
 const decl: DeclarationSite = {
@@ -16,51 +16,51 @@ const existe = (p: string) => stat(p).then(() => true, () => false);
 
 test("changerAdresse a → b: anciens [a]; then c: anciens [a, b]", async () => {
   const d = await dossierTemporaire();
-  expect(await lireEtatAdresse(d, "w")).toBeNull();
-  const e1 = await changerAdresse(d, "w", decl, "vidola-b.example");
+  expect(await readUrlState(d, "w")).toBeNull();
+  const e1 = await changeUrl(d, "w", decl, "vidola-b.example");
   expect(e1).toMatchObject({ actuel: "vidola-b.example", anciens: ["www.vidola-a.example"] });
   expect(e1.depuis).not.toBeNull();
-  const e2 = await changerAdresse(d, "w", decl, "vidola-c.example");
+  const e2 = await changeUrl(d, "w", decl, "vidola-c.example");
   expect(e2.anciens).toEqual(["www.vidola-a.example", "vidola-b.example"]);
-  expect(await lireEtatAdresse(d, "w")).toEqual(e2);
+  expect(await readUrlState(d, "w")).toEqual(e2);
   // going back to an old one: no longer in anciens; no duplicate
-  const e3 = await changerAdresse(d, "w", decl, "VIDOLA-B.example.");
+  const e3 = await changeUrl(d, "w", decl, "VIDOLA-B.example.");
   expect(e3.actuel).toBe("vidola-b.example");
   expect(e3.anciens).toEqual(["www.vidola-a.example", "vidola-c.example"]);
-  await expect(changerAdresse(d, "w", decl, "pas valide/")).rejects.toThrow();
+  await expect(changeUrl(d, "w", decl, "pas valide/")).rejects.toThrow();
 });
 
 test("domainesEffectifs unites them with those of site.json", async () => {
   const d = await dossierTemporaire();
-  const e = await changerAdresse(d, "w", { ...decl, adresse: "https://vidola-a.example/" }, "vidola-b.example");
-  expect(domainesEffectifs(decl, e)).toEqual(["vidola-a.example", "vidola-b.example"]);
+  const e = await changeUrl(d, "w", { ...decl, adresse: "https://vidola-a.example/" }, "vidola-b.example");
+  expect(effectiveDomains(decl, e)).toEqual(["vidola-a.example", "vidola-b.example"]);
 });
 
 test("adresseDeDepart keeps path and query on the current domain", async () => {
   const d = await dossierTemporaire();
-  const e = await changerAdresse(d, "w", decl, "vidola-b.example");
-  expect(adresseDeDepart(decl, e)).toBe("https://vidola-b.example/film?x=1");
+  const e = await changeUrl(d, "w", decl, "vidola-b.example");
+  expect(startUrl(decl, e)).toBe("https://vidola-b.example/film?x=1");
 });
 
 test("supprimerDonneesSite erases memory, address and grant of that site only", async () => {
   const p = await dossierTemporaire();
   const ds = join(p, "sites");
   for (const id of ["a", "b"]) {
-    const m = await MemoireSite.ouvrir(ds, id);
+    const m = await SiteMemory.ouvrir(ds, id);
     m.retenir("k", 1, null);
     await m.vider();
-    await changerAdresse(ds, id, decl, "vidola-b.example");
+    await changeUrl(ds, id, decl, "vidola-b.example");
     await accorderSite(p, id, decl);
   }
-  await supprimerDonneesSite(p, "a");
+  await deleteSiteData(p, "a");
   expect(await existe(join(ds, "a", "memoire.json"))).toBe(false);
-  expect(await lireEtatAdresse(ds, "a")).toBeNull();
+  expect(await readUrlState(ds, "a")).toBeNull();
   expect(Object.keys(await lireAccordsSites(p))).toEqual(["b"]);
   expect(await existe(join(ds, "b", "memoire.json"))).toBe(true);
-  expect(await lireEtatAdresse(ds, "b")).not.toBeNull();
+  expect(await readUrlState(ds, "b")).not.toBeNull();
   await mkdir(ds, { recursive: true });
   await writeFile(join(ds, "x"), "");
-  await expect(supprimerDonneesSite(p, "../b")).rejects.toThrow();
+  await expect(deleteSiteData(p, "../b")).rejects.toThrow();
 });
 
 test("supprimerDonneesSite removes the whole folder, .bak included", async () => {
@@ -68,24 +68,24 @@ test("supprimerDonneesSite removes the whole folder, .bak included", async () =>
   const ds = join(p, "sites");
   await mkdir(join(ds, "a"), { recursive: true });
   await writeFile(join(ds, "a", "memoire.json.bak"), "x");
-  await supprimerDonneesSite(p, "a");
+  await deleteSiteData(p, "a");
   expect(await existe(join(ds, "a"))).toBe(false);
 });
 
 test("changerAdresse keeps the 100 most recent old ones", async () => {
   const d = await dossierTemporaire();
-  let e = await changerAdresse(d, "w", decl, "s0.example");
-  for (let i = 1; i <= 105; i++) e = await changerAdresse(d, "w", decl, `s${i}.example`);
+  let e = await changeUrl(d, "w", decl, "s0.example");
+  for (let i = 1; i <= 105; i++) e = await changeUrl(d, "w", decl, `s${i}.example`);
   expect(e.anciens).toHaveLength(100);
   expect(e.anciens.at(-1)).toBe("s104.example");
-  expect(await lireEtatAdresse(d, "w")).toEqual(e);
+  expect(await readUrlState(d, "w")).toEqual(e);
 });
 
 test("a deletion ordered after an in-flight changerAdresse leaves the site erased", async () => {
   const p = await dossierTemporaire();
   const ds = join(p, "sites");
-  const c = changerAdresse(ds, "w", decl, "vidola-b.example");
-  await supprimerDonneesSite(p, "w");
+  const c = changeUrl(ds, "w", decl, "vidola-b.example");
+  await deleteSiteData(p, "w");
   await c;
-  expect(await lireEtatAdresse(ds, "w")).toBeNull();
+  expect(await readUrlState(ds, "w")).toBeNull();
 });

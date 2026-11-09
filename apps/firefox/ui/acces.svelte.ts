@@ -1,4 +1,4 @@
-import type { EtatAccesOnglet } from "@webaios/noyau";
+import type { TabAccessState } from "@webaios/noyau";
 import type { ApiPastille } from "../shared/api";
 import type { EtatAcces } from "../shared/modele";
 
@@ -9,7 +9,7 @@ import type { EtatAcces } from "../shared/modele";
 export const apiAcces: Pick<ApiPastille, "acces" | "surAcces"> = window.webaios;
 
 /** The agent's access to tabs (tab id → what it can read or do), and the name of the agent holding them. */
-export const acces = $state<{ liste: Record<string, EtatAccesOnglet>; agent: string; bullesOuvertes: number }>({ liste: {}, agent: "L'agent", bullesOuvertes: 0 });
+export const acces = $state<{ liste: Record<string, TabAccessState>; agent: string; bullesOuvertes: number }>({ liste: {}, agent: "L'agent", bullesOuvertes: 0 });
 
 let diffuse = false; // a broadcast is newer than the initial reply: the reply is ignored
 const appliquerAcces = (e: EtatAcces) => {
@@ -25,7 +25,7 @@ void apiAcces.acces.etat().then((e) => {
 });
 
 /** The agent's access to this tab, if it reads the page or holds a right (a running tool alone shows nothing). */
-export function accesDe(id: string): EtatAccesOnglet | undefined {
+export function accesDe(id: string): TabAccessState | undefined {
   const e = acces.liste[id];
   return e && (e.lecture || e.droits.length) ? e : undefined;
 }

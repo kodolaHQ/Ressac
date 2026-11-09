@@ -1,17 +1,17 @@
 // The preview of the results given to Gemma: their shape (each path and its type) and a few examples, bounded. Pure.
 // The results are facts read from web pages: the preview is data, never an instruction.
 
-export const APERCU_MAX = 6000;
-const ELEMENTS_EXEMPLE = 3;
-const TEXTE_EXEMPLE = 120;
-const CLES_MAX = 30;
-const ECHANTILLON = 20;
-const NOEUDS_EXEMPLES_MAX = 400;
+export const PREVIEW_MAX = 6000;
+const EXAMPLE_ELEMENTS = 3;
+const EXAMPLE_TEXT = 120;
+const KEYS_MAX = 30;
+const SAMPLE = 20;
+const SAMPLE_NODES_MAX = 400;
 const DESCRIPTION_MAX = 300;
-const CHEMIN_MAX = 80;
+const PATH_MAX = 80;
 
 type Dict = Record<string, unknown>;
-const estObjet = (v: unknown): v is Dict => v !== null && typeof v === "object" && !Array.isArray(v);
+const isObject = (v: unknown): v is Dict => v !== null && typeof v === "object" && !Array.isArray(v);
 
 /** A dictionary without a prototype: a « __proto__ » key of the results stays a key like any other. */
 const dict = (): Dict => Object.create(null) as Dict;
@@ -34,93 +34,93 @@ function nature(v: unknown): string {
 }
 
 /** The type of a value in one line: the fields of a list of objects are detailed, the rest stays short. */
-function decrire(v: unknown): string {
+function describe(v: unknown): string {
   if (Array.isArray(v)) {
     if (v.length === 0) return "liste (0)";
-    const echantillon = v.slice(0, ECHANTILLON);
-    if (echantillon.every(estObjet)) {
+    const sample = v.slice(0, SAMPLE);
+    if (sample.every(isObject)) {
       const champs = new Map<string, string>();
-      for (const e of echantillon) {
-        for (const k of Object.keys(e).slice(0, CLES_MAX)) if (!champs.has(k)) champs.set(k, nature(e[k]));
+      for (const e of sample) {
+        for (const k of Object.keys(e).slice(0, KEYS_MAX)) if (!champs.has(k)) champs.set(k, nature(e[k]));
       }
-      const detail = [...champs].slice(0, CLES_MAX).map(([k, t]) => `${couper(k, 40)}: ${t}`).join(", ");
+      const detail = [...champs].slice(0, KEYS_MAX).map(([k, t]) => `${couper(k, 40)}: ${t}`).join(", ");
       return `liste (${v.length}) d'objets { ${detail} }`;
     }
-    const natures = new Set(echantillon.map(nature));
+    const natures = new Set(sample.map(nature));
     if (natures.size === 1) {
       const n = [...natures][0]!;
       return `liste (${v.length}) de ${n === "texte" ? "textes" : n === "nombre" ? "nombres" : n === "booléen" ? "booléens" : n === "liste" ? "listes" : "valeurs"}`;
     }
     return `liste (${v.length}) de valeurs`;
   }
-  if (estObjet(v)) {
-    const cles = Object.keys(v);
-    return `objet { ${cles.slice(0, CLES_MAX).map((k) => couper(k, 40)).join(", ")}${cles.length > CLES_MAX ? ", …" : ""} }`;
+  if (isObject(v)) {
+    const keys = Object.keys(v);
+    return `objet { ${keys.slice(0, KEYS_MAX).map((k) => couper(k, 40)).join(", ")}${keys.length > KEYS_MAX ? ", …" : ""} }`;
   }
   return nature(v);
 }
 
 /** Each path and its type, the objects being walked down to `profondeur` levels. */
-function forme(racine: unknown, profondeur: number): Dict {
+function forme(root: unknown, depth: number): Dict {
   const f = dict();
-  const poser = (chemin: string, v: unknown) => { f[couper(chemin, CHEMIN_MAX)] = couper(decrire(v), DESCRIPTION_MAX); };
-  if (!estObjet(racine)) {
-    poser("$", racine);
+  const poser = (path: string, v: unknown) => { f[couper(path, PATH_MAX)] = couper(describe(v), DESCRIPTION_MAX); };
+  if (!isObject(root)) {
+    poser("$", root);
     return f;
   }
-  const pile: { v: Dict; prefixe: string; niveau: number }[] = [{ v: racine, prefixe: "", niveau: 1 }];
+  const pile: { v: Dict; prefixe: string; niveau: number }[] = [{ v: root, prefixe: "", niveau: 1 }];
   while (pile.length > 0) {
-    const { v, prefixe, niveau } = pile.shift()!;
-    for (const k of Object.keys(v).slice(0, CLES_MAX)) {
-      const chemin = prefixe + k;
+    const { v, prefixe: prefix, niveau: level } = pile.shift()!;
+    for (const k of Object.keys(v).slice(0, KEYS_MAX)) {
+      const path = prefix + k;
       const e = v[k];
-      poser(chemin, e);
-      if (estObjet(e) && niveau < profondeur) pile.push({ v: e, prefixe: chemin + ".", niveau: niveau + 1 });
+      poser(path, e);
+      if (isObject(e) && level < depth) pile.push({ v: e, prefixe: path + ".", niveau: level + 1 });
     }
   }
   return f;
 }
 
 /** A reduced copy: 3 items per list, texts at 120, `profondeur` levels, a bounded number of nodes. */
-function exemples(racine: unknown, profondeur: number): unknown {
-  let noeuds = 0;
-  const copie = (v: unknown, niveau: number): unknown => {
-    if (++noeuds > NOEUDS_EXEMPLES_MAX) return "…";
-    if (typeof v === "string") return couper(v, TEXTE_EXEMPLE);
+function examples(root: unknown, depth: number): unknown {
+  let nodes = 0;
+  const copy = (v: unknown, level: number): unknown => {
+    if (++nodes > SAMPLE_NODES_MAX) return "…";
+    if (typeof v === "string") return couper(v, EXAMPLE_TEXT);
     if (typeof v === "number") return Number.isFinite(v) ? v : null;
     if (typeof v === "boolean" || v === null) return v;
     if (v === undefined) return null;
-    if (niveau >= profondeur) return Array.isArray(v) ? `[liste (${v.length})]` : "[objet]";
-    if (Array.isArray(v)) return v.slice(0, ELEMENTS_EXEMPLE).map((e) => copie(e, niveau + 1));
+    if (level >= depth) return Array.isArray(v) ? `[liste (${v.length})]` : "[objet]";
+    if (Array.isArray(v)) return v.slice(0, EXAMPLE_ELEMENTS).map((e) => copy(e, level + 1));
     const o = dict();
-    for (const k of Object.keys(v as Dict).slice(0, CLES_MAX)) o[couper(k, 40)] = copie((v as Dict)[k], niveau + 1);
+    for (const k of Object.keys(v as Dict).slice(0, KEYS_MAX)) o[couper(k, 40)] = copy((v as Dict)[k], level + 1);
     return o;
   };
-  return copie(racine, 0);
+  return copy(root, 0);
 }
 
 /** JSON `{ forme, exemples }` of at most APERCU_MAX characters: the examples go first, then the deep levels. */
-export function apercuResultats(resultats: unknown): string {
-  const essais: [number, boolean][] = [[4, true], [3, true], [2, true], [4, false], [3, false], [2, false], [1, false]];
-  for (const [profondeur, avecExemples] of essais) {
-    const s = JSON.stringify(avecExemples ? { forme: forme(resultats, profondeur), exemples: exemples(resultats, profondeur) } : { forme: forme(resultats, profondeur) });
-    if (s.length <= APERCU_MAX) return s;
+export function resultsPreview(results: unknown): string {
+  const attempts: [number, boolean][] = [[4, true], [3, true], [2, true], [4, false], [3, false], [2, false], [1, false]];
+  for (const [depth, withExamples] of attempts) {
+    const s = JSON.stringify(withExamples ? { forme: forme(results, depth), exemples: examples(results, depth) } : { forme: forme(results, depth) });
+    if (s.length <= PREVIEW_MAX) return s;
   }
   // Last resort: the first paths only.
-  const f = forme(resultats, 1);
-  const gardee = dict();
+  const f = forme(results, 1);
+  const kept = dict();
   for (const k of Object.keys(f)) {
-    gardee[k] = f[k];
-    if (JSON.stringify({ forme: gardee }).length > APERCU_MAX) {
-      delete gardee[k];
+    kept[k] = f[k];
+    if (JSON.stringify({ forme: kept }).length > PREVIEW_MAX) {
+      delete kept[k];
       break;
     }
   }
-  return JSON.stringify({ forme: gardee });
+  return JSON.stringify({ forme: kept });
 }
 
 /** `null`, `""`, `[]`, `{}`, or an object whose values are all empty (recursively). Iterative. */
-export function resultatsVides(r: unknown): boolean {
+export function emptyResults(r: unknown): boolean {
   const pile: unknown[] = [r];
   while (pile.length > 0) {
     const v = pile.pop();

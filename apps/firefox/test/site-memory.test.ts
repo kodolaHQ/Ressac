@@ -2,13 +2,13 @@ import { existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, expect, test } from "vitest";
-import { CLE_INVALIDE, MemoireSite, VALEUR_NON_JSON } from "../../../packages/noyau/src/index";
+import { KEY_INVALID, SiteMemory, VALEUR_NON_JSON } from "../../../packages/noyau/src/index";
 import { creerPositions, memoireOp, REFUS_MEMOIRE } from "../noyau/site-memory";
 
 // The site memory, on the host's memoireOp: the sender checks
 // (sub-frame, sign-in window, page off the site, no grant) are the chrome's, in site-frames.test.ts.
 
-let memoire: MemoireSite;
+let memoire: SiteMemory;
 let refusee: boolean;
 const op = (d: object) => memoireOp(async () => {
   if (refusee) throw new Error("appli de site en cours de suppression : vidola");
@@ -17,7 +17,7 @@ const op = (d: object) => memoireOp(async () => {
 
 beforeEach(async () => {
   refusee = false;
-  memoire = await MemoireSite.ouvrir(mkdtempSync(join(tmpdir(), "site-memory-")), "vidola");
+  memoire = await SiteMemory.ouvrir(mkdtempSync(join(tmpdir(), "site-memory-")), "vidola");
 });
 
 test("retenir takes the address the chrome gives; lire, oublier", async () => {
@@ -30,7 +30,7 @@ test("retenir takes the address the chrome gives; lire, oublier", async () => {
 });
 
 test("the memory's named refusals (key, non-JSON value)", async () => {
-  expect(await op({ op: "retenir", cle: "", valeur: 1 })).toEqual({ ok: false, erreur: CLE_INVALIDE });
+  expect(await op({ op: "retenir", cle: "", valeur: 1 })).toEqual({ ok: false, erreur: KEY_INVALID });
   expect(await op({ op: "retenir", cle: "x", valeur: undefined })).toEqual({ ok: false, erreur: VALEUR_NON_JSON });
 });
 
@@ -67,7 +67,7 @@ beforeEach(async () => {
   horloge = 0;
   differes = [];
   dossier = mkdtempSync(join(tmpdir(), "site-positions-"));
-  memoire = await MemoireSite.ouvrir(dossier, "vidola");
+  memoire = await SiteMemory.ouvrir(dossier, "vidola");
   positions = creerPositions({ memoire: async () => memoire, accorde: () => accorde, maintenant: () => horloge, differer: (f, ms) => void differes.push({ f, ms }) });
 });
 

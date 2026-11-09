@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { DeclarationSite, type RetouchesLues } from "../../../packages/noyau/src/index";
+import { DeclarationSite, type TweaksRead } from "../../../packages/noyau/src/index";
 import { CONSOLE_RETOUCHES_TOTAL, ERREURS_RETOUCHES_MAX, type InjectionCadre } from "../shared/sites";
 import type { ErreurRetouche } from "../core/sites/injection";
 import { REFUS_MEMOIRE } from "../noyau/site-memory";
@@ -21,7 +21,7 @@ const declaration = DeclarationSite.parse({
   ],
   reprise: true,
 });
-const retouches: RetouchesLues = { js: { "a.js": "window.a = 1", "lecteur.js": "window.l = 1" }, css: { "a.css": ".shorts{display:none}" } };
+const retouches: TweaksRead = { js: { "a.js": "window.a = 1", "lecteur.js": "window.l = 1" }, css: { "a.css": ".shorts{display:none}" } };
 const PAGE = "https://vidola-b.example/series/x";
 
 /** A <browser> whose top document is at `url`, and a frame of it. */

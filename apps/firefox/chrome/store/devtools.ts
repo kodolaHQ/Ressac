@@ -3,8 +3,8 @@ import { origineDe, PREFIXE_SITE } from "../../core/agent/pont";
 /** An agent app window seen as a tab: `app:<dossier>`. */
 const PREFIXE_APP = "app:";
 import { TamponOnglet, textePile } from "../../core/outils-dev/tampon";
-import type { InstantaneFirefox, ProfilCpu } from "../../../../packages/noyau/src/outils-dev/resumes";
-import { OngletIntrouvable, OngletPrive, type OutilsDevNavigateur, type RequeteReseau, type ResultatJs } from "../shims/noyau";
+import type { FirefoxSnapshot, CpuProfile } from "../../../../packages/noyau/src/outils-dev/resumes";
+import { TabNotFound, PrivateTab, type BrowserDevTools, type NetworkRequest, type JsResult } from "../shims/noyau";
 import type { Store } from "./store";
 import type { WindowRegistry } from "./windows";
 
@@ -43,7 +43,7 @@ export interface DevTools {
   owner(): { token: string };
   /** Revokes that owner (the current one when no token is given: its host is gone). */
   release(token?: string): void;
-  call(token: string, method: keyof OutilsDevNavigateur, args: unknown[], signal?: AbortSignal): Promise<unknown>;
+  call(token: string, method: keyof BrowserDevTools, args: unknown[], signal?: AbortSignal): Promise<unknown>;
   /** The tabs attached now (tests). */
   attached(): string[];
 }
@@ -170,7 +170,7 @@ const headerRecord = (r: any): Record<string, string> => {
   return out;
 };
 
-function requestOf(r: any, h: { req: Record<string, string>; res: Record<string, string> } | undefined): RequeteReseau {
+function requestOf(r: any, h: { req: Record<string, string>; res: Record<string, string> } | undefined): NetworkRequest {
   return {
     id: String(r.resourceId),
     horodatage: r.timeStamp ?? Date.now(),
@@ -189,7 +189,7 @@ function requestOf(r: any, h: { req: Record<string, string>; res: Record<string,
 
 type Leaf = { count: number; bytes: number };
 /** A census `{ objects: {<class>: leaf}, strings: leaf, scripts: leaf, other: {<type>: leaf}, domNode: {…} }`: one entry per leaf, named by its key. */
-export function censusToSnapshot(census: Record<string, Leaf | Record<string, Leaf>>): InstantaneFirefox {
+export function censusToSnapshot(census: Record<string, Leaf | Record<string, Leaf>>): FirefoxSnapshot {
   const byName = new Map<string, { nom: string; nombre: number; taille: number }>();
   let total = 0;
   const add = (nom: string, l: Leaf) => {
@@ -221,7 +221,7 @@ interface GeckoThread {
  * a JS frame of a window not in `windows` (the tab's pages) is left out, its sample counts as theirs, not as script. */
 export function geckoToCpuProfile(t: GeckoThread, categories: { name: string }[], windows: Set<number>) {
   const S = t.samples.schema, ST = t.stackTable.schema, F = t.frameTable.schema;
-  const nodes: ProfilCpu["nodes"] = [{ id: 1, callFrame: { functionName: "(root)", url: "", lineNumber: -1 }, children: [] }];
+  const nodes: CpuProfile["nodes"] = [{ id: 1, callFrame: { functionName: "(root)", url: "", lineNumber: -1 }, children: [] }];
   const byKey = new Map<string, number>();
   const child = (parent: number, functionName: string, url: string, lineNumber: number) => {
     const key = `${parent}\0${functionName}\0${url}\0${lineNumber}`;
@@ -272,7 +272,7 @@ export function geckoToCpuProfile(t: GeckoThread, categories: { name: string }[]
     if (!r.idle) taskMs += dur;
   });
   for (const n of nodes) if (!n.children!.length) delete n.children;
-  const profil: ProfilCpu = { nodes, samples, timeDeltas, startTime: Math.round((times[0] ?? 0) * 1000), endTime: Math.round((times.at(-1) ?? 0) * 1000) };
+  const profil: CpuProfile = { nodes, samples, timeDeltas, startTime: Math.round((times[0] ?? 0) * 1000), endTime: Math.round((times.at(-1) ?? 0) * 1000) };
   return { profil, scriptMs, taskMs };
 }
 
@@ -411,18 +411,18 @@ export function createDevTools(o: {
     const check = () => {
       if (site ? !siteView(id) : !o.store.state.onglets[id]) {
         drop(id);
-        throw new OngletIntrouvable(id);
+        throw new TabNotFound(id);
       }
       if (o.isPrivate(id)) {
         drop(id);
-        throw new OngletPrive(id);
+        throw new PrivateTab(id);
       }
     };
     check();
     const gen = generation;
     const view = site ? siteView(id) : undefined;
     const tabWindow = site ? undefined : o.windows.get(o.store.state.onglets[id]!.fenetreId);
-    if (!view && !tabWindow) throw new OngletIntrouvable(id);
+    if (!view && !tabWindow) throw new TabNotFound(id);
     const win = view ? view.window : tabWindow!.window;
     const browser = view ? view.browser : await tabWindow!.controller.ensure(id);
     check(); // closed or turned private while it loaded
@@ -482,7 +482,7 @@ export function createDevTools(o: {
     return gripText(g);
   }
 
-  async function evaluate(s: Session, code: string, stop: AbortSignal): Promise<ResultatJs> {
+  async function evaluate(s: Session, code: string, stop: AbortSignal): Promise<JsResult> {
     let expression = code;
     // Top-level await, as the console maps it (the debugger's parser): the code becomes an async function's call.
     if (code.includes("await")) {
@@ -528,7 +528,7 @@ export function createDevTools(o: {
     attacher: async (id: string) => void (await session(id)),
     detacher: async (id: string) => drop(id),
     console: async (id: string) => (await session(id)).buffer.console(),
-    async reseau(id: string): Promise<RequeteReseau[]> {
+    async reseau(id: string): Promise<NetworkRequest[]> {
       const s = await session(id);
       const ask = (r: any, type: string) => s.commands.client.request({ to: r.actor, type });
       // Asked once the request is over; a request of a page left behind may have lost its actor (empty then).
@@ -552,7 +552,7 @@ export function createDevTools(o: {
         text = (await s.commands.client.request({ to: text.actor, type: "substring", start: 0, end: Math.min(text.length, BODY_MAX) })).substring;
       return { corps: String(text ?? ""), base64: content?.encoding === "base64" };
     },
-    async executer(id: string, code: string, signal?: AbortSignal): Promise<ResultatJs> {
+    async executer(id: string, code: string, signal?: AbortSignal): Promise<JsResult> {
       if (signal?.aborted) throw abortError(signal);
       const s = await session(id);
       const stop = new AbortController();

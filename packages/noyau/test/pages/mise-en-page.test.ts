@@ -1,14 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { GEMMA_JSON_INVALIDE } from "../../src/ia/repartiteur.js";
-import { COMPOSANTS_INTEGRES } from "../../src/pages/catalogue.js";
-import { DELAI_MISE_EN_PAGE_MS, mettreEnPage, promptMiseEnPage, type AccesGemma } from "../../src/pages/mise-en-page.js";
+import { GEMMA_JSON_INVALID } from "../../src/ia/repartiteur.js";
+import { BUILTIN_COMPONENTS } from "../../src/pages/catalogue.js";
+import { LAYOUT_DELAY_MS, layOut, promptMiseEnPage, type GemmaAccess } from "../../src/pages/mise-en-page.js";
 
 const resultats = { tickets: [{ titre: "Panne", priorite: "haute" }, { titre: "Doc", priorite: "basse" }] };
 const planValide = { blocs: [{ composant: "chiffre", props: { valeur: "compter(tickets)", libelle: "Tickets" } }] };
 const planInvalide = { blocs: [{ composant: "titre", props: { texte: "Seul" } }] };
 
 type Appel = { prompt: string; signal?: AbortSignal };
-function faux(reponses: (() => Promise<unknown> | unknown)[], appels: Appel[] = []): AccesGemma {
+function faux(reponses: (() => Promise<unknown> | unknown)[], appels: Appel[] = []): GemmaAccess {
   let i = 0;
   return {
     async gemma(g, o) {
@@ -18,8 +18,8 @@ function faux(reponses: (() => Promise<unknown> | unknown)[], appels: Appel[] = 
     },
   };
 }
-const lancer = (ia: AccesGemma | null, extra: Partial<Parameters<typeof mettreEnPage>[0]> = {}) =>
-  mettreEnPage({ resultats, consigne: "Montre les tickets", catalogue: COMPOSANTS_INTEGRES, ia, ...extra });
+const lancer = (ia: GemmaAccess | null, extra: Partial<Parameters<typeof layOut>[0]> = {}) =>
+  layOut({ resultats, consigne: "Montre les tickets", catalogue: BUILTIN_COMPONENTS, ia, ...extra });
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
@@ -60,14 +60,14 @@ describe("mettreEnPage", () => {
 
   it("the local AI throws « JSON invalide » (json: true) then returns a plan: attempts 2, the second instruction contains the reason", async () => {
     const appels: Appel[] = [];
-    const r = await lancer(faux([() => Promise.reject(new Error(GEMMA_JSON_INVALIDE)), () => planValide], appels));
+    const r = await lancer(faux([() => Promise.reject(new Error(GEMMA_JSON_INVALID)), () => planValide], appels));
     expect(r).toMatchObject({ essais: 2, secours: false });
     expect(appels[1]!.prompt).toContain("pas du JSON");
   });
 
   it("the local AI throws « JSON invalide » twice: fallback after two attempts", async () => {
     const appels: Appel[] = [];
-    const lever = () => Promise.reject(new Error(GEMMA_JSON_INVALIDE));
+    const lever = () => Promise.reject(new Error(GEMMA_JSON_INVALID));
     const r = await lancer(faux([lever, lever], appels));
     expect(r).toMatchObject({ secours: true, essais: 2 });
     expect(appels).toHaveLength(2);
@@ -92,7 +92,7 @@ describe("mettreEnPage", () => {
   });
 
   it("Gemma waits 60 s in the queue then answers in 40 s: no fallback (the delay starts at startup)", async () => {
-    const ia: AccesGemma = {
+    const ia: GemmaAccess = {
       gemma: (_g, o) =>
         new Promise((res) => {
           setTimeout(() => {
@@ -111,7 +111,7 @@ describe("mettreEnPage", () => {
     const ia = faux([() => new Promise(() => {})], appels);
     let fini = false;
     const p = lancer(ia).then((r) => ((fini = true), r));
-    await vi.advanceTimersByTimeAsync(DELAI_MISE_EN_PAGE_MS - 1);
+    await vi.advanceTimersByTimeAsync(LAYOUT_DELAY_MS - 1);
     expect(fini).toBe(false);
     await vi.advanceTimersByTimeAsync(1);
     const r = await p;
@@ -122,7 +122,7 @@ describe("mettreEnPage", () => {
   it("the delay covers both attempts", async () => {
     const ia = faux([() => new Promise((res) => setTimeout(() => res("non"), 60_000)), () => new Promise(() => {})]);
     const p = lancer(ia);
-    await vi.advanceTimersByTimeAsync(DELAI_MISE_EN_PAGE_MS);
+    await vi.advanceTimersByTimeAsync(LAYOUT_DELAY_MS);
     const r = await p;
     expect(r).toMatchObject({ secours: true, essais: 2 });
   });

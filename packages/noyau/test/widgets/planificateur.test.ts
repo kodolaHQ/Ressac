@@ -3,31 +3,31 @@ import { existsSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { PassThrough } from "node:stream";
 import { join } from "node:path";
-import { cheminsEspace } from "../../src/chemins.js";
-import { ecrireDonnees, ecrireEtatWidget, lireDonnees, lireEtatWidget, supprimerDonnees } from "../../src/accueil/donnees.js";
-import type { EtatWidget } from "../../src/accueil/schemas.js";
-import type { EtatAtelier } from "../../src/conteneur/atelier.js";
+import { spacePaths } from "../../src/chemins.js";
+import { writeData, writeWidgetState, readData, readWidgetState, deleteData } from "../../src/accueil/donnees.js";
+import type { WidgetState } from "../../src/accueil/schemas.js";
+import type { WorkshopState } from "../../src/conteneur/atelier.js";
 import { PontFactice } from "../../src/mcp/pont-factice.js";
-import { erreurDuNoyau, executerRecolte, type LanceurProcessus, type OptionsRecolte, type ResultatEssai } from "../../src/widgets/recolte.js";
-import { ecrireExecution, idEssai, listerExecutions, type Execution } from "../../src/workflows/executions.js";
-import { ecrireMemoire } from "../../src/workflows/memoire.js";
+import { kernelError, runHarvest, type ProcessLauncher, type HarvestOptions, type AttemptResult } from "../../src/widgets/recolte.js";
+import { writeRun, attemptId, listerExecutions, type Execution } from "../../src/workflows/executions.js";
+import { writeMemory } from "../../src/workflows/memoire.js";
 import { accorder, lireAccords } from "../../src/widgets/accords.js";
 import {
-  ERREUR_ATELIER_ARRETE,
-  ERREUR_RECOLTE_INTERNE,
-  PlanificateurWidgets,
-  VOIE_LONGUE_MINUTES,
-  voieDe,
+  WORKSHOP_STOPPED_ERROR,
+  INTERNAL_HARVEST_ERROR,
+  WidgetsScheduler,
+  LONG_ROUTE_MINUTES,
+  routeOf,
   widgetDu,
-  type EtatDirect,
-  type OptionsPlanificateur,
+  type DirectState,
+  type SchedulerOptions,
 } from "../../src/widgets/planificateur.js";
-import { Menagement } from "../../src/workflows/menagement.js";
-import { creneauCourant } from "../../src/widgets/heures.js";
-import { IA_ABANDONNEE } from "../../src/ia/repartiteur.js";
+import { Pacing } from "../../src/workflows/menagement.js";
+import { currentSlot } from "../../src/widgets/heures.js";
+import { AI_ABANDONED } from "../../src/ia/repartiteur.js";
 import type { NotificationWidget } from "../../src/widgets/nouveautes.js";
-import { lireAccueil } from "../../src/accueil/lire.js";
-import type { CheminsEspace } from "../../src/chemins.js";
+import { readHome } from "../../src/accueil/lire.js";
+import type { SpacePaths } from "../../src/chemins.js";
 import { declarationWidget, ecrireWidget } from "../aide/accueil.js";
 import { dossierTemporaire } from "../aide/temporaire.js";
 
@@ -37,10 +37,10 @@ vi.mock("../../src/accueil/lire.js", async (original) => {
   const m = await original<typeof import("../../src/accueil/lire.js")>();
   return {
     ...m,
-    lireAccueil: async (...a: Parameters<typeof m.lireAccueil>) => {
+    readHome: async (...a: Parameters<typeof m.readHome>) => {
       lectures.enVol++;
       try {
-        return await m.lireAccueil(...a);
+        return await m.readHome(...a);
       } finally {
         lectures.enVol--;
       }
@@ -51,16 +51,16 @@ vi.mock("../../src/accueil/lire.js", async (original) => {
 const MIN = 60_000;
 const DEBUT = new Date("2026-10-28T10:00:00.000Z");
 
-let p: PlanificateurWidgets | undefined;
+let p: WidgetsScheduler | undefined;
 afterEach(async () => {
   await p?.arreter();
   p = undefined;
 });
 
 /** A widget « actus » that harvests every 60 min; the fake harvest succeeds (or returns `statut`). */
-async function preparer(o: { atelier?: EtatAtelier; statut?: EtatWidget["statut"]; options?: Partial<OptionsPlanificateur> } = {}) {
+async function preparer(o: { atelier?: WorkshopState; statut?: WidgetState["statut"]; options?: Partial<SchedulerOptions> } = {}) {
   const racine = await dossierTemporaire();
-  const c = cheminsEspace(racine);
+  const c = spacePaths(racine);
   const dossierWidgets = join(await dossierTemporaire(), "widgets");
   await ecrireWidget(c, "actus", declarationWidget(undefined, { recolte: { minutes: 60 } }), { "recolte.mjs": "export default () => 1" });
   // A widget without a harvest is never launched.
@@ -68,30 +68,30 @@ async function preparer(o: { atelier?: EtatAtelier; statut?: EtatWidget["statut"
   let maintenant = DEBUT;
   const horloge = () => maintenant;
   const recoltes: string[] = [];
-  let etatAtelier: EtatAtelier = o.atelier ?? "demarre";
+  let etatAtelier: WorkshopState = o.atelier ?? "demarre";
   const changements = vi.fn();
-  const recolter = vi.fn(async (r: OptionsRecolte) => {
+  const recolter = vi.fn(async (r: HarvestOptions) => {
     recoltes.push(r.id);
     const statut = o.statut ?? "ok";
-    const avant = await lireEtatWidget(r.dossierWidgets, r.id);
-    const etat: EtatWidget = {
+    const avant = await readWidgetState(r.dossierWidgets, r.id);
+    const etat: WidgetState = {
       statut,
       derniereMaj: statut === "ok" ? horloge().toISOString() : avant.derniereMaj,
       derniereTentative: horloge().toISOString(),
       ...(statut === "erreur" ? { erreur: "boum" } : {}),
     };
-    if (statut === "ok") await ecrireDonnees(r.dossierWidgets, r.id, { n: recoltes.length });
-    await ecrireEtatWidget(r.dossierWidgets, r.id, etat);
+    if (statut === "ok") await writeData(r.dossierWidgets, r.id, { n: recoltes.length });
+    await writeWidgetState(r.dossierWidgets, r.id, etat);
     return { etat };
   });
   const essais: string[] = [];
-  const recolterEssai = vi.fn(async (r: OptionsRecolte & { origine: string; depart: string }): Promise<ResultatEssai> => {
+  const recolterEssai = vi.fn(async (r: HarvestOptions & { origine: string; depart: string }): Promise<AttemptResult> => {
     essais.push(r.id);
-    return { ok: true, execution: idEssai(horloge().toISOString()), statut: "reussie" };
+    return { ok: true, execution: attemptId(horloge().toISOString()), statut: "reussie" };
   });
-  const directs: EtatDirect[] = [];
+  const directs: DirectState[] = [];
   const atelier = { etat: async () => etatAtelier, commandeRecolte: () => ["docker"], supprimerRecolte: async (_id: string) => {} };
-  const options = (): OptionsPlanificateur => ({
+  const options = (): SchedulerOptions => ({
     chemins: c,
     dossierWidgets,
     moteur: "/moteur",
@@ -106,7 +106,7 @@ async function preparer(o: { atelier?: EtatAtelier; statut?: EtatWidget["statut"
     surDirect: (e) => directs.push(structuredClone(e)),
     ...o.options,
   });
-  p = new PlanificateurWidgets(options());
+  p = new WidgetsScheduler(options());
   return {
     essais,
     recolterEssai,
@@ -119,11 +119,11 @@ async function preparer(o: { atelier?: EtatAtelier; statut?: EtatWidget["statut"
     changements,
     atelier,
     avancer: (ms: number) => (maintenant = new Date(maintenant.getTime() + ms)),
-    fixerAtelier: (e: EtatAtelier) => (etatAtelier = e),
+    fixerAtelier: (e: WorkshopState) => (etatAtelier = e),
     fixer: (d: Date) => (maintenant = d),
     horloge,
     /** A new scheduler on the same folders (WebAiOs relaunched); the caller stopped the previous one. */
-    relancer: () => (p = new PlanificateurWidgets(options())),
+    relancer: () => (p = new WidgetsScheduler(options())),
   };
 }
 
@@ -163,7 +163,7 @@ test("with a given dispatcher, the harvests use it", async () => {
 });
 
 test("the throttle and the search base are passed to each harvest and each trial; absent, nothing is passed", async () => {
-  const menagement = new Menagement();
+  const menagement = new Pacing();
   const { p, recolter, recolterEssai } = await preparer({ options: { menagement, urlRecherche: "http://127.0.0.1:9/html/" } });
   await p.verifier({ auLancement: true });
   await p.recolterMaintenant("actus");
@@ -181,7 +181,7 @@ test("the throttle and the search base are passed to each harvest and each trial
 
 test("accord-requis is never retried on its own", async () => {
   const { p, recoltes, dossierWidgets, avancer } = await preparer();
-  await ecrireEtatWidget(dossierWidgets, "actus", { statut: "accord-requis", derniereMaj: null, derniereTentative: null, erreur: "Accord requis" });
+  await writeWidgetState(dossierWidgets, "actus", { statut: "accord-requis", derniereMaj: null, derniereTentative: null, erreur: "Accord requis" });
   expect(await p.verifier({ auLancement: true })).toEqual([]);
   avancer(24 * 60 * MIN);
   expect(await p.verifier({ auLancement: false })).toEqual([]);
@@ -193,16 +193,16 @@ test("accord-requis is never retried on its own", async () => {
 
 test("workshop stopped: status atelier-arrete, data kept", async () => {
   const { p, recoltes, dossierWidgets, changements, fixerAtelier } = await preparer({ atelier: "arrete" });
-  await ecrireDonnees(dossierWidgets, "actus", { vieux: true });
-  await ecrireEtatWidget(dossierWidgets, "actus", { statut: "ok", derniereMaj: "2026-10-27T08:00:00.000Z", derniereTentative: "2026-10-27T08:00:00.000Z" });
+  await writeData(dossierWidgets, "actus", { vieux: true });
+  await writeWidgetState(dossierWidgets, "actus", { statut: "ok", derniereMaj: "2026-10-27T08:00:00.000Z", derniereTentative: "2026-10-27T08:00:00.000Z" });
   expect(await p.verifier({ auLancement: true })).toEqual([]);
   expect(recoltes).toEqual([]);
-  expect(await lireEtatWidget(dossierWidgets, "actus")).toMatchObject({
+  expect(await readWidgetState(dossierWidgets, "actus")).toMatchObject({
     statut: "atelier-arrete",
     derniereMaj: "2026-10-27T08:00:00.000Z",
     erreur: "Mise à jour impossible : atelier arrêté",
   });
-  expect(await lireDonnees(dossierWidgets, "actus")).toEqual({ vieux: true });
+  expect(await readData(dossierWidgets, "actus")).toEqual({ vieux: true });
   expect(changements).toHaveBeenCalledTimes(1);
   // Not rewritten every minute.
   await p.verifier({ auLancement: false });
@@ -272,14 +272,14 @@ test("recolterMaintenant on an unknown widget throws an error", async () => {
 
 test("arreter: the harvest in progress is removed and its previous state restored", async () => {
   const { p, recolter, dossierWidgets, atelier } = await preparer();
-  const avant: EtatWidget = { statut: "ok", derniereMaj: "2026-10-27T08:00:00.000Z", derniereTentative: "2026-10-27T08:00:00.000Z" };
-  await ecrireEtatWidget(dossierWidgets, "actus", avant);
+  const avant: WidgetState = { statut: "ok", derniereMaj: "2026-10-27T08:00:00.000Z", derniereTentative: "2026-10-27T08:00:00.000Z" };
+  await writeWidgetState(dossierWidgets, "actus", avant);
   let tuer!: () => void;
   recolter.mockImplementation(async (o) => {
-    await ecrireEtatWidget(o.dossierWidgets, o.id, { ...avant, statut: "en-cours" });
+    await writeWidgetState(o.dossierWidgets, o.id, { ...avant, statut: "en-cours" });
     await new Promise<void>((r) => (tuer = r));
-    const etat: EtatWidget = { ...avant, statut: "erreur", erreur: "La récolte s'est arrêtée sans résultat" };
-    await ecrireEtatWidget(o.dossierWidgets, o.id, etat);
+    const etat: WidgetState = { ...avant, statut: "erreur", erreur: "La récolte s'est arrêtée sans résultat" };
+    await writeWidgetState(o.dossierWidgets, o.id, etat);
     return { etat };
   });
   const supprimees: string[] = [];
@@ -292,7 +292,7 @@ test("arreter: the harvest in progress is removed and its previous state restore
   await p.arreter();
   await verif;
   expect(supprimees).toEqual(["actus"]);
-  expect(await lireEtatWidget(dossierWidgets, "actus")).toEqual(avant);
+  expect(await readWidgetState(dossierWidgets, "actus")).toEqual(avant);
 });
 
 test("arreter while the harvest checks the workshop: it does not start", async () => {
@@ -320,7 +320,7 @@ test("arreter: a harvest that exceeds the wait sees its container removed once m
   let demarrer!: () => void;
   const premiereSuppression = new Promise<void>((r) => (demarrer = r));
   recolter.mockImplementation(async (o) => {
-    await ecrireEtatWidget(o.dossierWidgets, o.id, { statut: "en-cours", derniereMaj: null, derniereTentative: null });
+    await writeWidgetState(o.dossierWidgets, o.id, { statut: "en-cours", derniereMaj: null, derniereTentative: null });
     // The container starts after the first removal, and the harvest does not finish.
     await premiereSuppression;
     lancee = true;
@@ -332,7 +332,7 @@ test("arreter: a harvest that exceeds the wait sees its container removed once m
     supprimees.push({ id, lancee });
     demarrer();
   };
-  p = new PlanificateurWidgets({
+  p = new WidgetsScheduler({
     chemins: c,
     dossierWidgets,
     moteur: "/moteur",
@@ -355,11 +355,11 @@ test("arreter: a harvest that exceeds the wait sees its container removed once m
 test("the first check waits for the workshop to be ready: no « atelier arrêté » at launch", async () => {
   const { dossierWidgets, recolter, atelier, c, recoltes } = await preparer();
   await p!.arreter();
-  let etat: EtatAtelier = "arrete";
+  let etat: WorkshopState = "arrete";
   atelier.etat = async () => etat;
   let pret!: () => void;
   const changements = vi.fn();
-  p = new PlanificateurWidgets({
+  p = new WidgetsScheduler({
     chemins: c,
     dossierWidgets,
     moteur: "/moteur",
@@ -373,7 +373,7 @@ test("the first check waits for the workshop to be ready: no « atelier arrêté
   });
   await p.demarrer();
   await new Promise((r) => setTimeout(r, 50));
-  expect((await lireEtatWidget(dossierWidgets, "actus")).statut).not.toBe("atelier-arrete");
+  expect((await readWidgetState(dossierWidgets, "actus")).statut).not.toBe("atelier-arrete");
   expect(changements).not.toHaveBeenCalled();
   etat = "demarre";
   pret();
@@ -382,41 +382,41 @@ test("the first check waits for the workshop to be ready: no « atelier arrêté
 
 test("a harvest that throws an error after writing in-progress leaves a kernel error state", async () => {
   const { p, recolter, dossierWidgets, changements } = await preparer();
-  await ecrireEtatWidget(dossierWidgets, "actus", { statut: "ok", derniereMaj: "2026-10-27T08:00:00.000Z", derniereTentative: "2026-10-27T08:00:00.000Z" });
+  await writeWidgetState(dossierWidgets, "actus", { statut: "ok", derniereMaj: "2026-10-27T08:00:00.000Z", derniereTentative: "2026-10-27T08:00:00.000Z" });
   recolter.mockImplementation(async (o) => {
-    await ecrireEtatWidget(o.dossierWidgets, o.id, { statut: "en-cours", derniereMaj: "2026-10-27T08:00:00.000Z", derniereTentative: DEBUT.toISOString() });
+    await writeWidgetState(o.dossierWidgets, o.id, { statut: "en-cours", derniereMaj: "2026-10-27T08:00:00.000Z", derniereTentative: DEBUT.toISOString() });
     throw new Error("disque plein SECRET");
   });
   await expect(p.recolterMaintenant("actus")).resolves.toMatchObject({ statut: "erreur" });
-  const etat = await lireEtatWidget(dossierWidgets, "actus");
+  const etat = await readWidgetState(dossierWidgets, "actus");
   expect(etat).toEqual({
     statut: "erreur",
     derniereMaj: "2026-10-27T08:00:00.000Z",
     derniereTentative: DEBUT.toISOString(),
-    erreur: ERREUR_RECOLTE_INTERNE,
+    erreur: INTERNAL_HARVEST_ERROR,
     erreurNoyau: true,
   });
-  expect(erreurDuNoyau(ERREUR_RECOLTE_INTERNE)).toBe(true);
+  expect(kernelError(INTERNAL_HARVEST_ERROR)).toBe(true);
   expect(changements).toHaveBeenCalled();
   // Same through the background check.
-  await ecrireEtatWidget(dossierWidgets, "actus", { statut: "en-cours", derniereMaj: null, derniereTentative: null });
+  await writeWidgetState(dossierWidgets, "actus", { statut: "en-cours", derniereMaj: null, derniereTentative: null });
   expect(await p.verifier({ auLancement: true })).toEqual(["actus"]);
-  expect((await lireEtatWidget(dossierWidgets, "actus")).statut).toBe("erreur");
+  expect((await readWidgetState(dossierWidgets, "actus")).statut).toBe("erreur");
 });
 
 test("at each check, grants and data of a widget whose folder disappeared are erased", async () => {
   const { p, dossierWidgets, c } = await preparer();
   for (const id of ["actus", "parti"]) {
-    await ecrireDonnees(dossierWidgets, id, { secret: id });
+    await writeData(dossierWidgets, id, { secret: id });
     await accorder(dossierWidgets, id, { domaines: ["x.fr"], publiques: [], profil: "defaut" });
   }
   // An unreadable widget keeps its data: its folder exists.
   await ecrireWidget(c, "casse", "{", {});
-  await ecrireDonnees(dossierWidgets, "casse", { secret: "casse" });
+  await writeData(dossierWidgets, "casse", { secret: "casse" });
   await p.verifier({ auLancement: false });
   expect(Object.keys(await lireAccords(dossierWidgets)).sort()).toEqual(["actus"]);
   expect(existsSync(join(dossierWidgets, "parti"))).toBe(false);
-  expect(await lireDonnees(dossierWidgets, "casse")).toEqual({ secret: "casse" });
+  expect(await readData(dossierWidgets, "casse")).toEqual({ secret: "casse" });
   expect(existsSync(join(dossierWidgets, "actus"))).toBe(true);
   // Without a widgets folder at all (unreadable space), nothing is erased.
   await rm(c.widgets, { recursive: true, force: true });
@@ -444,35 +444,35 @@ test("trigger: planifiee for the check, manuelle by default for recolterMaintena
 
 test("stop during the run: run interrupted, previous state restored", async () => {
   const { p, recolter, dossierWidgets, atelier } = await preparer();
-  const avant: EtatWidget = { statut: "ok", derniereMaj: "2026-10-27T08:00:00.000Z", derniereTentative: "2026-10-27T08:00:00.000Z" };
-  await ecrireEtatWidget(dossierWidgets, "actus", avant);
+  const avant: WidgetState = { statut: "ok", derniereMaj: "2026-10-27T08:00:00.000Z", derniereTentative: "2026-10-27T08:00:00.000Z" };
+  await writeWidgetState(dossierWidgets, "actus", avant);
   let tuer!: () => void;
   const lance = vi.fn();
   // A container that never answers: only the stop ends it.
-  const lancer: LanceurProcessus = () => {
+  const lancer: ProcessLauncher = () => {
     lance();
     const fin = new Promise<number | null>((r) => (tuer = () => r(null)));
     return { stdin: new PassThrough(), stdout: new PassThrough(), stderr: new PassThrough(), tuer: () => tuer(), fin };
   };
-  recolter.mockImplementation((o) => executerRecolte({ ...o, lancer }));
+  recolter.mockImplementation((o) => runHarvest({ ...o, lancer }));
   atelier.supprimerRecolte = async () => tuer();
   const verif = p.verifier({ auLancement: true });
   await vi.waitFor(() => expect(lance).toHaveBeenCalled());
   await p.arreter();
   await verif;
-  expect(await lireEtatWidget(dossierWidgets, "actus")).toEqual(avant);
+  expect(await readWidgetState(dossierWidgets, "actus")).toEqual(avant);
   expect((await listerExecutions(join(dossierWidgets, "actus"))).map((e) => e.statut)).toEqual(["interrompue"]);
 });
 
 test("the vanished folder also erases runs and memory", async () => {
   const { p, dossierWidgets } = await preparer();
   const dossier = join(dossierWidgets, "parti");
-  await ecrireDonnees(dossierWidgets, "parti", { secret: 1 });
-  await ecrireExecution(dossier, {
+  await writeData(dossierWidgets, "parti", { secret: 1 });
+  await writeRun(dossier, {
     version: 1, id: "2026-10-27T08-00-00-000Z", proprietaire: { type: "widget", id: "parti" }, declencheur: "planifiee",
     debut: "2026-10-27T08:00:00.000Z", fin: null, statut: "reussie", blocs: [],
   });
-  await ecrireMemoire(dossier, { a: { type: "liste.nouveaux", valeur: [] } });
+  await writeMemory(dossier, { a: { type: "liste.nouveaux", valeur: [] } });
   await p.verifier({ auLancement: false });
   expect(existsSync(dossier)).toBe(false);
 });
@@ -487,7 +487,7 @@ function differe<T>() {
 test("a scheduled run due during a trial waits for its end", async () => {
   const { p, recolter, recolterEssai } = await preparer();
   const journal: string[] = [];
-  const fin = differe<ResultatEssai>();
+  const fin = differe<AttemptResult>();
   recolterEssai.mockImplementation(async (o) => {
     journal.push(`essai ${o.id} ${o.origine} ${o.depart}`);
     const r = await fin.promesse;
@@ -535,7 +535,7 @@ test("two rejouer requested back to back run one after the other", async () => {
 
 test("an avancement or lecture trace does not change a widget's live tracking", async () => {
   const { p, recolterEssai, directs } = await preparer();
-  const vus: { avant: EtatDirect; apres: EtatDirect; signales: number }[] = [];
+  const vus: { avant: DirectState; apres: DirectState; signales: number }[] = [];
   recolterEssai.mockImplementation(async (o) => {
     o.surTrace!({ bloc: "liste", etape: "debut" });
     const avant = structuredClone(p.direct());
@@ -544,7 +544,7 @@ test("an avancement or lecture trace does not change a widget's live tracking", 
     o.surTrace!({ bloc: "liste", etape: "lecture", hote: "gitlab.com" });
     o.surTrace!({ bloc: "autre", etape: "lecture", hote: "gitlab.com" });
     vus.push({ avant, apres: structuredClone(p.direct()), signales: directs.length - signales });
-    return { ok: true, execution: idEssai(DEBUT.toISOString()), statut: "reussie" };
+    return { ok: true, execution: attemptId(DEBUT.toISOString()), statut: "reussie" };
   });
   await p.rejouer("actus", "o", "liste");
   expect(vus[0]!.apres).toEqual(vus[0]!.avant);
@@ -555,7 +555,7 @@ test("an avancement or lecture trace does not change a widget's live tracking", 
 test("direct() shows the running widget, its kind and its blocks as traces come, then nothing", async () => {
   const { p, recolterEssai, directs, dossierWidgets } = await preparer();
   expect(p.direct()).toEqual({ courants: [], enAttente: [] });
-  const vus: EtatDirect[] = [];
+  const vus: DirectState[] = [];
   recolterEssai.mockImplementation(async (o) => {
     o.surTrace!({ bloc: "liste", etape: "debut" });
     vus.push(structuredClone(p.direct()));
@@ -564,14 +564,14 @@ test("direct() shows the running widget, its kind and its blocks as traces come,
     o.surTrace!({ bloc: "sortie", etape: "debut" });
     vus.push(structuredClone(p.direct()));
     const e: Execution = {
-      version: 1, id: idEssai(DEBUT.toISOString()), proprietaire: { type: "widget", id: o.id }, declencheur: "rejeu",
+      version: 1, id: attemptId(DEBUT.toISOString()), proprietaire: { type: "widget", id: o.id }, declencheur: "rejeu",
       essai: { depart: o.depart, origine: o.origine }, debut: DEBUT.toISOString(), fin: DEBUT.toISOString(), statut: "echouee",
       blocs: [
         { id: "liste", type: "code", statut: "reussi", debut: "x", fin: "x", elements: 3, journal: [] },
         { id: "sortie", type: "sortie", statut: "echoue", debut: "x", fin: null, elements: null, journal: [] },
       ],
     };
-    await ecrireExecution(join(dossierWidgets, o.id), e);
+    await writeRun(join(dossierWidgets, o.id), e);
     return { ok: true, execution: e.id, statut: e.statut };
   });
   await p.rejouer("actus", "o", "liste");
@@ -612,11 +612,11 @@ test("enAttente lists a widget requested while another runs", async () => {
 
 test("workshop stopped: rejouer refuses without changing the state", async () => {
   const { p, recolterEssai, dossierWidgets, changements } = await preparer({ atelier: "arrete" });
-  const etat: EtatWidget = { statut: "ok", derniereMaj: "2026-10-27T08:00:00.000Z", derniereTentative: "2026-10-27T08:00:00.000Z" };
-  await ecrireEtatWidget(dossierWidgets, "actus", etat);
-  expect(await p.rejouer("actus", "o", "liste")).toEqual({ ok: false, erreur: ERREUR_ATELIER_ARRETE });
+  const etat: WidgetState = { statut: "ok", derniereMaj: "2026-10-27T08:00:00.000Z", derniereTentative: "2026-10-27T08:00:00.000Z" };
+  await writeWidgetState(dossierWidgets, "actus", etat);
+  expect(await p.rejouer("actus", "o", "liste")).toEqual({ ok: false, erreur: WORKSHOP_STOPPED_ERROR });
   expect(recolterEssai).not.toHaveBeenCalled();
-  expect(await lireEtatWidget(dossierWidgets, "actus")).toEqual(etat);
+  expect(await readWidgetState(dossierWidgets, "actus")).toEqual(etat);
   expect(changements).not.toHaveBeenCalled();
 });
 
@@ -626,7 +626,7 @@ test("widgetDu: a widget with hours without minutes is never due by frequency", 
     dossier: "/a",
     declaration: { ...declarationWidget(), description: "", sources: { compte: [], publiques: [], web: false }, recolte: { heures: ["07:00"] } },
     // The time of day is already done: only the frequency could make it due.
-    etat: { statut: "ok" as const, derniereMaj: null, derniereTentative: null, heures: { faite: creneauCourant(["07:00"], DEBUT), echecs: null } },
+    etat: { statut: "ok" as const, derniereMaj: null, derniereTentative: null, heures: { faite: currentSlot(["07:00"], DEBUT), echecs: null } },
     donnees: null,
     exemple: null,
     aRecolte: true,
@@ -640,7 +640,7 @@ test("widgetDu: a widget with hours without minutes is never due by frequency", 
 // --- Two lanes: watches (dureeMaxMinutes > 3) run apart ---
 
 /** A widget that harvests every 60 min, with the given maximum duration. */
-async function ecrireVeille(c: CheminsEspace, id: string, dureeMaxMinutes: number) {
+async function ecrireVeille(c: SpacePaths, id: string, dureeMaxMinutes: number) {
   await ecrireWidget(c, id, declarationWidget(undefined, { recolte: { minutes: 60, dureeMaxMinutes } }), { "recolte.mjs": "export default () => 1" });
 }
 
@@ -673,12 +673,12 @@ function retenir(recolter: Awaited<ReturnType<typeof preparer>>["recolter"], ret
 }
 
 test("voieDe: long beyond VOIE_LONGUE_MINUTES (3), short otherwise", async () => {
-  expect(VOIE_LONGUE_MINUTES).toBe(3);
+  expect(LONG_ROUTE_MINUTES).toBe(3);
   const { c, dossierWidgets } = await preparer();
   await ecrireVeille(c, "trois", 3);
   await ecrireVeille(c, "quatre", 4);
-  const widgets = (await lireAccueil(c, dossierWidgets)).widgets;
-  const voie = (id: string) => voieDe(widgets.find((w) => w.id === id)!);
+  const widgets = (await readHome(c, dossierWidgets)).widgets;
+  const voie = (id: string) => routeOf(widgets.find((w) => w.id === id)!);
   expect([voie("actus"), voie("trois"), voie("quatre"), voie("fixe")]).toEqual(["courte", "courte", "longue", "courte"]);
 });
 
@@ -855,7 +855,7 @@ test("the AI goes through the dispatcher: each run has its view, calls reach the
   expect(reponses).toEqual(["g", "g", "g"]);
   expect(appels).toEqual(["actus", "veille", "essai actus"]);
   // The run finished, its view refuses: a late call no longer goes to the AI.
-  await expect(vues[0]!.gemma({ prompt: "tard" })).rejects.toThrow(IA_ABANDONNEE);
+  await expect(vues[0]!.gemma({ prompt: "tard" })).rejects.toThrow(AI_ABANDONED);
   expect(appels).toHaveLength(3);
 });
 
@@ -902,7 +902,7 @@ test("widget changed from 30 to 2 just before a trial: the trial goes through du
 const le = (h: number, m: number, jour = 29) => new Date(2026, 9, jour, h, m);
 
 /** A widget « matin » at fixed hours (and at a frequency if `minutes`). */
-async function ecrireMatin(c: CheminsEspace, recolte: { heures: string[]; minutes?: number }, extra: Record<string, unknown> = {}) {
+async function ecrireMatin(c: SpacePaths, recolte: { heures: string[]; minutes?: number }, extra: Record<string, unknown> = {}) {
   await ecrireWidget(c, "matin", declarationWidget(undefined, { recolte, ...extra }), { "recolte.mjs": "export default () => 1" });
 }
 
@@ -915,14 +915,14 @@ test("hours and minutes: both apply", async () => {
   await p.verifier({ auLancement: true });
   expect(duMatin(recoltes)).toBe(1); // by frequency (never harvested)
   // Before the first hour of the day: no effect on the tracking.
-  expect((await lireEtatWidget(dossierWidgets, "matin")).heures).toBeUndefined();
+  expect((await readWidgetState(dossierWidgets, "matin")).heures).toBeUndefined();
   fixer(le(6, 30));
   await p.verifier({ auLancement: false });
   expect(duMatin(recoltes)).toBe(1);
   fixer(le(7, 0));
   await p.verifier({ auLancement: false });
   expect(duMatin(recoltes)).toBe(2); // by the hour, the data is only an hour old
-  expect((await lireEtatWidget(dossierWidgets, "matin")).heures).toEqual({ faite: "2026-10-29T07:00", echecs: null });
+  expect((await readWidgetState(dossierWidgets, "matin")).heures).toEqual({ faite: "2026-10-29T07:00", echecs: null });
   for (const [h, m] of [[7, 1], [8, 59]] as const) {
     fixer(le(h, m));
     await p.verifier({ auLancement: false });
@@ -941,7 +941,7 @@ test("interrupted: caught up at the next launch the same day", async () => {
   recolter.mockImplementation(async (o) => {
     if (o.id !== "matin") return base(o);
     recoltes.push(o.id);
-    await ecrireEtatWidget(o.dossierWidgets, o.id, { statut: "en-cours", derniereMaj: null, derniereTentative: le(7, 0).toISOString() });
+    await writeWidgetState(o.dossierWidgets, o.id, { statut: "en-cours", derniereMaj: null, derniereTentative: le(7, 0).toISOString() });
     await new Promise<void>((r) => (tuer = r));
     return { etat: { statut: "erreur", derniereMaj: null, derniereTentative: le(7, 0).toISOString(), erreur: "Interrompue" } };
   });
@@ -954,13 +954,13 @@ test("interrupted: caught up at the next launch the same day", async () => {
   await p.arreter();
   await verif;
   // Interrupted: no effect on the tracking, the earlier state is restored.
-  expect(await lireEtatWidget(dossierWidgets, "matin")).toEqual({ statut: "ok", derniereMaj: null, derniereTentative: null });
+  expect(await readWidgetState(dossierWidgets, "matin")).toEqual({ statut: "ok", derniereMaj: null, derniereTentative: null });
   recolter.mockImplementation(base);
   fixer(le(7, 30));
   const p2 = relancer();
   await p2.verifier({ auLancement: true });
   expect(duMatin(recoltes)).toBe(2);
-  expect((await lireEtatWidget(dossierWidgets, "matin")).heures).toEqual({ faite: "2026-10-29T07:00", echecs: null });
+  expect((await readWidgetState(dossierWidgets, "matin")).heures).toEqual({ faite: "2026-10-29T07:00", echecs: null });
   fixer(le(7, 31));
   await p2.verifier({ auLancement: false });
   expect(duMatin(recoltes)).toBe(2);
@@ -969,7 +969,7 @@ test("interrupted: caught up at the next launch the same day", async () => {
 test("abrupt stop (in-progress at launch): the missed hour is caught up once", async () => {
   const { p, c, recoltes, recolter, fixer, dossierWidgets } = await preparer();
   await ecrireMatin(c, { heures: ["07:00", "12:00"] });
-  await ecrireEtatWidget(dossierWidgets, "matin", {
+  await writeWidgetState(dossierWidgets, "matin", {
     statut: "en-cours", derniereMaj: null, derniereTentative: le(12, 0).toISOString(), progression: { faits: 7, total: 12 },
     heures: { faite: "2026-10-29T07:00", echecs: null },
   });
@@ -977,7 +977,7 @@ test("abrupt stop (in-progress at launch): the missed hour is caught up once", a
   await p.demarrer();
   await vi.waitFor(() => expect(recolter.mock.settledResults.filter((r) => r.type === "fulfilled")).toHaveLength(2));
   expect(duMatin(recoltes)).toBe(1);
-  expect((await lireEtatWidget(dossierWidgets, "matin")).heures).toEqual({ faite: "2026-10-29T12:00", echecs: null });
+  expect((await readWidgetState(dossierWidgets, "matin")).heures).toEqual({ faite: "2026-10-29T12:00", echecs: null });
   fixer(le(14, 1));
   await p.verifier({ auLancement: false });
   expect(duMatin(recoltes)).toBe(1);
@@ -987,21 +987,21 @@ test("in-progress at launch of an hours widget already done today: not relaunche
   const { p, c, recoltes, fixer, dossierWidgets } = await preparer();
   await ecrireMatin(c, { heures: ["07:00"] });
   const heures = { faite: "2026-10-29T07:00", echecs: null };
-  await ecrireEtatWidget(dossierWidgets, "matin", {
+  await writeWidgetState(dossierWidgets, "matin", {
     statut: "en-cours", derniereMaj: le(7, 5).toISOString(), derniereTentative: le(8, 0).toISOString(), progression: { faits: 7, total: 12 }, heures,
   });
   fixer(le(9, 0));
   await p.verifier({ auLancement: true });
   expect(duMatin(recoltes)).toBe(0);
   // No frozen « 7 / 12 ».
-  expect(await lireEtatWidget(dossierWidgets, "matin")).toEqual({ statut: "ok", derniereMaj: le(7, 5).toISOString(), derniereTentative: le(8, 0).toISOString(), heures });
+  expect(await readWidgetState(dossierWidgets, "matin")).toEqual({ statut: "ok", derniereMaj: le(7, 5).toISOString(), derniereTentative: le(8, 0).toISOString(), heures });
 });
 
 test("in-progress at launch while a trial waits: the state is restored before any run, the widget relaunched afterwards", async () => {
   const { p, recoltes, recolterEssai, dossierWidgets } = await preparer();
   // Fresh data: only the abrupt stop makes it due at launch.
-  await ecrireEtatWidget(dossierWidgets, "actus", { statut: "en-cours", derniereMaj: DEBUT.toISOString(), derniereTentative: DEBUT.toISOString(), progression: { faits: 7, total: 12 } });
-  const fin = differe<ResultatEssai>();
+  await writeWidgetState(dossierWidgets, "actus", { statut: "en-cours", derniereMaj: DEBUT.toISOString(), derniereTentative: DEBUT.toISOString(), progression: { faits: 7, total: 12 } });
+  const fin = differe<AttemptResult>();
   const commence = differe<void>();
   recolterEssai.mockImplementation(async () => {
     commence.resoudre();
@@ -1009,7 +1009,7 @@ test("in-progress at launch while a trial waits: the state is restored before an
   });
   const essai = p.rejouer("actus", "o", "liste");
   await commence.promesse;
-  expect(await lireEtatWidget(dossierWidgets, "actus")).toEqual({ statut: "ok", derniereMaj: DEBUT.toISOString(), derniereTentative: DEBUT.toISOString() });
+  expect(await readWidgetState(dossierWidgets, "actus")).toEqual({ statut: "ok", derniereMaj: DEBUT.toISOString(), derniereTentative: DEBUT.toISOString() });
   const verification = p.verifier({ auLancement: true });
   fin.resoudre({ ok: true, execution: "x-essai", statut: "reussie" });
   await essai;
@@ -1022,7 +1022,7 @@ test("a trial does not count for the hour", async () => {
   await ecrireMatin(c, { heures: ["07:00"] });
   fixer(le(7, 0));
   expect(await p.rejouer("matin", "o", "liste")).toMatchObject({ ok: true });
-  expect((await lireEtatWidget(dossierWidgets, "matin")).heures).toBeUndefined();
+  expect((await readWidgetState(dossierWidgets, "matin")).heures).toBeUndefined();
   fixer(le(7, 1));
   await p.verifier({ auLancement: false });
   expect(duMatin(recoltes)).toBe(1);
@@ -1040,14 +1040,14 @@ test("Mac asleep over several hours: a single catch-up on wake", async () => {
     await p.verifier({ auLancement: false });
   }
   expect(duMatin(recoltes)).toBe(1);
-  expect((await lireEtatWidget(dossierWidgets, "matin")).heures).toEqual({ faite: "2026-10-29T12:00", echecs: null });
+  expect((await readWidgetState(dossierWidgets, "matin")).heures).toEqual({ faite: "2026-10-29T12:00", echecs: null });
 });
 
 test("midnight: the hour missed the day before is not caught up, the next day's is", async () => {
   const { p, c, recoltes, fixer, dossierWidgets } = await preparer();
   await ecrireMatin(c, { heures: ["07:00", "22:00"] });
   // 22:00 missed on the 29th (WebAiOs closed); reopened after midnight.
-  await ecrireEtatWidget(dossierWidgets, "matin", { statut: "ok", derniereMaj: null, derniereTentative: null, heures: { faite: "2026-10-29T07:00", echecs: null } });
+  await writeWidgetState(dossierWidgets, "matin", { statut: "ok", derniereMaj: null, derniereTentative: null, heures: { faite: "2026-10-29T07:00", echecs: null } });
   for (const [h, m] of [[0, 0], [0, 1], [3, 0], [6, 59]] as const) {
     fixer(le(h, m, 30));
     await p.verifier({ auLancement: h === 0 && m === 0 });
@@ -1056,7 +1056,7 @@ test("midnight: the hour missed the day before is not caught up, the next day's 
   fixer(le(7, 0, 30));
   await p.verifier({ auLancement: false });
   expect(duMatin(recoltes)).toBe(1);
-  expect((await lireEtatWidget(dossierWidgets, "matin")).heures).toEqual({ faite: "2026-10-30T07:00", echecs: null });
+  expect((await readWidgetState(dossierWidgets, "matin")).heures).toEqual({ faite: "2026-10-30T07:00", echecs: null });
 });
 
 test("failures: retried 15 min later, 3 times at most, then nothing until the next hour", async () => {
@@ -1070,17 +1070,17 @@ test("failures: retried 15 min later, 3 times at most, then nothing until the ne
     if (duMatin(recoltes) > avant) tentatives.push(`${new Date(t).getHours()}:${String(new Date(t).getMinutes()).padStart(2, "0")}`);
   }
   expect(tentatives).toEqual(["7:00", "7:15", "7:30", "7:45", "12:00"]);
-  expect((await lireEtatWidget(dossierWidgets, "matin")).heures).toEqual({ faite: null, echecs: { heure: "2026-10-29T12:00", nombre: 1, fin: le(12, 0).toISOString() } });
+  expect((await readWidgetState(dossierWidgets, "matin")).heures).toEqual({ faite: null, echecs: { heure: "2026-10-29T12:00", nombre: 1, fin: le(12, 0).toISOString() } });
 });
 
 test("a manual run before the first hour does not erase the previous day's tracking; one at 07:10 counts for 07:00", async () => {
   const { p, c, recoltes, fixer, dossierWidgets } = await preparer();
   await ecrireMatin(c, { heures: ["07:00"] });
   const veille = { faite: "2026-10-28T07:00", echecs: null };
-  await ecrireEtatWidget(dossierWidgets, "matin", { statut: "ok", derniereMaj: null, derniereTentative: null, heures: veille });
+  await writeWidgetState(dossierWidgets, "matin", { statut: "ok", derniereMaj: null, derniereTentative: null, heures: veille });
   fixer(le(6, 50));
   expect(await p.recolterMaintenant("matin")).toMatchObject({ statut: "ok" });
-  expect((await lireEtatWidget(dossierWidgets, "matin")).heures).toEqual(veille);
+  expect((await readWidgetState(dossierWidgets, "matin")).heures).toEqual(veille);
   fixer(le(7, 10));
   expect(await p.recolterMaintenant("matin", "agent")).toMatchObject({ statut: "ok", heures: { faite: "2026-10-29T07:00", echecs: null } });
   fixer(le(7, 11));
@@ -1097,19 +1097,19 @@ test("the hours tracking survives a grant removed then granted again", async () 
   await p.verifier({ auLancement: false });
   expect(duMatin(recoltes)).toBe(1);
   const faite = { faite: "2026-10-29T07:00", echecs: null };
-  expect((await lireEtatWidget(dossierWidgets, "matin")).heures).toEqual(faite);
+  expect((await readWidgetState(dossierWidgets, "matin")).heures).toEqual(faite);
   // Like refuserAccord: data erased, state waiting for a grant.
-  await supprimerDonnees(dossierWidgets, "matin");
-  const avant = await lireEtatWidget(dossierWidgets, "matin");
-  await ecrireEtatWidget(dossierWidgets, "matin", { statut: "accord-requis", derniereMaj: avant.derniereMaj, derniereTentative: avant.derniereTentative, erreur: "accord", erreurNoyau: true });
-  expect((await lireEtatWidget(dossierWidgets, "matin")).heures).toEqual(faite);
+  await deleteData(dossierWidgets, "matin");
+  const avant = await readWidgetState(dossierWidgets, "matin");
+  await writeWidgetState(dossierWidgets, "matin", { statut: "accord-requis", derniereMaj: avant.derniereMaj, derniereTentative: avant.derniereTentative, erreur: "accord", erreurNoyau: true });
+  expect((await readWidgetState(dossierWidgets, "matin")).heures).toEqual(faite);
   fixer(le(7, 5));
   await p.verifier({ auLancement: false });
   expect(duMatin(recoltes)).toBe(1);
   // Granted again: the harvest that follows the grant counts, and the hour is not redone.
   await accorder(dossierWidgets, "matin", { domaines: ["mail.example.com"], publiques: [], profil: "defaut" });
   await p.recolterMaintenant("matin");
-  expect((await lireEtatWidget(dossierWidgets, "matin")).heures).toEqual(faite);
+  expect((await readWidgetState(dossierWidgets, "matin")).heures).toEqual(faite);
   fixer(le(7, 30));
   await p.verifier({ auLancement: false });
   expect(duMatin(recoltes)).toBe(2);
@@ -1125,9 +1125,9 @@ test("watch failing after 30 min: the retry starts at the earliest 15 min after 
     const debut = horloge();
     departs.push(`${debut.getHours()}:${String(debut.getMinutes()).padStart(2, "0")}`);
     // derniereTentative = the start, like the real harvest; the failure comes 30 min later.
-    await ecrireEtatWidget(o.dossierWidgets, o.id, { statut: "en-cours", derniereMaj: null, derniereTentative: debut.toISOString() });
+    await writeWidgetState(o.dossierWidgets, o.id, { statut: "en-cours", derniereMaj: null, derniereTentative: debut.toISOString() });
     avancer(30 * MIN);
-    await ecrireEtatWidget(o.dossierWidgets, o.id, { statut: "erreur", derniereMaj: null, derniereTentative: debut.toISOString(), erreur: "délai" });
+    await writeWidgetState(o.dossierWidgets, o.id, { statut: "erreur", derniereMaj: null, derniereTentative: debut.toISOString(), erreur: "délai" });
     return { etat: { statut: "erreur", derniereMaj: null, derniereTentative: debut.toISOString(), erreur: "délai" } };
   });
   fixer(le(7, 0));
@@ -1136,7 +1136,7 @@ test("watch failing after 30 min: the retry starts at the earliest 15 min after 
     avancer(MIN);
   }
   expect(departs).toEqual(["7:00", "7:45", "8:30", "9:15"]);
-  const { heures } = await lireEtatWidget(dossierWidgets, "matin");
+  const { heures } = await readWidgetState(dossierWidgets, "matin");
   expect(heures?.echecs).toMatchObject({ heure: "2026-10-29T07:00", nombre: 4 });
 });
 
@@ -1144,40 +1144,40 @@ test("abrupt stop: the state from before the run (error) is restored; clean stop
   const { p, c, recolter, fixer, dossierWidgets, atelier, recoltes } = await preparer();
   await ecrireMatin(c, { heures: ["07:00"] });
   const heures = { faite: "2026-10-29T07:00", echecs: null };
-  await ecrireEtatWidget(dossierWidgets, "matin", {
+  await writeWidgetState(dossierWidgets, "matin", {
     statut: "en-cours", derniereMaj: null, derniereTentative: le(8, 0).toISOString(), progression: { faits: 7, total: 12 }, heures,
     avant: { statut: "erreur", erreur: "Sélecteur introuvable", erreurNoyau: true },
   });
   fixer(le(9, 0));
   await p.verifier({ auLancement: true });
   expect(duMatin(recoltes)).toBe(0);
-  expect(await lireEtatWidget(dossierWidgets, "matin")).toEqual({
+  expect(await readWidgetState(dossierWidgets, "matin")).toEqual({
     statut: "erreur", derniereMaj: null, derniereTentative: le(8, 0).toISOString(), erreur: "Sélecteur introuvable", erreurNoyau: true, heures,
   });
   // Clean stop during a real harvest: the earlier state comes back without the avant field.
-  const avant: EtatWidget = { statut: "ok", derniereMaj: "2026-10-27T08:00:00.000Z", derniereTentative: "2026-10-27T08:00:00.000Z" };
-  await ecrireEtatWidget(dossierWidgets, "actus", avant);
+  const avant: WidgetState = { statut: "ok", derniereMaj: "2026-10-27T08:00:00.000Z", derniereTentative: "2026-10-27T08:00:00.000Z" };
+  await writeWidgetState(dossierWidgets, "actus", avant);
   let tuer!: () => void;
   const lance = vi.fn();
-  const lancer: LanceurProcessus = () => {
+  const lancer: ProcessLauncher = () => {
     lance();
     const fin = new Promise<number | null>((r) => (tuer = () => r(null)));
     return { stdin: new PassThrough(), stdout: new PassThrough(), stderr: new PassThrough(), tuer: () => tuer(), fin };
   };
-  recolter.mockImplementation((o) => executerRecolte({ ...o, lancer }));
+  recolter.mockImplementation((o) => runHarvest({ ...o, lancer }));
   atelier.supprimerRecolte = async () => tuer?.();
   const maintenant = p.recolterMaintenant("actus");
   await vi.waitFor(() => expect(lance).toHaveBeenCalled());
-  expect((await lireEtatWidget(dossierWidgets, "actus")).avant).toEqual({ statut: "ok" });
+  expect((await readWidgetState(dossierWidgets, "actus")).avant).toEqual({ statut: "ok" });
   await p.arreter();
   await maintenant;
-  expect(await lireEtatWidget(dossierWidgets, "actus")).toEqual(avant);
+  expect(await readWidgetState(dossierWidgets, "actus")).toEqual(avant);
 });
 
 test("a surChange callback that throws during the startup restore does not block the runs", async () => {
   const { dossierWidgets, recoltes, relancer, p: premier } = await preparer({ options: { surChange: () => { throw new Error("rappel"); } } });
   await premier.arreter();
-  await ecrireEtatWidget(dossierWidgets, "actus", { statut: "en-cours", derniereMaj: null, derniereTentative: null });
+  await writeWidgetState(dossierWidgets, "actus", { statut: "en-cours", derniereMaj: null, derniereTentative: null });
   const p2 = relancer();
   const erreurs = vi.spyOn(console, "error").mockImplementation(() => {});
   try {
@@ -1191,7 +1191,7 @@ test("a surChange callback that throws during the startup restore does not block
 
 describe("notification de fin de veille", () => {
   /** A « veille » widget that notifies, and a spy notifier; the fake harvest returns `nouveaux` (and `statut`). */
-  async function preparerVeille(o: { notifier?: boolean; nouveaux?: number; statut?: EtatWidget["statut"]; sansRappel?: boolean } = {}) {
+  async function preparerVeille(o: { notifier?: boolean; nouveaux?: number; statut?: WidgetState["statut"]; sansRappel?: boolean } = {}) {
     const notifications: NotificationWidget[] = [];
     const notifier = vi.fn((n: NotificationWidget) => void notifications.push(n));
     const t = await preparer({ options: o.sansRappel ? {} : { notifier } });
@@ -1203,9 +1203,9 @@ describe("notification de fin de veille", () => {
     );
     t.recolter.mockImplementation(async (r) => {
       const statut = o.statut ?? "ok";
-      const etat: EtatWidget = { statut, derniereMaj: DEBUT.toISOString(), derniereTentative: DEBUT.toISOString(), ...(statut === "erreur" ? { erreur: "boum" } : {}) };
-      if (statut === "ok") await ecrireDonnees(r.dossierWidgets, r.id, [{ titre: "PIÈGE annonce", url: "https://x.test/1" }]);
-      await ecrireEtatWidget(r.dossierWidgets, r.id, etat);
+      const etat: WidgetState = { statut, derniereMaj: DEBUT.toISOString(), derniereTentative: DEBUT.toISOString(), ...(statut === "erreur" ? { erreur: "boum" } : {}) };
+      if (statut === "ok") await writeData(r.dossierWidgets, r.id, [{ titre: "PIÈGE annonce", url: "https://x.test/1" }]);
+      await writeWidgetState(r.dossierWidgets, r.id, etat);
       return { etat, ...(o.nouveaux !== undefined ? { nouveaux: o.nouveaux } : {}) };
     });
     return { ...t, notifier, notifications };
@@ -1255,7 +1255,7 @@ describe("notification de fin de veille", () => {
   test("the text contains nothing from the data (trapped listing title)", async () => {
     const { p, notifications, dossierWidgets } = await preparerVeille({ nouveaux: 1 });
     await p.recolterMaintenant("veille");
-    expect(await lireDonnees(dossierWidgets, "veille")).toEqual([{ titre: "PIÈGE annonce", url: "https://x.test/1" }]);
+    expect(await readData(dossierWidgets, "veille")).toEqual([{ titre: "PIÈGE annonce", url: "https://x.test/1" }]);
     expect(notifications).toHaveLength(1);
     expect(JSON.stringify(notifications)).not.toMatch(/PIÈGE|x\.test/);
     expect(notifications[0]!.texte).toBe("1 nouvel élément");
@@ -1271,7 +1271,7 @@ describe("notification de fin de veille", () => {
       const etat = await p.recolterMaintenant("veille");
       expect(notifier).toHaveBeenCalledTimes(1);
       expect(etat.statut).toBe("ok");
-      expect((await lireEtatWidget(dossierWidgets, "veille")).statut).toBe("ok");
+      expect((await readWidgetState(dossierWidgets, "veille")).statut).toBe("ok");
       expect(erreurs).toHaveBeenCalledWith(expect.stringContaining("notification du widget veille"), expect.any(Error));
     } finally {
       erreurs.mockRestore();

@@ -1,12 +1,12 @@
 import { readFileSync } from "node:fs";
 import { expect, test } from "vitest";
-import { CONTEXTE_PAR_DEFAUT, FIL_DE_L_EAU_ACTION, SORTIE_PAGE_REFUSEE, SORTIE_PAGE_REQUISE, WEB_REQUIS, validerWorkflow, workflowImplicite } from "../../src/index.js";
-import { REGISTRE_BLOCS } from "../../src/workflows/blocs/index.js";
+import { DEFAULT_CONTEXT, STREAMING_ACTION, OUTPUT_PAGE_DENIED, OUTPUT_PAGE_REQUIRED, WEB_REQUIRED, validateWorkflow, implicitWorkflow } from "../../src/index.js";
+import { BLOCK_REGISTRY } from "../../src/workflows/blocs/index.js";
 
 const sortie = (id = "s", extra: object = {}) => ({ id, type: "sortie", parametres: { vers: "widget", ...extra } });
 const wf = (blocs: unknown[], liens: unknown[] = []) => ({ version: 1, blocs, liens });
 const refus = (brut: unknown): string => {
-  const r = validerWorkflow(brut);
+  const r = validateWorkflow(brut);
   if (r.ok) throw new Error("accepté à tort");
   expect(r.erreur.startsWith("Workflow invalide : ")).toBe(true);
   expect(r.erreur.length).toBeLessThanOrEqual(300);
@@ -14,7 +14,7 @@ const refus = (brut: unknown): string => {
 };
 
 test("a valid workflow gives the topological order, ties in block order", () => {
-  const r = validerWorkflow(
+  const r = validateWorkflow(
     wf(
       [
         { id: "c", type: "liste.garder", parametres: { nombre: 3 } },
@@ -32,7 +32,7 @@ test("a valid workflow gives the topological order, ties in block order", () => 
 });
 
 test("parameters receive their defaults", () => {
-  const r = validerWorkflow(wf([{ id: "src", type: "source.flux", parametres: { urls: ["https://x.fr/rss"] } }, { id: "tri", type: "ia.trier", parametres: { question: "q", texte: "t" } }, sortie()], [{ de: "src", vers: "tri" }, { de: "tri", vers: "s" }]));
+  const r = validateWorkflow(wf([{ id: "src", type: "source.flux", parametres: { urls: ["https://x.fr/rss"] } }, { id: "tri", type: "ia.trier", parametres: { question: "q", texte: "t" } }, sortie()], [{ de: "src", vers: "tri" }, { de: "tri", vers: "s" }]));
   if (!r.ok) throw new Error(r.erreur);
   const tri = r.valide.workflow.blocs[1]!;
   expect(tri.parametres).toMatchObject({ seuil: 0.5, champ: "p", siErreur: "sauter" });
@@ -41,7 +41,7 @@ test("parameters receive their defaults", () => {
 });
 
 test("the implicit workflow is valid", () => {
-  const r = validerWorkflow(workflowImplicite());
+  const r = validateWorkflow(implicitWorkflow());
   expect(r.ok && r.valide.ordre).toEqual(["recolte", "sortie"]);
 });
 
@@ -87,9 +87,9 @@ test("invalid parameters are named by the block id", () => {
 test("source.page: defiler an integer from 0 to 20, optional and without a default (an existing block's hash does not change)", () => {
   const page = (parametres: object) => wf([{ id: "p", type: "source.page", parametres: { url: "https://a.fr/", ...parametres } }, sortie()], [{ de: "p", vers: "s" }]);
   for (const defiler of [21, -1, 1.5, "8"]) expect(refus(page({ defiler }))).toMatch(/^Workflow invalide : p\.defiler : /);
-  const r = validerWorkflow(page({ defiler: 8 }));
+  const r = validateWorkflow(page({ defiler: 8 }));
   expect(r.ok && r.valide.workflow.blocs[0]!.parametres.defiler).toBe(8);
-  const sans = validerWorkflow(page({}));
+  const sans = validateWorkflow(page({}));
   expect(sans.ok && sans.valide.workflow.blocs[0]!.parametres).not.toHaveProperty("defiler");
 });
 
@@ -105,9 +105,9 @@ test("parElement is refused on a type that does not accept it", () => {
 
 test("each registry type has a module and a parameter schema", () => {
   const types = ["source.page", "source.flux", "source.recuperer", "web.chercher", "liste.nouveaux", "liste.dedoublonner", "liste.garder", "ia.trier", "ia.rediger", "code", "sortie"];
-  expect([...REGISTRE_BLOCS.keys()].sort()).toEqual([...types].sort());
-  for (const t of types) expect(typeof REGISTRE_BLOCS.get(t)!.parametres.safeParse).toBe("function");
-  expect(REGISTRE_BLOCS.get("ia.trier")!.parElement).toBe("toujours");
+  expect([...BLOCK_REGISTRY.keys()].sort()).toEqual([...types].sort());
+  for (const t of types) expect(typeof BLOCK_REGISTRY.get(t)!.parametres.safeParse).toBe("function");
+  expect(BLOCK_REGISTRY.get("ia.trier")!.parElement).toBe("toujours");
 });
 
 test("zod's common messages are worded in French", () => {
@@ -134,13 +134,13 @@ test("more than 100 blocks, or more than 400 links: refused", () => {
   const cent = [{ id: "b0", type: "source.flux", parametres: { urls: ["https://x.fr/rss"] } }, ...blocs.slice(1, 99), sortie()];
   const chaine = cent.slice(1).map((b, i) => ({ de: cent[i]!.id, vers: b.id }));
   const doublons = Array.from({ length: 400 - chaine.length }, () => chaine[0]!);
-  const r = validerWorkflow(wf(cent, [...chaine, ...doublons]));
+  const r = validateWorkflow(wf(cent, [...chaine, ...doublons]));
   if (!r.ok) throw new Error(r.erreur);
   expect(r.valide.ordre).toHaveLength(100);
 });
 
 const blocErreur = (brut: unknown): string | undefined => {
-  const r = validerWorkflow(brut);
+  const r = validateWorkflow(brut);
   if (r.ok) throw new Error("accepté à tort");
   return r.bloc;
 };
@@ -176,7 +176,7 @@ test("an output without a predecessor is refused", () => {
 test("source.page without parElement needs no input; with parElement, it does", () => {
   const avec = (parElement: boolean) =>
     wf([{ id: "p", type: "source.page", parametres: { url: "https://x.fr", parElement } }, sortie()], [{ de: "p", vers: "s" }]);
-  expect(validerWorkflow(avec(false)).ok).toBe(true);
+  expect(validateWorkflow(avec(false)).ok).toBe(true);
   expect(refus(avec(true))).toContain("p : entrée manquante");
 });
 
@@ -185,10 +185,10 @@ test("the missing input comes after the unique output and the cycles", () => {
 });
 
 test("the implicit workflow and the three shipped templates stay valid", () => {
-  expect(validerWorkflow(workflowImplicite()).ok).toBe(true);
+  expect(validateWorkflow(implicitWorkflow()).ok).toBe(true);
   for (const m of ["meteo", "actus-tech", "daily-dev"]) {
     const brut = JSON.parse(readFileSync(new URL(`../../modeles/widgets/${m}/workflow.json`, import.meta.url), "utf8"));
-    const r = validerWorkflow(brut);
+    const r = validateWorkflow(brut);
     expect(r.ok, m + (r.ok ? "" : " : " + r.erreur)).toBe(true);
   }
 });
@@ -201,26 +201,26 @@ const avecPage = (parametres: Record<string, unknown>) =>
 
 test("budgetSecondes 600 refused without a duration (170 at most), accepted with dureeMaxMinutes 30, 1900 refused (1800 at most)", () => {
   expect(refus(avecPage({ budgetSecondes: 600 }))).toBe("Workflow invalide : p.budgetSecondes : 170 au plus");
-  expect(validerWorkflow(avecPage({ budgetSecondes: 170 })).ok).toBe(true);
+  expect(validateWorkflow(avecPage({ budgetSecondes: 170 })).ok).toBe(true);
   const long = { web: false, dureeMaxMinutes: 30, proprietaire: "widget" as const, saisie: false };
-  expect(validerWorkflow(avecPage({ budgetSecondes: 600 }), long).ok).toBe(true);
-  const r = validerWorkflow(avecPage({ budgetSecondes: 1900 }), long);
+  expect(validateWorkflow(avecPage({ budgetSecondes: 600 }), long).ok).toBe(true);
+  const r = validateWorkflow(avecPage({ budgetSecondes: 1900 }), long);
   expect(r).toEqual({ ok: false, erreur: "Workflow invalide : p.budgetSecondes : 1800 au plus", bloc: "p" });
-  expect(validerWorkflow(avecPage({ budgetSecondes: 3601 }), { web: false, dureeMaxMinutes: 60, proprietaire: "widget" as const, saisie: false }).ok).toBe(false);
-  expect(validerWorkflow(avecPage({ budgetSecondes: 600 }), CONTEXTE_PAR_DEFAUT).ok).toBe(false);
-  expect(CONTEXTE_PAR_DEFAUT).toEqual({ web: false, dureeMaxMinutes: null, proprietaire: "widget" as const, saisie: false });
+  expect(validateWorkflow(avecPage({ budgetSecondes: 3601 }), { web: false, dureeMaxMinutes: 60, proprietaire: "widget" as const, saisie: false }).ok).toBe(false);
+  expect(validateWorkflow(avecPage({ budgetSecondes: 600 }), DEFAULT_CONTEXT).ok).toBe(false);
+  expect(DEFAULT_CONTEXT).toEqual({ web: false, dureeMaxMinutes: null, proprietaire: "widget" as const, saisie: false });
 });
 
 test("garderJours without reutiliser refused on source.page, accepted on liste.nouveaux", () => {
-  const r = validerWorkflow(avecPage({ garderJours: 7 }));
+  const r = validateWorkflow(avecPage({ garderJours: 7 }));
   expect(r).toEqual({ ok: false, erreur: "Workflow invalide : p.garderJours : seulement avec reutiliser", bloc: "p" });
-  const avec = validerWorkflow(avecPage({ garderJours: 7, reutiliser: "url" }));
+  const avec = validateWorkflow(avecPage({ garderJours: 7, reutiliser: "url" }));
   expect(avec.ok && avec.valide.workflow.blocs[1]!.parametres.garderJours).toBe(7);
   const nouveaux = wf(
     [{ id: "f", type: "source.flux", parametres: { urls: ["https://x.fr/rss"] } }, { id: "n", type: "liste.nouveaux", parametres: { cle: "url", garderJours: 30 } }, sortie()],
     [{ de: "f", vers: "n" }, { de: "n", vers: "s" }],
   );
-  const lu = validerWorkflow(nouveaux);
+  const lu = validateWorkflow(nouveaux);
   expect(lu.ok && lu.valide.workflow.blocs[1]!.parametres).toEqual({ cle: "url", garderJours: 30 });
 });
 
@@ -232,18 +232,18 @@ test("garderJours 0 and 366 refused", () => {
 
 test("sortie: auFilDeLEau optional, absent from the validated parameters when not written", () => {
   const base = wf([{ id: "f", type: "source.flux", parametres: { urls: ["https://x.fr/rss"] } }, sortie()], [{ de: "f", vers: "s" }]);
-  const r = validerWorkflow(base);
+  const r = validateWorkflow(base);
   expect(r.ok && r.valide.workflow.blocs[1]!.parametres).toEqual({ vers: "widget" });
-  const fil = validerWorkflow(wf([{ id: "f", type: "source.flux", parametres: { urls: ["https://x.fr/rss"] } }, sortie("s", { auFilDeLEau: true })], [{ de: "f", vers: "s" }]));
+  const fil = validateWorkflow(wf([{ id: "f", type: "source.flux", parametres: { urls: ["https://x.fr/rss"] } }, sortie("s", { auFilDeLEau: true })], [{ de: "f", vers: "s" }]));
   expect(fil.ok && fil.valide.workflow.blocs[1]!.parametres).toEqual({ vers: "widget", auFilDeLEau: true });
   expect(refus(wf([sortie("s", { auFilDeLEau: "oui" })]))).toContain("s.auFilDeLEau");
 });
 
 test("the three shipped templates and the implicit workflow stay valid, default context", () => {
-  expect(validerWorkflow(workflowImplicite(), CONTEXTE_PAR_DEFAUT).ok).toBe(true);
+  expect(validateWorkflow(implicitWorkflow(), DEFAULT_CONTEXT).ok).toBe(true);
   for (const m of ["meteo", "actus-tech", "daily-dev"]) {
     const brut = JSON.parse(readFileSync(new URL(`../../modeles/widgets/${m}/workflow.json`, import.meta.url), "utf8"));
-    const r = validerWorkflow(brut, CONTEXTE_PAR_DEFAUT);
+    const r = validateWorkflow(brut, DEFAULT_CONTEXT);
     expect(r.ok, m + (r.ok ? "" : " : " + r.erreur)).toBe(true);
   }
 });
@@ -255,20 +255,20 @@ const avecRecherche = (parametres: Record<string, unknown> = {}) =>
   );
 
 test('web.chercher without web: « Workflow invalide : web.chercher : le widget doit déclarer "web": true », block concerned', () => {
-  expect(WEB_REQUIS).toBe('web.chercher : le widget doit déclarer "web": true');
+  expect(WEB_REQUIRED).toBe('web.chercher : le widget doit déclarer "web": true');
   const attendu = { ok: false, erreur: 'Workflow invalide : web.chercher : le widget doit déclarer "web": true', bloc: "w" };
-  expect(validerWorkflow(avecRecherche())).toEqual(attendu);
-  expect(validerWorkflow(avecRecherche(), { web: false, dureeMaxMinutes: 30, proprietaire: "widget" as const, saisie: false })).toEqual(attendu);
+  expect(validateWorkflow(avecRecherche())).toEqual(attendu);
+  expect(validateWorkflow(avecRecherche(), { web: false, dureeMaxMinutes: 30, proprietaire: "widget" as const, saisie: false })).toEqual(attendu);
 });
 
 test("web.chercher with web: valid, nombre 8 and default champ recherche", () => {
-  const r = validerWorkflow(avecRecherche(), { web: true, dureeMaxMinutes: null, proprietaire: "widget" as const, saisie: false });
+  const r = validateWorkflow(avecRecherche(), { web: true, dureeMaxMinutes: null, proprietaire: "widget" as const, saisie: false });
   if (!r.ok) throw new Error(r.erreur);
   expect(r.valide.workflow.blocs[1]!.parametres).toEqual({ requete: "{titre} avis", nombre: 8, parElement: true, siErreur: "sauter", champ: "recherche" });
   const web = { web: true, dureeMaxMinutes: null, proprietaire: "widget" as const, saisie: false };
-  expect(validerWorkflow(avecRecherche({ nombre: 21 }), web)).toMatchObject({ ok: false, erreur: "Workflow invalide : w.nombre : 20 au plus", bloc: "w" });
-  expect(validerWorkflow(avecRecherche({ nombre: 0 }), web).ok).toBe(false);
-  expect(validerWorkflow(avecRecherche({ champ: "x".repeat(41) }), web).ok).toBe(false);
+  expect(validateWorkflow(avecRecherche({ nombre: 21 }), web)).toMatchObject({ ok: false, erreur: "Workflow invalide : w.nombre : 20 au plus", bloc: "w" });
+  expect(validateWorkflow(avecRecherche({ nombre: 0 }), web).ok).toBe(false);
+  expect(validateWorkflow(avecRecherche({ champ: "x".repeat(41) }), web).ok).toBe(false);
 });
 
 const action = { web: false, dureeMaxMinutes: null, proprietaire: "action" as const, saisie: false };
@@ -277,33 +277,33 @@ const avecSortie = (extra: object, vers?: string) =>
   wf([flux, { id: "s", type: "sortie", parametres: { ...(vers === undefined ? {} : { vers }), ...extra } }], [{ de: "f", vers: "s" }]);
 
 test("a widget with vers \"page\" is refused (SORTIE_PAGE_REFUSEE, block = the sortie)", () => {
-  expect(SORTIE_PAGE_REFUSEE).toBe('sortie : vers "page" seulement dans une action');
-  expect(validerWorkflow(avecSortie({}, "page"))).toEqual({ ok: false, erreur: "Workflow invalide : " + SORTIE_PAGE_REFUSEE, bloc: "s" });
+  expect(OUTPUT_PAGE_DENIED).toBe('sortie : vers "page" seulement dans une action');
+  expect(validateWorkflow(avecSortie({}, "page"))).toEqual({ ok: false, erreur: "Workflow invalide : " + OUTPUT_PAGE_DENIED, bloc: "s" });
 });
 
 test("an action with vers \"widget\" or without vers is refused (SORTIE_PAGE_REQUISE)", () => {
-  expect(SORTIE_PAGE_REQUISE).toBe('sortie : une action rend une page (vers: "page")');
-  const attendu = { ok: false, erreur: "Workflow invalide : " + SORTIE_PAGE_REQUISE, bloc: "s" };
-  expect(validerWorkflow(avecSortie({}, "widget"), action)).toEqual(attendu);
-  expect(validerWorkflow(avecSortie({}), action)).toEqual(attendu);
+  expect(OUTPUT_PAGE_REQUIRED).toBe('sortie : une action rend une page (vers: "page")');
+  const attendu = { ok: false, erreur: "Workflow invalide : " + OUTPUT_PAGE_REQUIRED, bloc: "s" };
+  expect(validateWorkflow(avecSortie({}, "widget"), action)).toEqual(attendu);
+  expect(validateWorkflow(avecSortie({}), action)).toEqual(attendu);
 });
 
 test("an action with vers \"page\" is valid, sortie.vers === \"page\"", () => {
-  const r = validerWorkflow(avecSortie({}, "page"), action);
+  const r = validateWorkflow(avecSortie({}, "page"), action);
   if (!r.ok) throw new Error(r.erreur);
   expect(r.valide.sortie).toEqual({ id: "s", vers: "page" });
 });
 
 test("auFilDeLEau in an action: FIL_DE_L_EAU_ACTION", () => {
-  expect(FIL_DE_L_EAU_ACTION).toBe("sortie.auFilDeLEau : pas dans une action");
-  expect(validerWorkflow(avecSortie({ auFilDeLEau: true }, "page"), action)).toEqual({ ok: false, erreur: "Workflow invalide : " + FIL_DE_L_EAU_ACTION, bloc: "s" });
-  expect(validerWorkflow(avecSortie({ auFilDeLEau: false }, "page"), action).ok).toBe(true);
+  expect(STREAMING_ACTION).toBe("sortie.auFilDeLEau : pas dans une action");
+  expect(validateWorkflow(avecSortie({ auFilDeLEau: true }, "page"), action)).toEqual({ ok: false, erreur: "Workflow invalide : " + STREAMING_ACTION, bloc: "s" });
+  expect(validateWorkflow(avecSortie({ auFilDeLEau: false }, "page"), action).ok).toBe(true);
 });
 
 test("a widget's validated parameters are identical to before (vers \"widget\", no key added)", () => {
-  const r = validerWorkflow(workflowImplicite(), CONTEXTE_PAR_DEFAUT);
+  const r = validateWorkflow(implicitWorkflow(), DEFAULT_CONTEXT);
   if (!r.ok) throw new Error(r.erreur);
-  expect(CONTEXTE_PAR_DEFAUT).toEqual({ web: false, dureeMaxMinutes: null, proprietaire: "widget", saisie: false });
+  expect(DEFAULT_CONTEXT).toEqual({ web: false, dureeMaxMinutes: null, proprietaire: "widget", saisie: false });
   expect(r.valide.workflow.blocs.find((b) => b.id === "sortie")!.parametres).toEqual({ vers: "widget" });
-  expect(validerWorkflow(avecSortie({})).ok).toBe(true);
+  expect(validateWorkflow(avecSortie({})).ok).toBe(true);
 });

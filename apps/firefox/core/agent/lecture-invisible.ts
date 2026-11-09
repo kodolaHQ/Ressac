@@ -1,4 +1,4 @@
-import { adresseLocale } from "@webaios/noyau";
+import { localUrl } from "@webaios/noyau";
 import type { EtatNavigateur, IdProfil } from "../../shared/modele";
 
 /** At most 2 MB of rendered HTML for an invisible HTML read. */
@@ -26,7 +26,7 @@ export function urlPermise(brute: string, domaines: readonly string[] | undefine
     return false;
   }
   if (u.protocol !== "http:" && u.protocol !== "https:") return false;
-  if (!adressesLocales && adresseLocale(u.hostname)) return false;
+  if (!adressesLocales && localUrl(u.hostname)) return false;
   return !domaines || domaines.map(normaliser).includes(normaliser(u.hostname));
 }
 

@@ -1,5 +1,5 @@
 import { expect, test, vi } from "vitest";
-import { cheminsEspace, type Lot, type ProjetSuivi } from "@webaios/noyau";
+import { spacePaths, type Lot, type TrackedProject } from "@webaios/noyau";
 import { AUCUNE_FENETRE, creerEnvoi } from "../../core/design/envoi";
 
 const lot: Lot = {
@@ -19,7 +19,7 @@ const lot: Lot = {
 };
 
 function monter() {
-  const chemins = cheminsEspace("/tmp/racine-envoi");
+  const chemins = spacePaths("/tmp/racine-envoi");
   const o = {
     chemins,
     fenetreAgent: vi.fn(() => "f7"),
@@ -43,7 +43,7 @@ test("app: preRemplir receives the agent's window and the text, never a \r; exte
   expect(o.donnerLeTerminal).toHaveBeenCalledWith("f7");
   expect(o.devant).toHaveBeenCalledWith("f7");
 
-  const externe: ProjetSuivi = { type: "externe", projet: "ext-0123456789abcdef", dossier: "/tmp/p", nom: "P", client: "c1" };
+  const externe: TrackedProject = { type: "externe", projet: "ext-0123456789abcdef", dossier: "/tmp/p", nom: "P", client: "c1" };
   await envoyer(externe, { ...lot, destination: "mcp", client: "c1" });
   expect(o.preRemplir).toHaveBeenCalledTimes(1);
 });

@@ -3,14 +3,14 @@ import { readFile, rm, stat, writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as attendre } from "node:timers/promises";
 import {
-  CLE_INVALIDE, CLE_MAX, TAILLE_MEMOIRE_SITE, PROFONDEUR_MEMOIRE_MAX, ECRITURE_MEMOIRE_MS, MEMOIRE_PLEINE, MemoireSite, POSITIONS_MAX, VALEUR_NON_JSON,
+  KEY_INVALID, KEY_MAX, SITE_MEMORY_SIZE, MEMORY_DEPTH_MAX, MEMORY_WRITE_MS, MEMORY_FULL, SiteMemory, POSITIONS_MAX, VALEUR_NON_JSON,
 } from "../../src/sites/memoire.js";
 import { dossierTemporaire } from "../aide/temporaire.js";
 
 const fichier = (d: string) => join(d, "s", "memoire.json");
 let n = 0;
 const horloge = () => new Date(Date.UTC(2026, 0, 1) + n++ * 1000).toISOString();
-const ouvrir = (d: string) => MemoireSite.ouvrir(d, "s", { maintenant: horloge });
+const ouvrir = (d: string) => SiteMemory.ouvrir(d, "s", { maintenant: horloge });
 const existe = (p: string) => stat(p).then(() => true, () => false);
 
 test("retenir then read, re-read by a new instance after vider()", async () => {
@@ -34,7 +34,7 @@ test("the write is deferred by at most ECRITURE_MEMOIRE_MS and grouped", async (
   m.retenir("a", 1, null);
   m.retenir("b", 2, null);
   expect(await existe(fichier(d))).toBe(false);
-  await attendre(ECRITURE_MEMOIRE_MS + 300);
+  await attendre(MEMORY_WRITE_MS + 300);
   expect(JSON.parse(await readFile(fichier(d), "utf8")).valeurs).toMatchObject({ a: { valeur: 1 }, b: { valeur: 2 } });
 });
 
@@ -43,7 +43,7 @@ test("300 KB value: MEMOIRE_PLEINE, memory unchanged", async () => {
   m.retenir("petite", 1, null);
   m.noterPosition("/v", 100, 2400);
   const avant = JSON.stringify(m.contenu());
-  expect(m.retenir("grosse", "x".repeat(300 * 1024), null)).toEqual({ ok: false, erreur: MEMOIRE_PLEINE });
+  expect(m.retenir("grosse", "x".repeat(300 * 1024), null)).toEqual({ ok: false, erreur: MEMORY_FULL });
   expect(JSON.stringify(m.contenu())).toBe(avant);
 });
 
@@ -69,9 +69,9 @@ test("fonction, cycle, undefined : VALEUR_NON_JSON", async () => {
 
 test("empty or 201-character key: CLE_INVALIDE", async () => {
   const m = await ouvrir(await dossierTemporaire());
-  expect(m.retenir("", 1, null)).toEqual({ ok: false, erreur: CLE_INVALIDE });
-  expect(m.retenir("a".repeat(CLE_MAX + 1), 1, null)).toEqual({ ok: false, erreur: CLE_INVALIDE });
-  expect(m.retenir("a".repeat(CLE_MAX), 1, null)).toEqual({ ok: true });
+  expect(m.retenir("", 1, null)).toEqual({ ok: false, erreur: KEY_INVALID });
+  expect(m.retenir("a".repeat(KEY_MAX + 1), 1, null)).toEqual({ ok: false, erreur: KEY_INVALID });
+  expect(m.retenir("a".repeat(KEY_MAX), 1, null)).toEqual({ ok: true });
 });
 
 test("__proto__ is a key like any other", async () => {
@@ -146,7 +146,7 @@ test("effacer: file absent, content empty, pending write cancelled, surChange no
   expect(appels).toBe(1);
   expect(m.contenu()).toEqual({ version: 1, valeurs: {}, positions: {} });
   expect(await existe(fichier(d))).toBe(false);
-  await attendre(ECRITURE_MEMOIRE_MS + 300);
+  await attendre(MEMORY_WRITE_MS + 300);
   expect(await existe(fichier(d))).toBe(false);
   arreter();
   m.retenir("c", 3, null);
@@ -168,11 +168,11 @@ const imbrique = (n: number) => {
   for (let i = 0; i < n; i++) v = [v];
   return v;
 };
-const taille = (m: MemoireSite) => Buffer.byteLength(JSON.stringify(m.contenu()));
+const taille = (m: SiteMemory) => Buffer.byteLength(JSON.stringify(m.contenu()));
 
 test("deeply nested, cyclic or reference-bomb value: refusal without an exception", async () => {
   const m = await ouvrir(await dossierTemporaire());
-  expect(PROFONDEUR_MEMOIRE_MAX).toBe(32);
+  expect(MEMORY_DEPTH_MAX).toBe(32);
   expect(m.retenir("ok", imbrique(32), null)).toEqual({ ok: true });
   expect(m.retenir("trop", imbrique(33), null)).toMatchObject({ ok: false });
   expect(m.retenir("abime", imbrique(7000), null)).toMatchObject({ ok: false });
@@ -192,30 +192,30 @@ test("deeply nested, cyclic or reference-bomb value: refusal without an exceptio
 
 test("noterPosition refuses a position that does not fit and keeps the total under 256 KB", async () => {
   const m = await ouvrir(await dossierTemporaire());
-  expect(m.retenir("gros", "x".repeat(TAILLE_MEMOIRE_SITE - 250), null)).toEqual({ ok: true });
+  expect(m.retenir("gros", "x".repeat(SITE_MEMORY_SIZE - 250), null)).toEqual({ ok: true });
   m.noterPosition("/" + "y".repeat(2000), 10, 100);
   expect(m.position("/" + "y".repeat(2000))).toBeNull();
-  expect(taille(m)).toBeLessThanOrEqual(TAILLE_MEMOIRE_SITE);
+  expect(taille(m)).toBeLessThanOrEqual(SITE_MEMORY_SIZE);
 });
 
 test("eviction follows quand, never the key order, and keeps the written position", async () => {
   const m = await ouvrir(await dossierTemporaire());
   m.noterPosition("b", 10, 100);
   m.noterPosition("5", 10, 100);
-  expect(m.retenir("gros", "x".repeat(TAILLE_MEMOIRE_SITE - 180), null)).toEqual({ ok: true });
+  expect(m.retenir("gros", "x".repeat(SITE_MEMORY_SIZE - 180), null)).toEqual({ ok: true });
   expect(m.position("b")).toBeNull();
   expect(m.position("5")).not.toBeNull();
   m.noterPosition("c", 10, 100);
   expect(m.position("c")).not.toBeNull();
   expect(m.position("5")).toBeNull();
-  expect(taille(m)).toBeLessThanOrEqual(TAILLE_MEMOIRE_SITE);
+  expect(taille(m)).toBeLessThanOrEqual(SITE_MEMORY_SIZE);
 });
 
 test("a retenir at the limit with 500 positions stays fast", async () => {
   const m = await ouvrir(await dossierTemporaire());
   for (let i = 0; i < 500; i++) m.noterPosition(`/v/${i}-${"x".repeat(100)}`, 10, 100);
   const t0 = performance.now();
-  for (let i = 0; i < 20; i++) m.retenir("gros", "x".repeat(TAILLE_MEMOIRE_SITE - 40000 + i), null);
+  for (let i = 0; i < 20; i++) m.retenir("gros", "x".repeat(SITE_MEMORY_SIZE - 40000 + i), null);
   expect((performance.now() - t0) / 20).toBeLessThan(15);
 });
 
@@ -229,7 +229,7 @@ test("a re-read file is brought back to the bounds", async () => {
   for (let i = 0; i < 700; i++) positions[`/p${i}`] = { t: 1, duree: 100, quand: new Date(Date.UTC(2026, 0, 1, 0, 0, i)).toISOString() };
   await writeFile(fichier(d), JSON.stringify({ version: 1, valeurs, positions }));
   const m = await ouvrir(d);
-  expect(taille(m)).toBeLessThanOrEqual(TAILLE_MEMOIRE_SITE);
+  expect(taille(m)).toBeLessThanOrEqual(SITE_MEMORY_SIZE);
   expect(m.lire("profond")).toBeNull();
   expect(m.lire("k0")).not.toBeNull();
   expect(m.lire("k3")).toBeNull();
@@ -254,8 +254,8 @@ test("huge value: refusal before any JSON.parse", async () => {
   const m = await ouvrir(await dossierTemporaire());
   const parse = vi.spyOn(JSON, "parse");
   try {
-    expect(m.retenir("a", "x".repeat(5_000_000), null)).toEqual({ ok: false, erreur: MEMOIRE_PLEINE });
-    expect(m.retenir("b", Array.from({ length: 300_000 }, () => 1), null)).toEqual({ ok: false, erreur: MEMOIRE_PLEINE });
+    expect(m.retenir("a", "x".repeat(5_000_000), null)).toEqual({ ok: false, erreur: MEMORY_FULL });
+    expect(m.retenir("b", Array.from({ length: 300_000 }, () => 1), null)).toEqual({ ok: false, erreur: MEMORY_FULL });
     expect(parse).not.toHaveBeenCalled();
   } finally {
     parse.mockRestore();

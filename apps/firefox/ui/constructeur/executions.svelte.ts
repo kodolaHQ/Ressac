@@ -1,4 +1,4 @@
-import type { DirectWidget, EtatDirect, Execution, ResultatEssai, ResumeExecution } from "@webaios/noyau";
+import type { DirectWidget, DirectState, Execution, AttemptResult, ResumeExecution } from "@webaios/noyau";
 import type { ApiWebaios } from "../../shared/api";
 import { estCleAction } from "./cible";
 
@@ -9,9 +9,9 @@ export type SourceExecutions = Pick<ApiWebaios["accueil"], "executions" | "execu
  */
 export type Lanceur = {
   lancer(cle: string, saisie?: string | null): Promise<{ execution?: string; erreur?: string }>;
-  rejouer(cle: string, execution: string, bloc: string): Promise<ResultatEssai>;
-  direct(): Promise<EtatDirect>;
-  surDirect(rappel: (e: EtatDirect) => void): () => void;
+  rejouer(cle: string, execution: string, bloc: string): Promise<AttemptResult>;
+  direct(): Promise<DirectState>;
+  surDirect(rappel: (e: DirectState) => void): () => void;
 };
 
 /** The prefix of the kernel's refusals, reused for a request that fails on the way. */
@@ -41,7 +41,7 @@ export class Executions {
   /** The chosen run could not be read (evicted between the list and the detail, or error). */
   introuvable = $state(false);
   /** What is running right now (all widgets together, one run per lane) and what waits in the queues. */
-  direct = $state.raw<EtatDirect>({ courants: [], enAttente: [] });
+  direct = $state.raw<DirectState>({ courants: [], enAttente: [] });
   /** The latest refusal of « Rejouer » (or « Lancer » for an action), as text. */
   refus = $state<string | null>(null);
   /** A « Lancer » or « Rejouer » request from this builder has not answered yet. */
@@ -93,7 +93,7 @@ export class Executions {
    * Unfinished blocks are not relayed at the end of a run: when this widget's run stops (or gives way to the next
    * one), the view realigns on the written run instead of keeping « en cours » badges.
    */
-  private appliquerDirect(e: EtatDirect): void {
+  private appliquerDirect(e: DirectState): void {
     const avant = this.enDirect;
     this.direct = e;
     const apres = this.enDirect;

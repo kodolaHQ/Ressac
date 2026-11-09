@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { expect, test } from "vitest";
-import { cheminsEspace } from "../../src/chemins.js";
+import { spacePaths } from "../../src/chemins.js";
 import { Atelier } from "../../src/conteneur/atelier.js";
 import { SessionAgent } from "../../src/pty/session.js";
 
@@ -11,7 +11,7 @@ const dansAtelier = (motif: string) =>
   execFileSync("docker", ["exec", "webaios-atelier", "sh", "-c", `ps -eo args | grep '[${motif[0]}]${motif.slice(1)}' || true`]).toString().trim();
 
 test.skipIf(!actif)("stopping a session kills in the container an agent deaf to HUP and TERM, and what it launched", async () => {
-  const a = new Atelier({ chemins: cheminsEspace() });
+  const a = new Atelier({ chemins: spacePaths() });
   expect(await a.etat()).toBe("demarre");
   const s = SessionAgent.demarrer(a.commandeSession("integration1", ["sh", "-c", "trap '' HUP TERM; sleep 302 & wait"]), {
     cols: 80, rows: 24, arreterDistant: () => a.arreterSession("integration1"),
@@ -23,7 +23,7 @@ test.skipIf(!actif)("stopping a session kills in the container an agent deaf to 
 }, 30_000);
 
 test.skipIf(!actif)("stopping a session also kills the servers the agent detached from its group (nohup, setsid)", async () => {
-  const a = new Atelier({ chemins: cheminsEspace() });
+  const a = new Atelier({ chemins: spacePaths() });
   expect(await a.etat()).toBe("demarre");
   const s = SessionAgent.demarrer(a.commandeSession("integration2", ["sh", "-c", "setsid nohup sleep 303 >/dev/null 2>&1 & sleep 304"]), {
     cols: 80, rows: 24, arreterDistant: () => a.arreterSession("integration2"),
@@ -35,7 +35,7 @@ test.skipIf(!actif)("stopping a session also kills the servers the agent detache
 }, 30_000);
 
 test.skipIf(!actif)("at launch, the sessions left by an abruptly killed app (without a stop) are stopped", async () => {
-  const a = new Atelier({ chemins: cheminsEspace() });
+  const a = new Atelier({ chemins: spacePaths() });
   // Without arreterDistant: like an app that dies, only the local docker client disappears.
   const s = SessionAgent.demarrer(a.commandeSession("integration3", ["sh", "-c", "trap '' HUP TERM; setsid nohup sleep 305 >/dev/null 2>&1 & sleep 306"]), { cols: 80, rows: 24 });
   await expect.poll(() => dansAtelier("sleep 305"), { timeout: 10_000 }).not.toBe("");

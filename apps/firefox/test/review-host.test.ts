@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpath
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { AVERTISSEMENT_CAPTURE_SITE, HTML_MAX, ID_PROJET, INDISPONIBLE_DESIGN, INDISPONIBLE_DESIGN_SITE, Remarques, TRONQUE, type CheminsEspace, type Lot, type ProjetSuivi } from "../../../packages/noyau/src/index";
+import { SITE_CAPTURE_WARNING, HTML_MAX, PROJECT_ID, DESIGN_UNAVAILABLE, SITE_DESIGN_UNAVAILABLE, Remarques, TRUNCATED, type SpacePaths, type Lot, type TrackedProject } from "../../../packages/noyau/src/index";
 import { PLAGE_HORS_BLOC } from "../shared/modele";
 import { COMPARAISON_INCONNUE, ReviewService } from "../noyau/review";
 import * as g from "../shared/design-guards";
@@ -31,13 +31,13 @@ describe("review service", () => {
     writeFileSync(join(sites, "tuning", "retouches", "tuning.css"), "/* rien */\n");
     const dossiers = { remarquesEspace: join(root, "remarques"), prive: join(root, "prive") };
     const remarques = new Remarques({ dossiers });
-    const sent: { projet: ProjetSuivi; lot: Lot }[] = [];
+    const sent: { projet: TrackedProject; lot: Lot }[] = [];
     const registre = {
       projets: () => [{ id: EXT.slice(4), nom: "Ext", dossier: join(projets, "essai"), ports: [], client: "client-0001", declare: "" }],
       clients: () => [{ id: "client-0001", nom: "Claude", empreinte: "", cree: "" }],
     };
     const service = new ReviewService({
-      dossiers, chemins: { projets, sites } as CheminsEspace, registre: () => registre as never,
+      dossiers, chemins: { projets, sites } as SpacePaths, registre: () => registre as never,
       sites: async () => [{ id: "tuning", nom: "Tuning" }], remarques,
       envoyer: async (projet, lot) => void sent.push({ projet, lot }),
     });
@@ -277,7 +277,7 @@ describe("review service", () => {
 
 describe("design guards", () => {
   it("fixes the id, token and text bounds and the failure message", () => {
-    expect(g.ID_PROJECT.source).toBe(ID_PROJET.source);
+    expect(g.ID_PROJECT.source).toBe(PROJECT_ID.source);
     expect(g.REVIEW_TOKEN.source).toBe("^[0-9a-f]{40}:[0-9a-f]{40}$");
     expect(g.REMARK_TEXT_MAX).toBe(4000);
     expect(g.raisonEchec(new Error("x"))).toBe("Le MCP externe n'a pas pu démarrer : x");
@@ -306,21 +306,21 @@ describe("design guards", () => {
   });
 
   it("design texts and bounds are kernel's", () => {
-    expect(g.UNAVAILABLE_DESIGN).toBe(INDISPONIBLE_DESIGN);
-    expect([g.UNAVAILABLE_DESIGN_SITE, g.CAPTURE_WARNING_SITE]).toEqual([INDISPONIBLE_DESIGN_SITE, AVERTISSEMENT_CAPTURE_SITE]);
-    expect([g.HTML_MAX, g.TRONQUE]).toEqual([HTML_MAX, TRONQUE]);
+    expect(g.UNAVAILABLE_DESIGN).toBe(DESIGN_UNAVAILABLE);
+    expect([g.UNAVAILABLE_DESIGN_SITE, g.CAPTURE_WARNING_SITE]).toEqual([SITE_DESIGN_UNAVAILABLE, SITE_CAPTURE_WARNING]);
+    expect([g.HTML_MAX, g.TRONQUE]).toEqual([HTML_MAX, TRUNCATED]);
     expect([g.INVALID_REQUEST, g.NOTHING_AIMED, g.DESIGN_ID_MAX]).toEqual(["Demande invalide", "Aucun élément visé.", 64]);
   });
 
   it("checkDesignContext: viseur.ts's rules, strict, known keys only", () => {
     const ok = {
-      selecteur: "#b", etiquette: "b", html: "a".repeat(HTML_MAX) + TRONQUE, adresse: "http://x/", voisinage: { parent: "p", freres: [] },
+      selecteur: "#b", etiquette: "b", html: "a".repeat(HTML_MAX) + TRUNCATED, adresse: "http://x/", voisinage: { parent: "p", freres: [] },
       styles: { color: "red" }, source: { fichier: "a.svelte", ligne: 1, colonne: 2 }, vue: { largeur: 1, hauteur: 2 },
     };
     expect(g.checkDesignContext({ ...ok, rect: { x: 1 } })).toEqual(ok);
     expect(g.checkDesignContext({ ...ok, source: null }).source).toBeNull();
     for (const bad of [
-      null, "x", { ...ok, html: "a".repeat(HTML_MAX + TRONQUE.length + 1) }, { ...ok, vue: { largeur: Infinity, hauteur: 1 } },
+      null, "x", { ...ok, html: "a".repeat(HTML_MAX + TRUNCATED.length + 1) }, { ...ok, vue: { largeur: Infinity, hauteur: 1 } },
       { ...ok, voisinage: { parent: "p", freres: [1] } }, { ...ok, styles: { a: null } }, { ...ok, etiquette: 2 },
     ]) expect(() => g.checkDesignContext(bad)).toThrow(g.INVALID_REQUEST);
     // sourceSaine: a bad source field is dropped, the remark stays (a Svelte loc.column of 0 is real).

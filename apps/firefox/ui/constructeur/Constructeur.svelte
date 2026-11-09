@@ -2,7 +2,7 @@
   import "@xyflow/svelte/dist/style.css";
   import { SvelteFlowProvider } from "@xyflow/svelte";
   import { untrack } from "svelte";
-  import type { CatalogueBloc, Proprietaire } from "@webaios/noyau";
+  import type { CatalogueBloc, Owner } from "@webaios/noyau";
   import { focusAgent } from "../composants/agent.svelte";
   import { api } from "../etat.svelte";
   import { placeLibre } from "./ajout";
@@ -25,7 +25,7 @@
    * (`webaios://workflow/action/<id>`): same canvas; an action has its panel, its input at launch and its page
    * preview.
    */
-  let { cible }: { cible: Proprietaire } = $props();
+  let { cible }: { cible: Owner } = $props();
   // svelte-ignore state_referenced_locally
   const estAction = cible.type === "action";
   /** This workflow's key in the window states (edits, codes, chosen run). */

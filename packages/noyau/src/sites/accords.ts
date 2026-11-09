@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
-import { ecrireAtomique } from "../workflows/executions.js";
+import { writeAtomic } from "../workflows/executions.js";
 import { ID_SITE, type DeclarationSite } from "./schemas.js";
 
 /**
@@ -17,7 +17,7 @@ export const DroitsSite = z.object({
 });
 export type DroitsSite = z.infer<typeof DroitsSite>;
 
-export const fichierAccordsSites = (profil: string) => join(profil, "sites-accords.json");
+export const siteGrantsFile = (profile: string) => join(profile, "sites-accords.json");
 
 function verifierId(id: string): void {
   if (!ID_SITE.test(id)) throw new Error(`id d'appli de site invalide : ${id}`);
@@ -30,7 +30,7 @@ const unique = (l: string[]) => [...new Set(l)];
  * domains (sha256 of a canonical JSON: lowercase domains, no duplicates, sorted). The agent's read grant
  * is only valid for this hash: site.json rewritten with another name or other domains asks for the card again.
  */
-export function empreinteLectureSite(d: DeclarationSite): string {
+export function siteReadHash(d: DeclarationSite): string {
   const canon = (l: string[]) => unique(l.map((x) => x.toLowerCase())).sort();
   return createHash("sha256").update(JSON.stringify({ nom: d.nom, domaines: canon(d.domaines), connexion: canon(d.connexion) })).digest("hex");
 }
@@ -40,13 +40,13 @@ export function empreinteLectureSite(d: DeclarationSite): string {
  * login domains (sha256 of a canonical JSON, lowercase, no duplicates, sorted). Neither the name, nor the tweaks, nor the
  * resume is part of it.
  */
-export function empreinteExtensionsSite(d: DeclarationSite): string {
+export function siteExtensionsHash(d: DeclarationSite): string {
   const canon = (l: string[]) => unique(l.map((x) => x.toLowerCase())).sort();
   return createHash("sha256").update(JSON.stringify({ domaines: canon(d.domaines), connexion: canon(d.connexion) })).digest("hex");
 }
 
 /** At least one tweak, or the video resume. */
-export function accordNecessaire(d: DeclarationSite): boolean {
+export function grantNeeded(d: DeclarationSite): boolean {
   return d.retouches.length > 0 || d.reprise;
 }
 
@@ -60,29 +60,29 @@ export function droitsDe(d: DeclarationSite): DroitsSite {
 }
 
 /** The grant covers the declaration if it asks for nothing more than what was granted. */
-export function accordCouvre(a: DroitsSite | null, d: DeclarationSite): boolean {
+export function grantCovers(a: DroitsSite | null, d: DeclarationSite): boolean {
   if (!a) return false;
-  const voulu = droitsDe(d);
+  const wanted = droitsDe(d);
   const dans = (x: string[], y: string[]) => x.every((v) => y.includes(v));
-  const accorde = {
+  const granted = {
     domaines: a.domaines.map((x) => x.toLowerCase()),
     connexion: a.connexion.map((x) => x.toLowerCase()),
     cadres: a.cadres,
   };
   return (
-    dans(voulu.domaines, accorde.domaines) &&
-    dans(voulu.connexion, accorde.connexion) &&
-    dans(voulu.cadres, accorde.cadres) &&
-    (!voulu.reprise || a.reprise)
+    dans(wanted.domaines, granted.domaines) &&
+    dans(wanted.connexion, granted.connexion) &&
+    dans(wanted.cadres, granted.cadres) &&
+    (!wanted.reprise || a.reprise)
   );
 }
 
 /** Without a prototype: an id like « constructor » or « __proto__ » has no grant and throws nothing. */
-async function lire(profil: string, strict: boolean): Promise<Record<string, DroitsSite>> {
+async function lire(profile: string, strict: boolean): Promise<Record<string, DroitsSite>> {
   const accords: Record<string, DroitsSite> = Object.create(null);
   let brut: unknown;
   try {
-    brut = JSON.parse(await readFile(fichierAccordsSites(profil), "utf8"));
+    brut = JSON.parse(await readFile(siteGrantsFile(profile), "utf8"));
   } catch (e) {
     // absent or damaged: no grant; any other failure (EMFILE, EACCES…) makes a write fail
     if (strict && !(e instanceof SyntaxError) && (e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
@@ -97,37 +97,37 @@ async function lire(profil: string, strict: boolean): Promise<Record<string, Dro
 }
 
 /** The valid grants; an absent or damaged file counts as no grant. */
-export const lireAccordsSites = (profil: string): Promise<Record<string, DroitsSite>> => lire(profil, false);
+export const lireAccordsSites = (profile: string): Promise<Record<string, DroitsSite>> => lire(profile, false);
 
 /** One write at a time per file: two simultaneous grants do not erase each other. */
 const files = new Map<string, Promise<unknown>>();
 
-function modifier(profil: string, changer: (a: Record<string, DroitsSite>) => void): Promise<void> {
-  const cle = fichierAccordsSites(profil);
-  const precedente = files.get(cle) ?? Promise.resolve();
-  const suivante = precedente.catch(() => {}).then(async () => {
-    const accords = await lire(profil, true);
+function modifier(profile: string, changer: (a: Record<string, DroitsSite>) => void): Promise<void> {
+  const key = siteGrantsFile(profile);
+  const previous = files.get(key) ?? Promise.resolve();
+  const next = previous.catch(() => {}).then(async () => {
+    const accords = await lire(profile, true);
     changer(accords);
-    await ecrireAtomique(cle, JSON.stringify({ ...accords }, null, 2));
+    await writeAtomic(key, JSON.stringify({ ...accords }, null, 2));
   });
-  files.set(cle, suivante);
-  void suivante.finally(() => {
-    if (files.get(cle) === suivante) files.delete(cle);
+  files.set(key, next);
+  void next.finally(() => {
+    if (files.get(key) === next) files.delete(key);
   }).catch(() => {});
-  return suivante;
+  return next;
 }
 
-export async function accorderSite(profil: string, id: string, d: DeclarationSite): Promise<void> {
+export async function accorderSite(profile: string, id: string, d: DeclarationSite): Promise<void> {
   verifierId(id);
   const droits = droitsDe(d);
-  return modifier(profil, (accords) => {
+  return modifier(profile, (accords) => {
     accords[id] = droits;
   });
 }
 
-export async function retirerAccordSite(profil: string, id: string): Promise<void> {
+export async function retirerAccordSite(profile: string, id: string): Promise<void> {
   verifierId(id);
-  return modifier(profil, (accords) => {
+  return modifier(profile, (accords) => {
     delete accords[id];
   });
 }

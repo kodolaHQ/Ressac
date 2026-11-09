@@ -1,24 +1,24 @@
-import { REGISTRE_BLOCS } from "./blocs/index.js";
-import type { ChampFormulaire, FamilleBloc } from "./blocs/communs.js";
+import { BLOCK_REGISTRY } from "./blocs/index.js";
+import type { FormField, BlockFamily } from "./blocs/communs.js";
 
-export type { ChampFormulaire, FamilleBloc } from "./blocs/communs.js";
+export type { FormField, BlockFamily } from "./blocs/communs.js";
 
 /** A block type as the interface shows it: serializable (no function or zod schema), cloneable through IPC. */
 export type CatalogueBloc = {
   type: string;
   libelle: string;
-  famille: FamilleBloc;
+  famille: BlockFamily;
   description: string;
   parElement: "non" | "option" | "toujours";
   entree: "requise" | "facultative" | "parElement";
-  champs: ChampFormulaire[];
+  champs: FormField[];
 };
 
-const FAMILLES: FamilleBloc[] = ["Sources", "Listes", "IA", "Logique/Code", "Sortie"];
+const FAMILIES: BlockFamily[] = ["Sources", "Listes", "IA", "Logique/Code", "Sortie"];
 
 /** The block types, grouped by family then in registry order. */
 export function catalogueBlocs(): CatalogueBloc[] {
-  const blocs = [...REGISTRE_BLOCS.values()].map((d) => ({
+  const blocs = [...BLOCK_REGISTRY.values()].map((d) => ({
     type: d.type,
     libelle: d.libelle,
     famille: d.famille,
@@ -27,5 +27,5 @@ export function catalogueBlocs(): CatalogueBloc[] {
     entree: d.entree,
     champs: structuredClone(d.champs),
   }));
-  return FAMILLES.flatMap((f) => blocs.filter((b) => b.famille === f));
+  return FAMILIES.flatMap((f) => blocs.filter((b) => b.famille === f));
 }

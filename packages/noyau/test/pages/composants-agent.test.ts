@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { lireComposantsAgent } from "../../src/pages/composants-agent.js";
+import { readAgentComponents } from "../../src/pages/composants-agent.js";
 
 let dossier: string;
 beforeEach(async () => { dossier = await mkdtemp(join(tmpdir(), "composants-")); });
@@ -19,7 +19,7 @@ async function ecrire(nom: string, json: string | null, html: string | null) {
 describe("lireComposantsAgent", () => {
   it("graphique-barres (composant.json + composant.html) is valid", async () => {
     await ecrire("graphique-barres", decl("graphique-barres"), "<svg></svg>");
-    const r = await lireComposantsAgent(dossier);
+    const r = await readAgentComponents(dossier);
     expect(r.invalides).toEqual([]);
     expect(r.valides).toHaveLength(1);
     expect(r.valides[0]).toMatchObject({ nom: "graphique-barres", origine: "agent" });
@@ -28,7 +28,7 @@ describe("lireComposantsAgent", () => {
 
   it("composant.html absent : invalide « composant.html absent »", async () => {
     await ecrire("sans-html", decl("sans-html"), null);
-    const r = await lireComposantsAgent(dossier);
+    const r = await readAgentComponents(dossier);
     expect(r.valides).toEqual([]);
     expect(r.invalides).toEqual([{ nom: "sans-html", erreur: "composant.html absent" }]);
   });
@@ -43,7 +43,7 @@ describe("lireComposantsAgent", () => {
     await symlink(join(dossier, "cible", "composant.html"), join(dossier, "lien-dossier-cible", "composant.html"));
     await writeFile(join(dossier, "lien-dossier-cible", "composant.json"), decl("lien-dossier-cible"));
     await symlink(join(dossier, "cible"), join(dossier, "lien"));
-    const r = await lireComposantsAgent(dossier);
+    const r = await readAgentComponents(dossier);
     const erreurs = Object.fromEntries(r.invalides.map((i) => [i.nom, i.erreur]));
     expect(erreurs["autre"]).toMatch(/nom/);
     expect(erreurs["tableau"]).toMatch(/intégré/);
@@ -58,7 +58,7 @@ describe("lireComposantsAgent", () => {
   it("an invalid one does not prevent the others from being read", async () => {
     await ecrire("a-casse", "{pas du json", "<p></p>");
     await ecrire("b-bon", decl("b-bon"), "<p></p>");
-    const r = await lireComposantsAgent(dossier);
+    const r = await readAgentComponents(dossier);
     expect(r.valides.map((v) => v.nom)).toEqual(["b-bon"]);
     expect(r.invalides).toEqual([{ nom: "a-casse", erreur: "composant.json illisible (pas du JSON valide)" }]);
   });
@@ -72,7 +72,7 @@ describe("lireComposantsAgent", () => {
     await ecrire("lj", null, "<p></p>");
     await writeFile(join(dossier, "lj", "reel.json"), decl("lj"));
     await symlink(join(dossier, "lj", "reel.json"), join(dossier, "lj", "composant.json"));
-    const r = await lireComposantsAgent(dossier);
+    const r = await readAgentComponents(dossier);
     expect(r.valides).toEqual([]);
     const e = Object.fromEntries(r.invalides.map((i) => [i.nom, i.erreur]));
     expect(e["proto"]).toMatch(/composant\.json invalide/);
@@ -82,6 +82,6 @@ describe("lireComposantsAgent", () => {
   });
 
   it("dossier introuvable : rien", async () => {
-    expect(await lireComposantsAgent(join(dossier, "absent"))).toEqual({ valides: [], invalides: [] });
+    expect(await readAgentComponents(join(dossier, "absent"))).toEqual({ valides: [], invalides: [] });
   });
 });

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { PlacementLibre } from "../../../packages/noyau/src/accueil/schemas";
+import type { FreePlacement } from "../../../packages/noyau/src/accueil/schemas";
 import { deplacerLibre, guidesLibres, LARGEUR_LIBRE, redimensionnerLibre } from "../ui/grille-libre";
 
-const place = (o: Partial<PlacementLibre> = {}): PlacementLibre => ({ id: "a", x: 0, y: 0, l: 200, h: 180, ...o });
+const place = (o: Partial<FreePlacement> = {}): FreePlacement => ({ id: "a", x: 0, y: 0, l: 200, h: 180, ...o });
 
 describe("deplacerLibre", () => {
   it("stops at another widget's edge without moving it", () => {

@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { DeclarationAction, ID_ACTION, WEB_AVEC_COMPTE } from "../../src/index.js";
+import { DeclarationAction, ID_ACTION, WEB_WITH_ACCOUNT } from "../../src/index.js";
 
 const message = (brut: unknown) => {
   const r = DeclarationAction.safeParse(brut);
@@ -26,7 +26,7 @@ test("the Leboncoin example (web, input « Recherche ») is accepted", () => {
 });
 
 test("web with an account: WEB_AVEC_COMPTE", () => {
-  expect(message({ nom: "X", sources: { web: true, compte: ["gitlab.com"] } })).toBe(WEB_AVEC_COMPTE);
+  expect(message({ nom: "X", sources: { web: true, compte: ["gitlab.com"] } })).toBe(WEB_WITH_ACCOUNT);
 });
 
 test("unknown key (recolte, tailles) refused", () => {

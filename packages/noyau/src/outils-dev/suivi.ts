@@ -1,7 +1,7 @@
-import type { PolitiqueAcces } from "../acces/politique.js";
-import { OutilsDevOccupes, type OngletInfo, type OutilsDevNavigateur } from "../mcp/pont.js";
+import type { AccessPolicy } from "../acces/politique.js";
+import { DevToolsBusy, type TabInfo, type BrowserDevTools } from "../mcp/pont.js";
 
-function origineDe(url: string): string | null {
+function originOf(url: string): string | null {
   try {
     const o = new URL(url).origin;
     return o === "null" ? null : o;
@@ -16,7 +16,7 @@ function origineDe(url: string): string | null {
  * that keeps its rights on another origin (app relaunched on another port, demo moved by the agent) is
  * reattached: its buffers restart on the new page instead of failing on the first call.
  */
-export class SuiviOutilsDev {
+export class DevToolsTracking {
   readonly attaches = new Set<string>();
   /** Origin of each tab when it was attached. */
   private readonly origines = new Map<string, string | null>();
@@ -28,9 +28,9 @@ export class SuiviOutilsDev {
   private readonly desabonner: () => void;
 
   constructor(
-    private readonly politique: PolitiqueAcces,
-    private readonly outils: OutilsDevNavigateur,
-    private readonly onglets: () => Promise<OngletInfo[]>,
+    private readonly politique: AccessPolicy,
+    private readonly outils: BrowserDevTools,
+    private readonly onglets: () => Promise<TabInfo[]>,
   ) {
     this.desabonner = politique.surChange(() => this.planifier());
     this.planifier();
@@ -49,11 +49,11 @@ export class SuiviOutilsDev {
   }
 
   private async reconcilier(): Promise<void> {
-    const onglets = (await this.onglets()).filter((o) => this.politique.droitsDev(o).length);
-    const voulus = new Map(onglets.map((o) => [o.id, origineDe(o.url)]));
-    for (const [id, origine] of voulus) {
+    const tabs = (await this.onglets()).filter((o) => this.politique.droitsDev(o).length);
+    const wanted = new Map(tabs.map((o) => [o.id, originOf(o.url)]));
+    for (const [id, origin] of wanted) {
       if (this.attaches.has(id)) {
-        if (this.origines.get(id) === origine) continue;
+        if (this.origines.get(id) === origin) continue;
         // Same tab, other origin: we restart from the displayed page.
         this.attaches.delete(id);
         this.origines.delete(id);
@@ -62,19 +62,19 @@ export class SuiviOutilsDev {
       try {
         await this.outils.attacher(id);
         this.attaches.add(id);
-        this.origines.set(id, origine);
+        this.origines.set(id, origin);
         this.occupes.delete(id);
       } catch (e) {
-        if (e instanceof OutilsDevOccupes) this.occupes.add(id);
+        if (e instanceof DevToolsBusy) this.occupes.add(id);
       }
     }
     for (const id of [...this.attaches]) {
-      if (voulus.has(id)) continue;
+      if (wanted.has(id)) continue;
       this.attaches.delete(id);
       this.origines.delete(id);
       await this.outils.detacher(id).catch(() => {});
     }
-    for (const id of [...this.occupes]) if (!voulus.has(id)) this.occupes.delete(id);
+    for (const id of [...this.occupes]) if (!wanted.has(id)) this.occupes.delete(id);
   }
 
   arreter(): void {

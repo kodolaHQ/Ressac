@@ -1,4 +1,4 @@
-import { ErreurAtelier } from "@webaios/noyau";
+import { WorkshopError } from "@webaios/noyau";
 import type { EtatPanneauAgent, TailleTerminal } from "../../shared/api";
 import type { IdFenetre } from "../../shared/modele";
 
@@ -131,7 +131,7 @@ export class SessionsAgent {
           this.o.envoyer(
             f,
             "etat",
-            err instanceof ErreurAtelier && err.etat === "docker-absent" ? { etat: "docker-absent" } : { etat: "erreur", message: err.message },
+            err instanceof WorkshopError && err.etat === "docker-absent" ? { etat: "docker-absent" } : { etat: "erreur", message: err.message },
           );
         },
       )

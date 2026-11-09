@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { BlocRendu, PageRendue } from "@webaios/noyau";
+  import type { RenderedBlock, RenderedPage } from "@webaios/noyau";
   import { AUCUN_RESULTAT, MENTION_SECOURS } from "../../shared/actions";
   import CadreComposant from "../ActionComponentFrame.svelte";
   import Cartes from "./blocs/Cartes.svelte";
@@ -23,14 +23,14 @@
    * A rendered page (resolved by the kernel: references computed, links and images checked). Everything shows as text,
    * never as HTML. `composants` false (preview): the agent's components are not loaded, a neutral frame replaces them.
    */
-  let { page, action, execution, composants = true }: { page: PageRendue; action: string; execution: string; composants?: boolean } = $props();
+  let { page, action, execution, composants = true }: { page: RenderedPage; action: string; execution: string; composants?: boolean } = $props();
   const ctx: ContextePage = $derived({ action, execution });
 
   // A block's props are typed by each component (shapes fixed by the kernel's pages/resoudre.ts).
-  const p = (b: BlocRendu) => ("props" in b ? b.props : {}) as never;
+  const p = (b: RenderedBlock) => ("props" in b ? b.props : {}) as never;
 </script>
 
-{#snippet liste(blocs: BlocRendu[] | undefined)}
+{#snippet liste(blocs: RenderedBlock[] | undefined)}
   {#each blocs ?? [] as b, i (i)}
     {#if "message" in b}
       <ErreurBloc message={b.message} />

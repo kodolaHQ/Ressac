@@ -5,7 +5,7 @@ import type { AddressInfo } from "node:net";
 import path from "node:path";
 import { promisify } from "node:util";
 import { afterAll, beforeAll, describe, it } from "vitest";
-import { resumerProfil } from "../../../packages/noyau/src/outils-dev/resumes";
+import { summarizeProfile } from "../../../packages/noyau/src/outils-dev/resumes";
 import { geckoToCpuProfile } from "../chrome/store/devtools";
 import { cleanupXpis, installAddon } from "./addons";
 import { dispatch, state, waitFor } from "./firefox";
@@ -417,7 +417,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("agent dev tools spike", () => {
       const r = geckoToCpuProfile(main, prof.categories.map((name: string) => ({ name })), new Set([prof.innerWindowId]));
       note("D5 conversion", { nodes: r.profil.nodes.length, samples: r.profil.samples.length, scriptMs: Math.round(r.scriptMs), taskMs: Math.round(r.taskMs),
         durationMs: Math.round((r.profil.endTime - r.profil.startTime) / 1000) });
-      note("D5 resumerProfil", resumerProfil(r.profil, { LayoutCount: prof.reflows, ScriptDuration: r.scriptMs / 1000, TaskDuration: r.taskMs / 1000 }, 8).split("\n"));
+      note("D5 resumerProfil", summarizeProfile(r.profil, { LayoutCount: prof.reflows, ScriptDuration: r.scriptMs / 1000, TaskDuration: r.taskMs / 1000 }, 8).split("\n"));
     }
     // Metrics: memory actor measure() (sizeOfTab) and, privileged in the page's process, a frame script.
     note("D5 memory.measure()", await chrome(m, `

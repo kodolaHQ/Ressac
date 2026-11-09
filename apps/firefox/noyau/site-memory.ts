@@ -1,4 +1,4 @@
-import type { MemoireSite } from "../../../packages/noyau/src/index.ts";
+import type { SiteMemory } from "../../../packages/noyau/src/index.ts";
 import type { ReponseMemoire } from "../core/sites/injection.ts";
 
 // The host's side of the site apps' injection channels (core/sites/injection.ts): the chrome checks the sender
@@ -22,7 +22,7 @@ function demandeMemoire(d: unknown): DemandeMemoire | null {
  * `sites.memoireOp {id, adresse, op, cle, valeur?}`: the memory work past the sender checks. `memoire(id)`
  * rejects while the app is being deleted: nothing is read or written then.
  */
-export async function memoireOp(memoire: (id: string) => Promise<MemoireSite>, brute: unknown): Promise<ReponseMemoire> {
+export async function memoireOp(memoire: (id: string) => Promise<SiteMemory>, brute: unknown): Promise<ReponseMemoire> {
   const p = brute && typeof brute === "object" ? (brute as { id?: unknown; adresse?: unknown }) : {};
   const d = demandeMemoire(brute);
   if (typeof p.id !== "string" || typeof p.adresse !== "string" || !d) return { ok: false, erreur: REFUS_MEMOIRE };
@@ -55,7 +55,7 @@ const cibleDe = (p: { id?: unknown; adresse?: unknown }): Cible | null => (typeo
  * grant, repriseDansCadre) and whose page address it gives. The host checks the grant again at each write.
  */
 export function creerPositions(o: {
-  memoire(id: string): Promise<MemoireSite>;
+  memoire(id: string): Promise<SiteMemory>;
   accorde(id: string): boolean;
   /** Clock and timer (tests). */
   maintenant?: () => number;

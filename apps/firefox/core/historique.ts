@@ -1,10 +1,10 @@
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync, type StatementSync } from "node:sqlite";
-import type { ResultatHistorique } from "@webaios/noyau";
+import type { HistoryResult } from "@webaios/noyau";
 import type { Visite } from "../shared/modele";
 
-export type { ResultatHistorique, Visite };
+export type { HistoryResult as ResultatHistorique, Visite };
 
 const COLONNES = `url, titre, derniere_visite AS derniereVisite, visites, espace_id AS espaceId, prive,
   EXISTS (SELECT 1 FROM textes t WHERE t.url = visites.url AND t.espace_id = visites.espace_id) AS retenu`;
@@ -218,7 +218,7 @@ export class Historique {
    * Ranking: pages found by the index first (bm25, then the most recent), then those found by their
    * title or URL alone, from most to least recent. An empty query returns the most recent.
    */
-  rechercherPourAgent(q: { requete: string; depuis?: Date; jusqua?: Date; limite?: number }): ResultatHistorique[] {
+  rechercherPourAgent(q: { requete: string; depuis?: Date; jusqua?: Date; limite?: number }): HistoryResult[] {
     if (!this.db.isOpen) return [];
     const limite = Math.max(1, Math.min(LIMITE_AGENT.max, Math.floor(q.limite ?? LIMITE_AGENT.defaut)));
     const periode = { depuis: q.depuis?.toISOString() ?? "", jusqua: q.jusqua?.toISOString() ?? "\uffff" };

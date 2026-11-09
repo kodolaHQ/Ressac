@@ -1,4 +1,4 @@
-import type { DroitDev, OngletInfo } from "../shims/noyau";
+import type { DroitDev, TabInfo } from "../shims/noyau";
 import type { CarteExtension, ReponseAccord } from "../../shared/extensions";
 import type { Decision, DemandeEnAttente, IdFenetre, IdOnglet, Issue, Permission } from "../../shared/modele";
 import { SCHEMA_SITE } from "../../shared/sites";
@@ -53,7 +53,7 @@ export class Questions {
   }
 
   /** Shows the card in the window and waits for the answer; false after DELAI_QUESTION_MS, or when `signal` aborts. */
-  ask(o: OngletInfo, fenetreId: IdFenetre, signal?: AbortSignal): Promise<boolean> {
+  ask(o: TabInfo, fenetreId: IdFenetre, signal?: AbortSignal): Promise<boolean> {
     const ongletId = ongletActifDe(this.store.state, fenetreId)?.id ?? null;
     const fields = { ongletId, fenetreId, origine: origineDe(o.url), permissions: ["lire-onglet" as const], titre: o.titre, cible: o.id };
     // Already stale (tab closed, private, gone elsewhere): no card, which no state change would ever take down.
@@ -65,7 +65,7 @@ export class Questions {
    * The dev tools card: the rights ticked when allowed, `[]` on a refusal, after
    * DELAI_QUESTION_MS, on `signal`, or when the tab closes, turns private or goes to another site.
    */
-  askDevTools(o: OngletInfo, d: { droits: DroitDev[]; raison: string; agent: string }, fenetreId: IdFenetre, signal?: AbortSignal): Promise<DroitDev[]> {
+  askDevTools(o: TabInfo, d: { droits: DroitDev[]; raison: string; agent: string }, fenetreId: IdFenetre, signal?: AbortSignal): Promise<DroitDev[]> {
     const ongletId = ongletActifDe(this.store.state, fenetreId)?.id ?? null;
     const fields = { ongletId, fenetreId, origine: origineDe(o.url), permissions: ["outils-dev" as const], titre: o.titre, cible: o.id, droits: d.droits, raison: d.raison, agent: d.agent };
     if (this.stale({ id: "", ...fields })) return Promise.resolve([]);

@@ -1,4 +1,4 @@
-import type { Noyau, OngletInfo } from "../../../packages/noyau/src/index.ts";
+import type { Noyau, TabInfo } from "../../../packages/noyau/src/index.ts";
 import type { Cadre } from "../shared/modele.ts";
 import type { SelectionConstructeur, TailleTerminal } from "../shared/api.ts";
 
@@ -20,7 +20,7 @@ const { createInterface } = await import("node:readline");
 const { appendFileSync } = await import("node:fs");
 const { stat } = await import("node:fs/promises");
 // Imported after the env is set and stdout redirected: nothing in the kernel can write to stdout at load time.
-const { ACTION_INCONNUE, Atelier, catalogueBlocs, chargerProfils, cheminsEspace, creerNoyau, executeurParDefaut, IaLocale, lireAccueil, lireDispositionLibre, lireTheme, Menagement, prefixeContexte, retirerAccord, supprimerDonnees, surveillerActions } = await import("../../../packages/noyau/src/index.ts");
+const { ACTION_UNKNOWN: ACTION_INCONNUE, Atelier, catalogueBlocs, loadProfiles: chargerProfils, spacePaths: cheminsEspace, createKernel: creerNoyau, defaultRunner: executeurParDefaut, IaLocale, readHome: lireAccueil, readFreeLayout: lireDispositionLibre, lireTheme, Pacing: Menagement, contextPrefix: prefixeContexte, retirerAccord, deleteData: supprimerDonnees, watchActions: surveillerActions } = await import("../../../packages/noyau/src/index.ts");
 const { SessionsAgent } = await import("../core/agent/sessions.ts");
 const { Historique } = await import("../core/historique.ts");
 const { createRpc } = await import("../shared/rpc.ts");
@@ -245,7 +245,7 @@ const sessions = new SessionsAgent({
   },
   // The user talks to the agent from the tab on screen: it is given to the agent.
   surEnvoi: (f) => {
-    rpc.request<OngletInfo | null>("ongletActif", [f]).then(
+    rpc.request<TabInfo | null>("ongletActif", [f]).then(
       (o) => o && noyau?.politique.interactionUtilisateur(o),
       () => {},
     );
@@ -512,9 +512,9 @@ const rpc = createRpc({
     "politique.navigue": (p: { id: string; url: string }) => noyau?.politique.ongletNavigue(p.id, p.url),
     "politique.ferme": (p: { id: string }) => noyau?.politique.ongletFerme(p.id),
     "politique.couper": (p: { id: string; droit?: Parameters<Noyau["politique"]["couper"]>[1] }) => noyau?.politique.couper(p.id, p.droit),
-    "agent.envoi": (p: { onglet: OngletInfo | null }) => void (p.onglet && noyau?.politique.interactionUtilisateur(p.onglet)),
+    "agent.envoi": (p: { onglet: TabInfo | null }) => void (p.onglet && noyau?.politique.interactionUtilisateur(p.onglet)),
     // Opening the panel on a tab gives it to the agent and pre-fills the context, without sending it.
-    "agent.panneauOuvert": (p: { fenetre: string; onglet: OngletInfo }) => {
+    "agent.panneauOuvert": (p: { fenetre: string; onglet: TabInfo }) => {
       noyau?.politique.interactionUtilisateur(p.onglet);
       if (sessions.active(p.fenetre)) sessions.ecrire(p.fenetre, prefixeContexte(p.onglet.titre, p.onglet.url));
     },

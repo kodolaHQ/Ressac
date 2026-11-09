@@ -1,21 +1,21 @@
 import type { DroitDev } from "../acces/politique.js";
-import type { ProfilCpu } from "../outils-dev/resumes.js";
+import type { CpuProfile } from "../outils-dev/resumes.js";
 import type { PageLue } from "../workflows/protocole.js";
 import {
-  OngletIntrouvable,
-  OngletPrive,
-  OutilsDevOccupes,
-  ProfilRefuse,
-  type HistoriqueNavigateur,
+  TabNotFound,
+  PrivateTab,
+  DevToolsBusy,
+  ProfileDenied,
+  type BrowserHistory,
   type MessageConsole,
-  type OngletInfo,
+  type TabInfo,
   type OptionsLecturePage,
-  type PageRetenue,
-  type OutilsDevNavigateur,
-  type PontNavigateur,
-  type RequeteReseau,
-  type ResultatHistorique,
-  type ResultatJs,
+  type KeptPage,
+  type BrowserDevTools,
+  type BrowserBridge,
+  type NetworkRequest,
+  type HistoryResult,
+  type JsResult,
 } from "./pont.js";
 
 // Transparent 1×1 PNG.
@@ -24,7 +24,7 @@ const PNG = Buffer.from(
   "base64",
 );
 
-const PROFIL: ProfilCpu = {
+const PROFILE: CpuProfile = {
   nodes: [
     { id: 1, callFrame: { functionName: "(root)", url: "", lineNumber: -1 }, children: [2] },
     { id: 2, callFrame: { functionName: "calculer", url: "http://exemple/app.js", lineNumber: 9 } },
@@ -52,29 +52,29 @@ function tas(n: number): string {
 }
 
 /** Waits for abandonment: an operation that never ends on its own. */
-const enAttente = <T>(signal: AbortSignal): Promise<T> =>
+const pending = <T>(signal: AbortSignal): Promise<T> =>
   new Promise<T>((_, ko) => {
-    const rejeter = () => ko(new Error("Interrompu"));
-    if (signal.aborted) rejeter();
-    else signal.addEventListener("abort", rejeter, { once: true });
+    const reject = () => ko(new Error("Interrompu"));
+    if (signal.aborted) reject();
+    else signal.addEventListener("abort", reject, { once: true });
   });
 
 /** Simulated dev tools: buffers set by the tests. */
-class OutilsDevFactice implements OutilsDevNavigateur {
+class FakeDevTools implements BrowserDevTools {
   readonly consoles = new Map<string, MessageConsole[]>();
-  readonly reseaux = new Map<string, RequeteReseau[]>();
+  readonly reseaux = new Map<string, NetworkRequest[]>();
   readonly occupes = new Set<string>();
   objetsTas = 2;
 
   constructor(
-    private readonly noter: (methode: string, ...args: unknown[]) => void,
-    private readonly trouver: (id: string) => OngletInfo,
+    private readonly noter: (method: string, ...args: unknown[]) => void,
+    private readonly trouver: (id: string) => TabInfo,
     private readonly bloquer: boolean,
   ) {}
 
   private verifier(id: string): void {
     this.trouver(id);
-    if (this.occupes.has(id)) throw new OutilsDevOccupes();
+    if (this.occupes.has(id)) throw new DevToolsBusy();
   }
 
   async attacher(id: string) {
@@ -98,27 +98,27 @@ class OutilsDevFactice implements OutilsDevNavigateur {
     return [...(this.reseaux.get(id) ?? [])];
   }
 
-  async corps(id: string, requete: string) {
-    this.noter("corps", id, requete);
+  async corps(id: string, request: string) {
+    this.noter("corps", id, request);
     this.verifier(id);
-    return { corps: `Corps de ${requete}`, base64: false };
+    return { corps: `Corps de ${request}`, base64: false };
   }
 
   async profiler(id: string, o: { dureeMs?: number; recharger?: boolean }, signal: AbortSignal) {
     this.noter("profiler", id, o);
     this.verifier(id);
-    if (this.bloquer) return enAttente<{ profil: ProfilCpu; metriques: Record<string, number> }>(signal);
-    return { profil: PROFIL, metriques: { Nodes: 42 } };
+    if (this.bloquer) return pending<{ profil: CpuProfile; metriques: Record<string, number> }>(signal);
+    return { profil: PROFILE, metriques: { Nodes: 42 } };
   }
 
   async instantaneMemoire(id: string, signal: AbortSignal) {
     this.noter("instantaneMemoire", id);
     this.verifier(id);
-    if (this.bloquer) return enAttente<string>(signal);
+    if (this.bloquer) return pending<string>(signal);
     return tas(this.objetsTas);
   }
 
-  async executer(id: string, code: string, _signal: AbortSignal): Promise<ResultatJs> {
+  async executer(id: string, code: string, _signal: AbortSignal): Promise<JsResult> {
     this.noter("executer", id, code);
     this.verifier(id);
     if (code.startsWith("throw ")) return { exception: `${code.slice(6)}\n    at <anonymous>:1:1` };
@@ -132,16 +132,16 @@ class OutilsDevFactice implements OutilsDevNavigateur {
 }
 
 /** Simulated browser: for the tests and the dev command. */
-export class PontFactice implements PontNavigateur {
+export class PontFactice implements BrowserBridge {
   readonly appels: { methode: string; args: unknown[] }[] = [];
-  private readonly onglets: OngletInfo[];
+  private readonly onglets: TabInfo[];
   private actif: string | null;
   private readonly autoriser: boolean;
   private compteur = 0;
   /** Tabs in a private space: invisible, as in the real browser. */
   private readonly prives = new Set<string>();
-  readonly outilsDev?: OutilsDevFactice;
-  readonly historique?: HistoriqueNavigateur;
+  readonly outilsDev?: FakeDevTools;
+  readonly historique?: BrowserHistory;
   lirePageInvisible?: (url: string, o: OptionsLecturePage) => Promise<PageLue>;
   lireHtmlInvisible?: (url: string, o: { adressesLocales?: boolean; signal?: AbortSignal }) => Promise<{ url: string; html: string }>;
   /** Suspended reads in progress, by URL: `relacher` lets them finish. */
@@ -151,7 +151,7 @@ export class PontFactice implements PontNavigateur {
   private readonly sites: Record<string, string[]>;
   /** Site apps whose tweaks card is shown: navigating answers « en-attente ». */
   private readonly sitesEnAttente: Set<string>;
-  demanderOutilsDev?: (o: OngletInfo, d: { droits: DroitDev[]; raison: string; agent: string }, signal?: AbortSignal) => Promise<DroitDev[]>;
+  demanderOutilsDev?: (o: TabInfo, d: { droits: DroitDev[]; raison: string; agent: string }, signal?: AbortSignal) => Promise<DroitDev[]>;
 
   /**
    * `outilsDev` provides the simulated dev tools; `accorderDev` also provides the consent card,
@@ -167,14 +167,14 @@ export class PontFactice implements PontNavigateur {
    * of each open site app (`site:<id>` tabs with `site` set), for `adresseSitePermise`.
    */
   constructor(
-    onglets: OngletInfo[],
+    tabs: TabInfo[],
     o: {
       actif: string | null;
       autoriser: boolean;
       outilsDev?: boolean;
       accorderDev?: DroitDev[];
       bloquer?: boolean;
-      historique?: { resultats: ResultatHistorique[]; textes?: PageRetenue[]; erreur?: string };
+      historique?: { resultats: HistoryResult[]; textes?: KeptPage[]; erreur?: string };
       lecture?: { pages: PageLue[]; html?: Record<string, string>; refuser?: string[]; redirections?: Record<string, string>; suspendues?: string[] };
       donneesWidget?: boolean;
       sites?: Record<string, string[]>;
@@ -183,26 +183,26 @@ export class PontFactice implements PontNavigateur {
   ) {
     this.sites = o.sites ?? {};
     this.sitesEnAttente = new Set(o.sitesEnAttente ?? []);
-    this.onglets = onglets.map((x) => ({ ...x }));
+    this.onglets = tabs.map((x) => ({ ...x }));
     this.actif = o.actif;
     this.autoriser = o.autoriser;
     if (o.outilsDev || o.accorderDev) {
-      this.outilsDev = new OutilsDevFactice((m, ...a) => this.noter(m, ...a), (id) => this.trouver(id), o.bloquer ?? false);
+      this.outilsDev = new FakeDevTools((m, ...a) => this.noter(m, ...a), (id) => this.trouver(id), o.bloquer ?? false);
     }
     const h = o.historique;
     if (h) {
-      const echouer = () => {
+      const fail = () => {
         if (h.erreur) throw new Error(h.erreur);
       };
       this.historique = {
         chercher: async (q) => {
           this.noter("chercherHistorique", { ...q });
-          echouer();
+          fail();
           return h.resultats.slice(0, q.limite).map((r) => ({ ...r }));
         },
         lire: async (url) => {
           this.noter("lireHistorique", url);
-          echouer();
+          fail();
           const p = h.textes?.find((x) => x.url === url);
           return p ? { ...p } : null;
         },
@@ -210,61 +210,61 @@ export class PontFactice implements PontNavigateur {
     }
     const lecture = o.lecture;
     if (lecture) {
-      const attendre = async (url: string, signal: AbortSignal | undefined) => {
+      const wait = async (url: string, signal: AbortSignal | undefined) => {
         if (signal?.aborted) throw signal.reason;
         if (!lecture.suspendues?.includes(url)) return;
         await new Promise<void>((ok, ko) => {
           const fin = () => {
-            signal?.removeEventListener("abort", annuler);
+            signal?.removeEventListener("abort", cancel);
             ok();
           };
-          const annuler = () => {
+          const cancel = () => {
             this.suspendues.set(url, (this.suspendues.get(url) ?? []).filter((f) => f !== fin));
             this.noter("lectureAnnulee", url);
             ko(signal!.reason);
           };
           this.suspendues.set(url, [...(this.suspendues.get(url) ?? []), fin]);
-          signal?.addEventListener("abort", annuler, { once: true });
+          signal?.addEventListener("abort", cancel, { once: true });
         });
       };
-      this.lirePageInvisible = async (url, { signal, changerHote, ...l }) => {
+      this.lirePageInvisible = async (url, { signal, changerHote: changeHost, ...l }) => {
         this.noter("lirePageInvisible", url, { ...l });
-        await attendre(url, signal);
-        if (l.profil !== null && lecture.refuser?.includes(l.profil)) throw new ProfilRefuse(l.profil);
+        await wait(url, signal);
+        if (l.profil !== null && lecture.refuser?.includes(l.profil)) throw new ProfileDenied(l.profil);
         const finale = lecture.redirections?.[url] ?? url;
         // Like the real bridge: a redirect to another host waits for `changerHote` before going out.
-        const hote = new URL(finale).hostname;
-        if (changerHote && hote !== new URL(url).hostname) {
-          this.noter("changerHote", hote);
-          await changerHote(hote);
+        const host = new URL(finale).hostname;
+        if (changeHost && host !== new URL(url).hostname) {
+          this.noter("changerHote", host);
+          await changeHost(host);
         }
         const p = lecture.pages.find((x) => x.url === finale);
         return p ? structuredClone(p) : { url: finale, titre: "", texte: "", liens: [] };
       };
       this.lireHtmlInvisible = async (url, { signal, ...l }) => {
         this.noter("lireHtmlInvisible", url, { ...l });
-        await attendre(url, signal);
+        await wait(url, signal);
         return { url, html: lecture.html?.[url] ?? "" };
       };
     }
-    const donneesWidget = o.donneesWidget;
-    if (donneesWidget !== undefined) {
+    const widgetData = o.donneesWidget;
+    if (widgetData !== undefined) {
       this.demanderDonneesWidget = async (d) => {
         this.noter("demanderDonneesWidget", { ...d });
-        return donneesWidget;
+        return widgetData;
       };
     }
     const accorder = o.accorderDev;
     if (accorder) {
-      this.demanderOutilsDev = async (onglet, d) => {
-        this.noter("demanderOutilsDev", { ...onglet }, d);
+      this.demanderOutilsDev = async (tab, d) => {
+        this.noter("demanderOutilsDev", { ...tab }, d);
         return [...accorder];
       };
     }
   }
 
   /** Tab fields changed (for example the `empreinte` of a site app whose site.json was rewritten). */
-  modifierOnglet(id: string, champs: Partial<OngletInfo>): void {
+  modifierOnglet(id: string, champs: Partial<TabInfo>): void {
     const o = this.onglets.find((x) => x.id === id);
     if (o) Object.assign(o, champs);
   }
@@ -279,26 +279,26 @@ export class PontFactice implements PontNavigateur {
   adresseSitePermise(site: string, url: string): boolean {
     this.noter("adresseSitePermise", site, url);
     if (!this.onglets.some((x) => x.site === site)) return false;
-    let hote: string;
+    let host: string;
     try {
       const u = new URL(url);
       if (u.protocol !== "https:" && u.protocol !== "http:") return false;
-      hote = u.hostname;
+      host = u.hostname;
     } catch {
       return false;
     }
-    return (this.sites[site] ?? []).some((d) => hote === d || hote.endsWith(`.${d}`));
+    return (this.sites[site] ?? []).some((d) => host === d || host.endsWith(`.${d}`));
   }
 
   /** Lets the suspended reads of this URL finish; returns their number. */
   relacher(url: string): number {
-    const liste = this.suspendues.get(url) ?? [];
+    const list = this.suspendues.get(url) ?? [];
     this.suspendues.delete(url);
-    for (const fin of liste) fin();
-    return liste.length;
+    for (const fin of list) fin();
+    return list.length;
   }
 
-  private dev(): OutilsDevFactice {
+  private dev(): FakeDevTools {
     if (!this.outilsDev) throw new Error("PontFactice créé sans outilsDev");
     return this.outilsDev;
   }
@@ -307,8 +307,8 @@ export class PontFactice implements PontNavigateur {
     this.dev().consoles.set(id, messages);
   }
 
-  fixerReseau(id: string, requetes: RequeteReseau[]): void {
-    this.dev().reseaux.set(id, requetes);
+  fixerReseau(id: string, requests: NetworkRequest[]): void {
+    this.dev().reseaux.set(id, requests);
   }
 
   /** The user opens their dev tools on the tab. */
@@ -317,9 +317,9 @@ export class PontFactice implements PontNavigateur {
   }
 
   /** The tab moves into a private space (named `espace` if given). */
-  rendrePrive(id: string, espace?: string): void {
+  rendrePrive(id: string, space?: string): void {
     const o = this.onglets.find((x) => x.id === id);
-    if (o && espace !== undefined) o.espace = espace;
+    if (o && space !== undefined) o.espace = space;
     this.prives.add(id);
   }
 
@@ -336,14 +336,14 @@ export class PontFactice implements PontNavigateur {
     this.dev().objetsTas += 1;
   }
 
-  private noter(methode: string, ...args: unknown[]) {
-    this.appels.push({ methode, args });
+  private noter(method: string, ...args: unknown[]) {
+    this.appels.push({ methode: method, args });
   }
 
-  private trouver(id: string): OngletInfo {
+  private trouver(id: string): TabInfo {
     const o = this.onglets.find((x) => x.id === id);
-    if (!o) throw new OngletIntrouvable(id);
-    if (this.prives.has(id)) throw new OngletPrive(id);
+    if (!o) throw new TabNotFound(id);
+    if (this.prives.has(id)) throw new PrivateTab(id);
     return o;
   }
 
@@ -363,9 +363,9 @@ export class PontFactice implements PontNavigateur {
     return { texte: `Texte de ${o.titre} (${o.url})` };
   }
 
-  async ouvrirOnglet(url: string, espace?: string) {
-    this.noter("ouvrirOnglet", url, espace);
-    const o = { id: `agent-${++this.compteur}`, titre: url, url, espace: espace ?? "perso" };
+  async ouvrirOnglet(url: string, space?: string) {
+    this.noter("ouvrirOnglet", url, space);
+    const o = { id: `agent-${++this.compteur}`, titre: url, url, espace: space ?? "perso" };
     this.onglets.push(o);
     this.actif = o.id;
     return { ...o };
@@ -384,7 +384,7 @@ export class PontFactice implements PontNavigateur {
     return PNG;
   }
 
-  async demanderAutorisation(o: OngletInfo) {
+  async demanderAutorisation(o: TabInfo) {
     this.noter("demanderAutorisation", o.id);
     return this.autoriser;
   }

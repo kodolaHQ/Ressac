@@ -1,4 +1,4 @@
-import type { DirectWidget, EtatDirect, Execution, ResumeExecution } from "@webaios/noyau";
+import type { DirectWidget, DirectState, Execution, ResumeExecution } from "@webaios/noyau";
 import { beforeEach, expect, test } from "vitest";
 import { Executions, oublierChoixExecutions, type Lanceur, type SourceExecutions } from "../../ui/constructeur/executions.svelte";
 
@@ -108,7 +108,7 @@ test("detail in error: not found, no endless wait", async () => {
 // ---------------------------------------------------------------------------------------------------------------------
 // Live, « Lancer » and « Rejouer » (task 11).
 
-type Rappel = (e: EtatDirect) => void;
+type Rappel = (e: DirectState) => void;
 function lanceurFaux(f: ReturnType<typeof faux>) {
   const appels: string[] = [];
   const rappels: Rappel[] = [];
@@ -132,9 +132,9 @@ function lanceurFaux(f: ReturnType<typeof faux>) {
       return { ok: true, execution: "e-essai", statut: "reussie" };
     },
   };
-  return { lanceur, appels, emettre: (e: EtatDirect) => rappels.forEach((r) => r(e)), rappels, finir: () => finir?.() };
+  return { lanceur, appels, emettre: (e: DirectState) => rappels.forEach((r) => r(e)), rappels, finir: () => finir?.() };
 }
-const directDe = (widget: string, blocs: DirectWidget["blocs"] = {}, debut = "d1"): EtatDirect => ({
+const directDe = (widget: string, blocs: DirectWidget["blocs"] = {}, debut = "d1"): DirectState => ({
   courants: [{ widget, genre: "execution", debut, blocs }],
   enAttente: [],
 });
@@ -292,7 +292,7 @@ test("the choice of a run is kept per widget in the window (switching tabs does 
 test("the initial read of the live does not overwrite a more recent pushed event", async () => {
   const f = faux([resume("b")]);
   const l = lanceurFaux(f);
-  let rendre: (e: EtatDirect) => void = () => {};
+  let rendre: (e: DirectState) => void = () => {};
   l.lanceur.direct = () => new Promise((ok) => (rendre = ok));
   const x = new Executions("w", f.source, l.lanceur);
   x.suivre();

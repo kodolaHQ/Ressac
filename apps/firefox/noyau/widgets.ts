@@ -3,17 +3,17 @@ import { mkdir, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   ID_EXECUTION,
-  lireDispositionLibre,
+  readFreeLayout,
   lireExecution,
   listerExecutions,
-  placerManquantsLibre,
-  PlacementLibre,
-  taillesLibres,
-  type CheminsEspace,
-  type EtatAccueil,
+  placeMissingFree,
+  FreePlacement,
+  freeSizes,
+  type SpacePaths,
+  type HomeState,
   type Execution,
   type ResumeExecution,
-  type ThemeAccueil,
+  type HomeTheme,
 } from "../../../packages/noyau/src/index.ts";
 import type { WidgetAffiche } from "../shared/api.ts";
 
@@ -33,13 +33,13 @@ const TAILLE_WIDGET_ILLISIBLE = { l: 4, h: 2 };
  * to force the frame to reload when the agent rewrites it.
  */
 export function versWidgetsAffiches(o: {
-  etat: EtatAccueil;
-  placements: PlacementLibre[];
-  theme: ThemeAccueil | null;
+  etat: HomeState;
+  placements: FreePlacement[];
+  theme: HomeTheme | null;
   mtimes: Record<string, number>;
-}): { widgets: WidgetAffiche[]; theme: ThemeAccueil | null } {
-  const defauts = new Map(o.etat.widgets.map((w) => [w.id, taillesLibres("declaration" in w ? w.declaration.tailles.defaut : TAILLE_WIDGET_ILLISIBLE)] as const));
-  const placements = placerManquantsLibre(
+}): { widgets: WidgetAffiche[]; theme: HomeTheme | null } {
+  const defauts = new Map(o.etat.widgets.map((w) => [w.id, freeSizes("declaration" in w ? w.declaration.tailles.defaut : TAILLE_WIDGET_ILLISIBLE)] as const));
+  const placements = placeMissingFree(
     o.etat.widgets.map((w) => w.id),
     o.placements,
     defauts,
@@ -74,11 +74,11 @@ export function versWidgetsAffiches(o: {
  * overlap. Refused as a whole otherwise (the UI then re-reads the old layout): `lireDispositionLibre`
  * returns [] for an overlapping layout, and writing it would erase the whole placement at the next read.
  */
-export function validerPlacements(brut: unknown, ids: readonly string[]): PlacementLibre[] {
+export function validerPlacements(brut: unknown, ids: readonly string[]): FreePlacement[] {
   if (!Array.isArray(brut)) throw new Error("placements invalides : liste attendue");
   const connus = new Set(ids);
   const placements = brut.map((p) => {
-    const r = PlacementLibre.safeParse(p);
+    const r = FreePlacement.safeParse(p);
     if (!r.success) throw new Error(`placements invalides : ${r.error.message}`);
     if (!connus.has(r.data.id)) throw new Error(`widget inconnu : ${r.data.id}`);
     return r.data;
@@ -101,7 +101,7 @@ export function validerPlacements(brut: unknown, ids: readonly string[]): Placem
 
 /** Writes to disposition.json one by one, in request order: none reads the state another is about to change. */
 const fileDisposition = new Map<string, Promise<void>>();
-function enSerie(c: CheminsEspace, ecrire: () => Promise<void>): Promise<void> {
+function enSerie(c: SpacePaths, ecrire: () => Promise<void>): Promise<void> {
   const suite = (fileDisposition.get(c.disposition) ?? Promise.resolve()).then(ecrire);
   const fin = suite.catch(() => {});
   fileDisposition.set(c.disposition, fin);
@@ -109,7 +109,7 @@ function enSerie(c: CheminsEspace, ecrire: () => Promise<void>): Promise<void> {
   return suite;
 }
 
-async function ecrireDisposition(c: CheminsEspace, widgets: readonly PlacementLibre[]): Promise<void> {
+async function ecrireDisposition(c: SpacePaths, widgets: readonly FreePlacement[]): Promise<void> {
   await mkdir(c.accueil, { recursive: true });
   const temporaire = `${c.disposition}.${randomUUID()}.tmp`;
   await writeFile(temporaire, JSON.stringify({ version: 3, widgets }, null, 2));
@@ -117,7 +117,7 @@ async function ecrireDisposition(c: CheminsEspace, widgets: readonly PlacementLi
 }
 
 /** The new layout, already validated: atomic write, in series (two close drags are not lost). */
-export function placerWidgets(c: CheminsEspace, placements: readonly PlacementLibre[]): Promise<void> {
+export function placerWidgets(c: SpacePaths, placements: readonly FreePlacement[]): Promise<void> {
   return enSerie(c, () => ecrireDisposition(c, placements));
 }
 
@@ -125,10 +125,10 @@ export function placerWidgets(c: CheminsEspace, placements: readonly PlacementLi
  * The user removes a widget: its folder goes to accueil/.corbeille (nothing is destroyed), its place is freed and
  * `oublier` removes its grant and its data (a widget recreated under the same id must not inherit the grant).
  */
-export async function retirerWidget(c: CheminsEspace, id: string, oublier: (id: string) => Promise<void>): Promise<void> {
+export async function retirerWidget(c: SpacePaths, id: string, oublier: (id: string) => Promise<void>): Promise<void> {
   if (!ID_WIDGET.test(id)) throw new Error(`id de widget invalide : ${id}`);
   await enSerie(c, async () => {
-    const restants = (await lireDispositionLibre(c)).filter((p) => p.id !== id);
+    const restants = (await readFreeLayout(c)).filter((p) => p.id !== id);
     const corbeille = join(c.accueil, ".corbeille");
     await mkdir(corbeille, { recursive: true });
     await rename(join(c.widgets, id), join(corbeille, `${id}-${Date.now()}`));

@@ -2,42 +2,42 @@ import { randomBytes } from "node:crypto";
 import { constants } from "node:fs";
 import { lstat, mkdir, open, realpath, rm, unlink, writeFile } from "node:fs/promises";
 import { basename, join, posix } from "node:path";
-import { CHEMIN_CONTENEUR, cheminConfigSession, cheminDansConteneur, dossierSessions, cheminsEspace, type CheminsEspace } from "./chemins.js";
-import { initialiserEspace } from "./espace/initialiser.js";
-import { lireAccueil } from "./accueil/lire.js";
-import type { EtatAccueil, EtatWidget, WidgetLu } from "./accueil/schemas.js";
-import { ecrireEtatWidget, lireDonnees, lireEtatWidget, supprimerDonnees } from "./accueil/donnees.js";
-import { surveillerAccueil } from "./accueil/surveiller.js";
-import { chargerProfils, construireCommande } from "./profils/profil.js";
-import { ecrireConfigMcp, ecrireConfigSession } from "./profils/config-mcp.js";
-import { Atelier, DOSSIER_DOCKER_PAR_DEFAUT, type EtatAtelier } from "./conteneur/atelier.js";
-import { executeurParDefaut, type Executeur } from "./conteneur/executeur.js";
+import { CONTAINER_PATH, sessionConfigPath, pathInContainer, dossierSessions, spacePaths, type SpacePaths } from "./chemins.js";
+import { initSpace } from "./espace/initialiser.js";
+import { readHome } from "./accueil/lire.js";
+import type { HomeState, WidgetState, WidgetLu } from "./accueil/schemas.js";
+import { writeWidgetState, readData, readWidgetState, deleteData } from "./accueil/donnees.js";
+import { watchHome } from "./accueil/surveiller.js";
+import { loadProfiles, buildCommand } from "./profils/profil.js";
+import { writeMcpConfig, writeSessionConfig } from "./profils/config-mcp.js";
+import { Atelier, DEFAULT_DOCKER_FOLDER, type WorkshopState } from "./conteneur/atelier.js";
+import { defaultRunner, type Runner } from "./conteneur/executeur.js";
 import { SessionAgent } from "./pty/session.js";
-import { PolitiqueAcces } from "./acces/politique.js";
-import type { OngletInfo, PontNavigateur } from "./mcp/pont.js";
-import type { OutilsExtensions } from "./mcp/extensions.js";
-import { demarrerServeurMcp, genererJeton, type OutilsActions, type OutilsApplications, type OutilsSites, type OutilsWidgets, type WorkflowOuvert } from "./mcp/serveur.js";
-import type { FichiersProfils } from "./mcp/outils-dev.js";
-import { SuiviOutilsDev } from "./outils-dev/suivi.js";
+import { AccessPolicy } from "./acces/politique.js";
+import type { TabInfo, BrowserBridge } from "./mcp/pont.js";
+import type { ExtensionsTools } from "./mcp/extensions.js";
+import { startMcpServer, generateToken, type ActionsTools, type AppsTools, type SitesTools, type WidgetsTools, type OpenWorkflow } from "./mcp/serveur.js";
+import type { ProfileFiles } from "./mcp/outils-dev.js";
+import { DevToolsTracking } from "./outils-dev/suivi.js";
 import type { IaLocale } from "./ia/ia-locale.js";
-import { creerRepartiteurIa } from "./ia/repartiteur.js";
+import { createAiDispatcher } from "./ia/repartiteur.js";
 import { ID_EXECUTION, listerExecutions, lireExecution, type Execution } from "./workflows/executions.js";
-import { MENAGEMENT_PAR_DEFAUT } from "./workflows/executer.js";
-import { PlanificateurWidgets, type EtatDirect, type ResultatEssai } from "./widgets/planificateur.js";
+import { DEFAULT_PACING } from "./workflows/executer.js";
+import { WidgetsScheduler, type DirectState, type AttemptResult } from "./widgets/planificateur.js";
 import type { NotificationWidget } from "./widgets/nouveautes.js";
-import { accordRequis } from "./widgets/recolte.js";
+import { grantRequired } from "./widgets/recolte.js";
 import { accorder, lireAccords, retirerAccord } from "./widgets/accords.js";
 import { lireAction, lireActions, type ActionLue } from "./actions/lire.js";
-import { dernierResultat, lireResultat, oublierActionsDisparues, supprimerDonneesAction } from "./actions/donnees.js";
-import { FileActions, type EtatActions, type LancementAction } from "./actions/file.js";
+import { lastResult, readResult, forgetGoneActions, deleteDataAction } from "./actions/donnees.js";
+import { FileActions, type ActionsState, type ActionLaunch } from "./actions/file.js";
 import { ID_ACTION } from "./actions/schemas.js";
-import { COMPOSANTS_INTEGRES } from "./pages/catalogue.js";
-import { lireComposantsAgent } from "./pages/composants-agent.js";
-import { resoudrePage, type PageRendue } from "./pages/resoudre.js";
+import { BUILTIN_COMPONENTS } from "./pages/catalogue.js";
+import { readAgentComponents } from "./pages/composants-agent.js";
+import { resolvePage, type RenderedPage } from "./pages/resoudre.js";
 import type { ResumeExecution } from "./workflows/executions.js";
 
-export class ErreurAtelier extends Error {
-  constructor(readonly etat: EtatAtelier, detail?: string) {
+export class WorkshopError extends Error {
+  constructor(readonly etat: WorkshopState, detail?: string) {
     super(detail ?? (etat === "docker-absent" ? "Docker n'est pas lancé" : `Conteneur indisponible (${etat})`));
     this.name = "ErreurAtelier";
   }
@@ -47,25 +47,25 @@ export class ErreurAtelier extends Error {
 const segmentSur = (s: string): boolean => s !== "" && s !== "." && s !== ".." && basename(s) === s && !s.includes("\\");
 
 /** Same items, same numbers of times, in any order. */
-const memesListes = (a: readonly string[], b: readonly string[]): boolean => {
+const sameLists = (a: readonly string[], b: readonly string[]): boolean => {
   const x = [...a].sort();
   const y = [...b].sort();
   return x.length === y.length && x.every((v, i) => v === y[i]);
 };
 
 /** Folder of the dev tools' raw profiles (distinct from `.webaios/profils`, that of the agent profiles). */
-export const DOSSIER_PROFILAGE = "profilage";
+export const PROFILING_FOLDER = "profilage";
 
 /** `.webaios/profilage` or `projets/<dossier>/.webaios/profilage`, in segments relative to the root. */
-const dossierProfilage = (parties: string[]): boolean =>
-  parties.every(segmentSur) &&
-  ((parties.length === 2 && parties[0] === ".webaios" && parties[1] === DOSSIER_PROFILAGE) ||
-    (parties.length === 4 && parties[0] === "projets" && parties[2] === ".webaios" && parties[3] === DOSSIER_PROFILAGE));
+const profilingFolder = (parts: string[]): boolean =>
+  parts.every(segmentSur) &&
+  ((parts.length === 2 && parts[0] === ".webaios" && parts[1] === PROFILING_FOLDER) ||
+    (parts.length === 4 && parts[0] === "projets" && parts[2] === ".webaios" && parts[3] === PROFILING_FOLDER));
 
 const code = (e: unknown): string | undefined => (e as NodeJS.ErrnoException).code;
 
 /** Reference of a profile kept outside the workspace: `profil:<file name>`. */
-export const PREFIXE_PROFIL_PRIVE = "profil:";
+export const PRIVATE_PROFILE_PREFIX = "profil:";
 
 /**
  * Raw profiles of the dev tools, written by the browser (spec §6). What the agent built goes into
@@ -75,17 +75,17 @@ export const PREFIXE_PROFIL_PRIVE = "profil:";
  * are read or erased. The workspace is mounted writable in the container: the agent can put symbolic links in it,
  * so no link is followed, neither in the folders nor for the file.
  */
-export function fichiersProfils(chemins: CheminsEspace, dossierPrive?: string): FichiersProfils {
-  const refus = (cheminConteneur: string) => new Error(`Chemin hors des profils : ${cheminConteneur}`);
+export function profileFiles(paths: SpacePaths, privateFolder?: string): ProfileFiles {
+  const denial = (containerPath: string) => new Error(`Chemin hors des profils : ${containerPath}`);
 
   /** Descends into the segments under the real root without following a link; creates the missing folders if `creer`. */
-  async function descendre(parties: string[], creer: boolean, affiche: string): Promise<string> {
-    let courant = await realpath(chemins.racine);
-    for (const partie of parties) {
-      courant = join(courant, partie);
+  async function descend(parts: string[], create: boolean, shown: string): Promise<string> {
+    let courant = await realpath(paths.racine);
+    for (const part of parts) {
+      courant = join(courant, part);
       let info = await lstat(courant).catch((e) => {
-        if (code(e) === "ENOENT" && creer) return null;
-        throw code(e) === "ENOENT" ? new Error(`Profil introuvable : ${affiche}`) : refus(affiche);
+        if (code(e) === "ENOENT" && create) return null;
+        throw code(e) === "ENOENT" ? new Error(`Profil introuvable : ${shown}`) : denial(shown);
       });
       if (!info) {
         await mkdir(courant).catch((e) => {
@@ -93,86 +93,86 @@ export function fichiersProfils(chemins: CheminsEspace, dossierPrive?: string): 
         });
         info = await lstat(courant);
       }
-      if (info.isSymbolicLink() || !info.isDirectory()) throw refus(affiche);
+      if (info.isSymbolicLink() || !info.isDirectory()) throw denial(shown);
     }
     // A link placed between two checks would be seen here.
-    if ((await realpath(courant)) !== courant) throw refus(affiche);
+    if ((await realpath(courant)) !== courant) throw denial(shown);
     return courant;
   }
 
   /** Container path → segments under the root, only for a file of a profiling folder. */
-  const segments = (cheminConteneur: string): string[] => {
-    const prefixe = `${CHEMIN_CONTENEUR}/`;
-    const normal = posix.normalize(cheminConteneur);
-    if (!posix.isAbsolute(cheminConteneur) || !normal.startsWith(prefixe)) throw refus(cheminConteneur);
-    const parties = normal.slice(prefixe.length).split("/");
-    if (parties.length < 3 || !segmentSur(parties.at(-1)!) || !dossierProfilage(parties.slice(0, -1))) throw refus(cheminConteneur);
-    return parties;
+  const segments = (containerPath: string): string[] => {
+    const prefix = `${CONTAINER_PATH}/`;
+    const normal = posix.normalize(containerPath);
+    if (!posix.isAbsolute(containerPath) || !normal.startsWith(prefix)) throw denial(containerPath);
+    const parts = normal.slice(prefix.length).split("/");
+    if (parts.length < 3 || !segmentSur(parts.at(-1)!) || !profilingFolder(parts.slice(0, -1))) throw denial(containerPath);
+    return parts;
   };
 
   /** The private folder (created if needed), without a symbolic link. */
-  async function dossierPriveReel(creer: boolean): Promise<string> {
-    if (!dossierPrive) throw new Error("Enregistrement des profils indisponible.");
-    if (creer) await mkdir(dossierPrive, { recursive: true, mode: 0o700 });
-    return realpath(dossierPrive);
+  async function realPrivateFolder(create: boolean): Promise<string> {
+    if (!privateFolder) throw new Error("Enregistrement des profils indisponible.");
+    if (create) await mkdir(privateFolder, { recursive: true, mode: 0o700 });
+    return realpath(privateFolder);
   }
 
   /** The file, if it is a real file (not a link) in a real profiling folder, or the private folder. */
-  async function fichierExistant(cheminConteneur: string): Promise<string> {
-    let fichier: string;
-    if (cheminConteneur.startsWith(PREFIXE_PROFIL_PRIVE)) {
-      const nom = cheminConteneur.slice(PREFIXE_PROFIL_PRIVE.length);
-      if (!segmentSur(nom)) throw refus(cheminConteneur);
-      const dossier = await dossierPriveReel(false).catch((e: unknown) => {
-        throw code(e) === "ENOENT" ? new Error(`Profil introuvable : ${cheminConteneur}`) : e;
+  async function existingFile(containerPath: string): Promise<string> {
+    let file: string;
+    if (containerPath.startsWith(PRIVATE_PROFILE_PREFIX)) {
+      const name = containerPath.slice(PRIVATE_PROFILE_PREFIX.length);
+      if (!segmentSur(name)) throw denial(containerPath);
+      const dossier = await realPrivateFolder(false).catch((e: unknown) => {
+        throw code(e) === "ENOENT" ? new Error(`Profil introuvable : ${containerPath}`) : e;
       });
-      fichier = join(dossier, nom);
+      file = join(dossier, name);
     } else {
-      const parties = segments(cheminConteneur);
-      const dossier = await descendre(parties.slice(0, -1), false, cheminConteneur);
-      fichier = join(dossier, parties.at(-1)!);
+      const parts = segments(containerPath);
+      const dossier = await descend(parts.slice(0, -1), false, containerPath);
+      file = join(dossier, parts.at(-1)!);
     }
-    const info = await lstat(fichier).catch(() => {
-      throw new Error(`Profil introuvable : ${cheminConteneur}`);
+    const info = await lstat(file).catch(() => {
+      throw new Error(`Profil introuvable : ${containerPath}`);
     });
-    if (!info.isFile()) throw refus(cheminConteneur);
-    return fichier;
+    if (!info.isFile()) throw denial(containerPath);
+    return file;
   }
 
   return {
-    async ecrireProfil(o, nom, contenu, construite) {
-      if (!segmentSur(nom)) throw new Error(`Nom de profil invalide : ${nom}`);
-      if (!construite) {
+    async ecrireProfil(o, name, content, built) {
+      if (!segmentSur(name)) throw new Error(`Nom de profil invalide : ${name}`);
+      if (!built) {
         // « wx »: never over an existing file or link.
-        await writeFile(join(await dossierPriveReel(true), nom), contenu, { flag: "wx", mode: 0o600 });
-        return PREFIXE_PROFIL_PRIVE + nom;
+        await writeFile(join(await realPrivateFolder(true), name), content, { flag: "wx", mode: 0o600 });
+        return PRIVATE_PROFILE_PREFIX + name;
       }
       if (o.application !== undefined && !segmentSur(o.application)) throw new Error(`Dossier d'application invalide : ${o.application}`);
-      const parties = o.application === undefined ? [".webaios", DOSSIER_PROFILAGE] : ["projets", o.application, ".webaios", DOSSIER_PROFILAGE];
-      const cheminConteneur = `${CHEMIN_CONTENEUR}/${[...parties, nom].join("/")}`;
-      const dossier = await descendre(parties, true, cheminConteneur);
+      const parts = o.application === undefined ? [".webaios", PROFILING_FOLDER] : ["projets", o.application, ".webaios", PROFILING_FOLDER];
+      const containerPath = `${CONTAINER_PATH}/${[...parts, name].join("/")}`;
+      const dossier = await descend(parts, true, containerPath);
       // « wx »: never over an existing file or link.
-      await writeFile(join(dossier, nom), contenu, { flag: "wx" });
-      return cheminConteneur;
+      await writeFile(join(dossier, name), content, { flag: "wx" });
+      return containerPath;
     },
-    async lireProfil(cheminConteneur) {
-      const fichier = await fichierExistant(cheminConteneur);
-      const f = await open(fichier, constants.O_RDONLY | constants.O_NOFOLLOW).catch(() => {
-        throw refus(cheminConteneur);
+    async lireProfil(containerPath) {
+      const file = await existingFile(containerPath);
+      const f = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW).catch(() => {
+        throw denial(containerPath);
       });
       try {
-        if (!(await f.stat()).isFile()) throw refus(cheminConteneur);
+        if (!(await f.stat()).isFile()) throw denial(containerPath);
         return await f.readFile("utf8");
       } finally {
         await f.close();
       }
     },
-    async supprimerProfil(cheminConteneur) {
-      const fichier = await fichierExistant(cheminConteneur).catch((e: Error) => {
+    async supprimerProfil(containerPath) {
+      const file = await existingFile(containerPath).catch((e: Error) => {
         if (e.message.startsWith("Profil introuvable")) return null;
         throw e;
       });
-      if (fichier) await unlink(fichier).catch(() => {});
+      if (file) await unlink(file).catch(() => {});
     },
   };
 }
@@ -185,7 +185,7 @@ export type PageAction = {
   saisie: string | null;
   statut: Execution["statut"];
   erreur?: string;
-  page: PageRendue | null;
+  page: RenderedPage | null;
   /** The action reads with the user's account (current declaration): the results' images stay neutral. */
   compte: boolean;
 };
@@ -194,10 +194,10 @@ export type PageAction = {
 export interface ActionsNoyau {
   lister(): Promise<ActionLue[]>;
   /** Launches the action (trigger « manuelle » by default); if it is running or waiting already, returns that one (`deja`). */
-  lancer(id: string, o: { saisie?: string; declencheur?: Execution["declencheur"] }): LancementAction;
+  lancer(id: string, o: { saisie?: string; declencheur?: Execution["declencheur"] }): ActionLaunch;
   arreter(id: string): void;
-  direct(): EtatActions;
-  surDirect(rappel: (e: EtatActions) => void): () => void;
+  direct(): ActionsState;
+  surDirect(rappel: (e: ActionsState) => void): () => void;
   executions(id: string): Promise<ResumeExecution[]>;
   execution(id: string, execution: string): Promise<Execution | null>;
   /** The result of this run (null: the last result), without relaunching anything; null if there is none. */
@@ -207,34 +207,34 @@ export interface ActionsNoyau {
   /** Withdraws the grant and erases runs, results and memory. */
   refuserAccord(id: string): Promise<void>;
   /** Builder try: a « -essai » run that does not become the last result. */
-  rejouer(id: string, origine: string, depart: string): LancementAction;
+  rejouer(id: string, origin: string, depart: string): ActionLaunch;
   supprimerDonnees(id: string): Promise<void>;
 }
 
 export interface Noyau {
-  chemins: CheminsEspace;
+  chemins: SpacePaths;
   actions: ActionsNoyau;
-  politique: PolitiqueAcces;
+  politique: AccessPolicy;
   /** Name of the agent of this kernel's profile (the one that holds the accesses). */
   agent: string;
-  etatAtelier(): Promise<EtatAtelier>;
+  etatAtelier(): Promise<WorkshopState>;
   /** New conversation: erases the authorizations. Signal the current tab (interactionUtilisateur) afterwards. */
   ouvrirSessionAgent(o: { cols: number; rows: number; fenetre?: string }): Promise<SessionAgent>;
   /** Widgets of the home page, with their data and state (stored outside the workspace). */
-  lireAccueil(): Promise<EtatAccueil>;
+  lireAccueil(): Promise<HomeState>;
   surveillerAccueil(rappel: () => void): () => Promise<void>;
   /** Harvests this widget right away, after the harvest in progress (trigger: « manuelle » by default). */
-  recolterMaintenant(id: string, declencheur?: Execution["declencheur"]): Promise<EtatWidget & { execution?: string }>;
+  recolterMaintenant(id: string, trigger?: Execution["declencheur"]): Promise<WidgetState & { execution?: string }>;
   /**
    * Builder try: replays the widget's workflow from block `depart`, with the upstream outputs of run
    * `origine`, in the same queue as the harvests. Writes neither data, nor memory, nor state: only the try run.
    * Exception: a grant lost during the try follows the normal withdrawal path (data erased, `accord-requis`).
    */
-  rejouer(id: string, origine: string, depart: string): Promise<ResultatEssai>;
+  rejouer(id: string, origin: string, depart: string): Promise<AttemptResult>;
   /** The run (or try) that is running, its blocks along the traces, and the waiting requests. */
-  direct(): EtatDirect;
+  direct(): DirectState;
   /** Called at each change of `direct()`; returns a way to unsubscribe. */
-  surDirect(rappel: (e: EtatDirect) => void): () => void;
+  surDirect(rappel: (e: DirectState) => void): () => void;
   /** Local AI (Kev, Gemma) given by the browser; null without it. */
   ia: IaLocale | null;
   /**
@@ -249,10 +249,10 @@ export interface Noyau {
 }
 
 /** The single entry point for a browser: it gives its bridge, the kernel does the rest. */
-export async function creerNoyau(o: {
-  pont: PontNavigateur;
+export async function createKernel(o: {
+  pont: BrowserBridge;
   racine?: string;
-  executer?: Executeur;
+  executer?: Runner;
   horloge?: () => Date;
   profilId?: string;
   /** Folder containing `modeles/` and `docker/` (by default, those of the package). */
@@ -260,7 +260,7 @@ export async function creerNoyau(o: {
   /** Workshop shared with the browser (which also launches the applications); otherwise, the kernel creates its own. */
   atelier?: Atelier;
   /** MCP tools of the applications (launch, stop, log). */
-  applications?: OutilsApplications;
+  applications?: AppsTools;
   /** Ports on which a local demo opened by the agent is « built » (by default those of the container, plagePortsConteneur). */
   portConstruit?: (port: number) => boolean;
   /**
@@ -280,7 +280,7 @@ export async function creerNoyau(o: {
   /** Workflow engine, mounted in the harvest container (by default `<ressources>/docker/moteur`). */
   moteur?: string;
   /** The workflow open in a window's builder (MCP tool `workflow_ouvert`). */
-  workflowOuvert?: (fenetre: string) => WorkflowOuvert | null;
+  workflowOuvert?: (win: string) => OpenWorkflow | null;
   /** Called after each write of a widget's state or data, and after a grant or its withdrawal. */
   surChange?: () => void;
   /** Tests only: the harvests may read local addresses (the test server). */
@@ -290,28 +290,28 @@ export async function creerNoyau(o: {
   /** End notification of a watch that has new items (the browser shows it, see OptionsPlanificateur). */
   notifier?: (n: NotificationWidget) => void;
   /** MCP tools of the extensions (provided by the browser). */
-  extensions?: OutilsExtensions;
+  extensions?: ExtensionsTools;
   /** MCP tools of the site apps (provided by the browser). */
-  sites?: OutilsSites;
+  sites?: SitesTools;
 }): Promise<Noyau> {
-  const chemins = cheminsEspace(o.racine);
-  const executer = o.executer ?? executeurParDefaut;
-  await initialiserEspace(chemins, o.ressources ? join(o.ressources, "modeles") : undefined);
+  const paths = spacePaths(o.racine);
+  const executer = o.executer ?? defaultRunner;
+  await initSpace(paths, o.ressources ? join(o.ressources, "modeles") : undefined);
 
-  const profilId = o.profilId ?? "claude";
-  const profil = (await chargerProfils(chemins)).profils.find((p) => p.id === profilId);
-  if (!profil) throw new Error(`Profil d'agent inconnu : ${profilId}`);
+  const profileId = o.profilId ?? "claude";
+  const profile = (await loadProfiles(paths)).profils.find((p) => p.id === profileId);
+  if (!profile) throw new Error(`Profil d'agent inconnu : ${profileId}`);
 
-  const politique = new PolitiqueAcces(o.portConstruit ? { portConstruit: o.portConstruit } : {});
+  const politique = new AccessPolicy(o.portConstruit ? { portConstruit: o.portConstruit } : {});
   const { dossierWidgets } = o;
   const { dossierActions } = o;
   // An action deleted (or put in the trash) since the last launch: its data and grant go.
-  await oublierActionsDisparues(chemins, dossierActions).catch((e) => console.error("[webaios] oubli des actions disparues :", e));
+  await forgetGoneActions(paths, dossierActions).catch((e) => console.error("[webaios] oubli des actions disparues :", e));
   const ia = o.ia ?? null;
   // Access specific to this kernel, closed with it: a harvest still in flight at shutdown does not relaunch Kev.
-  const accesIa = ia?.acces() ?? null;
+  const aiAccess = ia?.acces() ?? null;
   // A single dispatcher for the widgets and the actions: an action's calls go before those of the widgets.
-  const repartiteurIa = accesIa ? creerRepartiteurIa(accesIa) : null;
+  const aiDispatcher = aiAccess ? createAiDispatcher(aiAccess) : null;
   const signaler = () => {
     try {
       o.surChange?.();
@@ -320,55 +320,55 @@ export async function creerNoyau(o: {
     }
   };
   const widget = async (id: string): Promise<WidgetLu | undefined> =>
-    (await lireAccueil(chemins, dossierWidgets)).widgets.find((w) => w.id === id);
+    (await readHome(paths, dossierWidgets)).widgets.find((w) => w.id === id);
   // Read by the agent through its MCP tools. A widget whose declaration is unreadable, or that has a recorded grant, counts
   // as reading with the user's account: its data may have been harvested with it.
-  const outilsWidgets: OutilsWidgets = {
+  const widgetsTools: WidgetsTools = {
     async lire(id) {
       const w = await widget(id);
       if (!w) return null;
       const accord = (await lireAccords(dossierWidgets))[id] !== undefined;
-      if ("erreur" in w) return { nom: id, compte: true, donnees: await lireDonnees(dossierWidgets, id) };
+      if ("erreur" in w) return { nom: id, compte: true, donnees: await readData(dossierWidgets, id) };
       return { nom: w.declaration.nom, compte: accord || w.declaration.sources.compte.length > 0, donnees: w.donnees };
     },
-    recolter: (id) => planificateur.recolterMaintenant(id, "agent"),
+    recolter: (id) => scheduler.recolterMaintenant(id, "agent"),
     executions: (id) => listerExecutions(join(dossierWidgets, id)),
     execution: (id, execution) => lireExecution(join(dossierWidgets, id), execution),
   };
   // The browser keeps its dev tools from one kernel to the next: this one takes its own, which revokes those
   // of a previous kernel (its late calls are refused, its attachments drop).
-  const proprietaire = o.pont.outilsDev?.proprietaire?.();
-  const outilsDev = proprietaire ?? o.pont.outilsDev;
-  const jeton = genererJeton();
+  const owner = o.pont.outilsDev?.proprietaire?.();
+  const devTools = owner ?? o.pont.outilsDev;
+  const token = generateToken();
   // Read by the agent through its MCP tools. An unreadable action, or one that has a recorded grant, counts as reading with the
   // user's account. `actions` is defined further down: these functions are only used once the server is launched.
-  const outilsActions: OutilsActions = {
+  const actionsTools: ActionsTools = {
     async lire(id) {
-      const a = await lireAction(chemins, id);
+      const a = await lireAction(paths, id);
       if (!a) return null;
       const accord = (await lireAccords(dossierActions))[id] !== undefined;
       if ("erreur" in a) return { nom: id, compte: true, saisie: null };
       return { nom: a.declaration.nom, compte: accord || a.declaration.sources.compte.length > 0, saisie: a.declaration.saisie?.libelle ?? null };
     },
-    lancer: (id, saisie) => actions.lancer(id, { ...(saisie !== undefined ? { saisie } : {}), declencheur: "agent" }).fin,
+    lancer: (id, input) => actions.lancer(id, { ...(input !== undefined ? { saisie: input } : {}), declencheur: "agent" }).fin,
     executions: (id) => actions.executions(id),
     async execution(id, execution) {
       const e = await actions.execution(id, execution);
       if (!e) return null;
-      const r = await lireResultat(dossierActions, id, execution);
+      const r = await readResult(dossierActions, id, execution);
       return { ...e, plan: r?.plan ?? null };
     },
   };
-  const serveur = await demarrerServeurMcp({
+  const server = await startMcpServer({
     pont: o.pont,
     politique,
-    jeton,
-    agent: profil.nom,
-    profils: fichiersProfils(chemins, o.dossierProfilage),
-    ...(outilsDev ? { outilsDev } : {}),
+    jeton: token,
+    agent: profile.nom,
+    profils: profileFiles(paths, o.dossierProfilage),
+    ...(devTools ? { outilsDev: devTools } : {}),
     ...(o.applications ? { applications: o.applications } : {}),
-    widgets: outilsWidgets,
-    actions: outilsActions,
+    widgets: widgetsTools,
+    actions: actionsTools,
     ...(o.workflowOuvert ? { workflowOuvert: o.workflowOuvert } : {}),
     ...(o.extensions ? { extensions: o.extensions } : {}),
     ...(o.sites ? { sites: o.sites } : {}),
@@ -376,39 +376,39 @@ export async function creerNoyau(o: {
   try {
     // Session configs left by a crash: their tokens are worth nothing any more.
     // A failure does not prevent starting: dead tokens are harmless.
-    await rm(dossierSessions(chemins), { recursive: true, force: true }).catch((e) => console.error("[webaios] purge des configs de session :", e));
-    await ecrireConfigMcp(chemins, profil.configMcp, { url: serveur.urlConteneur, jeton });
+    await rm(dossierSessions(paths), { recursive: true, force: true }).catch((e) => console.error("[webaios] purge des configs de session :", e));
+    await writeMcpConfig(paths, profile.configMcp, { url: server.urlConteneur, jeton: token });
   } catch (e) {
-    await serveur.arreter();
-    proprietaire?.liberer();
+    await server.arreter();
+    owner?.liberer();
     throw e;
   }
 
   // Navigation must never wait for Docker (spec §9): the first image build takes
   // minutes, and a failure (port in use…) only concerns the agent.
-  const atelier = o.atelier ?? new Atelier({ chemins, executer, ...(o.ressources ? { dossierDocker: join(o.ressources, "docker") } : {}) });
+  const atelier = o.atelier ?? new Atelier({ chemins: paths, executer, ...(o.ressources ? { dossierDocker: join(o.ressources, "docker") } : {}) });
   // The container is prepared from launch. If it fails, the first session returns this failure rather than rebuilding
   // everything right away; the following ones (Réessayer) try again. Once successful, it is re-checked (quick probe).
   // Before any session, the agents left by a previous app are stopped.
-  const atelierPret = atelier.assurerDemarre().then(async (etat) => {
-    if (etat === "demarre") await atelier.arreterSessionsOrphelines();
-    return etat;
+  const workshopReady = atelier.assurerDemarre().then(async (state) => {
+    if (state === "demarre") await atelier.arreterSessionsOrphelines();
+    return state;
   });
-  atelierPret.catch(() => {});
-  let demarrage: Promise<EtatAtelier> | null = atelierPret;
-  const moteur = o.moteur ?? (o.ressources ? join(o.ressources, "docker", "moteur") : join(DOSSIER_DOCKER_PAR_DEFAUT, "moteur"));
-  const abonnesDirect = new Set<(e: EtatDirect) => void>();
-  const planificateur = new PlanificateurWidgets({
-    chemins,
+  workshopReady.catch(() => {});
+  let startup: Promise<WorkshopState> | null = workshopReady;
+  const engine = o.moteur ?? (o.ressources ? join(o.ressources, "docker", "moteur") : join(DEFAULT_DOCKER_FOLDER, "moteur"));
+  const directSubscribers = new Set<(e: DirectState) => void>();
+  const scheduler = new WidgetsScheduler({
+    chemins: paths,
     dossierWidgets,
-    moteur,
+    moteur: engine,
     atelier,
     pont: o.pont,
-    ia: accesIa,
-    ...(repartiteurIa ? { repartiteur: repartiteurIa } : {}),
+    ia: aiAccess,
+    ...(aiDispatcher ? { repartiteur: aiDispatcher } : {}),
     surChange: signaler,
     surDirect(e) {
-      for (const rappel of abonnesDirect) {
+      for (const rappel of directSubscribers) {
         try {
           rappel(e);
         } catch (err) {
@@ -417,31 +417,31 @@ export async function creerNoyau(o: {
       }
     },
     // Kept apart from `demarrage` (which ouvrirSessionAgent resets to null): the harvests wait for the first startup.
-    pret: atelierPret,
+    pret: workshopReady,
     ...(o.horloge ? { horloge: o.horloge } : {}),
     ...(o.adressesLocales ? { adressesLocales: true } : {}),
     // A single pacing for the whole application (all kernels, tries included): one search at a time, one
     // read at a time per host, even during the 15 s when the old kernel stops at the profile change.
-    menagement: MENAGEMENT_PAR_DEFAUT,
+    menagement: DEFAULT_PACING,
     ...(o.urlRecherche !== undefined ? { urlRecherche: o.urlRecherche } : {}),
     ...(o.notifier ? { notifier: o.notifier } : {}),
   });
-  await planificateur.demarrer();
-  const abonnesActions = new Set<(e: EtatActions) => void>();
+  await scheduler.demarrer();
+  const actionSubscribers = new Set<(e: ActionsState) => void>();
   const fileActions = new FileActions({
-    chemins,
+    chemins: paths,
     dossierActions,
-    moteur,
+    moteur: engine,
     atelier,
     pont: o.pont,
-    repartiteur: repartiteurIa,
-    pret: atelierPret,
+    repartiteur: aiDispatcher,
+    pret: workshopReady,
     ...(o.horloge ? { horloge: o.horloge } : {}),
     ...(o.adressesLocales ? { adressesLocales: true } : {}),
-    menagement: MENAGEMENT_PAR_DEFAUT,
+    menagement: DEFAULT_PACING,
     ...(o.urlRecherche !== undefined ? { urlRecherche: o.urlRecherche } : {}),
     surDirect(e) {
-      for (const rappel of abonnesActions) {
+      for (const rappel of actionSubscribers) {
         try {
           rappel(e);
         } catch (err) {
@@ -451,28 +451,28 @@ export async function creerNoyau(o: {
     },
   });
   const actions: ActionsNoyau = {
-    lister: () => lireActions(chemins),
+    lister: () => lireActions(paths),
     lancer: (id, l) => fileActions.lancer(id, { saisie: l.saisie ?? null, declencheur: l.declencheur ?? "manuelle" }),
     arreter: (id) => void fileActions.arreter(id),
     direct: () => fileActions.direct(),
     surDirect(rappel) {
-      abonnesActions.add(rappel);
-      return () => void abonnesActions.delete(rappel);
+      actionSubscribers.add(rappel);
+      return () => void actionSubscribers.delete(rappel);
     },
     executions: async (id) => (ID_ACTION.test(id) ? listerExecutions(join(dossierActions, id)) : []),
     execution: async (id, execution) => (ID_ACTION.test(id) && ID_EXECUTION.test(execution) ? lireExecution(join(dossierActions, id), execution) : null),
     async page(id, execution) {
       if (execution !== null && !ID_EXECUTION.test(execution)) return null;
-      const action = await lireAction(chemins, id);
+      const action = await lireAction(paths, id);
       if (!action) return null;
-      const r = execution === null ? await dernierResultat(dossierActions, id) : await lireResultat(dossierActions, id, execution);
+      const r = execution === null ? await lastResult(dossierActions, id) : await readResult(dossierActions, id, execution);
       const e = await lireExecution(join(dossierActions, id), r?.execution ?? execution ?? "");
       if (!e) return null;
       // Unreadable, or a grant still recorded (rewritten without account, its results may have been read with it): counts as
       // reading with the account (the most cautious, like the MCP tools and the images). Unreadable grants: same.
       const accords = await lireAccords(dossierActions).catch(() => null);
-      const compte = "erreur" in action || action.declaration.sources.compte.length > 0 || !accords || Object.hasOwn(accords, id);
-      const catalogue = [...COMPOSANTS_INTEGRES, ...(await lireComposantsAgent(chemins.composants)).valides];
+      const account = "erreur" in action || action.declaration.sources.compte.length > 0 || !accords || Object.hasOwn(accords, id);
+      const catalogue = [...BUILTIN_COMPONENTS, ...(await readAgentComponents(paths.composants)).valides];
       return {
         execution: e.id,
         debut: e.debut,
@@ -480,136 +480,136 @@ export async function creerNoyau(o: {
         saisie: r?.saisie ?? e.saisie ?? null,
         statut: e.statut,
         ...(e.erreur !== undefined ? { erreur: e.erreur } : {}),
-        page: r ? resoudrePage(r.plan ?? { blocs: [] }, r.resultats, { compte, catalogue, secours: r.secours }) : null,
-        compte,
+        page: r ? resolvePage(r.plan ?? { blocs: [] }, r.resultats, { compte: account, catalogue, secours: r.secours }) : null,
+        compte: account,
       };
     },
-    async accorder({ id, profil: nomProfil, compte: montres, publiques: publiquesMontrees }) {
-      const a = await lireAction(chemins, id);
+    async accorder({ id, profil: profileName, compte: shown, publiques: shownPublic }) {
+      const a = await lireAction(paths, id);
       if (!a) throw new Error(`Action inconnue : ${id}`);
       if ("erreur" in a) throw new Error(`Action illisible : ${a.erreur}`);
-      const { compte, publiques } = a.declaration.sources;
-      if (!compte.length) throw new Error(`L'action ${id} ne lit pas avec un compte`);
-      if (!memesListes(compte, montres) || !memesListes(publiques, publiquesMontrees)) {
+      const { compte: account, publiques: publics } = a.declaration.sources;
+      if (!account.length) throw new Error(`L'action ${id} ne lit pas avec un compte`);
+      if (!sameLists(account, shown) || !sameLists(publics, shownPublic)) {
         throw new Error(`La déclaration de l'action ${id} a changé depuis l'affichage de la demande : rien n'est accordé, relis la nouvelle demande.`);
       }
-      await accorder(dossierActions, id, { domaines: [...compte].sort(), publiques: [...publiques].sort(), profil: nomProfil });
+      await accorder(dossierActions, id, { domaines: [...account].sort(), publiques: [...publics].sort(), profil: profileName });
     },
     async refuserAccord(id) {
       await retirerAccord(dossierActions, id);
-      await supprimerDonneesAction(dossierActions, id);
+      await deleteDataAction(dossierActions, id);
     },
-    rejouer: (id, origine, depart) => fileActions.essayer(id, origine, depart),
-    supprimerDonnees: (id) => supprimerDonneesAction(dossierActions, id),
+    rejouer: (id, origin, depart) => fileActions.essayer(id, origin, depart),
+    supprimerDonnees: (id) => deleteDataAction(dossierActions, id),
   };
   const pont = o.pont;
-  const suivi = outilsDev ? new SuiviOutilsDev(politique, outilsDev, () => pont.listerOnglets()) : null;
+  const tracking = devTools ? new DevToolsTracking(politique, devTools, () => pont.listerOnglets()) : null;
 
   // Cleanups of the sessions with a window still open, also done at the kernel's shutdown.
-  const sessionsOuvertes = new Set<() => Promise<void>>();
+  const openSessions = new Set<() => Promise<void>>();
 
   return {
-    chemins,
+    chemins: paths,
     actions,
     politique,
-    agent: profil.nom,
+    agent: profile.nom,
     etatAtelier: () => atelier.etat(),
-    async ouvrirSessionAgent({ cols, rows, fenetre }) {
-      const premier = demarrage;
-      demarrage = null;
+    async ouvrirSessionAgent({ cols, rows, fenetre: win }) {
+      const premier = startup;
+      startup = null;
       const tentative = premier ? premier.then(() => atelier.assurerDemarre()) : atelier.assurerDemarre();
-      let etat: EtatAtelier;
+      let state: WorkshopState;
       try {
-        etat = await tentative;
+        state = await tentative;
       } catch (e) {
-        throw new ErreurAtelier("absent", (e as Error).message);
+        throw new WorkshopError("absent", (e as Error).message);
       }
-      if (etat !== "demarre") throw new ErreurAtelier(etat);
+      if (state !== "demarre") throw new WorkshopError(state);
       // New conversation: no authorization any more. The sessions share the MCP server and therefore the policy:
       // a session of another window also loses its accesses (it will ask again), rather than inheriting them.
       politique.reinitialiser();
       const id = randomBytes(8).toString("hex");
       // With a window: its own token and config, so that `workflow_ouvert` knows which one speaks (without a window,
       // dev CLI: the main config).
-      let jetonSession: string | undefined;
-      const configSession = cheminConfigSession(chemins, id);
-      const nettoyer = (): Promise<void> => {
-        if (jetonSession === undefined) return Promise.resolve();
-        serveur.fermerSession(jetonSession);
-        jetonSession = undefined;
+      let sessionToken: string | undefined;
+      const configSession = sessionConfigPath(paths, id);
+      const clean = (): Promise<void> => {
+        if (sessionToken === undefined) return Promise.resolve();
+        server.fermerSession(sessionToken);
+        sessionToken = undefined;
         return rm(configSession, { force: true }).catch((e) => console.error("[webaios] suppression de la config de session :", e));
       };
       try {
-        if (fenetre !== undefined) {
-          jetonSession = serveur.ouvrirSession(fenetre);
-          await ecrireConfigSession(chemins, profil.configMcp, { url: serveur.urlConteneur, jeton: jetonSession }, id);
+        if (win !== undefined) {
+          sessionToken = server.ouvrirSession(win);
+          await writeSessionConfig(paths, profile.configMcp, { url: server.urlConteneur, jeton: sessionToken }, id);
         }
-        const commande = construireCommande(profil, "interactif", {
-          mcpConfig: cheminDansConteneur(fenetre !== undefined ? configSession : chemins.configMcp, chemins),
+        const command = buildCommand(profile, "interactif", {
+          mcpConfig: pathInContainer(win !== undefined ? configSession : paths.configMcp, paths),
         });
-        const session = SessionAgent.demarrer(atelier.commandeSession(id, commande), { cols, rows, arreterDistant: () => atelier.arreterSession(id) });
-        sessionsOuvertes.add(nettoyer);
+        const session = SessionAgent.demarrer(atelier.commandeSession(id, command), { cols, rows, arreterDistant: () => atelier.arreterSession(id) });
+        openSessions.add(clean);
         session.surFin(() => {
-          sessionsOuvertes.delete(nettoyer);
-          void nettoyer();
+          openSessions.delete(clean);
+          void clean();
         });
         return session;
       } catch (e) {
-        await nettoyer();
+        await clean();
         throw e;
       }
     },
-    lireAccueil: () => lireAccueil(chemins, dossierWidgets),
-    surveillerAccueil: (rappel) => surveillerAccueil(chemins, rappel),
-    recolterMaintenant: (id, declencheur) => planificateur.recolterMaintenant(id, declencheur),
-    rejouer: (id, origine, depart) => planificateur.rejouer(id, origine, depart),
-    direct: () => planificateur.direct(),
+    lireAccueil: () => readHome(paths, dossierWidgets),
+    surveillerAccueil: (rappel) => watchHome(paths, rappel),
+    recolterMaintenant: (id, trigger) => scheduler.recolterMaintenant(id, trigger),
+    rejouer: (id, origin, depart) => scheduler.rejouer(id, origin, depart),
+    direct: () => scheduler.direct(),
     surDirect(rappel) {
-      abonnesDirect.add(rappel);
-      return () => void abonnesDirect.delete(rappel);
+      directSubscribers.add(rappel);
+      return () => void directSubscribers.delete(rappel);
     },
     ia,
-    async accorder({ id, profil: nomProfil, compte: montres, publiques: publiquesMontrees }) {
+    async accorder({ id, profil: profileName, compte: shown, publiques: shownPublic }) {
       const w = await widget(id);
       if (!w) throw new Error(`Widget inconnu : ${id}`);
       if ("erreur" in w) throw new Error(`Widget illisible : ${w.erreur}`);
-      const { compte, publiques } = w.declaration.sources;
-      if (!compte.length) throw new Error(`Le widget ${id} ne lit pas avec un compte`);
-      if (!memesListes(compte, montres) || !memesListes(publiques, publiquesMontrees)) {
+      const { compte: account, publiques: publics } = w.declaration.sources;
+      if (!account.length) throw new Error(`Le widget ${id} ne lit pas avec un compte`);
+      if (!sameLists(account, shown) || !sameLists(publics, shownPublic)) {
         throw new Error(`La déclaration du widget ${id} a changé depuis l'affichage de la demande : rien n'est accordé, relis la nouvelle demande.`);
       }
-      await accorder(dossierWidgets, id, { domaines: [...compte].sort(), publiques: [...publiques].sort(), profil: nomProfil });
+      await accorder(dossierWidgets, id, { domaines: [...account].sort(), publiques: [...publics].sort(), profil: profileName });
       signaler();
       // The harvest takes time: it follows in the background and reports its own changes.
-      planificateur.recolterMaintenant(id).catch((e) => console.error("[webaios] récolte après accord :", e));
+      scheduler.recolterMaintenant(id).catch((e) => console.error("[webaios] récolte après accord :", e));
     },
     async refuserAccord(id) {
       await retirerAccord(dossierWidgets, id);
       // The data read with this account goes with the grant: without it, nothing protects it any more (account removed…).
-      await supprimerDonnees(dossierWidgets, id);
+      await deleteData(dossierWidgets, id);
       const w = await widget(id);
       if (w && !("erreur" in w) && w.declaration.sources.compte.length) {
-        const avant = await lireEtatWidget(dossierWidgets, id);
-        await ecrireEtatWidget(dossierWidgets, id, {
+        const before = await readWidgetState(dossierWidgets, id);
+        await writeWidgetState(dossierWidgets, id, {
           statut: "accord-requis",
-          derniereMaj: avant.derniereMaj,
-          derniereTentative: avant.derniereTentative,
-          erreur: accordRequis(w.declaration),
+          derniereMaj: before.derniereMaj,
+          derniereTentative: before.derniereTentative,
+          erreur: grantRequired(w.declaration),
           erreurNoyau: true,
         });
       }
       signaler();
     },
     async arreter() {
-      suivi?.arreter();
-      await Promise.all([...sessionsOuvertes].map((nettoyer) => nettoyer()));
-      sessionsOuvertes.clear();
+      tracking?.arreter();
+      await Promise.all([...openSessions].map((clean) => clean()));
+      openSessions.clear();
       // No access at all: the cards still displayed are removed, and a late answer grants nothing.
       politique.reinitialiser();
-      await Promise.all([planificateur.arreter(), fileActions.arreterTout()]);
-      await accesIa?.fermer().catch((e) => console.error("[webaios] arrêt de l'IA locale :", e));
-      await serveur.arreter();
-      proprietaire?.liberer();
+      await Promise.all([scheduler.arreter(), fileActions.arreterTout()]);
+      await aiAccess?.fermer().catch((e) => console.error("[webaios] arrêt de l'IA locale :", e));
+      await server.arreter();
+      owner?.liberer();
     },
   };
 }

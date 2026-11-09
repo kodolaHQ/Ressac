@@ -3,47 +3,47 @@ import { access, appendFile, constants, mkdir, readdir, rm, stat, writeFile } fr
 import { dirname, join } from "node:path";
 import { parserDiff, type Bloc } from "./diff.js";
 
-export const GIT_NECESSAIRE = "git est nécessaire";
-export const ACCES_REFUSE = "accès refusé";
-export const FICHIER_BINAIRE = "fichier binaire";
-export const FICHIER_TROP_GROS = "fichier trop gros pour la relecture";
-export const LIGNE_CHANGEE = "la ligne a changé";
-export const LIMITE_OCTETS = 1024 * 1024;
-export const LIMITE_LIGNES_DIFF = 5000;
-export const CONTEXTE_DIFF = 3;
+export const GIT_REQUIRED = "git est nécessaire";
+export const ACCESS_DENIED = "accès refusé";
+export const BINARY_FILE = "fichier binaire";
+export const FILE_TOO_BIG = "fichier trop gros pour la relecture";
+export const LINE_CHANGED = "la ligne a changé";
+export const BYTES_LIMIT = 1024 * 1024;
+export const DIFF_LINES_LIMIT = 5000;
+export const DIFF_CONTEXT = 3;
 export const EXCLUSIONS = [".git", "node_modules", ".DS_Store", "dist", "build", ".next"];
 
 const REF = "refs/webaios/relu";
-const LOT_CHEMINS = 200;
+const PATHS_BATCH = 200;
 
-export class ErreurRelecture extends Error {
-  constructor(readonly raison: typeof GIT_NECESSAIRE | typeof ACCES_REFUSE, detail?: string) {
+export class ReviewError extends Error {
+  constructor(readonly raison: typeof GIT_REQUIRED | typeof ACCESS_DENIED, detail?: string) {
     super(detail ? `${raison} : ${detail}` : raison);
     this.name = "ErreurRelecture";
   }
 }
 
-export interface FichierModifie { chemin: string; statut: "ajoute" | "modifie" | "supprime"; ajouts: number; suppressions: number; affichable: true | "binaire" | "trop-gros" }
-export interface Comparaison { arbreRelu: string; arbreCourant: string; fichiers: FichierModifie[] }
-export interface DiffFichier { chemin: string; statut: FichierModifie["statut"]; affichable: FichierModifie["affichable"]; blocs: Bloc[] }
+export interface ModifiedFile { chemin: string; statut: "ajoute" | "modifie" | "supprime"; ajouts: number; suppressions: number; affichable: true | "binaire" | "trop-gros" }
+export interface Comparison { arbreRelu: string; arbreCourant: string; fichiers: ModifiedFile[] }
+export interface DiffFile { chemin: string; statut: ModifiedFile["statut"]; affichable: ModifiedFile["affichable"]; blocs: Bloc[] }
 
-const gitParDefaut = () => process.env.WEBAIOS_GIT ?? "/usr/bin/git";
+const defaultGit = () => process.env.WEBAIOS_GIT ?? "/usr/bin/git";
 
-function lancer(git: string, args: string[], env: NodeJS.ProcessEnv, cwd?: string, avertissements?: { texte: string }): Promise<string> {
+function lancer(git: string, args: string[], env: NodeJS.ProcessEnv, cwd?: string, warnings?: { texte: string }): Promise<string> {
   return new Promise((resolve, reject) => {
     execFile(git, args, { env, cwd, encoding: "utf8", maxBuffer: 512 * 1024 * 1024 }, (err, stdout, stderr) => {
       if (!err) {
-        if (avertissements) avertissements.texte = stderr;
+        if (warnings) warnings.texte = stderr;
         return resolve(stdout);
       }
       const e = err as NodeJS.ErrnoException & { code?: string | number };
-      if (e.code === "ENOENT") return reject(new ErreurRelecture(GIT_NECESSAIRE, git));
+      if (e.code === "ENOENT") return reject(new ReviewError(GIT_REQUIRED, git));
       reject(Object.assign(new Error(`git ${args[0]} : ${stderr.trim() || e.message}`), { stderr, code: e.code }));
     });
   });
 }
 
-export async function gitDisponible(git: string = gitParDefaut()): Promise<boolean> {
+export async function gitAvailable(git: string = defaultGit()): Promise<boolean> {
   try {
     await lancer(git, ["--version"], { PATH: process.env.PATH, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null" });
     return true;
@@ -54,7 +54,7 @@ export async function gitDisponible(git: string = gitParDefaut()): Promise<boole
 
 const files = new Map<string, Promise<unknown>>();
 
-export class DepotRelecture {
+export class ReviewStore {
   private readonly depot: string;
   private readonly dossier: string;
   private readonly git: string;
@@ -62,7 +62,7 @@ export class DepotRelecture {
   constructor(o: { depot: string; dossier: string; git?: string }) {
     this.depot = o.depot;
     this.dossier = o.dossier;
-    this.git = o.git ?? gitParDefaut();
+    this.git = o.git ?? defaultGit();
   }
 
   /** The operations on the same repository go one after the other. */
@@ -98,17 +98,17 @@ export class DepotRelecture {
   private gitVerifie: Promise<boolean> | null = null;
 
   private async preparer(): Promise<void> {
-    this.gitVerifie ??= gitDisponible(this.git);
-    if (!(await this.gitVerifie)) throw new ErreurRelecture(GIT_NECESSAIRE, this.git);
+    this.gitVerifie ??= gitAvailable(this.git);
+    if (!(await this.gitVerifie)) throw new ReviewError(GIT_REQUIRED, this.git);
     try {
       await access(this.dossier, constants.R_OK | constants.X_OK);
       await readdir(this.dossier);
     } catch (e) {
       const code = (e as NodeJS.ErrnoException).code;
-      if (code === "EACCES" || code === "EPERM") throw new ErreurRelecture(ACCES_REFUSE, this.dossier);
+      if (code === "EACCES" || code === "EPERM") throw new ReviewError(ACCESS_DENIED, this.dossier);
       throw e;
     }
-    if (!(await existe(join(this.depot, "HEAD")))) {
+    if (!(await exists(join(this.depot, "HEAD")))) {
       await mkdir(dirname(this.depot), { recursive: true, mode: 0o700 });
       const env = { ...this.env() };
       delete env.GIT_DIR; delete env.GIT_WORK_TREE; delete env.GIT_INDEX_FILE;
@@ -120,19 +120,19 @@ export class DepotRelecture {
 
   private async photoInterne(): Promise<string> {
     await this.preparer();
-    for (let essai = 0; ; essai++) {
+    for (let attempt = 0; ; attempt++) {
       try {
         const av = { texte: "" };
         await lancer(this.git, ["add", "-A"], this.env(), this.dossier, av);
-        if (/could not open directory|Permission denied|Operation not permitted/i.test(av.texte)) throw new ErreurRelecture(ACCES_REFUSE, av.texte.trim());
+        if (/could not open directory|Permission denied|Operation not permitted/i.test(av.texte)) throw new ReviewError(ACCESS_DENIED, av.texte.trim());
         break;
       } catch (e) {
-        if (e instanceof ErreurRelecture) throw e;
+        if (e instanceof ReviewError) throw e;
         const s = (e as { stderr?: string }).stderr ?? "";
-        if (/Operation not permitted|Permission denied/i.test(s)) throw new ErreurRelecture(ACCES_REFUSE, this.dossier);
+        if (/Operation not permitted|Permission denied/i.test(s)) throw new ReviewError(ACCESS_DENIED, this.dossier);
         // A subfolder that is a repository without a commit cannot become a link: we exclude it.
         const nid = /'(.+)\/' does not have a commit checked out/.exec(s);
-        if (!nid || essai >= 50) throw e;
+        if (!nid || attempt >= 50) throw e;
         const motif = "/" + nid[1]!.replace(/[\\*?[\]!#]/g, "\\$&") + "/\n";
         await appendFile(join(this.depot, "info", "exclude"), motif);
       }
@@ -148,9 +148,9 @@ export class DepotRelecture {
     }
   }
 
-  private async retenirInterne(arbre: string): Promise<void> {
+  private async retenirInterne(tree: string): Promise<void> {
     const parent = await this.refRelu();
-    const args = ["commit-tree", arbre, ...(parent ? ["-p", parent] : []), "-m", `relu ${new Date().toISOString()}`];
+    const args = ["commit-tree", tree, ...(parent ? ["-p", parent] : []), "-m", `relu ${new Date().toISOString()}`];
     const commit = (await this.g(args)).trim();
     await this.g(["update-ref", REF, commit]);
   }
@@ -168,43 +168,43 @@ export class DepotRelecture {
     return this.serie(() => this.photoInterne());
   }
 
-  retenir(arbre?: string): Promise<void> {
-    return this.serie(async () => this.retenirInterne(arbre ?? (await this.photoInterne())));
+  retenir(tree?: string): Promise<void> {
+    return this.serie(async () => this.retenirInterne(tree ?? (await this.photoInterne())));
   }
 
-  comparer(): Promise<Comparaison> {
+  comparer(): Promise<Comparison> {
     return this.serie(async () => {
       await this.preparer();
       const courant = await this.photoInterne();
       if (!(await this.refRelu())) await this.retenirInterne(courant);
-      const relu = (await this.g(["rev-parse", `${REF}^{tree}`])).trim();
-      if (relu === courant) return { arbreRelu: relu, arbreCourant: courant, fichiers: [] };
+      const reviewed = (await this.g(["rev-parse", `${REF}^{tree}`])).trim();
+      if (reviewed === courant) return { arbreRelu: reviewed, arbreCourant: courant, fichiers: [] };
 
-      const brut = (await this.g(["diff-tree", "-r", "--no-renames", "-z", "--raw", relu, courant])).split("\0");
-      const statuts = new Map<string, FichierModifie["statut"]>();
+      const brut = (await this.g(["diff-tree", "-r", "--no-renames", "-z", "--raw", reviewed, courant])).split("\0");
+      const statuses = new Map<string, ModifiedFile["statut"]>();
       for (let i = 0; i + 1 < brut.length; i += 2) {
         const meta = brut[i]!.split(" "); // ":ancienMode nouveauMode ancienSha nouveauSha STATUT"
-        const chemin = brut[i + 1]!;
+        const path = brut[i + 1]!;
         if (!meta[0]?.startsWith(":")) break;
         if (meta[0] === ":160000" || meta[1] === "160000") continue;
         const s = meta[4]![0];
-        statuts.set(chemin, s === "A" ? "ajoute" : s === "D" ? "supprime" : "modifie");
+        statuses.set(path, s === "A" ? "ajoute" : s === "D" ? "supprime" : "modifie");
       }
-      if (statuts.size === 0) return { arbreRelu: relu, arbreCourant: courant, fichiers: [] };
+      if (statuses.size === 0) return { arbreRelu: reviewed, arbreCourant: courant, fichiers: [] };
 
       const nums = new Map<string, { ajouts: number; suppressions: number; binaire: boolean }>();
-      for (const enr of (await this.g(["diff-tree", "-r", "--no-renames", "-z", "--numstat", relu, courant])).split("\0")) {
-        const [a, d, ...reste] = enr.split("\t");
-        if (reste.length === 0) continue;
-        nums.set(reste.join("\t"), a === "-" ? { ajouts: 0, suppressions: 0, binaire: true } : { ajouts: Number(a), suppressions: Number(d), binaire: false });
+      for (const recorder of (await this.g(["diff-tree", "-r", "--no-renames", "-z", "--numstat", reviewed, courant])).split("\0")) {
+        const [a, d, ...rest] = recorder.split("\t");
+        if (rest.length === 0) continue;
+        nums.set(rest.join("\t"), a === "-" ? { ajouts: 0, suppressions: 0, binaire: true } : { ajouts: Number(a), suppressions: Number(d), binaire: false });
       }
 
-      const chemins = [...statuts.keys()];
+      const paths = [...statuses.keys()];
       const tailles = new Map<string, number>();
-      for (const [arbre, filtre] of [[relu, (c: string) => statuts.get(c) === "supprime"], [courant, (c: string) => statuts.get(c) !== "supprime"]] as const) {
-        const voulus = chemins.filter(filtre);
-        for (let i = 0; i < voulus.length; i += LOT_CHEMINS) {
-          const sortie = await this.g(["ls-tree", "-r", "-l", "-z", arbre, "--", ...voulus.slice(i, i + LOT_CHEMINS).map((c) => `:(literal)${c}`)]);
+      for (const [tree, filter] of [[reviewed, (c: string) => statuses.get(c) === "supprime"], [courant, (c: string) => statuses.get(c) !== "supprime"]] as const) {
+        const wanted = paths.filter(filter);
+        for (let i = 0; i < wanted.length; i += PATHS_BATCH) {
+          const sortie = await this.g(["ls-tree", "-r", "-l", "-z", tree, "--", ...wanted.slice(i, i + PATHS_BATCH).map((c) => `:(literal)${c}`)]);
           for (const ligne of sortie.split("\0")) {
             const t = ligne.indexOf("\t");
             if (t < 0) continue;
@@ -214,31 +214,31 @@ export class DepotRelecture {
         }
       }
 
-      const fichiers: FichierModifie[] = chemins.sort().map((chemin) => {
-        const n = nums.get(chemin) ?? { ajouts: 0, suppressions: 0, binaire: false };
-        const affichable: FichierModifie["affichable"] = n.binaire
+      const files: ModifiedFile[] = paths.sort().map((path) => {
+        const n = nums.get(path) ?? { ajouts: 0, suppressions: 0, binaire: false };
+        const displayable: ModifiedFile["affichable"] = n.binaire
           ? "binaire"
-          : (tailles.get(chemin) ?? 0) > LIMITE_OCTETS || n.ajouts + n.suppressions > LIMITE_LIGNES_DIFF ? "trop-gros" : true;
-        return { chemin, statut: statuts.get(chemin)!, ajouts: n.ajouts, suppressions: n.suppressions, affichable };
+          : (tailles.get(path) ?? 0) > BYTES_LIMIT || n.ajouts + n.suppressions > DIFF_LINES_LIMIT ? "trop-gros" : true;
+        return { chemin: path, statut: statuses.get(path)!, ajouts: n.ajouts, suppressions: n.suppressions, affichable: displayable };
       });
-      return { arbreRelu: relu, arbreCourant: courant, fichiers };
+      return { arbreRelu: reviewed, arbreCourant: courant, fichiers: files };
     });
   }
 
-  fichier(c: Comparaison, chemin: string): Promise<DiffFichier> {
+  fichier(c: Comparison, path: string): Promise<DiffFile> {
     return this.serie(async () => {
-      const f = c.fichiers.find((x) => x.chemin === chemin);
-      if (!f) throw new Error(`fichier absent de la comparaison : ${chemin}`);
-      if (f.affichable !== true) return { chemin, statut: f.statut, affichable: f.affichable, blocs: [] };
-      const patch = await this.g(["diff-tree", "-p", `-U${CONTEXTE_DIFF}`, "--no-color", "--no-ext-diff", "--no-textconv", "--no-renames", c.arbreRelu, c.arbreCourant, "--", `:(literal)${chemin}`]);
-      return { chemin, statut: f.statut, affichable: true, blocs: parserDiff(patch) };
+      const f = c.fichiers.find((x) => x.chemin === path);
+      if (!f) throw new Error(`fichier absent de la comparaison : ${path}`);
+      if (f.affichable !== true) return { chemin: path, statut: f.statut, affichable: f.affichable, blocs: [] };
+      const patch = await this.g(["diff-tree", "-p", `-U${DIFF_CONTEXT}`, "--no-color", "--no-ext-diff", "--no-textconv", "--no-renames", c.arbreRelu, c.arbreCourant, "--", `:(literal)${path}`]);
+      return { chemin: path, statut: f.statut, affichable: true, blocs: parserDiff(patch) };
     });
   }
 
-  lignes(arbre: string, chemin: string, debut: number, fin: number): Promise<string[]> {
+  lignes(tree: string, path: string, debut: number, fin: number): Promise<string[]> {
     return this.serie(async () => {
-      const contenu = await this.g(["cat-file", "blob", `${arbre}:${chemin}`]);
-      return contenu.split("\n").slice(Math.max(0, debut - 1), fin);
+      const content = await this.g(["cat-file", "blob", `${tree}:${path}`]);
+      return content.split("\n").slice(Math.max(0, debut - 1), fin);
     });
   }
 
@@ -247,6 +247,6 @@ export class DepotRelecture {
   }
 }
 
-async function existe(p: string): Promise<boolean> {
+async function exists(p: string): Promise<boolean> {
   try { await stat(p); return true; } catch { return false; }
 }

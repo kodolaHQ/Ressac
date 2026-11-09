@@ -2,30 +2,30 @@ import { execFile, spawn } from "node:child_process";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-export interface ResultatExecution {
+export interface RunResult {
   code: number;
   stdout: string;
   stderr: string;
 }
 
 /** `signal`: cancels the command (its whole process group is killed), the result then has the code CODE_ANNULE. */
-export type Executeur = (commande: string, args: string[], opts?: { delaiMs?: number; signal?: AbortSignal }) => Promise<ResultatExecution>;
+export type Runner = (command: string, args: string[], opts?: { delaiMs?: number; signal?: AbortSignal }) => Promise<RunResult>;
 
 /** Code returned when the timeout is exceeded (same convention as timeout(1)). */
-export const CODE_DELAI_DEPASSE = 124;
+export const CODE_TIMEOUT_EXCEEDED = 124;
 
 /** Code returned when the command is cancelled by its signal (128 + SIGTERM). */
-export const CODE_ANNULE = 143;
+export const CODE_CANCELLED = 143;
 
 /** Delay between SIGTERM and SIGKILL when a cancelled group does not stop. */
-const DELAI_KILL_ANNULE_MS = 2000;
+const CANCEL_KILL_DELAY_MS = 2000;
 
 /** Process groups still alive: killed synchronously if the Node process exits without stopping them. */
-const groupesVivants = new Set<number>();
-let sortieBranchee = false;
+const liveGroups = new Set<number>();
+let connectedOutput = false;
 
 /** Sends `signal` to the whole group `pid`; false if the group is already dead (0: simple check). */
-export function tuerGroupe(pid: number, signal: NodeJS.Signals | 0): boolean {
+export function killGroup(pid: number, signal: NodeJS.Signals | 0): boolean {
   try {
     process.kill(-pid, signal);
     return true;
@@ -35,21 +35,21 @@ export function tuerGroupe(pid: number, signal: NodeJS.Signals | 0): boolean {
 }
 
 /** Remembers a group launched `detached`: if it is still alive when the Node process exits, it is killed (SIGKILL). */
-export function retenirGroupe(pid: number): void {
-  groupesVivants.add(pid);
-  if (sortieBranchee) return;
-  sortieBranchee = true;
+export function keepGroup(pid: number): void {
+  liveGroups.add(pid);
+  if (connectedOutput) return;
+  connectedOutput = true;
   process.on("exit", () => {
-    for (const g of groupesVivants) tuerGroupe(g, "SIGKILL");
+    for (const g of liveGroups) killGroup(g, "SIGKILL");
   });
 }
 
-export function oublierGroupe(pid: number): void {
-  groupesVivants.delete(pid);
+export function forgetGroup(pid: number): void {
+  liveGroups.delete(pid);
 }
 
 /** Folders where docker and its helpers (credentials) live when the app is launched from the Finder. */
-export const DOSSIERS_OUTILS = [
+export const TOOLS_FOLDERS = [
   "/usr/local/bin",
   "/opt/homebrew/bin",
   join(homedir(), ".orbstack", "bin"),
@@ -57,23 +57,23 @@ export const DOSSIERS_OUTILS = [
 ];
 
 /** PATH enriched with tool folders (the app launched from the Finder has a minimal PATH). */
-export const cheminOutils = (): string => [process.env.PATH ?? "", ...DOSSIERS_OUTILS].filter(Boolean).join(":");
+export const toolsPath = (): string => [process.env.PATH ?? "", ...TOOLS_FOLDERS].filter(Boolean).join(":");
 
 /** Launches a command without ever throwing: a failure reads in `code`. */
-export const executeurParDefaut: Executeur = (commande, args, opts = {}) => {
-  if (opts.signal) return executerAnnulable(commande, args, opts.signal, opts.delaiMs);
-  return new Promise((resoudre) => {
-    const PATH = cheminOutils();
+export const defaultRunner: Runner = (command, args, opts = {}) => {
+  if (opts.signal) return runCancelable(command, args, opts.signal, opts.delaiMs);
+  return new Promise((resolve) => {
+    const PATH = toolsPath();
     execFile(
-      commande,
+      command,
       args,
       { timeout: opts.delaiMs, maxBuffer: 64 * 1024 * 1024, env: { ...process.env, PATH } },
-      (erreur, stdout, stderr) => {
-        if (!erreur) return resoudre({ code: 0, stdout, stderr });
-        const e = erreur as NodeJS.ErrnoException & { killed?: boolean; code?: number | string };
-        if (e.code === "ENOENT") return resoudre({ code: 127, stdout, stderr: `${commande} introuvable` });
-        if (e.killed && opts.delaiMs) return resoudre({ code: CODE_DELAI_DEPASSE, stdout, stderr: "Délai dépassé" });
-        resoudre({ code: typeof e.code === "number" ? e.code : 1, stdout, stderr });
+      (error, stdout, stderr) => {
+        if (!error) return resolve({ code: 0, stdout, stderr });
+        const e = error as NodeJS.ErrnoException & { killed?: boolean; code?: number | string };
+        if (e.code === "ENOENT") return resolve({ code: 127, stdout, stderr: `${command} introuvable` });
+        if (e.killed && opts.delaiMs) return resolve({ code: CODE_TIMEOUT_EXCEEDED, stdout, stderr: "Délai dépassé" });
+        resolve({ code: typeof e.code === "number" ? e.code : 1, stdout, stderr });
       },
     );
   });
@@ -84,51 +84,51 @@ export const executeurParDefaut: Executeur = (commande, args, opts = {}) => {
  * compilations; execFile cannot create one). Cancelling, or exceeding the timeout, sends SIGTERM to the group, then
  * SIGKILL after 2 s if it is still alive; if Node exits before, the group is killed at exit.
  */
-function executerAnnulable(commande: string, args: string[], signal: AbortSignal, delaiMs?: number): Promise<ResultatExecution> {
-  return new Promise((resoudre) => {
-    if (signal.aborted) return resoudre({ code: CODE_ANNULE, stdout: "", stderr: "Annulé" });
-    const enfant = spawn(commande, args, { env: { ...process.env, PATH: cheminOutils() }, stdio: ["ignore", "pipe", "pipe"], detached: true });
-    const pid = enfant.pid;
-    if (pid !== undefined) retenirGroupe(pid);
+function runCancelable(command: string, args: string[], signal: AbortSignal, delayMs?: number): Promise<RunResult> {
+  return new Promise((resolve) => {
+    if (signal.aborted) return resolve({ code: CODE_CANCELLED, stdout: "", stderr: "Annulé" });
+    const child = spawn(command, args, { env: { ...process.env, PATH: toolsPath() }, stdio: ["ignore", "pipe", "pipe"], detached: true });
+    const pid = child.pid;
+    if (pid !== undefined) keepGroup(pid);
     const sorties = { stdout: "", stderr: "" };
-    const garder = (cle: "stdout" | "stderr") => (d: Buffer) => {
-      if (sorties[cle].length < 64 * 1024 * 1024) sorties[cle] += d.toString("utf8");
+    const keep = (key: "stdout" | "stderr") => (d: Buffer) => {
+      if (sorties[key].length < 64 * 1024 * 1024) sorties[key] += d.toString("utf8");
     };
-    enfant.stdout?.on("data", garder("stdout"));
-    enfant.stderr?.on("data", garder("stderr"));
-    let delaiDepasse = false;
-    const tuer = () => {
-      if (pid === undefined || !tuerGroupe(pid, "SIGTERM")) return;
-      const minuterie = setTimeout(() => {
-        tuerGroupe(pid, "SIGKILL");
-        oublierGroupe(pid);
-      }, DELAI_KILL_ANNULE_MS);
-      minuterie.unref();
+    child.stdout?.on("data", keep("stdout"));
+    child.stderr?.on("data", keep("stderr"));
+    let delayExceeded = false;
+    const kill = () => {
+      if (pid === undefined || !killGroup(pid, "SIGTERM")) return;
+      const timer = setTimeout(() => {
+        killGroup(pid, "SIGKILL");
+        forgetGroup(pid);
+      }, CANCEL_KILL_DELAY_MS);
+      timer.unref();
     };
-    const annuler = () => tuer();
-    signal.addEventListener("abort", annuler, { once: true });
-    const minuterieDelai = delaiMs
+    const cancel = () => kill();
+    signal.addEventListener("abort", cancel, { once: true });
+    const timerDelay = delayMs
       ? setTimeout(() => {
-          delaiDepasse = true;
-          tuer();
-        }, delaiMs)
+          delayExceeded = true;
+          kill();
+        }, delayMs)
       : undefined;
-    let fini = false;
-    const finir = (r: ResultatExecution) => {
-      if (fini) return;
-      fini = true;
-      signal.removeEventListener("abort", annuler);
-      clearTimeout(minuterieDelai);
-      if (pid !== undefined && !tuerGroupe(pid, 0)) oublierGroupe(pid);
-      resoudre(r);
+    let finished = false;
+    const finish = (r: RunResult) => {
+      if (finished) return;
+      finished = true;
+      signal.removeEventListener("abort", cancel);
+      clearTimeout(timerDelay);
+      if (pid !== undefined && !killGroup(pid, 0)) forgetGroup(pid);
+      resolve(r);
     };
-    enfant.on("error", (e: NodeJS.ErrnoException) =>
-      finir(e.code === "ENOENT" ? { code: 127, ...sorties, stderr: `${commande} introuvable` } : { code: 1, ...sorties, stderr: e.message }),
+    child.on("error", (e: NodeJS.ErrnoException) =>
+      finish(e.code === "ENOENT" ? { code: 127, ...sorties, stderr: `${command} introuvable` } : { code: 1, ...sorties, stderr: e.message }),
     );
-    enfant.on("close", (code) => {
-      if (signal.aborted) return finir({ code: CODE_ANNULE, ...sorties, stderr: sorties.stderr || "Annulé" });
-      if (delaiDepasse) return finir({ code: CODE_DELAI_DEPASSE, ...sorties, stderr: "Délai dépassé" });
-      finir({ code: code ?? 1, ...sorties });
+    child.on("close", (code) => {
+      if (signal.aborted) return finish({ code: CODE_CANCELLED, ...sorties, stderr: sorties.stderr || "Annulé" });
+      if (delayExceeded) return finish({ code: CODE_TIMEOUT_EXCEEDED, ...sorties, stderr: "Délai dépassé" });
+      finish({ code: code ?? 1, ...sorties });
     });
   });
 }

@@ -3,7 +3,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { DeclarationWidget } from "../../src/accueil/schemas.js";
 import { DeclarationAction } from "../../src/actions/schemas.js";
-import { accordValide, accorder, lireAccords, retirerAccord } from "../../src/widgets/accords.js";
+import { grantValid, accorder, lireAccords, retirerAccord } from "../../src/widgets/accords.js";
 import { dossierTemporaire } from "../aide/temporaire.js";
 
 const declaration = (compte: string[], publiques: string[]) =>
@@ -52,19 +52,19 @@ describe("grants", () => {
 
   it("a grant whose domains no longer match the declaration is no longer valid", () => {
     const accord = { domaines: ["app.daily.dev", "b.fr"], publiques: ["x.fr"], profil: "p" };
-    expect(accordValide(declaration(["b.fr", "app.daily.dev"], ["x.fr"]), accord)).toBe(true);
-    expect(accordValide(declaration(["app.daily.dev"], ["x.fr"]), accord)).toBe(false);
-    expect(accordValide(declaration(["app.daily.dev", "b.fr", "c.fr"], ["x.fr"]), accord)).toBe(false);
-    expect(accordValide(declaration(["app.daily.dev", "b.fr"], ["x.fr", "y.fr"]), accord)).toBe(false);
-    expect(accordValide(declaration(["app.daily.dev", "b.fr"], []), accord)).toBe(false);
-    expect(accordValide(declaration(["app.daily.dev", "b.fr"], ["x.fr"]), undefined)).toBe(false);
+    expect(grantValid(declaration(["b.fr", "app.daily.dev"], ["x.fr"]), accord)).toBe(true);
+    expect(grantValid(declaration(["app.daily.dev"], ["x.fr"]), accord)).toBe(false);
+    expect(grantValid(declaration(["app.daily.dev", "b.fr", "c.fr"], ["x.fr"]), accord)).toBe(false);
+    expect(grantValid(declaration(["app.daily.dev", "b.fr"], ["x.fr", "y.fr"]), accord)).toBe(false);
+    expect(grantValid(declaration(["app.daily.dev", "b.fr"], []), accord)).toBe(false);
+    expect(grantValid(declaration(["app.daily.dev", "b.fr"], ["x.fr"]), undefined)).toBe(false);
   });
 
   it("accordValide accepts any declaration that has sources (widget or action)", () => {
     const action = DeclarationAction.parse({ nom: "A", sources: { compte: ["gitlab.com"], publiques: ["x.fr"] } });
     const accord = { domaines: ["gitlab.com"], publiques: ["x.fr"], profil: "p" };
-    expect(accordValide(action, accord)).toBe(true);
-    expect(accordValide(action, { ...accord, domaines: ["autre.fr"] })).toBe(false);
-    expect(accordValide(action)).toBe(false);
+    expect(grantValid(action, accord)).toBe(true);
+    expect(grantValid(action, { ...accord, domaines: ["autre.fr"] })).toBe(false);
+    expect(grantValid(action)).toBe(false);
   });
 });

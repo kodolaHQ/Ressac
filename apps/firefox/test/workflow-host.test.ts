@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameS
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { cheminsEspace } from "../../../packages/noyau/src/index";
+import { spacePaths } from "../../../packages/noyau/src/index";
 import * as copy from "../noyau/workflow";
 import { SchemaCodeWorkflow } from "../shared/api";
 import { readCode, readEdition, saveCode, saveEdition, workflowOpen, WriteQueue } from "../noyau/workflow";
@@ -24,7 +24,7 @@ const workflow = {
 function mount() {
   const racine = realpathSync(mkdtempSync(join(tmpdir(), "workflow-host-")));
   dirs.push(racine);
-  const chemins = cheminsEspace(join(racine, "espace"));
+  const chemins = spacePaths(join(racine, "espace"));
   const dossier = join(chemins.widgets, "veille");
   mkdirSync(dossier, { recursive: true });
   const decl = { nom: "Veille", tailles: { min: { l: 1, h: 1 }, max: { l: 4, h: 4 }, defaut: { l: 2, h: 2 } }, sources: { compte: [], publiques: ["x.test"] } };
@@ -134,7 +134,7 @@ describe("fenetres.actives mirror", () => {
 function mountAction(decl: object) {
   const racine = realpathSync(mkdtempSync(join(tmpdir(), "workflow-action-")));
   dirs.push(racine);
-  const chemins = cheminsEspace(join(racine, "espace"));
+  const chemins = spacePaths(join(racine, "espace"));
   const dossier = join(chemins.actions, "gitlab");
   mkdirSync(dossier, { recursive: true });
   writeFileSync(join(dossier, "action.json"), JSON.stringify(decl));

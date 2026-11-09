@@ -1,4 +1,4 @@
-import type { DroitDev, EtatAccesOnglet, Proprietaire } from "@webaios/noyau";
+import type { DroitDev, TabAccessState, Owner } from "@webaios/noyau";
 import type { CarteExtension } from "./extensions";
 
 /** Internal Applications page: a tab without a web page, displayed by the UI. */
@@ -18,7 +18,7 @@ export function widgetDeUrlWorkflow(url: string): string | null {
 export const PREFIXE_WORKFLOW_ACTION = "webaios://workflow/action/";
 const ID_ACTION = /^[a-z0-9-]{1,60}$/;
 /** What a « Voir le workflow » page opens (widget or action), or null if the URL is not one. */
-export function cibleDeUrlWorkflow(url: string): Proprietaire | null {
+export function cibleDeUrlWorkflow(url: string): Owner | null {
   if (url.startsWith(PREFIXE_WORKFLOW_ACTION)) {
     const id = url.slice(PREFIXE_WORKFLOW_ACTION.length);
     return ID_ACTION.test(id) ? { type: "action", id } : null;
@@ -57,7 +57,7 @@ export type IdOnglet = string;
 /** The agent's access to tabs, with the name of the agent holding it. */
 export interface EtatAcces {
   agent: string;
-  onglets: Record<IdOnglet, EtatAccesOnglet>;
+  onglets: Record<IdOnglet, TabAccessState>;
 }
 export type IdEspace = string;
 export type IdFenetre = string;

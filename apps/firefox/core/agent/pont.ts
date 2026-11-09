@@ -1,7 +1,7 @@
-import type { DroitDev, OngletInfo } from "@webaios/noyau";
+import type { DroitDev, TabInfo } from "@webaios/noyau";
 import { ongletPrive, type Decision, type DemandeEnAttente, type Issue, type EtatFenetre, type EtatNavigateur, type IdEspace, type IdFenetre, type Onglet } from "../../shared/modele";
 
-const info = (etat: EtatNavigateur, o: Onglet): OngletInfo => ({
+const info = (etat: EtatNavigateur, o: Onglet): TabInfo => ({
   id: o.id,
   titre: o.titre,
   url: o.url,
@@ -15,7 +15,7 @@ const interne = (o: Onglet) => o.url.startsWith("webaios:");
 const visible = (etat: EtatNavigateur, o: Onglet) => !interne(o) && !ongletPrive(etat, o);
 
 /** All the tabs, all windows combined, as the agent sees them. */
-export function infosOnglets(etat: EtatNavigateur): OngletInfo[] {
+export function infosOnglets(etat: EtatNavigateur): TabInfo[] {
   return Object.values(etat.onglets).filter((o) => visible(etat, o)).map((o) => info(etat, o));
 }
 
@@ -26,7 +26,7 @@ function ongletAffiche(etat: EtatNavigateur, fenetreId: IdFenetre | undefined): 
   return id ? etat.onglets[id] : undefined;
 }
 
-export function ongletActifDe(etat: EtatNavigateur, fenetreId: IdFenetre | undefined): OngletInfo | null {
+export function ongletActifDe(etat: EtatNavigateur, fenetreId: IdFenetre | undefined): TabInfo | null {
   const o = ongletAffiche(etat, fenetreId);
   return o && visible(etat, o) ? info(etat, o) : null;
 }
@@ -183,7 +183,7 @@ const PREFIXE_APP = "app:";
 export const PREFIXE_SITE = "site:";
 
 /** A site app's window seen as a `site:<id>` tab: its title is the app's name, never the page's. */
-export function ongletSite(s: { id: string; nom: string; url: string; domaine: string; empreinte: string }): OngletInfo {
+export function ongletSite(s: { id: string; nom: string; url: string; domaine: string; empreinte: string }): TabInfo {
   return { id: PREFIXE_SITE + s.id, titre: s.nom, url: s.url, espace: "", site: s.id, domaine: s.domaine, empreinte: s.empreinte };
 }
 
@@ -199,6 +199,6 @@ export function questionSiteCaduque(d: DemandeEnAttente, ouvertes: { id: string;
 }
 
 /** An app's window seen as an `app:<folder>` tab by the agent. */
-export function ongletApplication(a: { dossier: string; titre: string; url: string }): OngletInfo {
+export function ongletApplication(a: { dossier: string; titre: string; url: string }): TabInfo {
   return { id: PREFIXE_APP + a.dossier, titre: a.titre, url: a.url, espace: "", application: a.dossier };
 }

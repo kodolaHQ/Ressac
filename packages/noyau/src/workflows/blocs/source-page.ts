@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { DEFILER_MAX } from "../protocole.js";
-import { CHAMP_PAR_ELEMENT, champsParElementSeulement, Gabarit, ParametresParElement, type DefinitionBloc } from "./communs.js";
+import { CHAMP_PAR_ELEMENT, fieldsPerElementOnly, Template, ParamsPerElement, type DefinitionBloc } from "./communs.js";
 
 export const definition: DefinitionBloc = {
   type: "source.page",
@@ -22,18 +22,18 @@ export const definition: DefinitionBloc = {
       entier: true,
     },
     CHAMP_PAR_ELEMENT,
-    ...champsParElementSeulement(),
+    ...fieldsPerElementOnly(),
     { nom: "champ", libelle: "Champ du résultat", requis: false, defaut: "page", genre: "texte" },
   ],
   parElement: "option",
   chaine: true,
   parametres: z
     .object({
-      url: Gabarit,
+      url: Template,
       compte: z.boolean().default(false),
       // Without a default: the hash of the params of an existing block (its memory) does not change.
       defiler: z.number().int().min(0).max(DEFILER_MAX).optional(),
-      ...ParametresParElement,
+      ...ParamsPerElement,
       champ: z.string().min(1).max(40).default("page"),
     })
     .strict(),

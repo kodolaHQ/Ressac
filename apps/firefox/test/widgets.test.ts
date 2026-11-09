@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ETAT_WIDGET_PAR_DEFAUT, type DeclarationWidget, type EtatAccueil, type WidgetLu } from "../../../packages/noyau/src/index";
+import { DEFAULT_WIDGET_STATE, type DeclarationWidget, type HomeState, type WidgetLu } from "../../../packages/noyau/src/index";
 import { validerPlacements, versWidgetsAffiches } from "../noyau/widgets";
 
 const declaration = (o: Partial<DeclarationWidget> = {}): DeclarationWidget => ({
@@ -14,7 +14,7 @@ const widget = (o: Partial<Extract<WidgetLu, { declaration: DeclarationWidget }>
   id: "demo",
   dossier: "/espace/accueil/widgets/demo",
   declaration: declaration(),
-  etat: { ...ETAT_WIDGET_PAR_DEFAUT },
+  etat: { ...DEFAULT_WIDGET_STATE },
   donnees: null,
   exemple: null,
   aRecolte: false,
@@ -23,13 +23,13 @@ const widget = (o: Partial<Extract<WidgetLu, { declaration: DeclarationWidget }>
   ...o,
 });
 
-const etat = (widgets: WidgetLu[]): EtatAccueil => ({ disposition: [], widgets });
+const etat = (widgets: WidgetLu[]): HomeState => ({ disposition: [], widgets });
 
 describe("versWidgetsAffiches", () => {
   it("returns the data, the example, the state and the display versioned by date", () => {
     const theme = { version: 1 as const, fond: "#101014" };
     const lu = versWidgetsAffiches({
-      etat: etat([widget({ donnees: { n: 1 }, exemple: { n: 0 }, etat: { ...ETAT_WIDGET_PAR_DEFAUT, statut: "en-cours" } })]),
+      etat: etat([widget({ donnees: { n: 1 }, exemple: { n: 0 }, etat: { ...DEFAULT_WIDGET_STATE, statut: "en-cours" } })]),
       placements: [],
       theme,
       mtimes: { demo: 1730000000123 },
@@ -45,7 +45,7 @@ describe("versWidgetsAffiches", () => {
         src: "resource://webaios-widget-demo/affichage-1730000000123.html",
         donnees: { n: 1 },
         exemple: { n: 0 },
-        etat: { ...ETAT_WIDGET_PAR_DEFAUT, statut: "en-cours" },
+        etat: { ...DEFAULT_WIDGET_STATE, statut: "en-cours" },
         compte: [],
         publiques: [],
         aRecolte: false,

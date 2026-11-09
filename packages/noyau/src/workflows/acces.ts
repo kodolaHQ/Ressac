@@ -2,26 +2,26 @@ import dns from "node:dns";
 import http, { type IncomingMessage } from "node:http";
 import https from "node:https";
 import { isIP, type LookupFunction } from "node:net";
-import type { ChangerHote } from "./menagement.js";
+import type { ChangeHost } from "./menagement.js";
 import type { PageLue } from "./protocole.js";
 
 // Container access to the outside, all kernel-side: verified URLs, raw fetch, page read and re-checked.
 
-const RECUPERER_MAX_OCTETS = 5 * 1024 * 1024;
-const RECUPERER_DELAI_MS = 20_000;
+const FETCH_MAX_BYTES = 5 * 1024 * 1024;
+const FETCH_DELAY_MS = 20_000;
 const MAX_REDIRECTIONS = 5;
 
 /** Web searches and open reads (without `domaines`) of a run, at most. */
 export const MAX_RECHERCHES = 30;
-export const MAX_LECTURES_OUVERTES = 100;
+export const MAX_OPEN_READS = 100;
 // The first two are copied into docker/moteur/erreurs.mjs: the item is not run, it is not a failure.
-export const PLAFOND_RECHERCHES = "Plafond de recherches atteint (30 par exécution)";
-export const RECHERCHES_ARRETEES = "Recherches arrêtées : DuckDuckGo a refusé une recherche de cette exécution";
-export const TROP_DE_LECTURES = "Trop de lectures dans cette exécution (100)";
-export const RECHERCHE_INDISPONIBLE = "Recherche web indisponible";
+export const SEARCHES_CAP = "Plafond de recherches atteint (30 par exécution)";
+export const SEARCHES_STOPPED = "Recherches arrêtées : DuckDuckGo a refusé une recherche de cette exécution";
+export const TOO_MANY_READS = "Trop de lectures dans cette exécution (100)";
+export const SEARCH_UNAVAILABLE = "Recherche web indisponible";
 
 /** A text of at most `n` characters, « … » at the end if it is cut. */
-export const tronquer = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
+export const truncate = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
 /** The message of an exception, or its value as text. */
 export const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -29,9 +29,9 @@ export const message = (e: unknown) => (e instanceof Error ? e.message : String(
  * Address of the machine or the local network, from its text alone (the name is not resolved: `recuperer` re-checks
  * the address resolved at connection, with `lookupSansLocal`).
  */
-export function adresseLocale(hote: string): boolean {
+export function localUrl(host: string): boolean {
   // « localhost. » (trailing dot) designates the same machine as « localhost ».
-  const h = hote.replace(/^\[|\]$/g, "").toLowerCase().replace(/\.+$/, "");
+  const h = host.replace(/^\[|\]$/g, "").toLowerCase().replace(/\.+$/, "");
   if (!h || h === "localhost" || /\.(localhost|local|internal|home\.arpa)$/.test(h)) return true;
   if (isIP(h) === 4) {
     const [a = 0, b = 0] = h.split(".").map(Number);
@@ -48,19 +48,19 @@ export function adresseLocale(hote: string): boolean {
  * Checks a URL requested by the harvest: http(s), no credentials, no local address, and, if `domaines` is
  * given, a host name exactly in this list. Returns the normalized URL, the one that will be read.
  */
-export function verifierUrl(brute: string, domaines: readonly string[] | null, adressesLocales: boolean): URL {
+export function verifierUrl(brute: string, domains: readonly string[] | null, localUrls: boolean): URL {
   let u: URL;
   try {
     u = new URL(brute);
   } catch {
-    throw new Error(`URL invalide : ${tronquer(brute, 200)}`);
+    throw new Error(`URL invalide : ${truncate(brute, 200)}`);
   }
   if (u.protocol !== "http:" && u.protocol !== "https:") throw new Error("Seules les URL http(s) sont permises");
   if (u.username || u.password) throw new Error("URL avec identifiants refusée");
   // The trailing dot (« app.daily.dev. ») does not change the name: it is removed before any comparison.
-  const hote = u.hostname.toLowerCase().replace(/\.+$/, "");
-  if (domaines && !domaines.includes(hote)) throw new Error(`Domaine non déclaré : ${hote}`);
-  if (!adressesLocales && adresseLocale(hote)) throw new Error(`Adresse locale refusée : ${hote}`);
+  const host = u.hostname.toLowerCase().replace(/\.+$/, "");
+  if (domains && !domains.includes(host)) throw new Error(`Domaine non déclaré : ${host}`);
+  if (!localUrls && localUrl(host)) throw new Error(`Adresse locale refusée : ${host}`);
   return u;
 }
 
@@ -68,46 +68,46 @@ export function verifierUrl(brute: string, domaines: readonly string[] | null, a
  * Resolution done at connection: a name that leads to the machine or the local network (« 127.0.0.1.nip.io », DNS
  * rebinding) is refused, even if only one of its addresses is.
  */
-export const lookupSansLocal: LookupFunction = (hote, options, rappel) => {
-  dns.lookup(hote, { ...options, all: true }, (err, adresses) => {
+export const lookupSansLocal: LookupFunction = (host, options, rappel) => {
+  dns.lookup(host, { ...options, all: true }, (err, urls) => {
     if (err) return rappel(err, "");
-    const locale = adresses.find((a) => adresseLocale(a.address));
-    if (locale) return rappel(new Error(`Adresse locale refusée : ${hote} (${locale.address})`), "");
-    if (options.all) return rappel(null, adresses);
-    const [premiere] = adresses;
-    if (!premiere) return rappel(new Error(`Nom introuvable : ${hote}`), "");
+    const locale = urls.find((a) => localUrl(a.address));
+    if (locale) return rappel(new Error(`Adresse locale refusée : ${host} (${locale.address})`), "");
+    if (options.all) return rappel(null, urls);
+    const [premiere] = urls;
+    if (!premiere) return rappel(new Error(`Nom introuvable : ${host}`), "");
     rappel(null, premiere.address, premiere.family);
   });
 };
 
 // http(s) rather than fetch: fetch (undici) does not let us choose the resolution without the undici package.
-function demander(url: URL, adressesLocales: boolean, signal: AbortSignal): Promise<IncomingMessage> {
+function demander(url: URL, localUrls: boolean, signal: AbortSignal): Promise<IncomingMessage> {
   return new Promise((ok, ko) => {
-    const options = { signal, headers: { "user-agent": "node", accept: "*/*" }, ...(adressesLocales ? {} : { lookup: lookupSansLocal }) };
+    const options = { signal, headers: { "user-agent": "node", accept: "*/*" }, ...(localUrls ? {} : { lookup: lookupSansLocal }) };
     (url.protocol === "https:" ? https : http).get(url, options, ok).on("error", ko);
   });
 }
 
 async function lireCorps(r: IncomingMessage): Promise<Buffer> {
-  if (Number(r.headers["content-length"]) > RECUPERER_MAX_OCTETS) {
+  if (Number(r.headers["content-length"]) > FETCH_MAX_BYTES) {
     r.destroy();
     throw new Error("Réponse trop grande (5 Mo maximum)");
   }
-  const morceaux: Buffer[] = [];
+  const chunks: Buffer[] = [];
   let taille = 0;
-  for await (const morceau of r as AsyncIterable<Buffer>) {
-    taille += morceau.byteLength;
-    if (taille > RECUPERER_MAX_OCTETS) {
+  for await (const chunk of r as AsyncIterable<Buffer>) {
+    taille += chunk.byteLength;
+    if (taille > FETCH_MAX_BYTES) {
       r.destroy();
       throw new Error("Réponse trop grande (5 Mo maximum)");
     }
-    morceaux.push(morceau);
+    chunks.push(chunk);
   }
-  return Buffer.concat(morceaux);
+  return Buffer.concat(chunks);
 }
 
 /** `p`, or rejected with `signal.reason` as soon as the signal is raised (its outcome is then ignored). */
-function jusquAuSignal<T>(p: Promise<T>, signal: AbortSignal): Promise<T> {
+function untilSignal<T>(p: Promise<T>, signal: AbortSignal): Promise<T> {
   return new Promise<T>((ok, ko) => {
     const stop = () => ko(signal.reason);
     p.then(ok, ko).finally(() => signal.removeEventListener("abort", stop));
@@ -121,54 +121,54 @@ function jusquAuSignal<T>(p: Promise<T>, signal: AbortSignal): Promise<T> {
  * (the run is stopped): the request is abandoned and the promise rejected with `arret.reason`. `changerHote`
  * (paced read): awaited before following a redirect to another host, within the 20 s delay.
  */
-export async function recuperer(
+export async function fetch(
   brute: string,
   format: "texte" | "json",
-  domaines: readonly string[] | null,
-  adressesLocales: boolean,
-  arret?: AbortSignal,
-  changerHote?: ChangerHote,
+  domains: readonly string[] | null,
+  localUrls: boolean,
+  stop?: AbortSignal,
+  changeHost?: ChangeHost,
 ) {
-  const delai = AbortSignal.timeout(RECUPERER_DELAI_MS);
-  const echeance = arret ? AbortSignal.any([delai, arret]) : delai;
-  let url = verifierUrl(brute, domaines, adressesLocales);
+  const delay = AbortSignal.timeout(FETCH_DELAY_MS);
+  const deadline = stop ? AbortSignal.any([delay, stop]) : delay;
+  let url = verifierUrl(brute, domains, localUrls);
   try {
     for (let redirections = 0; ; redirections++) {
-      const r = await demander(url, adressesLocales, echeance);
-      const cible = r.headers.location;
-      const statut = r.statusCode ?? 0;
-      if (statut >= 300 && statut < 400 && cible) {
+      const r = await demander(url, localUrls, deadline);
+      const target = r.headers.location;
+      const status = r.statusCode ?? 0;
+      if (status >= 300 && status < 400 && target) {
         r.destroy();
         if (redirections >= MAX_REDIRECTIONS) throw new Error("Trop de redirections");
-        const suivante = verifierUrl(new URL(cible, url).href, domaines, adressesLocales);
+        const next = verifierUrl(new URL(target, url).href, domains, localUrls);
         // Waiting for the other site's turn counts in the delay, and yields to the stop.
-        if (changerHote && suivante.hostname !== url.hostname) await jusquAuSignal(changerHote(suivante.hostname), echeance);
-        url = suivante;
+        if (changeHost && next.hostname !== url.hostname) await untilSignal(changeHost(next.hostname), deadline);
+        url = next;
         continue;
       }
-      if (statut < 200 || statut >= 300) {
+      if (status < 200 || status >= 300) {
         r.destroy();
-        throw new Error(`HTTP ${statut}`);
+        throw new Error(`HTTP ${status}`);
       }
-      const texte = (await lireCorps(r)).toString("utf8");
-      if (format === "texte") return texte;
+      const text = (await lireCorps(r)).toString("utf8");
+      if (format === "texte") return text;
       try {
-        return JSON.parse(texte) as unknown;
+        return JSON.parse(text) as unknown;
       } catch {
         throw new Error("La réponse n'est pas du JSON");
       }
     }
   } catch (e) {
-    if (arret?.aborted) throw arret.reason;
-    if (delai.aborted) throw new Error("Délai dépassé (20 s)");
+    if (stop?.aborted) throw stop.reason;
+    if (delay.aborted) throw new Error("Délai dépassé (20 s)");
     throw e;
   }
 }
 
 /** The page's final address (after redirects) must respect the same rule; otherwise its text does not go out. */
-export function verifierPage(page: PageLue, domaines: readonly string[] | null, adressesLocales: boolean): PageLue {
+export function verifierPage(page: PageLue, domains: readonly string[] | null, localUrls: boolean): PageLue {
   try {
-    verifierUrl(String(page?.url), domaines, adressesLocales);
+    verifierUrl(String(page?.url), domains, localUrls);
   } catch (e) {
     throw new Error(`Page refusée : elle a mené hors des domaines permis (${message(e)})`);
   }

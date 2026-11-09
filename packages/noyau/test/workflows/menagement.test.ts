@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { ECART_LECTURES_MS, ECART_RECHERCHES_MS, Menagement, siteMenage } from "../../src/workflows/menagement.js";
+import { READS_GAP_MS, SEARCHES_GAP_MS, Pacing, siteMenage } from "../../src/workflows/menagement.js";
 
 /** Fake clock and wait: attendre(ms) advances time without sleeping. */
 function factice() {
   let t = 1000;
   const attentes: number[] = [];
-  const m = new Menagement({
+  const m = new Pacing({
     maintenant: () => t,
     attendre: async (ms) => { attentes.push(ms); t += ms; },
   });
@@ -19,8 +19,8 @@ describe("Menagement", () => {
     const fins: number[] = [];
     const f = async () => { debuts.push(maintenant()); avancer(300); fins.push(maintenant()); };
     await Promise.all([m.rechercher(f), m.rechercher(f)]);
-    expect(debuts[1]! - fins[0]!).toBe(ECART_RECHERCHES_MS);
-    expect(ECART_RECHERCHES_MS).toBe(2000);
+    expect(debuts[1]! - fins[0]!).toBe(SEARCHES_GAP_MS);
+    expect(SEARCHES_GAP_MS).toBe(2000);
   });
 
   it("two reads of the same host spaced 1 s apart, two hosts at the same time", async () => {
@@ -33,14 +33,14 @@ describe("Menagement", () => {
       m.lire("b.fr", lecture("b1")),
     ]);
     const t = (n: string) => Number(journal.find((j) => j.startsWith(n + "@"))!.split("@")[1]);
-    expect(t("a2") - t("a1")).toBe(ECART_LECTURES_MS);
+    expect(t("a2") - t("a1")).toBe(READS_GAP_MS);
     expect(t("b1")).toBe(t("a1"));
-    expect(ECART_LECTURES_MS).toBe(1000);
+    expect(READS_GAP_MS).toBe(1000);
   });
 
   it("a search whose signal is raised while waiting does not call f", async () => {
     let liberer!: () => void;
-    const m = new Menagement({ maintenant: () => 0, attendre: () => new Promise<void>((r) => { liberer = r; }) });
+    const m = new Pacing({ maintenant: () => 0, attendre: () => new Promise<void>((r) => { liberer = r; }) });
     await m.rechercher(async () => 1);
     const ctrl = new AbortController();
     let appels = 0;
@@ -60,7 +60,7 @@ describe("Menagement", () => {
     await expect(m.rechercher(async () => 2, ctrl.signal)).rejects.toThrow();
     attentes.length = 0;
     await m.rechercher(async () => 3);
-    expect(attentes).toEqual([ECART_RECHERCHES_MS]);
+    expect(attentes).toEqual([SEARCHES_GAP_MS]);
   });
 
   it("an error from f lets the next one through", async () => {
@@ -81,7 +81,7 @@ describe("Menagement", () => {
 
   it("a queued request whose signal is raised rejects right away, without calling f", async () => {
     let t = 0;
-    const m = new Menagement({ maintenant: () => t, attendre: async (ms) => { t += ms; } });
+    const m = new Pacing({ maintenant: () => t, attendre: async (ms) => { t += ms; } });
     let finir!: () => void;
     const longue = m.lire("a.fr", () => new Promise<void>((r) => { finir = r; }));
     const ctrl = new AbortController();
@@ -99,9 +99,9 @@ describe("Menagement", () => {
     const { m, attentes } = factice();
     await m.lire("www.A.fr", async () => {});
     await m.lire("a.fr", async () => {});
-    expect(attentes).toEqual([ECART_LECTURES_MS]);
+    expect(attentes).toEqual([READS_GAP_MS]);
     await m.lire("b.fr", async () => {});
-    expect(attentes).toEqual([ECART_LECTURES_MS]);
+    expect(attentes).toEqual([READS_GAP_MS]);
   });
 
   it("a clock set back does not lengthen the wait beyond the gap", async () => {
@@ -109,13 +109,13 @@ describe("Menagement", () => {
     await m.rechercher(async () => {});
     avancer(-3_600_000);
     await m.rechercher(async () => {});
-    expect(attentes).toEqual([ECART_RECHERCHES_MS]);
+    expect(attentes).toEqual([SEARCHES_GAP_MS]);
   });
 
   it("a timer that fired too early is followed by a new wait", async () => {
     let t = 0;
     const attentes: number[] = [];
-    const m = new Menagement({ maintenant: () => t, attendre: async (ms) => { attentes.push(ms); t += attentes.length === 1 ? ms - 1 : ms; } });
+    const m = new Pacing({ maintenant: () => t, attendre: async (ms) => { attentes.push(ms); t += attentes.length === 1 ? ms - 1 : ms; } });
     await m.rechercher(async () => {});
     await m.rechercher(async () => {});
     expect(attentes).toEqual([2000, 1]);
@@ -130,20 +130,20 @@ describe("Menagement", () => {
     expect(appels).toBe(0);
     expect(attentes).toEqual([]);
     await m.rechercher(async () => 3);
-    expect(attentes).toEqual([ECART_RECHERCHES_MS]);
+    expect(attentes).toEqual([SEARCHES_GAP_MS]);
   });
 
   it("a search refused while waiting does not delay the next one", async () => {
     let t = 1000;
     let refusee = false;
     const attentes: number[] = [];
-    const m = new Menagement({ maintenant: () => t, attendre: async (ms) => { attentes.push(ms); t += ms; refusee = true; } });
+    const m = new Pacing({ maintenant: () => t, attendre: async (ms) => { attentes.push(ms); t += ms; refusee = true; } });
     await m.rechercher(async () => 1);
     const verifier = () => { if (refusee) throw new Error("refusée"); };
     await expect(m.rechercher(async () => 2, undefined, verifier)).rejects.toThrow("refusée");
     // The gap still counts from the end of the first: the next one waits for nothing.
     await m.rechercher(async () => 3);
-    expect(attentes).toEqual([ECART_RECHERCHES_MS]);
+    expect(attentes).toEqual([SEARCHES_GAP_MS]);
   });
 
   it("siteMenage: lowercase, without www. or trailing dot", () => {
@@ -159,13 +159,13 @@ describe("Menagement", () => {
       await changerHote("b.fr");
       lueA = maintenant();
     });
-    expect(attentes).toEqual([ECART_LECTURES_MS]);
-    expect(lueA).toBe(1000 + ECART_LECTURES_MS);
+    expect(attentes).toEqual([READS_GAP_MS]);
+    expect(lueA).toBe(1000 + READS_GAP_MS);
     // a.fr released at the redirect (t = 1000): gap elapsed. b.fr, finished at 2000: 1 s.
     await m.lire("a.fr", async () => {});
-    expect(attentes).toEqual([ECART_LECTURES_MS]);
+    expect(attentes).toEqual([READS_GAP_MS]);
     await m.lire("b.fr", async () => {});
-    expect(attentes).toEqual([ECART_LECTURES_MS, ECART_LECTURES_MS]);
+    expect(attentes).toEqual([READS_GAP_MS, READS_GAP_MS]);
   });
 
   it("redirect to the same site (www., uppercase): nothing changes", async () => {
@@ -179,7 +179,7 @@ describe("Menagement", () => {
 
   it("during a read redirected to b.fr, a read of b.fr waits for its end; a read of a.fr goes through", async () => {
     let t = 0;
-    const m = new Menagement({ maintenant: () => t, attendre: async (ms) => { t += ms; } });
+    const m = new Pacing({ maintenant: () => t, attendre: async (ms) => { t += ms; } });
     let finir!: () => void;
     let redirigee!: () => void;
     const estRedirigee = new Promise<void>((r) => (redirigee = r));
@@ -193,12 +193,12 @@ describe("Menagement", () => {
     const b = m.lire("b.fr", async () => void journal.push(`b@${t}`));
     const a = m.lire("a.fr", async () => void journal.push(`a@${t}`));
     await a;
-    expect(journal).toEqual([`a@${ECART_LECTURES_MS}`]);
+    expect(journal).toEqual([`a@${READS_GAP_MS}`]);
     t = 5000;
     finir();
     await longue;
     await b;
-    expect(journal).toEqual([`a@${ECART_LECTURES_MS}`, `b@${5000 + ECART_LECTURES_MS}`]);
+    expect(journal).toEqual([`a@${READS_GAP_MS}`, `b@${5000 + READS_GAP_MS}`]);
   });
 
   it("a.fr → b.fr → a.fr: each lane taken back in turn, without blocking", async () => {
@@ -208,13 +208,13 @@ describe("Menagement", () => {
       await changerHote("a.fr");
     });
     // Back on a.fr, released at the first redirect: 1 s gap.
-    expect(attentes).toEqual([ECART_LECTURES_MS]);
+    expect(attentes).toEqual([READS_GAP_MS]);
   });
 
   it("signal raised while waiting for a redirect: rejected, no lane stays taken", async () => {
     let t = 0;
     const enAttente: (() => void)[] = [];
-    const m = new Menagement({ maintenant: () => t, attendre: () => new Promise<void>((ok) => enAttente.push(ok)) });
+    const m = new Pacing({ maintenant: () => t, attendre: () => new Promise<void>((ok) => enAttente.push(ok)) });
     await m.lire("b.fr", async () => {});
     const ctrl = new AbortController();
     const p = m.lire("a.fr", async (changerHote) => { await changerHote("b.fr"); return "lue"; }, ctrl.signal);

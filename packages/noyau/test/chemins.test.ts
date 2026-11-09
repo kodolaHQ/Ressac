@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "vitest";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { cheminDansConteneur, cheminsEspace } from "../src/chemins.js";
+import { pathInContainer, spacePaths } from "../src/chemins.js";
 
 const ancienne = process.env.WEBAIOS_RACINE;
 afterEach(() => {
@@ -11,7 +11,7 @@ afterEach(() => {
 
 test("default paths under ~/WebAiOs", () => {
   delete process.env.WEBAIOS_RACINE;
-  const c = cheminsEspace();
+  const c = spacePaths();
   expect(c.racine).toBe(join(homedir(), "WebAiOs"));
   expect(c.blocs).toBe(join(homedir(), "WebAiOs", "accueil", "blocs"));
   expect(c.widgets).toBe(join(homedir(), "WebAiOs", "accueil", "widgets"));
@@ -20,29 +20,29 @@ test("default paths under ~/WebAiOs", () => {
 
 test("WEBAIOS_RACINE overrides the root", () => {
   process.env.WEBAIOS_RACINE = "/tmp/ailleurs";
-  const c = cheminsEspace();
+  const c = spacePaths();
   expect(c.racine).toBe("/tmp/ailleurs");
   expect(c.profils).toBe("/tmp/ailleurs/.webaios/profils");
 });
 
 test("cheminDansConteneur translates a space path and refuses the rest", () => {
-  const c = cheminsEspace("/tmp/w");
-  expect(cheminDansConteneur("/tmp/w/accueil/blocs/x", c)).toBe("/workspace/accueil/blocs/x");
-  expect(cheminDansConteneur("/tmp/w", c)).toBe("/workspace");
-  expect(() => cheminDansConteneur("/etc/passwd", c)).toThrow();
-  expect(() => cheminDansConteneur("/tmp/w-autre/x", c)).toThrow();
+  const c = spacePaths("/tmp/w");
+  expect(pathInContainer("/tmp/w/accueil/blocs/x", c)).toBe("/workspace/accueil/blocs/x");
+  expect(pathInContainer("/tmp/w", c)).toBe("/workspace");
+  expect(() => pathInContainer("/etc/passwd", c)).toThrow();
+  expect(() => pathInContainer("/tmp/w-autre/x", c)).toThrow();
 });
 
 test("cheminsEspace().extensions vaut <racine>/extensions", () => {
-  expect(cheminsEspace("/tmp/w").extensions).toBe("/tmp/w/extensions");
+  expect(spacePaths("/tmp/w").extensions).toBe("/tmp/w/extensions");
 });
 
 test("actions and components under the root", () => {
-  const c = cheminsEspace("/tmp/w");
+  const c = spacePaths("/tmp/w");
   expect(c.actions).toBe("/tmp/w/actions");
   expect(c.composants).toBe("/tmp/w/composants");
 });
 
 test("sites under the root", () => {
-  expect(cheminsEspace("/tmp/w").sites).toBe("/tmp/w/sites");
+  expect(spacePaths("/tmp/w").sites).toBe("/tmp/w/sites");
 });

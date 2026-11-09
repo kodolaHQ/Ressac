@@ -1,4 +1,4 @@
-import type { PlacementLibre } from "../../../packages/noyau/src/accueil/schemas";
+import type { FreePlacement } from "../../../packages/noyau/src/accueil/schemas";
 
 // Gestures of the free home (thousandths in width, pixels in height). Placing widgets without a position is done
 // by the kernel (placerManquantsLibre): here, only snapping, guides and the gesture's bounds.
@@ -16,7 +16,7 @@ const borner = (v: number, min: number, max: number) => Math.max(min, Math.min(v
 const aimantX = (x: number) => Math.round(x / PAS_X) * PAS_X;
 const aimantY = (y: number) => Math.round(y / PAS_Y) * PAS_Y;
 
-const chevauchent = (a: PlacementLibre, b: PlacementLibre) => a.x < b.x + b.l && b.x < a.x + a.l && a.y < b.y + b.h && b.y < a.y + a.h;
+const chevauchent = (a: FreePlacement, b: FreePlacement) => a.x < b.x + b.l && b.x < a.x + a.l && a.y < b.y + b.h && b.y < a.y + a.h;
 
 /** Declared sizes (units 1…12) to free units (thousandths, pixels): the copy of the kernel's `taillesLibres`. */
 export function taillesLibres(t: { l: number; h: number }): { l: number; h: number } {
@@ -34,7 +34,7 @@ export function unitesLibres(t: { l: number; h: number }): { l: number; h: numbe
  * neighbor when the pointer aims beyond its opposite edge; only a pointer that overlaps it by the near edge
  * stops.
  */
-export function deplacerLibre(o: { p: PlacementLibre; x: number; y: number; autres: readonly PlacementLibre[]; largeurPx: number }): PlacementLibre {
+export function deplacerLibre(o: { p: FreePlacement; x: number; y: number; autres: readonly FreePlacement[]; largeurPx: number }): FreePlacement {
   const { p, autres, largeurPx } = o;
   // The pointer's target, fixed: bounds reached along the way do not change the gesture's direction.
   const cibleX = borner(aimantX(o.x), 0, LARGEUR_LIBRE - p.l);
@@ -88,19 +88,19 @@ export function deplacerLibre(o: { p: PlacementLibre; x: number; y: number; autr
  * left as on the right (never a written overlap).
  */
 export function redimensionnerLibre(o: {
-  p: PlacementLibre;
+  p: FreePlacement;
   l: number;
   h: number;
   min: { l: number; h: number };
   max: { l: number; h: number };
-  autres: readonly PlacementLibre[];
-}): PlacementLibre {
+  autres: readonly FreePlacement[];
+}): FreePlacement {
   const { p, min, max, autres } = o;
   const minL = Math.max(1, Math.min(min.l, LARGEUR_LIBRE));
   // Requested height: it tells which neighbors cross the height during the width computation.
   const hSouhaite = borner(aimantY(o.h), Math.max(1, min.h), max.h);
   // Only neighbors on the current rows block the width: a lower neighbor is stopped by the h computation.
-  const vertical = (a: PlacementLibre) => a.id !== p.id && a.y < p.y + p.h && p.y < a.y + a.h;
+  const vertical = (a: FreePlacement) => a.id !== p.id && a.y < p.y + p.h && p.y < a.y + a.h;
   const bord = (depuis: number) => Math.min(LARGEUR_LIBRE, ...autres.filter((a) => vertical(a) && a.x >= depuis).map((a) => a.x));
   // The minimum does not fit before the neighbour (or the right edge): the widget moves back instead of going under its
   // minimum. It moves back without entering a neighbour on its left.
@@ -128,7 +128,7 @@ export function redimensionnerLibre(o: {
  * home's margins or center. Alignments are looked for within one snap step: the preview is snapped, the neighbor
  * may not be.
  */
-export function guidesLibres(o: { p: PlacementLibre; autres: readonly PlacementLibre[]; largeurPx: number }): { x: number[]; y: number[] } {
+export function guidesLibres(o: { p: FreePlacement; autres: readonly FreePlacement[]; largeurPx: number }): { x: number[]; y: number[] } {
   const { p, autres, largeurPx } = o;
   const px = (milliemes: number) => (milliemes / LARGEUR_LIBRE) * largeurPx;
   const autresX = autres.filter((a) => a.id !== p.id);

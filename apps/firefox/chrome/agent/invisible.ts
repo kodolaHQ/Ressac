@@ -1,6 +1,6 @@
 import type { IdProfil } from "../../shared/modele";
 import { cumulerParties, HTML_MAX, profilsLisibles, urlPermise } from "../../core/agent/lecture-invisible";
-import { ProfilRefuse, type OptionsLecturePage, type PageLue } from "../shims/noyau";
+import { ProfileDenied, type OptionsLecturePage, type PageLue } from "../shims/noyau";
 import { containerFor } from "../store/containers";
 import type { Store } from "../store/store";
 import { guardContainer, localLiteral, watchReading } from "./local-guard";
@@ -196,7 +196,7 @@ async function load<T>(
   const allowLocal = o.adressesLocales === true;
   const allowed = (u: string) => urlPermise(u, domaines, true) && (allowLocal || !localLiteral(hostOf(u)));
   const checkProfile = () => {
-    if (profil !== null && !profilsLisibles(store.state).includes(profil)) throw new ProfilRefuse(profil);
+    if (profil !== null && !profilsLisibles(store.state).includes(profil)) throw new ProfileDenied(profil);
   };
   checkProfile();
   if (!allowed(url)) throw new Error(`Adresse refusée pour une lecture : ${hostOf(url)}`);

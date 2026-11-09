@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { CatalogueBloc, FamilleBloc } from "@webaios/noyau";
+  import type { CatalogueBloc, BlockFamily } from "@webaios/noyau";
   import { GLISSER_BLOC } from "./ajout";
 
   /**
@@ -21,9 +21,9 @@
   );
   const grise = (type: string) => type === "web.chercher" && !web;
 
-  let repliees = $state<Partial<Record<FamilleBloc, boolean>>>({});
+  let repliees = $state<Partial<Record<BlockFamily, boolean>>>({});
   const familles = $derived.by(() => {
-    const r = new Map<FamilleBloc, CatalogueBloc[]>();
+    const r = new Map<BlockFamily, CatalogueBloc[]>();
     // A single output: it is no longer offered while there is one.
     for (const c of catalogue) if (!(c.type === "sortie" && aSortie)) r.set(c.famille, [...(r.get(c.famille) ?? []), c]);
     return [...r];

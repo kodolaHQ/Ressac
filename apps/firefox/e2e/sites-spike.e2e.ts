@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { DeclarationSite, type RetouchesLues } from "../../../packages/noyau/src/index";
+import { DeclarationSite, type TweaksRead } from "../../../packages/noyau/src/index";
 import { HOME_BRIDGE } from "../chrome/store/site-home";
 import { affichageServi } from "../chrome/window/widget-frame";
 import { testActor } from "./agent-extensions";
@@ -67,7 +67,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("site app spike", () => {
   const blocked = () => m.execute<string[]>(`return ChromeUtils.importESModule("${STORE}").sites.blocked("vidola").slice();`);
   const browserWindows = () => m.execute<number>(`return [...Services.wm.getEnumerator("navigator:browser")].length;`);
   // As the host's SiteChrome (noyau/sites.ts preparer), granted.
-  const openSite = (r = rules(), retouches: RetouchesLues = { js: {}, css: {} }) =>
+  const openSite = (r = rules(), retouches: TweaksRead = { js: {}, css: {} }) =>
     m.execute(`ChromeUtils.importESModule("${STORE}").sites.open(arguments[0], null, arguments[1]);`, [
       { id: r.id, declaration: DeclarationSite.parse({ nom: r.nom, adresse: r.adresse, domaines: r.domaines, connexion: r.connexion, retouches: r.retouches }), aAccueil: false, domaines: r.domaines, depart: r.adresse, accordRequis: false },
       retouches,

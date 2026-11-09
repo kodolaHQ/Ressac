@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { REGISTRE_BLOCS } from "../../src/workflows/blocs/index.js";
-import { PLAFOND_RECHERCHES, RECHERCHES_ARRETEES } from "../../src/workflows/acces.js";
+import { BLOCK_REGISTRY } from "../../src/workflows/blocs/index.js";
+import { SEARCHES_CAP, SEARCHES_STOPPED } from "../../src/workflows/acces.js";
 import { MOTEUR, bloc, chaine, lancer, sortie, type Appel } from "../aide/moteur.js";
 
 // The engine is the container's JavaScript: imported as is, without types.
@@ -32,8 +32,8 @@ const ATOM = `<feed xmlns="http://www.w3.org/2005/Atom"><title>Next</title>
 
 describe("shipped blocks", () => {
   it("the container has exactly one module per kernel registry type, with the same per-element mode", () => {
-    expect(new Set(Object.keys(BLOCS_LIVRES))).toEqual(new Set(REGISTRE_BLOCS.keys()));
-    for (const [type, d] of REGISTRE_BLOCS) expect([type, BLOCS_LIVRES[type].parElement]).toEqual([type, d.parElement]);
+    expect(new Set(Object.keys(BLOCS_LIVRES))).toEqual(new Set(BLOCK_REGISTRY.keys()));
+    for (const [type, d] of BLOCK_REGISTRY) expect([type, BLOCS_LIVRES[type].parElement]).toEqual([type, d.parElement]);
   });
 });
 
@@ -373,8 +373,8 @@ describe("ia.rediger", () => {
 
 describe("web.chercher", () => {
   it("MESSAGES_NON_LANCE equal PLAFOND_RECHERCHES and RECHERCHES_ARRETEES", () => {
-    expect(MESSAGES_NON_LANCE).toEqual([PLAFOND_RECHERCHES, RECHERCHES_ARRETEES]);
-    expect(PLAFOND_RECHERCHES).toBe("Plafond de recherches atteint (30 par exécution)");
-    expect(RECHERCHES_ARRETEES).toBe("Recherches arrêtées : DuckDuckGo a refusé une recherche de cette exécution");
+    expect(MESSAGES_NON_LANCE).toEqual([SEARCHES_CAP, SEARCHES_STOPPED]);
+    expect(SEARCHES_CAP).toBe("Plafond de recherches atteint (30 par exécution)");
+    expect(SEARCHES_STOPPED).toBe("Recherches arrêtées : DuckDuckGo a refusé une recherche de cette exécution");
   });
 });

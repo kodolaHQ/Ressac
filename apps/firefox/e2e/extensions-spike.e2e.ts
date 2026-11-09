@@ -7,7 +7,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { afterAll, beforeAll, describe, it } from "vitest";
 import { AMO_URL, lireCleAmo, signer } from "../noyau/extensions/amo";
-import { GARDES_PAR_DEFAUT, preparerCopie } from "../../../packages/noyau/src/extensions/copie.ts";
+import { DEFAULT_GUARDS, prepareCopy } from "../../../packages/noyau/src/extensions/copie.ts";
 import { writeXpi, type Fixture } from "./addons";
 import { dispatch, state, waitFor } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
@@ -78,7 +78,7 @@ async function firefoxCopy(o: { id: string; n: number; extra?: Record<string, un
   const dir = await mkdtemp(path.join(os.tmpdir(), "webaios-spike-copy-"));
   await writeTree(path.join(dir, "source"), { ...SOURCE, ...o.files });
   const cible = path.join(dir, "copy");
-  const { analyse } = await preparerCopie({ source: path.join(dir, "source"), cible, dossierGardes: GARDES_PAR_DEFAUT });
+  const { analyse } = await prepareCopy({ source: path.join(dir, "source"), cible, dossierGardes: DEFAULT_GUARDS });
   if (analyse.refus.length) throw new Error(`copy refused: ${analyse.refus.join("; ")}`);
   const manifest = JSON.parse(await readFile(path.join(cible, "manifest.json"), "utf8"));
   const gecko = { id: o.id, ...((o.extra?.gecko as object) ?? {}) };

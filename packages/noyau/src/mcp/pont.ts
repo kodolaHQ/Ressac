@@ -1,6 +1,6 @@
 import type { DroitDev } from "../acces/politique.js";
-import type { ProfilCpu } from "../outils-dev/resumes.js";
-import type { ChangerHote } from "../workflows/menagement.js";
+import type { CpuProfile } from "../outils-dev/resumes.js";
+import type { ChangeHost } from "../workflows/menagement.js";
 import type { PageLue } from "../workflows/protocole.js";
 
 /** The options of an invisible page read (see `PontNavigateur.lirePageInvisible`). */
@@ -9,12 +9,12 @@ export interface OptionsLecturePage {
   domaines?: string[];
   adressesLocales?: boolean;
   signal?: AbortSignal;
-  changerHote?: ChangerHote;
+  changerHote?: ChangeHost;
   /** Screens to scroll before reading (1 to 20); absent: the page is read without scrolling. */
   defiler?: number;
 }
 
-export interface OngletInfo {
+export interface TabInfo {
   id: string;
   titre: string;
   url: string;
@@ -39,12 +39,12 @@ export interface OngletInfo {
 }
 
 /** What the browser gives the kernel. */
-export interface PontNavigateur {
-  ongletActif(): Promise<OngletInfo | null>;
-  listerOnglets(): Promise<OngletInfo[]>;
+export interface BrowserBridge {
+  ongletActif(): Promise<TabInfo | null>;
+  listerOnglets(): Promise<TabInfo[]>;
   /** Throws OngletIntrouvable if the id is unknown (like lireTexte, naviguer and capturer). */
   lireTexte(id: string): Promise<{ texte: string; selection?: string }>;
-  ouvrirOnglet(url: string, espace?: string): Promise<OngletInfo>;
+  ouvrirOnglet(url: string, space?: string): Promise<TabInfo>;
   /**
    * `"en-attente"` (site app window only): the tweaks grant card is shown; the address will
    * load after the user's choice.
@@ -53,20 +53,20 @@ export interface PontNavigateur {
   /** PNG capture of the tab. */
   capturer(id: string): Promise<Buffer>;
   /** Shows the request to the user; true if they accept. */
-  demanderAutorisation(o: OngletInfo): Promise<boolean>;
+  demanderAutorisation(o: TabInfo): Promise<boolean>;
   /** Dev tools (absent if the browser does not provide them). */
-  outilsDev?: OutilsDevNavigateur;
+  outilsDev?: BrowserDevTools;
   /**
    * Shows the consent card; returns the granted rights (`[]` = denial). `signal` raised: the card no longer has
    * a subject (new conversation, kernel stopped), it is removed and the request answers `[]`.
    */
-  demanderOutilsDev?(o: OngletInfo, d: { droits: DroitDev[]; raison: string; agent: string }, signal?: AbortSignal): Promise<DroitDev[]>;
+  demanderOutilsDev?(o: TabInfo, d: { droits: DroitDev[]; raison: string; agent: string }, signal?: AbortSignal): Promise<DroitDev[]>;
   /** The tab is in a private space: absent from listerOnglets, the agent has no access to it. */
   estPrive?(id: string): boolean;
   /** The tab the user is looking at is in a private space (ongletActif then returns null). */
   ongletActifPrive?(): boolean;
   /** History and kept text of the pages, made only of non-private visits (absent: no history tools). */
-  historique?: HistoriqueNavigateur;
+  historique?: BrowserHistory;
   /**
    * Reads a page in an invisible tab, without clicking or typing. `profil: null`: blank session, without any cookie;
    * otherwise the named login profile. Throws ProfilRefuse if this profile is unknown or used by a private space.
@@ -121,7 +121,7 @@ export interface MessageConsole {
   pile?: string;
 }
 
-export interface RequeteReseau {
+export interface NetworkRequest {
   id: string;
   horodatage: number;
   methode: string;
@@ -136,37 +136,37 @@ export interface RequeteReseau {
 }
 
 /** Result of `executer`: the value already serialized (JSON or preview), not truncated; the kernel truncates. */
-export type ResultatJs = { valeur: string } | { exception: string };
+export type JsResult = { valeur: string } | { exception: string };
 
 /** What the browser gives to inspect a tab. */
-export interface OutilsDevNavigateur {
+export interface BrowserDevTools {
   /** Throws OutilsDevOccupes or OngletIntrouvable. */
   attacher(id: string): Promise<void>;
   detacher(id: string): Promise<void>;
   console(id: string): Promise<MessageConsole[]>;
-  reseau(id: string): Promise<RequeteReseau[]>;
-  corps(id: string, requete: string): Promise<{ corps: string; base64: boolean }>;
+  reseau(id: string): Promise<NetworkRequest[]>;
+  corps(id: string, request: string): Promise<{ corps: string; base64: boolean }>;
   profiler(
     id: string,
     o: { dureeMs?: number; recharger?: boolean },
     signal: AbortSignal,
-  ): Promise<{ profil: ProfilCpu; metriques: Record<string, number> }>;
+  ): Promise<{ profil: CpuProfile; metriques: Record<string, number> }>;
   /** The raw `.heapsnapshot`. */
   instantaneMemoire(id: string, signal: AbortSignal): Promise<string>;
-  executer(id: string, code: string, signal: AbortSignal): Promise<ResultatJs>;
+  executer(id: string, code: string, signal: AbortSignal): Promise<JsResult>;
   recharger(id: string, sansCache: boolean): Promise<void>;
   /**
    * Access reserved to a kernel (the browser keeps its tools from one kernel to the next). Creating one revokes the previous:
    * its calls are refused and its attachments drop. `liberer` revokes this one (kernel stopped).
    */
-  proprietaire?(): OutilsDevProprietaire;
+  proprietaire?(): DevToolsOwner;
 }
 
-export interface OutilsDevProprietaire extends OutilsDevNavigateur {
+export interface DevToolsOwner extends BrowserDevTools {
   liberer(): void;
 }
 
-export class OngletIntrouvable extends Error {
+export class TabNotFound extends Error {
   constructor(readonly id: string) {
     super(`Onglet introuvable : ${id}`);
     this.name = "OngletIntrouvable";
@@ -174,7 +174,7 @@ export class OngletIntrouvable extends Error {
 }
 
 /** A history page found for the agent: one per URL, made only of non-private visits. */
-export interface ResultatHistorique {
+export interface HistoryResult {
   url: string;
   titre: string;
   derniereVisite: string; // ISO
@@ -184,7 +184,7 @@ export interface ResultatHistorique {
 }
 
 /** A page whose text was kept, as read by the agent. */
-export interface PageRetenue {
+export interface KeptPage {
   url: string;
   titre: string;
   date: string; // ISO
@@ -192,24 +192,24 @@ export interface PageRetenue {
 }
 
 /** What the browser provides to search the history: never a visit from a private space. */
-export interface HistoriqueNavigateur {
+export interface BrowserHistory {
   /** `depuis` and `jusqua`: ISO dates already checked by the kernel; `limite` between 1 and 50. */
-  chercher(q: { requete: string; depuis?: string; jusqua?: string; limite: number }): Promise<ResultatHistorique[]>;
+  chercher(q: { requete: string; depuis?: string; jusqua?: string; limite: number }): Promise<HistoryResult[]>;
   /** The most recent kept text of the page, or null (unknown, or seen only in a private space). */
-  lire(url: string): Promise<PageRetenue | null>;
+  lire(url: string): Promise<KeptPage | null>;
 }
 
-export const TEXTE_PRIVE = "Cet onglet est dans un espace privé : l'agent n'y a pas accès.";
+export const PRIVATE_TEXT = "Cet onglet est dans un espace privé : l'agent n'y a pas accès.";
 
 /** The tab is in a private space: the agent receives TEXTE_PRIVE, with no question asked to the user. */
-export class OngletPrive extends Error {
+export class PrivateTab extends Error {
   constructor(readonly id: string) {
-    super(TEXTE_PRIVE);
+    super(PRIVATE_TEXT);
     this.name = "OngletPrive";
   }
 }
 
-export class OutilsDevOccupes extends Error {
+export class DevToolsBusy extends Error {
   constructor() {
     super("Les outils de développement de l'utilisateur sont ouverts sur cet onglet.");
     this.name = "OutilsDevOccupes";
@@ -217,7 +217,7 @@ export class OutilsDevOccupes extends Error {
 }
 
 /** The login profile requested for a read is unknown or used by a private space. */
-export class ProfilRefuse extends Error {
+export class ProfileDenied extends Error {
   constructor(readonly profil: string) {
     super(`Profil de connexion refusé : ${profil}`);
     this.name = "ProfilRefuse";

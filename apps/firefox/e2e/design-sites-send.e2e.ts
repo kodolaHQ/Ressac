@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { urlRelecture } from "../shared/modele";
-import { AVERTISSEMENT_SITE_TIERS } from "../../../packages/noyau/src/design/remarques";
+import { THIRD_PARTY_SITE_WARNING } from "../../../packages/noyau/src/design/remarques";
 import { testActor } from "./agent-extensions";
 import { calqueOf, inStore, openSite, siteKey, siteMouse, toSite, TUNING_PAGE, tuningDeclaration, viewExpr, viewPoint, AUTRE_PAGE, CONNEXION_PAGE } from "./design-sites";
 import { state, waitFor, waitReady } from "./firefox";
@@ -140,7 +140,7 @@ it("two remarks on tuning then send from the cart: text pre-filled without Enter
   expect(lots).toHaveLength(1);
   const lot = JSON.parse(readFileSync(path.join(remarksDir(), lots[0]!, "lot.json"), "utf8"));
   expect(lot.origine).toBe("site-tiers");
-  expect(lot.avertissement).toBe(AVERTISSEMENT_SITE_TIERS);
+  expect(lot.avertissement).toBe(THIRD_PARTY_SITE_WARNING);
   expect(readdirSync(path.join(remarksDir(), lots[0]!)).filter((n) => n.endsWith(".png"))).toHaveLength(2);
   await expect.poll(async () => (await bar()).count, { timeout: 10_000 }).toBeNull();
   await expect.poll(() => inCalque<number>(`return doc.querySelectorAll('${tid("remarque-panier")}').length;`), { timeout: 10_000 }).toBe(0);

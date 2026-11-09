@@ -1,9 +1,9 @@
 import { homedir } from "node:os";
 import { dirname, join, relative, isAbsolute } from "node:path";
 
-export const CHEMIN_CONTENEUR = "/workspace";
+export const CONTAINER_PATH = "/workspace";
 
-export interface CheminsEspace {
+export interface SpacePaths {
   racine: string;
   accueil: string;
   blocs: string;
@@ -27,21 +27,21 @@ export interface CheminsEspace {
   sites: string;
 }
 
-export function cheminsEspace(racine?: string): CheminsEspace {
-  const r = racine ?? process.env.WEBAIOS_RACINE ?? join(homedir(), "WebAiOs");
-  const accueil = join(r, "accueil");
-  const interne = join(r, ".webaios");
+export function spacePaths(root?: string): SpacePaths {
+  const r = root ?? process.env.WEBAIOS_RACINE ?? join(homedir(), "WebAiOs");
+  const home = join(r, "accueil");
+  const internal = join(r, ".webaios");
   return {
     racine: r,
-    accueil,
-    blocs: join(accueil, "blocs"),
-    widgets: join(accueil, "widgets"),
-    disposition: join(accueil, "disposition.json"),
+    accueil: home,
+    blocs: join(home, "blocs"),
+    widgets: join(home, "widgets"),
+    disposition: join(home, "disposition.json"),
     projets: join(r, "projets"),
-    interne,
-    profils: join(interne, "profils"),
-    configMcp: join(interne, "mcp.json"),
-    journaux: join(interne, "journaux"),
+    interne: internal,
+    profils: join(internal, "profils"),
+    configMcp: join(internal, "mcp.json"),
+    journaux: join(internal, "journaux"),
     extensions: join(r, "extensions"),
     actions: join(r, "actions"),
     composants: join(r, "composants"),
@@ -50,20 +50,20 @@ export function cheminsEspace(racine?: string): CheminsEspace {
 }
 
 /** Folder of the MCP configs specific to agent sessions (next to `configMcp`). */
-export function dossierSessions(c: CheminsEspace): string {
+export function dossierSessions(c: SpacePaths): string {
   return join(dirname(c.configMcp), "sessions");
 }
 
 /** MCP config specific to the agent session of a window (`<configMcp folder>/sessions/<session>.json`). */
-export function cheminConfigSession(c: CheminsEspace, session: string): string {
+export function sessionConfigPath(c: SpacePaths, session: string): string {
   return join(dossierSessions(c), `${session}.json`);
 }
 
 /** Translates a workspace path on the Mac into a path in the container. */
-export function cheminDansConteneur(cheminHote: string, c: CheminsEspace): string {
-  const rel = relative(c.racine, cheminHote);
+export function pathInContainer(hostPath: string, c: SpacePaths): string {
+  const rel = relative(c.racine, hostPath);
   if (rel.startsWith("..") || isAbsolute(rel)) {
-    throw new Error(`Chemin hors de l'espace : ${cheminHote}`);
+    throw new Error(`Chemin hors de l'espace : ${hostPath}`);
   }
-  return rel === "" ? CHEMIN_CONTENEUR : `${CHEMIN_CONTENEUR}/${rel.split("\\").join("/")}`;
+  return rel === "" ? CONTAINER_PATH : `${CONTAINER_PATH}/${rel.split("\\").join("/")}`;
 }

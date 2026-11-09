@@ -4,7 +4,7 @@
 import fs from "node:fs/promises";
 import { resolve, sep } from "node:path";
 import { z } from "zod";
-import { dossierValide, ecrireType, GestionnaireApplications, prefixeApplication, type Application, type Atelier, type CheminsEspace, type OngletInfo } from "../../../packages/noyau/src/index.ts";
+import { validFolder, writeType, ApplicationManager, appPrefix, type Application, type Atelier, type SpacePaths, type TabInfo } from "../../../packages/noyau/src/index.ts";
 import { SondeDocker } from "../core/applications/sonde.ts";
 import { TAILLE_FAVICON } from "../core/applications/favicon.ts";
 import { SchemaActionApplication, type ListeApplications } from "../shared/api.ts";
@@ -18,12 +18,12 @@ export function plageDePorts(valeur: string | undefined): [number, number] | und
 }
 
 /** The app window seen as an `app:<dossier>` tab by the agent. */
-export const appTab = (a: { dossier: string; titre: string; url: string }): OngletInfo => ({ id: "app:" + a.dossier, titre: a.titre, url: a.url, espace: "", application: a.dossier });
+export const appTab = (a: { dossier: string; titre: string; url: string }): TabInfo => ({ id: "app:" + a.dossier, titre: a.titre, url: a.url, espace: "", application: a.dossier });
 
 const SchemaCadre = z.object({ x: z.number(), y: z.number(), largeur: z.number(), hauteur: z.number() });
 
 export interface ApplicationsHost {
-  gestionnaire: GestionnaireApplications;
+  gestionnaire: ApplicationManager;
   handlers: Record<string, (p: any) => unknown>;
   /** Running apps with a port: projetPourAdresse's appsLancees (plan 35b) and the review's applis. */
   liste(): Promise<Application[]>;
@@ -32,7 +32,7 @@ export interface ApplicationsHost {
 }
 
 export function createApplicationsHost(o: {
-  chemins: CheminsEspace;
+  chemins: SpacePaths;
   dataDir: string;
   atelier: Atelier;
   chrome: {
@@ -41,8 +41,8 @@ export function createApplicationsHost(o: {
     montrer(dossier: string): Promise<boolean>;
     effacer(dossier: string): Promise<void>;
   };
-  deboguer(fenetre: IdFenetre, texte: string, acces?: () => OngletInfo | undefined): void;
-  politique(): { ongletFerme(id: string): void; ongletNavigue(id: string, url: string): void; construite(o: OngletInfo): void } | null;
+  deboguer(fenetre: IdFenetre, texte: string, acces?: () => TabInfo | undefined): void;
+  politique(): { ongletFerme(id: string): void; ongletNavigue(id: string, url: string): void; construite(o: TabInfo): void } | null;
   diffuser(): void;
 }): ApplicationsHost {
   // Under <dataDir>, never in <dataDir>/espace that the container mounts.
@@ -68,7 +68,7 @@ export function createApplicationsHost(o: {
   };
 
   // Launches come from the agent (MCP tool) as from the apps page: all go through here.
-  class Gestionnaire extends GestionnaireApplications {
+  class Gestionnaire extends ApplicationManager {
     override lancer(dossier: string): Promise<Application> {
       enCours.set(dossier, (enCours.get(dossier) ?? 0) + 1);
       const fin = super.lancer(dossier);
@@ -96,7 +96,7 @@ export function createApplicationsHost(o: {
     }
   }
 
-  const gestionnaire: GestionnaireApplications = new Gestionnaire({
+  const gestionnaire: ApplicationManager = new Gestionnaire({
     chemins: o.chemins,
     atelier: o.atelier,
     ...(ports ? { ports } : {}),
@@ -137,7 +137,7 @@ export function createApplicationsHost(o: {
       const f = fenetres.get(dossier);
       return f && appTab({ dossier, ...f });
     };
-    const texte = prefixeApplication({ nom: a.nom, dossier, sansFiche: a.type === "sans-fiche", enMarche: acces() !== undefined });
+    const texte = appPrefix({ nom: a.nom, dossier, sansFiche: a.type === "sans-fiche", enMarche: acces() !== undefined });
     o.deboguer(fenetre, texte, acces() ? acces : undefined);
   }
 
@@ -158,7 +158,7 @@ export function createApplicationsHost(o: {
         void supprimer(dossier).catch(signaler(dossier, "supprimée"));
         return;
       case "promouvoir":
-        void ecrireType(o.chemins, dossier, "application").then(o.diffuser).catch(signaler(dossier, "promue"));
+        void writeType(o.chemins, dossier, "application").then(o.diffuser).catch(signaler(dossier, "promue"));
         return;
       case "deboguer":
         void deboguer(dossier, fenetre).catch(signaler(dossier, "déboguée"));
@@ -168,7 +168,7 @@ export function createApplicationsHost(o: {
   };
 
   type Params = { [k: string]: unknown } | null | undefined;
-  const dossierDe = (p: Params) => (typeof p?.dossier === "string" && dossierValide(p.dossier) ? p.dossier : undefined);
+  const dossierDe = (p: Params) => (typeof p?.dossier === "string" && validFolder(p.dossier) ? p.dossier : undefined);
 
   const handlers: Record<string, (p: Params) => unknown> = {
     "applications.liste": async (): Promise<ListeApplications> => {
