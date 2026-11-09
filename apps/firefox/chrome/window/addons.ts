@@ -14,7 +14,7 @@ const { ExtensionParent } = ChromeUtils.importESModule("resource://gre/modules/E
 const { ExtensionsUI } = ChromeUtils.importESModule("resource:///modules/ExtensionsUI.sys.mjs");
 const { BrowserWindowTracker } = ChromeUtils.importESModule("resource:///modules/BrowserWindowTracker.sys.mjs");
 const ADDONS_LIST = "addons://list/extension";
-// Keep in sync with noyau/extensions/copie-firefox.ts SUFFIXE_ID.
+// Keep in sync with host/extensions/firefox-copy.ts ID_SUFFIX.
 const AGENT_SUFFIX = "@agent.webaios";
 
 export interface AddonButton {

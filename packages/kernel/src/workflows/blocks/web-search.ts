@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { FIELD_PER_ELEMENT, fieldsPerElementOnly, Template, ParamsPerElement, type BlockDefinition } from "./common.js";
 
-/** Only for a widget that declares `"web": true` (validerWorkflow); the search is done by the kernel. */
+/** Only for a widget that declares `"web": true` (validateWorkflow); the search is done by the kernel. */
 export const definition: BlockDefinition = {
   type: "web.chercher",
   libelle: "Chercher sur le web",

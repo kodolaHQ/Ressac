@@ -99,7 +99,7 @@ function examples(root: unknown, depth: number): unknown {
   return copy(root, 0);
 }
 
-/** JSON `{ forme, exemples }` of at most APERCU_MAX characters: the examples go first, then the deep levels. */
+/** JSON `{ forme, exemples }` of at most PREVIEW_MAX characters: the examples go first, then the deep levels. */
 export function resultsPreview(results: unknown): string {
   const attempts: [number, boolean][] = [[4, true], [3, true], [2, true], [4, false], [3, false], [2, false], [1, false]];
   for (const [depth, withExamples] of attempts) {

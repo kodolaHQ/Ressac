@@ -3,7 +3,7 @@ import { PREVIEW_MAX, resultsPreview, emptyResults } from "../../src/pages/previ
 
 const ticket = (i: number) => ({ titre: `Ticket ${i} ` + "x".repeat(200), priorite: "haute", url: `https://gitlab.com/t/${i}` });
 
-describe("apercuResultats", () => {
+describe("resultsPreview", () => {
   it("describes the shape of a list of objects and keeps 3 examples", () => {
     const a = JSON.parse(resultsPreview({ tickets: Array.from({ length: 23 }, (_, i) => ticket(i)) }));
     expect(a.forme.tickets).toBe("liste (23) d'objets { titre: texte, priorite: texte, url: texte }");
@@ -41,7 +41,7 @@ describe("apercuResultats", () => {
   });
 });
 
-describe("resultatsVides", () => {
+describe("emptyResults", () => {
   it("null, texte vide, [], {}, objets de vides : vrais ; { total: 0 } faux", () => {
     expect(emptyResults(null)).toBe(true);
     expect(emptyResults("")).toBe(true);

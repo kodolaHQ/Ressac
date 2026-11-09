@@ -536,14 +536,14 @@ describe("site rights, card and memory", () => {
     ],
   };
 
-  it("empreinteDroits follows the rights only", () => {
+  it("rightsHash follows the rights only", () => {
     const d = DeclarationSite.parse(requested);
     // Rights drift: another sign-in domain changes it; a description does not.
     expect(rightsHash(DeclarationSite.parse({ ...requested, connexion: ["autre.example"] }))).not.toBe(rightsHash(d));
     expect(rightsHash(DeclarationSite.parse({ ...requested, description: "autre" }))).toBe(rightsHash(d));
   });
 
-  it("demandeAccord gives the card (e2e 43): rights, files without duplicates, followed domains, hash", () => {
+  it("grantRequest gives the card (e2e 43): rights, files without duplicates, followed domains, hash", () => {
     const d = DeclarationSite.parse(requested);
     const card = grantRequest({ id: "vidola", declaration: d, aAccueil: false, domaines: ["vidola-a.example", "VIDOLA-C.example"], depart: "https://vidola-a.example/", accordRequis: true });
     expect(card).toEqual({
@@ -564,7 +564,7 @@ describe("site rights, card and memory", () => {
     expect(vs.map((v) => SchemaActionSite.safeParse(v).success)).toEqual([true, false, false, false, false]);
   });
 
-  it("SiteSouvenirs has its public methods and writes indented JSON of the whole map", async () => {
+  it("SiteRecords has its public methods and writes indented JSON of the whole map", async () => {
     for (const n of ["lire", "noter", "oublier", "vider"]) expect(typeof (SiteRecords.prototype as unknown as Record<string, unknown>)[n]).toBe("function");
     const folder = mkdtempSync(join(tmpdir(), "souvenirs-"));
     cleanup.push(() => rmSync(folder, { recursive: true, force: true }));

@@ -59,7 +59,7 @@ test("only the last 20 runs are kept", async () => {
   expect(names).not.toContain(`${idExecution(timestamp(4))}.json`);
 });
 
-test("listerExecutions returns the most recent first and ignores a damaged file", async () => {
+test("listRuns returns the most recent first and ignores a damaged file", async () => {
   const d = await tempFolder();
   await writeRun(d, execution(timestamp(1), [block("a", 1)]));
   await writeRun(d, execution(timestamp(3)));
@@ -74,7 +74,7 @@ test("listerExecutions returns the most recent first and ignores a damaged file"
   expect(await listRuns(await tempFolder())).toEqual([]);
 });
 
-test("lireExecution refuses an id that leaves the folder", async () => {
+test("readRun refuses an id that leaves the folder", async () => {
   const d = await tempFolder();
   await writeFile(join(d, "etat.json"), "{}");
   expect(await readRun(d, "../etat")).toBeNull();
@@ -99,7 +99,7 @@ test("huge logs and errors are bounded: the file stays under 4 MB", async () => 
   expect(loaded.blocs[0]!.journal.some((l) => l.includes("lignes coupées"))).toBe(true);
 });
 
-test("listerExecutions does not re-read an unchanged file (same date, same size), re-reads a rewritten file", async () => {
+test("listRuns does not re-read an unchanged file (same date, same size), re-reads a rewritten file", async () => {
   const d = await tempFolder();
   const e = execution(timestamp(1), [block("a")]);
   await writeRun(d, e);
@@ -124,7 +124,7 @@ const attempt = (start: string): Execution => ({
   ...execution(start), id: attemptId(start), declencheur: "rejeu", essai: { depart: "b", origine: idExecution(timestamp(0)) },
 });
 
-test("idEssai adds -essai to the run's identifier", () => {
+test("attemptId adds -essai to the run's identifier", () => {
   expect(attemptId("2026-10-29T08:00:01.234Z")).toBe("2026-10-29T08-00-01-234Z-essai");
 });
 
@@ -151,7 +151,7 @@ test("a series of trials drives out no real run", async () => {
   expect(names).toContain(`${idExecution(timestamp(0))}.json`);
 });
 
-test("listerExecutions marks the trials", async () => {
+test("listRuns marks the trials", async () => {
   const d = await tempFolder();
   await writeRun(d, execution(timestamp(1)));
   await writeRun(d, attempt(timestamp(2)));
@@ -160,7 +160,7 @@ test("listerExecutions marks the trials", async () => {
   expect(list.find((r) => r.id === idExecution(timestamp(1)))!.essai).toBeUndefined();
 });
 
-test("lireExecution accepts <timestamp>-essai and refuses ../x-essai", async () => {
+test("readRun accepts <timestamp>-essai and refuses ../x-essai", async () => {
   const d = await tempFolder();
   await writeRun(d, attempt(timestamp(3)));
   expect((await readRun(d, attemptId(timestamp(3))))!.declencheur).toBe("rejeu");
@@ -173,7 +173,7 @@ test("lireExecution accepts <timestamp>-essai and refuses ../x-essai", async () 
   expect(ID_EXECUTION.test("2026-10-29T08-00-00-000Z-essai-essai")).toBe(false);
 });
 
-test("effacerExecutionsEtMemoire also erases the trials", async () => {
+test("clearRunsAndMemory also erases the trials", async () => {
   const d = await tempFolder();
   await writeRun(d, attempt(timestamp(3)));
   await clearRunsAndMemory(d);

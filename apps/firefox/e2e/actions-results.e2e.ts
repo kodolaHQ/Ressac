@@ -125,7 +125,7 @@ describe("action results", () => {
   });
 
   // actions.spec.ts:712 (last: it leaves the window's space private)
-  it("a webaios://action/x tab in a private space: ACTIONS_EN_ESPACE_PRIVE, nothing launched", async () => {
+  it("a webaios://action/x tab in a private space: ACTIONS_IN_PRIVATE_SPACE, nothing launched", async () => {
     await writeRunnableAction(w.dataDir, "x", { nom: "X", code: "export default async () => ({ a: 1 });" });
     await writeResult(w.dataDir, "x", "2026-10-31T08-00-00-000Z", "2026-10-31T08:00:00.000Z", "Secret");
     const prompts = servers.ollama.prompts.length;

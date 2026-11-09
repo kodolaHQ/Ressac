@@ -6,7 +6,7 @@ import { CSP_WIDGET, displayServed } from "../window/widget-frame";
 import { containerFor } from "./containers";
 import { containerRequests, isLink, loadImage, realPath, toDataUrl } from "./site-home";
 
-/** The kernel's COMPOSANT_HTML_MAX (pages/composants-agent.ts), copied: that module's node:fs imports have no shim in this bundle. Drift test in action-media.test.ts. */
+/** The kernel's COMPONENT_HTML_MAX (pages/agent-components.ts), copied: that module's node:fs imports have no shim in this bundle. Drift test in action-media.test.ts. */
 export const COMPONENT_HTML_MAX = 256 * 1024;
 /** The largest result image. */
 export const ACTION_IMAGE_MAX = 5 * 1024 * 1024;
@@ -78,9 +78,9 @@ function queued<T>(name: string, f: () => Promise<T>): Promise<T> {
 
 /**
  * One more page shows component `nom`: copies `<dataDir>/espace/composants/<nom>/composant.html` with these rules
- * (no symbolic link on the path, COMPOSANT_HTML_MAX at most) into
- * `<dataDir>/webaios-composants/<nom>/composant-<mtime>.html` through affichageServi (the widgets' CSP and guard, then
- * the bridge; AFFICHAGE_REFUSE on a network hint), and returns its resource:// URL, or null. Each call is paired with a
+ * (no symbolic link on the path, COMPONENT_HTML_MAX at most) into
+ * `<dataDir>/webaios-composants/<nom>/composant-<mtime>.html` through displayServed (the widgets' CSP and guard, then
+ * the bridge; DISPLAY_DENIED on a network hint), and returns its resource:// URL, or null. Each call is paired with a
  * releaseComponent, null or not.
  * shortcut: checked by realpath then read by path (IOUtils has no O_NOFOLLOW), as serveHome; upgrade with it.
  */

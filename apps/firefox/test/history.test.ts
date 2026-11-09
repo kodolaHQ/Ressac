@@ -187,7 +187,7 @@ test("retenir a second time for the same page in the same space replaces the tex
   expect(h.rechercherPourAgent({ requete: "premier" })).toEqual([]);
 });
 
-test("Visite.retenu tells whether this visit's text (URL and space) is retained; oublierTexte forgets it alone", () => {
+test("Visit.retenu tells whether this visit's text (URL and space) is retained; oublierTexte forgets it alone", () => {
   visit("https://a.fr/", "A", "texte", { espaceId: "A" });
   h.noter({ url: "https://a.fr/", titre: "A", espaceId: "B", prive: false });
   expect(Object.fromEntries(h.recents().map((v) => [v.espaceId, v.retenu]))).toEqual({ A: true, B: false });

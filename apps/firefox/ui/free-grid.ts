@@ -1,7 +1,7 @@
 import type { FreePlacement } from "../../../packages/kernel/src/home/schemas";
 
 // Gestures of the free home (thousandths in width, pixels in height). Placing widgets without a position is done
-// by the kernel (placerManquantsLibre): here, only snapping, guides and the gesture's bounds.
+// by the kernel (placeMissingFree): here, only snapping, guides and the gesture's bounds.
 /** Horizontal snap step, in thousandths of the width. */
 export const STEP_X = 5;
 /** Vertical snap step, in pixels. */
@@ -18,7 +18,7 @@ const snapY = (y: number) => Math.round(y / STEP_Y) * STEP_Y;
 
 const overlap = (a: FreePlacement, b: FreePlacement) => a.x < b.x + b.l && b.x < a.x + a.l && a.y < b.y + b.h && b.y < a.y + a.h;
 
-/** Declared sizes (units 1…12) to free units (thousandths, pixels): the copy of the kernel's `taillesLibres`. */
+/** Declared sizes (units 1…12) to free units (thousandths, pixels): the copy of the kernel's `freeSizes`. */
 export function freeSizes(t: { l: number; h: number }): { l: number; h: number } {
   return { l: Math.max(1, Math.round((t.l * FREE_WIDTH) / COLUMNS)), h: Math.max(1, t.h * ROW_PX) };
 }

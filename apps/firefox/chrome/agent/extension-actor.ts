@@ -6,7 +6,7 @@ import type { WebAiOsStore } from "../store";
 import type { CheckKind } from "../store/agent-extensions";
 
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
-// Keep in sync with noyau/extensions/copie-firefox.ts SUFFIXE_ID.
+// Keep in sync with host/extensions/firefox-copy.ts ID_SUFFIX.
 const SUFFIX = "@agent.webaios";
 const KINDS: readonly string[] = ["urlPermise", "hotePermis", "estOnglet"] satisfies CheckKind[];
 

@@ -22,7 +22,7 @@ describe("tronquer", () => {
   });
 });
 
-describe("masquerEnTetes", () => {
+describe("maskHeaders", () => {
   it("masks the four headers regardless of case", () => {
     const r = maskHeaders({
       Cookie: "a=1",
@@ -72,7 +72,7 @@ const profile: CpuProfile = {
   endTime: 40000,
 };
 
-describe("resumerProfil", () => {
+describe("summarizeProfile", () => {
   it("names the most expensive function first, with its ms", () => {
     const t = summarizeProfile(profile, {
       Nodes: 120,
@@ -150,10 +150,10 @@ describe("memory summary", () => {
     );
     expect(r.parConstructeur).toEqual([{ nom: "(chaîne)", nombre: 2, taille: 30 }]);
   });
-  it("texteMemoire lists the constructors", () => {
+  it("memoryText lists the constructors", () => {
     expect(memoryText(a)).toContain("Fuite");
   });
-  it("comparerMemoire flags the growth", () => {
+  it("compareMemory flags the growth", () => {
     const b = summarizeSnapshot(
       snapshot([
         ...Array.from({ length: 5 }, () => ["object", "Fuite", 100] as [string, string, number]),
@@ -174,7 +174,7 @@ const census = (objects: Record<string, [number, number]>, total: number): strin
   });
 
 describe("recensement Firefox", () => {
-  it("resumerInstantane reads a Firefox census: total and constructors sorted by size", () => {
+  it("summarizeSnapshot reads a Firefox census: total and constructors sorted by size", () => {
     const r = summarizeSnapshot(
       census({ Function: [10, 500], Object: [40, 4000], Array: [5, 900], strings: [20, 2000] }, 9000),
     );
@@ -182,7 +182,7 @@ describe("recensement Firefox", () => {
     expect(r.parConstructeur.map((c) => c.nom)).toEqual(["Object", "strings", "Array", "Function"]);
     expect(r.parConstructeur[0]).toEqual({ nom: "Object", nombre: 40, taille: 4000 });
   });
-  it("comparerMemoire on two Firefox censuses: the type that grows comes first", () => {
+  it("compareMemory on two Firefox censuses: the type that grows comes first", () => {
     const a = summarizeSnapshot(census({ Object: [40, 4000], Array: [5, 900] }, 5000));
     const b = summarizeSnapshot(census({ Object: [400, 40000], Array: [5, 900] }, 41000));
     const t = compareMemory(a, b);

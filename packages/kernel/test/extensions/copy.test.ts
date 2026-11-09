@@ -73,7 +73,7 @@ async function target(): Promise<string> {
 
 const readJson = async (path: string) => JSON.parse(await readFile(path, "utf8")) as Record<string, any>;
 
-describe("preparerCopie", () => {
+describe("prepareCopy", () => {
   it("the copy has the CSP cspAgent([]) and nothing else from the agent in content_security_policy", async () => {
     const src = await source({
       "manifest.json": baseManifest({
@@ -603,7 +603,7 @@ describe("webaios-correctifs-page.js", () => {
 describe("localized names (_locales)", () => {
   const localizedManifest = { manifest_version: 3, name: "__MSG_extName__", version: "1.0", default_locale: "en" };
 
-  it("preparerCopie resolves the agent's name from _locales (fr first)", async () => {
+  it("prepareCopy resolves the agent's name from _locales (fr first)", async () => {
     const src = await source({
       "manifest.json": localizedManifest,
       "_locales/en/messages.json": { extName: { message: "Name" } },

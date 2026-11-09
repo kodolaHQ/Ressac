@@ -100,13 +100,13 @@ describe("homeServed", () => {
     expect(s.indexOf("<title>Accueil</title>")).toBe(bridge + HOME_BRIDGE.length);
   });
 
-  it("is AFFICHAGE_REFUSE for a page with a network hint", () => {
+  it("is DISPLAY_DENIED for a page with a network hint", () => {
     expect(homeServed('<!doctype html><link rel="preload" href="https://x.test/">', "vidola")).toBe(DISPLAY_DENIED);
   });
 });
 
 describe("site home resources", () => {
-  it("cspAccueilFirefox allows images from the site's resource:// origin only", () => {
+  it("cspFirefoxHome allows images from the site's resource:// origin only", () => {
     expect(cspFirefoxHome("vidola")).toContain("img-src data: resource://webaios-site-vidola;");
   });
 
@@ -229,7 +229,7 @@ describe("serveHome: a hostile home folder (Review Focus 3)", () => {
     expect(copied(url!, "page.HTML")).toContain("Content-Security-Policy");
   });
 
-  it("serves AFFICHAGE_REFUSE for an index.html with <link>", async () => {
+  it("serves DISPLAY_DENIED for an index.html with <link>", async () => {
     app({ "index.html": '<!doctype html><link rel="prefetch" href="https://x.test/"><p>accueil</p>' });
     const url = await serveHome(data, "vidola");
     expect(copied(url!, "index.html")).toBe(DISPLAY_DENIED);

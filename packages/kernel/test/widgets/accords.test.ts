@@ -14,7 +14,7 @@ const declaration = (account: string[], publics: string[]) =>
   });
 
 describe("grants", () => {
-  it("accorder then lireAccords, retirerAccord", async () => {
+  it("accorder then readGrants, removeGrant", async () => {
     const d = await tempFolder();
     expect(await readGrants(d)).toEqual({});
     await giveGrant(d, "daily", { domaines: ["app.daily.dev"], publiques: [], profil: "p1" });
@@ -60,7 +60,7 @@ describe("grants", () => {
     expect(grantValid(declaration(["app.daily.dev", "b.fr"], ["x.fr"]), undefined)).toBe(false);
   });
 
-  it("accordValide accepts any declaration that has sources (widget or action)", () => {
+  it("grantValid accepts any declaration that has sources (widget or action)", () => {
     const action = DeclarationAction.parse({ nom: "A", sources: { compte: ["gitlab.com"], publiques: ["x.fr"] } });
     const grant = { domaines: ["gitlab.com"], publiques: ["x.fr"], profil: "p" };
     expect(grantValid(action, grant)).toBe(true);

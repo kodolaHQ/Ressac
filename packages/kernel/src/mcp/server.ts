@@ -889,7 +889,7 @@ export async function startMcpServer(o: {
   agent?: string;
   /** Writing and reading of the dev tools' raw profiles. */
   profils?: ProfileFiles;
-  /** Dev tools reserved for this kernel (see OutilsDevNavigateur.proprietaire). */
+  /** Dev tools reserved for this kernel (see BrowserDevTools.proprietaire). */
   outilsDev?: BrowserDevTools;
   /** Widget tools (harvest, data). */
   widgets?: WidgetsTools;

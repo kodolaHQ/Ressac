@@ -198,7 +198,7 @@ describe("the builder of an action", () => {
     expect(await q.text(tid("page-action"))).not.toContain("ticket-webaios-deux");
   });
 
-  it("an action's builder tab in a private space shows ACTIONS_EN_ESPACE_PRIVE", { timeout: 60_000 }, async () => {
+  it("an action's builder tab in a private space shows ACTIONS_IN_PRIVATE_SPACE", { timeout: 60_000 }, async () => {
     await writeGitlab("gitlab-d");
     await openActionBuilder("gitlab-d");
     await setPrivate(true);

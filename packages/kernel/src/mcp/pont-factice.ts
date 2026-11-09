@@ -158,7 +158,7 @@ export class FakeBridge implements BrowserBridge {
    * which answers these rights. `bloquer`: profiles and snapshots only end on abandonment. `historique` provides
    * the history: `chercher` returns `resultats` (at most `limite`), `lire` the page of `textes` at this URL, and
    * `erreur`, if given, makes both fail. `lecture` provides `lirePageInvisible`: the page of `pages` at this URL
-   * (otherwise an empty page), `lireHtmlInvisible`: the HTML of `html` at this URL (otherwise ""), and ProfilRefuse for a profile of `refuser`. A read (page or HTML) of a URL of `suspendues` only
+   * (otherwise an empty page), `lireHtmlInvisible`: the HTML of `html` at this URL (otherwise ""), and ProfileDenied for a profile of `refuser`. A read (page or HTML) of a URL of `suspendues` only
    * ends at `relacher(url)`, or at the abandonment of its `signal`: it is then noted « lectureAnnulee » and rejected with
    * the signal's reason, like the real bridge that closes its window. `redirections` simulates a redirect:
    * the requested URL leads to the associated URL, and that page is the one returned; to another host, with

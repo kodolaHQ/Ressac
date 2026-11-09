@@ -51,7 +51,7 @@ it("a private tab is refused before its page is even looked up", async () => {
   expect(devtools.attached()).toEqual([]);
 });
 
-it("an unknown tab: OngletIntrouvable", async () => {
+it("an unknown tab: TabNotFound", async () => {
   const { devtools } = setup();
   await expect(devtools.call(devtools.owner().token, "console", ["gone"])).rejects.toMatchObject({ name: "OngletIntrouvable", id: "gone" });
 });

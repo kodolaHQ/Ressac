@@ -139,7 +139,7 @@ export function setupAppWindow(win: Window, folder: string): void {
     gBrowser.getWindowTitleForBrowser = (b: any) => apps.titleOf({ nom: app.nom, view: b });
     gBrowser.updateTitlebar();
     // The favicon Firefox shows, with its source address: kept only from the app's origin, or given as data:image/,
-    // at most TAILLE_FAVICON once re-encoded.
+    // at most FAVICON_SIZE once re-encoded.
     gBrowser.addTabsProgressListener({
       onLinkIconAvailable(_browser: unknown, iconURL: unknown, originalURL: unknown) {
         if (typeof iconURL !== "string" || !iconURL.startsWith("data:image/") || iconURL.length > FAVICON_SIZE) return;

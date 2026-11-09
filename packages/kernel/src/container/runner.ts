@@ -8,7 +8,7 @@ export interface RunResult {
   stderr: string;
 }
 
-/** `signal`: cancels the command (its whole process group is killed), the result then has the code CODE_ANNULE. */
+/** `signal`: cancels the command (its whole process group is killed), the result then has the code CODE_CANCELLED. */
 export type Runner = (command: string, args: string[], opts?: { delaiMs?: number; signal?: AbortSignal }) => Promise<RunResult>;
 
 /** Code returned when the timeout is exceeded (same convention as timeout(1)). */

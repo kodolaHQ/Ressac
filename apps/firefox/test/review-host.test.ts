@@ -228,7 +228,7 @@ describe("review service", () => {
     expect(existsSync(join(s.relecture, "site-tuning.git", "refs", "webaios", "relu"))).toBe(true);
   });
 
-  it("envoyer of a site follows projetPourSite", async () => {
+  it("envoyer of a site follows projectForSite", async () => {
     const s = prepare();
     const css = join(s.sites, "tuning", "retouches", "tuning.css");
     writeFileSync(css, Array.from({ length: 5 }, (_, i) => `/* ${i} */`).join("\n") + "\n");
@@ -312,7 +312,7 @@ describe("design guards", () => {
     expect([g.INVALID_REQUEST, g.NOTHING_AIMED, g.DESIGN_ID_MAX]).toEqual(["Demande invalide", "Aucun élément visé.", 64]);
   });
 
-  it("checkDesignContext: viseur.ts's rules, strict, known keys only", () => {
+  it("checkDesignContext: viewfinder.ts's rules, strict, known keys only", () => {
     const ok = {
       selecteur: "#b", etiquette: "b", html: "a".repeat(HTML_MAX) + TRUNCATED, adresse: "http://x/", voisinage: { parent: "p", freres: [] },
       styles: { color: "red" }, source: { fichier: "a.svelte", ligne: 1, colonne: 2 }, vue: { largeur: 1, hauteur: 2 },

@@ -381,7 +381,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("agent dev tools spike", () => {
     }
   });
 
-  it("D5: Gecko profiler limited to the tab's process, converted to ProfilCpu; metrics", { timeout: 90_000 }, async () => {
+  it("D5: Gecko profiler limited to the tab's process, converted to CpuProfile; metrics", { timeout: 90_000 }, async () => {
     await navigate(m, "a", `${pages.url}/p?do=plain`);
     const info = await chrome(m, `
       const b = window.spikeBrowsers.a;

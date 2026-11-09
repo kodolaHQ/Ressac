@@ -37,7 +37,7 @@ test("two sites read, sorted; a damaged site.json gives a SiteLu in error withou
   expect(sites[1]).toMatchObject({ declaration: { nom: "Milieu" }, aAccueil: false });
 });
 
-test("an invalid declaration or one that fails verifierDeclarationSite is an error", async () => {
+test("an invalid declaration or one that fails checkSiteDeclaration is an error", async () => {
   const c = await space();
   await site(c, "a", JSON.stringify({ nom: "A", adresse: "http://a.example/", domaines: ["a.example"] }));
   await site(c, "b", JSON.stringify({ nom: "B", adresse: "https://a.example/", domaines: ["a.example"], permissions: [] }));
@@ -80,12 +80,12 @@ test("hidden folder, .corbeille or symbolic link ignored; a name outside the rul
   expect(await readSite(c, "MonSite", o)).toMatchObject({ erreur: SITE_ID_ERROR });
 });
 
-test("lireSites: sites folder absent", async () => {
+test("readSites: sites folder absent", async () => {
   const c = spacePaths(await tempFolder());
   expect(await readSites(c, o)).toEqual([]);
 });
 
-test("lireRetouches : contenus lus", async () => {
+test("readTweaks : contenus lus", async () => {
   const c = await space();
   await site(c, "r", decl("R", { retouches: [{ correspond: ["/*"], js: ["a.js", "sous/b.js"], css: ["c.css"] }, { correspond: ["/x"], js: ["a.js"] }] }));
   await mkdir(join(c.sites, "r", "retouches", "sous"), { recursive: true });
@@ -95,7 +95,7 @@ test("lireRetouches : contenus lus", async () => {
   expect(await readTweaks(withDeclaration(await readSite(c, "r", o)))).toEqual({ js: { "a.js": "A", "sous/b.js": "B" }, css: { "c.css": "C" } });
 });
 
-test("lireRetouches : fichier absent, lien symbolique vers /etc/hosts, fichier de 300 Ko, total > 1 Mo", async () => {
+test("readTweaks : fichier absent, lien symbolique vers /etc/hosts, fichier de 300 Ko, total > 1 Mo", async () => {
   const c = await space();
   await site(c, "r", decl("R", { retouches: [{ correspond: ["/*"], js: ["a.js"] }] }));
   const s = withDeclaration(await readSite(c, "r", o));
@@ -113,7 +113,7 @@ test("lireRetouches : fichier absent, lien symbolique vers /etc/hosts, fichier d
   expect(await readTweaks(total)).toMatchObject({ erreur: expect.stringContaining("fichier introuvable ou trop gros") });
 });
 
-test("lireRetouches: a retouches/ folder that is a link outside the site is refused", async () => {
+test("readTweaks: a retouches/ folder that is a link outside the site is refused", async () => {
   const c = await space();
   await site(c, "r", decl("R", { retouches: [{ correspond: ["/*"], js: ["a.js"] }] }));
   const outside = await tempFolder();
@@ -122,7 +122,7 @@ test("lireRetouches: a retouches/ folder that is a link outside the site is refu
   expect(await readTweaks(withDeclaration(await readSite(c, "r", o)))).toEqual({ erreur: tweakFileNotFound("a.js") });
 });
 
-test("surveillerSites signals « retouches » when retouches/a.js changes and « declaration » for site.json", async () => {
+test("watchSites signals « retouches » when retouches/a.js changes and « declaration » for site.json", async () => {
   const c = await space();
   await site(c, "w", decl("W"));
   await mkdir(join(c.sites, "w", "retouches"), { recursive: true });
@@ -148,7 +148,7 @@ test("surveillerSites signals « retouches » when retouches/a.js changes and «
   await stop();
 });
 
-test("lireRetouches: app folder replaced by a link after lireSite", async () => {
+test("readTweaks: app folder replaced by a link after readSite", async () => {
   const c = await space();
   await site(c, "r", decl("R", { retouches: [{ correspond: ["/*"], js: ["a.js"] }] }));
   const s = withDeclaration(await readSite(c, "r", o));
@@ -160,7 +160,7 @@ test("lireRetouches: app folder replaced by a link after lireSite", async () => 
   expect(await readTweaks(s)).toMatchObject({ erreur: expect.any(String) });
 });
 
-test("lireRetouches: a subfolder of retouches/ linking to the outside is refused", async () => {
+test("readTweaks: a subfolder of retouches/ linking to the outside is refused", async () => {
   const c = await space();
   await site(c, "r", decl("R", { retouches: [{ correspond: ["/*"], js: ["sous/a.js"] }] }));
   const outside = await tempFolder();
@@ -170,7 +170,7 @@ test("lireRetouches: a subfolder of retouches/ linking to the outside is refused
   expect(await readTweaks(withDeclaration(await readSite(c, "r", o)))).toEqual({ erreur: tweakFileNotFound("sous/a.js") });
 });
 
-test("lireRetouches: a file cited by several tweaks is read only once", async () => {
+test("readTweaks: a file cited by several tweaks is read only once", async () => {
   const c = await space();
   await site(c, "r", decl("R", { retouches: [{ correspond: ["/*"], js: ["a.js"], css: ["a.css"] }, { correspond: ["/x"], js: ["a.js"], css: ["a.css"] }] }));
   await mkdir(join(c.sites, "r", "retouches"), { recursive: true });
@@ -179,7 +179,7 @@ test("lireRetouches: a file cited by several tweaks is read only once", async ()
   expect(await readTweaks(withDeclaration(await readSite(c, "r", o)))).toEqual({ js: { "a.js": "J" }, css: { "a.css": "C" } });
 });
 
-test("lireRetouches: a tweak file that is a directory is refused", async () => {
+test("readTweaks: a tweak file that is a directory is refused", async () => {
   const c = await space();
   await site(c, "r", decl("R", { retouches: [{ correspond: ["/*"], js: ["a.js"] }] }));
   await mkdir(join(c.sites, "r", "retouches", "a.js"), { recursive: true });

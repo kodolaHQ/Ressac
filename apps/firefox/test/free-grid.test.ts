@@ -4,7 +4,7 @@ import { moveFree, freeGuides, FREE_WIDTH, resizeFree } from "../ui/free-grid";
 
 const place = (o: Partial<FreePlacement> = {}): FreePlacement => ({ id: "a", x: 0, y: 0, l: 200, h: 180, ...o });
 
-describe("deplacerLibre", () => {
+describe("moveFree", () => {
   it("stops at another widget's edge without moving it", () => {
     const other = place({ id: "b", x: 400 });
     const r = moveFree({ p: place(), x: 350, y: 0, autres: [other], largeurPx: 1000 });
@@ -59,7 +59,7 @@ describe("deplacerLibre", () => {
   });
 });
 
-describe("redimensionnerLibre", () => {
+describe("resizeFree", () => {
   it("clamps the size between min and max", () => {
     const large = resizeFree({ p: place(), l: 900, h: 900, min: { l: 100, h: 90 }, max: { l: 500, h: 360 }, autres: [] });
     expect(large).toMatchObject({ l: 500, h: 360 });
@@ -108,7 +108,7 @@ describe("redimensionnerLibre", () => {
   });
 });
 
-describe("guidesLibres", () => {
+describe("freeGuides", () => {
   it("returns a guide when the left edges coincide", () => {
     // 400 ‰ of 1280 px: the guide is returned in pixels, not in thousandths.
     const r = freeGuides({ p: place({ x: 400 }), autres: [place({ id: "b", x: 400, y: 300 })], largeurPx: 1280 });

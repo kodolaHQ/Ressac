@@ -5,7 +5,7 @@ import { accumulateParts, readableProfiles, allowedUrl } from "../core/agent/inv
 const state = (profiles: string[], spaces: { profil: string; prive: boolean }[]) =>
   ({ profils: profiles.map((id) => ({ id })), espaces: spaces.map((e, i) => ({ id: `e${i}`, ...e })) }) as unknown as BrowserState;
 
-test("profilsLisibles excludes a private space's profiles, even shared with a non-private space", () => {
+test("readableProfiles excludes a private space's profiles, even shared with a non-private space", () => {
   const e = state(
     ["defaut", "travail", "secret", "libre"],
     [
@@ -40,7 +40,7 @@ test("urlPermise refuses local addresses, except for the tests option", () => {
   expect(allowedUrl("https://exemple.test/", undefined, false)).toBe(true);
 });
 
-test("cumulerParties: lines kept once in order of appearance, links by address with the longest text", () => {
+test("accumulateParts: lines kept once in order of appearance, links by address with the longest text", () => {
   const r = accumulateParts([
     { titre: "A", texte: "en-tête\nx\n10 €\ny", liens: [{ url: "https://e.test/1", texte: "court" }] },
     { titre: "B", texte: "en-tête\nx\n10 €\ny", liens: [{ url: "https://e.test/1", texte: "plus long" }] },
@@ -54,7 +54,7 @@ test("cumulerParties: lines kept once in order of appearance, links by address w
   ]);
 });
 
-test("cumulerParties: a list that advances (virtualized) is realigned on what it shares with the previous snapshot, identical prices kept", () => {
+test("accumulateParts: a list that advances (virtualized) is realigned on what it shares with the previous snapshot, identical prices kept", () => {
   const r = accumulateParts([
     { titre: "T", texte: "En-tête\nA1\n4 500 €\nA2\n4 500 €\nChargement…", liens: [] },
     // A1 left the page; A2 is still there; A3 and A4 arrive, at the same price.

@@ -45,7 +45,7 @@ test("{config.ville} without a city in the config is flagged, a present {config.
   expect(warnWorkflow(w, { sources: { compte: [], publiques: [] }, config: null })).toHaveLength(2);
 });
 
-test("auFilDeLEau behind liste.garder: AVERTISSEMENT_FIL_DE_L_EAU on the sortie; behind a chain: none", () => {
+test("auFilDeLEau behind liste.garder: STREAMING_WARNING on the sortie; behind a chain: none", () => {
   const raw = (before: ReturnType<typeof block>) => ({
     version: 1,
     blocs: [
@@ -81,7 +81,7 @@ test("optional {config.ville?}: never flagged, even absent from the config", () 
   expect(warnWorkflow(w, { sources: { compte: [], publiques: [] }, config: {} })).toEqual([{ bloc: "r", message: "config.mot absent de la configuration du widget" }]);
 });
 
-test("{saisie} in source.page of an action without input: AVERTISSEMENT_SAISIE; with input: none; in a widget: none", () => {
+test("{saisie} in source.page of an action without input: INPUT_WARNING; with input: none; in a widget: none", () => {
   const w = wf(block("p", "source.page", { url: "https://x.fr/?q={saisie}" }), block("q", "source.page", { url: "https://x.fr/?q={saisie?}" }), block("r", "source.page", { url: "https://x.fr/" }));
   const base = { sources: { compte: [], publiques: [] }, config: {} };
   expect(INPUT_WARNING).toBe("{saisie} : l'action ne déclare pas de saisie");

@@ -402,7 +402,7 @@ test("reglerEspace: several spaces display the tab under the old key, the first 
   expect(active(bank.id)).toBeNull();
 });
 
-test("contexteHistorique: a shared essential counts in the space that displays it, otherwise in its own; unknown: private", () => {
+test("historyContext: a shared essential counts in the space that displays it, otherwise in its own; unknown: private", () => {
   const g = open("https://mail.google.com/");
   ag({ type: "ajouterEssentiel", id: g });
   ag({ type: "creerEspace", nom: "Boulot", icone: "💼", prive: false, profil: "defaut", fenetreId: F });
@@ -423,7 +423,7 @@ test("contexteHistorique: a shared essential counts in the space that displays i
   expect(historyContext(e, "inexistant")).toBeNull();
 });
 
-test("cleEspace, ongletPrive, profilDOnglet", () => {
+test("spaceKey, privateTab, tabProfile", () => {
   ag({ type: "creerEspace", nom: "Banque", icone: "🏦", prive: true, profil: "nouveau" });
   const bank = e.espaces[1]!;
   expect(spaceKey(e, P)).toBe("defaut|false");
@@ -660,7 +660,7 @@ test("ouvrirWorkflow opens a titled webaios://workflow/<id> tab, then returns to
   expect(pages()[0]).toMatchObject({ id: page.id, titre: "Workflow — Météo de Lyon" });
 });
 
-test("ouvrirAction opens a webaios://action/<id> tab titled with the name, then returns to it instead of opening a second one", () => {
+test("openAction opens a webaios://action/<id> tab titled with the name, then returns to it instead of opening a second one", () => {
   open("https://a.test/");
   ag({ type: "ouvrirAction", fenetreId: F, id: "gitlab", nom: "GitLab" });
   const pages = () => Object.values(e.onglets).filter((o) => o.url.startsWith("webaios://action/gitlab"));
@@ -680,7 +680,7 @@ test("ouvrirAction opens a webaios://action/<id> tab titled with the name, then 
   expect(Object.values(e.onglets).filter((o) => o.url === urlAction("meteo"))).toHaveLength(1);
 });
 
-test("ouvrirAction finds the action's tab in another space of the window; with execution, changes its URL", () => {
+test("openAction finds the action's tab in another space of the window; with execution, changes its URL", () => {
   ag({ type: "ouvrirAction", fenetreId: F, id: "gitlab", nom: "GitLab" });
   const page = Object.keys(e.onglets).at(-1)!;
   ag({ type: "creerEspace", nom: "Boulot", icone: "💼", prive: false, profil: "defaut", fenetreId: F });
@@ -700,7 +700,7 @@ test("ouvrirAction finds the action's tab in another space of the window; with e
   expect(SchemaAction.safeParse({ type: "ouvrirAction", fenetreId: F, id: "../x", nom: "GitLab" }).success).toBe(false);
 });
 
-test("ouvrirAction neither opens nor finds anything in a private space", () => {
+test("openAction neither opens nor finds anything in a private space", () => {
   ag({ type: "ouvrirAction", fenetreId: F, id: "gitlab", nom: "GitLab" });
   const page = Object.keys(e.onglets).at(-1)!;
   ag({ type: "creerEspace", nom: "Banque", icone: "🏦", prive: true, profil: "nouveau", fenetreId: F });
@@ -734,7 +734,7 @@ test("ouvrirWorkflow of an action opens webaios://workflow/action/<id>", () => {
   expect(Object.values(e.onglets).map((o) => o.url)).toEqual(["webaios://workflow/action/gitlab", urlWorkflow("gitlab")]);
 });
 
-test("profilsEnUsage: by identifier, spaces included", () => {
+test("profilesInUse: by identifier, spaces included", () => {
   const copy = structuredClone(e);
   copy.espaces[0]!.profil = "autre";
   expect(profilesInUse(copy)).toEqual(new Set(["defaut", "autre"]));
@@ -755,7 +755,7 @@ test("ouvrirRelecture opens webaios://relecture/app-essai titled « Relecture �
   expect(SchemaAction.safeParse({ type: "ouvrirRelecture", fenetreId: F, projet: "../x", nom: "x" }).success).toBe(false);
 });
 
-test("projetDeUrlRelecture refuses webaios://relecture/../x and webaios://relecture/app-", async () => {
+test("reviewUrlProject refuses webaios://relecture/../x and webaios://relecture/app-", async () => {
   const { reviewUrlProject } = await import("../../shared/model");
   const { PROJECT_ID } = await import("@webaios/kernel");
   expect(reviewUrlProject("webaios://relecture/../x")).toBeNull();

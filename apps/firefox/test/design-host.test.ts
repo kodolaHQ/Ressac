@@ -112,7 +112,7 @@ describe("design host", { timeout: 20_000 }, () => {
     expect(walk(join(s.dataDir, "espace")).filter((n) => n.includes("externes"))).toEqual([]);
   });
 
-  it("declaring <dataDir>, <dataDir>/design/x or <dataDir>/espace/projets/x is refused with DOSSIER_ESPACE", async () => {
+  it("declaring <dataDir>, <dataDir>/design/x or <dataDir>/espace/projets/x is refused with SPACE_FOLDER", async () => {
     const s = prepare();
     const folders = [s.dataDir, join(s.dataDir, "design", "x"), join(s.chemins.projets, "x")];
     for (const d of folders.slice(1)) mkdirSync(d, { recursive: true });
@@ -124,7 +124,7 @@ describe("design host", { timeout: 20_000 }, () => {
   });
 
   // Review Focus 2
-  it("a folder that links into <dataDir> is refused with DOSSIER_ESPACE", async () => {
+  it("a folder that links into <dataDir> is refused with SPACE_FOLDER", async () => {
     const s = prepare();
     mkdirSync(join(s.dataDir, "design"), { recursive: true });
     const outside = realpathSync(mkdtempSync(join(tmpdir(), "webaios-lien-")));
@@ -178,7 +178,7 @@ describe("design host", { timeout: 20_000 }, () => {
     expect(s.calls).toHaveLength(2);
   });
 
-  it("fenetreAgent gives null: AUCUNE_FENETRE, and the batch stays written", async () => {
+  it("fenetreAgent gives null: NO_WINDOW, and the batch stays written", async () => {
     const s = prepare({ fenetre: null, sites: [{ id: "tuning", nom: "Tuning" }] });
     await siteWithComment(s);
     expect(await s.design.handlers["relecture.envoyer"]!({ projet: "site-tuning" })).toEqual({ ok: false, erreur: NO_WINDOW });
@@ -339,7 +339,7 @@ describe("design host, the carts", { timeout: 20_000 }, () => {
     await expect(Promise.resolve().then(() => tracking(h, { projet: "../x" }))).rejects.toThrow("projet invalide");
   });
 
-  it("ajouter puts the remark and its PNG in the cart; a blank text gives REMARQUE_VIDE; 4001 characters, a non-PNG capture or a bad context give INVALID_REQUEST, nothing written", async () => {
+  it("ajouter puts the remark and its PNG in the cart; a blank text gives EMPTY_REMARK; 4001 characters, a non-PNG capture or a bad context give INVALID_REQUEST, nothing written", async () => {
     const { h, chemins: paths } = await withProjects();
     const folder = join(paths.interne, "remarques", "demo-15283");
     const add = (o: Record<string, unknown>) => h["design.ajouter"]!({ projet: "demo-15283", texte: "Plus grand", contexte: context(), capture: PNG.toString("base64"), ...o });
@@ -370,7 +370,7 @@ describe("design host, the carts", { timeout: 20_000 }, () => {
     expect(await tracking(h, { projet: "demo-15283" })).toMatchObject({ panier: 2 });
   });
 
-  it("envoyer of a demo writes the lot under the space and asks the agent's window; of an external project without client gives SANS_CLIENT", async () => {
+  it("envoyer of a demo writes the lot under the space and asks the agent's window; of an external project without client gives NO_CLIENT", async () => {
     const { h, chemins: paths, chrome, calls, ext, design, dataDir } = await withProjects();
     await h["design.ajouter"]!({ projet: "demo-15283", texte: "Plus grand", contexte: context(), capture: null });
     expect(await h["design.envoyer"]!({ projet: "demo-15283" })).toEqual({ ok: true });
@@ -421,7 +421,7 @@ describe("design host, the carts", { timeout: 20_000 }, () => {
     expect(await h["design.panier"]!(null)).toEqual([]);
   });
 
-  it("sourceTexte joins the file and the line", () => {
+  it("textSource joins the file and the line", () => {
     expect(textSource({ fichier: "a", ligne: 2 })).toBe("a:2");
   });
 });

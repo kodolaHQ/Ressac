@@ -4,7 +4,7 @@ import type { SitePermission } from "../store/site-permissions";
 import { bannerText } from "./banner-text";
 
 const XHTML = "http://www.w3.org/1999/xhtml";
-/** These open as the UI's modal (as modale.svelte.ts's estDemandeAgent, not importable here: it holds runes). */
+/** These open as the UI's modal (as modal.svelte.ts's isAgentRequest, not importable here: it holds runes). */
 const AGENT = ["lire-onglet", "outils-dev", "donnees-widget", "extension", "console-extension"];
 
 /**

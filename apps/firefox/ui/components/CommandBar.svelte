@@ -24,7 +24,7 @@
   import Icon, { type IconName } from "./Icon.svelte";
 
   /**
-   * Command bar (⌘T, ⌘L): a box above the frozen, blurred page (FondFige, mounted by App). The field is mounted right
+   * Command bar (⌘T, ⌘L): a box above the frozen, blurred page (FrozenBackground, mounted by App). The field is mounted right
    * away: the keystroke following the shortcut does not wait for the capture.
    */
   let {

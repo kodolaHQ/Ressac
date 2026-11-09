@@ -111,7 +111,7 @@ test("a file cited but absent from the cache is not injected", () => {
 test("a grant covering fewer rights than the declaration (frames added): no injection", () => {
   const extra = DeclarationSite.parse({ ...declaration, retouches: [...declaration.retouches, { correspond: ["/x"], cadres: ["https://*.autre.example/*"] }] });
   const grant = { domaines: ["vidola-a.example"], connexion: ["compte.example"], cadres: ["https://*.lecteur.example/*"], reprise: true };
-  // What the service does: accorde = !accordRequis, accordRequis = accordNecessaire && !accordCouvre.
+  // What the service does: accorde = !accordRequis, accordRequis = grantNeeded && !grantCovers.
   const required = grantNeeded(extra) && !grantCovers(grant, extra);
   expect(required).toBe(true);
   const o = { ...updateEntry(!required), site: { ...site, declaration: extra, accordRequis: required } };

@@ -118,7 +118,7 @@ export function waitForResponse(
 }
 
 /**
- * Like `attendreReponse`, but tells whether the question lapsed without an answer from the user (« retiree »: delay, `signal`,
+ * Like `waitForResponse`, but tells whether the question lapsed without an answer from the user (« retiree »: delay, `signal`,
  * or withdrawn by whoever asked it).
  */
 export function waitForOutcome(
@@ -149,7 +149,7 @@ export function waitForOutcome(
 }
 
 /**
- * Like `attendreReponse`, for the developer tools card: returns the checked rights if the user allows,
+ * Like `waitForResponse`, for the developer tools card: returns the checked rights if the user allows,
  * `[]` if they refuse, if the delay expires or if `signal` is raised (the card is then withdrawn).
  */
 export function waitForRights(

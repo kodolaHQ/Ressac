@@ -303,7 +303,7 @@ describe("the agent's site tools", () => {
 
   // Plan 32 Task 5 brought the app's « donnees-widget » card (before it, no card and an immediate refusal). Refused, the
   // memory is not given (sites.spec.ts:1792); the accorded path is sites-agent.e2e.ts's port of :1799.
-  it("memoire_site shows the app's card; Refuser answers SITE_REFUSE (sites.spec.ts:1792)", async () => {
+  it("memoire_site shows the app's card; Refuser answers SITE_DENIED (sites.spec.ts:1792)", async () => {
     const { dataDir } = await withAgent((d) => (writeSite(d, "vidola", vidola()), writeMemory(d)));
     await expect.poll(async () => (await callTool(dataDir, "lister_sites")).texte, { timeout: 15_000 }).toContain("vidola");
     const memory = callTool(dataDir, "memoire_site", { id: "vidola" });

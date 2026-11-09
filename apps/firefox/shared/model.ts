@@ -283,7 +283,7 @@ export const BAR_MARGIN = 40;
 
 /** A project's Review page (plan 17): `webaios://relecture/<project>`, one per project and per window. */
 export const REVIEW_PREFIX = "webaios://relecture/";
-/** Copy of the kernel's `ID_PROJET` (the UI does not import its values); a test checks that they match. */
+/** Copy of the kernel's `PROJECT_ID` (the UI does not import its values); a test checks that they match. */
 const PAGE_PROJECT_ID = /^(app-[A-Za-z0-9][A-Za-z0-9._-]*|ext-[0-9a-f]{16}|demo-\d{1,5}|site-[a-z0-9][a-z0-9-]{0,59})$/;
 export const reviewUrl = (project: string) => REVIEW_PREFIX + project;
 /** The project of a Review page, or null if the URL is not one (never a path). */
@@ -294,7 +294,7 @@ export function reviewUrlProject(url: string): string | null {
 }
 /** Context lines loaded at once by « déplier » on the Review page. */
 export const EXPANDED_LINES = 20;
-/** What the Review page displays in place of a file that cannot be displayed (copies of `FICHIER_BINAIRE`/`FICHIER_TROP_GROS`). */
+/** What the Review page displays in place of a file that cannot be displayed (copies of `BINARY_FILE`/`FILE_TOO_BIG`). */
 export const NOT_DISPLAYABLE = { binaire: "fichier binaire", "trop-gros": "fichier trop gros pour la relecture" } as const;
 /** What a comment displays when its lines changed (copy of the kernel's `LIGNE_CHANGEE`). */
 export const PAGE_LINE_CHANGED = "la ligne a changé";

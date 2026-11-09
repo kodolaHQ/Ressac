@@ -44,13 +44,13 @@ function frameOf(wgp: any, view: any): { url: string; principal: boolean; page: 
   }
 }
 
-/** The actor's "injection": null outside an open app's view or without its grant, else injectionPour. */
+/** The actor's "injection": null outside an open app's view or without its grant, else injectionFor. */
 export function frameInjection(wgp: any, s: FrameSite | undefined, localUrls: boolean): FrameInjection | null {
   if (!s || s.site.accordRequis) return null;
   const f = frameOf(wgp, s.view);
   if (!f) return null;
   const i = injectionFor({ site: s.site, retouches: s.retouches, accorde: true, garde: GUARD, adressesLocales: localUrls }, f.principal ? { url: f.url, principal: true } : f);
-  // A player written into an about:srcdoc / about:blank frame of an app page has no address of its own for injectionPour
+  // A player written into an about:srcdoc / about:blank frame of an app page has no address of its own for injectionFor
   // (nothing is injected there), but the resume goes into it like into any other frame of that page.
   if (i && !f.principal && /^about:(srcdoc|blank)$/.test(f.url) && f.page !== null && relativeUrl(f.page, s.site.domaines) !== null)
     i.reprise = resumeInFrame(s.site.declaration, f, localUrls);
@@ -59,7 +59,7 @@ export function frameInjection(wgp: any, s: FrameSite | undefined, localUrls: bo
 
 /**
  * The actor's "memoire": only the view's main document, on the app's domains, with the grant; the host checks the
- * request's shape and does the memory work (noyau/site-memory.ts).
+ * request's shape and does the memory work (host/site-memory.ts).
  */
 export async function frameMemory(wgp: any, s: FrameSite | undefined, sendRequest: unknown, request: (p: object) => Promise<MemoryResponse>): Promise<MemoryResponse> {
   const denial: MemoryResponse = { ok: false, erreur: MEMORY_DENIAL };
@@ -75,7 +75,7 @@ export async function frameMemory(wgp: any, s: FrameSite | undefined, sendReques
  * The view's console: an error the actor relays from a frame of the app's view, whose
  * source is named as one of the app's tweaks (`webaios-retouche://<id>/`), kept in its console, bounded. The frame is
  * known from its WindowGlobalParent (the caller's siteOfFrame): the sign-in window or another app naming its code so
- * reaches no app's console. The text comes from a web process: bounded by ajouterConsoleRetouche.
+ * reaches no app's console. The text comes from a web process: bounded by addTweakConsole.
  */
 export function frameError(s: FrameSite | undefined, e: unknown): void {
   if (!s || !e || typeof e !== "object") return;

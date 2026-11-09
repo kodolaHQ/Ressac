@@ -20,7 +20,7 @@ const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const host = (name: string) => `${name}.${SFX}:${HTTP}`;
 
-/** Shows the data it receives. No `e.source !== parent` test: in a sandboxed frame it is not parent (accueil.e2e.ts). */
+/** Shows the data it receives. No `e.source !== parent` test: in a sandboxed frame it is not parent (home.e2e.ts). */
 const DISPLAY = `<!doctype html><meta charset="utf-8">
 <pre id="donnees"></pre><span id="statut"></span> <span id="messages">0</span>
 <script>

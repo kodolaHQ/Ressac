@@ -70,7 +70,7 @@ describe("served paths", () => {
   });
 });
 
-describe("preparerWidget", () => {
+describe("prepareWidget", () => {
   it("writes the sanitized copy, sets the substitution and returns the frame's URL", async () => {
     const source = join(widgets, "demo", "affichage.html");
     const mtime = Math.round(statSync(source).mtimeMs);
@@ -82,7 +82,7 @@ describe("preparerWidget", () => {
     expect(substitutions.get("webaios-widget-demo")).toBe(`file://${join(root, "webaios-widgets", "demo")}`);
   });
 
-  it("injects AFFICHAGE_REFUSE into the copy of a display with a network hint", async () => {
+  it("injects DISPLAY_DENIED into the copy of a display with a network hint", async () => {
     mkdirSync(join(widgets, "refus"), { recursive: true });
     const source = join(widgets, "refus", "affichage.html");
     writeFileSync(source, '<!doctype html><link rel="preload" href="https://exemple.test/x"><p>jamais</p>');
@@ -141,7 +141,7 @@ describe("preparerWidget", () => {
   });
 });
 
-describe("oublierWidget", () => {
+describe("forgetWidget", () => {
   it("removes the substitution and the copies folder", async () => {
     mkdirSync(join(widgets, "oublie"), { recursive: true });
     writeFileSync(join(widgets, "oublie", "affichage.html"), "<title>oublie</title>");
@@ -153,7 +153,7 @@ describe("oublierWidget", () => {
   });
 });
 
-describe("servirAffichages", () => {
+describe("serveDisplays", () => {
   it("prepares the copies, and only forgets the widgets that are no longer displayed", async () => {
     const prepares = new Set<string>();
     const forgotten: string[] = [];
@@ -172,7 +172,7 @@ describe("servirAffichages", () => {
   });
 });
 
-describe("affichageServi", () => {
+describe("displayServed", () => {
   const html = (body: string) => `<!doctype html><html><head><title>démo</title></head><body>${body}</body></html>`;
 
   it("injects the CSP meta then the guard after the doctype, before any widget element", () => {
@@ -204,15 +204,15 @@ describe("affichageServi", () => {
     expect(served.endsWith("</script><p>nu</p>")).toBe(true);
   });
 
-  it("remplace par AFFICHAGE_REFUSE un <link>", () => {
+  it("remplace par DISPLAY_DENIED un <link>", () => {
     expect(displayServed(html('<link rel="preload" href="https://exemple.test/x">'))).toBe(DISPLAY_DENIED);
   });
 
-  it("replaces another http-equiv meta with AFFICHAGE_REFUSE", () => {
+  it("replaces another http-equiv meta with DISPLAY_DENIED", () => {
     expect(displayServed(html('<meta http-equiv="x-dns-prefetch-control" content="on">'))).toBe(DISPLAY_DENIED);
   });
 
-  it("replaces speculation rules with AFFICHAGE_REFUSE", () => {
+  it("replaces speculation rules with DISPLAY_DENIED", () => {
     expect(displayServed(html('<script type="speculationrules">{"prefetch":[]}</script>'))).toBe(DISPLAY_DENIED);
   });
 

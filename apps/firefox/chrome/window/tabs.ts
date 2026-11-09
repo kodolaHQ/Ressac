@@ -219,7 +219,7 @@ export class TabSync {
   private onSelect(tab: any): void {
     if (this.selecting) return;
     // Closing the selected tab, Firefox first selects a neighbour (#blurTab), maybe another space's, then sends TabClose:
-    // by the microtask, onClose's fermerOnglet has synced the selection back.
+    // by the microtask, onClose's closeTab has synced the selection back.
     queueMicrotask(() => {
       const id = tab.getAttribute(TAB_ID);
       if (!tab.selected || !id || this.tabs.get(id) !== tab) return;

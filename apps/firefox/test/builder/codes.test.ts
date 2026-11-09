@@ -142,7 +142,7 @@ test("a keystroke during the save stays a draft", async () => {
   expect(c.nonEnregistre).toBe(true);
 });
 
-test("oublierCodes(widget) only clears that widget's drafts", async () => {
+test("forgetCodes(widget) only clears that widget's drafts", async () => {
   const f = fake({ "a.mjs": "v1" });
   const a = new CodeFile("w", "a.mjs", f.depot);
   const b = new CodeFile("x", "a.mjs", f.depot);
@@ -156,7 +156,7 @@ test("oublierCodes(widget) only clears that widget's drafts", async () => {
   expect(unsavedCodes()).toEqual(["x/a.mjs"]);
 });
 
-test("garderCodesDe drops the drafts of widgets whose builder is no longer open", async () => {
+test("keepCodesOf drops the drafts of widgets whose builder is no longer open", async () => {
   const f = fake({ "a.mjs": "v1" });
   const a = new CodeFile("w", "a.mjs", f.depot);
   const b = new CodeFile("x", "a.mjs", f.depot);

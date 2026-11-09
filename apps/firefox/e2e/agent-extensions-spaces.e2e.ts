@@ -149,7 +149,7 @@ describe("agent extensions per space", () => {
   });
 
   // extensions-interface.spec.ts:278
-  it("the switch of an agent extension is greyed in a private space, with ERREUR_PROFIL_PRIVE", async () => {
+  it("the switch of an agent extension is greyed in a private space, with PRIVATE_PROFILE_ERROR", async () => {
     const w = await launch((root, dataDir) => {
       writeAgentExtension(root, "cacheur", HIDER);
       // A folder of the agent never granted is listed too, greyed the same.

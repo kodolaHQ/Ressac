@@ -111,7 +111,7 @@ it("a public read sees no profile cookie", async () => {
   expect(await readPage(`${page.url}/lire-cookie`, { profil: null })).toMatchObject({ ok: { titre: "aucun" } });
 });
 
-it("a read with a profile used by a private space → ProfilRefuse", async () => {
+it("a read with a profile used by a private space → ProfileDenied", async () => {
   const profile = await newSpace(true);
   expect(await readPage(`${page.url}/a.html`, { profil: profile })).toMatchObject({ name: "ProfilRefuse" });
   expect(page.paths).toEqual([]);

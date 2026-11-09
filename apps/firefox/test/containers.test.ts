@@ -18,7 +18,7 @@ describe("container names", () => {
   });
 });
 
-it("the chrome's dossierValide is the kernel's", () => {
+it("the chrome's validFolder is the kernel's", () => {
   for (const d of ["essai", "My-app_2.0", "a", "", ".", "..", ".cache", "-x", "a b", "a/b", "a\\b", "é", "a;b", "a$(x)", "__proto__"]) expect(validFolder(d), d).toBe(noyau(d));
   const source = readFileSync(new URL("../../../packages/kernel/src/applications/manifest.ts", import.meta.url), "utf8");
   expect(source).toContain("const FOLDER_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;");

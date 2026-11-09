@@ -672,7 +672,7 @@ function keep(harvest: Awaited<ReturnType<typeof prepare>>["recolter"], kept: st
   };
 }
 
-test("voieDe: long beyond VOIE_LONGUE_MINUTES (3), short otherwise", async () => {
+test("routeOf: long beyond LONG_ROUTE_MINUTES (3), short otherwise", async () => {
   expect(LONG_ROUTE_MINUTES).toBe(3);
   const { c, dossierWidgets: widgetsFolder } = await prepare();
   await writeWatch(c, "trois", 3);

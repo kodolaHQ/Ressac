@@ -22,13 +22,13 @@ test("messages of a site app's window", () => {
   expect(editWithAgent("vidola")).toBe("Appli de site ~/WebAiOs/sites/vidola/ : ");
 });
 
-test("MessageDeLAccueil: the three allowed messages", () => {
+test("HomeMessage: the three allowed messages", () => {
   expect(HomeMessage.parse({ type: "pret" })).toEqual({ type: "pret" });
   expect(HomeMessage.parse({ type: "ouvrir", adresse: "/series/the-bear" })).toEqual({ type: "ouvrir", adresse: "/series/the-bear" });
   expect(HomeMessage.parse({ type: "image", n: 3, url: "https://vidola-a.localhost/a.jpg" })).toEqual({ type: "image", n: 3, url: "https://vidola-a.localhost/a.jpg" });
 });
 
-test("MessageDeLAccueil: the rest is refused", () => {
+test("HomeMessage: the rest is refused", () => {
   for (const m of [
     null,
     "pret",

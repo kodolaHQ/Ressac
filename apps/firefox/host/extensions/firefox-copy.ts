@@ -27,7 +27,7 @@ const KEYS_DENIED = ["chrome_settings_overrides", "protocol_handlers", "user_scr
 export const unsupportedRight = (name: string) => `Droit non pris en charge par WebAiOs : ${name}`;
 
 /**
- * Refusals preparerCopie does not make (GECKO_ID, VERSION_QUATRE, a file named _generated_background_page.html, a
+ * Refusals prepareCopy does not make (GECKO_ID, VERSION_FOUR, a file named _generated_background_page.html, a
  * right or a key outside what an agent extension may use).
  */
 export function firefoxDenial(manifest: Record<string, unknown>, files: readonly string[]): string[] {
@@ -39,14 +39,14 @@ export function firefoxDenial(manifest: Record<string, unknown>, files: readonly
   const gecko = object(object(manifest.browser_specific_settings)?.gecko) ?? object(object(manifest.applications)?.gecko);
   if (gecko && "id" in gecko) denial.push(GECKO_ID);
   if (typeof manifest.version === "string" && manifest.version.split(".").length > 3) denial.push(VERSION_FOUR);
-  // Same text as preparerCopie's reserved names (packages/kernel/src/extensions/copie.ts); the guard finds the background by this name.
+  // Same text as prepareCopy's reserved names (packages/kernel/src/extensions/copie.ts); the guard finds the background by this name.
   if (files.includes(GENERATED_PAGE)) denial.push(`Nom de fichier réservé à WebAiOs : ${GENERATED_PAGE}`);
   return denial;
 }
 
 /**
  * The copy's manifest for Firefox (decisions 2, 3): gecko id, background.scripts, version `<a>.<b>.<c>.<n>`. Pure.
- * `m` is preparerCopie's manifest; `fondOriginal` (required, so a forgotten argument cannot drop the background) is the agent's `background.service_worker` (only the generated
+ * `m` is prepareCopy's manifest; `fondOriginal` (required, so a forgotten argument cannot drop the background) is the agent's `background.service_worker` (only the generated
  * webaios-fond.js knows it after the copy), used for a classic background.
  */
 export function firefoxManifest(m: Record<string, unknown>, folder: string, n: number, originalBackground: string | undefined): Record<string, unknown> {
@@ -63,7 +63,7 @@ export function firefoxManifest(m: Record<string, unknown>, folder: string, n: n
   // address, target=_blank). Firefox: its pages are sandboxed without allow-popups (the same origin, scripts and the
   // extension API kept).
   const csp = object(m.content_security_policy);
-  // preparerCopie always writes a string CSP; without one, the sandbox is still set (never dropped silently).
+  // prepareCopy always writes a string CSP; without one, the sandbox is still set (never dropped silently).
   copy.content_security_policy = { ...csp, extension_pages: typeof csp?.extension_pages === "string" ? `${csp.extension_pages}; ${SANDBOX}` : `script-src 'self'; ${SANDBOX}` };
   if (background?.service_worker === BACKGROUND && background.type === "module") copy.background = { scripts: [BACKGROUND], type: "module" };
   else if (background?.service_worker === BACKGROUND && originalBackground) copy.background = { scripts: [KEEP_BACKGROUND, originalBackground.replace(/^(\.\/|\/)+/, "")] };

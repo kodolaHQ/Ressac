@@ -44,7 +44,7 @@ export const FRAME_NOTE_GAP_MS = 1000;
 const FRAME_MAX = 64;
 
 const finished = (x: unknown): x is number => typeof x === "number" && Number.isFinite(x);
-/** Same video: durations within `ECART_DUREE_REPRISE_S`. */
+/** Same video: durations within `RESUME_DURATION_GAP_S`. */
 const sameDuration = (a: number, b: number) => Math.abs(a - b) <= RESUME_DURATION_GAP_S;
 
 type Target = { id: string; adresse: string };

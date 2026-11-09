@@ -165,7 +165,7 @@ describe("the home page", () => {
     await mkdir(path.join(HOME(dataDir), "widgets"), { recursive: true });
     await writeWidget(dataDir, "alpha", { nom: "Alpha", affichage: DISPLAY("alpha") });
     await writeWidget(dataDir, "beta", { nom: "Beta", affichage: DISPLAY("beta") });
-    // A network hint in the display: served replaced by AFFICHAGE_REFUSE, before any script.
+    // A network hint in the display: served replaced by DISPLAY_DENIED, before any script.
     await writeWidget(dataDir, "refus", {
       nom: "Refus",
       affichage: '<!doctype html><title>refus</title><link rel="stylesheet" href="https://exemple.invalid/x.css"><p>jamais</p>',
@@ -342,7 +342,7 @@ describe("the home page", () => {
     expect(beta.x + beta.l).toBeLessThanOrEqual(1000);
   });
 
-  it("a <link> in the display is replaced by AFFICHAGE_REFUSE", async () => {
+  it("a <link> in the display is replaced by DISPLAY_DENIED", async () => {
     await waitUi(m, `return !!doc.querySelector('[data-testid="widget-refus"] iframe');`, [], 15_000);
     const text = await wait(() => frameText(m, "refus"), (t) => t.includes("Affichage refusé"), "le refus de l'affichage");
     expect(text).toContain("Affichage refusé");
@@ -382,7 +382,7 @@ describe("the home page", () => {
     );
     await wait(urls, (us) => us.includes("https://exemple.invalid/clic"), "l'ouverture du lien");
     expect((await urls()).filter((u) => u.includes("/auto"))).toEqual([]);
-    // The opening activated a tab: the home is no longer mounted (PageVide). We close it again for what follows.
+    // The opening activated a tab: the home is no longer mounted (EmptyPage). We close it again for what follows.
     const tab = Object.entries((await state(m)).onglets).find(([, o]) => o.url.includes("exemple.invalid/clic"))?.[0];
     expect(tab).toBeDefined();
     await dispatch(m, { type: "fermerOnglet", id: tab! });

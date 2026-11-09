@@ -17,7 +17,7 @@ import { trackVisits } from "./visits";
 export interface WindowController {
   readonly fenetreId: WindowId;
   readonly store: WebAiOsStore;
-  /** versUrl(input, moteur); a tab with a XUL tab loads it, one without gets majOnglet{url}; null opens a new tab. */
+  /** toUrl(input, moteur); a tab with a XUL tab loads it, one without gets majOnglet{url}; null opens a new tab. */
   navigate(tabId: TabId | null, input: string): void;
   /**
    * The agent's naviguer: an http(s) URL loaded with a content principal of the tab's container, without taking the

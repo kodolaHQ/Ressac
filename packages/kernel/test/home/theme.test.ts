@@ -5,7 +5,7 @@ import { spacePaths } from "../../src/paths.js";
 import { readTheme } from "../../src/home/theme.js";
 import { tempFolder } from "../helpers/temp.js";
 
-test("lireTheme returns theme null without a file", async () => {
+test("readTheme returns theme null without a file", async () => {
   const c = spacePaths(await tempFolder());
   expect(await readTheme(c)).toEqual({ theme: null });
 });

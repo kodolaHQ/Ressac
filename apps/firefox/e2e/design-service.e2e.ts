@@ -204,7 +204,7 @@ describe("design service", () => {
     expect(png.colours).not.toContain("0,0,255");
   });
 
-  it("toggle on the demo, a trusted click on #email: the bubble context names input#email.champ, its place is placeBulle's", async () => {
+  it("toggle on the demo, a trusted click on #email: the bubble context names input#email.champ, its place is bubbleSlot's", async () => {
     await open("/");
     const b = await aim("#email");
     expect(b.ctx).toMatchObject({ mode: "bulle", etiquette: "input#email.champ", projet: `demo-${PORT}` });

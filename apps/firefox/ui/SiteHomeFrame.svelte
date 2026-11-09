@@ -8,7 +8,7 @@
    * (`sandbox="allow-scripts"`) served from its sanitized copy (chrome/store/site-home.ts). Its `parent.postMessage`
    * reaches the chrome as a `webaios-home` event (the copy's bridge), listened above the frame on the window root,
    * before it loads. A message counts only from this frame showing this app's home; real presses are seen on the
-   * frame's window (isTrusted), as for the widgets (CadreWidget.svelte).
+   * frame's window (isTrusted), as for the widgets (WidgetFrame.svelte).
    */
   let { id, api }: { id: string; api: ApiSite } = $props();
   let frame = $state<HTMLIFrameElement>();

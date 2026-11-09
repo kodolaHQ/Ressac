@@ -14,7 +14,7 @@ const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 const SITE_FRAMES = "webaios-sites";
 const OPS = ["retenir", "lire", "oublier"] as const;
 const UNAVAILABLE = "Mémoire de l'appli indisponible";
-// Keep in sync with shared/sites.ts sourceRetouche.
+// Keep in sync with shared/sites.ts tweakSource.
 const SOURCE = "webaios-retouche://";
 
 /**

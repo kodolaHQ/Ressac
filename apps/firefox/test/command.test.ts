@@ -57,13 +57,13 @@ test("history without the active URL", () => {
 
 const project = (o: Partial<ApplicationShown>): ApplicationShown => ({ dossier: "d", nom: "N", type: "application", creeLe: "", etat: "en-marche", favicon: "f.png", ...o }) as ApplicationShown;
 
-test("appliSourceDeProjet", () => {
+test("projectSiteApp", () => {
   expect(projectSiteApp(project({ type: "sans-fiche" }))).toBeNull();
   expect(projectSiteApp(project({}))).toEqual({ genre: "projet", id: "d", nom: "N", action: "ouvrir", favicon: "f.png" });
   expect(projectSiteApp(project({ etat: "arretee" }))?.action).toBe("lancer");
 });
 
-test("appliSourceDeSite", () => {
+test("siteSiteApp", () => {
   const s: ShownSite = { id: "s", nom: "S", description: "", domaine: null, icone: "i.png", ouverte: false };
   expect(siteSiteApp(s)).toEqual({ genre: "site", id: "s", nom: "S", action: "ouvrir", favicon: "i.png" });
 });

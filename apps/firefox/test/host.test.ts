@@ -1165,7 +1165,7 @@ createServer((req, res) => {
     expect(h.stderr()).toContain("arrêt des applis simulé");
   });
 
-  it("plageDePorts, the app tab and SchemaActionApplication", async () => {
+  it("portRange, the app tab and SchemaActionApplication", async () => {
     const { portRange, appTab } = await import("../host/applications");
     const { SchemaActionApplication } = await import("../shared/api");
     expect(portRange("15280-15284")).toEqual([15280, 15284]);

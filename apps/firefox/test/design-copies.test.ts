@@ -42,7 +42,7 @@ describe("design copies", () => {
     expect(cleanSource(null)).toBeNull();
   });
 
-  it("cleCible names a target; the site bubble has its size", () => {
+  it("targetKey names a target; the site bubble has its size", () => {
     expect(SITE_BUBBLE_SIZE).toEqual({ largeur: 320, hauteur: 190 });
     expect(targetKey({ type: "fenetre", fenetreId: "f1" })).toBe("fenetre:f1");
     expect(targetKey({ type: "app", dossier: "essai" })).toBe("app:essai");
@@ -55,7 +55,7 @@ describe("design copies", () => {
     expect(mouse("../chrome/agent/design-actor.ts")).toContain('"pointerdown"');
   });
 
-  it("placeBulle: under the element, bounded to the window", () => {
+  it("bubbleSlot: under the element, bounded to the window", () => {
     const bounds = { x: 300, y: 50, width: 900, height: 750 };
     expect(bubbleSlot({ x: 10, y: 20, largeur: 100, hauteur: 30 }, 1, bounds, [1200, 800])).toEqual({ x: 310, y: 106, width: 320, height: 170 });
     expect(bubbleSlot({ x: 1000, y: 700, largeur: 50, hauteur: 30 }, 1, bounds, [1200, 800])).toEqual({ x: 880, y: 630, width: 320, height: 170 });

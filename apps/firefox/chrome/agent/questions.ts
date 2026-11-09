@@ -52,7 +52,7 @@ export class Questions {
     if (changed) this.changed();
   }
 
-  /** Shows the card in the window and waits for the answer; false after DELAI_QUESTION_MS, or when `signal` aborts. */
+  /** Shows the card in the window and waits for the answer; false after QUESTION_DELAY_MS, or when `signal` aborts. */
   ask(o: TabInfo, windowId: WindowId, signal?: AbortSignal): Promise<boolean> {
     const tabId = activeTabOf(this.store.state, windowId)?.id ?? null;
     const fields = { ongletId: tabId, fenetreId: windowId, origine: originOf(o.url), permissions: ["lire-onglet" as const], titre: o.titre, cible: o.id };
@@ -63,7 +63,7 @@ export class Questions {
 
   /**
    * The dev tools card: the rights ticked when allowed, `[]` on a refusal, after
-   * DELAI_QUESTION_MS, on `signal`, or when the tab closes, turns private or goes to another site.
+   * QUESTION_DELAY_MS, on `signal`, or when the tab closes, turns private or goes to another site.
    */
   askDevTools(o: TabInfo, d: { droits: DevRight[]; raison: string; agent: string }, windowId: WindowId, signal?: AbortSignal): Promise<DevRight[]> {
     const tabId = activeTabOf(this.store.state, windowId)?.id ?? null;
@@ -74,7 +74,7 @@ export class Questions {
 
   /**
    * The « donnees-widget » card: the agent wants a widget's, an
-   * action's or a site app's data, read with the user's account. False after DELAI_QUESTION_MS or on `signal`.
+   * action's or a site app's data, read with the user's account. False after QUESTION_DELAY_MS or on `signal`.
    */
   askWidgetData(o: { id: string; nom: string; agent: string; genre?: "action" | "site" }, windowId: WindowId, signal?: AbortSignal): Promise<boolean> {
     const tabId = activeTabOf(this.store.state, windowId)?.id ?? null;
@@ -89,8 +89,8 @@ export class Questions {
   }
 
   /**
-   * Shows the grant card of an agent extension (DemandeExtension) in the window; it falls (« retirée ») after
-   * DELAI_QUESTION_MS, on `signal`, or when its space goes or turns private. A renforcée card needs « Je comprends ».
+   * Shows the grant card of an agent extension (ExtensionRequest) in the window; it falls (« retirée ») after
+   * QUESTION_DELAY_MS, on `signal`, or when its space goes or turns private. A renforcée card needs « Je comprends ».
    */
   async askExtension(card: ExtensionCard, windowId: WindowId, signal?: AbortSignal): Promise<GrantResponse> {
     const fields = { ongletId: null, fenetreId: windowId, origine: card.cle, permissions: ["extension" as const], extension: card };
@@ -100,7 +100,7 @@ export class Questions {
     return { accepte: outcome === "autoriser", empreinte: card.empreinte, ...(outcome === "retiree" ? { retiree: true } : {}) };
   }
 
-  /** The console unlock card of an agent extension: Refuser is the default; it falls after DELAI_QUESTION_MS or on `signal`. */
+  /** The console unlock card of an agent extension: Refuser is the default; it falls after QUESTION_DELAY_MS or on `signal`. */
   askConsole(o: { nom: string; espaces: string[]; raison: string; agent: string }, windowId: WindowId, signal?: AbortSignal): Promise<Outcome> {
     const fields = { ongletId: null, fenetreId: windowId, origine: o.nom, permissions: ["console-extension" as const], titre: o.nom, raison: o.raison, agent: o.agent, espaces: o.espaces };
     return waitForOutcome((reply) => this.pose(fields, reply), QUESTION_DELAY_MS, signal);
@@ -115,7 +115,7 @@ export class Questions {
     d: { ongletId: TabId | null; fenetreId: WindowId | null; origine: string; permissions: SitePermission[]; lien?: string },
     signal?: AbortSignal,
   ): Promise<Outcome> {
-    // The three Firefox-only kinds are not kernel Permissions: the UI never shows a site question (estDemandeAgent).
+    // The three Firefox-only kinds are not kernel Permissions: the UI never shows a site question (isAgentRequest).
     const fields = { ongletId: d.ongletId, origine: d.origine, permissions: d.permissions as Permission[], ...(d.lien ? { lien: d.lien } : {}) };
     if (staleQuestion({ id: "", ...fields }, this.store.state)) return Promise.resolve("retiree");
     return waitForOutcome((reply) => this.pose(fields, reply), Infinity, signal);

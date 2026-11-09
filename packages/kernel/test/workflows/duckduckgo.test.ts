@@ -4,7 +4,7 @@ import { extractResults, searchUrl } from "../../src/workflows/duckduckgo.js";
 
 const page = (name: string) => readFileSync(new URL(`./fixtures/duckduckgo/${name}`, import.meta.url), "utf8");
 
-describe("extraireResultats", () => {
+describe("extractResults", () => {
   it("resultats.html: 9 results in order, the ad dropped, javascript: dropped, uddg decoded, entities decoded", () => {
     const r = extractResults(page("resultats.html"), 20);
     if (!("resultats" in r)) throw new Error("attendu : des résultats");
@@ -58,7 +58,7 @@ describe("extraireResultats", () => {
   });
 });
 
-describe("extraireResultats: hostile pages and edge cases", () => {
+describe("extractResults: hostile pages and edge cases", () => {
   const block = (title: string, href = "https://a.example/", snippet = "E") =>
     `<div class="result"><a class="result__a" href="${href}">${title}</a><a class="result__snippet">${snippet}</a></div>`;
   const fast = (html: string) => {

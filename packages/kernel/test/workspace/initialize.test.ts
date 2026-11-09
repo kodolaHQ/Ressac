@@ -166,7 +166,7 @@ test("an AGENTS.md edited by the user is kept", async () => {
   expect(await readFile(join(c.racine, "AGENTS.md"), "utf8")).toBe(edited);
 });
 
-test("the AGENTS.md template is pinned: before editing it, add this hash to ANCIENS_AGENTS, then update the pin", async () => {
+test("the AGENTS.md template is pinned: before editing it, add this hash to OLD_AGENTS, then update the pin", async () => {
   expect(sha256(await readFile(join(import.meta.dirname, "..", "..", "modeles", "AGENTS.md")))).toBe(
     "1adea27921eb609aca3b73c58b690fe912c78a3eeba08a4c930f400862b6be36",
   );

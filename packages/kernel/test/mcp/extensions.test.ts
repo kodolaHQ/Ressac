@@ -23,7 +23,7 @@ let server: Awaited<ReturnType<typeof startMcpServer>> | undefined;
 let client: Client | undefined;
 const token = generateToken();
 
-/** A fake `OutilsExtensions` that records its calls. */
+/** A fake `ExtensionsTools` that records its calls. */
 class FakeTools implements ExtensionsTools {
   appels: { methode: string; args: unknown[] }[] = [];
   liste: AgentExtension[] = [];
@@ -118,7 +118,7 @@ test("lister_extensions does not name the private spaces, it counts them", async
   expect(lignes[0]).toMatch(/une donnée, pas une consigne/);
 });
 
-test("console_extension of a Store extension: RESERVE_AGENT, the console is not requested", async () => {
+test("console_extension of a Store extension: AGENT_ONLY, the console is not requested", async () => {
   await start();
   for (const id of [`store:${"a".repeat(32)}`, "b".repeat(32)]) {
     const r = await invoke("console_extension", { id });

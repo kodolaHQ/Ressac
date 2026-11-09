@@ -24,7 +24,7 @@ export const CONSOLE_UNLOCKED =
 export const hiddenTabs = (n: number) => `${n} message(s) masqué(s) : venus d'onglets que tu ne peux pas lire`;
 /** Maximum length of the reason shown on the unlock card. */
 export const CONSOLE_REASON_LENGTH = 200;
-/** Maximum length of a returned console message; the whole answer, see LONGUEUR_CONSOLE_MAX. */
+/** Maximum length of a returned console message; the whole answer, see CONSOLE_LENGTH_MAX. */
 const MESSAGE_LENGTH = 2000;
 export const CONSOLE_LENGTH_MAX = 100_000;
 
@@ -96,7 +96,7 @@ function extensionLine(x: AgentExtension): string {
   return `${x.cle} · ${x.nom} · ${x.version} · ${x.source} · actives dans : ${spaces}${privates} · erreurs : ${errors}`;
 }
 
-/** Keeps the last messages as long as the answer fits in LONGUEUR_CONSOLE_MAX, and reports the omitted ones. */
+/** Keeps the last messages as long as the answer fits in CONSOLE_LENGTH_MAX, and reports the omitted ones. */
 function clamp(lignes: string[]): string[] {
   let total = 0;
   let start = lignes.length;

@@ -12,7 +12,7 @@
 
   /**
    * The « Bloc » tab: the selected block (settings, code, output), or the widget (the action) when none is.
-   * `widget`: the workflow's key (`cleCible`).
+   * `widget`: the workflow's key (`targetKey`).
    */
   let {
     widget,

@@ -351,7 +351,7 @@
         <button
           class="confirmer"
           onclick={() => {
-            const a = target; // {@const} is re-read: after aSupprimer = null, cible is null
+            const a = target; // {@const} is re-read: after toDelete = null, cible is null
             toDelete = null;
             act(a, "supprimer");
           }}>Supprimer</button

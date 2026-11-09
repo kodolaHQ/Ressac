@@ -3,7 +3,7 @@ import { WorkflowBlockSchema, DraftSchema, TargetSchema, SchemaCodeWorkflow, Nam
 
 const block = (i: number, extra: object = {}) => ({ id: `b${i}`, type: "code", position: { x: 0, y: 0 }, parametres: {}, ...extra });
 
-test("SchemaBrouillon refuses 101 blocks, an id or a name over 200 characters, a NaN position", () => {
+test("DraftSchema refuses 101 blocks, an id or a name over 200 characters, a NaN position", () => {
   const ok = { version: 1, blocs: [block(1)], liens: [] };
   expect(DraftSchema.safeParse(ok).success).toBe(true);
   expect(DraftSchema.safeParse({ ...ok, blocs: Array.from({ length: 101 }, (_, i) => block(i)) }).success).toBe(false);
@@ -16,19 +16,19 @@ test("SchemaBrouillon refuses 101 blocks, an id or a name over 200 characters, a
   expect(DraftSchema.safeParse({ ...ok, version: 2 }).success).toBe(false);
 });
 
-test("SchemaBrouillon lets through an id or a name that only the engine refuses: enregistrerWorkflow names the block", () => {
+test("DraftSchema lets through an id or a name that only the engine refuses: saveWorkflow names the block", () => {
   const ok = { version: 1, blocs: [block(1, { id: "Tri", nom: "n".repeat(70) })], liens: [{ de: "Tri", vers: "../x" }] };
   expect(DraftSchema.safeParse(ok).success).toBe(true);
 });
 
-test("SchemaBlocWorkflow: only bounded in size (never a path, the engine answers)", () => {
+test("WorkflowBlockSchema: only bounded in size (never a path, the engine answers)", () => {
   expect(WorkflowBlockSchema.safeParse("source-1").success).toBe(true);
   expect(WorkflowBlockSchema.safeParse("Tri").success).toBe(true);
   expect(WorkflowBlockSchema.safeParse("").success).toBe(false);
   expect(WorkflowBlockSchema.safeParse("x".repeat(201)).success).toBe(false);
 });
 
-test("selectionConstructeur: an invalid block becomes null (never a stale block), an invalid target ignores the message", () => {
+test("builderSelection: an invalid block becomes null (never a stale block), an invalid target ignores the message", () => {
   const news = { type: "widget", id: "actus" };
   expect(builderSelection({ cible: news, bloc: "tri" })).toEqual({ widget: "actus", bloc: "tri" });
   expect(builderSelection({ cible: news, bloc: "Tri" })).toEqual({ widget: "actus", bloc: "Tri" });
@@ -43,7 +43,7 @@ test("selectionConstructeur: an invalid block becomes null (never a stale block)
   expect(builderSelection(null)).toBeNull();
 });
 
-test("SchemaCible: a widget or an action, nothing else", () => {
+test("TargetSchema: a widget or an action, nothing else", () => {
   expect(TargetSchema.safeParse({ type: "widget", id: "meteo" }).success).toBe(true);
   expect(TargetSchema.safeParse({ type: "action", id: "gitlab" }).success).toBe(true);
   for (const c of [{ type: "widget", id: "../x" }, { type: "action", id: "A" }, { type: "autre", id: "x" }, { type: "widget", id: "x", plus: 1 }, "meteo", null]) {
@@ -51,7 +51,7 @@ test("SchemaCible: a widget or an action, nothing else", () => {
   }
 });
 
-test("SchemaNomCode refuse ../x.mjs, x.js, /etc/x.mjs", () => {
+test("NameCodeSchema refuse ../x.mjs, x.js, /etc/x.mjs", () => {
   expect(NameCodeSchema.safeParse("trier.mjs").success).toBe(true);
   for (const n of ["../x.mjs", "x.js", "/etc/x.mjs"]) expect(NameCodeSchema.safeParse(n).success).toBe(false);
 });

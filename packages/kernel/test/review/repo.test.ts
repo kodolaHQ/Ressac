@@ -27,7 +27,7 @@ const write = (name: string, content: string | Buffer) => writeFile(join(folder,
 const numbered = (n: number, f = (i: number) => `ligne ${i}`) => Array.from({ length: n }, (_, i) => f(i + 1)).join("\n") + "\n";
 
 describe("reference", () => {
-  test("gitDisponible", async () => {
+  test("gitAvailable", async () => {
     expect(await gitAvailable()).toBe(true);
     expect(await gitAvailable("/chemin/absent")).toBe(false);
   });
@@ -186,17 +186,17 @@ describe("the project's repo is never touched", () => {
 });
 
 describe("erreurs", () => {
-  test("git absent : GIT_NECESSAIRE", async () => {
+  test("git absent : GIT_REQUIRED", async () => {
     const without = new ReviewStore({ depot, dossier: folder, git: "/chemin/absent" });
     await expect(without.assurerReference()).rejects.toMatchObject({ raison: GIT_REQUIRED });
     await expect(without.assurerReference()).rejects.toBeInstanceOf(ReviewError);
   });
-  test("git whose --version fails: GIT_NECESSAIRE", async () => {
+  test("git whose --version fails: GIT_REQUIRED", async () => {
     const fake = join(root, "faux-git");
     await writeFile(fake, "#!/bin/sh\necho 'xcrun: error' >&2\nexit 1\n", { mode: 0o755 });
     await expect(new ReviewStore({ depot, dossier: folder, git: fake }).assurerReference()).rejects.toMatchObject({ raison: GIT_REQUIRED });
   });
-  test("WEBAIOS_GIT=/chemin/absent : GIT_NECESSAIRE", async () => {
+  test("WEBAIOS_GIT=/chemin/absent : GIT_REQUIRED", async () => {
     const before = process.env.WEBAIOS_GIT;
     process.env.WEBAIOS_GIT = "/chemin/absent";
     try {

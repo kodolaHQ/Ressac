@@ -6,7 +6,7 @@ import { cutFrameNetwork } from "./frame-network";
 
 // The design mode's overlays as chrome frames of sidebar.html?calque (spike S3): an html:iframe in
 // #browser, over the remote page, transparent. Outside its rectangle the page keeps the mouse and the wheel. The page
-// cannot see it (the view is remote), and it gets only its target's ApiCalque, set by the chrome on the frame.
+// cannot see it (the view is remote), and it gets only its target's OverlayApi, set by the chrome on the frame.
 // Bundled in the store (it outlives each window): every frame is made in the window `show` names.
 
 const XHTML = "http://www.w3.org/1999/xhtml";
@@ -32,7 +32,7 @@ interface Overlay {
 export function createOverlays(o: { design: DesignService; host: Pick<AgentHost, "request" | "on"> }): DesignOverlays {
   const overlays = new Map<string, Overlay>();
   const closedListeners = new Map<string, Set<() => void>>();
-  // The service's keys (cleCible), read back: the frame's target is the chrome's.
+  // The service's keys (targetKey), read back: the frame's target is the chrome's.
   const targetOf = (key: string): DesignTarget =>
     key.startsWith("fenetre:") ? { type: "fenetre", fenetreId: key.slice(8) } : key.startsWith("site:") ? { type: "site", id: key.slice(5) } : { type: "app", dossier: key.slice(4) };
   const main = (key: string) => key.startsWith("fenetre:");

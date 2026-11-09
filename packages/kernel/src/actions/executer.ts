@@ -287,7 +287,7 @@ export async function runAction(o: OptionsAction): Promise<LaunchResult> {
   return (await lost()) ?? conclusion();
 }
 
-/** Removes the run and result written by this run only (same paths as `executions.ts` and `donnees.ts`). */
+/** Removes the run and result written by this run only (same paths as `executions.ts` and `data.ts`). */
 async function forgetThisRun(dataFolder: string, execution: string, written: { execution: boolean; resultat: boolean }): Promise<void> {
   if (!ID_EXECUTION.test(execution)) return;
   if (written.resultat) await rm(join(dataFolder, "resultats", `${execution}.json`), { force: true }).catch(() => {});

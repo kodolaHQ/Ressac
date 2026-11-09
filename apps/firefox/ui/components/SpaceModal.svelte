@@ -10,7 +10,7 @@
   import { spaceSettings } from "./spaceSettings.svelte";
 
   /**
-   * Creation or settings of a space: the `reglagesEspace` draft, mounted as long as it exists. `ongletId`: the page
+   * Creation or settings of a space: the `spaceSettings` draft, mounted as long as it exists. `ongletId`: the page
    * shown at opening, captured for the background (null: none, or a panel hides it).
    */
   let { fenetreId: windowId, ongletId: tabId }: { fenetreId: WindowId; ongletId: TabId | null } = $props();

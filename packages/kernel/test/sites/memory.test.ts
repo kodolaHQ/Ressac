@@ -38,7 +38,7 @@ test("the write is deferred by at most ECRITURE_MEMOIRE_MS and grouped", async (
   expect(JSON.parse(await readFile(file(d), "utf8")).valeurs).toMatchObject({ a: { valeur: 1 }, b: { valeur: 2 } });
 });
 
-test("300 KB value: MEMOIRE_PLEINE, memory unchanged", async () => {
+test("300 KB value: MEMORY_FULL, memory unchanged", async () => {
   const m = await open(await tempFolder());
   m.retenir("petite", 1, null);
   m.noterPosition("/v", 100, 2400);
@@ -57,7 +57,7 @@ test("the oldest positions are forgotten before refusing", async () => {
   expect(m.position(`/video/0-${"x".repeat(300)}`)).toBeNull();
 });
 
-test("fonction, cycle, undefined : VALEUR_NON_JSON", async () => {
+test("fonction, cycle, undefined : NON_JSON_VALUE", async () => {
   const m = await open(await tempFolder());
   const cycle: Record<string, unknown> = {};
   cycle.soi = cycle;
@@ -67,7 +67,7 @@ test("fonction, cycle, undefined : VALEUR_NON_JSON", async () => {
   expect(m.lire("k")).toBeNull();
 });
 
-test("empty or 201-character key: CLE_INVALIDE", async () => {
+test("empty or 201-character key: KEY_INVALID", async () => {
   const m = await open(await tempFolder());
   expect(m.retenir("", 1, null)).toEqual({ ok: false, erreur: KEY_INVALID });
   expect(m.retenir("a".repeat(KEY_MAX + 1), 1, null)).toEqual({ ok: false, erreur: KEY_INVALID });

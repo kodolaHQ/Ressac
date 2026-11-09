@@ -188,7 +188,7 @@ export class History {
     this.req.oublierTexte.run(url, spaceId);
   }
 
-  /** Forgets text older than RETENTION_JOURS days, then the oldest while the total exceeds the cap. */
+  /** Forgets text older than RETENTION_DAYS days, then the oldest while the total exceeds the cap. */
   purger(now = new Date()): void {
     if (!this.db.isOpen) return;
     this.transaction(() => {

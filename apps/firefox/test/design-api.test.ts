@@ -29,7 +29,7 @@ function setup(answers: Record<string, (p: any) => unknown> = {}) {
 
 const ID = "0123456789abcdef";
 
-describe("createExternesApi", () => {
+describe("createExternalApi", () => {
   it("an invalid id or name never reaches the host", async () => {
     const { api, calls } = setup({ "externes.brancher": () => ({ commande: "x" }), "externes.revoquer": () => undefined, "externes.oublier": () => undefined, "externes.nom": () => "n" });
     await expect(api.brancher(42 as unknown as string)).rejects.toThrow("Nom invalide");
@@ -46,7 +46,7 @@ describe("createExternesApi", () => {
     expect(calls.map((c) => c.method)).toEqual(["externes.revoquer", "externes.oublier"]);
   });
 
-  it("a host that rejects gives the off shape with raisonEchec", async () => {
+  it("a host that rejects gives the off shape with failureReason", async () => {
     const { api } = setup();
     expect(await api.liste()).toEqual({ serveur: { etat: "eteint", raison: failureReason(new Error(HOST_STOPPED)) }, projets: [], clients: [] });
     expect(failureReason(new Error(HOST_STOPPED))).toBe(`Le MCP externe n'a pas pu démarrer : ${HOST_STOPPED}`);
@@ -83,7 +83,7 @@ describe("createExternesApi", () => {
   });
 });
 
-describe("createRelectureApi", () => {
+describe("createReviewApi", () => {
   const P = "ext-" + ID;
   const T = "a".repeat(40) + ":" + "b".repeat(40);
   const C = "c-0123abcd";

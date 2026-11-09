@@ -158,7 +158,7 @@ test("name __MSG_x__ without a message: the message id", () => {
   expect(parseManifest({ ...base, name: "__MSG_appName__" }, { source: "store" }).nom).toBe("appName");
 });
 
-test("porteeElargie", () => {
+test("widenedScope", () => {
   const p: Scope = {
     permissions: ["a", "b"], hotes: ["h1", "h2"], reseau: ["x.com"], tousLesSites: false, scriptsTousLesSites: false,
   };
@@ -282,13 +282,13 @@ test("R3-3 webRequestBlocking and redirect.transform refused", () => {
   expect(a.refus).toEqual(["Règle DNR refusée (transform) dans rules.json, règle 7"]);
 });
 
-test("R3-5 porteeElargie: scripts false→true widens, true→false does not", () => {
+test("R3-5 widenedScope: scripts false→true widens, true→false does not", () => {
   const p: Scope = { permissions: [], hotes: [], reseau: [], tousLesSites: false, scriptsTousLesSites: false, scripts: false };
   expect(widenedScope(p, { ...p, scripts: true })).toBe(true);
   expect(widenedScope({ ...p, scripts: true }, p)).toBe(false);
 });
 
-test("empreintePortee: stable whatever the order of keys and lists; changes with the scope", () => {
+test("scopeHash: stable whatever the order of keys and lists; changes with the scope", () => {
   const p: Scope = { permissions: ["tabs", "storage"], hotes: ["https://b.com/*", "https://a.com/*"], reseau: [], tousLesSites: false, scriptsTousLesSites: false };
   const shuffled = { scriptsTousLesSites: false, tousLesSites: false, reseau: [], hotes: ["https://a.com/*", "https://b.com/*"], permissions: ["storage", "tabs"] } as Scope;
   expect(scopeHash(p)).toMatch(/^[0-9a-f]{64}$/);

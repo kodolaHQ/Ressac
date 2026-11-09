@@ -313,7 +313,7 @@ test("two simultaneous requests for the same tab: a single card", async () => {
   expect(devRequests()).toHaveLength(1);
 });
 
-test("SuiviOutilsDev: attaches at the first right, detaches when everything is cut; OutilsDevOccupes → the tool returns the message", async () => {
+test("DevToolsTracking: attaches at the first right, detaches when everything is cut; DevToolsBusy → the tool returns the message", async () => {
   await start({ accorderDev: ["console"] });
   tracking = new DevToolsTracking(policy, bridge.outilsDev!, () => bridge.listerOnglets());
   const callsOf = (m: string, id: string) => bridge.appels.filter((a) => a.methode === m && a.args[0] === id).length;
@@ -339,7 +339,7 @@ test("SuiviOutilsDev: attaches at the first right, detaches when everything is c
   expect(await invoke("lire_console", { id: "gmail" })).toBe("Les outils de développement de l'utilisateur sont ouverts sur cet onglet.");
 });
 
-test("fichiersProfils: refuses a path outside the profile folders", async () => {
+test("profileFiles: refuses a path outside the profile folders", async () => {
   const r = await tempFolder();
   const p = profileFiles(spacePaths(r));
   const path = await p.ecrireProfil(appTodo, "x.heapsnapshot", "{}", true);
@@ -358,7 +358,7 @@ test("fichiersProfils: refuses a path outside the profile folders", async () => 
   expect(existsSync(join(r, ".webaios", "profilage", "z.cpuprofile"))).toBe(false);
 });
 
-test("fichiersProfils: a profiling folder as a symbolic link is refused, on write as on read", async () => {
+test("profileFiles: a profiling folder as a symbolic link is refused, on write as on read", async () => {
   const r = await tempFolder();
   const outside = await tempFolder();
   await writeFile(join(outside, "x.heapsnapshot"), "secret");
@@ -377,7 +377,7 @@ test("fichiersProfils: a profiling folder as a symbolic link is refused, on writ
   expect(existsSync(join(outside, ".webaios"))).toBe(false);
 });
 
-test("fichiersProfils: a file as a symbolic link is neither read, nor erased, nor overwritten", async () => {
+test("profileFiles: a file as a symbolic link is neither read, nor erased, nor overwritten", async () => {
   const r = await tempFolder();
   const outside = await tempFolder();
   const target = join(outside, "cible.txt");
@@ -475,7 +475,7 @@ test("cut answers right away even if the bridge ignores the signal; its late res
   expect(existsSync(folder) ? await readdir(folder) : []).toEqual([]);
 });
 
-test("fichiersProfils: a third-party site writes in the private folder and receives a reference profil:<name>", async () => {
+test("profileFiles: a third-party site writes in the private folder and receives a reference profil:<name>", async () => {
   const r = await tempFolder();
   const folder = join(await tempFolder(), "profilage");
   const p = profileFiles(spacePaths(r), folder);
@@ -556,7 +556,7 @@ test("lire_console masks the tokens in URLs in the messages and stacks of a thir
   expect(raw).toContain("sig=zzz999");
 });
 
-test("SuiviOutilsDev: a tab that keeps its rights on another origin (relaunched app) is detached then reattached", async () => {
+test("DevToolsTracking: a tab that keeps its rights on another origin (relaunched app) is detached then reattached", async () => {
   await start();
   tracking = new DevToolsTracking(policy, bridge.outilsDev!, () => bridge.listerOnglets());
   const calls = () => bridge.appels.filter((a) => ["attacher", "detacher"].includes(a.methode) && a.args[0] === "app:todo").map((a) => a.methode);
@@ -575,7 +575,7 @@ test("SuiviOutilsDev: a tab that keeps its rights on another origin (relaunched 
   expect(calls()).toEqual(["attacher", "detacher", "attacher"]);
 });
 
-test("private space: each dev tool answers TEXTE_PRIVE, without a card or a debugger call", async () => {
+test("private space: each dev tool answers PRIVATE_TEXT, without a card or a debugger call", async () => {
   await start({ accorderDev: ["console", "reseau", "performances", "agir"] });
   bridge.rendrePrive("github");
   const calls: [string, Record<string, unknown>][] = [
@@ -598,7 +598,7 @@ test("private space: each dev tool answers TEXTE_PRIVE, without a card or a debu
   expect(bridge.appels.filter((a) => !["listerOnglets"].includes(a.methode))).toEqual([]);
 });
 
-test("private space during a call: it is cut and answers TEXTE_PRIVE", async () => {
+test("private space during a call: it is cut and answers PRIVATE_TEXT", async () => {
   await start({ accorderDev: ["performances"], bloquer: true });
   const r = invoke("profiler_performances", { id: "github", duree_s: 30 });
   await vi.waitFor(() => expect(bridge.appels.some((a) => a.methode === "profiler")).toBe(true));

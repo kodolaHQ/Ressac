@@ -30,13 +30,13 @@ export interface SpaceExtensionLine {
   profils: string[];
 }
 
-/** What an extension's grant card shows (DemandeExtension.svelte): everything is displayed as text there. */
+/** What an extension's grant card shows (ExtensionRequest.svelte): everything is displayed as text there. */
 export interface ExtensionCard {
   cle: string;
   nom: string;
   source: SourceExtension;
   version: string;
-  /** Labels of the scope (`libellesPortee`), in their order. */
+  /** Labels of the scope (`scopeLabels`), in their order. */
   droits: string[];
   sites: string[];
   tousLesSites: boolean;
@@ -57,7 +57,7 @@ export interface ExtensionCard {
   remplaceAussi: string[];
   /** Update: the installed version. */
   maj: { de: string } | null;
-  /** `empreintePortee` of the shown scope: the caller writes the grant only for a scope with the same hash. */
+  /** `scopeHash` of the shown scope: the caller writes the grant only for a scope with the same hash. */
   empreinte: string;
 }
 
@@ -75,7 +75,7 @@ export interface ExtensionLine {
   nom: string;
   source: SourceExtension;
   version: string;
-  /** Labels of the granted scope (`libellesPortee`). */
+  /** Labels of the granted scope (`scopeLabels`). */
   droits: string[];
   sites: string[];
   tousLesSites: boolean;
@@ -106,7 +106,7 @@ export interface SiteExtensionLine {
   active: boolean;
   /** Enabled, but for other domains (`DOMAINES_CHANGES_EXTENSION`): nothing is loaded. */
   domainesChanges: boolean;
-  /** `TOUTES_COUPEES_AGENT`, `DESACTIVEE_PLANTAGES`, `DESACTIVEE_PORTEE`: the switch is greyed out; otherwise null. */
+  /** `ALL_CUT_AGENT`, `DESACTIVEE_PLANTAGES`, `DESACTIVEE_PORTEE`: the switch is greyed out; otherwise null. */
   indisponible: string | null;
 }
 

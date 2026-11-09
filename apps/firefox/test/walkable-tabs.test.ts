@@ -23,7 +23,7 @@ beforeEach(() => {
   F = e.fenetres[0]!.id;
 });
 
-test("ongletsParcourables: bar order, closed pinned absent, essential first, other space absent", () => {
+test("walkableTabs: bar order, closed pinned absent, essential first, other space absent", () => {
   const a = open("https://a.fr");
   const b = open("https://b.fr");
   const c = open("https://c.fr");

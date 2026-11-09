@@ -14,7 +14,7 @@ export const VOLUME_HOME = "webaios-home";
 /**
  * Ports published by the container, the same on the Mac and inside: 5280-5299 by default, out of Vite's range (5173…).
  * Two containers cannot publish the same ports, so a second app (Firefox build) sets WEBAIOS_PORTS_CONTENEUR (`min-max`).
- * Read on every call, like nomConteneur().
+ * Read on every call, like containerName().
  */
 export function containerPortRange(): [number, number] {
   const m = /^(\d{4,5})-(\d{4,5})$/.exec(process.env.WEBAIOS_PORTS_CONTENEUR ?? "");

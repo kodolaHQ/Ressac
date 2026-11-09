@@ -137,7 +137,7 @@
         <button
           class="confirmer"
           onclick={() => {
-            const key = target.cle; // {@const} is re-read: after aSupprimer = null, cible is null
+            const key = target.cle; // {@const} is re-read: after toDelete = null, cible is null
             toDelete = null;
             void make(api.extensions.supprimer(key));
           }}>Supprimer</button

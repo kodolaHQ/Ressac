@@ -3,7 +3,7 @@ import type { BadgeChrome } from "../chrome/store/apps";
 import { local } from "./design-api";
 
 /**
- * The API of an app window's badge (PastilleApp.svelte), on what the chrome set on the frame
+ * The API of an app window's badge (AppBadge.svelte), on what the chrome set on the frame
  * (store/apps.ts badge): its own app's access only. Every value from the chrome is copied into this realm, and a
  * rejection is made again here. Its design mode is its window's: the chrome knows the target, the badge sends none.
  */
@@ -34,7 +34,7 @@ export function createBadgeApi(raw: BadgeChrome): BadgeApi {
       basculer: () => raw.design.basculer(),
       panier: () => raw.design.panier(),
       relire: () => raw.design.relire(),
-      // design.svelte.ts, in this bundle for App.svelte, subscribes as it loads; PastilleApp reads the state as its menu opens.
+      // design.svelte.ts, in this bundle for App.svelte, subscribes as it loads; AppBadge reads the state as its menu opens.
       surChange: () => () => {},
     } as BadgeApi["design"],
   };

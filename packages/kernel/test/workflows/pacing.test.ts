@@ -12,7 +12,7 @@ function fake() {
   return { m, attentes: waits, maintenant: () => t, avancer: (ms: number) => { t += ms; } };
 }
 
-describe("Menagement", () => {
+describe("Pacing", () => {
   it("two searches: the second starts 2 s after the end of the first", async () => {
     const { m, maintenant: now, avancer: advance } = fake();
     const starts: number[] = [];
@@ -146,7 +146,7 @@ describe("Menagement", () => {
     expect(waits).toEqual([SEARCHES_GAP_MS]);
   });
 
-  it("siteMenage: lowercase, without www. or trailing dot", () => {
+  it("sitePacing: lowercase, without www. or trailing dot", () => {
     expect(sitePacing("WWW.Exemple.fr.")).toBe("exemple.fr");
     expect(sitePacing("blog.exemple.fr")).toBe("blog.exemple.fr");
   });

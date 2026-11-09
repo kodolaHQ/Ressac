@@ -112,7 +112,7 @@ export type BoundsRange = z.infer<typeof BoundsSchema>;
 
 export type Panel = "historique" | "telechargements";
 /**
- * Menu shortcuts meant for the UI (the web page often has focus). `fermerOnglet`: ⌘W on the builder,
+ * Menu shortcuts meant for the UI (the web page often has focus). `closeTab`: ⌘W on the builder,
  * which first asks whether some code is unsaved.
  */
 export type ShortcutAction = "rechercher" | "chercherSuivant" | "chercherPrecedent" | "adresse" | "commande" | "agent" | "fermerOnglet";
@@ -257,7 +257,7 @@ export interface ApiWebaios {
   };
   /**
    * The actions (`~/WebAiOs/actions`) and their pages. Refused when the window's active space is private
-   * (`ACTIONS_EN_ESPACE_PRIVE`, or nothing: `[]`, `null`).
+   * (`ACTIONS_IN_PRIVATE_SPACE`, or nothing: `[]`, `null`).
    */
   actions: {
     liste(): Promise<ActionShown[]>;
@@ -422,7 +422,7 @@ export const NameCodeSchema = z.string().regex(/^[a-z0-9-]+\.mjs$/).max(64);
 /** Text of a `.mjs`: 256 KB at most (in bytes, as on write). */
 export const SchemaCodeWorkflow = z.string().max(256 * 1024).refine((t) => new TextEncoder().encode(t).length <= 256 * 1024, "code trop gros");
 /**
- * Builder draft: bounded but not necessarily valid for the engine (`enregistrerWorkflow` answers).
+ * Builder draft: bounded but not necessarily valid for the engine (`saveWorkflow` answers).
  * The parameters stay free: the engine validates them.
  */
 export const DraftSchema = z.object({
@@ -576,7 +576,7 @@ export interface ApiSite {
   surMemoire(callback: (m: MessageToHome & { type: "memoire" }) => void): () => void;
   /**
    * The home asks for a site address (relative or on one of its domains): the site view goes there, on the
-   * current domain. False if it is refused, or if another was just opened (one per `ECART_OUVERTURE_ACCUEIL_MS`).
+   * current domain. False if it is refused, or if another was just opened (one per `HOME_OPEN_GAP_MS`).
    */
   ouvrir(url: string): Promise<boolean>;
   /** An image of an app domain, loaded with its session, as `data:`; null if it is refused. */
@@ -593,7 +593,7 @@ export interface ApiSite {
     surChange(callback: () => void): () => void;
     /** The Extensions page, in a main window. */
     gerer(): void;
-    /** Height of the open menu panel under the bar (0: closed), bounded by `PANNEAU_EXTENSIONS_MAX`. */
+    /** Height of the open menu panel under the bar (0: closed), bounded by `EXTENSIONS_PANEL_MAX`. */
     panneau(height: number): void;
     /** The main process asks to close the menu (click in the site view, fullscreen); returns the unsubscribe. */
     surFermer(callback: () => void): () => void;

@@ -1,20 +1,20 @@
-// The design guards, loadable under tsx and in the sidebar bundle (no value import): ID_PROJET lives in a kernel file
-// that needs node:crypto, raisonEchec in core/design/externes.ts needs node:fs. test/review-host.test.ts checks them.
+// The design guards, loadable under tsx and in the sidebar bundle (no value import): PROJECT_ID lives in a kernel file
+// that needs node:crypto, failureReason in core/design/externes.ts needs node:fs. test/review-host.test.ts checks them.
 import type { DesignContext } from "../../../packages/kernel/src/design/remarques";
 
-/** Copy of kernel's ID_PROJET. */
+/** Copy of kernel's PROJECT_ID. */
 export const ID_PROJECT = /^(app-[A-Za-z0-9][A-Za-z0-9._-]*|ext-[0-9a-f]{16}|demo-\d{1,5}|site-[a-z0-9][a-z0-9-]{0,59})$/;
 export const EXTERNAL_ID = /^[0-9a-f]{16}$/;
 export const CLIENT_ID = /^[0-9a-f-]{8,64}$/;
 export const CLIENT_NAME_MAX = 200;
-/** A comparison's token: its two trees (JETON_RELECTURE). */
+/** A comparison's token: its two trees (REVIEW_TOKEN). */
 export const REVIEW_TOKEN = /^[0-9a-f]{40}:[0-9a-f]{40}$/;
 export const REVIEW_PATH_MAX = 4096;
 export const COMMENT_ID = /^c-[0-9a-f]{8}$/;
-/** TEXTE_REMARQUE_MAX. */
+/** REMARK_TEXT_MAX. */
 export const REMARK_TEXT_MAX = 4000;
 
-/** Copy of externes.ts's raisonEchec. */
+/** Copy of externes.ts's failureReason. */
 export const failureReason = (e: unknown): string => `Le MCP externe n'a pas pu démarrer : ${e instanceof Error ? e.message : String(e)}`;
 
 const positive = (n: unknown): n is number => typeof n === "number" && Number.isSafeInteger(n) && n >= 1;
@@ -59,9 +59,9 @@ export function checkClientName(name: unknown): string {
   return name;
 }
 
-/** The design texts: the kernel's INDISPONIBLE_DESIGN, the invalid input's, the cart's. */
+/** The design texts: the kernel's DESIGN_UNAVAILABLE, the invalid input's, the cart's. */
 export const UNAVAILABLE_DESIGN = "Le mode design marche sur les applis de l'agent, les applis de site et les projets branchés par un Claude Code";
-/** Copies of kernel's INDISPONIBLE_DESIGN_SITE and AVERTISSEMENT_CAPTURE_SITE (design/projets.ts). */
+/** Copies of kernel's SITE_DESIGN_UNAVAILABLE and SITE_CAPTURE_WARNING (design/projects.ts). */
 export const UNAVAILABLE_DESIGN_SITE = "Le mode design marche dans les pages du site et sur l'accueil, pas sur la carte d'accord, une page de connexion ni en plein écran";
 export const CAPTURE_WARNING_SITE = "L'extrait et la capture de cet élément iront à l'agent.";
 export const INVALID_REQUEST = "Demande invalide";
@@ -83,7 +83,7 @@ const invalid = (): never => {
   throw new Error(INVALID_REQUEST);
 };
 
-/** viseur.ts's propreCapture rules (a bad shape refuses the context) and sourceSaine's (a bad source field is dropped), rebuilt with known keys only. */
+/** viewfinder.ts's cleanCapture rules (a bad shape refuses the context) and sourceSaine's (a bad source field is dropped), rebuilt with known keys only. */
 export function checkDesignContext(c: unknown): DesignContext {
   if (!record(c) || !record(c.vue) || !record(c.voisinage) || !record(c.styles)) return invalid();
   const { selecteur: selector, etiquette: label, html, adresse: url, vue: view, voisinage: surroundings, styles, source } = c as Record<string, any>;

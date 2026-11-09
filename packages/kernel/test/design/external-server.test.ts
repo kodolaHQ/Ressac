@@ -82,7 +82,7 @@ describe("serveur MCP externe", () => {
     }
   });
 
-  test("no token, wrong token, revoked token → 401; the main token of a demarrerServeurMcp server → 401 here, and an external token → 401 on demarrerServeurMcp", async () => {
+  test("no token, wrong token, revoked token → 401; the main token of a startMcpServer server → 401 here, and an external token → 401 on startMcpServer", async () => {
     const k = await frame();
     const b = await k.brancher();
     const auth = (j: string) => ({ Authorization: `Bearer ${j}`, Host: `127.0.0.1:${k.serveur.port}` });
@@ -115,7 +115,7 @@ describe("serveur MCP externe", () => {
     expect(await raw(p, "/mcp", auth)).toBe(404);
   });
 
-  test("declarer_projet then lire_remarques on the same folder: AUCUNE_REMARQUE; after envoyerPanier (mcp): the user's text, the selector, PREFIXE_DONNEES_PAGE before the html, and a PNG image", async () => {
+  test("declarer_projet then lire_remarques on the same folder: NO_REMARK; after envoyerPanier (mcp): the user's text, the selector, PAGE_DATA_PREFIX before the html, and a PNG image", async () => {
     const k = await frame();
     const { c, client } = await k.brancher();
     const folder = await k.dossierProjet("site");
@@ -142,7 +142,7 @@ describe("serveur MCP externe", () => {
     expect(Buffer.from(images[0]!.data!, "base64")).toEqual(PNG);
   });
 
-  test("the page's html never appears before PREFIXE_DONNEES_PAGE in the rendered text", async () => {
+  test("the page's html never appears before PAGE_DATA_PREFIX in the rendered text", async () => {
     const k = await frame();
     const { c, client } = await k.brancher();
     const folder = await k.dossierProjet("site");
@@ -186,7 +186,7 @@ describe("serveur MCP externe", () => {
     expect(t).toContain("+const x = 1;");
   });
 
-  test("client B calls lire_remarques with A's folder → projetNonDeclare; B's marquer_traitee on an id of A → projetNonDeclare, nothing changes", async () => {
+  test("client B calls lire_remarques with A's folder → undeclaredProject; B's marquer_traitee on an id of A → undeclaredProject, nothing changes", async () => {
     const k = await frame();
     const a = await k.brancher("A");
     const b = await k.brancher("B");
@@ -204,7 +204,7 @@ describe("serveur MCP externe", () => {
     expect(after.id).toBe(batch.id);
   });
 
-  test("lire_remarques sets the batch to « lu »; marquer_traitee of all its ids → etatLot \"traite\", note kept; an unknown id is listed", async () => {
+  test("lire_remarques sets the batch to « lu »; marquer_traitee of all its ids → batchState \"traite\", note kept; an unknown id is listed", async () => {
     const k = await frame();
     const { c, client } = await k.brancher();
     const folder = await k.dossierProjet("site");
@@ -224,7 +224,7 @@ describe("serveur MCP externe", () => {
     expect(text(await call(c, "lire_remarques", { dossier: folder }))).toBe(NO_REMARK);
   });
 
-  test("attendre_remarques (delai_s 30) returns as soon as a batch is sent for this project (under 1 s); delai_s 1 without a batch → AUCUNE_REMARQUE after ~1 s; delai_s 0 treated as 1 and 10000 as 300 (checked by the argument passed to remarques.attendre)", async () => {
+  test("attendre_remarques (delai_s 30) returns as soon as a batch is sent for this project (under 1 s); delai_s 1 without a batch → NO_REMARK after ~1 s; delai_s 0 treated as 1 and 10000 as 300 (checked by the argument passed to remarques.attendre)", async () => {
     const k = await frame();
     const { c, client } = await k.brancher();
     const folder = await k.dossierProjet("site");
@@ -328,7 +328,7 @@ describe("serveur MCP externe", () => {
     await vi.waitFor(() => expect(k.remarques.nombreAttentes()).toBe(0));
   });
 
-  test("declarer_projet of an unreadable folder: success with AVERTISSEMENT_ILLISIBLE in the text; a validation error → isError", async () => {
+  test("declarer_projet of an unreadable folder: success with UNREADABLE_WARNING in the text; a validation error → isError", async () => {
     const k = await frame();
     const { c } = await k.brancher();
     const folder = await k.dossierProjet("site");

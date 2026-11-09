@@ -26,7 +26,7 @@ test("the chainable blocks: source.page, source.recuperer, ia.rediger, web.cherc
   expect(chainable).toEqual(["ia.rediger", "source.page", "source.recuperer", "web.chercher"]);
 });
 
-test("DefinitionBloc.chaine is consistent with the container's modules", () => {
+test("BlockDefinition.chaine is consistent with the container's modules", () => {
   for (const d of BLOCK_REGISTRY.values()) {
     const module = SHIPPED_BLOCKS[d.type];
     expect(module, d.type).toBeDefined();

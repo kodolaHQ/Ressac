@@ -14,8 +14,8 @@ function hostOf(url: string): string {
 
 /**
  * Tracking of a site app's address: when the site no longer answers, the reference page (public, hostile)
- * is read to find the new domain. At most one read per `INTERVALLE_SUIVI_MS` and per app, whether it
- * succeeded or not (a click in a loop reads nothing more). Nothing changes without a valid link according to `trouverAdresse`.
+ * is read to find the new domain. At most one read per `TRACKING_INTERVAL_MS` and per app, whether it
+ * succeeded or not (a click in a loop reads nothing more). Nothing changes without a valid link according to `findUrl`.
  */
 export class UrlTracking {
   /** Last read started, per app. */

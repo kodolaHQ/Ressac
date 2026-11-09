@@ -32,7 +32,7 @@ test("donnees.json is limited to 2 MB", async () => {
   expect(await readData(d, "w")).toBeNull();
 });
 
-test("supprimerDonnees also erases the runs and the memory, and keeps etat.json", async () => {
+test("deleteData also erases the runs and the memory, and keeps etat.json", async () => {
   const d = await tempFolder();
   await writeData(d, "w", { a: 1 });
   await writeWidgetState(d, "w", { statut: "ok", derniereMaj: null, derniereTentative: null });
@@ -48,7 +48,7 @@ test("supprimerDonnees also erases the runs and the memory, and keeps etat.json"
   expect(await listRuns(join(d, "w"))).toEqual([]);
 });
 
-test("ecrireEtatWidget keeps the hours tracking when the written state has none, and replaces it when it has one", async () => {
+test("writeWidgetState keeps the hours tracking when the written state has none, and replaces it when it has one", async () => {
   const d = await tempFolder();
   const hours = { faite: "2026-10-29T07:00", echecs: null };
   await writeWidgetState(d, "w", { statut: "ok", derniereMaj: null, derniereTentative: null, heures: hours });

@@ -291,7 +291,7 @@ it("no file of the external project (registries, repository, batches) appears un
 });
 
 // externes.spec.ts:209 (the Review part)
-it("after « Révoquer », envoyer-commentaires is disabled, with SANS_CLIENT as its title", async () => {
+it("after « Révoquer », envoyer-commentaires is disabled, with NO_CLIENT as its title", async () => {
   await launch();
   const p = await pageOnAppJs(15);
   try {

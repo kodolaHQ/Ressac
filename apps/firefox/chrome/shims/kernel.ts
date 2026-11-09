@@ -2,14 +2,14 @@
 export * from "../../../../packages/kernel/src/mcp/pont";
 export { localUrl } from "../../../../packages/kernel/src/workflows/access";
 export { relativeUrl, matchesPattern, hostInSite, tweaksFor } from "../../../../packages/kernel/src/sites/urls";
-// Copied: it lives in mcp/serveur.ts, which imports the MCP SDK.
+// Copied: it lives in mcp/server.ts, which imports the MCP SDK.
 export const navigationOutsideSite = (url: string) => `L'appli de site ne va que sur ses domaines : ${url} refusée.`;
 export { sitePacing } from "../../../../packages/kernel/src/workflows/pacing";
 export { truncate } from "../../../../packages/kernel/src/devtools/summaries";
 export type { DevRight } from "../../../../packages/kernel/src/access/policy";
 export type { ChangeHost } from "../../../../packages/kernel/src/workflows/pacing";
 export type { ReadPage } from "../../../../packages/kernel/src/workflows/protocole";
-// Copied: design/remarques.ts imports node:crypto and node:fs. What core/design/viseur.ts imports, so it
+// Copied: design/remarques.ts imports node:crypto and node:fs. What core/design/viewfinder.ts imports, so it
 // loads as is in the store (test/shims.test.ts compares them with the originals).
 import { HTML_MAX, TRUNCATED } from "../../shared/design-guards";
 export { HTML_MAX, TRUNCATED };

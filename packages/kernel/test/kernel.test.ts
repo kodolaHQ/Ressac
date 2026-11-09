@@ -42,7 +42,7 @@ async function workshopWithoutDocker(root: string, run: Runner): Promise<Worksho
   return new Workshop({ chemins: spacePaths(root), executer: run, docker: fake });
 }
 
-test("creerNoyau initializes the space and writes mcp.json with host.docker.internal", async () => {
+test("createKernel initializes the space and writes mcp.json with host.docker.internal", async () => {
   const n = await createWithoutDocker();
   expect(existsSync(join(n.chemins.racine, "AGENTS.md"))).toBe(true);
   const mcp = await readMcp(n);
@@ -50,7 +50,7 @@ test("creerNoyau initializes the space and writes mcp.json with host.docker.inte
   expect(mcp.headers.Authorization).toMatch(/^Bearer [0-9a-f]{64}$/);
 });
 
-test("Docker absent: creerNoyau succeeds, etatAtelier → docker-absent, ouvrirSessionAgent throws ErreurAtelier", async () => {
+test("Docker absent: createKernel succeeds, workshopState → docker-absent, ouvrirSessionAgent throws WorkshopError", async () => {
   const n = await createWithoutDocker();
   expect(await n.etatAtelier()).toBe("docker-absent");
   const error = await n.ouvrirSessionAgent({ cols: 80, rows: 24 }).catch((e) => e);
@@ -76,7 +76,7 @@ test("profil inconnu → erreur claire", async () => {
   ).rejects.toThrow(/inconnu/);
 });
 
-test("creerNoyau does not wait for a slow image build", async () => {
+test("createKernel does not wait for a slow image build", async () => {
   const root = await tempFolder();
   const { executer: run } = fakeRunner([
     [/ info$/, { code: 0 }],
@@ -89,7 +89,7 @@ test("creerNoyau does not wait for a slow image build", async () => {
   expect(Date.now() - start).toBeLessThan(2000);
 });
 
-test("container start failure: creerNoyau succeeds, the session throws ErreurAtelier with the message", async () => {
+test("container start failure: createKernel succeeds, the session throws WorkshopError with the message", async () => {
   const root = await tempFolder();
   const { executer: run } = fakeRunner([
     [/ info$/, { code: 0 }],
@@ -139,7 +139,7 @@ test("at launch, once the container is ready, the agents of a previous app are s
   expect(execs[1]).toMatch(/webaios-session-[0-9a-f]+\.pid/);
 });
 
-test("creerNoyau reads models and Dockerfile from resources", async () => {
+test("createKernel reads models and Dockerfile from resources", async () => {
   const root = await tempFolder();
   const copy = await tempFolder();
   await cp(join(import.meta.dirname, "..", "modeles"), join(copy, "modeles"), { recursive: true });
@@ -150,7 +150,7 @@ test("creerNoyau reads models and Dockerfile from resources", async () => {
   expect(await readFile(join(root, "AGENTS.md"), "utf8")).toBe("# copie");
 });
 
-test("creerNoyau reuses the provided workshop", async () => {
+test("createKernel reuses the provided workshop", async () => {
   const root = await tempFolder();
   const { executer: run } = fakeRunner([[/ info$/, { code: 1, stderr: "absent" }]]);
   const workshop = new Workshop({ chemins: spacePaths(root), executer: run });

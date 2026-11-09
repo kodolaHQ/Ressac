@@ -37,7 +37,7 @@ function fakeAi() {
 
 const wait = () => new Promise((r) => setImmediate(r));
 
-test("IA_SIMULTANES vaut 4", () => {
+test("AI_SIMULTANEOUS vaut 4", () => {
   expect(AI_SIMULTANEOUS).toBe(4);
 });
 
@@ -182,7 +182,7 @@ test("auDemarrage called at the real start, not when queued", async () => {
   await Promise.all([first, second]);
 });
 
-test("signal raised in the queue: IA_ABANDONNEE refusal, the AI is not called", async () => {
+test("signal raised in the queue: AI_ABANDONED refusal, the AI is not called", async () => {
   const f = fakeAi();
   const r = createAiDispatcher(f.ia, { simultanes: 1 });
   const first = r.pour("a").gemma({ prompt: "1" });

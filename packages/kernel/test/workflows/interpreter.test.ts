@@ -467,7 +467,7 @@ describe("interpreter: input and progress (actions)", () => {
     const progress = r.traces.filter((l) => l.etape === "avancement");
     expect(progress.every((l) => l.t === "bloc" && l.id === "b" && l.total === 12)).toBe(true);
     expect(progress.at(-1)).toEqual({ t: "bloc", id: "b", etape: "avancement", faits: 12, total: 12 });
-    // Spaced by at least ECART_AVANCEMENT_MS, except the last, always sent.
+    // Spaced by at least PROGRESS_GAP_MS, except the last, always sent.
     for (let i = 1; i < hours.length - 1; i++) expect(hours[i]! - hours[i - 1]!).toBeGreaterThanOrEqual(1000);
     expect(progress.length).toBeGreaterThanOrEqual(2);
     expect(progress.length).toBeLessThan(12);
@@ -516,7 +516,7 @@ describe("interpreter: input and progress (actions)", () => {
     expect(widget.terminal).toEqual({ t: "fin", donnees: { saisie: null, aLaCle: false } });
   });
 
-  it("ECART_AVANCEMENT_MS equal in interpreteur.mjs and executer.ts", async () => {
+  it("PROGRESS_GAP_MS equal in interpreteur.mjs and executer.ts", async () => {
     const interpreter = await import(pathToFileURL(join(ENGINE, "interpreteur.mjs")).href);
     const { PROGRESS_GAP_MS } = await import("../../src/workflows/executer.js");
     expect(PROGRESS_GAP_MS).toBe(1000);
@@ -982,7 +982,7 @@ describe("interpreter: web.chercher", () => {
     expect(logOf(r, "cherche")).toEqual(["élément 2 : valeur absente : requete"]);
   });
 
-  it("RECHERCHE_REFUSEE on an element with siErreur echouer: the block fails", async () => {
+  it("SEARCH_DENIED on an element with siErreur echouer: the block fails", async () => {
     const r = await launch({
       workflow: workflow({ siErreur: "echouer" }),
       fichiers: files,
@@ -1836,7 +1836,7 @@ describe("interpreter: streaming chain", () => {
     expect(last.memoire.nv.valeur.map((e: any) => e[0])).toEqual(["u0"]);
   });
 
-  it("a publication over 2 MB (TAILLE_MAX_DONNEES) is not sent, and none of its keys is retained before the end of the chain", async () => {
+  it("a publication over 2 MB (DATA_MAX_SIZE) is not sent, and none of its keys is retained before the end of the chain", async () => {
     const events: AppEvent[] = [];
     const clock = { t: 0 };
     const big = "x".repeat(1.2 * 1024 * 1024);

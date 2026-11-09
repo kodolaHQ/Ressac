@@ -26,7 +26,7 @@
   let { page, action, execution, composants: components = true }: { page: RenderedPage; action: string; execution: string; composants?: boolean } = $props();
   const ctx: PageContext = $derived({ action, execution });
 
-  // A block's props are typed by each component (shapes fixed by the kernel's pages/resoudre.ts).
+  // A block's props are typed by each component (shapes fixed by the kernel's pages/resolve.ts).
   const p = (b: RenderedBlock) => ("props" in b ? b.props : {}) as never;
 </script>
 

@@ -21,7 +21,7 @@ async function frame() {
   return { base, prive: isPrivate, maison: homeDir, racineEspace: spaceRoot, options, projet: project };
 }
 
-describe("RegistreExternes", () => {
+describe("ExternalRegistry", () => {
   test("brancher creates a client of which only the sha256 of the token is written; clientDuJeton returns it", async () => {
     const c = await frame();
     const r = await ExternalRegistry.ouvrir(c.prive);

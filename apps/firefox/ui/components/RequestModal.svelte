@@ -16,7 +16,7 @@
 
   let card: HTMLElement;
   let ready = $state(false);
-  // Enter armed: the card has been visible since DELAI_ENTREE_MS (re-armed on each request from the queue).
+  // Enter armed: the card has been visible since ENTRY_DELAY_MS (re-armed on each request from the queue).
   let armed = $state(false);
   let entryTimer: ReturnType<typeof setTimeout> | undefined;
   function armer() {

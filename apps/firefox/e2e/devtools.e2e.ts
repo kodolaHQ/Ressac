@@ -278,7 +278,7 @@ it("the same site in a private space: nothing of its tab in the attached tab's b
   expect(text).not.toContain("tag-");
 });
 
-it("a private space's tab: lire_console answers TEXTE_PRIVE, without a card", async () => {
+it("a private space's tab: lire_console answers PRIVATE_TEXT, without a card", async () => {
   const id = await openDemo();
   const s = await state(m);
   const e = s.espaces.find((x) => x.id === s.onglets[id]!.espaceId)!;

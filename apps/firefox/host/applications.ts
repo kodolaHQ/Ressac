@@ -25,7 +25,7 @@ const FrameSchema = z.object({ x: z.number(), y: z.number(), largeur: z.number()
 export interface ApplicationsHost {
   gestionnaire: ApplicationManager;
   handlers: Record<string, (p: any) => unknown>;
-  /** Running apps with a port: projetPourAdresse's appsLancees (plan 35b) and the review's applis. */
+  /** Running apps with a port: projectForUrl's appsLancees (plan 35b) and the review's applis. */
   liste(): Promise<Application[]>;
   /** toutArreter, arreterSurveillance, then the memory written. */
   arreter(): Promise<void>;

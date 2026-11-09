@@ -344,7 +344,7 @@ describe("an external project", () => {
     await activate(tab);
   });
 
-  it("externes.spec.ts:209 after Révoquer, the cart's send is disabled with SANS_CLIENT", async () => {
+  it("externes.spec.ts:209 after Révoquer, the cart's send is disabled with NO_CLIENT", async () => {
     await activate(tab);
     await modeOn();
     await remark("Une remarque");

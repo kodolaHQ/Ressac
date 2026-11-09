@@ -983,7 +983,7 @@ export class ExtensionsAgent {
     }
   }
 
-  /** prochaineVersion → manifesteFirefox → zipper → signer (signes/<id>.attente.xpi) → extensions.installer → signes/<id>.xpi. */
+  /** nextVersion → firefoxManifest → zipper → signer (signes/<id>.attente.xpi) → extensions.installer → signes/<id>.xpi. */
   private async signerEtInstaller(id: string, p: { staging: string; fondOriginal: string | undefined }, active: boolean): Promise<{ ok: true; version: string } | { ok: false; erreur: string }> {
     const amoKey = await readAmoKey(this.env);
     if (!amoKey) return { ok: false, erreur: KEYS_ABSENT };

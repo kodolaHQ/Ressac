@@ -44,7 +44,7 @@ afterEach(async () => {
   await rm(dataDir, { recursive: true, force: true });
 });
 
-/** Launches on a data folder with the widgets « veille » and « autre » (WORKFLOW_VEILLE) and « casse » (unreadable). */
+/** Launches on a data folder with the widgets « veille » and « autre » (WATCH_WORKFLOW) and « casse » (unreadable). */
 async function launch(): Promise<void> {
   dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-builder-agent-"));
   const files = {
@@ -295,7 +295,7 @@ describe("the builder's Agent tab", () => {
 });
 
 describe("workflow_ouvert", () => {
-  it("workflow_ouvert (appelerOutil with the token of this window's session) returns the widget and the selected block", async () => {
+  it("workflow_ouvert (callTool with the token of this window's session) returns the widget and the selected block", async () => {
     await launch();
     await homeAgent();
     let session = lastSessionConfig();

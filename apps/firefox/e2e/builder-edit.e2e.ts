@@ -54,7 +54,7 @@ let site: Server;
 let kev: Server;
 let ollama: Server;
 
-/** The widgets built on WORKFLOW_VEILLE, one per test that edits it (a builder keeps its draft per widget for the window). */
+/** The widgets built on WATCH_WORKFLOW, one per test that edits it (a builder keeps its draft per widget for the window). */
 const WATCHES = ["add", "undo", "add-code", "run", "suppr", "field", "agent", "seuil", "gabarit", "code", "img", "close", "gone"];
 /** The widget's data folder, outside the space (state, executions, memory). */
 const dataOf = (id: string) => path.join(dataDir, "widgets", id);

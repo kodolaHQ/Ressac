@@ -397,7 +397,7 @@ describe("executerWorkflow", () => {
     expect(b.supprimes).toEqual(["essai", "essai"]);
   });
 
-  it("ProfilRefuse: surProfilRefuse called, PROFIL_REFUSE stop", async () => {
+  it("ProfileDenied: surProfilRefuse called, PROFILE_DENIED stop", async () => {
     const bridge = new FakeBridge([], { actif: null, autoriser: false, lecture: { pages: [], refuser: ["perso"] } });
     const b = await bench(chain("a"), { "a.mjs": `export default async (e, w) => w.lirePage("https://app.daily.dev/", { compte: true });` }, { compte: ["app.daily.dev"], accord: { profil: "perso" }, pont: bridge });
     const r = await runWorkflow(b.ctx, b.infra);
@@ -786,14 +786,14 @@ describe("executerWorkflow: web search and open reads", () => {
     expect(value(r)).toEqual([[{ titre: "T", url: "https://a.example/", extrait: "E" }, { titre: "T", url: "https://b.example/", extrait: "E" }]]);
   });
 
-  it("without web: WEB_REQUIS, no call to the bridge", async () => {
+  it("without web: WEB_REQUIRED, no call to the bridge", async () => {
     const { b, pont: bridge } = await webBench(afterwards([`w.chercherWeb("x")`]), { html: { [searchUrl("x", BASE)]: page("resultats.html") } });
     const r = await runWorkflow(b.ctx, b.infra);
     expect(value(r)).toEqual([`erreur: ${WEB_REQUIRED}`]);
     expect(bridge.appels).toEqual([]);
   });
 
-  it("widget with an account: WEB_REQUIS", async () => {
+  it("widget with an account: WEB_REQUIRED", async () => {
     // web with an account is refused at the widget.json read; the executor refuses anyway.
     const { b, html } = await webBench(afterwards([`w.chercherWeb("x")`]), {
       web: true,
@@ -805,7 +805,7 @@ describe("executerWorkflow: web search and open reads", () => {
     expect(html()).toEqual([]);
   });
 
-  it("31e recherche : PLAFOND_RECHERCHES, 30 lectures de HTML seulement", async () => {
+  it("31e recherche : SEARCHES_CAP, 30 lectures de HTML seulement", async () => {
     const { menagement: pacing, attentes: waits } = fakePacing();
     const { b, html } = await webBench(afterwards(Array.from({ length: 31 }, () => `w.chercherWeb("clio", { nombre: 1 })`)), {
       web: true,
@@ -821,7 +821,7 @@ describe("executerWorkflow: web search and open reads", () => {
     expect(waits).toEqual(Array.from({ length: 29 }, () => 2000));
   });
 
-  it("check page: RECHERCHE_REFUSEE, then RECHERCHES_ARRETEES without a new read", async () => {
+  it("check page: SEARCH_DENIED, then SEARCHES_STOPPED without a new read", async () => {
     const { b, html } = await webBench(afterwards([`w.chercherWeb("a")`, `w.chercherWeb("b")`]), {
       web: true,
       html: { [searchUrl("a", BASE)]: page("verification.html"), [searchUrl("b", BASE)]: page("resultats.html") },
@@ -846,7 +846,7 @@ describe("executerWorkflow: web search and open reads", () => {
     expect(waits).toEqual([2000]);
   });
 
-  it("page changed: RESULTATS_ILLISIBLES, never an empty list; no result: empty list", async () => {
+  it("page changed: UNREADABLE_RESULTS, never an empty list; no result: empty list", async () => {
     const { b } = await webBench(afterwards([`w.chercherWeb("a")`, `w.chercherWeb("b")`]), {
       web: true,
       html: { [searchUrl("a", BASE)]: page("changee.html"), [searchUrl("b", BASE)]: page("aucun-resultat.html") },
@@ -855,7 +855,7 @@ describe("executerWorkflow: web search and open reads", () => {
     expect(value(r)).toEqual([`erreur: ${UNREADABLE_RESULTS}`, []]);
   });
 
-  it("web widget: the 101st open read (pages and feeds) throws TROP_DE_LECTURES", async () => {
+  it("web widget: the 101st open read (pages and feeds) throws TOO_MANY_READS", async () => {
     const web = await webServer({ "/f": (res) => res.end("<rss><channel><item><title>T</title><link>https://x.example/</link></item></channel></rss>") });
     const { menagement: pacing, attentes: waits } = fakePacing();
     const spy = vi.spyOn(pacing, "lire");
@@ -1631,14 +1631,14 @@ describe("executerWorkflow: watch (duration, chain, publications, memory along t
     });
   });
 
-  it("interpreteur.mjs's TAILLE_MAX_DONNEES equals the kernel's, re-exported by accueil", async () => {
+  it("interpreteur.mjs's DATA_MAX_SIZE equals the kernel's, re-exported by accueil", async () => {
     const interpreter = await import(pathToFileURL(join(ENGINE, "interpreteur.mjs")).href);
     expect(interpreter.TAILLE_MAX_DONNEES).toBe(DATA_MAX_SIZE);
     expect(TAILLE_MAX_DONNEES_ACCUEIL).toBe(DATA_MAX_SIZE);
     expect(DATA_MAX_SIZE).toBe(2 * 1024 * 1024);
   });
 
-  it("executer.ts's ECART_PUBLICATIONS_MS and ECART_MEMOIRE_MS equal those of interpreteur.mjs", async () => {
+  it("executer.ts's PUBLICATIONS_GAP_MS and MEMORY_GAP_MS equal those of interpreteur.mjs", async () => {
     const interpreter = await import(pathToFileURL(join(ENGINE, "interpreteur.mjs")).href);
     expect(PUBLICATIONS_GAP_MS).toBe(5000);
     expect(MEMORY_GAP_MS).toBe(30_000);
@@ -1734,7 +1734,7 @@ describe("executerWorkflow: input, progress, reads and stop (actions)", () => {
     expect(relayed.some((t) => t.etape === "lecture")).toBe(false);
   });
 
-  it("signal raised: container killed, status interrompue, error ACTION_ARRETEE, erreurNoyau", async () => {
+  it("signal raised: container killed, status interrompue, error ACTION_STOPPED, erreurNoyau", async () => {
     let tue = 0;
     const stop = new AbortController();
     const b = await bench(chain("a"), {}, { lancer: launcherLines([{ t: "bloc", id: "a", etape: "debut" }], { bloque: true, tue: () => tue++ }) });
@@ -1784,7 +1784,7 @@ describe("executerWorkflow: input, progress, reads and stop (actions)", () => {
     expect(relayed.filter((t) => t.etape === "avancement")).toEqual([{ bloc: "a", etape: "avancement", faits: 2, total: 2 }]);
   });
 
-  it("avancement: at most one per ECART_AVANCEMENT_MS and per block, the last (faits = total) always; ignored without avancement", async () => {
+  it("avancement: at most one per PROGRESS_GAP_MS and per block, the last (faits = total) always; ignored without avancement", async () => {
     let t = 0;
     const lignes = [
       { t: "bloc", id: "a", etape: "debut" },

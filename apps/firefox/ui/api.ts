@@ -45,7 +45,7 @@ declare global {
   }
 }
 
-// Same text as noyau/host.ts's (a Node module this bundle cannot import).
+// Same text as host/host.ts's (a Node module this bundle cannot import).
 const AGENT_STOPPED_MESSAGE = "Le service des widgets ne répond pas (agent arrêté ?)";
 
 /**

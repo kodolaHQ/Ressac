@@ -4,7 +4,7 @@ import { spacePaths } from "../../src/paths.js";
 import { writeMcpConfig } from "../../src/profiles/config-mcp.js";
 import { tempFolder } from "../helpers/temp.js";
 
-test("ecrireConfigMcp writes the claude-json format as 0600", async () => {
+test("writeMcpConfig writes the claude-json format as 0600", async () => {
   const c = spacePaths(await tempFolder());
   await writeMcpConfig(c, "claude-json", { url: "http://host.docker.internal:4242/mcp", jeton: "abc" });
   expect(JSON.parse(await readFile(c.configMcp, "utf8"))).toEqual({

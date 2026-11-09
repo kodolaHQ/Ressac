@@ -7,7 +7,7 @@ import { tempFolder } from "../helpers/temp.js";
 
 const claude = Profile.parse(JSON.parse(await readFile(join(import.meta.dirname, "../../modeles/profil-claude.json"), "utf8")));
 
-test("construireCommande interactif remplace {mcpConfig}", () => {
+test("buildCommand interactif remplace {mcpConfig}", () => {
   expect(buildCommand(claude, "interactif", { mcpConfig: "/workspace/.webaios/mcp.json" })).toEqual([
     "claude", "--dangerously-skip-permissions", "--mcp-config", "/workspace/.webaios/mcp.json",
   ]);
@@ -30,7 +30,7 @@ test("a nonInteractif profile with {mcpConfig} is refused", () => {
   expect(Profile.safeParse(faulty).success).toBe(false);
 });
 
-test("chargerProfils ignores an invalid profile and reports it", async () => {
+test("loadProfiles ignores an invalid profile and reports it", async () => {
   const c = spacePaths(await tempFolder());
   await mkdir(c.profils, { recursive: true });
   await writeFile(join(c.profils, "claude.json"), JSON.stringify(claude));

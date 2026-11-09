@@ -38,7 +38,7 @@ export function createRpc(o: { send(line: string): void; handlers: Record<string
       send({ id, result: (await handler(params, c.signal)) ?? null });
     } catch (e) {
       const err = e instanceof Error ? e : new Error(String(e));
-      // Own enumerable properties carry the error's fields (OngletIntrouvable.id, ProfilRefuse.profil…).
+      // Own enumerable properties carry the error's fields (TabNotFound.id, ProfileDenied.profil…).
       const error = { code: -32000, message: err.message };
       try {
         send({ id, error: { ...error, data: { ...err, name: err.name } } });

@@ -31,7 +31,7 @@ const fichierRecolte = (nom) => join(env.WEBAIOS_RACINE, `faux-docker-${nom}.pid
 /** A run's container: a widget's harvest or an action's run. */
 const estExecution = (nom) => (nom ?? "").startsWith("webaios-recolte-") || (nom ?? "").startsWith("webaios-action-");
 
-// A widget's harvest or an action's run (Atelier.commandeRecolte):
+// A widget's harvest or an action's run (Workshop.commandeRecolte):
 // `run -i --rm … --name webaios-recolte-<id> (or webaios-action-<id>) … node <harvester> /widget`.
 // The harvester runs on the Mac (node), with the host paths recovered from the `-v host:container`. The kernel
 // must cut the container's network: without `--network none`, the harvest fails.
@@ -68,7 +68,7 @@ if (args[0] === "run" && args.includes("-i") && estExecution(args[args.indexOf("
   });
   return;
 }
-// Forced removal of a run container (Atelier.supprimerRecolte): the running harvester is killed.
+// Forced removal of a run container (Workshop.supprimerRecolte): the running harvester is killed.
 if (args[0] === "rm" && args[1] === "-f" && estExecution(args[2])) {
   const fichier = fichierRecolte(args[2]);
   if (existsSync(fichier)) {
@@ -106,7 +106,7 @@ function arreterApplications(script) {
 }
 
 /**
- * Launch of an app (Atelier.commandeApplication): the shell runs on the Mac, /workspace becoming WEBAIOS_RACINE,
+ * Launch of an app (Workshop.commandeApplication): the shell runs on the Mac, /workspace becoming WEBAIOS_RACINE,
  * in its own group (like the container's processes, which the stop targets by their mark).
  */
 function lancerApplication(options, commande) {
@@ -140,14 +140,14 @@ if (args[0] === "exec") {
     lancerApplication(options, commande);
     return;
   }
-  // Stop of a session or an app in the container (Atelier.arreterSession, arreterApplication…): noted for the
+  // Stop of a session or an app in the container (Workshop.arreterSession, arreterApplication…): noted for the
   // tests; the targeted apps are killed beforehand, the log is the proof of the stop.
   if (commande[0] === "sh" && !commande[2].includes('exec "$@"')) {
     arreterApplications(commande[2]);
     appendFileSync(join(env.WEBAIOS_RACINE, "faux-docker-arrets.log"), `${commande[2]}\n`);
     sortir(0);
   }
-  // Interactive session (Atelier.commandeSession): sh -c '<notes the PID>; exec "$@"' webaios-session <agent…>
+  // Interactive session (Workshop.commandeSession): sh -c '<notes the PID>; exec "$@"' webaios-session <agent…>
   if (commande[0] === "sh") commande = commande.slice(4);
   const r = spawnSync(process.execPath, [join(__dirname, "fake-agent.mjs"), ...commande], { stdio: "inherit" });
   process.exit(r.status ?? 1);

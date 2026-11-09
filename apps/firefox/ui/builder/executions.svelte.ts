@@ -4,7 +4,7 @@ import { isActionKey } from "./target";
 
 export type SourceExecutions = Pick<ApiWebaios["accueil"], "executions" | "execution">;
 /**
- * « ▶ Lancer », « Rejouer depuis ce bloc » and live tracking, addressed by the workflow's key (`cleCible`). `lancer`
+ * « ▶ Lancer », « Rejouer depuis ce bloc » and live tracking, addressed by the workflow's key (`targetKey`). `lancer`
  * returns an action's refusal (`erreur`); a widget's never returns one.
  */
 export type Launcher = {

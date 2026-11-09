@@ -85,7 +85,7 @@ const snapshot = async (dir: string, recursive = false) => {
   return (await Promise.all(files.map(async (f) => `${f}:${(await stat(path.join(dir, f))).mtimeMs}`))).sort();
 };
 
-/** A widget on WORKFLOW_VEILLE reading `/liens?<id>`; `slow`: its last code block waits 2.5 s. */
+/** A widget on WATCH_WORKFLOW reading `/liens?<id>`; `slow`: its last code block waits 2.5 s. */
 const writeWatch = (id: string, o: { slow?: boolean; declaration?: Record<string, unknown> } = {}) =>
   writeWidget(dataDir, id, {
     nom: "Veille",
@@ -681,7 +681,7 @@ describe("the workflow builder's runs", () => {
   it("the builder keeps working after a host restart", async () => {
     await builder("relance");
     await waitVisible(tid("noeud-textes"));
-    // The host stops under the open builder (as accueil.e2e.ts does), then starts again (the agent panel's Réessayer).
+    // The host stops under the open builder (as home.e2e.ts does), then starts again (the agent panel's Réessayer).
     await agent("await agent.stop();");
     await waitFor<number | null>(m, `return (async () => (await ChromeUtils.importESModule("${STORE}").ready).agent.pid)();`, (pid) => pid === null);
     await agent("await agent.ensure();");

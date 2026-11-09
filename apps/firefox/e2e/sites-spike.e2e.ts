@@ -66,7 +66,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("site app spike", () => {
   const toPub = () => server.requetes.filter((r) => r.hote === "pub.localhost" && r.chemin !== "/cadre").map((r) => `${r.methode} ${r.chemin}`);
   const blocked = () => m.execute<string[]>(`return ChromeUtils.importESModule("${STORE}").sites.blocked("vidola").slice();`);
   const browserWindows = () => m.execute<number>(`return [...Services.wm.getEnumerator("navigator:browser")].length;`);
-  // As the host's SiteChrome (noyau/sites.ts preparer), granted.
+  // As the host's SiteChrome (host/sites.ts preparer), granted.
   const openSite = (r = rules(), tweaks: TweaksRead = { js: {}, css: {} }) =>
     m.execute(`ChromeUtils.importESModule("${STORE}").sites.open(arguments[0], null, arguments[1]);`, [
       { id: r.id, declaration: DeclarationSite.parse({ nom: r.nom, adresse: r.adresse, domaines: r.domaines, connexion: r.connexion, retouches: r.retouches }), aAccueil: false, domaines: r.domaines, depart: r.adresse, accordRequis: false },

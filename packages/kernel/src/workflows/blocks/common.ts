@@ -41,10 +41,10 @@ export type FormField = {
 export const ParamsPerElement = {
   parElement: z.boolean().default(false),
   siErreur: z.enum(["sauter", "echouer"]).default("sauter"),
-  // 170 s at most without a maximum duration of the widget, its duration otherwise: the per-widget bound is in validerWorkflow.
+  // 170 s at most without a maximum duration of the widget, its duration otherwise: the per-widget bound is in validateWorkflow.
   budgetSecondes: z.number().int().min(1).max(3600).optional(),
   reutiliser: z.string().regex(/^[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)*$/, "chemin de clé invalide").optional(),
-  /** Lifetime of a reused result; without a value, forever. Only with `reutiliser` (validerWorkflow). */
+  /** Lifetime of a reused result; without a value, forever. Only with `reutiliser` (validateWorkflow). */
   garderJours: z.number().int().min(1).max(365).optional(),
 };
 

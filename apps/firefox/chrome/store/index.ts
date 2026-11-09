@@ -32,7 +32,7 @@ export interface WebAiOsStore extends Store {
   /** Where an unreadable session was set aside at startup, or null. */
   readonly setAside: string | null;
   flush(): Promise<void>;
-  /** userContextId of a login profile: 0 for PROFIL_DEFAUT, an internal container otherwise (created on first use). */
+  /** userContextId of a login profile: 0 for DEFAULT_PROFILE, an internal container otherwise (created on first use). */
   containerFor(profile: ProfileId): number;
   /** The Node host running the kernel, started with the store. */
   readonly agent: AgentHost;
@@ -143,7 +143,7 @@ async function start(): Promise<WebAiOsStore> {
   const gmp = Services.prefs.getDefaultBranch("").getCharPref("media.gmp-manager.url", "");
   if (gmp.includes("%VERSION%")) Services.prefs.getDefaultBranch("").setCharPref("media.gmp-manager.url", gmp.replace("%VERSION%", Services.appinfo.platformVersion));
   // The widget displays' copies are a disposable cache: clearing them at startup never serves a copy made by an older
-  // sanitizer (CSP_WIDGET, contientIndiceReseau).
+  // sanitizer (CSP_WIDGET, containsNetworkHint).
   await IOUtils.remove(PathUtils.join(dataDir, "webaios-widgets"), { recursive: true, ignoreAbsent: true }).catch((e) => console.warn("[widget] copies non effacées :", e));
   // The site apps' served home copies too (the same sanitizer).
   await IOUtils.remove(PathUtils.join(dataDir, "webaios-sites"), { recursive: true, ignoreAbsent: true }).catch((e) => console.warn("[sites] copies non effacées :", e));
@@ -311,7 +311,7 @@ async function start(): Promise<WebAiOsStore> {
       ...agentExtensions.handlers,
       ...sites.handlers,
       ...apps.handlers,
-      // A review batch for the agent (noyau/design.ts): its window, then its panel with the keyboard, in front.
+      // A review batch for the agent (host/design.ts): its window, then its panel with the keyboard, in front.
       "design.fenetreAgent": async () => (await mainWindow()) ?? null,
       "design.donnerAgent": ([win]: [WindowId]) => {
         windows.get(win)?.controller.openAgent();

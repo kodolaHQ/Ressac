@@ -6,7 +6,7 @@ import type { WebAiOsStore } from "../chrome/store";
 import { readableProfiles, profilesForGrant } from "./home-profiles";
 
 // The window half of the actions service: private spaces, dispatches, the pace of
-// links, the direct feed's filter and the grant profiles. The disk and kernel half is the host's (noyau/actions.ts).
+// links, the direct feed's filter and the grant profiles. The disk and kernel half is the host's (host/actions.ts).
 
 /** A missing window or space counts as private. */
 export function activeSpacePrivate(appState: Pick<BrowserState, "espaces" | "fenetres">, f: WindowId): boolean {
@@ -21,7 +21,7 @@ export type ActionsFirefox = ApiWebaios["actions"] & {
   releaseComponent(name: string): void;
 };
 
-// Shown when the actions service has no kernel (same texts as noyau/actions.ts).
+// Shown when the actions service has no kernel (same texts as host/actions.ts).
 const NO_KERNEL_MESSAGE = "Le service des actions ne répond pas (agent arrêté ?)";
 const NO_ACTION = () => ({ courantes: [], enAttente: [] });
 

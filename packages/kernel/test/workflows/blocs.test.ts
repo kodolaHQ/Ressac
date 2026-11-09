@@ -372,7 +372,7 @@ describe("ia.rediger", () => {
 });
 
 describe("web.chercher", () => {
-  it("MESSAGES_NON_LANCE equal PLAFOND_RECHERCHES and RECHERCHES_ARRETEES", () => {
+  it("MESSAGES_NON_LANCE equal SEARCHES_CAP and SEARCHES_STOPPED", () => {
     expect(NOT_RUN_MESSAGES).toEqual([SEARCHES_CAP, SEARCHES_STOPPED]);
     expect(SEARCHES_CAP).toBe("Plafond de recherches atteint (30 par exécution)");
     expect(SEARCHES_STOPPED).toBe("Recherches arrêtées : DuckDuckGo a refusé une recherche de cette exécution");

@@ -261,7 +261,7 @@ export async function createKernel(o: {
   atelier?: Workshop;
   /** MCP tools of the applications (launch, stop, log). */
   applications?: AppsTools;
-  /** Ports on which a local demo opened by the agent is « built » (by default those of the container, plagePortsConteneur). */
+  /** Ports on which a local demo opened by the agent is « built » (by default those of the container, containerPortRange). */
   portConstruit?: (port: number) => boolean;
   /**
    * Host folder, outside the mounted workspace, for the raw profiles of the sites the agent did not build (the
@@ -287,7 +287,7 @@ export async function createKernel(o: {
   adressesLocales?: boolean;
   /** Tests only: the base of the DuckDuckGo searches (a recorded page served locally). */
   urlRecherche?: string;
-  /** End notification of a watch that has new items (the browser shows it, see OptionsPlanificateur). */
+  /** End notification of a watch that has new items (the browser shows it, see SchedulerOptions). */
   notifier?: (n: NotificationWidget) => void;
   /** MCP tools of the extensions (provided by the browser). */
   extensions?: ExtensionsTools;

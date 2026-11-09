@@ -109,7 +109,7 @@ const widgetsContext = { chemins: paths, dossierWidgets: widgetsFolder };
 // Actions' runs, results, grants and refusals: outside the space.
 const actionsFolder = join(dataDir, "actions");
 const actionsContext = { chemins: paths, dossierActions: actionsFolder };
-// One container for the agent (whatever its profile) and the apps it launches: the kernel's own default (noyau.ts:389).
+// One container for the agent (whatever its profile) and the apps it launches: the kernel's own default (kernel.ts:389).
 const workshop = new Workshop({ chemins: paths });
 
 let kernel: Kernel | null = null;
@@ -353,7 +353,7 @@ const rpc = createRpc({
     "accueil.execution": (p: { id?: unknown; execution?: unknown }) =>
       executionWidget(widgetsFolder, typeof p?.id === "string" ? p.id : "", typeof p?.execution === "string" ? p.execution : ""),
     // The workflow builder: inputs checked with the shared
-    // schemas, a bad one answered with ARGUMENT_INVALIDE's shape. The private-space refusal of an action is the chrome's (api.ts).
+    // schemas, a bad one answered with INVALID_ARGUMENT's shape. The private-space refusal of an action is the chrome's (api.ts).
     "workflow.catalogue": () => blockCatalog(),
     "workflow.lire": (p: { cible?: unknown }) => {
       const target = TargetSchema.safeParse(p?.cible);
@@ -557,18 +557,18 @@ const rpc = createRpc({
       byKey(p, (key) => extensions.revoir(key, typeof p.fenetre === "string" ? p.fenetre : null)),
     "extensions.toutCouper": (p: { oui?: unknown }) => extensions.toutCouper(p?.oui === true),
     "extensions.installerStore": () => ({ ok: false, erreur: STORE_ABSENT }),
-    // The RPC signal is ignored on purpose: the kernel's Menagement hands the lane back (partie=false) when the read has already ended, and rpc.ts drops a late answer.
+    // The RPC signal is ignored on purpose: the kernel's Pacing hands the lane back (partie=false) when the read has already ended, and rpc.ts drops a late answer.
     "lecture.changerHote": (p: { lecture: string; hote: string }) => bridge.changerHote(p.lecture, p.hote),
-    // Tests only: a paced read through a Menagement shared by the calls, as a workflow's web widget does.
+    // Tests only: a paced read through a Pacing shared by the calls, as a workflow's web widget does.
     ...(process.env.WEBAIOS_TEST_LECTURE_MENAGEE === "1"
       ? {
           "test.lectureMenagee": ({ url }: { url: string }) =>
             testPacing.lire(new URL(url).hostname, (ch) => bridge.lirePageInvisible(url, { profil: null, changerHote: ch })),
         }
       : {}),
-    // The agent's applications (noyau/applications.ts): `apps` is made after the RPC, below.
+    // The agent's applications (host/applications.ts): `apps` is made after the RPC, below.
     ...Object.fromEntries(["applications.liste", "applications.agir", "applications.fenetreFermee", "applications.navigation", "applications.noter"].map((k) => [k, (p: unknown) => apps.handlers[k]!(p)])),
-    // Design mode's host side (noyau/design.ts): `design` is made after `sites`, below.
+    // Design mode's host side (host/design.ts): `design` is made after `sites`, below.
     ...Object.fromEntries(DESIGN_METHODS.map((k) => [k, (p: unknown) => design.handlers[k]!(p)])),
     ...(process.env.WEBAIOS_HOST_TEST === "1" ? { "debug.log": (p: { texte: string }) => console.log(p.texte) } : {}),
   },

@@ -177,7 +177,7 @@ test("over 256 KB: refused; widget folder missing: Widget introuvable", async ()
   expect(r).toEqual({ ok: false, erreur: "Widget introuvable" });
 });
 
-test("lireBrouillon returns the JSON even invalid, null for a cut JSON, the implicit one for recolte.mjs alone", async () => {
+test("readDraft returns the JSON even invalid, null for a cut JSON, the implicit one for recolte.mjs alone", async () => {
   expect(await readDraft(files)).toBeNull();
   const invalid = { ...wf(), liens: [] };
   await writeFile(join(files, "workflow.json"), JSON.stringify(invalid));

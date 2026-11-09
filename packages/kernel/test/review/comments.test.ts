@@ -51,7 +51,7 @@ describe("recoller", () => {
   });
 });
 
-describe("CommentairesRelecture", () => {
+describe("ReviewComments", () => {
   const raw = { fichier: "f.txt", debut: 1, fin: 1, lignes: [L(" ", "a")], texte: "à revoir" };
   async function depot() {
     const folder = await tempFolder();
@@ -70,7 +70,7 @@ describe("CommentairesRelecture", () => {
     expect(all).toHaveLength(2);
     expect(all.find((c) => c.fichier === "autre.txt")!.ligneChangee).toBe(false);
   });
-  test("ajouter refuses an empty or whitespace text with REMARQUE_VIDE", async () => {
+  test("ajouter refuses an empty or whitespace text with EMPTY_REMARK", async () => {
     const r = new ReviewComments((await depot()).fichier);
     await expect(r.ajouter({ ...raw, texte: "" })).rejects.toThrow(EMPTY_REMARK);
     await expect(r.ajouter({ ...raw, texte: "  \n " })).rejects.toThrow(EMPTY_REMARK);

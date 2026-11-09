@@ -25,7 +25,7 @@ test("WEBAIOS_RACINE overrides the root", () => {
   expect(c.profils).toBe("/tmp/ailleurs/.webaios/profils");
 });
 
-test("cheminDansConteneur translates a space path and refuses the rest", () => {
+test("pathInContainer translates a space path and refuses the rest", () => {
   const c = spacePaths("/tmp/w");
   expect(pathInContainer("/tmp/w/accueil/blocs/x", c)).toBe("/workspace/accueil/blocs/x");
   expect(pathInContainer("/tmp/w", c)).toBe("/workspace");
@@ -33,7 +33,7 @@ test("cheminDansConteneur translates a space path and refuses the rest", () => {
   expect(() => pathInContainer("/tmp/w-autre/x", c)).toThrow();
 });
 
-test("cheminsEspace().extensions vaut <racine>/extensions", () => {
+test("spacePaths().extensions vaut <racine>/extensions", () => {
   expect(spacePaths("/tmp/w").extensions).toBe("/tmp/w/extensions");
 });
 

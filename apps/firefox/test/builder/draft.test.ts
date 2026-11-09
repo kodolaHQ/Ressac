@@ -12,7 +12,7 @@ test("adding two ia.trier gives ia-trier then ia-trier-2", () => {
   expect(b.brouillon.blocs[1]!.position).toEqual({ x: 3, y: 4 });
 });
 
-test("idPourType truncates to 40", () => {
+test("idForType truncates to 40", () => {
   expect(idForType("a".repeat(60), []).length).toBe(40);
   expect(idForType("a".repeat(60), ["a".repeat(40)]).length).toBeLessThanOrEqual(40);
 });
@@ -69,14 +69,14 @@ test("deplacer ignores non-finite positions", () => {
   expect(move(b, { a: { x: 1, y: Infinity } })).toBe(b);
 });
 
-test("versBrouillon is lenient", () => {
+test("toDraft is lenient", () => {
   expect(toDraft({ blocs: [{ id: "a", type: "code" }] })).toEqual({ version: 1, blocs: [{ id: "a", type: "code", position: { x: 0, y: 0 }, parametres: {} }], liens: [] });
   expect(toDraft({ blocs: "non" })).toBeNull();
   expect(toDraft({ blocs: [{ id: 1, type: "code" }] })).toBeNull();
   expect(toDraft(null)).toBeNull();
 });
 
-test("memeBrouillon ignores key order", () => {
+test("sameDraft ignores key order", () => {
   const a = updateEntry([{ ...block("a"), parametres: { x: 1, y: 2 } }]);
   const b = updateEntry([{ ...block("a"), parametres: { y: 2, x: 1 } }]);
   expect(sameDraft(a, b)).toBe(true);
@@ -115,7 +115,7 @@ describe("Historique", () => {
   });
 });
 
-describe("suivreFichier", () => {
+describe("followFile", () => {
   const A = updateEntry([block("a")]), B = updateEntry([block("b")]), C = updateEntry([block("c")]), D = updateEntry([block("d")]);
   test("echo of our own write ignored", () => {
     expect(followFile({ local: A, dernierConnu: B, disque: B, envoyes: [] })).toBe("ignorer");

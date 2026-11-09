@@ -45,7 +45,7 @@ const state = (extensions: Record<string, ExtensionEntry>, allCut = false): Exte
 const none = new Set<string>();
 
 describe("extension registry", () => {
-  it("enabling an agent extension in a private profile throws ERREUR_PROFIL_PRIVE; a Store extension is enabled there", () => {
+  it("enabling an agent extension in a private profile throws PRIVATE_PROFILE_ERROR; a Store extension is enabled there", () => {
     const e = state({ [A]: entry("agent"), [S]: entry("store") });
     const privates = new Set(["p"]);
     expect(() => enable(e, A, "p", privates)).toThrow(PRIVATE_PROFILE_ERROR);
@@ -72,7 +72,7 @@ describe("extension registry", () => {
     expect(r.retirees).toEqual([{ cle: A, profil: "p" }]);
   });
 
-  it("desactiver, desactiverPartout, retirer, couperTout, epingler", () => {
+  it("desactiver, desactiverPartout, retirer, cutAll, epingler", () => {
     const e = state({ [A]: entry("agent", { profils: ["p", "q"] }) });
     expect(disable(e, A, "p").extensions[A]!.profils).toEqual(["q"]);
     expect(disableEverywhere(e, A).extensions[A]!.profils).toEqual([]);
@@ -83,7 +83,7 @@ describe("extension registry", () => {
     expect(() => pin(e, "agent:inconnue", true)).toThrow();
   });
 
-  it("lireCle refuse « store:abc », « agent:A », « autre:x »", () => {
+  it("readKey refuse « store:abc », « agent:A », « autre:x »", () => {
     expect(readKey("store:abc")).toBeNull();
     expect(readKey("agent:A")).toBeNull();
     expect(readKey("autre:x")).toBeNull();

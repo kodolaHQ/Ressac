@@ -14,7 +14,7 @@ const decl: DeclarationSite = {
 };
 const exists = (p: string) => stat(p).then(() => true, () => false);
 
-test("changerAdresse a → b: anciens [a]; then c: anciens [a, b]", async () => {
+test("changeUrl a → b: anciens [a]; then c: anciens [a, b]", async () => {
   const d = await tempFolder();
   expect(await readUrlState(d, "w")).toBeNull();
   const e1 = await changeUrl(d, "w", decl, "vidola-b.example");
@@ -30,19 +30,19 @@ test("changerAdresse a → b: anciens [a]; then c: anciens [a, b]", async () => 
   await expect(changeUrl(d, "w", decl, "pas valide/")).rejects.toThrow();
 });
 
-test("domainesEffectifs unites them with those of site.json", async () => {
+test("effectiveDomains unites them with those of site.json", async () => {
   const d = await tempFolder();
   const e = await changeUrl(d, "w", { ...decl, adresse: "https://vidola-a.example/" }, "vidola-b.example");
   expect(effectiveDomains(decl, e)).toEqual(["vidola-a.example", "vidola-b.example"]);
 });
 
-test("adresseDeDepart keeps path and query on the current domain", async () => {
+test("startUrl keeps path and query on the current domain", async () => {
   const d = await tempFolder();
   const e = await changeUrl(d, "w", decl, "vidola-b.example");
   expect(startUrl(decl, e)).toBe("https://vidola-b.example/film?x=1");
 });
 
-test("supprimerDonneesSite erases memory, address and grant of that site only", async () => {
+test("deleteSiteData erases memory, address and grant of that site only", async () => {
   const p = await tempFolder();
   const ds = join(p, "sites");
   for (const id of ["a", "b"]) {
@@ -63,7 +63,7 @@ test("supprimerDonneesSite erases memory, address and grant of that site only", 
   await expect(deleteSiteData(p, "../b")).rejects.toThrow();
 });
 
-test("supprimerDonneesSite removes the whole folder, .bak included", async () => {
+test("deleteSiteData removes the whole folder, .bak included", async () => {
   const p = await tempFolder();
   const ds = join(p, "sites");
   await mkdir(join(ds, "a"), { recursive: true });
@@ -72,7 +72,7 @@ test("supprimerDonneesSite removes the whole folder, .bak included", async () =>
   expect(await exists(join(ds, "a"))).toBe(false);
 });
 
-test("changerAdresse keeps the 100 most recent old ones", async () => {
+test("changeUrl keeps the 100 most recent old ones", async () => {
   const d = await tempFolder();
   let e = await changeUrl(d, "w", decl, "s0.example");
   for (let i = 1; i <= 105; i++) e = await changeUrl(d, "w", decl, `s${i}.example`);
@@ -81,7 +81,7 @@ test("changerAdresse keeps the 100 most recent old ones", async () => {
   expect(await readUrlState(d, "w")).toEqual(e);
 });
 
-test("a deletion ordered after an in-flight changerAdresse leaves the site erased", async () => {
+test("a deletion ordered after an in-flight changeUrl leaves the site erased", async () => {
   const p = await tempFolder();
   const ds = join(p, "sites");
   const c = changeUrl(ds, "w", decl, "vidola-b.example");

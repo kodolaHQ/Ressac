@@ -25,7 +25,7 @@ test("the Leboncoin example (web, input « Recherche ») is accepted", () => {
   expect(d.motsCles).toEqual([]);
 });
 
-test("web with an account: WEB_AVEC_COMPTE", () => {
+test("web with an account: WEB_WITH_ACCOUNT", () => {
   expect(message({ nom: "X", sources: { web: true, compte: ["gitlab.com"] } })).toBe(WEB_WITH_ACCOUNT);
 });
 

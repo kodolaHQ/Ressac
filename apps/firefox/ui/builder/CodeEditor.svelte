@@ -9,7 +9,7 @@
    * The `.mjs` file of a `code` block. Nothing is written on typing (the running widget would read half-written code):
    * « Enregistrer le code » or ⌘S writes it. The code never runs here, it is only text.
    */
-  /** `widget`: the workflow's key (`cleCible`), a widget's or an action's. */
+  /** `widget`: the workflow's key (`targetKey`), a widget's or an action's. */
   let { widget, nom: name }: { widget: string; nom: string } = $props();
   const depot = repoOf(api.workflow);
 

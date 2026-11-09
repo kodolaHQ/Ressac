@@ -76,7 +76,7 @@ describe("the Actions page without actions", () => {
   afterAll(close);
 
   // actions.spec.ts:1140
-  it("no action: the invitation; private space: ACTIONS_EN_ESPACE_PRIVE", async () => {
+  it("no action: the invitation; private space: ACTIONS_IN_PRIVATE_SPACE", async () => {
     await openActionsPage();
     await q.waitContains(tid("page-actions"), "Aucune action. Demande à l'agent de t'en créer une.");
     await setPrivate(true);

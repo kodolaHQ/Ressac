@@ -3,7 +3,7 @@ import type { CpuProfile } from "../devtools/summaries.js";
 import type { ChangeHost } from "../workflows/pacing.js";
 import type { ReadPage } from "../workflows/protocole.js";
 
-/** The options of an invisible page read (see `PontNavigateur.lirePageInvisible`). */
+/** The options of an invisible page read (see `BrowserBridge.lirePageInvisible`). */
 export interface PageReadOptions {
   profil: string | null;
   domaines?: string[];
@@ -23,7 +23,7 @@ export interface TabInfo {
   application?: string;
   /**
    * Id of the site app, for its window (`site:<id>`): `titre` is then the app's name (never the page
-   * title), and its read goes through the app's grant (`PolitiqueAcces.lectureSiteAccordee`), never through the origin.
+   * title), and its read goes through the app's grant (`AccessPolicy.lectureSiteAccordee`), never through the origin.
    */
   site?: string;
   /**
@@ -42,7 +42,7 @@ export interface TabInfo {
 export interface BrowserBridge {
   ongletActif(): Promise<TabInfo | null>;
   listerOnglets(): Promise<TabInfo[]>;
-  /** Throws OngletIntrouvable if the id is unknown (like lireTexte, naviguer and capturer). */
+  /** Throws TabNotFound if the id is unknown (like lireTexte, naviguer and capturer). */
   lireTexte(id: string): Promise<{ texte: string; selection?: string }>;
   ouvrirOnglet(url: string, space?: string): Promise<TabInfo>;
   /**
@@ -69,13 +69,13 @@ export interface BrowserBridge {
   historique?: BrowserHistory;
   /**
    * Reads a page in an invisible tab, without clicking or typing. `profil: null`: blank session, without any cookie;
-   * otherwise the named login profile. Throws ProfilRefuse if this profile is unknown or used by a private space.
+   * otherwise the named login profile. Throws ProfileDenied if this profile is unknown or used by a private space.
    * Absent: no page reading for the widgets.
    *
    * `domaines` (given for any read of a widget that reads with the user's account): allowed host names. The bridge
    * MUST block any navigation of the main frame (redirect, script, meta refresh) to a host outside this
    * list, before the request goes out: otherwise the profile's cookies, or the URL itself, would leak. The kernel also checks
-   * `PageLue.url` on return.
+   * `ReadPage.url` on return.
    *
    * The bridge also refuses any navigation of the main frame to a local address (`adresseLocale`), unless
    * `adressesLocales` is true (tests only: the kernel passes it when its own `adressesLocales` option is).
@@ -84,7 +84,7 @@ export interface BrowserBridge {
    * window closed, and the promise rejected with `signal.reason`.
    *
    * `changerHote` (given for a paced read, that of a `web` widget): before following a navigation of the main
-   * frame (redirect, script, meta refresh) to another site (different `siteMenage`), the bridge holds it and
+   * frame (redirect, script, meta refresh) to another site (different `sitePacing`), the bridge holds it and
    * waits for `changerHote(host)`, which returns when this site's pacing allows it; rejected, the read fails.
    *
    * `defiler` (1 to 20): after the first calm, the page is scrolled one screen at a time (never a click, keystroke
@@ -140,7 +140,7 @@ export type JsResult = { valeur: string } | { exception: string };
 
 /** What the browser gives to inspect a tab. */
 export interface BrowserDevTools {
-  /** Throws OutilsDevOccupes or OngletIntrouvable. */
+  /** Throws DevToolsBusy or TabNotFound. */
   attacher(id: string): Promise<void>;
   detacher(id: string): Promise<void>;
   console(id: string): Promise<MessageConsole[]>;
@@ -201,7 +201,7 @@ export interface BrowserHistory {
 
 export const PRIVATE_TEXT = "Cet onglet est dans un espace privé : l'agent n'y a pas accès.";
 
-/** The tab is in a private space: the agent receives TEXTE_PRIVE, with no question asked to the user. */
+/** The tab is in a private space: the agent receives PRIVATE_TEXT, with no question asked to the user. */
 export class PrivateTab extends Error {
   constructor(readonly id: string) {
     super(PRIVATE_TEXT);

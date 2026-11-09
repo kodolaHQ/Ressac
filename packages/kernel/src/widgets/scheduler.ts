@@ -108,11 +108,11 @@ export interface SchedulerOptions {
   recolterEssai?: Tryer;
   /** Called at each entry and exit of the queue, and at each trace of the run in progress. */
   surDirect?: (e: DirectState) => void;
-  /** Tests only: the harvests may read local addresses (see OptionsRecolte). */
+  /** Tests only: the harvests may read local addresses (see HarvestOptions). */
   adressesLocales?: boolean;
   /** Pacing of the searches and open reads, shared by all the harvests and all the tries. */
   menagement?: Pacing;
-  /** Tests only: the base of the DuckDuckGo searches (see OptionsRecolte). */
+  /** Tests only: the base of the DuckDuckGo searches (see HarvestOptions). */
   urlRecherche?: string;
   /**
    * Workshop startup: no check or harvest before its end (otherwise each launch would show a brief

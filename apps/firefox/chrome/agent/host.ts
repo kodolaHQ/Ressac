@@ -75,7 +75,7 @@ export function createHost(o: {
       }
     };
     void readLines(proc.stdout, (l) => rpc.receive(l)).then(exited);
-    void readLines(proc.stderr, (l) => console.warn(`[noyau] ${l}`));
+    void readLines(proc.stderr, (l) => console.warn(`[kernel] ${l}`));
     o.onStart((method, params) => rpc.notify(method, params));
     pid = proc.pid;
     void proc.wait().then(exited);

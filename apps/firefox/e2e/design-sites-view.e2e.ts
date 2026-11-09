@@ -241,7 +241,7 @@ describe("design mode, site target, the view", () => {
   });
 
   // design-sites.spec.ts:149 (the service's part)
-  it("toggle on tuning, a trusted click on #lien: no navigation, reactions empty; the bubble names a#lien, has the site warning, sits at placeBulle with hautMin 36 and height 190; no source even on a data-source element", async () => {
+  it("toggle on tuning, a trusted click on #lien: no navigation, reactions empty; the bubble names a#lien, has the site warning, sits at bubbleSlot with hautMin 36 and height 190; no source even on a data-source element", async () => {
     const start = await toSite(m, "tuning");
     const r = await cssRect("tuning", "#lien");
     const p = await viewPoint(m, "tuning", "#lien");
@@ -342,7 +342,7 @@ describe("design mode, site target, the view", () => {
     expect(await cart("tuning")).toBe(k + 1);
   });
 
-  it("toggle where unavailable (the login page): nothing injected, the bar's avis is the info INDISPONIBLE_DESIGN_SITE, gone after 5 s; a blocked link's avis is never replaced", async () => {
+  it("toggle where unavailable (the login page): nothing injected, the bar's avis is the info SITE_DESIGN_UNAVAILABLE, gone after 5 s; a blocked link's avis is never replaced", async () => {
     await toSite(m, "tuning");
     await view("tuning", `(location.href = ${JSON.stringify(url("compte-tuning.localhost", "/connexion"))}, 1)`);
     await expect.poll(() => view("tuning", "document.title"), { timeout: 10_000 }).toBe("Connexion");

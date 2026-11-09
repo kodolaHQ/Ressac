@@ -47,7 +47,7 @@ test("memory refused by the service (app being deleted): the memory's refusal, n
   expect(memory.contenu().valeurs).toEqual({});
 });
 
-// --- Video resume: the positions, on the host's creerPositions. The
+// --- Video resume: the positions, on the host's createPositions. The
 // sender checks (view, grant, repriseDansCadre, page address) are the chrome's, in site-frames.test.ts.
 
 let granted: boolean;

@@ -59,7 +59,7 @@ export interface SessionLike {
 interface Entry {
   session?: SessionLike;
   tampon: SessionBuffer;
-  /** Output not yet sent to the UI (see REGROUPEMENT_MS). */
+  /** Output not yet sent to the UI (see GROUPING_MS). */
   aEnvoyer: string;
   minuterie?: NodeJS.Timeout;
   demarrage?: Promise<void>;

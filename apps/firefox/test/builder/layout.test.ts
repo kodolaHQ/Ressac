@@ -42,13 +42,13 @@ test("a cycle does not loop", () => {
   expect(arrange({ version: 1, blocs: [block("a")], liens: [link("a", "a")] }).a).toEqual({ x: 0, y: 0 });
 });
 
-test("sansDisposition: at least two blocks, all in the same place", () => {
+test("withoutLayout: at least two blocks, all in the same place", () => {
   expect(withoutLayout({ version: 1, blocs: [block("a")], liens: [] })).toBe(false);
   expect(withoutLayout({ version: 1, blocs: [block("a"), block("b")], liens: [] })).toBe(true);
   expect(withoutLayout({ version: 1, blocs: [block("a"), block("b", 5, 0)], liens: [] })).toBe(false);
 });
 
-test("positionsAffichees keeps the place of an already displayed block when the file changes", () => {
+test("shownPositions keeps the place of an already displayed block when the file changes", () => {
   const b: Brouillon = { version: 1, blocs: [block("a"), block("b"), block("c")], liens: [link("a", "b"), link("b", "c")] };
   const p = shownPositions(b, { a: { x: 500, y: 40 } });
   expect(p.a).toEqual({ x: 500, y: 40 });

@@ -38,7 +38,7 @@ function activeWorkflows(state: BrowserState): Record<WindowId, string | null> {
   return r;
 }
 
-/** The kernel's PontNavigateur, answered on the store and the windows' tabs. */
+/** The kernel's BrowserBridge, answered on the store and the windows' tabs. */
 export function bridgeHandlers(
   store: Store,
   questions: Questions,
@@ -54,7 +54,7 @@ export function bridgeHandlers(
     if (!m) throw new Error("Aucune fenêtre ouverte");
     return m;
   };
-  /** Throws OngletPrive for a tab in a private space: a call that crosses the switch to private reads nothing. */
+  /** Throws PrivateTab for a tab in a private space: a call that crosses the switch to private reads nothing. */
   const tab = (id: string): Tab => {
     const state = store.state;
     const o = state.onglets[id];
@@ -88,7 +88,7 @@ export function bridgeHandlers(
     id.startsWith(SITE_PREFIX) ? sites.viewFor(id.slice(SITE_PREFIX.length)) : id.startsWith(APP_PREFIX) ? apps.viewFor(id.slice(APP_PREFIX.length)) : null;
   /**
    * Reads the view of a site app or agent app window: never a site app's bar, home or card, nor an app's badge or
-   * overlay. Closed, before or during the read: OngletIntrouvable (a clean answer). Undefined for
+   * overlay. Closed, before or during the read: TabNotFound (a clean answer). Undefined for
    * any other id.
    */
   const onSiteView = <T>(id: string, read: (browser: any, win: Window) => Promise<T>): Promise<T> | undefined => {

@@ -16,7 +16,7 @@ const normalize = (host: string) => host.toLowerCase().replace(/\.+$/, "");
 /**
  * The URL may be loaded: http(s) only, never an address of the machine or the local network (except
  * `adressesLocales`, tests only); with `domaines`, its host must be exactly one of them, as the
- * kernel checks (packages/kernel/src/widgets/recolte.ts, `verifierUrl`): a subdomain is not allowed there.
+ * kernel checks (packages/kernel/src/widgets/recolte.ts, `checkUrl`): a subdomain is not allowed there.
  */
 export function allowedUrl(raw: string, domains: readonly string[] | undefined, localUrls = false): boolean {
   let u: URL;

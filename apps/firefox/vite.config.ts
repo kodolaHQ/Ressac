@@ -82,7 +82,7 @@ export default defineConfig(({ mode }) => {
     };
   const panel = mode === "agent" ? "agent" : "sidebar";
   return {
-    // FenetreSite's :global(html, body) rules (opaque background, font) would reach the main UI through the shared
+    // SiteWindow's :global(html, body) rules (opaque background, font) would reach the main UI through the shared
     // stylesheet: injected, they only land in the site bar's document, when it mounts.
     plugins: [svelte({ dynamicCompileOptions: ({ filename }) => (INJECTED_CSS.some((f) => filename.endsWith(f)) ? { css: "injected" } : undefined) })],
     // Library mode leaves process.env.NODE_ENV in place (@xyflow/svelte reads it); a privileged page has no process.

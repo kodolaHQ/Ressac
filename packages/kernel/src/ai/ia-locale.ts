@@ -341,7 +341,7 @@ export class LocalAi {
     await this.arreter();
   }
 
-  /** An access for a kernel, closed with it (see AccesIa). */
+  /** An access for a kernel, closed with it (see AiAccess). */
   acces(): AiAccess {
     let closed = false;
     // Checked before the call: kev() launches Kev synchronously, before its first await; fermer() stops it afterwards.

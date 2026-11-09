@@ -106,7 +106,7 @@ export function injectionFor(
 
 /**
  * A console message whose source claims to be a tweak, kept bounded: text and source truncated, at most
- * `ERREURS_RETOUCHES_MAX` messages and `CONSOLE_RETOUCHES_TOTAL` characters of text (the oldest forgotten).
+ * `MAX_TWEAK_ERRORS` messages and `CONSOLE_TWEAKS_TOTAL` characters of text (the oldest forgotten).
  * `sourceVerifiee` is always false: the page can name its own code `webaios-retouche://…` (`//# sourceURL=`).
  */
 export function addTweakConsole(errors: TweakError[], m: { texte: string; source: string }, when: string): TweakError[] {

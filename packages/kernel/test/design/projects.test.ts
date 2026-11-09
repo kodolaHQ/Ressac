@@ -13,7 +13,7 @@ const context = (ranges: [number, number][] = [[5280, 5299]]): AvailabilityConte
   externes: [external],
 });
 
-describe("projetPourAdresse", () => {
+describe("projectForUrl", () => {
   test("http://localhost:15280/x of an app launched on 15280 gives app-essai", () => {
     expect(projectForUrl("http://localhost:15280/x", context())).toEqual({ type: "app", projet: "app-essai", dossier: "essai", nom: "Essai" });
   });
@@ -31,7 +31,7 @@ describe("projetPourAdresse", () => {
   });
 });
 
-describe("plagesConteneur", () => {
+describe("containerRanges", () => {
   test("default, valid range, invalid value", () => {
     expect(containerRanges(undefined)).toEqual([[5280, 5299]]);
     expect(containerRanges("15280-15284")).toEqual([[5280, 5299], [15280, 15284]]);
@@ -49,12 +49,12 @@ describe("plagesConteneur", () => {
 });
 
 describe("ids", () => {
-  test("ID_PROJET", () => {
+  test("PROJECT_ID", () => {
     for (const ok of ["app-essai", "ext-0123456789abcdef", "demo-5280"]) expect(PROJECT_ID.test(ok)).toBe(true);
     for (const ko of ["app-../x", "ext-XYZ", "demo-", "app-"]) expect(PROJECT_ID.test(ko)).toBe(false);
     expect(PROJECT_ID.test(appProject("a")) && PROJECT_ID.test(demoProject(5280)) && PROJECT_ID.test(externalProject("0123456789abcdef"))).toBe(true);
   });
-  test("idExterne is stable and is 16 hex characters", () => {
+  test("externalId is stable and is 16 hex characters", () => {
     expect(externalId("/a/b")).toBe(externalId("/a/b"));
     expect(externalId("/a/b")).toMatch(/^[0-9a-f]{16}$/);
     expect(externalId("/a/b")).not.toBe(externalId("/a/c"));
@@ -63,18 +63,18 @@ describe("ids", () => {
 
 describe("dossiers", () => {
   const d: DesignFolders = { remarquesEspace: "/r/.webaios/remarques", prive: "/u/design" };
-  test("dossierRemarques", () => {
+  test("remarksFolder", () => {
     expect(remarksFolder(d, "ext-0123456789abcdef")).toBe("/u/design/remarques/ext-0123456789abcdef");
     expect(remarksFolder(d, "app-essai")).toBe("/r/.webaios/remarques/app-essai");
     expect(remarksFolder(d, "demo-5280")).toBe("/r/.webaios/remarques/demo-5280");
   });
-  test("depotRelecture and fichierCommentaires under prive/relecture", () => {
+  test("reviewStore and commentsFile under prive/relecture", () => {
     expect(reviewStore(d, "app-essai")).toBe("/u/design/relecture/app-essai.git");
     expect(commentsFile(d, "ext-0123456789abcdef")).toBe("/u/design/relecture/ext-0123456789abcdef.commentaires.json");
   });
 });
 
-describe("destinationDe and app window", () => {
+describe("destinationOf and app window", () => {
   test("destinations", () => {
     expect(destinationOf(projectForAppWindow("essai", "Essai"), [])).toEqual({ libelle: "l'agent" });
     expect(destinationOf({ type: "demo", projet: "demo-5280", port: 5280 }, [])).toEqual({ libelle: "l'agent" });
@@ -87,11 +87,11 @@ describe("destinationDe and app window", () => {
 });
 
 describe("projet de site", () => {
-  test("ID_PROJET accepte site-tuning, site-a, site-<60 car.> ; refuse site-, site-A, site-../x, site--x, site-<61 car.>, site-a_b", () => {
+  test("PROJECT_ID accepte site-tuning, site-a, site-<60 car.> ; refuse site-, site-A, site-../x, site--x, site-<61 car.>, site-a_b", () => {
     for (const ok of ["site-tuning", "site-a", `site-${"a".repeat(60)}`]) expect(PROJECT_ID.test(ok)).toBe(true);
     for (const ko of ["site-", "site-A", "site-../x", "site--x", `site-${"a".repeat(61)}`, "site-a_b"]) expect(PROJECT_ID.test(ko)).toBe(false);
   });
-  test("dossierRemarques on the space side, destination the agent, exact messages", () => {
+  test("remarksFolder on the space side, destination the agent, exact messages", () => {
     const d: DesignFolders = { remarquesEspace: "/e/remarques", prive: "/p" };
     expect(remarksFolder(d, "site-tuning")).toBe(join(d.remarquesEspace, "site-tuning"));
     expect(projectForSite("tuning", "Tuning")).toEqual({ type: "site", projet: "site-tuning", id: "tuning", nom: "Tuning" });

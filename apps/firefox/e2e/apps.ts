@@ -122,7 +122,7 @@ export interface AppsPage {
 
 /**
  * Three projects (`essai` an application, `zod` a POC, `vieux` without
- * manifest) and the Applications page open. `lent`: essai's server waits a second before listening (« Lancement… » shows).
+ * manifest) and the Applications page open. `lent`: essai's server waits a second before listening (« Launch… » shows).
  * `dataDir` and `profile` given are reused (a restart); the caller removes the folders.
  */
 export async function openAppsPage(

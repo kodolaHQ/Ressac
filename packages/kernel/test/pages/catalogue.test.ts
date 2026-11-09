@@ -14,18 +14,18 @@ describe("catalog of built-in components", () => {
     ]);
   });
 
-  it("catalogueTexte cites table, its columns and « requis »", () => {
+  it("catalogText cites table, its columns and « requis »", () => {
     const t = catalogText(BUILTIN_COMPONENTS);
     const line = t.split("\n").find((l) => l.startsWith("tableau"))!;
     expect(line).toContain("colonnes [{champ, libelle}] ≤8");
     expect(line).toContain("requis");
   });
 
-  it("catalogueTexte of the whole catalog is under 4,000 characters", () => {
+  it("catalogText of the whole catalog is under 4,000 characters", () => {
     expect(catalogText(BUILTIN_COMPONENTS).length).toBeLessThan(4000);
   });
 
-  it("catalogueTexte states the one-or-the-other rules and the limits", () => {
+  it("catalogText states the one-or-the-other rules and the limits", () => {
     const t = catalogText(BUILTIN_COMPONENTS);
     expect(t).toContain("texte OU valeur");
     expect(t).toContain("valeurs OU elements + champ");

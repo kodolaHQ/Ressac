@@ -466,7 +466,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
     const [l, h] = dims.inner;
     const barBottom = dims.bar[1]! + dims.bar[3]!;
     const bounds = { x: vx!, y: vy!, width: vw!, height: vh! };
-    // The bubble of an element at the top of the page, and one of an element below a short window (placeBulle clamps up).
+    // The bubble of an element at the top of the page, and one of an element below a short window (bubbleSlot clamps up).
     const top = bubbleSlot({ x: 10, y: 0, largeur: 50, hauteur: 10 }, 1, bounds, [l!, h!], { hautMin: vy! });
     const clamped = bubbleSlot({ x: 10, y: 5000, largeur: 50, hauteur: 10 }, 1, bounds, [l!, 180], { hautMin: vy! });
     const unclamped = bubbleSlot({ x: 10, y: 5000, largeur: 50, hauteur: 10 }, 1, bounds, [l!, 180]);
@@ -474,7 +474,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
     note("S7 places", { dims, top, clamped, unclamped, cart });
     expect(clamped.y).toBeGreaterThanOrEqual(barBottom);
 
-    // The real overlay page (sidebar.html?calque, DesignApp) in the site window, on an ApiCalque the chrome sets.
+    // The real overlay page (sidebar.html?calque, DesignApp) in the site window, on an OverlayApi the chrome sets.
     const show = (mode: "bulle" | "panier", place: { x: number; y: number; width: number; height: number }) =>
       m.execute(
         `return (async ([mode, p]) => {

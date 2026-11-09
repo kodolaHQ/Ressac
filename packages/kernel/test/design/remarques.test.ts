@@ -23,7 +23,7 @@ async function frame(start = new Date("2026-11-02T10:00:00Z")) {
 }
 const pause = (ms: number) => new Promise((ok) => setTimeout(ok, ms));
 
-describe("Remarques", () => {
+describe("Remarks", () => {
   test("ajouterAuPanier then a new instance: the cart is re-read from disk with the capture <id>.png", async () => {
     const { dossiers: folders, r } = await frame();
     const e = await r.ajouterAuPanier("app-essai", { texte: "Plus grand", contexte: ctx(), capture: PNG });
@@ -35,7 +35,7 @@ describe("Remarques", () => {
     expect(await readFile(join(remarksFolder(folders, "app-essai"), `${e.id}.png`))).toEqual(PNG);
   });
 
-  test("empty text → REMARQUE_VIDE; 5,000-character html → 4,096 + « … [tronqué] »", async () => {
+  test("empty text → EMPTY_REMARK; 5,000-character html → 4,096 + « … [tronqué] »", async () => {
     const { r } = await frame();
     await expect(r.ajouterAuPanier("app-essai", { texte: "  ", contexte: ctx(), capture: null })).rejects.toThrow(EMPTY_REMARK);
     const e = await r.ajouterAuPanier("app-essai", { texte: "ok", contexte: ctx("a".repeat(5000)), capture: null });
@@ -53,7 +53,7 @@ describe("Remarques", () => {
     expect(await exists(join(remarksFolder(folders, "app-essai"), `${e.id}.png`))).toBe(false);
   });
 
-  test("envoyerPanier: lot.json with both items, captures moved, cart empty; empty cart → PANIER_VIDE", async () => {
+  test("envoyerPanier: lot.json with both items, captures moved, cart empty; empty cart → EMPTY_BASKET", async () => {
     const { dossiers: folders, r } = await frame();
     await expect(r.envoyerPanier("app-essai", { destination: "agent" })).rejects.toThrow(EMPTY_BASKET);
     const a = await r.ajouterAuPanier("app-essai", { texte: "a", contexte: ctx(), capture: PNG });

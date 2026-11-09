@@ -27,7 +27,7 @@ export class RemoteBridge implements BrowserBridge {
   constructor(
     private readonly rpc: Rpc,
     h?: Pick<History, "rechercherPourAgent" | "texteRetenu">,
-    /** Answered from the host's mirror of the open site apps (synchronous in PontNavigateur). */
+    /** Answered from the host's mirror of the open site apps (synchronous in BrowserBridge). */
     private readonly sitePermis: (site: string, url: string) => boolean = () => false,
   ) {
     if (h)
@@ -137,7 +137,7 @@ export class RemoteBridge implements BrowserBridge {
     }
   };
 
-  /** Firefox asks to wait for another site's turn: answered when the kernel's Menagement lets the read go. */
+  /** Firefox asks to wait for another site's turn: answered when the kernel's Pacing lets the read go. */
   changerHote(reading: string, host: string): Promise<void> {
     const f = this.lecturesMenagees.get(reading);
     return f ? f(host) : Promise.reject(new Error("Lecture inconnue"));

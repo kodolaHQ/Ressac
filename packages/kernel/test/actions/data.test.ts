@@ -23,7 +23,7 @@ const add = async (d: string, start: string, attempt = false, results?: unknown)
   return e.id;
 };
 
-test("result written then re-read; dernierResultat ignores trials", async () => {
+test("result written then re-read; lastResult ignores trials", async () => {
   const d = await tempFolder();
   const real = await add(d, timestamp(0), false, { v: "vrai" });
   const attempt = await add(d, timestamp(5), true, { v: "essai" });
@@ -34,7 +34,7 @@ test("result written then re-read; dernierResultat ignores trials", async () => 
   expect(await readResult(d, "a", "../../x")).toBeNull();
 });
 
-test("dernierResultat: the most recent real run that has a result", async () => {
+test("lastResult: the most recent real run that has a result", async () => {
   const d = await tempFolder();
   const a = await add(d, timestamp(0));
   const b = await add(d, timestamp(2), false, { v: "recent" });
@@ -74,7 +74,7 @@ test("a huge result is refused, a damaged file is ignored", async () => {
   expect(await readResult(d, "a", e.id)).toBeNull();
 });
 
-test("supprimerDonneesAction erases runs, results and memory", async () => {
+test("deleteDataAction erases runs, results and memory", async () => {
   const d = await tempFolder();
   const id = await add(d, timestamp(0));
   await writeMemory(join(d, "a"), { b: { type: "t", valeur: 1 } });

@@ -40,7 +40,7 @@ async function confinedCopiesFolder(dataDir: string, id: string): Promise<string
   return root && real && real.startsWith(root + "/") ? real : null;
 }
 
-/** The sanitized copy of a display: `<dossierCopies>/affichage-<mtime>.html`. */
+/** The sanitized copy of a display: `<copiesFolder>/affichage-<mtime>.html`. */
 export function copyPath(dataDir: string, id: string, mtime: number): string {
   return PathUtils.join(copiesFolder(dataDir, id), `affichage-${mtime}.html`);
 }
@@ -173,7 +173,7 @@ function widgetGuard(pattern: string): void {
   // Firefox: a sandboxed resource frame cannot post to its chrome parent (measured: Permission denied to access
   // property "postMessage"). The widget's link goes through this page-world helper, a custom event the chrome listens for.
   w.webaiosOuvrir = (url: unknown) => w.dispatchEvent(new CustomEvent("webaios-ouvrir", { detail: String(url) }));
-  // Last: see the comment on gardeWidget.
+  // Last: see the comment on widgetGuard.
   const absents = [
     "RTCPeerConnection",
     "webkitRTCPeerConnection",
@@ -226,7 +226,7 @@ const DOC_PREFIX = /^\s*(?:<!--[\s\S]*?-->\s*)*(?:<!doctype[^>]*>\s*)?/i;
 
 /**
  * The served text: the CSP meta (`csp`) then the guard, then `extra` (an app home's bridge), after any
- * doctype (the doctype stays the first token, no quirks mode) and before any other element; AFFICHAGE_REFUSE if the
+ * doctype (the doctype stays the first token, no quirks mode) and before any other element; DISPLAY_DENIED if the
  * HTML contains a network hint.
  */
 export function displayServed(html: string, csp = CSP_WIDGET, extra = ""): string {

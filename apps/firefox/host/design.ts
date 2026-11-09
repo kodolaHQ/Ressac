@@ -1,7 +1,7 @@
 // The host side of design mode: remarks, the external MCP server and the review, started
 // with the host and without the agent's kernel. Each RPC input is checked again with
 // the shared guards (shared/design-guards.ts) before the service.
-// The kernel is imported first: core/design/externes.ts and envoi.ts load under tsx only once it is linked.
+// The kernel is imported first: core/design/externes.ts and send.ts load under tsx only once it is linked.
 import { homedir } from "node:os";
 import { join } from "node:path";
 import {

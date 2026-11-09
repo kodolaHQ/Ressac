@@ -43,7 +43,7 @@ test("correspond changed: still covers", () => {
   expect(grantCovers(a, { ...base, retouches: [{ ...base.retouches[0]!, correspond: ["/films/*"] }] })).toBe(true);
 });
 
-test("retirerAccordSite then lireAccordsSites: absent; file in the profile, simultaneous grants kept", async () => {
+test("removeSiteGrant then readSiteGrants: absent; file in the profile, simultaneous grants kept", async () => {
   const p = await tempFolder();
   await Promise.all([storeSiteGrant(p, "a", base), storeSiteGrant(p, "b", base)]);
   expect(Object.keys(await readSiteGrants(p)).sort()).toEqual(["a", "b"]);
@@ -94,7 +94,7 @@ test("empreinteLectureSite: name, domains and login; the order and case of the d
   expect(siteReadHash({ ...updateEntry, domaines: [], connexion: ["vidola-a.example", "compte.example"] })).not.toBe(e);
 });
 
-test("empreinteExtensionsSite: stable for another name, other tweaks, another reprise, another order or another case; changes with one more domain", () => {
+test("siteExtensionsHash: stable for another name, other tweaks, another reprise, another order or another case; changes with one more domain", () => {
   const e = siteExtensionsHash(base);
   expect(e).toMatch(/^[0-9a-f]{64}$/);
   expect(siteExtensionsHash({ ...base, nom: "Autre", retouches: [], reprise: true })).toBe(e);

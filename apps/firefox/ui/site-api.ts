@@ -5,7 +5,7 @@ import { local } from "./design-api";
 const off = () => () => {};
 
 /**
- * The API of the site bar (FenetreSite.svelte), on the window's controller. What comes out of the chrome is
+ * The API of the site bar (SiteWindow.svelte), on the window's controller. What comes out of the chrome is
  * copied (structuredClone): the bar never holds the store's objects. The extension members do nothing: the add-on
  * buttons read the window's own (SiteAddonsStrip.svelte, webaiosSiteWindow.addons), the extension menu is aliased away.
  * The design mode is the window's: the controller knows the app, the bar sends no target.
@@ -32,7 +32,7 @@ export function createSiteApi(c: SiteWindowController): ApiSite {
       if (typeof yes !== "boolean" || (hash !== undefined && (typeof hash !== "string" || hash.length > 128))) throw new Error("invalid accord request");
       await c.accord(yes, hash ?? "");
     },
-    // Rejects when the memory cannot be read: CadreAccueil then sends nothing.
+    // Rejects when the memory cannot be read: HomeFrame then sends nothing.
     memoire: async () => {
       const m = await c.memory();
       if (!m) throw new Error("site app memory unavailable");
@@ -52,7 +52,7 @@ export function createSiteApi(c: SiteWindowController): ApiSite {
     },
     design: {
       // A host that does not answer: the last state again, never a rejection (spec §5.10);
-      // BoutonDesignSite would grey ✎ on a rejection.
+      // SiteDesignButton would grey ✎ on a rejection.
       etat: () =>
         Promise.resolve()
           .then(() => c.design.etat())
@@ -70,7 +70,7 @@ export function createSiteApi(c: SiteWindowController): ApiSite {
 
 /**
  * The whole `window.webaios` of a site bar or an app badge. The sidebar bundle also evaluates the main UI's modules,
- * which subscribe as they load (etat.svelte.ts: surEtat, telechargements.liste()…): any member but `members`' own is
+ * which subscribe as they load (state.svelte.ts: surEtat, telechargements.liste()…): any member but `members`' own is
  * inert (callable, every property and result is itself, its `then` never calls back), and never mounted here.
  */
 export function inertWebaios(members: object): unknown {

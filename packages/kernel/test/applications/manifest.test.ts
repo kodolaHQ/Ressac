@@ -67,7 +67,7 @@ test("folder with an unsupported name: sans fiche", async () => {
   expect(validFolder("a.b_c-1")).toBe(true);
 });
 
-test("ecrireType keeps the other fields", async () => {
+test("writeType keeps the other fields", async () => {
   const c = await space();
   await write(c, "a", '{"type":"poc","lancement":"x","origine":"https://exemple.fr/","x":{"y":1}}');
   await writeType(c, "a", "application");
@@ -75,7 +75,7 @@ test("ecrireType keeps the other fields", async () => {
   expect(written).toEqual({ type: "application", lancement: "x", origine: "https://exemple.fr/", x: { y: 1 } });
 });
 
-test("surveillerProjets signals a new manifest and ignores node_modules", async () => {
+test("watchProjects signals a new manifest and ignores node_modules", async () => {
   const c = await space();
   await mkdir(join(c.projets, "a", "node_modules", "p"), { recursive: true });
   let calls = 0;

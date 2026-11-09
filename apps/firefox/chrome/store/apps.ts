@@ -1,6 +1,6 @@
 // Agent app windows: one window per running app, the app's page alone, in
 // its own container (`webaios-app-<dossier>`), kept on its origin (http://localhost:<port>) by the request guard and
-// the view policy of sites.ts. The host (noyau/applications.ts) owns the apps; this module owns their windows.
+// the view policy of sites.ts. The host (host/applications.ts) owns the apps; this module owns their windows.
 import type { DesignState } from "../../shared/api";
 import type { FrameBounds, AccessState } from "../../shared/model";
 import { validFolder } from "./app-folder";
@@ -289,7 +289,7 @@ export const apps = {
     return true;
   },
   /**
-   * The badge of an app window: only its own app's access (accesDe), the frame sized by `size` as
+   * The badge of an app window: only its own app's access (accessOf), the frame sized by `size` as
    * that access and its menu change, its own app's design mode. Undefined if the window is not an app's.
    */
   badge(win: Window, size: (width: number, height: number) => void): BadgeChrome | undefined {
@@ -349,7 +349,7 @@ export const apps = {
       },
     };
   },
-  /** The host's requests (noyau/applications.ts chrome), positional params. */
+  /** The host's requests (host/applications.ts chrome), positional params. */
   handlers: {
     "apps.ouvrir": ([a, frame]: [{ dossier: string; nom: string; port: number }, FrameBounds | null]) => apps.open(a, frame),
     "apps.fermer": ([folder]: [string]) => apps.close(folder),

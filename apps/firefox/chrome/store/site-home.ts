@@ -52,7 +52,7 @@ export function homeBridge(): void {
 
 export const HOME_BRIDGE = `<script>(${homeBridge.toString()})();</script>`;
 
-/** A page of the home: its copy's CSP, the widgets' guard, then the bridge, after the doctype; AFFICHAGE_REFUSE on a network hint. */
+/** A page of the home: its copy's CSP, the widgets' guard, then the bridge, after the doctype; DISPLAY_DENIED on a network hint. */
 export function homeServed(html: string, key: string): string {
   return displayServed(html, cspFirefoxHome(key), HOME_BRIDGE);
 }

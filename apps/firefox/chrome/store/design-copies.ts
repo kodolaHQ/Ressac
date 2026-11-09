@@ -1,4 +1,4 @@
-// The design mode's pure pieces: core/design/viseur.ts's scriptViseur, adapted for the actor's guard, and the checks
+// The design mode's pure pieces: core/design/viewfinder.ts's scriptViseur, adapted for the actor's guard, and the checks
 // on what comes back from the page.
 import type { DesignContext } from "../../../../packages/kernel/src/design/remarques";
 import type { DesignTarget } from "../../core/design/foreground";

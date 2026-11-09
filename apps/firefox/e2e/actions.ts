@@ -280,7 +280,7 @@ export const adPhoto = (n: number) => `https://img.leboncoin.exemple/photos/${n}
 
 /** The fake Gemma's plan for a layout request: a title, then the list of pages read (actions.spec.ts PLAN_GEMMA). */
 export const GEMMA_PLAN = { blocs: [{ composant: "titre", props: { texte: "Pages lues" } }, { composant: "liste", props: { elements: "$", titre: "page.titre" } }] };
-/** The start of the layout prompt (pages/mise-en-page.ts). */
+/** The start of the layout prompt (pages/layout-page.ts). */
 export const LAYOUT_PROMPT = "Tu mets en page le résultat d'une action pour l'utilisateur.";
 
 /** A 1×1 red PNG. */

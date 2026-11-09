@@ -7,7 +7,7 @@ export const ACTION_ALREADY_RUNNING = "L'action tourne déjà";
 export const PENDING = "En attente : deux actions tournent déjà";
 export const PAGE_LAYOUT = "Mise en page…";
 export const readingOf = (host: string) => `Lecture de ${host}…`;
-/** Copied from the kernel (pages/resoudre.ts; a test checks equality): the UI imports only types from it. */
+/** Copied from the kernel (pages/resolve.ts; a test checks equality): the UI imports only types from it. */
 export const FALLBACK_MENTION = "mise en page simple";
 export const NO_RESULT = "Aucun résultat";
 /** Copied from the kernel (actions/executer.ts; same equality test). */

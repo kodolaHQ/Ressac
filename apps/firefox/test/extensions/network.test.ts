@@ -50,7 +50,7 @@ test("Chrome patterns: scheme, subdomain wildcard, port, path", () => {
   expect(patternCovers("<all_urls>", u("file:///x"))).toBe(false);
 });
 
-test("hotePermisAgent: only the granted hosts (not reseau)", () => {
+test("agentAllowedHost: only the granted hosts (not reseau)", () => {
   expect(agentAllowedHost("https://www.hote.test/", grant)).toBe(true);
   expect(agentAllowedHost("https://api.accorde.test/", grant)).toBe(false);
   expect(agentAllowedHost("about:blank", grant)).toBe(false);

@@ -235,7 +235,7 @@ test("new parameters: neutral values for required fields, no invented address", 
   expect(freshParams(catalog("source.page"))).toEqual({});
 });
 
-test("placeLibre shifts below the displayed blocks", () => {
+test("freeSlot shifts below the displayed blocks", () => {
   expect(freeSlot({ x: 10, y: 0 }, [])).toEqual({ x: 10, y: 0 });
   expect(freeSlot({ x: 10, y: 0 }, [{ x: 0, y: 0 }, { x: 0, y: 110 }])).toEqual({ x: 10, y: 220 });
 });

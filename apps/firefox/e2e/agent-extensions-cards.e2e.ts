@@ -155,7 +155,7 @@ describe("the agent's tools and their card", () => {
 describe("the grant card", () => {
   /**
    * A card in the current window for its active space (or `espaceId`), posed through the store; `reponse()` is its
-   * ReponseAccord once answered (written to a file: the window may be gone by then).
+   * GrantResponse once answered (written to a file: the window may be gone by then).
    */
   async function withCard(champs: Record<string, unknown> = {}, w?: Awaited<ReturnType<typeof launch>>) {
     w ??= await launch();

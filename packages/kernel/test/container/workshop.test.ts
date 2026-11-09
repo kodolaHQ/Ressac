@@ -21,13 +21,13 @@ test("docker info failing → docker-absent", async () => {
   expect(await new Workshop({ chemins: paths, docker: "docker", executer: runCall }).etat()).toBe("docker-absent");
 });
 
-test("trouverDocker finds OrbStack outside the PATH", () => {
+test("findDocker finds OrbStack outside the PATH", () => {
   expect(findDocker({ PATH: "/usr/bin", HOME: "/Users/t" }, (p) => p === "/Users/t/.orbstack/bin/docker")).toBe(
     "/Users/t/.orbstack/bin/docker",
   );
 });
 
-test("trouverDocker prefers the PATH, and returns null if nothing", () => {
+test("findDocker prefers the PATH, and returns null if nothing", () => {
   expect(findDocker({ PATH: "/a:/b", HOME: "/h" }, (p) => p === "/b/docker" || p === "/usr/local/bin/docker")).toBe(
     "/b/docker",
   );
@@ -105,13 +105,13 @@ test("the published ports avoid Vite's (5173…): 5280-5299", async () => {
   expect(calls.find((a) => a.args[0] === "run")!.args).toContain("127.0.0.1:5280-5299:5280-5299");
 });
 
-test("trouverDocker finds Docker Desktop installed per user (~/.docker/bin)", () => {
+test("findDocker finds Docker Desktop installed per user (~/.docker/bin)", () => {
   expect(findDocker({ PATH: "/usr/bin", HOME: "/Users/t" }, (p) => p === "/Users/t/.docker/bin/docker")).toBe(
     "/Users/t/.docker/bin/docker",
   );
 });
 
-test("executeurParDefaut adds ~/.docker/bin to the PATH (credential helpers)", () => {
+test("defaultRunner adds ~/.docker/bin to the PATH (credential helpers)", () => {
   expect(TOOLS_FOLDERS).toContain(join(homedir(), ".docker", "bin"));
 });
 

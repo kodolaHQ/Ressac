@@ -33,7 +33,7 @@ const render = (blocks: PlanBlock[], o: { compte?: boolean; secours?: boolean; r
   resolvePage({ blocs: blocks }, o.r ?? results, { compte: o.compte ?? false, catalogue: catalog, secours: o.secours ?? false });
 const one = (block: PlanBlock, o?: Parameters<typeof render>[1]) => render([block], o).blocs[0] as RenderedBlock & { props: Record<string, any> };
 
-describe("resoudrePage", () => {
+describe("resolvePage", () => {
   it("link whose url is in the results: url kept", () => {
     const b = one({ composant: "lien", props: { objet: "projet", url: "url", champTexte: "nom" } });
     expect(b).toEqual({ composant: "lien", props: { lien: { texte: "WebAiOs", url: "https://gitlab.com/p" } } });
@@ -189,7 +189,7 @@ describe("resoudrePage", () => {
   });
 });
 
-describe("chainesDe", () => {
+describe("chainsOf", () => {
   it("all the strings of the results, at any depth, not the keys", () => {
     const s = chainsOf({ a: "x", b: [1, "y", { c: "z", "clé-seule": 2 }], d: null });
     expect([...s].sort()).toEqual(["x", "y", "z"]);

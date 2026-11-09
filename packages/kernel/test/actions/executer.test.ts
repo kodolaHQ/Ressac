@@ -125,7 +125,7 @@ const GITLAB = { nom: "GitLab", sources: { compte: ["gitlab.com"] }, miseEnPage:
 const CODE_GITLAB = `export default async (e, w) => { const p = await w.lirePage("https://gitlab.com/tickets", { compte: true }); return { tickets: [{ titre: p.titre }] }; };`;
 const gitlabGrant = (b: Bench) => giveGrant(b.dossierActions, "gitlab", { domaines: ["gitlab.com"], publiques: [], profil: "perso" });
 
-describe("executerAction", () => {
+describe("runAction", () => {
   it("GitLab action with a grant: run reussie, result and plan written, status reussie", async () => {
     const b = await prepare("gitlab", GITLAB, CODE_GITLAB);
     await gitlabGrant(b);
@@ -172,7 +172,7 @@ describe("executerAction", () => {
     expect(await listRuns(join(b.dossierActions, "gitlab"))).toEqual([]);
   });
 
-  it("unknown action: ACTION_INCONNUE, nothing written", async () => {
+  it("unknown action: ACTION_UNKNOWN, nothing written", async () => {
     const b = await prepare("gitlab", GITLAB, CODE_GITLAB);
     const r = await runAction(options(b, "absente"));
     expect(r).toMatchObject({ statut: "invalide", erreur: ACTION_UNKNOWN });
@@ -189,7 +189,7 @@ describe("executerAction", () => {
     expect(existsSync(join(b.dossierActions, "cassee"))).toBe(false);
   });
 
-  it("saisie requise absente : saisieRequise(\"Recherche\")", async () => {
+  it("saisie requise absente : requiredInput(\"Recherche\")", async () => {
     const b = await prepare("leboncoin", { nom: "Leboncoin", sources: {}, saisie: { libelle: "Recherche" } }, `export default async (e, w) => ({ q: w.saisie });`);
     for (const input of [null, "   "]) {
       const r = await runAction(options(b, "leboncoin", { saisie: input }));
@@ -352,7 +352,7 @@ describe("executerAction", () => {
     expect(await readResult(b.dossierActions, "simple", r.execution!)).toBeNull();
   });
 
-  it("signal raised during the workflow: interrompue, ACTION_ARRETEE; during the layout: reussie with fallback plan", async () => {
+  it("signal raised during the workflow: interrompue, ACTION_STOPPED; during the layout: reussie with fallback plan", async () => {
     const b = await prepare("public", { nom: "P", sources: { publiques: ["gitlab.com"] } }, `export default async (e, w) => ({ tickets: [{ titre: (await w.lirePage("https://gitlab.com/tickets")).titre }] });`, {
       suspendues: ["https://gitlab.com/tickets"],
     });

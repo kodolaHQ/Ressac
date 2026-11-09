@@ -15,13 +15,13 @@ const { AddonManager } = ChromeUtils.importESModule("resource://gre/modules/Addo
 const { FileUtils } = ChromeUtils.importESModule("resource://gre/modules/FileUtils.sys.mjs");
 const { ExtensionParent } = ChromeUtils.importESModule("resource://gre/modules/ExtensionParent.sys.mjs");
 
-// Keep in sync with noyau/extensions/copie-firefox.ts SUFFIXE_ID.
+// Keep in sync with host/extensions/firefox-copy.ts ID_SUFFIX.
 const SUFFIX = "@agent.webaios";
 const REFUSED_CALLS = new Set(["tabs.captureVisibleTab", "tabs.captureTab", "tabs.detectLanguage", "tabs.saveAsPDF", "tabs.print", "tabs.printPreview", "tabs.toggleReaderMode"]);
 // Keep in sync with chrome/window/tabs.ts (not imported: it runs window code at load).
 const TAB_ID = "webaios-tab-id";
 const PARKING = "webaios-parking";
-// Keep in sync with LONGUEUR_CONSOLE_MAX (packages/kernel/src/mcp/extensions.ts): a message is never longer than an answer.
+// Keep in sync with CONSOLE_LENGTH_MAX (packages/kernel/src/mcp/extensions.ts): a message is never longer than an answer.
 const CONSOLE_TEXT_MAX = 100_000;
 
 /** An uncaught error of its background window this close to its start is a failed load (spike S7). */
@@ -252,7 +252,7 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
     if (!scope?.actif) return false;
     switch (kind) {
       case "urlPermise": {
-        // Relative: within the extension. Its own pages only; anything else through urlPermiseAgent.
+        // Relative: within the extension. Its own pages only; anything else through agentAllowedUrl.
         const host = WebExtensionPolicy.getByID(addonId)?.mozExtensionHostname;
         if (typeof value !== "string" || !host) return false;
         let u: URL;

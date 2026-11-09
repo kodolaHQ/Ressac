@@ -1,7 +1,7 @@
 import type { PlanBlock, PlanPage } from "./plan.js";
 
 // The fallback layout, without Gemma: a simple presentation of the results, made of built-in components.
-// It only references paths that exist and that the reference language can write; it passes validerPlan.
+// It only references paths that exist and that the reference language can write; it passes validatePlan.
 
 type Dict = Record<string, unknown>;
 const isObject = (v: unknown): v is Dict => v !== null && typeof v === "object" && !Array.isArray(v);

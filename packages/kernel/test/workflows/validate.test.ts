@@ -276,12 +276,12 @@ const stream = { id: "f", type: "source.flux", parametres: { urls: ["https://x.f
 const withOutput = (extra: object, to?: string) =>
   wf([stream, { id: "s", type: "sortie", parametres: { ...(to === undefined ? {} : { vers: to }), ...extra } }], [{ de: "f", vers: "s" }]);
 
-test("a widget with vers \"page\" is refused (SORTIE_PAGE_REFUSEE, block = the sortie)", () => {
+test("a widget with vers \"page\" is refused (OUTPUT_PAGE_DENIED, block = the sortie)", () => {
   expect(OUTPUT_PAGE_DENIED).toBe('sortie : vers "page" seulement dans une action');
   expect(validateWorkflow(withOutput({}, "page"))).toEqual({ ok: false, erreur: "Workflow invalide : " + OUTPUT_PAGE_DENIED, bloc: "s" });
 });
 
-test("an action with vers \"widget\" or without vers is refused (SORTIE_PAGE_REQUISE)", () => {
+test("an action with vers \"widget\" or without vers is refused (OUTPUT_PAGE_REQUIRED)", () => {
   expect(OUTPUT_PAGE_REQUIRED).toBe('sortie : une action rend une page (vers: "page")');
   const expected = { ok: false, erreur: "Workflow invalide : " + OUTPUT_PAGE_REQUIRED, bloc: "s" };
   expect(validateWorkflow(withOutput({}, "widget"), action)).toEqual(expected);
@@ -294,7 +294,7 @@ test("an action with vers \"page\" is valid, sortie.vers === \"page\"", () => {
   expect(r.valide.sortie).toEqual({ id: "s", vers: "page" });
 });
 
-test("auFilDeLEau in an action: FIL_DE_L_EAU_ACTION", () => {
+test("auFilDeLEau in an action: STREAMING_ACTION", () => {
   expect(STREAMING_ACTION).toBe("sortie.auFilDeLEau : pas dans une action");
   expect(validateWorkflow(withOutput({ auFilDeLEau: true }, "page"), action)).toEqual({ ok: false, erreur: "Workflow invalide : " + STREAMING_ACTION, bloc: "s" });
   expect(validateWorkflow(withOutput({ auFilDeLEau: false }, "page"), action).ok).toBe(true);

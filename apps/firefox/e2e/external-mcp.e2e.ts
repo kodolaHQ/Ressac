@@ -239,7 +239,7 @@ it("the server listens on 127.0.0.1 only", async () => {
   expect(error?.code).toBe("ECONNREFUSED");
 });
 
-it("a folder under <dataDir> is refused with DOSSIER_ESPACE", async () => {
+it("a folder under <dataDir> is refused with SPACE_FOLDER", async () => {
   await launch();
   const { port, jeton: token } = await connectClient(m);
   const c = await mcpClient(port, token);

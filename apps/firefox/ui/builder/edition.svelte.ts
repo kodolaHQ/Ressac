@@ -11,7 +11,7 @@ export type Validation = { ok: true } | { ok: false; erreur: string; bloc?: stri
 export type SaveState = "enregistre" | "en-cours" | { invalide: string; bloc?: string } | { erreur: string };
 /** `illisible`: `workflow.json` is not readable at opening (truncated JSON…); `introuvable`: neither widget nor harvest. */
 export type Load = "chargement" | "pret" | "introuvable" | { illisible: string };
-/** Reading and writing the workflow, addressed by the workflow's key (`cleCible`). */
+/** Reading and writing the workflow, addressed by the workflow's key (`targetKey`). */
 export type Depot = {
   lire(key: string): ReturnType<ApiWebaios["workflow"]["lire"]>;
   enregistrer(key: string, draft: Brouillon): ReturnType<ApiWebaios["workflow"]["enregistrer"]>;

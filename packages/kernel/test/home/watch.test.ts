@@ -21,7 +21,7 @@ test("surveillerAccueil calls the callback only once for a burst of writes", asy
   expect(calls).toBe(1);
 });
 
-test("surveillerActions follows ~/WebAiOs/actions and components, once per burst", async () => {
+test("watchActions follows ~/WebAiOs/actions and components, once per burst", async () => {
   const c = spacePaths(await tempFolder());
   let calls = 0;
   const stop = watchActions(c, () => calls++);

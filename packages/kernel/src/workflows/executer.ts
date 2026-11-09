@@ -129,7 +129,7 @@ export interface WorkflowContext {
   messageAccordRequis: string;
   declencheur: Execution["declencheur"];
   /**
-   * A builder try (plan of `planRejeu`): only the `relances` blocks run, with the `sorties` taken
+   * A builder try (plan of `replayPlan`): only the `relances` blocks run, with the `sorties` taken
    * from the original run; no memory sent or kept. `repris`: the taken blocks and their number of items.
    */
   rejeu?: { relances: string[]; sorties: Record<string, unknown>; repris: Record<string, number | null> };
@@ -139,7 +139,7 @@ export interface WorkflowContext {
   saisie?: string;
   /** Action only: the per-item blocks send their progress (relayed as an `avancement` trace). */
   avancement?: true;
-  /** Action only: raised, the run is stopped (container killed) and concludes « interrompue » (ACTION_ARRETEE). */
+  /** Action only: raised, the run is stopped (container killed) and concludes « interrompue » (ACTION_STOPPED). */
   signal?: AbortSignal;
 }
 
@@ -168,7 +168,7 @@ export interface InfraWorkflow {
   delaiMs?: number;
   /** Tests only: allows `recuperer` and `lirePage` to local addresses (127.0.0.1…). */
   adressesLocales?: boolean;
-  /** Pacing of the searches and open reads (default: MENAGEMENT_PAR_DEFAUT, shared). */
+  /** Pacing of the searches and open reads (default: DEFAULT_PACING, shared). */
   menagement?: Pacing;
   /** Tests only: the base of the DuckDuckGo searches. */
   urlRecherche?: string;
@@ -179,7 +179,7 @@ export interface InfraWorkflow {
    * done one after the other and all finished before the run returns; an error from a relay is ignored.
    */
   surPublication?: (p: Publication) => Promise<void>;
-  /** Progressive run only: the memory received along the way, at most every ECART_MEMOIRE_MS. */
+  /** Progressive run only: the memory received along the way, at most every MEMORY_GAP_MS. */
   surMemoire?: (m: BlocksMemory) => Promise<void>;
 }
 

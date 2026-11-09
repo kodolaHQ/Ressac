@@ -2,8 +2,8 @@ import type { WidgetState } from "@webaios/kernel";
 
 const two = (n: number) => String(n).padStart(2, "0");
 const MINUTE = 60_000;
-// Copied from the scheduler (packages/kernel/src/widgets/heures.ts: REESSAI_HEURE_MS, REESSAIS_HEURE_MAX;
-// planificateur.ts: REESSAI_ERREUR_MS): the rendering only imports types from the kernel.
+// Copied from the scheduler (packages/kernel/src/widgets/heures.ts: RETRY_HOUR_MS, MAX_HOUR_RETRIES;
+// scheduler.ts: RETRY_ERROR_MS): the rendering only imports types from the kernel.
 /** A failure is retried at the earliest 15 min after the last attempt (or the end of the failure, for a fixed hour). */
 const RETRY_MS = 15 * MINUTE;
 /** At most 3 retries at a fixed hour after its first failure. */
@@ -21,7 +21,7 @@ function label(when: Date, now: Date): string {
 const instant = (iso: string | null | undefined) => (iso ? Date.parse(iso) : NaN);
 
 /**
- * The retry of the failed fixed hour of the current slot, like `heureDue` (heures.ts): 15 min after the later of the
+ * The retry of the failed fixed hour of the current slot, like `heureDue` (hours.ts): 15 min after the later of the
  * end of the failure and the last attempt, as long as retries remain and only the same day (yesterday's slot is
  * never caught up). Null with no retry to come.
  */

@@ -1,5 +1,5 @@
 // Streaming chain cases: raw workflows (to validate) and expected chain. Shared between the kernel's rule
-// (chaineAuFilDeLEau) and the container interpreter's one, which must return the same chain.
+// (streamingChain) and the container interpreter's one, which must return the same chain.
 
 type Block = { id: string; type: string; parametres: Record<string, unknown> };
 type Link = { de: string; vers: string };

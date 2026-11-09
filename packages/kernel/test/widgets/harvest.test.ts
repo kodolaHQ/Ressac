@@ -173,7 +173,7 @@ const optionsOf = (ctx: Context) => ({
 
 const readJson = async (path: string) => JSON.parse(await readFile(path, "utf8"));
 
-describe("executerRecolte", () => {
+describe("runHarvest", () => {
   it("a successful harvest writes donnees.json and the ok state in dossierWidgets", async () => {
     const web = await webServer({ "/flux.json": (res) => { res.writeHead(200, { "content-type": "application/json" }); res.end('{"x":42}'); } });
     const kev = await fakeKev({ q: { type: "noul", noul: 0.8 } });
@@ -383,7 +383,7 @@ describe("executerRecolte", () => {
   });
 });
 
-describe("executerRecolte, widget with an account", () => {
+describe("runHarvest, widget with an account", () => {
   const sources = { compte: ["app.daily.dev"], publiques: ["127.0.0.1"] };
 
   it("widget with an account: lirePage compte without a grant → accord-requis, no read", async () => {
@@ -556,7 +556,7 @@ describe("executerRecolte, widget with an account", () => {
     expect(readCalls(bridge)[0]!.args).toEqual(["https://app.daily.dev/", { profil: null }]);
   });
 
-  it("ProfilRefuse from the bridge: grant removed, state accord-requis", async () => {
+  it("ProfileDenied from the bridge: grant removed, state accord-requis", async () => {
     const ctx = await prepare("daily", `export default async (w) => w.lirePage("https://app.daily.dev/", { compte: true });`, sources);
     await writeData(ctx.dossierWidgets, "daily", { ancien: true });
     await giveGrant(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "prive" });
@@ -569,7 +569,7 @@ describe("executerRecolte, widget with an account", () => {
     expect(existsSync(join(ctx.dossierWidgets, "daily", "donnees.json"))).toBe(false);
   });
 
-  it("ProfilRefuse then account removed: the public harvest receives nothing of the account, nor does the home", async () => {
+  it("ProfileDenied then account removed: the public harvest receives nothing of the account, nor does the home", async () => {
     const ctx = await prepare("daily", `export default async (w) => w.lirePage("https://app.daily.dev/", { compte: true });`, sources);
     await writeData(ctx.dossierWidgets, "daily", { secret: "du compte" });
     await giveGrant(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "prive" });
@@ -684,7 +684,7 @@ describe("executerRecolte, widget with an account", () => {
   });
 });
 
-describe("executerRecolte, through the widget's workflow", () => {
+describe("runHarvest, through the widget's workflow", () => {
   const sources = { compte: ["app.daily.dev"], publiques: ["127.0.0.1"] };
   const dataOf = (ctx: Context) => join(ctx.dossierWidgets, ctx.widget.id);
   const runOf = async (ctx: Context, id: string | undefined) => {
@@ -920,7 +920,7 @@ describe("executerRecolte, through the widget's workflow", () => {
   });
 });
 
-describe("executerEssai", () => {
+describe("runAttempt", () => {
   const sources = { compte: ["app.daily.dev"], publiques: ["127.0.0.1"] };
   const dataOf = (ctx: Context) => join(ctx.dossierWidgets, ctx.widget.id);
   async function toWorkflow(ctx: Context, workflow: unknown, files: Record<string, string> = {}) {
@@ -1177,7 +1177,7 @@ describe("executerEssai", () => {
   });
 });
 
-describe("executerRecolte, watch (publications as it goes, memory kept, novelties)", () => {
+describe("runHarvest, watch (publications as it goes, memory kept, novelties)", () => {
   const dataOf = (ctx: Context) => join(ctx.dossierWidgets, ctx.widget.id);
   const dataFile = (ctx: Context) => join(dataOf(ctx), "donnees.json");
   const memoryFile = (ctx: Context) => join(dataOf(ctx), "memoire.json");

@@ -38,7 +38,7 @@ test("minutes and hours: the nearest of the two (derniereMaj + minutes, or the n
   expect(nextRun([], a(8), { minutes: 60, derniereMaj: update(7) })).toBeNull();
 });
 
-// Scheduler rules (packages/kernel/src/widgets/heures.ts and planificateur.ts): a failure is retried 15 min
+// Scheduler rules (packages/kernel/src/widgets/heures.ts and scheduler.ts): a failure is retried 15 min
 // after the last attempt (or the end of the failure), never « now ».
 const iso = (h: number, m = 0) => a(h, m).toISOString();
 const inError = (lastAttempt: string | null, hours?: { faite: string | null; echecs: { heure: string; nombre: number; fin?: string } | null }) => ({

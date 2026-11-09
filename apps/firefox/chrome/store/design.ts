@@ -277,7 +277,7 @@ export function createDesign(o: {
     const png = await capturePng(s.browser, capture.rect, capture.vue, s.wgp);
     if (!current(s, g)) return;
     const { rect, ...context } = capture;
-    // The home's address as the kernel knows it (no served copy's token): it tags such remarks [accueil] (pty/contexte.ts).
+    // The home's address as the kernel knows it (no served copy's token): it tags such remarks [accueil] (pty/context.ts).
     if (s.home && s.target.type === "site") context.adresse = `webaios-site://${s.target.id}${new URL(context.adresse).pathname}`;
     s.attente = { contexte: { ...context, source }, capture: png };
     const v = view(s.target);
@@ -510,7 +510,7 @@ export function createDesign(o: {
 }
 
 /**
- * An overlay frame's ApiCalque: its target is the chrome's, never an id the frame sends.
+ * An overlay frame's OverlayApi: its target is the chrome's, never an id the frame sends.
  * A project is allowed only if it is the one the overlay shows (projetPermis); the host checks every bound again.
  * `modes`: what this frame shows. `annuler`: the frame's own (the cart column's « Fermer »), else the service's cancel.
  */
@@ -522,7 +522,7 @@ export function overlayApi(
 ): OverlayApi {
   const allowed = (p: unknown): p is string => typeof p === "string" && ID_PROJECT.test(p) && o.design.overlayContext(t)?.projet === p;
   const id = (x: unknown): x is string => typeof x === "string" && x.length <= DESIGN_ID_MAX;
-  // Spec §5.10, the host stopped: PanierDesign reads again after a failed send and would show a rejected read as an
+  // Spec §5.10, the host stopped: DesignBasket reads again after a failed send and would show a rejected read as an
   // empty cart. The last answer stands instead; a restarted host is read again (surChange).
   const last = new Map<string, unknown>();
   const read = <T>(method: string, p: string): Promise<T> =>
@@ -547,7 +547,7 @@ export function overlayApi(
     },
     envoyer: async (p) => (allowed(p) ? o.host.request<ExtensionResult>("design.envoyer", { projet: p }) : { ok: false, erreur: INVALID_REQUEST }),
     surChange(cb) {
-      // accueil.change: sent at each kernel start (noyau/host.ts), so a restarted host's cart is read again.
+      // accueil.change: sent at each kernel start (host/host.ts), so a restarted host's cart is read again.
       const offs = [...["design.change", "accueil.change"].map((m) => o.host.on(m, () => cb())), o.design.onChange(cb)];
       return () => offs.forEach((f) => f());
     },

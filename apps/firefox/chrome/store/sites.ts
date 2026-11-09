@@ -1,5 +1,5 @@
 // Site app windows: the registry of open app windows, their containers, their bar's controller, and the guard that
-// keeps each app on its domains before any request leaves. The host (noyau/sites.ts) owns the data; this module owns
+// keeps each app on its domains before any request leaves. The host (host/sites.ts) owns the data; this module owns
 // the windows.
 import type { DesignState } from "../../shared/api";
 import type { FrameBounds } from "../../shared/model";
@@ -56,7 +56,7 @@ export interface SiteWindowController {
   onMemory(cb: (m: MessageToHome & { type: "memoire" }) => void): () => void;
   /**
    * The home screen asks for an address: on the current domain, just after a real
-   * gesture in the home (consumed), one per ECART_OUVERTURE_ACCUEIL_MS; false if refused.
+   * gesture in the home (consumed), one per HOME_OPEN_GAP_MS; false if refused.
    */
   openFromHome(address: string): boolean;
   /** A site image for the home, as `data:`, loaded in the app's container; null if refused. */
@@ -190,7 +190,7 @@ function closeStray(browser: any): void {
  * Before any request connects (http-on-modify-request), every top-level document of a site container: the app view
  * goes only to the app's domains or its sign-in domains (decisionNavigation); so does a kept sign-in window. Any other
  * browser of the container is a window the page just opened (window.open with features: Firefox creates it without
- * asking browserDOMWindow): its first page decides (decisionOuverture). A refused load is cancelled before the request
+ * asking browserDOMWindow): its first page decides (openDecision). A refused load is cancelled before the request
  * is sent, with NS_BINDING_ABORTED so that the view stays on its page (no error page). The container of an app whose
  * window is closed loads nothing (a window it opened that outlived it).
  * shortcut: preconnects and speculative connections never reach this observer (a TCP connection, no HTTP request);
@@ -654,7 +654,7 @@ export const sites = {
     s.retouches = tweaks;
     s.view?.browsingContext?.sessionHistory?.evictAllDocumentViewers();
     let reloaded = false;
-    // The hash is that of the rights asked (empreinteDroits).
+    // The hash is that of the rights asked (rightsHash).
     const grown = before.demande.empreinte !== site.demande.empreinte;
     if (site.accordRequis && s.vue !== "accord" && (!before.accordRequis || grown)) {
       s.vue = "accord";
@@ -865,7 +865,7 @@ export const sites = {
   blocked(id: string): string[] {
     return open.get(id)?.blocked ?? [];
   },
-  /** The host's requests (noyau/sites.ts SitesChrome), positional params. */
+  /** The host's requests (host/sites.ts SitesChrome), positional params. */
   handlers: {
     "sites.ouvrir": ([site, frame, tweaks]: [SiteChrome, FrameBounds | null, TweaksRead]) => sites.open(site, frame, tweaks),
     "sites.fermer": ([id]: [string]) => sites.close(id),

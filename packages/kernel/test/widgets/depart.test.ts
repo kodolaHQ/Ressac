@@ -15,7 +15,7 @@ type Call = { t: "appel"; n: number; f: string; a: any };
 type Responder = (call: Call) => Promise<{ ok: unknown } | { erreur: string }> | { ok: unknown } | { erreur: string };
 
 /**
- * Launches a template like the kernel: workflow.json read and validated by lireWorkflow, widget.json config in `debut`,
+ * Launches a template like the kernel: workflow.json read and validated by readWorkflow, widget.json config in `debut`,
  * then the memory. `modifier` changes the workflow.json copy before the read.
  */
 async function launch(
@@ -280,7 +280,7 @@ describe("starter widgets", () => {
     ];
     const r = await launch("daily-dev", (a) => {
       if (a.f === "lirePage" && a.a.compte) return { ok: { url: "https://app.daily.dev/", titre: "d", texte: "", liens } };
-      // Redirected outside app.daily.dev: the kernel refuses the page (domain rule), like verifierPage.
+      // Redirected outside app.daily.dev: the kernel refuses the page (domain rule), like checkPage.
       if (a.f === "lirePage" && a.a.url.endsWith("/abc")) return { erreur: "Page refusée : elle a mené hors des domaines permis (evil.example)" };
       if (a.f === "lirePage") return { ok: { url: a.a.url, titre: "x", texte: "contenu", liens: [] } };
       if (a.f === "kev") return { ok: { q: { type: "noul", noul: 0.9 } } };

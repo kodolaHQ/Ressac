@@ -11,7 +11,7 @@ async function space() {
   return c;
 }
 
-test("taillesLibres converts 3 × 2 units to 250 ‰ × 180 px", () => {
+test("freeSizes converts 3 × 2 units to 250 ‰ × 180 px", () => {
   expect(freeSizes({ l: 3, h: 2 })).toEqual({ l: 250, h: 180 });
 });
 
@@ -37,7 +37,7 @@ test("lireDispositionLibre reads version 3 and returns [] for version 2, a damag
   expect(await readFreeLayout(c)).toEqual([]);
 });
 
-test("placerManquantsLibre keeps a valid wanted placement and ignores an unknown id or a duplicate", () => {
+test("placeMissingFree keeps a valid wanted placement and ignores an unknown id or a duplicate", () => {
   const defaults = new Map([["a", { l: 500, h: 90 }]]);
   const wanted: FreePlacement[] = [
     { id: "a", x: 500, y: 0, l: 500, h: 90 },
@@ -47,7 +47,7 @@ test("placerManquantsLibre keeps a valid wanted placement and ignores an unknown
   expect(placeMissingFree(["a"], wanted, defaults)).toEqual([{ id: "a", x: 500, y: 0, l: 500, h: 90 }]);
 });
 
-test("placerManquantsLibre puts widgets without a position at the first gap, without overlap", () => {
+test("placeMissingFree puts widgets without a position at the first gap, without overlap", () => {
   const defaults = new Map([
     ["a", { l: 500, h: 90 }],
     ["b", { l: 500, h: 90 }],
@@ -58,7 +58,7 @@ test("placerManquantsLibre puts widgets without a position at the first gap, wit
   ]);
 });
 
-test("placerManquantsLibre places below when the row is full", () => {
+test("placeMissingFree places below when the row is full", () => {
   const defaults = new Map([
     ["a", { l: 500, h: 90 }],
     ["b", { l: 500, h: 90 }],
@@ -71,7 +71,7 @@ test("placerManquantsLibre places below when the row is full", () => {
   ]);
 });
 
-test("placerManquantsLibre puts a widget in the gap at a neighbor's right edge", () => {
+test("placeMissingFree puts a widget in the gap at a neighbor's right edge", () => {
   // a = 0…250, b = 500…750: the gap starts exactly at 250, off the 8 ‰ steps.
   const defaults = new Map([
     ["a", { l: 250, h: 180 }],

@@ -16,7 +16,7 @@ async function write(name: string, json: string | null, html: string | null) {
   if (html !== null) await writeFile(join(folder, name, "composant.html"), html);
 }
 
-describe("lireComposantsAgent", () => {
+describe("readAgentComponents", () => {
   it("graphique-barres (composant.json + composant.html) is valid", async () => {
     await write("graphique-barres", decl("graphique-barres"), "<svg></svg>");
     const r = await readAgentComponents(folder);

@@ -94,7 +94,7 @@ test("a manual run at 07:10 counts for 07:00; one at 06:50 does not count", () =
   expect(dueHour(hours, manual, at(7, 10).toISOString(), at(7, 30))).toBe(false);
 });
 
-test("suiviApres: sans-effet changes nothing; a failure before the first hour neither; nothing new without tracking", () => {
+test("trackingAfter: sans-effet changes nothing; a failure before the first hour neither; nothing new without tracking", () => {
   const tracking: Tracking = { faite: "2026-10-29T07:00", echecs: { heure: "2026-10-29T12:00", nombre: 2 } };
   expect(trackingAfter(tracking, "2026-10-29T12:00", "sans-effet")).toEqual(tracking);
   expect(trackingAfter(tracking, null, "echec")).toEqual(tracking);

@@ -23,7 +23,7 @@ function prepare() {
   return { e: () => e, ag, F };
 }
 
-test("infosOnglets: all tabs of all windows, espace = name", () => {
+test("tabInfos: all tabs of all windows, espace = name", () => {
   const { e } = prepare();
   expect(tabInfos(e()).map((o) => ({ url: o.url, espace: o.espace }))).toEqual([
     { url: "https://a.test/", espace: "Perso" },
@@ -32,7 +32,7 @@ test("infosOnglets: all tabs of all windows, espace = name", () => {
   expect(tabInfos(e())[0]).toEqual({ id: expect.any(String), titre: "https://a.test/", url: "https://a.test/", espace: "Perso" });
 });
 
-test("ongletActifDe: null on an empty page, the active space's active tab otherwise", () => {
+test("activeTabOf: null on an empty page, the active space's active tab otherwise", () => {
   const { e, ag, F } = prepare();
   expect(activeTabOf(e(), F)?.url).toBe("https://a.test/");
   expect(activeTabOf(e(), undefined)).toBeNull();
@@ -40,7 +40,7 @@ test("ongletActifDe: null on an empty page, the active space's active tab otherw
   expect(activeTabOf(e(), F)).toBeNull();
 });
 
-test("resoudreEspace: by id, by name ignoring case, otherwise the active space", () => {
+test("resolveSpace: by id, by name ignoring case, otherwise the active space", () => {
   const { e, ag, F } = prepare();
   ag({ type: "creerEspace", nom: "Boulot", icone: "💼", prive: false, profil: "defaut" });
   const f = e().fenetres.find((x) => x.id === F)!;
@@ -51,7 +51,7 @@ test("resoudreEspace: by id, by name ignoring case, otherwise the active space",
   expect(resolveSpace(e(), f)).toBe(f.espaceActif);
 });
 
-test("changementsPolitique: URL changed and tab closed; nothing for a title", () => {
+test("policyChanges: URL changed and tab closed; nothing for a title", () => {
   const { e, ag } = prepare();
   const before = e();
   const [a, b] = Object.keys(before.onglets);
@@ -63,7 +63,7 @@ test("changementsPolitique: URL changed and tab closed; nothing for a title", ()
   expect(policyChanges(middle, e())).toEqual({ navigues: [], fermes: [] });
 });
 
-test("attendreReponse: with no answer by the deadline, the question is withdrawn and the answer is no", async () => {
+test("waitForResponse: with no answer by the deadline, the question is withdrawn and the answer is no", async () => {
   vi.useFakeTimers();
   try {
     let removed = false;
@@ -78,12 +78,12 @@ test("attendreReponse: with no answer by the deadline, the question is withdrawn
   }
 });
 
-test("attendreReponse: allow → yes, deny → no", async () => {
+test("waitForResponse: allow → yes, deny → no", async () => {
   await expect(waitForResponse((reply) => (reply("autoriser"), () => {}), 1000)).resolves.toBe(true);
   await expect(waitForResponse((reply) => (reply("refuser"), () => {}), 1000)).resolves.toBe(false);
 });
 
-test("attendreReponse: signal raised (donnees-widget card of a past conversation) → card withdrawn, answer no", async () => {
+test("waitForResponse: signal raised (donnees-widget card of a past conversation) → card withdrawn, answer no", async () => {
   const removal = new AbortController();
   let removed = false;
   let replyLate: ((d: "autoriser" | "refuser") => void) | undefined;
@@ -97,7 +97,7 @@ test("attendreReponse: signal raised (donnees-widget card of a past conversation
   expect(asked).toBe(false);
 });
 
-test("questionCaduque: an agent request only lapses with its target tab; a site permission, with its tab", () => {
+test("staleQuestion: an agent request only lapses with its target tab; a site permission, with its tab", () => {
   const { e, ag, F } = prepare();
   const [a, b] = Object.keys(e().onglets);
   const reading = { id: "q", ongletId: a!, fenetreId: F, cible: b!, origine: "https://b.test", permissions: ["lire-onglet" as const] };
@@ -109,7 +109,7 @@ test("questionCaduque: an agent request only lapses with its target tab; a site 
   expect(staleQuestion(reading, e())).toBe(true);
 });
 
-test("attendreDroits: allow → the ticked rights; deny, deadline passed or allow with nothing → []", async () => {
+test("waitForRights: allow → the ticked rights; deny, deadline passed or allow with nothing → []", async () => {
   await expect(waitForRights((reply) => (reply("autoriser", ["console", "agir"]), () => {}), 1000)).resolves.toEqual(["console", "agir"]);
   await expect(waitForRights((reply) => (reply("refuser", ["console"]), () => {}), 1000)).resolves.toEqual([]);
   await expect(waitForRights((reply) => (reply("autoriser"), () => {}), 1000)).resolves.toEqual([]);
@@ -125,7 +125,7 @@ test("attendreDroits: allow → the ticked rights; deny, deadline passed or allo
   }
 });
 
-test("attendreDroits: signal raised → card withdrawn and []; a late answer changes nothing; already raised → [] without a card", async () => {
+test("waitForRights: signal raised → card withdrawn and []; a late answer changes nothing; already raised → [] without a card", async () => {
   const controller = new AbortController();
   let removed = false;
   let replyLate!: (d: "autoriser", rights: ["console"]) => void;
@@ -140,7 +140,7 @@ test("attendreDroits: signal raised → card withdrawn and []; a late answer cha
   expect(asked).toBe(false);
 });
 
-test("questionCaduque: a dev-tools request lapses if the tab changes site; a site-app window is not a closed tab", () => {
+test("staleQuestion: a dev-tools request lapses if the tab changes site; a site-app window is not a closed tab", () => {
   const { e, ag, F } = prepare();
   const [a, b] = Object.keys(e().onglets);
   const origin = new URL(e().onglets[b!]!.url).origin;
@@ -159,7 +159,7 @@ test("a webaios: tab is neither listed nor active for the agent", () => {
   expect(activeTabOf(e(), F)).toBeNull();
 });
 
-test("siteDe: an origin's host; an unreadable origin (about:blank, data:, « null ») is returned as is, without an exception", () => {
+test("siteOf: an origin's host; an unreadable origin (about:blank, data:, « null ») is returned as is, without an exception", () => {
   expect(siteOf("https://mail.google.com")).toBe("mail.google.com");
   expect(siteOf("http://localhost:5280")).toBe("localhost:5280");
   for (const o of ["null", "about:blank", "data:text/html,x", ""]) expect(siteOf(o)).toBe(o);
@@ -180,7 +180,7 @@ test("private space: neither listed nor active for the agent, its name neither",
   expect(tabInfos(unknown).map((o) => o.url)).toEqual(["https://b.test/"]);
 });
 
-test("resoudreEspace: a private space, by name or by id, counts as unknown", () => {
+test("resolveSpace: a private space, by name or by id, counts as unknown", () => {
   const { e, ag, F } = prepare();
   ag({ type: "creerEspace", nom: "Secret", icone: "🔒", prive: true, profil: "defaut" });
   const f = e().fenetres.find((x) => x.id === F)!;
@@ -189,7 +189,7 @@ test("resoudreEspace: a private space, by name or by id, counts as unknown", () 
   expect(resolveSpace(e(), f, secret)).toBe(f.espaceActif);
 });
 
-test("changementsPolitique: a tab whose space becomes private is closed for the agent; an essential displayed in a space that stayed non-private moves to that space", () => {
+test("policyChanges: a tab whose space becomes private is closed for the agent; an essential displayed in a space that stayed non-private moves to that space", () => {
   const { e, ag, F } = prepare();
   const personal = e().espaces[0]!.id;
   ag({ type: "creerEspace", nom: "Boulot", icone: "💼", prive: false, profil: "defaut" });
@@ -231,7 +231,7 @@ test("an essential shared by two private spaces stays invisible to the agent whe
   expect(policyChanges(before, e())).toEqual({ navigues: [], fermes: [] });
 });
 
-test("questionCaduque: a read request lapses if the target tab moves to a private space", () => {
+test("staleQuestion: a read request lapses if the target tab moves to a private space", () => {
   const { e, ag, F } = prepare();
   const [a, b] = Object.keys(e().onglets);
   const reading = { id: "q", ongletId: a!, fenetreId: F, cible: b!, origine: "https://b.test", permissions: ["lire-onglet" as const] };
@@ -240,7 +240,7 @@ test("questionCaduque: a read request lapses if the target tab moves to a privat
   expect(staleQuestion(reading, e())).toBe(true);
 });
 
-test("questionCaduque: a read card lapses when its tab changes origin", () => {
+test("staleQuestion: a read card lapses when its tab changes origin", () => {
   const { e, ag, F } = prepare();
   const a = Object.values(e().onglets).find((o) => o.url === "https://a.test/")!.id;
   const reading = { id: "q", ongletId: a, fenetreId: F, cible: a, origine: "https://a.test", permissions: ["lire-onglet" as const] };
@@ -250,7 +250,7 @@ test("questionCaduque: a read card lapses when its tab changes origin", () => {
   expect(staleQuestion(reading, e())).toBe(true);
 });
 
-test("espacesDevenusPrives: only the switch from non-private to private", () => {
+test("spacesBecamePrivate: only the switch from non-private to private", () => {
   const { e, ag } = prepare();
   const id = e().espaces[0]!.id;
   const before = e();
@@ -280,7 +280,7 @@ const extensionCard = (spaceId: string, source: "store" | "agent", strengthened 
   empreinte: "0".repeat(64),
 });
 
-test("questionCaduque: an extension card lapses with its space; the agent's one too when the profile becomes private", () => {
+test("staleQuestion: an extension card lapses with its space; the agent's one too when the profile becomes private", () => {
   const { e, ag, F } = prepare();
   const space = e().espaces[0]!.id;
   const agent = { id: "x", ongletId: null, fenetreId: F, origine: "agent:essai", permissions: ["extension" as const], extension: extensionCard(space, "agent") };
@@ -297,7 +297,7 @@ test("questionCaduque: an extension card lapses with its space; the agent's one 
   expect(staleQuestion({ ...store, extension: extensionCard("inconnu", "store") }, e())).toBe(true);
 });
 
-test("decisionPermise: a « yes » to a reinforced card without the box ticked counts as a refusal", () => {
+test("allowedDecision: a « yes » to a reinforced card without the box ticked counts as a refusal", () => {
   const strengthened = { id: "x", ongletId: null, origine: "agent:essai", permissions: ["extension" as const], extension: extensionCard("e", "agent", true) };
   expect(allowedDecision(strengthened, "autoriser")).toBe("refuser");
   expect(allowedDecision(strengthened, "autoriser", false)).toBe("refuser");
@@ -311,14 +311,14 @@ test("decisionPermise: a « yes » to a reinforced card without the box ticked c
 
 // ——— Site-app windows (`site:<id>`) ———
 
-test("ongletSite: site:<id>, title = app name, empty space, site, current domain and declaration hash filled in", () => {
+test("siteTab: site:<id>, title = app name, empty space, site, current domain and declaration hash filled in", () => {
   expect(SITE_PREFIX).toBe("site:");
   expect(siteTab({ id: "vidola", nom: "Vidola", url: "https://compte.example/connexion", domaine: "vidola-a.example", empreinte: "e1" })).toEqual({
     id: "site:vidola", titre: "Vidola", url: "https://compte.example/connexion", espace: "", site: "vidola", domaine: "vidola-a.example", empreinte: "e1",
   });
 });
 
-test("questionSiteCaduque: a question on site:<id> lapses with its window; the dev-tools one too when leaving for another origin", () => {
+test("staleSiteQuestion: a question on site:<id> lapses with its window; the dev-tools one too when leaving for another origin", () => {
   const opened = [{ id: "vidola", nom: "Vidola", url: "https://vidola-a.example/film/1", domaine: "vidola-a.example" }];
   const dev = { id: "d", ongletId: null, cible: "site:vidola", origine: "https://vidola-a.example", permissions: ["outils-dev" as const], droits: ["console" as const] };
   expect(staleSiteQuestion(dev, opened)).toBe(false);
@@ -330,7 +330,7 @@ test("questionSiteCaduque: a question on site:<id> lapses with its window; the d
   expect(staleSiteQuestion({ id: "s", ongletId: null, origine: "webaios-site://vidola", permissions: ["donnees-widget" as const], site: "vidola" }, [])).toBe(false);
 });
 
-test("questionCaduque: a site-app window is not a closed tab (tracked separately)", () => {
+test("staleQuestion: a site-app window is not a closed tab (tracked separately)", () => {
   const { e, F } = prepare();
   const dev = { id: "d", ongletId: null, fenetreId: F, cible: "site:vidola", origine: "https://vidola-a.example", permissions: ["outils-dev" as const], droits: ["console" as const] };
   expect(staleQuestion(dev, e())).toBe(false);

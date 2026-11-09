@@ -12,7 +12,7 @@ import { callTool } from "./mcp";
 import { LINES, reviewedRef, writeAppJs } from "./review";
 import { inUi, waitUi } from "./ui";
 
-// Plan 35a Task 5: the app window's badge (PastilleApp.svelte in sidebar.html?pastille=) and the
+// Plan 35a Task 5: the app window's badge (AppBadge.svelte in sidebar.html?pastille=) and the
 // agent apps' review, plus the security
 // checks of spike S8 on the real code.
 

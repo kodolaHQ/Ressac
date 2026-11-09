@@ -16,7 +16,7 @@ import { writeWidget } from "./workflows";
 // Plus the click on a notification.
 
 const FIXTURES_DDG = path.resolve(import.meta.dirname, "../../../packages/kernel/test/workflows/fixtures/duckduckgo");
-/** The kernel's exact message (accueil/schemas.ts, WEB_AVEC_COMPTE). */
+/** The kernel's exact message (home/schemas.ts, WEB_WITH_ACCOUNT). */
 const WEB_WITH_ACCOUNT = "web : impossible avec un compte (les données d'un compte ne doivent pas pouvoir partir vers un site inconnu)";
 
 interface Server {

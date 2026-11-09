@@ -180,7 +180,7 @@ async function createBrowser(userContextId: number, o: { private: boolean }): Pr
 
 /**
  * Loads `url` in a windowless browser (`profil` null: a private container emptied first; else a login profile's
- * container that no private space uses, or ProfilRefuse) and reads it with `reading`. Same guards, same two places,
+ * container that no private space uses, or ProfileDenied) and reads it with `reading`. Same guards, same two places,
  * same 30 s for every read. `signal` aborts the read, waiting or running, closes its browser, rejects with its reason.
  */
 async function load<T>(

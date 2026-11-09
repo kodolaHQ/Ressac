@@ -29,7 +29,7 @@ function recentActions(actions: ActionShown[]): ActionShown[] {
 
 /**
  * The command bar's rows, in order: default, actions, tabs, apps, history. Empty field: home first (Enter leads
- * there), then actions and the open tabs, without the shown tab (`ongletAffiche`).
+ * there), then actions and the open tabs, without the shown tab (`shownTab`).
  */
 export function commandLines(text: string, sources: CommandSources, urlActive: string | null, shownTab: TabId | null = null): CommandLine[] {
   const t = text.trim();
@@ -95,7 +95,7 @@ export function defaultParam(url: string | null | undefined): string {
   return text.length <= PARAM_MAX ? text : "";
 }
 
-/** The length the actions service accepts for an input (SchemaSaisieAction). */
+/** The length the actions service accepts for an input (ActionInputSchema). */
 export const PARAM_MAX = 2000;
 
 export function projectSiteApp(a: ApplicationShown): SiteApp | null {

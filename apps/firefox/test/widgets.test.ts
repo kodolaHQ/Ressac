@@ -25,7 +25,7 @@ const widget = (o: Partial<Extract<WidgetLu, { declaration: DeclarationWidget }>
 
 const state = (widgets: WidgetLu[]): HomeState => ({ disposition: [], widgets });
 
-describe("versWidgetsAffiches", () => {
+describe("toShownWidgets", () => {
   it("returns the data, the example, the state and the display versioned by date", () => {
     const theme = { version: 1 as const, fond: "#101014" };
     const lu = toShownWidgets({
@@ -79,7 +79,7 @@ describe("versWidgetsAffiches", () => {
   });
 });
 
-describe("validerPlacements", () => {
+describe("validatePlacements", () => {
   const ids = ["demo", "meteo"];
   const p = (o: Record<string, unknown> = {}) => ({ id: "demo", x: 0, y: 0, l: 500, h: 90, ...o });
 

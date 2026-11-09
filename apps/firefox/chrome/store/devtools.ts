@@ -11,9 +11,9 @@ import type { WindowRegistry } from "./windows";
 /** What a call through a revoked owner (a stopped agent's devtools) throws. */
 export const REVOKED_TEXT = "Ces outils de développement appartiennent à un agent arrêté.";
 
-// The agent's dev tools on a tab, the Firefox side of the kernel's OutilsDevNavigateur (plan 28, note D1-D9): an
+// The agent's dev tools on a tab, the Firefox side of the kernel's BrowserDevTools (plan 28, note D1-D9): an
 // in-process DevTools client per tab (CommandsFactory.forTab over DevToolsServer.connectPipe, the toolbox's own way), no
-// socket and no listener. It coexists with the person's own toolbox on the same tab (note D7): OutilsDevOccupes is never raised.
+// socket and no listener. It coexists with the person's own toolbox on the same tab (note D7): DevToolsBusy is never raised.
 
 /** The network buffer's bound (the console keeps 1000 messages, truncated by the kernel's tronquer). */
 const MAX_REQUESTS = 500;
@@ -39,7 +39,7 @@ export const PROFILER_BUSY_TEXT =
 const DETACHED_TEXT = "Les outils de développement de l'agent ont été détachés de l'onglet.";
 
 export interface DevTools {
-  /** One owner per kernel start: creating one revokes the previous (its calls throw TEXTE_REVOQUE, its attachments drop). */
+  /** One owner per kernel start: creating one revokes the previous (its calls throw REVOKED_TEXT, its attachments drop). */
   owner(): { token: string };
   /** Revokes that owner (the current one when no token is given: its host is gone). */
   release(token?: string): void;
@@ -113,7 +113,7 @@ function gripText(value: any): string {
 }
 
 type Frame = { functionName?: string; filename?: string; lineNumber?: number; columnNumber?: number };
-/** Firefox's frames (1-based) as the protocol's call frames (0-based) that textePile writes. */
+/** Firefox's frames (1-based) as the protocol's call frames (0-based) that stackText writes. */
 const callFrames = (frames: Frame[] | null | undefined) => ({
   callFrames: (frames ?? []).map((f) => ({ functionName: f.functionName ?? "", url: f.filename ?? "", lineNumber: (f.lineNumber ?? 1) - 1, columnNumber: (f.columnNumber ?? 1) - 1 })),
 });
@@ -635,7 +635,7 @@ export function createDevTools(o: {
         c.done();
       }
     },
-    /** The memory actor's census (note D6), as the kernel's InstantaneFirefox: classes, never a string's content. */
+    /** The memory actor's census (note D6), as the kernel's FirefoxSnapshot: classes, never a string's content. */
     async instantaneMemoire(id: string, signal?: AbortSignal): Promise<string> {
       if (signal?.aborted) throw abortError(signal);
       const s = await session(id);

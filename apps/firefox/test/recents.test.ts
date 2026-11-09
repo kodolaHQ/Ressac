@@ -23,7 +23,7 @@ beforeEach(() => {
   F = e.fenetres[0]!.id;
 });
 
-test("ordreRecent: active first, history, then the rest; closed ignored", () => {
+test("recentOrder: active first, history, then the rest; closed ignored", () => {
   const a = open("https://a.fr");
   const b = open("https://b.fr");
   const c = open("https://c.fr");
@@ -34,7 +34,7 @@ test("ordreRecent: active first, history, then the rest; closed ignored", () => 
   expect(recentOrder(e, F, [c, a])).toEqual([b, a, d]);
 });
 
-test("noterUtilisation", () => {
+test("noteUsage", () => {
   expect(noteUsage(["a", "b", "c"], "c")).toEqual(["c", "a", "b"]);
   expect(noteUsage(["a"], "z")).toEqual(["z", "a"]);
 });
@@ -59,7 +59,7 @@ test("retirer", () => {
   expect(remove({ liste: ["a", "b"], selection: 1 }, "a")).toBeNull();
 });
 
-test("fenetreVisible", () => {
+test("visibleWindow", () => {
   const list = Array.from({ length: 10 }, (_, i) => String(i));
   expect(visibleWindow({ liste: list, selection: 0 })).toEqual({ debut: 0, fin: 7 });
   expect(visibleWindow({ liste: list, selection: 9 })).toEqual({ debut: 3, fin: 10 });

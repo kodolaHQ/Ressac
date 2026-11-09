@@ -22,7 +22,7 @@ const workflow = (to: string) => JSON.stringify({
     liens: [{ de: "lire", vers: "sortie" }],
   });
 
-test("two actions read, sorted; a damaged action.json gives an ActionLue in error without bothering the other", async () => {
+test("two actions read, sorted; a damaged action.json gives an ReadAction in error without bothering the other", async () => {
   const c = await space();
   await ask(c, "zebre", { nom: "Z", sources: {} });
   await ask(c, "alpha", "{pas du json");
@@ -76,7 +76,7 @@ test("dossier d'actions absent : liste vide", async () => {
   expect(await readActions(c)).toEqual([]);
 });
 
-test("workflowDeLAction : recolte.mjs seul → absent ; workflow vers widget → invalide SORTIE_PAGE_REQUISE", async () => {
+test("actionWorkflow : recolte.mjs seul → absent ; workflow vers widget → invalide OUTPUT_PAGE_REQUIRED", async () => {
   const c = await space();
   await ask(c, "seul", { nom: "S", sources: {} }, { "recolte.mjs": "export default 1" });
   await ask(c, "mauvaise", { nom: "M", sources: {} }, { "workflow.json": workflow("widget") });

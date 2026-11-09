@@ -78,7 +78,7 @@ beforeEach(() => {
 });
 
 type Outcome = { ok: { url: string; texte: string }; at: number } | { err: string; at: number };
-/** A paced read through the host's test hook (the kernel's Menagement), resolving when it ends. */
+/** A paced read through the host's test hook (the kernel's Pacing), resolving when it ends. */
 const paced = (url: string) =>
   m.execute<Outcome>(
     `return (async () => {

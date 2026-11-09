@@ -109,7 +109,7 @@ describe("agent components", () => {
     writeFileSync(join(data(), "espace", "composants", name, "composant.html"), html);
   };
 
-  it("COMPOSANT_HTML_MAX is the kernel's", () => {
+  it("COMPONENT_HTML_MAX is the kernel's", () => {
     expect(COMPONENT_HTML_MAX).toBe(NOYAU_COMPOSANT_HTML_MAX);
   });
 

@@ -80,7 +80,7 @@ test("__proto__ and constructor are never read", () => {
   expect(val("filtrer(tickets, __proto__ = x)")).toEqual({ valeur: [] });
   expect(readPath(JSON.parse('{"__proto__":{"a":1}}'), "__proto__.a")).toBe(1);
 });
-test("lireChemin: $ is the root", () => {
+test("readPath: $ is the root", () => {
   expect(readPath(5, "$")).toBe(5);
 });
 test("accented key read", () => expect(val("priorité")).toEqual({ valeur: "ok" }));

@@ -168,7 +168,7 @@
   .bandeau button { padding: 3px 10px; border-radius: 6px; border: 1px solid var(--accueil-bord); background: var(--accueil-fond); color: var(--accueil-texte); font-size: 12px; cursor: pointer; }
   .bandeau button:first-of-type { background: var(--accueil-accent); border-color: var(--accueil-accent); color: white; }
   .avertissement { margin: 0; padding: 4px 12px; font-size: 12px; }
-  /* During a drag, the frame (in CadreWidget) does not capture the mouse. */
+  /* During a drag, the frame (in WidgetFrame) does not capture the mouse. */
   .geste :global(iframe) { pointer-events: none; }
   /* The handle only shows on card hover (the most sober look). */
   .poignee-taille { position: absolute; right: 0; bottom: 0; width: 14px; height: 14px; cursor: nwse-resize; z-index: 2; opacity: 0;

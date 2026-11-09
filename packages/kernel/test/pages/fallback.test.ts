@@ -15,7 +15,7 @@ const announcements = [
 const valid = (r: unknown) => validatePlan(fallbackLayout(r), { catalogue: BUILTIN_COMPONENTS, resultats: r });
 const components = (r: unknown) => fallbackLayout(r).blocs.map((b) => b.composant);
 
-describe("miseEnPageSecours", () => {
+describe("fallbackLayout", () => {
   it("list of listings with https…jpg photo: cards", () => {
     const plan = fallbackLayout(announcements);
     expect(plan.blocs).toHaveLength(1);
@@ -59,7 +59,7 @@ describe("miseEnPageSecours", () => {
     expect(fallbackLayout(42).blocs[0]).toMatchObject({ composant: "chiffre", props: { valeur: "$" } });
   });
 
-  it("each fallback passes validerPlan", () => {
+  it("each fallback passes validatePlan", () => {
     const cas: unknown[] = [
       announcements, tickets, ["a", "b"], "texte", 7, { total: 3, tickets }, { projet: { nom: "W" }, annonces: announcements, tags: ["x"], texte: "t", n: 0, ok: true },
       { "clé-bizarre": 1, tickets }, [1, 2, 3], JSON.parse('{"__proto__": {"a": 1}, "n": 2}'),

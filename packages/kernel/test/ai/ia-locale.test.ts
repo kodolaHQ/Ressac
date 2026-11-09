@@ -24,7 +24,7 @@ const clone = (folder: string) => async (): Promise<Response> => {
   return { code: 0 };
 };
 
-describe("IaLocale", () => {
+describe("LocalAi", () => {
   it("kev() passes state and questions and returns answers", async () => {
     const kev = keep(await fakeKev());
     const { executer: run } = fakeRunner([]);
@@ -325,7 +325,7 @@ describe("IaLocale", () => {
   });
 });
 
-describe("IaLocale : quitter annule l'installation", () => {
+describe("LocalAi : quitter annule l'installation", () => {
   /** Fake git clone that stays in progress (partial files written) until cancellation; `ignorer`: deaf to the signal. */
   function endlessClone(folder: string, ignore = false) {
     const received: (AbortSignal | undefined)[] = [];
@@ -360,7 +360,7 @@ describe("IaLocale : quitter annule l'installation", () => {
     expect(existsSync(join(folder, "kev.clone-en-cours"))).toBe(false);
     await expect(ai.installer(() => {})).rejects.toThrow("IA locale fermée");
 
-    // Next launch: new IaLocale, the install restarts from the beginning.
+    // Next launch: new LocalAi, the install restarts from the beginning.
     const { executer: run, appels: calls } = fakeRunner([
       [/^git clone/, clone(folder)],
       [/rev-parse HEAD/, { code: 0, stdout: COMMIT }],
@@ -419,7 +419,7 @@ describe("IaLocale : quitter annule l'installation", () => {
   });
 });
 
-describe("lancerProcessusIa (Kev: uv launches a Python child)", () => {
+describe("launchAiProcess (Kev: uv launches a Python child)", () => {
   const alive = (pid: number) => {
     try {
       process.kill(pid, 0);

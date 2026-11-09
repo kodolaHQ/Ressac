@@ -14,7 +14,7 @@ const decl: DeclarationSite = {
 };
 const state: UrlState = { actuel: "vidola-b.example", anciens: ["vidola-a.example"], depuis: null };
 
-describe("hoteDansSite", () => {
+describe("hostInSite", () => {
   it("exact, subdomain, case-insensitive, trailing dot", () => {
     expect(hostInSite("www.vidola-a.example", ["vidola-a.example"])).toBe(true);
     expect(hostInSite("vidola-a.example.evil.com", ["vidola-a.example"])).toBe(false);
@@ -35,7 +35,7 @@ describe("effective domains and start", () => {
   });
 });
 
-describe("adresseRelative", () => {
+describe("relativeUrl", () => {
   it("path + query without #", () => {
     expect(relativeUrl("https://www.vidola-a.example/serie/the-bear?s=2#t", ["vidola-a.example"])).toBe("/serie/the-bear?s=2");
     expect(relativeUrl("https://pub.example/x", ["vidola-a.example"])).toBeNull();
@@ -43,7 +43,7 @@ describe("adresseRelative", () => {
   });
 });
 
-describe("adresseSurDomaine", () => {
+describe("urlOnDomain", () => {
   const dom = ["vidola-a.example", "vidola-b.example"];
   const start = "https://vidola-b.example/accueil";
   const o = { adressesLocales: false };
@@ -75,7 +75,7 @@ describe("adresseSurDomaine", () => {
   });
 });
 
-describe("correspondMotif", () => {
+describe("matchesPattern", () => {
   it("anchored wildcard", () => {
     expect(matchesPattern("/series/*", "/series/the-bear?e=4")).toBe(true);
     expect(matchesPattern("/series/*", "/x/series/a")).toBe(false);
@@ -90,7 +90,7 @@ describe("correspondMotif", () => {
   });
 });
 
-describe("correspondMotif, cas hostiles", () => {
+describe("matchesPattern, cas hostiles", () => {
   const m = "https://*.clipsy.*/*";
   it("the host's wildcard does not pass / ? @ :", () => {
     expect(matchesPattern(m, "https://evil.com/a.clipsy.b/z")).toBe(false);
@@ -115,7 +115,7 @@ describe("domaines Unicode", () => {
   });
 });
 
-describe("retouchesPour", () => {
+describe("tweaksFor", () => {
   const dom = ["vidola-a.example", "vidola-b.example"];
   it("main: path pattern on any effective domain", () => {
     expect(tweaksFor(decl, { url: "https://vidola-a.example/series/x", principal: true }, dom)).toEqual([decl.retouches[0]]);
@@ -138,7 +138,7 @@ describe("retouchesPour", () => {
   });
 });
 
-describe("trouverAdresse: a real domain name", () => {
+describe("findUrl: a real domain name", () => {
   const o = { page: "https://adresses.example/", motif: "vidola", adressesLocales: false };
   it("without a dot (intranet) or whose last label is numeric: refused, as in site.json", () => {
     for (const link of ["https://vidola/", "https://vidola-box/", "https://vidola.1/", "https://vidola.12/"]) {
@@ -153,7 +153,7 @@ describe("trouverAdresse: a real domain name", () => {
   });
 });
 
-describe("trouverAdresse", () => {
+describe("findUrl", () => {
   const o = { page: "https://ww1.vidola-adresses.example/", motif: "vidola", adressesLocales: false };
   it("first safe link whose host contains the pattern", () => {
     expect(findUrl([

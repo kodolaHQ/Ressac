@@ -69,7 +69,7 @@ type Api = ReturnType<typeof createActionsApi>;
 
 afterEach(() => vi.restoreAllMocks());
 
-describe("espaceActifPrive", () => {
+describe("activeSpacePrivate", () => {
   it("is false only for a window whose active space is private", () => {
     const { F, etat: state, turnPrivate, genId } = setup();
     const cases: [BrowserState, string][] = [[state(), F], [state(), "inconnue"]];
@@ -393,7 +393,7 @@ describe("createActionsApi", () => {
     expect(s.dispatched).toEqual([]);
   });
 
-  /** The host's preparer over a fixed set of actions (noyau/actions.ts), `running` already in the direct feed. */
+  /** The host's preparer over a fixed set of actions (host/actions.ts), `running` already in the direct feed. */
   const prepare = (running: string[] = []) => (p: { id: string; saisie: string | null }) => {
     const names: Record<string, [string, boolean]> = { gitlab: ["GitLab", false], leboncoin: ["Leboncoin", true] };
     const a = names[p.id];

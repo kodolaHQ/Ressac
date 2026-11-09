@@ -36,7 +36,7 @@
 
   let generation = 0;
   let review: ReturnType<typeof setTimeout> | undefined;
-  /** Re-reads done (at most RELECTURES_MAX); none once the kernel has served a page. */
+  /** Re-reads done (at most MAX_REVIEWS); none once the kernel has served a page. */
   let reviews = 0;
   let kernelReady = false;
   const MAX_REVIEWS = 15;

@@ -67,7 +67,7 @@ type Request = {
 
 /**
  * The actions queue, apart from that of widget harvests (an action never waits for a harvest): at most
- * `ACTIONS_SIMULTANEES` different actions at the same time, the next ones wait their turn; only one run at a
+ * `CONCURRENT_ACTIONS` different actions at the same time, the next ones wait their turn; only one run at a
  * time per action (a request while it runs or waits returns that one).
  */
 export class FileActions {

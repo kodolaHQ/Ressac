@@ -139,7 +139,7 @@ export function lineStart(o: StartOptions): string {
 
 /**
  * Bytes of the start line as it is sent (with, for a replay, the taken outputs): the harvester
- * refuses a line of more than `LIGNE_MAX_OCTETS`. To measure before launching a try, to refuse without writing anything.
+ * refuses a line of more than `LINE_MAX_BYTES`. To measure before launching a try, to refuse without writing anything.
  */
 export function lineStartBytes(o: StartOptions): number {
   return Buffer.byteLength(lineStart(o));

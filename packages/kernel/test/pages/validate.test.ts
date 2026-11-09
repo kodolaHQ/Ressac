@@ -20,7 +20,7 @@ const catalog = [...BUILTIN_COMPONENTS, graph];
 const validate = (raw: unknown, r: unknown = results) => validatePlan(raw, { catalogue: catalog, resultats: r });
 const figure = { composant: "chiffre", props: { valeur: "compter(tickets)", libelle: "Tickets" } };
 
-describe("validerPlan", () => {
+describe("validatePlan", () => {
   it("the GitLab plan (figure compter(tickets), table trier(tickets, priorite), callout garder(filtrer(…), 3)) is valid", () => {
     const plan = {
       blocs: [

@@ -40,7 +40,7 @@ describe("parserDiff", () => {
     const b = parserDiff("@@ -5 +4,0 @@\n-x\n")[0]!;
     expect(b).toMatchObject({ ancienDebut: 5, ancienNombre: 1, nouveauDebut: 4, nouveauNombre: 0 });
   });
-  test("positionNouvelle of a deleted line = number of the new line that follows", () => {
+  test("newPosition of a deleted line = number of the new line that follows", () => {
     const b = parserDiff(patch)[0]!;
     expect(newPosition(b, 1)).toBe(2);
     expect(newPosition(b, 2)).toBe(2);
