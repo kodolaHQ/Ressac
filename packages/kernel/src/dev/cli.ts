@@ -1,5 +1,5 @@
 // Dev command: the real agent in the container, plugged into a fake browser.
-// Usage: corepack pnpm dev:noyau   (Ctrl-] to quit)
+// Usage: corepack pnpm dev:kernel   (Ctrl-] to quit)
 import { execFile } from "node:child_process";
 import { appendFileSync } from "node:fs";
 import { tmpdir } from "node:os";

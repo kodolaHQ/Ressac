@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { setTimeout as attendre } from "node:timers/promises";
+import { setTimeout as sleep } from "node:timers/promises";
 import { spacePaths } from "../../src/paths.js";
 import { validFolder, writeType, readProjects, watchProjects } from "../../src/applications/manifest.js";
 import { tempFolder } from "../helpers/temp.js";
@@ -80,12 +80,12 @@ test("watchProjects signals a new manifest and ignores node_modules", async () =
   await mkdir(join(c.projets, "a", "node_modules", "p"), { recursive: true });
   let calls = 0;
   const stop = watchProjects(c, () => calls++);
-  await attendre(400);
+  await sleep(400);
   await writeFile(join(c.projets, "a", "node_modules", "p", "webaios.json"), "{}");
-  await attendre(500);
+  await sleep(500);
   expect(calls).toBe(0);
   await write(c, "a", '{"type":"poc","lancement":"x"}');
-  await attendre(500);
+  await sleep(500);
   await stop();
   expect(calls).toBe(1);
 });

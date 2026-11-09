@@ -1,18 +1,18 @@
-import type { Brouillon } from "./draft";
+import type { Draft } from "./draft";
 
 export const COLUMN_PX = 260;
 export const ROW_PX = 110;
 type Position = { x: number; y: number };
 
 /** At least two blocks, all at the same position: the file was never laid out. */
-export function withoutLayout(b: Brouillon): boolean {
+export function withoutLayout(b: Draft): boolean {
   if (b.blocs.length < 2) return false;
   const { x, y } = b.blocs[0]!.position;
   return b.blocs.every((p) => p.position.x === x && p.position.y === y);
 }
 
 /** Column of each block: longest path from a root, links closing a cycle ignored. */
-function columns(b: Brouillon): Map<string, number> {
+function columns(b: Draft): Map<string, number> {
   const ids = new Set(b.blocs.map((x) => x.id));
   const next = new Map<string, string[]>();
   for (const l of b.liens) if (ids.has(l.de) && ids.has(l.vers) && l.de !== l.vers) next.set(l.de, [...(next.get(l.de) ?? []), l.vers]);
@@ -38,7 +38,7 @@ function columns(b: Brouillon): Map<string, number> {
   return col;
 }
 
-export function arrange(b: Brouillon): Record<string, Position> {
+export function arrange(b: Draft): Record<string, Position> {
   const col = columns(b);
   const rank = new Map<number, number>();
   const output: Record<string, Position> = {};
@@ -51,7 +51,7 @@ export function arrange(b: Brouillon): Record<string, Position> {
   return output;
 }
 
-export function shownPositions(b: Brouillon, previous: Record<string, Position> | null): Record<string, Position> {
+export function shownPositions(b: Draft, previous: Record<string, Position> | null): Record<string, Position> {
   if (withoutLayout(b)) {
     const auto = arrange(b);
     if (previous) for (const x of b.blocs) { const q = previous[x.id]; if (q) auto[x.id] = q; }

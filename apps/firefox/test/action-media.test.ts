@@ -2,7 +2,7 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { COMPONENT_HTML_MAX as NOYAU_COMPOSANT_HTML_MAX } from "../../../packages/kernel/src/pages/agent-components";
+import { COMPONENT_HTML_MAX as KERNEL_COMPONENT_HTML_MAX } from "../../../packages/kernel/src/pages/agent-components";
 import { COMPONENT_HTML_MAX, actionImage, actionImageTestUrl, releaseComponent, serveComponent } from "../chrome/store/action-media";
 
 vi.mock("../chrome/store/containers", () => ({ containerFor: (p: string) => (p === "action-images" ? 7 : -1) }));
@@ -110,7 +110,7 @@ describe("agent components", () => {
   };
 
   it("COMPONENT_HTML_MAX is the kernel's", () => {
-    expect(COMPONENT_HTML_MAX).toBe(NOYAU_COMPOSANT_HTML_MAX);
+    expect(COMPONENT_HTML_MAX).toBe(KERNEL_COMPONENT_HTML_MAX);
   });
 
   it("a name outside ^[a-z0-9-]{1,40}$ gives null without reading the disk", async () => {

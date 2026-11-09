@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tick, untrack } from "svelte";
-  import { api, appState as etatNavigateur } from "../state.svelte";
+  import { api, appState as browserState } from "../state.svelte";
   import { focusAgent } from "./agent.svelte";
   import * as terminalAgent from "./terminalAgent.svelte";
 
@@ -39,7 +39,7 @@
   const appState = $derived(terminalAgent.agent.etat);
 
   let profiles = $state<{ id: string; nom: string }[]>([]);
-  const agentProfile = $derived(etatNavigateur.valeur?.reglages.profilAgent ?? "claude");
+  const agentProfile = $derived(browserState.valeur?.reglages.profilAgent ?? "claude");
   $effect(() => {
     if (visible) api.agent.profils().then((p) => (profiles = p), () => {});
   });

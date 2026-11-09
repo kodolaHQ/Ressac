@@ -354,7 +354,7 @@ describe("the agent and the app's add-ons", () => {
     await openAndWait();
     const config = path.join(dataDir, "espace", ".webaios", "mcp.json");
     for (const deadline = Date.now() + 20_000; !existsSync(config); await new Promise((r) => setTimeout(r, 100)))
-      if (Date.now() > deadline) throw new Error("the noyau did not write its MCP config");
+      if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
     await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('prêt>')", [], 20_000, "agent");
     const lines = (await callTool(dataDir, "lister_onglets")).texte.split("\n");
     expect(lines.filter((l) => l.includes("vidola-a.localhost"))).toEqual(["site:vidola · Vidola · vidola-a.localhost · appli de site"]);

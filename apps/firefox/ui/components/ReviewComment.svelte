@@ -1,10 +1,10 @@
 <script lang="ts">
-  import type { Commentaire } from "../../shared/api";
+  import type { DiffComment } from "../../shared/api";
   import { PAGE_LINE_CHANGED } from "../../shared/model";
   import { api } from "../state.svelte";
 
   /** A review comment under its lines: its text as is (Markdown not rendered), its state, its actions. */
-  let { projet: project, commentaire: c, surChange: onChange }: { projet: string; commentaire: Commentaire; surChange: () => void } = $props();
+  let { projet: project, commentaire: c, surChange: onChange }: { projet: string; commentaire: DiffComment; surChange: () => void } = $props();
 
   let edit = $state<string | null>(null);
   let error = $state<string | null>(null);

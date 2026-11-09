@@ -50,7 +50,7 @@ async function launch(o: { amo?: Parameters<typeof launchWithAmo>[0]["amo"] } = 
   opened.push(w);
   const config = path.join(dataDir, "espace", ".webaios", "mcp.json");
   for (const deadline = Date.now() + 20_000; !existsSync(config); await new Promise((r) => setTimeout(r, 100)))
-    if (Date.now() > deadline) throw new Error("the noyau did not write its MCP config");
+    if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
   await waitUi(w.marionette, "return doc.querySelector('.xterm-rows')?.textContent.includes('prêt>')", [], 20_000, "agent");
   return { ...w, racine: path.join(dataDir, "espace"), call: (name: string, args: Record<string, unknown> = {}) => callTool(dataDir, name, args) };
 }

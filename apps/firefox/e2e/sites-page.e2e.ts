@@ -287,7 +287,7 @@ describe("the agent's site tools", () => {
   async function withAgent(prepare: (dataDir: string) => void = (d) => writeSite(d, "vidola", vidola())) {
     const l = await launch({ prepare, page: false });
     const config = path.join(l.dataDir, "espace", ".webaios", "mcp.json");
-    for (const deadline = Date.now() + 20_000; !existsSync(config); await sleep(100)) if (Date.now() > deadline) throw new Error("the noyau did not write its MCP config");
+    for (const deadline = Date.now() + 20_000; !existsSync(config); await sleep(100)) if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
     await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('prêt>')", [], 20_000, "agent");
     return l;
   }

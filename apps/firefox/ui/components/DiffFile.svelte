@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Commentaire, DiffFichier } from "../../shared/api";
+  import type { DiffComment, DiffFile } from "../../shared/api";
   import { EXPANDED_LINES, NOT_DISPLAYABLE, RANGE_OUTSIDE_BLOCK } from "../../shared/model";
   import { api } from "../state.svelte";
   import ReviewComment from "./ReviewComment.svelte";
@@ -14,9 +14,9 @@
     diff,
     commentaires: comments,
     surChange: onChange,
-  }: { projet: string; jeton: string; diff: DiffFichier; commentaires: Commentaire[]; surChange: () => void } = $props();
+  }: { projet: string; jeton: string; diff: DiffFile; commentaires: DiffComment[]; surChange: () => void } = $props();
 
-  type Block = DiffFichier["blocs"][number];
+  type Block = DiffFile["blocs"][number];
   /** Position of a hunk line: its new number, the next line's for a removal (like the kernel). */
   function position(b: Block, i: number): number {
     for (let k = i; k < b.lignes.length; k++) {
@@ -105,8 +105,8 @@
 
   /** Each comment under the last shown line of its range (first hunk that has the line `fin`); otherwise at the top. */
   const places = $derived.by(() => {
-    const sub = new Map<string, Commentaire[]>();
-    const elsewhere: Commentaire[] = [];
+    const sub = new Map<string, DiffComment[]>();
+    const elsewhere: DiffComment[] = [];
     for (const c of comments) {
       let where: string | null = null;
       for (let i = 0; i < diff.blocs.length && where === null; i++) {
@@ -130,8 +130,8 @@
   let intervals = $state<Record<number, Interval>>({});
   let onLoaded = $state<number | null>(null);
 
-  const blockStart = (b: DiffFichier["blocs"][number]) => (b.nouveauNombre === 0 ? b.nouveauDebut + 1 : b.nouveauDebut);
-  const blockEnd = (b: DiffFichier["blocs"][number]) => (b.nouveauNombre === 0 ? b.nouveauDebut + 1 : b.nouveauDebut + b.nouveauNombre);
+  const blockStart = (b: DiffFile["blocs"][number]) => (b.nouveauNombre === 0 ? b.nouveauDebut + 1 : b.nouveauDebut);
+  const blockEnd = (b: DiffFile["blocs"][number]) => (b.nouveauNombre === 0 ? b.nouveauDebut + 1 : b.nouveauDebut + b.nouveauNombre);
 
   /** The hidden gap before hunk i: first new lines, last one (null: to the end of the file), old − new offset. */
   function cache(i: number): { debut: number; fin: number | null; decalage: number } | null {
@@ -212,7 +212,7 @@
     <form class="formulaire" data-testid="formulaire-commentaire" onsubmit={(e) => { e.preventDefault(); void validate(); }}>
       <div class="plage">{range.debut === range.fin ? `Ligne ${range.debut}` : `Lignes ${range.debut}–${range.fin}`}</div>
       <!-- svelte-ignore a11y_autofocus -->
-      <textarea bind:value={text} rows="3" autofocus placeholder="Commentaire (texte simple, Markdown montré tel quel)" onkeydown={key}></textarea>
+      <textarea bind:value={text} rows="3" autofocus placeholder="DiffComment (texte simple, Markdown montré tel quel)" onkeydown={key}></textarea>
       {#if error}<p class="erreur" data-testid="erreur-commentaire">{error}</p>{/if}
       <div class="actions">
         <button type="button" onclick={close}>Annuler</button>

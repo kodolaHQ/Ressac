@@ -1,4 +1,4 @@
-import { ACTION_UNKNOWN as ACTION_INCONNUE_NOYAU, NO_RESULT as AUCUN_RESULTAT_NOYAU, FALLBACK_MENTION as MENTION_SECOURS_NOYAU } from "@webaios/kernel";
+import { ACTION_UNKNOWN as KERNEL_ACTION_UNKNOWN, NO_RESULT as KERNEL_NO_RESULT, FALLBACK_MENTION as KERNEL_FALLBACK_MENTION } from "@webaios/kernel";
 import { expect, test } from "vitest";
 import { ACTION_UNKNOWN, NO_RESULT, FALLBACK_MENTION } from "../../shared/actions";
 import { sortLines } from "../../ui/action/sort";
@@ -31,7 +31,7 @@ test("does not modify the given list", () => {
 });
 
 test("the page's messages are the kernel's", () => {
-  expect(FALLBACK_MENTION).toBe(MENTION_SECOURS_NOYAU);
-  expect(ACTION_UNKNOWN).toBe(ACTION_INCONNUE_NOYAU);
-  expect(NO_RESULT).toBe(AUCUN_RESULTAT_NOYAU);
+  expect(FALLBACK_MENTION).toBe(KERNEL_FALLBACK_MENTION);
+  expect(ACTION_UNKNOWN).toBe(KERNEL_ACTION_UNKNOWN);
+  expect(NO_RESULT).toBe(KERNEL_NO_RESULT);
 });

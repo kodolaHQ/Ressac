@@ -75,7 +75,7 @@ const config = () => path.join(w.dataDir, "espace", ".webaios", "mcp.json");
 
 async function kernelUp(): Promise<void> {
   for (const deadline = Date.now() + 20_000; !existsSync(config()); await new Promise((r) => setTimeout(r, 100)))
-    if (Date.now() > deadline) throw new Error("the noyau did not write its MCP config");
+    if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
 }
 
 beforeAll(async () => {
@@ -715,8 +715,8 @@ it("executer_js cut by navigating to another site quickly answers the cut text",
 
 it("the host restarts: the new kernel does not see the old messages", async () => {
   const id = await openDemo();
-  await tool("executer_js", { id, code: "console.log('ancien noyau'); 1" });
-  await poll(() => tool("lire_console", { id }), (t) => t.includes("ancien noyau"));
+  await tool("executer_js", { id, code: "console.log('old kernel'); 1" });
+  await poll(() => tool("lire_console", { id }), (t) => t.includes("old kernel"));
   const oldConfig = readFileSync(config(), "utf8");
   const pid = await m.execute<number>(`return (async () => (await ChromeUtils.importESModule("${STORE}").ready).agent.pid)();`);
   process.kill(pid, "SIGKILL");
@@ -727,9 +727,9 @@ it("the host restarts: the new kernel does not see the old messages", async () =
   const url = `${demo.url}/`;
   await m.execute(`return (async () => (await ChromeUtils.importESModule("${STORE}").ready).agent.notify("agent.envoi", { onglet: { id: arguments[0], url: arguments[1], titre: "Démo", espace: "" } }))();`, [id, url]);
   await poll(() => tool("naviguer", { id, url }), (t) => t.includes("→"));
-  await poll(() => tool("executer_js", { id, code: "console.log('nouveau noyau'); 1" }), (t) => t === "1");
-  const text = await poll(() => tool("lire_console", { id }), (t) => t.includes("nouveau noyau"));
-  expect(text).not.toContain("ancien noyau");
+  await poll(() => tool("executer_js", { id, code: "console.log('new kernel'); 1" }), (t) => t === "1");
+  const text = await poll(() => tool("lire_console", { id }), (t) => t.includes("new kernel"));
+  expect(text).not.toContain("old kernel");
 }, 90_000);
 
 it("no debugging port is listening", async () => {

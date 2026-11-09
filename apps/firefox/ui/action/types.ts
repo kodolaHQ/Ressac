@@ -1,8 +1,8 @@
-import type { ImagePage, LienPage } from "@webaios/kernel";
+import type { ImageRef, LinkRef } from "@webaios/kernel";
 
 /** The action and run whose page is drawn: links and images need them. */
 export type PageContext = { action: string; execution: string };
-export type { ImagePage, LienPage };
+export type { ImageRef, LinkRef };
 /** A rendered collection: its items, or its sections (reference ended by `regrouper`), and what was cut. */
 export type Collection<T> = { elements?: T[]; groupes?: { valeur: string; elements: T[] }[]; autres: number };
 /** A collection's sections: just one, untitled, when it is not grouped. */

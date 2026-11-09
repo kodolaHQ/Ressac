@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { tempFolder } from "../helpers/temp.js";
 import { implicitWorkflow } from "../../src/workflows/validate.js";
 import { pathToFileURL } from "node:url";
-import { ENGINE, block, chain, launch as lancerWorkflow, output, sentWorkflow } from "../helpers/engine.js";
+import { ENGINE, block, chain, launch as launchWorkflow, output, sentWorkflow } from "../helpers/engine.js";
 
 const { BLOCS_LIVRES: SHIPPED_BLOCKS, LIMITE_GLOBALE_MS: GLOBAL_LIMIT_MS, echeanceDe: deadlineOf, executerWorkflow: runWorkflow } = await import(pathToFileURL(join(ENGINE, "interpreteur.mjs")).href);
 
@@ -204,7 +204,7 @@ describe("recolteur: duration limit (limiteMs)", () => {
   });
 
   it("in the container, limiteMs of the debut line is the deadline: 20 ms, elapsed during the list, no element launched", async () => {
-    const r = await lancerWorkflow({
+    const r = await launchWorkflow({
       workflow: {
         version: 1,
         blocs: [block("liste", "code", { source: "liste.mjs" }), block("cherche", "web.chercher", { requete: "{modele}", parElement: true }), output],

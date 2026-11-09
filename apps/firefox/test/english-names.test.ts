@@ -50,7 +50,7 @@ export function bindings(code: string, svelte = false): string[] {
       case "ClassDeclaration": case "TSInterfaceDeclaration": case "TSTypeAliasDeclaration": case "TSEnumDeclaration":
         if (node.id) out.push((node.id as Node).name as string);
         break;
-      case "ImportDefaultSpecifier": case "ImportNamespaceSpecifier": out.push((node.local as Node).name as string); break;
+      case "ImportDefaultSpecifier": case "ImportNamespaceSpecifier": case "ImportSpecifier": out.push((node.local as Node).name as string); break;
       case "CatchClause": pattern(node.param as Node); break;
     }
     for (const k in node) if (k !== "type" && typeof node[k] === "object") walk(node[k], node);
@@ -60,8 +60,8 @@ export function bindings(code: string, svelte = false): string[] {
 }
 
 test("the guard sees French binding names", () => {
-  const found = bindings("const etatOnglet = 1; function ouvrir(fenetre: string) {} type Donnees = {}; class A { constructor(readonly nom: string) {} }");
-  expect(found.flatMap(french).sort()).toEqual(["donnees", "etat", "fenetre", "onglet", "ouvrir"]);
+  const found = bindings("import { x as noyau } from 'y'; const etatOnglet = 1; function ouvrir(fenetre: string) {} type Donnees = {}; class A { constructor(readonly nom: string) {} }");
+  expect(found.flatMap(french).sort()).toEqual(["donnees", "etat", "fenetre", "noyau", "onglet", "ouvrir"]);
   expect(bindings("export function lire() {} let x = 1;", true)).toEqual(["x"]);
 });
 

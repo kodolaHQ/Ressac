@@ -4,7 +4,7 @@ import { DatabaseSync, type StatementSync } from "node:sqlite";
 import type { HistoryResult } from "@webaios/kernel";
 import type { Visit } from "../shared/model";
 
-export type { HistoryResult as ResultatHistorique, Visit };
+export type { HistoryResult, Visit };
 
 const COLUMNS = `url, titre, derniere_visite AS derniereVisite, visites, espace_id AS espaceId, prive,
   EXISTS (SELECT 1 FROM textes t WHERE t.url = visites.url AND t.espace_id = visites.espace_id) AS retenu`;

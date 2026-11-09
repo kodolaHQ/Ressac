@@ -704,7 +704,7 @@ export type ReviewView =
       destination: string | null; sansDestination: string | null;
     }
   | { etat: "indisponible"; nom: string; raison: string };
-export type { DiffFile as DiffFichier, ModifiedFile as FichierModifie, Comment as Commentaire };
+export type { DiffFile, ModifiedFile, Comment as DiffComment };
 export interface ReviewApi {
   /**
    * Compares the project to its last review and returns the token of that comparison (kept by the main process).

@@ -28,7 +28,7 @@ import {
   sourceExpression,
   STOP_SCRIPT,
   SITE_BUBBLE_SIZE,
-  type CaptureViseur,
+  type ViewfinderCapture,
 } from "./design-copies";
 import { homeViewfinder } from "./design-home";
 import type { SiteApps } from "./sites";
@@ -124,7 +124,7 @@ const sourceText = (s: DesignContext["source"]): string | null => (s ? (s.ligne 
  * The element's PNG (base64, no prefix): rectCapture's rectangle in view pixels × zoom,
  * drawn by the page's WindowGlobal only (spike S2), then cut to round(size × dpr). null when empty or failed.
  */
-export async function capturePng(browser: any, rect: CaptureViseur["rect"], view: CaptureViseur["vue"], wgp: any = browser.browsingContext?.currentWindowGlobal): Promise<string | null> {
+export async function capturePng(browser: any, rect: ViewfinderCapture["rect"], view: ViewfinderCapture["vue"], wgp: any = browser.browsingContext?.currentWindowGlobal): Promise<string | null> {
   try {
     const win = browser.ownerDocument.defaultView;
     // The home's frame (an <iframe>) has no fullZoom.

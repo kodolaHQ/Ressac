@@ -1,6 +1,6 @@
 import type { Draft } from "../../shared/api";
 
-export type { Draft as Brouillon };
+export type { Draft };
 type DraftBlock = Draft["blocs"][number];
 type Position = { x: number; y: number };
 

@@ -1,9 +1,9 @@
 import { describe, expect, test } from "vitest";
-import { addBlock, move, History, idForType, sameDraft, set, link, rename, followFile, deleteBlocks, deleteLink, toDraft, type Brouillon } from "../../ui/builder/draft";
+import { addBlock, move, History, idForType, sameDraft, set, link, rename, followFile, deleteBlocks, deleteLink, toDraft, type Draft } from "../../ui/builder/draft";
 
-const empty = (): Brouillon => ({ version: 1, blocs: [], liens: [] });
+const empty = (): Draft => ({ version: 1, blocs: [], liens: [] });
 const block = (id: string, type = "code") => ({ id, type, position: { x: 0, y: 0 }, parametres: {} });
-const updateEntry = (blocks: Brouillon["blocs"], liens: Brouillon["liens"] = []): Brouillon => ({ version: 1, blocs: blocks, liens });
+const updateEntry = (blocks: Draft["blocs"], liens: Draft["liens"] = []): Draft => ({ version: 1, blocs: blocks, liens });
 
 test("adding two ia.trier gives ia-trier then ia-trier-2", () => {
   const a = addBlock(empty(), "ia.trier", { x: 1, y: 2 }, {});
@@ -83,7 +83,7 @@ test("sameDraft ignores key order", () => {
 });
 
 describe("Historique", () => {
-  const state = (n: number): Brouillon => updateEntry([block(`b${n}`)]);
+  const state = (n: number): Draft => updateEntry([block(`b${n}`)]);
   test("annuler then rétablir returns the states in order", () => {
     const h = new History(state(0));
     h.faire(state(1)); h.faire(state(2));
@@ -102,7 +102,7 @@ describe("Historique", () => {
   test("101 states: the oldest goes", () => {
     const h = new History(state(0));
     for (let i = 1; i <= 100; i++) h.faire(state(i));
-    let last: Brouillon | null = null, n = 0;
+    let last: Draft | null = null, n = 0;
     for (let r = h.annuler(); r; r = h.annuler()) { last = r; n++; }
     expect(n).toBe(99);
     expect(last).toEqual(state(1));

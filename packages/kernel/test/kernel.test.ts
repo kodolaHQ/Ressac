@@ -8,7 +8,7 @@ import { dirname, join } from "node:path";
 import { createKernel, WorkshopError, type Kernel } from "../src/kernel.js";
 import type { LocalAi } from "../src/ai/local-ai.js";
 import { WidgetsScheduler } from "../src/widgets/scheduler.js";
-import { giveGrant as accorderAccord, readGrants } from "../src/widgets/grants.js";
+import { giveGrant, readGrants } from "../src/widgets/grants.js";
 import { writeRun, idExecution, type Execution } from "../src/workflows/executions.js";
 import { writeResult } from "../src/actions/data.js";
 import { writeData, readData, readWidgetState } from "../src/home/data.js";
@@ -386,7 +386,7 @@ const executionAction = (id: string, start: string): Execution => ({
   version: 1, id: idExecution(start), proprietaire: { type: "action", id }, declencheur: "manuelle", debut: start, fin: start, statut: "reussie", blocs: [],
 });
 
-test("noyau.actions: page(id, null) returns the last resolved result; page of an unknown run: null", async () => {
+test("kernel.actions: page(id, null) returns the last resolved result; page of an unknown run: null", async () => {
   const { n, dossierActions: actionsFolder } = await createWithActions(async (root) => {
     const folder = join(spacePaths(root).actions, "gitlab");
     await mkdir(folder, { recursive: true });
@@ -411,12 +411,12 @@ test("noyau.actions: page(id, null) returns the last resolved result; page of an
   expect(n.actions.direct()).toEqual({ courantes: [], enAttente: [] });
 });
 
-test("noyau.actions: page() of an action rewritten without an account but still granted counts as reading with the account", async () => {
+test("kernel.actions: page() of an action rewritten without an account but still granted counts as reading with the account", async () => {
   const { n, dossierActions: actionsFolder } = await createWithActions(async (root, actionsFolder) => {
     const folder = join(spacePaths(root).actions, "gitlab");
     await mkdir(folder, { recursive: true });
     await writeFile(join(folder, "action.json"), JSON.stringify({ nom: "GitLab", sources: { web: true } }));
-    await accorderAccord(actionsFolder, "gitlab", { domaines: ["gitlab.com"], publiques: [], profil: "perso" });
+    await giveGrant(actionsFolder, "gitlab", { domaines: ["gitlab.com"], publiques: [], profil: "perso" });
   });
   const e = executionAction("gitlab", "2026-10-31T08:00:00.000Z");
   await writeRun(join(actionsFolder, "gitlab"), e);
@@ -425,17 +425,17 @@ test("noyau.actions: page() of an action rewritten without an account but still 
   expect(await n.actions.page("gitlab", null)).toMatchObject({ execution: e.id, compte: true });
 });
 
-test("noyau.actions: at startup, the data of a vanished action is erased", async () => {
+test("kernel.actions: at startup, the data of a vanished action is erased", async () => {
   const { dossierActions: actionsFolder } = await createWithActions(async (root, actionsFolder) => {
     await mkdir(spacePaths(root).actions, { recursive: true });
     await writeRun(join(actionsFolder, "partie"), executionAction("partie", "2026-10-31T08:00:00.000Z"));
-    await accorderAccord(actionsFolder, "partie", { domaines: ["gitlab.com"], publiques: [], profil: "perso" });
+    await giveGrant(actionsFolder, "partie", { domaines: ["gitlab.com"], publiques: [], profil: "perso" });
   });
   expect(existsSync(join(actionsFolder, "partie"))).toBe(false);
   expect((await readGrants(actionsFolder)).partie).toBeUndefined();
 });
 
-test("noyau.actions: accorder records the grant without running anything; refuserAccord removes it and erases", async () => {
+test("kernel.actions: accorder records the grant without running anything; refuserAccord removes it and erases", async () => {
   const { n, dossierActions: actionsFolder } = await createWithActions(async (root) => {
     const folder = join(spacePaths(root).actions, "gitlab");
     await mkdir(folder, { recursive: true });

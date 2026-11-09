@@ -191,7 +191,7 @@ test("relancerTout during a start: the failure of the old start does not overwri
   });
   const old = manager.demarrer("F", size);
   await manager.relancerTout();
-  fail(new Error("noyau arrêté"));
+  fail(new Error("kernel stopped"));
   await old;
   expect(sends.filter((e) => e.canal === "etat").at(-1)?.v).toEqual({ etat: "actif" });
   expect(manager.active("F")).toBe(true);

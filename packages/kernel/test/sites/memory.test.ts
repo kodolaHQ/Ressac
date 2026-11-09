@@ -1,7 +1,7 @@
 import { expect, test, vi } from "vitest";
 import { readFile, rm, stat, writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { setTimeout as attendre } from "node:timers/promises";
+import { setTimeout as sleep } from "node:timers/promises";
 import {
   KEY_INVALID, KEY_MAX, SITE_MEMORY_SIZE, MEMORY_DEPTH_MAX, MEMORY_WRITE_MS, MEMORY_FULL, SiteMemory, POSITIONS_MAX, NON_JSON_VALUE,
 } from "../../src/sites/memory.js";
@@ -34,7 +34,7 @@ test("the write is deferred by at most ECRITURE_MEMOIRE_MS and grouped", async (
   m.retenir("a", 1, null);
   m.retenir("b", 2, null);
   expect(await exists(file(d))).toBe(false);
-  await attendre(MEMORY_WRITE_MS + 300);
+  await sleep(MEMORY_WRITE_MS + 300);
   expect(JSON.parse(await readFile(file(d), "utf8")).valeurs).toMatchObject({ a: { valeur: 1 }, b: { valeur: 2 } });
 });
 
@@ -146,7 +146,7 @@ test("effacer: file absent, content empty, pending write cancelled, surChange no
   expect(calls).toBe(1);
   expect(m.contenu()).toEqual({ version: 1, valeurs: {}, positions: {} });
   expect(await exists(file(d))).toBe(false);
-  await attendre(MEMORY_WRITE_MS + 300);
+  await sleep(MEMORY_WRITE_MS + 300);
   expect(await exists(file(d))).toBe(false);
   stop();
   m.retenir("c", 3, null);

@@ -1,7 +1,7 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { setTimeout as attendre } from "node:timers/promises";
+import { setTimeout as sleep } from "node:timers/promises";
 import { spacePaths, type SpacePaths } from "../../src/paths.js";
 import { Workshop } from "../../src/container/workshop.js";
 import { createServer as serveurHttp } from "node:http";
@@ -79,7 +79,7 @@ function prepare(o: {
 }
 
 async function until(condition: () => boolean) {
-  for (let i = 0; i < 100 && !condition(); i++) await attendre(5);
+  for (let i = 0; i < 100 && !condition(); i++) await sleep(5);
   expect(condition()).toBe(true);
 }
 
@@ -207,7 +207,7 @@ test("a launch right after a stop waits for the stop script to end (which would 
   vi.spyOn(workshop, "arreterApplication").mockReturnValue(script.promesse);
   const stop = g.arreter("todo");
   const relaunch = g.lancer("todo");
-  await attendre(50);
+  await sleep(50);
   expect(process).toHaveLength(1);
   script.resoudre();
   await stop;
@@ -222,7 +222,7 @@ test("a launch during the orphan cleanup waits for its end", async () => {
   vi.spyOn(workshop, "arreterApplicationsOrphelines").mockReturnValue(cleanup.promesse);
   const startup = g.demarrer();
   const launch = g.lancer("todo");
-  await attendre(50);
+  await sleep(50);
   expect(process).toHaveLength(0);
   cleanup.resoudre();
   await startup;
@@ -236,7 +236,7 @@ test("the project watching does not wait for the orphan cleanup (Docker starting
   const cleanup = deferred();
   vi.spyOn(workshop, "arreterApplicationsOrphelines").mockReturnValue(cleanup.promesse);
   const startup = g.demarrer();
-  await attendre(400);
+  await sleep(400);
   await mkdir(join(c.projets, "nouveau"), { recursive: true });
   await writeFile(join(c.projets, "nouveau", "webaios.json"), '{"type":"poc","lancement":"x"}');
   await until(() => states.length > 0);
@@ -253,7 +253,7 @@ test("toutArreter also cancels a queued launch: nothing is launched after", asyn
   await g.toutArreter();
   expect(await first).toMatchObject({ etat: "arretee" });
   expect(await second).toMatchObject({ etat: "arretee" });
-  await attendre(50);
+  await sleep(50);
   expect(process).toHaveLength(1);
   expect(process[0]!.tue).toBe(true);
 });

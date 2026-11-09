@@ -26,7 +26,7 @@ import { SEARCH_DENIED, UNREADABLE_RESULTS, extractResults, searchUrl } from "..
 import { Pacing } from "../../src/workflows/pacing.js";
 import { WEB_REQUIRED } from "../../src/workflows/validate.js";
 import { LINE_MAX_BYTES, DATA_MAX_SIZE } from "../../src/workflows/protocole.js";
-import { DATA_MAX_SIZE as TAILLE_MAX_DONNEES_ACCUEIL } from "../../src/home/schemas.js";
+import { DATA_MAX_SIZE as HOME_DATA_MAX_SIZE } from "../../src/home/schemas.js";
 import { REPLAY_TOO_BIG } from "../../src/workflows/replay.js";
 import { paramsHash, type BlocksMemory } from "../../src/workflows/memory.js";
 import { validateWorkflow } from "../../src/workflows/validate.js";
@@ -1634,7 +1634,7 @@ describe("executerWorkflow: watch (duration, chain, publications, memory along t
   it("interpreteur.mjs's DATA_MAX_SIZE equals the kernel's, re-exported by accueil", async () => {
     const interpreter = await import(pathToFileURL(join(ENGINE, "interpreteur.mjs")).href);
     expect(interpreter.TAILLE_MAX_DONNEES).toBe(DATA_MAX_SIZE);
-    expect(TAILLE_MAX_DONNEES_ACCUEIL).toBe(DATA_MAX_SIZE);
+    expect(HOME_DATA_MAX_SIZE).toBe(DATA_MAX_SIZE);
     expect(DATA_MAX_SIZE).toBe(2 * 1024 * 1024);
   });
 

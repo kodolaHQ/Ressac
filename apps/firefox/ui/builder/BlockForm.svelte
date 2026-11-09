@@ -1,11 +1,11 @@
 <script lang="ts">
   import { untrack } from "svelte";
   import type { BlockCatalogEntry } from "@webaios/kernel";
-  import { set, rename, type Brouillon } from "./draft";
+  import { set, rename, type Draft } from "./draft";
   import type { Edit } from "./edit.svelte";
   import { shownFields, entryOf, paramsWith, textOf, type FormField } from "./form";
 
-  type DraftBlock = Brouillon["blocs"][number];
+  type DraftBlock = Draft["blocs"][number];
 
   /**
    * A block's settings, drawn from its catalog. A checkbox or a choice list saves right away; a text field on focus

@@ -354,7 +354,7 @@ async function start(): Promise<WebAiOsStore> {
     devtools.release();
     apps.closeAll();
   });
-  agent.ensure().catch((e) => console.error("[agent] the noyau did not start:", e));
+  agent.ensure().catch((e) => console.error("[agent] the kernel did not start:", e));
   // No `node … host.ts` may outlive the app: its sessions and MCP server stop with it.
   AsyncShutdown.profileBeforeChange.addBlocker("WebAiOs: stop the agent host", () => agent.stop());
   return {

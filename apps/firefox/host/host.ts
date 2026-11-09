@@ -183,7 +183,7 @@ const launchKernel = (profileId: string): Promise<Kernel | null> => {
     },
     (e: Error) => {
       error = e.message;
-      console.error("[webaios] le noyau n'a pas pu démarrer :", e);
+      console.error("[webaios] the kernel failed to start:", e);
       return null;
     },
   );

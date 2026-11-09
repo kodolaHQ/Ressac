@@ -1,7 +1,7 @@
 <script lang="ts">
   import PageLink from "../PageLink.svelte";
   import { sortLines } from "../sort";
-  import { andOthers, sections, type Collection, type PageContext, type LienPage as Lien } from "../types";
+  import { andOthers, sections, type Collection, type PageContext, type LinkRef as Lien } from "../types";
 
   type Line = { valeurs: Record<string, string>; lien: Lien | null };
   let { p, ctx }: { p: Collection<Line> & { colonnes: { champ: string; libelle: string }[] }; ctx: PageContext } = $props();

@@ -61,7 +61,7 @@ const openFile = (path: string) => click(m, tid("fichier-relecture"), { text: pa
 const refresh = () => refreshReview(m);
 const ADDED = `${tid("ligne-diff")}.ajout`;
 
-/** A Shift+click on the + of line `n`: its mousedown, as DiffFichier reads it (the click helper has no modifiers). */
+/** A Shift+click on the + of line `n`: its mousedown, as DiffFile reads it (the click helper has no modifiers). */
 async function shiftPlus(n: number): Promise<void> {
   await waitUi(m, "return !!doc.querySelector(arguments[0])", [extra(n)]);
   await inUi(m, `doc.querySelector(arguments[0]).dispatchEvent(new ui.MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0, shiftKey: true }))`, [extra(n)]);

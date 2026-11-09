@@ -25,7 +25,7 @@ beforeEach(async () => {
   await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
   const config = join(w.dataDir, "espace", ".webaios", "mcp.json");
   for (const deadline = Date.now() + 20_000; !existsSync(config); await new Promise((r) => setTimeout(r, 100)))
-    if (Date.now() > deadline) throw new Error("the noyau did not write its MCP config");
+    if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
   // The home page's panel starts the agent's session, which takes back every access: tools are called after it.
   await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('prêt>')", [], 20_000, "agent");
 });

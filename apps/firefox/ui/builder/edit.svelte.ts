@@ -1,7 +1,7 @@
 import type { Warning, BlockCatalogEntry } from "@webaios/kernel";
 import type { ApiWebaios, WorkflowEdit } from "../../shared/api";
 import { CODE_MODEL, freshParams } from "./add";
-import { addBlock, move, History, sameDraft, followFile, toDraft, type Brouillon } from "./draft";
+import { addBlock, move, History, sameDraft, followFile, toDraft, type Draft } from "./draft";
 import { arrange, shownPositions, withoutLayout } from "./layout";
 import { isActionKey } from "./target";
 import { forgetRunChoices } from "./executions.svelte";
@@ -14,7 +14,7 @@ export type Load = "chargement" | "pret" | "introuvable" | { illisible: string }
 /** Reading and writing the workflow, addressed by the workflow's key (`targetKey`). */
 export type Depot = {
   lire(key: string): ReturnType<ApiWebaios["workflow"]["lire"]>;
-  enregistrer(key: string, draft: Brouillon): ReturnType<ApiWebaios["workflow"]["enregistrer"]>;
+  enregistrer(key: string, draft: Draft): ReturnType<ApiWebaios["workflow"]["enregistrer"]>;
   lireCode(key: string, name: string): ReturnType<ApiWebaios["workflow"]["lireCode"]>;
   enregistrerCode(key: string, name: string, text: string): ReturnType<ApiWebaios["workflow"]["enregistrerCode"]>;
 };
@@ -30,12 +30,12 @@ const sameJson = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringif
  * the user goes through `modifier` (and so saves): opening, re-reading, rearranging or selecting never write.
  */
 export class Edit {
-  brouillon = $state.raw<Brouillon | null>(null);
+  brouillon = $state.raw<Draft | null>(null);
   validation = $state.raw<Validation>({ ok: true });
   avertissements = $state.raw<Warning[]>([]);
   etatEnregistrement = $state.raw<SaveState>("enregistre");
   /** The latest version seen on disk (or confirmed by a save). */
-  dernierConnu = $state.raw<Brouillon | null>(null);
+  dernierConnu = $state.raw<Draft | null>(null);
   bandeau = $state<null | "proposer" | "illisible">(null);
   /** Displayed positions: the draft's, or the automatic layout of a workflow that has none. */
   positions = $state.raw<Record<string, Position>>({});
@@ -51,12 +51,12 @@ export class Edit {
 
   private historique: History | null = null;
   /** Disk version the banner offers. */
-  private versionDisque: { brouillon: Brouillon; lecture: WorkflowEdit } | null = null;
+  private versionDisque: { brouillon: Draft; lecture: WorkflowEdit } | null = null;
   /** Drafts sent for saving, not yet confirmed: their echo on disk is ignored. */
-  private envoyes: Brouillon[] = [];
-  private prochain: Brouillon | null = null;
+  private envoyes: Draft[] = [];
+  private prochain: Draft | null = null;
   /** Draft held during the « proposer » banner: sent by « Garder la mienne », dropped otherwise. */
-  private retenu: Brouillon | null = null;
+  private retenu: Draft | null = null;
   private enregistrementEnCours = false;
   private lecture = 0;
 
@@ -96,7 +96,7 @@ export class Edit {
   }
 
   /** Shows `disque` as read (validation and warnings of the disk); writes nothing. */
-  private adopterLecture(disk: Brouillon, l: WorkflowEdit): void {
+  private adopterLecture(disk: Draft, l: WorkflowEdit): void {
     this.brouillon = disk;
     this.positions = shownPositions(disk, this.positions);
     this.dernierConnu = disk;
@@ -191,7 +191,7 @@ export class Edit {
    * it (a workflow without a layout keeps the one we see, with no jump afterwards). `fusion`: successive gestures with
    * the same key (keystrokes of the same field) make only one history entry.
    */
-  modifier(f: (b: Brouillon) => Brouillon, fusion?: string): void {
+  modifier(f: (b: Draft) => Draft, fusion?: string): void {
     this.changer(f, false, fusion);
   }
 
@@ -207,7 +207,7 @@ export class Edit {
   }
 
   /** `figer`: the displayed positions alone are enough to save (a drag); otherwise `f` must change the draft. */
-  private changer(f: (b: Brouillon) => Brouillon, freeze: boolean, fusion?: string): void {
+  private changer(f: (b: Draft) => Draft, freeze: boolean, fusion?: string): void {
     const before = this.brouillon;
     if (!before || !this.historique) return;
     const base = move(before, this.positions);
@@ -290,7 +290,7 @@ export class Edit {
    * `historique`: return to a past state; without a layout, it takes the automatic layout again (not the displayed
    * positions, which would keep the undone move).
    */
-  private appliquer(b: Brouillon, hist = false): void {
+  private appliquer(b: Draft, hist = false): void {
     this.brouillon = b;
     this.positions = shownPositions(b, hist && withoutLayout(b) ? null : this.positions);
     if (this.bandeau === "proposer") {
@@ -307,13 +307,13 @@ export class Edit {
     return this.bandeau === "proposer";
   }
 
-  private retenir(b: Brouillon): void {
+  private retenir(b: Draft): void {
     this.retenu = b;
     this.etatEnregistrement = { invalide: AWAITING_CHOICE };
   }
 
   /** Saves go out one by one; a draft outdated before its turn is not sent. */
-  private enregistrer(b: Brouillon): void {
+  private enregistrer(b: Draft): void {
     this.prochain = b;
     this.etatEnregistrement = "en-cours";
     if (!this.enregistrementEnCours) void this.vider();

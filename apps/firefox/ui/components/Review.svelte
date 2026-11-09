@@ -4,7 +4,7 @@
 </script>
 
 <script lang="ts">
-  import type { Commentaire, DiffFichier as Diff, FichierModifie, ReviewView } from "../../shared/api";
+  import type { DiffComment, DiffFile as Diff, ModifiedFile, ReviewView } from "../../shared/api";
   import { api } from "../state.svelte";
   import DiffFile from "./DiffFile.svelte";
 
@@ -20,7 +20,7 @@
   let diff = $state<Diff | null>(null);
   let diffError = $state<string | null>(null);
   let running = $state(false);
-  let comments = $state<Commentaire[]>([]);
+  let comments = $state<DiffComment[]>([]);
   let message = $state<string | null>(null);
   let request = 0;
   let commentsRequest = 0;
@@ -130,7 +130,7 @@
     void load(true);
   });
 
-  const files = $derived<FichierModifie[]>(view?.etat === "ok" ? view.comparaison.fichiers : []);
+  const files = $derived<ModifiedFile[]>(view?.etat === "ok" ? view.comparaison.fichiers : []);
   const toSend = $derived(comments.filter((c) => !c.resolu).length);
   const ofFile = $derived(diff ? comments.filter((c) => c.fichier === diff!.chemin) : []);
 </script>

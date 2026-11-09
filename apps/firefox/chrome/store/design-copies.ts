@@ -6,7 +6,7 @@ import { viewfinderScript, type ViewfinderCapture } from "../../core/design/view
 import { truncateHtml } from "../shims/kernel";
 
 export { rectCapture } from "../../core/design/viewfinder";
-export type { ViewfinderCapture as CaptureViseur };
+export type { ViewfinderCapture };
 
 export const SOURCE_TIMEOUT_MS = 1500;
 

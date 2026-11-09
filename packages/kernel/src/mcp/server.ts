@@ -428,12 +428,12 @@ function createToolsServer(
   );
 
   if (applications) {
-    const folder = z.string();
+    const folderSchema = z.string();
     server.registerTool(
       "lancer_application",
       {
         description: "Lance le projet /workspace/projets/<dossier> d'après son webaios.json et ouvre sa fenêtre pour l'utilisateur.",
-        inputSchema: { dossier: folder },
+        inputSchema: { dossier: folderSchema },
       },
       protect(async ({ dossier: folder }) => {
         const app = await applications.lancer(folder);
@@ -457,7 +457,7 @@ function createToolsServer(
 
     server.registerTool(
       "arreter_application",
-      { description: "Arrête une application lancée par lancer_application.", inputSchema: { dossier: folder } },
+      { description: "Arrête une application lancée par lancer_application.", inputSchema: { dossier: folderSchema } },
       protect(async ({ dossier: folder }) => {
         await applications.arreter(folder);
         return text(`Application ${folder} arrêtée.`);
@@ -466,7 +466,7 @@ function createToolsServer(
 
     server.registerTool(
       "journal_application",
-      { description: "Journal d'une application : à lire quand elle est en erreur.", inputSchema: { dossier: folder } },
+      { description: "Journal d'une application : à lire quand elle est en erreur.", inputSchema: { dossier: folderSchema } },
       protect(async ({ dossier: folder }) => text((await applications.journal(folder)) || "Journal vide.")),
     );
   }
