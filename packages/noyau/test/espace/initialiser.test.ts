@@ -386,9 +386,9 @@ test("a new space gets the workflows", async () => {
 
 const AFFICHAGES = join(import.meta.dirname, "affichages-livres");
 
-test("the 6 shipped versions of affichage.html have the known hashes", async () => {
+test("the 9 shipped versions of affichage.html have the known hashes", async () => {
   const fichiers = (await readdir(AFFICHAGES)).sort();
-  expect(fichiers).toHaveLength(6);
+  expect(fichiers).toHaveLength(9);
   const empreintes: Record<string, string[]> = {};
   for (const f of fichiers) {
     const id = f.replace(/-[0-9a-f]{7}\.html$/, "");

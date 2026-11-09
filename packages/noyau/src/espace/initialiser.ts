@@ -151,22 +151,25 @@ export const RECOLTES_LIVREES: Record<"meteo" | "actus-tech" | "daily-dev", Read
 };
 
 /**
- * sha256 hashes of the shipped versions of the starter widgets' `affichage.html`, before the Firefox forms
- * (listening without comparing `e.source`, links through `webaiosOuvrir`). A display left at one of them is replaced by the
+ * sha256 hashes of the shipped versions of the starter widgets' `affichage.html` (the first two: before the Firefox
+ * forms, listening without comparing `e.source`, links through `webaiosOuvrir`). A display left at one of them is replaced by the
  * current template; a display modified by the user or the agent (unknown hash) is not touched.
  */
 export const AFFICHAGES_LIVREES: Record<"meteo" | "actus-tech" | "daily-dev", ReadonlySet<string>> = {
   meteo: new Set([
     "437c53d9ec9db7261bf1b90258ebfc4a2febed3b0c44fc49e5a79e68a022f449",
     "41b7f74fbbd384ab88ba8e31a57d0c2b7ee4df1f6081a588f23c888fa3721257",
+    "a7e25ca8a7b10d0f48812bef3130fc16a2d6a05799d56a512171a7861e594c56",
   ]),
   "actus-tech": new Set([
     "da8afce4e0676662aa65787df9c913f684f5f6b1c2bf2bf8961a69fa531ba209",
     "0f8306d6c64698eb1a5252075fb273e99fca1811748943e6986591caf18dd081",
+    "9057aa911e1fcfe0641d2943fa867ecba587b2e6f04974b17512fe57c552574e",
   ]),
   "daily-dev": new Set([
     "9bc668a4f1515d8f66b9a040a828099432f659ba976263af43aea2696b3a9e99",
     "12184cdd667940b894a9c86e980eb5cfb0da60acc20591665b726124c9a741b1",
+    "c5e7c446b7df1754c52e88857daf71f286419d2585d9903ebbb25a650d857ebe",
   ]),
 };
 
