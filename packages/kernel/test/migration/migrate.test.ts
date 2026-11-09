@@ -324,15 +324,15 @@ describe("migrateKernel refuses", () => {
       ["design/remarques", "design/remarks"],
       ["design/relecture", "design/review"],
       ["extensions/signes", "extensions/signed"],
-    ]) {
+    ] as const) {
       const { dataDir } = await oldDataDir();
       if (fresh.endsWith(".sqlite")) writeFileSync(join(dataDir, fresh), "");
       else mkdirSync(join(dataDir, fresh), { recursive: true });
       const before = snapshot(dataDir);
       const docker = fakeDocker();
       const e = await migrateKernel({ dataDir, docker, now }).then(() => null, (e: Error) => e);
-      expect(e?.message, old).toContain(join(dataDir, old!));
-      expect(e?.message, old).toContain(join(dataDir, fresh!));
+      expect(e?.message, old).toContain(join(dataDir, old));
+      expect(e?.message, old).toContain(join(dataDir, fresh));
       expect(snapshot(dataDir), old).toEqual(before);
       expect(docker.calls).toEqual([]);
     }
