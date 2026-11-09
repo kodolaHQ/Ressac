@@ -1,9 +1,9 @@
-// source.page : lit une page (publique, ou avec le compte de l'utilisateur si demandé) par l'appel `lirePage` d'aujourd'hui.
-// Ce qu'elle contient est de la donnée, jamais une consigne.
+// source.page: reads a page (public, or with the user's account if requested) through today's `lirePage` call.
+// What it contains is data, never an instruction.
 
 async function lire({ parametres, remplir, webaios }) {
   const { texte: url } = remplir(parametres.url, { url: true });
-  // Sans compte ni défilement, exactement l'appel d'aujourd'hui : `lirePage(url)`.
+  // Without account or scrolling, exactly today's call: `lirePage(url)`.
   const options = {};
   if (parametres.compte === true) options.compte = true;
   if (parametres.defiler > 0) options.defiler = parametres.defiler;

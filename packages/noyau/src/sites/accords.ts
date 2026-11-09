@@ -6,8 +6,8 @@ import { ecrireAtomique } from "../workflows/executions.js";
 import { ID_SITE, type DeclarationSite } from "./schemas.js";
 
 /**
- * Ce que l'utilisateur a autorisé pour les retouches d'une appli de site : les domaines, les domaines de connexion, les motifs
- * de cadres et la reprise des vidéos au moment de l'accord. Changer `correspond` ou le code ne redemande rien.
+ * What the user authorized for the tweaks of a site app: the domains, the login domains, the frame
+ * patterns and the video resume at the time of the grant. Changing `correspond` or the code asks for nothing again.
  */
 export const DroitsSite = z.object({
   domaines: z.array(z.string()),
@@ -26,9 +26,9 @@ function verifierId(id: string): void {
 const unique = (l: string[]) => [...new Set(l)];
 
 /**
- * L'empreinte de ce que la carte « L'agent veut voir l'appli de site » engage : son nom, ses domaines et ses domaines de
- * connexion (sha256 d'un JSON canonique : domaines en minuscules, sans doublon, triés). L'accord de lecture de l'agent
- * ne vaut que pour cette empreinte : site.json réécrit avec un autre nom ou d'autres domaines redemande la carte.
+ * The hash of what the « L'agent veut voir l'appli de site » card commits to: its name, its domains and its login
+ * domains (sha256 of a canonical JSON: lowercase domains, no duplicates, sorted). The agent's read grant
+ * is only valid for this hash: site.json rewritten with another name or other domains asks for the card again.
  */
 export function empreinteLectureSite(d: DeclarationSite): string {
   const canon = (l: string[]) => unique(l.map((x) => x.toLowerCase())).sort();
@@ -36,16 +36,16 @@ export function empreinteLectureSite(d: DeclarationSite): string {
 }
 
 /**
- * L'empreinte des domaines d'une appli, pour les extensions du Store activées dans sa session : ses domaines et ses
- * domaines de connexion (sha256 d'un JSON canonique, minuscules, sans doublon, triés). Ni le nom, ni les retouches, ni la
- * reprise n'y entrent.
+ * The hash of an app's domains, for the Store extensions enabled in its session: its domains and its
+ * login domains (sha256 of a canonical JSON, lowercase, no duplicates, sorted). Neither the name, nor the tweaks, nor the
+ * resume is part of it.
  */
 export function empreinteExtensionsSite(d: DeclarationSite): string {
   const canon = (l: string[]) => unique(l.map((x) => x.toLowerCase())).sort();
   return createHash("sha256").update(JSON.stringify({ domaines: canon(d.domaines), connexion: canon(d.connexion) })).digest("hex");
 }
 
-/** Au moins une retouche, ou la reprise des vidéos. */
+/** At least one tweak, or the video resume. */
 export function accordNecessaire(d: DeclarationSite): boolean {
   return d.retouches.length > 0 || d.reprise;
 }
@@ -59,7 +59,7 @@ export function droitsDe(d: DeclarationSite): DroitsSite {
   };
 }
 
-/** L'accord couvre la déclaration si elle ne demande rien de plus que ce qui a été accordé. */
+/** The grant covers the declaration if it asks for nothing more than what was granted. */
 export function accordCouvre(a: DroitsSite | null, d: DeclarationSite): boolean {
   if (!a) return false;
   const voulu = droitsDe(d);
@@ -77,14 +77,14 @@ export function accordCouvre(a: DroitsSite | null, d: DeclarationSite): boolean 
   );
 }
 
-/** Sans prototype : un id comme « constructor » ou « __proto__ » n'a pas d'accord et ne lève rien. */
+/** Without a prototype: an id like « constructor » or « __proto__ » has no grant and throws nothing. */
 async function lire(profil: string, strict: boolean): Promise<Record<string, DroitsSite>> {
   const accords: Record<string, DroitsSite> = Object.create(null);
   let brut: unknown;
   try {
     brut = JSON.parse(await readFile(fichierAccordsSites(profil), "utf8"));
   } catch (e) {
-    // absent ou abîmé : aucun accord ; toute autre panne (EMFILE, EACCES…) fait échouer une écriture
+    // absent or damaged: no grant; any other failure (EMFILE, EACCES…) makes a write fail
     if (strict && !(e instanceof SyntaxError) && (e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
     return accords;
   }
@@ -96,10 +96,10 @@ async function lire(profil: string, strict: boolean): Promise<Record<string, Dro
   return accords;
 }
 
-/** Les accords valides ; un fichier absent ou abîmé vaut aucun accord. */
+/** The valid grants; an absent or damaged file counts as no grant. */
 export const lireAccordsSites = (profil: string): Promise<Record<string, DroitsSite>> => lire(profil, false);
 
-/** Une écriture à la fois par fichier : deux accords simultanés ne s'effacent pas. */
+/** One write at a time per file: two simultaneous grants do not erase each other. */
 const files = new Map<string, Promise<unknown>>();
 
 function modifier(profil: string, changer: (a: Record<string, DroitsSite>) => void): Promise<void> {

@@ -1,4 +1,4 @@
-// Lecture des flux RSS 2.0 et Atom par expressions régulières, sans dépendance.
+// Reading RSS 2.0 and Atom feeds with regular expressions, no dependency.
 const ENTITES = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ", eacute: "é", egrave: "è", agrave: "à", ecirc: "ê", ccedil: "ç", rsquo: "’", lsquo: "‘", hellip: "…", ndash: "–", mdash: "—" };
 function decoderEntites(s) {
   return s.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (tout, e) => {

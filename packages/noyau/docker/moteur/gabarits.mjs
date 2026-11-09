@@ -1,12 +1,12 @@
-// Gabarits des paramètres texte : `{chemin}` remplacé par une valeur de l'élément en cours (ou de l'entrée), ou de la
-// configuration du propriétaire (`{config.…}`). `{chemin?}` est facultatif : une valeur absente y devient une chaîne
-// vide (pour un enrichissement, comme une fiabilité). Pour une action lancée avec une saisie, le repère exact `{saisie}`
-// (ou `{saisie?}`) vaut cette saisie, avant un champ `saisie` de l'élément. Pas d'expressions : rien n'est jamais évalué.
+// Templates of text params: `{chemin}` replaced by a value of the current item (or of the input), or of the
+// user's config (`{config.…}`). `{chemin?}` is optional: an absent value becomes an empty
+// string (for an enrichment, like a reliability). For an action run with an input, the exact marker `{saisie}`
+// (or `{saisie?}`) is that input, before a `saisie` field of the item. No expressions: nothing is ever evaluated.
 
 const MOTIF = /\{([A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*)(\?)?\}/g;
 const SEUL = /^\{[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*\??\}$/;
 
-/** Valeur au bout d'un chemin `a.b.0` ; seulement des propriétés propres (jamais celles du prototype). */
+/** Value at the end of a path `a.b.0`; own properties only (never those of the prototype). */
 export function lireChemin(valeur, chemin) {
   let v = valeur;
   for (const morceau of chemin.split(".")) {
@@ -20,11 +20,11 @@ const absente = (v) => v === undefined || v === null || v === "";
 const enTexte = (v) => (typeof v === "string" ? v : typeof v === "object" ? JSON.stringify(v) : String(v));
 
 /**
- * Remplit un gabarit. Rend `{ texte }`, ou `{ absente: chemin }` à la première valeur absente, `null` ou vide d'un
- * repère `{chemin}` ; un repère facultatif `{chemin?}` sans valeur est remplacé par une chaîne vide.
- * `saisie` (texte, action seulement) : la valeur de `{saisie}` ; sans elle, `{saisie}` lit l'élément comme avant.
- * `url` : chaque valeur est encodée, sauf si le gabarit est exactement un seul `{chemin}` (une URL entière).
- * `texteMax` : chaque valeur insérée est coupée à cette longueur.
+ * Fills in a template. Returns `{ texte }`, or `{ absente: chemin }` at the first absent, `null` or empty value of a
+ * `{chemin}` marker; an optional marker `{chemin?}` without a value is replaced by an empty string.
+ * `saisie` (text, action only): the value of `{saisie}`; without it, `{saisie}` reads the item as before.
+ * `url`: each value is encoded, unless the template is exactly one `{chemin}` (a whole URL).
+ * `texteMax`: each inserted value is cut to this length.
  */
 export function remplir(gabarit, { element, config, saisie }, { url = false, texteMax = Infinity } = {}) {
   const encoder = url && !SEUL.test(gabarit);
@@ -48,7 +48,7 @@ export function remplir(gabarit, { element, config, saisie }, { url = false, tex
   return manquante ? { absente: manquante } : { texte };
 }
 
-/** Levée par `ctx.remplir` : l'interpréteur ne lance rien pour cet élément (ou rend `null` en mode simple). */
+/** Thrown by `ctx.remplir`: the interpreter runs nothing for this item (or returns `null` in simple mode). */
 export class ValeurAbsente extends Error {
   constructor(chemin) {
     super(`valeur absente : ${chemin}`);

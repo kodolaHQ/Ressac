@@ -18,7 +18,7 @@ function contenuConfig(format: Profil["configMcp"], serveur: { url: string; jeto
   );
 }
 
-/** Écrit la déclaration du serveur MCP du navigateur, lisible par l'agent du conteneur. */
+/** Writes the browser's MCP server declaration, readable by the container's agent. */
 export async function ecrireConfigMcp(
   c: CheminsEspace,
   format: Profil["configMcp"],
@@ -31,9 +31,9 @@ export async function ecrireConfigMcp(
 }
 
 /**
- * Config d'une session d'agent. L'espace est monté en écriture dans le conteneur : l'agent peut y poser des liens
- * symboliques, donc le dossier des sessions n'est jamais suivi s'il est un lien, et le fichier est créé neuf, sans
- * suivre de lien (le jeton ne part pas ailleurs). (`mcp.json` principal suit encore un lien : dette existante.)
+ * Config of an agent session. The workspace is mounted writable in the container: the agent can put symbolic
+ * links in it, so the sessions folder is never followed if it is a link, and the file is created new, without
+ * following a link (the token does not go elsewhere). (The main `mcp.json` still follows a link: existing debt.)
  */
 export async function ecrireConfigSession(
   c: CheminsEspace,

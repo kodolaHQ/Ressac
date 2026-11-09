@@ -1,5 +1,5 @@
-// Commande de développement : le vrai agent dans le conteneur, branché sur un navigateur factice.
-// Usage : corepack pnpm dev:noyau   (Ctrl-] pour quitter)
+// Dev command: the real agent in the container, plugged into a fake browser.
+// Usage: corepack pnpm dev:noyau   (Ctrl-] to quit)
 import { execFile } from "node:child_process";
 import { appendFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -15,21 +15,21 @@ const CTRL_CROCHET = "\x1d";
 const factice = new PontFactice([github, gmail], { actif: "github", autoriser: false });
 let journal = "";
 
-// Le journal des appels va dans un fichier : écrire sur stderr abîmerait l'affichage du terminal de l'agent.
+// The call log goes into a file: writing on stderr would damage the display of the agent's terminal.
 const pont = new Proxy(factice, {
   get(cible, cle, recepteur) {
     const valeur = Reflect.get(cible, cle, recepteur);
     if (typeof valeur !== "function") return valeur;
     return (...args: unknown[]) => {
       if (journal) appendFileSync(journal, `${new Date().toISOString()} ${String(cle)} ${JSON.stringify(args)}\n`);
-      // Pas encore de vrai navigateur : les onglets ouverts par l'agent s'ouvrent dans le navigateur par défaut.
+      // No real browser yet: the tabs opened by the agent open in the default browser.
       if (cle === "ouvrirOnglet") execFile("open", [String(args[0])]);
       return valeur.apply(cible, args);
     };
   },
 }) as PontNavigateur;
 
-// Données des widgets et des actions : hors de l'espace, dans un dossier temporaire (pas de profil de navigateur ici).
+// Widgets' and actions' data: outside the workspace, in a temporary folder (no browser profile here).
 const noyau = await creerNoyau({ pont, dossierWidgets: join(tmpdir(), "webaios-dev-widgets"), dossierActions: join(tmpdir(), "webaios-dev-actions") });
 journal = join(noyau.chemins.interne, "dev-pont.log");
 console.log(`Espace : ${noyau.chemins.racine}\nAppels du navigateur factice : tail -f ${journal}\nCtrl-] pour quitter.\n`);
@@ -37,8 +37,8 @@ console.log(`Espace : ${noyau.chemins.racine}\nAppels du navigateur factice : ta
 let session;
 try {
   session = await noyau.ouvrirSessionAgent({ cols: process.stdout.columns ?? 100, rows: process.stdout.rows ?? 30 });
-  // Après l'ouverture : une nouvelle session repart sans autorisation.
-  noyau.politique.interactionUtilisateur(github); // L'utilisateur « parle à l'agent » depuis l'onglet GitHub
+  // After opening: a new session starts without authorization.
+  noyau.politique.interactionUtilisateur(github); // the user « talks to the agent » from the GitHub tab
 } catch (e) {
   console.error(e instanceof ErreurAtelier ? `Agent indisponible : ${e.message}` : e);
   await noyau.arreter();

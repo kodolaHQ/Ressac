@@ -5,32 +5,32 @@ import { isIP, type LookupFunction } from "node:net";
 import type { ChangerHote } from "./menagement.js";
 import type { PageLue } from "./protocole.js";
 
-// Accès du conteneur au dehors, tous côté noyau : URL vérifiées, récupération brute, page lue revérifiée.
+// Container access to the outside, all kernel-side: verified URLs, raw fetch, page read and re-checked.
 
 const RECUPERER_MAX_OCTETS = 5 * 1024 * 1024;
 const RECUPERER_DELAI_MS = 20_000;
 const MAX_REDIRECTIONS = 5;
 
-/** Recherches web et lectures ouvertes (sans `domaines`) d'une exécution, au plus. */
+/** Web searches and open reads (without `domaines`) of a run, at most. */
 export const MAX_RECHERCHES = 30;
 export const MAX_LECTURES_OUVERTES = 100;
-// Les deux premiers sont recopiés dans docker/moteur/erreurs.mjs : l'élément n'est pas lancé, ce n'est pas un échec.
+// The first two are copied into docker/moteur/erreurs.mjs: the item is not run, it is not a failure.
 export const PLAFOND_RECHERCHES = "Plafond de recherches atteint (30 par exécution)";
 export const RECHERCHES_ARRETEES = "Recherches arrêtées : DuckDuckGo a refusé une recherche de cette exécution";
 export const TROP_DE_LECTURES = "Trop de lectures dans cette exécution (100)";
 export const RECHERCHE_INDISPONIBLE = "Recherche web indisponible";
 
-/** Un texte de `n` caractères au plus, « … » à la fin s'il est coupé. */
+/** A text of at most `n` characters, « … » at the end if it is cut. */
 export const tronquer = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
-/** Le message d'une exception, ou sa valeur en texte. */
+/** The message of an exception, or its value as text. */
 export const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /**
- * Adresse de la machine ou du réseau local, d'après son texte seul (le nom n'est pas résolu : `recuperer` revérifie
- * l'adresse résolue à la connexion, avec `lookupSansLocal`).
+ * Address of the machine or the local network, from its text alone (the name is not resolved: `recuperer` re-checks
+ * the address resolved at connection, with `lookupSansLocal`).
  */
 export function adresseLocale(hote: string): boolean {
-  // « localhost. » (point final) désigne la même machine que « localhost ».
+  // « localhost. » (trailing dot) designates the same machine as « localhost ».
   const h = hote.replace(/^\[|\]$/g, "").toLowerCase().replace(/\.+$/, "");
   if (!h || h === "localhost" || /\.(localhost|local|internal|home\.arpa)$/.test(h)) return true;
   if (isIP(h) === 4) {
@@ -45,8 +45,8 @@ export function adresseLocale(hote: string): boolean {
 }
 
 /**
- * Vérifie une URL demandée par la récolte : http(s), sans identifiants, pas d'adresse locale, et, si `domaines` est
- * donné, un nom d'hôte exactement dans cette liste. Rend l'URL normalisée, celle qui sera lue.
+ * Checks a URL requested by the harvest: http(s), no credentials, no local address, and, if `domaines` is
+ * given, a host name exactly in this list. Returns the normalized URL, the one that will be read.
  */
 export function verifierUrl(brute: string, domaines: readonly string[] | null, adressesLocales: boolean): URL {
   let u: URL;
@@ -57,7 +57,7 @@ export function verifierUrl(brute: string, domaines: readonly string[] | null, a
   }
   if (u.protocol !== "http:" && u.protocol !== "https:") throw new Error("Seules les URL http(s) sont permises");
   if (u.username || u.password) throw new Error("URL avec identifiants refusée");
-  // Le point final (« app.daily.dev. ») ne change pas le nom : il est retiré avant toute comparaison.
+  // The trailing dot (« app.daily.dev. ») does not change the name: it is removed before any comparison.
   const hote = u.hostname.toLowerCase().replace(/\.+$/, "");
   if (domaines && !domaines.includes(hote)) throw new Error(`Domaine non déclaré : ${hote}`);
   if (!adressesLocales && adresseLocale(hote)) throw new Error(`Adresse locale refusée : ${hote}`);
@@ -65,8 +65,8 @@ export function verifierUrl(brute: string, domaines: readonly string[] | null, a
 }
 
 /**
- * Résolution faite à la connexion : un nom qui mène à la machine ou au réseau local (« 127.0.0.1.nip.io », rebinding
- * DNS) est refusé, même si une seule de ses adresses l'est.
+ * Resolution done at connection: a name that leads to the machine or the local network (« 127.0.0.1.nip.io », DNS
+ * rebinding) is refused, even if only one of its addresses is.
  */
 export const lookupSansLocal: LookupFunction = (hote, options, rappel) => {
   dns.lookup(hote, { ...options, all: true }, (err, adresses) => {
@@ -80,7 +80,7 @@ export const lookupSansLocal: LookupFunction = (hote, options, rappel) => {
   });
 };
 
-// http(s) plutôt que fetch : fetch (undici) ne laisse pas choisir la résolution sans le paquet undici.
+// http(s) rather than fetch: fetch (undici) does not let us choose the resolution without the undici package.
 function demander(url: URL, adressesLocales: boolean, signal: AbortSignal): Promise<IncomingMessage> {
   return new Promise((ok, ko) => {
     const options = { signal, headers: { "user-agent": "node", accept: "*/*" }, ...(adressesLocales ? {} : { lookup: lookupSansLocal }) };
@@ -106,7 +106,7 @@ async function lireCorps(r: IncomingMessage): Promise<Buffer> {
   return Buffer.concat(morceaux);
 }
 
-/** `p`, ou rejetée avec `signal.reason` dès que le signal est levé (son issue est alors ignorée). */
+/** `p`, or rejected with `signal.reason` as soon as the signal is raised (its outcome is then ignored). */
 function jusquAuSignal<T>(p: Promise<T>, signal: AbortSignal): Promise<T> {
   return new Promise<T>((ok, ko) => {
     const stop = () => ko(signal.reason);
@@ -117,9 +117,9 @@ function jusquAuSignal<T>(p: Promise<T>, signal: AbortSignal): Promise<T> {
 }
 
 /**
- * Récupération brute, sans cookie ni identifiant ; chaque redirection est revérifiée avec la même règle. `arret` levé
- * (l'exécution est arrêtée) : la requête est abandonnée et la promesse rejetée avec `arret.reason`. `changerHote`
- * (lecture ménagée) : attendu avant de suivre une redirection vers un autre hôte, dans le délai de 20 s.
+ * Raw fetch, without cookie or credentials; each redirect is re-checked with the same rule. `arret` raised
+ * (the run is stopped): the request is abandoned and the promise rejected with `arret.reason`. `changerHote`
+ * (paced read): awaited before following a redirect to another host, within the 20 s delay.
  */
 export async function recuperer(
   brute: string,
@@ -141,7 +141,7 @@ export async function recuperer(
         r.destroy();
         if (redirections >= MAX_REDIRECTIONS) throw new Error("Trop de redirections");
         const suivante = verifierUrl(new URL(cible, url).href, domaines, adressesLocales);
-        // L'attente du tour de l'autre site compte dans le délai, et cède à l'arrêt.
+        // Waiting for the other site's turn counts in the delay, and yields to the stop.
         if (changerHote && suivante.hostname !== url.hostname) await jusquAuSignal(changerHote(suivante.hostname), echeance);
         url = suivante;
         continue;
@@ -165,7 +165,7 @@ export async function recuperer(
   }
 }
 
-/** L'adresse finale de la page (après redirections) doit respecter la même règle ; sinon son texte ne sort pas. */
+/** The page's final address (after redirects) must respect the same rule; otherwise its text does not go out. */
 export function verifierPage(page: PageLue, domaines: readonly string[] | null, adressesLocales: boolean): PageLue {
   try {
     verifierUrl(String(page?.url), domaines, adressesLocales);

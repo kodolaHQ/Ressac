@@ -1,6 +1,6 @@
-// Lecture de la version HTML de DuckDuckGo, sans dépendance. Le contenu de la page est de la donnée.
-// Lecture en un seul passage (aucune expression régulière qui revient en arrière sur la page entière) :
-// une page hostile ne peut pas figer le noyau.
+// Reading the HTML version of DuckDuckGo, no dependency. The page's content is data.
+// Read in a single pass (no regular expression that backtracks over the whole page):
+// a hostile page cannot freeze the kernel.
 
 export const URL_DUCKDUCKGO = "https://html.duckduckgo.com/html/";
 export const RECHERCHE_REFUSEE = "Recherche refusée par DuckDuckGo (vérification anti-robot)";
@@ -8,9 +8,9 @@ export const RESULTATS_ILLISIBLES = "Résultats illisibles : la page de DuckDuck
 
 export type ResultatRecherche = { titre: string; url: string; extrait: string };
 
-/** Taille de page lue au plus ; le reste est ignoré. */
+/** Page size read at most; the rest is ignored. */
 const PAGE_MAX = 2 * 1024 * 1024;
-/** Une balise plus longue n'en est pas une : on la traite comme du texte. */
+/** A longer tag is not one: it is treated as text. */
 const BALISE_MAX = 4096;
 
 export const urlRecherche = (requete: string, base = URL_DUCKDUCKGO) => base + "?q=" + encodeURIComponent(requete);
@@ -62,7 +62,7 @@ const attribut = (brut: string, re: RegExp) => {
   return m ? (m[1] ?? m[2] ?? "") : null;
 };
 
-/** Découpe en balises et textes, en une seule passe : une `<` qui en suit une autre sans `>` recommence la balise. */
+/** Splits into tags and texts, in a single pass: a `<` that follows another without `>` restarts the tag. */
 function jetons(html: string): Jeton[] {
   const sortie: Jeton[] = [];
   let debut = -1;
@@ -93,7 +93,7 @@ function jetons(html: string): Jeton[] {
 
 const estBalise = (j: Jeton): j is Extract<Jeton, { balise: string }> => "balise" in j;
 
-/** Texte brut jusqu'à la balise fermante correspondante (même nom, imbrications comptées) ou la fin du bloc. */
+/** Raw text up to the matching closing tag (same name, nestings counted) or the end of the block. */
 function texteJusqua(bloc: Jeton[], depart: number, nom: string): string {
   let profondeur = 1;
   let t = "";
@@ -113,7 +113,7 @@ export function extraireResultats(
   nombre: number,
 ): { resultats: ResultatRecherche[] } | { refus: true } | { illisible: true } {
   const tous = jetons(html.length > PAGE_MAX ? html.slice(0, PAGE_MAX) : html);
-  // Vérification anti-robot : seulement dans le balisage, jamais dans le texte de la page.
+  // Anti-bot check: only in the markup, never in the page's text.
   if (tous.some((j) => estBalise(j) && !j.ferme && /anomaly-modal|\/anomaly\.js|challenge-form/.test(j.brut))) {
     return { refus: true };
   }

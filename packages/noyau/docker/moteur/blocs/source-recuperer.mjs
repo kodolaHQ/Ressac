@@ -1,4 +1,4 @@
-// source.recuperer : GET public (texte ou JSON) par l'appel `recuperer` d'aujourd'hui.
+// source.recuperer: public GET (text or JSON) through today's `recuperer` call.
 
 async function recuperer({ parametres, remplir, webaios }) {
   const { texte: url } = remplir(parametres.url, { url: true });

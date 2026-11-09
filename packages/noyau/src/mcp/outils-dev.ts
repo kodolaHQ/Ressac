@@ -18,11 +18,11 @@ export const TEXTE_COUPE = "Accès coupé par l'utilisateur.";
 export const TEXTE_SITE_CHANGE = "L'onglet a changé de site : accès retiré.";
 
 /**
- * Écriture et lecture des profils bruts, côté hôte. Ce que l'agent a construit est échangé par son chemin dans le
- * conteneur (`/workspace/…`) ; un autre site, par une référence opaque `profil:<nom>` (le fichier reste hors de l'espace).
+ * Writing and reading of the raw profiles, host side. What the agent built is exchanged through its path in the
+ * container (`/workspace/…`); another site's, through an opaque reference `profil:<nom>` (the file stays outside the workspace).
  */
 export interface FichiersProfils {
-  /** Écrit le fichier et renvoie son chemin dans le conteneur, ou sa référence si `construite` est faux. */
+  /** Writes the file and returns its path in the container, or its reference if `construite` is false. */
   ecrireProfil(o: OngletInfo, nom: string, contenu: string, construite: boolean): Promise<string>;
   lireProfil(cheminOuReference: string): Promise<string>;
   supprimerProfil(cheminOuReference: string): Promise<void>;
@@ -33,21 +33,21 @@ const texte = (text: string, isError = false): Resultat => ({ content: [{ type: 
 
 class Coupe extends Error {}
 
-/** Longueur maximale de la raison affichée sur la carte de consentement ; au-delà, elle est coupée avec « … ». */
+/** Maximum length of the reason shown on the consent card; beyond it, it is cut with « … ». */
 export const LONGUEUR_RAISON = 300;
 
 const bornerRaison = (raison: string): string =>
   raison.length > LONGUEUR_RAISON ? `${raison.slice(0, LONGUEUR_RAISON - 1)}…` : raison;
 
-/** Les résumés sont déjà bornés en lignes ; cette limite ne protège que des noms démesurés. */
+/** The summaries are already bounded in lines; this limit only guards against oversized names. */
 const LONGUEUR_RESUME = 20000;
-/** Taille maximale d'une réponse de lire_console ou lire_reseau ; les entrées les plus récentes sont gardées. */
+/** Maximum size of a lire_console or lire_reseau answer; the most recent entries are kept. */
 export const LONGUEUR_LISTE_MAX = 100_000;
 
-/** Garde les dernières lignes tant que la réponse tient dans LONGUEUR_LISTE_MAX, et signale celles omises. */
+/** Keeps the last lines as long as the answer fits in LONGUEUR_LISTE_MAX, and reports the omitted ones. */
 function borner(lignes: string[], vide: string): string {
   if (!lignes.length) return vide;
-  const budget = LONGUEUR_LISTE_MAX - 64; // place pour la ligne d'omission
+  const budget = LONGUEUR_LISTE_MAX - 64; // room for the omission line
   let total = 0;
   let debut = lignes.length;
   while (debut > 0 && total + lignes[debut - 1]!.length + 1 <= budget) total += lignes[--debut]!.length + 1;
@@ -66,7 +66,7 @@ function origineDe(url: string): string | null {
   }
 }
 
-/** `<horodatage ISO sans ':'>-<outil>.<extension>` */
+/** `<ISO timestamp without ':'>-<tool>.<extension>` */
 const nomProfil = (outil: string, extension: string): string =>
   `${new Date().toISOString().replaceAll(":", "")}-${outil}.${extension}`;
 
@@ -80,11 +80,11 @@ export function enregistrerOutilsDev(
     politique: PolitiqueAcces;
     agent: string;
     demandes: Map<string, Promise<DroitDev[]>>;
-    /** Outils réservés au noyau ; à défaut, ceux du pont. */
+    /** Tools reserved for the kernel; otherwise, those of the bridge. */
     outils?: OutilsDevNavigateur;
     /**
-     * L'accord d'une appli de site (`o.site`), demandé au besoin par sa carte : il s'ajoute aux droits de développement.
-     * Absent : aucun outil de développement sur une appli de site.
+     * A site app's grant (`o.site`), requested if needed through its card: it adds to the dev rights.
+     * Absent: no dev tool on a site app.
      */
     accesSite?: (o: OngletInfo) => Promise<boolean>;
   } & FichiersProfils,
@@ -98,15 +98,15 @@ export function enregistrerOutilsDev(
     return o;
   }
 
-  /** L'accord de l'appli de site, s'il en est une, tient toujours (une nouvelle conversation le retire). */
+  /** The site app's grant, if there is one, still holds (a new conversation withdraws it). */
   const accordSiteTenu = (o: OngletInfo) => o.site === undefined || politique.lectureSiteAccordee(o.site, o.empreinte);
 
   /**
-   * Obtient les droits voulus : ceux qui manquent et ne sont pas bloqués sont demandés à l'utilisateur, une carte à la fois par
-   * onglet. Renvoie les droits voulus que l'agent tient ensuite, et l'onglet tel qu'il était alors. Une page sans origine
-   * (about:blank, data:, file:) ne peut recevoir aucun droit : refus immédiat, sans carte. Une carte posée dans une
-   * conversation passée (nouvelle conversation, noyau arrêté) est retirée, et sa réponse ne vaut rien. Une appli de site
-   * demande d'abord son propre accord (sa carte au besoin) : sans lui, aucun droit, et aucune carte d'outils posée.
+   * Obtains the wanted rights: those that are missing and not blocked are asked of the user, one card at a time per
+   * tab. Returns the wanted rights the agent then holds, and the tab as it was then. A page without an origin
+   * (about:blank, data:, file:) cannot receive any right: immediate refusal, no card. A card put up in a
+   * past conversation (new conversation, kernel stopped) is removed, and its answer is worth nothing. A site app
+   * first asks for its own grant (its card if needed): without it, no right, and no dev-tools card put up.
    */
   async function obtenir(id: string, voulus: DroitDev[], raison: string): Promise<{ tenus: DroitDev[]; onglet: OngletInfo }> {
     raison = bornerRaison(raison);
@@ -115,7 +115,7 @@ export function enregistrerOutilsDev(
       if (!origineDe(o.url)) return { tenus: [], onglet: o };
       if (o.site !== undefined) {
         if ((await c.accesSite?.(o)) !== true) return { tenus: [], onglet: o };
-        // La fenêtre relue après la carte de l'appli : ses droits sont ceux de sa déclaration d'aujourd'hui.
+        // The window re-read after the app's card: its rights are those of today's declaration.
         o = await onglet(id);
         if (!accordSiteTenu(o)) return { tenus: [], onglet: o };
       }
@@ -125,7 +125,7 @@ export function enregistrerOutilsDev(
       if (!manquants.length || !demander) return { tenus: voulus.filter((d) => tenus.includes(d)), onglet: o };
       const enCours = demandes.get(id);
       if (enCours) {
-        // Une autre demande est affichée : on l'attend, puis on ne redemande que ce qui manque encore.
+        // Another request is shown: we wait for it, then only ask again for what is still missing.
         await enCours.catch(() => {});
         continue;
       }
@@ -138,7 +138,7 @@ export function enregistrerOutilsDev(
       const demande = demander(o, { droits: manquants, raison, agent: c.agent }, retrait.signal)
         .then(async (reponse) => {
           if (politique.conversation !== conversation) return [];
-          // L'utilisateur a pu changer de site pendant la question : son accord porte sur le site qu'il a vu.
+          // The user may have changed site during the question: their grant is for the site they saw.
           const apres = (await pont.listerOnglets()).find((x) => x.id === id);
           if (!apres || origineDe(apres.url) !== origine || politique.conversation !== conversation) return [];
           const accordes = DROITS_DEV.filter((d) => reponse.includes(d));
@@ -158,9 +158,9 @@ export function enregistrerOutilsDev(
   }
 
   /**
-   * Exécute un appel qui a besoin de `droit` : le demande au besoin, signale l'activité sur l'onglet et interrompt
-   * l'appel dès que le droit tombe (coupé par l'utilisateur ou changement de site). Les fichiers écrits pour un appel interrompu
-   * ou en erreur sont effacés.
+   * Runs a call that needs `droit`: asks for it if needed, signals the activity on the tab and interrupts
+   * the call as soon as the right drops (cut by the user or site change). The files written for an interrupted call
+   * or one in error are deleted.
    */
   async function avecDroit(
     id: string,
@@ -182,7 +182,7 @@ export function enregistrerOutilsDev(
     const ecrire = async (nom: string, contenu: string) => {
       if (signal.aborted) throw new Coupe();
       const chemin = await c.ecrireProfil(o, nom, contenu, politique.estConstruite(o));
-      // Interrompu pendant l'écriture : la réponse est déjà partie, le fichier ne doit pas rester.
+      // Interrupted during the write: the answer has already gone, the file must not remain.
       if (signal.aborted) {
         await effacer(chemin);
         throw new Coupe();
@@ -190,7 +190,7 @@ export function enregistrerOutilsDev(
       fichiers.push(chemin);
       return chemin;
     };
-    /** Coupé par l'utilisateur, parti sur un autre site, ou passé dans un espace privé. */
+    /** Cut by the user, left for another site, or moved into a private space. */
     const reponseInterruption = async (): Promise<Resultat> => {
       if (pont.estPrive?.(id)) return texte(TEXTE_PRIVE);
       const maintenant = await onglet(id).catch(() => null);
@@ -200,11 +200,11 @@ export function enregistrerOutilsDev(
     politique.utilisation(id, true);
     try {
       verifier();
-      // Le site a pu changer depuis l'accord : le pont n'est pas appelé du tout.
+      // The site may have changed since the grant: the bridge is not called at all.
       if (signal.aborted) return await reponseInterruption();
       const abandon = new Promise<never>((_, ko) => signal.addEventListener("abort", () => ko(new Coupe()), { once: true }));
       const appel = f(o, signal, ecrire);
-      appel.catch(() => {}); // un résultat tardif après l'abandon est ignoré
+      appel.catch(() => {}); // a late result after abandonment is ignored
       const r = await Promise.race([appel, abandon]);
       if (signal.aborted) throw new Coupe();
       return r;
@@ -213,14 +213,14 @@ export function enregistrerOutilsDev(
       if (!signal.aborted && !(e instanceof Coupe)) throw e;
       return await reponseInterruption();
     } finally {
-      // Une écriture encore en cours (f a échoué sans l'attendre) efface son fichier en voyant le signal levé.
+      // A write still in progress (f failed without waiting for it) deletes its file on seeing the signal raised.
       if (!signal.aborted) controleur.abort(new Coupe());
       desabonner();
       politique.utilisation(id, false);
     }
   }
 
-  /** Transforme une erreur en réponse lisible plutôt qu'en plantage. */
+  /** Turns an error into a readable answer rather than a crash. */
   const proteger =
     <A>(f: (a: A) => Promise<Resultat>) =>
     async (a: A): Promise<Resultat> => {
@@ -263,7 +263,7 @@ export function enregistrerOutilsDev(
     },
     proteger(async ({ id, depuis, niveau }) =>
       avecDroit(id, "console", "lire_console", async (o) => {
-        // Sur un site tiers, les URL des messages et des piles sont masquées comme dans lire_reseau.
+        // On a third-party site, the URLs of the messages and stacks are masked as in lire_reseau.
         const vue = politique.estConstruite(o) ? (t: string) => t : masquerUrlsDansTexte;
         const messages = chronologique(await outils.console(id)).filter(
           (m) => (depuis === undefined || m.horodatage >= depuis) && (niveau === undefined || m.niveau === niveau),
@@ -390,7 +390,7 @@ export function enregistrerOutilsDev(
     },
     proteger(async ({ id, a, b }) =>
       avecDroit(id, "performances", "comparer_memoire", async () => {
-        // Une erreur de lecture ou d'analyse ne doit jamais renvoyer le contenu du fichier.
+        // A read or parse error must never return the file's content.
         const lus = await Promise.all(
           [a, b].map(async (chemin) => {
             try {

@@ -1,7 +1,7 @@
 import { z } from "zod";
 
-// Le plan de page de Gemma : sa forme (zod), le petit langage des références et leur évaluation. Pur : aucune entrée-sortie,
-// rien n'est jamais évalué comme du code ; les références ne lisent que des propriétés propres.
+// Gemma's page plan: its shape (zod), the small language of references and their evaluation. Pure: no input-output,
+// nothing is ever evaluated as code; references only read own properties.
 
 export const MAX_OPERATIONS = 4;
 export const MAX_BLOCS_PAGE = 40;
@@ -17,11 +17,11 @@ export type Operation =
   | { op: "garder"; n: number }
   | { op: "filtrer"; champ: string; comparaison: "=" | "~" | ">" | "<"; valeur: string | number }
   | { op: "regrouper"; champ: string };
-/** `ops` : de l'intérieur vers l'extérieur. */
+/** `ops`: from the inside to the outside. */
 export type Reference = { chemin: string; ops: Operation[] };
 export type Groupe<T> = { valeur: string; elements: T[] };
 
-// ---- Lecture des références ----
+// ---- Reading references ----
 
 type Jeton =
   | { t: "mot"; v: string }
@@ -70,7 +70,7 @@ class Lecteur {
   }
   fini(): boolean { return this.i >= this.jetons.length; }
 
-  /** Un chemin de segments `mot` séparés par des points (nombres entiers permis : indices de liste). */
+  /** A path of `mot` segments separated by dots (whole numbers allowed: list indexes). */
   private segments(): string {
     const morceaux: string[] = [];
     for (;;) {
@@ -165,9 +165,9 @@ export function lireReference(texte: string): Reference | { erreur: string } {
   }
 }
 
-// ---- Lecture et évaluation ----
+// ---- Reading and evaluation ----
 
-/** Valeur au bout d'un chemin `a.b.0` ; `$` est la racine. Seulement des propriétés propres (jamais le prototype, jamais `length`). */
+/** Value at the end of a path `a.b.0`; `$` is the root. Own properties only (never the prototype, never `length`). */
 export function lireChemin(valeur: unknown, chemin: string): unknown {
   if (chemin === "$") return valeur;
   let v = valeur;
@@ -239,7 +239,7 @@ function appliquer(op: Operation, entree: unknown): unknown {
   }
 }
 
-/** Calcule une référence sur les résultats, sans jamais les modifier. */
+/** Computes a reference on the results, without ever modifying them. */
 export function evaluer(ref: Reference, resultats: unknown): { valeur: unknown } | { erreur: string } {
   let valeur = lireChemin(resultats, ref.chemin);
   if (valeur === undefined) return { erreur: `chemin absent : ${ref.chemin}` };
@@ -252,7 +252,7 @@ export function evaluer(ref: Reference, resultats: unknown): { valeur: unknown }
   return { valeur };
 }
 
-// ---- Le plan ----
+// ---- The plan ----
 
 export type BlocPlan = { composant: string; props: Record<string, unknown>; blocs?: BlocPlan[]; gauche?: BlocPlan[]; droite?: BlocPlan[] };
 export type PlanPage = { blocs: BlocPlan[] };
@@ -269,7 +269,7 @@ const BlocPlanSchema: z.ZodType<BlocPlan> = z.lazy(() =>
 
 const CONTENEURS = ["groupe", "colonnes"];
 
-/** Nombre total de blocs, et plus grande profondeur d'imbrication de conteneurs (la page n'en compte pas). */
+/** Total number of blocks, and greatest nesting depth of containers (the page does not count). */
 function mesurer(blocs: BlocPlan[], niveau: number): { total: number; trop: boolean } {
   let total = 0;
   let trop = false;

@@ -1,10 +1,10 @@
 import { z } from "zod";
 
-/** Où va la sortie d'un workflow : le widget, ou la page d'une action. */
+/** Where a workflow's output goes: the widget, or an action's page. */
 export const GENRES_SORTIE = ["widget", "page"] as const;
 export type GenreSortie = (typeof GENRES_SORTIE)[number];
 
-/** À qui appartient un workflow : un widget ou une action. */
+/** Who owns a workflow: a widget or an action. */
 export type Proprietaire = { type: "widget"; id: string } | { type: "action"; id: string };
 
 export const PREFIXE_WORKFLOW_INVALIDE = "Workflow invalide : ";

@@ -3,14 +3,14 @@ import type { ProfilCpu } from "../outils-dev/resumes.js";
 import type { ChangerHote } from "../workflows/menagement.js";
 import type { PageLue } from "../workflows/protocole.js";
 
-/** Les options d'une lecture de page invisible (voir `PontNavigateur.lirePageInvisible`). */
+/** The options of an invisible page read (see `PontNavigateur.lirePageInvisible`). */
 export interface OptionsLecturePage {
   profil: string | null;
   domaines?: string[];
   adressesLocales?: boolean;
   signal?: AbortSignal;
   changerHote?: ChangerHote;
-  /** Écrans à faire défiler avant la lecture (1 à 20) ; absent : la page est lue sans défiler. */
+  /** Screens to scroll before reading (1 to 20); absent: the page is read without scrolling. */
   defiler?: number;
 }
 
@@ -19,21 +19,21 @@ export interface OngletInfo {
   titre: string;
   url: string;
   espace: string;
-  /** Dossier du projet, pour la fenêtre d'une application. */
+  /** Project folder, for an application's window. */
   application?: string;
   /**
-   * Id de l'appli de site, pour sa fenêtre (`site:<id>`) : `titre` est alors le nom de l'appli (jamais le titre de la
-   * page), et sa lecture passe par l'accord de l'appli (`PolitiqueAcces.lectureSiteAccordee`), jamais par l'origine.
+   * Id of the site app, for its window (`site:<id>`): `titre` is then the app's name (never the page
+   * title), and its read goes through the app's grant (`PolitiqueAcces.lectureSiteAccordee`), never through the origin.
    */
   site?: string;
   /**
-   * Appli de site : son domaine actuel (celui de son adresse de départ, suivi de l'adresse compris), seul montré sans
-   * l'accord, jamais l'hôte de la page affichée (qui peut être un domaine de connexion).
+   * Site app: its current domain (that of its start address, followed by the full address), the only one shown without
+   * the grant, never the host of the displayed page (which may be a login domain).
    */
   domaine?: string;
   /**
-   * Appli de site : l'empreinte de sa déclaration d'aujourd'hui (`empreinteLectureSite` : nom, domaines, connexion).
-   * L'accord de l'agent ne vaut que pour l'empreinte montrée sur sa carte.
+   * Site app: the `empreinte` of today's declaration (`empreinteLectureSite`: name, domains, login).
+   * The agent's grant is only valid for the `empreinte` shown on its card.
    */
   empreinte?: string;
 }
@@ -42,74 +42,74 @@ export interface OngletInfo {
 export interface PontNavigateur {
   ongletActif(): Promise<OngletInfo | null>;
   listerOnglets(): Promise<OngletInfo[]>;
-  /** Lève OngletIntrouvable si l'id est inconnu (comme lireTexte, naviguer et capturer). */
+  /** Throws OngletIntrouvable if the id is unknown (like lireTexte, naviguer and capturer). */
   lireTexte(id: string): Promise<{ texte: string; selection?: string }>;
   ouvrirOnglet(url: string, espace?: string): Promise<OngletInfo>;
   /**
-   * `"en-attente"` (fenêtre d'appli de site seulement) : la carte d'accord des retouches est affichée ; l'adresse se
-   * chargera après le choix de l'utilisateur.
+   * `"en-attente"` (site app window only): the tweaks grant card is shown; the address will
+   * load after the user's choice.
    */
   naviguer(id: string, url: string): Promise<void | "en-attente">;
-  /** Capture PNG de l'onglet. */
+  /** PNG capture of the tab. */
   capturer(id: string): Promise<Buffer>;
-  /** Affiche la demande à l'utilisateur ; vrai s'il accepte. */
+  /** Shows the request to the user; true if they accept. */
   demanderAutorisation(o: OngletInfo): Promise<boolean>;
-  /** Outils de développement (absent si le navigateur ne les fournit pas). */
+  /** Dev tools (absent if the browser does not provide them). */
   outilsDev?: OutilsDevNavigateur;
   /**
-   * Affiche la carte de consentement ; renvoie les droits accordés (`[]` = refus). `signal` levé : la carte n'a plus
-   * d'objet (nouvelle conversation, noyau arrêté), elle est retirée et la demande répond `[]`.
+   * Shows the consent card; returns the granted rights (`[]` = denial). `signal` raised: the card no longer has
+   * a subject (new conversation, kernel stopped), it is removed and the request answers `[]`.
    */
   demanderOutilsDev?(o: OngletInfo, d: { droits: DroitDev[]; raison: string; agent: string }, signal?: AbortSignal): Promise<DroitDev[]>;
-  /** L'onglet est dans un espace privé : absent de listerOnglets, l'agent n'y a pas accès. */
+  /** The tab is in a private space: absent from listerOnglets, the agent has no access to it. */
   estPrive?(id: string): boolean;
-  /** L'onglet que l'utilisateur regarde est dans un espace privé (ongletActif renvoie alors null). */
+  /** The tab the user is looking at is in a private space (ongletActif then returns null). */
   ongletActifPrive?(): boolean;
-  /** Historique et texte retenu des pages, faits des seules visites non privées (absent : pas d'outils d'historique). */
+  /** History and kept text of the pages, made only of non-private visits (absent: no history tools). */
   historique?: HistoriqueNavigateur;
   /**
-   * Lit une page dans un onglet invisible, sans cliquer ni taper. `profil: null` : session vierge, sans aucun cookie ;
-   * sinon le profil de connexion nommé. Lève ProfilRefuse si ce profil est inconnu ou utilisé par un espace privé.
-   * Absent : pas de lecture de pages pour les widgets.
+   * Reads a page in an invisible tab, without clicking or typing. `profil: null`: blank session, without any cookie;
+   * otherwise the named login profile. Throws ProfilRefuse if this profile is unknown or used by a private space.
+   * Absent: no page reading for the widgets.
    *
-   * `domaines` (donné pour toute lecture d'un widget qui lit avec le compte de l'utilisateur) : noms d'hôte permis. Le pont
-   * DOIT bloquer toute navigation du cadre principal (redirection, script, meta refresh) vers un hôte hors de cette
-   * liste, avant que la requête parte : sinon les cookies du profil, ou l'URL elle-même, sortiraient. Le noyau vérifie
-   * en plus `PageLue.url` au retour.
+   * `domaines` (given for any read of a widget that reads with the user's account): allowed host names. The bridge
+   * MUST block any navigation of the main frame (redirect, script, meta refresh) to a host outside this
+   * list, before the request goes out: otherwise the profile's cookies, or the URL itself, would leak. The kernel also checks
+   * `PageLue.url` on return.
    *
-   * Le pont refuse aussi toute navigation du cadre principal vers une adresse locale (`adresseLocale`), sauf si
-   * `adressesLocales` est vrai (tests seulement : le noyau le passe quand sa propre option `adressesLocales` l'est).
+   * The bridge also refuses any navigation of the main frame to a local address (`adresseLocale`), unless
+   * `adressesLocales` is true (tests only: the kernel passes it when its own `adressesLocales` option is).
    *
-   * `signal` levé (l'exécution qui lit est arrêtée ou finie) : la lecture, en attente ou en cours, est abandonnée, sa
-   * fenêtre fermée, et la promesse rejetée avec `signal.reason`.
+   * `signal` raised (the run that reads is stopped or finished): the read, waiting or in progress, is abandoned, its
+   * window closed, and the promise rejected with `signal.reason`.
    *
-   * `changerHote` (donné pour une lecture ménagée, celle d'un widget `web`) : avant de suivre une navigation du cadre
-   * principal (redirection, script, meta refresh) vers un autre site (`siteMenage` différent), le pont la retient et
-   * attend `changerHote(hôte)`, qui rend la main quand le ménagement de ce site le permet ; rejetée, la lecture échoue.
+   * `changerHote` (given for a paced read, that of a `web` widget): before following a navigation of the main
+   * frame (redirect, script, meta refresh) to another site (different `siteMenage`), the bridge holds it and
+   * waits for `changerHote(host)`, which returns when this site's pacing allows it; rejected, the read fails.
    *
-   * `defiler` (1 à 20) : après le premier calme, la page est défilée d'un écran à la fois (jamais de clic, de frappe
-   * ni de focus) tant que sa hauteur grandit, au plus `defiler` écrans et dans les mêmes 30 s ; le texte lu va
-   * alors jusqu'à 100 000 caractères et 1 000 liens (20 000 et 400 sans défiler).
+   * `defiler` (1 to 20): after the first calm, the page is scrolled one screen at a time (never a click, keystroke
+   * or focus) as long as its height grows, at most `defiler` screens and within the same 30 s; the text read then goes
+   * up to 100,000 characters and 1,000 links (20,000 and 400 without scrolling).
    */
   lirePageInvisible?(url: string, o: OptionsLecturePage): Promise<PageLue>;
   /**
-   * Le HTML d'une page publique (`document.documentElement.outerHTML`, 2 Mo au plus) : toujours la session publique,
-   * vidée avant la lecture, jamais un profil ni un compte. Mêmes gardes que `lirePageInvisible` (http(s), adresse
-   * locale refusée sauf `adressesLocales`), même limite de 30 s, même abandon par `signal` ; `url` est l'adresse
-   * finale, qui doit rester permise.
+   * The HTML of a public page (`document.documentElement.outerHTML`, 2 MB at most): always the public session,
+   * emptied before the read, never a profile or an account. Same guards as `lirePageInvisible` (http(s), local address
+   * refused unless `adressesLocales`), same 30 s limit, same abandonment through `signal`; `url` is the final
+   * address, which must remain allowed.
    */
   lireHtmlInvisible?(url: string, o: { adressesLocales?: boolean; signal?: AbortSignal }): Promise<{ url: string; html: string }>;
   /**
-   * Carte « donnees-widget » : l'agent demande à voir les données d'un widget qui lit avec le compte de l'utilisateur. Vrai
-   * s'il accepte (pour la conversation en cours). `signal` levé : la carte n'a plus d'objet (nouvelle conversation,
-   * noyau arrêté), elle est retirée et la demande répond faux. `genre: "action"` : les résultats d'une action, non d'un
-   * widget ; `genre: "site"` : les pages et la mémoire d'une appli de site (`id` est celui de l'appli). Absent : la
-   * demande est refusée.
+   * « donnees-widget » card: the agent asks to see the data of a widget that reads with the user's account. True
+   * if they accept (for the current conversation). `signal` raised: the card no longer has a subject (new conversation,
+   * kernel stopped), it is removed and the request answers false. `genre: "action"`: the results of an action, not of a
+   * widget; `genre: "site"`: the pages and memory of a site app (`id` is the app's). Absent: the
+   * request is refused.
    */
   demanderDonneesWidget?(o: { id: string; nom: string; agent: string; genre?: "action" | "site" }, signal?: AbortSignal): Promise<boolean>;
   /**
-   * L'adresse est-elle sur les domaines de l'appli de site ouverte `site` (jamais ceux de sa connexion) ? Faux si sa
-   * fenêtre n'est pas ouverte. Absent : l'agent ne fait naviguer aucune appli de site.
+   * Is the address on the domains of the open site app `site` (never those of its login)? False if its
+   * window is not open. Absent: the agent navigates no site app.
    */
   adresseSitePermise?(site: string, url: string): boolean;
 }
@@ -135,12 +135,12 @@ export interface RequeteReseau {
   erreur?: string;
 }
 
-/** Résultat d'`executer` : la valeur déjà sérialisée (JSON ou aperçu), non tronquée ; le noyau tronque. */
+/** Result of `executer`: the value already serialized (JSON or preview), not truncated; the kernel truncates. */
 export type ResultatJs = { valeur: string } | { exception: string };
 
 /** What the browser gives to inspect a tab. */
 export interface OutilsDevNavigateur {
-  /** Lève OutilsDevOccupes ou OngletIntrouvable. */
+  /** Throws OutilsDevOccupes or OngletIntrouvable. */
   attacher(id: string): Promise<void>;
   detacher(id: string): Promise<void>;
   console(id: string): Promise<MessageConsole[]>;
@@ -151,13 +151,13 @@ export interface OutilsDevNavigateur {
     o: { dureeMs?: number; recharger?: boolean },
     signal: AbortSignal,
   ): Promise<{ profil: ProfilCpu; metriques: Record<string, number> }>;
-  /** Le `.heapsnapshot` brut. */
+  /** The raw `.heapsnapshot`. */
   instantaneMemoire(id: string, signal: AbortSignal): Promise<string>;
   executer(id: string, code: string, signal: AbortSignal): Promise<ResultatJs>;
   recharger(id: string, sansCache: boolean): Promise<void>;
   /**
-   * Un accès réservé à un noyau (le navigateur garde ses outils d'un noyau à l'autre). En créer un révoque le précédent :
-   * ses appels sont refusés et ses attachements tombent. `liberer` révoque celui-ci (noyau arrêté).
+   * Access reserved to a kernel (the browser keeps its tools from one kernel to the next). Creating one revokes the previous:
+   * its calls are refused and its attachments drop. `liberer` revokes this one (kernel stopped).
    */
   proprietaire?(): OutilsDevProprietaire;
 }
@@ -173,17 +173,17 @@ export class OngletIntrouvable extends Error {
   }
 }
 
-/** Une page de l'historique trouvée pour l'agent : une par URL, faite des seules visites non privées. */
+/** A history page found for the agent: one per URL, made only of non-private visits. */
 export interface ResultatHistorique {
   url: string;
   titre: string;
   derniereVisite: string; // ISO
   visites: number;
-  /** Environ 300 caractères du texte retenu autour des mots cherchés ; vide si la page n'a pas de texte trouvé. */
+  /** About 300 characters of the kept text around the searched words; empty if the page has no text found. */
   extrait: string;
 }
 
-/** Une page dont le texte a été retenu, telle que lue par l'agent. */
+/** A page whose text was kept, as read by the agent. */
 export interface PageRetenue {
   url: string;
   titre: string;
@@ -191,17 +191,17 @@ export interface PageRetenue {
   texte: string;
 }
 
-/** Ce que le navigateur fournit pour chercher dans l'historique : jamais une visite d'un espace privé. */
+/** What the browser provides to search the history: never a visit from a private space. */
 export interface HistoriqueNavigateur {
-  /** `depuis` et `jusqua` : dates ISO déjà vérifiées par le noyau ; `limite` entre 1 et 50. */
+  /** `depuis` and `jusqua`: ISO dates already checked by the kernel; `limite` between 1 and 50. */
   chercher(q: { requete: string; depuis?: string; jusqua?: string; limite: number }): Promise<ResultatHistorique[]>;
-  /** Le texte retenu le plus récent de la page, ou null (inconnue, ou vue seulement dans un espace privé). */
+  /** The most recent kept text of the page, or null (unknown, or seen only in a private space). */
   lire(url: string): Promise<PageRetenue | null>;
 }
 
 export const TEXTE_PRIVE = "Cet onglet est dans un espace privé : l'agent n'y a pas accès.";
 
-/** L'onglet est dans un espace privé : l'agent reçoit TEXTE_PRIVE, sans question posée à l'utilisateur. */
+/** The tab is in a private space: the agent receives TEXTE_PRIVE, with no question asked to the user. */
 export class OngletPrive extends Error {
   constructor(readonly id: string) {
     super(TEXTE_PRIVE);
@@ -216,7 +216,7 @@ export class OutilsDevOccupes extends Error {
   }
 }
 
-/** Le profil de connexion demandé pour une lecture est inconnu ou utilisé par un espace privé. */
+/** The login profile requested for a read is unknown or used by a private space. */
 export class ProfilRefuse extends Error {
   constructor(readonly profil: string) {
     super(`Profil de connexion refusé : ${profil}`);

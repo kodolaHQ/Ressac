@@ -1,12 +1,12 @@
 import { spawn, type IPty } from "node-pty";
 
-/** Un agent CLI qui tourne dans un pseudo-terminal (affiché par xterm.js côté interface). */
+/** A CLI agent running in a pseudo-terminal (displayed by xterm.js on the UI side). */
 export class SessionAgent {
   private actif = true;
 
   private constructor(
     private readonly pty: IPty,
-    /** Arrêt de l'agent là où il tourne vraiment (le conteneur), en plus du terminal local. */
+    /** Stops the agent where it really runs (the container), in addition to the local terminal. */
     private readonly arreterDistant?: () => void | Promise<void>,
   ) {
     pty.onExit(() => {
@@ -53,7 +53,7 @@ export class SessionAgent {
     return () => abonnement.dispose();
   }
 
-  /** Rend la main une fois l'agent arrêté là où il tourne (le conteneur), pas seulement le terminal local. */
+  /** Returns once the agent is stopped where it runs (the container), not only the local terminal. */
   async arreter(): Promise<void> {
     if (!this.actif) return;
     const distant = Promise.resolve(this.arreterDistant?.()).catch(() => {});

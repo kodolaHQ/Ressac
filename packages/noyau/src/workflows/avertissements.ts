@@ -5,14 +5,14 @@ import type { WorkflowValide } from "./valider.js";
 
 export const AVERTISSEMENT_FIL_DE_L_EAU = "rien à publier au fil de l'eau : l'entrée de la sortie n'est pas traitée élément par élément";
 
-/** Une recherche web prend vite plus que les 150 s d'une exécution ordinaire. */
+/** A web search quickly takes more than the 150 s of an ordinary run. */
 export const AVERTISSEMENT_WEB_SANS_DUREE = "sans dureeMaxMinutes, ce widget peut être coupé à 150 s : demande à l'agent de déclarer dureeMaxMinutes";
 
 export const AVERTISSEMENT_SAISIE = "{saisie} : l'action ne déclare pas de saisie";
 
 export type Avertissement = { bloc: string; message: string };
 
-/** L'hôte d'une adresse, sauf si la partie avant le chemin contient un gabarit (`{…}`) ou n'est pas http(s). */
+/** The host of an address, unless the part before the path contains a template (`{…}`) or is not http(s). */
 function hoteDe(url: string): string | null {
   const m = /^https?:\/\/([^/?#]*)/i.exec(url.trim());
   if (!m || m[1]!.includes("{")) return null;
@@ -24,16 +24,16 @@ function hoteDe(url: string): string | null {
 }
 
 /**
- * Ce qui ne bloque pas l'enregistrement mais risque de faire échouer l'exécution : un domaine absent des sources
- * déclarées (seulement pour un widget avec compte), une clé `{config.…}` absente de la configuration du widget et, avec
- * `valide` (le même workflow validé), une sortie « au fil de l'eau » sans chaîne : elle n'aurait rien à publier. Avec
- * `dureeMaxMinutes: null` (le widget n'en déclare pas), chaque `web.chercher` : l'exécution risque d'être coupée.
+ * What does not block saving but risks making the run fail: a domain absent from the declared
+ * sources (only for a widget with an account), a `{config.…}` key absent from the widget's config and, with
+ * `valide` (the same validated workflow), an "as-it-goes" output without a chain: it would have nothing to publish. With
+ * `dureeMaxMinutes: null` (the widget declares none), each `web.chercher`: the run risks being cut off.
  */
 export function avertirWorkflow(
   workflow: Workflow,
   ctx: { sources: { compte: readonly string[]; publiques: readonly string[] }; config: unknown;
     dureeMaxMinutes?: number | null;
-    /** Une action sans `saisie` ne reçoit rien dans `{saisie}`. */
+    /** An action without `saisie` receives nothing in `{saisie}`. */
     proprietaire?: "widget" | "action";
     saisie?: boolean;
   },
@@ -62,7 +62,7 @@ export function avertirWorkflow(
     for (const c of champs) {
       const v = b.parametres[c.nom];
       if (typeof v !== "string") continue;
-      // Un repère facultatif (`{config.x?}`) n'a pas besoin de la valeur : il n'est jamais signalé.
+      // An optional marker (`{config.x?}`) does not need the value: it is never reported.
       for (const m of v.matchAll(/\{config\.([A-Za-z0-9_]+)[^}]*\}/g)) {
         if (!m[0].endsWith("?}") && !Object.hasOwn(config, m[1]!)) manquantes.add(m[1]!);
       }

@@ -43,20 +43,20 @@ export class ErreurAtelier extends Error {
   }
 }
 
-/** Un seul segment de chemin, sans remontée : un nom de fichier ou de dossier de projet. */
+/** A single path segment, no climbing up: a file or project folder name. */
 const segmentSur = (s: string): boolean => s !== "" && s !== "." && s !== ".." && basename(s) === s && !s.includes("\\");
 
-/** Mêmes éléments, mêmes nombres de fois, dans n'importe quel ordre. */
+/** Same items, same numbers of times, in any order. */
 const memesListes = (a: readonly string[], b: readonly string[]): boolean => {
   const x = [...a].sort();
   const y = [...b].sort();
   return x.length === y.length && x.every((v, i) => v === y[i]);
 };
 
-/** Dossier des profils bruts des outils de développement (distinct de `.webaios/profils`, celui des profils d'agent). */
+/** Folder of the dev tools' raw profiles (distinct from `.webaios/profils`, that of the agent profiles). */
 export const DOSSIER_PROFILAGE = "profilage";
 
-/** `.webaios/profilage` ou `projets/<dossier>/.webaios/profilage`, en segments relatifs à la racine. */
+/** `.webaios/profilage` or `projets/<dossier>/.webaios/profilage`, in segments relative to the root. */
 const dossierProfilage = (parties: string[]): boolean =>
   parties.every(segmentSur) &&
   ((parties.length === 2 && parties[0] === ".webaios" && parties[1] === DOSSIER_PROFILAGE) ||
@@ -64,21 +64,21 @@ const dossierProfilage = (parties: string[]): boolean =>
 
 const code = (e: unknown): string | undefined => (e as NodeJS.ErrnoException).code;
 
-/** Référence d'un profil gardé hors de l'espace : `profil:<nom de fichier>`. */
+/** Reference of a profile kept outside the workspace: `profil:<file name>`. */
 export const PREFIXE_PROFIL_PRIVE = "profil:";
 
 /**
- * Profils bruts des outils de développement, écrits par le navigateur (spec §6). Ce que l'agent a construit va dans
- * l'espace : dans le projet pour une application (`projets/<dossier>/.webaios/profilage`), dans `.webaios/profilage`
- * sinon. Le profil d'un autre site (son tas contient jetons et données personnelles) reste hors du montage, dans
- * `dossierPrive` (le profil du navigateur), et l'agent n'en reçoit qu'une référence `profil:<nom>`. Seuls ces dossiers
- * sont lus ou effacés. L'espace est monté en écriture dans le conteneur : l'agent peut y poser des liens symboliques,
- * donc aucun lien n'est suivi, ni dans les dossiers ni pour le fichier.
+ * Raw profiles of the dev tools, written by the browser (spec §6). What the agent built goes into
+ * the workspace: in the project for an application (`projets/<dossier>/.webaios/profilage`), in `.webaios/profilage`
+ * otherwise. The profile of another site (its heap contains tokens and personal data) stays outside the mount, in
+ * `dossierPrive` (the browser's profile), and the agent only gets a `profil:<nom>` reference. Only these folders
+ * are read or erased. The workspace is mounted writable in the container: the agent can put symbolic links in it,
+ * so no link is followed, neither in the folders nor for the file.
  */
 export function fichiersProfils(chemins: CheminsEspace, dossierPrive?: string): FichiersProfils {
   const refus = (cheminConteneur: string) => new Error(`Chemin hors des profils : ${cheminConteneur}`);
 
-  /** Descend dans les segments sous la racine réelle sans suivre de lien ; crée les dossiers manquants si `creer`. */
+  /** Descends into the segments under the real root without following a link; creates the missing folders if `creer`. */
   async function descendre(parties: string[], creer: boolean, affiche: string): Promise<string> {
     let courant = await realpath(chemins.racine);
     for (const partie of parties) {
@@ -95,12 +95,12 @@ export function fichiersProfils(chemins: CheminsEspace, dossierPrive?: string): 
       }
       if (info.isSymbolicLink() || !info.isDirectory()) throw refus(affiche);
     }
-    // Un lien posé entre deux vérifications serait vu ici.
+    // A link placed between two checks would be seen here.
     if ((await realpath(courant)) !== courant) throw refus(affiche);
     return courant;
   }
 
-  /** Chemin du conteneur → segments sous la racine, seulement pour un fichier d'un dossier de profilage. */
+  /** Container path → segments under the root, only for a file of a profiling folder. */
   const segments = (cheminConteneur: string): string[] => {
     const prefixe = `${CHEMIN_CONTENEUR}/`;
     const normal = posix.normalize(cheminConteneur);
@@ -110,14 +110,14 @@ export function fichiersProfils(chemins: CheminsEspace, dossierPrive?: string): 
     return parties;
   };
 
-  /** Le dossier privé (créé au besoin), sans lien symbolique. */
+  /** The private folder (created if needed), without a symbolic link. */
   async function dossierPriveReel(creer: boolean): Promise<string> {
     if (!dossierPrive) throw new Error("Enregistrement des profils indisponible.");
     if (creer) await mkdir(dossierPrive, { recursive: true, mode: 0o700 });
     return realpath(dossierPrive);
   }
 
-  /** Le fichier, s'il est un vrai fichier (pas un lien) dans un vrai dossier de profilage, ou le dossier privé. */
+  /** The file, if it is a real file (not a link) in a real profiling folder, or the private folder. */
   async function fichierExistant(cheminConteneur: string): Promise<string> {
     let fichier: string;
     if (cheminConteneur.startsWith(PREFIXE_PROFIL_PRIVE)) {
@@ -143,7 +143,7 @@ export function fichiersProfils(chemins: CheminsEspace, dossierPrive?: string): 
     async ecrireProfil(o, nom, contenu, construite) {
       if (!segmentSur(nom)) throw new Error(`Nom de profil invalide : ${nom}`);
       if (!construite) {
-        // « wx » : jamais par-dessus un fichier ou un lien existant.
+        // « wx »: never over an existing file or link.
         await writeFile(join(await dossierPriveReel(true), nom), contenu, { flag: "wx", mode: 0o600 });
         return PREFIXE_PROFIL_PRIVE + nom;
       }
@@ -151,7 +151,7 @@ export function fichiersProfils(chemins: CheminsEspace, dossierPrive?: string): 
       const parties = o.application === undefined ? [".webaios", DOSSIER_PROFILAGE] : ["projets", o.application, ".webaios", DOSSIER_PROFILAGE];
       const cheminConteneur = `${CHEMIN_CONTENEUR}/${[...parties, nom].join("/")}`;
       const dossier = await descendre(parties, true, cheminConteneur);
-      // « wx » : jamais par-dessus un fichier ou un lien existant.
+      // « wx »: never over an existing file or link.
       await writeFile(join(dossier, nom), contenu, { flag: "wx" });
       return cheminConteneur;
     },
@@ -177,7 +177,7 @@ export function fichiersProfils(chemins: CheminsEspace, dossierPrive?: string): 
   };
 }
 
-/** Le résultat d'une exécution d'action tel que sa page le montre : la page résolue à la lecture. */
+/** An action run's result as its page shows it: the page resolved at read time. */
 export type PageAction = {
   execution: string;
   debut: string;
@@ -186,27 +186,27 @@ export type PageAction = {
   statut: Execution["statut"];
   erreur?: string;
   page: PageRendue | null;
-  /** L'action lit avec le compte de l'utilisateur (déclaration actuelle) : les images des résultats restent neutres. */
+  /** The action reads with the user's account (current declaration): the results' images stay neutral. */
   compte: boolean;
 };
 
-/** Les actions : lancées à la demande, dans leur propre file, résultats et accords hors de l'espace. */
+/** The actions: launched on demand, in their own queue, results and grants outside the workspace. */
 export interface ActionsNoyau {
   lister(): Promise<ActionLue[]>;
-  /** Lance l'action (déclencheur « manuelle » par défaut) ; si elle tourne ou attend déjà, rend celle-là (`deja`). */
+  /** Launches the action (trigger « manuelle » by default); if it is running or waiting already, returns that one (`deja`). */
   lancer(id: string, o: { saisie?: string; declencheur?: Execution["declencheur"] }): LancementAction;
   arreter(id: string): void;
   direct(): EtatActions;
   surDirect(rappel: (e: EtatActions) => void): () => void;
   executions(id: string): Promise<ResumeExecution[]>;
   execution(id: string, execution: string): Promise<Execution | null>;
-  /** Le résultat de cette exécution (null : le dernier résultat), sans rien relancer ; null s'il n'y en a pas. */
+  /** The result of this run (null: the last result), without relaunching anything; null if there is none. */
   page(id: string, execution: string | null): Promise<PageAction | null>;
-  /** Comme pour un widget, mais rien n'est lancé : L'utilisateur relance depuis la page. */
+  /** As for a widget, but nothing is launched: the user relaunches from the page. */
   accorder(o: { id: string; profil: string; compte: string[]; publiques: string[] }): Promise<void>;
-  /** Retire l'accord et efface exécutions, résultats et mémoire. */
+  /** Withdraws the grant and erases runs, results and memory. */
   refuserAccord(id: string): Promise<void>;
-  /** Essai du constructeur : une exécution « -essai » qui ne devient pas le dernier résultat. */
+  /** Builder try: a « -essai » run that does not become the last result. */
   rejouer(id: string, origine: string, depart: string): LancementAction;
   supprimerDonnees(id: string): Promise<void>;
 }
@@ -215,35 +215,35 @@ export interface Noyau {
   chemins: CheminsEspace;
   actions: ActionsNoyau;
   politique: PolitiqueAcces;
-  /** Nom de l'agent du profil de ce noyau (celui qui détient les accès). */
+  /** Name of the agent of this kernel's profile (the one that holds the accesses). */
   agent: string;
   etatAtelier(): Promise<EtatAtelier>;
-  /** Nouvelle conversation : efface les autorisations. Signaler l'onglet courant (interactionUtilisateur) après. */
+  /** New conversation: erases the authorizations. Signal the current tab (interactionUtilisateur) afterwards. */
   ouvrirSessionAgent(o: { cols: number; rows: number; fenetre?: string }): Promise<SessionAgent>;
-  /** Widgets de la page d'accueil, avec leurs données et leur état (rangés hors de l'espace). */
+  /** Widgets of the home page, with their data and state (stored outside the workspace). */
   lireAccueil(): Promise<EtatAccueil>;
   surveillerAccueil(rappel: () => void): () => Promise<void>;
-  /** Récolte ce widget tout de suite, après la récolte en cours (déclencheur : « manuelle » par défaut). */
+  /** Harvests this widget right away, after the harvest in progress (trigger: « manuelle » by default). */
   recolterMaintenant(id: string, declencheur?: Execution["declencheur"]): Promise<EtatWidget & { execution?: string }>;
   /**
-   * Essai du constructeur : rejoue le workflow du widget depuis le bloc `depart`, avec les sorties amont de l'exécution
-   * `origine`, dans la même file que les récoltes. N'écrit ni données, ni mémoire, ni état : seulement l'exécution d'essai.
-   * Exception : un accord perdu pendant l'essai suit le chemin normal du retrait (données effacées, `accord-requis`).
+   * Builder try: replays the widget's workflow from block `depart`, with the upstream outputs of run
+   * `origine`, in the same queue as the harvests. Writes neither data, nor memory, nor state: only the try run.
+   * Exception: a grant lost during the try follows the normal withdrawal path (data erased, `accord-requis`).
    */
   rejouer(id: string, origine: string, depart: string): Promise<ResultatEssai>;
-  /** L'exécution (ou l'essai) qui tourne, ses blocs au fil des traces, et les demandes en attente. */
+  /** The run (or try) that is running, its blocks along the traces, and the waiting requests. */
   direct(): EtatDirect;
-  /** Appelé à chaque changement de `direct()` ; rend de quoi se désabonner. */
+  /** Called at each change of `direct()`; returns a way to unsubscribe. */
   surDirect(rappel: (e: EtatDirect) => void): () => void;
-  /** IA locale (Kev, Gemma) donnée par le navigateur ; null sans elle. */
+  /** Local AI (Kev, Gemma) given by the browser; null without it. */
   ia: IaLocale | null;
   /**
-   * L'utilisateur autorise le widget à lire avec son compte, dans ce profil de connexion. Le navigateur a vérifié avant que ce
-   * profil n'est pas celui d'un espace privé. `compte` et `publiques` sont les domaines montrés à l'utilisateur : refusé s'ils ne
-   * sont plus exactement ceux de la déclaration (l'agent l'a réécrite entre-temps). Une récolte suit.
+   * The user authorizes the widget to read with their account, in this login profile. The browser checked beforehand that this
+   * profile is not that of a private space. `compte` and `publiques` are the domains shown to the user: refused if they are no
+   * longer exactly those of the declaration (the agent rewrote it meanwhile). A harvest follows.
    */
   accorder(o: { id: string; profil: string; compte: string[]; publiques: string[] }): Promise<void>;
-  /** Retire l'accord et efface les données lues avec : le widget attend un nouvel accord (`accord-requis`). */
+  /** Withdraws the grant and erases the data read with it: the widget waits for a new grant (`accord-requis`). */
   refuserAccord(id: string): Promise<void>;
   arreter(): Promise<void>;
 }
@@ -255,43 +255,43 @@ export async function creerNoyau(o: {
   executer?: Executeur;
   horloge?: () => Date;
   profilId?: string;
-  /** Dossier contenant `modeles/` et `docker/` (par défaut, ceux du paquet). */
+  /** Folder containing `modeles/` and `docker/` (by default, those of the package). */
   ressources?: string;
-  /** Atelier partagé avec le navigateur (qui lance aussi les applications) ; à défaut, le noyau crée le sien. */
+  /** Workshop shared with the browser (which also launches the applications); otherwise, the kernel creates its own. */
   atelier?: Atelier;
-  /** Outils MCP des applications (lancer, arrêter, journal). */
+  /** MCP tools of the applications (launch, stop, log). */
   applications?: OutilsApplications;
-  /** Ports sur lesquels une démo locale ouverte par l'agent est « construite » (par défaut ceux du conteneur, plagePortsConteneur). */
+  /** Ports on which a local demo opened by the agent is « built » (by default those of the container, plagePortsConteneur). */
   portConstruit?: (port: number) => boolean;
   /**
-   * Dossier de l'hôte, hors de l'espace monté, pour les profils bruts des sites que l'agent n'a pas construits (le
-   * navigateur donne `<profil>/profilage`). Absent, ces profils ne sont pas enregistrés.
+   * Host folder, outside the mounted workspace, for the raw profiles of the sites the agent did not build (the
+   * browser gives `<profil>/profilage`). Absent, these profiles are not saved.
    */
   dossierProfilage?: string;
-  /** Dossier des données, états et accords des widgets, hors de l'espace (le navigateur donne `<profil>/widgets`). */
+  /** Folder of the widgets' data, states and grants, outside the workspace (the browser gives `<profil>/widgets`). */
   dossierWidgets: string;
   /**
-   * Dossier des exécutions, résultats, mémoire et accords des actions, hors de l'espace (le navigateur donne
+   * Folder of the actions' runs, results, memory and grants, outside the workspace (the browser gives
    * `<profil>/actions`).
    */
   dossierActions: string;
-  /** IA locale pour les récoltes ; arrêtée avec le noyau. */
+  /** Local AI for the harvests; stopped with the kernel. */
   ia?: IaLocale;
-  /** Moteur des workflows, monté dans le conteneur de récolte (par défaut `<ressources>/docker/moteur`). */
+  /** Workflow engine, mounted in the harvest container (by default `<ressources>/docker/moteur`). */
   moteur?: string;
-  /** Le workflow ouvert dans le constructeur d'une fenêtre (outil MCP `workflow_ouvert`). */
+  /** The workflow open in a window's builder (MCP tool `workflow_ouvert`). */
   workflowOuvert?: (fenetre: string) => WorkflowOuvert | null;
-  /** Appelé après chaque écriture de l'état ou des données d'un widget, et après un accord ou son retrait. */
+  /** Called after each write of a widget's state or data, and after a grant or its withdrawal. */
   surChange?: () => void;
-  /** Tests seulement : les récoltes peuvent lire des adresses locales (le serveur de test). */
+  /** Tests only: the harvests may read local addresses (the test server). */
   adressesLocales?: boolean;
-  /** Tests seulement : la base des recherches DuckDuckGo (une page enregistrée servie en local). */
+  /** Tests only: the base of the DuckDuckGo searches (a recorded page served locally). */
   urlRecherche?: string;
-  /** Notification de fin d'une veille qui a de nouveaux éléments (le navigateur la montre, voir OptionsPlanificateur). */
+  /** End notification of a watch that has new items (the browser shows it, see OptionsPlanificateur). */
   notifier?: (n: NotificationWidget) => void;
-  /** Outils MCP des extensions (fournis par le navigateur). */
+  /** MCP tools of the extensions (provided by the browser). */
   extensions?: OutilsExtensions;
-  /** Outils MCP des applis de site (fournis par le navigateur). */
+  /** MCP tools of the site apps (provided by the browser). */
   sites?: OutilsSites;
 }): Promise<Noyau> {
   const chemins = cheminsEspace(o.racine);
@@ -305,12 +305,12 @@ export async function creerNoyau(o: {
   const politique = new PolitiqueAcces(o.portConstruit ? { portConstruit: o.portConstruit } : {});
   const { dossierWidgets } = o;
   const { dossierActions } = o;
-  // Une action supprimée (ou mise à la corbeille) depuis le dernier lancement : ses données et son accord partent.
+  // An action deleted (or put in the trash) since the last launch: its data and grant go.
   await oublierActionsDisparues(chemins, dossierActions).catch((e) => console.error("[webaios] oubli des actions disparues :", e));
   const ia = o.ia ?? null;
-  // Accès propre à ce noyau, fermé avec lui : une récolte encore en vol à l'arrêt ne relance pas Kev.
+  // Access specific to this kernel, closed with it: a harvest still in flight at shutdown does not relaunch Kev.
   const accesIa = ia?.acces() ?? null;
-  // Un seul répartiteur pour les widgets et les actions : les appels d'une action passent avant ceux des widgets.
+  // A single dispatcher for the widgets and the actions: an action's calls go before those of the widgets.
   const repartiteurIa = accesIa ? creerRepartiteurIa(accesIa) : null;
   const signaler = () => {
     try {
@@ -321,8 +321,8 @@ export async function creerNoyau(o: {
   };
   const widget = async (id: string): Promise<WidgetLu | undefined> =>
     (await lireAccueil(chemins, dossierWidgets)).widgets.find((w) => w.id === id);
-  // Lus par l'agent via ses outils MCP. Un widget dont la déclaration est illisible, ou qui a un accord enregistré, compte
-  // comme lisant avec le compte de l'utilisateur : ses données ont pu être récoltées avec.
+  // Read by the agent through its MCP tools. A widget whose declaration is unreadable, or that has a recorded grant, counts
+  // as reading with the user's account: its data may have been harvested with it.
   const outilsWidgets: OutilsWidgets = {
     async lire(id) {
       const w = await widget(id);
@@ -335,13 +335,13 @@ export async function creerNoyau(o: {
     executions: (id) => listerExecutions(join(dossierWidgets, id)),
     execution: (id, execution) => lireExecution(join(dossierWidgets, id), execution),
   };
-  // Le navigateur garde ses outils de développement d'un noyau à l'autre : celui-ci prend les siens, ce qui révoque ceux
-  // d'un noyau précédent (ses appels en retard sont refusés, ses attachements tombent).
+  // The browser keeps its dev tools from one kernel to the next: this one takes its own, which revokes those
+  // of a previous kernel (its late calls are refused, its attachments drop).
   const proprietaire = o.pont.outilsDev?.proprietaire?.();
   const outilsDev = proprietaire ?? o.pont.outilsDev;
   const jeton = genererJeton();
-  // Lues par l'agent via ses outils MCP. Une action illisible, ou qui a un accord enregistré, compte comme lisant avec le
-  // compte de l'utilisateur. `actions` est défini plus bas : ces fonctions ne servent qu'une fois le serveur lancé.
+  // Read by the agent through its MCP tools. An unreadable action, or one that has a recorded grant, counts as reading with the
+  // user's account. `actions` is defined further down: these functions are only used once the server is launched.
   const outilsActions: OutilsActions = {
     async lire(id) {
       const a = await lireAction(chemins, id);
@@ -374,8 +374,8 @@ export async function creerNoyau(o: {
     ...(o.sites ? { sites: o.sites } : {}),
   });
   try {
-    // Configs de session laissées par un plantage : leurs jetons ne valent plus rien.
-    // Un échec n'empêche pas de démarrer : des jetons morts sont inoffensifs.
+    // Session configs left by a crash: their tokens are worth nothing any more.
+    // A failure does not prevent starting: dead tokens are harmless.
     await rm(dossierSessions(chemins), { recursive: true, force: true }).catch((e) => console.error("[webaios] purge des configs de session :", e));
     await ecrireConfigMcp(chemins, profil.configMcp, { url: serveur.urlConteneur, jeton });
   } catch (e) {
@@ -384,12 +384,12 @@ export async function creerNoyau(o: {
     throw e;
   }
 
-  // La navigation ne doit jamais attendre Docker (spec §9) : la première construction d'image prend
-  // des minutes, et un échec (port occupé…) ne concerne que l'agent.
+  // Navigation must never wait for Docker (spec §9): the first image build takes
+  // minutes, and a failure (port in use…) only concerns the agent.
   const atelier = o.atelier ?? new Atelier({ chemins, executer, ...(o.ressources ? { dossierDocker: join(o.ressources, "docker") } : {}) });
-  // Le conteneur se prépare dès le lancement. S'il échoue, la première session rend cet échec plutôt que de tout
-  // reconstruire aussitôt ; les suivantes (Réessayer) tentent à nouveau. Réussi, il est revérifié (sonde rapide).
-  // Avant toute session, les agents laissés par une app précédente sont arrêtés.
+  // The container is prepared from launch. If it fails, the first session returns this failure rather than rebuilding
+  // everything right away; the following ones (Réessayer) try again. Once successful, it is re-checked (quick probe).
+  // Before any session, the agents left by a previous app are stopped.
   const atelierPret = atelier.assurerDemarre().then(async (etat) => {
     if (etat === "demarre") await atelier.arreterSessionsOrphelines();
     return etat;
@@ -416,12 +416,12 @@ export async function creerNoyau(o: {
         }
       }
     },
-    // Gardé à part de `demarrage` (qu'ouvrirSessionAgent remet à null) : les récoltes attendent le premier démarrage.
+    // Kept apart from `demarrage` (which ouvrirSessionAgent resets to null): the harvests wait for the first startup.
     pret: atelierPret,
     ...(o.horloge ? { horloge: o.horloge } : {}),
     ...(o.adressesLocales ? { adressesLocales: true } : {}),
-    // Un seul ménagement pour toute l'application (tous les noyaux, essais compris) : une recherche à la fois, une
-    // lecture à la fois par hôte, même pendant les 15 s où l'ancien noyau s'arrête au changement de profil.
+    // A single pacing for the whole application (all kernels, tries included): one search at a time, one
+    // read at a time per host, even during the 15 s when the old kernel stops at the profile change.
     menagement: MENAGEMENT_PAR_DEFAUT,
     ...(o.urlRecherche !== undefined ? { urlRecherche: o.urlRecherche } : {}),
     ...(o.notifier ? { notifier: o.notifier } : {}),
@@ -468,8 +468,8 @@ export async function creerNoyau(o: {
       const r = execution === null ? await dernierResultat(dossierActions, id) : await lireResultat(dossierActions, id, execution);
       const e = await lireExecution(join(dossierActions, id), r?.execution ?? execution ?? "");
       if (!e) return null;
-      // Illisible, ou un accord encore enregistré (réécrite sans compte, ses résultats ont pu être lus avec) : compte comme
-      // lisant avec le compte (le plus prudent, comme les outils MCP et les images). Accords illisibles : de même.
+      // Unreadable, or a grant still recorded (rewritten without account, its results may have been read with it): counts as
+      // reading with the account (the most cautious, like the MCP tools and the images). Unreadable grants: same.
       const accords = await lireAccords(dossierActions).catch(() => null);
       const compte = "erreur" in action || action.declaration.sources.compte.length > 0 || !accords || Object.hasOwn(accords, id);
       const catalogue = [...COMPOSANTS_INTEGRES, ...(await lireComposantsAgent(chemins.composants)).valides];
@@ -505,7 +505,7 @@ export async function creerNoyau(o: {
   const pont = o.pont;
   const suivi = outilsDev ? new SuiviOutilsDev(politique, outilsDev, () => pont.listerOnglets()) : null;
 
-  // Nettoyages des sessions avec fenêtre encore ouvertes, faits aussi à l'arrêt du noyau.
+  // Cleanups of the sessions with a window still open, also done at the kernel's shutdown.
   const sessionsOuvertes = new Set<() => Promise<void>>();
 
   return {
@@ -525,12 +525,12 @@ export async function creerNoyau(o: {
         throw new ErreurAtelier("absent", (e as Error).message);
       }
       if (etat !== "demarre") throw new ErreurAtelier(etat);
-      // Nouvelle conversation : plus aucune autorisation. Les sessions partagent le serveur MCP et donc la politique :
-      // une session d'une autre fenêtre perd aussi ses accès (elle redemandera), plutôt que d'en hériter.
+      // New conversation: no authorization any more. The sessions share the MCP server and therefore the policy:
+      // a session of another window also loses its accesses (it will ask again), rather than inheriting them.
       politique.reinitialiser();
       const id = randomBytes(8).toString("hex");
-      // Avec une fenêtre : un jeton et une config à elle, pour que `workflow_ouvert` sache laquelle parle (sans fenêtre,
-      // CLI de dev : la config principale).
+      // With a window: its own token and config, so that `workflow_ouvert` knows which one speaks (without a window,
+      // dev CLI: the main config).
       let jetonSession: string | undefined;
       const configSession = cheminConfigSession(chemins, id);
       const nettoyer = (): Promise<void> => {
@@ -580,12 +580,12 @@ export async function creerNoyau(o: {
       }
       await accorder(dossierWidgets, id, { domaines: [...compte].sort(), publiques: [...publiques].sort(), profil: nomProfil });
       signaler();
-      // La récolte prend du temps : elle suit en arrière-plan et signale elle-même ses changements.
+      // The harvest takes time: it follows in the background and reports its own changes.
       planificateur.recolterMaintenant(id).catch((e) => console.error("[webaios] récolte après accord :", e));
     },
     async refuserAccord(id) {
       await retirerAccord(dossierWidgets, id);
-      // Les données lues avec ce compte partent avec l'accord : sans lui, plus rien ne les protège (compte retiré…).
+      // The data read with this account goes with the grant: without it, nothing protects it any more (account removed…).
       await supprimerDonnees(dossierWidgets, id);
       const w = await widget(id);
       if (w && !("erreur" in w) && w.declaration.sources.compte.length) {
@@ -604,7 +604,7 @@ export async function creerNoyau(o: {
       suivi?.arreter();
       await Promise.all([...sessionsOuvertes].map((nettoyer) => nettoyer()));
       sessionsOuvertes.clear();
-      // Plus aucun accès : les cartes encore affichées sont retirées, et une réponse tardive n'accorde rien.
+      // No access at all: the cards still displayed are removed, and a late answer grants nothing.
       politique.reinitialiser();
       await Promise.all([planificateur.arreter(), fileActions.arreterTout()]);
       await accesIa?.fermer().catch((e) => console.error("[webaios] arrêt de l'IA locale :", e));

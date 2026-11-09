@@ -20,7 +20,7 @@ function verifierId(id: string): void {
 
 const fichierAdresse = (dossierSites: string, id: string) => join(dossierSites, id, "adresse.json");
 
-/** `<dossierSites>/<id>/adresse.json` ; absent ou abîmé : null (le site garde ses domaines déclarés). */
+/** `<dossierSites>/<id>/adresse.json`; absent or damaged: null (the site keeps its declared domains). */
 export async function lireEtatAdresse(dossierSites: string, id: string): Promise<EtatAdresse | null> {
   verifierId(id);
   try {
@@ -34,7 +34,7 @@ export async function lireEtatAdresse(dossierSites: string, id: string): Promise
 const ANCIENS_MAX = 100;
 const files = new Map<string, Promise<unknown>>();
 
-/** Une opération à la fois par appli (changement d'adresse, suppression). */
+/** One operation at a time per app (address change, deletion). */
 function enFile<T>(cle: string, travail: () => Promise<T>): Promise<T> {
   const precedente = files.get(cle) ?? Promise.resolve();
   const suivante = precedente.catch(() => {}).then(travail);
@@ -46,8 +46,8 @@ function enFile<T>(cle: string, travail: () => Promise<T>): Promise<T> {
 }
 
 /**
- * Le site a changé de domaine : `nouveau` devient l'actuel, l'ancien actuel (à défaut l'hôte de l'adresse déclarée)
- * rejoint les anciens sans doublon. Les écritures d'un même site se font l'une après l'autre.
+ * The site changed domain: `nouveau` becomes the current one, the old current one (failing that the host of the declared address)
+ * joins the old ones without duplicates. The writes of a same site go one after the other.
  */
 export function changerAdresse(dossierSites: string, id: string, d: DeclarationSite, nouveau: string): Promise<EtatAdresse> {
   verifierId(id);
@@ -75,7 +75,7 @@ export function changerAdresse(dossierSites: string, id: string, d: DeclarationS
   });
 }
 
-/** Oublie ce que WebAiOs retient d'une appli : mémoire, adresse (sous `<profil>/sites/<id>/`) et accord. */
+/** Forgets what WebAiOs keeps about an app: memory, address (under `<profil>/sites/<id>/`) and grant. */
 export async function supprimerDonneesSite(profil: string, id: string): Promise<void> {
   verifierId(id);
   const dossierSites = join(profil, "sites");

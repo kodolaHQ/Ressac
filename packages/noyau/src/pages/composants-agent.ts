@@ -3,8 +3,8 @@ import { join } from "node:path";
 import { z } from "zod";
 import { COMPOSANTS_INTEGRES, type DefinitionComposant } from "./catalogue.js";
 
-// Les composants de l'agent : `<dossier>/<nom>/composant.json` + `composant.html`. Rien n'est exécuté ici ; les erreurs sont
-// des textes fixes (le message du système citerait des chemins du Mac).
+// The agent's components: `<dossier>/<nom>/composant.json` + `composant.html`. Nothing is run here; errors are
+// fixed texts (the system's message would quote Mac paths).
 
 export const COMPOSANT_HTML_MAX = 256 * 1024;
 const JSON_MAX = 64 * 1024;
@@ -57,7 +57,7 @@ async function lireUn(dossier: string, nom: string): Promise<DefinitionComposant
   } catch {
     return "composant.json illisible (pas du JSON valide)";
   }
-  // zod ignore en silence une clé « __proto__ » : on regarde les clés brutes avant.
+  // zod silently ignores a « __proto__ » key: we look at the raw keys beforehand.
   const props = (brut as { proprietes?: unknown } | null)?.proprietes;
   if (props && typeof props === "object" && Object.keys(props).some((k) => !NOM_PROPRIETE.test(k))) {
     return "composant.json invalide : proprietes : nom de propriété non valide";
@@ -76,11 +76,11 @@ async function lireUn(dossier: string, nom: string): Promise<DefinitionComposant
   return { nom: d.nom, description: d.description, proprietes: d.proprietes, origine: "agent" };
 }
 
-/** Les composants de l'agent, triés par nom ; un composant cassé est signalé, il n'empêche pas de lire les autres. */
+/** The agent's components, sorted by name; a broken component is reported, it does not prevent reading the others. */
 export async function lireComposantsAgent(dossier: string): Promise<{ valides: DefinitionComposant[]; invalides: { nom: string; erreur: string }[] }> {
   let noms: string[];
   try {
-    // `isDirectory` est faux pour un lien symbolique : un lien vers un dossier est ignoré.
+    // `isDirectory` is false for a symbolic link: a link to a folder is ignored.
     noms = (await readdir(dossier, { withFileTypes: true })).filter((e) => e.isDirectory() && NOM.test(e.name)).map((e) => e.name).sort();
   } catch {
     return { valides: [], invalides: [] };

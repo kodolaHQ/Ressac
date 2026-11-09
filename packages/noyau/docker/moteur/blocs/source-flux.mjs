@@ -1,5 +1,5 @@
-// source.flux : lit des flux RSS / Atom (l'un après l'autre, comme les widgets de départ) et les fusionne.
-// Chaque article : { titre, url, date, resume, source } où `source` est l'hôte de son URL ; sans titre ou url, écarté.
+// source.flux: reads RSS / Atom feeds (one after the other, like the starter widgets) and merges them.
+// Each article: { titre, url, date, resume, source } where `source` is the host of its URL; without a title or url, it is discarded.
 
 const message = (e) => String(e?.message ?? e);
 const hote = (url) => {
@@ -22,7 +22,7 @@ export default {
         flux = await webaios.lireFlux(url);
       } catch (e) {
         if (siErreur === "echouer") throw new Error(`Flux en échec : ${url} : ${message(e)}`);
-        // Comme aujourd'hui : au journal global (stderr) et à celui du bloc.
+        // As today: to the global log (stderr) and to the block's log.
         webaios.journal("source en échec :", url, message(e));
         partiel();
         continue;

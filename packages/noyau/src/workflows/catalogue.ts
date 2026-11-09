@@ -3,7 +3,7 @@ import type { ChampFormulaire, FamilleBloc } from "./blocs/communs.js";
 
 export type { ChampFormulaire, FamilleBloc } from "./blocs/communs.js";
 
-/** Un type de bloc tel que l'interface le montre : sérialisable (ni fonction ni schéma zod), clonable par IPC. */
+/** A block type as the interface shows it: serializable (no function or zod schema), cloneable through IPC. */
 export type CatalogueBloc = {
   type: string;
   libelle: string;
@@ -16,7 +16,7 @@ export type CatalogueBloc = {
 
 const FAMILLES: FamilleBloc[] = ["Sources", "Listes", "IA", "Logique/Code", "Sortie"];
 
-/** Les types de blocs, rangés par famille puis dans l'ordre du registre. */
+/** The block types, grouped by family then in registry order. */
 export function catalogueBlocs(): CatalogueBloc[] {
   const blocs = [...REGISTRE_BLOCS.values()].map((d) => ({
     type: d.type,

@@ -1,30 +1,30 @@
-// Interpréteur des workflows : tourne dans le conteneur `atelier`, appelé par recolteur.mjs.
+// Workflow interpreter: runs in the `atelier` container, called by recolteur.mjs.
 //
-// Contrat d'un module de bloc (`blocs/<type>.mjs`) :
+// Contract of a block module (`blocs/<type>.mjs`):
 //   export default {
 //     parElement: "non" | "option" | "toujours",
-//     async executer(ctx),             // mode simple : rend { sortie, memoire? }
-//     async traiterElement(ctx),       // par élément : rend la valeur rangée sous `champ` dans ctx.element
-//     async finaliser(liste, ctx),     // facultatif, par élément : rend { sortie } à partir de la liste enrichie
-//     echecSiTousEchouent: true,       // facultatif, par élément : le bloc échoue si aucun élément lancé n'a réussi
+//     async executer(ctx),             // simple mode: returns { sortie, memoire? }
+//     async traiterElement(ctx),       // per item: returns the value stored under `champ` in ctx.element
+//     async finaliser(liste, ctx),     // optional, per item: returns { sortie } from the enriched list
+//     echecSiTousEchouent: true,       // optional, per item: the block fails if no item that was run succeeded
 //   }
 // ctx = { entree, parametres, config, memoire, maintenant, webaios, journal, dossier, remplir, partiel, element?, saisie? }
-//   - `saisie` (action lancée avec un texte seulement) : ce texte ; aussi `webaios.saisie` pour le code de l'agent, et
-//     `{saisie}` dans les gabarits.
-//   - `maintenant` : l'heure ISO de `debut`, la date de ce que le bloc retient cette fois.
-//   - `memoire` : ce que le bloc a retenu la fois d'avant (null sinon) ; `executer` rend la nouvelle dans `memoire`.
-//     Par élément, la mémoire du bloc est celle de `reutiliser`, tenue par l'interpréteur.
-//   - `journal(texte)` : une ligne rattachée au bloc. `webaios.journal(...)` va en plus sur stderr.
-//   - `remplir(gabarit, { url, texteMax })` remplit avec l'élément en cours (en mode simple : l'entrée) et la config ;
-//     une valeur absente lève ValeurAbsente : en mode simple la sortie est null, par élément l'élément reste sans
-//     champ ; dans les deux cas, une ligne de journal et pas d'erreur.
-//   - par élément, un ElementNonLance (erreurs.mjs) laisse l'élément sans champ et le bloc « partiel », sans jamais
-//     compter comme un échec ; en mode simple, c'est une erreur ordinaire. Après le premier, plus aucun élément n'est
-//     lancé (sauf ceux que `reutiliser` reprend) : une ligne de journal pour le premier, une pour tous les suivants.
-//   - `partiel(raison?)` : en mode simple, le bloc finira « partiel » (par exemple un flux sur plusieurs en échec).
-// La boucle par élément (deux à la fois, budget de temps, `siErreur`, `reutiliser`) est celle de l'interpréteur.
-// Dans la chaîne au fil de l'eau, `ctx.entree` est l'entrée de la chaîne (pas la sortie du bloc d'avant) : un module
-// chaînable ne la lit pas dans `traiterElement`.
+//   - `saisie` (action run with a text only): that text; also `webaios.saisie` for the agent's code, and
+//     `{saisie}` in the templates.
+//   - `maintenant`: the ISO time of `debut`, the date of what the block keeps this time.
+//   - `memoire`: what the block kept last time (null otherwise); `executer` returns the new one in `memoire`.
+//     Per item, the block's memory is that of `reutiliser`, held by the interpreter.
+//   - `journal(texte)`: a line attached to the block. `webaios.journal(...)` also goes to stderr.
+//   - `remplir(gabarit, { url, texteMax })` fills in with the current item (in simple mode: the input) and the config;
+//     an absent value throws ValeurAbsente: in simple mode the output is null, per item the item stays without a
+//     field; in both cases, a log line and no error.
+//   - per item, an ElementNonLance (erreurs.mjs) leaves the item without a field and the block "partiel", never
+//     counting as a failure; in simple mode, it is an ordinary error. After the first one, no item is
+//     run any more (except those `reutiliser` takes back): one log line for the first, one for all the following.
+//   - `partiel(raison?)`: in simple mode, the block will end "partiel" (for example one feed out of several failing).
+// The per-item loop (two at a time, time budget, `siErreur`, `reutiliser`) is the interpreter's.
+// In the as-it-goes chain, `ctx.entree` is the chain's input (not the output of the previous block): a chainable
+// module does not read it in `traiterElement`.
 import { ElementNonLance } from "./erreurs.mjs";
 import { ValeurAbsente, lireChemin, remplir } from "./gabarits.mjs";
 import { creerWebaios, formater } from "./webaios.mjs";
@@ -40,7 +40,7 @@ import sourcePage from "./blocs/source-page.mjs";
 import sourceRecuperer from "./blocs/source-recuperer.mjs";
 import webChercher from "./blocs/web-chercher.mjs";
 
-/** Les blocs livrés avec le moteur, par type. Aucun moyen d'en charger d'autres depuis le conteneur. */
+/** The blocks shipped with the engine, by type. No way to load others from the container. */
 export const BLOCS_LIVRES = Object.freeze({
   "source.page": sourcePage,
   "source.flux": sourceFlux,
@@ -55,34 +55,34 @@ export const BLOCS_LIVRES = Object.freeze({
   sortie,
 });
 
-/** Passé ce temps depuis `debut`, plus aucun élément n'est lancé (le conteneur est arrêté à 180 s). */
+/** After this time since `debut`, no item is run any more (the container is stopped at 180 s). */
 export const LIMITE_GLOBALE_MS = 150_000;
-/** Exécution progressive : la mémoire est envoyée au noyau au plus une fois par cet écart (recopié de src/workflows/executer.ts). */
+/** Progressive run: the memory is sent to the kernel at most once per this interval (copied from src/workflows/executer.ts). */
 export const ECART_MEMOIRE_MS = 30_000;
-/** Au fil de l'eau : une ligne `publication` au plus par cet écart (recopié de src/workflows/executer.ts). */
+/** As it goes: at most one `publication` line per this interval (copied from src/workflows/executer.ts). */
 export const ECART_PUBLICATIONS_MS = 5000;
-/** Action : une ligne `avancement` par bloc au plus par cet écart, la dernière toujours (recopié de src/workflows/executer.ts). */
+/** Action: at most one `avancement` line per block per this interval, the last one always (copied from src/workflows/executer.ts). */
 export const ECART_AVANCEMENT_MS = 1000;
 /**
- * Au fil de l'eau : une publication plus grosse (en JSON) n'est pas envoyée, le noyau l'ignorerait (recopié de
+ * As it goes: a larger publication (in JSON) is not sent, the kernel would ignore it (copied from
  * TAILLE_MAX_DONNEES, src/workflows/protocole.ts).
  */
 export const TAILLE_MAX_DONNEES = 2 * 1024 * 1024;
 
 /**
- * Passé cette heure, plus aucun élément n'est lancé : `limiteMs` de la ligne `debut` (la durée déclarée du widget),
- * LIMITE_GLOBALE_MS sans elle, comptés depuis la réception de `debut`.
+ * After this time, no item is run any more: `limiteMs` of the `debut` line (the widget's declared duration),
+ * LIMITE_GLOBALE_MS without it, counted from the reception of `debut`.
  */
 export function echeanceDe(debut, recuA) {
   const limite = debut?.limiteMs;
   return recuA + (typeof limite === "number" && Number.isFinite(limite) && limite > 0 ? limite : LIMITE_GLOBALE_MS);
 }
 const ELEMENTS_EN_PARALLELE = 2;
-/** Valeurs gardées par `reutiliser`, par bloc (les plus anciennes oubliées au-delà). */
+/** Values kept by `reutiliser`, per block (the oldest forgotten beyond). */
 export const REUTILISES_MAX_OCTETS = 2 * 1024 * 1024;
 /**
- * Toute la mémoire envoyée au noyau, sous le plafond de son fichier (MEMOIRE_MAX_OCTETS, 3 Mo, dans
- * src/workflows/memoire.ts : au-delà, le noyau la refuse et garde l'ancienne) et d'une ligne (4 Mo).
+ * All the memory sent to the kernel, under the cap of its file (MEMOIRE_MAX_OCTETS, 3 MB, in
+ * src/workflows/memoire.ts: beyond it, the kernel refuses it and keeps the old one) and of a line (4 MB).
  */
 export const MEMOIRE_ENVOYEE_MAX_OCTETS = 2.5 * 1024 * 1024;
 const LIGNE_MAX = 4 * 1024 * 1024;
@@ -92,7 +92,7 @@ const message = (e) => String(e?.message ?? e);
 const tronquer = (s, n) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
 const estObjet = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
 
-/** Clé de `reutiliser` d'un élément ; null si absente. */
+/** `reutiliser` key of an item; null if absent. */
 function cleReutilisee(element, chemin) {
   const v = lireChemin(element, chemin);
   if (v === undefined || v === null || v === "") return null;
@@ -102,7 +102,7 @@ function cleReutilisee(element, chemin) {
 const taille = (v) => Buffer.byteLength(JSON.stringify(v));
 
 /**
- * Valeurs gardées par `reutiliser` (`[cle, valeur, dateIso]`), de la plus ancienne à la plus récente, bornées à
+ * Values kept by `reutiliser` (`[cle, valeur, dateIso]`), from oldest to most recent, bounded to
  * REUTILISES_MAX_OCTETS.
  */
 function borner(reutilises) {
@@ -115,8 +115,8 @@ function borner(reutilises) {
 }
 
 /**
- * Borne toute la mémoire à MEMOIRE_ENVOYEE_MAX_OCTETS : oublie les plus anciennes valeurs de `reutiliser`, en commençant
- * toujours par le bloc qui en garde le plus, puis, s'il le faut encore, les plus anciennes clés de `liste.nouveaux`.
+ * Bounds all the memory to MEMOIRE_ENVOYEE_MAX_OCTETS: forgets the oldest `reutiliser` values, always starting
+ * with the block that keeps the most, then, if still needed, the oldest keys of `liste.nouveaux`.
  */
 function bornerMemoire(memoire) {
   let total = taille(memoire);
@@ -147,8 +147,8 @@ function bornerMemoire(memoire) {
 }
 
 /**
- * Valeurs de `reutiliser` lues de la mémoire : clé → { valeur, date }. Une ancienne paire `[cle, valeur]` (sans date) est
- * datée de `maintenant` ; avec `garderJours`, une valeur calculée il y a plus longtemps est oubliée (elle sera recalculée).
+ * `reutiliser` values read from the memory: key → { valeur, date }. An old `[cle, valeur]` pair (no date) is
+ * dated `maintenant`; with `garderJours`, a value computed longer ago is forgotten (it will be recomputed).
  */
 function lireReutilises(memoire, maintenant, garderJours) {
   const entrees = Array.isArray(memoire?.reutilises) ? memoire.reutilises : [];
@@ -164,27 +164,27 @@ function lireReutilises(memoire, maintenant, garderJours) {
 }
 
 /**
- * Un bloc par élément, élément par élément : ses règles (`reutiliser`, valeur absente, ElementNonLance, `siErreur`) et
- * ses comptes. Sert à la boucle d'un bloc seul (`parElement`) et à la chaîne au fil de l'eau (`executerChaine`).
- *   - `passer(i, element)` : l'élément après le bloc (sans `champ` s'il n'a pas de valeur cette fois) ; une erreur avec
- *     `siErreur: "echouer"` est rangée dans `erreurBloc`, jamais levée ;
- *   - `nonLance(i, element)` : l'élément passe le bloc sans y être lancé (temps, budget) ;
- *   - `terminer()` : les lignes de journal de fin et le statut.
+ * One block per item, item by item: its rules (`reutiliser`, absent value, ElementNonLance, `siErreur`) and
+ * its counts. Used by the loop of a single block (`parElement`) and by the as-it-goes chain (`executerChaine`).
+ *   - `passer(i, element)`: the item after the block (without `champ` if it has no value this time); an error with
+ *     `siErreur: "echouer"` is stored in `erreurBloc`, never thrown;
+ *   - `nonLance(i, element)`: the item passes the block without being run in it (time, budget);
+ *   - `terminer()`: the final log lines and the status.
  */
 function creerEtape(module, ctx, exposerMemoire) {
   const { parametres, journal } = ctx;
   const { champ, reutiliser } = parametres;
   const siErreur = parametres.siErreur ?? "sauter";
   const reutilises = reutiliser ? lireReutilises(ctx.memoire, ctx.maintenant, parametres.garderJours) : null;
-  // Exécution progressive : ce que le bloc a déjà appris fait partie de la mémoire envoyée en cours de route.
+  // Progressive run: what the block has already learned is part of the memory sent along the way.
   if (reutilises && exposerMemoire) exposerMemoire(() => ({ reutilises: borner(reutilises) }));
-  // Une valeur reprise garde la date de son calcul (sa fiabilité est revue après garderJours) mais devient la plus
-  // récente pour les plafonds de taille.
+  // A reused value keeps the date of its computation (its reliability is reviewed after garderJours) but becomes the most
+  // recent for the size caps.
   const ranger = (cle, entree) => {
     reutilises.delete(cle);
     reutilises.set(cle, entree);
   };
-  // Calculs en cours par clé de `reutiliser` : un élément de même clé attend celui-là plutôt que d'en lancer un second.
+  // Computations in progress by `reutiliser` key: an item with the same key waits for that one rather than launching a second.
   const enCours = new Map();
 
   const etape = {
@@ -192,15 +192,15 @@ function creerEtape(module, ctx, exposerMemoire) {
     reussis: 0,
     refuses: 0,
     nonLances: 0,
-    // Premier refus du noyau (plafond, recherches arrêtées) : il vaut pour toute l'exécution, plus rien n'est lancé.
+    // First refusal from the kernel (cap, searches stopped): it holds for the whole run, nothing is run any more.
     refusNoyau: null,
     premiereErreur: null,
     erreurBloc: null,
-    // Indices des éléments en échec, refusés par le noyau ou non lancés.
+    // Indexes of the items that failed, were refused by the kernel or were not run.
     enEchec: new Set(),
     reutilises,
-    // Un élément sans valeur cette fois (échec, non lancé, valeur absente) sort sans `champ`, même s'il en avait un :
-    // une ancienne valeur ne passe jamais pour celle de ce bloc (ia.trier ne trie pas sur une ancienne note).
+    // An item without a value this time (failure, not run, absent value) leaves without `champ`, even if it had one:
+    // an old value never passes for this block's (ia.trier does not sort on an old score).
     sansChamp(element) {
       if (!estObjet(element) || !Object.hasOwn(element, champ)) return element;
       const { [champ]: _ancienne, ...reste } = element;
@@ -215,8 +215,8 @@ function creerEtape(module, ctx, exposerMemoire) {
           return etape.sansChamp(element);
         }
         if (e instanceof ElementNonLance) {
-          // Refusé par le noyau (plafond de recherches…) : non lancé, jamais un échec. Une ligne pour le premier, les
-          // suivants sont comptés ensemble à la fin.
+          // Refused by the kernel (search cap…): not run, never a failure. One line for the first, the
+          // following ones are counted together at the end.
           etape.refuses++;
           etape.enEchec.add(i);
           if (etape.refusNoyau === null) {
@@ -255,15 +255,15 @@ function creerEtape(module, ctx, exposerMemoire) {
       return { ...element, [champ]: reprise.valeur };
     }
     if (cle !== null && enCours.has(cle)) {
-      // Le même calcul est en cours pour un autre élément : sa valeur, ou, s'il échoue, un calcul à soi.
+      // The same computation is in progress for another item: its value, or, if it fails, a computation of its own.
       try {
         const valeur = await enCours.get(cle);
         etape.reussis++;
         return { ...element, [champ]: valeur };
       } catch (e) {
-        // Refusé par le noyau : celui-ci le serait aussi, inutile de redemander.
+        // Refused by the kernel: this one would be too, no point asking again.
         if (e instanceof ElementNonLance) throw e;
-        // Son erreur est comptée chez lui ; celui-ci tente à son tour.
+        // Its error is counted on its side; this one tries in its turn.
       }
     }
     if (etape.refusNoyau !== null) throw new ElementNonLance(etape.refusNoyau);
@@ -291,14 +291,14 @@ function creerEtape(module, ctx, exposerMemoire) {
   return etape;
 }
 
-/** Échéance d'un bloc par élément : l'échéance globale, avancée par `budgetSecondes` compté depuis `depuis`. */
+/** Deadline of a per-item block: the global deadline, advanced by `budgetSecondes` counted from `depuis`. */
 const limiteDe = (parametres, echeance, depuis) =>
   Math.min(echeance, parametres.budgetSecondes ? depuis + parametres.budgetSecondes * 1000 : Infinity);
 
 /**
- * L'avancement d'un bloc par élément (action) : `envoyer(faits, total)` après un élément au plus toutes les
- * ECART_AVANCEMENT_MS, et toujours pour le dernier (`faits = total`) ; `terminer()` envoie le compte final s'il n'est pas
- * encore parti (éléments non lancés, bloc arrêté par une erreur).
+ * The progress of a per-item block (action): `envoyer(faits, total)` after an item at most every
+ * ECART_AVANCEMENT_MS, and always for the last one (`faits = total`); `terminer()` sends the final count if it has not
+ * gone yet (items not run, block stopped by an error).
  */
 function creerAvancement(total, horloge, envoyer) {
   let faits = 0;
@@ -320,7 +320,7 @@ function creerAvancement(total, horloge, envoyer) {
   };
 }
 
-/** Boucle par élément : rend { statut, sortie, memoire?, enEchec } ou lève l'erreur du bloc. */
+/** Per-item loop: returns { statut, sortie, memoire?, enEchec } or throws the block's error. */
 async function parElement(module, ctx, { echeance, horloge, apresElement, exposerMemoire, surAvancement }) {
   const { entree } = ctx;
   if (!Array.isArray(entree)) throw new Error("liste attendue en entrée");
@@ -345,10 +345,10 @@ async function parElement(module, ctx, { echeance, horloge, apresElement, expose
   avancement?.terminer();
 
   if (etape.erreurBloc) throw etape.erreurBloc;
-  // Pour un bloc qui le demande (ia.trier : sans aucune note, sa sortie vide ne veut rien dire), parmi les éléments
-  // lancés, aucun réussi et au moins un en échec : le bloc a échoué. Les éléments non lancés (temps, refusés par le
-  // noyau) ou sans valeur de gabarit ne comptent pas comme réussis. Les autres blocs (qui enrichissent) laissent passer
-  // les éléments sans leur champ et finissent « partiel ».
+  // For a block that asks for it (ia.trier: with no score at all, its empty output means nothing), among the items
+  // run, none succeeded and at least one failed: the block failed. Items not run (time, refused by the
+  // kernel) or without a template value do not count as succeeded. The other blocks (which enrich) let
+  // the items through without their field and end "partiel".
   if (module.echecSiTousEchouent === true && etape.echecs > 0 && etape.reussis === 0) {
     throw new Error(`Tous les éléments ont échoué (${message(etape.premiereErreur)})`);
   }
@@ -363,7 +363,7 @@ async function parElement(module, ctx, { echeance, horloge, apresElement, expose
   };
 }
 
-/** `ctx` : la configuration et, pour une action, la saisie. */
+/** `ctx`: the config and, for an action, the input. */
 function remplirOuLever(gabarit, element, { config, saisie }, options) {
   const r = remplir(gabarit, { element, config, saisie }, options);
   if ("absente" in r) throw new ValeurAbsente(r.absente);
@@ -371,27 +371,27 @@ function remplirOuLever(gabarit, element, { config, saisie }, options) {
 }
 
 /**
- * Exécute un workflow validé par le noyau (`{ blocs, liens, ordre }`), bloc par bloc dans `ordre`. Envoie par
- * `tracer` le début et la fin de chaque bloc et ses lignes de journal. Rend les données (la sortie du bloc `sortie`)
- * et la mémoire des blocs du workflow ; lève l'erreur du premier bloc échoué (les suivants ne sont pas lancés).
+ * Runs a workflow validated by the kernel (`{ blocs, liens, ordre }`), block by block in `ordre`. Sends through
+ * `tracer` the start and end of each block and its log lines. Returns the data (the output of the `sortie` block)
+ * and the memory of the workflow's blocks; throws the error of the first failed block (the following ones are not run).
  *
- * Avec `rejeu` (`{ relances, sorties }`, un essai du constructeur) : seuls les blocs de `relances` sont lancés et
- * tracés ; la sortie d'un autre bloc est celle de `rejeu.sorties` (reprise de l'exécution d'origine). Un essai ne lit
- * ni ne rend aucune mémoire : `liste.nouveaux` laisse tout passer, `reutiliser` ne reprend rien, la mémoire rendue est
- * vide. Les données sont la sortie du bloc `sortie` s'il est relancé, null sinon.
+ * With `rejeu` (`{ relances, sorties }`, a builder try): only the blocks of `relances` are run and
+ * traced; the output of another block is that of `rejeu.sorties` (taken from the original run). A try reads
+ * and returns no memory: `liste.nouveaux` lets everything through, `reutiliser` takes nothing back, the returned memory is
+ * empty. The data is the output of the `sortie` block if it is rerun, null otherwise.
  *
- * Avec `progressif` (une vraie exécution longue ou au fil de l'eau ; jamais un essai) :
- *   - la mémoire telle qu'elle serait rendue maintenant (`instantaneMemoire`) est envoyée par `tracer` en ligne
- *     `memoire` au plus toutes les ECART_MEMOIRE_MS (vérifié à la fin de chaque élément et de chaque bloc), et avant
- *     de relever l'erreur d'un bloc : ce qui a été appris n'est pas perdu si l'exécution ne finit pas ;
- *   - les nouvelles clés d'un `liste.nouveaux` restent « en suspens » et ne sont retenues que résolues : l'élément a
- *     disparu entre l'entrée et la sortie d'un bloc en aval sans y être en échec (écarté par un tri, `garder`, un
- *     doublon, un bloc `code`), ou le bloc `sortie` a tourné. Un élément en échec ou non lancé (temps, budget, refus
- *     du noyau) dans un bloc par élément en aval garde sa clé hors de la mémoire : il reviendra la fois suivante ;
- *   - si la sortie publie au fil de l'eau (`chaineDe` non vide), les blocs de la chaîne tournent élément par élément
- *     (`executerChaine`) : chaque élément terminé y résout sa clé, et des lignes `memoire` puis `publication`
- *     montrent les éléments terminés au plus toutes les ECART_PUBLICATIONS_MS.
- * Sans `progressif`, rien de cela : toutes les nouvelles clés sont retenues et la mémoire n'est rendue qu'à la fin.
+ * With `progressif` (a real long run or as-it-goes run; never a try):
+ *   - the memory as it would be returned now (`instantaneMemoire`) is sent through `tracer` as a `memoire`
+ *     line at most every ECART_MEMOIRE_MS (checked at the end of each item and each block), and before
+ *     raising a block's error: what was learned is not lost if the run does not finish;
+ *   - the new keys of a `liste.nouveaux` stay "pending" and are only kept once resolved: the item
+ *     disappeared between the input and the output of a downstream block without failing in it (discarded by a sort, `garder`, a
+ *     duplicate, a `code` block), or the `sortie` block ran. An item that failed or was not run (time, budget, kernel
+ *     refusal) in a downstream per-item block keeps its key out of the memory: it will come back next time;
+ *   - if the output publishes as it goes (`chaineDe` not empty), the chain's blocks run item by item
+ *     (`executerChaine`): each finished item resolves its key there, and `memoire` then `publication` lines
+ *     show the finished items at most every ECART_PUBLICATIONS_MS.
+ * Without `progressif`, none of this: all the new keys are kept and the memory is only returned at the end.
  */
 export async function executerWorkflow({
   workflow,
@@ -408,7 +408,7 @@ export async function executerWorkflow({
   versErreur = (texte) => process.stderr.write(texte + "\n"),
   rejeu = null,
   progressif = false,
-  // Action seulement : le texte tapé au lancement, et l'avancement des blocs par élément.
+  // Action only: the text typed at launch, and the progress of per-item blocks.
   saisie = undefined,
   avancement = false,
 }) {
@@ -425,21 +425,21 @@ export async function executerWorkflow({
   }
   const sorties = new Map();
   const nouvelleMemoire = new Map();
-  // Bloc par élément en cours : ce qu'il a déjà appris (progressif).
+  // Per-item block in progress: what it has already learned (progressive).
   const memoireEnCours = new Map();
-  // Par bloc `liste.nouveaux` (progressif) : sa mémoire rendue, ses nouvelles clés en suspens, celles en échec.
+  // Per `liste.nouveaux` block (progressive): its returned memory, its pending new keys, those that failed.
   const suivis = new Map();
   const instant = maintenant ?? new Date().toISOString();
   let donnees = null;
   let derniereMemoire = horloge();
 
-  /** La mémoire telle qu'elle serait rendue maintenant : blocs du workflow, avec leur type, bornée. */
+  /** The memory as it would be returned now: the workflow's blocks, with their type, bounded. */
   function instantaneMemoire() {
     const m = {};
     for (const b of workflow.blocs) {
       let valeur;
       const suivi = suivis.get(b.id);
-      // Les clés en suspens retirées avant le plafond : elles ne prennent pas la place d'anciennes clés.
+      // Pending keys removed before the cap: they do not take the place of old keys.
       if (suivi) valeur = suivi.memoire.filter((e) => !suivi.enSuspens.has(e[0])).slice(-CLES_MAX);
       else if (nouvelleMemoire.has(b.id)) valeur = nouvelleMemoire.get(b.id);
       else if (memoireEnCours.has(b.id)) valeur = memoireEnCours.get(b.id)();
@@ -455,7 +455,7 @@ export async function executerWorkflow({
     try {
       tracer({ t: "memoire", memoire: instantaneMemoire() });
     } catch (e) {
-      // Trop grosse pour une ligne : le noyau garde la précédente.
+      // Too big for a line: the kernel keeps the previous one.
       versErreur(`mémoire non envoyée : ${message(e)}`);
     }
   }
@@ -465,17 +465,17 @@ export async function executerWorkflow({
   };
 
   /**
-   * Après un bloc réussi, pour chaque `liste.nouveaux` suivi dont il est en aval : les clés de ses éléments en échec ou
-   * non lancés passent en échec (pour toute l'exécution, quelle que soit la branche, même si une autre branche les avait
-   * résolues) ; les clés des éléments qu'il a écartés sont résolues. Après `sortie`, toutes celles qui restent hors échec.
-   * Si un bloc fait perdre le champ de la clé aux éléments (un `code` qui les remodèle), il ne résout rien par
-   * disparition ; si ensuite un élément sans clé échoue, on ne sait plus lequel : le suivi devient « aveugle », plus rien
-   * n'est résolu dans cette exécution et les clés pas encore résolues reviendront la fois suivante.
+   * After a successful block, for each tracked `liste.nouveaux` it is downstream of: the keys of its items that failed or
+   * were not run become failed (for the whole run, whatever the branch, even if another branch had
+   * resolved them); the keys of the items it discarded are resolved. After `sortie`, all those that remain not failed.
+   * If a block makes the items lose the key's field (a `code` that reshapes them), it resolves nothing by
+   * disappearance; if an item without a key then fails, we no longer know which: the tracking becomes "blind", nothing
+   * more is resolved in this run and the keys not yet resolved will come back next time.
    */
   /**
-   * Un élément en échec ou non lancé en aval d'un `liste.nouveaux` suivi : sa clé (nouvelle de cette fois) passe en
-   * échec et revient en suspens. Sans clé alors que le champ a été perdu en route : on ne sait plus lequel, le suivi
-   * devient aveugle.
+   * An item that failed or was not run downstream of a tracked `liste.nouveaux`: its key (new this time) becomes
+   * failed and goes back to pending. Without a key while the field was lost along the way: we no longer know which, the tracking
+   * becomes blind.
    */
   function noterEchec(suivi, cle) {
     if (cle === null) {
@@ -522,7 +522,7 @@ export async function executerWorkflow({
   }
 
   const journalDe = (id) => (texte) => tracer({ t: "journal", bloc: id, texte: tronquer(String(texte), TEXTE_TRACE_MAX) });
-  /** Ce que reçoit un bloc, hors entrée : configuration, mémoire, horloge, journal, `webaios`. */
+  /** What a block receives, besides the input: config, memory, clock, log, `webaios`. */
   const optionsBloc = (id, bloc, journal) => ({
     blocs,
     config,
@@ -547,7 +547,7 @@ export async function executerWorkflow({
     }),
   });
 
-  /** La trace `fin` d'un bloc réussi ou partiel, sans la sortie si elle ne tient pas sur une ligne. */
+  /** The `fin` trace of a successful or partial block, without the output if it does not fit on a line. */
   function tracerFin(id, statut, sortie) {
     const fin = { t: "bloc", id, etape: "fin", statut, sortie };
     if (Buffer.byteLength(JSON.stringify(fin)) > LIGNE_MAX) {
@@ -555,24 +555,24 @@ export async function executerWorkflow({
     } else tracer(fin);
   }
 
-  // Au fil de l'eau : seulement pour une exécution progressive (jamais un essai).
+  // As it goes: only for a progressive run (never a try).
   const chaine = enProgression ? chaineDe(workflow, blocs) : [];
   const dansLaChaine = new Set(chaine);
 
   /**
-   * La chaîne au fil de l'eau : chaque élément de l'entrée traverse tous ses blocs avant d'être terminé, deux éléments
-   * à la fois, avec par bloc les règles d'un bloc par élément (`creerEtape`). L'échéance d'un bloc est le début de la
-   * chaîne plus son `budgetSecondes`, bornée par l'échéance globale ; un élément qui arrive à un bloc après elle le
-   * passe sans son champ (non lancé pour ce bloc) et continue. Plus aucun élément n'entre dans la chaîne après
-   * l'échéance globale.
+   * The as-it-goes chain: each item of the input goes through all its blocks before being finished, two items
+   * at a time, with per block the rules of a per-item block (`creerEtape`). A block's deadline is the start of the
+   * chain plus its `budgetSecondes`, bounded by the global deadline; an item that reaches a block after it
+   * passes it without its field (not run for this block) and continues. No more items enter the chain after
+   * the global deadline.
    *
-   * À chaque élément terminé : s'il a échoué ou n'a pas été lancé dans un bloc, sa clé passe en échec ; sinon elle
-   * attend. Si ECART_PUBLICATIONS_MS est passé depuis la dernière publication (ou s'il n'y en a pas encore eu), les clés
-   * en attente sont résolues, la ligne `memoire` part, puis `publication` : un élément publié n'est jamais retraité la
-   * fois suivante, même si le conteneur s'arrête juste après, et un élément pas encore montré n'est jamais retenu.
+   * At each finished item: if it failed or was not run in a block, its key becomes failed; otherwise it
+   * waits. If ECART_PUBLICATIONS_MS has passed since the last publication (or there has been none yet), the waiting keys
+   * are resolved, the `memoire` line goes, then `publication`: a published item is never reprocessed next
+   * time, even if the container stops right after, and an item not yet shown is never kept.
    *
-   * Traces : `debut` de tous les blocs de la chaîne d'un coup, au début, et leurs `fin` à la fin. La durée retenue pour
-   * chaque bloc de la chaîne est donc celle de toute la chaîne, pas le temps passé dans ce bloc.
+   * Traces: `debut` of all the chain's blocks at once, at the start, and their `fin` at the end. The duration kept for
+   * each block of the chain is thus that of the whole chain, not the time spent in that block.
    */
   async function executerChaine(entree) {
     const debutChaine = horloge();
@@ -589,7 +589,7 @@ export async function executerWorkflow({
       };
     });
 
-    /** Le bloc `b` échoue avec `e`, les autres de la chaîne finissent « partiel » ; la mémoire part avant l'erreur. */
+    /** Block `b` fails with `e`, the others in the chain end "partiel"; the memory goes before the error. */
     const echouer = (b, e) => {
       chaine.forEach((id, k) =>
         tracer(
@@ -604,7 +604,7 @@ export async function executerWorkflow({
 
     if (!Array.isArray(entree)) echouer(0, new Error("liste attendue en entrée"));
     const n = entree.length;
-    // La liste telle qu'après chaque bloc.
+    // The list as after each block.
     const apres = chaine.map(() => new Array(n));
     const termines = new Array(n).fill(false);
     let faits = 0;
@@ -613,7 +613,7 @@ export async function executerWorkflow({
     let dernierePublication = null;
     const suivisAmont = [...suivis.values()].filter((s) => s.aval.has(chaine[0]));
 
-    /** L'élément `i` à travers tous les blocs ; false s'il est abandonné (l'exécution échoue). */
+    /** Item `i` through all the blocks; false if it is abandoned (the run fails). */
     async function parcourir(i) {
       let element = entree[i];
       for (let b = 0; b < etapes.length; b++) {
@@ -627,7 +627,7 @@ export async function executerWorkflow({
             return false;
           }
         }
-        // Ce qui circule entre les blocs est du JSON, copié : un bloc ne modifie pas ce qu'un autre a rendu.
+        // What circulates between blocks is JSON, copied: a block does not modify what another returned.
         const copie = copieJson(element);
         if (copie === undefined) {
           erreur ??= { b, e: new Error(`le bloc ${id} doit rendre du JSON`) };
@@ -639,13 +639,13 @@ export async function executerWorkflow({
       return true;
     }
 
-    // Éléments terminés sans échec dont la clé attend d'être montrée : elle n'est retenue qu'à la publication qui les
-    // montre (ou, en fin normale de chaîne, par `sortie`). Sur un échec de l'exécution ou un arrêt, un élément terminé
-    // mais pas encore publié n'a jamais été affiché : il reste en suspens et revient la fois suivante.
+    // Items finished without failure whose key waits to be shown: it is only kept at the publication that
+    // shows them (or, at the normal end of the chain, by `sortie`). On a run failure or a stop, an item finished
+    // but not yet published was never displayed: it stays pending and comes back next time.
     const aResoudre = [];
     let publicationTropGrosseSignalee = false;
 
-    /** L'élément `i` terminé : en échec dans un bloc, sa clé passe en échec tout de suite ; sinon elle attend sa publication. */
+    /** Item `i` finished: failed in a block, its key becomes failed right away; otherwise it waits for its publication. */
     function terminerElement(i) {
       if (!etapes.some(({ etape }) => etape.enEchec.has(i))) {
         aResoudre.push(i);
@@ -654,11 +654,11 @@ export async function executerWorkflow({
       for (const suivi of suivisAmont) noterEchec(suivi, cleSuivie(suivi, entree[i]));
     }
 
-    /** Les clés des éléments que la publication va montrer sont résolues, puis la mémoire part, puis la publication. */
+    /** The keys of the items the publication will show are resolved, then the memory goes, then the publication. */
     function publier() {
       dernierePublication = horloge();
       const donnees = apres[apres.length - 1].filter((_, i) => termines[i]);
-      // Trop grosse pour le noyau : rien n'est envoyé ni résolu, ses éléments restent en attente (la sortie les montrera).
+      // Too big for the kernel: nothing is sent or resolved, its items stay waiting (the output will show them).
       if (taille(donnees) > TAILLE_MAX_DONNEES) {
         if (!publicationTropGrosseSignalee) versErreur("publication non envoyée : plus de 2 Mo, les éléments seront montrés à la fin");
         publicationTropGrosseSignalee = true;
@@ -675,7 +675,7 @@ export async function executerWorkflow({
       try {
         tracer({ t: "publication", donnees, faits, total: n });
       } catch (e) {
-        // Trop grosse pour une ligne : la suivante, ou la sortie, la remplacera.
+        // Too big for a line: the next one, or the output, will replace it.
         versErreur(`publication non envoyée : ${message(e)}`);
       }
     }
@@ -698,7 +698,7 @@ export async function executerWorkflow({
     await Promise.all(Array.from({ length: ELEMENTS_EN_PARALLELE }, ouvrier));
     if (erreur) echouer(erreur.b, erreur.e);
 
-    // Plus aucun élément n'entre après l'échéance globale : ceux-là passent tous les blocs sans y être lancés.
+    // No more items enter after the global deadline: those pass all the blocks without being run in them.
     for (let i = suivant; i < n; i++) {
       let element = entree[i];
       etapes.forEach(({ etape }, b) => (element = apres[b][i] = etape.nonLance(i, element)));
@@ -716,7 +716,7 @@ export async function executerWorkflow({
 
   for (const id of workflow.ordre) {
     if (relances && !relances.has(id)) {
-      // Ni lancé ni tracé : sa sortie, s'il en faut une, est celle de l'exécution d'origine.
+      // Neither run nor traced: its output, if one is needed, is that of the original run.
       if (Object.hasOwn(reprises, id)) sorties.set(id, reprises[id]);
       continue;
     }
@@ -724,7 +724,7 @@ export async function executerWorkflow({
     const preds = predecesseurs.get(id);
     const entree = preds.length === 0 ? null : preds.length === 1 ? sorties.get(preds[0]) : Object.fromEntries(preds.map((p) => [p, sorties.get(p)]));
     if (dansLaChaine.has(id)) {
-      // Toute la chaîne d'un coup, à son premier bloc (une tranche contiguë de l'ordre).
+      // The whole chain at once, at its first block (a contiguous slice of the order).
       if (id === chaine[0]) await executerChaine(entree);
       continue;
     }
@@ -767,18 +767,18 @@ export async function executerWorkflow({
   }
 
   if (rejeu) return { donnees, memoire: {} };
-  // Seulement les blocs du workflow, avec leur type : la nouvelle valeur, sinon l'ancienne si le type n'a pas changé.
+  // Only the workflow's blocks, with their type: the new value, otherwise the old one if the type has not changed.
   return { donnees, memoire: instantaneMemoire() };
 }
 
-/** Les éléments d'une entrée ou d'une sortie : la liste, ou ceux des listes d'une entrée à plusieurs blocs. */
+/** The items of an input or an output: the list, or those of the lists of a multi-block input. */
 function elementsDe(valeur) {
   if (Array.isArray(valeur)) return valeur;
   if (estObjet(valeur)) return Object.values(valeur).filter(Array.isArray).flat();
   return [];
 }
 
-/** Les blocs atteints depuis `id` par les liens. */
+/** The blocks reached from `id` through the links. */
 function descendants(workflow, id) {
   const vus = new Set();
   const aVoir = [id];
@@ -794,7 +794,7 @@ function descendants(workflow, id) {
   return vus;
 }
 
-/** Un bloc que chaque élément peut traverser seul : par élément en option, sans `finaliser` ni `echecSiTousEchouent`. */
+/** A block that each item can go through alone: per item optional, without `finaliser` or `echecSiTousEchouent`. */
 function chainable(bloc, blocs) {
   const module = Object.hasOwn(blocs, bloc.type) ? blocs[bloc.type] : undefined;
   return (
@@ -806,13 +806,13 @@ function chainable(bloc, blocs) {
 }
 
 /**
- * La chaîne « au fil de l'eau », recopie de `chaineAuFilDeLEau` (src/workflows/chaine.ts ; un test vérifie qu'elles
- * s'accordent) : les blocs que chaque élément traverse seul jusqu'à la sortie, dans l'ordre d'exécution. Vide si la
- * sortie ne publie pas au fil de l'eau ou n'a pas exactement un prédécesseur. En remontant depuis le prédécesseur de la
- * sortie, on prend un bloc tant qu'il est chaînable et qu'il n'a qu'un successeur (le bloc pris juste avant, ou la
- * sortie) ; on remonte par son unique prédécesseur, et on s'arrête après lui s'il en a plusieurs. Enfin, on retire des
- * blocs au début tant que la suite n'est pas une tranche contiguë de l'ordre. Un essai n'a pas de chaîne : c'est à
- * l'appelant d'en juger (executerWorkflow ne la cherche que pour une exécution progressive).
+ * The "as it goes" chain, a copy of `chaineAuFilDeLEau` (src/workflows/chaine.ts; a test checks that they
+ * agree): the blocks each item goes through alone up to the output, in run order. Empty if the
+ * output does not publish as it goes or does not have exactly one predecessor. Going up from the output's predecessor,
+ * a block is taken as long as it is chainable and has only one successor (the block taken just before, or the
+ * output); we go up through its only predecessor, and stop after it if it has several. Finally, blocks are removed
+ * at the start as long as the rest is not a contiguous slice of the order. A try has no chain: it is up to the
+ * caller to judge (executerWorkflow only looks for it for a progressive run).
  */
 export function chaineDe(workflow, blocs) {
   const parId = new Map(workflow.blocs.map((b) => [b.id, b]));
@@ -850,14 +850,14 @@ export function chaineDe(workflow, blocs) {
   return chaine;
 }
 
-/** Copie des listes que bornerMemoire raccourcit sur place (la mémoire en cours sert encore après un envoi). */
+/** Copy of the lists that bornerMemoire shortens in place (the memory in progress is still used after a send). */
 function copieBornable(valeur) {
   if (Array.isArray(valeur)) return [...valeur];
   if (estObjet(valeur) && Array.isArray(valeur.reutilises)) return { ...valeur, reutilises: [...valeur.reutilises] };
   return valeur;
 }
 
-/** Le module d'un bloc et le `ctx` qu'il reçoit (voir le contrat en tête du fichier). */
+/** A block's module and the `ctx` it receives (see the contract at the top of the file). */
 function contexteBloc(bloc, entree, o) {
   const module = Object.hasOwn(o.blocs, bloc.type) ? o.blocs[bloc.type] : undefined;
   if (!module) throw new Error(`type inconnu dans le conteneur : ${bloc.type}`);
@@ -882,7 +882,7 @@ function contexteBloc(bloc, entree, o) {
   return { module, parametres, ctx, estPartiel: () => partiel };
 }
 
-/** Une valeur passée par JSON (ce qui circule entre les blocs) ; undefined si ce n'en est pas. */
+/** A value passed through JSON (what circulates between blocks); undefined if it is not one. */
 function copieJson(valeur) {
   let json;
   try {
@@ -893,7 +893,7 @@ function copieJson(valeur) {
   return json === undefined ? undefined : JSON.parse(json);
 }
 
-/** Un bloc : rend { statut, sortie (JSON), memoire?, enEchec?, nouvelles?, memoireEntiere? } ou lève son erreur. */
+/** A block: returns { statut, sortie (JSON), memoire?, enEchec?, nouvelles?, memoireEntiere? } or throws its error. */
 async function executerBloc(bloc, entree, o) {
   const { module, parametres, ctx, estPartiel } = contexteBloc(bloc, entree, o);
   const elementParElement = module.parElement === "toujours" || (module.parElement === "option" && parametres.parElement === true);
@@ -914,7 +914,7 @@ async function executerBloc(bloc, entree, o) {
         statut: estPartiel() ? "partiel" : "reussi",
         sortie: rendu?.sortie,
         ...(rendu?.memoire !== undefined ? { memoire: rendu.memoire } : {}),
-        // liste.nouveaux : les clés nouvelles de cette fois (en suspens d'une exécution progressive).
+        // liste.nouveaux: the new keys of this time (pending from a progressive run).
         ...(Array.isArray(rendu?.nouvelles) ? { nouvelles: rendu.nouvelles } : {}),
         ...(Array.isArray(rendu?.memoireEntiere) ? { memoireEntiere: rendu.memoireEntiere } : {}),
       };
@@ -924,7 +924,7 @@ async function executerBloc(bloc, entree, o) {
       r = { statut: "reussi", sortie: null };
     }
   }
-  // Ce qui circule entre les blocs est du JSON (copié : un bloc ne modifie pas la sortie d'un autre).
+  // What circulates between blocks is JSON (copied: a block does not modify another's output).
   const sortie = copieJson(r.sortie);
   if (sortie === undefined) throw new Error(`le bloc ${bloc.id} doit rendre du JSON`);
   return { ...r, sortie };

@@ -1,19 +1,19 @@
 import { jsonCanonique } from "../workflows/memoire.js";
 
 /**
- * Ce qui compte comme les nouveautés d'un widget : les éléments de ses données (la liste, ou les listes au premier
- * niveau d'un objet) qui n'étaient pas dans ses données d'avant. Le texte d'une notification ne reprend jamais rien
- * de ces données : seulement leur nombre.
+ * What counts as a widget's novelties: the items of its data (the list, or the first-level lists
+ * of an object) that were not in its previous data. A notification's text never takes anything
+ * from this data: only their number.
  */
 
-/** Les éléments des données : la liste elle-même, ou les listes au premier niveau d'un objet, à la suite. */
+/** The items of the data: the list itself, or the first-level lists of an object, one after the other. */
 export function elementsDe(donnees: unknown): unknown[] {
   if (Array.isArray(donnees)) return donnees;
   if (donnees === null || typeof donnees !== "object") return [];
   return Object.values(donnees).flatMap((v) => (Array.isArray(v) ? v : []));
 }
 
-/** L'identité d'un élément : son `url` quand c'est du texte (un prix changé ne le rend pas nouveau), sinon son JSON canonique. */
+/** An item's identity: its `url` when it is text (a changed price does not make it new), otherwise its canonical JSON. */
 export function identite(e: unknown): string {
   if (e !== null && typeof e === "object" && !Array.isArray(e)) {
     const url = (e as Record<string, unknown>).url;
@@ -22,7 +22,7 @@ export function identite(e: unknown): string {
   return jsonCanonique(e);
 }
 
-/** Nombre d'éléments (distincts) des données qui n'étaient pas dans les précédentes. */
+/** Number of (distinct) items of the data that were not in the previous ones. */
 export function compterNouveaux(precedent: unknown, donnees: unknown): number {
   const vus = new Set(elementsDe(precedent).map(identite));
   const nouveaux = new Set(elementsDe(donnees).map(identite).filter((i) => !vus.has(i)));
@@ -33,5 +33,5 @@ export function texteNotification(n: number): string {
   return n === 1 ? "1 nouvel élément" : `${n} nouveaux éléments`;
 }
 
-/** Ce que montre la notification de fin d'une veille : `titre` = nom du widget, `texte` = `texteNotification(n)`. */
+/** What the notification at the end of a watch shows: `titre` = widget name, `texte` = `texteNotification(n)`. */
 export type NotificationWidget = { widget: string; titre: string; texte: string };

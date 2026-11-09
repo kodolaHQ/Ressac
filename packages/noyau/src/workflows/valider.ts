@@ -3,39 +3,39 @@ import { REGISTRE_BLOCS } from "./blocs/index.js";
 import { PREFIXE_WORKFLOW_INVALIDE, Workflow, type GenreSortie } from "./schema.js";
 
 export type WorkflowValide = {
-  /** Le workflow, paramètres remplis des valeurs par défaut. */
+  /** The workflow, params filled with the default values. */
   workflow: Workflow;
-  /** Ordre d'exécution : tri topologique, à égalité dans l'ordre du tableau `blocs`. */
+  /** Run order: topological sort, ties broken in the order of the `blocs` array. */
   ordre: string[];
   predecesseurs: Record<string, string[]>;
   sortie: { id: string; vers: GenreSortie };
 };
 
 /**
- * Ce que le propriétaire déclare et qui change les règles : `sources.web`, `recolte.dureeMaxMinutes`, son genre (une
- * action rend une page, un widget non) et, pour une action, si elle déclare une `saisie`.
+ * What the owner declares and that changes the rules: `sources.web`, `recolte.dureeMaxMinutes`, its kind (an
+ * action returns a page, a widget does not) and, for an action, whether it declares a `saisie`.
  */
 export type ContexteValidation = { web: boolean; dureeMaxMinutes: number | null; proprietaire: "widget" | "action"; saisie: boolean };
 
-/** Un widget sans `web` ni durée maximale : les règles d'avant. */
+/** A widget without `web` or maximum duration: the rules from before. */
 export const CONTEXTE_PAR_DEFAUT: ContexteValidation = { web: false, dureeMaxMinutes: null, proprietaire: "widget", saisie: false };
 
 export const SORTIE_PAGE_REFUSEE = 'sortie : vers "page" seulement dans une action';
 export const SORTIE_PAGE_REQUISE = 'sortie : une action rend une page (vers: "page")';
 export const FIL_DE_L_EAU_ACTION = "sortie.auFilDeLEau : pas dans une action";
 
-/** Refus d'un bloc `web.chercher` dans un widget qui ne déclare pas `"web": true`. */
+/** Refusal of a `web.chercher` block in a widget that does not declare `"web": true`. */
 export const WEB_REQUIS = 'web.chercher : le widget doit déclarer "web": true';
 
-/** Le `budgetSecondes` d'un bloc sans durée maximale du widget. */
+/** The `budgetSecondes` of a block without a maximum duration of the widget. */
 const BUDGET_MAX_SECONDES = 170;
 
-/** `bloc` : l'id du bloc en cause, quand l'erreur en vise un. */
+/** `bloc`: the id of the block concerned, when the error targets one. */
 export type ResultatValidation = { ok: true; valide: WorkflowValide } | { ok: false; erreur: string; bloc?: string };
 
 const LONGUEUR_MAX_ERREUR = 300;
 
-/** Une erreur de validation, préfixée et bornée. */
+/** A validation error, prefixed and bounded. */
 export function erreurWorkflow(cause: string, bloc?: string): { ok: false; erreur: string; bloc?: string } {
   const texte = PREFIXE_WORKFLOW_INVALIDE + cause;
   const erreur = texte.length > LONGUEUR_MAX_ERREUR ? texte.slice(0, LONGUEUR_MAX_ERREUR - 1) + "…" : texte;
@@ -54,8 +54,8 @@ const TYPES: Record<string, string> = {
 const pluriel = (n: unknown, mot: string) => `${String(n)} ${mot}${Number(n) > 1 ? "s" : ""}`;
 
 /**
- * Le message d'un problème zod en français court, pour les cas courants. Un message écrit dans un schéma (déjà en
- * français) est gardé ; un cas non prévu garde le texte de zod.
+ * The message of a zod problem in short French, for the common cases. A message written in a schema (already in
+ * French) is kept; an unforeseen case keeps zod's text.
  */
 function enFrancais(p: z.core.$ZodIssue): string {
   if (!/^(Invalid|Too (big|small)|Unrecognized)/.test(p.message)) return p.message;
@@ -88,7 +88,7 @@ function enFrancais(p: z.core.$ZodIssue): string {
   }
 }
 
-/** Premier problème zod, sous la forme « <chemin> : <message> ». */
+/** First zod problem, in the form « <chemin> : <message> ». */
 function premierProbleme(erreur: z.ZodError, racine?: string): string {
   const p = erreur.issues[0]!;
   const chemin = [...p.path.map(String)];
@@ -98,7 +98,7 @@ function premierProbleme(erreur: z.ZodError, racine?: string): string {
   return nom ? `${nom} : ${message}` : message;
 }
 
-/** Un cycle parmi les blocs restants, nommé « a → b → a », en partant du premier dans l'ordre du tableau. */
+/** A cycle among the remaining blocks, named « a → b → a », starting from the first in the array order. */
 function nommerCycle(restants: string[], predecesseurs: Record<string, string[]>): { texte: string; premier: string } {
   const reste = new Set(restants);
   const vus: string[] = [];
@@ -107,7 +107,7 @@ function nommerCycle(restants: string[], predecesseurs: Record<string, string[]>
     vus.push(courant);
     courant = predecesseurs[courant]!.find((p) => reste.has(p))!;
   }
-  // En remontant les prédécesseurs, on a le cycle à l'envers.
+  // Going up the predecessors, we get the cycle backwards.
   const cycle = vus.slice(vus.indexOf(courant)).reverse();
   const depart = cycle.reduce((m, id, i) => (restants.indexOf(id) < restants.indexOf(cycle[m]!) ? i : m), 0);
   const tourne = [...cycle.slice(depart), ...cycle.slice(0, depart)];
@@ -167,7 +167,7 @@ export function validerWorkflow(brut: unknown, ctx: ContexteValidation = CONTEXT
     if (paramsSortie.auFilDeLEau === true) return erreurWorkflow(FIL_DE_L_EAU_ACTION, sorties[0]!.id);
   }
 
-  // Tri de Kahn : à chaque tour, le premier bloc (dans l'ordre du tableau) dont tous les prédécesseurs sont placés.
+  // Kahn's sort: at each round, the first block (in array order) all of whose predecessors are placed.
   const ordre: string[] = [];
   const places = new Set<string>();
   let restants = workflow.blocs.map((b) => b.id);
@@ -182,7 +182,7 @@ export function validerWorkflow(brut: unknown, ctx: ContexteValidation = CONTEXT
     restants = restants.filter((id) => id !== prochain);
   }
 
-  // En dernier : les autres erreurs (paramètres, liens, cycle) passent d'abord.
+  // Last: the other errors (params, links, cycle) come first.
   for (const b of workflow.blocs) {
     const entree = REGISTRE_BLOCS.get(b.type)!.entree;
     const requise = entree === "requise" || (entree === "parElement" && b.parametres.parElement === true);
@@ -193,7 +193,7 @@ export function validerWorkflow(brut: unknown, ctx: ContexteValidation = CONTEXT
   return { ok: true, valide: { workflow, ordre, predecesseurs, sortie: { id: sorties[0]!.id, vers } } };
 }
 
-/** Le workflow d'un widget qui n'a que `recolte.mjs` : récolte → sortie. */
+/** The workflow of a widget that only has `recolte.mjs`: harvest → sortie. */
 export function workflowImplicite(): Workflow {
   return {
     version: 1,

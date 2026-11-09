@@ -1,6 +1,6 @@
-// Normalisation des clés de dédoublonnage, comme `urlNormalisee` et `titreNormalise` des widgets de départ.
+// Normalization of the dedup keys, like `urlNormalisee` and `titreNormalise` of the starter widgets.
 
-/** URL http(s) : hôte sans `www.`, chemin sans `/` final, requête sans `utm_*`. */
+/** http(s) URL: host without `www.`, path without trailing `/`, query without `utm_*`. */
 export function urlNormalisee(url) {
   try {
     const u = new URL(url);
@@ -11,11 +11,11 @@ export function urlNormalisee(url) {
   }
 }
 
-/** Texte : minuscules, sans accents, tout ce qui n'est ni lettre ni chiffre devient une espace, rogné. */
+/** Text: lowercase, no accents, anything that is neither a letter nor a digit becomes a space, trimmed. */
 export const titreNormalise = (t) =>
   t.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
 
-/** Clé normalisée d'une valeur ; "" si elle est absente ou ne garde rien. */
+/** Normalized key of a value; "" if it is absent or keeps nothing. */
 export function cleNormalisee(v) {
   if (v === undefined || v === null) return "";
   const texte = typeof v === "string" ? v : typeof v === "object" ? JSON.stringify(v) : String(v);

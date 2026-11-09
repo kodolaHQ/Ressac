@@ -1,5 +1,5 @@
-// code : une fonction écrite par l'agent, dans un fichier .mjs du dossier du widget.
-// `appel: "entree"` : `default(entree, webaios)` ; `appel: "recolte"` : `default(webaios)` (workflow implicite).
+// code: a function written by the agent, in a .mjs file in the widget's folder.
+// `appel: "entree"`: `default(entree, webaios)`; `appel: "recolte"`: `default(webaios)` (implicit workflow).
 import { access } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -10,7 +10,7 @@ export default {
   parElement: "non",
   async executer({ entree, parametres, webaios, dossier }) {
     const { source, appel = "entree" } = parametres;
-    // Le schéma l'a déjà vérifié côté noyau : jamais de chemin, jamais hors du dossier du widget.
+    // The schema has already checked this on the kernel side: never a path, never outside the widget's folder.
     if (typeof source !== "string" || !FICHIER.test(source)) throw new Error("fichier de code invalide");
     const chemin = join(dossier, source);
     try {

@@ -15,7 +15,7 @@ export const definition: DefinitionBloc = {
   chaine: false,
   parametres: z
     .object({
-      // Un nom de fichier du dossier du widget, rien d'autre : ni chemin, ni « .. ».
+      // A file name from the widget's folder, nothing else: no path, no « .. ».
       source: z.string().regex(/^[a-z0-9-]+\.mjs$/, "fichier .mjs du dossier du widget attendu"),
       appel: z.enum(["entree", "recolte"]).default("entree"),
     })

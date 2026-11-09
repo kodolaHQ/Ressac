@@ -2,23 +2,23 @@ import type { Execution } from "./executions.js";
 import type { WorkflowValide } from "./valider.js";
 
 export const PREFIXE_REJEU = "Rejeu impossible : ";
-/** Refus quand la ligne de début d'un rejeu dépasse 4 Mo (mesurée par `debutTropGros`, avant tout lancement). */
+/** Refusal when a replay's start line exceeds 4 MB (measured by `debutTropGros`, before any launch). */
 export const REJEU_TROP_GROS = `${PREFIXE_REJEU}les sorties à reprendre dépassent 4 Mo`;
 
 export type PlanRejeu =
   | { ok: true; relances: string[]; sorties: Record<string, unknown>; repris: Record<string, number | null>; origine: string }
   | { ok: false; erreur: string };
 
-/** Combien d'exécutions un rejeu remonte au plus pour trouver une sortie reprise (essai d'essai d'essai…). */
+/** How many runs a replay goes back at most to find a taken output (try of a try of a try…). */
 export const PROFONDEUR_REJEU = 8;
 
 /**
- * Ce qu'un rejeu depuis `depart` relance (le bloc et tous ses descendants, dans l'ordre d'exécution) et ce qu'il
- * reprend de l'exécution d'origine (la sortie des prédécesseurs des blocs relancés qui ne le sont pas). Quand
- * l'origine est un essai, ses blocs `repris` n'ont pas de sortie : elle se prend dans `anterieures`, la chaîne de ses
- * origines (`anterieures[0]` est `origine.essai.origine`, et ainsi de suite). `origine` du plan nomme l'exécution d'où
- * viennent toutes les sorties reprises quand il n'y en a qu'une, sinon l'origine donnée. Pur : aucune lecture de
- * fichier, la taille de ce qui est repris se mesure à part (`debutTropGros`).
+ * What a replay from `depart` reruns (the block and all its descendants, in run order) and what it
+ * takes from the original run (the output of the predecessors of the rerun blocks that are not rerun themselves). When
+ * the origin is a try, its `repris` blocks have no output: it is taken from `anterieures`, the chain of its
+ * origins (`anterieures[0]` is `origine.essai.origine`, and so on). The plan's `origine` names the run all
+ * the taken outputs come from when there is only one, otherwise the given origin. Pure: no file
+ * read, the size of what is taken is measured separately (`debutTropGros`).
  */
 export function planRejeu(valide: WorkflowValide, origine: Execution | null, depart: string, anterieures: Execution[] = []): PlanRejeu {
   const refus = (cause: string): PlanRejeu => ({ ok: false, erreur: PREFIXE_REJEU + cause });

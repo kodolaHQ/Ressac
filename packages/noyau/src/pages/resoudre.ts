@@ -3,10 +3,10 @@ import { resultatsVides } from "./apercu.js";
 import type { DefinitionComposant } from "./catalogue.js";
 import { MAX_BLOCS_PAGE, PROFONDEUR_PAGE, evaluer, lireChemin, lireReference, type BlocPlan, type Groupe, type PlanPage } from "./plan.js";
 
-// La résolution d'un plan (validé, ou relu d'une exécution) en page rendue : références calculées, champs lus, textes
-// bornés. Les règles de fuite (spec 3.7) sont ici : un lien n'a d'adresse que si elle figure telle quelle dans les
-// résultats, en http(s), hors adresse locale ; une image seulement en https, et jamais pour une action avec compte.
-// Ne lève jamais : un bloc qui ne se résout pas devient un encadré d'erreur, le reste de la page s'affiche.
+// The resolution of a plan (validated, or re-read from a run) into a rendered page: references computed, fields read, texts
+// bounded. The leak rules (spec 3.7) are here: a link only has an address if it appears as is in the
+// results, in http(s), not a local address; an image only in https, and never for an action with an account.
+// Never throws: a block that does not resolve becomes an error box, the rest of the page is displayed.
 
 export const ELEMENTS_MAX = 200;
 export const TEXTE_MAX = 2000;
@@ -16,7 +16,7 @@ export const COMPOSANT_INDISPONIBLE = (nom: string) => `Composant indisponible :
 export const BLOC_ILLISIBLE = (nom: string) => `Bloc illisible : ${nom}`;
 const URL_MAX = 4096;
 const ETIQUETTES_CARTE_MAX = 20;
-/** Bornes de la valeur d'une référence donnée à un composant de l'agent. */
+/** Bounds of the value of a reference given to an agent component. */
 const PROFONDEUR_AGENT = 30;
 const NOEUDS_AGENT_MAX = 5000;
 
@@ -38,11 +38,11 @@ function couper(s: string, max = TEXTE_MAX): string {
   if (s.length <= max) return s;
   let fin = max - 1;
   const c = s.charCodeAt(fin - 1);
-  if (c >= 0xd800 && c <= 0xdbff) fin--; // ne pas couper une paire de substitution
+  if (c >= 0xd800 && c <= 0xdbff) fin--; // do not cut a surrogate pair
   return s.slice(0, fin) + "…";
 }
 
-/** Une valeur des résultats en texte : nombres en fr-FR, listes de valeurs simples jointes, objets vides. */
+/** A value of the results as text: numbers in fr-FR, lists of plain values joined, empty objects. */
 function texte(v: unknown): string {
   if (typeof v === "string") return couper(v);
   if (typeof v === "number") return Number.isFinite(v) ? FORMAT.format(v) : "";
@@ -51,7 +51,7 @@ function texte(v: unknown): string {
   return "";
 }
 
-/** Comme `texte`, mais un objet ou une liste d'objets est montré en JSON compact, borné. */
+/** Like `texte`, but an object or a list of objects is shown as compact JSON, bounded. */
 function texteCompact(v: unknown): string {
   if (v === null || primitif(v) || (Array.isArray(v) && v.every(primitif))) return texte(v);
   try {
@@ -61,7 +61,7 @@ function texteCompact(v: unknown): string {
   }
 }
 
-/** Toutes les chaînes des résultats (les valeurs, pas les clés), à toute profondeur. */
+/** All the strings of the results (the values, not the keys), at any depth. */
 export function chainesDe(resultats: unknown): Set<string> {
   const chaines = new Set<string>();
   const pile: unknown[] = [resultats];
@@ -74,7 +74,7 @@ export function chainesDe(resultats: unknown): Set<string> {
   return chaines;
 }
 
-/** Pose une propriété propre (une clé « __proto__ » reste une donnée, jamais un prototype). */
+/** Sets an own property (a « __proto__ » key stays data, never a prototype). */
 function poser(o: Record<string, unknown>, k: string, v: unknown): void {
   Object.defineProperty(o, k, { value: v, enumerable: true, writable: true, configurable: true });
 }
@@ -110,7 +110,7 @@ function imageDe(v: unknown, ctx: Contexte): Image {
   return url === null ? null : { url };
 }
 
-// ---- Lecture défensive des propriétés d'un plan ----
+// ---- Defensive reading of a plan's properties ----
 
 function valeurDe(ref: unknown, ctx: Contexte): { valeur: unknown; groupee: boolean } {
   if (typeof ref !== "string") throw new Illisible();
@@ -147,7 +147,7 @@ function objetDe(v: unknown): Record<string, unknown> {
   return v as Record<string, unknown>;
 }
 
-/** Une collection coupée à `ELEMENTS_MAX` éléments en tout (sections comprises) ; le reste est compté. */
+/** A collection cut to `ELEMENTS_MAX` items in all (sections included); the rest is counted. */
 function collection<T>(lue: { valeur: unknown; groupee: boolean }, ctx: Contexte, faire: (e: unknown) => T) {
   if (!Array.isArray(lue.valeur)) throw new Illisible();
   if (!lue.groupee) {
@@ -292,7 +292,7 @@ function integre(nom: string, p: Record<string, unknown>, ctx: Contexte): Record
   }
 }
 
-/** La valeur d'une référence pour un composant de l'agent : propriétés propres, listes à 200, textes coupés, taille bornée. */
+/** The value of a reference for an agent component: own properties, lists at 200, texts cut, size bounded. */
 function borner(v: unknown, ctx: Contexte, budget: { noeuds: number }, prof = 0): unknown {
   if (--budget.noeuds < 0) return null;
   if (typeof v === "string") return couper(v);

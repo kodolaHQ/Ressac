@@ -3,7 +3,7 @@ export interface Bloc { ancienDebut: number; ancienNombre: number; nouveauDebut:
 
 const ENTETE = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
 
-/** Lit un patch unifié (un seul fichier) : l'en-tête du fichier est ignoré, chaque « @@ » ouvre un bloc. */
+/** Reads a unified patch (a single file): the file header is ignored, each « @@ » opens a block. */
 export function parserDiff(patch: string): Bloc[] {
   const blocs: Bloc[] = [];
   let courant: Bloc | null = null;
@@ -32,7 +32,7 @@ export function parserDiff(patch: string): Bloc[] {
   return blocs;
 }
 
-/** Numéro de la ligne nouvelle de la ligne i, ou de la première ligne nouvelle qui suit dans le bloc. */
+/** Line number of the new line of line i, or of the first new line that follows in the block. */
 export function positionNouvelle(b: Bloc, i: number): number {
   for (let k = i; k < b.lignes.length; k++) {
     const n = b.lignes[k]!.nouveau;

@@ -5,7 +5,7 @@ import { ecrireJsonPrive } from "../design/ecriture-atomique.js";
 import type { DiffFichier } from "./depot.js";
 import { positionNouvelle, type Bloc } from "./diff.js";
 
-/** Réexporté par design/remarques.ts (tâche 5), qui ne le redéfinit pas. */
+/** Re-exported by design/remarques.ts (task 5), which does not redefine it. */
 export const REMARQUE_VIDE = "Une remarque vide n'est pas acceptée.";
 
 export interface Commentaire {
@@ -30,7 +30,7 @@ function plusProche<T>(items: T[], pos: (t: T) => number, cible: number): T {
   return items.reduce((m, t) => (Math.abs(pos(t) - cible) < Math.abs(pos(m) - cible) ? t : m));
 }
 
-/** Réancrage pur : un commentaire n'est jamais supprimé, seulement déplacé ou marqué « ligne changée ». */
+/** Pure re-anchoring: a comment is never deleted, only moved or marked « ligne changée ». */
 export function recoller(c: Commentaire, blocs: Bloc[]): Commentaire {
   const lignes = affichees(blocs);
   const n = c.lignes.length;
@@ -38,7 +38,7 @@ export function recoller(c: Commentaire, blocs: Bloc[]): Commentaire {
   if (n > 0) {
     for (let i = 0; i + n <= lignes.length; i++) {
       const f = lignes.slice(i, i + n);
-      // Le texte seul : une ligne « + » redevient du contexte après « Marquer comme relu ».
+      // The text alone: a « + » line becomes context again after « Marquer comme relu ».
       if (f.every((l, k) => l.bloc === f[0]!.bloc && l.texte === c.lignes[k]!.texte)) fenetres.push(f);
     }
   }
@@ -69,7 +69,7 @@ export class CommentairesRelecture {
     try { return Schema.parse(JSON.parse(brut)); } catch { return []; }
   }
 
-  // Lecture-modification-écriture sérialisée : deux appels simultanés ne s'écrasent pas.
+  // Serialized read-modify-write: two simultaneous calls do not overwrite each other.
   private transformer<T>(f: (liste: Commentaire[]) => { liste: Commentaire[]; resultat: T }): Promise<T> {
     const tache = this.ecritures.then(async () => {
       const { liste, resultat } = f(await this.lire());
@@ -126,7 +126,7 @@ export class CommentairesRelecture {
     return this.transformer((liste) => ({ liste: liste.map((c) => (ensemble.has(c.id) ? { ...c, envoye: true } : c)), resultat: undefined }));
   }
 
-  /** Marque envoyés ceux dont le texte est encore celui qui est parti (une modification entre-temps reste à envoyer). */
+  /** Marks as sent those whose text is still the one that left (a change in the meantime stays to be sent). */
   marquerEnvoyesSiInchanges(envoyes: { id: string; texte: string }[]): Promise<void> {
     const textes = new Map(envoyes.map((e) => [e.id, e.texte]));
     return this.transformer((liste) => ({

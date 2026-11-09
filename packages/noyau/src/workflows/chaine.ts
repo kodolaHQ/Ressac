@@ -1,16 +1,16 @@
 import { REGISTRE_BLOCS } from "./blocs/index.js";
 import type { WorkflowValide } from "./valider.js";
 
-// La même règle est recopiée dans l'interpréteur du conteneur (docker/moteur) : un test vérifie qu'elles s'accordent.
+// The same rule is copied into the container's interpreter (docker/moteur): a test checks that they agree.
 
 /**
- * La chaîne « au fil de l'eau » : les blocs que chaque élément traverse seul jusqu'à la sortie, dans l'ordre
- * d'exécution. Vide si la sortie ne publie pas au fil de l'eau ou n'a pas exactement un prédécesseur.
+ * The "as-it-goes" chain: the blocks each item goes through alone up to the output, in run
+ * order. Empty if the output does not publish as it goes or does not have exactly one predecessor.
  *
- * En remontant depuis le prédécesseur de la sortie, on prend un bloc tant qu'il est chaînable (`chaine` et
- * `parElement` vrai) et qu'il n'a qu'un successeur (le bloc pris juste avant, ou la sortie) ; on remonte par son unique
- * prédécesseur, et on s'arrête après lui s'il en a plusieurs. Enfin, on retire des blocs au début tant que la suite
- * n'est pas une tranche contiguë de l'ordre d'exécution. Un essai n'a pas de chaîne : c'est à l'appelant d'en juger.
+ * Going up from the output's predecessor, a block is taken as long as it is chainable (`chaine` and
+ * `parElement` true) and has only one successor (the block taken just before, or the output); we go up through its only
+ * predecessor, and stop after it if it has several. Finally, blocks are removed at the start as long as the rest
+ * is not a contiguous slice of the run order. A try has no chain: it is up to the caller to judge.
  */
 export function chaineAuFilDeLEau(v: WorkflowValide): string[] {
   const blocs = new Map(v.workflow.blocs.map((b) => [b.id, b]));

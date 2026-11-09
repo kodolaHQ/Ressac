@@ -7,14 +7,14 @@
     try {
       Object.defineProperty(stockage, "sync", { value: stockage.local, configurable: true, writable: true, enumerable: true });
     } catch {
-      // Propriété non redéfinissable : laissée telle quelle.
+      // Property that cannot be redefined: left as it is.
     }
   }
   if (c && globalThis.browser !== c) {
     try {
       globalThis.browser = c;
     } catch {
-      // `browser` en lecture seule : laissé tel quel.
+      // `browser` read-only: left as it is.
     }
   }
 })();

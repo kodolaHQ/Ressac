@@ -1,4 +1,4 @@
-// Le catalogue des composants intégrés : ce que Gemma peut poser dans une page, et avec quelles propriétés. Pur.
+// The catalog of built-in components: what Gemma can put in a page, and with which properties. Pure.
 
 export type GenrePropriete = "reference" | "champ" | "texte" | "nombre" | "case" | "choix" | "colonnes" | "chiffres";
 export type Propriete = { genre: GenrePropriete; description: string; requis: boolean; choix?: string[]; max?: number };
@@ -78,14 +78,14 @@ const FORMES: Partial<Record<GenrePropriete, string>> = {
   colonnes: "colonnes [{champ, libelle}]",
   chiffres: "chiffres [{valeur: référence, libelle}]",
 };
-/** Règles « l'un ou l'autre » que les propriétés seules ne disent pas. */
+/** « One or the other » rules that the properties alone do not state. */
 const REGLES: Record<string, string> = {
   paragraphe: "texte OU valeur.",
   etiquettes: "valeurs OU elements + champ.",
   lien: "texte OU champTexte (champTexte l'emporte).",
 };
 
-/** Le catalogue pour Gemma : une ligne par composant. */
+/** The catalog for Gemma: one line per component. */
 export function catalogueTexte(defs: DefinitionComposant[]): string {
   return defs
     .map((d) => {

@@ -7,7 +7,7 @@ export interface CheminsEspace {
   racine: string;
   accueil: string;
   blocs: string;
-  /** Widgets de la page d'accueil (code et affichage ; les données sont hors de l'espace). */
+  /** Widgets of the home page (code and display; the data is outside the workspace). */
   widgets: string;
   disposition: string;
   projets: string;
@@ -15,15 +15,15 @@ export interface CheminsEspace {
   interne: string;
   profils: string;
   configMcp: string;
-  /** Journaux des applications lancées (`<dossier>.log`). */
+  /** Logs of the launched applications (`<dossier>.log`). */
   journaux: string;
-  /** Extensions écrites par l'agent (`<dossier>/manifest.json`) ; rien de ce qui s'y trouve n'accorde un droit. */
+  /** Extensions written by the agent (`<dossier>/manifest.json`); nothing found there grants a right. */
   extensions: string;
-  /** Actions (`<dossier>/action.json`, workflow.json) ; leurs données, résultats et accords sont hors de l'espace. */
+  /** Actions (`<dossier>/action.json`, workflow.json); their data, results and grants are outside the workspace. */
   actions: string;
-  /** Composants de page écrits par l'agent (`<dossier>/composant.json`). */
+  /** Page components written by the agent (`<dossier>/composant.json`). */
   composants: string;
-  /** Applis de site écrites par l'agent (`<id>/site.json`, `accueil/`, `retouches/`) ; WebAiOs n'y écrit jamais. */
+  /** Site apps written by the agent (`<id>/site.json`, `accueil/`, `retouches/`); WebAiOs never writes there. */
   sites: string;
 }
 
@@ -49,17 +49,17 @@ export function cheminsEspace(racine?: string): CheminsEspace {
   };
 }
 
-/** Dossier des configs MCP propres aux sessions d'agent (à côté de `configMcp`). */
+/** Folder of the MCP configs specific to agent sessions (next to `configMcp`). */
 export function dossierSessions(c: CheminsEspace): string {
   return join(dirname(c.configMcp), "sessions");
 }
 
-/** Config MCP propre à la session d'agent d'une fenêtre (`<dossier de configMcp>/sessions/<session>.json`). */
+/** MCP config specific to the agent session of a window (`<configMcp folder>/sessions/<session>.json`). */
 export function cheminConfigSession(c: CheminsEspace, session: string): string {
   return join(dossierSessions(c), `${session}.json`);
 }
 
-/** Traduit un chemin de l'espace sur le Mac en chemin dans le conteneur. */
+/** Translates a workspace path on the Mac into a path in the container. */
 export function cheminDansConteneur(cheminHote: string, c: CheminsEspace): string {
   const rel = relative(c.racine, cheminHote);
   if (rel.startsWith("..") || isAbsolute(rel)) {

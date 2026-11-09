@@ -6,10 +6,10 @@ import type { Proprietaire } from "./schema.js";
 
 export const SORTIE_MAX_OCTETS = 256 * 1024;
 export const EXECUTION_MAX_OCTETS = 4 * 1024 * 1024;
-/** Le motif d'une exécution d'action arrêtée par l'utilisateur. */
+/** The reason for an action run stopped by the user. */
 export const ACTION_ARRETEE = "Arrêtée à ta demande";
 export const EXECUTIONS_GARDEES = 20;
-/** Les essais (rejeux du constructeur) ont leur propre quota : ils ne chassent jamais une vraie exécution. */
+/** Tries (builder replays) have their own quota: they never push out a real run. */
 export const ESSAIS_GARDES = 10;
 export const ID_EXECUTION = /^[0-9TZ-]+(?:-essai)?$/;
 const SUFFIXE_ESSAI = "-essai";
@@ -17,8 +17,8 @@ const SUFFIXE_ESSAI = "-essai";
 export const TraceBloc = z.object({
   id: z.string(),
   type: z.string(),
-  // « interrompu » : commencé, pas fini, quand WebAiOs s'est arrêté pendant l'exécution.
-  // « repris » : sortie reprise de l'exécution d'origine d'un essai, sans être recopiée (`elements` l'est).
+  // « interrompu »: started, not finished, when WebAiOs stopped during the run.
+  // « repris »: output taken from the original run of a try, without being copied (`elements` is).
   statut: z.enum(["reussi", "partiel", "echoue", "interrompu", "pas-lance", "repris"]),
   debut: z.string().nullable(),
   fin: z.string().nullable(),
@@ -34,10 +34,10 @@ export const Execution = z.object({
   version: z.literal(1),
   id: z.string(),
   proprietaire: z.object({ type: z.enum(["widget", "action"]), id: z.string() }),
-  // La saisie d'une action lancée avec un texte (clio lyon).
+  // The input of an action launched with a text (clio lyon).
   saisie: z.string().max(200).optional(),
   declencheur: z.enum(["planifiee", "manuelle", "agent", "rejeu"]),
-  // Seulement pour un essai : le bloc de départ et l'exécution dont les sorties amont sont reprises.
+  // Only for a try: the start block and the run whose upstream outputs are taken.
   essai: z.object({ depart: z.string(), origine: z.string() }).optional(),
   debut: z.string(),
   fin: z.string().nullable(),
@@ -52,19 +52,19 @@ export type ResumeExecution = Pick<Execution, "id" | "declencheur" | "debut" | "
   blocs: { id: string; statut: TraceBloc["statut"]; elements: number | null }[];
 };
 
-/** Identifiant d'une exécution : son début ISO, sans « : » ni « . » (sûr comme nom de fichier). */
+/** A run's identifier: its ISO start, without « : » or « . » (safe as a file name). */
 export function idExecution(debutIso: string): string {
   return debutIso.replace(/[:.]/g, "-");
 }
 
-/** Identifiant d'un essai : celui de l'exécution qui porte le même début, suivi de « -essai ». */
+/** A try's identifier: that of the run that has the same start, followed by « -essai ». */
 export function idEssai(debutIso: string): string {
   return idExecution(debutIso) + SUFFIXE_ESSAI;
 }
 
 const dossierExecutions = (dossierDonnees: string) => join(dossierDonnees, "executions");
 
-// Un nom temporaire propre à chaque écriture, comme pour donnees.json.
+// A temporary name specific to each write, as for donnees.json.
 export async function ecrireAtomique(cible: string, texte: string): Promise<void> {
   await mkdir(join(cible, ".."), { recursive: true });
   const temporaire = `${cible}.${randomUUID()}.tmp`;
@@ -80,15 +80,15 @@ const LIGNE_MAX_OCTETS = 2 * 1024;
 const ERREUR_MAX_OCTETS = 2 * 1024;
 const LIGNES_MAX = 200;
 
-/** Le début d'un texte, `octets` octets au plus. */
+/** The start of a text, `octets` bytes at most. */
 export function coupe(texte: string, octets: number): string {
   let s = texte.slice(0, octets);
   while (Buffer.byteLength(s) > octets) s = s.slice(0, Math.floor(s.length * 0.9));
   return s;
 }
 
-// Filet de sécurité : une sortie trop grosse est gardée en texte (le début de son JSON) et marquée ; si le fichier
-// dépasse encore 4 Mo, les plus grosses sorties partent d'abord.
+// Safety net: an output that is too big is kept as text (the start of its JSON) and marked; if the file
+// still exceeds 4 MB, the biggest outputs go first.
 function tronquer(entree: Execution): Execution {
   const e: Execution = entree.erreur === undefined ? entree : { ...entree, erreur: coupe(entree.erreur, ERREUR_MAX_OCTETS) };
   const tailles: number[] = [];
@@ -116,7 +116,7 @@ function tronquer(entree: Execution): Execution {
     tailles[pire] = 0;
     courant = { ...e, blocs };
   }
-  // Toujours trop gros : les journaux les plus longs sont remplacés par une ligne de remarque.
+  // Still too big: the longest logs are replaced by a remark line.
   while (Buffer.byteLength(JSON.stringify(courant, null, 2)) > EXECUTION_MAX_OCTETS) {
     let pire = -1;
     let max = 0;
@@ -134,7 +134,7 @@ function tronquer(entree: Execution): Execution {
   return courant;
 }
 
-// Erreur et journal d'un bloc : lignes de 2 Ko au plus, 200 lignes au plus (les dernières sont gardées).
+// Error and log of a block: lines of 2 KB at most, 200 lines at most (the last ones are kept).
 function bornerTexte(b: TraceBloc): TraceBloc {
   let journal = b.journal.map((l) => (Buffer.byteLength(l) > LIGNE_MAX_OCTETS ? coupe(l, LIGNE_MAX_OCTETS) : l));
   if (journal.length > LIGNES_MAX) {
@@ -143,7 +143,7 @@ function bornerTexte(b: TraceBloc): TraceBloc {
   return { ...b, journal, ...(b.erreur === undefined ? {} : { erreur: coupe(b.erreur, ERREUR_MAX_OCTETS) }) };
 }
 
-/** Écrit une exécution (tronquée au besoin) et ne garde que les 20 plus récentes vraies, et les 10 plus récents essais. */
+/** Writes a run (truncated if needed) and only keeps the 20 most recent real ones, and the 10 most recent tries. */
 export async function ecrireExecution(dossierDonnees: string, e: Execution): Promise<void> {
   if (!ID_EXECUTION.test(e.id)) throw new Error(`id d'exécution invalide : ${e.id}`);
   const dossier = dossierExecutions(dossierDonnees);
@@ -192,13 +192,13 @@ function resumer(e: Execution): ResumeExecution {
 }
 
 /**
- * Résumés déjà lus, par chemin, avec l'inode, la date et la taille du fichier : la liste est relue à chaque changement
- * d'un widget (jusqu'à 20 fichiers de 4 Mo chacun), seul un fichier nouveau ou réécrit est relu. null : fichier abîmé.
+ * Summaries already read, by path, with the file's inode, date and size: the list is re-read at each change
+ * of a widget (up to 20 files of 4 MB each), only a new or rewritten file is re-read. null: damaged file.
  */
 const resumesLus = new Map<string, { ino: number; mtimeMs: number; size: number; resume: ResumeExecution | null }>();
 const RESUMES_LUS_MAX = 1000;
 
-/** Résumés des exécutions gardées, la plus récente d'abord ; un fichier abîmé est ignoré. */
+/** Summaries of the kept runs, most recent first; a damaged file is ignored. */
 export async function listerExecutions(dossierDonnees: string): Promise<ResumeExecution[]> {
   const dossier = dossierExecutions(dossierDonnees);
   const noms = (await nomsExecutions(dossier)).sort().reverse();
@@ -219,7 +219,7 @@ export async function listerExecutions(dossierDonnees: string): Promise<ResumeEx
       resume = e ? resumer(e) : null;
       resumesLus.delete(chemin);
       resumesLus.set(chemin, { ino: s.ino, mtimeMs: s.mtimeMs, size: s.size, resume });
-      // Les plus anciennes entrées partent d'abord.
+      // The oldest entries go first.
       while (resumesLus.size > RESUMES_LUS_MAX) resumesLus.delete(resumesLus.keys().next().value!);
     }
     if (resume) resumes.push(resume);

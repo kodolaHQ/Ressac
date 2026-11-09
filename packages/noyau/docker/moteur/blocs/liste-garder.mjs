@@ -1,4 +1,4 @@
-// liste.garder : les N premiers éléments.
+// liste.garder: the first N items.
 export default {
   parElement: "non",
   async executer({ entree, parametres }) {

@@ -1,7 +1,7 @@
 import type { BlocPlan, PlanPage } from "./plan.js";
 
-// La mise en page de secours, sans Gemma : une présentation simple des résultats, faite de composants intégrés.
-// Elle ne référence que des chemins qui existent et que le langage des références sait écrire ; elle passe validerPlan.
+// The fallback layout, without Gemma: a simple presentation of the results, made of built-in components.
+// It only references paths that exist and that the reference language can write; it passes validerPlan.
 
 type Dict = Record<string, unknown>;
 const estObjet = (v: unknown): v is Dict => v !== null && typeof v === "object" && !Array.isArray(v);
@@ -23,7 +23,7 @@ const bloc = (composant: string, props: Record<string, unknown>): BlocPlan => ({
 const cleValide = (k: string) => MOT.test(k);
 const parNom = (champs: string[], noms: string[]) => champs.find((c) => noms.includes(c.toLowerCase()));
 
-/** Les champs simples (texte, nombre, booléen) d'une liste d'objets, dans l'ordre d'apparition. */
+/** The plain fields (text, number, boolean) of a list of objects, in order of appearance. */
 function champsSimples(elements: Dict[]): { champ: string; urlImage: boolean; texte: boolean }[] {
   const vus = new Map<string, { urlImage: boolean; texte: boolean }>();
   for (const e of elements.slice(0, ECHANTILLON)) {
@@ -41,7 +41,7 @@ function champsSimples(elements: Dict[]): { champ: string; urlImage: boolean; te
   return [...vus].map(([champ, f]) => ({ champ, ...f }));
 }
 
-/** Le bloc d'une liste référencée par `ref`, ou null si rien de lisible. */
+/** The block of a list referenced by `ref`, or null if nothing readable. */
 function blocListe(liste: unknown[], ref: string): BlocPlan | null {
   if (liste.length === 0) return null;
   const echantillon = liste.slice(0, ECHANTILLON);
@@ -87,14 +87,14 @@ function blocsObjet(o: Dict): BlocPlan[] {
       if (Object.keys(v).some((k) => cleValide(k) && simple(v[k]))) blocs.push(bloc("champs", { objet: cle }));
     }
   }
-  // Des clés qu'une référence ne sait pas écrire : leurs champs simples se lisent par l'objet entier.
+  // Keys that a reference cannot write: their plain fields are read through the whole object.
   const reference = () => blocs.some((b) => b.composant !== "titre");
   if (Object.keys(o).some((k) => !cleValide(k) && simple(o[k]))) blocs.push(bloc("champs", { objet: "$" }));
   if (!reference()) blocs.push(DERNIER_RECOURS);
   return blocs;
 }
 
-/** Le dernier recours : tous les résultats en un texte borné. Référence "$", donc toujours valide. */
+/** The last resort: all the results in a bounded text. Reference "$", so always valid. */
 const DERNIER_RECOURS = bloc("paragraphe", { valeur: "$" });
 export const miseEnPageDernierRecours = (): PlanPage => ({ blocs: [{ ...DERNIER_RECOURS, props: { ...DERNIER_RECOURS.props } }] });
 

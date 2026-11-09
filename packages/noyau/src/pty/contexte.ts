@@ -4,8 +4,8 @@ const LONGUEUR_TITRE = 120;
 const LONGUEUR_URL = 300;
 
 /**
- * Remplace les caractères de contrôle (C0, DEL, C1 dont le CSI 8 bits) et les séparateurs de ligne
- * Unicode par une espace : un \r taperait Entrée à la place de l'utilisateur.
+ * Replaces control characters (C0, DEL, C1 including 8-bit CSI) and the Unicode line
+ * separators with a space: a \r would type Enter in place of the user.
  */
 function nettoyer(texte: string): string {
   return texte.replace(/[\p{Cc}\u2028\u2029]/gu, " ").replace(/ {2,}/g, " ").trim();
@@ -13,36 +13,36 @@ function nettoyer(texte: string): string {
 
 const tronquer = (texte: string, max: number) => (texte.length > max ? `${texte.slice(0, max)}…` : texte);
 
-/** Texte pré-rempli dans le terminal de l'agent, jamais envoyé : `[contexte : <titre> — <url>] `. */
+/** Pre-filled text in the agent's terminal, never sent: `[contexte : <titre> — <url>] `. */
 export function prefixeContexte(titre: string, url: string): string {
   const t = tronquer(nettoyer(titre), LONGUEUR_TITRE);
   const u = tronquer(nettoyer(url), LONGUEUR_URL);
   return t ? `[contexte : ${t} — ${u}] ` : `[contexte : ${u}] `;
 }
 
-/** Texte pré-rempli pour l'agent d'une application, jamais envoyé. */
+/** Pre-filled text for an application's agent, never sent. */
 export function prefixeApplication(a: { nom: string; dossier: string; sansFiche: boolean; enMarche?: boolean }): string {
-  // Un dossier « Sans fiche » peut porter n'importe quel nom, caractères de contrôle compris.
+  // A « Sans fiche » folder can have any name, control characters included.
   const dossier = nettoyer(a.dossier);
-  // Fenêtre ouverte : l'agent sait qu'il peut y brancher les outils de développement.
+  // Window open: the agent knows it can connect the dev tools to it.
   const fenetre = a.enMarche ? ` — fenêtre : onglet app:${dossier} (outils de développement disponibles)` : "";
   if (a.sansFiche) return `[projet sans fiche webaios.json : /workspace/projets/${dossier}${fenetre}] `;
   const nom = tronquer(nettoyer(a.nom), LONGUEUR_TITRE);
   return `[application : ${nom} — /workspace/projets/${dossier} — journal : /workspace/.webaios/journaux/${dossier}.log${fenetre}] `;
 }
 
-/** L'écran d'accueil d'une appli de site (`webaios-site://<id>/…`), à distinguer des pages du site tiers. */
+/** The home screen of a site app (`webaios-site://<id>/…`), to tell apart from third-party site pages. */
 const ADRESSE_ACCUEIL = /^webaios-site:/i;
 const LONGUEUR_REMARQUE = 200;
 const LONGUEUR_REMARQUES_MAX = 2000;
 const LONGUEUR_DONNEE = 120;
 
-/** Ce qui vient de la page ou du projet (étiquette, fichier) : coupé, et rendu en chaîne JSON, jamais en texte libre. */
+/** What comes from the page or the project (label, file): cut, and returned as a JSON string, never as free text. */
 const donnee = (v: string): string => JSON.stringify(tronquer(nettoyer(v), LONGUEUR_DONNEE));
 
 /**
- * Texte pré-rempli après l'envoi d'un panier à l'agent, jamais envoyé : une seule ligne, les remarques numérotées,
- * le chemin du lot dans le conteneur pour le détail et les captures. Au-delà de 2 000 caractères, la liste est coupée.
+ * Pre-filled text after a basket is sent to the agent, never sent: a single line, the remarks numbered,
+ * the batch's path in the container for the detail and the captures. Beyond 2,000 characters, the list is cut.
  */
 export function prefixeRemarques(r: {
   projet: { type: "app"; nom: string; dossier: string } | { type: "demo"; port: number } | { type: "site"; nom: string; id: string };
@@ -50,7 +50,7 @@ export function prefixeRemarques(r: {
   cheminLot: string;
 }): string {
   const p = r.projet;
-  // Appli de site : une remarque visée sur l'écran d'accueil (code de l'agent, `webaios-site:`) est marquée [accueil].
+  // Site app: a remark aimed at the home screen (agent code, `webaios-site:`) is marked [accueil].
   const deLAccueil = (e: Lot["elements"][number]) => p.type === "site" && e.type === "design" && ADRESSE_ACCUEIL.test(e.contexte.adresse);
   const cible =
     p.type === "site" && r.lot.elements.some(deLAccueil)
@@ -72,17 +72,17 @@ export function prefixeRemarques(r: {
     const source = s ? ` (${donnee(`${s.fichier}${s.ligne !== undefined ? `:${Math.trunc(s.ligne)}` : ""}`)})` : "";
     return nettoyer(`${i + 1}) ${deLAccueil(e) ? "[accueil] " : ""}${donnee(e.contexte.etiquette)} : « ${texte} »${source}`);
   });
-  // Place gardée pour « … (+N) » : jusqu'à 4 chiffres.
+  // Room kept for « … (+N) »: up to 4 digits.
   const place = LONGUEUR_REMARQUES_MAX - tete.length - queue.length - " … (+9999)".length;
   let gardees = 0;
   let longueur = 0;
   for (const it of items) {
-    // La première remarque est toujours gardée : chaque morceau est borné, elle tient.
+    // The first remark is always kept: each piece is bounded, it fits.
     if (gardees > 0 && longueur + 1 + it.length > place) break;
     longueur += 1 + it.length;
     gardees++;
   }
-  // Tout tient (sans la réserve) : pas de coupe.
+  // Everything fits (without the reserve): no cut.
   const toutTient = items.reduce((n, it) => n + 1 + it.length, 0) <= LONGUEUR_REMARQUES_MAX - tete.length - queue.length;
   if (toutTient) gardees = items.length;
   const reste = items.length - gardees;

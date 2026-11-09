@@ -23,7 +23,7 @@ export type RetouchesLues = { js: Record<string, string>; css: Record<string, st
 const ERREUR_MAX = 300;
 const REGROUPEMENT_MS = 150;
 
-/** Lit un fichier ordinaire (jamais un lien : O_NOFOLLOW), au plus `max` octets ; échoue s'il est plus gros. */
+/** Reads an ordinary file (never a link: O_NOFOLLOW), at most `max` bytes; fails if it is bigger. */
 async function lireBorne(chemin: string, max: number): Promise<string> {
   const f = await open(chemin, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
@@ -54,7 +54,7 @@ async function lireDeclaration(dossier: string, o: { adressesLocales: boolean })
     brut = JSON.parse((await lireBorne(fichier, SITE_JSON_MAX)).replace(/^\uFEFF/, ""));
   } catch (e) {
     if ((e as Error).message === "trop gros") return { erreur: `site.json dépasse ${SITE_JSON_MAX / 1024} Ko` };
-    // Texte fixe : le message du système citerait des chemins du Mac.
+    // Fixed text: the system's message would quote Mac paths.
     return { erreur: e instanceof SyntaxError ? "site.json illisible (pas du JSON valide)" : "site.json illisible" };
   }
   const r = DeclarationSite.safeParse(brut);
@@ -76,16 +76,16 @@ async function lireUn(c: CheminsEspace, id: string, o: { adressesLocales: boolea
   try {
     aAccueil = (await lstat(join(dossier, "accueil", "index.html"))).isFile();
   } catch {
-    // pas d'accueil
+    // no home
   }
   return { id, dossier, declaration: lu.declaration, aAccueil };
 }
 
-/** Les applis de site du disque, triées par id ; une appli cassée est signalée, elle n'empêche pas de lire les autres. */
+/** The site apps on disk, sorted by id; a broken app is reported, it does not prevent reading the others. */
 export async function lireSites(c: CheminsEspace, o: { adressesLocales: boolean }): Promise<SiteLu[]> {
   let ids: string[];
   try {
-    // `isDirectory` est faux pour un lien symbolique : un lien vers un dossier est ignoré.
+    // `isDirectory` is false for a symbolic link: a link to a folder is ignored.
     ids = (await readdir(c.sites, { withFileTypes: true }))
       .filter((e) => e.isDirectory() && !e.name.startsWith("."))
       .map((e) => e.name)
@@ -96,7 +96,7 @@ export async function lireSites(c: CheminsEspace, o: { adressesLocales: boolean 
   return Promise.all(ids.map((id) => lireUn(c, id, o)));
 }
 
-/** Une appli par son id ; null si le dossier n'existe pas (ou est caché, un lien symbolique, un nom invalide). */
+/** An app by its id; null if the folder does not exist (or is hidden, a symbolic link, an invalid name). */
 export async function lireSite(c: CheminsEspace, id: string, o: { adressesLocales: boolean }): Promise<SiteLu | null> {
   if (!id || id.startsWith(".") || /[\\/\0]/.test(id)) return null;
   try {
@@ -107,13 +107,13 @@ export async function lireSite(c: CheminsEspace, id: string, o: { adressesLocale
   return lireUn(c, id, o);
 }
 
-/** Les fichiers cités par les retouches, lus sous `retouches/` : jamais un lien, jamais hors du dossier, bornés. */
+/** The files cited by the tweaks, read under `retouches/`: never a link, never outside the folder, bounded. */
 export async function lireRetouches(s: Extract<SiteLu, { declaration: DeclarationSite }>): Promise<RetouchesLues | { erreur: string }> {
   const base = join(s.dossier, "retouches");
   const manque = { erreur: "retouches : dossier de l'appli introuvable" };
   let racineReelle: string;
   try {
-    // Ni le dossier de l'appli ni `retouches/` ne peuvent être un lien (même remplacé depuis la lecture du site).
+    // Neither the app's folder nor `retouches/` can be a link (even replaced since the site was read).
     if (!(await lstat(s.dossier)).isDirectory()) return manque;
     const dossierReel = await realpath(s.dossier);
     if (!(await lstat(base)).isDirectory()) throw new Error("pas un dossier");
@@ -148,8 +148,8 @@ export async function lireRetouches(s: Extract<SiteLu, { declaration: Declaratio
 }
 
 /**
- * Appelle `rappel(id, quoi)` après chaque rafale de changements : « declaration » (site.json, ou le dossier lui-même
- * qui apparaît ou disparaît), « retouches » ou « accueil ». Renvoie la fonction d'arrêt.
+ * Calls `rappel(id, quoi)` after each burst of changes: « declaration » (site.json, or the folder itself
+ * appearing or disappearing), « retouches » or « accueil ». Returns the stop function.
  */
 export function surveillerSites(
   c: CheminsEspace,

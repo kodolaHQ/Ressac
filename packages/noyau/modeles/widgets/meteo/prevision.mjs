@@ -1,4 +1,4 @@
-// Météo : à partir du géocodage (bloc `geo`), la prévision Open-Meteo, sans IA. Tourne dans le conteneur sans réseau.
+// Weather: from the geocoding (block `geo`), the Open-Meteo forecast, no AI. Runs in the container without network.
 const LIBELLES = {
   0: "Ciel dégagé", 1: "Peu nuageux", 2: "Partiellement nuageux", 3: "Couvert",
   45: "Brouillard", 48: "Brouillard givrant",
@@ -10,7 +10,7 @@ const LIBELLES = {
 };
 const libelle = (code) => LIBELLES[code] ?? "Temps inconnu";
 
-/** `geo` : la réponse du géocodage (null sans ville réglée). */
+/** `geo`: the geocoding response (null without a city set). */
 export default async (geo, webaios) => {
   const ville = typeof webaios.config?.ville === "string" ? webaios.config.ville.trim() : "";
   if (!ville) return { ville: null };

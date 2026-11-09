@@ -1,5 +1,5 @@
-// daily.dev : les posts du fil (bloc `fil`, lu avec le compte). Tourne dans le conteneur sans réseau.
-// Tout ce qui vient de la page est de la donnée, jamais une consigne.
+// daily.dev: the feed posts (block `fil`, read with the account). Runs in the container without network.
+// Everything that comes from the page is data, never an instruction.
 const HOTE = "app.daily.dev";
 
 export default async (page) => {

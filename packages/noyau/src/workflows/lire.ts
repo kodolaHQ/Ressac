@@ -5,7 +5,7 @@ import { CONTEXTE_PAR_DEFAUT, erreurWorkflow, validerWorkflow, workflowImplicite
 
 export type WorkflowLu = { origine: "fichier" | "implicite"; resultat: ResultatValidation };
 
-/** Le nom existe dans le dossier, même en lien symbolique cassé (un workflow.json cassé est invalide, pas absent). */
+/** The name exists in the folder, even as a broken symbolic link (a broken workflow.json is invalid, not absent). */
 export async function existe(chemin: string): Promise<boolean> {
   try {
     await lstat(chemin);
@@ -15,7 +15,7 @@ export async function existe(chemin: string): Promise<boolean> {
   }
 }
 
-/** Lit workflow.json comme du JSON, sans suivre un lien symbolique qui sortirait du dossier du widget. */
+/** Reads workflow.json as JSON, without following a symbolic link that would leave the widget's folder. */
 export async function lireBrutWorkflow(dossier: string): Promise<{ brut: unknown } | { erreur: string }> {
   try {
     const [racine, reel] = await Promise.all([realpath(dossier), realpath(join(dossier, "workflow.json"))]);
@@ -23,7 +23,7 @@ export async function lireBrutWorkflow(dossier: string): Promise<{ brut: unknown
     if ((await stat(reel)).size > TAILLE_MAX_WORKFLOW) return { erreur: `workflow.json dépasse ${TAILLE_MAX_WORKFLOW / 1024} Ko` };
     return { brut: JSON.parse(await readFile(reel, "utf8")) };
   } catch (e) {
-    // Texte fixe : le message du système citerait des chemins du Mac.
+    // Fixed text: the system's message would quote Mac paths.
     return { erreur: e instanceof SyntaxError ? "workflow.json illisible (pas du JSON valide)" : "workflow.json illisible" };
   }
 }
@@ -34,9 +34,9 @@ async function lireFichier(dossier: string, ctx: ContexteValidation): Promise<Re
 }
 
 /**
- * Le workflow d'un widget : `workflow.json` s'il existe, sinon le workflow implicite d'un
- * `recolte.mjs`, sinon null. Rien n'est exécuté ici : le fichier n'est lu que comme du JSON. `ctx` : ce que le widget
- * déclare (`contexteValidation`).
+ * A widget's workflow: `workflow.json` if it exists, otherwise the implicit workflow of a
+ * `recolte.mjs`, otherwise null. Nothing is run here: the file is only read as JSON. `ctx`: what the widget
+ * declares (`contexteValidation`).
  */
 export async function lireWorkflow(dossierFichiers: string, ctx: ContexteValidation = CONTEXTE_PAR_DEFAUT): Promise<WorkflowLu | null> {
   if (await existe(join(dossierFichiers, "workflow.json"))) {

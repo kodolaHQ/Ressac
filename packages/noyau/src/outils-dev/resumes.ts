@@ -1,4 +1,4 @@
-// Résumés et masquage pour les outils de développement de l'agent : fonctions pures.
+// Summaries and masking for the agent's dev tools: pure functions.
 
 export const LONGUEUR_MAX = 2000;
 
@@ -6,12 +6,12 @@ const MASQUE = "«masqué»";
 const EN_TETES_SECRETS = new Set(["cookie", "set-cookie", "authorization", "proxy-authorization"]);
 const PARAMETRE_SECRET = /token|key|secret|password|auth|session|sig/i;
 
-/** Coupe une chaîne trop longue et signale la coupe. */
+/** Cuts a string that is too long and reports the cut. */
 export function tronquer(s: string, max = LONGUEUR_MAX): string {
   return s.length <= max ? s : `${s.slice(0, max)}… [tronqué]`;
 }
 
-/** Masque les en-têtes qui portent des données de connexion. */
+/** Masks the headers that carry login data. */
 export function masquerEnTetes(h: Record<string, string>): Record<string, string> {
   const r: Record<string, string> = {};
   for (const [nom, valeur] of Object.entries(h)) {
@@ -20,20 +20,20 @@ export function masquerEnTetes(h: Record<string, string>): Record<string, string
   return r;
 }
 
-/** Masque, dans une suite `nom=valeur&…`, les valeurs dont le nom est sensible. */
+/** Masks, in a `name=value&…` sequence, the values whose name is sensitive. */
 function masquerPaires(texte: string): string {
   return texte.replace(/(^|[?&])([^=&?]*)=([^&]*)/g, (tout, sep: string, nom: string) => {
     let lu = nom;
     try {
       lu = decodeURIComponent(nom);
     } catch {
-      // nom mal encodé : on le compare tel quel
+      // badly encoded name: compared as it is
     }
     return PARAMETRE_SECRET.test(lu) ? `${sep}${nom}=${MASQUE}` : tout;
   });
 }
 
-/** Masque la valeur des paramètres sensibles (requête et fragment), sans reformater le reste de l'URL. */
+/** Masks the value of the sensitive params (query and fragment), without reformatting the rest of the URL. */
 export function masquerUrl(url: string): string {
   try {
     new URL(url);
@@ -49,7 +49,7 @@ export function masquerUrl(url: string): string {
   return base + requete + (iFragment < 0 ? "" : `#${masquerPaires(fragment)}`);
 }
 
-/** Les URL http(s) d'un texte libre (message de console, pile), masquées comme par `masquerUrl`. */
+/** The http(s) URLs of a free text (console message, stack), masked as by `masquerUrl`. */
 export function masquerUrlsDansTexte(texte: string): string {
   return texte.replace(/https?:\/\/[^\s"'`<>()[\]{}]+/gi, (url) => masquerUrl(url));
 }
@@ -68,10 +68,10 @@ export interface ProfilCpu {
 
 const arrondi = (x: number): string => String(Math.round(x * 10) / 10);
 
-/** Les n fonctions qui occupent le plus le processeur, puis les métriques de la page. */
+/** The n functions that occupy the processor the most, then the page's metrics. */
 export function resumerProfil(p: ProfilCpu, metriques: Record<string, number>, n = 15): string {
   const parNoeud = new Map<number, number>();
-  // timeDeltas[i] est l'écart avant l'échantillon i : l'échantillon i occupe l'intervalle qui le suit.
+  // timeDeltas[i] is the gap before sample i: sample i occupies the interval that follows it.
   let horodatage = p.startTime;
   p.samples.forEach((id, i) => {
     horodatage += p.timeDeltas[i] ?? 0;
@@ -112,7 +112,7 @@ export interface InstantaneFirefox extends ResumeMemoire {
   format: "webaios-firefox-census";
 }
 
-/** Lit un `.heapsnapshot` V8 (ou un recensement Firefox) et regroupe les nœuds par nom. */
+/** Reads a V8 `.heapsnapshot` (or a Firefox census) and groups the nodes by name. */
 export function resumerInstantane(json: string): ResumeMemoire {
   const parse = JSON.parse(json) as { format?: string };
   if (parse.format === "webaios-firefox-census") {
@@ -136,7 +136,7 @@ export function resumerInstantane(json: string): ResumeMemoire {
     const taille = brut.nodes[i + iTaille] ?? 0;
     total += taille;
     if (!TYPES_RETENUS.has(nomsTypes[brut.nodes[i + iType] ?? -1] ?? "")) continue;
-    // le nom d'une chaîne est son contenu : on ne le transmet pas
+    // a string's name is its content: it is not passed on
     const nom =
       nomsTypes[brut.nodes[i + iType] ?? -1] === "string"
         ? "(chaîne)"
@@ -158,7 +158,7 @@ export function texteMemoire(r: ResumeMemoire, n = 20): string {
   return [`Total : ${ko(r.total)}`, ...lignes].join("\n");
 }
 
-/** Les constructeurs qui ont le plus grossi de `a` à `b` (écarts positifs seulement). */
+/** The constructors that grew the most from `a` to `b` (positive gaps only). */
 export function comparerMemoire(a: ResumeMemoire, b: ResumeMemoire, n = 20): string {
   const avant = new Map(a.parConstructeur.map((c) => [c.nom, c]));
   const lignes = b.parConstructeur

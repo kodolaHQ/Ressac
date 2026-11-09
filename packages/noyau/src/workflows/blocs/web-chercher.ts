@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { CHAMP_PAR_ELEMENT, champsParElementSeulement, Gabarit, ParametresParElement, type DefinitionBloc } from "./communs.js";
 
-/** Seulement pour un widget qui déclare `"web": true` (validerWorkflow) ; la recherche est faite par le noyau. */
+/** Only for a widget that declares `"web": true` (validerWorkflow); the search is done by the kernel. */
 export const definition: DefinitionBloc = {
   type: "web.chercher",
   libelle: "Chercher sur le web",

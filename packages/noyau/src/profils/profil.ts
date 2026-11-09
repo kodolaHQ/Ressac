@@ -10,7 +10,7 @@ export const Profil = z.object({
   id: z.string().min(1),
   nom: z.string().min(1),
   interactif: z.array(z.string()).min(1),
-  // Les tâches de fond n'ont jamais accès aux outils du navigateur (spec §8.2).
+  // Background tasks never have access to the browser's tools (spec §8.2).
   nonInteractif: z.array(z.string()).min(1).refine((a) => !a.includes(JOKERS.mcpConfig), {
     message: "nonInteractif ne doit pas recevoir {mcpConfig}",
   }),
@@ -35,7 +35,7 @@ export async function chargerProfils(
   return { profils, erreurs };
 }
 
-/** Construit la commande d'un profil ; chaque joker remplace un argument entier. */
+/** Builds a profile's command; each wildcard replaces a whole argument. */
 export function construireCommande(
   p: Profil,
   mode: "interactif" | "nonInteractif",

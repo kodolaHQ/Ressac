@@ -1,5 +1,5 @@
-// L'aperçu des résultats donné à Gemma : leur forme (chaque chemin et son type) et quelques exemples, bornés. Pur.
-// Les résultats sont des faits lus sur des pages web : l'aperçu est une donnée, jamais une consigne.
+// The preview of the results given to Gemma: their shape (each path and its type) and a few examples, bounded. Pure.
+// The results are facts read from web pages: the preview is data, never an instruction.
 
 export const APERCU_MAX = 6000;
 const ELEMENTS_EXEMPLE = 3;
@@ -13,7 +13,7 @@ const CHEMIN_MAX = 80;
 type Dict = Record<string, unknown>;
 const estObjet = (v: unknown): v is Dict => v !== null && typeof v === "object" && !Array.isArray(v);
 
-/** Un dictionnaire sans prototype : une clé « __proto__ » des résultats reste une clé comme une autre. */
+/** A dictionary without a prototype: a « __proto__ » key of the results stays a key like any other. */
 const dict = (): Dict => Object.create(null) as Dict;
 
 function couper(s: string, max: number): string {
@@ -33,7 +33,7 @@ function nature(v: unknown): string {
   return "objet";
 }
 
-/** Le type d'une valeur en une ligne : les champs d'une liste d'objets sont détaillés, le reste reste court. */
+/** The type of a value in one line: the fields of a list of objects are detailed, the rest stays short. */
 function decrire(v: unknown): string {
   if (Array.isArray(v)) {
     if (v.length === 0) return "liste (0)";
@@ -60,7 +60,7 @@ function decrire(v: unknown): string {
   return nature(v);
 }
 
-/** Chaque chemin et son type, les objets étant parcourus jusqu'à `profondeur` niveaux. */
+/** Each path and its type, the objects being walked down to `profondeur` levels. */
 function forme(racine: unknown, profondeur: number): Dict {
   const f = dict();
   const poser = (chemin: string, v: unknown) => { f[couper(chemin, CHEMIN_MAX)] = couper(decrire(v), DESCRIPTION_MAX); };
@@ -81,7 +81,7 @@ function forme(racine: unknown, profondeur: number): Dict {
   return f;
 }
 
-/** Une copie réduite : 3 éléments par liste, textes à 120, `profondeur` niveaux, un nombre de noeuds borné. */
+/** A reduced copy: 3 items per list, texts at 120, `profondeur` levels, a bounded number of nodes. */
 function exemples(racine: unknown, profondeur: number): unknown {
   let noeuds = 0;
   const copie = (v: unknown, niveau: number): unknown => {
@@ -99,14 +99,14 @@ function exemples(racine: unknown, profondeur: number): unknown {
   return copie(racine, 0);
 }
 
-/** JSON `{ forme, exemples }` d'au plus APERCU_MAX caractères : les exemples partent d'abord, puis les niveaux profonds. */
+/** JSON `{ forme, exemples }` of at most APERCU_MAX characters: the examples go first, then the deep levels. */
 export function apercuResultats(resultats: unknown): string {
   const essais: [number, boolean][] = [[4, true], [3, true], [2, true], [4, false], [3, false], [2, false], [1, false]];
   for (const [profondeur, avecExemples] of essais) {
     const s = JSON.stringify(avecExemples ? { forme: forme(resultats, profondeur), exemples: exemples(resultats, profondeur) } : { forme: forme(resultats, profondeur) });
     if (s.length <= APERCU_MAX) return s;
   }
-  // Dernier recours : les premiers chemins seulement.
+  // Last resort: the first paths only.
   const f = forme(resultats, 1);
   const gardee = dict();
   for (const k of Object.keys(f)) {
@@ -119,7 +119,7 @@ export function apercuResultats(resultats: unknown): string {
   return JSON.stringify({ forme: gardee });
 }
 
-/** `null`, `""`, `[]`, `{}`, ou un objet dont toutes les valeurs sont vides (récursivement). Itératif. */
+/** `null`, `""`, `[]`, `{}`, or an object whose values are all empty (recursively). Iterative. */
 export function resultatsVides(r: unknown): boolean {
   const pile: unknown[] = [r];
   while (pile.length > 0) {

@@ -2,10 +2,10 @@ import { z } from "zod";
 import type { MemoireBlocs } from "./memoire.js";
 import type { Bloc, Lien } from "./schema.js";
 
-/** Taille maximale des données d'un widget (son `donnees.json`, une publication au fil de l'eau). */
+/** Maximum size of a widget's data (its `donnees.json`, an as-it-goes publication). */
 export const TAILLE_MAX_DONNEES = 2 * 1024 * 1024;
 
-/** Taille maximale d'une ligne du protocole récolteur <-> noyau. */
+/** Maximum size of a line of the harvester <-> kernel protocol. */
 export const LIGNE_MAX_OCTETS = 4 * 1024 * 1024;
 
 export const FonctionRecolteur = z.enum(["lirePage", "recuperer", "kev", "gemma", "chercherWeb"]);
@@ -13,13 +13,13 @@ export type FonctionRecolteur = z.infer<typeof FonctionRecolteur>;
 
 const MemoireEnvoyee = z.record(z.string(), z.object({ type: z.string(), valeur: z.unknown() }));
 
-/** Statut d'un bloc à sa fin, tel que l'envoie le conteneur. */
+/** Status of a block at its end, as the container sends it. */
 export const StatutBlocConteneur = z.enum(["reussi", "partiel", "echoue"]);
 
 /**
- * Sortie standard du récolteur : une ligne JSON par message. Pour un workflow, des traces (`bloc`, `journal`) et la
- * mémoire des blocs (`memoire`, juste avant `fin` ; aussi en cours de route pour une exécution progressive, la dernière
- * reçue vaut) ; pendant la chaîne au fil de l'eau, des `publication` ; la fin reste `fin` / `echec`.
+ * Harvester's standard output: one JSON line per message. For a workflow, traces (`bloc`, `journal`) and the
+ * blocks' memory (`memoire`, just before `fin`; also along the way for a progressive run, the last one
+ * received counts); during the as-it-goes chain, `publication`s; the end stays `fin` / `echec`.
  */
 export const MessageRecolteur = z.union([
   z.object({ t: z.literal("appel"), n: z.number().int(), f: FonctionRecolteur, a: z.unknown() }),
@@ -33,7 +33,7 @@ export const MessageRecolteur = z.union([
     sortieTropGrosse: z.literal(true).optional(),
     erreur: z.string().optional(),
   }),
-  // Action seulement (`avancement` dans `debut`) : un bloc par élément en est à `faits` éléments sur `total`.
+  // Action only (`avancement` in `debut`): a per-item block has reached `faits` items out of `total`.
   z
     .object({ t: z.literal("bloc"), id: z.string(), etape: z.literal("avancement"), faits: z.number().int().min(0), total: z.number().int().min(0) })
     .refine((m) => m.faits <= m.total),
@@ -45,15 +45,15 @@ export const MessageRecolteur = z.union([
 ]);
 export type MessageRecolteur = z.infer<typeof MessageRecolteur>;
 
-/** Ce que le conteneur reçoit d'un workflow validé : ses blocs, ses liens et l'ordre d'exécution. */
+/** What the container receives of a validated workflow: its blocks, its links and the run order. */
 export type WorkflowEnvoye = { blocs: Bloc[]; liens: Lien[]; ordre: string[] };
 
-/** Pour un essai : les blocs à relancer (dans l'ordre) et les sorties reprises de l'exécution d'origine, par bloc. */
+/** For a try: the blocks to rerun (in order) and the outputs taken from the original run, per block. */
 export type RejeuEnvoye = { relances: string[]; sorties: Record<string, unknown> };
 
 /**
- * Entrée standard du récolteur : la ligne initiale (toujours avec son workflow, implicite pour un `recolte.mjs` seul),
- * puis la mémoire des blocs, puis les réponses.
+ * Harvester's standard input: the initial line (always with its workflow, implicit for a lone `recolte.mjs`),
+ * then the blocks' memory, then the answers.
  */
 export const MessageNoyau = z.union([
   z.object({
@@ -74,19 +74,19 @@ export const MessageNoyau = z.union([
 ]);
 export type MessageNoyau = z.infer<typeof MessageNoyau>;
 
-/** Arguments des appels, selon la fonction. */
-/** Au plus 20 écrans défilés par une lecture de page (`defiler`). */
+/** Arguments of the calls, depending on the function. */
+/** At most 20 screens scrolled by a page read (`defiler`). */
 export const DEFILER_MAX = 20;
 export const ArgsLirePage = z.object({ url: z.string(), compte: z.boolean().optional(), defiler: z.number().int().min(0).max(DEFILER_MAX).optional() });
 export const ArgsRecuperer = z.object({ url: z.string(), format: z.enum(["texte", "json"]).optional() });
 export const ArgsKev = z.object({ state: z.string(), questions: z.record(z.string(), z.unknown()) });
-/** Recherche web faite par le noyau ; réponse : `{ titre, url, extrait }[]`, au plus `nombre`. */
+/** Web search done by the kernel; answer: `{ titre, url, extrait }[]`, at most `nombre`. */
 export const ArgsChercherWeb = z.object({ requete: z.string().min(1).max(500), nombre: z.number().int().min(1).max(20) });
 export const ArgsGemma = z.object({ prompt: z.string(), images: z.array(z.string()).optional(), json: z.boolean().optional() });
 
 export type PageLue = { url: string; titre: string; texte: string; liens: { texte: string; url: string }[] };
 
-/** Analyse une ligne de la sortie du récolteur ; null si invalide. */
+/** Parses a line of the harvester's output; null if invalid. */
 export function lireMessageRecolteur(ligne: string): MessageRecolteur | null {
   try {
     const r = MessageRecolteur.safeParse(JSON.parse(ligne));
@@ -106,19 +106,19 @@ export type OptionsDebut = {
   config: unknown;
   workflow: WorkflowEnvoye;
   rejeu?: RejeuEnvoye;
-  /** Plus aucun élément lancé après ce délai (`dureeMaxMinutes × 60 000`). */
+  /** No more items run after this delay (`dureeMaxMinutes × 60 000`). */
   limiteMs?: number;
-  /** Mémoire envoyée en cours de route, publications au fil de l'eau. */
+  /** Memory sent along the way, as-it-goes publications. */
   progressif?: true;
-  /** Action seulement : le texte tapé au lancement (`{saisie}` des gabarits, `ctx.saisie`). */
+  /** Action only: the text typed at launch (`{saisie}` of the templates, `ctx.saisie`). */
   saisie?: string;
-  /** Action seulement : les blocs par élément envoient leur avancement. */
+  /** Action only: the per-item blocks send their progress. */
   avancement?: true;
 };
 
 /**
- * La ligne `debut` ; les clés `rejeu`, `limiteMs`, `progressif`, `saisie` et `avancement` n'y sont que si elles sont
- * données (la ligne d'un widget sans les nouveaux champs ne change pas).
+ * The `debut` line; the keys `rejeu`, `limiteMs`, `progressif`, `saisie` and `avancement` are only there if they are
+ * given (the line of a widget without the new fields does not change).
  */
 export function ligneDebut(o: OptionsDebut): string {
   return (
@@ -138,8 +138,8 @@ export function ligneDebut(o: OptionsDebut): string {
 }
 
 /**
- * Octets de la ligne de début telle qu'elle est envoyée (avec, pour un rejeu, les sorties reprises) : le récolteur
- * refuse une ligne de plus de `LIGNE_MAX_OCTETS`. À mesurer avant de lancer un essai, pour refuser sans rien écrire.
+ * Bytes of the start line as it is sent (with, for a replay, the taken outputs): the harvester
+ * refuses a line of more than `LIGNE_MAX_OCTETS`. To measure before launching a try, to refuse without writing anything.
  */
 export function octetsLigneDebut(o: OptionsDebut): number {
   return Buffer.byteLength(ligneDebut(o));

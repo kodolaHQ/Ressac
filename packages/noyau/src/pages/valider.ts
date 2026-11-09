@@ -1,12 +1,12 @@
 import type { DefinitionComposant, Propriete } from "./catalogue.js";
 import { PlanPage, evaluer, lireReference, lireChemin, type BlocPlan, type Groupe } from "./plan.js";
 
-// La validation du plan de Gemma, qui est une donnée hostile (elle a pu lire une page piégée). Rien ne lève : un plan
-// illisible rend `ok: false`. Les raisons sont écrites par WebAiOs et ne citent jamais une valeur des résultats (seulement
-// des noms de propriétés, de champs et de chemins, écrits par le plan lui-même).
+// The validation of Gemma's plan, which is hostile data (it may have read a booby-trapped page). Nothing throws: an
+// unreadable plan returns `ok: false`. The reasons are written by WebAiOs and never quote a value of the results (only
+// names of properties, fields and paths, written by the plan itself).
 
 export const PLAN_NE_REFERENCE_RIEN = "le plan ne référence rien";
-/** Bornes du JSON brut, vérifiées avant zod (qui déborde la pile sur un plan imbriqué sur des milliers de niveaux). */
+/** Bounds of the raw JSON, checked before zod (which overflows the stack on a plan nested thousands of levels deep). */
 const PROFONDEUR_BRUT_MAX = 64;
 const NOEUDS_BRUT_MAX = 50_000;
 const ERREURS_MAX = 10;
@@ -18,13 +18,13 @@ export type ResultatValidation = { ok: true; plan: PlanPage; ecartes: string[] }
 
 class Ecart extends Error {}
 
-/** Nature attendue de la valeur d'une référence, par composant intégré et propriété. */
+/** Expected kind of a reference's value, per built-in component and property. */
 const ATTENDU: Record<string, "liste" | "objet" | "simple"> = {
   "paragraphe.valeur": "simple", "chiffre.valeur": "simple", "encadre.elements": "liste",
   "liste.elements": "liste", "cartes.elements": "liste", "tableau.elements": "liste",
   "champs.objet": "objet", "etiquettes.valeurs": "liste", "etiquettes.elements": "liste", "lien.objet": "objet",
 };
-/** La propriété qui porte les éléments où ses champs sont lus. */
+/** The property that carries the items where its fields are read. */
 const SOURCE: Record<string, string> = {
   encadre: "elements", liste: "elements", cartes: "elements", tableau: "elements", etiquettes: "elements", lien: "objet", champs: "objet",
 };
@@ -34,7 +34,7 @@ function couper(s: string): string {
   return s.length > ERREUR_MAX ? s.slice(0, ERREUR_MAX - 1) + "…" : s;
 }
 
-/** Un JSON brut assez petit et peu profond pour être lu sans risque ; sinon la raison. Itératif. */
+/** A raw JSON small and shallow enough to be read without risk; otherwise the reason. Iterative. */
 function preverifier(brut: unknown): string | null {
   const pile: [unknown, number][] = [[brut, 0]];
   let noeuds = 0;
@@ -56,7 +56,7 @@ function preverifier(brut: unknown): string | null {
 const primitif = (v: unknown) => v === null || typeof v === "string" || typeof v === "number" || typeof v === "boolean";
 const presente = (props: Record<string, unknown>, nom: string) => Object.hasOwn(props, nom) && props[nom] !== undefined && props[nom] !== null;
 
-/** Une référence lue et calculée ; sa valeur vérifiée selon `attendu`. */
+/** A reference read and computed; its value checked according to `attendu`. */
 function verifierReference(texte: unknown, attendu: "liste" | "objet" | "simple" | undefined, resultats: unknown) {
   if (typeof texte !== "string") throw new Ecart("référence attendue (un texte)");
   const ref = lireReference(texte);
@@ -70,7 +70,7 @@ function verifierReference(texte: unknown, attendu: "liste" | "objet" | "simple"
   return { texte, valeur: v, groupee: ref.ops.at(-1)?.op === "regrouper" };
 }
 
-/** Un champ : un chemin relatif à un élément, jamais une référence ni un texte libre (une adresse écrite par Gemma échoue ici). */
+/** A field: a path relative to an item, never a reference nor a free text (an address written by Gemma fails here). */
 function lireChamp(texte: unknown): string {
   if (typeof texte !== "string") throw new Ecart("nom de champ attendu");
   const ref = lireReference(texte);
@@ -115,7 +115,7 @@ function verifierProps(def: DefinitionComposant, brutes: Record<string, unknown>
     try {
       switch (pr.genre) {
         case "reference": {
-          // « $ » donné à un paragraphe : tous les résultats en texte compact, la mise en page de dernier recours.
+          // « $ » given to a paragraph: all the results as compact text, the last-resort layout.
           const attendu = integre && !(def.nom === "paragraphe" && v === "$") ? ATTENDU[`${def.nom}.${nom}`] : undefined;
           const r = verifierReference(v, attendu, resultats);
           props[nom] = r.texte;
@@ -178,7 +178,7 @@ function verifierProps(def: DefinitionComposant, brutes: Record<string, unknown>
 
   if (integre) appliquerRegles(def.nom, props);
 
-  // Un champ doit exister dans au moins un élément de la liste référencée (une liste vide ne dit rien).
+  // A field must exist in at least one item of the referenced list (an empty list says nothing).
   const source = integre ? SOURCE[def.nom] : undefined;
   const lue = source !== undefined && Object.hasOwn(props, source) ? valeurs[source] : undefined;
   if (lue) {
@@ -199,7 +199,7 @@ function elementsDe(lue: { valeur: unknown; groupee: boolean }): unknown[] {
   return (lue.valeur as Groupe<unknown>[]).flatMap((g) => g.elements);
 }
 
-/** Les règles « l'un ou l'autre » du catalogue. */
+/** The catalog's « one or the other » rules. */
 function appliquerRegles(nom: string, props: Record<string, unknown>): void {
   const a = (k: string) => Object.hasOwn(props, k);
   switch (nom) {
@@ -234,7 +234,7 @@ function validerBlocs(blocs: BlocPlan[], ctx: Contexte): BlocPlan[] {
     const n = ++ctx.n;
     const def = ctx.defs.get(b.composant);
     if (!def) {
-      // Inconnu : gardé (dessiné en encadré d'erreur), ses enfants ne seront pas dessinés.
+      // Unknown: kept (drawn as an error box), its children will not be drawn.
       ctx.n += compterBlocs(b);
       gardes.push({ composant: b.composant, props: Object.fromEntries(Object.entries(b.props)) });
       continue;

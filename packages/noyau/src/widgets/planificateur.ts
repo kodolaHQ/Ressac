@@ -28,36 +28,36 @@ import {
 
 export { ERREUR_ATELIER_ARRETE, ERREUR_RECOLTE_INTERNE, type ResultatEssai };
 
-/** Un bloc de l'exécution en cours, d'après ses traces. */
+/** A block of the run in progress, from its traces. */
 export type BlocDirect = { statut: "en-cours" | "reussi" | "partiel" | "echoue"; elements: number | null };
-/** Une exécution (vraie, ou essai du constructeur) qui tourne en ce moment. */
+/** A run (real, or builder try) that is running right now. */
 export type DirectWidget = { widget: string; genre: "execution" | "essai"; debut: string; blocs: Record<string, BlocDirect> };
 /**
- * `courants` : les exécutions qui tournent (une par voie au plus, dans l'ordre où elles ont commencé). `enAttente` :
- * widgets dont une demande (récolte manuelle, essai) attend son tour.
+ * `courants`: the runs that are running (one per lane at most, in the order they started). `enAttente`:
+ * widgets with a request (manual harvest, try) waiting for its turn.
  */
 export type EtatDirect = { courants: DirectWidget[]; enAttente: string[] };
 
-/** Au-delà de cette durée maximale (en minutes), un widget tourne dans la voie longue. */
+/** Beyond this maximum duration (in minutes), a widget runs in the long lane. */
 export const VOIE_LONGUE_MINUTES = 3;
 export type Voie = "courte" | "longue";
 
 /**
- * Les veilles (`dureeMaxMinutes` > 3) ont leur propre voie : une à la fois dans l'application, sans retenir les widgets
- * courts, qui gardent la leur.
+ * The watches (`dureeMaxMinutes` > 3) have their own lane: one at a time in the application, without holding back the short
+ * widgets, which keep theirs.
  */
 export function voieDe(w: WidgetLu): Voie {
   if ("erreur" in w) return "courte";
   return (w.declaration.recolte?.dureeMaxMinutes ?? 0) > VOIE_LONGUE_MINUTES ? "longue" : "courte";
 }
 
-/** Rendu par une demande dont le widget a changé de voie pendant qu'elle attendait. */
+/** Returned by a request whose widget changed lanes while it was waiting. */
 class AutreVoie {
   constructor(readonly voie: Voie) {}
 }
 
 const MINUTE = 60_000;
-/** Une récolte en erreur est retentée au plus tôt 15 min après sa dernière tentative. */
+/** A harvest in error is retried at the earliest 15 min after its last attempt. */
 const REESSAI_ERREUR_MS = 15 * MINUTE;
 const ATTENTE_ARRET_MS = 15_000;
 const ID_WIDGET = /^[a-z0-9-]+$/;
@@ -65,11 +65,11 @@ const ID_WIDGET = /^[a-z0-9-]+$/;
 const age = (iso: string | null, maintenant: Date) => (iso ? maintenant.getTime() - Date.parse(iso) : Infinity);
 
 /**
- * Le widget est-il à récolter maintenant ? Il faut une récolte (déclarée, et `workflow.json` ou `recolte.mjs` présent), un statut autre
- * qu'`accord-requis` (seul l'utilisateur débloque), et soit des données plus vieilles que `recolte.minutes` (ou absentes), soit
- * une heure fixe à faire (`heureDue`). Après une erreur, la fréquence attend en plus 15 min depuis la dernière
- * tentative. `en-cours` n'est relancé qu'au lancement (la récolte précédente a été interrompue), et seulement s'il a une
- * fréquence ou une heure à faire : sinon, c'est la nôtre qui tourne.
+ * Is the widget to be harvested now? It needs a harvest (declared, and `workflow.json` or `recolte.mjs` present), a status other
+ * than `accord-requis` (only the user unblocks), and either data older than `recolte.minutes` (or absent), or
+ * a fixed hour to do (`heureDue`). After an error, the frequency also waits 15 min since the last
+ * attempt. `en-cours` is only relaunched at launch (the previous harvest was interrupted), and only if it has a
+ * frequency or an hour to do: otherwise, ours is the one running.
  */
 export function widgetDu(w: WidgetLu, maintenant: Date, o: { auLancement: boolean }): boolean {
   if ("erreur" in w || !w.aRecolte || !w.declaration.recolte) return false;
@@ -79,7 +79,7 @@ export function widgetDu(w: WidgetLu, maintenant: Date, o: { auLancement: boolea
   const parHeure = heures !== undefined && heureDue(heures, w.etat.heures, derniereTentative, maintenant);
   if (statut === "en-cours") return o.auLancement && (minutes !== undefined || parHeure);
   if (parHeure) return true;
-  if (minutes === undefined) return false; // heures fixes seules : jamais dû par la fréquence
+  if (minutes === undefined) return false; // fixed hours only: never due by frequency
   if (age(derniereMaj, maintenant) < minutes * MINUTE) return false;
   return statut !== "erreur" || age(derniereTentative, maintenant) >= REESSAI_ERREUR_MS;
 }
@@ -90,74 +90,74 @@ export type Essayeuse = (o: OptionsRecolte & { origine: string; depart: string }
 export interface OptionsPlanificateur {
   chemins: CheminsEspace;
   dossierWidgets: string;
-  /** Dossier du moteur des workflows (`docker/moteur`), monté en lecture seule dans le conteneur. */
+  /** Folder of the workflow engine (`docker/moteur`), mounted read-only in the container. */
   moteur: string;
   atelier: Pick<Atelier, "etat" | "commandeRecolte" | "supprimerRecolte">;
   pont: PontNavigateur;
   ia: Pick<IaLocale, "kev" | "gemma"> | null;
-  /** Le répartiteur des appels à l'IA, partagé avec les actions ; absent : le planificateur crée le sien sur `ia`. */
+  /** The dispatcher of AI calls, shared with the actions; absent: the scheduler creates its own on `ia`. */
   repartiteur?: ReturnType<typeof creerRepartiteurIa>;
   horloge?: () => Date;
-  /** Vérification des récoltes dues (par défaut chaque minute). */
+  /** Check of the due harvests (every minute by default). */
   intervalleMs?: number;
-  /** Appelé après chaque écriture de l'état ou des données d'un widget. */
+  /** Called after each write of a widget's state or data. */
   surChange?: () => void;
-  /** Tests : remplace l'exécution réelle de la récolte. */
+  /** Tests: replaces the real run of the harvest. */
   recolter?: Recolteuse;
-  /** Tests : remplace l'exécution réelle d'un essai. */
+  /** Tests: replaces the real run of a try. */
   recolterEssai?: Essayeuse;
-  /** Appelé à chaque entrée et sortie de la file, et à chaque trace de l'exécution en cours. */
+  /** Called at each entry and exit of the queue, and at each trace of the run in progress. */
   surDirect?: (e: EtatDirect) => void;
-  /** Tests seulement : les récoltes peuvent lire des adresses locales (voir OptionsRecolte). */
+  /** Tests only: the harvests may read local addresses (see OptionsRecolte). */
   adressesLocales?: boolean;
-  /** Ménagement des recherches et des lectures ouvertes, partagé par toutes les récoltes et tous les essais. */
+  /** Pacing of the searches and open reads, shared by all the harvests and all the tries. */
   menagement?: Menagement;
-  /** Tests seulement : la base des recherches DuckDuckGo (voir OptionsRecolte). */
+  /** Tests only: the base of the DuckDuckGo searches (see OptionsRecolte). */
   urlRecherche?: string;
   /**
-   * Démarrage de l'atelier : aucune vérification ni récolte avant sa fin (sinon chaque lancement afficherait un bref
-   * « atelier arrêté » pendant que le conteneur démarre).
+   * Workshop startup: no check or harvest before its end (otherwise each launch would show a brief
+   * « atelier arrêté » while the container starts).
    */
   pret?: Promise<unknown>;
-  /** Attente bornée d'une récolte en cours à l'arrêt (15 s par défaut). */
+  /** Bounded wait for a harvest in progress at shutdown (15 s by default). */
   attenteArretMs?: number;
   /**
-   * Fin d'une vraie exécution réussie d'un widget `recolte.notifier` qui a de nouveaux éléments. Le texte n'est que leur
-   * nombre : rien des données. Une erreur du rappel est journalisée, jamais propagée.
+   * End of a real successful run of a `recolte.notifier` widget that has new items. The text is only their
+   * number: nothing of the data. An error from the callback is logged, never propagated.
    */
   notifier?: (n: NotificationWidget) => void;
 }
 
 /**
- * Lance les récoltes des widgets en arrière-plan tant que le navigateur est ouvert : une à la fois dans chaque voie
- * (courte, longue), et jamais deux à la fois pour un même widget.
+ * Launches the widgets' harvests in the background as long as the browser is open: one at a time in each lane
+ * (short, long), and never two at once for the same widget.
  */
 export class PlanificateurWidgets {
   private readonly o: OptionsPlanificateur & { horloge: () => Date; intervalleMs: number; recolter: Recolteuse; recolterEssai: Essayeuse };
   private minuterie: NodeJS.Timeout | undefined;
-  /** Une récolte à la fois par voie : chaque récolte s'enchaîne sur la précédente de sa voie. */
+  /** One harvest at a time per lane: each harvest chains onto the previous one of its lane. */
   private files: Record<Voie, Promise<unknown>> = { courte: Promise.resolve(), longue: Promise.resolve() };
-  /** Par widget, la dernière demande (en attente ou en cours, toutes voies) : la suivante l'attend. */
+  /** Per widget, the last request (waiting or in progress, all lanes): the next one waits for it. */
   private parWidget = new Map<string, Promise<unknown>>();
-  /** Par widget, ses demandes de la voie longue (ou dont la voie n'est pas encore choisie) en attente ou en cours. */
+  /** Per widget, its long-lane requests (or whose lane is not yet chosen) waiting or in progress. */
   private longues = new Map<string, number>();
   private verification: Promise<string[]> | null = null;
-  /** Widgets dont la récolte tourne en ce moment (leur tour venu). */
+  /** Widgets whose harvest is running right now (their turn has come). */
   private enCoursIds = new Set<string>();
   private arrete = false;
-  /** Les exécutions suivies en direct (celles qui tournent vraiment, pas une vérification sans récolte). */
+  /** The runs followed live (those that really run, not a check without harvest). */
   private enDirect: DirectWidget[] = [];
-  /** Appels à l'IA servis à tour de rôle entre les exécutions ; aucun sans IA. */
+  /** AI calls served in turn between the runs; none without AI. */
   private readonly repartiteur: RepartiteurIa | null;
-  /** Widgets des demandes en file, pas encore commencées (un par demande). */
+  /** Widgets of the queued requests, not yet started (one per request). */
   private attente: string[] = [];
-  /** Démarrage : l'atelier prêt et les états « en-cours » d'avant le lancement remis. Avant toute exécution. */
+  /** Startup: the workshop ready and the « en-cours » states from before launch reset. Before any run. */
   private demarrage: Promise<void> | null = null;
-  /** Widgets trouvés en-cours au démarrage (interrompus) et remis, pas encore relancés. */
+  /** Widgets found en-cours at startup (interrupted) and reset, not yet relaunched. */
   private interrompus = new Set<string>();
 
   constructor(o: OptionsPlanificateur) {
-    // `??` plutôt qu'un spread : une option passée explicitement à undefined garde sa valeur par défaut.
+    // `??` rather than a spread: an option explicitly passed as undefined keeps its default value.
     this.o = {
       ...o,
       horloge: o.horloge ?? (() => new Date()),
@@ -168,13 +168,13 @@ export class PlanificateurWidgets {
     this.repartiteur = o.repartiteur ?? (o.ia ? creerRepartiteurIa(o.ia) : null);
   }
 
-  /** Ce qui tourne en ce moment, et les demandes qui attendent leur tour. */
+  /** What is running right now, and the requests waiting for their turn. */
   direct(): EtatDirect {
-    // Une copie : l'appelant ne voit pas bouger l'état suivi, et ne peut pas le modifier.
+    // A copy: the caller does not see the tracked state move, and cannot modify it.
     return structuredClone({ courants: this.enDirect, enAttente: [...new Set(this.attente)] });
   }
 
-  /** Une erreur du rappel ne doit jamais arrêter une exécution. */
+  /** An error from the callback must never stop a run. */
   private signalerDirect(): void {
     if (!this.o.surDirect) return;
     try {
@@ -184,7 +184,7 @@ export class PlanificateurWidgets {
     }
   }
 
-  /** Une demande entre dans la file ; `commencee` l'en sort quand son tour vient. */
+  /** A request enters the queue; `commencee` takes it out when its turn comes. */
   private demande(id: string): { commencee(): void } {
     this.attente.push(id);
     this.signalerDirect();
@@ -201,9 +201,9 @@ export class PlanificateurWidgets {
   }
 
   /**
-   * Suit en direct l'exécution `f` du widget `widget`. Synchrone : le moteur n'attrape que les erreurs levées tout de
-   * suite par le relais des traces. À la fin, les blocs sont repris de l'exécution écrite (un bloc commencé sans fin n'a
-   * pas de trace de fin), puis plus rien n'est en cours.
+   * Follows live the run `f` of widget `widget`. Synchronous: the engine only catches the errors thrown right
+   * away by the traces relay. At the end, the blocks are taken from the written run (a block started without an end has
+   * no end trace), then nothing is in progress any more.
    */
   private async suivre<T>(
     widget: string,
@@ -215,19 +215,19 @@ export class PlanificateurWidgets {
     this.enDirect = [...this.enDirect, suivi];
     this.signalerDirect();
     const surTrace = (t: TraceDirecte) => {
-      // Les traces `avancement` et `lecture` (pour les actions) ne changent rien au suivi d'un widget.
+      // The `avancement` and `lecture` traces (for the actions) change nothing in a widget's tracking.
       if (!this.enDirect.includes(suivi) || (t.etape !== "debut" && t.etape !== "fin")) return;
       suivi.blocs[t.bloc] = t.etape === "debut" ? { statut: "en-cours", elements: null } : { statut: t.statut, elements: t.elements };
       this.signalerDirect();
     };
-    // Chaque exécution a sa file d'appels à l'IA.
+    // Each run has its own queue of AI calls.
     const ia = this.repartiteur?.pour(`${widget}:${suivi.debut}`) ?? null;
     let r: T | undefined;
     try {
       r = await f(surTrace, ia);
       return r;
     } finally {
-      // Ses appels encore en file ne partent plus : ils prendraient la place des autres exécutions.
+      // Its calls still in the queue no longer go out: they would take the place of the other runs.
       ia?.oublier();
       await this.resynchroniser(suivi, r === undefined ? undefined : executionDe(r));
       this.enDirect = this.enDirect.filter((x) => x !== suivi);
@@ -246,27 +246,27 @@ export class PlanificateurWidgets {
       }
       suivi.blocs = blocs;
     } else {
-      // Rien d'écrit (refus, accord retiré…) : un bloc encore en cours ne finira pas.
+      // Nothing written (denial, grant withdrawn…): a block still in progress will not finish.
       for (const b of Object.values(suivi.blocs)) if (b.statut === "en-cours") b.statut = "echoue";
     }
     if (this.enDirect.includes(suivi)) this.signalerDirect();
   }
 
-  /** Vérifie au lancement, en arrière-plan (une récolte prend du temps), puis à intervalle régulier. */
+  /** Checks at launch, in the background (a harvest takes time), then at regular intervals. */
   async demarrer(): Promise<void> {
     this.enFond({ auLancement: true });
     this.minuterie = setInterval(() => this.enFond({ auLancement: false }), this.o.intervalleMs);
   }
 
-  /** Une erreur de fond ne doit jamais faire tomber le navigateur. */
+  /** A background error must never bring the browser down. */
   private enFond(o: { auLancement: boolean }): void {
     this.verifier(o).catch((e) => console.error("[webaios] récolte des widgets :", e));
   }
 
   /**
-   * Lance les récoltes dues ; rend les ids récoltés dans la voie courte. Une seule vérification à la fois. Elle n'attend
-   * jamais une veille : une récolte longue due est lancée sans être attendue, et un widget qui a une demande longue en
-   * attente ou en cours est laissé pour la vérification suivante.
+   * Launches the due harvests; returns the harvested ids in the short lane. Only one check at a time. It never waits
+   * for a watch: a due long harvest is launched without being waited for, and a widget that has a long request
+   * waiting or in progress is left for the next check.
    */
   async verifier(o: { auLancement: boolean }): Promise<string[]> {
     if (this.verification || this.arrete) return [];
@@ -278,16 +278,16 @@ export class PlanificateurWidgets {
     return (await lireAccueil(this.o.chemins, this.o.dossierWidgets)).widgets;
   }
 
-  /** La voie du widget d'après sa déclaration lue maintenant (courte s'il est inconnu ou illisible). */
+  /** The widget's lane from its declaration read now (short if unknown or unreadable). */
   private async voieActuelle(id: string): Promise<Voie> {
     const w = (await this.widgets().catch(() => [])).find((x) => x.id === id);
     return w ? voieDe(w) : "courte";
   }
 
   /**
-   * Exécute `f` pour le widget `id` dans la voie de sa déclaration, lue quand le tour du widget vient (avant d'entrer
-   * dans une voie), puis relue sous le verrou de la voie. Si elle a changé pendant l'attente de la voie, la demande
-   * repart dans l'autre sans perdre son tour dans le widget.
+   * Runs `f` for widget `id` in the lane of its declaration, read when the widget's turn comes (before entering
+   * a lane), then read again under the lane's lock. If it changed while waiting for the lane, the request
+   * goes into the other one without losing its turn in the widget.
    */
   private dansSaVoie<T>(id: string, f: (w: WidgetLu | undefined) => Promise<T>): Promise<T> {
     return this.seul(id, "a-choisir", async (voie): Promise<T | AutreVoie> => {
@@ -297,17 +297,17 @@ export class PlanificateurWidgets {
     });
   }
 
-  /** Toute exécution l'attend : rien ne tourne avant la fin du démarrage. */
+  /** Every run waits for it: nothing runs before the end of startup. */
   private attendrePret(): Promise<void> {
     this.demarrage ??= Promise.all([this.o.pret?.catch(() => {}), this.remettreInterrompus()]).then(() => {});
     return this.demarrage;
   }
 
   /**
-   * Avant toute exécution, rien ne tourne : un état « en-cours » vient d'une exécution interrompue (arrêt brutal). Il est
-   * remis, qu'il soit relancé ou non (aucun « 7 / 12 » ne reste figé) : statut et erreur d'avant l'exécution (`avant`, ok
-   * à défaut ; jamais accord-requis, l'exécution a eu lieu après l'accord), dates et suivi des heures gardés, plus de
-   * progression. La vérification du lancement le relance encore s'il est dû comme un widget en-cours (`du`).
+   * Before any run, nothing is running: an « en-cours » state comes from an interrupted run (abrupt stop). It is
+   * reset, whether relaunched or not (no « 7 / 12 » stays frozen): status and error from before the run (`avant`, ok
+   * by default; never accord-requis, the run took place after the grant), dates and hour tracking kept, no more
+   * progress. The launch check still relaunches it if it is due as an en-cours widget (`du`).
    */
   private async remettreInterrompus(): Promise<void> {
     const { dossierWidgets } = this.o;
@@ -328,7 +328,7 @@ export class PlanificateurWidgets {
       change = true;
     }
     if (!change) return;
-    // Un rappel qui lève ne doit pas bloquer le démarrage (toutes les exécutions l'attendent).
+    // A callback that throws must not block startup (all the runs wait for it).
     try {
       this.o.surChange?.();
     } catch (e) {
@@ -336,7 +336,7 @@ export class PlanificateurWidgets {
     }
   }
 
-  /** `widgetDu`, où un widget remis au démarrage compte, au lancement, comme encore en-cours. */
+  /** `widgetDu`, where a widget reset at startup counts, at launch, as still en-cours. */
   private du(w: WidgetLu, o: { auLancement: boolean }): boolean {
     const interrompu = o.auLancement && this.interrompus.has(w.id) && !("erreur" in w) && w.etat.statut !== "accord-requis";
     return widgetDu(interrompu ? { ...w, etat: { ...w.etat, statut: "en-cours" } } : w, this.o.horloge(), o);
@@ -346,7 +346,7 @@ export class PlanificateurWidgets {
     await this.attendrePret();
     if (this.arrete) return [];
     await this.enchainer("courte", () => this.oublierWidgetsDisparus());
-    // Les longues d'abord : lancées sans être attendues, elles ne restent pas derrière les courtes de cette vérification.
+    // The long ones first: launched without being waited for, they do not stay behind the short ones of this check.
     const dus = (await this.widgets())
       .filter((w) => this.du(w, o))
       .sort((a, b) => Number(voieDe(b) === "longue") - Number(voieDe(a) === "longue"));
@@ -357,11 +357,11 @@ export class PlanificateurWidgets {
       const { id } = du;
       if (this.longues.has(id)) continue;
       const voie = voieDe(du);
-      // Relu sous le verrou : une récolte demandée entre-temps a pu le mettre à jour.
+      // Read again under the lock: a harvest requested in the meantime may have updated it.
       const tache = this.seul(id, voie, async () => {
         const w = (await this.widgets()).find((x) => x.id === id);
         if (!w || !this.du(w, o) || this.arrete) return false;
-        // Passé dans l'autre voie depuis la lecture : la vérification suivante l'y lancera.
+        // Moved to the other lane since the read: the next check will launch it there.
         if (voieDe(w) !== voie) return false;
         if (!(await this.atelierDemarre())) {
           await this.marquerAtelierArrete(w);
@@ -381,14 +381,14 @@ export class PlanificateurWidgets {
   }
 
   /**
-   * Un widget dont le dossier a disparu perd son accord et ses données (état compris) : recréé plus tard sous le même
-   * id, il n'hérite ni du consentement de l'utilisateur ni de ce qui a été lu avec. Rien n'est effacé si le dossier des widgets
-   * lui-même manque (espace illisible ou pas encore créé).
+   * A widget whose folder disappeared loses its grant and its data (state included): recreated later under the same
+   * id, it inherits neither the user's consent nor what was read with it. Nothing is erased if the widgets folder
+   * itself is missing (unreadable workspace or not yet created).
    */
   private async oublierWidgetsDisparus(): Promise<void> {
     if (!existsSync(this.o.chemins.widgets)) return;
-    // Un widget qui a une demande en attente ou en cours, dans l'une ou l'autre voie, est laissé à la vérification
-    // suivante (une veille, dans l'autre voie, peut encore écrire dans son dossier).
+    // A widget that has a request waiting or in progress, in either lane, is left for the next
+    // check (a watch, in the other lane, may still write in its folder).
     const presents = new Set([...(await this.widgets()).map((w) => w.id), ...this.parWidget.keys()]);
     const { dossierWidgets } = this.o;
     let change = false;
@@ -407,8 +407,8 @@ export class PlanificateurWidgets {
   }
 
   /**
-   * Marque `id` comme la récolte en cours dès son tour venu (avant toute attente), pour qu'un arrêt à n'importe quel
-   * moment sache quel conteneur supprimer.
+   * Marks `id` as the harvest in progress as soon as its turn comes (before any wait), so that a stop at any
+   * moment knows which container to remove.
    */
   private async enCours<T>(id: string, f: () => Promise<T>): Promise<T> {
     this.enCoursIds.add(id);
@@ -432,14 +432,14 @@ export class PlanificateurWidgets {
   }
 
   /**
-   * Exécute `f` pour le widget `id`, après la fin de toute demande précédente de ce widget, quelle qu'en soit la voie
-   * (`dureeMaxMinutes` a pu changer pendant qu'il tournait). Sa place est prise tout de suite : l'ordre des demandes
-   * d'un widget est gardé. La demande n'entre dans sa voie qu'une fois le widget libre : elle n'y retient pas les autres
-   * widgets en attendant. `"a-choisir"` : la voie est lue à ce moment-là ; si `f` rend `AutreVoie` (changée pendant
-   * l'attente de la voie), la demande repart dans l'autre, toujours à son tour dans le widget.
+   * Runs `f` for widget `id`, after the end of any previous request of this widget, whatever its lane
+   * (`dureeMaxMinutes` may have changed while it was running). Its place is taken right away: the order of a
+   * widget's requests is kept. The request only enters its lane once the widget is free: it does not hold the other
+   * widgets there while waiting. `"a-choisir"`: the lane is read at that moment; if `f` returns `AutreVoie` (changed during
+   * the wait for the lane), the request goes into the other one, still at its turn in the widget.
    */
   private seul<T>(id: string, voie: Voie | "a-choisir", f: (voie: Voie) => Promise<T | AutreVoie>): Promise<T> {
-    // Une demande dont la voie n'est pas encore choisie compte comme longue : une vérification ne l'attend pas.
+    // A request whose lane is not yet chosen counts as long: a check does not wait for it.
     let comptee = voie !== "courte";
     if (comptee) this.compterLongue(id, 1);
     const precedente = this.parWidget.get(id) ?? Promise.resolve();
@@ -473,7 +473,7 @@ export class PlanificateurWidgets {
     return (await this.o.atelier.etat().catch(() => "absent")) === "demarre";
   }
 
-  /** Sans atelier, rien ne tourne : le widget garde ses données et l'indique (une seule écriture). */
+  /** Without a workshop, nothing runs: the widget keeps its data and says so (a single write). */
   private async marquerAtelierArrete(w: WidgetLu): Promise<EtatWidget> {
     const avant = await lireEtatWidget(this.o.dossierWidgets, w.id);
     if (avant.statut === "atelier-arrete") return avant;
@@ -509,8 +509,8 @@ export class PlanificateurWidgets {
   }
 
   /**
-   * Une vraie exécution. Pour un widget à heures, son issue est notée dans le suivi, pour le créneau où elle a commencé
-   * (les essais ne passent jamais par ici).
+   * A real run. For a widget with hours, its outcome is noted in the tracking, for the slot where it started
+   * (tries never go through here).
    */
   private async recolter(w: WidgetLu, declencheur: Execution["declencheur"]): Promise<EtatWidget & { execution?: string }> {
     const debut = this.o.horloge();
@@ -523,8 +523,8 @@ export class PlanificateurWidgets {
   }
 
   /**
-   * Écrit le suivi des heures sur l'état relu (rien avant la première heure du jour, ni pour une exécution sans effet).
-   * `fin` : la fin de l'exécution, d'où compte l'attente avant un réessai.
+   * Writes the hours tracking on the re-read state (nothing before the day's first hour, nor for a run with no effect).
+   * `fin`: the end of the run, from which the wait before a retry counts.
    */
   private async noterHeure(id: string, creneau: string | null, issue: IssueHeure, fin: Date): Promise<SuiviHeures | null> {
     if (!creneau || issue === "sans-effet") return null;
@@ -551,34 +551,34 @@ export class PlanificateurWidgets {
         (r) => r.execution,
       ));
     } catch (e) {
-      // La récolte a pu écrire en-cours avant d'échouer (disque, conteneur…) : le widget ne doit pas y rester. Le texte
-      // de l'exception n'est pas gardé (il peut citer ce que le widget a lu) : seul un message fixe du noyau l'est.
+      // The harvest may have written en-cours before failing (disk, container…): the widget must not stay there. The exception's
+      // text is not kept (it may quote what the widget read): only a fixed kernel message is.
       console.error(`[webaios] récolte du widget ${w.id} :`, e);
       etat = this.arrete
         ? avant
-        : // `derniereTentative` est toujours le début de la tentative, comme dans la récolte.
+        : // `derniereTentative` is always the start of the attempt, as in the harvest.
           { statut: "erreur", derniereMaj: avant.derniereMaj, derniereTentative: debut.toISOString(), erreur: ERREUR_RECOLTE_INTERNE, erreurNoyau: true };
       await ecrireEtatWidget(this.o.dossierWidgets, w.id, etat);
       this.o.surChange?.();
       return { resultat: etat, issue: this.arrete ? "sans-effet" : "echec" };
     }
-    // Arrêt du noyau pendant la récolte (sortie, changement de profil) : elle n'a pas échoué, elle reprendra plus tard.
+    // Kernel stop during the harvest (exit, profile change): it did not fail, it will resume later.
     if (this.arrete && etat.statut === "erreur") {
       await ecrireEtatWidget(this.o.dossierWidgets, w.id, avant);
       this.o.surChange?.();
       return { resultat: { ...avant, ...(execution ? { execution } : {}) }, issue: "sans-effet" };
     }
     if (etat.statut === "ok" && nouveaux !== undefined && nouveaux > 0) this.notifierFin(w, nouveaux);
-    // Accord requis, atelier arrêté : l'exécution n'a pas vraiment eu lieu.
+    // Grant required, workshop stopped: the run did not really take place.
     const issue: IssueHeure = etat.statut === "ok" ? "reussie" : etat.statut === "erreur" ? "echec" : "sans-effet";
     return { resultat: { ...etat, ...(execution ? { execution } : {}) }, issue };
   }
 
-  /** Notification de fin : titre = nom du widget, texte = nombre de nouveaux éléments, jamais rien des données. */
+  /** End notification: title = widget name, text = number of new items, never anything from the data. */
   private notifierFin(w: WidgetLu, nouveaux: number): void {
     if (!this.o.notifier || "erreur" in w || w.declaration.recolte?.notifier !== true) return;
     try {
-      // `nom` est écrit par l'agent : caractères de contrôle et invisibles remplacés, sur une seule ligne.
+      // `nom` is written by the agent: control and invisible characters replaced, on a single line.
       const titre = w.declaration.nom.replace(/[\p{Cc}\p{Cf}]/gu, " ").replace(/\s+/g, " ").trim() || w.id;
       this.o.notifier({ widget: w.id, titre, texte: texteNotification(nouveaux) });
     } catch (e) {
@@ -587,8 +587,8 @@ export class PlanificateurWidgets {
   }
 
   /**
-   * Récolte ce widget tout de suite (après la récolte en cours) et rend son nouvel état, avec l'id de l'exécution écrite
-   * (aucune si rien n'a tourné : atelier arrêté, noyau qui s'arrête, accord retiré pendant).
+   * Harvests this widget right away (after the harvest in progress) and returns its new state, with the id of the written run
+   * (none if nothing ran: workshop stopped, kernel stopping, grant withdrawn meanwhile).
    */
   async recolterMaintenant(id: string, declencheur: Execution["declencheur"] = "manuelle"): Promise<EtatWidget & { execution?: string }> {
     const demande = this.demande(id);
@@ -608,14 +608,14 @@ export class PlanificateurWidgets {
   }
 
   /**
-   * Essai du constructeur : rejoue le workflow du widget depuis `depart` avec les sorties amont de l'exécution
-   * `origine`, dans la même file que les vraies exécutions (le conteneur porte l'id du widget). Sans atelier, refusé
-   * sans toucher à l'état du widget.
+   * Builder try: replays the widget's workflow from `depart` with the upstream outputs of run
+   * `origine`, in the same queue as the real runs (the container carries the widget's id). Without a workshop, refused
+   * without touching the widget's state.
    */
   async rejouer(id: string, origine: string, depart: string): Promise<ResultatEssai> {
     const demande = this.demande(id);
     await this.attendrePret();
-    // L'essai suit la voie de son widget.
+    // The try follows its widget's lane.
     try {
       return await this.dansSaVoie(id, async (w): Promise<ResultatEssai> => {
         demande.commencee();
@@ -631,7 +631,7 @@ export class PlanificateurWidgets {
             (r) => (r.ok ? r.execution : undefined),
           );
         } catch (e) {
-          // Le texte de l'exception peut citer ce que le widget a lu : seul un message fixe du noyau est rendu.
+          // The exception's text may quote what the widget read: only a fixed kernel message is returned.
           console.error(`[webaios] essai du widget ${id} :`, e);
           return { ok: false, erreur: ERREUR_RECOLTE_INTERNE };
         }
@@ -646,19 +646,19 @@ export class PlanificateurWidgets {
   }
 
   /**
-   * Coupe la minuterie ; les récoltes en cours (une par voie au plus) sont tuées dans leur conteneur et attendues, de
-   * façon bornée : une veille interrompue doit encore écrire sa mémoire et son exécution « interrompue ».
+   * Cuts the timer; the harvests in progress (one per lane at most) are killed in their container and waited for, in a
+   * bounded way: an interrupted watch must still write its memory and its « interrompue » run.
    */
   async arreter(): Promise<void> {
     clearInterval(this.minuterie);
     this.arrete = true;
     await this.supprimerConteneurs();
-    // Borné : quitter le navigateur ne doit pas attendre une récolte qui aurait échappé à l'arrêt.
+    // Bounded: quitting the browser must not wait for a harvest that escaped the shutdown.
     const tout = Promise.all([this.files.courte, this.files.longue, ...this.parWidget.values()].map((x) => x.catch(() => {})));
     let minuterie: NodeJS.Timeout | undefined;
     await Promise.race([tout, new Promise((ok) => (minuterie = setTimeout(ok, this.o.attenteArretMs ?? ATTENTE_ARRET_MS)))]);
     clearTimeout(minuterie);
-    // Toujours pas finies : leur conteneur a pu démarrer après la première suppression.
+    // Still not finished: their container may have started after the first removal.
     await this.supprimerConteneurs();
   }
 }

@@ -6,9 +6,9 @@ import type { PlanPage } from "./plan.js";
 import { miseEnPageDernierRecours, miseEnPageSecours } from "./secours.js";
 import { validerPlan } from "./valider.js";
 
-// La mise en page d'une action : Gemma choisit des composants et les remplit par référence, WebAiOs valide. Une seconde
-// tentative reçoit les raisons du refus ; sans Gemma, trop lente, ou deux fois à côté, la mise en page de secours.
-// Le délai part du démarrage réel du premier appel (pas de la demande, qui peut attendre dans la file) et couvre les deux.
+// The layout of an action: Gemma chooses components and fills them in by reference, WebAiOs validates. A second
+// try receives the reasons for the denial; without Gemma, too slow, or off twice, the fallback layout.
+// The delay starts from the real start of the first call (not the request, which may wait in the queue) and covers both.
 
 export const DELAI_MISE_EN_PAGE_MS = 90_000;
 
@@ -48,7 +48,7 @@ export function promptMiseEnPage(o: { consigne: string | null; catalogue: string
   return parties.join("\n\n");
 }
 
-/** Le JSON d'une réponse : un objet déjà lu, ou un texte (éventuellement entouré de balises de code). */
+/** The JSON of an answer: an already-read object, or a text (possibly wrapped in code fences). */
 function lireJson(reponse: unknown): { valeur: unknown } | null {
   if (typeof reponse !== "string") return reponse !== null && typeof reponse === "object" ? { valeur: reponse } : null;
   const essayer = (t: string) => {
@@ -103,7 +103,7 @@ export async function mettreEnPage(o: {
       try {
         reponse = await ia.gemma({ prompt, json: true }, { auDemarrage, signal: ctl.signal });
       } catch (e) {
-        // L'IA locale lève une réponse qui n'est pas du JSON (`json: true`) : une réponse à côté, pas une panne.
+        // The local AI throws an answer that is not JSON (`json: true`): an off answer, not an outage.
         if (!ctl.signal.aborted && e instanceof Error && e.message === GEMMA_JSON_INVALIDE) {
           erreurs = [NON_JSON];
           continue;

@@ -1,21 +1,21 @@
-// liste.nouveaux : les éléments dont la clé n'a pas été vue par ce bloc. Sa mémoire : les clés vues avec la date où
-// elles l'ont été pour la dernière fois (`[cle, dateIso]`), de la plus ancienne à la plus récente, au plus CLES_MAX.
-// Une ancienne mémoire en textes (sans dates) est lue datée de `maintenant` : rien ne réapparaît d'un coup. Avec
-// `garderJours`, une clé vue il y a plus longtemps est oubliée : elle redevient nouvelle et n'est pas réécrite.
+// liste.nouveaux: the items whose key this block has not seen. Its memory: the seen keys with the date they were
+// last seen (`[cle, dateIso]`), from oldest to most recent, at most CLES_MAX.
+// An old memory made of texts (no dates) is read as dated `maintenant`: nothing reappears all at once. With
+// `garderJours`, a key seen longer ago is forgotten: it becomes new again and is not written back.
 import { lireChemin } from "../gabarits.mjs";
 
 export const CLES_MAX = 5000;
-/** Une clé plus longue est gardée (et comparée) coupée à cette longueur. */
+/** A longer key is kept (and compared) cut to this length. */
 export const CLE_LONGUEUR_MAX = 500;
 export const JOUR_MS = 86_400_000;
 
-/** La clé retenue pour une valeur (coupée à CLE_LONGUEUR_MAX) ; null si absente. */
+/** The key kept for a value (cut to CLE_LONGUEUR_MAX); null if absent. */
 export const enCle = (v) =>
   v === undefined || v === null || v === ""
     ? null
     : (typeof v === "object" ? JSON.stringify(v) : String(v)).slice(0, CLE_LONGUEUR_MAX);
 
-/** Les clés retenues, par clé, avec leur date ; dans l'ordre de la mémoire (une clé en double garde sa dernière place). */
+/** The kept keys, by key, with their date; in memory order (a duplicate key keeps its last place). */
 function lireMemoire(memoire, maintenant) {
   const vues = new Map();
   if (!Array.isArray(memoire)) return vues;
@@ -44,25 +44,25 @@ export default {
     let sansCle = 0;
     const sortie = entree.filter((element) => {
       const cle = enCle(lireChemin(element, parametres.cle));
-      // Un élément sans clé ne peut pas être reconnu la fois suivante : il passe, sans être retenu.
+      // An item without a key cannot be recognized next time: it passes, without being kept.
       if (cle === null) {
         sansCle++;
         return true;
       }
-      // Déjà vue avant, ou déjà passée plus haut dans cette liste : pas nouvelle.
+      // Already seen before, or already passed higher up in this list: not new.
       const nouvelle = !vues.has(cle) && !vuesCetteFois.has(cle);
       vuesCetteFois.add(cle);
       if (nouvelle) nouvelles.push(cle);
       return nouvelle;
     });
     if (sansCle) journal(`${sansCle} élément(s) sans clé ${parametres.cle}, gardés`);
-    // Les clés revues cette fois deviennent les plus récentes, datées de maintenant (une annonce toujours en ligne ne
-    // revient pas) ; les plus anciennes sont oubliées au-delà de CLES_MAX.
+    // The keys seen again this time become the most recent, dated now (an ad still online does not
+    // come back); the oldest are forgotten beyond CLES_MAX.
     const toutes = [
       ...[...vues].filter(([c]) => !vuesCetteFois.has(c)),
       ...[...vuesCetteFois].map((c) => [c, instant]),
     ];
-    // `memoireEntiere` (avant le plafond) sert à l'exécution progressive, qui retire d'abord les clés en suspens.
+    // `memoireEntiere` (before the cap) is used by the progressive run, which first removes the pending keys.
     return { sortie, memoire: toutes.slice(-CLES_MAX), nouvelles, memoireEntiere: toutes };
   },
 };

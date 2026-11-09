@@ -41,13 +41,13 @@ import { REJEU_TROP_GROS } from "./rejeu.js";
 import type { GenreSortie, Proprietaire } from "./schema.js";
 import { WEB_REQUIS, type WorkflowValide } from "./valider.js";
 
-/** Le processus de l'exécution (le client `docker run -i`) : son seul canal avec le noyau est stdin / stdout. */
+/** The run's process (the `docker run -i` client): its only channel with the kernel is stdin / stdout. */
 export interface ProcessusRecolte {
   stdin: Writable;
   stdout: Readable;
   stderr: Readable;
   tuer(): void;
-  /** Code de sortie ; null si tué par un signal ou impossible à lancer. */
+  /** Exit code; null if killed by a signal or impossible to launch. */
   fin: Promise<number | null>;
 }
 export type LanceurProcessus = (cmd: string, args: string[]) => ProcessusRecolte;
@@ -61,33 +61,33 @@ export const lancerParDefaut: LanceurProcessus = (cmd, args) => {
   return { stdin: enfant.stdin, stdout: enfant.stdout, stderr: enfant.stderr, tuer: () => void enfant.kill("SIGKILL"), fin };
 };
 
-/** Délai côté noyau ; le conteneur s'arrête de lui-même après 180 s (+5 s). */
+/** Kernel-side timeout; the container stops by itself after 180 s (+5 s). */
 export const DELAI_EXECUTION_MS = 200_000;
 
-// Recopiées dans l'interpréteur du conteneur (docker/moteur/interpreteur.mjs) : un test vérifie qu'elles s'accordent.
-/** Écart entre deux publications au fil de l'eau. */
+// Copied into the container's interpreter (docker/moteur/interpreteur.mjs): a test checks that they agree.
+/** Gap between two as-it-goes publications. */
 export const ECART_PUBLICATIONS_MS = 5000;
-/** Écart entre deux envois de la mémoire en cours de route (exécution progressive). */
+/** Gap between two sends of the memory along the way (progressive run). */
 export const ECART_MEMOIRE_MS = 30_000;
 /**
- * Une publication arrivée moins de 4 s après la précédente relayée est ignorée : le conteneur les espace de 5 s sur
- * son horloge, la marge couvre l'écart entre les deux horloges et le temps de transport.
+ * A publication that arrives less than 4 s after the previous relayed one is ignored: the container spaces them 5 s apart on
+ * its clock, the margin covers the gap between the two clocks and the transport time.
  */
 const ECART_PUBLICATIONS_TOLERE_MS = ECART_PUBLICATIONS_MS - 1000;
-/** Action : écart entre deux lignes `avancement` d'un même bloc (la dernière, `faits = total`, part toujours). */
+/** Action: gap between two `avancement` lines of the same block (the last one, `faits = total`, always goes). */
 export const ECART_AVANCEMENT_MS = 1000;
 /**
- * Une ligne `avancement` arrivée moins de 500 ms après la précédente relayée du même bloc est ignorée (sauf la dernière) :
- * la marge couvre l'écart entre les horloges et le temps de transport, un code qui en écrirait sans cesse est borné.
+ * An `avancement` line that arrives less than 500 ms after the previous relayed one of the same block is ignored (except the last):
+ * the margin covers the gap between the clocks and the transport time, code that wrote them constantly is bounded.
  */
 const ECART_AVANCEMENT_TOLERE_MS = ECART_AVANCEMENT_MS / 2;
-/** L'hôte annoncé par la trace `lecture` d'une recherche web. */
+/** The host announced by the `lecture` trace of a web search. */
 const HOTE_RECHERCHE = "duckduckgo.com";
 
 /**
- * Les délais d'une exécution. Sans `dureeMaxMinutes` : ceux d'aujourd'hui (conteneur 180 s, noyau 200 s, aucune limite
- * envoyée : l'interpréteur garde ses 150 s). Avec D minutes : plus aucun élément lancé après D × 60 s, conteneur arrêté
- * à D × 60 + 30 s, noyau à D × 60 + 50 s.
+ * The delays of a run. Without `dureeMaxMinutes`: today's (container 180 s, kernel 200 s, no limit
+ * sent: the interpreter keeps its 150 s). With D minutes: no item run after D × 60 s, container stopped
+ * at D × 60 + 30 s, kernel at D × 60 + 50 s.
  */
 export function delaisExecution(dureeMaxMinutes: number | undefined): { conteneurS: number; noyauMs: number; limiteMs?: number } {
   if (dureeMaxMinutes === undefined) return { conteneurS: DELAI_RECOLTE_S, noyauMs: DELAI_EXECUTION_MS };
@@ -99,12 +99,12 @@ export const PROFIL_REFUSE =
 
 const MAX_APPELS_EN_VOL = 32;
 /**
- * Plafonds effectifs du noyau : une erreur (d'exécution, de bloc, d'appel) à 500 caractères, le journal global à 2000.
- * Ceux du conteneur (2000 caractères par trace) et de l'écriture des exécutions (2 Ko par ligne) ne sont que des filets.
+ * Effective kernel caps: an error (run, block, call) at 500 characters, the global log at 2000.
+ * Those of the container (2000 characters per trace) and of the runs' write (2 KB per line) are only safety nets.
  */
 export const JOURNAL_MAX = 2000;
 export const ERREUR_MAX = 500;
-/** Remarque du noyau quand la mémoire des blocs rendue est trop grosse pour son fichier. */
+/** Kernel remark when the returned blocks' memory is too big for its file. */
 export const MEMOIRE_NON_GARDEE = "Mémoire des blocs non gardée : plus de 3 Mo (l'ancienne reste)";
 const JOURNAL_BLOC_LIGNES = 200;
 const JOURNAL_BLOC_CARACTERES = 500;
@@ -112,43 +112,43 @@ const JOURNAL_BLOC_CARACTERES = 500;
 export interface ContexteWorkflow {
   proprietaire: Proprietaire;
   valide: WorkflowValide;
-  /** Dossier des fichiers du propriétaire (`.mjs` des blocs `code`), monté en lecture seule sur `/widget`. */
+  /** Folder of the owner's files (`.mjs` of the `code` blocks), mounted read-only on `/widget`. */
   dossierFichiers: string;
   config: unknown;
   precedent: unknown;
   memoire: MemoireBlocs;
   /**
-   * Domaines lus avec le compte de l'utilisateur, et domaines publics permis quand il y en a avec compte. `web` : recherches
-   * web permises et lectures ouvertes ménagées (jamais avec un compte).
+   * Domains read with the user's account, and public domains allowed when there are some with an account. `web`: web searches
+   * allowed and paced open reads (never with an account).
    */
   sources: { compte: readonly string[]; publiques: readonly string[]; web?: boolean };
-  /** Relu à chaque lecture avec compte ; null = plus d'accord. */
+  /** Re-read at each read with an account; null = grant gone. */
   accord(): Promise<{ profil: string } | null>;
-  /** Le navigateur refuse le profil de l'accord (supprimé, devenu privé). */
+  /** The browser refuses the grant's profile (deleted, became private). */
   surProfilRefuse(): Promise<void>;
   messageAccordRequis: string;
   declencheur: Execution["declencheur"];
   /**
-   * Un essai du constructeur (plan de `planRejeu`) : seuls les blocs `relances` tournent, avec les `sorties` reprises
-   * de l'exécution d'origine ; aucune mémoire envoyée ni gardée. `repris` : les blocs repris et leur nombre d'éléments.
+   * A builder try (plan of `planRejeu`): only the `relances` blocks run, with the `sorties` taken
+   * from the original run; no memory sent or kept. `repris`: the taken blocks and their number of items.
    */
   rejeu?: { relances: string[]; sorties: Record<string, unknown>; repris: Record<string, number | null> };
-  /** `recolte.dureeMaxMinutes` du widget : règle les délais et rend l'exécution progressive (hors essai). */
+  /** The widget's `recolte.dureeMaxMinutes`: sets the delays and makes the run progressive (except a try). */
   dureeMaxMinutes?: number;
-  /** Action seulement : le texte tapé au lancement, envoyé dans `debut` et recopié dans l'exécution. */
+  /** Action only: the text typed at launch, sent in `debut` and copied into the run. */
   saisie?: string;
-  /** Action seulement : les blocs par élément envoient leur avancement (relayé en trace `avancement`). */
+  /** Action only: the per-item blocks send their progress (relayed as an `avancement` trace). */
   avancement?: true;
-  /** Action seulement : levé, l'exécution est arrêtée (conteneur tué) et conclut « interrompue » (ACTION_ARRETEE). */
+  /** Action only: raised, the run is stopped (container killed) and concludes « interrompue » (ACTION_ARRETEE). */
   signal?: AbortSignal;
 }
 
-/** Une publication au fil de l'eau : les éléments déjà terminés, `faits` sur `total`. */
+/** An as-it-goes publication: the items already finished, `faits` out of `total`. */
 export type Publication = { donnees: unknown; faits: number; total: number };
 
 /**
- * Une trace acceptée (dans l'ordre), relayée en direct au constructeur. `avancement` : venue du conteneur (action
- * seulement) ; `lecture` : émise par le noyau à chaque lecture acceptée, rattachée au dernier bloc commencé et pas fini.
+ * An accepted trace (in order), relayed live to the builder. `avancement`: coming from the container (action
+ * only); `lecture`: emitted by the kernel at each accepted read, attached to the last block started and not finished.
  */
 export type TraceDirecte =
   | { bloc: string; etape: "debut" }
@@ -157,40 +157,40 @@ export type TraceDirecte =
   | { bloc: string; etape: "lecture"; hote: string };
 
 export interface InfraWorkflow {
-  /** Dossier du moteur sur le Mac (`docker/moteur`), monté en lecture seule. */
+  /** Folder of the engine on the Mac (`docker/moteur`), mounted read-only. */
   moteur: string;
   atelier: Pick<Atelier, "commandeRecolte" | "supprimerRecolte">;
   lancer?: LanceurProcessus;
-  /** null : pas d'IA locale, `kev` et `gemma` répondent une erreur. */
+  /** null: no local AI, `kev` and `gemma` answer with an error. */
   ia: Pick<IaLocale, "kev" | "gemma"> | null;
   pont: PontNavigateur;
   horloge: () => Date;
   delaiMs?: number;
-  /** Tests seulement : permet `recuperer` et `lirePage` vers des adresses locales (127.0.0.1…). */
+  /** Tests only: allows `recuperer` and `lirePage` to local addresses (127.0.0.1…). */
   adressesLocales?: boolean;
-  /** Ménagement des recherches et des lectures ouvertes (défaut : MENAGEMENT_PAR_DEFAUT, partagé). */
+  /** Pacing of the searches and open reads (default: MENAGEMENT_PAR_DEFAUT, shared). */
   menagement?: Menagement;
-  /** Tests seulement : la base des recherches DuckDuckGo. */
+  /** Tests only: the base of the DuckDuckGo searches. */
   urlRecherche?: string;
-  /** Appelé pour chaque trace acceptée (jamais pour une ligne rejetée) ; une erreur du relais est ignorée. */
+  /** Called for each accepted trace (never for a rejected line); an error from the relay is ignored. */
   surTrace?: (t: TraceDirecte) => void;
   /**
-   * Une publication de la chaîne au fil de l'eau (voir `executerWorkflow`). Les relais (publications et mémoire) sont
-   * faits l'un après l'autre et tous finis avant que l'exécution rende ; une erreur d'un relais est ignorée.
+   * An as-it-goes chain publication (see `executerWorkflow`). The relays (publications and memory) are
+   * done one after the other and all finished before the run returns; an error from a relay is ignored.
    */
   surPublication?: (p: Publication) => Promise<void>;
-  /** Exécution progressive seulement : la mémoire reçue en cours de route, au plus toutes les ECART_MEMOIRE_MS. */
+  /** Progressive run only: the memory received along the way, at most every ECART_MEMOIRE_MS. */
   surMemoire?: (m: MemoireBlocs) => Promise<void>;
 }
 
 export type IssueWorkflow =
   | { t: "fin"; sortie: { vers: GenreSortie; valeur: unknown }; memoire: MemoireBlocs | null }
   /**
-   * `erreurDuCode` : le texte vient du conteneur (le code de l'agent a pu l'écrire), pas du noyau. `memoire` (exécution
-   * progressive seulement, absente sinon) : la dernière mémoire reçue, null si aucune.
+   * `erreurDuCode`: the text comes from the container (the agent's code may have written it), not from the kernel. `memoire` (progressive
+   * run only, absent otherwise): the last memory received, null if none.
    */
   | { t: "echec"; erreur: string; erreurDuCode: boolean; memoire?: MemoireBlocs | null }
-  /** Arrêté par le noyau (délai, accord, profil refusé, réponse trop grande…) : le texte est du noyau. `memoire` : idem. */
+  /** Stopped by the kernel (delay, grant, profile refused, answer too big…): the text is the kernel's. `memoire`: same. */
   | { t: "arret"; statut: "erreur" | "accord-requis"; erreur: string; memoire?: MemoireBlocs | null };
 
 function args<T>(schema: { safeParse(x: unknown): { success: true; data: T } | { success: false } }, a: unknown, f: string): T {
@@ -199,26 +199,26 @@ function args<T>(schema: { safeParse(x: unknown): { success: true; data: T } | {
   return r.data;
 }
 
-/** Le ménagement partagé par toutes les exécutions du noyau, quand l'appelant n'en donne pas. */
+/** The pacing shared by all the kernel's runs, when the caller gives none. */
 export const MENAGEMENT_PAR_DEFAUT = new Menagement();
 
 type Arret = { statut: "erreur" | "accord-requis"; erreur: string };
-/** L'exécution est arrêtée : l'appel ne reçoit aucune réponse. */
+/** The run is stopped: the call receives no answer. */
 const SANS_REPONSE = Symbol("sans réponse");
 
-/** Trace d'un bloc pendant l'exécution, avec ce qu'il faut pour borner son journal. */
+/** Trace of a block during the run, with what is needed to bound its log. */
 type TraceEnCours = TraceBloc & { commence: boolean; fini: boolean; coupees: number };
 
 /**
- * Exécute un workflow validé dans un conteneur sans réseau : envoie `debut` (workflow, config, précédent) et la
- * mémoire des blocs, répond aux appels (lirePage, recuperer, kev, gemma) avec les règles des sources et de l'accord,
- * range les traces des blocs. N'écrit rien : l'appelant décide de ce qui est gardé (vie privée).
+ * Runs a validated workflow in a container without network: sends `debut` (workflow, config, previous) and the
+ * blocks' memory, answers the calls (lirePage, recuperer, kev, gemma) with the rules of the sources and of the grant,
+ * stores the blocks' traces. Writes nothing: the caller decides what is kept (privacy).
  *
- * Exécution progressive (hors essai, avec `dureeMaxMinutes` ou une sortie au fil de l'eau) : la mémoire reçue en cours
- * de route est relayée (`surMemoire`) et la dernière revient avec un échec ou un arrêt. Une ligne `publication` n'est
- * relayée (`surPublication`) que pendant la chaîne au fil de l'eau (entre le dernier `debut` et la première `fin` de
- * ses blocs), au moins 4 s après la précédente relayée, avec `faits ≤ total` et des données de 2 Mo au plus : une
- * publication écrite par le code de l'agent hors de la chaîne, ou en retard, ne peut pas écraser la sortie finale.
+ * Progressive run (not a try, with `dureeMaxMinutes` or an as-it-goes output): the memory received along the
+ * way is relayed (`surMemoire`) and the last one comes back with a failure or a stop. A `publication` line is only
+ * relayed (`surPublication`) during the as-it-goes chain (between the last `debut` and the first `fin` of
+ * its blocks), at least 4 s after the previous relayed one, with `faits ≤ total` and data of 2 MB at most: a
+ * publication written by the agent's code outside the chain, or late, cannot overwrite the final output.
  */
 export async function executerWorkflow(
   ctx: ContexteWorkflow,
@@ -229,16 +229,16 @@ export async function executerWorkflow(
   const debut = horloge().toISOString();
   const { workflow, ordre } = ctx.valide;
   const rejeu = ctx.rejeu ?? null;
-  // Pour un essai, seuls les blocs relancés envoient des traces, dans l'ordre d'exécution.
+  // For a try, only the rerun blocks send traces, in run order.
   const relances = rejeu ? new Set(rejeu.relances) : null;
   const attendu = relances ? ordre.filter((id) => relances.has(id)) : ordre;
   const types = new Map(workflow.blocs.map((b) => [b.id, b.type]));
   const auFilDeLEau = workflow.blocs.find((b) => b.id === ctx.valide.sortie.id)?.parametres.auFilDeLEau === true;
   const progressif = !rejeu && (ctx.dureeMaxMinutes !== undefined || auFilDeLEau);
-  // Un essai n'a pas de chaîne : il tourne bloc par bloc et ne publie rien.
+  // A try has no chain: it runs block by block and publishes nothing.
   const chaine = rejeu ? [] : chaineAuFilDeLEau(ctx.valide);
   const delais = delaisExecution(ctx.dureeMaxMinutes);
-  // Les paramètres validés de cette exécution : la mémoire n'est reprise que si elle a été retenue avec les mêmes.
+  // The validated params of this run: the memory is only taken back if it was kept with the same ones.
   const empreintes = new Map(workflow.blocs.map((b) => [b.id, empreinteParametres(b.parametres)]));
   const traces = new Map<string, TraceEnCours>(
     ordre.map((id) => [
@@ -254,21 +254,21 @@ export async function executerWorkflow(
   }
   let journal = "";
   let remarque: string | null = null;
-  // Arrêtée par le signal de l'appelant (« Arrêter » d'une action) : l'exécution est « interrompue ».
+  // Stopped by the caller's signal (an action's « Arrêter »): the run is « interrompue ».
   let arreteeParSignal = false;
 
   const conclure = (issue: IssueWorkflow) => {
     const blocs: TraceBloc[] = [...traces.values()].map(({ commence, fini, coupees, ...t }) => {
       const b: TraceBloc = { ...t };
-      // Commencé sans fin : le conteneur s'est arrêté pendant le bloc (ou a été arrêté à la demande).
+      // Started without an end: the container stopped during the block (or was stopped on request).
       if (commence && !fini) b.statut = arreteeParSignal ? "interrompu" : "echoue";
       if (coupees > 0) b.journal = [`… ${coupees} lignes coupées`, ...t.journal];
       return b;
     });
     const statut: Execution["statut"] =
       issue.t === "fin"
-        ? // Un bloc partiel, ou qui n'a pas fini (une `fin` arrivée avant lui) : la sortie n'est pas complète. Pour un
-          // essai, seuls les blocs relancés comptent.
+        ? // A partial block, or one that did not finish (a `fin` that arrived before it): the output is not complete. For a
+          // try, only the rerun blocks count.
           blocs.every((b) => b.statut === "reussi" || (relances !== null && !relances.has(b.id))) ? "reussie" : "partielle"
         : issue.t === "arret" && issue.statut === "accord-requis"
           ? "accord-requis"
@@ -292,21 +292,21 @@ export async function executerWorkflow(
     }
     if (remarque) {
       journal = (journal ? journal + "\n" : "") + remarque;
-      // Aussi dans l'exécution, au journal du bloc de sortie.
+      // Also in the run, in the output block's log.
       blocs.find((b) => b.id === ctx.valide.sortie.id)?.journal.push(remarque);
     }
     return { issue, execution, journal: journal.slice(-JOURNAL_MAX) };
   };
   const echec = (erreur: string, erreurDuCode: boolean): IssueWorkflow => ({ t: "echec", erreur: tronquer(erreur, ERREUR_MAX), erreurDuCode });
 
-  // Pour un propriétaire avec compte, les lectures publiques sont limitées aux domaines déclarés (vide : aucune).
+  // For an owner with an account, public reads are limited to the declared domains (empty: none).
   const aCompte = ctx.sources.compte.length > 0;
   const domainesPublics = aCompte ? ctx.sources.publiques : null;
-  // Recherches web et lectures ouvertes ménagées : seulement pour un widget qui déclare `web`, jamais avec un compte.
+  // Paced web searches and open reads: only for a widget that declares `web`, never with an account.
   const web = ctx.sources.web === true && !aCompte;
   const menagement = infra.menagement ?? MENAGEMENT_PAR_DEFAUT;
-  // Levé à l'arrêt ou à la fin : une recherche ou une lecture encore en file ne part pas, et celles en cours (pont,
-  // récupération) sont abandonnées. Propre à cette exécution : les lectures des autres ne sont pas touchées.
+  // Raised at the stop or the end: a search or read still in the queue does not go out, and those in progress (bridge,
+  // fetch) are abandoned. Specific to this run: the other runs' reads are not touched.
   const finExecution = new AbortController();
   let recherches = 0;
   let rechercheRefusee = false;
@@ -323,15 +323,15 @@ export async function executerWorkflow(
     ...(ctx.saisie !== undefined ? { saisie: ctx.saisie } : {}),
     ...(ctx.avancement ? { avancement: true as const } : {}),
   });
-  // Filet : l'appelant mesure avant (`debutTropGros`) pour refuser sans rien écrire ; le récolteur refuserait la ligne.
+  // Safety net: the caller measures before (`debutTropGros`) to refuse without writing anything; the harvester would refuse the line.
   if (rejeu && Buffer.byteLength(debutLigne) > LIGNE_MAX_OCTETS) {
     return conclure({ t: "arret", statut: "erreur", erreur: REJEU_TROP_GROS });
   }
 
-  // Un conteneur du même nom laissé par un arrêt brutal ferait échouer `docker run` (125) ; les files n'en lancent
-  // qu'un par propriétaire, celui-ci ne peut donc être qu'un reste. Avant le test du signal, levé peut-être pendant.
+  // A container of the same name left by an abrupt stop would make `docker run` fail (125); the queues only launch
+  // one per owner, so this one can only be a leftover. Before the signal test, perhaps raised meanwhile.
   await infra.atelier.supprimerRecolte(ctx.proprietaire).catch(() => {});
-  // Arrêtée avant même de partir : rien n'est lancé.
+  // Stopped before even leaving: nothing is launched.
   if (ctx.signal?.aborted) {
     arreteeParSignal = true;
     return conclure({ t: "arret", statut: "erreur", erreur: ACTION_ARRETEE });
@@ -349,30 +349,30 @@ export async function executerWorkflow(
   let terminal: Extract<MessageRecolteur, { t: "fin" | "echec" }> | null = null;
   let memoireRecue: MemoireBlocs | null = null;
   let enVol = 0;
-  // Relais vers l'appelant (publications, mémoire), l'un après l'autre ; tous attendus avant de rendre.
+  // Relays to the caller (publications, memory), one after the other; all awaited before returning.
   let relais: Promise<void> = Promise.resolve();
   const enFile = (f: () => Promise<void>) => {
     relais = relais.then(f).catch(() => {});
   };
   let memoireRelayeeA: number | null = null;
-  // Exécution progressive : le conteneur résout les clés des éléments qu'une publication va montrer, envoie `memoire`,
-  // puis `publication`. Si le noyau rejette cette publication, ces éléments n'ont jamais été montrés : la mémoire doit
-  // rester celle d'avant (R34). Une mémoire est donc tenue jusqu'à la ligne suivante :
-  // - une publication acceptée la rend sûre ; rejetée, elle est écartée, et les mémoires suivantes aussi (elles
-  //   retiennent encore ces clés) jusqu'à la prochaine publication acceptée, qui montre de nouveau tous les éléments ;
-  // - une autre ligne (trace, appel, echec, fin…) la rend sûre : elle ne précédait pas de publication ;
-  // - rien après (arrêt, conteneur tué) : écartée, elle précédait peut-être une publication jamais lue.
-  // `memoireSure` est celle d'un échec ou d'un arrêt et des relais `surMemoire` ; une fin garde la dernière reçue
-  // (`memoireRecue`), car la sortie montre tout.
+  // Progressive run: the container resolves the keys of the items a publication will show, sends `memoire`,
+  // then `publication`. If the kernel rejects this publication, these items were never shown: the memory must
+  // stay the one from before (R34). A memory is therefore held until the next line:
+  // - an accepted publication makes it safe; rejected, it is discarded, and so are the following memories (they
+  //   still keep these keys) until the next accepted publication, which shows all the items again;
+  // - another line (trace, call, echec, fin…) makes it safe: it did not precede a publication;
+  // - nothing after (stop, container killed): discarded, it may have preceded a publication never read.
+  // `memoireSure` is that of a failure or a stop and of the `surMemoire` relays; an end keeps the last one received
+  // (`memoireRecue`), because the output shows everything.
   let memoireSure: MemoireBlocs | null = null;
   let memoireTenue: { memoire: MemoireBlocs | null; recueA: number } | null = null;
   let memoireDouteuse = false;
-  // La trace `fin` du bloc de sortie est passée : une mémoire reçue ensuite (verifierMemoire, juste avant `fin`) a
-  // résolu toutes les clés en suspens, que seule la sortie finale montre. Elle ne sert qu'à l'issue `fin`
-  // (`memoireRecue`), jamais relayée ni sûre : si les données finales sont refusées, la mémoire sûre d'avant reste.
+  // The output block's `fin` trace has passed: a memory received afterwards (verifierMemoire, just before `fin`) has
+  // resolved all the pending keys, which only the final output shows. It is only used for the `fin` outcome
+  // (`memoireRecue`), never relayed or safe: if the final data is refused, the previous safe memory stays.
   let sortieFinie = false;
-  // L'adoption se fait dans la file des relais, après les publications reçues avant elle : une mémoire n'est sûre que
-  // si les données qu'elle suppose montrées ont bien été écrites (F1).
+  // Adoption happens in the relay queue, after the publications received before it: a memory is only safe
+  // if the data it assumes shown has really been written (F1).
   const adopterDansLaFile = async (t: { memoire: MemoireBlocs | null; recueA: number }) => {
     if (!t.memoire || memoireDouteuse) return;
     const memoire = t.memoire;
@@ -406,7 +406,7 @@ export async function executerWorkflow(
 
   processus.stdin.on("error", () => {});
   processus.stdin.write(debutLigne);
-  // Seulement la mémoire des blocs de ce workflow, avec leur type ; aucune pour un essai.
+  // Only the memory of this workflow's blocks, with their type; none for a try.
   processus.stdin.write(ligneMemoire(rejeu ? {} : reprendreMemoire(ctx.memoire, types, empreintes)));
   processus.stderr.setEncoding("utf8");
   processus.stderr.on("data", (d: string) => {
@@ -420,8 +420,8 @@ export async function executerWorkflow(
     processus.stdin.write(ligne);
   };
 
-  /** Options de lecture : pour un propriétaire avec compte, le pont reçoit la liste des domaines où il peut naviguer. */
-  // Tests seulement : le pont permet alors aussi les adresses locales (il les refuse sinon, redirections comprises).
+  /** Read options: for an owner with an account, the bridge receives the list of domains where it may navigate. */
+  // Tests only: the bridge then also allows local addresses (it refuses them otherwise, redirects included).
   const avecDomaines = (profil: string | null, domaines: readonly string[] | null) => ({
     profil,
     ...(aCompte && domaines ? { domaines: [...domaines] } : {}),
@@ -430,8 +430,8 @@ export async function executerWorkflow(
   });
 
   /**
-   * Une lecture ouverte (page sans compte, récupération, flux) : pour un widget `web`, comptée (100 par exécution) et
-   * ménagée par hôte, redirections vers un autre site comprises (`changerHote`) ; sinon, faite tout de suite comme avant.
+   * An open read (page without account, fetch, feed): for a `web` widget, counted (100 per run) and
+   * paced per host, redirects to another site included (`changerHote`); otherwise, done right away as before.
    */
   const lectureOuverte = <T>(u: URL, f: (changerHote?: ChangerHote) => Promise<T>): Promise<T> => {
     if (!web) return f();
@@ -451,7 +451,7 @@ export async function executerWorkflow(
       const page = await lectureOuverte(u, (changerHote) => lire(u.href, { ...avecDomaines(null, domainesPublics), ...defilement, ...(changerHote ? { changerHote } : {}) }));
       return verifierPage(page, domainesPublics, adressesLocales);
     }
-    // Le domaine doit être déclaré en `compte` ; l'accord est relu à chaque lecture (il a pu être retiré).
+    // The domain must be declared in `compte`; the grant is re-read at each read (it may have been withdrawn).
     const u = verifierUrl(url, ctx.sources.compte, adressesLocales);
     const accord = await ctx.accord();
     if (!accord) {
@@ -465,7 +465,7 @@ export async function executerWorkflow(
       return verifierPage(page, ctx.sources.compte, adressesLocales);
     } catch (e) {
       if (e instanceof ProfilRefuse || (e as Error)?.name === "ProfilRefuse") {
-        // L'appelant retire l'accord (et ce qui a été lu avec) avant l'arrêt : quand il conclut, il n'existe plus.
+        // The caller withdraws the grant (and what was read with it) before the stop: when it concludes, it no longer exists.
         try {
           await ctx.surProfilRefuse();
         } finally {
@@ -479,7 +479,7 @@ export async function executerWorkflow(
 
   const chercherWeb = async (a: unknown): Promise<unknown> => {
     const { requete, nombre } = args(ArgsChercherWeb, a, "chercherWeb");
-    // Refusé ici même si la validation l'a laissé passer : un bloc `code` ou un recolte.mjs peut appeler chercherWeb.
+    // Refused here even if the validation let it through: a `code` block or a recolte.mjs may call chercherWeb.
     if (!web) throw new Error(WEB_REQUIS);
     if (rechercheRefusee) throw new Error(RECHERCHES_ARRETEES);
     if (recherches >= MAX_RECHERCHES) throw new Error(PLAFOND_RECHERCHES);
@@ -494,19 +494,19 @@ export async function executerWorkflow(
           signal: finExecution.signal,
         });
         const lus = extraireResultats(html, Infinity);
-        // Marqué avant de rendre la voie : une recherche en file voit le refus avant de partir.
+        // Marked before releasing the lane: a queued search sees the refusal before going out.
         if ("refus" in lus) rechercheRefusee = true;
         return lus;
       },
       finExecution.signal,
-      // Un refus arrivé pendant l'attente : celle-ci ne part pas, et ne retarde pas la recherche suivante.
+      // A refusal that arrived during the wait: this one does not go out, and does not delay the next search.
       () => {
         if (rechercheRefusee) throw new Error(RECHERCHES_ARRETEES);
       },
     );
     if ("refus" in r) throw new Error(RECHERCHE_REFUSEE);
     if ("illisible" in r) throw new Error(RESULTATS_ILLISIBLES);
-    // Un résultat vers la machine ou le réseau local n'est jamais rendu (il serait lu ensuite).
+    // A result toward the machine or the local network is never returned (it would be read afterwards).
     return r.resultats.filter((x) => !adresseLocale(new URL(x.url).hostname)).slice(0, nombre);
   };
 
@@ -526,7 +526,7 @@ export async function executerWorkflow(
       case "kev": {
         const corps = args(ArgsKev, a, "kev");
         if (!infra.ia) throw new Error("IA locale indisponible");
-        // Arrêt ou délai : l'appel en vol est abandonné et rend sa place à l'IA partagée.
+        // Stop or delay: the in-flight call is abandoned and gives its place back to the shared AI.
         return infra.ia.kev(corps, { signal: finExecution.signal });
       }
       case "gemma": {
@@ -539,35 +539,35 @@ export async function executerWorkflow(
     }
   };
 
-  // Les traces viennent du conteneur, où tourne le code de l'agent : il peut en écrire de fausses sur stdout. Seules
-  // comptent celles des blocs de ce workflow, dans l'ordre d'exécution (un bloc à la fois), au format du protocole.
-  // Pour un essai, seuls les blocs relancés : une ligne pour un bloc repris ou non relancé est rejetée. Seule exception :
-  // la chaîne au fil de l'eau, dont les blocs commencent tous à la suite puis finissent dans l'ordre.
+  // The traces come from the container, where the agent's code runs: it may write fake ones on stdout. Only
+  // those of this workflow's blocks count, in run order (one block at a time), in the protocol's format.
+  // For a try, only the rerun blocks: a line for a taken or non-rerun block is rejected. Only exception:
+  // the as-it-goes chain, whose blocks all start in a row then finish in order.
   let suivant = 0;
-  /** Blocs commencés et pas encore finis, dans l'ordre : un seul, ou les blocs de la chaîne. */
+  /** Blocks started and not yet finished, in order: a single one, or the chain's blocks. */
   const ouverts: TraceEnCours[] = [];
-  /** Une fin de la chaîne est arrivée : plus aucun début accepté avant que ses blocs aient tous fini. */
+  /** An end of the chain has arrived: no more starts accepted until its blocks have all finished. */
   let fermeture = false;
-  /** Entre le dernier `debut` et la première `fin` de la chaîne : le seul moment où une publication compte. */
+  /** Between the last `debut` and the first `fin` of the chain: the only moment a publication counts. */
   const pendantLaChaine = () => chaine.length > 0 && !fermeture && ouverts.length === chaine.length && ouverts[0]!.id === chaine[0];
   const relayer = (t: TraceDirecte) => {
     try {
       infra.surTrace?.(t);
     } catch {
-      // Le relais en direct n'arrête jamais l'exécution.
+      // The live relay never stops the run.
     }
   };
-  /** Une lecture acceptée (hôte de l'URL, ou celui de la recherche web), sur le dernier bloc commencé et pas fini. */
+  /** An accepted read (URL host, or that of the web search), on the last block started and not finished. */
   function signalerLecture(cible: URL | string) {
     const bloc = ouverts.at(-1);
     const hote = typeof cible === "string" ? cible : cible.hostname.toLowerCase().replace(/\.+$/, "");
     if (bloc) relayer({ bloc: bloc.id, etape: "lecture", hote });
   }
-  /** Par bloc : l'heure de la dernière ligne `avancement` relayée. */
+  /** Per block: the time of the last relayed `avancement` line. */
   const avancementRelayeA = new Map<string, number>();
   const traiterTrace = (m: Exclude<MessageRecolteur, { t: "appel" | "fin" | "echec" }>) => {
     if (m.t === "memoire") {
-      // Un essai ne garde aucune mémoire : ce que le conteneur en dit est ignoré.
+      // A try keeps no memory: what the container says about it is ignored.
       if (rejeu) return;
       const filtree = marquerMemoire(m.memoire as MemoireBlocs, types, empreintes);
       const tropGrosse = Buffer.byteLength(JSON.stringify({ version: 1, blocs: filtree })) > MEMOIRE_MAX_OCTETS;
@@ -589,7 +589,7 @@ export async function executerWorkflow(
         Buffer.byteLength(JSON.stringify(m.donnees)) <= TAILLE_MAX_DONNEES &&
         surPublication !== undefined;
       if (!acceptee) {
-        // Le conteneur croit ces éléments montrés : sa mémoire n'est plus sûre avant la prochaine publication acceptée.
+        // The container believes these items shown: its memory is no longer safe before the next accepted publication.
         if (progressif && (tenue || pendantLaChaine())) {
           enFile(async () => {
             memoireDouteuse = true;
@@ -599,7 +599,7 @@ export async function executerWorkflow(
       }
       publicationRelayeeA = maintenant;
       const p: Publication = { donnees: m.donnees, faits: m.faits, total: m.total };
-      // Les données d'abord, puis la mémoire qu'elles rendent sûre ; une écriture refusée la laisse douteuse.
+      // The data first, then the memory they make safe; a refused write leaves it doubtful.
       enFile(async () => {
         try {
           await surPublication!(p);
@@ -616,7 +616,7 @@ export async function executerWorkflow(
       const t = traces.get(m.bloc);
       if (!t || (relances && !relances.has(m.bloc))) return;
       t.journal.push(tronquer(m.texte, JOURNAL_BLOC_CARACTERES));
-      // La place de la ligne « … N lignes coupées » est gardée : 200 lignes au plus en tout.
+      // The room for the « … N lignes coupées » line is kept: 200 lines at most in all.
       while (t.journal.length + (t.coupees > 0 ? 1 : 0) > JOURNAL_BLOC_LIGNES) {
         t.journal.shift();
         t.coupees++;
@@ -626,7 +626,7 @@ export async function executerWorkflow(
     const t = traces.get(m.id);
     if (!t) return;
     if (m.etape === "avancement") {
-      // Seulement si l'appelant l'a demandé, pour un bloc en cours, espacées (la dernière toujours).
+      // Only if the caller asked for it, for a block in progress, spaced out (the last one always).
       if (!ctx.avancement || !ouverts.includes(t)) return;
       const maintenant = horloge().getTime();
       const avant = avancementRelayeA.get(m.id);
@@ -637,7 +637,7 @@ export async function executerWorkflow(
     }
     if (m.etape === "debut") {
       if (attendu[suivant] !== m.id) return;
-      // Un bloc déjà ouvert : seul le bloc suivant de la chaîne peut commencer, avant toute fin.
+      // A block already open: only the chain's next block can start, before any end.
       if (ouverts.length > 0 && (fermeture || ouverts[0]!.id !== chaine[0] || chaine[ouverts.length] !== m.id)) return;
       suivant++;
       t.commence = true;
@@ -657,7 +657,7 @@ export async function executerWorkflow(
     if (m.sortieTropGrosse) t.sortieTronquee = true;
     else if (m.sortie !== undefined) {
       t.elements = Array.isArray(m.sortie) ? m.sortie.length : null;
-      // Le noyau ne garde jamais plus de 256 Ko de la sortie d'un bloc : au-delà, le début de son JSON, marqué.
+      // The kernel never keeps more than 256 KB of a block's output: beyond, the start of its JSON, marked.
       const texte = JSON.stringify(m.sortie);
       if (Buffer.byteLength(texte) > SORTIE_MAX_OCTETS) {
         t.sortie = coupe(texte, SORTIE_MAX_OCTETS);
@@ -670,9 +670,9 @@ export async function executerWorkflow(
   const traiterLigne = (ligne: string) => {
     if (arret || terminal || !ligne.trim()) return;
     const m = lireMessageRecolteur(ligne);
-    if (!m) return; // Une ligne hors protocole (le code a écrit sur stdout) est ignorée.
-    // Une mémoire tenue que ne suit pas une publication : elle ne retient que des éléments déjà montrés. Suivie de
-    // `fin`, elle ne sert qu'à l'issue `fin` : la sortie finale, pas encore écrite, peut encore être refusée.
+    if (!m) return; // A line outside the protocol (the code wrote on stdout) is ignored.
+    // A held memory not followed by a publication: it only keeps items already shown. Followed by
+    // `fin`, it is only used for the `fin` outcome: the final output, not yet written, may still be refused.
     if (m.t === "fin") memoireTenue = null;
     else if (m.t !== "publication") libererMemoireTenue();
     if (m.t === "fin" || m.t === "echec") {
@@ -683,7 +683,7 @@ export async function executerWorkflow(
     if (m.t !== "appel") return traiterTrace(m);
     if (enVol >= MAX_APPELS_EN_VOL) return repondre(m.n, { erreur: "Trop d'appels en même temps" });
     enVol++;
-    // Les appels sont traités dès leur arrivée, en parallèle ; chaque réponse porte le numéro de son appel.
+    // Calls are handled as soon as they arrive, in parallel; each answer carries its call's number.
     traiterAppel(m.f, m.a)
       .then(
         (ok) => ok !== SANS_REPONSE && repondre(m.n, { ok: ok ?? null }),
@@ -692,7 +692,7 @@ export async function executerWorkflow(
       .finally(() => enVol--);
   };
 
-  // Lecture ligne à ligne ; une ligne de plus de 4 Mo arrête l'exécution avant d'être accumulée en entier.
+  // Line-by-line reading; a line of more than 4 MB stops the run before being accumulated in full.
   let tampon: Buffer[] = [];
   let taille = 0;
   processus.stdout.on("data", (d: Buffer) => {
@@ -719,14 +719,14 @@ export async function executerWorkflow(
   clearTimeout(minuteur);
   ctx.signal?.removeEventListener("abort", surSignal);
   finExecution.abort(new Error("Exécution finie"));
-  // La sortie finale est écrite après la dernière publication.
+  // The final output is written after the last publication.
   await relais;
-  // Exécution progressive : la dernière mémoire reçue revient avec un échec ou un arrêt.
+  // Progressive run: the last memory received comes back with a failure or a stop.
   const avecMemoire = <T extends IssueWorkflow>(issue: T): T => (progressif ? { ...issue, memoire: memoireSure } : issue);
   const fin = terminal as MessageRecolteur | null;
   const arretFinal = arret as Arret | null;
   if (arretFinal) {
-    // Tuer le client docker laisse le conteneur tourner : on le supprime.
+    // Killing the docker client leaves the container running: we remove it.
     await infra.atelier.supprimerRecolte(ctx.proprietaire).catch(() => {});
     return conclure(avecMemoire({ t: "arret", ...arretFinal }));
   }
@@ -735,11 +735,11 @@ export async function executerWorkflow(
   }
   if (fin?.t === "echec") return conclure(avecMemoire(echec(fin.erreur, true)));
   if (code === 124) return conclure(avecMemoire(echec("Délai dépassé", false)));
-  // Le code de sortie est choisi par le code de l'agent : il pourrait y coder des données du compte.
+  // The exit code is chosen by the agent's code: it could encode account data in it.
   return conclure(avecMemoire(echec(`La récolte s'est arrêtée sans résultat (code ${code ?? "aucun"})`, true)));
 }
 
-/** Ce qui est envoyé au conteneur : les entrées de même type et, si elles en ont une, de même empreinte. Sans l'empreinte. */
+/** What is sent to the container: the entries of the same type and, if they have one, of the same hash. Without the hash. */
 function reprendreMemoire(memoire: MemoireBlocs, types: Map<string, string>, empreintes: Map<string, string>): MemoireBlocs {
   const r: MemoireBlocs = {};
   for (const [id, e] of Object.entries(memoire)) {
@@ -750,7 +750,7 @@ function reprendreMemoire(memoire: MemoireBlocs, types: Map<string, string>, emp
   return r;
 }
 
-/** La mémoire rendue par le conteneur : les entrées de ce workflow, marquées de l'empreinte de cette exécution. */
+/** The memory returned by the container: this workflow's entries, marked with the hash of this run. */
 function marquerMemoire(memoire: MemoireBlocs, types: Map<string, string>, empreintes: Map<string, string>): MemoireBlocs {
   const r: MemoireBlocs = {};
   for (const [id, e] of Object.entries(memoire)) {

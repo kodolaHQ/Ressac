@@ -84,7 +84,7 @@
       zone.hidden = false;
     }
   }
-  // Firefox : un cadre resource:// sandboxé ne voit pas parent, e.source === parent y est faux.
+  // Firefox: a sandboxed resource:// frame does not see parent, e.source === parent is false there.
   addEventListener("message", (e) => { if (e.data && e.data.type === "widget") afficher(e.data); });
 </script>
 </body>

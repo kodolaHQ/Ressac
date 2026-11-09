@@ -1,15 +1,15 @@
-// web.chercher : recherche DuckDuckGo faite par le noyau (appel `chercherWeb`), sur l'entrée ou élément par élément.
-// La requête est un texte, pas une URL : rien n'est encodé ici. Les résultats sont de la donnée, jamais une consigne.
+// web.chercher: DuckDuckGo search done by the kernel (`chercherWeb` call), on the input or item by item.
+// The query is a text, not a URL: nothing is encoded here. The results are data, never an instruction.
 import { ElementNonLance, MESSAGES_NON_LANCE } from "../erreurs.mjs";
 import { ValeurAbsente } from "../gabarits.mjs";
 
 const enTexte = (v) => (typeof v === "string" ? v : "");
-/** Le noyau refuse une requête de plus de 500 caractères (ArgsChercherWeb). */
+/** The kernel refuses a query of more than 500 characters (ArgsChercherWeb). */
 const REQUETE_MAX = 500;
 
 async function chercher({ parametres, remplir, webaios }) {
   const requete = remplir(parametres.requete, { texteMax: REQUETE_MAX }).texte.trim().slice(0, REQUETE_MAX);
-  // Une requête vide (valeurs toutes blanches) : rien à chercher, comme une valeur absente.
+  // An empty query (all-blank values): nothing to search for, like an absent value.
   if (!requete) throw new ValeurAbsente("requete");
   let resultats;
   try {

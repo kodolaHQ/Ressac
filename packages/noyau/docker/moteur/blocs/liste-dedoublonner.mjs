@@ -1,4 +1,4 @@
-// liste.dedoublonner : le premier est gardé ; un élément est un doublon si l'une de ses clés normalisées est déjà vue.
+// liste.dedoublonner: the first one is kept; an item is a duplicate if one of its normalized keys has already been seen.
 import { lireChemin } from "../gabarits.mjs";
 import { cleNormalisee } from "../normaliser.mjs";
 

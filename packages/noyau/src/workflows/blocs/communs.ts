@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-/** Ce que le moteur sait d'un type de bloc : le schéma de ses paramètres et son rapport au mode « par élément ». */
+/** What the engine knows about a block type: its params schema and its relation to the « per item » mode. */
 export interface DefinitionBloc {
   type: string;
   libelle: string;
@@ -8,13 +8,13 @@ export interface DefinitionBloc {
   description: string;
   parametres: z.ZodType;
   parElement: "non" | "option" | "toujours";
-  /** `parElement` : requise seulement quand le paramètre `parElement` vaut true. */
+  /** `parElement`: required only when the `parElement` param is true. */
   entree: "requise" | "facultative" | "parElement";
-  /** Les champs du formulaire du bloc : un par clé du schéma des paramètres. */
+  /** The block's form fields: one per key of the params schema. */
   champs: ChampFormulaire[];
   /**
-   * Le bloc peut faire partie de la chaîne « au fil de l'eau » (quand `parElement` vaut true) : chaque élément le
-   * traverse seul jusqu'à la sortie. Interne au moteur, le catalogue ne l'expose pas.
+   * The block can be part of the "as-it-goes" chain (when `parElement` is true): each item
+   * goes through it alone up to the output. Internal to the engine, the catalog does not expose it.
    */
   chaine: boolean;
 }
@@ -26,32 +26,32 @@ export type ChampFormulaire = {
   libelle: string;
   aide?: string;
   requis: boolean;
-  /** Valeur par défaut du schéma ; pour un champ requis, une valeur neutre qui pré-remplit un bloc neuf. */
+  /** Schema default value; for a required field, a neutral value that pre-fills a new block. */
   defaut?: unknown;
   genre: "texte" | "gabarit" | "nombre" | "case" | "choix" | "textes";
   choix?: string[];
   min?: number;
   max?: number;
   entier?: boolean;
-  /** Seulement quand `parElement` vaut true (champ, siErreur, budgetSecondes, reutiliser). */
+  /** Only when `parElement` is true (champ, siErreur, budgetSecondes, reutiliser). */
   parElementSeulement?: true;
 };
 
-/** Paramètres communs aux blocs qui peuvent travailler élément par élément. */
+/** Params common to the blocks that can work item by item. */
 export const ParametresParElement = {
   parElement: z.boolean().default(false),
   siErreur: z.enum(["sauter", "echouer"]).default("sauter"),
-  // 170 s au plus sans durée maximale du widget, sa durée sinon : la borne selon le widget est dans validerWorkflow.
+  // 170 s at most without a maximum duration of the widget, its duration otherwise: the per-widget bound is in validerWorkflow.
   budgetSecondes: z.number().int().min(1).max(3600).optional(),
   reutiliser: z.string().regex(/^[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)*$/, "chemin de clé invalide").optional(),
-  /** Durée de vie d'un résultat réutilisé ; sans valeur, pour toujours. Seulement avec `reutiliser` (validerWorkflow). */
+  /** Lifetime of a reused result; without a value, forever. Only with `reutiliser` (validerWorkflow). */
   garderJours: z.number().int().min(1).max(365).optional(),
 };
 
-/** Texte d'un gabarit (`{chemin}`) : borné, jamais exécuté. */
+/** Text of a template (`{chemin}`): bounded, never run. */
 export const Gabarit = z.string().min(1).max(20_000);
 
-/** Le champ `parElement` et les champs qui n'ont de sens que lorsqu'il vaut true. */
+/** The `parElement` field and the fields that only make sense when it is true. */
 export const CHAMP_PAR_ELEMENT: ChampFormulaire = {
   nom: "parElement",
   libelle: "Un élément à la fois",

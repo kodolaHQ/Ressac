@@ -31,7 +31,7 @@ export const definition: DefinitionBloc = {
     .object({
       url: Gabarit,
       compte: z.boolean().default(false),
-      // Sans défaut : l'empreinte des paramètres d'un bloc existant (sa mémoire) ne change pas.
+      // Without a default: the hash of the params of an existing block (its memory) does not change.
       defiler: z.number().int().min(0).max(DEFILER_MAX).optional(),
       ...ParametresParElement,
       champ: z.string().min(1).max(40).default("page"),

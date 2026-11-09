@@ -4,8 +4,8 @@ import { join } from "node:path";
 import { z } from "zod";
 
 /**
- * Accord de l'utilisateur pour qu'un widget lise avec son compte : les domaines `compte` et `publiques` de la déclaration au
- * moment de l'accord, et le profil de connexion choisi. Rangé dans `<dossierWidgets>/accords.json` (`<dossierActions>/accords.json` pour les actions), hors de l'espace.
+ * The user's grant for a widget to read with its account: the `compte` and `publiques` domains of the declaration at the
+ * time of the grant, and the chosen login profile. Stored in `<dossierWidgets>/accords.json` (`<dossierActions>/accords.json` for the actions), outside the workspace.
  */
 export const Accord = z.object({
   domaines: z.array(z.string()),
@@ -21,7 +21,7 @@ function verifierId(id: string): void {
   if (!ID.test(id)) throw new Error(`id de widget invalide : ${id}`);
 }
 
-/** Les accords valides du fichier ; un fichier absent ou abîmé vaut aucun accord. */
+/** The file's valid grants; an absent or damaged file counts as no grant. */
 export async function lireAccords(dossierWidgets: string): Promise<Record<string, Accord>> {
   let brut: unknown;
   try {
@@ -38,7 +38,7 @@ export async function lireAccords(dossierWidgets: string): Promise<Record<string
   return accords;
 }
 
-/** Une écriture à la fois par dossier : deux accords simultanés ne s'effacent pas. */
+/** One write at a time per folder: two simultaneous grants do not erase each other. */
 const files = new Map<string, Promise<unknown>>();
 
 function modifier(dossierWidgets: string, changer: (a: Record<string, Accord>) => void): Promise<void> {
@@ -84,8 +84,8 @@ const memes = (a: string[], b: string[]) => {
 };
 
 /**
- * L'accord vaut tant que la déclaration (d'un widget ou d'une action) annonce exactement les mêmes domaines
- * (`compte` et `publiques`).
+ * The grant holds as long as the declaration (of a widget or an action) announces exactly the same domains
+ * (`compte` and `publiques`).
  */
 export function accordValide(declaration: { sources: { compte: string[]; publiques: string[] } }, accord?: Accord): accord is Accord {
   if (!accord) return false;

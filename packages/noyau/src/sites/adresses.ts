@@ -2,11 +2,11 @@ import { domainToASCII } from "node:url";
 import { adresseLocale } from "../workflows/acces.js";
 import { domaineVrai, type DeclarationSite, type Retouche } from "./schemas.js";
 
-/** Domaines de l'appli, jamais dans site.json : l'actuel, et les anciens qu'il faut encore reconnaître. */
+/** The app's domains, never in site.json: the current one, and the old ones that must still be recognized. */
 export type EtatAdresse = { actuel: string; anciens: string[]; depuis: string | null };
 
 const HOTE_VALIDE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
-/** Minuscules, point final retiré, Unicode converti en ASCII (punycode) ; "" si le nom est invalide. */
+/** Lowercase, trailing dot removed, Unicode converted to ASCII (punycode); "" if the name is invalid. */
 const nettoyer = (h: string) => {
   const b = h.toLowerCase().replace(/\.+$/, "");
   if (/[\/@:?#\s%\\*\[\]]/.test(b)) return "";
@@ -14,14 +14,14 @@ const nettoyer = (h: string) => {
   return HOTE_VALIDE.test(a) ? a : "";
 };
 
-/** https, ou (tests) http d'un hôte local ; jamais d'identifiants. */
+/** https, or (tests) http of a local host; never credentials. */
 function schemaAccepte(u: URL, adressesLocales: boolean): boolean {
   if (u.username || u.password) return false;
   if (u.protocol === "https:") return true;
   return u.protocol === "http:" && adressesLocales && adresseLocale(u.hostname);
 }
 
-/** Exact ou sous-domaine, sans casse, point final retiré. */
+/** Exact or subdomain, case-insensitive, trailing dot removed. */
 export function hoteDansSite(hote: string, domaines: readonly string[]): boolean {
   const h = nettoyer(hote);
   if (!h) return false;
@@ -36,7 +36,7 @@ export function domainesEffectifs(d: DeclarationSite, e: EtatAdresse | null): st
   return [...new Set(tous)];
 }
 
-/** L'adresse déclarée, dont l'hôte est remplacé par l'adresse actuelle quand le site a changé de domaine. */
+/** The declared address, whose host is replaced by the current address when the site changed domain. */
 export function adresseDeDepart(d: DeclarationSite, e: EtatAdresse | null): string {
   if (!e) return d.adresse;
   let u: URL;
@@ -58,7 +58,7 @@ function analyser(url: string): URL | null {
   }
 }
 
-/** Chemin + requête (sans #) si l'hôte est dans le site, sinon null. */
+/** Path + query (without #) if the host is in the site, otherwise null. */
 export function adresseRelative(url: string, domaines: readonly string[]): string | null {
   const u = analyser(url);
   if (!u || !hoteDansSite(u.hostname, domaines)) return null;
@@ -66,8 +66,8 @@ export function adresseRelative(url: string, domaines: readonly string[]): strin
 }
 
 /**
- * Une adresse relative (« /… », jamais « //… ») ou absolue sur un domaine du site, rendue sur le domaine actuel avec le
- * schéma et le port de l'adresse de départ. Tout le reste est refusé.
+ * A relative address (« /… », never « //… ») or absolute on a domain of the site, rendered on the current domain with the
+ * scheme and port of the start address. Everything else is refused.
  */
 export function adresseSurDomaine(
   adresse: string,
@@ -78,7 +78,7 @@ export function adresseSurDomaine(
 ): string | null {
   const base = analyser(depart);
   if (!base) return null;
-  // Un `actuel` invalide laisse l'hôte du départ.
+  // An invalid `actuel` leaves the start host.
   const n = nettoyer(actuel);
   const valide = HOTE_VALIDE.test(n) && (o.adressesLocales || !adresseLocale(n));
   const hoteSortie = valide ? n : base.hostname;
@@ -96,15 +96,15 @@ export function adresseSurDomaine(
   const sortie = analyser(`${base.protocol}//${base.host}${u.pathname}${u.search}${u.hash}`);
   if (!sortie) return null;
   sortie.hostname = hoteSortie;
-  // `actuel` en écriture numérique (0x7f.1, 2130706433) n'est normalisé qu'ici : revérifié, sinon l'hôte du départ.
+  // `actuel` in numeric notation (0x7f.1, 2130706433) is only normalized here: checked again, otherwise the start host.
   if (!o.adressesLocales && adresseLocale(sortie.hostname)) sortie.hostname = base.hostname;
   if (!schemaAccepte(sortie, o.adressesLocales)) return null;
   return sortie.href;
 }
 
 /**
- * Appariement glob itératif (deux pointeurs, O(n·m), sans retour arrière exponentiel). `*` = toute suite de caractères
- * hors `interdits`.
+ * Iterative glob matching (two pointers, O(n·m), no exponential backtracking). `*` = any sequence of characters
+ * outside `interdits`.
  */
 function glob(motif: string, texte: string, interdits = ""): boolean {
   let m = 0, t = 0, etoile = -1, reprise = 0;
@@ -125,8 +125,8 @@ function glob(motif: string, texte: string, interdits = ""): boolean {
 }
 
 /**
- * Joker `*` ancré aux deux bouts. Chemin : sensible à la casse. Adresse complète : schéma, hôte et chemin comparés
- * séparément ; un `*` de l'hôte ne passe jamais `/ ? # @ :` ; une URL avec identifiants est refusée.
+ * Wildcard `*` anchored at both ends. Path: case-sensitive. Full address: scheme, host and path compared
+ * separately; a `*` in the host never passes `/ ? # @ :`; a URL with credentials is refused.
  */
 export function correspondMotif(motif: string, texte: string): boolean {
   const complet = /^([a-z][a-z0-9+.-]*):\/\/([^/?#]*)(.*)$/is.exec(motif);
@@ -140,7 +140,7 @@ export function correspondMotif(motif: string, texte: string): boolean {
   return glob(reste === "" ? "/" : reste, u.pathname + u.search);
 }
 
-/** Les retouches qui s'appliquent à un cadre : principal par chemin, sous-cadre par motif d'adresse complète. */
+/** The tweaks that apply to a frame: main frame by path, subframe by full-address pattern. */
 export function retouchesPour(
   d: DeclarationSite,
   cadre: { url: string; principal: boolean },
@@ -158,9 +158,9 @@ export function retouchesPour(
 }
 
 /**
- * La nouvelle adresse d'un site d'après les liens de sa page de référence (hostile) : le premier lien https dont l'hôte
- * contient le motif, hors page de référence, ses sous-domaines et son domaine parent (mêmes deux derniers libellés),
- * hors adresses locales. `hostname` est propre (ni port ni point final) ; `port` n'existe qu'en mode test.
+ * The new address of a site according to the links of its reference page (hostile): the first https link whose host
+ * contains the pattern, outside the reference page, its subdomains and its parent domain (same last two labels),
+ * outside local addresses. `hostname` is clean (no port or trailing dot); `port` only exists in test mode.
  */
 export function trouverAdresse(
   liens: readonly string[],

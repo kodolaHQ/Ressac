@@ -1,12 +1,12 @@
-// Récolteur : tourne dans le conteneur `atelier` (sans réseau), JavaScript pur, sans dépendance.
-// Canal unique avec le noyau : une ligne JSON par message sur stdin / stdout.
-// Usage : node recolteur.mjs <dossier du widget>
+// Harvester: runs in the `atelier` container (no network), plain JavaScript, no dependency.
+// Single channel with the kernel: one JSON line per message on stdin / stdout.
+// Usage: node recolteur.mjs <widget folder>
 //
-// Le noyau envoie `debut` (avec son `workflow` : pour un widget qui n'a que `recolte.mjs`, le workflow implicite
-// récolte → sortie ; pour un essai du constructeur, `rejeu`), puis la ligne `memoire` ; le workflow est exécuté par
-// l'interpréteur (traces `bloc` et `journal`, `memoire` juste avant `fin`, sauf pour un essai). Avec `progressif`,
-// la ligne `memoire` vient aussi en cours de route et avant `echec` (la dernière reçue vaut) ; `limiteMs` remplace
-// la limite de 150 s ; si la sortie publie au fil de l'eau, des lignes `publication` montrent les éléments terminés.
+// The kernel sends `debut` (with its `workflow`: for a widget that only has `recolte.mjs`, the implicit workflow
+// harvest → sortie; for a builder try, `rejeu`), then the `memoire` line; the workflow is run by
+// the interpreter (`bloc` and `journal` traces, `memoire` just before `fin`, except for a try). With `progressif`,
+// the `memoire` line also comes along the way and before `echec` (the last one received counts); `limiteMs` replaces
+// the 150 s limit; if the output publishes as it goes, `publication` lines show the finished items.
 import { createInterface } from "node:readline";
 import { resolve } from "node:path";
 import { echeanceDe, executerWorkflow } from "./interpreteur.mjs";
@@ -15,7 +15,7 @@ import { formater } from "./webaios.mjs";
 const LIGNE_MAX = 4 * 1024 * 1024;
 const sortie = process.stdout;
 
-// Tout ce que le widget affiche va sur stderr : stdout est réservé au protocole.
+// Everything the widget displays goes to stderr: stdout is reserved for the protocol.
 const versErreur = (...a) => process.stderr.write(formater(...a) + "\n");
 console.log = console.info = console.debug = versErreur;
 
@@ -108,18 +108,18 @@ async function principal() {
     echeance: echeanceDe(debut, debutRecuA),
     versErreur,
     rejeu: debut.rejeu ?? null,
-    // Exécution longue ou au fil de l'eau : mémoire envoyée en cours de route (lignes `memoire`) et avant `echec`.
+    // Long or as-it-goes run: memory sent along the way (`memoire` lines) and before `echec`.
     progressif: debut.progressif === true,
-    // Action seulement : la saisie (gabarits, `ctx.saisie`, `webaios.saisie`) et l'avancement des blocs par élément.
+    // Action only: the input (templates, `ctx.saisie`, `webaios.saisie`) and the progress of per-item blocks.
     saisie: typeof debut.saisie === "string" ? debut.saisie : undefined,
     avancement: debut.avancement === true,
   });
-  // Un essai (rejeu) ne rend aucune mémoire : le noyau n'en garde pas.
+  // A try (rejeu) returns no memory: the kernel keeps none.
   if (!debut.rejeu) {
     try {
       envoyer({ t: "memoire", memoire: r.memoire });
     } catch (e) {
-      // Trop grosse pour une ligne : le noyau garde l'ancienne.
+      // Too big for a line: the kernel keeps the old one.
       versErreur(`mémoire non envoyée : ${e.message}`);
     }
   }

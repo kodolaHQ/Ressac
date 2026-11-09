@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { ecrireAtomique } from "../workflows/executions.js";
 import { ID_SITE } from "./schemas.js";
 
-/** Premier nom `<base>.bak`, `<base>.1.bak`… qui n'existe pas encore (une sauvegarde n'en écrase jamais une autre). */
+/** First name `<base>.bak`, `<base>.1.bak`… that does not exist yet (a backup never overwrites another). */
 async function nomLibre(base: string): Promise<string | null> {
   for (let i = 0; i < 100; i++) {
     const nom = i === 0 ? `${base}.bak` : `${base}.${i}.bak`;
@@ -17,9 +17,9 @@ export const POSITIONS_MAX = 500;
 export const CLE_MAX = 200;
 export const FIN_VIDEO = 0.95;
 export const ECRITURE_MEMOIRE_MS = 500;
-/** Imbrication maximale d'une valeur retenue (tableaux et objets). */
+/** Maximum nesting of a kept value (arrays and objects). */
 export const PROFONDEUR_MEMOIRE_MAX = 32;
-/** Nombre de noeuds visités au plus avant de refuser une valeur (bombe de références partagées). */
+/** Number of nodes visited at most before refusing a value (bomb of shared references). */
 const NOEUDS_MAX = 200_000;
 const ADRESSE_POSITION_MAX = 2048;
 
@@ -42,7 +42,7 @@ const sansPrototype = <T>() => Object.create(null) as Record<string, T>;
 
 type Examen = "ok" | "non-json" | "pleine";
 
-/** Parcours itératif (jamais de pile d'appels) : profondeur, nombre de noeuds et taille estimée, avant tout stringify. */
+/** Iterative walk (never a call stack): depth, number of nodes and estimated size, before any stringify. */
 function examiner(valeur: unknown): Examen {
   const pile: [unknown, number][] = [[valeur, 0]];
   let noeuds = 0;
@@ -70,7 +70,7 @@ function examiner(valeur: unknown): Examen {
   return "ok";
 }
 
-/** Copie JSON d'une valeur, ou la raison du refus. Ne lève jamais. */
+/** JSON copy of a value, or the reason for the refusal. Never throws. */
 function copierJson(valeur: unknown): { ok: true; copie: unknown; texte: string } | { ok: false; erreur: string } {
   try {
     const examen = examiner(valeur);
@@ -93,9 +93,9 @@ const tailleValeur = (cle: string, adresse: string | null, quand: string, texte:
 const taillePosition = (cle: string, p: PositionVideo) => octets(JSON.stringify(cle)) + 1 + octets(JSON.stringify(p)) + 1;
 
 /**
- * `<dossierSites>/<id>/memoire.json`, hors de ~/WebAiOs. Écrite au plus une fois par `ECRITURE_MEMOIRE_MS`.
- * Une écriture qui échoue garde les données en mémoire : le changement suivant (ou `vider()`) réessaie.
- * Le consommateur doit appeler `vider()` à la fermeture de l'appli, sinon l'écriture différée en attente est perdue.
+ * `<dossierSites>/<id>/memoire.json`, outside ~/WebAiOs. Written at most once per `ECRITURE_MEMOIRE_MS`.
+ * A write that fails keeps the data in memory: the next change (or `vider()`) tries again.
+ * The consumer must call `vider()` when the app closes, otherwise the pending deferred write is lost.
  */
 export class MemoireSite {
   private valeurs = new Map<string, SlotValeur>();
@@ -128,12 +128,12 @@ export class MemoireSite {
         }
       }
     } catch {
-      // absent, trop gros ou abîmé : mémoire vide
+      // absent, too big or damaged: empty memory
     }
     return m;
   }
 
-  /** Relit un fichier en réimposant toutes les bornes ; ce qui les dépasse est écarté. */
+  /** Re-reads a file re-imposing all the bounds; what exceeds them is dropped. */
   private charger(brut: Record<string, unknown>): void {
     const { valeurs, positions } = brut;
     if (valeurs && typeof valeurs === "object" && !Array.isArray(valeurs)) {
@@ -170,8 +170,8 @@ export class MemoireSite {
   }
 
   /**
-   * Positions à oublier (les plus anciennes par `quand`, jamais `sauf`) pour que `ajout` octets de plus tiennent,
-   * ou null si même vide de positions cela ne tient pas. Ne change rien.
+   * Positions to forget (the oldest by `quand`, never `sauf`) so that `ajout` more bytes fit,
+   * or null if even without positions it does not fit. Changes nothing.
    */
   private evincer(ajout: number, sauf: string | null, maxPositions: boolean): string[] | null {
     const candidats = [...this.positions.entries()].map(([k, s], i) => ({ k, q: s.p.quand, t: s.taille, i })).filter((c) => c.k !== sauf);
@@ -252,7 +252,7 @@ export class MemoireSite {
       }
       this.changer();
     } catch {
-      // une position est un confort : jamais d'exception vers l'appelant
+      // a position is a convenience: never an exception to the caller
     }
   }
 
@@ -261,7 +261,7 @@ export class MemoireSite {
     return s ? { ...s.p } : null;
   }
 
-  /** Une copie du contenu : la modifier ne change rien à la mémoire. */
+  /** A copy of the content: modifying it changes nothing in the memory. */
   contenu(): ContenuMemoire {
     const c: ContenuMemoire = { version: 1, valeurs: sansPrototype(), positions: sansPrototype() };
     for (const [k, s] of this.valeurs) c.valeurs[k] = structuredClone(s.e);
@@ -274,7 +274,7 @@ export class MemoireSite {
     return () => void this.ecouteurs.delete(r);
   }
 
-  /** Écrit tout de suite ce qui n'est pas encore écrit et attend la fin des écritures. À appeler à la fermeture. */
+  /** Writes right away what is not yet written and waits for the writes to end. To call at closing. */
   async vider(): Promise<void> {
     if (this.timer) {
       clearTimeout(this.timer);
@@ -284,7 +284,7 @@ export class MemoireSite {
     await this.chaine;
   }
 
-  /** Oublie tout : écriture en attente annulée, fichier supprimé, abonnés prévenus. */
+  /** Forgets everything: pending write cancelled, file deleted, subscribers notified. */
   async effacer(): Promise<void> {
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
@@ -323,7 +323,7 @@ export class MemoireSite {
         this.ecritRev = rev;
       })
       .catch(() => {
-        // données gardées en mémoire (ecritRev inchangé) : le prochain changement ou vider() réessaie
+        // data kept in memory (ecritRev unchanged): the next change or vider() tries again
       });
   }
 
@@ -332,7 +332,7 @@ export class MemoireSite {
       try {
         r();
       } catch {
-        // un abonné qui échoue ne gêne pas les autres
+        // a subscriber that fails does not bother the others
       }
     }
   }

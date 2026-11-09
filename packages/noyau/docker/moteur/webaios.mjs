@@ -1,12 +1,12 @@
-// L'API `webaios` donnée au code des widgets (recolte.mjs, blocs `code`) : chaque accès passe par un appel au noyau.
+// The `webaios` API given to the widgets' code (recolte.mjs, `code` blocks): every access goes through a call to the kernel.
 import { analyserFlux } from "./flux.mjs";
 
-/** Une ligne de journal : textes tels quels, le reste en JSON. */
+/** A log line: texts as they are, the rest as JSON. */
 export const formater = (...a) => a.map((x) => (typeof x === "string" ? x : JSON.stringify(x))).join(" ");
 
 /**
- * `appeler(f, a)` envoie un appel au noyau et attend sa réponse ; `journal(...a)` reçoit les lignes de
- * `webaios.journal` ; `saisie` (action seulement) devient `webaios.saisie`.
+ * `appeler(f, a)` sends a call to the kernel and waits for its answer; `journal(...a)` receives the lines of
+ * `webaios.journal`; `saisie` (action only) becomes `webaios.saisie`.
  */
 export function creerWebaios({ appeler, config, precedent, maintenant, journal, saisie }) {
   async function trier(elements, { question, texte, seuil = 0.5, parallele = 8 } = {}) {
@@ -32,7 +32,7 @@ export function creerWebaios({ appeler, config, precedent, maintenant, journal, 
     config,
     precedent,
     maintenant,
-    // Action lancée avec un texte seulement : absente pour un widget.
+    // Action run with a text only: absent for a widget.
     ...(typeof saisie === "string" ? { saisie } : {}),
     lirePage: (url, options = {}) => appeler("lirePage", { url, compte: options.compte, defiler: options.defiler }),
     recuperer: (url, options = {}) => appeler("recuperer", { url, format: options.format ?? "texte" }),

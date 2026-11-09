@@ -13,11 +13,11 @@ export const CORRESPOND_CHEMIN = 'retouches.correspond : des chemins qui commenc
 export const fichierRetoucheIntrouvable = (f: string) => `retouches : fichier introuvable ou trop gros : ${f}`;
 export const DOMAINE_INVALIDE = "domaines, connexion : de vrais noms de domaine (avec un point), jamais une adresse IP ni locale";
 export const ERREUR_ID_SITE = "nom de dossier non pris en charge : minuscules, chiffres et tirets seulement, 60 caractères au plus (ex. mon-site)";
-/** L'id sert d'hôte de `webaios-site://<id>` et de partition `persist:site-<id>`. */
+/** The id serves as host of `webaios-site://<id>` and as partition `persist:site-<id>`. */
 export const ID_SITE = /^[a-z0-9][a-z0-9-]{0,59}$/;
 export const HTTPS_SEULEMENT = "adresse : https seulement, jamais une adresse locale";
 
-/** Un hôte en minuscules : sans schéma, sans joker, sans port, sans chemin. */
+/** A host in lowercase: no scheme, no wildcard, no port, no path. */
 const hote = z
   .string()
   .max(253)
@@ -73,7 +73,7 @@ export const DeclarationSite = z
   .strict();
 export type DeclarationSite = z.infer<typeof DeclarationSite>;
 
-/** https, ou (tests) http d'un hôte local ; jamais d'identifiants ; jamais une adresse locale hors tests. */
+/** https, or (tests) http of a local host; never credentials; never a local address outside tests. */
 function adresseAcceptee(brute: string, adressesLocales: boolean): URL | null {
   let u: URL;
   try {
@@ -89,14 +89,14 @@ function adresseAcceptee(brute: string, adressesLocales: boolean): URL | null {
 }
 
 /**
- * Un vrai nom de domaine pour un site : ni adresse IP, ni nom sans point (intranet), ni dernier libellé numérique, ni
- * adresse locale (sauf `adressesLocales`, tests seulement). Même règle pour `domaines`, `connexion` et l'adresse suivie.
+ * A real domain name for a site: no IP address, no name without a dot (intranet), no numeric last label, no
+ * local address (except `adressesLocales`, tests only). Same rule for `domaines`, `connexion` and the followed address.
  */
 export function domaineVrai(h: string, adressesLocales: boolean): boolean {
   return !isIP(h) && h.includes(".") && !/\.\d+$/.test(h) && (adressesLocales || !adresseLocale(h));
 }
 
-/** Les règles que le schéma seul ne dit pas : l'adresse et la page de suivi, et le domaine de l'adresse. */
+/** The rules that the schema alone does not state: the address and the tracking page, and the address's domain. */
 export function verifierDeclarationSite(d: DeclarationSite, o: { adressesLocales: boolean }): string | null {
   const depart = adresseAcceptee(d.adresse, o.adressesLocales);
   if (!depart) return HTTPS_SEULEMENT;

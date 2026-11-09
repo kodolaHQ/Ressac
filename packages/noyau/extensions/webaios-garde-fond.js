@@ -1,34 +1,34 @@
-// WebAiOs : garde du service worker et des pages des extensions de l'agent (DNR, scripting, tabs, contexte).
-// Chargé avant le script d'origine par webaios-fond.js et en premier script de chaque page HTML (script classique ou
-// module : aucune déclaration au niveau du fichier, sauf la table `__webaiosFichiers` que la copie écrit en tête). Tâche 12 du plan 12 (la tâche 13 y ajoute la garde des cadres).
+// WebAiOs: guard of the service worker and the pages of the agent's extensions (DNR, scripting, tabs, context).
+// Loaded before the original script by webaios-fond.js and as the first script of each HTML page (classic script or
+// module: no top-level declaration, except the `__webaiosFichiers` table that the copy writes at the top). Task 12 of plan 12 (task 13 adds the frame guard to it).
 //
-// - Règles DNR dynamiques et de session : `redirect`, `modifyHeaders`, `regexSubstitution`, `transform` refusés.
-// - `tabs.create`, `tabs.update`, `windows.create` : l'adresse est d'abord soumise au processus principal
-//   (`globalThis.__webaios.urlPermise`, posé par le preload des correctifs), qui vérifie de nouveau à l'ouverture.
-// - `scripting.executeScript` / `insertCSS`, `tabs.executeScript` / `insertCSS` : l'onglet visé doit être une vue
-//   d'onglet (`__webaios.estOnglet` : jamais une lecture invisible) et un site des hôtes accordés (`__webaios.hotePermis`) ;
-//   ces appels natifs n'ont pas d'autre point de contrôle. `target.documentIds` est refusé (le garde ne saurait pas quel
-//   onglet est visé), `world: "MAIN"` aussi (hors de portée de la garde de page). Les fichiers nommés doivent être, à
-//   l'octet près, des fichiers de l'agent listés par la copie (`__webaiosFichiers`, écrit en tête de ce fichier) : ni
-//   `..`, ni chemin absolu, ni fichier de WebAiOs. `executeScript` (et `tabs.executeScript`) injecte d'abord
-//   `webaios-correctifs-page.js`, `webaios-garde-page.js` et `webaios-portee.js` ; avec `func`, ces fichiers d'abord,
-//   puis la fonction dans les documents qui les ont reçus (`documentIds` rendus par le premier appel ; un id manquant :
-//   refus, sans repli).
-// - `scripting.registerContentScripts` / `updateContentScripts` : comme les entrées du manifeste copié, n'enregistrent
-//   que les gardes puis des repères (`webaios-fichiers/<n>.js`, CSS d'abord) ; `getRegisteredContentScripts` rend les
-//   fichiers de l'agent, et une mise à jour d'un seul de `js` / `css` reprend l'autre de l'enregistrement actuel.
-// - `runtime.onMessage` : dans le service worker seulement (une page ouverte de l'extension injecterait une seconde
-//   fois), répond à `{ webaios: "contexte", fichiers }` (la garde de page) par `{ onglet }` ; si c'est un onglet, injecte d'abord, par les fonctions natives saisies, le CSS puis le JS (gardes en tête) de ces repères dans le
-//   document exact de l'expéditeur (`documentIds`, sinon son cadre). Les écouteurs de l'extension ne voient jamais ce
-//   message (ils ne peuvent pas répondre à la place du garde).
-// - WebRTC retiré.
-// Les fonctions d'origine ne sont gardées nulle part où l'extension pourrait les reprendre, et les propriétés
-// remplacées ne sont plus ni réécrivables ni supprimables. Les arguments sont figés (copie) avant d'être vérifiés.
+// - Dynamic and session DNR rules: `redirect`, `modifyHeaders`, `regexSubstitution`, `transform` refused.
+// - `tabs.create`, `tabs.update`, `windows.create`: the address is first submitted to the main process
+//   (`globalThis.__webaios.urlPermise`, set by the fixes' preload), which checks again on opening.
+// - `scripting.executeScript` / `insertCSS`, `tabs.executeScript` / `insertCSS`: the target tab must be a tab
+//   view (`__webaios.estOnglet`: never an invisible read) and a site of the granted hosts (`__webaios.hotePermis`);
+//   these native calls have no other checkpoint. `target.documentIds` is refused (the guard would not know which
+//   tab is targeted), `world: "MAIN"` too (out of reach of the page guard). The named files must be, byte
+//   for byte, agent files listed by the copy (`__webaiosFichiers`, written at the top of this file): no
+//   `..`, no absolute path, no WebAiOs file. `executeScript` (and `tabs.executeScript`) first injects
+//   `webaios-correctifs-page.js`, `webaios-garde-page.js` and `webaios-portee.js`; with `func`, these files first,
+//   then the function in the documents that received them (`documentIds` returned by the first call; a missing id:
+//   refusal, no fallback).
+// - `scripting.registerContentScripts` / `updateContentScripts`: like the copied manifest's entries, they only register
+//   the guards then markers (`webaios-fichiers/<n>.js`, CSS first); `getRegisteredContentScripts` returns the
+//   agent's files, and an update of only one of `js` / `css` takes the other from the current registration.
+// - `runtime.onMessage`: in the service worker only (an open page of the extension would inject a second
+//   time), answers `{ webaios: "contexte", fichiers }` (the page guard) with `{ onglet }`; if it is a tab, first injects, through the captured native functions, the CSS then the JS (guards first) of these markers into the
+//   exact document of the sender (`documentIds`, otherwise its frame). The extension's listeners never see this
+//   message (they cannot answer in the guard's place).
+// - WebRTC removed.
+// The original functions are kept nowhere the extension could take them back, and the replaced
+// properties can no longer be rewritten or deleted. The arguments are frozen (copied) before being checked.
 //
-// L'extension tourne ensuite dans le même monde et peut modifier les objets de base (`Promise.prototype.then`,
-// `Function.prototype.apply`, `Array.isArray`, l'itérateur des listes, `Object.prototype`…) : tout ce dont le garde se
-// sert est saisi à son chargement, les appels passent par `Reflect.apply`, les boucles sont indexées (ni `for…of`, ni
-// décomposition, ni `async`/`await` sur ce que fournit l'extension), et les copies d'objets n'ont pas de prototype.
+// The extension then runs in the same world and can modify the base objects (`Promise.prototype.then`,
+// `Function.prototype.apply`, `Array.isArray`, the list iterator, `Object.prototype`…): everything the guard
+// uses is captured at load, calls go through `Reflect.apply`, loops are indexed (no `for…of`, no
+// spread, no `async`/`await` on what the extension provides), and the object copies have no prototype.
 (() => {
   const g = globalThis;
   const appliquer = Reflect.apply;
@@ -47,13 +47,13 @@
     try {
       delete g[NOMS_RTC[i]];
     } catch {
-      // Non configurable : la politique WebRTC de la vue coupe l'UDP direct.
+      // Non-configurable: the view's WebRTC policy cuts direct UDP.
     }
   }
   const c = g.chrome;
   const w = g.__webaios;
   if (!c) return;
-  // Saisis maintenant : l'extension ne peut plus les remplacer ensuite pour le garde.
+  // Captured now: the extension can no longer replace them afterwards for the guard.
   const urlPermiseNatif = w && typeof w.urlPermise === "function" ? w.urlPermise : null;
   const hotePermisNatif = w && typeof w.hotePermis === "function" ? w.hotePermis : null;
   const estOngletNatif = w && typeof w.estOnglet === "function" ? w.estOnglet : null;
@@ -63,8 +63,8 @@
   const prototypeDe = Object.getPrototypeOf;
   const ProtoObjet = Object.prototype;
   const entier = Number.isInteger;
-  // Le service worker seul répond à la garde de page et injecte : une page de l'extension ouverte (popup, options)
-  // recevrait aussi le message, et injecterait une seconde fois. Saisi avant tout script de l'extension.
+  // Only the service worker answers the page guard and injects: an open page of the extension (popup, options)
+  // would also receive the message, and inject a second time. Captured before any extension script.
   const SWGS = g.ServiceWorkerGlobalScope;
   const estFond = typeof SWGS === "function" ? g instanceof SWGS : typeof g.document === "undefined" || (!!g.location && g.location.pathname === "/_generated_background_page.html");
 
@@ -76,20 +76,20 @@
     }
   };
 
-  /** `then` d'origine sur une promesse (ou une valeur simple : `ok` tout de suite). */
+  /** Original `then` on a promise (or a plain value: `ok` right away). */
   const ensuite = (v, ok, ko) => {
     if (v !== null && (typeof v === "object" || typeof v === "function")) {
       try {
         appliquer(alors, v, [ok, ko]);
         return;
       } catch {
-        // Pas une promesse d'origine : traitée comme une valeur.
+        // Not an original promise: treated as a value.
       }
     }
     ok(v);
   };
 
-  /** Rejette (promesse) ou passe l'erreur au rappel, `chrome.runtime.lastError` posé pendant l'appel, comme Chrome. */
+  /** Rejects (promise) or passes the error to the callback, `chrome.runtime.lastError` set during the call, like Chrome. */
   const refuser = (message, rappel) => {
     if (typeof rappel !== "function") return new P((_ok, ko) => ko(new Erreur(message)));
     const runtime = c.runtime;
@@ -107,12 +107,12 @@
   };
 
   const MAX_LISTE = 5000;
-  /** Une propriété propre lue une seule fois par son descripteur (jamais par le prototype) ; absente : `trou`. */
+  /** An own property read only once through its descriptor (never through the prototype); absent: `trou`. */
   const TROU = creer(null);
   const lirePropre = (v, k) => {
     const d = descripteur(v, k);
     if (!d) return TROU;
-    // Les champs du descripteur lus comme propres : `Object.prototype.value` ou `.get` ajoutés n'y changent rien.
+    // The descriptor's fields read as own: `Object.prototype.value` or `.get` added change nothing here.
     const valeur = descripteur(d, "value");
     if (valeur) return valeur.value;
     const lire = descripteur(d, "get");
@@ -121,10 +121,10 @@
   const poser = (copie, k, valeur) =>
     definir(copie, k, { __proto__: null, value: valeur, writable: true, enumerable: true, configurable: true });
   /**
-   * Copie profonde lue une seule fois : objets recopiés sans prototype (rien n'y est hérité) ; listes recopiées denses
-   * (`length` lu une fois, au plus 5000 éléments, chacun lu par son descripteur propre : une liste à trous est refusée,
-   * puisque l'API native lirait le trou dans `Array.prototype`) ; fonctions et valeurs simples gardées
-   * (`scripting.executeScript({ func })`). Un cycle ou une profondeur > 32 : refus.
+   * Deep copy read only once: objects copied without a prototype (nothing is inherited); lists copied dense
+   * (`length` read once, at most 5000 items, each read through its own descriptor: a list with holes is refused,
+   * since the native API would read the hole in `Array.prototype`); functions and plain values kept
+   * (`scripting.executeScript({ func })`). A cycle or a depth > 32: refusal.
    */
   const copier = (v, profondeur, chemin) => {
     if (v === null || typeof v !== "object") return v;
@@ -154,12 +154,12 @@
   };
 
   /**
-   * Appelle `f` si `verifier(args)` rend vrai (ou une promesse de vrai), sinon refuse avec `message(args)` ; promesse ou
-   * rappel, comme l'appel d'origine. Les arguments sont copiés une seule fois : la copie est vérifiée puis passée à l'API.
+   * Calls `f` if `verifier(args)` returns true (or a promise of true), otherwise refuses with `message(args)`; promise or
+   * callback, like the original call. The arguments are copied only once: the copy is checked then passed to the API.
    */
   const garder = (f, cible, verifier, message, prefixe = "Arguments refusés par WebAiOs", o = {}) =>
     function (...tous) {
-      // Le rappel éventuel : le dernier argument, s'il est une fonction.
+      // The possible callback: the last argument, if it is a function.
       let n = tous.length;
       const rappel = n > 0 && typeof tous[n - 1] === "function" ? tous[n - 1] : undefined;
       if (rappel) n--;
@@ -167,7 +167,7 @@
       try {
         args = copier(tous, 0, []);
         args.length = n;
-        // Adaptation des arguments copiés (fichiers de la garde en tête…) ; une erreur est un refus.
+        // Adaptation of the copied arguments (guard files first…); an error is a refusal.
         if (o.preparer) o.preparer(args);
       } catch (e) {
         return refuser(`${prefixe} (${e && e.message})`, rappel);
@@ -177,7 +177,7 @@
           if (rappel) args[args.length] = rappel;
           return appliquer(f, cible, args);
         }
-        // Appel composé (promesses) : le rappel reçoit son résultat, ou le refus avec lastError.
+        // Composed call (promises): the callback receives its result, or the refusal with lastError.
         const r = o.appel(args);
         if (!rappel) return r;
         ensuite(r, (v) => rappel(v), (e) => refuser(`${e && e.message}`, rappel));
@@ -219,7 +219,7 @@
 
   const URL_REFUSEE = "URL refusée par WebAiOs";
   const SITE_REFUSE = "Site refusé par WebAiOs";
-  /** Une promesse (d'origine) de vrai si le processus principal permet ; faux sans preload. */
+  /** A (original) promise of true if the main process allows it; false without preload. */
   const demander = (natif, valeur) =>
     new P((ok) => {
       if (!natif) return ok(false);
@@ -234,7 +234,7 @@
   const urlPermise = (url) => demander(urlPermiseNatif, `${url}`);
   const hotePermis = (onglet) => demander(hotePermisNatif, onglet);
   const estOnglet = (onglet) => demander(estOngletNatif, onglet);
-  /** Toutes les promesses de vrai, l'une après l'autre (sans `Promise.all`, remplaçable). */
+  /** All the promises of true, one after the other (without `Promise.all`, which can be replaced). */
   const toutes = (liste) =>
     new P((ok) => {
       let i = 0;
@@ -245,7 +245,7 @@
       suivante();
     });
 
-  // --- Règles DNR
+  // --- DNR rules
   const dnr = c.declarativeNetRequest;
   if (dnr) {
     const actionRefusee = (options) => {
@@ -280,7 +280,7 @@
     figer(c, "declarativeNetRequest", dnr);
   }
 
-  // --- Adresses ouvertes
+  // --- Opened addresses
   const tabs = c.tabs;
   if (tabs) {
     if (typeof tabs.create === "function") {
@@ -321,17 +321,17 @@
     figer(c, "windows", windows);
   }
 
-  // --- Scripts et styles posés dans un onglet
+  // --- Scripts and styles placed in a tab
   const ONGLET_REFUSE = "Onglet refusé par WebAiOs";
   const GARDES_PAGE = ["webaios-correctifs-page.js", "webaios-garde-page.js", "webaios-portee.js"];
   const REPERES = "webaios-fichiers/";
-  // La table écrite par la copie en tête de ce fichier : chaque .js et .css de l'agent, l'indice est son repère. Les
-  // chemins sont comparés tels quels à cette liste (clé dans un objet sans prototype) : aucun découpage, aucune
-  // normalisation par une méthode que l'extension pourrait remplacer. Sans table (hors copie), aucun fichier n'est permis.
+  // The table written by the copy at the top of this file: every .js and .css of the agent, the index is its marker. The
+  // paths are compared as they are to this list (key in an object without a prototype): no splitting, no
+  // normalization by a method the extension could replace. Without a table (outside the copy), no file is allowed.
   // eslint-disable-next-line no-undef
   const tableBrute = typeof __webaiosFichiers !== "undefined" && estListe(__webaiosFichiers) ? __webaiosFichiers : [];
-  // Sans prototype, et lue seulement pour un entier dans ses bornes : un indice hors de la table ne lit jamais
-  // `Object.prototype` ni `Array.prototype` (que l'extension peut remplir).
+  // Without a prototype, and read only for an integer within its bounds: an index outside the table never reads
+  // `Object.prototype` or `Array.prototype` (which the extension can fill).
   const table = creer(null);
   let tailleTable = 0;
   const entreeDe = (n) => (typeof n === "number" && entier(n) && n >= 0 && n < tailleTable ? table[n] : undefined);
@@ -346,13 +346,13 @@
     reperes[`${REPERES}${n}.js`] = n;
   }
   const estGardePage = (p) => p === GARDES_PAGE[0] || p === GARDES_PAGE[1] || p === GARDES_PAGE[2];
-  /** L'indice d'un fichier de la table, de ce genre ; lève « fichier refusé : … » sinon. */
+  /** The index of a file of the table, of this kind; throws "fichier refusé : …" otherwise. */
   const indiceDe = (genre, p) => {
     const n = typeof p === "string" ? indices[`${genre}:${p}`] : undefined;
     if (typeof n !== "number") throw new Erreur(`fichier refusé : ${typeof p === "string" ? p : typeof p}`);
     return n;
   };
-  /** Les chemins d'une liste (copiée), vérifiés contre la table. */
+  /** The paths of a list (copied), checked against the table. */
   const fichiersPermis = (genre, liste) => {
     if (!estListe(liste)) throw new Erreur("liste de fichiers attendue");
     const r = [];
@@ -363,7 +363,7 @@
     return r;
   };
   const requete = tabs && typeof tabs.query === "function" ? tabs.query : null;
-  /** Vrai si l'onglet `id` est une vue d'onglet (jamais une lecture invisible) d'un site accordé ; sinon le refus. */
+  /** True if tab `id` is a tab view (never an invisible read) of a granted site; otherwise the refusal. */
   const verdictOnglet = (id) =>
     new P((ok) => {
       ensuite(
@@ -375,7 +375,7 @@
         () => ok(ONGLET_REFUSE),
       );
     });
-  /** L'onglet visé : celui donné, sinon l'onglet actif de la fenêtre courante (comme Chrome). */
+  /** The targeted tab: the one given, otherwise the active tab of the current window (like Chrome). */
   const ongletPermis = (id) =>
     new P((ok) => {
       if (typeof id === "number") return ensuite(verdictOnglet(id), ok, () => ok(false));
@@ -396,7 +396,7 @@
         () => ok(false),
       );
     });
-  /** Les fichiers de la garde, puis `liste` (copie dense). */
+  /** The guard's files, then `liste` (dense copy). */
   const gardesPuis = (liste) => {
     const r = [];
     for (let i = 0; i < GARDES_PAGE.length; i++) r[r.length] = GARDES_PAGE[i];
@@ -406,7 +406,7 @@
   const mondeIsole = (d) => {
     if (d.world !== undefined && d.world !== "ISOLATED") throw new Erreur(`world ${d.world}`);
   };
-  /** Les détails copiés de executeScript / insertCSS : une cible avec un onglet, jamais documentIds. */
+  /** The copied details of executeScript / insertCSS: a target with a tab, never documentIds. */
   const ciblePropre = (args) => {
     const d = args[0];
     if (d === null || typeof d !== "object") throw new Erreur("détails absents");
@@ -417,7 +417,7 @@
     return d;
   };
   const verifierCible = (args) => (typeof args[0].target.tabId === "number" ? ongletPermis(args[0].target.tabId) : SITE_REFUSE);
-  /** Les ids des documents rendus par executeScript : tous, ou null (un seul manque suffit). */
+  /** The ids of the documents returned by executeScript: all of them, or null (a single missing one is enough). */
   const documentsDe = (resultats) => {
     if (!estListe(resultats)) return null;
     const n = lirePropre(resultats, "length");
@@ -431,14 +431,14 @@
     }
     return ids;
   };
-  /** Les repères (CSS puis JS) d'un script enregistré, après les gardes. */
+  /** The markers (CSS then JS) of a registered script, after the guards. */
   const reperesDe = (css, js) => {
     const r = [];
     for (let i = 0; i < css.length; i++) r[r.length] = `${REPERES}${indiceDe("css", css[i])}.js`;
     for (let i = 0; i < js.length; i++) r[r.length] = `${REPERES}${indiceDe("js", js[i])}.js`;
     return gardesPuis(r);
   };
-  /** Ce que l'agent avait enregistré (`js`, `css`) d'après la liste réelle (gardes et repères), lue en propre. */
+  /** What the agent had registered (`js`, `css`) according to the real list (guards and markers), read as own. */
   const decoder = (liste) => {
     const vu = { __proto__: null, js: [], css: [] };
     if (!estListe(liste)) return vu;
@@ -458,7 +458,7 @@
   // On Firefox (the only one with getBrowserInfo), one executeScript per file: Firefox drops a whole call when one of
   // its files fails to compile, Chromium only that file. Same world either way.
   const unParFichier = !!c.runtime && typeof c.runtime.getBrowserInfo === "function";
-  // Saisis avant d'être remplacés : le fond s'en sert pour injecter les fichiers des scripts de contenu.
+  // Captured before being replaced: the background uses them to inject the content scripts' files.
   const executerNatif = scripting && typeof scripting.executeScript === "function" ? scripting.executeScript : null;
   const cssNatif = scripting && typeof scripting.insertCSS === "function" ? scripting.insertCSS : null;
   if (scripting) {
@@ -475,8 +475,8 @@
           appel: (args) => {
             const d = args[0];
             if (d.func === undefined) return appliquer(executer, scripting, [d]);
-            // La garde d'abord, puis la fonction dans les documents qui l'ont reçue (une navigation entre les deux
-            // ne la fait pas tourner ailleurs) ; un document sans id : refus.
+            // The guard first, then the function in the documents that received it (a navigation between the two
+            // does not make it run elsewhere); a document without an id: refusal.
             const premier = creer(null);
             premier.target = d.target;
             premier.files = gardesPuis([]);
@@ -527,7 +527,7 @@
         }),
       );
     }
-    /** Un script enregistré : jamais dans le monde de la page ; ses fichiers, vérifiés, deviennent gardes + repères. */
+    /** A registered script: never in the page's world; its files, checked, become guards + markers. */
     const scriptsCopies = (args) => {
       const liste = args[0];
       if (!estListe(liste)) throw new Erreur("liste de scripts attendue");
@@ -567,7 +567,7 @@
         "updateContentScripts",
         garder(mettreAJour, scripting, () => true, () => SITE_REFUSE, undefined, {
           preparer: scriptsCopies,
-          // Un seul de `js` / `css` donné : l'autre est repris de l'enregistrement actuel (il est fait de repères).
+          // Only one of `js` / `css` given: the other is taken from the current registration (it is made of markers).
           appel: (args) => {
             const liste = args[0];
             const ids = [];
@@ -607,7 +607,7 @@
       );
     }
     if (typeof lireEnregistres === "function") {
-      // Rend les fichiers de l'agent (et non les gardes et les repères) : l'aller-retour vers updateContentScripts passe.
+      // Returns the agent's files (and not the guards and the markers): the round trip to updateContentScripts works.
       figer(
         scripting,
         "getRegisteredContentScripts",
@@ -641,8 +641,8 @@
     figer(c, "scripting", scripting);
   }
   if (tabs) {
-    // MV2 (absentes en MV3) : l'onglet est vérifié ; executeScript passe d'abord les gardes de page dans les mêmes
-    // cadres, et n'accepte qu'un fichier de la table.
+    // MV2 (absent in MV3): the tab is checked; executeScript first passes the page guards into the same
+    // frames, and only accepts a file of the table.
     const detailsDe = (args) => (typeof args[0] === "number" || args[0] === undefined || args[0] === null ? args[1] : args[0]);
     const verifierOnglet = (args) => ongletPermis(typeof args[0] === "number" ? args[0] : undefined);
     const executerOnglet = tabs.executeScript;
@@ -692,7 +692,7 @@
     figer(c, "tabs", tabs);
   }
 
-  // --- Contexte des scripts de contenu (garde de page)
+  // --- Content scripts context (page guard)
   const runtime = c.runtime;
   const onMessage = runtime && runtime.onMessage;
   if (onMessage && typeof onMessage.addListener === "function") {
@@ -701,8 +701,8 @@
       const d = descripteur(m, "webaios");
       return !!d && descripteur(d, "value") !== undefined && d.value === "contexte";
     };
-    // Le premier écouteur : posé avant tout script de l'extension, dans le service worker seulement. Dans une page, le
-    // message est seulement caché aux écouteurs de l'extension (ci-dessous), sans réponse.
+    // The first listener: set before any extension script, in the service worker only. In a page, the
+    // message is only hidden from the extension's listeners (below), with no answer.
     if (estFond) appliquer(onMessage.addListener, onMessage, [
       (m, expediteur, repondre) => {
         if (!estContexte(m)) return undefined;
@@ -710,7 +710,7 @@
           try {
             repondre({ onglet: v === true });
           } catch {
-            // Le script de contenu est parti.
+            // The content script is gone.
           }
         };
         const refuser = () => {
@@ -720,7 +720,7 @@
         const exp = expediteur !== null && typeof expediteur === "object" ? expediteur : creer(null);
         const onglet = lirePropre(exp, "tab");
         const id = onglet !== null && typeof onglet === "object" ? lirePropre(onglet, "id") : TROU;
-        // Les repères demandés : des indices de la table, CSS et JS séparés dans leur ordre.
+        // The requested markers: indexes of the table, CSS and JS separate in their order.
         const css = [];
         const js = [];
         const demandes = lirePropre(m, "fichiers");
@@ -741,7 +741,7 @@
           }
         }
         if (typeof id !== "number") return refuser();
-        // Le document exact qui a demandé (sinon son cadre) : une navigation entre-temps n'y reçoit rien sans garde.
+        // The exact document that asked (otherwise its frame): a navigation in the meantime receives nothing there without a guard.
         const documentId = lirePropre(exp, "documentId");
         const cadre = lirePropre(exp, "frameId");
         const cible = creer(null);
@@ -797,8 +797,8 @@
         return true;
       },
     ]);
-    // Les écouteurs de l'extension, enveloppés : ce message ne leur parvient pas. Les méthodes d'un événement sont sur son
-    // prototype : chaque porteur de la chaîne est remplacé (seul `onMessage` est filtré, les autres événements passent).
+    // The extension's listeners, wrapped: this message does not reach them. An event's methods are on its
+    // prototype: each holder of the chain is replaced (only `onMessage` is filtered, the other events pass).
     const enveloppes = new WM();
     const envelopper = (f) => {
       let e = appliquer(wmGet, enveloppes, [f]);
@@ -827,7 +827,7 @@
         });
       }
     }
-    // Sur l'événement lui-même aussi : la méthode trouvée par la chaîne, enveloppée.
+    // On the event itself too: the method found through the chain, wrapped.
     for (let j = 0; j < NOMS_EVENEMENT.length; j++) {
       const nom = NOMS_EVENEMENT[j];
       if (descripteur(onMessage, nom)) continue;

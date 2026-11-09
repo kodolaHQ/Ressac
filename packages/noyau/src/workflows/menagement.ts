@@ -1,5 +1,5 @@
-// Ménagement des sites : une recherche DuckDuckGo à la fois dans toute l'instance, une lecture à la fois par hôte,
-// avec un écart minimal entre la fin d'une demande et le début de la suivante. Pur : horloge et attente injectables.
+// Pacing of the sites: one DuckDuckGo search at a time in the whole instance, one read at a time per host,
+// with a minimal gap between the end of one request and the start of the next. Pure: clock and wait injectable.
 
 export const ECART_RECHERCHES_MS = 2000;
 export const ECART_LECTURES_MS = 1000;
@@ -8,17 +8,17 @@ type Voie = { queue: Promise<unknown>; fin: number | null; en_cours: number };
 
 const nouvelleVoie = (): Voie => ({ queue: Promise.resolve(), fin: null, en_cours: 0 });
 
-/** Le site d'un hôte pour le ménagement : nom d'hôte en minuscules, sans « www. » ni point final (pas de liste des suffixes publics). */
+/** A host's site for the pacing: lowercase host name, without « www. » or trailing dot (no public suffix list). */
 export const siteMenage = (hote: string) => hote.toLowerCase().replace(/\.+$/, "").replace(/^www\./, "");
 
 /**
- * Passe une lecture déjà commencée sur la voie d'un autre site (redirection) : la voie actuelle est rendue (sa
- * demande est partie), puis celle du nouveau site prise à son tour, après son écart. Sans effet pour le même site.
- * Rejetée si le signal de la lecture est levé pendant l'attente : la lecture ne tient alors plus aucune voie.
+ * Moves a read already started onto another site's lane (redirect): the current lane is released (its
+ * request has gone), then the new site's is taken in its turn, after its gap. No effect for the same site.
+ * Rejected if the read's signal is raised during the wait: the read then holds no lane at all.
  */
 export type ChangerHote = (hote: string) => Promise<void>;
 
-/** Rend la voie prise : `partie` faux pour une demande qui n'est jamais partie (l'écart n'est pas consommé). */
+/** Releases the lane taken: `partie` false for a request that never went out (the gap is not consumed). */
 type Rendre = (partie: boolean) => void;
 
 const interruption = (signal?: AbortSignal) => signal?.reason ?? new Error("Demande interrompue");
@@ -35,8 +35,8 @@ export class Menagement {
   }
 
   /**
-   * `verifier` (facultatif) est appelé avant chaque attente et juste avant `f` : s'il lève, la recherche est rejetée
-   * avec son erreur sans être partie, et l'écart de la voie n'est pas consommé (la suivante n'attend pas pour elle).
+   * `verifier` (optional) is called before each wait and right before `f`: if it throws, the search is rejected
+   * with its error without having gone out, and the lane's gap is not consumed (the next one does not wait for it).
    */
   async rechercher<T>(f: () => Promise<T>, signal?: AbortSignal, verifier?: () => void): Promise<T> {
     const rendre = await this.prendre(this.recherches, ECART_RECHERCHES_MS, signal, verifier);
@@ -44,13 +44,13 @@ export class Menagement {
   }
 
   /**
-   * Une lecture de `hote`, à son tour sur la voie de son site. `f` reçoit `changerHote` : à appeler avant de suivre
-   * une redirection vers un autre site, pour respecter le ménagement de celui-ci.
+   * A read of `hote`, in its turn on its site's lane. `f` receives `changerHote`: to call before following
+   * a redirect to another site, to respect that one's pacing.
    */
   async lire<T>(hote: string, f: (changerHote: ChangerHote) => Promise<T>, signal?: AbortSignal): Promise<T> {
     let site = siteMenage(hote);
     let rendre: Rendre | null = await this.prendre(this.voieLecture(site), ECART_LECTURES_MS, signal);
-    // Les changements de voie se suivent : jamais deux en même temps pour une même lecture.
+    // Lane changes follow one another: never two at once for the same read.
     let changements: Promise<void> = Promise.resolve();
     let finie = false;
     const changerHote: ChangerHote = (autre) => {
@@ -62,7 +62,7 @@ export class Menagement {
         rendre = null;
         site = nouveau;
         rendre = await this.prendre(this.voieLecture(nouveau), ECART_LECTURES_MS, signal);
-        // La lecture a fini (abandonnée) pendant l'attente : la voie prise est rendue aussitôt.
+        // The read has finished (abandoned) during the wait: the lane taken is released right away.
         if (finie) {
           rendre(false);
           rendre = null;
@@ -78,7 +78,7 @@ export class Menagement {
     });
   }
 
-  /** La voie de lecture d'un site, créée au besoin (les voies sans demande dont l'écart est écoulé sont retirées). */
+  /** A site's read lane, created as needed (lanes without a request whose gap has elapsed are removed). */
   private voieLecture(site: string): Voie {
     this.nettoyer();
     let voie = this.lectures.get(site);
@@ -86,7 +86,7 @@ export class Menagement {
     return voie;
   }
 
-  /** Retire les voies sans demande en cours dont l'écart est écoulé : plus rien à y ménager. */
+  /** Removes the lanes without a request in progress whose gap has elapsed: nothing left to pace there. */
   private nettoyer() {
     const t = this.maintenant();
     for (const [cle, v] of this.lectures) {
@@ -95,8 +95,8 @@ export class Menagement {
   }
 
   /**
-   * Lance `f` ; `liberer` est appelé à sa fin, quelle qu'elle soit. Avec un signal, la promesse rejette dès qu'il est
-   * levé (la voie, elle, n'est rendue qu'à la vraie fin de `f`).
+   * Launches `f`; `liberer` is called at its end, whatever it is. With a signal, the promise rejects as soon as it is
+   * raised (the lane, though, is only released at the real end of `f`).
    */
   private executer<T>(f: () => Promise<T>, signal: AbortSignal | undefined, liberer: () => void): Promise<T> {
     let execution: Promise<T>;
@@ -116,8 +116,8 @@ export class Menagement {
   }
 
   /**
-   * Prend la voie : attend la fin de la demande précédente puis l'écart. Rend de quoi la rendre. Une demande dont le
-   * signal est levé en file rejette tout de suite ; quand son tour vient, elle passe sans rien consommer.
+   * Takes the lane: waits for the end of the previous request then the gap. Returns what is needed to release it. A request whose
+   * signal is raised in the queue rejects right away; when its turn comes, it passes without consuming anything.
    */
   private prendre(voie: Voie, ecart: number, signal?: AbortSignal, verifier?: () => void): Promise<Rendre> {
     voie.en_cours++;
@@ -132,21 +132,21 @@ export class Menagement {
       ouvrir();
     };
     const tour = async (): Promise<void> => {
-      // Attend que l'écart soit écoulé ; une horloge reculée n'allonge jamais l'attente au-delà de l'écart,
-      // et un minuteur parti trop tôt est suivi d'une nouvelle vérification.
+      // Waits until the gap has elapsed; a clock set back never lengthens the wait beyond the gap,
+      // and a timer that fired too early is followed by a new check.
       for (;;) {
         if (signal?.aborted) throw interruption(signal);
         verifier?.();
         if (voie.fin === null) break;
         const t = this.maintenant();
-        if (t < voie.fin) voie.fin = t; // horloge reculée : on repart de maintenant
+        if (t < voie.fin) voie.fin = t; //         if (t < voie.fin) voie.fin = t; // clock set back: we restart from now
         const reste = voie.fin + ecart - t;
         if (reste <= 0) break;
         await this.attendreOuInterrompre(reste, signal);
       }
     };
     const prise = voie.queue.then(tour);
-    // La suivante attend que celle-ci rende la voie ; une demande qui n'a pas eu son tour la rend sans rien consommer.
+    // The next one waits for this one to release the lane; a request that has not had its turn releases it without consuming anything.
     voie.queue = prise.then(
       () => rendue,
       () => rendre(false),
@@ -161,7 +161,7 @@ export class Menagement {
       prise.then(
         () => {
           signal?.removeEventListener("abort", stop);
-          // Interrompue en file mais son tour venu quand même : elle n'en fait rien.
+          // Interrupted in the queue but its turn came anyway: it does nothing with it.
           if (reglee) return rendre(false);
           reglee = true;
           resolve(rendre);
@@ -174,7 +174,7 @@ export class Menagement {
         },
       );
       if (!signal) return;
-      // Une demande interrompue en file rejette tout de suite, sans attendre son tour.
+      // A request interrupted in the queue rejects right away, without waiting for its turn.
       if (signal.aborted) return stop();
       signal.addEventListener("abort", stop, { once: true });
     });

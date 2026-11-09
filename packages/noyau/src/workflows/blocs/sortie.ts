@@ -17,8 +17,8 @@ export const definition: DefinitionBloc = {
   parametres: z
     .object({
       vers: z.enum(GENRES_SORTIE, { error: (i) => `vers inconnu : ${String(i.input)}` }).default("widget"),
-      // Facultatif (absent = faux), jamais `.default(false)` (ni valeur par défaut au catalogue : décochée, la case retire la clé) : les paramètres validés d'une sortie d'aujourd'hui, donc la
-      // ligne `debut` envoyée au conteneur, ne changent pas.
+      // Optional (absent = false), never `.default(false)` (nor a default value in the catalog: unchecked, the box removes the key): the validated params of an output of today, so the
+      // `debut` line sent to the container, do not change.
       auFilDeLEau: z.boolean().optional(),
     })
     .strict(),

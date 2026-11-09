@@ -6,8 +6,8 @@ import { z } from "zod";
 export const MEMOIRE_MAX_OCTETS = 3 * 1024 * 1024;
 
 /**
- * Mémoire des blocs d'un widget : par id de bloc, son type, ce qu'il a retenu d'une exécution à l'autre et
- * l'empreinte des paramètres avec lesquels il l'a retenu (absente d'une ancienne mémoire).
+ * Memory of a widget's blocks: by block id, its type, what it kept from one run to the next and
+ * the hash of the params with which it kept it (absent from an old memory).
  */
 export type MemoireBlocs = Record<string, { type: string; valeur: unknown; empreinte?: string }>;
 
@@ -24,12 +24,12 @@ function canonique(v: unknown): unknown {
   return v;
 }
 
-/** Texte JSON d'une valeur, clés triées récursivement : deux valeurs égales donnent le même texte. */
+/** JSON text of a value, keys sorted recursively: two equal values give the same text. */
 export const jsonCanonique = (v: unknown): string => JSON.stringify(canonique(v));
 
 /**
- * Empreinte (16 caractères) des paramètres d'un bloc : la mémoire d'un bloc ne vaut que pour ses réglages. `garderJours`
- * n'en fait pas partie : changer la durée de vie des résultats retenus ne les efface pas.
+ * Hash (16 characters) of a block's params: a block's memory is only valid for its settings. `garderJours`
+ * is not part of it: changing the lifetime of the kept results does not erase them.
  */
 export function empreinteParametres(p: Record<string, unknown>): string {
   const { garderJours: _garderJours, ...reglages } = p;
@@ -39,8 +39,8 @@ export function empreinteParametres(p: Record<string, unknown>): string {
 const verrous = new Map<string, Promise<unknown>>();
 
 /**
- * Exécute `f` seul sur la mémoire de ce widget : l'écriture de la mémoire d'une exécution et l'effacement d'un
- * enregistrement du constructeur passent l'un après l'autre (aucune lecture-modification-écriture n'en perd une autre).
+ * Runs `f` alone on this widget's memory: the write of a run's memory and the erasure of a
+ * builder record go one after the other (no read-modify-write loses another).
  */
 export function avecMemoire<T>(dossierDonnees: string, f: () => Promise<T>): Promise<T> {
   const cle = resolve(dossierDonnees);
@@ -53,7 +53,7 @@ export function avecMemoire<T>(dossierDonnees: string, f: () => Promise<T>): Pro
   return suivante;
 }
 
-/** Mémoire des blocs, ou vide si absente, abîmée ou trop grosse. */
+/** The blocks' memory, or empty if absent, damaged or too big. */
 export async function lireMemoire(dossierDonnees: string): Promise<MemoireBlocs> {
   const chemin = join(dossierDonnees, "memoire.json");
   try {
@@ -64,7 +64,7 @@ export async function lireMemoire(dossierDonnees: string): Promise<MemoireBlocs>
   }
 }
 
-/** Écrit la mémoire ; false, sans rien écrire, si elle dépasse 3 Mo. */
+/** Writes the memory; false, without writing anything, if it exceeds 3 MB. */
 export async function ecrireMemoire(dossierDonnees: string, m: MemoireBlocs): Promise<boolean> {
   const texte = JSON.stringify({ version: 1, blocs: m });
   if (Buffer.byteLength(texte) > MEMOIRE_MAX_OCTETS) return false;
@@ -80,7 +80,7 @@ export async function ecrireMemoire(dossierDonnees: string, m: MemoireBlocs): Pr
   return true;
 }
 
-/** Efface les exécutions et la mémoire (retrait d'un accord, widget retiré). */
+/** Erases the runs and the memory (grant withdrawal, widget removed). */
 export async function effacerExecutionsEtMemoire(dossierDonnees: string): Promise<void> {
   await rm(join(dossierDonnees, "executions"), { recursive: true, force: true });
   await rm(join(dossierDonnees, "memoire.json"), { force: true });

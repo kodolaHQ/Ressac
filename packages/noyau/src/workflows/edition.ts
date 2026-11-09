@@ -14,7 +14,7 @@ import {
   type WorkflowValide,
 } from "./valider.js";
 
-// Le constructeur ne fait que lire et écrire `workflow.json` et les `.mjs` comme du texte : rien n'est exécuté ici.
+// The builder only reads and writes `workflow.json` and the `.mjs` as text: nothing is run here.
 
 export const CODE_MAX_OCTETS = 256 * 1024;
 export const NOM_CODE = /^[a-z0-9-]+\.mjs$/;
@@ -23,7 +23,7 @@ const WIDGET_INTROUVABLE = "Widget introuvable";
 
 export type LectureBrouillon = {
   origine: "fichier" | "implicite";
-  /** null : pas du JSON, illisible, plus de 256 Ko, ou lien qui sort du dossier. */
+  /** null: not JSON, unreadable, over 256 KB, or a link that leaves the folder. */
   brut: unknown | null;
   validation: { ok: true } | { ok: false; erreur: string; bloc?: string };
 };
@@ -34,7 +34,7 @@ export type ResultatEnregistrement =
 
 const resume = (r: ResultatValidation): LectureBrouillon["validation"] => (r.ok ? { ok: true } : { ok: false, erreur: r.erreur, ...(r.bloc === undefined ? {} : { bloc: r.bloc }) });
 
-/** Le fichier existe (lien seulement vérifié par son nom) et son vrai chemin reste dans le dossier. */
+/** The file exists (link only checked by its name) and its real path stays in the folder. */
 async function dansLeDossier(dossier: string, nom: string): Promise<boolean> {
   try {
     const [racine, reel] = await Promise.all([realpath(dossier), realpath(join(dossier, nom))]);
@@ -53,8 +53,8 @@ async function dossierExiste(dossier: string): Promise<boolean> {
 }
 
 /**
- * Ce que le constructeur ouvre : `workflow.json` même invalide, sinon l'implicite d'un `recolte.mjs`, sinon null.
- * N'écrit rien. `ctx` : ce que le widget déclare (`contexteValidation`).
+ * What the builder opens: `workflow.json` even if invalid, otherwise the implicit one of a `recolte.mjs`, otherwise null.
+ * Writes nothing. `ctx`: what the widget declares (`contexteValidation`).
  */
 export async function lireBrouillon(dossierFichiers: string, ctx: ContexteValidation = CONTEXTE_PAR_DEFAUT): Promise<LectureBrouillon | null> {
   if (await existe(join(dossierFichiers, "workflow.json"))) {
@@ -70,9 +70,9 @@ export async function lireBrouillon(dossierFichiers: string, ctx: ContexteValida
 }
 
 /**
- * Le workflow valide en place : le fichier s'il est valide, sinon l'implicite d'un `recolte.mjs`, sinon aucun. Validé
- * avec le même contexte que le nouveau : sinon, pour un widget `web` ou long, l'ancien paraîtrait invalide (mémoire des
- * blocs changés gardée, fichier identique réécrit).
+ * The workflow valid in place: the file if it is valid, otherwise the implicit one of a `recolte.mjs`, otherwise none. Validated
+ * with the same context as the new one: otherwise, for a `web` or long widget, the old one would look invalid (memory of the
+ * changed blocks kept, identical file rewritten).
  */
 async function workflowActuel(dossier: string, ctx: ContexteValidation): Promise<WorkflowValide | null> {
   const l = await lireBrouillon(dossier, ctx);
@@ -82,9 +82,9 @@ async function workflowActuel(dossier: string, ctx: ContexteValidation): Promise
 }
 
 /**
- * Enregistre `workflow.json` (écriture atomique) si le workflow est valide, si les fichiers de ses blocs `code`
- * existent et s'il diffère de l'actuel. Efface d'abord la mémoire des blocs dont les paramètres changent. `contexte` :
- * ce que le widget déclare (`contexteValidation`), les règles d'avant sans lui.
+ * Saves `workflow.json` (atomic write) if the workflow is valid, if the files of its `code` blocks
+ * exist and if it differs from the current one. First erases the memory of the blocks whose params change. `contexte`:
+ * what the widget declares (`contexteValidation`), the rules from before without it.
  */
 export async function enregistrerWorkflow(o: {
   dossierFichiers: string;
@@ -113,9 +113,9 @@ export async function enregistrerWorkflow(o: {
   const avant = await workflowActuel(o.dossierFichiers, contexte);
   if (avant && jsonCanonique(avant.workflow) === jsonCanonique(r.valide.workflow)) return { ok: true, ecrit: false, memoireEffacee: [] };
 
-  // La mémoire des blocs changés part avant l'écriture du workflow : une exécution qui lit le nouveau workflow lit
-  // forcément la mémoire déjà effacée. Seules restent les entrées marquées des nouveaux réglages (une exécution qui a
-  // déjà tourné avec eux) ; une entrée sans empreinte (d'avant les empreintes) part aussi.
+  // The memory of the changed blocks goes before the workflow is written: a run that reads the new workflow necessarily
+  // reads the already-erased memory. Only the entries marked with the new settings remain (a run that has
+  // already run with them); an entry without a hash (from before the hashes) goes too.
   const memoireEffacee = avant
     ? await avecMemoire(o.dossierDonnees, async () => {
         const anciens = new Map(avant.workflow.blocs.map((b) => [b.id, b]));
@@ -157,7 +157,7 @@ export async function lireCode(dossierFichiers: string, nom: string): Promise<{ 
   }
 }
 
-/** Écrit un `.mjs` du widget tel quel : son contenu n'est ni contrôlé ni exécuté. */
+/** Writes a widget's `.mjs` as is: its content is neither checked nor run. */
 export async function enregistrerCode(dossierFichiers: string, nom: string, texte: string): Promise<{ ok: true } | { ok: false; erreur: string }> {
   if (!NOM_CODE.test(nom)) return { ok: false, erreur: NOM_INVALIDE };
   if (Buffer.byteLength(texte) > CODE_MAX_OCTETS) return { ok: false, erreur: TROP_GROS };

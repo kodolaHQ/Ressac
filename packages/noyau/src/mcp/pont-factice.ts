@@ -18,7 +18,7 @@ import {
   type ResultatJs,
 } from "./pont.js";
 
-// PNG 1×1 transparent.
+// Transparent 1×1 PNG.
 const PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=",
   "base64",
@@ -35,7 +35,7 @@ const PROFIL: ProfilCpu = {
   endTime: 3000,
 };
 
-/** Un `.heapsnapshot` minimal : `n` objets « Fuite » de 100 octets. */
+/** A minimal `.heapsnapshot`: `n` « Fuite » objects of 100 bytes. */
 function tas(n: number): string {
   const nodes: number[] = [];
   for (let i = 0; i < n; i++) nodes.push(3, 0, i + 1, 100, 0);
@@ -51,7 +51,7 @@ function tas(n: number): string {
   });
 }
 
-/** Attend l'abandon : une opération qui ne se termine jamais d'elle-même. */
+/** Waits for abandonment: an operation that never ends on its own. */
 const enAttente = <T>(signal: AbortSignal): Promise<T> =>
   new Promise<T>((_, ko) => {
     const rejeter = () => ko(new Error("Interrompu"));
@@ -59,7 +59,7 @@ const enAttente = <T>(signal: AbortSignal): Promise<T> =>
     else signal.addEventListener("abort", rejeter, { once: true });
   });
 
-/** Outils de développement simulés : tampons fixés par les tests. */
+/** Simulated dev tools: buffers set by the tests. */
 class OutilsDevFactice implements OutilsDevNavigateur {
   readonly consoles = new Map<string, MessageConsole[]>();
   readonly reseaux = new Map<string, RequeteReseau[]>();
@@ -131,40 +131,40 @@ class OutilsDevFactice implements OutilsDevNavigateur {
   }
 }
 
-/** Navigateur simulé : pour les tests et la commande de développement. */
+/** Simulated browser: for the tests and the dev command. */
 export class PontFactice implements PontNavigateur {
   readonly appels: { methode: string; args: unknown[] }[] = [];
   private readonly onglets: OngletInfo[];
   private actif: string | null;
   private readonly autoriser: boolean;
   private compteur = 0;
-  /** Onglets dans un espace privé : invisibles, comme dans le vrai navigateur. */
+  /** Tabs in a private space: invisible, as in the real browser. */
   private readonly prives = new Set<string>();
   readonly outilsDev?: OutilsDevFactice;
   readonly historique?: HistoriqueNavigateur;
   lirePageInvisible?: (url: string, o: OptionsLecturePage) => Promise<PageLue>;
   lireHtmlInvisible?: (url: string, o: { adressesLocales?: boolean; signal?: AbortSignal }) => Promise<{ url: string; html: string }>;
-  /** Lectures suspendues en cours, par URL : `relacher` les laisse finir. */
+  /** Suspended reads in progress, by URL: `relacher` lets them finish. */
   private readonly suspendues = new Map<string, (() => void)[]>();
   demanderDonneesWidget?: (o: { id: string; nom: string; agent: string; genre?: "action" | "site" }, signal?: AbortSignal) => Promise<boolean>;
-  /** Domaines de chaque appli de site (id → domaines), pour `adresseSitePermise`. */
+  /** Domains of each site app (id → domains), for `adresseSitePermise`. */
   private readonly sites: Record<string, string[]>;
-  /** Applis de site dont la carte des retouches est affichée : naviguer répond « en-attente ». */
+  /** Site apps whose tweaks card is shown: navigating answers « en-attente ». */
   private readonly sitesEnAttente: Set<string>;
   demanderOutilsDev?: (o: OngletInfo, d: { droits: DroitDev[]; raison: string; agent: string }, signal?: AbortSignal) => Promise<DroitDev[]>;
 
   /**
-   * `outilsDev` fournit les outils de développement simulés ; `accorderDev` fournit aussi la carte de consentement,
-   * qui répond ces droits. `bloquer` : profils et instantanés ne finissent qu'à l'abandon. `historique` fournit
-   * l'historique : `chercher` renvoie `resultats` (au plus `limite`), `lire` la page de `textes` à cette URL, et
-   * `erreur`, si donnée, fait échouer les deux. `lecture` fournit `lirePageInvisible` : la page de `pages` à cette URL
-   * (sinon une page vide), `lireHtmlInvisible` : le HTML de `html` à cette URL (sinon ""), et ProfilRefuse pour un profil de `refuser`. Une lecture (page ou HTML) d'une URL de `suspendues` ne
-   * finit qu'à `relacher(url)`, ou à l'abandon de son `signal` : elle est alors notée « lectureAnnulee » et rejetée avec
-   * la raison du signal, comme le vrai pont qui ferme sa fenêtre. `redirections` simule une redirection :
-   * l'URL demandée mène à l'URL associée, et c'est cette page-là qui est rendue ; vers un autre hôte, avec
-   * `changerHote`, elle l'attend d'abord (notée « changerHote »). `donneesWidget` fournit la carte
-   * « donnees-widget » (et celle d'une appli de site, `genre: "site"`), qui répond cette valeur. `sites` : les domaines
-   * de chaque appli de site ouverte (onglets `site:<id>` avec `site` renseigné), pour `adresseSitePermise`.
+   * `outilsDev` provides the simulated dev tools; `accorderDev` also provides the consent card,
+   * which answers these rights. `bloquer`: profiles and snapshots only end on abandonment. `historique` provides
+   * the history: `chercher` returns `resultats` (at most `limite`), `lire` the page of `textes` at this URL, and
+   * `erreur`, if given, makes both fail. `lecture` provides `lirePageInvisible`: the page of `pages` at this URL
+   * (otherwise an empty page), `lireHtmlInvisible`: the HTML of `html` at this URL (otherwise ""), and ProfilRefuse for a profile of `refuser`. A read (page or HTML) of a URL of `suspendues` only
+   * ends at `relacher(url)`, or at the abandonment of its `signal`: it is then noted « lectureAnnulee » and rejected with
+   * the signal's reason, like the real bridge that closes its window. `redirections` simulates a redirect:
+   * the requested URL leads to the associated URL, and that page is the one returned; to another host, with
+   * `changerHote`, it waits for it first (noted « changerHote »). `donneesWidget` provides the
+   * « donnees-widget » card (and that of a site app, `genre: "site"`), which answers this value. `sites`: the domains
+   * of each open site app (`site:<id>` tabs with `site` set), for `adresseSitePermise`.
    */
   constructor(
     onglets: OngletInfo[],
@@ -232,7 +232,7 @@ export class PontFactice implements PontNavigateur {
         await attendre(url, signal);
         if (l.profil !== null && lecture.refuser?.includes(l.profil)) throw new ProfilRefuse(l.profil);
         const finale = lecture.redirections?.[url] ?? url;
-        // Comme le vrai pont : une redirection vers un autre hôte attend `changerHote` avant de partir.
+        // Like the real bridge: a redirect to another host waits for `changerHote` before going out.
         const hote = new URL(finale).hostname;
         if (changerHote && hote !== new URL(url).hostname) {
           this.noter("changerHote", hote);
@@ -263,19 +263,19 @@ export class PontFactice implements PontNavigateur {
     }
   }
 
-  /** Champs de l'onglet changés (par exemple l'empreinte d'une appli de site dont site.json a été réécrit). */
+  /** Tab fields changed (for example the `empreinte` of a site app whose site.json was rewritten). */
   modifierOnglet(id: string, champs: Partial<OngletInfo>): void {
     const o = this.onglets.find((x) => x.id === id);
     if (o) Object.assign(o, champs);
   }
 
-  /** L'onglet (ou la fenêtre d'appli de site) se ferme. */
+  /** The tab (or site app window) closes. */
   fermerOnglet(id: string): void {
     const i = this.onglets.findIndex((x) => x.id === id);
     if (i >= 0) this.onglets.splice(i, 1);
   }
 
-  /** Comme le vrai navigateur : l'hôte est un domaine de l'appli ouverte ou un de leurs sous-domaines. */
+  /** Like the real browser: the host is a domain of the open app or one of their subdomains. */
   adresseSitePermise(site: string, url: string): boolean {
     this.noter("adresseSitePermise", site, url);
     if (!this.onglets.some((x) => x.site === site)) return false;
@@ -290,7 +290,7 @@ export class PontFactice implements PontNavigateur {
     return (this.sites[site] ?? []).some((d) => hote === d || hote.endsWith(`.${d}`));
   }
 
-  /** Laisse finir les lectures suspendues de cette URL ; rend leur nombre. */
+  /** Lets the suspended reads of this URL finish; returns their number. */
   relacher(url: string): number {
     const liste = this.suspendues.get(url) ?? [];
     this.suspendues.delete(url);
@@ -311,12 +311,12 @@ export class PontFactice implements PontNavigateur {
     this.dev().reseaux.set(id, requetes);
   }
 
-  /** L'utilisateur ouvre ses outils de développement sur l'onglet. */
+  /** The user opens their dev tools on the tab. */
   occuper(id: string): void {
     this.dev().occupes.add(id);
   }
 
-  /** L'onglet passe dans un espace privé (nommé `espace` si donné). */
+  /** The tab moves into a private space (named `espace` if given). */
   rendrePrive(id: string, espace?: string): void {
     const o = this.onglets.find((x) => x.id === id);
     if (o && espace !== undefined) o.espace = espace;
@@ -331,7 +331,7 @@ export class PontFactice implements PontNavigateur {
     return this.actif !== null && this.prives.has(this.actif);
   }
 
-  /** Le prochain instantané compte un objet « Fuite » de plus. */
+  /** The next snapshot has one more « Fuite » object. */
   agrandirTas(): void {
     this.dev().objetsTas += 1;
   }

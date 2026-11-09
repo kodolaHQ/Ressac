@@ -1,4 +1,4 @@
-// sortie : ce qu'il reçoit devient la sortie du workflow (pour `vers: "widget"`, les données du widget).
+// sortie: what it receives becomes the workflow's output (for `vers: "widget"`, the widget's data).
 export default {
   parElement: "non",
   async executer({ entree }) {

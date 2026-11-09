@@ -65,7 +65,7 @@ export class DepotRelecture {
     this.git = o.git ?? gitParDefaut();
   }
 
-  /** Les opérations d'un même dépôt passent l'une après l'autre. */
+  /** The operations on the same repository go one after the other. */
   private serie<T>(f: () => Promise<T>): Promise<T> {
     const queue = files.get(this.depot) ?? Promise.resolve();
     const suite = queue.then(f, f);
@@ -130,7 +130,7 @@ export class DepotRelecture {
         if (e instanceof ErreurRelecture) throw e;
         const s = (e as { stderr?: string }).stderr ?? "";
         if (/Operation not permitted|Permission denied/i.test(s)) throw new ErreurRelecture(ACCES_REFUSE, this.dossier);
-        // Un sous-dossier qui est un dépôt sans commit ne peut pas devenir un lien : on l'exclut.
+        // A subfolder that is a repository without a commit cannot become a link: we exclude it.
         const nid = /'(.+)\/' does not have a commit checked out/.exec(s);
         if (!nid || essai >= 50) throw e;
         const motif = "/" + nid[1]!.replace(/[\\*?[\]!#]/g, "\\$&") + "/\n";

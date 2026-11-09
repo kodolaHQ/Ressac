@@ -1,64 +1,64 @@
-// WebAiOs : garde des scripts de contenu des extensions de l'agent (mots de passe, contexte, réseau). Tâche 13 du plan 12.
+// WebAiOs: guard of the content scripts of the agent's extensions (passwords, context, network). Task 13 of plan 12.
 //
-// Tourne dans le monde isolé de l'extension, avant ses scripts. Un script de contenu de l'agent (manifeste ou
-// `scripting.registerContentScripts`) ne déclare que des fichiers de WebAiOs : `webaios-correctifs-page.js`, cette garde,
-// `webaios-portee.js` (la portée accordée), puis un repère par fichier de l'agent (`webaios-fichiers/<n>.js`, qui appelle
-// `__webaiosFichier(n)`). La garde demande ensuite au fond : `chrome.runtime.sendMessage({ webaios: "contexte",
-// fichiers })`. Le garde du fond demande au processus principal si l'expéditeur est une vue d'onglet (jamais une lecture
-// invisible) ; seulement alors, il injecte ces fichiers, CSS puis JS, dans le document exact qui a demandé, par
-// `scripting` (dans ce même monde, après cette garde). Rien de l'agent n'est collé dans un fichier de WebAiOs : il n'y a
-// pas d'enveloppe à fermer. Conséquence : `run_at` devient « après la réponse » (un aller-retour vers le fond), et sans
-// réponse après 20 essais, l'abandon est écrit dans la console. La garde est posée une seule fois par monde ;
-// `executeScript` la met aussi en tête de ses fichiers.
+// Runs in the extension's isolated world, before its scripts. A content script of the agent (manifest or
+// `scripting.registerContentScripts`) only declares WebAiOs files: `webaios-correctifs-page.js`, this guard,
+// `webaios-portee.js` (the granted scope), then one marker per agent file (`webaios-fichiers/<n>.js`, which calls
+// `__webaiosFichier(n)`). The guard then asks the background: `chrome.runtime.sendMessage({ webaios: "contexte",
+// fichiers })`. The background guard asks the main process whether the sender is a tab view (never an invisible
+// read); only then does it inject these files, CSS then JS, into the exact document that asked, through
+// `scripting` (in this same world, after this guard). Nothing of the agent is pasted into a WebAiOs file: there is
+// no wrapper to close. Consequence: `run_at` becomes "after the answer" (a round trip to the background), and without an
+// answer after 20 tries, the abandonment is written to the console. The guard is set only once per world;
+// `executeScript` also puts it at the head of its files.
 //
-// - Mots de passe : le getter `value` de `HTMLInputElement.prototype` rend "" pour un `input[type=password]`, comme
-//   `defaultValue`, `getAttribute("value")`, `getAttributeNS(null, "value")` et l'`Attr` `value` du champ (`value`,
-//   `nodeValue`, `textContent`, par `getAttributeNode` ou `attributes`) ;
-//   `new FormData(form)` en retire ces champs (par leur nom : un autre champ du même nom part aussi) ; un écouteur
-//   `keydown`, `keypress`, `keyup`, `input`, `beforeinput`, `paste`, `composition*`, `textInput` (par
-//   `addEventListener` ou par `on…`) ne reçoit pas un événement dont la cible est un champ de mot de passe ; `formdata`
-//   n'est jamais transmis.
-// - Réseau (spec §6.2, garde-fous raisonnables) : `fetch`, `XMLHttpRequest.open`, `WebSocket`, `EventSource`,
-//   `navigator.sendBeacon`, `window.open`, les setters `src`, `href`, `srcset`, `action`, `formAction` (et `data`,
-//   `poster`, `ping`, `imageSrcset`), `setAttribute` / `setAttributeNS` et `Attr.value` de ces attributs refusent une
-//   adresse dont l'hôte n'est ni celui de la page, ni dans `reseau`, ni couvert par `hotes` (comparés sur l'hôte
-//   seulement : `<all_urls>` ouvre tout). `javascript:` et les autres schémas sont refusés ; `data:`, `blob:`, `about:`
-//   et les fichiers de l'extension passent.
+// - Passwords: the `value` getter of `HTMLInputElement.prototype` returns "" for an `input[type=password]`, like
+//   `defaultValue`, `getAttribute("value")`, `getAttributeNS(null, "value")` and the field's `value` `Attr` (`value`,
+//   `nodeValue`, `textContent`, through `getAttributeNode` or `attributes`);
+//   `new FormData(form)` removes these fields (by their name: another field of the same name goes too); a
+//   `keydown`, `keypress`, `keyup`, `input`, `beforeinput`, `paste`, `composition*`, `textInput` listener (through
+//   `addEventListener` or `on…`) does not receive an event whose target is a password field; `formdata`
+//   is never passed on.
+// - Network (spec §6.2, reasonable safeguards): `fetch`, `XMLHttpRequest.open`, `WebSocket`, `EventSource`,
+//   `navigator.sendBeacon`, `window.open`, the setters `src`, `href`, `srcset`, `action`, `formAction` (and `data`,
+//   `poster`, `ping`, `imageSrcset`), `setAttribute` / `setAttributeNS` and `Attr.value` of these attributes refuse an
+//   address whose host is neither the page's, nor in `reseau`, nor covered by `hotes` (compared on the host
+//   only: `<all_urls>` opens everything). `javascript:` and the other schemes are refused; `data:`, `blob:`, `about:`
+//   and the extension's files pass.
 //
-// Ce qui reste ouvert (dissuasion, pas garantie) :
-// - code dans le monde de la page : un `<script>` en ligne inséré (`createElement("script")`, `textContent`, `append`),
-//   ou un attribut `on…` posé par `setAttribute`, tourne sans aucune garde (lit les mots de passe, envoie où la CSP de
-//   la page le permet) ; le refus de `world: "MAIN"` se contourne ainsi ;
+// What stays open (deterrence, not a guarantee):
+// - code in the page's world: an inline `<script>` inserted (`createElement("script")`, `textContent`, `append`),
+//   or an `on…` attribute set by `setAttribute`, runs with no guard at all (reads the passwords, sends wherever the page's
+//   CSP allows); the refusal of `world: "MAIN"` is bypassed this way;
 //   (Firefox: the same door through `wrappedJSObject` and `XPCNativeWrapper.unwrap`, the page's objects without the
 //   Xray: password values, listeners, the page's `fetch` and `open`.)
-// - un `Worker` créé depuis un `blob:` : son `fetch` n'a pas de garde ;
-// - `RTCPeerConnection` du monde isolé, avec des `iceServers` (STUN/TURN vers n'importe quel hôte) ;
-// - `SVGAElement.href.baseVal`, `SVGImageElement.href.baseVal` (adresse posée sans setter gardé) ;
-// - balisage avec adresse : `innerHTML`, `outerHTML`, `insertAdjacentHTML`, `document.write` ; `url()` en CSS (`style`,
-//   feuilles) ; `location` (navigation de la page vers une adresse qui porte des données) ; modifier par le DOM un
-//   élément de la page déjà présent sans passer par ces setters ; `Node.nodeValue` / `textContent` d'un `Attr` ; une
-//   redirection servie par un site permis (celui de la page compris) ;
-// - mots de passe : la valeur recopiée dans l'attribut `value` (React) se lit par la sérialisation (`outerHTML`,
-//   `innerHTML` d'un ancêtre, `XMLSerializer`) et par les sélecteurs d'attribut (`matches('[value^="a"]')`,
-//   `querySelector`) ; changer le type du champ (`type`, `setAttribute`, `cloneNode` puis changer le type du double) et
-//   lire ensuite sa valeur ; l'oracle `pattern` + `validity.patternMismatch`, caractère par caractère, sans changer le
-//   type ; les touches d'un champ dans une racine fantôme fermée (cible, `composedPath()[0]` et champ actif s'arrêtent à
-//   l'hôte) ;
-// - un autre cadre : le monde isolé d'un cadre `about:blank` créé par le script n'a pas cette garde, et ses prototypes
-//   d'origine s'appliquent aux éléments de la page.
+// - a `Worker` created from a `blob:`: its `fetch` has no guard;
+// - `RTCPeerConnection` of the isolated world, with `iceServers` (STUN/TURN to any host);
+// - `SVGAElement.href.baseVal`, `SVGImageElement.href.baseVal` (address set without a guarded setter);
+// - markup with an address: `innerHTML`, `outerHTML`, `insertAdjacentHTML`, `document.write`; `url()` in CSS (`style`,
+//   sheets); `location` (the page navigating to an address that carries data); modifying through the DOM an
+//   element already present in the page without going through these setters; `Node.nodeValue` / `textContent` of an `Attr`; a
+//   redirect served by a permitted site (the page's included);
+// - passwords: the value copied into the `value` attribute (React) can be read through serialization (`outerHTML`,
+//   `innerHTML` of an ancestor, `XMLSerializer`) and through attribute selectors (`matches('[value^="a"]')`,
+//   `querySelector`); changing the field's type (`type`, `setAttribute`, `cloneNode` then changing the clone's type) and
+//   then reading its value; the `pattern` + `validity.patternMismatch` oracle, character by character, without changing the
+//   type; the keys of a field in a closed shadow root (target, `composedPath()[0]` and active field stop at
+//   the host);
+// - another frame: the isolated world of an `about:blank` frame created by the script does not have this guard, and its original
+//   prototypes apply to the page's elements.
 //   (Also a same-origin frame the page already has, reached through `frames[i]`: its own `FormData`, `fetch`, `XMLHttpRequest`.)
-// Ce qui protège vraiment est l'ensemble : cette garde, `webRequest` refusé, le réseau fermé de ses pages et de son fond
-// (CSP de la copie), jamais dans un profil privé, jamais dans une lecture invisible (ni JS ni CSS de l'agent n'y sont
-// injectés).
+// What really protects is the whole: this guard, `webRequest` refused, the closed network of its pages and its background
+// (CSP of the copy), never in a private profile, never in an invisible read (neither the agent's JS nor CSS is
+// injected there).
 //
-// Le script de l'agent tourne ensuite dans le même monde et peut modifier les objets de base : tout ce dont la garde se
-// sert est saisi au chargement, les appels passent par `Reflect.apply`, les boucles sont indexées (aucun `split`, qui
-// consulte `Symbol.split`), les propriétés remplacées ne sont ni réécrivables ni supprimables, et les descripteurs n'ont
-// pas de prototype.
+// The agent's script then runs in the same world and can modify the base objects: everything the guard
+// uses is captured at load, calls go through `Reflect.apply`, loops are indexed (no `split`, which
+// consults `Symbol.split`), the replaced properties can be neither rewritten nor deleted, and the descriptors have
+// no prototype.
 (() => {
   const g = globalThis;
   const descripteur = Object.getOwnPropertyDescriptor;
-  // Déjà posée dans ce monde (autre entrée, executeScript) : propriété propre, qu'un élément nommé de la page ne fait pas.
+  // Already set in this world (another entry, executeScript): own property, which a named element of the page does not make.
   if (descripteur(g, "__webaiosFichier")) return;
   const appliquer = Reflect.apply;
   const construire = Reflect.construct;
@@ -89,7 +89,7 @@
 
   const URL_REFUSEE = "URL refusée par WebAiOs";
 
-  // --- Portée et contexte
+  // --- Scope and context
 
   let portee = null;
   const figerSur = (objet, nom, valeur) => {
@@ -109,7 +109,7 @@
     figerSur(g, nom, valeur);
     if (fenetre) figerSur(fenetre, nom, valeur);
   };
-  /** Liste de chaînes, recopiée (lue une fois, propriétés propres). */
+  /** List of strings, copied (read once, own properties). */
   const chaines = (v) => {
     const r = [];
     if (!estListe(v)) return r;
@@ -131,7 +131,7 @@
   const runtime = c && c.runtime;
   const envoyer = runtime && typeof runtime.sendMessage === "function" ? runtime.sendMessage : null;
   const idExtension = runtime && typeof runtime.id === "string" ? runtime.id : "";
-  /** Le message de `chrome.runtime.lastError` pendant le rappel (lu en propriété propre), ou null. */
+  /** The message of `chrome.runtime.lastError` during the callback (read as an own property), or null. */
   const derniereErreur = () => {
     const d = runtime ? descripteur(runtime, "lastError") : undefined;
     const e = d && "value" in d ? d.value : d && typeof d.get === "function" ? appliquer(d.get, runtime, []) : undefined;
@@ -140,8 +140,8 @@
     return m && typeof m.value === "string" ? m.value : "erreur inconnue";
   };
 
-  // Les repères (`webaios-fichiers/<n>.js`) déposent l'indice de chaque fichier de l'agent ; une fois la tâche finie, la
-  // garde demande au fond de les injecter. Les demandes partent l'une après l'autre (l'ordre des fichiers est gardé).
+  // The markers (`webaios-fichiers/<n>.js`) deposit the index of each agent file; once the task is done, the
+  // guard asks the background to inject them. The requests go one after the other (the order of the files is kept).
   const aDemander = [];
   let prevu = false;
   let enCours = false;
@@ -176,7 +176,7 @@
         appliquer(envoyer, runtime, [
           { __proto__: null, webaios: "contexte", fichiers: lot },
           (r) => {
-            // Lu pendant le rappel : sinon Chromium écrit « Unchecked runtime.lastError ».
+            // Read during the callback: otherwise Chromium writes "Unchecked runtime.lastError".
             const erreur = derniereErreur();
             const d = r !== null && typeof r === "object" ? descripteur(r, "onglet") : undefined;
             if (d && "value" in d) return finir();
@@ -202,9 +202,9 @@
     else partir();
   });
 
-  // --- Adresses
+  // --- Addresses
 
-  // L'origine du document, lue maintenant (`origin` est remplaçable dans ce monde, `location` non).
+  // The document's origin, read now (`origin` can be replaced in this world, `location` cannot).
   let hotePage = "";
   try {
     hotePage = appliquer(minuscules, texte(g.location.hostname), []);
@@ -213,7 +213,7 @@
   }
   const docBase = g.Node && lireDe(g.Node.prototype, "baseURI");
   const document = g.document;
-  /** L'hôte d'un motif de Chrome (`<all_urls>` : "*", `https://*.x.test/*` : "*.x.test"), ou null. */
+  /** The host of a Chrome pattern (`<all_urls>`: "*", `https://*.x.test/*`: "*.x.test"), or null. */
   const hoteDuMotif = (m) => {
     if (m === "<all_urls>") return "*";
     const i = appliquer(indice, m, ["://"]);
@@ -244,8 +244,8 @@
     return false;
   };
   /**
-   * L'adresse (relative : au document) est-elle permise ? `reseau` : seulement http(s)/ws(s) vers un hôte permis
-   * (window.open) ; sinon `data:`, `blob:`, `about:` et l'extension elle-même passent aussi.
+   * Is the address (relative: to the document) allowed? `reseau`: only http(s)/ws(s) to an allowed host
+   * (window.open); otherwise `data:`, `blob:`, `about:` and the extension itself pass too.
    */
   const permise = (brute, reseauSeul) => {
     if (!Url || !urlProtocole || !urlHote) return false;
@@ -254,7 +254,7 @@
       const base = docBase && document ? appliquer(docBase, document, []) : undefined;
       u = base === undefined ? new Url(brute) : new Url(brute, base);
     } catch {
-      // Illisible : rien ne partira vers elle (ni fetch ni élément ne la résoudront mieux).
+      // Unreadable: nothing will go to it (neither fetch nor element will resolve it any better).
       return true;
     }
     const schema = appliquer(urlProtocole, u, []);
@@ -265,8 +265,8 @@
     return false;
   };
   /**
-   * Chaque morceau d'un `srcset` / `ping`, coupé aux blancs et aux virgules (plus strict que le navigateur). Parcours par
-   * caractère : `split` consulterait `Symbol.split`, que le script de l'agent peut poser.
+   * Each piece of a `srcset` / `ping`, cut at whitespace and commas (stricter than the browser). Walked
+   * character by character: `split` would consult `Symbol.split`, which the agent's script can set.
    */
   const SEPARATEURS = { __proto__: null, " ": 1, "\t": 1, "\n": 1, "\r": 1, "\f": 1, ",": 1 };
   const listePermise = (valeur) => {
@@ -286,7 +286,7 @@
     return n === 2 ? listePermise(valeur) : permise(valeur, false);
   };
 
-  // --- Mots de passe
+  // --- Passwords
 
   const HIE = g.HTMLInputElement;
   const typeDe = HIE && lireDe(HIE.prototype, "type");
@@ -315,15 +315,15 @@
     }
   }
 
-  // La valeur recopiée dans l'attribut `value` (React, d'autres) : `getAttribute`, `getAttributeNS`, l'`Attr` (`value`,
-  // `nodeValue`, `textContent`, par `getAttributeNode` ou `attributes`) et `defaultValue` rendent "" pour un champ de mot
-  // de passe. Restent ouverts : la sérialisation (`outerHTML`, `innerHTML` d'un ancêtre) et les sélecteurs d'attribut
+  // The value copied into the `value` attribute (React, others): `getAttribute`, `getAttributeNS`, the `Attr` (`value`,
+  // `nodeValue`, `textContent`, through `getAttributeNode` or `attributes`) and `defaultValue` return "" for a password
+  // field. Still open: serialization (`outerHTML`, `innerHTML` of an ancestor) and attribute selectors
   // (`matches('[value^="a"]')`, `querySelector`).
   const AttrP = g.Attr && g.Attr.prototype;
   const nomDAttr = AttrP && lireDe(AttrP, "name");
   const proprioDAttr = AttrP && lireDe(AttrP, "ownerElement");
   const estValeur = (nom) => typeof nom === "string" && appliquer(minuscules, nom, []) === "value";
-  /** Vrai si `a` est l'attribut `value` d'un champ de mot de passe (faux pour tout ce qui n'est pas un `Attr`). */
+  /** True if `a` is the `value` attribute of a password field (false for anything that is not an `Attr`). */
   const attrMasque = (a) => {
     if (!nomDAttr || !proprioDAttr || a === null || typeof a !== "object") return false;
     try {
@@ -362,7 +362,7 @@
     const lireAttrNS = ElP.getAttributeNS;
     if (typeof lireAttr === "function") {
       figerSur(ElP, "getAttribute", function getAttribute(nom) {
-        // Le nom est converti une seule fois : un objet dont `toString` change ne passe pas entre les deux lectures.
+        // The name is converted only once: an object whose `toString` changes does not pass between the two reads.
         const n = texte(nom);
         const v = appliquer(lireAttr, this, [n]);
         return v !== null && estMotDePasse(this) && estValeur(n) ? "" : v;
@@ -410,7 +410,7 @@
   const ombreDe = g.Element && lireDe(g.Element.prototype, "shadowRoot");
   const actifOmbre = g.ShadowRoot && lireDe(g.ShadowRoot.prototype, "activeElement");
   const FILTRES = { __proto__: null, keydown: 1, keypress: 1, keyup: 1, input: 1, beforeinput: 1, paste: 1, compositionstart: 1, compositionupdate: 1, compositionend: 1, textinput: 1, formdata: 2 };
-  /** Le champ actif, à travers les racines fantômes ouvertes. */
+  /** The active field, through the open shadow roots. */
   const actifProfond = () => {
     if (!actifDe || !document) return null;
     let a = appliquer(actifDe, document, []);
@@ -422,7 +422,7 @@
     }
     return a;
   };
-  /** L'événement doit-il être caché à l'écouteur de l'agent ? */
+  /** Must the event be hidden from the agent's listener? */
   const cache = (type, e) => {
     const f = FILTRES[type];
     if (!f) return false;
@@ -449,7 +449,7 @@
   if (ET && WM) {
     const ajouter = ET.prototype.addEventListener;
     const retirer = ET.prototype.removeEventListener;
-    // Écouteur → { "<type>|<capture>": enveloppe } : la même enveloppe pour le même triplet (retrait, doublons).
+    // Listener → { "<type>|<capture>": wrapper }: the same wrapper for the same triplet (removal, duplicates).
     const enveloppes = new WM();
     const enveloppeDe = (type, l, options, creerSiAbsente) => {
       if (l === null || (typeof l !== "object" && typeof l !== "function")) return null;
@@ -480,7 +480,7 @@
         return appliquer(retirer, this, [t, w || l, options]);
       });
     }
-    // Les gestionnaires `on…` : l'agent relit la fonction qu'il a posée, la page reçoit l'enveloppe.
+    // The `on…` handlers: the agent reads back the function it set, the page receives the wrapper.
     const posees = new WM();
     const NOMS_ON = ["onkeydown", "onkeypress", "onkeyup", "oninput", "onbeforeinput", "onpaste", "onformdata"];
     const protos = [g.HTMLElement, g.SVGElement, g.MathMLElement, g.Document, g.Window];
@@ -519,7 +519,7 @@
     }
   }
 
-  // --- Réseau
+  // --- Network
 
   const refusee = () => new Erreur(URL_REFUSEE);
   const reqUrl = g.Request && lireDe(g.Request.prototype, "url");
@@ -534,7 +534,7 @@
           u = null;
         }
       }
-      // Pas une requête : l'adresse est lue une fois, et c'est elle qui part.
+      // Not a request: the address is read once, and that is the one that goes.
       const cible = u === null ? texte(entree) : entree;
       if (!permise(u === null ? cible : u, false)) return new P((_ok, ko) => ko(new ErreurType(URL_REFUSEE)));
       return appliquer(fetchNatif, g, arguments.length > 1 ? [cible, init] : [cible]);
@@ -551,7 +551,7 @@
     // Firefox: the sandbox's own XMLHttpRequest (guarded prototype) replaces the page's on the Xray window.
     if (fenetre && fenetre.XMLHttpRequest !== XHR) figerSur(fenetre, "XMLHttpRequest", XHR);
   }
-  /** Remplace un constructeur (`WebSocket`, `EventSource`) : l'adresse (premier argument) est vérifiée d'abord. */
+  /** Replaces a constructor (`WebSocket`, `EventSource`): the address (first argument) is checked first. */
   const garderConstructeur = (nom) => {
     const C = g[nom];
     if (typeof C !== "function") return;
@@ -585,7 +585,7 @@
   const dOuvrir = descripteur(g, "open") || (fenetre && descripteur(fenetre, "open")) || (g.Window && descripteur(g.Window.prototype, "open"));
   const ouvrirFenetre = dOuvrir && typeof dOuvrir.value === "function" ? dOuvrir.value : null;
   if (ouvrirFenetre) {
-    // Une fenêtre vide pourrait ensuite être menée ailleurs (sa `location` est écrivable d'une autre origine) : refusée.
+    // An empty window could then be led elsewhere (its `location` is writable from another origin): refused.
     const open = function open(url, ...reste) {
       const u = url === undefined ? "" : texte(url);
       if (!permise(u === "" ? "about:blank" : u, true)) return null;
@@ -593,7 +593,7 @@
     };
     surGlobal("open", open);
   }
-  /** Les setters d'adresse d'une classe d'éléments. */
+  /** The address setters of an element class. */
   const garderSetters = (classe, noms) => {
     const C = g[classe];
     const proto = C && C.prototype;
@@ -664,7 +664,7 @@
     const lireValeur = dValeur.get;
     definir(Attr.prototype, "value", {
       __proto__: null,
-      // Mots de passe : l'attribut `value` d'un champ de mot de passe se lit vide (voir plus haut).
+      // Passwords: the `value` attribute of a password field reads empty (see above).
       get:
         typeof lireValeur === "function"
           ? function () {
