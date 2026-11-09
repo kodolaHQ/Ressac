@@ -49,7 +49,7 @@ describe("LocalAi", () => {
     const req = ollama.requests.find((x) => x.url === "/v1/systemone")!;
     expect(req.body).toEqual({ state: "texte", questions, model: "pplx-decider-flash" });
     expect(launch).not.toHaveBeenCalled();
-    expect(ai.state().state).not.toBe("non-installee");
+    expect(ai.state().state).not.toBe("not-installed");
   });
 
   it("an imposed Kev address wins over modeleDecision", async () => {
@@ -114,7 +114,7 @@ describe("LocalAi", () => {
     const { run: run } = fakeRunner([]);
     const ai = new LocalAi({ folder: await tempFolder(), run: run, ...fast });
     await expect(ai.kev({ state: "", questions: {} })).rejects.toThrow("IA locale non installée");
-    expect(ai.state().state).toBe("non-installee");
+    expect(ai.state().state).toBe("not-installed");
   });
 
   it("without kevUrl, kev() launches the pinned uv command in <folder>/kev, waits for /v1/models, then goes active", async () => {
@@ -139,7 +139,7 @@ describe("LocalAi", () => {
       args: ["run", "--extra", "serve", "python", "-m", "kev.serve", "--run", "jaredpalmer/kev-4b@v1.0", "--port", "8123"],
       cwd: join(folder, "kev"),
     }]);
-    expect(states).toEqual(["demarrage", "active"]);
+    expect(states).toEqual(["starting", "active"]);
     expect(ai.state().state).toBe("active");
   });
 
@@ -154,7 +154,7 @@ describe("LocalAi", () => {
     });
     const ai = new LocalAi({ folder: folder, run: run, launch: launch, port: 1, ...fast });
     await expect(ai.kev({ state: "", questions: {} })).rejects.toThrow("Kev n'a pas démarré : ligne 1\nboum");
-    expect(ai.state().state).toBe("erreur");
+    expect(ai.state().state).toBe("error");
   });
 
   it("two calls during startup launch only one process", async () => {
@@ -190,11 +190,11 @@ describe("LocalAi", () => {
     toStop.push(ai);
     const call = ai.kev({ state: "", questions: {} }).catch((e) => e);
     await new Promise((r) => setTimeout(r, 40));
-    expect(ai.state().state).toBe("demarrage");
+    expect(ai.state().state).toBe("starting");
     await ai.stop();
     await call;
     await new Promise((r) => setTimeout(r, 40));
-    expect(ai.state()).toEqual({ state: "arretee" });
+    expect(ai.state()).toEqual({ state: "stopped" });
     expect((ai as any).minuteur).toBeUndefined();
   });
 
@@ -219,7 +219,7 @@ describe("LocalAi", () => {
     expect(ai.state().state).toBe("active");
     now += 2_000;
     await new Promise((r) => setTimeout(r, 50));
-    expect(ai.state().state).toBe("arretee");
+    expect(ai.state().state).toBe("stopped");
     expect(stopped).toBe(1);
   });
 
@@ -245,7 +245,7 @@ describe("LocalAi", () => {
     await ai.kev({ state: "", questions: {} });
     expect(launched).toBe(2);
     await ai.close();
-    expect(ai.state().state).toBe("arretee");
+    expect(ai.state().state).toBe("stopped");
     await expect(ai.kev({ state: "", questions: {} })).rejects.toThrow("IA locale fermée");
     await expect(ai.gemma({ prompt: "x" })).rejects.toThrow("IA locale fermée");
     expect(launched).toBe(2);
@@ -271,7 +271,7 @@ describe("LocalAi", () => {
     await first.kev({ state: "", questions: {} });
     await first.close();
     expect(stoppedList).toBe(1);
-    expect(ai.state().state).toBe("arretee");
+    expect(ai.state().state).toBe("stopped");
     // A late harvest of the stopped kernel does not relaunch Kev.
     await expect(first.kev({ state: "", questions: {} })).rejects.toThrow("IA locale fermée");
     await expect(first.gemma({ prompt: "x" })).rejects.toThrow("IA locale fermée");

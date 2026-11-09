@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { toolsPath, forgetGroup, keepGroup, killGroup, type Runner } from "../container/runner.js";
 import { GEMMA_JSON_INVALID, AI_ABANDONED } from "./dispatcher.js";
 
-export type AiState = "non-installee" | "arretee" | "demarrage" | "active" | "erreur";
+export type AiState = "not-installed" | "stopped" | "starting" | "active" | "error";
 
 export interface AiProcess {
   stop(): void;
@@ -127,7 +127,7 @@ export interface AiAccess {
 }
 
 export class LocalAi {
-  private currentState: AiState = "arretee";
+  private currentState: AiState = "stopped";
   private currentError?: string;
   private process?: AiProcess;
   private startup?: Promise<void>;
@@ -363,7 +363,7 @@ export class LocalAi {
     this.startup = undefined;
     this.generation++;
     p?.stop();
-    if (this.currentState === "active" || this.currentState === "demarrage") this.change("arretee");
+    if (this.currentState === "active" || this.currentState === "starting") this.change("stopped");
   }
 
   private ensureKev(): Promise<void> {
@@ -381,11 +381,11 @@ export class LocalAi {
       return;
     }
     if (!existsSync(join(this.kevFolder, ".git"))) {
-      this.change("non-installee");
+      this.change("not-installed");
       throw new Error("IA locale non installée");
     }
     const gen = ++this.generation;
-    this.change("demarrage");
+    this.change("starting");
     const lignes: string[] = [];
     let output: number | null | undefined;
     const p = this.launch("uv", ["run", "--extra", "serve", "python", "-m", "kev.serve", "--run", KEV_MODEL, "--port", String(this.port)], { cwd: this.kevFolder });
@@ -395,7 +395,7 @@ export class LocalAi {
     p.onOutput((code) => {
       dead = true;
       output = code;
-      if (this.process === p) { this.process = undefined; if (this.currentState === "active") this.change("arretee"); }
+      if (this.process === p) { this.process = undefined; if (this.currentState === "active") this.change("stopped"); }
     });
     const step = this.o.pollMs ?? 500;
     const end = Date.now() + STARTUP_DELAY_MS;
@@ -403,7 +403,7 @@ export class LocalAi {
       if (gen !== this.generation) return; // arreter() came through here
       if (dead) {
         const msg = `Kev n'a pas démarré : ${lignes.slice(-5).join("\n") || `code ${output}`}`;
-        this.change("erreur", msg);
+        this.change("error", msg);
         throw new Error(msg);
       }
       try {
@@ -422,7 +422,7 @@ export class LocalAi {
     p.stop();
     this.process = undefined;
     const msg = `Kev n'a pas démarré : délai dépassé. ${lignes.slice(-5).join("\n")}`.trim();
-    this.change("erreur", msg);
+    this.change("error", msg);
     throw new Error(msg);
   }
 

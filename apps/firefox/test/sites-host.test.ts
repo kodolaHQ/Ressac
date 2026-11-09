@@ -125,7 +125,7 @@ function mount(gateOpen?: { reached: () => void; open: Promise<void> }, readLink
     keep: (p: Promise<void> | null) => (kept = p), setErrors: (e: typeof chromeErrors) => (chromeErrors = e) };
 }
 
-describe("chercherAdresse", () => {
+describe("lookupAddress", () => {
   const NOTICE_CHANGED = "Vidola a changé d'adresse : vidola-b.example. Il faudra peut-être te reconnecter.";
 
   it("a new domain: the bar is told (reading, new address, notice), url.json is written, the open app takes it", async () => {
@@ -560,7 +560,7 @@ describe("site rights, card and memory", () => {
   });
 
   it("SchemaActionSite accepts a plain id with a known action only", () => {
-    const vs = [{ id: "vidola", action: "delete" }, { id: "../x", action: "delete" }, { id: "Vidola", action: "open" }, { id: "a", action: "autre" }, { id: ".corbeille", action: "review" }];
+    const vs = [{ id: "vidola", action: "delete" }, { id: "../x", action: "delete" }, { id: "Vidola", action: "open" }, { id: "a", action: "autre" }, { id: ".trash", action: "review" }];
     expect(vs.map((v) => SchemaActionSite.safeParse(v).success)).toEqual([true, false, false, false, false]);
   });
 

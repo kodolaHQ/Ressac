@@ -31,7 +31,7 @@ export function toDraft(raw: unknown): Draft | null {
 /** `ai.sort` → `ai-sort`, then `ai-sort-2`, … (40 characters at most). */
 export function idForType(type: string, existing: Iterable<string>): string {
   const taken = new Set(existing);
-  const base = type.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "bloc";
+  const base = type.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "block";
   const cut = (s: string, suffix: string) => s.slice(0, 40 - suffix.length).replace(/-+$/, "") + suffix;
   let id = cut(base, "");
   for (let n = 2; taken.has(id); n++) id = cut(base, `-${n}`);

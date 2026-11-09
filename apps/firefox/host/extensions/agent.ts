@@ -625,7 +625,7 @@ export class ExtensionsAgent {
   /** The Extensions page's « Supprimer »: its storage goes with the add-on, the agent's folder stays. */
   async deletePage(key: string): Promise<ExtensionResult> {
     if (!(key in (await readExtensionsState(this.o.folder)).extensions)) return { ok: false, error: `Extension inconnue : ${key}` };
-    return this.supprimer(key).then(
+    return this.remove(key).then(
       () => ({ ok: true as const }),
       (e: unknown) => ({ ok: false as const, error: (e as Error).message }),
     );
@@ -633,9 +633,9 @@ export class ExtensionsAgent {
 
   /**
    * « Supprimer »: uninstalled, copy and signed .xpi deleted, registry entry removed; amo-versions.json kept (AMO never reuses a number).
-   * `horsWebaios`: about:addons' pending removal, which its Undo may have cancelled since: then nothing changes.
+   * `outsideWebaios`: about:addons' pending removal, which its Undo may have cancelled since: then nothing changes.
    */
-  supprimer(key: string, outsideWebaios = false): Promise<void> {
+  remove(key: string, outsideWebaios = false): Promise<void> {
     const id = this.id(key);
     if (!id) return Promise.reject(new Error(`Identifiant d'extension invalide : ${key}`));
     this.cards.get(key)?.abort();
@@ -656,7 +656,7 @@ export class ExtensionsAgent {
     if (!addonId.endsWith(ID_SUFFIX)) return;
     const key = this.key(addonId.slice(0, -ID_SUFFIX.length));
     if (!key || !(key in (await readExtensionsState(this.o.folder)).extensions)) return;
-    if (what === "uninstalled") return this.supprimer(key, true);
+    if (what === "uninstalled") return this.remove(key, true);
     await this.queued(key, () => this.edit((e) => (key in e.extensions ? disableEverywhere(e, key) : e)));
   }
 

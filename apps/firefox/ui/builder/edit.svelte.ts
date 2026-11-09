@@ -8,7 +8,7 @@ import { forgetRunChoices } from "./executions.svelte";
 
 type Position = { x: number; y: number };
 export type Validation = { ok: true } | { ok: false; error: string; block?: string };
-export type SaveState = "enregistre" | "en-cours" | { invalid: string; block?: string } | { error: string };
+export type SaveState = "saved" | "saving" | { invalid: string; block?: string } | { error: string };
 /** `unreadable`: `workflow.json` is not readable at opening (truncated JSON…); `not-found`: neither widget nor harvest. */
 export type Load = "loading" | "ready" | "not-found" | { unreadable: string };
 /** Reading and writing the workflow, addressed by the workflow's key (`targetKey`). */
@@ -33,7 +33,7 @@ export class Edit {
   draft = $state.raw<Draft | null>(null);
   validation = $state.raw<Validation>({ ok: true });
   warnings = $state.raw<Warning[]>([]);
-  recordingState = $state.raw<SaveState>("enregistre");
+  recordingState = $state.raw<SaveState>("saved");
   /** The latest version seen on disk (or confirmed by a save). */
   lastKnown = $state.raw<Draft | null>(null);
   banner = $state<null | "proposer" | "illisible">(null);
@@ -102,7 +102,7 @@ export class Edit {
     this.lastKnown = disk;
     this.validation = l.validation;
     this.warnings = l.warnings;
-    this.recordingState = l.validation.ok ? "enregistre" : invalid(l.validation.error, l.validation.block);
+    this.recordingState = l.validation.ok ? "saved" : invalid(l.validation.error, l.validation.block);
     this.diskValid = l.validation.ok;
     this.banner = null;
     this.diskVersion = null;
@@ -150,9 +150,9 @@ export class Edit {
       if (this.kept) {
         // The disk caught up with the held draft: nothing left to choose or send.
         this.kept = null;
-        this.recordingState = l.validation.ok ? "enregistre" : invalid(l.validation.error, l.validation.block);
+        this.recordingState = l.validation.ok ? "saved" : invalid(l.validation.error, l.validation.block);
       }
-      if (this.recordingState !== "en-cours") {
+      if (this.recordingState !== "saving") {
         if (!sameJson(this.validation, l.validation)) this.validation = l.validation;
         if (!sameJson(this.warnings, l.warnings)) this.warnings = l.warnings;
       }
@@ -266,7 +266,7 @@ export class Edit {
    */
   savedCode(source: string): void {
     const v = this.validation;
-    if (v.ok || v.block === undefined || !this.draft || this.banner === "proposer" || this.recordingState === "en-cours") return;
+    if (v.ok || v.block === undefined || !this.draft || this.banner === "proposer" || this.recordingState === "saving") return;
     const b = this.draft.blocks.find((x) => x.id === v.block);
     if (b?.type === "code" && b.params.source === source) this.save(this.draft);
   }
@@ -315,7 +315,7 @@ export class Edit {
   /** Saves go out one by one; a draft outdated before its turn is not sent. */
   private save(b: Draft): void {
     this.next = b;
-    this.recordingState = "en-cours";
+    this.recordingState = "saving";
     if (!this.recordingInProgress) void this.clear();
   }
 
@@ -352,7 +352,7 @@ export class Edit {
         } else if (r.ok) {
           this.validation = { ok: true };
           this.warnings = r.warnings;
-          this.recordingState = "enregistre";
+          this.recordingState = "saved";
         } else {
           this.validation = { ok: false, error: r.error, ...(r.block === undefined ? {} : { block: r.block }) };
           this.warnings = r.warnings;

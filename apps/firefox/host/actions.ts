@@ -221,7 +221,7 @@ export function createActionsHost(o: {
       kernel?.actions.stop(id);
       await kernel?.actions.denyGrant(id);
     },
-    async supprimer(id: string): Promise<{ ok: true } | { ok: false; error: string }> {
+    async delete(id: string): Promise<{ ok: true } | { ok: false; error: string }> {
       if (!(await read(id))) return { ok: false, error: ACTION_UNKNOWN };
       // Stopped first: otherwise it would run to its maximum duration with nothing left to stop it.
       o.kernel()?.actions.stop(id);

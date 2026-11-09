@@ -112,7 +112,7 @@ describe("ReviewComments", () => {
     await r.edit(a.id, "autre");
     expect((await r.list())[0]!.text).toBe("autre");
     await expect(r.edit(a.id, " ")).rejects.toThrow(EMPTY_REMARK);
-    await r.supprimer(a.id);
+    await r.delete(a.id);
     expect(await r.list()).toEqual([]);
   });
   test("the file has mode 0600 and survives a re-read from disk", async () => {

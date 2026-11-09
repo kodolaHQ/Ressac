@@ -239,7 +239,7 @@ describe("lancer, refusals and deletion", () => {
     await h.launch("gitlab", null);
     await expect.poll(async () => (await h.list()).find((a) => a.id === "gitlab")?.denial).toBe("Docker n'est pas démarré");
     const declaration = readFileSync(join(c.actions, "gitlab", "action.json"));
-    expect(await h.supprimer("gitlab")).toEqual({ ok: true });
+    expect(await h.delete("gitlab")).toEqual({ ok: true });
     mkdirSync(join(c.actions, "gitlab"), { recursive: true });
     writeFileSync(join(c.actions, "gitlab", "action.json"), declaration);
     const denialOf = async () => {
@@ -268,9 +268,9 @@ describe("lancer, refusals and deletion", () => {
     await h.denyGrant("gitlab");
     expect(calls).toEqual(["arreter:gitlab", "refuserAccord:gitlab"]);
     calls.length = 0;
-    expect(await h.supprimer("gitlab")).toEqual({ ok: true });
+    expect(await h.delete("gitlab")).toEqual({ ok: true });
     expect(calls).toEqual(["arreter:gitlab", "refuserAccord:gitlab"]);
-    expect(await h.supprimer("gitlab")).toEqual({ ok: false, error: "Action inconnue" });
+    expect(await h.delete("gitlab")).toEqual({ ok: false, error: "Action inconnue" });
   });
 
   // actions.test.ts:532
@@ -279,7 +279,7 @@ describe("lancer, refusals and deletion", () => {
     const outcome = new Promise<LaunchResult>((ok) => (finish = ok));
     const { h, changes } = host({ issue: outcome });
     void h.launch("gitlab", null);
-    expect(await h.supprimer("gitlab")).toEqual({ ok: true });
+    expect(await h.delete("gitlab")).toEqual({ ok: true });
     finish({ status: "failed", error: "Action inconnue", kernelError: true });
     await new Promise((ok) => setTimeout(ok, 0));
     expect(changes()).toBe(0);

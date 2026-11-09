@@ -456,7 +456,7 @@ describe("createActionsApi", () => {
     expect(change).toHaveBeenCalledTimes(1);
   });
 
-  it("refuserAccord and supprimer go to the host, refused in a private space; their cached reads are forgotten", async () => {
+  it("refuserAccord and delete go to the host, refused in a private space; their cached reads are forgotten", async () => {
     let up = true;
     const answer = (v: unknown) => () => {
       if (!up) throw new Error("Le noyau de l'agent s'est arrêté.");

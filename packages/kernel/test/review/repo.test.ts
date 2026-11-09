@@ -120,9 +120,9 @@ describe("comparer and file", () => {
     const c = await r.compare();
     expect(await r.lines(c.currentTree, "t.txt", 10, 12)).toEqual(["ligne 10", "ligne 11", "ligne 12"]);
   });
-  test("supprimer removes the private repo", async () => {
+  test("delete removes the private repo", async () => {
     await r.ensureReference();
-    await r.supprimer();
+    await r.delete();
     await expect(stat(repo)).rejects.toThrow();
     expect(await r.ensureReference()).toBe(true);
   });

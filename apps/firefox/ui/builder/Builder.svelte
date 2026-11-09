@@ -50,10 +50,10 @@
   /** The block shown in the « Bloc » tab. */
   let selection = $state<string | null>(null);
   let canvas = $state<ReturnType<typeof Canvas>>();
-  let view = $state<"workflow" | "executions">("workflow");
+  let view = $state<"workflow" | "runs">("workflow");
   let previewOpen = $state(false);
   /** Right pane tab: the selected block, or the window's agent conversation. */
-  let rightTab = $state<"bloc" | "agent">("bloc");
+  let rightTab = $state<"block" | "agent">("block");
   // ⌘J or ✦ while the builder is shown: the « Agent » tab, whose terminal takes the keyboard.
   const agentRequests = untrack(() => focusAgent.n);
   $effect(() => {
@@ -67,8 +67,8 @@
   const outputId = $derived(edit.draft?.blocks.find((b) => b.type === "output")?.id);
   const appState = $derived.by(() => {
     const e = edit.recordingState;
-    if (e === "enregistre") return "Enregistré";
-    if (e === "en-cours") return "Enregistrement…";
+    if (e === "saved") return "Enregistré";
+    if (e === "saving") return "Enregistrement…";
     if ("invalid" in e) return `Non enregistré : ${e.invalid}`;
     return `Erreur d'enregistrement : ${e.error}`;
   });
@@ -162,17 +162,17 @@
     <h1>{name}</h1>
     <div class="onglets" role="tablist">
       <button role="tab" aria-selected={view === "workflow"} class:actif={view === "workflow"} onclick={() => (view = "workflow")}>Workflow</button>
-      <button role="tab" data-testid="vue-executions" aria-selected={view === "executions"} class:actif={view === "executions"} onclick={() => (view = "executions")}
+      <button role="tab" data-testid="vue-executions" aria-selected={view === "runs"} class:actif={view === "runs"} onclick={() => (view = "runs")}
         >Exécutions</button
       >
     </div>
-    <span class="etat" class:invalide={edit.recordingState !== "enregistre" && edit.recordingState !== "en-cours"} data-testid="etat-enregistrement"
+    <span class="etat" class:invalide={edit.recordingState !== "saved" && edit.recordingState !== "saving"} data-testid="etat-enregistrement"
       >{appState}</span
     >
     <div class="actions">
       <button data-testid="bouton-apercu" aria-pressed={previewOpen} onclick={() => (previewOpen = !previewOpen)}>{isAction ? "Aperçu de la page" : "Aperçu du widget"}</button>
       <button data-testid="reorganiser" disabled={!edit.draft} onclick={reorganize}>Réorganiser</button>
-      <button class="lancer" data-testid="lancer" disabled={!edit.diskValid || runs.busy || edit.recordingState === "en-cours"} onclick={launch}>
+      <button class="lancer" data-testid="lancer" disabled={!edit.diskValid || runs.busy || edit.recordingState === "saving"} onclick={launch}>
         {runs.busy ? "Exécution…" : "▶ Lancer"}
       </button>
     </div>
@@ -196,7 +196,7 @@
     <aside class="droite" class:agent={rightTab === "agent"} aria-label={rightTab === "agent" ? "Agent" : "Bloc"}>
       <div class="onglets-droite" role="tablist">
         {#if withBlock}
-          <button role="tab" aria-selected={rightTab === "bloc"} class:actif={rightTab === "bloc"} onclick={() => (rightTab = "bloc")}>Bloc</button>
+          <button role="tab" aria-selected={rightTab === "block"} class:actif={rightTab === "block"} onclick={() => (rightTab = "block")}>Bloc</button>
         {/if}
         <button role="tab" data-testid="onglet-agent" aria-selected={rightTab === "agent"} class:actif={rightTab === "agent"} onclick={() => (rightTab = "agent")}
           >Agent</button
@@ -204,7 +204,7 @@
       </div>
       {#if withBlock}
         <!-- The « Bloc » tab stays mounted, hidden: a setting or code being typed is not lost there. -->
-        <div class="volet-bloc" hidden={rightTab !== "bloc"}>
+        <div class="volet-bloc" hidden={rightTab !== "block"}>
           <BlockTab widget={id} editing={edit} {runs} catalog={byType} {selection} />
         </div>
       {/if}
@@ -229,7 +229,7 @@
   {:else}
     <SvelteFlowProvider>
       <div class="corps">
-        {#if view === "executions"}<RunList {runs} onchosen={() => (view = "workflow")} />{/if}
+        {#if view === "runs"}<RunList {runs} onchosen={() => (view = "workflow")} />{/if}
         <Palette catalog={catalog} hasOutput={hasOutput} web={edit.widget?.web ?? edit.action?.web ?? false} action={isAction} onadd={(type) => add(type)} />
         <div class="zone-canevas">
           <Canvas
@@ -247,7 +247,7 @@
         {@render pane(true)}
       </div>
       {#if view === "workflow"}
-        <RunsBar {runs} {selection} output={outputId} replayable={edit.diskValid && edit.recordingState !== "en-cours"} />
+        <RunsBar {runs} {selection} output={outputId} replayable={edit.diskValid && edit.recordingState !== "saving"} />
       {/if}
     </SvelteFlowProvider>
   {/if}

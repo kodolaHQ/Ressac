@@ -60,7 +60,7 @@ export function probeByDefault(port: number): Promise<"http" | "occupe" | "libre
   });
 }
 
-type Outcome = { type: "pret" } | { type: "fin"; code: number | null } | { type: "delai" } | { type: "arret" };
+type Outcome = { type: "ready" } | { type: "end"; code: number | null } | { type: "timeout" } | { type: "stop" };
 
 /** A launch in progress or running. `arret`: the stop was requested, the end of the process is no longer an error. */
 interface Launch {
@@ -218,15 +218,15 @@ export class ApplicationManager {
     l.process = this.launcher(this.workshop.appCommand(folder, project.manifest.launch, port));
     l.process.onEnd((code) => {
       if (l.stop) return;
-      if (l.wake) l.wake({ type: "fin", code });
+      if (l.wake) l.wake({ type: "end", code });
       else void this.unexpectedEnd(folder, l, code);
     });
 
-    const delay = setTimeout(() => l.wake?.({ type: "delai" }), this.readyDelayMs);
+    const delay = setTimeout(() => l.wake?.({ type: "timeout" }), this.readyDelayMs);
     let probe: NodeJS.Timeout | undefined;
     const probeLater = () => {
       probe = setTimeout(async () => {
-        if ((await this.probe(port)) === "http") l.wake?.({ type: "pret" });
+        if ((await this.probe(port)) === "http") l.wake?.({ type: "ready" });
         else if (l.wake) probeLater();
       }, this.probeIntervalMs);
     };
@@ -237,14 +237,14 @@ export class ApplicationManager {
     clearTimeout(probe);
 
     switch (i.type) {
-      case "arret":
+      case "stop":
         return this.view(project);
-      case "pret":
+      case "ready":
         return end({ state: "running", port, launch: l });
-      case "fin":
+      case "end":
         await this.unexpectedEnd(folder, l, i.code);
         return this.view(project);
-      case "delai": {
+      case "timeout": {
         const error = await this.withLog(folder, `L'application ne répond pas sur le port ${port} après ${Math.round(this.readyDelayMs / 1000)} s.`);
         if (l.stop) return this.view(project);
         // Stop requested before killing: the end of the process does not replace this message.
@@ -294,7 +294,7 @@ export class ApplicationManager {
     if (!l) return;
     l.stop = true;
     this.change(folder, { state: "stopped" });
-    l.wake?.({ type: "arret" });
+    l.wake?.({ type: "stop" });
     const stop = this.workshop.stopApp(folder);
     this.stopsRunning.set(folder, stop);
     try {

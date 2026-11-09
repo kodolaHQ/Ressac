@@ -242,7 +242,7 @@ export class ReviewStore {
     });
   }
 
-  supprimer(): Promise<void> {
+  delete(): Promise<void> {
     return this.series(() => rm(this.repo, { recursive: true, force: true }));
   }
 }

@@ -106,7 +106,7 @@ export class ReviewComments {
     return this.transform((list) => ({ list: list.map((c) => (c.id === id ? { ...c, resolved: resolved } : c)), result: undefined }));
   }
 
-  supprimer(id: string): Promise<void> {
+  delete(id: string): Promise<void> {
     return this.transform((list) => ({ list: list.filter((c) => c.id !== id), result: undefined }));
   }
 

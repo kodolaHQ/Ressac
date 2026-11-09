@@ -181,7 +181,7 @@ export class ReviewService {
     return this.queued(async () => {
       this.forget(p);
       await Promise.all([
-        new ReviewStore({ repo: reviewStore(this.o.folders, p), folder: this.o.paths.sites, ...(this.o.git ? { git: this.o.git } : {}) }).supprimer(),
+        new ReviewStore({ repo: reviewStore(this.o.folders, p), folder: this.o.paths.sites, ...(this.o.git ? { git: this.o.git } : {}) }).delete(),
         rm(commentsFile(this.o.folders, p), { force: true }),
       ]);
     });
@@ -347,7 +347,7 @@ export class ReviewService {
   }
 
   deleteComment(p: ProjectId, id: string): Promise<void> {
-    return this.commentsOf(p).supprimer(id);
+    return this.commentsOf(p).delete(id);
   }
 
   /** The unresolved comments (already-sent ones included) become a batch for the agent or the connected Claude Code. */

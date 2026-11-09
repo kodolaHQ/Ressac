@@ -60,11 +60,11 @@ test("aAccueil true only with accueil/index.html", async () => {
   expect(withDeclaration(await readSite(c, "sans", o)).hasHome).toBe(false);
 });
 
-test("hidden folder, .corbeille or symbolic link ignored; a name outside the rule is « sans fiche » with the rule", async () => {
+test("hidden folder, .trash or symbolic link ignored; a name outside the rule is « sans fiche » with the rule", async () => {
   const c = await space();
   await site(c, "ok", decl("Ok"));
   await site(c, ".cache", decl("Caché"));
-  await site(c, ".corbeille", decl("Corbeille"));
+  await site(c, ".trash", decl("Corbeille"));
   await site(c, "nom invalide", decl("Invalide"));
   await site(c, "MonSite", decl("Majuscules"));
   await site(c, "a_b", decl("Souligné"));

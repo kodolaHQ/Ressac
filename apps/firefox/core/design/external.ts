@@ -96,7 +96,7 @@ export async function startExternals(o: {
       await o.remarks.forget(project);
       await Promise.all([
         // Through the repository queue: goes after a first snapshot in progress, which would otherwise recreate it.
-        new ReviewStore({ repo: reviewStore(o.folders, project), folder: o.spaceRoot }).supprimer(),
+        new ReviewStore({ repo: reviewStore(o.folders, project), folder: o.spaceRoot }).delete(),
         rm(commentsFile(o.folders, project), { force: true }),
       ]);
     },

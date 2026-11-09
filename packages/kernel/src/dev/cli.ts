@@ -23,7 +23,7 @@ const bridge = new Proxy(fake, {
     return (...args: unknown[]) => {
       if (log) appendFileSync(log, `${new Date().toISOString()} ${String(key)} ${JSON.stringify(args)}\n`);
       // No real browser yet: the tabs opened by the agent open in the default browser.
-      if (key === "ouvrirOnglet") execFile("open", [String(args[0])]);
+      if (key === "openTab") execFile("open", [String(args[0])]);
       return value.apply(target, args);
     };
   },

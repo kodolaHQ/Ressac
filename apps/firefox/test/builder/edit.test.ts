@@ -78,7 +78,7 @@ test("opening a workflow shipped without positions lays it out in columns and wr
   const f = fake(shipped());
   const e = await opened(f);
   expect(e.loading).toBe("ready");
-  expect(e.recordingState).toBe("enregistre");
+  expect(e.recordingState).toBe("saved");
   expect(e.positions).toEqual({ garder: { x: 0, y: 0 }, tri: { x: 260, y: 0 }, sortie: { x: 520, y: 0 } });
   e.reorder();
   await e.review();
@@ -114,7 +114,7 @@ test("a new unlinked block is « non enregistré : entrée manquante »; linked,
   expect(f.writes).toEqual([]);
   e.edit((b) => link(b, "garder", id));
   await wait();
-  expect(e.recordingState).toBe("enregistre");
+  expect(e.recordingState).toBe("saved");
   expect(f.writes.at(-1)!.blocks.find((b) => b.id === id)!.params).toEqual({ keys: ["url"] });
   e.cancel();
   await wait();
@@ -122,7 +122,7 @@ test("a new unlinked block is « non enregistré : entrée manquante »; linked,
   expect(f.writes).toHaveLength(1);
   e.cancel();
   await wait();
-  expect(e.recordingState).toBe("enregistre");
+  expect(e.recordingState).toBe("saved");
   expect(f.writes.at(-1)!.blocks.map((b) => b.id)).toEqual(["garder", "tri", "sortie"]);
   // Displayed positions do not jump when going back to the workflow without layout.
   expect(e.positions.tri).toEqual({ x: 260, y: 0 });
@@ -139,7 +139,7 @@ test("a new code block gets its template file (never an existing file) before be
   expect(f.state.files["code.mjs"]).toBe("// de l'agent");
   expect(f.state.files["code-2.mjs"]).toBe(CODE_MODEL);
   expect(f.writes.at(-1)!.blocks.find((b) => b.id === "code")!.params).toEqual({ source: "code-2.mjs" });
-  expect(e.recordingState).toBe("enregistre");
+  expect(e.recordingState).toBe("saved");
 });
 
 test("relire: the echo of a save is ignored; an agent version is adopted without writing anything", async () => {
@@ -180,7 +180,7 @@ test("relire with an invalid draft offers the agent's version; take or keep", as
   e.takeDiskVersion();
   expect(e.banner).toBeNull();
   expect(e.draft!.blocks.map((b) => b.id)).toEqual(["garder", "tri", "sortie"]);
-  expect(e.recordingState).toBe("enregistre");
+  expect(e.recordingState).toBe("saved");
   await wait();
   expect(f.writes).toEqual([]);
 });
@@ -270,7 +270,7 @@ test("I1: a gesture during the banner writes nothing and the banner stays; « Ga
   expect(f.writes).toHaveLength(1);
   expect(f.writes[0]!.links).toContainEqual({ from: "garder", to: id });
   expect(f.writes[0]!.blocks[0]!.params).toEqual({ source: "a.mjs" });
-  expect(e.recordingState).toBe("enregistre");
+  expect(e.recordingState).toBe("saved");
 });
 
 test("I1: a gesture during the banner, then « Prendre sa version »: the kept draft is dropped", async () => {
@@ -282,7 +282,7 @@ test("I1: a gesture during the banner, then « Prendre sa version »: the kept d
   expect(e.banner).toBeNull();
   expect(e.draft!.blocks[0]!.params).toEqual({ source: "b.mjs" });
   expect(e.draft!.blocks.map((b) => b.id)).not.toContain(id);
-  expect(e.recordingState).toBe("enregistre");
+  expect(e.recordingState).toBe("saved");
 });
 
 test("I2: ⌘Z after the first move of a workflow without layout puts the block back", async () => {
@@ -316,7 +316,7 @@ test("M2: relire during an in-flight save ignores the echo of the draft sent", a
   f.release();
   await wait();
   await wait();
-  expect(e.recordingState).toBe("enregistre");
+  expect(e.recordingState).toBe("saved");
 });
 
 test("M3: the edition of a widget that left the home is forgotten; a reused id starts from scratch", () => {
@@ -465,9 +465,9 @@ test("source of a code block to a missing file: refused; once the code is saved,
 
   f.state.files["b.mjs"] = CODE_MODEL;
   e.savedCode("b.mjs");
-  expect(e.recordingState).toBe("en-cours");
+  expect(e.recordingState).toBe("saving");
   await wait();
-  expect(e.recordingState).toBe("enregistre");
+  expect(e.recordingState).toBe("saved");
   expect(f.writes.map((b) => b.blocks[0]!.params.source)).toEqual(["b.mjs"]);
 
   // Already saved: a new save of the code sends nothing.
