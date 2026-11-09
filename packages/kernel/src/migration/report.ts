@@ -91,7 +91,7 @@ export async function writeReport(ctx: Ctx, verifyFailures: { path: string; erro
   if (ctx.resign.length) {
     parts.push(
       "## Extensions de l'agent à signer de nouveau",
-      "Leur version signée contient les anciens gardes, qui ne fonctionnent plus : elles sont marquées à signer de nouveau. L'agent doit les signer de nouveau : WebAiOs les renvoie à AMO, avec ta clé, au prochain démarrage où elles sont actives, comme après un changement de leur source.",
+      "Leur version signée contient les anciens gardes, qui ne fonctionnent plus : elles sont désactivées dans tous les espaces au démarrage, et rien n'est envoyé à AMO sans toi. Pour la signer de nouveau (envoi à AMO avec ta clé), réactive chacune dans les espaces et applis de site où tu l'utilises, ou demande à l'agent de la recharger.",
       list(ctx.resign),
     );
   }

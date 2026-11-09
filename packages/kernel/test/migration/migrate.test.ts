@@ -400,6 +400,7 @@ describe("migrateKernel, agent extensions signed with the old guards", () => {
     expect(readJson(join(dataDir, "extensions/signed/bloqueur.json"))).toEqual({ version: "1.0.3", hash: RESIGN });
     const report = readFileSync(join(dataDir, "migration-anglais.md"), "utf8");
     expect(report).toContain("## Extensions de l'agent à signer de nouveau");
+    expect(report).toContain("rien n'est envoyé à AMO sans toi");
     expect(report).toContain("- `workspace/extensions/bloqueur`");
   });
 

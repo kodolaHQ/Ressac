@@ -15,7 +15,7 @@ const STATE_RULE: Rule = {
 
 type Entry = { siteApps?: Record<string, string> };
 
-/** A signed hash no source has: the host's startup signs the extension again (as after a change of its source). */
+/** A signed hash no source has: the host turns the extension off at startup; the user turning it back on (or a reload) signs it again. */
 export const RESIGN = "re-sign";
 
 /** The old guards: their files' names (also readable in a .xpi's zip directory) or their API in a copy. */

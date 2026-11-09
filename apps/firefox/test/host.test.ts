@@ -7,6 +7,7 @@ import { createInterface } from "node:readline";
 import { afterEach, describe, expect, it } from "vitest";
 import { NO_WORKFLOW_OPEN, CONSOLE_UNLOCKED, CONSOLE_BACKGROUND_HIDDEN, OBSERVED_BACKGROUND_CONSOLE, REQUEST_REMOVED, PRIVATE_PROFILE_ERROR, hiddenTabs, navigationOutsideSite } from "../../../packages/kernel/src/index";
 import { PRIVATE_TEXT } from "../../../packages/kernel/src/mcp/bridge";
+import { RESIGN } from "../../../packages/kernel/src/migration/extensions";
 import { DISABLED_CRASHES } from "../shared/extensions-messages";
 import { hostPath, nodePath, tsxPath } from "../scripts/paths";
 import { createRpc, type Handler, type Rpc } from "../shared/rpc";
@@ -641,6 +642,41 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     expect(amo.sends.map((e) => e.version)).toEqual(["1.0.0.1", "1.0.0.2"]);
     expect(f.installs.at(-1)).toMatchObject({ version: "1.0.0.2" });
     expect(f.activations.at(-1)).toEqual({ addonId: ID, active: true });
+  });
+
+  /** Started once (signed 1.0.0.1), then its signed record marked to sign again, as the English formats migration does. */
+  const markedResign = async (amo: { url: string }, f: ReturnType<typeof firefox>) => {
+    let h = launch(amo, f, { prepare });
+    await h.rpc.request("extensions.ready", {});
+    await stop(h);
+    const record = join(h.dataDir, "extensions", "signed", "ma-ext.json");
+    writeFileSync(record, JSON.stringify({ ...JSON.parse(readFileSync(record, "utf8")), hash: RESIGN }));
+    f.activations.length = 0;
+    h = launch(amo, f, { dataDir: h.dataDir });
+    await h.rpc.request("extensions.ready", {});
+    return h;
+  };
+
+  it("signed with the old guards (re-sign): off at startup, nothing sent; signed again when the user turns it back on", async () => {
+    const amo = await fakeAmo();
+    const f = firefox();
+    const h = await markedResign(amo, f);
+    expect(amo.sends).toHaveLength(1);
+    expect(entry(h.dataDir)).toMatchObject({ grant: GRANT, profiles: [] });
+    expect(f.activations).toEqual([{ addonId: ID, active: false }]);
+    expect(await h.rpc.request("extensions.toggle", { key: "agent:ma-ext", spaceId: "e1", active: true, window: null })).toEqual({ ok: true });
+    expect(amo.sends.map((e) => e.version)).toEqual(["1.0.0.1", "1.0.0.2"]);
+    expect(f.activations.at(-1)).toEqual({ addonId: ID, active: true });
+  });
+
+  it("signed with the old guards (re-sign): reload_extension signs it again", async () => {
+    const amo = await fakeAmo();
+    const f = firefox();
+    const h = await markedResign(amo, f);
+    expect(amo.sends).toHaveLength(1);
+    expect(await tool(h, "reload_extension", { id: "ma-ext" })).toBe("state : reloaded");
+    expect(amo.sends.map((e) => e.version)).toEqual(["1.0.0.1", "1.0.0.2"]);
+    expect(JSON.parse(readFileSync(join(h.dataDir, "extensions", "signed", "ma-ext.json"), "utf8")).hash).not.toBe(RESIGN);
   });
 
   it("aTourne: an unreadable tab masks its console in that profile and by add-on id, once; a readable one changes nothing", async () => {
