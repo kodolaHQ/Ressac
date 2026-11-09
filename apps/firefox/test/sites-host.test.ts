@@ -4,7 +4,8 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { accorderSite, cheminsEspace, DeclarationSite, lireAccordsSites, MemoireSite } from "../../../packages/noyau/src/index";
 import { modifierAvecAgent } from "../shared/sites";
-import { createSites, demandeAccord, empreinteDroits, SchemaActionSite, SiteSouvenirs, type SitesChrome } from "../noyau/sites";
+import { createSites, demandeAccord, empreinteDroits, SiteSouvenirs, type SitesChrome } from "../noyau/sites";
+import { SchemaActionSite } from "../shared/api";
 
 // A gate on lireSite: while armed, the next call waits (a slow read, for the deletion race).
 const gate: { armed: boolean; reached: (() => void) | null; open: (() => void) | null } = { armed: false, reached: null, open: null };

@@ -1,7 +1,6 @@
 import { constants } from "node:fs";
 import { lstat, open, realpath } from "node:fs/promises";
 import { join, sep } from "node:path";
-import { z } from "zod";
 import {
   ACTION_INCONNUE,
   avertirWorkflow,
@@ -10,7 +9,6 @@ import {
   DeclarationWidget,
   enregistrerCode,
   enregistrerWorkflow,
-  ID_EXECUTION,
   lireAction,
   lireBrouillon,
   lireCode,
@@ -25,42 +23,6 @@ import { cibleDeUrlWorkflow } from "../shared/modele.ts";
 import type { EditionWorkflow, SelectionConstructeur } from "../shared/api.ts";
 
 // The widget and action parts of the workflow builder.
-
-// The same schemas as shared/api.ts.
-const idWidget = z.string().regex(/^[a-z0-9-]+$/).max(100);
-const SchemaIdAction = z.string().regex(/^[a-z0-9-]{1,60}$/);
-export const SchemaCible = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("widget"), id: idWidget }).strict(),
-  z.object({ type: z.literal("action"), id: SchemaIdAction }).strict(),
-]);
-export const SchemaBlocWorkflow = z.string().min(1).max(200);
-export const SchemaNomCode = z.string().regex(/^[a-z0-9-]+\.mjs$/).max(64);
-export const SchemaCodeWorkflow = z.string().max(256 * 1024).refine((t) => new TextEncoder().encode(t).length <= 256 * 1024, "code trop gros");
-export const SchemaBrouillon = z.object({
-  version: z.literal(1),
-  blocs: z
-    .array(
-      z.object({
-        id: SchemaBlocWorkflow,
-        type: z.string().min(1).max(200),
-        nom: z.string().max(200).optional(),
-        position: z.object({ x: z.number().finite(), y: z.number().finite() }),
-        parametres: z.record(z.string(), z.unknown()),
-      }),
-    )
-    .max(100),
-  liens: z.array(z.object({ de: SchemaBlocWorkflow, vers: SchemaBlocWorkflow })).max(400),
-});
-export const SchemaIdExecution = z.string().regex(ID_EXECUTION).max(64);
-/** A bad block becomes "none" (`workflow_ouvert` never shows the old one); null, ignored, if the target is bad. */
-export function selectionConstructeur(v: unknown): SelectionConstructeur | null {
-  const o = v as { cible?: unknown; bloc?: unknown } | null;
-  const cible = SchemaCible.safeParse(o?.cible);
-  if (!cible.success) return null;
-  const r = SchemaBlocWorkflow.safeParse(o?.bloc);
-  const bloc = r.success ? r.data : null;
-  return cible.data.type === "widget" ? { widget: cible.data.id, bloc } : { action: cible.data.id, bloc };
-}
 
 /**
  * What the agent may know of a window's builder: only whether its active tab is `webaios://workflow/<widget>` or

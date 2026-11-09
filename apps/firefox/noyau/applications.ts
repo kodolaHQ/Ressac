@@ -7,7 +7,7 @@ import { z } from "zod";
 import { dossierValide, ecrireType, GestionnaireApplications, prefixeApplication, type Application, type Atelier, type CheminsEspace, type OngletInfo } from "../../../packages/noyau/src/index.ts";
 import { SondeDocker } from "../core/applications/sonde.ts";
 import { TAILLE_FAVICON } from "../core/applications/favicon.ts";
-import type { ListeApplications } from "../shared/api.ts";
+import { SchemaActionApplication, type ListeApplications } from "../shared/api.ts";
 import type { Cadre, IdFenetre } from "../shared/modele.ts";
 import { SiteSouvenirs } from "./sites.ts";
 
@@ -19,16 +19,6 @@ export function plageDePorts(valeur: string | undefined): [number, number] | und
 
 /** The app window seen as an `app:<dossier>` tab by the agent. */
 export const appTab = (a: { dossier: string; titre: string; url: string }): OngletInfo => ({ id: "app:" + a.dossier, titre: a.titre, url: a.url, espace: "", application: a.dossier });
-
-const segmentValide = (d: string) => d !== "" && d !== "." && d !== ".." && !/[/\\\0]/.test(d);
-const SUR_TOUT_DOSSIER = new Set(["deboguer", "supprimer", "dossier"]);
-/** The schema of an app action (as shared/api.ts). */
-export const SchemaActionApplication = z
-  .object({
-    dossier: z.string(),
-    action: z.enum(["lancer", "arreter", "relancer", "ouvrir", "deboguer", "supprimer", "promouvoir", "dossier", "relire"]),
-  })
-  .refine(({ dossier, action }) => (SUR_TOUT_DOSSIER.has(action) ? segmentValide(dossier) : dossierValide(dossier)));
 
 const SchemaCadre = z.object({ x: z.number(), y: z.number(), largeur: z.number(), hauteur: z.number() });
 

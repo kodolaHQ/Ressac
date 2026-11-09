@@ -25,10 +25,10 @@ const { SessionsAgent } = await import("../core/agent/sessions.ts");
 const { Historique } = await import("../core/historique.ts");
 const { createRpc } = await import("../shared/rpc.ts");
 const { RemoteBridge } = await import("./remote-bridge.ts");
-const { createSites, SchemaActionSite } = await import("./sites.ts");
+const { createSites } = await import("./sites.ts");
 const { createDesignHost, DESIGN_METHODS, externalMcpPort } = await import("./design.ts");
 const { createApplicationsHost } = await import("./applications.ts");
-const { createActionsHost, SchemaAccord, SchemaIdAction, SchemaSaisieAction } = await import("./actions.ts");
+const { createActionsHost } = await import("./actions.ts");
 const { ExtensionsAgent } = await import("./extensions/agent.ts");
 const { STORE_ABSENT } = await import("./extensions/amo.ts");
 const { executionWidget, executionsWidget, placerWidgets, retirerWidget, validerPlacements, versWidgetsAffiches } = await import("./widgets.ts");
@@ -42,16 +42,22 @@ const {
   saveActionEdition,
   saveCode,
   saveEdition,
+  workflowOpen,
+  WriteQueue,
+} = await import("./workflow.ts");
+const {
+  SchemaAccord,
+  SchemaActionSite,
   SchemaBlocWorkflow,
   SchemaBrouillon,
   SchemaCible,
   SchemaCodeWorkflow,
+  SchemaIdAction,
   SchemaIdExecution,
   SchemaNomCode,
+  SchemaSaisieAction,
   selectionConstructeur,
-  workflowOpen,
-  WriteQueue,
-} = await import("./workflow.ts");
+} = await import("../shared/api.ts");
 
 const dataDir = process.env.WEBAIOS_DATA_DIR;
 if (!dataDir) {

@@ -3,7 +3,6 @@ import { readFileSync } from "node:fs";
 import { constants } from "node:fs";
 import fs, { lstat, mkdir, open, readdir, realpath, rename } from "node:fs/promises";
 import { extname, join, sep } from "node:path";
-import { z } from "zod";
 import {
   accordCouvre,
   adresseRelative,
@@ -38,12 +37,6 @@ import { decisionOuverture } from "../core/sites/navigation.ts";
 import { creerPositions, memoireOp } from "./site-memory.ts";
 
 // The site apps service on the host side.
-
-/** The schema of a site app action (as shared/api.ts). */
-export const SchemaActionSite = z.object({
-  id: z.string().regex(ID_SITE),
-  action: z.enum(["ouvrir", "modifier", "oublier", "dossier", "supprimer", "relire"]),
-});
 
 /** The app as the chrome gets it: what opens, its accord card, and its fingerprint (lister_onglets). */
 export type SiteChrome = SiteOuvrable & { demande: DemandeAccordSite; empreinte: string };

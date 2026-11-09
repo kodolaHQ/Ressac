@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { cheminsEspace } from "../../../packages/noyau/src/index";
 import * as copy from "../noyau/workflow";
+import { SchemaCodeWorkflow } from "../shared/api";
 import { readCode, readEdition, saveCode, saveEdition, workflowOpen, WriteQueue } from "../noyau/workflow";
 
 const dirs: string[] = [];
@@ -104,8 +105,8 @@ describe("workflowOpen", () => {
 describe("code schema", () => {
   it("limits the code by bytes, not characters", () => {
     // The byte limit is a refine, which the JSON schema cannot show: 256 KB of 2-byte characters is under the length limit.
-    expect(copy.SchemaCodeWorkflow.safeParse("é".repeat(128 * 1024 + 1)).success).toBe(false);
-    expect(copy.SchemaCodeWorkflow.safeParse("é".repeat(128 * 1024)).success).toBe(true);
+    expect(SchemaCodeWorkflow.safeParse("é".repeat(128 * 1024 + 1)).success).toBe(false);
+    expect(SchemaCodeWorkflow.safeParse("é".repeat(128 * 1024)).success).toBe(true);
   });
 });
 

@@ -17,7 +17,8 @@ import {
   type Noyau,
   type ResultatLancement,
 } from "../../../packages/noyau/src/index";
-import { actionImageAllowed, createActionsHost, linkAllowed, MESSAGE_SANS_NOYAU, readShownActions, SchemaAccord, SchemaIdAction, SchemaSaisieAction, trashAction } from "../noyau/actions";
+import { actionImageAllowed, createActionsHost, linkAllowed, MESSAGE_SANS_NOYAU, readShownActions, trashAction } from "../noyau/actions";
+import { SchemaAccord, SchemaIdAction, SchemaSaisieAction } from "../shared/api";
 
 const DEBUT = "2026-10-31T10:00:00.000Z";
 const dirs: string[] = [];

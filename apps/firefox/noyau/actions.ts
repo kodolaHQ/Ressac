@@ -1,6 +1,5 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { z } from "zod";
 import {
   ACTION_INCONNUE,
   chainesDe,
@@ -24,16 +23,8 @@ import {
   type ResumeExecution,
 } from "../../../packages/noyau/src/index.ts";
 import type { ActionAffichee } from "../shared/actions.ts";
+import type { Accord } from "../shared/api.ts";
 import { urlOuvrable } from "../ui/accueil-profils.ts";
-
-// The same schemas as shared/api.ts.
-export const SchemaIdAction = z.string().regex(/^[a-z0-9-]{1,60}$/);
-export const SchemaSaisieAction = z.string().max(2000).nullable();
-const domaine = z.string().min(1).max(253);
-export const SchemaAccord = z
-  .object({ id: z.string().regex(/^[a-z0-9-]+$/).max(100), profil: z.string().min(1).max(200), compte: z.array(domaine).max(100), publiques: z.array(domaine).max(100) })
-  .strict();
-type Accord = z.infer<typeof SchemaAccord>;
 
 // The disk and noyau half of the actions service.
 

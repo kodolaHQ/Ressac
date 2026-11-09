@@ -1166,7 +1166,8 @@ createServer((req, res) => {
   });
 
   it("plageDePorts, the app tab and SchemaActionApplication", async () => {
-    const { plageDePorts, SchemaActionApplication, appTab } = await import("../noyau/applications");
+    const { plageDePorts, appTab } = await import("../noyau/applications");
+    const { SchemaActionApplication } = await import("../shared/api");
     expect(plageDePorts("15280-15284")).toEqual([15280, 15284]);
     expect(appTab({ dossier: "essai", titre: "T", url: "http://localhost:15280/" })).toEqual({ id: "app:essai", titre: "T", url: "http://localhost:15280/", espace: "", application: "essai" });
     const accepted = (dossier: unknown, action: string) => SchemaActionApplication.safeParse({ dossier, action }).success;
