@@ -170,7 +170,7 @@ async function writeWatch(): Promise<void> {
     declaration: {
       sizes: { min: { w: 3, h: 3 }, max: { w: 12, h: 8 }, default: { w: 6, h: 5 } },
       sources: { account: [], public: [], web: true },
-      config: { search: `${site.url}/recherche`, criteria: "citadine fiable, moins de 100 000 km, moins de 8 000 €" },
+      config: { recherche: `${site.url}/recherche`, criteres: "citadine fiable, moins de 100 000 km, moins de 8 000 €" },
     },
     workflow: {
       version: 1,
@@ -193,7 +193,7 @@ async function writeWatch(): Promise<void> {
             perItem: true,
             field: "avis",
             prompt:
-              "Donne en trois phrases l'intérêt de cette annonce pour : {config.criteres}. Si l'annonce est une page de vérification ou ne décrit pas une voiture, ne réponds rien. Si aucun résultat de recherche n'est donné, juge sans. --- DÉBUT DE L'ANNONCE --- {fiche.texte} --- FIN DE L'ANNONCE --- --- DÉBUT DES RÉSULTATS DE RECHERCHE --- {fiabilite?} --- FIN DES RÉSULTATS DE RECHERCHE ---",
+              "Donne en trois phrases l'intérêt de cette annonce pour : {config.criteres}. Si l'annonce est une page de vérification ou ne décrit pas une voiture, ne réponds rien. Si aucun résultat de recherche n'est donné, juge sans. --- DÉBUT DE L'ANNONCE --- {fiche.text} --- FIN DE L'ANNONCE --- --- DÉBUT DES RÉSULTATS DE RECHERCHE --- {fiabilite?} --- FIN DES RÉSULTATS DE RECHERCHE ---",
           },
         },
         { id: "sortie", type: "output", params: { to: "widget", live: true } },
@@ -257,7 +257,7 @@ async function harvest(m: Marionette, id: string): Promise<void> {
   await click(m, '[role="menuitem"]', { text: "Mettre à jour maintenant" });
 }
 
-type Ad = { title: string; url: string; mark: string; model: string; sheet?: { text: string }; reliability?: unknown[]; notice?: string };
+type Ad = { titre: string; url: string; marque: string; modele: string; fiche?: { text: string }; fiabilite?: unknown[]; avis?: string };
 const watchData = (): Ad[] | null => {
   const f = path.join(dataDir, "widgets", "voitures", "data.json");
   return existsSync(f) ? readJson(f) : null;
@@ -326,9 +326,9 @@ it("watch end to end: the widget fills in as it goes (counter seen), a search by
   const ads = watchData()!;
   expect(ads.map((a) => a.url).sort()).toEqual([1, 2, 3, 4, 5].map(adUrl).sort());
   for (const a of ads) {
-    expect(a.sheet?.text).toContain("première main");
-    expect(a.reliability?.length).toBeGreaterThan(0);
-    expect(a.notice).toBe("Bonne affaire.");
+    expect(a.fiche?.text).toContain("première main");
+    expect(a.fiabilite?.length).toBeGreaterThan(0);
+    expect(a.avis).toBe("Bonne affaire.");
   }
   await untilEqual(() => progress(m, "voitures"), null);
   await until(() => shown(m, "voitures"), (t) => t.includes("Bonne affaire."));
@@ -372,8 +372,8 @@ it("a listing whose page fails comes back at the next run", async () => {
   expect(first.status).toBe("partial");
   expect(blockStatus(first, "fiche")).toBe("partial");
   const withoutPage = watchData()!.find((a) => a.url === adUrl(3))!;
-  expect(withoutPage.sheet).toBeUndefined();
-  expect(withoutPage.notice).toBeUndefined();
+  expect(withoutPage.fiche).toBeUndefined();
+  expect(withoutPage.avis).toBeUndefined();
 
   // The page answers again: only ad 3 comes back, read this time; its model (Clio 4), already studied, is not searched.
   settings.failingPages.clear();
@@ -384,9 +384,9 @@ it("a listing whose page fails comes back at the next run", async () => {
   expect(searches(from)).toEqual([]);
   const back = watchData()!;
   expect(back.map((a) => a.url)).toEqual([adUrl(3)]);
-  expect(back[0]!.sheet?.text).toContain("5 900 €");
-  expect(back[0]!.reliability?.length).toBeGreaterThan(0);
-  expect(back[0]!.notice).toBe("Bonne affaire.");
+  expect(back[0]!.fiche?.text).toContain("5 900 €");
+  expect(back[0]!.fiabilite?.length).toBeGreaterThan(0);
+  expect(back[0]!.avis).toBe("Bonne affaire.");
 }, 120_000);
 
 it("a long watch in progress does not prevent a short widget from updating", async () => {
@@ -399,7 +399,7 @@ it("a long watch in progress does not prevent a short widget from updating", asy
     files: { "harvest.mjs": "export default async () => ({ court: true });", "example.json": JSON.stringify({ example: "court" }) },
   });
   const m = await launchWatch();
-  await untilEqual(() => shown(m, "court"), '{"exemple":"court"}');
+  await untilEqual(() => shown(m, "court"), '{"example":"court"}');
   await harvest(m, "voitures");
   // The watch has started its opinions (Gemma called): it is running, and will stay so for seconds.
   const promptsBefore = ollama.prompts.length;
@@ -427,9 +427,9 @@ it("DuckDuckGo shows a check: a single request sent, notice without reliability,
   const ads = watchData()!;
   expect(ads).toHaveLength(5);
   for (const a of ads) {
-    expect(a.sheet?.text).toContain("première main");
-    expect(a.reliability).toBeUndefined();
-    expect(a.notice).toBe("Bonne affaire.");
+    expect(a.fiche?.text).toContain("première main");
+    expect(a.fiabilite).toBeUndefined();
+    expect(a.avis).toBe("Bonne affaire.");
   }
   // Gemma wrote the five opinions, without any reliability text in its prompt.
   const prompts = ollama.prompts.slice(promptsBefore);
@@ -448,7 +448,7 @@ it("DuckDuckGo shows a check: a single request sent, notice without reliability,
   expect(second.status).toBe("succeeded");
   const again = watchData()!;
   expect(again.map((a) => a.url).sort()).toEqual([1, 2, 3, 4, 5].map(adUrl).sort());
-  for (const a of again) expect(a.reliability?.length).toBeGreaterThan(0);
+  for (const a of again) expect(a.fiabilite?.length).toBeGreaterThan(0);
   // Back, they are not notified a second time. Time for a wrong notification to be written.
   await sleep(1000);
   expect(notifications()).toEqual([NOTIFICATION]);
@@ -493,7 +493,7 @@ it("quitting during the watch: on relaunch, the published listings are there, th
   const published = watchData()!;
   expect(published.length).toBeGreaterThan(0);
   expect(published.length).toBeLessThan(5);
-  for (const a of published) expect(a.notice).toBe("Bonne affaire.");
+  for (const a of published) expect(a.avis).toBe("Bonne affaire.");
   // The run is written « interrompue »; no notification for an interrupted run.
   expect(runs().map((e) => e.status)).toEqual(["interrupted"]);
   expect(notifications()).toEqual([]);

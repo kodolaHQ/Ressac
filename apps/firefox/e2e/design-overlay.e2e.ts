@@ -168,7 +168,7 @@ describe("design overlay", () => {
     const g = await m.execute<{ browserRight: number; panelLeft: number; panelWidth: number; panelRight: number; right: number; atPanel: string | undefined; top: number; tabboxTop: number; bottom: number; height: number }>(
       `const b = ${B}.getBoundingClientRect(), f = document.getElementById("webaios-design-volet"), v = f.getBoundingClientRect();
        const agent = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--webaios-agent")) || 0;
-       return { browserRight: b.right, voletLeft: v.left, voletWidth: v.width, voletRight: v.right, right: window.innerWidth - agent, atVolet: document.elementFromPoint(v.left + 10, v.top + v.height / 2)?.id,
+       return { browserRight: b.right, panelLeft: v.left, panelWidth: v.width, panelRight: v.right, right: window.innerWidth - agent, atPanel: document.elementFromPoint(v.left + 10, v.top + v.height / 2)?.id,
          top: v.top, tabboxTop: document.getElementById("tabbrowser-tabbox").getBoundingClientRect().top, bottom: v.bottom, height: window.innerHeight };`,
     );
     expect(g.panelWidth).toBe(300);
@@ -265,7 +265,7 @@ describe("design overlay", () => {
     await modeOn();
     await expect.poll(columnShown, { timeout: 10_000 }).toBe(true);
     await expect.poll(cartLines, { timeout: 10_000 }).not.toHaveLength(0);
-    await svc(`window.__calls = []; const real = (store.agent.__real ??= store.agent.request); store.agent.request = (method, p) => (window.__calls.push(method + " " + p?.projet), real.call(store.agent, method, p)); return 1;`);
+    await svc(`window.__calls = []; const real = (store.agent.__real ??= store.agent.request); store.agent.request = (method, p) => (window.__calls.push(method + " " + p?.project), real.call(store.agent, method, p)); return 1;`);
     try {
       const answers = await m.execute<unknown[]>(
         `const api = document.getElementById("webaios-design-volet").contentWindow.webaios;
@@ -300,7 +300,7 @@ describe("design overlay", () => {
     await expect.poll(() => inPage<number>("return scrollY;"), { timeout: 10_000 }).toBe(700);
     await modeOn();
     await aim("#cible", "div#cible");
-    const r = await inPage<{ x: number; y: number; width: number; height: number }>(`const r = document.querySelector("#cible").getBoundingClientRect(); return { x: r.x, y: r.y, largeur: r.width, hauteur: r.height };`);
+    const r = await inPage<{ x: number; y: number; width: number; height: number }>(`const r = document.querySelector("#cible").getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height };`);
     const g = await m.execute<{ z: number; x: number; y: number; width: number; height: number; w: number; h: number }>(
       `const r = ${B}.getBoundingClientRect(); return { z: ${B}.fullZoom, x: r.x, y: r.y, width: r.width, height: r.height, w: window.innerWidth, h: window.innerHeight };`,
     );
@@ -365,7 +365,7 @@ describe("design overlay", () => {
     expect(await bubbleShown()).toBe(true);
     expect(await svc("return d.overlayContext(t)?.mode ?? null;")).toBe("bubble");
     // Réessayer: the host starts again; the UI reads its design state again by itself (the test never asks it).
-    await svc(`window.__etats = []; const real = (d.__realState ??= d.state); d.state = (x) => real.call(d, x).then((e) => (window.__etats.push(e.actif), e)); return 1;`);
+    await svc(`window.__etats = []; const real = (d.__realState ??= d.state); d.state = (x) => real.call(d, x).then((e) => (window.__etats.push(e.active), e)); return 1;`);
     try {
       await svc("await store.agent.ensure(); return 1;");
       await expect.poll(() => m.execute<boolean[]>("return window.__etats;"), { timeout: 30_000 }).toContain(true);

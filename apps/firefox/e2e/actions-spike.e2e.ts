@@ -182,8 +182,8 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("actions spike", () => {
         } };
         Services.obs.addObserver(observer, "http-on-modify-request");
         try {
-          const image = await mod.loadImage(mod.containerRequests(ctx, { anonymous: arguments[0] }), arguments[1], { permise: () => true, cookies: false, max: 5242880 });
-          return { image: image && { type: image.type, length: image.corps.length }, channels, ctx };
+          const image = await mod.loadImage(mod.containerRequests(ctx, { anonymous: arguments[0] }), arguments[1], { allowed: () => true, cookies: false, max: 5242880 });
+          return { image: image && { type: image.type, length: image.body.length }, channels, ctx };
         } finally { Services.obs.removeObserver(observer, "http-on-modify-request"); }`.replace("arguments[2]", JSON.stringify(servers.images.url)),
         [anonymous, url],
       );

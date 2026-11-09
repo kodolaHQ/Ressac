@@ -146,7 +146,7 @@ describe("restore at startup", () => {
     await m.execute(
       `return (async () => {
         const store = await ChromeUtils.importESModule("chrome://browser/content/webaios/store.sys.mjs").ready;
-        for (let i = 0; i < 100; i++) store.dispatch({ type: "openTab", windowId: arguments[0], url: arguments[1] + "/b.html?n=" + i, activer: i === 99 });
+        for (let i = 0; i < 100; i++) store.dispatch({ type: "openTab", windowId: arguments[0], url: arguments[1] + "/b.html?n=" + i, activate: i === 99 });
         await store.flush();
       })();`,
       [windowId, server.url],

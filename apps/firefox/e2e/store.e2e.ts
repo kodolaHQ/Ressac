@@ -28,7 +28,7 @@ describe("state store", () => {
     const file = path.join(w.dataDir, "session.json");
     // Waits for the content, not the file: an earlier save may already have written it, without the tab.
     const urls = async () =>
-      existsSync(file) ? Object.values<{ url: string }>(JSON.parse(await readFile(file, "utf8")).onglets).map((o) => o.url) : [];
+      existsSync(file) ? Object.values<{ url: string }>(JSON.parse(await readFile(file, "utf8")).tabs).map((o) => o.url) : [];
     for (let i = 0; i < 20 && (await urls()).length === 0; i++) await new Promise((r) => setTimeout(r, 100));
     expect(await urls()).toEqual(["https://exemple.test/"]);
   });
@@ -60,7 +60,7 @@ describe("restart on an unchanged session", () => {
     const file = path.join(dataDir, "session.json");
     w = await launchWebAiOs({ dataDir });
     await w.marionette.setContext("chrome");
-    await waitFor(w.marionette, "return null;", () => existsSync(file) && !!JSON.parse(readFileSync(file, "utf8")).fenetres[0]?.cadre);
+    await waitFor(w.marionette, "return null;", () => existsSync(file) && !!JSON.parse(readFileSync(file, "utf8")).windows[0]?.frame);
     await w.close();
   });
   afterAll(async () => {

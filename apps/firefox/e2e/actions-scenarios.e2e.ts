@@ -66,7 +66,7 @@ const TICKETS_PLAN = {
     { component: "callout", props: { level: "warning", title: "À traiter d'abord", items: "keep(filter(tickets, priorite = urgent), 3)", field: "titre" } },
     {
       component: "table",
-      props: { items: "regroup(tickets, priorite)", columns: [{ field: "titre", label: "Ticket" }, { field: "projet", label: "Projet" }], link: "url" },
+      props: { items: "group(tickets, priorite)", columns: [{ field: "titre", label: "Ticket" }, { field: "projet", label: "Projet" }], link: "url" },
     },
   ],
 };
@@ -246,7 +246,7 @@ describe("action scenarios", () => {
     servers.settings.siteSlownessMs = 3000;
     // The first two, launched as the agent or the Actions page would (without waiting for their end).
     await inUi(m, "void ui.webaios.actions.launch('un', null); void ui.webaios.actions.launch('deux', null);");
-    await waitUi(m, "return (await ui.webaios.actions.live()).courantes.length === 2;", [], 30_000);
+    await waitUi(m, "return (await ui.webaios.actions.live()).running.length === 2;", [], 30_000);
     await openAction(m, "trois", "Pages trois");
     await click(m, tid("relancer-action"));
     await q.waitText(tid("en-attente"), "En attente : deux actions tournent déjà", 30_000);

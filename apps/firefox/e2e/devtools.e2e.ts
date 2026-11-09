@@ -373,7 +373,7 @@ it("unticking Réseau in a console+reseau request: only console is granted; the 
   await click(m, `${CARD} input[data-droit="network"]`);
   await waitUi(m, `return !doc.querySelector('${CARD} input[data-droit="network"]').checked`);
   await answerCard("Autoriser la sélection");
-  expect(await pending).toBe("Droits accordés : console\nRefusés : reseau");
+  expect(await pending).toBe("Droits accordés : console\nRefusés : network");
   expect(await tool("read_network", { id })).toBe(DENIAL);
   await noCard();
 });
@@ -547,7 +547,7 @@ it("Esc refuses the devtools card; Enter allows the selection", async () => {
   await waitUi(m, `return !doc.querySelector('${CARD} input[data-droit="network"]').checked`);
   expect(await inUi(m, `return !!doc.querySelector('${MODAL}[data-armee]')`)).toBe(true);
   await pressKeys(m, "Enter");
-  expect(await pending).toBe("Droits accordés : console\nRefusés : reseau");
+  expect(await pending).toBe("Droits accordés : console\nRefusés : network");
   await cardGone();
 
   const refusal = tool("request_devtools", { id, rights: ["performance"], reason: "Échap." });
@@ -725,7 +725,7 @@ it("the host restarts: the new kernel does not see the old messages", async () =
   await poll(async () => (existsSync(config()) ? readFileSync(config(), "utf8") : oldConfig), (c) => c !== oldConfig, 20_000);
   // The new kernel knows nothing of this tab: given to the agent, then navigated by it (same page), it is its demo again.
   const url = `${demo.url}/`;
-  await m.execute(`return (async () => (await ChromeUtils.importESModule("${STORE}").ready).agent.notify("agent.send", { onglet: { id: arguments[0], url: arguments[1], title: "Démo", space: "" } }))();`, [id, url]);
+  await m.execute(`return (async () => (await ChromeUtils.importESModule("${STORE}").ready).agent.notify("agent.send", { tab: { id: arguments[0], url: arguments[1], title: "Démo", space: "" } }))();`, [id, url]);
   await poll(() => tool("navigate", { id, url }), (t) => t.includes("→"));
   await poll(() => tool("run_js", { id, code: "console.log('new kernel'); 1" }), (t) => t === "1");
   const text = await poll(() => tool("read_console", { id }), (t) => t.includes("new kernel"));

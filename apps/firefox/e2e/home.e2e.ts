@@ -187,7 +187,7 @@ describe("the home page", () => {
       declaration: {
         harvest: { minutes: 60 },
         sources: { account: ["exemple.invalid"], public: [], web: false },
-        config: { read: false, url: "https://exemple.invalid/x" },
+        config: { lire: false, url: "https://exemple.invalid/x" },
       },
     });
     await writeHarvest(
@@ -232,7 +232,7 @@ describe("the home page", () => {
     const now = new Date().toISOString();
     await writeJson(STATE(dataDir, "retrait"), { status: "ok", lastUpdate: now, lastAttempt: now });
     await writeJson(DATA(dataDir, "retrait"), { old: "compte" });
-    await writeJson(GRANTS(dataDir), { removal: { domains: ["exemple.invalid"], public: [], profile: "default" } });
+    await writeJson(GRANTS(dataDir), { retrait: { domains: ["exemple.invalid"], public: [], profile: "default" } });
     await writeLayout(dataDir, [
       { id: "alpha", x: 0, y: 0, w: 250, h: 180 },
       { id: "beta", x: 500, y: 0, w: 250, h: 180 },
@@ -297,7 +297,7 @@ describe("the home page", () => {
        const a = doc.querySelector('[data-testid="accueil"]');
        if (!f || !a?.querySelector('[data-testid="widget-retrait"]')) return null;
        const p = a.parentElement;
-       return { bas: f.getBoundingClientRect().bottom, accueil: a.getBoundingClientRect().top, defile: p.scrollHeight > p.clientHeight };`,
+       return { bottom: f.getBoundingClientRect().bottom, home: a.getBoundingClientRect().top, scrolled: p.scrollHeight > p.clientHeight };`,
     );
     expect(r.scrolled).toBe(true);
     expect(r.bottom).toBeLessThanOrEqual(r.home);
@@ -420,7 +420,7 @@ describe("the home page", () => {
     const grant = await wait(() => readGrants(dataDir), (a) => a.compte?.profile === "default", "l'écriture de l'accord");
     expect(grant.compte).toEqual({ domains: ["exemple.invalid"], public: [], profile: "default" });
     await wait(() => (existsSync(DATA(dataDir, "compte")) ? readJson<unknown>(DATA(dataDir, "compte")) : Promise.resolve(null)), (d) => d !== null, "les données de la récolte");
-    expect(await readJson(DATA(dataDir, "compte"))).toEqual({ seen: "compte" });
+    expect(await readJson(DATA(dataDir, "compte"))).toEqual({ vu: "compte" });
     await wait(() => dataText(m, "compte"), (t) => t === '{"vu":"compte"}', "les données dans le cadre");
     expect(await waitUi(m, `return !doc.querySelector('[data-testid="widget-compte"] [data-testid="bandeau-accord"]');`)).toBe(true);
   });
@@ -449,8 +449,8 @@ describe("the home page", () => {
     // The grant names a sign-in profile; a profile absent from the session makes it unusable. (A profile that
     // becomes private only asks again at the widget's next scheduled harvest: see the README's limit.)
     const declaration = await readJson<Record<string, unknown>>(path.join(HOME(dataDir), "widgets", "compte", "widget.json"));
-    await writeJson(path.join(HOME(dataDir), "widgets", "compte", "widget.json"), { ...declaration, config: { read: true, url: "https://exemple.invalid/x" } });
-    await writeJson(GRANTS(dataDir), { ...(await readGrants(dataDir)), account: { domains: ["exemple.invalid"], public: [], profile: "absent" } });
+    await writeJson(path.join(HOME(dataDir), "widgets", "compte", "widget.json"), { ...declaration, config: { lire: true, url: "https://exemple.invalid/x" } });
+    await writeJson(GRANTS(dataDir), { ...(await readGrants(dataDir)), compte: { domains: ["exemple.invalid"], public: [], profile: "absent" } });
     await harvest(m, "compte");
     await waitUi(m, `return !!doc.querySelector('[data-testid="widget-compte"] [data-testid="bandeau-accord"]');`, [], 20_000);
     expect((await readGrants(dataDir)).compte).toBeUndefined();
@@ -464,12 +464,12 @@ describe("the home page", () => {
   });
 
   it("a manual harvest goes through « en cours » then fills the widget", async () => {
-    const data = () => (existsSync(DATA(dataDir, "lent")) ? readJson<{ done: number }>(DATA(dataDir, "lent")) : Promise.resolve(null));
+    const data = () => (existsSync(DATA(dataDir, "lent")) ? readJson<{ fait: number }>(DATA(dataDir, "lent")) : Promise.resolve(null));
     await wait(data, (d) => d !== null, "les données du lancement", 20_000);
     const before = await wait(
       async () => {
         try {
-          return JSON.parse(await dataText(m, "lent")) as { done: number };
+          return JSON.parse(await dataText(m, "lent")) as { fait: number };
         } catch {
           return null;
         }
@@ -483,16 +483,16 @@ describe("the home page", () => {
     const after = await wait(
       async () => {
         try {
-          return JSON.parse(await dataText(m, "lent")) as { done: number };
+          return JSON.parse(await dataText(m, "lent")) as { fait: number };
         } catch {
           return null;
         }
       },
-      (d) => d !== null && d.done > before!.done,
+      (d) => d !== null && d.fait > before!.fait,
       "les nouvelles données dans le cadre",
       20_000,
     );
-    expect(after!.done).toBeGreaterThan(before!.done);
+    expect(after!.fait).toBeGreaterThan(before!.fait);
   });
 
   it("a failed harvest says so and leaves no data", async () => {

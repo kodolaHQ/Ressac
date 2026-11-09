@@ -21,7 +21,7 @@ const WATCH_WORKFLOW = {
   blocks: [
     { id: "page", type: "source.page", params: { url: "{config.url}" } },
     { id: "liens", type: "code", name: "Liens de la page", params: { source: "liens.mjs" } },
-    { id: "tri", type: "ai.sort", name: "Tri par Kev", params: { question: "Parle d'IA ?", text: "{texte}", threshold: 0.5 } },
+    { id: "tri", type: "ai.sort", name: "Tri par Kev", params: { question: "Parle d'IA ?", text: "{text}", threshold: 0.5 } },
     { id: "textes", type: "code", params: { source: "textes.mjs" } },
     { id: "sortie", type: "output", params: { to: "widget" } },
   ],
@@ -133,7 +133,7 @@ describe("the builder's Agent tab", () => {
     await builder("veille");
     await hidden();
     await click(m, '[data-testid="palette-list.keep"]');
-    await waitCount("noeud-liste-garder", 1);
+    await waitCount("noeud-list-keep", 1);
     await click(m, '[data-testid="onglet-agent"]');
     await shown();
     await terminalShows("reçu: premier");
@@ -145,7 +145,7 @@ describe("the builder's Agent tab", () => {
     // ⌘Z typed in the terminal does not undo the canvas's addition.
     await pressKeys(m, "Meta+z");
     await sleep(300);
-    expect(await count("noeud-liste-garder")).toBe(1);
+    expect(await count("noeud-list-keep")).toBe(1);
     // One session for the window: the input reached the agent once.
     expect(agentInput().split("second\r").length - 1).toBe(1);
 

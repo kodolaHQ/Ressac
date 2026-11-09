@@ -301,7 +301,7 @@ describe("the UI's network", () => {
     await expect.poll(() => data("fuite-data"), { timeout: 10_000 }).toBe('"reste"');
     await expect.poll(() => m.execute(`return ${widgetDoc("fuite-cadres")}?.getElementById("t") ? true : false;`), { timeout: 10_000 }).toBe(true);
     await sleep(3000);
-    expect(await spy()).toEqual({ rtc: "erreur TypeError", nested: "…", js: "posé", empty: "erreur SecurityError", srcdoc: "about:blank" });
+    expect(await spy()).toEqual({ rtc: "erreur TypeError", imbrique: "…", js: "posé", vide: "erreur SecurityError", srcdoc: "about:blank" });
     expect(await data("fuite")).toBe('"reste"');
     expect(await data("fuite-data")).toBe('"reste"');
     const uris = await m.execute<string[]>(
@@ -380,7 +380,7 @@ describe("the UI's network", () => {
     const body = (id: string) => m.execute<string>(`return ${widgetDoc(id)}?.body?.textContent ?? "";`);
     for (const id of ["dns-statique", "dns-meta", "dns-entites", "dns-entites-hex"]) await expect.poll(() => body(id), { timeout: 20_000 }).toContain("Affichage refusé");
     await expect.poll(() => m.execute(`return ${widgetDoc("dns-script")}?.getElementById("r")?.textContent ?? "";`), { timeout: 10_000 }).toBe(DNS_SCRIPT);
-    await expect.poll(() => m.execute(`return ${widgetDoc("actus-tech")}?.querySelector("#liste li")?.textContent ?? "";`), { timeout: 10_000 }).toContain("Un modèle de langage");
+    await expect.poll(() => m.execute(`return ${widgetDoc("actus-tech")}?.querySelector("#list li")?.textContent ?? "";`), { timeout: 10_000 }).toContain("Un modèle de langage");
     // A link and a preconnect, inserted by the chrome, in a widget, its about:blank child and the sidebar.
     await m.execute(
       `return (async () => { const sb = document.getElementById("webaios-sidebar").contentDocument, wd = ${widgetDoc("sonde")};
@@ -535,8 +535,8 @@ describe("the UI's network", () => {
     // An action's result image: the product's channel (anonymous, a content principal, no document).
     const image = await m.execute<number | null>(
       `return (async () => { const s = await ChromeUtils.importESModule("${STORE}");
-       const r = await s.loadImage(s.containerRequests(0, { anonymous: true }), arguments[0], { permise: () => true, cookies: false, max: 100000 });
-       return r ? r.corps.length : null; })();`,
+       const r = await s.loadImage(s.containerRequests(0, { anonymous: true }), arguments[0], { allowed: () => true, cookies: false, max: 100000 });
+       return r ? r.body.length : null; })();`,
       [`http://${host("act-img")}/s2/witness/img`],
     );
     expect(image).toBeGreaterThan(0);
@@ -570,7 +570,7 @@ describe("the UI's network", () => {
        return out;`,
       [SFX],
     );
-    expect(dns).toEqual({ probe: false, late: false });
+    expect(dns).toEqual({ sonde: false, tard: false });
     await sleep(3000);
     expect({ names: (await names()).filter((n) => n.startsWith("rr-")), tcp: tcpSince(tcp0) }).toEqual({ names: [], tcp: 0 });
   });

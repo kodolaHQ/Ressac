@@ -172,7 +172,7 @@ describe("launching from the empty page", () => {
     for (const deadline = Date.now() + 60_000; (await runsOnDisk(w.dataDir, "leboncoin")).length !== 1; await new Promise((r) => setTimeout(r, 200)))
       if (Date.now() > deadline) throw new Error("the leboncoin action did not run");
     const [file] = await runsOnDisk(w.dataDir, "leboncoin");
-    expect(JSON.parse(await readFile(path.join(actionsDataDir(w.dataDir), "leboncoin", "runs", file!), "utf8")).saisie).toBe("clio");
+    expect(JSON.parse(await readFile(path.join(actionsDataDir(w.dataDir), "leboncoin", "runs", file!), "utf8")).input).toBe("clio");
   });
 
   // actions.spec.ts:943
@@ -287,7 +287,7 @@ describe("launching from the command bar", () => {
     await openPage("/a.html", "Page A");
     await openBar();
     await fill("saisie-commande", "Page");
-    await q.waitCount(lines("onglet"), 1);
+    await q.waitCount(lines("tab"), 1);
     await waitUi(m, "return [...doc.querySelectorAll(arguments[0])].map((e) => e.textContent).join() === 'Actions,Onglets ouverts';", [tid("section-commande")]);
     expect(await inUi(m, "return [...doc.querySelectorAll(arguments[0])].map((l) => l.querySelectorAll('.pictogramme').length);", [tid("ligne-commande")])).toSatisfy((n: number[]) =>
       n.length > 0 && n.every((x) => x === 1),

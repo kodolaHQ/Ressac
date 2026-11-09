@@ -156,8 +156,8 @@ describe("Command bar", () => {
       await waitUi(m, "return (await ui.webaios.sites.list()).some((s) => s.id === 'vidola')", [], 30_000);
       await pressKeys(m, "Meta+t");
       await type("Vidola");
-      await waitUi(m, "return doc.querySelectorAll('[data-testid=\"ligne-commande\"][data-type=\"appli\"]').length === 1");
-      await click(m, '[data-testid="ligne-commande"][data-type="appli"] button');
+      await waitUi(m, "return doc.querySelectorAll('[data-testid=\"ligne-commande\"][data-type=\"app\"]').length === 1");
+      await click(m, '[data-testid="ligne-commande"][data-type="app"] button');
       await waitFor(m, "return [...Services.wm.getEnumerator('navigator:browser')].some((w) => w.document.documentElement.getAttribute('webaios-site') === 'vidola')", (v) => v === true);
       expect(await siteWindowCount(m, "vidola")).toBe(1);
       await waitBar(false);
@@ -247,7 +247,7 @@ describe("Command bar", () => {
     await waitTitle(b, "Page B");
     await pressKeys(m, "Meta+t");
     await type("Page A");
-    await waitUi(m, "return doc.querySelectorAll('[data-testid=\"ligne-commande\"][data-type=\"onglet\"]').length === 1");
+    await waitUi(m, "return doc.querySelectorAll('[data-testid=\"ligne-commande\"][data-type=\"tab\"]').length === 1");
     await pressKeys(m, "ArrowDown");
     await pressKeys(m, "Enter");
     await waitState((s) => s.windows[0]!.active[s.windows[0]!.activeSpace], (id) => id === a);
@@ -258,10 +258,10 @@ describe("Command bar", () => {
     await withPageA();
     await pressKeys(m, "Meta+t");
     await type("Page A");
-    await waitUi(m, "return doc.querySelectorAll('[data-testid=\"ligne-commande\"][data-type=\"onglet\"]').length === 1");
+    await waitUi(m, "return doc.querySelectorAll('[data-testid=\"ligne-commande\"][data-type=\"tab\"]').length === 1");
     expect(await selectedType()).toBe("default");
     await pressKeys(m, "ArrowUp");
-    expect(await selectedType()).toBe("onglet");
+    expect(await selectedType()).toBe("tab");
     await pressKeys(m, "ArrowDown");
     expect(await selectedType()).toBe("default");
   });
@@ -315,7 +315,7 @@ describe("Command bar", () => {
     await fieldFocused();
     await waitUi(m, "return [...doc.querySelectorAll('[data-testid=\"section-commande\"]')].map((e) => e.textContent).join() === 'Actions,Onglets ouverts'");
     expect(await inUi(m, "return [...doc.querySelectorAll('[data-testid=\"ligne-commande\"][data-type=\"action\"]')].map((e) => e.textContent).join()")).toContain("Zorglub");
-    expect(await inUi(m, "return [...doc.querySelectorAll('[data-testid=\"ligne-commande\"][data-type=\"onglet\"]')].map((e) => e.textContent)")).toEqual([
+    expect(await inUi(m, "return [...doc.querySelectorAll('[data-testid=\"ligne-commande\"][data-type=\"tab\"]')].map((e) => e.textContent)")).toEqual([
       expect.stringContaining("Page A"),
     ]);
     await pressKeys(m, "Enter");
@@ -445,7 +445,7 @@ describe("Command bar", () => {
     await visited("b.html");
     await pressKeys(m, "Meta+t");
     await type("b.html");
-    await waitUi(m, `return !!doc.querySelector('[data-testid="ligne-commande"][data-type="historique"], [data-testid="ligne-commande"][data-type="onglet"]')`);
+    await waitUi(m, `return !!doc.querySelector('[data-testid="ligne-commande"][data-type="history"], [data-testid="ligne-commande"][data-type="tab"]')`);
   });
 
   // barre-commande.spec.ts:374
@@ -457,9 +457,9 @@ describe("Command bar", () => {
     await waitTitle(id, "Page A");
     await pressKeys(m, "Meta+t");
     await type("b.html");
-    await waitUi(m, `return doc.querySelectorAll('[data-testid="ligne-commande"][data-type="historique"]').length === 1`);
-    expect(await inUi(m, `return doc.querySelector('[data-testid="ligne-commande"][data-type="historique"]').textContent`)).toContain("Page B");
-    expect(await inUi(m, `return doc.querySelectorAll('[data-testid="ligne-commande"][data-type="onglet"]').length`)).toBe(0);
+    await waitUi(m, `return doc.querySelectorAll('[data-testid="ligne-commande"][data-type="history"]').length === 1`);
+    expect(await inUi(m, `return doc.querySelector('[data-testid="ligne-commande"][data-type="history"]').textContent`)).toContain("Page B");
+    expect(await inUi(m, `return doc.querySelectorAll('[data-testid="ligne-commande"][data-type="tab"]').length`)).toBe(0);
     await pressKeys(m, "ArrowDown");
     await pressKeys(m, "Enter");
     const s = await waitState((s) => Object.values(s.tabs), (o) => o.length === 2 && o.some((t) => t.url.endsWith("/b.html")));
@@ -478,8 +478,8 @@ describe("Command bar", () => {
     for (const id of [a, b]) await dispatch(m, { type: "closeTab", id });
     await pressKeys(m, "Meta+t");
     await type("page a");
-    await waitUi(m, `return doc.querySelectorAll('[data-testid="ligne-commande"][data-type="historique"]').length === 1`);
+    await waitUi(m, `return doc.querySelectorAll('[data-testid="ligne-commande"][data-type="history"]').length === 1`);
     await new Promise((r) => setTimeout(r, 300));
-    expect(await inUi(m, `return doc.querySelectorAll('[data-testid="ligne-commande"][data-type="historique"]').length`)).toBe(1);
+    expect(await inUi(m, `return doc.querySelectorAll('[data-testid="ligne-commande"][data-type="history"]').length`)).toBe(1);
   });
 });

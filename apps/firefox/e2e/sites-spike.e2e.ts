@@ -307,7 +307,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("site app spike", () => {
     const dir = path.join(w.dataDir, "webaios-sites", "vidola");
     await mkdir(dir, { recursive: true });
     await writeFile(path.join(dir, "index.html"), served);
-    const memory = { type: "memory", values: { "encours.the-bear": { value: { title: "The Bear", episode: "S2E4" }, url: "/serie/the-bear?e=4", when: new Date().toISOString() } }, positions: {}, domain: "vidola-a.localhost" };
+    const memory = { type: "memory", values: { "encours.the-bear": { value: { titre: "The Bear", episode: "S2E4" }, url: "/serie/the-bear?e=4", when: new Date().toISOString() } }, positions: {}, domain: "vidola-a.localhost" };
     note(
       "(d) frame",
       await inSiteBar(

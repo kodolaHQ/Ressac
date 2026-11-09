@@ -73,7 +73,7 @@ afterEach(async () => {
 /** Runs `body` with `d` the design service, `t` the essai app's target, `main` Marionette's current (main) window's, `store` the store. */
 const svc = <R = unknown>(body: string, args: unknown[] = []) =>
   m.execute<R>(
-    `return (async (args) => { const store = await ChromeUtils.importESModule("${STORE}").ready, d = store.design; const t = { type: "app", dossier: "essai" };
+    `return (async (args) => { const store = await ChromeUtils.importESModule("${STORE}").ready, d = store.design; const t = { type: "app", folder: "essai" };
      const main = { type: "fenetre", windowId: window.webaiosWindow?.windowId }; ${body} })([...arguments]);`,
     args,
   );

@@ -158,7 +158,7 @@ describe("the WebAiOs window", () => {
           setTimeout(() => {
             Services.prefs.setStringPref("webaios.test.private", JSON.stringify({
               adopted: p.document.documentElement.hasAttribute("webaios-main"),
-              fenetres: store.state.windows.map((f) => f.id),
+              windows: store.state.windows.map((f) => f.id),
             }));
             p.close();
             BrowserWindowTracker.openWindow();

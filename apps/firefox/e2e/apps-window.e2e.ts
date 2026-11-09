@@ -245,7 +245,7 @@ describe("one WebAiOs, the app launched in each test", () => {
     await expect.poll(() => appWindows(m), { timeout: 10_000 }).toBe(0);
     // Under <dataDir>, never in <dataDir>/espace that the container mounts.
     const memory = path.join(i.dataDir, "apps.json");
-    await expect.poll(() => existsSync(memory) && JSON.parse(readFileSync(memory, "utf8")).essai?.cadre, { timeout: 10_000 }).toMatchObject({ width: 640, height: 480 });
+    await expect.poll(() => existsSync(memory) && JSON.parse(readFileSync(memory, "utf8")).essai?.frame, { timeout: 10_000 }).toMatchObject({ width: 640, height: 480 });
     expect(existsSync(path.join(i.dataDir, "workspace", "apps.json"))).toBe(false);
     await launched();
     expect(await m.execute(`return [${app}.outerWidth, ${app}.outerHeight];`)).toEqual([640, 480]);
@@ -400,7 +400,7 @@ describe("one WebAiOs, the app launched in each test", () => {
     const old = attempt;
     expect(port).not.toBe(BLOCK[0]);
     await m.execute(`${app}.webaiosMark = 1;`);
-    await act(m, "essai", "relancer");
+    await act(m, "essai", "relaunch");
     const next = `http://localhost:${BLOCK[0]}/`;
     await viewAt(m, next);
     expect(await m.execute(`return ${app}.webaiosMark;`)).toBe(1);

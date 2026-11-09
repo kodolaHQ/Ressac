@@ -98,7 +98,7 @@ afterEach(async () => {
   await inStore(m, `for (const id of arguments[0]) { await store.design.stop({ type: "site", id }); store.design.closeOverlay({ type: "site", id }, "basket"); } return 1;`, [IDS]);
 });
 
-const state = (id: string) => inStore<{ active: boolean; basket: number }>(m, "return await store.design.etat(arguments[0]);", [T(id)]);
+const state = (id: string) => inStore<{ active: boolean; basket: number }>(m, "return await store.design.state(arguments[0]);", [T(id)]);
 const toggle = (id: string) => inStore(m, "await store.design.toggle(arguments[0]); return 1;", [T(id)]);
 const add = (id: string, text: string) => inStore<{ ok: boolean }>(m, "return await store.design.add(arguments[0], arguments[1]);", [T(id), text]);
 const bubble = (id: string) => inStore<{ label: string; source: string | null; warning: string | null } | null>(m, 'return store.design.overlayContext(arguments[0], ["bubble"]);', [T(id)]);
@@ -133,7 +133,7 @@ const bubbleText = (id: string) => overlayOf<string | null>(m, id, `return doc.q
 const homeRect = (id: string, sel: string) =>
   inHome<{ x: number; y: number; width: number; height: number; view: { width: number; height: number } }>(
     id,
-    `const r = hdoc.querySelector(arguments[0]).getBoundingClientRect(); return { x: r.x, y: r.y, largeur: r.width, hauteur: r.height, vue: { largeur: hwin.innerWidth, hauteur: hwin.innerHeight } };`,
+    `const r = hdoc.querySelector(arguments[0]).getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height, view: { width: hwin.innerWidth, height: hwin.innerHeight } };`,
     [sel],
   );
 const projectFiles = (id: string) =>
@@ -189,7 +189,7 @@ describe("design mode on a site app's home", () => {
     await inSiteBar(m, "avec-accueil", `doc.querySelector('${tid("site-menu-design-panier")}').click(); return 1;`);
     await expect.poll(() => overlayOf(m, "avec-accueil", `return !!doc.querySelector('${tid("envoyer-remarques")}');`), { timeout: 10_000 }).toBe(true);
     await overlayOf(m, "avec-accueil", `doc.querySelector('${tid("envoyer-remarques")}').click(); return 1;`);
-    await expect.poll(agentInput, { timeout: 20_000 }).toContain("les remarques [accueil] visent son écran d'accueil, à changer dans accueil/");
+    await expect.poll(agentInput, { timeout: 20_000 }).toContain("les remarques [accueil] visent son écran d'accueil, à changer dans home/");
     expect(agentInput()).toContain('1) [accueil] "h1#titre" : « Titre plus gros »');
     const dir = path.join(w.dataDir, "workspace", ".webaios", "remarks", "site-avec-accueil");
     const [batch] = readdirSync(dir).filter((n) => /^\d{8}T\d{6}Z-[0-9a-f]{4}$/.test(n));
@@ -264,7 +264,7 @@ describe("design mode on a site app's home", () => {
     await sleep(1000);
     for (const k of ["parentLocation", "topHref", "parentHref", "topReplace"]) expect(sorted[k]).toMatch(/^throws:/);
     expect(await inHome("sonde", "return { bar: doc.documentURI, win: win.document.documentURI, home: hdoc.documentURI };")).toEqual(before);
-    expect(await view("sonde")).toBe("accueil");
+    expect(await view("sonde")).toBe("home");
   });
 
   it("hover frames p#nue; middle and right clicks pick nothing; the primary click captures #cible; the home saw nothing, no global added", async () => {
@@ -386,7 +386,7 @@ describe("design mode in a site app at density 2", () => {
     const r = await inSiteView<{ x: number; y: number; width: number; height: number; view: { width: number; height: number } }>(
       m,
       "tuning",
-      `const r = document.querySelector("#banniere").getBoundingClientRect(); return { x: r.x, y: r.y, largeur: r.width, hauteur: r.height, vue: { largeur: innerWidth, hauteur: innerHeight } };`,
+      `const r = document.querySelector("#banniere").getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height, view: { width: innerWidth, height: innerHeight } };`,
     );
     const zoom = await m.execute<number>(`return ${viewExpr("tuning")}.fullZoom;`);
     const rv = rectCapture({ x: r.x, y: r.y, width: r.width, height: r.height }, r.view, zoom);

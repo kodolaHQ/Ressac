@@ -87,7 +87,7 @@ const sendText = () => column<string | null>(`return doc?.querySelector('${tid("
 const cartCount = () => column<number>(`return doc?.querySelectorAll('${tid("remarque-panier")}').length ?? 0;`);
 const batchList = () =>
   column<{ state: string; text: string; handled: boolean }[]>(
-    `return [...(doc?.querySelectorAll('${tid("lot-envoye")}') ?? [])].map((l) => ({ etat: l.dataset.etat, text: l.textContent, traite: [...l.querySelectorAll("button")].some((b) => b.textContent === "Traité") }));`,
+    `return [...(doc?.querySelectorAll('${tid("lot-envoye")}') ?? [])].map((l) => ({ state: l.dataset.etat, text: l.textContent, handled: [...l.querySelectorAll("button")].some((b) => b.textContent === "Traité") }));`,
   );
 const alertText = () => column<string | null>(`return doc?.querySelector('[role="alert"]')?.textContent ?? null;`);
 

@@ -162,7 +162,7 @@ describe("the grant card", () => {
     const m = w.marionette;
     const s = await state(m);
     const win = await m.execute<string>("return window.webaiosWindow.windowId");
-    const space = s.spaces.find((e) => e.id === (champs.espaceId ?? s.windows.find((f) => f.id === win)!.activeSpace))!;
+    const space = s.spaces.find((e) => e.id === (champs.spaceId ?? s.windows.find((f) => f.id === win)!.activeSpace))!;
     const card = {
       key: "agent:essai", name: "Essai", source: "agent", version: "1.0.0", rights: ["Modifier l'apparence et le contenu des pages"],
       sites: ["https://exemple.com/*"], allSites: false, network: [], hardened: false, space: space.name, spaceId: space.id,

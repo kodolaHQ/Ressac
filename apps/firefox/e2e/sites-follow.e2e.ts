@@ -170,7 +170,7 @@ describe("site app address follow", () => {
     mkdirSync(path.join(dataDir, "sites", "t59"), { recursive: true });
     writeFileSync(
       path.join(dataDir, "sites", "t59", "memory.json"),
-      JSON.stringify({ version: 1, values: { "encours.the-bear": { value: { title: "The Bear" }, url: "/serie/the-bear?e=4", when: new Date().toISOString() } }, positions: {} }),
+      JSON.stringify({ version: 1, values: { "encours.the-bear": { value: { titre: "The Bear" }, url: "/serie/the-bear?e=4", when: new Date().toISOString() } }, positions: {} }),
     );
     server.cut("vidola-a.localhost");
     await openSite("t59");

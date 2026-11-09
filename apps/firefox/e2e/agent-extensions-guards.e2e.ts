@@ -578,7 +578,7 @@ async function launchAgent(name: string, files: Record<string, string | object>,
 
 /** The background's startup tries are over (its block rule set): the results it kept, read from its page. */
 const backgroundResults = async (w: LaunchedWebAiOs & { uuid: string }) =>
-  JSON.parse((await extensionPage(w.marionette, `moz-extension://${w.uuid}/results.html`, 0)).title) as Record<string, unknown>;
+  JSON.parse((await extensionPage(w.marionette, `moz-extension://${w.uuid}/resultats.html`, 0)).title) as Record<string, unknown>;
 
 /**
  * Opens a page of the extension in a tab, waits until its title leaves « attente », then `ms` more; returns its title
@@ -589,7 +589,7 @@ async function extensionPage(m: Marionette, url: string, ms = 1500): Promise<{ t
   await waitFor(m, "return window.extensionTab.linkedBrowser.contentTitle", (t: string) => !!t && t !== "attente", 20_000);
   await sleep(ms);
   const r = await m.execute<{ title: string; url: string }>(
-    "const b = window.extensionTab.linkedBrowser; return { titre: b.contentTitle, url: b.currentURI.spec };",
+    "const b = window.extensionTab.linkedBrowser; return { title: b.contentTitle, url: b.currentURI.spec };",
   );
   await m.execute("gBrowser.removeTab(window.extensionTab);");
   return r;
@@ -633,7 +633,7 @@ describe("agent extensions: network guard", () => {
   it("nor its pages (fetch, sendBeacon, WebSocket, navigation, window.open); RTCPeerConnection is absent from them", async () => {
     const w = await launchNetwork();
     const page = await extensionPage(w.marionette, `moz-extension://${w.uuid}/page.html`);
-    expect(JSON.parse(page.title)).toEqual({ rtc: "undefined", rtcWebkit: "undefined", channel: "undefined", opening: "null" });
+    expect(JSON.parse(page.title)).toEqual({ rtc: "undefined", rtcWebkit: "undefined", canal: "undefined", ouverture: "null" });
     // The navigation to autre.test was refused: the page stayed its own.
     expect(page.url).toBe(`moz-extension://${w.uuid}/page.html`);
     await until(() => hitsTo("accorde.test", "/page-fetch").length > 0);
@@ -647,14 +647,14 @@ describe("agent extensions: network guard", () => {
     const w = await launchNetwork();
     const r = await backgroundResults(w);
     expect(r).toMatchObject({
-      tabDenied: { error: "URL refusée par WebAiOs" },
-      tabData: { error: "URL refusée par WebAiOs" },
-      tabAllowed: { ok: "number" },
-      windowRefused: { error: "URL refusée par WebAiOs" },
-      dnrRedirect: { error: "Règle DNR refusée par WebAiOs (redirect)" },
-      dnrHeaders: { error: "Règle DNR refusée par WebAiOs (modifyHeaders)" },
+      ongletRefuse: { erreur: "URL refusée par WebAiOs" },
+      ongletDonnees: { erreur: "URL refusée par WebAiOs" },
+      ongletPermis: { ok: "number" },
+      fenetreRefusee: { erreur: "URL refusée par WebAiOs" },
+      dnrRedirect: { erreur: "Règle DNR refusée par WebAiOs (redirect)" },
+      dnrEntetes: { erreur: "Règle DNR refusée par WebAiOs (modifyHeaders)" },
       dnrBlock: { ok: "acceptee" },
-      dnrRules: { ok: ["block"] },
+      dnrRegles: { ok: ["block"] },
       rtc: { ok: "undefined" },
     });
     // Firefox refuses a permission not in optional_permissions (which the copy refuses anyway).
@@ -720,7 +720,7 @@ describe("agent extensions: network guard", () => {
     const w = await launchNetwork();
     await backgroundResults(w);
     const page = await extensionPage(w.marionette, `moz-extension://${w.uuid}/tableaux.html`, 0);
-    expect(JSON.parse(page.title)).toEqual({ error: "Règle DNR refusée par WebAiOs (tableau à trous)", read: 0, rules: ["block"] });
+    expect(JSON.parse(page.title)).toEqual({ erreur: "Règle DNR refusée par WebAiOs (tableau à trous)", lus: 0, regles: ["block"] });
   });
 
   it("dns-prefetch, preconnect, prefetch… links of an agent page to a domain not granted contact nothing", async () => {
@@ -830,9 +830,9 @@ describe("agent extensions: network guard", () => {
     const w = await launchNetwork();
     const page = await extensionPage(w.marionette, `moz-extension://${w.uuid}/ecrit.html`, 0);
     console.log(`[mesure] document.write : ${page.title}`);
-    const seen = JSON.parse(page.title) as { length: number; indexes: string[]; shadow: string };
-    expect(seen.shadow).toBe("ouverte");
-    expect(seen.length).toBeGreaterThan(0);
+    const seen = JSON.parse(page.title) as { longueur: number; indexes: string[]; ombre: string };
+    expect(seen.ombre).toBe("ouverte");
+    expect(seen.longueur).toBeGreaterThan(0);
     expect(seen.indexes.every((t) => t === "undefined")).toBe(true);
   });
 
@@ -841,10 +841,10 @@ describe("agent extensions: network guard", () => {
     await backgroundResults(w);
     const page = await extensionPage(w.marionette, `moz-extension://${w.uuid}/blanc.html`);
     console.log(`[mesure] about:blank, srcdoc : ${page.title}`);
-    expect(JSON.parse(page.title)).toMatchObject({ dnr: "refusee", rtc: "refusee", "ouvre-hote.test": "null", "ouvre-autre.test": "null", rules: ["block"] });
+    expect(JSON.parse(page.title)).toMatchObject({ dnr: "refusee", rtc: "refusee", "ouvre-hote.test": "null", "ouvre-autre.test": "null", regles: ["block"] });
     // A srcdoc frame runs none of its scripts (measured « aucun »); if it ever does, it must get nothing either.
     const srcdoc = JSON.parse(page.title).srcdoc;
-    if (srcdoc !== "aucun") expect(srcdoc).toMatchObject({ chrome: "undefined", rtc: "undefined", dnr: "refusee", opens: "null" });
+    if (srcdoc !== "aucun") expect(srcdoc).toMatchObject({ chrome: "undefined", rtc: "undefined", dnr: "refusee", ouvre: "null" });
     expect(hitsTo("hote.test", "/cadre-ouvre")).toEqual([]);
     expect(hitsTo("autre.test")).toEqual([]);
   });
@@ -875,7 +875,7 @@ describe("agent extensions: content scripts", () => {
     expect((await poll(() => seenByAgent(m, tab), (v) => v?.ecoute === true))?.ecoute).toBe(true);
     // The page sees its own value.
     expect(await inPage(m, tab, "return document.getElementById('mdp').value")).toBe("secret");
-    expect(await seenByAgent(m, tab)).toMatchObject({ password: "", text: "visible", formPassword: null, formText: "visible" });
+    expect(await seenByAgent(m, tab)).toMatchObject({ mdp: "", texte: "visible", formMdp: null, formTexte: "visible" });
     // The keyboard, simulated by the page: what targets the text field arrives, nothing that targets the password.
     await inPage(
       m,
@@ -892,15 +892,15 @@ describe("agent extensions: content scripts", () => {
     // executeScript from the background: files and function run after the guard.
     const r = await order(w, "executer-onglet");
     console.log(`[mesure] executeScript dans un onglet : ${r}`);
-    expect(JSON.parse(r)).toMatchObject({ files: ["|visible"], function: ["|visible"] });
+    expect(JSON.parse(r)).toMatchObject({ fichiers: ["|visible"], fonction: ["|visible"] });
     // I4: the value copied into the attribute (React) is not readable either.
     const a = await order(w, "attributs-onglet");
-    const lu = JSON.parse(a) as { password: unknown[]; text: unknown[] };
+    const lu = JSON.parse(a) as { mdp: unknown[]; texte: unknown[] };
     expect(a).not.toContain("secret");
-    expect(lu.password.slice(0, 7)).toEqual(Array(7).fill(""));
-    expect(lu.password[8]).toBe("");
-    expect(lu.text.slice(0, 7)).toEqual(Array(7).fill("visible"));
-    expect(lu.text[8]).toBe("visible");
+    expect(lu.mdp.slice(0, 7)).toEqual(Array(7).fill(""));
+    expect(lu.mdp[8]).toBe("");
+    expect(lu.texte.slice(0, 7)).toEqual(Array(7).fill("visible"));
+    expect(lu.texte[8]).toBe("visible");
   });
 
   // An agent page kept open in a tab outside the store.
@@ -1063,8 +1063,8 @@ noter();`,
     expect(JSON.parse((await seen())!)).toEqual({
       window: null,
       self: null,
-      bare: null,
-      keys: ["window.onkeydown:texte", "defaultView.onkeypress:texte", "self.oninput:texte", "onkeyup:texte"],
+      nu: null,
+      touches: ["window.onkeydown:texte", "defaultView.onkeypress:texte", "self.oninput:texte", "onkeyup:texte"],
     });
   });
 
@@ -1105,9 +1105,9 @@ noter();`,
     const tab = await openTab(m, "https://hote.test/formulaire?masque");
     expect((await poll(() => seenByAgent(m, tab), (v) => v?.ecoute === true))?.ecoute).toBe(true);
     const registry = () => JSON.parse(readFileSync(path.join(w.dataDir, "extensions", "state.json"), "utf8"));
-    await until(() => registry().consolesMasquees?.includes("garde@agent.webaios"));
-    expect(registry().extensions["agent:garde"].consoleMasquee).toEqual(["default"]);
-    expect(registry().consolesMasquees).toEqual(["garde@agent.webaios"]);
+    await until(() => registry().hiddenConsoles?.includes("garde@agent.webaios"));
+    expect(registry().extensions["agent:garde"].hiddenConsole).toEqual(["default"]);
+    expect(registry().hiddenConsoles).toEqual(["garde@agent.webaios"]);
   });
 });
 
@@ -1121,8 +1121,8 @@ describe("agent extensions: tabs without the tabs right or a host", () => {
     "webaios.json": { network: [] },
     "fond.js": `const montrer = (t) => ({ id: t.id, url: t.url ?? null, title: t.title ?? null, favIconUrl: t.favIconUrl ?? null, pendingUrl: t.pendingUrl ?? null });
 const events = [];
-chrome.tabs.onUpdated.addListener((id, c, t) => events.push({ maj: c, tab: montrer(t) }));
-chrome.tabs.onCreated.addListener((t) => events.push({ cree: montrer(t) }));
+chrome.tabs.onUpdated.addListener((id, c, t) => events.push({ update: c, tab: montrer(t) }));
+chrome.tabs.onCreated.addListener((t) => events.push({ created: montrer(t) }));
 chrome.runtime.onMessage.addListener((m, _e, repondre) => {
   if (m !== "snap") return;
   (async () => {
@@ -1130,7 +1130,7 @@ chrome.runtime.onMessage.addListener((m, _e, repondre) => {
     const gets = [];
     for (const t of query) gets.push(montrer(await chrome.tabs.get(t.id)));
     const fenetres = (await chrome.windows.getAll({ populate: true })).flatMap((f) => (f.tabs ?? []).map(montrer));
-    return JSON.stringify({ query, gets, fenetres, events });
+    return JSON.stringify({ query, gets, windows: fenetres, events });
   })().then(repondre, (e) => repondre("erreur " + (e && e.message)));
   return true;
 });

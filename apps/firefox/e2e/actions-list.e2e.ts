@@ -96,7 +96,7 @@ describe("the Actions page", () => {
           await writeResult(d, id, EXECUTION, YESTERDAY, "Secret");
         }
         const grant = { domains: ["127.0.0.1"], public: [], profile: "default" };
-        await writeFile(path.join(actionsDataDir(d), "grants.json"), JSON.stringify({ account: grant, grant: grant }));
+        await writeFile(path.join(actionsDataDir(d), "grants.json"), JSON.stringify({ compte: grant, accord: grant }));
         // actions.spec.ts:1122
         await mkdir(path.join(d, "workspace", "actions", "cassee"), { recursive: true });
         await writeFile(path.join(d, "workspace", "actions", "cassee", "action.json"), "{ pas du json");

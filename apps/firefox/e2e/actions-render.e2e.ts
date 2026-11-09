@@ -16,9 +16,9 @@ import { click, inUi, missingApi, waitUi } from "./ui";
 // (WEBAIOS_TEST_ACTION_IMAGES): `https://<host><path>` is asked from the local image server, which notes each request.
 
 const TASKS = [
-  { name: "Alpha", priority: 9, state: "ouvert", url: "https://exemple.invalide/alpha", image: "https://exemple.invalide/a.png" },
-  { name: "Bravo", priority: 10, state: "fermé" },
-  { name: "Charlie", priority: 2, state: "ouvert" },
+  { nom: "Alpha", priorite: 9, etat: "ouvert", url: "https://exemple.invalide/alpha", image: "https://exemple.invalide/a.png" },
+  { nom: "Bravo", priorite: 10, etat: "fermé" },
+  { nom: "Charlie", priorite: 2, etat: "ouvert" },
 ];
 const DEMO_BLOCKS: Block[] = [
   { component: "title", props: { text: "<b>gras</b>" } },
@@ -35,7 +35,7 @@ const DEMO_BLOCKS: Block[] = [
   { component: "group", props: { title: "Détails" }, blocks: [{ component: "paragraph", props: { text: "Dans le groupe." } }] },
   { component: "columns", props: {}, left: [{ component: "paragraph", props: { text: "À gauche." } }], right: [{ component: "paragraph", props: { text: "À droite." } }] },
 ];
-const DEMO_RESULTS = { tasks: TASKS, resume: { openSites: 2, week: "44", source: "https://exemple.invalide/source" } };
+const DEMO_RESULTS = { taches: TASKS, resume: { ouvertes: 2, semaine: "44", source: "https://exemple.invalide/source" } };
 
 /** The hostile images of Review Focus 3, and an ordinary one as the control. */
 const PHOTOS = {
@@ -82,34 +82,34 @@ beforeAll(async () => {
   await writeActionWithResult(w.dataDir, "courrier", {
     name: "Courrier",
     account: ["mail.exemple.fr"],
-    results: { snapshots: [{ title: "Bonjour", snapshot: "https://img.exemple/photo.png" }] },
+    results: { photos: [{ titre: "Bonjour", photo: "https://img.exemple/photo.png" }] },
     blocks: cards,
   });
-  const many = Array.from({ length: 40 }, (_, i) => ({ title: `n${i}`, snapshot: `https://img.exemple/n${i}.png` }));
-  await writeActionWithResult(w.dataDir, "lazy", { name: "Lazy", results: { snapshots: many }, blocks: cards });
+  const many = Array.from({ length: 40 }, (_, i) => ({ titre: `n${i}`, photo: `https://img.exemple/n${i}.png` }));
+  await writeActionWithResult(w.dataDir, "lazy", { name: "Lazy", results: { photos: many }, blocks: cards });
   probeServer = createServer((req, res) => (reached.requests.push(req.url ?? "/"), res.writeHead(200).end("x")));
   probeServer.on("connection", () => reached.connections++);
   await new Promise<void>((ok) => probeServer.listen(0, "127.0.0.1", ok));
   const probeBase = `http://127.0.0.1:${(probeServer.address() as AddressInfo).port}`;
-  const properties = { values: { kind: "reference", description: "Liste de { libelle, valeur }", required: true }, title: { kind: "texte", description: "Titre du graphique" } };
+  const properties = { valeurs: { kind: "reference", description: "Liste de { libelle, valeur }", required: true }, titre: { kind: "text", description: "Titre du graphique" } };
   await writeComponent(w.dataDir, "barres", { description: "Graphique en barres", properties: properties, html: BARS });
   await writeComponent(w.dataDir, "ecrit", { description: "Hauteur fixe", properties: {}, html: sized(300) });
   await writeComponent(w.dataDir, "sonde", { description: "Sonde", properties: {}, html: probe(probeBase) });
   // Eight bars: taller than the 150 px the frame starts with, so the height it asks for shows.
-  const sales = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche", "Total"].map((label, i) => ({ label: label, value: i + 1 }));
+  const sales = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche", "Total"].map((label, i) => ({ libelle: label, valeur: i + 1 }));
   await writeActionWithResult(w.dataDir, "graphe", {
     name: "Graphe",
-    results: { sales: sales },
+    results: { ventes: sales },
     blocks: [
       { component: "title", props: { text: "Priorités" } },
-      { component: "barres", props: { values: "ventes", title: "Ventes" } },
+      { component: "barres", props: { valeurs: "ventes", titre: "Ventes" } },
       { component: "absent", props: {} },
       { component: "paragraph", props: { text: "Après le composant." } },
     ],
   });
   await writeActionWithResult(w.dataDir, "ecrit", { name: "Ecrit", results: { n: 1 }, blocks: [{ component: "title", props: { text: "Ecrit" } }, { component: "ecrit", props: {} }] });
   await writeActionWithResult(w.dataDir, "sonde", { name: "Sonde", results: { n: 1 }, blocks: [{ component: "title", props: { text: "Sonde" } }, { component: "sonde", props: {} }] });
-  await writeActionWithResult(w.dataDir, "images", { name: "Images", results: { snapshots: Object.entries(PHOTOS).map(([title, snapshot]) => ({ title: title, photo: snapshot })) }, blocks: cards });
+  await writeActionWithResult(w.dataDir, "images", { name: "Images", results: { photos: Object.entries(PHOTOS).map(([title, snapshot]) => ({ titre: title, photo: snapshot })) }, blocks: cards });
 }, 60_000);
 
 afterAll(async () => {
@@ -253,7 +253,7 @@ describe("action page rendering", () => {
       await waitUi(m, "return doc.querySelector(arguments[0])?.contentDocument?.querySelectorAll('rect').length === 8;", [FRAME], 15_000);
       const frame = await inUi<{ src: string; uri: string; title: string; body: string; texts: string[] }>(
         m,
-        "const f = doc.querySelector(arguments[0]); const d = f.contentDocument; return { src: f.src, uri: d.documentURI, titre: d.getElementById('titre').textContent, body: d.body.className, texts: [...d.querySelectorAll('text')].map((t) => t.textContent) };",
+        "const f = doc.querySelector(arguments[0]); const d = f.contentDocument; return { src: f.src, uri: d.documentURI, title: d.getElementById('titre').textContent, body: d.body.className, texts: [...d.querySelectorAll('text')].map((t) => t.textContent) };",
         [FRAME],
       );
       expect(frame.src).toMatch(/^resource:\/\/webaios-component-barres\/component-\d+\.html$/);

@@ -99,7 +99,7 @@ describe("action results", () => {
       await new Promise((r) => setTimeout(r, 200));
     }
     const execution = (await runsOnDisk(w.dataDir, "pages"))[0]!.replace(/\.json$/, "");
-    await waitUi(m, "return ui.webaios.actions.live().then((d) => d.courantes.length === 0);", [], 30_000);
+    await waitUi(m, "return ui.webaios.actions.live().then((d) => d.running.length === 0);", [], 30_000);
     await openAction(m, "pages", "Pages");
     await waitUi(m, "return !!doc.querySelector(arguments[0]);", [tid("rendu-page")], 30_000);
     await click(m, tid("resultats-precedents"));

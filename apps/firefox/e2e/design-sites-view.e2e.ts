@@ -87,7 +87,7 @@ afterEach(async () => {
   await inStore(m, `for (const id of arguments[0]) { await store.design.stop({ type: "site", id }); store.design.closeOverlay({ type: "site", id }, "basket"); } return 1;`, [IDS]);
 });
 
-const state = (id: string) => inStore<{ active: boolean; project: { project: string } | null; unavailable: string | null; basket: number }>(m, "return await store.design.etat(arguments[0]);", [T(id)]);
+const state = (id: string) => inStore<{ active: boolean; project: { project: string } | null; unavailable: string | null; basket: number }>(m, "return await store.design.state(arguments[0]);", [T(id)]);
 const toggle = (id: string) => inStore(m, "await store.design.toggle(arguments[0]); return 1;", [T(id)]);
 const add = (id: string, text: string) => inStore<{ ok: boolean }>(m, "return await store.design.add(arguments[0], arguments[1]);", [T(id), text]);
 const bubble = (id: string) =>
@@ -95,7 +95,7 @@ const bubble = (id: string) =>
 const cart = (id: string) => inStore<number>(m, `return (await store.agent.request("design.tracking", { project: "site-" + arguments[0] })).basket;`, [id]);
 const hosts = (id: string) => inSiteView<number>(m, id, `return document.getElementsByTagName("webaios-viewfinder").length;`).catch(() => -1);
 const overlayRect = (id: string) => overlayOf<{ x: number; y: number; width: number; height: number }>(m, id, "const r = f.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height };");
-const notice = (id: string) => inStore<{ kind: string; text?: string } | null>(m, "return store.sites.controller(arguments[0]).state().avis;", [id]);
+const notice = (id: string) => inStore<{ kind: string; text?: string } | null>(m, "return store.sites.controller(arguments[0]).state().notice;", [id]);
 const view = <T = unknown>(id: string, expr: string) => inSiteView<T>(m, id, `return ${expr};`).catch(() => null);
 const geometry = (id: string) =>
   m.execute<{ x: number; y: number; width: number; height: number; w: number; h: number; z: number }>(
@@ -130,7 +130,7 @@ describe("design mode, site target, the view", () => {
     expect(await view("vidola", `getComputedStyle(document.querySelector(".cache")).display`)).toBe("none");
     await expect.poll(() => view("vidola", "document.documentElement.dataset.retouche ?? null"), { timeout: 10_000 }).toBe("oui");
     // The viewfinder's sandbox, probed through the shipped actor (the one the service arms).
-    const probe = `(() => ({ webaiosSite: typeof webaiosSite, portee: typeof __webaiosScope, fichier: typeof __webaiosFile, retoucheSecret: typeof __retoucheSecret,
+    const probe = `(() => ({ webaiosSite: typeof webaiosSite, scope: typeof __webaiosScope, file: typeof __webaiosFile, tweakSecret: typeof __retoucheSecret,
       Components: typeof Components, ChromeUtils: typeof ChromeUtils, Services: typeof Services }))()`;
     const sees = await (await armActor(m, viewExpr("vidola"), probe)).result();
     expect(sees).toEqual({ r: { webaiosSite: "undefined", scope: "undefined", file: "undefined", tweakSecret: "undefined", Components: "undefined", ChromeUtils: "undefined", Services: "undefined" } });

@@ -66,7 +66,7 @@ const agentInput = () => {
 };
 const TERMINAL = "(doc.querySelector('.xterm-rows')?.textContent ?? '').replace(/\\u00a0/g, ' ')";
 
-const designState = () => inStore<{ active: boolean; basket: number }>(m, "return await store.design.etat(arguments[0]);", [T]);
+const designState = () => inStore<{ active: boolean; basket: number }>(m, "return await store.design.state(arguments[0]);", [T]);
 const hosts = () => inSiteView<number>(m, ID, `return document.getElementsByTagName("webaios-viewfinder").length;`).catch(() => -1);
 const view = <R = unknown>(expr: string) => inSiteView<R>(m, ID, `return ${expr};`).catch(() => null);
 const bar = () =>
@@ -74,7 +74,7 @@ const bar = () =>
     m,
     ID,
     `return { pressed: doc.querySelector('${tid("site-bouton-design")}')?.getAttribute("aria-pressed") ?? null,
-       count: doc.querySelector('${tid("site-compteur-panier")}')?.textContent ?? null, accord: !!doc.querySelector('${tid("carte-accord-site")}') };`,
+       count: doc.querySelector('${tid("site-compteur-panier")}')?.textContent ?? null, grant: !!doc.querySelector('${tid("carte-accord-site")}') };`,
   );
 const clickBar = (t: string) => inSiteBar(m, ID, `doc.querySelector('${tid(t)}').click(); return 1;`);
 /** A chevron entry: the chevron, then its entry `t`. */
@@ -181,7 +181,7 @@ it("after site.json and the tweak changed, « Relire ce projet » of the chevron
   await waitUi(m, `return !!doc.querySelector('${PAGE}')`, [], 15_000);
   await waitUi(m, `return doc.querySelectorAll('${tid("fichier-relecture")}').length === 2`, [], 15_000);
   const names = await inUi<string[]>(m, `return [...doc.querySelectorAll('${tid("fichier-relecture")} .nom-fichier')].map((e) => e.textContent).sort();`);
-  expect(names).toEqual(["tweaks/tuning.css", "site.json"]);
+  expect(names).toEqual(["site.json", "tweaks/tuning.css"]);
   expect((await reviewTabs()).map((o) => o.title)).toEqual(["Relecture — Tuning"]);
   // Another tab, then « Relire ce projet » again: the same page comes back.
   await openApplications(m);

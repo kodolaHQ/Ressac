@@ -48,7 +48,7 @@ function writeMemory(dataDir: string, id = "vidola"): void {
   mkdirSync(path.join(dataDir, "sites", id), { recursive: true });
   writeFileSync(
     memory(dataDir, id),
-    JSON.stringify({ version: 1, values: { "encours.the-bear": { value: { title: "The Bear" }, url: "/serie/the-bear?e=4", when: new Date().toISOString() } }, positions: {} }),
+    JSON.stringify({ version: 1, values: { "encours.the-bear": { value: { titre: "The Bear" }, url: "/serie/the-bear?e=4", when: new Date().toISOString() } }, positions: {} }),
   );
 }
 

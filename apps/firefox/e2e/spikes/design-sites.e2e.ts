@@ -184,8 +184,8 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
     expect(before.pw).toBe("");
 
     // The viewfinder's sandbox, probed through the shipped actor's arm (its code is the parent's to send).
-    const probe = `(() => ({ webaiosSite: typeof webaiosSite, portee: typeof __webaiosScope, fichier: typeof __webaiosFile, retoucheSecret: typeof __retoucheSecret,
-      pageSecret: typeof pageSecret, arret: typeof __viewfinderStop, Components: typeof Components, ChromeUtils: typeof ChromeUtils, Services: typeof Services,
+    const probe = `(() => ({ webaiosSite: typeof webaiosSite, scope: typeof __webaiosScope, file: typeof __webaiosFile, tweakSecret: typeof __retoucheSecret,
+      pageSecret: typeof pageSecret, stop: typeof __viewfinderStop, Components: typeof Components, ChromeUtils: typeof ChromeUtils, Services: typeof Services,
       pwLength: document.getElementById("mdp").value.length,
       nativeValue: String(Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").get).includes("[native code]"),
       nativeAttach: String(Element.prototype.attachShadow).includes("[native code]"), nativeQsa: String(Document.prototype.querySelectorAll).includes("[native code]") }))()`;
@@ -257,8 +257,8 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
     if (esc === "pending") await stopActor(m, VIEW);
 
     // The capture: drawn by the view's WindowGlobal only. A magenta chrome cover over #cible, the bar above the view.
-    const target = await inSiteView<{ x: number; y: number; width: number; height: number }>(m, ID, `const r = document.getElementById("cible").getBoundingClientRect(); return { x: r.x, y: r.y, largeur: r.width, hauteur: r.height };`);
-    const viewDims = await view<{ width: number; height: number }>("({ largeur: innerWidth, hauteur: innerHeight })");
+    const target = await inSiteView<{ x: number; y: number; width: number; height: number }>(m, ID, `const r = document.getElementById("cible").getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height };`);
+    const viewDims = await view<{ width: number; height: number }>("({ width: innerWidth, height: innerHeight })");
     const rc = rectCapture(target, viewDims!, 1);
     const shot = await m.execute(
       `return (async ([rc]) => {

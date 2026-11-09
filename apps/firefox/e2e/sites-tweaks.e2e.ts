@@ -168,7 +168,7 @@ describe("tweaks", () => {
     await openAt("vidola", "/serie/the-bear");
     await expect.poll(() => view("document.documentElement.dataset.monde")).toBeTruthy();
     expect(JSON.parse(String(await view("document.documentElement.dataset.monde")))).toEqual({
-      require: "undefined", ipcRenderer: "undefined", process: "undefined", bridge: "object", Components: "undefined", ChromeUtils: "undefined", Services: "undefined",
+      require: "undefined", ipcRenderer: "undefined", process: "undefined", pont: "object", Components: "undefined", ChromeUtils: "undefined", Services: "undefined",
     });
   });
 

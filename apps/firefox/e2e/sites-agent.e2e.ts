@@ -218,7 +218,7 @@ describe("the agent on a site app window", () => {
       mkdirSync(folder, { recursive: true });
       writeFileSync(
         path.join(folder, "memory.json"),
-        JSON.stringify({ version: 1, values: { "encours.the-bear": { value: { title: "The Bear" }, url: "/serie/the-bear?e=4", when: new Date().toISOString() } }, positions: {} }),
+        JSON.stringify({ version: 1, values: { "encours.the-bear": { value: { titre: "The Bear" }, url: "/serie/the-bear?e=4", when: new Date().toISOString() } }, positions: {} }),
       );
     });
     expect((await call("list_sites")).text).toBe("vidola · Vidola · vidola-a.localhost · fermée");
@@ -242,7 +242,7 @@ describe("the agent on a site app window", () => {
     await start({ vidola: vidola() }, () => {
       const folder = path.join(dataDir, "sites", "vidola");
       mkdirSync(folder, { recursive: true });
-      writeFileSync(path.join(folder, "memory.json"), JSON.stringify({ version: 1, values: { "encours.the-bear": { value: { title: "The Bear" }, url: EPISODE, when: new Date().toISOString() } }, positions: {} }));
+      writeFileSync(path.join(folder, "memory.json"), JSON.stringify({ version: 1, values: { "encours.the-bear": { value: { titre: "The Bear" }, url: EPISODE, when: new Date().toISOString() } }, positions: {} }));
     });
     await openAndWait();
     const list = (await call("list_tabs")).text;

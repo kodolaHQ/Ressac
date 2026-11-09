@@ -132,18 +132,18 @@ describe("add-on strip, sidebar", () => {
     await openMenu();
     await click(m, `${PANEL} .gerer`, { text: "Gérer les extensions" });
     await waitUi(m, `return !doc.querySelector(${JSON.stringify(PANEL)})`);
-    const f = await waitFor(m, "return window.webaiosWindow.store.state", (st: any) => Object.values(st.onglets).some((o: any) => o.url.startsWith("about:addons")));
-    const fen = f.fenetres[0];
-    expect(f.onglets[fen.actif[fen.espaceActif]].url).toMatch(/^about:addons/);
+    const f = await waitFor(m, "return window.webaiosWindow.store.state", (st: any) => Object.values(st.tabs).some((o: any) => o.url.startsWith("about:addons")));
+    const fen = f.windows[0];
+    expect(f.tabs[fen.active[fen.activeSpace]].url).toMatch(/^about:addons/);
   });
 
   it("Trouver des modules opens AMO in a tab", async () => {
     await openMenu();
     await click(m, `${PANEL} .gerer`, { text: "Trouver des modules" });
     await waitUi(m, `return !doc.querySelector(${JSON.stringify(PANEL)})`);
-    const f = await waitFor(m, "return window.webaiosWindow.store.state", (st: any) => Object.values(st.onglets).some((o: any) => o.url === "https://addons.mozilla.org/fr/firefox/"));
-    const tab: any = Object.values(f.onglets).find((o: any) => o.url === "https://addons.mozilla.org/fr/firefox/");
-    expect(tab.espaceId).toBe(f.fenetres[0].espaceActif);
+    const f = await waitFor(m, "return window.webaiosWindow.store.state", (st: any) => Object.values(st.tabs).some((o: any) => o.url === "https://addons.mozilla.org/fr/firefox/"));
+    const tab: any = Object.values(f.tabs).find((o: any) => o.url === "https://addons.mozilla.org/fr/firefox/");
+    expect(tab.spaceId).toBe(f.windows[0].activeSpace);
   });
 
   it("a pending update shows a dot and Revoir la mise à jour", async () => {

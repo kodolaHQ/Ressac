@@ -304,7 +304,7 @@ describe("on the demo", () => {
     await waitWindowCount(m, 1);
     await m.command("WebDriver:SwitchToWindow", { handle: b, focus: false });
     expect(a).not.toBe(b);
-    expect(await svc<boolean>("return d.state({ type: 'fenetre', windowId: args[0] }).then((e) => e.actif);", [fa])).toBe(false);
+    expect(await svc<boolean>("return d.state({ type: 'fenetre', windowId: args[0] }).then((e) => e.active);", [fa])).toBe(false);
     expect((await designState()).active).toBe(true);
     expect(await hosts()).toBe(1);
     await modeOff();

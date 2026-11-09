@@ -198,7 +198,7 @@ describe("add-ons in a site app window", () => {
   });
 
   it("no add-on button on the home screen nor on the grant card (extensions-sites.spec.ts:542)", async () => {
-    await start({ sites: { tube: withHome(), card: withCard() } });
+    await start({ sites: { tube: withHome(), carte: withCard() } });
     await installAddon(m, probe());
     // Home.
     await openSite("tube");

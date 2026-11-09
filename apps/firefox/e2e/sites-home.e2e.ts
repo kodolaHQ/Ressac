@@ -22,7 +22,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /** Commands of the test, run by the home's page code (never by the chrome on its behalf). */
 const PROBE = `<script>
   addEventListener("message", (e) => {
-    const c = e.data && e.data.essai;
+    const c = e.data && e.data.attempt;
     if (!c) return;
     if (c === "demander") parent.postMessage(e.data.m, "*");
     if (c === "fetch") fetch(e.data.url).then(() => (window.fetchResult = "ok"), () => (window.fetchResult = "refused"));
@@ -163,7 +163,7 @@ function writeMemory(id: string, current?: string): void {
   const when = new Date().toISOString();
   writeFileSync(
     path.join(dir, "memory.json"),
-    JSON.stringify({ version: 1, values: { "encours.the-bear": { value: { title: "The Bear", episode: "S2E4" }, url: "/serie/the-bear?e=4", when: when } }, positions: {} }),
+    JSON.stringify({ version: 1, values: { "encours.the-bear": { value: { titre: "The Bear", episode: "S2E4" }, url: "/serie/the-bear?e=4", when: when } }, positions: {} }),
   );
   if (current) writeFileSync(path.join(dir, "url.json"), JSON.stringify({ current: current, previous: ["vidola-a.localhost"], since: when }));
 }

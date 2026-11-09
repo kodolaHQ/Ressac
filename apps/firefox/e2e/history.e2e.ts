@@ -330,6 +330,6 @@ describe("history panel", () => {
     await pressKeys(m, "Meta+t");
     await bar();
     await field("Page");
-    await until(() => lines("onglet"), (l) => l.length > 0);
+    await until(() => lines("tab"), (l) => l.length > 0);
   });
 });

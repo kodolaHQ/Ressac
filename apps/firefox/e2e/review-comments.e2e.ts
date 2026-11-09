@@ -241,7 +241,7 @@ it("external project: « Envoyer 1 commentaire à Claude Code (…) », read_rem
     await click(m, SEND);
     await waitText(COMMENT, "envoyé");
     const t = textOf(await p.client.callTool({ name: "read_remarks", arguments: { folder: p.folder } }));
-    expect(t).toContain("(relecture, lot ");
+    expect(t).toContain("(review, lot ");
     expect(t).toContain("texte de l'utilisateur : renommer");
     expect(t).toContain('Fichier : "app.js", lignes 2–2');
     expect(t).toContain("-ligne 2\n+ligne 2 modifiée");

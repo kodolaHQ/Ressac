@@ -20,7 +20,7 @@ const WATCH_WORKFLOW = {
   blocks: [
     { id: "page", type: "source.page", params: { url: "{config.url}" } },
     { id: "liens", type: "code", name: "Liens de la page", params: { source: "liens.mjs" } },
-    { id: "tri", type: "ai.sort", name: "Tri par Kev", params: { question: "Parle d'IA ?", text: "{texte}", threshold: 0.5 } },
+    { id: "tri", type: "ai.sort", name: "Tri par Kev", params: { question: "Parle d'IA ?", text: "{text}", threshold: 0.5 } },
     { id: "textes", type: "code", params: { source: "textes.mjs" } },
     { id: "sortie", type: "output", params: { to: "widget" } },
   ],
@@ -373,7 +373,7 @@ describe("the workflow builder's runs", () => {
     await waitVisible(tid("noeud-textes"));
     // No run: the preview shows the example, as the home page does.
     await click(m, tid("bouton-apercu"));
-    await poll(preview, '{"exemple":"veille"}');
+    await poll(preview, '{"example":"veille"}');
     await waitCount(tid("apercu-mention"), 0);
 
     await click(m, tid("lancer"));
@@ -403,7 +403,7 @@ describe("the workflow builder's runs", () => {
     await waitDisabled(tid("rejouer"), true);
 
     await click(m, tid("noeud-tri"));
-    const threshold = `${tid("volet-bloc")} ${tid("champ-seuil")}`;
+    const threshold = `${tid("volet-bloc")} ${tid("champ-threshold")}`;
     await fill(threshold, "0.05");
     await pressEnter();
     await poll(() => thresholdOf("rejouer"), 0.05);
@@ -471,7 +471,7 @@ describe("the workflow builder's runs", () => {
       const last = (await runs("rejouer")).filter((f) => f.includes("-attempt")).at(-1)!.replace(/\.json$/, "");
       await waitPressed(tid(`execution-${last}`));
       await waitText(tid("pastille-tri"), "2");
-      expect((await readJson(path.join(executionsOf("rejouer"), `${last}.json`))).essai).toEqual({ start: "tri", origin: origin });
+      expect((await readJson(path.join(executionsOf("rejouer"), `${last}.json`))).attempt).toEqual({ start: "tri", origin: origin });
     }
     expect(reads.get("rejouer")).toBe(pages);
   });
@@ -519,16 +519,16 @@ describe("the workflow builder's runs", () => {
     expect(before.data.some((f) => f.startsWith("state.json:"))).toBe(true);
 
     await openBuilder(m, "gmail");
-    await waitContains(tid("noeud-recolte"), "code");
-    await waitContains(tid("noeud-sortie"), "sortie");
+    await waitContains(tid("noeud-harvest"), "code");
+    await waitContains(tid("noeud-output"), "output");
     await saved();
     // The last run is chosen on opening.
     await waitPressed(tid(`execution-${GMAIL_RUNS[1]}`));
 
     // Selecting with a jittered click (under the 4 px drag threshold).
-    await drag(tid("noeud-recolte"), 2, 1, 1);
+    await drag(tid("noeud-harvest"), 2, 1, 1);
     await waitVisible(tid("volet-bloc"));
-    await click(m, tid("noeud-sortie"));
+    await click(m, tid("noeud-output"));
     // Reorganising, then choosing the other run.
     await click(m, tid("reorganiser"));
     await click(m, tid(`execution-${GMAIL_RUNS[0]}`));
@@ -551,7 +551,7 @@ describe("the workflow builder's runs", () => {
 
     await builder("simple");
     // A real gesture: moving the output by 80 px.
-    await drag(tid("noeud-sortie"), 80, 40, 10);
+    await drag(tid("noeud-output"), 80, 40, 10);
     await poll(async () => existsSync(path.join(dir, "workflow.json")), true);
     await saved();
     const written = await readWorkflow(dataDir, "simple");
@@ -567,9 +567,9 @@ describe("the workflow builder's runs", () => {
     await poll(async () => (await runs("simple")).length, 2, 20_000);
     const last = await readJson(path.join(executionsOf("simple"), (await runs("simple")).at(-1)!));
     expect(last.status).toBe("succeeded");
-    expect(last.declencheur).toBe("manual");
+    expect(last.trigger).toBe("manual");
     await poll(() => homeData("simple"), '{"bon":true}');
-    expect(await readJson(path.join(dataOf("simple"), "data.json"))).toEqual({ good: true });
+    expect(await readJson(path.join(dataOf("simple"), "data.json"))).toEqual({ bon: true });
     expect((await readJson(path.join(dataOf("simple"), "state.json"))).status).toBe("ok");
   });
 
@@ -592,7 +592,7 @@ describe("the workflow builder's runs", () => {
     await click(m, tid("nouvel-onglet"));
     await harvest("coupe");
     await waitContains(tid("widget-coupe"), "Workflow invalide : ", 20_000);
-    expect((await readJson(path.join(dataOf("coupe"), "state.json"))).erreur).toMatch(/^Workflow invalide : /);
+    expect((await readJson(path.join(dataOf("coupe"), "state.json"))).error).toMatch(/^Workflow invalide : /);
   });
 
   it("a 30-block workflow opens readable: no node overlaps, all in view after fitView", async () => {
@@ -630,7 +630,7 @@ describe("the workflow builder's runs", () => {
     const search = tid("palette-web.search");
     await waitDisabled(search, false);
     await click(m, search);
-    await waitVisible(tid("noeud-web-chercher"));
+    await waitVisible(tid("noeud-web-search"));
     await waitTrue(`!${el(tid("etat-enregistrement"))}.textContent.includes("doit déclarer")`);
     // widget.json is never written by the builder.
     expect(await readFile(path.join(widgetDir(dataDir, "web"), "widget.json"), "utf8")).toBe(declaration);
@@ -648,7 +648,7 @@ describe("the workflow builder's runs", () => {
     // Playwright's force click: the mouse on a disabled button.
     await click(m, search);
     await sleep(300);
-    await waitCount(tid("noeud-web-chercher"), 0);
+    await waitCount(tid("noeud-web-search"), 0);
 
     await writeAsAgent("sansweb", {
       version: 1,
@@ -660,7 +660,7 @@ describe("the workflow builder's runs", () => {
     });
     await waitVisible(tid("noeud-chercher"));
     await waitContains(tid("etat-enregistrement"), "Non enregistré : ");
-    await waitContains(tid("etat-enregistrement"), 'Workflow invalide : web.chercher : le widget doit déclarer "web": true');
+    await waitContains(tid("etat-enregistrement"), 'Workflow invalide : web.search : le widget doit déclarer "web": true');
   });
 
   it("auFilDeLEau behind Garder les N premiers: warning on the output", async () => {
@@ -671,10 +671,10 @@ describe("the workflow builder's runs", () => {
     await saved();
 
     // Unchecked, the box removes the key (absent = false): nothing else is written in the output.
-    const box = tid("champ-auFilDeLEau");
+    const box = tid("champ-live");
     await waitTrue(`${el(box)}?.checked === true`);
     await click(m, box);
-    await poll(async () => (await readWorkflow(dataDir, "fil")).blocks.find((b: { id: string }) => b.id === "sortie").parametres, { to: "widget" });
+    await poll(async () => (await readWorkflow(dataDir, "fil")).blocks.find((b: { id: string }) => b.id === "sortie").params, { to: "widget" });
     await waitCount(tid("avertissement-sortie"), 0);
   });
 

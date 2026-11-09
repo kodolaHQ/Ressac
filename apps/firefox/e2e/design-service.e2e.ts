@@ -208,7 +208,7 @@ describe("design service", () => {
     await open("/");
     const b = await aim("#email");
     expect(b.ctx).toMatchObject({ mode: "bubble", label: "input#email.champ", project: `demo-${PORT}` });
-    const r = await inPage<{ x: number; y: number; width: number; height: number }>(`const r = document.querySelector("#email").getBoundingClientRect(); return { x: r.x, y: r.y, largeur: r.width, hauteur: r.height };`);
+    const r = await inPage<{ x: number; y: number; width: number; height: number }>(`const r = document.querySelector("#email").getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height };`);
     const g = await m.execute<{ z: number; x: number; y: number; width: number; height: number; w: number; h: number }>(
       `const r = ${B}.getBoundingClientRect(); return { z: ${B}.fullZoom, x: r.x, y: r.y, width: r.width, height: r.height, w: window.innerWidth, h: window.innerHeight };`,
     );

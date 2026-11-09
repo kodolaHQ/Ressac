@@ -152,7 +152,7 @@ export const WITHOUT_KERNEL = "Le service des actions ne répond pas (agent arr�
 
 /** Waits until the kernel serves the actions: an unknown action is then refused as such. */
 export async function waitKernel(m: Marionette): Promise<void> {
-  await waitUi(m, "return ui.webaios.actions.launch('inconnue-du-test', null).then((r) => r.erreur !== arguments[0]);", [WITHOUT_KERNEL], 30_000);
+  await waitUi(m, "return ui.webaios.actions.launch('inconnue-du-test', null).then((r) => r.error !== arguments[0]);", [WITHOUT_KERNEL], 30_000);
 }
 
 /** Opens the action's page (its last result, or `execution`) without launching anything. */
@@ -279,7 +279,7 @@ export const LBC_ADS = [
 export const adPhoto = (n: number) => `https://img.leboncoin.exemple/photos/${n}.jpg`;
 
 /** The fake Gemma's plan for a layout request: a title, then the list of pages read (actions.spec.ts PLAN_GEMMA). */
-export const GEMMA_PLAN = { blocks: [{ component: "title", props: { text: "Pages lues" } }, { component: "list", props: { items: "$", title: "page.titre" } }] };
+export const GEMMA_PLAN = { blocks: [{ component: "title", props: { text: "Pages lues" } }, { component: "list", props: { items: "$", title: "page.title" } }] };
 /** The start of the layout prompt (pages/layout-page.ts). */
 export const LAYOUT_PROMPT = "Tu mets en page le résultat d'une action pour l'utilisateur.";
 

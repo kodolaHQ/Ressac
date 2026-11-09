@@ -144,7 +144,7 @@ describe("agent extensions: registry, signed install, restart", () => {
     w = await launch(f);
     await waitAddon(w, "1.0.0.3");
     expect(w.amo.sends.map((e) => e.version)).toEqual(["1.0.0.3"]);
-    expect(JSON.parse(readFileSync(path.join(f.dataDir, "extensions", "amo-versions.json"), "utf8"))).toEqual({ hider: 3 });
+    expect(JSON.parse(readFileSync(path.join(f.dataDir, "extensions", "amo-versions.json"), "utf8"))).toEqual({ cacheur: 3 });
   });
 
   it("uninstalled from about:addons: gone from the registry", async () => {

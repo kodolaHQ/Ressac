@@ -167,7 +167,7 @@ it("the Gmail widget (account, harvest.mjs) and a watch update as before while a
   await writeFile(path.join(dirs.dataDir, "widgets", "grants.json"), JSON.stringify({ gmail: { domains: ["127.0.0.1"], public: [], profile: "default" } }));
   await writePagesAction(dirs.dataDir, site);
   const { m } = await launch(1400);
-  await untilEqual(() => shown(m, "gmail"), '{"exemple":"gmail"}');
+  await untilEqual(() => shown(m, "gmail"), '{"example":"gmail"}');
   await waitKernel(m);
   await inUi(m, "void ui.webaios.actions.launch('pages', null);");
   const running = async () => (await direct(m)).running.map((c) => c.action);
@@ -177,8 +177,8 @@ it("the Gmail widget (account, harvest.mjs) and a watch update as before while a
   await harvest(m, "veille");
   await untilEqual(() => shown(m, "gmail"), '{"titre":"Court"}');
   await untilEqual(() => widgetRuns("veille").map((e) => e.status), ["succeeded"]);
-  const watch = JSON.parse((await shown(m, "veille")) || "null") as { title: string; notice: string }[];
-  expect(watch.map((a) => [a.title, a.notice])).toEqual([
+  const watch = JSON.parse((await shown(m, "veille")) || "null") as { titre: string; avis: string }[];
+  expect(watch.map((a) => [a.titre, a.avis])).toEqual([
     ["Vélo de course", "Bonne affaire."],
     ["Vélo pliant", "Bonne affaire."],
   ]);

@@ -18,7 +18,7 @@ const WATCH_WORKFLOW = {
   blocks: [
     { id: "page", type: "source.page", params: { url: "{config.url}" } },
     { id: "liens", type: "code", name: "Liens de la page", params: { source: "liens.mjs" } },
-    { id: "tri", type: "ai.sort", name: "Tri par Kev", params: { question: "Parle d'IA ?", text: "{texte}", threshold: 0.5 } },
+    { id: "tri", type: "ai.sort", name: "Tri par Kev", params: { question: "Parle d'IA ?", text: "{text}", threshold: 0.5 } },
     { id: "textes", type: "code", params: { source: "textes.mjs" } },
     { id: "sortie", type: "output", params: { to: "widget" } },
   ],
@@ -339,17 +339,17 @@ describe("the workflow builder", () => {
     expect(await count("palette-sortie")).toBe(0);
 
     await click(m, '[data-testid="palette-list.keep"]');
-    await waitCount("noeud-liste-garder", 1);
+    await waitCount("noeud-list-keep", 1);
     await waitContains("etat-enregistrement", "Non enregistré : ");
     await waitContains("etat-enregistrement", "entrée manquante");
-    expect(await inUi(m, `return ${q("noeud-liste-garder")}.classList.contains("en-erreur")`)).toBe(true);
+    expect(await inUi(m, `return ${q("noeud-list-keep")}.classList.contains("en-erreur")`)).toBe(true);
     expect(await readWorkflow(dataDir, "add")).toEqual(WATCH_WORKFLOW);
 
-    await link("tri", "liste-garder");
+    await link("tri", "list-keep");
     await saved();
     const written = await readWorkflow(dataDir, "add");
-    expect(written.blocks.find((x: { id: string }) => x.id === "liste-garder")).toMatchObject({ type: "list.keep", params: { count: 10 } });
-    expect(written.liens).toContainEqual({ from: "tri", to: "liste-garder" });
+    expect(written.blocks.find((x: { id: string }) => x.id === "list-keep")).toMatchObject({ type: "list.keep", params: { count: 10 } });
+    expect(written.links).toContainEqual({ from: "tri", to: "list-keep" });
     // The first gesture freezes the layout shown: each block now has its position.
     const positions = new Set(written.blocks.map((x: { position: { x: number; y: number } }) => `${x.position.x},${x.position.y}`));
     expect(positions.size).toBe(written.blocks.length);
@@ -358,23 +358,23 @@ describe("the workflow builder", () => {
   it("⌘Z undoes the addition and saves again", async () => {
     await builder("undo");
     await click(m, '[data-testid="palette-list.keep"]');
-    await waitCount("noeud-liste-garder", 1);
-    await link("tri", "liste-garder");
+    await waitCount("noeud-list-keep", 1);
+    await link("tri", "list-keep");
     await saved();
-    expect((await readWorkflow(dataDir, "undo")).blocs.map((x: { id: string }) => x.id)).toContain("liste-garder");
+    expect((await readWorkflow(dataDir, "undo")).blocks.map((x: { id: string }) => x.id)).toContain("list-keep");
 
     // Undoing the link: the block is invalid again, nothing is written.
     await pressKeys(m, "Meta+z");
     await waitContains("etat-enregistrement", "entrée manquante");
-    expect((await readWorkflow(dataDir, "undo")).liens).toContainEqual({ from: "tri", to: "liste-garder" });
+    expect((await readWorkflow(dataDir, "undo")).links).toContainEqual({ from: "tri", to: "list-keep" });
     // Undoing the add: the workflow is valid again and saved again, without the block.
     await pressKeys(m, "Meta+z");
-    await waitCount("noeud-liste-garder", 0);
+    await waitCount("noeud-list-keep", 0);
     await saved();
-    await poll(async () => (await readWorkflow(dataDir, "undo")).blocs.map((x: { id: string }) => x.id), ["page", "liens", "tri", "textes", "sortie"]);
+    await poll(async () => (await readWorkflow(dataDir, "undo")).blocks.map((x: { id: string }) => x.id), ["page", "liens", "tri", "textes", "sortie"]);
     // Redo does it again.
     await pressKeys(m, "Meta+Shift+z");
-    await waitCount("noeud-liste-garder", 1);
+    await waitCount("noeud-list-keep", 1);
   });
 
   it("adding a Code block writes its .mjs file (template that returns its input) and saves the workflow", async () => {
@@ -382,7 +382,7 @@ describe("the workflow builder", () => {
     await click(m, '[data-testid="palette-code"]');
     await waitCount("noeud-code", 1);
     await saved();
-    expect(await readFile(path.join(widgetDir(dataDir, "add-code"), "code.mjs"), "utf8")).toBe("export default async (entree, webaios) => {\n  return entree;\n};\n");
+    expect(await readFile(path.join(widgetDir(dataDir, "add-code"), "code.mjs"), "utf8")).toBe("export default async (input, webaios) => {\n  return input;\n};\n");
     const block = (await readWorkflow(dataDir, "add-code")).blocks.find((x: { id: string }) => x.id === "code");
     expect(block).toMatchObject({ type: "code", params: { source: "code.mjs" } });
   });
@@ -408,7 +408,7 @@ describe("the workflow builder", () => {
     await poll(async () => (await readdir(executions)).length, 2, 20_000);
     await waitUi(m, `return ${q("lancer")}?.disabled === false`, [], 20_000);
     const last = (await readdir(executions)).sort().at(-1)!;
-    expect((await readJson(path.join(executions, last))).declencheur).toBe("manual");
+    expect((await readJson(path.join(executions, last))).trigger).toBe("manual");
     // Running does not write the workflow.
     expect(await readWorkflow(dataDir, "run")).toEqual(WATCH_WORKFLOW);
   });
@@ -419,15 +419,15 @@ describe("the workflow builder", () => {
     const dir = widgetDir(dataDir, "compte");
     const before = await snapshot(dir);
     await openBuilder(m, "compte");
-    await waitContains("noeud-recolte", "code");
-    await waitContains("noeud-sortie", "sortie");
+    await waitContains("noeud-harvest", "code");
+    await waitContains("noeud-output", "output");
     await saved();
     const boxes = await inUi<Box[]>(
       m,
-      "return ['recolte', 'sortie'].map((id) => { const r = doc.querySelector('[data-testid=\"noeud-' + id + '\"]').getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; })",
+      "return ['harvest', 'output'].map((id) => { const r = doc.querySelector('[data-testid=\"noeud-' + id + '\"]').getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; })",
     );
     expect(overlap(boxes[0]!, boxes[1]!)).toBe(false);
-    await click(m, '[data-testid="noeud-recolte"]');
+    await click(m, '[data-testid="noeud-harvest"]');
     await sleep(800);
     expect((await readdir(dir)).includes("workflow.json")).toBe(false);
     expect(await snapshot(dir)).toEqual(before);
@@ -471,16 +471,16 @@ describe("the workflow builder", () => {
   it("⌘Z typed in a text field does not undo the canvas", async () => {
     await builder("field");
     await click(m, '[data-testid="palette-list.keep"]');
-    await waitCount("noeud-liste-garder", 1);
+    await waitCount("noeud-list-keep", 1);
     await click(m, '[data-testid="barre-adresse"]');
     await typeText(m, "abc");
     await pressKeys(m, "Meta+z");
     await sleep(300);
-    expect(await count("noeud-liste-garder")).toBe(1);
+    expect(await count("noeud-list-keep")).toBe(1);
     // Out of the field, ⌘Z undoes the add.
     await clickHeading();
     await pressKeys(m, "Meta+z");
-    await waitCount("noeud-liste-garder", 0);
+    await waitCount("noeud-list-keep", 0);
   });
 
   it("the agent rewrites workflow.json during an invalid draft: banner, « Garder la mienne » then « Prendre sa version »", async () => {
@@ -492,7 +492,7 @@ describe("the workflow builder", () => {
     await writeAsAgent("agent", withThreshold(0.7));
     await waitCount("bandeau-fichier", 1);
     // A gesture during the banner does not overwrite the agent's version.
-    await link("tri", "liste-garder");
+    await link("tri", "list-keep");
     await sleep(500);
     expect(await count("bandeau-fichier")).toBe(1);
     expect(await thresholdOf("agent")).toBe(0.7);
@@ -501,18 +501,18 @@ describe("the workflow builder", () => {
     await waitCount("bandeau-fichier", 0);
     await saved();
     await poll(() => thresholdOf("agent"), 0.5);
-    expect((await readWorkflow(dataDir, "agent")).liens).toContainEqual({ from: "tri", to: "liste-garder" });
+    expect((await readWorkflow(dataDir, "agent")).links).toContainEqual({ from: "tri", to: "list-keep" });
 
     // A new invalid draft, a new agent version: taking it drops the draft, writing nothing.
     await click(m, '[data-testid="palette-list.keep"]');
-    await waitCount("noeud-liste-garder-2", 1);
+    await waitCount("noeud-list-keep-2", 1);
     await writeAsAgent("agent", withThreshold(0.9));
     await waitCount("bandeau-fichier", 1);
     const before = (await stat(file)).mtimeMs;
     await click(m, '[data-testid="prendre-version"]');
     await waitCount("bandeau-fichier", 0);
-    await waitCount("noeud-liste-garder-2", 0);
-    await waitCount("noeud-liste-garder", 0);
+    await waitCount("noeud-list-keep-2", 0);
+    await waitCount("noeud-list-keep", 0);
     await saved();
     await sleep(500);
     expect((await stat(file)).mtimeMs).toBe(before);
@@ -521,7 +521,7 @@ describe("the workflow builder", () => {
 
   it("changing ia.trier's threshold in the Bloc tab rewrites workflow.json and erases that block's memory only", async () => {
     const memory = path.join(dataOf("seuil"), "memory.json");
-    await writeFile(memory, JSON.stringify({ version: 1, blocks: { sort: { type: "ai.sort", value: { seen: ["a"] } }, texts: { type: "code", value: { seen: ["b"] } } } }));
+    await writeFile(memory, JSON.stringify({ version: 1, blocks: { tri: { type: "ai.sort", value: { seen: ["a"] } }, textes: { type: "code", value: { seen: ["b"] } } } }));
     await builder("seuil");
     // No block selected: the widget's panel, read only.
     await waitContains("panneau-widget", "Pour changer les sources ou la configuration, demande-le à l'agent.");
@@ -532,34 +532,34 @@ describe("the workflow builder", () => {
     expect(await inUi(m, `return doc.querySelector('[data-testid="volet-bloc"] [data-testid="id-bloc"]')?.textContent`)).toBe("tri");
     expect(await value("champ-question")).toBe("Parle d'IA ?");
     // ia.trier always scores item by item: its « per item » fields are there, without a parElement box.
-    expect(await count("champ-siErreur")).toBe(1);
-    expect(await count("champ-parElement")).toBe(0);
+    expect(await count("champ-onError")).toBe(1);
+    expect(await count("champ-perItem")).toBe(0);
     // Selecting writes nothing.
     await sleep(500);
     expect(await readWorkflow(dataDir, "seuil")).toEqual(WATCH_WORKFLOW);
 
     // An unreadable entry (« - ») writes nothing; left, the field shows the block's value again.
-    await click(m, '[data-testid="champ-seuil"]');
+    await click(m, '[data-testid="champ-threshold"]');
     await pressKeys(m, "Meta+a");
     await typeText(m, "-");
     await pressKeys(m, "Tab");
-    await waitValue("champ-seuil", "0.5");
+    await waitValue("champ-threshold", "0.5");
     // A number is not saved while typing (« 0. » would erase the memory): Enter or focus loss.
-    await fill("champ-seuil", "0.7");
+    await fill("champ-threshold", "0.7");
     await sleep(700);
     expect(await thresholdOf("seuil")).toBe(0.5);
-    expect(Object.keys((await readJson(memory)).blocs)).toEqual(["tri", "textes"]);
+    expect(Object.keys((await readJson(memory)).blocks)).toEqual(["tri", "textes"]);
     await pressKeys(m, "Enter");
     await poll(() => thresholdOf("seuil"), 0.7);
     await saved();
-    await poll(async () => Object.keys((await readJson(memory)).blocs), ["textes"]);
+    await poll(async () => Object.keys((await readJson(memory)).blocks), ["textes"]);
     // Back to the value at focus after a save is saved too.
-    await fill("champ-seuil", "0.5");
+    await fill("champ-threshold", "0.5");
     await pressKeys(m, "Tab");
     await poll(() => thresholdOf("seuil"), 0.5);
-    expect(await value("champ-seuil")).toBe("0.5");
+    expect(await value("champ-threshold")).toBe("0.5");
     // ⌘Z (out of the field) undoes one field edit at once.
-    await fill("champ-seuil", "0.8");
+    await fill("champ-threshold", "0.8");
     await pressKeys(m, "Tab");
     await poll(() => thresholdOf("seuil"), 0.8);
     await clickHeading();
@@ -570,7 +570,7 @@ describe("the workflow builder", () => {
   it("a {config.inconnu} template shows a warning and saves anyway", async () => {
     await builder("gabarit");
     await click(m, '[data-testid="noeud-tri"]');
-    const questionOf = async () => (await readWorkflow(dataDir, "gabarit")).blocks.find((b: { id: string }) => b.id === "tri").parametres.question;
+    const questionOf = async () => (await readWorkflow(dataDir, "gabarit")).blocks.find((b: { id: string }) => b.id === "tri").params.question;
     await fill("champ-question", "{config.inconnu} ?");
     // Saved after 400 ms without typing, keeping the focus.
     await poll(questionOf, "{config.inconnu} ?");
@@ -709,12 +709,12 @@ describe("the workflow builder", () => {
     // The output is formatted only once opened.
     expect(await count("sortie-json")).toBe(0);
     await click(m, '[data-testid="sortie-bloc"] [data-testid="sortie-repliable"] summary');
-    await waitContains("sortie-json", '"texte": "<img src=x onerror=');
+    await waitContains("sortie-json", '"text": "<img src=x onerror=');
 
     await click(m, '[data-testid="noeud-tri"]');
     await waitText("erreur-bloc", trap);
     // The upstream output's fields (liens) and the config are offered to templates.
-    await waitText("disponibles-texte", "Champs disponibles : {texte} {url} {config.url}");
+    await waitText("disponibles-text", "Champs disponibles : {text} {url} {config.url}");
 
     expect(await inUi(m, "return doc.querySelectorAll('img').length")).toBe(images);
     expect(await inUi(m, `return doc.querySelectorAll('img[src="x"]').length`)).toBe(0);
@@ -750,7 +750,7 @@ describe("the workflow builder", () => {
   it("a widget removed while its builder is open is forgotten", async () => {
     await builder("gone");
     await click(m, '[data-testid="palette-list.keep"]');
-    await waitCount("noeud-liste-garder", 1);
+    await waitCount("noeud-list-keep", 1);
     await waitContains("etat-enregistrement", "entrée manquante");
 
     // Removed from the home page, its builder tab still open behind.

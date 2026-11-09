@@ -162,12 +162,12 @@ describe("site app window", () => {
   it("the window's size and place are kept in <dataDir>/sites.json and taken back on reopening", async () => {
     await openAndWait();
     const frame = { x: 120, y: 90, width: 700, height: 520 };
-    await m.execute(`const win = ${site}; win.moveTo(arguments[0].x, arguments[0].y); win.resizeTo(arguments[0].largeur, arguments[0].hauteur);`, [frame]);
+    await m.execute(`const win = ${site}; win.moveTo(arguments[0].x, arguments[0].y); win.resizeTo(arguments[0].width, arguments[0].height);`, [frame]);
     await waitFor(m, `const win = ${site}; return [win.screenX, win.screenY, win.outerWidth, win.outerHeight].join();`, (v) => v === "120,90,700,520");
     await m.execute(`${site}.close();`);
     await waitFor(m, `return !${site};`, (v) => v === true);
     const file = path.join(dataDir, "sites.json");
-    await expect.poll(() => (existsSync(file) ? JSON.parse(readFileSync(file, "utf8")).vidola?.cadre : null), { timeout: 10_000 }).toEqual(frame);
+    await expect.poll(() => (existsSync(file) ? JSON.parse(readFileSync(file, "utf8")).vidola?.frame : null), { timeout: 10_000 }).toEqual(frame);
     await openAndWait();
     expect(await m.execute(`const win = ${site}; return [win.screenX, win.screenY, win.outerWidth, win.outerHeight];`)).toEqual([120, 90, 700, 520]);
   });
@@ -258,7 +258,7 @@ describe("site app window", () => {
     );
     expect(attached).toBe(false);
     await waitFor(m, `return !${site};`, (v) => v === true);
-    const opened = () => inStore<boolean | undefined>(`return (await store.agent.request("sites.list")).find((s) => s.id === "vidola")?.ouverte;`);
+    const opened = () => inStore<boolean | undefined>(`return (await store.agent.request("sites.list")).find((s) => s.id === "vidola")?.open;`);
     await expect.poll(opened, { timeout: 10_000 }).toBe(false);
   });
 

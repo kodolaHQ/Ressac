@@ -82,8 +82,8 @@ describe("Applications page actions", () => {
     expect(items).not.toContain("Supprimer");
     await pressKeys(m, "Escape");
     // Refused by the host as well, not only missing from the menu.
-    await act("essai", "supprimer");
-    for (const d of ["..", ".", "", "essai/..", "../espace"]) await act(d, "supprimer");
+    await act("essai", "delete");
+    for (const d of ["..", ".", "", "essai/..", "../espace"]) await act(d, "delete");
     await sleep(500);
     expect(existsSync(path.join(project("essai"), "webaios.json"))).toBe(true);
     expect(existsSync(project("zod"))).toBe(true);
@@ -99,7 +99,7 @@ describe("Applications page actions", () => {
     const tabs = async () => Object.keys((await state(m)).tabs).length;
     const before = { windows: await windows(), tabs: await tabs() };
     // Not one segment, or not a folder name: nothing shown.
-    for (const d of ["..", ".", "", "x.app/..", "../x.app", "a\\b"]) await act(d, "dossier");
+    for (const d of ["..", ".", "", "x.app/..", "../x.app", "a\\b"]) await act(d, "folder");
     await rowMenu(m, "x.app", "Afficher le dossier");
     const read = () => (existsSync(reveals) ? readFileSync(reveals, "utf8") : "");
     await expect.poll(read, { timeout: 10_000 }).not.toBe("");

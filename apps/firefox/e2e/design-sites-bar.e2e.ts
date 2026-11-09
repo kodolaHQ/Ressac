@@ -55,7 +55,7 @@ afterEach(async () => {
     for (const id of arguments[0]) { await store.design.stop({ type: "site", id }); store.design.closeOverlay({ type: "site", id }, "basket"); } return 1;`, [IDS]);
 });
 
-const state = (id: string) => inStore<{ active: boolean; unavailable: string | null; basket: number }>(m, "return await store.design.etat(arguments[0]);", [T(id)]);
+const state = (id: string) => inStore<{ active: boolean; unavailable: string | null; basket: number }>(m, "return await store.design.state(arguments[0]);", [T(id)]);
 const bubble = (id: string) => inStore<{ label: string } | null>(m, 'return store.design.overlayContext(arguments[0], ["bubble"]);', [T(id)]);
 const hosts = (id: string) => inSiteView<number>(m, id, `return document.getElementsByTagName("webaios-viewfinder").length;`).catch(() => -1);
 const view = <T = unknown>(id: string, expr: string) => inSiteView<T>(m, id, `return ${expr};`).catch(() => null);
@@ -70,7 +70,7 @@ const bar = (id: string) =>
     id,
     `const b = doc.querySelector('${tid("site-bouton-design")}'), c = doc.querySelector('${tid("site-menu-design")}');
      return { title: b?.title ?? "", disabled: !!b?.disabled, pressed: b?.getAttribute("aria-pressed") ?? null, chevron: !!c && !c.disabled,
-       count: doc.querySelector('${tid("site-compteur-panier")}')?.textContent ?? null, avis: doc.querySelector('${tid("site-avis")}')?.textContent.trim() ?? null,
+       count: doc.querySelector('${tid("site-compteur-panier")}')?.textContent ?? null, notice: doc.querySelector('${tid("site-avis")}')?.textContent.trim() ?? null,
        entries: doc.querySelectorAll('${tid("site-menu-design-panier")}').length };`,
   );
 const clickBar = (id: string, t: string) => inSiteBar(m, id, `doc.querySelector('${tid(t)}').click(); return 1;`);
