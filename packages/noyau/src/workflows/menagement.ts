@@ -139,7 +139,7 @@ export class Menagement {
         verifier?.();
         if (voie.fin === null) break;
         const t = this.maintenant();
-        if (t < voie.fin) voie.fin = t; //         if (t < voie.fin) voie.fin = t; // clock set back: we restart from now
+        if (t < voie.fin) voie.fin = t; // clock set back: we restart from now
         const reste = voie.fin + ecart - t;
         if (reste <= 0) break;
         await this.attendreOuInterrompre(reste, signal);
