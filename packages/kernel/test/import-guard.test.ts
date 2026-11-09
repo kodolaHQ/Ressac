@@ -10,17 +10,17 @@ function files(folder: string): string[] {
   );
 }
 
-test("src/workflows n'importe ni widgets/, accueil/, actions/ ni pages/", () => {
+test("src/workflows imports none of widgets/, home/, actions/, pages/", () => {
   const sources = files(join(root, "src", "workflows"));
   expect(sources.length).toBeGreaterThan(0);
   // `from "…"`, `import "…"` (side effect) and `import("…")` (dynamic).
-  const forbidden = /(?:\bfrom|\bimport)\s*\(?\s*["'](\.\.\/)+(widgets|accueil|actions|pages)\//;
+  const forbidden = /(?:\bfrom|\bimport)\s*\(?\s*["'](\.\.\/)+(widgets|home|actions|pages)\//;
   for (const example of [
-    'import { x } from "../widgets/recolte.js";',
-    'import "../accueil/donnees.js";',
-    'const m = await import("../../widgets/recolte.js");',
-    "await import( '../accueil/schemas.js')",
-    'import { x } from "../actions/donnees.js";',
+    'import { x } from "../widgets/harvest.js";',
+    'import "../home/data.js";',
+    'const m = await import("../../widgets/harvest.js");',
+    "await import( '../home/schemas.js')",
+    'import { x } from "../actions/data.js";',
     'import { x } from "../pages/plan.js";',
   ]) {
     expect(example).toMatch(forbidden);
