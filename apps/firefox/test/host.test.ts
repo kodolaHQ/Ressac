@@ -1060,7 +1060,7 @@ createServer((req, res) => {
     expect(Date.now() - Date.parse(e!.dernierLancement!)).toBeLessThan(30_000);
   });
 
-  it("fenetreFermee by the owner stops the app; a wanted close does not", async () => {
+  it("fenetreFermee by the user stops the app; a wanted close does not", async () => {
     const { h, chrome } = startApps();
     await launched(h, chrome);
     const avant = arrets(h);
