@@ -34,8 +34,8 @@
         .catch(() => {});
     }),
   );
-  const label = (l: (typeof lignes)[number]) => (l.status === "en-cours" && l.host ? readingOf(l.host) : ((l.type && labels.get(l.type)) ?? l.id));
-  const MARKS = { "en-cours": "…", reussi: "✓", partiel: "≈", echoue: "✗" } as const;
+  const label = (l: (typeof lignes)[number]) => (l.status === "running" && l.host ? readingOf(l.host) : ((l.type && labels.get(l.type)) ?? l.id));
+  const MARKS = { running: "…", succeeded: "✓", partial: "≈", failed: "✗" } as const;
 </script>
 
 <section class="avancement" data-testid="avancement-action" aria-live="polite">
@@ -52,7 +52,7 @@
         </li>
       {/each}
       {#if current.step === "mise-en-page"}
-        <li class="en-cours"><span class="marque" aria-hidden="true">…</span><span class="libelle" data-testid="mise-en-page">{PAGE_LAYOUT}</span></li>
+        <li class="running"><span class="marque" aria-hidden="true">…</span><span class="libelle" data-testid="mise-en-page">{PAGE_LAYOUT}</span></li>
       {/if}
     </ol>
   {/if}
@@ -64,8 +64,8 @@
   ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
   li { display: flex; gap: 8px; align-items: baseline; }
   .marque { width: 1em; text-align: center; color: var(--texte-doux); }
-  li.en-cours .marque { color: var(--en-cours); }
-  li.echoue .marque { color: var(--en-erreur); }
+  li.running .marque { color: var(--en-cours); }
+  li.failed .marque { color: var(--en-erreur); }
   .compteur { color: var(--texte-doux); font-variant-numeric: tabular-nums; }
   .attente { margin: 0; color: var(--texte-doux); }
   button { padding: 5px 10px; border-radius: 6px; border: 1px solid var(--bord); background: var(--fond-barre); color: var(--texte); font: inherit; }

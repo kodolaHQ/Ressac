@@ -2,16 +2,16 @@ import { z } from "zod";
 import type { BlockDefinition } from "./common.js";
 
 export const definition: BlockDefinition = {
-  type: "liste.nouveaux",
+  type: "list.new",
   label: "Garder les nouveaux",
   family: "Listes",
   description: "Ne garde que les éléments pas encore vus lors des exécutions précédentes.",
-  input: "requise",
+  input: "required",
   fields: [
-    { name: "cle", label: "Clé", help: "Chemin de la valeur qui identifie un élément.", required: true, default: "url", kind: "texte" },
-    { name: "garderJours", label: "Oublier après (jours)", help: "Sans valeur : pour toujours.", required: false, kind: "nombre", min: 1, max: 365, integer: true },
+    { name: "key", label: "Clé", help: "Chemin de la valeur qui identifie un élément.", required: true, default: "url", kind: "text" },
+    { name: "keepDays", label: "Oublier après (jours)", help: "Sans valeur : pour toujours.", required: false, kind: "number", min: 1, max: 365, integer: true },
   ],
-  perItem: "non",
+  perItem: "no",
   chain: false,
   params: z
     .object({

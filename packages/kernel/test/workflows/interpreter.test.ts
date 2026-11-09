@@ -11,10 +11,10 @@ import { SEARCHES_CAP, SEARCHES_STOPPED } from "../../src/workflows/access.js";
 import { SEARCH_DENIED } from "../../src/workflows/duckduckgo.js";
 
 // The engine is the container's JavaScript: imported as is, without types.
-const { executerWorkflow: runWorkflow } = await import(pathToFileURL(join(ENGINE, "interpreteur.mjs")).href);
-const { default: newList } = await import(pathToFileURL(join(ENGINE, "blocs", "liste-nouveaux.mjs")).href);
-const { default: keepList } = await import(pathToFileURL(join(ENGINE, "blocs", "liste-garder.mjs")).href);
-const { ElementNonLance: NotRunElement } = await import(pathToFileURL(join(ENGINE, "erreurs.mjs")).href);
+const { runWorkflow } = await import(pathToFileURL(join(ENGINE, "interpreter.mjs")).href);
+const { default: newList } = await import(pathToFileURL(join(ENGINE, "blocks", "list-new.mjs")).href);
+const { default: keepList } = await import(pathToFileURL(join(ENGINE, "blocks", "list-keep.mjs")).href);
+const { ItemNotRun: NotRunElement } = await import(pathToFileURL(join(ENGINE, "errors.mjs")).href);
 
 describe("interpreter (in the container)", () => {
   it("runs the blocks in order and sends debut then fin for each block before fin", async () => {
@@ -22,21 +22,21 @@ describe("interpreter (in the container)", () => {
       workflow: {
         version: 1,
         // In the array's disorder: the order comes from the links.
-        blocks: [output, block("garder", "liste.garder", { count: 2 }), block("src", "code", { source: "src.mjs" })],
+        blocks: [output, block("garder", "list.keep", { count: 2 }), block("src", "code", { source: "src.mjs" })],
         links: chain("src", "garder", "sortie"),
       },
       files: { "src.mjs": `export default async () => [1, 2, 3];` },
     });
     expect(r.code).toBe(0);
-    expect(r.traces.map((l) => (l.t === "bloc" ? `${l.etape}:${l.id}` : l.t))).toEqual([
-      "debut:src", "fin:src",
-      "debut:garder", "fin:garder",
-      "debut:sortie", "fin:sortie",
-      "memoire", "fin",
+    expect(r.traces.map((l) => (l.t === "block" ? `${l.step}:${l.id}` : l.t))).toEqual([
+      "start:src", "end:src",
+      "start:garder", "end:garder",
+      "start:sortie", "end:sortie",
+      "memory", "end",
     ]);
-    expect(r.blockEnd("src")).toEqual({ t: "bloc", id: "src", step: "fin", status: "reussi", output: [1, 2, 3] });
-    expect(r.blockEnd("garder").sortie).toEqual([1, 2]);
-    expect(r.terminal).toEqual({ t: "fin", data: [1, 2] });
+    expect(r.blockEnd("src")).toEqual({ t: "block", id: "src", step: "end", status: "succeeded", output: [1, 2, 3] });
+    expect(r.blockEnd("garder").output).toEqual([1, 2]);
+    expect(r.terminal).toEqual({ t: "end", data: [1, 2] });
   });
 
   it("a block with several inputs receives { id: output }", async () => {
@@ -52,12 +52,12 @@ describe("interpreter (in the container)", () => {
         links: [{ from: "a", to: "tout" }, { from: "b", to: "tout" }, { from: "tout", to: "sortie" }],
       },
       files: {
-        "a.mjs": `export default async (entree) => ({ entreeDeA: entree });`,
+        "a.mjs": `export default async (input) => ({ inputOfA: input });`,
         "b.mjs": `export default async () => "B";`,
         "tout.mjs": `export default async (entree) => entree;`,
       },
     });
-    expect(r.terminal).toEqual({ t: "fin", data: { a: { inputOfA: null }, b: "B" } });
+    expect(r.terminal).toEqual({ t: "end", data: { a: { inputOfA: null }, b: "B" } });
   });
 
   it("code receives (entree, webaios) with config, precedent, maintenant, journal; its log lines are attached to the block and also go to stderr", async () => {
@@ -71,22 +71,22 @@ describe("interpreter (in the container)", () => {
       previous: { before: 1 },
       files: {
         "src.mjs": `export default async () => "x";`,
-        "lire.mjs": `export default async (entree, w) => {
-          w.journal("bonjour", { a: 1 });
-          const p = await w.lirePage("https://a.fr/");
-          return { entree, config: w.config, precedent: w.precedent, maintenant: w.maintenant, titre: p.titre };
+        "lire.mjs": `export default async (input, w) => {
+          w.log("bonjour", { a: 1 });
+          const p = await w.readPage("https://a.fr/");
+          return { entry: input, config: w.config, previous: w.previous, now: w.now, title: p.title };
         };`,
       },
       reply: (a) => ({ ok: { url: a.a.url, title: "T", text: "", links: [] } }),
     });
-    expect(r.terminal.donnees).toEqual({
+    expect(r.terminal.data).toEqual({
       entry: "x",
       config: { city: "Bordeaux" },
       previous: { before: 1 },
       now: "2026-10-29T10:00:00.000Z",
       title: "T",
     });
-    expect(r.lines.filter((l) => l.t === "journal")).toEqual([{ t: "journal", block: "lire", text: 'bonjour {"a":1}' }]);
+    expect(r.lines.filter((l) => l.t === "log")).toEqual([{ t: "log", block: "lire", text: 'bonjour {"a":1}' }]);
     expect(r.stderr).toContain('bonjour {"a":1}');
     expect(r.calls[0]!.a).toEqual({ url: "https://a.fr/" });
   });
@@ -95,41 +95,41 @@ describe("interpreter (in the container)", () => {
     const r = await launch({
       workflow: {
         version: 1,
-        blocks: [block("recolte", "code", { source: "recolte.mjs", call: "recolte" }), output],
+        blocks: [block("recolte", "code", { source: "harvest.mjs", call: "harvest" }), output],
         links: chain("recolte", "sortie"),
       },
       config: { a: 1 },
       previous: { v: 2 },
       files: {
-        "recolte.mjs": `export default async (w) => ({ cfg: w.config, prec: w.precedent, k: await w.kev("etat", { q: { type: "noul" } }) });`,
+        "harvest.mjs": `export default async (w) => ({ cfg: w.config, prev: w.previous, k: await w.kev("etat", { q: { type: "noul" } }) });`,
       },
       reply: () => ({ ok: { q: { type: "noul", noul: 0.5 } } }),
     });
     expect(r.calls.map((a) => [a.f, a.a])).toEqual([["kev", { state: "etat", questions: { q: { type: "noul" } } }]]);
-    expect(r.terminal).toEqual({ t: "fin", data: { cfg: { a: 1 }, prev: { v: 2 }, k: { q: { type: "noul", noul: 0.5 } } } });
+    expect(r.terminal).toEqual({ t: "end", data: { cfg: { a: 1 }, prev: { v: 2 }, k: { q: { type: "noul", noul: 0.5 } } } });
   });
 
   it("an error thrown by the code ends the block failed and the run in echec with the same message", async () => {
     const r = await launch({
-      workflow: { version: 1, blocks: [block("recolte", "code", { source: "recolte.mjs", call: "recolte" }), output], links: chain("recolte", "sortie") },
-      files: { "recolte.mjs": `export default async () => { throw new Error("boum"); };` },
+      workflow: { version: 1, blocks: [block("recolte", "code", { source: "harvest.mjs", call: "harvest" }), output], links: chain("recolte", "sortie") },
+      files: { "harvest.mjs": `export default async () => { throw new Error("boum"); };` },
     });
-    expect(r.blockEnd("recolte")).toEqual({ t: "bloc", id: "recolte", step: "fin", status: "echoue", error: "boum" });
-    expect(r.terminal).toEqual({ t: "echec", error: "boum" });
-    expect(r.lines.some((l) => l.t === "memoire")).toBe(false);
+    expect(r.blockEnd("recolte")).toEqual({ t: "block", id: "recolte", step: "end", status: "failed", error: "boum" });
+    expect(r.terminal).toEqual({ t: "failure", error: "boum" });
+    expect(r.lines.some((l) => l.t === "memory")).toBe(false);
   });
 
   it("a missing code file fails the block, the following ones are not launched, then echec", async () => {
     const r = await launch({
       workflow: {
         version: 1,
-        blocks: [block("a", "code", { source: "absent.mjs" }), block("b", "liste.garder", { count: 1 }), output],
+        blocks: [block("a", "code", { source: "absent.mjs" }), block("b", "list.keep", { count: 1 }), output],
         links: chain("a", "b", "sortie"),
       },
     });
-    expect(r.blockEnd("a")).toMatchObject({ status: "echoue", error: "fichier de code absent : absent.mjs" });
-    expect(r.lines.some((l) => l.t === "bloc" && l.id !== "a")).toBe(false);
-    expect(r.terminal).toEqual({ t: "echec", error: "fichier de code absent : absent.mjs" });
+    expect(r.blockEnd("a")).toMatchObject({ status: "failed", error: "fichier de code absent : absent.mjs" });
+    expect(r.lines.some((l) => l.t === "block" && l.id !== "a")).toBe(false);
+    expect(r.terminal).toEqual({ t: "failure", error: "fichier de code absent : absent.mjs" });
     expect(r.code).toBe(1);
   });
 
@@ -138,17 +138,17 @@ describe("interpreter (in the container)", () => {
     const r = await launch({
       workflow: {
         version: 1,
-        blocks: [block("src", "code", { source: "src.mjs" }), block("nv", "liste.nouveaux", { key: "url" }), output],
+        blocks: [block("src", "code", { source: "src.mjs" }), block("nv", "list.new", { key: "url" }), output],
         links: chain("src", "nv", "sortie"),
       },
-      memory: { nv: { type: "liste.nouveaux", value: olds } },
+      memory: { nv: { type: "list.new", value: olds } },
       files: { "src.mjs": `export default async () => [{ url: "k4999" }, { url: "neuf" }, { url: "k0" }, { url: "autre" }];` },
     });
-    expect(r.terminal.donnees).toEqual([{ url: "neuf" }, { url: "autre" }]);
-    const m = r.lines.find((l) => l.t === "memoire").memoire.nv;
-    expect(m.type).toBe("liste.nouveaux");
-    expect(m.valeur).toHaveLength(5000);
-    const keys = m.valeur.map(([c]: [string, string]) => c);
+    expect(r.terminal.data).toEqual([{ url: "neuf" }, { url: "autre" }]);
+    const m = r.lines.find((l) => l.t === "memory").memory.nv;
+    expect(m.type).toBe("list.new");
+    expect(m.value).toHaveLength(5000);
+    const keys = m.value.map(([c]: [string, string]) => c);
     // The keys seen this time are the most recent; the oldest never seen again are forgotten.
     expect(keys.slice(-4)).toEqual(["k4999", "neuf", "k0", "autre"]);
     expect(keys).not.toContain("k1");
@@ -161,16 +161,16 @@ describe("interpreter (in the container)", () => {
     const r = await launch({
       workflow: {
         version: 1,
-        blocks: [block("src", "code", { source: "src.mjs" }), block("nv", "liste.nouveaux", { key: "url" }), output],
+        blocks: [block("src", "code", { source: "src.mjs" }), block("nv", "list.new", { key: "url" }), output],
         links: chain("src", "nv", "sortie"),
       },
-      memory: { nv: { type: "liste.nouveaux", value: ["u".repeat(500)] } },
+      memory: { nv: { type: "list.new", value: ["u".repeat(500)] } },
       files: {
         "src.mjs": `export default async () => [{ url: "a", n: 1 }, { url: "a", n: 2 }, { url: "b" }, { url: ${JSON.stringify(lengthy)} }];`,
       },
     });
-    expect(r.terminal.donnees).toEqual([{ url: "a", n: 1 }, { url: "b" }]);
-    expect(r.lines.find((l) => l.t === "memoire").memoire.nv.valeur).toEqual([
+    expect(r.terminal.data).toEqual([{ url: "a", n: 1 }, { url: "b" }]);
+    expect(r.lines.find((l) => l.t === "memory").memory.nv.value).toEqual([
       ["a", "2026-10-29T10:00:00.000Z"],
       ["b", "2026-10-29T10:00:00.000Z"],
       ["u".repeat(500), "2026-10-29T10:00:00.000Z"],
@@ -189,58 +189,58 @@ describe("interpreter (in the container)", () => {
     const r = await launch({
       workflow: {
         version: 1,
-        blocks: [block("src", "code", { source: "src.mjs" }), block("d", "liste.dedoublonner", { keys: ["url", "titre"] }), output],
+        blocks: [block("src", "code", { source: "src.mjs" }), block("d", "list.dedupe", { keys: ["url", "title"] }), output],
         links: chain("src", "d", "sortie"),
       },
       files: { "src.mjs": `export default async () => ${JSON.stringify(elements)};` },
     });
-    expect(r.terminal.donnees).toEqual([elements[0], elements[3], elements[4], elements[5]]);
+    expect(r.terminal.data).toEqual([elements[0], elements[3], elements[4], elements[5]]);
   });
 
   it("liste.garder keeps the first N; an input that is not a list fails the block", async () => {
     const ok = await launch({
       workflow: {
         version: 1,
-        blocks: [block("src", "code", { source: "src.mjs" }), block("g", "liste.garder", { count: 3 }), output],
+        blocks: [block("src", "code", { source: "src.mjs" }), block("g", "list.keep", { count: 3 }), output],
         links: chain("src", "g", "sortie"),
       },
       files: { "src.mjs": `export default async () => [5, 4, 3, 2, 1];` },
     });
-    expect(ok.terminal.donnees).toEqual([5, 4, 3]);
+    expect(ok.terminal.data).toEqual([5, 4, 3]);
     const ko = await launch({
       workflow: {
         version: 1,
-        blocks: [block("src", "code", { source: "src.mjs" }), block("g", "liste.garder", { count: 3 }), output],
+        blocks: [block("src", "code", { source: "src.mjs" }), block("g", "list.keep", { count: 3 }), output],
         links: chain("src", "g", "sortie"),
       },
       files: { "src.mjs": `export default async () => ({ pas: "une liste" });` },
     });
-    expect(ko.blockEnd("g")).toMatchObject({ status: "echoue", error: "liste attendue en entrée" });
+    expect(ko.blockEnd("g")).toMatchObject({ status: "failed", error: "liste attendue en entrée" });
   });
 
   it("the memory sent before fin contains only the workflow's blocks, with their type; a memory of another type is ignored", async () => {
     const r = await launch({
       workflow: {
         version: 1,
-        blocks: [block("src", "code", { source: "src.mjs" }), block("nv", "liste.nouveaux", { key: "id" }), output],
+        blocks: [block("src", "code", { source: "src.mjs" }), block("nv", "list.new", { key: "id" }), output],
         links: chain("src", "nv", "sortie"),
       },
       memory: {
         // Same id, other type: ignored (everything is new).
-        nv: { type: "liste.dedoublonner", value: ["1"] },
+        nv: { type: "list.dedupe", value: ["1"] },
         // Block that no longer exists: forgotten.
-        old: { type: "liste.nouveaux", value: ["z"] },
+        old: { type: "list.new", value: ["z"] },
         // Block present, same type, without a new value: kept as is.
         src: { type: "code", value: { guard: true } },
       },
       files: { "src.mjs": `export default async () => [{ id: 1 }, { id: 2 }];` },
     });
-    expect(r.terminal.donnees).toEqual([{ id: 1 }, { id: 2 }]);
+    expect(r.terminal.data).toEqual([{ id: 1 }, { id: 2 }]);
     const lignes = r.lines.map((l) => l.t);
-    expect(lignes.indexOf("memoire")).toBe(lignes.indexOf("fin") - 1);
-    expect(r.lines.find((l) => l.t === "memoire").memoire).toEqual({
+    expect(lignes.indexOf("memory")).toBe(lignes.indexOf("end") - 1);
+    expect(r.lines.find((l) => l.t === "memory").memory).toEqual({
       src: { type: "code", value: { guard: true } },
-      nv: { type: "liste.nouveaux", value: [["1", "2026-10-29T10:00:00.000Z"], ["2", "2026-10-29T10:00:00.000Z"]] },
+      nv: { type: "list.new", value: [["1", "2026-10-29T10:00:00.000Z"], ["2", "2026-10-29T10:00:00.000Z"]] },
     });
   });
 
@@ -256,31 +256,31 @@ describe("interpreter (in the container)", () => {
         "taille.mjs": `export default async (entree) => entree.length;`,
       },
     });
-    expect(r.blockEnd("gros")).toEqual({ t: "bloc", id: "gros", step: "fin", status: "reussi", outputTooBig: true });
-    expect(r.terminal).toEqual({ t: "fin", data: 4 * 1024 * 1024 + 10 });
+    expect(r.blockEnd("gros")).toEqual({ t: "block", id: "gros", step: "end", status: "succeeded", outputTooBig: true });
+    expect(r.terminal).toEqual({ t: "end", data: 4 * 1024 * 1024 + 10 });
   });
 
-  it("a debut without a workflow is refused: recolte.mjs no longer runs outside a workflow", async () => {
+  it("a debut without a workflow is refused: harvest.mjs no longer runs outside a workflow", async () => {
     const folder = await tempFolder();
-    await writeFile(join(folder, "recolte.mjs"), `export default async () => ({ lance: true });`);
+    await writeFile(join(folder, "harvest.mjs"), `export default async () => ({ lance: true });`);
     const child = spawn("node", [SCRIPT, folder], { stdio: ["pipe", "pipe", "pipe"] });
     let out = "";
     child.stdout.on("data", (d) => (out += d));
     const finished = new Promise<number | null>((ok) => child.on("close", (c) => ok(c)));
-    child.stdin.write(JSON.stringify({ t: "debut", previous: { v: 1 }, now: "2026-10-29T10:00:00.000Z", config: { a: 1 } }) + "\n");
+    child.stdin.write(JSON.stringify({ t: "start", previous: { v: 1 }, now: "2026-10-29T10:00:00.000Z", config: { a: 1 } }) + "\n");
     expect(await finished).toBe(1);
-    expect(out.trim().split("\n").map((l) => JSON.parse(l))).toEqual([{ t: "echec", error: "debut sans workflow" }]);
+    expect(out.trim().split("\n").map((l) => JSON.parse(l))).toEqual([{ t: "failure", error: "start sans workflow" }]);
   });
 
-  it("the implicit workflow of a recolte.mjs: default(webaios) with the debut config, log on stderr", async () => {
+  it("the implicit workflow of a harvest.mjs: default(webaios) with the debut config, log on stderr", async () => {
     const r = await launch({
       workflow: implicitWorkflow(),
       config: { a: 1 },
       previous: { v: 1 },
-      files: { "recolte.mjs": `export default async (w) => { w.journal("j"); return { cfg: w.config, prec: w.precedent, quand: w.maintenant }; };` },
+      files: { "harvest.mjs": `export default async (w) => { w.log("j"); return { cfg: w.config, prev: w.previous, when: w.now }; };` },
     });
-    expect(r.terminal).toEqual({ t: "fin", data: { cfg: { a: 1 }, prev: { v: 1 }, when: "2026-10-29T10:00:00.000Z" } });
-    expect(r.blockEnd("recolte")).toMatchObject({ status: "reussi" });
+    expect(r.terminal).toEqual({ t: "end", data: { cfg: { a: 1 }, prev: { v: 1 }, when: "2026-10-29T10:00:00.000Z" } });
+    expect(r.blockEnd("harvest")).toMatchObject({ status: "succeeded" });
     expect(r.stderr).toContain("j");
   });
 });
@@ -295,18 +295,18 @@ describe("interpreter: replay from a block", () => {
       },
       files: {
         "src.mjs": `export default async () => { throw new Error("src ne doit pas être lancé"); };`,
-        "b.mjs": `export default async (entree) => ({ recu: entree });`,
+        "b.mjs": `export default async (input) => ({ received: input });`,
       },
       replay: { reruns: ["b", "sortie"], outputs: { src: [1, 2] } },
     });
     expect(r.code).toBe(0);
     // No trace for src, and no memory returned: the kernel keeps none for a trial.
-    expect(r.traces.map((l) => (l.t === "bloc" ? `${l.etape}:${l.id}` : l.t))).toEqual([
-      "debut:b", "fin:b",
-      "debut:sortie", "fin:sortie",
-      "fin",
+    expect(r.traces.map((l) => (l.t === "block" ? `${l.step}:${l.id}` : l.t))).toEqual([
+      "start:b", "end:b",
+      "start:sortie", "end:sortie",
+      "end",
     ]);
-    expect(r.terminal).toEqual({ t: "fin", data: { received: [1, 2] } });
+    expect(r.terminal).toEqual({ t: "end", data: { received: [1, 2] } });
   });
 
   it("a relaunched block with two inputs receives { id: output } mixing reuse and relaunch", async () => {
@@ -323,8 +323,8 @@ describe("interpreter: replay from a block", () => {
       },
       replay: { reruns: ["b", "tout", "sortie"], outputs: { a: { resumed: true } } },
     });
-    expect(r.terminal).toEqual({ t: "fin", data: { a: { resumed: true }, b: "B relancé" } });
-    expect(r.lines.filter((l) => l.t === "bloc" && l.etape === "debut").map((l) => l.id)).toEqual(["b", "tout", "sortie"]);
+    expect(r.terminal).toEqual({ t: "end", data: { a: { resumed: true }, b: "B relancé" } });
+    expect(r.lines.filter((l) => l.t === "block" && l.step === "start").map((l) => l.id)).toEqual(["b", "tout", "sortie"]);
   });
 
   it("without the sortie block among the relaunched ones, the data is null", async () => {
@@ -333,7 +333,7 @@ describe("interpreter: replay from a block", () => {
       files: { "a.mjs": `export default async () => "a";` },
       replay: { reruns: ["a"], outputs: {} },
     });
-    expect(r.terminal).toEqual({ t: "fin", data: null });
+    expect(r.terminal).toEqual({ t: "end", data: null });
     expect(r.blockEnd("sortie")).toBeUndefined();
   });
 
@@ -345,21 +345,21 @@ describe("interpreter: replay from a block", () => {
       entry: "jamais lu",
       memory: {
         src: { type: "test.source", value: "ancienne" },
-        nv: { type: "liste.nouveaux", value: ["a", "b"] },
+        nv: { type: "list.new", value: ["a", "b"] },
         b: { type: "test.resume", value: { reused: [["a", "ancien résumé"]] } },
       },
       blocks: [
-        { id: "nv", type: "liste.nouveaux", params: { key: "url" } },
+        { id: "nv", type: "list.new", params: { key: "url" } },
         { id: "b", type: "test.resume", params: { field: "resume", reuse: "url" } },
-        { id: "sortie", type: "sortie" },
+        { id: "sortie", type: "output" },
       ],
       registry: {
-        "liste.nouveaux": newList,
+        "list.new": newList,
         "test.resume": {
-          perItem: "toujours",
+          perItem: "always",
           async processItem(ctx: any) {
-            computed.push(ctx.element.url);
-            return `résumé de ${ctx.element.url}`;
+            computed.push(ctx.item.url);
+            return `résumé de ${ctx.item.url}`;
           },
         },
       },
@@ -395,8 +395,8 @@ async function run(o: {
     order: ["src", ...o.blocks.map((b) => b.id)],
   };
   const registry = {
-    "test.source": { perItem: "non", run: async () => ({ output: o.entry }) },
-    output: { perItem: "non", run: async (ctx: any) => ({ output: ctx.entree }) },
+    "test.source": { perItem: "no", run: async () => ({ output: o.entry }) },
+    output: { perItem: "no", run: async (ctx: any) => ({ output: ctx.input }) },
     ...o.registry,
   };
   let error: Error | null = null;
@@ -429,8 +429,8 @@ async function run(o: {
     error: error,
     result: result,
     traces,
-    blockEnd: (id: string) => traces.find((l) => l.t === "bloc" && l.id === id && l.etape === "fin"),
-    log: (id: string) => traces.filter((l) => l.t === "journal" && l.bloc === id).map((l) => l.texte as string),
+    blockEnd: (id: string) => traces.find((l) => l.t === "block" && l.id === id && l.step === "end"),
+    log: (id: string) => traces.filter((l) => l.t === "log" && l.block === id).map((l) => l.text as string),
   };
 }
 
@@ -441,11 +441,11 @@ describe("interpreter: input and progress (actions)", () => {
   /** A per-element block where each element takes 300 ms on the fake clock. */
   const slow = (clock: { t: number }) => ({
     "test.lent": {
-      perItem: "toujours",
+      perItem: "always",
       async processItem(ctx: any) {
         await wait(1);
         clock.t += 300;
-        return ctx.element.n;
+        return ctx.item.n;
       },
     },
   });
@@ -455,72 +455,72 @@ describe("interpreter: input and progress (actions)", () => {
     const hours: number[] = [];
     const r = await run({
       entry: list(12),
-      blocks: [{ id: "b", type: "test.lent", params: { field: "v" } }, { id: "sortie", type: "sortie" }],
+      blocks: [{ id: "b", type: "test.lent", params: { field: "v" } }, { id: "sortie", type: "output" }],
       registry: slow(clock),
       clock: () => clock.t,
       progress: true,
       spy: (m) => {
-        if (m.etape === "avancement") hours.push(clock.t);
+        if (m.step === "progress") hours.push(clock.t);
       },
     });
     expect(r.error).toBeNull();
-    const progress = r.traces.filter((l) => l.etape === "avancement");
-    expect(progress.every((l) => l.t === "bloc" && l.id === "b" && l.total === 12)).toBe(true);
-    expect(progress.at(-1)).toEqual({ t: "bloc", id: "b", step: "avancement", done: 12, total: 12 });
+    const progress = r.traces.filter((l) => l.step === "progress");
+    expect(progress.every((l) => l.t === "block" && l.id === "b" && l.total === 12)).toBe(true);
+    expect(progress.at(-1)).toEqual({ t: "block", id: "b", step: "progress", done: 12, total: 12 });
     // Spaced by at least PROGRESS_GAP_MS, except the last, always sent.
     for (let i = 1; i < hours.length - 1; i++) expect(hours[i]! - hours[i - 1]!).toBeGreaterThanOrEqual(1000);
     expect(progress.length).toBeGreaterThanOrEqual(2);
     expect(progress.length).toBeLessThan(12);
-    const done = progress.map((l) => l.faits);
+    const done = progress.map((l) => l.done);
     expect([...done].sort((a, b) => a - b)).toEqual(done);
     // Between the start and the end of the block.
     const hint = (f: (l: any) => boolean) => r.traces.findIndex(f);
-    expect(hint((l) => l.etape === "avancement")).toBeGreaterThan(hint((l) => l.id === "b" && l.etape === "debut"));
-    expect(r.traces.findLastIndex((l) => l.etape === "avancement")).toBeLessThan(hint((l) => l.id === "b" && l.etape === "fin"));
+    expect(hint((l) => l.step === "progress")).toBeGreaterThan(hint((l) => l.id === "b" && l.step === "start"));
+    expect(r.traces.findLastIndex((l) => l.step === "progress")).toBeLessThan(hint((l) => l.id === "b" && l.step === "end"));
   });
 
   it("without progress, no avancement line", async () => {
     const clock = { t: 0 };
     const r = await run({
       entry: list(12),
-      blocks: [{ id: "b", type: "test.lent", params: { field: "v" } }, { id: "sortie", type: "sortie" }],
+      blocks: [{ id: "b", type: "test.lent", params: { field: "v" } }, { id: "sortie", type: "output" }],
       registry: slow(clock),
       clock: () => clock.t,
     });
     expect(r.error).toBeNull();
-    expect(r.traces.some((l) => l.etape === "avancement")).toBe(false);
+    expect(r.traces.some((l) => l.step === "progress")).toBe(false);
   });
 
-  it("ctx.saisie is given to the code", async () => {
+  it("ctx.userInput is given to the code", async () => {
     const workflow = {
       version: 1,
-      blocks: [block("lire", "source.page", { url: "https://www.leboncoin.fr/recherche?text={saisie}" }), block("c", "code", { source: "c.mjs" }), output],
+      blocks: [block("lire", "source.page", { url: "https://www.leboncoin.fr/recherche?text={input}" }), block("c", "code", { source: "c.mjs" }), output],
       links: chain("lire", "c", "sortie"),
     };
-    const files = { "c.mjs": `export default async (entree, w) => ({ saisie: w.saisie ?? null, aLaCle: "saisie" in w });` };
+    const files = { "c.mjs": `export default async (input, w) => ({ input: w.input ?? null, hasKey: "input" in w });` };
     const reply = (a: any) => ({ ok: { url: a.a.url, title: "", text: "", links: [] } });
     const r = await launch({ workflow, files: files, reply: reply, start: { input: "clio lyon" } });
-    expect(r.terminal).toEqual({ t: "fin", data: { input: "clio lyon", hasKey: true } });
+    expect(r.terminal).toEqual({ t: "end", data: { input: "clio lyon", hasKey: true } });
     expect(r.calls[0]!.a.url).toBe("https://www.leboncoin.fr/recherche?text=clio%20lyon");
     // An engine block receives it too in its ctx.
     let view: unknown;
     await run({
       entry: null,
-      blocks: [{ id: "b", type: "test.voir" }, { id: "sortie", type: "sortie" }],
-      registry: { "test.voir": { perItem: "non", run: async (ctx: any) => ((view = ctx.saisie), { output: null }) } },
+      blocks: [{ id: "b", type: "test.voir" }, { id: "sortie", type: "output" }],
+      registry: { "test.voir": { perItem: "no", run: async (ctx: any) => ((view = ctx.userInput), { output: null }) } },
       input: "clio lyon",
     });
     expect(view).toBe("clio lyon");
     // A widget (without input): nothing new in webaios.
     const widget = await launch({ workflow: { ...workflow, blocks: [block("lire", "code", { source: "c.mjs" }), block("c", "code", { source: "c.mjs" }), output] }, files: files });
-    expect(widget.terminal).toEqual({ t: "fin", data: { input: null, hasKey: false } });
+    expect(widget.terminal).toEqual({ t: "end", data: { input: null, hasKey: false } });
   });
 
-  it("PROGRESS_GAP_MS equal in interpreteur.mjs and run.ts", async () => {
-    const interpreter = await import(pathToFileURL(join(ENGINE, "interpreteur.mjs")).href);
+  it("PROGRESS_GAP_MS equal in interpreter.mjs and run.ts", async () => {
+    const interpreter = await import(pathToFileURL(join(ENGINE, "interpreter.mjs")).href);
     const { PROGRESS_GAP_MS } = await import("../../src/workflows/run.js");
     expect(PROGRESS_GAP_MS).toBe(1000);
-    expect(interpreter.ECART_AVANCEMENT_MS).toBe(PROGRESS_GAP_MS);
+    expect(interpreter.PROGRESS_GAP_MS).toBe(PROGRESS_GAP_MS);
   });
 });
 
@@ -530,17 +530,17 @@ describe("interpreter: per-element blocks", () => {
     let max = 0;
     const r = await run({
       entry: list(6),
-      blocks: [{ id: "double", type: "test.double", params: { field: "d" } }, { id: "sortie", type: "sortie" }],
+      blocks: [{ id: "double", type: "test.double", params: { field: "d" } }, { id: "sortie", type: "output" }],
       registry: {
         "test.double": {
-          perItem: "toujours",
+          perItem: "always",
           async processItem(ctx: any) {
             running++;
             max = Math.max(max, running);
             // The first ones finish after the following ones: the output order stays the input's.
-            await wait(ctx.element.n < 2 ? 40 : 5);
+            await wait(ctx.item.n < 2 ? 40 : 5);
             running--;
-            return ctx.element.n * 2;
+            return ctx.item.n * 2;
           },
         },
       },
@@ -548,17 +548,17 @@ describe("interpreter: per-element blocks", () => {
     expect(r.error).toBeNull();
     expect(max).toBe(2);
     expect(r.result!.data).toEqual(list(6).map((e) => ({ ...e, d: e.n * 2 })));
-    expect(r.blockEnd("double")).toMatchObject({ status: "reussi" });
+    expect(r.blockEnd("double")).toMatchObject({ status: "succeeded" });
   });
 
   it("per element « option »: without parElement, executer runs once on the whole input", async () => {
     const r = await run({
       entry: list(3),
-      blocks: [{ id: "b", type: "test.option", params: { perItem: false, field: "x" } }, { id: "sortie", type: "sortie" }],
+      blocks: [{ id: "b", type: "test.option", params: { perItem: false, field: "x" } }, { id: "sortie", type: "output" }],
       registry: {
         "test.option": {
           perItem: "option",
-          run: async (ctx: any) => ({ output: ctx.entree.length }),
+          run: async (ctx: any) => ({ output: ctx.input.length }),
           processItem: async () => "élément",
         },
       },
@@ -569,115 +569,115 @@ describe("interpreter: per-element blocks", () => {
   it("per element: an input that is not a list fails the block", async () => {
     const r = await run({
       entry: { step: "liste" },
-      blocks: [{ id: "b", type: "test.x", params: { field: "x" } }, { id: "sortie", type: "sortie" }],
-      registry: { "test.x": { perItem: "toujours", processItem: async () => 1 } },
+      blocks: [{ id: "b", type: "test.x", params: { field: "x" } }, { id: "sortie", type: "output" }],
+      registry: { "test.x": { perItem: "always", processItem: async () => 1 } },
     });
     expect(r.error?.message).toBe("liste attendue en entrée");
-    expect(r.blockEnd("b")).toMatchObject({ status: "echoue", error: "liste attendue en entrée" });
+    expect(r.blockEnd("b")).toMatchObject({ status: "failed", error: "liste attendue en entrée" });
   });
 
   it("per element: a failing element is skipped, the block ends partial; siErreur echouer fails the block", async () => {
     const registry = {
       "test.x": {
-        perItem: "toujours",
+        perItem: "always",
         async processItem(ctx: any) {
-          if (ctx.element.n === 1) throw new Error("raté");
+          if (ctx.item.n === 1) throw new Error("raté");
           return "ok";
         },
       },
     };
     const skipped = await run({
       entry: list(3),
-      blocks: [{ id: "b", type: "test.x", params: { field: "r" } }, { id: "sortie", type: "sortie" }],
+      blocks: [{ id: "b", type: "test.x", params: { field: "r" } }, { id: "sortie", type: "output" }],
       registry: registry,
     });
     expect(skipped.result!.data).toEqual([{ n: 0, r: "ok" }, { n: 1 }, { n: 2, r: "ok" }]);
-    expect(skipped.blockEnd("b")).toMatchObject({ status: "partiel" });
+    expect(skipped.blockEnd("b")).toMatchObject({ status: "partial" });
     expect(skipped.log("b").join("\n")).toContain("raté");
 
     const failed = await run({
       entry: list(3),
-      blocks: [{ id: "b", type: "test.x", params: { field: "r", onError: "echouer" } }, { id: "sortie", type: "sortie" }],
+      blocks: [{ id: "b", type: "test.x", params: { field: "r", onError: "fail" } }, { id: "sortie", type: "output" }],
       registry: registry,
     });
     expect(failed.error?.message).toBe("raté");
-    expect(failed.blockEnd("b")).toMatchObject({ status: "echoue", error: "raté" });
+    expect(failed.blockEnd("b")).toMatchObject({ status: "failed", error: "raté" });
     expect(failed.traces.some((l) => l.id === "sortie")).toBe(false);
   });
 
   it("per element: all elements failing fail a block that asks for it, even with sauter; the others end partial; an empty list is not a failure", async () => {
     const registry = {
-      "test.x": { perItem: "toujours", failIfAllFail: true, processItem: async () => { throw new Error("Kev indisponible"); } },
-      "test.enrichir": { perItem: "toujours", processItem: async () => { throw new Error("page illisible"); } },
+      "test.x": { perItem: "always", failIfAllFail: true, processItem: async () => { throw new Error("Kev indisponible"); } },
+      "test.enrichir": { perItem: "always", processItem: async () => { throw new Error("page illisible"); } },
     };
     const all = await run({
       entry: list(2),
-      blocks: [{ id: "b", type: "test.x", params: { field: "r" } }, { id: "sortie", type: "sortie" }],
+      blocks: [{ id: "b", type: "test.x", params: { field: "r" } }, { id: "sortie", type: "output" }],
       registry: registry,
     });
-    expect(all.blockEnd("b")).toMatchObject({ status: "echoue" });
+    expect(all.blockEnd("b")).toMatchObject({ status: "failed" });
     expect(all.error?.message).toContain("Kev indisponible");
 
     const enrich = await run({
       entry: list(2),
-      blocks: [{ id: "b", type: "test.enrichir", params: { field: "r" } }, { id: "sortie", type: "sortie" }],
+      blocks: [{ id: "b", type: "test.enrichir", params: { field: "r" } }, { id: "sortie", type: "output" }],
       registry: registry,
     });
     expect(enrich.error).toBeNull();
-    expect(enrich.blockEnd("b")).toMatchObject({ status: "partiel" });
+    expect(enrich.blockEnd("b")).toMatchObject({ status: "partial" });
     expect(enrich.result!.data).toEqual(list(2));
     expect(enrich.log("b").join("\n")).toContain("page illisible");
 
     const empty = await run({
       entry: [],
-      blocks: [{ id: "b", type: "test.x", params: { field: "r" } }, { id: "sortie", type: "sortie" }],
+      blocks: [{ id: "b", type: "test.x", params: { field: "r" } }, { id: "sortie", type: "output" }],
       registry: registry,
     });
     expect(empty.error).toBeNull();
-    expect(empty.blockEnd("b")).toMatchObject({ status: "reussi", output: [] });
+    expect(empty.blockEnd("b")).toMatchObject({ status: "succeeded", output: [] });
   });
 
   it("per element: a missing template value leaves the element without a field, without an error; in simple mode the output is null", async () => {
     const registry = {
       "test.gabarit": {
         perItem: "option",
-        run: async (ctx: any) => ({ output: ctx.remplir("{config.ville}").texte }),
-        processItem: async (ctx: any) => ctx.remplir("url={url}", { url: true }).texte,
+        run: async (ctx: any) => ({ output: ctx.fill("{config.city}").text }),
+        processItem: async (ctx: any) => ctx.fill("url={url}", { url: true }).text,
       },
     };
     const byElement = await run({
       // An old value under `champ` does not survive an element without a value this time.
       entry: [{ url: "a b", u: "ancienne" }, { other: 1, u: "ancienne" }],
-      blocks: [{ id: "b", type: "test.gabarit", params: { perItem: true, field: "u" } }, { id: "sortie", type: "sortie" }],
+      blocks: [{ id: "b", type: "test.gabarit", params: { perItem: true, field: "u" } }, { id: "sortie", type: "output" }],
       registry: registry,
     });
     expect(byElement.result!.data).toEqual([{ url: "a b", u: "url=a%20b" }, { other: 1 }]);
-    expect(byElement.blockEnd("b")).toMatchObject({ status: "reussi" });
+    expect(byElement.blockEnd("b")).toMatchObject({ status: "succeeded" });
     expect(byElement.log("b").join("\n")).toContain("valeur absente : url");
 
     const simple = await run({
       entry: null,
-      blocks: [{ id: "b", type: "test.gabarit", params: { perItem: false, field: "u" } }, { id: "sortie", type: "sortie" }],
+      blocks: [{ id: "b", type: "test.gabarit", params: { perItem: false, field: "u" } }, { id: "sortie", type: "output" }],
       registry: registry,
     });
-    expect(simple.blockEnd("b")).toEqual({ t: "bloc", id: "b", step: "fin", status: "reussi", output: null });
-    expect(simple.log("b")).toEqual(["valeur absente : config.ville"]);
+    expect(simple.blockEnd("b")).toEqual({ t: "block", id: "b", step: "end", status: "succeeded", output: null });
+    expect(simple.log("b")).toEqual(["valeur absente : config.city"]);
   });
 
   it("per element: an optional marker {chemin?} that is absent gives an empty string, present it is filled; the element is processed", async () => {
     const registry = {
-      "test.gabarit": { perItem: "option", processItem: async (ctx: any) => ctx.remplir("Avis de {titre} ; fiabilité : {fiabilite?}.").texte },
+      "test.gabarit": { perItem: "option", processItem: async (ctx: any) => ctx.fill("Avis de {title} ; fiabilité : {reliability?}.").text },
     };
     const r = await run({
       entry: [{ title: "A", reliability: "bonne" }, { title: "B" }],
-      blocks: [{ id: "b", type: "test.gabarit", params: { perItem: true, field: "avis" } }, { id: "sortie", type: "sortie" }],
+      blocks: [{ id: "b", type: "test.gabarit", params: { perItem: true, field: "notice" } }, { id: "sortie", type: "output" }],
       registry: registry,
     });
     expect(r.result!.data).toEqual([
       { title: "A", reliability: "bonne", notice: "Avis de A ; fiabilité : bonne." },
       { title: "B", notice: "Avis de B ; fiabilité : ." },
     ]);
-    expect(r.blockEnd("b")).toMatchObject({ status: "reussi" });
+    expect(r.blockEnd("b")).toMatchObject({ status: "succeeded" });
   });
 
   it("budgetSecondes: past the time, no more element launched, the following ones without champ, partial block", async () => {
@@ -687,12 +687,12 @@ describe("interpreter: per-element blocks", () => {
     const r = await run({
       entry: list(12),
       clock: () => now,
-      blocks: [{ id: "b", type: "test.lent", params: { field: "r", budgetSeconds: 1 } }, { id: "sortie", type: "sortie" }],
+      blocks: [{ id: "b", type: "test.lent", params: { field: "r", budgetSeconds: 1 } }, { id: "sortie", type: "output" }],
       registry: {
         "test.lent": {
-          perItem: "toujours",
+          perItem: "always",
           async processItem(ctx: any) {
-            launched.push(ctx.element.n);
+            launched.push(ctx.item.n);
             await Promise.resolve();
             now += 300;
             return "fait";
@@ -705,7 +705,7 @@ describe("interpreter: per-element blocks", () => {
     const output = r.result!.data as { n: number; r?: string }[];
     expect(output.filter((e) => e.r === "fait").map((e) => e.n)).toEqual([0, 1, 2, 3]);
     expect(output.slice(4).every((e) => !("r" in e))).toBe(true);
-    expect(r.blockEnd("b")).toMatchObject({ status: "partiel" });
+    expect(r.blockEnd("b")).toMatchObject({ status: "partial" });
     expect(r.log("b")).toContain("temps écoulé : 8 élément(s) non lancé(s)");
   });
 
@@ -716,10 +716,10 @@ describe("interpreter: per-element blocks", () => {
       entry: list(10),
       clock: () => now,
       deadline: 250,
-      blocks: [{ id: "b", type: "test.lent", params: { field: "r" } }, { id: "sortie", type: "sortie" }],
+      blocks: [{ id: "b", type: "test.lent", params: { field: "r" } }, { id: "sortie", type: "output" }],
       registry: {
         "test.lent": {
-          perItem: "toujours",
+          perItem: "always",
           async processItem() {
             launched++;
             await Promise.resolve();
@@ -731,17 +731,17 @@ describe("interpreter: per-element blocks", () => {
     });
     // Pairs launched at 0 and 200; at 400, nothing more.
     expect(launched).toBe(4);
-    expect(r.blockEnd("b")).toMatchObject({ status: "partiel" });
+    expect(r.blockEnd("b")).toMatchObject({ status: "partial" });
   });
 
   it("among the launched elements, none succeeded and at least one failed: the block fails (not launched and absent values do not count)", async () => {
     let now = 0;
     const registry = {
       "test.ko": {
-        perItem: "toujours",
+        perItem: "always",
         failIfAllFail: true,
         async processItem(ctx: any) {
-          ctx.remplir("{url}");
+          ctx.fill("{url}");
           await Promise.resolve();
           now += 600;
           throw new Error("raté");
@@ -751,18 +751,18 @@ describe("interpreter: per-element blocks", () => {
     const time = await run({
       entry: list(6).map((e) => ({ ...e, url: "u" })),
       clock: () => now,
-      blocks: [{ id: "b", type: "test.ko", params: { field: "r", budgetSeconds: 1 } }, { id: "sortie", type: "sortie" }],
+      blocks: [{ id: "b", type: "test.ko", params: { field: "r", budgetSeconds: 1 } }, { id: "sortie", type: "output" }],
       registry: registry,
     });
-    expect(time.blockEnd("b")).toMatchObject({ status: "echoue" });
+    expect(time.blockEnd("b")).toMatchObject({ status: "failed" });
     expect(time.error?.message).toContain("raté");
 
     const absent = await run({
       entry: [{ url: "u" }, { other: 1 }],
-      blocks: [{ id: "b", type: "test.ko", params: { field: "r" } }, { id: "sortie", type: "sortie" }],
+      blocks: [{ id: "b", type: "test.ko", params: { field: "r" } }, { id: "sortie", type: "output" }],
       registry: registry,
     });
-    expect(absent.blockEnd("b")).toMatchObject({ status: "echoue" });
+    expect(absent.blockEnd("b")).toMatchObject({ status: "failed" });
   });
 
   it("reutiliser reuses the memory's value without a call and stores the new ones", async () => {
@@ -770,13 +770,13 @@ describe("interpreter: per-element blocks", () => {
     const r = await run({
       entry: [{ url: "https://a.fr/1" }, { url: "https://a.fr/2" }, { url: null }],
       memory: { b: { type: "test.resume", value: { reused: [["https://a.fr/1", "déjà fait"], ["https://vieux.fr/", "vieux"]] } } },
-      blocks: [{ id: "b", type: "test.resume", params: { field: "resume", reuse: "url" } }, { id: "sortie", type: "sortie" }],
+      blocks: [{ id: "b", type: "test.resume", params: { field: "resume", reuse: "url" } }, { id: "sortie", type: "output" }],
       registry: {
         "test.resume": {
-          perItem: "toujours",
+          perItem: "always",
           async processItem(ctx: any) {
-            computed.push(String(ctx.element.url));
-            return `résumé de ${ctx.element.url}`;
+            computed.push(String(ctx.item.url));
+            return `résumé de ${ctx.item.url}`;
           },
         },
       },
@@ -800,8 +800,8 @@ describe("interpreter: per-element blocks", () => {
     const big = "x".repeat(600 * 1024);
     const r = await run({
       entry: list(5).map((e) => ({ ...e, key: `k${e.n}` })),
-      blocks: [{ id: "b", type: "test.gros", params: { field: "g", reuse: "cle" } }, { id: "sortie", type: "sortie" }],
-      registry: { "test.gros": { perItem: "toujours", processItem: async () => big } },
+      blocks: [{ id: "b", type: "test.gros", params: { field: "g", reuse: "key" } }, { id: "sortie", type: "output" }],
+      registry: { "test.gros": { perItem: "always", processItem: async () => big } },
     });
     const kept = (r.result!.memory.b!.value as { reused: [string, string][] }).reused.map(([k]) => k);
     expect(kept).toEqual(["k2", "k3", "k4"]);
@@ -812,11 +812,11 @@ describe("interpreter: per-element blocks", () => {
     const r = await run({
       entry: list(5).map((e) => ({ ...e, key: `k${e.n}` })),
       blocks: [
-        { id: "b1", type: "test.gros", params: { field: "g1", reuse: "cle" } },
-        { id: "b2", type: "test.gros", params: { field: "g2", reuse: "cle" } },
-        { id: "sortie", type: "sortie" },
+        { id: "b1", type: "test.gros", params: { field: "g1", reuse: "key" } },
+        { id: "b2", type: "test.gros", params: { field: "g2", reuse: "key" } },
+        { id: "sortie", type: "output" },
       ],
-      registry: { "test.gros": { perItem: "toujours", processItem: async () => big } },
+      registry: { "test.gros": { perItem: "always", processItem: async () => big } },
     });
     const memory = r.result!.memory;
     expect(Buffer.byteLength(JSON.stringify(memory))).toBeLessThanOrEqual(2.5 * 1024 * 1024);
@@ -829,11 +829,11 @@ describe("interpreter: per-element blocks", () => {
   it("finaliser receives the enriched list and returns the block's output", async () => {
     const r = await run({
       entry: list(4),
-      blocks: [{ id: "b", type: "test.trier", params: { field: "p" } }, { id: "sortie", type: "sortie" }],
+      blocks: [{ id: "b", type: "test.trier", params: { field: "p" } }, { id: "sortie", type: "output" }],
       registry: {
         "test.trier": {
-          perItem: "toujours",
-          processItem: async (ctx: any) => ctx.element.n / 4,
+          perItem: "always",
+          processItem: async (ctx: any) => ctx.item.n / 4,
           finalize: async (l: { p: number }[]) => ({ output: l.filter((e) => e.p >= 0.5).sort((a, b) => b.p - a.p) }),
         },
       },
@@ -844,21 +844,21 @@ describe("interpreter: per-element blocks", () => {
   it("a simple block can end partial; a type without a module fails « type inconnu dans le conteneur »", async () => {
     const partial = await run({
       entry: 1,
-      blocks: [{ id: "b", type: "test.p", params: {} }, { id: "sortie", type: "sortie" }],
+      blocks: [{ id: "b", type: "test.p", params: {} }, { id: "sortie", type: "output" }],
       registry: {
         "test.p": {
-          perItem: "non",
+          perItem: "no",
           run: async (ctx: any) => {
-            ctx.partiel("un flux en échec");
+            ctx.partial("un flux en échec");
             return { output: 2 };
           },
         },
       },
     });
-    expect(partial.blockEnd("b")).toMatchObject({ status: "partiel", output: 2 });
+    expect(partial.blockEnd("b")).toMatchObject({ status: "partial", output: 2 });
     expect(partial.log("b")).toEqual(["un flux en échec"]);
 
-    const unknown = await run({ entry: 1, blocks: [{ id: "b", type: "test.absent" }, { id: "sortie", type: "sortie" }], registry: {} });
+    const unknown = await run({ entry: 1, blocks: [{ id: "b", type: "test.absent" }, { id: "sortie", type: "output" }], registry: {} });
     expect(unknown.error?.message).toBe("type inconnu dans le conteneur : test.absent");
   });
 });
@@ -874,74 +874,74 @@ describe("interpreter: web.chercher", () => {
     version: 1,
     blocks: [
       block("liste", "code", { source: "liste.mjs" }),
-      block("cherche", "web.chercher", { query: "{marque} {modele} fiabilité", perItem: true, ...params }),
+      block("cherche", "web.search", { query: "{mark} {model} fiabilité", perItem: true, ...params }),
       output,
     ],
     links: chain("liste", "cherche", "sortie"),
   });
   const files = { "liste.mjs": `export default async () => (${JSON.stringify(announcements)});` };
   const result = (request: string) => [{ title: "Avis " + request, url: "https://avis.fr/1", excerpt: "Bien", rank: 1 }];
-  const logOf = (r: { lines: any[] }, id: string) => r.lines.filter((l) => l.t === "journal" && l.bloc === id).map((l) => l.texte);
+  const logOf = (r: { lines: any[] }, id: string) => r.lines.filter((l) => l.t === "log" && l.block === id).map((l) => l.text);
 
   it("web.chercher per element stores the list under recherche, query filled with {marque} {modele} without encoding", async () => {
     const r = await launch({
       workflow: workflow({ count: 5 }),
       files: files,
       context: WEB,
-      reply: (a) => (a.f === "chercherWeb" ? { ok: result(a.a.requete) } : { error: "inattendu" }),
+      reply: (a) => (a.f === "searchWeb" ? { ok: result(a.a.query) } : { error: "inattendu" }),
     });
     expect(r.calls.map((a) => [a.f, a.a]).sort()).toEqual(
       [
-        ["chercherWeb", { query: "Peugeot 208 & co/é fiabilité", count: 5 }],
-        ["chercherWeb", { query: "Renault Clio fiabilité", count: 5 }],
-        ["chercherWeb", { query: "Fiat Panda fiabilité", count: 5 }],
+        ["searchWeb", { query: "Peugeot 208 & co/é fiabilité", count: 5 }],
+        ["searchWeb", { query: "Renault Clio fiabilité", count: 5 }],
+        ["searchWeb", { query: "Fiat Panda fiabilité", count: 5 }],
       ].sort(),
     );
     // Remise en forme : titre, url, extrait en textes ; rien d'autre.
     expect(r.terminal).toEqual({
-      t: "fin",
+      t: "end",
       data: announcements.map((e) => ({ ...e, search: [{ title: `Avis ${e.mark} ${e.model} fiabilité`, url: "https://avis.fr/1", excerpt: "Bien" }] })),
     });
-    expect(r.blockEnd("cherche")).toMatchObject({ status: "reussi" });
+    expect(r.blockEnd("cherche")).toMatchObject({ status: "succeeded" });
   });
 
   it("ceiling reached: the remaining elements without champ, partial block, even with siErreur echouer", async () => {
     let n = 0;
     const r = await launch({
-      workflow: workflow({ onError: "echouer" }),
+      workflow: workflow({ onError: "fail" }),
       files: files,
       context: WEB,
-      reply: (a) => (++n === 1 ? { ok: result(a.a.requete) } : { error: SEARCHES_CAP }),
+      reply: (a) => (++n === 1 ? { ok: result(a.a.query) } : { error: SEARCHES_CAP }),
     });
-    expect(r.terminal.t).toBe("fin");
-    const data = r.terminal.donnees as Record<string, unknown>[];
+    expect(r.terminal.t).toBe("end");
+    const data = r.terminal.data as Record<string, unknown>[];
     expect(data.filter((e) => "search" in e)).toHaveLength(1);
     expect(data.filter((e) => !("search" in e))).toHaveLength(2);
-    expect(r.blockEnd("cherche")).toMatchObject({ status: "partiel" });
+    expect(r.blockEnd("cherche")).toMatchObject({ status: "partial" });
     const log = logOf(r, "cherche");
     // One line for the first refusal, one for the elements that follow: not one per element.
     expect(log.filter((t) => /^élément \d : /.test(t))).toEqual([expect.stringContaining(` : ${SEARCHES_CAP}`)]);
     expect(log.length).toBeLessThanOrEqual(2);
     // The sortie block did run.
-    expect(r.blockEnd("sortie")).toMatchObject({ status: "reussi" });
+    expect(r.blockEnd("sortie")).toMatchObject({ status: "succeeded" });
   });
 
   it("after the kernel's first refusal, no more search: the remaining elements not launched, only one more line", async () => {
     const twenty = Array.from({ length: 20 }, (_, i) => ({ mark: "M" + i, model: "X" }));
     const r = await launch({
-      workflow: workflow({ reuse: "marque" }),
+      workflow: workflow({ reuse: "mark" }),
       files: { "liste.mjs": `export default async () => (${JSON.stringify(twenty)});` },
       context: WEB,
       // M15 is already known: it is reused without a search, even after the refusal.
-      memory: { search: { type: "web.chercher", value: { reused: [["M15", [{ title: "Connu", url: "https://avis.fr/15", excerpt: "" }]]] } } },
-      reply: (a) => (a.a.requete.startsWith("M0 ") ? { ok: result(a.a.requete) } : { error: SEARCHES_STOPPED }),
+      memory: { cherche: { type: "web.search", value: { reused: [["M15", [{ title: "Connu", url: "https://avis.fr/15", excerpt: "" }]]] } } },
+      reply: (a) => (a.a.query.startsWith("M0 ") ? { ok: result(a.a.query) } : { error: SEARCHES_STOPPED }),
     });
-    expect(r.terminal.t).toBe("fin");
+    expect(r.terminal.t).toBe("end");
     // M0 and M1 leave together (two at a time); M1 refused, M2 at most could leave before the refusal was known.
     expect(r.calls.length).toBeLessThanOrEqual(3);
-    const data = r.terminal.donnees as Record<string, unknown>[];
-    expect(data.filter((e) => "search" in e).map((e) => e.marque)).toEqual(["M0", "M15"]);
-    expect(r.blockEnd("cherche")).toMatchObject({ status: "partiel" });
+    const data = r.terminal.data as Record<string, unknown>[];
+    expect(data.filter((e) => "search" in e).map((e) => e.mark)).toEqual(["M0", "M15"]);
+    expect(r.blockEnd("cherche")).toMatchObject({ status: "partial" });
     const log = logOf(r, "cherche");
     expect(log).toHaveLength(2);
     expect(log[0]).toMatch(new RegExp(`^élément \\d+ : ${SEARCHES_STOPPED.replace(/[()]/g, "\\$&")}$`));
@@ -950,54 +950,54 @@ describe("interpreter: web.chercher", () => {
 
   it("in simple mode, success returns the list itself, reshaped (non-texts as \"\", extra keys removed)", async () => {
     const r = await launch({
-      workflow: { version: 1, blocks: [block("cherche", "web.chercher", { query: "rust" }), output], links: chain("cherche", "sortie") },
+      workflow: { version: 1, blocks: [block("cherche", "web.search", { query: "rust" }), output], links: chain("cherche", "sortie") },
       context: WEB,
       reply: () => ({ ok: [{ title: 1, url: "u", excerpt: null, rank: 2 }] }),
     });
-    expect(r.terminal).toEqual({ t: "fin", data: [{ title: "", url: "u", excerpt: "" }] });
-    expect(r.blockEnd("cherche")).toMatchObject({ status: "reussi" });
+    expect(r.terminal).toEqual({ t: "end", data: [{ title: "", url: "u", excerpt: "" }] });
+    expect(r.blockEnd("cherche")).toMatchObject({ status: "succeeded" });
   });
 
   it("a response that is not a list: « résultats de recherche invalides »", async () => {
     const r = await launch({
-      workflow: { version: 1, blocks: [block("cherche", "web.chercher", { query: "rust" }), output], links: chain("cherche", "sortie") },
+      workflow: { version: 1, blocks: [block("cherche", "web.search", { query: "rust" }), output], links: chain("cherche", "sortie") },
       context: WEB,
       reply: () => ({ ok: {} }),
     });
-    expect(r.blockEnd("cherche")).toMatchObject({ status: "echoue", error: "résultats de recherche invalides" });
+    expect(r.blockEnd("cherche")).toMatchObject({ status: "failed", error: "résultats de recherche invalides" });
   });
 
   it("the filled query is cut to 500 characters and stripped of its blanks; empty, it is an absent value", async () => {
     const elements = [{ mark: "  " + "a".repeat(400), model: "b".repeat(400) }, { mark: "   ", model: "  " }];
     const r = await launch({
-      workflow: workflow({ query: "{marque} {modele}" }),
+      workflow: workflow({ query: "{mark} {model}" }),
       files: { "liste.mjs": `export default async () => (${JSON.stringify(elements)});` },
       context: WEB,
-      reply: (a) => ({ ok: result(a.a.requete) }),
+      reply: (a) => ({ ok: result(a.a.query) }),
     });
-    expect(r.calls.map((a) => a.a.requete)).toEqual(["a".repeat(400) + " " + "b".repeat(99)]);
-    const data = r.terminal.donnees as Record<string, unknown>[];
+    expect(r.calls.map((a) => a.a.query)).toEqual(["a".repeat(400) + " " + "b".repeat(99)]);
+    const data = r.terminal.data as Record<string, unknown>[];
     expect("search" in data[0]!).toBe(true);
     expect("search" in data[1]!).toBe(false);
-    expect(logOf(r, "cherche")).toEqual(["élément 2 : valeur absente : requete"]);
+    expect(logOf(r, "cherche")).toEqual(["élément 2 : valeur absente : query"]);
   });
 
   it("SEARCH_DENIED on an element with siErreur echouer: the block fails", async () => {
     const r = await launch({
-      workflow: workflow({ onError: "echouer" }),
+      workflow: workflow({ onError: "fail" }),
       files: files,
       context: WEB,
-      reply: (a) => (a.a.requete.startsWith("Renault") ? { error: SEARCH_DENIED } : { ok: result(a.a.requete) }),
+      reply: (a) => (a.a.query.startsWith("Renault") ? { error: SEARCH_DENIED } : { ok: result(a.a.query) }),
     });
-    expect(r.blockEnd("cherche")).toMatchObject({ status: "echoue", error: SEARCH_DENIED });
-    expect(r.terminal).toEqual({ t: "echec", error: SEARCH_DENIED });
+    expect(r.blockEnd("cherche")).toMatchObject({ status: "failed", error: SEARCH_DENIED });
+    expect(r.terminal).toEqual({ t: "failure", error: SEARCH_DENIED });
   });
 
   it("in simple mode, the ceiling is an ordinary error", async () => {
     const r = await launch({
       workflow: {
         version: 1,
-        blocks: [block("cherche", "web.chercher", { query: "{config.sujet} actualité" }), output],
+        blocks: [block("cherche", "web.search", { query: "{config.subject} actualité" }), output],
         links: chain("cherche", "sortie"),
       },
       config: { subject: "Rust" },
@@ -1005,8 +1005,8 @@ describe("interpreter: web.chercher", () => {
       reply: () => ({ error: SEARCHES_CAP }),
     });
     expect(r.calls.map((a) => a.a)).toEqual([{ query: "Rust actualité", count: 8 }]);
-    expect(r.blockEnd("cherche")).toMatchObject({ status: "echoue", error: SEARCHES_CAP });
-    expect(r.terminal).toEqual({ t: "echec", error: SEARCHES_CAP });
+    expect(r.blockEnd("cherche")).toMatchObject({ status: "failed", error: SEARCHES_CAP });
+    expect(r.terminal).toEqual({ t: "failure", error: SEARCHES_CAP });
   });
 
   it("replay from the block after web.chercher: no chercherWeb call", async () => {
@@ -1014,16 +1014,16 @@ describe("interpreter: web.chercher", () => {
     const r = await launch({
       workflow: {
         version: 1,
-        blocks: [...workflow().blocks.slice(0, 2), block("garder", "liste.garder", { count: 2 }), output],
+        blocks: [...workflow().blocks.slice(0, 2), block("garder", "list.keep", { count: 2 }), output],
         links: chain("liste", "cherche", "garder", "sortie"),
       },
       files: files,
       context: WEB,
-      replay: { reruns: ["garder", "sortie"], outputs: { search: searches } },
+      replay: { reruns: ["garder", "sortie"], outputs: { cherche: searches } },
       reply: () => ({ error: "aucun appel attendu" }),
     });
     expect(r.calls).toEqual([]);
-    expect(r.terminal).toEqual({ t: "fin", data: searches.slice(0, 2) });
+    expect(r.terminal).toEqual({ t: "end", data: searches.slice(0, 2) });
   });
 });
 
@@ -1031,58 +1031,58 @@ describe("interpreter: dated memory (garderJours)", () => {
   const NOW = "2026-10-29T10:00:00.000Z";
   const ago = (days: number) => new Date(Date.parse(NOW) - days * 86_400_000).toISOString();
   const fresh = (entry: unknown[], memory: unknown, params: Record<string, unknown> = {}) =>
-    newList.executer({ entry: entry, params: { key: "url", ...params }, memory: memory, log: () => {}, now: NOW });
+    newList.run({ input: entry, params: { key: "url", ...params }, memory: memory, log: () => {}, now: NOW });
 
   it("a key seen 31 days ago with garderJours 30 becomes new again; at 29 days, not", async () => {
     const r = await fresh([{ url: "vieille" }, { url: "recente" }], [["vieille", ago(31)], ["recente", ago(29)], ["oubliee", ago(31)]], {
       keepDays: 30,
     });
-    expect(r.sortie).toEqual([{ url: "vieille" }]);
-    expect(r.nouvelles).toEqual(["vieille"]);
+    expect(r.output).toEqual([{ url: "vieille" }]);
+    expect(r.newKeys).toEqual(["vieille"]);
     // The too-old, never-seen-again entry is not rewritten; the seen-again keys take today's date.
-    expect(r.memoire).toEqual([["vieille", NOW], ["recente", NOW]]);
+    expect(r.memory).toEqual([["vieille", NOW], ["recente", NOW]]);
   });
 
   it("without garderJours, a 400-day-old key stays seen", async () => {
     const r = await fresh([{ url: "a" }, { url: "b" }], [["a", ago(400)], ["autre", ago(400)]]);
-    expect(r.sortie).toEqual([{ url: "b" }]);
-    expect(r.nouvelles).toEqual(["b"]);
-    expect(r.memoire).toEqual([["autre", ago(400)], ["a", NOW], ["b", NOW]]);
+    expect(r.output).toEqual([{ url: "b" }]);
+    expect(r.newKeys).toEqual(["b"]);
+    expect(r.memory).toEqual([["autre", ago(400)], ["a", NOW], ["b", NOW]]);
   });
 
   it("a seen-again key takes today's date", async () => {
     const r = await fresh([{ url: "a" }], [["a", ago(10)], ["b", ago(5)]], { keepDays: 30 });
-    expect(r.sortie).toEqual([]);
-    expect(r.nouvelles).toEqual([]);
-    expect(r.memoire).toEqual([["b", ago(5)], ["a", NOW]]);
+    expect(r.output).toEqual([]);
+    expect(r.newKeys).toEqual([]);
+    expect(r.memory).toEqual([["b", ago(5)], ["a", NOW]]);
   });
 
   it("old memory in texts: read as seen, rewritten dated now", async () => {
     const r = await fresh([{ url: "a" }, { url: "c" }], ["a", "b"], { keepDays: 1 });
-    expect(r.sortie).toEqual([{ url: "c" }]);
-    expect(r.memoire).toEqual([["b", NOW], ["a", NOW], ["c", NOW]]);
+    expect(r.output).toEqual([{ url: "c" }]);
+    expect(r.memory).toEqual([["b", NOW], ["a", NOW], ["c", NOW]]);
   });
 
   it("in the container, liste.nouveaux receives maintenant from the debut line and returns a dated memory", async () => {
     const r = await launch({
       workflow: {
         version: 1,
-        blocks: [block("src", "code", { source: "src.mjs" }), block("nv", "liste.nouveaux", { key: "url", keepDays: 30 }), output],
+        blocks: [block("src", "code", { source: "src.mjs" }), block("nv", "list.new", { key: "url", keepDays: 30 }), output],
         links: chain("src", "nv", "sortie"),
       },
-      memory: { nv: { type: "liste.nouveaux", value: [["a", ago(31)], ["b", ago(2)]] } },
+      memory: { nv: { type: "list.new", value: [["a", ago(31)], ["b", ago(2)]] } },
       files: { "src.mjs": `export default async () => [{ url: "a" }, { url: "b" }];` },
     });
-    expect(r.terminal.donnees).toEqual([{ url: "a" }]);
-    expect(r.lines.find((l) => l.t === "memoire").memoire.nv.valeur).toEqual([["a", NOW], ["b", NOW]]);
+    expect(r.terminal.data).toEqual([{ url: "a" }]);
+    expect(r.lines.find((l) => l.t === "memory").memory.nv.value).toEqual([["a", NOW], ["b", NOW]]);
   });
 
   const resume = (computed: string[]) => ({
     "test.resume": {
-      perItem: "toujours",
+      perItem: "always",
       async processItem(ctx: any) {
-        computed.push(String(ctx.element.url));
-        return `résumé de ${ctx.element.url}`;
+        computed.push(String(ctx.item.url));
+        return `résumé de ${ctx.item.url}`;
       },
     },
   });
@@ -1094,7 +1094,7 @@ describe("interpreter: dated memory (garderJours)", () => {
       memory: {
         b: { type: "test.resume", value: { reused: [["vieille", "ancien", ago(31)], ["recente", "gardé", ago(29)], ["oubliee", "x", ago(40)]] } },
       },
-      blocks: [{ id: "b", type: "test.resume", params: { field: "resume", reuse: "url", keepDays: 30 } }, { id: "sortie", type: "sortie" }],
+      blocks: [{ id: "b", type: "test.resume", params: { field: "resume", reuse: "url", keepDays: 30 } }, { id: "sortie", type: "output" }],
       registry: resume(computed),
     });
     expect(computed).toEqual(["vieille"]);
@@ -1114,7 +1114,7 @@ describe("interpreter: dated memory (garderJours)", () => {
     const r = await run({
       entry: [{ url: "a" }],
       memory: { b: { type: "test.resume", value: { reused: [["a", "très ancien", ago(400)]] } } },
-      blocks: [{ id: "b", type: "test.resume", params: { field: "resume", reuse: "url" } }, { id: "sortie", type: "sortie" }],
+      blocks: [{ id: "b", type: "test.resume", params: { field: "resume", reuse: "url" } }, { id: "sortie", type: "output" }],
       registry: resume(computed),
     });
     expect(computed).toEqual([]);
@@ -1126,7 +1126,7 @@ describe("interpreter: dated memory (garderJours)", () => {
     const r = await run({
       entry: [{ url: "a" }],
       memory: { b: { type: "test.resume", value: { reused: [["a", "ancien"], ["b", "autre"]] } } },
-      blocks: [{ id: "b", type: "test.resume", params: { field: "resume", reuse: "url", keepDays: 1 } }, { id: "sortie", type: "sortie" }],
+      blocks: [{ id: "b", type: "test.resume", params: { field: "resume", reuse: "url", keepDays: 1 } }, { id: "sortie", type: "output" }],
       registry: resume(computed),
     });
     expect(computed).toEqual([]);
@@ -1138,14 +1138,14 @@ describe("interpreter: dated memory (garderJours)", () => {
     let calls = 0;
     const r = await run({
       entry: [{ model: "Clio", n: 1 }, { model: "Clio", n: 2 }, { model: "208", n: 3 }],
-      blocks: [{ id: "b", type: "test.avis", params: { field: "avis", reuse: "modele" } }, { id: "sortie", type: "sortie" }],
+      blocks: [{ id: "b", type: "test.avis", params: { field: "notice", reuse: "model" } }, { id: "sortie", type: "output" }],
       registry: {
         "test.avis": {
-          perItem: "toujours",
+          perItem: "always",
           async processItem(ctx: any) {
             calls++;
             await wait(20);
-            return `avis ${ctx.element.modele}`;
+            return `avis ${ctx.item.model}`;
           },
         },
       },
@@ -1156,21 +1156,21 @@ describe("interpreter: dated memory (garderJours)", () => {
       { model: "Clio", n: 2, notice: "avis Clio" },
       { model: "208", n: 3, notice: "avis 208" },
     ]);
-    expect(r.blockEnd("b")).toMatchObject({ status: "reussi" });
+    expect(r.blockEnd("b")).toMatchObject({ status: "succeeded" });
   });
 
   it("reutiliser: if the in-progress computation of the same key fails, the second element computes itself", async () => {
     const launched: number[] = [];
     const r = await run({
       entry: [{ model: "Clio", n: 1 }, { model: "Clio", n: 2 }],
-      blocks: [{ id: "b", type: "test.avis", params: { field: "avis", reuse: "modele" } }, { id: "sortie", type: "sortie" }],
+      blocks: [{ id: "b", type: "test.avis", params: { field: "notice", reuse: "model" } }, { id: "sortie", type: "output" }],
       registry: {
         "test.avis": {
-          perItem: "toujours",
+          perItem: "always",
           async processItem(ctx: any) {
-            launched.push(ctx.element.n);
+            launched.push(ctx.item.n);
             await wait(10);
-            if (ctx.element.n === 1) throw new Error("raté");
+            if (ctx.item.n === 1) throw new Error("raté");
             return "avis";
           },
         },
@@ -1178,33 +1178,33 @@ describe("interpreter: dated memory (garderJours)", () => {
     });
     expect(launched).toEqual([1, 2]);
     expect(r.result!.data).toEqual([{ model: "Clio", n: 1 }, { model: "Clio", n: 2, notice: "avis" }]);
-    expect(r.blockEnd("b")).toMatchObject({ status: "partiel" });
+    expect(r.blockEnd("b")).toMatchObject({ status: "partial" });
   });
 });
 
 describe("interpreter: progressive run", () => {
   const NOW = "2026-10-29T10:00:00.000Z";
   const OLD = "2026-10-01T10:00:00.000Z";
-  const memories = (r: { traces: any[] }) => r.traces.filter((l) => l.t === "memoire").map((l) => l.memoire);
+  const memories = (r: { traces: any[] }) => r.traces.filter((l) => l.t === "memory").map((l) => l.memory);
   const notice = (failedOn: string) => ({
-    perItem: "toujours",
+    perItem: "always",
     async processItem(ctx: any) {
       await Promise.resolve();
-      if (ctx.element.modele === failedOn) throw new Error("raté");
-      return `avis ${ctx.element.modele}`;
+      if (ctx.item.model === failedOn) throw new Error("raté");
+      return `avis ${ctx.item.model}`;
     },
   });
   const noticeFailure = (progressive: boolean) =>
     run({
       progressive: progressive,
       entry: [{ url: "a", model: "Clio" }, { url: "b", model: "208" }, { url: "c", model: "Panda" }],
-      memory: { nv: { type: "liste.nouveaux", value: [["vieille", OLD]] } },
+      memory: { nv: { type: "list.new", value: [["vieille", OLD]] } },
       blocks: [
-        { id: "nv", type: "liste.nouveaux", params: { key: "url" } },
-        { id: "avis", type: "test.avis", params: { field: "avis", reuse: "modele", onError: "echouer" } },
-        { id: "sortie", type: "sortie" },
+        { id: "nv", type: "list.new", params: { key: "url" } },
+        { id: "avis", type: "test.avis", params: { field: "notice", reuse: "model", onError: "fail" } },
+        { id: "sortie", type: "output" },
       ],
-      registry: { "liste.nouveaux": newList, "test.avis": notice("Panda") },
+      registry: { "list.new": newList, "test.avis": notice("Panda") },
     });
 
   // nouvelles → tri → garder 2 → lire (one failing read) → sortie
@@ -1212,30 +1212,30 @@ describe("interpreter: progressive run", () => {
     run({
       progressive: progressive,
       entry: ["a", "b", "c", "d", "e", "f"].map((url) => ({ url, note: url === "b" ? 1 : 9 })),
-      memory: { nv: { type: "liste.nouveaux", value: [["a", OLD]] } },
+      memory: { nv: { type: "list.new", value: [["a", OLD]] } },
       blocks: [
-        { id: "nv", type: "liste.nouveaux", params: { key: "url" } },
+        { id: "nv", type: "list.new", params: { key: "url" } },
         { id: "tri", type: "test.tri", params: { field: "n" } },
-        { id: "garder", type: "liste.garder", params: { count: 2 } },
+        { id: "garder", type: "list.keep", params: { count: 2 } },
         { id: "lire", type: "test.lire", params: { field: "page" } },
-        { id: "sortie", type: "sortie" },
+        { id: "sortie", type: "output" },
       ],
       registry: {
-        "liste.nouveaux": newList,
-        "liste.garder": keepList,
+        "list.new": newList,
+        "list.keep": keepList,
         "test.tri": {
-          perItem: "toujours",
+          perItem: "always",
           async processItem(ctx: any) {
-            return ctx.element.note;
+            return ctx.item.note;
           },
           async finalize(list: any[]) {
             return { output: list.filter((e) => e.n >= 5) };
           },
         },
         "test.lire": {
-          perItem: "toujours",
+          perItem: "always",
           async processItem(ctx: any) {
-            if (ctx.element.url === "d") throw new Error("page illisible");
+            if (ctx.item.url === "d") throw new Error("page illisible");
             return "texte";
           },
         },
@@ -1248,13 +1248,13 @@ describe("interpreter: progressive run", () => {
     expect(memories(r)).toEqual([
       {
         // a, b, c finished no block sequence: not retained, they will come back.
-        nv: { type: "liste.nouveaux", value: [["vieille", OLD]] },
-        notice: { type: "test.avis", value: { reused: [["Clio", "avis Clio", NOW], ["208", "avis 208", NOW]] } },
+        nv: { type: "list.new", value: [["vieille", OLD]] },
+        avis: { type: "test.avis", value: { reused: [["Clio", "avis Clio", NOW], ["208", "avis 208", NOW]] } },
       },
     ]);
     // Sent after the block's failed end, just before rethrowing the error (so before echec).
-    expect(r.traces.at(-1)?.t).toBe("memoire");
-    expect(r.traces.at(-2)).toMatchObject({ t: "bloc", id: "avis", step: "fin", status: "echoue" });
+    expect(r.traces.at(-1)?.t).toBe("memory");
+    expect(r.traces.at(-2)).toMatchObject({ t: "block", id: "avis", step: "end", status: "failed" });
   });
 
   it("progressive: memory sent at most every 30 s (fake clock), and the last one before fin", async () => {
@@ -1263,14 +1263,14 @@ describe("interpreter: progressive run", () => {
       progressive: true,
       entry: list(10).map((e) => ({ ...e, url: `u${e.n}` })),
       clock: () => now,
-      blocks: [{ id: "lent", type: "test.lent", params: { field: "r", reuse: "url" } }, { id: "sortie", type: "sortie" }],
+      blocks: [{ id: "lent", type: "test.lent", params: { field: "r", reuse: "url" } }, { id: "sortie", type: "output" }],
       registry: {
         "test.lent": {
-          perItem: "toujours",
+          perItem: "always",
           async processItem(ctx: any) {
             await Promise.resolve();
             now += 10_000;
-            return `fait ${ctx.element.n}`;
+            return `fait ${ctx.item.n}`;
           },
         },
       },
@@ -1278,7 +1278,7 @@ describe("interpreter: progressive run", () => {
     expect(r.error).toBeNull();
     // Ten 10 s elements, two at a time: the pairs finish at 20, 40, 60, 80, 100 s. Checked at the end of each
     // element and each block, the memory leaves at 40 s (4 opinions) and 80 s (8 opinions) only: not at 20, 60 or 100.
-    expect(memories(r).map((m) => m.lent.valeur.reutilises.length)).toEqual([4, 8]);
+    expect(memories(r).map((m) => m.lent.value.reused.length)).toEqual([4, 8]);
     expect((r.result!.memory.lent!.value as { reused: unknown[] }).reused).toHaveLength(10);
 
     // In the container: the last memory just before fin, as today.
@@ -1287,7 +1287,7 @@ describe("interpreter: progressive run", () => {
       files: { "src.mjs": `export default async () => [1];` },
       start: { progressive: true },
     });
-    expect(c.traces.slice(-2).map((l) => l.t)).toEqual(["memoire", "fin"]);
+    expect(c.traces.slice(-2).map((l) => l.t)).toEqual(["memory", "end"]);
   });
 
   it("progressive: nouvelles → tri → garder 2 → lire (one failing read) → sortie: the failing listing's key is not retained, those dropped by garder and by the sort are, the two read ones too", async () => {
@@ -1305,14 +1305,14 @@ describe("interpreter: progressive run", () => {
       entry: list(12).map((e) => ({ ...e, url: `u${e.n}` })),
       clock: () => now,
       blocks: [
-        { id: "nv", type: "liste.nouveaux", params: { key: "url" } },
+        { id: "nv", type: "list.new", params: { key: "url" } },
         { id: "lent", type: "test.lent", params: { field: "r", budgetSeconds: 1 } },
-        { id: "sortie", type: "sortie" },
+        { id: "sortie", type: "output" },
       ],
       registry: {
-        "liste.nouveaux": newList,
+        "list.new": newList,
         "test.lent": {
-          perItem: "toujours",
+          perItem: "always",
           async processItem() {
             await Promise.resolve();
             now += 300;
@@ -1321,7 +1321,7 @@ describe("interpreter: progressive run", () => {
         },
       },
     });
-    expect(r.blockEnd("lent")).toMatchObject({ status: "partiel" });
+    expect(r.blockEnd("lent")).toMatchObject({ status: "partial" });
     expect(r.result!.memory.nv!.value).toEqual(["u0", "u1", "u2", "u3"].map((c) => [c, NOW]));
   });
 
@@ -1330,16 +1330,16 @@ describe("interpreter: progressive run", () => {
       progressive: true,
       entry: list(3).map((e) => ({ ...e, url: `u${e.n}` })),
       blocks: [
-        { id: "nv", type: "liste.nouveaux", params: { key: "url" } },
+        { id: "nv", type: "list.new", params: { key: "url" } },
         { id: "cherche", type: "test.cherche", params: { field: "r" } },
-        { id: "sortie", type: "sortie" },
+        { id: "sortie", type: "output" },
       ],
       registry: {
-        "liste.nouveaux": newList,
+        "list.new": newList,
         "test.cherche": {
-          perItem: "toujours",
+          perItem: "always",
           async processItem(ctx: any) {
-            if (ctx.element.n === 2) throw new NotRunElement(SEARCHES_CAP);
+            if (ctx.item.n === 2) throw new NotRunElement(SEARCHES_CAP);
             return "ok";
           },
         },
@@ -1359,9 +1359,9 @@ describe("interpreter: progressive run", () => {
   });
 
   const readExceptOn = (failedOn: string, field = "url") => ({
-    perItem: "toujours",
+    perItem: "always",
     async processItem(ctx: any) {
-      if (ctx.element[field] === failedOn) throw new Error("page illisible");
+      if (ctx.item[field] === failedOn) throw new Error("page illisible");
       return "texte";
     },
   });
@@ -1372,15 +1372,15 @@ describe("interpreter: progressive run", () => {
       progressive: true,
       entry: abc(),
       blocks: [
-        { id: "nv", type: "liste.nouveaux", params: { key: "url" } },
+        { id: "nv", type: "list.new", params: { key: "url" } },
         { id: "remodeler", type: "test.code" },
         { id: "lire", type: "test.lire", params: { field: "page" } },
-        { id: "sortie", type: "sortie" },
+        { id: "sortie", type: "output" },
       ],
       registry: {
-        "liste.nouveaux": newList,
-        "test.code": { perItem: "non", run: async (ctx: any) => ({ output: ctx.entree.map((e: any) => ({ link: e.url })) }) },
-        "test.lire": readExceptOn("b", "lien"),
+        "list.new": newList,
+        "test.code": { perItem: "no", run: async (ctx: any) => ({ output: ctx.input.map((e: any) => ({ link: e.url })) }) },
+        "test.lire": readExceptOn("b", "link"),
       },
     });
     expect(r.error).toBeNull();
@@ -1395,13 +1395,13 @@ describe("interpreter: progressive run", () => {
       progressive: true,
       entry: abc(),
       blocks: [
-        { id: "nv", type: "liste.nouveaux", params: { key: "url" } },
+        { id: "nv", type: "list.new", params: { key: "url" } },
         { id: "remodeler", type: "test.code" },
-        { id: "sortie", type: "sortie" },
+        { id: "sortie", type: "output" },
       ],
       registry: {
-        "liste.nouveaux": newList,
-        "test.code": { perItem: "non", run: async (ctx: any) => ({ output: ctx.entree.map((e: any) => ({ link: e.url })) }) },
+        "list.new": newList,
+        "test.code": { perItem: "no", run: async (ctx: any) => ({ output: ctx.input.map((e: any) => ({ link: e.url })) }) },
       },
     });
     expect(r.result!.memory.nv!.value).toEqual(["a", "b", "c"].map((c) => [c, NOW]));
@@ -1413,14 +1413,14 @@ describe("interpreter: progressive run", () => {
       progressive: true,
       entry: abc(),
       blocks: [
-        { id: "nv", type: "liste.nouveaux", params: { key: "url" } },
+        { id: "nv", type: "list.new", params: { key: "url" } },
         { id: "filtrer", type: "test.code" },
         { id: "lire", type: "test.lire", params: { field: "page" } },
-        { id: "sortie", type: "sortie" },
+        { id: "sortie", type: "output" },
       ],
       registry: {
-        "liste.nouveaux": newList,
-        "test.code": { perItem: "non", run: async (ctx: any) => ({ output: ctx.entree.filter((e: any) => e.url !== "b") }) },
+        "list.new": newList,
+        "test.code": { perItem: "no", run: async (ctx: any) => ({ output: ctx.input.filter((e: any) => e.url !== "b") }) },
         "test.lire": readExceptOn("c"),
       },
     });
@@ -1435,10 +1435,10 @@ describe("interpreter: progressive run", () => {
         workflow: {
           blocks: [
             { id: "src", type: "test.source", params: {} },
-            { id: "nv", type: "liste.nouveaux", params: { key: "url" } },
-            { id: "garder", type: "liste.garder", params: { count: 1 } },
+            { id: "nv", type: "list.new", params: { key: "url" } },
+            { id: "garder", type: "list.keep", params: { count: 1 } },
             { id: "lire", type: "test.lire", params: { field: "page" } },
-            { id: "sortie", type: "sortie", params: {} },
+            { id: "sortie", type: "output", params: {} },
           ],
           links: [
             { from: "src", to: "nv" },
@@ -1456,14 +1456,14 @@ describe("interpreter: progressive run", () => {
         trace: (m: unknown) => traces.push(m),
         progressive: true,
         blocks: {
-          "test.source": { perItem: "non", run: async () => ({ output: abc() }) },
-          "liste.nouveaux": newList,
-          "liste.garder": keepList,
+          "test.source": { perItem: "no", run: async () => ({ output: abc() }) },
+          "list.new": newList,
+          "list.keep": keepList,
           "test.lire": readExceptOn("b"),
-          output: { perItem: "non", run: async (ctx: any) => ({ output: ctx.entree }) },
+          output: { perItem: "no", run: async (ctx: any) => ({ output: ctx.input }) },
         },
       });
-      expect(r.memoire.nv.valeur, order.join(",")).toEqual([["a", NOW], ["c", NOW]]);
+      expect(r.memory.nv.value, order.join(",")).toEqual([["a", NOW], ["c", NOW]]);
     }
   });
 
@@ -1472,13 +1472,13 @@ describe("interpreter: progressive run", () => {
     const r = await run({
       progressive: true,
       entry: [{ url: "x" }],
-      memory: { nv: { type: "liste.nouveaux", value: olds } },
+      memory: { nv: { type: "list.new", value: olds } },
       blocks: [
-        { id: "nv", type: "liste.nouveaux", params: { key: "url" } },
+        { id: "nv", type: "list.new", params: { key: "url" } },
         { id: "lire", type: "test.lire", params: { field: "page" } },
-        { id: "sortie", type: "sortie" },
+        { id: "sortie", type: "output" },
       ],
-      registry: { "liste.nouveaux": newList, "test.lire": readExceptOn("x") },
+      registry: { "list.new": newList, "test.lire": readExceptOn("x") },
     });
     // x failing is not retained and does not make k0 forgotten.
     expect(r.result!.memory.nv!.value).toEqual(olds);
@@ -1491,15 +1491,15 @@ describe("interpreter: progressive run", () => {
       entry: null,
       clock: () => now,
       blocks: [
-        { id: "avis", type: "test.avis", params: { field: "avis", onError: "echouer" } },
-        { id: "sortie", type: "sortie" },
+        { id: "avis", type: "test.avis", params: { field: "notice", onError: "fail" } },
+        { id: "sortie", type: "output" },
       ],
       registry: {
         "test.avis": {
-          perItem: "toujours",
+          perItem: "always",
           async processItem(ctx: any) {
             now += 20_000;
-            if (ctx.element.modele === "Panda") throw new Error("raté");
+            if (ctx.item.model === "Panda") throw new Error("raté");
             return "avis";
           },
         },
@@ -1514,12 +1514,12 @@ describe("interpreter: progressive run", () => {
     const launched: number[] = [];
     const r = await run({
       entry: [{ model: "Clio", n: 1 }, { model: "Clio", n: 2 }],
-      blocks: [{ id: "b", type: "test.avis", params: { field: "avis", reuse: "modele" } }, { id: "sortie", type: "sortie" }],
+      blocks: [{ id: "b", type: "test.avis", params: { field: "notice", reuse: "model" } }, { id: "sortie", type: "output" }],
       registry: {
         "test.avis": {
-          perItem: "toujours",
+          perItem: "always",
           async processItem(ctx: any) {
-            launched.push(ctx.element.n);
+            launched.push(ctx.item.n);
             await wait(10);
             throw new NotRunElement(SEARCHES_CAP);
           },
@@ -1527,35 +1527,35 @@ describe("interpreter: progressive run", () => {
       },
     });
     expect(launched).toEqual([1]);
-    expect(r.blockEnd("b")).toMatchObject({ status: "partiel" });
+    expect(r.blockEnd("b")).toMatchObject({ status: "partial" });
   });
 });
 
 describe("interpreter: streaming chain", () => {
   type AppEvent = string;
-  /** A chainable test block: notes `debut:<block>:<n>` and `fin:<block>:<n>` and returns `<block> <n>`. */
+  /** A chainable test block: notes `start:<block>:<n>` and `end:<block>:<n>` and returns `<block> <n>`. */
   const step = (name: string, events: AppEvent[], o: { duration?: (n: number) => number; clock?: { t: number }; failsOn?: number; turns?: (n: number) => number } = {}) => ({
     perItem: "option",
     async run(ctx: any) {
       events.push(`bloc:${name}`);
-      return { output: ctx.entree.map((e: any) => ({ ...e, [ctx.parametres.champ]: `${name} ${e.n}` })) };
+      return { output: ctx.input.map((e: any) => ({ ...e, [ctx.params.field]: `${name} ${e.n}` })) };
     },
     async processItem(ctx: any) {
-      const n = ctx.element.n;
-      events.push(`debut:${name}:${n}`);
+      const n = ctx.item.n;
+      events.push(`start:${name}:${n}`);
       // A « slow » element waits more micro-task queue turns: it finishes after others launched after it.
       for (let k = 0; k < (o.turns?.(n) ?? 1); k++) await Promise.resolve();
       if (o.clock && o.duration) o.clock.t += o.duration(n);
-      events.push(`fin:${name}:${n}`);
+      events.push(`end:${name}:${n}`);
       if (n === o.failsOn) throw new Error(`${name} raté`);
       return `${name} ${n}`;
     },
   });
   const CHAIN_BLOCKS = (outputParams: Record<string, unknown> = { live: true }, extra: Record<string, Record<string, unknown>> = {}) => [
     { id: "fiche", type: "test.fiche", params: { perItem: true, field: "page", ...extra.fiche } },
-    { id: "fiabilite", type: "test.fiabilite", params: { perItem: true, field: "fiabilite", ...extra.fiabilite } },
-    { id: "avis", type: "test.avis", params: { perItem: true, field: "avis", ...extra.avis } },
-    { id: "sortie", type: "sortie", params: outputParams },
+    { id: "fiabilite", type: "test.fiabilite", params: { perItem: true, field: "reliability", ...extra.fiabilite } },
+    { id: "avis", type: "test.avis", params: { perItem: true, field: "notice", ...extra.avis } },
+    { id: "sortie", type: "output", params: outputParams },
   ];
   const chainRegistry = (events: AppEvent[], o: Parameters<typeof step>[2] = {}, byBlock: Record<string, Parameters<typeof step>[2]> = {}) => ({
     "test.fiche": step("fiche", events, { ...o, ...byBlock.fiche }),
@@ -1565,7 +1565,7 @@ describe("interpreter: streaming chain", () => {
   const announcement = (n: number) => ({ n, url: `u${n}`, page: `fiche ${n}`, reliability: `fiabilite ${n}`, notice: `avis ${n}` });
   const publications = (r: { traces: any[] }) => r.traces.filter((l) => l.t === "publication");
   const resume = (r: { traces: any[] }) =>
-    r.traces.filter((l) => l.t === "bloc").map((l) => `${l.etape}:${l.id}`);
+    r.traces.filter((l) => l.t === "block").map((l) => `${l.step}:${l.id}`);
 
   it("streaming: each listing goes through fiche → fiabilite → avis before being finished, two at a time", async () => {
     const events: AppEvent[] = [];
@@ -1579,19 +1579,19 @@ describe("interpreter: streaming chain", () => {
     // Each listing passes the three blocks in order.
     for (let n = 0; n < 6; n++) {
       const pos = (e: string) => events.indexOf(e);
-      expect(pos(`fin:fiche:${n}`)).toBeLessThan(pos(`debut:fiabilite:${n}`));
-      expect(pos(`fin:fiabilite:${n}`)).toBeLessThan(pos(`debut:avis:${n}`));
+      expect(pos(`end:fiche:${n}`)).toBeLessThan(pos(`start:fiabilite:${n}`));
+      expect(pos(`end:fiabilite:${n}`)).toBeLessThan(pos(`start:avis:${n}`));
     }
     // Two listings at a time at most: a listing is in progress from the start of its fiche to the end of its avis.
     let running = 0;
     let max = 0;
     for (const e of events) {
-      if (e.startsWith("debut:fiche:")) max = Math.max(max, ++running);
-      if (e.startsWith("fin:avis:")) running--;
+      if (e.startsWith("start:fiche:")) max = Math.max(max, ++running);
+      if (e.startsWith("end:avis:")) running--;
     }
     expect(max).toBe(2);
     // The third only starts after one of the first two has finished its avis.
-    expect(Math.min(events.indexOf("fin:avis:0"), events.indexOf("fin:avis:1"))).toBeLessThan(events.indexOf("debut:fiche:2"));
+    expect(Math.min(events.indexOf("end:avis:0"), events.indexOf("end:avis:1"))).toBeLessThan(events.indexOf("start:fiche:2"));
     expect(r.result!.data).toEqual(list(6).map((e) => ({ ...e, page: `fiche ${e.n}`, reliability: `fiabilite ${e.n}`, notice: `avis ${e.n}` })));
   });
 
@@ -1605,7 +1605,7 @@ describe("interpreter: streaming chain", () => {
       entry: list(10),
       clock: () => clock.t,
       blocks: CHAIN_BLOCKS(),
-      registry: chainRegistry(events, { clock: clock, duration: () => 1000 }, { sheet: { clock: clock, duration: (n) => (n === 0 ? 9000 : 1000), turns: (n) => (n === 0 ? 50 : 1) } }),
+      registry: chainRegistry(events, { clock: clock, duration: () => 1000 }, { fiche: { clock: clock, duration: (n) => (n === 0 ? 9000 : 1000), turns: (n) => (n === 0 ? 50 : 1) } }),
     });
     expect(r.error).toBeNull();
     traces.push(...r.traces);
@@ -1616,22 +1616,22 @@ describe("interpreter: streaming chain", () => {
     // The first as soon as the first listing is finished: listing 1, before 0.
     expect(pubs[0]).toEqual({ t: "publication", data: [final[1]], done: 1, total: 10 });
     // Once listing 0 is finished, it comes first: the order is the list's, not the finishes'.
-    expect(pubs.at(-1).donnees[0]).toEqual(final[0]);
+    expect(pubs.at(-1).data[0]).toEqual(final[0]);
     let doneBefore = 0;
     for (const p of pubs) {
       expect(p.total).toBe(10);
-      expect(p.faits).toBe(p.donnees.length);
-      expect(p.faits).toBeGreaterThan(doneBefore);
-      doneBefore = p.faits;
+      expect(p.done).toBe(p.data.length);
+      expect(p.done).toBeGreaterThan(doneBefore);
+      doneBefore = p.done;
       // In list order, as after the last block.
-      const ns = p.donnees.map((e: any) => e.n);
+      const ns = p.data.map((e: any) => e.n);
       expect(ns).toEqual([...ns].sort((a: number, b: number) => a - b));
-      for (const e of p.donnees) expect(e).toEqual(final[e.n]);
+      for (const e of p.data) expect(e).toEqual(final[e.n]);
     }
     // Each publication right after a memoire line; 5 s at least between two publications (time of the memory
     // sent just before, seen by the trace stream).
     const indices = traces.map((l, i) => (l.t === "publication" ? i : -1)).filter((i) => i >= 0);
-    for (const i of indices) expect(traces[i - 1].t).toBe("memoire");
+    for (const i of indices) expect(traces[i - 1].t).toBe("memory");
     expect(r.result!.data).toEqual(final);
   });
 
@@ -1657,8 +1657,8 @@ describe("interpreter: streaming chain", () => {
         if (m.t === "publication") hours.push(clock.t);
       },
       blocks: {
-        "test.source": { perItem: "non", run: async () => ({ output: list(20) }) },
-        output: { perItem: "non", run: async (ctx: any) => ({ output: ctx.entree }) },
+        "test.source": { perItem: "no", run: async () => ({ output: list(20) }) },
+        output: { perItem: "no", run: async (ctx: any) => ({ output: ctx.input }) },
         ...registry,
       },
       clock: () => clock.t,
@@ -1674,15 +1674,15 @@ describe("interpreter: streaming chain", () => {
   it("traces: debut of the three blocks then their ends in order; each block's output = the list after it", async () => {
     const r = await run({ progressive: true, entry: list(3), blocks: CHAIN_BLOCKS(), registry: chainRegistry([]) });
     expect(resume(r)).toEqual([
-      "debut:src", "fin:src",
-      "debut:fiche", "debut:fiabilite", "debut:avis",
-      "fin:fiche", "fin:fiabilite", "fin:avis",
-      "debut:sortie", "fin:sortie",
+      "start:src", "end:src",
+      "start:fiche", "start:fiabilite", "start:avis",
+      "end:fiche", "end:fiabilite", "end:avis",
+      "start:sortie", "end:sortie",
     ]);
-    expect(r.blockEnd("fiche")).toEqual({ t: "bloc", id: "fiche", step: "fin", status: "reussi", output: list(3).map((e) => ({ ...e, page: `fiche ${e.n}` })) });
-    expect(r.blockEnd("fiabilite").sortie).toEqual(list(3).map((e) => ({ ...e, page: `fiche ${e.n}`, reliability: `fiabilite ${e.n}` })));
-    expect(r.blockEnd("avis")).toMatchObject({ status: "reussi", output: r.result!.data });
-    expect(r.blockEnd("sortie").sortie).toEqual(list(3).map((e) => ({ ...e, page: `fiche ${e.n}`, reliability: `fiabilite ${e.n}`, notice: `avis ${e.n}` })));
+    expect(r.blockEnd("fiche")).toEqual({ t: "block", id: "fiche", step: "end", status: "succeeded", output: list(3).map((e) => ({ ...e, page: `fiche ${e.n}` })) });
+    expect(r.blockEnd("fiabilite").output).toEqual(list(3).map((e) => ({ ...e, page: `fiche ${e.n}`, reliability: `fiabilite ${e.n}` })));
+    expect(r.blockEnd("avis")).toMatchObject({ status: "succeeded", output: r.result!.data });
+    expect(r.blockEnd("sortie").output).toEqual(list(3).map((e) => ({ ...e, page: `fiche ${e.n}`, reliability: `fiabilite ${e.n}`, notice: `avis ${e.n}` })));
   });
 
   it("fiche's budgetSecondes counted from the start of the chain: the following listings pass without a page, partial", async () => {
@@ -1693,16 +1693,16 @@ describe("interpreter: streaming chain", () => {
       progressive: true,
       entry: list(5),
       clock: () => clock.t,
-      blocks: CHAIN_BLOCKS({ live: true }, { sheet: { budgetSeconds: 1 } }),
-      registry: chainRegistry(events, {}, { reliability: { clock: clock, duration: () => 600 } }),
+      blocks: CHAIN_BLOCKS({ live: true }, { fiche: { budgetSeconds: 1 } }),
+      registry: chainRegistry(events, {}, { fiabilite: { clock: clock, duration: () => 600 } }),
     });
     expect(r.error).toBeNull();
-    expect(events.filter((e) => e.startsWith("debut:fiche:"))).toEqual(["debut:fiche:0", "debut:fiche:1"]);
-    expect(events.filter((e) => e.startsWith("debut:avis:"))).toHaveLength(5);
-    expect(r.blockEnd("fiche")).toMatchObject({ status: "partiel" });
+    expect(events.filter((e) => e.startsWith("start:fiche:"))).toEqual(["start:fiche:0", "start:fiche:1"]);
+    expect(events.filter((e) => e.startsWith("start:avis:"))).toHaveLength(5);
+    expect(r.blockEnd("fiche")).toMatchObject({ status: "partial" });
     expect(r.log("fiche")).toContain("temps écoulé : 3 élément(s) non lancé(s)");
-    expect(r.blockEnd("fiabilite")).toMatchObject({ status: "reussi" });
-    expect(r.blockEnd("avis")).toMatchObject({ status: "reussi" });
+    expect(r.blockEnd("fiabilite")).toMatchObject({ status: "succeeded" });
+    expect(r.blockEnd("avis")).toMatchObject({ status: "succeeded" });
     expect(r.result!.data).toEqual(
       list(5).map((e) => (e.n < 2 ? { ...e, page: `fiche ${e.n}` } : { ...e }) ).map((e) => ({ ...e, reliability: `fiabilite ${e.n}`, notice: `avis ${e.n}` })),
     );
@@ -1712,12 +1712,12 @@ describe("interpreter: streaming chain", () => {
     const events: AppEvent[] = [];
     const r = await run({ progressive: true, entry: list(3), blocks: CHAIN_BLOCKS({}), registry: chainRegistry(events) });
     expect(r.error).toBeNull();
-    const starts = events.filter((e) => e.startsWith("debut:"));
-    expect(starts.slice(0, 3).every((e) => e.startsWith("debut:fiche:"))).toBe(true);
-    expect(starts.slice(3, 6).every((e) => e.startsWith("debut:fiabilite:"))).toBe(true);
-    expect(starts.slice(6).every((e) => e.startsWith("debut:avis:"))).toBe(true);
+    const starts = events.filter((e) => e.startsWith("start:"));
+    expect(starts.slice(0, 3).every((e) => e.startsWith("start:fiche:"))).toBe(true);
+    expect(starts.slice(3, 6).every((e) => e.startsWith("start:fiabilite:"))).toBe(true);
+    expect(starts.slice(6).every((e) => e.startsWith("start:avis:"))).toBe(true);
     expect(resume(r)).toEqual([
-      "debut:src", "fin:src", "debut:fiche", "fin:fiche", "debut:fiabilite", "fin:fiabilite", "debut:avis", "fin:avis", "debut:sortie", "fin:sortie",
+      "start:src", "end:src", "start:fiche", "end:fiche", "start:fiabilite", "end:fiabilite", "start:avis", "end:avis", "start:sortie", "end:sortie",
     ]);
     expect(publications(r)).toEqual([]);
   });
@@ -1726,7 +1726,7 @@ describe("interpreter: streaming chain", () => {
     const events: AppEvent[] = [];
     const r = await run({ entry: list(3), blocks: CHAIN_BLOCKS(), registry: chainRegistry(events) });
     expect(resume(r)).toEqual([
-      "debut:src", "fin:src", "debut:fiche", "fin:fiche", "debut:fiabilite", "fin:fiabilite", "debut:avis", "fin:avis", "debut:sortie", "fin:sortie",
+      "start:src", "end:src", "start:fiche", "end:fiche", "start:fiabilite", "end:fiabilite", "start:avis", "end:avis", "start:sortie", "end:sortie",
     ]);
     expect(publications(r)).toEqual([]);
   });
@@ -1742,9 +1742,9 @@ describe("interpreter: streaming chain", () => {
     });
     expect(r.error).toBeNull();
     expect(resume(r)).toEqual([
-      "debut:src", "fin:src", "debut:fiche", "fin:fiche", "debut:fiabilite", "fin:fiabilite", "debut:avis", "fin:avis", "debut:sortie", "fin:sortie",
+      "start:src", "end:src", "start:fiche", "end:fiche", "start:fiabilite", "end:fiabilite", "start:avis", "end:avis", "start:sortie", "end:sortie",
     ]);
-    expect(events.indexOf("fin:fiche:2")).toBeLessThan(events.indexOf("debut:fiabilite:0"));
+    expect(events.indexOf("end:fiche:2")).toBeLessThan(events.indexOf("start:fiabilite:0"));
     expect(publications(r)).toEqual([]);
   });
 
@@ -1754,14 +1754,14 @@ describe("interpreter: streaming chain", () => {
     const r = await run({
       progressive: true,
       entry: list(4),
-      blocks: [sheet!, reliability!, notice!, { id: "garder", type: "liste.garder", params: { count: 2 } }, s!],
-      registry: { ...chainRegistry(events), "liste.garder": keepList },
+      blocks: [sheet!, reliability!, notice!, { id: "garder", type: "list.keep", params: { count: 2 } }, s!],
+      registry: { ...chainRegistry(events), "list.keep": keepList },
     });
     expect(r.error).toBeNull();
     expect(publications(r)).toEqual([]);
     expect(resume(r)).toEqual([
-      "debut:src", "fin:src", "debut:fiche", "fin:fiche", "debut:fiabilite", "fin:fiabilite", "debut:avis", "fin:avis",
-      "debut:garder", "fin:garder", "debut:sortie", "fin:sortie",
+      "start:src", "end:src", "start:fiche", "end:fiche", "start:fiabilite", "end:fiabilite", "start:avis", "end:avis",
+      "start:garder", "end:garder", "start:sortie", "end:sortie",
     ]);
     expect(r.result!.data).toHaveLength(2);
   });
@@ -1771,11 +1771,11 @@ describe("interpreter: streaming chain", () => {
       progressive: true,
       entry: list(3),
       blocks: CHAIN_BLOCKS(),
-      registry: chainRegistry([], {}, { reliability: { failsOn: 1 } }),
+      registry: chainRegistry([], {}, { fiabilite: { failsOn: 1 } }),
     });
     expect(r.error).toBeNull();
-    expect(r.blockEnd("fiabilite")).toMatchObject({ status: "partiel" });
-    expect(r.blockEnd("fiche")).toMatchObject({ status: "reussi" });
+    expect(r.blockEnd("fiabilite")).toMatchObject({ status: "partial" });
+    expect(r.blockEnd("fiche")).toMatchObject({ status: "succeeded" });
     expect(r.log("fiabilite").join("\n")).toContain("élément 2 : fiabilite raté");
     expect(r.result!.data).toEqual([
       { n: 0, page: "fiche 0", reliability: "fiabilite 0", notice: "avis 0" },
@@ -1788,30 +1788,30 @@ describe("interpreter: streaming chain", () => {
     const r = await run({
       progressive: true,
       entry: list(4),
-      blocks: CHAIN_BLOCKS({ live: true }, { reliability: { onError: "echouer" } }),
-      registry: chainRegistry([], {}, { reliability: { failsOn: 1 } }),
+      blocks: CHAIN_BLOCKS({ live: true }, { fiabilite: { onError: "fail" } }),
+      registry: chainRegistry([], {}, { fiabilite: { failsOn: 1 } }),
     });
     expect(r.error?.message).toBe("fiabilite raté");
-    const ends = r.traces.filter((l) => l.t === "bloc" && l.etape === "fin" && l.id !== "src");
-    expect(ends.map((l) => [l.id, l.statut])).toEqual([["fiche", "partiel"], ["fiabilite", "echoue"], ["avis", "partiel"]]);
-    expect(r.blockEnd("fiabilite").erreur).toBe("fiabilite raté");
+    const ends = r.traces.filter((l) => l.t === "block" && l.step === "end" && l.id !== "src");
+    expect(ends.map((l) => [l.id, l.status])).toEqual([["fiche", "partial"], ["fiabilite", "failed"], ["avis", "partial"]]);
+    expect(r.blockEnd("fiabilite").error).toBe("fiabilite raté");
     expect(r.traces.some((l) => l.id === "sortie")).toBe(false);
-    expect(r.traces.at(-1)?.t).toBe("memoire");
+    expect(r.traces.at(-1)?.t).toBe("memory");
   });
 
   it("keys: a listing that reached the end of the chain is retained in the memory sent before its publication; a failing listing is not", async () => {
     const r = await run({
       progressive: true,
       entry: list(3).map((e) => ({ ...e, url: `u${e.n}` })),
-      blocks: [{ id: "nv", type: "liste.nouveaux", params: { key: "url" } }, ...CHAIN_BLOCKS()],
-      registry: { "liste.nouveaux": newList, ...chainRegistry([], {}, { notice: { failsOn: 1 } }) },
+      blocks: [{ id: "nv", type: "list.new", params: { key: "url" } }, ...CHAIN_BLOCKS()],
+      registry: { "list.new": newList, ...chainRegistry([], {}, { avis: { failsOn: 1 } }) },
     });
     expect(r.error).toBeNull();
     const pubs = r.traces.map((l, i) => [l, i] as const).filter(([l]) => l.t === "publication");
     // The first publication (u0 alone) follows a memory that already retains u0.
     const [first, i] = pubs[0]!;
-    expect(first.donnees.map((e: any) => e.url)).toEqual(["u0"]);
-    expect(r.traces[i - 1].memoire.nv.valeur.map((e: any) => e[0])).toEqual(["u0"]);
+    expect(first.data.map((e: any) => e.url)).toEqual(["u0"]);
+    expect(r.traces[i - 1].memory.nv.value.map((e: any) => e[0])).toEqual(["u0"]);
     // At the end: u0 and u2 retained, u1 (failing opinion) will come back.
     expect((r.result!.memory.nv!.value as [string, string][]).map((e) => e[0])).toEqual(["u0", "u2"]);
   });
@@ -1822,18 +1822,18 @@ describe("interpreter: streaming chain", () => {
       progressive: true,
       clock: () => 0,
       entry: list(3).map((e) => ({ ...e, url: `u${e.n}` })),
-      blocks: [{ id: "nv", type: "liste.nouveaux", params: { key: "url" } }, ...CHAIN_BLOCKS({ live: true }, { reliability: { onError: "echouer" } })],
-      registry: { "liste.nouveaux": newList, ...chainRegistry(events, {}, { reliability: { failsOn: 2 } }) },
+      blocks: [{ id: "nv", type: "list.new", params: { key: "url" } }, ...CHAIN_BLOCKS({ live: true }, { fiabilite: { onError: "fail" } })],
+      registry: { "list.new": newList, ...chainRegistry(events, {}, { fiabilite: { failsOn: 2 } }) },
     });
     expect(r.error?.message).toBe("fiabilite raté");
     // u0 published; u1 finished afterwards (not published, under 5 s); then u2 fails.
-    expect(publications(r).map((p) => p.donnees.map((e: any) => e.url))).toEqual([["u0"]]);
-    expect(events.indexOf("fin:avis:1")).toBeGreaterThanOrEqual(0);
-    expect(events.indexOf("fin:avis:1")).toBeLessThan(events.indexOf("fin:fiabilite:2"));
-    const last = r.traces.filter((l) => l.t === "memoire").at(-1);
+    expect(publications(r).map((p) => p.data.map((e: any) => e.url))).toEqual([["u0"]]);
+    expect(events.indexOf("end:avis:1")).toBeGreaterThanOrEqual(0);
+    expect(events.indexOf("end:avis:1")).toBeLessThan(events.indexOf("end:fiabilite:2"));
+    const last = r.traces.filter((l) => l.t === "memory").at(-1);
     expect(r.traces.at(-1)).toBe(last);
     // u1 was never shown: it comes back next time.
-    expect(last.memoire.nv.valeur.map((e: any) => e[0])).toEqual(["u0"]);
+    expect(last.memory.nv.value.map((e: any) => e[0])).toEqual(["u0"]);
   });
 
   it("a publication over 2 MB (DATA_MAX_SIZE) is not sent, and none of its keys is retained before the end of the chain", async () => {
@@ -1845,19 +1845,19 @@ describe("interpreter: streaming chain", () => {
       progressive: true,
       clock: () => clock.t,
       entry: list(2).map((e) => ({ ...e, url: `u${e.n}`, big: big })),
-      blocks: [{ id: "nv", type: "liste.nouveaux", params: { key: "url" } }, ...CHAIN_BLOCKS()],
+      blocks: [{ id: "nv", type: "list.new", params: { key: "url" } }, ...CHAIN_BLOCKS()],
       registry: {
-        "liste.nouveaux": newList,
-        ...chainRegistry(events, {}, { sheet: { clock: clock, duration: (n) => (n === 1 ? 9000 : 1000), turns: (n) => (n === 1 ? 50 : 1) } }),
+        "list.new": newList,
+        ...chainRegistry(events, {}, { fiche: { clock: clock, duration: (n) => (n === 1 ? 9000 : 1000), turns: (n) => (n === 1 ? 50 : 1) } }),
       },
     });
     expect(r.error).toBeNull();
-    expect(publications(r).map((p) => p.donnees.map((e: any) => e.url))).toEqual([["u0"]]);
+    expect(publications(r).map((p) => p.data.map((e: any) => e.url))).toEqual([["u0"]]);
     // Until the end of the chain, no memory retains u1 (never shown by a publication).
-    const chainEnd = r.traces.findIndex((l) => l.t === "bloc" && l.etape === "fin" && l.id === "fiche");
-    const memories = r.traces.slice(0, chainEnd).filter((l) => l.t === "memoire");
+    const chainEnd = r.traces.findIndex((l) => l.t === "block" && l.step === "end" && l.id === "fiche");
+    const memories = r.traces.slice(0, chainEnd).filter((l) => l.t === "memory");
     expect(memories.length).toBeGreaterThan(0);
-    for (const m of memories) expect((m.memoire.nv?.valeur ?? []).map((e: any) => e[0])).not.toContain("u1");
+    for (const m of memories) expect((m.memory.nv?.value ?? []).map((e: any) => e[0])).not.toContain("u1");
     // The output shows everything: u1 is retained at the end.
     expect((r.result!.memory.nv!.value as any[]).map((e) => e[0])).toEqual(["u0", "u1"]);
   });
@@ -1870,10 +1870,10 @@ describe("interpreter: streaming chain", () => {
         // « lent », without a link, runs between the chain (fiche) and the output, and takes 40 s.
         blocks: [
           { id: "src", type: "test.source", params: {} },
-          { id: "nv", type: "liste.nouveaux", params: { key: "url" } },
+          { id: "nv", type: "list.new", params: { key: "url" } },
           { id: "fiche", type: "test.fiche", params: { perItem: true, field: "page" } },
           { id: "lent", type: "test.lent", params: {} },
-          { id: "sortie", type: "sortie", params: { live: true } },
+          { id: "sortie", type: "output", params: { live: true } },
         ],
         links: chain("src", "nv", "fiche", "sortie"),
         order: ["src", "nv", "fiche", "lent", "sortie"],
@@ -1884,27 +1884,27 @@ describe("interpreter: streaming chain", () => {
       call: async () => null,
       trace: (m: any) => traces.push(m),
       blocks: {
-        "test.source": { perItem: "non", run: async () => ({ output: [{ n: 0, url: "u0" }, { n: 1, url: "u1" }] }) },
-        "liste.nouveaux": newList,
+        "test.source": { perItem: "no", run: async () => ({ output: [{ n: 0, url: "u0" }, { n: 1, url: "u1" }] }) },
+        "list.new": newList,
         "test.fiche": step("fiche", []),
         "test.lent": {
-          perItem: "non",
+          perItem: "no",
           async run() {
             clock.t += 40_000;
             return { output: null };
           },
         },
-        output: { perItem: "non", run: async (ctx: any) => ({ output: ctx.entree }) },
+        output: { perItem: "no", run: async (ctx: any) => ({ output: ctx.input }) },
       },
       clock: () => clock.t,
       progressive: true,
     });
-    expect(traces.filter((l) => l.t === "publication").map((p) => p.donnees.map((e: any) => e.url))).toEqual([["u0"]]);
-    const iSlow = traces.findIndex((l) => l.t === "bloc" && l.id === "lent" && l.etape === "fin");
+    expect(traces.filter((l) => l.t === "publication").map((p) => p.data.map((e: any) => e.url))).toEqual([["u0"]]);
+    const iSlow = traces.findIndex((l) => l.t === "block" && l.id === "lent" && l.step === "end");
     const afterSlow = traces[iSlow + 1];
-    expect(afterSlow.t).toBe("memoire");
-    expect(afterSlow.memoire.nv.valeur.map((e: any) => e[0])).toEqual(["u0"]);
-    expect(r.memoire.nv.valeur.map((e: any) => e[0])).toEqual(["u0", "u1"]);
+    expect(afterSlow.t).toBe("memory");
+    expect(afterSlow.memory.nv.value.map((e: any) => e[0])).toEqual(["u0"]);
+    expect(r.memory.nv.value.map((e: any) => e[0])).toEqual(["u0", "u1"]);
   });
 
   it("keys: the key lost before the chain then a failing element in the chain: nothing more is retained (R31)", async () => {
@@ -1912,14 +1912,14 @@ describe("interpreter: streaming chain", () => {
       progressive: true,
       entry: list(3).map((e) => ({ ...e, url: `u${e.n}` })),
       blocks: [
-        { id: "nv", type: "liste.nouveaux", params: { key: "url" } },
+        { id: "nv", type: "list.new", params: { key: "url" } },
         { id: "remodeler", type: "test.remodeler" },
         ...CHAIN_BLOCKS(),
       ],
       registry: {
-        "liste.nouveaux": newList,
-        "test.remodeler": { perItem: "non", run: async (ctx: any) => ({ output: ctx.entree.map((e: any) => ({ n: e.n, url: e.url })) }) },
-        ...chainRegistry([], {}, { notice: { failsOn: 0 } }),
+        "list.new": newList,
+        "test.remodeler": { perItem: "no", run: async (ctx: any) => ({ output: ctx.input.map((e: any) => ({ n: e.n, address: e.url })) }) },
+        ...chainRegistry([], {}, { avis: { failsOn: 0 } }),
       },
     });
     expect(r.error).toBeNull();
@@ -1934,7 +1934,7 @@ describe("interpreter: streaming chain", () => {
         blocks: [
           block("src", "code", { source: "src.mjs" }),
           block("fiche", "source.page", { url: "https://x.fr/{url}", perItem: true, field: "page" }),
-          block("sortie", "sortie", { to: "widget", live: true }),
+          block("sortie", "output", { to: "widget", live: true }),
         ],
         links: chain("src", "fiche", "sortie"),
       },
@@ -1945,7 +1945,7 @@ describe("interpreter: streaming chain", () => {
     expect(r.code).toBe(0);
     const pub = r.lines.find((l) => l.t === "publication");
     expect(pub).toMatchObject({ t: "publication", done: 1, total: 2 });
-    expect(r.lines.indexOf(pub)).toBeLessThan(r.lines.findIndex((l) => l.t === "fin"));
-    expect(r.terminal.donnees).toHaveLength(2);
+    expect(r.lines.indexOf(pub)).toBeLessThan(r.lines.findIndex((l) => l.t === "end"));
+    expect(r.terminal.data).toHaveLength(2);
   });
 });

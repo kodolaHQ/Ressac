@@ -9,7 +9,7 @@ if (!r.ok) throw new Error(r.error);
 const valid: ValidWorkflow = r.valid;
 
 const trace = (id: string, extra: Partial<BlockTrace> = {}): BlockTrace => ({
-  id, type: "code", status: "reussi", start: null, end: null, items: 3, log: [], output: { from: id }, ...extra,
+  id, type: "code", status: "succeeded", start: null, end: null, items: 3, log: [], output: { from: id }, ...extra,
 });
 const origin = (changes: Record<string, Partial<BlockTrace>> = {}, without: string[] = []): Execution => ({
   version: 1, id: "2026-10-29T08-00-00-000Z", owner: { type: "widget", id: "w" }, trigger: "manuelle",
@@ -44,31 +44,31 @@ test("refusal: block absent from the workflow", () => {
 });
 
 test("refusal: upstream output absent (block not launched)", () => {
-  const p = replayPlan(valid, origin({ pages: { status: "pas-lance", output: undefined } }), "resumes");
+  const p = replayPlan(valid, origin({ pages: { status: "not-run", output: undefined } }), "resumes");
   expect(error(p)).toBe("Rejeu impossible : la sortie de « pages » manque dans cette exécution");
 });
 
 test("refusal: upstream output failed", () => {
-  expect(error(replayPlan(valid, origin({ top: { status: "echoue" } }), "resumes"))).toBe(
+  expect(error(replayPlan(valid, origin({ top: { status: "failed" } }), "resumes"))).toBe(
     "Rejeu impossible : la sortie de « top » manque dans cette exécution",
   );
 });
 
 test("refusal: upstream output reused (the origin is itself a trial)", () => {
-  expect(error(replayPlan(valid, origin({ pages: { status: "repris" } }), "resumes"))).toBe(
+  expect(error(replayPlan(valid, origin({ pages: { status: "resumed" } }), "resumes"))).toBe(
     "Rejeu impossible : la sortie de « pages » manque dans cette exécution",
   );
 });
 
 test("refusal: upstream output reused and the trial's origin pruned", () => {
-  const attempt = { ...origin({ pages: { status: "repris", output: undefined } }), id: "e1-essai", attempt: { start: "resumes", origin: "reel" } };
+  const attempt = { ...origin({ pages: { status: "resumed", output: undefined } }), id: "e1-essai", attempt: { start: "resumes", origin: "reel" } };
   expect(error(replayPlan(valid, attempt, "resumes", []))).toBe("Rejeu impossible : la sortie de « pages » manque dans cette exécution");
 });
 
 const attemptOf = (id: string, from: string, changes: Record<string, Partial<BlockTrace>>): Execution => ({
   ...origin(changes), id, trigger: "rejeu", attempt: { start: "resumes", origin: from },
 });
-const resumedWithout = { status: "repris", output: undefined } as const;
+const resumedWithout = { status: "resumed", output: undefined } as const;
 
 test("rejouer from the same block starting from a trial reuses the outputs of its origin, which it names", () => {
   const real = { ...origin({ pages: { items: 8, output: "p-reel" }, top: { items: 15, output: "t-reel" } }), id: "reel" };
@@ -126,7 +126,7 @@ test("refusal: block added upstream since the run", () => {
 });
 
 test("a partial upstream output is reused", () => {
-  const p = replayPlan(valid, origin({ pages: { status: "partiel" } }), "resumes");
+  const p = replayPlan(valid, origin({ pages: { status: "partial" } }), "resumes");
   expect(p.ok).toBe(true);
 });
 
@@ -140,7 +140,7 @@ test("debutTropGros measures the start line with the outputs to reuse", () => {
   // The measure is that of the line actually sent, to the byte (é counts two bytes).
   const line = replay({ a: "é".repeat(1000) });
   expect(lineStartBytes(line)).toBe(Buffer.byteLength(lineStart(line)));
-  expect(JSON.parse(lineStart(line)).rejeu).toEqual({ reruns: ["b"], outputs: { a: "é".repeat(1000) } });
-  // Without replay, the line is the earlier one: no `rejeu` key.
+  expect(JSON.parse(lineStart(line)).replay).toEqual({ reruns: ["b"], outputs: { a: "é".repeat(1000) } });
+  // Without replay, the line is the earlier one: no `replay` key.
   expect("replay" in JSON.parse(lineStart(o))).toBe(false);
 });

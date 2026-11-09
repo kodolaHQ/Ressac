@@ -27,12 +27,12 @@ export interface AmoKey {
 export const KEYCHAIN_DELAY_MS = 10_000;
 
 /**
- * Test: WEBAIOS_TEST_AMO_URL set → WEBAIOS_TEST_AMO_CLES ("emetteur:secret") or null; else the keychain (service webaios-amo),
+ * Test: WEBAIOS_TEST_AMO_URL set → WEBAIOS_TEST_AMO_KEYS ("emetteur:secret") or null; else the keychain (service webaios-amo),
  * null when absent or too slow. `commande` and `delai` are only there for tests.
  */
 export async function readAmoKey(env: NodeJS.ProcessEnv = process.env, o: { command?: string; delay?: number } = {}): Promise<AmoKey | null> {
   if (env.WEBAIOS_TEST_AMO_URL) {
-    const keys = env.WEBAIOS_TEST_AMO_CLES;
+    const keys = env.WEBAIOS_TEST_AMO_KEYS;
     // The issuer itself holds colons (user:<id>:<hash>): the secret is what follows the last one.
     const i = keys?.lastIndexOf(":") ?? -1;
     return keys && i > 0 && i < keys.length - 1 ? { emitter: keys.slice(0, i), secret: keys.slice(i + 1) } : null;

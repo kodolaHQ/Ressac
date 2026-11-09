@@ -33,9 +33,9 @@ async function readWidget(c: SpacePaths, widgetsFolder: string, id: string): Pro
   }
   let example: unknown | null = null;
   try {
-    example = await readJsonIn(folder, "exemple.json");
+    example = await readJsonIn(folder, "example.json");
   } catch {
-    // exemple.json absent or damaged: no example.
+    // example.json absent or damaged: no example.
   }
   const [data, state] = await Promise.all([readData(widgetsFolder, id), readWidgetState(widgetsFolder, id)]);
   const hasWorkflow = existsSync(join(folder, "workflow.json"));
@@ -46,9 +46,9 @@ async function readWidget(c: SpacePaths, widgetsFolder: string, id: string): Pro
     state: state,
     data: data,
     example: example,
-    hasHarvest: hasWorkflow || existsSync(join(folder, "recolte.mjs")),
+    hasHarvest: hasWorkflow || existsSync(join(folder, "harvest.mjs")),
     hasWorkflow,
-    hasDisplay: existsSync(join(folder, "affichage.html")),
+    hasDisplay: existsSync(join(folder, "display.html")),
   };
 }
 

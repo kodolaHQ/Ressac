@@ -6,18 +6,18 @@ import { CONTAINER_PATH, type SpacePaths } from "../paths.js";
 import type { Owner } from "../workflows/schema.js";
 import { defaultRunner, type Runner } from "./runner.js";
 
-export const CONTAINER_NAME = "webaios-atelier";
+export const CONTAINER_NAME = "webaios-workshop";
 // Read on every call so a second app (Firefox build) can run its own container.
-export const containerName = (): string => process.env.WEBAIOS_CONTENEUR || CONTAINER_NAME;
-export const IMAGE = "webaios-atelier:1";
+export const containerName = (): string => process.env.WEBAIOS_CONTAINER || CONTAINER_NAME;
+export const IMAGE = "webaios-workshop:1";
 export const VOLUME_HOME = "webaios-home";
 /**
  * Ports published by the container, the same on the Mac and inside: 5280-5299 by default, out of Vite's range (5173…).
- * Two containers cannot publish the same ports, so a second app (Firefox build) sets WEBAIOS_PORTS_CONTENEUR (`min-max`).
+ * Two containers cannot publish the same ports, so a second app (Firefox build) sets WEBAIOS_CONTAINER_PORTS (`min-max`).
  * Read on every call, like containerName().
  */
 export function containerPortRange(): [number, number] {
-  const m = /^(\d{4,5})-(\d{4,5})$/.exec(process.env.WEBAIOS_PORTS_CONTENEUR ?? "");
+  const m = /^(\d{4,5})-(\d{4,5})$/.exec(process.env.WEBAIOS_CONTAINER_PORTS ?? "");
   const [min, max] = m ? [Number(m[1]), Number(m[2])] : [0, 0];
   return min >= 1024 && max <= 65535 && min <= max ? [min, max] : [5280, 5299];
 }
@@ -28,7 +28,7 @@ export const BUILD_DELAY_MS = 20 * 60_000;
 
 /** Dockerfile folder in the package; a browser that embeds the kernel can provide another. */
 export const DEFAULT_DOCKER_FOLDER = join(import.meta.dirname, "..", "..", "docker");
-const dockerfile = (folder: string) => join(folder, "atelier.Dockerfile");
+const dockerfile = (folder: string) => join(folder, "workshop.Dockerfile");
 const HASH_LABEL = "webaios.dockerfile";
 
 /** Hash of the Dockerfile: the image and the container carry it as a label, to know whether they are up to date. */
@@ -45,13 +45,13 @@ function normalize(path: string): string {
 }
 
 /**
- * Name of a run's container: `webaios-recolte-<id>` for a widget (a bare id is a widget's),
+ * Name of a run's container: `webaios-harvest-<id>` for a widget (a bare id is a widget's),
  * `webaios-action-<id>` for an action. The id goes into a docker name, any dubious id is refused.
  */
 export function harvestName(p: string | Owner): string {
   const { type, id } = typeof p === "string" ? { type: "widget" as const, id: p } : p;
   if (!/^[a-z0-9-]+$/.test(id)) throw new Error(`id ${type === "widget" ? "de widget" : "d'action"} invalide : ${id}`);
-  return type === "widget" ? `webaios-recolte-${id}` : `webaios-action-${id}`;
+  return type === "widget" ? `webaios-harvest-${id}` : `webaios-action-${id}`;
 }
 
 /** Maximum duration of a harvest in its container (seconds), before SIGTERM then SIGKILL 5 s later. */
@@ -214,7 +214,7 @@ export class Workshop {
   /**
    * Run of a workflow, in a disposable container with no network: it sees only the files folder and the
    * engine folder (that of the harvester and its modules), read-only, and talks to the kernel only through its standard input and
-   * output (`-i`). `delaiS`: the container is stopped after this delay (+5 s to finish).
+   * output (`-i`). `delayS`: the container is stopped after this delay (+5 s to finish).
    */
   harvestCommand(owner: string | Owner, filesFolder: string, engine: string, delayS: number = HARVEST_DELAY_S): string[] {
     if (!this.docker) throw new Error("Docker introuvable");
@@ -227,12 +227,12 @@ export class Workshop {
       "--read-only",
       "--tmpfs", "/tmp",
       "-v", `${filesFolder}:/widget:ro`,
-      "-v", `${engine}:/opt/webaios/moteur:ro`,
+      "-v", `${engine}:/opt/webaios/engine:ro`,
       "--memory", "512m",
       "--pids-limit", "128",
       IMAGE,
       "timeout", "-k", "5", String(delayS),
-      "node", "/opt/webaios/moteur/recolteur.mjs", "/widget",
+      "node", "/opt/webaios/engine/harvester.mjs", "/widget",
     ];
   }
 
@@ -243,7 +243,7 @@ export class Workshop {
 
   /**
    * Interactive agent session: the shell notes its PID in the container before becoming the agent (exec), so
-   * that `arreterSession` can kill it there. Killing the local `docker exec` client would leave the agent running.
+   * that `stopSession` can kill it there. Killing the local `docker exec` client would leave the agent running.
    */
   sessionCommand(id: string, argv: string[]): string[] {
     const f = sessionFile(id);
@@ -270,10 +270,10 @@ export class Workshop {
    */
   appCommand(folder: string, command: string, port: number): string[] {
     appFolder(folder);
-    const logs = `${CONTAINER_PATH}/.webaios/journaux`;
+    const logs = `${CONTAINER_PATH}/.webaios/logs`;
     return this.execCommand(
       ["sh", "-c", `mkdir -p ${logs}; exec >"${logs}/$1.log" 2>&1; eval "$2"`, "webaios-app", folder, command.replaceAll("{port}", String(port))],
-      { interactive: false, env: { [VARIABLE_APPLICATION]: folder, PORT: String(port) }, folder: `${CONTAINER_PATH}/projets/${folder}` },
+      { interactive: false, env: { [VARIABLE_APPLICATION]: folder, PORT: String(port) }, folder: `${CONTAINER_PATH}/projects/${folder}` },
     );
   }
 

@@ -8,7 +8,7 @@ export { sitePacing } from "../../../../packages/kernel/src/workflows/pacing";
 export { truncate } from "../../../../packages/kernel/src/devtools/summaries";
 export type { DevRight } from "../../../../packages/kernel/src/access/policy";
 export type { ChangeHost } from "../../../../packages/kernel/src/workflows/pacing";
-export type { ReadPage } from "../../../../packages/kernel/src/workflows/protocole";
+export type { ReadPage } from "../../../../packages/kernel/src/workflows/protocol";
 // Copied: design/remarks.ts imports node:crypto and node:fs. What core/design/viewfinder.ts imports, so it
 // loads as is in the store (test/shims.test.ts compares them with the originals).
 import { HTML_MAX, TRUNCATED } from "../../shared/design-guards";

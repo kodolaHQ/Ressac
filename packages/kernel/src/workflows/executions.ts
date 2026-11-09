@@ -18,8 +18,8 @@ export const BlockTrace = z.object({
   id: z.string(),
   type: z.string(),
   // « interrompu »: started, not finished, when WebAiOs stopped during the run.
-  // « repris »: output taken from the original run of a try, without being copied (`elements` is).
-  status: z.enum(["reussi", "partiel", "echoue", "interrompu", "pas-lance", "repris"]),
+  // « repris »: output taken from the original run of a try, without being copied (`items` is).
+  status: z.enum(["succeeded", "partial", "failed", "interrupted", "not-run", "resumed"]),
   start: z.string().nullable(),
   end: z.string().nullable(),
   items: z.number().nullable(),

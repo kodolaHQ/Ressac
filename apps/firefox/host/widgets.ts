@@ -22,14 +22,14 @@ import type { ShownWidget } from "../shared/api.ts";
 const ID_WIDGET = /^[a-z0-9-]+$/;
 /** The frame's URL: the sanitized copy that the sidebar writes, dated with the source's mtime (a new mtime reloads). */
 function displayUrl(id: string, mtime: number): string {
-  return `resource://webaios-widget-${id}/affichage-${mtime}.html`;
+  return `resource://webaios-widget-${id}/display-${mtime}.html`;
 }
 /** Size given to an unreadable widget (without declaration), so that it keeps a place and shows its error. */
 const UNREADABLE_WIDGET_SIZE = { l: 4, h: 2 };
 
 /**
  * What the UI displays: each widget in its place, with its data, its example and its state. `placements`: what
- * disposition.json says; absent widgets are placed in the first gap. `mtimes`: date of affichage.html per widget,
+ * disposition.json says; absent widgets are placed in the first gap. `mtimes`: date of display.html per widget,
  * to force the frame to reload when the agent rewrites it.
  */
 export function toShownWidgets(o: {

@@ -108,8 +108,8 @@ test("built: app:<folder> and localhost:5285 opened by the agent have the four r
   expect(p.isBuilt(port3000)).toBe(false);
 });
 
-test("built: the default demo range follows WEBAIOS_PORTS_CONTENEUR", () => {
-  vi.stubEnv("WEBAIOS_PORTS_CONTENEUR", "5300-5319");
+test("built: the default demo range follows WEBAIOS_CONTAINER_PORTS", () => {
+  vi.stubEnv("WEBAIOS_CONTAINER_PORTS", "5300-5319");
   try {
     const q = new AccessPolicy();
     const d5305 = { ...demo, url: "http://localhost:5305/" };

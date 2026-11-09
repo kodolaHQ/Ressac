@@ -19,13 +19,13 @@ test("actionsDirect: a current action becomes a run (or a trial) of its key, wit
         input: "x",
         attempt: true,
         step: "workflow",
-        blocks: { read: { status: "en-cours", items: null, host: "gitlab.com", done: 1, total: 3, type: "source.page" } },
+        blocks: { lire: { status: "running", items: null, host: "gitlab.com", done: 1, total: 3, type: "source.page" } },
       },
     ],
     waiting: [{ action: "autre", since: "2026-10-31T08:00:00.000Z" }],
   });
   expect(d).toEqual({
-    running: [{ widget: "action:gitlab", kind: "essai", start: "2026-10-31T08:00:00.000Z", blocks: { read: { status: "en-cours", items: null } } }],
+    running: [{ widget: "action:gitlab", kind: "essai", start: "2026-10-31T08:00:00.000Z", blocks: { lire: { status: "running", items: null } } }],
     waiting: ["action:autre"],
   });
 });

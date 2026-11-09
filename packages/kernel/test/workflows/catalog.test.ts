@@ -18,31 +18,31 @@ test("each registry type has a label, a family and a field per key of its schema
     expect(block.fields.map((c) => c.name).sort(), type).toEqual(keys);
     for (const c of block.fields) expect(c.label.length, `${type}.${c.name}`).toBeGreaterThan(0);
   }
-  expect(field("source.page", "url").kind).toBe("gabarit");
-  expect(from("sortie").label).toBe("Sortie vers le widget");
+  expect(field("source.page", "url").kind).toBe("template");
+  expect(from("output").label).toBe("Sortie vers le widget");
   expect(from("code").family).toBe("Logique/Code");
 });
 
 test("the fields' defaults and bounds are those of the zod schemas", () => {
-  expect(field("ia.trier", "seuil")).toMatchObject({ required: false, default: 0.5, min: 0, max: 1, kind: "nombre" });
-  expect(field("liste.garder", "nombre")).toMatchObject({ required: true, min: 1, max: 1000, integer: true });
-  expect(field("code", "appel")).toMatchObject({ kind: "choix", choices: ["entree", "recolte"], default: "entree" });
-  expect(field("ia.rediger", "texteMax")).toMatchObject({ default: 12_000, min: 1, max: 200_000, integer: true });
-  expect(field("source.page", "champ")).toMatchObject({ default: "page", required: false });
-  expect(field("source.page", "defiler")).toMatchObject({ kind: "nombre", required: false, min: 0, max: 20, integer: true });
-  expect(field("source.page", "defiler")).not.toHaveProperty("defaut");
-  expect(field("sortie", "vers").kind).toBe("choix");
-  expect(field("sortie", "vers").choices).toEqual(["widget", "page"]);
-  expect(field("liste.dedoublonner", "cles").kind).toBe("textes");
-  expect(field("source.page", "compte").kind).toBe("case");
+  expect(field("ai.sort", "threshold")).toMatchObject({ required: false, default: 0.5, min: 0, max: 1, kind: "number" });
+  expect(field("list.keep", "count")).toMatchObject({ required: true, min: 1, max: 1000, integer: true });
+  expect(field("code", "call")).toMatchObject({ kind: "choice", choices: ["input", "harvest"], default: "input" });
+  expect(field("ai.write", "maxText")).toMatchObject({ default: 12_000, min: 1, max: 200_000, integer: true });
+  expect(field("source.page", "field")).toMatchObject({ default: "page", required: false });
+  expect(field("source.page", "scroll")).toMatchObject({ kind: "number", required: false, min: 0, max: 20, integer: true });
+  expect(field("source.page", "scroll")).not.toHaveProperty("default");
+  expect(field("output", "to").kind).toBe("choice");
+  expect(field("output", "to").choices).toEqual(["widget", "page"]);
+  expect(field("list.dedupe", "keys").kind).toBe("texts");
+  expect(field("source.page", "account").kind).toBe("checkbox");
 });
 
 test("required parameters have a neutral default to prefill the palette", () => {
-  expect(field("liste.garder", "nombre").default).toBe(10);
-  expect(field("liste.nouveaux", "cle").default).toBe("url");
-  expect(field("liste.dedoublonner", "cles").default).toEqual(["url"]);
+  expect(field("list.keep", "count").default).toBe(10);
+  expect(field("list.new", "key").default).toBe("url");
+  expect(field("list.dedupe", "keys").default).toEqual(["url"]);
   // R23: never a default address, the block stays invalid until the address is entered.
-  const urls = ["source.page.url", "source.recuperer.url", "source.flux.urls"];
+  const urls = ["source.page.url", "source.fetch.url", "source.feed.urls"];
   for (const b of catalog) {
     for (const c of b.fields) {
       const name = `${b.type}.${c.name}`;
@@ -52,23 +52,23 @@ test("required parameters have a neutral default to prefill the palette", () => 
   }
 });
 
-test("the common per-element mode fields are marked, except for ia.trier", () => {
-  for (const name of ["siErreur", "budgetSecondes", "reutiliser"]) {
+test("the common per-element mode fields are marked, except for ai.sort", () => {
+  for (const name of ["onError", "budgetSeconds", "reuse"]) {
     expect(field("source.page", name).perItemOnly).toBe(true);
-    expect(field("ia.trier", name).perItemOnly).toBeUndefined();
+    expect(field("ai.sort", name).perItemOnly).toBeUndefined();
   }
-  expect(field("source.page", "parElement").perItemOnly).toBeUndefined();
-  expect(field("source.page", "champ").perItemOnly).toBeUndefined();
-  expect(field("source.flux", "siErreur").perItemOnly).toBeUndefined();
-  expect(from("ia.trier").fields.some((c) => c.name === "parElement")).toBe(false);
+  expect(field("source.page", "perItem").perItemOnly).toBeUndefined();
+  expect(field("source.page", "field").perItemOnly).toBeUndefined();
+  expect(field("source.feed", "onError").perItemOnly).toBeUndefined();
+  expect(from("ai.sort").fields.some((c) => c.name === "perItem")).toBe(false);
 });
 
 test("the input of each type", () => {
   const entries = Object.fromEntries(catalog.map((b) => [b.type, b.input]));
   expect(entries).toEqual({
-    "source.page": "parElement", "source.flux": "facultative", "source.recuperer": "parElement",
-    "web.chercher": "parElement", "liste.nouveaux": "requise", "liste.dedoublonner": "requise", "liste.garder": "requise",
-    "ia.trier": "requise", "ia.rediger": "parElement", code: "facultative", output: "requise",
+    "source.page": "perItem", "source.feed": "optional", "source.fetch": "perItem",
+    "web.search": "perItem", "list.new": "required", "list.dedupe": "required", "list.keep": "required",
+    "ai.sort": "required", "ai.write": "perItem", code: "optional", output: "required",
   });
 });
 
@@ -85,32 +85,32 @@ test("the families follow the order Sources, Listes, IA, Logique/Code, Sortie", 
   expect(new Set(catalog.map((b) => b.family))).toEqual(new Set(order));
 });
 
-test("garderJours, auFilDeLEau and the budgetSecondes bound in the catalog", () => {
-  for (const type of ["source.page", "source.recuperer", "ia.rediger"]) {
-    expect(field(type, "garderJours"), type).toMatchObject({ label: "Garder (jours)", help: "Sans valeur : pour toujours.", required: false, kind: "nombre", min: 1, max: 365, integer: true, perItemOnly: true });
-    expect(field(type, "budgetSecondes"), type).toMatchObject({ max: 3600, help: "170 s au plus, ou la durée maximale de l'exécution" });
+test("keepDays, live and the budgetSeconds bound in the catalog", () => {
+  for (const type of ["source.page", "source.fetch", "ai.write"]) {
+    expect(field(type, "keepDays"), type).toMatchObject({ label: "Garder (jours)", help: "Sans valeur : pour toujours.", required: false, kind: "number", min: 1, max: 365, integer: true, perItemOnly: true });
+    expect(field(type, "budgetSeconds"), type).toMatchObject({ max: 3600, help: "170 s au plus, ou la durée maximale de l'exécution" });
   }
-  expect(field("ia.trier", "garderJours").perItemOnly).toBeUndefined();
-  expect(field("liste.nouveaux", "garderJours")).toMatchObject({ label: "Oublier après (jours)", required: false, kind: "nombre", min: 1, max: 365, integer: true });
-  expect(field("sortie", "auFilDeLEau")).toMatchObject({ label: "Publier au fil de l'eau", required: false, kind: "case" });
+  expect(field("ai.sort", "keepDays").perItemOnly).toBeUndefined();
+  expect(field("list.new", "keepDays")).toMatchObject({ label: "Oublier après (jours)", required: false, kind: "number", min: 1, max: 365, integer: true });
+  expect(field("output", "live")).toMatchObject({ label: "Publier au fil de l'eau", required: false, kind: "checkbox" });
   // Without a default value: the key stays absent until the user ticks it (absent = false).
-  expect(field("sortie", "auFilDeLEau")).not.toHaveProperty("defaut");
-  expect(from("source.page")).not.toHaveProperty("chaine");
+  expect(field("output", "live")).not.toHaveProperty("default");
+  expect(from("source.page")).not.toHaveProperty("chain");
 });
 
-test("web.chercher is in the Sources family, after Récupérer une adresse", () => {
+test("web.search is in the Sources family, after Récupérer une adresse", () => {
   const types = catalog.map((b) => b.type);
-  expect(types.indexOf("web.chercher")).toBe(types.indexOf("source.recuperer") + 1);
-  expect(from("web.chercher")).toMatchObject({
+  expect(types.indexOf("web.search")).toBe(types.indexOf("source.fetch") + 1);
+  expect(from("web.search")).toMatchObject({
     label: "Chercher sur le web",
     family: "Sources",
     description: "Cherche sur DuckDuckGo et rend les résultats (titre, adresse, extrait).",
     perItem: "option",
-    input: "parElement",
+    input: "perItem",
   });
-  expect(from("web.chercher").fields.map((c) => c.name)).toEqual(["requete", "nombre", "parElement", "siErreur", "budgetSecondes", "reutiliser", "garderJours", "champ"]);
-  expect(field("web.chercher", "requete")).toMatchObject({ kind: "gabarit", required: true });
-  expect(field("web.chercher", "nombre")).toMatchObject({ kind: "nombre", required: false, default: 8, min: 1, max: 20, integer: true });
-  expect(field("web.chercher", "champ")).toMatchObject({ kind: "texte", required: false, default: "recherche" });
-  expect(BLOCK_REGISTRY.get("web.chercher")!.chain).toBe(true);
+  expect(from("web.search").fields.map((c) => c.name)).toEqual(["query", "count", "perItem", "onError", "budgetSeconds", "reuse", "keepDays", "field"]);
+  expect(field("web.search", "query")).toMatchObject({ kind: "template", required: true });
+  expect(field("web.search", "count")).toMatchObject({ kind: "number", required: false, default: 8, min: 1, max: 20, integer: true });
+  expect(field("web.search", "field")).toMatchObject({ kind: "text", required: false, default: "search" });
+  expect(BLOCK_REGISTRY.get("web.search")!.chain).toBe(true);
 });

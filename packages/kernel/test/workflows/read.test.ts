@@ -17,23 +17,23 @@ afterEach(() => rm(root, { recursive: true, force: true }));
 
 const valid = {
   version: 1,
-  blocks: [{ id: "a", type: "code", params: { source: "a.mjs" } }, { id: "s", type: "sortie", params: { to: "widget" } }],
+  blocks: [{ id: "a", type: "code", params: { source: "a.mjs" } }, { id: "s", type: "output", params: { to: "widget" } }],
   links: [{ from: "a", to: "s" }],
 };
 
-test("workflow.json wins over recolte.mjs", async () => {
+test("workflow.json wins over harvest.mjs", async () => {
   await writeFile(join(folder, "workflow.json"), JSON.stringify(valid));
-  await writeFile(join(folder, "recolte.mjs"), "export default () => 1");
+  await writeFile(join(folder, "harvest.mjs"), "export default () => 1");
   const lu = await readWorkflow(folder);
   expect(lu?.origin).toBe("fichier");
   expect(lu?.result.ok && lu.result.valid.order).toEqual(["a", "s"]);
 });
 
-test("recolte.mjs alone gives the implicit workflow", async () => {
-  await writeFile(join(folder, "recolte.mjs"), "export default () => 1");
+test("harvest.mjs alone gives the implicit workflow", async () => {
+  await writeFile(join(folder, "harvest.mjs"), "export default () => 1");
   const lu = await readWorkflow(folder);
   expect(lu?.origin).toBe("implicite");
-  expect(lu?.result.ok && lu.result.valid.order).toEqual(["recolte", "sortie"]);
+  expect(lu?.result.ok && lu.result.valid.order).toEqual(["harvest", "output"]);
 });
 
 test("neither: null", async () => {
@@ -61,8 +61,8 @@ test("a symbolic link that leaves the folder is refused", async () => {
   expect(errorOf(lu?.result)).toContain("sort du dossier du widget");
 });
 
-test("a workflow.json as a broken symbolic link is invalid, without falling back to recolte.mjs nor a path in the message", async () => {
-  await writeFile(join(folder, "recolte.mjs"), "export default () => 1");
+test("a workflow.json as a broken symbolic link is invalid, without falling back to harvest.mjs nor a path in the message", async () => {
+  await writeFile(join(folder, "harvest.mjs"), "export default () => 1");
   await symlink(join(folder, "absent.json"), join(folder, "workflow.json"));
   const lu = await readWorkflow(folder);
   expect(lu?.origin).toBe("fichier");

@@ -1,4 +1,4 @@
-// Workflow engine harness: launches recolteur.mjs in a Node process and answers its calls.
+// Workflow engine harness: launches harvester.mjs in a Node process and answers its calls.
 import { spawn } from "node:child_process";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -6,10 +6,10 @@ import { tempFolder } from "./temp.js";
 import { DEFAULT_CONTEXT, validateWorkflow, type ValidationContext } from "../../src/workflows/validate.js";
 import type { BlocksMemory } from "../../src/workflows/memory.js";
 
-export const ENGINE = join(import.meta.dirname, "..", "..", "docker", "moteur");
-export const SCRIPT = join(ENGINE, "recolteur.mjs");
+export const ENGINE = join(import.meta.dirname, "..", "..", "docker", "engine");
+export const SCRIPT = join(ENGINE, "harvester.mjs");
 
-export type Call = { t: "appel"; n: number; f: string; a: any };
+export type Call = { t: "call"; n: number; f: string; a: any };
 export type Responder = (call: Call) => Promise<{ ok: unknown } | { error: string }> | { ok: unknown } | { error: string };
 
 /**
@@ -53,16 +53,16 @@ export async function launch(o: {
       buffer = buffer.slice(i + 1);
       const m = JSON.parse(line);
       lines.push(m);
-      if (m.t === "appel") {
+      if (m.t === "call") {
         calls.push(m);
         const reply = o.reply ?? (() => ({ ok: null }));
-        void Promise.resolve(reply(m)).then((r) => child.stdin.write(JSON.stringify({ t: "reponse", n: m.n, ...r }) + "\n"));
+        void Promise.resolve(reply(m)).then((r) => child.stdin.write(JSON.stringify({ t: "answer", n: m.n, ...r }) + "\n"));
       }
     }
   });
   child.stdin.write(
     JSON.stringify({
-      t: "debut",
+      t: "start",
       previous: o.previous ?? null,
       now: "2026-10-29T10:00:00.000Z",
       config: o.config ?? null,
@@ -71,19 +71,19 @@ export async function launch(o: {
       ...o.start,
     }) + "\n",
   );
-  child.stdin.write(JSON.stringify({ t: "memoire", memory: o.memory ?? {} }) + "\n");
+  child.stdin.write(JSON.stringify({ t: "memory", memory: o.memory ?? {} }) + "\n");
   const code = await finished;
   return {
     code,
     lines,
     calls: calls,
     stderr,
-    traces: lines.filter((l) => l.t !== "appel"),
-    terminal: lines.find((l) => l.t === "fin" || l.t === "echec"),
-    blockEnd: (id: string) => lines.find((l) => l.t === "bloc" && l.id === id && l.etape === "fin"),
+    traces: lines.filter((l) => l.t !== "call"),
+    terminal: lines.find((l) => l.t === "end" || l.t === "failure"),
+    blockEnd: (id: string) => lines.find((l) => l.t === "block" && l.id === id && l.step === "end"),
   };
 }
 
 export const block = (id: string, type: string, params: Record<string, unknown> = {}) => ({ id, type, params: params });
 export const chain = (...ids: string[]) => ids.slice(1).map((to, i) => ({ from: ids[i]!, to: to }));
-export const output = block("sortie", "sortie", { to: "widget" });
+export const output = block("sortie", "output", { to: "widget" });

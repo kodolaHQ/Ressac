@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import type { SpacePaths } from "../paths.js";
 
-const WILDCARDS = { mcpConfig: "{mcpConfig}", prompt: "{consigne}" } as const;
+const WILDCARDS = { mcpConfig: "{mcpConfig}", prompt: "{prompt}" } as const;
 
 export const Profile = z.object({
   id: z.string().min(1),
@@ -12,7 +12,7 @@ export const Profile = z.object({
   interactive: z.array(z.string()).min(1),
   // Background tasks never have access to the browser's tools (spec §8.2).
   nonInteractive: z.array(z.string()).min(1).refine((a) => !a.includes(WILDCARDS.mcpConfig), {
-    message: "nonInteractif ne doit pas recevoir {mcpConfig}",
+    message: "nonInteractive ne doit pas recevoir {mcpConfig}",
   }),
   mcpConfig: z.literal("claude-json"),
 });
@@ -43,7 +43,7 @@ export function buildCommand(
 ): string[] {
   const model = p[mode];
   if (mode === "nonInteractive" && model.includes(WILDCARDS.mcpConfig)) {
-    throw new Error(`Profil ${p.id} : nonInteractif ne doit pas recevoir {mcpConfig}`);
+    throw new Error(`Profil ${p.id} : nonInteractive ne doit pas recevoir {mcpConfig}`);
   }
   return model.map((arg) => {
     for (const [key, wildcard] of Object.entries(WILDCARDS) as [keyof typeof WILDCARDS, string][]) {

@@ -1,6 +1,6 @@
 import type { DevRight } from "../access/policy.js";
 import type { CpuProfile } from "../devtools/summaries.js";
-import type { ReadPage } from "../workflows/protocole.js";
+import type { ReadPage } from "../workflows/protocol.js";
 import {
   TabNotFound,
   PrivateTab,

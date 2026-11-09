@@ -150,12 +150,12 @@ async function launchWatch(): Promise<Marionette> {
 /** The ads' extraction from the search page (the `annonces.mjs` the agent would write). */
 const ANNOUNCEMENTS_MJS = `export default async (page) => {
   const annonces = [];
-  for (const l of page.liens) {
+  for (const l of page.links) {
     if (!l.url.includes("/annonce/")) continue;
-    const [nom, prix] = l.texte.split(" – ");
+    const [nom, prix] = l.text.split(" – ");
     const [marque, ...reste] = nom.split(" ");
     const modele = reste.join(" ");
-    annonces.push({ titre: l.texte, url: l.url, prix, marque, modele, ...(marque && modele ? { modeleComplet: marque + " " + modele } : {}) });
+    annonces.push({ titre: l.text, url: l.url, prix, marque, modele, ...(marque && modele ? { modeleComplet: marque + " " + modele } : {}) });
   }
   if (annonces.length === 0) throw new Error("Aucune annonce trouvée : Leboncoin a peut-être bloqué la lecture");
   return annonces;
@@ -177,18 +177,18 @@ async function writeWatch(): Promise<void> {
       blocks: [
         { id: "recherche", type: "source.page", params: { url: "{config.recherche}" } },
         { id: "annonces", type: "code", params: { source: "annonces.mjs" } },
-        { id: "nouvelles", type: "liste.nouveaux", params: { key: "url", keepDays: 30 } },
-        { id: "tri", type: "ia.trier", params: { question: "Cette annonce correspond-elle à : {config.criteres} ?", text: "{titre}" } },
-        { id: "top", type: "liste.garder", params: { count: 10 } },
+        { id: "nouvelles", type: "list.new", params: { key: "url", keepDays: 30 } },
+        { id: "tri", type: "ai.sort", params: { question: "Cette annonce correspond-elle à : {config.criteres} ?", text: "{titre}" } },
+        { id: "top", type: "list.keep", params: { count: 10 } },
         { id: "fiche", type: "source.page", params: { url: "{url}", perItem: true, field: "fiche" } },
         {
           id: "fiabilite",
-          type: "web.chercher",
+          type: "web.search",
           params: { query: "fiabilité {marque} {modele}", perItem: true, field: "fiabilite", reuse: "modeleComplet", keepDays: 30 },
         },
         {
           id: "avis",
-          type: "ia.rediger",
+          type: "ai.write",
           params: {
             perItem: true,
             field: "avis",
@@ -196,7 +196,7 @@ async function writeWatch(): Promise<void> {
               "Donne en trois phrases l'intérêt de cette annonce pour : {config.criteres}. Si l'annonce est une page de vérification ou ne décrit pas une voiture, ne réponds rien. Si aucun résultat de recherche n'est donné, juge sans. --- DÉBUT DE L'ANNONCE --- {fiche.texte} --- FIN DE L'ANNONCE --- --- DÉBUT DES RÉSULTATS DE RECHERCHE --- {fiabilite?} --- FIN DES RÉSULTATS DE RECHERCHE ---",
           },
         },
-        { id: "sortie", type: "sortie", params: { to: "widget", live: true } },
+        { id: "sortie", type: "output", params: { to: "widget", live: true } },
       ],
       links: [
         { from: "recherche", to: "annonces" },
@@ -209,7 +209,7 @@ async function writeWatch(): Promise<void> {
         { from: "avis", to: "sortie" },
       ],
     },
-    files: { "annonces.mjs": ANNOUNCEMENTS_MJS, "exemple.json": "[]" },
+    files: { "annonces.mjs": ANNOUNCEMENTS_MJS, "example.json": "[]" },
   });
   // « Up to date, hour of the day done »: no run starts by itself during the test.
   const now = new Date().toISOString();
@@ -370,7 +370,7 @@ it("a listing whose page fails comes back at the next run", async () => {
   settings.failingPages.add(3);
   const first = await runWatch(m);
   expect(first.status).toBe("partielle");
-  expect(blockStatus(first, "fiche")).toBe("partiel");
+  expect(blockStatus(first, "fiche")).toBe("partial");
   const withoutPage = watchData()!.find((a) => a.url === adUrl(3))!;
   expect(withoutPage.sheet).toBeUndefined();
   expect(withoutPage.notice).toBeUndefined();
@@ -396,7 +396,7 @@ it("a long watch in progress does not prevent a short widget from updating", asy
   await writeWidget(dataDir, "court", {
     name: "Court",
     harvest: { minutes: 60 },
-    files: { "recolte.mjs": "export default async () => ({ court: true });", "exemple.json": JSON.stringify({ example: "court" }) },
+    files: { "harvest.mjs": "export default async () => ({ court: true });", "example.json": JSON.stringify({ example: "court" }) },
   });
   const m = await launchWatch();
   await untilEqual(() => shown(m, "court"), '{"exemple":"court"}');
@@ -420,7 +420,7 @@ it("DuckDuckGo shows a check: a single request sent, notice without reliability,
   const run = await runWatch(m);
   // One request: after the refusal, the run's next searches are not sent.
   expect(searches(from)).toHaveLength(1);
-  expect(blockStatus(run, "fiabilite")).toBe("partiel");
+  expect(blockStatus(run, "fiabilite")).toBe("partial");
   expect(run.blocks.find((b) => b.id === "fiabilite")!.log.join("\n")).toContain("Recherche refusée par DuckDuckGo (vérification anti-robot)");
   expect(run.status).toBe("partielle");
   // No ad has a reliability; the opinion is written without ({fiabilite?}, see AGENTS.md).
@@ -454,14 +454,14 @@ it("DuckDuckGo shows a check: a single request sent, notice without reliability,
   expect(notifications()).toEqual([NOTIFICATION]);
 }, 180_000);
 
-it('the Gmail widget (account, recolte.mjs) updates as before; with "web": true added, it shows in error with the exact message', async () => {
+it('the Gmail widget (account, harvest.mjs) updates as before; with "web": true added, it shows in error with the exact message', async () => {
   const gmail = {
     name: "Gmail",
     harvest: { minutes: 60 },
     declaration: { sources: { account: ["127.0.0.1"], public: [] }, config: { url: `${site.url}/court` } },
     files: {
-      "recolte.mjs": "export default async (webaios) => ({ titre: (await webaios.lirePage(webaios.config.url, { compte: true })).titre });",
-      "exemple.json": JSON.stringify({ example: "gmail" }),
+      "harvest.mjs": "export default async (webaios) => ({ titre: (await webaios.readPage(webaios.config.url, { account: true })).title });",
+      "example.json": JSON.stringify({ example: "gmail" }),
     },
   };
   await writeWidget(dataDir, "gmail", gmail);

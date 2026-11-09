@@ -126,7 +126,7 @@ function widgetFiles(dataDir: string, id: string, display: string): void {
     path.join(dir, "widget.json"),
     JSON.stringify({ name: id, description: "", sizes: { min: { l: 2, h: 1 }, max: { l: 6, h: 4 }, default: { l: 3, h: 2 } }, sources: { account: [], public: [], web: false } }),
   );
-  writeFileSync(path.join(dir, "affichage.html"), display);
+  writeFileSync(path.join(dir, "display.html"), display);
 }
 
 describe.skipIf(!process.env.WEBAIOS_SPIKE)("the UI's network, spikes S1–S3", () => {

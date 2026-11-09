@@ -432,7 +432,7 @@ function createToolsServer(
     server.registerTool(
       "launch_app",
       {
-        description: "Lance le projet /workspace/projets/<folder> d'après son webaios.json et ouvre sa fenêtre pour l'utilisateur.",
+        description: "Lance le projet /workspace/projects/<folder> d'après son webaios.json et ouvre sa fenêtre pour l'utilisateur.",
         inputSchema: { folder: folderSchema },
       },
       protect(async ({ folder: folder }) => {
@@ -617,7 +617,7 @@ function registerWidgetsTools(
     {
       description:
         "Dernières données récoltées d'un widget. Pour un widget qui lit avec le compte de l'utilisateur, une carte lui demande " +
-        "l'accord, valable pour cette conversation. Pour construire un affichage, exemple.json suffit le plus souvent.",
+        "l'accord, valable pour cette conversation. Pour construire un affichage, example.json suffit le plus souvent.",
       inputSchema: { id: ID_WIDGET },
     },
     protect(async ({ id }) => {

@@ -4,10 +4,10 @@ import { COLUMN_PX, ROW_PX } from "./layout";
 type Position = { x: number; y: number };
 
 /** The file of a new `code` block: it returns its input as is. */
-export const CODE_MODEL = "export default async (entree, webaios) => {\n  return entree;\n};\n";
+export const CODE_MODEL = "export default async (input, webaios) => {\n  return input;\n};\n";
 
 /**
- * Parameters of a new block: the required fields that have a neutral value in the catalog (`liste.garder`: 10…). A
+ * Parameters of a new block: the required fields that have a neutral value in the catalog (`list.keep`: 10…). A
  * new unlinked block then only fails on its input; an address, with no neutral value, is left to fill in.
  */
 export function freshParams(c: BlockCatalogEntry): Record<string, unknown> {

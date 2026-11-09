@@ -24,7 +24,7 @@ import { readWorkflow } from "../workflows/read.js";
 import type { Pacing } from "../workflows/pacing.js";
 import { withMemory, writeMemory, readMemory, type BlocksMemory } from "../workflows/memory.js";
 import { countNew } from "./nouveautes.js";
-import { startTooBig } from "../workflows/protocole.js";
+import { startTooBig } from "../workflows/protocol.js";
 import { REPLAY_DEPTH, REPLAY_TOO_BIG, replayPlan } from "../workflows/replay.js";
 import { INVALID_WORKFLOW_PREFIX, type Owner } from "../workflows/schema.js";
 import type { ValidationContext, ValidWorkflow } from "../workflows/validate.js";
@@ -37,7 +37,7 @@ export interface HarvestOptions {
   id: string;
   widget: WidgetLu;
   widgetsFolder: string;
-  /** Folder of the workflow engine on the Mac (`docker/moteur`), mounted read-only in the container. */
+  /** Folder of the workflow engine on the Mac (`docker/engine`), mounted read-only in the container. */
   engine: string;
   workshop: Pick<Workshop, "harvestCommand" | "deleteHarvest">;
   launch?: ProcessLauncher;
@@ -81,7 +81,7 @@ const ID = /^[a-z0-9-]+$/;
 export const grantRequired = (d: DeclarationWidget) => `Accord requis pour lire avec ton compte : ${d.sources.account.join(", ")}`;
 export const WORKSHOP_STOPPED_ERROR = "Mise à jour impossible : atelier arrêté";
 export const INTERNAL_HARVEST_ERROR = "Mise à jour impossible : erreur interne du navigateur";
-export const NO_WORKFLOW_ERROR = "Ce widget n'a ni workflow.json ni recolte.mjs";
+export const NO_WORKFLOW_ERROR = "Ce widget n'a ni workflow.json ni harvest.mjs";
 export const INTERRUPTED_ERROR = "Interrompue : WebAiOs s'est arrêté";
 
 /** Fixed error messages written by the kernel; any other error text may have been written by the widget. */
@@ -94,7 +94,7 @@ const FIXED_ERRORS = new Set([
   NO_WORKFLOW_ERROR,
   INTERRUPTED_ERROR,
   // Old message, still in states written before the workflows.
-  "Ce widget n'a pas de recolte.mjs",
+  "Ce widget n'a pas de harvest.mjs",
   "Données trop grosses (2 Mo au plus)",
 ]);
 const escapeChar = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -114,7 +114,7 @@ export function kernelError(error: string): boolean {
   return FIXED_ERRORS.has(error) || ERROR_PATTERNS.some((m) => m.test(error));
 }
 
-/** A widget's workflow: `workflow.json`, or `recolte.mjs` alone (implicit workflow). */
+/** A widget's workflow: `workflow.json`, or `harvest.mjs` alone (implicit workflow). */
 type WidgetWorkflow =
   | { t: "ok"; valid: ValidWorkflow; declaration: DeclarationWidget }
   /** The widget is unreadable: its error may quote its files. */
@@ -219,7 +219,7 @@ export function markInterrupted(execution: Execution): void {
   execution.status = "interrompue";
   execution.error = INTERRUPTED_ERROR;
   execution.kernelError = true;
-  execution.blocks = execution.blocks.map((b) => (b.start !== null && b.end === null ? { ...b, status: "interrompu" } : b));
+  execution.blocks = execution.blocks.map((b) => (b.start !== null && b.end === null ? { ...b, status: "interrupted" } : b));
 }
 
 /** Status and error from before a run (those from before the previous one, if it did not finish itself). */
@@ -229,7 +229,7 @@ function stateBeforeRun(e: WidgetState): NonNullable<WidgetState["before"]> {
 }
 
 /**
- * A widget's harvest: the run of its workflow (`workflow.json`, or `recolte.mjs` alone, as an implicit workflow)
+ * A widget's harvest: the run of its workflow (`workflow.json`, or `harvest.mjs` alone, as an implicit workflow)
  * by the engine, which writes nothing. Here, what is kept: `etat.json` (en-cours at the start), and depending on the outcome
  * `donnees.json`, `memoire.json` and the run. For a widget with an account, the grant is re-read after each write:
  * withdrawn, everything read with it goes (data, runs, memory) and the widget waits for a new grant.
@@ -310,7 +310,7 @@ export async function runHarvest(o: HarvestOptions): Promise<HarvestResult> {
     const notRun: BlockTrace[] = valid.order.map((b) => ({
       id: b,
       type: valid.workflow.blocks.find((x) => x.id === b)!.type,
-      status: "pas-lance",
+      status: "not-run",
       start: null,
       end: null,
       items: null,
@@ -395,7 +395,7 @@ export async function runHarvest(o: HarvestOptions): Promise<HarvestResult> {
   };
   if (await removedGrant()) return denied();
 
-  if (outcome.t === "fin") {
+  if (outcome.t === "end") {
     try {
       if (outcome.output.to === "widget") await writeData(widgetsFolder, id, outcome.output.value);
     } catch (e) {
@@ -429,8 +429,8 @@ export async function runHarvest(o: HarvestOptions): Promise<HarvestResult> {
   const interrupted = o.interrupted?.() === true && execution.status !== "accord-requis";
   if (interrupted) markInterrupted(execution);
   // Progressive run: its last safe memory is kept (never when it stops for lack of a grant).
-  const memory = outcome.t === "arret" && outcome.status === "accord-requis" ? null : outcome.memory;
-  return outcome.t === "arret"
+  const memory = outcome.t === "stop" && outcome.status === "accord-requis" ? null : outcome.memory;
+  return outcome.t === "stop"
     ? concludeWithoutData(execution, { status: outcome.status, error: outcome.error, log: log }, memory)
     : // The provenance comes from the engine: `erreurNoyau` absent, the text may have been written by the widget's code.
       // Interrupted: the message is the kernel's, not the text the widget's code may have written.
@@ -502,7 +502,7 @@ export async function runAttempt(o: HarvestOptions & { origin: string; start: st
     infraOf(o, clock),
   );
   // The executor's safety net (the measure here must have refused before): a refusal, nothing written.
-  if (outcome.t === "arret" && outcome.error === REPLAY_TOO_BIG) return denial(REPLAY_TOO_BIG);
+  if (outcome.t === "stop" && outcome.error === REPLAY_TOO_BIG) return denial(REPLAY_TOO_BIG);
 
   // The grant may have been withdrawn during the try, or during its write: nothing read with it remains.
   const removed = async () => {
@@ -517,7 +517,7 @@ export async function runAttempt(o: HarvestOptions & { origin: string; start: st
 
   execution.id = attemptId(execution.start);
   execution.attempt = { start: o.start, origin: plan.origin };
-  if (outcome.t !== "fin" && o.interrupted?.() === true && execution.status !== "accord-requis") markInterrupted(execution);
+  if (outcome.t !== "end" && o.interrupted?.() === true && execution.status !== "accord-requis") markInterrupted(execution);
   await writeRun(dataFolder, execution);
   const after = await removed();
   if (after) return after;
@@ -543,7 +543,7 @@ export async function originChain(dataFolder: string, id: string): Promise<[Exec
 
 /** The message of a widget waiting for a new grant: the engine's if it stopped for that (profile refused…). */
 function denialMessage(outcome: WorkflowOutcome, declaration: DeclarationWidget): string {
-  return outcome.t === "arret" && outcome.status === "accord-requis" ? outcome.error : grantRequired(declaration);
+  return outcome.t === "stop" && outcome.status === "accord-requis" ? outcome.error : grantRequired(declaration);
 }
 
 function add(log: string, line: string): string {

@@ -13,7 +13,7 @@ export function previewData(o: {
 }): { data: unknown; mention: boolean } {
   const { chosen: chosen, detail, widget } = o;
   if (chosen && detail?.id === chosen.id) {
-    const output = detail.blocks.find((b) => b.type === "sortie");
+    const output = detail.blocks.find((b) => b.type === "output");
     if (output && output.output !== undefined && !output.outputTruncated) return { data: output.output, mention: false };
   }
   const lastTrue = o.list.find((e) => !e.attempt)?.id ?? null;

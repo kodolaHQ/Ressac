@@ -299,9 +299,9 @@ const context = (o: Record<string, unknown> = {}) => ({
 });
 
 describe("design host, the carts", { timeout: 20_000 }, () => {
-  /** A demo on 15283 (in WEBAIOS_PORTS_APPS), app-essai running on 15281, an external project on 3000. */
+  /** A demo on 15283 (in WEBAIOS_APP_PORTS), app-essai running on 15281, an external project on 3000. */
   async function withProjects(o: Parameters<typeof prepare>[0] = {}) {
-    vi.stubEnv("WEBAIOS_PORTS_APPS", "15280-15284");
+    vi.stubEnv("WEBAIOS_APP_PORTS", "15280-15284");
     const s = prepare({ siteApps: [{ ...app("essai"), name: "Essai", state: "en-marche", port: 15281 }, app("dort")], sites: [{ id: "x", name: "Site X" }], ...o });
     const project = join(s.home, "projet");
     mkdirSync(project);

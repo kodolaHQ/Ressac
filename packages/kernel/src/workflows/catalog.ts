@@ -9,8 +9,8 @@ export type BlockCatalogEntry = {
   label: string;
   family: BlockFamily;
   description: string;
-  perItem: "non" | "option" | "toujours";
-  input: "requise" | "facultative" | "parElement";
+  perItem: "no" | "option" | "always";
+  input: "required" | "optional" | "perItem";
   fields: FormField[];
 };
 

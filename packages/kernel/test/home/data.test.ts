@@ -36,7 +36,7 @@ test("deleteData also erases the runs and the memory, and keeps etat.json", asyn
   const d = await tempFolder();
   await writeData(d, "w", { a: 1 });
   await writeWidgetState(d, "w", { status: "ok", lastUpdate: null, lastAttempt: null });
-  await writeMemory(join(d, "w"), { b: { type: "liste.nouveaux", value: ["x"] } });
+  await writeMemory(join(d, "w"), { b: { type: "list.new", value: ["x"] } });
   await writeRun(join(d, "w"), {
     version: 1, id: "2026-10-29T08-00-00-000Z", owner: { type: "widget", id: "w" }, trigger: "manuelle",
     start: "2026-10-29T08:00:00.000Z", end: null, status: "reussie", blocks: [],

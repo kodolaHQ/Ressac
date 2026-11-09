@@ -32,15 +32,15 @@ const SECRET = "jeton-du-compte-4242";
 /** `extraire.mjs` of the ads: each ad and its photo (a link of the page), the price as a number (actions.spec.ts:1316). */
 const EXTRACT_ADS = `export default async (page) => {
   const photos = new Map();
-  for (const l of page.liens) {
+  for (const l of page.links) {
     const p = /\\/photos\\/(\\d+)\\.jpg$/.exec(l.url);
     if (p) photos.set(p[1], l.url);
   }
   const annonces = [];
-  for (const l of page.liens) {
+  for (const l of page.links) {
     const m = /\\/ad\\/(\\d+)$/.exec(l.url);
     if (!m) continue;
-    const [titre, prix, ville] = l.texte.split(" – ");
+    const [titre, prix, ville] = l.text.split(" – ");
     annonces.push({ titre, prix: Number(prix), ville, url: l.url, ...(photos.has(m[1]) ? { photo: photos.get(m[1]) } : {}) });
   }
   return { annonces };
@@ -50,8 +50,8 @@ const EXTRACT_ADS = `export default async (page) => {
 /** `extraire.mjs` of the GitLab tickets (actions.spec.ts:1160). */
 const EXTRACT_TICKETS = `export default async (page) => {
   const tickets = [];
-  for (const l of page.liens) {
-    const m = /^#(\\d+) (.+) \\[([\\w-]+)\\] \\(([\\w-]+)\\)$/.exec(l.texte.trim());
+  for (const l of page.links) {
+    const m = /^#(\\d+) (.+) \\[([\\w-]+)\\] \\(([\\w-]+)\\)$/.exec(l.text.trim());
     if (m) tickets.push({ titre: m[2], projet: m[4], priorite: m[3], url: l.url });
   }
   return { tickets };
@@ -119,9 +119,9 @@ beforeAll(async () => {
     sources: { web: true },
     layout: "des cartes avec le prix et la ville, les moins chères en premier",
     workflow: chained([
-      { id: "recherche", type: "source.page", params: { url: `${site}/leboncoin/recherche?text={saisie}` } },
+      { id: "recherche", type: "source.page", params: { url: `${site}/leboncoin/recherche?text={input}` } },
       { id: "extraire", type: "code", params: { source: "extraire.mjs" } },
-      { id: "sortie", type: "sortie", params: { to: "page" } },
+      { id: "sortie", type: "output", params: { to: "page" } },
     ]),
     files: { "extraire.mjs": EXTRACT_ADS },
   });
@@ -143,7 +143,7 @@ beforeAll(async () => {
     workflow: chained([
       { id: "tickets", type: "source.page", params: { url: `${site}/gitlab/tickets`, account: true } },
       { id: "extraire", type: "code", params: { source: "extraire.mjs" } },
-      { id: "sortie", type: "sortie", params: { to: "page" } },
+      { id: "sortie", type: "output", params: { to: "page" } },
     ]),
     files: { "extraire.mjs": EXTRACT_TICKETS },
   });

@@ -100,10 +100,10 @@ test("the data and the state come from dossierWidgets, never from the space", as
   expect("state" in w1 && w1.state).toEqual(state);
 });
 
-test("exemple.json is read; aRecolte and aAffichage reflect the files present", async () => {
+test("example.json is read; aRecolte and aAffichage reflect the files present", async () => {
   const { c, widgetsFolder: widgetsFolder } = await space();
   await writeWidget(c, "nu");
-  await writeWidget(c, "complet", declarationWidget(), { "exemple.json": '{"x":1}', "recolte.mjs": "export default async () => 1", "affichage.html": "<p>a</p>" });
+  await writeWidget(c, "complet", declarationWidget(), { "example.json": '{"x":1}', "harvest.mjs": "export default async () => 1", "display.html": "<p>a</p>" });
   const { widgets } = await readHome(c, widgetsFolder);
   const nu = widgets.find((w) => w.id === "nu")!;
   const full = widgets.find((w) => w.id === "complet")!;
@@ -114,7 +114,7 @@ test("exemple.json is read; aRecolte and aAffichage reflect the files present", 
 test("aRecolte true with workflow.json alone; aWorkflow says so", async () => {
   const { c, widgetsFolder: widgetsFolder } = await space();
   await writeWidget(c, "flux", declarationWidget(), { "workflow.json": '{"version":1,"blocs":[]}' });
-  await writeWidget(c, "ancien", declarationWidget(), { "recolte.mjs": "export default async () => 1" });
+  await writeWidget(c, "ancien", declarationWidget(), { "harvest.mjs": "export default async () => 1" });
   const { widgets } = await readHome(c, widgetsFolder);
   const stream = widgets.find((w) => w.id === "flux")!;
   const old = widgets.find((w) => w.id === "ancien")!;

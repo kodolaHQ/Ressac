@@ -54,13 +54,13 @@
     nodes = b.blocks.map((x) => {
       const c = catalog.get(x.type);
       // A block with an optional input but no input has no input handle, except a `code` that reads its input.
-      const withoutInput = c?.input === "facultative" && !(x.type === "code" && x.params.appel !== "recolte");
+      const withoutInput = c?.input === "optional" && !(x.type === "code" && x.params.call !== "harvest");
       return {
         id: x.id,
         type: "bloc" as const,
         position: edit.positions[x.id] ?? x.position,
         selected: selected.has(x.id),
-        deletable: x.type !== "sortie",
+        deletable: x.type !== "output",
         data: {
           title: x.name ?? x.id,
           type: x.type,
@@ -68,7 +68,7 @@
           error: blockError === x.id ? error : null,
           warnings: edit.warnings.filter((a) => a.block === x.id).map((a) => a.message),
           input: !withoutInput || withInput.has(x.id),
-          output: x.type !== "sortie" || withOutput.has(x.id),
+          output: x.type !== "output" || withOutput.has(x.id),
         },
       };
     });
@@ -145,7 +145,7 @@
     initialViewport={edit.viewport ?? undefined}
     proOptions={{ hideAttribution: true }}
     onconnect={linked}
-    onbeforedelete={async ({ nodes: n, edges: e }) => ({ nodes: n.filter((x) => x.data.type !== "sortie"), edges: e })}
+    onbeforedelete={async ({ nodes: n, edges: e }) => ({ nodes: n.filter((x) => x.data.type !== "output"), edges: e })}
     ondelete={deleted}
     onnodedragstop={moved}
     onselectiondragstop={moved}

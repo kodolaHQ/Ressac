@@ -20,9 +20,9 @@ const WATCH_WORKFLOW = {
   blocks: [
     { id: "page", type: "source.page", params: { url: "{config.url}" } },
     { id: "liens", type: "code", name: "Liens de la page", params: { source: "liens.mjs" } },
-    { id: "tri", type: "ia.trier", name: "Tri par Kev", params: { question: "Parle d'IA ?", text: "{texte}", threshold: 0.5 } },
+    { id: "tri", type: "ai.sort", name: "Tri par Kev", params: { question: "Parle d'IA ?", text: "{texte}", threshold: 0.5 } },
     { id: "textes", type: "code", params: { source: "textes.mjs" } },
-    { id: "sortie", type: "sortie", params: { to: "widget" } },
+    { id: "sortie", type: "output", params: { to: "widget" } },
   ],
   links: [
     { from: "page", to: "liens" },
@@ -31,10 +31,10 @@ const WATCH_WORKFLOW = {
     { from: "textes", to: "sortie" },
   ],
 };
-const LIENS = "export default async (page) => page.liens;";
-const TEXTS = "export default async (liens) => ({ liens: liens.map((l) => l.texte) });";
+const LIENS = "export default async (page) => page.links;";
+const TEXTS = "export default async (liens) => ({ liens: liens.map((l) => l.text) });";
 /** The last code block waits a little: time to see the « en cours » badges and the greyed buttons. */
-const SLOW_TEXTS = "export default async (liens) => { await new Promise((r) => setTimeout(r, 2500)); return { liens: liens.map((l) => l.texte) }; };";
+const SLOW_TEXTS = "export default async (liens) => { await new Promise((r) => setTimeout(r, 2500)); return { liens: liens.map((l) => l.text) }; };";
 
 type Box = { x: number; y: number; width: number; height: number };
 const overlap = (a: Box, b: Box) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
@@ -92,7 +92,7 @@ const writeWatch = (id: string, o: { slow?: boolean; declaration?: Record<string
     harvest: { minutes: 60 },
     declaration: { config: { url: `${site.url}/liens?${id}` }, ...o.declaration },
     workflow: WATCH_WORKFLOW,
-    files: { "liens.mjs": LIENS, "textes.mjs": o.slow ? SLOW_TEXTS : TEXTS, "exemple.json": JSON.stringify({ example: "veille" }) },
+    files: { "liens.mjs": LIENS, "textes.mjs": o.slow ? SLOW_TEXTS : TEXTS, "example.json": JSON.stringify({ example: "veille" }) },
   });
 /** No state: harvested at launch (scheduled). */
 const dropState = (id: string) => rm(dataOf(id), { recursive: true });
@@ -105,7 +105,7 @@ const writeState = async (id: string, state: Record<string, unknown>) => {
 const trace = (block: string, type: string, start: string, fields: Record<string, unknown>) => ({
   id: block,
   type,
-  status: "reussi",
+  status: "succeeded",
   start: start,
   end: start,
   items: null,
@@ -129,19 +129,19 @@ function thirtyBlocks(): { workflow: { version: number; blocks: unknown[]; links
   for (let i = 1; i <= 6; i++) {
     blocks.push({ id: `source-${i}`, type: "code", params: { source: `source-${i}.mjs` } });
     files[`source-${i}.mjs`] = `export default async () => [{ url: "https://exemple.invalid/${i}" }];`;
-    blocks.push({ id: `nouveaux-${i}`, type: "liste.nouveaux", params: { key: "url" } });
-    blocks.push({ id: `dedoublonner-${i}`, type: "liste.dedoublonner", params: { keys: ["url"] } });
-    blocks.push({ id: `garder-${i}`, type: "liste.garder", params: { count: 10 } });
+    blocks.push({ id: `nouveaux-${i}`, type: "list.new", params: { key: "url" } });
+    blocks.push({ id: `dedoublonner-${i}`, type: "list.dedupe", params: { keys: ["url"] } });
+    blocks.push({ id: `garder-${i}`, type: "list.keep", params: { count: 10 } });
     links.push({ from: `source-${i}`, to: `nouveaux-${i}` }, { from: `nouveaux-${i}`, to: `dedoublonner-${i}` }, { from: `dedoublonner-${i}`, to: `garder-${i}` });
     links.push({ from: `garder-${i}`, to: "fusion" });
   }
   blocks.push(
     { id: "fusion", type: "code", params: { source: "fusion.mjs" } },
-    { id: "tri", type: "ia.trier", params: { question: "Parle d'IA ?", text: "{url}", threshold: 0.5 } },
-    { id: "garder", type: "liste.garder", params: { count: 20 } },
-    { id: "dedoublonner", type: "liste.dedoublonner", params: { keys: ["url"] } },
+    { id: "tri", type: "ai.sort", params: { question: "Parle d'IA ?", text: "{url}", threshold: 0.5 } },
+    { id: "garder", type: "list.keep", params: { count: 20 } },
+    { id: "dedoublonner", type: "list.dedupe", params: { keys: ["url"] } },
     { id: "forme", type: "code", params: { source: "forme.mjs" } },
-    { id: "sortie", type: "sortie", params: { to: "widget" } },
+    { id: "sortie", type: "output", params: { to: "widget" } },
   );
   files["fusion.mjs"] = "export default async (entrees) => Object.values(entrees).flat();";
   files["forme.mjs"] = "export default async (liens) => ({ liens });";
@@ -186,20 +186,20 @@ beforeAll(async () => {
   await writeExecution("tronque", TRUNCATED, [
     trace("page", "source.page", start, { output: { title: "Liens" } }),
     trace("liens", "code", start, { items: 2, output: '[{"texte":"Nouveau', outputTruncated: true }),
-    trace("tri", "ia.trier", start, { items: 1, output: [] }),
+    trace("tri", "ai.sort", start, { items: 1, output: [] }),
     trace("textes", "code", start, { output: { links: [] } }),
-    trace("sortie", "sortie", start, { output: { links: [] } }),
+    trace("sortie", "output", start, { output: { links: [] } }),
   ]);
   await writeWatch("grise", { slow: true });
   await dropState("grise");
-  // Like a Gmail widget: widget.json, recolte.mjs, affichage.html, an account, no workflow.json.
+  // Like a Gmail widget: widget.json, harvest.mjs, display.html, an account, no workflow.json.
   await writeWidget(dataDir, "gmail", {
     name: "Gmail",
     harvest: { minutes: 60 },
     declaration: { sources: { account: ["127.0.0.1"], public: [] }, config: { url: `${site.url}/boite` } },
     files: {
-      "recolte.mjs": "export default async (webaios) => ({ vu: (await webaios.lirePage(webaios.config.url, { compte: true })).titre });",
-      "exemple.json": JSON.stringify({ example: "gmail" }),
+      "harvest.mjs": "export default async (webaios) => ({ vu: (await webaios.readPage(webaios.config.url, { account: true })).title });",
+      "example.json": JSON.stringify({ example: "gmail" }),
     },
   });
   // The grant is missing and was just asked: no run starts at launch.
@@ -214,12 +214,12 @@ beforeAll(async () => {
   // Two past runs, to choose another than the last.
   for (const id of GMAIL_RUNS) {
     const d = id.replace(/T(\d\d)-(\d\d)-(\d\d)-(\d{3})Z$/, "T$1:$2:$3.$4Z");
-    await writeExecution("gmail", id, [trace("recolte", "code", d, { output: { seen: id } }), trace("sortie", "sortie", d, { output: { seen: id } })]);
+    await writeExecution("gmail", id, [trace("harvest", "code", d, { output: { seen: id } }), trace("output", "output", d, { output: { seen: id } })]);
   }
   await writeWidget(dataDir, "simple", {
     name: "Simple",
     harvest: { minutes: 60 },
-    files: { "recolte.mjs": SIMPLE_CODE, "exemple.json": JSON.stringify({ example: "simple" }) },
+    files: { "harvest.mjs": SIMPLE_CODE, "example.json": JSON.stringify({ example: "simple" }) },
   });
   await dropState("simple");
   await writeWatch("coupe");
@@ -243,8 +243,8 @@ beforeAll(async () => {
       blocks: [
         { id: "page", type: "source.page", params: { url: "{config.url}" } },
         { id: "liens", type: "code", params: { source: "liens.mjs" } },
-        { id: "garder", type: "liste.garder", params: { count: 5 } },
-        { id: "sortie", type: "sortie", params: { to: "widget", live: true } },
+        { id: "garder", type: "list.keep", params: { count: 5 } },
+        { id: "sortie", type: "output", params: { to: "widget", live: true } },
       ],
       links: [
         { from: "page", to: "liens" },
@@ -361,7 +361,7 @@ async function writeAsAgent(id: string, workflow: unknown): Promise<void> {
   await writeFile(`${file}.agent`, JSON.stringify(workflow, null, 2));
   await rename(`${file}.agent`, file);
 }
-const thresholdOf = async (id: string) => (await readWorkflow(dataDir, id)).blocs.find((b: { id: string }) => b.id === "tri").parametres.seuil;
+const thresholdOf = async (id: string) => (await readWorkflow(dataDir, id)).blocks.find((b: { id: string }) => b.id === "tri").params.threshold;
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 const agent = (body: string) => m.execute(`return (async () => { const agent = (await ChromeUtils.importESModule("${STORE}").ready).agent; ${body} })();`);
 
@@ -508,7 +508,7 @@ describe("the workflow builder's runs", () => {
     await waitText(tid("pastille-tri"), "1");
   });
 
-  it("a widget with only recolte.mjs and an account: the builder shows recolte → sortie; opening, selecting, rearranging, choosing a run write nothing", async () => {
+  it("a widget with only harvest.mjs and an account: the builder shows recolte → sortie; opening, selecting, rearranging, choosing a run write nothing", async () => {
     const dir = widgetDir(dataDir, "gmail");
     await home();
     await trackErrors();
@@ -541,10 +541,10 @@ describe("the workflow builder's runs", () => {
     expect(await errors()).toEqual([]);
   });
 
-  it("modifying the implicit workflow creates workflow.json, keeps recolte.mjs, and the widget updates with the same data", async () => {
+  it("modifying the implicit workflow creates workflow.json, keeps harvest.mjs, and the widget updates with the same data", async () => {
     const dir = widgetDir(dataDir, "simple");
     await home();
-    // Without a state: harvested at launch, by recolte.mjs alone.
+    // Without a state: harvested at launch, by harvest.mjs alone.
     await poll(() => homeData("simple"), '{"bon":true}', 20_000);
     expect(await runs("simple")).toHaveLength(1);
     expect(existsSync(path.join(dir, "workflow.json"))).toBe(false);
@@ -555,10 +555,10 @@ describe("the workflow builder's runs", () => {
     await poll(async () => existsSync(path.join(dir, "workflow.json")), true);
     await saved();
     const written = await readWorkflow(dataDir, "simple");
-    expect(written.blocs.map((x: { id: string; type: string }) => `${x.id}:${x.type}`)).toEqual(["recolte:code", "sortie:sortie"]);
-    expect(written.blocs[0].parametres).toMatchObject({ source: "recolte.mjs" });
-    expect(written.liens).toEqual([{ from: "recolte", to: "sortie" }]);
-    expect(await readFile(path.join(dir, "recolte.mjs"), "utf8")).toBe(SIMPLE_CODE);
+    expect(written.blocks.map((x: { id: string; type: string }) => `${x.id}:${x.type}`)).toEqual(["harvest:code", "output:output"]);
+    expect(written.blocks[0].params).toMatchObject({ source: "harvest.mjs" });
+    expect(written.links).toEqual([{ from: "harvest", to: "output" }]);
+    expect(await readFile(path.join(dir, "harvest.mjs"), "utf8")).toBe(SIMPLE_CODE);
 
     // The widget now goes through workflow.json: same data.
     await click(m, tid("nouvel-onglet"));
@@ -627,7 +627,7 @@ describe("the workflow builder's runs", () => {
     await waitContains(panel, "Durée maximale : 30 min");
     await waitContains(panel, "Notification à la fin : oui");
 
-    const search = tid("palette-web.chercher");
+    const search = tid("palette-web.search");
     await waitDisabled(search, false);
     await click(m, search);
     await waitVisible(tid("noeud-web-chercher"));
@@ -642,7 +642,7 @@ describe("the workflow builder's runs", () => {
     // Nothing about the web in the panel of a widget without access.
     await waitCount(tid("widget-web"), 0);
     await waitCount(tid("widget-heures"), 0);
-    const search = tid("palette-web.chercher");
+    const search = tid("palette-web.search");
     await waitDisabled(search, true);
     expect(await inUi(m, `return ${el(search)}.getAttribute("title")`)).toBe('Le widget doit déclarer "web": true : demande-le à l\'agent.');
     // Playwright's force click: the mouse on a disabled button.
@@ -653,8 +653,8 @@ describe("the workflow builder's runs", () => {
     await writeAsAgent("sansweb", {
       version: 1,
       blocks: [
-        { id: "chercher", type: "web.chercher", params: { query: "voitures" } },
-        { id: "sortie", type: "sortie", params: { to: "widget" } },
+        { id: "chercher", type: "web.search", params: { query: "voitures" } },
+        { id: "sortie", type: "output", params: { to: "widget" } },
       ],
       links: [{ from: "chercher", to: "sortie" }],
     });
@@ -674,7 +674,7 @@ describe("the workflow builder's runs", () => {
     const box = tid("champ-auFilDeLEau");
     await waitTrue(`${el(box)}?.checked === true`);
     await click(m, box);
-    await poll(async () => (await readWorkflow(dataDir, "fil")).blocs.find((b: { id: string }) => b.id === "sortie").parametres, { to: "widget" });
+    await poll(async () => (await readWorkflow(dataDir, "fil")).blocks.find((b: { id: string }) => b.id === "sortie").parametres, { to: "widget" });
     await waitCount(tid("avertissement-sortie"), 0);
   });
 

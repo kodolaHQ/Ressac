@@ -42,7 +42,7 @@ describe("toShownWidgets", () => {
         // 4 units wide out of 12 → 333 ‰; 2 rows of 90 px.
         placement: { id: "demo", x: 0, y: 0, l: 333, h: 180 },
         sizes: { min: { l: 2, h: 1 }, max: { l: 6, h: 4 }, default: { l: 4, h: 2 } },
-        src: "resource://webaios-widget-demo/affichage-1730000000123.html",
+        src: "resource://webaios-widget-demo/display-1730000000123.html",
         data: { n: 1 },
         example: { n: 0 },
         state: { ...DEFAULT_WIDGET_STATE, status: "en-cours" },

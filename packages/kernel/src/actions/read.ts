@@ -67,7 +67,7 @@ export function actionValidationContext(d: DeclarationAction): ValidationContext
   return { web: d.sources.web, maxDurationMinutes: d.maxDurationMinutes ?? null, owner: "action", input: d.input !== undefined };
 }
 
-/** An action's workflow: `workflow.json` only (no implicit workflow from a `recolte.mjs`). Nothing is run. */
+/** An action's workflow: `workflow.json` only (no implicit workflow from a `harvest.mjs`). Nothing is run. */
 export async function actionWorkflow(
   a: ReadAction,
 ): Promise<{ t: "ok"; valid: ValidWorkflow } | { t: "invalide" | "illisible"; error: string } | { t: "absent" }> {

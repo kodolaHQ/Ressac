@@ -18,7 +18,7 @@ async function ask(c: ReturnType<typeof spacePaths>, id: string, declaration: un
 }
 const workflow = (to: string) => JSON.stringify({
     version: 1,
-    blocks: [{ id: "lire", type: "code", params: { source: "lire.mjs" } }, { id: "sortie", type: "sortie", params: { to: to } }],
+    blocks: [{ id: "lire", type: "code", params: { source: "lire.mjs" } }, { id: "sortie", type: "output", params: { to: to } }],
     links: [{ from: "lire", to: "sortie" }],
   });
 
@@ -76,9 +76,9 @@ test("dossier d'actions absent : liste vide", async () => {
   expect(await readActions(c)).toEqual([]);
 });
 
-test("actionWorkflow : recolte.mjs seul → absent ; workflow vers widget → invalide OUTPUT_PAGE_REQUIRED", async () => {
+test("actionWorkflow : harvest.mjs seul → absent ; workflow vers widget → invalide OUTPUT_PAGE_REQUIRED", async () => {
   const c = await space();
-  await ask(c, "seul", { name: "S", sources: {} }, { "recolte.mjs": "export default 1" });
+  await ask(c, "seul", { name: "S", sources: {} }, { "harvest.mjs": "export default 1" });
   await ask(c, "mauvaise", { name: "M", sources: {} }, { "workflow.json": workflow("widget") });
   await ask(c, "bonne", { name: "B", sources: {}, input: { label: "Q" }, maxDurationMinutes: 5 }, { "workflow.json": workflow("page") });
   await ask(c, "cassee", "{x");

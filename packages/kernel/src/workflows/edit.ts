@@ -53,7 +53,7 @@ async function folderExists(folder: string): Promise<boolean> {
 }
 
 /**
- * What the builder opens: `workflow.json` even if invalid, otherwise the implicit one of a `recolte.mjs`, otherwise null.
+ * What the builder opens: `workflow.json` even if invalid, otherwise the implicit one of a `harvest.mjs`, otherwise null.
  * Writes nothing. `ctx`: what the widget declares (`contexteValidation`).
  */
 export async function readDraft(filesFolder: string, ctx: ValidationContext = DEFAULT_CONTEXT): Promise<DraftRead | null> {
@@ -62,7 +62,7 @@ export async function readDraft(filesFolder: string, ctx: ValidationContext = DE
     if ("error" in lu) return { origin: "fichier", raw: null, validation: resume(workflowError(lu.error)) };
     return { origin: "fichier", raw: lu.raw, validation: resume(validateWorkflow(lu.raw, ctx)) };
   }
-  if (await exists(join(filesFolder, "recolte.mjs"))) {
+  if (await exists(join(filesFolder, "harvest.mjs"))) {
     const raw = implicitWorkflow();
     return { origin: "implicite", raw: raw, validation: resume(validateWorkflow(raw, ctx)) };
   }
@@ -70,7 +70,7 @@ export async function readDraft(filesFolder: string, ctx: ValidationContext = DE
 }
 
 /**
- * The workflow valid in place: the file if it is valid, otherwise the implicit one of a `recolte.mjs`, otherwise none. Validated
+ * The workflow valid in place: the file if it is valid, otherwise the implicit one of a `harvest.mjs`, otherwise none. Validated
  * with the same context as the new one: otherwise, for a `web` or long widget, the old one would look invalid (memory of the
  * changed blocks kept, identical file rewritten).
  */

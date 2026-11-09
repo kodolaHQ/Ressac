@@ -21,7 +21,7 @@ export type DirectAction = {
   attempt: boolean;
   step: "workflow" | "mise-en-page";
   /** `type`: that of the block in the workflow (its label is the catalog's). */
-  blocks: Record<string, { status: "en-cours" | "reussi" | "partiel" | "echoue"; items: number | null; done?: number; total?: number; host?: string; type?: string }>;
+  blocks: Record<string, { status: "running" | "succeeded" | "partial" | "failed"; items: number | null; done?: number; total?: number; host?: string; type?: string }>;
 };
 export type ActionsState = { running: DirectAction[]; waiting: { action: string; since: string }[] };
 /** `deja`: the action was already running (or waiting); `fin` is that of this run. */
@@ -207,10 +207,10 @@ export class FileActions {
     const onTrace = (t: TraceAction) => {
       if (d.direct !== tracking) return;
       const b = tracking.blocks[t.block];
-      if (t.step === "debut") tracking.blocks[t.block] = { status: "en-cours", items: null };
-      else if (t.step === "fin") tracking.blocks[t.block] = { status: t.status, items: t.items };
-      else if (t.step === "avancement") tracking.blocks[t.block] = { ...(b ?? { status: "en-cours", items: null }), done: t.done, total: t.total };
-      else tracking.blocks[t.block] = { ...(b ?? { status: "en-cours", items: null }), host: t.host };
+      if (t.step === "start") tracking.blocks[t.block] = { status: "running", items: null };
+      else if (t.step === "end") tracking.blocks[t.block] = { status: t.status, items: t.items };
+      else if (t.step === "progress") tracking.blocks[t.block] = { ...(b ?? { status: "running", items: null }), done: t.done, total: t.total };
+      else tracking.blocks[t.block] = { ...(b ?? { status: "running", items: null }), host: t.host };
       if (t.type !== undefined) tracking.blocks[t.block]!.type = t.type;
       this.signalDirect();
     };

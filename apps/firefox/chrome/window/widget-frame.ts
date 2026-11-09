@@ -20,7 +20,7 @@ function substitutionName(id: string): string {
 
 /** The frame's URL: the sanitized copy, dated with the source's mtime (a new mtime reloads the frame). */
 export function displayUrl(id: string, mtime: number): string {
-  return `resource://${PREFIX}${id}/affichage-${mtime}.html`;
+  return `resource://${PREFIX}${id}/display-${mtime}.html`;
 }
 
 /** The folder of a widget's copies: `<dataDir>/webaios-widgets/<id>/`. */
@@ -40,9 +40,9 @@ async function confinedCopiesFolder(dataDir: string, id: string): Promise<string
   return root && real && real.startsWith(root + "/") ? real : null;
 }
 
-/** The sanitized copy of a display: `<copiesFolder>/affichage-<mtime>.html`. */
+/** The sanitized copy of a display: `<copiesFolder>/display-<mtime>.html`. */
 export function copyPath(dataDir: string, id: string, mtime: number): string {
-  return PathUtils.join(copiesFolder(dataDir, id), `affichage-${mtime}.html`);
+  return PathUtils.join(copiesFolder(dataDir, id), `display-${mtime}.html`);
 }
 
 /**
@@ -60,14 +60,14 @@ function realPath(path: string): string | null {
   }
 }
 
-/** The real path of `<dataDir>/espace/accueil/widgets/<id>/affichage.html`, confined to the widget's folder. */
+/** The real path of `<dataDir>/espace/accueil/widgets/<id>/display.html`, confined to the widget's folder. */
 function sourcePath(dataDir: string, id: string): string | null {
   if (!ID_WIDGET.test(id)) return null;
   const widgetsDir = PathUtils.join(dataDir, "espace", "accueil", "widgets");
   const folder = PathUtils.join(widgetsDir, id);
   const root = realPath(widgetsDir);
   const realFolder = realPath(folder);
-  const realFile = realPath(PathUtils.join(folder, "affichage.html"));
+  const realFile = realPath(PathUtils.join(folder, "display.html"));
   if (!root || !realFolder || !realFile) return null;
   return realFolder.startsWith(root + "/") && realFile.startsWith(realFolder + "/") ? realFile : null;
 }
@@ -266,7 +266,7 @@ export async function prepareWidget(dataDir: string, id: string): Promise<string
       console.warn(`[widget] dossier de copies de ${id} hors de <dataDir>/webaios-widgets : refusé`);
       return null;
     }
-    const copy = PathUtils.join(real, `affichage-${mtime}.html`);
+    const copy = PathUtils.join(real, `display-${mtime}.html`);
     // Same mtime: the copy already exists, it is not rewritten (the URL does not change).
     if (!(await IOUtils.exists(copy))) {
       // shortcut: the source is read by the realpath computed just before; a symlink swapped in by another process
@@ -278,7 +278,7 @@ export async function prepareWidget(dataDir: string, id: string): Promise<string
       await IOUtils.move(temp, copy);
       // A single copy per widget: the previous one is removed.
       for (const old of await IOUtils.getChildren(real)) {
-        if (old !== copy && /affichage-.*\.html$/.test(old)) await IOUtils.remove(old, { ignoreAbsent: true });
+        if (old !== copy && /display-.*\.html$/.test(old)) await IOUtils.remove(old, { ignoreAbsent: true });
       }
     }
     substitute(id, folder);

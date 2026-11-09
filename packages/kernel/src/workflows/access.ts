@@ -3,7 +3,7 @@ import http, { type IncomingMessage } from "node:http";
 import https from "node:https";
 import { isIP, type LookupFunction } from "node:net";
 import type { ChangeHost } from "./pacing.js";
-import type { ReadPage } from "./protocole.js";
+import type { ReadPage } from "./protocol.js";
 
 // Container access to the outside, all kernel-side: verified URLs, raw fetch, page read and re-checked.
 
@@ -14,7 +14,7 @@ const MAX_REDIRECTIONS = 5;
 /** Web searches and open reads (without `domaines`) of a run, at most. */
 export const MAX_SEARCHES = 30;
 export const MAX_OPEN_READS = 100;
-// The first two are copied into docker/moteur/erreurs.mjs: the item is not run, it is not a failure.
+// The first two are copied into docker/engine/errors.mjs: the item is not run, it is not a failure.
 export const SEARCHES_CAP = "Plafond de recherches atteint (30 par exécution)";
 export const SEARCHES_STOPPED = "Recherches arrêtées : DuckDuckGo a refusé une recherche de cette exécution";
 export const TOO_MANY_READS = "Trop de lectures dans cette exécution (100)";
@@ -26,7 +26,7 @@ export const truncate = (s: string, n: number) => (s.length > n ? s.slice(0, n -
 export const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /**
- * Address of the machine or the local network, from its text alone (the name is not resolved: `recuperer` re-checks
+ * Address of the machine or the local network, from its text alone (the name is not resolved: `fetch` re-checks
  * the address resolved at connection, with `lookupSansLocal`).
  */
 export function localUrl(host: string): boolean {
@@ -118,12 +118,12 @@ function untilSignal<T>(p: Promise<T>, signal: AbortSignal): Promise<T> {
 
 /**
  * Raw fetch, without cookie or credentials; each redirect is re-checked with the same rule. `arret` raised
- * (the run is stopped): the request is abandoned and the promise rejected with `arret.reason`. `changerHote`
+ * (the run is stopped): the request is abandoned and the promise rejected with `arret.reason`. `changeHost`
  * (paced read): awaited before following a redirect to another host, within the 20 s delay.
  */
 export async function fetch(
   raw: string,
-  format: "texte" | "json",
+  format: "text" | "json",
   domains: readonly string[] | null,
   localUrls: boolean,
   stop?: AbortSignal,
@@ -151,7 +151,7 @@ export async function fetch(
         throw new Error(`HTTP ${status}`);
       }
       const text = (await readBody(r)).toString("utf8");
-      if (format === "texte") return text;
+      if (format === "text") return text;
       try {
         return JSON.parse(text) as unknown;
       } catch {

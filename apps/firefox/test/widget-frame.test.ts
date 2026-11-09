@@ -17,7 +17,7 @@ beforeAll(() => {
   root = mkdtempSync(join(tmpdir(), "webaios-widget-frame-"));
   widgets = join(root, "espace", "accueil", "widgets");
   mkdirSync(join(widgets, "demo"), { recursive: true });
-  writeFileSync(join(widgets, "demo", "affichage.html"), "<!doctype html><title>démo</title>");
+  writeFileSync(join(widgets, "demo", "display.html"), "<!doctype html><title>démo</title>");
   // A Mac file, outside the widgets folder.
   writeFileSync(join(root, "secret.html"), "<title>secret</title>");
   Object.assign(globalThis as any, {
@@ -65,14 +65,14 @@ afterAll(() => rmSync(root, { recursive: true, force: true }));
 
 describe("served paths", () => {
   it("names the copy and its resource:// URL by the source's mtime", () => {
-    expect(displayUrl("demo", 1730000000123)).toBe("resource://webaios-widget-demo/affichage-1730000000123.html");
-    expect(copyPath("/data", "demo", 42)).toBe("/data/webaios-widgets/demo/affichage-42.html");
+    expect(displayUrl("demo", 1730000000123)).toBe("resource://webaios-widget-demo/display-1730000000123.html");
+    expect(copyPath("/data", "demo", 42)).toBe("/data/webaios-widgets/demo/display-42.html");
   });
 });
 
 describe("prepareWidget", () => {
   it("writes the sanitized copy, sets the substitution and returns the frame's URL", async () => {
-    const source = join(widgets, "demo", "affichage.html");
+    const source = join(widgets, "demo", "display.html");
     const mtime = Math.round(statSync(source).mtimeMs);
     const url = await prepareWidget(root, "demo");
     expect(url).toBe(displayUrl("demo", mtime));
@@ -84,7 +84,7 @@ describe("prepareWidget", () => {
 
   it("injects DISPLAY_DENIED into the copy of a display with a network hint", async () => {
     mkdirSync(join(widgets, "refus"), { recursive: true });
-    const source = join(widgets, "refus", "affichage.html");
+    const source = join(widgets, "refus", "display.html");
     writeFileSync(source, '<!doctype html><link rel="preload" href="https://exemple.test/x"><p>jamais</p>');
     const mtime = Math.round(statSync(source).mtimeMs);
     expect(await prepareWidget(root, "refus")).toBe(displayUrl("refus", mtime));
@@ -92,7 +92,7 @@ describe("prepareWidget", () => {
   });
 
   it("does not rewrite the copy when the source's mtime does not change", async () => {
-    const source = join(widgets, "demo", "affichage.html");
+    const source = join(widgets, "demo", "display.html");
     const mtime = Math.round(statSync(source).mtimeMs);
     const copy = copyPath(root, "demo", mtime);
     const first = readFileSync(copy, "utf8");
@@ -103,7 +103,7 @@ describe("prepareWidget", () => {
   });
 
   it("removes the old copy when the source changes", async () => {
-    const source = join(widgets, "demo", "affichage.html");
+    const source = join(widgets, "demo", "display.html");
     const old = Math.round(statSync(source).mtimeMs);
     const fresh = old + 5000;
     writeFileSync(source, "<!doctype html><title>nouveau</title>");
@@ -119,23 +119,23 @@ describe("prepareWidget", () => {
     const outside = join(root, "copies-dehors");
     mkdirSync(outside);
     mkdirSync(join(widgets, "copie-lien"), { recursive: true });
-    writeFileSync(join(widgets, "copie-lien", "affichage.html"), "<title>lien</title>");
+    writeFileSync(join(widgets, "copie-lien", "display.html"), "<title>lien</title>");
     symlinkSync(outside, join(root, "webaios-widgets", "copie-lien"));
     expect(await prepareWidget(root, "copie-lien")).toBeNull();
     expect(readdirSync(outside)).toEqual([]);
   });
 
-  it("refuses an affichage.html that is an outgoing link from the widget's folder", async () => {
+  it("refuses an display.html that is an outgoing link from the widget's folder", async () => {
     mkdirSync(join(widgets, "fuite"), { recursive: true });
     writeFileSync(join(widgets, "fuite", "widget.json"), "{}");
-    symlinkSync(join(root, "secret.html"), join(widgets, "fuite", "affichage.html"));
+    symlinkSync(join(root, "secret.html"), join(widgets, "fuite", "display.html"));
     expect(await prepareWidget(root, "fuite")).toBeNull();
   });
 
   it("refuses a widget folder that is an outgoing link", async () => {
     const outside = join(root, "dehors");
     mkdirSync(outside);
-    writeFileSync(join(outside, "affichage.html"), "<title>dehors</title>");
+    writeFileSync(join(outside, "display.html"), "<title>dehors</title>");
     symlinkSync(outside, join(widgets, "evade"));
     expect(await prepareWidget(root, "evade")).toBeNull();
   });
@@ -144,7 +144,7 @@ describe("prepareWidget", () => {
 describe("forgetWidget", () => {
   it("removes the substitution and the copies folder", async () => {
     mkdirSync(join(widgets, "oublie"), { recursive: true });
-    writeFileSync(join(widgets, "oublie", "affichage.html"), "<title>oublie</title>");
+    writeFileSync(join(widgets, "oublie", "display.html"), "<title>oublie</title>");
     await prepareWidget(root, "oublie");
     expect(substitutions.get("webaios-widget-oublie")).toBeTruthy();
     await forgetWidget(root, "oublie");
@@ -158,10 +158,10 @@ describe("serveDisplays", () => {
     const prepares = new Set<string>();
     const forgotten: string[] = [];
     const tool = {
-      prepare: async (_d: string, id: string) => `resource://webaios-widget-${id}/affichage-1.html`,
+      prepare: async (_d: string, id: string) => `resource://webaios-widget-${id}/display-1.html`,
       forget: async (_d: string, id: string) => void forgotten.push(id),
     };
-    const w = (id: string) => ({ id, src: `resource://webaios-widget-${id}/affichage-1.html` }) as unknown as ShownWidget;
+    const w = (id: string) => ({ id, src: `resource://webaios-widget-${id}/display-1.html` }) as unknown as ShownWidget;
     await serveDisplays([w("a"), w("b")], "/data", prepares, tool);
     expect(prepares).toEqual(new Set(["a", "b"]));
     expect(forgotten).toEqual([]);

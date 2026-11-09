@@ -28,7 +28,7 @@ export interface SpacePaths {
 }
 
 export function spacePaths(root?: string): SpacePaths {
-  const r = root ?? process.env.WEBAIOS_RACINE ?? join(homedir(), "WebAiOs");
+  const r = root ?? process.env.WEBAIOS_ROOT ?? join(homedir(), "WebAiOs");
   const home = join(r, "accueil");
   const internal = join(r, ".webaios");
   return {

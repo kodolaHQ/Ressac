@@ -31,7 +31,7 @@ const CSP_WIDGET =
   "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:; connect-src 'none'; form-action 'none'; frame-src 'none'; require-trusted-types-for 'script'; trusted-types default";
 
 /**
- * What `affichage.html` runs: origin, secure context, Trusted Types, WebRTC, what the actor left in the page world, a
+ * What `display.html` runs: origin, secure context, Trusted Types, WebRTC, what the actor left in the page world, a
  * postMessage to the embedding document, and one fetch the CSP must block. `bare=1` serves the same page without its
  * meta CSP (to show what enforces the CSP).
  */
@@ -229,7 +229,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("widget home spike", () => {
         `
         const S = (window.spikeWidget = { served: [], handler: null });
         const parse = (s) => { try { const x = Services.io.newURI(s); return { spec: x.spec, scheme: x.scheme, host: (() => { try { return x.host; } catch (e) { return null; } })(), path: x.pathQueryRef }; } catch (e) { return { err: String(e).slice(0, 120) }; } };
-        const before = parse("${SCHEME}://demo/affichage.html?v=1");
+        const before = parse("${SCHEME}://demo/display.html?v=1");
         const html = arguments[0], bare = arguments[1];
         const handler = {
           scheme: "${SCHEME}",
@@ -238,7 +238,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("widget home spike", () => {
             S.served.push(uri.spec);
             let u;
             try { u = new URL(uri.spec); } catch (e) { throw Components.Exception("spike: bad url", Cr.NS_ERROR_MALFORMED_URI); }
-            if (u.pathname !== "/affichage.html") throw Components.Exception("spike: nothing at " + u.pathname, Cr.NS_ERROR_FILE_NOT_FOUND);
+            if (u.pathname !== "/display.html") throw Components.Exception("spike: nothing at " + u.pathname, Cr.NS_ERROR_FILE_NOT_FOUND);
             const stream = Cc["@mozilla.org/io/string-input-stream;1"].createInstance(Ci.nsIStringInputStream);
             stream.setUTF8Data(u.searchParams.get("bare") ? bare : html);
             const ch = Cc["@mozilla.org/network/input-stream-channel;1"].createInstance(Ci.nsIInputStreamChannel).QueryInterface(Ci.nsIChannel);
@@ -258,7 +258,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("widget home spike", () => {
         } catch (e) { registered = String(e).slice(0, 200); }
         S.handler = handler;
         const httpChannelInJs = (() => { try { const o = { QueryInterface: ChromeUtils.generateQI(["nsIHttpChannel"]) }; return o.QueryInterface(Ci.nsIHttpChannel) ? "generateQI answers yes (nsIHttpChannel is [builtinclass]: no JS implementation, so no response header)" : "no"; } catch (e) { return String(e).slice(0, 160); } })();
-        return { registered, httpChannelInJs, before, after: parse("${SCHEME}://demo/affichage.html?v=1") };
+        return { registered, httpChannelInJs, before, after: parse("${SCHEME}://demo/display.html?v=1") };
         `,
         [page(pages.url, true), page(pages.url, false)],
       ),
@@ -278,8 +278,8 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("widget home spike", () => {
         let imported;
         try { const a = ChromeUtils.importESModule(uriParent); const b = ChromeUtils.importESModule(uriChild); imported = { parent: typeof a.WidgetSpikeParent, child: typeof b.WidgetSpikeChild }; } catch (e) { imported = { err: String(e).slice(0, 200) }; }
         const patterns = {};
-        for (const p of ["${SCHEME}://*/*", "${SCHEME}:*", "${SCHEME}://*/affichage.html", "<all_urls>"]) {
-          try { patterns[p] = new MatchPattern(p, { restrictSchemes: false }).matches("${SCHEME}://demo/affichage.html?v=1"); } catch (e) { patterns[p] = String(e).slice(0, 120); }
+        for (const p of ["${SCHEME}://*/*", "${SCHEME}:*", "${SCHEME}://*/display.html", "<all_urls>"]) {
+          try { patterns[p] = new MatchPattern(p, { restrictSchemes: false }).matches("${SCHEME}://demo/display.html?v=1"); } catch (e) { patterns[p] = String(e).slice(0, 120); }
         }
         let registered;
         try {
@@ -306,7 +306,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("widget home spike", () => {
 
   it("P1: webaios-widget: registered from chrome, served by an InputStreamChannel, the CSP, Trusted Types, WebRTC", { timeout: 120_000 }, async () => {
     // The scheme's own document: the channel is created, but a remote content document does not commit (P2).
-    const scheme = await openWidget(m, `${SCHEME}://demo/affichage.html?v=1`);
+    const scheme = await openWidget(m, `${SCHEME}://demo/display.html?v=1`);
     note("P1 the widget document itself", scheme);
 
     // The same HTML served over http (same meta CSP): the page reports origin, Trusted Types and its blocked fetch.
@@ -347,7 +347,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("widget home spike", () => {
       f.id = "spike-sidebar-widget";
       f.setAttribute("sandbox", "allow-scripts");
       f.style.cssText = "position:fixed;left:0;top:0;width:320px;height:200px;z-index:99999;background:#fff";
-      f.src = "${SCHEME}://demo/affichage.html?v=21";
+      f.src = "${SCHEME}://demo/display.html?v=21";
       doc.body.append(f);
       await new Promise((r) => setTimeout(r, 1200));
       const out = { url: f.contentDocument && f.contentDocument.URL, title: f.contentDocument && f.contentDocument.title, served: window.spikeWidget.served.length };
@@ -374,7 +374,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("widget home spike", () => {
     note("P2 sidebar iframe control (a chrome:// page)", control);
 
     // The widget document itself cannot be committed by a remote content process (the runtime scheme is unknown to it).
-    const scheme = await openWidget(m, `${SCHEME}://demo/affichage.html?v=22`);
+    const scheme = await openWidget(m, `${SCHEME}://demo/display.html?v=22`);
     note("P2 the scheme in a remote content document", scheme);
 
     // The same page over http (a content document): origin, postMessage, and a new ?v URL reloading.
@@ -484,8 +484,8 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("widget home spike", () => {
     const declaration = { name: "Démo", sizes: { min: { l: 3, h: 2 }, max: { l: 6, h: 4 }, default: { l: 3, h: 2 } }, sources: { account: [], public: [], web: false } };
     await mkdir(path.join(widgets, "demo"), { recursive: true });
     await writeFile(path.join(widgets, "demo", "widget.json"), JSON.stringify(declaration));
-    await writeFile(path.join(widgets, "demo", "affichage.html"), "<!doctype html><title>démo</title>");
-    await writeFile(path.join(widgets, "demo", "exemple.json"), JSON.stringify({ ok: true }));
+    await writeFile(path.join(widgets, "demo", "display.html"), "<!doctype html><title>démo</title>");
+    await writeFile(path.join(widgets, "demo", "example.json"), JSON.stringify({ ok: true }));
     await mkdir(path.join(data, "demo"), { recursive: true });
     await writeFile(path.join(data, "demo", "donnees.json"), JSON.stringify({ n: 1 }));
     await writeFile(path.join(data, "demo", "etat.json"), JSON.stringify({ status: "ok", lastUpdate: null, lastAttempt: null }));
@@ -507,10 +507,10 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("widget home spike", () => {
     await symlink("/etc/hosts", path.join(widgets, "fuite", "widget.json"));
     await mkdir(path.join(widgets, "fuite-affichage"));
     await writeFile(path.join(widgets, "fuite-affichage", "widget.json"), JSON.stringify(declaration));
-    await symlink("/etc/hosts", path.join(widgets, "fuite-affichage", "affichage.html"));
+    await symlink("/etc/hosts", path.join(widgets, "fuite-affichage", "display.html"));
     const after = await readHome(paths, data);
     const folder = await realpath(path.join(widgets, "fuite-affichage"));
-    const display = await realpath(path.join(widgets, "fuite-affichage", "affichage.html")).catch((e) => String(e));
+    const display = await realpath(path.join(widgets, "fuite-affichage", "display.html")).catch((e) => String(e));
     note("P6 confinement", {
       symlinkedJson: after.widgets.find((x) => x.id === "fuite"),
       symlinkedDisplay: { folder: folder, real: display, allowed: String(display).startsWith(folder + path.sep) },
@@ -561,7 +561,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("widget home spike", () => {
     const fakeDocker = (() => {
       const env = { ...process.env, PATH: `${FAKE_TOOLS}${path.delimiter}${process.env.PATH ?? ""}`, WEBAIOS_ROOT: path.join(w.dataDir, "espace") };
       try {
-        return { ok: true, out: execFileSync("docker", ["inspect", "webaios-atelier-firefox"], { env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim().slice(0, 120) };
+        return { ok: true, out: execFileSync("docker", ["inspect", "webaios-workshop-firefox"], { env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim().slice(0, 120) };
       } catch (e: any) {
         return { ok: false, err: String(e.stdout || e.message).slice(0, 200) };
       }
@@ -570,7 +570,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("widget home spike", () => {
     note("P7 Docker atelier", {
       fakeDocker,
       fakeTools: FAKE_TOOLS,
-      container: "webaios-atelier-firefox",
+      container: "webaios-workshop-firefox",
       ports: "5300-5319",
       harvestStates: (await readHome(spacePaths(path.join(w.dataDir, "espace")), path.join(w.dataDir, "widgets"))).widgets.flatMap((x) => ("error" in x ? [] : [{ id: x.id, state: x.state }])),
     });

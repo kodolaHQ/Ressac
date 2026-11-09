@@ -23,7 +23,7 @@ import {
 import { ID_EXECUTION, writeRun, attemptId, type Execution } from "../workflows/executions.js";
 import type { Pacing } from "../workflows/pacing.js";
 import { withMemory, writeMemory, readMemory } from "../workflows/memory.js";
-import { startTooBig } from "../workflows/protocole.js";
+import { startTooBig } from "../workflows/protocol.js";
 import { REPLAY_TOO_BIG, replayPlan } from "../workflows/replay.js";
 import type { Owner } from "../workflows/schema.js";
 import { writeResult, deleteDataAction } from "./data.js";
@@ -188,7 +188,7 @@ export async function runAction(o: OptionsAction): Promise<LaunchResult> {
       ...(o.searchUrl !== undefined ? { searchUrl: o.searchUrl } : {}),
     },
   );
-  if (outcome.t === "arret" && outcome.error === REPLAY_TOO_BIG) return denial(REPLAY_TOO_BIG);
+  if (outcome.t === "stop" && outcome.error === REPLAY_TOO_BIG) return denial(REPLAY_TOO_BIG);
   if (plan && o.attempt) {
     execution.id = attemptId(execution.start);
     execution.attempt = { start: o.attempt.start, origin: plan.origin };
@@ -229,7 +229,7 @@ export async function runAction(o: OptionsAction): Promise<LaunchResult> {
     ...(execution.kernelError ? { kernelError: true as const } : {}),
   });
 
-  if (outcome.t !== "fin") {
+  if (outcome.t !== "end") {
     if (o.interrupted?.() === true && execution.status !== "accord-requis") markInterrupted(execution);
     await keepRun();
     return (await lost()) ?? conclusion();
@@ -296,6 +296,6 @@ async function forgetThisRun(dataFolder: string, execution: string, written: { r
 
 /** The message of an action waiting for a new grant: the engine's if it stopped for that (profile denied…). */
 function denialMessage(outcome: WorkflowOutcome, d: DeclarationAction): string {
-  return outcome.t === "arret" && outcome.status === "accord-requis" ? outcome.error : actionGrantRequired(d);
+  return outcome.t === "stop" && outcome.status === "accord-requis" ? outcome.error : actionGrantRequired(d);
 }
 

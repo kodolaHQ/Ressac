@@ -198,7 +198,7 @@ it("design.spec.ts:529 app window essai: sending from the overlay pre-fills the 
   const before = agentInput(dataDir);
   await inApp(() => click(m, tid("envoyer-remarques"), { frame: "overlay" }));
   await waitFor(m, "return !document.getElementById('webaios-agent').hidden", (v) => v === true);
-  await expect.poll(() => agentInput(dataDir).slice(before.length), { timeout: 20_000 }).toContain("appli Essai (/workspace/projets/essai)");
+  await expect.poll(() => agentInput(dataDir).slice(before.length), { timeout: 20_000 }).toContain("appli Essai (/workspace/projects/essai)");
   expect(agentInput(dataDir)).toContain("/workspace/.webaios/remarques/app-essai/");
   await sleep(300);
   expect(agentInput(dataDir)).not.toContain("\r");
@@ -334,7 +334,7 @@ describe("no main window", () => {
     expect(await m.execute(`return [...Services.wm.getEnumerator("navigator:browser")].filter((w) => !w.document.documentElement.hasAttribute("webaios-app")).length;`)).toBe(0);
     const before = agentInput(dataDir);
     await click(m, tid("envoyer-remarques"), { frame: "overlay" });
-    await expect.poll(() => agentInput(dataDir).slice(before.length), { timeout: 30_000 }).toContain("appli Essai (/workspace/projets/essai)");
+    await expect.poll(() => agentInput(dataDir).slice(before.length), { timeout: 30_000 }).toContain("appli Essai (/workspace/projects/essai)");
     await sleep(300);
     expect(agentInput(dataDir)).not.toContain("\r");
     // The new main window, its agent panel open: the next tests act in it.

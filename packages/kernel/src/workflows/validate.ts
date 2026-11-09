@@ -5,32 +5,32 @@ import { INVALID_WORKFLOW_PREFIX, Workflow, type OutputKind } from "./schema.js"
 export type ValidWorkflow = {
   /** The workflow, params filled with the default values. */
   workflow: Workflow;
-  /** Run order: topological sort, ties broken in the order of the `blocs` array. */
+  /** Run order: topological sort, ties broken in the order of the `blocks` array. */
   order: string[];
   predecessors: Record<string, string[]>;
   output: { id: string; to: OutputKind };
 };
 
 /**
- * What the owner declares and that changes the rules: `sources.web`, `recolte.dureeMaxMinutes`, its kind (an
- * action returns a page, a widget does not) and, for an action, whether it declares a `saisie`.
+ * What the owner declares and that changes the rules: `sources.web`, `harvest.maxDurationMinutes`, its kind (an
+ * action returns a page, a widget does not) and, for an action, whether it declares a `input`.
  */
 export type ValidationContext = { web: boolean; maxDurationMinutes: number | null; owner: "widget" | "action"; input: boolean };
 
 /** A widget without `web` or maximum duration: the rules from before. */
 export const DEFAULT_CONTEXT: ValidationContext = { web: false, maxDurationMinutes: null, owner: "widget", input: false };
 
-export const OUTPUT_PAGE_DENIED = 'sortie : vers "page" seulement dans une action';
-export const OUTPUT_PAGE_REQUIRED = 'sortie : une action rend une page (vers: "page")';
-export const STREAMING_ACTION = "sortie.auFilDeLEau : pas dans une action";
+export const OUTPUT_PAGE_DENIED = 'output : to "page" seulement dans une action';
+export const OUTPUT_PAGE_REQUIRED = 'output : une action rend une page (to: "page")';
+export const STREAMING_ACTION = "output.live : pas dans une action";
 
-/** Refusal of a `web.chercher` block in a widget that does not declare `"web": true`. */
-export const WEB_REQUIRED = 'web.chercher : le widget doit déclarer "web": true';
+/** Refusal of a `web.search` block in a widget that does not declare `"web": true`. */
+export const WEB_REQUIRED = 'web.search : le widget doit déclarer "web": true';
 
-/** The `budgetSecondes` of a block without a maximum duration of the widget. */
+/** The `budgetSeconds` of a block without a maximum duration of the widget. */
 const BUDGET_MAX_SECONDS = 170;
 
-/** `bloc`: the id of the block concerned, when the error targets one. */
+/** `block`: the id of the block concerned, when the error targets one. */
 export type ValidationResult = { ok: true; valid: ValidWorkflow } | { ok: false; error: string; block?: string };
 
 const ERROR_LENGTH_MAX = 300;
@@ -128,20 +128,20 @@ export function validateWorkflow(raw: unknown, ctx: ValidationContext = DEFAULT_
   for (const b of workflow.blocks) {
     const definition = BLOCK_REGISTRY.get(b.type);
     if (!definition) return workflowError(`type inconnu : ${b.type}`, b.id);
-    if (b.type === "web.chercher" && !ctx.web) return workflowError(WEB_REQUIRED, b.id);
-    if (definition.perItem === "non" && "perItem" in b.params) {
-      return workflowError(`${b.id}.parElement : le type ${b.type} ne travaille pas élément par élément`, b.id);
+    if (b.type === "web.search" && !ctx.web) return workflowError(WEB_REQUIRED, b.id);
+    if (definition.perItem === "no" && "perItem" in b.params) {
+      return workflowError(`${b.id}.perItem : le type ${b.type} ne travaille pas élément par élément`, b.id);
     }
     const params = definition.params.safeParse(b.params);
     if (!params.success) return workflowError(firstProblem(params.error, b.id), b.id);
     b.params = params.data as Record<string, unknown>;
     const p = b.params;
     const budgetMax = ctx.maxDurationMinutes ? ctx.maxDurationMinutes * 60 : BUDGET_MAX_SECONDS;
-    if (typeof p.budgetSecondes === "number" && p.budgetSecondes > budgetMax) {
-      return workflowError(`${b.id}.budgetSecondes : ${budgetMax} au plus`, b.id);
+    if (typeof p.budgetSeconds === "number" && p.budgetSeconds > budgetMax) {
+      return workflowError(`${b.id}.budgetSeconds : ${budgetMax} au plus`, b.id);
     }
-    if (b.type !== "liste.nouveaux" && p.garderJours !== undefined && p.reutiliser === undefined) {
-      return workflowError(`${b.id}.garderJours : seulement avec reutiliser`, b.id);
+    if (b.type !== "list.new" && p.keepDays !== undefined && p.reuse === undefined) {
+      return workflowError(`${b.id}.keepDays : seulement avec reuse`, b.id);
     }
   }
 
@@ -156,15 +156,15 @@ export function validateWorkflow(raw: unknown, ctx: ValidationContext = DEFAULT_
     if (!predecessors[l.to]!.includes(l.from)) predecessors[l.to]!.push(l.from);
   }
 
-  const sorties = workflow.blocks.filter((b) => b.type === "sortie");
-  if (sorties.length === 0) return workflowError("aucune sortie");
-  if (sorties.length > 1) return workflowError(`plusieurs sorties : ${sorties.map((b) => b.id).join(", ")}`);
+  const outputs = workflow.blocks.filter((b) => b.type === "output");
+  if (outputs.length === 0) return workflowError("aucune sortie");
+  if (outputs.length > 1) return workflowError(`plusieurs sorties : ${outputs.map((b) => b.id).join(", ")}`);
 
-  const outputParams = sorties[0]!.params as { to: OutputKind; live?: boolean };
-  if (ctx.owner === "widget" && outputParams.to === "page") return workflowError(OUTPUT_PAGE_DENIED, sorties[0]!.id);
+  const outputParams = outputs[0]!.params as { to: OutputKind; live?: boolean };
+  if (ctx.owner === "widget" && outputParams.to === "page") return workflowError(OUTPUT_PAGE_DENIED, outputs[0]!.id);
   if (ctx.owner === "action") {
-    if (outputParams.to !== "page") return workflowError(OUTPUT_PAGE_REQUIRED, sorties[0]!.id);
-    if (outputParams.live === true) return workflowError(STREAMING_ACTION, sorties[0]!.id);
+    if (outputParams.to !== "page") return workflowError(OUTPUT_PAGE_REQUIRED, outputs[0]!.id);
+    if (outputParams.live === true) return workflowError(STREAMING_ACTION, outputs[0]!.id);
   }
 
   // Kahn's sort: at each round, the first block (in array order) all of whose predecessors are placed.
@@ -185,22 +185,22 @@ export function validateWorkflow(raw: unknown, ctx: ValidationContext = DEFAULT_
   // Last: the other errors (params, links, cycle) come first.
   for (const b of workflow.blocks) {
     const entry = BLOCK_REGISTRY.get(b.type)!.input;
-    const required = entry === "requise" || (entry === "parElement" && b.params.parElement === true);
+    const required = entry === "required" || (entry === "perItem" && b.params.perItem === true);
     if (required && predecessors[b.id]!.length === 0) return workflowError(`${b.id} : entrée manquante (relie un bloc avant lui)`, b.id);
   }
 
   const to = outputParams.to;
-  return { ok: true, valid: { workflow, order: order, predecessors: predecessors, output: { id: sorties[0]!.id, to: to } } };
+  return { ok: true, valid: { workflow, order: order, predecessors: predecessors, output: { id: outputs[0]!.id, to: to } } };
 }
 
-/** The workflow of a widget that only has `recolte.mjs`: harvest → sortie. */
+/** The workflow of a widget that only has `harvest.mjs`: harvest → output. */
 export function implicitWorkflow(): Workflow {
   return {
     version: 1,
     blocks: [
-      { id: "recolte", type: "code", position: { x: 0, y: 0 }, params: { source: "recolte.mjs", call: "recolte" } },
-      { id: "sortie", type: "sortie", position: { x: 0, y: 0 }, params: { to: "widget" } },
+      { id: "harvest", type: "code", position: { x: 0, y: 0 }, params: { source: "harvest.mjs", call: "harvest" } },
+      { id: "output", type: "output", position: { x: 0, y: 0 }, params: { to: "widget" } },
     ],
-    links: [{ from: "recolte", to: "sortie" }],
+    links: [{ from: "harvest", to: "output" }],
   };
 }

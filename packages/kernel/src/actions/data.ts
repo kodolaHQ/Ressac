@@ -2,7 +2,7 @@ import { lstat, readdir, readFile, rm, rmdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 import type { SpacePaths } from "../paths.js";
-import { DATA_MAX_SIZE } from "../workflows/protocole.js";
+import { DATA_MAX_SIZE } from "../workflows/protocol.js";
 import { writeAtomic, ID_EXECUTION, listRuns } from "../workflows/executions.js";
 import { withMemory, clearRunsAndMemory } from "../workflows/memory.js";
 import { removeGrant } from "../widgets/grants.js";

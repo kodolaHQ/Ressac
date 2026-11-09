@@ -28,11 +28,11 @@ function canonical(v: unknown): unknown {
 export const canonicalJson = (v: unknown): string => JSON.stringify(canonical(v));
 
 /**
- * Hash (16 characters) of a block's params: a block's memory is only valid for its settings. `garderJours`
+ * Hash (16 characters) of a block's params: a block's memory is only valid for its settings. `keepDays`
  * is not part of it: changing the lifetime of the kept results does not erase them.
  */
 export function paramsHash(p: Record<string, unknown>): string {
-  const { garderJours: _keepDays, ...settings } = p;
+  const { keepDays: _keepDays, ...settings } = p;
   return createHash("sha256").update(canonicalJson(settings)).digest("hex").slice(0, 16);
 }
 

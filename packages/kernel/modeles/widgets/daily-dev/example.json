@@ -1,0 +1,24 @@
+{
+  "articles": [
+    {
+      "title": "Construire un agent de code fiable avec TypeScript",
+      "url": "https://app.daily.dev/posts/exemple-1",
+      "source": "app.daily.dev",
+      "score": 0.91,
+      "summary": "L'article détaille une boucle d'agent avec outils typés, reprises sur erreur et journal des actions."
+    },
+    {
+      "title": "Pourquoi l'IA locale change la vie privée des applications",
+      "url": "https://app.daily.dev/posts/exemple-2",
+      "source": "app.daily.dev",
+      "score": 0.85,
+      "summary": "Faire tourner le modèle sur la machine évite d'envoyer les données à un service tiers."
+    },
+    {
+      "title": "Svelte et les composants réactifs sans magie",
+      "url": "https://app.daily.dev/posts/exemple-3",
+      "source": "app.daily.dev",
+      "score": 0.77
+    }
+  ]
+}

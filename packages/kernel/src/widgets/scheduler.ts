@@ -29,7 +29,7 @@ import {
 export { WORKSHOP_STOPPED_ERROR, INTERNAL_HARVEST_ERROR, type AttemptResult };
 
 /** A block of the run in progress, from its traces. */
-export type DirectBlock = { status: "en-cours" | "reussi" | "partiel" | "echoue"; items: number | null };
+export type DirectBlock = { status: "running" | "succeeded" | "partial" | "failed"; items: number | null };
 /** A run (real, or builder try) that is running right now. */
 export type DirectWidget = { widget: string; kind: "execution" | "essai"; start: string; blocks: Record<string, DirectBlock> };
 /**
@@ -65,7 +65,7 @@ const ID_WIDGET = /^[a-z0-9-]+$/;
 const age = (iso: string | null, now: Date) => (iso ? now.getTime() - Date.parse(iso) : Infinity);
 
 /**
- * Is the widget to be harvested now? It needs a harvest (declared, and `workflow.json` or `recolte.mjs` present), a status other
+ * Is the widget to be harvested now? It needs a harvest (declared, and `workflow.json` or `harvest.mjs` present), a status other
  * than `accord-requis` (only the user unblocks), and either data older than `recolte.minutes` (or absent), or
  * a fixed hour to do (`heureDue`). After an error, the frequency also waits 15 min since the last
  * attempt. `en-cours` is only relaunched at launch (the previous harvest was interrupted), and only if it has a
@@ -90,7 +90,7 @@ export type Tryer = (o: HarvestOptions & { origin: string; start: string }) => P
 export interface SchedulerOptions {
   paths: SpacePaths;
   widgetsFolder: string;
-  /** Folder of the workflow engine (`docker/moteur`), mounted read-only in the container. */
+  /** Folder of the workflow engine (`docker/engine`), mounted read-only in the container. */
   engine: string;
   workshop: Pick<Workshop, "state" | "harvestCommand" | "deleteHarvest">;
   bridge: BrowserBridge;
@@ -216,8 +216,8 @@ export class WidgetsScheduler {
     this.signalDirect();
     const onTrace = (t: DirectTrace) => {
       // The `avancement` and `lecture` traces (for the actions) change nothing in a widget's tracking.
-      if (!this.live.includes(tracking) || (t.step !== "debut" && t.step !== "fin")) return;
-      tracking.blocks[t.block] = t.step === "debut" ? { status: "en-cours", items: null } : { status: t.status, items: t.items };
+      if (!this.live.includes(tracking) || (t.step !== "start" && t.step !== "end")) return;
+      tracking.blocks[t.block] = t.step === "start" ? { status: "running", items: null } : { status: t.status, items: t.items };
       this.signalDirect();
     };
     // Each run has its own queue of AI calls.
@@ -241,13 +241,13 @@ export class WidgetsScheduler {
       const blocks: Record<string, DirectBlock> = {};
       for (const b of e.blocks) {
         if (b.start === null) continue;
-        const status = b.status === "reussi" || b.status === "partiel" ? b.status : "echoue";
+        const status = b.status === "succeeded" || b.status === "partial" ? b.status : "failed";
         blocks[b.id] = { status: status, items: b.items };
       }
       tracking.blocks = blocks;
     } else {
       // Nothing written (denial, grant withdrawn…): a block still in progress will not finish.
-      for (const b of Object.values(tracking.blocks)) if (b.status === "en-cours") b.status = "echoue";
+      for (const b of Object.values(tracking.blocks)) if (b.status === "running") b.status = "failed";
     }
     if (this.live.includes(tracking)) this.signalDirect();
   }

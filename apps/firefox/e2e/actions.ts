@@ -174,7 +174,7 @@ export function writeRunnableAction(
   id: string,
   o: { name: string; code: string; account?: string[]; input?: string; keywords?: string[]; blocks?: { id: string; type: string; params: Record<string, unknown> }[] },
 ): Promise<void> {
-  const blocks = [{ id: "liste", type: "code", params: { source: "liste.mjs" } }, ...(o.blocks ?? []), { id: "sortie", type: "sortie", params: { to: "page" } }];
+  const blocks = [{ id: "liste", type: "code", params: { source: "liste.mjs" } }, ...(o.blocks ?? []), { id: "sortie", type: "output", params: { to: "page" } }];
   return writeAction(dataDir, id, {
     name: o.name,
     sources: { account: o.account ?? [] },

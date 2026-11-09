@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 export const COLUMNS = 12;
-export { DATA_MAX_SIZE } from "../workflows/protocole.js";
+export { DATA_MAX_SIZE } from "../workflows/protocol.js";
 
 /** Lowercase host name (« news.ycombinator.com »). */
 const domain = z.string().regex(/^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/, "nom d'hôte en minuscules attendu");
@@ -129,9 +129,9 @@ export type WidgetLu =
       state: WidgetState;
       data: unknown | null;
       example: unknown | null;
-      /** The widget has a harvest: `workflow.json` or `recolte.mjs`. */
+      /** The widget has a harvest: `workflow.json` or `harvest.mjs`. */
       hasHarvest: boolean;
-      /** `workflow.json` present (it then wins over `recolte.mjs`). */
+      /** `workflow.json` present (it then wins over `harvest.mjs`). */
       hasWorkflow: boolean;
       hasDisplay: boolean;
     }

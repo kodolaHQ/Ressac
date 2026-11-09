@@ -1,19 +1,19 @@
 {
   "version": 1,
-  "blocs": [
+  "blocks": [
     {
       "id": "ville",
       "type": "code",
-      "nom": "La ville réglée",
+      "name": "La ville réglée",
       "position": { "x": 0, "y": 0 },
-      "parametres": { "source": "ville.mjs" }
+      "params": { "source": "ville.mjs" }
     },
     {
       "id": "geo",
-      "type": "source.recuperer",
-      "nom": "Trouver la ville",
+      "type": "source.fetch",
+      "name": "Trouver la ville",
       "position": { "x": 260, "y": 0 },
-      "parametres": {
+      "params": {
         "url": "https://geocoding-api.open-meteo.com/v1/search?name={ville}&count=1&language=fr",
         "format": "json"
       }
@@ -21,20 +21,20 @@
     {
       "id": "prevision",
       "type": "code",
-      "nom": "Prévision heure par heure et jour par jour",
+      "name": "Prévision heure par heure et jour par jour",
       "position": { "x": 520, "y": 0 },
-      "parametres": { "source": "prevision.mjs" }
+      "params": { "source": "prevision.mjs" }
     },
     {
       "id": "sortie",
-      "type": "sortie",
+      "type": "output",
       "position": { "x": 780, "y": 0 },
-      "parametres": { "vers": "widget" }
+      "params": { "to": "widget" }
     }
   ],
-  "liens": [
-    { "de": "ville", "vers": "geo" },
-    { "de": "geo", "vers": "prevision" },
-    { "de": "prevision", "vers": "sortie" }
+  "links": [
+    { "from": "ville", "to": "geo" },
+    { "from": "geo", "to": "prevision" },
+    { "from": "prevision", "to": "sortie" }
   ]
 }

@@ -7,7 +7,7 @@ import { CASE_CHAIN } from "../helpers/chain-cases.js";
 import { ENGINE, sentWorkflow } from "../helpers/engine.js";
 
 // The container's interpreter copies the rule: imported as is, without types.
-const { chaineDe: chainOf, BLOCS_LIVRES: SHIPPED_BLOCKS } = await import(pathToFileURL(join(ENGINE, "interpreteur.mjs")).href);
+const { chainOf, SHIPPED_BLOCKS } = await import(pathToFileURL(join(ENGINE, "interpreter.mjs")).href);
 
 for (const cas of CASE_CHAIN) {
   test(`streaming chain: ${cas.name}`, () => {
@@ -21,16 +21,16 @@ for (const cas of CASE_CHAIN) {
   });
 }
 
-test("the chainable blocks: source.page, source.recuperer, ia.rediger, web.chercher", () => {
+test("the chainable blocks: source.page, source.fetch, ai.write, web.search", () => {
   const chainable = [...BLOCK_REGISTRY.values()].filter((d) => d.chain).map((d) => d.type).sort();
-  expect(chainable).toEqual(["ia.rediger", "source.page", "source.recuperer", "web.chercher"]);
+  expect(chainable).toEqual(["ai.write", "source.fetch", "source.page", "web.search"]);
 });
 
-test("BlockDefinition.chaine is consistent with the container's modules", () => {
+test("BlockDefinition.chain is consistent with the container's modules", () => {
   for (const d of BLOCK_REGISTRY.values()) {
     const module = SHIPPED_BLOCKS[d.type];
     expect(module, d.type).toBeDefined();
-    const chainable = module.parElement === "option" && !module.finaliser && module.echecSiTousEchouent !== true;
+    const chainable = module.perItem === "option" && !module.finalize && module.failIfAllFail !== true;
     expect(d.chain, d.type).toBe(chainable);
   }
 });

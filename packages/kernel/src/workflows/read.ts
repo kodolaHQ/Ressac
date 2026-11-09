@@ -35,14 +35,14 @@ async function readTextFile(folder: string, ctx: ValidationContext): Promise<Val
 
 /**
  * A widget's workflow: `workflow.json` if it exists, otherwise the implicit workflow of a
- * `recolte.mjs`, otherwise null. Nothing is run here: the file is only read as JSON. `ctx`: what the widget
+ * `harvest.mjs`, otherwise null. Nothing is run here: the file is only read as JSON. `ctx`: what the widget
  * declares (`contexteValidation`).
  */
 export async function readWorkflow(filesFolder: string, ctx: ValidationContext = DEFAULT_CONTEXT): Promise<WorkflowLu | null> {
   if (await exists(join(filesFolder, "workflow.json"))) {
     return { origin: "fichier", result: await readTextFile(filesFolder, ctx) };
   }
-  if (await exists(join(filesFolder, "recolte.mjs"))) {
+  if (await exists(join(filesFolder, "harvest.mjs"))) {
     return { origin: "implicite", result: validateWorkflow(implicitWorkflow(), ctx) };
   }
   return null;

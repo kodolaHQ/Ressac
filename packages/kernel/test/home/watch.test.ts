@@ -13,7 +13,7 @@ test("surveillerAccueil calls the callback only once for a burst of writes", asy
   const stop = watchHome(c, () => calls++);
   await sleep(300); // laisse chokidar s'initialiser
   for (let i = 0; i < 5; i++) {
-    await writeFile(join(c.widgets, "x", "affichage.html"), `<p>${i}</p>`);
+    await writeFile(join(c.widgets, "x", "display.html"), `<p>${i}</p>`);
     await sleep(4);
   }
   await sleep(500);

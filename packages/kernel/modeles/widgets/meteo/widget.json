@@ -1,7 +1,7 @@
 {
-  "nom": "Météo",
+  "name": "Météo",
   "description": "Le temps qu'il fait chez toi, heure par heure puis jour par jour",
-  "tailles": {
+  "sizes": {
     "min": {
       "l": 2,
       "h": 2
@@ -10,17 +10,17 @@
       "l": 6,
       "h": 4
     },
-    "defaut": {
+    "default": {
       "l": 3,
       "h": 2
     }
   },
-  "recolte": {
+  "harvest": {
     "minutes": 60
   },
   "sources": {
-    "compte": [],
-    "publiques": [
+    "account": [],
+    "public": [
       "api.open-meteo.com",
       "geocoding-api.open-meteo.com"
     ]

@@ -138,7 +138,7 @@ const closeListeners = new Set<() => void>();
 const context = (s: OpenSite): NavigationContext => ({
   domains: s.site.domains,
   login: s.site.declaration.login ?? [],
-  localAddresses: Services.env.get("WEBAIOS_TEST_ADRESSES_LOCALES") === "1",
+  localAddresses: Services.env.get("WEBAIOS_TEST_LOCAL_ADDRESSES") === "1",
 });
 
 function hostOf(url: string): string {

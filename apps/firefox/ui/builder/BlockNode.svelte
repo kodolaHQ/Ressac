@@ -19,11 +19,11 @@
   const TINTS: Record<string, "ok" | "moyen" | "echec" | "neutre" | "en-cours"> = {
     succeeded: "ok",
     partial: "moyen",
-    fails: "echec",
+    failed: "echec",
     interrupted: "echec",
-    "pas-lance": "neutre",
+    "not-run": "neutre",
     resumed: "neutre",
-    "en-cours": "en-cours",
+    running: "en-cours",
   };
 </script>
 

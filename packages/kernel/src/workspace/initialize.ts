@@ -125,7 +125,7 @@ async function matches(c: SpacePaths, models: string): Promise<[string, string][
   const pairs: [string, string][] = [
     ["AGENTS.md", join(c.root, "AGENTS.md")],
     ["CLAUDE.md", join(c.root, "CLAUDE.md")],
-    ["profil-claude.json", join(c.profiles, "claude.json")],
+    ["agent-profile.json", join(c.profiles, "claude.json")],
     ["disposition.json", c.layout],
   ];
   if (!existsSync(c.widgets)) {
@@ -135,8 +135,8 @@ async function matches(c: SpacePaths, models: string): Promise<[string, string][
 }
 
 /**
- * sha256 hashes of each shipped version of the starter widgets' `recolte.mjs` (before workflows). A
- * starter widget whose `recolte.mjs` has one is left as is: it switches to a workflow at launch.
+ * sha256 hashes of each shipped version of the starter widgets' harvest script (`recolte.mjs`, `harvest.mjs` after the English
+ * migration; before workflows). A starter widget whose `harvest.mjs` has one is left as is: it switches to a workflow at launch.
  */
 export const HARVESTS_SHIPPED: Record<"meteo" | "actus-tech" | "daily-dev", ReadonlySet<string>> = {
   meteo: new Set(["c30b449bd9bce4addd59be19e0bdf7bf4010bdc796ce29ca57805be536652f98"]),
@@ -153,7 +153,7 @@ export const HARVESTS_SHIPPED: Record<"meteo" | "actus-tech" | "daily-dev", Read
 };
 
 /**
- * sha256 hashes of the shipped versions of the starter widgets' `affichage.html` (the first two: before the Firefox
+ * sha256 hashes of the shipped versions of the starter widgets' display (`affichage.html`, `display.html` after the English migration; the first two: before the Firefox
  * forms, listening without comparing `e.source`, links through `webaiosOuvrir`). A display left at one of them is replaced by the
  * current template; a display modified by the user or the agent (unknown hash) is not touched.
  */
@@ -199,11 +199,11 @@ async function absent(path: string): Promise<boolean> {
 }
 
 /**
- * Switches a starter widget left as shipped (`recolte.mjs` of a known version, without `workflow.json`) to
+ * Switches a starter widget left as shipped (`harvest.mjs` of a known version, without `workflow.json`) to
  * its workflow template: the template's `.mjs` then `workflow.json` are copied without overwriting anything, then
- * `recolte.mjs` goes to `accueil/.corbeille/<id>-recolte-<timestamp>.mjs`. A modified widget, or one where a file
+ * `harvest.mjs` goes to `accueil/.corbeille/<id>-harvest-<timestamp>.mjs`. A modified widget, or one where a file
  * of the template already exists with other content, is not touched. Nothing other than this folder and the trash. With
- * the template's `workflow.json` already there (interrupted switch), only `recolte.mjs` is put away.
+ * the template's `workflow.json` already there (interrupted switch), only `harvest.mjs` is put away.
  */
 async function toggleStartWidget(c: SpacePaths, models: string, id: keyof typeof HARVESTS_SHIPPED): Promise<string[]> {
   const folder = join(c.widgets, id);
@@ -212,13 +212,13 @@ async function toggleStartWidget(c: SpacePaths, models: string, id: keyof typeof
   } catch {
     return [];
   }
-  const harvest = await ordinaryFile(join(folder, "recolte.mjs"));
+  const harvest = await ordinaryFile(join(folder, "harvest.mjs"));
   if (!harvest || !HARVESTS_SHIPPED[id].has(hash(harvest))) return [];
   // The template is read only afterwards: templates without this widget, and nothing moves.
   const model = join(models, "widgets", id);
   if (!existsSync(join(model, "workflow.json"))) return [];
   if (!(await absent(join(folder, "workflow.json")))) {
-    // template's workflow.json already there: a switch interrupted before putting recolte.mjs away, which it finishes.
+    // template's workflow.json already there: a switch interrupted before putting harvest.mjs away, which it finishes.
     const present = await ordinaryFile(join(folder, "workflow.json"));
     if (present && present.equals(await readFile(join(model, "workflow.json")))) await storeHarvest(c, id);
     return [];
@@ -247,22 +247,22 @@ async function toggleStartWidget(c: SpacePaths, models: string, id: keyof typeof
   return crees;
 }
 
-/** `recolte.mjs` of a switched starter widget goes to `accueil/.corbeille/<id>-recolte-<timestamp>.mjs`. */
+/** `harvest.mjs` of a switched starter widget goes to `accueil/.corbeille/<id>-harvest-<timestamp>.mjs`. */
 async function storeHarvest(c: SpacePaths, id: string): Promise<void> {
   const trash = join(c.home, ".corbeille");
   await mkdir(trash, { recursive: true });
-  await renameIfPresent(join(c.widgets, id, "recolte.mjs"), join(trash, `${id}-recolte-${timestamp()}.mjs`));
+  await renameIfPresent(join(c.widgets, id, "harvest.mjs"), join(trash, `${id}-harvest-${timestamp()}.mjs`));
 }
 
 /**
- * Replaces the `affichage.html` of a starter widget left at a shipped version (known hash) with the template's.
+ * Replaces the `display.html` of a starter widget left at a shipped version (known hash) with the template's.
  * A modified display, a symbolic link or an absent widget are not touched.
  */
 async function migrateStartDisplay(c: SpacePaths, models: string, id: keyof typeof DISPLAYS_SHIPPED): Promise<boolean> {
-  const file = join(c.widgets, id, "affichage.html");
+  const file = join(c.widgets, id, "display.html");
   const content = await ordinaryFile(file);
   if (!content || !DISPLAYS_SHIPPED[id].has(hash(content))) return false;
-  const model = join(models, "widgets", id, "affichage.html");
+  const model = join(models, "widgets", id, "display.html");
   if (!existsSync(model)) return false;
   if (content.equals(await readFile(model))) return false;
   await copyFile(model, file);
@@ -288,13 +288,13 @@ export async function initSpace(c: SpacePaths, models = DEFAULT_MODELS): Promise
   for (const id of Object.keys(DISPLAYS_SHIPPED) as (keyof typeof DISPLAYS_SHIPPED)[]) {
     // Best effort, widget by widget: a failed display never blocks launch.
     try {
-      if (await migrateStartDisplay(c, models, id)) created.push(join(c.widgets, id, "affichage.html"));
+      if (await migrateStartDisplay(c, models, id)) created.push(join(c.widgets, id, "display.html"));
     } catch (e) {
       console.error(`[webaios] migration de l'affichage du widget ${id} :`, e);
     }
   }
   for (const id of Object.keys(HARVESTS_SHIPPED) as (keyof typeof HARVESTS_SHIPPED)[]) {
-    // Best effort, widget by widget: a failed switch never blocks launch (the widget keeps its recolte.mjs).
+    // Best effort, widget by widget: a failed switch never blocks launch (the widget keeps its harvest.mjs).
     try {
       created.push(...(await toggleStartWidget(c, models, id)));
     } catch (e) {

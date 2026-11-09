@@ -8,7 +8,7 @@ import {
 import { tempFolder } from "../helpers/temp.js";
 
 const block = (id: string, output?: unknown): BlockTrace => ({
-  id, type: "code", status: "reussi", start: null, end: null, items: null, log: [],
+  id, type: "code", status: "succeeded", start: null, end: null, items: null, log: [],
   ...(output === undefined ? {} : { output: output }),
 });
 const execution = (start: string, blocks: BlockTrace[] = []): Execution => ({
@@ -69,7 +69,7 @@ test("listRuns returns the most recent first and ignores a damaged file", async 
   expect(list.map((r) => r.id)).toEqual([timestamp(3), timestamp(2), timestamp(1)].map(idExecution));
   expect(list[2]).toEqual({
     id: idExecution(timestamp(1)), trigger: "manuelle", start: timestamp(1), end: timestamp(1), status: "reussie",
-    blocks: [{ id: "a", status: "reussi", items: null }],
+    blocks: [{ id: "a", status: "succeeded", items: null }],
   });
   expect(await listRuns(await tempFolder())).toEqual([]);
 });

@@ -1,7 +1,7 @@
 import type { DevRight } from "../access/policy.js";
 import type { CpuProfile } from "../devtools/summaries.js";
 import type { ChangeHost } from "../workflows/pacing.js";
-import type { ReadPage } from "../workflows/protocole.js";
+import type { ReadPage } from "../workflows/protocol.js";
 
 /** The options of an invisible page read (see `BrowserBridge.lirePageInvisible`). */
 export interface PageReadOptions {

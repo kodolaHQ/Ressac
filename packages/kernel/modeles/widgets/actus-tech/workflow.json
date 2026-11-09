@@ -1,15 +1,15 @@
 {
   "version": 1,
-  "blocs": [
+  "blocks": [
     {
       "id": "flux",
-      "type": "source.flux",
-      "nom": "Flux tech",
+      "type": "source.feed",
+      "name": "Flux tech",
       "position": {
         "x": 0,
         "y": 0
       },
-      "parametres": {
+      "params": {
         "urls": [
           "https://news.ycombinator.com/rss",
           "https://lobste.rs/rss",
@@ -20,150 +20,150 @@
     },
     {
       "id": "uniques",
-      "type": "liste.dedoublonner",
-      "nom": "Sans doublons",
+      "type": "list.dedupe",
+      "name": "Sans doublons",
       "position": {
         "x": 260,
         "y": 0
       },
-      "parametres": {
-        "cles": [
+      "params": {
+        "keys": [
           "url",
-          "titre"
+          "title"
         ]
       }
     },
     {
       "id": "tri",
-      "type": "ia.trier",
-      "nom": "Tri par Kev selon tes intérêts",
+      "type": "ai.sort",
+      "name": "Tri par Kev selon tes intérêts",
       "position": {
         "x": 520,
         "y": 0
       },
-      "parametres": {
+      "params": {
         "question": "Cet article intéresse-t-il quelqu'un qui suit : {config.interets} ?",
-        "texte": "Titre : {titre}\nSource : {source}",
-        "seuil": 0.6,
-        "siErreur": "sauter"
+        "text": "Titre : {title}\nSource : {source}",
+        "threshold": 0.6,
+        "onError": "skip"
       }
     },
     {
       "id": "top",
-      "type": "liste.garder",
-      "nom": "Les 15 meilleurs",
+      "type": "list.keep",
+      "name": "Les 15 meilleurs",
       "position": {
         "x": 780,
         "y": 0
       },
-      "parametres": {
-        "nombre": 15
+      "params": {
+        "count": 15
       }
     },
     {
       "id": "a-resumer",
-      "type": "liste.garder",
-      "nom": "Les 8 premiers à résumer",
+      "type": "list.keep",
+      "name": "Les 8 premiers à résumer",
       "position": {
         "x": 780,
         "y": 160
       },
-      "parametres": {
-        "nombre": 8
+      "params": {
+        "count": 8
       }
     },
     {
       "id": "pages",
       "type": "source.page",
-      "nom": "Lire chaque article",
+      "name": "Lire chaque article",
       "position": {
         "x": 1040,
         "y": 160
       },
-      "parametres": {
+      "params": {
         "url": "{url}",
-        "parElement": true,
-        "champ": "page",
-        "budgetSecondes": 60
+        "perItem": true,
+        "field": "page",
+        "budgetSeconds": 60
       }
     },
     {
       "id": "resumes",
-      "type": "ia.rediger",
-      "nom": "Résumé par Gemma",
+      "type": "ai.write",
+      "name": "Résumé par Gemma",
       "position": {
         "x": 1300,
         "y": 160
       },
-      "parametres": {
-        "consigne": "Résume en français, en 2 phrases au plus, le contenu de la page ci-dessous. Réponds uniquement par le résumé.\n\nTitre : {titre}\n\n--- DÉBUT DU CONTENU ---\n{page.texte}\n--- FIN DU CONTENU ---",
-        "parElement": true,
-        "champ": "resume",
-        "texteMax": 12000,
-        "reutiliser": "url",
-        "budgetSecondes": 60
+      "params": {
+        "prompt": "Résume en français, en 2 phrases au plus, le contenu de la page ci-dessous. Réponds uniquement par le résumé.\n\nTitre : {title}\n\n--- DÉBUT DU CONTENU ---\n{page.text}\n--- FIN DU CONTENU ---",
+        "perItem": true,
+        "field": "summary",
+        "maxText": 12000,
+        "reuse": "url",
+        "budgetSeconds": 60
       }
     },
     {
       "id": "articles",
       "type": "code",
-      "nom": "Articles et résumés",
+      "name": "Articles et résumés",
       "position": {
         "x": 1560,
         "y": 0
       },
-      "parametres": {
+      "params": {
         "source": "articles.mjs"
       }
     },
     {
       "id": "sortie",
-      "type": "sortie",
+      "type": "output",
       "position": {
         "x": 1820,
         "y": 0
       },
-      "parametres": {
-        "vers": "widget"
+      "params": {
+        "to": "widget"
       }
     }
   ],
-  "liens": [
+  "links": [
     {
-      "de": "flux",
-      "vers": "uniques"
+      "from": "flux",
+      "to": "uniques"
     },
     {
-      "de": "uniques",
-      "vers": "tri"
+      "from": "uniques",
+      "to": "tri"
     },
     {
-      "de": "tri",
-      "vers": "top"
+      "from": "tri",
+      "to": "top"
     },
     {
-      "de": "top",
-      "vers": "a-resumer"
+      "from": "top",
+      "to": "a-resumer"
     },
     {
-      "de": "a-resumer",
-      "vers": "pages"
+      "from": "a-resumer",
+      "to": "pages"
     },
     {
-      "de": "pages",
-      "vers": "resumes"
+      "from": "pages",
+      "to": "resumes"
     },
     {
-      "de": "top",
-      "vers": "articles"
+      "from": "top",
+      "to": "articles"
     },
     {
-      "de": "resumes",
-      "vers": "articles"
+      "from": "resumes",
+      "to": "articles"
     },
     {
-      "de": "articles",
-      "vers": "sortie"
+      "from": "articles",
+      "to": "sortie"
     }
   ]
 }

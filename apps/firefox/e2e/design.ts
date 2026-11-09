@@ -57,7 +57,7 @@ const send = (body: string, headers: Record<string, string> = {}) => (_req: unkn
 /**
  * Two servers on 127.0.0.1: the pages (`page`, reached as 127.0.0.1) and the frame (`frame`, reached as localhost: another
  * site, so another process). `/`, `/x`, `/hooks`, `/csp`, `/oop` (DESIGN_PAGE with the frame), `/cible` and `/frame` on
- * both. `port`: the pages' port (a demo port in WEBAIOS_PORTS_APPS makes them a demo project).
+ * both. `port`: the pages' port (a demo port in WEBAIOS_APP_PORTS makes them a demo project).
  */
 export async function startDesignServers(o: { port?: number } = {}): Promise<{ page: string; frame: string; paths: string[]; close(): Promise<void> }> {
   let frame = "";

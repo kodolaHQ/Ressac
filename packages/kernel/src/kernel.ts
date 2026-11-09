@@ -277,7 +277,7 @@ export async function createKernel(o: {
   actionsFolder: string;
   /** Local AI for the harvests; stopped with the kernel. */
   ai?: LocalAi;
-  /** Workflow engine, mounted in the harvest container (by default `<ressources>/docker/moteur`). */
+  /** Workflow engine, mounted in the harvest container (by default `<resources>/docker/engine`). */
   engine?: string;
   /** The workflow open in a window's builder (MCP tool `open_workflow`). */
   openWorkflow?: (win: string) => OpenWorkflow | null;
@@ -396,7 +396,7 @@ export async function createKernel(o: {
   });
   workshopReady.catch(() => {});
   let startup: Promise<WorkshopState> | null = workshopReady;
-  const engine = o.engine ?? (o.resources ? join(o.resources, "docker", "moteur") : join(DEFAULT_DOCKER_FOLDER, "moteur"));
+  const engine = o.engine ?? (o.resources ? join(o.resources, "docker", "engine") : join(DEFAULT_DOCKER_FOLDER, "engine"));
   const directSubscribers = new Set<(e: DirectState) => void>();
   const scheduler = new WidgetsScheduler({
     paths: paths,

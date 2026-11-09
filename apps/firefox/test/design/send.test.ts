@@ -37,7 +37,7 @@ test("app: preRemplir receives the agent's window and the text, never a \r; exte
   expect(o.prefill).toHaveBeenCalledTimes(1);
   const [f, text] = o.prefill.mock.calls[0]!;
   expect(f).toBe("f7");
-  expect(text).toContain("appli Essai (/workspace/projets/essai)");
+  expect(text).toContain("appli Essai (/workspace/projects/essai)");
   expect(text).toContain("/workspace/.webaios/remarques/app-essai/20261102T101500Z-ab12/lot.json] ");
   expect(text).not.toMatch(/[\r\n]/);
   expect(o.giveTerminal).toHaveBeenCalledWith("f7");

@@ -9,10 +9,10 @@ const resume = (id: string, attempt = false): ResumeExecution => ({
   start: "2026-10-29T10:00:00.000Z",
   end: "2026-10-29T10:00:01.000Z",
   status: "reussie",
-  blocks: [{ id: "tri", status: "reussi", items: 1 }],
+  blocks: [{ id: "tri", status: "succeeded", items: 1 }],
 });
 const complete = (r: ResumeExecution): Execution =>
-  ({ ...r, version: 1, owner: { type: "widget", id: "w" }, blocks: r.blocks.map((b) => ({ ...b, type: "ia.trier", start: null, end: null, log: [] })) }) as Execution;
+  ({ ...r, version: 1, owner: { type: "widget", id: "w" }, blocks: r.blocks.map((b) => ({ ...b, type: "ai.sort", start: null, end: null, log: [] })) }) as Execution;
 
 function fake(list: ResumeExecution[]) {
   const state = { list: list };
@@ -156,9 +156,9 @@ test("busy when a run of this widget is running or waiting; not for another widg
   expect(x.live).toBeNull();
   l.emit({ running: [], waiting: ["w"] });
   expect(x.busy).toBe(true);
-  l.emit(directOf("w", { sort: { status: "en-cours", items: null } }));
+  l.emit(directOf("w", { tri: { status: "running", items: null } }));
   expect(x.busy).toBe(true);
-  expect(x.live?.blocks.tri?.status).toBe("en-cours");
+  expect(x.live?.blocks.tri?.status).toBe("running");
   end();
   expect(l.callbacks).toHaveLength(0);
 });
@@ -174,7 +174,7 @@ test("occupe when the widget is among the current or waiting ones", async () => 
   expect(x.busy).toBe(false);
   expect(x.live).toBeNull();
   // Two runs at the same time (short lane and long lane): this widget is the second.
-  l.emit({ running: [watch, { widget: "w", kind: "essai", start: "d1", blocks: { sort: { status: "reussi", items: 2 } } }], waiting: [] });
+  l.emit({ running: [watch, { widget: "w", kind: "essai", start: "d1", blocks: { tri: { status: "succeeded", items: 2 } } }], waiting: [] });
   expect(x.busy).toBe(true);
   expect(x.live).toMatchObject({ widget: "w", kind: "essai", start: "d1" });
   l.emit({ running: [watch], waiting: ["autre", "w"] });
@@ -191,7 +191,7 @@ test("end of the run followed live: list and detail reread, no more stale live",
   const x = new Executions("w", f.source, l.launcher);
   x.follow();
   await x.load();
-  l.emit(directOf("w", { sort: { status: "en-cours", items: null } }));
+  l.emit(directOf("w", { tri: { status: "running", items: null } }));
   // The scheduled run is written, the live one stops (unfinished blocks are not relayed at the end).
   f.state.list = [resume("c"), resume("b")];
   l.emit({ running: [], waiting: [] });

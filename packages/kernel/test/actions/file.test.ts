@@ -13,8 +13,8 @@ import { CONCURRENT_ACTIONS, FileActions, type ActionsState, type OptionsFileAct
 import { tempFolder } from "../helpers/temp.js";
 import { declarationWidget, writeWidget } from "../helpers/home.js";
 
-const ENGINE = join(import.meta.dirname, "..", "..", "docker", "moteur");
-const SCRIPT = join(ENGINE, "recolteur.mjs");
+const ENGINE = join(import.meta.dirname, "..", "..", "docker", "engine");
+const SCRIPT = join(ENGINE, "harvester.mjs");
 const clock = (() => {
   let t = Date.parse("2026-10-31T10:00:00.000Z");
   return () => new Date((t += 1000));
@@ -174,7 +174,7 @@ describe("FileActions", () => {
   it("an action starts while a widget harvest is running", async () => {
     const r = kept();
     const { f, c } = await prepare({ run: r.run });
-    await writeWidget(c, "lent", declarationWidget(undefined, { harvest: { minutes: 60 } }), { "recolte.mjs": "export default () => 1" });
+    await writeWidget(c, "lent", declarationWidget(undefined, { harvest: { minutes: 60 } }), { "harvest.mjs": "export default () => 1" });
     const keptHarvest = deferred<void>();
     let harvestStarted = false;
     const p = new WidgetsScheduler({
@@ -207,20 +207,20 @@ describe("FileActions", () => {
     const a = f.launch("a", { input: null, trigger: "manuelle" });
     await waitUntil(() => r.launchedList.length === 1);
     const o = r.launchedList[0]!;
-    o.onTrace({ block: "lire", step: "debut" });
-    o.onTrace({ block: "lire", step: "lecture", host: "gitlab.com" });
-    o.onTrace({ block: "lire", step: "avancement", done: 7, total: 12 });
-    expect(f.direct().running[0]!.blocks).toEqual({ read: { status: "en-cours", items: null, host: "gitlab.com", done: 7, total: 12 } });
-    o.onTrace({ block: "lire", step: "fin", status: "reussi", items: 12 });
-    expect(f.direct().running[0]!.blocks.lire).toMatchObject({ status: "reussi", items: 12 });
+    o.onTrace({ block: "lire", step: "start" });
+    o.onTrace({ block: "lire", step: "read", host: "gitlab.com" });
+    o.onTrace({ block: "lire", step: "progress", done: 7, total: 12 });
+    expect(f.direct().running[0]!.blocks).toEqual({ lire: { status: "running", items: null, host: "gitlab.com", done: 7, total: 12 } });
+    o.onTrace({ block: "lire", step: "end", status: "succeeded", items: 12 });
+    expect(f.direct().running[0]!.blocks.lire).toMatchObject({ status: "succeeded", items: 12 });
     o.onStep("mise-en-page");
     expect(f.direct().running[0]!.step).toBe("mise-en-page");
     // surDirect is called on each change.
     expect(directs.some((d) => d.running[0]?.blocks.lire?.host === "gitlab.com")).toBe(true);
     expect(directs.at(-1)!.running[0]!.step).toBe("mise-en-page");
     // direct() is a copy.
-    f.direct().running[0]!.blocks.lire!.status = "echoue";
-    expect(f.direct().running[0]!.blocks.lire!.status).toBe("reussi");
+    f.direct().running[0]!.blocks.lire!.status = "failed";
+    expect(f.direct().running[0]!.blocks.lire!.status).toBe("succeeded");
     r.release("a");
     await a.end;
     expect(directs.at(-1)).toEqual({ running: [], waiting: [] });
@@ -232,10 +232,10 @@ describe("FileActions", () => {
     const a = f.launch("a", { input: null, trigger: "manuelle" });
     await waitUntil(() => r.launchedList.length === 1);
     const o = r.launchedList[0]!;
-    o.onTrace({ block: "trier", step: "debut", type: "ia.trier" });
-    expect(f.direct().running[0]!.blocks.trier).toEqual({ status: "en-cours", items: null, type: "ia.trier" });
-    o.onTrace({ block: "trier", step: "fin", status: "reussi", items: 2, type: "ia.trier" });
-    expect(f.direct().running[0]!.blocks.trier).toEqual({ status: "reussi", items: 2, type: "ia.trier" });
+    o.onTrace({ block: "trier", step: "start", type: "ai.sort" });
+    expect(f.direct().running[0]!.blocks.trier).toEqual({ status: "running", items: null, type: "ai.sort" });
+    o.onTrace({ block: "trier", step: "end", status: "succeeded", items: 2, type: "ai.sort" });
+    expect(f.direct().running[0]!.blocks.trier).toEqual({ status: "succeeded", items: 2, type: "ai.sort" });
     r.release("a");
     await a.end;
   });
@@ -249,11 +249,11 @@ describe("FileActions", () => {
       join(folder, "workflow.json"),
       JSON.stringify({
         version: 1,
-        blocks: [{ id: "lire", type: "code", params: { source: "lire.mjs" } }, { id: "sortie", type: "sortie", params: { to: "page" } }],
+        blocks: [{ id: "lire", type: "code", params: { source: "lire.mjs" } }, { id: "sortie", type: "output", params: { to: "page" } }],
         links: [{ from: "lire", to: "sortie" }],
       }),
     );
-    await writeFile(join(folder, "lire.mjs"), `export default async (e, w) => ({ t: (await w.lirePage("https://gitlab.com/x")).titre });`);
+    await writeFile(join(folder, "lire.mjs"), `export default async (e, w) => ({ t: (await w.readPage("https://gitlab.com/x")).titre });`);
     const bridge = new FakeBridge([], { active: null, allow: false, read: { pages: [], suspended: ["https://gitlab.com/x"] } });
     const { f, actionsFolder: actionsFolder, deleted: deleted } = await prepare({
       paths: c0,

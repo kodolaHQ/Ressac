@@ -135,7 +135,7 @@ export function createDesignHost(o: {
         remarks: remarks,
         folders: folders,
         port: o.port,
-        ranges: containerRanges(process.env.WEBAIOS_PORTS_APPS),
+        ranges: containerRanges(process.env.WEBAIOS_APP_PORTS),
         // Stricter than the space root: nothing under the profile folder can be declared.
         spaceRoot: o.dataDir,
         home: o.home ?? homedir(),
@@ -174,7 +174,7 @@ export function createDesignHost(o: {
   const tracking = async (p: Params): Promise<DesignTracking | null> => {
     let project: TrackedProject | null;
     if (typeof p?.url === "string" && p.url.length <= URL_MAX)
-      project = projectForUrl(p.url, { launchedApps: await running(), ranges: containerRanges(process.env.WEBAIOS_PORTS_APPS), external: registry?.projects() ?? [] });
+      project = projectForUrl(p.url, { launchedApps: await running(), ranges: containerRanges(process.env.WEBAIOS_APP_PORTS), external: registry?.projects() ?? [] });
     else if (p?.url === undefined && p?.projet !== undefined) project = await trackedProject(checkProject(p.projet));
     else throw new Error(INVALID_REQUEST);
     if (!project) return null;

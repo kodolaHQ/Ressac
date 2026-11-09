@@ -44,7 +44,7 @@ function startHost(env: Record<string, string> = {}, prepare?: (dataDir: string)
   prepare?.(dataDir);
   const root = join(dataDir, "espace");
   const log = join(dataDir, "docker.log");
-  const { WEBAIOS_CONTENEUR: _, WEBAIOS_PORTS_CONTENEUR: __, ...parent } = process.env;
+  const { WEBAIOS_CONTAINER: _, WEBAIOS_CONTAINER_PORTS: __, ...parent } = process.env;
   const child = spawn(nodePath, ["--import", tsxPath, hostPath], {
     env: {
       ...parent,
@@ -223,8 +223,8 @@ describe("agent host", { timeout: 30_000 }, () => {
     await h.rpc.request("agent.demarrer", { window: "f1", size: { cols: 80, rows: 24 } });
     await until(() => h.data().includes("faux agent prêt>"));
     const lignes = readFileSync(h.log, "utf8").split("\n");
-    expect(lignes.some((l) => l.includes("webaios-atelier-firefox"))).toBe(true);
-    expect(lignes.filter((l) => / webaios-atelier( |$)/.test(l))).toEqual([]);
+    expect(lignes.some((l) => l.includes("webaios-workshop-firefox"))).toBe(true);
+    expect(lignes.filter((l) => / webaios-workshop( |$)/.test(l))).toEqual([]);
   });
 
   it("publishes its own port range, 5300-5319", async () => {
@@ -1048,7 +1048,7 @@ createServer((req, res) => {
     expect(l.apps).toEqual([expect.objectContaining({ folder: "essai", name: "Essai", state: "arretee" })]);
   });
 
-  it("lancer asks the chrome to open the app on a port of WEBAIOS_PORTS_APPS, and notes dernierLancement", async () => {
+  it("lancer asks the chrome to open the app on a port of WEBAIOS_APP_PORTS, and notes dernierLancement", async () => {
     const { h, chrome } = startApps();
     await launched(h, chrome);
     const [a] = chrome.openings;

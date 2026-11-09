@@ -18,8 +18,8 @@ it("literal 127.0.0.1, [::1], localhost., box.local are local without resolving"
   expect(resolve).not.toHaveBeenCalled();
 });
 
-it("WEBAIOS_TEST_ADRESSES_PUBLIQUES makes 127.0.0.1 public", async () => {
-  vi.stubEnv("WEBAIOS_TEST_ADRESSES_PUBLIQUES", "10.0.0.1,127.0.0.1");
+it("WEBAIOS_TEST_PUBLIC_ADDRESSES makes 127.0.0.1 public", async () => {
+  vi.stubEnv("WEBAIOS_TEST_PUBLIC_ADDRESSES", "10.0.0.1,127.0.0.1");
   expect(await isLocalHost("127.0.0.1", resolver([]))).toBe(false);
   expect(await isLocalHost("page.test", resolver(["127.0.0.1"]))).toBe(false);
   expect(await isLocalHost("localtest.me", resolver(["::1"]))).toBe(true);

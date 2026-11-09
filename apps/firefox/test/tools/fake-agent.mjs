@@ -1,8 +1,8 @@
-// Fake interactive agent launched by the fake docker: notes what it receives in WEBAIOS_RACINE.
+// Fake interactive agent launched by the fake docker: notes what it receives in WEBAIOS_ROOT.
 import { appendFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-const racine = process.env.WEBAIOS_RACINE;
+const racine = process.env.WEBAIOS_ROOT;
 writeFileSync(join(racine, "faux-agent-args.json"), JSON.stringify(process.argv.slice(2)));
 writeFileSync(join(racine, "faux-agent-pid"), String(process.pid));
 const invite = () => process.stdout.write("faux agent prêt> ");

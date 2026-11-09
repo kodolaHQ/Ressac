@@ -15,7 +15,7 @@ import { click, inUi, missingApi, pressKeys, waitUi } from "./ui";
 
 const GITLAB_INSTRUCTION = "Un tableau des tickets, les plus urgents d'abord";
 const NAME = "Tickets GitLab";
-const codeGitlab = (mark: string) => `export default async (_e, w) => [{ titre: "ticket-" + w.saisie + "-${mark}" }];`;
+const codeGitlab = (mark: string) => `export default async (_e, w) => [{ titre: "ticket-" + w.input + "-${mark}" }];`;
 /** An action with an input: a `code` block that gives the input (and `marque`), then the output to the page. */
 const writeGitlab = (id: string, mark = "un") =>
   writeAction(w.dataDir, id, {
@@ -28,7 +28,7 @@ const writeGitlab = (id: string, mark = "un") =>
       version: 1,
       blocks: [
         { id: "lire", type: "code", params: { source: "lire.mjs" } },
-        { id: "sortie", type: "sortie", params: { to: "page" } },
+        { id: "sortie", type: "output", params: { to: "page" } },
       ],
       links: [{ from: "lire", to: "sortie" }],
     },
@@ -110,7 +110,7 @@ describe("the builder of an action", () => {
     expect(await q.text(panel)).toContain("Durée maximale : 5 min");
     expect(await q.text(tid("bouton-apercu"))).toBe("Aperçu de la page");
     // An action without web access: the palette says so for an action (action.json), not for a widget.
-    const search = tid("palette-web.chercher");
+    const search = tid("palette-web.search");
     expect(await inUi(m, "return doc.querySelector(arguments[0]).disabled;", [search])).toBe(true);
     expect(await inUi(m, "return doc.querySelector(arguments[0]).title;", [search])).toBe(
       'L\'action doit déclarer "web": true dans ses sources (action.json) : demande-le à l\'agent.',
@@ -212,7 +212,7 @@ describe("the builder of an action", () => {
         await inUi(
           m,
           `const c = arguments[0], wf = ui.webaios.workflow;
-          return Promise.all([wf.lire(c), wf.enregistrer(c, { version: 1, blocs: [], liens: [] }), wf.lireCode(c, "lire.mjs"), wf.enregistrerCode(c, "lire.mjs", "x"),
+          return Promise.all([wf.lire(c), wf.enregistrer(c, { version: 1, blocks: [], links: [] }), wf.lireCode(c, "lire.mjs"), wf.enregistrerCode(c, "lire.mjs", "x"),
             wf.rejouer(c, "2026-10-31T08-00-00-000Z", "lire"), wf.lancer(c, "webaios")]).then((r) => JSON.parse(JSON.stringify(r)));`,
           [target],
         ),

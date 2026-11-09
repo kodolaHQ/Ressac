@@ -27,7 +27,7 @@ const doc = (uri: string, embedder: object | null = null, isContent = false): an
 const frameIn = (owner: unknown, appType = 0): any => ({ ownerDocument: owner, frameLoader: { docShell: { appType } } });
 const browserXhtml = doc("chrome://browser/content/browser.xhtml");
 const sidebar = doc("chrome://browser/content/webaios/sidebar.html", frameIn(browserXhtml));
-const widget = doc("resource://webaios-widget-a/affichage-1.html", frameIn(sidebar));
+const widget = doc("resource://webaios-widget-a/display-1.html", frameIn(sidebar));
 const widgetBlank = doc("about:blank", frameIn(widget));
 const tab = doc("resource://webaios-site-x/index.html", null, true);
 const li = (loadingDocument: unknown, browsingContext: unknown = null): any => ({ loadingDocument, browsingContext, targetBrowsingContext: browsingContext, externalContentPolicyType: 3 });
@@ -48,7 +48,7 @@ describe("ui-network", () => {
   it("chrome:, resource:, moz-extension:, data:, blob:, page-icon:, moz-remote-image: pass; a nested view-source: is judged by its inner URI", () => {
     for (const u of [
       "chrome://browser/content/webaios/sidebar.html",
-      "resource://webaios-widget-a/affichage-1.html",
+      "resource://webaios-widget-a/display-1.html",
       "moz-extension://u/i.png",
       "data:image/png;base64,AA",
       "blob:null/1",
@@ -95,7 +95,7 @@ describe("ui-network", () => {
     const wt = (loadingPrincipal: unknown): any => ({ loadingDocument: null, browsingContext: null, targetBrowsingContext: null, associatedBrowsingContext: null, loadingPrincipal, externalContentPolicyType: 59 });
     const opaque = (precursor: string) => ({ isSystemPrincipal: false, spec: "moz-nullprincipal:{1}", precursorMain: { isSystemPrincipal: false, spec: precursor } });
     expect(N.isUiLoad(wt({ isSystemPrincipal: true, spec: "" })), "a system document").toBe(true);
-    expect(N.isUiLoad(wt(opaque("resource://webaios-widget-a/affichage-1.html"))), "a served widget").toBe(true);
+    expect(N.isUiLoad(wt(opaque("resource://webaios-widget-a/display-1.html"))), "a served widget").toBe(true);
     expect(N.isUiLoad(wt({ isSystemPrincipal: false, spec: "resource://webaios-composant-c/composant-1.html", precursorMain: null })), "a component").toBe(true);
     expect(N.isUiLoad(wt({ isSystemPrincipal: false, spec: "https://a.example/", precursorMain: null })), "a tab").toBe(false);
     expect(N.isUiLoad(wt(opaque("https://a.example/"))), "a sandboxed tab frame").toBe(false);

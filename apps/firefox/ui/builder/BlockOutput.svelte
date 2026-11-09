@@ -15,9 +15,9 @@
   const LABELS: Record<string, string> = {
     succeeded: "réussi",
     partial: "partiel",
-    fails: "échoué",
+    failed: "échoué",
     interrupted: "interrompu",
-    "pas-lance": "pas lancé",
+    "not-run": "pas lancé",
     resumed: "repris",
   };
 
@@ -60,7 +60,7 @@
         <dt>Éléments</dt>
         <dd>{trace.items ?? "—"}</dd>
       </dl>
-      {#if trace.status === "repris" && execution.attempt}
+      {#if trace.status === "resumed" && execution.attempt}
         <p class="doux" data-testid="sortie-reprise">Sortie reprise de l'exécution {execution.attempt.origin}</p>
       {/if}
       {#if trace.error}<p class="erreur" data-testid="erreur-bloc">{trace.error}</p>{/if}

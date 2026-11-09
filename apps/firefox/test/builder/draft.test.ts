@@ -5,10 +5,10 @@ const empty = (): Draft => ({ version: 1, blocks: [], links: [] });
 const block = (id: string, type = "code") => ({ id, type, position: { x: 0, y: 0 }, params: {} });
 const updateEntry = (blocks: Draft["blocks"], links: Draft["links"] = []): Draft => ({ version: 1, blocks: blocks, links });
 
-test("adding two ia.trier gives ia-trier then ia-trier-2", () => {
-  const a = addBlock(empty(), "ia.trier", { x: 1, y: 2 }, {});
-  const b = addBlock(a.draft, "ia.trier", { x: 3, y: 4 }, {});
-  expect([a.id, b.id]).toEqual(["ia-trier", "ia-trier-2"]);
+test("adding two ai.sort gives ai-sort then ai-sort-2", () => {
+  const a = addBlock(empty(), "ai.sort", { x: 1, y: 2 }, {});
+  const b = addBlock(a.draft, "ai.sort", { x: 3, y: 4 }, {});
+  expect([a.id, b.id]).toEqual(["ai-sort", "ai-sort-2"]);
   expect(b.draft.blocks[1]!.position).toEqual({ x: 3, y: 4 });
 });
 
@@ -18,14 +18,14 @@ test("idForType truncates to 40", () => {
 });
 
 test("a second output is not added", () => {
-  const a = addBlock(empty(), "sortie", { x: 0, y: 0 }, {});
-  const b = addBlock(a.draft, "sortie", { x: 0, y: 0 }, {});
+  const a = addBlock(empty(), "output", { x: 0, y: 0 }, {});
+  const b = addBlock(a.draft, "output", { x: 0, y: 0 }, {});
   expect(b.id).toBe("");
   expect(b.draft).toBe(a.draft);
 });
 
 test("supprimer output does nothing; supprimer a block removes its links", () => {
-  const b = updateEntry([block("a"), block("b"), block("sortie", "sortie")], [{ from: "a", to: "b" }, { from: "b", to: "sortie" }]);
+  const b = updateEntry([block("a"), block("b"), block("sortie", "output")], [{ from: "a", to: "b" }, { from: "b", to: "sortie" }]);
   expect(deleteBlocks(b, ["sortie"])).toBe(b);
   const c = deleteBlocks(b, ["b"]);
   expect(c.blocks.map((x) => x.id)).toEqual(["a", "sortie"]);
@@ -33,7 +33,7 @@ test("supprimer output does nothing; supprimer a block removes its links", () =>
 });
 
 test("relier refuses itself, a duplicate and a start from an output", () => {
-  const b = updateEntry([block("a"), block("b"), block("sortie", "sortie")]);
+  const b = updateEntry([block("a"), block("b"), block("sortie", "output")]);
   expect(link(b, "a", "a")).toBe(b);
   expect(link(b, "sortie", "a")).toBe(b);
   const c = link(b, "a", "b");

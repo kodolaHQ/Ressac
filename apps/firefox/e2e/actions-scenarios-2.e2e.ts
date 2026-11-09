@@ -121,18 +121,18 @@ const widgetRuns = (id: string) => {
 };
 
 // actions.spec.ts:1558
-it("the Gmail widget (account, recolte.mjs) and a watch update as before while an action runs", { timeout: 150_000 }, async () => {
+it("the Gmail widget (account, harvest.mjs) and a watch update as before while an action runs", { timeout: 150_000 }, async () => {
   servers.settings.siteSlownessMs = 8000;
   const site = servers.site.url;
-  // An account, a harvest written by hand (recolte.mjs), no workflow.
+  // An account, a harvest written by hand (harvest.mjs), no workflow.
   await writeWidget(dirs.dataDir, "gmail", {
     name: "Gmail",
     harvest: { minutes: 60 },
     declaration: { sources: { account: ["127.0.0.1"], public: [] }, config: { url: `${site}/court` } },
     files: {
-      "recolte.mjs": "export default async (webaios) => ({ titre: (await webaios.lirePage(webaios.config.url, { compte: true })).titre });",
-      "exemple.json": JSON.stringify({ example: "gmail" }),
-      "affichage.html": WIDGET_DISPLAY,
+      "harvest.mjs": "export default async (webaios) => ({ titre: (await webaios.readPage(webaios.config.url, { account: true })).title });",
+      "example.json": JSON.stringify({ example: "gmail" }),
+      "display.html": WIDGET_DISPLAY,
     },
   });
   // A watch: the list, what is new, one opinion of Gemma per ad, shown as they come.
@@ -144,9 +144,9 @@ it("the Gmail widget (account, recolte.mjs) and a watch update as before while a
       blocks: [
         { id: "recherche", type: "source.page", params: { url: `${site}/veille` } },
         { id: "annonces", type: "code", params: { source: "annonces.mjs" } },
-        { id: "nouvelles", type: "liste.nouveaux", params: { key: "url" } },
-        { id: "avis", type: "ia.rediger", params: { perItem: true, field: "avis", prompt: "Avis sur l'annonce : --- DÉBUT --- {titre} --- FIN ---" } },
-        { id: "sortie", type: "sortie", params: { to: "widget", live: true } },
+        { id: "nouvelles", type: "list.new", params: { key: "url" } },
+        { id: "avis", type: "ai.write", params: { perItem: true, field: "avis", prompt: "Avis sur l'annonce : --- DÉBUT --- {titre} --- FIN ---" } },
+        { id: "sortie", type: "output", params: { to: "widget", live: true } },
       ],
       links: [
         { from: "recherche", to: "annonces" },
@@ -156,9 +156,9 @@ it("the Gmail widget (account, recolte.mjs) and a watch update as before while a
       ],
     },
     files: {
-      "annonces.mjs": "export default async (page) => page.liens.filter((l) => l.url.includes('/annonce/')).map((l) => ({ titre: l.texte, url: l.url }));",
-      "exemple.json": "[]",
-      "affichage.html": WIDGET_DISPLAY,
+      "annonces.mjs": "export default async (page) => page.links.filter((l) => l.url.includes('/annonce/')).map((l) => ({ titre: l.text, url: l.url }));",
+      "example.json": "[]",
+      "display.html": WIDGET_DISPLAY,
     },
   });
   // « Up to date, hour of the day done »: the watch does not harvest by itself.

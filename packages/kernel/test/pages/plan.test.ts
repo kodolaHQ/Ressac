@@ -62,13 +62,13 @@ test("espaces permis", () => {
   expect(val('  garder ( trier ( tickets , id , "desc" ) , 2 ) ')).toHaveProperty("valeur");
 });
 test("missing path: error; nested path", () => {
-  expect(val("nulle.part")).toHaveProperty("erreur");
+  expect(val("nulle.part")).toHaveProperty("error");
   expect(val("sans.x")).toEqual({ value: 1 });
   expect(val("tickets.0.id")).toEqual({ value: 1 });
 });
 test("operations on a non-list: error « liste attendue »", () => {
   expect(val("trier(sans, x)")).toEqual({ error: expect.stringContaining("liste attendue") });
-  expect(val("compter(sans)")).toHaveProperty("erreur");
+  expect(val("compter(sans)")).toHaveProperty("error");
 });
 test("__proto__ and constructor are never read", () => {
   expect(readPath({}, "__proto__")).toBeUndefined();
@@ -76,7 +76,7 @@ test("__proto__ and constructor are never read", () => {
   expect(readPath({ a: {} }, "a.constructor.name")).toBeUndefined();
   expect(readPath("abc", "length")).toBeUndefined();
   expect(readPath([1], "length")).toBeUndefined();
-  expect(val("constructor")).toHaveProperty("erreur");
+  expect(val("constructor")).toHaveProperty("error");
   expect(val("filtrer(tickets, __proto__ = x)")).toEqual({ value: [] });
   expect(readPath(JSON.parse('{"__proto__":{"a":1}}'), "__proto__.a")).toBe(1);
 });
@@ -87,24 +87,24 @@ test("accented key read", () => expect(val("priorité")).toEqual({ value: "ok" }
 test("MAX_OPERATIONS", () => {
   expect(MAX_OPERATIONS).toBe(4);
   expect(readReference("garder(garder(garder(garder(t, 5), 5), 5), 5)")).toHaveProperty("ops");
-  expect(readReference("garder(garder(garder(garder(garder(t, 5), 5), 5), 5), 5)")).toHaveProperty("erreur");
+  expect(readReference("garder(garder(garder(garder(garder(t, 5), 5), 5), 5), 5)")).toHaveProperty("error");
 });
 test("garder 0 and 201 refused, 1 and 200 allowed", () => {
-  expect(readReference("garder(t, 0)")).toHaveProperty("erreur");
-  expect(readReference("garder(t, 201)")).toHaveProperty("erreur");
+  expect(readReference("garder(t, 0)")).toHaveProperty("error");
+  expect(readReference("garder(t, 201)")).toHaveProperty("error");
   expect(readReference("garder(t, 1)")).toHaveProperty("ops");
   expect(readReference("garder(t, 200)")).toHaveProperty("ops");
-  expect(readReference("garder(t, 1.5)")).toHaveProperty("erreur");
+  expect(readReference("garder(t, 1.5)")).toHaveProperty("error");
 });
 test("10,000-character text refused", () => {
-  expect(readReference("a".repeat(10_000))).toHaveProperty("erreur");
+  expect(readReference("a".repeat(10_000))).toHaveProperty("error");
   expect(readReference("a".repeat(300))).toHaveProperty("chemin");
-  expect(readReference("a".repeat(301))).toHaveProperty("erreur");
+  expect(readReference("a".repeat(301))).toHaveProperty("error");
 });
 test("syntaxe invalide", () => {
   for (const t of ["", "a.", ".a", "a b", "compter(", "compter(t", "compter(t))", "inconnue(t)", "garder(t)", "trier(t)", "filtrer(t, x)", "filtrer(t, x = )",
     'filtrer(t, x = "ab)', "regrouper(t)", "compter(t, x)", "trier(t, x, asc)", "$.a", "a..b", "a-b", "trier(t, a.)"]) {
-    expect(readReference(t), t).toHaveProperty("erreur");
+    expect(readReference(t), t).toHaveProperty("error");
   }
 });
 test("the read ref: ops from the inside out", () => {

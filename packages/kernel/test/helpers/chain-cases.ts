@@ -16,20 +16,20 @@ export type ChainCase = {
 
 const b = (id: string, type: string, params: Record<string, unknown>): Block => ({ id, type, params: params });
 const page = (id: string, byElement = true) => b(id, "source.page", { url: "https://x.fr/{url}", perItem: byElement });
-const fetch = (id: string, byElement = true) => b(id, "source.recuperer", { url: "https://x.fr/{url}/api", perItem: byElement });
-const write = (id: string, byElement = true) => b(id, "ia.rediger", { prompt: "Résume : {page}", perItem: byElement });
-const search = (id: string, byElement = true) => b(id, "web.chercher", { query: "{titre} avis", perItem: byElement, field: "recherche" });
+const fetch = (id: string, byElement = true) => b(id, "source.fetch", { url: "https://x.fr/{url}/api", perItem: byElement });
+const write = (id: string, byElement = true) => b(id, "ai.write", { prompt: "Résume : {page}", perItem: byElement });
+const search = (id: string, byElement = true) => b(id, "web.search", { query: "{title} avis", perItem: byElement, field: "recherche" });
 const WEB: ValidationContext = { web: true, maxDurationMinutes: null, owner: "widget", input: false };
-const output = (streaming?: boolean) => b("sortie", "sortie", streaming === undefined ? { to: "widget" } : { to: "widget", live: streaming });
+const output = (streaming?: boolean) => b("sortie", "output", streaming === undefined ? { to: "widget" } : { to: "widget", live: streaming });
 const next = (...ids: string[]): Link[] => ids.slice(1).map((id, i) => ({ from: ids[i]!, to: id }));
 const wf = (blocks: Block[], links: Link[]) => ({ version: 1 as const, blocks: blocks, links: links });
 
 /** annonces → nouvelles → tri → top, the common head of the cases. */
 const head = [
-  b("annonces", "source.flux", { urls: ["https://x.fr/rss"] }),
-  b("nouvelles", "liste.nouveaux", { key: "url" }),
-  b("tri", "ia.trier", { question: "Intéressant ?", text: "{titre}" }),
-  b("top", "liste.garder", { count: 5 }),
+  b("annonces", "source.feed", { urls: ["https://x.fr/rss"] }),
+  b("nouvelles", "list.new", { key: "url" }),
+  b("tri", "ai.sort", { question: "Intéressant ?", text: "{title}" }),
+  b("top", "list.keep", { count: 5 }),
 ];
 const HEAD_LINKS = next("annonces", "nouvelles", "tri", "top");
 
@@ -62,7 +62,7 @@ export const CASE_CHAIN: ChainCase[] = [
   {
     name: "un bloc de la chaîne qui alimente aussi un autre bloc arrête la chaîne à lui",
     raw: wf(
-      [...head, page("fiche"), fetch("infos"), write("avis"), b("autre", "liste.garder", { count: 1 }), output(true)],
+      [...head, page("fiche"), fetch("infos"), write("avis"), b("autre", "list.keep", { count: 1 }), output(true)],
       [...HEAD_LINKS, ...next("top", "fiche", "infos", "avis", "sortie"), { from: "infos", to: "autre" }],
     ),
     expected: ["avis"],
@@ -83,7 +83,7 @@ export const CASE_CHAIN: ChainCase[] = [
   {
     name: "un bloc chaînable à deux prédécesseurs est pris, la chaîne s'arrête après lui",
     raw: wf(
-      [...head, b("autres", "source.flux", { urls: ["https://y.fr/rss"] }), page("fiche"), write("avis"), output(true)],
+      [...head, b("autres", "source.feed", { urls: ["https://y.fr/rss"] }), page("fiche"), write("avis"), output(true)],
       [...HEAD_LINKS, { from: "top", to: "fiche" }, { from: "autres", to: "fiche" }, ...next("fiche", "avis", "sortie")],
     ),
     expected: ["fiche", "avis"],
@@ -92,7 +92,7 @@ export const CASE_CHAIN: ChainCase[] = [
     name: "tranche non contiguë dans ordre : les premiers blocs sont retirés",
     // « isole » (without a link) sits between fiche and avis in the run order.
     raw: wf(
-      [...head, page("fiche"), b("isole", "source.flux", { urls: ["https://z.fr/rss"] }), fetch("infos"), write("avis"), output(true)],
+      [...head, page("fiche"), b("isole", "source.feed", { urls: ["https://z.fr/rss"] }), fetch("infos"), write("avis"), output(true)],
       [...HEAD_LINKS, ...next("top", "fiche", "infos", "avis", "sortie")],
     ),
     expected: ["infos", "avis"],

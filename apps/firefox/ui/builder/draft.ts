@@ -8,27 +8,27 @@ const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "obj
 
 /** Lenient reading of a `workflow.json` (or its received copy); null if the blocks are unusable. */
 export function toDraft(raw: unknown): Draft | null {
-  if (!isObject(raw) || !Array.isArray(raw.blocs)) return null;
+  if (!isObject(raw) || !Array.isArray(raw.blocks)) return null;
   const blocks: DraftBlock[] = [];
-  for (const b of raw.blocs) {
+  for (const b of raw.blocks) {
     if (!isObject(b) || typeof b.id !== "string" || typeof b.type !== "string") return null;
     const p = isObject(b.position) ? b.position : {};
     const block: DraftBlock = {
       id: b.id,
       type: b.type,
       position: { x: typeof p.x === "number" && Number.isFinite(p.x) ? p.x : 0, y: typeof p.y === "number" && Number.isFinite(p.y) ? p.y : 0 },
-      params: isObject(b.parametres) ? b.parametres : {},
+      params: isObject(b.params) ? b.params : {},
     };
-    if (typeof b.nom === "string") block.name = b.nom;
+    if (typeof b.name === "string") block.name = b.name;
     blocks.push(block);
   }
-  const links = Array.isArray(raw.liens)
-    ? raw.liens.flatMap((l) => (isObject(l) && typeof l.de === "string" && typeof l.vers === "string" ? [{ from: l.de, to: l.vers }] : []))
+  const links = Array.isArray(raw.links)
+    ? raw.links.flatMap((l) => (isObject(l) && typeof l.from === "string" && typeof l.to === "string" ? [{ from: l.from, to: l.to }] : []))
     : [];
   return { version: 1, blocks: blocks, links };
 }
 
-/** `ia.trier` → `ia-trier`, then `ia-trier-2`, … (40 characters at most). */
+/** `ai.sort` → `ai-sort`, then `ai-sort-2`, … (40 characters at most). */
 export function idForType(type: string, existing: Iterable<string>): string {
   const taken = new Set(existing);
   const base = type.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "bloc";
@@ -39,7 +39,7 @@ export function idForType(type: string, existing: Iterable<string>): string {
 }
 
 export function addBlock(b: Draft, type: string, position: Position, params: Record<string, unknown>): { draft: Draft; id: string } {
-  if (type === "sortie" && b.blocks.some((x) => x.type === "sortie")) return { draft: b, id: "" };
+  if (type === "output" && b.blocks.some((x) => x.type === "output")) return { draft: b, id: "" };
   const id = idForType(type, b.blocks.map((x) => x.id));
   return { draft: { ...b, blocks: [...b.blocks, { id, type, position: { ...position }, params: params }] }, id };
 }
@@ -49,12 +49,12 @@ export function link(b: Draft, from: string, to: string): Draft {
   if (b.links.some((l) => l.from === from && l.to === to)) return b;
   const ids = new Set(b.blocks.map((x) => x.id));
   if (!ids.has(from) || !ids.has(to)) return b;
-  if (b.blocks.find((x) => x.id === from)!.type === "sortie") return b;
+  if (b.blocks.find((x) => x.id === from)!.type === "output") return b;
   return { ...b, links: [...b.links, { from: from, to: to }] };
 }
 
 export function deleteBlocks(b: Draft, ids: Iterable<string>): Draft {
-  const deletable = new Set(b.blocks.filter((x) => x.type !== "sortie").map((x) => x.id));
+  const deletable = new Set(b.blocks.filter((x) => x.type !== "output").map((x) => x.id));
   const a = new Set([...ids].filter((i) => deletable.has(i)));
   if (a.size === 0) return b;
   return { ...b, blocks: b.blocks.filter((x) => !a.has(x.id)), links: b.links.filter((l) => !a.has(l.from) && !a.has(l.to)) };

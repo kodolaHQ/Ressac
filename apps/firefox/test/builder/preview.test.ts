@@ -21,8 +21,8 @@ const detail = (id: string, output: { output?: unknown; outputTruncated?: true }
     end: "f",
     status: "reussie",
     blocks: [
-      { id: "tri", type: "ia.trier", status: "reussi", start: null, end: null, items: 1, log: [], output: ["x"] },
-      ...(output ? [{ id: "fin", type: "sortie", status: "reussi", start: null, end: null, items: 1, log: [], ...output }] : []),
+      { id: "tri", type: "ai.sort", status: "succeeded", start: null, end: null, items: 1, log: [], output: ["x"] },
+      ...(output ? [{ id: "fin", type: "output", status: "succeeded", start: null, end: null, items: 1, log: [], ...output }] : []),
     ],
   }) as Execution;
 const widget = { data: { real: 1 }, example: { example: 1 } };

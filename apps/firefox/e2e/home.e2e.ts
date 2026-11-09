@@ -48,11 +48,11 @@ async function writeWidget(dataDir: string, id: string, o: { name: string; displ
       ...o.declaration,
     }),
   );
-  await writeFile(path.join(folder, "affichage.html"), o.display);
+  await writeFile(path.join(folder, "display.html"), o.display);
 }
 
 async function writeHarvest(dataDir: string, id: string, code: string): Promise<void> {
-  await writeFile(path.join(HOME(dataDir), "widgets", id, "recolte.mjs"), code);
+  await writeFile(path.join(HOME(dataDir), "widgets", id, "harvest.mjs"), code);
 }
 
 async function writeLayout(dataDir: string, widgets: PlacementTest[]): Promise<void> {
@@ -193,7 +193,7 @@ describe("the home page", () => {
     await writeHarvest(
       dataDir,
       "compte",
-      `export default async (w) => { if (w.config?.lire) await w.lirePage(w.config.url, { compte: true }); return { vu: "compte" }; };`,
+      `export default async (w) => { if (w.config?.lire) await w.readPage(w.config.url, { account: true }); return { vu: "compte" }; };`,
     );
     // Another widget with an account: the user refuses it (the banner does not come back from the session).
     await writeWidget(dataDir, "sans-accord", {

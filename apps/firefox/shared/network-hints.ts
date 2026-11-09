@@ -2,7 +2,7 @@
  * What, in the HTML of a widget display, would make something leave the machine without going through the CSP:
  * `<link>` (dns-prefetch resolves a name chosen by the widget: the data leaves in the DNS request), `<meta
  * http-equiv>` (x-dns-prefetch-control: link resolution would be turned back on) and speculation rules. Refused
- * in affichage.html (served from a copy, widget-frame.ts) as in the HTML that the display writes (guard placed
+ * in display.html (served from a copy, widget-frame.ts) as in the HTML that the display writes (guard placed
  * at the top of the served copy, widget-frame.ts).
  *
  * No imports: the guard serialized into the served copy must pull nothing else.

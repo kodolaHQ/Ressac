@@ -18,9 +18,9 @@ const WATCH_WORKFLOW = {
   blocks: [
     { id: "page", type: "source.page", params: { url: "{config.url}" } },
     { id: "liens", type: "code", name: "Liens de la page", params: { source: "liens.mjs" } },
-    { id: "tri", type: "ia.trier", name: "Tri par Kev", params: { question: "Parle d'IA ?", text: "{texte}", threshold: 0.5 } },
+    { id: "tri", type: "ai.sort", name: "Tri par Kev", params: { question: "Parle d'IA ?", text: "{texte}", threshold: 0.5 } },
     { id: "textes", type: "code", params: { source: "textes.mjs" } },
-    { id: "sortie", type: "sortie", params: { to: "widget" } },
+    { id: "sortie", type: "output", params: { to: "widget" } },
   ],
   links: [
     { from: "page", to: "liens" },
@@ -80,8 +80,8 @@ const writeWatch = (id: string) =>
     declaration: { config: { url: `${site.url}/liens` } },
     workflow: WATCH_WORKFLOW,
     files: {
-      "liens.mjs": "export default async (page) => page.liens;",
-      "textes.mjs": "export default async (liens) => ({ liens: liens.map((l) => l.texte) });",
+      "liens.mjs": "export default async (page) => page.links;",
+      "textes.mjs": "export default async (liens) => ({ liens: liens.map((l) => l.text) });",
     },
   });
 
@@ -109,32 +109,32 @@ beforeAll(async () => {
     declaration: { config: { url: "https://exemple.invalid/liens" } },
     workflow: WATCH_WORKFLOW,
     files: {
-      "liens.mjs": "export default async (page) => page.liens;",
-      "textes.mjs": "export default async (liens) => ({ liens: liens.map((l) => l.texte) });",
+      "liens.mjs": "export default async (page) => page.links;",
+      "textes.mjs": "export default async (liens) => ({ liens: liens.map((l) => l.text) });",
     },
   });
   await writeWidget(dataDir, "sans", { name: "Sans récolte" });
   for (const id of WATCHES) await writeWatch(id);
   // Without a state: harvested at launch (scheduled).
   await rm(dataOf("run"), { recursive: true });
-  // Only recolte.mjs: an implicit workflow (recolte → sortie).
+  // Only harvest.mjs: an implicit workflow (recolte → sortie).
   await writeWidget(dataDir, "compte", {
     name: "Compte",
     harvest: { minutes: 60 },
     declaration: { sources: { account: ["127.0.0.1"], public: [], web: false }, config: { url: `${site.url}/lire-cookie?compte` } },
-    files: { "recolte.mjs": "export default async (webaios) => ({ vu: (await webaios.lirePage(webaios.config.url, { compte: true })).titre });" },
+    files: { "harvest.mjs": "export default async (webaios) => ({ vu: (await webaios.readPage(webaios.config.url, { account: true })).title });" },
   });
   await rm(dataOf("compte"), { recursive: true });
-  await writeWidget(dataDir, "casse", { name: "Cassé", harvest: { minutes: 60 }, workflow: '{ "version": 1, "blocs": [ { "id": "page", "type": "source.pa' });
+  await writeWidget(dataDir, "casse", { name: "Cassé", harvest: { minutes: 60 }, workflow: '{ "version": 1, "blocks": [ { "id": "page", "type": "source.pa' });
   await writeWidget(dataDir, "cycle", {
     name: "Cycle",
     harvest: { minutes: 60 },
     workflow: {
       version: 1,
       blocks: [
-        { id: "a", type: "liste.garder", params: { count: 1 } },
-        { id: "b", type: "liste.garder", params: { count: 1 } },
-        { id: "sortie", type: "sortie", params: { to: "widget" } },
+        { id: "a", type: "list.keep", params: { count: 1 } },
+        { id: "b", type: "list.keep", params: { count: 1 } },
+        { id: "sortie", type: "output", params: { to: "widget" } },
       ],
       links: [
         { from: "a", to: "b" },
@@ -262,7 +262,7 @@ const withThreshold = (threshold: number) => ({
   ...WATCH_WORKFLOW,
   blocks: WATCH_WORKFLOW.blocks.map((b) => (b.id === "tri" ? { ...b, params: { ...b.params, threshold: threshold } } : b)),
 });
-const thresholdOf = async (id: string) => (await readWorkflow(dataDir, id)).blocs.find((b: { id: string }) => b.id === "tri").parametres.seuil;
+const thresholdOf = async (id: string) => (await readWorkflow(dataDir, id)).blocks.find((b: { id: string }) => b.id === "tri").params.threshold;
 
 describe("the workflow builder", () => {
   it("opening the builder of a shipped workflow without positions lays it out in columns and writes nothing", async () => {
@@ -338,7 +338,7 @@ describe("the workflow builder", () => {
     // The output already exists: it is not offered.
     expect(await count("palette-sortie")).toBe(0);
 
-    await click(m, '[data-testid="palette-liste.garder"]');
+    await click(m, '[data-testid="palette-list.keep"]');
     await waitCount("noeud-liste-garder", 1);
     await waitContains("etat-enregistrement", "Non enregistré : ");
     await waitContains("etat-enregistrement", "entrée manquante");
@@ -348,16 +348,16 @@ describe("the workflow builder", () => {
     await link("tri", "liste-garder");
     await saved();
     const written = await readWorkflow(dataDir, "add");
-    expect(written.blocs.find((x: { id: string }) => x.id === "liste-garder")).toMatchObject({ type: "liste.garder", params: { count: 10 } });
+    expect(written.blocks.find((x: { id: string }) => x.id === "liste-garder")).toMatchObject({ type: "list.keep", params: { count: 10 } });
     expect(written.liens).toContainEqual({ from: "tri", to: "liste-garder" });
     // The first gesture freezes the layout shown: each block now has its position.
-    const positions = new Set(written.blocs.map((x: { position: { x: number; y: number } }) => `${x.position.x},${x.position.y}`));
-    expect(positions.size).toBe(written.blocs.length);
+    const positions = new Set(written.blocks.map((x: { position: { x: number; y: number } }) => `${x.position.x},${x.position.y}`));
+    expect(positions.size).toBe(written.blocks.length);
   });
 
   it("⌘Z undoes the addition and saves again", async () => {
     await builder("undo");
-    await click(m, '[data-testid="palette-liste.garder"]');
+    await click(m, '[data-testid="palette-list.keep"]');
     await waitCount("noeud-liste-garder", 1);
     await link("tri", "liste-garder");
     await saved();
@@ -383,7 +383,7 @@ describe("the workflow builder", () => {
     await waitCount("noeud-code", 1);
     await saved();
     expect(await readFile(path.join(widgetDir(dataDir, "add-code"), "code.mjs"), "utf8")).toBe("export default async (entree, webaios) => {\n  return entree;\n};\n");
-    const block = (await readWorkflow(dataDir, "add-code")).blocs.find((x: { id: string }) => x.id === "code");
+    const block = (await readWorkflow(dataDir, "add-code")).blocks.find((x: { id: string }) => x.id === "code");
     expect(block).toMatchObject({ type: "code", params: { source: "code.mjs" } });
   });
 
@@ -397,7 +397,7 @@ describe("the workflow builder", () => {
     await openBuilder(m, "run");
     expect(Object.values((await state(m)).tabs).map((o) => o.title)).toContain("Workflow — Veille");
     await waitContains("noeud-tri", "Tri par Kev");
-    await waitContains("noeud-tri", "ia.trier");
+    await waitContains("noeud-tri", "ai.sort");
     // Two links out of the code, one after the sort.
     await waitText("pastille-liens", "2");
     await waitText("pastille-tri", "1");
@@ -413,7 +413,7 @@ describe("the workflow builder", () => {
     expect(await readWorkflow(dataDir, "run")).toEqual(WATCH_WORKFLOW);
   });
 
-  it("a widget with only recolte.mjs opens as an implicit workflow (recolte → sortie) without creating a workflow.json", async () => {
+  it("a widget with only harvest.mjs opens as an implicit workflow (recolte → sortie) without creating a workflow.json", async () => {
     await home();
     await waitUi(m, `return !!doc.querySelector('[data-testid="widget-compte"] [data-testid="bandeau-accord"]')?.textContent.includes("127.0.0.1")`);
     const dir = widgetDir(dataDir, "compte");
@@ -470,7 +470,7 @@ describe("the workflow builder", () => {
 
   it("⌘Z typed in a text field does not undo the canvas", async () => {
     await builder("field");
-    await click(m, '[data-testid="palette-liste.garder"]');
+    await click(m, '[data-testid="palette-list.keep"]');
     await waitCount("noeud-liste-garder", 1);
     await click(m, '[data-testid="barre-adresse"]');
     await typeText(m, "abc");
@@ -486,7 +486,7 @@ describe("the workflow builder", () => {
   it("the agent rewrites workflow.json during an invalid draft: banner, « Garder la mienne » then « Prendre sa version »", async () => {
     await builder("agent");
     const file = path.join(widgetDir(dataDir, "agent"), "workflow.json");
-    await click(m, '[data-testid="palette-liste.garder"]');
+    await click(m, '[data-testid="palette-list.keep"]');
     await waitContains("etat-enregistrement", "entrée manquante");
 
     await writeAsAgent("agent", withThreshold(0.7));
@@ -504,7 +504,7 @@ describe("the workflow builder", () => {
     expect((await readWorkflow(dataDir, "agent")).liens).toContainEqual({ from: "tri", to: "liste-garder" });
 
     // A new invalid draft, a new agent version: taking it drops the draft, writing nothing.
-    await click(m, '[data-testid="palette-liste.garder"]');
+    await click(m, '[data-testid="palette-list.keep"]');
     await waitCount("noeud-liste-garder-2", 1);
     await writeAsAgent("agent", withThreshold(0.9));
     await waitCount("bandeau-fichier", 1);
@@ -521,7 +521,7 @@ describe("the workflow builder", () => {
 
   it("changing ia.trier's threshold in the Bloc tab rewrites workflow.json and erases that block's memory only", async () => {
     const memory = path.join(dataOf("seuil"), "memoire.json");
-    await writeFile(memory, JSON.stringify({ version: 1, blocks: { sort: { type: "ia.trier", value: { seen: ["a"] } }, texts: { type: "code", value: { seen: ["b"] } } } }));
+    await writeFile(memory, JSON.stringify({ version: 1, blocks: { sort: { type: "ai.sort", value: { seen: ["a"] } }, texts: { type: "code", value: { seen: ["b"] } } } }));
     await builder("seuil");
     // No block selected: the widget's panel, read only.
     await waitContains("panneau-widget", "Pour changer les sources ou la configuration, demande-le à l'agent.");
@@ -570,7 +570,7 @@ describe("the workflow builder", () => {
   it("a {config.inconnu} template shows a warning and saves anyway", async () => {
     await builder("gabarit");
     await click(m, '[data-testid="noeud-tri"]');
-    const questionOf = async () => (await readWorkflow(dataDir, "gabarit")).blocs.find((b: { id: string }) => b.id === "tri").parametres.question;
+    const questionOf = async () => (await readWorkflow(dataDir, "gabarit")).blocks.find((b: { id: string }) => b.id === "tri").parametres.question;
     await fill("champ-question", "{config.inconnu} ?");
     // Saved after 400 ms without typing, keeping the focus.
     await poll(questionOf, "{config.inconnu} ?");
@@ -586,7 +586,7 @@ describe("the workflow builder", () => {
     await click(m, '[data-testid="noeud-liens"]');
     await poll(questionOf, "Parle de cuisine ?");
     // (The first gesture froze the positions shown: only the position is added.)
-    const { position: _p, ...liens } = (await readWorkflow(dataDir, "gabarit")).blocs.find((b: { id: string }) => b.id === "liens");
+    const { position: _p, ...liens } = (await readWorkflow(dataDir, "gabarit")).blocks.find((b: { id: string }) => b.id === "liens");
     expect(liens).toEqual(WATCH_WORKFLOW.blocks[1]);
   });
 
@@ -594,20 +594,20 @@ describe("the workflow builder", () => {
     await builder("code");
     const code = path.join(widgetDir(dataDir, "code"), "liens.mjs");
     await click(m, '[data-testid="noeud-liens"]');
-    await waitValue("editeur-code", "export default async (page) => page.liens;");
+    await waitValue("editeur-code", "export default async (page) => page.links;");
     expect(await count("code-non-enregistre")).toBe(0);
 
-    await fill("editeur-code", "export default async (page) => page.liens.slice(0, 1);");
+    await fill("editeur-code", "export default async (page) => page.links.slice(0, 1);");
     await waitText("code-non-enregistre", "Code non enregistré");
     await sleep(800);
-    expect(await readFile(code, "utf8")).toBe("export default async (page) => page.liens;");
+    expect(await readFile(code, "utf8")).toBe("export default async (page) => page.links;");
     await click(m, '[data-testid="enregistrer-code"]');
-    await poll(() => readFile(code, "utf8"), "export default async (page) => page.liens.slice(0, 1);");
+    await poll(() => readFile(code, "utf8"), "export default async (page) => page.links.slice(0, 1);");
     await waitCount("code-non-enregistre", 0);
 
-    await fill("editeur-code", "export default async (page) => page.liens.slice(0, 2);");
+    await fill("editeur-code", "export default async (page) => page.links.slice(0, 2);");
     await pressKeys(m, "Meta+s");
-    await poll(() => readFile(code, "utf8"), "export default async (page) => page.liens.slice(0, 2);");
+    await poll(() => readFile(code, "utf8"), "export default async (page) => page.links.slice(0, 2);");
     await waitCount("code-non-enregistre", 0);
     // The workflow was not touched.
     expect(await readWorkflow(dataDir, "code")).toEqual(WATCH_WORKFLOW);
@@ -628,7 +628,7 @@ describe("the workflow builder", () => {
     expect(await count("code-non-enregistre")).toBe(1);
 
     // The agent writes the file during the draft: banner, the draft stays shown.
-    await writeFile(code, "export default async (page) => page.liens; // agent");
+    await writeFile(code, "export default async (page) => page.links; // agent");
     await waitContains("code-change", "Le fichier a changé sur le disque");
     expect(await value("editeur-code")).toBe("// brouillon");
     await click(m, '[data-testid="garder-code"]');
@@ -658,7 +658,7 @@ describe("the workflow builder", () => {
     await closeButton();
     await waitUi(m, `return ![...doc.querySelectorAll('[data-testid^="onglet-"]')].some((e) => e.textContent.includes("Workflow — Veille"))`);
     expect(await closeHeld()).toBe(false);
-    expect(await readFile(code, "utf8")).toBe("export default async (page) => page.liens; // agent");
+    expect(await readFile(code, "utf8")).toBe("export default async (page) => page.links; // agent");
   });
 
   it("an output that contains <img src=x onerror=…> is displayed as text", async () => {
@@ -668,7 +668,7 @@ describe("the workflow builder", () => {
     const trace = (block: string, type: string, fields: Record<string, unknown>) => ({
       id: block,
       type,
-      status: "reussi",
+      status: "succeeded",
       start: start,
       end: "2026-10-29T10:00:01.500Z",
       items: null,
@@ -690,9 +690,9 @@ describe("the workflow builder", () => {
         blocks: [
           trace("page", "source.page", { output: { title: trap } }),
           trace("liens", "code", { items: 1, output: [{ text: trap, url: "https://exemple.invalid/" }], log: [trap] }),
-          trace("tri", "ia.trier", { status: "echoue", error: trap }),
-          trace("textes", "code", { status: "pas-lance", start: null, end: null }),
-          trace("sortie", "sortie", { status: "pas-lance", start: null, end: null }),
+          trace("tri", "ai.sort", { status: "failed", error: trap }),
+          trace("textes", "code", { status: "not-run", start: null, end: null }),
+          trace("sortie", "output", { status: "not-run", start: null, end: null }),
         ],
       }),
     );
@@ -725,7 +725,7 @@ describe("the workflow builder", () => {
     await builder("close");
     const code = path.join(widgetDir(dataDir, "close"), "liens.mjs");
     await click(m, '[data-testid="noeud-liens"]');
-    await waitValue("editeur-code", "export default async (page) => page.liens;");
+    await waitValue("editeur-code", "export default async (page) => page.links;");
     await click(m, '[data-testid="editeur-code"]');
     await pressKeys(m, "Meta+ArrowDown");
     await typeText(m, " ");
@@ -737,19 +737,19 @@ describe("the workflow builder", () => {
     expect(await promptText()).toBe("Le code de liens.mjs n'est pas enregistré. Fermer quand même ? Il sera perdu.");
     await m.command("WebDriver:DismissAlert");
     expect(await tabs()).toBe(1);
-    expect(await value("editeur-code")).toBe("export default async (page) => page.liens; ");
+    expect(await value("editeur-code")).toBe("export default async (page) => page.links; ");
     expect(await count("code-non-enregistre")).toBe(1);
 
     await pressKeysLater("Meta+w");
     expect(await promptText()).toContain("liens.mjs");
     await m.command("WebDriver:AcceptAlert");
     await poll(tabs, 0);
-    expect(await readFile(code, "utf8")).toBe("export default async (page) => page.liens;");
+    expect(await readFile(code, "utf8")).toBe("export default async (page) => page.links;");
   });
 
   it("a widget removed while its builder is open is forgotten", async () => {
     await builder("gone");
-    await click(m, '[data-testid="palette-liste.garder"]');
+    await click(m, '[data-testid="palette-list.keep"]');
     await waitCount("noeud-liste-garder", 1);
     await waitContains("etat-enregistrement", "entrée manquante");
 
@@ -773,7 +773,7 @@ describe("the workflow builder", () => {
         version: 1,
         blocks: [
           { id: "page", type: "source.page", params: { url: "{config.url}" } },
-          { id: "sortie", type: "sortie", params: { to: "widget" } },
+          { id: "sortie", type: "output", params: { to: "widget" } },
         ],
         links: [{ from: "page", to: "sortie" }],
       },

@@ -505,7 +505,7 @@ export type ShownWidget =
       name: string;
       placement: Placement;
       sizes: DeclarationWidget["sizes"];
-      /** `webaios-widget://<id>/affichage.html?v=<mtime>`, or null until the agent has written the display. */
+      /** `webaios-widget://<id>/display.html?v=<mtime>`, or null until the agent has written the display. */
       src: string | null;
       data: unknown | null;
       example: unknown | null;
@@ -514,7 +514,7 @@ export type ShownWidget =
       account: string[];
       /** Public domains the widget may contact; for a widget with an account, covered by the same grant. */
       public: string[];
-      /** The widget has a harvest (`workflow.json` or `recolte.mjs`): its menu offers « Voir / modifier le workflow ». */
+      /** The widget has a harvest (`workflow.json` or `harvest.mjs`): its menu offers « Voir / modifier le workflow ». */
       hasHarvest: boolean;
       /** Fixed times of the harvest (« HH:MM »), empty without them. */
       hours: string[];

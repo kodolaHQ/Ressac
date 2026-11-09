@@ -106,7 +106,7 @@
   </div>
 
   {#each champs as f (f.name)}
-    {#if f.kind === "case"}
+    {#if f.kind === "checkbox"}
       <label class="champ case">
         <input
           type="checkbox"
@@ -116,7 +116,7 @@
         />
         <span class="libelle">{f.label}</span>
       </label>
-    {:else if f.kind === "choix"}
+    {:else if f.kind === "choice"}
       {@const v = block.params[f.name]}
       <label class="champ">
         <span class="libelle">{f.label}{f.required ? " *" : ""}</span>
@@ -131,9 +131,9 @@
       <label class="champ">
         <span class="libelle">
           {f.label}{f.required ? " *" : ""}
-          {#if f.kind === "gabarit"}<span class="marque" title="Les {'{chemins}'} sont remplacés par les valeurs reçues">gabarit</span>{/if}
+          {#if f.kind === "template"}<span class="marque" title="Les {'{chemins}'} sont remplacés par les valeurs reçues">gabarit</span>{/if}
         </span>
-        {#if f.kind === "nombre"}
+        {#if f.kind === "number"}
           <input
             type="number"
             data-testid="champ-{f.name}"
@@ -154,7 +154,7 @@
               if (e.currentTarget.validity.badInput) e.currentTarget.value = textOf(f, block.params[f.name]);
             }}
           />
-        {:else if f.kind === "texte"}
+        {:else if f.kind === "text"}
           <input
             data-testid="champ-{f.name}"
             value={fieldText(f)}
@@ -167,9 +167,9 @@
         {:else}
           <textarea
             data-testid="champ-{f.name}"
-            rows={f.kind === "textes" ? 3 : 2}
+            rows={f.kind === "texts" ? 3 : 2}
             value={fieldText(f)}
-            placeholder={f.kind === "textes" ? "Une valeur par ligne" : textOf(f, f.default)}
+            placeholder={f.kind === "texts" ? "Une valeur par ligne" : textOf(f, f.default)}
             spellcheck="false"
             onfocus={(e) => enter(f.name, e.currentTarget.value)}
             oninput={(e) => typeText(f.name, e.currentTarget.value)}
@@ -177,7 +177,7 @@
           ></textarea>
         {/if}
       </label>
-      {#if f.kind === "gabarit" && available && available.length > 0}
+      {#if f.kind === "template" && available && available.length > 0}
         <p class="aide" data-testid="disponibles-{f.name}">Champs disponibles : {available.map((c) => `{${c}}`).join(" ")}</p>
       {/if}
     {/if}

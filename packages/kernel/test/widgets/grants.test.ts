@@ -21,7 +21,7 @@ describe("grants", () => {
     await giveGrant(d, "autre", { domains: ["a.fr"], public: ["b.fr"], profile: "p2" });
     expect(await readGrants(d)).toEqual({
       daily: { domains: ["app.daily.dev"], public: [], profile: "p1" },
-      other: { domains: ["a.fr"], public: ["b.fr"], profile: "p2" },
+      autre: { domains: ["a.fr"], public: ["b.fr"], profile: "p2" },
     });
     expect(JSON.parse(await readFile(join(d, "accords.json"), "utf8")).daily.profil).toBe("p1");
     await removeGrant(d, "daily");

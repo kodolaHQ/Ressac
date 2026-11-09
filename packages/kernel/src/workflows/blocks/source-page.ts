@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { SCROLL_MAX } from "../protocole.js";
+import { SCROLL_MAX } from "../protocol.js";
 import { FIELD_PER_ELEMENT, fieldsPerElementOnly, Template, ParamsPerElement, type BlockDefinition } from "./common.js";
 
 export const definition: BlockDefinition = {
@@ -7,23 +7,23 @@ export const definition: BlockDefinition = {
   label: "Lire une page",
   family: "Sources",
   description: "Lit le texte d'une page web.",
-  input: "parElement",
+  input: "perItem",
   fields: [
-    { name: "url", label: "Adresse", help: "Les {chemins} sont remplacés par les valeurs de l'élément.", required: true, kind: "gabarit" },
-    { name: "compte", label: "Avec mon compte", required: false, default: false, kind: "case" },
+    { name: "url", label: "Adresse", help: "Les {chemins} sont remplacés par les valeurs de l'élément.", required: true, kind: "template" },
+    { name: "account", label: "Avec mon compte", required: false, default: false, kind: "checkbox" },
     {
-      name: "defiler",
+      name: "scroll",
       label: "Écrans à faire défiler",
       help: "Pour une page qui charge en défilant. Vide ou 0 : pas de défilement.",
       required: false,
-      kind: "nombre",
+      kind: "number",
       min: 0,
       max: SCROLL_MAX,
       integer: true,
     },
     FIELD_PER_ELEMENT,
     ...fieldsPerElementOnly(),
-    { name: "champ", label: "Champ du résultat", required: false, default: "page", kind: "texte" },
+    { name: "field", label: "Champ du résultat", required: false, default: "page", kind: "text" },
   ],
   perItem: "option",
   chain: true,

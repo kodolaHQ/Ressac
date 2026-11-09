@@ -7,12 +7,12 @@ import { tempFolder } from "../helpers/temp.js";
 test("a memory over 3 MB is not written; a damaged memory reads as empty", async () => {
   const d = await tempFolder();
   expect(await readMemory(d)).toEqual({});
-  const small = { sort: { type: "ia.trier", value: { key: { p: 0.5 } } } };
+  const small = { sort: { type: "ai.sort", value: { key: { p: 0.5 } } } };
   expect(await writeMemory(d, small)).toBe(true);
   expect(await readMemory(d)).toEqual(small);
   expect(await readdir(d)).toEqual(["memoire.json"]); // no .tmp left lying around
 
-  const big = { sort: { type: "ia.trier", value: "x".repeat(MEMORY_MAX_BYTES) } };
+  const big = { sort: { type: "ai.sort", value: "x".repeat(MEMORY_MAX_BYTES) } };
   expect(await writeMemory(d, big)).toBe(false);
   expect(await readMemory(d)).toEqual(small); // nothing was overwritten
 
@@ -32,7 +32,7 @@ test("paramsHash does not depend on key order, but on values", () => {
 
 test("the hash survives readMemory / writeMemory (R5); an old memory without a hash still reads", async () => {
   const d = await tempFolder();
-  const m = { sort: { type: "ia.trier", value: 1, hash: "0123456789abcdef" }, old: { type: "code", value: 2 } };
+  const m = { sort: { type: "ai.sort", value: 1, hash: "0123456789abcdef" }, old: { type: "code", value: 2 } };
   await writeMemory(d, m);
   expect(await readMemory(d)).toEqual(m);
 });

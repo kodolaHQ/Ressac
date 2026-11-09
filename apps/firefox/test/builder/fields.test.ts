@@ -1,8 +1,8 @@
 import { expect, test } from "vitest";
 import { availableFields } from "../../ui/builder/fields";
 
-test("availableFields of a list of articles: titre, url, …, config.interets", () => {
-  expect(availableFields([{ title: "t", url: "u", date: "d" }, { other: 1 }], { interests: "ia" })).toEqual(["titre", "url", "date", "config.interets"]);
+test("availableFields of a list of articles: title, url, …, config.interests", () => {
+  expect(availableFields([{ title: "t", url: "u", date: "d" }, { other: 1 }], { interests: "ia" })).toEqual(["title", "url", "date", "config.interests"]);
 });
 test("availableFields of an object, an empty list, a simple value", () => {
   expect(availableFields({ a: { b: 1 } }, null)).toEqual(["a"]);

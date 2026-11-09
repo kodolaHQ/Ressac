@@ -1,7 +1,0 @@
-{
-  "id": "claude",
-  "nom": "Claude Code",
-  "interactif": ["claude", "--dangerously-skip-permissions", "--mcp-config", "{mcpConfig}"],
-  "nonInteractif": ["claude", "--dangerously-skip-permissions", "-p", "{consigne}"],
-  "configMcp": "claude-json"
-}

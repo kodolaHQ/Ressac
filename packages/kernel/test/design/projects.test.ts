@@ -38,8 +38,8 @@ describe("containerRanges", () => {
     expect(containerRanges("n'importe")).toEqual([[5280, 5299]]);
     expect(containerRanges("5280-5299")).toEqual([[5280, 5299]]);
   });
-  test("honours WEBAIOS_PORTS_CONTENEUR", () => {
-    vi.stubEnv("WEBAIOS_PORTS_CONTENEUR", "5300-5319");
+  test("honours WEBAIOS_CONTAINER_PORTS", () => {
+    vi.stubEnv("WEBAIOS_CONTAINER_PORTS", "5300-5319");
     try {
       expect(containerRanges(undefined)).toEqual([[5300, 5319]]);
     } finally {

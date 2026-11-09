@@ -19,13 +19,13 @@
       ? 'L\'action doit déclarer "web": true dans ses sources (action.json) : demande-le à l\'agent.'
       : 'Le widget doit déclarer "web": true : demande-le à l\'agent.',
   );
-  const grayed = (type: string) => type === "web.chercher" && !web;
+  const grayed = (type: string) => type === "web.search" && !web;
 
   let collapsed = $state<Partial<Record<BlockFamily, boolean>>>({});
   const families = $derived.by(() => {
     const r = new Map<BlockFamily, BlockCatalogEntry[]>();
     // A single output: it is no longer offered while there is one.
-    for (const c of catalog) if (!(c.type === "sortie" && hasOutput)) r.set(c.family, [...(r.get(c.family) ?? []), c]);
+    for (const c of catalog) if (!(c.type === "output" && hasOutput)) r.set(c.family, [...(r.get(c.family) ?? []), c]);
     return [...r];
   });
 </script>

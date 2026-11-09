@@ -38,26 +38,26 @@ test("very long URL truncated to 300 + …", () => {
 
 test("appPrefix", () => {
   expect(appPrefix({ name: "Todo\r", folder: "todo", noManifest: false })).toBe(
-    "[application : Todo — /workspace/projets/todo — journal : /workspace/.webaios/journaux/todo.log] ",
+    "[application : Todo — /workspace/projects/todo — journal : /workspace/.webaios/logs/todo.log] ",
   );
   expect(appPrefix({ name: "x", folder: "vieux", noManifest: true })).toBe(
-    "[projet sans fiche webaios.json : /workspace/projets/vieux] ",
+    "[projet sans fiche webaios.json : /workspace/projects/vieux] ",
   );
 });
 
 test("appPrefix also cleans the folder: a \\r never hits Enter there", () => {
-  expect(appPrefix({ name: "x", folder: "a\rb", noManifest: true })).toBe("[projet sans fiche webaios.json : /workspace/projets/a b] ");
+  expect(appPrefix({ name: "x", folder: "a\rb", noManifest: true })).toBe("[projet sans fiche webaios.json : /workspace/projects/a b] ");
   const p = appPrefix({ name: "x", folder: "a\rb", noManifest: false });
   expect(p).not.toMatch(/[\x00-\x1f\x7f]/);
-  expect(p).toBe("[application : x — /workspace/projets/a b — journal : /workspace/.webaios/journaux/a b.log] ");
+  expect(p).toBe("[application : x — /workspace/projects/a b — journal : /workspace/.webaios/logs/a b.log] ");
 });
 
 test("appPrefix with enMarche mentions app:<folder>", () => {
   expect(appPrefix({ name: "Todo", folder: "todo", noManifest: false, running: true })).toBe(
-    "[application : Todo — /workspace/projets/todo — journal : /workspace/.webaios/journaux/todo.log — fenêtre : onglet app:todo (outils de développement disponibles)] ",
+    "[application : Todo — /workspace/projects/todo — journal : /workspace/.webaios/logs/todo.log — fenêtre : onglet app:todo (outils de développement disponibles)] ",
   );
   expect(appPrefix({ name: "x", folder: "vieux", noManifest: true, running: true })).toBe(
-    "[projet sans fiche webaios.json : /workspace/projets/vieux — fenêtre : onglet app:vieux (outils de développement disponibles)] ",
+    "[projet sans fiche webaios.json : /workspace/projects/vieux — fenêtre : onglet app:vieux (outils de développement disponibles)] ",
   );
 });
 
@@ -83,7 +83,7 @@ test("remarksPrefix of two remarks: one line, numbered 1) 2), with file:line whe
     `[remarques de l'utilisateur — démo http://localhost:15283 : 1) "input#email.champ" : « Champ plus large » ("src/Form.svelte:12") 2) "div#e1" : « Bouton en vert » — détail et captures : ${PATH}/lot.json] `,
   );
   const a = remarksPrefix({ project: { type: "app", name: "Essai", folder: "essai" }, batch: batchOf(["x"]), batchPath: PATH });
-  expect(a.startsWith(`[remarques de l'utilisateur — appli Essai (/workspace/projets/essai) : 1) "div#e0" : « x » — détail`)).toBe(true);
+  expect(a.startsWith(`[remarques de l'utilisateur — appli Essai (/workspace/projects/essai) : 1) "div#e0" : « x » — détail`)).toBe(true);
 });
 
 test("a review remark: file:start-end", () => {

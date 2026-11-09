@@ -8,7 +8,7 @@ import { SessionAgent } from "../../src/pty/session.js";
 // The container's sh is dash: this is where a stop script that the Mac's sh would accept alone shows up.
 const active = process.env.SESSION_INTEGRATION === "1";
 const inWorkshop = (pattern: string) =>
-  execFileSync("docker", ["exec", "webaios-atelier", "sh", "-c", `ps -eo args | grep '[${pattern[0]}]${pattern.slice(1)}' || true`]).toString().trim();
+  execFileSync("docker", ["exec", "webaios-workshop", "sh", "-c", `ps -eo args | grep '[${pattern[0]}]${pattern.slice(1)}' || true`]).toString().trim();
 
 test.skipIf(!active)("stopping a session kills in the container an agent deaf to HUP and TERM, and what it launched", async () => {
   const a = new Workshop({ paths: spacePaths() });

@@ -62,7 +62,7 @@ async function prepare(o: { workshop?: WorkshopState; status?: WidgetState["stat
   const root = await tempFolder();
   const c = spacePaths(root);
   const widgetsFolder = join(await tempFolder(), "widgets");
-  await writeWidget(c, "actus", declarationWidget(undefined, { harvest: { minutes: 60 } }), { "recolte.mjs": "export default () => 1" });
+  await writeWidget(c, "actus", declarationWidget(undefined, { harvest: { minutes: 60 } }), { "harvest.mjs": "export default () => 1" });
   // A widget without a harvest is never launched.
   await writeWidget(c, "fixe", declarationWidget(), {});
   let now = START;
@@ -94,7 +94,7 @@ async function prepare(o: { workshop?: WorkshopState; status?: WidgetState["stat
   const options = (): SchedulerOptions => ({
     paths: c,
     widgetsFolder: widgetsFolder,
-    engine: "/moteur",
+    engine: "/engine",
     workshop: workshop,
     bridge: new FakeBridge([], { active: null, allow: false }),
     ai: null,
@@ -145,7 +145,7 @@ test("the harvest receives the widget, the data folder, the engine and the AI", 
   const { p, harvest: harvest, widgetsFolder: widgetsFolder, c } = await prepare();
   await p.check({ onLaunch: true });
   const o = harvest.mock.calls[0]![0];
-  expect(o).toMatchObject({ id: "actus", widgetsFolder: widgetsFolder, engine: "/moteur", ai: null });
+  expect(o).toMatchObject({ id: "actus", widgetsFolder: widgetsFolder, engine: "/engine", ai: null });
   expect(o.widget).toMatchObject({ id: "actus", folder: join(c.widgets, "actus") });
   // surChange follows every write made by the harvest.
   expect(o.onChange).toBeTypeOf("function");
@@ -335,7 +335,7 @@ test("arreter: a harvest that exceeds the wait sees its container removed once m
   p = new WidgetsScheduler({
     paths: c,
     widgetsFolder: widgetsFolder,
-    engine: "/moteur",
+    engine: "/engine",
     workshop: workshop,
     bridge: new FakeBridge([], { active: null, allow: false }),
     ai: null,
@@ -362,7 +362,7 @@ test("the first check waits for the workshop to be ready: no « atelier arrêté
   p = new WidgetsScheduler({
     paths: c,
     widgetsFolder: widgetsFolder,
-    engine: "/moteur",
+    engine: "/engine",
     workshop: workshop,
     bridge: new FakeBridge([], { active: null, allow: false }),
     ai: null,
@@ -424,10 +424,10 @@ test("at each check, grants and data of a widget whose folder disappeared are er
   expect(Object.keys(await readGrants(widgetsFolder))).toEqual(["actus"]);
 });
 
-test("a widget with workflow.json without recolte.mjs is harvested when it is due", async () => {
+test("a widget with workflow.json without harvest.mjs is harvested when it is due", async () => {
   const { p, c, harvests: harvests } = await prepare();
   await writeWidget(c, "flux", declarationWidget(undefined, { harvest: { minutes: 60 } }), {
-    "workflow.json": JSON.stringify({ version: 1, blocks: [{ id: "sortie", type: "sortie", params: { to: "widget" } }] }),
+    "workflow.json": JSON.stringify({ version: 1, blocks: [{ id: "sortie", type: "output", params: { to: "widget" } }] }),
   });
   expect((await p.check({ onLaunch: true })).sort()).toEqual(["actus", "flux"]);
   expect(harvests.sort()).toEqual(["actus", "flux"]);
@@ -472,7 +472,7 @@ test("the vanished folder also erases runs and memory", async () => {
     version: 1, id: "2026-10-27T08-00-00-000Z", owner: { type: "widget", id: "parti" }, trigger: "planifiee",
     start: "2026-10-27T08:00:00.000Z", end: null, status: "reussie", blocks: [],
   });
-  await writeMemory(folder, { a: { type: "liste.nouveaux", value: [] } });
+  await writeMemory(folder, { a: { type: "list.new", value: [] } });
   await p.check({ onLaunch: false });
   expect(existsSync(folder)).toBe(false);
 });
@@ -537,18 +537,18 @@ test("an avancement or lecture trace does not change a widget's live tracking", 
   const { p, harvestAttempt: harvestAttempt, directs } = await prepare();
   const seen: { before: DirectState; after: DirectState; reported: number }[] = [];
   harvestAttempt.mockImplementation(async (o) => {
-    o.onTrace!({ block: "liste", step: "debut" });
+    o.onTrace!({ block: "liste", step: "start" });
     const before = structuredClone(p.direct());
     const reported = directs.length;
-    o.onTrace!({ block: "liste", step: "avancement", done: 2, total: 5 });
-    o.onTrace!({ block: "liste", step: "lecture", host: "gitlab.com" });
-    o.onTrace!({ block: "autre", step: "lecture", host: "gitlab.com" });
+    o.onTrace!({ block: "liste", step: "progress", done: 2, total: 5 });
+    o.onTrace!({ block: "liste", step: "read", host: "gitlab.com" });
+    o.onTrace!({ block: "autre", step: "read", host: "gitlab.com" });
     seen.push({ before: before, after: structuredClone(p.direct()), reported: directs.length - reported });
     return { ok: true, run: attemptId(START.toISOString()), status: "reussie" };
   });
   await p.replay("actus", "o", "liste");
   expect(seen[0]!.after).toEqual(seen[0]!.before);
-  expect(seen[0]!.after.running[0]!.blocks).toEqual({ list: { status: "en-cours", items: null } });
+  expect(seen[0]!.after.running[0]!.blocks).toEqual({ liste: { status: "running", items: null } });
   expect(seen[0]!.reported).toBe(0);
 });
 
@@ -557,18 +557,18 @@ test("direct() shows the running widget, its kind and its blocks as traces come,
   expect(p.direct()).toEqual({ running: [], waiting: [] });
   const seen: DirectState[] = [];
   harvestAttempt.mockImplementation(async (o) => {
-    o.onTrace!({ block: "liste", step: "debut" });
+    o.onTrace!({ block: "liste", step: "start" });
     seen.push(structuredClone(p.direct()));
-    o.onTrace!({ block: "liste", step: "fin", status: "reussi", items: 3 });
+    o.onTrace!({ block: "liste", step: "end", status: "succeeded", items: 3 });
     // Started, without an end: only the final run says it failed.
-    o.onTrace!({ block: "sortie", step: "debut" });
+    o.onTrace!({ block: "sortie", step: "start" });
     seen.push(structuredClone(p.direct()));
     const e: Execution = {
       version: 1, id: attemptId(START.toISOString()), owner: { type: "widget", id: o.id }, trigger: "rejeu",
       attempt: { start: o.start, origin: o.origin }, start: START.toISOString(), end: START.toISOString(), status: "echouee",
       blocks: [
-        { id: "liste", type: "code", status: "reussi", start: "x", end: "x", items: 3, log: [] },
-        { id: "sortie", type: "sortie", status: "echoue", start: "x", end: null, items: null, log: [] },
+        { id: "liste", type: "code", status: "succeeded", start: "x", end: "x", items: 3, log: [] },
+        { id: "sortie", type: "output", status: "failed", start: "x", end: null, items: null, log: [] },
       ],
     };
     await writeRun(join(widgetsFolder, o.id), e);
@@ -577,12 +577,12 @@ test("direct() shows the running widget, its kind and its blocks as traces come,
   await p.replay("actus", "o", "liste");
   const start = START.toISOString();
   expect(seen[0]).toEqual({
-    running: [{ widget: "actus", kind: "essai", start: start, blocks: { list: { status: "en-cours", items: null } } }],
+    running: [{ widget: "actus", kind: "essai", start: start, blocks: { liste: { status: "running", items: null } } }],
     waiting: [],
   });
-  expect(seen[1]!.running[0]!.blocks).toEqual({ list: { status: "reussi", items: 3 }, output: { status: "en-cours", items: null } });
+  expect(seen[1]!.running[0]!.blocks).toEqual({ liste: { status: "succeeded", items: 3 }, sortie: { status: "running", items: null } });
   // End: resynchronized on the written run, then nothing in progress.
-  expect(directs.at(-2)!.running[0]!.blocks).toEqual({ list: { status: "reussi", items: 3 }, output: { status: "echoue", items: null } });
+  expect(directs.at(-2)!.running[0]!.blocks).toEqual({ liste: { status: "succeeded", items: 3 }, sortie: { status: "failed", items: null } });
   expect(directs.at(-1)).toEqual({ running: [], waiting: [] });
   expect(p.direct()).toEqual({ running: [], waiting: [] });
   // A real run is tracked the same way, kind « execution ».
@@ -641,7 +641,7 @@ test("widgetDu: a widget with hours without minutes is never due by frequency", 
 
 /** A widget that harvests every 60 min, with the given maximum duration. */
 async function writeWatch(c: SpacePaths, id: string, maxDurationMinutes: number) {
-  await writeWidget(c, id, declarationWidget(undefined, { harvest: { minutes: 60, maxDurationMinutes: maxDurationMinutes } }), { "recolte.mjs": "export default () => 1" });
+  await writeWidget(c, id, declarationWidget(undefined, { harvest: { minutes: 60, maxDurationMinutes: maxDurationMinutes } }), { "harvest.mjs": "export default () => 1" });
 }
 
 /** The harvests of the `retenus` widgets wait for `liberer(id)`; all then go through the base fake harvest. */
@@ -903,7 +903,7 @@ const at = (h: number, m: number, day = 29) => new Date(2026, 9, day, h, m);
 
 /** A widget « matin » at fixed hours (and at a frequency if `minutes`). */
 async function writeMorning(c: SpacePaths, harvest: { hours: string[]; minutes?: number }, extra: Record<string, unknown> = {}) {
-  await writeWidget(c, "matin", declarationWidget(undefined, { harvest: harvest, ...extra }), { "recolte.mjs": "export default () => 1" });
+  await writeWidget(c, "matin", declarationWidget(undefined, { harvest: harvest, ...extra }), { "harvest.mjs": "export default () => 1" });
 }
 
 const morning = (harvests: string[]) => harvests.filter((x) => x === "matin").length;
@@ -1199,7 +1199,7 @@ describe("notification de fin de veille", () => {
       t.c,
       "veille",
       declarationWidget(undefined, { name: "Vélos d'occasion", harvest: { minutes: 60, ...(o.notify === false ? {} : { notify: true }) } }),
-      { "recolte.mjs": "export default () => 1" },
+      { "harvest.mjs": "export default () => 1" },
     );
     t.harvest.mockImplementation(async (r) => {
       const status = o.status ?? "ok";
@@ -1283,7 +1283,7 @@ test("notification: the widget name is cleaned (controls and invisible character
   const notifications: NotificationWidget[] = [];
   const { p, c, harvest: harvest } = await prepare({ options: { notify: (n) => void notifications.push(n) } });
   await writeWidget(c, "veille", declarationWidget(undefined, { name: "‮Vélos\n\nd'occasion​\t ", harvest: { minutes: 60, notify: true } }), {
-    "recolte.mjs": "export default () => 1",
+    "harvest.mjs": "export default () => 1",
   });
   harvest.mockImplementation(async () => ({ state: { status: "ok", lastUpdate: START.toISOString(), lastAttempt: START.toISOString() }, newItems: 2 }));
   await p.harvestNow("veille");

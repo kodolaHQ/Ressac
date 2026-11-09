@@ -2,7 +2,7 @@ import { localUrl, hostInSite } from "@webaios/kernel";
 
 /**
  * Effective domains of the app, and those of its login (OAuth…). `adressesLocales` (tests only,
- * `WEBAIOS_TEST_ADRESSES_LOCALES=1`) allows local hosts, and http to them; otherwise https only, never local.
+ * `WEBAIOS_TEST_LOCAL_ADDRESSES=1`) allows local hosts, and http to them; otherwise https only, never local.
  */
 export type NavigationContext = { domains: readonly string[]; login: readonly string[]; localAddresses?: boolean };
 

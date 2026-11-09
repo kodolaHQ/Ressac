@@ -89,7 +89,7 @@ export async function resolvedNames(logDir: string): Promise<string[]> {
   return [...out];
 }
 
-/** A widget `id` of the space's home with display `html`, and optional example data (exemple.json). */
+/** A widget `id` of the space's home with display `html`, and optional example data (example.json). */
 export function widgetFiles(dataDir: string, id: string, html: string, example?: unknown): void {
   const dir = path.join(dataDir, "espace/accueil/widgets", id);
   mkdirSync(dir, { recursive: true });
@@ -97,8 +97,8 @@ export function widgetFiles(dataDir: string, id: string, html: string, example?:
     path.join(dir, "widget.json"),
     JSON.stringify({ name: id, description: "", sizes: { min: { l: 2, h: 1 }, max: { l: 6, h: 4 }, default: { l: 3, h: 2 } }, sources: { account: [], public: [], web: false } }),
   );
-  writeFileSync(path.join(dir, "affichage.html"), html);
-  if (example !== undefined) writeFileSync(path.join(dir, "exemple.json"), JSON.stringify(example));
+  writeFileSync(path.join(dir, "display.html"), html);
+  if (example !== undefined) writeFileSync(path.join(dir, "example.json"), JSON.stringify(example));
 }
 
 // ui-network.e2e.ts's fake TURN (TCP) and STUN (UDP) ports.

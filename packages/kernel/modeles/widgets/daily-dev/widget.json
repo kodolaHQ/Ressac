@@ -1,7 +1,7 @@
 {
-  "nom": "daily.dev",
+  "name": "daily.dev",
   "description": "Ton fil « Pour toi » de daily.dev, les articles les plus intéressants résumés",
-  "tailles": {
+  "sizes": {
     "min": {
       "l": 2,
       "h": 2
@@ -10,19 +10,19 @@
       "l": 12,
       "h": 10
     },
-    "defaut": {
+    "default": {
       "l": 6,
       "h": 5
     }
   },
-  "recolte": {
+  "harvest": {
     "minutes": 120
   },
   "sources": {
-    "compte": [
+    "account": [
       "app.daily.dev"
     ],
-    "publiques": [
+    "public": [
       "app.daily.dev"
     ]
   },

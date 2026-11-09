@@ -9,7 +9,7 @@ const block = (id: string, type: string, params: Record<string, unknown> = {}) =
 /** Workflow shipped without positions. */
 const shipped = (): Draft => ({
   version: 1,
-  blocks: [block("garder", "code", { source: "a.mjs" }), block("tri", "ia.trier", { question: "?", text: "{t}" }), block("sortie", "sortie", { to: "widget" })],
+  blocks: [block("garder", "code", { source: "a.mjs" }), block("tri", "ai.sort", { question: "?", text: "{t}" }), block("sortie", "output", { to: "widget" })],
   links: [
     { from: "garder", to: "tri" },
     { from: "tri", to: "sortie" },
@@ -79,7 +79,7 @@ test("opening a workflow shipped without positions lays it out in columns and wr
   const e = await opened(f);
   expect(e.loading).toBe("pret");
   expect(e.recordingState).toBe("enregistre");
-  expect(e.positions).toEqual({ keep: { x: 0, y: 0 }, sort: { x: 260, y: 0 }, output: { x: 520, y: 0 } });
+  expect(e.positions).toEqual({ garder: { x: 0, y: 0 }, tri: { x: 260, y: 0 }, sortie: { x: 520, y: 0 } });
   e.reorder();
   await e.review();
   await wait();
@@ -92,13 +92,13 @@ test("the first move saves the displayed position of all blocks; a zero move wri
   e.move({ ...e.positions });
   await wait();
   expect(f.writes).toEqual([]);
-  e.move({ ...e.positions, sort: { x: 300, y: 40 } });
+  e.move({ ...e.positions, tri: { x: 300, y: 40 } });
   await wait();
   expect(f.writes).toHaveLength(1);
   expect(Object.fromEntries(f.writes[0]!.blocks.map((b) => [b.id, b.position]))).toEqual({
-    keep: { x: 0, y: 0 },
-    sort: { x: 300, y: 40 },
-    output: { x: 520, y: 0 },
+    garder: { x: 0, y: 0 },
+    tri: { x: 300, y: 40 },
+    sortie: { x: 520, y: 0 },
   });
   expect(e.positions.sortie).toEqual({ x: 520, y: 0 });
 });
@@ -106,9 +106,9 @@ test("the first move saves the displayed position of all blocks; a zero move wri
 test("a new unlinked block is « non enregistré : entrée manquante »; linked, it saves; ⌘Z goes back and saves again", async () => {
   const f = fake(shipped());
   const e = await opened(f);
-  const id = await e.add(catalog("liste.dedoublonner"), { x: 0, y: 300 });
+  const id = await e.add(catalog("list.dedupe"), { x: 0, y: 300 });
   await wait();
-  expect(id).toBe("liste-dedoublonner");
+  expect(id).toBe("list-dedupe");
   expect(e.recordingState).toMatchObject({ invalid: expect.stringContaining("entrée manquante"), block: id });
   expect(e.validation).toMatchObject({ ok: false, block: id });
   expect(f.writes).toEqual([]);
@@ -145,7 +145,7 @@ test("a new code block gets its template file (never an existing file) before be
 test("relire: the echo of a save is ignored; an agent version is adopted without writing anything", async () => {
   const f = fake(shipped());
   const e = await opened(f);
-  e.move({ ...e.positions, sort: { x: 300, y: 40 } });
+  e.move({ ...e.positions, tri: { x: 300, y: 40 } });
   await e.review();
   await wait();
   expect(e.banner).toBeNull();
@@ -161,14 +161,14 @@ test("relire: the echo of a save is ignored; an agent version is adopted without
 test("relire with an invalid draft offers the agent's version; take or keep", async () => {
   const f = fake(shipped());
   const e = await opened(f);
-  await e.add(catalog("liste.garder"), { x: 0, y: 300 });
+  await e.add(catalog("list.keep"), { x: 0, y: 300 });
   await wait();
   const agent = shipped();
   agent.blocks[0]!.params = { source: "b.mjs" };
   f.state.disk = agent;
   await e.review();
   expect(e.banner).toBe("proposer");
-  expect(e.draft!.blocks.map((b) => b.id)).toContain("liste-garder");
+  expect(e.draft!.blocks.map((b) => b.id)).toContain("list-keep");
   e.keepMine();
   expect(e.banner).toBeNull();
   await e.review();
@@ -229,9 +229,9 @@ test("one edition per widget in the window", () => {
 });
 
 test("new parameters: neutral values for required fields, no invented address", () => {
-  expect(freshParams(catalog("liste.garder"))).toEqual({ count: 10 });
-  expect(freshParams(catalog("liste.nouveaux"))).toEqual({ key: "url" });
-  expect(freshParams(catalog("ia.trier"))).toEqual({ question: "Est-ce intéressant ?", text: "{titre}" });
+  expect(freshParams(catalog("list.keep"))).toEqual({ count: 10 });
+  expect(freshParams(catalog("list.new"))).toEqual({ key: "url" });
+  expect(freshParams(catalog("ai.sort"))).toEqual({ question: "Est-ce intéressant ?", text: "{title}" });
   expect(freshParams(catalog("source.page"))).toEqual({});
 });
 
@@ -246,7 +246,7 @@ test("freeSlot shifts below the displayed blocks", () => {
 async function withBanner() {
   const f = fake(shipped());
   const e = await opened(f);
-  const id = await e.add(catalog("liste.garder"), { x: 0, y: 300 });
+  const id = await e.add(catalog("list.keep"), { x: 0, y: 300 });
   await wait();
   const agent = shipped();
   agent.blocks[0]!.params = { source: "b.mjs" };
@@ -288,7 +288,7 @@ test("I1: a gesture during the banner, then « Prendre sa version »: the kept d
 test("I2: ⌘Z after the first move of a workflow without layout puts the block back", async () => {
   const f = fake(shipped());
   const e = await opened(f);
-  e.move({ ...e.positions, sort: { x: 300, y: 40 } });
+  e.move({ ...e.positions, tri: { x: 300, y: 40 } });
   await wait();
   e.cancel();
   await wait();
@@ -302,10 +302,10 @@ test("M2: relire during an in-flight save ignores the echo of the draft sent", a
   const f = fake(shipped());
   const e = await opened(f);
   f.state.suspended = true;
-  e.move({ ...e.positions, sort: { x: 300, y: 40 } });
+  e.move({ ...e.positions, tri: { x: 300, y: 40 } });
   await wait();
   // A second gesture waits its turn while the first is in flight.
-  e.move({ ...e.positions, sort: { x: 320, y: 60 } });
+  e.move({ ...e.positions, tri: { x: 320, y: 60 } });
   // The disk already holds the first draft (written, response not yet received).
   const inFlight = structuredClone(e.draft!);
   inFlight.blocks.find((b) => b.id === "tri")!.position = { x: 300, y: 40 };
@@ -351,9 +351,9 @@ test("N1: a draft queued behind an in-flight save is kept if the banner appears 
   const f = fake(shipped());
   const e = await opened(f);
   f.state.suspended = true;
-  e.move({ ...e.positions, sort: { x: 300, y: 40 } });
+  e.move({ ...e.positions, tri: { x: 300, y: 40 } });
   await wait();
-  e.move({ ...e.positions, sort: { x: 320, y: 60 } });
+  e.move({ ...e.positions, tri: { x: 320, y: 60 } });
   const agent = shipped();
   agent.blocks[0]!.params = { source: "b.mjs" };
   f.state.disk = agent;
@@ -378,7 +378,7 @@ test("N2: a save that succeeds during the banner leaves the header waiting for t
   const f = fake(shipped());
   const e = await opened(f);
   f.state.suspended = true;
-  e.move({ ...e.positions, sort: { x: 300, y: 40 } });
+  e.move({ ...e.positions, tri: { x: 300, y: 40 } });
   await wait();
   const agent = shipped();
   agent.blocks[0]!.params = { source: "b.mjs" };
@@ -405,9 +405,9 @@ test("N2: « Prendre sa version » before the end of an in-flight save also drop
   const f = fake(shipped());
   const e = await opened(f);
   f.state.suspended = true;
-  e.move({ ...e.positions, sort: { x: 300, y: 40 } });
+  e.move({ ...e.positions, tri: { x: 300, y: 40 } });
   await wait();
-  e.move({ ...e.positions, sort: { x: 320, y: 60 } });
+  e.move({ ...e.positions, tri: { x: 320, y: 60 } });
   const agent = shipped();
   agent.blocks[0]!.params = { source: "b.mjs" };
   f.state.disk = agent;
@@ -428,18 +428,18 @@ test("T10: keystrokes in the same field (same merge key) make a single history e
   await wait();
   e.edit(threshold(0.7), "tri/seuil/1");
   await wait();
-  expect(f.writes.at(-1)!.blocks.find((b) => b.id === "tri")!.params.seuil).toBe(0.7);
+  expect(f.writes.at(-1)!.blocks.find((b) => b.id === "tri")!.params.threshold).toBe(0.7);
   // Another session on the same field is another entry.
   e.edit(threshold(0.8), "tri/seuil/2");
   await wait();
   e.cancel();
-  expect(e.draft!.blocks.find((b) => b.id === "tri")!.params.seuil).toBe(0.7);
+  expect(e.draft!.blocks.find((b) => b.id === "tri")!.params.threshold).toBe(0.7);
   e.cancel();
-  expect(e.draft!.blocks.find((b) => b.id === "tri")!.params.seuil).toBeUndefined();
+  expect(e.draft!.blocks.find((b) => b.id === "tri")!.params.threshold).toBeUndefined();
   // After an undo, the same key no longer merges with the previous state.
   e.edit(threshold(0.9), "tri/seuil/2");
   e.cancel();
-  expect(e.draft!.blocks.find((b) => b.id === "tri")!.params.seuil).toBeUndefined();
+  expect(e.draft!.blocks.find((b) => b.id === "tri")!.params.threshold).toBeUndefined();
 });
 
 test("source of a code block to a missing file: refused; once the code is saved, the draft restarts", async () => {

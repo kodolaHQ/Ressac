@@ -32,8 +32,8 @@ const wf = (key = "url", extra: Record<string, unknown> = {}) => ({
   version: 1,
   blocks: [
     { id: "a", type: "code", position: { x: 1, y: 2 }, params: { source: "a.mjs" } },
-    { id: "n", type: "liste.nouveaux", position: { x: 3, y: 4 }, params: { key: key } },
-    { id: "s", type: "sortie", position: { x: 5, y: 6 }, params: { to: "widget" } },
+    { id: "n", type: "list.new", position: { x: 3, y: 4 }, params: { key: key } },
+    { id: "s", type: "output", position: { x: 5, y: 6 }, params: { to: "widget" } },
   ],
   links: [{ from: "a", to: "n" }, { from: "n", to: "s" }],
   ...extra,
@@ -74,24 +74,24 @@ test("saving the same workflow writes nothing (ecrit false, mtime unchanged)", a
   expect((await stat(join(files, "workflow.json"))).mtime).toEqual(past);
 });
 
-test("the implicit one saved as is writes nothing; modified, it creates workflow.json and recolte.mjs stays", async () => {
-  await writeFile(join(files, "recolte.mjs"), "export default () => []");
+test("the implicit one saved as is writes nothing; modified, it creates workflow.json and harvest.mjs stays", async () => {
+  await writeFile(join(files, "harvest.mjs"), "export default () => []");
   const before = await readDraft(files);
   expect(before).toMatchObject({ origin: "implicite", raw: implicitWorkflow(), validation: { ok: true } });
-  expect((await readdir(files)).sort()).toEqual(["a.mjs", "recolte.mjs"]); // lire writes nothing
+  expect((await readdir(files)).sort()).toEqual(["a.mjs", "harvest.mjs"]); // lire writes nothing
   expect(await rec(before!.raw)).toEqual({ ok: true, written: false, memoryErased: [] });
-  expect((await readdir(files)).sort()).toEqual(["a.mjs", "recolte.mjs"]);
+  expect((await readdir(files)).sort()).toEqual(["a.mjs", "harvest.mjs"]);
 
   const moved = implicitWorkflow();
   moved.blocks[0]!.position = { x: 40, y: 50 };
   expect(await rec(moved)).toMatchObject({ ok: true, written: true });
-  expect((await readdir(files)).sort()).toEqual(["a.mjs", "recolte.mjs", "workflow.json"]);
+  expect((await readdir(files)).sort()).toEqual(["a.mjs", "harvest.mjs", "workflow.json"]);
 });
 
 test("changing a block's parameters erases its memory, not the others'; changing its name or position does not erase it", async () => {
   await rec(wf());
   const m = {
-    n: { type: "liste.nouveaux", value: ["x"], hash: paramsHash({ key: "url" }) },
+    n: { type: "list.new", value: ["x"], hash: paramsHash({ key: "url" }) },
     a: { type: "code", value: 1 },
   };
   await writeMemory(data, m);
@@ -107,12 +107,12 @@ test("changing a block's parameters erases its memory, not the others'; changing
 
 test("changing the parameters also erases a memory from before the hashes; an entry already at the new settings stays", async () => {
   await rec(wf());
-  await writeMemory(data, { n: { type: "liste.nouveaux", value: ["x"] }, a: { type: "code", value: 1 } });
+  await writeMemory(data, { n: { type: "list.new", value: ["x"] }, a: { type: "code", value: 1 } });
   expect(await rec(wf("titre"))).toEqual({ ok: true, written: true, memoryErased: ["n"] });
   expect(await readMemory(data)).toEqual({ a: { type: "code", value: 1 } });
 
   // A run that already ran with the new settings (between the write and the erase) keeps its memory.
-  const fresh = { n: { type: "liste.nouveaux", value: ["y"], hash: paramsHash({ key: "id" }) } };
+  const fresh = { n: { type: "list.new", value: ["y"], hash: paramsHash({ key: "id" }) } };
   await writeMemory(data, fresh);
   expect(await rec(wf("id"))).toEqual({ ok: true, written: true, memoryErased: [] });
   expect(await readMemory(data)).toEqual(fresh);
@@ -120,7 +120,7 @@ test("changing the parameters also erases a memory from before the hashes; an en
 
 test("the erase waits for the memory lock (held by the runs) and goes before the workflow write", async () => {
   await rec(wf());
-  await writeMemory(data, { n: { type: "liste.nouveaux", value: ["x"], hash: paramsHash({ key: "url" }) } });
+  await writeMemory(data, { n: { type: "list.new", value: ["x"], hash: paramsHash({ key: "url" }) } });
   let release!: () => void;
   const released = new Promise<void>((r) => (release = r));
   // A run started with the old settings writes its memory during the save.
@@ -128,13 +128,13 @@ test("the erase waits for the memory lock (held by the runs) and goes before the
     await released;
     await writeMemory(data, {
       a: { type: "code", value: "fraiche" },
-      n: { type: "liste.nouveaux", value: ["x", "z"], hash: paramsHash({ key: "url" }) },
+      n: { type: "list.new", value: ["x", "z"], hash: paramsHash({ key: "url" }) },
     });
   });
   const saving = rec(wf("titre"));
   await new Promise((r) => setTimeout(r, 30));
   // Nothing is written while the run holds the memory: neither the erase, nor the workflow.
-  expect(JSON.parse(await readFile(join(files, "workflow.json"), "utf8")).blocs[1].parametres).toEqual({ key: "url" });
+  expect(JSON.parse(await readFile(join(files, "workflow.json"), "utf8")).blocks[1].params).toEqual({ key: "url" });
   release();
   await execution;
   expect(await saving).toEqual({ ok: true, written: true, memoryErased: ["n"] });
@@ -152,11 +152,11 @@ test("nothing to erase: memoire.json is not rewritten", async () => {
 });
 
 test("changing the implicit one's parameters also erases the memory (compared to the implicit one)", async () => {
-  await writeFile(join(files, "recolte.mjs"), "export default () => []");
+  await writeFile(join(files, "harvest.mjs"), "export default () => []");
   await writeMemory(data, { harvest: { type: "code", value: 1 } });
   const change = implicitWorkflow();
-  change.blocks[0]!.params = { source: "a.mjs", call: "entree" };
-  expect(await rec(change)).toEqual({ ok: true, written: true, memoryErased: ["recolte"] });
+  change.blocks[0]!.params = { source: "a.mjs", call: "input" };
+  expect(await rec(change)).toEqual({ ok: true, written: true, memoryErased: ["harvest"] });
 });
 
 test("workflow.json symbolic link to the outside: refused, the target is not touched", async () => {
@@ -177,7 +177,7 @@ test("over 256 KB: refused; widget folder missing: Widget introuvable", async ()
   expect(r).toEqual({ ok: false, error: "Widget introuvable" });
 });
 
-test("readDraft returns the JSON even invalid, null for a cut JSON, the implicit one for recolte.mjs alone", async () => {
+test("readDraft returns the JSON even invalid, null for a cut JSON, the implicit one for harvest.mjs alone", async () => {
   expect(await readDraft(files)).toBeNull();
   const invalid = { ...wf(), links: [] };
   await writeFile(join(files, "workflow.json"), JSON.stringify(invalid));
@@ -191,7 +191,7 @@ test("readDraft returns the JSON even invalid, null for a cut JSON, the implicit
 
 test("lireCode / enregistrerCode refuse ../x.mjs, x.js, an outgoing link, over 256 KB; a missing file returns absent", async () => {
   for (const name of ["../x.mjs", "x.js", "A.mjs", "sous/x.mjs"]) {
-    expect(await readCodeFile(files, name)).toHaveProperty("erreur");
+    expect(await readCodeFile(files, name)).toHaveProperty("error");
     expect(await storeCode(files, name, "x")).toMatchObject({ ok: false });
   }
   expect(await readCodeFile(files, "nouveau.mjs")).toEqual({ absent: true });
@@ -201,7 +201,7 @@ test("lireCode / enregistrerCode refuse ../x.mjs, x.js, an outgoing link, over 2
   await writeFile(outside, "intact");
   await symlink(outside, join(files, "lien.mjs"));
   const l = await readCodeFile(files, "lien.mjs");
-  expect(l).toHaveProperty("erreur");
+  expect(l).toHaveProperty("error");
   expect(JSON.stringify(l)).not.toContain(root);
   expect(await storeCode(files, "lien.mjs", "écrasé")).toMatchObject({ ok: false });
   expect(await readFile(outside, "utf8")).toBe("intact");
@@ -209,7 +209,7 @@ test("lireCode / enregistrerCode refuse ../x.mjs, x.js, an outgoing link, over 2
   const big = "x".repeat(CODE_MAX_BYTES + 1);
   expect(await storeCode(files, "gros.mjs", big)).toMatchObject({ ok: false });
   await writeFile(join(files, "gros2.mjs"), big);
-  expect(await readCodeFile(files, "gros2.mjs")).toHaveProperty("erreur");
+  expect(await readCodeFile(files, "gros2.mjs")).toHaveProperty("error");
 
   expect(await storeCode(files, "nouveau.mjs", "export default 1")).toEqual({ ok: true });
   expect(await readCodeFile(files, "nouveau.mjs")).toEqual({ text: "export default 1" });
@@ -223,7 +223,7 @@ test("changing liste.nouveaux's garderJours does not erase its memory; changing 
     return w;
   };
   await rec(withKeep("url", 7));
-  const m = { n: { type: "liste.nouveaux", value: ["x"], hash: paramsHash({ key: "url", keepDays: 7 }) } };
+  const m = { n: { type: "list.new", value: ["x"], hash: paramsHash({ key: "url", keepDays: 7 }) } };
   await writeMemory(data, m);
   expect(await rec(withKeep("url", 30))).toEqual({ ok: true, written: true, memoryErased: [] });
   expect(await rec(withKeep("url"))).toEqual({ ok: true, written: true, memoryErased: [] });
@@ -252,15 +252,15 @@ test("the workflow in place is re-read with the widget's context: a long widget 
   expect(await longSave(long("url"))).toEqual({ ok: true, written: false, memoryErased: [] });
   expect((await stat(join(files, "workflow.json"))).mtime).toEqual(past);
 
-  await writeMemory(data, { n: { type: "liste.nouveaux", value: ["x"], hash: paramsHash({ key: "url" }) } });
+  await writeMemory(data, { n: { type: "list.new", value: ["x"], hash: paramsHash({ key: "url" }) } });
   expect(await longSave(long("titre"))).toEqual({ ok: true, written: true, memoryErased: ["n"] });
 });
 
-test("saving web.chercher in a widget without web: refused, nothing written", async () => {
+test("saving web.search in a widget without web: refused, nothing written", async () => {
   const raw = wf();
-  raw.blocks.splice(1, 0, { id: "w", type: "web.chercher", position: { x: 0, y: 0 }, params: { query: "{titre}", perItem: true } } as never);
+  raw.blocks.splice(1, 0, { id: "w", type: "web.search", position: { x: 0, y: 0 }, params: { query: "{title}", perItem: true } } as never);
   raw.links = [{ from: "a", to: "w" }, { from: "w", to: "n" }, { from: "n", to: "s" }];
-  const expected = { ok: false, error: 'Workflow invalide : web.chercher : le widget doit déclarer "web": true', block: "w" };
+  const expected = { ok: false, error: 'Workflow invalide : web.search : le widget doit déclarer "web": true', block: "w" };
   expect(await rec(raw)).toEqual(expected);
   expect(await saveWorkflow({ filesFolder: files, dataFolder: data, raw: raw, context: { web: false, maxDurationMinutes: 30, owner: "widget" as const, input: false } })).toEqual(expected);
   expect(await readdir(files)).toEqual(["a.mjs"]);

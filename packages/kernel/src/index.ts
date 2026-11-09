@@ -28,7 +28,7 @@ export * from "./mcp/devtools.js";
 export * from "./mcp/extensions.js";
 export * from "./ai/local-ai.js";
 export * from "./ai/dispatcher.js";
-export * from "./workflows/protocole.js";
+export * from "./workflows/protocol.js";
 export * from "./widgets/grants.js";
 export * from "./widgets/scheduler.js";
 export * from "./widgets/hours.js";

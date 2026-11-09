@@ -198,7 +198,7 @@ it("a port held elsewhere: the section says so, « Brancher » is greyed, and no
 });
 
 // externes.spec.ts:296
-it("an invalid port (WEBAIOS_PORT_MCP_EXTERNE=abc): the section says the external MCP could not start", async () => {
+it("an invalid port (WEBAIOS_PORT_MCP_EXTERNAL=abc): the section says the external MCP could not start", async () => {
   await launch({ WEBAIOS_PORT_MCP_EXTERNAL: "abc" });
   await waitUi(m, "return doc.querySelector('[data-testid=\"raison-externes\"]')?.textContent.startsWith(arguments[0])", ["Le MCP externe n'a pas pu démarrer : "], 15_000);
   expect(await connectDisabled()).toBe(true);

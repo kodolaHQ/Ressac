@@ -362,10 +362,10 @@ test("without applications: the tools do not exist", async () => {
 
 function fakeRuns(id: string): Execution[] {
   const base = { version: 1 as const, owner: { type: "widget" as const, id }, trigger: "manuelle" as const, start: "2026-10-28T10:00:00.000Z", end: "2026-10-28T10:00:07.000Z" };
-  const block = { id: "flux", type: "source.flux", status: "reussi" as const, start: base.start, end: base.end, items: 12 };
+  const block = { id: "flux", type: "source.feed", status: "succeeded" as const, start: base.start, end: base.end, items: 12 };
   return [
     { ...base, id: "2026-10-28T10-00-00-000Z", status: "partielle", blocks: [{ ...block, output: [{ title: "secret du compte" }], log: ["journal secret"] }] },
-    { ...base, id: "2026-10-27T10-00-00-000Z", status: "echouee", error: "erreur secrete", blocks: [{ ...block, status: "echoue", error: "erreur secrete", log: [] }] },
+    { ...base, id: "2026-10-27T10-00-00-000Z", status: "echouee", error: "erreur secrete", blocks: [{ ...block, status: "failed", error: "erreur secrete", log: [] }] },
   ];
 }
 

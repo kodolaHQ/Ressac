@@ -264,7 +264,7 @@ describe("the UI's network", () => {
     widgetFiles(dataDir, "dns-script", dnsScriptDisplay);
     // A starter widget still shows.
     const starter = path.resolve(import.meta.dirname, "../../../packages/kernel/modeles/widgets/actus-tech");
-    widgetFiles(dataDir, "actus-tech", readFileSync(path.join(starter, "affichage.html"), "utf8"), JSON.parse(readFileSync(path.join(starter, "exemple.json"), "utf8")));
+    widgetFiles(dataDir, "actus-tech", readFileSync(path.join(starter, "display.html"), "utf8"), JSON.parse(readFileSync(path.join(starter, "example.json"), "utf8")));
     widgetFiles(dataDir, "sonde", DISPLAY);
     widgetFiles(dataDir, "lien", linksDisplay);
     widgetFiles(dataDir, "ombre", shadowDisplay);

@@ -63,8 +63,8 @@
   const name = $derived(edit.widget?.name ?? edit.action?.name ?? target.id);
   /** The input requested by « ▶ Lancer » (action with an input): the small window is open. */
   let request = $state<{ label: string; value: string } | null>(null);
-  const hasOutput = $derived(edit.draft?.blocks.some((b) => b.type === "sortie") ?? false);
-  const outputId = $derived(edit.draft?.blocks.find((b) => b.type === "sortie")?.id);
+  const hasOutput = $derived(edit.draft?.blocks.some((b) => b.type === "output") ?? false);
+  const outputId = $derived(edit.draft?.blocks.find((b) => b.type === "output")?.id);
   const appState = $derived.by(() => {
     const e = edit.recordingState;
     if (e === "enregistre") return "Enregistré";
@@ -219,7 +219,7 @@
     <div class="corps">
       {#if edit.loading === "introuvable"}
         <p class="doux message">
-          {isAction ? "Cette action n'a pas de workflow (workflow.json), ou action.json est illisible." : "Ce widget n'a pas de workflow (ni workflow.json ni recolte.mjs)."}
+          {isAction ? "Cette action n'a pas de workflow (workflow.json), ou action.json est illisible." : "Ce widget n'a pas de workflow (ni workflow.json ni harvest.mjs)."}
         </p>
       {:else}
         <p class="erreur message" data-testid="workflow-illisible">{edit.loading.unreadable}</p>

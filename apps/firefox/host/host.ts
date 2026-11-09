@@ -11,9 +11,9 @@ console.log = console.info = console.debug = console.error;
 process.stdout.on("error", () => {});
 process.on("unhandledRejection", (e) => console.error("[webaios] rejet non géré :", e));
 
-process.env.WEBAIOS_CONTENEUR ||= "webaios-atelier-firefox";
+process.env.WEBAIOS_CONTAINER ||= "webaios-workshop-firefox";
 // The existing container's name and host ports: renaming them would orphan it.
-process.env.WEBAIOS_PORTS_CONTENEUR ||= "5300-5319";
+process.env.WEBAIOS_CONTAINER_PORTS ||= "5300-5319";
 
 const { join } = await import("node:path");
 const { createInterface } = await import("node:readline");
@@ -69,8 +69,8 @@ const paths = spacePaths(root);
 // Widgets' data, states and grants: outside the space.
 const widgetsFolder = join(dataDir, "widgets");
 // Outside the agent's kernel: the history works even when the kernel does not start.
-const MEMORY_LOOP = process.env.WEBAIOS_MEMOIRE_BOUCLE === "1";
-// The pages whose text the history keeps for the agent's memory: http(s), never the machine (unless WEBAIOS_MEMOIRE_BOUCLE).
+const MEMORY_LOOP = process.env.WEBAIOS_MEMORY_LOOP === "1";
+// The pages whose text the history keeps for the agent's memory: http(s), never the machine (unless WEBAIOS_MEMORY_LOOP).
 const keepable = (url: string) => {
   try {
     const u = new URL(url);
@@ -157,7 +157,7 @@ const launchKernel = (profileId: string): Promise<Kernel | null> => {
     // Widgets and actions wrote something, or a grant changed: the page reads again.
     onChange: () => rpc.notify("accueil.change"),
     notify: notify,
-    ...(process.env.WEBAIOS_TEST_ADRESSES_LOCALES === "1" ? { localAddresses: true } : {}),
+    ...(process.env.WEBAIOS_TEST_LOCAL_ADDRESSES === "1" ? { localAddresses: true } : {}),
     ...(duckduckgo ? { searchUrl: duckduckgo } : {}),
   }).then(
     (n) => {
@@ -221,8 +221,8 @@ const stop = () =>
   (stopping ??= (async () => {
     // Started first (spike S8) but not awaited before the others: a slow docker must not eat the 5 s quit delay
     // before the history is closed. Settled alone:
-    // its failure never skips the stops below. WEBAIOS_TEST_ARRET_APPS_ECHOUE: tests only.
-    const appsStopped = (process.env.WEBAIOS_TEST_ARRET_APPS_ECHOUE === "1" ? Promise.reject(new Error("arrêt des applis simulé")) : apps.stop()).catch((e) =>
+    // its failure never skips the stops below. WEBAIOS_TEST_APPS_STOP_FAILS: tests only.
+    const appsStopped = (process.env.WEBAIOS_TEST_APPS_STOP_FAILS === "1" ? Promise.reject(new Error("arrêt des applis simulé")) : apps.stop()).catch((e) =>
       console.error("[webaios] les applis ne se sont pas arrêtées :", e),
     );
     extensions.stop();
@@ -285,9 +285,9 @@ const rpc = createRpc({
           state.widgets.map(async (w) => {
             if ("error" in w || !w.hasDisplay) return;
             try {
-              mtimes[w.id] = Math.round((await stat(join(w.folder, "affichage.html"))).mtimeMs);
+              mtimes[w.id] = Math.round((await stat(join(w.folder, "display.html"))).mtimeMs);
             } catch {
-              // affichage.html deleted in the meantime: the next read will tell
+              // display.html deleted in the meantime: the next read will tell
             }
           }),
         );
@@ -560,7 +560,7 @@ const rpc = createRpc({
     // The RPC signal is ignored on purpose: the kernel's Pacing hands the lane back (partie=false) when the read has already ended, and rpc.ts drops a late answer.
     "lecture.changerHote": (p: { read: string; host: string }) => bridge.changeHost(p.read, p.host),
     // Tests only: a paced read through a Pacing shared by the calls, as a workflow's web widget does.
-    ...(process.env.WEBAIOS_TEST_LECTURE_MENAGEE === "1"
+    ...(process.env.WEBAIOS_TEST_PACED_READ === "1"
       ? {
           "test.lectureMenagee": ({ url }: { url: string }) =>
             testPacing.read(new URL(url).hostname, (ch) => bridge.readPageInvisible(url, { profile: null, changeHost: ch })),
@@ -583,7 +583,7 @@ const extensions = new ExtensionsAgent({ folder: join(dataDir, "extensions"), ag
 const sites = createSites({
   paths: paths,
   dataDir,
-  localAddresses: process.env.WEBAIOS_TEST_ADRESSES_LOCALES === "1",
+  localAddresses: process.env.WEBAIOS_TEST_LOCAL_ADDRESSES === "1",
   chrome: {
     open: (s, frame, tweaks) => rpc.request("sites.ouvrir", [s, frame, tweaks]),
     close: (id) => rpc.request("sites.fermer", [id]),
@@ -602,7 +602,7 @@ const sites = createSites({
   },
   // The public read (a throwaway container, no profile): never the app's cookies nor the user's.
   readLinks: async (page, signal) =>
-    (await bridge.readPageInvisible(page, { profile: null, ...(process.env.WEBAIOS_TEST_ADRESSES_LOCALES === "1" ? { localAddresses: true } : {}), ...(signal ? { signal } : {}) })).links.map((l) => l.url),
+    (await bridge.readPageInvisible(page, { profile: null, ...(process.env.WEBAIOS_TEST_LOCAL_ADDRESSES === "1" ? { localAddresses: true } : {}), ...(signal ? { signal } : {}) })).links.map((l) => l.url),
   // The review takes a new app's first snapshot.
   broadcast: () => {
     rpc.notify("sites.change");
@@ -658,7 +658,7 @@ const apps = createApplicationsHost({
 const design = createDesignHost({
   dataDir,
   paths: paths,
-  port: externalMcpPort(process.env.WEBAIOS_PORT_MCP_EXTERNE),
+  port: externalMcpPort(process.env.WEBAIOS_PORT_MCP_EXTERNAL),
   sites: () => sites.list().then((l) => l.map(({ id, name: name }) => ({ id, name: name }))),
   // Every app (apps.liste() keeps the running ones only).
   siteApps: () => apps.manager.list(),

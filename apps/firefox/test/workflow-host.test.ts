@@ -16,7 +16,7 @@ const workflow = {
   version: 1,
   blocks: [
     { id: "page", type: "source.page", position: { x: 0, y: 0 }, params: { url: "https://x.test/" } },
-    { id: "sortie", type: "sortie", position: { x: 1, y: 0 }, params: {} },
+    { id: "sortie", type: "output", position: { x: 1, y: 0 }, params: {} },
   ],
   links: [{ from: "page", to: "sortie" }],
 };
@@ -42,7 +42,7 @@ describe("widget workflow edition", () => {
     const moved = { ...workflow, blocks: [{ ...workflow.blocks[0]!, position: { x: 5, y: 5 } }, workflow.blocks[1]!] };
     expect(await saveEdit(m.c, "veille", moved)).toMatchObject({ ok: true, warnings: [] });
     const saved = readFileSync(join(m.folder, "workflow.json"), "utf8");
-    expect(JSON.parse(saved).blocs[0].position).toEqual({ x: 5, y: 5 });
+    expect(JSON.parse(saved).blocks[0].position).toEqual({ x: 5, y: 5 });
     const bad = await saveEdit(m.c, "veille", { version: 1, blocks: [], links: [] });
     expect(bad).toMatchObject({ ok: false, warnings: [] });
     expect(readFileSync(join(m.folder, "workflow.json"), "utf8")).toBe(saved);
@@ -144,7 +144,7 @@ function mountAction(decl: object) {
 describe("action workflow edition", () => {
   const withInput = { name: "GitLab", input: { label: "Projet" }, sources: { public: ["gitlab.com"] }, layout: "Un tableau", maxDurationMinutes: 5 };
   const read = { id: "lire", type: "code", position: { x: 0, y: 0 }, params: { source: "lire.mjs" } };
-  const toPage = { id: "sortie", type: "sortie", position: { x: 1, y: 0 }, params: { to: "page" } };
+  const toPage = { id: "sortie", type: "output", position: { x: 1, y: 0 }, params: { to: "page" } };
   const wf = { version: 1, blocks: [read, toPage], links: [{ from: "lire", to: "sortie" }] };
 
   it("a symlinked action folder gives null and writes nothing outside", async () => {

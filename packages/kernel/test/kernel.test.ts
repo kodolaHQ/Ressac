@@ -55,7 +55,7 @@ test("Docker absent: createKernel succeeds, workshopState → docker-absent, ouv
   expect(await n.workshopState()).toBe("docker-absent");
   const error = await n.openAgentSession({ cols: 80, rows: 24 }).catch((e) => e);
   expect(error).toBeInstanceOf(WorkshopError);
-  expect(error.etat).toBe("docker-absent");
+  expect(error.state).toBe("docker-absent");
 });
 
 test("the MCP server answers with the token, then arreter closes it", async () => {
@@ -220,7 +220,7 @@ test("kernel: accorder records the grant (domains sorted), notifies and starts a
     kernel.paths,
     "daily",
     declarationWidget(undefined, { harvest: { minutes: 60 }, sources: { account: ["b.dev", "a.dev"], public: ["z.com", "y.com"] } }),
-    { "recolte.mjs": "export default () => 1" },
+    { "harvest.mjs": "export default () => 1" },
   );
   await kernel.grant({ id: "daily", profile: "perso", account: ["a.dev", "b.dev"], public: ["z.com", "y.com"] });
   expect((await readGrants(widgetsFolder)).daily).toEqual({ domains: ["a.dev", "b.dev"], public: ["y.com", "z.com"], profile: "perso" });
@@ -254,7 +254,7 @@ test("kernel: accorder refuses if the declaration is no longer the one shown to 
     kernel.paths,
     "daily",
     declarationWidget(undefined, { harvest: { minutes: 60 }, sources: { account: ["app.daily.dev"], public: ["espion.example"] } }),
-    { "recolte.mjs": "export default () => 1" },
+    { "harvest.mjs": "export default () => 1" },
   );
   // Shown without the public domain (old declaration): refused.
   await expect(kernel.grant({ id: "daily", profile: "perso", account: ["app.daily.dev"], public: [] })).rejects.toThrow(/a changé/);
@@ -272,13 +272,13 @@ test("kernel: refuserAccord erases the data; account removed afterwards → widg
   const { run: run } = fakeRunner([[/ info$/, { code: 1 }]]);
   kernel = await createKernel({ widgetsFolder: widgetsFolder, actionsFolder: `${root}-actions`, bridge: new FakeBridge([], { active: null, allow: false }), root: root, run: run });
   const decl = (account: string[]) => declarationWidget(undefined, { harvest: { minutes: 60 }, sources: { account: account, public: [] } });
-  await writeWidget(kernel.paths, "daily", decl(["app.daily.dev"]), { "recolte.mjs": "export default () => 1" });
+  await writeWidget(kernel.paths, "daily", decl(["app.daily.dev"]), { "harvest.mjs": "export default () => 1" });
   await kernel.grant({ id: "daily", profile: "perso", account: ["app.daily.dev"], public: [] });
   await writeData(widgetsFolder, "daily", { secret: "du compte" });
   await kernel.denyGrant("daily");
   expect(await readData(widgetsFolder, "daily")).toBeNull();
   // The agent removes the account: the widget becomes public again, with nothing from the account.
-  await writeWidget(kernel.paths, "daily", decl([]), { "recolte.mjs": "export default () => 1" });
+  await writeWidget(kernel.paths, "daily", decl([]), { "harvest.mjs": "export default () => 1" });
   const mcp = await readMcp(kernel);
   const client = new Client({ name: "test", version: "0" });
   await client.connect(
@@ -295,7 +295,7 @@ test("kernel: refuserAccord erases the data; account removed afterwards → widg
 
 test("kernel: rejouer goes through the scheduler queue; surDirect follows the queue and unsubscribes", async () => {
   const n = await createWithoutDocker();
-  await writeWidget(n.paths, "meteo", declarationWidget(undefined, { harvest: { minutes: 60 } }), { "recolte.mjs": "export default () => 1" });
+  await writeWidget(n.paths, "meteo", declarationWidget(undefined, { harvest: { minutes: 60 } }), { "harvest.mjs": "export default () => 1" });
   const seen: unknown[] = [];
   const unsubscribe = n.onLive((e) => seen.push(e));
   expect(await n.replay("meteo", "2026-10-28T09-00-00-000Z", "recolte")).toEqual({ ok: false, error: "Mise à jour impossible : atelier arrêté" });
@@ -394,7 +394,7 @@ test("kernel.actions: page(id, null) returns the last resolved result; page of a
   });
   const e = executionAction("gitlab", "2026-10-31T08:00:00.000Z");
   await writeRun(join(actionsFolder, "gitlab"), { ...e, input: "x" });
-  const plan = { blocks: [{ component: "liste", props: { items: "tickets", title: "titre" } }] };
+  const plan = { blocks: [{ component: "liste", props: { items: "tickets", title: "title" } }] };
   await writeResult(actionsFolder, "gitlab", { version: 1, run: e.id, input: "x", results: { tickets: [{ title: "A" }] }, plan, fallback: false, empty: false });
   const p = await n.actions.page("gitlab", null);
   expect(p).toMatchObject({ run: e.id, start: e.start, end: e.end, input: "x", status: "reussie", account: true });

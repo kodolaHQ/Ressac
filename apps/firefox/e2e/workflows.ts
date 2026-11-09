@@ -37,7 +37,7 @@ export async function writeWidget(
       ...o.declaration,
     }),
   );
-  await writeFile(path.join(dir, "affichage.html"), DISPLAY);
+  await writeFile(path.join(dir, "display.html"), DISPLAY);
   if (o.workflow !== undefined) await writeFile(path.join(dir, "workflow.json"), typeof o.workflow === "string" ? o.workflow : JSON.stringify(o.workflow));
   for (const [name, text] of Object.entries(o.files ?? {})) await writeFile(path.join(dir, name), text);
   const state = path.join(dataDir, "widgets", id);

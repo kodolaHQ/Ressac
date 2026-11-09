@@ -3,14 +3,14 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { pathInContainer, spacePaths } from "../src/paths.js";
 
-const old = process.env.WEBAIOS_RACINE;
+const old = process.env.WEBAIOS_ROOT;
 afterEach(() => {
-  if (old === undefined) delete process.env.WEBAIOS_RACINE;
-  else process.env.WEBAIOS_RACINE = old;
+  if (old === undefined) delete process.env.WEBAIOS_ROOT;
+  else process.env.WEBAIOS_ROOT = old;
 });
 
 test("default paths under ~/WebAiOs", () => {
-  delete process.env.WEBAIOS_RACINE;
+  delete process.env.WEBAIOS_ROOT;
   const c = spacePaths();
   expect(c.root).toBe(join(homedir(), "WebAiOs"));
   expect(c.blocks).toBe(join(homedir(), "WebAiOs", "accueil", "blocs"));
@@ -18,8 +18,8 @@ test("default paths under ~/WebAiOs", () => {
   expect(c.mcpConfig).toBe(join(homedir(), "WebAiOs", ".webaios", "mcp.json"));
 });
 
-test("WEBAIOS_RACINE overrides the root", () => {
-  process.env.WEBAIOS_RACINE = "/tmp/ailleurs";
+test("WEBAIOS_ROOT overrides the root", () => {
+  process.env.WEBAIOS_ROOT = "/tmp/ailleurs";
   const c = spacePaths();
   expect(c.root).toBe("/tmp/ailleurs");
   expect(c.profiles).toBe("/tmp/ailleurs/.webaios/profils");

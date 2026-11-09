@@ -129,7 +129,7 @@ describe("Applications page actions", () => {
     await rowButton(p.m, "essai", "Déboguer");
     await expect.poll(panelOpen, { timeout: 10_000 }).toBe(true);
     await waitUi(p.m, "return doc.querySelector('.xterm-rows')?.textContent.includes('faux agent prêt>')", [], 20_000, "agent");
-    await expect.poll(() => agentInput(p!.dataDir), { timeout: 10_000 }).toBe("[application : Essai — /workspace/projets/essai — journal : /workspace/.webaios/journaux/essai.log] ");
+    await expect.poll(() => agentInput(p!.dataDir), { timeout: 10_000 }).toBe("[application : Essai — /workspace/projects/essai — journal : /workspace/.webaios/logs/essai.log] ");
     await sleep(300);
     expect(agentInput(p.dataDir)).not.toContain("\r");
   });
@@ -138,7 +138,7 @@ describe("Applications page actions", () => {
   it("Déboguer a project without manifest", async () => {
     p = await openAppsPage(BLOCK);
     await rowButton(p.m, "vieux", "Déboguer");
-    await expect.poll(() => agentInput(p!.dataDir), { timeout: 10_000 }).toBe("[projet sans fiche webaios.json : /workspace/projets/vieux] ");
+    await expect.poll(() => agentInput(p!.dataDir), { timeout: 10_000 }).toBe("[projet sans fiche webaios.json : /workspace/projects/vieux] ");
   });
 
   // applications.spec.ts:530
@@ -160,7 +160,7 @@ describe("Applications page actions", () => {
   it("a folder with an unsupported name can be debugged and deleted", async () => {
     p = await openAppsPage(BLOCK, { noManifest: ["Mon Projet"] });
     await rowButton(p.m, "Mon Projet", "Déboguer");
-    await expect.poll(() => agentInput(p!.dataDir), { timeout: 10_000 }).toBe("[projet sans fiche webaios.json : /workspace/projets/Mon Projet] ");
+    await expect.poll(() => agentInput(p!.dataDir), { timeout: 10_000 }).toBe("[projet sans fiche webaios.json : /workspace/projects/Mon Projet] ");
     await confirmDelete("Mon Projet");
     await expect.poll(() => existsSync(project("Mon Projet")), { timeout: 10_000 }).toBe(false);
     await rowGone("Mon Projet");

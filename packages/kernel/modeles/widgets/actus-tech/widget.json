@@ -1,7 +1,7 @@
 {
-  "nom": "Actualités tech",
+  "name": "Actualités tech",
   "description": "Les infos tech importantes du moment, triées selon tes centres d'intérêt",
-  "tailles": {
+  "sizes": {
     "min": {
       "l": 2,
       "h": 2
@@ -10,17 +10,17 @@
       "l": 12,
       "h": 10
     },
-    "defaut": {
+    "default": {
       "l": 6,
       "h": 5
     }
   },
-  "recolte": {
+  "harvest": {
     "minutes": 60
   },
   "sources": {
-    "compte": [],
-    "publiques": [
+    "account": [],
+    "public": [
       "news.ycombinator.com",
       "lobste.rs",
       "www.theverge.com",

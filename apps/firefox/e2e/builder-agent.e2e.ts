@@ -21,9 +21,9 @@ const WATCH_WORKFLOW = {
   blocks: [
     { id: "page", type: "source.page", params: { url: "{config.url}" } },
     { id: "liens", type: "code", name: "Liens de la page", params: { source: "liens.mjs" } },
-    { id: "tri", type: "ia.trier", name: "Tri par Kev", params: { question: "Parle d'IA ?", text: "{texte}", threshold: 0.5 } },
+    { id: "tri", type: "ai.sort", name: "Tri par Kev", params: { question: "Parle d'IA ?", text: "{texte}", threshold: 0.5 } },
     { id: "textes", type: "code", params: { source: "textes.mjs" } },
-    { id: "sortie", type: "sortie", params: { to: "widget" } },
+    { id: "sortie", type: "output", params: { to: "widget" } },
   ],
   links: [
     { from: "page", to: "liens" },
@@ -48,12 +48,12 @@ afterEach(async () => {
 async function launch(): Promise<void> {
   dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-builder-agent-"));
   const files = {
-    "liens.mjs": "export default async (page) => page.liens;",
-    "textes.mjs": "export default async (liens) => ({ liens: liens.map((l) => l.texte) });",
+    "liens.mjs": "export default async (page) => page.links;",
+    "textes.mjs": "export default async (liens) => ({ liens: liens.map((l) => l.text) });",
   };
   for (const id of ["veille", "autre"])
     await writeWidget(dataDir, id, { name: id === "veille" ? "Veille" : "Autre", harvest: { minutes: 60 }, declaration: { config: { url: "https://exemple.invalid/liens" } }, workflow: WATCH_WORKFLOW, files: files });
-  await writeWidget(dataDir, "casse", { name: "Cassé", harvest: { minutes: 60 }, workflow: '{ "version": 1, "blocs": [ { "id": "page", "type": "source.pa' });
+  await writeWidget(dataDir, "casse", { name: "Cassé", harvest: { minutes: 60 }, workflow: '{ "version": 1, "blocks": [ { "id": "page", "type": "source.pa' });
   w = await launchWebAiOs({ dataDir, height: 1400 });
   m = w.marionette;
   await m.setContext("chrome");
@@ -132,7 +132,7 @@ describe("the builder's Agent tab", () => {
     // In the builder, the panel the home page opened closes; its Agent tab opens it again, with the same conversation.
     await builder("veille");
     await hidden();
-    await click(m, '[data-testid="palette-liste.garder"]');
+    await click(m, '[data-testid="palette-list.keep"]');
     await waitCount("noeud-liste-garder", 1);
     await click(m, '[data-testid="onglet-agent"]');
     await shown();
@@ -267,7 +267,7 @@ describe("the builder's Agent tab", () => {
     };
     await writeAsAgent({
       ...WATCH_WORKFLOW,
-      blocks: [...WATCH_WORKFLOW.blocks.slice(0, 3), { id: "garder", type: "liste.garder", params: { count: 5 } }, ...WATCH_WORKFLOW.blocks.slice(3)],
+      blocks: [...WATCH_WORKFLOW.blocks.slice(0, 3), { id: "garder", type: "list.keep", params: { count: 5 } }, ...WATCH_WORKFLOW.blocks.slice(3)],
       links: [
         { from: "page", to: "liens" },
         { from: "liens", to: "tri" },
@@ -282,7 +282,7 @@ describe("the builder's Agent tab", () => {
     expect(await view()).toBe(zoomed);
 
     // An invalid draft, then a new version from the agent: the banner offers both.
-    await click(m, '[data-testid="palette-liste.dedoublonner"]');
+    await click(m, '[data-testid="palette-list.dedupe"]');
     await waitUi(m, "return !!doc.querySelector('[data-testid=\"etat-enregistrement\"]')?.textContent.includes('entrée manquante')");
     await writeAsAgent({ ...WATCH_WORKFLOW, blocks: WATCH_WORKFLOW.blocks.map((b) => (b.id === "tri" ? { ...b, params: { ...b.params, threshold: 0.8 } } : b)) });
     await waitCount("bandeau-fichier", 1);

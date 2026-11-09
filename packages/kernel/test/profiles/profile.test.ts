@@ -5,7 +5,7 @@ import { spacePaths } from "../../src/paths.js";
 import { loadProfiles, buildCommand, Profile } from "../../src/profiles/profile.js";
 import { tempFolder } from "../helpers/temp.js";
 
-const claude = Profile.parse(JSON.parse(await readFile(join(import.meta.dirname, "../../modeles/profil-claude.json"), "utf8")));
+const claude = Profile.parse(JSON.parse(await readFile(join(import.meta.dirname, "../../modeles/agent-profile.json"), "utf8")));
 
 test("buildCommand interactif remplace {mcpConfig}", () => {
   expect(buildCommand(claude, "interactive", { mcpConfig: "/workspace/.webaios/mcp.json" })).toEqual([
