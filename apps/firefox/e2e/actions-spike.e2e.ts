@@ -1,7 +1,7 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { BARRES, probe, startActionServers, writeComponent } from "./actions";
+import { BARS, probe, startActionServers, writeComponent } from "./actions";
 import { waitReady } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
@@ -44,8 +44,8 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("actions spike", () => {
     m = w.marionette;
     await m.setContext("chrome");
     await waitReady(m);
-    const proprietes = { valeurs: { genre: "reference", description: "Liste de { libelle, valeur }", requis: true }, titre: { genre: "texte", description: "Titre du graphique" } };
-    await writeComponent(w.dataDir, "barres", { description: "Graphique en barres", proprietes, html: BARRES });
+    const properties = { valeurs: { genre: "reference", description: "Liste de { libelle, valeur }", requis: true }, titre: { genre: "texte", description: "Titre du graphique" } };
+    await writeComponent(w.dataDir, "barres", { description: "Graphique en barres", proprietes: properties, html: BARS });
     await writeComponent(w.dataDir, "sonde", { description: "Sonde", proprietes: {}, html: probe(probeBase) });
   }, 60_000);
   afterAll(async () => {
@@ -55,7 +55,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("actions spike", () => {
   });
 
   /** Serves `nom`, mounts it in a sandboxed frame of the sidebar (listened on the window root before it loads), sends it `props`. */
-  const mount = (nom: string, props: unknown, waitMs: number) =>
+  const mount = (name: string, props: unknown, waitMs: number) =>
     inUi<any>(
       m,
       `const store = await ChromeUtils.importESModule("${STORE}").ready;
@@ -79,7 +79,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("actions spike", () => {
       f.remove();
       await store.actionMedia.release(arguments[0]);
       return out;`,
-      [nom, props, waitMs],
+      [name, props, waitMs],
     );
 
   it("S1: AGENTS.md's « barres » draws with its props; its height reaches the chrome on the window root", async () => {
@@ -129,15 +129,15 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("actions spike", () => {
 
   it("S1: a component's navigation to another resource: URL (another component's copy, a Firefox resource)", async () => {
     // barres stays served meanwhile: its copy is a live resource:// URL to aim at.
-    const barres = await chrome<string>(m, `return (await ChromeUtils.importESModule("${STORE}").ready).actionMedia.serve("barres");`);
+    const bars = await chrome<string>(m, `return (await ChromeUtils.importESModule("${STORE}").ready).actionMedia.serve("barres");`);
     const out: Record<string, unknown> = {};
-    for (const [nom, target] of [["nav-composant", barres], ["nav-gre", "resource://gre/modules/NetUtil.sys.mjs"]] as const) {
-      await writeComponent(w.dataDir, nom, { description: "Sonde", proprietes: {}, html: `<!doctype html><script>setTimeout(() => { try { location.href = ${JSON.stringify(target)}; parent.postMessage({ type: "nav", thrown: null }, "*"); } catch (e) { parent.postMessage({ type: "nav", thrown: e.name + ": " + e.message }, "*"); } }, 200);</script>` });
-      const r = await mount(nom, {}, 1500);
-      out[nom] = { loaded: r.loaded, said: r.got.filter((g: any) => g.fromFrame).map((g: any) => g.detail) };
+    for (const [name, target] of [["nav-composant", bars], ["nav-gre", "resource://gre/modules/NetUtil.sys.mjs"]] as const) {
+      await writeComponent(w.dataDir, name, { description: "Sonde", proprietes: {}, html: `<!doctype html><script>setTimeout(() => { try { location.href = ${JSON.stringify(target)}; parent.postMessage({ type: "nav", thrown: null }, "*"); } catch (e) { parent.postMessage({ type: "nav", thrown: e.name + ": " + e.message }, "*"); } }, 200);</script>` });
+      const r = await mount(name, {}, 1500);
+      out[name] = { loaded: r.loaded, said: r.got.filter((g: any) => g.fromFrame).map((g: any) => g.detail) };
     }
     await chrome(m, `await (await ChromeUtils.importESModule("${STORE}").ready).actionMedia.release("barres");`);
-    note("S1 resource navigation", { barres, out });
+    note("S1 resource navigation", { barres: bars, out });
   }, 60_000);
 
   /** The cookies on 127.0.0.1 of each container: default, profile p1, the action images'. */

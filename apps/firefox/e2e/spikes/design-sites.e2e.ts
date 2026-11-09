@@ -36,7 +36,7 @@ const S5_PAGE = HOOKS_PAGE.replace('<button type="submit" id="envoyer">', '<inpu
  * the prototypes the viewfinder calls (in its own world), fakes the viewfinder's globals, and on « essai » writes
  * what it sees into the DOM. It never calls a hooked function itself.
  */
-const RETOUCHE = `
+const TWEAK = `
 const R = document.documentElement;
 const log = { early: [], keys: [], hooked: [], fake: 0 };
 for (const t of ${JSON.stringify(MOUSE)}) window.addEventListener(t, (e) => log.early.push(t + ":" + e.isTrusted), true);
@@ -79,7 +79,7 @@ const vidola = () => ({ nom: "Vidola", adresse: url("/design"), domaines: ["vido
 const inStore = <T = unknown>(body: string, args: unknown[] = []) =>
   m.execute<T>(`return (async () => { const store = await ChromeUtils.importESModule("${STORE}").ready; ${body} })();`, args);
 const view = <T = unknown>(expr: string) => inSiteView<T>(m, ID, `return ${expr};`).catch(() => null);
-const vue = () => inStore<string | null>(`return store.sites.viewOf(arguments[0]);`, [ID]);
+const viewOf = () => inStore<string | null>(`return store.sites.viewOf(arguments[0]);`, [ID]);
 
 /** A trusted gesture sent by the site window (as a person's mouse): a move, then a click of `button` unless `move`. */
 const siteMouse = (p: { x: number; y: number }, o: { button?: number; move?: boolean } = {}) =>
@@ -104,7 +104,7 @@ async function viewPoint(sel: string): Promise<{ x: number; y: number }> {
 }
 
 /** The tweak's answer to « essai ». */
-async function retouche(): Promise<any> {
+async function tweak(): Promise<any> {
   await view(`(document.documentElement.dataset.sonde = "", document.dispatchEvent(new Event("essai")), 1)`);
   return JSON.parse(String(await view("document.documentElement.dataset.sonde")));
 }
@@ -123,13 +123,13 @@ const siteKey = (key: string) =>
 async function openApp(): Promise<void> {
   if (!(await inStore<boolean>(`return store.sites.openIds().includes(arguments[0]);`, [ID])))
     await inStore(`await store.agent.request("sites.agir", { id: arguments[0], action: "ouvrir", fenetre: store.state.fenetres[0].id });`, [ID]);
-  await expect.poll(vue, { timeout: 15_000 }).not.toBeNull();
+  await expect.poll(viewOf, { timeout: 15_000 }).not.toBeNull();
 }
 
 /** The site's page in the view, tweaks run. */
 async function toSite(): Promise<void> {
   await openApp();
-  if ((await vue()) !== "site") await inStore(`store.sites.controller(arguments[0]).enter();`, [ID]);
+  if ((await viewOf()) !== "site") await inStore(`store.sites.controller(arguments[0]).enter();`, [ID]);
   await expect.poll(() => m.execute(`return ${VIEW}.currentURI.spec;`), { timeout: 15_000 }).toBe(url("/design"));
   await expect.poll(() => view("document.documentElement.dataset.retouche ?? null"), { timeout: 10_000 }).toBe("oui");
 }
@@ -137,7 +137,7 @@ async function toSite(): Promise<void> {
 /** The home in the bar, shown and loaded from its served copy. */
 async function toHome(): Promise<void> {
   await openApp();
-  if ((await vue()) !== "accueil") await inStore(`store.sites.controller(arguments[0]).home();`, [ID]);
+  if ((await viewOf()) !== "accueil") await inStore(`store.sites.controller(arguments[0]).home();`, [ID]);
   await expect
     .poll(() => inSiteBar<string | null>(m, ID, `const h = doc.querySelector('[data-testid="site-cadre-accueil"]'); const d = h?.contentDocument; return d?.readyState === "complete" && d.getElementById("cible") ? String(d.documentURI) : null;`), { timeout: 15_000 })
     .toMatch(/^resource:\/\/webaios-site-/);
@@ -154,7 +154,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
     const dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
     const profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
     dirs.push(dataDir, profile);
-    writeSite(dataDir, ID, { declaration: vidola(), fichiers: { "retouches/sonde.js": RETOUCHE, "retouches/cacher.css": ".cache { display: none; }", "accueil/index.html": HOME } });
+    writeSite(dataDir, ID, { declaration: vidola(), fichiers: { "retouches/sonde.js": TWEAK, "retouches/cacher.css": ".cache { display: none; }", "accueil/index.html": HOME } });
     await grantSite(dataDir, ID, vidola());
     const a = testActor(profile);
     w = await launchWebAiOs({ dataDir, profile, env: { WEBAIOS_TEST_ADRESSES_LOCALES: "1", ...a.env }, prefs: a.prefs });
@@ -179,7 +179,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
     const css = await view(`getComputedStyle(document.querySelector(".cache")).display`);
     note("S5 info", { ...(info as object), retoucheCss: css });
     expect(css).toBe("none");
-    const before = await retouche();
+    const before = await tweak();
     note("S5 retouche before", before);
     expect(before.pw).toBe("");
 
@@ -195,12 +195,12 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
     await sleep(600);
 
     // Marionette's content scripts run in the page's world: every point is read first, then the page's log is emptied.
-    const [pEmail, pMdp] = [await viewPoint("#email"), await viewPoint("#mdp")];
+    const [pEmail, pPassword] = [await viewPoint("#email"), await viewPoint("#mdp")];
     const pageKeys0 = await view<string[]>("Object.keys(window)");
     await view("(window.log.hooked.length = 0, 1)");
     const a = await armActor(m, VIEW);
     await expect.poll(() => view("document.getElementsByTagName('webaios-viseur').length"), { timeout: 10_000 }).toBe(1);
-    const during = await retouche();
+    const during = await tweak();
     note("S5 retouche while aiming", during);
     expect(during.pw).toBe("");
     expect(during.shadow).toBe("null");
@@ -213,19 +213,19 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
     await siteKey("x");
     await view(`(document.getElementById("email").focus(), 1)`);
     await siteKey("y");
-    const keys = { retouche: (await retouche()).log.keys, page: await view("window.log.keys.slice()"), pwPage: await view(`document.getElementById("mdp").value`) };
+    const keys = { retouche: (await tweak()).log.keys, page: await view("window.log.keys.slice()"), pwPage: await view(`document.getElementById("mdp").value`) };
     note("S5 keys while aiming", keys);
     expect(keys.retouche.filter((k: string) => k.startsWith("mdp:"))).toEqual([]);
     const pending = await a.result(200);
     expect(pending).toBe("pending");
     // A trusted click on the password field: captured, the value nowhere in the capture.
-    await siteMouse(pMdp);
+    await siteMouse(pPassword);
     const r = (await a.result()) as { r?: unknown };
     const c = cleanCapture(r.r);
     note("S5 capture of #mdp", { selecteur: c?.selecteur, etiquette: c?.etiquette, html: c?.html, adresse: c?.adresse, hasValue: JSON.stringify(r.r).includes("hunter2") });
     expect(c?.selecteur).toBe("#mdp");
     expect(JSON.stringify(r.r)).not.toContain("hunter2");
-    const after = await retouche();
+    const after = await tweak();
     const page = await view<any>("JSON.parse(JSON.stringify({ reactions: window.reactions, ...window.log }))");
     const pageKeys1 = await view<string[]>("Object.keys(window)");
     note("S5 after capture", { retouche: after, page, pageKeysAdded: pageKeys1?.filter((k) => !pageKeys0?.includes(k)) });
@@ -253,13 +253,13 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
     await expect.poll(() => view("document.getElementsByTagName('webaios-viseur').length"), { timeout: 10_000 }).toBe(1);
     await siteKey("Escape");
     const esc = await e.result(3000);
-    note("S5 Escape", { esc, retoucheKeys: (await retouche()).log.keys });
+    note("S5 Escape", { esc, retoucheKeys: (await tweak()).log.keys });
     if (esc === "pending") await stopActor(m, VIEW);
 
     // The capture: drawn by the view's WindowGlobal only. A magenta chrome cover over #cible, the bar above the view.
-    const cible = await inSiteView<{ x: number; y: number; largeur: number; hauteur: number }>(m, ID, `const r = document.getElementById("cible").getBoundingClientRect(); return { x: r.x, y: r.y, largeur: r.width, hauteur: r.height };`);
-    const vueDims = await view<{ largeur: number; hauteur: number }>("({ largeur: innerWidth, hauteur: innerHeight })");
-    const rc = rectCapture(cible, vueDims!, 1);
+    const target = await inSiteView<{ x: number; y: number; largeur: number; hauteur: number }>(m, ID, `const r = document.getElementById("cible").getBoundingClientRect(); return { x: r.x, y: r.y, largeur: r.width, hauteur: r.height };`);
+    const viewDims = await view<{ largeur: number; hauteur: number }>("({ largeur: innerWidth, hauteur: innerHeight })");
+    const rc = rectCapture(target, viewDims!, 1);
     const shot = await m.execute(
       `return (async ([rc]) => {
          const win = ${SITE}; ${PIXELS}
@@ -445,7 +445,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
     await expect.poll(async () => (await state()).hosts, { timeout: 5000 }).toBe(1);
     const enter = await inSiteBar<{ x: number; y: number }>(m, ID, `const b = win.document.getElementById("webaios-site-bar").getBoundingClientRect(), e = doc.querySelector('[data-testid="site-entrer"]').getBoundingClientRect(); return { x: b.left + e.left + e.width / 2, y: b.top + e.top + e.height / 2 };`);
     await siteMouse(enter);
-    await expect.poll(vue, { timeout: 5000 }).toBe("site");
+    await expect.poll(viewOf, { timeout: 5000 }).toBe("site");
     await sleep(300);
     const stopped = await state();
     const states = await inSiteBar(m, ID, `const s = win.__s6; s.offState(); return { states: s.states, stopped: s.stopped, homeShown: win.document.documentElement.hasAttribute("webaios-site-home"),
@@ -529,9 +529,9 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
     expect(bc.barGot.length).toBe(1);
     expect(afterBubble[1]).toBe(before[1]);
 
-    const panier = await show("panier", cart);
+    const basket = await show("panier", cart);
     const cartCheck = await check(cart);
-    note("S7 cart", { loaded: panier, ...(cartCheck as object) });
+    note("S7 cart", { loaded: basket, ...(cartCheck as object) });
     const cc = cartCheck as typeof bc;
     expect(cc.frame.top).toBeGreaterThanOrEqual(barBottom);
     expect(cc.hits.barAboveFrame).toBe("iframe#webaios-site-bar");

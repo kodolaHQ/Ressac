@@ -75,28 +75,28 @@ async function load(
   vi.stubGlobal("Services", { obs: { addObserver: (o: (s: unknown) => void, topic: string) => topic === "http-on-modify-request" && (observer = o) }, console: { registerListener: () => {} }, env: { get: () => "" } });
   const { createAgentExtensions } = await import("../chrome/store/agent-extensions");
   // WebAiOs tabs onglet-<n>: 5 is in a private space, 6 in another profile's, the others in the default one.
-  const espaces = [
+  const spaces = [
     { id: "e1", prive: false, profil: "defaut" },
     { id: "e2", prive: true, profil: "secret" },
     { id: "e3", prive: false, profil: "autre" },
   ];
-  const onglets = Object.fromEntries([1, 2, 3, 4, 5, 6].map((n) => [`onglet-${n}`, { id: `onglet-${n}`, espaceId: n === 5 ? "e2" : n === 6 ? "e3" : "e1" }]));
-  type State = { espaces: typeof espaces; onglets: typeof onglets };
+  const tabMap = Object.fromEntries([1, 2, 3, 4, 5, 6].map((n) => [`onglet-${n}`, { id: `onglet-${n}`, espaceId: n === 5 ? "e2" : n === 6 ? "e3" : "e1" }]));
+  type State = { espaces: typeof spaces; onglets: typeof tabMap };
   const listeners: ((state: State, previous: State) => void)[] = [];
-  const store = { state: { espaces, onglets } as State, subscribe: (l: (state: State, previous: State) => void) => void listeners.push(l) };
+  const store = { state: { espaces: spaces, onglets: tabMap } as State, subscribe: (l: (state: State, previous: State) => void) => void listeners.push(l) };
   const access = () => ({ agent: "L'agent", onglets: Object.fromEntries((o.lecture ?? []).map((id) => [id, { lecture: true, droits: [], construite: false, enCours: false }])) });
   const host = { request: (...a: unknown[]) => (o.requests?.push(a), Promise.resolve()), notify: (...a: unknown[]) => void o.notified?.push(a) };
   const x = createAgentExtensions(store as never, {} as never, {} as never, () => host as never, access as never);
   /** A new state, as the store sends it to its subscribers. */
-  const setSpaces = (e: typeof espaces) => {
+  const setSpaces = (e: typeof spaces) => {
     const previous = store.state;
     store.state = { ...previous, espaces: e };
     listeners.forEach((l) => l(store.state, previous));
   };
   return Object.assign(x, { setSpaces });
 }
-const grant = (x: Awaited<ReturnType<typeof load>>, actif = true) =>
-  x.handlers["extensions.portees"]!({ [ID]: { cle: "agent:reseau", accord: ACCORD, profils: ["defaut"], actif } }, new AbortController().signal);
+const grant = (x: Awaited<ReturnType<typeof load>>, active = true) =>
+  x.handlers["extensions.portees"]!({ [ID]: { cle: "agent:reseau", accord: ACCORD, profils: ["defaut"], actif: active } }, new AbortController().signal);
 
 beforeEach(() => parentApi.conduit.recv.set("APICall", firefoxRecv));
 afterEach(() => {

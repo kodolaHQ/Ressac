@@ -6,24 +6,24 @@ describe("regroupeur", () => {
   afterEach(() => vi.useRealTimers());
 
   it("groups two close schedulings into a single call", () => {
-    const faire = vi.fn();
-    const r = createGrouper(1000, faire);
+    const make = vi.fn();
+    const r = createGrouper(1000, make);
     r.planifier("a");
     vi.advanceTimersByTime(500);
     r.planifier("a");
     vi.advanceTimersByTime(999);
-    expect(faire).not.toHaveBeenCalled();
+    expect(make).not.toHaveBeenCalled();
     vi.advanceTimersByTime(1);
-    expect(faire).toHaveBeenCalledTimes(1);
-    expect(faire).toHaveBeenCalledWith("a");
+    expect(make).toHaveBeenCalledTimes(1);
+    expect(make).toHaveBeenCalledWith("a");
   });
 
   it("forgetting before the deadline cancels the call", () => {
-    const faire = vi.fn();
-    const r = createGrouper(1000, faire);
+    const make = vi.fn();
+    const r = createGrouper(1000, make);
     r.planifier("a");
     r.oublier("a");
     vi.advanceTimersByTime(5000);
-    expect(faire).not.toHaveBeenCalled();
+    expect(make).not.toHaveBeenCalled();
   });
 });

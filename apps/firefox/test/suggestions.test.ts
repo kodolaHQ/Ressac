@@ -2,9 +2,9 @@ import { expect, test } from "vitest";
 import type { ActionShown } from "../shared/actions";
 import { normalize, suggestionsActions, SUGGESTIONS_MAX } from "../ui/composants/suggestions";
 
-const action = (id: string, nom: string, o: Partial<ActionShown> = {}): ActionShown => ({
+const action = (id: string, name: string, o: Partial<ActionShown> = {}): ActionShown => ({
   id,
-  nom,
+  nom: name,
   description: "",
   motsCles: [],
   saisie: null,
@@ -62,6 +62,6 @@ test("an action in error is never suggested", () => {
 });
 
 test("exact terms first, then name order", () => {
-  const liste = [action("p", "Aide gitlabo"), action("c", "Zèbre"  , { motsCles: ["gitlab"] }), action("a", "Gitlab")];
-  expect(suggestionsActions("gitlab", liste).map((s) => s.id)).toEqual(["a", "c", "p"]);
+  const list = [action("p", "Aide gitlabo"), action("c", "Zèbre"  , { motsCles: ["gitlab"] }), action("a", "Gitlab")];
+  expect(suggestionsActions("gitlab", list).map((s) => s.id)).toEqual(["a", "c", "p"]);
 });

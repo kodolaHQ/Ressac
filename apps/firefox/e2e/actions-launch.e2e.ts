@@ -13,7 +13,7 @@ import { click, inUi, missingApi, pressKeys, waitUi } from "./ui";
 // in a public space. A proxy on a closed port keeps searches and addresses from leaving the machine; the local servers are not proxied.
 
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
-const TICKETS_NOM = "Mes tickets GitLab à traiter";
+const NAME_TICKETS = "Mes tickets GitLab à traiter";
 
 let servers: Awaited<ReturnType<typeof startActionServers>>;
 let pages: Awaited<ReturnType<typeof startServer>>;
@@ -30,10 +30,10 @@ const fill = (testid: string, text: string) =>
 const visible = (selector: string, ms = 30_000) => waitUi(m, "const e = doc.querySelector(arguments[0]); return !!e && e.getBoundingClientRect().height > 0;", [selector], ms);
 const listCalls = () => m.execute<number>("return window.webaiosListCalls;");
 const tabUrls = async () => Object.values((await state(m)).onglets).map((o) => o.url);
-async function setPrivate(prive: boolean): Promise<void> {
+async function setPrivate(isPrivate: boolean): Promise<void> {
   const s = await state(m);
   const e = s.espaces.find((x) => x.id === s.fenetres[0]!.espaceActif)!;
-  if (e.prive !== prive) await dispatch(m, { type: "reglerEspace", id: e.id, nom: e.nom, icone: e.icone, prive, profil: e.profil } as Action);
+  if (e.prive !== isPrivate) await dispatch(m, { type: "reglerEspace", id: e.id, nom: e.nom, icone: e.icone, prive: isPrivate, profil: e.profil } as Action);
 }
 /** A web page of the local server shown in a new tab; resolves once its title is in the state. */
 async function openPage(p: string, titre: string): Promise<string> {
@@ -72,7 +72,7 @@ beforeAll(async () => {
   await waitNoyau(m);
   const d = w.dataDir;
   // actions.spec.ts lancerAvecSuggestions: one action without input (keyword gitlab), one with.
-  await writeRunnableAction(d, "tickets", { nom: TICKETS_NOM, motsCles: ["gitlab"], code: "export default async () => [{ page: { titre: 'Ticket 1' } }];" });
+  await writeRunnableAction(d, "tickets", { nom: NAME_TICKETS, motsCles: ["gitlab"], code: "export default async () => [{ page: { titre: 'Ticket 1' } }];" });
   await writeRunnableAction(d, "leboncoin", { nom: "Leboncoin", saisie: "Recherche", code: "export default async () => [{ page: { titre: 'Annonce' } }];" });
   // barre-commande.spec.ts: actions without workflow.
   await writeAction(d, "sans-workflow", { nom: "Zorglub" });
@@ -105,7 +105,7 @@ describe("launching from the empty page", () => {
   it("typing « git » shows the suggestion; ↓ then Enter opens the action page and launches", { timeout: 90_000 }, async () => {
     await emptyPage();
     await fill("saisie-page-vide", "git");
-    await q.waitContains(tid("suggestions-actions"), TICKETS_NOM);
+    await q.waitContains(tid("suggestions-actions"), NAME_TICKETS);
     expect(await q.text(tid("suggestions-actions"))).toContain("Rechercher");
     await pressKeys(m, "ArrowDown");
     expect(await inUi(m, "return doc.querySelector(arguments[0]).getAttribute('aria-activedescendant');", [tid("saisie-page-vide")])).toMatch(/.+/);

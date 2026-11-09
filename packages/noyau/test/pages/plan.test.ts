@@ -10,12 +10,12 @@ const tickets = [
   { id: 6, projet: "B", priorite: "haute", titre: "f" },
   { id: 7, projet: "A", priorite: "haute", titre: "g" },
 ];
-const annonces = [
+const announcements = [
   { titre: "Renault CLIO", prix: 7000 }, { titre: "Peugeot 208", prix: 9000 }, { titre: "Clio", prix: 7900 }, { titre: "Mégane", prix: 12000 },
 ];
-const racine = { tickets, annonces, priorité: "ok", sans: { x: 1 } };
-const val = (texte: string, r: unknown = racine) => {
-  const ref = lireReference(texte);
+const root = { tickets, annonces: announcements, priorité: "ok", sans: { x: 1 } };
+const val = (text: string, r: unknown = root) => {
+  const ref = lireReference(text);
   if ("erreur" in ref) throw new Error(ref.erreur);
   return evaluate(ref, r);
 };
@@ -114,10 +114,10 @@ test("the read ref: ops from the inside out", () => {
   expect(lireReference("filtrer(t, a.b ~ clio)")).toEqual({ chemin: "t", ops: [{ op: "filtrer", champ: "a.b", comparaison: "~", valeur: "clio" }] });
 });
 test("evaluer does not modify the results", () => {
-  const copie = structuredClone(racine);
+  const copy = structuredClone(root);
   val('trier(tickets, priorite, "desc")');
   val("regrouper(tickets, projet)");
-  expect(racine).toEqual(copie);
+  expect(root).toEqual(copy);
 });
 test("10,000 elements in under 50 ms", () => {
   const gros = { l: Array.from({ length: 10_000 }, (_, i) => ({ k: (i * 7919) % 10_000, g: i % 50 })) };
@@ -131,7 +131,7 @@ test("10,000 elements in under 50 ms", () => {
   expect(performance.now() - t).toBeLessThan(50);
 });
 
-const bloc = (composant = "titre", extra: object = {}) => ({ composant, props: {}, ...extra });
+const bloc = (component = "titre", extra: object = {}) => ({ composant: component, props: {}, ...extra });
 test("PlanPage: unknown key removed", () => {
   const p = PlanPage.parse({ blocs: [{ composant: "titre", props: { texte: "x" }, truc: 1 }], autre: 2 });
   expect(p).toEqual({ blocs: [{ composant: "titre", props: { texte: "x" } }] });

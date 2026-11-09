@@ -8,16 +8,16 @@ const tickets = [
   { titre: "Panne", priorite: "haute", url: "https://gitlab.com/t/1", auteur: { nom: "Ana" } },
   { titre: "Doc", priorite: "basse", url: "https://gitlab.com/t/2", auteur: { nom: "Bob" } },
 ];
-const annonces = [
+const announcements = [
   { titre: "Vélo", prix: 120, photo: "https://img.example/1.jpg", lien: "https://lbc.fr/1" },
   { titre: "Table", prix: 40, photo: "https://img.example/2.jpg", lien: "https://lbc.fr/2" },
 ];
-const valide = (r: unknown) => validatePlan(fallbackLayout(r), { catalogue: BUILTIN_COMPONENTS, resultats: r });
-const composants = (r: unknown) => fallbackLayout(r).blocs.map((b) => b.composant);
+const valid = (r: unknown) => validatePlan(fallbackLayout(r), { catalogue: BUILTIN_COMPONENTS, resultats: r });
+const components = (r: unknown) => fallbackLayout(r).blocs.map((b) => b.composant);
 
 describe("miseEnPageSecours", () => {
   it("list of listings with https…jpg photo: cards", () => {
-    const plan = fallbackLayout(annonces);
+    const plan = fallbackLayout(announcements);
     expect(plan.blocs).toHaveLength(1);
     expect(plan.blocs[0]).toMatchObject({ composant: "cartes", props: { elements: "$", titre: "titre", image: "photo", lien: "lien" } });
   });
@@ -39,19 +39,19 @@ describe("miseEnPageSecours", () => {
   });
 
   it("list of texts: labels", () => {
-    expect(composants(["a", "b"])).toEqual(["etiquettes"]);
+    expect(components(["a", "b"])).toEqual(["etiquettes"]);
   });
 
   it("objet { total: 3, tickets: [...] } : titre, chiffre, tableau", () => {
-    const c = composants({ total: 3, tickets });
+    const c = components({ total: 3, tickets });
     expect(c[0]).toBe("titre");
     expect(c).toContain("chiffre");
     expect(c).toContain("tableau");
   });
 
   it("objet de champs simples : champs ; texte : paragraphe", () => {
-    expect(composants({ projet: { nom: "W", url: "https://x.fr" } })).toContain("champs");
-    expect(composants({ resume: "bonjour" })).toContain("paragraphe");
+    expect(components({ projet: { nom: "W", url: "https://x.fr" } })).toContain("champs");
+    expect(components({ resume: "bonjour" })).toContain("paragraphe");
   });
 
   it("texte seul : paragraphe ; nombre seul : chiffre", () => {
@@ -61,11 +61,11 @@ describe("miseEnPageSecours", () => {
 
   it("each fallback passes validerPlan", () => {
     const cas: unknown[] = [
-      annonces, tickets, ["a", "b"], "texte", 7, { total: 3, tickets }, { projet: { nom: "W" }, annonces, tags: ["x"], texte: "t", n: 0, ok: true },
+      announcements, tickets, ["a", "b"], "texte", 7, { total: 3, tickets }, { projet: { nom: "W" }, annonces: announcements, tags: ["x"], texte: "t", n: 0, ok: true },
       { "clé-bizarre": 1, tickets }, [1, 2, 3], JSON.parse('{"__proto__": {"a": 1}, "n": 2}'),
     ];
     for (const r of cas) {
-      const v = valide(r);
+      const v = valid(r);
       expect(v.ok, JSON.stringify(r).slice(0, 60)).toBe(true);
       if (v.ok) expect(v.ecartes).toEqual([]);
     }
@@ -80,8 +80,8 @@ describe("fallback: never an empty page when there are results", () => {
     ["imbrication profonde", { a: { b: { c: 1 } } }],
     ["liste de listes", [[1, 2], [3]]],
   ];
-  for (const [nom, r] of cas) {
-    it(`${nom}: valid and visible`, () => {
+  for (const [name, r] of cas) {
+    it(`${name}: valid and visible`, () => {
       const plan = fallbackLayout(r);
       expect(plan.blocs.some((b) => b.composant !== "titre")).toBe(true);
       expect(validatePlan(plan, { catalogue: BUILTIN_COMPONENTS, resultats: r }).ok).toBe(true);

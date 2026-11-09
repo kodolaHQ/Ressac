@@ -5,7 +5,7 @@ import {
   grantCovers, grantNeeded, accorderSite, droitsDe, siteExtensionsHash, siteReadHash, lireAccordsSites, retirerAccordSite,
 } from "../../src/sites/accords.js";
 import type { DeclarationSite } from "../../src/sites/schemas.js";
-import { dossierTemporaire } from "../aide/temporaire.js";
+import { tempFolder } from "../aide/temporaire.js";
 
 const base: DeclarationSite = {
   nom: "Vidola", description: "", adresse: "https://vidola-a.example/", domaines: ["vidola-a.example"],
@@ -44,7 +44,7 @@ test("correspond changed: still covers", () => {
 });
 
 test("retirerAccordSite then lireAccordsSites: absent; file in the profile, simultaneous grants kept", async () => {
-  const p = await dossierTemporaire();
+  const p = await tempFolder();
   await Promise.all([accorderSite(p, "a", base), accorderSite(p, "b", base)]);
   expect(Object.keys(await lireAccordsSites(p)).sort()).toEqual(["a", "b"]);
   expect(JSON.parse(await readFile(join(p, "sites-accords.json"), "utf8")).a.domaines).toEqual(["vidola-a.example"]);
@@ -54,7 +54,7 @@ test("retirerAccordSite then lireAccordsSites: absent; file in the profile, simu
 });
 
 test("ids constructor, toString, __proto__: no grant, nothing throws", async () => {
-  const p = await dossierTemporaire();
+  const p = await tempFolder();
   const a = await lireAccordsSites(p);
   for (const id of ["constructor", "toString", "__proto__", "hasOwnProperty"]) {
     expect(a[id]).toBeUndefined();
@@ -67,7 +67,7 @@ test("ids constructor, toString, __proto__: no grant, nothing throws", async () 
 });
 
 test("failing read (neither absent nor damaged): the write fails without erasing the other grants", async () => {
-  const p = await dossierTemporaire();
+  const p = await tempFolder();
   await accorderSite(p, "a", base);
   await rm(join(p, "sites-accords.json"));
   await mkdir(join(p, "sites-accords.json")); // read a folder: EISDIR
@@ -79,27 +79,27 @@ test("failing read (neither absent nor damaged): the write fails without erasing
 });
 
 test("empreinteLectureSite: name, domains and login; the order and case of the domains change nothing", () => {
-  const avec = { ...base, connexion: ["compte.example"] };
-  const e = siteReadHash(avec);
+  const updateEntry = { ...base, connexion: ["compte.example"] };
+  const e = siteReadHash(updateEntry);
   expect(e).toMatch(/^[0-9a-f]{64}$/);
-  expect(siteReadHash({ ...avec, domaines: ["Vidola-A.example", "vidola-a.example"] })).toBe(e);
-  expect(siteReadHash({ ...avec, domaines: ["b.example", "vidola-a.example"] })).toBe(siteReadHash({ ...avec, domaines: ["vidola-a.example", "b.example"] }));
+  expect(siteReadHash({ ...updateEntry, domaines: ["Vidola-A.example", "vidola-a.example"] })).toBe(e);
+  expect(siteReadHash({ ...updateEntry, domaines: ["b.example", "vidola-a.example"] })).toBe(siteReadHash({ ...updateEntry, domaines: ["vidola-a.example", "b.example"] }));
   // What the card does not show does not count.
-  expect(siteReadHash({ ...avec, description: "autre", retouches: [], reprise: true })).toBe(e);
+  expect(siteReadHash({ ...updateEntry, description: "autre", retouches: [], reprise: true })).toBe(e);
   // One more domain, login or name: another hash.
-  expect(siteReadHash({ ...avec, domaines: [...avec.domaines, "mail.example.com"] })).not.toBe(e);
-  expect(siteReadHash({ ...avec, connexion: [...avec.connexion, "accounts.google.com"] })).not.toBe(e);
-  expect(siteReadHash({ ...avec, nom: "Mail" })).not.toBe(e);
+  expect(siteReadHash({ ...updateEntry, domaines: [...updateEntry.domaines, "mail.example.com"] })).not.toBe(e);
+  expect(siteReadHash({ ...updateEntry, connexion: [...updateEntry.connexion, "accounts.google.com"] })).not.toBe(e);
+  expect(siteReadHash({ ...updateEntry, nom: "Mail" })).not.toBe(e);
   // The fields are not confused (a domain moved to login changes the hash).
-  expect(siteReadHash({ ...avec, domaines: [], connexion: ["vidola-a.example", "compte.example"] })).not.toBe(e);
+  expect(siteReadHash({ ...updateEntry, domaines: [], connexion: ["vidola-a.example", "compte.example"] })).not.toBe(e);
 });
 
 test("empreinteExtensionsSite: stable for another name, other tweaks, another reprise, another order or another case; changes with one more domain", () => {
   const e = siteExtensionsHash(base);
   expect(e).toMatch(/^[0-9a-f]{64}$/);
   expect(siteExtensionsHash({ ...base, nom: "Autre", retouches: [], reprise: true })).toBe(e);
-  const deux = { ...base, domaines: ["a.example", "B.example"], connexion: ["c.example", "d.example"] };
-  expect(siteExtensionsHash({ ...deux, domaines: ["b.EXAMPLE", "a.example", "a.example"], connexion: ["D.example", "c.example"] })).toBe(siteExtensionsHash(deux));
+  const two = { ...base, domaines: ["a.example", "B.example"], connexion: ["c.example", "d.example"] };
+  expect(siteExtensionsHash({ ...two, domaines: ["b.EXAMPLE", "a.example", "a.example"], connexion: ["D.example", "c.example"] })).toBe(siteExtensionsHash(two));
   expect(siteExtensionsHash({ ...base, domaines: [...base.domaines, "autre.example"] })).not.toBe(e);
   expect(siteExtensionsHash({ ...base, connexion: ["login.example"] })).not.toBe(e);
   expect(siteExtensionsHash({ ...base, domaines: [], connexion: ["vidola-a.example"] })).not.toBe(e);

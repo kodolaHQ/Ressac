@@ -13,8 +13,8 @@ import { click, inUi, missingApi, pressKeys, waitUi } from "./ui";
 // The « Actions » page of the sidebar: lists, launches, opens the
 // builder, deletes, removes the grant. The actions are written before the launch, on one data folder for the file.
 
-const TICKETS_NOM = "Mes tickets GitLab à traiter";
-const HIER = "2026-10-30T08:00:00.000Z";
+const NAME_TICKETS = "Mes tickets GitLab à traiter";
+const YESTERDAY = "2026-10-30T08:00:00.000Z";
 
 let servers: Awaited<ReturnType<typeof startActionServers>>;
 let w: LaunchedWebAiOs;
@@ -27,10 +27,10 @@ async function waitRuns(id: string, n: number): Promise<void> {
   for (const deadline = Date.now() + 60_000; (await runsOnDisk(w.dataDir, id)).length !== n; await new Promise((r) => setTimeout(r, 200)))
     if (Date.now() > deadline) throw new Error(`${id}: expected ${n} runs, got ${(await runsOnDisk(w.dataDir, id)).length}`);
 }
-async function setPrivate(prive: boolean): Promise<void> {
+async function setPrivate(isPrivate: boolean): Promise<void> {
   const s = await state(m);
   const e = s.espaces.find((x) => x.id === s.fenetres[0]!.espaceActif)!;
-  if (e.prive !== prive) await dispatch(m, { type: "reglerEspace", id: e.id, nom: e.nom, icone: e.icone, prive, profil: e.profil } as Action);
+  if (e.prive !== isPrivate) await dispatch(m, { type: "reglerEspace", id: e.id, nom: e.nom, icone: e.icone, prive: isPrivate, profil: e.profil } as Action);
 }
 /** Opens the « Actions » page of the sidebar. */
 async function openActionsPage(): Promise<void> {
@@ -44,8 +44,8 @@ async function fresh(): Promise<void> {
 }
 /** « Tickets » (keywords, last result) and « Leboncoin » (input, never launched). */
 async function writeTwoActions(d: string): Promise<void> {
-  await writeRunnableAction(d, "tickets", { nom: TICKETS_NOM, motsCles: ["gitlab", "tickets"], code: "export default async () => [{ page: { titre: 'Ticket 1' } }];" });
-  await writeResult(d, "tickets", EXECUTION, HIER, "Ticket 1");
+  await writeRunnableAction(d, "tickets", { nom: NAME_TICKETS, motsCles: ["gitlab", "tickets"], code: "export default async () => [{ page: { titre: 'Ticket 1' } }];" });
+  await writeResult(d, "tickets", EXECUTION, YESTERDAY, "Ticket 1");
   await writeRunnableAction(d, "leboncoin", { nom: "Leboncoin", saisie: "Recherche", code: "export default async () => [{ page: { titre: 'Annonce' } }];" });
 }
 async function launch(prepare: (dataDir: string) => Promise<void>): Promise<void> {
@@ -93,7 +93,7 @@ describe("the Actions page", () => {
         // An action that reads with the account, its grant given and a result (actions.spec.ts:1063, :1097).
         for (const id of ["compte", "accord"]) {
           await writeRunnableAction(d, id, { nom: "Avec compte", compte: ["127.0.0.1"], code: "export default async () => [{ page: { titre: 'x' } }];" });
-          await writeResult(d, id, EXECUTION, HIER, "Secret");
+          await writeResult(d, id, EXECUTION, YESTERDAY, "Secret");
         }
         const accord = { domaines: ["127.0.0.1"], publiques: [], profil: "defaut" };
         await writeFile(path.join(actionsDataDir(d), "accords.json"), JSON.stringify({ compte: accord, accord }));
@@ -109,7 +109,7 @@ describe("the Actions page", () => {
   // actions.spec.ts:995
   it("the page lists two actions with their keywords and last result", async () => {
     await openActionsPage();
-    await q.waitContains(tid("ligne-action-tickets"), TICKETS_NOM);
+    await q.waitContains(tid("ligne-action-tickets"), NAME_TICKETS);
     expect(await q.text(tid("mots-cles-tickets"))).toBe("gitlab, tickets");
     expect(await q.text(tid("dernier-tickets"))).toContain("Réussie");
     expect(await q.text(tid("ligne-action-leboncoin"))).toContain("Leboncoin");
@@ -147,7 +147,7 @@ describe("the Actions page", () => {
     await openActionsPage();
     await click(m, tid("voir-workflow-tickets"));
     await waitUi(m, "return !!doc.querySelector('[data-testid^=\"onglet-\"]') && [...doc.querySelectorAll('[data-testid^=\"onglet-\"]')].some((e) => e.textContent.includes(arguments[0]));", [
-      `Workflow — ${TICKETS_NOM}`,
+      `Workflow — ${NAME_TICKETS}`,
     ]);
     expect(Object.values((await state(m)).onglets).filter((o) => o.url === "webaios://workflow/action/tickets")).toHaveLength(1);
     await visible(tid("constructeur"));

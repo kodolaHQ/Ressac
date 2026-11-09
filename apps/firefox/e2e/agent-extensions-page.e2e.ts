@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { ecrireExtensionAgent } from "./extensions/fixtures";
+import { writeAgentExtension } from "./extensions/fixtures";
 import { DISABLED_CRASHES } from "../shared/extensions-messages";
 import { button, cleanupXpis, installAddon } from "./addons";
 import { agentAddons, grant, launchWithAmo, openTab } from "./agent-extensions";
@@ -15,19 +15,19 @@ import { click, inUi, missingApi, waitUi } from "./ui";
 
 // The Extensions page: the unlock on the page, Supprimer and Désactiver partout of an agent extension. The page lists the agent's extensions only
 // (plan decision 8); lister_extensions lists AMO add-ons too (decision 7).
-const HOTE = "http://127.0.0.1/*";
-const ACCORD = { permissions: [], hotes: [HOTE], reseau: [], tousLesSites: false, scriptsTousLesSites: false, scripts: true };
-const CACHEUR = {
-  "manifest.json": { manifest_version: 3, name: "Cacheur de l'agent", version: "1.2", content_scripts: [{ matches: [HOTE], css: ["cache.css"] }] },
+const HOST = "http://127.0.0.1/*";
+const ACCORD = { permissions: [], hotes: [HOST], reseau: [], tousLesSites: false, scriptsTousLesSites: false, scripts: true };
+const HIDER = {
+  "manifest.json": { manifest_version: 3, name: "Cacheur de l'agent", version: "1.2", content_scripts: [{ matches: [HOST], css: ["cache.css"] }] },
   "cache.css": "#cache-moi { display: none !important; }\n",
 };
 const JOURNAL = {
-  "manifest.json": { manifest_version: 3, name: "Journal de l'agent", version: "1.0.0", background: { service_worker: "fond.js" }, content_scripts: [{ matches: [HOTE], js: ["contenu.js"] }] },
+  "manifest.json": { manifest_version: 3, name: "Journal de l'agent", version: "1.0.0", background: { service_worker: "fond.js" }, content_scripts: [{ matches: [HOST], js: ["contenu.js"] }] },
   "fond.js": 'console.log("fond démarré");\n',
   "contenu.js": 'console.log("contenu:" + location.pathname);\n',
 };
 /** Its background logs what chrome.storage.local holds, then writes a value there once. */
-const MEMOIRE = {
+const MEMORY = {
   "manifest.json": { manifest_version: 3, name: "Mémoire de l'agent", version: "1.0.0", permissions: ["storage"], background: { service_worker: "fond.js" } },
   "fond.js": `chrome.storage.local.get(null).then((l) => {
   console.log("lu:" + JSON.stringify(l));
@@ -36,17 +36,17 @@ const MEMOIRE = {
 `,
 };
 /** Its background throws as it loads: a failed start, counted as a crash. */
-const CASSEE = {
+const BROKEN = {
   "manifest.json": { manifest_version: 3, name: "Fond cassé", version: "1.0.0", background: { service_worker: "fond.js" } },
   "fond.js": 'throw new Error("fond-casse-au-chargement");\n',
 };
 /** Its background hangs the extension process soon after it starts. */
-const BOUCLE = {
+const LOOP = {
   "manifest.json": { manifest_version: 3, name: "Fond qui boucle", version: "1.0.0", background: { service_worker: "fond.js" } },
   "fond.js": "setTimeout(() => { while (true) {} }, 500);\n",
 };
 /** A module background that loads its popup in a frame at once: the popup throws within its first second, the background does not. */
-const POPUP_CASSEE = {
+const BROKEN_POPUP = {
   "manifest.json": { manifest_version: 3, name: "Popup cassée", version: "1.0.0", background: { service_worker: "fond.js", type: "module" }, action: { default_popup: "popup.html" } },
   "fond.js": 'const f = document.createElement("iframe");\nf.src = "popup.html";\ndocument.body.append(f);\n',
   "popup.html": '<!doctype html><script src="popup.js"></script>',
@@ -55,7 +55,7 @@ const POPUP_CASSEE = {
 const PAGE = '[data-testid="page-extensions"]';
 const LIGNE = '[data-testid="extension-page"]';
 const CARTE = '[data-testid="demande-extension"]';
-const DEBLOCAGE = '[data-testid="demande-console-extension"]';
+const UNLOCK = '[data-testid="demande-console-extension"]';
 const MASQUES = "message(s) masqué(s) : venus d'onglets que tu ne peux pas lire";
 
 let server: Awaited<ReturnType<typeof startServer>>;
@@ -71,20 +71,20 @@ afterEach(async () => {
 });
 
 /** WebAiOs with the fake AMO; `prepare` writes the agent's folder and the registry first. `agent`: the agent's session started. */
-async function launch(o: { prepare?: (racine: string, dataDir: string) => void; agent?: boolean; dirs?: { dataDir: string; profile: string }; env?: Record<string, string> } = {}) {
+async function launch(o: { prepare?: (root: string, dataDir: string) => void; agent?: boolean; dirs?: { dataDir: string; profile: string }; env?: Record<string, string> } = {}) {
   const d = o.dirs ?? { dataDir: mkdtempSync(path.join(os.tmpdir(), "webaios-data-")), profile: mkdtempSync(path.join(os.tmpdir(), "webaios-firefox-")) };
   if (!o.dirs) dirs.push(d.dataDir, d.profile);
-  const racine = path.join(d.dataDir, "espace");
-  o.prepare?.(racine, d.dataDir);
+  const root = path.join(d.dataDir, "espace");
+  o.prepare?.(root, d.dataDir);
   const w = await launchWithAmo({ ...d, env: o.env });
   opened.push(w);
   if (o.agent) {
-    const config = path.join(racine, ".webaios", "mcp.json");
+    const config = path.join(root, ".webaios", "mcp.json");
     for (const deadline = Date.now() + 20_000; !existsSync(config); await new Promise((r) => setTimeout(r, 100)))
       if (Date.now() > deadline) throw new Error("the noyau did not write its MCP config");
     await waitUi(w.marionette, "return doc.querySelector('.xterm-rows')?.textContent.includes('prêt>')", [], 20_000, "agent");
   }
-  return { ...w, ...d, racine, call: (name: string, args: Record<string, unknown> = {}) => callTool(d.dataDir, name, args) };
+  return { ...w, ...d, racine: root, call: (name: string, args: Record<string, unknown> = {}) => callTool(d.dataDir, name, args) };
 }
 type Launched = Awaited<ReturnType<typeof launch>>;
 
@@ -113,44 +113,44 @@ async function openPage(m: Marionette): Promise<void> {
   await waitUi(m, `return !!doc.querySelector(${JSON.stringify(PAGE)})`);
 }
 /** The page's row naming `nom` (its text), or null. */
-const row = (m: Marionette, nom: string) =>
-  inUi<string | null>(m, `return [...doc.querySelectorAll(arguments[0])].find((l) => l.querySelector("b")?.textContent === arguments[1])?.textContent ?? null`, [LIGNE, nom]);
+const row = (m: Marionette, name: string) =>
+  inUi<string | null>(m, `return [...doc.querySelectorAll(arguments[0])].find((l) => l.querySelector("b")?.textContent === arguments[1])?.textContent ?? null`, [LIGNE, name]);
 /** Waits until the row naming `nom` is there (`present`) or gone. */
-const waitRow = (m: Marionette, nom: string, present: boolean) =>
-  waitUi(m, `return [...doc.querySelectorAll(arguments[0])].some((l) => l.querySelector("b")?.textContent === arguments[1]) === arguments[2]`, [LIGNE, nom, present], 15_000);
+const waitRow = (m: Marionette, name: string, present: boolean) =>
+  waitUi(m, `return [...doc.querySelectorAll(arguments[0])].some((l) => l.querySelector("b")?.textContent === arguments[1]) === arguments[2]`, [LIGNE, name, present], 15_000);
 /** Clicks the button `text` in the row naming `nom`. */
-async function rowButton(m: Marionette, nom: string, text: string): Promise<void> {
-  await waitUi(m, `return [...doc.querySelectorAll(arguments[0])].some((l) => l.querySelector("b")?.textContent === arguments[1])`, [LIGNE, nom]);
-  await inUi(m, `const l = [...doc.querySelectorAll(arguments[0])].find((l) => l.querySelector("b")?.textContent === arguments[1]); l.setAttribute("data-cible", "1");`, [LIGNE, nom]);
+async function rowButton(m: Marionette, name: string, text: string): Promise<void> {
+  await waitUi(m, `return [...doc.querySelectorAll(arguments[0])].some((l) => l.querySelector("b")?.textContent === arguments[1])`, [LIGNE, name]);
+  await inUi(m, `const l = [...doc.querySelectorAll(arguments[0])].find((l) => l.querySelector("b")?.textContent === arguments[1]); l.setAttribute("data-cible", "1");`, [LIGNE, name]);
   await click(m, `${LIGNE}[data-cible="1"] button`, { text });
   await inUi(m, `doc.querySelector('[data-cible="1"]')?.removeAttribute("data-cible")`);
 }
 /** Supprimer, then its confirmation. */
-async function supprimer(m: Marionette, nom: string): Promise<void> {
-  await rowButton(m, nom, "Supprimer");
+async function remove(m: Marionette, name: string): Promise<void> {
+  await rowButton(m, name, "Supprimer");
   await click(m, '[data-testid="confirmation-suppression-extension"] button.confirmer');
 }
 /** demander_extension, then « Activer » on its card. */
-async function activerParLAgent(w: Launched, id: string, nom: string): Promise<string> {
-  const appel = w.call("demander_extension", { id });
-  expect(await waitUi<string>(w.marionette, `return doc.querySelector(${JSON.stringify(CARTE)})?.textContent`, [], 15_000)).toContain(nom);
+async function enabledByAgent(w: Launched, id: string, name: string): Promise<string> {
+  const call = w.call("demander_extension", { id });
+  expect(await waitUi<string>(w.marionette, `return doc.querySelector(${JSON.stringify(CARTE)})?.textContent`, [], 15_000)).toContain(name);
   await click(w.marionette, `${CARTE} button`, { text: "Activer" });
-  return (await appel).texte;
+  return (await call).texte;
 }
 /** console_extension until it contains `expected`. */
 async function consoleUntil(w: Launched, id: string, expected: string): Promise<string> {
-  let texte = "";
-  for (const deadline = Date.now() + 20_000; !texte.includes(expected); await new Promise((r) => setTimeout(r, 200))) {
-    if (Date.now() > deadline) throw new Error(`console_extension never said ${JSON.stringify(expected)}: ${texte}`);
-    texte = (await w.call("console_extension", { id })).texte;
+  let text = "";
+  for (const deadline = Date.now() + 20_000; !text.includes(expected); await new Promise((r) => setTimeout(r, 200))) {
+    if (Date.now() > deadline) throw new Error(`console_extension never said ${JSON.stringify(expected)}: ${text}`);
+    text = (await w.call("console_extension", { id })).texte;
   }
-  return texte;
+  return text;
 }
 
 describe("the Extensions page", () => {
   // extensions-interface.spec.ts:545
   it("lists source, the agent's version (without the counter), rights, sites and spaces; Détails opens", async () => {
-    const w = await launch({ prepare: (racine, dataDir) => (ecrireExtensionAgent(racine, "cacheur", CACHEUR), grant(dataDir, "cacheur", ACCORD)) });
+    const w = await launch({ prepare: (root, dataDir) => (writeAgentExtension(root, "cacheur", HIDER), grant(dataDir, "cacheur", ACCORD)) });
     const m = w.marionette;
     await waitActive(m, "cacheur@agent.webaios", true);
     expect((await agentAddons(m))[0]!.version).toBe("1.2.0.1");
@@ -160,7 +160,7 @@ describe("the Extensions page", () => {
     expect(text).toContain("Écrite par l'agent · 1.2");
     expect(text).not.toContain("1.2.0.1");
     expect(text).toContain("Droits : ");
-    expect(text).toContain(`Sites : ${HOTE}`);
+    expect(text).toContain(`Sites : ${HOST}`);
     expect(text).toContain(`« ${(await activeSpace(m)).nom} » (profil defaut)`);
     await rowButton(m, "Cacheur de l'agent", "Détails");
     await waitUi(m, `return !!doc.querySelector('${LIGNE} [data-testid="details-extension"]')`);
@@ -180,7 +180,7 @@ describe("the Extensions page", () => {
 
   // extensions-interface.spec.ts:577
   it("« Désactiver toutes les extensions »: the agent's add-ons disabled, still after a restart; unticked, they run again", async () => {
-    const first = await launch({ prepare: (racine, dataDir) => (ecrireExtensionAgent(racine, "cacheur", CACHEUR), grant(dataDir, "cacheur", ACCORD)) });
+    const first = await launch({ prepare: (root, dataDir) => (writeAgentExtension(root, "cacheur", HIDER), grant(dataDir, "cacheur", ACCORD)) });
     let m = first.marionette;
     await waitActive(m, "cacheur@agent.webaios", true);
     await openPage(m);
@@ -207,8 +207,8 @@ describe("the Extensions page", () => {
   it("Désactiver partout keeps its storage: granted again, it reads what it wrote", async () => {
     const w = await launch({ agent: true });
     const m = w.marionette;
-    ecrireExtensionAgent(w.racine, "memoire", MEMOIRE);
-    expect(await activerParLAgent(w, "memoire", "Mémoire de l'agent")).toMatch(/^Activée/);
+    writeAgentExtension(w.racine, "memoire", MEMORY);
+    expect(await enabledByAgent(w, "memoire", "Mémoire de l'agent")).toMatch(/^Activée/);
     await consoleUntil(w, "memoire", "lu:{}");
     await openPage(m);
     await rowButton(m, "Mémoire de l'agent", "Désactiver partout");
@@ -216,7 +216,7 @@ describe("the Extensions page", () => {
     expect(registry(w.dataDir).extensions["agent:memoire"]?.profils).toEqual([]);
     await waitRow(m, "Mémoire de l'agent", true);
     expect(await row(m, "Mémoire de l'agent")).toContain("Espaces : Active nulle part");
-    expect(await activerParLAgent(w, "memoire", "Mémoire de l'agent")).toMatch(/^Activée/);
+    expect(await enabledByAgent(w, "memoire", "Mémoire de l'agent")).toMatch(/^Activée/);
     await waitActive(m, "memoire@agent.webaios", true);
     await consoleUntil(w, "memoire", 'lu:{"k":"gardé"}');
   });
@@ -224,18 +224,18 @@ describe("the Extensions page", () => {
   it("Supprimer uninstalls it and wipes its storage; the agent folder stays", async () => {
     const w = await launch({ agent: true });
     const m = w.marionette;
-    ecrireExtensionAgent(w.racine, "memoire", MEMOIRE);
-    expect(await activerParLAgent(w, "memoire", "Mémoire de l'agent")).toMatch(/^Activée/);
+    writeAgentExtension(w.racine, "memoire", MEMORY);
+    expect(await enabledByAgent(w, "memoire", "Mémoire de l'agent")).toMatch(/^Activée/);
     await consoleUntil(w, "memoire", "lu:{}");
     await openPage(m);
-    await supprimer(m, "Mémoire de l'agent");
+    await remove(m, "Mémoire de l'agent");
     await waitRow(m, "Mémoire de l'agent", false);
     expect(await agentAddons(m)).toEqual([]);
     expect("agent:memoire" in registry(w.dataDir).extensions).toBe(false);
     expect(existsSync(path.join(w.racine, "extensions", "memoire", "manifest.json"))).toBe(true);
     expect(existsSync(path.join(w.dataDir, "extensions", "copies", "memoire"))).toBe(false);
     // Granted again: a fresh storage, and the next version number (amo-versions.json is never cleared).
-    expect(await activerParLAgent(w, "memoire", "Mémoire de l'agent")).toMatch(/^Activée/);
+    expect(await enabledByAgent(w, "memoire", "Mémoire de l'agent")).toMatch(/^Activée/);
     await waitActive(m, "memoire@agent.webaios", true);
     expect((await agentAddons(m))[0]!.version).toBe("1.0.0.2");
     expect(await consoleUntil(w, "memoire", "lu:")).not.toContain("gardé");
@@ -245,24 +245,24 @@ describe("the Extensions page", () => {
   it("says « Console débloquée pour l'agent »; « Couper le déblocage » and refermer_console close it", async () => {
     const w = await launch({ agent: true });
     const m = w.marionette;
-    ecrireExtensionAgent(w.racine, "journal", JOURNAL);
-    expect(await activerParLAgent(w, "journal", "Journal de l'agent")).toMatch(/^Activée/);
+    writeAgentExtension(w.racine, "journal", JOURNAL);
+    expect(await enabledByAgent(w, "journal", "Journal de l'agent")).toMatch(/^Activée/);
     await openTab(m, `${server.url}/a.html`);
     await consoleUntil(w, "journal", MASQUES);
     await openPage(m);
     await waitRow(m, "Journal de l'agent", true);
-    const debloquer = async () => {
-      const appel = w.call("debloquer_console", { id: "journal", raison: "r" });
-      await click(m, `${DEBLOCAGE} button`, { text: "Débloquer" });
-      expect((await appel).texte).toContain("Console débloquée");
+    const unlock = async () => {
+      const call = w.call("debloquer_console", { id: "journal", raison: "r" });
+      await click(m, `${UNLOCK} button`, { text: "Débloquer" });
+      expect((await call).texte).toContain("Console débloquée");
       await waitUi(m, `return doc.querySelector('${LIGNE} [data-testid="console-debloquee"]')?.textContent === "Console débloquée pour l'agent"`);
     };
     const closed = () => waitUi(m, `return !doc.querySelector('${LIGNE} [data-testid="console-debloquee"]')`);
-    await debloquer();
+    await unlock();
     await rowButton(m, "Journal de l'agent", "Couper le déblocage");
     await closed();
     expect((await w.call("console_extension", { id: "journal" })).texte).not.toContain("contenu:/a.html");
-    await debloquer();
+    await unlock();
     expect((await w.call("refermer_console", { id: "journal" })).texte).toContain("refermée");
     await closed();
   });
@@ -273,8 +273,8 @@ describe("lister_extensions", () => {
     const w = await launch({ agent: true });
     const m = w.marionette;
     const id = await installAddon(m, button());
-    const espace = (await activeSpace(m)).nom;
-    expect((await w.call("lister_extensions")).texte).toContain(`store:${id} · Bouton de test · 1.0 · store · actives dans : ${espace} · erreurs : aucune`);
+    const space = (await activeSpace(m)).nom;
+    expect((await w.call("lister_extensions")).texte).toContain(`store:${id} · Bouton de test · 1.0 · store · actives dans : ${space} · erreurs : aucune`);
     // Never on the page, which lists the agent's extensions only.
     await openPage(m);
     await waitUi(m, `return doc.querySelector(${JSON.stringify(PAGE)}).textContent.includes("Aucune extension.")`);
@@ -283,15 +283,15 @@ describe("lister_extensions", () => {
 
 describe("crashes", () => {
   /** Waits until the page's row for `nom` says it was disabled for its crashes, then « Réactiver » brings it back. */
-  async function disabledThenReactivated(w: Launched, id: string, nom: string): Promise<void> {
+  async function disabledThenReactivated(w: Launched, id: string, name: string): Promise<void> {
     const m = w.marionette;
     await waitActive(m, `${id}@agent.webaios`, false);
     expect(registry(w.dataDir).extensions[`agent:${id}`]).toMatchObject({ profils: ["defaut"], desactivee: { raison: "plantages" } });
     expect((await w.call("lister_extensions")).texte).toContain(DISABLED_CRASHES);
     await openPage(m);
-    await waitRow(m, nom, true);
-    expect(await row(m, nom)).toContain(DISABLED_CRASHES);
-    await rowButton(m, nom, "Réactiver");
+    await waitRow(m, name, true);
+    expect(await row(m, name)).toContain(DISABLED_CRASHES);
+    await rowButton(m, name, "Réactiver");
     await waitActive(m, `${id}@agent.webaios`, true);
     expect(registry(w.dataDir).extensions[`agent:${id}`]).toMatchObject({ profils: ["defaut"], desactivee: null });
     await waitUi(m, `return ![...doc.querySelectorAll(arguments[0])].some((l) => l.textContent.includes(arguments[1]))`, [LIGNE, DISABLED_CRASHES]);
@@ -299,16 +299,16 @@ describe("crashes", () => {
 
   it("a background that throws at load three times is disabled", { timeout: 120_000 }, async () => {
     const w = await launch({ agent: true });
-    ecrireExtensionAgent(w.racine, "cassee", CASSEE);
+    writeAgentExtension(w.racine, "cassee", BROKEN);
     // Each load's error, seen in its console before the next load: one crash each.
     const loads = async (n: number) => {
       for (const deadline = Date.now() + 20_000; ; await new Promise((r) => setTimeout(r, 200))) {
-        const texte = (await w.call("console_extension", { id: "cassee" })).texte;
-        if (texte.split("fond-casse-au-chargement").length - 1 >= n) return;
-        if (Date.now() > deadline) throw new Error(`fewer than ${n} load errors: ${texte}`);
+        const text = (await w.call("console_extension", { id: "cassee" })).texte;
+        if (text.split("fond-casse-au-chargement").length - 1 >= n) return;
+        if (Date.now() > deadline) throw new Error(`fewer than ${n} load errors: ${text}`);
       }
     };
-    expect(await activerParLAgent(w, "cassee", "Fond cassé")).toMatch(/^Activée/);
+    expect(await enabledByAgent(w, "cassee", "Fond cassé")).toMatch(/^Activée/);
     await loads(1);
     expect((await w.call("recharger_extension", { id: "cassee" })).texte).toBe("etat : rechargee");
     await loads(2);
@@ -319,15 +319,15 @@ describe("crashes", () => {
 
   it("a module background's popup that throws in its first second is no crash", { timeout: 120_000 }, async () => {
     const w = await launch({ agent: true });
-    ecrireExtensionAgent(w.racine, "popup", POPUP_CASSEE);
+    writeAgentExtension(w.racine, "popup", BROKEN_POPUP);
     const errors = async (n: number) => {
       for (const deadline = Date.now() + 20_000; ; await new Promise((r) => setTimeout(r, 200))) {
-        const texte = (await w.call("console_extension", { id: "popup" })).texte;
-        if (texte.split("popup-cassee").length - 1 >= n) return;
-        if (Date.now() > deadline) throw new Error(`fewer than ${n} popup errors: ${texte}`);
+        const text = (await w.call("console_extension", { id: "popup" })).texte;
+        if (text.split("popup-cassee").length - 1 >= n) return;
+        if (Date.now() > deadline) throw new Error(`fewer than ${n} popup errors: ${text}`);
       }
     };
-    expect(await activerParLAgent(w, "popup", "Popup cassée")).toMatch(/^Activée/);
+    expect(await enabledByAgent(w, "popup", "Popup cassée")).toMatch(/^Activée/);
     await errors(1);
     for (let n = 2; n <= 3; n++) {
       expect((await w.call("recharger_extension", { id: "popup" })).texte).toBe("etat : rechargee");
@@ -343,14 +343,14 @@ describe("crashes", () => {
     // Three kills must fit in a minute: 3 s windows here instead of 10 s.
     const w = await launch({ agent: true, env: { WEBAIOS_TEST_WATCHDOG_MS: "3000" } });
     const m = w.marionette;
-    ecrireExtensionAgent(w.racine, "boucle", BOUCLE);
+    writeAgentExtension(w.racine, "boucle", LOOP);
     const extensionProcess = () => m.execute<number | null>(`return ChromeUtils.getAllDOMProcesses().find((p) => p.remoteType === "extension")?.childID ?? null`);
     /** The hung extension process is killed by the watchdog (two missed windows), and a new one replaces it. */
     const killed = async () => {
       const before = await extensionProcess();
       await waitFor(m, `return ChromeUtils.getAllDOMProcesses().find((p) => p.remoteType === "extension")?.childID ?? null`, (v) => v !== null && v !== before, 30_000);
     };
-    expect(await activerParLAgent(w, "boucle", "Fond qui boucle")).toMatch(/^Activée/);
+    expect(await enabledByAgent(w, "boucle", "Fond qui boucle")).toMatch(/^Activée/);
     await killed();
     expect((await w.call("recharger_extension", { id: "boucle" })).texte).toBe("etat : rechargee");
     await killed();

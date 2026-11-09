@@ -11,7 +11,7 @@ test.each([
   ["file:///Users/t/doc.pdf", "file:///Users/t/doc.pdf"],
   ["about:blank", "about:blank"],
   ["fr.wikipedia.org/wiki/Arc", "https://fr.wikipedia.org/wiki/Arc"],
-])("%s → %s", (saisie, attendu) => expect(toUrl(saisie, "google")).toBe(attendu));
+])("%s → %s", (input, expected) => expect(toUrl(input, "google")).toBe(expected));
 
 test("free text → search with the chosen engine", () => {
   expect(toUrl("svelte 5 runes", "google")).toBe("https://www.google.com/search?q=svelte%205%20runes");

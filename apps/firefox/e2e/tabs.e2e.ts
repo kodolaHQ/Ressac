@@ -198,15 +198,15 @@ describe("window controller", () => {
   });
 
   it("keeps a link opened in a space with its own profile in that space and container", async () => {
-    const fenetreId = (await win()).id;
-    await dispatch(m, { type: "creerEspace", nom: "Pro", icone: "💼", prive: false, profil: "nouveau", fenetreId });
-    const esp = (await win()).espaceActif;
+    const windowId = (await win()).id;
+    await dispatch(m, { type: "creerEspace", nom: "Pro", icone: "💼", prive: false, profil: "nouveau", fenetreId: windowId });
+    const space = (await win()).espaceActif;
     const a = await open("/a.html");
     await waitTitle(a, "Page A");
     await click(a, "#lien");
-    const b = (await waitState((s) => s.fenetres[0]!.ordre[esp]!, (l) => l.length === 2))[1]!;
+    const b = (await waitState((s) => s.fenetres[0]!.ordre[space]!, (l) => l.length === 2))[1]!;
     await waitTitle(b, "Page B");
-    expect((await state(m)).onglets[b]!.espaceId).toBe(esp);
+    expect((await state(m)).onglets[b]!.espaceId).toBe(space);
     const ids = await m.execute<number[]>(
       "return arguments[0].map((id) => gBrowser.tabs.find((t) => t.getAttribute('webaios-tab-id') === id).userContextId)",
       [[a, b]],
@@ -255,10 +255,10 @@ describe("window controller", () => {
   });
 
   it("isolates the cookies of a profile, and wipes them with its last space", async () => {
-    const fenetreId = (await win()).id;
+    const windowId = (await win()).id;
     const spaceA = (await win()).espaceActif;
     await waitTitle(await open("/cookie"), "cookie");
-    await dispatch(m, { type: "creerEspace", nom: "B", icone: "🅱", prive: false, profil: "nouveau", fenetreId });
+    await dispatch(m, { type: "creerEspace", nom: "B", icone: "🅱", prive: false, profil: "nouveau", fenetreId: windowId });
     const spaceB = (await win()).espaceActif;
     const profileB = (await state(m)).espaces.find((e) => e.id === spaceB)!.profil;
     await waitTitle(await open("/lire-cookie"), "aucun");
@@ -266,11 +266,11 @@ describe("window controller", () => {
     const containerB = await m.execute<number>("return gBrowser.selectedTab.userContextId");
     const cookiesB = `return Services.cookies.getCookiesWithOriginAttributes(JSON.stringify({ userContextId: ${containerB} })).length`;
     expect(await m.execute(cookiesB)).toBe(1);
-    await dispatch(m, { type: "activerEspace", fenetreId, id: spaceA });
+    await dispatch(m, { type: "activerEspace", fenetreId: windowId, id: spaceA });
     await waitTitle(await open("/lire-cookie"), "essai=1");
     await dispatch(m, { type: "supprimerEspace", id: spaceB });
     await waitFor(m, cookiesB, (n) => n === 0, 3_000);
-    await dispatch(m, { type: "creerEspace", nom: "C", icone: "©", prive: false, profil: "nouveau", fenetreId });
+    await dispatch(m, { type: "creerEspace", nom: "C", icone: "©", prive: false, profil: "nouveau", fenetreId: windowId });
     await waitTitle(await open("/lire-cookie"), "aucun");
     const gone = await m.execute<boolean>(`
       const { ContextualIdentityService } = ChromeUtils.importESModule("moz-src:///toolkit/components/contextualidentity/ContextualIdentityService.sys.mjs");
@@ -291,8 +291,8 @@ describe("window controller", () => {
   it("a tab Firefox closes itself keeps its space active", async () => {
     const a = await open("/a.html");
     await waitTitle(a, "Page A");
-    const fenetreId = (await win()).id;
-    await dispatch(m, { type: "creerEspace", nom: "B", icone: "🅱", prive: false, profil: "defaut", fenetreId });
+    const windowId = (await win()).id;
+    await dispatch(m, { type: "creerEspace", nom: "B", icone: "🅱", prive: false, profil: "defaut", fenetreId: windowId });
     const spaceB = (await win()).espaceActif;
     const b = await open("/b.html");
     await waitTitle(b, "Page B");

@@ -19,13 +19,13 @@ beforeEach(async () => {
 });
 afterEach(() => w?.close());
 
-const fenetreId = async () => (await state(m)).fenetres[0]!.id;
+const windowId = async () => (await state(m)).fenetres[0]!.id;
 const handle = async () => (await m.command<{ value: string }>("WebDriver:GetWindowHandle")).value;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const pressClosing = (combo: string) => pressClosingIn(m, combo);
-async function openTab(fenetre: string, path: string): Promise<string> {
+async function openTab(win: string, path: string): Promise<string> {
   const before = new Set(Object.keys((await state(m)).onglets));
-  const after = await dispatch(m, { type: "ouvrirOnglet", fenetreId: fenetre, url: server.url + path });
+  const after = await dispatch(m, { type: "ouvrirOnglet", fenetreId: win, url: server.url + path });
   return Object.keys(after.onglets).find((x) => !before.has(x))!;
 }
 const newWindow = () => newWindowIn(m);
@@ -61,10 +61,10 @@ async function closeLastWindow(reopen: string): Promise<{ closed: number; afterE
 
 describe("the WebAiOs window", () => {
   it("⌘N opens a second WebAiOs window on the active space, with its own sidebar", async () => {
-    const first = await fenetreId();
+    const first = await windowId();
     const s = await dispatch(m, { type: "creerEspace", nom: "Travail", icone: "💼", prive: false, profil: "defaut", fenetreId: first });
-    const espace = s.espaces.at(-1)!.id;
-    expect(s.fenetres[0]!.espaceActif).toBe(espace);
+    const space = s.espaces.at(-1)!.id;
+    expect(s.fenetres[0]!.espaceActif).toBe(space);
     const other = await newWindow();
     const after = await state(m);
     expect(after.fenetres).toHaveLength(2);
@@ -73,7 +73,7 @@ describe("the WebAiOs window", () => {
       return m.execute<string>("return window.webaiosWindow.fenetreId");
     });
     expect(id).not.toBe(first);
-    expect(after.fenetres.find((f) => f.id === id)!.espaceActif).toBe(espace);
+    expect(after.fenetres.find((f) => f.id === id)!.espaceActif).toBe(space);
     // Its sidebar acts on its own window.
     const tab = await openTab(id, "/a.html");
     await inWindow(m, other, () => waitUi(m, "return !!doc.querySelector(arguments[0])", [`[data-testid="onglet-${tab}"]`]));
@@ -81,7 +81,7 @@ describe("the WebAiOs window", () => {
   });
 
   it("⇧⌘W closes one window among two: it leaves the state, its tabs go to the other's fermesRecemment", async () => {
-    const first = await fenetreId();
+    const first = await windowId();
     const other = await newWindow();
     const id = await inWindow(m, other, () => m.execute<string>("return window.webaiosWindow.fenetreId"));
     const tab = await openTab(id, "/a.html");
@@ -97,7 +97,7 @@ describe("the WebAiOs window", () => {
   });
 
   it("macOS: closing the last window keeps the app and its tabs in the state; no XUL tab is left; choisirMoteur does not reopen it; the Dock reopens it with its tabs listed", async () => {
-    const id = await fenetreId();
+    const id = await windowId();
     const tab = await openTab(id, "/a.html");
     await waitFor(m, "return gBrowser.selectedTab.getAttribute('webaios-tab-id')", (v) => v === tab);
     // A module timer outlives the closing window: it opens the new one as the Dock would.
@@ -115,7 +115,7 @@ describe("the WebAiOs window", () => {
   });
 
   it("with no window open, OpenBrowserWindow (the hidden window's ⌘N) brings the closed window back, and no second one", async () => {
-    const id = await fenetreId();
+    const id = await windowId();
     await closeLastWindow("Services.appShell.hiddenDOMWindow.OpenBrowserWindow()");
     await sleep(300);
     expect(await windowHandles(m)).toHaveLength(1);
@@ -133,7 +133,7 @@ describe("the WebAiOs window", () => {
   });
 
   it("a private window is never WebAiOs, with a WebAiOs window open or after the last one closed", async () => {
-    const id = await fenetreId();
+    const id = await windowId();
     const old = await handle();
     const notWebAiOs = "return [document.documentElement.hasAttribute('webaios-main'), !!window.webaiosWindow]";
     await m.execute("OpenBrowserWindow({ private: true })");
@@ -184,7 +184,7 @@ describe("the WebAiOs window", () => {
   });
 
   it("Firefox's menu commands add no tabs; New Window and Close Window lead to WebAiOs windows", async () => {
-    const tab = await openTab(await fenetreId(), "/a.html");
+    const tab = await openTab(await windowId(), "/a.html");
     await waitFor(m, "return gBrowser.selectedTab.getAttribute('webaios-tab-id')", (v) => v === tab);
     // doCommand ignores "disabled": that is the path a stray caller takes; no WebAiOs tab may come of it.
     for (const cmd of ["cmd_newNavigatorTab", "menu_newNavigatorTab"]) await m.execute("document.getElementById(arguments[0]).doCommand()", [cmd]);

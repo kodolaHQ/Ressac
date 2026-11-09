@@ -60,17 +60,17 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("site app spike", () => {
   let m: Marionette;
   let profile: string;
   const pub = (p: string) => server.url("pub.localhost", p);
-  const rules = (domaines = ["vidola-a.localhost"], retouches: object[] = []) => ({ id: "vidola", nom: "Vidola", adresse: server.url("vidola-a.localhost", "/"), domaines, connexion: ["compte.localhost"], retouches });
+  const rules = (domains = ["vidola-a.localhost"], tweaks: object[] = []) => ({ id: "vidola", nom: "Vidola", adresse: server.url("vidola-a.localhost", "/"), domaines: domains, connexion: ["compte.localhost"], retouches: tweaks });
   const view = `${siteWindowExpr("vidola")}.gBrowser.selectedBrowser`;
   const viewUrl = () => m.execute<string>(`return ${view}.currentURI.spec;`);
   const toPub = () => server.requetes.filter((r) => r.hote === "pub.localhost" && r.chemin !== "/cadre").map((r) => `${r.methode} ${r.chemin}`);
   const blocked = () => m.execute<string[]>(`return ChromeUtils.importESModule("${STORE}").sites.blocked("vidola").slice();`);
   const browserWindows = () => m.execute<number>(`return [...Services.wm.getEnumerator("navigator:browser")].length;`);
   // As the host's SiteChrome (noyau/sites.ts preparer), granted.
-  const openSite = (r = rules(), retouches: TweaksRead = { js: {}, css: {} }) =>
+  const openSite = (r = rules(), tweaks: TweaksRead = { js: {}, css: {} }) =>
     m.execute(`ChromeUtils.importESModule("${STORE}").sites.open(arguments[0], null, arguments[1]);`, [
       { id: r.id, declaration: DeclarationSite.parse({ nom: r.nom, adresse: r.adresse, domaines: r.domaines, connexion: r.connexion, retouches: r.retouches }), aAccueil: false, domaines: r.domaines, depart: r.adresse, accordRequis: false },
-      retouches,
+      tweaks,
     ]);
   /** Waits until the view has loaded `url`. */
   const viewAt = (url: string) => waitFor(m, `const b = ${view}; return !!b && b.currentURI.spec === arguments[0] && !b.webProgress.isLoadingDocument;`.replace("arguments[0]", JSON.stringify(url)), (v) => v === true, 15_000);
@@ -257,11 +257,11 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("site app spike", () => {
 
   it("(c) the sandbox: no chrome, no page world, password hidden, after a stopped DOMContentLoaded", async () => {
     // Plan 32: the probe is the app's tweak, in the page and in the lecteur.localhost frame (its `cadres`).
-    const lecteur = server.url("lecteur.localhost", "/*").replace(/^http:/, "https:");
-    await openSite(rules(undefined, [{ correspond: ["/sonde"], js: ["sonde.js"], cadres: [lecteur] }]), { js: { "sonde.js": PROBE }, css: {} });
-    const sonde = server.url("vidola-a.localhost", "/sonde");
-    await inSiteView(m, "vidola", `location.href = ${JSON.stringify(sonde)}`);
-    await viewAt(sonde);
+    const reader = server.url("lecteur.localhost", "/*").replace(/^http:/, "https:");
+    await openSite(rules(undefined, [{ correspond: ["/sonde"], js: ["sonde.js"], cadres: [reader] }]), { js: { "sonde.js": PROBE }, css: {} });
+    const probe = server.url("vidola-a.localhost", "/sonde");
+    await inSiteView(m, "vidola", `location.href = ${JSON.stringify(probe)}`);
+    await viewAt(probe);
     note("(c) processes", await m.execute(`const b = ${view}.browsingContext; return { top: b.currentWindowGlobal.osPid, frame: b.children[0]?.currentWindowGlobal?.osPid, frameUrl: b.children[0]?.currentURI?.spec };`));
     const read = `document.getElementById("pw").value = "hunter2";
       document.dispatchEvent(new Event("probe-read"));
@@ -287,7 +287,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("site app spike", () => {
           window.__spikeTab = NavigableManager.getIdForBrowser(t.linkedBrowser);
           return t.linkedBrowser.getAttribute("usercontextid");
         })();`,
-        [sonde],
+        [probe],
       ),
     );
     const handle = await m.execute<string>("return window.__spikeTab;");
@@ -297,7 +297,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("site app spike", () => {
     note("(c) ordinary tab probe", await m.execute(`return document.documentElement.getAttribute("data-probe");`));
     await m.setContext("chrome");
     await m.command("WebDriver:SwitchToWindow", { handle: main, focus: false });
-    await m.execute(`gBrowser.removeTab(gBrowser.tabs.find((t) => t.linkedBrowser.currentURI.spec === arguments[0]));`, [sonde]);
+    await m.execute(`gBrowser.removeTab(gBrowser.tabs.find((t) => t.linkedBrowser.currentURI.spec === arguments[0]));`, [probe]);
     await openSite();
   }, 90_000);
 
@@ -307,7 +307,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("site app spike", () => {
     const dir = path.join(w.dataDir, "webaios-sites", "vidola");
     await mkdir(dir, { recursive: true });
     await writeFile(path.join(dir, "index.html"), served);
-    const memoire = { type: "memoire", valeurs: { "encours.the-bear": { valeur: { titre: "The Bear", episode: "S2E4" }, adresse: "/serie/the-bear?e=4", quand: new Date().toISOString() } }, positions: {}, domaine: "vidola-a.localhost" };
+    const memory = { type: "memoire", valeurs: { "encours.the-bear": { valeur: { titre: "The Bear", episode: "S2E4" }, adresse: "/serie/the-bear?e=4", quand: new Date().toISOString() } }, positions: {}, domaine: "vidola-a.localhost" };
     note(
       "(d) frame",
       await inSiteBar(
@@ -337,7 +337,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("site app spike", () => {
         const fd = home.contentDocument;
         return { src: home.src, sandbox: home.getAttribute("sandbox"), origin: fd.defaultView.origin, rtc: typeof fd.defaultView.wrappedJSObject.RTCPeerConnection, xslt: typeof fd.defaultView.wrappedJSObject.XSLTProcessor, webaios: typeof fd.defaultView.wrappedJSObject.webaios,
           series: fd.getElementById("series")?.textContent, domaine: fd.getElementById("domaine")?.textContent, received: got.root, barUrl: doc.documentURI };`,
-        [dir, memoire],
+        [dir, memory],
       ),
     );
     // A real click on « Reprendre »: its parent.postMessage({type: "ouvrir"}) reaches the chrome, a trusted pointerdown with it.

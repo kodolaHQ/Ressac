@@ -12,7 +12,7 @@ let F: string;
 const ag = (a: Action | null) => {
   if (a) e = apply(e, a, genId);
 };
-const ouvrir = (url: string) => {
+const open = (url: string) => {
   ag({ type: "ouvrirOnglet", fenetreId: F, url });
   return Object.keys(e.onglets).at(-1)!;
 };
@@ -24,10 +24,10 @@ beforeEach(() => {
 });
 
 test("ordreRecent: active first, history, then the rest; closed ignored", () => {
-  const a = ouvrir("https://a.fr");
-  const b = ouvrir("https://b.fr");
-  const c = ouvrir("https://c.fr");
-  const d = ouvrir("https://d.fr");
+  const a = open("https://a.fr");
+  const b = open("https://b.fr");
+  const c = open("https://c.fr");
+  const d = open("https://d.fr");
   ag({ type: "activerOnglet", id: b });
   expect(recentOrder(e, F, [c, a])).toEqual([b, c, a, d]);
   ag({ type: "fermerOnglet", id: c });
@@ -60,8 +60,8 @@ test("retirer", () => {
 });
 
 test("fenetreVisible", () => {
-  const liste = Array.from({ length: 10 }, (_, i) => String(i));
-  expect(visibleWindow({ liste, selection: 0 })).toEqual({ debut: 0, fin: 7 });
-  expect(visibleWindow({ liste, selection: 9 })).toEqual({ debut: 3, fin: 10 });
-  expect(visibleWindow({ liste: liste.slice(0, 4), selection: 2 })).toEqual({ debut: 0, fin: 4 });
+  const list = Array.from({ length: 10 }, (_, i) => String(i));
+  expect(visibleWindow({ liste: list, selection: 0 })).toEqual({ debut: 0, fin: 7 });
+  expect(visibleWindow({ liste: list, selection: 9 })).toEqual({ debut: 3, fin: 10 });
+  expect(visibleWindow({ liste: list.slice(0, 4), selection: 2 })).toEqual({ debut: 0, fin: 4 });
 });

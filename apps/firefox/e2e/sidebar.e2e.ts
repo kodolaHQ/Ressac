@@ -104,8 +104,8 @@ describe("the sidebar's layout", () => {
        return { menuIn: menu.right <= pill.right && menu.top >= pill.top && menu.bottom <= pill.bottom, pill: pill.height, gap: tiles.top - pill.bottom,
          space: doc.querySelector('[data-testid="titre-espace"]').textContent };`,
     );
-    const espace = (await state(m)).espaces[0]!;
-    expect(shown).toEqual({ menuIn: true, pill: 34, gap: 14, space: `${espace.icone} ${espace.nom}` });
+    const space = (await state(m)).espaces[0]!;
+    expect(shown).toEqual({ menuIn: true, pill: 34, gap: 14, space: `${space.icone} ${space.nom}` });
     // The panel opens under the pill, which keeps its height.
     await click(m, '[data-testid="menu-extensions"]');
     const panel = await waitUi<{ top: number; bottom: number } | null>(
@@ -183,8 +183,8 @@ describe("WebAiOs sidebar", () => {
     const essentials = '[data-testid="essentiels"] [data-testid^="favori-"]';
     await waitUi(m, "return doc.querySelectorAll(arguments[0]).length === 1", [essentials]);
     await dispatch(m, { type: "creerEspace", nom: "Boulot", icone: "💼", prive: false, profil: "defaut", fenetreId: (await win()).id });
-    const boulot = (await win()).espaceActif;
-    await waitUi(m, "return doc.querySelector(arguments[0])?.getAttribute('aria-current') === 'true'", [`[data-testid="espace-${boulot}"]`]);
+    const work = (await win()).espaceActif;
+    await waitUi(m, "return doc.querySelector(arguments[0])?.getAttribute('aria-current') === 'true'", [`[data-testid="espace-${work}"]`]);
     expect(await count(essentials)).toBe(1);
   });
 
@@ -193,12 +193,12 @@ describe("WebAiOs sidebar", () => {
     const a = await open("/a.html");
     const p = await open("/plante.html", { activer: false });
     await dispatch(m, { type: "creerEspace", nom: "Boulot", icone: "💼", prive: false, profil: "defaut", fenetreId: (await win()).id });
-    const boulot = (await win()).espaceActif;
+    const work = (await win()).espaceActif;
     const b = await open("/b.html");
     expect(await waitShown((t) => t.ids.length === 1)).toEqual({ ids: [b], current: b });
     await click(m, `[data-testid="espace-${home}"]`);
     expect(await waitShown((t) => t.ids.length === 2)).toEqual({ ids: [a, p], current: a });
-    await click(m, `[data-testid="espace-${boulot}"]`);
+    await click(m, `[data-testid="espace-${work}"]`);
     expect(await waitShown((t) => t.ids.length === 1)).toEqual({ ids: [b], current: b });
   });
 

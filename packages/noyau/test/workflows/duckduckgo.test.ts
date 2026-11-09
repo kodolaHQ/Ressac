@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { extractResults, urlRecherche } from "../../src/workflows/duckduckgo.js";
 
-const page = (nom: string) => readFileSync(new URL(`./fixtures/duckduckgo/${nom}`, import.meta.url), "utf8");
+const page = (name: string) => readFileSync(new URL(`./fixtures/duckduckgo/${name}`, import.meta.url), "utf8");
 
 describe("extraireResultats", () => {
   it("resultats.html: 9 results in order, the ad dropped, javascript: dropped, uddg decoded, entities decoded", () => {
@@ -24,9 +24,9 @@ describe("extraireResultats", () => {
 
   it("nombre 3: the first 3", () => {
     const tous = extractResults(page("resultats.html"), 20);
-    const trois = extractResults(page("resultats.html"), 3);
-    if (!("resultats" in tous) || !("resultats" in trois)) throw new Error("attendu");
-    expect(trois.resultats).toEqual(tous.resultats.slice(0, 3));
+    const three = extractResults(page("resultats.html"), 3);
+    if (!("resultats" in tous) || !("resultats" in three)) throw new Error("attendu");
+    expect(three.resultats).toEqual(tous.resultats.slice(0, 3));
   });
 
   it("aucun-resultat.html: empty list", () => {
@@ -61,7 +61,7 @@ describe("extraireResultats", () => {
 describe("extraireResultats: hostile pages and edge cases", () => {
   const bloc = (titre: string, href = "https://a.example/", extrait = "E") =>
     `<div class="result"><a class="result__a" href="${href}">${titre}</a><a class="result__snippet">${extrait}</a></div>`;
-  const rapide = (html: string) => {
+  const fast = (html: string) => {
     const t = Date.now();
     const r = extractResults(html, 5);
     expect(Date.now() - t).toBeLessThan(200);
@@ -69,15 +69,15 @@ describe("extraireResultats: hostile pages and edge cases", () => {
   };
 
   it("24 KB of « <div class=\" » repeated after a result: fast", () => {
-    rapide(bloc("T") + '<div class="'.repeat(2000));
+    fast(bloc("T") + '<div class="'.repeat(2000));
   });
   it("54 KB of unclosed result__snippet tags: fast", () => {
-    rapide('<div class="result"><a class="result__a" href="https://a.example/">T</a>' + '<p class="result__snippet" '.repeat(2000));
-    rapide('<div class="result"><a class="result__a" href="https://a.example/">T</a>' + '<p class="result__snippet">'.repeat(2000));
+    fast('<div class="result"><a class="result__a" href="https://a.example/">T</a>' + '<p class="result__snippet" '.repeat(2000));
+    fast('<div class="result"><a class="result__a" href="https://a.example/">T</a>' + '<p class="result__snippet">'.repeat(2000));
   });
   it("a 5 MB page is read without freezing", () => {
-    rapide("<".repeat(5 * 1024 * 1024));
-    rapide(bloc("T") + "<a ".repeat(1_000_000));
+    fast("<".repeat(5 * 1024 * 1024));
+    fast(bloc("T") + "<a ".repeat(1_000_000));
   });
   it("« anomaly-modal » in a title or an excerpt is not a refusal", () => {
     const r = extractResults(bloc("anomaly-modal challenge-form /anomaly.js", "https://a.example/", "challenge-form"), 5);

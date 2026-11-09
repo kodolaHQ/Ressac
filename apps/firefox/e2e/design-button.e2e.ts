@@ -62,7 +62,7 @@ const svc = <R = unknown>(body: string, args: unknown[] = []) =>
     `return (async (args) => { const store = await ChromeUtils.importESModule("${STORE}").ready, d = store.design; const t = { type: "fenetre", fenetreId: window.webaiosWindow.fenetreId }; ${body} })([...arguments]);`,
     args,
   );
-const etat = () => svc<{ actif: boolean; panier: number; projet: { projet: string } | null }>("return await d.etat(t);");
+const designState = () => svc<{ actif: boolean; panier: number; projet: { projet: string } | null }>("return await d.etat(t);");
 const hosts = () => inBrowser<number>(m, B, `return document.querySelectorAll("webaios-viseur").length;`);
 const button = () =>
   inUi<{ disabled: boolean; title: string; pressed: string; count: string | null } | null>(
@@ -114,22 +114,22 @@ async function chevron(): Promise<string[]> {
 
 async function modeOn() {
   await pressKeys(m, "Meta+Shift+d");
-  await expect.poll(async () => (await etat()).actif, { timeout: 10_000 }).toBe(true);
+  await expect.poll(async () => (await designState()).actif, { timeout: 10_000 }).toBe(true);
   await expect.poll(hosts, { timeout: 10_000 }).toBe(1);
 }
 async function modeOff() {
-  if ((await etat()).actif) await svc("await d.stop(t); return 1;");
+  if ((await designState()).actif) await svc("await d.stop(t); return 1;");
   await expect.poll(columnShown, { timeout: 10_000 }).toBe(false);
 }
 
 /** `text` typed in the bubble of `#email`, then « Ajouter au panier »: the cart grows by one. */
 async function remark(text: string) {
-  const n = (await etat()).panier;
+  const n = (await designState()).panier;
   await trustedMouse(m, B, "#email");
   await expect.poll(() => frameOf<string | null>("webaios-design-calque", "return doc.activeElement?.localName ?? null;").then((f) => f?.v), { timeout: 10_000 }).toBe("textarea");
   await typeText(m, text);
   await click(m, "button.ajouter", { frame: "calque" });
-  await expect.poll(async () => (await etat()).panier, { timeout: 10_000 }).toBe(n + 1);
+  await expect.poll(async () => (await designState()).panier, { timeout: 10_000 }).toBe(n + 1);
 }
 
 describe("outside the followed projects", () => {
@@ -139,7 +139,7 @@ describe("outside the followed projects", () => {
     await pressKeys(m, "Meta+Shift+d");
     await sleep(400);
     expect(await hosts()).toBe(0);
-    expect((await etat()).actif).toBe(false);
+    expect((await designState()).actif).toBe(false);
     expect(await pressed()).toBe("false");
     await expect.poll(message, { timeout: 10_000 }).toBe(UNAVAILABLE_DESIGN);
     await pressKeys(m, "Escape");
@@ -230,7 +230,7 @@ describe("on the demo", () => {
     await remark("Champ plus large");
     await expect.poll(async () => (await button())?.count, { timeout: 10_000 }).toBe("1");
     await pressKeys(m, "Meta+Shift+d");
-    await expect.poll(async () => (await etat()).actif, { timeout: 10_000 }).toBe(false);
+    await expect.poll(async () => (await designState()).actif, { timeout: 10_000 }).toBe(false);
     await expect.poll(pressed, { timeout: 10_000 }).toBe("false");
     expect(await hosts()).toBe(0);
     // The button does the same.
@@ -249,11 +249,11 @@ describe("on the demo", () => {
     expect(await chevron()).toEqual(["Panier"]);
     await click(m, '[role="menuitem"]', { text: "Panier" });
     await expect.poll(columnShown, { timeout: 10_000 }).toBe(true);
-    expect((await etat()).actif).toBe(false);
+    expect((await designState()).actif).toBe(false);
     // Asked by Panier, the column outlives the mode.
     await modeOn();
     await pressKeys(m, "Meta+Shift+d");
-    await expect.poll(async () => (await etat()).actif, { timeout: 10_000 }).toBe(false);
+    await expect.poll(async () => (await designState()).actif, { timeout: 10_000 }).toBe(false);
     await sleep(500);
     expect(await columnShown()).toBe(true);
     // « Fermer »: Panier is cleared, so the next mode's end closes the column.
@@ -265,7 +265,7 @@ describe("on the demo", () => {
     await modeOn();
     await expect.poll(columnShown, { timeout: 10_000 }).toBe(true);
     await pressKeys(m, "Meta+Shift+d");
-    await expect.poll(async () => (await etat()).actif, { timeout: 10_000 }).toBe(false);
+    await expect.poll(async () => (await designState()).actif, { timeout: 10_000 }).toBe(false);
     await expect.poll(columnShown, { timeout: 10_000 }).toBe(false);
   });
 
@@ -281,31 +281,31 @@ describe("on the demo", () => {
       await waitFor(m, "return !gBrowser.selectedBrowser.webProgress.isLoadingDocument && gBrowser.selectedBrowser.currentURI.spec.endsWith('/x')", (v) => v === true);
       await m.execute(`${B}.focus();`);
       // B in front: A's mode stays.
-      expect((await etat()).actif).toBe(false);
+      expect((await designState()).actif).toBe(false);
       await pressKeys(m, "Meta+Shift+d");
-      await expect.poll(async () => (await etat()).actif, { timeout: 10_000 }).toBe(true);
+      await expect.poll(async () => (await designState()).actif, { timeout: 10_000 }).toBe(true);
       await expect.poll(hosts, { timeout: 10_000 }).toBe(1);
       return f;
     });
     expect(fb).not.toBe(fa);
-    expect((await etat()).actif).toBe(true);
+    expect((await designState()).actif).toBe(true);
     expect(await hosts()).toBe(1);
     // ⇧⌘D in B again: only B stops.
     await inWindow(m, b, async () => {
       await pressKeys(m, "Meta+Shift+d");
-      await expect.poll(async () => (await etat()).actif, { timeout: 10_000 }).toBe(false);
+      await expect.poll(async () => (await designState()).actif, { timeout: 10_000 }).toBe(false);
       await expect.poll(hosts, { timeout: 10_000 }).toBe(0);
       await pressKeys(m, "Meta+Shift+d");
       await expect.poll(hosts, { timeout: 10_000 }).toBe(1);
     });
-    expect((await etat()).actif).toBe(true);
+    expect((await designState()).actif).toBe(true);
     // A closes: B's mode stays.
     await m.execute("window.close();");
     await waitWindowCount(m, 1);
     await m.command("WebDriver:SwitchToWindow", { handle: b, focus: false });
     expect(a).not.toBe(b);
     expect(await svc<boolean>("return d.etat({ type: 'fenetre', fenetreId: args[0] }).then((e) => e.actif);", [fa])).toBe(false);
-    expect((await etat()).actif).toBe(true);
+    expect((await designState()).actif).toBe(true);
     expect(await hosts()).toBe(1);
     await modeOff();
   });
@@ -314,7 +314,7 @@ describe("on the demo", () => {
 describe("an external project", () => {
   let p: Awaited<ReturnType<typeof declareProject>>;
   let tab: string;
-  const projet = () => `ext-${p.id}`;
+  const project = () => `ext-${p.id}`;
 
   beforeAll(async () => {
     await openApplications(m);
@@ -325,7 +325,7 @@ describe("an external project", () => {
     await p?.client.close().catch(() => undefined);
   });
 
-  const reviewTabs = async () => Object.values((await state(m)).onglets).filter((o) => o.url === reviewUrl(projet()));
+  const reviewTabs = async () => Object.values((await state(m)).onglets).filter((o) => o.url === reviewUrl(project()));
 
   it("relecture.spec.ts:168 Relire ce projet of an external project's tab, twice: one Review page, no second tab", async () => {
     await activate(tab);

@@ -3,9 +3,9 @@ import { COLUMNS, move, GAP_PX, ROW_PX, resize, type Placement } from "../ui/gri
 
 const p = (id: string, x: number, y: number, l: number, h: number): Placement => ({ id, x, y, l, h });
 const tailles = { min: { l: 2, h: 2 }, max: { l: 6, h: 4 } };
-const chevauchent = (a: Placement, b: Placement) => a.x < b.x + b.l && b.x < a.x + a.l && a.y < b.y + b.h && b.y < a.y + a.h;
-function sansChevauchement(ps: Placement[]) {
-  for (const a of ps) for (const b of ps) if (a !== b) expect(chevauchent(a, b), `${a.id} / ${b.id}`).toBe(false);
+const overlap = (a: Placement, b: Placement) => a.x < b.x + b.l && b.x < a.x + a.l && a.y < b.y + b.h && b.y < a.y + a.h;
+function withoutOverlap(ps: Placement[]) {
+  for (const a of ps) for (const b of ps) if (a !== b) expect(overlap(a, b), `${a.id} / ${b.id}`).toBe(false);
 }
 
 test("grid constants", () => {
@@ -13,25 +13,25 @@ test("grid constants", () => {
 });
 
 test("deplacer pushes overlapped widgets down, in a cascade", () => {
-  const avant = [p("a", 0, 0, 4, 2), p("b", 4, 0, 4, 2), p("c", 4, 2, 4, 3), p("d", 0, 6, 2, 1)];
-  const apres = move(avant, "a", 4, 0);
-  const par = Object.fromEntries(apres.map((q) => [q.id, q]));
+  const before = [p("a", 0, 0, 4, 2), p("b", 4, 0, 4, 2), p("c", 4, 2, 4, 3), p("d", 0, 6, 2, 1)];
+  const after = move(before, "a", 4, 0);
+  const par = Object.fromEntries(after.map((q) => [q.id, q]));
   expect(par.a).toEqual(p("a", 4, 0, 4, 2));
   expect(par.b).toEqual(p("b", 4, 2, 4, 2)); // juste sous a
   expect(par.c).toEqual(p("c", 4, 4, 4, 3)); // just under b, in a cascade
   expect(par.d).toEqual(p("d", 0, 6, 2, 1)); // not touched
-  sansChevauchement(apres);
-  expect(avant[0]).toEqual(p("a", 0, 0, 4, 2)); // the input is not modified
+  withoutOverlap(after);
+  expect(before[0]).toEqual(p("a", 0, 0, 4, 2)); // the input is not modified
 });
 
 test("deplacer keeps the widget within the 12 columns and above 0", () => {
-  const apres = move([p("a", 0, 0, 4, 2)], "a", 10, -3);
-  expect(apres[0]).toEqual(p("a", 8, 0, 4, 2));
+  const after = move([p("a", 0, 0, 4, 2)], "a", 10, -3);
+  expect(after[0]).toEqual(p("a", 8, 0, 4, 2));
 });
 
 test("deplacer: an unknown id changes nothing", () => {
-  const avant = [p("a", 0, 0, 4, 2)];
-  expect(move(avant, "x", 3, 3)).toEqual(avant);
+  const before = [p("a", 0, 0, 4, 2)];
+  expect(move(before, "x", 3, 3)).toEqual(before);
 });
 
 test("redimensionner clamps by min and max and does not overflow the 12 columns", () => {
@@ -44,9 +44,9 @@ test("redimensionner clamps by min and max and does not overflow the 12 columns"
 });
 
 test("redimensionner pushes overlapped widgets", () => {
-  const apres = resize([p("a", 0, 0, 4, 2), p("b", 0, 2, 4, 2)], "a", 4, 4, tailles);
-  expect(apres.find((q) => q.id === "b")).toEqual(p("b", 0, 4, 4, 2));
-  sansChevauchement(apres);
+  const after = resize([p("a", 0, 0, 4, 2), p("b", 0, 2, 4, 2)], "a", 4, 4, tailles);
+  expect(after.find((q) => q.id === "b")).toEqual(p("b", 0, 4, 4, 2));
+  withoutOverlap(after);
 });
 
 test("a widget wider than the grid stays within the 12 columns", () => {

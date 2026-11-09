@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { APPS_ENV, appWindowExpr, inAppView, launchEssai, writeProject } from "./apps";
+import { APPS_ENV, appWindowExpr, inAppView, launchAttempt, writeProject } from "./apps";
 import { dispatch, state, waitFor, waitReady } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
@@ -403,7 +403,7 @@ describe("the UI's network", () => {
 
   it("the five UI frames are cut before they load", { timeout: 120_000 }, async () => {
     await expect.poll(() => existsSync(path.join(dataDir, "espace", ".webaios", "mcp.json")), { timeout: 15_000 }).toBe(true);
-    await launchEssai(dataDir);
+    await launchAttempt(dataDir);
     await m.execute(`return (async () => { const store = await ChromeUtils.importESModule("${STORE}").ready; await store.agent.request("sites.agir", { id: "netsite", action: "ouvrir", fenetre: store.state.fenetres[0].id }); })();`);
     const frames = () =>
       m.execute(
@@ -458,16 +458,16 @@ describe("the UI's network", () => {
 
   it("the tabs and the agent's reads keep their network: a tab's image, fetch, WebSocket and WebRTC TURN/TCP reach the local servers, and an invisible read returns the page", { timeout: 120_000 }, async () => {
     const refused0 = (await uiRefusals(m)).length;
-    const fenetreId = (await state(m)).fenetres[0]!.id;
+    const windowId = (await state(m)).fenetres[0]!.id;
     const seen = (name: string) => net.hits.filter((h) => h.label === name).map((h) => `${h.method} ${h.path}`);
-    await dispatch(m, { type: "ouvrirOnglet", fenetreId, url: `http://${host("tab-page")}/page`, activer: true });
+    await dispatch(m, { type: "ouvrirOnglet", fenetreId: windowId, url: `http://${host("tab-page")}/page`, activer: true });
     await expect
       .poll(() => seen("tab-page"), { timeout: 15_000 })
       .toEqual(expect.arrayContaining(["GET /page", "GET /s2/witness/img", "GET /s2/witness/fetch", "UPGRADE /s2/witness/ws", "POST /s2/witness/beacon"]));
     await closeTab("tab-page.", "sonde");
     const tcp0 = net.tcp.length;
     const udp0 = net.udp.length;
-    await dispatch(m, { type: "ouvrirOnglet", fenetreId, url: `http://${host("tab-rtc")}/rtc`, activer: true });
+    await dispatch(m, { type: "ouvrirOnglet", fenetreId: windowId, url: `http://${host("tab-rtc")}/rtc`, activer: true });
     const result = await waitFor(m, `const b = gBrowser.selectedBrowser; return b.currentURI.spec.includes("/rtc") && b.contentTitle.startsWith("{") ? b.contentTitle : "";`, (v: string) => v !== "", 20_000);
     expect({ tcp: tcpSince(tcp0) > 0, udp: net.udp.length - udp0 > 0 }, result).toEqual({ tcp: true, udp: true });
     await closeTab("tab-rtc.", "sonde");
@@ -492,7 +492,7 @@ describe("the UI's network", () => {
     await expect
       .poll(() => net.hits.slice(hits0).filter((h) => h.label === "netsite.localhost").map((h) => `${h.method} ${h.path}`), { timeout: 20_000 })
       .toEqual(expect.arrayContaining(["GET /page", "GET /s2/witness/img", "GET /s2/witness/fetch", "UPGRADE /s2/witness/ws"]));
-    const port = await launchEssai(dataDir);
+    const port = await launchAttempt(dataDir);
     await waitFor(m, `const b = ${appWindowExpr("essai")}?.gBrowser.selectedBrowser; return b && !b.webProgress.isLoadingDocument ? b.currentURI.spec : "";`, (v: string) => v.includes(`localhost:${port}`), 20_000);
     expect(await inAppView<number>(m, "essai", "return fetch('/').then((r) => r.status)")).toBe(200);
     // A link press in each view still warms its connection, as in a tab.

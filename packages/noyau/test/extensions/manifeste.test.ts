@@ -92,8 +92,8 @@ test("agent: static rule redirect, modifyHeaders, regexSubstitution refused, eac
 });
 
 test("agent: webaios.json with 11 domains or a wildcard refused; reseau sorted", () => {
-  const onze = Array.from({ length: 11 }, (_, i) => `a${i}.exemple.com`);
-  expect(parseManifest(base, { source: "agent", webaios: { reseau: onze } }).refus).toHaveLength(1);
+  const eleven = Array.from({ length: 11 }, (_, i) => `a${i}.exemple.com`);
+  expect(parseManifest(base, { source: "agent", webaios: { reseau: eleven } }).refus).toHaveLength(1);
   const joker = parseManifest(base, { source: "agent", webaios: { reseau: ["*.x.com"] } });
   expect(joker.refus).toEqual(["webaios.json : domaine invalide « *.x.com »"]);
   const ok = parseManifest(base, { source: "agent", webaios: { reseau: ["b.com", "a.com"] } });
@@ -109,14 +109,14 @@ test("agent: content_script world MAIN refused; the Store accepts it", () => {
 });
 
 test("agent: devtools_page, background.scripts and background.page refused; the Store keeps them", () => {
-  for (const ajout of [
+  for (const addition of [
     { devtools_page: "d.html" },
     { background: { scripts: ["a.js"] } },
     { background: { page: "fond.html" } },
     { background: { service_worker: 3 } },
   ]) {
-    const m = { ...base, ...ajout };
-    expect(parseManifest(m, { source: "agent" }).refus, JSON.stringify(ajout)).toHaveLength(1);
+    const m = { ...base, ...addition };
+    expect(parseManifest(m, { source: "agent" }).refus, JSON.stringify(addition)).toHaveLength(1);
     expect(parseManifest(m, { source: "store" }).refus).toEqual([]);
   }
   expect(parseManifest({ ...base, background: { service_worker: "sw.js", type: "module" } }, { source: "agent" }).refus).toEqual([]);
@@ -207,17 +207,17 @@ test("labels: unknown right and order", () => {
 const dnr = { ...base, declarative_net_request: { rule_resources: [{ id: "r", enabled: true, path: "rules.json" }] } };
 
 test("R3-1 agent: rules file missing, not an array, absolute path or with ..: refused", () => {
-  const refus = (path: string, regles: Record<string, unknown>) =>
+  const denial = (path: string, regles: Record<string, unknown>) =>
     parseManifest(
       { ...base, declarative_net_request: { rule_resources: [{ id: "r", enabled: true, path }] } },
       { source: "agent", regles },
     ).refus;
-  expect(refus("rules.json", {})).toHaveLength(1);
-  expect(refus("rules.json", { "rules.json": { id: 1 } })).toHaveLength(1);
-  expect(refus("/rules.json", { "/rules.json": [] })).toHaveLength(1);
-  expect(refus("a/../rules.json", { "a/../rules.json": [] })).toHaveLength(1);
-  expect(refus("rules.json", { "rules.json": [] })).toEqual([]);
-  expect(refus("rules.json", {})[0]).toContain("rules.json");
+  expect(denial("rules.json", {})).toHaveLength(1);
+  expect(denial("rules.json", { "rules.json": { id: 1 } })).toHaveLength(1);
+  expect(denial("/rules.json", { "/rules.json": [] })).toHaveLength(1);
+  expect(denial("a/../rules.json", { "a/../rules.json": [] })).toHaveLength(1);
+  expect(denial("rules.json", { "rules.json": [] })).toEqual([]);
+  expect(denial("rules.json", {})[0]).toContain("rules.json");
   // the Store is not concerned
   expect(parseManifest(dnr, { source: "store" }).refus).toEqual([]);
 });
@@ -260,15 +260,15 @@ test("I3 all sites: ports, public-suffix wildcards, scripts", () => {
 });
 
 test("R3-3 reinforced grant end to end", () => {
-  const renforce = (m: object) => {
+  const strengthened = (m: object) => {
     const a = parseManifest({ ...base, ...m }, { source: "agent" });
     expect(a.refus).toEqual([]);
     return grantStrengthened(a.portee, "agent");
   };
-  expect(renforce({ content_scripts: [{ matches: ["<all_urls>"], js: ["a.js"] }] })).toBe(true);
-  expect(renforce({ permissions: ["scripting"], host_permissions: ["*://*/*"] })).toBe(true);
-  expect(renforce({ permissions: ["scripting"], host_permissions: ["https://a.com/*"] })).toBe(false);
-  expect(renforce({ host_permissions: ["<all_urls>"] })).toBe(false);
+  expect(strengthened({ content_scripts: [{ matches: ["<all_urls>"], js: ["a.js"] }] })).toBe(true);
+  expect(strengthened({ permissions: ["scripting"], host_permissions: ["*://*/*"] })).toBe(true);
+  expect(strengthened({ permissions: ["scripting"], host_permissions: ["https://a.com/*"] })).toBe(false);
+  expect(strengthened({ host_permissions: ["<all_urls>"] })).toBe(false);
 });
 
 test("R3-3 webRequestBlocking and redirect.transform refused", () => {
@@ -290,9 +290,9 @@ test("R3-5 porteeElargie: scripts false→true widens, true→false does not", (
 
 test("empreintePortee: stable whatever the order of keys and lists; changes with the scope", () => {
   const p: Scope = { permissions: ["tabs", "storage"], hotes: ["https://b.com/*", "https://a.com/*"], reseau: [], tousLesSites: false, scriptsTousLesSites: false };
-  const melangee = { scriptsTousLesSites: false, tousLesSites: false, reseau: [], hotes: ["https://a.com/*", "https://b.com/*"], permissions: ["storage", "tabs"] } as Scope;
+  const shuffled = { scriptsTousLesSites: false, tousLesSites: false, reseau: [], hotes: ["https://a.com/*", "https://b.com/*"], permissions: ["storage", "tabs"] } as Scope;
   expect(scopeHash(p)).toMatch(/^[0-9a-f]{64}$/);
-  expect(scopeHash(melangee)).toBe(scopeHash(p));
+  expect(scopeHash(shuffled)).toBe(scopeHash(p));
   // `scripts` absent vaut faux.
   expect(scopeHash({ ...p, scripts: false })).toBe(scopeHash(p));
   expect(scopeHash({ ...p, scripts: true })).not.toBe(scopeHash(p));

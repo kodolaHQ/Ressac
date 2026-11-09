@@ -51,11 +51,11 @@ test("camera + microphone: both permissions are needed", async () => {
   const p = make();
   expect(await p.handle(req("media", { mediaTypes: ["video", "audio"] }))).toBe(true);
   expect(questions.at(-1)?.permissions).toEqual(["media-camera", "media-micro"]);
-  const autre = "https://visio.fr";
+  const other = "https://visio.fr";
   answer = "refuser";
-  await p.handle(req("media", { origine: autre, mediaTypes: ["audio"] }));
+  await p.handle(req("media", { origine: other, mediaTypes: ["audio"] }));
   answer = "autoriser";
-  expect(await p.handle(req("media", { origine: autre, mediaTypes: ["video", "audio"] }))).toBe(false);
+  expect(await p.handle(req("media", { origine: other, mediaTypes: ["video", "audio"] }))).toBe(false);
   expect(questions.at(-1)?.permissions).toEqual(["media-camera"]);
 });
 
@@ -234,7 +234,7 @@ test("an unreadable origin in the file stops neither the startup nor the other d
   const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
   disk.set(FILE, JSON.stringify({ "pas une origine notifications": "autoriser", [`${meet} geolocation`]: "autoriser" }));
   const p = make({
-    firefox: { set: (_p, origine, ...r) => (origine.startsWith("pas") ? (() => { throw new Error("bad uri"); })() : calls.push(["set", origine, ...r])), remove: () => {} },
+    firefox: { set: (_p, origin, ...r) => (origin.startsWith("pas") ? (() => { throw new Error("bad uri"); })() : calls.push(["set", origin, ...r])), remove: () => {} },
   });
   await p.ready;
   expect(calls).toEqual([["set", meet, "geolocation", "autoriser"]]);

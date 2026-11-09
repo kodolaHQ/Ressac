@@ -3,10 +3,10 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { pathInContainer, spacePaths } from "../src/chemins.js";
 
-const ancienne = process.env.WEBAIOS_RACINE;
+const old = process.env.WEBAIOS_RACINE;
 afterEach(() => {
-  if (ancienne === undefined) delete process.env.WEBAIOS_RACINE;
-  else process.env.WEBAIOS_RACINE = ancienne;
+  if (old === undefined) delete process.env.WEBAIOS_RACINE;
+  else process.env.WEBAIOS_RACINE = old;
 });
 
 test("default paths under ~/WebAiOs", () => {

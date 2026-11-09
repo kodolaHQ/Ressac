@@ -21,7 +21,7 @@ const CIS = "moz-src:///toolkit/components/contextualidentity/ContextualIdentity
 const HOSTS = ["vidola-a.localhost", "vidola-b.localhost", "lecteur.localhost", "images.localhost", "pub.localhost", "adresses.localhost", "youtube.localhost", "accounts.localhost"];
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=", "base64");
 const EPISODE = "/serie/the-bear/saison-2/episode-4";
-const LECTEUR = "/lecteur.html";
+const READER = "/lecteur.html";
 const CARD_TEXT = "the-bear · saison 2, épisode 4 — reprendre à 1:10";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -223,12 +223,12 @@ beforeAll(async () => {
       h,
       EPISODE,
       `<!doctype html><title>The Bear S2E4</title><meta property="og:image" content="${url("images.localhost", "/affiches/the-bear.png")}">
-<iframe id="lecteur" src="${url("lecteur.localhost", LECTEUR)}"></iframe>
+<iframe id="lecteur" src="${url("lecteur.localhost", READER)}"></iframe>
 <iframe id="pub" src="${url("pub.localhost", "/pub-ouvre")}"></iframe>
 <script>let refus = 0; for (let i = 0; i < 3; i++) if (!window.open(${JSON.stringify(url("pub.localhost", "/popup"))})) refus++; fetch("/balise-page?ouvertures=3&refus=" + refus);</script>`,
     );
   }
-  server.definir("lecteur.localhost", LECTEUR, readFileSync(path.join(__dirname, "pages", "lecteur.html"), "utf8"));
+  server.definir("lecteur.localhost", READER, readFileSync(path.join(__dirname, "pages", "lecteur.html"), "utf8"));
   server.definir("lecteur.localhost", "/silence-90.wav", serveWav(wav));
   server.definir("images.localhost", "/affiches/the-bear.png", (_req, res) => res.writeHead(200, { "Content-Type": "image/png" }).end(PNG));
   server.definir(

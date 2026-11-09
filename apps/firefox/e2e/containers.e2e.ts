@@ -121,9 +121,9 @@ describe("profile containers", () => {
       const m = w.marionette;
       await m.setContext("chrome");
       await waitReady(m);
-      const fenetreId = (await state(m)).fenetres[0]!.id;
-      await dispatch(m, { type: "creerEspace", nom: "B", icone: "🅱", prive: false, profil: "nouveau", fenetreId });
-      await dispatch(m, { type: "ouvrirOnglet", fenetreId, url: `${server.url}/a.html` });
+      const windowId = (await state(m)).fenetres[0]!.id;
+      await dispatch(m, { type: "creerEspace", nom: "B", icone: "🅱", prive: false, profil: "nouveau", fenetreId: windowId });
+      await dispatch(m, { type: "ouvrirOnglet", fenetreId: windowId, url: `${server.url}/a.html` });
       const names = `return ${CIS}._identities.filter((i) => i.name?.startsWith("userContextIdInternal.webaios-")).length;`;
       await waitFor(m, names, (n) => n === 1);
       await installAddon(m, identities(server.url));

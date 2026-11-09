@@ -6,8 +6,8 @@ import { INVALID_REQUEST, REMARK_TEXT_MAX } from "../shared/design-guards";
 import { wrapOverlayApi } from "../ui/overlay-api";
 
 const T = { type: "fenetre" as const, fenetreId: "F" };
-const ctx = (mode: OverlayContext["mode"], projet: string): OverlayContext => ({
-  mode, message: null, projet, etiquette: "input#email.champ", source: null, destination: "l'agent", sansDestination: null, avertissement: null,
+const ctx = (mode: OverlayContext["mode"], project: string): OverlayContext => ({
+  mode, message: null, projet: project, etiquette: "input#email.champ", source: null, destination: "l'agent", sansDestination: null, avertissement: null,
 });
 
 /** A fake service (its overlay showing `shown`) and host; every call noted. */
@@ -15,7 +15,7 @@ function setup(shown: Partial<Record<OverlayContext["mode"], OverlayContext>> = 
   const calls: string[] = [];
   const design = {
     overlayContext: (_t, modes = ["bulle", "panier", "message"]) => modes.map((m) => shown[m]).find(Boolean) ?? null,
-    add: async (_t, texte) => (calls.push(`add:${texte.length}`), { ok: true }),
+    add: async (_t, text) => (calls.push(`add:${text.length}`), { ok: true }),
     cancel: () => void calls.push("cancel"),
     onChange: () => () => {},
   } as Partial<DesignService> as DesignService;
@@ -84,12 +84,12 @@ describe("overlayApi", () => {
     const { design, host, calls } = setup({ bulle: ctx("bulle", "demo-15308"), panier: ctx("panier", "demo-15308") });
     let closed = 0;
     const column = overlayApi({ design, host, modes: ["panier"], annuler: () => closed++ }, T);
-    const calque = overlayApi({ design, host, modes: ["bulle", "message"] }, T);
+    const overlay = overlayApi({ design, host, modes: ["bulle", "message"] }, T);
     expect((await column.contexte())?.mode).toBe("panier");
-    expect((await calque.contexte())?.mode).toBe("bulle");
+    expect((await overlay.contexte())?.mode).toBe("bulle");
     column.annuler();
     expect([closed, calls]).toEqual([1, []]);
-    calque.annuler();
+    overlay.annuler();
     expect(calls).toEqual(["cancel"]);
   });
 });

@@ -4,7 +4,7 @@ import os from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { reviewUrl } from "../shared/modele";
-import { APPS_ENV, appRow, appWindowExpr, closeAppsPage, inAppView, launchEssai, rowButton, rowMenuItems, writeProject, type AppsPage } from "./apps";
+import { APPS_ENV, appRow, appWindowExpr, closeAppsPage, inAppView, launchAttempt, rowButton, rowMenuItems, writeProject, type AppsPage } from "./apps";
 import { dispatch, state, waitFor, waitReady } from "./firefox";
 import { launchWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
@@ -44,7 +44,7 @@ async function cutAccess(m: Marionette, dossier: string): Promise<void> {
 }
 /** The access the badge's own api gives, its tab ids. */
 const badgeAccess = (m: Marionette, dossier: string) => inBadge<string[]>(m, dossier, "return Object.keys((await f.contentWindow.webaios.acces.etat()).onglets);");
-const reviewTabs = async (m: Marionette, projet: string) => Object.values((await state(m)).onglets).filter((o) => o.url === reviewUrl(projet));
+const reviewTabs = async (m: Marionette, project: string) => Object.values((await state(m)).onglets).filter((o) => o.url === reviewUrl(project));
 
 describe("one WebAiOs, essai and autre launched in each test", () => {
   let p: AppsPage;
@@ -76,7 +76,7 @@ describe("one WebAiOs, essai and autre launched in each test", () => {
   });
   /** App `dossier` launched with the agent's tool, its view loaded and its badge mounted. */
   async function launched(dossier = "essai"): Promise<void> {
-    if (dossier === "essai") await launchEssai(p.dataDir);
+    if (dossier === "essai") await launchAttempt(p.dataDir);
     else expect((await callTool(p.dataDir, "lancer_application", { dossier })).texte).toMatch(/en marche sur/);
     await waitFor(m, `const b = ${appWindowExpr(dossier)}?.gBrowser.selectedBrowser; return !!b && b.currentURI.spec.startsWith("http://localhost:") && !b.webProgress.isLoadingDocument;`, (v) => v === true, 15_000);
     await expect.poll(() => place(m, dossier), { timeout: 10_000 }).not.toBeNull();
@@ -85,9 +85,9 @@ describe("one WebAiOs, essai and autre launched in each test", () => {
   // relecture.spec.ts:52
   it("at start the first photo of essai exists (refs/webaios/relu under <dataDir>/design/relecture/app-essai.git) and no .git appears in projets/essai", async () => {
     await expect.poll(() => existsSync(reviewedRef(p.dataDir, "app-essai")), { timeout: 15_000 }).toBe(true);
-    const projets = join(p.dataDir, "espace", "projets");
-    expect(readdirSync(join(projets, "essai")).sort()).toEqual(["app.js", "logo.bin", "serveur.mjs", "webaios.json"]);
-    expect(existsSync(join(projets, ".git"))).toBe(false);
+    const projects = join(p.dataDir, "espace", "projets");
+    expect(readdirSync(join(projects, "essai")).sort()).toEqual(["app.js", "logo.bin", "serveur.mjs", "webaios.json"]);
+    expect(existsSync(join(projects, ".git"))).toBe(false);
     // A project without manifest gets no snapshot.
     expect(existsSync(reviewedRef(p.dataDir, "app-vieux"))).toBe(false);
   });
@@ -213,8 +213,8 @@ describe("one WebAiOs, essai and autre launched in each test", () => {
 
   // relecture.spec.ts:65 (its opening part)
   it("Relire of the essai card opens the Review page on app-essai; a project without manifest has no Relire", async () => {
-    const fenetreId = (await state(m)).fenetres[0]!.id;
-    await dispatch(m, { type: "ouvrirApplications", fenetreId });
+    const windowId = (await state(m)).fenetres[0]!.id;
+    await dispatch(m, { type: "ouvrirApplications", fenetreId: windowId });
     await waitUi(m, `return !!doc.querySelector(${JSON.stringify(appRow("vieux"))})`);
     expect(await inUi<string[]>(m, `return [...doc.querySelectorAll(arguments[0])].map((b) => b.textContent.trim());`, [`${appRow("vieux")} button`])).not.toContain("Relire");
     expect(await rowMenuItems(m, "vieux")).not.toContain("Relire");

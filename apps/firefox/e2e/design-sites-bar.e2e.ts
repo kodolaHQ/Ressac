@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { CAPTURE_WARNING_SITE, UNAVAILABLE_DESIGN_SITE } from "../shared/design-guards";
 import { testActor } from "./agent-extensions";
-import { AVEC_ACCUEIL_HOME, avecAccueilDeclaration, calqueOf, CONNEXION_PAGE, inStore, keyIn, openSite, siteExpr, siteKey, siteMouse, toSite, TUNING_PAGE, tuningDeclaration, viewExpr, viewPoint, AUTRE_PAGE } from "./design-sites";
+import { WITH_HOME, withHomeDeclaration, overlayOf, CONNEXION_PAGE, inStore, keyIn, openSite, siteExpr, siteKey, siteMouse, toSite, TUNING_PAGE, tuningDeclaration, viewExpr, viewPoint, OTHER_PAGE } from "./design-sites";
 import { waitFor, waitReady } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
@@ -23,18 +23,18 @@ let server: Awaited<ReturnType<typeof startSitesServer>>;
 let w: LaunchedWebAiOs;
 let m: Marionette;
 const dirs: string[] = [];
-const url = (hote: string, chemin = "/") => server.url(hote, chemin);
+const url = (host: string, path = "/") => server.url(host, path);
 
 beforeAll(async () => {
   server = await startSitesServer({ port: PORT });
   server.definir("tuning-a.localhost", "/", TUNING_PAGE);
-  server.definir("tuning-a.localhost", "/autre", AUTRE_PAGE);
+  server.definir("tuning-a.localhost", "/autre", OTHER_PAGE);
   server.definir("compte-tuning.localhost", "/connexion", CONNEXION_PAGE);
   const dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
   const profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
   dirs.push(dataDir, profile);
   writeSite(dataDir, "tuning", { declaration: tuningDeclaration(url), fichiers: { "retouches/tuning.css": "/* rien */" } });
-  writeSite(dataDir, "avec-accueil", { declaration: avecAccueilDeclaration(url), fichiers: { "accueil/index.html": AVEC_ACCUEIL_HOME } });
+  writeSite(dataDir, "avec-accueil", { declaration: withHomeDeclaration(url), fichiers: { "accueil/index.html": WITH_HOME } });
   writeSite(dataDir, "sans-accord", { declaration: { ...tuningDeclaration(url), nom: "Sans accord" }, fichiers: { "retouches/tuning.css": "/* rien */" } });
   await grantSite(dataDir, "tuning", tuningDeclaration(url));
   const a = testActor(profile);
@@ -55,11 +55,11 @@ afterEach(async () => {
     for (const id of arguments[0]) { await store.design.stop({ type: "site", id }); store.design.closeOverlay({ type: "site", id }, "panier"); } return 1;`, [IDS]);
 });
 
-const etat = (id: string) => inStore<{ actif: boolean; indisponible: string | null; panier: number }>(m, "return await store.design.etat(arguments[0]);", [T(id)]);
+const state = (id: string) => inStore<{ actif: boolean; indisponible: string | null; panier: number }>(m, "return await store.design.etat(arguments[0]);", [T(id)]);
 const bubble = (id: string) => inStore<{ etiquette: string } | null>(m, 'return store.design.overlayContext(arguments[0], ["bulle"]);', [T(id)]);
 const hosts = (id: string) => inSiteView<number>(m, id, `return document.getElementsByTagName("webaios-viseur").length;`).catch(() => -1);
 const view = <T = unknown>(id: string, expr: string) => inSiteView<T>(m, id, `return ${expr};`).catch(() => null);
-const calqueTop = (id: string) => calqueOf<number>(m, id, "return f.getBoundingClientRect().y;");
+const overlayTop = (id: string) => overlayOf<number>(m, id, "return f.getBoundingClientRect().y;");
 const tid = (t: string) => `[data-testid="${t}"]`;
 /** ⇧⌘D in the app window (trusted keys). */
 const designKey = (id: string) => siteKey(m, id, "d", ["Meta", "Shift"]);
@@ -87,7 +87,7 @@ const fullscreen = async (id: string) => {
   await m.execute(`${siteExpr(id)}.focus(); return 1;`);
   await view(id, "(void document.getElementById('films').requestFullscreen(), 1)");
 };
-const bubbleText = (id: string) => calqueOf<string | null>(m, id, `return doc.querySelector('${tid("bulle-design")}')?.textContent ?? null;`);
+const bubbleText = (id: string) => overlayOf<string | null>(m, id, `return doc.querySelector('${tid("bulle-design")}')?.textContent ?? null;`);
 
 /** ⇧⌘D in tuning's window: the mode on, the viewfinder armed. */
 async function modeOn(id = "tuning") {
@@ -99,7 +99,7 @@ async function modeOn(id = "tuning") {
 async function aim(id: string, sel: string, label: string) {
   await siteMouse(m, id, await viewPoint(m, id, sel));
   await expect.poll(() => bubbleText(id), { timeout: 10_000 }).toContain(label);
-  await expect.poll(() => calqueOf(m, id, "return doc.activeElement?.localName ?? null;"), { timeout: 10_000 }).toBe("textarea");
+  await expect.poll(() => overlayOf(m, id, "return doc.activeElement?.localName ?? null;"), { timeout: 10_000 }).toBe("textarea");
 }
 
 /** ⇧⌘D there injects nothing, the avis is in the bar, ✎ greyed with it, ▾ active. */
@@ -110,23 +110,23 @@ async function verifyUnavailable(id: string) {
   await sleep(300);
   const loaded = /^https?:/.test(String(await m.execute(`return ${viewExpr(id)}.currentURI.spec;`)));
   if (loaded) expect(await hosts(id)).toBe(0);
-  expect((await etat(id)).actif).toBe(false);
+  expect((await state(id)).actif).toBe(false);
 }
 
 // design-sites.spec.ts:149
 it("⇧⌘D in tuning: viewfinder in the view, a click on #lien does nothing, bubble under the bar; ⌘Enter, Escape, Panier", async () => {
   const start = await toSite(m, "tuning");
   await expect.poll(() => bar("tuning"), { timeout: 10_000 }).toMatchObject({ title: "Mode design (⌘⇧D)", disabled: false });
-  const n = (await etat("tuning")).panier;
+  const n = (await state("tuning")).panier;
   await modeOn();
   await aim("tuning", "#lien", "a#lien");
   await sleep(500);
   expect(await view("tuning", "location.href")).toBe(start);
   expect(await view("tuning", "window.reactions")).toEqual([]);
-  expect(await calqueOf(m, "tuning", `return doc.querySelector('${tid("avertissement-bulle")}')?.textContent ?? null;`)).toBe(CAPTURE_WARNING_SITE);
-  expect(await calqueTop("tuning")).toBeGreaterThanOrEqual(36);
+  expect(await overlayOf(m, "tuning", `return doc.querySelector('${tid("avertissement-bulle")}')?.textContent ?? null;`)).toBe(CAPTURE_WARNING_SITE);
+  expect(await overlayTop("tuning")).toBeGreaterThanOrEqual(36);
   // ⌘Enter: the remark goes to the cart, the viewfinder is armed again.
-  await calqueOf(m, "tuning", `const t = doc.querySelector("textarea"); t.value = "Lien plus visible"; t.dispatchEvent(new f.contentWindow.Event("input", { bubbles: true })); return 1;`);
+  await overlayOf(m, "tuning", `const t = doc.querySelector("textarea"); t.value = "Lien plus visible"; t.dispatchEvent(new f.contentWindow.Event("input", { bubbles: true })); return 1;`);
   await siteKey(m, "tuning", "Enter", ["Meta"]);
   await expect.poll(async () => (await bar("tuning")).count, { timeout: 10_000 }).toBe(String(n + 1));
   await expect.poll(() => hosts("tuning"), { timeout: 10_000 }).toBe(1);
@@ -138,8 +138,8 @@ it("⇧⌘D in tuning: viewfinder in the view, a click on #lien does nothing, bu
   await clickBar("tuning", "site-menu-design");
   await expect.poll(async () => (await bar("tuning")).entries, { timeout: 10_000 }).toBe(1);
   await clickBar("tuning", "site-menu-design-panier");
-  await expect.poll(() => calqueOf(m, "tuning", `return !!doc.querySelector('${tid("panier-design")}');`), { timeout: 10_000 }).toBe(true);
-  await expect.poll(() => calqueTop("tuning"), { timeout: 10_000 }).toBe(48);
+  await expect.poll(() => overlayOf(m, "tuning", `return !!doc.querySelector('${tid("panier-design")}');`), { timeout: 10_000 }).toBe(true);
+  await expect.poll(() => overlayTop("tuning"), { timeout: 10_000 }).toBe(48);
   expect((await bar("tuning")).entries).toBe(0);
 });
 
@@ -197,7 +197,7 @@ it("small sign-in window opened during the bubble: ⇧⌘D from it toggles nothi
     expect(await bubble("tuning")).not.toBeNull();
     expect(await bubbleText("tuning")).toContain("a#lien");
     // Escape in the bubble: cancelled, the viewfinder armed again.
-    await calqueOf(m, "tuning", `doc.querySelector("textarea").focus(); return 1;`);
+    await overlayOf(m, "tuning", `doc.querySelector("textarea").focus(); return 1;`);
     await siteKey(m, "tuning", "Escape");
     await expect.poll(() => bubble("tuning"), { timeout: 10_000 }).toBeNull();
     await expect.poll(() => hosts("tuning"), { timeout: 10_000 }).toBe(1);
@@ -225,7 +225,7 @@ it("⇧⌘D in the small window opens no Firefox bookmarks dialog", async () => 
       ),
     ).toEqual({ disabled: ["true", "true"], organizer: false, dialog: false });
     expect((await m.command<string[]>("WebDriver:GetWindowHandles")).length).toBe(before);
-    expect((await etat("tuning")).actif).toBe(false);
+    expect((await state("tuning")).actif).toBe(false);
   } finally {
     await closeSmall();
   }
@@ -240,7 +240,7 @@ it("closing tuning's window during the mode: no overlay of the target site:tunin
   await m.execute(`${siteExpr("tuning")}.close(); return 1;`);
   await waitFor(m, `return !${siteExpr("tuning")};`, (v) => v === true);
   await expect.poll(() => inStore(m, "return store.design.overlayContext(arguments[0]);", [T("tuning")]), { timeout: 10_000 }).toBeNull();
-  expect((await etat("tuning")).actif).toBe(false);
+  expect((await state("tuning")).actif).toBe(false);
 });
 
 // Spike S7: the overlay sits under the bar, never over it.
@@ -249,14 +249,14 @@ it("the bar stays clickable over an open bubble and an open cart", async () => {
   await modeOn();
   await aim("tuning", "#films li", "li.affiche");
   const chevron = await barPoint("tuning", "site-menu-design");
-  expect(chevron.y).toBeLessThan((await calqueTop("tuning"))!);
+  expect(chevron.y).toBeLessThan((await overlayTop("tuning"))!);
   await siteMouse(m, "tuning", chevron);
   await expect.poll(async () => (await bar("tuning")).entries, { timeout: 10_000 }).toBe(1);
   await inStore(m, "await store.design.stop(arguments[0]); return 1;", [T("tuning")]);
   await expect.poll(() => hosts("tuning"), { timeout: 10_000 }).toBe(0);
   // The cart open: a real click on the chevron folds the entries; a click in the view off the overlay reaches the page.
   await inStore(m, "await store.design.openCart(arguments[0]); return 1;", [T("tuning")]);
-  await expect.poll(() => calqueTop("tuning"), { timeout: 10_000 }).toBe(48);
+  await expect.poll(() => overlayTop("tuning"), { timeout: 10_000 }).toBe(48);
   if ((await bar("tuning")).entries === 0) await siteMouse(m, "tuning", await barPoint("tuning", "site-menu-design"));
   await expect.poll(async () => (await bar("tuning")).entries, { timeout: 10_000 }).toBe(1);
   await siteMouse(m, "tuning", await barPoint("tuning", "site-menu-design"));
@@ -270,18 +270,18 @@ it("two site apps: each bar toggles its own app, never the other", async () => {
   await toSite(m, "tuning");
   await toSite(m, "avec-accueil");
   await clickBar("tuning", "site-bouton-design");
-  await expect.poll(async () => (await etat("tuning")).actif, { timeout: 10_000 }).toBe(true);
+  await expect.poll(async () => (await state("tuning")).actif, { timeout: 10_000 }).toBe(true);
   await expect.poll(() => hosts("tuning"), { timeout: 10_000 }).toBe(1);
-  expect((await etat("avec-accueil")).actif).toBe(false);
+  expect((await state("avec-accueil")).actif).toBe(false);
   expect(await hosts("avec-accueil")).toBe(0);
   expect((await bar("avec-accueil")).pressed).toBe("false");
   await designKey("avec-accueil");
-  await expect.poll(async () => (await etat("avec-accueil")).actif, { timeout: 10_000 }).toBe(true);
+  await expect.poll(async () => (await state("avec-accueil")).actif, { timeout: 10_000 }).toBe(true);
   await expect.poll(() => hosts("avec-accueil"), { timeout: 10_000 }).toBe(1);
-  expect((await etat("tuning")).actif).toBe(true);
+  expect((await state("tuning")).actif).toBe(true);
   await clickBar("avec-accueil", "site-bouton-design");
-  await expect.poll(async () => (await etat("avec-accueil")).actif, { timeout: 10_000 }).toBe(false);
-  expect((await etat("tuning")).actif).toBe(true);
+  await expect.poll(async () => (await state("avec-accueil")).actif, { timeout: 10_000 }).toBe(false);
+  expect((await state("tuning")).actif).toBe(true);
   expect(await hosts("tuning")).toBe(1);
 });
 
@@ -299,7 +299,7 @@ it("mode on, bubble open, 3 s idle: at most 4 design.suivi calls", async () => {
   await sleep(3000);
   expect(await count()).toBeLessThanOrEqual(4);
   // After an add to the cart too.
-  const n = (await etat("tuning")).panier;
+  const n = (await state("tuning")).panier;
   await inStore(m, wrap);
   expect(await inStore(m, "return await store.design.add(arguments[0], arguments[1]);", [T("tuning"), "cache ça"])).toEqual({ ok: true });
   await sleep(3000);
@@ -330,7 +330,7 @@ it("fullscreen while the host answers the toggle: the mode does not start", asyn
   try {
     await inStore(m, "window.__doRelease(); return 1;");
     await sleep(500);
-    expect((await etat("tuning")).actif).toBe(false);
+    expect((await state("tuning")).actif).toBe(false);
     expect(await hosts("tuning")).toBe(0);
   } finally {
     await view("tuning", "(void document.exitFullscreen(), 1)");

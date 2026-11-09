@@ -24,24 +24,24 @@ const app = (dossier: string, type: App["type"] = "application"): App => ({ doss
 function prepare(o: { port?: number; fenetre?: string | null; sites?: { id: string; nom: string }[]; applis?: App[] } = {}) {
   const dataDir = realpathSync(mkdtempSync(join(tmpdir(), "webaios-design-")));
   cleanup.push(() => rmSync(dataDir, { recursive: true, force: true }));
-  const chemins = spacePaths(join(dataDir, "espace"));
-  mkdirSync(chemins.sites, { recursive: true });
+  const paths = spacePaths(join(dataDir, "espace"));
+  mkdirSync(paths.sites, { recursive: true });
   // Outside <dataDir>: a project under it would be refused.
-  const maison = realpathSync(mkdtempSync(join(tmpdir(), "webaios-maison-")));
-  cleanup.push(() => rmSync(maison, { recursive: true, force: true }));
+  const homeDir = realpathSync(mkdtempSync(join(tmpdir(), "webaios-maison-")));
+  cleanup.push(() => rmSync(homeDir, { recursive: true, force: true }));
   const calls: string[] = [];
-  const preRemplir = vi.fn((f: string, t: string) => void calls.push(`preRemplir ${f} ${t}`));
+  const prefill = vi.fn((f: string, t: string) => void calls.push(`preRemplir ${f} ${t}`));
   const notifier = vi.fn();
   const chrome = {
     fenetreAgent: vi.fn(async () => (o.fenetre === undefined ? "f7" : o.fenetre)),
     donnerAgent: vi.fn((f: string) => void calls.push(`donnerAgent ${f}`)),
   };
   const sites = vi.fn(async () => o.sites ?? []);
-  const applis = vi.fn(async () => o.applis ?? []);
+  const apps = vi.fn(async () => o.applis ?? []);
   const diffuser = vi.fn();
-  const design = createDesignHost({ dataDir, chemins, port: o.port ?? 0, maison, sites, applis, preRemplir, chrome, notifier, diffuser });
+  const design = createDesignHost({ dataDir, chemins: paths, port: o.port ?? 0, maison: homeDir, sites, applis: apps, preRemplir: prefill, chrome, notifier, diffuser });
   cleanup.push(() => design.arreter());
-  return { dataDir, chemins, maison, design, preRemplir, notifier, chrome, sites, applis, diffuser, calls };
+  return { dataDir, chemins: paths, maison: homeDir, design, preRemplir: prefill, notifier, chrome, sites, applis: apps, diffuser, calls };
 }
 
 async function until<T>(f: () => Promise<T> | T, ok: (v: T) => boolean, ms = 10_000): Promise<T> {
@@ -54,22 +54,22 @@ async function until<T>(f: () => Promise<T> | T, ok: (v: T) => boolean, ms = 10_
   }
 }
 
-const liste = (d: DesignHost) => d.handlers["externes.liste"]!(undefined) as Promise<Ext>;
-const ready = (d: DesignHost) => until(() => liste(d), (e) => e.serveur.etat !== "eteint" || e.serveur.raison !== "Le MCP externe démarre");
+const list = (d: DesignHost) => d.handlers["externes.liste"]!(undefined) as Promise<Ext>;
+const ready = (d: DesignHost) => until(() => list(d), (e) => e.serveur.etat !== "eteint" || e.serveur.raison !== "Le MCP externe démarre");
 
 /** Connects a real MCP client with the token of « Brancher » and calls a tool, like a Claude Code would. */
-async function callTool(d: DesignHost, nom: string, args: Record<string, unknown>) {
-  const { serveur } = await ready(d);
-  const { commande } = (await d.handlers["externes.brancher"]!({ nom: "Claude Code" })) as { commande: string };
-  const jeton = /Bearer (\S+)"/.exec(commande)![1]!;
+async function callTool(d: DesignHost, name: string, args: Record<string, unknown>) {
+  const { serveur: server } = await ready(d);
+  const { commande: command } = (await d.handlers["externes.brancher"]!({ nom: "Claude Code" })) as { commande: string };
+  const token = /Bearer (\S+)"/.exec(command)![1]!;
   const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
   const { StreamableHTTPClientTransport } = await import("@modelcontextprotocol/sdk/client/streamableHttp.js");
   const client = new Client({ name: "test", version: "0" });
   await client.connect(
-    new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${serveur.port}/mcp-externe`), { requestInit: { headers: { Authorization: `Bearer ${jeton}` } } }),
+    new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${server.port}/mcp-externe`), { requestInit: { headers: { Authorization: `Bearer ${token}` } } }),
   );
   try {
-    const r = (await client.callTool({ name: nom, arguments: args })) as { content: { text?: string }[]; isError?: boolean };
+    const r = (await client.callTool({ name: name, arguments: args })) as { content: { text?: string }[]; isError?: boolean };
     return { texte: r.content.map((c) => c.text ?? "").join("\n"), erreur: r.isError === true };
   } finally {
     await client.close();
@@ -106,8 +106,8 @@ describe("design host", { timeout: 20_000 }, () => {
     const s = prepare();
     await ready(s.design);
     await s.design.handlers["externes.brancher"]!({ nom: "Claude Code" });
-    const fichier = join(s.dataDir, "design", "clients-externes.json");
-    expect(statSync(fichier).mode & 0o777).toBe(0o600);
+    const file = join(s.dataDir, "design", "clients-externes.json");
+    expect(statSync(file).mode & 0o777).toBe(0o600);
     const walk = (d: string): string[] => readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(d, e.name)) : [e.name]));
     expect(walk(join(s.dataDir, "espace")).filter((n) => n.includes("externes"))).toEqual([]);
   });
@@ -120,7 +120,7 @@ describe("design host", { timeout: 20_000 }, () => {
       const r = await callTool(s.design, "declarer_projet", { dossier, ports: [3000] });
       expect(r.texte).toContain(SPACE_FOLDER);
     }
-    expect((await liste(s.design)).projets).toEqual([]);
+    expect((await list(s.design)).projets).toEqual([]);
   });
 
   // Review Focus 2
@@ -133,20 +133,20 @@ describe("design host", { timeout: 20_000 }, () => {
     symlinkSync(join(s.dataDir, "design"), lien);
     const r = await callTool(s.design, "declarer_projet", { dossier: lien, ports: [3000] });
     expect(r.texte).toContain(SPACE_FOLDER);
-    expect((await liste(s.design)).projets).toEqual([]);
+    expect((await list(s.design)).projets).toEqual([]);
     expect(existsSync(join(s.dataDir, "design", "projets-externes.json"))).toBe(false);
     expect(existsSync(join(s.dataDir, "design", "relecture"))).toBe(false);
   });
 
   it("a first declaration notifies once", async () => {
     const s = prepare();
-    const projet = join(s.maison, "projet");
-    mkdirSync(projet);
-    await callTool(s.design, "declarer_projet", { dossier: projet, ports: [3000], nom: "Projet" });
-    await callTool(s.design, "declarer_projet", { dossier: projet, ports: [3001] });
+    const project = join(s.maison, "projet");
+    mkdirSync(project);
+    await callTool(s.design, "declarer_projet", { dossier: project, ports: [3000], nom: "Projet" });
+    await callTool(s.design, "declarer_projet", { dossier: project, ports: [3001] });
     expect(s.notifier).toHaveBeenCalledTimes(1);
     expect(s.notifier).toHaveBeenCalledWith({ titre: "WebAiOs", texte: "Claude Code a branché le projet Projet" });
-    const e = await liste(s.design);
+    const e = await list(s.design);
     expect(e.projets.map((p) => p.nom)).toEqual(["Projet"]);
     expect(await s.design.handlers["externes.nom"]!({ id: e.projets[0]!.id })).toBe("Projet");
     expect(await s.design.handlers["externes.nom"]!({ id: "0123456789abcdef" })).toBeNull();
@@ -162,14 +162,14 @@ describe("design host", { timeout: 20_000 }, () => {
     expect(s.calls[1]).toBe("donnerAgent f7");
 
     // An external project: its batch is in the MCP queue, the chrome is never asked.
-    const projet = join(s.maison, "projet");
-    mkdirSync(projet);
-    writeFileSync(join(projet, "a.txt"), "un\n");
-    await callTool(s.design, "declarer_projet", { dossier: projet, ports: [3000] });
-    const id = `ext-${(await liste(s.design)).projets[0]!.id}`;
+    const project = join(s.maison, "projet");
+    mkdirSync(project);
+    writeFileSync(join(project, "a.txt"), "un\n");
+    await callTool(s.design, "declarer_projet", { dossier: project, ports: [3000] });
+    const id = `ext-${(await list(s.design)).projets[0]!.id}`;
     const h = s.design.handlers;
     await until(() => h["relecture.ouvrir"]!({ projet: id }) as Promise<{ etat: string }>, (v) => v.etat === "ok");
-    writeFileSync(join(projet, "a.txt"), "deux\n");
+    writeFileSync(join(project, "a.txt"), "deux\n");
     const v = (await h["relecture.ouvrir"]!({ projet: id })) as { jeton: string };
     await h["relecture.commenter"]!({ projet: id, jeton: v.jeton, c: { fichier: "a.txt", debut: 1, fin: 1, texte: "x" } });
     s.chrome.fenetreAgent.mockClear();
@@ -190,11 +190,11 @@ describe("design host", { timeout: 20_000 }, () => {
     const s = prepare({ sites: [{ id: "tuning", nom: "Tuning" }] });
     await siteWithComment(s);
     await s.design.handlers["relecture.envoyer"]!({ projet: "site-tuning" });
-    const [f, texte] = s.preRemplir.mock.calls[0]!;
+    const [f, text] = s.preRemplir.mock.calls[0]!;
     expect(f).toBe("f7");
-    expect(texte).toContain('appli de site "Tuning" (/workspace/sites/tuning/)');
-    expect(texte).toMatch(/\/workspace\/\.webaios\/remarques\/site-tuning\/[^/]+\/lot\.json\] /);
-    expect(texte).not.toMatch(/[\r\n]/);
+    expect(text).toContain('appli de site "Tuning" (/workspace/sites/tuning/)');
+    expect(text).toMatch(/\/workspace\/\.webaios\/remarques\/site-tuning\/[^/]+\/lot\.json\] /);
+    expect(text).not.toMatch(/[\r\n]/);
     expect(s.chrome.donnerAgent).toHaveBeenCalledWith("f7");
   });
 
@@ -209,13 +209,13 @@ describe("design host", { timeout: 20_000 }, () => {
   it("forgetting during the first snapshot: the private review repository does not come back", async () => {
     const s = prepare();
     await ready(s.design);
-    const projet = join(s.maison, "site");
-    mkdirSync(projet);
-    for (let i = 0; i < 50; i++) writeFileSync(join(projet, `f${i}.txt`), `${i}\n`);
+    const project = join(s.maison, "site");
+    mkdirSync(project);
+    for (let i = 0; i < 50; i++) writeFileSync(join(project, `f${i}.txt`), `${i}\n`);
     const id = "0123456789abcdef";
     const dossiers = { remarquesEspace: join(s.chemins.interne, "remarques"), prive: join(s.dataDir, "design") };
     const depot = reviewStore(dossiers, externalProject(id));
-    const photo = new ReviewStore({ depot, dossier: projet }).assurerReference().catch(() => undefined);
+    const photo = new ReviewStore({ depot, dossier: project }).assurerReference().catch(() => undefined);
     await s.design.handlers["externes.oublier"]!({ id });
     await photo;
     expect(existsSync(depot)).toBe(false);
@@ -259,26 +259,26 @@ describe("design host", { timeout: 20_000 }, () => {
     const s = prepare({ sites: [{ id: "tuning", nom: "Tuning" }] });
     await siteWithComment(s);
     await s.design.handlers["relecture.envoyer"]!({ projet: "site-tuning" });
-    const relecture = join(s.dataDir, "design", "relecture");
+    const review = join(s.dataDir, "design", "relecture");
     const lots = join(s.chemins.interne, "remarques", "site-tuning");
-    expect(existsSync(join(relecture, "site-tuning.git"))).toBe(true);
-    expect(existsSync(join(relecture, "site-tuning.commentaires.json"))).toBe(true);
+    expect(existsSync(join(review, "site-tuning.git"))).toBe(true);
+    expect(existsSync(join(review, "site-tuning.commentaires.json"))).toBe(true);
     expect(existsSync(lots)).toBe(true);
     rmSync(join(s.chemins.sites, "tuning"), { recursive: true });
     s.design.siteDeleted("tuning");
-    await until(() => [join(relecture, "site-tuning.git"), join(relecture, "site-tuning.commentaires.json"), lots].some(existsSync), (v) => !v);
+    await until(() => [join(review, "site-tuning.git"), join(review, "site-tuning.commentaires.json"), lots].some(existsSync), (v) => !v);
   });
 
   it("bad inputs are refused with their messages before the service", async () => {
     const s = prepare();
     const spy = vi.spyOn(ReviewService.prototype, "fichier");
     const h = s.design.handlers;
-    const jeton = `${"a".repeat(40)}:${"b".repeat(40)}`;
-    expect(() => h["relecture.fichier"]!({ projet: "site-tuning", jeton, chemin: "../x\0" })).toThrow("chemin invalide");
+    const token = `${"a".repeat(40)}:${"b".repeat(40)}`;
+    expect(() => h["relecture.fichier"]!({ projet: "site-tuning", jeton: token, chemin: "../x\0" })).toThrow("chemin invalide");
     expect(() => h["relecture.fichier"]!({ projet: "site-tuning", jeton: "a".repeat(39), chemin: "a.txt" })).toThrow("jeton invalide");
-    expect(() => h["relecture.fichier"]!({ projet: "../x", jeton, chemin: "a.txt" })).toThrow("projet invalide");
-    expect(() => h["relecture.lignes"]!({ projet: "site-tuning", jeton, chemin: "a.txt", debut: 3, fin: 2 })).toThrow("lignes invalides");
-    expect(() => h["relecture.commenter"]!({ projet: "site-tuning", jeton, c: null })).toThrow("lignes invalides");
+    expect(() => h["relecture.fichier"]!({ projet: "../x", jeton: token, chemin: "a.txt" })).toThrow("projet invalide");
+    expect(() => h["relecture.lignes"]!({ projet: "site-tuning", jeton: token, chemin: "a.txt", debut: 3, fin: 2 })).toThrow("lignes invalides");
+    expect(() => h["relecture.commenter"]!({ projet: "site-tuning", jeton: token, c: null })).toThrow("lignes invalides");
     expect(() => h["relecture.resoudre"]!({ projet: "site-tuning", id: "c-00000001", resolu: "oui" })).toThrow("résolu invalide");
     expect(() => h["relecture.supprimerCommentaire"]!({ projet: "site-tuning", id: "x" })).toThrow("commentaire invalide");
     expect(() => h["relecture.modifierCommentaire"]!({ projet: "site-tuning", id: "c-00000001", texte: "x".repeat(4001) })).toThrow("texte invalide");
@@ -292,7 +292,7 @@ describe("design host", { timeout: 20_000 }, () => {
 });
 
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
-const contexte = (o: Record<string, unknown> = {}) => ({
+const context = (o: Record<string, unknown> = {}) => ({
   selecteur: "#b", etiquette: "button#b", html: "<button id=b>Ok</button>", adresse: "http://127.0.0.1:15283/",
   voisinage: { parent: "main", freres: ["p"] }, styles: { color: "red" }, source: { fichier: "src/A.svelte", ligne: 3 },
   vue: { largeur: 800, hauteur: 600 }, ...o,
@@ -303,54 +303,54 @@ describe("design host, the carts", { timeout: 20_000 }, () => {
   async function withProjects(o: Parameters<typeof prepare>[0] = {}) {
     vi.stubEnv("WEBAIOS_PORTS_APPS", "15280-15284");
     const s = prepare({ applis: [{ ...app("essai"), nom: "Essai", etat: "en-marche", port: 15281 }, app("dort")], sites: [{ id: "x", nom: "Site X" }], ...o });
-    const projet = join(s.maison, "projet");
-    mkdirSync(projet);
-    await callTool(s.design, "declarer_projet", { dossier: projet, ports: [3000], nom: "Projet" });
-    const ext = `ext-${(await liste(s.design)).projets[0]!.id}`;
+    const project = join(s.maison, "projet");
+    mkdirSync(project);
+    await callTool(s.design, "declarer_projet", { dossier: project, ports: [3000], nom: "Projet" });
+    const ext = `ext-${(await list(s.design)).projets[0]!.id}`;
     return { ...s, ext, h: s.design.handlers };
   }
-  const suivi = (h: DesignHost["handlers"], p: unknown) => h["design.suivi"]!(p) as Promise<DesignTracking | null>;
+  const tracking = (h: DesignHost["handlers"], p: unknown) => h["design.suivi"]!(p) as Promise<DesignTracking | null>;
 
   it("design.suivi of a demo, an app running on its port, an external project's port, and nothing elsewhere", async () => {
     const { h, ext } = await withProjects();
-    expect(await suivi(h, { url: "http://127.0.0.1:15283/" })).toEqual({
+    expect(await tracking(h, { url: "http://127.0.0.1:15283/" })).toEqual({
       projet: { type: "demo", projet: "demo-15283", port: 15283 }, panier: 0, destination: "l'agent", sansDestination: null, nom: "localhost:15283",
     });
-    expect(await suivi(h, { url: "http://localhost:15281/a" })).toMatchObject({ projet: { type: "app", projet: "app-essai" }, nom: "Essai" });
-    expect(await suivi(h, { url: "http://localhost:3000/" })).toEqual({
+    expect(await tracking(h, { url: "http://localhost:15281/a" })).toMatchObject({ projet: { type: "app", projet: "app-essai" }, nom: "Essai" });
+    expect(await tracking(h, { url: "http://localhost:3000/" })).toEqual({
       projet: { type: "externe", projet: ext, dossier: expect.any(String), nom: "Projet", client: expect.any(String) },
       panier: 0, destination: "Claude Code (Claude Code)", sansDestination: null, nom: "Projet",
     });
-    expect(await suivi(h, { url: "https://exemple.test/" })).toBeNull();
-    expect(await suivi(h, { url: "http://localhost:4999/" })).toBeNull();
-    await expect(Promise.resolve().then(() => suivi(h, { url: `http://localhost:15283/${"a".repeat(8192)}` }))).rejects.toThrow(INVALID_REQUEST);
-    await expect(Promise.resolve().then(() => suivi(h, {}))).rejects.toThrow(INVALID_REQUEST);
+    expect(await tracking(h, { url: "https://exemple.test/" })).toBeNull();
+    expect(await tracking(h, { url: "http://localhost:4999/" })).toBeNull();
+    await expect(Promise.resolve().then(() => tracking(h, { url: `http://localhost:15283/${"a".repeat(8192)}` }))).rejects.toThrow(INVALID_REQUEST);
+    await expect(Promise.resolve().then(() => tracking(h, {}))).rejects.toThrow(INVALID_REQUEST);
   });
 
   it("design.suivi of app-essai, site-x, demo-15283, an unknown ext- id", async () => {
     const { h } = await withProjects();
-    expect(await suivi(h, { projet: "app-essai" })).toMatchObject({ projet: { type: "app", projet: "app-essai", dossier: "essai", nom: "Essai" }, nom: "Essai" });
+    expect(await tracking(h, { projet: "app-essai" })).toMatchObject({ projet: { type: "app", projet: "app-essai", dossier: "essai", nom: "Essai" }, nom: "Essai" });
     // Not running: only running apps are listed, so the name falls back to the folder.
-    expect(await suivi(h, { projet: "app-dort" })).toMatchObject({ nom: "dort" });
-    expect(await suivi(h, { projet: "site-x" })).toMatchObject({ projet: { type: "site", projet: "site-x", id: "x", nom: "Site X" }, destination: "l'agent" });
-    expect(await suivi(h, { projet: "site-y" })).toBeNull();
-    expect(await suivi(h, { projet: "demo-15283" })).toMatchObject({ projet: { type: "demo", port: 15283 }, nom: "localhost:15283" });
-    expect(await suivi(h, { projet: "ext-0123456789abcdef" })).toBeNull();
-    await expect(Promise.resolve().then(() => suivi(h, { projet: "../x" }))).rejects.toThrow("projet invalide");
+    expect(await tracking(h, { projet: "app-dort" })).toMatchObject({ nom: "dort" });
+    expect(await tracking(h, { projet: "site-x" })).toMatchObject({ projet: { type: "site", projet: "site-x", id: "x", nom: "Site X" }, destination: "l'agent" });
+    expect(await tracking(h, { projet: "site-y" })).toBeNull();
+    expect(await tracking(h, { projet: "demo-15283" })).toMatchObject({ projet: { type: "demo", port: 15283 }, nom: "localhost:15283" });
+    expect(await tracking(h, { projet: "ext-0123456789abcdef" })).toBeNull();
+    await expect(Promise.resolve().then(() => tracking(h, { projet: "../x" }))).rejects.toThrow("projet invalide");
   });
 
   it("ajouter puts the remark and its PNG in the cart; a blank text gives REMARQUE_VIDE; 4001 characters, a non-PNG capture or a bad context give INVALID_REQUEST, nothing written", async () => {
-    const { h, chemins } = await withProjects();
-    const dossier = join(chemins.interne, "remarques", "demo-15283");
-    const add = (o: Record<string, unknown>) => h["design.ajouter"]!({ projet: "demo-15283", texte: "Plus grand", contexte: contexte(), capture: PNG.toString("base64"), ...o });
+    const { h, chemins: paths } = await withProjects();
+    const dossier = join(paths.interne, "remarques", "demo-15283");
+    const add = (o: Record<string, unknown>) => h["design.ajouter"]!({ projet: "demo-15283", texte: "Plus grand", contexte: context(), capture: PNG.toString("base64"), ...o });
     const refused = [
       { texte: "a".repeat(4001) },
       { texte: 3 },
       { capture: Buffer.from("GIF89a").toString("base64") },
       { capture: 7 },
-      { contexte: contexte({ html: "a".repeat(5000) }) },
-      { contexte: contexte({ vue: { largeur: Number.NaN, hauteur: 1 } }) },
-      { contexte: contexte({ styles: { color: 1 } }) },
+      { contexte: context({ html: "a".repeat(5000) }) },
+      { contexte: context({ vue: { largeur: Number.NaN, hauteur: 1 } }) },
+      { contexte: context({ styles: { color: 1 } }) },
       { contexte: null },
       { projet: "../x" },
       { projet: "ext-0123456789abcdef" },
@@ -359,22 +359,22 @@ describe("design host, the carts", { timeout: 20_000 }, () => {
     expect(await add({ texte: "  \n" })).toEqual({ ok: false, erreur: EMPTY_REMARK });
     expect(existsSync(dossier)).toBe(false);
 
-    expect(await add({ texte: "a".repeat(4000), contexte: contexte({ extra: "x", source: null }) })).toEqual({ ok: true });
-    expect(await add({ capture: null, contexte: contexte({ source: { fichier: "src/A.svelte", ligne: 3, colonne: 0 } }) })).toEqual({ ok: true });
-    const panier = (await h["design.panier"]!({ projet: "demo-15283" })) as { id: string; texte: string; source: string | null }[];
-    expect(panier.map((e) => [e.texte.length, e.source])).toEqual([[4000, null], [10, "src/A.svelte:3"]]);
-    expect(readFileSync(join(dossier, `${panier[0]!.id}.png`))).toEqual(PNG);
-    expect(existsSync(join(dossier, `${panier[1]!.id}.png`))).toBe(false);
+    expect(await add({ texte: "a".repeat(4000), contexte: context({ extra: "x", source: null }) })).toEqual({ ok: true });
+    expect(await add({ capture: null, contexte: context({ source: { fichier: "src/A.svelte", ligne: 3, colonne: 0 } }) })).toEqual({ ok: true });
+    const basket = (await h["design.panier"]!({ projet: "demo-15283" })) as { id: string; texte: string; source: string | null }[];
+    expect(basket.map((e) => [e.texte.length, e.source])).toEqual([[4000, null], [10, "src/A.svelte:3"]]);
+    expect(readFileSync(join(dossier, `${basket[0]!.id}.png`))).toEqual(PNG);
+    expect(existsSync(join(dossier, `${basket[1]!.id}.png`))).toBe(false);
     // Only known keys are written.
     expect(readFileSync(join(dossier, "panier.json"), "utf8")).not.toContain("extra");
-    expect(await suivi(h, { projet: "demo-15283" })).toMatchObject({ panier: 2 });
+    expect(await tracking(h, { projet: "demo-15283" })).toMatchObject({ panier: 2 });
   });
 
   it("envoyer of a demo writes the lot under the space and asks the agent's window; of an external project without client gives SANS_CLIENT", async () => {
-    const { h, chemins, chrome, calls, ext, design, dataDir } = await withProjects();
-    await h["design.ajouter"]!({ projet: "demo-15283", texte: "Plus grand", contexte: contexte(), capture: null });
+    const { h, chemins: paths, chrome, calls, ext, design, dataDir } = await withProjects();
+    await h["design.ajouter"]!({ projet: "demo-15283", texte: "Plus grand", contexte: context(), capture: null });
     expect(await h["design.envoyer"]!({ projet: "demo-15283" })).toEqual({ ok: true });
-    const dossier = join(chemins.interne, "remarques", "demo-15283");
+    const dossier = join(paths.interne, "remarques", "demo-15283");
     expect(readdirSync(dossier).filter((n) => existsSync(join(dossier, n, "lot.json")))).toHaveLength(1);
     expect(chrome.fenetreAgent).toHaveBeenCalled();
     expect(calls).toEqual([expect.stringMatching(/^preRemplir f7 /), "donnerAgent f7"]);
@@ -382,24 +382,24 @@ describe("design host, the carts", { timeout: 20_000 }, () => {
     expect(await h["design.lots"]!({ projet: "demo-15283" })).toMatchObject([{ etat: "en-attente", destination: "agent", elements: [{ texte: "Plus grand" }] }]);
 
     // The client revoked: no destination.
-    const client = ((await liste(design)).projets[0] as unknown as { client: string }).client;
+    const client = ((await list(design)).projets[0] as unknown as { client: string }).client;
     await h["externes.revoquer"]!({ id: client });
-    await h["design.ajouter"]!({ projet: ext, texte: "x", contexte: contexte(), capture: null });
+    await h["design.ajouter"]!({ projet: ext, texte: "x", contexte: context(), capture: null });
     chrome.fenetreAgent.mockClear();
     expect(await h["design.envoyer"]!({ projet: ext })).toEqual({ ok: false, erreur: SANS_CLIENT });
     expect(await h["design.envoyer"]!({ projet: "ext-0123456789abcdef" })).toEqual({ ok: false, erreur: SANS_CLIENT });
     expect(await h["design.envoyer"]!({ projet: "../x" })).toEqual({ ok: false, erreur: INVALID_REQUEST });
     expect(chrome.fenetreAgent).not.toHaveBeenCalled();
     // An external project's cart stays under <dataDir>/design, never in the space.
-    expect(existsSync(join(chemins.interne, "remarques", ext))).toBe(false);
+    expect(existsSync(join(paths.interne, "remarques", ext))).toBe(false);
     const walk = (d: string): string[] => readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(d, e.name)) : [join(d, e.name)]));
     expect(walk(join(dataDir, "design")).some((f) => f.includes(ext) && f.endsWith("panier.json"))).toBe(true);
   });
 
   it("traite marks the lot; an id of 65 characters does nothing", async () => {
     const { h } = await withProjects();
-    await h["design.ajouter"]!({ projet: "demo-15283", texte: "a", contexte: contexte(), capture: null });
-    await h["design.ajouter"]!({ projet: "demo-15283", texte: "b", contexte: contexte(), capture: null });
+    await h["design.ajouter"]!({ projet: "demo-15283", texte: "a", contexte: context(), capture: null });
+    await h["design.ajouter"]!({ projet: "demo-15283", texte: "b", contexte: context(), capture: null });
     const [a] = (await h["design.panier"]!({ projet: "demo-15283" })) as { id: string }[];
     expect(await h["design.retirer"]!({ projet: "demo-15283", id: "x".repeat(65) })).toBeUndefined();
     expect(await h["design.retirer"]!({ projet: "demo-15283", id: 3 })).toBeUndefined();
@@ -412,11 +412,11 @@ describe("design host, the carts", { timeout: 20_000 }, () => {
     await h["design.traite"]!({ projet: "demo-15283", lot: lot!.id });
     expect(await h["design.lots"]!({ projet: "demo-15283" })).toMatchObject([{ etat: "traite" }]);
     // A bad project answers as ipc.ts: an empty list, or nothing.
-    for (const projet of ["../x", 3, undefined]) {
-      expect(await h["design.panier"]!({ projet })).toEqual([]);
-      expect(await h["design.lots"]!({ projet })).toEqual([]);
-      expect(await h["design.retirer"]!({ projet, id: "e-00000000" })).toBeUndefined();
-      expect(await h["design.traite"]!({ projet, lot: lot!.id })).toBeUndefined();
+    for (const project of ["../x", 3, undefined]) {
+      expect(await h["design.panier"]!({ projet: project })).toEqual([]);
+      expect(await h["design.lots"]!({ projet: project })).toEqual([]);
+      expect(await h["design.retirer"]!({ projet: project, id: "e-00000000" })).toBeUndefined();
+      expect(await h["design.traite"]!({ projet: project, lot: lot!.id })).toBeUndefined();
     }
     expect(await h["design.panier"]!(null)).toEqual([]);
   });

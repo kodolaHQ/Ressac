@@ -77,25 +77,25 @@ async function writeTree(dir: string, files: Record<string, string | Buffer>): P
 async function firefoxCopy(o: { id: string; n: number; extra?: Record<string, unknown>; guards?: boolean; files?: Record<string, string> }): Promise<{ xpi: string; manifest: Record<string, any> }> {
   const dir = await mkdtemp(path.join(os.tmpdir(), "webaios-spike-copy-"));
   await writeTree(path.join(dir, "source"), { ...SOURCE, ...o.files });
-  const cible = path.join(dir, "copy");
-  const { analyse } = await prepareCopy({ source: path.join(dir, "source"), cible, dossierGardes: DEFAULT_GUARDS });
+  const target = path.join(dir, "copy");
+  const { analyse } = await prepareCopy({ source: path.join(dir, "source"), cible: target, dossierGardes: DEFAULT_GUARDS });
   if (analyse.refus.length) throw new Error(`copy refused: ${analyse.refus.join("; ")}`);
-  const manifest = JSON.parse(await readFile(path.join(cible, "manifest.json"), "utf8"));
+  const manifest = JSON.parse(await readFile(path.join(target, "manifest.json"), "utf8"));
   const gecko = { id: o.id, ...((o.extra?.gecko as object) ?? {}) };
   manifest.browser_specific_settings = { gecko };
   manifest.version = `1.0.0.${o.n}`;
   manifest.background = { scripts: ["webaios-garde-fond.js", "background.js"] };
   for (const [k, v] of Object.entries(o.extra ?? {})) if (k !== "gecko") manifest[k] = v;
-  await rm(path.join(cible, "webaios-fond.js"));
+  await rm(path.join(target, "webaios-fond.js"));
   if (o.guards === false) {
     // Control variant: the same extension without any WebAiOs file, to tell a guard rejection from anything else.
-    for (const f of ["webaios-garde-fond.js", "webaios-garde-page.js", "webaios-correctifs-page.js", "webaios-portee.js", "webaios-fichiers"]) await rm(path.join(cible, f), { recursive: true, force: true });
+    for (const f of ["webaios-garde-fond.js", "webaios-garde-page.js", "webaios-correctifs-page.js", "webaios-portee.js", "webaios-fichiers"]) await rm(path.join(target, f), { recursive: true, force: true });
     manifest.background = { scripts: ["background.js"] };
     manifest.content_scripts = [{ matches: ["http://127.0.0.1/*"], js: ["content.js"] }];
   }
-  await writeFile(path.join(cible, "manifest.json"), JSON.stringify(manifest, null, 2));
+  await writeFile(path.join(target, "manifest.json"), JSON.stringify(manifest, null, 2));
   const xpi = path.join(dir, `copy-${o.n}.xpi`);
-  await run("zip", ["-qr", xpi, "."], { cwd: cible });
+  await run("zip", ["-qr", xpi, "."], { cwd: target });
   return { xpi, manifest };
 }
 

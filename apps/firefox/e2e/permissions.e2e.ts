@@ -319,7 +319,7 @@ describe("site permissions", () => {
     const base = await origin();
     await dispatch(m, { type: "creerEspace", nom: "Privé", icone: "🔒", prive: true, profil: "nouveau", fenetreId: (await state(m)).fenetres[0]!.id });
     const s = await state(m);
-    const profil = s.espaces.find((e) => e.nom === "Privé")!.profil;
+    const profile = s.espaces.find((e) => e.nom === "Privé")!.profil;
     const id = await open(base, "notif");
     expect(await waitBanner((t) => t !== null)).toMatch(/^127\.0\.0\.1:\d+ veut vous envoyer des notifications$/);
     await answer("Autoriser");
@@ -327,7 +327,7 @@ describe("site permissions", () => {
     await reload(id);
     expect(await result(id)).toEqual({ ok: "granted" });
     expect(await banner()).toBeNull();
-    const kept = await readFile(path.join(dirs.dataDir, `permissions-${profil}.json`), "utf8").then(JSON.parse);
+    const kept = await readFile(path.join(dirs.dataDir, `permissions-${profile}.json`), "utf8").then(JSON.parse);
     expect(kept).toEqual({ [`${base} notifications`]: "autoriser" });
     expect(await saved()).not.toHaveProperty(`${base} notifications`);
   });
@@ -476,8 +476,8 @@ describe("site permissions", () => {
 
   it("a deleted profile: its permissions.json and its decisions in Firefox disappear", { timeout: 60_000 }, async () => {
     const base = await origin();
-    const fenetreId = (await state(m)).fenetres[0]!.id;
-    await dispatch(m, { type: "creerEspace", nom: "Jetable", icone: "🗑", prive: false, profil: "nouveau", fenetreId });
+    const windowId = (await state(m)).fenetres[0]!.id;
+    await dispatch(m, { type: "creerEspace", nom: "Jetable", icone: "🗑", prive: false, profil: "nouveau", fenetreId: windowId });
     const space = (await state(m)).espaces.find((e) => e.nom === "Jetable")!;
     const file = path.join(dirs.dataDir, `permissions-${space.profil}.json`);
     const id = await open(base, "notif");

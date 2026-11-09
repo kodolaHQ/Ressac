@@ -2,30 +2,30 @@ import { describe, it, expect } from "vitest";
 import { spawn } from "node:child_process";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { dossierTemporaire } from "../aide/temporaire.js";
+import { tempFolder } from "../aide/temporaire.js";
 import { implicitWorkflow } from "../../src/workflows/valider.js";
 import { pathToFileURL } from "node:url";
-import { MOTEUR, bloc, chaine, lancer as lancerWorkflow, sortie, workflowEnvoye } from "../aide/moteur.js";
+import { ENGINE, bloc, chain, lancer as lancerWorkflow, sortie, sentWorkflow } from "../aide/moteur.js";
 
-const { BLOCS_LIVRES, LIMITE_GLOBALE_MS, echeanceDe, executerWorkflow } = await import(pathToFileURL(join(MOTEUR, "interpreteur.mjs")).href);
+const { BLOCS_LIVRES, LIMITE_GLOBALE_MS: GLOBAL_LIMIT_MS, echeanceDe: deadlineOf, executerWorkflow } = await import(pathToFileURL(join(ENGINE, "interpreteur.mjs")).href);
 
 const SCRIPT = join(import.meta.dirname, "..", "..", "docker", "moteur", "recolteur.mjs");
 
-type Appel = { t: "appel"; n: number; f: string; a: any };
-type Repondeur = (appel: Appel) => Promise<{ ok: unknown } | { erreur: string }> | { ok: unknown } | { erreur: string };
+type Call = { t: "appel"; n: number; f: string; a: any };
+type Responder = (call: Call) => Promise<{ ok: unknown } | { erreur: string }> | { ok: unknown } | { erreur: string };
 
 /** A widget that has only `recolte.mjs` (like the user's Gmail), launched the way the kernel does it. */
-async function lancer(code: string, repondre: Repondeur = () => ({ ok: null }), config: unknown = {}) {
-  const dossier = await dossierTemporaire();
+async function lancer(code: string, reply: Responder = () => ({ ok: null }), config: unknown = {}) {
+  const dossier = await tempFolder();
   await writeFile(join(dossier, "recolte.mjs"), code);
-  const enfant = spawn("node", [SCRIPT, dossier], { stdio: ["pipe", "pipe", "pipe"] });
+  const child = spawn("node", [SCRIPT, dossier], { stdio: ["pipe", "pipe", "pipe"] });
   let stderr = "";
-  enfant.stderr.on("data", (d) => (stderr += d));
+  child.stderr.on("data", (d) => (stderr += d));
   const lignes: any[] = [];
-  const appels: Appel[] = [];
+  const calls: Call[] = [];
   let tampon = "";
-  const fini = new Promise<void>((ok) => enfant.on("close", () => ok()));
-  enfant.stdout.on("data", (d) => {
+  const finished = new Promise<void>((ok) => child.on("close", () => ok()));
+  child.stdout.on("data", (d) => {
     tampon += d;
     let i;
     while ((i = tampon.indexOf("\n")) >= 0) {
@@ -34,17 +34,17 @@ async function lancer(code: string, repondre: Repondeur = () => ({ ok: null }), 
       const m = JSON.parse(ligne);
       lignes.push(m);
       if (m.t === "appel") {
-        appels.push(m);
-        void Promise.resolve(repondre(m)).then((r) => enfant.stdin.write(JSON.stringify({ t: "reponse", n: m.n, ...r }) + "\n"));
+        calls.push(m);
+        void Promise.resolve(reply(m)).then((r) => child.stdin.write(JSON.stringify({ t: "reponse", n: m.n, ...r }) + "\n"));
       }
     }
   });
-  enfant.stdin.write(
-    JSON.stringify({ t: "debut", precedent: { v: 1 }, maintenant: "2026-10-28T10:00:00.000Z", config, workflow: workflowEnvoye(implicitWorkflow()) }) + "\n",
+  child.stdin.write(
+    JSON.stringify({ t: "debut", precedent: { v: 1 }, maintenant: "2026-10-28T10:00:00.000Z", config, workflow: sentWorkflow(implicitWorkflow()) }) + "\n",
   );
-  enfant.stdin.write(JSON.stringify({ t: "memoire", memoire: {} }) + "\n");
-  await fini;
-  return { lignes, appels, stderr, terminal: lignes.find((l) => l.t === "fin" || l.t === "echec") };
+  child.stdin.write(JSON.stringify({ t: "memoire", memoire: {} }) + "\n");
+  await finished;
+  return { lignes, appels: calls, stderr, terminal: lignes.find((l) => l.t === "fin" || l.t === "echec") };
 }
 
 describe("recolteur (implicit workflow of a lone recolte.mjs)", () => {
@@ -171,28 +171,28 @@ describe("recolteur (implicit workflow of a lone recolte.mjs)", () => {
 describe("recolteur: duration limit (limiteMs)", () => {
   it("limiteMs 1000: no more element launched after 1 s", async () => {
     // Fake clock: the deadline of the debut line received at 0, each element lasts 300 ms, two at a time.
-    let maintenant = 0;
+    let now = 0;
     const lances: number[] = [];
     const traces: any[] = [];
     await executerWorkflow({
-      workflow: workflowEnvoye(
+      workflow: sentWorkflow(
         {
           version: 1,
           blocs: [bloc("liste", "code", { source: "liste.mjs" }), bloc("cherche", "web.chercher", { requete: "{modele}", parElement: true }), sortie],
-          liens: chaine("liste", "cherche", "sortie"),
+          liens: chain("liste", "cherche", "sortie"),
         },
         { web: true, dureeMaxMinutes: 1, proprietaire: "widget" as const, saisie: false },
       ),
       memoire: {},
       maintenant: "2026-10-29T10:00:00.000Z",
       dossier: "/nulle-part",
-      horloge: () => maintenant,
-      echeance: echeanceDe({ t: "debut", limiteMs: 1000 }, 0),
+      horloge: () => now,
+      echeance: deadlineOf({ t: "debut", limiteMs: 1000 }, 0),
       tracer: (m: unknown) => traces.push(m),
       appeler: async () => {
-        lances.push(maintenant);
+        lances.push(now);
         await Promise.resolve();
-        maintenant += 300;
+        now += 300;
         return [];
       },
       blocs: { ...BLOCS_LIVRES, code: { parElement: "non", executer: async () => ({ sortie: Array.from({ length: 20 }, (_, i) => ({ modele: `m${i}` })) }) } },
@@ -208,7 +208,7 @@ describe("recolteur: duration limit (limiteMs)", () => {
       workflow: {
         version: 1,
         blocs: [bloc("liste", "code", { source: "liste.mjs" }), bloc("cherche", "web.chercher", { requete: "{modele}", parElement: true }), sortie],
-        liens: chaine("liste", "cherche", "sortie"),
+        liens: chain("liste", "cherche", "sortie"),
       },
       contexte: { web: true, dureeMaxMinutes: 1, proprietaire: "widget" as const, saisie: false },
       fichiers: { "liste.mjs": `export default async () => { await new Promise((ok) => setTimeout(ok, 80)); return [{ modele: "a" }, { modele: "b" }]; };` },
@@ -220,8 +220,8 @@ describe("recolteur: duration limit (limiteMs)", () => {
   });
 
   it("without limiteMs: 150 s as before", () => {
-    expect(LIMITE_GLOBALE_MS).toBe(150_000);
-    expect(echeanceDe({ t: "debut" }, 1_000)).toBe(151_000);
-    expect(echeanceDe({ t: "debut", limiteMs: 1_000 }, 1_000)).toBe(2_000);
+    expect(GLOBAL_LIMIT_MS).toBe(150_000);
+    expect(deadlineOf({ t: "debut" }, 1_000)).toBe(151_000);
+    expect(deadlineOf({ t: "debut", limiteMs: 1_000 }, 1_000)).toBe(2_000);
   });
 });

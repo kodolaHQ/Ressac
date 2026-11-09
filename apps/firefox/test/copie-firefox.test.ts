@@ -10,10 +10,10 @@ afterEach(() => dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force
 
 describe("Firefox copy", () => {
   it("manifest: gecko id, background scripts, counted version", () => {
-    const classique = firefoxManifest({ version: "1.2", background: { service_worker: "webaios-fond.js" } }, "ma-ext", 7, "./fond.js");
-    expect(classique.background).toEqual({ scripts: ["webaios-garde-fond.js", "fond.js"] });
-    expect(classique.version).toBe("1.2.0.7");
-    expect(classique.browser_specific_settings).toEqual({ gecko: { id: "ma-ext@agent.webaios", data_collection_permissions: { required: ["none"] } } });
+    const classic = firefoxManifest({ version: "1.2", background: { service_worker: "webaios-fond.js" } }, "ma-ext", 7, "./fond.js");
+    expect(classic.background).toEqual({ scripts: ["webaios-garde-fond.js", "fond.js"] });
+    expect(classic.version).toBe("1.2.0.7");
+    expect(classic.browser_specific_settings).toEqual({ gecko: { id: "ma-ext@agent.webaios", data_collection_permissions: { required: ["none"] } } });
     expect(firefoxManifest({ version: "1.2", background: { service_worker: "webaios-fond.js", type: "module" } }, "ma-ext", 1, undefined).background).toEqual({ scripts: ["webaios-fond.js"], type: "module" });
     expect(firefoxManifest({ version: "1", background: { service_worker: "webaios-fond.js" } }, "ma-ext", 1, undefined).background).toEqual({ scripts: ["webaios-garde-fond.js"] });
     // Pages sandboxed without allow-popups: document.open(url, "_blank") and <a target=_blank> open nothing.
@@ -32,8 +32,8 @@ describe("Firefox copy", () => {
 
   it("refusals: a right agent extensions cannot use, or a manifest key that grants a power", () => {
     const droit = (n: string) => `Droit non pris en charge par WebAiOs : ${n}`;
-    const permis = ["scripting", "storage", "unlimitedStorage", "tabs", "contextMenus", "cookies", "webNavigation", "alarms", "offscreen", "clipboardRead", "clipboardWrite", "declarativeNetRequest", "declarativeNetRequestWithHostAccess", "declarativeNetRequestFeedback"];
-    expect(firefoxDenial({ version: "1", permissions: permis }, [])).toEqual([]);
+    const allowed = ["scripting", "storage", "unlimitedStorage", "tabs", "contextMenus", "cookies", "webNavigation", "alarms", "offscreen", "clipboardRead", "clipboardWrite", "declarativeNetRequest", "declarativeNetRequestWithHostAccess", "declarativeNetRequestFeedback"];
+    expect(firefoxDenial({ version: "1", permissions: allowed }, [])).toEqual([]);
     expect(firefoxDenial({ version: "1", permissions: ["storage", "identity", "notifications", "dns", "find", "activeTab", "https://x.test/*"] }, [])).toEqual(
       ["identity", "notifications", "dns", "find", "activeTab", "https://x.test/*"].map(droit),
     );

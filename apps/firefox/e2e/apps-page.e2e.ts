@@ -25,7 +25,7 @@ const rowText = (dossier: string) => inUi<string>(p!.m, "return doc.querySelecto
 const filterText = (id: string) => inUi<string | null>(p!.m, "return doc.querySelector(arguments[0])?.textContent.replace(/\\s+/g, ' ').trim() ?? null", [`[data-testid="filtre-${id}"]`]);
 const rows = (n: number, ms = 10_000) => waitUi(p!.m, `return doc.querySelectorAll('[data-testid^="appli-"]').length === arguments[0];`, [n], ms);
 const pageTabs = async () => Object.values((await state(p!.m)).onglets).filter((o) => o.url === "webaios://applications").length;
-const fenetreId = async () => (await state(p!.m)).fenetres[0]!.id;
+const windowId = async () => (await state(p!.m)).fenetres[0]!.id;
 const appWindows = () => p!.m.execute<number>(`return [...Services.wm.getEnumerator("navigator:browser")].filter((w) => w.document.documentElement.hasAttribute("webaios-app")).length;`);
 /** A mouse move through the widget, as an OS one (compact.e2e.ts). */
 const moveMouse = (x: number) =>
@@ -47,7 +47,7 @@ describe("Applications page", () => {
     await pressKeys(m, "Meta+Shift+a");
     await sleep(300);
     expect(await pageTabs()).toBe(1);
-    await dispatch(m, { type: "ouvrirOnglet", fenetreId: await fenetreId(), url: "about:blank", activer: true });
+    await dispatch(m, { type: "ouvrirOnglet", fenetreId: await windowId(), url: "about:blank", activer: true });
     await pageShown(false);
     await click(m, '[data-testid="bouton-applications"]');
     await pageShown(true);
@@ -68,7 +68,7 @@ describe("Applications page", () => {
   it("compact mode: the Applications page takes the whole room, the bar comes back on the left", async () => {
     p = await openAppsPage(BLOCK);
     const m = p.m;
-    await dispatch(m, { type: "basculerCompact", fenetreId: await fenetreId() });
+    await dispatch(m, { type: "basculerCompact", fenetreId: await windowId() });
     await waitUi(m, `return doc.querySelector('[data-testid="barre-laterale"]').parentElement.inert;`);
     const box = await inUi<{ top: number; left: number }>(
       m,
@@ -87,14 +87,14 @@ describe("Applications page", () => {
   it("the list shows type, origin and state; the side counters are right", async () => {
     p = await openAppsPage(BLOCK);
     await rows(3);
-    for (const [filtre, texte] of [
+    for (const [filter, text] of [
       ["tout", "Tout 3"],
       ["application", "Applications 1"],
       ["poc", "POC et tests 1"],
       ["sans-fiche", "Sans fiche 1"],
       ["arretee", "Arrêtées 3"],
     ] as const)
-      await expect.poll(() => filterText(filtre), { timeout: 10_000 }).toBe(texte);
+      await expect.poll(() => filterText(filter), { timeout: 10_000 }).toBe(text);
     expect(await filterText("erreur")).toBeNull();
     expect(await rowText("zod")).toContain("github.com/colinhacks/zod");
     expect(await rowText("zod")).toContain("POC");

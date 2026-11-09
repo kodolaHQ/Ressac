@@ -7,7 +7,7 @@ import {
 } from "../../src/design/projets.js";
 
 const externe: ExternalProject = { id: "0123456789abcdef", nom: "site", dossier: "/Users/t/site", ports: [4321], client: "c1", declare: "2026-11-02T10:00:00Z" };
-const contexte = (plages: [number, number][] = [[5280, 5299]]): AvailabilityContext => ({
+const context = (plages: [number, number][] = [[5280, 5299]]): AvailabilityContext => ({
   appsLancees: [{ dossier: "essai", nom: "Essai", port: 15280 }],
   plages,
   externes: [externe],
@@ -15,18 +15,18 @@ const contexte = (plages: [number, number][] = [[5280, 5299]]): AvailabilityCont
 
 describe("projetPourAdresse", () => {
   test("http://localhost:15280/x of an app launched on 15280 gives app-essai", () => {
-    expect(projectForUrl("http://localhost:15280/x", contexte())).toEqual({ type: "app", projet: "app-essai", dossier: "essai", nom: "Essai" });
+    expect(projectForUrl("http://localhost:15280/x", context())).toEqual({ type: "app", projet: "app-essai", dossier: "essai", nom: "Essai" });
   });
   test("port 5290 without an app gives demo-5290, 15283 with extended range gives demo-15283", () => {
-    expect(projectForUrl("http://localhost:5290/", contexte())).toEqual({ type: "demo", projet: "demo-5290", port: 5290 });
-    expect(projectForUrl("http://127.0.0.1:15283/", contexte([[5280, 5299], [15280, 15284]]))).toEqual({ type: "demo", projet: "demo-15283", port: 15283 });
+    expect(projectForUrl("http://localhost:5290/", context())).toEqual({ type: "demo", projet: "demo-5290", port: 5290 });
+    expect(projectForUrl("http://127.0.0.1:15283/", context([[5280, 5299], [15280, 15284]]))).toEqual({ type: "demo", projet: "demo-15283", port: 15283 });
   });
   test("127.0.0.1:4321 declared by an external project gives externe", () => {
-    expect(projectForUrl("http://127.0.0.1:4321/", contexte())).toEqual({ type: "externe", projet: "ext-0123456789abcdef", dossier: externe.dossier, nom: "site", client: "c1" });
+    expect(projectForUrl("http://127.0.0.1:4321/", context())).toEqual({ type: "externe", projet: "ext-0123456789abcdef", dossier: externe.dossier, nom: "site", client: "c1" });
   });
   test("everything else gives null", () => {
     for (const u of ["https://localhost:4321", "http://exemple.fr:4321", "http://localhost:4322", "file:///tmp/x", "webaios://applications", "http://localhost/", "pas une url"]) {
-      expect(projectForUrl(u, contexte())).toBeNull();
+      expect(projectForUrl(u, context())).toBeNull();
     }
   });
 });

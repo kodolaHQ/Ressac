@@ -3,7 +3,7 @@ import type { Brouillon } from "../../ui/constructeur/brouillon";
 import { COLUMN_PX, disposer, shownPositions, ROW_PX, sansDisposition } from "../../ui/constructeur/disposition";
 
 const bloc = (id: string, x = 0, y = 0, type = "code") => ({ id, type, position: { x, y }, parametres: {} });
-const lien = (de: string, vers: string) => ({ de, vers });
+const lien = (de: string, to: string) => ({ de, vers: to });
 
 const actus = (): Brouillon => ({
   version: 1,

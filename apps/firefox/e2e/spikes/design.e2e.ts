@@ -732,9 +732,9 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode spikes (plan 35)", () =
   // --- S4, the source -------------------------------------------------------------------------------------------
 
   /** The lireSource expression, as is. */
-  const SOURCE_CODE = (selecteur: string) => `(() => {
+  const SOURCE_CODE = (selector: string) => `(() => {
     try {
-      const el = document.querySelector(${JSON.stringify(selecteur)});
+      const el = document.querySelector(${JSON.stringify(selector)});
       if (!el) return null;
       const ds = el.getAttribute("data-source");
       if (ds) { const m = /^(.*?):(\\d+)(?::(\\d+))?$/.exec(ds); return m ? { fichier: m[1], ligne: Number(m[2]), ...(m[3] ? { colonne: Number(m[3]) } : {}) } : { fichier: ds }; }
@@ -754,14 +754,14 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode spikes (plan 35)", () =
     } catch { return null; }
   })()`;
   // sourceSaine: what the parent keeps.
-  const sourceSaine = (r: any) => {
+  const healthySource = (r: any) => {
     const ok = (n: unknown) => typeof n === "number" && Number.isInteger(n) && n > 0;
     if (!r || typeof r !== "object" || typeof r.fichier !== "string" || r.fichier.length > 1024 || r.fichier === "") return null;
     return { fichier: r.fichier, ...(ok(r.ligne) ? { ligne: r.ligne } : {}), ...(ok(r.colonne) ? { colonne: r.colonne } : {}) };
   };
   const source = async (sel: string) => {
     const raw = await ask("source", { code: SOURCE_CODE(sel) });
-    return { raw, kept: sourceSaine(raw) };
+    return { raw, kept: healthySource(raw) };
   };
 
   it("S4: data-source read, none without, malformed values dropped; nothing left in the page", async () => {

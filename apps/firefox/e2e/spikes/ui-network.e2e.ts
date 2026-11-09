@@ -405,8 +405,8 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("the UI's network, spikes S1–S3", 
       )
       .then((v) => v, (e) => `ERR ${e}`);
     const bar = await waitFor(m, `const w = ${site}; const b = w?.document.getElementById("webaios-site-bar")?.contentDocument; const h = b?.querySelector('[data-testid="site-cadre-accueil"]')?.contentDocument; return { bar: b?.documentURI ?? null, home: h?.documentURI ?? null, view: w?.gBrowser.selectedBrowser.currentURI.spec ?? null };`, (v: any) => !!v.bar && !!v.home, 20_000).catch((e) => String(e));
-    const liste = await m.execute(`return (async () => { const store = await ChromeUtils.importESModule("chrome://browser/content/webaios/store.sys.mjs").ready; return await store.agent.request("sites.liste"); })();`).catch((e) => String(e));
-    note("S2 site app opened", { opened, bar, liste });
+    const list = await m.execute(`return (async () => { const store = await ChromeUtils.importESModule("chrome://browser/content/webaios/store.sys.mjs").ready; return await store.agent.request("sites.liste"); })();`).catch((e) => String(e));
+    note("S2 site app opened", { opened, bar, liste: list });
 
     const p0 = await s2Phase("p0");
     note("S2 p0, no net", p0);

@@ -105,8 +105,8 @@ async function homeReady(id: string): Promise<void> {
 }
 
 /** Sets the home's `adresse`, then a real WebDriver click on « Reprendre » in the home. */
-async function clickOpen(id: string, adresse: string): Promise<void> {
-  await inHome(id, "fw.adresse = arguments[0]; return true;", [adresse]);
+async function clickOpen(id: string, address: string): Promise<void> {
+  await inHome(id, "fw.adresse = arguments[0]; return true;", [address]);
   await realClick(id, "#ouvrir");
 }
 
@@ -157,15 +157,15 @@ async function openHome(id = "vidola"): Promise<void> {
   await homeReady(id);
 }
 
-function writeMemory(id: string, actuel?: string): void {
+function writeMemory(id: string, current?: string): void {
   const dir = path.join(dataDir, "sites", id);
   mkdirSync(dir, { recursive: true });
-  const quand = new Date().toISOString();
+  const when = new Date().toISOString();
   writeFileSync(
     path.join(dir, "memoire.json"),
-    JSON.stringify({ version: 1, valeurs: { "encours.the-bear": { valeur: { titre: "The Bear", episode: "S2E4" }, adresse: "/serie/the-bear?e=4", quand } }, positions: {} }),
+    JSON.stringify({ version: 1, valeurs: { "encours.the-bear": { valeur: { titre: "The Bear", episode: "S2E4" }, adresse: "/serie/the-bear?e=4", quand: when } }, positions: {} }),
   );
-  if (actuel) writeFileSync(path.join(dir, "adresse.json"), JSON.stringify({ actuel, anciens: ["vidola-a.localhost"], depuis: quand }));
+  if (current) writeFileSync(path.join(dir, "adresse.json"), JSON.stringify({ actuel: current, anciens: ["vidola-a.localhost"], depuis: when }));
 }
 
 beforeAll(async () => {
@@ -257,7 +257,7 @@ describe("site app home screen", () => {
   it("it asks for javascript:alert(1), //pub.localhost/x, https://pub.localhost/: nothing opens", async () => {
     await openHome();
     // After a real click in the home: refused all the same.
-    for (const adresse of ["javascript:alert(1)", "//pub.localhost/x", "https://pub.localhost/", url("/x", "pub.localhost"), "/\\pub.localhost/x", "x".repeat(2001)]) await clickOpen("vidola", adresse);
+    for (const address of ["javascript:alert(1)", "//pub.localhost/x", "https://pub.localhost/", url("/x", "pub.localhost"), "/\\pub.localhost/x", "x".repeat(2001)]) await clickOpen("vidola", address);
     await ask("vidola", { type: "ouvrir", adresse: "javascript:alert(1)" });
     // The same refusals through the bar's API (what the relay calls).
     const api = (a: string) => inSiteBar<boolean>(m, "vidola", "return await doc.defaultView.webaios.site.ouvrir(arguments[0]);", [a]);
@@ -390,9 +390,9 @@ describe("site app home screen", () => {
     await openHome();
     const real = `resource://${new URL(await inHome<string>("vidola", "return home.src;")).host}`;
     server.definir("pub.localhost", "/sonde", "<title>sonde</title><p>sonde</p>");
-    const sonde = url("/sonde", "pub.localhost");
-    await inStore(`store.dispatch({ type: "ouvrirOnglet", fenetreId: store.state.fenetres[0].id, url: arguments[0], activer: true });`, [sonde]);
-    await expect.poll(() => m.execute<boolean>(`const b = gBrowser.selectedBrowser; return b.currentURI.spec === arguments[0] && !b.webProgress.isLoadingDocument;`, [sonde]), { timeout: 15_000 }).toBe(true);
+    const probeFn = url("/sonde", "pub.localhost");
+    await inStore(`store.dispatch({ type: "ouvrirOnglet", fenetreId: store.state.fenetres[0].id, url: arguments[0], activer: true });`, [probeFn]);
+    await expect.poll(() => m.execute<boolean>(`const b = gBrowser.selectedBrowser; return b.currentURI.spec === arguments[0] && !b.webProgress.isLoadingDocument;`, [probeFn]), { timeout: 15_000 }).toBe(true);
     // The former forms (the id as host, a counter), the substitution root, and the copy actually served.
     const guessable = ["resource://webaios-site-vidola", "resource://webaios-site-vidola/1", "resource://webaios-site-vidola/2"];
     const urls = [...guessable, real].flatMap((b) => [`${b}/`, `${b}/index.html`, `${b}/app.js`, `${b}/style.css`, `${b}/img/logo.png`]);

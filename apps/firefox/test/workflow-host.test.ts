@@ -22,15 +22,15 @@ const workflow = {
 };
 
 function mount() {
-  const racine = realpathSync(mkdtempSync(join(tmpdir(), "workflow-host-")));
-  dirs.push(racine);
-  const chemins = spacePaths(join(racine, "espace"));
-  const dossier = join(chemins.widgets, "veille");
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "workflow-host-")));
+  dirs.push(root);
+  const paths = spacePaths(join(root, "espace"));
+  const dossier = join(paths.widgets, "veille");
   mkdirSync(dossier, { recursive: true });
   const decl = { nom: "Veille", tailles: { min: { l: 1, h: 1 }, max: { l: 4, h: 4 }, defaut: { l: 2, h: 2 } }, sources: { compte: [], publiques: ["x.test"] } };
   writeFileSync(join(dossier, "widget.json"), JSON.stringify(decl));
   writeFileSync(join(dossier, "workflow.json"), JSON.stringify(workflow));
-  return { racine, chemins, dossier, c: { chemins, dossierWidgets: join(racine, "widgets") } };
+  return { racine: root, chemins: paths, dossier, c: { chemins: paths, dossierWidgets: join(root, "widgets") } };
 }
 
 describe("widget workflow edition", () => {
@@ -114,10 +114,10 @@ describe("fenetres.actives mirror", () => {
   it("sends only workflow URLs, on start and on each active-tab change", async () => {
     // bridge.ts loads invisible.ts, which asks ChromeUtils for a Firefox module at load time.
     (globalThis as { ChromeUtils?: unknown }).ChromeUtils ??= { importESModule: () => ({}) };
-    const { initialState: etatInitial } = await import("../core/etat/etat-initial");
+    const { initialState: initialState } = await import("../core/etat/etat-initial");
     const { createStore } = await import("../chrome/store/store");
     const { sendMirror, trackState } = await import("../chrome/agent/bridge");
-    const store = createStore(etatInitial());
+    const store = createStore(initialState());
     const f = store.state.fenetres[0]!.id;
     const windows = { active: () => f } as unknown as Parameters<typeof trackState>[2];
     const sent: [string, unknown][] = [];
@@ -132,13 +132,13 @@ describe("fenetres.actives mirror", () => {
 
 /** A space with one action, `gitlab`, and its data folder outside the space. */
 function mountAction(decl: object) {
-  const racine = realpathSync(mkdtempSync(join(tmpdir(), "workflow-action-")));
-  dirs.push(racine);
-  const chemins = spacePaths(join(racine, "espace"));
-  const dossier = join(chemins.actions, "gitlab");
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "workflow-action-")));
+  dirs.push(root);
+  const paths = spacePaths(join(root, "espace"));
+  const dossier = join(paths.actions, "gitlab");
   mkdirSync(dossier, { recursive: true });
   writeFileSync(join(dossier, "action.json"), JSON.stringify(decl));
-  return { chemins, dossier, c: { chemins, dossierActions: join(racine, "actions") } };
+  return { chemins: paths, dossier, c: { chemins: paths, dossierActions: join(root, "actions") } };
 }
 
 describe("action workflow edition", () => {

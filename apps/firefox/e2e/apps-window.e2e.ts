@@ -5,7 +5,7 @@ import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { answers, APPS_ENV, appWindowExpr, inAppView, killFakeApps, launchEssai, stopsLog, writeProject } from "./apps";
+import { answers, APPS_ENV, appWindowExpr, inAppView, killFakeApps, launchAttempt, stopsLog, writeProject } from "./apps";
 import { state, waitFor, waitReady } from "./firefox";
 import { installAddon, type Fixture } from "./addons";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
@@ -61,10 +61,10 @@ const viewUrl = (m: Marionette) => m.execute<string | null>(`return ${app}?.gBro
 const viewAt = (m: Marionette, url: string) =>
   waitFor(m, `const b = ${app}?.gBrowser.selectedBrowser; return !!b && b.currentURI.spec === ${JSON.stringify(url)} && !b.webProgress.isLoadingDocument;`, (v) => v === true, 15_000);
 const tabUrls = async (m: Marionette) => Object.values((await state(m)).onglets).map((o) => o.url);
-const fenetre = async (m: Marionette) => (await state(m)).fenetres[0]!.id;
-const agir = async (m: Marionette, dossier: string, action: string) =>
-  inStore(m, `await store.agent.request("applications.agir", { dossier: arguments[0], action: arguments[1], fenetre: arguments[2] });`, [dossier, action, await fenetre(m)]);
-const liste = (m: Marionette) => inStore<{ applications: { dossier: string; etat: string; port?: number; favicon?: string }[] }>(m, `return await store.agent.request("applications.liste");`);
+const win = async (m: Marionette) => (await state(m)).fenetres[0]!.id;
+const act = async (m: Marionette, dossier: string, action: string) =>
+  inStore(m, `await store.agent.request("applications.agir", { dossier: arguments[0], action: arguments[1], fenetre: arguments[2] });`, [dossier, action, await win(m)]);
+const list = (m: Marionette) => inStore<{ applications: { dossier: string; etat: string; port?: number; favicon?: string }[] }>(m, `return await store.agent.request("applications.liste");`);
 /** The view is still on `url` and its page was not replaced (window.marque kept). */
 async function stays(m: Marionette, url: string, what: string) {
   await sleep(700);
@@ -100,7 +100,7 @@ describe("one WebAiOs, the app launched in each test", () => {
   let i: Instance;
   let m: Marionette;
   let port: number;
-  let essai: string;
+  let attempt: string;
 
   beforeAll(async () => {
     i = await start();
@@ -111,12 +111,12 @@ describe("one WebAiOs, the app launched in each test", () => {
     for (const dossier of ["essai", "autre"]) await callTool(i.dataDir, "arreter_application", { dossier }).catch(() => {});
     await waitFor(m, `return [...Services.wm.getEnumerator("navigator:browser")].filter((w) => w.document.documentElement.hasAttribute("webaios-app")).length;`, (n) => n === 0);
     await waitFor(m, "for (const t of gBrowser.tabs.slice(1)) gBrowser.removeTab(t); return gBrowser.tabs.length;", (n) => n === 1);
-    await expect.poll(async () => (await liste(m)).applications.filter((a) => a.etat !== "arretee" && a.etat !== "erreur").length, { timeout: 10_000 }).toBe(0);
+    await expect.poll(async () => (await list(m)).applications.filter((a) => a.etat !== "arretee" && a.etat !== "erreur").length, { timeout: 10_000 }).toBe(0);
   });
   async function launched(): Promise<void> {
-    port = await launchEssai(i.dataDir);
-    essai = `http://localhost:${port}/`;
-    await viewAt(m, essai);
+    port = await launchAttempt(i.dataDir);
+    attempt = `http://localhost:${port}/`;
+    await viewAt(m, attempt);
   }
 
   // applications.spec.ts:236
@@ -143,8 +143,8 @@ describe("one WebAiOs, the app launched in each test", () => {
 
   // applications.spec.ts:93
   it("after lancer_application, the agent reads and captures the app's window without asking", async () => {
-    const { texte } = await callTool(i.dataDir, "lancer_application", { dossier: "essai" });
-    expect(texte).toContain("(onglet app:essai)");
+    const { texte: text } = await callTool(i.dataDir, "lancer_application", { dossier: "essai" });
+    expect(text).toContain("(onglet app:essai)");
     await expect.poll(async () => (await callTool(i.dataDir, "lister_onglets")).texte, { timeout: 10_000 }).toContain("app:essai");
     await expect.poll(async () => (await callTool(i.dataDir, "lire_onglet", { id: "app:essai" })).texte, { timeout: 10_000 }).toContain("Titre : Essai essai");
     expect((await callTool(i.dataDir, "lire_onglet", { id: "app:essai" })).texte).toContain("lien");
@@ -167,7 +167,7 @@ describe("one WebAiOs, the app launched in each test", () => {
     await launched();
     await inAppView(m, "essai", 'document.querySelector("a").click(); return 1;');
     await expect.poll(() => tabUrls(m), { timeout: 10_000 }).toContain("https://exemple.invalide/");
-    expect(await viewUrl(m)).toBe(essai);
+    expect(await viewUrl(m)).toBe(attempt);
   });
 
   // applications.spec.ts:161
@@ -176,11 +176,11 @@ describe("one WebAiOs, the app launched in each test", () => {
     const r = await callTool(i.dataDir, "naviguer", { id: "app:essai", url: "https://exemple.invalide/ailleurs" });
     expect(r.erreur).toBe(false);
     await expect.poll(() => tabUrls(m), { timeout: 10_000 }).toContain("https://exemple.invalide/ailleurs");
-    expect(await viewUrl(m)).toBe(essai);
+    expect(await viewUrl(m)).toBe(attempt);
     expect((await callTool(i.dataDir, "lire_onglet", { id: "app:essai" })).texte).toContain("lien");
     // On the app itself, the window navigates.
-    await callTool(i.dataDir, "naviguer", { id: "app:essai", url: `${essai}sans-titre` });
-    await viewAt(m, `${essai}sans-titre`);
+    await callTool(i.dataDir, "naviguer", { id: "app:essai", url: `${attempt}sans-titre` });
+    await viewAt(m, `${attempt}sans-titre`);
   });
 
   // applications.spec.ts:177
@@ -188,7 +188,7 @@ describe("one WebAiOs, the app launched in each test", () => {
     await launched();
     await inAppView(m, "essai", 'location.href = "/redirige"; return 1;');
     await expect.poll(() => tabUrls(m), { timeout: 10_000 }).toContain("https://exemple.invalide/redirige");
-    expect(await viewUrl(m)).toBe(essai);
+    expect(await viewUrl(m)).toBe(attempt);
   });
 
   // applications.spec.ts:147
@@ -210,7 +210,7 @@ describe("one WebAiOs, the app launched in each test", () => {
   it("a page that refuses to be left still closes when the app stops", async () => {
     await launched();
     await inAppView(m, "essai", 'location.href = "/retient"; return 1;');
-    await viewAt(m, `${essai}retient`);
+    await viewAt(m, `${attempt}retient`);
     // A click gives the page the activation its refusal needs.
     await inAppView(m, "essai", "return 1;", { gesture: true });
     await callTool(i.dataDir, "arreter_application", { dossier: "essai" });
@@ -223,15 +223,15 @@ describe("one WebAiOs, the app launched in each test", () => {
     const title = () => m.execute<string>(`return ${app}.document.title;`);
     await expect.poll(title, { timeout: 10_000 }).toBe("Essai essai");
     await inAppView(m, "essai", 'location.href = "/sans-titre"; return 1;');
-    await viewAt(m, `${essai}sans-titre`);
+    await viewAt(m, `${attempt}sans-titre`);
     await expect.poll(title, { timeout: 10_000 }).toBe("Essai");
   });
 
   // applications.spec.ts:227
   it("a crashing app opens no window", async () => {
-    const { texte } = await callTool(i.dataDir, "lancer_application", { dossier: "plante" });
-    expect(texte).toContain("en erreur");
-    expect(texte).toContain("boum");
+    const { texte: text } = await callTool(i.dataDir, "lancer_application", { dossier: "plante" });
+    expect(text).toContain("en erreur");
+    expect(text).toContain("boum");
     expect(await appWindows(m)).toBe(0);
   });
 
@@ -257,14 +257,14 @@ describe("one WebAiOs, the app launched in each test", () => {
     const read = "return { cookie: document.cookie, local: localStorage.k ?? null, session: sessionStorage.k ?? null };";
     const none = { cookie: "", local: null, session: null };
     // Another app, on another port.
-    const { texte } = await callTool(i.dataDir, "lancer_application", { dossier: "autre" });
-    const autre = Number(/localhost:(\d+)/.exec(texte)![1]);
-    const autreWin = appWindowExpr("autre");
-    await waitFor(m, `const b = ${autreWin}?.gBrowser.selectedBrowser; return !!b && b.currentURI.spec === "http://localhost:${autre}/" && !b.webProgress.isLoadingDocument;`, (v) => v === true, 15_000);
+    const { texte: text } = await callTool(i.dataDir, "lancer_application", { dossier: "autre" });
+    const other = Number(/localhost:(\d+)/.exec(text)![1]);
+    const otherWin = appWindowExpr("autre");
+    await waitFor(m, `const b = ${otherWin}?.gBrowser.selectedBrowser; return !!b && b.currentURI.spec === "http://localhost:${other}/" && !b.webProgress.isLoadingDocument;`, (v) => v === true, 15_000);
     expect(await inAppView(m, "autre", read)).toEqual(none);
     // A tab of the main window on the app's own origin (the default container): sees nothing, and sets its own.
-    await inStore(m, `store.dispatch({ type: "ouvrirOnglet", fenetreId: store.state.fenetres[0].id, url: arguments[0] });`, [`${essai}page2`]);
-    await waitFor(m, `return gBrowser.selectedBrowser.currentURI.spec === ${JSON.stringify(`${essai}page2`)} && !gBrowser.selectedBrowser.webProgress.isLoadingDocument;`, (v) => v === true);
+    await inStore(m, `store.dispatch({ type: "ouvrirOnglet", fenetreId: store.state.fenetres[0].id, url: arguments[0] });`, [`${attempt}page2`]);
+    await waitFor(m, `return gBrowser.selectedBrowser.currentURI.spec === ${JSON.stringify(`${attempt}page2`)} && !gBrowser.selectedBrowser.webProgress.isLoadingDocument;`, (v) => v === true);
     expect(await inBrowser(m, "gBrowser.selectedBrowser", read)).toEqual(none);
     await inBrowser(m, "gBrowser.selectedBrowser", "document.cookie = 'tab=1; max-age=3600; path=/'; localStorage.k = 'tab'; return 1;");
     // A site app's container can load nothing on localhost (no site app may declare it): its cookie jar is read instead.
@@ -276,7 +276,7 @@ describe("one WebAiOs, the app launched in each test", () => {
     expect(jars).toEqual([{ uc, name: "essai" }]);
     // And back: the app sees neither the tab's cookie nor its storage.
     await inAppView(m, "essai", 'location.href = "/page2"; return 1;');
-    await viewAt(m, `${essai}page2`);
+    await viewAt(m, `${attempt}page2`);
     expect(await inAppView(m, "essai", read)).toEqual({ cookie: "essai=1", local: "essai", session: "essai" });
   });
 
@@ -287,18 +287,18 @@ describe("one WebAiOs, the app launched in each test", () => {
     const file = `file://${i.w.profile}/user.js`;
     // ⌘O and a dropped file.
     await m.execute(`${app}.openLinkIn(arguments[0], "current", { triggeringPrincipal: ${system} });`, [file]);
-    await stays(m, essai, "⌘O file:");
+    await stays(m, attempt, "⌘O file:");
     await m.execute(`${view}.droppedLinkHandler(null, [{ url: arguments[0], name: "", type: "" }], ${system});`, [file]);
-    await stays(m, essai, "dropped file:");
+    await stays(m, attempt, "dropped file:");
     await m.execute(`${view}.loadURI(Services.io.newURI(arguments[0]), { triggeringPrincipal: ${system} });`, ["data:text/html,<title>data</title>"]);
-    await stays(m, essai, "data: by the system principal");
+    await stays(m, attempt, "data: by the system principal");
     for (const [what, code] of [
       ["page file:", `location.href = "${file}"`],
       ["page data:", `location.href = "data:text/html,<title>data</title>"`],
       ["page blob:", `location.href = URL.createObjectURL(new Blob(["<title>blob</title>"], { type: "text/html" }))`],
     ] as const) {
       await inAppView(m, "essai", `${code}; return 1;`, { gesture: true });
-      await stays(m, essai, what);
+      await stays(m, attempt, what);
     }
   });
 
@@ -307,7 +307,7 @@ describe("one WebAiOs, the app launched in each test", () => {
     await inAppView(m, "essai", "window.marque = 7; return 1;");
     for (const p of ["/vers-file", "/vers-data"]) {
       await inAppView(m, "essai", `location.href = ${JSON.stringify(p)}; return 1;`, { gesture: true });
-      await stays(m, essai, p);
+      await stays(m, attempt, p);
     }
   });
 
@@ -364,7 +364,7 @@ describe("one WebAiOs, the app launched in each test", () => {
     const other = await otherOrigin();
     try {
       await launched();
-      const favicon = async () => (await liste(m)).applications.find((a) => a.dossier === "essai")?.favicon;
+      const favicon = async () => (await list(m)).applications.find((a) => a.dossier === "essai")?.favicon;
       await inAppView(m, "essai", `location.href = "/icone?href=" + encodeURIComponent(${JSON.stringify(`${other.origin}/icon.png`)}); return 1;`);
       await expect.poll(() => other.hits.includes("/icon.png"), { timeout: 10_000 }).toBe(true);
       await sleep(1500);
@@ -381,11 +381,11 @@ describe("one WebAiOs, the app launched in each test", () => {
     await inAppView(m, "essai", "window.marque = 7; return 1;");
     const windows = await browserWindows(m);
     await inAppView(m, "essai", 'window.open("/page2"); return 1;', { gesture: true });
-    await expect.poll(() => tabUrls(m), { timeout: 10_000 }).toContain(`${essai}page2`);
+    await expect.poll(() => tabUrls(m), { timeout: 10_000 }).toContain(`${attempt}page2`);
     await inAppView(m, "essai", 'window.open("https://exemple.invalide/pop", "x", "width=300,height=300"); return 1;', { gesture: true });
     await expect.poll(() => tabUrls(m), { timeout: 10_000 }).toContain("https://exemple.invalide/pop");
     await expect.poll(() => browserWindows(m), { timeout: 10_000 }).toBe(windows);
-    await stays(m, essai, "window.open");
+    await stays(m, attempt, "window.open");
   });
 
   it("a relaunch on another port: the window follows, the old port opens in a tab", async () => {
@@ -397,10 +397,10 @@ describe("one WebAiOs, the app launched in each test", () => {
     } finally {
       await new Promise((ok) => (taken.closeAllConnections(), taken.close(ok)));
     }
-    const old = essai;
+    const old = attempt;
     expect(port).not.toBe(BLOCK[0]);
     await m.execute(`${app}.webaiosMark = 1;`);
-    await agir(m, "essai", "relancer");
+    await act(m, "essai", "relancer");
     const next = `http://localhost:${BLOCK[0]}/`;
     await viewAt(m, next);
     expect(await m.execute(`return ${app}.webaiosMark;`)).toBe(1);
@@ -477,7 +477,7 @@ describe("each with its own WebAiOs", () => {
   // applications.spec.ts:118
   it("closing the agent's window does not stop the app", async () => {
     i = await start();
-    const port = await launchEssai(i.dataDir);
+    const port = await launchAttempt(i.dataDir);
     await viewAt(i.m, `http://localhost:${port}/`);
     const main = (await i.m.command<{ value: string }>("WebDriver:GetWindowHandle")).value;
     await i.m.execute("window.close();");
@@ -493,9 +493,9 @@ describe("each with its own WebAiOs", () => {
   it("add-ons can neither add a tab to the app window, nor close, move or detach its view", async () => {
     i = await start();
     await installAddon(i.m, addonProbe());
-    const port = await launchEssai(i.dataDir);
-    const essai = `http://localhost:${port}/`;
-    await viewAt(i.m, essai);
+    const port = await launchAttempt(i.dataDir);
+    const attempt = `http://localhost:${port}/`;
+    await viewAt(i.m, attempt);
     expect(await order(i.m, { op: "create", url: "https://exemple.invalide/dans-l-appli" })).toEqual({ error: "Chargement refusé par WebAiOs" });
     expect(await order(i.m, { op: "update", url: "page.html" })).toEqual({ error: "Chargement refusé par WebAiOs" });
     expect(await order(i.m, { op: "remove" })).toEqual({ error: "Onglet protégé par WebAiOs" });
@@ -505,7 +505,7 @@ describe("each with its own WebAiOs", () => {
     await order(i.m, { op: "window" }, false);
     await sleep(1500);
     expect(await i.m.execute(`return ${app}.gBrowser.tabs.length;`)).toBe(1);
-    expect(await viewUrl(i.m)).toBe(essai);
+    expect(await viewUrl(i.m)).toBe(attempt);
     expect(await appWindows(i.m)).toBe(1);
     expect(stopsLog(i.dataDir)).not.toContain("WEBAIOS_APP=essai");
   });
@@ -513,11 +513,11 @@ describe("each with its own WebAiOs", () => {
   // applications.spec.ts:205
   it("a page that refuses to be left does not block ⌘Q", async () => {
     i = await start();
-    const port = await launchEssai(i.dataDir);
-    const essai = `http://localhost:${port}/`;
-    await viewAt(i.m, essai);
+    const port = await launchAttempt(i.dataDir);
+    const attempt = `http://localhost:${port}/`;
+    await viewAt(i.m, attempt);
     await inAppView(i.m, "essai", 'location.href = "/retient"; return 1;');
-    await viewAt(i.m, `${essai}retient`);
+    await viewAt(i.m, `${attempt}retient`);
     await inAppView(i.m, "essai", "return 1;", { gesture: true });
     await quit(i);
     expect(await answers(port)).toBe(false);
@@ -526,7 +526,7 @@ describe("each with its own WebAiOs", () => {
   // applications.spec.ts:242
   it("⌘Q stops the running apps, in under 8 s (target 5 s)", async () => {
     i = await start();
-    const port = await launchEssai(i.dataDir);
+    const port = await launchAttempt(i.dataDir);
     await viewAt(i.m, `http://localhost:${port}/`);
     const ms = await quit(i);
     console.log(`[apps-window] quit with an app running: ${ms} ms`);
@@ -539,7 +539,7 @@ describe("each with its own WebAiOs", () => {
   it("host killed: the app window closes, the restarted host stops the orphan", async () => {
     i = await start();
     const m = i.m;
-    const port = await launchEssai(i.dataDir);
+    const port = await launchAttempt(i.dataDir);
     await viewAt(m, `http://localhost:${port}/`);
     const sweeps = () => stopsLog(i!.dataDir).split("\n").filter((l) => l.includes("WEBAIOS_APP=.*")).length;
     await expect.poll(sweeps, { timeout: 10_000 }).toBe(1);
@@ -554,7 +554,7 @@ describe("each with its own WebAiOs", () => {
     await expect.poll(sweeps, { timeout: 15_000 }).toBe(2);
     await expect.poll(() => answers(port), { timeout: 10_000 }).toBe(false);
     // Launched again: a new window, and the app keeps running (no stale close stops it).
-    const again = await launchEssai(i.dataDir);
+    const again = await launchAttempt(i.dataDir);
     await viewAt(m, `http://localhost:${again}/`);
     await sleep(2000);
     expect(await appWindows(m)).toBe(1);

@@ -2,18 +2,18 @@ import { expect, test } from "vitest";
 import type { Space, WindowState, BrowserState, SpaceId, ProfileId } from "../shared/modele";
 import { profilesForGrant, openableUrl } from "../ui/accueil-profils";
 
-const espace = (id: string, nom: string, profil: ProfileId, prive = false): Space => ({
+const space = (id: string, name: string, profile: ProfileId, isPrivate = false): Space => ({
   id,
-  nom,
+  nom: name,
   icone: "",
   epingles: [],
-  prive,
-  profil,
+  prive: isPrivate,
+  profil: profile,
 });
 
-const fenetre = (id: string, espaceActif: SpaceId): WindowState => ({
+const win = (id: string, activeSpace: SpaceId): WindowState => ({
   id,
-  espaceActif,
+  espaceActif: activeSpace,
   ordre: {},
   actif: {},
   compact: false,
@@ -22,23 +22,23 @@ const fenetre = (id: string, espaceActif: SpaceId): WindowState => ({
   cadre: null,
 });
 
-const etat = (espaces: Space[], profils: ProfileId[], fenetres: WindowState[]) =>
-  ({ espaces, profils: profils.map((id) => ({ id })), fenetres }) as Pick<BrowserState, "profils" | "espaces" | "fenetres">;
+const state = (spaces: Space[], profiles: ProfileId[], windows: WindowState[]) =>
+  ({ espaces: spaces, profils: profiles.map((id) => ({ id })), fenetres: windows }) as Pick<BrowserState, "profils" | "espaces" | "fenetres">;
 
 test("a profile used by a private space is excluded, even shared with a non-private space", () => {
-  const s = etat(
-    [espace("e1", "Perso", "perso"), espace("e2", "Privé", "prive", true), espace("e3", "Boulot", "perso", true)],
+  const s = state(
+    [space("e1", "Perso", "perso"), space("e2", "Privé", "prive", true), space("e3", "Boulot", "perso", true)],
     ["defaut", "perso", "prive"],
-    [fenetre("f1", "e1")],
+    [win("f1", "e1")],
   );
   expect(profilesForGrant(s, "f1").map((p) => p.id)).toEqual(["defaut"]);
 });
 
 test("the window's active space's profile is ticked by default, if it is readable", () => {
-  const s = etat(
-    [espace("e1", "Perso", "perso"), espace("e2", "Boulot", "defaut"), espace("e3", "Privé", "prive", true)],
+  const s = state(
+    [space("e1", "Perso", "perso"), space("e2", "Boulot", "defaut"), space("e3", "Privé", "prive", true)],
     ["defaut", "perso", "prive"],
-    [fenetre("f1", "e1"), fenetre("f2", "e3")],
+    [win("f1", "e1"), win("f2", "e3")],
   );
   expect(profilesForGrant(s, "f1")).toEqual([
     { id: "defaut", libelle: "Profil de « Boulot »", parDefaut: false },
@@ -49,7 +49,7 @@ test("the window's active space's profile is ticked by default, if it is readabl
 });
 
 test("a profile without a space keeps a neutral label", () => {
-  const s = etat([espace("e1", "Perso", "perso")], ["perso", "autre"], [fenetre("f1", "e1")]);
+  const s = state([space("e1", "Perso", "perso")], ["perso", "autre"], [win("f1", "e1")]);
   expect(profilesForGrant(s, "f1")).toContainEqual({ id: "autre", libelle: "Profil « autre »", parDefaut: false });
 });
 

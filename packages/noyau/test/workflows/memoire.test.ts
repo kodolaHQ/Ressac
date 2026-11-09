@@ -2,18 +2,18 @@ import { expect, test } from "vitest";
 import { readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { MEMORY_MAX_BYTES, writeMemory, paramsHash, readMemory } from "../../src/index.js";
-import { dossierTemporaire } from "../aide/temporaire.js";
+import { tempFolder } from "../aide/temporaire.js";
 
 test("a memory over 3 MB is not written; a damaged memory reads as empty", async () => {
-  const d = await dossierTemporaire();
+  const d = await tempFolder();
   expect(await readMemory(d)).toEqual({});
   const petite = { tri: { type: "ia.trier", valeur: { cle: { p: 0.5 } } } };
   expect(await writeMemory(d, petite)).toBe(true);
   expect(await readMemory(d)).toEqual(petite);
   expect(await readdir(d)).toEqual(["memoire.json"]); // no .tmp left lying around
 
-  const grosse = { tri: { type: "ia.trier", valeur: "x".repeat(MEMORY_MAX_BYTES) } };
-  expect(await writeMemory(d, grosse)).toBe(false);
+  const big = { tri: { type: "ia.trier", valeur: "x".repeat(MEMORY_MAX_BYTES) } };
+  expect(await writeMemory(d, big)).toBe(false);
   expect(await readMemory(d)).toEqual(petite); // nothing was overwritten
 
   await writeFile(join(d, "memoire.json"), "{ abîmé");
@@ -31,7 +31,7 @@ test("empreinteParametres does not depend on key order, but on values", () => {
 });
 
 test("the hash survives lireMemoire / ecrireMemoire (R5); an old memory without a hash still reads", async () => {
-  const d = await dossierTemporaire();
+  const d = await tempFolder();
   const m = { tri: { type: "ia.trier", valeur: 1, empreinte: "0123456789abcdef" }, vieux: { type: "code", valeur: 2 } };
   await writeMemory(d, m);
   expect(await readMemory(d)).toEqual(m);

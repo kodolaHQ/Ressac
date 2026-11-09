@@ -8,7 +8,7 @@ import { inWindow, newWindow, waitFor, waitReady, waitWindowCount } from "./fire
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
 import { callTool } from "./mcp";
-import { appelerOutil } from "../test/mcp";
+import { callMcpTool } from "../test/mcp";
 import { click, inUi, missingApi, pressKeys, typeText, waitUi } from "./ui";
 import { openBuilder, widgetDir, writeWidget } from "./workflows";
 
@@ -16,7 +16,7 @@ import { openBuilder, widgetDir, writeWidget } from "./workflows";
 // Agent tab opens the window's agent panel instead of hosting its terminal: a check of the terminal in the tab becomes
 // « the panel is open, with one conversation » (one terminal, in the agent frame).
 
-const WORKFLOW_VEILLE = {
+const WATCH_WORKFLOW = {
   version: 1,
   blocs: [
     { id: "page", type: "source.page", parametres: { url: "{config.url}" } },
@@ -47,12 +47,12 @@ afterEach(async () => {
 /** Launches on a data folder with the widgets « veille » and « autre » (WORKFLOW_VEILLE) and « casse » (unreadable). */
 async function launch(): Promise<void> {
   dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-builder-agent-"));
-  const fichiers = {
+  const files = {
     "liens.mjs": "export default async (page) => page.liens;",
     "textes.mjs": "export default async (liens) => ({ liens: liens.map((l) => l.texte) });",
   };
   for (const id of ["veille", "autre"])
-    await writeWidget(dataDir, id, { nom: id === "veille" ? "Veille" : "Autre", recolte: { minutes: 60 }, declaration: { config: { url: "https://exemple.invalid/liens" } }, workflow: WORKFLOW_VEILLE, fichiers });
+    await writeWidget(dataDir, id, { nom: id === "veille" ? "Veille" : "Autre", recolte: { minutes: 60 }, declaration: { config: { url: "https://exemple.invalid/liens" } }, workflow: WATCH_WORKFLOW, fichiers: files });
   await writeWidget(dataDir, "casse", { nom: "Cassé", recolte: { minutes: 60 }, workflow: '{ "version": 1, "blocs": [ { "id": "page", "type": "source.pa' });
   w = await launchWebAiOs({ dataDir, height: 1400 });
   m = w.marionette;
@@ -111,7 +111,7 @@ async function builder(id: string): Promise<void> {
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 const lastSessionConfig = () =>
   path.join(dataDir, "espace", (JSON.parse(read(path.join(dataDir, "espace", "faux-agent-args.json"))) as string[]).at(-1)!.replace(/^\/workspace\//, ""));
-const workflowOpen = async (config: string) => (await appelerOutil(path.join(dataDir, "espace"), "workflow_ouvert", {}, config)).texte;
+const workflowOpen = async (config: string) => (await callMcpTool(path.join(dataDir, "espace"), "workflow_ouvert", {}, config)).texte;
 async function poll(read: () => Promise<string>, expected: string, ms = 10_000): Promise<void> {
   const deadline = Date.now() + ms;
   for (;;) {
@@ -266,8 +266,8 @@ describe("the builder's Agent tab", () => {
       await rename(`${file}.agent`, file);
     };
     await writeAsAgent({
-      ...WORKFLOW_VEILLE,
-      blocs: [...WORKFLOW_VEILLE.blocs.slice(0, 3), { id: "garder", type: "liste.garder", parametres: { nombre: 5 } }, ...WORKFLOW_VEILLE.blocs.slice(3)],
+      ...WATCH_WORKFLOW,
+      blocs: [...WATCH_WORKFLOW.blocs.slice(0, 3), { id: "garder", type: "liste.garder", parametres: { nombre: 5 } }, ...WATCH_WORKFLOW.blocs.slice(3)],
       liens: [
         { de: "page", vers: "liens" },
         { de: "liens", vers: "tri" },
@@ -284,7 +284,7 @@ describe("the builder's Agent tab", () => {
     // An invalid draft, then a new version from the agent: the banner offers both.
     await click(m, '[data-testid="palette-liste.dedoublonner"]');
     await waitUi(m, "return !!doc.querySelector('[data-testid=\"etat-enregistrement\"]')?.textContent.includes('entrée manquante')");
-    await writeAsAgent({ ...WORKFLOW_VEILLE, blocs: WORKFLOW_VEILLE.blocs.map((b) => (b.id === "tri" ? { ...b, parametres: { ...b.parametres, seuil: 0.8 } } : b)) });
+    await writeAsAgent({ ...WATCH_WORKFLOW, blocs: WATCH_WORKFLOW.blocs.map((b) => (b.id === "tri" ? { ...b, parametres: { ...b.parametres, seuil: 0.8 } } : b)) });
     await waitCount("bandeau-fichier", 1);
     const visible = (testid: string) => inUi<boolean>(m, `const r = doc.querySelector('[data-testid="${testid}"]')?.getBoundingClientRect(); return !!r && r.width > 0 && r.height > 0`);
     expect(await visible("bandeau-fichier")).toBe(true);

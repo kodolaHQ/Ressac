@@ -4,7 +4,7 @@ import type { BlocPlan, PlanPage } from "../../src/pages/plan.js";
 import { COMPONENT_UNAVAILABLE, ELEMENTS_MAX, TEXT_MAX, chainsOf, resolvePage, type RenderedBlock } from "../../src/pages/resoudre.js";
 import { validatePlan } from "../../src/pages/valider.js";
 
-const graphique: ComponentDefinition = {
+const graph: ComponentDefinition = {
   nom: "graphique-barres", description: "Barres", origine: "agent",
   proprietes: {
     donnees: { genre: "reference", description: "Les données", requis: true },
@@ -14,10 +14,10 @@ const graphique: ComponentDefinition = {
     empile: { genre: "case", description: "Empilé", requis: false },
   },
 };
-const catalogue = [...BUILTIN_COMPONENTS, graphique];
+const catalogue = [...BUILTIN_COMPONENTS, graph];
 const fr = new Intl.NumberFormat("fr-FR");
 
-const resultats = {
+const results = {
   projet: {
     nom: "WebAiOs", url: "https://gitlab.com/p", total: 1234.5,
     pieges: ["javascript:alert(1)", "http://127.0.0.1/admin", "http://192.168.1.2/", "http://[::1]/", "https://user:mdp@gitlab.com/"],
@@ -29,9 +29,9 @@ const resultats = {
   ],
 };
 
-const rendre = (blocs: BlocPlan[], o: { compte?: boolean; secours?: boolean; r?: unknown } = {}) =>
-  resolvePage({ blocs }, o.r ?? resultats, { compte: o.compte ?? false, catalogue, secours: o.secours ?? false });
-const un = (bloc: BlocPlan, o?: Parameters<typeof rendre>[1]) => rendre([bloc], o).blocs[0] as RenderedBlock & { props: Record<string, any> };
+const render = (blocs: BlocPlan[], o: { compte?: boolean; secours?: boolean; r?: unknown } = {}) =>
+  resolvePage({ blocs }, o.r ?? results, { compte: o.compte ?? false, catalogue, secours: o.secours ?? false });
+const un = (bloc: BlocPlan, o?: Parameters<typeof render>[1]) => render([bloc], o).blocs[0] as RenderedBlock & { props: Record<string, any> };
 
 describe("resoudrePage", () => {
   it("link whose url is in the results: url kept", () => {
@@ -43,7 +43,7 @@ describe("resoudrePage", () => {
 
   it("literal link written by Gemma: property refused at validation", () => {
     for (const url of ["https://tiers.example/?d=x", '"https://tiers.example/?d=" + nom', "javascript:alert(1)"]) {
-      const r = validatePlan({ blocs: [{ composant: "lien", props: { objet: "projet", url } }, { composant: "chiffre", props: { valeur: "compter(annonces)", libelle: "n" } }] }, { catalogue, resultats });
+      const r = validatePlan({ blocs: [{ composant: "lien", props: { objet: "projet", url } }, { composant: "chiffre", props: { valeur: "compter(annonces)", libelle: "n" } }] }, { catalogue, resultats: results });
       expect(r.ok).toBe(true);
       if (r.ok) {
         expect(r.plan.blocs.map((b) => b.composant)).toEqual(["chiffre"]);
@@ -53,10 +53,10 @@ describe("resoudrePage", () => {
   });
 
   it("url javascript:, http://127.0.0.1, http://192.168.1.2 : url null", () => {
-    const r = { liens: resultats.projet.pieges.map((u) => ({ u })) };
+    const r = { liens: results.projet.pieges.map((u) => ({ u })) };
     const b = un({ composant: "liste", props: { elements: "liens", titre: "u", lien: "u" } }, { r });
     expect(b.props.elements.map((l: any) => l.lien.url)).toEqual([null, null, null, null, null]);
-    expect(b.props.elements.map((l: any) => l.lien.texte)).toEqual(resultats.projet.pieges);
+    expect(b.props.elements.map((l: any) => l.lien.texte)).toEqual(results.projet.pieges);
   });
 
   it("a url absent from the results (read elsewhere): url null", () => {
@@ -71,8 +71,8 @@ describe("resoudrePage", () => {
     const carte = { composant: "cartes", props: { elements: "annonces", titre: "titre", image: "photo" } };
     const sans = un(carte).props.elements.map((c: any) => c.image);
     expect(sans).toEqual([{ url: "https://img.example/clio.jpg" }, null, null]);
-    const avec = un(carte, { compte: true }).props.elements.map((c: any) => c.image);
-    expect(avec).toEqual([{ neutre: true }, { neutre: true }, null]);
+    const updateEntry = un(carte, { compte: true }).props.elements.map((c: any) => c.image);
+    expect(updateEntry).toEqual([{ neutre: true }, { neutre: true }, null]);
     const local = un(carte, { r: { annonces: [{ titre: "x", photo: "https://192.168.1.2/a.png" }] } }).props.elements[0].image;
     expect(local).toBeNull();
   });
@@ -86,7 +86,7 @@ describe("resoudrePage", () => {
 
   it("10,000 tickets in a table: 200 rows, cuts 9800", () => {
     const tickets = Array.from({ length: 10_000 }, (_, i) => ({ id: i, titre: `t${i}`, url: `https://gitlab.com/t/${i}` }));
-    const page = rendre([{ composant: "tableau", props: { elements: "tickets", colonnes: [{ champ: "id", libelle: "N°" }, { champ: "titre", libelle: "Titre" }], lien: "url" } }], { r: { tickets } });
+    const page = render([{ composant: "tableau", props: { elements: "tickets", colonnes: [{ champ: "id", libelle: "N°" }, { champ: "titre", libelle: "Titre" }], lien: "url" } }], { r: { tickets } });
     const b = page.blocs[0] as RenderedBlock & { props: Record<string, any> };
     expect(b.props.elements).toHaveLength(ELEMENTS_MAX);
     expect(b.props.autres).toBe(9800);
@@ -121,7 +121,7 @@ describe("resoudrePage", () => {
 
   it("agent component: bounded value (lists to 200, texts cut)", () => {
     const l = Array.from({ length: 250 }, () => "x".repeat(TEXT_MAX + 50));
-    const page = rendre([{ composant: "graphique-barres", props: { donnees: "l" } }], { r: { l } });
+    const page = render([{ composant: "graphique-barres", props: { donnees: "l" } }], { r: { l } });
     const b = page.blocs[0] as RenderedBlock & { props: Record<string, any> };
     expect(b.props.donnees).toHaveLength(ELEMENTS_MAX);
     expect(b.props.donnees[0].length).toBeLessThanOrEqual(TEXT_MAX);
@@ -129,7 +129,7 @@ describe("resoudrePage", () => {
   });
 
   it("component missing from the catalog: error callout, the rest displays", () => {
-    const page = rendre([{ composant: "camembert", props: { donnees: "annonces" } }, { composant: "titre", props: { texte: "Après" } }]);
+    const page = render([{ composant: "camembert", props: { donnees: "annonces" } }, { composant: "titre", props: { texte: "Après" } }]);
     expect(page.blocs).toEqual([{ composant: "erreur", message: COMPONENT_UNAVAILABLE("camembert") }, { composant: "titre", props: { texte: "Après" } }]);
     expect(COMPONENT_UNAVAILABLE("camembert")).toBe("Composant indisponible : camembert");
   });
@@ -143,7 +143,7 @@ describe("resoudrePage", () => {
   });
 
   it("each built-in component resolves", () => {
-    const page = rendre([
+    const page = render([
       { composant: "titre", props: { texte: "T" } },
       { composant: "paragraphe", props: { texte: "P" } },
       { composant: "encadre", props: { niveau: "info", titre: "E", elements: "annonces", champ: "titre" } },
@@ -161,31 +161,31 @@ describe("resoudrePage", () => {
     expect(p[4]).toEqual({ champs: [{ libelle: "nom", valeur: "WebAiOs" }, { libelle: "url", valeur: "https://gitlab.com/p" }, { libelle: "total", valeur: fr.format(1234.5) }], autres: 0 });
     expect(p[5]).toEqual({ champs: [{ libelle: "Nom", valeur: "WebAiOs" }], autres: 0 });
     expect(p[6]).toEqual({ valeurs: ["Renault", "Peugeot", "Renault"], autres: 0 });
-    expect(p[7]).toEqual({ valeurs: resultats.projet.pieges, autres: 0 });
+    expect(p[7]).toEqual({ valeurs: results.projet.pieges, autres: 0 });
     expect(page.blocs[8]).toEqual({ composant: "groupe", props: { titre: "G", replie: true }, blocs: [{ composant: "titre", props: { texte: "dans" } }] });
     expect(page.blocs[9]).toEqual({ composant: "colonnes", props: {}, gauche: [{ composant: "titre", props: { texte: "g" } }], droite: [] });
     expect(page).toMatchObject({ secours: false, vide: false, coupes: 0 });
   });
 
   it("a reference that no longer evaluates (saved plan, other results): error callout, no exception", () => {
-    const page = rendre([{ composant: "liste", props: { elements: "disparu", titre: "t" } }, { composant: "titre", props: { texte: "ok" } }]);
+    const page = render([{ composant: "liste", props: { elements: "disparu", titre: "t" } }, { composant: "titre", props: { texte: "ok" } }]);
     expect(page.blocs[0]).toMatchObject({ composant: "erreur" });
     expect((page.blocs[0] as { message: string }).message).not.toContain("disparu");
     expect(page.blocs[1]).toEqual({ composant: "titre", props: { texte: "ok" } });
   });
 
   it("fallback and empty", () => {
-    expect(rendre([{ composant: "titre", props: { texte: "x" } }], { secours: true }).secours).toBe(true);
-    expect(rendre([{ composant: "titre", props: { texte: "x" } }], { r: [] }).vide).toBe(true);
-    expect(rendre([{ composant: "titre", props: { texte: "x" } }], { r: { tickets: [] } }).vide).toBe(true);
-    expect(rendre([{ composant: "titre", props: { texte: "x" } }], { r: { total: 0 } }).vide).toBe(false);
+    expect(render([{ composant: "titre", props: { texte: "x" } }], { secours: true }).secours).toBe(true);
+    expect(render([{ composant: "titre", props: { texte: "x" } }], { r: [] }).vide).toBe(true);
+    expect(render([{ composant: "titre", props: { texte: "x" } }], { r: { tickets: [] } }).vide).toBe(true);
+    expect(render([{ composant: "titre", props: { texte: "x" } }], { r: { total: 0 } }).vide).toBe(false);
   });
 
   it("damaged plan (no block list, nesting too deep): no exception", () => {
-    expect(resolvePage({} as PlanPage, resultats, { compte: false, catalogue, secours: false }).blocs).toEqual([]);
+    expect(resolvePage({} as PlanPage, results, { compte: false, catalogue, secours: false }).blocs).toEqual([]);
     let b: BlocPlan = { composant: "titre", props: { texte: "fond" } };
     for (let i = 0; i < 20_000; i++) b = { composant: "groupe", props: { titre: "g" }, blocs: [b] };
-    expect(() => rendre([b])).not.toThrow();
+    expect(() => render([b])).not.toThrow();
   });
 });
 

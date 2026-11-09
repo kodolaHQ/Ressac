@@ -75,7 +75,7 @@ async function openPage(): Promise<void> {
 const row = (id: string) => `[data-testid="site-${id}"]`;
 const rowText = (id: string) => waitUi<string>(m, "return doc.querySelector(arguments[0])?.textContent ?? null", [row(id)]);
 const gone = (id: string) => waitUi(m, "return !doc.querySelector(arguments[0])", [row(id)]);
-const ouverte = (id: string, v: boolean) => waitUi(m, "return doc.querySelector(arguments[0])?.dataset.ouverte === arguments[1]", [row(id), String(v)]);
+const isOpen = (id: string, v: boolean) => waitUi(m, "return doc.querySelector(arguments[0])?.dataset.ouverte === arguments[1]", [row(id), String(v)]);
 const windows = (id: string) => siteWindowCount(m, id);
 const inStore = <T = unknown>(body: string, args: unknown[] = []) =>
   m.execute<T>(`return (async () => { const store = await ChromeUtils.importESModule("${STORE}").ready; ${body} })();`, args);
@@ -159,7 +159,7 @@ describe("Applications page, Sites section", () => {
     await launch({ prepare: section });
     await click(m, '[data-testid="site-vidola-ouvrir"]');
     await waitFor(m, `return ${siteExpr("vidola")} !== undefined;`, (v) => v === true);
-    await ouverte("vidola", true);
+    await isOpen("vidola", true);
     expect(await windows("vidola")).toBe(1);
   });
 
@@ -265,10 +265,10 @@ describe("Applications page, Sites section", () => {
     const { dataDir } = await launch({ prepare: (d) => (writeSite(d, "vidola", vidola()), writeMemory(d)) });
     await click(m, '[data-testid="site-vidola-ouvrir"]');
     await expect.poll(() => series("vidola").catch(() => null), { timeout: 15_000 }).toContain("The Bear");
-    await ouverte("vidola", true);
+    await isOpen("vidola", true);
     // « Réessayer »: the host stops, then starts again on the same data.
     await inStore(`await store.agent.stop(); await store.agent.ensure();`);
-    await ouverte("vidola", true);
+    await isOpen("vidola", true);
     expect(await windows("vidola")).toBe(1);
     // The home's memory feed is back: forgetting what the app kept reaches the open home.
     await click(m, '[data-testid="site-vidola-oublier"]');

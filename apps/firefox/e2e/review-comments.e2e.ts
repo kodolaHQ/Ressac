@@ -57,7 +57,7 @@ const text = (selector: string) => inUi<string | null>(m, "return doc.querySelec
 const waitText = (selector: string, t: string, ms = 10_000) => waitUi(m, "return doc.querySelector(arguments[0])?.textContent.includes(arguments[1])", [selector, t], ms);
 /** The new line number of the diff line just above the first comment (the line it hangs under). */
 const commentUnder = () => inUi<string | null>(m, `return doc.querySelector('${COMMENT}')?.previousElementSibling?.dataset.nouveau ?? null`);
-const openFile = (chemin: string) => click(m, tid("fichier-relecture"), { text: chemin });
+const openFile = (path: string) => click(m, tid("fichier-relecture"), { text: path });
 const refresh = () => refreshReview(m);
 const ADDED = `${tid("ligne-diff")}.ajout`;
 
@@ -68,7 +68,7 @@ async function shiftPlus(n: number): Promise<void> {
 }
 
 /** The open form gets `texte`, then « Commenter »; the form closes. */
-async function comment(texte: string): Promise<void> {
+async function comment(text: string): Promise<void> {
   await waitUi(
     m,
     `const t = doc.querySelector(arguments[0] + " textarea");
@@ -76,14 +76,14 @@ async function comment(texte: string): Promise<void> {
      t.value = arguments[1];
      t.dispatchEvent(new ui.Event("input", { bubbles: true }));
      return true;`,
-    [FORM, texte],
+    [FORM, text],
   );
   await click(m, `${FORM} button`, { text: "Commenter" });
   await waitCount(FORM, 0);
 }
 
 /** « Relire » of the projet-externe line, on the Applications page; waits for the Review page. */
-async function relire(): Promise<void> {
+async function reread(): Promise<void> {
   await click(m, `${tid("projet-externe")} button`, { text: "Relire" });
   await waitUi(m, `return !!doc.querySelector('${PAGE}')`);
 }
@@ -92,7 +92,7 @@ async function relire(): Promise<void> {
 async function pageOnAppJs(...n: number[]) {
   const p = await declareProject(m, { dataDir: w!.dataDir });
   writeAppJs(p.dossier, modified(...n));
-  await relire();
+  await reread();
   await openFile("app.js");
   await waitCount(ADDED, n.length);
   return p;
@@ -232,7 +232,7 @@ it("external project: « Envoyer 1 commentaire à Claude Code (…) », lire_rem
   const p = await declareProject(m, { dataDir: w!.dataDir });
   try {
     writeAppJs(p.dossier, modified(2));
-    await relire();
+    await reread();
     await openFile("app.js");
     await waitText(line(2), "ligne 2 modifiée");
     await click(m, plus(2));
@@ -316,13 +316,13 @@ it("deleting the site app erases its review repo and comments", { timeout: 60_00
   await siteOnAppJs();
   await click(m, plus(15));
   await comment("garder l'ancien nom");
-  const relecture = path.join(w!.dataDir, "design", "relecture");
-  await expect.poll(() => existsSync(path.join(relecture, "site-essai.commentaires.json")), { timeout: 10_000 }).toBe(true);
+  const review = path.join(w!.dataDir, "design", "relecture");
+  await expect.poll(() => existsSync(path.join(review, "site-essai.commentaires.json")), { timeout: 10_000 }).toBe(true);
   await openApplications(m);
   await click(m, tid("site-essai-supprimer"));
   await click(m, tid("confirmer-suppression-site"));
   await expect
-    .poll(() => existsSync(path.join(relecture, "site-essai.git")) || existsSync(path.join(relecture, "site-essai.commentaires.json")), { timeout: 15_000 })
+    .poll(() => existsSync(path.join(review, "site-essai.git")) || existsSync(path.join(review, "site-essai.commentaires.json")), { timeout: 15_000 })
     .toBe(false);
 });
 
@@ -333,7 +333,7 @@ it("a path with spaces and accents shows its diff and takes a comment", async ()
   try {
     mkdirSync(path.join(p.dossier, "dossier é"));
     writeFileSync(path.join(p.dossier, "dossier é", "a b.js"), "const a = 1;\nconst b = 2;\n");
-    await relire();
+    await reread();
     await waitUi(m, `return [...doc.querySelectorAll('${tid("fichier-relecture")} .nom-fichier')].some((e) => e.textContent === "dossier é/a b.js")`);
     await openFile("dossier é/a b.js");
     await waitText(line(2), "const b = 2;");

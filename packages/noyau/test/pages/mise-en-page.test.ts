@@ -3,33 +3,33 @@ import { GEMMA_JSON_INVALID } from "../../src/ia/repartiteur.js";
 import { BUILTIN_COMPONENTS } from "../../src/pages/catalogue.js";
 import { LAYOUT_DELAY_MS, layOut, promptMiseEnPage, type GemmaAccess } from "../../src/pages/mise-en-page.js";
 
-const resultats = { tickets: [{ titre: "Panne", priorite: "haute" }, { titre: "Doc", priorite: "basse" }] };
-const planValide = { blocs: [{ composant: "chiffre", props: { valeur: "compter(tickets)", libelle: "Tickets" } }] };
-const planInvalide = { blocs: [{ composant: "titre", props: { texte: "Seul" } }] };
+const results = { tickets: [{ titre: "Panne", priorite: "haute" }, { titre: "Doc", priorite: "basse" }] };
+const validPlan = { blocs: [{ composant: "chiffre", props: { valeur: "compter(tickets)", libelle: "Tickets" } }] };
+const invalidPlan = { blocs: [{ composant: "titre", props: { texte: "Seul" } }] };
 
-type Appel = { prompt: string; signal?: AbortSignal };
-function faux(reponses: (() => Promise<unknown> | unknown)[], appels: Appel[] = []): GemmaAccess {
+type Call = { prompt: string; signal?: AbortSignal };
+function fake(responses: (() => Promise<unknown> | unknown)[], calls: Call[] = []): GemmaAccess {
   let i = 0;
   return {
     async gemma(g, o) {
-      appels.push({ prompt: g.prompt, signal: o?.signal });
+      calls.push({ prompt: g.prompt, signal: o?.signal });
       o?.auDemarrage?.();
-      return reponses[i++]!();
+      return responses[i++]!();
     },
   };
 }
 const lancer = (ia: GemmaAccess | null, extra: Partial<Parameters<typeof layOut>[0]> = {}) =>
-  layOut({ resultats, consigne: "Montre les tickets", catalogue: BUILTIN_COMPONENTS, ia, ...extra });
+  layOut({ resultats: results, consigne: "Montre les tickets", catalogue: BUILTIN_COMPONENTS, ia, ...extra });
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
 
 describe("mettreEnPage", () => {
   it("empty results: no call, empty", async () => {
-    const appels: Appel[] = [];
-    const r = await lancer(faux([], appels), { resultats: { tickets: [] } });
+    const calls: Call[] = [];
+    const r = await lancer(fake([], calls), { resultats: { tickets: [] } });
     expect(r).toMatchObject({ plan: null, vide: true, essais: 0 });
-    expect(appels).toHaveLength(0);
+    expect(calls).toHaveLength(0);
   });
 
   it("without AI: fallback", async () => {
@@ -40,54 +40,54 @@ describe("mettreEnPage", () => {
   });
 
   it("valid plan on the first try: attempts 1, fallback false", async () => {
-    const r = await lancer(faux([() => planValide]));
+    const r = await lancer(fake([() => validPlan]));
     expect(r).toMatchObject({ essais: 1, secours: false, vide: false });
-    expect(r.plan).toEqual(planValide);
+    expect(r.plan).toEqual(validPlan);
   });
 
   it("a JSON text response is read", async () => {
-    const r = await lancer(faux([() => "```json\n" + JSON.stringify(planValide) + "\n```"]));
+    const r = await lancer(fake([() => "```json\n" + JSON.stringify(validPlan) + "\n```"]));
     expect(r).toMatchObject({ essais: 1, secours: false });
   });
 
   it("invalid JSON then valid plan: attempts 2, the second instruction contains the reasons", async () => {
-    const appels: Appel[] = [];
-    const r = await lancer(faux([() => "pas du json {", () => planValide], appels));
+    const calls: Call[] = [];
+    const r = await lancer(fake([() => "pas du json {", () => validPlan], calls));
     expect(r).toMatchObject({ essais: 2, secours: false });
-    expect(appels[1]!.prompt).toContain("pas du JSON");
-    expect(appels[0]!.prompt).not.toContain("pas du JSON");
+    expect(calls[1]!.prompt).toContain("pas du JSON");
+    expect(calls[0]!.prompt).not.toContain("pas du JSON");
   });
 
   it("the local AI throws « JSON invalide » (json: true) then returns a plan: attempts 2, the second instruction contains the reason", async () => {
-    const appels: Appel[] = [];
-    const r = await lancer(faux([() => Promise.reject(new Error(GEMMA_JSON_INVALID)), () => planValide], appels));
+    const calls: Call[] = [];
+    const r = await lancer(fake([() => Promise.reject(new Error(GEMMA_JSON_INVALID)), () => validPlan], calls));
     expect(r).toMatchObject({ essais: 2, secours: false });
-    expect(appels[1]!.prompt).toContain("pas du JSON");
+    expect(calls[1]!.prompt).toContain("pas du JSON");
   });
 
   it("the local AI throws « JSON invalide » twice: fallback after two attempts", async () => {
-    const appels: Appel[] = [];
+    const calls: Call[] = [];
     const lever = () => Promise.reject(new Error(GEMMA_JSON_INVALID));
-    const r = await lancer(faux([lever, lever], appels));
+    const r = await lancer(fake([lever, lever], calls));
     expect(r).toMatchObject({ secours: true, essais: 2 });
-    expect(appels).toHaveLength(2);
+    expect(calls).toHaveLength(2);
   });
 
   it("invalid plan then valid: the validerPlan reasons are in the second instruction", async () => {
-    const appels: Appel[] = [];
-    await lancer(faux([() => planInvalide, () => planValide], appels));
-    expect(appels[1]!.prompt).toContain("le plan ne référence rien");
+    const calls: Call[] = [];
+    await lancer(fake([() => invalidPlan, () => validPlan], calls));
+    expect(calls[1]!.prompt).toContain("le plan ne référence rien");
   });
 
   it("deux plans invalides : secours, raison", async () => {
-    const r = await lancer(faux([() => planInvalide, () => planInvalide]));
+    const r = await lancer(fake([() => invalidPlan, () => invalidPlan]));
     expect(r).toMatchObject({ secours: true, essais: 2 });
     expect(r.raison).toBeTruthy();
     expect(r.plan!.blocs.length).toBeGreaterThan(0);
   });
 
   it("Gemma failing: fallback", async () => {
-    const r = await lancer(faux([() => Promise.reject(new Error("hors ligne"))]));
+    const r = await lancer(fake([() => Promise.reject(new Error("hors ligne"))]));
     expect(r).toMatchObject({ secours: true, essais: 1 });
   });
 
@@ -97,7 +97,7 @@ describe("mettreEnPage", () => {
         new Promise((res) => {
           setTimeout(() => {
             o?.auDemarrage?.();
-            setTimeout(() => res(planValide), 40_000);
+            setTimeout(() => res(validPlan), 40_000);
           }, 60_000);
         }),
     };
@@ -107,20 +107,20 @@ describe("mettreEnPage", () => {
   });
 
   it("Gemma starts and does not answer in 90 s: fallback at 90 s, the call's signal raised", async () => {
-    const appels: Appel[] = [];
-    const ia = faux([() => new Promise(() => {})], appels);
-    let fini = false;
-    const p = lancer(ia).then((r) => ((fini = true), r));
+    const calls: Call[] = [];
+    const ia = fake([() => new Promise(() => {})], calls);
+    let finished = false;
+    const p = lancer(ia).then((r) => ((finished = true), r));
     await vi.advanceTimersByTimeAsync(LAYOUT_DELAY_MS - 1);
-    expect(fini).toBe(false);
+    expect(finished).toBe(false);
     await vi.advanceTimersByTimeAsync(1);
     const r = await p;
     expect(r.secours).toBe(true);
-    expect(appels[0]!.signal!.aborted).toBe(true);
+    expect(calls[0]!.signal!.aborted).toBe(true);
   });
 
   it("the delay covers both attempts", async () => {
-    const ia = faux([() => new Promise((res) => setTimeout(() => res("non"), 60_000)), () => new Promise(() => {})]);
+    const ia = fake([() => new Promise((res) => setTimeout(() => res("non"), 60_000)), () => new Promise(() => {})]);
     const p = lancer(ia);
     await vi.advanceTimersByTimeAsync(LAYOUT_DELAY_MS);
     const r = await p;
@@ -129,22 +129,22 @@ describe("mettreEnPage", () => {
 
   it("signal raised during the layout: immediate fallback", async () => {
     const ctl = new AbortController();
-    const appels: Appel[] = [];
-    const p = lancer(faux([() => new Promise(() => {})], appels), { signal: ctl.signal });
+    const calls: Call[] = [];
+    const p = lancer(fake([() => new Promise(() => {})], calls), { signal: ctl.signal });
     await vi.advanceTimersByTimeAsync(10);
     ctl.abort();
     const r = await p;
     expect(r.secours).toBe(true);
-    expect(appels[0]!.signal!.aborted).toBe(true);
+    expect(calls[0]!.signal!.aborted).toBe(true);
   });
 
   it("signal already raised: fallback without a call", async () => {
     const ctl = new AbortController();
     ctl.abort();
-    const appels: Appel[] = [];
-    const r = await lancer(faux([], appels), { signal: ctl.signal });
+    const calls: Call[] = [];
+    const r = await lancer(fake([], calls), { signal: ctl.signal });
     expect(r).toMatchObject({ secours: true, essais: 0 });
-    expect(appels).toHaveLength(0);
+    expect(calls).toHaveLength(0);
   });
 });
 

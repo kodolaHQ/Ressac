@@ -33,11 +33,11 @@ afterEach(() => w?.close());
 
 const call = (name: string, args: Record<string, unknown> = {}) => callTool(w.dataDir, name, args);
 /** Opens a user tab (not the agent's) and returns its id once its page is loaded. */
-async function openTab(path: string, activer = true): Promise<string> {
+async function openTab(path: string, enable = true): Promise<string> {
   const before = new Set(Object.keys((await state(m)).onglets));
-  const s = await dispatch(m, { type: "ouvrirOnglet", fenetreId: (await state(m)).fenetres[0]!.id, url: `${server.url}${path}`, activer } as Action);
+  const s = await dispatch(m, { type: "ouvrirOnglet", fenetreId: (await state(m)).fenetres[0]!.id, url: `${server.url}${path}`, activer: enable } as Action);
   const id = Object.keys(s.onglets).find((x) => !before.has(x))!;
-  if (activer)
+  if (enable)
     await waitFor(m, `return gBrowser.tabs.some((t) => t.linkedBrowser.currentURI.spec.endsWith(${JSON.stringify(path)}) && !t.linkedBrowser.webProgress.isLoadingDocument)`, (v) => v === true);
   return id;
 }

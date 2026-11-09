@@ -6,12 +6,12 @@ import { afterEach, beforeEach, expect, test } from "vitest";
 import { History } from "../core/historique";
 
 let h: History;
-let chemin: string;
+let path: string;
 const date = (iso: string) => new Date(iso);
 
 beforeEach(() => {
-  chemin = join(mkdtempSync(join(tmpdir(), "webaios-hist-")), "historique.sqlite");
-  h = new History(chemin);
+  path = join(mkdtempSync(join(tmpdir(), "webaios-hist-")), "historique.sqlite");
+  h = new History(path);
 });
 afterEach(() => h.fermer());
 
@@ -68,7 +68,7 @@ test("special characters (% _ ') in the search are treated literally", () => {
 test("history survives reopening the file", () => {
   h.noter({ espaceId: "", prive: false, url: "https://a.fr/", titre: "A" });
   h.fermer();
-  h = new History(chemin);
+  h = new History(path);
   expect(h.recents().map((v) => v.url)).toEqual(["https://a.fr/"]);
 });
 
@@ -121,17 +121,17 @@ test("rendrePrive marks only this space's rows", () => {
 
 test("old schema (url key alone): rows kept, empty space, non-private", () => {
   h.fermer();
-  const vieux = join(mkdtempSync(join(tmpdir(), "webaios-hist-")), "historique.sqlite");
-  const db = new DatabaseSync(vieux);
+  const old = join(mkdtempSync(join(tmpdir(), "webaios-hist-")), "historique.sqlite");
+  const db = new DatabaseSync(old);
   db.exec(`CREATE TABLE visites (url TEXT PRIMARY KEY, titre TEXT NOT NULL, derniere_visite TEXT NOT NULL, visites INTEGER NOT NULL DEFAULT 1);
     INSERT INTO visites VALUES ('https://vieux.fr/', 'Vieux', '2026-01-01T00:00:00.000Z', 3);`);
   db.close();
-  h = new History(vieux);
+  h = new History(old);
   expect(h.recents()).toEqual([{ url: "https://vieux.fr/", titre: "Vieux", derniereVisite: "2026-01-01T00:00:00.000Z", visites: 3, espaceId: "", prive: false, retenu: false }]);
   h.noter({ url: "https://vieux.fr/", titre: "Vieux", espaceId: "A", prive: false });
   expect(h.recents()).toHaveLength(2);
   h.fermer();
-  h = new History(vieux); // already migrated: reopening changes nothing
+  h = new History(old); // already migrated: reopening changes nothing
   expect(h.recents()).toHaveLength(2);
 });
 
@@ -144,8 +144,8 @@ test("rechercher in distinct mode: a URL seen in two spaces comes out once, and 
 });
 
 test("rechercher in distinct mode keeps per URL the most visited row, then the most recent, in order and within the limit", () => {
-  const noter = (url: string, espaceId: string, fois: number, iso: string) => {
-    for (let i = 0; i < fois; i++) h.noter({ url, titre: "page", espaceId, prive: false, date: date(iso) });
+  const noter = (url: string, spaceId: string, times: number, iso: string) => {
+    for (let i = 0; i < times; i++) h.noter({ url, titre: "page", espaceId: spaceId, prive: false, date: date(iso) });
   };
   noter("https://a.fr/", "A", 1, "2026-10-05T00:00:00Z");
   noter("https://a.fr/", "B", 3, "2026-10-01T00:00:00Z"); // most visited: wins despite the date
@@ -167,12 +167,12 @@ test("a private row that becomes non-private restarts at one visit, with a fresh
 
 // --- Retained page text (browsing memory) ---
 
-const JOUR = 86_400_000;
+const DAY = 86_400_000;
 /** A non-private visit and its retained text, at the same date. */
-function visiter(url: string, titre: string, texte: string, o: { espaceId?: string; date?: string } = {}) {
+function visiter(url: string, titre: string, text: string, o: { espaceId?: string; date?: string } = {}) {
   const d = date(o.date ?? "2026-10-01T00:00:00Z");
   h.noter({ url, titre, espaceId: o.espaceId ?? "A", prive: false, date: d });
-  h.retenir({ url, titre, espaceId: o.espaceId ?? "A", texte, date: d });
+  h.retenir({ url, titre, espaceId: o.espaceId ?? "A", texte: text, date: d });
 }
 
 test("retenir truncates the text to 20,000 characters", () => {
@@ -197,10 +197,10 @@ test("Visite.retenu tells whether this visit's text (URL and space) is retained;
 });
 
 test("purger erases text older than 183 days and keeps the 182-day-old one", () => {
-  const maintenant = date("2026-10-28T12:00:00Z");
-  visiter("https://vieux.fr/", "V", "vieux", { date: new Date(maintenant.getTime() - 184 * JOUR).toISOString() });
-  visiter("https://jeune.fr/", "J", "jeune", { date: new Date(maintenant.getTime() - 182 * JOUR).toISOString() });
-  h.purger(maintenant);
+  const now = date("2026-10-28T12:00:00Z");
+  visiter("https://vieux.fr/", "V", "vieux", { date: new Date(now.getTime() - 184 * DAY).toISOString() });
+  visiter("https://jeune.fr/", "J", "jeune", { date: new Date(now.getTime() - 182 * DAY).toISOString() });
+  h.purger(now);
   expect(h.texteRetenu("https://vieux.fr/")).toBeNull();
   expect(h.texteRetenu("https://jeune.fr/")).not.toBeNull();
   expect(h.recents()).toHaveLength(2); // the visits remain
@@ -208,7 +208,7 @@ test("purger erases text older than 183 days and keeps the 182-day-old one", () 
 
 test("beyond the cap, purger erases the oldest text first", () => {
   h.fermer();
-  h = new History(chemin, { plafondOctets: 25 });
+  h = new History(path, { plafondOctets: 25 });
   visiter("https://1.fr/", "1", "a".repeat(10), { date: "2026-10-01T00:00:00Z" });
   visiter("https://2.fr/", "2", "é".repeat(5), { date: "2026-10-02T00:00:00Z" }); // 10 bytes in UTF-8
   visiter("https://3.fr/", "3", "c".repeat(10), { date: "2026-10-03T00:00:00Z" });
@@ -276,8 +276,8 @@ test("rechercherPourAgent returns 20 results by default and never more than 50",
 });
 
 test("rechercherPourAgent returns an excerpt of about 300 characters around the found word", () => {
-  const avant = "Lorem ipsum dolor sit amet. ".repeat(100);
-  visiter("https://a.fr/", "A", `${avant} le mot introuvable est ici. ${avant}`);
+  const before = "Lorem ipsum dolor sit amet. ".repeat(100);
+  visiter("https://a.fr/", "A", `${before} le mot introuvable est ici. ${before}`);
   const [r] = h.rechercherPourAgent({ requete: "introuvable" });
   expect(r!.extrait).toContain("introuvable");
   expect(r!.extrait.length).toBeGreaterThan(200);
@@ -314,7 +314,7 @@ test("an empty query returns the most recent non-private visits", () => {
 test("retained text survives reopening the file", () => {
   visiter("https://a.fr/", "A", "persistant");
   h.fermer();
-  h = new History(chemin);
+  h = new History(path);
   expect(h.rechercherPourAgent({ requete: "persistant" }).map((r) => r.url)).toEqual(["https://a.fr/"]);
 });
 

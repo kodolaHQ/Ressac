@@ -3,10 +3,10 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { spacePaths } from "../../src/chemins.js";
 import { readFreeLayout, placeMissingFree } from "../../src/accueil/lire.js";
 import { freeSizes, type FreePlacement } from "../../src/accueil/schemas.js";
-import { dossierTemporaire } from "../aide/temporaire.js";
+import { tempFolder } from "../aide/temporaire.js";
 
-async function espace() {
-  const c = spacePaths(await dossierTemporaire());
+async function space() {
+  const c = spacePaths(await tempFolder());
   await mkdir(c.accueil, { recursive: true });
   return c;
 }
@@ -16,7 +16,7 @@ test("taillesLibres converts 3 × 2 units to 250 ‰ × 180 px", () => {
 });
 
 test("lireDispositionLibre reads version 3 and returns [] for version 2, a damaged file or an overlap", async () => {
-  const c = await espace();
+  const c = await space();
   const widgets = [
     { id: "a", x: 0, y: 0, l: 500, h: 90 },
     { id: "b", x: 500, y: 0, l: 500, h: 90 },
@@ -38,33 +38,33 @@ test("lireDispositionLibre reads version 3 and returns [] for version 2, a damag
 });
 
 test("placerManquantsLibre keeps a valid wanted placement and ignores an unknown id or a duplicate", () => {
-  const defauts = new Map([["a", { l: 500, h: 90 }]]);
-  const voulus: FreePlacement[] = [
+  const defaults = new Map([["a", { l: 500, h: 90 }]]);
+  const wanted: FreePlacement[] = [
     { id: "a", x: 500, y: 0, l: 500, h: 90 },
     { id: "fantome", x: 0, y: 0, l: 500, h: 90 },
     { id: "a", x: 0, y: 0, l: 500, h: 90 },
   ];
-  expect(placeMissingFree(["a"], voulus, defauts)).toEqual([{ id: "a", x: 500, y: 0, l: 500, h: 90 }]);
+  expect(placeMissingFree(["a"], wanted, defaults)).toEqual([{ id: "a", x: 500, y: 0, l: 500, h: 90 }]);
 });
 
 test("placerManquantsLibre puts widgets without a position at the first gap, without overlap", () => {
-  const defauts = new Map([
+  const defaults = new Map([
     ["a", { l: 500, h: 90 }],
     ["b", { l: 500, h: 90 }],
   ]);
-  expect(placeMissingFree(["a", "b"], [], defauts)).toEqual([
+  expect(placeMissingFree(["a", "b"], [], defaults)).toEqual([
     { id: "a", x: 0, y: 0, l: 500, h: 90 },
     { id: "b", x: 500, y: 0, l: 500, h: 90 },
   ]);
 });
 
 test("placerManquantsLibre places below when the row is full", () => {
-  const defauts = new Map([
+  const defaults = new Map([
     ["a", { l: 500, h: 90 }],
     ["b", { l: 500, h: 90 }],
     ["c", { l: 500, h: 90 }],
   ]);
-  expect(placeMissingFree(["a", "b", "c"], [], defauts)).toEqual([
+  expect(placeMissingFree(["a", "b", "c"], [], defaults)).toEqual([
     { id: "a", x: 0, y: 0, l: 500, h: 90 },
     { id: "b", x: 500, y: 0, l: 500, h: 90 },
     { id: "c", x: 0, y: 90, l: 500, h: 90 },
@@ -73,17 +73,17 @@ test("placerManquantsLibre places below when the row is full", () => {
 
 test("placerManquantsLibre puts a widget in the gap at a neighbor's right edge", () => {
   // a = 0…250, b = 500…750: the gap starts exactly at 250, off the 8 ‰ steps.
-  const defauts = new Map([
+  const defaults = new Map([
     ["a", { l: 250, h: 180 }],
     ["b", { l: 250, h: 180 }],
     ["nouveau", { l: 250, h: 180 }],
   ]);
-  const voulus = [
+  const wanted = [
     { id: "a", x: 0, y: 0, l: 250, h: 180 },
     { id: "b", x: 500, y: 0, l: 250, h: 180 },
   ];
-  expect(placeMissingFree(["a", "b", "nouveau"], voulus, defauts)).toEqual([
-    ...voulus,
+  expect(placeMissingFree(["a", "b", "nouveau"], wanted, defaults)).toEqual([
+    ...wanted,
     { id: "nouveau", x: 250, y: 0, l: 250, h: 180 },
   ]);
 });

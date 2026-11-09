@@ -1,20 +1,20 @@
 import type { Runner } from "../../src/conteneur/executeur.js";
 
-export type Reponse = { code: number; stdout?: string; stderr?: string };
-export interface Appel { commande: string; args: string[]; opts?: Parameters<Runner>[2] }
+export type Response = { code: number; stdout?: string; stderr?: string };
+export interface Call { commande: string; args: string[]; opts?: Parameters<Runner>[2] }
 
 /** Scripted executor: the first rule whose pattern matches `commande args…` answers. */
-export function executeurFactice(regles: [RegExp, Reponse | (() => Reponse | Promise<Reponse>)][]) {
-  const appels: Appel[] = [];
-  const executer: Runner = async (commande, args, opts) => {
-    appels.push({ commande, args, opts });
-    const ligne = [commande, ...args].join(" ");
-    for (const [motif, reponse] of regles) {
+export function fakeRunner(regles: [RegExp, Response | (() => Response | Promise<Response>)][]) {
+  const calls: Call[] = [];
+  const executer: Runner = async (command, args, opts) => {
+    calls.push({ commande: command, args, opts });
+    const ligne = [command, ...args].join(" ");
+    for (const [motif, response] of regles) {
       if (!motif.test(ligne)) continue;
-      const r = typeof reponse === "function" ? await reponse() : reponse;
+      const r = typeof response === "function" ? await response() : response;
       return { code: r.code, stdout: r.stdout ?? "", stderr: r.stderr ?? "" };
     }
     return { code: 0, stdout: "", stderr: "" };
   };
-  return { executer, appels };
+  return { executer, appels: calls };
 }

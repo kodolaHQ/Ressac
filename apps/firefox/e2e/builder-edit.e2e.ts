@@ -13,7 +13,7 @@ import { nodes, openBuilder, readWorkflow, widgetDir, writeWidget } from "./work
 // The workflow builder on webaios://workflow/<widget>, opened from the home page's widget menu.
 
 /** A workflow shipped by the agent, without positions: a page, its links taken by code, sorted by Kev, then their texts. */
-const WORKFLOW_VEILLE = {
+const WATCH_WORKFLOW = {
   version: 1,
   blocs: [
     { id: "page", type: "source.page", parametres: { url: "{config.url}" } },
@@ -55,7 +55,7 @@ let kev: Server;
 let ollama: Server;
 
 /** The widgets built on WORKFLOW_VEILLE, one per test that edits it (a builder keeps its draft per widget for the window). */
-const VEILLES = ["add", "undo", "add-code", "run", "suppr", "field", "agent", "seuil", "gabarit", "code", "img", "close", "gone"];
+const WATCHES = ["add", "undo", "add-code", "run", "suppr", "field", "agent", "seuil", "gabarit", "code", "img", "close", "gone"];
 /** The widget's data folder, outside the space (state, executions, memory). */
 const dataOf = (id: string) => path.join(dataDir, "widgets", id);
 const readJson = async (file: string) => JSON.parse(await readFile(file, "utf8"));
@@ -73,12 +73,12 @@ async function poll<T>(read: () => Promise<T>, expected: T, ms = 10_000): Promis
   }
 }
 
-const writeVeille = (id: string) =>
+const writeWatch = (id: string) =>
   writeWidget(dataDir, id, {
     nom: "Veille",
     recolte: { minutes: 60 },
     declaration: { config: { url: `${site.url}/liens` } },
-    workflow: WORKFLOW_VEILLE,
+    workflow: WATCH_WORKFLOW,
     fichiers: {
       "liens.mjs": "export default async (page) => page.liens;",
       "textes.mjs": "export default async (liens) => ({ liens: liens.map((l) => l.texte) });",
@@ -107,14 +107,14 @@ beforeAll(async () => {
     nom: "Veille",
     recolte: { minutes: 60 },
     declaration: { config: { url: "https://exemple.invalid/liens" } },
-    workflow: WORKFLOW_VEILLE,
+    workflow: WATCH_WORKFLOW,
     fichiers: {
       "liens.mjs": "export default async (page) => page.liens;",
       "textes.mjs": "export default async (liens) => ({ liens: liens.map((l) => l.texte) });",
     },
   });
   await writeWidget(dataDir, "sans", { nom: "Sans récolte" });
-  for (const id of VEILLES) await writeVeille(id);
+  for (const id of WATCHES) await writeWatch(id);
   // Without a state: harvested at launch (scheduled).
   await rm(dataOf("run"), { recursive: true });
   // Only recolte.mjs: an implicit workflow (recolte → sortie).
@@ -258,9 +258,9 @@ async function writeAsAgent(id: string, workflow: unknown): Promise<void> {
   await writeFile(`${file}.agent`, JSON.stringify(workflow, null, 2));
   await rename(`${file}.agent`, file);
 }
-const withThreshold = (seuil: number) => ({
-  ...WORKFLOW_VEILLE,
-  blocs: WORKFLOW_VEILLE.blocs.map((b) => (b.id === "tri" ? { ...b, parametres: { ...b.parametres, seuil } } : b)),
+const withThreshold = (threshold: number) => ({
+  ...WATCH_WORKFLOW,
+  blocs: WATCH_WORKFLOW.blocs.map((b) => (b.id === "tri" ? { ...b, parametres: { ...b.parametres, seuil: threshold } } : b)),
 });
 const thresholdOf = async (id: string) => (await readWorkflow(dataDir, id)).blocs.find((b: { id: string }) => b.id === "tri").parametres.seuil;
 
@@ -343,7 +343,7 @@ describe("the workflow builder", () => {
     await waitContains("etat-enregistrement", "Non enregistré : ");
     await waitContains("etat-enregistrement", "entrée manquante");
     expect(await inUi(m, `return ${q("noeud-liste-garder")}.classList.contains("en-erreur")`)).toBe(true);
-    expect(await readWorkflow(dataDir, "add")).toEqual(WORKFLOW_VEILLE);
+    expect(await readWorkflow(dataDir, "add")).toEqual(WATCH_WORKFLOW);
 
     await link("tri", "liste-garder");
     await saved();
@@ -410,7 +410,7 @@ describe("the workflow builder", () => {
     const last = (await readdir(executions)).sort().at(-1)!;
     expect((await readJson(path.join(executions, last))).declencheur).toBe("manuelle");
     // Running does not write the workflow.
-    expect(await readWorkflow(dataDir, "run")).toEqual(WORKFLOW_VEILLE);
+    expect(await readWorkflow(dataDir, "run")).toEqual(WATCH_WORKFLOW);
   });
 
   it("a widget with only recolte.mjs opens as an implicit workflow (recolte → sortie) without creating a workflow.json", async () => {
@@ -451,7 +451,7 @@ describe("the workflow builder", () => {
     await pressKeys(m, "Delete");
     await sleep(300);
     expect(await count("noeud-sortie")).toBe(1);
-    expect(await readWorkflow(dataDir, "suppr")).toEqual(WORKFLOW_VEILLE);
+    expect(await readWorkflow(dataDir, "suppr")).toEqual(WATCH_WORKFLOW);
     // With another block selected too: it alone goes (the output, without input, makes the draft invalid).
     await click(m, '[data-testid="noeud-textes"]');
     await keyDown(m, "Meta");
@@ -465,7 +465,7 @@ describe("the workflow builder", () => {
     await waitCount("noeud-textes", 0);
     expect(await count("noeud-sortie")).toBe(1);
     await waitContains("etat-enregistrement", "entrée manquante");
-    expect(await readWorkflow(dataDir, "suppr")).toEqual(WORKFLOW_VEILLE);
+    expect(await readWorkflow(dataDir, "suppr")).toEqual(WATCH_WORKFLOW);
   });
 
   it("⌘Z typed in a text field does not undo the canvas", async () => {
@@ -536,7 +536,7 @@ describe("the workflow builder", () => {
     expect(await count("champ-parElement")).toBe(0);
     // Selecting writes nothing.
     await sleep(500);
-    expect(await readWorkflow(dataDir, "seuil")).toEqual(WORKFLOW_VEILLE);
+    expect(await readWorkflow(dataDir, "seuil")).toEqual(WATCH_WORKFLOW);
 
     // An unreadable entry (« - ») writes nothing; left, the field shows the block's value again.
     await click(m, '[data-testid="champ-seuil"]');
@@ -587,7 +587,7 @@ describe("the workflow builder", () => {
     await poll(questionOf, "Parle de cuisine ?");
     // (The first gesture froze the positions shown: only the position is added.)
     const { position: _p, ...liens } = (await readWorkflow(dataDir, "gabarit")).blocs.find((b: { id: string }) => b.id === "liens");
-    expect(liens).toEqual(WORKFLOW_VEILLE.blocs[1]);
+    expect(liens).toEqual(WATCH_WORKFLOW.blocs[1]);
   });
 
   it("a code block's code is only written with Enregistrer le code; ⌘S too", async () => {
@@ -610,7 +610,7 @@ describe("the workflow builder", () => {
     await poll(() => readFile(code, "utf8"), "export default async (page) => page.liens.slice(0, 2);");
     await waitCount("code-non-enregistre", 0);
     // The workflow was not touched.
-    expect(await readWorkflow(dataDir, "code")).toEqual(WORKFLOW_VEILLE);
+    expect(await readWorkflow(dataDir, "code")).toEqual(WATCH_WORKFLOW);
 
     // A draft: switching blocks asks; refused, the block stays; accepted, the draft is kept for the way back.
     await fill("editeur-code", "// brouillon");

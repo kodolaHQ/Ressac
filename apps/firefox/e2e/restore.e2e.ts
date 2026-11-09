@@ -51,10 +51,10 @@ describe("restore at startup", () => {
   it("restores tabs, spaces, pins, essentials and the active tab of each space", async () => {
     fresh();
     let m = await start();
-    const fenetreId = (await win(m)).id;
-    const open = async (p: string, activer = false) => {
+    const windowId = (await win(m)).id;
+    const open = async (p: string, enable = false) => {
       const before = new Set(Object.keys((await state(m)).onglets));
-      const after = await dispatch(m, { type: "ouvrirOnglet", fenetreId, url: server.url + p, activer });
+      const after = await dispatch(m, { type: "ouvrirOnglet", fenetreId: windowId, url: server.url + p, activer: enable });
       return Object.keys(after.onglets).find((id) => !before.has(id))!;
     };
     const a = await open("/a.html");
@@ -62,8 +62,8 @@ describe("restore at startup", () => {
     await open("/texte.html", true);
     await dispatch(m, { type: "epinglerOnglet", id: a });
     await dispatch(m, { type: "ajouterEssentiel", id: b });
-    await dispatch(m, { type: "creerEspace", nom: "Boulot", icone: "💼", prive: false, profil: "defaut", fenetreId } as Action);
-    const boulot = (await state(m)).espaces.find((e) => e.nom === "Boulot")!;
+    await dispatch(m, { type: "creerEspace", nom: "Boulot", icone: "💼", prive: false, profil: "defaut", fenetreId: windowId } as Action);
+    const work = (await state(m)).espaces.find((e) => e.nom === "Boulot")!;
     const c = await open("/b.html?n=1", true);
     await newWindow(m);
     const before = await state(m);
@@ -93,9 +93,9 @@ describe("restore at startup", () => {
     expect(after.espaces.map((e) => [e.nom, e.icone, e.epingles.length])).toEqual(before.espaces.map((e) => [e.nom, e.icone, e.epingles.length]));
     expect(after.essentiels).toEqual(before.essentiels);
     const f = after.fenetres[0]!;
-    expect(f.espaceActif).toBe(boulot.id);
+    expect(f.espaceActif).toBe(work.id);
     expect(f.actif).toEqual(before.fenetres[0]!.actif);
-    expect(f.actif[boulot.id]).toBe(c);
+    expect(f.actif[work.id]).toBe(c);
     expect(f.ordre).toEqual(before.fenetres[0]!.ordre);
     const urls = (s: typeof before) => Object.fromEntries(Object.values(s.onglets).map((o) => [o.id, o.url]));
     expect(urls(after)).toEqual(urls(before));
@@ -111,9 +111,9 @@ describe("restore at startup", () => {
   it("a window's size is recorded and restored", async () => {
     fresh();
     let m = await start();
-    const fenetreId = (await win(m)).id;
+    const windowId = (await win(m)).id;
     await m.execute("window.resizeTo(1000, 700)");
-    const width = `return (async () => (await ChromeUtils.importESModule("chrome://browser/content/webaios/store.sys.mjs").ready).state.fenetres.find((f) => f.id === ${JSON.stringify(fenetreId)})?.cadre?.largeur)();`;
+    const width = `return (async () => (await ChromeUtils.importESModule("chrome://browser/content/webaios/store.sys.mjs").ready).state.fenetres.find((f) => f.id === ${JSON.stringify(windowId)})?.cadre?.largeur)();`;
     await waitFor(m, width, (v) => v === 1000);
     await quit();
 
@@ -124,11 +124,11 @@ describe("restore at startup", () => {
   it("keeps a cookie set by a local server, in the space's own container found by name", async () => {
     fresh();
     let m = await start();
-    const fenetreId = (await win(m)).id;
-    await dispatch(m, { type: "creerEspace", nom: "Propre", icone: "🔒", prive: false, profil: "nouveau", fenetreId } as Action);
+    const windowId = (await win(m)).id;
+    await dispatch(m, { type: "creerEspace", nom: "Propre", icone: "🔒", prive: false, profil: "nouveau", fenetreId: windowId } as Action);
     const open = async (p: string) => {
       const before = new Set(Object.keys((await state(m)).onglets));
-      const after = await dispatch(m, { type: "ouvrirOnglet", fenetreId, url: server.url + p });
+      const after = await dispatch(m, { type: "ouvrirOnglet", fenetreId: windowId, url: server.url + p });
       return Object.keys(after.onglets).find((id) => !before.has(id))!;
     };
     const title = (id: string, t: string) => waitFor(m, `return (async () => (await ChromeUtils.importESModule("chrome://browser/content/webaios/store.sys.mjs").ready).state.onglets[${JSON.stringify(id)}]?.titre)();`, (v) => v === t);
@@ -142,14 +142,14 @@ describe("restore at startup", () => {
   it("100 restored tabs: one marked XUL tab (the active one) besides the parking tab; activating another creates a second", async () => {
     fresh();
     let m = await start();
-    const fenetreId = (await win(m)).id;
+    const windowId = (await win(m)).id;
     await m.execute(
       `return (async () => {
         const store = await ChromeUtils.importESModule("chrome://browser/content/webaios/store.sys.mjs").ready;
         for (let i = 0; i < 100; i++) store.dispatch({ type: "ouvrirOnglet", fenetreId: arguments[0], url: arguments[1] + "/b.html?n=" + i, activer: i === 99 });
         await store.flush();
       })();`,
-      [fenetreId, server.url],
+      [windowId, server.url],
     );
     expect(await marked(m)).toBe(1);
     await quit();

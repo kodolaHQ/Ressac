@@ -17,7 +17,7 @@ import { writeWidget } from "./workflows";
 
 const FIXTURES_DDG = path.resolve(import.meta.dirname, "../../../packages/noyau/test/workflows/fixtures/duckduckgo");
 /** The kernel's exact message (accueil/schemas.ts, WEB_AVEC_COMPTE). */
-const WEB_AVEC_COMPTE = "web : impossible avec un compte (les données d'un compte ne doivent pas pouvoir partir vers un site inconnu)";
+const WEB_WITH_ACCOUNT = "web : impossible avec un compte (les données d'un compte ne doivent pas pouvoir partir vers un site inconnu)";
 
 interface Server {
   url: string;
@@ -148,7 +148,7 @@ async function launchWatch(): Promise<Marionette> {
 }
 
 /** The ads' extraction from the search page (the `annonces.mjs` the agent would write). */
-const ANNONCES_MJS = `export default async (page) => {
+const ANNOUNCEMENTS_MJS = `export default async (page) => {
   const annonces = [];
   for (const l of page.liens) {
     if (!l.url.includes("/annonce/")) continue;
@@ -209,7 +209,7 @@ async function writeWatch(): Promise<void> {
         { de: "avis", vers: "sortie" },
       ],
     },
-    fichiers: { "annonces.mjs": ANNONCES_MJS, "exemple.json": "[]" },
+    fichiers: { "annonces.mjs": ANNOUNCEMENTS_MJS, "exemple.json": "[]" },
   });
   // « Up to date, hour of the day done »: no run starts by itself during the test.
   const now = new Date().toISOString();
@@ -476,7 +476,7 @@ it('the Gmail widget (account, recolte.mjs) updates as before; with "web": true 
   // The agent adds "web": true: the widget is refused, with the exact message, and gains no access.
   const from = site.log.length;
   await writeWidget(dataDir, "gmail", { ...gmail, declaration: { ...gmail.declaration, sources: { ...gmail.declaration.sources, web: true } } });
-  await until(() => widgetText(m, "gmail"), (t) => t.includes(WEB_AVEC_COMPTE));
+  await until(() => widgetText(m, "gmail"), (t) => t.includes(WEB_WITH_ACCOUNT));
   expect(await inUi(m, `return !!doc.querySelector('[data-testid="widget-gmail"] button[aria-label="Options du widget"]')?.checkVisibility();`)).toBe(true);
   expect(site.log.slice(from)).toEqual([]);
 }, 60_000);

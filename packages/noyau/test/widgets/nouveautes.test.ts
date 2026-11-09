@@ -19,11 +19,11 @@ describe("nouveautes", () => {
     expect(elementsDe(null)).toEqual([]);
     expect(elementsDe("texte")).toEqual([]);
     expect(elementsDe({ titre: "x" })).toEqual([]);
-    const avant = { annonces: [{ url: "https://a.example/1", prix: 10 }] };
-    const apres = { annonces: [{ url: "https://a.example/1", prix: 12 }, { url: "https://a.example/2" }, { url: "https://a.example/3" }] };
-    expect(countNew(avant, apres)).toBe(2);
-    expect(countNew(null, apres)).toBe(3);
-    expect(countNew(apres, apres)).toBe(0);
+    const before = { annonces: [{ url: "https://a.example/1", prix: 10 }] };
+    const after = { annonces: [{ url: "https://a.example/1", prix: 12 }, { url: "https://a.example/2" }, { url: "https://a.example/3" }] };
+    expect(countNew(before, after)).toBe(2);
+    expect(countNew(null, after)).toBe(3);
+    expect(countNew(after, after)).toBe(0);
     // Twice the same element: only one new.
     expect(countNew([], [{ a: 1 }, { a: 1 }])).toBe(1);
   });

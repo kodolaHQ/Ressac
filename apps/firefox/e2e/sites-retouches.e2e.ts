@@ -21,7 +21,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * A series tweak with a world probe, with Firefox's chrome globals added (spec §1): it hides
  * `.shorts` (CSS), remembers the episode, notes what it sees of its world in the DOM, and answers the test's commands.
  */
-const RETOUCHE_SERIE = `
+const TWEAK_SERIES = `
 const racine = document.documentElement;
 racine.dataset.monde = JSON.stringify({ require: typeof require, ipcRenderer: typeof ipcRenderer, process: typeof process, pont: typeof webaiosSite,
   Components: typeof Components, ChromeUtils: typeof ChromeUtils, Services: typeof Services });
@@ -47,7 +47,7 @@ let dataDir: string;
 let profile: string;
 
 const url = (p: string, host = "vidola-a.localhost") => server.url(host, p);
-const lecteur = () => server.url("lecteur.localhost", "/*").replace(/^http:/, "https:");
+const reader = () => server.url("lecteur.localhost", "/*").replace(/^http:/, "https:");
 const vidola = () => ({
   nom: "Vidola",
   adresse: url("/serie/the-bear"),
@@ -55,12 +55,12 @@ const vidola = () => ({
   connexion: ["compte.localhost"],
   retouches: [
     { correspond: ["/serie/*"], js: ["serie.js"], css: ["cacher.css"] },
-    { correspond: ["/jamais"], js: ["cadre.js"], cadres: [lecteur()] },
+    { correspond: ["/jamais"], js: ["cadre.js"], cadres: [reader()] },
     { correspond: ["/erreur"], js: ["erreur.js", "apres.js"] },
   ],
 });
 /** The second app (Review Focus 2): its own domain, memory and console. */
-const autre = () => ({ nom: "Autre", adresse: url("/serie/b", "vidola-b.localhost"), domaines: ["vidola-b.localhost"], retouches: [{ correspond: ["/serie/*"], js: ["b.js"] }] });
+const other = () => ({ nom: "Autre", adresse: url("/serie/b", "vidola-b.localhost"), domaines: ["vidola-b.localhost"], retouches: [{ correspond: ["/serie/*"], js: ["b.js"] }] });
 const B_JS = 'webaiosSite.retenir("b", 1).then(() => (document.documentElement.dataset.retenu = "oui")); throw new Error("erreur de B");';
 
 const inStore = <T = unknown>(body: string, args: unknown[] = []) =>
@@ -79,14 +79,14 @@ const memory = (id: string) => {
 };
 
 /** Opens app `id` and waits for its view to have loaded `chemin`. */
-async function openAt(id: string, chemin: string, host = "vidola-a.localhost") {
+async function openAt(id: string, path: string, host = "vidola-a.localhost") {
   await openSite(id);
-  await expect.poll(() => viewUrl(id), { timeout: 15_000 }).toBe(url(chemin, host));
+  await expect.poll(() => viewUrl(id), { timeout: 15_000 }).toBe(url(path, host));
   await expect.poll(() => view("document.readyState", { id }), { timeout: 10_000 }).toBe("complete");
 }
-const go = async (chemin: string) => {
-  await view(`(location.href = ${JSON.stringify(url(chemin))}, 1)`);
-  await expect.poll(() => viewUrl("vidola"), { timeout: 10_000 }).toBe(url(chemin));
+const go = async (path: string) => {
+  await view(`(location.href = ${JSON.stringify(url(path))}, 1)`);
+  await expect.poll(() => viewUrl("vidola"), { timeout: 10_000 }).toBe(url(path));
 };
 
 /** The test's command to the tweak, then its answer. */
@@ -116,16 +116,16 @@ beforeAll(async () => {
   writeSite(dataDir, "vidola", {
     declaration: vidola(),
     fichiers: {
-      "retouches/serie.js": RETOUCHE_SERIE,
+      "retouches/serie.js": TWEAK_SERIES,
       "retouches/cacher.css": ".shorts { display: none; }",
       "retouches/cadre.js": 'document.documentElement.dataset.cadre = "oui"; document.documentElement.dataset.pont = typeof webaiosSite;',
       "retouches/erreur.js": 'throw new Error("retouche cassée");',
       "retouches/apres.js": 'document.documentElement.dataset.apres = "oui"; setTimeout(() => { throw new Error("plus tard"); });',
     },
   });
-  writeSite(dataDir, "autre", { declaration: autre(), fichiers: { "retouches/b.js": B_JS } });
+  writeSite(dataDir, "autre", { declaration: other(), fichiers: { "retouches/b.js": B_JS } });
   await grantSite(dataDir, "vidola", vidola());
-  await grantSite(dataDir, "autre", autre());
+  await grantSite(dataDir, "autre", other());
   const actor = testActor(profile);
   w = await launchWebAiOs({ dataDir, profile, env: { WEBAIOS_TEST_ADRESSES_LOCALES: "1", ...actor.env }, prefs: actor.prefs });
   m = w.marionette;

@@ -1,9 +1,9 @@
 import { expect, test } from "vitest";
 import { STREAMING_WARNING, INPUT_WARNING, WEB_WITHOUT_DURATION_WARNING, warnWorkflow, validateWorkflow, type Workflow } from "../../src/index.js";
 
-const bloc = (id: string, type: string, parametres: Record<string, unknown>) => ({ id, type, position: { x: 0, y: 0 }, parametres });
+const bloc = (id: string, type: string, params: Record<string, unknown>) => ({ id, type, position: { x: 0, y: 0 }, parametres: params });
 const wf = (...blocs: ReturnType<typeof bloc>[]): Workflow => ({ version: 1, blocs, liens: [] });
-const compte = { sources: { compte: ["app.daily.dev"], publiques: ["hn.algolia.com"] }, config: {} };
+const account = { sources: { compte: ["app.daily.dev"], publiques: ["hn.algolia.com"] }, config: {} };
 
 test("undeclared domain for a widget with an account (page with an account, public page, feed, recuperer)", () => {
   const w = wf(
@@ -14,7 +14,7 @@ test("undeclared domain for a widget with an account (page with an account, publ
     bloc("r", "source.recuperer", { url: "https://hn.algolia.com/api" }),
     bloc("r2", "source.recuperer", { url: "https://ailleurs.net/api" }),
   );
-  expect(warnWorkflow(w, compte)).toEqual([
+  expect(warnWorkflow(w, account)).toEqual([
     { bloc: "p2", message: "domaine non déclaré : app.daily.dev" },
     { bloc: "p3", message: "domaine non déclaré : autre.fr" },
     { bloc: "f", message: "domaine non déclaré : flux.example.org" },
@@ -34,7 +34,7 @@ test("a URL whose host is a template is not judged", () => {
     bloc("c", "source.recuperer", { url: "https://{config.hote}.fr/x" }),
     bloc("d", "source.recuperer", { url: "https://hn.algolia.com/{id}" }), // the host is known, the path is a template
   );
-  expect(warnWorkflow(w, compte).filter((x) => x.message.startsWith("domaine"))).toEqual([]);
+  expect(warnWorkflow(w, account).filter((x) => x.message.startsWith("domaine"))).toEqual([]);
 });
 
 test("{config.ville} without a city in the config is flagged, a present {config.ville} is not", () => {
@@ -46,34 +46,34 @@ test("{config.ville} without a city in the config is flagged, a present {config.
 });
 
 test("auFilDeLEau behind liste.garder: AVERTISSEMENT_FIL_DE_L_EAU on the sortie; behind a chain: none", () => {
-  const brut = (avant: ReturnType<typeof bloc>) => ({
+  const brut = (before: ReturnType<typeof bloc>) => ({
     version: 1,
     blocs: [
       bloc("f", "source.flux", { urls: ["https://x.fr/rss"] }),
       bloc("top", "liste.garder", { nombre: 3 }),
-      avant,
+      before,
       bloc("s", "sortie", { vers: "widget", auFilDeLEau: true }),
     ],
-    liens: [{ de: "f", vers: "top" }, { de: "top", vers: avant.id }, { de: avant.id, vers: "s" }],
+    liens: [{ de: "f", vers: "top" }, { de: "top", vers: before.id }, { de: before.id, vers: "s" }],
   });
   const sans = { sources: { compte: [], publiques: [] }, config: {} };
-  const avertir = (b: unknown) => {
+  const warn = (b: unknown) => {
     const r = validateWorkflow(b);
     if (!r.ok) throw new Error(r.erreur);
     return warnWorkflow(r.valide.workflow, sans, r.valide);
   };
-  expect(avertir(brut(bloc("g", "liste.garder", { nombre: 2 })))).toEqual([{ bloc: "s", message: STREAMING_WARNING }]);
-  expect(avertir(brut(bloc("p", "source.page", { url: "https://x.fr/{url}", parElement: true })))).toEqual([]);
+  expect(warn(brut(bloc("g", "liste.garder", { nombre: 2 })))).toEqual([{ bloc: "s", message: STREAMING_WARNING }]);
+  expect(warn(brut(bloc("p", "source.page", { url: "https://x.fr/{url}", parElement: true })))).toEqual([]);
   expect(STREAMING_WARNING).toBe("rien à publier au fil de l'eau : l'entrée de la sortie n'est pas traitée élément par élément");
 });
 
 test("web.chercher without a declared maximum duration: warning (not an error); with one, or without the context, nothing", () => {
   const w = wf(bloc("c", "web.chercher", { requete: "x" }), bloc("p", "source.page", { url: "https://a.fr" }));
-  const sansCompte = { sources: { compte: [], publiques: [] }, config: {} };
+  const withoutAccount = { sources: { compte: [], publiques: [] }, config: {} };
   expect(WEB_WITHOUT_DURATION_WARNING).toBe("sans dureeMaxMinutes, ce widget peut être coupé à 150 s : demande à l'agent de déclarer dureeMaxMinutes");
-  expect(warnWorkflow(w, { ...sansCompte, dureeMaxMinutes: null })).toEqual([{ bloc: "c", message: WEB_WITHOUT_DURATION_WARNING }]);
-  expect(warnWorkflow(w, { ...sansCompte, dureeMaxMinutes: 30 })).toEqual([]);
-  expect(warnWorkflow(w, sansCompte)).toEqual([]);
+  expect(warnWorkflow(w, { ...withoutAccount, dureeMaxMinutes: null })).toEqual([{ bloc: "c", message: WEB_WITHOUT_DURATION_WARNING }]);
+  expect(warnWorkflow(w, { ...withoutAccount, dureeMaxMinutes: 30 })).toEqual([]);
+  expect(warnWorkflow(w, withoutAccount)).toEqual([]);
 });
 
 test("optional {config.ville?}: never flagged, even absent from the config", () => {

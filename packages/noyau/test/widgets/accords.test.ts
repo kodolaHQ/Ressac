@@ -4,18 +4,18 @@ import { join } from "node:path";
 import { DeclarationWidget } from "../../src/accueil/schemas.js";
 import { DeclarationAction } from "../../src/actions/schemas.js";
 import { grantValid, accorder, lireAccords, retirerAccord } from "../../src/widgets/accords.js";
-import { dossierTemporaire } from "../aide/temporaire.js";
+import { tempFolder } from "../aide/temporaire.js";
 
-const declaration = (compte: string[], publiques: string[]) =>
+const declaration = (account: string[], publics: string[]) =>
   DeclarationWidget.parse({
     nom: "W",
     tailles: { min: { l: 1, h: 1 }, max: { l: 4, h: 4 }, defaut: { l: 2, h: 2 } },
-    sources: { compte, publiques },
+    sources: { compte: account, publiques: publics },
   });
 
 describe("grants", () => {
   it("accorder then lireAccords, retirerAccord", async () => {
-    const d = await dossierTemporaire();
+    const d = await tempFolder();
     expect(await lireAccords(d)).toEqual({});
     await accorder(d, "daily", { domaines: ["app.daily.dev"], publiques: [], profil: "p1" });
     await accorder(d, "autre", { domaines: ["a.fr"], publiques: ["b.fr"], profil: "p2" });
@@ -29,7 +29,7 @@ describe("grants", () => {
   });
 
   it("simultaneous writes are not lost", async () => {
-    const d = await dossierTemporaire();
+    const d = await tempFolder();
     await Promise.all(
       Array.from({ length: 10 }, (_, i) => accorder(d, `w${i}`, { domaines: ["a.fr"], publiques: [], profil: "p" })),
     );
@@ -37,7 +37,7 @@ describe("grants", () => {
   });
 
   it("a damaged file or invalid entries are ignored", async () => {
-    const d = await dossierTemporaire();
+    const d = await tempFolder();
     await writeFile(join(d, "accords.json"), "{pas du json");
     expect(await lireAccords(d)).toEqual({});
     await writeFile(join(d, "accords.json"), JSON.stringify({ ok: { domaines: ["a.fr"], publiques: [], profil: "p" }, ko: { profil: 3 } }));
@@ -45,7 +45,7 @@ describe("grants", () => {
   });
 
   it("an invalid id is refused", async () => {
-    const d = await dossierTemporaire();
+    const d = await tempFolder();
     await expect(accorder(d, "../x", { domaines: [], publiques: [], profil: "p" })).rejects.toThrow();
     await expect(retirerAccord(d, "../x")).rejects.toThrow();
   });

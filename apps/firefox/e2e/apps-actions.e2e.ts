@@ -30,7 +30,7 @@ const rowShown = (dossier: string, ms = 10_000) => waitUi(p!.m, "return !!doc.qu
 const rowText = (dossier: string) => inUi<string>(p!.m, "return doc.querySelector(arguments[0])?.textContent ?? ''", [appRow(dossier)]);
 const filterText = (id: string) => inUi<string | null>(p!.m, "return doc.querySelector(arguments[0])?.textContent.replace(/\\s+/g, ' ').trim() ?? null", [`[data-testid="filtre-${id}"]`]);
 /** The page's own api call, as the component makes it. */
-const agir = (dossier: string, action: string) => inUi(p!.m, "ui.webaios.applications.agir(arguments[0], arguments[1]);", [dossier, action]);
+const act = (dossier: string, action: string) => inUi(p!.m, "ui.webaios.applications.agir(arguments[0], arguments[1]);", [dossier, action]);
 const panelOpen = async () => !!(await state(p!.m)).fenetres[0]!.panneauAgentOuvert;
 /** The app's container (`userContextIdInternal.webaios-app-<dossier>`), or null. */
 const container = (dossier: string) =>
@@ -82,8 +82,8 @@ describe("Applications page actions", () => {
     expect(items).not.toContain("Supprimer");
     await pressKeys(m, "Escape");
     // Refused by the host as well, not only missing from the menu.
-    await agir("essai", "supprimer");
-    for (const d of ["..", ".", "", "essai/..", "../espace"]) await agir(d, "supprimer");
+    await act("essai", "supprimer");
+    for (const d of ["..", ".", "", "essai/..", "../espace"]) await act(d, "supprimer");
     await sleep(500);
     expect(existsSync(path.join(project("essai"), "webaios.json"))).toBe(true);
     expect(existsSync(project("zod"))).toBe(true);
@@ -99,7 +99,7 @@ describe("Applications page actions", () => {
     const tabs = async () => Object.keys((await state(m)).onglets).length;
     const before = { windows: await windows(), tabs: await tabs() };
     // Not one segment, or not a folder name: nothing shown.
-    for (const d of ["..", ".", "", "x.app/..", "../x.app", "a\\b"]) await agir(d, "dossier");
+    for (const d of ["..", ".", "", "x.app/..", "../x.app", "a\\b"]) await act(d, "dossier");
     await rowMenu(m, "x.app", "Afficher le dossier");
     const read = () => (existsSync(reveals) ? readFileSync(reveals, "utf8") : "");
     await expect.poll(read, { timeout: 10_000 }).not.toBe("");

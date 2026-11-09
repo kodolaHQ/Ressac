@@ -2,11 +2,11 @@ import { expect, test } from "vitest";
 import type { BrowserState } from "../shared/modele";
 import { accumulateParts, readableProfiles, allowedUrl } from "../core/agent/lecture-invisible";
 
-const etat = (profils: string[], espaces: { profil: string; prive: boolean }[]) =>
-  ({ profils: profils.map((id) => ({ id })), espaces: espaces.map((e, i) => ({ id: `e${i}`, ...e })) }) as unknown as BrowserState;
+const state = (profiles: string[], spaces: { profil: string; prive: boolean }[]) =>
+  ({ profils: profiles.map((id) => ({ id })), espaces: spaces.map((e, i) => ({ id: `e${i}`, ...e })) }) as unknown as BrowserState;
 
 test("profilsLisibles excludes a private space's profiles, even shared with a non-private space", () => {
-  const e = etat(
+  const e = state(
     ["defaut", "travail", "secret", "libre"],
     [
       { profil: "defaut", prive: false },

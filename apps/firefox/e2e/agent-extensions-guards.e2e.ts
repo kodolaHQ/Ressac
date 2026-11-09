@@ -6,7 +6,7 @@ import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { ecrireExtensionAgent } from "./extensions/fixtures";
+import { writeAgentExtension } from "./extensions/fixtures";
 import { installAddon } from "./addons";
 import { agentAddons, grant, inPage, launchWithAmo, openTab } from "./agent-extensions";
 import { waitFor } from "./firefox";
@@ -33,11 +33,11 @@ beforeAll(async () => {
   const tls = createHttpsServer({ key: readFileSync(key), cert: readFileSync(cert) }, (req, res) => {
     note(req.headers.host, req.url);
     req.resume();
-    const chemin = (req.url ?? "").split("?")[0];
+    const path = (req.url ?? "").split("?")[0];
     // The read's image delays its load end.
-    if (chemin === "/lent.png") return void setTimeout(() => res.writeHead(200, { "Content-Type": "image/png" }).end(), 4000);
+    if (path === "/lent.png") return void setTimeout(() => res.writeHead(200, { "Content-Type": "image/png" }).end(), 4000);
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Access-Control-Allow-Origin": "*" });
-    res.end(chemin === "/formulaire" ? PAGE_FORMULAIRE : chemin === "/lecture" ? PAGE_LECTURE : `<title>${req.url}</title>ok`);
+    res.end(path === "/formulaire" ? FORM_PAGE : path === "/lecture" ? PAGE_LECTURE : `<title>${req.url}</title>ok`);
   });
   tls.on("upgrade", (req, socket) => {
     note(req.headers.host, req.url);
@@ -74,7 +74,7 @@ afterAll(async () => {
 // Each test sees only its own app's requests.
 beforeEach(() => void (proxy.hits.length = 0));
 
-const hitsTo = (hote: string, chemin?: string) => proxy.hits.filter((c) => c.hote === hote && (chemin === undefined || c.chemin === chemin));
+const hitsTo = (host: string, path?: string) => proxy.hits.filter((c) => c.hote === host && (path === undefined || c.chemin === path));
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 async function until(ok: () => boolean, ms = 15_000): Promise<void> {
   const deadline = Date.now() + ms;
@@ -90,7 +90,7 @@ async function until(ok: () => boolean, ms = 15_000): Promise<void> {
  * APIs and keeps what it got in `storage.local` (`resultats`). Firefox: `clients-type` answers typeof clients (absent
  * from a background page, spike S2); `resultats.html` shows the results in its title.
  */
-const EXTENSION_RESEAU = {
+const EXTENSION_NETWORK = {
   "manifest.json": {
     manifest_version: 3,
     name: "Réseau de l'agent",
@@ -373,7 +373,7 @@ document.title = JSON.stringify(vu);
 `,
 };
 
-const ACCORD_RESEAU = {
+const NETWORK_GRANT = {
   permissions: ["cookies", "declarativeNetRequest", "storage", "tabs"],
   hotes: ["https://hote.test/*"],
   reseau: ["accorde.test"],
@@ -384,7 +384,7 @@ const ACCORD_RESEAU = {
 
 
 /** A form the page fills itself (as a password manager would). */
-const PAGE_FORMULAIRE = `<!doctype html><html><head><meta charset="utf-8"><title>formulaire</title></head><body>
+const FORM_PAGE = `<!doctype html><html><head><meta charset="utf-8"><title>formulaire</title></head><body>
 <form id="f" action="/envoi"><input type="text" id="texte" name="texte"><input type="password" id="mdp" name="mdp"></form>
 <script>document.getElementById("texte").value = "visible"; document.getElementById("mdp").value = "secret";
 // Comme React : la valeur recopiée dans l'attribut \`value\`.
@@ -399,7 +399,7 @@ const PAGE_LECTURE = `<!doctype html><html><head><meta charset="utf-8"><title>le
  * then marks `<html data-agent-vu>` and appends « AGENT-VU » to the text; what it saw is in `data-agent` (JSON). Its
  * background runs the orders of `ordre.html?<order>` (executeScript).
  */
-const EXTENSION_GARDE = {
+const EXTENSION_GUARD = {
   "manifest.json": {
     manifest_version: 3,
     name: "Garde de l'agent",
@@ -524,7 +524,7 @@ chrome.runtime.onMessage.addListener((m, _e, repondre) => {
   "ordre.js": `chrome.runtime.sendMessage(location.search.slice(1)).then((r) => (document.title = String(r)), (e) => (document.title = "erreur " + e.message));
 `,
 };
-const ACCORD_GARDE = {
+const GRANT_KEPT = {
   permissions: ["scripting", "tabs"],
   hotes: ["https://hote.test/*"],
   reseau: ["accorde.test"],
@@ -541,15 +541,15 @@ afterEach(async () => {
 });
 
 /** The « réseau » extension granted, WebAiOs launched behind the recording proxy; resolves once it is installed and running. */
-const launchReseau = () => launchAgent("reseau", EXTENSION_RESEAU, ACCORD_RESEAU);
+const launchNetwork = () => launchAgent("reseau", EXTENSION_NETWORK, NETWORK_GRANT);
 
 /** Agent extension `nom` granted, WebAiOs launched behind the recording proxy; resolves once it is installed and running. */
-async function launchAgent(nom: string, fichiers: Record<string, string | object>, accord: object): Promise<LaunchedWebAiOs & { uuid: string; dataDir: string }> {
-  const id = `${nom}@agent.webaios`;
+async function launchAgent(name: string, files: Record<string, string | object>, accord: object): Promise<LaunchedWebAiOs & { uuid: string; dataDir: string }> {
+  const id = `${name}@agent.webaios`;
   const f = { dataDir: mkdtempSync(path.join(os.tmpdir(), "webaios-data-")), profile: mkdtempSync(path.join(os.tmpdir(), "webaios-firefox-")) };
   dirs.push(f.dataDir, f.profile);
-  ecrireExtensionAgent(path.join(f.dataDir, "espace"), nom, fichiers);
-  grant(f.dataDir, nom, accord);
+  writeAgentExtension(path.join(f.dataDir, "espace"), name, files);
+  grant(f.dataDir, name, accord);
   const prefs = {
     "network.proxy.type": 1,
     "network.proxy.http": "127.0.0.1",
@@ -610,8 +610,8 @@ function checkFrames(titre: string): void {
   expect(vu.declareLongueur).toBeGreaterThan(0);
   expect(vu.declareIndexes.every((t: string) => t === "undefined")).toBe(true);
   expect(vu.interieur).toBe("undefined");
-  for (const nom of ["nomme-ombre", "nomme-clair", "docOpen-ombre"]) expect(["undefined", "absent"], nom).toContain(vu[nom]);
-  for (const nom of ["nomme-index", "nomme-frames"]) expect(["undefined", "absent"], nom).toContain(vu[nom]);
+  for (const name of ["nomme-ombre", "nomme-clair", "docOpen-ombre"]) expect(["undefined", "absent"], name).toContain(vu[name]);
+  for (const name of ["nomme-index", "nomme-frames"]) expect(["undefined", "absent"], name).toContain(vu[name]);
   expect(vu.tousIndexes.length).toBe(vu.nombre);
   expect(vu.tousIndexes.every((t: string) => t === "undefined" || t === "inaccessible")).toBe(true);
   expect(vu.declareTot).toBe("undefined");
@@ -623,7 +623,7 @@ const order = async (w: LaunchedWebAiOs & { uuid: string }, what: string) => (aw
 
 describe("agent extensions: network guard", () => {
   it("the background cannot send to a domain not granted (fetch, WebSocket); to the granted one, yes", async () => {
-    await launchReseau();
+    await launchNetwork();
     await until(() => hitsTo("accorde.test", "/sw-fetch").length > 0);
     await until(() => hitsTo("accorde.test", "/sw-ws").length > 0);
     await sleep(1000);
@@ -631,7 +631,7 @@ describe("agent extensions: network guard", () => {
   });
 
   it("nor its pages (fetch, sendBeacon, WebSocket, navigation, window.open); RTCPeerConnection is absent from them", async () => {
-    const w = await launchReseau();
+    const w = await launchNetwork();
     const page = await extensionPage(w.marionette, `moz-extension://${w.uuid}/page.html`);
     expect(JSON.parse(page.titre)).toEqual({ rtc: "undefined", rtcWebkit: "undefined", canal: "undefined", ouverture: "null" });
     // The navigation to autre.test was refused: the page stayed its own.
@@ -644,7 +644,7 @@ describe("agent extensions: network guard", () => {
   });
 
   it("tabs.create to a domain not granted is refused, to a site of its hosts opened; a DNR redirect is refused, a block accepted", async () => {
-    const w = await launchReseau();
+    const w = await launchNetwork();
     const r = await backgroundResults(w);
     expect(r).toMatchObject({
       ongletRefuse: { erreur: "URL refusée par WebAiOs" },
@@ -666,7 +666,7 @@ describe("agent extensions: network guard", () => {
   // Another add-on: an AMO-style one installed temporarily, blocking by a static DNR ruleset and
   // fetching where it likes.
   it("with an agent extension running, another add-on still blocks (DNR) and sends where it likes; pages load", async () => {
-    const w = await launchReseau();
+    const w = await launchNetwork();
     const m = w.marionette;
     const other = "bloqueur-statique@webaios.test";
     await installAddon(m, {
@@ -701,7 +701,7 @@ describe("agent extensions: network guard", () => {
   });
 
   it("chrome.action.setPopup to an absolute address then openPopup (and a click on its button): nothing is loaded", async () => {
-    const w = await launchReseau();
+    const w = await launchNetwork();
     const m = w.marionette;
     // An active tab in the window: the popup has somewhere to anchor.
     await openTab(m, "https://hote.test/ancre");
@@ -717,14 +717,14 @@ describe("agent extensions: network guard", () => {
   // An agent
   // extension's holey list is refused without the prototype's getter being read. The agent half only.
   it("updateDynamicRules with a holey list: the agent's guard refuses it", async () => {
-    const w = await launchReseau();
+    const w = await launchNetwork();
     await backgroundResults(w);
     const page = await extensionPage(w.marionette, `moz-extension://${w.uuid}/tableaux.html`, 0);
     expect(JSON.parse(page.titre)).toEqual({ erreur: "Règle DNR refusée par WebAiOs (tableau à trous)", lus: 0, regles: ["block"] });
   });
 
   it("dns-prefetch, preconnect, prefetch… links of an agent page to a domain not granted contact nothing", async () => {
-    const w = await launchReseau();
+    const w = await launchNetwork();
     const page = await extensionPage(w.marionette, `moz-extension://${w.uuid}/liens.html`);
     // All set (no refusal from the DOM): it is the network that does not go.
     expect(Object.values(JSON.parse(page.titre) as Record<string, string>).every((v) => v === "pose")).toBe(true);
@@ -733,7 +733,7 @@ describe("agent extensions: network guard", () => {
 
   // No clients.openWindow half: a Firefox background page has no `clients` (spike S2).
   it("runtime.setUninstallURL to a domain not granted opens nothing, uninstall included; no clients in the background", async () => {
-    const w = await launchReseau();
+    const w = await launchNetwork();
     const m = w.marionette;
     expect(await order(w, "clients-type")).toBe("undefined");
     expect(await order(w, "desinstallation")).toMatch(/^(posee|erreur .*)$/);
@@ -744,17 +744,17 @@ describe("agent extensions: network guard", () => {
   });
 
   it("document.open with an address, a window with features, <a target=_blank>: an agent page opens nothing", async () => {
-    const w = await launchReseau();
+    const w = await launchNetwork();
     const m = w.marionette;
     await backgroundResults(w);
     const before = await m.execute<number>("return gBrowser.tabs.length");
     const page = await extensionPage(m, `moz-extension://${w.uuid}/fenetres.html`);
     // The CSP sandbox (no allow-popups) makes document.open(url, name, features) throw; either way no window.
     const vu = JSON.parse(page.titre);
-    for (const nom of ["docOpen", "docOpenBlank", "fenetre"]) expect(["null", "erreur"]).toContain(vu[nom]);
+    for (const name of ["docOpen", "docOpenBlank", "fenetre"]) expect(["null", "erreur"]).toContain(vu[name]);
     expect(await m.execute<number>("return gBrowser.tabs.length")).toBe(before);
     expect(await m.execute<number>("return [...Services.wm.getEnumerator('navigator:browser')].length")).toBe(1);
-    for (const chemin of ["/doc-open", "/fenetre-options", "/lien-blank"]) expect(hitsTo("hote.test", chemin)).toEqual([]);
+    for (const path of ["/doc-open", "/fenetre-options", "/lien-blank"]) expect(hitsTo("hote.test", path)).toEqual([]);
   });
 
   // Firefox has rights the guard must refuse too (review probe): refused at the copy, before any card or signature.
@@ -762,8 +762,8 @@ describe("agent extensions: network guard", () => {
     const f = { dataDir: mkdtempSync(path.join(os.tmpdir(), "webaios-data-")), profile: mkdtempSync(path.join(os.tmpdir(), "webaios-firefox-")) };
     dirs.push(f.dataDir, f.profile);
     const perms = ["cookies", "declarativeNetRequest", "storage", "tabs", "identity", "notifications", "dns", "find"];
-    ecrireExtensionAgent(path.join(f.dataDir, "espace"), "reseau", { ...EXTENSION_RESEAU, "manifest.json": { ...EXTENSION_RESEAU["manifest.json"], permissions: perms } });
-    grant(f.dataDir, "reseau", { ...ACCORD_RESEAU, permissions: perms });
+    writeAgentExtension(path.join(f.dataDir, "espace"), "reseau", { ...EXTENSION_NETWORK, "manifest.json": { ...EXTENSION_NETWORK["manifest.json"], permissions: perms } });
+    grant(f.dataDir, "reseau", { ...NETWORK_GRANT, permissions: perms });
     const w = await launchWithAmo(f);
     opened.push(w);
     await w.marionette.execute(`return (async () => { await (await ChromeUtils.importESModule("chrome://browser/content/webaios/store.sys.mjs").ready).agentExtensions.ready; })();`);
@@ -776,7 +776,7 @@ describe("agent extensions: network guard", () => {
   // page (out of its reach); the about:blank ones are reached by the extension actor, which takes the extension API
   // and WebRTC out of them.
   it("in its page, an about:blank, srcdoc, nested or shadow-root frame has neither RTCPeerConnection nor a way to set a DNR redirect", async () => {
-    const w = await launchReseau();
+    const w = await launchNetwork();
     await backgroundResults(w);
     const page = await extensionPage(w.marionette, `moz-extension://${w.uuid}/cadre.html`, 0);
     console.log(`[mesure] cadres : ${page.titre}`);
@@ -786,7 +786,7 @@ describe("agent extensions: network guard", () => {
   // Firefox grants activeTab to an MV3 extension on a click of its button, of its menu item or on its command, even
   // without the right; captureVisibleTab, captureTab and detectLanguage are refused for every agent page.
   it("after a click on its button, the popup cannot capture nor read the language of a tab outside its hosts", async () => {
-    const w = await launchReseau();
+    const w = await launchNetwork();
     const m = w.marionette;
     await backgroundResults(w);
     expect(await order(w, "popup-capture")).toBe("fait");
@@ -803,11 +803,11 @@ describe("agent extensions: network guard", () => {
     );
     const vu = JSON.parse(titre!);
     expect(vu.url).toBe("https://autre.test/lisible");
-    for (const nom of ["visible", "onglet", "langue"]) expect(vu[nom], nom).toHaveProperty("erreur");
+    for (const name of ["visible", "onglet", "langue"]) expect(vu[name], name).toHaveProperty("erreur");
   });
 
   it("in its popup too (setPopup cadre.html, then a click on its button)", async () => {
-    const w = await launchReseau();
+    const w = await launchNetwork();
     const m = w.marionette;
     await backgroundResults(w);
     await openTab(m, "https://hote.test/ancre-cadres");
@@ -827,7 +827,7 @@ describe("agent extensions: network guard", () => {
   });
 
   it("document.write of a frame while loading (in the clear and in a declarative shadow root): no child window has RTCPeerConnection in the same task", async () => {
-    const w = await launchReseau();
+    const w = await launchNetwork();
     const page = await extensionPage(w.marionette, `moz-extension://${w.uuid}/ecrit.html`, 0);
     console.log(`[mesure] document.write : ${page.titre}`);
     const vu = JSON.parse(page.titre) as { longueur: number; indexes: string[]; ombre: string };
@@ -837,7 +837,7 @@ describe("agent extensions: network guard", () => {
   });
 
   it("from an about:blank frame of its page: a DNR redirect, RTCPeerConnection and window.open are refused", async () => {
-    const w = await launchReseau();
+    const w = await launchNetwork();
     await backgroundResults(w);
     const page = await extensionPage(w.marionette, `moz-extension://${w.uuid}/blanc.html`);
     console.log(`[mesure] about:blank, srcdoc : ${page.titre}`);
@@ -852,7 +852,7 @@ describe("agent extensions: network guard", () => {
 
 // The agent's content scripts.
 describe("agent extensions: content scripts", () => {
-  const launchGarde = () => launchAgent("garde", EXTENSION_GARDE, ACCORD_GARDE);
+  const launchGuard = () => launchAgent("garde", EXTENSION_GUARD, GRANT_KEPT);
   /** What the agent's content script noted in WebAiOs tab `tab` (null: nothing). */
   const seenByAgent = async (m: Marionette, tab: string) => {
     const raw = await inPage<string | null>(m, tab, "return document.documentElement.getAttribute('data-agent')");
@@ -869,7 +869,7 @@ describe("agent extensions: content scripts", () => {
   }
 
   it("on a page, a filled password field's value is empty for the agent's script, a text field's is not; no password keydown reaches it; executeScript runs after the guard", async () => {
-    const w = await launchGarde();
+    const w = await launchGuard();
     const m = w.marionette;
     const tab = await openTab(m, "https://hote.test/formulaire");
     expect((await poll(() => seenByAgent(m, tab), (v) => v?.ecoute === true))?.ecoute).toBe(true);
@@ -885,10 +885,10 @@ describe("agent extensions: content scripts", () => {
        ev(t, "keydown", "a"); ev(t, "keypress", "a"); ev(t, "input", "a"); ev(t, "keyup", "a");
        ev(p, "keydown", "b"); ev(p, "keypress", "b"); ev(p, "input", "b"); ev(p, "keyup", "b");`,
     );
-    const touches = ["texte:a", "keypress:texte", "input:texte", "onkeyup-texte:a"];
-    expect((await poll(() => seenByAgent(m, tab), (v) => v?.touches?.length === 4))?.touches).toEqual(touches);
+    const keys = ["texte:a", "keypress:texte", "input:texte", "onkeyup-texte:a"];
+    expect((await poll(() => seenByAgent(m, tab), (v) => v?.touches?.length === 4))?.touches).toEqual(keys);
     await sleep(300);
-    expect((await seenByAgent(m, tab))?.touches).toEqual(touches);
+    expect((await seenByAgent(m, tab))?.touches).toEqual(keys);
     // executeScript from the background: files and function run after the guard.
     const r = await order(w, "executer-onglet");
     console.log(`[mesure] executeScript dans un onglet : ${r}`);
@@ -905,7 +905,7 @@ describe("agent extensions: content scripts", () => {
 
   // An agent page kept open in a tab outside the store.
   it("with a page of the agent open, its content script runs only once in a tab", async () => {
-    const w = await launchGarde();
+    const w = await launchGuard();
     const m = w.marionette;
     await m.execute("window.agentPage = gBrowser.addTab(arguments[0], { triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal() });", [
       `moz-extension://${w.uuid}/vide.html`,
@@ -920,7 +920,7 @@ describe("agent extensions: content scripts", () => {
   });
 
   it("fetch and new Image().src to a domain not granted from the content script: nothing reaches the server; to the page's site and to reseau: sent", async () => {
-    const w = await launchGarde();
+    const w = await launchGuard();
     const m = w.marionette;
     const tab = await openTab(m, "https://hote.test/formulaire?reseau");
     await until(() => hitsTo("hote.test", "/cs-fetch").length > 0);
@@ -929,8 +929,8 @@ describe("agent extensions: content scripts", () => {
     await sleep(1500);
     const vu = (await seenByAgent(m, tab))!;
     console.log(`[mesure] réseau du script de contenu : ${JSON.stringify(vu.reseau)}`);
-    for (const chemin of ["/cs-fetch", "/cs-image", "/cs-xhr", "/cs-beacon", "/cs-ws", "/cs-source", "/cs-attribut", "/cs-lien", "/cs-ouvre"])
-      expect(hitsTo("autre.test", chemin), chemin).toEqual([]);
+    for (const path of ["/cs-fetch", "/cs-image", "/cs-xhr", "/cs-beacon", "/cs-ws", "/cs-source", "/cs-attribut", "/cs-lien", "/cs-ouvre"])
+      expect(hitsTo("autre.test", path), path).toEqual([]);
     expect(vu.reseau).toMatchObject({
       "fetch-autre.test": "URL refusée par WebAiOs",
       "image-autre.test": "URL refusée par WebAiOs",
@@ -950,7 +950,7 @@ describe("agent extensions: content scripts", () => {
   // A widget read with an account is the store's readPage in the profile (spike S4: no content script
   // runs in an invisible read, so it has no tab id).
   it("in an invisible read of the same profile, data-agent-vu is absent and executeScript to it is refused; in a tab of that profile it is present", async () => {
-    const w = await launchGarde();
+    const w = await launchGuard();
     const m = w.marionette;
     // adressesLocales: hote.test only resolves through the test proxy (the read's local guard would refuse it).
     // The read's browser, caught on its request, and the id Firefox's tabTracker gives it.
@@ -969,9 +969,9 @@ describe("agent extensions: content scripts", () => {
         .then((p) => (window.reading = { ok: p }), (e) => (window.reading = { err: String(e?.message ?? e) }));`);
     const readingTabId = await waitFor<number | null>(m, "return window.readingTabId", (v) => v !== null);
     // While the read is open (its image is slow): executeScript from the background, then the tabs it may see.
-    const ordre = await order(w, `executer:${readingTabId}`);
-    console.log(`[mesure] lecture invisible : tabId ${readingTabId}, executeScript : ${ordre}`);
-    expect(ordre).toMatch(/^erreur /);
+    const orderOf = await order(w, `executer:${readingTabId}`);
+    console.log(`[mesure] lecture invisible : tabId ${readingTabId}, executeScript : ${orderOf}`);
+    expect(orderOf).toMatch(/^erreur /);
     const read = await waitFor<{ ok?: { texte: string }; err?: string } | null>(m, "return window.reading", (v) => v !== null, 30_000);
     expect(read?.err).toBeUndefined();
     expect(read!.ok!.texte).toContain("Texte lu");
@@ -1099,7 +1099,7 @@ noter();`,
   });
 
   it("an unreadable tab marks the extension's console as masked, for good", async () => {
-    const w = await launchGarde();
+    const w = await launchGuard();
     const m = w.marionette;
     // A tab the agent was never given: not readable.
     const tab = await openTab(m, "https://hote.test/formulaire?masque");
@@ -1139,7 +1139,7 @@ chrome.runtime.onMessage.addListener((m, _e, repondre) => {
     "ordre.js": `chrome.runtime.sendMessage(location.search.slice(1)).then((r) => (document.title = String(r)), (e) => (document.title = "erreur " + e.message));
 `,
   });
-  const grantOf = (permissions: string[], hotes: string[]) => ({ permissions, hotes, reseau: [], tousLesSites: false, scriptsTousLesSites: false, scripts: false });
+  const grantOf = (permissions: string[], hosts: string[]) => ({ permissions, hotes: hosts, reseau: [], tousLesSites: false, scriptsTousLesSites: false, scripts: false });
   type Seen = { id: number; url: string | null; title: string | null; favIconUrl: string | null; pendingUrl: string | null };
   const snap = async (w: LaunchedWebAiOs & { uuid: string }) =>
     JSON.parse(await order(w, "snap")) as { query: Seen[]; gets: Seen[]; fenetres: Seen[]; events: ({ maj?: object; tab: Seen } | { cree: Seen })[] };

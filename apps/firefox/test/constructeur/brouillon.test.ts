@@ -1,12 +1,12 @@
 import { describe, expect, test } from "vitest";
 import { addBlock, move, History, idPourType, sameDraft, set, relier, rename, followFile, deleteBlocks, deleteLink, toDraft, type Brouillon } from "../../ui/constructeur/brouillon";
 
-const vide = (): Brouillon => ({ version: 1, blocs: [], liens: [] });
+const empty = (): Brouillon => ({ version: 1, blocs: [], liens: [] });
 const bloc = (id: string, type = "code") => ({ id, type, position: { x: 0, y: 0 }, parametres: {} });
-const avec = (blocs: Brouillon["blocs"], liens: Brouillon["liens"] = []): Brouillon => ({ version: 1, blocs, liens });
+const updateEntry = (blocs: Brouillon["blocs"], liens: Brouillon["liens"] = []): Brouillon => ({ version: 1, blocs, liens });
 
 test("adding two ia.trier gives ia-trier then ia-trier-2", () => {
-  const a = addBlock(vide(), "ia.trier", { x: 1, y: 2 }, {});
+  const a = addBlock(empty(), "ia.trier", { x: 1, y: 2 }, {});
   const b = addBlock(a.brouillon, "ia.trier", { x: 3, y: 4 }, {});
   expect([a.id, b.id]).toEqual(["ia-trier", "ia-trier-2"]);
   expect(b.brouillon.blocs[1]!.position).toEqual({ x: 3, y: 4 });
@@ -18,14 +18,14 @@ test("idPourType truncates to 40", () => {
 });
 
 test("a second output is not added", () => {
-  const a = addBlock(vide(), "sortie", { x: 0, y: 0 }, {});
+  const a = addBlock(empty(), "sortie", { x: 0, y: 0 }, {});
   const b = addBlock(a.brouillon, "sortie", { x: 0, y: 0 }, {});
   expect(b.id).toBe("");
   expect(b.brouillon).toBe(a.brouillon);
 });
 
 test("supprimer output does nothing; supprimer a block removes its links", () => {
-  const b = avec([bloc("a"), bloc("b"), bloc("sortie", "sortie")], [{ de: "a", vers: "b" }, { de: "b", vers: "sortie" }]);
+  const b = updateEntry([bloc("a"), bloc("b"), bloc("sortie", "sortie")], [{ de: "a", vers: "b" }, { de: "b", vers: "sortie" }]);
   expect(deleteBlocks(b, ["sortie"])).toBe(b);
   const c = deleteBlocks(b, ["b"]);
   expect(c.blocs.map((x) => x.id)).toEqual(["a", "sortie"]);
@@ -33,7 +33,7 @@ test("supprimer output does nothing; supprimer a block removes its links", () =>
 });
 
 test("relier refuses itself, a duplicate and a start from an output", () => {
-  const b = avec([bloc("a"), bloc("b"), bloc("sortie", "sortie")]);
+  const b = updateEntry([bloc("a"), bloc("b"), bloc("sortie", "sortie")]);
   expect(relier(b, "a", "a")).toBe(b);
   expect(relier(b, "sortie", "a")).toBe(b);
   const c = relier(b, "a", "b");
@@ -43,7 +43,7 @@ test("relier refuses itself, a duplicate and a start from an output", () => {
 });
 
 test("renommer \"\" removes the name, 80 characters are cut to 60", () => {
-  const b = avec([bloc("a")]);
+  const b = updateEntry([bloc("a")]);
   const n = rename(b, "a", "x".repeat(80));
   expect(n.blocs[0]!.nom).toHaveLength(60);
   const r = rename(n, "a", "");
@@ -51,11 +51,11 @@ test("renommer \"\" removes the name, 80 characters are cut to 60", () => {
 });
 
 test("regler replaces the params", () => {
-  expect(set(avec([bloc("a")]), "a", { k: 1 }).blocs[0]!.parametres).toEqual({ k: 1 });
+  expect(set(updateEntry([bloc("a")]), "a", { k: 1 }).blocs[0]!.parametres).toEqual({ k: 1 });
 });
 
 test("deplacer: without a position change, returns the same draft", () => {
-  const b = avec([bloc("a"), bloc("b")]);
+  const b = updateEntry([bloc("a"), bloc("b")]);
   expect(move(b, { a: { x: 0, y: 0 } })).toBe(b);
   expect(move(b, {})).toBe(b);
   const c = move(b, { a: { x: 5, y: 6 } });
@@ -64,7 +64,7 @@ test("deplacer: without a position change, returns the same draft", () => {
 });
 
 test("deplacer ignores non-finite positions", () => {
-  const b = avec([bloc("a")]);
+  const b = updateEntry([bloc("a")]);
   expect(move(b, { a: { x: NaN, y: 1 } })).toBe(b);
   expect(move(b, { a: { x: 1, y: Infinity } })).toBe(b);
 });
@@ -77,46 +77,46 @@ test("versBrouillon is lenient", () => {
 });
 
 test("memeBrouillon ignores key order", () => {
-  const a = avec([{ ...bloc("a"), parametres: { x: 1, y: 2 } }]);
-  const b = avec([{ ...bloc("a"), parametres: { y: 2, x: 1 } }]);
+  const a = updateEntry([{ ...bloc("a"), parametres: { x: 1, y: 2 } }]);
+  const b = updateEntry([{ ...bloc("a"), parametres: { y: 2, x: 1 } }]);
   expect(sameDraft(a, b)).toBe(true);
 });
 
 describe("Historique", () => {
-  const etat = (n: number): Brouillon => avec([bloc(`b${n}`)]);
+  const state = (n: number): Brouillon => updateEntry([bloc(`b${n}`)]);
   test("annuler then rétablir returns the states in order", () => {
-    const h = new History(etat(0));
-    h.faire(etat(1)); h.faire(etat(2));
-    expect(h.annuler()).toEqual(etat(1));
-    expect(h.annuler()).toEqual(etat(0));
+    const h = new History(state(0));
+    h.faire(state(1)); h.faire(state(2));
+    expect(h.annuler()).toEqual(state(1));
+    expect(h.annuler()).toEqual(state(0));
     expect(h.annuler()).toBeNull();
-    expect(h.retablir()).toEqual(etat(1));
-    expect(h.retablir()).toEqual(etat(2));
+    expect(h.retablir()).toEqual(state(1));
+    expect(h.retablir()).toEqual(state(2));
     expect(h.retablir()).toBeNull();
   });
   test("faire after annuler clears the redo", () => {
-    const h = new History(etat(0));
-    h.faire(etat(1)); h.annuler(); h.faire(etat(5));
+    const h = new History(state(0));
+    h.faire(state(1)); h.annuler(); h.faire(state(5));
     expect(h.retablir()).toBeNull();
   });
   test("101 states: the oldest goes", () => {
-    const h = new History(etat(0));
-    for (let i = 1; i <= 100; i++) h.faire(etat(i));
+    const h = new History(state(0));
+    for (let i = 1; i <= 100; i++) h.faire(state(i));
     let dernier: Brouillon | null = null, n = 0;
     for (let r = h.annuler(); r; r = h.annuler()) { dernier = r; n++; }
     expect(n).toBe(99);
-    expect(dernier).toEqual(etat(1));
+    expect(dernier).toEqual(state(1));
   });
   test("reinitialiser clears the history", () => {
-    const h = new History(etat(0));
-    h.faire(etat(1)); h.reinitialiser(etat(9));
-    expect(h.courant).toEqual(etat(9));
+    const h = new History(state(0));
+    h.faire(state(1)); h.reinitialiser(state(9));
+    expect(h.courant).toEqual(state(9));
     expect(h.annuler()).toBeNull();
   });
 });
 
 describe("suivreFichier", () => {
-  const A = avec([bloc("a")]), B = avec([bloc("b")]), C = avec([bloc("c")]), D = avec([bloc("d")]);
+  const A = updateEntry([bloc("a")]), B = updateEntry([bloc("b")]), C = updateEntry([bloc("c")]), D = updateEntry([bloc("d")]);
   test("echo of our own write ignored", () => {
     expect(followFile({ local: A, dernierConnu: B, disque: B, envoyes: [] })).toBe("ignorer");
     expect(followFile({ local: A, dernierConnu: B, disque: A, envoyes: [] })).toBe("ignorer");

@@ -2,10 +2,10 @@ import { expect, test } from "vitest";
 import { readFile, stat } from "node:fs/promises";
 import { spacePaths } from "../../src/chemins.js";
 import { writeMcpConfig } from "../../src/profils/config-mcp.js";
-import { dossierTemporaire } from "../aide/temporaire.js";
+import { tempFolder } from "../aide/temporaire.js";
 
 test("ecrireConfigMcp writes the claude-json format as 0600", async () => {
-  const c = spacePaths(await dossierTemporaire());
+  const c = spacePaths(await tempFolder());
   await writeMcpConfig(c, "claude-json", { url: "http://host.docker.internal:4242/mcp", jeton: "abc" });
   expect(JSON.parse(await readFile(c.configMcp, "utf8"))).toEqual({
     mcpServers: {
@@ -16,7 +16,7 @@ test("ecrireConfigMcp writes the claude-json format as 0600", async () => {
 });
 
 test("rewriting the config keeps mode 0600", async () => {
-  const c = spacePaths(await dossierTemporaire());
+  const c = spacePaths(await tempFolder());
   await writeMcpConfig(c, "claude-json", { url: "http://a/mcp", jeton: "1" });
   await writeMcpConfig(c, "claude-json", { url: "http://b/mcp", jeton: "2" });
   expect(JSON.parse(await readFile(c.configMcp, "utf8")).mcpServers.webaios.url).toBe("http://b/mcp");

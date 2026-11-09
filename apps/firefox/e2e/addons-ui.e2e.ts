@@ -35,10 +35,10 @@ afterEach(async () => {
 const BTN = '[data-testid="action-extension"]';
 const MENU = '[data-testid="menu-extensions"]';
 const PANEL = '[data-testid="panneau-extensions"]';
-const fenetre = async () => (await state(m)).fenetres[0]!;
+const win = async () => (await state(m)).fenetres[0]!;
 async function open(path: string): Promise<void> {
   const url = server.url + path;
-  await dispatch(m, { type: "ouvrirOnglet", fenetreId: (await fenetre()).id, url });
+  await dispatch(m, { type: "ouvrirOnglet", fenetreId: (await win()).id, url });
   await waitFor(m, `return gBrowser.selectedBrowser.currentURI.spec === ${JSON.stringify(url)} && !gBrowser.selectedBrowser.webProgress.isLoadingDocument`, (v) => v === true);
 }
 const setPinned = (ids: string[]) => m.execute("Services.prefs.setStringPref('webaios.extensions.pinned', arguments[0])", [JSON.stringify(ids)]);
@@ -80,7 +80,7 @@ describe("add-on strip, sidebar", () => {
     await disabled(true);
     await open("/texte.html");
     await disabled(false);
-    await dispatch(m, { type: "ouvrirApplications", fenetreId: (await fenetre()).id });
+    await dispatch(m, { type: "ouvrirApplications", fenetreId: (await win()).id });
     await disabled(true);
     await inUi(m, `doc.querySelector(${JSON.stringify(BTN)}).click()`);
     await new Promise((r) => setTimeout(r, 1000));

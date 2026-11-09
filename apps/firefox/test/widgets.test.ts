@@ -23,13 +23,13 @@ const widget = (o: Partial<Extract<WidgetLu, { declaration: DeclarationWidget }>
   ...o,
 });
 
-const etat = (widgets: WidgetLu[]): HomeState => ({ disposition: [], widgets });
+const state = (widgets: WidgetLu[]): HomeState => ({ disposition: [], widgets });
 
 describe("versWidgetsAffiches", () => {
   it("returns the data, the example, the state and the display versioned by date", () => {
     const theme = { version: 1 as const, fond: "#101014" };
     const lu = toShownWidgets({
-      etat: etat([widget({ donnees: { n: 1 }, exemple: { n: 0 }, etat: { ...DEFAULT_WIDGET_STATE, statut: "en-cours" } })]),
+      etat: state([widget({ donnees: { n: 1 }, exemple: { n: 0 }, etat: { ...DEFAULT_WIDGET_STATE, statut: "en-cours" } })]),
       placements: [],
       theme,
       mtimes: { demo: 1730000000123 },
@@ -56,19 +56,19 @@ describe("versWidgetsAffiches", () => {
   });
 
   it("without a display, src is null and the date is not read", () => {
-    const lu = toShownWidgets({ etat: etat([widget({ aAffichage: false })]), placements: [], theme: null, mtimes: {} });
+    const lu = toShownWidgets({ etat: state([widget({ aAffichage: false })]), placements: [], theme: null, mtimes: {} });
     expect(lu.theme).toBeNull();
     expect(lu.widgets[0]).toMatchObject({ src: null });
   });
 
   it("keeps the wanted place when it comes from disposition.json", () => {
-    const lu = toShownWidgets({ etat: etat([widget()]), placements: [{ id: "demo", x: 250, y: 360, l: 100, h: 90 }], theme: null, mtimes: {} });
+    const lu = toShownWidgets({ etat: state([widget()]), placements: [{ id: "demo", x: 250, y: 360, l: 100, h: 90 }], theme: null, mtimes: {} });
     expect(lu.widgets[0]?.placement).toEqual({ id: "demo", x: 250, y: 360, l: 100, h: 90 });
   });
 
   it("places an unreadable widget at its default size (4 × 2)", () => {
     const lu = toShownWidgets({
-      etat: etat([{ id: "casse", dossier: "/espace/accueil/widgets/casse", erreur: "widget.json invalide" }]),
+      etat: state([{ id: "casse", dossier: "/espace/accueil/widgets/casse", erreur: "widget.json invalide" }]),
       placements: [],
       theme: null,
       mtimes: {},

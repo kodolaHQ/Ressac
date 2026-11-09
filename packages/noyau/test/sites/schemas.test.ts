@@ -68,8 +68,8 @@ test("an unknown key (permissions) is refused", () => {
 });
 
 test('21 domains, "*.x.com", "X.com:443", a scheme refused', () => {
-  const vingtEtUn = Array.from({ length: 21 }, (_, i) => `s${i}.example`);
-  expect(DeclarationSite.safeParse({ ...vidola, domaines: vingtEtUn }).success).toBe(false);
+  const twentyOne = Array.from({ length: 21 }, (_, i) => `s${i}.example`);
+  expect(DeclarationSite.safeParse({ ...vidola, domaines: twentyOne }).success).toBe(false);
   for (const d of ["*.x.com", "X.com:443", "https://x.com", "x.com/", ""]) {
     expect(DeclarationSite.safeParse({ ...vidola, domaines: [d] }).success, d).toBe(false);
   }
@@ -111,7 +111,7 @@ test("verifierDeclarationSite : domaine de l'adresse", () => {
 });
 
 test("js accepts only .js and .mjs, css only .css; ./ and // refused", () => {
-  const r = (retouche: object) => DeclarationSite.safeParse({ ...vidola, retouches: [{ correspond: ["/*"], ...retouche }] }).success;
+  const r = (tweak: object) => DeclarationSite.safeParse({ ...vidola, retouches: [{ correspond: ["/*"], ...tweak }] }).success;
   expect(r({ js: ["a.mjs"] })).toBe(true);
   expect(r({ js: ["a.css"] })).toBe(false);
   expect(r({ css: ["a.js"] })).toBe(false);

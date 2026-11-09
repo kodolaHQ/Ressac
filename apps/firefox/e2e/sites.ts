@@ -19,48 +19,48 @@ export type SiteRoute = string | ((req: IncomingMessage, res: ServerResponse) =>
 export async function startSitesServer(o: { port?: number } = {}): Promise<{
   port: number;
   /** `http://<host>:<port><path>`. */
-  url(hote: string, chemin?: string): string;
-  definir(hote: string, chemin: string, route: SiteRoute): void;
-  couper(hote: string, oui?: boolean): void;
+  url(host: string, relPath?: string): string;
+  definir(host: string, relPath: string, route: SiteRoute): void;
+  couper(host: string, yes?: boolean): void;
   requetes: { hote: string; chemin: string; methode: string; cookie: string | undefined }[];
   fermer(): Promise<void>;
 }> {
   const routes = new Map<string, SiteRoute>();
   const coupes = new Set<string>();
-  const requetes: { hote: string; chemin: string; methode: string; cookie: string | undefined }[] = [];
-  const serveur = createServer((req, res) => {
-    const hote = (req.headers.host ?? "").replace(/:\d+$/, "").toLowerCase();
-    const chemin = req.url ?? "/";
-    requetes.push({ hote, chemin, methode: req.method ?? "GET", cookie: req.headers.cookie });
-    if (coupes.has(hote)) return void req.socket.resetAndDestroy();
-    const route = routes.get(`${hote} ${chemin}`) ?? routes.get(`${hote} ${chemin.split("?")[0]}`);
+  const requests: { hote: string; chemin: string; methode: string; cookie: string | undefined }[] = [];
+  const server = createServer((req, res) => {
+    const host = (req.headers.host ?? "").replace(/:\d+$/, "").toLowerCase();
+    const relPath = req.url ?? "/";
+    requests.push({ hote: host, chemin: relPath, methode: req.method ?? "GET", cookie: req.headers.cookie });
+    if (coupes.has(host)) return void req.socket.resetAndDestroy();
+    const route = routes.get(`${host} ${relPath}`) ?? routes.get(`${host} ${relPath.split("?")[0]}`);
     if (typeof route === "function") return route(req, res);
     if (typeof route === "string") {
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
       return void res.end(route);
     }
-    if (chemin === "/cookie") {
-      res.writeHead(200, { "Set-Cookie": `essai=${hote}; Max-Age=86400; Path=/`, "Content-Type": "text/html" });
+    if (relPath === "/cookie") {
+      res.writeHead(200, { "Set-Cookie": `essai=${host}; Max-Age=86400; Path=/`, "Content-Type": "text/html" });
       return void res.end("<title>cookie</title>ok");
     }
-    if (chemin === "/") {
+    if (relPath === "/") {
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-      return void res.end(`<title>${hote}</title><p>${hote}</p>`);
+      return void res.end(`<title>${host}</title><p>${host}</p>`);
     }
     res.writeHead(404).end();
   });
-  await new Promise<void>((ok) => serveur.listen(o.port ?? 0, "127.0.0.1", ok));
-  const port = (serveur.address() as AddressInfo).port;
+  await new Promise<void>((ok) => server.listen(o.port ?? 0, "127.0.0.1", ok));
+  const port = (server.address() as AddressInfo).port;
   return {
     port,
-    url: (hote, chemin = "/") => `http://${hote}:${port}${chemin}`,
-    definir: (hote, chemin, route) => void routes.set(`${hote} ${chemin}`, route),
-    couper: (hote, oui = true) => void (oui ? coupes.add(hote) : coupes.delete(hote)),
-    requetes,
+    url: (host, relPath = "/") => `http://${host}:${port}${relPath}`,
+    definir: (host, relPath, route) => void routes.set(`${host} ${relPath}`, route),
+    couper: (host, yes = true) => void (yes ? coupes.add(host) : coupes.delete(host)),
+    requetes: requests,
     fermer: () =>
       new Promise((ok) => {
-        serveur.closeAllConnections();
-        serveur.close(() => ok());
+        server.closeAllConnections();
+        server.close(() => ok());
       }),
   };
 }
@@ -86,9 +86,9 @@ export function writeSite(dataDir: string, id: string, s: SiteTest): void {
   const dossier = path.join(dataDir, "espace", "sites", id);
   mkdirSync(dossier, { recursive: true });
   writeFileSync(path.join(dossier, "site.json"), typeof s.declaration === "string" ? s.declaration : JSON.stringify(s.declaration));
-  for (const [chemin, contenu] of Object.entries(s.fichiers ?? {})) {
-    mkdirSync(path.join(dossier, chemin, ".."), { recursive: true });
-    writeFileSync(path.join(dossier, chemin), contenu);
+  for (const [relPath, content] of Object.entries(s.fichiers ?? {})) {
+    mkdirSync(path.join(dossier, relPath, ".."), { recursive: true });
+    writeFileSync(path.join(dossier, relPath), content);
   }
 }
 

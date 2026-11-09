@@ -6,8 +6,8 @@ describe("catalog of built-in components", () => {
     for (const c of BUILTIN_COMPONENTS) {
       expect(c.origine).toBe("integre");
       expect(c.description.length).toBeGreaterThan(0);
-      const requise = Object.values(c.proprietes).some((p) => p.requis);
-      expect(requise || ["colonnes", "paragraphe", "etiquettes"].includes(c.nom), c.nom).toBe(true);
+      const required = Object.values(c.proprietes).some((p) => p.requis);
+      expect(required || ["colonnes", "paragraphe", "etiquettes"].includes(c.nom), c.nom).toBe(true);
     }
     expect(BUILTIN_COMPONENTS.map((c) => c.nom)).toEqual([
       "titre", "paragraphe", "encadre", "chiffre", "chiffres", "liste", "cartes", "tableau", "champs", "etiquettes", "lien", "groupe", "colonnes",

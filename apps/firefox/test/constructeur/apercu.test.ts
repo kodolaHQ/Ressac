@@ -2,10 +2,10 @@ import type { Execution, ResumeExecution } from "@webaios/noyau";
 import { expect, test } from "vitest";
 import { previewData } from "../../ui/constructeur/apercu";
 
-const resume = (id: string, essai = false): ResumeExecution => ({
+const resume = (id: string, attempt = false): ResumeExecution => ({
   id,
-  declencheur: essai ? "rejeu" : "manuelle",
-  ...(essai ? { essai: { depart: "tri", origine: "a" } } : {}),
+  declencheur: attempt ? "rejeu" : "manuelle",
+  ...(attempt ? { essai: { depart: "tri", origine: "a" } } : {}),
   debut: "d",
   fin: "f",
   statut: "reussie",
@@ -33,21 +33,21 @@ test("the output of the chosen run's output block (a trial included)", () => {
 });
 
 test("truncated or missing output, last real run: the widget's data", () => {
-  const liste = [resume("e-essai", true), resume("b"), resume("a")];
-  expect(previewData({ choisie: resume("b"), detail: detail("b", { sortie: '{"coupé', sortieTronquee: true }), liste, widget })).toEqual({
+  const list = [resume("e-essai", true), resume("b"), resume("a")];
+  expect(previewData({ choisie: resume("b"), detail: detail("b", { sortie: '{"coupé', sortieTronquee: true }), liste: list, widget })).toEqual({
     donnees: { vraies: 1 },
     mention: false,
   });
-  expect(previewData({ choisie: resume("b"), detail: detail("b", null), liste, widget })).toEqual({ donnees: { vraies: 1 }, mention: false });
+  expect(previewData({ choisie: resume("b"), detail: detail("b", null), liste: list, widget })).toEqual({ donnees: { vraies: 1 }, mention: false });
 });
 
 test("otherwise the example, with the mention", () => {
-  const liste = [resume("b"), resume("a")];
-  expect(previewData({ choisie: resume("a"), detail: detail("a", null), liste, widget })).toEqual({ donnees: { exemple: 1 }, mention: true });
+  const list = [resume("b"), resume("a")];
+  expect(previewData({ choisie: resume("a"), detail: detail("a", null), liste: list, widget })).toEqual({ donnees: { exemple: 1 }, mention: true });
   // Detail not read yet (or from another run): not another run's output.
-  expect(previewData({ choisie: resume("a"), detail: detail("b", { sortie: { b: 1 } }), liste, widget })).toEqual({ donnees: { exemple: 1 }, mention: true });
+  expect(previewData({ choisie: resume("a"), detail: detail("b", { sortie: { b: 1 } }), liste: list, widget })).toEqual({ donnees: { exemple: 1 }, mention: true });
   // Last real run without widget data: the example too.
-  expect(previewData({ choisie: resume("b"), detail: null, liste, widget: { donnees: null, exemple: { exemple: 1 } } })).toEqual({ donnees: { exemple: 1 }, mention: true });
+  expect(previewData({ choisie: resume("b"), detail: null, liste: list, widget: { donnees: null, exemple: { exemple: 1 } } })).toEqual({ donnees: { exemple: 1 }, mention: true });
 });
 
 test("no run: the widget's data as on the home, without a mention", () => {
@@ -56,8 +56,8 @@ test("no run: the widget's data as on the home, without a mention", () => {
 });
 
 test("last real run that did not succeed: the widget's data, with the mention", () => {
-  const echouee = { ...resume("b"), statut: "echouee" as const };
-  expect(previewData({ choisie: echouee, detail: detail("b", null), liste: [echouee, resume("a")], widget })).toEqual({ donnees: { vraies: 1 }, mention: true });
-  const partielle = { ...resume("b"), statut: "partielle" as const };
-  expect(previewData({ choisie: partielle, detail: null, liste: [partielle], widget })).toEqual({ donnees: { vraies: 1 }, mention: false });
+  const failed = { ...resume("b"), statut: "echouee" as const };
+  expect(previewData({ choisie: failed, detail: detail("b", null), liste: [failed, resume("a")], widget })).toEqual({ donnees: { vraies: 1 }, mention: true });
+  const partial = { ...resume("b"), statut: "partielle" as const };
+  expect(previewData({ choisie: partial, detail: null, liste: [partial], widget })).toEqual({ donnees: { vraies: 1 }, mention: false });
 });

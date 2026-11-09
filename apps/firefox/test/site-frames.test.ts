@@ -21,7 +21,7 @@ const declaration = DeclarationSite.parse({
   ],
   reprise: true,
 });
-const retouches: TweaksRead = { js: { "a.js": "window.a = 1", "lecteur.js": "window.l = 1" }, css: { "a.css": ".shorts{display:none}" } };
+const tweaks: TweaksRead = { js: { "a.js": "window.a = 1", "lecteur.js": "window.l = 1" }, css: { "a.css": ".shorts{display:none}" } };
 const PAGE = "https://vidola-b.example/series/x";
 
 /** A <browser> whose top document is at `url`, and a frame of it. */
@@ -36,7 +36,7 @@ function browser(url: string) {
 function app(o: { accordRequis?: boolean; id?: string; url?: string } = {}) {
   const v = browser(o.url ?? PAGE);
   const site = { id: o.id ?? "vidola", declaration, aAccueil: false, domaines: ["vidola-a.example", "vidola-b.example"], depart: "https://vidola-b.example/", accordRequis: o.accordRequis ?? false } as SiteChrome;
-  return { v, s: { site, retouches, view: v.el, erreurs: [] as TweakError[] } };
+  return { v, s: { site, retouches: tweaks, view: v.el, erreurs: [] as TweakError[] } };
 }
 
 describe("frameInjection", () => {
@@ -45,8 +45,8 @@ describe("frameInjection", () => {
     const i = frameInjection(v.main, siteOfFrame(v.main, [s]), false)!;
     expect(i).toMatchObject({ css: [".shorts{display:none}"], js: [{ code: "window.a = 1", nom: "webaios-retouche://vidola/a.js" }], pont: true });
     expect(i.garde).toContain("__webaiosPortee");
-    const lecteur = v.frame("https://www.lecteur.example/v");
-    expect(frameInjection(lecteur, siteOfFrame(lecteur, [s]), false)).toMatchObject({ js: [{ code: "window.l = 1" }], pont: false, hotes: ["https://www.lecteur.example/*"] });
+    const reader = v.frame("https://www.lecteur.example/v");
+    expect(frameInjection(reader, siteOfFrame(reader, [s]), false)).toMatchObject({ js: [{ code: "window.l = 1" }], pont: false, hotes: ["https://www.lecteur.example/*"] });
     const pub = v.frame("https://pub.example/x");
     expect(frameInjection(pub, siteOfFrame(pub, [s]), false)).toMatchObject({ css: [], js: [], garde: null, pont: false });
   });
@@ -92,34 +92,34 @@ describe("frameInjection", () => {
 });
 
 describe("frameMemory", () => {
-  const demande = { op: "retenir", cle: "k", valeur: 1 };
+  const req = { op: "retenir", cle: "k", valeur: 1 };
 
   it("the view's main page: relayed with the app's id and the page's relative address", async () => {
     const { v, s } = app({ url: "https://vidola-b.example/serie/the-bear?e=4" });
     const request = vi.fn(async () => ({ ok: true as const }));
-    expect(await frameMemory(v.main, siteOfFrame(v.main, [s]), demande, request)).toEqual({ ok: true });
+    expect(await frameMemory(v.main, siteOfFrame(v.main, [s]), req, request)).toEqual({ ok: true });
     expect(request).toHaveBeenCalledWith({ id: "vidola", adresse: "/serie/the-bear?e=4", op: "retenir", cle: "k", valeur: 1 });
   });
 
   it("refused to a sub-frame, the sign-in window, a page off the site, without the grant, and a non-object request", async () => {
     const request = vi.fn(async () => ({ ok: true as const }));
     const { v, s } = app();
-    const refus = { ok: false, erreur: MEMORY_DENIAL };
+    const denial = { ok: false, erreur: MEMORY_DENIAL };
     const sub = v.frame(PAGE);
-    expect(await frameMemory(sub, siteOfFrame(sub, [s]), demande, request)).toEqual(refus);
+    expect(await frameMemory(sub, siteOfFrame(sub, [s]), req, request)).toEqual(denial);
     const small = browser(PAGE);
-    expect(await frameMemory(small.main, siteOfFrame(small.main, [s]), demande, request)).toEqual(refus);
+    expect(await frameMemory(small.main, siteOfFrame(small.main, [s]), req, request)).toEqual(denial);
     const login = app({ url: "https://compte.example/" });
-    expect(await frameMemory(login.v.main, login.s, demande, request)).toEqual(refus);
+    expect(await frameMemory(login.v.main, login.s, req, request)).toEqual(denial);
     const sans = app({ accordRequis: true });
-    expect(await frameMemory(sans.v.main, sans.s, demande, request)).toEqual(refus);
-    expect(await frameMemory(v.main, s, "x", request)).toEqual(refus);
+    expect(await frameMemory(sans.v.main, sans.s, req, request)).toEqual(denial);
+    expect(await frameMemory(v.main, s, "x", request)).toEqual(denial);
     expect(request).not.toHaveBeenCalled();
   });
 });
 
 describe("the tweaks' console", () => {
-  const err = (source: string, texte = "boum") => ({ texte, source, ligne: 3 });
+  const err = (source: string, text = "boum") => ({ texte: text, source, ligne: 3 });
 
   it("keeps the app's tweak errors relayed from its view, never another app's nor the sign-in window's", () => {
     const a = app();
@@ -160,23 +160,23 @@ describe("framePosition and frameResume", () => {
     framePosition(f, siteOfFrame(f, [s]), p, local, (q) => sent.push(q));
     return sent;
   };
-  const LECTEUR = "https://www.lecteur.example/embed/9";
+  const READER = "https://www.lecteur.example/embed/9";
 
   it("a position from the player is sent with the page's address and the frame's step key; from the main page too", () => {
     const { v, s } = app({ url: "https://vidola-b.example/episode/4?s=1" });
-    const lecteur = withIds(v.frame(LECTEUR), 5, 77);
-    expect(note(v, s, lecteur, { t: 70, duree: 90 })).toEqual([{ id: "vidola", adresse: "/episode/4?s=1", cadre: "5:77", t: 70, duree: 90, fin: false }]);
+    const reader = withIds(v.frame(READER), 5, 77);
+    expect(note(v, s, reader, { t: 70, duree: 90 })).toEqual([{ id: "vidola", adresse: "/episode/4?s=1", cadre: "5:77", t: 70, duree: 90, fin: false }]);
     const main = withIds(v.main, 2, 11);
     expect(note(v, s, main, { t: 72, duree: 90, fin: true })).toEqual([{ id: "vidola", adresse: "/episode/4?s=1", cadre: "2:11", t: 72, duree: 90, fin: true }]);
   });
 
   it("refused without grant, for a frame the resume does not go into, outside the view, off the site, or a malformed message", () => {
     const { v, s } = app();
-    const lecteur = withIds(v.frame(LECTEUR), 5, 77);
-    expect(note(v, { ...s, site: { ...s.site, accordRequis: true } } as never, lecteur, { t: 70, duree: 90 })).toEqual([]);
+    const reader = withIds(v.frame(READER), 5, 77);
+    expect(note(v, { ...s, site: { ...s.site, accordRequis: true } } as never, reader, { t: 70, duree: 90 })).toEqual([]);
     // reprise false in the declaration
     const sans = { ...s, site: { ...s.site, declaration: { ...declaration, reprise: false } } } as never;
-    expect(note(v, sans, lecteur, { t: 70, duree: 90 })).toEqual([]);
+    expect(note(v, sans, reader, { t: 70, duree: 90 })).toEqual([]);
     // an advert does not match the `cadres` patterns
     expect(note(v, s, withIds(v.frame("https://ads.pub.example/v"), 6, 78), { t: 70, duree: 90 })).toEqual([]);
     // the sign-in window (another <browser>)
@@ -184,27 +184,27 @@ describe("framePosition and frameResume", () => {
     expect(note(small, s, withIds(small.main, 9, 1), { t: 70, duree: 90 })).toEqual([]);
     // a sign-in page and its frames
     const login = app({ url: "https://compte.example/connexion" });
-    expect(note(login.v, login.s, withIds(login.v.frame(LECTEUR), 5, 77), { t: 70, duree: 90 })).toEqual([]);
+    expect(note(login.v, login.s, withIds(login.v.frame(READER), 5, 77), { t: 70, duree: 90 })).toEqual([]);
     expect(note(login.v, login.s, withIds(login.v.main, 2, 11), { t: 70, duree: 90 })).toEqual([]);
-    for (const p of [null, "x", undefined]) expect(note(v, s, lecteur, p)).toEqual([]);
+    for (const p of [null, "x", undefined]) expect(note(v, s, reader, p)).toEqual([]);
   });
 
   it("the address is read at each message (a pushState to another episode counts)", () => {
     const { v, s } = app({ url: "https://vidola-b.example/episode/4" });
-    const lecteur = withIds(v.frame(LECTEUR), 5, 77);
-    expect((note(v, s, lecteur, { t: 1, duree: 90 })[0] as { adresse: string }).adresse).toBe("/episode/4");
+    const reader = withIds(v.frame(READER), 5, 77);
+    expect((note(v, s, reader, { t: 1, duree: 90 })[0] as { adresse: string }).adresse).toBe("/episode/4");
     (v.main.browsingContext as any).currentWindowGlobal = { documentURI: { spec: "https://vidola-b.example/episode/5" } };
-    expect((note(v, s, lecteur, { t: 1, duree: 90 })[0] as { adresse: string }).adresse).toBe("/episode/5");
+    expect((note(v, s, reader, { t: 1, duree: 90 })[0] as { adresse: string }).adresse).toBe("/episode/5");
   });
 
   it("frameResume asks the host with the page's address; nothing for a refused frame or a malformed duration", async () => {
     const { v, s } = app({ url: "https://vidola-b.example/episode/4" });
     const asked: object[] = [];
     const ask = async (p: object) => (asked.push(p), 70);
-    const lecteur = withIds(v.frame(LECTEUR), 5, 77);
-    expect(await frameResume(lecteur, siteOfFrame(lecteur, [s]), { duree: 90 }, false, ask)).toBe(70);
+    const reader = withIds(v.frame(READER), 5, 77);
+    expect(await frameResume(reader, siteOfFrame(reader, [s]), { duree: 90 }, false, ask)).toBe(70);
     expect(asked).toEqual([{ id: "vidola", adresse: "/episode/4", duree: 90 }]);
-    for (const d of [undefined, null, {}, { duree: "90" }]) expect(await frameResume(lecteur, siteOfFrame(lecteur, [s]), d, false, ask)).toBeNull();
+    for (const d of [undefined, null, {}, { duree: "90" }]) expect(await frameResume(reader, siteOfFrame(reader, [s]), d, false, ask)).toBeNull();
     const ad = withIds(v.frame("https://ads.pub.example/v"), 6, 78);
     expect(await frameResume(ad, siteOfFrame(ad, [s]), { duree: 90 }, false, ask)).toBeNull();
     const small = browser(PAGE);

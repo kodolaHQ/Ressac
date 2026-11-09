@@ -5,7 +5,7 @@ import type { AddressInfo } from "node:net";
 import path from "node:path";
 import type { Action } from "../shared/api";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { BARRES, EXECUTION, openActionPage, probe, startActionServers, tid, uiQueries, writeActionWithResult, writeComponent, type Block } from "./actions";
+import { BARS, EXECUTION, openActionPage, probe, startActionServers, tid, uiQueries, writeActionWithResult, writeComponent, type Block } from "./actions";
 import { dispatch, state, waitReady } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
@@ -91,15 +91,15 @@ beforeAll(async () => {
   probeServer.on("connection", () => reached.connections++);
   await new Promise<void>((ok) => probeServer.listen(0, "127.0.0.1", ok));
   const probeBase = `http://127.0.0.1:${(probeServer.address() as AddressInfo).port}`;
-  const proprietes = { valeurs: { genre: "reference", description: "Liste de { libelle, valeur }", requis: true }, titre: { genre: "texte", description: "Titre du graphique" } };
-  await writeComponent(w.dataDir, "barres", { description: "Graphique en barres", proprietes, html: BARRES });
+  const properties = { valeurs: { genre: "reference", description: "Liste de { libelle, valeur }", requis: true }, titre: { genre: "texte", description: "Titre du graphique" } };
+  await writeComponent(w.dataDir, "barres", { description: "Graphique en barres", proprietes: properties, html: BARS });
   await writeComponent(w.dataDir, "ecrit", { description: "Hauteur fixe", proprietes: {}, html: sized(300) });
   await writeComponent(w.dataDir, "sonde", { description: "Sonde", proprietes: {}, html: probe(probeBase) });
   // Eight bars: taller than the 150 px the frame starts with, so the height it asks for shows.
-  const ventes = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche", "Total"].map((libelle, i) => ({ libelle, valeur: i + 1 }));
+  const sales = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche", "Total"].map((label, i) => ({ libelle: label, valeur: i + 1 }));
   await writeActionWithResult(w.dataDir, "graphe", {
     nom: "Graphe",
-    resultats: { ventes },
+    resultats: { ventes: sales },
     blocs: [
       { composant: "titre", props: { texte: "Priorités" } },
       { composant: "barres", props: { valeurs: "ventes", titre: "Ventes" } },
@@ -124,8 +124,8 @@ describe("action page rendering", () => {
   it('each built-in component shows (data-testid="bloc-<nom>")', async () => {
     await openActionPage(m, "demo", "Démo");
     const page = tid("rendu-page");
-    for (const nom of ["titre", "paragraphe", "encadre", "chiffre", "chiffres", "liste", "cartes", "tableau", "champs", "etiquettes", "lien", "groupe", "colonnes"]) {
-      expect(await inUi(m, "const e = doc.querySelector(arguments[0]); return !!e && e.getBoundingClientRect().height > 0;", [`${page} ${tid(`bloc-${nom}`)}`]), nom).toBe(true);
+    for (const name of ["titre", "paragraphe", "encadre", "chiffre", "chiffres", "liste", "cartes", "tableau", "champs", "etiquettes", "lien", "groupe", "colonnes"]) {
+      expect(await inUi(m, "const e = doc.querySelector(arguments[0]); return !!e && e.getBoundingClientRect().height > 0;", [`${page} ${tid(`bloc-${name}`)}`]), name).toBe(true);
     }
     // A fallback layout: the mention comes first.
     expect(await q.text(tid("mention-secours"))).toBe("mise en page simple");
@@ -159,8 +159,8 @@ describe("action page rendering", () => {
   it("clicking the Priorité header sorts the table", async () => {
     await openActionPage(m, "simple", "Simple");
     const column = () => inUi<string[]>(m, "return [...doc.querySelectorAll(arguments[0])].map((e) => e.textContent);", [`${tid("bloc-tableau")} tbody tr td:nth-child(2)`]);
-    const sortOf = (libelle: string) =>
-      inUi<string | null>(m, "return [...doc.querySelectorAll(arguments[0])].find((th) => th.textContent.includes(arguments[1]))?.getAttribute('aria-sort') ?? null;", [`${tid("bloc-tableau")} th`, libelle]);
+    const sortOf = (label: string) =>
+      inUi<string | null>(m, "return [...doc.querySelectorAll(arguments[0])].find((th) => th.textContent.includes(arguments[1]))?.getAttribute('aria-sort') ?? null;", [`${tid("bloc-tableau")} th`, label]);
     const waitColumn = (v: string[]) => waitUi(m, "return JSON.stringify([...doc.querySelectorAll(arguments[0])].map((e) => e.textContent)) === arguments[1];", [`${tid("bloc-tableau")} tbody tr td:nth-child(2)`, JSON.stringify(v)]);
     expect(await column()).toEqual(["9", "10", "2"]);
     await click(m, `${tid("bloc-tableau")} th button`, { text: "Priorité" });

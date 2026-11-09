@@ -47,9 +47,9 @@ async function until<T>(read: () => Promise<T>, ok: (v: T) => boolean, ms = 10_0
     await new Promise((r) => setTimeout(r, 100));
   }
 }
-const fenetre = async () => (await state(m)).fenetres[0]!.id;
-const open = (url: string, fenetreId?: string) =>
-  fenetre().then((f) => dispatch(m, { type: "ouvrirOnglet", fenetreId: fenetreId ?? f, url }));
+const win = async () => (await state(m)).fenetres[0]!.id;
+const open = (url: string, windowId?: string) =>
+  win().then((f) => dispatch(m, { type: "ouvrirOnglet", fenetreId: windowId ?? f, url }));
 const loaded = (path: string) =>
   waitFor(m, `return gBrowser.tabs.some((t) => t.linkedBrowser.currentURI.spec.endsWith(${JSON.stringify(path)}) && !t.linkedBrowser.webProgress.isLoadingDocument)`, (v) => v === true);
 
@@ -162,12 +162,12 @@ describe("history noted in the kernel", () => {
 const lines_ = async (part: string) =>
   (await recents()).filter((v) => v.url.includes(part)).map((v) => ({ retenu: v.retenu, prive: v.prive }));
 const retained = (part: string) => until(() => lines_(part), (l) => l.length === 1 && l[0]!.retenu);
-async function setActiveSpacePrivate(prive: boolean) {
+async function setActiveSpacePrivate(isPrivate: boolean) {
   const s = await state(m);
   const e = s.espaces.find((x) => x.id === s.fenetres[0]!.espaceActif)!;
-  await dispatch(m, { type: "reglerEspace", id: e.id, nom: e.nom, icone: e.icone, prive, profil: e.profil } as Action);
+  await dispatch(m, { type: "reglerEspace", id: e.id, nom: e.nom, icone: e.icone, prive: isPrivate, profil: e.profil } as Action);
 }
-const newSpace = async () => dispatch(m, { type: "creerEspace", nom: "Travail", icone: "💼", prive: false, profil: "defaut", fenetreId: await fenetre() });
+const newSpace = async () => dispatch(m, { type: "creerEspace", nom: "Travail", icone: "💼", prive: false, profil: "defaut", fenetreId: await win() });
 
 describe("the agent's memory retains page text", () => {
   it("a page's text is retained and marked in ⌘Y", async () => {

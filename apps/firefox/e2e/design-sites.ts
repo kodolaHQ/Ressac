@@ -16,17 +16,17 @@ export const viewExpr = (id: string) => `${siteWindowExpr(id)}.gBrowser.selected
 
 // The test pages and apps.
 export const TUNING_PAGE = `<title>Tuning</title><div id="banniere" class="cookies">Cookies ?</div><a id="lien" href="/autre">autre</a><ul id="films"><li class="affiche">Film 1</li><li class="affiche">Film 2</li></ul><script>window.reactions = []; document.addEventListener("click", () => reactions.push("clic"), true);</script>`;
-export const AUTRE_PAGE = "<title>Autre</title>";
+export const OTHER_PAGE = "<title>Autre</title>";
 export const CONNEXION_PAGE = "<title>Connexion</title>";
-export const AVEC_ACCUEIL_HOME = '<!doctype html><title>Accueil</title><h1 id="titre">Bienvenue</h1><p class="intro">Reprendre la série</p>';
-export const tuningDeclaration = (url: (hote: string, chemin?: string) => string) => ({
+export const WITH_HOME = '<!doctype html><title>Accueil</title><h1 id="titre">Bienvenue</h1><p class="intro">Reprendre la série</p>';
+export const tuningDeclaration = (url: (host: string, path?: string) => string) => ({
   nom: "Tuning",
   adresse: url("tuning-a.localhost", "/"),
   domaines: ["tuning-a.localhost"],
   connexion: ["compte-tuning.localhost"],
   retouches: [{ correspond: ["/*"], css: ["tuning.css"] }],
 });
-export const avecAccueilDeclaration = (url: (hote: string, chemin?: string) => string) => ({
+export const withHomeDeclaration = (url: (host: string, path?: string) => string) => ({
   nom: "Avec accueil",
   adresse: url("tuning-a.localhost", "/"),
   domaines: ["tuning-a.localhost"],
@@ -44,7 +44,7 @@ export const S5_PAGE = HOOKS_PAGE.replace('<button type="submit" id="envoyer">',
  * the prototypes the viewfinder calls (in its own world), fakes the viewfinder's globals, and on « essai » writes what
  * it sees into the DOM.
  */
-export const RETOUCHE = `
+export const TWEAK = `
 const R = document.documentElement;
 const log = { early: [], keys: [], hooked: [], fake: 0 };
 for (const t of ${JSON.stringify(MOUSE)}) window.addEventListener(t, (e) => log.early.push(t + ":" + e.isTrusted), true);
@@ -147,7 +147,7 @@ export const homePoint = (m: Marionette, id: string, sel: string) =>
   );
 
 /** `body` with `f` the site window's overlay frame (#webaios-design-calque) and `doc` its document; null while it is absent or hidden. */
-export const calqueOf = <T = unknown>(m: Marionette, id: string, body: string, args: unknown[] = []) =>
+export const overlayOf = <T = unknown>(m: Marionette, id: string, body: string, args: unknown[] = []) =>
   m.execute<T | null>(
     `const win = ${siteExpr(id)}, f = win?.document.getElementById("webaios-design-calque");
      if (!f || f.style.display === "none" || !f.getBoundingClientRect().width) return null;

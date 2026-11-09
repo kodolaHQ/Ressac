@@ -28,10 +28,10 @@ afterEach(async () => {
 });
 
 const spaces = async () => (await state(m)).espaces;
-const fenetreId = async () => (await state(m)).fenetres[0]!.id;
-async function create(nom: string, icone: string, prive: boolean, profil: string): Promise<Space> {
-  await dispatch(m, { type: "creerEspace", nom, icone, prive, profil, fenetreId: await fenetreId() } as Action);
-  return (await spaces()).find((e) => e.nom === nom)!;
+const windowId = async () => (await state(m)).fenetres[0]!.id;
+async function create(name: string, icon: string, isPrivate: boolean, profile: string): Promise<Space> {
+  await dispatch(m, { type: "creerEspace", nom: name, icone: icon, prive: isPrivate, profil: profile, fenetreId: await windowId() } as Action);
+  return (await spaces()).find((e) => e.nom === name)!;
 }
 const button = (id: string) => `[data-testid="espace-${id}"]`;
 const MODAL = '[data-testid="modale-espace"]';
@@ -106,9 +106,9 @@ describe("space settings", () => {
     await waitUi(m, "return !doc.querySelector(arguments[0] + ' button[type=submit]').disabled", [MODAL]);
     await click(m, `${MODAL} button[type="submit"]`, { text: "Créer" });
     await modalClosed();
-    const jeux = await waitSpaces((l) => l.find((e) => e.nom === "Jeux"), (e) => !!e);
-    expect(jeux).toMatchObject({ icone: "🎮", prive: false, profil: travail.profil });
-    await waitUi(m, "return doc.querySelector(arguments[0])?.getAttribute('aria-current') === 'true'", [button(jeux!.id)]);
+    const sets = await waitSpaces((l) => l.find((e) => e.nom === "Jeux"), (e) => !!e);
+    expect(sets).toMatchObject({ icone: "🎮", prive: false, profil: travail.profil });
+    await waitUi(m, "return doc.querySelector(arguments[0])?.getAttribute('aria-current') === 'true'", [button(sets!.id)]);
 
     // « Nouveau profil » makes a profile of its own.
     await click(m, '[data-testid="nouvel-espace"]');
@@ -118,13 +118,13 @@ describe("space settings", () => {
     await focusName();
     await pressKeys(m, "Enter");
     await modalClosed();
-    const neuf = await waitSpaces((l) => l.find((e) => e.nom === "Neuf")?.profil, (p) => !!p);
-    expect([travail.profil, "defaut", "nouveau"]).not.toContain(neuf);
+    const fresh = await waitSpaces((l) => l.find((e) => e.nom === "Neuf")?.profil, (p) => !!p);
+    expect([travail.profil, "defaut", "nouveau"]).not.toContain(fresh);
   });
 
   it("“Réglages” shows the space's values; private and its own profile are saved", async () => {
-    const banque = await create("Banque", "💶", false, "defaut");
-    await click(m, button(banque.id), { button: 2 });
+    const bank = await create("Banque", "💶", false, "defaut");
+    await click(m, button(bank.id), { button: 2 });
     await waitUi(m, "return doc.querySelectorAll('[role=\"menuitem\"]').length");
     expect(await inUi(m, "return [...doc.querySelectorAll('[role=\"menuitem\"]')].map((e) => e.textContent.trim())")).not.toContain("Renommer");
     await click(m, '[role="menuitem"]', { text: "Réglages" });
@@ -145,17 +145,17 @@ describe("space settings", () => {
     await choose("Son propre profil");
     await click(m, `${MODAL} button[type="submit"]`, { text: "Enregistrer" });
     await modalClosed();
-    const saved = await waitSpaces((l) => l.find((e) => e.id === banque.id)!, (e) => e.prive);
+    const saved = await waitSpaces((l) => l.find((e) => e.id === bank.id)!, (e) => e.prive);
     expect(saved.profil).not.toBe("defaut");
     // Reopened, the modal shows its own profile.
-    await openSettings(banque.id);
+    await openSettings(bank.id);
     expect(await fields()).toMatchObject({ private: true, chosen: "Son propre profil" });
     // Keeping its own profile changes nothing.
     await fill("Nom de l'espace", "Banque pro");
     await focusName();
     await pressKeys(m, "Enter");
     await modalClosed();
-    expect(await waitSpaces((l) => l.find((e) => e.id === banque.id)!, (e) => e.nom === "Banque pro")).toMatchObject({ profil: saved.profil });
+    expect(await waitSpaces((l) => l.find((e) => e.id === bank.id)!, (e) => e.nom === "Banque pro")).toMatchObject({ profil: saved.profil });
   });
 
   it("Escape closes the modal without changing anything", async () => {
@@ -189,10 +189,10 @@ describe("space settings", () => {
 
   it("deleting a profile's last space warns that its logins will be lost, even without tabs", async () => {
     // Shares the default profile, no tab: deleted without confirmation.
-    const jeux = await create("Jeux", "🎮", false, "defaut");
-    await click(m, button(jeux.id), { button: 2 });
+    const sets = await create("Jeux", "🎮", false, "defaut");
+    await click(m, button(sets.id), { button: 2 });
     await click(m, '[role="menuitem"]', { text: "Supprimer" });
-    await waitSpaces((l) => l.some((e) => e.id === jeux.id), (v) => !v);
+    await waitSpaces((l) => l.some((e) => e.id === sets.id), (v) => !v);
     expect(await inUi(m, "return doc.querySelectorAll('[role=alertdialog]').length")).toBe(0);
 
     const travail = await create("Travail", "💼", false, "nouveau");
@@ -213,10 +213,10 @@ describe("space settings", () => {
   it("changing a space's profile reloads its tabs in the new container, and wipes the old profile no space uses any more", async () => {
     const tab = "return { ctx: gBrowser.selectedTab.userContextId, url: gBrowser.selectedBrowser.currentURI.spec, title: gBrowser.selectedBrowser.contentTitle }";
     // The default profile gets the cookie essai=1.
-    await dispatch(m, { type: "ouvrirOnglet", fenetreId: await fenetreId(), url: server.url + "/cookie" });
+    await dispatch(m, { type: "ouvrirOnglet", fenetreId: await windowId(), url: server.url + "/cookie" });
     await waitFor<{ title: string }>(m, tab, (t) => t.title === "cookie");
     const travail = await create("Travail", "💼", false, "nouveau");
-    await dispatch(m, { type: "ouvrirOnglet", fenetreId: await fenetreId(), url: server.url + "/lire-cookie" });
+    await dispatch(m, { type: "ouvrirOnglet", fenetreId: await windowId(), url: server.url + "/lire-cookie" });
     const before = await waitFor<{ ctx: number; title: string }>(m, tab, (t) => t.title === "aucun");
     expect(before.ctx).not.toBe(0);
     // A cookie of the old profile, set by its page.

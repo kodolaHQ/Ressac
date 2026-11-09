@@ -16,8 +16,8 @@ import { inBrowser } from "../sites";
 const note = (what: string, v: unknown) => console.log(`[spike] ${what}: ${JSON.stringify(v)}`);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const MODULE = "resource://webaios-spike-apps/apps-spike.sys.mjs";
-const ESSAI = "http://[::1]:5315";
-const AUTRE = "http://[::1]:5316";
+const ATTEMPT = "http://[::1]:5315";
+const OTHER_A = "http://[::1]:5316";
 const OTHER = "http://[::1]:5317";
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
 
@@ -92,7 +92,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("agent app windows spike S8 (plan 35
        res.setSubstitution("webaios-spike-apps", Services.io.newFileURI(new FileUtils.File(arguments[0])));`,
       [import.meta.dirname],
     );
-    const opened = await chrome(`return { essai: await S.open("essai", "${ESSAI}"), autre: await S.open("autre", "${AUTRE}") };`);
+    const opened = await chrome(`return { essai: await S.open("essai", "${ATTEMPT}"), autre: await S.open("autre", "${OTHER_A}") };`);
     note("opened", opened);
   }, 120_000);
   afterAll(async () => {
@@ -161,15 +161,15 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("agent app windows spike S8 (plan 35
   it("favicon: the source address is readable (onLinkIconAvailable), another origin's icon is set aside", async () => {
     await chrome(`S.log.icons.length = 0;`);
     for (const p of ["/", "/cross-icon", "/redir-icon", "/noicon", "/data-icon"]) {
-      await chrome(`await S.load("essai", arguments[0]);`, [ESSAI + p]);
+      await chrome(`await S.load("essai", arguments[0]);`, [ATTEMPT + p]);
       await sleep(800);
     }
-    await chrome(`await S.load("essai", arguments[0]);`, [ESSAI + "/"]);
+    await chrome(`await S.load("essai", arguments[0]);`, [ATTEMPT + "/"]);
     await sleep(500);
     const icons = await chrome<{ page: string; originalURL: string; icon: string; length: number; kept: boolean }[]>(`return S.log.icons.filter((i) => i.dossier === "essai");`);
-    for (const i of icons) note("favicon", { ...i, page: i.page.replace(ESSAI, ""), originalURL: i.originalURL?.replace(ESSAI, "ESSAI").replace(OTHER, "OTHER") });
-    const forPage = (p: string) => icons.filter((i) => i.page === ESSAI + p);
-    expect(forPage("/").some((i) => i.kept && i.originalURL === `${ESSAI}/icon.png`)).toBe(true);
+    for (const i of icons) note("favicon", { ...i, page: i.page.replace(ATTEMPT, ""), originalURL: i.originalURL?.replace(ATTEMPT, "ESSAI").replace(OTHER, "OTHER") });
+    const forPage = (p: string) => icons.filter((i) => i.page === ATTEMPT + p);
+    expect(forPage("/").some((i) => i.kept && i.originalURL === `${ATTEMPT}/icon.png`)).toBe(true);
     expect(forPage("/cross-icon").every((i) => !i.kept)).toBe(true);
     expect(forPage("/cross-icon").some((i) => i.originalURL === `${OTHER}/icon.png`)).toBe(true);
   });
@@ -177,7 +177,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("agent app windows spike S8 (plan 35
   // --- The guard ---------------------------------------------------------------------------------------------------
 
   it("guard: links, redirects and window.open off the origin are cancelled in the app and become main window tabs", async () => {
-    await chrome(`await S.load("essai", arguments[0]);`, [ESSAI + "/"]);
+    await chrome(`await S.load("essai", arguments[0]);`, [ATTEMPT + "/"]);
     // A cookie in the app's container: it marks any request the app container sends (localhost cookies ignore the port).
     await inView("essai", "document.cookie = 'essai=1; max-age=3600; path=/'; window.marque = 7; return 1;");
     await chrome(`S.log.cancelled.length = 0; S.log.routed.length = 0;`);
@@ -196,7 +196,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("agent app windows spike S8 (plan 35
     ];
     for (const [what, code] of vectors) {
       await inView("essai", `${code}; return 1;`, true);
-      await stays("essai", `${ESSAI}/`, what);
+      await stays("essai", `${ATTEMPT}/`, what);
     }
     await sleep(800);
     const log = await chrome(`return { cancelled: S.log.cancelled, routed: S.log.routed };`);
@@ -211,32 +211,32 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("agent app windows spike S8 (plan 35
     expect(tabs.every((t) => t.uc === 0)).toBe(true);
     // A same-origin redirect stays in the app.
     await inView("essai", `location.href = "/redir-same"; return 1;`, true);
-    await waitFor(m, `return ${view("essai")}.currentURI.spec;`, (u) => u === `${ESSAI}/page2`);
+    await waitFor(m, `return ${view("essai")}.currentURI.spec;`, (u) => u === `${ATTEMPT}/page2`);
     note("guard same-origin redirect", await viewUrl("essai"));
     // Cleanup: the routed tabs.
     await m.execute(`for (const t of [...gBrowser.tabs].slice(arguments[0])) gBrowser.removeTab(t);`, [main]);
   });
 
   it("guard: file:, data: and blob: never load in the app view", async () => {
-    await chrome(`await S.load("essai", arguments[0]);`, [ESSAI + "/"]);
+    await chrome(`await S.load("essai", arguments[0]);`, [ATTEMPT + "/"]);
     await inView("essai", "window.marque = 7; return 1;");
     await chrome(`S.log.rejected.length = 0;`);
     const system = "Services.scriptSecurityManager.getSystemPrincipal()";
     const file = `file://${w.profile}/user.js`;
     // ⌘O and a dropped file go through openLinkIn and droppedLinkHandler: the site-window.ts vectors.
     await m.execute(`${appWin("essai")}.openLinkIn(arguments[0], "current", { triggeringPrincipal: ${system} }); return 1;`, [file]);
-    await stays("essai", `${ESSAI}/`, "⌘O file:");
+    await stays("essai", `${ATTEMPT}/`, "⌘O file:");
     await m.execute(`${view("essai")}.droppedLinkHandler(null, [{ url: arguments[0], name: "", type: "" }], ${system}); return 1;`, [file]);
-    await stays("essai", `${ESSAI}/`, "dropped file:");
+    await stays("essai", `${ATTEMPT}/`, "dropped file:");
     await m.execute(`${view("essai")}.loadURI(Services.io.newURI(arguments[0]), { triggeringPrincipal: ${system} }); return 1;`, ["data:text/html,<title>data</title>"]);
-    await stays("essai", `${ESSAI}/`, "data: by the system principal");
+    await stays("essai", `${ATTEMPT}/`, "data: by the system principal");
     for (const [what, code] of [
       ["page file:", `location.href = "${file}"`],
       ["page data:", `location.href = "data:text/html,<title>data</title>"`],
       ["page blob:", `location.href = URL.createObjectURL(new Blob(["<title>blob</title>"], { type: "text/html" }))`],
     ] as const) {
       await inView("essai", `${code}; return 1;`, true);
-      await stays("essai", `${ESSAI}/`, what);
+      await stays("essai", `${ATTEMPT}/`, what);
     }
     note("guard non-web", await chrome(`return S.log.rejected;`));
   });
@@ -244,16 +244,16 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("agent app windows spike S8 (plan 35
   // --- The containers ----------------------------------------------------------------------------------------------
 
   it("containers: cookies and storage are not shared between two apps, an app and a tab, or an app and a site app", async () => {
-    await chrome(`await S.load("essai", arguments[0]);`, [ESSAI + "/"]);
+    await chrome(`await S.load("essai", arguments[0]);`, [ATTEMPT + "/"]);
     await inView("essai", "document.cookie = 'essai=1; max-age=3600; path=/'; localStorage.k = 'essai'; sessionStorage.k = 'essai'; return 1;");
     const read = "return { cookie: document.cookie, local: localStorage.k ?? null };";
-    const autre = await inView("autre", read);
+    const other = await inView("autre", read);
     // A tab on the app's own origin (default container), then a site app's container on that origin.
-    await openTab(`${ESSAI}/page2`);
+    await openTab(`${ATTEMPT}/page2`);
     const tab = await inBrowser(m, "gBrowser.selectedBrowser", read);
     await inBrowser(m, "gBrowser.selectedBrowser", "document.cookie = 'tab=1; max-age=3600; path=/'; localStorage.k = 'tab'; return 1;");
     // Control: without containers, localhost cookies ignore the port (a tab on Autre's port sees the tab's cookie).
-    await openTab(`${AUTRE}/page2`);
+    await openTab(`${OTHER_A}/page2`);
     const tabOtherPort = await inBrowser<{ cookie: string }>(m, "gBrowser.selectedBrowser", read);
     const siteUc = await chrome<number>(`
       const { ContextualIdentityService: C } = ChromeUtils.importESModule("moz-src:///toolkit/components/contextualidentity/ContextualIdentityService.sys.mjs");
@@ -266,20 +266,20 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("agent app windows spike S8 (plan 35
       return userContextId;`);
     await m.execute(
       `const tab = gBrowser.addTab(arguments[0], { userContextId: arguments[1], triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal() }); window.spikeSiteTab = tab;`,
-      [`${ESSAI}/page2`, siteUc],
+      [`${ATTEMPT}/page2`, siteUc],
     );
     const siteTab = "window.spikeSiteTab.linkedBrowser";
-    await waitFor(m, `return ${siteTab}.currentURI.spec === ${JSON.stringify(`${ESSAI}/page2`)} && !${siteTab}.webProgress.isLoadingDocument`, (v) => v === true);
+    await waitFor(m, `return ${siteTab}.currentURI.spec === ${JSON.stringify(`${ATTEMPT}/page2`)} && !${siteTab}.webProgress.isLoadingDocument`, (v) => v === true);
     const site = await inBrowser(m, siteTab, read);
     await m.execute("gBrowser.removeTab(window.spikeSiteTab);");
     // And back: the app sees neither the tab's cookie nor its storage.
-    await chrome(`await S.load("essai", arguments[0]);`, [ESSAI + "/page2"]);
-    const essai = await inView("essai", read);
-    note("containers", { autre, tab, tabOtherPort, site, essai });
-    expect(autre).toEqual({ cookie: "", local: null });
+    await chrome(`await S.load("essai", arguments[0]);`, [ATTEMPT + "/page2"]);
+    const attempt = await inView("essai", read);
+    note("containers", { autre: other, tab, tabOtherPort, site, essai: attempt });
+    expect(other).toEqual({ cookie: "", local: null });
     expect(tab).toEqual({ cookie: "", local: null });
     expect(site).toEqual({ cookie: "", local: null });
-    expect(essai).toEqual({ cookie: "essai=1", local: "essai" });
+    expect(attempt).toEqual({ cookie: "essai=1", local: "essai" });
     expect(tabOtherPort.cookie).toContain("tab=1");
   });
 
@@ -292,7 +292,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("agent app windows spike S8 (plan 35
     await m.execute(
       `const tab = gBrowser.addTab(arguments[0], { userContextId: arguments[1], triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal() });
        window.spikeStrayTab = tab;`,
-      [`${AUTRE}/page2`, uc],
+      [`${OTHER_A}/page2`, uc],
     );
     await sleep(1500);
     const stray = await m.execute<{ url: string; uc: number }>(`const b = window.spikeStrayTab.linkedBrowser; const out = { url: b.currentURI.spec, uc: window.spikeStrayTab.userContextId }; gBrowser.removeTab(window.spikeStrayTab); return out;`);
@@ -300,7 +300,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("agent app windows spike S8 (plan 35
     note("stopped container", { stray, served, cancelled: await chrome(`return S.log.cancelled;`) });
     // Security: no request from the stopped app's container reached its server.
     expect(served).toEqual([]);
-    expect(stray.url).not.toBe(`${AUTRE}/page2`);
+    expect(stray.url).not.toBe(`${OTHER_A}/page2`);
   });
 
   // --- Quitting ----------------------------------------------------------------------------------------------------

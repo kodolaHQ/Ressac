@@ -58,7 +58,7 @@ const svc = <R = unknown>(body: string, args: unknown[] = []) =>
     `return (async (args) => { const store = await ChromeUtils.importESModule("${STORE}").ready, d = store.design; const t = { type: "fenetre", fenetreId: window.webaiosWindow.fenetreId }; ${body} })([...arguments]);`,
     args,
   );
-const etat = () => svc<{ actif: boolean; panier: number }>("return await d.etat(t);");
+const state = () => svc<{ actif: boolean; panier: number }>("return await d.etat(t);");
 const hosts = () => inBrowser<number>(m, B, `return document.querySelectorAll("webaios-viseur").length;`);
 
 async function open(url: string): Promise<string> {
@@ -94,19 +94,19 @@ const alertText = () => column<string | null>(`return doc?.querySelector('[role=
 async function modeOn() {
   const width = await inBrowser<number>(m, B, "return innerWidth;");
   await svc("await d.toggle(t); return 1;");
-  await expect.poll(async () => (await etat()).actif, { timeout: 10_000 }).toBe(true);
+  await expect.poll(async () => (await state()).actif, { timeout: 10_000 }).toBe(true);
   await expect.poll(hosts, { timeout: 10_000 }).toBe(1);
   await expect.poll(sendText, { timeout: 10_000 }).not.toBeNull();
   // The column narrows the page: the next click aims once its layout settled.
   await expect.poll(() => inBrowser<number>(m, B, "return innerWidth;"), { timeout: 10_000 }).toBeLessThan(width);
 }
 async function modeOff() {
-  if ((await etat()).actif) await svc("await d.stop(t); return 1;");
+  if ((await state()).actif) await svc("await d.stop(t); return 1;");
 }
 
 /** A trusted click on `sel`, its bubble labelled `label`, `text` typed, then « Ajouter au panier »: the cart grows by one. */
 async function remark(sel: string, label: string, text: string) {
-  const n = (await etat()).panier;
+  const n = (await state()).panier;
   await trustedMouse(m, B, sel);
   await expect
     .poll(() => bubble<string | null>(`return doc?.querySelector('${tid("bulle-design")}')?.textContent ?? null;`), { timeout: 10_000 })
@@ -114,7 +114,7 @@ async function remark(sel: string, label: string, text: string) {
   await expect.poll(() => bubble<string | null>("return doc?.activeElement?.localName ?? null;"), { timeout: 10_000 }).toBe("textarea");
   await typeText(m, text);
   await click(m, "button.ajouter", { frame: "calque" });
-  await expect.poll(async () => (await etat()).panier, { timeout: 10_000 }).toBe(n + 1);
+  await expect.poll(async () => (await state()).panier, { timeout: 10_000 }).toBe(n + 1);
 }
 
 const agentInput = () => {

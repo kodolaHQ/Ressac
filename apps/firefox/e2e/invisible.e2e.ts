@@ -64,9 +64,9 @@ const downloads = () =>
     `return (async () => { const { Downloads } = ChromeUtils.importESModule("resource://gre/modules/Downloads.sys.mjs"); return (await (await Downloads.getList(Downloads.ALL)).getAll()).map((d) => d.source.url); })();`,
   );
 const windows = () => m.execute<number>("return [...Services.wm.getEnumerator(null)].length");
-async function newSpace(prive: boolean): Promise<string> {
+async function newSpace(isPrivate: boolean): Promise<string> {
   const before = (await state(m)).espaces.map((e) => e.id);
-  const s = await dispatch(m, { type: "creerEspace", nom: prive ? "Privé" : "Compte", icone: "🔒", prive, profil: "nouveau" } as Action);
+  const s = await dispatch(m, { type: "creerEspace", nom: isPrivate ? "Privé" : "Compte", icone: "🔒", prive: isPrivate, profil: "nouveau" } as Action);
   return s.espaces.find((e) => !before.includes(e.id))!.profil;
 }
 
@@ -105,15 +105,15 @@ it("print() and alert() open no window and the title comes back under 15 s", asy
 });
 
 it("a public read sees no profile cookie", async () => {
-  const profil = await newSpace(false);
-  expect(await readPage(`${page.url}/cookie`, { profil })).toHaveProperty("ok");
-  expect(await readPage(`${page.url}/lire-cookie`, { profil })).toMatchObject({ ok: { titre: "essai=1" } });
+  const profile = await newSpace(false);
+  expect(await readPage(`${page.url}/cookie`, { profil: profile })).toHaveProperty("ok");
+  expect(await readPage(`${page.url}/lire-cookie`, { profil: profile })).toMatchObject({ ok: { titre: "essai=1" } });
   expect(await readPage(`${page.url}/lire-cookie`, { profil: null })).toMatchObject({ ok: { titre: "aucun" } });
 });
 
 it("a read with a profile used by a private space → ProfilRefuse", async () => {
-  const profil = await newSpace(true);
-  expect(await readPage(`${page.url}/a.html`, { profil })).toMatchObject({ name: "ProfilRefuse" });
+  const profile = await newSpace(true);
+  expect(await readPage(`${page.url}/a.html`, { profil: profile })).toMatchObject({ name: "ProfilRefuse" });
   expect(page.paths).toEqual([]);
 });
 
@@ -141,8 +141,8 @@ it("a redirect outside the allowed domains stops the read", async () => {
 });
 
 it("a beacon sent on pagehide never reaches the trap", async () => {
-  const profil = await newSpace(false);
-  for (const o of [{ profil: null }, { profil }]) expect(await readPage(`${page.url}/balise?vers=${encodeURIComponent(trapBase)}`, o)).toHaveProperty("ok");
+  const profile = await newSpace(false);
+  for (const o of [{ profil: null }, { profil: profile }]) expect(await readPage(`${page.url}/balise?vers=${encodeURIComponent(trapBase)}`, o)).toHaveProperty("ok");
   await new Promise((r) => setTimeout(r, 2_000));
   expect(trap.paths).toEqual([]);
 });
@@ -206,8 +206,8 @@ describe("add-ons", () => {
   });
 
   it("a login-profile read keeps add-ons (webRequest sees it)", async () => {
-    const profil = await newSpace(false);
-    expect(await readPage(`${page.url}/texte.html`, { profil })).toHaveProperty("ok");
+    const profile = await newSpace(false);
+    expect(await readPage(`${page.url}/texte.html`, { profil: profile })).toHaveProperty("ok");
     await pause();
     expect(seen()).toBeGreaterThan(0);
   });

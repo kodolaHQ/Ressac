@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { masquer, INITIAL_REVEAL, surZone, zoneGauche, zoneSortie, type Revelation, type ZoneGauche } from "../shared/revelation";
 
 /** Replays mouse positions (px from the left edge); a requested hide is applied right away. */
-function parcours(xs: number[], depart: Revelation = INITIAL_REVEAL): boolean[] {
+function walk(xs: number[], depart: Revelation = INITIAL_REVEAL): boolean[] {
   let r = depart;
   return xs.map((x) => {
     const zone = zoneGauche(x);
@@ -25,15 +25,15 @@ describe("left edge zones", () => {
 
 describe("compact-mode bar reveal", () => {
   it("reveals at the edge and stays open while the mouse is on the bar or its margin", () => {
-    expect(parcours([600, 100, 10, 3, 3, 100, 260, 279])).toEqual([false, false, true, true, true, true, true, true]);
+    expect(walk([600, 100, 10, 3, 3, 100, 260, 279])).toEqual([false, false, true, true, true, true, true, true]);
   });
   it("a mouse still at the edge, seen again in the same place, closes nothing (the page shifted underneath)", () => {
-    expect(parcours([3, 3, 3, 3])).toEqual([true, true, true, true]);
+    expect(walk([3, 3, 3, 3])).toEqual([true, true, true, true]);
   });
   it("closes beyond the bar and its margin", () => {
     const s = surZone({ revelee: true, armee: true }, "loin");
     expect(s).toMatchObject({ revelee: true, masquer: true });
-    expect(parcours([5, 120, 300])).toEqual([true, true, false]);
+    expect(walk([5, 120, 300])).toEqual([true, true, false]);
   });
   it("does not request a hide while the mouse stays on the bar", () => {
     expect(surZone({ revelee: true, armee: true }, "barre").masquer).toBe(false);
@@ -41,7 +41,7 @@ describe("compact-mode bar reveal", () => {
   });
   it("hidden with the mouse at the edge, it only comes back after the mouse left then found the edge again", () => {
     const r = masquer("bord");
-    expect(parcours([3, 5, 2], r)).toEqual([false, false, false]);
-    expect(parcours([3, 40, 3], r)).toEqual([false, false, true]);
+    expect(walk([3, 5, 2], r)).toEqual([false, false, false]);
+    expect(walk([3, 40, 3], r)).toEqual([false, false, true]);
   });
 });

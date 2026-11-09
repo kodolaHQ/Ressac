@@ -1,26 +1,26 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 
-export interface RequeteEnregistree { methode: string; url: string; corps: any }
-export interface FauxServeur { url: string; requetes: RequeteEnregistree[]; fermer(): Promise<void> }
+export interface SavedRequest { methode: string; url: string; corps: any }
+export interface FakeServer { url: string; requetes: SavedRequest[]; fermer(): Promise<void> }
 
-async function demarrer(repondre: (req: RequeteEnregistree, res: import("node:http").ServerResponse) => void): Promise<FauxServeur> {
-  const requetes: RequeteEnregistree[] = [];
-  const serveur: Server = createServer((req, res) => {
-    const morceaux: Buffer[] = [];
-    req.on("data", (m) => morceaux.push(m));
+async function start(reply: (req: SavedRequest, res: import("node:http").ServerResponse) => void): Promise<FakeServer> {
+  const requests: SavedRequest[] = [];
+  const server: Server = createServer((req, res) => {
+    const chunks: Buffer[] = [];
+    req.on("data", (m) => chunks.push(m));
     req.on("end", () => {
-      const texte = Buffer.concat(morceaux).toString("utf8");
-      const r = { methode: req.method ?? "", url: req.url ?? "", corps: texte ? JSON.parse(texte) : undefined };
-      requetes.push(r);
-      repondre(r, res);
+      const text = Buffer.concat(chunks).toString("utf8");
+      const r = { methode: req.method ?? "", url: req.url ?? "", corps: text ? JSON.parse(text) : undefined };
+      requests.push(r);
+      reply(r, res);
     });
   });
-  await new Promise<void>((ok) => serveur.listen(0, "127.0.0.1", ok));
+  await new Promise<void>((ok) => server.listen(0, "127.0.0.1", ok));
   return {
-    url: `http://127.0.0.1:${(serveur.address() as AddressInfo).port}`,
-    requetes,
-    fermer: () => new Promise<void>((ok) => { serveur.closeAllConnections(); serveur.close(() => ok()); }),
+    url: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
+    requetes: requests,
+    fermer: () => new Promise<void>((ok) => { server.closeAllConnections(); server.close(() => ok()); }),
   };
 }
 
@@ -30,23 +30,23 @@ const json = (res: import("node:http").ServerResponse, code: number, o: unknown)
 };
 
 /** Fake Kev: /v1/models and /v1/systemone. */
-export const fauxKev = (answers: unknown = { q: { type: "noul", noul: 0.91 } }) =>
-  demarrer((r, res) => {
+export const fakeKev = (answers: unknown = { q: { type: "noul", noul: 0.91 } }) =>
+  start((r, res) => {
     if (r.url === "/v1/models") return json(res, 200, { data: [] });
     if (r.url === "/v1/systemone") return json(res, 200, { model: "kev-latest", answers, usage: {} });
     json(res, 404, {});
   });
 
 /** Fake Ollama: /api/chat answers `contenu`. */
-export const fauxOllama = (contenu: string) =>
-  demarrer((r, res) => {
-    if (r.url === "/api/chat") return json(res, 200, { message: { content: contenu } });
+export const fakeOllama = (content: string) =>
+  start((r, res) => {
+    if (r.url === "/api/chat") return json(res, 200, { message: { content: content } });
     if (r.url === "/api/tags") return json(res, 200, { models: [{ name: "gemma4:e4b-mlx" }] });
     json(res, 404, {});
   });
 
 /** Port on which nothing listens. */
-export async function urlInjoignable(): Promise<string> {
+export async function unreachableUrl(): Promise<string> {
   const s = createServer();
   await new Promise<void>((ok) => s.listen(0, "127.0.0.1", ok));
   const port = (s.address() as AddressInfo).port;
@@ -55,9 +55,9 @@ export async function urlInjoignable(): Promise<string> {
 }
 
 /** Fake Ollama that never answers /api/chat; `coupees` counts the requests abandoned by the client. */
-export async function fauxOllamaMuet(): Promise<FauxServeur & { coupees: () => number }> {
+export async function fakeSilentOllama(): Promise<FakeServer & { coupees: () => number }> {
   let coupees = 0;
-  const s = await demarrer((_r, res) => {
+  const s = await start((_r, res) => {
     res.on("close", () => {
       if (!res.writableEnded) coupees++;
     });

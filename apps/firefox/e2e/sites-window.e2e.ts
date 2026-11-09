@@ -258,8 +258,8 @@ describe("site app window", () => {
     );
     expect(attached).toBe(false);
     await waitFor(m, `return !${site};`, (v) => v === true);
-    const ouverte = () => inStore<boolean | undefined>(`return (await store.agent.request("sites.liste")).find((s) => s.id === "vidola")?.ouverte;`);
-    await expect.poll(ouverte, { timeout: 10_000 }).toBe(false);
+    const opened = () => inStore<boolean | undefined>(`return (await store.agent.request("sites.liste")).find((s) => s.id === "vidola")?.ouverte;`);
+    await expect.poll(opened, { timeout: 10_000 }).toBe(false);
   });
 
   it("a download in the app is cancelled", async () => {
@@ -329,7 +329,7 @@ describe("site app window", () => {
   it("⌘click and middle click on a link of the app never open a tab of the main window", async () => {
     await openAndWait();
     const tabs = await mainTabs();
-    const onglets = Object.keys((await state(m)).onglets).length;
+    const tabCount = Object.keys((await state(m)).onglets).length;
     // Every tab opened in any browser window meanwhile, even one the guard closes at once.
     await m.execute(
       `window.webaiosTestOpened = [];
@@ -349,7 +349,7 @@ describe("site app window", () => {
     expect(await m.execute(`return ${view}.currentURI.spec;`)).toBe(url("/"));
     expect(await m.execute(`return ${site}.gBrowser.tabs.length;`)).toBe(1);
     expect(await mainTabs()).toBe(tabs);
-    expect(Object.keys((await state(m)).onglets).length).toBe(onglets);
+    expect(Object.keys((await state(m)).onglets).length).toBe(tabCount);
     expect(await m.execute(`return window.webaiosTestOpened;`)).toEqual([]);
   });
 

@@ -98,13 +98,13 @@ const plain = (url: string) =>
     })();`,
     [url],
   );
-const texte = (r: Outcome) => ("ok" in r ? r.ok.texte : r.err);
+const text = (r: Outcome) => ("ok" in r ? r.ok.texte : r.err);
 
 /** A read of site-b and, at the same moment, a read reaching site-b only by a redirect: the redirect must wait for the first read's turn. */
 async function redirectBesideRead(redirect: string) {
   const [first, second] = await Promise.all([paced(urlB("/page")), paced(redirect)]);
-  expect(texte(first)).toContain("Texte de site-b");
-  expect(texte(second)).toContain("Texte de site-b");
+  expect(text(first)).toContain("Texte de site-b");
+  expect(text(second)).toContain("Texte de site-b");
   expect(b.hits).toHaveLength(2);
   // The turn comes one gap after the earlier read of site-b, which ended after its request.
   expect(b.hits[1]!.at - b.hits[0]!.at).toBeGreaterThanOrEqual(GAP_MS);
@@ -121,7 +121,7 @@ describe("paced reads", () => {
 
   it("same-site redirect follows without waiting", async () => {
     const r = await paced(urlA(`/302?to=${encodeURIComponent(urlA("/page"))}`));
-    expect(texte(r)).toContain("Texte de site-a");
+    expect(text(r)).toContain("Texte de site-a");
     expect(a.hits.map((h) => h.path)).toEqual(["/302", "/page"]);
   }, 60_000);
 
@@ -132,7 +132,7 @@ describe("paced reads", () => {
 
   it("a read without changerHote still follows a cross-site 302 at once", async () => {
     const r = await plain(urlA(`/302?to=${encodeURIComponent(urlB("/page"))}`));
-    expect(texte(r)).toContain("Texte de site-b");
+    expect(text(r)).toContain("Texte de site-b");
   }, 60_000);
 
   it("another read gets a place while two others wait for site-b's turn", async () => {
@@ -148,10 +148,10 @@ describe("paced reads", () => {
     // Both stopped at their redirect, each holding a read place if it kept it: the third read must still get one
     // (read places: 2), and it ends before the first wait does.
     const free = await plain(urlA("/page"));
-    expect(texte(free)).toContain("Texte de site-a");
+    expect(text(free)).toContain("Texte de site-a");
     const ends = (await Promise.all(waiting)).map((r) => r.at);
     expect(free.at).toBeLessThan(Math.min(...ends));
-    expect(texte(await holder)).toContain("Texte de site-b");
+    expect(text(await holder)).toContain("Texte de site-b");
   }, 90_000);
 
   it("a wait for another site's turn that passes the read's deadline fails with Page trop lente", async () => {
@@ -163,7 +163,7 @@ describe("paced reads", () => {
     expect(r).toMatchObject({ err: expect.stringContaining("Page trop lente") });
     expect(b.hits.map((h) => h.path)).toEqual(["/page"]);
     // No read place leaked: a plain read still works.
-    expect(texte(await plain(urlA("/page")))).toContain("Texte de site-a");
+    expect(text(await plain(urlA("/page")))).toContain("Texte de site-a");
     await holder;
   }, 90_000);
 });

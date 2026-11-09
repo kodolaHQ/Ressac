@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { reviewUrl } from "../shared/modele";
 import { testActor } from "./agent-extensions";
-import { agentInput, APPS_ENV, appWindowExpr, inAppView, killFakeApps, launchEssai, rowButton, rowMenu, rowState, writeProject } from "./apps";
+import { agentInput, APPS_ENV, appWindowExpr, inAppView, killFakeApps, launchAttempt, rowButton, rowMenu, rowState, writeProject } from "./apps";
 import { startDesignServers, trustedMouse } from "./design";
 import { dispatch, inWindow, state, waitFor, waitReady, windowHandles } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
@@ -77,7 +77,7 @@ const svc = <R = unknown>(body: string, args: unknown[] = []) =>
      const main = { type: "fenetre", fenetreId: window.webaiosWindow?.fenetreId }; ${body} })([...arguments]);`,
     args,
   );
-const etat = () => svc<{ actif: boolean; panier: number; projet: { projet: string } | null }>("return await d.etat(t);");
+const designState = () => svc<{ actif: boolean; panier: number; projet: { projet: string } | null }>("return await d.etat(t);");
 /** The host's cart of app-essai (whether its window is open or not). */
 const cart = () => svc<number>(`return (await store.agent.request("design.suivi", { projet: "app-essai" })).panier;`);
 const hosts = () => inAppView<number>(m, "essai", `return document.querySelectorAll("webaios-viseur").length;`).catch(() => -1);
@@ -96,7 +96,7 @@ const inApp = async <T>(fn: () => Promise<T>): Promise<T> => inWindow(m, await a
 
 /** Essai launched by the agent's tool, its page loaded and its badge mounted; returns its port. */
 async function launched(): Promise<number> {
-  const port = await launchEssai(dataDir);
+  const port = await launchAttempt(dataDir);
   await loadedAt(`http://localhost:${port}/`);
   return port;
 }
@@ -136,7 +136,7 @@ const sendText = () => overlay<string | null>(`return doc.querySelector('${tid("
 
 async function modeOn(): Promise<void> {
   await menu("Mode design");
-  await expect.poll(async () => (await etat()).actif, { timeout: 10_000 }).toBe(true);
+  await expect.poll(async () => (await designState()).actif, { timeout: 10_000 }).toBe(true);
   await expect.poll(hosts, { timeout: 10_000 }).toBe(1);
 }
 /** A trusted click on `sel` in essai's page: its bubble, labelled `label`, opens in the window's overlay. */
@@ -158,8 +158,8 @@ async function add(text: string): Promise<void> {
 const reviewTabs = async () => Object.values((await state(m)).onglets).filter((o) => o.url === reviewUrl("app-essai"));
 
 it("design.spec.ts:426 an app window launched from the Applications page: the WebAiOs badge, Mode design, the bubble in its overlay, Panier", async () => {
-  const fenetreId = (await state(m)).fenetres[0]!.id;
-  await dispatch(m, { type: "ouvrirApplications", fenetreId });
+  const windowId = (await state(m)).fenetres[0]!.id;
+  await dispatch(m, { type: "ouvrirApplications", fenetreId: windowId });
   await rowButton(m, "essai", "Lancer");
   await rowState(m, "essai", "en-marche", 15_000);
   await expect.poll(() => inAppView<string>(m, "essai", "return document.title;").catch(() => null), { timeout: 15_000 }).toBe("Inscription");
@@ -231,7 +231,7 @@ it("⇧⌘D in the app window toggles its own mode, never the main window's tab"
     await m.execute(`${VIEW}.focus();`);
     await pressKeys(m, "Meta+Shift+d");
   });
-  await expect.poll(async () => (await etat()).actif, { timeout: 10_000 }).toBe(true);
+  await expect.poll(async () => (await designState()).actif, { timeout: 10_000 }).toBe(true);
   await expect.poll(hosts, { timeout: 10_000 }).toBe(1);
   expect((await svc<{ actif: boolean }>("return await d.etat(main);")).actif).toBe(false);
   expect(await svc("return d.overlayContext(main);")).toBeNull();
@@ -240,7 +240,7 @@ it("⇧⌘D in the app window toggles its own mode, never the main window's tab"
   expect(await m.execute(`return ["bookmarkAllTabsKb", "Browser:BookmarkAllTabs"].map((id) => ${APP}.document.getElementById(id)?.getAttribute("disabled"));`)).toEqual(["true", "true"]);
   expect((await windowHandles(m)).length).toBe(handles);
   await inApp(() => pressKeys(m, "Meta+Shift+d"));
-  await expect.poll(async () => (await etat()).actif, { timeout: 10_000 }).toBe(false);
+  await expect.poll(async () => (await designState()).actif, { timeout: 10_000 }).toBe(false);
   await expect.poll(hosts, { timeout: 10_000 }).toBe(0);
   expect((await svc<{ actif: boolean }>("return await d.etat(main);")).actif).toBe(false);
 });
@@ -285,7 +285,7 @@ it("a relaunch on another port, closing the window, stopping the app: each stops
   await add("Une remarque");
   await svc("await store.agent.request('applications.agir', { dossier: 'essai', action: 'relancer', fenetre: main.fenetreId }); return 1;");
   await loadedAt(`http://localhost:${BLOCK[0]}/`);
-  await expect.poll(async () => (await etat()).actif, { timeout: 10_000 }).toBe(false);
+  await expect.poll(async () => (await designState()).actif, { timeout: 10_000 }).toBe(false);
   expect(await hosts()).toBe(0);
   expect(await cart()).toBe(1);
 
@@ -295,7 +295,7 @@ it("a relaunch on another port, closing the window, stopping the app: each stops
   await expect.poll(sendText, { timeout: 10_000 }).toBe("Envoyer 1 remarque à l'agent");
   await m.execute(`${APP}.close();`);
   await expect.poll(() => m.execute<boolean>(`return !${APP};`), { timeout: 10_000 }).toBe(true);
-  await expect.poll(async () => (await etat()).actif, { timeout: 10_000 }).toBe(false);
+  await expect.poll(async () => (await designState()).actif, { timeout: 10_000 }).toBe(false);
   expect(await svc("return d.overlayContext(t);")).toBeNull();
   expect(await cart()).toBe(1);
 
@@ -306,13 +306,13 @@ it("a relaunch on another port, closing the window, stopping the app: each stops
   await expect.poll(sendText, { timeout: 10_000 }).toBe("Envoyer 1 remarque à l'agent");
   await callTool(dataDir, "arreter_application", { dossier: "essai" });
   await expect.poll(() => m.execute<boolean>(`return !${APP};`), { timeout: 10_000 }).toBe(true);
-  await expect.poll(async () => (await etat()).actif, { timeout: 10_000 }).toBe(false);
+  await expect.poll(async () => (await designState()).actif, { timeout: 10_000 }).toBe(false);
   expect(await svc("return d.overlayContext(t);")).toBeNull();
   expect(await cart()).toBe(1);
   // Launched again: the mode is off, the cart is there.
   await launched();
-  expect((await etat()).actif).toBe(false);
-  expect((await etat()).panier).toBe(1);
+  expect((await designState()).actif).toBe(false);
+  expect((await designState()).panier).toBe(1);
   expect(await hosts()).toBe(0);
 });
 
@@ -323,7 +323,7 @@ describe("no main window", () => {
     await aim("#email", "input#email.champ");
     await add("Sans fenetre");
     await menu("Mode design");
-    await expect.poll(async () => (await etat()).actif, { timeout: 10_000 }).toBe(false);
+    await expect.poll(async () => (await designState()).actif, { timeout: 10_000 }).toBe(false);
     await menu("Panier (1)");
     await expect.poll(sendText, { timeout: 10_000 }).toBe("Envoyer 1 remarque à l'agent");
     const main = (await m.command<{ value: string }>("WebDriver:GetWindowHandle")).value;

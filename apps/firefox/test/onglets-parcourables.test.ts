@@ -12,7 +12,7 @@ let F: string;
 const ag = (a: Action | null) => {
   if (a) e = apply(e, a, genId);
 };
-const ouvrir = (url: string) => {
+const open = (url: string) => {
   ag({ type: "ouvrirOnglet", fenetreId: F, url });
   return Object.keys(e.onglets).at(-1)!;
 };
@@ -24,22 +24,22 @@ beforeEach(() => {
 });
 
 test("ongletsParcourables: bar order, closed pinned absent, essential first, other space absent", () => {
-  const a = ouvrir("https://a.fr");
-  const b = ouvrir("https://b.fr");
-  const c = ouvrir("https://c.fr");
-  const p = ouvrir("https://p.fr");
+  const a = open("https://a.fr");
+  const b = open("https://b.fr");
+  const c = open("https://c.fr");
+  const p = open("https://p.fr");
   ag({ type: "epinglerOnglet", id: p });
-  const q = ouvrir("https://q.fr");
+  const q = open("https://q.fr");
   ag({ type: "epinglerOnglet", id: q });
   ag({ type: "fermerOnglet", id: q });
-  const ess = ouvrir("https://ess.fr");
+  const ess = open("https://ess.fr");
   ag({ type: "ajouterEssentiel", id: ess });
   expect(walkableTabs(e, F)).toEqual([ess, p, a, b, c]);
 
   const espace0 = e.fenetres[0]!.espaceActif;
   ag({ type: "creerEspace", nom: "Autre", icone: "x", prive: false, profil: "nouveau", fenetreId: F });
-  const autre = e.fenetres[0]!.espaceActif;
-  expect(autre).not.toBe(espace0);
-  const z = ouvrir("https://z.fr");
+  const other = e.fenetres[0]!.espaceActif;
+  expect(other).not.toBe(espace0);
+  const z = open("https://z.fr");
   expect(walkableTabs(e, F)).toEqual([z]);
 });

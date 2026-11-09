@@ -12,7 +12,7 @@ const decl: DeclarationSite = {
     { correspond: ["/film/*"], js: [], css: ["b.css"], cadres: ["https://*.clipsy.*/*"] },
   ], reprise: false,
 };
-const etat: UrlState = { actuel: "vidola-b.example", anciens: ["vidola-a.example"], depuis: null };
+const state: UrlState = { actuel: "vidola-b.example", anciens: ["vidola-a.example"], depuis: null };
 
 describe("hoteDansSite", () => {
   it("exact, subdomain, case-insensitive, trailing dot", () => {
@@ -26,11 +26,11 @@ describe("hoteDansSite", () => {
 describe("effective domains and start", () => {
   it("union without duplicates", () => {
     expect(effectiveDomains(decl, null)).toEqual(["vidola-a.example"]);
-    expect(effectiveDomains(decl, etat)).toEqual(["vidola-a.example", "vidola-b.example"]);
+    expect(effectiveDomains(decl, state)).toEqual(["vidola-a.example", "vidola-b.example"]);
   });
   it("start: host replaced by the current one when it changed", () => {
     expect(startUrl(decl, null)).toBe("https://www.vidola-a.example/accueil");
-    expect(startUrl(decl, etat)).toBe("https://vidola-b.example/accueil");
+    expect(startUrl(decl, state)).toBe("https://vidola-b.example/accueil");
     expect(startUrl(decl, { actuel: "vidola-a.example", anciens: [], depuis: null })).toBe("https://www.vidola-a.example/accueil");
   });
 });

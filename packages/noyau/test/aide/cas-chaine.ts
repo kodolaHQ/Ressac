@@ -6,7 +6,7 @@ type Lien = { de: string; vers: string };
 
 import type { ValidationContext } from "../../src/workflows/valider.js";
 
-export type CasChaine = {
+export type ChainCase = {
   nom: string;
   brut: { version: 1; blocs: Bloc[]; liens: Lien[] };
   attendu: string[];
@@ -14,13 +14,13 @@ export type CasChaine = {
   contexte?: ValidationContext;
 };
 
-const b = (id: string, type: string, parametres: Record<string, unknown>): Bloc => ({ id, type, parametres });
+const b = (id: string, type: string, params: Record<string, unknown>): Bloc => ({ id, type, parametres: params });
 const page = (id: string, parElement = true) => b(id, "source.page", { url: "https://x.fr/{url}", parElement });
-const recuperer = (id: string, parElement = true) => b(id, "source.recuperer", { url: "https://x.fr/{url}/api", parElement });
-const rediger = (id: string, parElement = true) => b(id, "ia.rediger", { consigne: "Résume : {page}", parElement });
-const chercher = (id: string, parElement = true) => b(id, "web.chercher", { requete: "{titre} avis", parElement, champ: "recherche" });
+const fetch = (id: string, parElement = true) => b(id, "source.recuperer", { url: "https://x.fr/{url}/api", parElement });
+const write = (id: string, parElement = true) => b(id, "ia.rediger", { consigne: "Résume : {page}", parElement });
+const search = (id: string, parElement = true) => b(id, "web.chercher", { requete: "{titre} avis", parElement, champ: "recherche" });
 const WEB: ValidationContext = { web: true, dureeMaxMinutes: null, proprietaire: "widget", saisie: false };
-const sortie = (auFilDeLEau?: boolean) => b("sortie", "sortie", auFilDeLEau === undefined ? { vers: "widget" } : { vers: "widget", auFilDeLEau });
+const sortie = (streaming?: boolean) => b("sortie", "sortie", streaming === undefined ? { vers: "widget" } : { vers: "widget", auFilDeLEau: streaming });
 const suite = (...ids: string[]): Lien[] => ids.slice(1).map((id, i) => ({ de: ids[i]!, vers: id }));
 const wf = (blocs: Bloc[], liens: Lien[]) => ({ version: 1 as const, blocs, liens });
 
@@ -33,15 +33,15 @@ const tete = [
 ];
 const LIENS_TETE = suite("annonces", "nouvelles", "tri", "top");
 
-export const CAS_CHAINE: CasChaine[] = [
+export const CASE_CHAIN: ChainCase[] = [
   {
     nom: "annonces → nouvelles → tri → top → fiche → infos → avis (tous par élément) → sortie au fil de l'eau",
-    brut: wf([...tete, page("fiche"), recuperer("infos"), rediger("avis"), sortie(true)], [...LIENS_TETE, ...suite("top", "fiche", "infos", "avis", "sortie")]),
+    brut: wf([...tete, page("fiche"), fetch("infos"), write("avis"), sortie(true)], [...LIENS_TETE, ...suite("top", "fiche", "infos", "avis", "sortie")]),
     attendu: ["fiche", "infos", "avis"],
   },
   {
     nom: "sans auFilDeLEau : vide",
-    brut: wf([...tete, page("fiche"), recuperer("infos"), rediger("avis"), sortie()], [...LIENS_TETE, ...suite("top", "fiche", "infos", "avis", "sortie")]),
+    brut: wf([...tete, page("fiche"), fetch("infos"), write("avis"), sortie()], [...LIENS_TETE, ...suite("top", "fiche", "infos", "avis", "sortie")]),
     attendu: [],
   },
   {
@@ -62,20 +62,20 @@ export const CAS_CHAINE: CasChaine[] = [
   {
     nom: "un bloc de la chaîne qui alimente aussi un autre bloc arrête la chaîne à lui",
     brut: wf(
-      [...tete, page("fiche"), recuperer("infos"), rediger("avis"), b("autre", "liste.garder", { nombre: 1 }), sortie(true)],
+      [...tete, page("fiche"), fetch("infos"), write("avis"), b("autre", "liste.garder", { nombre: 1 }), sortie(true)],
       [...LIENS_TETE, ...suite("top", "fiche", "infos", "avis", "sortie"), { de: "infos", vers: "autre" }],
     ),
     attendu: ["avis"],
   },
   {
     nom: "un bloc par élément avec parElement false arrête la chaîne",
-    brut: wf([...tete, page("fiche"), recuperer("infos", false), rediger("avis"), sortie(true)], [...LIENS_TETE, ...suite("top", "fiche", "infos", "avis", "sortie")]),
+    brut: wf([...tete, page("fiche"), fetch("infos", false), write("avis"), sortie(true)], [...LIENS_TETE, ...suite("top", "fiche", "infos", "avis", "sortie")]),
     attendu: ["avis"],
   },
   {
     nom: "sortie à deux prédécesseurs : vide",
     brut: wf(
-      [...tete, page("fiche"), rediger("avis"), sortie(true)],
+      [...tete, page("fiche"), write("avis"), sortie(true)],
       [...LIENS_TETE, ...suite("top", "fiche", "sortie"), { de: "top", vers: "avis" }, { de: "avis", vers: "sortie" }],
     ),
     attendu: [],
@@ -83,7 +83,7 @@ export const CAS_CHAINE: CasChaine[] = [
   {
     nom: "un bloc chaînable à deux prédécesseurs est pris, la chaîne s'arrête après lui",
     brut: wf(
-      [...tete, b("autres", "source.flux", { urls: ["https://y.fr/rss"] }), page("fiche"), rediger("avis"), sortie(true)],
+      [...tete, b("autres", "source.flux", { urls: ["https://y.fr/rss"] }), page("fiche"), write("avis"), sortie(true)],
       [...LIENS_TETE, { de: "top", vers: "fiche" }, { de: "autres", vers: "fiche" }, ...suite("fiche", "avis", "sortie")],
     ),
     attendu: ["fiche", "avis"],
@@ -92,20 +92,20 @@ export const CAS_CHAINE: CasChaine[] = [
     nom: "tranche non contiguë dans ordre : les premiers blocs sont retirés",
     // « isole » (without a link) sits between fiche and avis in the run order.
     brut: wf(
-      [...tete, page("fiche"), b("isole", "source.flux", { urls: ["https://z.fr/rss"] }), recuperer("infos"), rediger("avis"), sortie(true)],
+      [...tete, page("fiche"), b("isole", "source.flux", { urls: ["https://z.fr/rss"] }), fetch("infos"), write("avis"), sortie(true)],
       [...LIENS_TETE, ...suite("top", "fiche", "infos", "avis", "sortie")],
     ),
     attendu: ["infos", "avis"],
   },
   {
     nom: "web.chercher par élément dans la chaîne : top → chercher → avis → sortie",
-    brut: wf([...tete, chercher("chercher"), rediger("avis"), sortie(true)], [...LIENS_TETE, ...suite("top", "chercher", "avis", "sortie")]),
+    brut: wf([...tete, search("chercher"), write("avis"), sortie(true)], [...LIENS_TETE, ...suite("top", "chercher", "avis", "sortie")]),
     attendu: ["chercher", "avis"],
     contexte: WEB,
   },
   {
     nom: "web.chercher sans parElement arrête la chaîne",
-    brut: wf([...tete, chercher("chercher", false), rediger("avis"), sortie(true)], [...LIENS_TETE, ...suite("top", "chercher", "avis", "sortie")]),
+    brut: wf([...tete, search("chercher", false), write("avis"), sortie(true)], [...LIENS_TETE, ...suite("top", "chercher", "avis", "sortie")]),
     attendu: ["avis"],
     contexte: WEB,
   },

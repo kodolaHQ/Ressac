@@ -17,23 +17,23 @@ const declaration: DeclarationSite = {
   reprise: false,
 };
 
-function suivi(liens: string[] | Error) {
-  const signaux: (AbortSignal | undefined)[] = [];
+function tracking(liens: string[] | Error) {
+  const signals: (AbortSignal | undefined)[] = [];
   const dossierSites = mkdtempSync(join(tmpdir(), "webaios-suivi-"));
-  let maintenant = 1_000_000;
+  let now = 1_000_000;
   let lectures = 0;
   const s = new UrlTracking({
     lireLiens: async (_page, signal) => {
-      signaux.push(signal);
+      signals.push(signal);
       lectures++;
       if (liens instanceof Error) throw liens;
       return liens;
     },
     dossierSites,
     adressesLocales: false,
-    maintenant: () => maintenant,
+    maintenant: () => now,
   });
-  return { s, signaux, dossierSites, lectures: () => lectures, avancer: (ms: number) => void (maintenant += ms) };
+  return { s, signaux: signals, dossierSites, lectures: () => lectures, avancer: (ms: number) => void (now += ms) };
 }
 
 test("the plan's interval is one minute", () => {
@@ -41,7 +41,7 @@ test("the plan's interval is one minute", () => {
 });
 
 test("links with vidola-b: change, etat.actuel vidola-b", async () => {
-  const t = suivi(["https://adresses.example/autre", "https://vidola-b.example/"]);
+  const t = tracking(["https://adresses.example/autre", "https://vidola-b.example/"]);
   const r = await t.s.chercher("vidola", declaration);
   expect(r.t).toBe("change");
   if (r.t !== "change") return;
@@ -52,7 +52,7 @@ test("links with vidola-b: change, etat.actuel vidola-b", async () => {
 });
 
 test("two chercher in 30 s: the second « trop-tot », a single read", async () => {
-  const t = suivi(["https://vidola-b.example/"]);
+  const t = tracking(["https://vidola-b.example/"]);
   expect((await t.s.chercher("vidola", declaration)).t).toBe("change");
   t.avancer(30_000);
   expect((await t.s.chercher("vidola", declaration)).t).toBe("trop-tot");
@@ -63,37 +63,37 @@ test("two chercher in 30 s: the second « trop-tot », a single read", async () 
 });
 
 test("two chercher at the same time: a single read", async () => {
-  const t = suivi(["https://vidola-b.example/"]);
+  const t = tracking(["https://vidola-b.example/"]);
   const [a, b] = await Promise.all([t.s.chercher("vidola", declaration), t.s.chercher("vidola", declaration)]);
   expect([a.t, b.t].sort()).toEqual(["change", "trop-tot"]);
   expect(t.lectures()).toBe(1);
 });
 
 test("no valid link (http, local, page domain): introuvable, state unchanged", async () => {
-  const t = suivi(["http://vidola-b.example/", "https://127.0.0.1/vidola", "https://vidola.adresses.example/", "https://tiers.example/vidola", "javascript:alert(1)"]);
+  const t = tracking(["http://vidola-b.example/", "https://127.0.0.1/vidola", "https://vidola.adresses.example/", "https://tiers.example/vidola", "javascript:alert(1)"]);
   expect((await t.s.chercher("vidola", declaration)).t).toBe("introuvable");
   expect(await readUrlState(t.dossierSites, "vidola")).toBeNull();
 });
 
 test("the found link is the current domain: inchangee", async () => {
-  const t = suivi(["https://vidola-a.example/"]);
+  const t = tracking(["https://vidola-a.example/"]);
   expect((await t.s.chercher("vidola", declaration)).t).toBe("inchangee");
   expect(await readUrlState(t.dossierSites, "vidola")).toBeNull();
 });
 
 test("read that throws: introuvable", async () => {
-  const t = suivi(new Error("page de référence muette"));
+  const t = tracking(new Error("page de référence muette"));
   expect((await t.s.chercher("vidola", declaration)).t).toBe("introuvable");
 });
 
 test("two apps do not limit each other", async () => {
-  const t = suivi(["https://vidola-b.example/"]);
+  const t = tracking(["https://vidola-b.example/"]);
   await t.s.chercher("un", declaration);
   expect((await t.s.chercher("deux", declaration)).t).not.toBe("trop-tot");
 });
 
 test("after a first change, a link to the current address is inchangee (compared to actuel, not to the declared address)", async () => {
-  const t = suivi(["https://vidola-b.example/"]);
+  const t = tracking(["https://vidola-b.example/"]);
   expect((await t.s.chercher("vidola", declaration)).t).toBe("change");
   t.avancer(61_000);
   expect((await t.s.chercher("vidola", declaration)).t).toBe("inchangee");
@@ -101,7 +101,7 @@ test("after a first change, a link to the current address is inchangee (compared
 });
 
 test("a failed read counts in the interval: 30 s later, trop-tot", async () => {
-  const t = suivi(new Error("muette"));
+  const t = tracking(new Error("muette"));
   expect((await t.s.chercher("vidola", declaration)).t).toBe("introuvable");
   t.avancer(30_000);
   expect((await t.s.chercher("vidola", declaration)).t).toBe("trop-tot");
@@ -110,15 +110,15 @@ test("a failed read counts in the interval: 30 s later, trop-tot", async () => {
 
 test("the cancellation signal is passed to the read; a cancelled read gives introuvable and changes nothing", async () => {
   const dossierSites = mkdtempSync(join(tmpdir(), "webaios-suivi-"));
-  const controle = new AbortController();
+  const control = new AbortController();
   const s = new UrlTracking({
     lireLiens: (_p, signal) => new Promise((_ok, non) => signal?.addEventListener("abort", () => non(new Error("annulée")))),
     dossierSites,
     adressesLocales: false,
     maintenant: () => 0,
   });
-  const r = s.chercher("vidola", declaration, controle.signal);
-  controle.abort();
+  const r = s.chercher("vidola", declaration, control.signal);
+  control.abort();
   expect((await r).t).toBe("introuvable");
   expect(await readUrlState(dossierSites, "vidola")).toBeNull();
 });

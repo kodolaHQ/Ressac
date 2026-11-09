@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { ecrireExtensionAgent } from "./extensions/fixtures";
+import { writeAgentExtension } from "./extensions/fixtures";
 import { cleanupXpis, installAddon, marker, type Fixture } from "./addons";
 import { grant, launchWithAmo, testActor } from "./agent-extensions";
 import { state, waitFor, waitReady } from "./firefox";
@@ -113,9 +113,9 @@ async function start(o: { sites?: Record<string, SiteTest>; granted?: string[] }
 }
 
 /** The app opened, its view on `chemin` and loaded. */
-async function openAndWait(id = "vidola", chemin = "/pubs") {
+async function openAndWait(id = "vidola", path = "/pubs") {
   await openSite(id);
-  await expect.poll(() => viewUrl(id), { timeout: 15_000 }).toBe(url(chemin));
+  await expect.poll(() => viewUrl(id), { timeout: 15_000 }).toBe(url(path));
   await expect.poll(() => view("document.readyState", id), { timeout: 10_000 }).not.toBe("loading");
 }
 
@@ -179,9 +179,9 @@ describe("add-ons in a site app window", () => {
     await installAddon(m, probe());
     await openAndWait();
     await openPopup();
-    const ouvert = url("/ouvert", "pub.localhost");
-    expect(await order({ op: "create", url: ouvert })).toEqual({ ok: "other-window" });
-    await expect.poll(async () => Object.values((await state(m)).onglets).map((o) => o.url), { timeout: 10_000 }).toContain(ouvert);
+    const isOpen = url("/ouvert", "pub.localhost");
+    expect(await order({ op: "create", url: isOpen })).toEqual({ ok: "other-window" });
+    await expect.poll(async () => Object.values((await state(m)).onglets).map((o) => o.url), { timeout: 10_000 }).toContain(isOpen);
     expect(await tabCount()).toBe(1);
     expect(await viewUrl()).toBe(url("/pubs"));
   });
@@ -303,11 +303,11 @@ describe("add-ons in a site app window", () => {
 });
 
 describe("add-ons and what the agent adds to the app", () => {
-  const SERIE = "/serie/the-bear";
-  const RETENU = { titre: "The Bear", episode: "S2E4" };
-  const serie = () =>
+  const SERIES = "/serie/the-bear";
+  const KEPT = { titre: "The Bear", episode: "S2E4" };
+  const series = () =>
     vidola({
-      adresse: url(SERIE),
+      adresse: url(SERIES),
       reprise: true,
       retouches: [{ correspond: ["/serie/*"], js: ["serie.js"], css: ["cacher.css"] }],
     });
@@ -317,13 +317,13 @@ describe("add-ons and what the agent adds to the app", () => {
   };
 
   it("with an add-on running in the view: the CSS tweak hides .shorts, the memory receives encours.the-bear, the resume notes the position (extensions-sites.spec.ts:1018, adapted)", async () => {
-    server.definir("vidola-a.localhost", SERIE, `<title>The Bear</title><div class="shorts" id="shorts">shorts</div><video id="v" muted autoplay preload="auto" src="${url("/silence-90.wav", "lecteur.localhost")}"></video>`);
+    server.definir("vidola-a.localhost", SERIES, `<title>The Bear</title><div class="shorts" id="shorts">shorts</div><video id="v" muted autoplay preload="auto" src="${url("/silence-90.wav", "lecteur.localhost")}"></video>`);
     server.definir("lecteur.localhost", "/silence-90.wav", serveWav(silenceWav(90)));
     const sites = {
       vidola: {
-        declaration: serie(),
+        declaration: series(),
         fichiers: {
-          "retouches/serie.js": `webaiosSite.retenir("encours.the-bear", ${JSON.stringify(RETENU)}).then(() => (document.documentElement.dataset.retenu = "oui"));`,
+          "retouches/serie.js": `webaiosSite.retenir("encours.the-bear", ${JSON.stringify(KEPT)}).then(() => (document.documentElement.dataset.retenu = "oui"));`,
           "retouches/cacher.css": ".shorts { display: none; }",
         },
       },
@@ -331,19 +331,19 @@ describe("add-ons and what the agent adds to the app", () => {
     await start({ sites, granted: ["vidola"] });
     await installAddon(m, marker());
     await installAddon(m, probe());
-    await openAndWait("vidola", SERIE);
+    await openAndWait("vidola", SERIES);
     // The add-ons run in the view (the marker's content script); both are in the bar, the marker greyed (no action).
     await expect.poll(() => view("document.getElementById('addon-mark')?.textContent ?? null"), { timeout: 10_000 }).toBe("MARQUE-MODULE");
     await expect.poll(() => stripButtons(), { timeout: 10_000 }).toBe(2);
     // The tweaks.
     expect(await view("getComputedStyle(document.getElementById('shorts')).display")).toBe("none");
     await expect.poll(() => view("document.documentElement.dataset.retenu ?? null"), { timeout: 10_000 }).toBe("oui");
-    await expect.poll(() => memory()?.valeurs["encours.the-bear"] ?? null, { timeout: 10_000 }).toMatchObject({ valeur: RETENU, adresse: SERIE });
+    await expect.poll(() => memory()?.valeurs["encours.the-bear"] ?? null, { timeout: 10_000 }).toMatchObject({ valeur: KEPT, adresse: SERIES });
     // The resume (see sites-resume.e2e.ts: the headless browser decodes nothing, the position is currentTime as set).
     await expect.poll(() => view("document.getElementById('v').duration"), { timeout: 15_000 }).toBe(90);
     await new Promise((r) => setTimeout(r, 500));
     await view("(() => { const v = document.getElementById('v'); v.currentTime = 70; v.play().catch(() => {}); v.pause(); return 1; })()");
-    await expect.poll(() => memory()?.positions[SERIE]?.t ?? null, { timeout: 10_000 }).toBeCloseTo(70, 0);
+    await expect.poll(() => memory()?.positions[SERIES]?.t ?? null, { timeout: 10_000 }).toBeCloseTo(70, 0);
   });
 });
 
@@ -364,12 +364,12 @@ describe("the agent and the app's add-ons", () => {
   it("an agent extension's content script never runs in the app view, nor shows in its bar", async () => {
     dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
     profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
-    const hote = "http://vidola-a.localhost/*";
-    ecrireExtensionAgent(path.join(dataDir, "espace"), "cacheur", {
-      "manifest.json": { manifest_version: 3, name: "Cacheur de l'agent", version: "1.0.0", content_scripts: [{ matches: [hote], css: ["cache.css"] }] },
+    const host = "http://vidola-a.localhost/*";
+    writeAgentExtension(path.join(dataDir, "espace"), "cacheur", {
+      "manifest.json": { manifest_version: 3, name: "Cacheur de l'agent", version: "1.0.0", content_scripts: [{ matches: [host], css: ["cache.css"] }] },
       "cache.css": "#banniere { display: none !important; }\n",
     });
-    grant(dataDir, "cacheur", { permissions: [], hotes: [hote], reseau: [], tousLesSites: false, scriptsTousLesSites: false, scripts: true });
+    grant(dataDir, "cacheur", { permissions: [], hotes: [host], reseau: [], tousLesSites: false, scriptsTousLesSites: false, scripts: true });
     writeSite(dataDir, "vidola", { declaration: vidola() });
     w = await launchWithAmo({ dataDir, profile, env: { WEBAIOS_TEST_ADRESSES_LOCALES: "1" } });
     m = w.marionette;

@@ -81,9 +81,9 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("history and downloads spike", () =>
       const tag = `S1 ${placesOff ? "off" : "on"}`;
       await launch({ placesOff });
       await m.execute("Services.console.reset();");
-      const a = `${server.url}/a.html`, icone = `${server.url}/icone`, b = `${server.url}/b.html`;
+      const a = `${server.url}/a.html`, icon = `${server.url}/icone`, b = `${server.url}/b.html`;
       await open(a);
-      const id = await open(icone);
+      const id = await open(icon);
       // Read the icon while the tab still shows /icone.
       await sleep(3000);
       note(`${tag} favicon of /icone in the state`, (await state(m)).onglets[id]?.favicon);
@@ -94,10 +94,10 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("history and downloads spike", () =>
       await m.execute("gBrowser.selectedBrowser.loadURI(Services.io.newURI(arguments[0]), { triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal() });", [b]);
       await loaded(b);
       await sleep(2500); // history writes are batched
-      note(`${tag} hasVisits a/icone/b`, [await hasVisits(a), await hasVisits(icone), await hasVisits(b)]);
+      note(`${tag} hasVisits a/icone/b`, [await hasVisits(a), await hasVisits(icon), await hasVisits(b)]);
       note(`${tag} places.history.enabled`, await m.execute('return Services.prefs.getBoolPref("places.history.enabled")'));
       await pressKeys(m, "Meta+[");
-      await loaded(icone).then(() => note(`${tag} Meta+[ goes back to /icone`, true), async () => note(`${tag} Meta+[`, { now: await current() }));
+      await loaded(icon).then(() => note(`${tag} Meta+[ goes back to /icone`, true), async () => note(`${tag} Meta+[`, { now: await current() }));
       await pressKeys(m, "Meta+]");
       await loaded(b).then(() => note(`${tag} Meta+] goes forward to b.html`, true), async () => note(`${tag} Meta+]`, { now: await current() }));
       const tabs = () => m.execute<number>("return gBrowser.tabs.filter((t) => t.hasAttribute('webaios-tab-id')).length");

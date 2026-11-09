@@ -3,19 +3,19 @@ import { expect, test } from "vitest";
 import { shownFields, entreeDe, paramsWith, textOf } from "../../ui/constructeur/formulaire";
 
 const catalogue = (type: string) => catalogueBlocs().find((c) => c.type === type)!;
-const champ = (type: string, nom: string) => catalogue(type).champs.find((c) => c.nom === nom)!;
-const noms = (type: string, parametres: Record<string, unknown>) => shownFields(catalogue(type), parametres).map((c) => c.nom);
+const champ = (type: string, name: string) => catalogue(type).champs.find((c) => c.nom === name)!;
+const names = (type: string, params: Record<string, unknown>) => shownFields(catalogue(type), params).map((c) => c.nom);
 
 test("the « only per item » fields only appear if parElement is ticked", () => {
-  expect(noms("ia.rediger", {})).not.toContain("siErreur");
-  expect(noms("ia.rediger", { parElement: false })).not.toContain("reutiliser");
-  expect(noms("ia.rediger", { parElement: true })).toEqual(expect.arrayContaining(["siErreur", "budgetSecondes", "reutiliser"]));
-  expect(noms("ia.rediger", {})).toContain("parElement");
+  expect(names("ia.rediger", {})).not.toContain("siErreur");
+  expect(names("ia.rediger", { parElement: false })).not.toContain("reutiliser");
+  expect(names("ia.rediger", { parElement: true })).toEqual(expect.arrayContaining(["siErreur", "budgetSecondes", "reutiliser"]));
+  expect(names("ia.rediger", {})).toContain("parElement");
 });
 
 test("ia.trier (always item by item) shows siErreur, budget, reutiliser and a field without the parElement box", () => {
-  expect(noms("ia.trier", {})).toEqual(expect.arrayContaining(["seuil", "champ", "siErreur", "budgetSecondes", "reutiliser"]));
-  expect(noms("ia.trier", {})).not.toContain("parElement");
+  expect(names("ia.trier", {})).toEqual(expect.arrayContaining(["seuil", "champ", "siErreur", "budgetSecondes", "reutiliser"]));
+  expect(names("ia.trier", {})).not.toContain("parElement");
 });
 
 test("a cleared non-required text field removes its key; required, it stays empty", () => {
@@ -31,10 +31,10 @@ test("number: converted, cleared removes the key, unreadable changes nothing", (
 });
 
 test("texts: one line per value, empty lines ignored", () => {
-  const cles = champ("liste.dedoublonner", "cles");
-  expect(paramsWith({}, cles, "url\n\n titre \n")).toEqual({ cles: ["url", "titre"] });
-  expect(textOf(cles, ["url", "titre"])).toBe("url\ntitre");
-  expect(paramsWith({ cles: ["url"] }, cles, "")).toEqual({ cles: [] });
+  const keys = champ("liste.dedoublonner", "cles");
+  expect(paramsWith({}, keys, "url\n\n titre \n")).toEqual({ cles: ["url", "titre"] });
+  expect(textOf(keys, ["url", "titre"])).toBe("url\ntitre");
+  expect(paramsWith({ cles: ["url"] }, keys, "")).toEqual({ cles: [] });
 });
 
 test("checkbox and choice: values as is; displayed value by default the catalog's", () => {

@@ -17,7 +17,7 @@ import { click, inUi, missingApi, waitUi } from "./ui";
 
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 const HOSTS = ["vidola-a.localhost", "pub.localhost", "compte.localhost", "mail.localhost", "flemmix.localhost"];
-const REFUS = "Accès refusé par l'utilisateur à cet onglet.";
+const DENIAL = "Accès refusé par l'utilisateur à cet onglet.";
 const CARD = '[data-testid="demande-donnees-widget"]';
 const DEVTOOLS = '[data-testid="demande-outils-dev"]';
 const ALLOW = "Autoriser pour cette conversation";
@@ -29,7 +29,7 @@ let dataDir: string;
 let profile: string;
 
 const url = (p: string, host = "vidola-a.localhost") => server.url(host, p);
-const vidola = (domaines = ["vidola-a.localhost"]) => ({ nom: "Vidola", adresse: url("/"), domaines, connexion: ["compte.localhost"] });
+const vidola = (domains = ["vidola-a.localhost"]) => ({ nom: "Vidola", adresse: url("/"), domaines: domains, connexion: ["compte.localhost"] });
 const flemmix = () => ({ nom: "Flemmix", adresse: url("/", "flemmix.localhost"), domaines: ["flemmix.localhost"], retouches: [{ correspond: ["/*"], js: ["casse.js"] }] });
 
 const call = (name: string, args: Record<string, unknown> = {}) => callTool(dataDir, name, args);
@@ -65,9 +65,9 @@ async function start(sites: Record<string, object> = { vidola: vidola() }, prepa
 }
 
 /** The app opened, its view on `chemin` and loaded. */
-async function openAndWait(id = "vidola", chemin = "/", host = "vidola-a.localhost") {
+async function openAndWait(id = "vidola", path = "/", host = "vidola-a.localhost") {
   await openSite(id);
-  await expect.poll(() => viewUrl(id), { timeout: 15_000 }).toBe(url(chemin, host));
+  await expect.poll(() => viewUrl(id), { timeout: 15_000 }).toBe(url(path, host));
   await expect.poll(() => view("document.readyState", id), { timeout: 10_000 }).toBe("complete");
 }
 
@@ -98,16 +98,16 @@ describe("the agent on a site app window", () => {
     const depart = url("/");
 
     // Without the grant: name, domain and « appli de site », never the address nor the page's title.
-    const liste = (await call("lister_onglets")).texte;
-    expect(liste.split("\n")).toContain("site:vidola · Vidola · vidola-a.localhost · appli de site");
-    expect(liste).not.toContain(depart);
-    expect(liste).not.toContain("Vidola A");
+    const list = (await call("lister_onglets")).texte;
+    expect(list.split("\n")).toContain("site:vidola · Vidola · vidola-a.localhost · appli de site");
+    expect(list).not.toContain(depart);
+    expect(list).not.toContain("Vidola A");
 
     // The app's card, in the main window; refused → refusal, nothing read.
     let reading = call("lire_onglet", { id: "site:vidola" });
     expect(await cardText()).toBe("L'agent veut voir l'appli de site « Vidola » (connectée à ton compte) : ses pages et sa mémoire, pour cette conversation.");
     await answer("Refuser");
-    expect(await reading).toEqual({ texte: REFUS, erreur: false });
+    expect(await reading).toEqual({ texte: DENIAL, erreur: false });
     await gone(CARD);
 
     // Asked again: granted for the conversation → the page's text, read in the site view.
@@ -193,7 +193,7 @@ describe("the agent on a site app window", () => {
     reading = call("lire_onglet", { id: "site:vidola" });
     expect(await cardText()).toContain("« Vidola »");
     await answer("Refuser");
-    expect(await reading).toEqual({ texte: REFUS, erreur: false });
+    expect(await reading).toEqual({ texte: DENIAL, erreur: false });
     await gone(CARD);
     reading = call("capture_ecran", { id: "site:vidola" });
     await cardText();
@@ -245,9 +245,9 @@ describe("the agent on a site app window", () => {
       writeFileSync(path.join(dossier, "memoire.json"), JSON.stringify({ version: 1, valeurs: { "encours.the-bear": { valeur: { titre: "The Bear" }, adresse: EPISODE, quand: new Date().toISOString() } }, positions: {} }));
     });
     await openAndWait();
-    const liste = (await call("lister_onglets")).texte;
-    expect(liste.split("\n")).toContain("site:vidola · Vidola · vidola-a.localhost · appli de site");
-    expect(liste).not.toContain(url("/"));
+    const list = (await call("lister_onglets")).texte;
+    expect(list.split("\n")).toContain("site:vidola · Vidola · vidola-a.localhost · appli de site");
+    expect(list).not.toContain(url("/"));
 
     const memory = call("memoire_site", { id: "vidola" });
     expect(await cardText()).toContain("« Vidola »");
@@ -287,7 +287,7 @@ describe("the agent on a site app window", () => {
       writeSite(dataDir, "vidola", { declaration: vidola(), fichiers: { "accueil/index.html": "<p>accueil</p>" } });
     });
     await openSite();
-    const vue = () => m.execute<string>(`return ${siteWindowExpr("vidola")}.webaiosSiteWindow.state().vue;`);
+    const view = () => m.execute<string>(`return ${siteWindowExpr("vidola")}.webaiosSiteWindow.state().vue;`);
     const film = url("/film/2");
     const navigating = call("naviguer", { id: "site:vidola", url: film });
     await cardText();
@@ -298,7 +298,7 @@ describe("the agent on a site app window", () => {
     await expect.poll(hits, { timeout: 10_000 }).toBe(1);
     await m.execute(`${siteWindowExpr("vidola")}.webaiosSiteWindow.home()`);
     const before = hits();
-    expect(await vue()).toBe("accueil");
+    expect(await view()).toBe("accueil");
     const reloading = call("recharger", { id: "site:vidola" });
     await waitUi<string>(m, `return doc.querySelector(${JSON.stringify(DEVTOOLS)})?.textContent`, [], 15_000);
     await answer("Autoriser la sélection", DEVTOOLS);

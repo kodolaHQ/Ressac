@@ -11,7 +11,7 @@ import { startServer } from "./server";
 import { waitUi } from "./ui";
 
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
-const TEXTE_PRIVE = "Cet onglet est dans un espace privé : l'agent n'y a pas accès.";
+const PRIVATE_TEXT = "Cet onglet est dans un espace privé : l'agent n'y a pas accès.";
 
 let server: Awaited<ReturnType<typeof startServer>>;
 let w: LaunchedWebAiOs;
@@ -44,10 +44,10 @@ async function poll<T>(read: () => Promise<T>, ok: (v: T) => boolean, ms = 10_00
     await new Promise((r) => setTimeout(r, 100));
   }
 }
-async function setActiveSpacePrivate(prive: boolean): Promise<void> {
+async function setActiveSpacePrivate(isPrivate: boolean): Promise<void> {
   const s = await state(m);
   const e = s.espaces.find((x) => x.id === s.fenetres[0]!.espaceActif)!;
-  await dispatch(m, { type: "reglerEspace", id: e.id, nom: e.nom, icone: e.icone, prive, profil: e.profil } as Action);
+  await dispatch(m, { type: "reglerEspace", id: e.id, nom: e.nom, icone: e.icone, prive: isPrivate, profil: e.profil } as Action);
 }
 
 it("at startup the kernel prepares its space in the data dir and MCP answers", async () => {
@@ -58,14 +58,14 @@ it("at startup the kernel prepares its space in the data dir and MCP answers", a
 it("lister_onglets shows a tab not shared yet as « onglet non partagé »", async () => {
   await dispatch(m, { type: "ouvrirOnglet", fenetreId: (await state(m)).fenetres[0]!.id, url: `${server.url}/a.html` });
   await loaded("/a.html");
-  const { texte } = await call("lister_onglets");
-  expect(texte).toContain("onglet non partagé");
-  expect(texte).not.toContain("a.html");
+  const { texte: text } = await call("lister_onglets");
+  expect(text).toContain("onglet non partagé");
+  expect(text).not.toContain("a.html");
 });
 
 it("ouvrir_onglet opens an active agent tab, readable and capturable", async () => {
-  const { texte: id, erreur } = await call("ouvrir_onglet", { url: `${server.url}/texte.html` });
-  expect(erreur).toBe(false);
+  const { texte: id, erreur: error } = await call("ouvrir_onglet", { url: `${server.url}/texte.html` });
+  expect(error).toBe(false);
   const s = await state(m);
   expect(s.onglets[id]?.ouvertParAgent).toBe(true);
   expect(s.fenetres[0]!.actif[s.fenetres[0]!.espaceActif]).toBe(id);
@@ -102,8 +102,8 @@ it("private space: the tab disappears from lister_onglets, lire_onglet / capture
   expect((await call("lire_onglet", { id })).texte).toContain("Le chat dort");
   await setActiveSpacePrivate(true);
   await poll(async () => (await call("lister_onglets")).texte, (t) => t === "Aucun onglet ouvert.");
-  for (const name of ["lire_onglet", "capture_ecran"]) expect(await call(name, { id })).toEqual({ texte: TEXTE_PRIVE, erreur: false });
-  expect(await call("page_courante")).toEqual({ texte: TEXTE_PRIVE, erreur: false });
+  for (const name of ["lire_onglet", "capture_ecran"]) expect(await call(name, { id })).toEqual({ texte: PRIVATE_TEXT, erreur: false });
+  expect(await call("page_courante")).toEqual({ texte: PRIVATE_TEXT, erreur: false });
   const opened = await call("ouvrir_onglet", { url: `${server.url}/b.html` });
   expect(opened.texte).toContain("Impossible d'ouvrir un onglet ici : l'espace actif est privé.");
   expect(Object.keys((await state(m)).onglets)).toEqual([id]);
@@ -226,12 +226,12 @@ it("chercher_historique finds a page by a word of its text; lire_historique retu
 it("chercher_historique: a page seen only in a private space is not found", async () => {
   await setActiveSpacePrivate(true);
   const url = `${server.url}/texte.html`;
-  const fenetreId = (await state(m)).fenetres[0]!.id;
-  await dispatch(m, { type: "ouvrirOnglet", fenetreId, url });
+  const windowId = (await state(m)).fenetres[0]!.id;
+  await dispatch(m, { type: "ouvrirOnglet", fenetreId: windowId, url });
   await loaded("/texte.html");
-  await dispatch(m, { type: "creerEspace", nom: "Travail", icone: "💼", prive: false, profil: "defaut", fenetreId });
+  await dispatch(m, { type: "creerEspace", nom: "Travail", icone: "💼", prive: false, profil: "defaut", fenetreId: windowId });
   const b = `${server.url}/b.html`;
-  await dispatch(m, { type: "ouvrirOnglet", fenetreId, url: b });
+  await dispatch(m, { type: "ouvrirOnglet", fenetreId: windowId, url: b });
   // B, seen after in a non-private space, is retained: a capture of the private page would have happened by then.
   await poll(() => call("lire_historique", { url: b }).then((r) => r.texte), (t) => t.includes(`URL : ${b}`), 15_000);
   expect((await call("chercher_historique", { requete: "chat" })).texte).toBe("Rien trouvé dans l'historique.");

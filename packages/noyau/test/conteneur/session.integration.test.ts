@@ -6,11 +6,11 @@ import { SessionAgent } from "../../src/pty/session.js";
 
 // Launched by hand: SESSION_INTEGRATION=1, with the workshop already started (it only launches a sleep there, which it stops).
 // The container's sh is dash: this is where a stop script that the Mac's sh would accept alone shows up.
-const actif = process.env.SESSION_INTEGRATION === "1";
+const active = process.env.SESSION_INTEGRATION === "1";
 const dansAtelier = (motif: string) =>
   execFileSync("docker", ["exec", "webaios-atelier", "sh", "-c", `ps -eo args | grep '[${motif[0]}]${motif.slice(1)}' || true`]).toString().trim();
 
-test.skipIf(!actif)("stopping a session kills in the container an agent deaf to HUP and TERM, and what it launched", async () => {
+test.skipIf(!active)("stopping a session kills in the container an agent deaf to HUP and TERM, and what it launched", async () => {
   const a = new Atelier({ chemins: spacePaths() });
   expect(await a.etat()).toBe("demarre");
   const s = SessionAgent.demarrer(a.commandeSession("integration1", ["sh", "-c", "trap '' HUP TERM; sleep 302 & wait"]), {
@@ -22,7 +22,7 @@ test.skipIf(!actif)("stopping a session kills in the container an agent deaf to 
   expect(dansAtelier("trap '' HUP")).toBe("");
 }, 30_000);
 
-test.skipIf(!actif)("stopping a session also kills the servers the agent detached from its group (nohup, setsid)", async () => {
+test.skipIf(!active)("stopping a session also kills the servers the agent detached from its group (nohup, setsid)", async () => {
   const a = new Atelier({ chemins: spacePaths() });
   expect(await a.etat()).toBe("demarre");
   const s = SessionAgent.demarrer(a.commandeSession("integration2", ["sh", "-c", "setsid nohup sleep 303 >/dev/null 2>&1 & sleep 304"]), {
@@ -34,7 +34,7 @@ test.skipIf(!actif)("stopping a session also kills the servers the agent detache
   expect(dansAtelier("sleep 304")).toBe("");
 }, 30_000);
 
-test.skipIf(!actif)("at launch, the sessions left by an abruptly killed app (without a stop) are stopped", async () => {
+test.skipIf(!active)("at launch, the sessions left by an abruptly killed app (without a stop) are stopped", async () => {
   const a = new Atelier({ chemins: spacePaths() });
   // Without arreterDistant: like an app that dies, only the local docker client disappears.
   const s = SessionAgent.demarrer(a.commandeSession("integration3", ["sh", "-c", "trap '' HUP TERM; setsid nohup sleep 305 >/dev/null 2>&1 & sleep 306"]), { cols: 80, rows: 24 });

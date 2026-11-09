@@ -22,7 +22,7 @@ const CUT_BY_OWN_NAVIGATION = [TEXT_CUT, SITE_CHANGED_TEXT];
 // evaluation and reload; task 4 for profiling and memory; task 5 for the consent card of a third-party tab, the badge and cuts.
 
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
-const TEXTE_PRIVE = "Cet onglet est dans un espace privé : l'agent n'y a pas accès.";
+const PRIVATE_TEXT = "Cet onglet est dans un espace privé : l'agent n'y a pas accès.";
 
 /** The demo: logs `tag-<log>` at load when asked, "page chargée" always; boum() throws, parler() logs. */
 const PAGE = `<!doctype html><meta charset="utf-8"><title>Démo</title><p>Démo</p>
@@ -112,8 +112,8 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** A demo opened by the agent (all four rights, no card), loaded; the first lire_console attaches. */
 async function openDemo(query = ""): Promise<string> {
-  const { texte: id, erreur } = await call("ouvrir_onglet", { url: `${demo.url}/${query}` });
-  expect(erreur, id).toBe(false);
+  const { texte: id, erreur: error } = await call("ouvrir_onglet", { url: `${demo.url}/${query}` });
+  expect(error, id).toBe(false);
   await poll(() => tool("executer_js", { id, code: "document.readyState" }), (t) => t === '"complete"');
   expect(await tool("lire_console", { id })).not.toContain("Erreur");
   return id;
@@ -229,14 +229,14 @@ it("lire_console and lire_reseau show nothing from an extension that writes to t
     await poll(() => tool("executer_js", { id, code: "document.documentElement.getAttribute('data-bavard-fini')" }), (t) => t === '"1"');
     await sleep(500); // the last resources
     const console_ = await tool("lire_console", { id });
-    const reseau = await tool("lire_reseau", { id });
+    const network = await tool("lire_reseau", { id });
     expect(console_).not.toContain("BAVARD");
-    expect(reseau).not.toContain("depuis-extension");
+    expect(network).not.toContain("depuis-extension");
     for (const trace of ["absent-depuis-extension", "cors-depuis-extension", "CORS", "Cross-Origin"]) {
       expect(console_).not.toContain(trace);
-      expect(reseau).not.toContain(trace);
+      expect(network).not.toContain(trace);
     }
-    expect(reseau).toContain("depuis-page");
+    expect(network).toContain("depuis-page");
     // The extension's requests did happen: Firefox keeps them out of the tab's network resources.
     expect(demo.hits).toContain("/data.json?depuis-extension");
     expect(demo.hits).toContain("/absent-depuis-extension");
@@ -247,23 +247,23 @@ it("lire_console and lire_reseau show nothing from an extension that writes to t
 
 it("the same site in a private space: nothing of its tab in the attached tab's buffers", async () => {
   const id = await openDemo();
-  const fenetreId = (await state(m)).fenetres[0]!.id;
+  const windowId = (await state(m)).fenetres[0]!.id;
   const home = (await state(m)).onglets[id]!.espaceId;
   /** Opens the demo with `?log=<log>` in that space, shown (a tab never shown is not loaded), and waits for its page. */
-  const openIn = async (espaceId: string, log: string) => {
+  const openIn = async (spaceId: string, log: string) => {
     const known = new Set(Object.keys((await state(m)).onglets));
-    const s = await dispatch(m, { type: "ouvrirOnglet", fenetreId, url: `${demo.url}/?log=${log}`, espaceId, activer: true } as Action);
+    const s = await dispatch(m, { type: "ouvrirOnglet", fenetreId: windowId, url: `${demo.url}/?log=${log}`, espaceId: spaceId, activer: true } as Action);
     await dispatch(m, { type: "activerOnglet", id: Object.keys(s.onglets).find((x) => !known.has(x))! } as Action);
     await waitFor(m, `return gBrowser.tabs.some((t) => t.linkedBrowser.currentURI.spec.endsWith("log=${log}") && t.linkedBrowser.contentTitle === "Démo")`, (v) => v === true);
   };
   try {
     // Same site, same container, private space.
-    const secret = (await dispatch(m, { type: "creerEspace", nom: "Secret", icone: "🔒", prive: true, profil: "defaut", fenetreId } as Action)).espaces.at(-1)!;
+    const secret = (await dispatch(m, { type: "creerEspace", nom: "Secret", icone: "🔒", prive: true, profil: "defaut", fenetreId: windowId } as Action)).espaces.at(-1)!;
     await openIn(secret.id, "prive");
     // Same site, another tab of the same space.
     await openIn(home, "autre");
     // Same site, another container.
-    const other = (await dispatch(m, { type: "creerEspace", nom: "Autre", icone: "🅱️", prive: false, profil: "nouveau", fenetreId } as Action)).espaces.at(-1)!;
+    const other = (await dispatch(m, { type: "creerEspace", nom: "Autre", icone: "🅱️", prive: false, profil: "nouveau", fenetreId: windowId } as Action)).espaces.at(-1)!;
     await openIn(other.id, "conteneur");
   } finally {
     // Back to the demo's space: the next tests open their demos there.
@@ -282,11 +282,11 @@ it("a private space's tab: lire_console answers TEXTE_PRIVE, without a card", as
   const id = await openDemo();
   const s = await state(m);
   const e = s.espaces.find((x) => x.id === s.onglets[id]!.espaceId)!;
-  const setPrivate = (prive: boolean) => dispatch(m, { type: "reglerEspace", id: e.id, nom: e.nom, icone: e.icone, prive, profil: e.profil } as Action);
+  const setPrivate = (isPrivate: boolean) => dispatch(m, { type: "reglerEspace", id: e.id, nom: e.nom, icone: e.icone, prive: isPrivate, profil: e.profil } as Action);
   await setPrivate(true);
   try {
-    await poll(() => tool("lire_console", { id }), (t) => t === TEXTE_PRIVE);
-    expect(await tool("executer_js", { id, code: "1" })).toBe(TEXTE_PRIVE);
+    await poll(() => tool("lire_console", { id }), (t) => t === PRIVATE_TEXT);
+    expect(await tool("executer_js", { id, code: "1" })).toBe(PRIVATE_TEXT);
     await noCard();
     // Detached when it turned private (refused before any DevTools client is made: test/devtools.test.ts).
     expect(await m.execute(`return (async () => (await ChromeUtils.importESModule("${STORE}").ready).devtools.attached())();`)).not.toContain(id);
@@ -315,7 +315,7 @@ const MODAL = '[data-testid="modale-demande"]';
 const READ_CARD = '[data-testid="demande-permission"]';
 const BADGE = '[data-testid="pastille-acces"]';
 const BUBBLE = '[data-testid="bulle-acces"]';
-const REFUS = "Accès refusé par l'utilisateur à cet outil sur cet onglet.";
+const DENIAL = "Accès refusé par l'utilisateur à cet outil sur cet onglet.";
 let thirdTabs = 0;
 
 /** A tab the user opens on the third-party site, in the active space, loaded; its URL is unique. */
@@ -374,7 +374,7 @@ it("unticking Réseau in a console+reseau request: only console is granted; the 
   await waitUi(m, `return !doc.querySelector('${CARD} input[data-droit="reseau"]').checked`);
   await answerCard("Autoriser la sélection");
   expect(await pending).toBe("Droits accordés : console\nRefusés : reseau");
-  expect(await tool("lire_reseau", { id })).toBe(REFUS);
+  expect(await tool("lire_reseau", { id })).toBe(DENIAL);
   await noCard();
 });
 
@@ -416,7 +416,7 @@ it("two requests: only one card at a time, the second after the first is answere
   expect(await first).toBe("Droits accordés : console");
   await waitUi(m, `return doc.querySelector('${CARD}')?.textContent.includes("Seconde.")`);
   await answerCard("Refuser");
-  expect(await second).toBe(REFUS);
+  expect(await second).toBe(DENIAL);
   await cardGone();
 });
 
@@ -425,7 +425,7 @@ it("Refuser: the tool answers refused", async () => {
   const pending = tool("lire_console", { id });
   await cardText();
   await answerCard("Refuser");
-  expect(await pending).toBe(REFUS);
+  expect(await pending).toBe(DENIAL);
   await cardGone();
 });
 
@@ -473,7 +473,7 @@ it("click on the badge: the bubble lists the rights; Couper on « console » rem
   const pending = tool("lire_console", { id });
   await cardText();
   await answerCard("Refuser");
-  expect(await pending).toBe(REFUS);
+  expect(await pending).toBe(DENIAL);
 });
 
 it("Couper l'accès: the badge disappears, lire_onglet asks again", async () => {
@@ -513,13 +513,13 @@ it("space turned private: the badge disappears, the debugger is detached and the
   expect(await attached()).toContain(id);
   const s = await state(m);
   const e = s.espaces.find((x) => x.id === s.onglets[id]!.espaceId)!;
-  const setPrivate = (prive: boolean) => dispatch(m, { type: "reglerEspace", id: e.id, nom: e.nom, icone: e.icone, prive, profil: e.profil } as Action);
+  const setPrivate = (isPrivate: boolean) => dispatch(m, { type: "reglerEspace", id: e.id, nom: e.nom, icone: e.icone, prive: isPrivate, profil: e.profil } as Action);
   await setPrivate(true);
   try {
     await waitUi(m, `return !doc.querySelector('${BADGE}')`);
     expect(await attached()).not.toContain(id);
-    await poll(() => tool("lire_console", { id }), (t) => t === TEXTE_PRIVE);
-    expect(await tool("executer_js", { id, code: "document.title" })).toBe(TEXTE_PRIVE);
+    await poll(() => tool("lire_console", { id }), (t) => t === PRIVATE_TEXT);
+    expect(await tool("executer_js", { id, code: "document.title" })).toBe(PRIVATE_TEXT);
     await noCard();
   } finally {
     await setPrivate(false);
@@ -528,7 +528,7 @@ it("space turned private: the badge disappears, the debugger is detached and the
   const pending = tool("lire_console", { id });
   await cardText();
   await answerCard("Refuser");
-  expect(await pending).toBe(REFUS);
+  expect(await pending).toBe(DENIAL);
 });
 
 it("Esc refuses the devtools card; Enter allows the selection", async () => {
@@ -554,7 +554,7 @@ it("Esc refuses the devtools card; Enter allows the selection", async () => {
   expect(await cardText()).toContain("Échap.");
   await armed();
   await pressKeys(m, "Escape");
-  expect(await refusal).toBe(REFUS);
+  expect(await refusal).toBe(DENIAL);
   await cardGone();
 });
 
@@ -616,11 +616,11 @@ it("demo: profiler_performances (2 s) returns a summary with the page's costly f
     const r = await tool("profiler_performances", { id, duree_s: 2 });
     expect(r).toMatch(/^busyLoop \(http:\/\/127\.0\.0\.1:\d+\/:\d+\) — [\d.]+ ms, [\d.]+ %$/m);
     for (const metric of ["Nodes", "JSHeapUsedSize", "LayoutCount", "ScriptDuration", "TaskDuration"]) expect(r).toContain(`${metric} : `);
-    const chemin = /Profil : \/workspace\/(\.webaios\/profilage\/\S+\.cpuprofile)$/m.exec(r)?.[1];
-    expect(chemin, r).toBeDefined();
-    const profil = JSON.parse(readFileSync(path.join(w.dataDir, "espace", chemin!), "utf8"));
-    expect(profil.nodes.some((n: { callFrame: { functionName: string } }) => n.callFrame.functionName === "busyLoop")).toBe(true);
-    expect(profil.samples.length).toBe(profil.timeDeltas.length);
+    const relPath = /Profil : \/workspace\/(\.webaios\/profilage\/\S+\.cpuprofile)$/m.exec(r)?.[1];
+    expect(relPath, r).toBeDefined();
+    const profile = JSON.parse(readFileSync(path.join(w.dataDir, "espace", relPath!), "utf8"));
+    expect(profile.nodes.some((n: { callFrame: { functionName: string } }) => n.callFrame.functionName === "busyLoop")).toBe(true);
+    expect(profile.samples.length).toBe(profile.timeDeltas.length);
     expect(await profilerActive()).toBe(false);
   } finally {
     await tool("executer_js", { id, code: "clearInterval(window.busy); 1" });
@@ -654,9 +654,9 @@ it("demo: two instantane_memoire then comparer_memoire: the type the page makes 
   const snapshot = async () => {
     const r = await tool("instantane_memoire", { id });
     expect(r).toMatch(/^Total : [\d.]+ Ko$/m);
-    const chemin = /Instantané : (\/workspace\/\.webaios\/profilage\/\S+\.heapsnapshot)$/m.exec(r)?.[1];
-    expect(chemin, r).toBeDefined();
-    return chemin!;
+    const relPath = /Instantané : (\/workspace\/\.webaios\/profilage\/\S+\.heapsnapshot)$/m.exec(r)?.[1];
+    expect(relPath, r).toBeDefined();
+    return relPath!;
   };
   const a = await snapshot();
   await tool("executer_js", { id, code: "for (let i = 0; i < 20000; i++) window.leak.push(new LeakyThing(i)); 1" });
@@ -671,9 +671,9 @@ it("third-party: the file goes into the profiling folder and the agent receives 
   await grant(id, ["performances"]);
   const before = profiles();
   const r = await tool("profiler_performances", { id, duree_s: 0.5 });
-  const nom = /^Profil : profil:(\S+\.cpuprofile)$/m.exec(r)?.[1];
-  expect(nom, r).toBeDefined();
-  expect(existsSync(path.join(w.dataDir, "profilage", nom!))).toBe(true);
+  const name = /^Profil : profil:(\S+\.cpuprofile)$/m.exec(r)?.[1];
+  expect(name, r).toBeDefined();
+  expect(existsSync(path.join(w.dataDir, "profilage", name!))).toBe(true);
   // Nothing of the third-party site in the space the agent reads.
   expect(profiles()).toEqual(before);
 }, 60_000);

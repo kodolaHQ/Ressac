@@ -50,27 +50,27 @@ const waitCount = (selector: string, n: number, ms = 10_000) => waitUi(m, "retur
 const texts = (selector: string) => inUi<string[]>(m, "return [...doc.querySelectorAll(arguments[0])].map((e) => e.textContent)", [selector]);
 const waitTexts = (selector: string, t: string[], ms = 10_000) =>
   waitUi(m, "return JSON.stringify([...doc.querySelectorAll(arguments[0])].map((e) => e.textContent)) === arguments[1]", [selector, JSON.stringify(t)], ms);
-const fileRow = (chemin: string) => inUi<string | null>(m, `return [...doc.querySelectorAll('${tid("fichier-relecture")}')].find((e) => e.querySelector(".nom-fichier").textContent === arguments[0])?.textContent ?? null`, [chemin]);
-const openFile = (chemin: string) => click(m, tid("fichier-relecture"), { text: chemin });
+const fileRow = (path: string) => inUi<string | null>(m, `return [...doc.querySelectorAll('${tid("fichier-relecture")}')].find((e) => e.querySelector(".nom-fichier").textContent === arguments[0])?.textContent ?? null`, [path]);
+const openFile = (path: string) => click(m, tid("fichier-relecture"), { text: path });
 const ADDED = `${tid("ligne-diff")}.ajout`;
 const REMOVED = `${tid("ligne-diff")}.retrait`;
 /** The new line numbers of the context lines shown. */
 const context = () => inUi<number[]>(m, `return [...doc.querySelectorAll('${tid("ligne-diff")}.contexte')].map((l) => Number(l.dataset.nouveau))`);
 const waitContext = (n: number[]) => expect.poll(context, { timeout: 10_000 }).toEqual(n);
 /** The tabs of the Review page of `projet`, every window together. */
-const reviewTabs = async (projet: string) => Object.values((await state(m)).onglets).filter((o) => o.url === reviewUrl(projet));
+const reviewTabs = async (project: string) => Object.values((await state(m)).onglets).filter((o) => o.url === reviewUrl(project));
 const tabsOf = (f: { ordre: Record<string, string[]> }) => Object.values(f.ordre).flat();
 
 /** « Relire » of the projet-externe line, on the Applications page; waits for the Review page. */
-async function relire(): Promise<void> {
+async function reread(): Promise<void> {
   await click(m, `${tid("projet-externe")} button`, { text: "Relire" });
   await waitUi(m, `return !!doc.querySelector('${PAGE}')`);
 }
 
 /** Back to the Applications page of the current window (its tab, activated again). */
 async function backToApplications(): Promise<void> {
-  const fenetreId = await m.execute<string>("return window.webaiosWindow.fenetreId");
-  await dispatch(m, { type: "ouvrirApplications", fenetreId });
+  const windowId = await m.execute<string>("return window.webaiosWindow.fenetreId");
+  await dispatch(m, { type: "ouvrirApplications", fenetreId: windowId });
   await waitUi(m, `return !!doc.querySelector('${tid("projets-externes")}') && !doc.querySelector('${PAGE}')`);
 }
 
@@ -78,7 +78,7 @@ async function backToApplications(): Promise<void> {
 async function pageOnAppJs(n: number) {
   const p = await declareProject(m, { dataDir: w!.dataDir });
   writeAppJs(p.dossier, modified(n));
-  await relire();
+  await reread();
   await openFile("app.js");
   await waitTexts(ADDED, [`${n}ligne ${n} modifiée`]);
   return p;
@@ -104,7 +104,7 @@ it("after changing app.js (line 15) and adding note.md: « Relire » opens page-
   try {
     writeAppJs(p.dossier, modified(15));
     writeFileSync(path.join(p.dossier, "note.md"), "# Note\n");
-    await relire();
+    await reread();
     const tabs = await reviewTabs(`ext-${p.id}`);
     expect(tabs.map((o) => o.titre)).toEqual(["Relecture — mon-site"]);
     await waitCount(tid("fichier-relecture"), 2);
@@ -142,7 +142,7 @@ it("logo.bin changed (a NUL byte): « fichier binaire »", async () => {
   const p = await declareProject(m, { dataDir: w!.dataDir });
   try {
     writeFileSync(path.join(p.dossier, "logo.bin"), Buffer.from([0x89, 0x00, 0x4e, 0x47]));
-    await relire();
+    await reread();
     await openFile("logo.bin");
     await waitUi(m, `return doc.querySelector('${tid("diff-fichier")}')?.textContent.includes("fichier binaire")`);
     expect(await count(tid("ligne-diff"))).toBe(0);
@@ -201,9 +201,9 @@ it("« Relire » twice from « Projets externes »: the same page, one tab « Re
   await launch();
   const p = await declareProject(m, { dataDir: w!.dataDir });
   try {
-    await relire();
+    await reread();
     await backToApplications();
-    await relire();
+    await reread();
     const tabs = await reviewTabs(`ext-${p.id}`);
     expect(tabs.map((o) => o.titre)).toEqual(["Relecture — mon-site"]);
   } finally {
@@ -216,7 +216,7 @@ it("WEBAIOS_GIT=/chemin/absent: the page says « git est nécessaire », no ref 
   await launch({ env: { WEBAIOS_GIT: "/chemin/absent" } });
   const p = await declareProject(m, { dataDir: w!.dataDir, snapshot: false });
   try {
-    await relire();
+    await reread();
     await waitUi(m, `return doc.querySelector('${PAGE}')?.textContent.includes("git est nécessaire")`);
     expect(existsSync(reviewedRef(w!.dataDir, `ext-${p.id}`))).toBe(false);
   } finally {
@@ -270,8 +270,8 @@ it("forgetting a project under its open Review page: Rafraîchir says projet inc
   await launch();
   const p = await pageOnAppJs(15);
   try {
-    const projet = `ext-${p.id}`;
-    const review = (await reviewTabs(projet))[0]!.id;
+    const project = `ext-${p.id}`;
+    const review = (await reviewTabs(project))[0]!.id;
     // A comment, so that its file exists before « Oublier ».
     await click(m, `${tid("ligne-diff")}[data-nouveau="15"] ${tid("ajouter-commentaire")}`);
     await waitUi(
@@ -284,13 +284,13 @@ it("forgetting a project under its open Review page: Rafraîchir says projet inc
     );
     await click(m, `${tid("formulaire-commentaire")} button`, { text: "Commenter" });
     await waitCount(tid("commentaire-relecture"), 1);
-    const relecture = path.join(w!.dataDir, "design", "relecture");
-    const comments = path.join(relecture, `${projet}.commentaires.json`);
+    const reviewDir = path.join(w!.dataDir, "design", "relecture");
+    const comments = path.join(reviewDir, `${project}.commentaires.json`);
     expect(existsSync(comments)).toBe(true);
     await backToApplications();
     await click(m, `${tid("projet-externe")} button`, { text: "Oublier" });
     await waitCount(tid("projet-externe"), 0);
-    await expect.poll(() => existsSync(path.join(relecture, `${projet}.git`)) || existsSync(comments), { timeout: 10_000 }).toBe(false);
+    await expect.poll(() => existsSync(path.join(reviewDir, `${project}.git`)) || existsSync(comments), { timeout: 10_000 }).toBe(false);
     await click(m, tid(`onglet-${review}`));
     await waitCount(PAGE, 1);
     await refreshReview(m);
@@ -310,9 +310,9 @@ it("Relire in a second window opens the page there, once", async () => {
     const b = await newWindow(m);
     await inWindow(m, b, async () => {
       await backToApplications();
-      await relire();
+      await reread();
       await backToApplications();
-      await relire();
+      await reread();
     });
     const s = await state(m);
     const tabs = await reviewTabs(`ext-${p.id}`);

@@ -24,13 +24,13 @@ let dataDir: string;
 let profile: string;
 
 const url = (p: string, host = "vidola-a.localhost") => server.url(host, p);
-const lecteur = () => server.url("lecteur.localhost", "/*").replace(/^http:/, "https:");
+const reader = () => server.url("lecteur.localhost", "/*").replace(/^http:/, "https:");
 const declaration = (plus: { connexion?: string[] } = {}) => ({
   nom: "Vidola",
   adresse: url("/serie/the-bear"),
   domaines: ["vidola-a.localhost"],
   connexion: plus.connexion ?? ["compte.localhost"],
-  retouches: [{ correspond: ["/serie/*"], js: ["a.js"], css: ["cacher.css"], cadres: [lecteur()] }],
+  retouches: [{ correspond: ["/serie/*"], js: ["a.js"], css: ["cacher.css"], cadres: [reader()] }],
   reprise: true,
 });
 const A_JS = 'document.body.dataset.retouche = "oui";';
@@ -52,7 +52,7 @@ const viewState = (id = "vidola") =>
 const state = (id = "vidola") => m.execute<{ vue: string; aAccueil: boolean; accord: { empreinte: string; connexion: string[]; suivis: string[] } | null }>(`return JSON.parse(JSON.stringify(${siteWindowExpr(id)}.webaiosSiteWindow.state()));`);
 const view = <T = unknown>(expr: string, o: { id?: string; frame?: number } = {}) => inSiteView<T>(m, o.id ?? "vidola", `return ${expr};`, { frame: o.frame }).catch(() => null);
 const shorts = () => view('getComputedStyle(document.getElementById("shorts")).display');
-const retouche = () => view("document.body.dataset.retouche ?? null");
+const tweak = () => view("document.body.dataset.retouche ?? null");
 /** The card's text, or null while the bar shows no card. */
 const card = (testid?: string, id = "vidola") =>
   inSiteBar<string | null>(m, id, `const c = doc.querySelector(${JSON.stringify(testid ? `[data-testid="${testid}"]` : '[data-testid="carte-accord-site"]')}); return c ? c.textContent : null;`);
@@ -117,7 +117,7 @@ describe("grant card", () => {
     expect(await heading()).toBe("Autoriser les retouches de « Vidola » ?");
     expect(await card("accord-site-domaines")).toContain("vidola-a.localhost");
     expect(await card("accord-site-connexion")).toContain("compte.localhost");
-    expect(await card("accord-site-cadres")).toContain(lecteur());
+    expect(await card("accord-site-cadres")).toContain(reader());
     expect(await card("accord-site-fichiers")).toContain("a.js");
     expect(await card("accord-site-fichiers")).toContain("cacher.css");
     expect(await card("accord-site-reprise")).toBe("Reprend les vidéos à la minute");
@@ -137,9 +137,9 @@ describe("grant card", () => {
     expect((await viewState())?.visible).toBe(true);
     expect(await card()).toBeNull();
     expect(await shorts()).toBe("block");
-    expect(await retouche()).toBeNull();
-    const memoire = path.join(dataDir, "sites", "vidola", "memoire.json");
-    expect(!existsSync(memoire) || Object.keys(JSON.parse(readFileSync(memoire, "utf8")).positions).length === 0).toBe(true);
+    expect(await tweak()).toBeNull();
+    const memory = path.join(dataDir, "sites", "vidola", "memoire.json");
+    expect(!existsSync(memory) || Object.keys(JSON.parse(readFileSync(memory, "utf8")).positions).length === 0).toBe(true);
     expect(accords().vidola).toBeFalsy();
     // Refusing counts for this open only.
     await reopen();
@@ -152,9 +152,9 @@ describe("grant card", () => {
     await click("accorder-site");
     await expect.poll(() => viewUrl(), { timeout: 15_000 }).toBe(url("/serie/the-bear"));
     await expect.poll(() => shorts(), { timeout: 10_000 }).toBe("none");
-    await expect.poll(() => retouche()).toBe("oui");
+    await expect.poll(() => tweak()).toBe("oui");
     expect((await viewState())?.visible).toBe(true);
-    expect(accords().vidola).toEqual({ domaines: ["vidola-a.localhost"], connexion: ["compte.localhost"], cadres: [lecteur()], reprise: true });
+    expect(accords().vidola).toEqual({ domaines: ["vidola-a.localhost"], connexion: ["compte.localhost"], cadres: [reader()], reprise: true });
     await reopen();
     await expect.poll(() => viewUrl(), { timeout: 15_000 }).toBe(url("/serie/the-bear"));
     expect(await card()).toBeNull();
@@ -164,9 +164,9 @@ describe("grant card", () => {
   it("changing the code of a.js: no card (sites.spec.ts:1063)", async () => {
     await openToCard();
     await click("accorder-site");
-    await expect.poll(() => retouche(), { timeout: 15_000 }).toBe("oui");
+    await expect.poll(() => tweak(), { timeout: 15_000 }).toBe("oui");
     writeFileSync(path.join(dataDir, "espace", "sites", "vidola", "retouches", "a.js"), 'document.body.dataset.retouche = "v2";');
-    await expect.poll(() => retouche(), { timeout: 10_000 }).toBe("v2");
+    await expect.poll(() => tweak(), { timeout: 10_000 }).toBe("v2");
     expect(await card()).toBeNull();
     expect((await viewState())?.visible).toBe(true);
   });
@@ -174,7 +174,7 @@ describe("grant card", () => {
   it("adding a sign-in domain to site.json: the card comes back, nothing injected before the choice (sites.spec.ts:1074)", async () => {
     await openToCard();
     await click("accorder-site");
-    await expect.poll(() => retouche(), { timeout: 15_000 }).toBe("oui");
+    await expect.poll(() => tweak(), { timeout: 15_000 }).toBe("oui");
     await view("(window.marque = 1, 1)");
     rewriteDeclaration(declaration({ connexion: ["compte.localhost", "autre-compte.localhost"] }));
     await expect.poll(() => card(), { timeout: 10_000 }).not.toBeNull();
@@ -184,7 +184,7 @@ describe("grant card", () => {
     await expect.poll(() => view("window.marque ?? null"), { timeout: 10_000 }).toBeNull();
     await expect.poll(() => view("document.readyState")).toBe("complete");
     await sleep(300);
-    expect(await retouche()).toBeNull();
+    expect(await tweak()).toBeNull();
     expect(await shorts()).toBe("block");
     // Allow again: the page reloads with its tweaks.
     await click("accorder-site");
@@ -205,7 +205,7 @@ describe("grant card", () => {
     await expect.poll(() => view("document.readyState")).toBe("complete");
     await sleep(300);
     expect(await shorts()).toBe("block");
-    expect(await retouche()).toBeNull();
+    expect(await tweak()).toBeNull();
     expect(await m.execute<number>(`return [...Services.wm.getEnumerator("navigator:browser")].filter((w) => w.document.documentElement.getAttribute("webaios-site") === "vidola").length;`)).toBe(1);
   });
 
@@ -237,8 +237,8 @@ describe("grant card", () => {
 
   it("the choice is refused from the bar's invalid requests: a hash that is not a bounded string rejects, nothing is granted (sites.spec.ts:1149)", async () => {
     await openToCard();
-    const refus = await barApi<string>(`return site.accorder(true, "x".repeat(200)).then(() => "accepted", (e) => e.message);`);
-    expect(refus).toBe("invalid accord request");
+    const denial = await barApi<string>(`return site.accorder(true, "x".repeat(200)).then(() => "accepted", (e) => e.message);`);
+    expect(denial).toBe("invalid accord request");
     const notBool = await barApi<string>(`return site.accorder("yes", "x").then(() => "accepted", (e) => e.message);`);
     expect(notBool).toBe("invalid accord request");
     await sleep(200);
@@ -259,14 +259,14 @@ describe("grant card", () => {
     await expect.poll(() => card(), { timeout: 10_000 }).not.toBeNull();
     await expect.poll(() => view("document.readyState")).toBe("complete");
     await expect.poll(() => view("document.getElementById('l') ? 1 : 0")).toBe(1);
-    const empreinte = (await state()).accord!.empreinte;
+    const hash = (await state()).accord!.empreinte;
     const attack = `(() => {
       const r = [];
       for (const t of [() => typeof window.parent.webaiosSiteWindow, () => typeof top.webaiosSiteWindow, () => typeof top.webaios, () => typeof window.webaiosSiteWindow, () => typeof window.webaios]) {
         try { r.push(t()); } catch (e) { r.push("blocked"); }
       }
       for (const target of [window.parent, window.top]) {
-        try { target.postMessage({ type: "accorder", oui: true, empreinte: ${JSON.stringify(empreinte)} }, "*"); } catch (e) {}
+        try { target.postMessage({ type: "accorder", oui: true, empreinte: ${JSON.stringify(hash)} }, "*"); } catch (e) {}
       }
       return r;
     })()`;
@@ -313,7 +313,7 @@ describe("home frame", () => {
     writeSite(dataDir, "vidola", { declaration: declaration(), fichiers: { ...FILES, "accueil/index.html": HOME } });
     await openToCard();
     expect(await state().then((s) => s.vue)).toBe("accord");
-    const empreinte = (await state()).accord!.empreinte;
+    const hash = (await state()).accord!.empreinte;
     // The home is not mounted while the card shows.
     expect(await inSiteBar(m, "vidola", `return doc.querySelector('[data-testid="site-cadre-accueil"]') ? 1 : 0;`)).toBe(0);
     await click("refuser-site");
@@ -325,7 +325,7 @@ describe("home frame", () => {
          const fw = home?.contentDocument?.defaultView?.wrappedJSObject;
          if (!fw || !String(home.contentDocument.documentURI).startsWith("resource://webaios-site-")) return null;
          ${body}`,
-        [empreinte],
+        [hash],
       );
     await expect.poll(() => home("return 1;"), { timeout: 15_000 }).toBe(1);
     // Posted until the home's listener is there.

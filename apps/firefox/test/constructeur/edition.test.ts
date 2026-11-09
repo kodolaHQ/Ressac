@@ -5,7 +5,7 @@ import { CODE_MODEL, freshParams, freeSlot } from "../../ui/constructeur/ajout";
 import { set, relier } from "../../ui/constructeur/brouillon";
 import { createEdit, Edition, AWAITING_CHOICE, forgetEdits, type Depot } from "../../ui/constructeur/edition.svelte";
 
-const bloc = (id: string, type: string, parametres: Record<string, unknown> = {}) => ({ id, type, position: { x: 0, y: 0 }, parametres });
+const bloc = (id: string, type: string, params: Record<string, unknown> = {}) => ({ id, type, position: { x: 0, y: 0 }, parametres: params });
 /** Workflow shipped without positions. */
 const livre = (): Draft => ({
   version: 1,
@@ -16,25 +16,25 @@ const livre = (): Draft => ({
   ],
 });
 const catalogue = (type: string) => catalogueBlocs().find((c) => c.type === type)!;
-const attendre = () => new Promise((r) => setTimeout(r, 0));
+const wait = () => new Promise((r) => setTimeout(r, 0));
 
 /** Fake repository: an in-memory `workflow.json`, checked by the real validator; keeps a trace of the writes. */
-function faux(initial: unknown, fichiers: Record<string, string> = {}) {
-  const etat = {
+function fake(initial: unknown, files: Record<string, string> = {}) {
+  const state = {
     disque: structuredClone(initial) as unknown,
     lisible: true,
     introuvable: false,
-    fichiers: { ...fichiers },
+    fichiers: { ...files },
     /** Code read error; refusal to write the code; saves suspended until `liberer()`. */
     erreurCode: false as boolean | string[],
     refusCode: false,
     suspendu: false,
   };
-  const enAttente: (() => void)[] = [];
-  const ecritures: Draft[] = [];
+  const pending: (() => void)[] = [];
+  const writes: Draft[] = [];
   const lecture = (): EditionWorkflow | null => {
-    if (etat.introuvable) return null;
-    const brut = etat.lisible ? structuredClone(etat.disque) : null;
+    if (state.introuvable) return null;
+    const brut = state.lisible ? structuredClone(state.disque) : null;
     const v = brut === null ? { ok: false as const, erreur: "Workflow invalide : JSON coupé" } : validateWorkflow(structuredClone(brut));
     return {
       origine: "fichier",
@@ -47,53 +47,53 @@ function faux(initial: unknown, fichiers: Record<string, string> = {}) {
   const depot: Depot = {
     lire: async () => lecture(),
     enregistrer: async (_id, b) => {
-      if (etat.suspendu) await new Promise<void>((ok) => enAttente.push(ok));
+      if (state.suspendu) await new Promise<void>((ok) => pending.push(ok));
       const v = validateWorkflow(structuredClone(b));
       if (!v.ok) return { ok: false, erreur: v.erreur, ...(v.bloc ? { bloc: v.bloc } : {}), avertissements: [] };
-      ecritures.push(structuredClone(b));
-      etat.disque = structuredClone(b);
+      writes.push(structuredClone(b));
+      state.disque = structuredClone(b);
       return { ok: true, ecrit: true, memoireEffacee: [], avertissements: [] };
     },
-    lireCode: async (_id, nom) => (etat.erreurCode === true || (Array.isArray(etat.erreurCode) && etat.erreurCode.includes(nom)) ? { erreur: "Fichier illisible" } : nom in etat.fichiers ? { texte: etat.fichiers[nom]! } : { absent: true }),
-    enregistrerCode: async (_id, nom, texte) => {
-      if (etat.refusCode) return { ok: false, erreur: "Écriture impossible" };
-      etat.fichiers[nom] = texte;
+    lireCode: async (_id, name) => (state.erreurCode === true || (Array.isArray(state.erreurCode) && state.erreurCode.includes(name)) ? { erreur: "Fichier illisible" } : name in state.fichiers ? { texte: state.fichiers[name]! } : { absent: true }),
+    enregistrerCode: async (_id, name, text) => {
+      if (state.refusCode) return { ok: false, erreur: "Écriture impossible" };
+      state.fichiers[name] = text;
       return { ok: true };
     },
   };
-  const liberer = () => {
-    etat.suspendu = false;
-    for (const ok of enAttente.splice(0)) ok();
+  const release = () => {
+    state.suspendu = false;
+    for (const ok of pending.splice(0)) ok();
   };
-  return { depot, etat, ecritures, liberer };
+  return { depot, etat: state, ecritures: writes, liberer: release };
 }
 
-async function ouverte(f: ReturnType<typeof faux>): Promise<Edition> {
+async function opened(f: ReturnType<typeof fake>): Promise<Edition> {
   const e = new Edition("essai", f.depot);
   await e.ouvrir();
   return e;
 }
 
 test("opening a workflow shipped without positions lays it out in columns and writes nothing", async () => {
-  const f = faux(livre());
-  const e = await ouverte(f);
+  const f = fake(livre());
+  const e = await opened(f);
   expect(e.chargement).toBe("pret");
   expect(e.etatEnregistrement).toBe("enregistre");
   expect(e.positions).toEqual({ garder: { x: 0, y: 0 }, tri: { x: 260, y: 0 }, sortie: { x: 520, y: 0 } });
   e.reorganiser();
   await e.relire();
-  await attendre();
+  await wait();
   expect(f.ecritures).toEqual([]);
 });
 
 test("the first move saves the displayed position of all blocks; a zero move writes nothing", async () => {
-  const f = faux(livre());
-  const e = await ouverte(f);
+  const f = fake(livre());
+  const e = await opened(f);
   e.deplacer({ ...e.positions });
-  await attendre();
+  await wait();
   expect(f.ecritures).toEqual([]);
   e.deplacer({ ...e.positions, tri: { x: 300, y: 40 } });
-  await attendre();
+  await wait();
   expect(f.ecritures).toHaveLength(1);
   expect(Object.fromEntries(f.ecritures[0]!.blocs.map((b) => [b.id, b.position]))).toEqual({
     garder: { x: 0, y: 0 },
@@ -104,24 +104,24 @@ test("the first move saves the displayed position of all blocks; a zero move wri
 });
 
 test("a new unlinked block is « non enregistré : entrée manquante »; linked, it saves; ⌘Z goes back and saves again", async () => {
-  const f = faux(livre());
-  const e = await ouverte(f);
+  const f = fake(livre());
+  const e = await opened(f);
   const id = await e.ajouter(catalogue("liste.dedoublonner"), { x: 0, y: 300 });
-  await attendre();
+  await wait();
   expect(id).toBe("liste-dedoublonner");
   expect(e.etatEnregistrement).toMatchObject({ invalide: expect.stringContaining("entrée manquante"), bloc: id });
   expect(e.validation).toMatchObject({ ok: false, bloc: id });
   expect(f.ecritures).toEqual([]);
   e.modifier((b) => relier(b, "garder", id));
-  await attendre();
+  await wait();
   expect(e.etatEnregistrement).toBe("enregistre");
   expect(f.ecritures.at(-1)!.blocs.find((b) => b.id === id)!.parametres).toEqual({ cles: ["url"] });
   e.annuler();
-  await attendre();
+  await wait();
   expect(e.etatEnregistrement).toMatchObject({ invalide: expect.stringContaining("entrée manquante") });
   expect(f.ecritures).toHaveLength(1);
   e.annuler();
-  await attendre();
+  await wait();
   expect(e.etatEnregistrement).toBe("enregistre");
   expect(f.ecritures.at(-1)!.blocs.map((b) => b.id)).toEqual(["garder", "tri", "sortie"]);
   // Displayed positions do not jump when going back to the workflow without layout.
@@ -131,10 +131,10 @@ test("a new unlinked block is « non enregistré : entrée manquante »; linked,
 });
 
 test("a new code block gets its template file (never an existing file) before being saved", async () => {
-  const f = faux(livre(), { "code.mjs": "// de l'agent" });
-  const e = await ouverte(f);
+  const f = fake(livre(), { "code.mjs": "// de l'agent" });
+  const e = await opened(f);
   const id = await e.ajouter(catalogue("code"), { x: 0, y: 300 });
-  await attendre();
+  await wait();
   expect(id).toBe("code");
   expect(f.etat.fichiers["code.mjs"]).toBe("// de l'agent");
   expect(f.etat.fichiers["code-2.mjs"]).toBe(CODE_MODEL);
@@ -143,11 +143,11 @@ test("a new code block gets its template file (never an existing file) before be
 });
 
 test("relire: the echo of a save is ignored; an agent version is adopted without writing anything", async () => {
-  const f = faux(livre());
-  const e = await ouverte(f);
+  const f = fake(livre());
+  const e = await opened(f);
   e.deplacer({ ...e.positions, tri: { x: 300, y: 40 } });
   await e.relire();
-  await attendre();
+  await wait();
   expect(e.bandeau).toBeNull();
   const agent = structuredClone(f.etat.disque) as Draft;
   agent.blocs[0]!.parametres = { source: "b.mjs" };
@@ -159,10 +159,10 @@ test("relire: the echo of a save is ignored; an agent version is adopted without
 });
 
 test("relire with an invalid draft offers the agent's version; take or keep", async () => {
-  const f = faux(livre());
-  const e = await ouverte(f);
+  const f = fake(livre());
+  const e = await opened(f);
   await e.ajouter(catalogue("liste.garder"), { x: 0, y: 300 });
-  await attendre();
+  await wait();
   const agent = livre();
   agent.blocs[0]!.parametres = { source: "b.mjs" };
   f.etat.disque = agent;
@@ -181,22 +181,22 @@ test("relire with an invalid draft offers the agent's version; take or keep", as
   expect(e.bandeau).toBeNull();
   expect(e.brouillon!.blocs.map((b) => b.id)).toEqual(["garder", "tri", "sortie"]);
   expect(e.etatEnregistrement).toBe("enregistre");
-  await attendre();
+  await wait();
   expect(f.ecritures).toEqual([]);
 });
 
 test("relire: cut-off JSON → « illisible » banner without touching the canvas; widget not found for a moment → canvas kept", async () => {
-  const f = faux(livre());
-  const e = await ouverte(f);
-  const avant = e.brouillon;
+  const f = fake(livre());
+  const e = await opened(f);
+  const before = e.brouillon;
   f.etat.lisible = false;
   await e.relire();
   expect(e.bandeau).toBe("illisible");
-  expect(e.brouillon).toBe(avant);
+  expect(e.brouillon).toBe(before);
   f.etat.lisible = true;
   f.etat.introuvable = true;
   await e.relire();
-  expect(e.brouillon).toBe(avant);
+  expect(e.brouillon).toBe(before);
   expect(e.chargement).toBe("pret");
   f.etat.introuvable = false;
   await e.relire();
@@ -204,26 +204,26 @@ test("relire: cut-off JSON → « illisible » banner without touching the canva
 });
 
 test("on first open: not found, or unreadable with the error", async () => {
-  const absent = faux(livre());
+  const absent = fake(livre());
   absent.etat.introuvable = true;
-  expect((await ouverte(absent)).chargement).toBe("introuvable");
-  const coupe = faux(livre());
+  expect((await opened(absent)).chargement).toBe("introuvable");
+  const coupe = fake(livre());
   coupe.etat.lisible = false;
-  expect((await ouverte(coupe)).chargement).toEqual({ illisible: "Workflow invalide : JSON coupé" });
+  expect((await opened(coupe)).chargement).toEqual({ illisible: "Workflow invalide : JSON coupé" });
 });
 
 test("the implicit workflow (Gmail) opens laid out, without a write", async () => {
-  const f = faux(implicitWorkflow());
-  const e = await ouverte(f);
+  const f = fake(implicitWorkflow());
+  const e = await opened(f);
   expect(e.positions).toEqual({ recolte: { x: 0, y: 0 }, sortie: { x: 260, y: 0 } });
   e.deplacer({ ...e.positions });
   e.modifier((b) => relier(b, "sortie", "recolte"));
-  await attendre();
+  await wait();
   expect(f.ecritures).toEqual([]);
 });
 
 test("one edition per widget in the window", () => {
-  const { depot } = faux(livre());
+  const { depot } = fake(livre());
   expect(createEdit("w1", depot)).toBe(createEdit("w1", depot));
   expect(createEdit("w1", depot)).not.toBe(createEdit("w2", depot));
 });
@@ -243,11 +243,11 @@ test("placeLibre shifts below the displayed blocks", () => {
 // Fix round 1 (review of task 9)
 
 /** Invalid draft (unlinked block), then the agent changes `garder` on disk: the banner offers its version. */
-async function avecBandeau() {
-  const f = faux(livre());
-  const e = await ouverte(f);
+async function withBanner() {
+  const f = fake(livre());
+  const e = await opened(f);
   const id = await e.ajouter(catalogue("liste.garder"), { x: 0, y: 300 });
-  await attendre();
+  await wait();
   const agent = livre();
   agent.blocs[0]!.parametres = { source: "b.mjs" };
   f.etat.disque = agent;
@@ -257,15 +257,15 @@ async function avecBandeau() {
 }
 
 test("I1: a gesture during the banner writes nothing and the banner stays; « Garder la mienne » sends the draft", async () => {
-  const { f, e, id } = await avecBandeau();
+  const { f, e, id } = await withBanner();
   e.modifier((b) => relier(b, "garder", id));
-  await attendre();
+  await wait();
   expect(f.ecritures).toEqual([]);
   expect(e.bandeau).toBe("proposer");
   expect(e.etatEnregistrement).toEqual({ invalide: AWAITING_CHOICE });
   expect((f.etat.disque as Draft).blocs[0]!.parametres).toEqual({ source: "b.mjs" });
   e.garderLaMienne();
-  await attendre();
+  await wait();
   expect(e.bandeau).toBeNull();
   expect(f.ecritures).toHaveLength(1);
   expect(f.ecritures[0]!.liens).toContainEqual({ de: "garder", vers: id });
@@ -274,10 +274,10 @@ test("I1: a gesture during the banner writes nothing and the banner stays; « Ga
 });
 
 test("I1: a gesture during the banner, then « Prendre sa version »: the kept draft is dropped", async () => {
-  const { f, e, id } = await avecBandeau();
+  const { f, e, id } = await withBanner();
   e.modifier((b) => relier(b, "garder", id));
   e.prendreVersionDisque();
-  await attendre();
+  await wait();
   expect(f.ecritures).toEqual([]);
   expect(e.bandeau).toBeNull();
   expect(e.brouillon!.blocs[0]!.parametres).toEqual({ source: "b.mjs" });
@@ -286,12 +286,12 @@ test("I1: a gesture during the banner, then « Prendre sa version »: the kept d
 });
 
 test("I2: ⌘Z after the first move of a workflow without layout puts the block back", async () => {
-  const f = faux(livre());
-  const e = await ouverte(f);
+  const f = fake(livre());
+  const e = await opened(f);
   e.deplacer({ ...e.positions, tri: { x: 300, y: 40 } });
-  await attendre();
+  await wait();
   e.annuler();
-  await attendre();
+  await wait();
   expect(e.positions.tri).toEqual({ x: 260, y: 0 });
   expect((f.etat.disque as Draft).blocs.find((b) => b.id === "tri")!.position).toEqual({ x: 0, y: 0 });
   e.retablir();
@@ -299,11 +299,11 @@ test("I2: ⌘Z after the first move of a workflow without layout puts the block 
 });
 
 test("M2: relire during an in-flight save ignores the echo of the draft sent", async () => {
-  const f = faux(livre());
-  const e = await ouverte(f);
+  const f = fake(livre());
+  const e = await opened(f);
   f.etat.suspendu = true;
   e.deplacer({ ...e.positions, tri: { x: 300, y: 40 } });
-  await attendre();
+  await wait();
   // A second gesture waits its turn while the first is in flight.
   e.deplacer({ ...e.positions, tri: { x: 320, y: 60 } });
   // The disk already holds the first draft (written, response not yet received).
@@ -314,13 +314,13 @@ test("M2: relire during an in-flight save ignores the echo of the draft sent", a
   expect(e.bandeau).toBeNull();
   expect(e.positions.tri).toEqual({ x: 320, y: 60 });
   f.liberer();
-  await attendre();
-  await attendre();
+  await wait();
+  await wait();
   expect(e.etatEnregistrement).toBe("enregistre");
 });
 
 test("M3: the edition of a widget that left the home is forgotten; a reused id starts from scratch", () => {
-  const { depot } = faux(livre());
+  const { depot } = fake(livre());
   const a = createEdit("parti", depot);
   const b = createEdit("reste", depot);
   forgetEdits(["reste"]);
@@ -329,8 +329,8 @@ test("M3: the edition of a widget that left the home is forgotten; a reused id s
 });
 
 test("M4: with no free file name (read error) or no template write, the Code block is not added", async () => {
-  const f = faux(livre());
-  const e = await ouverte(f);
+  const f = fake(livre());
+  const e = await opened(f);
   f.etat.erreurCode = true;
   expect(await e.ajouter(catalogue("code"), { x: 0, y: 300 })).toBe("");
   expect(e.brouillon!.blocs.map((b) => b.id)).toEqual(["garder", "tri", "sortie"]);
@@ -340,7 +340,7 @@ test("M4: with no free file name (read error) or no template write, the Code blo
   expect(await e.ajouter(catalogue("code"), { x: 0, y: 300 })).toBe("");
   expect(e.brouillon!.blocs.map((b) => b.id)).toEqual(["garder", "tri", "sortie"]);
   expect(e.etatEnregistrement).toEqual({ erreur: "Écriture impossible" });
-  await attendre();
+  await wait();
   expect(f.ecritures).toEqual([]);
   expect(Object.keys(f.etat.fichiers)).toEqual([]);
 });
@@ -348,11 +348,11 @@ test("M4: with no free file name (read error) or no template write, the Code blo
 // Fix round 2
 
 test("N1: a draft queued behind an in-flight save is kept if the banner appears in the meantime", async () => {
-  const f = faux(livre());
-  const e = await ouverte(f);
+  const f = fake(livre());
+  const e = await opened(f);
   f.etat.suspendu = true;
   e.deplacer({ ...e.positions, tri: { x: 300, y: 40 } });
-  await attendre();
+  await wait();
   e.deplacer({ ...e.positions, tri: { x: 320, y: 60 } });
   const agent = livre();
   agent.blocs[0]!.parametres = { source: "b.mjs" };
@@ -360,8 +360,8 @@ test("N1: a draft queued behind an in-flight save is kept if the banner appears 
   await e.relire();
   expect(e.bandeau).toBe("proposer");
   f.liberer();
-  await attendre();
-  await attendre();
+  await wait();
+  await wait();
   // Only the draft already in flight left; the queued one waits for the choice.
   expect(f.ecritures).toHaveLength(1);
   expect(f.ecritures[0]!.blocs.find((b) => b.id === "tri")!.position).toEqual({ x: 300, y: 40 });
@@ -369,32 +369,32 @@ test("N1: a draft queued behind an in-flight save is kept if the banner appears 
   expect(e.etatEnregistrement).toEqual({ invalide: AWAITING_CHOICE });
   // Taking its version also drops the queued draft.
   e.prendreVersionDisque();
-  await attendre();
+  await wait();
   expect(f.ecritures).toHaveLength(1);
   expect(e.brouillon!.blocs[0]!.parametres).toEqual({ source: "b.mjs" });
 });
 
 test("N2: a save that succeeds during the banner leaves the header waiting for the choice", async () => {
-  const f = faux(livre());
-  const e = await ouverte(f);
+  const f = fake(livre());
+  const e = await opened(f);
   f.etat.suspendu = true;
   e.deplacer({ ...e.positions, tri: { x: 300, y: 40 } });
-  await attendre();
+  await wait();
   const agent = livre();
   agent.blocs[0]!.parametres = { source: "b.mjs" };
   f.etat.disque = agent;
   await e.relire();
   expect(e.bandeau).toBe("proposer");
   f.liberer();
-  await attendre();
-  await attendre();
+  await wait();
+  await wait();
   expect(e.bandeau).toBe("proposer");
   expect(e.etatEnregistrement).toEqual({ invalide: AWAITING_CHOICE });
 });
 
 test("N1: a read error on the first name stops the search (never a random next name)", async () => {
-  const f = faux(livre());
-  const e = await ouverte(f);
+  const f = fake(livre());
+  const e = await opened(f);
   f.etat.erreurCode = ["code.mjs"];
   expect(await e.ajouter(catalogue("code"), { x: 0, y: 300 })).toBe("");
   expect(e.brouillon!.blocs.map((b) => b.id)).toEqual(["garder", "tri", "sortie"]);
@@ -402,11 +402,11 @@ test("N1: a read error on the first name stops the search (never a random next n
 });
 
 test("N2: « Prendre sa version » before the end of an in-flight save also drops the queued draft", async () => {
-  const f = faux(livre());
-  const e = await ouverte(f);
+  const f = fake(livre());
+  const e = await opened(f);
   f.etat.suspendu = true;
   e.deplacer({ ...e.positions, tri: { x: 300, y: 40 } });
-  await attendre();
+  await wait();
   e.deplacer({ ...e.positions, tri: { x: 320, y: 60 } });
   const agent = livre();
   agent.blocs[0]!.parametres = { source: "b.mjs" };
@@ -414,64 +414,64 @@ test("N2: « Prendre sa version » before the end of an in-flight save also drop
   await e.relire();
   e.prendreVersionDisque();
   f.liberer();
-  await attendre();
-  await attendre();
+  await wait();
+  await wait();
   expect(f.ecritures).toHaveLength(1);
   expect(f.ecritures[0]!.blocs.find((b) => b.id === "tri")!.position).toEqual({ x: 300, y: 40 });
 });
 
 test("T10: keystrokes in the same field (same merge key) make a single history entry", async () => {
-  const f = faux(livre());
-  const e = await ouverte(f);
-  const seuil = (s: number) => (b: Draft) => set(b, "tri", { ...b.blocs.find((x) => x.id === "tri")!.parametres, seuil: s });
-  e.modifier(seuil(0.6), "tri/seuil/1");
-  await attendre();
-  e.modifier(seuil(0.7), "tri/seuil/1");
-  await attendre();
+  const f = fake(livre());
+  const e = await opened(f);
+  const threshold = (s: number) => (b: Draft) => set(b, "tri", { ...b.blocs.find((x) => x.id === "tri")!.parametres, seuil: s });
+  e.modifier(threshold(0.6), "tri/seuil/1");
+  await wait();
+  e.modifier(threshold(0.7), "tri/seuil/1");
+  await wait();
   expect(f.ecritures.at(-1)!.blocs.find((b) => b.id === "tri")!.parametres.seuil).toBe(0.7);
   // Another session on the same field is another entry.
-  e.modifier(seuil(0.8), "tri/seuil/2");
-  await attendre();
+  e.modifier(threshold(0.8), "tri/seuil/2");
+  await wait();
   e.annuler();
   expect(e.brouillon!.blocs.find((b) => b.id === "tri")!.parametres.seuil).toBe(0.7);
   e.annuler();
   expect(e.brouillon!.blocs.find((b) => b.id === "tri")!.parametres.seuil).toBeUndefined();
   // After an undo, the same key no longer merges with the previous state.
-  e.modifier(seuil(0.9), "tri/seuil/2");
+  e.modifier(threshold(0.9), "tri/seuil/2");
   e.annuler();
   expect(e.brouillon!.blocs.find((b) => b.id === "tri")!.parametres.seuil).toBeUndefined();
 });
 
 test("source of a code block to a missing file: refused; once the code is saved, the draft restarts", async () => {
-  const f = faux(livre(), { "a.mjs": "x" });
-  const enregistrer = f.depot.enregistrer;
+  const f = fake(livre(), { "a.mjs": "x" });
+  const save = f.depot.enregistrer;
   // Like the kernel: a code block whose file is missing is refused, block named.
   f.depot.enregistrer = async (id, b) => {
     const manque = b.blocs.find((x) => x.type === "code" && !(String(x.parametres.source) in f.etat.fichiers));
     if (manque) return { ok: false, erreur: `Non enregistré : fichier ${String(manque.parametres.source)} absent`, bloc: manque.id, avertissements: [] };
-    return enregistrer(id, b);
+    return save(id, b);
   };
-  const e = await ouverte(f);
+  const e = await opened(f);
   e.modifier((b) => set(b, "garder", { source: "b.mjs" }));
-  await attendre();
+  await wait();
   expect(e.etatEnregistrement).toEqual({ invalide: "fichier b.mjs absent", bloc: "garder" });
   expect(f.ecritures).toEqual([]);
 
   // Another saved file triggers nothing.
   f.etat.fichiers["c.mjs"] = "y";
   e.codeEnregistre("c.mjs");
-  await attendre();
+  await wait();
   expect(f.ecritures).toEqual([]);
 
   f.etat.fichiers["b.mjs"] = CODE_MODEL;
   e.codeEnregistre("b.mjs");
   expect(e.etatEnregistrement).toBe("en-cours");
-  await attendre();
+  await wait();
   expect(e.etatEnregistrement).toBe("enregistre");
   expect(f.ecritures.map((b) => b.blocs[0]!.parametres.source)).toEqual(["b.mjs"]);
 
   // Already saved: a new save of the code sends nothing.
   e.codeEnregistre("b.mjs");
-  await attendre();
+  await wait();
   expect(f.ecritures).toHaveLength(1);
 });

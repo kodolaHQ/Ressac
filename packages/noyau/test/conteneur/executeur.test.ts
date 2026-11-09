@@ -17,7 +17,7 @@ test("timeout exceeded → 124", async () => {
   expect((await defaultRunner("sleep", ["5"], { delaiMs: 100 })).code).toBe(CODE_TIMEOUT_EXCEEDED);
 });
 
-const vivant = (pid: number) => {
+const alive = (pid: number) => {
   try {
     process.kill(pid, 0);
     return true;
@@ -25,7 +25,7 @@ const vivant = (pid: number) => {
     return false;
   }
 };
-const attendreVrai = async (f: () => boolean, ms = 5000) => {
+const waitUntilTrue = async (f: () => boolean, ms = 5000) => {
   const fin = Date.now() + ms;
   while (!f() && Date.now() < fin) await new Promise((r) => setTimeout(r, 20));
   return f();
@@ -33,23 +33,23 @@ const attendreVrai = async (f: () => boolean, ms = 5000) => {
 
 test("cancelled (signal): the whole group is killed, children included, and the result says « annulé »", async () => {
   const dossier = await mkdtemp(join(tmpdir(), "executeur-"));
-  const fichier = join(dossier, "pid");
-  const controleur = new AbortController();
+  const file = join(dossier, "pid");
+  const controller = new AbortController();
   // sh launches a child (like git launches git-remote-https) and writes its pid.
-  const r = defaultRunner("sh", ["-c", `sleep 300 & echo $! > ${fichier}; wait`], { signal: controleur.signal });
-  expect(await attendreVrai(() => existsSync(fichier) && readFileSync(fichier, "utf8").trim() !== "")).toBe(true);
-  const pid = Number(readFileSync(fichier, "utf8"));
-  expect(vivant(pid)).toBe(true);
-  controleur.abort();
+  const r = defaultRunner("sh", ["-c", `sleep 300 & echo $! > ${file}; wait`], { signal: controller.signal });
+  expect(await waitUntilTrue(() => existsSync(file) && readFileSync(file, "utf8").trim() !== "")).toBe(true);
+  const pid = Number(readFileSync(file, "utf8"));
+  expect(alive(pid)).toBe(true);
+  controller.abort();
   expect((await r).code).toBe(CODE_CANCELLED);
-  expect(await attendreVrai(() => !vivant(pid))).toBe(true);
+  expect(await waitUntilTrue(() => !alive(pid))).toBe(true);
 });
 
 test("an already-cancelled signal launches nothing", async () => {
   const dossier = await mkdtemp(join(tmpdir(), "executeur-"));
-  const controleur = new AbortController();
-  controleur.abort();
-  const r = await defaultRunner("sh", ["-c", `touch ${join(dossier, "lance")}`], { signal: controleur.signal });
+  const controller = new AbortController();
+  controller.abort();
+  const r = await defaultRunner("sh", ["-c", `touch ${join(dossier, "lance")}`], { signal: controller.signal });
   expect(r.code).toBe(CODE_CANCELLED);
   expect(existsSync(join(dossier, "lance"))).toBe(false);
 });

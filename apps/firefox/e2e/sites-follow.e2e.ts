@@ -16,8 +16,8 @@ const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 const HOSTS = ["vidola-a.localhost", "vidola-b.localhost", "pub.localhost", "adresses.localhost", "compte.localhost", "vidola.adresses.localhost"];
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const AVIS_CHANGE = "Vidola a changé d'adresse : vidola-b.localhost. Il faudra peut-être te reconnecter.";
-const AVIS_INCHANGEE = "Vidola ne répond pas, et sa page de référence donne toujours la même adresse";
-const SERIE = '<title>The Bear</title><div class="shorts" id="shorts">shorts</div><p>épisode</p>';
+const UNCHANGED_NOTICE = "Vidola ne répond pas, et sa page de référence donne toujours la même adresse";
+const SERIES = '<title>The Bear</title><div class="shorts" id="shorts">shorts</div><p>épisode</p>';
 
 let server: Awaited<ReturnType<typeof startSitesServer>>;
 let w: LaunchedWebAiOs;
@@ -106,8 +106,8 @@ async function openAndWait(id: string, p = "/"): Promise<void> {
 beforeAll(async () => {
   server = await startSitesServer();
   const d = (p: string, body: Parameters<typeof server.definir>[2]) => server.definir("vidola-a.localhost", p, body);
-  d("/serie/the-bear", SERIE);
-  server.definir("vidola-b.localhost", "/serie/the-bear", SERIE);
+  d("/serie/the-bear", SERIES);
+  server.definir("vidola-b.localhost", "/serie/the-bear", SERIES);
   d("/parque", (_req, res) => res.writeHead(302, { Location: pub("/arrivee") }).end());
   d("/", `<title>Vidola A</title><a id="pub" href="${pub("/x")}">pub</a><a id="aller-pub" href="/aller-pub">aller</a>`);
   d("/aller-pub", (_req, res) => res.writeHead(302, { Location: pub("/arrivee") }).end());
@@ -248,7 +248,7 @@ describe("site app address follow", () => {
     await openAndWait("t64");
     await expectText("t64", "site-chercher-adresse", "Chercher la nouvelle adresse");
     await barClick("t64", "site-chercher-adresse");
-    await expectText("t64", "site-avis", AVIS_INCHANGEE);
+    await expectText("t64", "site-avis", UNCHANGED_NOTICE);
     await barClick("t64", "site-chercher-adresse");
     await sleep(800);
     expect(referenceReads()).toBe(1);
@@ -263,14 +263,14 @@ describe("site app address follow", () => {
     const state = () => bar<{ disabled: boolean; busy: string | null }>("t65", `const e = doc.querySelector('[data-testid="site-chercher-adresse"]'); return e && { disabled: e.disabled, busy: e.getAttribute("aria-busy") };`);
     await barClick("t65", "site-chercher-adresse");
     await expect.poll(state, { timeout: 10_000 }).toEqual({ disabled: true, busy: "true" });
-    await expectText("t65", "site-avis", AVIS_INCHANGEE);
+    await expectText("t65", "site-avis", UNCHANGED_NOTICE);
     await expect.poll(state, { timeout: 10_000 }).toEqual({ disabled: false, busy: "false" });
     // A blocked link replaces the notice; a click too early (no reading) gives the last result again.
     await inSiteView(m, "t65", "document.getElementById('pub').click(); return 1;", { gesture: true });
     await expectNotice("t65", "pub.localhost");
     server.requetes.splice(0);
     await barClick("t65", "site-chercher-adresse");
-    await expectText("t65", "site-avis", AVIS_INCHANGEE);
+    await expectText("t65", "site-avis", UNCHANGED_NOTICE);
     expect(referenceReads()).toBe(0);
   });
 

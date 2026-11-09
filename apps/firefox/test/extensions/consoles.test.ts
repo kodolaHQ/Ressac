@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 import { CONSOLE_MAX, ConsolesExtensions, CRASH_WINDOW_MS, PLANTAGES_MAX } from "../../core/extensions/consoles";
 
 const ID = "a".repeat(32);
-const AUTRE = "b".repeat(32);
+const OTHER = "b".repeat(32);
 
 test("values: 500 messages, 3 crashes in 60 s", () => {
   expect(CONSOLE_MAX).toBe(500);
@@ -18,7 +18,7 @@ test("501 messages: the last 500", () => {
   expect(m[0]!.texte).toBe("m1");
   expect(m[499]!.texte).toBe("m500");
   // Another extension has its own console.
-  expect(c.messages(AUTRE)).toEqual([]);
+  expect(c.messages(OTHER)).toEqual([]);
 });
 
 test("messages since a timestamp; errors: only the error-level texts", () => {
@@ -34,47 +34,47 @@ test("messages since a timestamp; errors: only the error-level texts", () => {
 });
 
 test("3 crashes in 60 s: deactivation reminder; 3 in 61 s: no", () => {
-  const appels: string[] = [];
-  const c = new ConsolesExtensions({ surPlantages: (id) => appels.push(id) });
+  const calls: string[] = [];
+  const c = new ConsolesExtensions({ surPlantages: (id) => calls.push(id) });
   c.plantage(ID, 0);
   c.plantage(ID, 30_000);
-  expect(appels).toEqual([]);
+  expect(calls).toEqual([]);
   c.plantage(ID, 60_000);
-  expect(appels).toEqual([ID]);
+  expect(calls).toEqual([ID]);
 
   const d: string[] = [];
   const c2 = new ConsolesExtensions({ surPlantages: (id) => d.push(id) });
-  c2.plantage(AUTRE, 0);
-  c2.plantage(AUTRE, 30_000);
-  c2.plantage(AUTRE, 61_000);
+  c2.plantage(OTHER, 0);
+  c2.plantage(OTHER, 30_000);
+  c2.plantage(OTHER, 61_000);
   expect(d).toEqual([]);
   // The fourth, within the minute of the last two: yes.
-  c2.plantage(AUTRE, 62_000);
-  expect(d).toEqual([AUTRE]);
+  c2.plantage(OTHER, 62_000);
+  expect(d).toEqual([OTHER]);
 });
 
 test("after the reminder, crashes restart from zero; oublier clears console and crashes", () => {
-  const appels: string[] = [];
-  const c = new ConsolesExtensions({ surPlantages: (id) => appels.push(id) });
+  const calls: string[] = [];
+  const c = new ConsolesExtensions({ surPlantages: (id) => calls.push(id) });
   for (const t of [0, 1, 2]) c.plantage(ID, t);
-  expect(appels).toHaveLength(1);
+  expect(calls).toHaveLength(1);
   c.plantage(ID, 3);
   c.plantage(ID, 4);
-  expect(appels).toHaveLength(1);
+  expect(calls).toHaveLength(1);
   c.noter(ID, { horodatage: 1, niveau: "error", texte: "x" });
   c.oublier(ID);
   expect(c.messages(ID)).toEqual([]);
   c.plantage(ID, 5);
-  expect(appels).toHaveLength(1);
+  expect(calls).toHaveLength(1);
 });
 
 // ——— Task 17: the console filtered for the agent ———
 
-const nouvelle = () => new ConsolesExtensions({ surPlantages: () => {} });
+const fresh = () => new ConsolesExtensions({ surPlantages: () => {} });
 const sans = { debloquee: false, tourneIllisible: false, observateur: false };
 
 test("for the agent: a readable tab message is kept, an unreadable one is hidden and counted", () => {
-  const c = nouvelle();
+  const c = fresh();
   c.noter(ID, { horodatage: 1, niveau: "log", texte: "fond" });
   c.noter(ID, { horodatage: 2, niveau: "log", texte: "onglet partagé" }, { lisible: true });
   c.noter(ID, { horodatage: 3, niveau: "error", texte: "secret" }, { lisible: false });
@@ -89,7 +89,7 @@ test("for the agent: a readable tab message is kept, an unreadable one is hidden
 });
 
 test("for the agent: ran in an unreadable tab (registry flag) → service worker and pages hidden, the whole history", () => {
-  const c = nouvelle();
+  const c = fresh();
   c.noter(ID, { horodatage: 1, niveau: "log", texte: "avant" });
   c.noter(ID, { horodatage: 2, niveau: "error", texte: "lu dans l'onglet" });
   c.noter(ID, { horodatage: 3, niveau: "log", texte: "partagé" }, { lisible: true });
@@ -100,7 +100,7 @@ test("for the agent: ran in an unreadable tab (registry flag) → service worker
 });
 
 test("for the agent: with a right that observes (decided at read time), service worker and pages always hidden, even without a message; readable tabs pass", () => {
-  const c = nouvelle();
+  const c = fresh();
   // No message: the reason is still given (the agent knows why it will see nothing).
   expect(c.pourAgent(ID, { ...sans, observateur: true })).toMatchObject({ messages: [], fondObserve: true, fondMasque: false });
   c.noter(ID, { horodatage: 1, niveau: "log", texte: "fond" });
@@ -115,7 +115,7 @@ test("for the agent: with a right that observes (decided at read time), service 
 });
 
 test("unlocked: nothing is hidden nor counted", () => {
-  const c = nouvelle();
+  const c = fresh();
   c.noter(ID, { horodatage: 1, niveau: "error", texte: "fond" });
   c.noter(ID, { horodatage: 2, niveau: "log", texte: "caché" }, { lisible: false });
   const r = c.pourAgent(ID, { debloquee: true, tourneIllisible: true, observateur: true });

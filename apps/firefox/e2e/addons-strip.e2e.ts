@@ -29,11 +29,11 @@ afterEach(() => w?.close());
 const A = "window.webaiosWindow.addons";
 const buttons = () => m.execute<any[]>(`return ${A}.buttons()`);
 const changes = () => m.execute<number>("return window.changes");
-const fenetreId = async () => (await state(m)).fenetres[0]!.id;
+const windowId = async () => (await state(m)).fenetres[0]!.id;
 /** Opens `path` in a WebAiOs tab and waits until it is displayed and loaded. */
 async function open(path: string): Promise<void> {
   const url = server.url + path;
-  await dispatch(m, { type: "ouvrirOnglet", fenetreId: await fenetreId(), url });
+  await dispatch(m, { type: "ouvrirOnglet", fenetreId: await windowId(), url });
   await waitFor(m, `return gBrowser.selectedBrowser.currentURI.spec === ${JSON.stringify(url)} && !gBrowser.selectedBrowser.webProgress.isLoadingDocument`, (v) => v === true);
 }
 /** Chrome context: polls f up to 5 s. */
@@ -92,7 +92,7 @@ describe("add-on strip, window side", () => {
     await waitFor(m, `return ${A}.buttons()[0].enabled`, (v) => v === true);
     expect(await changes()).toBeGreaterThan(seen);
     seen = await changes();
-    await dispatch(m, { type: "ouvrirApplications", fenetreId: await fenetreId() });
+    await dispatch(m, { type: "ouvrirApplications", fenetreId: await windowId() });
     await waitFor(m, "return gBrowser.selectedTab.hasAttribute('webaios-parking')", (v) => v === true);
     expect((await buttons())[0].enabled).toBe(false);
     expect(await changes()).toBeGreaterThan(seen);

@@ -65,10 +65,10 @@ export function writeProject(dataDir: string, dossier: string, o: { manifeste?: 
 }
 
 /** Launches app « essai » with the agent's tool; returns its port. */
-export async function launchEssai(dataDir: string): Promise<number> {
-  const { texte } = await callTool(dataDir, "lancer_application", { dossier: "essai" });
-  expect(texte).toMatch(/en marche sur http:\/\/localhost:\d+/);
-  return Number(/localhost:(\d+)/.exec(texte)![1]);
+export async function launchAttempt(dataDir: string): Promise<number> {
+  const { texte: text } = await callTool(dataDir, "lancer_application", { dossier: "essai" });
+  expect(text).toMatch(/en marche sur http:\/\/localhost:\d+/);
+  return Number(/localhost:(\d+)/.exec(text)![1]);
 }
 
 /** Chrome-context expression: the window of app `dossier` (the attribute set by setupAppWindow), or undefined. */
@@ -165,8 +165,8 @@ export async function closeAppsPage(p: AppsPage | undefined): Promise<void> {
 export const rowCount = (m: Marionette): Promise<number> => inUi<number>(m, `return doc.querySelectorAll('[data-testid^="appli-"]').length;`);
 export const appRow = (dossier: string) => `[data-testid="appli-${dossier}"]`;
 /** Waits until row `dossier`'s data-etat is `etat`. */
-export const rowState = (m: Marionette, dossier: string, etat: string, ms = 10_000) =>
-  waitUi(m, "return doc.querySelector(arguments[0])?.dataset.etat === arguments[1]", [appRow(dossier), etat], ms);
+export const rowState = (m: Marionette, dossier: string, state: string, ms = 10_000) =>
+  waitUi(m, "return doc.querySelector(arguments[0])?.dataset.etat === arguments[1]", [appRow(dossier), state], ms);
 /** Clicks the row's button whose text contains `name`. */
 export const rowButton = (m: Marionette, dossier: string, name: string) => click(m, `${appRow(dossier)} .actions button`, { text: name });
 /** Opens the row's ⋯ menu and clicks its item `name`. */

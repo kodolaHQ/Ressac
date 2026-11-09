@@ -28,8 +28,8 @@ import { AI_ABANDONED } from "../../src/ia/repartiteur.js";
 import type { NotificationWidget } from "../../src/widgets/nouveautes.js";
 import { readHome } from "../../src/accueil/lire.js";
 import type { SpacePaths } from "../../src/chemins.js";
-import { declarationWidget, ecrireWidget } from "../aide/accueil.js";
-import { dossierTemporaire } from "../aide/temporaire.js";
+import { declarationWidget, writeWidget } from "../aide/accueil.js";
+import { tempFolder } from "../aide/temporaire.js";
 
 /** Home reads in progress: a test waits until there are none left to know what a request has already read. */
 const lectures = vi.hoisted(() => ({ enVol: 0 }));
@@ -59,38 +59,38 @@ afterEach(async () => {
 
 /** A widget « actus » that harvests every 60 min; the fake harvest succeeds (or returns `statut`). */
 async function preparer(o: { atelier?: WorkshopState; statut?: WidgetState["statut"]; options?: Partial<SchedulerOptions> } = {}) {
-  const racine = await dossierTemporaire();
-  const c = spacePaths(racine);
-  const dossierWidgets = join(await dossierTemporaire(), "widgets");
-  await ecrireWidget(c, "actus", declarationWidget(undefined, { recolte: { minutes: 60 } }), { "recolte.mjs": "export default () => 1" });
+  const root = await tempFolder();
+  const c = spacePaths(root);
+  const dossierWidgets = join(await tempFolder(), "widgets");
+  await writeWidget(c, "actus", declarationWidget(undefined, { recolte: { minutes: 60 } }), { "recolte.mjs": "export default () => 1" });
   // A widget without a harvest is never launched.
-  await ecrireWidget(c, "fixe", declarationWidget(), {});
-  let maintenant = DEBUT;
-  const horloge = () => maintenant;
-  const recoltes: string[] = [];
-  let etatAtelier: WorkshopState = o.atelier ?? "demarre";
+  await writeWidget(c, "fixe", declarationWidget(), {});
+  let now = DEBUT;
+  const clock = () => now;
+  const harvests: string[] = [];
+  let workshopState: WorkshopState = o.atelier ?? "demarre";
   const changements = vi.fn();
-  const recolter = vi.fn(async (r: HarvestOptions) => {
-    recoltes.push(r.id);
-    const statut = o.statut ?? "ok";
-    const avant = await readWidgetState(r.dossierWidgets, r.id);
-    const etat: WidgetState = {
-      statut,
-      derniereMaj: statut === "ok" ? horloge().toISOString() : avant.derniereMaj,
-      derniereTentative: horloge().toISOString(),
-      ...(statut === "erreur" ? { erreur: "boum" } : {}),
+  const harvest = vi.fn(async (r: HarvestOptions) => {
+    harvests.push(r.id);
+    const status = o.statut ?? "ok";
+    const before = await readWidgetState(r.dossierWidgets, r.id);
+    const state: WidgetState = {
+      statut: status,
+      derniereMaj: status === "ok" ? clock().toISOString() : before.derniereMaj,
+      derniereTentative: clock().toISOString(),
+      ...(status === "erreur" ? { erreur: "boum" } : {}),
     };
-    if (statut === "ok") await writeData(r.dossierWidgets, r.id, { n: recoltes.length });
-    await writeWidgetState(r.dossierWidgets, r.id, etat);
-    return { etat };
+    if (status === "ok") await writeData(r.dossierWidgets, r.id, { n: harvests.length });
+    await writeWidgetState(r.dossierWidgets, r.id, state);
+    return { etat: state };
   });
-  const essais: string[] = [];
-  const recolterEssai = vi.fn(async (r: HarvestOptions & { origine: string; depart: string }): Promise<AttemptResult> => {
-    essais.push(r.id);
-    return { ok: true, execution: attemptId(horloge().toISOString()), statut: "reussie" };
+  const attempts: string[] = [];
+  const harvestAttempt = vi.fn(async (r: HarvestOptions & { origine: string; depart: string }): Promise<AttemptResult> => {
+    attempts.push(r.id);
+    return { ok: true, execution: attemptId(clock().toISOString()), statut: "reussie" };
   });
   const directs: DirectState[] = [];
-  const atelier = { etat: async () => etatAtelier, commandeRecolte: () => ["docker"], supprimerRecolte: async (_id: string) => {} };
+  const atelier = { etat: async () => workshopState, commandeRecolte: () => ["docker"], supprimerRecolte: async (_id: string) => {} };
   const options = (): SchedulerOptions => ({
     chemins: c,
     dossierWidgets,
@@ -98,53 +98,53 @@ async function preparer(o: { atelier?: WorkshopState; statut?: WidgetState["stat
     atelier,
     pont: new PontFactice([], { actif: null, autoriser: false }),
     ia: null,
-    horloge,
+    horloge: clock,
     intervalleMs: 60 * MIN, // the timer does not interfere: the tests call verifier themselves
-    recolter,
-    recolterEssai,
+    recolter: harvest,
+    recolterEssai: harvestAttempt,
     surChange: changements,
     surDirect: (e) => directs.push(structuredClone(e)),
     ...o.options,
   });
   p = new WidgetsScheduler(options());
   return {
-    essais,
-    recolterEssai,
+    essais: attempts,
+    recolterEssai: harvestAttempt,
     directs,
     p,
     c,
     dossierWidgets,
-    recoltes,
-    recolter,
+    recoltes: harvests,
+    recolter: harvest,
     changements,
     atelier,
-    avancer: (ms: number) => (maintenant = new Date(maintenant.getTime() + ms)),
-    fixerAtelier: (e: WorkshopState) => (etatAtelier = e),
-    fixer: (d: Date) => (maintenant = d),
-    horloge,
+    avancer: (ms: number) => (now = new Date(now.getTime() + ms)),
+    fixerAtelier: (e: WorkshopState) => (workshopState = e),
+    fixer: (d: Date) => (now = d),
+    horloge: clock,
     /** A new scheduler on the same folders (WebAiOs relaunched); the caller stopped the previous one. */
     relancer: () => (p = new WidgetsScheduler(options())),
   };
 }
 
 test("a due widget is harvested at startup then according to its frequency (fake clock)", async () => {
-  const { p, recoltes, recolter, avancer } = await preparer();
+  const { p, recoltes: harvests, recolter: harvest, avancer: advance } = await preparer();
   await p.demarrer();
-  await vi.waitFor(() => expect(recoltes).toEqual(["actus"]));
+  await vi.waitFor(() => expect(harvests).toEqual(["actus"]));
   // The launch check finishes (otherwise the next one would be skipped without checking anything).
-  await vi.waitFor(() => expect(recolter.mock.settledResults).toHaveLength(1));
+  await vi.waitFor(() => expect(harvest.mock.settledResults).toHaveLength(1));
   await new Promise((r) => setTimeout(r, 20));
-  avancer(59 * MIN);
+  advance(59 * MIN);
   expect(await p.verifier({ auLancement: false })).toEqual([]);
-  avancer(2 * MIN);
+  advance(2 * MIN);
   expect(await p.verifier({ auLancement: false })).toEqual(["actus"]);
-  expect(recoltes).toEqual(["actus", "actus"]);
+  expect(harvests).toEqual(["actus", "actus"]);
 });
 
 test("the harvest receives the widget, the data folder, the engine and the AI", async () => {
-  const { p, recolter, dossierWidgets, c } = await preparer();
+  const { p, recolter: harvest, dossierWidgets, c } = await preparer();
   await p.verifier({ auLancement: true });
-  const o = recolter.mock.calls[0]![0];
+  const o = harvest.mock.calls[0]![0];
   expect(o).toMatchObject({ id: "actus", dossierWidgets, moteur: "/moteur", ia: null });
   expect(o.widget).toMatchObject({ id: "actus", dossier: join(c.widgets, "actus") });
   // surChange follows every write made by the harvest.
@@ -152,24 +152,24 @@ test("the harvest receives the widget, the data folder, the engine and the AI", 
 });
 
 test("with a given dispatcher, the harvests use it", async () => {
-  const cles: string[] = [];
-  const acces = { kev: vi.fn(), gemma: vi.fn(), oublier: vi.fn() };
-  const repartiteur = { pour: (cle: string) => (cles.push(cle), acces) };
-  const { p, recolter } = await preparer({ options: { repartiteur } });
+  const keys: string[] = [];
+  const access = { kev: vi.fn(), gemma: vi.fn(), oublier: vi.fn() };
+  const dispatcher = { pour: (key: string) => (keys.push(key), access) };
+  const { p, recolter: harvest } = await preparer({ options: { repartiteur: dispatcher } });
   await p.verifier({ auLancement: true });
-  expect(recolter.mock.calls[0]![0].ia).toBe(acces);
-  expect(cles).toEqual([`actus:${DEBUT.toISOString()}`]);
-  expect(acces.oublier).toHaveBeenCalledTimes(1);
+  expect(harvest.mock.calls[0]![0].ia).toBe(access);
+  expect(keys).toEqual([`actus:${DEBUT.toISOString()}`]);
+  expect(access.oublier).toHaveBeenCalledTimes(1);
 });
 
 test("the throttle and the search base are passed to each harvest and each trial; absent, nothing is passed", async () => {
-  const menagement = new Pacing();
-  const { p, recolter, recolterEssai } = await preparer({ options: { menagement, urlRecherche: "http://127.0.0.1:9/html/" } });
+  const pacing = new Pacing();
+  const { p, recolter: harvest, recolterEssai: harvestAttempt } = await preparer({ options: { menagement: pacing, urlRecherche: "http://127.0.0.1:9/html/" } });
   await p.verifier({ auLancement: true });
   await p.recolterMaintenant("actus");
   await p.rejouer("actus", "x", "recolte");
-  for (const o of [recolter.mock.calls[0]![0], recolter.mock.calls[1]![0], recolterEssai.mock.calls[0]![0]]) {
-    expect(o.menagement).toBe(menagement);
+  for (const o of [harvest.mock.calls[0]![0], harvest.mock.calls[1]![0], harvestAttempt.mock.calls[0]![0]]) {
+    expect(o.menagement).toBe(pacing);
     expect(o.urlRecherche).toBe("http://127.0.0.1:9/html/");
   }
   await p.arreter();
@@ -180,23 +180,23 @@ test("the throttle and the search base are passed to each harvest and each trial
 });
 
 test("accord-requis is never retried on its own", async () => {
-  const { p, recoltes, dossierWidgets, avancer } = await preparer();
+  const { p, recoltes: harvests, dossierWidgets, avancer: advance } = await preparer();
   await writeWidgetState(dossierWidgets, "actus", { statut: "accord-requis", derniereMaj: null, derniereTentative: null, erreur: "Accord requis" });
   expect(await p.verifier({ auLancement: true })).toEqual([]);
-  avancer(24 * 60 * MIN);
+  advance(24 * 60 * MIN);
   expect(await p.verifier({ auLancement: false })).toEqual([]);
-  expect(recoltes).toEqual([]);
+  expect(harvests).toEqual([]);
   // An explicit request, however, goes through (the harvest checks the grant itself).
   await p.recolterMaintenant("actus");
-  expect(recoltes).toEqual(["actus"]);
+  expect(harvests).toEqual(["actus"]);
 });
 
 test("workshop stopped: status atelier-arrete, data kept", async () => {
-  const { p, recoltes, dossierWidgets, changements, fixerAtelier } = await preparer({ atelier: "arrete" });
+  const { p, recoltes: harvests, dossierWidgets, changements, fixerAtelier } = await preparer({ atelier: "arrete" });
   await writeData(dossierWidgets, "actus", { vieux: true });
   await writeWidgetState(dossierWidgets, "actus", { statut: "ok", derniereMaj: "2026-10-27T08:00:00.000Z", derniereTentative: "2026-10-27T08:00:00.000Z" });
   expect(await p.verifier({ auLancement: true })).toEqual([]);
-  expect(recoltes).toEqual([]);
+  expect(harvests).toEqual([]);
   expect(await readWidgetState(dossierWidgets, "actus")).toMatchObject({
     statut: "atelier-arrete",
     derniereMaj: "2026-10-27T08:00:00.000Z",
@@ -209,20 +209,20 @@ test("workshop stopped: status atelier-arrete, data kept", async () => {
   expect(changements).toHaveBeenCalledTimes(1);
   // recolterMaintenant launches nothing either.
   expect((await p.recolterMaintenant("actus")).statut).toBe("atelier-arrete");
-  expect(recoltes).toEqual([]);
+  expect(harvests).toEqual([]);
   // The workshop comes back: the harvest resumes at the next check.
   fixerAtelier("demarre");
   expect(await p.verifier({ auLancement: false })).toEqual(["actus"]);
 });
 
 test("an error is retried after 15 min, not before", async () => {
-  const { p, recoltes, avancer } = await preparer({ statut: "erreur" });
+  const { p, recoltes: harvests, avancer: advance } = await preparer({ statut: "erreur" });
   expect(await p.verifier({ auLancement: true })).toEqual(["actus"]);
-  avancer(14 * MIN);
+  advance(14 * MIN);
   expect(await p.verifier({ auLancement: false })).toEqual([]);
-  avancer(2 * MIN);
+  advance(2 * MIN);
   expect(await p.verifier({ auLancement: false })).toEqual(["actus"]);
-  expect(recoltes).toEqual(["actus", "actus"]);
+  expect(harvests).toEqual(["actus", "actus"]);
 });
 
 test("in-progress is relaunched at launch only", () => {
@@ -243,11 +243,11 @@ test("in-progress is relaunched at launch only", () => {
 });
 
 test("recolterMaintenant waits for the harvest in progress: only one at a time", async () => {
-  const { p, recolter } = await preparer();
+  const { p, recolter: harvest } = await preparer();
   let enVol = 0;
   let max = 0;
-  const base = recolter.getMockImplementation()!;
-  recolter.mockImplementation(async (o) => {
+  const base = harvest.getMockImplementation()!;
+  harvest.mockImplementation(async (o) => {
     max = Math.max(max, ++enVol);
     await new Promise((r) => setTimeout(r, 20));
     try {
@@ -256,13 +256,13 @@ test("recolterMaintenant waits for the harvest in progress: only one at a time",
       enVol--;
     }
   });
-  const verif = p.verifier({ auLancement: true });
-  await vi.waitFor(() => expect(recolter).toHaveBeenCalledTimes(1));
-  const etat = await p.recolterMaintenant("actus");
-  await verif;
+  const check = p.verifier({ auLancement: true });
+  await vi.waitFor(() => expect(harvest).toHaveBeenCalledTimes(1));
+  const state = await p.recolterMaintenant("actus");
+  await check;
   expect(max).toBe(1);
-  expect(etat.statut).toBe("ok");
-  expect(recolter).toHaveBeenCalledTimes(2);
+  expect(state.statut).toBe("ok");
+  expect(harvest).toHaveBeenCalledTimes(2);
 });
 
 test("recolterMaintenant on an unknown widget throws an error", async () => {
@@ -271,66 +271,66 @@ test("recolterMaintenant on an unknown widget throws an error", async () => {
 });
 
 test("arreter: the harvest in progress is removed and its previous state restored", async () => {
-  const { p, recolter, dossierWidgets, atelier } = await preparer();
-  const avant: WidgetState = { statut: "ok", derniereMaj: "2026-10-27T08:00:00.000Z", derniereTentative: "2026-10-27T08:00:00.000Z" };
-  await writeWidgetState(dossierWidgets, "actus", avant);
-  let tuer!: () => void;
-  recolter.mockImplementation(async (o) => {
-    await writeWidgetState(o.dossierWidgets, o.id, { ...avant, statut: "en-cours" });
-    await new Promise<void>((r) => (tuer = r));
-    const etat: WidgetState = { ...avant, statut: "erreur", erreur: "La récolte s'est arrêtée sans résultat" };
-    await writeWidgetState(o.dossierWidgets, o.id, etat);
-    return { etat };
+  const { p, recolter: harvest, dossierWidgets, atelier } = await preparer();
+  const before: WidgetState = { statut: "ok", derniereMaj: "2026-10-27T08:00:00.000Z", derniereTentative: "2026-10-27T08:00:00.000Z" };
+  await writeWidgetState(dossierWidgets, "actus", before);
+  let kill!: () => void;
+  harvest.mockImplementation(async (o) => {
+    await writeWidgetState(o.dossierWidgets, o.id, { ...before, statut: "en-cours" });
+    await new Promise<void>((r) => (kill = r));
+    const state: WidgetState = { ...before, statut: "erreur", erreur: "La récolte s'est arrêtée sans résultat" };
+    await writeWidgetState(o.dossierWidgets, o.id, state);
+    return { etat: state };
   });
-  const supprimees: string[] = [];
+  const deleted: string[] = [];
   atelier.supprimerRecolte = async (id) => {
-    supprimees.push(id);
-    tuer();
+    deleted.push(id);
+    kill();
   };
-  const verif = p.verifier({ auLancement: true });
-  await vi.waitFor(() => expect(recolter).toHaveBeenCalled());
+  const check = p.verifier({ auLancement: true });
+  await vi.waitFor(() => expect(harvest).toHaveBeenCalled());
   await p.arreter();
-  await verif;
-  expect(supprimees).toEqual(["actus"]);
-  expect(await readWidgetState(dossierWidgets, "actus")).toEqual(avant);
+  await check;
+  expect(deleted).toEqual(["actus"]);
+  expect(await readWidgetState(dossierWidgets, "actus")).toEqual(before);
 });
 
 test("arreter while the harvest checks the workshop: it does not start", async () => {
-  const { p, recolter, atelier } = await preparer();
-  let liberer!: () => void;
-  const verifie = vi.fn();
+  const { p, recolter: harvest, atelier } = await preparer();
+  let release!: () => void;
+  const checked = vi.fn();
   atelier.etat = async () => {
-    verifie();
-    await new Promise<void>((r) => (liberer = r));
+    checked();
+    await new Promise<void>((r) => (release = r));
     return "demarre";
   };
-  const verif = p.verifier({ auLancement: true });
-  await vi.waitFor(() => expect(verifie).toHaveBeenCalled());
-  const arret = p.arreter();
-  liberer();
-  await arret;
-  await verif;
-  expect(recolter).not.toHaveBeenCalled();
+  const check = p.verifier({ auLancement: true });
+  await vi.waitFor(() => expect(checked).toHaveBeenCalled());
+  const stop = p.arreter();
+  release();
+  await stop;
+  await check;
+  expect(harvest).not.toHaveBeenCalled();
 });
 
 test("arreter: a harvest that exceeds the wait sees its container removed once more", async () => {
-  const { dossierWidgets, recolter, atelier, c } = await preparer();
+  const { dossierWidgets, recolter: harvest, atelier, c } = await preparer();
   await p!.arreter();
-  let lancee = false;
-  let demarrer!: () => void;
-  const premiereSuppression = new Promise<void>((r) => (demarrer = r));
-  recolter.mockImplementation(async (o) => {
+  let launched = false;
+  let start!: () => void;
+  const premiereSuppression = new Promise<void>((r) => (start = r));
+  harvest.mockImplementation(async (o) => {
     await writeWidgetState(o.dossierWidgets, o.id, { statut: "en-cours", derniereMaj: null, derniereTentative: null });
     // The container starts after the first removal, and the harvest does not finish.
     await premiereSuppression;
-    lancee = true;
+    launched = true;
     await new Promise(() => {});
     return { etat: { statut: "ok", derniereMaj: null, derniereTentative: null } };
   });
-  const supprimees: { id: string; lancee: boolean }[] = [];
+  const deleted: { id: string; lancee: boolean }[] = [];
   atelier.supprimerRecolte = async (id) => {
-    supprimees.push({ id, lancee });
-    demarrer();
+    deleted.push({ id, lancee: launched });
+    start();
   };
   p = new WidgetsScheduler({
     chemins: c,
@@ -340,24 +340,24 @@ test("arreter: a harvest that exceeds the wait sees its container removed once m
     pont: new PontFactice([], { actif: null, autoriser: false }),
     ia: null,
     intervalleMs: 60 * MIN,
-    recolter,
+    recolter: harvest,
     attenteArretMs: 100,
   });
   void p.verifier({ auLancement: true });
-  await vi.waitFor(() => expect(recolter).toHaveBeenCalled());
+  await vi.waitFor(() => expect(harvest).toHaveBeenCalled());
   await p.arreter();
-  expect(supprimees).toEqual([
+  expect(deleted).toEqual([
     { id: "actus", lancee: false },
     { id: "actus", lancee: true },
   ]);
 });
 
 test("the first check waits for the workshop to be ready: no « atelier arrêté » at launch", async () => {
-  const { dossierWidgets, recolter, atelier, c, recoltes } = await preparer();
+  const { dossierWidgets, recolter: harvest, atelier, c, recoltes: harvests } = await preparer();
   await p!.arreter();
-  let etat: WorkshopState = "arrete";
-  atelier.etat = async () => etat;
-  let pret!: () => void;
+  let state: WorkshopState = "arrete";
+  atelier.etat = async () => state;
+  let ready!: () => void;
   const changements = vi.fn();
   p = new WidgetsScheduler({
     chemins: c,
@@ -367,29 +367,29 @@ test("the first check waits for the workshop to be ready: no « atelier arrêté
     pont: new PontFactice([], { actif: null, autoriser: false }),
     ia: null,
     intervalleMs: 60 * MIN,
-    recolter,
+    recolter: harvest,
     surChange: changements,
-    pret: new Promise<void>((r) => (pret = r)),
+    pret: new Promise<void>((r) => (ready = r)),
   });
   await p.demarrer();
   await new Promise((r) => setTimeout(r, 50));
   expect((await readWidgetState(dossierWidgets, "actus")).statut).not.toBe("atelier-arrete");
   expect(changements).not.toHaveBeenCalled();
-  etat = "demarre";
-  pret();
-  await vi.waitFor(() => expect(recoltes).toEqual(["actus"]));
+  state = "demarre";
+  ready();
+  await vi.waitFor(() => expect(harvests).toEqual(["actus"]));
 });
 
 test("a harvest that throws an error after writing in-progress leaves a kernel error state", async () => {
-  const { p, recolter, dossierWidgets, changements } = await preparer();
+  const { p, recolter: harvest, dossierWidgets, changements } = await preparer();
   await writeWidgetState(dossierWidgets, "actus", { statut: "ok", derniereMaj: "2026-10-27T08:00:00.000Z", derniereTentative: "2026-10-27T08:00:00.000Z" });
-  recolter.mockImplementation(async (o) => {
+  harvest.mockImplementation(async (o) => {
     await writeWidgetState(o.dossierWidgets, o.id, { statut: "en-cours", derniereMaj: "2026-10-27T08:00:00.000Z", derniereTentative: DEBUT.toISOString() });
     throw new Error("disque plein SECRET");
   });
   await expect(p.recolterMaintenant("actus")).resolves.toMatchObject({ statut: "erreur" });
-  const etat = await readWidgetState(dossierWidgets, "actus");
-  expect(etat).toEqual({
+  const state = await readWidgetState(dossierWidgets, "actus");
+  expect(state).toEqual({
     statut: "erreur",
     derniereMaj: "2026-10-27T08:00:00.000Z",
     derniereTentative: DEBUT.toISOString(),
@@ -411,7 +411,7 @@ test("at each check, grants and data of a widget whose folder disappeared are er
     await accorder(dossierWidgets, id, { domaines: ["x.fr"], publiques: [], profil: "defaut" });
   }
   // An unreadable widget keeps its data: its folder exists.
-  await ecrireWidget(c, "casse", "{", {});
+  await writeWidget(c, "casse", "{", {});
   await writeData(dossierWidgets, "casse", { secret: "casse" });
   await p.verifier({ auLancement: false });
   expect(Object.keys(await lireAccords(dossierWidgets)).sort()).toEqual(["actus"]);
@@ -425,42 +425,42 @@ test("at each check, grants and data of a widget whose folder disappeared are er
 });
 
 test("a widget with workflow.json without recolte.mjs is harvested when it is due", async () => {
-  const { p, c, recoltes } = await preparer();
-  await ecrireWidget(c, "flux", declarationWidget(undefined, { recolte: { minutes: 60 } }), {
+  const { p, c, recoltes: harvests } = await preparer();
+  await writeWidget(c, "flux", declarationWidget(undefined, { recolte: { minutes: 60 } }), {
     "workflow.json": JSON.stringify({ version: 1, blocs: [{ id: "sortie", type: "sortie", parametres: { vers: "widget" } }] }),
   });
   expect((await p.verifier({ auLancement: true })).sort()).toEqual(["actus", "flux"]);
-  expect(recoltes.sort()).toEqual(["actus", "flux"]);
+  expect(harvests.sort()).toEqual(["actus", "flux"]);
 });
 
 test("trigger: planifiee for the check, manuelle by default for recolterMaintenant, otherwise the requested one", async () => {
-  const { p, recolter } = await preparer();
+  const { p, recolter: harvest } = await preparer();
   await p.verifier({ auLancement: true });
   await p.recolterMaintenant("actus");
   await p.recolterMaintenant("actus", "agent");
-  expect(recolter.mock.calls.map(([o]) => o.declencheur)).toEqual(["planifiee", "manuelle", "agent"]);
-  expect(recolter.mock.calls[0]![0].interrompue).toBeTypeOf("function");
+  expect(harvest.mock.calls.map(([o]) => o.declencheur)).toEqual(["planifiee", "manuelle", "agent"]);
+  expect(harvest.mock.calls[0]![0].interrompue).toBeTypeOf("function");
 });
 
 test("stop during the run: run interrupted, previous state restored", async () => {
-  const { p, recolter, dossierWidgets, atelier } = await preparer();
-  const avant: WidgetState = { statut: "ok", derniereMaj: "2026-10-27T08:00:00.000Z", derniereTentative: "2026-10-27T08:00:00.000Z" };
-  await writeWidgetState(dossierWidgets, "actus", avant);
-  let tuer!: () => void;
+  const { p, recolter: harvest, dossierWidgets, atelier } = await preparer();
+  const before: WidgetState = { statut: "ok", derniereMaj: "2026-10-27T08:00:00.000Z", derniereTentative: "2026-10-27T08:00:00.000Z" };
+  await writeWidgetState(dossierWidgets, "actus", before);
+  let kill!: () => void;
   const lance = vi.fn();
   // A container that never answers: only the stop ends it.
   const lancer: ProcessLauncher = () => {
     lance();
-    const fin = new Promise<number | null>((r) => (tuer = () => r(null)));
-    return { stdin: new PassThrough(), stdout: new PassThrough(), stderr: new PassThrough(), tuer: () => tuer(), fin };
+    const fin = new Promise<number | null>((r) => (kill = () => r(null)));
+    return { stdin: new PassThrough(), stdout: new PassThrough(), stderr: new PassThrough(), tuer: () => kill(), fin };
   };
-  recolter.mockImplementation((o) => runHarvest({ ...o, lancer }));
-  atelier.supprimerRecolte = async () => tuer();
-  const verif = p.verifier({ auLancement: true });
+  harvest.mockImplementation((o) => runHarvest({ ...o, lancer }));
+  atelier.supprimerRecolte = async () => kill();
+  const check = p.verifier({ auLancement: true });
   await vi.waitFor(() => expect(lance).toHaveBeenCalled());
   await p.arreter();
-  await verif;
-  expect(await readWidgetState(dossierWidgets, "actus")).toEqual(avant);
+  await check;
+  expect(await readWidgetState(dossierWidgets, "actus")).toEqual(before);
   expect((await listerExecutions(join(dossierWidgets, "actus"))).map((e) => e.statut)).toEqual(["interrompue"]);
 });
 
@@ -478,43 +478,43 @@ test("the vanished folder also erases runs and memory", async () => {
 });
 
 /** A promise to resolve from the outside. */
-function differe<T>() {
-  let resoudre!: (v: T) => void;
-  const promesse = new Promise<T>((ok) => (resoudre = ok));
-  return { promesse, resoudre };
+function deferred<T>() {
+  let resolve!: (v: T) => void;
+  const promise = new Promise<T>((ok) => (resolve = ok));
+  return { promesse: promise, resoudre: resolve };
 }
 
 test("a scheduled run due during a trial waits for its end", async () => {
-  const { p, recolter, recolterEssai } = await preparer();
+  const { p, recolter: harvest, recolterEssai: harvestAttempt } = await preparer();
   const journal: string[] = [];
-  const fin = differe<AttemptResult>();
-  recolterEssai.mockImplementation(async (o) => {
+  const fin = deferred<AttemptResult>();
+  harvestAttempt.mockImplementation(async (o) => {
     journal.push(`essai ${o.id} ${o.origine} ${o.depart}`);
     const r = await fin.promesse;
     journal.push("fin de l'essai");
     return r;
   });
-  recolter.mockImplementation(async (o) => {
+  harvest.mockImplementation(async (o) => {
     journal.push(`récolte ${o.id} ${o.declencheur}`);
     return { etat: { statut: "ok", derniereMaj: DEBUT.toISOString(), derniereTentative: DEBUT.toISOString() } };
   });
-  const essai = p.rejouer("actus", "2026-10-28T09-00-00-000Z", "liste");
+  const attempt = p.rejouer("actus", "2026-10-28T09-00-00-000Z", "liste");
   await vi.waitFor(() => expect(journal).toEqual(["essai actus 2026-10-28T09-00-00-000Z liste"]));
   const verification = p.verifier({ auLancement: true });
   await new Promise((r) => setTimeout(r, 30));
   expect(journal).toHaveLength(1);
   fin.resoudre({ ok: true, execution: "x-essai", statut: "reussie" });
-  expect(await essai).toEqual({ ok: true, execution: "x-essai", statut: "reussie" });
+  expect(await attempt).toEqual({ ok: true, execution: "x-essai", statut: "reussie" });
   expect(await verification).toEqual(["actus"]);
   expect(journal).toEqual(["essai actus 2026-10-28T09-00-00-000Z liste", "fin de l'essai", "récolte actus planifiee"]);
 });
 
 test("two rejouer requested back to back run one after the other", async () => {
-  const { p, recolterEssai } = await preparer();
+  const { p, recolterEssai: harvestAttempt } = await preparer();
   const journal: string[] = [];
-  const fins = [differe<void>(), differe<void>()];
+  const fins = [deferred<void>(), deferred<void>()];
   let n = 0;
-  recolterEssai.mockImplementation(async (o) => {
+  harvestAttempt.mockImplementation(async (o) => {
     const i = n++;
     journal.push(`début ${i} ${o.depart}`);
     await fins[i]!.promesse;
@@ -534,16 +534,16 @@ test("two rejouer requested back to back run one after the other", async () => {
 });
 
 test("an avancement or lecture trace does not change a widget's live tracking", async () => {
-  const { p, recolterEssai, directs } = await preparer();
+  const { p, recolterEssai: harvestAttempt, directs } = await preparer();
   const vus: { avant: DirectState; apres: DirectState; signales: number }[] = [];
-  recolterEssai.mockImplementation(async (o) => {
+  harvestAttempt.mockImplementation(async (o) => {
     o.surTrace!({ bloc: "liste", etape: "debut" });
-    const avant = structuredClone(p.direct());
-    const signales = directs.length;
+    const before = structuredClone(p.direct());
+    const reported = directs.length;
     o.surTrace!({ bloc: "liste", etape: "avancement", faits: 2, total: 5 });
     o.surTrace!({ bloc: "liste", etape: "lecture", hote: "gitlab.com" });
     o.surTrace!({ bloc: "autre", etape: "lecture", hote: "gitlab.com" });
-    vus.push({ avant, apres: structuredClone(p.direct()), signales: directs.length - signales });
+    vus.push({ avant: before, apres: structuredClone(p.direct()), signales: directs.length - reported });
     return { ok: true, execution: attemptId(DEBUT.toISOString()), statut: "reussie" };
   });
   await p.rejouer("actus", "o", "liste");
@@ -553,10 +553,10 @@ test("an avancement or lecture trace does not change a widget's live tracking", 
 });
 
 test("direct() shows the running widget, its kind and its blocks as traces come, then nothing", async () => {
-  const { p, recolterEssai, directs, dossierWidgets } = await preparer();
+  const { p, recolterEssai: harvestAttempt, directs, dossierWidgets } = await preparer();
   expect(p.direct()).toEqual({ courants: [], enAttente: [] });
   const vus: DirectState[] = [];
-  recolterEssai.mockImplementation(async (o) => {
+  harvestAttempt.mockImplementation(async (o) => {
     o.surTrace!({ bloc: "liste", etape: "debut" });
     vus.push(structuredClone(p.direct()));
     o.surTrace!({ bloc: "liste", etape: "fin", statut: "reussi", elements: 3 });
@@ -592,31 +592,31 @@ test("direct() shows the running widget, its kind and its blocks as traces come,
 });
 
 test("enAttente lists a widget requested while another runs", async () => {
-  const { p, recolterEssai, recoltes } = await preparer();
-  const fin = differe<void>();
-  recolterEssai.mockImplementation(async () => {
+  const { p, recolterEssai: harvestAttempt, recoltes: harvests } = await preparer();
+  const fin = deferred<void>();
+  harvestAttempt.mockImplementation(async () => {
     await fin.promesse;
     return { ok: true, execution: "e-essai", statut: "reussie" };
   });
-  const essai = p.rejouer("actus", "o", "liste");
+  const attempt = p.rejouer("actus", "o", "liste");
   await vi.waitFor(() => expect(p.direct().courants[0]?.widget).toBe("actus"));
-  const autre = p.recolterMaintenant("fixe");
+  const other = p.recolterMaintenant("fixe");
   await vi.waitFor(() => expect(p.direct().enAttente).toEqual(["fixe"]));
-  expect(recoltes).toEqual([]);
+  expect(harvests).toEqual([]);
   fin.resoudre();
-  await essai;
-  await autre;
-  expect(recoltes).toEqual(["fixe"]);
+  await attempt;
+  await other;
+  expect(harvests).toEqual(["fixe"]);
   expect(p.direct()).toEqual({ courants: [], enAttente: [] });
 });
 
 test("workshop stopped: rejouer refuses without changing the state", async () => {
-  const { p, recolterEssai, dossierWidgets, changements } = await preparer({ atelier: "arrete" });
-  const etat: WidgetState = { statut: "ok", derniereMaj: "2026-10-27T08:00:00.000Z", derniereTentative: "2026-10-27T08:00:00.000Z" };
-  await writeWidgetState(dossierWidgets, "actus", etat);
+  const { p, recolterEssai: harvestAttempt, dossierWidgets, changements } = await preparer({ atelier: "arrete" });
+  const state: WidgetState = { statut: "ok", derniereMaj: "2026-10-27T08:00:00.000Z", derniereTentative: "2026-10-27T08:00:00.000Z" };
+  await writeWidgetState(dossierWidgets, "actus", state);
   expect(await p.rejouer("actus", "o", "liste")).toEqual({ ok: false, erreur: WORKSHOP_STOPPED_ERROR });
-  expect(recolterEssai).not.toHaveBeenCalled();
-  expect(await readWidgetState(dossierWidgets, "actus")).toEqual(etat);
+  expect(harvestAttempt).not.toHaveBeenCalled();
+  expect(await readWidgetState(dossierWidgets, "actus")).toEqual(state);
   expect(changements).not.toHaveBeenCalled();
 });
 
@@ -640,19 +640,19 @@ test("widgetDu: a widget with hours without minutes is never due by frequency", 
 // --- Two lanes: watches (dureeMaxMinutes > 3) run apart ---
 
 /** A widget that harvests every 60 min, with the given maximum duration. */
-async function ecrireVeille(c: SpacePaths, id: string, dureeMaxMinutes: number) {
-  await ecrireWidget(c, id, declarationWidget(undefined, { recolte: { minutes: 60, dureeMaxMinutes } }), { "recolte.mjs": "export default () => 1" });
+async function writeWatch(c: SpacePaths, id: string, maxDurationMinutes: number) {
+  await writeWidget(c, id, declarationWidget(undefined, { recolte: { minutes: 60, dureeMaxMinutes: maxDurationMinutes } }), { "recolte.mjs": "export default () => 1" });
 }
 
 /** The harvests of the `retenus` widgets wait for `liberer(id)`; all then go through the base fake harvest. */
-function retenir(recolter: Awaited<ReturnType<typeof preparer>>["recolter"], retenus: string[]) {
-  const base = recolter.getMockImplementation()!;
+function keep(harvest: Awaited<ReturnType<typeof preparer>>["recolter"], kept: string[]) {
+  const base = harvest.getMockImplementation()!;
   const journal: string[] = [];
   const fins = new Map<string, (() => void)[]>();
-  recolter.mockImplementation(async (o) => {
+  harvest.mockImplementation(async (o) => {
     journal.push(`début ${o.id}`);
-    if (retenus.includes(o.id)) {
-      const d = differe<void>();
+    if (kept.includes(o.id)) {
+      const d = deferred<void>();
       fins.set(o.id, [...(fins.get(o.id) ?? []), d.resoudre]);
       await d.promesse;
     }
@@ -675,17 +675,17 @@ function retenir(recolter: Awaited<ReturnType<typeof preparer>>["recolter"], ret
 test("voieDe: long beyond VOIE_LONGUE_MINUTES (3), short otherwise", async () => {
   expect(LONG_ROUTE_MINUTES).toBe(3);
   const { c, dossierWidgets } = await preparer();
-  await ecrireVeille(c, "trois", 3);
-  await ecrireVeille(c, "quatre", 4);
+  await writeWatch(c, "trois", 3);
+  await writeWatch(c, "quatre", 4);
   const widgets = (await readHome(c, dossierWidgets)).widgets;
-  const voie = (id: string) => routeOf(widgets.find((w) => w.id === id)!);
-  expect([voie("actus"), voie("trois"), voie("quatre"), voie("fixe")]).toEqual(["courte", "courte", "longue", "courte"]);
+  const route = (id: string) => routeOf(widgets.find((w) => w.id === id)!);
+  expect([route("actus"), route("trois"), route("quatre"), route("fixe")]).toEqual(["courte", "courte", "longue", "courte"]);
 });
 
 test("a long run (dureeMaxMinutes 30) does not prevent a short widget from running", async () => {
-  const { p, c, recolter } = await preparer();
-  await ecrireVeille(c, "veille", 30);
-  const r = retenir(recolter, ["veille"]);
+  const { p, c, recolter: harvest } = await preparer();
+  await writeWatch(c, "veille", 30);
+  const r = keep(harvest, ["veille"]);
   // The check launches the watch without waiting for it, and harvests « actus » while it runs.
   expect(await p.verifier({ auLancement: true })).toEqual(["actus"]);
   expect(r.journal).toContain("fin actus");
@@ -698,10 +698,10 @@ test("a long run (dureeMaxMinutes 30) does not prevent a short widget from runni
 });
 
 test("two long widgets: one after the other", async () => {
-  const { p, c, recolter } = await preparer();
-  await ecrireVeille(c, "veille-a", 30);
-  await ecrireVeille(c, "veille-b", 20);
-  const r = retenir(recolter, ["veille-a", "veille-b"]);
+  const { p, c, recolter: harvest } = await preparer();
+  await writeWatch(c, "veille-a", 30);
+  await writeWatch(c, "veille-b", 20);
+  const r = keep(harvest, ["veille-a", "veille-b"]);
   await p.verifier({ auLancement: true });
   await vi.waitFor(() => expect(r.journal.filter((l) => l.startsWith("début veille"))).toHaveLength(1));
   await new Promise((ok) => setImmediate(ok));
@@ -716,33 +716,33 @@ test("two long widgets: one after the other", async () => {
 });
 
 test("a long widget and its trial: never at the same time", async () => {
-  const { p, c, recolter, recolterEssai } = await preparer();
-  await ecrireVeille(c, "veille", 30);
-  const r = retenir(recolter, ["veille"]);
-  recolterEssai.mockImplementation(async (o) => {
+  const { p, c, recolter: harvest, recolterEssai: harvestAttempt } = await preparer();
+  await writeWatch(c, "veille", 30);
+  const r = keep(harvest, ["veille"]);
+  harvestAttempt.mockImplementation(async (o) => {
     r.journal.push(`essai ${o.id}`);
     return { ok: true, execution: "e-essai", statut: "reussie" };
   });
   const execution = p.recolterMaintenant("veille");
   await vi.waitFor(() => expect(r.journal).toEqual(["début veille"]));
-  const essai = p.rejouer("veille", "o", "liste");
+  const attempt = p.rejouer("veille", "o", "liste");
   await vi.waitFor(() => expect(p.direct().enAttente).toEqual(["veille"]));
   // A short widget runs in the meantime: the waiting trial does not block its lane.
   await p.recolterMaintenant("actus");
   expect(r.journal).not.toContain("essai veille");
   r.liberer("veille");
   await execution;
-  expect(await essai).toMatchObject({ ok: true });
+  expect(await attempt).toMatchObject({ ok: true });
   expect(r.journal.indexOf("fin veille")).toBeLessThan(r.journal.indexOf("essai veille"));
 });
 
 test("dureeMaxMinutes changed from 30 to 2 during the run: the new request waits for the first to end", async () => {
-  const { p, c, recolter, recoltes } = await preparer();
-  await ecrireVeille(c, "veille", 30);
-  const r = retenir(recolter, ["veille"]);
+  const { p, c, recolter: harvest, recoltes: harvests } = await preparer();
+  await writeWatch(c, "veille", 30);
+  const r = keep(harvest, ["veille"]);
   const premiere = p.recolterMaintenant("veille");
   await vi.waitFor(() => expect(r.journal).toEqual(["début veille"]));
-  await ecrireVeille(c, "veille", 2);
+  await writeWatch(c, "veille", 2);
   const seconde = p.recolterMaintenant("veille");
   // The short lane stays free for the other widgets, and a check does not wait for this busy widget.
   await p.recolterMaintenant("actus");
@@ -752,20 +752,20 @@ test("dureeMaxMinutes changed from 30 to 2 during the run: the new request waits
   await premiere;
   await vi.waitFor(() => expect(r.journal.filter((l) => l === "début veille")).toHaveLength(2));
   expect(r.journal.indexOf("fin veille")).toBeLessThan(r.journal.lastIndexOf("début veille"));
-  expect(recoltes).toEqual(["actus", "veille"]);
+  expect(harvests).toEqual(["actus", "veille"]);
   r.liberer("veille");
   expect((await seconde).statut).toBe("ok");
 });
 
 test("a check is not stuck by a long run: a short widget due later is harvested", async () => {
-  const { p, c, recolter, avancer } = await preparer();
-  await ecrireVeille(c, "veille", 30);
-  const r = retenir(recolter, ["veille"]);
+  const { p, c, recolter: harvest, avancer: advance } = await preparer();
+  await writeWatch(c, "veille", 30);
+  const r = keep(harvest, ["veille"]);
   expect(await p.verifier({ auLancement: true })).toEqual(["actus"]);
-  avancer(61 * MIN);
+  advance(61 * MIN);
   // « actus » is due again; the watch too according to its data, but it is still running: not relaunched.
   expect(await p.verifier({ auLancement: false })).toEqual(["actus"]);
-  avancer(61 * MIN);
+  advance(61 * MIN);
   expect(await p.verifier({ auLancement: false })).toEqual(["actus"]);
   expect(r.journal.filter((l) => l === "début veille")).toHaveLength(1);
   r.liberer("veille");
@@ -773,9 +773,9 @@ test("a check is not stuck by a long run: a short widget due later is harvested"
 });
 
 test("direct().courants lists both runs", async () => {
-  const { p, c, recolter } = await preparer();
-  await ecrireVeille(c, "veille", 30);
-  const r = retenir(recolter, ["veille", "actus"]);
+  const { p, c, recolter: harvest } = await preparer();
+  await writeWatch(c, "veille", 30);
+  const r = keep(harvest, ["veille", "actus"]);
   void p.verifier({ auLancement: true });
   await vi.waitFor(() => expect(r.journal).toEqual(expect.arrayContaining(["début veille", "début actus"])));
   await vi.waitFor(() =>
@@ -794,13 +794,13 @@ test("direct().courants lists both runs", async () => {
 });
 
 test("arreter removes both containers and waits for both lanes", async () => {
-  const { p, c, recolter, atelier } = await preparer();
-  await ecrireVeille(c, "veille", 30);
-  const r = retenir(recolter, ["veille", "actus"]);
-  const supprimees: string[] = [];
+  const { p, c, recolter: harvest, atelier } = await preparer();
+  await writeWatch(c, "veille", 30);
+  const r = keep(harvest, ["veille", "actus"]);
+  const deleted: string[] = [];
   const tour = () => new Promise((ok) => setImmediate(ok));
   atelier.supprimerRecolte = async (id) => {
-    supprimees.push(id);
+    deleted.push(id);
     if (id === "actus") return void setImmediate(() => r.liberer(id));
     // The killed watch ends well after the short one (it still writes its memory and its « interrompue » run).
     void (async () => {
@@ -812,64 +812,64 @@ test("arreter removes both containers and waits for both lanes", async () => {
   void p.verifier({ auLancement: true });
   await vi.waitFor(() => expect(p.direct().courants).toHaveLength(2));
   await p.arreter();
-  expect(supprimees.sort()).toEqual(["actus", "veille"]);
+  expect(deleted.sort()).toEqual(["actus", "veille"]);
   expect(r.journal).toEqual(expect.arrayContaining(["fin actus", "fin veille"]));
 });
 
 test("arreter: a long run that does not finish is awaited in a bounded way, its container removed twice", async () => {
-  const { p, c, recolter, atelier } = await preparer({
+  const { p, c, recolter: harvest, atelier } = await preparer({
     options: { attenteArretMs: 1 },
   });
-  await ecrireVeille(c, "veille", 30);
-  const r = retenir(recolter, ["veille"]);
-  const supprimees: string[] = [];
-  atelier.supprimerRecolte = async (id) => void supprimees.push(id);
+  await writeWatch(c, "veille", 30);
+  const r = keep(harvest, ["veille"]);
+  const deleted: string[] = [];
+  atelier.supprimerRecolte = async (id) => void deleted.push(id);
   await p.verifier({ auLancement: true });
   await vi.waitFor(() => expect(r.journal).toContain("début veille"));
   await p.arreter();
-  expect(supprimees).toEqual(["veille", "veille"]);
+  expect(deleted).toEqual(["veille", "veille"]);
   r.liberer("veille");
 });
 
 test("the AI goes through the dispatcher: each run has its view, calls reach the given AI, refused after its end", async () => {
-  const appels: string[] = [];
-  const ia = { kev: async () => "k", gemma: async (o: { prompt: string }) => (appels.push(o.prompt), "g") };
-  const { p, c, recolter, recolterEssai } = await preparer({ options: { ia } });
-  await ecrireVeille(c, "veille", 30);
-  const reponses: unknown[] = [];
-  const base = recolter.getMockImplementation()!;
-  recolter.mockImplementation(async (o) => {
-    reponses.push(await o.ia!.gemma({ prompt: o.id }));
+  const calls: string[] = [];
+  const ia = { kev: async () => "k", gemma: async (o: { prompt: string }) => (calls.push(o.prompt), "g") };
+  const { p, c, recolter: harvest, recolterEssai: harvestAttempt } = await preparer({ options: { ia } });
+  await writeWatch(c, "veille", 30);
+  const responses: unknown[] = [];
+  const base = harvest.getMockImplementation()!;
+  harvest.mockImplementation(async (o) => {
+    responses.push(await o.ia!.gemma({ prompt: o.id }));
     return base(o);
   });
-  recolterEssai.mockImplementation(async (o) => {
-    reponses.push(await o.ia!.gemma({ prompt: `essai ${o.id}` }));
+  harvestAttempt.mockImplementation(async (o) => {
+    responses.push(await o.ia!.gemma({ prompt: `essai ${o.id}` }));
     return { ok: true, execution: "e-essai", statut: "reussie" };
   });
   await p.recolterMaintenant("actus");
   await p.recolterMaintenant("veille");
   await p.rejouer("actus", "o", "liste");
-  const vues = [recolter.mock.calls[0]![0].ia, recolter.mock.calls[1]![0].ia, recolterEssai.mock.calls[0]![0].ia];
-  expect(new Set(vues).size).toBe(3);
-  for (const v of vues) expect(v).not.toBe(ia);
-  expect(reponses).toEqual(["g", "g", "g"]);
-  expect(appels).toEqual(["actus", "veille", "essai actus"]);
+  const views = [harvest.mock.calls[0]![0].ia, harvest.mock.calls[1]![0].ia, harvestAttempt.mock.calls[0]![0].ia];
+  expect(new Set(views).size).toBe(3);
+  for (const v of views) expect(v).not.toBe(ia);
+  expect(responses).toEqual(["g", "g", "g"]);
+  expect(calls).toEqual(["actus", "veille", "essai actus"]);
   // The run finished, its view refuses: a late call no longer goes to the AI.
-  await expect(vues[0]!.gemma({ prompt: "tard" })).rejects.toThrow(AI_ABANDONED);
-  expect(appels).toHaveLength(3);
+  await expect(views[0]!.gemma({ prompt: "tard" })).rejects.toThrow(AI_ABANDONED);
+  expect(calls).toHaveLength(3);
 });
 
 test("dureeMaxMinutes changed from 2 to 30 while a request waits: it goes into the long lane", async () => {
-  const { p, c, recolter } = await preparer();
-  await ecrireVeille(c, "veille", 2);
-  const r = retenir(recolter, ["veille"]);
+  const { p, c, recolter: harvest } = await preparer();
+  await writeWatch(c, "veille", 2);
+  const r = keep(harvest, ["veille"]);
   const premiere = p.recolterMaintenant("veille");
   await vi.waitFor(() => expect(r.journal).toEqual(["début veille"]));
   const seconde = p.recolterMaintenant("veille");
   // Every read the request would do right away (lane choice on request) is finished before the change.
   await new Promise((ok) => setImmediate(ok));
   await vi.waitFor(() => expect(lectures.enVol).toBe(0));
-  await ecrireVeille(c, "veille", 30);
+  await writeWatch(c, "veille", 30);
   r.liberer("veille");
   await premiere;
   await vi.waitFor(() => expect(r.journal.filter((l) => l === "début veille")).toHaveLength(2));
@@ -881,16 +881,16 @@ test("dureeMaxMinutes changed from 2 to 30 while a request waits: it goes into t
 });
 
 test("widget changed from 30 to 2 just before a trial: the trial goes through during another widget's watch", async () => {
-  const { p, c, recolter, recolterEssai } = await preparer();
-  await ecrireVeille(c, "veille-a", 30);
-  await ecrireVeille(c, "veille-b", 30);
-  const r = retenir(recolter, ["veille-a"]);
+  const { p, c, recolter: harvest, recolterEssai: harvestAttempt } = await preparer();
+  await writeWatch(c, "veille-a", 30);
+  await writeWatch(c, "veille-b", 30);
+  const r = keep(harvest, ["veille-a"]);
   // Watch A runs in the long lane; the scheduler read B at 30 in the meantime.
   const a = p.recolterMaintenant("veille-a");
   await vi.waitFor(() => expect(r.journal).toEqual(["début veille-a"]));
-  await ecrireVeille(c, "veille-b", 2);
+  await writeWatch(c, "veille-b", 2);
   expect(await p.rejouer("veille-b", "o", "liste")).toMatchObject({ ok: true });
-  expect(recolterEssai.mock.calls.map((x) => x[0].id)).toEqual(["veille-b"]);
+  expect(harvestAttempt.mock.calls.map((x) => x[0].id)).toEqual(["veille-b"]);
   expect(r.journal).not.toContain("fin veille-a");
   r.liberer("veille-a");
   await a;
@@ -899,361 +899,361 @@ test("widget changed from 30 to 2 just before a trial: the trial goes through du
 // --- Heures fixes ---
 
 /** Local time of October 29, 2026 (or of the given day). */
-const le = (h: number, m: number, jour = 29) => new Date(2026, 9, jour, h, m);
+const le = (h: number, m: number, day = 29) => new Date(2026, 9, day, h, m);
 
 /** A widget « matin » at fixed hours (and at a frequency if `minutes`). */
-async function ecrireMatin(c: SpacePaths, recolte: { heures: string[]; minutes?: number }, extra: Record<string, unknown> = {}) {
-  await ecrireWidget(c, "matin", declarationWidget(undefined, { recolte, ...extra }), { "recolte.mjs": "export default () => 1" });
+async function writeMorning(c: SpacePaths, harvest: { heures: string[]; minutes?: number }, extra: Record<string, unknown> = {}) {
+  await writeWidget(c, "matin", declarationWidget(undefined, { recolte: harvest, ...extra }), { "recolte.mjs": "export default () => 1" });
 }
 
-const duMatin = (recoltes: string[]) => recoltes.filter((x) => x === "matin").length;
+const duMatin = (harvests: string[]) => harvests.filter((x) => x === "matin").length;
 
 test("hours and minutes: both apply", async () => {
-  const { p, c, recoltes, fixer, dossierWidgets } = await preparer();
-  await ecrireMatin(c, { minutes: 120, heures: ["07:00"] });
+  const { p, c, recoltes: harvests, fixer, dossierWidgets } = await preparer();
+  await writeMorning(c, { minutes: 120, heures: ["07:00"] });
   fixer(le(6, 0));
   await p.verifier({ auLancement: true });
-  expect(duMatin(recoltes)).toBe(1); // by frequency (never harvested)
+  expect(duMatin(harvests)).toBe(1); // by frequency (never harvested)
   // Before the first hour of the day: no effect on the tracking.
   expect((await readWidgetState(dossierWidgets, "matin")).heures).toBeUndefined();
   fixer(le(6, 30));
   await p.verifier({ auLancement: false });
-  expect(duMatin(recoltes)).toBe(1);
+  expect(duMatin(harvests)).toBe(1);
   fixer(le(7, 0));
   await p.verifier({ auLancement: false });
-  expect(duMatin(recoltes)).toBe(2); // by the hour, the data is only an hour old
+  expect(duMatin(harvests)).toBe(2); // by the hour, the data is only an hour old
   expect((await readWidgetState(dossierWidgets, "matin")).heures).toEqual({ faite: "2026-10-29T07:00", echecs: null });
   for (const [h, m] of [[7, 1], [8, 59]] as const) {
     fixer(le(h, m));
     await p.verifier({ auLancement: false });
   }
-  expect(duMatin(recoltes)).toBe(2);
+  expect(duMatin(harvests)).toBe(2);
   fixer(le(9, 0));
   await p.verifier({ auLancement: false });
-  expect(duMatin(recoltes)).toBe(3); // by frequency, 2 h after 07:00
+  expect(duMatin(harvests)).toBe(3); // by frequency, 2 h after 07:00
 });
 
 test("interrupted: caught up at the next launch the same day", async () => {
-  const { p, c, recoltes, recolter, fixer, dossierWidgets, atelier, relancer } = await preparer();
-  await ecrireMatin(c, { heures: ["07:00"] });
-  const base = recolter.getMockImplementation()!;
-  let tuer: (() => void) | undefined;
-  recolter.mockImplementation(async (o) => {
+  const { p, c, recoltes: harvests, recolter: harvest, fixer, dossierWidgets, atelier, relancer: relaunch } = await preparer();
+  await writeMorning(c, { heures: ["07:00"] });
+  const base = harvest.getMockImplementation()!;
+  let kill: (() => void) | undefined;
+  harvest.mockImplementation(async (o) => {
     if (o.id !== "matin") return base(o);
-    recoltes.push(o.id);
+    harvests.push(o.id);
     await writeWidgetState(o.dossierWidgets, o.id, { statut: "en-cours", derniereMaj: null, derniereTentative: le(7, 0).toISOString() });
-    await new Promise<void>((r) => (tuer = r));
+    await new Promise<void>((r) => (kill = r));
     return { etat: { statut: "erreur", derniereMaj: null, derniereTentative: le(7, 0).toISOString(), erreur: "Interrompue" } };
   });
-  atelier.supprimerRecolte = async () => tuer?.();
+  atelier.supprimerRecolte = async () => kill?.();
   fixer(le(7, 0));
-  const verif = p.verifier({ auLancement: true });
-  await vi.waitFor(() => expect(duMatin(recoltes)).toBe(1));
+  const check = p.verifier({ auLancement: true });
+  await vi.waitFor(() => expect(duMatin(harvests)).toBe(1));
   // `tuer` is only set after the in-progress state is written: without it, arreter() would wait 15 s (F5).
-  await vi.waitFor(() => expect(tuer).toBeDefined());
+  await vi.waitFor(() => expect(kill).toBeDefined());
   await p.arreter();
-  await verif;
+  await check;
   // Interrupted: no effect on the tracking, the earlier state is restored.
   expect(await readWidgetState(dossierWidgets, "matin")).toEqual({ statut: "ok", derniereMaj: null, derniereTentative: null });
-  recolter.mockImplementation(base);
+  harvest.mockImplementation(base);
   fixer(le(7, 30));
-  const p2 = relancer();
+  const p2 = relaunch();
   await p2.verifier({ auLancement: true });
-  expect(duMatin(recoltes)).toBe(2);
+  expect(duMatin(harvests)).toBe(2);
   expect((await readWidgetState(dossierWidgets, "matin")).heures).toEqual({ faite: "2026-10-29T07:00", echecs: null });
   fixer(le(7, 31));
   await p2.verifier({ auLancement: false });
-  expect(duMatin(recoltes)).toBe(2);
+  expect(duMatin(harvests)).toBe(2);
 });
 
 test("abrupt stop (in-progress at launch): the missed hour is caught up once", async () => {
-  const { p, c, recoltes, recolter, fixer, dossierWidgets } = await preparer();
-  await ecrireMatin(c, { heures: ["07:00", "12:00"] });
+  const { p, c, recoltes: harvests, recolter: harvest, fixer, dossierWidgets } = await preparer();
+  await writeMorning(c, { heures: ["07:00", "12:00"] });
   await writeWidgetState(dossierWidgets, "matin", {
     statut: "en-cours", derniereMaj: null, derniereTentative: le(12, 0).toISOString(), progression: { faits: 7, total: 12 },
     heures: { faite: "2026-10-29T07:00", echecs: null },
   });
   fixer(le(14, 0));
   await p.demarrer();
-  await vi.waitFor(() => expect(recolter.mock.settledResults.filter((r) => r.type === "fulfilled")).toHaveLength(2));
-  expect(duMatin(recoltes)).toBe(1);
+  await vi.waitFor(() => expect(harvest.mock.settledResults.filter((r) => r.type === "fulfilled")).toHaveLength(2));
+  expect(duMatin(harvests)).toBe(1);
   expect((await readWidgetState(dossierWidgets, "matin")).heures).toEqual({ faite: "2026-10-29T12:00", echecs: null });
   fixer(le(14, 1));
   await p.verifier({ auLancement: false });
-  expect(duMatin(recoltes)).toBe(1);
+  expect(duMatin(harvests)).toBe(1);
 });
 
 test("in-progress at launch of an hours widget already done today: not relaunched, its state restored", async () => {
-  const { p, c, recoltes, fixer, dossierWidgets } = await preparer();
-  await ecrireMatin(c, { heures: ["07:00"] });
-  const heures = { faite: "2026-10-29T07:00", echecs: null };
+  const { p, c, recoltes: harvests, fixer, dossierWidgets } = await preparer();
+  await writeMorning(c, { heures: ["07:00"] });
+  const hours = { faite: "2026-10-29T07:00", echecs: null };
   await writeWidgetState(dossierWidgets, "matin", {
-    statut: "en-cours", derniereMaj: le(7, 5).toISOString(), derniereTentative: le(8, 0).toISOString(), progression: { faits: 7, total: 12 }, heures,
+    statut: "en-cours", derniereMaj: le(7, 5).toISOString(), derniereTentative: le(8, 0).toISOString(), progression: { faits: 7, total: 12 }, heures: hours,
   });
   fixer(le(9, 0));
   await p.verifier({ auLancement: true });
-  expect(duMatin(recoltes)).toBe(0);
+  expect(duMatin(harvests)).toBe(0);
   // No frozen « 7 / 12 ».
-  expect(await readWidgetState(dossierWidgets, "matin")).toEqual({ statut: "ok", derniereMaj: le(7, 5).toISOString(), derniereTentative: le(8, 0).toISOString(), heures });
+  expect(await readWidgetState(dossierWidgets, "matin")).toEqual({ statut: "ok", derniereMaj: le(7, 5).toISOString(), derniereTentative: le(8, 0).toISOString(), heures: hours });
 });
 
 test("in-progress at launch while a trial waits: the state is restored before any run, the widget relaunched afterwards", async () => {
-  const { p, recoltes, recolterEssai, dossierWidgets } = await preparer();
+  const { p, recoltes: harvests, recolterEssai: harvestAttempt, dossierWidgets } = await preparer();
   // Fresh data: only the abrupt stop makes it due at launch.
   await writeWidgetState(dossierWidgets, "actus", { statut: "en-cours", derniereMaj: DEBUT.toISOString(), derniereTentative: DEBUT.toISOString(), progression: { faits: 7, total: 12 } });
-  const fin = differe<AttemptResult>();
-  const commence = differe<void>();
-  recolterEssai.mockImplementation(async () => {
+  const fin = deferred<AttemptResult>();
+  const commence = deferred<void>();
+  harvestAttempt.mockImplementation(async () => {
     commence.resoudre();
     return fin.promesse;
   });
-  const essai = p.rejouer("actus", "o", "liste");
+  const attempt = p.rejouer("actus", "o", "liste");
   await commence.promesse;
   expect(await readWidgetState(dossierWidgets, "actus")).toEqual({ statut: "ok", derniereMaj: DEBUT.toISOString(), derniereTentative: DEBUT.toISOString() });
   const verification = p.verifier({ auLancement: true });
   fin.resoudre({ ok: true, execution: "x-essai", statut: "reussie" });
-  await essai;
+  await attempt;
   expect(await verification).toEqual(["actus"]);
-  expect(recoltes).toEqual(["actus"]);
+  expect(harvests).toEqual(["actus"]);
 });
 
 test("a trial does not count for the hour", async () => {
-  const { p, c, recoltes, fixer, dossierWidgets } = await preparer();
-  await ecrireMatin(c, { heures: ["07:00"] });
+  const { p, c, recoltes: harvests, fixer, dossierWidgets } = await preparer();
+  await writeMorning(c, { heures: ["07:00"] });
   fixer(le(7, 0));
   expect(await p.rejouer("matin", "o", "liste")).toMatchObject({ ok: true });
   expect((await readWidgetState(dossierWidgets, "matin")).heures).toBeUndefined();
   fixer(le(7, 1));
   await p.verifier({ auLancement: false });
-  expect(duMatin(recoltes)).toBe(1);
+  expect(duMatin(harvests)).toBe(1);
 });
 
 test("Mac asleep over several hours: a single catch-up on wake", async () => {
-  const { p, c, recoltes, fixer, dossierWidgets } = await preparer();
-  await ecrireMatin(c, { heures: ["07:00", "09:00", "12:00"] });
+  const { p, c, recoltes: harvests, fixer, dossierWidgets } = await preparer();
+  await writeMorning(c, { heures: ["07:00", "09:00", "12:00"] });
   fixer(le(6, 0));
   await p.verifier({ auLancement: true });
-  expect(duMatin(recoltes)).toBe(0);
+  expect(duMatin(harvests)).toBe(0);
   // Wake at 3 pm: 07:00, 09:00 and 12:00 missed, a single run.
   for (let t = le(15, 0).getTime(); t <= le(23, 59).getTime(); t += 30 * MIN) {
     fixer(new Date(t));
     await p.verifier({ auLancement: false });
   }
-  expect(duMatin(recoltes)).toBe(1);
+  expect(duMatin(harvests)).toBe(1);
   expect((await readWidgetState(dossierWidgets, "matin")).heures).toEqual({ faite: "2026-10-29T12:00", echecs: null });
 });
 
 test("midnight: the hour missed the day before is not caught up, the next day's is", async () => {
-  const { p, c, recoltes, fixer, dossierWidgets } = await preparer();
-  await ecrireMatin(c, { heures: ["07:00", "22:00"] });
+  const { p, c, recoltes: harvests, fixer, dossierWidgets } = await preparer();
+  await writeMorning(c, { heures: ["07:00", "22:00"] });
   // 22:00 missed on the 29th (WebAiOs closed); reopened after midnight.
   await writeWidgetState(dossierWidgets, "matin", { statut: "ok", derniereMaj: null, derniereTentative: null, heures: { faite: "2026-10-29T07:00", echecs: null } });
   for (const [h, m] of [[0, 0], [0, 1], [3, 0], [6, 59]] as const) {
     fixer(le(h, m, 30));
     await p.verifier({ auLancement: h === 0 && m === 0 });
   }
-  expect(duMatin(recoltes)).toBe(0);
+  expect(duMatin(harvests)).toBe(0);
   fixer(le(7, 0, 30));
   await p.verifier({ auLancement: false });
-  expect(duMatin(recoltes)).toBe(1);
+  expect(duMatin(harvests)).toBe(1);
   expect((await readWidgetState(dossierWidgets, "matin")).heures).toEqual({ faite: "2026-10-30T07:00", echecs: null });
 });
 
 test("failures: retried 15 min later, 3 times at most, then nothing until the next hour", async () => {
-  const { p, c, recoltes, fixer, dossierWidgets } = await preparer({ statut: "erreur" });
-  await ecrireMatin(c, { heures: ["07:00", "12:00"] });
+  const { p, c, recoltes: harvests, fixer, dossierWidgets } = await preparer({ statut: "erreur" });
+  await writeMorning(c, { heures: ["07:00", "12:00"] });
   const tentatives: string[] = [];
   for (let t = le(7, 0).getTime(); t <= le(12, 0).getTime(); t += MIN) {
     fixer(new Date(t));
-    const avant = duMatin(recoltes);
+    const before = duMatin(harvests);
     await p.verifier({ auLancement: false });
-    if (duMatin(recoltes) > avant) tentatives.push(`${new Date(t).getHours()}:${String(new Date(t).getMinutes()).padStart(2, "0")}`);
+    if (duMatin(harvests) > before) tentatives.push(`${new Date(t).getHours()}:${String(new Date(t).getMinutes()).padStart(2, "0")}`);
   }
   expect(tentatives).toEqual(["7:00", "7:15", "7:30", "7:45", "12:00"]);
   expect((await readWidgetState(dossierWidgets, "matin")).heures).toEqual({ faite: null, echecs: { heure: "2026-10-29T12:00", nombre: 1, fin: le(12, 0).toISOString() } });
 });
 
 test("a manual run before the first hour does not erase the previous day's tracking; one at 07:10 counts for 07:00", async () => {
-  const { p, c, recoltes, fixer, dossierWidgets } = await preparer();
-  await ecrireMatin(c, { heures: ["07:00"] });
-  const veille = { faite: "2026-10-28T07:00", echecs: null };
-  await writeWidgetState(dossierWidgets, "matin", { statut: "ok", derniereMaj: null, derniereTentative: null, heures: veille });
+  const { p, c, recoltes: harvests, fixer, dossierWidgets } = await preparer();
+  await writeMorning(c, { heures: ["07:00"] });
+  const watch = { faite: "2026-10-28T07:00", echecs: null };
+  await writeWidgetState(dossierWidgets, "matin", { statut: "ok", derniereMaj: null, derniereTentative: null, heures: watch });
   fixer(le(6, 50));
   expect(await p.recolterMaintenant("matin")).toMatchObject({ statut: "ok" });
-  expect((await readWidgetState(dossierWidgets, "matin")).heures).toEqual(veille);
+  expect((await readWidgetState(dossierWidgets, "matin")).heures).toEqual(watch);
   fixer(le(7, 10));
   expect(await p.recolterMaintenant("matin", "agent")).toMatchObject({ statut: "ok", heures: { faite: "2026-10-29T07:00", echecs: null } });
   fixer(le(7, 11));
   await p.verifier({ auLancement: false });
-  expect(duMatin(recoltes)).toBe(2);
+  expect(duMatin(harvests)).toBe(2);
 });
 
 test("the hours tracking survives a grant removed then granted again", async () => {
-  const { p, c, recoltes, fixer, dossierWidgets } = await preparer();
+  const { p, c, recoltes: harvests, fixer, dossierWidgets } = await preparer();
   const sources = { compte: ["mail.example.com"], publiques: [] };
-  await ecrireMatin(c, { heures: ["07:00"] }, { sources });
+  await writeMorning(c, { heures: ["07:00"] }, { sources });
   await accorder(dossierWidgets, "matin", { domaines: ["mail.example.com"], publiques: [], profil: "defaut" });
   fixer(le(7, 0));
   await p.verifier({ auLancement: false });
-  expect(duMatin(recoltes)).toBe(1);
-  const faite = { faite: "2026-10-29T07:00", echecs: null };
-  expect((await readWidgetState(dossierWidgets, "matin")).heures).toEqual(faite);
+  expect(duMatin(harvests)).toBe(1);
+  const done = { faite: "2026-10-29T07:00", echecs: null };
+  expect((await readWidgetState(dossierWidgets, "matin")).heures).toEqual(done);
   // Like refuserAccord: data erased, state waiting for a grant.
   await deleteData(dossierWidgets, "matin");
-  const avant = await readWidgetState(dossierWidgets, "matin");
-  await writeWidgetState(dossierWidgets, "matin", { statut: "accord-requis", derniereMaj: avant.derniereMaj, derniereTentative: avant.derniereTentative, erreur: "accord", erreurNoyau: true });
-  expect((await readWidgetState(dossierWidgets, "matin")).heures).toEqual(faite);
+  const before = await readWidgetState(dossierWidgets, "matin");
+  await writeWidgetState(dossierWidgets, "matin", { statut: "accord-requis", derniereMaj: before.derniereMaj, derniereTentative: before.derniereTentative, erreur: "accord", erreurNoyau: true });
+  expect((await readWidgetState(dossierWidgets, "matin")).heures).toEqual(done);
   fixer(le(7, 5));
   await p.verifier({ auLancement: false });
-  expect(duMatin(recoltes)).toBe(1);
+  expect(duMatin(harvests)).toBe(1);
   // Granted again: the harvest that follows the grant counts, and the hour is not redone.
   await accorder(dossierWidgets, "matin", { domaines: ["mail.example.com"], publiques: [], profil: "defaut" });
   await p.recolterMaintenant("matin");
-  expect((await readWidgetState(dossierWidgets, "matin")).heures).toEqual(faite);
+  expect((await readWidgetState(dossierWidgets, "matin")).heures).toEqual(done);
   fixer(le(7, 30));
   await p.verifier({ auLancement: false });
-  expect(duMatin(recoltes)).toBe(2);
+  expect(duMatin(harvests)).toBe(2);
 });
 
 test("watch failing after 30 min: the retry starts at the earliest 15 min after the failure ends", async () => {
-  const { p, c, recolter, fixer, horloge, avancer, dossierWidgets } = await preparer({ statut: "erreur" });
-  await ecrireMatin(c, { heures: ["07:00", "12:00"] });
-  const base = recolter.getMockImplementation()!;
+  const { p, c, recolter: harvest, fixer, horloge: clock, avancer: advance, dossierWidgets } = await preparer({ statut: "erreur" });
+  await writeMorning(c, { heures: ["07:00", "12:00"] });
+  const base = harvest.getMockImplementation()!;
   const departs: string[] = [];
-  recolter.mockImplementation(async (o) => {
+  harvest.mockImplementation(async (o) => {
     if (o.id !== "matin") return base(o);
-    const debut = horloge();
+    const debut = clock();
     departs.push(`${debut.getHours()}:${String(debut.getMinutes()).padStart(2, "0")}`);
     // derniereTentative = the start, like the real harvest; the failure comes 30 min later.
     await writeWidgetState(o.dossierWidgets, o.id, { statut: "en-cours", derniereMaj: null, derniereTentative: debut.toISOString() });
-    avancer(30 * MIN);
+    advance(30 * MIN);
     await writeWidgetState(o.dossierWidgets, o.id, { statut: "erreur", derniereMaj: null, derniereTentative: debut.toISOString(), erreur: "délai" });
     return { etat: { statut: "erreur", derniereMaj: null, derniereTentative: debut.toISOString(), erreur: "délai" } };
   });
   fixer(le(7, 0));
-  while (horloge() < le(11, 59)) {
+  while (clock() < le(11, 59)) {
     await p.verifier({ auLancement: false });
-    avancer(MIN);
+    advance(MIN);
   }
   expect(departs).toEqual(["7:00", "7:45", "8:30", "9:15"]);
-  const { heures } = await readWidgetState(dossierWidgets, "matin");
-  expect(heures?.echecs).toMatchObject({ heure: "2026-10-29T07:00", nombre: 4 });
+  const { heures: hours } = await readWidgetState(dossierWidgets, "matin");
+  expect(hours?.echecs).toMatchObject({ heure: "2026-10-29T07:00", nombre: 4 });
 });
 
 test("abrupt stop: the state from before the run (error) is restored; clean stop: nothing of the run remains", async () => {
-  const { p, c, recolter, fixer, dossierWidgets, atelier, recoltes } = await preparer();
-  await ecrireMatin(c, { heures: ["07:00"] });
-  const heures = { faite: "2026-10-29T07:00", echecs: null };
+  const { p, c, recolter: harvest, fixer, dossierWidgets, atelier, recoltes: harvests } = await preparer();
+  await writeMorning(c, { heures: ["07:00"] });
+  const hours = { faite: "2026-10-29T07:00", echecs: null };
   await writeWidgetState(dossierWidgets, "matin", {
-    statut: "en-cours", derniereMaj: null, derniereTentative: le(8, 0).toISOString(), progression: { faits: 7, total: 12 }, heures,
+    statut: "en-cours", derniereMaj: null, derniereTentative: le(8, 0).toISOString(), progression: { faits: 7, total: 12 }, heures: hours,
     avant: { statut: "erreur", erreur: "Sélecteur introuvable", erreurNoyau: true },
   });
   fixer(le(9, 0));
   await p.verifier({ auLancement: true });
-  expect(duMatin(recoltes)).toBe(0);
+  expect(duMatin(harvests)).toBe(0);
   expect(await readWidgetState(dossierWidgets, "matin")).toEqual({
-    statut: "erreur", derniereMaj: null, derniereTentative: le(8, 0).toISOString(), erreur: "Sélecteur introuvable", erreurNoyau: true, heures,
+    statut: "erreur", derniereMaj: null, derniereTentative: le(8, 0).toISOString(), erreur: "Sélecteur introuvable", erreurNoyau: true, heures: hours,
   });
   // Clean stop during a real harvest: the earlier state comes back without the avant field.
-  const avant: WidgetState = { statut: "ok", derniereMaj: "2026-10-27T08:00:00.000Z", derniereTentative: "2026-10-27T08:00:00.000Z" };
-  await writeWidgetState(dossierWidgets, "actus", avant);
-  let tuer!: () => void;
+  const before: WidgetState = { statut: "ok", derniereMaj: "2026-10-27T08:00:00.000Z", derniereTentative: "2026-10-27T08:00:00.000Z" };
+  await writeWidgetState(dossierWidgets, "actus", before);
+  let kill!: () => void;
   const lance = vi.fn();
   const lancer: ProcessLauncher = () => {
     lance();
-    const fin = new Promise<number | null>((r) => (tuer = () => r(null)));
-    return { stdin: new PassThrough(), stdout: new PassThrough(), stderr: new PassThrough(), tuer: () => tuer(), fin };
+    const fin = new Promise<number | null>((r) => (kill = () => r(null)));
+    return { stdin: new PassThrough(), stdout: new PassThrough(), stderr: new PassThrough(), tuer: () => kill(), fin };
   };
-  recolter.mockImplementation((o) => runHarvest({ ...o, lancer }));
-  atelier.supprimerRecolte = async () => tuer?.();
-  const maintenant = p.recolterMaintenant("actus");
+  harvest.mockImplementation((o) => runHarvest({ ...o, lancer }));
+  atelier.supprimerRecolte = async () => kill?.();
+  const now = p.recolterMaintenant("actus");
   await vi.waitFor(() => expect(lance).toHaveBeenCalled());
   expect((await readWidgetState(dossierWidgets, "actus")).avant).toEqual({ statut: "ok" });
   await p.arreter();
-  await maintenant;
-  expect(await readWidgetState(dossierWidgets, "actus")).toEqual(avant);
+  await now;
+  expect(await readWidgetState(dossierWidgets, "actus")).toEqual(before);
 });
 
 test("a surChange callback that throws during the startup restore does not block the runs", async () => {
-  const { dossierWidgets, recoltes, relancer, p: premier } = await preparer({ options: { surChange: () => { throw new Error("rappel"); } } });
+  const { dossierWidgets, recoltes: harvests, relancer: relaunch, p: premier } = await preparer({ options: { surChange: () => { throw new Error("rappel"); } } });
   await premier.arreter();
   await writeWidgetState(dossierWidgets, "actus", { statut: "en-cours", derniereMaj: null, derniereTentative: null });
-  const p2 = relancer();
-  const erreurs = vi.spyOn(console, "error").mockImplementation(() => {});
+  const p2 = relaunch();
+  const errors = vi.spyOn(console, "error").mockImplementation(() => {});
   try {
     await p2.recolterMaintenant("actus").catch(() => {});
     await expect(p2.verifier({ auLancement: true })).resolves.toEqual(expect.any(Array));
   } finally {
-    erreurs.mockRestore();
+    errors.mockRestore();
   }
-  expect(recoltes.length).toBeGreaterThan(0);
+  expect(harvests.length).toBeGreaterThan(0);
 });
 
 describe("notification de fin de veille", () => {
   /** A « veille » widget that notifies, and a spy notifier; the fake harvest returns `nouveaux` (and `statut`). */
-  async function preparerVeille(o: { notifier?: boolean; nouveaux?: number; statut?: WidgetState["statut"]; sansRappel?: boolean } = {}) {
+  async function prepareWatch(o: { notifier?: boolean; nouveaux?: number; statut?: WidgetState["statut"]; sansRappel?: boolean } = {}) {
     const notifications: NotificationWidget[] = [];
     const notifier = vi.fn((n: NotificationWidget) => void notifications.push(n));
     const t = await preparer({ options: o.sansRappel ? {} : { notifier } });
-    await ecrireWidget(
+    await writeWidget(
       t.c,
       "veille",
       declarationWidget(undefined, { nom: "Vélos d'occasion", recolte: { minutes: 60, ...(o.notifier === false ? {} : { notifier: true }) } }),
       { "recolte.mjs": "export default () => 1" },
     );
     t.recolter.mockImplementation(async (r) => {
-      const statut = o.statut ?? "ok";
-      const etat: WidgetState = { statut, derniereMaj: DEBUT.toISOString(), derniereTentative: DEBUT.toISOString(), ...(statut === "erreur" ? { erreur: "boum" } : {}) };
-      if (statut === "ok") await writeData(r.dossierWidgets, r.id, [{ titre: "PIÈGE annonce", url: "https://x.test/1" }]);
-      await writeWidgetState(r.dossierWidgets, r.id, etat);
-      return { etat, ...(o.nouveaux !== undefined ? { nouveaux: o.nouveaux } : {}) };
+      const status = o.statut ?? "ok";
+      const state: WidgetState = { statut: status, derniereMaj: DEBUT.toISOString(), derniereTentative: DEBUT.toISOString(), ...(status === "erreur" ? { erreur: "boum" } : {}) };
+      if (status === "ok") await writeData(r.dossierWidgets, r.id, [{ titre: "PIÈGE annonce", url: "https://x.test/1" }]);
+      await writeWidgetState(r.dossierWidgets, r.id, state);
+      return { etat: state, ...(o.nouveaux !== undefined ? { nouveaux: o.nouveaux } : {}) };
     });
     return { ...t, notifier, notifications };
   }
 
   test("3 new items: one notification, title = widget name, text « 3 nouveaux éléments »", async () => {
-    const { p, notifications } = await preparerVeille({ nouveaux: 3 });
+    const { p, notifications } = await prepareWatch({ nouveaux: 3 });
     await p.recolterMaintenant("veille");
     expect(notifications).toEqual([{ widget: "veille", titre: "Vélos d'occasion", texte: "3 nouveaux éléments" }]);
   });
 
   test("1 new item: singular text", async () => {
-    const { p, notifications } = await preparerVeille({ nouveaux: 1 });
+    const { p, notifications } = await prepareWatch({ nouveaux: 1 });
     await p.recolterMaintenant("veille");
     expect(notifications).toEqual([{ widget: "veille", titre: "Vélos d'occasion", texte: "1 nouvel élément" }]);
   });
 
   test("zero new, failure, trial, widget without notifier: none", async () => {
-    const zero = await preparerVeille({ nouveaux: 0 });
+    const zero = await prepareWatch({ nouveaux: 0 });
     await zero.p.recolterMaintenant("veille");
     await zero.p.recolterMaintenant("veille", "planifiee");
     expect(zero.notifier).not.toHaveBeenCalled();
     await zero.p.arreter();
 
-    const echec = await preparerVeille({ nouveaux: 2, statut: "erreur" });
-    await echec.p.recolterMaintenant("veille");
-    expect(echec.notifier).not.toHaveBeenCalled();
-    await echec.p.arreter();
+    const failure = await prepareWatch({ nouveaux: 2, statut: "erreur" });
+    await failure.p.recolterMaintenant("veille");
+    expect(failure.notifier).not.toHaveBeenCalled();
+    await failure.p.arreter();
 
-    const essai = await preparerVeille({ nouveaux: 2 });
-    expect(await essai.p.rejouer("veille", "2026-10-28T09-00-00-000Z", "liste")).toMatchObject({ ok: true });
-    expect(essai.recolterEssai).toHaveBeenCalledTimes(1);
-    expect(essai.notifier).not.toHaveBeenCalled();
-    await essai.p.arreter();
+    const attempt = await prepareWatch({ nouveaux: 2 });
+    expect(await attempt.p.rejouer("veille", "2026-10-28T09-00-00-000Z", "liste")).toMatchObject({ ok: true });
+    expect(attempt.recolterEssai).toHaveBeenCalledTimes(1);
+    expect(attempt.notifier).not.toHaveBeenCalled();
+    await attempt.p.arreter();
 
     // The widget does not declare `notifier`: even if the harvest returned a count, nothing.
-    const sans = await preparerVeille({ nouveaux: 2, notifier: false });
+    const sans = await prepareWatch({ nouveaux: 2, notifier: false });
     await sans.p.recolterMaintenant("veille");
     expect(sans.notifier).not.toHaveBeenCalled();
     await sans.p.arreter();
 
     // No callback given to the scheduler: the harvest ends as before.
-    const sansRappel = await preparerVeille({ nouveaux: 2, sansRappel: true });
+    const sansRappel = await prepareWatch({ nouveaux: 2, sansRappel: true });
     expect((await sansRappel.p.recolterMaintenant("veille")).statut).toBe("ok");
   });
 
   test("the text contains nothing from the data (trapped listing title)", async () => {
-    const { p, notifications, dossierWidgets } = await preparerVeille({ nouveaux: 1 });
+    const { p, notifications, dossierWidgets } = await prepareWatch({ nouveaux: 1 });
     await p.recolterMaintenant("veille");
     expect(await readData(dossierWidgets, "veille")).toEqual([{ titre: "PIÈGE annonce", url: "https://x.test/1" }]);
     expect(notifications).toHaveLength(1);
@@ -1262,30 +1262,30 @@ describe("notification de fin de veille", () => {
   });
 
   test("a notifier that throws does not prevent the run from finishing", async () => {
-    const erreurs = vi.spyOn(console, "error").mockImplementation(() => {});
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
-      const { p, notifier, dossierWidgets } = await preparerVeille({ nouveaux: 3 });
+      const { p, notifier, dossierWidgets } = await prepareWatch({ nouveaux: 3 });
       notifier.mockImplementation(() => {
         throw new Error("Notification impossible");
       });
-      const etat = await p.recolterMaintenant("veille");
+      const state = await p.recolterMaintenant("veille");
       expect(notifier).toHaveBeenCalledTimes(1);
-      expect(etat.statut).toBe("ok");
+      expect(state.statut).toBe("ok");
       expect((await readWidgetState(dossierWidgets, "veille")).statut).toBe("ok");
-      expect(erreurs).toHaveBeenCalledWith(expect.stringContaining("notification du widget veille"), expect.any(Error));
+      expect(errors).toHaveBeenCalledWith(expect.stringContaining("notification du widget veille"), expect.any(Error));
     } finally {
-      erreurs.mockRestore();
+      errors.mockRestore();
     }
   });
 });
 
 test("notification: the widget name is cleaned (controls and invisible characters replaced, on one line)", async () => {
   const notifications: NotificationWidget[] = [];
-  const { p, c, recolter } = await preparer({ options: { notifier: (n) => void notifications.push(n) } });
-  await ecrireWidget(c, "veille", declarationWidget(undefined, { nom: "‮Vélos\n\nd'occasion​\t ", recolte: { minutes: 60, notifier: true } }), {
+  const { p, c, recolter: harvest } = await preparer({ options: { notifier: (n) => void notifications.push(n) } });
+  await writeWidget(c, "veille", declarationWidget(undefined, { nom: "‮Vélos\n\nd'occasion​\t ", recolte: { minutes: 60, notifier: true } }), {
     "recolte.mjs": "export default () => 1",
   });
-  recolter.mockImplementation(async () => ({ etat: { statut: "ok", derniereMaj: DEBUT.toISOString(), derniereTentative: DEBUT.toISOString() }, nouveaux: 2 }));
+  harvest.mockImplementation(async () => ({ etat: { statut: "ok", derniereMaj: DEBUT.toISOString(), derniereTentative: DEBUT.toISOString() }, nouveaux: 2 }));
   await p.recolterMaintenant("veille");
   expect(notifications).toEqual([{ widget: "veille", titre: "Vélos d'occasion", texte: "2 nouveaux éléments" }]);
 });

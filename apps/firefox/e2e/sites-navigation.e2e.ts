@@ -312,12 +312,12 @@ describe("site app navigation", () => {
   });
 
   it("back to a domain removed from site.json since the visit: blocked, « Lien vers vidola-b.localhost bloqué »", async () => {
-    const deux = `${siteWindowExpr("deux")}.gBrowser.selectedBrowser`;
+    const two = `${siteWindowExpr("deux")}.gBrowser.selectedBrowser`;
     await openAndWait("deux");
     await inSiteView(m, "deux", `location.href = ${JSON.stringify(server.url("vidola-b.localhost", "/"))}; return 1;`, { gesture: true });
-    await viewAt(server.url("vidola-b.localhost", "/"), deux);
+    await viewAt(server.url("vidola-b.localhost", "/"), two);
     await inSiteView(m, "deux", `location.href = ${JSON.stringify(url("/film/2"))}; return 1;`, { gesture: true });
-    await viewAt(url("/film/2"), deux);
+    await viewAt(url("/film/2"), two);
     // The agent removes vidola-b from site.json; the app is opened again (same window, new rules).
     writeSite(dataDir, "deux", { declaration: { ...vidola(), nom: "Deux" } });
     await openSite("deux");
@@ -328,7 +328,7 @@ describe("site app navigation", () => {
        for (const type of ["mousedown", "mouseup"]) doc.defaultView.synthesizeMouseEvent(type, r.left + r.width / 2, r.top + r.height / 2, { button: 0, clickCount: 1 });`);
     await waitNotice("vidola-b.localhost", "deux");
     await sleep(500);
-    expect(await m.execute(`return ${deux}.currentURI.spec;`)).toBe(url("/film/2"));
+    expect(await m.execute(`return ${two}.currentURI.spec;`)).toBe(url("/film/2"));
     expect(server.requetes.filter((r) => r.hote === "vidola-b.localhost")).toEqual([]);
     writeSite(dataDir, "deux", { declaration: { ...vidola(), nom: "Deux", domaines: ["vidola-a.localhost", "vidola-b.localhost"] } });
   });

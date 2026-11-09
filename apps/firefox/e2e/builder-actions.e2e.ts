@@ -3,7 +3,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Action } from "../shared/api";
-import { appelerOutil } from "../test/mcp";
+import { callMcpTool } from "../test/mcp";
 import { actionsDataDir, listen, openAction, runsOnDisk, tid, uiQueries, waitNoyau, writeAction, type TestServer } from "./actions";
 import { dispatch, state, waitReady } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
@@ -13,16 +13,16 @@ import { click, inUi, missingApi, pressKeys, waitUi } from "./ui";
 // The workflow builder opened on an action (webaios://workflow/action/<id>): the Action panel, ▶ Lancer with the input, a replay whose page shows in the preview without becoming the last
 // result. Gemma absent: the fallback layout.
 
-const CONSIGNE_GITLAB = "Un tableau des tickets, les plus urgents d'abord";
-const NOM = "Tickets GitLab";
+const GITLAB_INSTRUCTION = "Un tableau des tickets, les plus urgents d'abord";
+const NAME = "Tickets GitLab";
 const codeGitlab = (marque: string) => `export default async (_e, w) => [{ titre: "ticket-" + w.saisie + "-${marque}" }];`;
 /** An action with an input: a `code` block that gives the input (and `marque`), then the output to the page. */
 const writeGitlab = (id: string, marque = "un") =>
   writeAction(w.dataDir, id, {
-    nom: NOM,
+    nom: NAME,
     saisie: { libelle: "Projet" },
     sources: { publiques: ["gitlab.com"] },
-    miseEnPage: CONSIGNE_GITLAB,
+    miseEnPage: GITLAB_INSTRUCTION,
     dureeMaxMinutes: 5,
     workflow: {
       version: 1,
@@ -58,15 +58,15 @@ const snapshot = (dir: string) => readdirSync(dir).map((f) => `${f}:${statSync(p
 const readJson = async (file: string) => JSON.parse(await readFile(file, "utf8"));
 const lastSessionConfig = () =>
   path.join(w.dataDir, "espace", (JSON.parse(readFileSync(path.join(w.dataDir, "espace", "faux-agent-args.json"), "utf8")) as string[]).at(-1)!.replace(/^\/workspace\//, ""));
-async function setPrivate(prive: boolean): Promise<void> {
+async function setPrivate(isPrivate: boolean): Promise<void> {
   const s = await state(m);
   const e = s.espaces.find((x) => x.id === s.fenetres[0]!.espaceActif)!;
-  if (e.prive !== prive) await dispatch(m, { type: "reglerEspace", id: e.id, nom: e.nom, icone: e.icone, prive, profil: e.profil } as Action);
+  if (e.prive !== isPrivate) await dispatch(m, { type: "reglerEspace", id: e.id, nom: e.nom, icone: e.icone, prive: isPrivate, profil: e.profil } as Action);
 }
 
 /** Opens the action's builder from its page (« Voir le workflow »), once the kernel serves the actions. */
 async function openActionBuilder(id: string): Promise<void> {
-  await openAction(m, id, NOM);
+  await openAction(m, id, NAME);
   await click(m, tid("voir-workflow"));
   await visible(tid("constructeur"));
 }
@@ -95,8 +95,8 @@ describe("the builder of an action", () => {
     await writeGitlab("gitlab-a");
     const before = snapshot(actionDir("gitlab-a"));
     await openActionBuilder("gitlab-a");
-    await waitUi(m, "return [...doc.querySelectorAll('[data-testid^=\"onglet-\"]')].filter((e) => e.textContent.includes(arguments[0])).length === 1;", [`Workflow — ${NOM}`]);
-    await q.waitText(`${tid("constructeur")} h1`, NOM);
+    await waitUi(m, "return [...doc.querySelectorAll('[data-testid^=\"onglet-\"]')].filter((e) => e.textContent.includes(arguments[0])).length === 1;", [`Workflow — ${NAME}`]);
+    await q.waitText(`${tid("constructeur")} h1`, NAME);
     await visible(tid("noeud-lire"));
     await q.waitText(tid("etat-enregistrement"), "Enregistré");
     // Nothing selected: the Action panel (read only) instead of the widget's.
@@ -106,7 +106,7 @@ describe("the builder of an action", () => {
     expect(await q.text(`${panel} ${tid("action-compte")}`)).toBe("aucun");
     expect(await q.text(`${panel} ${tid("action-publiques")}`)).toBe("gitlab.com");
     expect(await q.text(`${panel} ${tid("action-saisie")}`)).toBe("Projet");
-    expect(await q.text(`${panel} ${tid("action-mise-en-page")}`)).toBe(CONSIGNE_GITLAB);
+    expect(await q.text(`${panel} ${tid("action-mise-en-page")}`)).toBe(GITLAB_INSTRUCTION);
     expect(await q.text(panel)).toContain("Durée maximale : 5 min");
     expect(await q.text(tid("bouton-apercu"))).toBe("Aperçu de la page");
     // An action without web access: the palette says so for an action (action.json), not for a widget.
@@ -118,7 +118,7 @@ describe("the builder of an action", () => {
     // The agent knows it is the action's workflow, and the block chosen.
     // The window's agent session (the fake agent notes its arguments once started).
     await poll(() => existsSync(path.join(w.dataDir, "espace", "faux-agent-args.json")), (v) => v, "the agent session", 20_000);
-    const open = async () => (await appelerOutil(path.join(w.dataDir, "espace"), "workflow_ouvert", {}, lastSessionConfig())).texte;
+    const open = async () => (await callMcpTool(path.join(w.dataDir, "espace"), "workflow_ouvert", {}, lastSessionConfig())).texte;
     await poll(open, (t) => t === '{"action":"gitlab-a","bloc":null}', "workflow_ouvert", 20_000);
     await click(m, tid("noeud-lire"));
     await poll(open, (t) => t === '{"action":"gitlab-a","bloc":"lire"}', "workflow_ouvert", 20_000);
@@ -193,7 +193,7 @@ describe("the builder of an action", () => {
     await q.waitContains(preview, "ticket-webaios-un", 30_000);
     // The action's last result stays the real run: its page does not show the trial.
     expect(await inUi(m, "return ui.webaios.actions.page('gitlab-c', null).then((p) => p?.execution);")).toBe(origin);
-    await openAction(m, "gitlab-c", NOM);
+    await openAction(m, "gitlab-c", NAME);
     await q.waitContains(`${tid("page-action")} ${tid("rendu-page")}`, "ticket-webaios-un", 30_000);
     expect(await q.text(tid("page-action"))).not.toContain("ticket-webaios-deux");
   });
@@ -207,14 +207,14 @@ describe("the builder of an action", () => {
       expect(await q.count(tid("constructeur"))).toBe(0);
       // The API refuses too, with the same shapes, and writes nothing.
       const before = snapshot(actionDir("gitlab-d"));
-      const cible = { type: "action", id: "gitlab-d" };
+      const target = { type: "action", id: "gitlab-d" };
       expect(
         await inUi(
           m,
           `const c = arguments[0], wf = ui.webaios.workflow;
           return Promise.all([wf.lire(c), wf.enregistrer(c, { version: 1, blocs: [], liens: [] }), wf.lireCode(c, "lire.mjs"), wf.enregistrerCode(c, "lire.mjs", "x"),
             wf.rejouer(c, "2026-10-31T08-00-00-000Z", "lire"), wf.lancer(c, "webaios")]).then((r) => JSON.parse(JSON.stringify(r)));`,
-          [cible],
+          [target],
         ),
       ).toEqual([
         null,

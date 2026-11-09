@@ -12,11 +12,11 @@ let F: string;
 const ag = (a: Action | null) => {
   if (a) e = apply(e, a, genId);
 };
-const ouvrir = (url: string) => {
+const open = (url: string) => {
   ag({ type: "ouvrirOnglet", fenetreId: F, url });
   return Object.keys(e.onglets).at(-1)!;
 };
-const actif = () => {
+const active = () => {
   const f = e.fenetres[0]!;
   return f.actif[f.espaceActif];
 };
@@ -28,27 +28,27 @@ beforeEach(() => {
 });
 
 test("⌘1…⌘9: the space's pinned come before the tabs, open or not", () => {
-  const p = ouvrir("https://epingle.fr");
+  const p = open("https://epingle.fr");
   ag({ type: "epinglerOnglet", id: p });
-  const favori = e.espaces[0]!.epingles[0]!.id;
+  const favorite = e.espaces[0]!.epingles[0]!.id;
   ag({ type: "fermerOnglet", id: p }); // the favorite stays, without a tab
-  const a = ouvrir("https://a.fr");
-  expect(toNth(e, F, 1)).toEqual({ type: "ouvrirFavori", fenetreId: F, genre: "epingle", id: favori });
+  const a = open("https://a.fr");
+  expect(toNth(e, F, 1)).toEqual({ type: "ouvrirFavori", fenetreId: F, genre: "epingle", id: favorite });
   ag(toNth(e, F, 1));
-  expect(e.onglets[actif()!]?.lien?.id).toBe(favori);
+  expect(e.onglets[active()!]?.lien?.id).toBe(favorite);
   ag(toNth(e, F, 2));
-  expect(actif()).toBe(a);
+  expect(active()).toBe(a);
 });
 
 test("⌘2 activates the second; ⌘9 the last; beyond the list, nothing", () => {
-  const a = ouvrir("https://a.fr");
-  const b = ouvrir("https://b.fr");
-  const c = ouvrir("https://c.fr");
+  const a = open("https://a.fr");
+  const b = open("https://b.fr");
+  const c = open("https://c.fr");
   ag(toNth(e, F, 2));
-  expect(actif()).toBe(b);
+  expect(active()).toBe(b);
   ag(toNth(e, F, 9));
-  expect(actif()).toBe(c);
+  expect(active()).toBe(c);
   expect(toNth(e, F, 5)).toBeNull();
   ag({ type: "activerOnglet", id: a });
-  expect(actif()).toBe(a);
+  expect(active()).toBe(a);
 });

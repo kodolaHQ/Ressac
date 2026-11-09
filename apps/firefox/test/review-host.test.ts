@@ -22,27 +22,27 @@ describe("review service", () => {
   function prepare() {
     const root = realpathSync(mkdtempSync(join(tmpdir(), "webaios-review-")));
     dirs.push(root);
-    const projets = join(root, "projets");
+    const projects = join(root, "projets");
     const sites = join(root, "sites");
-    mkdirSync(join(projets, "essai"), { recursive: true });
+    mkdirSync(join(projects, "essai"), { recursive: true });
     mkdirSync(join(sites, "tuning", "retouches"), { recursive: true });
-    writeFileSync(join(projets, "essai", "a.txt"), "un\n");
+    writeFileSync(join(projects, "essai", "a.txt"), "un\n");
     writeFileSync(join(sites, "tuning", "site.json"), "{}\n");
     writeFileSync(join(sites, "tuning", "retouches", "tuning.css"), "/* rien */\n");
     const dossiers = { remarquesEspace: join(root, "remarques"), prive: join(root, "prive") };
     const remarques = new Remarques({ dossiers });
     const sent: { projet: TrackedProject; lot: Lot }[] = [];
-    const registre = {
-      projets: () => [{ id: EXT.slice(4), nom: "Ext", dossier: join(projets, "essai"), ports: [], client: "client-0001", declare: "" }],
+    const registry = {
+      projets: () => [{ id: EXT.slice(4), nom: "Ext", dossier: join(projects, "essai"), ports: [], client: "client-0001", declare: "" }],
       clients: () => [{ id: "client-0001", nom: "Claude", empreinte: "", cree: "" }],
     };
     const service = new ReviewService({
-      dossiers, chemins: { projets, sites } as SpacePaths, registre: () => registre as never,
+      dossiers, chemins: { projets: projects, sites } as SpacePaths, registre: () => registry as never,
       sites: async () => [{ id: "tuning", nom: "Tuning" }], remarques,
-      envoyer: async (projet, lot) => void sent.push({ projet, lot }),
+      envoyer: async (project, lot) => void sent.push({ projet: project, lot }),
     });
-    const relecture = join(dossiers.prive, "relecture");
-    return { service, remarques, sent, root, projets, sites, relecture, write: (t: string, n = "a.txt") => writeFileSync(join(projets, "essai", n), t) };
+    const review = join(dossiers.prive, "relecture");
+    return { service, remarques, sent, root, projets: projects, sites, relecture: review, write: (t: string, n = "a.txt") => writeFileSync(join(projects, "essai", n), t) };
   }
   /** Opens once so the project's first snapshot is taken, writes `before` first; returns after `after` is written. */
   async function opened(s: ReturnType<typeof prepare>, before: string, after: string) {
@@ -93,7 +93,7 @@ describe("review service", () => {
   it("a range overflowing the block is refused", async () => {
     const s = prepare();
     const v = await opened(s, text(), text(5, 25));
-    const c = (debut: number, fin: number, texte: string, j = v.jeton) => s.service.commenter(EXT, j, { fichier: "a.txt", debut, fin, texte });
+    const c = (debut: number, fin: number, text: string, j = v.jeton) => s.service.commenter(EXT, j, { fichier: "a.txt", debut, fin, texte: text });
     expect(await c(5, 25, "trop large")).toEqual({ ok: false, erreur: RANGE_OUTSIDE_BLOCK });
     expect(await c(1, 3, "hors du diff")).toEqual({ ok: false, erreur: RANGE_OUTSIDE_BLOCK });
     expect(await c(4, 5, "  ")).toMatchObject({ ok: false });

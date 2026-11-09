@@ -104,9 +104,9 @@ describe("action result images", () => {
 
 describe("agent components", () => {
   const data = () => join(root, "data");
-  const write = (nom: string, html: string) => {
-    mkdirSync(join(data(), "espace", "composants", nom), { recursive: true });
-    writeFileSync(join(data(), "espace", "composants", nom, "composant.html"), html);
+  const write = (name: string, html: string) => {
+    mkdirSync(join(data(), "espace", "composants", name), { recursive: true });
+    writeFileSync(join(data(), "espace", "composants", name, "composant.html"), html);
   };
 
   it("COMPOSANT_HTML_MAX is the kernel's", () => {
@@ -114,7 +114,7 @@ describe("agent components", () => {
   });
 
   it("a name outside ^[a-z0-9-]{1,40}$ gives null without reading the disk", async () => {
-    for (const nom of ["../x", "X", "", "a".repeat(41), "a/b"]) expect(await serveComponent(data(), nom)).toBeNull();
+    for (const name of ["../x", "X", "", "a".repeat(41), "a/b"]) expect(await serveComponent(data(), name)).toBeNull();
     expect(io).toEqual([]);
   });
 

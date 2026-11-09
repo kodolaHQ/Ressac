@@ -39,7 +39,7 @@ export async function writeWidget(
   );
   await writeFile(path.join(dir, "affichage.html"), DISPLAY);
   if (o.workflow !== undefined) await writeFile(path.join(dir, "workflow.json"), typeof o.workflow === "string" ? o.workflow : JSON.stringify(o.workflow));
-  for (const [nom, texte] of Object.entries(o.fichiers ?? {})) await writeFile(path.join(dir, nom), texte);
+  for (const [name, text] of Object.entries(o.fichiers ?? {})) await writeFile(path.join(dir, name), text);
   const state = path.join(dataDir, "widgets", id);
   await mkdir(state, { recursive: true });
   const now = new Date().toISOString();

@@ -6,16 +6,16 @@ import { accorderSite, lireAccordsSites } from "../../src/sites/accords.js";
 import { SiteMemory } from "../../src/sites/memoire.js";
 import type { DeclarationSite } from "../../src/sites/schemas.js";
 import { changeUrl, readUrlState, deleteSiteData } from "../../src/sites/suivi.js";
-import { dossierTemporaire } from "../aide/temporaire.js";
+import { tempFolder } from "../aide/temporaire.js";
 
 const decl: DeclarationSite = {
   nom: "Vidola", description: "", adresse: "https://www.vidola-a.example/film?x=1", domaines: ["vidola-a.example"],
   connexion: [], retouches: [], reprise: true,
 };
-const existe = (p: string) => stat(p).then(() => true, () => false);
+const exists = (p: string) => stat(p).then(() => true, () => false);
 
 test("changerAdresse a → b: anciens [a]; then c: anciens [a, b]", async () => {
-  const d = await dossierTemporaire();
+  const d = await tempFolder();
   expect(await readUrlState(d, "w")).toBeNull();
   const e1 = await changeUrl(d, "w", decl, "vidola-b.example");
   expect(e1).toMatchObject({ actuel: "vidola-b.example", anciens: ["www.vidola-a.example"] });
@@ -31,19 +31,19 @@ test("changerAdresse a → b: anciens [a]; then c: anciens [a, b]", async () => 
 });
 
 test("domainesEffectifs unites them with those of site.json", async () => {
-  const d = await dossierTemporaire();
+  const d = await tempFolder();
   const e = await changeUrl(d, "w", { ...decl, adresse: "https://vidola-a.example/" }, "vidola-b.example");
   expect(effectiveDomains(decl, e)).toEqual(["vidola-a.example", "vidola-b.example"]);
 });
 
 test("adresseDeDepart keeps path and query on the current domain", async () => {
-  const d = await dossierTemporaire();
+  const d = await tempFolder();
   const e = await changeUrl(d, "w", decl, "vidola-b.example");
   expect(startUrl(decl, e)).toBe("https://vidola-b.example/film?x=1");
 });
 
 test("supprimerDonneesSite erases memory, address and grant of that site only", async () => {
-  const p = await dossierTemporaire();
+  const p = await tempFolder();
   const ds = join(p, "sites");
   for (const id of ["a", "b"]) {
     const m = await SiteMemory.ouvrir(ds, id);
@@ -53,10 +53,10 @@ test("supprimerDonneesSite erases memory, address and grant of that site only", 
     await accorderSite(p, id, decl);
   }
   await deleteSiteData(p, "a");
-  expect(await existe(join(ds, "a", "memoire.json"))).toBe(false);
+  expect(await exists(join(ds, "a", "memoire.json"))).toBe(false);
   expect(await readUrlState(ds, "a")).toBeNull();
   expect(Object.keys(await lireAccordsSites(p))).toEqual(["b"]);
-  expect(await existe(join(ds, "b", "memoire.json"))).toBe(true);
+  expect(await exists(join(ds, "b", "memoire.json"))).toBe(true);
   expect(await readUrlState(ds, "b")).not.toBeNull();
   await mkdir(ds, { recursive: true });
   await writeFile(join(ds, "x"), "");
@@ -64,16 +64,16 @@ test("supprimerDonneesSite erases memory, address and grant of that site only", 
 });
 
 test("supprimerDonneesSite removes the whole folder, .bak included", async () => {
-  const p = await dossierTemporaire();
+  const p = await tempFolder();
   const ds = join(p, "sites");
   await mkdir(join(ds, "a"), { recursive: true });
   await writeFile(join(ds, "a", "memoire.json.bak"), "x");
   await deleteSiteData(p, "a");
-  expect(await existe(join(ds, "a"))).toBe(false);
+  expect(await exists(join(ds, "a"))).toBe(false);
 });
 
 test("changerAdresse keeps the 100 most recent old ones", async () => {
-  const d = await dossierTemporaire();
+  const d = await tempFolder();
   let e = await changeUrl(d, "w", decl, "s0.example");
   for (let i = 1; i <= 105; i++) e = await changeUrl(d, "w", decl, `s${i}.example`);
   expect(e.anciens).toHaveLength(100);
@@ -82,7 +82,7 @@ test("changerAdresse keeps the 100 most recent old ones", async () => {
 });
 
 test("a deletion ordered after an in-flight changerAdresse leaves the site erased", async () => {
-  const p = await dossierTemporaire();
+  const p = await tempFolder();
   const ds = join(p, "sites");
   const c = changeUrl(ds, "w", decl, "vidola-b.example");
   await deleteSiteData(p, "w");

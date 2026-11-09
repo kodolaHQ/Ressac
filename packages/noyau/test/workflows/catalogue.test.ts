@@ -4,7 +4,7 @@ import { BLOCK_REGISTRY } from "../../src/workflows/blocs/index.js";
 
 const catalogue = catalogueBlocs();
 const de = (type: string) => catalogue.find((b) => b.type === type)!;
-const champ = (type: string, nom: string) => de(type).champs.find((c) => c.nom === nom)!;
+const champ = (type: string, name: string) => de(type).champs.find((c) => c.nom === name)!;
 
 test("each registry type has a label, a family and a field per key of its schema, and nothing else", () => {
   expect(catalogue.map((b) => b.type).sort()).toEqual([...BLOCK_REGISTRY.keys()].sort());
@@ -14,8 +14,8 @@ test("each registry type has a label, a family and a field per key of its schema
     expect(bloc.famille, type).toBeTruthy();
     expect(bloc.description.length, type).toBeGreaterThan(0);
     expect(bloc.parElement, type).toBe(definition.parElement);
-    const cles = Object.keys((definition.parametres as unknown as { shape: object }).shape).sort();
-    expect(bloc.champs.map((c) => c.nom).sort(), type).toEqual(cles);
+    const keys = Object.keys((definition.parametres as unknown as { shape: object }).shape).sort();
+    expect(bloc.champs.map((c) => c.nom).sort(), type).toEqual(keys);
     for (const c of bloc.champs) expect(c.libelle.length, `${type}.${c.nom}`).toBeGreaterThan(0);
   }
   expect(champ("source.page", "url").genre).toBe("gabarit");
@@ -42,20 +42,20 @@ test("required parameters have a neutral default to prefill the palette", () => 
   expect(champ("liste.nouveaux", "cle").defaut).toBe("url");
   expect(champ("liste.dedoublonner", "cles").defaut).toEqual(["url"]);
   // R23: never a default address, the block stays invalid until the address is entered.
-  const adresses = ["source.page.url", "source.recuperer.url", "source.flux.urls"];
+  const urls = ["source.page.url", "source.recuperer.url", "source.flux.urls"];
   for (const b of catalogue) {
     for (const c of b.champs) {
-      const nom = `${b.type}.${c.nom}`;
-      if (adresses.includes(nom)) expect(c.defaut, nom).toBeUndefined();
-      else if (c.requis) expect(c.defaut, nom).toBeDefined();
+      const name = `${b.type}.${c.nom}`;
+      if (urls.includes(name)) expect(c.defaut, name).toBeUndefined();
+      else if (c.requis) expect(c.defaut, name).toBeDefined();
     }
   }
 });
 
 test("the common per-element mode fields are marked, except for ia.trier", () => {
-  for (const nom of ["siErreur", "budgetSecondes", "reutiliser"]) {
-    expect(champ("source.page", nom).parElementSeulement).toBe(true);
-    expect(champ("ia.trier", nom).parElementSeulement).toBeUndefined();
+  for (const name of ["siErreur", "budgetSecondes", "reutiliser"]) {
+    expect(champ("source.page", name).parElementSeulement).toBe(true);
+    expect(champ("ia.trier", name).parElementSeulement).toBeUndefined();
   }
   expect(champ("source.page", "parElement").parElementSeulement).toBeUndefined();
   expect(champ("source.page", "champ").parElementSeulement).toBeUndefined();
@@ -78,11 +78,11 @@ test("the catalog goes through structuredClone", () => {
 });
 
 test("the families follow the order Sources, Listes, IA, Logique/Code, Sortie", () => {
-  const ordre = ["Sources", "Listes", "IA", "Logique/Code", "Sortie"];
-  const rangs = catalogue.map((b) => ordre.indexOf(b.famille));
+  const order = ["Sources", "Listes", "IA", "Logique/Code", "Sortie"];
+  const rangs = catalogue.map((b) => order.indexOf(b.famille));
   expect(rangs.every((r) => r >= 0)).toBe(true);
   expect(rangs).toEqual([...rangs].sort((a, b) => a - b));
-  expect(new Set(catalogue.map((b) => b.famille))).toEqual(new Set(ordre));
+  expect(new Set(catalogue.map((b) => b.famille))).toEqual(new Set(order));
 });
 
 test("garderJours, auFilDeLEau and the budgetSecondes bound in the catalog", () => {

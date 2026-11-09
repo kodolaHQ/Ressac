@@ -6,7 +6,7 @@ import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { reviewUrl } from "../shared/modele";
 import { THIRD_PARTY_SITE_WARNING } from "../../../packages/noyau/src/design/remarques";
 import { testActor } from "./agent-extensions";
-import { calqueOf, inStore, openSite, siteKey, siteMouse, toSite, TUNING_PAGE, tuningDeclaration, viewExpr, viewPoint, AUTRE_PAGE, CONNEXION_PAGE } from "./design-sites";
+import { overlayOf, inStore, openSite, siteKey, siteMouse, toSite, TUNING_PAGE, tuningDeclaration, viewExpr, viewPoint, OTHER_PAGE, CONNEXION_PAGE } from "./design-sites";
 import { state, waitFor, waitReady } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
@@ -29,12 +29,12 @@ let server: Awaited<ReturnType<typeof startSitesServer>>;
 let w: LaunchedWebAiOs;
 let m: Marionette;
 const dirs: string[] = [];
-const url = (hote: string, chemin = "/") => server.url(hote, chemin);
+const url = (host: string, path = "/") => server.url(host, path);
 
 beforeAll(async () => {
   server = await startSitesServer({ port: PORT });
   server.definir("tuning-a.localhost", "/", TUNING_PAGE);
-  server.definir("tuning-a.localhost", "/autre", AUTRE_PAGE);
+  server.definir("tuning-a.localhost", "/autre", OTHER_PAGE);
   server.definir("compte-tuning.localhost", "/connexion", CONNEXION_PAGE);
   const dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
   const profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
@@ -66,7 +66,7 @@ const agentInput = () => {
 };
 const TERMINAL = "(doc.querySelector('.xterm-rows')?.textContent ?? '').replace(/\\u00a0/g, ' ')";
 
-const etat = () => inStore<{ actif: boolean; panier: number }>(m, "return await store.design.etat(arguments[0]);", [T]);
+const designState = () => inStore<{ actif: boolean; panier: number }>(m, "return await store.design.etat(arguments[0]);", [T]);
 const hosts = () => inSiteView<number>(m, ID, `return document.getElementsByTagName("webaios-viseur").length;`).catch(() => -1);
 const view = <R = unknown>(expr: string) => inSiteView<R>(m, ID, `return ${expr};`).catch(() => null);
 const bar = () =>
@@ -83,8 +83,8 @@ async function chevron(t: string) {
   await expect.poll(() => inSiteBar(m, ID, `return !!doc.querySelector('${tid(t)}');`), { timeout: 10_000 }).toBe(true);
   await clickBar(t);
 }
-const inCalque = <R = unknown>(body: string, args: unknown[] = []) => calqueOf<R>(m, ID, body, args);
-const bubbleText = () => inCalque<string | null>(`return doc.querySelector('${tid("bulle-design")}')?.textContent ?? null;`);
+const inOverlay = <R = unknown>(body: string, args: unknown[] = []) => overlayOf<R>(m, ID, body, args);
+const bubbleText = () => inOverlay<string | null>(`return doc.querySelector('${tid("bulle-design")}')?.textContent ?? null;`);
 const designKey = () => siteKey(m, ID, "d", ["Meta", "Shift"]);
 const reviewTabs = async () => Object.values((await state(m)).onglets).filter((o) => o.url === reviewUrl(`site-${ID}`));
 
@@ -98,8 +98,8 @@ async function modeOn() {
 async function aim(sel: string, label: string, text: string) {
   await siteMouse(m, ID, await viewPoint(m, ID, sel));
   await expect.poll(bubbleText, { timeout: 10_000 }).toContain(label);
-  await expect.poll(() => inCalque("return doc.activeElement?.localName ?? null;"), { timeout: 10_000 }).toBe("textarea");
-  await inCalque(`const t = doc.querySelector("textarea"); t.value = arguments[0]; t.dispatchEvent(new f.contentWindow.Event("input", { bubbles: true })); return 1;`, [text]);
+  await expect.poll(() => inOverlay("return doc.activeElement?.localName ?? null;"), { timeout: 10_000 }).toBe("textarea");
+  await inOverlay(`const t = doc.querySelector("textarea"); t.value = arguments[0]; t.dispatchEvent(new f.contentWindow.Event("input", { bubbles: true })); return 1;`, [text]);
 }
 /** A remark on `sel` by ⌘Enter, the counter shows `count`, the viewfinder armed again. */
 async function remark(sel: string, label: string, text: string, count: string) {
@@ -116,8 +116,8 @@ async function escape() {
 /** « Panier » of the chevron, then « Envoyer » in the overlay. */
 async function sendFromCart(label: string) {
   await chevron("site-menu-design-panier");
-  await expect.poll(() => inCalque<string | null>(`return doc.querySelector('${tid("envoyer-remarques")}')?.textContent ?? null;`), { timeout: 10_000 }).toBe(label);
-  await inCalque(`doc.querySelector('${tid("envoyer-remarques")}').click(); return 1;`);
+  await expect.poll(() => inOverlay<string | null>(`return doc.querySelector('${tid("envoyer-remarques")}')?.textContent ?? null;`), { timeout: 10_000 }).toBe(label);
+  await inOverlay(`doc.querySelector('${tid("envoyer-remarques")}').click(); return 1;`);
 }
 
 // design-sites.spec.ts:408
@@ -143,7 +143,7 @@ it("two remarks on tuning then send from the cart: text pre-filled without Enter
   expect(lot.avertissement).toBe(THIRD_PARTY_SITE_WARNING);
   expect(readdirSync(path.join(remarksDir(), lots[0]!)).filter((n) => n.endsWith(".png"))).toHaveLength(2);
   await expect.poll(async () => (await bar()).count, { timeout: 10_000 }).toBeNull();
-  await expect.poll(() => inCalque<number>(`return doc.querySelectorAll('${tid("remarque-panier")}').length;`), { timeout: 10_000 }).toBe(0);
+  await expect.poll(() => inOverlay<number>(`return doc.querySelectorAll('${tid("remarque-panier")}').length;`), { timeout: 10_000 }).toBe(0);
   // relecture.assurer took the first photo before the send.
   expect(existsSync(reviewedRef(w.dataDir, `site-${ID}`))).toBe(true);
 });
@@ -166,7 +166,7 @@ it("tweak changed during the mode: the view reloads without the grant card, the 
     )
     .toBe("none");
   await expect.poll(bar, { timeout: 10_000 }).toEqual({ pressed: "false", count: "1", accord: false });
-  expect((await etat()).actif).toBe(false);
+  expect((await designState()).actif).toBe(false);
   expect(await hosts()).toBe(0);
 });
 
@@ -195,12 +195,12 @@ it("after site.json and the tweak changed, « Relire ce projet » of the chevron
 // Spec §5.10. Before the deletion: the recreated app is not granted.
 it("the host stopped: ✎ keeps its last state, ⌘⇧D does nothing, Ajouter shows the call's error", async () => {
   const stopHost = () => inStore(m, "await store.agent.stop(); return 1;");
-  const startHost = async (panier: number) => {
+  const startHost = async (basket: number) => {
     await inStore(m, "await store.agent.ensure(); return 1;");
-    await expect.poll(() => etat().then((e) => e.panier, () => null), { timeout: 30_000 }).toBe(panier);
+    await expect.poll(() => designState().then((e) => e.panier, () => null), { timeout: 30_000 }).toBe(basket);
   };
   await toSite(m, ID);
-  const n = (await etat()).panier;
+  const n = (await designState()).panier;
   expect(n).toBeGreaterThan(0);
   // The mode off: ⇧⌘D starts nothing, ✎ stays released.
   await stopHost();
@@ -219,8 +219,8 @@ it("the host stopped: ✎ keeps its last state, ⌘⇧D does nothing, Ajouter sh
   try {
     await sleep(500);
     expect(await bar()).toMatchObject({ pressed: "true", count: n ? String(n) : null });
-    await inCalque(`doc.querySelector("button.ajouter").click(); return 1;`);
-    await expect.poll(() => inCalque<string | null>(`return doc.querySelector('[role="alert"]')?.textContent ?? null;`), { timeout: 10_000 }).toBeTruthy();
+    await inOverlay(`doc.querySelector("button.ajouter").click(); return 1;`);
+    await expect.poll(() => inOverlay<string | null>(`return doc.querySelector('[role="alert"]')?.textContent ?? null;`), { timeout: 10_000 }).toBeTruthy();
     expect(await bubbleText()).toContain("a#lien");
     expect(await inStore(m, "return store.design.overlayContext(arguments[0])?.mode ?? null;", [T])).toBe("bulle");
     expect((await bar()).pressed).toBe("true");
@@ -231,13 +231,13 @@ it("the host stopped: ✎ keeps its last state, ⌘⇧D does nothing, Ajouter sh
 
 // design-sites.spec.ts:538
 it("Supprimer with a remark in the cart and a batch sent: remarks and review repo erased; tuning made again: empty cart, new reference", { timeout: 90_000 }, async () => {
-  const relecture = path.join(w.dataDir, "design", "relecture");
+  const review = path.join(w.dataDir, "design", "relecture");
   await expect.poll(() => existsSync(reviewedRef(w.dataDir, `site-${ID}`)), { timeout: 15_000 }).toBe(true);
   const old = readFileSync(reviewedRef(w.dataDir, `site-${ID}`), "utf8");
   await toSite(m, ID);
   // A batch sent (with the tweak test's remark; #banniere is hidden by the tweak: #lien)…
   const sent = batches().length;
-  expect((await etat()).panier).toBe(1);
+  expect((await designState()).panier).toBe(1);
   await modeOn();
   await remark("#lien", "a#lien", "lien plus visible", "2");
   await escape();
@@ -252,8 +252,8 @@ it("Supprimer with a remark in the cart and a batch sent: remarks and review rep
   await click(m, tid("confirmer-suppression-site"));
   await waitUi(m, `return !doc.querySelector('${tid(`site-${ID}`)}')`, [], 15_000);
   await expect.poll(() => existsSync(remarksDir()), { timeout: 15_000 }).toBe(false);
-  await expect.poll(() => existsSync(path.join(relecture, `site-${ID}.git`)), { timeout: 15_000 }).toBe(false);
-  expect(existsSync(path.join(relecture, `site-${ID}.commentaires.json`))).toBe(false);
+  await expect.poll(() => existsSync(path.join(review, `site-${ID}.git`)), { timeout: 15_000 }).toBe(false);
+  expect(existsSync(path.join(review, `site-${ID}.commentaires.json`))).toBe(false);
   // Made again with the same id (another tweak: another tree, so another photo if the old one is gone).
   writeSite(w.dataDir, ID, { declaration: tuningDeclaration(url), fichiers: { "retouches/tuning.css": "/* neuve */" } });
   await waitUi(m, `return !!doc.querySelector('${tid(`site-${ID}`)}')`, [], 15_000);
@@ -262,5 +262,5 @@ it("Supprimer with a remark in the cart and a batch sent: remarks and review rep
   await openSite(m, ID);
   await expect.poll(() => inSiteBar(m, ID, `return !!doc.querySelector('${tid("site-bouton-design")}');`), { timeout: 10_000 }).toBe(true);
   expect((await bar()).count).toBeNull();
-  expect((await etat()).panier).toBe(0);
+  expect((await designState()).panier).toBe(0);
 });

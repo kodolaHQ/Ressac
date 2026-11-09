@@ -1,7 +1,7 @@
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
-import { dossierTemporaire } from "../aide/temporaire.js";
+import { tempFolder } from "../aide/temporaire.js";
 import { ReviewComments, EMPTY_REMARK, rejoin, type Comment } from "../../src/relecture/commentaires.js";
 import { parserDiff } from "../../src/relecture/diff.js";
 
@@ -12,7 +12,7 @@ function patch(debut: number, lignes: string[]): string {
 function com(debut: number, lignes: Comment["lignes"]): Comment {
   return { id: "c-1", fichier: "f.txt", debut, fin: debut + lignes.length - 1, lignes, texte: "t", cree: "", envoye: false, resolu: false, ligneChangee: false };
 }
-const L = (marque: " " | "+" | "-", texte: string) => ({ marque, texte });
+const L = (marque: " " | "+" | "-", text: string) => ({ marque, texte: text });
 
 describe("recoller", () => {
   test("same content, shifted 5 lines by an addition above: re-attached 5 lines lower, ligneChangee false", () => {
@@ -54,13 +54,13 @@ describe("recoller", () => {
 describe("CommentairesRelecture", () => {
   const brut = { fichier: "f.txt", debut: 1, fin: 1, lignes: [L(" ", "a")], texte: "à revoir" };
   async function depot() {
-    const dossier = await dossierTemporaire();
+    const dossier = await tempFolder();
     return { fichier: join(dossier, "p", "x.commentaires.json") };
   }
 
   test("file without a diff (diff null): the comment stays, attached to the file, ligneChangee true", async () => {
-    const { fichier } = await depot();
-    const r = new ReviewComments(fichier);
+    const { fichier: file } = await depot();
+    const r = new ReviewComments(file);
     await r.ajouter(brut);
     await r.ajouter({ ...brut, fichier: "autre.txt" });
     const res = await r.recollerFichier("f.txt", null);
@@ -82,8 +82,8 @@ describe("CommentairesRelecture", () => {
     const b = await r.ajouter(brut);
     expect((await r.aEnvoyer()).map((c) => c.id)).toEqual([a.id, b.id]);
     await r.marquerEnvoyes([a.id]);
-    const apres = await r.aEnvoyer();
-    expect(apres.map((c) => c.envoye)).toEqual([true, false]);
+    const after = await r.aEnvoyer();
+    expect(after.map((c) => c.envoye)).toEqual([true, false]);
     await r.resoudre(a.id, true);
     expect((await r.aEnvoyer()).map((c) => c.id)).toEqual([b.id]);
   });
@@ -116,9 +116,9 @@ describe("CommentairesRelecture", () => {
     expect(await r.liste()).toEqual([]);
   });
   test("the file has mode 0600 and survives a re-read from disk", async () => {
-    const { fichier } = await depot();
-    await new ReviewComments(fichier).ajouter(brut);
-    expect((await stat(fichier)).mode & 0o777).toBe(0o600);
-    expect((await new ReviewComments(fichier).liste())[0]!.texte).toBe("à revoir");
+    const { fichier: file } = await depot();
+    await new ReviewComments(file).ajouter(brut);
+    expect((await stat(file)).mode & 0o777).toBe(0o600);
+    expect((await new ReviewComments(file).liste())[0]!.texte).toBe("à revoir");
   });
 });

@@ -70,10 +70,10 @@ const svc = <R = unknown>(body: string, args: unknown[] = []) =>
     `return (async (args) => { const d = (await ChromeUtils.importESModule("${STORE}").ready).design; const t = { type: "fenetre", fenetreId: window.webaiosWindow.fenetreId }; ${body} })([...arguments]);`,
     args,
   );
-const etat = () => svc<{ actif: boolean; panier: number; indisponible: string | null; projet: { projet: string } | null }>("return await d.etat(t);");
+const state = () => svc<{ actif: boolean; panier: number; indisponible: string | null; projet: { projet: string } | null }>("return await d.etat(t);");
 const toggle = () => svc("await d.toggle(t); return 1;");
 const stopMode = () => svc("await d.stop(t); return 1;");
-const add = (texte: string) => svc<{ ok: boolean; erreur?: string }>("return await d.add(t, args[0]);", [texte]);
+const add = (text: string) => svc<{ ok: boolean; erreur?: string }>("return await d.add(t, args[0]);", [text]);
 
 async function open(p: string, base = servers.page): Promise<void> {
   await openTab(m, `${base}${p}`);
@@ -216,14 +216,14 @@ describe("design service", () => {
     expect(await svc("return d.overlayContext(t);")).toEqual(b.ctx);
     // The bubble is open: the viewfinder waits; Annuler arms it again.
     expect(await hosts()).toBe(0);
-    expect((await etat()).actif).toBe(true);
+    expect((await state()).actif).toBe(true);
     await svc("d.cancel(t); return 1;");
     await expect.poll(hosts, { timeout: 10_000 }).toBe(1);
     // Only the bubble: the UI's cart column (Task 3) shows while the mode is on.
     expect(await svc('return d.overlayContext(t, ["bulle", "message"]);')).toBeNull();
     await stopMode();
     expect(await hosts()).toBe(0);
-    expect((await etat()).actif).toBe(false);
+    expect((await state()).actif).toBe(false);
   });
 
   it("a data-source element: the bubble's source is src/Inscription.svelte:12", async () => {
@@ -241,7 +241,7 @@ describe("design service", () => {
     await inPage(`history.pushState({}, "", "/x"); return 1;`);
     await expect.poll(queries, { timeout: 10_000 }).toEqual(["arm", "stop", "arm"]);
     await expect.poll(hosts, { timeout: 10_000 }).toBe(1);
-    expect((await etat()).actif).toBe(true);
+    expect((await state()).actif).toBe(true);
     const n = (await bubbles()).length;
     await trustedMouse(m, B, "#email");
     await expect.poll(async () => (await bubbles()).length, { timeout: 10_000 }).toBe(n + 1);
@@ -254,13 +254,13 @@ describe("design service", () => {
     await aim("#email");
     expect(await add("reste")).toEqual({ ok: true });
     await expect.poll(hosts, { timeout: 10_000 }).toBe(1);
-    const cart = (await etat()).panier;
+    const cart = (await state()).panier;
     expect(cart).toBeGreaterThan(0);
     await m.execute(`${B}.reload();`);
-    await expect.poll(async () => (await etat()).actif, { timeout: 10_000 }).toBe(false);
+    await expect.poll(async () => (await state()).actif, { timeout: 10_000 }).toBe(false);
     await waitFor(m, `return !${B}.webProgress.isLoadingDocument;`, (v) => v === true);
     expect(await hosts()).toBe(0);
-    expect((await etat()).panier).toBe(cart);
+    expect((await state()).panier).toBe(cart);
   });
 
   it("another tab, the tab closed: the mode stops", async () => {
@@ -271,15 +271,15 @@ describe("design service", () => {
     await open("/");
     await m.execute("gBrowser.selectedTab = window.__designTabA;");
     await waitFor(m, "return gBrowser.selectedTab === window.__designTabA;", (v) => v === true);
-    expect((await etat()).actif).toBe(false);
+    expect((await state()).actif).toBe(false);
     expect(await hosts()).toBe(0);
     await toggle();
     await expect.poll(hosts, { timeout: 10_000 }).toBe(1);
     await m.execute("gBrowser.removeTab(window.__designTabA);");
-    await expect.poll(async () => (await etat()).actif, { timeout: 10_000 }).toBe(false);
+    await expect.poll(async () => (await state()).actif, { timeout: 10_000 }).toBe(false);
     // The session is gone: toggling the tab shown now starts a new one, never stops an old one.
     await toggle();
-    await expect.poll(async () => (await etat()).actif, { timeout: 10_000 }).toBe(true);
+    await expect.poll(async () => (await state()).actif, { timeout: 10_000 }).toBe(true);
     await stopMode();
   });
 
@@ -334,7 +334,7 @@ describe("design service", () => {
     await sleep(500);
     expect(await hosts()).toBe(0);
     expect(await queries()).toEqual([]);
-    expect(await etat()).toMatchObject({ actif: false, projet: null, indisponible: UNAVAILABLE_DESIGN });
+    expect(await state()).toMatchObject({ actif: false, projet: null, indisponible: UNAVAILABLE_DESIGN });
   });
 
   it("an answer of the wrong shape stops the mode, no bubble", async () => {
@@ -342,7 +342,7 @@ describe("design service", () => {
     const n = (await bubbles()).length;
     await record({ arm: JSON.stringify({ selecteur: 1, rect: {} }) });
     await toggle();
-    await expect.poll(async () => (await etat()).actif, { timeout: 10_000 }).toBe(false);
+    await expect.poll(async () => (await state()).actif, { timeout: 10_000 }).toBe(false);
     expect((await bubbles()).length).toBe(n);
     expect(await queries()).toEqual(expect.arrayContaining(["arm", "stop"]));
   });
@@ -374,7 +374,7 @@ describe("design service", () => {
       await stopMode();
       expect(Date.now() - t0).toBeLessThan(how === "hang" ? 2500 : 1000);
       expect(await queries()).toEqual(["stop", "unguard"]);
-      expect((await etat()).actif).toBe(false);
+      expect((await state()).actif).toBe(false);
       // The guard is gone: a trusted click reaches the page (the viewfinder's own listeners never take a click).
       await clearLog(m, B);
       await trustedMouse(m, B, "#email");
@@ -389,7 +389,7 @@ describe("design service", () => {
     await toggle();
     await expect.poll(hosts, { timeout: 10_000 }).toBe(1);
     await m.execute(`Cc["@mozilla.org/processtools-service;1"].getService(Ci.nsIProcessToolsService).crash(${B}.browsingContext.currentWindowGlobal.domProcess.osPid);`);
-    await expect.poll(async () => (await etat()).actif, { timeout: 10_000 }).toBe(false);
+    await expect.poll(async () => (await state()).actif, { timeout: 10_000 }).toBe(false);
   });
 
   // Review minor 3: the project comes from the armed document's own address, never from the <browser>'s.
@@ -402,7 +402,7 @@ describe("design service", () => {
       await sleep(500);
       expect(await hosts()).toBe(0);
       expect(await queries()).toEqual([]);
-      expect((await etat()).projet).toBeNull();
+      expect((await state()).projet).toBeNull();
     } finally {
       await m.execute(`delete ${B}.currentURI; return 1;`);
       await stopMode();
@@ -419,7 +419,7 @@ describe("design service", () => {
       await toggle();
       await expect.poll(hosts, { timeout: 10_000 }).toBe(1);
       await trustedMouse(m, B, { x: 60, y: 20 });
-      await expect.poll(async () => (await etat()).actif, { timeout: 10_000 }).toBe(false);
+      await expect.poll(async () => (await state()).actif, { timeout: 10_000 }).toBe(false);
       expect((await bubbles()).length).toBe(n);
     } finally {
       await m.execute(`delete ${B}.getBoundingClientRect; return 1;`);

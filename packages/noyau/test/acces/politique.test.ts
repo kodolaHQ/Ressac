@@ -224,34 +224,34 @@ test("cut built: relaunching the app (closing then reopening app:x) does not res
   p.couper("app:x");
   p.ongletFerme("app:x");
   // relaunched on another port: same app window
-  const relancee = { ...app, url: "http://localhost:5290/" };
-  p.construite(relancee);
-  expect(p.estConstruite(relancee)).toBe(true);
-  expect(p.droitsDev(relancee)).toEqual([]);
+  const relaunched = { ...app, url: "http://localhost:5290/" };
+  p.construite(relaunched);
+  expect(p.estConstruite(relaunched)).toBe(true);
+  expect(p.droitsDev(relaunched)).toEqual([]);
   // the agent opens the app's old origin in a tab: cut as well
-  const onglet: TabInfo = { id: "9", titre: "X", url: "http://localhost:5281/", espace: "" };
-  p.ongletOuvertParAgent(onglet);
-  expect(p.droitsDev(onglet)).toEqual([]);
+  const tab: TabInfo = { id: "9", titre: "X", url: "http://localhost:5281/", espace: "" };
+  p.ongletOuvertParAgent(tab);
+  expect(p.droitsDev(tab)).toEqual([]);
   p.reinitialiser();
-  expect(p.droitsDev(relancee)).toEqual(DROITS_DEV);
-  expect(p.droitsDev(onglet)).toEqual(DROITS_DEV);
+  expect(p.droitsDev(relaunched)).toEqual(DROITS_DEV);
+  expect(p.droitsDev(tab)).toEqual(DROITS_DEV);
 });
 
 test("cut demo: a new agent tab on the same origin has no right; another origin does; a single cut right stays cut", () => {
   p.ongletOuvertParAgent(demo);
   p.couper(demo.id, "agir");
   p.ongletFerme(demo.id);
-  const nouveau: TabInfo = { ...demo, id: "4" };
-  p.ongletOuvertParAgent(nouveau);
-  expect(p.droitsDev(nouveau)).toEqual(["console", "reseau", "performances"]);
-  p.couper(nouveau.id);
-  p.ongletFerme(nouveau.id);
+  const fresh: TabInfo = { ...demo, id: "4" };
+  p.ongletOuvertParAgent(fresh);
+  expect(p.droitsDev(fresh)).toEqual(["console", "reseau", "performances"]);
+  p.couper(fresh.id);
+  p.ongletFerme(fresh.id);
   const encore: TabInfo = { ...demo, id: "5" };
   p.ongletOuvertParAgent(encore);
   expect(p.droitsDev(encore)).toEqual([]);
-  const autre: TabInfo = { ...demo, id: "6", url: "http://localhost:5281/" };
-  p.ongletOuvertParAgent(autre);
-  expect(p.droitsDev(autre)).toEqual(DROITS_DEV);
+  const other: TabInfo = { ...demo, id: "6", url: "http://localhost:5281/" };
+  p.ongletOuvertParAgent(other);
+  expect(p.droitsDev(other)).toEqual(DROITS_DEV);
   // The user grants again themselves: the right comes back
   p.accorderDev(encore, ["console"], []);
   expect(p.droitsDev(encore)).toEqual(["console"]);
@@ -260,9 +260,9 @@ test("cut demo: a new agent tab on the same origin has no right; another origin 
 });
 
 test("conversation: changes at each reinitialiser", () => {
-  const avant = p.conversation;
+  const before = p.conversation;
   p.reinitialiser();
-  expect(p.conversation).toBe(avant + 1);
+  expect(p.conversation).toBe(before + 1);
 });
 
 test("accorder signals the change (the read badge follows); nothing if access is already there", () => {
@@ -294,10 +294,10 @@ test("accorderLectureSite(\"vidola\") : peutLire de site:vidola vrai, de site:yo
 });
 
 test("site app: an origin authorization (tab of the same domain, or accorder on the window) does not open it", () => {
-  const onglet: TabInfo = { id: "7", titre: "Vidola", url: "https://vidola-a.example/film/1", espace: "perso" };
-  p.accorder(onglet);
-  p.interactionUtilisateur(onglet);
-  expect(p.peutLire(onglet)).toBe(true);
+  const tab: TabInfo = { id: "7", titre: "Vidola", url: "https://vidola-a.example/film/1", espace: "perso" };
+  p.accorder(tab);
+  p.interactionUtilisateur(tab);
+  expect(p.peutLire(tab)).toBe(true);
   expect(p.peutLire(vidola)).toBe(false);
   // Even set on the window id, an origin authorization does not count.
   p.accorder(vidola);
@@ -345,9 +345,9 @@ test("retirerLectureSite (app deleted): the grant drops, the badge follows; pend
   expect(p.lectureSiteAccordee("vidola", "e1")).toBe(false);
   expect(p.lectureSiteAccordee("youtube", "y")).toBe(true);
   // Even without a grant (a card still pending), the removal is counted and signaled.
-  const avant = p.retraitsLectureSite("vidola");
+  const before = p.retraitsLectureSite("vidola");
   p.retirerLectureSite("vidola");
-  expect(p.retraitsLectureSite("vidola")).toBe(avant + 1);
+  expect(p.retraitsLectureSite("vidola")).toBe(before + 1);
   expect(p.retraitsLectureSite("youtube")).toBe(0);
   expect(n).toBe(2);
 });

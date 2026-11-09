@@ -10,20 +10,20 @@ import { WidgetsScheduler } from "../../src/widgets/planificateur.js";
 import type { HarvestOptions } from "../../src/widgets/recolte.js";
 import type { OptionsAction, LaunchResult } from "../../src/actions/executer.js";
 import { CONCURRENT_ACTIONS, FileActions, type ActionsState, type OptionsFileActions } from "../../src/actions/file.js";
-import { dossierTemporaire } from "../aide/temporaire.js";
-import { declarationWidget, ecrireWidget } from "../aide/accueil.js";
+import { tempFolder } from "../aide/temporaire.js";
+import { declarationWidget, writeWidget } from "../aide/accueil.js";
 
-const MOTEUR = join(import.meta.dirname, "..", "..", "docker", "moteur");
-const SCRIPT = join(MOTEUR, "recolteur.mjs");
-const horloge = (() => {
+const ENGINE = join(import.meta.dirname, "..", "..", "docker", "moteur");
+const SCRIPT = join(ENGINE, "recolteur.mjs");
+const clock = (() => {
   let t = Date.parse("2026-10-31T10:00:00.000Z");
   return () => new Date((t += 1000));
 })();
 
-function differe<T>() {
-  let resoudre!: (v: T) => void;
-  const promesse = new Promise<T>((ok) => (resoudre = ok));
-  return { promesse, resoudre };
+function deferred<T>() {
+  let resolve!: (v: T) => void;
+  const promise = new Promise<T>((ok) => (resolve = ok));
+  return { promesse: promise, resoudre: resolve };
 }
 
 const files: FileActions[] = [];
@@ -32,40 +32,40 @@ afterEach(async () => {
 });
 
 async function preparer(o: Partial<OptionsFileActions> = {}) {
-  const c = spacePaths(await dossierTemporaire());
-  const dossierActions = await dossierTemporaire();
+  const c = spacePaths(await tempFolder());
+  const dossierActions = await tempFolder();
   const directs: ActionsState[] = [];
-  const supprimes: unknown[] = [];
+  const deleted: unknown[] = [];
   const f = new FileActions({
     chemins: c,
     dossierActions,
-    moteur: MOTEUR,
-    atelier: { etat: async () => "demarre", commandeRecolte: (p) => ["docker", JSON.stringify(p)], supprimerRecolte: async (p) => void supprimes.push(p) },
+    moteur: ENGINE,
+    atelier: { etat: async () => "demarre", commandeRecolte: (p) => ["docker", JSON.stringify(p)], supprimerRecolte: async (p) => void deleted.push(p) },
     pont: new PontFactice([], { actif: null, autoriser: false }),
     repartiteur: null,
-    horloge,
+    horloge: clock,
     surDirect: (e) => directs.push(e),
     ...o,
   });
   files.push(f);
-  return { f, c, dossierActions, directs, supprimes };
+  return { f, c, dossierActions, directs, supprimes: deleted };
 }
 
 /** A fake run per action, which waits for `liberer(id)`. */
-function retenues() {
+function kept() {
   const fins = new Map<string, (r: LaunchResult) => void>();
-  const lancees: OptionsAction[] = [];
+  const launched: OptionsAction[] = [];
   const executer = (o: OptionsAction) => {
-    lancees.push(o);
-    const d = differe<LaunchResult>();
+    launched.push(o);
+    const d = deferred<LaunchResult>();
     fins.set(o.id, d.resoudre);
     return d.promesse;
   };
-  const liberer = (id: string) => fins.get(id)!({ statut: "reussie", execution: `ex-${id}` });
-  return { executer, lancees, liberer };
+  const release = (id: string) => fins.get(id)!({ statut: "reussie", execution: `ex-${id}` });
+  return { executer, lancees: launched, liberer: release };
 }
 
-const attendreQue = async (f: () => boolean, ms = 5000) => {
+const waitUntil = async (f: () => boolean, ms = 5000) => {
   const fin = Date.now() + ms;
   while (!f()) {
     if (Date.now() > fin) throw new Error("attente dépassée");
@@ -76,12 +76,12 @@ const attendreQue = async (f: () => boolean, ms = 5000) => {
 describe("FileActions", () => {
   it("three actions: two run, the third waits and appears in enAttente", async () => {
     expect(CONCURRENT_ACTIONS).toBe(2);
-    const r = retenues();
+    const r = kept();
     const { f } = await preparer({ executer: r.executer });
     const a = f.lancer("a", { saisie: null, declencheur: "manuelle" });
     const b = f.lancer("b", { saisie: "clio lyon", declencheur: "manuelle" });
     const c = f.lancer("c", { saisie: null, declencheur: "agent" });
-    await attendreQue(() => r.lancees.length === 2);
+    await waitUntil(() => r.lancees.length === 2);
     expect(r.lancees.map((o) => o.id)).toEqual(["a", "b"]);
     const d = f.direct();
     expect(d.courantes.map((x) => x.action)).toEqual(["a", "b"]);
@@ -90,7 +90,7 @@ describe("FileActions", () => {
     expect(a.deja || b.deja || c.deja).toBe(false);
     r.liberer("a");
     expect(await a.fin).toEqual({ statut: "reussie", execution: "ex-a" });
-    await attendreQue(() => r.lancees.length === 3);
+    await waitUntil(() => r.lancees.length === 3);
     expect(f.direct().enAttente).toEqual([]);
     r.liberer("b");
     r.liberer("c");
@@ -99,31 +99,31 @@ describe("FileActions", () => {
   });
 
   it("relaunching a running action returns deja: true and the same end", async () => {
-    const r = retenues();
+    const r = kept();
     const { f } = await preparer({ executer: r.executer });
     const premier = f.lancer("a", { saisie: null, declencheur: "manuelle" });
     const second = f.lancer("a", { saisie: "autre", declencheur: "manuelle" });
     expect(second.deja).toBe(true);
     expect(second.fin).toBe(premier.fin);
     expect(f.essayer("a", "x", "y").deja).toBe(true);
-    await attendreQue(() => r.lancees.length === 1);
+    await waitUntil(() => r.lancees.length === 1);
     r.liberer("a");
     await premier.fin;
     // Finished: a new request goes through.
-    const troisieme = f.lancer("a", { saisie: null, declencheur: "manuelle" });
-    expect(troisieme.deja).toBe(false);
-    await attendreQue(() => r.lancees.length === 2);
+    const third = f.lancer("a", { saisie: null, declencheur: "manuelle" });
+    expect(third.deja).toBe(false);
+    await waitUntil(() => r.lancees.length === 2);
     r.liberer("a");
-    await troisieme.fin;
+    await third.fin;
   });
 
   it("a waiting action that is stopped leaves the queue without running", async () => {
-    const r = retenues();
+    const r = kept();
     const { f } = await preparer({ executer: r.executer });
     f.lancer("a", { saisie: null, declencheur: "manuelle" });
     f.lancer("b", { saisie: null, declencheur: "manuelle" });
     const c = f.lancer("c", { saisie: null, declencheur: "manuelle" });
-    await attendreQue(() => r.lancees.length === 2);
+    await waitUntil(() => r.lancees.length === 2);
     expect(f.arreter("c")).toBe(true);
     expect((await c.fin).statut).toBe("interrompue");
     expect(f.direct().enAttente).toEqual([]);
@@ -136,76 +136,76 @@ describe("FileActions", () => {
   });
 
   it("attend pret avant de lancer", async () => {
-    const r = retenues();
-    const pret = differe<void>();
-    const { f } = await preparer({ executer: r.executer, pret: pret.promesse });
+    const r = kept();
+    const ready = deferred<void>();
+    const { f } = await preparer({ executer: r.executer, pret: ready.promesse });
     f.lancer("a", { saisie: null, declencheur: "manuelle" });
     await new Promise((ok) => setTimeout(ok, 20));
     expect(r.lancees).toEqual([]);
-    pret.resoudre();
-    await attendreQue(() => r.lancees.length === 1);
+    ready.resoudre();
+    await waitUntil(() => r.lancees.length === 1);
     r.liberer("a");
   });
 
   it("each action has its priority AI access, forgotten at the end", async () => {
-    const r = retenues();
-    const repartiteur = createAiDispatcher({ kev: async () => ({}), gemma: async () => "ok" } as never);
-    const cles: { cle: string; prioritaire?: boolean }[] = [];
-    let oublies = 0;
-    const espion = {
-      pour: (cle: string, o?: { prioritaire?: boolean }) => {
-        cles.push({ cle, ...(o?.prioritaire !== undefined ? { prioritaire: o.prioritaire } : {}) });
-        const acces = repartiteur.pour(cle, o);
-        return { ...acces, oublier: () => (oublies++, acces.oublier()) };
+    const r = kept();
+    const dispatcher = createAiDispatcher({ kev: async () => ({}), gemma: async () => "ok" } as never);
+    const keys: { cle: string; prioritaire?: boolean }[] = [];
+    let forgotten = 0;
+    const spy = {
+      pour: (key: string, o?: { prioritaire?: boolean }) => {
+        keys.push({ cle: key, ...(o?.prioritaire !== undefined ? { prioritaire: o.prioritaire } : {}) });
+        const access = dispatcher.pour(key, o);
+        return { ...access, oublier: () => (forgotten++, access.oublier()) };
       },
     };
-    const { f } = await preparer({ executer: r.executer, repartiteur: espion });
+    const { f } = await preparer({ executer: r.executer, repartiteur: spy });
     const a = f.lancer("a", { saisie: null, declencheur: "manuelle" });
-    await attendreQue(() => r.lancees.length === 1);
+    await waitUntil(() => r.lancees.length === 1);
     expect(r.lancees[0]!.ia).not.toBeNull();
-    expect(cles).toHaveLength(1);
-    expect(cles[0]!.cle).toMatch(/^action:a:2026-/);
-    expect(cles[0]!.prioritaire).toBe(true);
+    expect(keys).toHaveLength(1);
+    expect(keys[0]!.cle).toMatch(/^action:a:2026-/);
+    expect(keys[0]!.prioritaire).toBe(true);
     r.liberer("a");
     await a.fin;
-    expect(oublies).toBe(1);
+    expect(forgotten).toBe(1);
   });
 
   it("an action starts while a widget harvest is running", async () => {
-    const r = retenues();
+    const r = kept();
     const { f, c } = await preparer({ executer: r.executer });
-    await ecrireWidget(c, "lent", declarationWidget(undefined, { recolte: { minutes: 60 } }), { "recolte.mjs": "export default () => 1" });
-    const recolteRetenue = differe<void>();
-    let recolteCommencee = false;
+    await writeWidget(c, "lent", declarationWidget(undefined, { recolte: { minutes: 60 } }), { "recolte.mjs": "export default () => 1" });
+    const keptHarvest = deferred<void>();
+    let harvestStarted = false;
     const p = new WidgetsScheduler({
       chemins: c,
-      dossierWidgets: await dossierTemporaire(),
-      moteur: MOTEUR,
+      dossierWidgets: await tempFolder(),
+      moteur: ENGINE,
       atelier: { etat: async () => "demarre", commandeRecolte: () => ["docker"], supprimerRecolte: async () => {} },
       pont: new PontFactice([], { actif: null, autoriser: false }),
       ia: null,
       recolter: async (_o: HarvestOptions) => {
-        recolteCommencee = true;
-        await recolteRetenue.promesse;
+        harvestStarted = true;
+        await keptHarvest.promesse;
         return { etat: { statut: "ok", derniereMaj: null, derniereTentative: null } };
       },
     });
-    const recolte = p.recolterMaintenant("lent");
-    await attendreQue(() => recolteCommencee);
+    const harvest = p.recolterMaintenant("lent");
+    await waitUntil(() => harvestStarted);
     const a = f.lancer("a", { saisie: null, declencheur: "manuelle" });
-    await attendreQue(() => r.lancees.length === 1);
+    await waitUntil(() => r.lancees.length === 1);
     r.liberer("a");
     expect((await a.fin).statut).toBe("reussie");
-    recolteRetenue.resoudre();
-    await recolte;
+    keptHarvest.resoudre();
+    await harvest;
     await p.arreter();
   });
 
   it("lecture and avancement traces fill direct()", async () => {
-    const r = retenues();
+    const r = kept();
     const { f, directs } = await preparer({ executer: r.executer });
     const a = f.lancer("a", { saisie: null, declencheur: "manuelle" });
-    await attendreQue(() => r.lancees.length === 1);
+    await waitUntil(() => r.lancees.length === 1);
     const o = r.lancees[0]!;
     o.surTrace({ bloc: "lire", etape: "debut" });
     o.surTrace({ bloc: "lire", etape: "lecture", hote: "gitlab.com" });
@@ -227,10 +227,10 @@ describe("FileActions", () => {
   });
 
   it("the block type relayed by the trace goes into direct()", async () => {
-    const r = retenues();
+    const r = kept();
     const { f } = await preparer({ executer: r.executer });
     const a = f.lancer("a", { saisie: null, declencheur: "manuelle" });
-    await attendreQue(() => r.lancees.length === 1);
+    await waitUntil(() => r.lancees.length === 1);
     const o = r.lancees[0]!;
     o.surTrace({ bloc: "trier", etape: "debut", type: "ia.trier" });
     expect(f.direct().courantes[0]!.blocs.trier).toEqual({ statut: "en-cours", elements: null, type: "ia.trier" });
@@ -241,7 +241,7 @@ describe("FileActions", () => {
   });
 
   it("arreterTout: written run interrupted", async () => {
-    const c0 = spacePaths(await dossierTemporaire());
+    const c0 = spacePaths(await tempFolder());
     const dossier = join(c0.actions, "public");
     await mkdir(dossier, { recursive: true });
     await writeFile(join(dossier, "action.json"), JSON.stringify({ nom: "P", sources: { publiques: ["gitlab.com"] } }));
@@ -255,7 +255,7 @@ describe("FileActions", () => {
     );
     await writeFile(join(dossier, "lire.mjs"), `export default async (e, w) => ({ t: (await w.lirePage("https://gitlab.com/x")).titre });`);
     const pont = new PontFactice([], { actif: null, autoriser: false, lecture: { pages: [], suspendues: ["https://gitlab.com/x"] } });
-    const { f, dossierActions, supprimes } = await preparer({
+    const { f, dossierActions, supprimes: deleted } = await preparer({
       chemins: c0,
       pont,
       adressesLocales: true,
@@ -265,13 +265,13 @@ describe("FileActions", () => {
       },
     });
     const a = f.lancer("public", { saisie: null, declencheur: "manuelle" });
-    await attendreQue(() => pont.appels.some((x) => x.methode === "lirePageInvisible"));
+    await waitUntil(() => pont.appels.some((x) => x.methode === "lirePageInvisible"));
     await f.arreterTout();
     const r = await a.fin;
     expect(r.statut).toBe("interrompue");
     const e = await lireExecution(join(dossierActions, "public"), r.execution!);
     expect(e).toMatchObject({ statut: "interrompue", erreur: "Interrompue : WebAiOs s'est arrêté", erreurNoyau: true });
-    expect(supprimes).toContainEqual({ type: "action", id: "public" });
+    expect(deleted).toContainEqual({ type: "action", id: "public" });
     // After the stop, nothing leaves anymore.
     expect((await f.lancer("public", { saisie: null, declencheur: "manuelle" }).fin).statut).toBe("interrompue");
   });

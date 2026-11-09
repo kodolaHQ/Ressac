@@ -6,9 +6,9 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { rectCapture } from "../chrome/store/design-copies";
 import { testActor } from "./agent-extensions";
 import {
-  AVEC_ACCUEIL_HOME,
-  avecAccueilDeclaration,
-  calqueOf,
+  WITH_HOME,
+  withHomeDeclaration,
+  overlayOf,
   homePoint,
   inStore,
   readPng,
@@ -64,15 +64,15 @@ let server: Awaited<ReturnType<typeof startSitesServer>>;
 let w: LaunchedWebAiOs;
 let m: Marionette;
 const dirs: string[] = [];
-const url = (hote: string, chemin = "/") => server.url(hote, chemin);
-const sondeDeclaration = () => ({ ...avecAccueilDeclaration(url), nom: "Sonde" });
+const url = (host: string, path = "/") => server.url(host, path);
+const declarationProbe = () => ({ ...withHomeDeclaration(url), nom: "Sonde" });
 
 async function launch(prefs: Record<string, string | number | boolean> = {}) {
   const dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
   const profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
   dirs.push(dataDir, profile);
-  writeSite(dataDir, "avec-accueil", { declaration: avecAccueilDeclaration(url), fichiers: { "accueil/index.html": AVEC_ACCUEIL_HOME } });
-  writeSite(dataDir, "sonde", { declaration: sondeDeclaration(), fichiers: { "accueil/index.html": HOME } });
+  writeSite(dataDir, "avec-accueil", { declaration: withHomeDeclaration(url), fichiers: { "accueil/index.html": WITH_HOME } });
+  writeSite(dataDir, "sonde", { declaration: declarationProbe(), fichiers: { "accueil/index.html": HOME } });
   writeSite(dataDir, "tuning", { declaration: tuningDeclaration(url), fichiers: { "retouches/tuning.css": "/* rien */" } });
   await grantSite(dataDir, "tuning", tuningDeclaration(url));
   const a = testActor(profile);
@@ -98,11 +98,11 @@ afterEach(async () => {
   await inStore(m, `for (const id of arguments[0]) { await store.design.stop({ type: "site", id }); store.design.closeOverlay({ type: "site", id }, "panier"); } return 1;`, [IDS]);
 });
 
-const etat = (id: string) => inStore<{ actif: boolean; panier: number }>(m, "return await store.design.etat(arguments[0]);", [T(id)]);
+const state = (id: string) => inStore<{ actif: boolean; panier: number }>(m, "return await store.design.etat(arguments[0]);", [T(id)]);
 const toggle = (id: string) => inStore(m, "await store.design.toggle(arguments[0]); return 1;", [T(id)]);
-const add = (id: string, texte: string) => inStore<{ ok: boolean }>(m, "return await store.design.add(arguments[0], arguments[1]);", [T(id), texte]);
+const add = (id: string, text: string) => inStore<{ ok: boolean }>(m, "return await store.design.add(arguments[0], arguments[1]);", [T(id), text]);
 const bubble = (id: string) => inStore<{ etiquette: string; source: string | null; avertissement: string | null } | null>(m, 'return store.design.overlayContext(arguments[0], ["bulle"]);', [T(id)]);
-const vue = (id: string) => inStore<string | null>(m, "return store.sites.viewOf(arguments[0]);", [id]);
+const view = (id: string) => inStore<string | null>(m, "return store.sites.viewOf(arguments[0]);", [id]);
 /** `body` with `f` the home's frame, `hdoc` its document and `hwin` its window (chrome access). */
 const inHome = <T = unknown>(id: string, body: string, args: unknown[] = []) =>
   inSiteBar<T>(m, id, `const f = doc.querySelector('${CADRE}'), hdoc = f?.contentDocument, hwin = hdoc?.defaultView; ${body}`, args);
@@ -127,8 +127,8 @@ const barPoint = (id: string, t: string) =>
     `const b = win.document.getElementById("webaios-site-bar").getBoundingClientRect(), r = doc.querySelector('${tid(t)}').getBoundingClientRect();
      return { x: b.left + r.left + r.width / 2, y: b.top + r.top + r.height / 2 };`,
   );
-const calqueTop = (id: string) => calqueOf<number>(m, id, "return f.getBoundingClientRect().y;");
-const bubbleText = (id: string) => calqueOf<string | null>(m, id, `return doc.querySelector('${tid("bulle-design")}')?.textContent ?? null;`);
+const overlayTop = (id: string) => overlayOf<number>(m, id, "return f.getBoundingClientRect().y;");
+const bubbleText = (id: string) => overlayOf<string | null>(m, id, `return doc.querySelector('${tid("bulle-design")}')?.textContent ?? null;`);
 /** The home element's rectangle, in its frame's CSS pixels (as the viewfinder's capture). */
 const homeRect = (id: string, sel: string) =>
   inHome<{ x: number; y: number; largeur: number; hauteur: number; vue: { largeur: number; hauteur: number } }>(
@@ -172,10 +172,10 @@ describe("design mode on a site app's home", () => {
     expect(await viewHosts("avec-accueil")).toBe(0);
     await siteMouse(m, "avec-accueil", await homePoint(m, "avec-accueil", "#titre"));
     await expect.poll(() => bubbleText("avec-accueil"), { timeout: 10_000 }).toContain("h1#titre");
-    expect(await calqueOf(m, "avec-accueil", `return doc.querySelectorAll('${tid("avertissement-bulle")}').length;`)).toBe(0);
-    expect(await calqueTop("avec-accueil")).toBeGreaterThanOrEqual(36);
-    await expect.poll(() => calqueOf(m, "avec-accueil", "return doc.activeElement?.localName ?? null;"), { timeout: 10_000 }).toBe("textarea");
-    await calqueOf(m, "avec-accueil", `const t = doc.querySelector("textarea"); t.value = "Titre plus gros"; t.dispatchEvent(new f.contentWindow.Event("input", { bubbles: true })); return 1;`);
+    expect(await overlayOf(m, "avec-accueil", `return doc.querySelectorAll('${tid("avertissement-bulle")}').length;`)).toBe(0);
+    expect(await overlayTop("avec-accueil")).toBeGreaterThanOrEqual(36);
+    await expect.poll(() => overlayOf(m, "avec-accueil", "return doc.activeElement?.localName ?? null;"), { timeout: 10_000 }).toBe("textarea");
+    await overlayOf(m, "avec-accueil", `const t = doc.querySelector("textarea"); t.value = "Titre plus gros"; t.dispatchEvent(new f.contentWindow.Event("input", { bubbles: true })); return 1;`);
     await siteKey(m, "avec-accueil", "Enter", ["Meta"]);
     await expect.poll(async () => (await bar("avec-accueil")).count, { timeout: 10_000 }).toBe("1");
     await expect.poll(() => homeHosts("avec-accueil"), { timeout: 10_000 }).toBe(1);
@@ -187,14 +187,14 @@ describe("design mode on a site app's home", () => {
     await inSiteBar(m, "avec-accueil", `doc.querySelector('${tid("site-menu-design")}').click(); return 1;`);
     await expect.poll(() => inSiteBar(m, "avec-accueil", `return !!doc.querySelector('${tid("site-menu-design-panier")}');`), { timeout: 10_000 }).toBe(true);
     await inSiteBar(m, "avec-accueil", `doc.querySelector('${tid("site-menu-design-panier")}').click(); return 1;`);
-    await expect.poll(() => calqueOf(m, "avec-accueil", `return !!doc.querySelector('${tid("envoyer-remarques")}');`), { timeout: 10_000 }).toBe(true);
-    await calqueOf(m, "avec-accueil", `doc.querySelector('${tid("envoyer-remarques")}').click(); return 1;`);
+    await expect.poll(() => overlayOf(m, "avec-accueil", `return !!doc.querySelector('${tid("envoyer-remarques")}');`), { timeout: 10_000 }).toBe(true);
+    await overlayOf(m, "avec-accueil", `doc.querySelector('${tid("envoyer-remarques")}').click(); return 1;`);
     await expect.poll(agentInput, { timeout: 20_000 }).toContain("les remarques [accueil] visent son écran d'accueil, à changer dans accueil/");
     expect(agentInput()).toContain('1) [accueil] "h1#titre" : « Titre plus gros »');
     const dir = path.join(w.dataDir, "espace", ".webaios", "remarques", "site-avec-accueil");
     const [lot] = readdirSync(dir).filter((n) => /^\d{8}T\d{6}Z-[0-9a-f]{4}$/.test(n));
-    const contenu = JSON.parse(readFileSync(path.join(dir, lot!, "lot.json"), "utf8"));
-    expect(contenu.elements[0].contexte.adresse).toBe("webaios-site://avec-accueil/index.html");
+    const content = JSON.parse(readFileSync(path.join(dir, lot!, "lot.json"), "utf8"));
+    expect(content.elements[0].contexte.adresse).toBe("webaios-site://avec-accueil/index.html");
     expect(readdirSync(path.join(dir, lot!)).filter((n) => n.endsWith(".png"))).toHaveLength(1);
   });
 
@@ -249,7 +249,7 @@ describe("design mode on a site app's home", () => {
   it("the home viewfinder's sandbox cannot navigate the bar or the window", async () => {
     await toHome(m, "sonde");
     const before = await inHome<{ bar: string; win: string; home: string }>("sonde", "return { bar: doc.documentURI, win: win.document.documentURI, home: hdoc.documentURI };");
-    const tries = await inHome<Record<string, string>>(
+    const sorted = await inHome<Record<string, string>>(
       "sonde",
       `const { homeViewfinder } = ChromeUtils.importESModule("${STORE}");
        return await homeViewfinder(f).query("arm", { code: arguments[0] });`,
@@ -262,9 +262,9 @@ describe("design mode on a site app's home", () => {
       ],
     );
     await sleep(1000);
-    for (const k of ["parentLocation", "topHref", "parentHref", "topReplace"]) expect(tries[k]).toMatch(/^throws:/);
+    for (const k of ["parentLocation", "topHref", "parentHref", "topReplace"]) expect(sorted[k]).toMatch(/^throws:/);
     expect(await inHome("sonde", "return { bar: doc.documentURI, win: win.document.documentURI, home: hdoc.documentURI };")).toEqual(before);
-    expect(await vue("sonde")).toBe("accueil");
+    expect(await view("sonde")).toBe("accueil");
   });
 
   it("hover frames p#nue; middle and right clicks pick nothing; the primary click captures #cible; the home saw nothing, no global added", async () => {
@@ -331,7 +331,7 @@ describe("design mode on a site app's home", () => {
     await asHome("sonde", "fabricate()");
     await sleep(500);
     expect(await bubble("sonde")).toBeNull();
-    expect((await etat("sonde")).actif).toBe(true);
+    expect((await state("sonde")).actif).toBe(true);
     expect(await homeHosts("sonde")).toBe(1);
     // The home's own events reached it (untrusted): the guard let them through, untouched.
     expect((await homeLog("sonde")).keys).toEqual(["Escape:false"]);
@@ -349,7 +349,7 @@ describe("design mode on a site app's home", () => {
     const errors0 = await m.execute<number>(`return Services.console.getMessageArray().filter((x) => /dead object/.test(String(x.message ?? x))).length;`);
     writeFileSync(path.join(w.dataDir, "espace", "sites", "sonde", "accueil", "index.html"), HOME.replace("<title>Accueil</title>", "<title>Accueil 2</title>"));
     await expect.poll(async () => (await bar("sonde")).pressed, { timeout: 10_000 }).toBe("false");
-    expect((await etat("sonde")).actif).toBe(false);
+    expect((await state("sonde")).actif).toBe(false);
     await expect.poll(() => inHome("sonde", "return hdoc?.readyState === 'complete' ? hdoc.title : null;"), { timeout: 15_000 }).toBe("Accueil 2");
     expect(await m.execute<number>(`return Services.console.getMessageArray().filter((x) => /dead object/.test(String(x.message ?? x))).length;`)).toBe(errors0);
     // A new arm works on the new document.

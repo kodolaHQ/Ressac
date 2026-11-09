@@ -60,9 +60,9 @@ const svc = <R = unknown>(body: string, args: unknown[] = []) =>
     `return (async (args) => { const store = await ChromeUtils.importESModule("${STORE}").ready, d = store.design; const t = { type: "fenetre", fenetreId: window.webaiosWindow.fenetreId }; ${body} })([...arguments]);`,
     args,
   );
-const etat = () => svc<{ actif: boolean; panier: number; projet: { projet: string } | null }>("return await d.etat(t);");
+const state = () => svc<{ actif: boolean; panier: number; projet: { projet: string } | null }>("return await d.etat(t);");
 /** The UI's own api.design.basculer(), as ✎ will call it. */
-const basculer = () => inUi(m, "ui.webaios.design.basculer(); return 1;");
+const toggle = () => inUi(m, "ui.webaios.design.basculer(); return 1;");
 const inPage = <T = unknown>(script: string) => inBrowser<T>(m, B, script);
 const hosts = () => inPage<number>(`return document.querySelectorAll("webaios-viseur").length;`);
 
@@ -88,12 +88,12 @@ const pageWidth = () => inPage<number>("return innerWidth;");
 
 /** The mode on through the UI, the viewfinder armed. */
 async function modeOn() {
-  await basculer();
-  await expect.poll(async () => (await etat()).actif, { timeout: 10_000 }).toBe(true);
+  await toggle();
+  await expect.poll(async () => (await state()).actif, { timeout: 10_000 }).toBe(true);
   await expect.poll(hosts, { timeout: 10_000 }).toBe(1);
 }
 async function modeOff() {
-  if ((await etat()).actif) await svc("await d.stop(t); return 1;");
+  if ((await state()).actif) await svc("await d.stop(t); return 1;");
   await expect.poll(columnShown, { timeout: 10_000 }).toBe(false);
 }
 
@@ -106,11 +106,11 @@ async function aim(sel: string, label: string) {
 
 /** `text` typed in the bubble, then « Ajouter au panier »: the cart grows by one. */
 async function remark(sel: string, label: string, text: string) {
-  const n = (await etat()).panier;
+  const n = (await state()).panier;
   await aim(sel, label);
   await typeText(m, text);
   await click(m, "button.ajouter", { frame: "calque" });
-  await expect.poll(async () => (await etat()).panier, { timeout: 10_000 }).toBe(n + 1);
+  await expect.poll(async () => (await state()).panier, { timeout: 10_000 }).toBe(n + 1);
 }
 
 describe("design overlay", () => {
@@ -134,11 +134,11 @@ describe("design overlay", () => {
     // Escape in the page: the mode stops, the column closes, the cart stays.
     await m.execute(`${B}.focus();`);
     await pressKeys(m, "Escape");
-    await expect.poll(async () => (await etat()).actif, { timeout: 10_000 }).toBe(false);
+    await expect.poll(async () => (await state()).actif, { timeout: 10_000 }).toBe(false);
     await expect.poll(columnShown, { timeout: 10_000 }).toBe(false);
     await expect.poll(pageWidth, { timeout: 10_000 }).toBe(before);
     expect(await hosts()).toBe(0);
-    expect((await etat()).panier).toBe(1);
+    expect((await state()).panier).toBe(1);
     expect(await inPage("return window.reactions;")).toEqual([]);
   });
 
@@ -199,14 +199,14 @@ describe("design overlay", () => {
   it("the bubble takes the keyboard, ⌘Enter adds, Escape cancels, then the page has it back", async () => {
     await open();
     await modeOn();
-    const n = (await etat()).panier;
+    const n = (await state()).panier;
     await aim("#email", "input#email.champ");
     expect(await m.execute("return document.activeElement?.id;")).toBe("webaios-design-calque");
     await inPage("window.typed = []; addEventListener('keydown', (e) => typed.push(e.key), true); return 1;");
     await typeText(m, "ab");
     expect(await frameOf<string>("webaios-design-calque", "return doc.querySelector('textarea').value;").then((f) => f?.v)).toBe("ab");
     await pressKeys(m, "Meta+Enter");
-    await expect.poll(async () => (await etat()).panier, { timeout: 10_000 }).toBe(n + 1);
+    await expect.poll(async () => (await state()).panier, { timeout: 10_000 }).toBe(n + 1);
     await expect.poll(bubbleShown, { timeout: 10_000 }).toBe(false);
     await expect.poll(() => m.execute("return document.activeElement?.localName;"), { timeout: 10_000 }).toBe("browser");
     await expect.poll(hosts, { timeout: 10_000 }).toBe(1);
@@ -216,7 +216,7 @@ describe("design overlay", () => {
     await expect.poll(bubbleShown, { timeout: 10_000 }).toBe(false);
     await expect.poll(() => m.execute("return document.activeElement?.localName;"), { timeout: 10_000 }).toBe("browser");
     // Nothing leaves without ⌘Enter or « Ajouter »: the text typed then cancelled is not in the cart.
-    expect((await etat()).panier).toBe(n + 1);
+    expect((await state()).panier).toBe(n + 1);
     expect(await inPage("return window.typed;")).toEqual([]);
     await pressKeys(m, "b");
     await expect.poll(() => inPage<string[]>("return window.typed;"), { timeout: 10_000 }).toEqual(["b"]);
@@ -252,7 +252,7 @@ describe("design overlay", () => {
     await modeOn();
     await expect.poll(columnShown, { timeout: 10_000 }).toBe(true);
     await click(m, 'button[aria-label="Fermer le panier"]', { frame: "volet" });
-    await expect.poll(async () => (await etat()).actif, { timeout: 10_000 }).toBe(false);
+    await expect.poll(async () => (await state()).actif, { timeout: 10_000 }).toBe(false);
     await expect.poll(columnShown, { timeout: 10_000 }).toBe(false);
     await expect.poll(hosts, { timeout: 10_000 }).toBe(0);
     // Panier cleared: nothing opens the column again.
@@ -318,35 +318,35 @@ describe("design overlay", () => {
   it("pushState under an open bubble keeps the remark, then the viewfinder is armed again", async () => {
     await open();
     await modeOn();
-    const n = (await etat()).panier;
+    const n = (await state()).panier;
     await aim("#email", "input#email.champ");
     await inPage(`history.pushState({}, "", "/x"); return 1;`);
     await sleep(300);
     expect(await bubbleShown()).toBe(true);
     await typeText(m, "reste");
     await click(m, "button.ajouter", { frame: "calque" });
-    await expect.poll(async () => (await etat()).panier, { timeout: 10_000 }).toBe(n + 1);
+    await expect.poll(async () => (await state()).panier, { timeout: 10_000 }).toBe(n + 1);
     await expect.poll(hosts, { timeout: 10_000 }).toBe(1);
-    expect((await etat()).actif).toBe(true);
+    expect((await state()).actif).toBe(true);
     await modeOff();
   });
 
   it("design.spec.ts:379 two remarks, reload then restart: the mode is off, the cart stays (<dataDir>/espace/.webaios/remarques/demo-15308)", { timeout: 120_000 }, async () => {
     await open();
-    const n = (await etat()).panier;
+    const n = (await state()).panier;
     await modeOn();
     await remark("#email", "input#email.champ", "Champ plus large");
     await expect.poll(hosts, { timeout: 10_000 }).toBe(1);
     await remark("#envoyer", "button#envoyer", "Bouton en vert");
     await m.execute(`${B}.reload();`);
-    await expect.poll(async () => (await etat()).actif, { timeout: 10_000 }).toBe(false);
+    await expect.poll(async () => (await state()).actif, { timeout: 10_000 }).toBe(false);
     await expect.poll(columnShown, { timeout: 10_000 }).toBe(false);
-    expect((await etat()).panier).toBe(n + 2);
+    expect((await state()).panier).toBe(n + 2);
     await w.close();
     await boot();
     await open();
-    await expect.poll(async () => (await etat()).panier, { timeout: 15_000 }).toBe(n + 2);
-    expect((await etat()).actif).toBe(false);
+    await expect.poll(async () => (await state()).panier, { timeout: 15_000 }).toBe(n + 2);
+    expect((await state()).actif).toBe(false);
     expect(await columnShown()).toBe(false);
     const file = path.join(dataDir, "espace", ".webaios", "remarques", PROJECT, "panier.json");
     expect(existsSync(file)).toBe(true);

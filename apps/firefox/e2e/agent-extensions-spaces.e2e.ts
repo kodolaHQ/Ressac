@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { Action } from "../shared/api";
-import { ecrireExtensionAgent } from "./extensions/fixtures";
+import { writeAgentExtension } from "./extensions/fixtures";
 import { agentAddons, grant, inPage, launchWithAmo, openTab } from "./agent-extensions";
 import { dispatch, state, waitFor } from "./firefox";
 import type { LaunchedWebAiOs } from "./launch";
@@ -13,11 +13,11 @@ import { startServer } from "./server";
 import { click, inUi, waitUi } from "./ui";
 
 // The space settings' Extensions section (A7, N1, Review Focus 5), plus spec choice 2: an agent extension's content scripts run only in the spaces it is active in.
-const HOTE = "http://127.0.0.1/*";
-const ACCORD = { permissions: [], hotes: [HOTE], reseau: [], tousLesSites: false, scriptsTousLesSites: false, scripts: true };
-const ERREUR_PROFIL_PRIVE = "Donne à cet espace privé son propre profil pour y utiliser des extensions de l'agent";
-const CACHEUR = {
-  "manifest.json": { manifest_version: 3, name: "Cacheur de l'agent", version: "1.0.0", content_scripts: [{ matches: [HOTE], css: ["cache.css"] }] },
+const HOST = "http://127.0.0.1/*";
+const ACCORD = { permissions: [], hotes: [HOST], reseau: [], tousLesSites: false, scriptsTousLesSites: false, scripts: true };
+const PRIVATE_PROFILE_ERROR = "Donne à cet espace privé son propre profil pour y utiliser des extensions de l'agent";
+const HIDER = {
+  "manifest.json": { manifest_version: 3, name: "Cacheur de l'agent", version: "1.0.0", content_scripts: [{ matches: [HOST], css: ["cache.css"] }] },
   "cache.css": "#cache-moi { display: none !important; }\n",
 };
 const tic = (matches: string[]) => ({
@@ -25,7 +25,7 @@ const tic = (matches: string[]) => ({
   "tic.js": 'let n = 0;\nsetInterval(() => document.documentElement.setAttribute("data-tic", String(++n)), 100);\n',
 });
 const MODAL = '[data-testid="modale-espace"]';
-const DEMANDE = '[data-testid="modale-demande"]';
+const REQUEST = '[data-testid="modale-demande"]';
 
 let server: Awaited<ReturnType<typeof startServer>>;
 beforeAll(async () => (server = await startServer()));
@@ -42,21 +42,21 @@ afterEach(async () => {
  * WebAiOs with the fake AMO; `prepare` writes the agent's folder and the registry first. `agent`: the kernel's MCP
  * config written and the agent's session started (a new conversation takes down the cards asked before it).
  */
-async function launch(prepare: (racine: string, dataDir: string) => void = () => {}, o: { agent?: boolean } = {}) {
+async function launch(prepare: (root: string, dataDir: string) => void = () => {}, o: { agent?: boolean } = {}) {
   const dataDir = mkdtempSync(path.join(os.tmpdir(), "webaios-data-"));
   const profile = mkdtempSync(path.join(os.tmpdir(), "webaios-firefox-"));
   dirs.push(dataDir, profile);
-  const racine = path.join(dataDir, "espace");
-  prepare(racine, dataDir);
+  const root = path.join(dataDir, "espace");
+  prepare(root, dataDir);
   const w = await launchWithAmo({ dataDir, profile });
   opened.push(w);
   if (o.agent) {
-    const config = path.join(racine, ".webaios", "mcp.json");
+    const config = path.join(root, ".webaios", "mcp.json");
     for (const deadline = Date.now() + 20_000; !existsSync(config); await new Promise((r) => setTimeout(r, 100)))
       if (Date.now() > deadline) throw new Error("the noyau did not write its MCP config");
     await waitUi(w.marionette, "return doc.querySelector('.xterm-rows')?.textContent.includes('prêt>')", [], 20_000, "agent");
   }
-  return { ...w, racine, call: (name: string, args: Record<string, unknown> = {}) => callTool(dataDir, name, args) };
+  return { ...w, racine: root, call: (name: string, args: Record<string, unknown> = {}) => callTool(dataDir, name, args) };
 }
 
 const registry = (dataDir: string) => {
@@ -85,9 +85,9 @@ const activeSpace = async (m: Marionette) => {
   const s = await state(m);
   return s.espaces.find((e) => e.id === s.fenetres[0]!.espaceActif)!;
 };
-async function setPrivate(m: Marionette, prive: boolean): Promise<void> {
+async function setPrivate(m: Marionette, isPrivate: boolean): Promise<void> {
   const e = await activeSpace(m);
-  await dispatch(m, { type: "reglerEspace", id: e.id, nom: e.nom, icone: e.icone, prive, profil: e.profil } as Action);
+  await dispatch(m, { type: "reglerEspace", id: e.id, nom: e.nom, icone: e.icone, prive: isPrivate, profil: e.profil } as Action);
 }
 async function setSpacePrivate(m: Marionette, id: string): Promise<void> {
   const e = (await state(m)).espaces.find((x) => x.id === id)!;
@@ -95,19 +95,19 @@ async function setSpacePrivate(m: Marionette, id: string): Promise<void> {
 }
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 const hostPid = (m: Marionette) => m.execute<number | null>(`return (async () => (await ChromeUtils.importESModule("${STORE}").ready).agent.pid)();`);
-async function openSettings(m: Marionette, espaceId: string): Promise<void> {
-  await click(m, `[data-testid="espace-${espaceId}"]`, { button: 2 });
+async function openSettings(m: Marionette, spaceId: string): Promise<void> {
+  await click(m, `[data-testid="espace-${spaceId}"]`, { button: 2 });
   await click(m, '[role="menuitem"]', { text: "Réglages" });
   await waitUi(m, "return doc.querySelector(arguments[0] + ' h2')?.textContent === \"Réglages de l'espace\"", [MODAL]);
 }
 /** The modal's extension line named `nom`: its switch (checked, disabled) and its text. */
-const line = (m: Marionette, nom: string) =>
+const line = (m: Marionette, name: string) =>
   waitUi<{ checked: boolean; disabled: boolean; text: string }>(
     m,
     `const l = [...doc.querySelectorAll(arguments[0] + ' [data-testid="extension-ligne"]')].find((x) => x.querySelector("b")?.textContent === arguments[1]);
      const s = l?.querySelector('[role="switch"]');
      return s && { checked: s.checked, disabled: s.disabled, text: l.textContent };`,
-    [MODAL, nom],
+    [MODAL, name],
   );
 const display = (m: Marionette, tab: string) =>
   inPage<string>(m, tab, "return [getComputedStyle(document.getElementById('cache-moi')).display, getComputedStyle(document.getElementById('reste')).display].join()");
@@ -119,7 +119,7 @@ const reloaded = (m: Marionette, tab: string) =>
 
 describe("agent extensions per space", () => {
   it("active in space A only: its content script runs in A's tab, not in B's (another profile)", async () => {
-    const w = await launch((racine, dataDir) => (ecrireExtensionAgent(racine, "cacheur", CACHEUR), grant(dataDir, "cacheur", ACCORD)));
+    const w = await launch((root, dataDir) => (writeAgentExtension(root, "cacheur", HIDER), grant(dataDir, "cacheur", ACCORD)));
     const m = w.marionette;
     await waitActive(m, "cacheur@agent.webaios", true);
     const a = await openTab(m, `${server.url}/cache.html`);
@@ -132,7 +132,7 @@ describe("agent extensions per space", () => {
   });
 
   it("the extensions menu lists an agent extension only in the spaces where it runs", async () => {
-    const w = await launch((racine, dataDir) => (ecrireExtensionAgent(racine, "cacheur", CACHEUR), grant(dataDir, "cacheur", ACCORD)));
+    const w = await launch((root, dataDir) => (writeAgentExtension(root, "cacheur", HIDER), grant(dataDir, "cacheur", ACCORD)));
     const m = w.marionette;
     await waitActive(m, "cacheur@agent.webaios", true);
     await openTab(m, `${server.url}/cache.html`);
@@ -150,33 +150,33 @@ describe("agent extensions per space", () => {
 
   // extensions-interface.spec.ts:278
   it("the switch of an agent extension is greyed in a private space, with ERREUR_PROFIL_PRIVE", async () => {
-    const w = await launch((racine, dataDir) => {
-      ecrireExtensionAgent(racine, "cacheur", CACHEUR);
+    const w = await launch((root, dataDir) => {
+      writeAgentExtension(root, "cacheur", HIDER);
       // A folder of the agent never granted is listed too, greyed the same.
-      ecrireExtensionAgent(racine, "jamais-accordee", { "manifest.json": { manifest_version: 3, name: "Jamais", version: "1.0.0" } });
+      writeAgentExtension(root, "jamais-accordee", { "manifest.json": { manifest_version: 3, name: "Jamais", version: "1.0.0" } });
       grant(dataDir, "cacheur", ACCORD, []);
     });
     const m = w.marionette;
     await setPrivate(m, true);
     const e = await activeSpace(m);
     await openSettings(m, e.id);
-    for (const nom of ["cacheur", "jamais-accordee"]) expect(await line(m, nom)).toMatchObject({ disabled: true, text: expect.stringContaining(ERREUR_PROFIL_PRIVE) });
+    for (const name of ["cacheur", "jamais-accordee"]) expect(await line(m, name)).toMatchObject({ disabled: true, text: expect.stringContaining(PRIVATE_PROFILE_ERROR) });
     // The kernel refuses too, without the switch.
     expect(await inUi(m, "return ui.webaios.extensions.basculer('agent:cacheur', arguments[0], true).then((r) => JSON.parse(JSON.stringify(r)))", [e.id])).toEqual({
       ok: false,
-      erreur: ERREUR_PROFIL_PRIVE,
+      erreur: PRIVATE_PROFILE_ERROR,
     });
   });
 
   // extensions-interface.spec.ts:303
   it("ticking « Espace privé » shows the warning and the extensions disabled; after Enregistrer, the agent's extension no longer runs", async () => {
-    const w = await launch((racine, dataDir) => (ecrireExtensionAgent(racine, "cacheur", CACHEUR), grant(dataDir, "cacheur", ACCORD)));
+    const w = await launch((root, dataDir) => (writeAgentExtension(root, "cacheur", HIDER), grant(dataDir, "cacheur", ACCORD)));
     const m = w.marionette;
     await waitActive(m, "cacheur@agent.webaios", true);
     await until(() => registry(w.dataDir)["agent:cacheur"]?.idChrome === "cacheur@agent.webaios");
-    const perso = await activeSpace(m);
+    const personal = await activeSpace(m);
     await dispatch(m, { type: "creerEspace", nom: "Lecture", icone: "📚", prive: false, profil: "defaut", fenetreId: (await state(m)).fenetres[0]!.id } as Action);
-    await openSettings(m, perso.id);
+    await openSettings(m, personal.id);
     expect(await line(m, "Cacheur de l'agent")).toMatchObject({ checked: true, text: expect.stringContaining("Active aussi dans « Lecture » (même profil)") });
     const shown = (id: string) => inUi<string | null>(m, `return doc.querySelector('[data-testid="${id}"]')?.textContent ?? null`);
     expect(await shown("avertissement-extensions-prive")).toBeNull();
@@ -195,7 +195,7 @@ describe("agent extensions per space", () => {
 
   // extensions-interface.spec.ts:327
   it("creating a private space on a shared profile disables the agent's extension of that profile", async () => {
-    const w = await launch((racine, dataDir) => (ecrireExtensionAgent(racine, "cacheur", CACHEUR), grant(dataDir, "cacheur", ACCORD)));
+    const w = await launch((root, dataDir) => (writeAgentExtension(root, "cacheur", HIDER), grant(dataDir, "cacheur", ACCORD)));
     const m = w.marionette;
     await waitActive(m, "cacheur@agent.webaios", true);
     // Without the modal: the creerEspace action, as another window would send it.
@@ -206,7 +206,7 @@ describe("agent extensions per space", () => {
 
   // extensions-agent.spec.ts:1552
   it("A7 the space turns private: the open tabs its scripts run in are reloaded, the script stops", async () => {
-    const w = await launch((racine, dataDir) => (ecrireExtensionAgent(racine, "tic", tic([HOTE])), grant(dataDir, "tic", ACCORD)));
+    const w = await launch((root, dataDir) => (writeAgentExtension(root, "tic", tic([HOST])), grant(dataDir, "tic", ACCORD)));
     const m = w.marionette;
     await waitActive(m, "tic@agent.webaios", true);
     const a = await openTab(m, `${server.url}/a.html`);
@@ -221,13 +221,13 @@ describe("agent extensions per space", () => {
 
   // extensions-agent.spec.ts:1576
   it("N1 disabled (broadened scope) then the space turns private: the tab its script ran in is reloaded", async () => {
-    const w = await launch((racine, dataDir) => (ecrireExtensionAgent(racine, "tic", tic([HOTE])), grant(dataDir, "tic", ACCORD)), { agent: true });
+    const w = await launch((root, dataDir) => (writeAgentExtension(root, "tic", tic([HOST])), grant(dataDir, "tic", ACCORD)), { agent: true });
     const m = w.marionette;
     await waitActive(m, "tic@agent.webaios", true);
     const a = await openTab(m, `${server.url}/a.html`);
     expect(await poll(() => ticks(m, a), (n) => n > 2)).toBeGreaterThan(2);
     // One more site: disabled, without a reload.
-    ecrireExtensionAgent(w.racine, "tic", tic([HOTE, "https://exemple.com/*"]));
+    writeAgentExtension(w.racine, "tic", tic([HOST, "https://exemple.com/*"]));
     expect((await w.call("recharger_extension", { id: "tic" })).texte).toContain("desactivee");
     await waitActive(m, "tic@agent.webaios", false);
     await mark(m, a);
@@ -240,30 +240,30 @@ describe("agent extensions per space", () => {
   // A profile turned private reloads every agent-script tab of a profile turned private, « même ceux d'une
   // extension déjà retirée sans rechargement »: here switched off in A, still active (and enabled) for B's profile.
   it("switched off in A, active in B's profile: A turns private, the tab its script still runs in is reloaded", async () => {
-    const w = await launch((racine, dataDir) => (ecrireExtensionAgent(racine, "tic", tic([HOTE])), grant(dataDir, "tic", ACCORD)));
+    const w = await launch((root, dataDir) => (writeAgentExtension(root, "tic", tic([HOST])), grant(dataDir, "tic", ACCORD)));
     const m = w.marionette;
     await waitActive(m, "tic@agent.webaios", true);
-    const espaceA = (await activeSpace(m)).id;
+    const spaceA = (await activeSpace(m)).id;
     const a = await openTab(m, `${server.url}/a.html`);
     expect(await poll(() => ticks(m, a), (n) => n > 2)).toBeGreaterThan(2);
     await dispatch(m, { type: "creerEspace", nom: "B", icone: "🅱️", prive: false, profil: "nouveau", fenetreId: (await state(m)).fenetres[0]!.id } as Action);
-    const espaceB = (await activeSpace(m)).id;
-    const basculer = (espace: string, actif: boolean) =>
-      inUi(m, "return ui.webaios.extensions.basculer('agent:tic', arguments[0], arguments[1]).then((r) => JSON.parse(JSON.stringify(r)))", [espace, actif]);
-    expect(await basculer(espaceB, true)).toEqual({ ok: true });
-    expect(await basculer(espaceA, false)).toEqual({ ok: true });
+    const spaceB = (await activeSpace(m)).id;
+    const toggle = (space: string, active: boolean) =>
+      inUi(m, "return ui.webaios.extensions.basculer('agent:tic', arguments[0], arguments[1]).then((r) => JSON.parse(JSON.stringify(r)))", [space, active]);
+    expect(await toggle(spaceB, true)).toEqual({ ok: true });
+    expect(await toggle(spaceA, false)).toEqual({ ok: true });
     await waitActive(m, "tic@agent.webaios", true);
     const before = await ticks(m, a);
     expect(await poll(() => ticks(m, a), (n) => n > before)).toBeGreaterThan(before);
     await mark(m, a);
-    await setSpacePrivate(m, espaceA);
+    await setSpacePrivate(m, spaceA);
     expect(await reloaded(m, a)).toBe(true);
     await new Promise((r) => setTimeout(r, 500));
     expect(await inPage(m, a, "return document.documentElement.getAttribute('data-tic')")).toBeNull();
   });
 
   it("the host down: a space turned private still reloads the tab an agent script runs in", async () => {
-    const w = await launch((racine, dataDir) => (ecrireExtensionAgent(racine, "tic", tic([HOTE])), grant(dataDir, "tic", ACCORD)));
+    const w = await launch((root, dataDir) => (writeAgentExtension(root, "tic", tic([HOST])), grant(dataDir, "tic", ACCORD)));
     const m = w.marionette;
     await waitActive(m, "tic@agent.webaios", true);
     const a = await openTab(m, `${server.url}/a.html`);
@@ -279,13 +279,13 @@ describe("agent extensions per space", () => {
 
   // extensions-agent.spec.ts:1433
   it("an agent card taken down before the answer (the space turns private): « Demande retirée avant la réponse de l'utilisateur. »", async () => {
-    const w = await launch((racine) => ecrireExtensionAgent(racine, "cacheur", CACHEUR), { agent: true });
+    const w = await launch((root) => writeAgentExtension(root, "cacheur", HIDER), { agent: true });
     const m = w.marionette;
-    const appel = w.call("demander_extension", { id: "cacheur" });
-    await waitUi(m, `return doc.querySelector(${JSON.stringify(DEMANDE)})?.textContent.includes("Cacheur de l'agent")`, [], 15_000);
+    const call = w.call("demander_extension", { id: "cacheur" });
+    await waitUi(m, `return doc.querySelector(${JSON.stringify(REQUEST)})?.textContent.includes("Cacheur de l'agent")`, [], 15_000);
     await setPrivate(m, true);
-    expect((await appel).texte).toBe("Demande retirée avant la réponse de l'utilisateur.");
-    await waitUi(m, `return !doc.querySelector(${JSON.stringify(DEMANDE)})`);
+    expect((await call).texte).toBe("Demande retirée avant la réponse de l'utilisateur.");
+    await waitUi(m, `return !doc.querySelector(${JSON.stringify(REQUEST)})`);
     expect(await agentAddons(m)).toEqual([]);
   });
 });

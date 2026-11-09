@@ -44,14 +44,14 @@ const onPage = (id: string, expr: string) =>
 const VIEW = "win?.gViewController?.currentViewId ?? null";
 
 /** Three steps: the trigger page opens in space A, then the window goes to space B at once. */
-async function triggerFromA(query: string, profil: string): Promise<{ a: string; b: string }> {
-  const fenetreId = (await win()).id;
+async function triggerFromA(query: string, profile: string): Promise<{ a: string; b: string }> {
+  const windowId = (await win()).id;
   const a = (await win()).espaceActif;
-  await dispatch(m, { type: "creerEspace", nom: "B", icone: "🅱", prive: false, profil, fenetreId });
+  await dispatch(m, { type: "creerEspace", nom: "B", icone: "🅱", prive: false, profil: profile, fenetreId: windowId });
   const b = (await win()).espaceActif;
-  await dispatch(m, { type: "activerEspace", fenetreId, id: a });
-  await dispatch(m, { type: "ouvrirOnglet", fenetreId, url: `${server.url}/a.html?${query}` });
-  await dispatch(m, { type: "activerEspace", fenetreId, id: b });
+  await dispatch(m, { type: "activerEspace", fenetreId: windowId, id: a });
+  await dispatch(m, { type: "ouvrirOnglet", fenetreId: windowId, url: `${server.url}/a.html?${query}` });
+  await dispatch(m, { type: "activerEspace", fenetreId: windowId, id: b });
   return { a, b };
 }
 
@@ -127,10 +127,10 @@ describe("options pages in a tab", () => {
     await openOptionsPage(id);
     const page = await tabWith("/options.html");
     await waitFor(m, "return gBrowser.selectedTab.getAttribute('webaios-tab-id')", (v) => v === page.id);
-    const fenetreId = (await win()).id;
-    await dispatch(m, { type: "ouvrirOnglet", fenetreId, url: `${server.url}/a.html` });
-    await dispatch(m, { type: "creerEspace", nom: "B", icone: "🅱", prive: false, profil: "defaut", fenetreId });
-    await dispatch(m, { type: "ouvrirOnglet", fenetreId, url: `${server.url}/b.html` });
+    const windowId = (await win()).id;
+    await dispatch(m, { type: "ouvrirOnglet", fenetreId: windowId, url: `${server.url}/a.html` });
+    await dispatch(m, { type: "creerEspace", nom: "B", icone: "🅱", prive: false, profil: "defaut", fenetreId: windowId });
+    await dispatch(m, { type: "ouvrirOnglet", fenetreId: windowId, url: `${server.url}/b.html` });
     await openOptionsPage(id);
     const f = await waitState((s) => s.fenetres[0]!, (x) => x.espaceActif === page.espaceId && x.actif[page.espaceId] === page.id);
     expect(f.actif[f.espaceActif]).toBe(page.id);
@@ -152,16 +152,16 @@ describe("about:addons", () => {
   });
 
   it("an add-on's options open as WebAiOs tabs", async () => {
-    const fenetreId = (await win()).id;
+    const windowId = (await win()).id;
     const inTab = await installAddon(m, options({ inTab: true }));
-    await dispatch(m, { type: "ouvrirOnglet", fenetreId, url: `${server.url}/a.html?options` });
+    await dispatch(m, { type: "ouvrirOnglet", fenetreId: windowId, url: `${server.url}/a.html?options` });
     const page = await tabWith("/options.html");
     expect(page.url).toMatch(/^moz-extension:\/\/.+\/options\.html$/);
     expect(page.espaceId).toBe((await win()).espaceActif);
     await uninstallAddon(m, inTab);
 
     const embedded = await installAddon(m, options({ inTab: false }));
-    await dispatch(m, { type: "ouvrirOnglet", fenetreId, url: `${server.url}/a.html?options` });
+    await dispatch(m, { type: "ouvrirOnglet", fenetreId: windowId, url: `${server.url}/a.html?options` });
     const addons = await tabWith("about:addons");
     await waitFor(m, onPage(addons.id, VIEW), (v) => v === `addons://detail/${encodeURIComponent(embedded)}/preferences`);
   });

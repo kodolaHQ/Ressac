@@ -15,7 +15,7 @@ import { openBuilder, readWorkflow, widgetDir, writeWidget } from "./workflows";
 // plus a host restart under an open builder.
 
 /** A workflow shipped by the agent, without positions: a page, its links taken by code, sorted by Kev, then their texts. */
-const WORKFLOW_VEILLE = {
+const WATCH_WORKFLOW = {
   version: 1,
   blocs: [
     { id: "page", type: "source.page", parametres: { url: "{config.url}" } },
@@ -32,9 +32,9 @@ const WORKFLOW_VEILLE = {
   ],
 };
 const LIENS = "export default async (page) => page.liens;";
-const TEXTES = "export default async (liens) => ({ liens: liens.map((l) => l.texte) });";
+const TEXTS = "export default async (liens) => ({ liens: liens.map((l) => l.texte) });";
 /** The last code block waits a little: time to see the « en cours » badges and the greyed buttons. */
-const TEXTES_LENT = "export default async (liens) => { await new Promise((r) => setTimeout(r, 2500)); return { liens: liens.map((l) => l.texte) }; };";
+const SLOW_TEXTS = "export default async (liens) => { await new Promise((r) => setTimeout(r, 2500)); return { liens: liens.map((l) => l.texte) }; };";
 
 type Box = { x: number; y: number; width: number; height: number };
 const overlap = (a: Box, b: Box) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
@@ -86,19 +86,19 @@ const snapshot = async (dir: string, recursive = false) => {
 };
 
 /** A widget on WORKFLOW_VEILLE reading `/liens?<id>`; `slow`: its last code block waits 2.5 s. */
-const writeVeille = (id: string, o: { slow?: boolean; declaration?: Record<string, unknown> } = {}) =>
+const writeWatch = (id: string, o: { slow?: boolean; declaration?: Record<string, unknown> } = {}) =>
   writeWidget(dataDir, id, {
     nom: "Veille",
     recolte: { minutes: 60 },
     declaration: { config: { url: `${site.url}/liens?${id}` }, ...o.declaration },
-    workflow: WORKFLOW_VEILLE,
-    fichiers: { "liens.mjs": LIENS, "textes.mjs": o.slow ? TEXTES_LENT : TEXTES, "exemple.json": JSON.stringify({ exemple: "veille" }) },
+    workflow: WATCH_WORKFLOW,
+    fichiers: { "liens.mjs": LIENS, "textes.mjs": o.slow ? SLOW_TEXTS : TEXTS, "exemple.json": JSON.stringify({ exemple: "veille" }) },
   });
 /** No state: harvested at launch (scheduled). */
 const dropState = (id: string) => rm(dataOf(id), { recursive: true });
-const writeState = async (id: string, etat: Record<string, unknown>) => {
+const writeState = async (id: string, state: Record<string, unknown>) => {
   await mkdir(dataOf(id), { recursive: true });
-  await writeFile(path.join(dataOf(id), "etat.json"), JSON.stringify(etat));
+  await writeFile(path.join(dataOf(id), "etat.json"), JSON.stringify(state));
 };
 
 /** A run's trace of one block. */
@@ -125,10 +125,10 @@ async function writeExecution(owner: string, id: string, blocs: unknown[]): Prom
 function thirtyBlocks(): { workflow: { version: number; blocs: unknown[]; liens: unknown[] }; fichiers: Record<string, string> } {
   const blocs: { id: string; type: string; parametres: Record<string, unknown> }[] = [];
   const liens: { de: string; vers: string }[] = [];
-  const fichiers: Record<string, string> = {};
+  const files: Record<string, string> = {};
   for (let i = 1; i <= 6; i++) {
     blocs.push({ id: `source-${i}`, type: "code", parametres: { source: `source-${i}.mjs` } });
-    fichiers[`source-${i}.mjs`] = `export default async () => [{ url: "https://exemple.invalid/${i}" }];`;
+    files[`source-${i}.mjs`] = `export default async () => [{ url: "https://exemple.invalid/${i}" }];`;
     blocs.push({ id: `nouveaux-${i}`, type: "liste.nouveaux", parametres: { cle: "url" } });
     blocs.push({ id: `dedoublonner-${i}`, type: "liste.dedoublonner", parametres: { cles: ["url"] } });
     blocs.push({ id: `garder-${i}`, type: "liste.garder", parametres: { nombre: 10 } });
@@ -143,10 +143,10 @@ function thirtyBlocks(): { workflow: { version: number; blocs: unknown[]; liens:
     { id: "forme", type: "code", parametres: { source: "forme.mjs" } },
     { id: "sortie", type: "sortie", parametres: { vers: "widget" } },
   );
-  fichiers["fusion.mjs"] = "export default async (entrees) => Object.values(entrees).flat();";
-  fichiers["forme.mjs"] = "export default async (liens) => ({ liens });";
+  files["fusion.mjs"] = "export default async (entrees) => Object.values(entrees).flat();";
+  files["forme.mjs"] = "export default async (liens) => ({ liens });";
   liens.push({ de: "fusion", vers: "tri" }, { de: "tri", vers: "garder" }, { de: "garder", vers: "dedoublonner" }, { de: "dedoublonner", vers: "forme" }, { de: "forme", vers: "sortie" });
-  return { workflow: { version: 1, blocs, liens }, fichiers };
+  return { workflow: { version: 1, blocs, liens }, fichiers: files };
 }
 
 const TRUNCATED = "2026-10-29T10-00-00-000Z";
@@ -178,10 +178,10 @@ beforeAll(async () => {
   ollama = await listen((_req, res) => void res.writeHead(200, { "Content-Type": "application/json" }).end('{"models":[]}'));
 
   dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-builder-runs-"));
-  await writeVeille("lancer", { slow: true });
-  await writeVeille("rejouer");
+  await writeWatch("lancer", { slow: true });
+  await writeWatch("rejouer");
   await dropState("rejouer");
-  await writeVeille("tronque");
+  await writeWatch("tronque");
   const debut = "2026-10-29T10:00:00.000Z";
   await writeExecution("tronque", TRUNCATED, [
     trace("page", "source.page", debut, { sortie: { titre: "Liens" } }),
@@ -190,7 +190,7 @@ beforeAll(async () => {
     trace("textes", "code", debut, { sortie: { liens: [] } }),
     trace("sortie", "sortie", debut, { sortie: { liens: [] } }),
   ]);
-  await writeVeille("grise", { slow: true });
+  await writeWatch("grise", { slow: true });
   await dropState("grise");
   // Like a Gmail widget: widget.json, recolte.mjs, affichage.html, an account, no workflow.json.
   await writeWidget(dataDir, "gmail", {
@@ -222,18 +222,18 @@ beforeAll(async () => {
     fichiers: { "recolte.mjs": SIMPLE_CODE, "exemple.json": JSON.stringify({ exemple: "simple" }) },
   });
   await dropState("simple");
-  await writeVeille("coupe");
+  await writeWatch("coupe");
   const big = thirtyBlocks();
   await writeWidget(dataDir, "grand", { nom: "Grand", recolte: { minutes: 60 }, workflow: big.workflow, fichiers: big.fichiers });
   await writeWidget(dataDir, "web", {
     nom: "Veille",
     recolte: { heures: ["07:00", "19:00"], dureeMaxMinutes: 30, notifier: true },
     declaration: { sources: { compte: [], publiques: [], web: true }, config: { url: `${site.url}/liens?web` } },
-    workflow: WORKFLOW_VEILLE,
-    fichiers: { "liens.mjs": LIENS, "textes.mjs": TEXTES },
+    workflow: WATCH_WORKFLOW,
+    fichiers: { "liens.mjs": LIENS, "textes.mjs": TEXTS },
   });
   await writeState("web", noHourDue());
-  await writeVeille("sansweb");
+  await writeWatch("sansweb");
   await writeWidget(dataDir, "fil", {
     nom: "Veille",
     recolte: { minutes: 60 },
@@ -254,7 +254,7 @@ beforeAll(async () => {
     },
     fichiers: { "liens.mjs": LIENS },
   });
-  await writeVeille("relance", { slow: true });
+  await writeWatch("relance", { slow: true });
 
   w = await launchWebAiOs({ dataDir, height: 1400, env: { WEBAIOS_KEV_URL: kev.url, WEBAIOS_OLLAMA_URL: ollama.url, WEBAIOS_TEST_ADRESSES_LOCALES: "1" } });
   m = w.marionette;
@@ -403,8 +403,8 @@ describe("the workflow builder's runs", () => {
     await waitDisabled(tid("rejouer"), true);
 
     await click(m, tid("noeud-tri"));
-    const seuil = `${tid("volet-bloc")} ${tid("champ-seuil")}`;
-    await fill(seuil, "0.05");
+    const threshold = `${tid("volet-bloc")} ${tid("champ-seuil")}`;
+    await fill(threshold, "0.05");
     await pressEnter();
     await poll(() => thresholdOf("rejouer"), 0.05);
     await saved();
@@ -579,7 +579,7 @@ describe("the workflow builder's runs", () => {
     await waitVisible(tid("noeud-tri"));
 
     // The agent writes without a temporary file: JSON cut in the middle.
-    const cut = JSON.stringify(WORKFLOW_VEILLE).slice(0, 120);
+    const cut = JSON.stringify(WATCH_WORKFLOW).slice(0, 120);
     await writeFile(file, cut);
     await waitContains(tid("bandeau-fichier"), "illisible");
     for (const id of ["page", "liens", "tri", "textes", "sortie"]) await waitVisible(tid(`noeud-${id}`));

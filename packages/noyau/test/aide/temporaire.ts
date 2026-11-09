@@ -3,6 +3,6 @@ import { realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-export async function dossierTemporaire(): Promise<string> {
+export async function tempFolder(): Promise<string> {
   return realpathSync(await mkdtemp(join(tmpdir(), "webaios-")));
 }

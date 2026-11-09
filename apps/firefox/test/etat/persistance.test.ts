@@ -9,10 +9,10 @@ import { chargerSession, SessionRecorder } from "../../core/etat/persistance";
 import type { BrowserState } from "../../shared/modele";
 
 const dossier = () => mkdtempSync(join(tmpdir(), "webaios-session-"));
-const mis_de_cote = (d: string, suffixe: string) => readdirSync(d).filter((f) => f.startsWith("session.json.") && f.endsWith(suffixe));
-const attendre = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const mis_de_cote = (d: string, suffix: string) => readdirSync(d).filter((f) => f.startsWith("session.json.") && f.endsWith(suffix));
+const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-function etatRiche(): BrowserState {
+function richState(): BrowserState {
   let n = 0;
   const g = () => `g${++n}`;
   let e = initialState(g);
@@ -28,35 +28,35 @@ function etatRiche(): BrowserState {
 
 test("round trip: identical, apart from volatile fields reset to defaults", async () => {
   const d = dossier();
-  const etat = etatRiche();
-  const enr = new SessionRecorder(d);
-  enr.planifier(etat);
-  await enr.vider();
-  const relu = await chargerSession(d);
-  const a = Object.values(relu.onglets).find((o) => o.url === "https://a.test/")!;
+  const state = richState();
+  const recorder = new SessionRecorder(d);
+  recorder.planifier(state);
+  await recorder.vider();
+  const reviewed = await chargerSession(d);
+  const a = Object.values(reviewed.onglets).find((o) => o.url === "https://a.test/")!;
   expect(a).toMatchObject({ titre: "A", zoom: 1.2, chargement: false, peutReculer: false, peutAvancer: false, plante: false });
-  const attendu = structuredClone(etat);
-  for (const o of Object.values(attendu.onglets)) Object.assign(o, { chargement: false, peutReculer: false, peutAvancer: false, plante: false, erreur: null });
-  expect(relu).toEqual(attendu);
+  const expected = structuredClone(state);
+  for (const o of Object.values(expected.onglets)) Object.assign(o, { chargement: false, peutReculer: false, peutAvancer: false, plante: false, erreur: null });
+  expect(reviewed).toEqual(expected);
 });
 
 /** The same state as a browser from before configurable spaces saved it (version 1). */
-function enV1(etat: BrowserState): unknown {
-  const { profils: _profils, ...reste } = structuredClone(etat);
-  return { ...reste, version: 1, espaces: reste.espaces.map(({ prive: _prive, profil: _profil, ...e }) => e) };
+function enV1(state: BrowserState): unknown {
+  const { profils: _profiles, ...rest } = structuredClone(state);
+  return { ...rest, version: 1, espaces: rest.espaces.map(({ prive: _private, profil: _profile, ...e }) => e) };
 }
 
 test("session v1 → v2: non-private spaces on the default sign-in profile, tabs intact", async () => {
   const d = dossier();
-  const etat = etatRiche();
-  writeFileSync(join(d, "session.json"), JSON.stringify(enV1(etat)));
+  const state = richState();
+  writeFileSync(join(d, "session.json"), JSON.stringify(enV1(state)));
   const e = await chargerSession(d);
   expect(e.version).toBe(2);
   expect(e.profils).toEqual([{ id: "defaut" }]);
-  for (const espace of e.espaces) expect(espace).toMatchObject({ prive: false, profil: "defaut" });
-  const attendu = structuredClone(etat);
-  for (const o of Object.values(attendu.onglets)) Object.assign(o, { chargement: false, peutReculer: false, peutAvancer: false, plante: false, erreur: null });
-  expect(e).toEqual(attendu);
+  for (const space of e.espaces) expect(space).toMatchObject({ prive: false, profil: "defaut" });
+  const expected = structuredClone(state);
+  for (const o of Object.values(expected.onglets)) Object.assign(o, { chargement: false, peutReculer: false, peutAvancer: false, plante: false, erreur: null });
+  expect(e).toEqual(expected);
   expect(mis_de_cote(d, ".corrompu")).toEqual([]);
 });
 
@@ -64,22 +64,22 @@ test("session v2 with a private space and a second sign-in profile: identical ro
   const d = dossier();
   let n = 100;
   const g = () => `h${++n}`;
-  const etat = apply(etatRiche(), { type: "creerEspace", nom: "Banque", icone: "🏦", prive: true, profil: "nouveau" }, g);
-  expect(etat.profils).toHaveLength(2);
-  const enr = new SessionRecorder(d);
-  enr.planifier(etat);
-  await enr.vider();
-  const relu = await chargerSession(d);
-  expect(relu.version).toBe(2);
-  expect(relu.profils).toEqual(etat.profils);
-  expect(relu.espaces).toEqual(etat.espaces);
+  const state = apply(richState(), { type: "creerEspace", nom: "Banque", icone: "🏦", prive: true, profil: "nouveau" }, g);
+  expect(state.profils).toHaveLength(2);
+  const recorder = new SessionRecorder(d);
+  recorder.planifier(state);
+  await recorder.vider();
+  const reviewed = await chargerSession(d);
+  expect(reviewed.version).toBe(2);
+  expect(reviewed.profils).toEqual(state.profils);
+  expect(reviewed.espaces).toEqual(state.espaces);
 });
 
 test("a session saved before the windows' frame loads (frame = null)", async () => {
   const d = dossier();
-  const ancienne = structuredClone(initialState()) as unknown as { fenetres: Record<string, unknown>[] };
-  for (const f of ancienne.fenetres) delete f.cadre;
-  writeFileSync(join(d, "session.json"), JSON.stringify(ancienne));
+  const old = structuredClone(initialState()) as unknown as { fenetres: Record<string, unknown>[] };
+  for (const f of old.fenetres) delete f.cadre;
+  writeFileSync(join(d, "session.json"), JSON.stringify(old));
   const e = await chargerSession(d);
   expect(e.fenetres[0]!.cadre).toBeNull();
   expect(mis_de_cote(d, ".corrompu")).toEqual([]);
@@ -96,23 +96,23 @@ test("invalid JSON → initial state and old file set aside (….corrompu)", asy
   writeFileSync(join(d, "session.json"), "{ pas du json");
   const e = await chargerSession(d);
   expect(e.onglets).toEqual({});
-  const [garde] = mis_de_cote(d, ".corrompu");
-  expect(readFileSync(join(d, garde!), "utf8")).toBe("{ pas du json");
+  const [kept] = mis_de_cote(d, ".corrompu");
+  expect(readFileSync(join(d, kept!), "utf8")).toBe("{ pas du json");
 });
 
 test("corrupted session: the name of the file set aside is returned to warn the user, nothing without a file", async () => {
   const d = dossier();
-  const garde = vi.fn();
-  await chargerSession(d, garde);
-  expect(garde).not.toHaveBeenCalled();
+  const kept = vi.fn();
+  await chargerSession(d, kept);
+  expect(kept).not.toHaveBeenCalled();
   writeFileSync(join(d, "session.json"), "{ pas du json");
-  await chargerSession(d, garde);
-  expect(garde).toHaveBeenCalledWith(join(d, mis_de_cote(d, ".corrompu")[0]!));
+  await chargerSession(d, kept);
+  expect(kept).toHaveBeenCalledWith(join(d, mis_de_cote(d, ".corrompu")[0]!));
 });
 
 test("unknown version → initial state and file set aside", async () => {
   const d = dossier();
-  writeFileSync(join(d, "session.json"), JSON.stringify({ ...etatRiche(), version: 3 }));
+  writeFileSync(join(d, "session.json"), JSON.stringify({ ...richState(), version: 3 }));
   const e = await chargerSession(d);
   expect(e.onglets).toEqual({});
   expect(mis_de_cote(d, ".corrompu")).toHaveLength(1);
@@ -124,77 +124,77 @@ test("two corrupted sessions in a row: the second does not overwrite the first",
   await chargerSession(d);
   writeFileSync(join(d, "session.json"), "second");
   await chargerSession(d);
-  const gardes = mis_de_cote(d, ".corrompu").map((f) => readFileSync(join(d, f), "utf8"));
-  expect(gardes.sort()).toEqual(["premier", "second"]);
+  const guards = mis_de_cote(d, ".corrompu").map((f) => readFileSync(join(d, f), "utf8"));
+  expect(guards.sort()).toEqual(["premier", "second"]);
 });
 
 test("unreadable session (permissions) → initial state, and the next save does not overwrite it", async () => {
   const d = dossier();
-  const chemin = join(d, "session.json");
-  writeFileSync(chemin, JSON.stringify(etatRiche()));
-  chmodSync(chemin, 0o000);
+  const path = join(d, "session.json");
+  writeFileSync(path, JSON.stringify(richState()));
+  chmodSync(path, 0o000);
   const e = await chargerSession(d);
   expect(e.onglets).toEqual({});
-  const enr = new SessionRecorder(d, 0);
-  enr.planifier(e);
-  await enr.vider();
-  const [garde] = mis_de_cote(d, ".illisible");
-  chmodSync(join(d, garde!), 0o600);
-  expect(Object.keys(JSON.parse(readFileSync(join(d, garde!), "utf8")).onglets)).toHaveLength(2);
+  const recorder = new SessionRecorder(d, 0);
+  recorder.planifier(e);
+  await recorder.vider();
+  const [kept] = mis_de_cote(d, ".illisible");
+  chmodSync(join(d, kept!), 0o600);
+  expect(Object.keys(JSON.parse(readFileSync(join(d, kept!), "utf8")).onglets)).toHaveLength(2);
 });
 
 test("inconsistent state (no space) → initial state", async () => {
   const d = dossier();
-  writeFileSync(join(d, "session.json"), JSON.stringify({ ...etatRiche(), espaces: [] }));
+  writeFileSync(join(d, "session.json"), JSON.stringify({ ...richState(), espaces: [] }));
   expect((await chargerSession(d)).espaces).toHaveLength(1);
 });
 
 test("planifier batches writes (3 close calls → 1 write)", async () => {
   const d = dossier();
-  const espion = vi.spyOn(fsp, "rename");
-  const enr = new SessionRecorder(d, 50);
-  const e = etatRiche();
-  enr.planifier(e);
-  enr.planifier(e);
-  enr.planifier(e);
-  await attendre(150);
-  expect(espion).toHaveBeenCalledTimes(1);
-  espion.mockRestore();
+  const spy = vi.spyOn(fsp, "rename");
+  const recorder = new SessionRecorder(d, 50);
+  const e = richState();
+  recorder.planifier(e);
+  recorder.planifier(e);
+  recorder.planifier(e);
+  await wait(150);
+  expect(spy).toHaveBeenCalledTimes(1);
+  spy.mockRestore();
 });
 
 test("atomic write: goes through a temporary file then rename", async () => {
   const d = dossier();
-  const espion = vi.spyOn(fsp, "rename");
-  const enr = new SessionRecorder(d);
-  enr.planifier(etatRiche());
-  await enr.vider();
-  expect(espion.mock.calls[0]![0]).toMatch(/session\.json\..*tmp$/);
-  expect(espion.mock.calls[0]![1]).toBe(join(d, "session.json"));
-  espion.mockRestore();
+  const spy = vi.spyOn(fsp, "rename");
+  const recorder = new SessionRecorder(d);
+  recorder.planifier(richState());
+  await recorder.vider();
+  expect(spy.mock.calls[0]![0]).toMatch(/session\.json\..*tmp$/);
+  expect(spy.mock.calls[0]![1]).toBe(join(d, "session.json"));
+  spy.mockRestore();
 });
 
 test("vider() writes the pending state immediately; with nothing pending, does nothing", async () => {
   const d = dossier();
-  const enr = new SessionRecorder(d, 10_000);
-  await enr.vider();
+  const recorder = new SessionRecorder(d, 10_000);
+  await recorder.vider();
   expect(existsSync(join(d, "session.json"))).toBe(false);
-  enr.planifier(etatRiche());
-  await enr.vider();
+  recorder.planifier(richState());
+  await recorder.vider();
   expect(existsSync(join(d, "session.json"))).toBe(true);
 });
 
 test("vider() waits for the write in progress: nothing is lost on exit, no temporary file remains", async () => {
   const d = dossier();
-  const enr = new SessionRecorder(d, 10_000);
-  const a = etatRiche();
+  const recorder = new SessionRecorder(d, 10_000);
+  const a = richState();
   const b = apply(a, { type: "choisirMoteur", moteur: "qwant" });
-  enr.planifier(a);
-  const premiere = enr.vider(); // write in progress…
-  const sortie = enr.vider(); // …the exit has nothing pending any more, but must wait
+  recorder.planifier(a);
+  const premiere = recorder.vider(); // write in progress…
+  const sortie = recorder.vider(); // …the exit has nothing pending any more, but must wait
   await sortie;
   expect(existsSync(join(d, "session.json"))).toBe(true);
-  enr.planifier(b);
-  await Promise.all([enr.vider(), enr.vider(), premiere]);
+  recorder.planifier(b);
+  await Promise.all([recorder.vider(), recorder.vider(), premiere]);
   expect(JSON.parse(readFileSync(join(d, "session.json"), "utf8")).reglages.moteur).toBe("qwant");
   const { readdirSync } = await import("node:fs");
   expect(readdirSync(d).filter((f) => f.endsWith(".tmp"))).toEqual([]);
@@ -202,32 +202,32 @@ test("vider() waits for the write in progress: nothing is lost on exit, no tempo
 
 test("a failed write leaves no temporary file and the state is rewritten on the next vider()", async () => {
   const d = dossier();
-  const espion = vi.spyOn(fsp, "rename").mockRejectedValueOnce(new Error("disque plein"));
-  const enr = new SessionRecorder(d, 10_000);
-  enr.planifier(etatRiche());
-  await enr.vider();
+  const spy = vi.spyOn(fsp, "rename").mockRejectedValueOnce(new Error("disque plein"));
+  const recorder = new SessionRecorder(d, 10_000);
+  recorder.planifier(richState());
+  await recorder.vider();
   expect(readdirSync(d)).toEqual([]);
-  await enr.vider();
+  await recorder.vider();
   expect(Object.keys(JSON.parse(readFileSync(join(d, "session.json"), "utf8")).onglets)).toHaveLength(2);
-  espion.mockRestore();
+  spy.mockRestore();
 });
 
 test("a tab's load error is not saved", async () => {
   const d = dossier();
-  let e = etatRiche();
+  let e = richState();
   const id = Object.keys(e.onglets)[0]!;
   e = apply(e, { type: "majOnglet", id, champs: { erreur: "ERR_NAME_NOT_RESOLVED" } });
-  const enr = new SessionRecorder(d);
-  enr.planifier(e);
-  await enr.vider();
+  const recorder = new SessionRecorder(d);
+  recorder.planifier(e);
+  await recorder.vider();
   expect((await chargerSession(d)).onglets[id]?.erreur).toBeNull();
 });
 
 test("a session saved without profilAgent loads with claude", async () => {
   const d = dossier();
-  const ancienne = structuredClone(initialState()) as unknown as { reglages: Record<string, unknown> };
-  delete ancienne.reglages.profilAgent;
-  writeFileSync(join(d, "session.json"), JSON.stringify(ancienne));
+  const old = structuredClone(initialState()) as unknown as { reglages: Record<string, unknown> };
+  delete old.reglages.profilAgent;
+  writeFileSync(join(d, "session.json"), JSON.stringify(old));
   const e = await chargerSession(d);
   expect(e.reglages.profilAgent).toBe("claude");
   expect(mis_de_cote(d, ".corrompu")).toEqual([]);
@@ -235,9 +235,9 @@ test("a session saved without profilAgent loads with claude", async () => {
 
 test("a session saved without agent panel width loads with 420", async () => {
   const d = dossier();
-  const ancienne = structuredClone(initialState()) as unknown as { reglages: Record<string, unknown> };
-  delete ancienne.reglages.largeurPanneauAgent;
-  writeFileSync(join(d, "session.json"), JSON.stringify(ancienne));
+  const old = structuredClone(initialState()) as unknown as { reglages: Record<string, unknown> };
+  delete old.reglages.largeurPanneauAgent;
+  writeFileSync(join(d, "session.json"), JSON.stringify(old));
   const e = await chargerSession(d);
   expect(e.reglages.largeurPanneauAgent).toBe(420);
   expect(mis_de_cote(d, ".corrompu")).toEqual([]);
@@ -245,10 +245,10 @@ test("a session saved without agent panel width loads with 420", async () => {
 
 test("session v2 where a space uses an unlisted sign-in profile: the profile is added to the list", async () => {
   const d = dossier();
-  const etat = etatRiche();
-  etat.espaces[1]!.profil = "orphelin";
-  writeFileSync(join(d, "session.json"), JSON.stringify(etat));
-  const relu = await chargerSession(d);
-  expect(relu.profils).toEqual([{ id: "defaut" }, { id: "orphelin" }]);
-  expect(relu.espaces[1]!.profil).toBe("orphelin");
+  const state = richState();
+  state.espaces[1]!.profil = "orphelin";
+  writeFileSync(join(d, "session.json"), JSON.stringify(state));
+  const reviewed = await chargerSession(d);
+  expect(reviewed.profils).toEqual([{ id: "defaut" }, { id: "orphelin" }]);
+  expect(reviewed.espaces[1]!.profil).toBe("orphelin");
 });

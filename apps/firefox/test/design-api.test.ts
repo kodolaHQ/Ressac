@@ -71,11 +71,11 @@ describe("createExternesApi", () => {
   });
 
   it("relire dispatches ouvrirRelecture with the name cut to 80 characters; null does nothing", async () => {
-    const nom = "é".repeat(100);
-    const { api, dispatched, calls } = setup({ "externes.nom": (p) => (p.id === ID ? nom : null) });
+    const name = "é".repeat(100);
+    const { api, dispatched, calls } = setup({ "externes.nom": (p) => (p.id === ID ? name : null) });
     api.relire(ID);
     await vi.waitFor(() => expect(dispatched).toHaveLength(1));
-    expect(dispatched[0]).toEqual({ type: "ouvrirRelecture", fenetreId: "F", projet: "ext-" + ID, nom: nom.slice(0, 80) });
+    expect(dispatched[0]).toEqual({ type: "ouvrirRelecture", fenetreId: "F", projet: "ext-" + ID, nom: name.slice(0, 80) });
     api.relire("fedcba9876543210");
     await vi.waitFor(() => expect(calls).toHaveLength(2));
     await new Promise((r) => setTimeout(r, 0));
@@ -87,14 +87,14 @@ describe("createRelectureApi", () => {
   const P = "ext-" + ID;
   const T = "a".repeat(40) + ":" + "b".repeat(40);
   const C = "c-0123abcd";
-  function relecture() {
+  function review() {
     const calls: { method: string; params: unknown }[] = [];
     const host = { request: async (method: string, params?: unknown) => (calls.push({ method, params }), { method, params }) } as Pick<AgentHost, "request">;
     return { api: createReviewApi({ host }), calls };
   }
 
   it("each member rejects an invalid input without calling the host", async () => {
-    const { api, calls } = relecture();
+    const { api, calls } = review();
     const bad: [string, () => Promise<unknown>][] = [
       ["projet invalide", () => api.ouvrir("../x")],
       ["jeton invalide", () => api.ouvrir(P, "abc")],
@@ -125,7 +125,7 @@ describe("createRelectureApi", () => {
   });
 
   it("valid inputs go to the handler of the same name, with named parameters; ouvrir without a token passes jeton: null", async () => {
-    const { api, calls } = relecture();
+    const { api, calls } = review();
     const c = { fichier: "dossier é/a b.js", debut: 1, fin: 2, texte: "t" };
     expect(await api.ouvrir(P)).toEqual({ method: "relecture.ouvrir", params: { projet: P, jeton: null } });
     await api.ouvrir(P, T);

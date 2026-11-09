@@ -59,9 +59,9 @@ async function start(o: { accord?: boolean; decl?: object; positions?: Record<st
   writeSite(dataDir, "vidola", { declaration: decl });
   if (o.accord !== false) await grantSite(dataDir, "vidola", decl);
   if (o.positions) {
-    const quand = new Date().toISOString();
+    const when = new Date().toISOString();
     mkdirSync(path.dirname(memoryFile()), { recursive: true });
-    writeFileSync(memoryFile(), JSON.stringify({ version: 1, valeurs: {}, positions: Object.fromEntries(Object.entries(o.positions).map(([k, v]) => [k, { ...v, quand }])) }));
+    writeFileSync(memoryFile(), JSON.stringify({ version: 1, valeurs: {}, positions: Object.fromEntries(Object.entries(o.positions).map(([k, v]) => [k, { ...v, quand: when }])) }));
   }
   const actor = testActor(profile);
   w = await launchWebAiOs({ dataDir, profile, env: { WEBAIOS_TEST_ADRESSES_LOCALES: "1", ...actor.env }, prefs: actor.prefs });
@@ -73,8 +73,8 @@ async function start(o: { accord?: boolean; decl?: object; positions?: Record<st
 
 beforeAll(async () => {
   server = await startSitesServer();
-  const lecteurPage = '<title>Lecteur</title><video id="v" muted autoplay preload="auto" src="/silence-90.wav"></video>';
-  server.definir("lecteur.localhost", "/lecteur.html", lecteurPage);
+  const pageReader = '<title>Lecteur</title><video id="v" muted autoplay preload="auto" src="/silence-90.wav"></video>';
+  server.definir("lecteur.localhost", "/lecteur.html", pageReader);
   server.definir("lecteur.localhost", "/silence-90.wav", serveWav(silenceWav(90)));
   server.definir("vidola-a.localhost", "/episode/4", `<title>Épisode 4</title><iframe id="lecteur" src="${url("/lecteur.html", "lecteur.localhost")}"></iframe>`);
   // An advert of 75 s (another domain, another duration) before the player of the episode.
@@ -232,12 +232,12 @@ describe("video resume", () => {
     // « Réessayer »: the host stops, then starts again on the same data. No pause for it to catch up: a window where
     // it refused would show here.
     await inStore(`await store.agent.stop(); await store.agent.ensure();`);
-    const retenir = async () => {
+    const keep = async () => {
       await view('(document.documentElement.dataset.r = "", document.dispatchEvent(new Event("essai")), 1)');
       await expect.poll(() => view("document.documentElement.dataset.r"), { timeout: 10_000 }).not.toBe("");
       return view("document.documentElement.dataset.r");
     };
-    expect(await retenir()).toBe("ok");
+    expect(await keep()).toBe("ok");
     await expect.poll(() => JSON.parse(readFileSync(memoryFile(), "utf8")).valeurs.k?.valeur ?? null, { timeout: 10_000 }).toBe(1);
     // Resume: a player created now (the page reloaded) is told the kept position by the new host.
     await view("(window.marque = 1, location.reload(), 1)");

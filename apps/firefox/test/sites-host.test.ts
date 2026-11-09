@@ -42,17 +42,17 @@ const declaration = {
   reprise: true,
 };
 
-function mount(gateOuvrir?: { reached: () => void; open: Promise<void> }, lireLiens: (page: string, signal?: AbortSignal) => Promise<string[]> = async () => []) {
-  const racine = realpathSync(mkdtempSync(join(tmpdir(), "sites-host-")));
-  const chemins = spacePaths(join(racine, "espace"));
-  const dataDir = join(racine, "profil");
+function mount(gateOpen?: { reached: () => void; open: Promise<void> }, lireLiens: (page: string, signal?: AbortSignal) => Promise<string[]> = async () => []) {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "sites-host-")));
+  const paths = spacePaths(join(root, "espace"));
+  const dataDir = join(root, "profil");
   mkdirSync(dataDir, { recursive: true });
-  const write = (id: string, texte: string) => {
-    mkdirSync(join(chemins.sites, id), { recursive: true });
-    writeFileSync(join(chemins.sites, id, "site.json"), texte);
+  const write = (id: string, text: string) => {
+    mkdirSync(join(paths.sites, id), { recursive: true });
+    writeFileSync(join(paths.sites, id, "site.json"), text);
   };
   write("vidola", JSON.stringify(declaration));
-  writeFileSync(join(chemins.sites, "vidola", "garde.txt"), "x");
+  writeFileSync(join(paths.sites, "vidola", "garde.txt"), "x");
   write("suivi", JSON.stringify({ ...declaration, domaines: ["vidola-a.example"], suiviAdresse: { page: "https://adresses.example/", motif: "vidola" } }));
   write("casse", "{pas du json");
   write("MonSite", JSON.stringify(declaration));
@@ -76,26 +76,26 @@ function mount(gateOuvrir?: { reached: () => void; open: Promise<void> }, lireLi
     recharges: [],
     accueil: [],
   };
-  let erreursChrome: Awaited<ReturnType<SitesChrome["erreurs"]>> = [];
-  let ouvertesChrome: string[] = [];
-  let vueChrome: Awaited<ReturnType<SitesChrome["vue"]>> = null;
+  let chromeErrors: Awaited<ReturnType<SitesChrome["erreurs"]>> = [];
+  let chromeOpened: string[] = [];
+  let chromeView: Awaited<ReturnType<SitesChrome["vue"]>> = null;
   /** While set, fermer waits for it (a deletion in progress). */
-  let retenue: Promise<void> | null = null;
+  let kept: Promise<void> | null = null;
   const chrome: SitesChrome = {
     ouvrir: async (...a) => {
       calls.ouvrir.push(a);
       journal.push("ouvrir");
-      if (gateOuvrir) {
-        gateOuvrir.reached();
-        await gateOuvrir.open;
+      if (gateOpen) {
+        gateOpen.reached();
+        await gateOpen.open;
       }
       return true;
     },
     fermer: async (id) => {
       journal.push(`fermer ${id}`);
-      await retenue;
+      await kept;
     },
-    vue: async () => vueChrome,
+    vue: async () => chromeView,
     apresAccord: async (...a) => void calls.apres.push(a),
     rediffuser: async (id) => void calls.rediffuser.push(id),
     effacer: async (id) => void journal.push(`effacer ${id}`),
@@ -105,24 +105,24 @@ function mount(gateOuvrir?: { reached: () => void; open: Promise<void> }, lireLi
       return false;
     },
     rechargerVue: async (id) => void calls.recharges.push(id),
-    erreurs: async () => erreursChrome,
-    ouvertes: async () => ouvertesChrome,
+    erreurs: async () => chromeErrors,
+    ouvertes: async () => chromeOpened,
     accueilChange: (id) => void calls.accueil.push(id),
     cherche: (...a) => void calls.suivi.push(["cherche", ...a]),
     avis: (...a) => void calls.suivi.push(["avis", ...a]),
     adresseChangee: (...a) => void calls.suivi.push(["adresseChangee", ...a]),
   };
   const diffuser = vi.fn();
-  const preRemplir = vi.fn();
-  const memoires: { id: string; message: unknown }[] = [];
-  const sites = createSites({ chemins, dataDir, adressesLocales: false, lireLiens, chrome, diffuser, preRemplir, notifierMemoire: (id, message) => void memoires.push({ id, message }) });
+  const prefill = vi.fn();
+  const memories: { id: string; message: unknown }[] = [];
+  const sites = createSites({ chemins: paths, dataDir, adressesLocales: false, lireLiens, chrome, diffuser, preRemplir: prefill, notifierMemoire: (id, message) => void memories.push({ id, message }) });
   cleanup.push(async () => {
     await sites.arreter();
-    rmSync(racine, { recursive: true, force: true });
+    rmSync(root, { recursive: true, force: true });
   });
-  return { sites, chemins, dataDir, calls, journal, diffuser, preRemplir, memoires, write, setOuvertes: (o: string[]) => (ouvertesChrome = o),
-    setVue: (v: typeof vueChrome) => (vueChrome = v),
-    retenir: (p: Promise<void> | null) => (retenue = p), setErreurs: (e: typeof erreursChrome) => (erreursChrome = e) };
+  return { sites, chemins: paths, dataDir, calls, journal, diffuser, preRemplir: prefill, memoires: memories, write, setOuvertes: (o: string[]) => (chromeOpened = o),
+    setVue: (v: typeof chromeView) => (chromeView = v),
+    retenir: (p: Promise<void> | null) => (kept = p), setErreurs: (e: typeof chromeErrors) => (chromeErrors = e) };
 }
 
 describe("chercherAdresse", () => {
@@ -252,14 +252,14 @@ describe("agir", () => {
     const mem = await SiteMemory.ouvrir(join(m.dataDir, "sites"), "vidola");
     mem.retenir("serie", { a: 1 }, "/s");
     await mem.vider();
-    const fichier = join(m.dataDir, "sites", "vidola", "memoire.json");
-    expect(existsSync(fichier)).toBe(true);
+    const file = join(m.dataDir, "sites", "vidola", "memoire.json");
+    expect(existsSync(file)).toBe(true);
     await m.sites.ouvrirParId("vidola");
-    const avant = await m.sites.memoireAccueil("vidola");
-    expect(avant).toMatchObject({ type: "memoire", domaine: "vidola-a.example" });
-    expect(Object.keys(avant!.valeurs)).toEqual(["serie"]);
+    const before = await m.sites.memoireAccueil("vidola");
+    expect(before).toMatchObject({ type: "memoire", domaine: "vidola-a.example" });
+    expect(Object.keys(before!.valeurs)).toEqual(["serie"]);
     await m.sites.agir("vidola", "oublier", "f1");
-    expect(existsSync(fichier)).toBe(false);
+    expect(existsSync(file)).toBe(false);
     await vi.waitFor(() => expect(m.memoires.at(-1)).toMatchObject({ id: "vidola", message: { type: "memoire", valeurs: {} } }));
     expect(readdirSync(join(m.chemins.sites, "vidola")).sort()).toEqual(["garde.txt", "site.json"]);
   });
@@ -275,11 +275,11 @@ describe("agir", () => {
     expect(m.journal.filter((j) => /^(fermer|effacer)/.test(j))).toEqual(["fermer vidola", "effacer vidola"]);
     expect(existsSync(join(m.dataDir, "sites", "vidola"))).toBe(false);
     expect(Object.hasOwn(await lireAccordsSites(m.dataDir), "vidola")).toBe(false);
-    const corbeille = readdirSync(join(m.chemins.sites, ".corbeille"));
-    expect(corbeille).toHaveLength(1);
-    expect(corbeille[0]).toMatch(/^vidola-\d+$/);
+    const trash = readdirSync(join(m.chemins.sites, ".corbeille"));
+    expect(trash).toHaveLength(1);
+    expect(trash[0]).toMatch(/^vidola-\d+$/);
     expect(existsSync(join(m.chemins.sites, "vidola"))).toBe(false);
-    expect(existsSync(join(m.chemins.sites, ".corbeille", corbeille[0]!, "site.json"))).toBe(true);
+    expect(existsSync(join(m.chemins.sites, ".corbeille", trash[0]!, "site.json"))).toBe(true);
     // The favicon memory is forgotten (written after the 500 ms delay, or on stop).
     await m.sites.arreter();
     const sites = existsSync(join(m.dataDir, "sites.json")) ? JSON.parse(readFileSync(join(m.dataDir, "sites.json"), "utf8")) : {};
@@ -307,14 +307,14 @@ describe("agir", () => {
 
   it("deleting during a slow open: the chrome is never asked to open; a concurrent second delete does nothing", async () => {
     const m = mount();
-    const atteint = new Promise<void>((ok) => (gate.reached = ok));
+    const wasReached = new Promise<void>((ok) => (gate.reached = ok));
     gate.armed = true;
-    const ouverture = m.sites.ouvrirParId("vidola");
-    await atteint;
+    const opening = m.sites.ouvrirParId("vidola");
+    await wasReached;
     const a = m.sites.agir("vidola", "supprimer", "f1");
     const b = m.sites.agir("vidola", "supprimer", "f1");
     gate.open!();
-    expect(await ouverture).toBe(false);
+    expect(await opening).toBe(false);
     await Promise.all([a, b]);
     expect(m.calls.ouvrir).toHaveLength(0);
     expect(m.journal.filter((j) => j === "fermer vidola")).toHaveLength(1);
@@ -325,15 +325,15 @@ describe("agir", () => {
 describe("deleting while the chrome opens the window", () => {
   it("closes the window opened meanwhile and does not mark it open", async () => {
     let lache!: () => void;
-    let atteint!: () => void;
-    const reached = new Promise<void>((ok) => (atteint = ok));
-    const m = mount({ reached: () => atteint(), open: new Promise<void>((ok) => (lache = ok)) });
-    const ouverture = m.sites.ouvrirParId("vidola");
+    let wasReached!: () => void;
+    const reached = new Promise<void>((ok) => (wasReached = ok));
+    const m = mount({ reached: () => wasReached(), open: new Promise<void>((ok) => (lache = ok)) });
+    const opening = m.sites.ouvrirParId("vidola");
     await reached;
     const suppression = m.sites.agir("vidola", "supprimer", "f1");
     await vi.waitFor(() => expect(m.journal).toContain("effacer vidola"));
     lache();
-    expect(await ouverture).toBe(false);
+    expect(await opening).toBe(false);
     await suppression;
     expect(m.journal.at(-1)).toBe("fermer vidola");
     expect((await m.sites.liste()).find((s) => s.id === "vidola")?.ouverte ?? false).toBe(false);
@@ -358,38 +358,38 @@ describe("watching", () => {
 });
 
 describe("tweaks", () => {
-  const avecRetouches = { ...declaration, retouches: [{ correspond: ["/*"], js: ["a.js"], css: ["a.css"] }] };
-  const ecrire = (m: ReturnType<typeof mount>, f: string, texte: string) => {
+  const withTweaks = { ...declaration, retouches: [{ correspond: ["/*"], js: ["a.js"], css: ["a.css"] }] };
+  const write = (m: ReturnType<typeof mount>, f: string, text: string) => {
     mkdirSync(join(m.chemins.sites, "vidola", "retouches"), { recursive: true });
-    writeFileSync(join(m.chemins.sites, "vidola", "retouches", f), texte);
+    writeFileSync(join(m.chemins.sites, "vidola", "retouches", f), text);
   };
 
   it("opens with the tweaks' files, the grant card and the hash", async () => {
     const m = mount();
-    m.write("vidola", JSON.stringify(avecRetouches));
-    ecrire(m, "a.js", "window.a = 1");
-    ecrire(m, "a.css", "p {}");
+    m.write("vidola", JSON.stringify(withTweaks));
+    write(m, "a.js", "window.a = 1");
+    write(m, "a.css", "p {}");
     await m.sites.ouvrirParId("vidola");
-    const [site, cadre, retouches] = m.calls.ouvrir[0]!;
+    const [site, cadre, tweaks] = m.calls.ouvrir[0]!;
     expect(cadre).toBeNull();
-    expect(retouches).toEqual({ js: { "a.js": "window.a = 1" }, css: { "a.css": "p {}" } });
+    expect(tweaks).toEqual({ js: { "a.js": "window.a = 1" }, css: { "a.css": "p {}" } });
     expect(site).toMatchObject({ accordRequis: true, demande: { nom: "Vidola", fichiers: ["a.js", "a.css"], empreinte: expect.stringMatching(/^[0-9a-f]{64}$/) }, empreinte: expect.any(String) });
     expect(m.sites.sitesOuverts.get("vidola")).toBe(site);
   });
 
   it("rewriting retouches/a.js updates the chrome then reloads the view once; the same content does not reload", async () => {
     const m = mount();
-    m.write("vidola", JSON.stringify(avecRetouches));
-    ecrire(m, "a.js", "window.a = 1");
-    ecrire(m, "a.css", "p {}");
+    m.write("vidola", JSON.stringify(withTweaks));
+    write(m, "a.js", "window.a = 1");
+    write(m, "a.css", "p {}");
     await m.sites.ouvrirParId("vidola");
     await new Promise((r) => setTimeout(r, 400));
-    ecrire(m, "a.js", "window.a = 2");
+    write(m, "a.js", "window.a = 2");
     await vi.waitFor(() => expect(m.calls.recharges).toEqual(["vidola"]), { timeout: 5000 });
     expect(m.calls.retouches.at(-1)).toEqual({ js: { "a.js": "window.a = 2" }, css: { "a.css": "p {}" } });
-    const majs = m.calls.majs.length;
-    ecrire(m, "a.js", "window.a = 2");
-    await vi.waitFor(() => expect(m.calls.majs.length).toBeGreaterThan(majs), { timeout: 5000 });
+    const updates = m.calls.majs.length;
+    write(m, "a.js", "window.a = 2");
+    await vi.waitFor(() => expect(m.calls.majs.length).toBeGreaterThan(updates), { timeout: 5000 });
     await new Promise((r) => setTimeout(r, 300));
     expect(m.calls.recharges).toEqual(["vidola"]);
   });
@@ -434,10 +434,10 @@ describe("tweaks", () => {
 });
 
 describe("accorder", () => {
-  const avecRetouches = { ...declaration, retouches: [{ correspond: ["/*"], js: ["a.js"], css: [] }] };
-  async function ouverte() {
+  const withTweaks = { ...declaration, retouches: [{ correspond: ["/*"], js: ["a.js"], css: [] }] };
+  async function opened() {
     const m = mount();
-    m.write("vidola", JSON.stringify(avecRetouches));
+    m.write("vidola", JSON.stringify(withTweaks));
     mkdirSync(join(m.chemins.sites, "vidola", "retouches"), { recursive: true });
     writeFileSync(join(m.chemins.sites, "vidola", "retouches", "a.js"), "window.a = 1");
     await m.sites.ouvrirParId("vidola");
@@ -448,7 +448,7 @@ describe("accorder", () => {
   const accords = (m: { dataDir: string }) => lireAccordsSites(m.dataDir);
 
   it("with the card's hash: writes the grant, tells the chrome (grant now covers), reads again without reloading", async () => {
-    const { m, site } = await ouverte();
+    const { m, site } = await opened();
     expect(site.accordRequis).toBe(true);
     await m.sites.accorder("vidola", true, site.demande.empreinte);
     expect(Object.keys(await accords(m))).toEqual(["vidola"]);
@@ -459,7 +459,7 @@ describe("accorder", () => {
   });
 
   it("a stale hash: nothing is written, the chrome shows the card again", async () => {
-    const { m } = await ouverte();
+    const { m } = await opened();
     await m.sites.accorder("vidola", true, "0".repeat(64));
     expect(await accords(m)).toEqual({});
     expect(m.calls.apres).toEqual([]);
@@ -467,15 +467,15 @@ describe("accorder", () => {
   });
 
   it("« Ouvrir sans retouches »: the next view without any grant", async () => {
-    const { m, site } = await ouverte();
+    const { m, site } = await opened();
     await m.sites.accorder("vidola", false, site.demande.empreinte);
     expect(await accords(m)).toEqual({});
     expect(m.calls.apres).toEqual([["vidola", null]]);
   });
 
-  it.each([["site"], [null]] as const)("when the window shows %s, not the card: nothing happens", async (vue) => {
-    const { m, site } = await ouverte();
-    m.setVue(vue);
+  it.each([["site"], [null]] as const)("when the window shows %s, not the card: nothing happens", async (view) => {
+    const { m, site } = await opened();
+    m.setVue(view);
     await m.sites.accorder("vidola", true, site.demande.empreinte);
     expect(await accords(m)).toEqual({});
     expect(m.calls.apres).toEqual([]);
@@ -491,7 +491,7 @@ describe("accorder", () => {
   });
 
   it("accorder during a deletion grants nothing (Review Focus 4)", async () => {
-    const { m, site } = await ouverte();
+    const { m, site } = await opened();
     let lache!: () => void;
     m.retenir(new Promise<void>((ok) => (lache = ok)));
     const suppression = m.sites.agir("vidola", "supprimer", "f1");
@@ -527,7 +527,7 @@ describe("outils", () => {
 });
 
 describe("site rights, card and memory", () => {
-  const demandee = {
+  const requested = {
     ...declaration,
     connexion: ["compte.example"],
     retouches: [
@@ -537,14 +537,14 @@ describe("site rights, card and memory", () => {
   };
 
   it("empreinteDroits follows the rights only", () => {
-    const d = DeclarationSite.parse(demandee);
+    const d = DeclarationSite.parse(requested);
     // Rights drift: another sign-in domain changes it; a description does not.
-    expect(rightsHash(DeclarationSite.parse({ ...demandee, connexion: ["autre.example"] }))).not.toBe(rightsHash(d));
-    expect(rightsHash(DeclarationSite.parse({ ...demandee, description: "autre" }))).toBe(rightsHash(d));
+    expect(rightsHash(DeclarationSite.parse({ ...requested, connexion: ["autre.example"] }))).not.toBe(rightsHash(d));
+    expect(rightsHash(DeclarationSite.parse({ ...requested, description: "autre" }))).toBe(rightsHash(d));
   });
 
   it("demandeAccord gives the card (e2e 43): rights, files without duplicates, followed domains, hash", () => {
-    const d = DeclarationSite.parse(demandee);
+    const d = DeclarationSite.parse(requested);
     const carte = grantRequest({ id: "vidola", declaration: d, aAccueil: false, domaines: ["vidola-a.example", "VIDOLA-C.example"], depart: "https://vidola-a.example/", accordRequis: true });
     expect(carte).toEqual({
       nom: "Vidola",

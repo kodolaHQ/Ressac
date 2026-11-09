@@ -35,11 +35,11 @@ export interface TestAction {
 export async function writeAction(dataDir: string, id: string, a: TestAction): Promise<void> {
   const dir = path.join(dataDir, "espace", "actions", id);
   await mkdir(dir, { recursive: true });
-  const { workflow, fichiers, sources, ...keys } = a;
+  const { workflow, fichiers: files, sources, ...keys } = a;
   const declaration = { ...keys, sources: { compte: sources?.compte ?? [], publiques: sources?.publiques ?? [], ...(sources?.web !== undefined ? { web: sources.web } : {}) } };
   await writeFile(path.join(dir, "action.json"), JSON.stringify(declaration));
   if (workflow !== undefined) await writeFile(path.join(dir, "workflow.json"), typeof workflow === "string" ? workflow : JSON.stringify(workflow));
-  for (const [nom, text] of Object.entries(fichiers ?? {})) await writeFile(path.join(dir, nom), text);
+  for (const [name, text] of Object.entries(files ?? {})) await writeFile(path.join(dir, name), text);
 }
 
 /** An agent component: `composant.json` (without `nom`, taken from the folder) and `composant.html` (aide.ts ComposantTest). */
@@ -50,15 +50,15 @@ export interface TestComponent {
 }
 
 /** Writes a component into `<dataDir>/espace/composants/<nom>/`. */
-export async function writeComponent(dataDir: string, nom: string, c: TestComponent): Promise<void> {
-  const dir = path.join(dataDir, "espace", "composants", nom);
+export async function writeComponent(dataDir: string, name: string, c: TestComponent): Promise<void> {
+  const dir = path.join(dataDir, "espace", "composants", name);
   await mkdir(dir, { recursive: true });
-  await writeFile(path.join(dir, "composant.json"), JSON.stringify({ nom, description: c.description, proprietes: c.proprietes }));
+  await writeFile(path.join(dir, "composant.json"), JSON.stringify({ nom: name, description: c.description, proprietes: c.proprietes }));
   await writeFile(path.join(dir, "composant.html"), c.html);
 }
 
 /** AGENTS.md:660's « barres » example, unchanged. */
-export const BARRES = `<!doctype html>
+export const BARS = `<!doctype html>
 <meta charset="utf-8">
 <style>
   body { margin: 0; font: 13px system-ui, sans-serif; color: #222; background: transparent; }
@@ -141,9 +141,9 @@ export async function writeActionWithResult(
 }
 
 /** Opens action `id`'s page in a tab of the first window, once the kernel serves it: nothing is launched. */
-export async function openActionPage(m: Marionette, id: string, nom: string, execution = EXECUTION): Promise<void> {
+export async function openActionPage(m: Marionette, id: string, name: string, execution = EXECUTION): Promise<void> {
   await waitUi(m, "return ui.webaios.actions.page(arguments[0], arguments[1]).then((p) => p !== null);", [id, execution], 30_000);
-  await dispatch(m, { type: "ouvrirAction", fenetreId: (await state(m)).fenetres[0]!.id, id, nom, execution });
+  await dispatch(m, { type: "ouvrirAction", fenetreId: (await state(m)).fenetres[0]!.id, id, nom: name, execution });
   await waitUi(m, `return !!doc.querySelector('[data-testid="rendu-page"]');`, [], 30_000);
 }
 
@@ -156,8 +156,8 @@ export async function waitNoyau(m: Marionette): Promise<void> {
 }
 
 /** Opens the action's page (its last result, or `execution`) without launching anything. */
-export async function openAction(m: Marionette, id: string, nom: string, execution?: string): Promise<void> {
-  await dispatch(m, { type: "ouvrirAction", fenetreId: (await state(m)).fenetres[0]!.id, id, nom, ...(execution ? { execution } : {}) });
+export async function openAction(m: Marionette, id: string, name: string, execution?: string): Promise<void> {
+  await dispatch(m, { type: "ouvrirAction", fenetreId: (await state(m)).fenetres[0]!.id, id, nom: name, ...(execution ? { execution } : {}) });
   await waitUi(m, `return !!doc.querySelector('[data-testid="page-action"]');`, [], 10_000);
 }
 
@@ -186,9 +186,9 @@ export function writeRunnableAction(
 }
 
 /** Three pages of the slow site, read one by one: « Lecture de 127.0.0.1… » then « 3 / 3 ». */
-export const writePagesAction = (dataDir: string, siteUrl: string, id = "pages", nom = "Pages") =>
+export const writePagesAction = (dataDir: string, siteUrl: string, id = "pages", name = "Pages") =>
   writeRunnableAction(dataDir, id, {
-    nom,
+    nom: name,
     code: `export default async () => [1, 2, 3].map((n) => ({ url: "${siteUrl}/lent/" + n }));`,
     blocs: [{ id: "lecture", type: "source.page", parametres: { url: "{url}", parElement: true, champ: "page" } }],
   });
@@ -206,17 +206,17 @@ export async function runStatuses(dataDir: string, id: string): Promise<string[]
 }
 
 /** A finished run and its result (a title), written on disk. */
-export async function writeResult(dataDir: string, id: string, execution: string, debut: string, titre: string, saisie: string | null = null): Promise<void> {
+export async function writeResult(dataDir: string, id: string, execution: string, debut: string, titre: string, input: string | null = null): Promise<void> {
   const data = path.join(actionsDataDir(dataDir), id);
   await mkdir(path.join(data, "executions"), { recursive: true });
   await mkdir(path.join(data, "resultats"), { recursive: true });
   await writeFile(
     path.join(data, "executions", `${execution}.json`),
-    JSON.stringify({ version: 1, id: execution, proprietaire: { type: "action", id }, declencheur: "manuelle", debut, fin: debut, statut: "reussie", ...(saisie ? { saisie } : {}), blocs: [] }),
+    JSON.stringify({ version: 1, id: execution, proprietaire: { type: "action", id }, declencheur: "manuelle", debut, fin: debut, statut: "reussie", ...(input ? { saisie: input } : {}), blocs: [] }),
   );
   await writeFile(
     path.join(data, "resultats", `${execution}.json`),
-    JSON.stringify({ version: 1, execution, saisie, resultats: { titre }, plan: { blocs: [{ composant: "titre", props: { texte: titre } }] }, secours: false, vide: false }),
+    JSON.stringify({ version: 1, execution, saisie: input, resultats: { titre }, plan: { blocs: [{ composant: "titre", props: { texte: titre } }] }, secours: false, vide: false }),
   );
 }
 

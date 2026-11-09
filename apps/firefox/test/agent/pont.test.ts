@@ -6,9 +6,9 @@ import { siteDe, type BrowserState } from "../../shared/modele";
 import { waitForRights, waitForResponse, changementsPolitique, allowedDecision, spacesBecamePrivate, tabInfos, activeTabOf, siteTab, SITE_PREFIX, staleQuestion, staleSiteQuestion, resolveSpace } from "../../core/agent/pont";
 
 /** Sets a space's private flag, leaving the rest untouched. */
-function reglerPrive(e: BrowserState, ag: (a: Action) => unknown, id: string, prive: boolean) {
-  const esp = e.espaces.find((x) => x.id === id)!;
-  ag({ type: "reglerEspace", id, nom: esp.nom, icone: esp.icone, prive, profil: esp.profil });
+function setPrivate(e: BrowserState, ag: (a: Action) => unknown, id: string, isPrivate: boolean) {
+  const space = e.espaces.find((x) => x.id === id)!;
+  ag({ type: "reglerEspace", id, nom: space.nom, icone: space.icone, prive: isPrivate, profil: space.profil });
 }
 
 function preparer() {
@@ -44,20 +44,20 @@ test("resoudreEspace: by id, by name ignoring case, otherwise the active space",
   const { e, ag, F } = preparer();
   ag({ type: "creerEspace", nom: "Boulot", icone: "💼", prive: false, profil: "defaut" });
   const f = e().fenetres.find((x) => x.id === F)!;
-  const boulot = e().espaces.find((x) => x.nom === "Boulot")!.id;
-  expect(resolveSpace(e(), f, "boulot")).toBe(boulot);
-  expect(resolveSpace(e(), f, boulot)).toBe(boulot);
+  const work = e().espaces.find((x) => x.nom === "Boulot")!.id;
+  expect(resolveSpace(e(), f, "boulot")).toBe(work);
+  expect(resolveSpace(e(), f, work)).toBe(work);
   expect(resolveSpace(e(), f, "inconnu")).toBe(f.espaceActif);
   expect(resolveSpace(e(), f)).toBe(f.espaceActif);
 });
 
 test("changementsPolitique: URL changed and tab closed; nothing for a title", () => {
   const { e, ag } = preparer();
-  const avant = e();
-  const [a, b] = Object.keys(avant.onglets);
+  const before = e();
+  const [a, b] = Object.keys(before.onglets);
   ag({ type: "majOnglet", id: a!, champs: { url: "https://autre.test/" } });
   ag({ type: "fermerOnglet", id: b! });
-  expect(changementsPolitique(avant, e())).toEqual({ navigues: [{ id: a, url: "https://autre.test/" }], fermes: [b] });
+  expect(changementsPolitique(before, e())).toEqual({ navigues: [{ id: a, url: "https://autre.test/" }], fermes: [b] });
   const milieu = e();
   ag({ type: "majOnglet", id: a!, champs: { titre: "Autre" } });
   expect(changementsPolitique(milieu, e())).toEqual({ navigues: [], fermes: [] });
@@ -66,35 +66,35 @@ test("changementsPolitique: URL changed and tab closed; nothing for a title", ()
 test("attendreReponse: with no answer by the deadline, the question is withdrawn and the answer is no", async () => {
   vi.useFakeTimers();
   try {
-    let retiree = false;
-    const reponse = waitForResponse(() => () => (retiree = true), 120_000);
+    let removed = false;
+    const response = waitForResponse(() => () => (removed = true), 120_000);
     await vi.advanceTimersByTimeAsync(119_999);
-    expect(retiree).toBe(false);
+    expect(removed).toBe(false);
     await vi.advanceTimersByTimeAsync(1);
-    expect(retiree).toBe(true);
-    await expect(reponse).resolves.toBe(false);
+    expect(removed).toBe(true);
+    await expect(response).resolves.toBe(false);
   } finally {
     vi.useRealTimers();
   }
 });
 
 test("attendreReponse: allow → yes, deny → no", async () => {
-  await expect(waitForResponse((repondre) => (repondre("autoriser"), () => {}), 1000)).resolves.toBe(true);
-  await expect(waitForResponse((repondre) => (repondre("refuser"), () => {}), 1000)).resolves.toBe(false);
+  await expect(waitForResponse((reply) => (reply("autoriser"), () => {}), 1000)).resolves.toBe(true);
+  await expect(waitForResponse((reply) => (reply("refuser"), () => {}), 1000)).resolves.toBe(false);
 });
 
 test("attendreReponse: signal raised (donnees-widget card of a past conversation) → card withdrawn, answer no", async () => {
-  const retrait = new AbortController();
-  let retiree = false;
-  let repondreTard: ((d: "autoriser" | "refuser") => void) | undefined;
-  const reponse = waitForResponse((repondre) => ((repondreTard = repondre), () => (retiree = true)), 1000, retrait.signal);
-  retrait.abort();
-  expect(retiree).toBe(true);
-  repondreTard?.("autoriser"); // a late answer grants nothing
-  await expect(reponse).resolves.toBe(false);
-  let posee = false;
-  await expect(waitForResponse(() => ((posee = true), () => {}), 1000, retrait.signal)).resolves.toBe(false);
-  expect(posee).toBe(false);
+  const removal = new AbortController();
+  let removed = false;
+  let replyLate: ((d: "autoriser" | "refuser") => void) | undefined;
+  const response = waitForResponse((reply) => ((replyLate = reply), () => (removed = true)), 1000, removal.signal);
+  removal.abort();
+  expect(removed).toBe(true);
+  replyLate?.("autoriser"); // a late answer grants nothing
+  await expect(response).resolves.toBe(false);
+  let asked = false;
+  await expect(waitForResponse(() => ((asked = true), () => {}), 1000, removal.signal)).resolves.toBe(false);
+  expect(asked).toBe(false);
 });
 
 test("questionCaduque: an agent request only lapses with its target tab; a site permission, with its tab", () => {
@@ -110,41 +110,41 @@ test("questionCaduque: an agent request only lapses with its target tab; a site 
 });
 
 test("attendreDroits: allow → the ticked rights; deny, deadline passed or allow with nothing → []", async () => {
-  await expect(waitForRights((repondre) => (repondre("autoriser", ["console", "agir"]), () => {}), 1000)).resolves.toEqual(["console", "agir"]);
-  await expect(waitForRights((repondre) => (repondre("refuser", ["console"]), () => {}), 1000)).resolves.toEqual([]);
-  await expect(waitForRights((repondre) => (repondre("autoriser"), () => {}), 1000)).resolves.toEqual([]);
+  await expect(waitForRights((reply) => (reply("autoriser", ["console", "agir"]), () => {}), 1000)).resolves.toEqual(["console", "agir"]);
+  await expect(waitForRights((reply) => (reply("refuser", ["console"]), () => {}), 1000)).resolves.toEqual([]);
+  await expect(waitForRights((reply) => (reply("autoriser"), () => {}), 1000)).resolves.toEqual([]);
   vi.useFakeTimers();
   try {
-    let retiree = false;
-    const reponse = waitForRights(() => () => (retiree = true), 120_000);
+    let removed = false;
+    const response = waitForRights(() => () => (removed = true), 120_000);
     await vi.advanceTimersByTimeAsync(120_000);
-    await expect(reponse).resolves.toEqual([]);
-    expect(retiree).toBe(true);
+    await expect(response).resolves.toEqual([]);
+    expect(removed).toBe(true);
   } finally {
     vi.useRealTimers();
   }
 });
 
 test("attendreDroits: signal raised → card withdrawn and []; a late answer changes nothing; already raised → [] without a card", async () => {
-  const controleur = new AbortController();
-  let retiree = false;
-  let repondreTard!: (d: "autoriser", droits: ["console"]) => void;
-  const reponse = waitForRights((repondre) => ((repondreTard = repondre), () => (retiree = true)), 120_000, controleur.signal);
-  controleur.abort();
-  await expect(reponse).resolves.toEqual([]);
-  expect(retiree).toBe(true);
-  repondreTard("autoriser", ["console"]);
-  await expect(reponse).resolves.toEqual([]);
-  let posee = false;
-  await expect(waitForRights(() => ((posee = true), () => {}), 1000, AbortSignal.abort())).resolves.toEqual([]);
-  expect(posee).toBe(false);
+  const controller = new AbortController();
+  let removed = false;
+  let replyLate!: (d: "autoriser", droits: ["console"]) => void;
+  const response = waitForRights((reply) => ((replyLate = reply), () => (removed = true)), 120_000, controller.signal);
+  controller.abort();
+  await expect(response).resolves.toEqual([]);
+  expect(removed).toBe(true);
+  replyLate("autoriser", ["console"]);
+  await expect(response).resolves.toEqual([]);
+  let asked = false;
+  await expect(waitForRights(() => ((asked = true), () => {}), 1000, AbortSignal.abort())).resolves.toEqual([]);
+  expect(asked).toBe(false);
 });
 
 test("questionCaduque: a dev-tools request lapses if the tab changes site; a site-app window is not a closed tab", () => {
   const { e, ag, F } = preparer();
   const [a, b] = Object.keys(e().onglets);
-  const origine = new URL(e().onglets[b!]!.url).origin;
-  const dev = { id: "d", ongletId: a!, fenetreId: F, cible: b!, origine, permissions: ["outils-dev" as const], droits: ["console" as const] };
+  const origin = new URL(e().onglets[b!]!.url).origin;
+  const dev = { id: "d", ongletId: a!, fenetreId: F, cible: b!, origine: origin, permissions: ["outils-dev" as const], droits: ["console" as const] };
   expect(staleQuestion(dev, e())).toBe(false);
   ag({ type: "majOnglet", id: b!, champs: { url: "https://ailleurs.test/" } });
   expect(staleQuestion(dev, e())).toBe(true);
@@ -191,44 +191,44 @@ test("resoudreEspace: a private space, by name or by id, counts as unknown", () 
 
 test("changementsPolitique: a tab whose space becomes private is closed for the agent; an essential displayed in a space that stayed non-private moves to that space", () => {
   const { e, ag, F } = preparer();
-  const perso = e().espaces[0]!.id;
+  const personal = e().espaces[0]!.id;
   ag({ type: "creerEspace", nom: "Boulot", icone: "💼", prive: false, profil: "defaut" });
-  const boulot = e().espaces.find((x) => x.nom === "Boulot")!.id;
+  const work = e().espaces.find((x) => x.nom === "Boulot")!.id;
   const a = Object.values(e().onglets).find((o) => o.url === "https://a.test/")!.id;
   const b = Object.values(e().onglets).find((o) => o.url === "https://b.test/")!.id;
   // a becomes an essential, also displayed in Boulot (same key).
   ag({ type: "ajouterEssentiel", id: a });
-  ag({ type: "activerEspace", fenetreId: F, id: boulot });
+  ag({ type: "activerEspace", fenetreId: F, id: work });
   ag({ type: "ouvrirFavori", fenetreId: F, genre: "essentiel", id: e().essentiels[0]!.id });
-  expect(e().fenetres.find((x) => x.id === F)!.actif[boulot]).toBe(a);
-  const avant = e();
-  reglerPrive(e(), ag, perso, true);
+  expect(e().fenetres.find((x) => x.id === F)!.actif[work]).toBe(a);
+  const before = e();
+  setPrivate(e(), ag, personal, true);
   // The essential stays in Boulot, non-private, which already displayed it: it was never seen under the private key.
-  expect(e().fenetres.find((x) => x.id === F)!.actif[boulot]).toBe(a);
-  expect(e().fenetres.find((x) => x.id === F)!.actif[perso]).toBeNull();
-  expect(e().onglets[a]!.espaceId).toBe(boulot);
-  expect(changementsPolitique(avant, e())).toEqual({ navigues: [], fermes: [b] });
+  expect(e().fenetres.find((x) => x.id === F)!.actif[work]).toBe(a);
+  expect(e().fenetres.find((x) => x.id === F)!.actif[personal]).toBeNull();
+  expect(e().onglets[a]!.espaceId).toBe(work);
+  expect(changementsPolitique(before, e())).toEqual({ navigues: [], fermes: [b] });
   // Becoming non-private again gives nothing back: access has to be requested again.
-  const prive = e();
-  reglerPrive(e(), ag, perso, false);
-  expect(changementsPolitique(prive, e())).toEqual({ navigues: [], fermes: [] });
+  const isPrivate = e();
+  setPrivate(e(), ag, personal, false);
+  expect(changementsPolitique(isPrivate, e())).toEqual({ navigues: [], fermes: [] });
 });
 
 test("an essential shared by two private spaces stays invisible to the agent when its owner stops being private", () => {
   const { e, ag, F } = preparer();
   ag({ type: "creerEspace", nom: "Banque", icone: "🏦", prive: true, profil: "nouveau", fenetreId: F });
-  const banque = e().espaces.find((x) => x.nom === "Banque")!;
+  const bank = e().espaces.find((x) => x.nom === "Banque")!;
   ag({ type: "ouvrirOnglet", fenetreId: F, url: "https://mail.google.com/" });
   const gmail = Object.values(e().onglets).find((o) => o.url === "https://mail.google.com/")!.id;
   ag({ type: "ajouterEssentiel", id: gmail });
-  ag({ type: "creerEspace", nom: "Banque pro", icone: "💳", prive: true, profil: banque.profil, fenetreId: F });
+  ag({ type: "creerEspace", nom: "Banque pro", icone: "💳", prive: true, profil: bank.profil, fenetreId: F });
   ag({ type: "ouvrirFavori", fenetreId: F, genre: "essentiel", id: e().essentiels[0]!.id });
-  const avant = e();
-  reglerPrive(e(), ag, banque.id, false);
+  const before = e();
+  setPrivate(e(), ag, bank.id, false);
   expect(tabInfos(e()).map((o) => o.url)).not.toContain("https://mail.google.com/");
   expect(activeTabOf(e(), F)).toBeNull();
   // Nothing new for the policy: the tab was never readable.
-  expect(changementsPolitique(avant, e())).toEqual({ navigues: [], fermes: [] });
+  expect(changementsPolitique(before, e())).toEqual({ navigues: [], fermes: [] });
 });
 
 test("questionCaduque: a read request lapses if the target tab moves to a private space", () => {
@@ -236,7 +236,7 @@ test("questionCaduque: a read request lapses if the target tab moves to a privat
   const [a, b] = Object.keys(e().onglets);
   const lecture = { id: "q", ongletId: a!, fenetreId: F, cible: b!, origine: "https://b.test", permissions: ["lire-onglet" as const] };
   expect(staleQuestion(lecture, e())).toBe(false);
-  reglerPrive(e(), ag, e().espaces[0]!.id, true);
+  setPrivate(e(), ag, e().espaces[0]!.id, true);
   expect(staleQuestion(lecture, e())).toBe(true);
 });
 
@@ -253,16 +253,16 @@ test("questionCaduque: a read card lapses when its tab changes origin", () => {
 test("espacesDevenusPrives: only the switch from non-private to private", () => {
   const { e, ag } = preparer();
   const id = e().espaces[0]!.id;
-  const avant = e();
-  reglerPrive(e(), ag, id, true);
-  const prive = e();
-  expect(spacesBecamePrivate(avant, prive)).toEqual([id]);
-  expect(spacesBecamePrivate(prive, prive)).toEqual([]);
-  reglerPrive(e(), ag, id, false);
-  expect(spacesBecamePrivate(prive, e())).toEqual([]);
+  const before = e();
+  setPrivate(e(), ag, id, true);
+  const isPrivate = e();
+  expect(spacesBecamePrivate(before, isPrivate)).toEqual([id]);
+  expect(spacesBecamePrivate(isPrivate, isPrivate)).toEqual([]);
+  setPrivate(e(), ag, id, false);
+  expect(spacesBecamePrivate(isPrivate, e())).toEqual([]);
 });
 
-const carteExtension = (espaceId: string, source: "store" | "agent", renforce = false) => ({
+const carteExtension = (spaceId: string, source: "store" | "agent", strengthened = false) => ({
   cle: source === "agent" ? "agent:essai" : `store:${"a".repeat(32)}`,
   nom: "Essai",
   source,
@@ -271,9 +271,9 @@ const carteExtension = (espaceId: string, source: "store" | "agent", renforce = 
   sites: [],
   tousLesSites: false,
   reseau: source === "agent" ? [] : null,
-  renforce,
+  renforce: strengthened,
   espace: "Perso",
-  espaceId,
+  espaceId: spaceId,
   autresEspaces: [],
   remplaceAussi: [],
   maj: null,
@@ -282,15 +282,15 @@ const carteExtension = (espaceId: string, source: "store" | "agent", renforce = 
 
 test("questionCaduque: an extension card lapses with its space; the agent's one too when the profile becomes private", () => {
   const { e, ag, F } = preparer();
-  const espace = e().espaces[0]!.id;
-  const agent = { id: "x", ongletId: null, fenetreId: F, origine: "agent:essai", permissions: ["extension" as const], extension: carteExtension(espace, "agent") };
-  const store = { ...agent, id: "y", extension: carteExtension(espace, "store") };
+  const space = e().espaces[0]!.id;
+  const agent = { id: "x", ongletId: null, fenetreId: F, origine: "agent:essai", permissions: ["extension" as const], extension: carteExtension(space, "agent") };
+  const store = { ...agent, id: "y", extension: carteExtension(space, "store") };
   expect(staleQuestion(agent, e())).toBe(false);
   expect(staleQuestion(store, e())).toBe(false);
   // Another space of the same profile becomes private: the profile is, and the agent's extension has no place there any more.
   ag({ type: "creerEspace", nom: "Secret", icone: "🔒", prive: false, profil: e().espaces[0]!.profil });
   const secret = e().espaces.at(-1)!.id;
-  reglerPrive(e(), ag, secret, true);
+  setPrivate(e(), ag, secret, true);
   expect(staleQuestion(agent, e())).toBe(true);
   expect(staleQuestion(store, e())).toBe(false);
   // Space deleted: every card lapses.
@@ -298,12 +298,12 @@ test("questionCaduque: an extension card lapses with its space; the agent's one 
 });
 
 test("decisionPermise: a « yes » to a reinforced card without the box ticked counts as a refusal", () => {
-  const renforcee = { id: "x", ongletId: null, origine: "agent:essai", permissions: ["extension" as const], extension: carteExtension("e", "agent", true) };
-  expect(allowedDecision(renforcee, "autoriser")).toBe("refuser");
-  expect(allowedDecision(renforcee, "autoriser", false)).toBe("refuser");
-  expect(allowedDecision(renforcee, "autoriser", true)).toBe("autoriser");
-  expect(allowedDecision(renforcee, "refuser", true)).toBe("refuser");
-  const simple = { ...renforcee, extension: carteExtension("e", "agent") };
+  const strengthened = { id: "x", ongletId: null, origine: "agent:essai", permissions: ["extension" as const], extension: carteExtension("e", "agent", true) };
+  expect(allowedDecision(strengthened, "autoriser")).toBe("refuser");
+  expect(allowedDecision(strengthened, "autoriser", false)).toBe("refuser");
+  expect(allowedDecision(strengthened, "autoriser", true)).toBe("autoriser");
+  expect(allowedDecision(strengthened, "refuser", true)).toBe("refuser");
+  const simple = { ...strengthened, extension: carteExtension("e", "agent") };
   expect(allowedDecision(simple, "autoriser")).toBe("autoriser");
   const lecture = { id: "l", ongletId: null, origine: "https://a.test", permissions: ["lire-onglet" as const] };
   expect(allowedDecision(lecture, "autoriser")).toBe("autoriser");
@@ -319,12 +319,12 @@ test("ongletSite: site:<id>, title = app name, empty space, site, current domain
 });
 
 test("questionSiteCaduque: a question on site:<id> lapses with its window; the dev-tools one too when leaving for another origin", () => {
-  const ouverte = [{ id: "vidola", nom: "Vidola", url: "https://vidola-a.example/film/1", domaine: "vidola-a.example" }];
+  const opened = [{ id: "vidola", nom: "Vidola", url: "https://vidola-a.example/film/1", domaine: "vidola-a.example" }];
   const dev = { id: "d", ongletId: null, cible: "site:vidola", origine: "https://vidola-a.example", permissions: ["outils-dev" as const], droits: ["console" as const] };
-  expect(staleSiteQuestion(dev, ouverte)).toBe(false);
+  expect(staleSiteQuestion(dev, opened)).toBe(false);
   // Window closed (surFermee): the card lapses.
   expect(staleSiteQuestion(dev, [])).toBe(true);
-  expect(staleSiteQuestion(dev, [{ ...ouverte[0]!, url: "https://compte.example/connexion" }])).toBe(true);
+  expect(staleSiteQuestion(dev, [{ ...opened[0]!, url: "https://compte.example/connexion" }])).toBe(true);
   // Neither a question without a site: target, nor the app's card (no target).
   expect(staleSiteQuestion({ ...dev, cible: "app:essai" }, [])).toBe(false);
   expect(staleSiteQuestion({ id: "s", ongletId: null, origine: "webaios-site://vidola", permissions: ["donnees-widget" as const], site: "vidola" }, [])).toBe(false);

@@ -10,13 +10,13 @@ import {
   cspAgent,
   prepareCopy,
 } from "../../src/extensions/copie.js";
-import { dossierTemporaire } from "../aide/temporaire.js";
+import { tempFolder } from "../aide/temporaire.js";
 
 // Hooks to simulate a folder modified during the read, or a failing rename.
 const crochets = vi.hoisted(() => ({
   apresLstat: null as null | ((p: string) => Promise<void>),
   apresReaddir: null as null | ((p: string) => Promise<void>),
-  avantRename: null as null | ((de: string, vers: string) => void),
+  avantRename: null as null | ((de: string, to: string) => void),
 }));
 vi.mock("node:fs/promises", async (importOriginal) => {
   const orig = await importOriginal<typeof import("node:fs/promises")>();
@@ -32,9 +32,9 @@ vi.mock("node:fs/promises", async (importOriginal) => {
       if (crochets.apresReaddir) await crochets.apresReaddir(p);
       return v;
     }) as typeof orig.readdir,
-    rename: (async (de: string, vers: string) => {
-      crochets.avantRename?.(de, vers);
-      return orig.rename(de, vers);
+    rename: (async (de: string, to: string) => {
+      crochets.avantRename?.(de, to);
+      return orig.rename(de, to);
     }) as typeof orig.rename,
   };
 });
@@ -44,43 +44,43 @@ afterEach(() => {
   crochets.avantRename = null;
 });
 
-const GARDES = ["webaios-correctifs-page.js", "webaios-garde-page.js", "webaios-garde-fond.js"];
+const GUARDS = ["webaios-correctifs-page.js", "webaios-garde-page.js", "webaios-garde-fond.js"];
 
-async function ecrire(dossier: string, fichiers: Record<string, string | object>): Promise<void> {
-  for (const [chemin, contenu] of Object.entries(fichiers)) {
-    await mkdir(dirname(join(dossier, chemin)), { recursive: true });
-    await writeFile(join(dossier, chemin), typeof contenu === "string" ? contenu : JSON.stringify(contenu));
+async function write(dossier: string, files: Record<string, string | object>): Promise<void> {
+  for (const [path, content] of Object.entries(files)) {
+    await mkdir(dirname(join(dossier, path)), { recursive: true });
+    await writeFile(join(dossier, path), typeof content === "string" ? content : JSON.stringify(content));
   }
 }
 
-const manifesteBase = (surcharge: Record<string, unknown> = {}) => ({
+const baseManifest = (surcharge: Record<string, unknown> = {}) => ({
   manifest_version: 3,
   name: "Essai",
   version: "1.0",
   ...surcharge,
 });
 
-async function source(fichiers: Record<string, string | object>): Promise<string> {
-  const d = join(await dossierTemporaire(), "source");
+async function source(files: Record<string, string | object>): Promise<string> {
+  const d = join(await tempFolder(), "source");
   await mkdir(d);
-  await ecrire(d, fichiers);
+  await write(d, files);
   return d;
 }
 
-async function cible(): Promise<string> {
-  return join(await dossierTemporaire(), "copies", "essai");
+async function target(): Promise<string> {
+  return join(await tempFolder(), "copies", "essai");
 }
 
-const lireJson = async (chemin: string) => JSON.parse(await readFile(chemin, "utf8")) as Record<string, any>;
+const lireJson = async (path: string) => JSON.parse(await readFile(path, "utf8")) as Record<string, any>;
 
 describe("preparerCopie", () => {
   it("the copy has the CSP cspAgent([]) and nothing else from the agent in content_security_policy", async () => {
     const src = await source({
-      "manifest.json": manifesteBase({
+      "manifest.json": baseManifest({
         content_security_policy: { extension_pages: "script-src 'self' 'unsafe-eval'; connect-src *", sandbox: "x" },
       }),
     });
-    const c = await cible();
+    const c = await target();
     const { analyse } = await prepareCopy({ source: src, cible: c, dossierGardes: DEFAULT_GUARDS });
     expect(analyse.refus).toEqual([]);
     const m = await lireJson(join(c, "manifest.json"));
@@ -91,8 +91,8 @@ describe("preparerCopie", () => {
   });
 
   it("with webaios.json { reseau: [\"api.exemple.com\"] }: connect-src contains https:// and wss://api.exemple.com, webaios.json absent from the copy", async () => {
-    const src = await source({ "manifest.json": manifesteBase(), "webaios.json": { reseau: ["api.exemple.com"] } });
-    const c = await cible();
+    const src = await source({ "manifest.json": baseManifest(), "webaios.json": { reseau: ["api.exemple.com"] } });
+    const c = await target();
     const { analyse } = await prepareCopy({ source: src, cible: c, dossierGardes: DEFAULT_GUARDS });
     expect(analyse.portee.reseau).toEqual(["api.exemple.com"]);
     const m = await lireJson(join(c, "manifest.json"));
@@ -101,8 +101,8 @@ describe("preparerCopie", () => {
   });
 
   it("key and update_url removed", async () => {
-    const src = await source({ "manifest.json": manifesteBase({ key: "MIIB...", update_url: "https://x.example/u" }) });
-    const c = await cible();
+    const src = await source({ "manifest.json": baseManifest({ key: "MIIB...", update_url: "https://x.example/u" }) });
+    const c = await target();
     await prepareCopy({ source: src, cible: c, dossierGardes: DEFAULT_GUARDS });
     const m = await lireJson(join(c, "manifest.json"));
     expect("key" in m).toBe(false);
@@ -114,7 +114,7 @@ describe("preparerCopie", () => {
     // evade.js would close a text wrapper: it is never pasted into another file anymore.
     const evade = "});\ndocument.documentElement.setAttribute('data-evade', '1');\nglobalThis.__webaiosApres(() => {\n";
     const src = await source({
-      "manifest.json": manifesteBase({
+      "manifest.json": baseManifest({
         host_permissions: ["https://h.example/*"],
         content_scripts: [
           { matches: ["https://a.example/*"], js: ["a.js", "b.js"], css: ["s.css"], run_at: "document_start" },
@@ -130,18 +130,18 @@ describe("preparerCopie", () => {
       "s.css": "p{}",
       "lisez-moi.txt": "x",
     });
-    const c = await cible();
+    const c = await target();
     const { analyse } = await prepareCopy({ source: src, cible: c, dossierGardes: DEFAULT_GUARDS });
     expect(analyse.refus).toEqual([]);
     const m = await lireJson(join(c, "manifest.json"));
     // Table: each .js and .css file of the agent, sorted; one marker each.
     const table = [["a.js", "js"], ["b.js", "js"], ["c/d.js", "js"], ["evade.js", "js"], ["s.css", "css"]];
     const tete = ["webaios-correctifs-page.js", "webaios-garde-page.js", "webaios-portee.js"];
-    const reperes = (...n: number[]) => n.map((i) => `webaios-fichiers/${i}.js`);
+    const markers = (...n: number[]) => n.map((i) => `webaios-fichiers/${i}.js`);
     expect(m.content_scripts).toEqual([
-      { matches: ["https://a.example/*"], js: [...tete, ...reperes(4, 0, 1)], run_at: "document_start" },
-      { matches: ["https://b.example/*"], js: [...tete, ...reperes(2, 3)] },
-      { matches: ["https://b.example/*"], js: [...tete, ...reperes(4)] },
+      { matches: ["https://a.example/*"], js: [...tete, ...markers(4, 0, 1)], run_at: "document_start" },
+      { matches: ["https://b.example/*"], js: [...tete, ...markers(2, 3)] },
+      { matches: ["https://b.example/*"], js: [...tete, ...markers(4)] },
     ]);
     for (let i = 0; i < table.length; i++) {
       expect(await readFile(join(c, `webaios-fichiers/${i}.js`), "utf8")).toBe(`globalThis.__webaiosFichier(${i});\n`);
@@ -160,80 +160,80 @@ describe("preparerCopie", () => {
     expect(await readFile(join(c, "webaios-portee.js"), "utf8")).toBe(
       `globalThis.__webaiosPortee(${JSON.stringify({ reseau: ["api.exemple.com"], hotes: analyse.portee.hotes })});\n`,
     );
-    for (const g of GARDES) expect(existsSync(join(c, g)), g).toBe(true);
+    for (const g of GUARDS) expect(existsSync(join(c, g)), g).toBe(true);
   });
 
   it("in a world without a DOM, an entry's files only ask for the context, markers in order; nothing of the agent runs; without an answer, lastError is read and the abandonment is written", async () => {
     const src = await source({
-      "manifest.json": manifesteBase({ content_scripts: [{ matches: ["https://a.example/*"], js: ["a.js", "b.js"], css: ["s.css"] }] }),
+      "manifest.json": baseManifest({ content_scripts: [{ matches: ["https://a.example/*"], js: ["a.js", "b.js"], css: ["s.css"] }] }),
       "a.js": "globalThis.vu = 1;",
       "b.js": "globalThis.vu = 2;",
       "s.css": "p{}",
     });
-    const c = await cible();
+    const c = await target();
     await prepareCopy({ source: src, cible: c, dossierGardes: DEFAULT_GUARDS });
     const m = await lireJson(join(c, "manifest.json"));
-    const lancer = (repondre: (msg: unknown, rappel: (r: unknown) => void, runtime: Record<string, unknown>) => void) => {
-      const minuteries: (() => void)[] = [];
-      const erreurs: unknown[][] = [];
+    const lancer = (reply: (msg: unknown, rappel: (r: unknown) => void, runtime: Record<string, unknown>) => void) => {
+      const timers: (() => void)[] = [];
+      const errors: unknown[][] = [];
       const runtime: Record<string, unknown> = {
         id: "x",
-        sendMessage: (msg: unknown, rappel: (r: unknown) => void) => repondre(msg, rappel, runtime),
+        sendMessage: (msg: unknown, rappel: (r: unknown) => void) => reply(msg, rappel, runtime),
       };
       const ctx: Record<string, unknown> = {
         chrome: { runtime },
-        console: { error: (...a: unknown[]) => erreurs.push(a), log: () => {} },
-        setTimeout: (f: () => void) => void minuteries.push(f),
+        console: { error: (...a: unknown[]) => errors.push(a), log: () => {} },
+        setTimeout: (f: () => void) => void timers.push(f),
       };
       ctx.globalThis = ctx;
       for (const f of m.content_scripts[0].js as string[]) runInNewContext(readFileSync(join(c, f), "utf8"), ctx);
       expect(ctx.vu).toBeUndefined();
       // The timers one by one: the request leaves after the markers, the retries after.
-      for (let i = 0; i < 100 && minuteries.length > 0; i++) minuteries.shift()!();
-      return { ctx, erreurs };
+      for (let i = 0; i < 100 && timers.length > 0; i++) timers.shift()!();
+      return { ctx, erreurs: errors };
     };
     const messages: unknown[] = [];
-    const oui = lancer((msg, rappel) => {
+    const yes = lancer((msg, rappel) => {
       messages.push(msg);
       rappel({ onglet: true });
     });
     expect(messages).toEqual([{ webaios: "contexte", fichiers: [2, 0, 1] }]);
-    expect(oui.ctx.vu).toBeUndefined();
-    expect(oui.erreurs).toEqual([]);
+    expect(yes.ctx.vu).toBeUndefined();
+    expect(yes.erreurs).toEqual([]);
     // No answer: lastError read, retries, then abandonment written with the reason.
-    let essais = 0;
+    let attempts = 0;
     const non = lancer((_msg, rappel, runtime) => {
-      essais++;
+      attempts++;
       runtime.lastError = { message: "Could not establish connection. Receiving end does not exist." };
       rappel(undefined);
       delete runtime.lastError;
     });
-    expect(essais).toBe(20);
+    expect(attempts).toBe(20);
     expect(non.erreurs).toHaveLength(1);
     expect(non.erreurs[0]!.map(String).join(" ")).toContain("Could not establish connection");
   });
 
   it("a content script in the page's world (world: MAIN) is refused (analysis); a missing script too", async () => {
     const main = await source({
-      "manifest.json": manifesteBase({ content_scripts: [{ matches: ["https://a.example/*"], js: ["a.js"], world: "MAIN" }] }),
+      "manifest.json": baseManifest({ content_scripts: [{ matches: ["https://a.example/*"], js: ["a.js"], world: "MAIN" }] }),
       "a.js": "1",
     });
-    expect((await prepareCopy({ source: main, cible: await cible(), dossierGardes: DEFAULT_GUARDS })).analyse.refus).toEqual([
+    expect((await prepareCopy({ source: main, cible: await target(), dossierGardes: DEFAULT_GUARDS })).analyse.refus).toEqual([
       'Script de contenu refusé : world "MAIN" n\'est pas permis',
     ]);
     const src = await source({
-      "manifest.json": manifesteBase({ content_scripts: [{ matches: ["https://a.example/*"], js: ["a.js", "absent.js", "../a.js"] }] }),
+      "manifest.json": baseManifest({ content_scripts: [{ matches: ["https://a.example/*"], js: ["a.js", "absent.js", "../a.js"] }] }),
       "a.js": "1",
     });
-    const c = await cible();
+    const c = await target();
     const { analyse } = await prepareCopy({ source: src, cible: c, dossierGardes: DEFAULT_GUARDS });
     expect(analyse.refus).toEqual(["Script de contenu introuvable : absent.js", "Script de contenu introuvable : ../a.js"]);
     expect(existsSync(c)).toBe(false);
   });
 
   it("classic service worker: webaios-fond.js does importScripts of both; module: import of both, type module kept", async () => {
-    const src = await source({ "manifest.json": manifesteBase({ background: { service_worker: "bg/sw.js" } }), "bg/sw.js": "" });
-    const c = await cible();
+    const src = await source({ "manifest.json": baseManifest({ background: { service_worker: "bg/sw.js" } }), "bg/sw.js": "" });
+    const c = await target();
     await prepareCopy({ source: src, cible: c, dossierGardes: DEFAULT_GUARDS });
     const m = await lireJson(join(c, "manifest.json"));
     expect(m.background).toEqual({ service_worker: "webaios-fond.js" });
@@ -242,10 +242,10 @@ describe("preparerCopie", () => {
     expect(existsSync(join(c, "bg/sw.js"))).toBe(true);
 
     const srcM = await source({
-      "manifest.json": manifesteBase({ background: { service_worker: "sw.js", type: "module" } }),
+      "manifest.json": baseManifest({ background: { service_worker: "sw.js", type: "module" } }),
       "sw.js": "export {}",
     });
-    const cM = await cible();
+    const cM = await target();
     await prepareCopy({ source: srcM, cible: cM, dossierGardes: DEFAULT_GUARDS });
     const mM = await lireJson(join(cM, "manifest.json"));
     expect(mM.background).toEqual({ service_worker: "webaios-fond.js", type: "module" });
@@ -255,8 +255,8 @@ describe("preparerCopie", () => {
   });
 
   it("without a background: a minimal webaios-fond.js service worker (the guard alone) is declared, for onInstalled and the rulesets", async () => {
-    const src = await source({ "manifest.json": manifesteBase() });
-    const c = await cible();
+    const src = await source({ "manifest.json": baseManifest() });
+    const c = await target();
     await prepareCopy({ source: src, cible: c, dossierGardes: DEFAULT_GUARDS });
     const m = await lireJson(join(c, "manifest.json"));
     expect(m.background).toEqual({ service_worker: "webaios-fond.js" });
@@ -266,9 +266,9 @@ describe("preparerCopie", () => {
   });
 
   it("the background guard is prefixed to each HTML page (raw bytes, absolute path), the existing scripts stay after", async () => {
-    const GARDE = '<script src="/webaios-garde-fond.js"></script>';
+    const GUARD = '<script src="/webaios-garde-fond.js"></script>';
     const src = await source({
-      "manifest.json": manifesteBase(),
+      "manifest.json": baseManifest(),
       "popup.html": '<!doctype html><html><head><meta charset="utf-8"><script src="popup.js"></script></head><body></body></html>',
       "pages/options.html": "<p>options</p><script src=\"options.js\"></script>",
       "commentaire.html": '<!-- <head> --><head><script src="a.js"></script></head>',
@@ -276,26 +276,26 @@ describe("preparerCopie", () => {
       "offscreen.HTML": "\uFEFF<!DOCTYPE html>\n<script>1</script>",
     });
     await writeFile(join(src, "latin1.html"), Buffer.from([0x3c, 0x70, 0x3e, 0xe9, 0x3c, 0x2f, 0x70, 0x3e]));
-    const c = await cible();
+    const c = await target();
     await prepareCopy({ source: src, cible: c, dossierGardes: DEFAULT_GUARDS });
     const scripts = (html: string) => [...html.matchAll(/<script[^>]*>/gi)].map((x) => x[0]);
 
     const popup = await readFile(join(c, "popup.html"), "utf8");
-    expect(popup).toBe('<!doctype html>' + GARDE + '<html><head><meta charset="utf-8"><script src="popup.js"></script></head><body></body></html>');
+    expect(popup).toBe('<!doctype html>' + GUARD + '<html><head><meta charset="utf-8"><script src="popup.js"></script></head><body></body></html>');
     expect(scripts(popup)).toEqual(['<script src="/webaios-garde-fond.js">', '<script src="popup.js">']);
-    expect(await readFile(join(c, "pages/options.html"), "utf8")).toBe(GARDE + '<p>options</p><script src="options.js"></script>');
-    expect(await readFile(join(c, "commentaire.html"), "utf8")).toBe(GARDE + '<!-- <head> --><head><script src="a.js"></script></head>');
-    expect(await readFile(join(c, "base.htm"), "utf8")).toBe(GARDE + '<html><base href="x/"><head><script src="a.js"></script></head></html>');
-    expect(await readFile(join(c, "offscreen.HTML"), "utf8")).toBe("\uFEFF<!DOCTYPE html>" + GARDE + "\n<script>1</script>");
+    expect(await readFile(join(c, "pages/options.html"), "utf8")).toBe(GUARD + '<p>options</p><script src="options.js"></script>');
+    expect(await readFile(join(c, "commentaire.html"), "utf8")).toBe(GUARD + '<!-- <head> --><head><script src="a.js"></script></head>');
+    expect(await readFile(join(c, "base.htm"), "utf8")).toBe(GUARD + '<html><base href="x/"><head><script src="a.js"></script></head></html>');
+    expect(await readFile(join(c, "offscreen.HTML"), "utf8")).toBe("\uFEFF<!DOCTYPE html>" + GUARD + "\n<script>1</script>");
     expect(await readFile(join(c, "latin1.html"))).toEqual(
-      Buffer.concat([Buffer.from(GARDE), Buffer.from([0x3c, 0x70, 0x3e, 0xe9, 0x3c, 0x2f, 0x70, 0x3e])]),
+      Buffer.concat([Buffer.from(GUARD), Buffer.from([0x3c, 0x70, 0x3e, 0xe9, 0x3c, 0x2f, 0x70, 0x3e])]),
     );
   });
 
   it("files that make a non-HTML document are refused", async () => {
     for (const ext of ["xhtml", "xht", "xml", "xsl", "xslt", "mht", "mhtml", "XHTML"]) {
-      const src = await source({ "manifest.json": manifesteBase(), [`p.${ext}`]: "<x/>" });
-      const c = await cible();
+      const src = await source({ "manifest.json": baseManifest(), [`p.${ext}`]: "<x/>" });
+      const c = await target();
       const { analyse } = await prepareCopy({ source: src, cible: c, dossierGardes: DEFAULT_GUARDS });
       expect(analyse.refus.some((r) => r.includes(`p.${ext}`)), ext).toBe(true);
       expect(existsSync(c)).toBe(false);
@@ -309,12 +309,12 @@ describe("preparerCopie", () => {
       '<svg onload = "x()"></svg>',
       '<svg><a\nONCLICK="x()"/></svg>',
     ]) {
-      const src = await source({ "manifest.json": manifesteBase(), "i/icone.svg": svg });
-      const { analyse } = await prepareCopy({ source: src, cible: await cible(), dossierGardes: DEFAULT_GUARDS });
+      const src = await source({ "manifest.json": baseManifest(), "i/icone.svg": svg });
+      const { analyse } = await prepareCopy({ source: src, cible: await target(), dossierGardes: DEFAULT_GUARDS });
       expect(analyse.refus.some((r) => r.includes("i/icone.svg")), svg).toBe(true);
     }
-    const src = await source({ "manifest.json": manifesteBase(), "icone.svg": '<svg><path d="M0 0"/></svg>' });
-    const c = await cible();
+    const src = await source({ "manifest.json": baseManifest(), "icone.svg": '<svg><path d="M0 0"/></svg>' });
+    const c = await target();
     const { analyse } = await prepareCopy({ source: src, cible: c, dossierGardes: DEFAULT_GUARDS });
     expect(analyse.refus).toEqual([]);
     expect(existsSync(join(c, "icone.svg"))).toBe(true);
@@ -332,30 +332,30 @@ describe("preparerCopie", () => {
       ["bad.svg", Buffer.from([0x3c, 0x73, 0x76, 0x67, 0xff, 0x2f, 0x3e]), "UTF-8"],
       ["image.svgz", Buffer.from([0x1f, 0x8b, 0x08]), ".svgz"],
     ];
-    for (const [nom, contenu, motif] of cas) {
-      const src = await source({ "manifest.json": manifesteBase() });
-      await writeFile(join(src, nom), contenu);
-      const c = await cible();
+    for (const [name, content, motif] of cas) {
+      const src = await source({ "manifest.json": baseManifest() });
+      await writeFile(join(src, name), content);
+      const c = await target();
       const { analyse } = await prepareCopy({ source: src, cible: c, dossierGardes: DEFAULT_GUARDS });
-      const r = analyse.refus.find((x) => x.includes(nom));
-      expect(r, nom).toBeDefined();
-      expect(r, nom).toContain(motif);
+      const r = analyse.refus.find((x) => x.includes(name));
+      expect(r, name).toBeDefined();
+      expect(r, name).toContain(motif);
       expect(existsSync(c)).toBe(false);
     }
-    const icone = await source({
-      "manifest.json": manifesteBase(),
+    const icon = await source({
+      "manifest.json": baseManifest(),
       "icone.svg": '<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><title>Étoile</title><path fill="#fc0" d="M12 2l3 7h7l-6 4 2 7-6-4-6 4 2-7-6-4h7z"/></svg>',
     });
-    const c = await cible();
-    expect((await prepareCopy({ source: icone, cible: c, dossierGardes: DEFAULT_GUARDS })).analyse.refus).toEqual([]);
+    const c = await target();
+    expect((await prepareCopy({ source: icon, cible: c, dossierGardes: DEFAULT_GUARDS })).analyse.refus).toEqual([]);
     expect(existsSync(join(c, "icone.svg"))).toBe(true);
   });
 
   it("an HTML page in UTF-16 or UTF-32 (BOM) is refused", async () => {
     for (const bom of [[0xff, 0xfe], [0xfe, 0xff], [0xff, 0xfe, 0x00, 0x00], [0x00, 0x00, 0xfe, 0xff]]) {
-      const src = await source({ "manifest.json": manifesteBase() });
+      const src = await source({ "manifest.json": baseManifest() });
       await writeFile(join(src, "popup.html"), Buffer.concat([Buffer.from(bom), Buffer.from("<p>x</p>", "utf16le")]));
-      const c = await cible();
+      const c = await target();
       const { analyse } = await prepareCopy({ source: src, cible: c, dossierGardes: DEFAULT_GUARDS });
       expect(analyse.refus.some((r) => r.includes("popup.html")), String(bom)).toBe(true);
       expect(existsSync(c)).toBe(false);
@@ -364,8 +364,8 @@ describe("preparerCopie", () => {
 
   it("background.scripts or background.page refused", async () => {
     for (const background of [{ scripts: ["a.js"] }, { page: "fond.html" }, { service_worker: "sw.js", scripts: ["a.js"] }]) {
-      const src = await source({ "manifest.json": manifesteBase({ background }), "a.js": "", "sw.js": "", "fond.html": "" });
-      const c = await cible();
+      const src = await source({ "manifest.json": baseManifest({ background }), "a.js": "", "sw.js": "", "fond.html": "" });
+      const c = await target();
       const { analyse } = await prepareCopy({ source: src, cible: c, dossierGardes: DEFAULT_GUARDS });
       expect(analyse.refus.length, JSON.stringify(background)).toBeGreaterThan(0);
       expect(existsSync(c)).toBe(false);
@@ -373,33 +373,33 @@ describe("preparerCopie", () => {
   });
 
   it("more than 32 folder levels refused", async () => {
-    const profond = Array.from({ length: 33 }, (_, i) => `d${i}`).join("/");
-    const src = await source({ "manifest.json": manifesteBase(), [`${profond}/f.js`]: "" });
-    const c = await cible();
+    const deep = Array.from({ length: 33 }, (_, i) => `d${i}`).join("/");
+    const src = await source({ "manifest.json": baseManifest(), [`${deep}/f.js`]: "" });
+    const c = await target();
     const { analyse } = await prepareCopy({ source: src, cible: c, dossierGardes: DEFAULT_GUARDS });
     expect(analyse.refus.some((r) => r.includes("32"))).toBe(true);
     expect(existsSync(c)).toBe(false);
-    const ok = await source({ "manifest.json": manifesteBase(), [`${Array.from({ length: 31 }, (_, i) => `d${i}`).join("/")}/f.js`]: "" });
-    expect((await prepareCopy({ source: ok, cible: await cible(), dossierGardes: DEFAULT_GUARDS })).analyse.refus).toEqual([]);
+    const ok = await source({ "manifest.json": baseManifest(), [`${Array.from({ length: 31 }, (_, i) => `d${i}`).join("/")}/f.js`]: "" });
+    expect((await prepareCopy({ source: ok, cible: await target(), dossierGardes: DEFAULT_GUARDS })).analyse.refus).toEqual([]);
   });
 
   it("more than 5000 entries (folders included) refused", async () => {
-    const src = await source({ "manifest.json": manifesteBase() });
+    const src = await source({ "manifest.json": baseManifest() });
     for (let i = 0; i < ENTREES_MAX; i++) await mkdir(join(src, `v${i}`));
-    const c = await cible();
+    const c = await target();
     const { analyse } = await prepareCopy({ source: src, cible: c, dossierGardes: DEFAULT_GUARDS });
     expect(analyse.refus.some((r) => r.includes(String(ENTREES_MAX)))).toBe(true);
     expect(existsSync(c)).toBe(false);
   });
 
   it("a symbolic link (to a file outside the folder) is refused, target unchanged", async () => {
-    const dehors = join(await dossierTemporaire(), "secret");
+    const dehors = join(await tempFolder(), "secret");
     await writeFile(dehors, "clé privée");
-    const c = await cible();
-    const premiere = await source({ "manifest.json": manifesteBase(), "a.js": "ancien" });
+    const c = await target();
+    const premiere = await source({ "manifest.json": baseManifest(), "a.js": "ancien" });
     await prepareCopy({ source: premiere, cible: c, dossierGardes: DEFAULT_GUARDS });
 
-    const src = await source({ "manifest.json": manifesteBase(), "a.js": "nouveau" });
+    const src = await source({ "manifest.json": baseManifest(), "a.js": "nouveau" });
     await symlink(dehors, join(src, "lien.txt"));
     const { analyse } = await prepareCopy({ source: src, cible: c, dossierGardes: DEFAULT_GUARDS });
     expect(analyse.refus.some((r) => r.includes("lien.txt"))).toBe(true);
@@ -409,10 +409,10 @@ describe("preparerCopie", () => {
   });
 
   it("2001 files refused", async () => {
-    const fichiers: Record<string, string | object> = { "manifest.json": manifesteBase() };
-    for (let i = 0; i < FILES_MAX; i++) fichiers[`f/${i}.txt`] = "x";
-    const src = await source(fichiers);
-    const c = await cible();
+    const files: Record<string, string | object> = { "manifest.json": baseManifest() };
+    for (let i = 0; i < FILES_MAX; i++) files[`f/${i}.txt`] = "x";
+    const src = await source(files);
+    const c = await target();
     const { analyse } = await prepareCopy({ source: src, cible: c, dossierGardes: DEFAULT_GUARDS });
     expect(analyse.refus.length).toBeGreaterThan(0);
     expect(existsSync(c)).toBe(false);
@@ -420,8 +420,8 @@ describe("preparerCopie", () => {
   });
 
   it("an analysis with refusals writes nothing and returns the refusals", async () => {
-    const src = await source({ "manifest.json": manifesteBase({ permissions: ["debugger"] }) });
-    const c = await cible();
+    const src = await source({ "manifest.json": baseManifest({ permissions: ["debugger"] }) });
+    const c = await target();
     const { analyse } = await prepareCopy({ source: src, cible: c, dossierGardes: DEFAULT_GUARDS });
     expect(analyse.refus).toEqual(["Droit refusé : debugger"]);
     expect(existsSync(c)).toBe(false);
@@ -430,70 +430,70 @@ describe("preparerCopie", () => {
 
   it("the DNR rules are read in the folder and checked", async () => {
     const src = await source({
-      "manifest.json": manifesteBase({
+      "manifest.json": baseManifest({
         permissions: ["declarativeNetRequest"],
         declarative_net_request: { rule_resources: [{ id: "r", enabled: true, path: "regles/r.json" }] },
       }),
       "regles/r.json": [{ id: 1, action: { type: "redirect", redirect: { url: "https://x.example" } }, condition: {} }],
     });
-    const c = await cible();
+    const c = await target();
     const { analyse } = await prepareCopy({ source: src, cible: c, dossierGardes: DEFAULT_GUARDS });
     expect(analyse.refus).toEqual(["Règle DNR refusée (redirect) dans regles/r.json, règle 1"]);
     expect(existsSync(c)).toBe(false);
   });
 
   it("a file name reserved for WebAiOs is refused, whatever the case", async () => {
-    for (const nom of ["webaios-fond.js", "WebAiOs-Fond.js", "WEBAIOS-GARDE-PAGE.JS", "webaios-fichiers/0.js", "webaios-portee.js", "Webaios-Env/a.js"]) {
-      const src = await source({ "manifest.json": manifesteBase(), [nom]: "1" });
-      const { analyse } = await prepareCopy({ source: src, cible: await cible(), dossierGardes: DEFAULT_GUARDS });
-      expect(analyse.refus.some((r) => r.includes(nom)), nom).toBe(true);
+    for (const name of ["webaios-fond.js", "WebAiOs-Fond.js", "WEBAIOS-GARDE-PAGE.JS", "webaios-fichiers/0.js", "webaios-portee.js", "Webaios-Env/a.js"]) {
+      const src = await source({ "manifest.json": baseManifest(), [name]: "1" });
+      const { analyse } = await prepareCopy({ source: src, cible: await target(), dossierGardes: DEFAULT_GUARDS });
+      expect(analyse.refus.some((r) => r.includes(name)), name).toBe(true);
     }
   });
 
   it("a symbolic link in a subfolder is refused", async () => {
-    const dehors = join(await dossierTemporaire(), "secret");
+    const dehors = join(await tempFolder(), "secret");
     await writeFile(dehors, "x");
-    const src = await source({ "manifest.json": manifesteBase(), "a/b/c.js": "" });
+    const src = await source({ "manifest.json": baseManifest(), "a/b/c.js": "" });
     await symlink(dehors, join(src, "a/b/lien.js"));
-    const c = await cible();
+    const c = await target();
     const { analyse } = await prepareCopy({ source: src, cible: c, dossierGardes: DEFAULT_GUARDS });
     expect(analyse.refus.some((r) => r.includes("a/b/lien.js"))).toBe(true);
     expect(existsSync(c)).toBe(false);
   });
 
   it("a symbolic link to a folder is refused, the root too", async () => {
-    const dehors = await dossierTemporaire();
+    const dehors = await tempFolder();
     await writeFile(join(dehors, "id_ed25519"), "x");
-    const src = await source({ "manifest.json": manifesteBase() });
+    const src = await source({ "manifest.json": baseManifest() });
     await symlink(dehors, join(src, "ssh"));
-    const c = await cible();
+    const c = await target();
     const { analyse } = await prepareCopy({ source: src, cible: c, dossierGardes: DEFAULT_GUARDS });
     expect(analyse.refus.some((r) => r.includes("ssh"))).toBe(true);
     expect(existsSync(c)).toBe(false);
 
-    const vrai = await source({ "manifest.json": manifesteBase() });
-    const lienRacine = join(dirname(vrai), "lien-racine");
-    await symlink(vrai, lienRacine);
-    const r = await prepareCopy({ source: lienRacine, cible: c, dossierGardes: DEFAULT_GUARDS });
+    const real = await source({ "manifest.json": baseManifest() });
+    const rootLink = join(dirname(real), "lien-racine");
+    await symlink(real, rootLink);
+    const r = await prepareCopy({ source: rootLink, cible: c, dossierGardes: DEFAULT_GUARDS });
     expect(r.analyse.refus.length).toBeGreaterThan(0);
     expect(existsSync(c)).toBe(false);
   });
 
   it("a hard link is refused", async () => {
-    const dehors = join(await dossierTemporaire(), "secret");
+    const dehors = join(await tempFolder(), "secret");
     await writeFile(dehors, "x");
-    const src = await source({ "manifest.json": manifesteBase() });
+    const src = await source({ "manifest.json": baseManifest() });
     await link(dehors, join(src, "physique.txt"));
-    const c = await cible();
+    const c = await target();
     const { analyse } = await prepareCopy({ source: src, cible: c, dossierGardes: DEFAULT_GUARDS });
     expect(analyse.refus.some((r) => r.includes("physique.txt"))).toBe(true);
     expect(existsSync(c)).toBe(false);
   });
 
   it("a file replaced by a link after its lstat is refused (nothing is read outside the folder)", async () => {
-    const dehors = join(await dossierTemporaire(), "secret");
+    const dehors = join(await tempFolder(), "secret");
     await writeFile(dehors, "clé privée");
-    const src = await source({ "manifest.json": manifesteBase(), "a.js": "1" });
+    const src = await source({ "manifest.json": baseManifest(), "a.js": "1" });
     crochets.apresLstat = async (p) => {
       if (p === join(src, "a.js")) {
         crochets.apresLstat = null;
@@ -501,14 +501,14 @@ describe("preparerCopie", () => {
         await symlink(dehors, p);
       }
     };
-    const c = await cible();
+    const c = await target();
     const { analyse } = await prepareCopy({ source: src, cible: c, dossierGardes: DEFAULT_GUARDS });
     expect(analyse.refus.some((r) => r.includes("a.js"))).toBe(true);
     expect(existsSync(c)).toBe(false);
   });
 
   it("a file replaced by another file after its lstat is refused", async () => {
-    const src = await source({ "manifest.json": manifesteBase(), "a.js": "1" });
+    const src = await source({ "manifest.json": baseManifest(), "a.js": "1" });
     crochets.apresLstat = async (p) => {
       if (p === join(src, "a.js")) {
         crochets.apresLstat = null;
@@ -516,14 +516,14 @@ describe("preparerCopie", () => {
         await rename(join(src, "b.tmp"), p);
       }
     };
-    const { analyse } = await prepareCopy({ source: src, cible: await cible(), dossierGardes: DEFAULT_GUARDS });
+    const { analyse } = await prepareCopy({ source: src, cible: await target(), dossierGardes: DEFAULT_GUARDS });
     expect(analyse.refus.some((r) => r.includes("a.js"))).toBe(true);
   });
 
   it("a subfolder replaced by a link during its read is refused", async () => {
-    const dehors = await dossierTemporaire();
+    const dehors = await tempFolder();
     await writeFile(join(dehors, "id_ed25519"), "x");
-    const src = await source({ "manifest.json": manifesteBase(), "sous/id_ed25519": "leurre" });
+    const src = await source({ "manifest.json": baseManifest(), "sous/id_ed25519": "leurre" });
     crochets.apresReaddir = async (p) => {
       if (p === join(src, "sous")) {
         crochets.apresReaddir = null;
@@ -531,19 +531,19 @@ describe("preparerCopie", () => {
         await symlink(dehors, p);
       }
     };
-    const c = await cible();
+    const c = await target();
     const { analyse } = await prepareCopy({ source: src, cible: c, dossierGardes: DEFAULT_GUARDS });
     expect(analyse.refus.some((r) => r.includes("sous"))).toBe(true);
     expect(existsSync(c)).toBe(false);
   });
 
   it("the old copy is put back in place if the second rename fails", async () => {
-    const c = await cible();
-    await prepareCopy({ source: await source({ "manifest.json": manifesteBase(), "a.js": "ancien" }), cible: c, dossierGardes: DEFAULT_GUARDS });
-    crochets.avantRename = (de, vers) => {
-      if (de.endsWith(".tmp") && vers === c) throw Object.assign(new Error("échec simulé"), { code: "EIO" });
+    const c = await target();
+    await prepareCopy({ source: await source({ "manifest.json": baseManifest(), "a.js": "ancien" }), cible: c, dossierGardes: DEFAULT_GUARDS });
+    crochets.avantRename = (de, to) => {
+      if (de.endsWith(".tmp") && to === c) throw Object.assign(new Error("échec simulé"), { code: "EIO" });
     };
-    const seconde = await source({ "manifest.json": manifesteBase(), "b.js": "nouveau" });
+    const seconde = await source({ "manifest.json": baseManifest(), "b.js": "nouveau" });
     await expect(prepareCopy({ source: seconde, cible: c, dossierGardes: DEFAULT_GUARDS })).rejects.toThrow("échec simulé");
     expect(await readFile(join(c, "a.js"), "utf8")).toBe("ancien");
     expect(existsSync(join(c, "b.js"))).toBe(false);
@@ -551,35 +551,35 @@ describe("preparerCopie", () => {
   });
 
   it("the temporary folder is deleted after a write error", async () => {
-    const c = await cible();
-    const src = await source({ "manifest.json": manifesteBase(), "a.js": "" });
+    const c = await target();
+    const src = await source({ "manifest.json": baseManifest(), "a.js": "" });
     await expect(prepareCopy({ source: src, cible: c, dossierGardes: join(src, "absent") })).rejects.toThrow();
     expect(existsSync(c)).toBe(false);
     expect(await readdir(dirname(c))).toEqual([]);
   });
 
   it("a second copy replaces the first in one go (no mixing of files)", async () => {
-    const c = await cible();
-    const premiere = await source({ "manifest.json": manifesteBase(), "a.js": "a", "sous/x.js": "x" });
+    const c = await target();
+    const premiere = await source({ "manifest.json": baseManifest(), "a.js": "a", "sous/x.js": "x" });
     await prepareCopy({ source: premiere, cible: c, dossierGardes: DEFAULT_GUARDS });
     expect(existsSync(join(c, "a.js"))).toBe(true);
 
-    const seconde = await source({ "manifest.json": manifesteBase({ version: "2.0" }), "b.js": "b" });
+    const seconde = await source({ "manifest.json": baseManifest({ version: "2.0" }), "b.js": "b" });
     await prepareCopy({ source: seconde, cible: c, dossierGardes: DEFAULT_GUARDS });
-    expect((await readdir(c)).sort()).toEqual(["b.js", "manifest.json", "webaios-fichiers", "webaios-fond.js", "webaios-portee.js", ...GARDES].sort());
+    expect((await readdir(c)).sort()).toEqual(["b.js", "manifest.json", "webaios-fichiers", "webaios-fond.js", "webaios-portee.js", ...GUARDS].sort());
     expect((await lireJson(join(c, "manifest.json"))).version).toBe("2.0");
     // Neither a temporary folder nor an old copy left alongside.
     expect(await readdir(dirname(c))).toEqual(["essai"]);
   });
 
   it("same source, same hash; one byte changed, another hash", async () => {
-    const src = await source({ "manifest.json": manifesteBase(), "a.js": "abc" });
-    const e1 = (await prepareCopy({ source: src, cible: await cible(), dossierGardes: DEFAULT_GUARDS })).empreinte;
-    const e2 = (await prepareCopy({ source: src, cible: await cible(), dossierGardes: DEFAULT_GUARDS })).empreinte;
+    const src = await source({ "manifest.json": baseManifest(), "a.js": "abc" });
+    const e1 = (await prepareCopy({ source: src, cible: await target(), dossierGardes: DEFAULT_GUARDS })).empreinte;
+    const e2 = (await prepareCopy({ source: src, cible: await target(), dossierGardes: DEFAULT_GUARDS })).empreinte;
     expect(e1).toMatch(/^[0-9a-f]{64}$/);
     expect(e2).toBe(e1);
     await writeFile(join(src, "a.js"), "abd");
-    const e3 = (await prepareCopy({ source: src, cible: await cible(), dossierGardes: DEFAULT_GUARDS })).empreinte;
+    const e3 = (await prepareCopy({ source: src, cible: await target(), dossierGardes: DEFAULT_GUARDS })).empreinte;
     expect(e3).not.toBe(e1);
   });
 });
@@ -601,15 +601,15 @@ describe("webaios-correctifs-page.js", () => {
 });
 
 describe("localized names (_locales)", () => {
-  const manifesteLocalise = { manifest_version: 3, name: "__MSG_extName__", version: "1.0", default_locale: "en" };
+  const localizedManifest = { manifest_version: 3, name: "__MSG_extName__", version: "1.0", default_locale: "en" };
 
   it("preparerCopie resolves the agent's name from _locales (fr first)", async () => {
     const src = await source({
-      "manifest.json": manifesteLocalise,
+      "manifest.json": localizedManifest,
       "_locales/en/messages.json": { extName: { message: "Name" } },
       "_locales/fr/messages.json": { extname: { message: "Nom" } },
     });
-    const { analyse } = await prepareCopy({ source: src, cible: await cible(), dossierGardes: DEFAULT_GUARDS });
+    const { analyse } = await prepareCopy({ source: src, cible: await target(), dossierGardes: DEFAULT_GUARDS });
     expect(analyse.nom).toBe("Nom");
   });
 });
