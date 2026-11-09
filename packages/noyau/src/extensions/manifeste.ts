@@ -260,8 +260,8 @@ export function porteeElargie(accordee: Portee, nouvelle: Portee): boolean {
 }
 
 /**
- * Fingerprint of a scope (hexadecimal sha-256 of a canonical JSON: sorted keys, sorted lists, `scripts` absent = false).
- * The grant card carries it: a caller records the grant only if the scope it writes has the same fingerprint as
+ * Hash of a scope (hexadecimal sha-256 of a canonical JSON: sorted keys, sorted lists, `scripts` absent = false).
+ * The grant card carries it: a caller records the grant only if the scope it writes has the same hash as
  * the one shown to the user.
  */
 export function empreintePortee(p: Portee): string {

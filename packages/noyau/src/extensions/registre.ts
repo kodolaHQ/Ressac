@@ -53,7 +53,7 @@ export interface EntreeExtension {
   /** Last version started in each profile. */
   vues: Record<IdProfil, string>;
   /**
-   * Store: site apps where it is active, with the fingerprint of their domains (`empreinteExtensionsSite`) at the time
+   * Store: site apps where it is active, with the hash of their domains (`empreinteExtensionsSite`) at the time
    * of activation. Absent: none.
    */
   applis?: Record<IdSite, string>;

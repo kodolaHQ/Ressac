@@ -31,7 +31,7 @@ export const DOSSIER_DOCKER_PAR_DEFAUT = join(import.meta.dirname, "..", "..", "
 const dockerfile = (dossier: string) => join(dossier, "atelier.Dockerfile");
 const LABEL_EMPREINTE = "webaios.dockerfile";
 
-/** Fingerprint of the Dockerfile: the image and the container carry it as a label, to know whether they are up to date. */
+/** Hash of the Dockerfile: the image and the container carry it as a label, to know whether they are up to date. */
 export function empreinteDockerfile(dossierDocker = DOSSIER_DOCKER_PAR_DEFAUT): string {
   return createHash("sha256").update(readFileSync(dockerfile(dossierDocker))).digest("hex").slice(0, 12);
 }

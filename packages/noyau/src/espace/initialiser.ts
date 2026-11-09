@@ -9,9 +9,9 @@ import type { CheminsEspace } from "../chemins.js";
 export const MODELES_PAR_DEFAUT = join(import.meta.dirname, "..", "..", "modeles");
 
 /**
- * sha256 fingerprints of old versions of the AGENTS.md template. An AGENTS.md that has one is left as
+ * sha256 hashes of old versions of the AGENTS.md template. An AGENTS.md that has one is left as
  * is: it is replaced by the current template. To complete with each new template version: add
- * the old version's fingerprint (`shasum -a 256 modeles/AGENTS.md`) before modifying it.
+ * the old version's hash (`shasum -a 256 modeles/AGENTS.md`) before modifying it.
  */
 export const ANCIENS_AGENTS = new Set([
   "4cb44a141c2e0865ae472910b3f1026b918c2d09d12b96732b7a5556ffcc4681",
@@ -133,7 +133,7 @@ async function correspondances(c: CheminsEspace, modeles: string): Promise<[stri
 }
 
 /**
- * sha256 fingerprints of each shipped version of the starter widgets' `recolte.mjs` (before workflows). A
+ * sha256 hashes of each shipped version of the starter widgets' `recolte.mjs` (before workflows). A
  * starter widget whose `recolte.mjs` has one is left as is: it switches to a workflow at launch.
  */
 export const RECOLTES_LIVREES: Record<"meteo" | "actus-tech" | "daily-dev", ReadonlySet<string>> = {
@@ -151,9 +151,9 @@ export const RECOLTES_LIVREES: Record<"meteo" | "actus-tech" | "daily-dev", Read
 };
 
 /**
- * sha256 fingerprints of the shipped versions of the starter widgets' `affichage.html`, before the Firefox forms
+ * sha256 hashes of the shipped versions of the starter widgets' `affichage.html`, before the Firefox forms
  * (listening without comparing `e.source`, links through `webaiosOuvrir`). A display left at one of them is replaced by the
- * current template; a display modified by the user or the agent (unknown fingerprint) is not touched.
+ * current template; a display modified by the user or the agent (unknown hash) is not touched.
  */
 export const AFFICHAGES_LIVREES: Record<"meteo" | "actus-tech" | "daily-dev", ReadonlySet<string>> = {
   meteo: new Set([
@@ -247,7 +247,7 @@ async function rangerRecolte(c: CheminsEspace, id: string): Promise<void> {
 }
 
 /**
- * Replaces the `affichage.html` of a starter widget left at a shipped version (known fingerprint) with the template's.
+ * Replaces the `affichage.html` of a starter widget left at a shipped version (known hash) with the template's.
  * A modified display, a symbolic link or an absent widget are not touched.
  */
 async function migrerAffichageDeDepart(c: CheminsEspace, modeles: string, id: keyof typeof AFFICHAGES_LIVREES): Promise<boolean> {

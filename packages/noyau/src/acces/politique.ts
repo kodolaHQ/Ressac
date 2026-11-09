@@ -62,7 +62,7 @@ export class PolitiqueAcces {
   /** Widgets with an account whose data the user showed the agent (card « donnees-widget »), for this conversation. */
   private readonly donneesWidgets = new Set<string>();
   /**
-   * Site apps the user opened to the agent (pages and memory), for this conversation, and the fingerprint of their
+   * Site apps the user opened to the agent (pages and memory), for this conversation, and the hash of their
    * declaration when the card was shown (`empreinteLectureSite`; null if the browser gives none).
    */
   private readonly sitesLus = new Map<string, string | null>();
@@ -295,7 +295,7 @@ export class PolitiqueAcces {
 
   /**
    * The user opens the site app `id` to the agent (its pages and memory), until the next conversation, as
-   * the card showed it (`empreinte` of its declaration): a different fingerprint afterwards does not count.
+   * the card showed it (`empreinte` of its declaration): a different hash afterwards does not count.
    */
   accorderLectureSite(id: string, empreinte?: string): void {
     const e = empreinte ?? null;
@@ -304,7 +304,7 @@ export class PolitiqueAcces {
     this.change();
   }
 
-  /** Does the app's read grant hold, for the declaration fingerprint `empreinte` (today's)? */
+  /** Does the app's read grant hold, for the declaration hash `empreinte` (today's)? */
   lectureSiteAccordee(id: string, empreinte?: string): boolean {
     return this.sitesLus.has(id) && this.sitesLus.get(id) === (empreinte ?? null);
   }
