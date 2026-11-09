@@ -30,36 +30,36 @@ export const CONSOLE_LENGTH_MAX = 100_000;
 
 /** What the agent sees of an extension (Store or its own). */
 export interface AgentExtension {
-  cle: string;
+  key: string;
   source: "store" | "agent";
-  nom: string;
+  name: string;
   version: string;
   /** The non-private spaces where it is active. */
-  espaces: string[];
+  spaces: string[];
   /** The number of private spaces where it is active (never their names). */
-  espacesPrives: number;
-  erreurs: string[];
+  privateSpaces: number;
+  errors: string[];
 }
 
 /** The console of an agent extension, filtered by the browser (spec §5, filtered console). */
 export interface AgentConsole {
   messages: MessageConsole[];
   /** Messages from content scripts from tabs the agent cannot read, removed. */
-  masques: number;
+  hidden: number;
   /** Extension's service worker and pages hidden: it ran in such a tab (never reset). */
-  fondMasque: boolean;
+  hiddenBackground: boolean;
   /** Extension's service worker and pages hidden: it has a right that observes tabs or navigation. */
-  fondObserve: boolean;
+  observedBackground: boolean;
   /** The user unlocked its console: nothing is removed. */
-  debloquee: boolean;
+  unlocked: boolean;
 }
 
 /** `refusee`: the user refused; `retiree`: the card dropped before their answer. */
-export type ExtensionRequestResult = { ok: true; espace: string } | { ok: false; erreur: string; refusee?: boolean; retiree?: boolean };
-export type ExtensionConsoleResult = { ok: true } | { ok: false; erreur: string; refusee?: boolean; retiree?: boolean };
+export type ExtensionRequestResult = { ok: true; space: string } | { ok: false; error: string; denied?: boolean; removed?: boolean };
+export type ExtensionConsoleResult = { ok: true } | { ok: false; error: string; denied?: boolean; removed?: boolean };
 
-function failure(rep: { erreur: string; refusee?: boolean; retiree?: boolean }): Result {
-  return rep.retiree ? text(REQUEST_REMOVED) : rep.refusee ? text(DENIED_BY_USER) : text(rep.erreur, true);
+function failure(rep: { error: string; denied?: boolean; removed?: boolean }): Result {
+  return rep.removed ? text(REQUEST_REMOVED) : rep.denied ? text(DENIED_BY_USER) : text(rep.error, true);
 }
 
 /**
@@ -68,15 +68,15 @@ function failure(rep: { erreur: string; refusee?: boolean; retiree?: boolean }):
  * for the console and its unlocking (second barrier).
  */
 export interface ExtensionsTools {
-  lister(): Promise<AgentExtension[]>;
+  list(): Promise<AgentExtension[]>;
   /** Shows the grant card to the user (without granting it) and waits for their answer; returns the space where it is activated. */
-  demander(id: string, o: { espace?: string; fenetre: string | null; agent: string; signal?: AbortSignal }): Promise<ExtensionRequestResult>;
-  recharger(id: string): Promise<{ etat: "rechargee" | "desactivee" | "refusee"; detail: string[] }>;
+  ask(id: string, o: { space?: string; window: string | null; agent: string; signal?: AbortSignal }): Promise<ExtensionRequestResult>;
+  reload(id: string): Promise<{ state: "rechargee" | "desactivee" | "refusee"; detail: string[] }>;
   /** null : extension inconnue. */
   console(id: string, from?: number): Promise<AgentConsole | null>;
   /** Unlock card to the user; granted, the console is no longer filtered until `refermerConsole` (or another end). */
-  debloquerConsole(id: string, reason: string, o: { fenetre: string | null; agent: string; signal?: AbortSignal }): Promise<ExtensionConsoleResult>;
-  refermerConsole(id: string): Promise<ExtensionConsoleResult>;
+  unlockConsole(id: string, reason: string, o: { window: string | null; agent: string; signal?: AbortSignal }): Promise<ExtensionConsoleResult>;
+  closeConsoleAgain(id: string): Promise<ExtensionConsoleResult>;
 }
 
 type Result = { content: { type: "text"; text: string }[]; isError?: boolean };
@@ -90,10 +90,10 @@ const ID_EXTENSION = z.string().min(1).max(60);
 const plural = (n: number, word: string) => `${n} ${word}${n > 1 ? "s" : ""}`;
 
 function extensionLine(x: AgentExtension): string {
-  const spaces = x.espaces.length ? x.espaces.join(", ") : "aucun espace";
-  const privates = x.espacesPrives > 0 ? ` + ${plural(x.espacesPrives, "espace")} ${x.espacesPrives > 1 ? "privés" : "privé"}` : "";
-  const errors = x.erreurs.length ? x.erreurs.join(" ; ") : "aucune";
-  return `${x.cle} · ${x.nom} · ${x.version} · ${x.source} · actives dans : ${spaces}${privates} · erreurs : ${errors}`;
+  const spaces = x.spaces.length ? x.spaces.join(", ") : "aucun espace";
+  const privates = x.privateSpaces > 0 ? ` + ${plural(x.privateSpaces, "espace")} ${x.privateSpaces > 1 ? "privés" : "privé"}` : "";
+  const errors = x.errors.length ? x.errors.join(" ; ") : "aucune";
+  return `${x.key} · ${x.name} · ${x.version} · ${x.source} · actives dans : ${spaces}${privates} · erreurs : ${errors}`;
 }
 
 /** Keeps the last messages as long as the answer fits in CONSOLE_LENGTH_MAX, and reports the omitted ones. */
@@ -108,13 +108,13 @@ function clamp(lignes: string[]): string[] {
  * A card put up in a past conversation (new conversation, kernel stopped) is removed: a signal raised when
  * the conversation changes, and a way to unsubscribe.
  */
-function conversationRemoval(policy: AccessPolicy): { signal: AbortSignal; fin(): void } {
+function conversationRemoval(policy: AccessPolicy): { signal: AbortSignal; end(): void } {
   const conversation = policy.conversation;
   const removal = new AbortController();
-  const end = policy.surChange(() => {
+  const end = policy.onChange(() => {
     if (policy.conversation !== conversation) removal.abort();
   });
-  return { signal: removal.signal, fin: end };
+  return { signal: removal.signal, end: end };
 }
 
 /**
@@ -124,9 +124,9 @@ function conversationRemoval(policy: AccessPolicy): { signal: AbortSignal; fin()
  */
 export function registerExtensionsTools(
   server: McpServer,
-  c: { outils: ExtensionsTools; agent: string; fenetre: string | null; politique: AccessPolicy; battementMs?: number },
+  c: { tools: ExtensionsTools; agent: string; window: string | null; policy: AccessPolicy; heartbeatMs?: number },
 ): void {
-  const { outils: tools } = c;
+  const { tools: tools } = c;
   /**
    * An MCP client gives up on a tool that stays silent too long (Claude Code: 300 s); an AMO signature or a card that
    * waits for the user sometimes takes longer: these tools send a progress notification at this pace. Not the others: a call to the
@@ -140,7 +140,7 @@ export function registerExtensionsTools(
       const beat =
         progressToken === undefined
           ? undefined
-          : setInterval(() => void extra.sendNotification({ method: "notifications/progress", params: { progressToken, progress: ++progress } }).catch(() => {}), c.battementMs ?? 30_000);
+          : setInterval(() => void extra.sendNotification({ method: "notifications/progress", params: { progressToken, progress: ++progress } }).catch(() => {}), c.heartbeatMs ?? 30_000);
       try {
         return await f(a);
       } finally {
@@ -166,7 +166,7 @@ export function registerExtensionsTools(
       inputSchema: {},
     },
     protect(async () => {
-      const list = await tools.lister();
+      const list = await tools.list();
       if (!list.length) return text("Aucune extension.");
       return text([EXTENSIONS_LIST_PREFIX, ...list.map(extensionLine)].join("\n"));
     }),
@@ -179,15 +179,15 @@ export function registerExtensionsTools(
         "Demande à l'utilisateur d'activer ton extension ~/WebAiOs/extensions/<id> dans un espace (par défaut l'espace actif de ta " +
         "fenêtre) : une carte d'accord lui montre ses droits, ses sites et son accès au réseau, et l'outil attend sa réponse. " +
         "Une extension déjà accordée et active dans cet espace : rien n'est redemandé.",
-      inputSchema: { id: ID_EXTENSION, espace: z.string().max(200).optional() },
+      inputSchema: { id: ID_EXTENSION, space: z.string().max(200).optional() },
     },
-    beating(protect(async ({ id, espace: space }: { id: string; espace?: string | undefined }) => {
-      const r = conversationRemoval(c.politique);
+    beating(protect(async ({ id, space: space }: { id: string; space?: string | undefined }) => {
+      const r = conversationRemoval(c.policy);
       try {
-        const rep = await tools.demander(id, { ...(space !== undefined ? { espace: space } : {}), fenetre: c.fenetre, agent: c.agent, signal: r.signal });
-        return rep.ok ? text(`Activée dans « ${rep.espace} ».`) : failure(rep);
+        const rep = await tools.ask(id, { ...(space !== undefined ? { space: space } : {}), window: c.window, agent: c.agent, signal: r.signal });
+        return rep.ok ? text(`Activée dans « ${rep.space} ».`) : failure(rep);
       } finally {
-        r.fin();
+        r.end();
       }
     })),
   );
@@ -202,10 +202,10 @@ export function registerExtensionsTools(
       inputSchema: { id: ID_EXTENSION },
     },
     beating(protect(async ({ id }: { id: string }) => {
-      const r = await tools.recharger(id);
-      const lignes = [`etat : ${r.etat}`, ...(r.detail.length ? [RELOAD_DETAIL_PREFIX, ...r.detail] : [])];
-      if (r.etat === "desactivee") lignes.push("Appelle demander_extension pour redemander l'accord de l'utilisateur.");
-      return text(lignes.join("\n"), r.etat === "refusee");
+      const r = await tools.reload(id);
+      const lignes = [`etat : ${r.state}`, ...(r.detail.length ? [RELOAD_DETAIL_PREFIX, ...r.detail] : [])];
+      if (r.state === "desactivee") lignes.push("Appelle demander_extension pour redemander l'accord de l'utilisateur.");
+      return text(lignes.join("\n"), r.state === "refusee");
     })),
   );
 
@@ -219,22 +219,22 @@ export function registerExtensionsTools(
         "(tabs, webNavigation, cookies, history, topSites, sessions, bookmarks, activeTab, clipboardRead, contextMenus, " +
         "declarativeNetRequestFeedback, des sites ou tous les sites), et si elle a " +
         "tourné dans un onglet que tu ne peux pas lire (même après sa suppression). Jamais pour une extension du Store.",
-      inputSchema: { id: ID_EXTENSION, depuis: z.number().optional() },
+      inputSchema: { id: ID_EXTENSION, since: z.number().optional() },
     },
-    protect(async ({ id, depuis: from }) => {
+    protect(async ({ id, since: from }) => {
       if (isFromStore(id)) return text(AGENT_ONLY);
       const r = await tools.console(id, from);
       if (!r) return text(`Extension inconnue : ${id}`, true);
       const lignes = r.messages.map((m) => {
-        const stack = m.pile ? `\n${truncate(m.pile, MESSAGE_LENGTH)}` : "";
-        return `${m.horodatage} · ${m.niveau} · ${truncate(m.texte, MESSAGE_LENGTH)}${stack}`;
+        const stack = m.stack ? `\n${truncate(m.stack, MESSAGE_LENGTH)}` : "";
+        return `${m.timestamp} · ${m.level} · ${truncate(m.text, MESSAGE_LENGTH)}${stack}`;
       });
       const body = lignes.length ? [EXTENSION_CONSOLE_PREFIX, ...clamp(lignes)] : ["Aucun message."];
       const notice = [
-        ...(r.masques > 0 ? [hiddenTabs(r.masques)] : []),
-        ...(r.fondMasque ? [CONSOLE_BACKGROUND_HIDDEN] : []),
-        ...(r.fondObserve ? [OBSERVED_BACKGROUND_CONSOLE] : []),
-        ...(r.debloquee ? [CONSOLE_UNLOCKED] : []),
+        ...(r.hidden > 0 ? [hiddenTabs(r.hidden)] : []),
+        ...(r.hiddenBackground ? [CONSOLE_BACKGROUND_HIDDEN] : []),
+        ...(r.observedBackground ? [OBSERVED_BACKGROUND_CONSOLE] : []),
+        ...(r.unlocked ? [CONSOLE_UNLOCKED] : []),
       ];
       return text([...body, ...notice].join("\n"));
     }),
@@ -250,18 +250,18 @@ export function registerExtensionsTools(
         "correction est finie) ou qu'il le coupe. Le déblocage prend fin aussi si elle est activée dans un autre profil, " +
         "rechargée, supprimée ou recréée : redemande-le alors. " +
         "Jamais pour une extension du Store.",
-      inputSchema: { id: ID_EXTENSION, raison: z.string() },
+      inputSchema: { id: ID_EXTENSION, reason: z.string() },
     },
-    beating(protect(async ({ id, raison: reason }: { id: string; raison: string }) => {
+    beating(protect(async ({ id, reason: reason }: { id: string; reason: string }) => {
       if (isFromStore(id)) return text(AGENT_ONLY);
       const bounded = reason.length > CONSOLE_REASON_LENGTH ? reason.slice(0, CONSOLE_REASON_LENGTH) : reason;
-      const r = conversationRemoval(c.politique);
+      const r = conversationRemoval(c.policy);
       try {
-        const rep = await tools.debloquerConsole(id, bounded, { fenetre: c.fenetre, agent: c.agent, signal: r.signal });
+        const rep = await tools.unlockConsole(id, bounded, { window: c.window, agent: c.agent, signal: r.signal });
         if (rep.ok) return text("Console débloquée : console_extension la rend entière. Appelle refermer_console dès que la correction est finie.");
         return failure(rep);
       } finally {
-        r.fin();
+        r.end();
       }
     })),
   );
@@ -274,8 +274,8 @@ export function registerExtensionsTools(
     },
     protect(async ({ id }) => {
       if (isFromStore(id)) return text(AGENT_ONLY);
-      const rep = await tools.refermerConsole(id);
-      return rep.ok ? text("Console refermée : elle est de nouveau filtrée.") : text(rep.erreur, true);
+      const rep = await tools.closeConsoleAgain(id);
+      return rep.ok ? text("Console refermée : elle est de nouveau filtrée.") : text(rep.error, true);
     }),
   );
 }

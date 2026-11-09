@@ -3,14 +3,14 @@
   import type { DevRight, TabAccessState } from "@webaios/kernel";
   import { access, accessApi } from "../access.svelte";
 
-  let { id, etat: appState, ancre: anchor }: { id: string; etat: TabAccessState; ancre: HTMLElement } = $props();
+  let { id, state: appState, anchor: anchor }: { id: string; state: TabAccessState; anchor: HTMLElement } = $props();
 
   const MARGIN = 8;
-  const RIGHTS: Record<DevRight, { icone: string; nom: string }> = {
-    console: { icone: "👁", nom: "Console et erreurs" },
-    reseau: { icone: "👁", nom: "Réseau" },
-    performances: { icone: "👁", nom: "Performances et mémoire" },
-    agir: { icone: "⚡", nom: "Agir sur la page" },
+  const RIGHTS: Record<DevRight, { icon: string; name: string }> = {
+    console: { icon: "👁", name: "Console et erreurs" },
+    reseau: { icon: "👁", name: "Réseau" },
+    performances: { icon: "👁", name: "Performances et mémoire" },
+    agir: { icon: "⚡", name: "Agir sur la page" },
   };
 
   // The web page (a native view) always covers the interface: the bubble stays in the sidebar column, under the
@@ -36,8 +36,8 @@
   });
   $effect(() => {
     // Read then written: without untrack, the effect would rerun itself.
-    untrack(() => access.bullesOuvertes++);
-    return () => untrack(() => access.bullesOuvertes--);
+    untrack(() => access.openBubbles++);
+    return () => untrack(() => access.openBubbles--);
   });
 </script>
 
@@ -46,18 +46,18 @@
 <div class="bulle" tabindex="-1" use:subbody bind:clientHeight={height} data-testid="bulle-acces" role="dialog" aria-label="Accès de l'agent" style:left="{place.left}px" style:top="{place.top}px" style:width="{place.width}px">
   <h4>{access.agent} a accès à cet onglet</h4>
   <ul>
-    {#if appState.lecture}
+    {#if appState.read}
       <li data-ligne="lecture"><span>👁 Lecture de la page</span></li>
     {/if}
-    {#each appState.droits as d (d)}
+    {#each appState.rights as d (d)}
       <li data-ligne={d}>
-        <span>{RIGHTS[d].icone} {RIGHTS[d].nom}</span>
-        <button class="couper-droit" data-droit={d} onclick={() => accessApi.acces.couper(id, d)}>Couper</button>
+        <span>{RIGHTS[d].icon} {RIGHTS[d].name}</span>
+        <button class="couper-droit" data-droit={d} onclick={() => accessApi.access.cut(id, d)}>Couper</button>
       </li>
     {/each}
   </ul>
   <p>Cette conversation · tombe si l'onglet change de site</p>
-  <button class="couper" onclick={() => accessApi.acces.couper(id)}>Couper l'accès</button>
+  <button class="couper" onclick={() => accessApi.access.cut(id)}>Couper l'accès</button>
 </div>
 
 <style>

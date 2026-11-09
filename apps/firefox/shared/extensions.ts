@@ -17,97 +17,97 @@ export {
 
 /** A row of the « Extensions » section of a space's settings (everything is displayed as text there). */
 export interface SpaceExtensionLine {
-  cle: string;
-  nom: string;
+  key: string;
+  name: string;
   source: "store" | "agent";
   /** Active in this space's profile. */
   active: boolean;
   /** If active: the names of the other spaces of the same profile, where it also runs. */
-  aussiDans: string[];
+  alsoIn: string[];
   /** Non null: the switch is disabled, and this sentence says why. */
-  grisee: string | null;
+  greyedOut: string | null;
   /** The profiles where it is active (to warn about what a private space changes). */
-  profils: string[];
+  profiles: string[];
 }
 
 /** What an extension's grant card shows (ExtensionRequest.svelte): everything is displayed as text there. */
 export interface ExtensionCard {
-  cle: string;
-  nom: string;
+  key: string;
+  name: string;
   source: SourceExtension;
   version: string;
   /** Labels of the scope (`scopeLabels`), in their order. */
-  droits: string[];
+  rights: string[];
   sites: string[];
-  tousLesSites: boolean;
+  allSites: boolean;
   /** Agent: domains it can send to (`[]`: nowhere); Store: null. */
-  reseau: string[] | null;
+  network: string[] | null;
   /** Hardened grant: a checkbox before « Activer ». */
-  renforce: boolean;
+  hardened: boolean;
   /** Name of the space where it is enabled. */
-  espace: string;
+  space: string;
   /** Its id: the card drops if the space disappears (or, for the agent, if its profile becomes private). */
-  espaceId: string;
+  spaceId: string;
   /** The other spaces of the same profile, where it will be active too. */
-  autresEspaces: string[];
+  otherSpaces: string[];
   /**
    * Agent: the spaces (of other profiles) where it already runs with a narrower grant; the new, wider version
    * will replace them too (« La nouvelle version remplacera aussi celle de … »).
    */
-  remplaceAussi: string[];
+  alsoReplaces: string[];
   /** Update: the installed version. */
-  maj: { de: string } | null;
+  update: { from: string } | null;
   /** `scopeHash` of the shown scope: the caller writes the grant only for a scope with the same hash. */
-  empreinte: string;
+  hash: string;
 }
 
 /** The card's answer: `empreinte` is that of the shown scope (the first card, if the request joined it). */
 export interface GrantResponse {
-  accepte: boolean;
-  empreinte: string;
+  accepted: boolean;
+  hash: string;
   /** The card dropped (or was not shown) without an answer from the user. */
-  retiree?: boolean;
+  removed?: boolean;
 }
 
 /** A row of the Extensions page (everything is displayed as text there: it is data coming from a manifest or a console). */
 export interface ExtensionLine {
-  cle: string;
-  nom: string;
+  key: string;
+  name: string;
   source: SourceExtension;
   version: string;
   /** Labels of the granted scope (`scopeLabels`). */
-  droits: string[];
+  rights: string[];
   sites: string[];
-  tousLesSites: boolean;
+  allSites: boolean;
   /** The spaces whose profile enabled it. */
-  espaces: { nom: string; profil: string }[];
+  spaces: { name: string; profile: string }[];
   /** Preparation, loading, update errors, and errors of its console. */
-  erreurs: string[];
+  errors: string[];
   /** Agent: last reloaded copy (ISO). */
-  modifieeLe: string | null;
+  modifiedAt: string | null;
   /** The message of its deactivation (`DESACTIVEE_PLANTAGES`, `DESACTIVEE_PORTEE`), or null. */
-  desactivee: string | null;
+  disabled: string | null;
   /** Store: the version of an update waiting for the user's grant. */
-  majEnAttente: string | null;
+  pendingUpdate: string | null;
   /** Manifest rights and keys that WebAiOs does not support. */
-  nonPrisEnCharge: string[];
-  epinglee: boolean;
+  unsupported: string[];
+  pinned: boolean;
   /** Agent: the user unlocked its console for the agent (in memory, until one of them closes it again). */
-  consoleDebloquee: boolean;
+  consoleUnlocked: boolean;
   /** Store: the names of the site apps where it is active (the id if the name is missing). */
-  applis: string[];
+  siteApps: string[];
 }
 
 /** A row of a site app's « Extensions » menu (Store extensions only; everything is displayed as text there). */
 export interface SiteExtensionLine {
-  cle: string;
-  nom: string;
+  key: string;
+  name: string;
   /** Enabled for the hash of the app's current domains. */
   active: boolean;
   /** Enabled, but for other domains (`DOMAINES_CHANGES_EXTENSION`): nothing is loaded. */
-  domainesChanges: boolean;
+  domainsChanged: boolean;
   /** `ALL_CUT_AGENT`, `DESACTIVEE_PLANTAGES`, `DESACTIVEE_PORTEE`: the switch is greyed out; otherwise null. */
-  indisponible: string | null;
+  unavailable: string | null;
 }
 
 /** A window's bar: the extensions loaded in the profile of its active space. */
@@ -115,6 +115,6 @@ export interface ExtensionsBar {
   /** Partition of the profile's session (`partition` attribute of the `<button is="browser-action">`). */
   partition: string;
   /** Id of the tab displayed for the library (its `webContents.id`), or null. */
-  onglet: number | null;
-  actions: { cle: string; idChrome: string; nom: string; epinglee: boolean }[];
+  tab: number | null;
+  actions: { key: string; addonId: string; name: string; pinned: boolean }[];
 }

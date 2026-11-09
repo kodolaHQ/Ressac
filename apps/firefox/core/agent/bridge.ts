@@ -3,9 +3,9 @@ import { privateTab, type Decision, type PendingRequest, type Outcome, type Wind
 
 const info = (state: BrowserState, o: Tab): TabInfo => ({
   id: o.id,
-  titre: o.titre,
+  title: o.title,
   url: o.url,
-  espace: state.espaces.find((e) => e.id === o.espaceId)?.nom ?? "",
+  space: state.spaces.find((e) => e.id === o.spaceId)?.name ?? "",
 });
 
 /** WebAiOs internal pages (`webaios:`): the agent never sees them. */
@@ -16,14 +16,14 @@ const visible = (state: BrowserState, o: Tab) => !internal(o) && !privateTab(sta
 
 /** All the tabs, all windows combined, as the agent sees them. */
 export function tabInfos(state: BrowserState): TabInfo[] {
-  return Object.values(state.onglets).filter((o) => visible(state, o)).map((o) => info(state, o));
+  return Object.values(state.tabs).filter((o) => visible(state, o)).map((o) => info(state, o));
 }
 
 /** The tab the user is looking at in the window, internal page included. */
 function shownTab(state: BrowserState, windowId: WindowId | undefined): Tab | undefined {
-  const f = state.fenetres.find((x) => x.id === windowId);
-  const id = f?.actif[f.espaceActif];
-  return id ? state.onglets[id] : undefined;
+  const f = state.windows.find((x) => x.id === windowId);
+  const id = f?.active[f.activeSpace];
+  return id ? state.tabs[id] : undefined;
 }
 
 export function activeTabOf(state: BrowserState, windowId: WindowId | undefined): TabInfo | null {
@@ -33,30 +33,30 @@ export function activeTabOf(state: BrowserState, windowId: WindowId | undefined)
 
 /** The space requested by the agent: by id, then by name (case-insensitive), otherwise the active space. A private space counts as unknown. */
 export function resolveSpace(state: BrowserState, f: WindowState, space?: string): SpaceId {
-  if (!space) return f.espaceActif;
-  const opened = state.espaces.filter((x) => !x.prive);
-  const e = opened.find((x) => x.id === space) ?? opened.find((x) => x.nom.toLowerCase() === space.toLowerCase());
-  return e?.id ?? f.espaceActif;
+  if (!space) return f.activeSpace;
+  const opened = state.spaces.filter((x) => !x.private);
+  const e = opened.find((x) => x.id === space) ?? opened.find((x) => x.name.toLowerCase() === space.toLowerCase());
+  return e?.id ?? f.activeSpace;
 }
 
 /**
  * What the access policy must learn from a state change: navigations and closings. A tab moved into
  * a private space is closed to the agent: read and developer tools drop.
  */
-export function policyChanges(before: BrowserState, after: BrowserState): { navigues: { id: string; url: string }[]; fermes: string[] } {
+export function policyChanges(before: BrowserState, after: BrowserState): { navigated: { id: string; url: string }[]; closed: string[] } {
   const navigated: { id: string; url: string }[] = [];
   const closed: string[] = [];
-  for (const [id, o] of Object.entries(before.onglets)) {
-    const n = after.onglets[id];
+  for (const [id, o] of Object.entries(before.tabs)) {
+    const n = after.tabs[id];
     if (!n || (!privateTab(before, o) && privateTab(after, n))) closed.push(id);
     else if (n.url !== o.url) navigated.push({ id, url: n.url });
   }
-  return { navigues: navigated, fermes: closed };
+  return { navigated: navigated, closed: closed };
 }
 
 /** The spaces that just went from non-private to private (the reverse changes nothing in the history). */
 export function spacesBecamePrivate(before: BrowserState, after: BrowserState): string[] {
-  return after.espaces.filter((n) => n.prive && before.espaces.some((o) => o.id === n.id && !o.prive)).map((n) => n.id);
+  return after.spaces.filter((n) => n.private && before.spaces.some((o) => o.id === n.id && !o.private)).map((n) => n.id);
 }
 
 /**
@@ -67,20 +67,20 @@ export function staleQuestion(d: PendingRequest, state: BrowserState): boolean {
   // An extension's grant card: it drops with its space; the agent's also when the space's profile
   // becomes private (no agent extension is loaded there). Registry removal and cut-off: ServiceExtensions.
   if (d.extension) {
-    const space = state.espaces.find((e) => e.id === d.extension!.espaceId);
+    const space = state.spaces.find((e) => e.id === d.extension!.spaceId);
     if (!space) return true;
-    if (d.extension.source === "agent" && state.espaces.some((e) => e.profil === space.profil && e.prive)) return true;
+    if (d.extension.source === "agent" && state.spaces.some((e) => e.profile === space.profile && e.private)) return true;
   }
   // An app window (`app:<folder>`) or site app window (`site:<id>`) is not a tab: its closing and its
   // navigations are tracked separately.
-  const win = d.cible !== undefined && (d.cible.startsWith(APP_PREFIX) || d.cible.startsWith(SITE_PREFIX));
-  const tab = d.cible && !win ? state.onglets[d.cible] : undefined;
-  if (d.cible && !win && !tab) return true;
+  const win = d.target !== undefined && (d.target.startsWith(APP_PREFIX) || d.target.startsWith(SITE_PREFIX));
+  const tab = d.target && !win ? state.tabs[d.target] : undefined;
+  if (d.target && !win && !tab) return true;
   // Moved into a private space: the agent no longer has access there, the question is moot.
   if (tab && privateTab(state, tab)) return true;
   // The rights cover the site the user saw: the tab went elsewhere, the card drops.
-  if (tab && (d.permissions.includes("outils-dev") || d.permissions.includes("lire-onglet")) && originOf(tab.url) !== d.origine) return true;
-  return !d.fenetreId && d.ongletId !== null && !state.onglets[d.ongletId];
+  if (tab && (d.permissions.includes("outils-dev") || d.permissions.includes("lire-onglet")) && originOf(tab.url) !== d.origin) return true;
+  return !d.windowId && d.tabId !== null && !state.tabs[d.tabId];
 }
 
 /**
@@ -88,7 +88,7 @@ export function staleQuestion(d: PendingRequest, state: BrowserState): boolean {
  * carries the « Je comprends » box checked (`confirme`); otherwise it is a refusal, whatever the UI shows.
  */
 export function allowedDecision(d: PendingRequest, decision: Decision, confirmed?: boolean): Decision {
-  if (decision === "autoriser" && d.extension?.renforce && confirmed !== true) return "refuser";
+  if (decision === "autoriser" && d.extension?.hardened && confirmed !== true) return "refuser";
   return decision;
 }
 
@@ -183,8 +183,8 @@ const APP_PREFIX = "app:";
 export const SITE_PREFIX = "site:";
 
 /** A site app's window seen as a `site:<id>` tab: its title is the app's name, never the page's. */
-export function siteTab(s: { id: string; nom: string; url: string; domaine: string; empreinte: string }): TabInfo {
-  return { id: SITE_PREFIX + s.id, titre: s.nom, url: s.url, espace: "", site: s.id, domaine: s.domaine, empreinte: s.empreinte };
+export function siteTab(s: { id: string; name: string; url: string; domain: string; hash: string }): TabInfo {
+  return { id: SITE_PREFIX + s.id, title: s.name, url: s.url, space: "", site: s.id, domain: s.domain, hash: s.hash };
 }
 
 /**
@@ -193,12 +193,12 @@ export function siteTab(s: { id: string; nom: string; url: string; domaine: stri
  * concerned: its grant is valid for the app, window open or not.
  */
 export function staleSiteQuestion(d: PendingRequest, opened: { id: string; url: string }[]): boolean {
-  if (!d.cible?.startsWith(SITE_PREFIX)) return false;
-  const site = opened.find((s) => SITE_PREFIX + s.id === d.cible);
-  return !site || (d.permissions.includes("outils-dev") && originOf(site.url) !== d.origine);
+  if (!d.target?.startsWith(SITE_PREFIX)) return false;
+  const site = opened.find((s) => SITE_PREFIX + s.id === d.target);
+  return !site || (d.permissions.includes("outils-dev") && originOf(site.url) !== d.origin);
 }
 
 /** An app's window seen as an `app:<folder>` tab by the agent. */
-export function appTab(a: { dossier: string; titre: string; url: string }): TabInfo {
-  return { id: APP_PREFIX + a.dossier, titre: a.titre, url: a.url, espace: "", application: a.dossier };
+export function appTab(a: { folder: string; title: string; url: string }): TabInfo {
+  return { id: APP_PREFIX + a.folder, title: a.title, url: a.url, space: "", app: a.folder };
 }

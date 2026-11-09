@@ -4,25 +4,25 @@
 
   export type NodeData = {
     /** Block name, or its id. */
-    titre: string;
+    title: string;
     type: string;
-    pastille: Badge | null;
+    badge: Badge | null;
     /** Validator message when it targets this block. */
-    erreur: string | null;
-    avertissements: string[];
-    entree: boolean;
-    sortie: boolean;
+    error: string | null;
+    warnings: string[];
+    input: boolean;
+    output: boolean;
   };
   export type BlockNode = Node<NodeData, "bloc">;
 
   /** Badge color: the same scale as the home page. */
   const TINTS: Record<string, "ok" | "moyen" | "echec" | "neutre" | "en-cours"> = {
-    reussi: "ok",
-    partiel: "moyen",
-    echoue: "echec",
-    interrompu: "echec",
+    succeeded: "ok",
+    partial: "moyen",
+    fails: "echec",
+    interrupted: "echec",
     "pas-lance": "neutre",
-    repris: "neutre",
+    resumed: "neutre",
     "en-cours": "en-cours",
   };
 </script>
@@ -31,32 +31,32 @@
   import { Handle, Position, type NodeProps } from "@xyflow/svelte";
 
   let { id, data, selected }: NodeProps<BlockNode> = $props();
-  const mark = $derived(data.erreur ?? (data.avertissements.length ? data.avertissements.join("\n") : null));
+  const mark = $derived(data.error ?? (data.warnings.length ? data.warnings.join("\n") : null));
 </script>
 
 <div
   class="noeud"
   class:selectionne={selected}
-  class:en-erreur={data.erreur !== null}
-  class:avertit={data.erreur === null && data.avertissements.length > 0}
+  class:en-erreur={data.error !== null}
+  class:avertit={data.error === null && data.warnings.length > 0}
   data-testid="noeud-{id}"
   title={mark}
 >
-  {#if data.entree}<Handle type="target" position={Position.Left} />{/if}
+  {#if data.input}<Handle type="target" position={Position.Left} />{/if}
   <div class="ligne">
-    <b class="titre">{data.titre}</b>
-    {#if data.pastille}
-      <span class="pastille {TINTS[data.pastille.statut] ?? 'neutre'}" data-testid="pastille-{id}" title={data.pastille.statut}
-        >{data.pastille.elements ?? ""}</span
+    <b class="titre">{data.title}</b>
+    {#if data.badge}
+      <span class="pastille {TINTS[data.badge.status] ?? 'neutre'}" data-testid="pastille-{id}" title={data.badge.status}
+        >{data.badge.items ?? ""}</span
       >
     {/if}
   </div>
   <div class="ligne doux">
     <code>{data.type}</code>
-    {#if data.erreur !== null}<span class="marque" aria-label="Erreur">!</span>
-    {:else if data.avertissements.length}<span class="marque" aria-label="Avertissement">⚠</span>{/if}
+    {#if data.error !== null}<span class="marque" aria-label="Erreur">!</span>
+    {:else if data.warnings.length}<span class="marque" aria-label="Avertissement">⚠</span>{/if}
   </div>
-  {#if data.sortie}<Handle type="source" position={Position.Right} />{/if}
+  {#if data.output}<Handle type="source" position={Position.Right} />{/if}
 </div>
 
 <style>

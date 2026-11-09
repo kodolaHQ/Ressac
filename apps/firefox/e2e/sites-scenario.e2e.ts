@@ -64,7 +64,7 @@ const declarationYoutube = () => {
 };
 const siteVidola = () => ({
   declaration: declarationVidola(),
-  fichiers: {
+  files: {
     "accueil/index.html": block("`accueil/index.html`, minimal"),
     "accueil/accueil.js": block("`accueil/accueil.js`"),
     "retouches/en-cours.js": block("`retouches/en-cours.js`"),
@@ -72,7 +72,7 @@ const siteVidola = () => ({
 });
 const siteYoutube = () => ({
   declaration: declarationYoutube(),
-  fichiers: { "retouches/sans-shorts.css": cssOf("sans-shorts.css"), "retouches/sans-shorts.js": block("`retouches/sans-shorts.js`") },
+  files: { "retouches/sans-shorts.css": cssOf("sans-shorts.css"), "retouches/sans-shorts.js": block("`retouches/sans-shorts.js`") },
 });
 
 const inStore = <T = unknown>(body: string, args: unknown[] = []) =>
@@ -91,7 +91,7 @@ const player = (code: string) => view(`(() => { const v = document.getElementByI
 const waitPlayer = () => expect.poll(() => player("v ? v.duration : 0"), { timeout: 15_000 }).toBe(90);
 /** The player at `t`, then a trusted play and pause there. */
 const seekThenPause = (t: number) => player(`(v.currentTime = ${t}, v.play().catch(() => {}), v.pause(), v.currentTime)`);
-const memory = (): { valeurs: Record<string, { valeur: Record<string, unknown>; adresse: string }>; positions: Record<string, { t: number }> } | null => {
+const memory = (): { values: Record<string, { value: Record<string, unknown>; url: string }>; positions: Record<string, { t: number }> } | null => {
   const f = path.join(dataDir, "sites", "vidola", "memoire.json");
   return existsSync(f) ? JSON.parse(readFileSync(f, "utf8")) : null;
 };
@@ -164,7 +164,7 @@ const cookiesOutsideSites = () =>
      const sites = new Set(["vidola", "youtube"].map((id) => ContextualIdentityService.getPrivateIdentity("userContextIdInternal.webaios-site-" + id)?.userContextId).filter((x) => x !== undefined));
      return Services.cookies.cookies.filter((c) => !sites.has(c.originAttributes.userContextId)).map((c) => c.name + "=" + c.value);`,
   );
-const tabUrls = async () => Object.values((await state(m)).onglets).map((o) => o.url);
+const tabUrls = async () => Object.values((await state(m)).tabs).map((o) => o.url);
 const browserWindows = () => m.execute<number>(`return [...Services.wm.getEnumerator("navigator:browser")].length;`);
 /** Closes the app's windows. */
 async function closeSiteWindow(id = "vidola") {
@@ -175,7 +175,7 @@ async function closeSiteWindow(id = "vidola") {
 /** Launches on `dataDir`/`profile` (kept: a second launch restarts on the same data). */
 async function launch() {
   const actor = testActor(profile);
-  w = await launchWebAiOs({ dataDir, profile, env: { WEBAIOS_TEST_ADRESSES_LOCALES: "1", ...actor.env }, prefs: actor.prefs });
+  w = await launchWebAiOs({ dataDir, profile, env: { WEBAIOS_TEST_LOCAL_ADDRESSES: "1", ...actor.env }, prefs: actor.prefs });
   m = w.marionette;
   await m.setContext("chrome");
   await waitReady(m);
@@ -204,7 +204,7 @@ async function watch(host = "vidola-a.localhost") {
   // 70.5 s: « 1:10 » even if the position is rounded down, and the resume (5 s before) falls at about 65.5 s.
   expect(await seekThenPause(70.5)).toBeGreaterThanOrEqual(70);
   await expect.poll(() => { const t = memory()?.positions[EPISODE]?.t ?? 0; return t >= 70 && t < 71; }, { timeout: 10_000 }).toBe(true);
-  await expect.poll(() => memory()?.valeurs["encours.the-bear"]?.adresse ?? null, { timeout: 10_000 }).toBe(EPISODE);
+  await expect.poll(() => memory()?.values["encours.the-bear"]?.url ?? null, { timeout: 10_000 }).toBe(EPISODE);
 }
 /** The card's click opened the episode, and its player resumed 5 s before 1:10. */
 async function expectResumed(host: string) {
@@ -217,9 +217,9 @@ beforeAll(async () => {
   server = await startSitesServer();
   const wav = silenceWav(90);
   for (const h of ["vidola-a.localhost", "vidola-b.localhost"]) {
-    server.definir(h, "/", `<title>Vidola ${h}</title><p>liste des séries</p>`);
-    server.definir(h, "/connexion", (_req, res) => res.writeHead(200, { "Set-Cookie": "session=user; Max-Age=86400; Path=/", "Content-Type": "text/html" }).end("<title>Connecté</title>ok"));
-    server.definir(
+    server.define(h, "/", `<title>Vidola ${h}</title><p>liste des séries</p>`);
+    server.define(h, "/connexion", (_req, res) => res.writeHead(200, { "Set-Cookie": "session=user; Max-Age=86400; Path=/", "Content-Type": "text/html" }).end("<title>Connecté</title>ok"));
+    server.define(
       h,
       EPISODE,
       `<!doctype html><title>The Bear S2E4</title><meta property="og:image" content="${url("images.localhost", "/affiches/the-bear.png")}">
@@ -228,16 +228,16 @@ beforeAll(async () => {
 <script>let refus = 0; for (let i = 0; i < 3; i++) if (!window.open(${JSON.stringify(url("pub.localhost", "/popup"))})) refus++; fetch("/balise-page?ouvertures=3&refus=" + refus);</script>`,
     );
   }
-  server.definir("lecteur.localhost", READER, readFileSync(path.join(__dirname, "pages", "lecteur.html"), "utf8"));
-  server.definir("lecteur.localhost", "/silence-90.wav", serveWav(wav));
-  server.definir("images.localhost", "/affiches/the-bear.png", (_req, res) => res.writeHead(200, { "Content-Type": "image/png" }).end(PNG));
-  server.definir(
+  server.define("lecteur.localhost", READER, readFileSync(path.join(__dirname, "pages", "lecteur.html"), "utf8"));
+  server.define("lecteur.localhost", "/silence-90.wav", serveWav(wav));
+  server.define("images.localhost", "/affiches/the-bear.png", (_req, res) => res.writeHead(200, { "Content-Type": "image/png" }).end(PNG));
+  server.define(
     "pub.localhost",
     "/pub-ouvre",
     `<title>Pub</title><script>let refus = 0; for (let i = 0; i < 5; i++) if (!window.open(${JSON.stringify(url("pub.localhost", "/popup"))})) refus++; fetch("/balise?ouvertures=5&refus=" + refus);</script>`,
   );
-  server.definir("youtube.localhost", "/connexion", (_req, res) => res.writeHead(200, { "Set-Cookie": "SID=abc; Max-Age=86400; Path=/", "Content-Type": "text/html" }).end("<title>Connecté</title>ok"));
-  server.definir(
+  server.define("youtube.localhost", "/connexion", (_req, res) => res.writeHead(200, { "Set-Cookie": "SID=abc; Max-Age=86400; Path=/", "Content-Type": "text/html" }).end("<title>Connecté</title>ok"));
+  server.define(
     "youtube.localhost",
     "/",
     `<title>YouTube</title>
@@ -248,12 +248,12 @@ beforeAll(async () => {
   );
 }, 30_000);
 beforeEach(() => {
-  server.couper("vidola-a.localhost", false);
-  server.requetes.splice(0);
-  server.definir("adresses.localhost", "/", `<title>Adresses</title><a href="${url("vidola-b.localhost", "/")}">vidola</a>`);
+  server.cut("vidola-a.localhost", false);
+  server.requests.splice(0);
+  server.define("adresses.localhost", "/", `<title>Adresses</title><a href="${url("vidola-b.localhost", "/")}">vidola</a>`);
 });
 afterEach(async () => {
-  server.couper("vidola-a.localhost", false);
+  server.cut("vidola-a.localhost", false);
   try {
     if (w) expect(await missingApi(m)).toEqual([]);
   } finally {
@@ -263,7 +263,7 @@ afterEach(async () => {
     if (profile) await rm(profile, { recursive: true, force: true });
   }
 });
-afterAll(() => server?.fermer());
+afterAll(() => server?.close());
 
 describe("end to end (AGENTS.md's examples)", () => {
   it("the spec's success: open Vidola, accept the card, enter, sign in, watch episode 4 until 1:10, close; reopen: the home says « reprendre à 1:10 », click: the episode resumes at 1:05 (sites.spec.ts:2006)", { timeout: 150_000 }, async () => {
@@ -298,22 +298,22 @@ describe("end to end (AGENTS.md's examples)", () => {
     await watch();
     await closeSiteWindow();
 
-    server.couper("vidola-a.localhost");
-    server.requetes.splice(0);
+    server.cut("vidola-a.localhost");
+    server.requests.splice(0);
     await openSite("vidola");
     await waitSeriesCard(/^data:image\/png;base64,/);
     await barClick("vidola", "site-entrer");
     await expect.poll(() => viewUrl(), { timeout: 30_000 }).toBe(url("vidola-b.localhost", "/"));
     // vidola-a failed first, the reference page was read once and without a cookie, then vidola-b was reached without the sign-in.
-    const names = server.requetes.map((r) => `${r.hote}${r.chemin}`);
+    const names = server.requests.map((r) => `${r.host}${r.path}`);
     const firstA = names.indexOf("vidola-a.localhost/");
     const reference = names.indexOf("adresses.localhost/");
     const firstB = names.indexOf("vidola-b.localhost/");
     expect(firstA).toBeGreaterThanOrEqual(0);
     expect(reference).toBeGreaterThan(firstA);
     expect(firstB).toBeGreaterThan(reference);
-    expect(server.requetes.filter((r) => r.hote === "adresses.localhost").map((r) => ({ hote: r.hote, chemin: r.chemin, cookie: r.cookie }))).toEqual([{ hote: "adresses.localhost", chemin: "/", cookie: undefined }]);
-    expect(server.requetes[firstB]!.cookie).toBeUndefined();
+    expect(server.requests.filter((r) => r.host === "adresses.localhost").map((r) => ({ host: r.host, path: r.path, cookie: r.cookie }))).toEqual([{ host: "adresses.localhost", path: "/", cookie: undefined }]);
+    expect(server.requests[firstB]!.cookie).toBeUndefined();
     await expect.poll(() => text("vidola", "site-avis"), { timeout: 15_000 }).toBe("Vidola a changé d'adresse : vidola-b.localhost. Il faudra peut-être te reconnecter.");
     expect(await text("vidola", "site-domaine")).toBe("vidola-b.localhost");
     await barClick("vidola", "site-accueil");
@@ -349,14 +349,14 @@ describe("end to end (AGENTS.md's examples)", () => {
     w = undefined;
 
     // A restart on the same profile: the sign-in holds, the grant too (no card), .shorts stays hidden.
-    server.requetes.splice(0);
+    server.requests.splice(0);
     await launch();
     await openSite("youtube");
     await waitUrl(url("youtube.localhost", "/"), "youtube");
     expect(await text("youtube", "carte-accord-site")).toBeNull();
     await expect.poll(shelves, { timeout: 10_000 }).toEqual(["none", "none", "retiré", true]);
     expect(await cookies("youtube")).toContain("SID=abc");
-    expect(server.requetes.some((r) => r.hote === "youtube.localhost" && r.chemin === "/" && r.cookie?.includes("SID=abc"))).toBe(true);
+    expect(server.requests.some((r) => r.host === "youtube.localhost" && r.path === "/" && r.cookie?.includes("SID=abc"))).toBe(true);
     expect(await cookiesOutsideSites()).toEqual([]);
     expect((await tabUrls()).some((u) => u.includes("youtube"))).toBe(false);
   });
@@ -373,7 +373,7 @@ describe("end to end (AGENTS.md's examples)", () => {
       `window.webaiosTestOpened = [];
        for (const x of Services.wm.getEnumerator("navigator:browser")) x.gBrowser.tabContainer.addEventListener("TabOpen", () => window.webaiosTestOpened.push(1));`,
     );
-    const beacons = (p: string, refused: number) => server.requetes.filter((r) => r.chemin === `${p}?ouvertures=${p === "/balise" ? 5 : 3}&refus=${refused}`).length;
+    const beacons = (p: string, refused: number) => server.requests.filter((r) => r.path === `${p}?ouvertures=${p === "/balise" ? 5 : 3}&refus=${refused}`).length;
     const stable = async () => {
       expect(await browserWindows()).toBe(windows);
       expect(await m.execute<number[]>("return window.webaiosTestOpened;")).toEqual([]);
@@ -400,6 +400,6 @@ describe("end to end (AGENTS.md's examples)", () => {
     const notice = (await text("vidola", "site-avis")) ?? "";
     expect(notice).toContain("Lien vers pub.localhost bloqué");
     expect((notice.match(/Lien vers/g) ?? []).length).toBe(1);
-    expect(server.requetes.filter((r) => r.hote === "pub.localhost" && r.chemin === "/popup")).toEqual([]);
+    expect(server.requests.filter((r) => r.host === "pub.localhost" && r.path === "/popup")).toEqual([]);
   });
 });

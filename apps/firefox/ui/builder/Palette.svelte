@@ -7,12 +7,12 @@
    * the action, `action`) declares `"web": true`; without it, « Chercher sur le web » is greyed out (the validator would refuse it).
    */
   let {
-    catalogue: catalog,
-    aSortie: hasOutput,
+    catalog: catalog,
+    hasOutput: hasOutput,
     web,
     action = false,
-    onajouter: onadd,
-  }: { catalogue: BlockCatalogEntry[]; aSortie: boolean; web: boolean; action?: boolean; onajouter: (type: string) => void } = $props();
+    onadd: onadd,
+  }: { catalog: BlockCatalogEntry[]; hasOutput: boolean; web: boolean; action?: boolean; onadd: (type: string) => void } = $props();
 
   const NO_WEB = $derived(
     action
@@ -25,7 +25,7 @@
   const families = $derived.by(() => {
     const r = new Map<BlockFamily, BlockCatalogEntry[]>();
     // A single output: it is no longer offered while there is one.
-    for (const c of catalog) if (!(c.type === "sortie" && hasOutput)) r.set(c.famille, [...(r.get(c.famille) ?? []), c]);
+    for (const c of catalog) if (!(c.type === "sortie" && hasOutput)) r.set(c.family, [...(r.get(c.family) ?? []), c]);
     return [...r];
   });
 </script>
@@ -53,7 +53,7 @@
                 }}
                 onclick={() => onadd(c.type)}
               >
-                {c.libelle}
+                {c.label}
               </button>
             </li>
           {/each}

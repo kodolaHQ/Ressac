@@ -3,20 +3,20 @@ import type { BlockDefinition } from "./common.js";
 
 export const definition: BlockDefinition = {
   type: "source.flux",
-  libelle: "Lire des flux RSS",
-  famille: "Sources",
+  label: "Lire des flux RSS",
+  family: "Sources",
   description: "Lit des flux RSS ou Atom et donne leurs articles.",
-  entree: "facultative",
-  champs: [
-    { nom: "urls", libelle: "Adresses des flux", requis: true, genre: "textes" },
-    { nom: "siErreur", libelle: "En cas d'erreur", requis: false, defaut: "sauter", genre: "choix", choix: ["sauter", "echouer"] },
+  input: "facultative",
+  fields: [
+    { name: "urls", label: "Adresses des flux", required: true, kind: "textes" },
+    { name: "siErreur", label: "En cas d'erreur", required: false, default: "sauter", kind: "choix", choices: ["sauter", "echouer"] },
   ],
-  parElement: "non",
-  chaine: false,
-  parametres: z
+  perItem: "non",
+  chain: false,
+  params: z
     .object({
       urls: z.array(z.string().min(1).max(2000)).min(1).max(20),
-      siErreur: z.enum(["sauter", "echouer"]).default("sauter"),
+      onError: z.enum(["sauter", "echouer"]).default("sauter"),
     })
     .strict(),
 };

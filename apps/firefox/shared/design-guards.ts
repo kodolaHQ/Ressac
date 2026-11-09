@@ -95,11 +95,11 @@ export function checkDesignContext(c: unknown): DesignContext {
   const src: DesignContext["source"] =
     !record(source) || !str(source.fichier, 1024) || source.fichier === ""
       ? null
-      : { fichier: source.fichier, ...(positiveInt(source.ligne) ? { ligne: source.ligne } : {}), ...(positiveInt(source.colonne) ? { colonne: source.colonne } : {}) };
+      : { file: source.fichier, ...(positiveInt(source.ligne) ? { line: source.ligne } : {}), ...(positiveInt(source.colonne) ? { column: source.colonne } : {}) };
   return {
-    selecteur: selector, etiquette: label, html, adresse: url,
-    vue: { largeur: view.largeur, hauteur: view.hauteur },
-    voisinage: { parent: surroundings.parent, freres: [...surroundings.freres] },
+    selector: selector, label: label, html, url: url,
+    view: { width: view.largeur, height: view.hauteur },
+    neighborhood: { parent: surroundings.parent, siblings: [...surroundings.freres] },
     styles: { ...styles },
     source: src,
   };

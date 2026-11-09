@@ -31,9 +31,9 @@ const url = (p: string) => server.url("vidola-a.localhost", p);
 const pub = (p: string) => server.url("pub.localhost", p);
 const login = () => server.url("compte.localhost", "/connexion");
 const small = `[...Services.wm.getEnumerator("navigator:browser")].find((x) => x.document.documentElement.getAttribute("webaios-site-small") === "vidola")`;
-const vidola = () => ({ nom: "Vidola", adresse: url("/"), domaines: ["vidola-a.localhost"], connexion: ["compte.localhost"] });
+const vidola = () => ({ name: "Vidola", url: url("/"), domains: ["vidola-a.localhost"], login: ["compte.localhost"] });
 /** What reached pub.localhost during this test, the home page's ad frame aside. */
-const nothingToPub = () => server.requetes.filter((r) => r.hote === "pub.localhost" && r.chemin !== "/cadre").map((r) => r.chemin);
+const nothingToPub = () => server.requests.filter((r) => r.host === "pub.localhost" && r.path !== "/cadre").map((r) => r.path);
 
 const inStore = <T = unknown>(body: string, args: unknown[] = []) =>
   m.execute<T>(`return (async () => { const store = await ChromeUtils.importESModule("${STORE}").ready; ${body} })();`, args);
@@ -85,7 +85,7 @@ async function clickInView(selector: string, key: string): Promise<void> {
   }
 }
 const browserWindows = () => m.execute<number>(`return [...Services.wm.getEnumerator("navigator:browser")].length;`);
-const tabUrls = async () => Object.values((await state(m)).onglets).map((o) => o.url);
+const tabUrls = async () => Object.values((await state(m)).tabs).map((o) => o.url);
 /** Counts every tab opened in any browser window from now on (window.webaiosTestOpened), even one closed at once. */
 const countTabOpens = () =>
   m.execute(
@@ -96,7 +96,7 @@ const countTabOpens = () =>
 
 beforeAll(async () => {
   server = await startSitesServer();
-  const d = (p: string, body: Parameters<typeof server.definir>[2]) => server.definir("vidola-a.localhost", p, body);
+  const d = (p: string, body: Parameters<typeof server.define>[2]) => server.define("vidola-a.localhost", p, body);
   d("/", `<title>Vidola A</title>
 <a id="pub" href="${pub("/x")}">pub</a>
 <a id="aller-pub" href="/aller-pub">aller</a>
@@ -109,17 +109,17 @@ beforeAll(async () => {
   d("/son.wav", (_req, res) => res.writeHead(200, { "Content-Type": "audio/wav" }).end(silenceWav()));
   d("/refresh", `<title>Refresh</title><meta http-equiv="refresh" content="0;url=${pub("/meta")}">`);
   d("/formulaire", `<title>Formulaire</title><form id="f" method="post" action="${pub("/post")}"><input name="q" value="secret"><button id="envoyer">ok</button></form>`);
-  server.definir("pub.localhost", "/x", "<title>Pub</title>");
-  server.definir("pub.localhost", "/cadre", "<title>Cadre pub</title><p>pub</p>");
-  server.definir("pub.localhost", "/arrivee", "<title>Arrivée pub</title>");
-  server.definir("compte.localhost", "/connexion", "<title>Connexion</title>");
-  server.definir("vidola-b.localhost", "/", "<title>Vidola B</title>");
+  server.define("pub.localhost", "/x", "<title>Pub</title>");
+  server.define("pub.localhost", "/cadre", "<title>Cadre pub</title><p>pub</p>");
+  server.define("pub.localhost", "/arrivee", "<title>Arrivée pub</title>");
+  server.define("compte.localhost", "/connexion", "<title>Connexion</title>");
+  server.define("vidola-b.localhost", "/", "<title>Vidola B</title>");
   dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
   profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
   writeSite(dataDir, "vidola", { declaration: vidola() });
-  writeSite(dataDir, "deux", { declaration: { ...vidola(), nom: "Deux", domaines: ["vidola-a.localhost", "vidola-b.localhost"] } });
+  writeSite(dataDir, "deux", { declaration: { ...vidola(), name: "Deux", domains: ["vidola-a.localhost", "vidola-b.localhost"] } });
   const actor = testActor(profile);
-  w = await launchWebAiOs({ dataDir, profile, env: { WEBAIOS_TEST_ADRESSES_LOCALES: "1", ...actor.env }, prefs: actor.prefs });
+  w = await launchWebAiOs({ dataDir, profile, env: { WEBAIOS_TEST_LOCAL_ADDRESSES: "1", ...actor.env }, prefs: actor.prefs });
   m = w.marionette;
   await m.setContext("chrome");
   await waitReady(m);
@@ -127,11 +127,11 @@ beforeAll(async () => {
 }, 90_000);
 afterAll(async () => {
   await w?.close();
-  await server?.fermer();
+  await server?.close();
   if (dataDir) await rm(dataDir, { recursive: true, force: true });
   if (profile) await rm(profile, { recursive: true, force: true });
 });
-beforeEach(() => void server.requetes.splice(0));
+beforeEach(() => void server.requests.splice(0));
 afterEach(async () => {
   try {
     expect(await missingApi(m)).toEqual([]);
@@ -170,7 +170,7 @@ describe("site app navigation", () => {
     await waitNotice("pub.localhost");
     expect(await viewUrl()).toBe(url("/"));
     expect(await tabUrls()).toEqual(before);
-    expect(server.requetes.some((r) => r.hote === "pub.localhost" && r.chemin === "/x")).toBe(false);
+    expect(server.requests.some((r) => r.host === "pub.localhost" && r.path === "/x")).toBe(false);
     await barClick("site-ouvrir-onglet");
     await expect.poll(tabUrls, { timeout: 10_000 }).toContain(pub("/x"));
     // The mention falls.
@@ -190,7 +190,7 @@ describe("site app navigation", () => {
     await sleep(1000);
     expect(await browserWindows()).toBe(windows);
     expect(await tabUrls()).toEqual(tabs);
-    expect(server.requetes.some((r) => r.hote === "pub.localhost" && r.chemin.startsWith("/x"))).toBe(false);
+    expect(server.requests.some((r) => r.host === "pub.localhost" && r.path.startsWith("/x"))).toBe(false);
     expect(await noticeCount()).toBe(1);
   });
 
@@ -217,12 +217,12 @@ describe("site app navigation", () => {
     await sleep(800);
     expect(await browserWindows()).toBe(windows);
     expect(await viewUrl()).toBe(url("/"));
-    expect(server.requetes.some((r) => r.chemin === "/film/2")).toBe(false);
+    expect(server.requests.some((r) => r.path === "/film/2")).toBe(false);
     // Its navigation stays on the site and its sign-in domains.
     await inBrowser(m, smallBrowser, `location.href = ${JSON.stringify(pub("/x"))}; return 1;`);
     await sleep(800);
     expect(await info()).not.toBeNull();
-    expect(server.requetes.some((r) => r.hote === "pub.localhost" && r.chemin === "/x")).toBe(false);
+    expect(server.requests.some((r) => r.host === "pub.localhost" && r.path === "/x")).toBe(false);
   });
 
   it("a server redirect of /aller-pub (clicked link) to pub.localhost: blocked, « Lien vers pub.localhost bloqué »", async () => {
@@ -230,8 +230,8 @@ describe("site app navigation", () => {
     const tabs = await tabUrls();
     await inSiteView(m, "vidola", "document.getElementById('aller-pub').click(); return 1;", { gesture: true });
     await waitNotice("pub.localhost");
-    expect(server.requetes.some((r) => r.hote === "vidola-a.localhost" && r.chemin === "/aller-pub")).toBe(true);
-    expect(server.requetes.some((r) => r.hote === "pub.localhost" && r.chemin === "/arrivee")).toBe(false);
+    expect(server.requests.some((r) => r.host === "vidola-a.localhost" && r.path === "/aller-pub")).toBe(true);
+    expect(server.requests.some((r) => r.host === "pub.localhost" && r.path === "/arrivee")).toBe(false);
     expect(await tabUrls()).toEqual(tabs);
     // A new page: the mention falls.
     await inSiteView(m, "vidola", "document.getElementById('film-ici').click(); return 1;", { gesture: true });
@@ -267,7 +267,7 @@ describe("site app navigation", () => {
   it("a pub.localhost frame doing top.location to pub.localhost (with a gesture): blocked, mention, no request", async () => {
     await openAndWait();
     await expect.poll(() => inSiteView(m, "vidola", "return document.title;", { frame: 0 }), { timeout: 10_000 }).toBe("Cadre pub");
-    server.requetes.splice(0);
+    server.requests.splice(0);
     await inSiteView(m, "vidola", `top.location = ${JSON.stringify(pub("/haut"))}; return 1;`, { gesture: true, frame: 0 });
     await waitNotice("pub.localhost");
     await sleep(500);
@@ -319,18 +319,18 @@ describe("site app navigation", () => {
     await inSiteView(m, "deux", `location.href = ${JSON.stringify(url("/film/2"))}; return 1;`, { gesture: true });
     await viewAt(url("/film/2"), two);
     // The agent removes vidola-b from site.json; the app is opened again (same window, new rules).
-    writeSite(dataDir, "deux", { declaration: { ...vidola(), nom: "Deux" } });
+    writeSite(dataDir, "deux", { declaration: { ...vidola(), name: "Deux" } });
     await openSite("deux");
     await waitBar(`return !doc.querySelector('[data-testid="site-precedent"]').disabled;`, "deux");
-    server.requetes.splice(0);
+    server.requests.splice(0);
     await inSiteBar(m, "deux",
       `const el = doc.querySelector('[data-testid="site-precedent"]'); const r = el.getBoundingClientRect();
        for (const type of ["mousedown", "mouseup"]) doc.defaultView.synthesizeMouseEvent(type, r.left + r.width / 2, r.top + r.height / 2, { button: 0, clickCount: 1 });`);
     await waitNotice("vidola-b.localhost", "deux");
     await sleep(500);
     expect(await m.execute(`return ${two}.currentURI.spec;`)).toBe(url("/film/2"));
-    expect(server.requetes.filter((r) => r.hote === "vidola-b.localhost")).toEqual([]);
-    writeSite(dataDir, "deux", { declaration: { ...vidola(), nom: "Deux", domaines: ["vidola-a.localhost", "vidola-b.localhost"] } });
+    expect(server.requests.filter((r) => r.host === "vidola-b.localhost")).toEqual([]);
+    writeSite(dataDir, "deux", { declaration: { ...vidola(), name: "Deux", domains: ["vidola-a.localhost", "vidola-b.localhost"] } });
   });
 
   it("window.open bursts to two alternated domains: at most one change of the mention per 500 ms", async () => {
@@ -410,7 +410,7 @@ describe("site app navigation", () => {
       await clickInView("#pub", ALT);
       await sleep(800);
       expect(await viewUrl()).toBe(url("/"));
-      expect(server.requetes.filter((r) => r.chemin === "/film/2" || r.hote === "pub.localhost").map((r) => r.chemin).filter((c) => c !== "/cadre")).toEqual([]);
+      expect(server.requests.filter((r) => r.path === "/film/2" || r.host === "pub.localhost").map((r) => r.path).filter((c) => c !== "/cadre")).toEqual([]);
       expect(await noticeCount()).toBe(0);
     } finally {
       await m.execute(`Services.prefs.clearUserPref("browser.altClickSave");`);
@@ -466,16 +466,16 @@ describe("site app navigation", () => {
       await inSiteView(m, "vidola", "document.getElementById('pub').click(); return 1;", { gesture: true });
       await waitNotice("pub.localhost");
       await barClick("site-ouvrir-onglet");
-      const s = await expect.poll(async () => Object.values((await state(m)).onglets).find((o) => o.url === pub("/x") && o.fenetreId === ids[target]), { timeout: 10_000 }).toBeTruthy().then(() => state(m));
-      const tab = Object.values(s.onglets).find((o) => o.url === pub("/x") && o.fenetreId === ids[target])!;
+      const s = await expect.poll(async () => Object.values((await state(m)).tabs).find((o) => o.url === pub("/x") && o.windowId === ids[target]), { timeout: 10_000 }).toBeTruthy().then(() => state(m));
+      const tab = Object.values(s.tabs).find((o) => o.url === pub("/x") && o.windowId === ids[target])!;
       // In that window's active space.
-      expect(tab.espaceId).toBe(s.fenetres.find((f) => f.id === ids[target])!.espaceActif);
-      for (const o of Object.values(s.onglets)) if (o.url === pub("/x")) await inStore(`store.dispatch({ type: "fermerOnglet", id: arguments[0] });`, [o.id]);
+      expect(tab.spaceId).toBe(s.windows.find((f) => f.id === ids[target])!.activeSpace);
+      for (const o of Object.values(s.tabs)) if (o.url === pub("/x")) await inStore(`store.dispatch({ type: "fermerOnglet", id: arguments[0] });`, [o.id]);
     }
     // Firefox's tab, address and history keys in the app: no tab anywhere, the view does not move, the bar stays the way.
     await inSiteView(m, "vidola", "document.getElementById('film-ici').click(); return 1;", { gesture: true });
     await viewAt(url("/film/2"));
-    const tabs = Object.keys((await state(m)).onglets).length;
+    const tabs = Object.keys((await state(m)).tabs).length;
     await countTabOpens();
     for (const combo of ["Meta+t", "Meta+l", "Control+Tab", "Meta+["]) await inWindow(m, app, () => pressKeys(m, combo));
     await sleep(800);
@@ -483,11 +483,11 @@ describe("site app navigation", () => {
     expect(await m.execute(`return ${site}.gBrowser.tabs.length;`)).toBe(1);
     expect(await viewUrl()).toBe(url("/film/2"));
     expect(await m.execute(`return ${site}.gURLBar.focused;`)).toBe(false);
-    expect(Object.keys((await state(m)).onglets).length).toBe(tabs);
+    expect(Object.keys((await state(m)).tabs).length).toBe(tabs);
     // ⌘N from the app opens a main window.
-    const mains = (await state(m)).fenetres.length;
+    const mains = (await state(m)).windows.length;
     await inWindow(m, app, () => pressKeys(m, "Meta+n"));
-    await expect.poll(async () => (await state(m)).fenetres.length, { timeout: 10_000 }).toBe(mains + 1);
+    await expect.poll(async () => (await state(m)).windows.length, { timeout: 10_000 }).toBe(mains + 1);
     await waitFor(m, `return [...Services.wm.getEnumerator("navigator:browser")].filter((x) => x.document.documentElement.hasAttribute("webaios-main")).length;`, (v) => v === 3);
     for (const h of await windowHandles(m)) if (h !== first && h !== app) await inWindow(m, h, () => m.execute(`window.close();`));
     await waitFor(m, `return [...Services.wm.getEnumerator("navigator:browser")].filter((x) => x.document.documentElement.hasAttribute("webaios-main")).length;`, (v) => v === 1);
@@ -507,8 +507,8 @@ describe("site app navigation", () => {
     await waitFor(m, `return [...Services.wm.getEnumerator("navigator:browser")].filter((x) => x.document.documentElement.hasAttribute("webaios-main")).length;`, (v) => v === 1);
     await expect.poll(async () => {
       const s = await state(m);
-      const f = s.fenetres[0];
-      return s.fenetres.length === 1 && Object.values(s.onglets).some((o) => o.url === pub("/x") && o.fenetreId === f?.id);
+      const f = s.windows[0];
+      return s.windows.length === 1 && Object.values(s.tabs).some((o) => o.url === pub("/x") && o.windowId === f?.id);
     }, { timeout: 10_000 }).toBe(true);
     // Back on the main window for afterEach.
     const main = (await windowHandles(m)).find((h) => h !== app && !before.has(h)) ?? (await windowHandles(m)).find((h) => h !== app)!;

@@ -2,8 +2,8 @@
   import type { TabAccessState } from "@webaios/kernel";
   import AccessBubble from "./AccessBubble.svelte";
 
-  let { id, etat: appState }: { id: string; etat: TabAccessState } = $props();
-  const level = $derived(appState.droits.includes("agir") ? "agir" : "lecture");
+  let { id, state: appState }: { id: string; state: TabAccessState } = $props();
+  const level = $derived(appState.rights.includes("agir") ? "agir" : "lecture");
   let opened = $state(false);
   let root = $state<HTMLSpanElement>();
 
@@ -18,7 +18,7 @@
 <span class="racine" bind:this={root}>
   <button
     class="pastille"
-    class:pulse={appState.enCours}
+    class:pulse={appState.running}
     data-testid="pastille-acces"
     data-niveau={level}
     aria-label="Accès de l'agent à cet onglet"
@@ -31,7 +31,7 @@
     onkeydown={(e) => e.stopPropagation()}
     ondblclick={(e) => e.stopPropagation()}>{level === "agir" ? "⚡" : "👁"}</button
   >
-  {#if opened && root}<AccessBubble {id} etat={appState} ancre={root} />{/if}
+  {#if opened && root}<AccessBubble {id} state={appState} anchor={root} />{/if}
 </span>
 
 <style>

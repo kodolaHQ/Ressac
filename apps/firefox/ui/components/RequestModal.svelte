@@ -9,7 +9,7 @@
   import FrozenBackground from "./FrozenBackground.svelte";
 
   /** `ongletId`: the page shown at opening, captured for the background (null: none, or a panel hides it). */
-  let { demande: request, ongletId: tabId }: { demande: PendingRequest; ongletId: TabId | null } = $props();
+  let { request: request, tabId: tabId }: { request: PendingRequest; tabId: TabId | null } = $props();
 
   /** Enter only authorizes a card visible for at least this delay: a keystroke meant for the page is not a grant. */
   const ENTRY_DELAY_MS = 400;
@@ -30,11 +30,11 @@
   const extension = $derived(request.permissions.includes("extension"));
   const consoleExtension = $derived(request.permissions.includes("console-extension"));
   /** Extension name (manifest) and agent reason: data, shown as text and bounded. */
-  const extensionName = $derived((request.titre ?? request.origine).slice(0, 60));
+  const extensionName = $derived((request.title ?? request.origin).slice(0, 60));
   /** The spaces the unlock covers: names given by the user, shown as text and bounded. */
-  const extensionSpaces = $derived((request.espaces ?? []).slice(0, 20).map((e) => e.slice(0, 60)));
-  const agentReason = $derived((request.raison ?? "").slice(0, UNLOCK_REASON_LENGTH));
-  const site = $derived(siteOf(request.origine));
+  const extensionSpaces = $derived((request.spaces ?? []).slice(0, 20).map((e) => e.slice(0, 60)));
+  const agentReason = $derived((request.reason ?? "").slice(0, UNLOCK_REASON_LENGTH));
+  const site = $derived(siteOf(request.origin));
 
   // A single opening for the whole queue: following requests replace the content, the page stays hidden.
   onMount(() => {
@@ -61,18 +61,18 @@
 
   // The command bar opened or closed on top re-arms Enter: the keystroke that closed it is not a grant.
   $effect(() => {
-    void command.ouverte;
+    void command.open;
     untrack(armer);
   });
 
-  const deny = () => api.permissions.repondre(request.id, "refuser");
+  const deny = () => api.permissions.reply(request.id, "refuser");
   const focusables = () =>
     [...card.querySelectorAll<HTMLElement>("button, input, [tabindex]:not([tabindex='-1'])")].filter((e) => !e.hasAttribute("disabled"));
 
   function clavier(e: KeyboardEvent) {
     // The command bar opened on top keeps the keyboard: the hidden modal reacts to nothing, even if focus has left the
     // bar's field (neither Enter, nor Escape before the ⌃Tab panel takes over, nor Tab).
-    if (command.ouverte || e.isComposing) return;
+    if (command.open || e.isComposing) return;
     if (e.key === "Escape") {
       e.preventDefault();
       deny();
@@ -100,10 +100,10 @@
 <svelte:window onkeydown={clavier} />
 
 <!-- Under the command bar, nothing in the modal can take focus (native Tab from the page body). -->
-<div class="modale" class:prete={ready} data-testid="modale-demande" data-armee={armed || undefined} inert={!!command.ouverte}>
+<div class="modale" class:prete={ready} data-testid="modale-demande" data-armee={armed || undefined} inert={!!command.open}>
   <FrozenBackground
-    ongletId={tabId}
-    surPret={() => {
+    tabId={tabId}
+    onReady={() => {
       ready = true;
       armer();
     }}
@@ -114,7 +114,7 @@
     tabindex="-1"
     role="alertdialog"
     aria-modal="true"
-    aria-describedby={request.extension?.renforce ? "carte-extension-avertissement" : undefined}
+    aria-describedby={request.extension?.hardened ? "carte-extension-avertissement" : undefined}
     aria-label={devTools
       ? "Demande d'accès aux outils de développement"
       : widgetData
@@ -131,10 +131,10 @@
   >
     {#key request.id}
       {#if devTools}
-        <DevToolsRequest demande={request} />
+        <DevToolsRequest request={request} />
       {:else if extension}
         {#if request.extension}
-          <ExtensionRequest demande={request} carte={request.extension} />
+          <ExtensionRequest request={request} card={request.extension} />
         {:else}
           <!-- Never set without a card; if it were, nothing activates without having been shown. -->
           <div class="lecture">
@@ -149,30 +149,30 @@
           <div class="actions">
             <!-- Enter refuses: showing the agent what an extension reads on unshared tabs takes a real click. -->
             <button data-principal onclick={deny}>Refuser</button>
-            <button class="autoriser" onclick={() => api.permissions.repondre(request.id, "autoriser")}>Débloquer</button>
+            <button class="autoriser" onclick={() => api.permissions.reply(request.id, "autoriser")}>Débloquer</button>
           </div>
         </div>
       {:else if widgetData}
         <div class="lecture" data-testid="demande-donnees-widget">
           {#if request.action !== undefined}
-            <p>L'agent veut voir les résultats de l'action « {request.titre ?? request.action} » (lus avec ton compte).</p>
+            <p>L'agent veut voir les résultats de l'action « {request.title ?? request.action} » (lus avec ton compte).</p>
           {:else if request.site !== undefined}
-            <p data-testid="demande-site">L'agent veut voir l'appli de site « {request.titre ?? request.site} » (connectée à ton compte) : ses pages et sa mémoire, pour cette conversation.</p>
+            <p data-testid="demande-site">L'agent veut voir l'appli de site « {request.title ?? request.site} » (connectée à ton compte) : ses pages et sa mémoire, pour cette conversation.</p>
           {:else}
-            <p>L'agent veut voir les données du widget « {request.titre ?? request.widget} » (lues avec ton compte).</p>
+            <p>L'agent veut voir les données du widget « {request.title ?? request.widget} » (lues avec ton compte).</p>
           {/if}
           <div class="actions">
             <!-- Enter refuses: showing the agent data read with the account takes a real click. -->
             <button data-principal onclick={deny}>Refuser</button>
-            <button class="autoriser" onclick={() => api.permissions.repondre(request.id, "autoriser")}>Autoriser pour cette conversation</button>
+            <button class="autoriser" onclick={() => api.permissions.reply(request.id, "autoriser")}>Autoriser pour cette conversation</button>
           </div>
         </div>
       {:else}
         <div class="lecture" data-testid="demande-permission">
-          <p>L'agent veut lire l'onglet « {request.titre ?? site} »</p>
+          <p>L'agent veut lire l'onglet « {request.title ?? site} »</p>
           <div class="actions">
             <button onclick={deny}>Refuser</button>
-            <button class="autoriser" data-principal onclick={() => api.permissions.repondre(request.id, "autoriser")}>Autoriser une fois</button>
+            <button class="autoriser" data-principal onclick={() => api.permissions.reply(request.id, "autoriser")}>Autoriser une fois</button>
           </div>
         </div>
       {/if}

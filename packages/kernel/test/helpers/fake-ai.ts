@@ -1,8 +1,8 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 
-export interface SavedRequest { methode: string; url: string; corps: any }
-export interface FakeServer { url: string; requetes: SavedRequest[]; fermer(): Promise<void> }
+export interface SavedRequest { method: string; url: string; body: any }
+export interface FakeServer { url: string; requests: SavedRequest[]; close(): Promise<void> }
 
 async function start(reply: (req: SavedRequest, res: import("node:http").ServerResponse) => void): Promise<FakeServer> {
   const requests: SavedRequest[] = [];
@@ -11,7 +11,7 @@ async function start(reply: (req: SavedRequest, res: import("node:http").ServerR
     req.on("data", (m) => chunks.push(m));
     req.on("end", () => {
       const text = Buffer.concat(chunks).toString("utf8");
-      const r = { methode: req.method ?? "", url: req.url ?? "", corps: text ? JSON.parse(text) : undefined };
+      const r = { method: req.method ?? "", url: req.url ?? "", body: text ? JSON.parse(text) : undefined };
       requests.push(r);
       reply(r, res);
     });
@@ -19,8 +19,8 @@ async function start(reply: (req: SavedRequest, res: import("node:http").ServerR
   await new Promise<void>((ok) => server.listen(0, "127.0.0.1", ok));
   return {
     url: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
-    requetes: requests,
-    fermer: () => new Promise<void>((ok) => { server.closeAllConnections(); server.close(() => ok()); }),
+    requests: requests,
+    close: () => new Promise<void>((ok) => { server.closeAllConnections(); server.close(() => ok()); }),
   };
 }
 
@@ -55,12 +55,12 @@ export async function unreachableUrl(): Promise<string> {
 }
 
 /** Fake Ollama that never answers /api/chat; `coupees` counts the requests abandoned by the client. */
-export async function fakeSilentOllama(): Promise<FakeServer & { coupees: () => number }> {
+export async function fakeSilentOllama(): Promise<FakeServer & { cut: () => number }> {
   let cuts = 0;
   const s = await start((_r, res) => {
     res.on("close", () => {
       if (!res.writableEnded) cuts++;
     });
   });
-  return { ...s, coupees: () => cuts };
+  return { ...s, cut: () => cuts };
 }

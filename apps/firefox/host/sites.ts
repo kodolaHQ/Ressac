@@ -39,7 +39,7 @@ import { createPositions, memoryOp } from "./site-memory.ts";
 // The site apps service on the host side.
 
 /** The app as the chrome gets it: what opens, its grant card, and its hash (lister_onglets). */
-export type SiteChrome = OpenableSite & { demande: SiteGrantRequest; empreinte: string };
+export type SiteChrome = OpenableSite & { request: SiteGrantRequest; hash: string };
 
 const uniques = (l: string[]) => [...new Set(l)];
 
@@ -51,75 +51,75 @@ export function rightsHash(d: DeclarationSite): string {
 /** What the grant card shows. */
 export function grantRequest(s: OpenableSite): SiteGrantRequest {
   const d = s.declaration;
-  const declares = new Set(d.domaines.map((x) => x.toLowerCase()));
+  const declares = new Set(d.domains.map((x) => x.toLowerCase()));
   return {
-    nom: d.nom,
-    domaines: [...d.domaines],
-    connexion: [...d.connexion],
-    cadres: uniques(d.retouches.flatMap((r) => (r.cadres === false ? [] : r.cadres))),
-    reprise: d.reprise,
-    fichiers: uniques(d.retouches.flatMap((r) => [...r.js, ...r.css])),
-    correspond: uniques(d.retouches.flatMap((r) => r.correspond)),
-    suivis: uniques(s.domaines.map((x) => x.toLowerCase()).filter((x) => !declares.has(x))),
-    empreinte: rightsHash(d),
+    name: d.name,
+    domains: [...d.domains],
+    login: [...d.login],
+    frames: uniques(d.tweaks.flatMap((r) => (r.frames === false ? [] : r.frames))),
+    resume: d.resume,
+    files: uniques(d.tweaks.flatMap((r) => [...r.js, ...r.css])),
+    matches: uniques(d.tweaks.flatMap((r) => r.matches)),
+    tracked: uniques(s.domains.map((x) => x.toLowerCase()).filter((x) => !declares.has(x))),
+    hash: rightsHash(d),
   };
 }
 
 /** Requests host -> chrome: the window itself lives in the chrome. */
 export interface SitesChrome {
-  ouvrir(s: SiteChrome, frame: FrameBounds | null, tweaks: TweaksRead): Promise<boolean>;
-  fermer(id: string): Promise<void>;
-  effacer(id: string): Promise<void>;
+  open(s: SiteChrome, frame: FrameBounds | null, tweaks: TweaksRead): Promise<boolean>;
+  close(id: string): Promise<void>;
+  erase(id: string): Promise<void>;
   /** True if the page was reloaded. */
-  mettreAJour(s: SiteChrome, tweaks: TweaksRead): Promise<boolean>;
-  rechargerVue(id: string): Promise<void>;
+  update(s: SiteChrome, tweaks: TweaksRead): Promise<boolean>;
+  reloadView(id: string): Promise<void>;
   /** The tweaks' console of the open app. */
-  erreurs(id: string): Promise<TweakError[]>;
+  errors(id: string): Promise<TweakError[]>;
   /** The view the window shows, or null if it is not open. */
-  vue(id: string): Promise<"accueil" | "accord" | "site" | null>;
+  view(id: string): Promise<"accueil" | "accord" | "site" | null>;
   /** The choice made on the card: `s` null for « Ouvrir sans retouches ». */
-  apresAccord(id: string, s: SiteChrome | null): Promise<void>;
+  afterGrant(id: string, s: SiteChrome | null): Promise<void>;
   /** The state broadcast again (the card up to date). */
-  rediffuser(id: string): Promise<void>;
-  ouvertes(): Promise<string[]>;
-  accueilChange(id: string): void;
+  rebroadcast(id: string): Promise<void>;
+  openSites(): Promise<string[]>;
+  homeChange(id: string): void;
   /** A reading of the reference page starts or ends: the bar's button shows it. */
-  cherche(id: string, yes: boolean): void;
+  search(id: string, yes: boolean): void;
   /** The bar's mention. */
-  avis(id: string, a: BarNotice | null): void;
+  notice(id: string, a: BarNotice | null): void;
   /** The follow found the new address: the open app takes its domains and start address, and the view goes to `vers`. */
-  adresseChangee(id: string, domains: string[], start: string, to: string): void;
+  urlChanged(id: string, domains: string[], start: string, to: string): void;
 }
 
 export interface SitesHost {
-  liste(): Promise<ShownSite[]>;
-  listeAgent(): Promise<(ShownSite & { empreinte?: string })[]>;
-  ouvrirParId(id: string): Promise<boolean>;
-  agir(id: string, action: ActionSite, win: string): Promise<void>;
-  memoireAccueil(id: string): Promise<(MessageToHome & { type: "memoire" }) | null>;
-  noter(id: string, x: { cadre?: FrameBounds; favicon?: string }): void;
-  fermee(id: string): void;
+  list(): Promise<ShownSite[]>;
+  agentList(): Promise<(ShownSite & { hash?: string })[]>;
+  openById(id: string): Promise<boolean>;
+  dispatch(id: string, action: ActionSite, win: string): Promise<void>;
+  homeMemory(id: string): Promise<(MessageToHome & { type: "memoire" }) | null>;
+  note(id: string, x: { frame?: FrameBounds; favicon?: string }): void;
+  closed(id: string): void;
   /** « Autoriser » / « Ouvrir sans retouches » on the card. */
-  accorder(id: string, yes: boolean, hash: string): Promise<void>;
+  grant(id: string, yes: boolean, hash: string): Promise<void>;
   /** `webaiosSite` of an open app's main page; the chrome checked the sender, the grant and the address. */
-  memoireOp(request: unknown): Promise<MemoryResponse>;
+  memoryOp(request: unknown): Promise<MemoryResponse>;
   /** A video position of an open app's page (`sites.position`), and the position to resume (`sites.reprise`); the chrome checked the frame. */
   position(request: unknown): Promise<void>;
-  reprise(request: unknown): Promise<number | null>;
+  resume(request: unknown): Promise<number | null>;
   /** « Chercher la nouvelle adresse », or a site that does not answer (`url`: the page aimed at, else the start address). */
-  chercherAdresse(id: string, url: string | null): Promise<void>;
+  lookupAddress(id: string, url: string | null): Promise<void>;
   /** The open apps as last sent to the chrome. */
-  sitesOuverts: Map<string, SiteChrome>;
+  openSites: Map<string, SiteChrome>;
   /** Is the address on the open app's domains? (a navigation the agent asks for) */
-  adressePermise(id: string, url: string): boolean;
-  outils: SitesTools;
-  resynchroniser(): Promise<void>;
-  arreter(): Promise<void>;
+  urlAllowed(id: string, url: string): boolean;
+  tools: SitesTools;
+  resync(): Promise<void>;
+  stop(): Promise<void>;
 }
 
 export interface SiteRecord {
-  cadre?: FrameBounds;
-  dernierLancement?: string;
+  frame?: FrameBounds;
+  lastLaunch?: string;
   favicon?: string;
 }
 
@@ -128,61 +128,61 @@ export interface SiteRecord {
  * of each site app (window frame, favicon).
  */
 export class SiteRecords {
-  private donnees: Record<string, SiteRecord> = Object.create(null);
-  private minuterie: NodeJS.Timeout | undefined;
-  private modifiee = false;
+  private data: Record<string, SiteRecord> = Object.create(null);
+  private timer: NodeJS.Timeout | undefined;
+  private modified = false;
   /** Chained writes, never simultaneous. */
-  private ecriture: Promise<void> = Promise.resolve();
-  private numero = 0;
+  private writing: Promise<void> = Promise.resolve();
+  private number = 0;
 
   constructor(
-    private readonly dossier: string,
-    private readonly delaiMs = 500,
-    private readonly fichier = "sites.json",
+    private readonly folder: string,
+    private readonly delayMs = 500,
+    private readonly file = "sites.json",
   ) {
     try {
-      const lu: unknown = JSON.parse(readFileSync(join(dossier, fichier), "utf8"));
+      const lu: unknown = JSON.parse(readFileSync(join(folder, file), "utf8"));
       // Without a prototype: an app name « __proto__ » or « constructor » stays a plain key.
-      if (lu && typeof lu === "object" && !Array.isArray(lu)) this.donnees = Object.assign(Object.create(null), lu) as Record<string, SiteRecord>;
+      if (lu && typeof lu === "object" && !Array.isArray(lu)) this.data = Object.assign(Object.create(null), lu) as Record<string, SiteRecord>;
     } catch {
       // Absent or unreadable: start from zero (nothing essential is kept there).
     }
   }
 
-  lire(folder: string): SiteRecord {
-    return this.donnees[folder] ?? {};
+  read(folder: string): SiteRecord {
+    return this.data[folder] ?? {};
   }
 
   /** App deleted: nothing is kept of it anymore. */
-  oublier(folder: string): void {
-    if (!(folder in this.donnees)) return;
-    delete this.donnees[folder];
-    this.modifiee = true;
-    this.minuterie ??= setTimeout(() => void this.vider(), this.delaiMs);
+  forget(folder: string): void {
+    if (!(folder in this.data)) return;
+    delete this.data[folder];
+    this.modified = true;
+    this.timer ??= setTimeout(() => void this.clear(), this.delayMs);
   }
 
-  noter(folder: string, s: SiteRecord): void {
-    this.donnees[folder] = { ...this.donnees[folder], ...s };
-    this.modifiee = true;
-    this.minuterie ??= setTimeout(() => void this.vider(), this.delaiMs);
+  note(folder: string, s: SiteRecord): void {
+    this.data[folder] = { ...this.data[folder], ...s };
+    this.modified = true;
+    this.timer ??= setTimeout(() => void this.clear(), this.delayMs);
   }
 
   /** Writes what changed; always waits for the end of the writes in progress. */
-  vider(): Promise<void> {
-    clearTimeout(this.minuterie);
-    this.minuterie = undefined;
-    if (this.modifiee) {
-      this.modifiee = false;
-      const text = JSON.stringify(this.donnees, null, 2);
-      this.ecriture = this.ecriture.then(() => this.ecrire(text)).catch((e) => console.error("[applications] mémoire non écrite :", e));
+  clear(): Promise<void> {
+    clearTimeout(this.timer);
+    this.timer = undefined;
+    if (this.modified) {
+      this.modified = false;
+      const text = JSON.stringify(this.data, null, 2);
+      this.writing = this.writing.then(() => this.write(text)).catch((e) => console.error("[applications] mémoire non écrite :", e));
     }
-    return this.ecriture;
+    return this.writing;
   }
 
-  private async ecrire(text: string): Promise<void> {
-    const target = join(this.dossier, this.fichier);
-    const temp = `${target}.${process.pid}.${++this.numero}.tmp`;
-    await fs.mkdir(this.dossier, { recursive: true });
+  private async write(text: string): Promise<void> {
+    const target = join(this.folder, this.file);
+    const temp = `${target}.${process.pid}.${++this.number}.tmp`;
+    await fs.mkdir(this.folder, { recursive: true });
     await fs.writeFile(temp, text);
     await fs.rename(temp, target);
   }
@@ -230,29 +230,29 @@ export async function readIcon(folder: string, path: string): Promise<string | n
 }
 
 export function createSites(o: {
-  chemins: SpacePaths;
+  paths: SpacePaths;
   /** The profile folder: `sites/<id>/` (memory, address), `sites.json`, `sites-accords.json`. */
   dataDir: string;
-  adressesLocales: boolean;
+  localAddresses: boolean;
   chrome: SitesChrome;
   /** The links of a reference page, read without the profile or any cookie (the bridge's public invisible read). */
-  lireLiens(page: string, signal?: AbortSignal): Promise<string[]>;
+  readLinks(page: string, signal?: AbortSignal): Promise<string[]>;
   /** The list or the state of the site apps changed (`sites.change`). */
-  diffuser(): void;
-  preRemplir(win: string, text: string): void;
+  broadcast(): void;
+  prefill(win: string, text: string): void;
   /** A home screen memory change (`sites.memoire`), for the subscribed window. */
-  notifierMemoire(id: string, message: MessageToHome & { type: "memoire" }): void;
+  notifyMemory(id: string, message: MessageToHome & { type: "memoire" }): void;
   /** The app's window closed. */
-  surFermee?(id: string): void;
+  onClosed?(id: string): void;
   /** « Supprimer » begins: the agent's grant on the app falls. */
-  surSupprimee?(id: string): void;
+  onDeleted?(id: string): void;
   /** The deletion `surSupprimee` began is over (folder in the trash, or failed): a review snapshot taken meanwhile is erased. */
-  apresSuppression?(id: string): void;
+  afterDelete?(id: string): void;
 }): SitesHost {
   const sitesFolder = join(o.dataDir, "sites");
   const siteRecords = new SiteRecords(o.dataDir);
   const memories = new Map<string, Promise<SiteMemory>>();
-  const reading = { adressesLocales: o.adressesLocales };
+  const reading = { localAddresses: o.localAddresses };
   /** Windows open in the chrome: kept by `ouvrir`/`fermee`, recomputed by `resynchroniser`. */
   let opened = new Set<string>();
   /** The open apps as last sent to the chrome, and their tweaks' files. */
@@ -263,7 +263,7 @@ export function createSites(o: {
   const searches = new Map<string, AbortController>();
   const lastNotices = new Map<string, BarNotice>();
   const changes = new Map<string, number>();
-  const tracking = new UrlTracking({ lireLiens: o.lireLiens, dossierSites: sitesFolder, adressesLocales: o.adressesLocales, maintenant: () => Date.now() });
+  const tracking = new UrlTracking({ readLinks: o.readLinks, sitesFolder: sitesFolder, localAddresses: o.localAddresses, now: () => Date.now() });
   const reviews = new Map<string, number>();
   /** Deletions in progress: a second request for the same app does nothing. */
   const deletions = new Set<string>();
@@ -275,26 +275,26 @@ export function createSites(o: {
   const actionErrors = new Map<string, string>();
 
   // Checked again here, like memoireOp: only an open app whose tweaks are granted has positions.
-  const granted = (id: string) => openSites.get(id)?.accordRequis === false;
-  const positions = createPositions({ memoire: (id) => (granted(id) ? memory(id) : Promise.reject(new Error("pas d'accord"))), accorde: granted });
+  const granted = (id: string) => openSites.get(id)?.grantRequired === false;
+  const positions = createPositions({ memory: (id) => (granted(id) ? memory(id) : Promise.reject(new Error("pas d'accord"))), granted: granted });
 
   const clearMemory = (id: string) =>
     memories
       .get(id)
-      ?.then((m) => m.vider())
+      ?.then((m) => m.clear())
       .catch((e) => console.error(`[sites] mémoire de ${id} non écrite :`, e));
 
   /**
    * The app as it opens and its tweak files, or null (absent, invalid site.json, folder whose name
    * is not exactly `id`, or `encore()` that became false after one of the reads).
    */
-  async function prepare(id: string, still: () => boolean = () => true): Promise<{ site: SiteChrome; retouches: TweaksRead } | null> {
+  async function prepare(id: string, still: () => boolean = () => true): Promise<{ site: SiteChrome; tweaks: TweaksRead } | null> {
     if (!ID_SITE.test(id)) return null;
     // A case-insensitive disk would find « MonSite » for « monsite »: only the exact name counts.
-    const names = await readdir(o.chemins.sites).catch(() => [] as string[]);
+    const names = await readdir(o.paths.sites).catch(() => [] as string[]);
     if (!still() || !names.includes(id)) return null;
-    const lu = await readSite(o.chemins, id, reading);
-    if (!still() || !lu || "erreur" in lu) return null;
+    const lu = await readSite(o.paths, id, reading);
+    if (!still() || !lu || "error" in lu) return null;
     const d = lu.declaration;
     const state = await readUrlState(sitesFolder, id);
     if (!still()) return null;
@@ -312,20 +312,20 @@ export function createSites(o: {
     const site: OpenableSite = {
       id,
       declaration: d,
-      aAccueil: lu.aAccueil,
-      domaines: effectiveDomains(d, state),
-      depart: startUrl(d, state),
-      accordRequis: grantNeeded(d) && !grantCovers(grant, d),
+      hasHome: lu.hasHome,
+      domains: effectiveDomains(d, state),
+      start: startUrl(d, state),
+      grantRequired: grantNeeded(d) && !grantCovers(grant, d),
     };
-    return { site: { ...site, demande: grantRequest(site), empreinte: siteReadHash(d) }, retouches: files };
+    return { site: { ...site, request: grantRequest(site), hash: siteReadHash(d) }, tweaks: files };
   }
 
   /** The tweak files; none if one of them is missing or exceeds the bounds (the error is written). */
   async function tweakFiles(lu: Extract<SiteLu, { declaration: unknown }>): Promise<TweaksRead> {
-    if (lu.declaration.retouches.length === 0) return { js: {}, css: {} };
-    const r = await readTweaks(lu).catch((e: unknown) => ({ erreur: String(e) }));
-    if (!("erreur" in r)) return r;
-    console.warn(`[sites] ${lu.id} : retouches non injectées : ${r.erreur}`);
+    if (lu.declaration.tweaks.length === 0) return { js: {}, css: {} };
+    const r = await readTweaks(lu).catch((e: unknown) => ({ error: String(e) }));
+    if (!("error" in r)) return r;
+    console.warn(`[sites] ${lu.id} : retouches non injectées : ${r.error}`);
     return { js: {}, css: {} };
   }
 
@@ -333,51 +333,51 @@ export function createSites(o: {
   async function searchUrl(id: string, url: string | null): Promise<void> {
     const s = opened.has(id) ? openSites.get(id) : undefined;
     const d = s?.declaration;
-    if (!s || !d?.suiviAdresse || deletions.has(id)) return;
+    if (!s || !d?.urlTracking || deletions.has(id)) return;
     // A reading is already under way: the follow answers « trop-tot » without doubling it.
     const running = searches.has(id);
     const control = new AbortController();
     if (!running) {
       searches.set(id, control);
-      o.chrome.cherche(id, true);
+      o.chrome.search(id, true);
     }
-    const r = await tracking.chercher(id, d, control.signal).catch((): { t: "introuvable" } => ({ t: "introuvable" }));
+    const r = await tracking.find(id, d, control.signal).catch((): { t: "introuvable" } => ({ t: "introuvable" }));
     if (!running) {
       if (searches.get(id) === control) searches.delete(id);
-      if (!control.signal.aborted) o.chrome.cherche(id, false);
+      if (!control.signal.aborted) o.chrome.search(id, false);
     }
     // Window closed (or app deleted) during the reading: what comes after is ignored.
     const current = opened.has(id) ? openSites.get(id) : undefined;
     if (control.signal.aborted || !current) return;
     const notify = (a: BarNotice) => {
       lastNotices.set(id, a);
-      o.chrome.avis(id, a);
+      o.chrome.notice(id, a);
     };
     switch (r.t) {
       case "trop-tot": {
         const last = lastNotices.get(id);
-        if (last) o.chrome.avis(id, last);
+        if (last) o.chrome.notice(id, last);
         return;
       }
       case "introuvable":
-        return notify({ genre: "introuvable", texte: urlNotFound(host(d.suiviAdresse.page) ?? d.suiviAdresse.page) });
+        return notify({ kind: "introuvable", text: urlNotFound(host(d.urlTracking.page) ?? d.urlTracking.page) });
       case "inchangee":
-        return notify({ genre: "inchangee", texte: urlUnchanged(d.nom) });
+        return notify({ kind: "inchangee", text: urlUnchanged(d.name) });
       case "change": {
         // Today's declaration (site.json may have been read again during the reading).
         const decl = current.declaration;
-        const domains = effectiveDomains(decl, r.etat);
-        const start = startUrl(decl, r.etat);
+        const domains = effectiveDomains(decl, r.state);
+        const start = startUrl(decl, r.state);
         // The same page on the new domain, else the start address.
         const relative = url ? relativeUrl(url, domains) : null;
-        const to = (relative && urlOnDomain(relative, r.domaine, domains, start, reading)) || start;
+        const to = (relative && urlOnDomain(relative, r.domain, domains, start, reading)) || start;
         changes.set(id, (changes.get(id) ?? 0) + 1);
-        const site = { ...current, domaines: domains, depart: start };
-        openSites.set(id, { ...site, demande: grantRequest(site) });
-        o.chrome.adresseChangee(id, domains, start, to);
-        notify({ genre: "adresse-changee", texte: urlChanged(d.nom, r.domaine) });
+        const site = { ...current, domains: domains, start: start };
+        openSites.set(id, { ...site, request: grantRequest(site) });
+        o.chrome.urlChanged(id, domains, start, to);
+        notify({ kind: "adresse-changee", text: urlChanged(d.name, r.domain) });
         // The home shows the new domain.
-        if (subscriptions.has(id)) void memory(id).then((m) => memoryMessage(id, m)).then((msg) => o.notifierMemoire(id, msg), () => {});
+        if (subscriptions.has(id)) void memory(id).then((m) => memoryMessage(id, m)).then((msg) => o.notifyMemory(id, msg), () => {});
       }
     }
   }
@@ -399,18 +399,18 @@ export function createSites(o: {
     // The site changed address during the reading: its domains would be the old ones, read again.
     if ((changes.get(id) ?? 0) !== changesBefore) return reread(id);
     // Became invalid: nothing is injected anymore (the window keeps what it had, without tweaks).
-    const fresh = p ? p.retouches : { js: {}, css: {} };
+    const fresh = p ? p.tweaks : { js: {}, css: {} };
     // Nothing changed for the page (folder copied over, duplicate event): it is not reloaded.
     const same =
       JSON.stringify(fresh) === JSON.stringify(tweaks.get(id) ?? null) &&
-      (!p || JSON.stringify({ ...p.site, aAccueil: null }) === JSON.stringify({ ...before, aAccueil: null }));
+      (!p || JSON.stringify({ ...p.site, hasHome: null }) === JSON.stringify({ ...before, hasHome: null }));
     tweaks.set(id, fresh);
     if (p) openSites.set(id, p.site);
     try {
       // The chrome holds its own copy of the tweaks map, so it gets the new one even
       // when site.json became invalid (with the app as it was). The card that comes back already reloads the page.
-      const reloaded = await o.chrome.mettreAJour(p?.site ?? before, fresh);
-      if (reviews.get(id) === n && !same && !reloaded) await o.chrome.rechargerVue(id);
+      const reloaded = await o.chrome.update(p?.site ?? before, fresh);
+      if (reviews.get(id) === n && !same && !reloaded) await o.chrome.reloadView(id);
     } catch (e) {
       console.error(`[sites] ${id} non mise à jour :`, e);
     }
@@ -418,11 +418,11 @@ export function createSites(o: {
 
   let stopWatching: () => Promise<void> = async () => {};
   try {
-    stopWatching = watchSites(o.chemins, (id, what) => {
+    stopWatching = watchSites(o.paths, (id, what) => {
       // The « Sites » section of the Applications page re-reads the list (app written, changed or removed by the agent).
-      if (what === "declaration") o.diffuser();
+      if (what === "declaration") o.broadcast();
       if (what === "accueil") {
-        if (opened.has(id)) o.chrome.accueilChange(id);
+        if (opened.has(id)) o.chrome.homeChange(id);
       } else void reread(id);
     });
   } catch (e) {
@@ -434,7 +434,7 @@ export function createSites(o: {
     if (deletions.has(id)) return Promise.reject(new Error(`appli de site en cours de suppression : ${id}`));
     let m = memories.get(id);
     if (!m) {
-      m = SiteMemory.ouvrir(sitesFolder, id);
+      m = SiteMemory.open(sitesFolder, id);
       memories.set(id, m);
       // A refused id does not stay in the cache.
       m.catch(() => memories.delete(id));
@@ -444,20 +444,20 @@ export function createSites(o: {
 
   /** The app's current domain (that of its start address). */
   async function currentDomain(id: string): Promise<string> {
-    const lu = await readSite(o.chemins, id, reading).catch(() => null);
-    if (!lu || "erreur" in lu) return "";
+    const lu = await readSite(o.paths, id, reading).catch(() => null);
+    if (!lu || "error" in lu) return "";
     return host(startUrl(lu.declaration, await readUrlState(sitesFolder, id))) ?? "";
   }
 
   const memoryMessage = async (id: string, m: SiteMemory): Promise<MessageToHome & { type: "memoire" }> => {
-    const { valeurs: values, positions } = m.contenu();
-    return { type: "memoire", valeurs: values, positions, domaine: await currentDomain(id) };
+    const { values: values, positions } = m.content();
+    return { type: "memoire", values: values, positions, domain: await currentDomain(id) };
   };
 
   /** The app's folder exists, and it is a real folder (never a link). */
   async function realFolder(id: string): Promise<boolean> {
     try {
-      return (await lstat(join(o.chemins.sites, id))).isDirectory();
+      return (await lstat(join(o.paths.sites, id))).isDirectory();
     } catch {
       return false;
     }
@@ -474,9 +474,9 @@ export function createSites(o: {
    */
   async function forgetSite(id: string): Promise<void> {
     if (!(await known(id))) return;
-    positions.annulerNotes(id);
+    positions.cancelNotes(id);
     const m = await memory(id);
-    await m.effacer();
+    await m.erase();
     if (!opened.has(id)) memories.delete(id);
   }
 
@@ -493,32 +493,32 @@ export function createSites(o: {
     try {
       if (!(await known(id))) return;
       started = true;
-      o.surSupprimee?.(id);
-      positions.annulerNotes(id);
+      o.onDeleted?.(id);
+      positions.cancelNotes(id);
       searches.get(id)?.abort();
-      await o.chrome.fermer(id);
+      await o.chrome.close(id);
       opened.delete(id);
       forget(id);
-      await o.chrome.effacer(id);
+      await o.chrome.erase(id);
       const m = memories.get(id);
-      if (m) await m.then((x) => x.effacer(), () => {});
+      if (m) await m.then((x) => x.erase(), () => {});
       memories.delete(id);
-      tracking.oublier(id);
+      tracking.forget(id);
       await deleteSiteData(o.dataDir, id);
-      siteRecords.oublier(id);
+      siteRecords.forget(id);
       if (!(await realFolder(id))) return;
       try {
-        const trash = join(o.chemins.sites, ".corbeille");
+        const trash = join(o.paths.sites, ".corbeille");
         await mkdir(trash, { recursive: true });
-        await rename(join(o.chemins.sites, id), join(trash, `${id}-${Date.now()}`));
+        await rename(join(o.paths.sites, id), join(trash, `${id}-${Date.now()}`));
       } catch (e) {
         console.error(`[sites] ${id} : dossier non mis à la corbeille :`, e);
         actionErrors.set(id, "Dossier non mis à la corbeille : la connexion et la mémoire sont effacées, le dossier reste.");
       }
     } finally {
       deletions.delete(id);
-      if (started) o.apresSuppression?.(id);
-      o.diffuser();
+      if (started) o.afterDelete?.(id);
+      o.broadcast();
     }
   }
 
@@ -532,53 +532,53 @@ export function createSites(o: {
     reviews.set(id, (reviews.get(id) ?? 0) + 1);
     // Before the window: its first page already asks for its tweaks.
     openSites.set(id, p.site);
-    tweaks.set(id, p.retouches);
-    if (!(await o.chrome.ouvrir(p.site, siteRecords.lire(id).cadre ?? null, p.retouches))) {
+    tweaks.set(id, p.tweaks);
+    if (!(await o.chrome.open(p.site, siteRecords.read(id).frame ?? null, p.tweaks))) {
       if (!opened.has(id)) forget(id);
       return false;
     }
     // A deletion started while the chrome opened the window: close it again.
     if (!still()) {
-      await o.chrome.fermer(id).catch(() => {});
+      await o.chrome.close(id).catch(() => {});
       return false;
     }
     opened.add(id);
-    o.diffuser();
+    o.broadcast();
     return true;
   }
 
   /** The rows of the « Sites » section, and the hash of each valid declaration (for the agent only). */
-  async function lignes(): Promise<(ShownSite & { empreinte?: string })[]> {
-    const sites = await readSites(o.chemins, reading);
+  async function lignes(): Promise<(ShownSite & { hash?: string })[]> {
+    const sites = await readSites(o.paths, reading);
     shownItems = new Set(sites.map((s) => s.id));
     return Promise.all(
-      sites.map(async (s): Promise<ShownSite & { empreinte?: string }> => {
-        const favicon = siteRecords.lire(s.id).favicon ?? null;
+      sites.map(async (s): Promise<ShownSite & { hash?: string }> => {
+        const favicon = siteRecords.read(s.id).favicon ?? null;
         const actionError = actionErrors.get(s.id);
         // An id refused by ID_SITE (« MonSite ») can receive no action: the schema would reject them all.
-        if ("erreur" in s)
-          return { id: s.id, nom: s.id, description: "", domaine: null, icone: favicon, ouverte: opened.has(s.id), erreur: s.erreur, ...(ID_SITE.test(s.id) ? {} : { sansActions: true as const }), ...(actionError ? { erreurAction: actionError } : {}) };
+        if ("error" in s)
+          return { id: s.id, name: s.id, description: "", domain: null, icon: favicon, open: opened.has(s.id), error: s.error, ...(ID_SITE.test(s.id) ? {} : { noActions: true as const }), ...(actionError ? { actionError: actionError } : {}) };
         const state = ID_SITE.test(s.id) ? await readUrlState(sitesFolder, s.id) : null;
-        const declared = s.declaration.icone ? await readIcon(s.dossier, s.declaration.icone) : null;
+        const declared = s.declaration.icon ? await readIcon(s.folder, s.declaration.icon) : null;
         return {
           id: s.id,
-          nom: s.declaration.nom,
+          name: s.declaration.name,
           description: s.declaration.description,
-          domaine: host(startUrl(s.declaration, state)),
-          icone: declared ?? favicon,
-          ouverte: opened.has(s.id),
-          ...(actionError ? { erreurAction: actionError } : {}),
-          empreinte: siteReadHash(s.declaration),
+          domain: host(startUrl(s.declaration, state)),
+          icon: declared ?? favicon,
+          open: opened.has(s.id),
+          ...(actionError ? { actionError: actionError } : {}),
+          hash: siteReadHash(s.declaration),
         };
       }),
     );
   }
 
   const subscribe = (id: string, m: SiteMemory) => {
-    if (!subscriptions.has(id)) subscriptions.set(id, m.surChange(() => void memoryMessage(id, m).then((msg) => o.notifierMemoire(id, msg), () => {})));
+    if (!subscriptions.has(id)) subscriptions.set(id, m.onChange(() => void memoryMessage(id, m).then((msg) => o.notifyMemory(id, msg), () => {})));
   };
 
-  const list = async () => (await lignes()).map(({ empreinte: _, ...l }) => l);
+  const list = async () => (await lignes()).map(({ hash: _, ...l }) => l);
 
   function forget(id: string): void {
     openSites.delete(id);
@@ -586,10 +586,10 @@ export function createSites(o: {
   }
 
   return {
-    liste: list,
-    listeAgent: lignes,
-    ouvrirParId: openById,
-    async agir(id, a, win) {
+    list: list,
+    agentList: lignes,
+    openById: openById,
+    async dispatch(id, a, win) {
       if (!ID_SITE.test(id)) return;
       actionErrors.delete(id);
       switch (a) {
@@ -597,7 +597,7 @@ export function createSites(o: {
           if (!(await openById(id))) console.warn(`[sites] ${id} ne peut pas s'ouvrir`);
           return;
         case "modifier":
-          o.preRemplir(win, editWithAgent(id));
+          o.prefill(win, editWithAgent(id));
           return;
         case "oublier":
           return forgetSite(id);
@@ -609,7 +609,7 @@ export function createSites(o: {
           return;
       }
     },
-    async memoireAccueil(id) {
+    async homeMemory(id) {
       try {
         const m = await memory(id);
         // Subscribed once per open window (unsubscribed at its close); a window already closed is not.
@@ -620,14 +620,14 @@ export function createSites(o: {
         return null;
       }
     },
-    noter(id, x) {
+    note(id, x) {
       // Nothing is kept for an app being deleted (frame, favicon): souvenirs.oublier passes after.
       if (deletions.has(id)) return;
-      siteRecords.noter(id, x);
-      if (x.favicon !== undefined) o.diffuser();
+      siteRecords.note(id, x);
+      if (x.favicon !== undefined) o.broadcast();
     },
-    fermee(id) {
-      positions.fermee(id);
+    closed(id) {
+      positions.closed(id);
       opened.delete(id);
       forget(id);
       subscriptions.get(id)?.();
@@ -637,39 +637,39 @@ export function createSites(o: {
       searches.delete(id);
       lastNotices.delete(id);
       void clearMemory(id);
-      o.diffuser();
-      o.surFermee?.(id);
+      o.broadcast();
+      o.onClosed?.(id);
     },
-    outils: {
-      lister: async () =>
+    tools: {
+      list: async () =>
         (await lignes()).map((s) => ({
-          id: s.id, nom: s.nom, domaine: s.domaine, ouverte: s.ouverte, ...(s.erreur !== undefined ? { erreur: s.erreur } : {}),
-          ...(s.empreinte !== undefined ? { empreinte: s.empreinte } : {}),
+          id: s.id, name: s.name, domain: s.domain, open: s.open, ...(s.error !== undefined ? { error: s.error } : {}),
+          ...(s.hash !== undefined ? { hash: s.hash } : {}),
         })),
-      ouvrir: openById,
-      memoire: async (id) => {
+      open: openById,
+      memory: async (id) => {
         if (!(await list()).some((s) => s.id === id)) return null;
-        return (await memory(id)).contenu();
+        return (await memory(id)).content();
       },
-      erreurs: async (id) => {
+      errors: async (id) => {
         if (!(await list()).some((s) => s.id === id)) return null;
-        return opened.has(id) ? o.chrome.erreurs(id).catch(() => []) : [];
+        return opened.has(id) ? o.chrome.errors(id).catch(() => []) : [];
       },
     },
-    chercherAdresse: searchUrl,
-    sitesOuverts: openSites,
-    adressePermise(id, url) {
+    lookupAddress: searchUrl,
+    openSites: openSites,
+    urlAllowed(id, url) {
       const s = opened.has(id) ? openSites.get(id) : undefined;
-      return !!s && openDecision(url, { domaines: s.domaines, connexion: s.declaration.connexion ?? [], adressesLocales: o.adressesLocales }) === "dans-l-appli";
+      return !!s && openDecision(url, { domains: s.domains, login: s.declaration.login ?? [], localAddresses: o.localAddresses }) === "dans-l-appli";
     },
-    async accorder(id, yes, hash) {
+    async grant(id, yes, hash) {
       // Taken before any wait: site.json may grow between the card and the click.
       const shown = openSites.get(id);
-      if (!shown || deletions.has(id) || (await o.chrome.vue(id)) !== "accord") return;
-      if (!yes) return o.chrome.apresAccord(id, null);
+      if (!shown || deletions.has(id) || (await o.chrome.view(id)) !== "accord") return;
+      if (!yes) return o.chrome.afterGrant(id, null);
       // Granted only if its rights are the clicked card's (the agent picks its moment).
       const d = shown.declaration;
-      if (rightsHash(d) !== hash) return o.chrome.rediffuser(id);
+      if (rightsHash(d) !== hash) return o.chrome.rebroadcast(id);
       // A reading already under way read the grant from before: it is dropped (and redone once the grant is written).
       reviews.set(id, (reviews.get(id) ?? 0) + 1);
       await storeSiteGrant(o.dataDir, id, d);
@@ -677,18 +677,18 @@ export function createSites(o: {
       // During a deletion nothing is granted (the grant would be that of an app that is leaving).
       if (!s || deletions.has(id)) return;
       const granted = rightsOf(d);
-      const after = { ...s, accordRequis: grantNeeded(s.declaration) && !grantCovers(granted, s.declaration) };
+      const after = { ...s, grantRequired: grantNeeded(s.declaration) && !grantCovers(granted, s.declaration) };
       // The chrome's copy is this one: the reading below finds nothing changed and does not reload a second time.
       openSites.set(id, after);
-      await o.chrome.apresAccord(id, after);
+      await o.chrome.afterGrant(id, after);
       void reread(id);
     },
     // Checked again here: only an open app whose tweaks are granted has a memory for its page.
-    memoireOp: (d) => memoryOp((id) => (openSites.get(id)?.accordRequis === false ? memory(id) : Promise.reject(new Error("pas d'accord"))), d),
+    memoryOp: (d) => memoryOp((id) => (openSites.get(id)?.grantRequired === false ? memory(id) : Promise.reject(new Error("pas d'accord"))), d),
     position: (d) => positions.position(d),
-    reprise: (d) => positions.reprise(d),
-    async resynchroniser() {
-      opened = new Set(await o.chrome.ouvertes());
+    resume: (d) => positions.resume(d),
+    async resync() {
+      opened = new Set(await o.chrome.openSites());
       for (const id of [...openSites.keys()]) if (!opened.has(id)) forget(id);
       // A host that started again knows the open apps only by id: read again, as they were opened.
       for (const id of opened)
@@ -696,19 +696,19 @@ export function createSites(o: {
           const p = await prepare(id).catch(() => null);
           if (p && opened.has(id)) {
             openSites.set(id, p.site);
-            tweaks.set(id, p.retouches);
+            tweaks.set(id, p.tweaks);
           }
         }
       // A host that started again has no subscription: the windows already open keep their home's feed.
       for (const id of opened) await memory(id).then((m) => subscribe(id, m), () => {});
     },
-    async arreter() {
+    async stop() {
       try {
         for (const c of searches.values()) c.abort();
         await stopWatching().catch(() => {});
         await Promise.allSettled([...memories.keys()].map(clearMemory));
       } finally {
-        await siteRecords.vider();
+        await siteRecords.clear();
       }
     },
   };

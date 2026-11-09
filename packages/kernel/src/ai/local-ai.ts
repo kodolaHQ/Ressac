@@ -8,31 +8,31 @@ import { GEMMA_JSON_INVALID, AI_ABANDONED } from "./dispatcher.js";
 export type AiState = "non-installee" | "arretee" | "demarrage" | "active" | "erreur";
 
 export interface AiProcess {
-  arreter(): void;
-  surSortie(callback: (code: number | null) => void): void;
+  stop(): void;
+  onOutput(callback: (code: number | null) => void): void;
   /** Optional: receives each output line (stdout and stderr), for error messages. */
-  surLigne?(callback: (line: string) => void): void;
+  onLine?(callback: (line: string) => void): void;
 }
 
 export interface LocalAiOptions {
   /** `<browser profile>/ia-locale`; Kev is cloned there in `kev/`. */
-  dossier: string;
-  executer: Runner;
-  lancer?: (cmd: string, args: string[], o: { cwd: string }) => AiProcess;
+  folder: string;
+  run: Runner;
+  launch?: (cmd: string, args: string[], o: { cwd: string }) => AiProcess;
   kevUrl?: string;
   ollamaUrl?: string;
   /** Ollama decision model (same /v1/systemone API as Kev) used instead of launching Kev; an imposed Kev address wins. */
-  modeleDecision?: string;
+  decisionModel?: string;
   port?: number;
-  inactiviteMs?: number;
-  horloge?: () => number;
-  surEtat?: (e: AiState, error?: string) => void;
+  inactivityMs?: number;
+  clock?: () => number;
+  onState?: (e: AiState, error?: string) => void;
   /** Polling interval of /v1/models at startup (500 ms by default). */
-  sondageMs?: number;
+  pollMs?: number;
   /** Inactivity check interval (5 s by default). */
-  verifInactiviteMs?: number;
+  idleCheckMs?: number;
   /** Maximum wait, at close, for a cancelled install to finish (3 s by default). */
-  delaiAnnulationMs?: number;
+  cancelDelayMs?: number;
 }
 
 export const DEPOT_KEV = "https://github.com/jaredpalmer/kev.git";
@@ -52,7 +52,7 @@ const KILL_DELAY_MS = 5000;
  * orphaned). `arreter` sends SIGTERM to the group, then SIGKILL after `delaiKillMs` if it is still alive. If the Node process
  * exits without stopping the group, it is killed at exit.
  */
-export function launchAiProcess(cmd: string, args: string[], o: { cwd: string; delaiKillMs?: number }): AiProcess {
+export function launchAiProcess(cmd: string, args: string[], o: { cwd: string; killDelayMs?: number }): AiProcess {
   const child = spawn(cmd, args, { cwd: o.cwd, env: { ...process.env, PATH: toolsPath() }, stdio: ["ignore", "pipe", "pipe"], detached: true });
   const pid = child.pid;
   if (pid !== undefined) keepGroup(pid);
@@ -62,7 +62,7 @@ export function launchAiProcess(cmd: string, args: string[], o: { cwd: string; d
     if (pid !== undefined && !killGroup(pid, 0)) forgetGroup(pid);
   });
   return {
-    arreter: () => {
+    stop: () => {
       if (pid === undefined) return;
       if (!killGroup(pid, "SIGTERM")) {
         forgetGroup(pid);
@@ -72,7 +72,7 @@ export function launchAiProcess(cmd: string, args: string[], o: { cwd: string; d
       const timer = setTimeout(() => {
         killGroup(pid, "SIGKILL");
         forgetGroup(pid);
-      }, o.delaiKillMs ?? KILL_DELAY_MS);
+      }, o.killDelayMs ?? KILL_DELAY_MS);
       timer.unref();
       const check = setInterval(() => {
         if (exited && !killGroup(pid, 0)) {
@@ -83,11 +83,11 @@ export function launchAiProcess(cmd: string, args: string[], o: { cwd: string; d
       }, 100);
       check.unref();
     },
-    surSortie: (r) => {
+    onOutput: (r) => {
       child.on("exit", (code) => r(code));
       child.on("error", () => r(127));
     },
-    surLigne: (r) => {
+    onLine: (r) => {
       for (const stream of [child.stdout, child.stderr]) {
         let rest = "";
         stream.on("data", (d: Buffer) => {
@@ -100,7 +100,7 @@ export function launchAiProcess(cmd: string, args: string[], o: { cwd: string; d
   };
 }
 
-const defaultLaunch: NonNullable<LocalAiOptions["lancer"]> = (cmd, args, o) => launchAiProcess(cmd, args, o);
+const defaultLaunch: NonNullable<LocalAiOptions["launch"]> = (cmd, args, o) => launchAiProcess(cmd, args, o);
 
 /** The call's timeout, and the caller's signal if there is one. */
 const delayAnd = (ms: number, signal?: AbortSignal) => (signal ? AbortSignal.any([AbortSignal.timeout(ms), signal]) : AbortSignal.timeout(ms));
@@ -123,56 +123,56 @@ const CANCEL_DELAY_MS = 3000;
 export interface AiAccess {
   kev: LocalAi["kev"];
   gemma: LocalAi["gemma"];
-  fermer(): Promise<void>;
+  close(): Promise<void>;
 }
 
 export class LocalAi {
-  private etatCourant: AiState = "arretee";
-  private erreurCourante?: string;
-  private processus?: AiProcess;
-  private demarrage?: Promise<void>;
-  private minuteur?: NodeJS.Timeout;
-  private dernierUsage = 0;
+  private currentState: AiState = "arretee";
+  private currentError?: string;
+  private process?: AiProcess;
+  private startup?: Promise<void>;
+  private timeout?: NodeJS.Timeout;
+  private lastUsage = 0;
   private generation = 0;
   /** Closed (the browser quits): nothing starts Kev or calls Ollama anymore. */
-  private fermee = false;
+  private closed = false;
   /** Install in progress: its cancellation and its end (successful or not). */
-  private installation?: { controleur: AbortController; fin: Promise<unknown> };
+  private installation?: { controller: AbortController; end: Promise<unknown> };
   // Modifiable: Kev's address, imposed by WEBAIOS_KEV_URL or computed from the port.
   private kevUrl: string;
-  private readonly kevImposee: boolean;
+  private readonly kevForced: boolean;
   private readonly ollamaUrl: string;
   private readonly port: number;
-  private readonly inactiviteMs: number;
-  private readonly horloge: () => number;
-  private readonly lancer: NonNullable<LocalAiOptions["lancer"]>;
+  private readonly inactivityMs: number;
+  private readonly clock: () => number;
+  private readonly launch: NonNullable<LocalAiOptions["launch"]>;
 
   constructor(private readonly o: LocalAiOptions) {
     this.port = o.port ?? 8008;
     const imposed = o.kevUrl ?? process.env.WEBAIOS_KEV_URL;
-    this.kevImposee = Boolean(imposed);
+    this.kevForced = Boolean(imposed);
     this.kevUrl = imposed ?? `http://127.0.0.1:${this.port}`;
     this.ollamaUrl = o.ollamaUrl ?? process.env.WEBAIOS_OLLAMA_URL ?? "http://127.0.0.1:11434";
-    this.inactiviteMs = o.inactiviteMs ?? 600_000;
-    this.horloge = o.horloge ?? Date.now;
-    this.lancer = o.lancer ?? defaultLaunch;
+    this.inactivityMs = o.inactivityMs ?? 600_000;
+    this.clock = o.clock ?? Date.now;
+    this.launch = o.launch ?? defaultLaunch;
   }
 
-  etat(): { etat: AiState; erreur?: string } {
-    return this.erreurCourante ? { etat: this.etatCourant, erreur: this.erreurCourante } : { etat: this.etatCourant };
+  state(): { state: AiState; error?: string } {
+    return this.currentError ? { state: this.currentState, error: this.currentError } : { state: this.currentState };
   }
 
-  private changer(e: AiState, error?: string) {
-    this.etatCourant = e;
-    this.erreurCourante = error;
-    this.o.surEtat?.(e, error);
+  private change(e: AiState, error?: string) {
+    this.currentState = e;
+    this.currentError = error;
+    this.o.onState?.(e, error);
   }
 
-  private get dossierKev() { return join(this.o.dossier, "kev"); }
+  private get kevFolder() { return join(this.o.folder, "kev"); }
 
-  async verifier(): Promise<{ kev: boolean; uv: boolean; ollama: boolean; gemma: boolean }> {
-    const kev = existsSync(join(this.dossierKev, ".git"));
-    const uv = (await this.o.executer("uv", ["--version"], { delaiMs: 10_000 })).code === 0;
+  async check(): Promise<{ kev: boolean; uv: boolean; ollama: boolean; gemma: boolean }> {
+    const kev = existsSync(join(this.kevFolder, ".git"));
+    const uv = (await this.o.run("uv", ["--version"], { delayMs: 10_000 })).code === 0;
     let ollama = false;
     let gemma = false;
     try {
@@ -187,35 +187,35 @@ export class LocalAi {
   }
 
   /** Folder where Kev is cloned before being renamed to `kev/`: an interrupted clone never leaves a partial repo there. */
-  private get dossierClone() { return join(this.o.dossier, "kev.clone-en-cours"); }
+  private get cloneFolder() { return join(this.o.folder, "kev.clone-en-cours"); }
 
   /**
    * Installs Kev and Gemma. Cancelled by `annulerInstallation()` or `fermer()`: the current command is killed (its whole
    * group), none follows, a partial clone is erased, and the promise is rejected « Installation annulée ».
    */
-  installer(progress: (line: string) => void): Promise<void> {
-    if (this.fermee) return Promise.reject(new Error(AI_CLOSED_ERROR));
+  install(progress: (line: string) => void): Promise<void> {
+    if (this.closed) return Promise.reject(new Error(AI_CLOSED_ERROR));
     if (this.installation) return Promise.reject(new Error("Installation déjà en cours"));
     const controller = new AbortController();
-    const end = this.installerAvec(controller.signal, progress).finally(() => {
-      if (this.installation?.controleur === controller) this.installation = undefined;
+    const end = this.installWith(controller.signal, progress).finally(() => {
+      if (this.installation?.controller === controller) this.installation = undefined;
     });
-    this.installation = { controleur: controller, fin: end.catch(() => {}) };
+    this.installation = { controller: controller, end: end.catch(() => {}) };
     return end;
   }
 
   /** Cancels the install in progress, if there is one (without waiting for its end). */
-  annulerInstallation(): void {
-    this.installation?.controleur.abort();
+  cancelInstall(): void {
+    this.installation?.controller.abort();
   }
 
-  private async installerAvec(signal: AbortSignal, progress: (line: string) => void): Promise<void> {
+  private async installWith(signal: AbortSignal, progress: (line: string) => void): Promise<void> {
     const checkCancel = () => {
       if (signal.aborted) throw new Error(INSTALL_CANCELLED_ERROR);
     };
     const run = async (cmd: string, args: string[], delayMs?: number) => {
       checkCancel();
-      const r = await this.o.executer(cmd, args, delayMs ? { delaiMs: delayMs, signal } : { signal });
+      const r = await this.o.run(cmd, args, delayMs ? { delayMs: delayMs, signal } : { signal });
       checkCancel();
       return r;
     };
@@ -230,23 +230,23 @@ export class LocalAi {
     if ((await launch("uv", ["--version"], 10_000)).code !== 0) throw new Error("installe uv : brew install uv");
     // 2. Kev repo at the pinned commit, cloned aside then renamed. The clone folder belongs only to this code: what is left
     // of an interrupted clone (app killed before it could erase it) is erased before recloning.
-    if (!existsSync(join(this.dossierKev, ".git"))) {
-      await rm(this.dossierClone, { recursive: true, force: true });
+    if (!existsSync(join(this.kevFolder, ".git"))) {
+      await rm(this.cloneFolder, { recursive: true, force: true });
       try {
-        const r = await launch("git", ["clone", "--depth", "1", "--branch", TAG_KEV, DEPOT_KEV, this.dossierClone]);
+        const r = await launch("git", ["clone", "--depth", "1", "--branch", TAG_KEV, DEPOT_KEV, this.cloneFolder]);
         if (r.code !== 0) throw new Error(`git clone a échoué : ${r.stderr.trim()}`);
-        await rename(this.dossierClone, this.dossierKev);
+        await rename(this.cloneFolder, this.kevFolder);
       } catch (e) {
-        await rm(this.dossierClone, { recursive: true, force: true }).catch(() => {});
+        await rm(this.cloneFolder, { recursive: true, force: true }).catch(() => {});
         throw e;
       }
     }
-    const head = await run("git", ["-C", this.dossierKev, "rev-parse", "HEAD"]);
+    const head = await run("git", ["-C", this.kevFolder, "rev-parse", "HEAD"]);
     if (head.code !== 0 || head.stdout.trim() !== COMMIT_KEV) {
       throw new Error(`Le commit de Kev n'est pas celui attendu (${COMMIT_KEV}) : ${head.stdout.trim() || head.stderr.trim()}`);
     }
     // 3. dependencies (an interrupted sync is resumed by the next one, or by `uv run` at Kev's start)
-    const sync = await launch("uv", ["sync", "--extra", "serve", "--project", this.dossierKev]);
+    const sync = await launch("uv", ["sync", "--extra", "serve", "--project", this.kevFolder]);
     if (sync.code !== 0) throw new Error(`uv sync a échoué : ${sync.stderr.trim()}`);
     // 4. Gemma model. Killing `ollama pull` cuts its request to the Ollama server, which stops the download and keeps its
     // chunks for resuming: they are Ollama's (shared with the user), we do not touch them.
@@ -255,12 +255,12 @@ export class LocalAi {
   }
 
   async kev(body: { state: unknown; questions: Record<string, unknown> }, o: { signal?: AbortSignal } = {}): Promise<unknown> {
-    if (this.fermee) throw new Error(AI_CLOSED_ERROR);
+    if (this.closed) throw new Error(AI_CLOSED_ERROR);
     checkAbort(o.signal);
-    const model = this.kevImposee ? undefined : this.o.modeleDecision;
-    if (!model) await this.assurerKev();
+    const model = this.kevForced ? undefined : this.o.decisionModel;
+    if (!model) await this.ensureKev();
     checkAbort(o.signal);
-    this.dernierUsage = this.horloge();
+    this.lastUsage = this.clock();
     let r: Response;
     try {
       r = await fetch(`${model ? this.ollamaUrl : this.kevUrl}/v1/systemone`, {
@@ -274,7 +274,7 @@ export class LocalAi {
       throw new Error(`Kev ne répond pas : ${(e as Error).message}`);
     }
     if (!r.ok) throw new Error(`Kev a répondu ${r.status}`);
-    this.dernierUsage = this.horloge();
+    this.lastUsage = this.clock();
     try {
       return ((await r.json()) as { answers: unknown }).answers;
     } catch (e) {
@@ -284,7 +284,7 @@ export class LocalAi {
   }
 
   async gemma(o: { prompt: string; images?: string[]; json?: boolean; signal?: AbortSignal }): Promise<string | unknown> {
-    if (this.fermee) throw new Error(AI_CLOSED_ERROR);
+    if (this.closed) throw new Error(AI_CLOSED_ERROR);
     checkAbort(o.signal);
     const message: Record<string, unknown> = { role: "user", content: o.prompt };
     if (o.images?.length) message.images = o.images;
@@ -327,110 +327,110 @@ export class LocalAi {
   }
 
   /** Stops Kev for good: kev() and gemma() are refused afterwards (arreter(), on the other hand, allows a relaunch). */
-  async fermer(): Promise<void> {
-    this.fermee = true;
+  async close(): Promise<void> {
+    this.closed = true;
     const installation = this.installation;
     if (installation) {
       // The app quits: the install is cancelled; its cleanup is awaited, but never longer than the delay.
-      installation.controleur.abort();
+      installation.controller.abort();
       let timer: NodeJS.Timeout | undefined;
-      const delay = new Promise<void>((ok) => (timer = setTimeout(ok, this.o.delaiAnnulationMs ?? CANCEL_DELAY_MS)));
-      await Promise.race([installation.fin, delay]);
+      const delay = new Promise<void>((ok) => (timer = setTimeout(ok, this.o.cancelDelayMs ?? CANCEL_DELAY_MS)));
+      await Promise.race([installation.end, delay]);
       clearTimeout(timer);
     }
-    await this.arreter();
+    await this.stop();
   }
 
   /** An access for a kernel, closed with it (see AiAccess). */
-  acces(): AiAccess {
+  access(): AiAccess {
     let closed = false;
     // Checked before the call: kev() launches Kev synchronously, before its first await; fermer() stops it afterwards.
     return {
       kev: (body, o) => (closed ? Promise.reject(new Error(AI_CLOSED_ERROR)) : this.kev(body, o)),
       gemma: (o) => (closed ? Promise.reject(new Error(AI_CLOSED_ERROR)) : this.gemma(o)),
-      fermer: async () => {
+      close: async () => {
         closed = true;
-        await this.arreter();
+        await this.stop();
       },
     };
   }
 
-  async arreter(): Promise<void> {
-    if (this.minuteur) clearInterval(this.minuteur);
-    this.minuteur = undefined;
-    const p = this.processus;
-    this.processus = undefined;
-    this.demarrage = undefined;
+  async stop(): Promise<void> {
+    if (this.timeout) clearInterval(this.timeout);
+    this.timeout = undefined;
+    const p = this.process;
+    this.process = undefined;
+    this.startup = undefined;
     this.generation++;
-    p?.arreter();
-    if (this.etatCourant === "active" || this.etatCourant === "demarrage") this.changer("arretee");
+    p?.stop();
+    if (this.currentState === "active" || this.currentState === "demarrage") this.change("arretee");
   }
 
-  private assurerKev(): Promise<void> {
-    if (this.etatCourant === "active") return Promise.resolve();
-    if (!this.demarrage) {
-      const d = this.demarrerKev().finally(() => { if (this.demarrage === d) this.demarrage = undefined; });
-      this.demarrage = d;
+  private ensureKev(): Promise<void> {
+    if (this.currentState === "active") return Promise.resolve();
+    if (!this.startup) {
+      const d = this.startKev().finally(() => { if (this.startup === d) this.startup = undefined; });
+      this.startup = d;
     }
-    return this.demarrage;
+    return this.startup;
   }
 
-  private async demarrerKev(): Promise<void> {
-    if (this.kevImposee) {
-      this.changer("active");
+  private async startKev(): Promise<void> {
+    if (this.kevForced) {
+      this.change("active");
       return;
     }
-    if (!existsSync(join(this.dossierKev, ".git"))) {
-      this.changer("non-installee");
+    if (!existsSync(join(this.kevFolder, ".git"))) {
+      this.change("non-installee");
       throw new Error("IA locale non installée");
     }
     const gen = ++this.generation;
-    this.changer("demarrage");
+    this.change("demarrage");
     const lignes: string[] = [];
     let output: number | null | undefined;
-    const p = this.lancer("uv", ["run", "--extra", "serve", "python", "-m", "kev.serve", "--run", KEV_MODEL, "--port", String(this.port)], { cwd: this.dossierKev });
-    this.processus = p;
-    p.surLigne?.((l) => { lignes.push(l); if (lignes.length > 20) lignes.shift(); });
+    const p = this.launch("uv", ["run", "--extra", "serve", "python", "-m", "kev.serve", "--run", KEV_MODEL, "--port", String(this.port)], { cwd: this.kevFolder });
+    this.process = p;
+    p.onLine?.((l) => { lignes.push(l); if (lignes.length > 20) lignes.shift(); });
     let dead = false;
-    p.surSortie((code) => {
+    p.onOutput((code) => {
       dead = true;
       output = code;
-      if (this.processus === p) { this.processus = undefined; if (this.etatCourant === "active") this.changer("arretee"); }
+      if (this.process === p) { this.process = undefined; if (this.currentState === "active") this.change("arretee"); }
     });
-    const step = this.o.sondageMs ?? 500;
+    const step = this.o.pollMs ?? 500;
     const end = Date.now() + STARTUP_DELAY_MS;
     while (Date.now() < end) {
       if (gen !== this.generation) return; // arreter() came through here
       if (dead) {
         const msg = `Kev n'a pas démarré : ${lignes.slice(-5).join("\n") || `code ${output}`}`;
-        this.changer("erreur", msg);
+        this.change("erreur", msg);
         throw new Error(msg);
       }
       try {
         const r = await fetch(`${this.kevUrl}/v1/models`, { signal: AbortSignal.timeout(2000) });
         if (gen !== this.generation) return;
         if (r.ok) {
-          this.dernierUsage = this.horloge();
-          this.changer("active");
-          this.surveillerInactivite();
+          this.lastUsage = this.clock();
+          this.change("active");
+          this.watchIdle();
           return;
         }
       } catch { /* not ready yet */ }
       await wait(step);
     }
     if (gen !== this.generation) return;
-    p.arreter();
-    this.processus = undefined;
+    p.stop();
+    this.process = undefined;
     const msg = `Kev n'a pas démarré : délai dépassé. ${lignes.slice(-5).join("\n")}`.trim();
-    this.changer("erreur", msg);
+    this.change("erreur", msg);
     throw new Error(msg);
   }
 
-  private surveillerInactivite() {
-    if (this.minuteur) clearInterval(this.minuteur);
-    this.minuteur = setInterval(() => {
-      if (this.horloge() - this.dernierUsage >= this.inactiviteMs) void this.arreter();
-    }, this.o.verifInactiviteMs ?? 5000);
-    this.minuteur.unref();
+  private watchIdle() {
+    if (this.timeout) clearInterval(this.timeout);
+    this.timeout = setInterval(() => {
+      if (this.clock() - this.lastUsage >= this.inactivityMs) void this.stop();
+    }, this.o.idleCheckMs ?? 5000);
+    this.timeout.unref();
   }
 }

@@ -13,9 +13,9 @@ export const SOURCE_TIMEOUT_MS = 1500;
 // The design overlays' sizes and placement.
 type Rectangle = { x: number; y: number; width: number; height: number };
 /** A note's bubble: 320×170, below the element. */
-export const BUBBLE_SIZE = { largeur: 320, hauteur: 170 };
+export const BUBBLE_SIZE = { width: 320, height: 170 };
 /** The bubble in a site app: 20 px more for the warning line. */
-export const SITE_BUBBLE_SIZE = { largeur: 320, hauteur: 190 };
+export const SITE_BUBBLE_SIZE = { width: 320, height: 190 };
 const BUBBLE_GAP = 6;
 // The unavailability message: 360×56, 12 px from the top and right of the tab's view.
 export const MESSAGE_WIDTH = 360;
@@ -29,7 +29,7 @@ export const MESSAGE_DURATION_MS = 4000;
 
 /** Key of a target, also the argument of its overlay. */
 export const targetKey = (c: DesignTarget): string =>
-  c.type === "fenetre" ? `fenetre:${c.fenetreId}` : c.type === "app" ? `app:${c.dossier}` : `site:${c.id}`;
+  c.type === "fenetre" ? `fenetre:${c.windowId}` : c.type === "app" ? `app:${c.folder}` : `site:${c.id}`;
 
 /**
  * Placement of the bubble in the window: below the element (CSS rect × zoom, shifted by the bounds of the page's view), bounded
@@ -40,14 +40,14 @@ export function bubbleSlot(
   zoom: number,
   bounds: Rectangle,
   win: [number, number],
-  o: { hautMin?: number; hauteur?: number } = {},
+  o: { minHeight?: number; height?: number } = {},
 ): Rectangle {
-  const height = o.hauteur ?? BUBBLE_SIZE.hauteur;
+  const height = o.height ?? BUBBLE_SIZE.height;
   const clamp = (v: number, max: number) => Math.round(Math.max(0, Math.min(v, max)));
   return {
-    x: clamp(bounds.x + rect.x * zoom, win[0] - BUBBLE_SIZE.largeur),
-    y: Math.max(o.hautMin ?? 0, clamp(bounds.y + (rect.y + rect.hauteur) * zoom + BUBBLE_GAP, win[1] - height)),
-    width: BUBBLE_SIZE.largeur,
+    x: clamp(bounds.x + rect.x * zoom, win[0] - BUBBLE_SIZE.width),
+    y: Math.max(o.minHeight ?? 0, clamp(bounds.y + (rect.y + rect.height) * zoom + BUBBLE_GAP, win[1] - height)),
+    width: BUBBLE_SIZE.width,
     height,
   };
 }
@@ -83,19 +83,19 @@ const positiveInteger = (n: unknown): n is number => typeof n === "number" && Nu
 /** The isolated world is safe, but the shape is checked anyway: null if it is not the expected one. */
 function tidyCapture(v: unknown): ViewfinderCapture | null {
   const c = v as Partial<ViewfinderCapture> | null;
-  if (!c || typeof c !== "object" || !c.rect || !c.vue || !c.voisinage || !c.styles) return null;
-  if (![c.rect.x, c.rect.y, c.rect.largeur, c.rect.hauteur, c.vue.largeur, c.vue.hauteur].every(finished)) return null;
-  if (![c.selecteur, c.etiquette, c.html, c.adresse, c.voisinage.parent].every((x) => chain(x))) return null;
-  if (!Array.isArray(c.voisinage.freres) || !c.voisinage.freres.every((f) => chain(f))) return null;
+  if (!c || typeof c !== "object" || !c.rect || !c.view || !c.neighborhood || !c.styles) return null;
+  if (![c.rect.x, c.rect.y, c.rect.width, c.rect.height, c.view.width, c.view.height].every(finished)) return null;
+  if (![c.selector, c.label, c.html, c.url, c.neighborhood.parent].every((x) => chain(x))) return null;
+  if (!Array.isArray(c.neighborhood.siblings) || !c.neighborhood.siblings.every((f) => chain(f))) return null;
   if (!Object.values(c.styles).every((x) => chain(x))) return null;
   return c as ViewfinderCapture;
 }
 
 /** What comes from the page's world is never trusted: short file, positive integer numbers, the rest is dropped. */
 function healthySource(r: unknown): DesignContext["source"] {
-  const o = r as { fichier?: unknown; ligne?: unknown; colonne?: unknown } | null;
-  if (!o || typeof o !== "object" || !chain(o.fichier, 1024) || o.fichier === "") return null;
-  return { fichier: o.fichier, ...(positiveInteger(o.ligne) ? { ligne: o.ligne } : {}), ...(positiveInteger(o.colonne) ? { colonne: o.colonne } : {}) };
+  const o = r as { file?: unknown; line?: unknown; column?: unknown } | null;
+  if (!o || typeof o !== "object" || !chain(o.file, 1024) || o.file === "") return null;
+  return { file: o.file, ...(positiveInteger(o.line) ? { line: o.line } : {}), ...(positiveInteger(o.column) ? { column: o.column } : {}) };
 }
 
 /** The viewfinder script's answer: the shape checked, the html cut. */

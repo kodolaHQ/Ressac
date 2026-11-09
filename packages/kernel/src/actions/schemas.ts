@@ -9,15 +9,15 @@ export const ID_ACTION = /^[a-z0-9-]{1,60}$/;
 /** `action.json`: what the action is, what it reads and how Gemma should present it. Never written by WebAiOs. */
 export const DeclarationAction = z
   .object({
-    nom: z.string().min(1).max(60),
+    name: z.string().min(1).max(60),
     description: z.string().max(200).default(""),
-    motsCles: z.array(z.string().min(1).max(30)).max(10).default([]),
+    keywords: z.array(z.string().min(1).max(30)).max(10).default([]),
     /** The action asks for a text at launch (« clio lyon »): its label. */
-    saisie: z.object({ libelle: z.string().min(1).max(40) }).strict().optional(),
+    input: z.object({ label: z.string().min(1).max(40) }).strict().optional(),
     sources: DeclaredSources,
     /** Presentation instruction given to Gemma. */
-    miseEnPage: z.string().min(1).max(1000).optional(),
-    dureeMaxMinutes: z.number().int().min(1).max(60).optional(),
+    layout: z.string().min(1).max(1000).optional(),
+    maxDurationMinutes: z.number().int().min(1).max(60).optional(),
   })
   .strict()
   .superRefine((d, ctx) => checkSources(d.sources, ctx));

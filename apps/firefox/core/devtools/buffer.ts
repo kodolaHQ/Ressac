@@ -40,7 +40,7 @@ export function stackText(p: Stack | undefined): string | undefined {
     .join("\n");
 }
 
-const CONSOLE_LEVELS: Record<string, MessageConsole["niveau"]> = {
+const CONSOLE_LEVELS: Record<string, MessageConsole["level"]> = {
   warning: "warn",
   error: "error",
   assert: "error",
@@ -48,7 +48,7 @@ const CONSOLE_LEVELS: Record<string, MessageConsole["niveau"]> = {
   debug: "debug",
 };
 
-const LOG_LEVELS: Record<string, MessageConsole["niveau"]> = {
+const LOG_LEVELS: Record<string, MessageConsole["level"]> = {
   verbose: "debug",
   info: "info",
   warning: "warn",
@@ -65,67 +65,67 @@ const ms = (seconds: number) => seconds * 1000;
 export class TabBuffer {
   private messages: MessageConsole[] = [];
   /** By request id, in sending order. */
-  private readonly requetes = new Map<string, NetworkRequest>();
+  private readonly requests = new Map<string, NetworkRequest>();
   /** Start of each request, on the protocol's monotonic clock (for the duration). */
-  private readonly debuts = new Map<string, number>();
+  private readonly starts = new Map<string, number>();
   private readonly maxConsole: number;
   private readonly maxReseau: number;
-  private readonly depuis: number;
+  private readonly since: number;
   /** Ids of the discarded extension requests (the most recent): their log entries (failure, CORS) are too. */
-  private readonly requetesExtension = new Map<string, string>();
+  private readonly extensionRequests = new Map<string, string>();
   /** Execution contexts coming from an extension (content scripts, isolated world): nothing they say is kept. */
-  private readonly contextesExtension = new Set<number>();
+  private readonly extensionContexts = new Set<number>();
 
   /** `depuis`: attach time (ms); older messages, replayed by the protocol, are discarded. */
-  constructor(o: { maxConsole?: number; maxReseau?: number; depuis?: number } = {}) {
+  constructor(o: { maxConsole?: number; maxReseau?: number; since?: number } = {}) {
     this.maxConsole = o.maxConsole ?? 1000;
     this.maxReseau = o.maxReseau ?? 500;
-    this.depuis = o.depuis ?? -Infinity;
+    this.since = o.since ?? -Infinity;
   }
 
-  private ajouter(m: MessageConsole): void {
-    if (m.horodatage < this.depuis) return;
-    this.messages.push({ ...m, texte: truncate(m.texte), ...(m.pile !== undefined ? { pile: truncate(m.pile) } : {}) });
+  private add(m: MessageConsole): void {
+    if (m.timestamp < this.since) return;
+    this.messages.push({ ...m, text: truncate(m.text), ...(m.stack !== undefined ? { stack: truncate(m.stack) } : {}) });
     if (this.messages.length > this.maxConsole) this.messages.splice(0, this.messages.length - this.maxConsole);
   }
 
-  evenement(method: string, params: unknown): void {
+  event(method: string, params: unknown): void {
     const p = (params ?? {}) as Record<string, any>; // free-form protocol shape
     switch (method) {
       case "Runtime.executionContextCreated": {
         const c = p.context ?? {};
         if (typeof c.id !== "number") return;
-        if (String(c.origin ?? "").startsWith(EXTENSION_ORIGIN)) this.contextesExtension.add(c.id);
-        else this.contextesExtension.delete(c.id); // the id restarted from zero with another context
+        if (String(c.origin ?? "").startsWith(EXTENSION_ORIGIN)) this.extensionContexts.add(c.id);
+        else this.extensionContexts.delete(c.id); // the id restarted from zero with another context
         return;
       }
       case "Runtime.executionContextDestroyed":
-        this.contextesExtension.delete(p.executionContextId);
+        this.extensionContexts.delete(p.executionContextId);
         return;
       case "Runtime.executionContextsCleared":
-        this.contextesExtension.clear();
+        this.extensionContexts.clear();
         return;
       case "Runtime.consoleAPICalled": {
-        if (this.contextesExtension.has(p.executionContextId) || extensionStack(p.stackTrace)) return;
+        if (this.extensionContexts.has(p.executionContextId) || extensionStack(p.stackTrace)) return;
         const stack = p.type === "error" || p.type === "assert" || p.type === "trace" ? stackText(p.stackTrace) : undefined;
-        this.ajouter({
-          horodatage: p.timestamp ?? Date.now(),
-          niveau: CONSOLE_LEVELS[p.type] ?? "log",
-          texte: ((p.args ?? []) as RemoteObject[]).map(objectText).join(" "),
-          ...(stack ? { pile: stack } : {}),
+        this.add({
+          timestamp: p.timestamp ?? Date.now(),
+          level: CONSOLE_LEVELS[p.type] ?? "log",
+          text: ((p.args ?? []) as RemoteObject[]).map(objectText).join(" "),
+          ...(stack ? { stack: stack } : {}),
         });
         return;
       }
       case "Runtime.exceptionThrown": {
         const d = p.exceptionDetails ?? {};
-        if (this.contextesExtension.has(d.executionContextId) || String(d.url ?? "").startsWith(EXTENSION_ORIGIN) || extensionStack(d.stackTrace)) return;
+        if (this.extensionContexts.has(d.executionContextId) || String(d.url ?? "").startsWith(EXTENSION_ORIGIN) || extensionStack(d.stackTrace)) return;
         const description: string | undefined = d.exception?.description;
         // `text` says how it occurred (« Uncaught », « Uncaught (in promise) »), as in Chrome's console.
         const value = description?.split("\n")[0] ?? (d.exception ? objectText(d.exception) : "");
         const circumstance: string = d.text && !value.startsWith(d.text) ? d.text : "";
         const text = [circumstance, value].filter(Boolean).join(" ") || "Exception";
         const stack = stackText(d.stackTrace) ?? (description?.includes("\n") ? description.slice(description.indexOf("\n") + 1) : undefined);
-        this.ajouter({ horodatage: p.timestamp ?? Date.now(), niveau: "error", texte: text, ...(stack ? { pile: stack } : {}) });
+        this.add({ timestamp: p.timestamp ?? Date.now(), level: "error", text: text, ...(stack ? { stack: stack } : {}) });
         return;
       }
       case "Log.entryAdded": {
@@ -133,84 +133,84 @@ export class TabBuffer {
         // The CORS message (source « javascript ») has neither a request id nor a stack, and carries the page's address: only the requested
         // address, quoted in its text, links it to the extension request.
         const text = String(e.text ?? "");
-        if (this.requetesExtension.has(e.networkRequestId) || (e.category === "cors" && [...this.requetesExtension.values()].some((u) => u && text.includes(`'${u}'`))) || String(e.url ?? "").startsWith(EXTENSION_ORIGIN) || extensionStack(e.stackTrace)) return;
+        if (this.extensionRequests.has(e.networkRequestId) || (e.category === "cors" && [...this.extensionRequests.values()].some((u) => u && text.includes(`'${u}'`))) || String(e.url ?? "").startsWith(EXTENSION_ORIGIN) || extensionStack(e.stackTrace)) return;
         const stack = stackText(e.stackTrace);
-        this.ajouter({ horodatage: e.timestamp ?? Date.now(), niveau: LOG_LEVELS[e.level] ?? "log", texte: String(e.text ?? ""), ...(stack ? { pile: stack } : {}) });
+        this.add({ timestamp: e.timestamp ?? Date.now(), level: LOG_LEVELS[e.level] ?? "log", text: String(e.text ?? ""), ...(stack ? { stack: stack } : {}) });
         return;
       }
       case "Network.requestWillBeSent": {
         // Neither an extension's request (its URL, its document, its initiator or a parent stack), nor what follows (without an entry, its events are ignored).
         const i = p.initiator ?? {};
         if ([p.request?.url, p.documentURL, i.url].some((u) => String(u ?? "").startsWith(EXTENSION_ORIGIN)) || extensionStack(i.stack)) {
-          this.requetes.delete(p.requestId);
-          this.debuts.delete(p.requestId);
-          this.requetesExtension.delete(p.requestId);
-          this.requetesExtension.set(p.requestId, String(p.request?.url ?? ""));
-          for (const id of this.requetesExtension.keys()) {
-            if (this.requetesExtension.size <= 1000) break;
-            this.requetesExtension.delete(id);
+          this.requests.delete(p.requestId);
+          this.starts.delete(p.requestId);
+          this.extensionRequests.delete(p.requestId);
+          this.extensionRequests.set(p.requestId, String(p.request?.url ?? ""));
+          for (const id of this.extensionRequests.keys()) {
+            if (this.extensionRequests.size <= 1000) break;
+            this.extensionRequests.delete(id);
           }
           return;
         }
-        this.requetesExtension.delete(p.requestId);
+        this.extensionRequests.delete(p.requestId);
         // A redirect keeps the id: the request is replaced by its continuation.
-        this.requetes.delete(p.requestId);
-        this.requetes.set(p.requestId, {
+        this.requests.delete(p.requestId);
+        this.requests.set(p.requestId, {
           id: p.requestId,
-          horodatage: p.wallTime !== undefined ? ms(p.wallTime) : Date.now(),
-          methode: p.request?.method ?? "GET",
+          timestamp: p.wallTime !== undefined ? ms(p.wallTime) : Date.now(),
+          method: p.request?.method ?? "GET",
           url: p.request?.url ?? "",
           ...(p.type ? { type: p.type } : {}),
-          enTetesRequete: { ...p.request?.headers },
-          enTetesReponse: {},
+          requestHeaders: { ...p.request?.headers },
+          responseHeaders: {},
         });
-        this.debuts.set(p.requestId, p.timestamp);
-        for (const id of this.requetes.keys()) {
-          if (this.requetes.size <= this.maxReseau) break;
-          this.requetes.delete(id);
-          this.debuts.delete(id);
+        this.starts.set(p.requestId, p.timestamp);
+        for (const id of this.requests.keys()) {
+          if (this.requests.size <= this.maxReseau) break;
+          this.requests.delete(id);
+          this.starts.delete(id);
         }
         return;
       }
       case "Network.responseReceived": {
-        const r = this.requetes.get(p.requestId);
+        const r = this.requests.get(p.requestId);
         if (!r) return;
-        r.statut = p.response?.status;
-        r.enTetesReponse = { ...p.response?.headers };
+        r.status = p.response?.status;
+        r.responseHeaders = { ...p.response?.headers };
         // The headers actually sent (cookies included) are only known here.
-        if (p.response?.requestHeaders) r.enTetesRequete = { ...p.response.requestHeaders };
+        if (p.response?.requestHeaders) r.requestHeaders = { ...p.response.requestHeaders };
         if (p.type) r.type = p.type;
         return;
       }
       case "Network.loadingFinished":
       case "Network.loadingFailed": {
-        const r = this.requetes.get(p.requestId);
+        const r = this.requests.get(p.requestId);
         if (!r) return;
-        const start = this.debuts.get(p.requestId);
-        if (start !== undefined && p.timestamp !== undefined) r.dureeMs = Math.round(ms(p.timestamp - start) * 1000) / 1000;
-        if (method === "Network.loadingFinished") r.taille = p.encodedDataLength;
-        else r.erreur = p.errorText ?? (p.canceled ? "annulée" : "échec");
+        const start = this.starts.get(p.requestId);
+        if (start !== undefined && p.timestamp !== undefined) r.durationMs = Math.round(ms(p.timestamp - start) * 1000) / 1000;
+        if (method === "Network.loadingFinished") r.size = p.encodedDataLength;
+        else r.error = p.errorText ?? (p.canceled ? "annulée" : "échec");
         return;
       }
     }
   }
 
   /** The page was reloaded (or navigated on the same site): the messages stay, with a line to flag it. */
-  rechargement(): void {
-    this.ajouter({ horodatage: Date.now(), niveau: "info", texte: "— page rechargée —" });
+  reload(): void {
+    this.add({ timestamp: Date.now(), level: "info", text: "— page rechargée —" });
   }
 
   console(): MessageConsole[] {
     return this.messages.map((m) => ({ ...m }));
   }
 
-  reseau(): NetworkRequest[] {
-    return [...this.requetes.values()].map((r) => ({ ...r, enTetesRequete: { ...r.enTetesRequete }, enTetesReponse: { ...r.enTetesReponse } }));
+  network(): NetworkRequest[] {
+    return [...this.requests.values()].map((r) => ({ ...r, requestHeaders: { ...r.requestHeaders }, responseHeaders: { ...r.responseHeaders } }));
   }
 
-  vider(): void {
+  clear(): void {
     this.messages = [];
-    this.requetes.clear();
-    this.debuts.clear();
+    this.requests.clear();
+    this.starts.clear();
   }
 }

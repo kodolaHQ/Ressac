@@ -34,9 +34,9 @@ afterEach(() => w?.close());
 const call = (name: string, args: Record<string, unknown> = {}) => callTool(w.dataDir, name, args);
 /** Opens a user tab (not the agent's) and returns its id once its page is loaded. */
 async function openTab(path: string, enable = true): Promise<string> {
-  const before = new Set(Object.keys((await state(m)).onglets));
-  const s = await dispatch(m, { type: "ouvrirOnglet", fenetreId: (await state(m)).fenetres[0]!.id, url: `${server.url}${path}`, activer: enable } as Action);
-  const id = Object.keys(s.onglets).find((x) => !before.has(x))!;
+  const before = new Set(Object.keys((await state(m)).tabs));
+  const s = await dispatch(m, { type: "ouvrirOnglet", windowId: (await state(m)).windows[0]!.id, url: `${server.url}${path}`, activate: enable } as Action);
+  const id = Object.keys(s.tabs).find((x) => !before.has(x))!;
   if (enable)
     await waitFor(m, `return gBrowser.tabs.some((t) => t.linkedBrowser.currentURI.spec.endsWith(${JSON.stringify(path)}) && !t.linkedBrowser.webProgress.isLoadingDocument)`, (v) => v === true);
   return id;
@@ -51,7 +51,7 @@ it("Refuser: the agent gets the refusal, and the page gets the keyboard back", a
   const reading = call("lire_onglet", { id });
   expect(await cardText()).toContain("L'agent veut lire l'onglet « Page A »");
   await answer("Refuser");
-  expect((await reading).texte).toBe(REFUSED);
+  expect((await reading).text).toBe(REFUSED);
   await cardGone();
   await waitFor(m, "return document.activeElement === gBrowser.selectedBrowser", (v) => v === true);
 });
@@ -60,7 +60,7 @@ it("the card covers the whole window, agent panel included, and gives the termin
   const id = await openTab("/a.html");
   // The panel opened on another tab: only that one is shared with the agent.
   await openTab("/b.html");
-  if (!(await state(m)).fenetres[0]!.panneauAgentOuvert) await dispatch(m, { type: "basculerPanneauAgent", fenetreId: (await state(m)).fenetres[0]!.id });
+  if (!(await state(m)).windows[0]!.agentPanelOpen) await dispatch(m, { type: "basculerPanneauAgent", windowId: (await state(m)).windows[0]!.id });
   await waitFor(m, "return document.getElementById('webaios-agent').getBoundingClientRect().width", (v: number) => v > 0);
   await m.execute("document.getElementById('webaios-agent').focus()");
   expect(await m.execute("return document.activeElement?.id")).toBe("webaios-agent");
@@ -86,19 +86,19 @@ it("Autoriser une fois: the page is read and the question does not come back for
   const reading = call("lire_onglet", { id });
   await cardText();
   await answer("Autoriser une fois");
-  expect((await reading).texte).toContain("Le chat dort");
+  expect((await reading).text).toContain("Le chat dort");
   await cardGone();
-  expect((await call("lire_onglet", { id })).texte).toContain("Le chat dort");
+  expect((await call("lire_onglet", { id })).text).toContain("Le chat dort");
   expect(await inUi(m, `return !!doc.querySelector(${JSON.stringify(CARD)})`)).toBe(false);
 });
 
 it("a tab never shown is loaded for reading", async () => {
   const id = await openTab("/texte.html", false);
-  expect((await state(m)).onglets[id]).toBeTruthy();
+  expect((await state(m)).tabs[id]).toBeTruthy();
   const reading = call("lire_onglet", { id });
   await cardText();
   await answer("Autoriser une fois");
-  expect((await reading).texte).toContain("Le chat dort");
+  expect((await reading).text).toContain("Le chat dort");
 });
 
 it("a tab closed during the question: refused, card gone", async () => {
@@ -106,7 +106,7 @@ it("a tab closed during the question: refused, card gone", async () => {
   const reading = call("lire_onglet", { id });
   await cardText();
   await dispatch(m, { type: "fermerOnglet", id });
-  expect((await reading).texte).toBe(REFUSED);
+  expect((await reading).text).toBe(REFUSED);
   await cardGone();
 });
 
@@ -115,11 +115,11 @@ it("a tab moved to a private space during the question: refused, card gone", asy
   const reading = call("lire_onglet", { id });
   await cardText();
   const s = await state(m);
-  const e = s.espaces.find((x) => x.id === s.fenetres[0]!.espaceActif)!;
-  await dispatch(m, { type: "reglerEspace", id: e.id, nom: e.nom, icone: e.icone, prive: true, profil: e.profil } as Action);
+  const e = s.spaces.find((x) => x.id === s.windows[0]!.activeSpace)!;
+  await dispatch(m, { type: "reglerEspace", id: e.id, name: e.name, icon: e.icon, private: true, profile: e.profile } as Action);
   const r = await reading;
-  expect(r.texte).not.toContain("Le chat dort");
-  expect(r.texte).toBe(REFUSED);
+  expect(r.text).not.toContain("Le chat dort");
+  expect(r.text).toBe(REFUSED);
   await cardGone();
 });
 
@@ -139,7 +139,7 @@ it("the access badge shows on a tab the agent reads and Couper removes it", asyn
   const again = call("lire_onglet", { id });
   await cardText();
   await answer("Refuser");
-  expect((await again).texte).toBe(REFUSED);
+  expect((await again).text).toBe(REFUSED);
   expect(await missingApi(m)).toEqual([]);
 });
 
@@ -169,7 +169,7 @@ it("a tab visited without talking to the agent: page_courante asks", async () =>
   const reading = call("page_courante");
   expect(await cardText()).toContain("L'agent veut lire l'onglet « Page B »");
   await answer("Refuser");
-  expect((await reading).texte).toBe(REFUSED);
+  expect((await reading).text).toBe(REFUSED);
 });
 
 it("sending a message from a tab shares it", async () => {
@@ -182,7 +182,7 @@ it("sending a message from a tab shares it", async () => {
   await typeText(m, "salut");
   await pressKeys(m, "Enter");
   await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.replace(/\\u00a0/g, ' ').includes('reçu: salut')", [], 10_000, "agent");
-  expect((await call("page_courante")).texte).toContain("Le chat dort");
+  expect((await call("page_courante")).text).toContain("Le chat dort");
   expect(await inUi(m, `return !!doc.querySelector(${JSON.stringify(CARD)})`)).toBe(false);
 });
 
@@ -203,9 +203,9 @@ describe("several windows", () => {
   it("a new agent session in another window resets access: the agent asks again", async () => {
     const id = await openTab("/texte.html");
     // Opening the panel on the tab gives it to the agent.
-    if (!(await state(m)).fenetres[0]!.panneauAgentOuvert) await dispatch(m, { type: "basculerPanneauAgent", fenetreId: (await state(m)).fenetres[0]!.id });
+    if (!(await state(m)).windows[0]!.agentPanelOpen) await dispatch(m, { type: "basculerPanneauAgent", windowId: (await state(m)).windows[0]!.id });
     await waitFor(m, "return !document.getElementById('webaios-agent').hidden", (v) => v === true);
-    expect((await call("lire_onglet", { id })).texte).toContain("Le chat dort");
+    expect((await call("lire_onglet", { id })).text).toContain("Le chat dort");
     const second = await newWindow(m);
     await inWindow(m, second, () => waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('prêt>')", [], 20_000, "agent"));
     const reading = call("lire_onglet", { id });
@@ -219,7 +219,7 @@ describe("several windows", () => {
     for (const deadline = Date.now() + 10_000; (await withCard()).length !== 1; await new Promise((r) => setTimeout(r, 100)))
       if (Date.now() > deadline) throw new Error(`expected one card, got ${(await withCard()).length}`);
     await inWindow(m, (await withCard())[0]!, () => answer("Refuser"));
-    expect((await reading).texte).toBe(REFUSED);
+    expect((await reading).text).toBe(REFUSED);
   });
 
   it("closing the window that shows a question moves the card to the other window; closing the last one refuses it at once", async () => {
@@ -228,9 +228,9 @@ describe("several windows", () => {
     const active = await activeId();
     const other = Object.keys(handles).find((x) => x !== active)!;
     // The tab lives in the window that stays: closing the card's window must not close it.
-    const before = new Set(Object.keys((await state(m)).onglets));
-    const s = await dispatch(m, { type: "ouvrirOnglet", fenetreId: other, url: `${server.url}/a.html` });
-    const id = Object.keys(s.onglets).find((x) => !before.has(x))!;
+    const before = new Set(Object.keys((await state(m)).tabs));
+    const s = await dispatch(m, { type: "ouvrirOnglet", windowId: other, url: `${server.url}/a.html` });
+    const id = Object.keys(s.tabs).find((x) => !before.has(x))!;
     let settled = 0;
     const reading = call("lire_onglet", { id }).finally(() => (settled = Date.now()));
     await inWindow(m, handles[active]!, cardText);
@@ -241,7 +241,7 @@ describe("several windows", () => {
     expect(settled).toBe(0);
     const closed = Date.now();
     await m.execute("window.close()");
-    expect((await reading).texte).toBe(REFUSED);
+    expect((await reading).text).toBe(REFUSED);
     expect(settled - closed).toBeLessThan(2000);
   });
 
@@ -250,8 +250,8 @@ describe("several windows", () => {
     await pressClosing(m, "Meta+Shift+w");
     await waitWindowCount(m, 0);
     const start = Date.now();
-    expect((await call("lire_onglet", { id })).texte).toBe(REFUSED);
+    expect((await call("lire_onglet", { id })).text).toBe(REFUSED);
     expect(Date.now() - start).toBeLessThan(2000);
-    expect((await call("page_courante")).texte).toBe("Aucun onglet actif.");
+    expect((await call("page_courante")).text).toBe("Aucun onglet actif.");
   });
 });

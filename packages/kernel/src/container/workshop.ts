@@ -131,70 +131,70 @@ export function orphanStopScript(): string {
 export const VARIABLE_APPLICATION = "WEBAIOS_APP";
 
 export class Workshop {
-  private readonly chemins: SpacePaths;
-  private readonly executer: Runner;
+  private readonly paths: SpacePaths;
+  private readonly run: Runner;
   private readonly docker: string | null;
-  private readonly dossierDocker: string;
+  private readonly dockerFolder: string;
   /** Startup in progress, shared: two windows opening an agent do not build the image twice. */
-  private demarrage: Promise<WorkshopState> | null = null;
+  private startup: Promise<WorkshopState> | null = null;
 
-  constructor(o: { chemins: SpacePaths; executer?: Runner; docker?: string | null; dossierDocker?: string }) {
-    this.dossierDocker = o.dossierDocker ?? DEFAULT_DOCKER_FOLDER;
-    this.chemins = o.chemins;
-    this.executer = o.executer ?? defaultRunner;
+  constructor(o: { paths: SpacePaths; run?: Runner; docker?: string | null; dockerFolder?: string }) {
+    this.dockerFolder = o.dockerFolder ?? DEFAULT_DOCKER_FOLDER;
+    this.paths = o.paths;
+    this.run = o.run ?? defaultRunner;
     this.docker = o.docker === undefined ? findDocker() : o.docker;
   }
 
-  private lancer(args: string[], delayMs?: number) {
-    return this.executer(this.docker!, args, delayMs ? { delaiMs: delayMs } : undefined);
+  private launch(args: string[], delayMs?: number) {
+    return this.run(this.docker!, args, delayMs ? { delayMs: delayMs } : undefined);
   }
 
-  async etat(): Promise<WorkshopState> {
-    if (!this.docker || (await this.lancer(["info"], PROBE_DELAY_MS)).code !== 0) return "docker-absent";
-    const r = await this.lancer(["inspect", "-f", "{{.State.Running}}", containerName()], PROBE_DELAY_MS);
+  async state(): Promise<WorkshopState> {
+    if (!this.docker || (await this.launch(["info"], PROBE_DELAY_MS)).code !== 0) return "docker-absent";
+    const r = await this.launch(["inspect", "-f", "{{.State.Running}}", containerName()], PROBE_DELAY_MS);
     if (r.code !== 0) return "absent";
     return r.stdout.trim() === "true" ? "demarre" : "arrete";
   }
 
   /** Is the existing container mounted on the right root and built from the current Dockerfile? */
-  private async conteneurAJour(hash: string): Promise<boolean> {
+  private async containerUpToDate(hash: string): Promise<boolean> {
     const format = `{{range .Mounts}}{{if eq .Destination "${CONTAINER_PATH}"}}{{.Source}}{{end}}{{end}}|{{index .Config.Labels "${HASH_LABEL}"}}`;
-    const r = await this.lancer(["inspect", "-f", format, containerName()], PROBE_DELAY_MS);
+    const r = await this.launch(["inspect", "-f", format, containerName()], PROBE_DELAY_MS);
     const [source = "", label = ""] = r.stdout.trim().split("|");
-    return r.code === 0 && normalize(source) === normalize(this.chemins.racine) && label === hash;
+    return r.code === 0 && normalize(source) === normalize(this.paths.root) && label === hash;
   }
 
-  assurerDemarre(): Promise<WorkshopState> {
-    this.demarrage ??= this.demarrer().finally(() => (this.demarrage = null));
-    return this.demarrage;
+  ensureStarted(): Promise<WorkshopState> {
+    this.startup ??= this.start().finally(() => (this.startup = null));
+    return this.startup;
   }
 
-  private async demarrer(): Promise<WorkshopState> {
-    let state = await this.etat();
+  private async start(): Promise<WorkshopState> {
+    let state = await this.state();
     if (state === "docker-absent") return state;
-    const hash = dockerfileHash(this.dossierDocker);
+    const hash = dockerfileHash(this.dockerFolder);
     // A container created on another folder or with an old Dockerfile is recreated; /workspace and
     // the credentials volume are kept, only the container layer is lost.
-    if (state !== "absent" && !(await this.conteneurAJour(hash))) {
-      await this.lancer(["rm", "-f", containerName()], PROBE_DELAY_MS);
+    if (state !== "absent" && !(await this.containerUpToDate(hash))) {
+      await this.launch(["rm", "-f", containerName()], PROBE_DELAY_MS);
       state = "absent";
     }
     if (state === "demarre") return state;
     if (state === "arrete") {
-      await this.lancer(["start", containerName()], PROBE_DELAY_MS);
-      return this.etat();
+      await this.launch(["start", containerName()], PROBE_DELAY_MS);
+      return this.state();
     }
-    const image = await this.lancer(["image", "inspect", "-f", `{{index .Config.Labels "${HASH_LABEL}"}}`, IMAGE], PROBE_DELAY_MS);
+    const image = await this.launch(["image", "inspect", "-f", `{{index .Config.Labels "${HASH_LABEL}"}}`, IMAGE], PROBE_DELAY_MS);
     if (image.code !== 0 || image.stdout.trim() !== hash) {
-      const build = await this.lancer(["build", "-t", IMAGE, "--label", `${HASH_LABEL}=${hash}`, "-f", dockerfile(this.dossierDocker), this.dossierDocker], BUILD_DELAY_MS);
+      const build = await this.launch(["build", "-t", IMAGE, "--label", `${HASH_LABEL}=${hash}`, "-f", dockerfile(this.dockerFolder), this.dockerFolder], BUILD_DELAY_MS);
       if (build.code !== 0) throw new Error(`Construction de l'image ${IMAGE} impossible : ${build.stderr}`);
     }
     const ports = containerPortRange().join("-");
-    const run = await this.lancer([
+    const run = await this.launch([
       "run", "-d",
       "--name", containerName(),
       "--add-host", "host.docker.internal:host-gateway",
-      "-v", `${this.chemins.racine}:${CONTAINER_PATH}`,
+      "-v", `${this.paths.root}:${CONTAINER_PATH}`,
       "-v", `${VOLUME_HOME}:/home/node`,
       "-p", `127.0.0.1:${ports}:${ports}`,
       // AGENTS.md tells the agent to keep its hand-run servers in this range.
@@ -205,10 +205,10 @@ export class Workshop {
     ], PROBE_DELAY_MS);
     if (run.code !== 0) {
       // A failed run (port already taken…) can leave the container created without network: the next start must not reuse it.
-      await this.lancer(["rm", "-f", containerName()], PROBE_DELAY_MS);
+      await this.launch(["rm", "-f", containerName()], PROBE_DELAY_MS);
       throw new Error(`Démarrage du conteneur ${containerName()} impossible : ${run.stderr}`);
     }
-    return this.etat();
+    return this.state();
   }
 
   /**
@@ -216,7 +216,7 @@ export class Workshop {
    * engine folder (that of the harvester and its modules), read-only, and talks to the kernel only through its standard input and
    * output (`-i`). `delaiS`: the container is stopped after this delay (+5 s to finish).
    */
-  commandeRecolte(owner: string | Owner, filesFolder: string, engine: string, delayS: number = HARVEST_DELAY_S): string[] {
+  harvestCommand(owner: string | Owner, filesFolder: string, engine: string, delayS: number = HARVEST_DELAY_S): string[] {
     if (!this.docker) throw new Error("Docker introuvable");
     // « : » would change the meaning of -v (target, options): such a path cannot be mounted safely.
     for (const c of [filesFolder, engine]) if (c.includes(":")) throw new Error(`chemin non montable : ${c}`);
@@ -237,30 +237,30 @@ export class Workshop {
   }
 
   /** Killing the `docker run` client is not enough: the container is force-deleted. */
-  async supprimerRecolte(owner: string | Owner): Promise<void> {
-    if (this.docker) await this.lancer(["rm", "-f", harvestName(owner)], PROBE_DELAY_MS);
+  async deleteHarvest(owner: string | Owner): Promise<void> {
+    if (this.docker) await this.launch(["rm", "-f", harvestName(owner)], PROBE_DELAY_MS);
   }
 
   /**
    * Interactive agent session: the shell notes its PID in the container before becoming the agent (exec), so
    * that `arreterSession` can kill it there. Killing the local `docker exec` client would leave the agent running.
    */
-  commandeSession(id: string, argv: string[]): string[] {
+  sessionCommand(id: string, argv: string[]): string[] {
     const f = sessionFile(id);
-    return this.commandeExec(["sh", "-c", `echo $$ > ${f}; exec "$@"`, "webaios-session", ...argv], { interactif: true, env: { [VARIABLE_SESSION]: id } });
+    return this.execCommand(["sh", "-c", `echo $$ > ${f}; exec "$@"`, "webaios-session", ...argv], { interactive: true, env: { [VARIABLE_SESSION]: id } });
   }
 
-  async arreterSession(id: string): Promise<void> {
+  async stopSession(id: string): Promise<void> {
     if (!this.docker) return;
-    await this.lancer(["exec", containerName(), "sh", "-c", sessionStopScript(sessionFile(id), id)], PROBE_DELAY_MS);
+    await this.launch(["exec", containerName(), "sh", "-c", sessionStopScript(sessionFile(id), id)], PROBE_DELAY_MS);
   }
 
   /**
    * At app launch: the agents (and their servers) of a previous app that could not stop them (killed outright,
    * crashed) have no window anymore. Only one app runs at a time on the workshop.
    */
-  async arreterSessionsOrphelines(): Promise<void> {
-    if (this.docker) await this.lancer(["exec", containerName(), "sh", "-c", orphanStopScript()], PROBE_DELAY_MS);
+  async stopOrphanSessions(): Promise<void> {
+    if (this.docker) await this.launch(["exec", containerName(), "sh", "-c", orphanStopScript()], PROBE_DELAY_MS);
   }
 
   /**
@@ -268,28 +268,28 @@ export class Workshop {
    * log (rewritten at each launch) then evaluates the manifest's command: the folder and the command go as
    * arguments ($1, $2), never pasted into the script.
    */
-  commandeApplication(folder: string, command: string, port: number): string[] {
+  appCommand(folder: string, command: string, port: number): string[] {
     appFolder(folder);
     const logs = `${CONTAINER_PATH}/.webaios/journaux`;
-    return this.commandeExec(
+    return this.execCommand(
       ["sh", "-c", `mkdir -p ${logs}; exec >"${logs}/$1.log" 2>&1; eval "$2"`, "webaios-app", folder, command.replaceAll("{port}", String(port))],
-      { interactif: false, env: { [VARIABLE_APPLICATION]: folder, PORT: String(port) }, dossier: `${CONTAINER_PATH}/projets/${folder}` },
+      { interactive: false, env: { [VARIABLE_APPLICATION]: folder, PORT: String(port) }, folder: `${CONTAINER_PATH}/projets/${folder}` },
     );
   }
 
   /** Stops app `dossier`: any process that carries its mark, even detached from the shell that launched it. */
-  async arreterApplication(folder: string): Promise<void> {
-    if (this.docker) await this.lancer(["exec", containerName(), "sh", "-c", escalate(marks(`${VARIABLE_APPLICATION}=${literal(appFolder(folder))}`)).join("\n")], PROBE_DELAY_MS);
+  async stopApp(folder: string): Promise<void> {
+    if (this.docker) await this.launch(["exec", containerName(), "sh", "-c", escalate(marks(`${VARIABLE_APPLICATION}=${literal(appFolder(folder))}`)).join("\n")], PROBE_DELAY_MS);
   }
 
   /** At browser launch: apps of a previous life have nobody left to follow them. */
-  async arreterApplicationsOrphelines(): Promise<void> {
-    if (this.docker) await this.lancer(["exec", containerName(), "sh", "-c", escalate(marks(`${VARIABLE_APPLICATION}=.*`)).join("\n")], PROBE_DELAY_MS);
+  async stopOrphanApps(): Promise<void> {
+    if (this.docker) await this.launch(["exec", containerName(), "sh", "-c", escalate(marks(`${VARIABLE_APPLICATION}=.*`)).join("\n")], PROBE_DELAY_MS);
   }
 
-  commandeExec(argv: string[], o: { interactif: boolean; env?: Record<string, string>; dossier?: string }): string[] {
+  execCommand(argv: string[], o: { interactive: boolean; env?: Record<string, string>; folder?: string }): string[] {
     if (!this.docker) throw new Error("Docker introuvable");
     const env = Object.entries(o.env ?? {}).flatMap(([k, v]) => ["-e", `${k}=${v}`]);
-    return [this.docker, "exec", ...(o.interactif ? ["-it"] : []), ...env, "-w", o.dossier ?? CONTAINER_PATH, containerName(), ...argv];
+    return [this.docker, "exec", ...(o.interactive ? ["-it"] : []), ...env, "-w", o.folder ?? CONTAINER_PATH, containerName(), ...argv];
   }
 }

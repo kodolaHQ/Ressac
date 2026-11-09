@@ -93,11 +93,11 @@ const inHome = <T = unknown>(id: string, body: string, args: unknown[] = []) =>
     args,
   );
 /** What the home received (its `recus`), once it has received something. */
-const received = (id: string) => inHome<{ type: string; n?: number; data?: string | null; domaine?: string }[]>(id, "return fw.recus ? JSON.parse(JSON.stringify(fw.recus)) : null;");
+const received = (id: string) => inHome<{ type: string; n?: number; data?: string | null; domain?: string }[]>(id, "return fw.recus ? JSON.parse(JSON.stringify(fw.recus)) : null;");
 /** Posts a command to the home's probe, from the chrome (as the bar's own messages go). */
 const probe = (id: string, cmd: object) => inHome(id, `home.contentWindow.postMessage(arguments[0], "*"); return true;`, [cmd]);
 /** The home sends `m` to the bar (as the agent's code would). */
-const ask = (id: string, msg: object) => probe(id, { essai: "demander", m: msg });
+const ask = (id: string, msg: object) => probe(id, { attempt: "demander", m: msg });
 
 /** Waits for the home to be loaded and to have received something; returns once so. */
 async function homeReady(id: string): Promise<void> {
@@ -163,38 +163,38 @@ function writeMemory(id: string, current?: string): void {
   const when = new Date().toISOString();
   writeFileSync(
     path.join(dir, "memoire.json"),
-    JSON.stringify({ version: 1, valeurs: { "encours.the-bear": { valeur: { titre: "The Bear", episode: "S2E4" }, adresse: "/serie/the-bear?e=4", quand: when } }, positions: {} }),
+    JSON.stringify({ version: 1, values: { "encours.the-bear": { value: { title: "The Bear", episode: "S2E4" }, url: "/serie/the-bear?e=4", when: when } }, positions: {} }),
   );
-  if (current) writeFileSync(path.join(dir, "adresse.json"), JSON.stringify({ actuel: current, anciens: ["vidola-a.localhost"], depuis: when }));
+  if (current) writeFileSync(path.join(dir, "adresse.json"), JSON.stringify({ current: current, previous: ["vidola-a.localhost"], since: when }));
 }
 
 beforeAll(async () => {
   server = await startSitesServer();
-  server.definir("vidola-a.localhost", "/serie/the-bear", "<title>The Bear</title>");
-  server.definir("vidola-b.localhost", "/serie/the-bear", "<title>The Bear</title>");
+  server.define("vidola-a.localhost", "/serie/the-bear", "<title>The Bear</title>");
+  server.define("vidola-b.localhost", "/serie/the-bear", "<title>The Bear</title>");
   const png = (_req: unknown, res: { writeHead(s: number, h: object): { end(b: Buffer): void } }) => res.writeHead(200, { "Content-Type": "image/png" }).end(PNG);
-  server.definir("vidola-a.localhost", "/affiche.png", png as never);
-  server.definir("pub.localhost", "/pub.png", png as never);
-  server.definir("vidola-a.localhost", "/img/123", (_req, res) => res.writeHead(302, { Location: "/affiche.png" }).end());
-  server.definir("vidola-a.localhost", "/img/pub", (_req, res) => res.writeHead(302, { Location: server.url("pub.localhost", "/pub.png") }).end());
-  for (let i = 0; i < 5; i++) server.definir("vidola-a.localhost", `/boucle/${i}`, (_req, res) => res.writeHead(302, { Location: `/boucle/${i + 1}` }).end());
+  server.define("vidola-a.localhost", "/affiche.png", png as never);
+  server.define("pub.localhost", "/pub.png", png as never);
+  server.define("vidola-a.localhost", "/img/123", (_req, res) => res.writeHead(302, { Location: "/affiche.png" }).end());
+  server.define("vidola-a.localhost", "/img/pub", (_req, res) => res.writeHead(302, { Location: server.url("pub.localhost", "/pub.png") }).end());
+  for (let i = 0; i < 5; i++) server.define("vidola-a.localhost", `/boucle/${i}`, (_req, res) => res.writeHead(302, { Location: `/boucle/${i + 1}` }).end());
   dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
   profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
-  const declaration = { nom: "Vidola", adresse: url("/"), domaines: ["vidola-a.localhost"], connexion: ["compte.localhost"] };
+  const declaration = { name: "Vidola", url: url("/"), domains: ["vidola-a.localhost"], login: ["compte.localhost"] };
   // Written before the launch: the watcher sees no initial event that would reread the apps on the way.
   // Documents with scripts that would run without the home's CSP (no meta in them) if the frame loaded them.
   const svg = `<svg xmlns="http://www.w3.org/2000/svg"><image href="${url("/espion-svg-img")}" width="1" height="1"/><script>fetch("${url("/espion-svg-fetch")}")</script></svg>`;
   const xhtml = `<html xmlns="http://www.w3.org/1999/xhtml"><body><img src="${url("/espion-xhtml-img")}"/><script>fetch("${url("/espion-xhtml-fetch")}")</script></body></html>`;
-  writeSite(dataDir, "vidola", { declaration, fichiers: { "accueil/index.html": HOME, "accueil/img/logo.png": PNG, "accueil/app.js": "window.appJs = 1;", "accueil/style.css": "p { color: red; }", "accueil/x.svg": svg, "accueil/x.xhtml": xhtml } });
-  writeSite(dataDir, "demenage", { declaration: { ...declaration, nom: "Déménagé" }, fichiers: { "accueil/index.html": HOME } });
-  writeSite(dataDir, "auto", { declaration: { ...declaration, nom: "Auto" }, fichiers: { "accueil/index.html": AUTO } });
-  writeSite(dataDir, "tube", { declaration: { ...declaration, nom: "Tube" }, fichiers: { "accueil/index.html": "<p>accueil</p>" } });
-  writeSite(dataDir, "autre", { declaration: { nom: "Autre", adresse: url("/", "vidola-b.localhost"), domaines: ["vidola-b.localhost"] }, fichiers: { "accueil/index.html": "<p>autre</p>" } });
+  writeSite(dataDir, "vidola", { declaration, files: { "accueil/index.html": HOME, "accueil/img/logo.png": PNG, "accueil/app.js": "window.appJs = 1;", "accueil/style.css": "p { color: red; }", "accueil/x.svg": svg, "accueil/x.xhtml": xhtml } });
+  writeSite(dataDir, "demenage", { declaration: { ...declaration, name: "Déménagé" }, files: { "accueil/index.html": HOME } });
+  writeSite(dataDir, "auto", { declaration: { ...declaration, name: "Auto" }, files: { "accueil/index.html": AUTO } });
+  writeSite(dataDir, "tube", { declaration: { ...declaration, name: "Tube" }, files: { "accueil/index.html": "<p>accueil</p>" } });
+  writeSite(dataDir, "autre", { declaration: { name: "Autre", url: url("/", "vidola-b.localhost"), domains: ["vidola-b.localhost"] }, files: { "accueil/index.html": "<p>autre</p>" } });
   writeMemory("vidola");
   writeMemory("auto");
   writeMemory("demenage", "vidola-b.localhost");
   const actor = testActor(profile);
-  w = await launchWebAiOs({ dataDir, profile, env: { WEBAIOS_TEST_ADRESSES_LOCALES: "1", ...actor.env }, prefs: actor.prefs });
+  w = await launchWebAiOs({ dataDir, profile, env: { WEBAIOS_TEST_LOCAL_ADDRESSES: "1", ...actor.env }, prefs: actor.prefs });
   m = w.marionette;
   await m.setContext("chrome");
   await waitReady(m);
@@ -202,11 +202,11 @@ beforeAll(async () => {
 }, 90_000);
 afterAll(async () => {
   await w?.close();
-  await server?.fermer();
+  await server?.close();
   if (dataDir) await rm(dataDir, { recursive: true, force: true });
   if (profile) await rm(profile, { recursive: true, force: true });
 });
-beforeEach(() => void server.requetes.splice(0));
+beforeEach(() => void server.requests.splice(0));
 afterEach(async () => {
   try {
     expect(await missingApi(m)).toEqual([]);
@@ -247,25 +247,25 @@ describe("site app home screen", () => {
 
   it("it asks for « /serie/the-bear?e=4 »: the site view goes there on the current domain", async () => {
     await openHome("demenage");
-    await expect.poll(async () => ((await received("demenage")) ?? []).find((x) => x.type === "memoire")).toMatchObject({ domaine: "vidola-b.localhost" });
+    await expect.poll(async () => ((await received("demenage")) ?? []).find((x) => x.type === "memoire")).toMatchObject({ domain: "vidola-b.localhost" });
     await clickOpen("demenage", "/serie/the-bear?e=4");
     await expect.poll(async () => (await viewState("demenage"))?.url, { timeout: 10_000 }).toBe(url("/serie/the-bear?e=4", "vidola-b.localhost"));
     expect((await viewState("demenage"))!.visible).toBe(true);
-    expect(server.requetes.filter((r) => r.hote === "vidola-a.localhost")).toEqual([]);
+    expect(server.requests.filter((r) => r.host === "vidola-a.localhost")).toEqual([]);
   });
 
   it("it asks for javascript:alert(1), //pub.localhost/x, https://pub.localhost/: nothing opens", async () => {
     await openHome();
     // After a real click in the home: refused all the same.
     for (const address of ["javascript:alert(1)", "//pub.localhost/x", "https://pub.localhost/", url("/x", "pub.localhost"), "/\\pub.localhost/x", "x".repeat(2001)]) await clickOpen("vidola", address);
-    await ask("vidola", { type: "ouvrir", adresse: "javascript:alert(1)" });
+    await ask("vidola", { type: "ouvrir", url: "javascript:alert(1)" });
     // The same refusals through the bar's API (what the relay calls).
     const api = (a: string) => inSiteBar<boolean>(m, "vidola", "return await doc.defaultView.webaios.site.ouvrir(arguments[0]);", [a]);
     expect(await api("javascript:alert(1)")).toBe(false);
     expect(await api("https://pub.localhost/")).toBe(false);
     await sleep(500);
     expect(await viewState("vidola")).toEqual({ url: "", visible: false });
-    expect(server.requetes).toEqual([]);
+    expect(server.requests).toEqual([]);
     // The refusals consumed nothing: an address of the site opens right after a click.
     await clickOpen("vidola", "/serie/the-bear?e=4");
     await expect.poll(async () => (await viewState("vidola"))?.url, { timeout: 10_000 }).toBe(url("/serie/the-bear?e=4"));
@@ -289,15 +289,15 @@ describe("site app home screen", () => {
   it("fetch from the home to the test server: no request received; it does not leave its home", async () => {
     await openHome();
     const spy = (c: string) => url(`/espion-${c}`);
-    await probe("vidola", { essai: "fetch", url: spy("fetch") });
+    await probe("vidola", { attempt: "fetch", url: spy("fetch") });
     await expect.poll(() => inHome("vidola", "return fw.fetchResult ?? null;")).toBe("refused");
-    await probe("vidola", { essai: "fuites", img: spy("img"), beacon: spy("beacon"), form: spy("form") });
+    await probe("vidola", { attempt: "fuites", img: spy("img"), beacon: spy("beacon"), form: spy("form") });
     // The frame navigating to the web, then to another app's home: refused.
-    await probe("vidola", { essai: "aller", url: spy("nav") });
+    await probe("vidola", { attempt: "aller", url: spy("nav") });
     await sleep(500);
-    await probe("vidola", { essai: "aller", url: "resource://webaios-site-autre/1/index.html" }).catch(() => {});
+    await probe("vidola", { attempt: "aller", url: "resource://webaios-site-autre/1/index.html" }).catch(() => {});
     await sleep(800);
-    expect(server.requetes).toEqual([]);
+    expect(server.requests).toEqual([]);
     const urls = await inSiteBar<string[]>(m, "vidola", `return [...doc.querySelectorAll("iframe")].map((f) => String(f.contentDocument?.documentURI ?? ""));`);
     const own = `resource://${new URL(await inHome<string>("vidola", "return home.src;")).host}`;
     expect(urls.every((u) => u.startsWith(`${own}/`)), urls.join(" ")).toBe(true);
@@ -314,12 +314,12 @@ describe("site app home screen", () => {
     // The home's own code: Firefox refuses its navigations to resource: (« Access … from script denied »), a real
     // click on a link and a <meta refresh> do nothing (measured).
     for (const target of ["x.svg", "x.xhtml", "img/logo.png", "resource://webaios-site-autre/1/index.html"]) {
-      await probe("vidola", { essai: "aller", url: target });
+      await probe("vidola", { attempt: "aller", url: target });
       await same(`aller ${target}`);
     }
-    await probe("vidola", { essai: "refresh", url: "x.svg" });
+    await probe("vidola", { attempt: "refresh", url: "x.svg" });
     await same("refresh");
-    await probe("vidola", { essai: "lien", url: "x.svg" });
+    await probe("vidola", { attempt: "lien", url: "x.svg" });
     await sleep(200);
     await realClick("vidola", "#lien");
     await same("lien");
@@ -328,7 +328,7 @@ describe("site app home screen", () => {
       await inSiteBar(m, "vidola", `const h = doc.querySelector('[data-testid="site-cadre-accueil"]'); h.contentWindow.location.href = new URL(arguments[0], h.src).href; return 1;`, [target]);
       await same(`chrome ${target}`);
     }
-    expect(server.requetes).toEqual([]);
+    expect(server.requests).toEqual([]);
   });
 
   it("a site image asked for comes back as data: (with the app's cookies); a pub.localhost image comes back null", async () => {
@@ -344,9 +344,9 @@ describe("site app home screen", () => {
     const images = (await received("vidola"))!.filter((x) => x.type === "image");
     expect(images.find((x) => x.n === 1)?.data).toBe(`data:image/png;base64,${PNG.toString("base64")}`);
     expect(images.find((x) => x.n === 2)?.data).toBeNull();
-    expect(server.requetes.map((r) => [r.hote, r.chemin, r.cookie])).toEqual([["vidola-a.localhost", "/affiche.png", "essai=appli"]]);
+    expect(server.requests.map((r) => [r.host, r.path, r.cookie])).toEqual([["vidola-a.localhost", "/affiche.png", "essai=appli"]]);
     // Its own images (accueil/img/) load from the served copy, without going through WebAiOs.
-    await probe("vidola", { essai: "logo", url: "img/logo.png" });
+    await probe("vidola", { attempt: "logo", url: "img/logo.png" });
     await expect.poll(() => inHome("vidola", "return fw.logo ?? null;")).toBe(1);
   });
 
@@ -361,22 +361,22 @@ describe("site app home screen", () => {
     await expect.poll(async () => (await viewState("vidola"))?.visible).toBe(false);
     // The home comes back (a new frame) and reads the memory again.
     await expect.poll(() => inHome("vidola", `return home.contentDocument.getElementById("series").textContent;`)).toContain("The Bear");
-    const before = server.requetes.length;
+    const before = server.requests.length;
     await barClick("vidola", "site-entrer");
     await expect.poll(async () => (await viewState("vidola"))?.visible).toBe(true);
     expect((await viewState("vidola"))!.url).toBe(u);
     expect(await inSiteView(m, "vidola", "return window.marque;")).toBe(7);
-    expect(server.requetes.length).toBe(before);
+    expect(server.requests.length).toBe(before);
   });
 
   it("an « ouvrir » sent as the home loads is refused; the same after a click in the home opens", async () => {
     await openHome("auto");
     // Without a gesture, even asked again by the home's code (a click it simulates included): nothing opens.
-    await ask("auto", { type: "ouvrir", adresse: "/serie/the-bear?e=9" });
+    await ask("auto", { type: "ouvrir", url: "/serie/the-bear?e=9" });
     await inHome("auto", `home.contentDocument.getElementById("ouvrir").click(); return true;`);
     await sleep(1500);
     expect(await viewState("auto")).toEqual({ url: "", visible: false });
-    expect(server.requetes).toEqual([]);
+    expect(server.requests).toEqual([]);
     // A real WebDriver click in the frame opens; ⌂ does not go back to the site: the home reloaded asks again, to no effect.
     await clickOpen("auto", "/serie/the-bear?e=4");
     await expect.poll(async () => (await viewState("auto"))?.url, { timeout: 10_000 }).toBe(url("/serie/the-bear?e=4"));
@@ -389,7 +389,7 @@ describe("site app home screen", () => {
   it("a web page in a tab loads no home file: neither the guessable forms nor the served URL", async () => {
     await openHome();
     const real = `resource://${new URL(await inHome<string>("vidola", "return home.src;")).host}`;
-    server.definir("pub.localhost", "/sonde", "<title>sonde</title><p>sonde</p>");
+    server.define("pub.localhost", "/sonde", "<title>sonde</title><p>sonde</p>");
     const probeFn = url("/sonde", "pub.localhost");
     await inStore(`store.dispatch({ type: "ouvrirOnglet", fenetreId: store.state.fenetres[0].id, url: arguments[0], activer: true });`, [probeFn]);
     await expect.poll(() => m.execute<boolean>(`const b = gBrowser.selectedBrowser; return b.currentURI.spec === arguments[0] && !b.webProgress.isLoadingDocument;`, [probeFn]), { timeout: 15_000 }).toBe(true);
@@ -414,7 +414,7 @@ describe("site app home screen", () => {
     );
     expect(Object.entries(results).filter(([, v]) => v !== "error" && v !== "undefined")).toEqual([]);
     // The served copy itself still loads in its own frame.
-    await probe("vidola", { essai: "logo", url: "img/logo.png" });
+    await probe("vidola", { attempt: "logo", url: "img/logo.png" });
     await expect.poll(() => inHome("vidola", "return fw.logo ?? null;")).toBe(1);
   });
 
@@ -433,10 +433,10 @@ describe("site app home screen", () => {
     expect(images.find((x) => x.n === 1)?.data).toBe(`data:image/png;base64,${PNG.toString("base64")}`);
     expect(images.find((x) => x.n === 2)?.data).toBeNull();
     expect(images.find((x) => x.n === 3)?.data).toBeNull();
-    const seen = server.requetes.map((r) => `${r.hote}${r.chemin}`);
+    const seen = server.requests.map((r) => `${r.host}${r.path}`);
     expect(seen.filter((v) => v.startsWith("pub.localhost"))).toEqual([]);
     // The redirect followed keeps the app's cookies; the loop stops after 3 hops.
-    expect(server.requetes.find((r) => r.chemin === "/affiche.png")?.cookie).toBe("essai=appli");
+    expect(server.requests.find((r) => r.path === "/affiche.png")?.cookie).toBe("essai=appli");
     expect(seen.filter((v) => v.includes("/boucle/"))).toEqual(["/boucle/0", "/boucle/1", "/boucle/2", "/boucle/3"].map((c) => `vidola-a.localhost${c}`));
   });
 });

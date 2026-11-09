@@ -43,11 +43,11 @@ describe("prompts anchor on the sidebar", () => {
 
   /** Opens `path` in a WebAiOs tab, waits until it is loaded; returns the tab id. */
   async function open(path: string): Promise<string> {
-    const before = new Set(Object.keys((await state(m)).onglets));
+    const before = new Set(Object.keys((await state(m)).tabs));
     const url = server.url + path;
-    const s = await dispatch(m, { type: "ouvrirOnglet", fenetreId: (await state(m)).fenetres[0]!.id, url });
+    const s = await dispatch(m, { type: "ouvrirOnglet", windowId: (await state(m)).windows[0]!.id, url });
     await waitFor(m, `return gBrowser.selectedBrowser.currentURI.spec === ${JSON.stringify(url)} && !gBrowser.selectedBrowser.webProgress.isLoadingDocument`, (v) => v === true);
-    return Object.keys(s.onglets).find((id) => !before.has(id))!;
+    return Object.keys(s.tabs).find((id) => !before.has(id))!;
   }
 
   beforeAll(async () => {

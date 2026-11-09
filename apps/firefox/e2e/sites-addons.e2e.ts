@@ -79,13 +79,13 @@ let dataDir: string;
 let profile: string;
 
 const url = (p: string, host = "vidola-a.localhost") => server.url(host, p);
-const vidola = (extra: object = {}) => ({ nom: "Vidola", adresse: url("/pubs"), domaines: ["vidola-a.localhost"], connexion: ["compte.localhost"], ...extra });
+const vidola = (extra: object = {}) => ({ name: "Vidola", url: url("/pubs"), domains: ["vidola-a.localhost"], login: ["compte.localhost"], ...extra });
 /** An app with a home screen (the « accueil » view on opening). */
-const withHome = (): SiteTest => ({ declaration: { ...vidola(), nom: "Tube" }, fichiers: { "accueil/index.html": "<p>accueil</p>" } });
+const withHome = (): SiteTest => ({ declaration: { ...vidola(), name: "Tube" }, files: { "accueil/index.html": "<p>accueil</p>" } });
 /** Tweaks without an grant, so the grant card shows on opening. */
 const withCard = (): SiteTest => ({
-  declaration: { ...vidola({ retouches: [{ correspond: ["/pubs"], js: ["a.js"] }] }), nom: "Carte" },
-  fichiers: { "retouches/a.js": 'document.body.dataset.retouche = "oui";' },
+  declaration: { ...vidola({ tweaks: [{ matches: ["/pubs"], js: ["a.js"] }] }), name: "Carte" },
+  files: { "retouches/a.js": 'document.body.dataset.retouche = "oui";' },
 });
 
 const inStore = <T = unknown>(body: string, args: unknown[] = []) =>
@@ -93,7 +93,7 @@ const inStore = <T = unknown>(body: string, args: unknown[] = []) =>
 const openSite = (id: string) => inStore(`await store.agent.request("sites.agir", { id: arguments[0], action: "ouvrir", fenetre: store.state.fenetres[0].id });`, [id]);
 const viewUrl = (id = "vidola") => m.execute<string>(`const u = ${siteWindowExpr(id)}?.gBrowser?.selectedBrowser.currentURI?.spec ?? ""; return u === "about:blank" ? "" : u;`);
 const view = <T = unknown>(expr: string, id = "vidola") => inSiteView<T>(m, id, `return ${expr};`).catch(() => null);
-const siteState = (id = "vidola") => m.execute<{ vue: string }>(`return JSON.parse(JSON.stringify(${siteWindowExpr(id)}.webaiosSiteWindow.state()));`);
+const siteState = (id = "vidola") => m.execute<{ view: string }>(`return JSON.parse(JSON.stringify(${siteWindowExpr(id)}.webaiosSiteWindow.state()));`);
 const stripButtons = (id = "vidola") => inSiteBar<number>(m, id, `return doc.querySelectorAll(${JSON.stringify(STRIP_BUTTON)}).length;`);
 const tabCount = (id = "vidola") => m.execute<number>(`return ${siteWindowExpr(id)}.gBrowser.tabs.length;`);
 const popupExpr = (id: string) => `${siteWindowExpr(id)}.document.querySelector("browser.webextension-popup-browser")`;
@@ -105,7 +105,7 @@ async function start(o: { sites?: Record<string, SiteTest>; granted?: string[] }
   for (const [id, s] of Object.entries(sites)) writeSite(dataDir, id, s);
   for (const id of o.granted ?? []) await grantSite(dataDir, id, sites[id]!.declaration as object);
   const actor = testActor(profile);
-  w = await launchWebAiOs({ dataDir, profile, env: { WEBAIOS_TEST_ADRESSES_LOCALES: "1", ...actor.env }, prefs: actor.prefs });
+  w = await launchWebAiOs({ dataDir, profile, env: { WEBAIOS_TEST_LOCAL_ADDRESSES: "1", ...actor.env }, prefs: actor.prefs });
   m = w.marionette;
   await m.setContext("chrome");
   await waitReady(m);
@@ -137,12 +137,12 @@ async function order(o: object, id = "vidola"): Promise<{ ok?: unknown; error?: 
 
 beforeAll(async () => {
   server = await startSitesServer();
-  server.definir("vidola-a.localhost", "/pubs", '<title>Pubs</title><div class="pub" id="banniere">pub</div>');
-  server.definir("vidola-a.localhost", "/film/2", "<title>Film 2</title>");
-  server.definir("pub.localhost", "/ouvert", "<title>Ouvert</title>");
+  server.define("vidola-a.localhost", "/pubs", '<title>Pubs</title><div class="pub" id="banniere">pub</div>');
+  server.define("vidola-a.localhost", "/film/2", "<title>Film 2</title>");
+  server.define("pub.localhost", "/ouvert", "<title>Ouvert</title>");
 });
 afterAll(async () => {
-  await server?.fermer();
+  await server?.close();
   await cleanupXpis();
 });
 afterEach(async () => {
@@ -151,7 +151,7 @@ afterEach(async () => {
   } finally {
     await w?.close().catch(() => {});
     w = undefined;
-    server.requetes.splice(0);
+    server.requests.splice(0);
     await rm(dataDir, { recursive: true, force: true });
     await rm(profile, { recursive: true, force: true });
   }
@@ -181,7 +181,7 @@ describe("add-ons in a site app window", () => {
     await openPopup();
     const isOpen = url("/ouvert", "pub.localhost");
     expect(await order({ op: "create", url: isOpen })).toEqual({ ok: "other-window" });
-    await expect.poll(async () => Object.values((await state(m)).onglets).map((o) => o.url), { timeout: 10_000 }).toContain(isOpen);
+    await expect.poll(async () => Object.values((await state(m)).tabs).map((o) => o.url), { timeout: 10_000 }).toContain(isOpen);
     expect(await tabCount()).toBe(1);
     expect(await viewUrl()).toBe(url("/pubs"));
   });
@@ -198,11 +198,11 @@ describe("add-ons in a site app window", () => {
   });
 
   it("no add-on button on the home screen nor on the grant card (extensions-sites.spec.ts:542)", async () => {
-    await start({ sites: { tube: withHome(), carte: withCard() } });
+    await start({ sites: { tube: withHome(), card: withCard() } });
     await installAddon(m, probe());
     // Home.
     await openSite("tube");
-    await expect.poll(() => siteState("tube").then((s) => s.vue), { timeout: 15_000 }).toBe("accueil");
+    await expect.poll(() => siteState("tube").then((s) => s.view), { timeout: 15_000 }).toBe("accueil");
     await new Promise((r) => setTimeout(r, 500));
     expect(await stripButtons("tube")).toBe(0);
     const enabled = (id: string) => m.execute<boolean[]>(`return ${siteWindowExpr(id)}.webaiosSiteWindow.addons.buttons().map((b) => b.enabled);`);
@@ -213,7 +213,7 @@ describe("add-ons in a site app window", () => {
     await expect.poll(() => stripButtons("tube"), { timeout: 10_000 }).toBe(0);
     // Grant card.
     await openSite("carte");
-    await expect.poll(() => siteState("carte").then((s) => s.vue), { timeout: 15_000 }).toBe("accord");
+    await expect.poll(() => siteState("carte").then((s) => s.view), { timeout: 15_000 }).toBe("accord");
     await new Promise((r) => setTimeout(r, 500));
     expect(await stripButtons("carte")).toBe(0);
     expect(await enabled("carte")).toEqual([false]);
@@ -223,27 +223,27 @@ describe("add-ons in a site app window", () => {
     await start({ sites: { tube: withHome() } });
     await installAddon(m, probe());
     await openSite("tube");
-    await expect.poll(() => siteState("tube").then((s) => s.vue), { timeout: 15_000 }).toBe("accueil");
+    await expect.poll(() => siteState("tube").then((s) => s.view), { timeout: 15_000 }).toBe("accueil");
     await m.execute(`${siteWindowExpr("tube")}.webaiosSiteWindow.enter()`);
     await expect.poll(() => viewUrl("tube"), { timeout: 15_000 }).toBe(url("/pubs"));
     await expect.poll(() => view("document.readyState", "tube"), { timeout: 10_000 }).toBe("complete");
     // The popup opened on the « site » view stays open once back on the home.
     await openPopup("tube");
     await m.execute(`${siteWindowExpr("tube")}.webaiosSiteWindow.home()`);
-    expect((await siteState("tube")).vue).toBe("accueil");
-    server.requetes.splice(0);
+    expect((await siteState("tube")).view).toBe("accueil");
+    server.requests.splice(0);
     expect(await order({ op: "update", url: url("/film/2") }, "tube")).toEqual({ error: REFUSED });
     await new Promise((r) => setTimeout(r, 500));
-    expect(server.requetes.filter((r) => r.hote === "vidola-a.localhost")).toEqual([]);
+    expect(server.requests.filter((r) => r.host === "vidola-a.localhost")).toEqual([]);
     expect(await viewUrl("tube")).toBe(url("/pubs"));
-    expect((await siteState("tube")).vue).toBe("accueil");
+    expect((await siteState("tube")).view).toBe("accueil");
   });
 
   it("on the home screen, tabs.reload and tabs.goBack of the view send no request; the view stays where it is", async () => {
     await start({ sites: { tube: withHome() } });
     await installAddon(m, probe());
     await openSite("tube");
-    await expect.poll(() => siteState("tube").then((s) => s.vue), { timeout: 15_000 }).toBe("accueil");
+    await expect.poll(() => siteState("tube").then((s) => s.view), { timeout: 15_000 }).toBe("accueil");
     await m.execute(`${siteWindowExpr("tube")}.webaiosSiteWindow.enter()`);
     await expect.poll(() => viewUrl("tube"), { timeout: 15_000 }).toBe(url("/pubs"));
     await view(`(location.href = ${JSON.stringify(url("/film/2"))}, 1)`, "tube");
@@ -251,13 +251,13 @@ describe("add-ons in a site app window", () => {
     await expect.poll(() => view("document.readyState", "tube"), { timeout: 10_000 }).not.toBe("loading");
     await openPopup("tube");
     await m.execute(`${siteWindowExpr("tube")}.webaiosSiteWindow.home()`);
-    server.requetes.splice(0);
+    server.requests.splice(0);
     expect((await order({ op: "reload" }, "tube")).error).toBeUndefined();
     expect((await order({ op: "back" }, "tube")).error).toBeUndefined();
     await new Promise((r) => setTimeout(r, 1000));
-    expect(server.requetes.filter((r) => r.hote === "vidola-a.localhost")).toEqual([]);
+    expect(server.requests.filter((r) => r.host === "vidola-a.localhost")).toEqual([]);
     expect(await viewUrl("tube")).toBe(url("/film/2"));
-    expect((await siteState("tube")).vue).toBe("accueil");
+    expect((await siteState("tube")).view).toBe("accueil");
   });
 
   it("windows.remove of the app's window is refused (extensions-sites.spec.ts peutFermerFenetre, sessions.ts:594)", async () => {
@@ -304,25 +304,25 @@ describe("add-ons in a site app window", () => {
 
 describe("add-ons and what the agent adds to the app", () => {
   const SERIES = "/serie/the-bear";
-  const KEPT = { titre: "The Bear", episode: "S2E4" };
+  const KEPT = { title: "The Bear", episode: "S2E4" };
   const series = () =>
     vidola({
-      adresse: url(SERIES),
-      reprise: true,
-      retouches: [{ correspond: ["/serie/*"], js: ["serie.js"], css: ["cacher.css"] }],
+      url: url(SERIES),
+      resume: true,
+      tweaks: [{ matches: ["/serie/*"], js: ["serie.js"], css: ["cacher.css"] }],
     });
   const memory = () => {
     const f = path.join(dataDir, "sites", "vidola", "memoire.json");
-    return existsSync(f) ? (JSON.parse(readFileSync(f, "utf8")) as { valeurs: Record<string, { valeur: unknown; adresse: string }>; positions: Record<string, { t: number; duree: number }> }) : null;
+    return existsSync(f) ? (JSON.parse(readFileSync(f, "utf8")) as { values: Record<string, { value: unknown; url: string }>; positions: Record<string, { t: number; duration: number }> }) : null;
   };
 
   it("with an add-on running in the view: the CSS tweak hides .shorts, the memory receives encours.the-bear, the resume notes the position (extensions-sites.spec.ts:1018, adapted)", async () => {
-    server.definir("vidola-a.localhost", SERIES, `<title>The Bear</title><div class="shorts" id="shorts">shorts</div><video id="v" muted autoplay preload="auto" src="${url("/silence-90.wav", "lecteur.localhost")}"></video>`);
-    server.definir("lecteur.localhost", "/silence-90.wav", serveWav(silenceWav(90)));
+    server.define("vidola-a.localhost", SERIES, `<title>The Bear</title><div class="shorts" id="shorts">shorts</div><video id="v" muted autoplay preload="auto" src="${url("/silence-90.wav", "lecteur.localhost")}"></video>`);
+    server.define("lecteur.localhost", "/silence-90.wav", serveWav(silenceWav(90)));
     const sites = {
       vidola: {
         declaration: series(),
-        fichiers: {
+        files: {
           "retouches/serie.js": `webaiosSite.retenir("encours.the-bear", ${JSON.stringify(KEPT)}).then(() => (document.documentElement.dataset.retenu = "oui"));`,
           "retouches/cacher.css": ".shorts { display: none; }",
         },
@@ -338,7 +338,7 @@ describe("add-ons and what the agent adds to the app", () => {
     // The tweaks.
     expect(await view("getComputedStyle(document.getElementById('shorts')).display")).toBe("none");
     await expect.poll(() => view("document.documentElement.dataset.retenu ?? null"), { timeout: 10_000 }).toBe("oui");
-    await expect.poll(() => memory()?.valeurs["encours.the-bear"] ?? null, { timeout: 10_000 }).toMatchObject({ valeur: KEPT, adresse: SERIES });
+    await expect.poll(() => memory()?.values["encours.the-bear"] ?? null, { timeout: 10_000 }).toMatchObject({ value: KEPT, url: SERIES });
     // The resume (see sites-resume.e2e.ts: the headless browser decodes nothing, the position is currentTime as set).
     await expect.poll(() => view("document.getElementById('v').duration"), { timeout: 15_000 }).toBe(90);
     await new Promise((r) => setTimeout(r, 500));
@@ -356,9 +356,9 @@ describe("the agent and the app's add-ons", () => {
     for (const deadline = Date.now() + 20_000; !existsSync(config); await new Promise((r) => setTimeout(r, 100)))
       if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
     await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('prêt>')", [], 20_000, "agent");
-    const lines = (await callTool(dataDir, "lister_onglets")).texte.split("\n");
+    const lines = (await callTool(dataDir, "lister_onglets")).text.split("\n");
     expect(lines.filter((l) => l.includes("vidola-a.localhost"))).toEqual(["site:vidola · Vidola · vidola-a.localhost · appli de site"]);
-    expect(Object.values((await state(m)).onglets).filter((o) => o.url.includes("vidola-a.localhost"))).toEqual([]);
+    expect(Object.values((await state(m)).tabs).filter((o) => o.url.includes("vidola-a.localhost"))).toEqual([]);
   });
 
   it("an agent extension's content script never runs in the app view, nor shows in its bar", async () => {
@@ -369,9 +369,9 @@ describe("the agent and the app's add-ons", () => {
       "manifest.json": { manifest_version: 3, name: "Cacheur de l'agent", version: "1.0.0", content_scripts: [{ matches: [host], css: ["cache.css"] }] },
       "cache.css": "#banniere { display: none !important; }\n",
     });
-    grant(dataDir, "cacheur", { permissions: [], hotes: [host], reseau: [], tousLesSites: false, scriptsTousLesSites: false, scripts: true });
+    grant(dataDir, "cacheur", { permissions: [], hosts: [host], network: [], allSites: false, allSitesScripts: false, scripts: true });
     writeSite(dataDir, "vidola", { declaration: vidola() });
-    w = await launchWithAmo({ dataDir, profile, env: { WEBAIOS_TEST_ADRESSES_LOCALES: "1" } });
+    w = await launchWithAmo({ dataDir, profile, env: { WEBAIOS_TEST_LOCAL_ADDRESSES: "1" } });
     m = w.marionette;
     await resolveLocalHosts(m, HOSTS);
     await waitFor(m, `return (async () => {

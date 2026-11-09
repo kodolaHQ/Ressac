@@ -9,9 +9,9 @@ import { ID_SITE, type DeclarationSite } from "./schemas.js";
 export type { UrlState };
 
 const State = z.object({
-  actuel: z.string().min(1).max(253),
-  anciens: z.array(z.string().max(253)).max(100),
-  depuis: z.string().nullable(),
+  current: z.string().min(1).max(253),
+  previous: z.array(z.string().max(253)).max(100),
+  since: z.string().nullable(),
 });
 
 function checkId(id: string): void {
@@ -53,22 +53,22 @@ export function changeUrl(sitesFolder: string, id: string, d: DeclarationSite, f
   checkId(id);
   const key = urlFile(sitesFolder, id);
   return queued(join(sitesFolder, id), async () => {
-    const [clean] = effectiveDomains({ ...d, domaines: [] }, { actuel: fresh, anciens: [], depuis: null });
+    const [clean] = effectiveDomains({ ...d, domains: [] }, { current: fresh, previous: [], since: null });
     if (!clean) throw new Error(`domaine invalide : ${fresh}`);
     const currentUrl = await readUrlState(sitesFolder, id);
     let before: string;
     try {
-      before = new URL(d.adresse).hostname.toLowerCase().replace(/\.+$/, "");
+      before = new URL(d.url).hostname.toLowerCase().replace(/\.+$/, "");
     } catch {
-      before = d.domaines[0] ?? "";
+      before = d.domains[0] ?? "";
     }
-    const current = currentUrl?.actuel ?? before;
-    const old = currentUrl?.anciens ?? [];
-    if (clean === current) return currentUrl ?? { actuel: current, anciens: old, depuis: null };
+    const current = currentUrl?.current ?? before;
+    const old = currentUrl?.previous ?? [];
+    if (clean === current) return currentUrl ?? { current: current, previous: old, since: null };
     const state: UrlState = {
-      actuel: clean,
-      anciens: [...new Set([...old, current])].filter((x) => x && x !== clean).slice(-OLD_MAX),
-      depuis: new Date().toISOString(),
+      current: clean,
+      previous: [...new Set([...old, current])].filter((x) => x && x !== clean).slice(-OLD_MAX),
+      since: new Date().toISOString(),
     };
     await writeAtomic(key, JSON.stringify(state, null, 2));
     return state;

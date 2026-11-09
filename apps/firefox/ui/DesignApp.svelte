@@ -11,26 +11,26 @@
 
   async function reread() {
     const n = ++request;
-    const c = await api.contexte().catch(() => null);
+    const c = await api.context().catch(() => null);
     if (n !== request) return;
     // A new bubble (another element) starts from an empty text.
-    if (c?.mode !== "bulle" || context?.mode !== "bulle" || c.etiquette !== context.etiquette || c.source !== context.source) {
+    if (c?.mode !== "bulle" || context?.mode !== "bulle" || c.label !== context.label || c.source !== context.source) {
       text = "";
       error = null;
     }
     context = c;
   }
   void reread();
-  api.surChange(() => void reread());
+  api.onChange(() => void reread());
 
   $effect(() => {
     if (context?.mode === "bulle" && field) field.focus();
   });
 
   async function add() {
-    const r = await api.ajouter(text);
+    const r = await api.add(text);
     if (r.ok) text = "";
-    else error = r.erreur;
+    else error = r.error;
   }
 
   function clavier(e: KeyboardEvent) {
@@ -39,7 +39,7 @@
       void add();
     } else if (e.key === "Escape") {
       e.preventDefault();
-      api.annuler();
+      api.cancel();
     }
   }
 </script>
@@ -47,24 +47,24 @@
 {#if context?.mode === "bulle"}
   <div class="bulle" data-testid="bulle-design" role="dialog" aria-label="Remarque sur l'élément">
     <div class="tete">
-      <code class="etiquette">{context.etiquette}</code>
+      <code class="etiquette">{context.label}</code>
       {#if context.source}<span class="source">{context.source}</span>{/if}
     </div>
-    {#if context.avertissement}<p class="avertissement" data-testid="avertissement-bulle">{context.avertissement}</p>{/if}
+    {#if context.warning}<p class="avertissement" data-testid="avertissement-bulle">{context.warning}</p>{/if}
     <textarea bind:this={field} bind:value={text} onkeydown={clavier} placeholder="Ta remarque sur cet élément" maxlength="4000"></textarea>
     {#if error}<p class="erreur" role="alert">{error}</p>{/if}
     <div class="actions">
-      <button class="annuler" onclick={() => api.annuler()}>Annuler</button>
+      <button class="annuler" onclick={() => api.cancel()}>Annuler</button>
       <button class="ajouter" onclick={() => void add()}>Ajouter au panier <kbd>⌘↩</kbd></button>
     </div>
   </div>
 {:else if context?.mode === "message"}
   <!-- Not interactive: only a click closes it (like the next keystroke, on the main process side). -->
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
-  <div class="message" data-testid="message-design" role="status" onclick={() => api.annuler()}>{context.message}</div>
+  <div class="message" data-testid="message-design" role="status" onclick={() => api.cancel()}>{context.message}</div>
 {:else if context?.mode === "panier"}
   <div class="volet">
-    <DesignBasket {api} projet={context.projet} destination={context.destination} sansDestination={context.sansDestination} fermer={() => api.annuler()} />
+    <DesignBasket {api} project={context.project} destination={context.destination} noDestination={context.noDestination} close={() => api.cancel()} />
   </div>
 {/if}
 

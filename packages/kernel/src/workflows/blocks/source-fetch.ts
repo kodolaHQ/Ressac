@@ -3,25 +3,25 @@ import { FIELD_PER_ELEMENT, fieldsPerElementOnly, Template, ParamsPerElement, ty
 
 export const definition: BlockDefinition = {
   type: "source.recuperer",
-  libelle: "Récupérer une adresse",
-  famille: "Sources",
+  label: "Récupérer une adresse",
+  family: "Sources",
   description: "Récupère le contenu d'une adresse, en texte ou en JSON.",
-  entree: "parElement",
-  champs: [
-    { nom: "url", libelle: "Adresse", aide: "Les {chemins} sont remplacés par les valeurs de l'élément.", requis: true, genre: "gabarit" },
-    { nom: "format", libelle: "Format", requis: false, defaut: "texte", genre: "choix", choix: ["texte", "json"] },
+  input: "parElement",
+  fields: [
+    { name: "url", label: "Adresse", help: "Les {chemins} sont remplacés par les valeurs de l'élément.", required: true, kind: "gabarit" },
+    { name: "format", label: "Format", required: false, default: "texte", kind: "choix", choices: ["texte", "json"] },
     FIELD_PER_ELEMENT,
     ...fieldsPerElementOnly(),
-    { nom: "champ", libelle: "Champ du résultat", requis: false, defaut: "contenu", genre: "texte" },
+    { name: "champ", label: "Champ du résultat", required: false, default: "contenu", kind: "texte" },
   ],
-  parElement: "option",
-  chaine: true,
-  parametres: z
+  perItem: "option",
+  chain: true,
+  params: z
     .object({
       url: Template,
       format: z.enum(["texte", "json"]).default("texte"),
       ...ParamsPerElement,
-      champ: z.string().min(1).max(40).default("contenu"),
+      field: z.string().min(1).max(40).default("contenu"),
     })
     .strict(),
 };

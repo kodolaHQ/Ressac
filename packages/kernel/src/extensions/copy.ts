@@ -72,13 +72,13 @@ const READ_FLAGS = constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBL
 
 /** The source folder actually read (resolved path, dev/ino): the caller checks it is the one it vetted. */
 export interface RootRead {
-  chemin: string;
+  path: string;
   dev: number;
   ino: number;
 }
 
 interface Marker {
-  chemin: string;
+  path: string;
   dev: number;
   ino: number;
 }
@@ -90,7 +90,7 @@ interface Marker {
  * special file, a replacement during the read, or exceeding the limits gives a denial (the walk
  * stops).
  */
-async function readFolder(source: string): Promise<{ fichiers: Map<string, Buffer>; refus: string[]; racine?: RootRead }> {
+async function readFolder(source: string): Promise<{ files: Map<string, Buffer>; denial: string[]; root?: RootRead }> {
   const files = new Map<string, Buffer>();
   const root = join(await realpath(dirname(source)), basename(source));
   let size = 0;
@@ -101,9 +101,9 @@ async function readFolder(source: string): Promise<{ fichiers: Map<string, Buffe
   const absolute = (rel: string) => (rel ? join(root, rel) : root);
   const checkFolders = async (chain: Marker[]): Promise<void> => {
     for (const d of chain) {
-      const info = await lstat(absolute(d.chemin)).catch(() => null);
+      const info = await lstat(absolute(d.path)).catch(() => null);
       if (!info?.isDirectory() || info.dev !== d.dev || info.ino !== d.ino) {
-        deny(`Dossier remplacé pendant la lecture : ${d.chemin || "."}`);
+        deny(`Dossier remplacé pendant la lecture : ${d.path || "."}`);
       }
     }
   };
@@ -144,20 +144,20 @@ async function readFolder(source: string): Promise<{ fichiers: Map<string, Buffe
     const folder = chain[chain.length - 1]!;
     let names: string[];
     try {
-      names = (await readdir(absolute(folder.chemin))).sort();
+      names = (await readdir(absolute(folder.path))).sort();
     } catch (e) {
       if (["ENOENT", ...LIENS].includes((e as NodeJS.ErrnoException).code ?? "")) {
-        deny(`Dossier remplacé pendant la lecture : ${folder.chemin || "."}`);
+        deny(`Dossier remplacé pendant la lecture : ${folder.path || "."}`);
       }
       throw e;
     }
     await checkFolders(chain);
     for (const name of names) {
-      const path = folder.chemin ? `${folder.chemin}/${name}` : name;
+      const path = folder.path ? `${folder.path}/${name}` : name;
       if (++entries > MAX_ENTRIES) deny(`Trop d'entrées : ${MAX_ENTRIES} fichiers et dossiers au plus`);
       if (path.split("/").length > DEPTH_MAX) deny(`Arborescence trop profonde : ${DEPTH_MAX} niveaux au plus`);
       const info = await lstat(absolute(path)).catch(() => deny(`Fichier remplacé pendant la lecture : ${path}`));
-      const marker = { chemin: path, dev: info.dev, ino: info.ino };
+      const marker = { path: path, dev: info.dev, ino: info.ino };
       if (info.isSymbolicLink()) deny(`Lien symbolique refusé : ${path}`);
       if (info.isDirectory()) {
         await walk([...chain, marker]);
@@ -173,13 +173,13 @@ async function readFolder(source: string): Promise<{ fichiers: Map<string, Buffe
   try {
     const info = await lstat(root);
     if (!info.isDirectory()) deny("Le dossier de l'extension n'est pas un dossier");
-    loaded = { chemin: root, dev: info.dev, ino: info.ino };
-    await walk([{ chemin: "", dev: info.dev, ino: info.ino }]);
+    loaded = { path: root, dev: info.dev, ino: info.ino };
+    await walk([{ path: "", dev: info.dev, ino: info.ino }]);
   } catch (e) {
-    if (e instanceof ReadDenial) return { fichiers: files, refus: [e.message], ...(loaded ? { racine: loaded } : {}) };
+    if (e instanceof ReadDenial) return { files: files, denial: [e.message], ...(loaded ? { root: loaded } : {}) };
     throw e;
   }
-  return { fichiers: files, refus: [], racine: loaded };
+  return { files: files, denial: [], root: loaded };
 }
 
 function hashOf(files: Map<string, Buffer>): string {
@@ -224,10 +224,10 @@ function fileTable(files: Map<string, Buffer>): [string, "js" | "css"][] {
 function rewriteScripts(
   manifest: Manifest,
   table: [string, "js" | "css"][],
-): { refus: string[]; sites: string[] } {
+): { denial: string[]; sites: string[] } {
   const denial: string[] = [];
   const sites: string[] = [];
-  if (!Array.isArray(manifest.content_scripts)) return { refus: denial, sites };
+  if (!Array.isArray(manifest.content_scripts)) return { denial: denial, sites };
   const hint = new Map(table.map(([path, kind], i) => [`${kind}:${path}`, i]));
   manifest.content_scripts = manifest.content_scripts.map((cs) => {
     const c = object(cs);
@@ -247,7 +247,7 @@ function rewriteScripts(
     const { css: _css, ...rest } = c;
     return { ...rest, js: [PAGE_FIXES, PAGE_GUARD, SCOPE, ...markers] };
   });
-  return { refus: denial, sites };
+  return { denial: denial, sites };
 }
 
 const TAG_GUARD = Buffer.from(`<script src="/${KEEP_BACKGROUND}"></script>`);
@@ -348,30 +348,30 @@ async function replaceFolder(fresh: string, target: string): Promise<void> {
  */
 export async function prepareCopy(o: {
   source: string;
-  cible: string;
-  dossierGardes: string;
-}): Promise<{ analyse: ManifestAnalysis; empreinte: string; racine?: RootRead }> {
-  const { fichiers: files, refus: folderDenial, racine: root } = await readFolder(o.source);
+  target: string;
+  keptFolder: string;
+}): Promise<{ analysis: ManifestAnalysis; hash: string; root?: RootRead }> {
+  const { files: files, denial: folderDenial, root: root } = await readFolder(o.source);
   const raw = json(files.get("manifest.json"));
   const rawWebaios = files.get("webaios.json");
   const webaios = rawWebaios === undefined ? undefined : (json(rawWebaios) ?? "illisible");
   const messages = messageFiles(raw).map((f) => json(files.get(f)));
-  const analysis = parseManifest(raw, { source: "agent", webaios, regles: rulesOf(raw, files), messages });
-  analysis.refus = [...folderDenial, ...filesDenial(files), ...analysis.refus];
+  const analysis = parseManifest(raw, { source: "agent", webaios, rules: rulesOf(raw, files), messages });
+  analysis.denial = [...folderDenial, ...filesDenial(files), ...analysis.denial];
   const hash = hashOf(files);
-  const loaded = root ? { racine: root } : {};
-  if (analysis.refus.length > 0) return { analyse: analysis, empreinte: hash, ...loaded };
+  const loaded = root ? { root: root } : {};
+  if (analysis.denial.length > 0) return { analysis: analysis, hash: hash, ...loaded };
 
   const manifest = { ...(raw as Manifest) };
   delete manifest.key;
   delete manifest.update_url;
-  manifest.content_security_policy = { extension_pages: cspAgent(analysis.portee.reseau) };
-  const scope = `globalThis.__webaiosPortee(${JSON.stringify({ reseau: analysis.portee.reseau, hotes: analysis.portee.hotes })});`;
+  manifest.content_security_policy = { extension_pages: cspAgent(analysis.scope.network) };
+  const scope = `globalThis.__webaiosPortee(${JSON.stringify({ network: analysis.scope.network, hosts: analysis.scope.hosts })});`;
   const table = fileTable(files);
   const rewritten = rewriteScripts(manifest, table);
-  if (rewritten.refus.length > 0) {
-    analysis.refus = [...analysis.refus, ...rewritten.refus];
-    return { analyse: analysis, empreinte: hash, ...loaded };
+  if (rewritten.denial.length > 0) {
+    analysis.denial = [...analysis.denial, ...rewritten.denial];
+    return { analysis: analysis, hash: hash, ...loaded };
   }
   if (rewritten.sites.length > 0) {
     // The background injects files through `scripting`, which asks for the right and the hosts of the content scripts (already
@@ -393,7 +393,7 @@ export async function prepareCopy(o: {
     manifest.background = { service_worker: BACKGROUND };
   }
 
-  const tmp = `${o.cible}.${randomUUID()}.tmp`;
+  const tmp = `${o.target}.${randomUUID()}.tmp`;
   try {
     await mkdir(tmp, { recursive: true });
     for (const [path, content] of files) {
@@ -405,21 +405,21 @@ export async function prepareCopy(o: {
         PAGES.test(path) ? insertPageGuard(content) : content,
       );
     }
-    for (const g of GUARDS) await copyFile(join(o.dossierGardes, g), join(tmp, g));
+    for (const g of GUARDS) await copyFile(join(o.keptFolder, g), join(tmp, g));
     // The table at the head of the background guard: it is read before any script of the extension, which can no longer change it.
     await writeFile(
       join(tmp, KEEP_BACKGROUND),
-      Buffer.concat([Buffer.from(`const __webaiosFichiers = ${JSON.stringify(table)};\n`), await readFile(join(o.dossierGardes, KEEP_BACKGROUND))]),
+      Buffer.concat([Buffer.from(`const __webaiosFichiers = ${JSON.stringify(table)};\n`), await readFile(join(o.keptFolder, KEEP_BACKGROUND))]),
     );
     await writeFile(join(tmp, SCOPE), `${scope}\n`);
     await mkdir(join(tmp, MARKERS), { recursive: true });
     for (let i = 0; i < table.length; i++) await writeFile(join(tmp, MARKERS, `${i}.js`), `globalThis.__webaiosFichier(${i});\n`);
     await writeFile(join(tmp, BACKGROUND), backgroundJs);
     await writeFile(join(tmp, "manifest.json"), JSON.stringify(manifest, null, 2));
-    await replaceFolder(tmp, o.cible);
+    await replaceFolder(tmp, o.target);
   } catch (e) {
     await rm(tmp, { recursive: true, force: true });
     throw e;
   }
-  return { analyse: analysis, empreinte: hash, ...loaded };
+  return { analysis: analysis, hash: hash, ...loaded };
 }

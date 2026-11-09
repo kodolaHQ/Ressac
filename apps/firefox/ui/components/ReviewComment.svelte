@@ -4,7 +4,7 @@
   import { api } from "../state.svelte";
 
   /** A review comment under its lines: its text as is (Markdown not rendered), its state, its actions. */
-  let { projet: project, commentaire: c, surChange: onChange }: { projet: string; commentaire: DiffComment; surChange: () => void } = $props();
+  let { project: project, comment: c, onChange: onChange }: { project: string; comment: DiffComment; onChange: () => void } = $props();
 
   let edit = $state<string | null>(null);
   let error = $state<string | null>(null);
@@ -21,17 +21,17 @@
   async function save() {
     if (edit === null) return;
     const text = edit;
-    await act(() => api.relecture.modifierCommentaire(project, c.id, text));
+    await act(() => api.review.editComment(project, c.id, text));
     if (error === null) edit = null;
   }
 </script>
 
-<div class="commentaire" class:resolu={c.resolu} data-testid="commentaire">
+<div class="commentaire" class:resolu={c.resolved} data-testid="commentaire">
   <div class="tete">
-    <span class="plage">{c.debut === c.fin ? `Ligne ${c.debut}` : `Lignes ${c.debut}–${c.fin}`}</span>
-    {#if c.envoye}<span class="etat">envoyé</span>{/if}
-    {#if c.resolu}<span class="etat">résolu</span>{/if}
-    {#if c.ligneChangee}<span class="etat change">{PAGE_LINE_CHANGED}</span>{/if}
+    <span class="plage">{c.start === c.end ? `Ligne ${c.start}` : `Lignes ${c.start}–${c.end}`}</span>
+    {#if c.sent}<span class="etat">envoyé</span>{/if}
+    {#if c.resolved}<span class="etat">résolu</span>{/if}
+    {#if c.lineChanged}<span class="etat change">{PAGE_LINE_CHANGED}</span>{/if}
   </div>
   {#if edit !== null}
     <textarea bind:value={edit} rows="3" aria-label="Texte du commentaire"></textarea>
@@ -40,11 +40,11 @@
       <button onclick={() => void save()} disabled={edit.trim() === ""}>Enregistrer</button>
     </div>
   {:else}
-    <p class="texte">{c.texte}</p>
+    <p class="texte">{c.text}</p>
     <div class="actions">
-      <button onclick={() => (edit = c.texte)}>Modifier</button>
-      <button onclick={() => void act(() => api.relecture.resoudre(project, c.id, !c.resolu))}>{c.resolu ? "Rouvrir" : "Résoudre"}</button>
-      <button onclick={() => void act(() => api.relecture.supprimerCommentaire(project, c.id))}>Supprimer</button>
+      <button onclick={() => (edit = c.text)}>Modifier</button>
+      <button onclick={() => void act(() => api.review.resolve(project, c.id, !c.resolved))}>{c.resolved ? "Rouvrir" : "Résoudre"}</button>
+      <button onclick={() => void act(() => api.review.supprimerCommentaire(project, c.id))}>Supprimer</button>
     </div>
   {/if}
   {#if error}<p class="erreur">{error}</p>{/if}

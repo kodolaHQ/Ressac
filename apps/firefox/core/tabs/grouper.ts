@@ -2,7 +2,7 @@
 export function createGrouper(delayMs: number, make: (key: string) => void) {
   const timers = new Map<string, ReturnType<typeof setTimeout>>();
   return {
-    planifier(key: string): void {
+    schedule(key: string): void {
       clearTimeout(timers.get(key));
       timers.set(
         key,
@@ -12,7 +12,7 @@ export function createGrouper(delayMs: number, make: (key: string) => void) {
         }, delayMs),
       );
     },
-    oublier(key: string): void {
+    forget(key: string): void {
       clearTimeout(timers.get(key));
       timers.delete(key);
     },

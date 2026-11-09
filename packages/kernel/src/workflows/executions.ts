@@ -19,37 +19,37 @@ export const BlockTrace = z.object({
   type: z.string(),
   // « interrompu »: started, not finished, when WebAiOs stopped during the run.
   // « repris »: output taken from the original run of a try, without being copied (`elements` is).
-  statut: z.enum(["reussi", "partiel", "echoue", "interrompu", "pas-lance", "repris"]),
-  debut: z.string().nullable(),
-  fin: z.string().nullable(),
-  elements: z.number().nullable(),
-  sortie: z.unknown().optional(),
-  sortieTronquee: z.literal(true).optional(),
-  erreur: z.string().optional(),
-  journal: z.array(z.string()),
+  status: z.enum(["reussi", "partiel", "echoue", "interrompu", "pas-lance", "repris"]),
+  start: z.string().nullable(),
+  end: z.string().nullable(),
+  items: z.number().nullable(),
+  output: z.unknown().optional(),
+  outputTruncated: z.literal(true).optional(),
+  error: z.string().optional(),
+  log: z.array(z.string()),
 });
 export type BlockTrace = z.infer<typeof BlockTrace>;
 
 export const Execution = z.object({
   version: z.literal(1),
   id: z.string(),
-  proprietaire: z.object({ type: z.enum(["widget", "action"]), id: z.string() }),
+  owner: z.object({ type: z.enum(["widget", "action"]), id: z.string() }),
   // The input of an action launched with a text (clio lyon).
-  saisie: z.string().max(200).optional(),
-  declencheur: z.enum(["planifiee", "manuelle", "agent", "rejeu"]),
+  input: z.string().max(200).optional(),
+  trigger: z.enum(["planifiee", "manuelle", "agent", "rejeu"]),
   // Only for a try: the start block and the run whose upstream outputs are taken.
-  essai: z.object({ depart: z.string(), origine: z.string() }).optional(),
-  debut: z.string(),
-  fin: z.string().nullable(),
-  statut: z.enum(["reussie", "partielle", "echouee", "interrompue", "accord-requis"]),
-  erreur: z.string().optional(),
-  erreurNoyau: z.literal(true).optional(),
-  blocs: z.array(BlockTrace),
+  attempt: z.object({ start: z.string(), origin: z.string() }).optional(),
+  start: z.string(),
+  end: z.string().nullable(),
+  status: z.enum(["reussie", "partielle", "echouee", "interrompue", "accord-requis"]),
+  error: z.string().optional(),
+  kernelError: z.literal(true).optional(),
+  blocks: z.array(BlockTrace),
 });
-export type Execution = Omit<z.infer<typeof Execution>, "proprietaire"> & { proprietaire: Owner };
+export type Execution = Omit<z.infer<typeof Execution>, "owner"> & { owner: Owner };
 
-export type ResumeExecution = Pick<Execution, "id" | "declencheur" | "debut" | "fin" | "statut" | "essai" | "saisie"> & {
-  blocs: { id: string; statut: BlockTrace["statut"]; elements: number | null }[];
+export type ResumeExecution = Pick<Execution, "id" | "trigger" | "start" | "end" | "status" | "attempt" | "input"> & {
+  blocks: { id: string; status: BlockTrace["status"]; items: number | null }[];
 };
 
 /** A run's identifier: its ISO start, without « : » or « . » (safe as a file name). */
@@ -90,13 +90,13 @@ export function cut(text: string, bytes: number): string {
 // Safety net: an output that is too big is kept as text (the start of its JSON) and marked; if the file
 // still exceeds 4 MB, the biggest outputs go first.
 function truncate(entry: Execution): Execution {
-  const e: Execution = entry.erreur === undefined ? entry : { ...entry, erreur: cut(entry.erreur, MAX_ERROR_BYTES) };
+  const e: Execution = entry.error === undefined ? entry : { ...entry, error: cut(entry.error, MAX_ERROR_BYTES) };
   const sizes: number[] = [];
-  const blocks = e.blocs.map((b0, i) => {
+  const blocks = e.blocks.map((b0, i) => {
     const b = clampText(b0);
     sizes[i] = 0;
-    if (b.sortie === undefined) return b;
-    const text = JSON.stringify(b.sortie) ?? "null";
+    if (b.output === undefined) return b;
+    const text = JSON.stringify(b.output) ?? "null";
     const bytes = Buffer.byteLength(text);
     if (bytes <= OUTPUT_MAX_BYTES) {
       sizes[i] = bytes;
@@ -104,43 +104,43 @@ function truncate(entry: Execution): Execution {
     }
     const wasCut = cut(text, OUTPUT_MAX_BYTES);
     sizes[i] = Buffer.byteLength(JSON.stringify(wasCut));
-    return { ...b, sortie: wasCut, sortieTronquee: true as const };
+    return { ...b, output: wasCut, outputTruncated: true as const };
   });
-  let current: Execution = { ...e, blocs: blocks };
+  let current: Execution = { ...e, blocks: blocks };
   while (Buffer.byteLength(JSON.stringify(current, null, 2)) > RUN_MAX_BYTES) {
     let worst = -1;
     for (let i = 0; i < blocks.length; i++) if (sizes[i]! > 0 && (worst < 0 || sizes[i]! > sizes[worst]!)) worst = i;
     if (worst < 0) break;
-    const { sortie: _removed, ...rest } = blocks[worst]!;
-    blocks[worst] = { ...rest, sortieTronquee: true };
+    const { output: _removed, ...rest } = blocks[worst]!;
+    blocks[worst] = { ...rest, outputTruncated: true };
     sizes[worst] = 0;
-    current = { ...e, blocs: blocks };
+    current = { ...e, blocks: blocks };
   }
   // Still too big: the longest logs are replaced by a remark line.
   while (Buffer.byteLength(JSON.stringify(current, null, 2)) > RUN_MAX_BYTES) {
     let worst = -1;
     let max = 0;
     for (let i = 0; i < blocks.length; i++) {
-      const t = Buffer.byteLength(JSON.stringify(blocks[i]!.journal));
+      const t = Buffer.byteLength(JSON.stringify(blocks[i]!.log));
       if (t > max) {
         max = t;
         worst = i;
       }
     }
-    if (worst < 0 || blocks[worst]!.journal.length <= 1) break;
-    blocks[worst] = { ...blocks[worst]!, journal: [`… ${blocks[worst]!.journal.length} lignes coupées`] };
-    current = { ...e, blocs: blocks };
+    if (worst < 0 || blocks[worst]!.log.length <= 1) break;
+    blocks[worst] = { ...blocks[worst]!, log: [`… ${blocks[worst]!.log.length} lignes coupées`] };
+    current = { ...e, blocks: blocks };
   }
   return current;
 }
 
 // Error and log of a block: lines of 2 KB at most, 200 lines at most (the last ones are kept).
 function clampText(b: BlockTrace): BlockTrace {
-  let log = b.journal.map((l) => (Buffer.byteLength(l) > LINE_MAX_BYTES ? cut(l, LINE_MAX_BYTES) : l));
+  let log = b.log.map((l) => (Buffer.byteLength(l) > LINE_MAX_BYTES ? cut(l, LINE_MAX_BYTES) : l));
   if (log.length > LIGNES_MAX) {
     log = [`… ${log.length - LIGNES_MAX} lignes coupées`, ...log.slice(-LIGNES_MAX)];
   }
-  return { ...b, journal: log, ...(b.erreur === undefined ? {} : { erreur: cut(b.erreur, MAX_ERROR_BYTES) }) };
+  return { ...b, log: log, ...(b.error === undefined ? {} : { error: cut(b.error, MAX_ERROR_BYTES) }) };
 }
 
 /** Writes a run (truncated if needed) and only keeps the 20 most recent real ones, and the 10 most recent tries. */
@@ -181,13 +181,13 @@ export async function readRun(dataFolder: string, id: string): Promise<Execution
 function summarize(e: Execution): ResumeExecution {
   return {
     id: e.id,
-    declencheur: e.declencheur,
-    ...(e.essai ? { essai: e.essai } : {}),
-    ...(e.saisie !== undefined ? { saisie: e.saisie } : {}),
-    debut: e.debut,
-    fin: e.fin,
-    statut: e.statut,
-    blocs: e.blocs.map((b) => ({ id: b.id, statut: b.statut, elements: b.elements })),
+    trigger: e.trigger,
+    ...(e.attempt ? { attempt: e.attempt } : {}),
+    ...(e.input !== undefined ? { input: e.input } : {}),
+    start: e.start,
+    end: e.end,
+    status: e.status,
+    blocks: e.blocks.map((b) => ({ id: b.id, status: b.status, items: b.items })),
   };
 }
 

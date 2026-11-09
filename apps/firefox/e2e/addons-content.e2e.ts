@@ -23,10 +23,10 @@ const ready = (m: Marionette) =>
 
 /** Opens `path` in a WebAiOs tab, waits until it is loaded; returns the tab id. */
 async function open(m: Marionette, path: string): Promise<string> {
-  const before = new Set(Object.keys((await state(m)).onglets));
-  const s = await dispatch(m, { type: "ouvrirOnglet", fenetreId: (await state(m)).fenetres[0]!.id, url: server.url + path });
+  const before = new Set(Object.keys((await state(m)).tabs));
+  const s = await dispatch(m, { type: "ouvrirOnglet", windowId: (await state(m)).windows[0]!.id, url: server.url + path });
   await waitFor(m, "return !gBrowser.selectedBrowser.webProgress.isLoadingDocument && gBrowser.selectedBrowser.currentURI.spec !== 'about:blank'", (v) => v === true);
-  return Object.keys(s.onglets).find((id) => !before.has(id))!;
+  return Object.keys(s.tabs).find((id) => !before.has(id))!;
 }
 
 /** Runs `script` in the content page of WebAiOs tab `id`, then comes back to the chrome context. */
@@ -61,7 +61,7 @@ describe("add-ons in pages", () => {
     const tab = await open(m, "/pub.html");
     // The rules are live a moment after install: reload until they act.
     const deadline = Date.now() + 10_000;
-    while ((await state(m)).onglets[tab]?.titre !== "pub bloquée") {
+    while ((await state(m)).tabs[tab]?.title !== "pub bloquée") {
       expect(Date.now()).toBeLessThan(deadline);
       await m.execute("gBrowser.selectedBrowser.reload()");
       await new Promise((r) => setTimeout(r, 700));

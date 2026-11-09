@@ -9,157 +9,157 @@ export const GROUPING_MS = 8;
 
 /** The last characters of an output, kept in chunks: appending never copies the whole buffer. */
 export class SessionBuffer {
-  private morceaux: string[] = [];
-  private longueur = 0;
-  private coupe = false;
+  private chunks: string[] = [];
+  private length = 0;
+  private cut = false;
 
   constructor(private readonly max: number) {}
 
-  ajouter(d: string): void {
-    this.morceaux.push(d);
-    this.longueur += d.length;
-    while (this.longueur > this.max) {
-      this.coupe = true;
-      const first = this.morceaux[0]!;
-      const tooMany = this.longueur - this.max;
+  add(d: string): void {
+    this.chunks.push(d);
+    this.length += d.length;
+    while (this.length > this.max) {
+      this.cut = true;
+      const first = this.chunks[0]!;
+      const tooMany = this.length - this.max;
       if (first.length <= tooMany) {
-        this.morceaux.shift();
-        this.longueur -= first.length;
+        this.chunks.shift();
+        this.length -= first.length;
       } else {
-        this.morceaux[0] = first.slice(tooMany);
-        this.longueur -= tooMany;
+        this.chunks[0] = first.slice(tooMany);
+        this.length -= tooMany;
       }
     }
   }
 
   /** Replaying a cut buffer starts at a whole line: not in the middle of an escape sequence. */
-  texte(): string {
-    const s = this.morceaux.join("");
-    const line = this.coupe ? s.indexOf("\n") : -1;
+  text(): string {
+    const s = this.chunks.join("");
+    const line = this.cut ? s.indexOf("\n") : -1;
     return line >= 0 && line < s.length / 10 ? s.slice(line + 1) : s;
   }
 
-  vider(): void {
-    this.morceaux = [];
-    this.longueur = 0;
-    this.coupe = false;
+  clear(): void {
+    this.chunks = [];
+    this.length = 0;
+    this.cut = false;
   }
 }
 
 /** What the manager uses of a kernel SessionAgent. */
 export interface SessionLike {
   readonly active: boolean;
-  ecrire(d: string): void;
-  redimensionner(cols: number, rows: number): void;
-  surDonnees(r: (d: string) => void): () => void;
-  surFin(r: (code: number) => void): () => void;
-  arreter(): void | Promise<void>;
+  write(d: string): void;
+  resize(cols: number, rows: number): void;
+  onData(r: (d: string) => void): () => void;
+  onEnd(r: (code: number) => void): () => void;
+  stop(): void | Promise<void>;
 }
 
 interface Entry {
   session?: SessionLike;
-  tampon: SessionBuffer;
+  buffer: SessionBuffer;
   /** Output not yet sent to the UI (see GROUPING_MS). */
-  aEnvoyer: string;
-  minuterie?: NodeJS.Timeout;
-  demarrage?: Promise<void>;
+  toSend: string;
+  timer?: NodeJS.Timeout;
+  startup?: Promise<void>;
   /** Last terminal size, to reopen the session identically (relancerTout). */
-  taille: TerminalSize;
+  size: TerminalSize;
   /** Text to put in the input as soon as the session is active (see preRemplir). */
-  preRemplissage?: { texte: string; ecrit?: () => void };
+  prefill?: { text: string; written?: () => void };
 }
 
 /** One agent session per window (spec §8): it survives tab changes and the panel closing. */
 export class SessionsAgent {
-  private entrees = new Map<WindowId, Entry>();
+  private inputs = new Map<WindowId, Entry>();
 
   constructor(
     private readonly o: {
-      ouvrir: (f: WindowId, t: TerminalSize) => Promise<SessionLike>;
-      envoyer: (f: WindowId, channel: "donnees" | "etat", v: string | AgentPanelState) => void;
+      open: (f: WindowId, t: TerminalSize) => Promise<SessionLike>;
+      send: (f: WindowId, channel: "donnees" | "etat", v: string | AgentPanelState) => void;
       /** The user submits a message (Enter) in this window's terminal. */
-      surEnvoi?: (f: WindowId) => void;
+      onSend?: (f: WindowId) => void;
     },
   ) {}
 
   /** Idempotent: an active session returns its state and its buffer; otherwise a new session starts. */
-  demarrer(f: WindowId, size: TerminalSize): Promise<void> {
-    let e = this.entrees.get(f);
-    if (!e) this.entrees.set(f, (e = { tampon: new SessionBuffer(BUFFER_MAX), aEnvoyer: "", taille: size }));
+  start(f: WindowId, size: TerminalSize): Promise<void> {
+    let e = this.inputs.get(f);
+    if (!e) this.inputs.set(f, (e = { buffer: new SessionBuffer(BUFFER_MAX), toSend: "", size: size }));
     const entry = e;
-    entry.taille = size;
+    entry.size = size;
     if (entry.session?.active) {
-      entry.session.redimensionner(size.cols, size.rows);
-      this.o.envoyer(f, "etat", { etat: "actif" });
+      entry.session.resize(size.cols, size.rows);
+      this.o.send(f, "etat", { state: "actif" });
       // The buffer already contains the pending output: it is not sent a second time.
-      this.annulerEnvoi(entry);
-      const buffer = entry.tampon.texte();
-      if (buffer) this.o.envoyer(f, "donnees", buffer);
+      this.cancelSend(entry);
+      const buffer = entry.buffer.text();
+      if (buffer) this.o.send(f, "donnees", buffer);
       return Promise.resolve();
     }
-    if (entry.demarrage) return entry.demarrage;
-    entry.tampon.vider();
-    this.annulerEnvoi(entry);
-    this.o.envoyer(f, "etat", { etat: "preparation" });
-    entry.demarrage = this.o
-      .ouvrir(f, size)
+    if (entry.startup) return entry.startup;
+    entry.buffer.clear();
+    this.cancelSend(entry);
+    this.o.send(f, "etat", { state: "preparation" });
+    entry.startup = this.o
+      .open(f, size)
       .then(
         (s) => {
           // Window closed during startup: nobody will display this agent.
-          if (this.entrees.get(f) !== entry) return void s.arreter();
+          if (this.inputs.get(f) !== entry) return void s.stop();
           entry.session = s;
-          s.surDonnees((d) => {
-            entry.tampon.ajouter(d);
-            entry.aEnvoyer += d;
-            entry.minuterie ??= setTimeout(() => this.envoyerSortie(f, entry), GROUPING_MS);
+          s.onData((d) => {
+            entry.buffer.add(d);
+            entry.toSend += d;
+            entry.timer ??= setTimeout(() => this.sendOutput(f, entry), GROUPING_MS);
           });
-          s.surFin((code) => {
+          s.onEnd((code) => {
             // Session replaced (relancerTout): its end is not that of the displayed conversation.
             if (entry.session !== s) return;
-            this.envoyerSortie(f, entry);
+            this.sendOutput(f, entry);
             entry.session = undefined;
-            this.o.envoyer(f, "etat", { etat: "termine", code });
+            this.o.send(f, "etat", { state: "termine", code });
           });
-          this.o.envoyer(f, "etat", { etat: "actif" });
-          const p = entry.preRemplissage;
-          entry.preRemplissage = undefined;
-          if (p) this.ecrirePreRemplissage(s, p.texte, p.ecrit);
+          this.o.send(f, "etat", { state: "actif" });
+          const p = entry.prefill;
+          entry.prefill = undefined;
+          if (p) this.writePrefill(s, p.text, p.written);
         },
         (err: Error) => {
           // Startup abandoned (window closed, relancerTout): its failure no longer concerns the panel.
-          if (this.entrees.get(f) !== entry) return;
-          this.o.envoyer(
+          if (this.inputs.get(f) !== entry) return;
+          this.o.send(
             f,
             "etat",
-            err instanceof WorkshopError && err.etat === "docker-absent" ? { etat: "docker-absent" } : { etat: "erreur", message: err.message },
+            err instanceof WorkshopError && err.state === "docker-absent" ? { state: "docker-absent" } : { state: "erreur", message: err.message },
           );
         },
       )
-      .finally(() => (entry.demarrage = undefined));
-    return entry.demarrage;
+      .finally(() => (entry.startup = undefined));
+    return entry.startup;
   }
 
-  private envoyerSortie(f: WindowId, e: Entry): void {
-    const d = e.aEnvoyer;
-    this.annulerEnvoi(e);
-    if (d && this.entrees.get(f) === e) this.o.envoyer(f, "donnees", d);
+  private sendOutput(f: WindowId, e: Entry): void {
+    const d = e.toSend;
+    this.cancelSend(e);
+    if (d && this.inputs.get(f) === e) this.o.send(f, "donnees", d);
   }
 
-  private annulerEnvoi(e: Entry): void {
-    clearTimeout(e.minuterie);
-    e.minuterie = undefined;
-    e.aEnvoyer = "";
+  private cancelSend(e: Entry): void {
+    clearTimeout(e.timer);
+    e.timer = undefined;
+    e.toSend = "";
   }
 
   active(f: WindowId): boolean {
-    return this.entrees.get(f)?.session?.active ?? false;
+    return this.inputs.get(f)?.session?.active ?? false;
   }
 
-  ecrire(f: WindowId, d: string): void {
-    const session = this.entrees.get(f)?.session;
+  write(f: WindowId, d: string): void {
+    const session = this.inputs.get(f)?.session;
     if (!session) return;
-    session.ecrire(d);
-    if (d.includes("\r")) this.o.surEnvoi?.(f);
+    session.write(d);
+    if (d.includes("\r")) this.o.onSend?.(f);
   }
 
   /**
@@ -167,47 +167,47 @@ export class SessionsAgent {
    * becomes so (a single pending text per window, the last wins). `ecrit` is called just before writing,
    * session open: an access granted there survives the policy's reset by the session opening.
    */
-  preRemplir(f: WindowId, text: string, written?: () => void): void {
-    let e = this.entrees.get(f);
-    if (e?.session?.active) return this.ecrirePreRemplissage(e.session, text, written);
-    if (!e) this.entrees.set(f, (e = { tampon: new SessionBuffer(BUFFER_MAX), aEnvoyer: "", taille: { cols: 80, rows: 24 } }));
-    e.preRemplissage = { texte: text, ...(written ? { ecrit: written } : {}) };
+  prefill(f: WindowId, text: string, written?: () => void): void {
+    let e = this.inputs.get(f);
+    if (e?.session?.active) return this.writePrefill(e.session, text, written);
+    if (!e) this.inputs.set(f, (e = { buffer: new SessionBuffer(BUFFER_MAX), toSend: "", size: { cols: 80, rows: 24 } }));
+    e.prefill = { text: text, ...(written ? { written: written } : {}) };
   }
 
-  private ecrirePreRemplissage(s: SessionLike, text: string, written?: () => void): void {
+  private writePrefill(s: SessionLike, text: string, written?: () => void): void {
     written?.();
-    s.ecrire(text);
+    s.write(text);
   }
 
-  redimensionner(f: WindowId, t: TerminalSize): void {
-    const e = this.entrees.get(f);
-    if (e) e.taille = t;
-    e?.session?.redimensionner(t.cols, t.rows);
+  resize(f: WindowId, t: TerminalSize): void {
+    const e = this.inputs.get(f);
+    if (e) e.size = t;
+    e?.session?.resize(t.cols, t.rows);
   }
 
   /** Profile change: every window that had an agent gets a new one, at the same size. */
-  async relancerTout(): Promise<void> {
-    const olds = [...this.entrees];
+  async relaunchAll(): Promise<void> {
+    const olds = [...this.inputs];
     // New entries: a startup still in progress on the old kernel will be abandoned when it arrives.
-    this.entrees.clear();
+    this.inputs.clear();
     for (const [, e] of olds) {
-      this.annulerEnvoi(e);
+      this.cancelSend(e);
       const s = e.session;
       e.session = undefined;
-      void s?.arreter();
+      void s?.stop();
     }
-    await Promise.all(olds.map(([f, e]) => this.demarrer(f, e.taille)));
+    await Promise.all(olds.map(([f, e]) => this.start(f, e.size)));
   }
 
   /** Hands control back once the agent is stopped in the container. */
-  async fermerFenetre(f: WindowId): Promise<void> {
-    const e = this.entrees.get(f);
-    if (e) this.annulerEnvoi(e);
-    this.entrees.delete(f);
-    await e?.session?.arreter();
+  async closeWindow(f: WindowId): Promise<void> {
+    const e = this.inputs.get(f);
+    if (e) this.cancelSend(e);
+    this.inputs.delete(f);
+    await e?.session?.stop();
   }
 
-  async toutArreter(): Promise<void> {
-    await Promise.all([...this.entrees.keys()].map((f) => this.fermerFenetre(f)));
+  async stopAll(): Promise<void> {
+    await Promise.all([...this.inputs.keys()].map((f) => this.closeWindow(f)));
   }
 }

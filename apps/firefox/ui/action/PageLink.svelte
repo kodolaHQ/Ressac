@@ -6,12 +6,12 @@
    * A page link: a button, never an `<a href>` (the main process only opens the address if it appears as is in the
    * results). Without a permitted address, the text alone.
    */
-  let { lien: link, ctx }: { lien: LinkRef; ctx: PageContext } = $props();
+  let { link: link, ctx }: { link: LinkRef; ctx: PageContext } = $props();
 </script>
 
 {#if link.url === null}
-  <span class="pa-texte">{link.texte}</span>
+  <span class="pa-texte">{link.text}</span>
 {:else}
   {@const url = link.url}
-  <button type="button" class="pa-lien" title={url} onclick={() => api.actions.ouvrirLien(ctx.action, ctx.execution, url)}>{link.texte || url}</button>
+  <button type="button" class="pa-lien" title={url} onclick={() => api.actions.openLink(ctx.action, ctx.run, url)}>{link.text || url}</button>
 {/if}

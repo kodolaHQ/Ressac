@@ -27,10 +27,10 @@ export const local = (e: unknown): Error => new Error(typeof (e as Error | null)
 
 export function createExternalApi(o: {
   host: Pick<AgentHost, "request" | "on">;
-  fenetre: WindowId;
+  window: WindowId;
   dispatch: (a: Action) => void;
   untilUnload: (f: () => void) => () => void;
-}): ApiWebaios["externes"] {
+}): ApiWebaios["external"] {
   const { host } = o;
   const call = (method: string, params: unknown) =>
     host.request(method, params).then(
@@ -39,34 +39,34 @@ export function createExternalApi(o: {
     );
   return {
     // A host that does not answer: the off server with its reason (spec §5.10).
-    liste: () =>
+    list: () =>
       host.request<ExternalsState>("externes.liste").then(
         (v) => structuredClone(v),
-        (e) => ({ serveur: { etat: "eteint" as const, raison: failureReason(local(e)) }, projets: [], clients: [] }),
+        (e) => ({ server: { state: "eteint" as const, reason: failureReason(local(e)) }, projects: [], clients: [] }),
       ),
-    surChange(cb) {
+    onChange(cb) {
       // accueil.change: the host sends it at each kernel start.
       const offs = ["externes.change", HOST_EXITED, "accueil.change"].map((m) => host.on(m, () => cb()));
       return o.untilUnload(() => offs.forEach((f) => f()));
     },
-    async brancher(name) {
+    async connect(name) {
       const n = checkClientName(name);
-      return host.request<{ commande: string }>("externes.brancher", { nom: n }).then(
+      return host.request<{ command: string }>("externes.brancher", { name: n }).then(
         (r) => structuredClone(r),
         (e) => Promise.reject(local(e)),
       );
     },
-    async revoquer(id) {
+    async revoke(id) {
       if (typeof id === "string" && CLIENT_ID.test(id)) await call("externes.revoquer", { id });
     },
-    async oublier(id) {
+    async forget(id) {
       if (typeof id === "string" && EXTERNAL_ID.test(id)) await call("externes.oublier", { id });
     },
-    relire(id) {
+    review(id) {
       if (typeof id !== "string" || !EXTERNAL_ID.test(id)) return;
       void host.request<string | null>("externes.nom", { id }).then(
         (name) => {
-          if (typeof name === "string") o.dispatch({ type: "ouvrirRelecture", fenetreId: o.fenetre, projet: "ext-" + id, nom: name.slice(0, 80) });
+          if (typeof name === "string") o.dispatch({ type: "ouvrirRelecture", windowId: o.window, project: "ext-" + id, name: name.slice(0, 80) });
         },
         (e) => console.error("[webaios] externes.nom :", local(e).message),
       );
@@ -75,49 +75,49 @@ export function createExternalApi(o: {
 }
 
 /** The Review page: the shared guards, then the handler of the same name; a rejection keeps its message. */
-export function createReviewApi(o: { host: Pick<AgentHost, "request"> }): ApiWebaios["relecture"] {
+export function createReviewApi(o: { host: Pick<AgentHost, "request"> }): ApiWebaios["review"] {
   const ask = <T>(method: string, params: Record<string, unknown>): Promise<T> =>
     o.host.request<T>(method, params).then(
       (v) => structuredClone(v),
       (e) => Promise.reject(local(e)),
     );
   return {
-    async ouvrir(project, token) {
-      return ask("relecture.ouvrir", { projet: checkProject(project), jeton: token === undefined || token === null ? null : checkToken(token) });
+    async open(project, token) {
+      return ask("relecture.ouvrir", { project: checkProject(project), token: token === undefined || token === null ? null : checkToken(token) });
     },
-    async fichier(project, token, path) {
-      return ask("relecture.fichier", { projet: checkProject(project), jeton: checkToken(token), chemin: checkPath(path) });
+    async file(project, token, path) {
+      return ask("relecture.fichier", { project: checkProject(project), token: checkToken(token), path: checkPath(path) });
     },
-    async lignes(project, token, path, start, end) {
+    async lines(project, token, path, start, end) {
       const p = checkProject(project);
       [start, end] = checkLines(start, end);
-      return ask("relecture.lignes", { projet: p, jeton: checkToken(token), chemin: checkPath(path), debut: start, fin: end });
+      return ask("relecture.lignes", { project: p, token: checkToken(token), path: checkPath(path), start: start, end: end });
     },
-    async commentaires(project) {
-      return ask("relecture.commentaires", { projet: checkProject(project) });
+    async comments(project) {
+      return ask("relecture.commentaires", { project: checkProject(project) });
     },
-    async commenter(project, token, c) {
+    async comment(project, token, c) {
       const p = checkProject(project);
       if (typeof c !== "object" || c === null) throw new Error("lignes invalides");
-      const [start, end] = checkLines(c.debut, c.fin);
-      return ask("relecture.commenter", { projet: p, jeton: checkToken(token), c: { fichier: checkPath(c.fichier), debut: start, fin: end, texte: checkText(c.texte) } });
+      const [start, end] = checkLines(c.start, c.end);
+      return ask("relecture.commenter", { project: p, token: checkToken(token), c: { file: checkPath(c.file), start: start, end: end, text: checkText(c.text) } });
     },
-    async modifierCommentaire(project, id, text) {
-      return ask("relecture.modifierCommentaire", { projet: checkProject(project), id: checkComment(id), texte: checkText(text) });
+    async editComment(project, id, text) {
+      return ask("relecture.modifierCommentaire", { project: checkProject(project), id: checkComment(id), text: checkText(text) });
     },
-    async resoudre(project, id, resolved) {
+    async resolve(project, id, resolved) {
       const p = checkProject(project);
       const r = checkResolved(resolved);
-      return ask("relecture.resoudre", { projet: p, id: checkComment(id), resolu: r });
+      return ask("relecture.resoudre", { project: p, id: checkComment(id), resolved: r });
     },
     async supprimerCommentaire(project, id) {
-      return ask("relecture.supprimerCommentaire", { projet: checkProject(project), id: checkComment(id) });
+      return ask("relecture.supprimerCommentaire", { project: checkProject(project), id: checkComment(id) });
     },
-    async envoyer(project) {
-      return ask("relecture.envoyer", { projet: checkProject(project) });
+    async send(project) {
+      return ask("relecture.envoyer", { project: checkProject(project) });
     },
-    async relu(project, token) {
-      return ask("relecture.relu", { projet: checkProject(project), jeton: checkToken(token) });
+    async reviewed(project, token) {
+      return ask("relecture.relu", { project: checkProject(project), token: checkToken(token) });
     },
   };
 }
@@ -128,29 +128,29 @@ export function createReviewApi(o: { host: Pick<AgentHost, "request"> }): ApiWeb
  */
 export function createDesignApi(o: { win: WindowController; untilUnload: (f: () => void) => () => void }): ApiDesign {
   const { design, agent: host } = o.win.store;
-  const t = { type: "fenetre" as const, fenetreId: o.win.fenetreId };
+  const t = { type: "fenetre" as const, windowId: o.win.windowId };
   const copy = <T>(p: Promise<T>): Promise<T> =>
     p.then(
       (v) => structuredClone(v),
       (e) => Promise.reject(local(e)),
     );
-  const appState = () => copy(design.etat(t));
-  const allowed = async (p: unknown): Promise<boolean> => typeof p === "string" && ID_PROJECT.test(p) && p === (await appState().catch(() => null))?.projet?.projet;
+  const appState = () => copy(design.state(t));
+  const allowed = async (p: unknown): Promise<boolean> => typeof p === "string" && ID_PROJECT.test(p) && p === (await appState().catch(() => null))?.project?.project;
   const id = (x: unknown): x is string => typeof x === "string" && x.length <= DESIGN_ID_MAX;
   return {
-    etat: appState,
-    basculer: () => void design.toggle(t),
-    relire: () => void design.relire(t),
-    panier: async (p) => ((await allowed(p)) ? copy(host.request<ShownElement[]>("design.panier", { projet: p })) : []),
-    lots: async (p) => ((await allowed(p)) ? copy(host.request<BatchShown[]>("design.lots", { projet: p })) : []),
-    async retirer(p, x) {
-      if ((await allowed(p)) && id(x)) await copy(host.request("design.retirer", { projet: p, id: x }));
+    state: appState,
+    toggle: () => void design.toggle(t),
+    review: () => void design.review(t),
+    basket: async (p) => ((await allowed(p)) ? copy(host.request<ShownElement[]>("design.panier", { project: p })) : []),
+    batches: async (p) => ((await allowed(p)) ? copy(host.request<BatchShown[]>("design.lots", { project: p })) : []),
+    async remove(p, x) {
+      if ((await allowed(p)) && id(x)) await copy(host.request("design.retirer", { project: p, id: x }));
     },
-    async traite(p, batch) {
-      if ((await allowed(p)) && id(batch)) await copy(host.request("design.traite", { projet: p, lot: batch }));
+    async handled(p, batch) {
+      if ((await allowed(p)) && id(batch)) await copy(host.request("design.traite", { project: p, batch: batch }));
     },
-    envoyer: async (p) => ((await allowed(p)) ? copy(host.request<ExtensionResult>("design.envoyer", { projet: p })) : { ok: false, erreur: INVALID_REQUEST }),
-    surChange(cb) {
+    send: async (p) => ((await allowed(p)) ? copy(host.request<ExtensionResult>("design.envoyer", { project: p })) : { ok: false, error: INVALID_REQUEST }),
+    onChange(cb) {
       // accueil.change: the host sends it at each kernel start.
       const offs = [...["design.change", HOST_EXITED, "accueil.change"].map((m) => host.on(m, () => cb())), design.onChange(() => cb())];
       return o.untilUnload(() => offs.forEach((f) => f()));

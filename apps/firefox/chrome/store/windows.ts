@@ -7,13 +7,13 @@ export function pickWindow(
   state: BrowserState,
   o: { bound: ReadonlySet<WindowId>; kept: WindowId | null; opening: readonly WindowId[] },
 ): WindowId | null {
-  const free = (id: WindowId | null) => !!id && !o.bound.has(id) && state.fenetres.some((f) => f.id === id);
-  return o.opening.find(free) ?? (free(o.kept) ? o.kept : null) ?? state.fenetres.find((f) => free(f.id))?.id ?? null;
+  const free = (id: WindowId | null) => !!id && !o.bound.has(id) && state.windows.some((f) => f.id === id);
+  return o.opening.find(free) ?? (free(o.kept) ? o.kept : null) ?? state.windows.find((f) => free(f.id))?.id ?? null;
 }
 
 export interface WindowRegistry {
   /** Binds a new full browser window; creates a state window (ouvrirFenetre, espaceId of active()) when pickWindow gives null. Bound before any dispatch. */
-  claim(win: Window): { fenetreId: WindowId; first: boolean };
+  claim(win: Window): { windowId: WindowId; first: boolean };
   /** The window is gone: calls onRelease first; among others, fermerFenetre; the last one, or any while
    *  Services.startup.shuttingDown, stays in the state (kept: the next claim takes it back). */
   release(windowId: WindowId): void;
@@ -48,8 +48,8 @@ export function createWindowRegistry(o: {
   // A state window with no Firefox window (restored, or added by an action) gets one, unless kept closed (macOS).
   const openMissing = (state: BrowserState) => {
     if (!claimed || Services.startup.shuttingDown) return;
-    opening = opening.filter((id) => !bound.has(id) && state.fenetres.some((f) => f.id === id));
-    for (const f of state.fenetres)
+    opening = opening.filter((id) => !bound.has(id) && state.windows.some((f) => f.id === id));
+    for (const f of state.windows)
       if (!bound.has(f.id) && f.id !== kept && !opening.includes(f.id)) {
         const id = f.id;
         opening.push(id);
@@ -79,9 +79,9 @@ export function createWindowRegistry(o: {
       } else {
         const id: WindowId = crypto.randomUUID();
         const from = registry.active();
-        const spaceId = store.state.fenetres.find((f) => f.id === from)?.espaceActif;
+        const spaceId = store.state.windows.find((f) => f.id === from)?.activeSpace;
         bound.set(id, win);
-        store.dispatch({ type: "ouvrirFenetre", id, ...(spaceId ? { espaceId: spaceId } : {}) });
+        store.dispatch({ type: "ouvrirFenetre", id, ...(spaceId ? { spaceId: spaceId } : {}) });
         windowId = id;
       }
       const id = windowId;
@@ -90,7 +90,7 @@ export function createWindowRegistry(o: {
         o.onActivate?.(id);
       });
       openMissing(store.state);
-      return { fenetreId: id, first };
+      return { windowId: id, first };
     },
     release(windowId) {
       if (!bound.delete(windowId)) return;
@@ -102,7 +102,7 @@ export function createWindowRegistry(o: {
       const focused = Services.focus.activeWindow;
       for (const [id, w] of bound) if (w === focused) return id;
       if (lastActive && bound.has(lastActive)) return lastActive;
-      return store.state.fenetres.find((f) => bound.has(f.id))?.id;
+      return store.state.windows.find((f) => bound.has(f.id))?.id;
     },
     get(windowId) {
       const window = bound.get(windowId);

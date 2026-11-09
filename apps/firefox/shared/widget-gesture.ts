@@ -10,11 +10,11 @@ export function gestureGuard<F>(now: () => number = () => Date.now()) {
   const last = new Map<F, { t: number; widget: string }>();
   return {
     /** Real mouse press in the display of widget `widget` of this window. */
-    geste(win: F, widget: string) {
+    gesture(win: F, widget: string) {
       last.set(win, { t: now(), widget });
     },
     /** Link request from widget `widget`: accepted (and the gesture consumed) if its last gesture is recent and its own. */
-    accepter(win: F, widget: string): boolean {
+    accept(win: F, widget: string): boolean {
       const g = last.get(win);
       if (!g || g.widget !== widget || now() - g.t > GESTURE_DELAY_MS) return false;
       last.delete(win);

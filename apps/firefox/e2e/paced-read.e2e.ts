@@ -56,7 +56,7 @@ beforeAll(async () => {
   [a, b] = await Promise.all([site("site-a"), site("site-b")]);
   a.peer = `http://site-b.test:${b.port}/bounce`;
   b.peer = `http://site-a.test:${a.port}/bounce`;
-  w = await launchWebAiOs({ env: { WEBAIOS_TEST_ADRESSES_PUBLIQUES: "127.0.0.1", WEBAIOS_TEST_LECTURE_MENAGEE: "1" } });
+  w = await launchWebAiOs({ env: { WEBAIOS_TEST_PUBLIC_ADDRESSES: "127.0.0.1", WEBAIOS_TEST_PACED_READ: "1" } });
   m = w.marionette;
   await m.setContext("chrome");
   await waitFor(m, "return !!window.webaiosWindow", (v) => v === true);
@@ -77,7 +77,7 @@ beforeEach(() => {
   b.hits.length = 0;
 });
 
-type Outcome = { ok: { url: string; texte: string }; at: number } | { err: string; at: number };
+type Outcome = { ok: { url: string; text: string }; at: number } | { err: string; at: number };
 /** A paced read through the host's test hook (the kernel's Pacing), resolving when it ends. */
 const paced = (url: string) =>
   m.execute<Outcome>(
@@ -98,7 +98,7 @@ const plain = (url: string) =>
     })();`,
     [url],
   );
-const text = (r: Outcome) => ("ok" in r ? r.ok.texte : r.err);
+const text = (r: Outcome) => ("ok" in r ? r.ok.text : r.err);
 
 /** A read of site-b and, at the same moment, a read reaching site-b only by a redirect: the redirect must wait for the first read's turn. */
 async function redirectBesideRead(redirect: string) {

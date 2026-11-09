@@ -95,7 +95,7 @@ async function freePort(): Promise<number> {
 // externes.spec.ts:50
 it("« Brancher un Claude Code »: the command with the real port and a 64-hex token, gone on « Fermer »; clients-externes.json without the token", async () => {
   await launch();
-  const { commande: command, port, jeton: token } = await connectClient(m);
+  const { command: command, port, token: token } = await connectClient(m);
   expect(command).toBe(`claude mcp add --transport http --scope user webaios-remarques http://127.0.0.1:${port}/mcp-externe --header "Authorization: Bearer ${token}"`);
   expect(port).toBeGreaterThan(0);
   expect(port).not.toBe(5279);
@@ -115,16 +115,16 @@ it("« Brancher un Claude Code »: the command with the real port and a 64-hex t
 it("declarer_projet: the projet-externe line shows; one notification only, even after a second declaration", async () => {
   await launch();
   const folder = projectDir("mon-site");
-  const { port, jeton: token } = await connectClient(m);
+  const { port, token: token } = await connectClient(m);
   const c = await mcpClient(port, token);
   try {
-    const r = await c.callTool({ name: "declarer_projet", arguments: { dossier: folder, ports: [18765] } });
+    const r = await c.callTool({ name: "declarer_projet", arguments: { folder: folder, ports: [18765] } });
     expect(textOf(r)).toContain("mon-site");
     await waitCount(tid("projet-externe"), 1);
     const line = (await text(tid("projet-externe")))!;
     for (const t of ["mon-site", folder, "18765", "Claude Code"]) expect(line).toContain(t);
-    await expect.poll(() => readNotifications(notifications), { timeout: 10_000 }).toEqual([{ titre: "WebAiOs", texte: "Claude Code a branché le projet mon-site" }]);
-    await c.callTool({ name: "declarer_projet", arguments: { dossier: folder, ports: [18765] } });
+    await expect.poll(() => readNotifications(notifications), { timeout: 10_000 }).toEqual([{ title: "WebAiOs", text: "Claude Code a branché le projet mon-site" }]);
+    await c.callTool({ name: "declarer_projet", arguments: { folder: folder, ports: [18765] } });
     await new Promise((r) => setTimeout(r, 500));
     expect(readNotifications(notifications)).toHaveLength(1);
     expect(await count(tid("projet-externe"))).toBe(1);
@@ -140,7 +140,7 @@ it("Révoquer: the next call returns 401; the project line says « aucun client 
   try {
     await click(m, `${tid("client-externe")} button`, { text: "Révoquer" });
     await waitCount(tid("client-externe"), 0);
-    await expect(p.client.callTool({ name: "lire_remarques", arguments: { dossier: p.dossier } })).rejects.toMatchObject({ code: 401 });
+    await expect(p.client.callTool({ name: "lire_remarques", arguments: { folder: p.folder } })).rejects.toMatchObject({ code: 401 });
     await waitUi(m, "return doc.querySelector('[data-testid=\"projet-externe\"]')?.textContent.includes('aucun client')");
   } finally {
     await p.client.close();
@@ -153,7 +153,7 @@ it("Oublier: the line goes, with ext-<id>.git and its comments under <dataDir>/d
   const p = await declareProject(m, { dataDir: w!.dataDir });
   try {
     // A comment on the project (the Review page is Task 4's: straight through the host).
-    writeAppJs(p.dossier, modified(2));
+    writeAppJs(p.folder, modified(2));
     const project = `ext-${p.id}`;
     const r = await storeEval<{ ok: boolean }>(
       `const v = await store.agent.request("relecture.ouvrir", { projet: arguments[0] });
@@ -178,7 +178,7 @@ it("a port held elsewhere: the section says so, « Brancher » is greyed, and no
   await new Promise<void>((ok) => held.listen(0, "127.0.0.1", ok));
   const port = (held.address() as { port: number }).port;
   try {
-    await launch({ WEBAIOS_PORT_MCP_EXTERNE: String(port) });
+    await launch({ WEBAIOS_PORT_MCP_EXTERNAL: String(port) });
     await waitText(tid("raison-externes"), `Le port ${port} est pris : le MCP externe est éteint.`, 15_000);
     expect(await connectDisabled()).toBe(true);
     // No fallback: no port of the host answers like the external server (Origin → 403 before any token, as the
@@ -199,7 +199,7 @@ it("a port held elsewhere: the section says so, « Brancher » is greyed, and no
 
 // externes.spec.ts:296
 it("an invalid port (WEBAIOS_PORT_MCP_EXTERNE=abc): the section says the external MCP could not start", async () => {
-  await launch({ WEBAIOS_PORT_MCP_EXTERNE: "abc" });
+  await launch({ WEBAIOS_PORT_MCP_EXTERNAL: "abc" });
   await waitUi(m, "return doc.querySelector('[data-testid=\"raison-externes\"]')?.textContent.startsWith(arguments[0])", ["Le MCP externe n'a pas pu démarrer : "], 15_000);
   expect(await connectDisabled()).toBe(true);
 });
@@ -241,14 +241,14 @@ it("the server listens on 127.0.0.1 only", async () => {
 
 it("a folder under <dataDir> is refused with SPACE_FOLDER", async () => {
   await launch();
-  const { port, jeton: token } = await connectClient(m);
+  const { port, token: token } = await connectClient(m);
   const c = await mcpClient(port, token);
   try {
     const inside = [path.join(w!.dataDir, "design", "x"), path.join(w!.dataDir, "espace", "projets", "x")];
     // Existing folders: a missing one is refused earlier, for another reason.
     for (const d of inside) mkdirSync(d, { recursive: true });
     for (const folder of [w!.dataDir, ...inside]) {
-      const r = (await c.callTool({ name: "declarer_projet", arguments: { dossier: folder, ports: [18765] } })) as { isError?: boolean };
+      const r = (await c.callTool({ name: "declarer_projet", arguments: { folder: folder, ports: [18765] } })) as { isError?: boolean };
       expect(textOf(r), folder).toContain(SPACE_FOLDER);
       expect(r.isError).toBe(true);
     }
@@ -265,7 +265,7 @@ it("the token appears in no file under <dataDir> nor the profile", async () => {
   const p = await declareProject(m, { dataDir: w!.dataDir });
   await p.client.close();
   await new Promise((r) => setTimeout(r, 800));
-  const token = Buffer.from(p.jeton);
+  const token = Buffer.from(p.token);
   for (const f of [...filesOf(w!.dataDir), ...filesOf(w!.profile)]) {
     let content: Buffer;
     try {
@@ -280,8 +280,8 @@ it("the token appears in no file under <dataDir> nor the profile", async () => {
 // Review Focus 1
 it("after a host restart the server comes back on the same port and the same token still connects", { timeout: 120_000 }, async () => {
   const port = await freePort();
-  await launch({ WEBAIOS_PORT_MCP_EXTERNE: String(port) });
-  const { port: shown, jeton: token } = await connectClient(m);
+  await launch({ WEBAIOS_PORT_MCP_EXTERNAL: String(port) });
+  const { port: shown, token: token } = await connectClient(m);
   expect(shown).toBe(port);
   await click(m, tid("fermer-commande"));
   const before = await mcpClient(port, token);

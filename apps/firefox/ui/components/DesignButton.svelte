@@ -3,13 +3,13 @@
   import { design } from "./design.svelte";
   import { openMenu, type MenuEntry } from "./menu.svelte";
 
-  const e = $derived(design.etat);
-  const unavailable = $derived(!e || e.indisponible !== null);
+  const e = $derived(design.state);
+  const unavailable = $derived(!e || e.unavailable !== null);
 
   function menu(ev: MouseEvent) {
-    const entries: MenuEntry[] = [{ libelle: "Panier", agir: () => (design.panierDemande = true) }];
+    const entries: MenuEntry[] = [{ label: "Panier", dispatch: () => (design.basketRequested = true) }];
     // Task 11: the review of the agent's apps and external projects.
-    if (e?.projet && e.projet.type !== "demo") entries.push({ libelle: "Relire ce projet", agir: () => api.design.relire() });
+    if (e?.project && e.project.type !== "demo") entries.push({ label: "Relire ce projet", dispatch: () => api.design.review() });
     openMenu(ev, entries);
   }
 </script>
@@ -19,11 +19,11 @@
     class="bouton"
     data-testid="bouton-design"
     aria-label="Mode design"
-    aria-pressed={e?.actif ?? false}
+    aria-pressed={e?.active ?? false}
     disabled={unavailable}
-    title={unavailable ? (e?.indisponible ?? "") : "Mode design (⌘⇧D)"}
-    onclick={() => api.design.basculer()}
-    >✎{#if e && e.panier > 0}<span class="compteur" data-testid="compteur-panier">{e.panier}</span>{/if}</button
+    title={unavailable ? (e?.unavailable ?? "") : "Mode design (⌘⇧D)"}
+    onclick={() => api.design.toggle()}
+    >✎{#if e && e.basket > 0}<span class="compteur" data-testid="compteur-panier">{e.basket}</span>{/if}</button
   >
   <button class="chevron" aria-label="Menu du mode design" disabled={unavailable} onclick={menu}>▾</button>
 </span>

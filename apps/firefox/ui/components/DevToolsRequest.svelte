@@ -4,42 +4,42 @@
   import { siteOf, type PendingRequest } from "../../shared/model";
   import { api } from "../state.svelte";
 
-  let { demande: request }: { demande: PendingRequest } = $props();
+  let { request: request }: { request: PendingRequest } = $props();
 
   // The four rights, in the card's order. `sensible`: the warning shown below.
-  const RIGHTS: { droit: DevRight; icone: string; nom: string; detail: string; sensible?: string }[] = [
-    { droit: "console", icone: "👁", nom: "Console et erreurs", detail: "Messages, erreurs JavaScript, avertissements" },
-    { droit: "reseau", icone: "👁", nom: "Réseau", detail: "Requêtes et réponses de la page", sensible: "peut contenir des données de connexion" },
-    { droit: "performances", icone: "👁", nom: "Performances et mémoire", detail: "Profilage, instantanés mémoire" },
-    { droit: "agir", icone: "⚡", nom: "Agir sur la page", detail: "Exécuter du JavaScript, modifier le DOM, recharger", sensible: "l'agent peut agir en ton nom sur ce site" },
+  const RIGHTS: { right: DevRight; icon: string; name: string; detail: string; sensitive?: string }[] = [
+    { right: "console", icon: "👁", name: "Console et erreurs", detail: "Messages, erreurs JavaScript, avertissements" },
+    { right: "reseau", icon: "👁", name: "Réseau", detail: "Requêtes et réponses de la page", sensitive: "peut contenir des données de connexion" },
+    { right: "performances", icon: "👁", name: "Performances et mémoire", detail: "Profilage, instantanés mémoire" },
+    { right: "agir", icon: "⚡", name: "Agir sur la page", detail: "Exécuter du JavaScript, modifier le DOM, recharger", sensitive: "l'agent peut agir en ton nom sur ce site" },
   ];
 
   // Pre-checked: what the agent asked for; the user can add or remove some.
   // Initialized once: the list of requests is rebroadcast on each new question, without touching the selection.
-  let checked = $state<DevRight[]>(untrack(() => [...(request.droits ?? [])]));
+  let checked = $state<DevRight[]>(untrack(() => [...(request.rights ?? [])]));
 
   // Never an exception here: an unreadable origin (about:blank, data:…) is shown as is.
-  const site = $derived(siteOf(request.origine));
+  const site = $derived(siteOf(request.origin));
   const check = (right: DevRight, active: boolean) => (checked = active ? [...checked, right] : checked.filter((d) => d !== right));
 </script>
 
 <div data-testid="demande-outils-dev">
   <h3>{request.agent ?? "L'agent"} veut accéder aux outils de développement</h3>
-  <div class="site">🔒 {site} · onglet « {request.titre ?? site} »</div>
-  <div class="raison">« {request.raison} »</div>
-  {#each RIGHTS as d (d.droit)}
+  <div class="site">🔒 {site} · onglet « {request.title ?? site} »</div>
+  <div class="raison">« {request.reason} »</div>
+  {#each RIGHTS as d (d.right)}
     <label class="droit">
-      <input type="checkbox" data-droit={d.droit} checked={checked.includes(d.droit)} onchange={(e) => check(d.droit, e.currentTarget.checked)} />
+      <input type="checkbox" data-droit={d.right} checked={checked.includes(d.right)} onchange={(e) => check(d.right, e.currentTarget.checked)} />
       <div>
-        <b>{d.icone} {d.nom}</b>
+        <b>{d.icon} {d.name}</b>
         <span>{d.detail}</span>
-        {#if d.sensible}<div class="sensible">⚠ {d.sensible}</div>{/if}
+        {#if d.sensitive}<div class="sensible">⚠ {d.sensitive}</div>{/if}
       </div>
     </label>
   {/each}
   <div class="actions">
-    <button onclick={() => api.permissions.repondre(request.id, "refuser")}>Refuser</button>
-    <button class="autoriser" data-principal onclick={() => api.permissions.repondre(request.id, "autoriser", $state.snapshot(checked))}>Autoriser la sélection</button>
+    <button onclick={() => api.permissions.reply(request.id, "refuser")}>Refuser</button>
+    <button class="autoriser" data-principal onclick={() => api.permissions.reply(request.id, "autoriser", $state.snapshot(checked))}>Autoriser la sélection</button>
   </div>
   <div class="note">Valable pour cette conversation · tombe si l'onglet change de site</div>
 </div>

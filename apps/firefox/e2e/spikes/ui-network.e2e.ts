@@ -124,7 +124,7 @@ function widgetFiles(dataDir: string, id: string, display: string): void {
   mkdirSync(dir, { recursive: true });
   writeFileSync(
     path.join(dir, "widget.json"),
-    JSON.stringify({ nom: id, description: "", tailles: { min: { l: 2, h: 1 }, max: { l: 6, h: 4 }, defaut: { l: 3, h: 2 } }, sources: { compte: [], publiques: [], web: false } }),
+    JSON.stringify({ name: id, description: "", sizes: { min: { l: 2, h: 1 }, max: { l: 6, h: 4 }, default: { l: 3, h: 2 } }, sources: { account: [], public: [], web: false } }),
   );
   writeFileSync(path.join(dir, "affichage.html"), display);
 }
@@ -166,10 +166,10 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("the UI's network, spikes S1–S3", 
     await waitFor(m, `const f = document.getElementById("webaios-sidebar").contentDocument.querySelector('[data-testid="widget-${id}"] iframe'); return f?.contentDocument?.body?.textContent ?? "";`, (t: string) => t.includes(marker), 20_000);
   }
   async function closeTabs(): Promise<void> {
-    for (const id of Object.keys((await state(m)).onglets)) await dispatch(m, { type: "fermerOnglet", id } as never);
+    for (const id of Object.keys((await state(m)).tabs)) await dispatch(m, { type: "fermerOnglet", id } as never);
   }
   async function openTab(url: string): Promise<void> {
-    await dispatch(m, { type: "ouvrirOnglet", fenetreId: (await state(m)).fenetres[0]!.id, url } as never);
+    await dispatch(m, { type: "ouvrirOnglet", windowId: (await state(m)).windows[0]!.id, url } as never);
     await waitFor(m, `return gBrowser.selectedBrowser.currentURI.spec === ${JSON.stringify(url)} && !gBrowser.selectedBrowser.webProgress.isLoadingDocument`, (v) => v === true, 15_000);
   }
 
@@ -216,8 +216,8 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("the UI's network, spikes S1–S3", 
     // The widget folder exists: no starter widget is seeded, so no harvest runs.
     widgetFiles(dataDir, "sonde", hintsWidget("a"));
     writeSite(dataDir, "netsite", {
-      declaration: { nom: "Netsite", adresse: `http://netsite.localhost:${HTTP}/page`, domaines: ["netsite.localhost"] },
-      fichiers: { "accueil/index.html": '<!doctype html><meta charset="utf-8"><p id="h">accueil</p>' },
+      declaration: { name: "Netsite", url: `http://netsite.localhost:${HTTP}/page`, domains: ["netsite.localhost"] },
+      files: { "accueil/index.html": '<!doctype html><meta charset="utf-8"><p id="h">accueil</p>' },
     });
     const actor = testActor(profile);
     w = await launchWebAiOs({
@@ -225,7 +225,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("the UI's network, spikes S1–S3", 
       profile,
       // ice.loopback: lets ICE send to the loopback STUN witness (spike only; measured with and without in the note).
       prefs: { ...actor.prefs, "network.dns.native-is-localhost": true, "network.trr.mode": 5, ...(process.env.WEBAIOS_SPIKE_LOOPBACK ? { "media.peerconnection.ice.loopback": true } : {}) },
-      env: { ...actor.env, WEBAIOS_TEST_ADRESSES_LOCALES: "1", MOZ_LOG: "sync,nsHostResolver:5", MOZ_LOG_FILE: path.join(logDir, "moz.log") },
+      env: { ...actor.env, WEBAIOS_TEST_LOCAL_ADDRESSES: "1", MOZ_LOG: "sync,nsHostResolver:5", MOZ_LOG_FILE: path.join(logDir, "moz.log") },
     });
     m = w.marionette;
     await m.setContext("chrome");
@@ -406,7 +406,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("the UI's network, spikes S1–S3", 
       .then((v) => v, (e) => `ERR ${e}`);
     const bar = await waitFor(m, `const w = ${site}; const b = w?.document.getElementById("webaios-site-bar")?.contentDocument; const h = b?.querySelector('[data-testid="site-cadre-accueil"]')?.contentDocument; return { bar: b?.documentURI ?? null, home: h?.documentURI ?? null, view: w?.gBrowser.selectedBrowser.currentURI.spec ?? null };`, (v: any) => !!v.bar && !!v.home, 20_000).catch((e) => String(e));
     const list = await m.execute(`return (async () => { const store = await ChromeUtils.importESModule("chrome://browser/content/webaios/store.sys.mjs").ready; return await store.agent.request("sites.liste"); })();`).catch((e) => String(e));
-    note("S2 site app opened", { opened, bar, liste: list });
+    note("S2 site app opened", { opened, bar, list: list });
 
     const p0 = await s2Phase("p0");
     note("S2 p0, no net", p0);

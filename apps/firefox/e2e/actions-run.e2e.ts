@@ -21,7 +21,7 @@ const disabled = (selector: string) => inUi<boolean>(m, "return doc.querySelecto
 
 beforeAll(async () => {
   servers = await startActionServers();
-  w = await launchWebAiOs({ env: { WEBAIOS_OLLAMA_URL: servers.ollama.url, WEBAIOS_KEV_URL: servers.kev.url, WEBAIOS_TEST_ADRESSES_LOCALES: "1" } });
+  w = await launchWebAiOs({ env: { WEBAIOS_OLLAMA_URL: servers.ollama.url, WEBAIOS_KEV_URL: servers.kev.url, WEBAIOS_TEST_LOCAL_ADDRESSES: "1" } });
   m = w.marionette;
   q = uiQueries(m);
   await m.setContext("chrome");
@@ -38,8 +38,8 @@ afterAll(async () => {
 describe("action runs", () => {
   // actions.spec.ts:453
   it("while running, « Lecture de 127.0.0.1… », then « 3 / 3 », then « Mise en page… », then the page", { timeout: 90_000 }, async () => {
-    servers.settings.lenteurSiteMs = 1500;
-    servers.settings.lenteurGemmaMs = 2500;
+    servers.settings.siteSlownessMs = 1500;
+    servers.settings.gemmaSlownessMs = 2500;
     await writePagesAction(w.dataDir, servers.site.url, "pages-a");
     const prompts = servers.ollama.prompts.length;
     await openAction(m, "pages-a", "Pages");
@@ -66,7 +66,7 @@ describe("action runs", () => {
 
   // actions.spec.ts:489
   it("Stop: the page says « Arrêtée à ta demande »", { timeout: 90_000 }, async () => {
-    servers.settings.lenteurSiteMs = 4000;
+    servers.settings.siteSlownessMs = 4000;
     await writePagesAction(w.dataDir, servers.site.url, "pages-b");
     await openAction(m, "pages-b", "Pages");
     await click(m, tid("relancer-action"));
@@ -78,7 +78,7 @@ describe("action runs", () => {
 
   // actions.spec.ts:509
   it("relaunching while running starts no second run (one run written)", { timeout: 90_000 }, async () => {
-    servers.settings.lenteurSiteMs = 1500;
+    servers.settings.siteSlownessMs = 1500;
     await writePagesAction(w.dataDir, servers.site.url, "pages-c");
     await openAction(m, "pages-c", "Pages");
     await click(m, tid("relancer-action"));
@@ -87,9 +87,9 @@ describe("action runs", () => {
     expect(await disabled(tid("relancer-action"))).toBe(true);
     // Each lancer resolves at the run's end (15-38 s): started in the page, awaited outside the 30 s script timeout.
     await inUi(m, "ui.__r = null; Promise.all([ui.webaios.actions.lancer('pages-c', null), ui.webaios.actions.lancer('pages-c', null)]).then((r) => (ui.__r = JSON.parse(JSON.stringify(r))));");
-    const [a, b] = await waitUi<{ execution?: string }[]>(m, "return ui.__r;", [], 90_000);
-    expect(a!.execution).toBeTruthy();
-    expect(b!.execution).toBe(a!.execution);
+    const [a, b] = await waitUi<{ run?: string }[]>(m, "return ui.__r;", [], 90_000);
+    expect(a!.run).toBeTruthy();
+    expect(b!.run).toBe(a!.run);
     await visible(tid("rendu-page"), 90_000);
     await waitUi(m, "return doc.querySelector(arguments[0])?.disabled === false;", [tid("relancer-action")]);
     expect(await runsOnDisk(w.dataDir, "pages-c")).toHaveLength(1);
@@ -97,7 +97,7 @@ describe("action runs", () => {
 
   // actions.spec.ts:568
   it("the previous results menu: reopening yesterday's run launches nothing (no extra prompt to the fake Ollama)", async () => {
-    await writeRunnableAction(w.dataDir, "annonces", { nom: "Annonces", saisie: "Recherche", code: "export default async () => ({});" });
+    await writeRunnableAction(w.dataDir, "annonces", { name: "Annonces", input: "Recherche", code: "export default async () => ({});" });
     const YESTERDAY = "2026-10-30T08-00-00-000Z";
     const TODAY = "2026-10-31T08-00-00-000Z";
     await writeResult(w.dataDir, "annonces", YESTERDAY, "2026-10-30T08:00:00.000Z", "Hier", "clio lyon");
@@ -120,7 +120,7 @@ describe("action runs", () => {
 
   // actions.spec.ts:598
   it("a failed workflow shows its message", { timeout: 60_000 }, async () => {
-    await writeRunnableAction(w.dataDir, "cassee", { nom: "Cassée", code: `export default async () => { throw new Error("Site indisponible"); };` });
+    await writeRunnableAction(w.dataDir, "cassee", { name: "Cassée", code: `export default async () => { throw new Error("Site indisponible"); };` });
     const prompts = servers.ollama.prompts.length;
     await openAction(m, "cassee", "Cassée");
     await click(m, tid("relancer-action"));
@@ -130,7 +130,7 @@ describe("action runs", () => {
 
   // actions.spec.ts:616 (its first half, opening through a suggestion, comes with `ouvrir` in Task 4)
   it("a refused launch with no run written (no workflow.json) shows the error, again after a reload", { timeout: 60_000 }, async () => {
-    await writeAction(w.dataDir, "sans-workflow", { nom: "Sans workflow" });
+    await writeAction(w.dataDir, "sans-workflow", { name: "Sans workflow" });
     await openAction(m, "sans-workflow", "Sans workflow");
     await click(m, tid("relancer-action"));
     await q.waitText(tid("erreur-action"), WITHOUT_WORKFLOW, 30_000);
@@ -150,7 +150,7 @@ describe("action runs", () => {
     await openAction(m, "pages-r", "Pages");
     await q.waitText(tid("bloc-titre"), "Avant");
     // A run in progress when the host crashes: it goes with the host, and no feed says so.
-    servers.settings.lenteurSiteMs = 4000;
+    servers.settings.siteSlownessMs = 4000;
     await click(m, tid("relancer-action"));
     await q.waitContains(tid("avancement-action"), "Lecture de 127.0.0.1…", 30_000);
     // The host crashes under the open page (killed: no last notification), then starts again (the agent panel's
@@ -166,7 +166,7 @@ describe("action runs", () => {
     // Once the kernel runs again (`acces`), the feed is read again: nothing runs. Only that read clears the progress.
     await q.waitCount(tid("avancement-action"), 0, 30_000);
     // The page works again without reopening the tab: a new run shows its progress, then its page.
-    servers.settings.lenteurSiteMs = 1500;
+    servers.settings.siteSlownessMs = 1500;
     await waitUi(m, "return doc.querySelector(arguments[0])?.disabled === false;", [tid("relancer-action")]);
     await click(m, tid("relancer-action"));
     await q.waitContains(tid("avancement-action"), "Lecture de 127.0.0.1…", 30_000);

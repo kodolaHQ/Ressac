@@ -7,8 +7,8 @@ function walk(xs: number[], start: Reveal = INITIAL_REVEAL): boolean[] {
   return xs.map((x) => {
     const zone = leftZone(x);
     const s = onZone(r, zone);
-    r = s.masquer ? hide(zone) : { revelee: s.revelee, armee: s.armee };
-    return r.revelee;
+    r = s.hide ? hide(zone) : { revealed: s.revealed, armed: s.armed };
+    return r.revealed;
   });
 }
 
@@ -31,13 +31,13 @@ describe("compact-mode bar reveal", () => {
     expect(walk([3, 3, 3, 3])).toEqual([true, true, true, true]);
   });
   it("closes beyond the bar and its margin", () => {
-    const s = onZone({ revelee: true, armee: true }, "loin");
-    expect(s).toMatchObject({ revelee: true, masquer: true });
+    const s = onZone({ revealed: true, armed: true }, "loin");
+    expect(s).toMatchObject({ revealed: true, hide: true });
     expect(walk([5, 120, 300])).toEqual([true, true, false]);
   });
   it("does not request a hide while the mouse stays on the bar", () => {
-    expect(onZone({ revelee: true, armee: true }, "barre").masquer).toBe(false);
-    expect(onZone({ revelee: true, armee: true }, "bord").masquer).toBe(false);
+    expect(onZone({ revealed: true, armed: true }, "barre").hide).toBe(false);
+    expect(onZone({ revealed: true, armed: true }, "bord").hide).toBe(false);
   });
   it("hidden with the mouse at the edge, it only comes back after the mouse left then found the edge again", () => {
     const r = hide("bord");

@@ -44,9 +44,9 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("actions spike", () => {
     m = w.marionette;
     await m.setContext("chrome");
     await waitReady(m);
-    const properties = { valeurs: { genre: "reference", description: "Liste de { libelle, valeur }", requis: true }, titre: { genre: "texte", description: "Titre du graphique" } };
-    await writeComponent(w.dataDir, "barres", { description: "Graphique en barres", proprietes: properties, html: BARS });
-    await writeComponent(w.dataDir, "sonde", { description: "Sonde", proprietes: {}, html: probe(probeBase) });
+    const properties = { values: { kind: "reference", description: "Liste de { libelle, valeur }", required: true }, title: { kind: "texte", description: "Titre du graphique" } };
+    await writeComponent(w.dataDir, "barres", { description: "Graphique en barres", properties: properties, html: BARS });
+    await writeComponent(w.dataDir, "sonde", { description: "Sonde", properties: {}, html: probe(probeBase) });
   }, 60_000);
   afterAll(async () => {
     await w?.close();
@@ -83,7 +83,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("actions spike", () => {
     );
 
   it("S1: AGENTS.md's « barres » draws with its props; its height reaches the chrome on the window root", async () => {
-    const r = await mount("barres", { titre: "Ventes", valeurs: [{ libelle: "Lundi", valeur: 3 }, { libelle: "Mardi", valeur: 5 }] }, 500);
+    const r = await mount("barres", { title: "Ventes", values: [{ label: "Lundi", value: 3 }, { label: "Mardi", value: 5 }] }, 500);
     note("S1 barres", r);
     expect(r.src).toMatch(/^resource:\/\/webaios-composant-barres\/composant-\d+\.html$/);
     expect(r.origin).toBe("null");
@@ -132,12 +132,12 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("actions spike", () => {
     const bars = await chrome<string>(m, `return (await ChromeUtils.importESModule("${STORE}").ready).actionMedia.serve("barres");`);
     const out: Record<string, unknown> = {};
     for (const [name, target] of [["nav-composant", bars], ["nav-gre", "resource://gre/modules/NetUtil.sys.mjs"]] as const) {
-      await writeComponent(w.dataDir, name, { description: "Sonde", proprietes: {}, html: `<!doctype html><script>setTimeout(() => { try { location.href = ${JSON.stringify(target)}; parent.postMessage({ type: "nav", thrown: null }, "*"); } catch (e) { parent.postMessage({ type: "nav", thrown: e.name + ": " + e.message }, "*"); } }, 200);</script>` });
+      await writeComponent(w.dataDir, name, { description: "Sonde", properties: {}, html: `<!doctype html><script>setTimeout(() => { try { location.href = ${JSON.stringify(target)}; parent.postMessage({ type: "nav", thrown: null }, "*"); } catch (e) { parent.postMessage({ type: "nav", thrown: e.name + ": " + e.message }, "*"); } }, 200);</script>` });
       const r = await mount(name, {}, 1500);
       out[name] = { loaded: r.loaded, said: r.got.filter((g: any) => g.fromFrame).map((g: any) => g.detail) };
     }
     await chrome(m, `await (await ChromeUtils.importESModule("${STORE}").ready).actionMedia.release("barres");`);
-    note("S1 resource navigation", { barres: bars, out });
+    note("S1 resource navigation", { bars: bars, out });
   }, 60_000);
 
   /** The cookies on 127.0.0.1 of each container: default, profile p1, the action images'. */

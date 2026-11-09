@@ -27,11 +27,11 @@ export const MEMORY_FULL = "Mémoire de l'appli pleine (256 Ko)";
 export const NON_JSON_VALUE = "Valeur refusée : JSON seulement";
 export const KEY_INVALID = "Clé refusée : 1 à 200 caractères";
 
-export type MemoryEntry = { valeur: unknown; adresse: string | null; quand: string };
-export type PositionVideo = { t: number; duree: number; quand: string };
+export type MemoryEntry = { value: unknown; url: string | null; when: string };
+export type PositionVideo = { t: number; duration: number; when: string };
 export type MemoryContent = {
   version: 1;
-  valeurs: Record<string, MemoryEntry>;
+  values: Record<string, MemoryEntry>;
   positions: Record<string, PositionVideo>;
 };
 
@@ -71,22 +71,22 @@ function assess(value: unknown): Assessment {
 }
 
 /** JSON copy of a value, or the reason for the refusal. Never throws. */
-function copyJson(value: unknown): { ok: true; copie: unknown; texte: string } | { ok: false; erreur: string } {
+function copyJson(value: unknown): { ok: true; copy: unknown; text: string } | { ok: false; error: string } {
   try {
     const assessment = assess(value);
-    if (assessment === "pleine") return { ok: false, erreur: MEMORY_FULL };
-    if (assessment === "non-json") return { ok: false, erreur: NON_JSON_VALUE };
+    if (assessment === "pleine") return { ok: false, error: MEMORY_FULL };
+    if (assessment === "non-json") return { ok: false, error: NON_JSON_VALUE };
     const text = JSON.stringify(value) as string | undefined;
-    if (text === undefined) return { ok: false, erreur: NON_JSON_VALUE };
-    if (text.length > SITE_MEMORY_SIZE) return { ok: false, erreur: MEMORY_FULL };
-    return { ok: true, copie: JSON.parse(text), texte: text };
+    if (text === undefined) return { ok: false, error: NON_JSON_VALUE };
+    if (text.length > SITE_MEMORY_SIZE) return { ok: false, error: MEMORY_FULL };
+    return { ok: true, copy: JSON.parse(text), text: text };
   } catch {
-    return { ok: false, erreur: NON_JSON_VALUE };
+    return { ok: false, error: NON_JSON_VALUE };
   }
 }
 
-type ValueSlot = { e: MemoryEntry; taille: number };
-type SlotPosition = { p: PositionVideo; taille: number };
+type ValueSlot = { e: MemoryEntry; size: number };
+type SlotPosition = { p: PositionVideo; size: number };
 
 const valueSize = (key: string, url: string | null, when: string, text: string) =>
   bytes(JSON.stringify(key)) + 1 + bytes(`{"valeur":,"adresse":${JSON.stringify(url)},"quand":${JSON.stringify(when)}}`) + bytes(text) + 1;
@@ -98,29 +98,29 @@ const positionSize = (key: string, p: PositionVideo) => bytes(JSON.stringify(key
  * The consumer must call `vider()` when the app closes, otherwise the pending deferred write is lost.
  */
 export class SiteMemory {
-  private valeurs = new Map<string, ValueSlot>();
+  private values = new Map<string, ValueSlot>();
   private positions = new Map<string, SlotPosition>();
   private total = BASE_BYTES;
   private timer: NodeJS.Timeout | null = null;
-  private chaine: Promise<void> = Promise.resolve();
+  private chain: Promise<void> = Promise.resolve();
   private rev = 0;
-  private ecritRev = 0;
-  private readonly ecouteurs = new Set<() => void>();
+  private writeRev = 0;
+  private readonly listeners = new Set<() => void>();
 
   private constructor(
-    private readonly chemin: string,
-    private readonly maintenant: () => string,
+    private readonly path: string,
+    private readonly now: () => string,
   ) {}
 
-  static async ouvrir(sitesFolder: string, id: string, options: { maintenant?: () => string } = {}): Promise<SiteMemory> {
+  static async open(sitesFolder: string, id: string, options: { now?: () => string } = {}): Promise<SiteMemory> {
     if (!ID_SITE.test(id)) throw new Error(`id d'appli de site invalide : ${id}`);
     const path = join(sitesFolder, id, "memoire.json");
-    const m = new SiteMemory(path, options.maintenant ?? (() => new Date().toISOString()));
+    const m = new SiteMemory(path, options.now ?? (() => new Date().toISOString()));
     try {
       if ((await stat(path)).size <= SITE_MEMORY_SIZE * 2) {
         const raw: unknown = JSON.parse(await readFile(path, "utf8"));
         const version = raw && typeof raw === "object" ? (raw as { version?: unknown }).version : undefined;
-        if (version === 1) m.charger(raw as Record<string, unknown>);
+        if (version === 1) m.load(raw as Record<string, unknown>);
         else if (raw && typeof raw === "object" && !Array.isArray(raw) && "version" in raw) {
           const n = /^[A-Za-z0-9]{1,10}$/.test(String(version)) ? String(version) : "x";
           const free = await freeName(`${path}.v${n}`);
@@ -134,18 +134,18 @@ export class SiteMemory {
   }
 
   /** Re-reads a file re-imposing all the bounds; what exceeds them is dropped. */
-  private charger(raw: Record<string, unknown>): void {
+  private load(raw: Record<string, unknown>): void {
     const { valeurs: values, positions } = raw;
     if (values && typeof values === "object" && !Array.isArray(values)) {
       for (const [k, e] of Object.entries(values)) {
         const x = e as Partial<MemoryEntry> | null;
-        if (k.length < 1 || k.length > KEY_MAX || !x || typeof x !== "object" || !("valeur" in x)) continue;
-        if (typeof x.quand !== "string" || (x.adresse !== null && typeof x.adresse !== "string")) continue;
-        const c = copyJson(x.valeur);
+        if (k.length < 1 || k.length > KEY_MAX || !x || typeof x !== "object" || !("value" in x)) continue;
+        if (typeof x.when !== "string" || (x.url !== null && typeof x.url !== "string")) continue;
+        const c = copyJson(x.value);
         if (!c.ok) continue;
-        const size = valueSize(k, x.adresse, x.quand, c.texte);
+        const size = valueSize(k, x.url, x.when, c.text);
         if (this.total + size > SITE_MEMORY_SIZE) continue;
-        this.valeurs.set(k, { e: { valeur: c.copie, adresse: x.adresse, quand: x.quand }, taille: size });
+        this.values.set(k, { e: { value: c.copy, url: x.url, when: x.when }, size: size });
         this.total += size;
       }
     }
@@ -154,10 +154,10 @@ export class SiteMemory {
       for (const [k, p] of Object.entries(positions)) {
         const x = p as Partial<PositionVideo> | null;
         if (k.length < 1 || k.length > URL_POSITION_MAX) continue;
-        if (!x || typeof x !== "object" || !count(x.t) || !count(x.duree) || typeof x.quand !== "string") continue;
-        alreadyRead.push([k, { t: x.t, duree: x.duree, quand: x.quand }]);
+        if (!x || typeof x !== "object" || !count(x.t) || !count(x.duration) || typeof x.when !== "string") continue;
+        alreadyRead.push([k, { t: x.t, duration: x.duration, when: x.when }]);
       }
-      const recent = alreadyRead.map((l, i) => ({ l, i })).sort((a, b) => (a.l[1].quand < b.l[1].quand ? 1 : a.l[1].quand > b.l[1].quand ? -1 : b.i - a.i));
+      const recent = alreadyRead.map((l, i) => ({ l, i })).sort((a, b) => (a.l[1].when < b.l[1].when ? 1 : a.l[1].when > b.l[1].when ? -1 : b.i - a.i));
       const kept: [string, PositionVideo, number][] = [];
       for (const { l: [k, p] } of recent.slice(0, POSITIONS_MAX)) {
         const size = positionSize(k, p);
@@ -165,7 +165,7 @@ export class SiteMemory {
         this.total += size;
         kept.push([k, p, size]);
       }
-      for (const [k, p, size] of kept.reverse()) this.positions.set(k, { p, taille: size });
+      for (const [k, p, size] of kept.reverse()) this.positions.set(k, { p, size: size });
     }
   }
 
@@ -173,8 +173,8 @@ export class SiteMemory {
    * Positions to forget (the oldest by `quand`, never `sauf`) so that `ajout` more bytes fit,
    * or null if even without positions it does not fit. Changes nothing.
    */
-  private evincer(addition: number, except: string | null, maxPositions: boolean): string[] | null {
-    const candidates = [...this.positions.entries()].map(([k, s], i) => ({ k, q: s.p.quand, t: s.taille, i })).filter((c) => c.k !== except);
+  private evict(addition: number, except: string | null, maxPositions: boolean): string[] | null {
+    const candidates = [...this.positions.entries()].map(([k, s], i) => ({ k, q: s.p.when, t: s.size, i })).filter((c) => c.k !== except);
     const outside: string[] = [];
     let total = this.total + addition;
     let remaining = this.positions.size + (maxPositions ? 1 : 0);
@@ -189,68 +189,68 @@ export class SiteMemory {
     return total <= SITE_MEMORY_SIZE && remaining <= POSITIONS_MAX ? outside : null;
   }
 
-  private oublierPositions(keys: string[]): void {
+  private forgetPositions(keys: string[]): void {
     for (const k of keys) {
-      this.total -= this.positions.get(k)!.taille;
+      this.total -= this.positions.get(k)!.size;
       this.positions.delete(k);
     }
   }
 
-  retenir(key: string, value: unknown, url: string | null): { ok: true } | { ok: false; erreur: string } {
+  keep(key: string, value: unknown, url: string | null): { ok: true } | { ok: false; error: string } {
     try {
-      if (typeof key !== "string" || key.length < 1 || key.length > KEY_MAX) return { ok: false, erreur: KEY_INVALID };
-      if (url !== null && (typeof url !== "string" || url.length > URL_POSITION_MAX)) return { ok: false, erreur: NON_JSON_VALUE };
+      if (typeof key !== "string" || key.length < 1 || key.length > KEY_MAX) return { ok: false, error: KEY_INVALID };
+      if (url !== null && (typeof url !== "string" || url.length > URL_POSITION_MAX)) return { ok: false, error: NON_JSON_VALUE };
       const c = copyJson(value);
       if (!c.ok) return c;
-      const when = this.maintenant();
-      const size = valueSize(key, url, when, c.texte);
-      const old = this.valeurs.get(key)?.taille ?? 0;
-      const outside = this.evincer(size - old, null, false);
-      if (!outside) return { ok: false, erreur: MEMORY_FULL };
-      this.oublierPositions(outside);
-      this.valeurs.set(key, { e: { valeur: c.copie, adresse: url, quand: when }, taille: size });
+      const when = this.now();
+      const size = valueSize(key, url, when, c.text);
+      const old = this.values.get(key)?.size ?? 0;
+      const outside = this.evict(size - old, null, false);
+      if (!outside) return { ok: false, error: MEMORY_FULL };
+      this.forgetPositions(outside);
+      this.values.set(key, { e: { value: c.copy, url: url, when: when }, size: size });
       this.total += size - old;
-      this.changer();
+      this.change();
       return { ok: true };
     } catch {
-      return { ok: false, erreur: NON_JSON_VALUE };
+      return { ok: false, error: NON_JSON_VALUE };
     }
   }
 
-  lire(key: string): unknown | null {
-    const s = this.valeurs.get(key);
-    return s === undefined ? null : structuredClone(s.e.valeur);
+  read(key: string): unknown | null {
+    const s = this.values.get(key);
+    return s === undefined ? null : structuredClone(s.e.value);
   }
 
-  oublier(key: string): void {
-    const s = this.valeurs.get(key);
+  forget(key: string): void {
+    const s = this.values.get(key);
     if (!s) return;
-    this.valeurs.delete(key);
-    this.total -= s.taille;
-    this.changer();
+    this.values.delete(key);
+    this.total -= s.size;
+    this.change();
   }
 
-  noterPosition(url: string, t: number, duration: number): void {
+  notePosition(url: string, t: number, duration: number): void {
     try {
       if (typeof url !== "string" || url.length < 1 || url.length > URL_POSITION_MAX) return;
       if (!count(t) || !count(duration) || duration <= 0 || t < 0) return;
       const old = this.positions.get(url);
       if (t / duration >= VIDEO_END) {
         if (!old) return;
-        this.total -= old.taille;
+        this.total -= old.size;
         this.positions.delete(url);
       } else {
-        const p = { t, duree: duration, quand: this.maintenant() };
+        const p = { t, duration: duration, when: this.now() };
         const size = positionSize(url, p);
-        const outside = this.evincer(size - (old?.taille ?? 0), url, !old);
+        const outside = this.evict(size - (old?.size ?? 0), url, !old);
         if (!outside) return;
-        this.oublierPositions(outside);
-        if (old) this.total -= old.taille;
+        this.forgetPositions(outside);
+        if (old) this.total -= old.size;
         this.positions.delete(url);
-        this.positions.set(url, { p, taille: size });
+        this.positions.set(url, { p, size: size });
         this.total += size;
       }
-      this.changer();
+      this.change();
     } catch {
       // a position is a convenience: never an exception to the caller
     }
@@ -262,73 +262,73 @@ export class SiteMemory {
   }
 
   /** A copy of the content: modifying it changes nothing in the memory. */
-  contenu(): MemoryContent {
-    const c: MemoryContent = { version: 1, valeurs: withoutPrototype(), positions: withoutPrototype() };
-    for (const [k, s] of this.valeurs) c.valeurs[k] = structuredClone(s.e);
+  content(): MemoryContent {
+    const c: MemoryContent = { version: 1, values: withoutPrototype(), positions: withoutPrototype() };
+    for (const [k, s] of this.values) c.values[k] = structuredClone(s.e);
     for (const [k, s] of this.positions) c.positions[k] = { ...s.p };
     return c;
   }
 
-  surChange(r: () => void): () => void {
-    this.ecouteurs.add(r);
-    return () => void this.ecouteurs.delete(r);
+  onChange(r: () => void): () => void {
+    this.listeners.add(r);
+    return () => void this.listeners.delete(r);
   }
 
   /** Writes right away what is not yet written and waits for the writes to end. To call at closing. */
-  async vider(): Promise<void> {
+  async clear(): Promise<void> {
     if (this.timer) {
       clearTimeout(this.timer);
       this.timer = null;
     }
-    if (this.ecritRev !== this.rev) this.programmerEcriture();
-    await this.chaine;
+    if (this.writeRev !== this.rev) this.scheduleWrite();
+    await this.chain;
   }
 
   /** Forgets everything: pending write cancelled, file deleted, subscribers notified. */
-  async effacer(): Promise<void> {
+  async erase(): Promise<void> {
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
-    this.valeurs = new Map();
+    this.values = new Map();
     this.positions = new Map();
     this.total = BASE_BYTES;
     const rev = ++this.rev;
-    this.chaine = this.chaine
+    this.chain = this.chain
       .then(async () => {
-        await rm(this.chemin, { force: true });
-        this.ecritRev = rev;
+        await rm(this.path, { force: true });
+        this.writeRev = rev;
       })
       .catch(() => {});
-    this.prevenir();
-    await this.chaine;
+    this.notify();
+    await this.chain;
   }
 
-  private changer(): void {
+  private change(): void {
     this.rev++;
-    this.prevenir();
+    this.notify();
     if (this.timer) return;
     this.timer = setTimeout(() => {
       this.timer = null;
-      this.programmerEcriture();
+      this.scheduleWrite();
     }, MEMORY_WRITE_MS);
     this.timer.unref();
   }
 
-  private programmerEcriture(): void {
-    this.chaine = this.chaine
+  private scheduleWrite(): void {
+    this.chain = this.chain
       .then(async () => {
         const rev = this.rev;
-        if (this.ecritRev === rev) return;
-        const c = this.contenu();
-        await writeAtomic(this.chemin, JSON.stringify(c));
-        this.ecritRev = rev;
+        if (this.writeRev === rev) return;
+        const c = this.content();
+        await writeAtomic(this.path, JSON.stringify(c));
+        this.writeRev = rev;
       })
       .catch(() => {
         // data kept in memory (ecritRev unchanged): the next change or vider() tries again
       });
   }
 
-  private prevenir(): void {
-    for (const r of [...this.ecouteurs]) {
+  private notify(): void {
+    for (const r of [...this.listeners]) {
       try {
         r();
       } catch {

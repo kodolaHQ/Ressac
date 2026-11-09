@@ -80,11 +80,11 @@ export function summarizeProfile(p: CpuProfile, metrics: Record<string, number>,
   });
   const total = [...byNode.values()].reduce((a, b) => a + b, 0);
   const lignes = p.nodes
-    .map((node) => ({ noeud: node, us: byNode.get(node.id) ?? 0 }))
+    .map((node) => ({ node: node, us: byNode.get(node.id) ?? 0 }))
     .filter((e) => e.us > 0)
     .sort((a, b) => b.us - a.us)
     .slice(0, n)
-    .map(({ noeud: node, us }) => {
+    .map(({ node: node, us }) => {
       const { functionName, url, lineNumber } = node.callFrame;
       const where = url ? ` (${url}:${lineNumber + 1})` : "";
       const pct = total > 0 ? (us / total) * 100 : 0;
@@ -102,7 +102,7 @@ export function summarizeProfile(p: CpuProfile, metrics: Record<string, number>,
 
 export interface MemorySummary {
   total: number;
-  parConstructeur: { nom: string; nombre: number; taille: number }[];
+  byConstructor: { name: string; count: number; size: number }[];
 }
 
 const KEPT_TYPES = new Set(["object", "closure", "array", "string", "regexp", "native"]);
@@ -116,8 +116,8 @@ export interface FirefoxSnapshot extends MemorySummary {
 export function summarizeSnapshot(json: string): MemorySummary {
   const parse = JSON.parse(json) as { format?: string };
   if (parse.format === "webaios-firefox-census") {
-    const { total, parConstructeur: byBuilder } = parse as FirefoxSnapshot;
-    return { total, parConstructeur: [...byBuilder].sort((a, b) => b.taille - a.taille) };
+    const { total, byConstructor: byBuilder } = parse as FirefoxSnapshot;
+    return { total, byConstructor: [...byBuilder].sort((a, b) => b.size - a.size) };
   }
   const raw = parse as unknown as {
     snapshot: { meta: { node_fields: string[]; node_types: unknown[] } };
@@ -130,7 +130,7 @@ export function summarizeSnapshot(json: string): MemorySummary {
   const iSize = champs.indexOf("self_size");
   const typeNames = (nodeTypes[iType] as string[]) ?? [];
   const step = champs.length;
-  const groups = new Map<string, { nom: string; nombre: number; taille: number }>();
+  const groups = new Map<string, { name: string; count: number; size: number }>();
   let total = 0;
   for (let i = 0; i + step <= raw.nodes.length; i += step) {
     const size = raw.nodes[i + iSize] ?? 0;
@@ -141,36 +141,36 @@ export function summarizeSnapshot(json: string): MemorySummary {
       typeNames[raw.nodes[i + iType] ?? -1] === "string"
         ? "(chaîne)"
         : (raw.strings[raw.nodes[i + iName] ?? -1] ?? "");
-    const g = groups.get(name) ?? { nom: name, nombre: 0, taille: 0 };
-    g.nombre += 1;
-    g.taille += size;
+    const g = groups.get(name) ?? { name: name, count: 0, size: 0 };
+    g.count += 1;
+    g.size += size;
     groups.set(name, g);
   }
-  return { total, parConstructeur: [...groups.values()].sort((a, b) => b.taille - a.taille) };
+  return { total, byConstructor: [...groups.values()].sort((a, b) => b.size - a.size) };
 }
 
 const ko = (bytes: number): string => `${rounded(bytes / 1024)} Ko`;
 
 export function memoryText(r: MemorySummary, n = 20): string {
-  const lignes = r.parConstructeur
+  const lignes = r.byConstructor
     .slice(0, n)
-    .map((c) => `${c.nom || "(sans nom)"} : ${c.nombre} objets, ${ko(c.taille)}`);
+    .map((c) => `${c.name || "(sans nom)"} : ${c.count} objets, ${ko(c.size)}`);
   return [`Total : ${ko(r.total)}`, ...lignes].join("\n");
 }
 
 /** The constructors that grew the most from `a` to `b` (positive gaps only). */
 export function compareMemory(a: MemorySummary, b: MemorySummary, n = 20): string {
-  const before = new Map(a.parConstructeur.map((c) => [c.nom, c]));
-  const lignes = b.parConstructeur
+  const before = new Map(a.byConstructor.map((c) => [c.name, c]));
+  const lignes = b.byConstructor
     .map((c) => ({
-      nom: c.nom,
-      dNombre: c.nombre - (before.get(c.nom)?.nombre ?? 0),
-      dTaille: c.taille - (before.get(c.nom)?.taille ?? 0),
+      name: c.name,
+      dCount: c.count - (before.get(c.name)?.count ?? 0),
+      dSize: c.size - (before.get(c.name)?.size ?? 0),
     }))
-    .filter((e) => e.dNombre > 0 || e.dTaille > 0)
-    .sort((x, y) => y.dTaille - x.dTaille)
+    .filter((e) => e.dCount > 0 || e.dSize > 0)
+    .sort((x, y) => y.dSize - x.dSize)
     .slice(0, n)
-    .map((e) => `${e.nom || "(sans nom)"} +${e.dNombre} (+${ko(e.dTaille)})`);
+    .map((e) => `${e.name || "(sans nom)"} +${e.dCount} (+${ko(e.dSize)})`);
   const gap = b.total - a.total;
   return [`Total : ${gap >= 0 ? "+" : ""}${ko(gap)}`, ...lignes].join("\n");
 }

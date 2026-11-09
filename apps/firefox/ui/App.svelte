@@ -39,16 +39,16 @@
 
   const winState = $derived(currentWindow());
   const activeTab = $derived.by(() => {
-    const id = winState?.actif[winState.espaceActif];
-    return id ? appState.valeur?.onglets[id] : undefined;
+    const id = winState?.active[winState.activeSpace];
+    return id ? appState.value?.tabs[id] : undefined;
   });
   // A crashed or failed page shows our message instead (the window parks its <browser>).
-  const pageWeb = $derived(!!activeTab && hasView(activeTab.url) && !activeTab.plante && !activeTab.erreur);
+  const pageWeb = $derived(!!activeTab && hasView(activeTab.url) && !activeTab.crashed && !activeTab.error);
   /** The history or downloads panel over the content area (⌘Y, ⇧⌘J, the sidebar's button); another tab closes it. */
   let panel = $state<Panel | null>(null);
   const closePanel = () => {
     panel = null;
-    api.rendreFocusPage();
+    api.returnFocusToPage();
   };
   const togglePanel = (p: Panel) => (panel === p ? closePanel() : (panel = p));
   /** A widget's or an action's workflow builder is the active tab. */
@@ -58,9 +58,9 @@
   const pageAction = $derived(activeTab ? actionOfUrl(activeTab.url) : null);
   const reviewProject = $derived(activeTab ? reviewUrlProject(activeTab.url) : null);
   const privateAction = $derived.by(() => {
-    const spaces = appState.valeur?.espaces ?? [];
-    const isPrivate = (id: string | undefined) => spaces.find((e) => e.id === id)?.prive ?? true;
-    return isPrivate(winState?.espaceActif) || isPrivate(activeTab?.espaceId);
+    const spaces = appState.value?.spaces ?? [];
+    const isPrivate = (id: string | undefined) => spaces.find((e) => e.id === id)?.private ?? true;
+    return isPrivate(winState?.activeSpace) || isPrivate(activeTab?.spaceId);
   });
   /**
    * ⌘J or ✦ on a builder tab: its Agent tab. A UI panel over it closes first; the
@@ -71,7 +71,7 @@
     panel = null;
     void tick().then(() => focusAgent.n++);
   }
-  $effect(() => api.surPanneau(togglePanel));
+  $effect(() => api.onPanel(togglePanel));
   // ZoneContenu's design mode: it follows the tab shown and its address (the chrome stops the mode if it changes).
   $effect(() => {
     void activeTab?.id;
@@ -80,18 +80,18 @@
   });
   /** The cart column: while the design mode is on, or asked by « Panier ». */
   const designBasket = $derived.by(() => {
-    const e = design.etat;
-    return e?.projet && panel === null && (e.actif || design.panierDemande) ? e : null;
+    const e = design.state;
+    return e?.project && panel === null && (e.active || design.basketRequested) ? e : null;
   });
   const firefox = api as unknown as ApiFirefox;
   // The column is a chrome frame beside the page: opened again on another project, so that it shows that one's cart.
   // A string, not the state object (new at each read): the column opens once per project, never at each read.
-  const drawerProject = $derived(designBasket?.projet?.projet ?? null);
-  $effect(() => firefox.designVolet(drawerProject !== null));
+  const drawerProject = $derived(designBasket?.project?.project ?? null);
+  $effect(() => firefox.designPanel(drawerProject !== null));
   $effect(() =>
-    firefox.surVoletFerme(() => {
-      design.panierDemande = false;
-      if (design.etat?.actif) api.design.basculer();
+    firefox.onPanelClosed(() => {
+      design.basketRequested = false;
+      if (design.state?.active) api.design.toggle();
     }),
   );
   // The command bar targets the tab active when it opened: if another one shows, it closes.
@@ -99,7 +99,7 @@
   $effect(() => {
     void activeId;
     untrack(() => {
-      command.ouverte = null;
+      command.open = null;
       panel = null;
     });
   });
@@ -122,13 +122,13 @@
   // Ready: the backdrop is in place (no page capture in step 2, it is ready at once).
   let tabPanelReady = $state(false);
   $effect(() =>
-    api.surPanneauOnglets((p) => {
+    api.onTabsPanel((p) => {
       tabPanel = p;
       if (!p) tabPanelReady = false;
     }),
   );
   $effect(() =>
-    api.surRaccourci((r) => {
+    api.onShortcut((r) => {
       if (r === "fermerOnglet") {
         if (activeTab) closeTab(activeTab.id);
       } else if (r === "commande") openCommand("nouveau");
@@ -139,7 +139,7 @@
     }),
   );
   // Overlays cover the agent panel too; the empty page and internal pages only fill the space left of it.
-  const overlay = $derived(!!agentRequest || !!spaceSettings.brouillon || !!menu.ouvert || !!command.ouverte || !!tabPanel);
+  const overlay = $derived(!!agentRequest || !!spaceSettings.draft || !!menu.open || !!command.open || !!tabPanel);
   $effect(() => win.setFullWindow(overlay ? "window" : !pageWeb || !!panel));
 
   // Compact mode: touching the left edge reveals the sidebar. It floats over the page, which
@@ -147,7 +147,7 @@
   // The controller reports the mouse everywhere in the window; the decision is in reveal.ts.
   const compact = $derived(winState?.compact ?? false);
   let revealed = $state(false);
-  let armed = INITIAL_REVEAL.armee;
+  let armed = INITIAL_REVEAL.armed;
   let zone: LeftZone = "loin";
   let timer: ReturnType<typeof setTimeout> | undefined;
   const barVisible = $derived(!compact || revealed);
@@ -155,28 +155,28 @@
   function onMouseZone(z: LeftZone) {
     zone = z;
     if (!compact) return;
-    const r = onZone({ revelee: revealed, armee: armed }, z);
-    armed = r.armee;
-    revealed = r.revelee;
-    if (r.masquer) scheduleHide();
+    const r = onZone({ revealed: revealed, armed: armed }, z);
+    armed = r.armed;
+    revealed = r.revealed;
+    if (r.hide) scheduleHide();
     else clearTimeout(timer);
   }
   function scheduleHide() {
     clearTimeout(timer);
     // The access bubble is mounted outside the sidebar: while it is open, the sidebar stays.
-    if (!revealed || access.bullesOuvertes > 0) return;
+    if (!revealed || access.openBubbles > 0) return;
     timer = setTimeout(() => {
-      if (zone !== "loin" || access.bullesOuvertes > 0) return;
+      if (zone !== "loin" || access.openBubbles > 0) return;
       const r = hide(zone);
-      revealed = r.revelee;
-      armed = r.armee;
+      revealed = r.revealed;
+      armed = r.armed;
     }, HIDING_MS);
   }
   // Once the bubble closes, hiding resumes if the mouse is already away from the sidebar.
   $effect(() => {
-    if (access.bullesOuvertes === 0) untrack(() => zone === "loin" && scheduleHide());
+    if (access.openBubbles === 0) untrack(() => zone === "loin" && scheduleHide());
   });
-  $effect(() => api.surZoneGauche(onMouseZone));
+  $effect(() => api.onLeftZone(onMouseZone));
   $effect(() => win.setSidebarColumn(!compact));
   $effect(() => win.setSidebarVisible(barVisible));
   $effect(() => {
@@ -191,24 +191,24 @@
      iframe again (TabSwitchDone), and the empty page takes the keyboard back. -->
 <svelte:window onfocus={() => document.activeElement === document.body && focusEmptyPage.n++} />
 
-<div class="fenetre" inert={!!agentRequest || !!spaceSettings.brouillon || !!command.ouverte} class:compact class:couverte={overlay}>
+<div class="fenetre" inert={!!agentRequest || !!spaceSettings.draft || !!command.open} class:compact class:couverte={overlay}>
   <div class="colonne" class:repliee={!barVisible} inert={!barVisible}>
     {#if winState}
       <!-- ✦ on a builder tab: the controller opens the panel and sends "agent", handled above. -->
-      <Sidebar fenetre={winState} basculerPanneau={togglePanel} agentDuConstructeur={() => win.openAgent()} />
+      <Sidebar window={winState} togglePanel={togglePanel} builderAgent={() => win.openAgent()} />
     {:else}
       <aside data-testid="barre-laterale"></aside>
     {/if}
   </div>
   <main class="contenu" class:opaque={!pageWeb || !!panel} data-testid="zone-contenu">
     {#if winState && panel === "historique"}
-      <History fenetre={winState} fermer={closePanel} />
+      <History window={winState} close={closePanel} />
     {:else if panel === "telechargements"}
-      <Downloads fermer={closePanel} />
+      <Downloads close={closePanel} />
     {:else if winState && !activeTab}
-      <EmptyPage fenetre={winState} />
-    {:else if activeTab && (activeTab.plante || activeTab.erreur)}
-      <PageError onglet={activeTab} />
+      <EmptyPage window={winState} />
+    {:else if activeTab && (activeTab.crashed || activeTab.error)}
+      <PageError tab={activeTab} />
     {:else if activeTab?.url === URL_EXTENSIONS}
       <Extensions />
     {:else if activeTab?.url === URL_APPLICATIONS}
@@ -223,16 +223,16 @@
       {#if builderTarget.type === "action" && privateAction}
         <p class="plante" data-testid="action-espace-prive">{ACTIONS_IN_PRIVATE_SPACE}</p>
       {:else}
-        {#key `${builderTarget.type}:${builderTarget.id}`}<WorkflowBuilder cible={builderTarget} />{/key}
+        {#key `${builderTarget.type}:${builderTarget.id}`}<WorkflowBuilder target={builderTarget} />{/key}
       {/if}
     {:else if pageAction}
       {#if privateAction}
         <p class="plante" data-testid="action-espace-prive">{ACTIONS_IN_PRIVATE_SPACE}</p>
       {:else}
-        {#key `${pageAction.id}/${pageAction.execution}`}<PageAction id={pageAction.id} execution={pageAction.execution} />{/key}
+        {#key `${pageAction.id}/${pageAction.run}`}<PageAction id={pageAction.id} run={pageAction.run} />{/key}
       {/if}
     {:else if reviewProject}
-      {#key `${activeTab?.id}:${reviewProject}`}<Review projet={reviewProject} ongletId={activeTab?.id ?? ""} />{/key}
+      {#key `${activeTab?.id}:${reviewProject}`}<Review project={reviewProject} tabId={activeTab?.id ?? ""} />{/key}
     {:else if activeTab && !pageWeb}
       <InternalPage />
     {/if}
@@ -242,18 +242,18 @@
 <!-- No page capture under the modals in step 2: the web page shows through the veil. An agent's question comes before
      the space settings, which come back with their draft. -->
 {#if agentRequest}
-  <RequestModal demande={agentRequest} ongletId={null} />
-{:else if spaceSettings.brouillon && winState}
-  <SpaceModal fenetreId={winState.id} ongletId={null} />
+  <RequestModal request={agentRequest} tabId={null} />
+{:else if spaceSettings.draft && winState}
+  <SpaceModal windowId={winState.id} tabId={null} />
 {/if}
 {#if tabPanel}
-  <FrozenBackground ongletId={activeTab?.id ?? null} surPret={() => (tabPanelReady = true)} />
-  {#if tabPanelReady}<TabsPanel panneau={tabPanel} />{/if}
+  <FrozenBackground tabId={activeTab?.id ?? null} onReady={() => (tabPanelReady = true)} />
+  {#if tabPanelReady}<TabsPanel panel={tabPanel} />{/if}
 {/if}
-{#if command.ouverte && winState}
+{#if command.open && winState}
   <div class="couche-commande">
-    <FrozenBackground ongletId={activeTab?.id ?? null} surPret={() => {}} />
-    <CommandBar fenetre={winState} ongletActif={activeTab} cede={!!tabPanel} fermerPanneau={() => (panel = null)} />
+    <FrozenBackground tabId={activeTab?.id ?? null} onReady={() => {}} />
+    <CommandBar window={winState} activeTab={activeTab} yields={!!tabPanel} closePanel={() => (panel = null)} />
   </div>
 {/if}
 

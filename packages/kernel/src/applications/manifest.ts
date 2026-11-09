@@ -19,17 +19,17 @@ const urlWeb = z.string().refine((u) => {
 /** Unknown fields are kept (`passthrough`) so the rewrite does not lose them. */
 export const Manifest = z
   .object({
-    nom: z.string().optional(),
+    name: z.string().optional(),
     type: z.enum(["application", "poc"]),
-    lancement: z.string().min(1),
-    origine: urlWeb.optional(),
+    launch: z.string().min(1),
+    origin: urlWeb.optional(),
   })
   .passthrough();
 export type Manifest = z.infer<typeof Manifest>;
 
-export type ProjectRead = { dossier: string; chemin: string; creeLe: string; nom: string } & (
-  | { manifeste: Manifest }
-  | { sansFiche: string }
+export type ProjectRead = { folder: string; path: string; createdAt: string; name: string } & (
+  | { manifest: Manifest }
+  | { noManifest: string }
 );
 
 /** A folder is launched only if its name passes in a shell command without quotes. */
@@ -38,7 +38,7 @@ export function validFolder(folder: string): boolean {
 }
 
 async function readProject(c: SpacePaths, folder: string): Promise<ProjectRead> {
-  const path = join(c.projets, folder);
+  const path = join(c.projects, folder);
   const file = join(path, "webaios.json");
   let createdAt: Date;
   let content: string | undefined;
@@ -48,14 +48,14 @@ async function readProject(c: SpacePaths, folder: string): Promise<ProjectRead> 
   } catch {
     createdAt = (await stat(path)).mtime;
   }
-  const base = { dossier: folder, chemin: path, creeLe: createdAt.toISOString() };
-  if (!validFolder(folder)) return { ...base, nom: folder, sansFiche: "nom de dossier non pris en charge" };
-  if (content === undefined) return { ...base, nom: folder, sansFiche: "pas de webaios.json" };
+  const base = { folder: folder, path: path, createdAt: createdAt.toISOString() };
+  if (!validFolder(folder)) return { ...base, name: folder, noManifest: "nom de dossier non pris en charge" };
+  if (content === undefined) return { ...base, name: folder, noManifest: "pas de webaios.json" };
   try {
     const manifest = Manifest.parse(JSON.parse(content));
-    return { ...base, nom: manifest.nom ?? folder, manifeste: manifest };
+    return { ...base, name: manifest.name ?? folder, manifest: manifest };
   } catch (e) {
-    return { ...base, nom: folder, sansFiche: `webaios.json invalide : ${(e as Error).message}` };
+    return { ...base, name: folder, noManifest: `webaios.json invalide : ${(e as Error).message}` };
   }
 }
 
@@ -63,7 +63,7 @@ async function readProject(c: SpacePaths, folder: string): Promise<ProjectRead> 
 export async function readProjects(c: SpacePaths): Promise<ProjectRead[]> {
   let entries;
   try {
-    entries = await readdir(c.projets, { withFileTypes: true });
+    entries = await readdir(c.projects, { withFileTypes: true });
   } catch {
     return [];
   }
@@ -76,9 +76,9 @@ export async function readProjects(c: SpacePaths): Promise<ProjectRead[]> {
 
 /** Calls `rappel` after each burst of changes of the projects. Returns the stop function. */
 export function watchProjects(c: SpacePaths, callback: () => void): () => Promise<void> {
-  mkdirSync(c.projets, { recursive: true });
+  mkdirSync(c.projects, { recursive: true });
   let timer: NodeJS.Timeout | undefined;
-  const observer = watch(c.projets, {
+  const observer = watch(c.projects, {
     ignoreInitial: true,
     depth: 1,
     ignored: (p) => p.split(/[\\/]/).includes("node_modules") || p.endsWith(".tmp"),
@@ -98,7 +98,7 @@ export function watchProjects(c: SpacePaths, callback: () => void): () => Promis
 
 /** Changes a project's type, keeping the other fields of the manifest. */
 export async function writeType(c: SpacePaths, folder: string, type: "application" | "poc"): Promise<void> {
-  const target = join(c.projets, folder, "webaios.json");
+  const target = join(c.projects, folder, "webaios.json");
   const manifest = Manifest.parse(JSON.parse(await readFile(target, "utf8")));
   const temp = `${target}.${process.pid}.tmp`;
   await writeFile(temp, JSON.stringify({ ...manifest, type }, null, 2));

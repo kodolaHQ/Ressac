@@ -18,23 +18,23 @@ async function ask(c: ReturnType<typeof spacePaths>, id: string, declaration: un
 }
 const workflow = (to: string) => JSON.stringify({
     version: 1,
-    blocs: [{ id: "lire", type: "code", parametres: { source: "lire.mjs" } }, { id: "sortie", type: "sortie", parametres: { vers: to } }],
-    liens: [{ de: "lire", vers: "sortie" }],
+    blocks: [{ id: "lire", type: "code", params: { source: "lire.mjs" } }, { id: "sortie", type: "sortie", params: { to: to } }],
+    links: [{ from: "lire", to: "sortie" }],
   });
 
 test("two actions read, sorted; a damaged action.json gives an ReadAction in error without bothering the other", async () => {
   const c = await space();
-  await ask(c, "zebre", { nom: "Z", sources: {} });
+  await ask(c, "zebre", { name: "Z", sources: {} });
   await ask(c, "alpha", "{pas du json");
-  await ask(c, "milieu", { nom: "M", sources: { compte: ["gitlab.com"] } }, { "workflow.json": workflow("page") });
+  await ask(c, "milieu", { name: "M", sources: { account: ["gitlab.com"] } }, { "workflow.json": workflow("page") });
   const alreadyRead = await readActions(c);
   expect(alreadyRead.map((a) => a.id)).toEqual(["alpha", "milieu", "zebre"]);
-  expect("erreur" in alreadyRead[0]!).toBe(true);
-  expect((alreadyRead[0] as { erreur: string }).erreur).not.toContain(c.racine);
+  expect("error" in alreadyRead[0]!).toBe(true);
+  expect((alreadyRead[0] as { error: string }).error).not.toContain(c.root);
   const m = alreadyRead[1]!;
-  expect("declaration" in m && m.declaration.nom).toBe("M");
-  expect("aWorkflow" in m && m.aWorkflow).toBe(true);
-  expect("aWorkflow" in alreadyRead[2]! && (alreadyRead[2] as { aWorkflow: boolean }).aWorkflow).toBe(false);
+  expect("declaration" in m && m.declaration.name).toBe("M");
+  expect("hasWorkflow" in m && m.hasWorkflow).toBe(true);
+  expect("hasWorkflow" in alreadyRead[2]! && (alreadyRead[2] as { hasWorkflow: boolean }).hasWorkflow).toBe(false);
   expect((await readAction(c, "milieu"))?.id).toBe("milieu");
   expect(await readAction(c, "absente")).toBeNull();
   expect(await readAction(c, "../x")).toBeNull();
@@ -42,11 +42,11 @@ test("two actions read, sorted; a damaged action.json gives an ReadAction in err
 
 test("a symbolic-link, hidden or invalidly named folder is ignored", async () => {
   const c = await space();
-  await ask(c, "bonne", { nom: "B", sources: {} });
-  await ask(c, ".cachee", { nom: "C", sources: {} });
-  await ask(c, "Majuscule", { nom: "M", sources: {} });
+  await ask(c, "bonne", { name: "B", sources: {} });
+  await ask(c, ".cachee", { name: "C", sources: {} });
+  await ask(c, "Majuscule", { name: "M", sources: {} });
   const elsewhere = await tempFolder();
-  await writeFile(join(elsewhere, "action.json"), JSON.stringify({ nom: "L", sources: {} }));
+  await writeFile(join(elsewhere, "action.json"), JSON.stringify({ name: "L", sources: {} }));
   await symlink(elsewhere, join(c.actions, "lien"));
   await writeFile(join(c.actions, "fichier"), "x");
   expect((await readActions(c)).map((a) => a.id)).toEqual(["bonne"]);
@@ -55,20 +55,20 @@ test("a symbolic-link, hidden or invalidly named folder is ignored", async () =>
 
 test("action.json over 64 KB or symbolic link: error", async () => {
   const c = await space();
-  await ask(c, "grosse", JSON.stringify({ nom: "G", sources: {}, description: "x".repeat(70 * 1024) }));
+  await ask(c, "grosse", JSON.stringify({ name: "G", sources: {}, description: "x".repeat(70 * 1024) }));
   const [a] = await readActions(c);
-  expect(a && "erreur" in a).toBe(true);
+  expect(a && "error" in a).toBe(true);
 });
 
 test("action.json lien symbolique : erreur", async () => {
   const c = await space();
-  const d = await ask(c, "lien", { nom: "L", sources: {} });
+  const d = await ask(c, "lien", { name: "L", sources: {} });
   const elsewhere = join(await tempFolder(), "autre.json");
-  await writeFile(elsewhere, JSON.stringify({ nom: "A", sources: {} }));
+  await writeFile(elsewhere, JSON.stringify({ name: "A", sources: {} }));
   await rm(join(d, "action.json"));
   await symlink(elsewhere, join(d, "action.json"));
   const [a] = await readActions(c);
-  expect(a && "erreur" in a).toBe(true);
+  expect(a && "error" in a).toBe(true);
 });
 
 test("dossier d'actions absent : liste vide", async () => {
@@ -78,20 +78,20 @@ test("dossier d'actions absent : liste vide", async () => {
 
 test("actionWorkflow : recolte.mjs seul → absent ; workflow vers widget → invalide OUTPUT_PAGE_REQUIRED", async () => {
   const c = await space();
-  await ask(c, "seul", { nom: "S", sources: {} }, { "recolte.mjs": "export default 1" });
-  await ask(c, "mauvaise", { nom: "M", sources: {} }, { "workflow.json": workflow("widget") });
-  await ask(c, "bonne", { nom: "B", sources: {}, saisie: { libelle: "Q" }, dureeMaxMinutes: 5 }, { "workflow.json": workflow("page") });
+  await ask(c, "seul", { name: "S", sources: {} }, { "recolte.mjs": "export default 1" });
+  await ask(c, "mauvaise", { name: "M", sources: {} }, { "workflow.json": workflow("widget") });
+  await ask(c, "bonne", { name: "B", sources: {}, input: { label: "Q" }, maxDurationMinutes: 5 }, { "workflow.json": workflow("page") });
   await ask(c, "cassee", "{x");
   const only = (await readAction(c, "seul"))!;
   expect(await actionWorkflow(only)).toEqual({ t: "absent" });
   const wrong = await actionWorkflow((await readAction(c, "mauvaise"))!);
   expect(wrong.t).toBe("invalide");
-  expect((wrong as { erreur: string }).erreur).toContain(OUTPUT_PAGE_REQUIRED);
+  expect((wrong as { error: string }).error).toContain(OUTPUT_PAGE_REQUIRED);
   const good = await actionWorkflow((await readAction(c, "bonne"))!);
   expect(good.t).toBe("ok");
   const broken = await actionWorkflow((await readAction(c, "cassee"))!);
   expect(broken.t).toBe("illisible");
   const b = (await readAction(c, "bonne"))!;
-  if ("erreur" in b) throw new Error("lue en erreur");
-  expect(actionValidationContext(b.declaration)).toEqual({ web: false, dureeMaxMinutes: 5, proprietaire: "action", saisie: true });
+  if ("error" in b) throw new Error("lue en erreur");
+  expect(actionValidationContext(b.declaration)).toEqual({ web: false, maxDurationMinutes: 5, owner: "action", input: true });
 });

@@ -34,10 +34,10 @@ async function launch(o: { placesOff: boolean; profile?: string; dataDir?: strin
 
 /** Opens `url` in a WebAiOs tab and waits until it is loaded; returns the tab id. */
 async function open(url: string): Promise<string> {
-  const before = new Set(Object.keys((await state(m)).onglets));
-  const s = await dispatch(m, { type: "ouvrirOnglet", fenetreId: (await state(m)).fenetres[0]!.id, url });
+  const before = new Set(Object.keys((await state(m)).tabs));
+  const s = await dispatch(m, { type: "ouvrirOnglet", windowId: (await state(m)).windows[0]!.id, url });
   await loaded(url);
-  return Object.keys(s.onglets).find((id) => !before.has(id))!;
+  return Object.keys(s.tabs).find((id) => !before.has(id))!;
 }
 const loaded = (url: string) =>
   waitFor(m, `return gBrowser.selectedBrowser.currentURI.spec === ${JSON.stringify(url)} && !gBrowser.selectedBrowser.webProgress.isLoadingDocument`, (v) => v === true);
@@ -86,7 +86,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("history and downloads spike", () =>
       const id = await open(icon);
       // Read the icon while the tab still shows /icone.
       await sleep(3000);
-      note(`${tag} favicon of /icone in the state`, (await state(m)).onglets[id]?.favicon);
+      note(`${tag} favicon of /icone in the state`, (await state(m)).tabs[id]?.favicon);
       note(`${tag} tab image / mIconURL of /icone's browser`, await m.execute(
         `const t = gBrowser.tabs.find((t) => t.getAttribute("webaios-tab-id") === arguments[0]); return { image: t.image, mIconURL: t.linkedBrowser.mIconURL ?? null };`,
         [id],

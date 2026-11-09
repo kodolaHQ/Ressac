@@ -3,17 +3,17 @@ import { spaceKey } from "./model";
 
 /** Open tabs the active space can display, in the sidebar order: essentials, pinned, then the others. */
 export function walkableTabs(state: BrowserState, windowId: WindowId): TabId[] {
-  const f = state.fenetres.find((x) => x.id === windowId);
-  const space = f && state.espaces.find((x) => x.id === f.espaceActif);
+  const f = state.windows.find((x) => x.id === windowId);
+  const space = f && state.spaces.find((x) => x.id === f.activeSpace);
   if (!f || !space) return [];
   const key = spaceKey(state, space.id);
-  const opened = Object.values(state.onglets).filter((o) => o.fenetreId === f.id);
-  const essentials = state.essentiels.flatMap((fav) =>
-    opened.filter((o) => o.lien?.type === "essentiel" && o.lien.id === fav.id && spaceKey(state, o.espaceId) === key).map((o) => o.id),
+  const opened = Object.values(state.tabs).filter((o) => o.windowId === f.id);
+  const essentials = state.essentials.flatMap((fav) =>
+    opened.filter((o) => o.link?.type === "essentiel" && o.link.id === fav.id && spaceKey(state, o.spaceId) === key).map((o) => o.id),
   );
-  const pinned = space.epingles.flatMap((fav) =>
-    opened.filter((o) => o.lien?.type === "epingle" && o.lien.id === fav.id && o.espaceId === space.id).map((o) => o.id),
+  const pinned = space.pinned.flatMap((fav) =>
+    opened.filter((o) => o.link?.type === "epingle" && o.link.id === fav.id && o.spaceId === space.id).map((o) => o.id),
   );
   const seen = new Set<TabId>();
-  return [...essentials, ...pinned, ...(f.ordre[space.id] ?? [])].filter((id) => !seen.has(id) && !!seen.add(id) && !!state.onglets[id]);
+  return [...essentials, ...pinned, ...(f.order[space.id] ?? [])].filter((id) => !seen.has(id) && !!seen.add(id) && !!state.tabs[id]);
 }

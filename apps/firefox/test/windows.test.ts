@@ -6,7 +6,7 @@ import { createWindowRegistry, pickWindow } from "../chrome/store/windows";
 
 // Three state windows: a, b, c.
 const state = ["b", "c"].reduce((s, id) => apply(s, { type: "ouvrirFenetre", id }), initialState(() => "a"));
-const [a, b, c] = state.fenetres.map((f) => f.id) as [string, string, string];
+const [a, b, c] = state.windows.map((f) => f.id) as [string, string, string];
 
 describe("pickWindow", () => {
   it("takes the window being opened first", () => {
@@ -34,19 +34,19 @@ describe("createWindowRegistry", () => {
 
   it("a window opened for the state that closes before claiming leaves it; the last real window then keeps its tabs", () => {
     // A restored session: a (with a tab) and b.
-    const restored = apply(apply(initialState(() => "a"), { type: "ouvrirFenetre", id: "b" }), { type: "ouvrirOnglet", fenetreId: "a", url: "https://a.test/" }, () => "t");
+    const restored = apply(apply(initialState(() => "a"), { type: "ouvrirFenetre", id: "b" }), { type: "ouvrirOnglet", windowId: "a", url: "https://a.test/" }, () => "t");
     const store = createStore(restored);
     const opened: Window[] = [];
     const windows = createWindowRegistry({ store, open: () => opened[opened.push(fakeWindow()) - 1], onRelease: () => {} });
-    expect(windows.claim(fakeWindow())).toEqual({ fenetreId: "a", first: true });
+    expect(windows.claim(fakeWindow())).toEqual({ windowId: "a", first: true });
     expect(opened).toHaveLength(1);
     // Closed before Firefox's delayed startup: it never claims b.
     opened[0]!.dispatchEvent(new Event("unload"));
-    expect(store.state.fenetres.map((f) => f.id)).toEqual(["a"]);
+    expect(store.state.windows.map((f) => f.id)).toEqual(["a"]);
     windows.release("a");
-    expect(store.state.fenetres.map((f) => f.id)).toEqual(["a"]);
-    expect(store.state.onglets.t).toBeDefined();
+    expect(store.state.windows.map((f) => f.id)).toEqual(["a"]);
+    expect(store.state.tabs.t).toBeDefined();
     // Kept: the next window takes it back.
-    expect(windows.claim(fakeWindow()).fenetreId).toBe("a");
+    expect(windows.claim(fakeWindow()).windowId).toBe("a");
   });
 });

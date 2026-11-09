@@ -11,24 +11,24 @@
   let appState = $state<SiteWindowState | null>(null);
 
   onMount(() => {
-    const end = api.surEtat((e) => (appState = e));
-    void api.etat().then((e) => {
+    const end = api.onState((e) => (appState = e));
+    void api.state().then((e) => {
       if (e && !appState) appState = e;
     });
     return end;
   });
   $effect(() => {
-    if (appState) document.title = appState.nom;
+    if (appState) document.title = appState.name;
   });
 </script>
 
 {#if appState}
-  <SiteBar etat={appState} {api} />
+  <SiteBar state={appState} {api} />
   <!-- Under the bar: the site's view (set by the main process) in « site » view, home otherwise. -->
-  {#if appState.vue === "accueil"}
+  {#if appState.viewState === "accueil"}
     <HomeFrame id={appState.id} {api} />
-  {:else if appState.vue === "accord" && appState.accord}
-    <SiteGrantCard accord={appState.accord} accorder={(yes, hash) => api.accorder(yes, hash)} />
+  {:else if appState.viewState === "accord" && appState.grant}
+    <SiteGrantCard grant={appState.grant} onGrant={(yes, hash) => api.grant(yes, hash)} />
   {/if}
 {/if}
 

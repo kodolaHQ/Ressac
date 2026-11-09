@@ -22,11 +22,11 @@ const NAMES: Record<SitePermission, string> = {
 };
 
 /** The banner's sentence: « <site> veut utiliser votre caméra et votre micro », the link cut at 120. */
-export function bannerText(d: { origine: string; permissions: readonly SitePermission[]; lien?: string }): string {
+export function bannerText(d: { origin: string; permissions: readonly SitePermission[]; link?: string }): string {
   const media = d.permissions.filter((p) => p.startsWith("media-")).map((p) => NAMES[p]);
   const others = d.permissions.filter((p) => !p.startsWith("media-")).map((p) => NAMES[p]);
   const parts = [...(media.length ? [`utiliser ${media.join(" et ")}`] : []), ...others];
   // Never throws: an unreadable origin (about:blank, data:…) is shown as it is.
-  const text = `${siteOf(d.origine)} veut ${parts.join(" et ")}`;
-  return d.lien ? `${text} : ${d.lien.slice(0, 120)}` : text;
+  const text = `${siteOf(d.origin)} veut ${parts.join(" et ")}`;
+  return d.link ? `${text} : ${d.link.slice(0, 120)}` : text;
 }

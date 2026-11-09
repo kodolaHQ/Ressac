@@ -33,7 +33,7 @@ let execute: () => Promise<unknown> = async () => ({ result: 1 });
 /** A store with tab "t"; `ensure` gives the tab's browser (rejects by default: no DevTools client then). */
 function setup(o: { isPrivate?: boolean; ensure?: (id: string) => Promise<unknown> } = {}) {
   const store = createStore(initialState());
-  store.dispatch({ type: "ouvrirOnglet", fenetreId: store.state.fenetres[0]!.id, url: "http://127.0.0.1:5300/", activer: true }, () => "t");
+  store.dispatch({ type: "ouvrirOnglet", windowId: store.state.windows[0]!.id, url: "http://127.0.0.1:5300/", activate: true }, () => "t");
   const loaded: string[] = [];
   const ensure = o.ensure ?? (() => Promise.reject(new Error("no browser")));
   const window = { gBrowser: { getTabForBrowser: () => ({}) } };
@@ -45,7 +45,7 @@ const browserAt = (spec: string) => ({ currentURI: { spec } });
 it("a private tab is refused before its page is even looked up", async () => {
   const { devtools, loaded } = setup({ isPrivate: true });
   const { token } = devtools.owner();
-  await expect(devtools.call(token, "attacher", ["t"])).rejects.toMatchObject({ name: "OngletPrive", id: "t" });
+  await expect(devtools.call(token, "attach", ["t"])).rejects.toMatchObject({ name: "OngletPrive", id: "t" });
   await expect(devtools.call(token, "console", ["t"])).rejects.toMatchObject({ name: "OngletPrive" });
   expect(loaded).toEqual([]);
   expect(devtools.attached()).toEqual([]);
@@ -99,9 +99,9 @@ it("a call waiting for the page's next target ends as soon as the session is dro
   const { devtools } = setup({ ensure: async () => browserAt("http://127.0.0.1:5300/") });
   const { token } = devtools.owner();
   const t0 = Date.now();
-  const run = devtools.call(token, "executer", ["t", "1"]);
+  const run = devtools.call(token, "run", ["t", "1"]);
   await new Promise((r) => setTimeout(r, 50));
-  await devtools.call(token, "detacher", ["t"]);
+  await devtools.call(token, "detach", ["t"]);
   await expect(run).rejects.toThrow("détachés");
   expect(Date.now() - t0).toBeLessThan(2000);
 });
@@ -128,8 +128,8 @@ it("instantaneMemoire leaves a memory front attached by someone else (the person
   liveTarget = { isDestroyed: () => false, getFront: async () => mem };
   try {
     const { devtools } = setup({ ensure: async () => browserAt("http://127.0.0.1:5300/") });
-    const r = JSON.parse(String(await devtools.call(devtools.owner().token, "instantaneMemoire", ["t"])));
-    expect(r).toEqual({ format: "webaios-firefox-census", total: 80, parConstructeur: [{ nom: "Object", nombre: 2, taille: 64 }, { nom: "strings", nombre: 1, taille: 16 }, { nom: "scripts", nombre: 0, taille: 0 }] });
+    const r = JSON.parse(String(await devtools.call(devtools.owner().token, "memorySnapshot", ["t"])));
+    expect(r).toEqual({ format: "webaios-firefox-census", total: 80, byConstructor: [{ name: "Object", count: 2, size: 64 }, { name: "strings", count: 1, size: 16 }, { name: "scripts", count: 0, size: 0 }] });
     expect(mem.state).toBe("attached");
     expect(mem.calls).toEqual([]);
   } finally {
@@ -144,7 +144,7 @@ it("two instantaneMemoire on one tab at once both answer, and the front they att
     const browser = browserAt("http://127.0.0.1:5300/");
     const { devtools } = setup({ ensure: async () => browser });
     const { token } = devtools.owner();
-    await Promise.all([devtools.call(token, "instantaneMemoire", ["t"]), devtools.call(token, "instantaneMemoire", ["t"])]);
+    await Promise.all([devtools.call(token, "memorySnapshot", ["t"]), devtools.call(token, "memorySnapshot", ["t"])]);
     expect(mem.state).toBe("detached");
   } finally {
     liveTarget = null;
@@ -155,7 +155,7 @@ it("a profile cut while its StartProfiler is still in flight stops the profiler 
   const cut = new AbortController();
   let active = false;
   (globalThis as any).Services = {
-    profiler: {
+    profile: {
       IsActive: () => active,
       StartProfiler: () => {
         cut.abort(); // cut right after the call, before the start lands
@@ -167,7 +167,7 @@ it("a profile cut while its StartProfiler is still in flight stops the profiler 
   };
   const browser = { ...browserAt("http://127.0.0.1:5300/"), browserId: 1, browsingContext: { currentWindowGlobal: { osPid: 42, innerWindowId: 1 } } };
   const { devtools } = setup({ ensure: async () => browser });
-  await expect(devtools.call(devtools.owner().token, "profiler", ["t", { dureeMs: 1000 }], cut.signal)).rejects.toBeDefined();
+  await expect(devtools.call(devtools.owner().token, "profile", ["t", { durationMs: 1000 }], cut.signal)).rejects.toBeDefined();
   await new Promise((r) => setTimeout(r, 60));
   expect(active).toBe(false);
 });
@@ -189,11 +189,11 @@ function geckoThread(calls: [string, number][], reflows: (number | undefined)[] 
 
 it("geckoToCpuProfile keeps only the frames of the tab's own windows: another tab of the process is (program), out of the script time", () => {
   const r = geckoToCpuProfile(geckoThread([["mine", 1], ["theirs", 2], ["mine", 3], ["theirs", 2]]), [{ name: "JavaScript" }], new Set([1, 3]));
-  const names = r.profil.nodes.map((n) => n.callFrame.functionName);
+  const names = r.profile.nodes.map((n) => n.callFrame.functionName);
   expect(names).toContain("mine");
   expect(names).not.toContain("theirs");
   expect(names).toContain("(program)");
-  expect(r.profil.samples.length).toBe(4);
+  expect(r.profile.samples.length).toBe(4);
   // Samples at 0, 1, 2, 3 ms, each lasting until the next: the two of "mine" count as script, not the two of "theirs".
   expect(r.scriptMs).toBe(2);
 });
@@ -207,7 +207,7 @@ afterEach(() => {
 /** Services.profiler giving one empty GeckoMain thread of process 42, `pages` of tab 1. */
 function fakeProfiler(reflows: (number | undefined)[] = []) {
   (globalThis as any).Services = {
-    profiler: {
+    profile: {
       IsActive: () => false,
       StartProfiler: async () => {},
       StopProfiler: async () => {},
@@ -226,8 +226,8 @@ it("profiler counts the reflows of the tab's own windows only", async () => {
   const browser = fakeProfiler([7, 8, undefined, 7]);
   liveTarget = { isDestroyed: () => false, getFront: async () => ({ measure: async () => ({ jsObjectsSize: 1, jsStringsSize: 0, jsOtherSize: 0 }) }) };
   const { devtools } = setup({ ensure: async () => browser });
-  const r = (await devtools.call(devtools.owner().token, "profiler", ["t", { dureeMs: 0 }])) as { metriques: Record<string, number> };
-  expect(r.metriques.LayoutCount).toBe(3);
+  const r = (await devtools.call(devtools.owner().token, "profile", ["t", { durationMs: 0 }])) as { metrics: Record<string, number> };
+  expect(r.metrics.LayoutCount).toBe(3);
 });
 
 it("profiler on a page that never answers its Nodes count or memory measure: the call answers without those metrics", async () => {
@@ -236,12 +236,12 @@ it("profiler on a page that never answers its Nodes count or memory measure: the
   liveTarget = { isDestroyed: () => false, getFront: async () => ({ measure: () => new Promise(() => {}) }) };
   execute = () => new Promise(() => {});
   const { devtools } = setup({ ensure: async () => browser });
-  let r: { metriques: Record<string, number> } | undefined;
-  void devtools.call(devtools.owner().token, "profiler", ["t", { dureeMs: 0 }]).then((x) => (r = x as typeof r));
+  let r: { metrics: Record<string, number> } | undefined;
+  void devtools.call(devtools.owner().token, "profile", ["t", { durationMs: 0 }]).then((x) => (r = x as typeof r));
   await vi.advanceTimersByTimeAsync(25_000);
-  expect(r?.metriques).toBeDefined();
-  expect(r!.metriques).not.toHaveProperty("Nodes");
-  expect(r!.metriques).not.toHaveProperty("JSHeapUsedSize");
+  expect(r?.metrics).toBeDefined();
+  expect(r!.metrics).not.toHaveProperty("Nodes");
+  expect(r!.metrics).not.toHaveProperty("JSHeapUsedSize");
 });
 
 it("instantaneMemoire on a page whose census never comes fails with « La page ne répond pas. »", async () => {
@@ -249,7 +249,7 @@ it("instantaneMemoire on a page whose census never comes fails with « La page n
   const mem = { ...memoryFront("detached"), takeCensus: () => new Promise(() => {}) };
   liveTarget = { isDestroyed: () => false, getFront: async () => mem };
   const { devtools } = setup({ ensure: async () => browserAt("http://127.0.0.1:5300/") });
-  const pending = devtools.call(devtools.owner().token, "instantaneMemoire", ["t"]);
+  const pending = devtools.call(devtools.owner().token, "memorySnapshot", ["t"]);
   const outcome = pending.then(() => "answered", (e: Error) => e.message);
   await vi.advanceTimersByTimeAsync(15_000);
   expect(await outcome).toBe("La page ne répond pas.");

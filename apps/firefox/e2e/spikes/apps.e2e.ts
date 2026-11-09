@@ -66,7 +66,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("agent app windows spike S8 (plan 35
   const fromApp = (port: number, since: number, cookie = "essai=1") => hits.filter((h) => h.port === port && h.at >= since && h.cookie?.includes(cookie)).map((h) => h.path);
   const mainTabs = () => m.execute<{ url: string; uc: number }[]>(`return [...gBrowser.tabs].map((t) => ({ url: t.linkedBrowser.currentURI.spec, uc: t.userContextId }));`);
   async function openTab(url: string) {
-    await dispatch(m, { type: "ouvrirOnglet", fenetreId: (await state(m)).fenetres[0]!.id, url });
+    await dispatch(m, { type: "ouvrirOnglet", windowId: (await state(m)).windows[0]!.id, url });
     await waitFor(m, `return gBrowser.selectedBrowser.currentURI.spec === ${JSON.stringify(url)} && !gBrowser.selectedBrowser.webProgress.isLoadingDocument`, (v) => v === true);
   }
   /** The view is still on `url` and its page was not replaced (window.marque kept). */
@@ -275,7 +275,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("agent app windows spike S8 (plan 35
     // And back: the app sees neither the tab's cookie nor its storage.
     await chrome(`await S.load("essai", arguments[0]);`, [ATTEMPT + "/page2"]);
     const attempt = await inView("essai", read);
-    note("containers", { autre: other, tab, tabOtherPort, site, essai: attempt });
+    note("containers", { other: other, tab, tabOtherPort, site, attempt: attempt });
     expect(other).toEqual({ cookie: "", local: null });
     expect(tab).toEqual({ cookie: "", local: null });
     expect(site).toEqual({ cookie: "", local: null });

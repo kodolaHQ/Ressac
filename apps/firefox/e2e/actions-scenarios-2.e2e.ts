@@ -39,7 +39,7 @@ async function launch(height?: number): Promise<{ m: Marionette; q: ReturnType<t
   w = await launchWebAiOs({
     ...dirs,
     ...(height ? { height } : {}),
-    env: { WEBAIOS_OLLAMA_URL: servers.ollama.url, WEBAIOS_KEV_URL: servers.kev.url, WEBAIOS_TEST_ADRESSES_LOCALES: "1" },
+    env: { WEBAIOS_OLLAMA_URL: servers.ollama.url, WEBAIOS_KEV_URL: servers.kev.url, WEBAIOS_TEST_LOCAL_ADDRESSES: "1" },
   });
   const m = w.marionette;
   await m.setContext("chrome");
@@ -53,7 +53,7 @@ async function quit(m: Marionette): Promise<void> {
   w = undefined;
 }
 
-const direct = (m: Marionette) => inUi<{ courantes: { action: string }[]; enAttente: { action: string }[] }>(m, "return JSON.parse(JSON.stringify(await ui.webaios.actions.direct()));");
+const direct = (m: Marionette) => inUi<{ running: { action: string }[]; waiting: { action: string }[] }>(m, "return JSON.parse(JSON.stringify(await ui.webaios.actions.direct()));");
 
 /** Polls `read` until `ok` accepts it; fails with the last value. */
 async function until<T>(read: () => T | Promise<T>, ok: (v: T) => boolean, ms = 30_000): Promise<T> {
@@ -69,7 +69,7 @@ const untilEqual = <T>(read: () => T | Promise<T>, expected: T, ms?: number) => 
 
 // actions.spec.ts:1505
 it("session restore with an action tab: the last result shows, no run launched", { timeout: 120_000 }, async () => {
-  await writeRunnableAction(dirs.dataDir, "annonces", { nom: "Annonces", code: "export default async () => ({ titre: 'Nouveau' });" });
+  await writeRunnableAction(dirs.dataDir, "annonces", { name: "Annonces", code: "export default async () => ({ titre: 'Nouveau' });" });
   await writeResult(dirs.dataDir, "annonces", EXECUTION, "2026-10-31T08:00:00.000Z", "Résultat gardé");
   const prompts = servers.ollama.prompts.length;
   let { m, q } = await launch();
@@ -84,7 +84,7 @@ it("session restore with an action tab: the last result shows, no run launched",
   expect(await q.count(tid("avancement-action"))).toBe(0);
   await sleep(1000);
   expect(await runsOnDisk(dirs.dataDir, "annonces")).toEqual([`${EXECUTION}.json`]);
-  expect(await direct(m)).toEqual({ courantes: [], enAttente: [] });
+  expect(await direct(m)).toEqual({ running: [], waiting: [] });
   expect(servers.ollama.prompts.length).toBe(prompts);
 });
 
@@ -117,45 +117,45 @@ const widgetRuns = (id: string) => {
   return readdirSync(dir)
     .filter((f) => f.endsWith(".json"))
     .sort()
-    .map((f) => JSON.parse(readFileSync(path.join(dir, f), "utf8")) as { statut: string; proprietaire: unknown });
+    .map((f) => JSON.parse(readFileSync(path.join(dir, f), "utf8")) as { status: string; owner: unknown });
 };
 
 // actions.spec.ts:1558
 it("the Gmail widget (account, recolte.mjs) and a watch update as before while an action runs", { timeout: 150_000 }, async () => {
-  servers.settings.lenteurSiteMs = 8000;
+  servers.settings.siteSlownessMs = 8000;
   const site = servers.site.url;
   // An account, a harvest written by hand (recolte.mjs), no workflow.
   await writeWidget(dirs.dataDir, "gmail", {
-    nom: "Gmail",
-    recolte: { minutes: 60 },
-    declaration: { sources: { compte: ["127.0.0.1"], publiques: [] }, config: { url: `${site}/court` } },
-    fichiers: {
+    name: "Gmail",
+    harvest: { minutes: 60 },
+    declaration: { sources: { account: ["127.0.0.1"], public: [] }, config: { url: `${site}/court` } },
+    files: {
       "recolte.mjs": "export default async (webaios) => ({ titre: (await webaios.lirePage(webaios.config.url, { compte: true })).titre });",
-      "exemple.json": JSON.stringify({ exemple: "gmail" }),
+      "exemple.json": JSON.stringify({ example: "gmail" }),
       "affichage.html": WIDGET_DISPLAY,
     },
   });
   // A watch: the list, what is new, one opinion of Gemma per ad, shown as they come.
   await writeWidget(dirs.dataDir, "veille", {
-    nom: "Veille vélos",
-    recolte: { heures: ["07:00"], dureeMaxMinutes: 30 },
+    name: "Veille vélos",
+    harvest: { hours: ["07:00"], maxDurationMinutes: 30 },
     workflow: {
       version: 1,
-      blocs: [
-        { id: "recherche", type: "source.page", parametres: { url: `${site}/veille` } },
-        { id: "annonces", type: "code", parametres: { source: "annonces.mjs" } },
-        { id: "nouvelles", type: "liste.nouveaux", parametres: { cle: "url" } },
-        { id: "avis", type: "ia.rediger", parametres: { parElement: true, champ: "avis", consigne: "Avis sur l'annonce : --- DÉBUT --- {titre} --- FIN ---" } },
-        { id: "sortie", type: "sortie", parametres: { vers: "widget", auFilDeLEau: true } },
+      blocks: [
+        { id: "recherche", type: "source.page", params: { url: `${site}/veille` } },
+        { id: "annonces", type: "code", params: { source: "annonces.mjs" } },
+        { id: "nouvelles", type: "liste.nouveaux", params: { key: "url" } },
+        { id: "avis", type: "ia.rediger", params: { perItem: true, field: "avis", prompt: "Avis sur l'annonce : --- DÉBUT --- {titre} --- FIN ---" } },
+        { id: "sortie", type: "sortie", params: { to: "widget", live: true } },
       ],
-      liens: [
-        { de: "recherche", vers: "annonces" },
-        { de: "annonces", vers: "nouvelles" },
-        { de: "nouvelles", vers: "avis" },
-        { de: "avis", vers: "sortie" },
+      links: [
+        { from: "recherche", to: "annonces" },
+        { from: "annonces", to: "nouvelles" },
+        { from: "nouvelles", to: "avis" },
+        { from: "avis", to: "sortie" },
       ],
     },
-    fichiers: {
+    files: {
       "annonces.mjs": "export default async (page) => page.liens.filter((l) => l.url.includes('/annonce/')).map((l) => ({ titre: l.texte, url: l.url }));",
       "exemple.json": "[]",
       "affichage.html": WIDGET_DISPLAY,
@@ -163,37 +163,37 @@ it("the Gmail widget (account, recolte.mjs) and a watch update as before while a
   });
   // « Up to date, hour of the day done »: the watch does not harvest by itself.
   const now = new Date().toISOString();
-  await writeFile(path.join(widgetsDir("veille"), "etat.json"), JSON.stringify({ statut: "ok", derniereMaj: now, derniereTentative: now, heures: { faite: "9999-12-31T23:59", echecs: null } }));
-  await writeFile(path.join(dirs.dataDir, "widgets", "accords.json"), JSON.stringify({ gmail: { domaines: ["127.0.0.1"], publiques: [], profil: "defaut" } }));
+  await writeFile(path.join(widgetsDir("veille"), "etat.json"), JSON.stringify({ status: "ok", lastUpdate: now, lastAttempt: now, hours: { done: "9999-12-31T23:59", failures: null } }));
+  await writeFile(path.join(dirs.dataDir, "widgets", "accords.json"), JSON.stringify({ gmail: { domains: ["127.0.0.1"], public: [], profile: "defaut" } }));
   await writePagesAction(dirs.dataDir, site);
   const { m } = await launch(1400);
   await untilEqual(() => shown(m, "gmail"), '{"exemple":"gmail"}');
   await waitKernel(m);
   await inUi(m, "void ui.webaios.actions.lancer('pages', null);");
-  const running = async () => (await direct(m)).courantes.map((c) => c.action);
+  const running = async () => (await direct(m)).running.map((c) => c.action);
   await untilEqual(running, ["pages"]);
 
   await harvest(m, "gmail");
   await harvest(m, "veille");
   await untilEqual(() => shown(m, "gmail"), '{"titre":"Court"}');
-  await untilEqual(() => widgetRuns("veille").map((e) => e.statut), ["reussie"]);
-  const watch = JSON.parse((await shown(m, "veille")) || "null") as { titre: string; avis: string }[];
-  expect(watch.map((a) => [a.titre, a.avis])).toEqual([
+  await untilEqual(() => widgetRuns("veille").map((e) => e.status), ["reussie"]);
+  const watch = JSON.parse((await shown(m, "veille")) || "null") as { title: string; notice: string }[];
+  expect(watch.map((a) => [a.title, a.notice])).toEqual([
     ["Vélo de course", "Bonne affaire."],
     ["Vélo pliant", "Bonne affaire."],
   ]);
   // The action was still running during both updates.
   expect(await running()).toEqual(["pages"]);
   // The widgets' runs stayed a widget's.
-  expect(widgetRuns("gmail").map((e) => e.statut)).toEqual(["reussie"]);
-  for (const id of ["gmail", "veille"]) expect(widgetRuns(id)[0]!.proprietaire).toEqual({ type: "widget", id });
+  expect(widgetRuns("gmail").map((e) => e.status)).toEqual(["reussie"]);
+  for (const id of ["gmail", "veille"]) expect(widgetRuns(id)[0]!.owner).toEqual({ type: "widget", id });
   expect(JSON.parse(readFileSync(path.join(widgetsDir("gmail"), "etat.json"), "utf8")).statut).toBe("ok");
   await untilEqual(() => runStatuses(dirs.dataDir, "pages"), ["reussie"], 60_000);
 });
 
 // actions.spec.ts:1635
 it("quitting during an action: after relaunch its run is « interrompue » in previous results", { timeout: 120_000 }, async () => {
-  servers.settings.lenteurSiteMs = 6000;
+  servers.settings.siteSlownessMs = 6000;
   await writePagesAction(dirs.dataDir, servers.site.url);
   let { m, q } = await launch();
   await waitKernel(m);
@@ -206,7 +206,7 @@ it("quitting during an action: after relaunch its run is « interrompue » in pr
   const [execution] = (await runsOnDisk(dirs.dataDir, "pages")).map((f) => f.replace(/\.json$/, ""));
   expect(existsSync(path.join(actionsDataDir(dirs.dataDir), "pages", "resultats", `${execution}.json`))).toBe(false);
 
-  servers.settings.lenteurSiteMs = 0;
+  servers.settings.siteSlownessMs = 0;
   ({ m, q } = await launch());
   // The action's tab is restored: it shows the interrupted run, without launching it again.
   await waitUi(m, "return !!doc.querySelector(arguments[0]);", [tid("page-action")], 30_000);

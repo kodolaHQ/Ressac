@@ -2,23 +2,23 @@
   import type { ProfileForGrant } from "../shared/api";
 
   let {
-    sujet: subject,
-    nom: name,
-    domaines: domains,
-    publiques: publics,
-    profilsPourAccord: profilesForGrant,
-    autoriser: allow,
-    fermer: close,
+    subject: subject,
+    name: name,
+    domains: domains,
+    public: publics,
+    profilesForGrant: profilesForGrant,
+    allow: allow,
+    close: close,
   }: {
     /** What asks for the grant: a home widget or an action. */
-    sujet: "widget" | "action";
-    nom: string;
-    domaines: string[];
-    publiques: string[];
+    subject: "widget" | "action";
+    name: string;
+    domains: string[];
+    public: string[];
     /** The profiles offered (never a private space's), read by the subject's service. */
-    profilsPourAccord: () => Promise<ProfileForGrant[]>;
-    autoriser: (profile: string) => void;
-    fermer: () => void;
+    profilesForGrant: () => Promise<ProfileForGrant[]>;
+    allow: (profile: string) => void;
+    close: () => void;
   } = $props();
 
   let profiles = $state<ProfileForGrant[] | null>(null);
@@ -29,7 +29,7 @@
     profilesForGrant().then(
       (ps) => {
         profiles = ps;
-        chosen = (ps.find((p) => p.parDefaut) ?? ps[0])?.id ?? null;
+        chosen = (ps.find((p) => p.isDefault) ?? ps[0])?.id ?? null;
       },
       (e: unknown) => (error = e instanceof Error ? e.message : String(e)),
     );
@@ -53,7 +53,7 @@
     {:else}
       <div class="profils" role="radiogroup">
         {#each profiles as p (p.id)}
-          <label><input type="radio" name="profil-accord" value={p.id} bind:group={chosen} /> {p.libelle}</label>
+          <label><input type="radio" name="profil-accord" value={p.id} bind:group={chosen} /> {p.label}</label>
         {/each}
       </div>
     {/if}

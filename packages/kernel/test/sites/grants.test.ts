@@ -8,39 +8,39 @@ import type { DeclarationSite } from "../../src/sites/schemas.js";
 import { tempFolder } from "../helpers/temp.js";
 
 const base: DeclarationSite = {
-  nom: "Vidola", description: "", adresse: "https://vidola-a.example/", domaines: ["vidola-a.example"],
-  connexion: [], retouches: [{ correspond: ["/series/*"], js: ["a.js"], css: [], cadres: ["https://*.clipsy.*/*"] }], reprise: false,
+  name: "Vidola", description: "", url: "https://vidola-a.example/", domains: ["vidola-a.example"],
+  login: [], tweaks: [{ matches: ["/series/*"], js: ["a.js"], css: [], frames: ["https://*.clipsy.*/*"] }], resume: false,
 };
 
 test("without tweak or reprise: no grant needed", () => {
-  expect(grantNeeded({ ...base, retouches: [] })).toBe(false);
+  expect(grantNeeded({ ...base, tweaks: [] })).toBe(false);
   expect(grantNeeded(base)).toBe(true);
-  expect(grantNeeded({ ...base, retouches: [], reprise: true })).toBe(true);
+  expect(grantNeeded({ ...base, tweaks: [], resume: true })).toBe(true);
 });
 
 test("droitsDe: union of the frame patterns", () => {
-  const d = { ...base, retouches: [...base.retouches, { correspond: ["/a"], js: [], css: ["b.css"], cadres: ["https://x.example/*"] }, { correspond: ["/b"], js: [], css: ["c.css"], cadres: false as const }] };
-  expect(rightsOf(d).cadres).toEqual(["https://*.clipsy.*/*", "https://x.example/*"]);
+  const d = { ...base, tweaks: [...base.tweaks, { matches: ["/a"], js: [], css: ["b.css"], frames: ["https://x.example/*"] }, { matches: ["/b"], js: [], css: ["c.css"], frames: false as const }] };
+  expect(rightsOf(d).frames).toEqual(["https://*.clipsy.*/*", "https://x.example/*"]);
 });
 
 test("granted then tweaks code changed: still covers", () => {
   const a = rightsOf(base);
-  expect(grantCovers(a, { ...base, retouches: [{ ...base.retouches[0]!, js: ["autre.js", "encore.js"] }] })).toBe(true);
+  expect(grantCovers(a, { ...base, tweaks: [{ ...base.tweaks[0]!, js: ["autre.js", "encore.js"] }] })).toBe(true);
   expect(grantCovers(null, base)).toBe(false);
 });
 
 test("domain, login domain, frame pattern added, or reprise set to true: no longer covers", () => {
   const a = rightsOf(base);
-  expect(grantCovers(a, { ...base, domaines: ["vidola-a.example", "autre.example"] })).toBe(false);
-  expect(grantCovers(a, { ...base, connexion: ["login.example"] })).toBe(false);
-  expect(grantCovers(a, { ...base, retouches: [{ ...base.retouches[0]!, cadres: ["https://*.clipsy.*/*", "https://pub.example/*"] }] })).toBe(false);
-  expect(grantCovers(a, { ...base, reprise: true })).toBe(false);
+  expect(grantCovers(a, { ...base, domains: ["vidola-a.example", "autre.example"] })).toBe(false);
+  expect(grantCovers(a, { ...base, login: ["login.example"] })).toBe(false);
+  expect(grantCovers(a, { ...base, tweaks: [{ ...base.tweaks[0]!, frames: ["https://*.clipsy.*/*", "https://pub.example/*"] }] })).toBe(false);
+  expect(grantCovers(a, { ...base, resume: true })).toBe(false);
   expect(grantCovers(a, base)).toBe(true);
 });
 
 test("correspond changed: still covers", () => {
   const a = rightsOf(base);
-  expect(grantCovers(a, { ...base, retouches: [{ ...base.retouches[0]!, correspond: ["/films/*"] }] })).toBe(true);
+  expect(grantCovers(a, { ...base, tweaks: [{ ...base.tweaks[0]!, matches: ["/films/*"] }] })).toBe(true);
 });
 
 test("removeSiteGrant then readSiteGrants: absent; file in the profile, simultaneous grants kept", async () => {
@@ -79,28 +79,28 @@ test("failing read (neither absent nor damaged): the write fails without erasing
 });
 
 test("empreinteLectureSite: name, domains and login; the order and case of the domains change nothing", () => {
-  const updateEntry = { ...base, connexion: ["compte.example"] };
+  const updateEntry = { ...base, login: ["compte.example"] };
   const e = siteReadHash(updateEntry);
   expect(e).toMatch(/^[0-9a-f]{64}$/);
-  expect(siteReadHash({ ...updateEntry, domaines: ["Vidola-A.example", "vidola-a.example"] })).toBe(e);
-  expect(siteReadHash({ ...updateEntry, domaines: ["b.example", "vidola-a.example"] })).toBe(siteReadHash({ ...updateEntry, domaines: ["vidola-a.example", "b.example"] }));
+  expect(siteReadHash({ ...updateEntry, domains: ["Vidola-A.example", "vidola-a.example"] })).toBe(e);
+  expect(siteReadHash({ ...updateEntry, domains: ["b.example", "vidola-a.example"] })).toBe(siteReadHash({ ...updateEntry, domains: ["vidola-a.example", "b.example"] }));
   // What the card does not show does not count.
-  expect(siteReadHash({ ...updateEntry, description: "autre", retouches: [], reprise: true })).toBe(e);
+  expect(siteReadHash({ ...updateEntry, description: "autre", tweaks: [], resume: true })).toBe(e);
   // One more domain, login or name: another hash.
-  expect(siteReadHash({ ...updateEntry, domaines: [...updateEntry.domaines, "mail.example.com"] })).not.toBe(e);
-  expect(siteReadHash({ ...updateEntry, connexion: [...updateEntry.connexion, "accounts.google.com"] })).not.toBe(e);
-  expect(siteReadHash({ ...updateEntry, nom: "Mail" })).not.toBe(e);
+  expect(siteReadHash({ ...updateEntry, domains: [...updateEntry.domains, "mail.example.com"] })).not.toBe(e);
+  expect(siteReadHash({ ...updateEntry, login: [...updateEntry.login, "accounts.google.com"] })).not.toBe(e);
+  expect(siteReadHash({ ...updateEntry, name: "Mail" })).not.toBe(e);
   // The fields are not confused (a domain moved to login changes the hash).
-  expect(siteReadHash({ ...updateEntry, domaines: [], connexion: ["vidola-a.example", "compte.example"] })).not.toBe(e);
+  expect(siteReadHash({ ...updateEntry, domains: [], login: ["vidola-a.example", "compte.example"] })).not.toBe(e);
 });
 
 test("siteExtensionsHash: stable for another name, other tweaks, another reprise, another order or another case; changes with one more domain", () => {
   const e = siteExtensionsHash(base);
   expect(e).toMatch(/^[0-9a-f]{64}$/);
-  expect(siteExtensionsHash({ ...base, nom: "Autre", retouches: [], reprise: true })).toBe(e);
-  const two = { ...base, domaines: ["a.example", "B.example"], connexion: ["c.example", "d.example"] };
-  expect(siteExtensionsHash({ ...two, domaines: ["b.EXAMPLE", "a.example", "a.example"], connexion: ["D.example", "c.example"] })).toBe(siteExtensionsHash(two));
-  expect(siteExtensionsHash({ ...base, domaines: [...base.domaines, "autre.example"] })).not.toBe(e);
-  expect(siteExtensionsHash({ ...base, connexion: ["login.example"] })).not.toBe(e);
-  expect(siteExtensionsHash({ ...base, domaines: [], connexion: ["vidola-a.example"] })).not.toBe(e);
+  expect(siteExtensionsHash({ ...base, name: "Autre", tweaks: [], resume: true })).toBe(e);
+  const two = { ...base, domains: ["a.example", "B.example"], login: ["c.example", "d.example"] };
+  expect(siteExtensionsHash({ ...two, domains: ["b.EXAMPLE", "a.example", "a.example"], login: ["D.example", "c.example"] })).toBe(siteExtensionsHash(two));
+  expect(siteExtensionsHash({ ...base, domains: [...base.domains, "autre.example"] })).not.toBe(e);
+  expect(siteExtensionsHash({ ...base, login: ["login.example"] })).not.toBe(e);
+  expect(siteExtensionsHash({ ...base, domains: [], login: ["vidola-a.example"] })).not.toBe(e);
 });

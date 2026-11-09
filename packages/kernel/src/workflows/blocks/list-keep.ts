@@ -3,14 +3,14 @@ import type { BlockDefinition } from "./common.js";
 
 export const definition: BlockDefinition = {
   type: "liste.garder",
-  libelle: "Garder les N premiers",
-  famille: "Listes",
+  label: "Garder les N premiers",
+  family: "Listes",
   description: "Garde les premiers éléments de la liste.",
-  entree: "requise",
-  champs: [
-    { nom: "nombre", libelle: "Nombre d'éléments", requis: true, defaut: 10, genre: "nombre", min: 1, max: 1000, entier: true },
+  input: "requise",
+  fields: [
+    { name: "nombre", label: "Nombre d'éléments", required: true, default: 10, kind: "nombre", min: 1, max: 1000, integer: true },
   ],
-  parElement: "non",
-  chaine: false,
-  parametres: z.object({ nombre: z.number().int().min(1).max(1000) }).strict(),
+  perItem: "non",
+  chain: false,
+  params: z.object({ count: z.number().int().min(1).max(1000) }).strict(),
 };

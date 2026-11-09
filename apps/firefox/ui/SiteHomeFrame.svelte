@@ -55,8 +55,8 @@
       const r = HomeMessage.safeParse(data);
       if (!r.success) return;
       const m = r.data;
-      if (m.type === "pret") void api.memoire().then(send, () => {});
-      else if (m.type === "ouvrir") void api.ouvrir(m.adresse).catch(() => {});
+      if (m.type === "pret") void api.memory().then(send, () => {});
+      else if (m.type === "ouvrir") void api.open(m.url).catch(() => {});
       else
         void api.image(m.url).then(
           (data) => send({ type: "image", n: m.n, data }),
@@ -78,8 +78,8 @@
     document.addEventListener("DOMFrameContentLoaded", onLoaded, true);
     controller.guardHome(frame!);
     refresh();
-    const endState = api.surEtat(refresh);
-    const end = api.surMemoire(send);
+    const endState = api.onState(refresh);
+    const end = api.onMemory(send);
     return () => {
       root.removeEventListener("webaios-home", onMessage, true);
       document.removeEventListener("DOMFrameContentLoaded", onLoaded, true);
@@ -93,7 +93,7 @@
 <section class="accueil" data-testid="site-zone-accueil">
   <iframe bind:this={frame} data-testid="site-cadre-accueil" title="Accueil de l'appli" sandbox="allow-scripts" src={src ?? "about:blank"}></iframe>
   <footer>
-    <button data-testid="site-entrer" onclick={() => api.entrer()}>{ENTER_THE_SITE}</button>
+    <button data-testid="site-entrer" onclick={() => api.enter()}>{ENTER_THE_SITE}</button>
   </footer>
 </section>
 

@@ -58,8 +58,8 @@ const REMOVED = `${tid("ligne-diff")}.retrait`;
 const context = () => inUi<number[]>(m, `return [...doc.querySelectorAll('${tid("ligne-diff")}.contexte')].map((l) => Number(l.dataset.nouveau))`);
 const waitContext = (n: number[]) => expect.poll(context, { timeout: 10_000 }).toEqual(n);
 /** The tabs of the Review page of `projet`, every window together. */
-const reviewTabs = async (project: string) => Object.values((await state(m)).onglets).filter((o) => o.url === reviewUrl(project));
-const tabsOf = (f: { ordre: Record<string, string[]> }) => Object.values(f.ordre).flat();
+const reviewTabs = async (project: string) => Object.values((await state(m)).tabs).filter((o) => o.url === reviewUrl(project));
+const tabsOf = (f: { order: Record<string, string[]> }) => Object.values(f.order).flat();
 
 /** « Relire » of the projet-externe line, on the Applications page; waits for the Review page. */
 async function reread(): Promise<void> {
@@ -70,14 +70,14 @@ async function reread(): Promise<void> {
 /** Back to the Applications page of the current window (its tab, activated again). */
 async function backToApplications(): Promise<void> {
   const windowId = await m.execute<string>("return window.webaiosWindow.fenetreId");
-  await dispatch(m, { type: "ouvrirApplications", fenetreId: windowId });
+  await dispatch(m, { type: "ouvrirApplications", windowId: windowId });
   await waitUi(m, `return !!doc.querySelector('${tid("projets-externes")}') && !doc.querySelector('${PAGE}')`);
 }
 
 /** A declared project with line `n` of app.js changed, its Review page open on app.js. */
 async function pageOnAppJs(n: number) {
   const p = await declareProject(m, { dataDir: w!.dataDir });
-  writeAppJs(p.dossier, modified(n));
+  writeAppJs(p.folder, modified(n));
   await reread();
   await openFile("app.js");
   await waitTexts(ADDED, [`${n}ligne ${n} modifiée`]);
@@ -90,8 +90,8 @@ it("at start the first photo is taken (refs/webaios/relu under <dataDir>/design/
   const p = await declareProject(m, { dataDir: w!.dataDir });
   try {
     expect(existsSync(reviewedRef(w!.dataDir, `ext-${p.id}`))).toBe(true);
-    expect(readdirSync(p.dossier).sort()).toEqual(["app.js", "logo.bin"]);
-    expect(existsSync(path.join(p.dossier, "..", ".git"))).toBe(false);
+    expect(readdirSync(p.folder).sort()).toEqual(["app.js", "logo.bin"]);
+    expect(existsSync(path.join(p.folder, "..", ".git"))).toBe(false);
   } finally {
     await p.client.close();
   }
@@ -102,11 +102,11 @@ it("after changing app.js (line 15) and adding note.md: « Relire » opens page-
   await launch();
   const p = await declareProject(m, { dataDir: w!.dataDir });
   try {
-    writeAppJs(p.dossier, modified(15));
-    writeFileSync(path.join(p.dossier, "note.md"), "# Note\n");
+    writeAppJs(p.folder, modified(15));
+    writeFileSync(path.join(p.folder, "note.md"), "# Note\n");
     await reread();
     const tabs = await reviewTabs(`ext-${p.id}`);
-    expect(tabs.map((o) => o.titre)).toEqual(["Relecture — mon-site"]);
+    expect(tabs.map((o) => o.title)).toEqual(["Relecture — mon-site"]);
     await waitCount(tid("fichier-relecture"), 2);
     expect(await fileRow("app.js")).toContain("~");
     expect(await fileRow("app.js")).toContain("+1 −1");
@@ -141,7 +141,7 @@ it("logo.bin changed (a NUL byte): « fichier binaire »", async () => {
   await launch();
   const p = await declareProject(m, { dataDir: w!.dataDir });
   try {
-    writeFileSync(path.join(p.dossier, "logo.bin"), Buffer.from([0x89, 0x00, 0x4e, 0x47]));
+    writeFileSync(path.join(p.folder, "logo.bin"), Buffer.from([0x89, 0x00, 0x4e, 0x47]));
     await reread();
     await openFile("logo.bin");
     await waitUi(m, `return doc.querySelector('${tid("diff-fichier")}')?.textContent.includes("fichier binaire")`);
@@ -156,8 +156,8 @@ it("a file changed while the page is open: nothing changes before « Rafraîchir
   await launch();
   const p = await pageOnAppJs(15);
   try {
-    writeAppJs(p.dossier, modified(15, 25));
-    writeFileSync(path.join(p.dossier, "autre.txt"), "autre\n");
+    writeAppJs(p.folder, modified(15, 25));
+    writeFileSync(path.join(p.folder, "autre.txt"), "autre\n");
     await new Promise((r) => setTimeout(r, 1500));
     await openFile("app.js");
     await new Promise((r) => setTimeout(r, 300));
@@ -176,10 +176,10 @@ it("changed, then another tab and back: the page shows the old diff until « Raf
   await launch();
   const p = await pageOnAppJs(15);
   try {
-    writeAppJs(p.dossier, modified(15, 25));
+    writeAppJs(p.folder, modified(15, 25));
     // Another tab (the Applications page), then back to the Review tab: the page is mounted again.
     const s = await state(m);
-    const apps = Object.values(s.onglets).find((o) => o.titre === "Applications")!.id;
+    const apps = Object.values(s.tabs).find((o) => o.title === "Applications")!.id;
     const review = (await reviewTabs(`ext-${p.id}`))[0]!.id;
     await click(m, tid(`onglet-${apps}`));
     await waitCount(PAGE, 0);
@@ -205,7 +205,7 @@ it("« Relire » twice from « Projets externes »: the same page, one tab « Re
     await backToApplications();
     await reread();
     const tabs = await reviewTabs(`ext-${p.id}`);
-    expect(tabs.map((o) => o.titre)).toEqual(["Relecture — mon-site"]);
+    expect(tabs.map((o) => o.title)).toEqual(["Relecture — mon-site"]);
   } finally {
     await p.client.close();
   }
@@ -251,13 +251,13 @@ it("reopening the shown file (a second click in the list) does not close the com
 // Spec §5.3: the Sites card's « Relire » opens the Review page, no longer the internal page.
 it("at start the site app's first photo exists under <dataDir>/design/relecture/site-<id>.git; Relire of its Sites card opens the page with the changed file", async () => {
   await launch({
-    prepare: (d) => writeSite(d, "essai", { declaration: { nom: "Essai", adresse: "https://essai.example/", domaines: ["essai.example"] }, fichiers: { "app.js": LINES.join("\n") + "\n" } }),
+    prepare: (d) => writeSite(d, "essai", { declaration: { name: "Essai", url: "https://essai.example/", domains: ["essai.example"] }, files: { "app.js": LINES.join("\n") + "\n" } }),
   });
   await expect.poll(() => existsSync(reviewedRef(w!.dataDir, "site-essai")), { timeout: 15_000 }).toBe(true);
   writeAppJs(path.join(w!.dataDir, "espace", "sites", "essai"), modified(15));
   await click(m, tid("site-essai-relire"));
   await waitUi(m, `return !!doc.querySelector('${PAGE}')`);
-  expect((await reviewTabs("site-essai")).map((o) => o.titre)).toEqual(["Relecture — Essai"]);
+  expect((await reviewTabs("site-essai")).map((o) => o.title)).toEqual(["Relecture — Essai"]);
   await waitCount(tid("fichier-relecture"), 1);
   expect(await fileRow("app.js")).toContain("~");
   await openFile("app.js");
@@ -306,7 +306,7 @@ it("Relire in a second window opens the page there, once", async () => {
   await launch();
   const p = await declareProject(m, { dataDir: w!.dataDir });
   try {
-    const a = (await state(m)).fenetres[0]!.id;
+    const a = (await state(m)).windows[0]!.id;
     const b = await newWindow(m);
     await inWindow(m, b, async () => {
       await backToApplications();
@@ -317,12 +317,12 @@ it("Relire in a second window opens the page there, once", async () => {
     const s = await state(m);
     const tabs = await reviewTabs(`ext-${p.id}`);
     expect(tabs).toHaveLength(1);
-    const fb = s.fenetres.find((f) => f.id !== a)!;
+    const fb = s.windows.find((f) => f.id !== a)!;
     expect(tabsOf(fb)).toContain(tabs[0]!.id);
-    expect(fb.actif[fb.espaceActif]).toBe(tabs[0]!.id);
-    const fa = s.fenetres.find((f) => f.id === a)!;
+    expect(fb.active[fb.activeSpace]).toBe(tabs[0]!.id);
+    const fa = s.windows.find((f) => f.id === a)!;
     expect(tabsOf(fa)).not.toContain(tabs[0]!.id);
-    expect(s.onglets[fa.actif[fa.espaceActif]!]!.titre).toBe("Applications");
+    expect(s.tabs[fa.active[fa.activeSpace]!]!.title).toBe("Applications");
     expect(await count(PAGE)).toBe(0);
   } finally {
     await p.client.close();

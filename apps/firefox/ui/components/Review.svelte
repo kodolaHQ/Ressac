@@ -12,7 +12,7 @@
    * A project's Review page: what changed since the last review, with comments on lines. The comparison is made at
    * opening and kept as is until « Rafraîchir »; « Marquer comme relu » records what it shows.
    */
-  let { projet: project, ongletId: tabId }: { projet: string; ongletId: string } = $props();
+  let { project: project, tabId: tabId }: { project: string; tabId: string } = $props();
   let token = $state<string | null>(null);
 
   let view = $state<ReviewView | null>(null);
@@ -34,11 +34,11 @@
     const n = ++request;
     running = true;
     try {
-      const v = await api.relecture.ouvrir(project, keep ? tokens.get(tabId) : undefined);
+      const v = await api.review.open(project, keep ? tokens.get(tabId) : undefined);
       if (n !== request) return;
       await show(v);
     } catch {
-      if (n === request) view = { etat: "indisponible", nom: "", raison: "la relecture n'a pas pu être ouverte" };
+      if (n === request) view = { state: "indisponible", name: "", reason: "la relecture n'a pas pu être ouverte" };
     } finally {
       if (n === request) running = false;
     }
@@ -48,14 +48,14 @@
   async function show(v: ReviewView) {
     ++commentsRequest;
     view = v;
-    comments = v.etat === "ok" ? v.commentaires : [];
-    token = v.etat === "ok" ? v.jeton : null;
+    comments = v.state === "ok" ? v.comments : [];
+    token = v.state === "ok" ? v.token : null;
     if (token) tokens.set(tabId, token);
     else tokens.delete(tabId);
-    const files = v.etat === "ok" ? v.comparaison.fichiers : [];
+    const files = v.state === "ok" ? v.comparison.files : [];
     // The chosen file stays chosen if it is still modified; otherwise the first one.
-    const kept = files.find((f) => f.chemin === chosen) ?? files[0];
-    chosen = kept?.chemin ?? null;
+    const kept = files.find((f) => f.path === chosen) ?? files[0];
+    chosen = kept?.path ?? null;
     await display(chosen);
   }
 
@@ -63,7 +63,7 @@
   async function reloadComments() {
     const n = ++commentsRequest;
     try {
-      const l = await api.relecture.commentaires(project);
+      const l = await api.review.comments(project);
       if (n === commentsRequest) comments = l;
     } catch {
       // La liste reste celle d'avant.
@@ -77,8 +77,8 @@
     message = null;
     running = true;
     try {
-      const r = await api.relecture.envoyer(project);
-      if (!r.ok) message = r.erreur;
+      const r = await api.review.send(project);
+      if (!r.ok) message = r.error;
     } catch (e) {
       message = withoutPrefix(e);
     } finally {
@@ -93,7 +93,7 @@
     const n = ++request;
     running = true;
     try {
-      const v = await api.relecture.relu(project, token);
+      const v = await api.review.reviewed(project, token);
       if (n === request) await show(v);
     } catch (e) {
       if (n === request) message = withoutPrefix(e);
@@ -112,7 +112,7 @@
       return;
     }
     try {
-      const d = await api.relecture.fichier(project, token, path);
+      const d = await api.review.file(project, token, path);
       if (n === diffRequest) diff = d;
       // Opening the file reattached its comments to the diff.
       await reloadComments();
@@ -130,17 +130,17 @@
     void load(true);
   });
 
-  const files = $derived<ModifiedFile[]>(view?.etat === "ok" ? view.comparaison.fichiers : []);
-  const toSend = $derived(comments.filter((c) => !c.resolu).length);
-  const ofFile = $derived(diff ? comments.filter((c) => c.fichier === diff!.chemin) : []);
+  const files = $derived<ModifiedFile[]>(view?.state === "ok" ? view.comparison.files : []);
+  const toSend = $derived(comments.filter((c) => !c.resolved).length);
+  const ofFile = $derived(diff ? comments.filter((c) => c.file === diff!.path) : []);
 </script>
 
 <section class="relecture" data-testid="page-relecture" aria-label="Relecture">
   <header>
-    <h2>{view?.nom ?? ""}</h2>
-    {#if view?.etat === "ok"}
+    <h2>{view?.name ?? ""}</h2>
+    {#if view?.state === "ok"}
       {#if toSend > 0}
-        <button data-testid="envoyer-commentaires" disabled={running || view.destination === null} title={view.sansDestination ?? ""}
+        <button data-testid="envoyer-commentaires" disabled={running || view.destination === null} title={view.noDestination ?? ""}
           onclick={() => void sendComments()}
           >Envoyer {toSend} commentaire{toSend > 1 ? "s" : ""} à {view.destination ?? "personne"}</button
         >
@@ -150,27 +150,27 @@
     <button onclick={() => void load(false)} disabled={running}>Rafraîchir</button>
   </header>
   {#if message}<p class="message" data-testid="erreur-relecture">{message}</p>{/if}
-  {#if view?.etat === "indisponible"}
-    <p class="indisponible" data-testid="relecture-indisponible">Relecture indisponible : {view.raison}</p>
-  {:else if view?.etat === "ok"}
+  {#if view?.state === "indisponible"}
+    <p class="indisponible" data-testid="relecture-indisponible">Relecture indisponible : {view.reason}</p>
+  {:else if view?.state === "ok"}
     <div class="corps">
       <nav class="liste" aria-label="Fichiers modifiés">
         {#if files.length === 0}
           <p class="vide">Rien n'a changé depuis la dernière relecture.</p>
         {/if}
-        {#each files as f (f.chemin)}
-          <button class="fichier" class:choisi={f.chemin === chosen} data-testid="fichier-relecture" aria-pressed={f.chemin === chosen}
-            title={LABELS[f.statut]} onclick={() => void display(f.chemin)}
-            ><span class="statut {f.statut}">{STATUSES[f.statut]}</span><span class="nom-fichier">{f.chemin}</span><span class="compte">+{f.ajouts} −{f.suppressions}</span></button
+        {#each files as f (f.path)}
+          <button class="fichier" class:choisi={f.path === chosen} data-testid="fichier-relecture" aria-pressed={f.path === chosen}
+            title={LABELS[f.status]} onclick={() => void display(f.path)}
+            ><span class="statut {f.status}">{STATUSES[f.status]}</span><span class="nom-fichier">{f.path}</span><span class="compte">+{f.additions} −{f.deletions}</span></button
           >
         {/each}
         {#if comments.length > 0}
           <h3>Commentaires</h3>
           <ul class="commentaires">
             {#each comments as c (c.id)}
-              <li data-testid="commentaire-relecture" class:resolu={c.resolu}>
-                <span class="ou">{c.fichier}:{c.debut}{c.fin !== c.debut ? `–${c.fin}` : ""}</span>
-                <span>{c.texte}</span>
+              <li data-testid="commentaire-relecture" class:resolu={c.resolved}>
+                <span class="ou">{c.file}:{c.start}{c.end !== c.start ? `–${c.end}` : ""}</span>
+                <span>{c.text}</span>
               </li>
             {/each}
           </ul>
@@ -180,7 +180,7 @@
         {#if diffError}
           <p class="vide">{diffError}</p>
         {:else if diff && token}
-          {#key `${token}\n${diff.chemin}`}<DiffFile projet={project} jeton={token} {diff} commentaires={ofFile} surChange={() => void reloadComments()} />{/key}
+          {#key `${token}\n${diff.path}`}<DiffFile project={project} token={token} {diff} comments={ofFile} onChange={() => void reloadComments()} />{/key}
         {/if}
       </div>
     </div>

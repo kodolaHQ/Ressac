@@ -8,9 +8,9 @@ import { z } from "zod";
  * time of the grant, and the chosen login profile. Stored in `<dossierWidgets>/accords.json` (`<dossierActions>/accords.json` for the actions), outside the workspace.
  */
 export const Grant = z.object({
-  domaines: z.array(z.string()),
-  publiques: z.array(z.string()),
-  profil: z.string().min(1),
+  domains: z.array(z.string()),
+  public: z.array(z.string()),
+  profile: z.string().min(1),
 });
 export type Grant = z.infer<typeof Grant>;
 
@@ -66,7 +66,7 @@ export async function giveGrant(widgetsFolder: string, id: string, grant: Grant)
   checkId(id);
   const a = Grant.parse(grant);
   return modify(widgetsFolder, (grants) => {
-    grants[id] = { domaines: [...a.domaines], publiques: [...a.publiques], profil: a.profil };
+    grants[id] = { domains: [...a.domains], public: [...a.public], profile: a.profile };
   });
 }
 
@@ -87,7 +87,7 @@ const same = (a: string[], b: string[]) => {
  * The grant holds as long as the declaration (of a widget or an action) announces exactly the same domains
  * (`compte` and `publiques`).
  */
-export function grantValid(declaration: { sources: { compte: string[]; publiques: string[] } }, grant?: Grant): grant is Grant {
+export function grantValid(declaration: { sources: { account: string[]; public: string[] } }, grant?: Grant): grant is Grant {
   if (!grant) return false;
-  return same(declaration.sources.compte, grant.domaines) && same(declaration.sources.publiques, grant.publiques);
+  return same(declaration.sources.account, grant.domains) && same(declaration.sources.public, grant.public);
 }

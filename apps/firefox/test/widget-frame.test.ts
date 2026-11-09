@@ -158,8 +158,8 @@ describe("serveDisplays", () => {
     const prepares = new Set<string>();
     const forgotten: string[] = [];
     const tool = {
-      preparer: async (_d: string, id: string) => `resource://webaios-widget-${id}/affichage-1.html`,
-      oublier: async (_d: string, id: string) => void forgotten.push(id),
+      prepare: async (_d: string, id: string) => `resource://webaios-widget-${id}/affichage-1.html`,
+      forget: async (_d: string, id: string) => void forgotten.push(id),
     };
     const w = (id: string) => ({ id, src: `resource://webaios-widget-${id}/affichage-1.html` }) as unknown as ShownWidget;
     await serveDisplays([w("a"), w("b")], "/data", prepares, tool);

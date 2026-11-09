@@ -2,72 +2,72 @@ import { expect, test } from "vitest";
 import { MAX_PAGE_BLOCKS, MAX_OPERATIONS, PlanPage, evaluate, readPath, readReference } from "../../src/pages/plan.js";
 
 const tickets = [
-  { id: 1, projet: "B", priorite: "haute", titre: "a" },
-  { id: 2, projet: "A", priorite: "basse", titre: "b" },
-  { id: 3, projet: "B", priorite: "haute", titre: "c" },
-  { id: 4, projet: "C", priorite: "moyenne", titre: "d" },
-  { id: 5, projet: "A", priorite: "haute", titre: "e" },
-  { id: 6, projet: "B", priorite: "haute", titre: "f" },
-  { id: 7, projet: "A", priorite: "haute", titre: "g" },
+  { id: 1, project: "B", priority: "haute", title: "a" },
+  { id: 2, project: "A", priority: "basse", title: "b" },
+  { id: 3, project: "B", priority: "haute", title: "c" },
+  { id: 4, project: "C", priority: "moyenne", title: "d" },
+  { id: 5, project: "A", priority: "haute", title: "e" },
+  { id: 6, project: "B", priority: "haute", title: "f" },
+  { id: 7, project: "A", priority: "haute", title: "g" },
 ];
 const announcements = [
-  { titre: "Renault CLIO", prix: 7000 }, { titre: "Peugeot 208", prix: 9000 }, { titre: "Clio", prix: 7900 }, { titre: "Mégane", prix: 12000 },
+  { title: "Renault CLIO", price: 7000 }, { title: "Peugeot 208", price: 9000 }, { title: "Clio", price: 7900 }, { title: "Mégane", price: 12000 },
 ];
-const root = { tickets, annonces: announcements, priorité: "ok", sans: { x: 1 } };
+const root = { tickets, announcements: announcements, priority: "ok", without: { x: 1 } };
 const val = (text: string, r: unknown = root) => {
   const ref = readReference(text);
-  if ("erreur" in ref) throw new Error(ref.erreur);
+  if ("error" in ref) throw new Error(ref.error);
   return evaluate(ref, r);
 };
 
-test("compter on 7 tickets", () => expect(val("compter(tickets)")).toEqual({ valeur: 7 }));
+test("compter on 7 tickets", () => expect(val("compter(tickets)")).toEqual({ value: 7 }));
 test("trier desc", () => {
-  const r = val('trier(tickets, priorite, "desc")') as { valeur: typeof tickets };
-  expect(r.valeur.map((t) => t.priorite)).toEqual(["moyenne", "haute", "haute", "haute", "haute", "haute", "basse"]);
+  const r = val('trier(tickets, priorite, "desc")') as { value: typeof tickets };
+  expect(r.value.map((t) => t.priority)).toEqual(["moyenne", "haute", "haute", "haute", "haute", "haute", "basse"]);
 });
 test("trier is stable and puts the missing ones at the end", () => {
-  const r = val("trier(l, k)", { l: [{ i: 1 }, { i: 2, k: 1 }, { i: 3, k: 1 }, { i: 4, k: 0 }] }) as { valeur: { i: number }[] };
-  expect(r.valeur.map((e) => e.i)).toEqual([4, 2, 3, 1]);
-  const d = val('trier(l, k, "desc")', { l: [{ i: 1 }, { i: 2, k: 1 }, { i: 3, k: 1 }, { i: 4, k: 0 }] }) as { valeur: { i: number }[] };
-  expect(d.valeur.map((e) => e.i)).toEqual([2, 3, 4, 1]);
+  const r = val("trier(l, k)", { l: [{ i: 1 }, { i: 2, k: 1 }, { i: 3, k: 1 }, { i: 4, k: 0 }] }) as { value: { i: number }[] };
+  expect(r.value.map((e) => e.i)).toEqual([4, 2, 3, 1]);
+  const d = val('trier(l, k, "desc")', { l: [{ i: 1 }, { i: 2, k: 1 }, { i: 3, k: 1 }, { i: 4, k: 0 }] }) as { value: { i: number }[] };
+  expect(d.value.map((e) => e.i)).toEqual([2, 3, 4, 1]);
 });
 test("garder(filtrer(...), 3)", () => {
-  const r = val('garder(filtrer(tickets, priorite = "haute"), 3)') as { valeur: typeof tickets };
-  expect(r.valeur.map((t) => t.id)).toEqual([1, 3, 5]);
+  const r = val('garder(filtrer(tickets, priorite = "haute"), 3)') as { value: typeof tickets };
+  expect(r.value.map((t) => t.id)).toEqual([1, 3, 5]);
 });
 test("filtrer < and >", () => {
-  expect((val("filtrer(annonces, prix < 8000)") as { valeur: unknown[] }).valeur).toHaveLength(2);
-  expect((val("filtrer(annonces, prix > 8000)") as { valeur: unknown[] }).valeur).toHaveLength(2);
+  expect((val("filtrer(annonces, prix < 8000)") as { value: unknown[] }).value).toHaveLength(2);
+  expect((val("filtrer(annonces, prix > 8000)") as { value: unknown[] }).value).toHaveLength(2);
 });
 test("filtrer ~ ignores accents and case", () => {
-  const r = val('filtrer(annonces, titre ~ "clio")') as { valeur: { titre: string }[] };
-  expect(r.valeur.map((a) => a.titre)).toEqual(["Renault CLIO", "Clio"]);
-  expect((val('filtrer(annonces, titre ~ "megane")') as { valeur: unknown[] }).valeur).toHaveLength(1);
+  const r = val('filtrer(annonces, titre ~ "clio")') as { value: { title: string }[] };
+  expect(r.value.map((a) => a.title)).toEqual(["Renault CLIO", "Clio"]);
+  expect((val('filtrer(annonces, titre ~ "megane")') as { value: unknown[] }).value).toHaveLength(1);
 });
 test("filtrer = bare word and number", () => {
-  expect((val("filtrer(tickets, priorite = basse)") as { valeur: unknown[] }).valeur).toHaveLength(1);
-  expect((val("filtrer(tickets, id = 4)") as { valeur: unknown[] }).valeur).toHaveLength(1);
+  expect((val("filtrer(tickets, priorite = basse)") as { value: unknown[] }).value).toHaveLength(1);
+  expect((val("filtrer(tickets, id = 4)") as { value: unknown[] }).value).toHaveLength(1);
 });
 test("regrouper : ordre d'apparition", () => {
-  const r = val("regrouper(tickets, projet)") as { valeur: { valeur: string; elements: unknown[] }[] };
-  expect(r.valeur.map((g) => [g.valeur, g.elements.length])).toEqual([["B", 3], ["A", 3], ["C", 1]]);
-  const s = val("regrouper(l, k)", { l: [{ k: 1 }, {}] }) as { valeur: { valeur: string }[] };
-  expect(s.valeur.map((g) => g.valeur)).toEqual(["1", "(sans valeur)"]);
+  const r = val("regrouper(tickets, projet)") as { value: { value: string; items: unknown[] }[] };
+  expect(r.value.map((g) => [g.value, g.items.length])).toEqual([["B", 3], ["A", 3], ["C", 1]]);
+  const s = val("regrouper(l, k)", { l: [{ k: 1 }, {}] }) as { value: { value: string }[] };
+  expect(s.value.map((g) => g.value)).toEqual(["1", "(sans valeur)"]);
 });
 test("$ designates the whole value", () => {
-  expect(val("$", [1, 2])).toEqual({ valeur: [1, 2] });
-  expect(val("compter($)", [1, 2])).toEqual({ valeur: 2 });
+  expect(val("$", [1, 2])).toEqual({ value: [1, 2] });
+  expect(val("compter($)", [1, 2])).toEqual({ value: 2 });
 });
 test("espaces permis", () => {
   expect(val('  garder ( trier ( tickets , id , "desc" ) , 2 ) ')).toHaveProperty("valeur");
 });
 test("missing path: error; nested path", () => {
   expect(val("nulle.part")).toHaveProperty("erreur");
-  expect(val("sans.x")).toEqual({ valeur: 1 });
-  expect(val("tickets.0.id")).toEqual({ valeur: 1 });
+  expect(val("sans.x")).toEqual({ value: 1 });
+  expect(val("tickets.0.id")).toEqual({ value: 1 });
 });
 test("operations on a non-list: error « liste attendue »", () => {
-  expect(val("trier(sans, x)")).toEqual({ erreur: expect.stringContaining("liste attendue") });
+  expect(val("trier(sans, x)")).toEqual({ error: expect.stringContaining("liste attendue") });
   expect(val("compter(sans)")).toHaveProperty("erreur");
 });
 test("__proto__ and constructor are never read", () => {
@@ -77,13 +77,13 @@ test("__proto__ and constructor are never read", () => {
   expect(readPath("abc", "length")).toBeUndefined();
   expect(readPath([1], "length")).toBeUndefined();
   expect(val("constructor")).toHaveProperty("erreur");
-  expect(val("filtrer(tickets, __proto__ = x)")).toEqual({ valeur: [] });
+  expect(val("filtrer(tickets, __proto__ = x)")).toEqual({ value: [] });
   expect(readPath(JSON.parse('{"__proto__":{"a":1}}'), "__proto__.a")).toBe(1);
 });
 test("readPath: $ is the root", () => {
   expect(readPath(5, "$")).toBe(5);
 });
-test("accented key read", () => expect(val("priorité")).toEqual({ valeur: "ok" }));
+test("accented key read", () => expect(val("priorité")).toEqual({ value: "ok" }));
 test("MAX_OPERATIONS", () => {
   expect(MAX_OPERATIONS).toBe(4);
   expect(readReference("garder(garder(garder(garder(t, 5), 5), 5), 5)")).toHaveProperty("ops");
@@ -109,9 +109,9 @@ test("syntaxe invalide", () => {
 });
 test("the read ref: ops from the inside out", () => {
   expect(readReference('garder(trier(a.b, k, "desc"), 3)')).toEqual({
-    chemin: "a.b", ops: [{ op: "trier", champ: "k", desc: true }, { op: "garder", n: 3 }],
+    path: "a.b", ops: [{ op: "trier", field: "k", desc: true }, { op: "garder", n: 3 }],
   });
-  expect(readReference("filtrer(t, a.b ~ clio)")).toEqual({ chemin: "t", ops: [{ op: "filtrer", champ: "a.b", comparaison: "~", valeur: "clio" }] });
+  expect(readReference("filtrer(t, a.b ~ clio)")).toEqual({ path: "t", ops: [{ op: "filtrer", field: "a.b", comparison: "~", value: "clio" }] });
 });
 test("evaluer does not modify the results", () => {
   const copy = structuredClone(root);
@@ -122,33 +122,33 @@ test("evaluer does not modify the results", () => {
 test("10,000 elements in under 50 ms", () => {
   const big = { l: Array.from({ length: 10_000 }, (_, i) => ({ k: (i * 7919) % 10_000, g: i % 50 })) };
   const ref = readReference("garder(trier(l, k), 200)");
-  if ("erreur" in ref) throw new Error(ref.erreur);
+  if ("error" in ref) throw new Error(ref.error);
   const t = performance.now();
   evaluate(ref, big);
   const r2 = readReference("regrouper(l, g)");
-  if ("erreur" in r2) throw new Error(r2.erreur);
+  if ("error" in r2) throw new Error(r2.error);
   evaluate(r2, big);
   expect(performance.now() - t).toBeLessThan(50);
 });
 
-const block = (component = "titre", extra: object = {}) => ({ composant: component, props: {}, ...extra });
+const block = (component = "titre", extra: object = {}) => ({ component: component, props: {}, ...extra });
 test("PlanPage: unknown key removed", () => {
-  const p = PlanPage.parse({ blocs: [{ composant: "titre", props: { texte: "x" }, truc: 1 }], autre: 2 });
-  expect(p).toEqual({ blocs: [{ composant: "titre", props: { texte: "x" } }] });
+  const p = PlanPage.parse({ blocks: [{ component: "titre", props: { text: "x" }, thing: 1 }], other: 2 });
+  expect(p).toEqual({ blocks: [{ component: "titre", props: { text: "x" } }] });
 });
 test("PlanPage: 40 blocks allowed, 41 refused, counted with the children", () => {
-  expect(PlanPage.safeParse({ blocs: Array.from({ length: MAX_PAGE_BLOCKS }, () => block()) }).success).toBe(true);
-  expect(PlanPage.safeParse({ blocs: Array.from({ length: 41 }, () => block()) }).success).toBe(false);
-  expect(PlanPage.safeParse({ blocs: [block("groupe", { blocs: Array.from({ length: 40 }, () => block()) })] }).success).toBe(false);
-  expect(PlanPage.safeParse({ blocs: [] }).success).toBe(false);
+  expect(PlanPage.safeParse({ blocks: Array.from({ length: MAX_PAGE_BLOCKS }, () => block()) }).success).toBe(true);
+  expect(PlanPage.safeParse({ blocks: Array.from({ length: 41 }, () => block()) }).success).toBe(false);
+  expect(PlanPage.safeParse({ blocks: [block("groupe", { blocks: Array.from({ length: 40 }, () => block()) })] }).success).toBe(false);
+  expect(PlanPage.safeParse({ blocks: [] }).success).toBe(false);
 });
 test("PlanPage : profondeur", () => {
-  expect(PlanPage.safeParse({ blocs: [block("groupe", { blocs: [block("colonnes", { gauche: [block()], droite: [block()] })] })] }).success).toBe(true);
-  expect(PlanPage.safeParse({ blocs: [block("groupe", { blocs: [block("colonnes", { gauche: [block("groupe", { blocs: [block()] })] })] })] }).success).toBe(false);
+  expect(PlanPage.safeParse({ blocks: [block("groupe", { blocks: [block("colonnes", { left: [block()], right: [block()] })] })] }).success).toBe(true);
+  expect(PlanPage.safeParse({ blocks: [block("groupe", { blocks: [block("colonnes", { left: [block("groupe", { blocks: [block()] })] })] })] }).success).toBe(false);
 });
 test("PlanPage: component and props", () => {
-  expect(PlanPage.safeParse({ blocs: [block("Titre")] }).success).toBe(false);
-  expect(PlanPage.safeParse({ blocs: [block("a".repeat(41))] }).success).toBe(false);
-  expect(PlanPage.safeParse({ blocs: [{ composant: "t", props: Object.fromEntries(Array.from({ length: 21 }, (_, i) => [`k${i}`, 1])) }] }).success).toBe(false);
-  expect(PlanPage.safeParse({ blocs: [{ composant: "t", props: [] }] }).success).toBe(false);
+  expect(PlanPage.safeParse({ blocks: [block("Titre")] }).success).toBe(false);
+  expect(PlanPage.safeParse({ blocks: [block("a".repeat(41))] }).success).toBe(false);
+  expect(PlanPage.safeParse({ blocks: [{ component: "t", props: Object.fromEntries(Array.from({ length: 21 }, (_, i) => [`k${i}`, 1])) }] }).success).toBe(false);
+  expect(PlanPage.safeParse({ blocks: [{ component: "t", props: [] }] }).success).toBe(false);
 });

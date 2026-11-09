@@ -74,7 +74,7 @@ let w: LaunchedWebAiOs;
 let m: Marionette;
 const dirs: string[] = [];
 const url = (p: string) => server.url("vidola-a.localhost", p);
-const vidola = () => ({ nom: "Vidola", adresse: url("/design"), domaines: ["vidola-a.localhost"], retouches: [{ correspond: ["/design"], js: ["sonde.js"], css: ["cacher.css"] }] });
+const vidola = () => ({ name: "Vidola", url: url("/design"), domains: ["vidola-a.localhost"], tweaks: [{ matches: ["/design"], js: ["sonde.js"], css: ["cacher.css"] }] });
 
 const inStore = <T = unknown>(body: string, args: unknown[] = []) =>
   m.execute<T>(`return (async () => { const store = await ChromeUtils.importESModule("${STORE}").ready; ${body} })();`, args);
@@ -150,14 +150,14 @@ const PIXELS = `const pixels = (bmp, pts) => { const c = win.document.createElem
 describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5-S7 (plan 36)", () => {
   beforeAll(async () => {
     server = await startSitesServer({ port: PORT });
-    server.definir("vidola-a.localhost", "/design", S5_PAGE);
+    server.define("vidola-a.localhost", "/design", S5_PAGE);
     const dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
     const profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
     dirs.push(dataDir, profile);
-    writeSite(dataDir, ID, { declaration: vidola(), fichiers: { "retouches/sonde.js": TWEAK, "retouches/cacher.css": ".cache { display: none; }", "accueil/index.html": HOME } });
+    writeSite(dataDir, ID, { declaration: vidola(), files: { "retouches/sonde.js": TWEAK, "retouches/cacher.css": ".cache { display: none; }", "accueil/index.html": HOME } });
     await grantSite(dataDir, ID, vidola());
     const a = testActor(profile);
-    w = await launchWebAiOs({ dataDir, profile, env: { WEBAIOS_TEST_ADRESSES_LOCALES: "1", ...a.env }, prefs: a.prefs });
+    w = await launchWebAiOs({ dataDir, profile, env: { WEBAIOS_TEST_LOCAL_ADDRESSES: "1", ...a.env }, prefs: a.prefs });
     m = w.marionette;
     await m.setContext("chrome");
     await waitReady(m);
@@ -166,7 +166,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
   }, 120_000);
   afterAll(async () => {
     await w?.close();
-    await server?.fermer();
+    await server?.close();
     for (const d of dirs) await rm(d, { recursive: true, force: true });
   });
 
@@ -177,7 +177,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
       `const wg = ${VIEW}.browsingContext.currentWindowGlobal; return { remoteType: wg.domProcess.remoteType, uc: ${VIEW}.getAttribute("usercontextid"), css: ${JSON.stringify("")} };`,
     );
     const css = await view(`getComputedStyle(document.querySelector(".cache")).display`);
-    note("S5 info", { ...(info as object), retoucheCss: css });
+    note("S5 info", { ...(info as object), tweakCss: css });
     expect(css).toBe("none");
     const before = await tweak();
     note("S5 retouche before", before);
@@ -191,7 +191,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
       nativeAttach: String(Element.prototype.attachShadow).includes("[native code]"), nativeQsa: String(Document.prototype.querySelectorAll).includes("[native code]") }))()`;
     const sees = await (await armActor(m, VIEW, probe)).result();
     note("S5 viewfinder sandbox sees", sees);
-    expect(sees).toMatchObject({ r: { webaiosSite: "undefined", portee: "undefined", fichier: "undefined", retoucheSecret: "undefined", pageSecret: "undefined", arret: "undefined", Components: "undefined", ChromeUtils: "undefined", Services: "undefined", nativeValue: true, nativeAttach: true, nativeQsa: true } });
+    expect(sees).toMatchObject({ r: { webaiosSite: "undefined", scope: "undefined", file: "undefined", tweakSecret: "undefined", pageSecret: "undefined", stop: "undefined", Components: "undefined", ChromeUtils: "undefined", Services: "undefined", nativeValue: true, nativeAttach: true, nativeQsa: true } });
     await sleep(600);
 
     // Marionette's content scripts run in the page's world: every point is read first, then the page's log is emptied.
@@ -213,22 +213,22 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
     await siteKey("x");
     await view(`(document.getElementById("email").focus(), 1)`);
     await siteKey("y");
-    const keys = { retouche: (await tweak()).log.keys, page: await view("window.log.keys.slice()"), pwPage: await view(`document.getElementById("mdp").value`) };
+    const keys = { tweak: (await tweak()).log.keys, page: await view("window.log.keys.slice()"), pwPage: await view(`document.getElementById("mdp").value`) };
     note("S5 keys while aiming", keys);
-    expect(keys.retouche.filter((k: string) => k.startsWith("mdp:"))).toEqual([]);
+    expect(keys.tweak.filter((k: string) => k.startsWith("mdp:"))).toEqual([]);
     const pending = await a.result(200);
     expect(pending).toBe("pending");
     // A trusted click on the password field: captured, the value nowhere in the capture.
     await siteMouse(pPassword);
     const r = (await a.result()) as { r?: unknown };
     const c = cleanCapture(r.r);
-    note("S5 capture of #mdp", { selecteur: c?.selecteur, etiquette: c?.etiquette, html: c?.html, adresse: c?.adresse, hasValue: JSON.stringify(r.r).includes("hunter2") });
-    expect(c?.selecteur).toBe("#mdp");
+    note("S5 capture of #mdp", { selector: c?.selector, label: c?.label, html: c?.html, url: c?.url, hasValue: JSON.stringify(r.r).includes("hunter2") });
+    expect(c?.selector).toBe("#mdp");
     expect(JSON.stringify(r.r)).not.toContain("hunter2");
     const after = await tweak();
     const page = await view<any>("JSON.parse(JSON.stringify({ reactions: window.reactions, ...window.log }))");
     const pageKeys1 = await view<string[]>("Object.keys(window)");
-    note("S5 after capture", { retouche: after, page, pageKeysAdded: pageKeys1?.filter((k) => !pageKeys0?.includes(k)) });
+    note("S5 after capture", { tweak: after, page, pageKeysAdded: pageKeys1?.filter((k) => !pageKeys0?.includes(k)) });
     expect(after.log.early).toEqual([]);
     expect(after.log.hooked).toEqual([]);
     expect(after.log.fake).toBe(0);
@@ -253,12 +253,12 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
     await expect.poll(() => view("document.getElementsByTagName('webaios-viseur').length"), { timeout: 10_000 }).toBe(1);
     await siteKey("Escape");
     const esc = await e.result(3000);
-    note("S5 Escape", { esc, retoucheKeys: (await tweak()).log.keys });
+    note("S5 Escape", { esc, tweakKeys: (await tweak()).log.keys });
     if (esc === "pending") await stopActor(m, VIEW);
 
     // The capture: drawn by the view's WindowGlobal only. A magenta chrome cover over #cible, the bar above the view.
-    const target = await inSiteView<{ x: number; y: number; largeur: number; hauteur: number }>(m, ID, `const r = document.getElementById("cible").getBoundingClientRect(); return { x: r.x, y: r.y, largeur: r.width, hauteur: r.height };`);
-    const viewDims = await view<{ largeur: number; hauteur: number }>("({ largeur: innerWidth, hauteur: innerHeight })");
+    const target = await inSiteView<{ x: number; y: number; width: number; height: number }>(m, ID, `const r = document.getElementById("cible").getBoundingClientRect(); return { x: r.x, y: r.y, largeur: r.width, hauteur: r.height };`);
+    const viewDims = await view<{ width: number; height: number }>("({ largeur: innerWidth, hauteur: innerHeight })");
     const rc = rectCapture(target, viewDims!, 1);
     const shot = await m.execute(
       `return (async ([rc]) => {
@@ -373,7 +373,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
     await expect.poll(async () => (await state()).hosts, { timeout: 5000 }).toBe(1);
     await siteMouse(await homePoint("#nue"), { move: true });
     const hover = await state();
-    note("S6 hover", { cadre: hover.cadre, etiquette: hover.etiquette, pageShadow: hover.pageShadow });
+    note("S6 hover", { frame: hover.cadre, label: hover.etiquette, pageShadow: hover.pageShadow });
     expect(hover.etiquette?.text).toBe("p#nue");
     // Middle and right clicks, then the primary click on #cible.
     await siteMouse(await homePoint("#nue"), { button: 1 });
@@ -383,8 +383,8 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
     await expect.poll(async () => (await state()).result !== "pending", { timeout: 5000 }).toBe(true);
     const done = await state();
     const c = cleanCapture(done.result);
-    note("S6 capture", { selecteur: c?.selecteur, etiquette: c?.etiquette, rect: c?.rect, vue: c?.vue, adresse: c?.adresse?.replace(/-[0-9a-f]{32}/, "-<token>"), styles: Object.keys(c?.styles ?? {}).length, log: done.log, seen: done.seen });
-    expect(c?.selecteur).toBe("#cible");
+    note("S6 capture", { selector: c?.selector, label: c?.label, rect: c?.rect, viewState: c?.view, url: c?.url?.replace(/-[0-9a-f]{32}/, "-<token>"), styles: Object.keys(c?.styles ?? {}).length, log: done.log, seen: done.seen });
+    expect(c?.selector).toBe("#cible");
     expect(done.log.early).toEqual([]);
     expect(done.log.reactions).toEqual([]);
     const homeKeys1 = await inSiteBar<string[]>(m, ID, `return Object.keys(win.__s6.hwin.wrappedJSObject);`);
@@ -399,11 +399,11 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
       [sourceExpression("#cible"), sourceExpression("#nue")],
     );
     note("S6 source", { raw, kept: (raw as unknown[]).map(cleanSource) });
-    expect(cleanSource((raw as unknown[])[0])).toEqual({ fichier: "src/Accueil.svelte", ligne: 7 });
+    expect(cleanSource((raw as unknown[])[0])).toEqual({ file: "src/Accueil.svelte", line: 7 });
     expect(cleanSource((raw as unknown[])[1])).toBeNull();
 
     // The capture through the frame's WindowGlobal, a magenta cover in the bar's document over #cible.
-    const rc = rectCapture(c!.rect, c!.vue, 1);
+    const rc = rectCapture(c!.rect, c!.view, 1);
     const shot = await inSiteBar(
       m,
       ID,
@@ -467,9 +467,9 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
     const barBottom = dims.bar[1]! + dims.bar[3]!;
     const bounds = { x: vx!, y: vy!, width: vw!, height: vh! };
     // The bubble of an element at the top of the page, and one of an element below a short window (bubbleSlot clamps up).
-    const top = bubbleSlot({ x: 10, y: 0, largeur: 50, hauteur: 10 }, 1, bounds, [l!, h!], { hautMin: vy! });
-    const clamped = bubbleSlot({ x: 10, y: 5000, largeur: 50, hauteur: 10 }, 1, bounds, [l!, 180], { hautMin: vy! });
-    const unclamped = bubbleSlot({ x: 10, y: 5000, largeur: 50, hauteur: 10 }, 1, bounds, [l!, 180]);
+    const top = bubbleSlot({ x: 10, y: 0, width: 50, height: 10 }, 1, bounds, [l!, h!], { minHeight: vy! });
+    const clamped = bubbleSlot({ x: 10, y: 5000, width: 50, height: 10 }, 1, bounds, [l!, 180], { minHeight: vy! });
+    const unclamped = bubbleSlot({ x: 10, y: 5000, width: 50, height: 10 }, 1, bounds, [l!, 180]);
     const cart = { x: Math.max(0, l! - MARGIN - BASKET_WIDTH), y: barBottom + 12, width: Math.min(BASKET_WIDTH, l!), height: Math.max(0, h! - barBottom - 12 - MARGIN) };
     note("S7 places", { dims, top, clamped, unclamped, cart });
     expect(clamped.y).toBeGreaterThanOrEqual(barBottom);
@@ -542,7 +542,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
     await inStore(`store.sites.controller(arguments[0]).home();`, [ID]);
     await expect.poll(() => m.execute(`return ${SITE}.document.documentElement.hasAttribute("webaios-site-home");`)).toBe(true);
     const homeRect = await inSiteBar<number[]>(m, ID, `const b = win.document.getElementById("webaios-site-bar").getBoundingClientRect(), h = doc.querySelector('[data-testid="site-cadre-accueil"]').getBoundingClientRect(); return [b.left + h.left, b.top + h.top, h.width, h.height];`);
-    const onHome = bubbleSlot({ x: 40, y: 60, largeur: 120, hauteur: 40 }, 1, { x: homeRect[0]!, y: homeRect[1]!, width: homeRect[2]!, height: homeRect[3]! }, [l!, h!], { hautMin: homeRect[1]! });
+    const onHome = bubbleSlot({ x: 40, y: 60, width: 120, height: 40 }, 1, { x: homeRect[0]!, y: homeRect[1]!, width: homeRect[2]!, height: homeRect[3]! }, [l!, h!], { minHeight: homeRect[1]! });
     await show("bulle", onHome);
     const homeCheck = await check(onHome);
     note("S7 bubble over the home", { homeRect, onHome, ...(homeCheck as object) });

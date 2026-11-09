@@ -6,32 +6,32 @@
    * workflow », the time of the shown result and the menu of previous results. Nothing is launched without a click (or Enter).
    */
   let {
-    nom: name,
-    saisie: input = $bindable(""),
-    libelleSaisie: inputLabel,
-    debut: start,
-    occupee: busy,
-    dejaLancee: alreadyLaunched,
-    precedentes: previous,
-    lancer: launch,
-    voirWorkflow: seeWorkflow,
-    choisir: choose,
+    name: name,
+    input: input = $bindable(""),
+    inputLabel: inputLabel,
+    start: start,
+    busy: busy,
+    alreadyLaunched: alreadyLaunched,
+    previous: previous,
+    launch: launch,
+    viewWorkflow: seeWorkflow,
+    choose: choose,
   }: {
-    nom: string;
+    name: string;
     /** The field's text, pre-filled with the shown result's input. */
-    saisie?: string;
+    input?: string;
     /** Label of the declared input; null: the action has none. */
-    libelleSaisie: string | null;
+    inputLabel: string | null;
     /** Start of the shown run; null: none. */
-    debut: string | null;
+    start: string | null;
     /** A run of the action is running or waiting: no second launch. */
-    occupee: boolean;
-    dejaLancee: boolean;
+    busy: boolean;
+    alreadyLaunched: boolean;
     /** Kept runs (not the trials), most recent first; null until read. */
-    precedentes: ResumeExecution[] | null;
-    lancer: () => void;
-    voirWorkflow: () => void;
-    choisir: (execution: string) => void;
+    previous: ResumeExecution[] | null;
+    launch: () => void;
+    viewWorkflow: () => void;
+    choose: (execution: string) => void;
   } = $props();
 
   let menuOpen = $state(false);
@@ -42,7 +42,7 @@
     const d = new Date(iso);
     return Number.isNaN(d.getTime()) ? iso : FORMAT.format(d);
   };
-  const STATUSES: Record<Execution["statut"], string> = {
+  const STATUSES: Record<Execution["status"], string> = {
     reussie: "réussie",
     partielle: "partielle",
     echouee: "échouée",
@@ -109,9 +109,9 @@
                   choose(e.id);
                 }}
               >
-                <span>{hour(e.debut)}</span>
-                {#if e.saisie}<span class="doux">{e.saisie}</span>{/if}
-                <span class="statut {e.statut}">{STATUSES[e.statut]}</span>
+                <span>{hour(e.start)}</span>
+                {#if e.input}<span class="doux">{e.input}</span>{/if}
+                <span class="statut {e.status}">{STATUSES[e.status]}</span>
               </button>
             {/each}
           </div>

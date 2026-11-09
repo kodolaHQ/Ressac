@@ -4,10 +4,10 @@
   /** The proposed actions, then the usual row (search or address): `choisie` = -1: no choice. */
   let {
     suggestions,
-    ligneHabituelle: usualLine,
-    choisie: chosen,
-    choisir: choose,
-  }: { suggestions: Suggestion[]; ligneHabituelle: string; choisie: number; choisir: (i: number) => void } = $props();
+    usualLine: usualLine,
+    chosen: chosen,
+    choose: choose,
+  }: { suggestions: Suggestion[]; usualLine: string; chosen: number; choose: (i: number) => void } = $props();
 </script>
 
 <ul class="suggestions-actions" id="suggestions-actions" role="listbox" data-testid="suggestions-actions">
@@ -22,7 +22,7 @@
         choose(i);
       }}
     >
-      {s.saisie ? `${s.nom} — ${s.saisie}` : s.nom}
+      {s.input ? `${s.name} — ${s.input}` : s.name}
     </li>
   {/each}
   <li

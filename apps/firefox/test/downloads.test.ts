@@ -15,10 +15,10 @@ const base: DownloadLike = {
 
 describe("toItem", () => {
   it("maps a Firefox download to the UI's shape", () => {
-    expect(toItem("a", { ...base, succeeded: true, stopped: true })).toEqual({ id: "a", nom: "fichier(1).txt", chemin: "/tmp/dl/fichier(1).txt", recus: 35, total: 100, etat: "termine" });
-    expect(toItem("b", { ...base, error: new Error("x"), stopped: true }).etat).toBe("interrompu");
-    expect(toItem("c", { ...base, canceled: true, stopped: true }).etat).toBe("annule");
-    expect(toItem("d", { ...base, hasProgress: false })).toMatchObject({ etat: "en-cours", total: 0, recus: 35 });
+    expect(toItem("a", { ...base, succeeded: true, stopped: true })).toEqual({ id: "a", name: "fichier(1).txt", path: "/tmp/dl/fichier(1).txt", received: 35, total: 100, state: "termine" });
+    expect(toItem("b", { ...base, error: new Error("x"), stopped: true }).state).toBe("interrompu");
+    expect(toItem("c", { ...base, canceled: true, stopped: true }).state).toBe("annule");
+    expect(toItem("d", { ...base, hasProgress: false })).toMatchObject({ state: "en-cours", total: 0, received: 35 });
   });
 });
 

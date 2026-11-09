@@ -90,7 +90,7 @@ export function setupAppWindow(win: Window, folder: string): void {
   const apps = appsModule();
   const app = apps.appOf(win);
   // Closed (stopped) while its window was opening.
-  if (app?.dossier !== folder) return void win.close();
+  if (app?.folder !== folder) return void win.close();
   const doc = win.document;
   doc.documentElement.setAttribute("webaios-app", folder);
   doc.getElementById("navigator-toolbox")!.hidden = true;
@@ -136,7 +136,7 @@ export function setupAppWindow(win: Window, folder: string): void {
     const gBrowser = win.gBrowser;
     const view = gBrowser.selectedBrowser;
     // The page's title, else the app's name (never the address).
-    gBrowser.getWindowTitleForBrowser = (b: any) => apps.titleOf({ nom: app.nom, view: b });
+    gBrowser.getWindowTitleForBrowser = (b: any) => apps.titleOf({ name: app.name, view: b });
     gBrowser.updateTitlebar();
     // The favicon Firefox shows, with its source address: kept only from the app's origin, or given as data:image/,
     // at most FAVICON_SIZE once re-encoded.

@@ -21,9 +21,9 @@ type Frame = HTMLIFrameElement & { webaiosOverlay?: unknown };
 interface Overlay {
   win: Window;
   /** The bubble, the message, an app window's cart. */
-  calque?: Frame;
+  overlay?: Frame;
   /** A main window's cart column. */
-  volet?: Frame;
+  panel?: Frame;
   places: Partial<Record<Mode, Place>>;
   timer?: ReturnType<typeof setTimeout>;
   offKeys?: () => void;
@@ -34,7 +34,7 @@ export function createOverlays(o: { design: DesignService; host: Pick<AgentHost,
   const closedListeners = new Map<string, Set<() => void>>();
   // The service's keys (targetKey), read back: the frame's target is the chrome's.
   const targetOf = (key: string): DesignTarget =>
-    key.startsWith("fenetre:") ? { type: "fenetre", fenetreId: key.slice(8) } : key.startsWith("site:") ? { type: "site", id: key.slice(5) } : { type: "app", dossier: key.slice(4) };
+    key.startsWith("fenetre:") ? { type: "fenetre", windowId: key.slice(8) } : key.startsWith("site:") ? { type: "site", id: key.slice(5) } : { type: "app", folder: key.slice(4) };
   const main = (key: string) => key.startsWith("fenetre:");
   const inColumn = (key: string, mode: Mode) => mode === "panier" && main(key);
   /** Calques.contexte's order; a main window's cart is in its column. */
@@ -49,21 +49,21 @@ export function createOverlays(o: { design: DesignService; host: Pick<AgentHost,
       }
   };
 
-  function frame(key: string, ov: Overlay, kind: "calque" | "volet"): Frame {
+  function frame(key: string, ov: Overlay, kind: "overlay" | "panel"): Frame {
     const existing = ov[kind];
     if (existing?.isConnected) return existing;
     const doc = ov.win.document;
     const f = doc.createElementNS(XHTML, "iframe") as Frame;
-    f.id = kind === "volet" ? "webaios-design-volet" : "webaios-design-calque";
+    f.id = kind === "panel" ? "webaios-design-volet" : "webaios-design-calque";
     // Out of the flow before it is appended (spike S8): in #browser's flex row a default iframe pushes the page aside.
     f.style.cssText = "position: fixed; z-index: 3; border: 0; background: transparent; display: none";
     doc.getElementById("browser")!.append(f);
     const mayLoad = cutFrameNetwork(f);
     const t = targetOf(key);
-    const api = kind === "volet" ? overlayApi({ ...o, modes: ["panier"], annuler: () => columnClosed(key) }, t) : overlayApi({ ...o, modes: overlayModes(key) }, t);
+    const api = kind === "panel" ? overlayApi({ ...o, modes: ["panier"], cancel: () => columnClosed(key) }, t) : overlayApi({ ...o, modes: overlayModes(key) }, t);
     f.webaiosOverlay = { api };
     // A bubble shown while the frame still loads: the keyboard once its document is there.
-    if (kind === "calque") f.addEventListener("load", () => ov.places.bulle && f.focus());
+    if (kind === "overlay") f.addEventListener("load", () => ov.places.bulle && f.focus());
     if (mayLoad) f.src = SRC;
     ov[kind] = f;
     return f;
@@ -71,7 +71,7 @@ export function createOverlays(o: { design: DesignService; host: Pick<AgentHost,
 
   /** The calque frame at the rectangle of what it shows; hidden when it shows nothing. */
   function layout(key: string, ov: Overlay) {
-    const f = ov.calque;
+    const f = ov.overlay;
     if (!f) return;
     const mode = overlayModes(key).find((m) => ov.places[m]);
     if (!mode) return void (f.style.display = "none");
@@ -94,13 +94,13 @@ export function createOverlays(o: { design: DesignService; host: Pick<AgentHost,
       const t = targetOf(key);
       if (inColumn(key, ctx.mode)) {
         win.document.documentElement.style.setProperty("--webaios-panier", `${COLUMN_WIDTH}px`);
-        frame(key, ov, "volet").style.display = "";
+        frame(key, ov, "panel").style.display = "";
         return;
       }
       // A bubble opens: the message has no reason to stay (Calques.montrerBulle).
       if (ctx.mode === "bulle" && ov.places.message) o.design.closeOverlay(t, "message");
       ov.places[ctx.mode] = place;
-      const f = frame(key, ov, "calque");
+      const f = frame(key, ov, "overlay");
       if (ctx.mode === "message") {
         stopMessage(ov);
         const close = () => o.design.closeOverlay(t, "message");
@@ -117,7 +117,7 @@ export function createOverlays(o: { design: DesignService; host: Pick<AgentHost,
       const ov = overlays.get(key);
       if (!ov) return;
       if (inColumn(key, mode)) {
-        if (ov.volet) ov.volet.style.display = "none";
+        if (ov.panel) ov.panel.style.display = "none";
         if (!ov.win.closed) ov.win.document.documentElement.style.removeProperty("--webaios-panier");
         return;
       }
@@ -132,8 +132,8 @@ export function createOverlays(o: { design: DesignService; host: Pick<AgentHost,
       overlays.delete(key);
       stopMessage(ov);
       if (ov.win.closed) return;
-      ov.calque?.remove();
-      ov.volet?.remove();
+      ov.overlay?.remove();
+      ov.panel?.remove();
       ov.win.document.documentElement.style.removeProperty("--webaios-panier");
     },
 

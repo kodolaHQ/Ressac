@@ -13,19 +13,19 @@
 
   async function load() {
     const n = ++request;
-    const r = await api.externes.liste();
+    const r = await api.external.list();
     if (n === request) appState = r;
   }
   $effect(() => {
     void load();
-    return api.externes.surChange(() => void load());
+    return api.external.onChange(() => void load());
   });
 
   async function connect() {
     error = null;
     try {
-      const r = await api.externes.brancher(name ?? "");
-      command = r.commande;
+      const r = await api.external.connect(name ?? "");
+      command = r.command;
       name = null;
       copy = false;
     } catch {
@@ -45,42 +45,42 @@
       copy = false;
     }
   }
-  const turnedOff = $derived(appState?.serveur.etat === "eteint");
+  const turnedOff = $derived(appState?.server.state === "eteint");
 </script>
 
 <section class="externes" data-testid="projets-externes" aria-label="Projets externes">
   <h2 class="titre">Projets externes</h2>
   {#if appState}
-    {#if appState.serveur.etat === "eteint"}
-      <p class="raison" data-testid="raison-externes">{appState.serveur.raison}</p>
+    {#if appState.server.state === "eteint"}
+      <p class="raison" data-testid="raison-externes">{appState.server.reason}</p>
     {/if}
     <ul>
-      {#each appState.projets as p (p.id)}
+      {#each appState.projects as p (p.id)}
         <li data-testid="projet-externe">
           <div class="nom">
-            <b>{p.nom}</b>
-            <span>{p.dossier}</span>
+            <b>{p.name}</b>
+            <span>{p.folder}</span>
           </div>
           <span class="meta">Ports {p.ports.join(", ")}</span>
-          <span class="meta">{p.nomClient ?? "aucun client"}</span>
+          <span class="meta">{p.clientName ?? "aucun client"}</span>
           <div class="actions">
-            <button onclick={() => api.externes.relire(p.id)}>Relire</button>
-            <button onclick={() => void api.externes.oublier(p.id)}>Oublier</button>
+            <button onclick={() => api.external.review(p.id)}>Relire</button>
+            <button onclick={() => void api.external.forget(p.id)}>Oublier</button>
           </div>
         </li>
       {/each}
       {#each appState.clients as c (c.id)}
         <li data-testid="client-externe">
           <div class="nom">
-            <b>{c.nom}</b>
-            <span>Branché le {new Date(c.cree).toLocaleDateString("fr-FR")}</span>
+            <b>{c.name}</b>
+            <span>Branché le {new Date(c.created).toLocaleDateString("fr-FR")}</span>
           </div>
           <div class="actions">
-            <button onclick={() => void api.externes.revoquer(c.id)}>Révoquer</button>
+            <button onclick={() => void api.external.revoke(c.id)}>Révoquer</button>
           </div>
         </li>
       {/each}
-      {#if appState.projets.length === 0 && appState.clients.length === 0}
+      {#if appState.projects.length === 0 && appState.clients.length === 0}
         <li class="aucune">Aucun Claude Code branché.</li>
       {/if}
     </ul>

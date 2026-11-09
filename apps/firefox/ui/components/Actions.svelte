@@ -4,7 +4,7 @@
   import { api } from "../state.svelte";
   import Icon from "./Icon.svelte";
 
-  const STATUSES: Record<Execution["statut"], string> = {
+  const STATUSES: Record<Execution["status"], string> = {
     reussie: "Réussie",
     partielle: "Partielle",
     echouee: "Échouée",
@@ -22,13 +22,13 @@
   let inputOf = $state<string | null>(null);
   let input = $state("");
   /** Action whose deletion awaits the user's confirmation. */
-  let toConfirm = $state<{ action: ActionShown; genre: "supprimer" | "accord" } | null>(null);
+  let toConfirm = $state<{ action: ActionShown; kind: "supprimer" | "accord" } | null>(null);
   /** Refusal returned by the main process (open, delete), shown above the list. */
   let denial = $state<string | null>(null);
 
   async function load() {
     const n = ++request;
-    const r = await api.actions.liste();
+    const r = await api.actions.list();
     if (n !== request) return;
     list = r;
     chargee = true;
@@ -36,35 +36,35 @@
 
   $effect(() => {
     void load();
-    return api.actions.surChange(() => void load());
+    return api.actions.onChange(() => void load());
   });
 
   async function launch(a: ActionShown, text: string | null) {
     denial = null;
     // Input required and empty: the field stays open with its message, nothing is launched.
-    if (a.saisie && !text?.trim()) {
-      denial = requiredInput(a.saisie.libelle);
+    if (a.input && !text?.trim()) {
+      denial = requiredInput(a.input.label);
       return;
     }
     inputOf = null;
-    const r = await api.actions.ouvrir(a.id, text);
-    if (!r.ok) denial = r.erreur;
+    const r = await api.actions.open(a.id, text);
+    if (!r.ok) denial = r.error;
   }
 
   function requestLaunch(a: ActionShown) {
-    if (a.saisie) {
+    if (a.input) {
       inputOf = inputOf === a.id ? null : a.id;
       input = "";
     } else void launch(a, null);
   }
 
-  async function confirm(c: { action: ActionShown; genre: "supprimer" | "accord" }) {
+  async function confirm(c: { action: ActionShown; kind: "supprimer" | "accord" }) {
     toConfirm = null;
     denial = null;
-    if (c.genre === "accord") await api.actions.refuserAccord(c.action.id);
+    if (c.kind === "accord") await api.actions.denyGrant(c.action.id);
     else {
       const r = await api.actions.supprimer(c.action.id);
-      if (!r.ok) denial = r.erreur;
+      if (!r.ok) denial = r.error;
     }
     await load();
   }
@@ -72,7 +72,7 @@
   /** « 30 oct. 08:00 » */
   const when = (iso: string) => new Date(iso).toLocaleString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
-  const last = (a: ActionShown) => (a.dernier ? `${STATUSES[a.dernier.statut]} · ${when(a.dernier.debut)}` : "Jamais lancée");
+  const last = (a: ActionShown) => (a.last ? `${STATUSES[a.last.status]} · ${when(a.last.start)}` : "Jamais lancée");
 </script>
 
 <section class="actions" data-testid="page-actions" aria-label="Actions">
@@ -85,20 +85,20 @@
       {#each list as a (a.id)}
         <li data-testid="ligne-action-{a.id}">
           <div class="nom">
-            <b>{a.nom}</b>
-            {#if a.erreur}
-              <span class="erreur" data-testid="erreur-{a.id}">{a.erreur}</span>
+            <b>{a.name}</b>
+            {#if a.error}
+              <span class="erreur" data-testid="erreur-{a.id}">{a.error}</span>
             {:else}
-              {#if a.motsCles.length}<span data-testid="mots-cles-{a.id}">{a.motsCles.join(", ")}</span>{/if}
+              {#if a.keywords.length}<span data-testid="mots-cles-{a.id}">{a.keywords.join(", ")}</span>{/if}
               <span class="dernier" data-testid="dernier-{a.id}">{last(a)}</span>
             {/if}
-            {#if inputOf === a.id && a.saisie}
+            {#if inputOf === a.id && a.input}
               <!-- svelte-ignore a11y_autofocus -->
               <input
                 class="saisie"
                 data-testid="saisie-{a.id}"
-                placeholder={a.saisie.libelle}
-                aria-label={a.saisie.libelle}
+                placeholder={a.input.label}
+                aria-label={a.input.label}
                 spellcheck="false"
                 autofocus
                 bind:value={input}
@@ -110,12 +110,12 @@
             {/if}
           </div>
           <div class="boutons">
-            {#if !a.erreur}
-              <button data-testid="lancer-{a.id}" onclick={() => requestLaunch(a)}><Icon nom="actions" taille={12} /> Lancer</button>
+            {#if !a.error}
+              <button data-testid="lancer-{a.id}" onclick={() => requestLaunch(a)}><Icon name="actions" size={12} /> Lancer</button>
             {/if}
-            <button data-testid="voir-workflow-{a.id}" onclick={() => api.actions.voirWorkflow(a.id)}>Voir le workflow</button>
-            {#if a.accord}<button data-testid="retirer-accord-{a.id}" onclick={() => (toConfirm = { action: a, genre: "accord" })}>Retirer l'accord</button>{/if}
-            <button data-testid="supprimer-{a.id}" onclick={() => (toConfirm = { action: a, genre: "supprimer" })}>Supprimer</button>
+            <button data-testid="voir-workflow-{a.id}" onclick={() => api.actions.viewWorkflow(a.id)}>Voir le workflow</button>
+            {#if a.grant}<button data-testid="retirer-accord-{a.id}" onclick={() => (toConfirm = { action: a, kind: "accord" })}>Retirer l'accord</button>{/if}
+            <button data-testid="supprimer-{a.id}" onclick={() => (toConfirm = { action: a, kind: "supprimer" })}>Supprimer</button>
           </div>
         </li>
       {/each}
@@ -128,14 +128,14 @@
   {@const target = c.action}
   <div class="voile" data-testid="voile-suppression-action">
     <div class="confirmation" role="alertdialog" aria-modal="true" data-testid="confirmation-suppression-action">
-      {#if c.genre === "accord"}
-        <p>Retirer l'accord de « {target.nom} » ? Ses exécutions, ses résultats et sa mémoire seront effacés.</p>
+      {#if c.kind === "accord"}
+        <p>Retirer l'accord de « {target.name} » ? Ses exécutions, ses résultats et sa mémoire seront effacés.</p>
       {:else}
-        <p>Supprimer « {target.nom} » ? Son dossier ira dans la corbeille ; ses résultats et son accord seront effacés.</p>
+        <p>Supprimer « {target.name} » ? Son dossier ira dans la corbeille ; ses résultats et son accord seront effacés.</p>
       {/if}
       <div class="confirmer-boutons">
         <button data-testid="annuler-suppression-action" onclick={() => (toConfirm = null)}>Annuler</button>
-        <button class="confirmer" data-testid="confirmer-suppression-action" onclick={() => void confirm(c)}>{c.genre === "accord" ? "Retirer l'accord" : "Supprimer"}</button>
+        <button class="confirmer" data-testid="confirmer-suppression-action" onclick={() => void confirm(c)}>{c.kind === "accord" ? "Retirer l'accord" : "Supprimer"}</button>
       </div>
     </div>
   </div>

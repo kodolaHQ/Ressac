@@ -4,25 +4,25 @@ import { FIELD_PER_ELEMENT, fieldsPerElementOnly, Template, ParamsPerElement, ty
 /** Only for a widget that declares `"web": true` (validateWorkflow); the search is done by the kernel. */
 export const definition: BlockDefinition = {
   type: "web.chercher",
-  libelle: "Chercher sur le web",
-  famille: "Sources",
+  label: "Chercher sur le web",
+  family: "Sources",
   description: "Cherche sur DuckDuckGo et rend les résultats (titre, adresse, extrait).",
-  entree: "parElement",
-  champs: [
-    { nom: "requete", libelle: "Recherche", aide: "Les {chemins} sont remplacés par les valeurs de l'élément.", requis: true, defaut: "{titre}", genre: "gabarit" },
-    { nom: "nombre", libelle: "Nombre de résultats", requis: false, defaut: 8, genre: "nombre", min: 1, max: 20, entier: true },
+  input: "parElement",
+  fields: [
+    { name: "requete", label: "Recherche", help: "Les {chemins} sont remplacés par les valeurs de l'élément.", required: true, default: "{titre}", kind: "gabarit" },
+    { name: "nombre", label: "Nombre de résultats", required: false, default: 8, kind: "nombre", min: 1, max: 20, integer: true },
     FIELD_PER_ELEMENT,
     ...fieldsPerElementOnly(),
-    { nom: "champ", libelle: "Champ des résultats", requis: false, defaut: "recherche", genre: "texte" },
+    { name: "champ", label: "Champ des résultats", required: false, default: "recherche", kind: "texte" },
   ],
-  parElement: "option",
-  chaine: true,
-  parametres: z
+  perItem: "option",
+  chain: true,
+  params: z
     .object({
-      requete: Template,
-      nombre: z.number().int().min(1).max(20).default(8),
+      query: Template,
+      count: z.number().int().min(1).max(20).default(8),
       ...ParamsPerElement,
-      champ: z.string().min(1).max(40).default("recherche"),
+      field: z.string().min(1).max(40).default("recherche"),
     })
     .strict(),
 };

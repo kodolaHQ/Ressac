@@ -8,7 +8,7 @@ export interface History {
   visit(id: TabId, url: string, title: string): void;
   title(id: TabId, url: string, title: string): void;
   /** The agent's memory of a page: dropped by the kernel for a private visit or a loopback URL. */
-  retain(r: { url: string; espaceId: string; titre: string; texte: string }): void;
+  retain(r: { url: string; spaceId: string; title: string; text: string }): void;
   /** Never rejects: [] while the host is down. */
   search(text: string, limit?: number, distinct?: boolean): Promise<Visit[]>;
   recent(): Promise<Visit[]>;
@@ -22,23 +22,23 @@ const historizable = (url: string) => /^https?:\/\//.test(url);
 export function createHistory(store: Store, host: AgentHost): History {
   // A space turned private keeps its visits but marks them, even while no agent runs.
   store.subscribe((state, previous) => {
-    for (const spaceId of spacesBecamePrivate(previous, state)) host.notify("historique.rendrePrive", { espaceId: spaceId });
+    for (const spaceId of spacesBecamePrivate(previous, state)) host.notify("historique.rendrePrive", { spaceId: spaceId });
   });
   const context = (id: TabId, url: string) => (historizable(url) ? historyContext(store.state, id) : null);
   const ask = <T>(method: string, params: unknown, none: T) => host.request<T>(method, params).catch(() => none);
   return {
     visit(id, url, title) {
       const c = context(id, url);
-      if (c) host.notify("historique.noter", { url, titre: title || url, ...c });
+      if (c) host.notify("historique.noter", { url, title: title || url, ...c });
     },
     title(id, url, title) {
       const c = context(id, url);
-      if (c) host.notify("historique.titre", { url, espaceId: c.espaceId, titre: title });
+      if (c) host.notify("historique.titre", { url, spaceId: c.spaceId, title: title });
     },
     retain: (r) => host.notify("historique.retenir", r),
-    search: (text, limit, distinct) => ask("historique.rechercher", { texte: text, limite: limit, distinctes: distinct }, []),
+    search: (text, limit, distinct) => ask("historique.rechercher", { text: text, limit: limit, distinct: distinct }, []),
     recent: () => ask("historique.recents", {}, []),
-    clear: (from) => ask("historique.effacer", { depuis: from }, undefined),
-    forgetText: (url, spaceId) => ask("historique.oublierTexte", { url, espaceId: spaceId }, undefined),
+    clear: (from) => ask("historique.effacer", { since: from }, undefined),
+    forgetText: (url, spaceId) => ask("historique.oublierTexte", { url, spaceId: spaceId }, undefined),
   };
 }

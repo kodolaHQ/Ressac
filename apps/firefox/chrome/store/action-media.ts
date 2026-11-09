@@ -32,7 +32,7 @@ export async function actionImage(url: string): Promise<string | null> {
   const open = containerRequests(actionImagesContainer(), { anonymous: true });
   // Under the hook, an https redirect would be judged allowed and followed natively: test servers redirect to http.
   const origin = Services.env.get("WEBAIOS_TEST_ACTION_IMAGES") || undefined;
-  const image = await loadImage((u, o) => open(actionImageTestUrl(u, origin), o), url, { permise: allowed, cookies: false, max: ACTION_IMAGE_MAX });
+  const image = await loadImage((u, o) => open(actionImageTestUrl(u, origin), o), url, { allowed: allowed, cookies: false, max: ACTION_IMAGE_MAX });
   return image && toDataUrl(image);
 }
 

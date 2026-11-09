@@ -20,17 +20,17 @@ export const OTHER_PAGE = "<title>Autre</title>";
 export const LOGIN_PAGE = "<title>Connexion</title>";
 export const WITH_HOME = '<!doctype html><title>Accueil</title><h1 id="titre">Bienvenue</h1><p class="intro">Reprendre la série</p>';
 export const tuningDeclaration = (url: (host: string, path?: string) => string) => ({
-  nom: "Tuning",
-  adresse: url("tuning-a.localhost", "/"),
-  domaines: ["tuning-a.localhost"],
-  connexion: ["compte-tuning.localhost"],
-  retouches: [{ correspond: ["/*"], css: ["tuning.css"] }],
+  name: "Tuning",
+  url: url("tuning-a.localhost", "/"),
+  domains: ["tuning-a.localhost"],
+  login: ["compte-tuning.localhost"],
+  tweaks: [{ matches: ["/*"], css: ["tuning.css"] }],
 });
 export const withHomeDeclaration = (url: (host: string, path?: string) => string) => ({
-  nom: "Avec accueil",
-  adresse: url("tuning-a.localhost", "/"),
-  domaines: ["tuning-a.localhost"],
-  connexion: ["compte-tuning.localhost"],
+  name: "Avec accueil",
+  url: url("tuning-a.localhost", "/"),
+  domains: ["tuning-a.localhost"],
+  login: ["compte-tuning.localhost"],
 });
 
 /** Spike S5's page: the hostile page (HOOKS_PAGE), plus a password field and a green target. */

@@ -59,10 +59,10 @@ export interface WebAiOsStore extends Store {
   /** The design mode of each main window's tab and agent app window (spec §5.4-5.5). */
   readonly design: DesignService;
   /** The real clicks in a widget's display: each lets that widget open one link (recorded by the UI's chrome listener). */
-  readonly gestesWidgets: ReturnType<typeof gestureGuard<string>>;
+  readonly widgetGestures: ReturnType<typeof gestureGuard<string>>;
   /** Invisible page reads (the bridge's lirePageInvisible / lireHtmlInvisible), exposed for the e2e tests. */
   readPage(url: string, o: PageReadOptions, signal?: AbortSignal): Promise<ReadPage>;
-  readHtml(url: string, o: { adressesLocales?: boolean }, signal?: AbortSignal): Promise<{ url: string; html: string }>;
+  readHtml(url: string, o: { localAddresses?: boolean }, signal?: AbortSignal): Promise<{ url: string; html: string }>;
   /** An action page's result images (`data:`, or null) and agent components (a resource:// copy per page showing it). */
   readonly actionMedia: { image(url: string): Promise<string | null>; serve(name: string): Promise<string | null>; release(name: string): Promise<void> };
 }
@@ -167,15 +167,15 @@ async function start(): Promise<WebAiOsStore> {
     tabOf: (browser) => {
       const win = browser.ownerDocument.defaultView;
       const tabId = win?.gBrowser?.getTabForBrowser(browser)?.getAttribute("webaios-tab-id") ?? win?.webaiosPopupSource;
-      const tab = tabId ? store.state.onglets[tabId] : undefined;
-      return tab ? { ongletId: tabId, fenetreId: tab.fenetreId, profil: tabProfile(store.state, tab) } : null;
+      const tab = tabId ? store.state.tabs[tabId] : undefined;
+      return tab ? { tabId: tabId, windowId: tab.windowId, profile: tabProfile(store.state, tab) } : null;
     },
     isInvisible: (browser) => browser.getAttribute("messagemanagergroup") === "webaios-reading",
   });
   const recorder = new SessionRecorder(dataDir);
-  const flush = () => recorder.vider();
+  const flush = () => recorder.clear();
   store.subscribe((state, previous) => {
-    recorder.planifier(state);
+    recorder.schedule(state);
     const used = profilesInUse(state);
     for (const id of profilesInUse(previous)) if (!used.has(id)) {
         try {
@@ -257,9 +257,9 @@ async function start(): Promise<WebAiOsStore> {
     open: () => BrowserWindowTracker.openWindow(),
     // The window's agent session stops with it; its questions go to the active window, or are refused.
     onRelease: (win) => {
-      agent.notify("agent.fermerFenetre", { fenetre: win });
+      agent.notify("agent.fermerFenetre", { window: win });
       // Its id comes back if it was the last window (kept): no overlay or cart context stays for it.
-      design.forget({ type: "fenetre", fenetreId: win });
+      design.forget({ type: "fenetre", windowId: win });
       questions.windowClosed(win, windows.active());
       refreshMirror();
     },
@@ -267,7 +267,7 @@ async function start(): Promise<WebAiOsStore> {
     onActivate: () => refreshMirror(),
   });
   // The agent's access to tabs, as the host last sent it (no access while no host runs).
-  let access: AccessState = { agent: "L'agent", onglets: {} };
+  let access: AccessState = { agent: "L'agent", tabs: {} };
   const agentExtensions = createAgentExtensions(store, windows, questions, () => agent, () => access);
   const devtools = createDevTools({
     store,
@@ -275,7 +275,7 @@ async function start(): Promise<WebAiOsStore> {
     sites,
     apps,
     isPrivate: (id) => {
-      const o = store.state.onglets[id];
+      const o = store.state.tabs[id];
       return !!o && privateTab(store.state, o);
     },
   });
@@ -305,7 +305,7 @@ async function start(): Promise<WebAiOsStore> {
   };
   const agent = createHost({
     dataDir,
-    profilAgent: () => store.state.reglages.profilAgent,
+    agentProfile: () => store.state.settings.agentProfile,
     handlers: {
       ...bridgeHandlers(store, questions, windows, devtools, () => agent, sites, apps),
       ...agentExtensions.handlers,
@@ -321,7 +321,7 @@ async function start(): Promise<WebAiOsStore> {
     onStart: (notify) => {
       sendMirror(store, windows, notify);
       // A rendrePrive sent while no host ran was dropped: replayed (idempotent) so no private space stays searchable.
-      for (const e of store.state.espaces) if (e.prive) notify("historique.rendrePrive", { espaceId: e.id });
+      for (const e of store.state.spaces) if (e.private) notify("historique.rendrePrive", { spaceId: e.id });
       agentExtensions.hostStarted();
       // Its sites handlers are up: the host asks which app windows are open (sites.ouvertes).
       notify("sites.pret");
@@ -334,7 +334,7 @@ async function start(): Promise<WebAiOsStore> {
     if (!/^https?:\/\//.test(url)) return;
     const windowId = await mainWindow();
     if (!windowId) return;
-    store.dispatch({ type: "ouvrirOnglet", fenetreId: windowId, url });
+    store.dispatch({ type: "ouvrirOnglet", windowId: windowId, url });
     toFront(windowId);
   };
   const design = createDesign({ agent, windows, apps, sites, dispatch: store.dispatch, mainWindow, toFront });
@@ -349,7 +349,7 @@ async function start(): Promise<WebAiOsStore> {
   // Registered before any UI listener: the UI reads `access` once it is updated.
   agent.on("acces", (e: AccessState) => (access = e));
   agent.on(HOST_EXITED, () => {
-    access = { agent: access.agent, onglets: {} };
+    access = { agent: access.agent, tabs: {} };
     // Its kernel is gone: nothing stays attached for it, and its apps' windows close (its successor stops the orphans).
     devtools.release();
     apps.closeAll();
@@ -381,7 +381,7 @@ async function start(): Promise<WebAiOsStore> {
     get access() {
       return access;
     },
-    gestesWidgets: widgetGestures,
+    widgetGestures: widgetGestures,
     readPage: (url, o, signal) => readPage(store, url, o, signal),
     readHtml: (url, o, signal) => readHtml(store, url, o, signal),
     actionMedia: { image: actionImage, serve: (name) => serveComponent(dataDir, name), release: (name) => releaseComponent(dataDir, name) },

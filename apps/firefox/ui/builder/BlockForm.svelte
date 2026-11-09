@@ -5,7 +5,7 @@
   import type { Edit } from "./edit.svelte";
   import { shownFields, entryOf, paramsWith, textOf, type FormField } from "./form";
 
-  type DraftBlock = Draft["blocs"][number];
+  type DraftBlock = Draft["blocks"][number];
 
   /**
    * A block's settings, drawn from its catalog. A checkbox or a choice list saves right away; a text field on focus
@@ -13,7 +13,7 @@
    * erase the block's memory). A single history entry per edited field.
    * Without a gesture from the user, nothing is written (selecting a block saves nothing).
    */
-  let { edition: edit, bloc: block, catalogue: catalog, disponibles: available }: { edition: Edit; bloc: DraftBlock; catalogue: BlockCatalogEntry; disponibles: string[] | null } =
+  let { editing: edit, block: block, catalog: catalog, available: available }: { editing: Edit; block: DraftBlock; catalog: BlockCatalogEntry; available: string[] | null } =
     $props();
 
   const NAME = "#nom";
@@ -21,7 +21,7 @@
   // svelte-ignore state_referenced_locally
   const id = block.id;
 
-  const champs = $derived(shownFields(catalog, block.parametres));
+  const champs = $derived(shownFields(catalog, block.params));
   /** Text of the fields being edited (focus); the others show the block's value. */
   let inputs = $state<Record<string, string>>({});
   /** Text at focus, then at the last save: a field left unchanged writes nothing. */
@@ -39,14 +39,14 @@
     initial[name] = t;
     const fusion = `${id}/${name}/${sessions[name]}`;
     if (name === NAME) {
-      edit.modifier((b) => rename(b, id, t.trim()), fusion);
+      edit.edit((b) => rename(b, id, t.trim()), fusion);
       return;
     }
-    const f = catalog.champs.find((c) => c.nom === name);
+    const f = catalog.fields.find((c) => c.name === name);
     if (!f) return;
-    edit.modifier((b) => {
-      const x = b.blocs.find((y) => y.id === id);
-      const p = x && paramsWith(x.parametres, f, t);
+    edit.edit((b) => {
+      const x = b.blocks.find((y) => y.id === id);
+      const p = x && paramsWith(x.params, f, t);
       return p ? set(b, id, p) : b;
     }, fusion);
   }
@@ -74,9 +74,9 @@
 
   /** Checkbox or choice list: saved right away. */
   function choose(f: FormField, v: string | boolean): void {
-    edit.modifier((b) => {
-      const x = b.blocs.find((y) => y.id === id);
-      const p = x && paramsWith(x.parametres, f, v);
+    edit.edit((b) => {
+      const x = b.blocks.find((y) => y.id === id);
+      const p = x && paramsWith(x.params, f, v);
       return p ? set(b, id, p) : b;
     });
   }
@@ -84,7 +84,7 @@
   // The block changes or the tab closes during typing: it is saved, not lost.
   $effect(() => () => untrack(() => [...timers.keys()].forEach(validate)));
 
-  const fieldText = (f: FormField) => inputs[f.nom] ?? textOf(f, block.parametres[f.nom]);
+  const fieldText = (f: FormField) => inputs[f.name] ?? textOf(f, block.params[f.name]);
 </script>
 
 <div class="formulaire">
@@ -92,7 +92,7 @@
     <span class="libelle">Nom</span>
     <input
       data-testid="nom-bloc"
-      value={inputs[NAME] ?? block.nom ?? ""}
+      value={inputs[NAME] ?? block.name ?? ""}
       placeholder={id}
       maxlength="60"
       onfocus={(e) => enter(NAME, e.currentTarget.value)}
@@ -105,83 +105,83 @@
     <code data-testid="id-bloc">{id}</code>
   </div>
 
-  {#each champs as f (f.nom)}
-    {#if f.genre === "case"}
+  {#each champs as f (f.name)}
+    {#if f.kind === "case"}
       <label class="champ case">
         <input
           type="checkbox"
-          data-testid="champ-{f.nom}"
-          checked={entryOf(f, block.parametres) === true}
+          data-testid="champ-{f.name}"
+          checked={entryOf(f, block.params) === true}
           onchange={(e) => choose(f, e.currentTarget.checked)}
         />
-        <span class="libelle">{f.libelle}</span>
+        <span class="libelle">{f.label}</span>
       </label>
-    {:else if f.genre === "choix"}
-      {@const v = block.parametres[f.nom]}
+    {:else if f.kind === "choix"}
+      {@const v = block.params[f.name]}
       <label class="champ">
-        <span class="libelle">{f.libelle}{f.requis ? " *" : ""}</span>
-        <select data-testid="champ-{f.nom}" value={typeof v === "string" ? v : ""} onchange={(e) => choose(f, e.currentTarget.value)}>
-          {#if f.requis && typeof v !== "string"}<option value="" disabled>— choisir —</option>{/if}
-          {#if !f.requis}<option value="">Par défaut{f.defaut === undefined ? "" : ` (${textOf(f, f.defaut)})`}</option>{/if}
-          {#each f.choix ?? [] as c (c)}<option value={c}>{c}</option>{/each}
-          {#if typeof v === "string" && v !== "" && !(f.choix ?? []).includes(v)}<option value={v}>{v}</option>{/if}
+        <span class="libelle">{f.label}{f.required ? " *" : ""}</span>
+        <select data-testid="champ-{f.name}" value={typeof v === "string" ? v : ""} onchange={(e) => choose(f, e.currentTarget.value)}>
+          {#if f.required && typeof v !== "string"}<option value="" disabled>— choisir —</option>{/if}
+          {#if !f.required}<option value="">Par défaut{f.default === undefined ? "" : ` (${textOf(f, f.default)})`}</option>{/if}
+          {#each f.choices ?? [] as c (c)}<option value={c}>{c}</option>{/each}
+          {#if typeof v === "string" && v !== "" && !(f.choices ?? []).includes(v)}<option value={v}>{v}</option>{/if}
         </select>
       </label>
     {:else}
       <label class="champ">
         <span class="libelle">
-          {f.libelle}{f.requis ? " *" : ""}
-          {#if f.genre === "gabarit"}<span class="marque" title="Les {'{chemins}'} sont remplacés par les valeurs reçues">gabarit</span>{/if}
+          {f.label}{f.required ? " *" : ""}
+          {#if f.kind === "gabarit"}<span class="marque" title="Les {'{chemins}'} sont remplacés par les valeurs reçues">gabarit</span>{/if}
         </span>
-        {#if f.genre === "nombre"}
+        {#if f.kind === "nombre"}
           <input
             type="number"
-            data-testid="champ-{f.nom}"
+            data-testid="champ-{f.name}"
             min={f.min}
             max={f.max}
-            step={f.entier ? 1 : "any"}
+            step={f.integer ? 1 : "any"}
             value={fieldText(f)}
-            placeholder={textOf(f, f.defaut)}
-            onfocus={(e) => enter(f.nom, e.currentTarget.value)}
+            placeholder={textOf(f, f.default)}
+            onfocus={(e) => enter(f.name, e.currentTarget.value)}
             oninput={(e) => {
               // An unreadable input (« - ») reads as empty: the key must not go out for that.
-              if (!e.currentTarget.validity.badInput) note(f.nom, e.currentTarget.value);
+              if (!e.currentTarget.validity.badInput) note(f.name, e.currentTarget.value);
             }}
-            onkeydown={(e) => e.key === "Enter" && validate(f.nom)}
+            onkeydown={(e) => e.key === "Enter" && validate(f.name)}
             onblur={(e) => {
-              quit(f.nom);
+              quit(f.name);
               // Still unreadable: the field shows the block's value again.
-              if (e.currentTarget.validity.badInput) e.currentTarget.value = textOf(f, block.parametres[f.nom]);
+              if (e.currentTarget.validity.badInput) e.currentTarget.value = textOf(f, block.params[f.name]);
             }}
           />
-        {:else if f.genre === "texte"}
+        {:else if f.kind === "texte"}
           <input
-            data-testid="champ-{f.nom}"
+            data-testid="champ-{f.name}"
             value={fieldText(f)}
-            placeholder={textOf(f, f.defaut)}
+            placeholder={textOf(f, f.default)}
             spellcheck="false"
-            onfocus={(e) => enter(f.nom, e.currentTarget.value)}
-            oninput={(e) => typeText(f.nom, e.currentTarget.value)}
-            onblur={() => quit(f.nom)}
+            onfocus={(e) => enter(f.name, e.currentTarget.value)}
+            oninput={(e) => typeText(f.name, e.currentTarget.value)}
+            onblur={() => quit(f.name)}
           />
         {:else}
           <textarea
-            data-testid="champ-{f.nom}"
-            rows={f.genre === "textes" ? 3 : 2}
+            data-testid="champ-{f.name}"
+            rows={f.kind === "textes" ? 3 : 2}
             value={fieldText(f)}
-            placeholder={f.genre === "textes" ? "Une valeur par ligne" : textOf(f, f.defaut)}
+            placeholder={f.kind === "textes" ? "Une valeur par ligne" : textOf(f, f.default)}
             spellcheck="false"
-            onfocus={(e) => enter(f.nom, e.currentTarget.value)}
-            oninput={(e) => typeText(f.nom, e.currentTarget.value)}
-            onblur={() => quit(f.nom)}
+            onfocus={(e) => enter(f.name, e.currentTarget.value)}
+            oninput={(e) => typeText(f.name, e.currentTarget.value)}
+            onblur={() => quit(f.name)}
           ></textarea>
         {/if}
       </label>
-      {#if f.genre === "gabarit" && available && available.length > 0}
-        <p class="aide" data-testid="disponibles-{f.nom}">Champs disponibles : {available.map((c) => `{${c}}`).join(" ")}</p>
+      {#if f.kind === "gabarit" && available && available.length > 0}
+        <p class="aide" data-testid="disponibles-{f.name}">Champs disponibles : {available.map((c) => `{${c}}`).join(" ")}</p>
       {/if}
     {/if}
-    {#if f.aide}<p class="aide">{f.aide}</p>{/if}
+    {#if f.help}<p class="aide">{f.help}</p>{/if}
   {/each}
 </div>
 

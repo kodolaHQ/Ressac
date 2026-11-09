@@ -7,38 +7,38 @@ import { tempFolder } from "../helpers/temp.js";
 test("a memory over 3 MB is not written; a damaged memory reads as empty", async () => {
   const d = await tempFolder();
   expect(await readMemory(d)).toEqual({});
-  const small = { tri: { type: "ia.trier", valeur: { cle: { p: 0.5 } } } };
+  const small = { sort: { type: "ia.trier", value: { key: { p: 0.5 } } } };
   expect(await writeMemory(d, small)).toBe(true);
   expect(await readMemory(d)).toEqual(small);
   expect(await readdir(d)).toEqual(["memoire.json"]); // no .tmp left lying around
 
-  const big = { tri: { type: "ia.trier", valeur: "x".repeat(MEMORY_MAX_BYTES) } };
+  const big = { sort: { type: "ia.trier", value: "x".repeat(MEMORY_MAX_BYTES) } };
   expect(await writeMemory(d, big)).toBe(false);
   expect(await readMemory(d)).toEqual(small); // nothing was overwritten
 
   await writeFile(join(d, "memoire.json"), "{ abîmé");
   expect(await readMemory(d)).toEqual({});
-  await writeFile(join(d, "memoire.json"), JSON.stringify({ version: 2, blocs: {} }));
+  await writeFile(join(d, "memoire.json"), JSON.stringify({ version: 2, blocks: {} }));
   expect(await readMemory(d)).toEqual({});
 });
 
 test("paramsHash does not depend on key order, but on values", () => {
-  const a = { cle: "url", n: { x: 1, y: [1, { b: 2, a: 1 }] } };
-  const b = { n: { y: [1, { a: 1, b: 2 }], x: 1 }, cle: "url" };
+  const a = { key: "url", n: { x: 1, y: [1, { b: 2, a: 1 }] } };
+  const b = { n: { y: [1, { a: 1, b: 2 }], x: 1 }, key: "url" };
   expect(paramsHash(a)).toBe(paramsHash(b));
   expect(paramsHash(a)).toMatch(/^[0-9a-f]{16}$/);
-  expect(paramsHash({ cle: "titre" })).not.toBe(paramsHash({ cle: "url" }));
+  expect(paramsHash({ key: "titre" })).not.toBe(paramsHash({ key: "url" }));
 });
 
 test("the hash survives readMemory / writeMemory (R5); an old memory without a hash still reads", async () => {
   const d = await tempFolder();
-  const m = { tri: { type: "ia.trier", valeur: 1, empreinte: "0123456789abcdef" }, vieux: { type: "code", valeur: 2 } };
+  const m = { sort: { type: "ia.trier", value: 1, hash: "0123456789abcdef" }, old: { type: "code", value: 2 } };
   await writeMemory(d, m);
   expect(await readMemory(d)).toEqual(m);
 });
 
 test("paramsHash ignore garderJours", () => {
-  expect(paramsHash({ cle: "url", garderJours: 7 })).toBe(paramsHash({ cle: "url" }));
-  expect(paramsHash({ cle: "url", garderJours: 7 })).toBe(paramsHash({ cle: "url", garderJours: 30 }));
-  expect(paramsHash({ cle: "titre", garderJours: 7 })).not.toBe(paramsHash({ cle: "url", garderJours: 7 }));
+  expect(paramsHash({ key: "url", keepDays: 7 })).toBe(paramsHash({ key: "url" }));
+  expect(paramsHash({ key: "url", keepDays: 7 })).toBe(paramsHash({ key: "url", keepDays: 30 }));
+  expect(paramsHash({ key: "titre", keepDays: 7 })).not.toBe(paramsHash({ key: "url", keepDays: 7 }));
 });

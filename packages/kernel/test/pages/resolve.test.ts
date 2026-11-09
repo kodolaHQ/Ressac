@@ -5,99 +5,99 @@ import { COMPONENT_UNAVAILABLE, ELEMENTS_MAX, TEXT_MAX, chainsOf, resolvePage, t
 import { validatePlan } from "../../src/pages/validate.js";
 
 const graph: ComponentDefinition = {
-  nom: "graphique-barres", description: "Barres", origine: "agent",
-  proprietes: {
-    donnees: { genre: "reference", description: "Les données", requis: true },
-    etiquette: { genre: "champ", description: "Le champ", requis: false },
-    titre: { genre: "texte", description: "Le titre", requis: false },
-    max: { genre: "nombre", description: "Maximum", requis: false },
-    empile: { genre: "case", description: "Empilé", requis: false },
+  name: "graphique-barres", description: "Barres", origin: "agent",
+  properties: {
+    data: { kind: "reference", description: "Les données", required: true },
+    label: { kind: "champ", description: "Le champ", required: false },
+    title: { kind: "texte", description: "Le titre", required: false },
+    max: { kind: "nombre", description: "Maximum", required: false },
+    stacked: { kind: "case", description: "Empilé", required: false },
   },
 };
 const catalog = [...BUILTIN_COMPONENTS, graph];
 const fr = new Intl.NumberFormat("fr-FR");
 
 const results = {
-  projet: {
-    nom: "WebAiOs", url: "https://gitlab.com/p", total: 1234.5,
-    pieges: ["javascript:alert(1)", "http://127.0.0.1/admin", "http://192.168.1.2/", "http://[::1]/", "https://user:mdp@gitlab.com/"],
+  project: {
+    name: "WebAiOs", url: "https://gitlab.com/p", total: 1234.5,
+    traps: ["javascript:alert(1)", "http://127.0.0.1/admin", "http://192.168.1.2/", "http://[::1]/", "https://user:mdp@gitlab.com/"],
   },
-  annonces: [
-    { titre: "Clio", photo: "https://img.example/clio.jpg", prix: 7000, marque: "Renault", url: "https://site.example/clio" },
-    { titre: "208", photo: "http://img.example/208.jpg", prix: 9000, marque: "Peugeot" },
-    { titre: "Mégane", prix: 12000, marque: "Renault", tags: ["diesel", "break"] },
+  announcements: [
+    { title: "Clio", snapshot: "https://img.example/clio.jpg", price: 7000, mark: "Renault", url: "https://site.example/clio" },
+    { title: "208", snapshot: "http://img.example/208.jpg", price: 9000, mark: "Peugeot" },
+    { title: "Mégane", price: 12000, mark: "Renault", tags: ["diesel", "break"] },
   ],
 };
 
-const render = (blocks: PlanBlock[], o: { compte?: boolean; secours?: boolean; r?: unknown } = {}) =>
-  resolvePage({ blocs: blocks }, o.r ?? results, { compte: o.compte ?? false, catalogue: catalog, secours: o.secours ?? false });
-const one = (block: PlanBlock, o?: Parameters<typeof render>[1]) => render([block], o).blocs[0] as RenderedBlock & { props: Record<string, any> };
+const render = (blocks: PlanBlock[], o: { account?: boolean; fallback?: boolean; r?: unknown } = {}) =>
+  resolvePage({ blocks: blocks }, o.r ?? results, { account: o.account ?? false, catalog: catalog, fallback: o.fallback ?? false });
+const one = (block: PlanBlock, o?: Parameters<typeof render>[1]) => render([block], o).blocks[0] as RenderedBlock & { props: Record<string, any> };
 
 describe("resolvePage", () => {
   it("link whose url is in the results: url kept", () => {
-    const b = one({ composant: "lien", props: { objet: "projet", url: "url", champTexte: "nom" } });
-    expect(b).toEqual({ composant: "lien", props: { lien: { texte: "WebAiOs", url: "https://gitlab.com/p" } } });
-    const t = one({ composant: "lien", props: { objet: "projet", url: "url", texte: "Le projet" } });
-    expect(t.props.lien).toEqual({ texte: "Le projet", url: "https://gitlab.com/p" });
+    const b = one({ component: "lien", props: { object: "projet", url: "url", textField: "nom" } });
+    expect(b).toEqual({ component: "lien", props: { link: { text: "WebAiOs", url: "https://gitlab.com/p" } } });
+    const t = one({ component: "lien", props: { object: "projet", url: "url", text: "Le projet" } });
+    expect(t.props.lien).toEqual({ text: "Le projet", url: "https://gitlab.com/p" });
   });
 
   it("literal link written by Gemma: property refused at validation", () => {
     for (const url of ["https://tiers.example/?d=x", '"https://tiers.example/?d=" + nom', "javascript:alert(1)"]) {
-      const r = validatePlan({ blocs: [{ composant: "lien", props: { objet: "projet", url } }, { composant: "chiffre", props: { valeur: "compter(annonces)", libelle: "n" } }] }, { catalogue: catalog, resultats: results });
+      const r = validatePlan({ blocks: [{ component: "lien", props: { object: "projet", url } }, { component: "chiffre", props: { value: "compter(annonces)", label: "n" } }] }, { catalog: catalog, results: results });
       expect(r.ok).toBe(true);
       if (r.ok) {
-        expect(r.plan.blocs.map((b) => b.composant)).toEqual(["chiffre"]);
-        expect(r.ecartes[0]).toMatch(/^1\. lien : url : /);
+        expect(r.plan.blocks.map((b) => b.component)).toEqual(["chiffre"]);
+        expect(r.discarded[0]).toMatch(/^1\. lien : url : /);
       }
     }
   });
 
   it("url javascript:, http://127.0.0.1, http://192.168.1.2 : url null", () => {
-    const r = { liens: results.projet.pieges.map((u) => ({ u })) };
-    const b = one({ composant: "liste", props: { elements: "liens", titre: "u", lien: "u" } }, { r });
+    const r = { links: results.project.traps.map((u) => ({ u })) };
+    const b = one({ component: "liste", props: { items: "liens", title: "u", link: "u" } }, { r });
     expect(b.props.elements.map((l: any) => l.lien.url)).toEqual([null, null, null, null, null]);
-    expect(b.props.elements.map((l: any) => l.lien.texte)).toEqual(results.projet.pieges);
+    expect(b.props.elements.map((l: any) => l.lien.texte)).toEqual(results.project.traps);
   });
 
   it("a url absent from the results (read elsewhere): url null", () => {
     const values = { o: { u: "https://tiers.example/" } };
     // The same string is only « present » if it is among the strings of the results passed: here yes.
-    expect(one({ composant: "lien", props: { objet: "o", url: "u" } }, { r: values }).props.lien.url).toBe("https://tiers.example/");
+    expect(one({ component: "lien", props: { object: "o", url: "u" } }, { r: values }).props.lien.url).toBe("https://tiers.example/");
     // A number or an object is not an address.
-    expect(one({ composant: "lien", props: { objet: "o", url: "u" } }, { r: { o: { u: 3 } } }).props.lien.url).toBeNull();
+    expect(one({ component: "lien", props: { object: "o", url: "u" } }, { r: { o: { u: 3 } } }).props.lien.url).toBeNull();
   });
 
   it("https image of an action without an account: { url }; with an account: neutral; over http: null", () => {
-    const card = { composant: "cartes", props: { elements: "annonces", titre: "titre", image: "photo" } };
+    const card = { component: "cartes", props: { items: "annonces", title: "titre", image: "photo" } };
     const without = one(card).props.elements.map((c: any) => c.image);
     expect(without).toEqual([{ url: "https://img.example/clio.jpg" }, null, null]);
-    const updateEntry = one(card, { compte: true }).props.elements.map((c: any) => c.image);
-    expect(updateEntry).toEqual([{ neutre: true }, { neutre: true }, null]);
-    const local = one(card, { r: { annonces: [{ titre: "x", photo: "https://192.168.1.2/a.png" }] } }).props.elements[0].image;
+    const updateEntry = one(card, { account: true }).props.elements.map((c: any) => c.image);
+    expect(updateEntry).toEqual([{ neutral: true }, { neutral: true }, null]);
+    const local = one(card, { r: { announcements: [{ title: "x", snapshot: "https://192.168.1.2/a.png" }] } }).props.elements[0].image;
     expect(local).toBeNull();
   });
 
   it("titre « <img src=x onerror=…> » rendu en texte tel quel", () => {
     const html = "<img src=x onerror=alert(1)>";
-    expect(one({ composant: "titre", props: { texte: html } })).toEqual({ composant: "titre", props: { texte: html } });
-    const l = one({ composant: "liste", props: { elements: "x", titre: "t" } }, { r: { x: [{ t: html }] } });
+    expect(one({ component: "titre", props: { text: html } })).toEqual({ component: "titre", props: { text: html } });
+    const l = one({ component: "liste", props: { items: "x", title: "t" } }, { r: { x: [{ t: html }] } });
     expect(l.props.elements[0].titre).toBe(html);
   });
 
   it("10,000 tickets in a table: 200 rows, cuts 9800", () => {
-    const tickets = Array.from({ length: 10_000 }, (_, i) => ({ id: i, titre: `t${i}`, url: `https://gitlab.com/t/${i}` }));
-    const page = render([{ composant: "tableau", props: { elements: "tickets", colonnes: [{ champ: "id", libelle: "N°" }, { champ: "titre", libelle: "Titre" }], lien: "url" } }], { r: { tickets } });
-    const b = page.blocs[0] as RenderedBlock & { props: Record<string, any> };
+    const tickets = Array.from({ length: 10_000 }, (_, i) => ({ id: i, title: `t${i}`, url: `https://gitlab.com/t/${i}` }));
+    const page = render([{ component: "tableau", props: { items: "tickets", columns: [{ field: "id", label: "N°" }, { field: "titre", label: "Titre" }], link: "url" } }], { r: { tickets } });
+    const b = page.blocks[0] as RenderedBlock & { props: Record<string, any> };
     expect(b.props.elements).toHaveLength(ELEMENTS_MAX);
     expect(b.props.autres).toBe(9800);
-    expect(page.coupes).toBe(9800);
-    expect(b.props.colonnes).toEqual([{ champ: "id", libelle: "N°" }, { champ: "titre", libelle: "Titre" }]);
-    expect(b.props.elements[1]).toEqual({ valeurs: { id: fr.format(1), titre: "t1" }, lien: { texte: "https://gitlab.com/t/1", url: "https://gitlab.com/t/1" } });
+    expect(page.cuts).toBe(9800);
+    expect(b.props.colonnes).toEqual([{ field: "id", label: "N°" }, { field: "titre", label: "Titre" }]);
+    expect(b.props.elements[1]).toEqual({ values: { id: fr.format(1), title: "t1" }, link: { text: "https://gitlab.com/t/1", url: "https://gitlab.com/t/1" } });
     expect(b.props.elements[199].valeurs.id).toBe(fr.format(199));
   });
 
   it("regrouper given to cards: one section per value", () => {
-    const b = one({ composant: "cartes", props: { elements: "regrouper(annonces, marque)", titre: "titre", valeur: "prix", etiquettes: "tags" } });
+    const b = one({ component: "cartes", props: { items: "regrouper(annonces, marque)", title: "titre", value: "prix", tags: "tags" } });
     expect(b.props.elements).toBeUndefined();
     expect(b.props.groupes.map((g: any) => [g.valeur, g.elements.map((c: any) => c.titre)])).toEqual([["Renault", ["Clio", "Mégane"]], ["Peugeot", ["208"]]]);
     expect(b.props.groupes[0].elements[0].valeur).toBe(fr.format(7000));
@@ -107,84 +107,84 @@ describe("resolvePage", () => {
 
   it("regrouper cut: 200 elements in total, the rest counted", () => {
     const l = Array.from({ length: 300 }, (_, i) => ({ t: `e${i}`, k: i % 2 ? "a" : "b" }));
-    const b = one({ composant: "liste", props: { elements: "regrouper(l, k)", titre: "t" } }, { r: { l } });
+    const b = one({ component: "liste", props: { items: "regrouper(l, k)", title: "t" } }, { r: { l } });
     expect(b.props.groupes.reduce((n: number, g: any) => n + g.elements.length, 0)).toBe(ELEMENTS_MAX);
     expect(b.props.autres).toBe(100);
   });
 
   it("agent component: reference evaluated, field passed by its name", () => {
-    const b = one({ composant: "graphique-barres", props: { donnees: 'filtrer(annonces, marque = "Renault")', etiquette: "titre", titre: "Prix", max: 20000, empile: true } });
-    expect(b.composant).toBe("graphique-barres");
+    const b = one({ component: "graphique-barres", props: { data: 'filtrer(annonces, marque = "Renault")', label: "titre", title: "Prix", max: 20000, stacked: true } });
+    expect(b.component).toBe("graphique-barres");
     expect(b.props.donnees.map((a: any) => a.titre)).toEqual(["Clio", "Mégane"]);
-    expect(b.props).toMatchObject({ etiquette: "titre", titre: "Prix", max: 20000, empile: true });
+    expect(b.props).toMatchObject({ label: "titre", title: "Prix", max: 20000, stacked: true });
   });
 
   it("agent component: bounded value (lists to 200, texts cut)", () => {
     const l = Array.from({ length: 250 }, () => "x".repeat(TEXT_MAX + 50));
-    const page = render([{ composant: "graphique-barres", props: { donnees: "l" } }], { r: { l } });
-    const b = page.blocs[0] as RenderedBlock & { props: Record<string, any> };
+    const page = render([{ component: "graphique-barres", props: { data: "l" } }], { r: { l } });
+    const b = page.blocks[0] as RenderedBlock & { props: Record<string, any> };
     expect(b.props.donnees).toHaveLength(ELEMENTS_MAX);
     expect(b.props.donnees[0].length).toBeLessThanOrEqual(TEXT_MAX);
-    expect(page.coupes).toBe(50);
+    expect(page.cuts).toBe(50);
   });
 
   it("component missing from the catalog: error callout, the rest displays", () => {
-    const page = render([{ composant: "camembert", props: { donnees: "annonces" } }, { composant: "titre", props: { texte: "Après" } }]);
-    expect(page.blocs).toEqual([{ composant: "erreur", message: COMPONENT_UNAVAILABLE("camembert") }, { composant: "titre", props: { texte: "Après" } }]);
+    const page = render([{ component: "camembert", props: { data: "annonces" } }, { component: "titre", props: { text: "Après" } }]);
+    expect(page.blocks).toEqual([{ component: "erreur", message: COMPONENT_UNAVAILABLE("camembert") }, { component: "titre", props: { text: "Après" } }]);
     expect(COMPONENT_UNAVAILABLE("camembert")).toBe("Composant indisponible : camembert");
   });
 
   it("texts: numbers in fr-FR, long ones cut to TEXTE_MAX, simple values", () => {
-    expect(one({ composant: "chiffre", props: { valeur: "projet.total", libelle: "Total" } }).props).toEqual({ valeur: fr.format(1234.5), libelle: "Total" });
-    expect(one({ composant: "chiffre", props: { valeur: "compter(annonces)", libelle: "n" } }).props.valeur).toBe("3");
-    const long = one({ composant: "paragraphe", props: { valeur: "t" } }, { r: { t: "a".repeat(100_000) } });
+    expect(one({ component: "chiffre", props: { value: "projet.total", label: "Total" } }).props).toEqual({ value: fr.format(1234.5), label: "Total" });
+    expect(one({ component: "chiffre", props: { value: "compter(annonces)", label: "n" } }).props.valeur).toBe("3");
+    const long = one({ component: "paragraphe", props: { value: "t" } }, { r: { t: "a".repeat(100_000) } });
     expect(long.props.texte.length).toBe(TEXT_MAX);
     expect(long.props.texte.endsWith("…")).toBe(true);
   });
 
   it("each built-in component resolves", () => {
     const page = render([
-      { composant: "titre", props: { texte: "T" } },
-      { composant: "paragraphe", props: { texte: "P" } },
-      { composant: "encadre", props: { niveau: "info", titre: "E", elements: "annonces", champ: "titre" } },
-      { composant: "chiffres", props: { chiffres: [{ valeur: "compter(annonces)", libelle: "n" }] } },
-      { composant: "champs", props: { objet: "projet" } },
-      { composant: "champs", props: { objet: "projet", champs: [{ champ: "nom", libelle: "Nom" }] } },
-      { composant: "etiquettes", props: { elements: "annonces", champ: "marque" } },
-      { composant: "etiquettes", props: { valeurs: "projet.pieges" } },
-      { composant: "groupe", props: { titre: "G", replie: true }, blocs: [{ composant: "titre", props: { texte: "dans" } }] },
-      { composant: "colonnes", props: {}, gauche: [{ composant: "titre", props: { texte: "g" } }], droite: [] },
+      { component: "titre", props: { text: "T" } },
+      { component: "paragraphe", props: { text: "P" } },
+      { component: "encadre", props: { level: "info", title: "E", items: "annonces", field: "titre" } },
+      { component: "chiffres", props: { figures: [{ value: "compter(annonces)", label: "n" }] } },
+      { component: "champs", props: { object: "projet" } },
+      { component: "champs", props: { object: "projet", fields: [{ field: "nom", label: "Nom" }] } },
+      { component: "etiquettes", props: { items: "annonces", field: "marque" } },
+      { component: "etiquettes", props: { values: "projet.pieges" } },
+      { component: "groupe", props: { title: "G", collapsed: true }, blocks: [{ component: "titre", props: { text: "dans" } }] },
+      { component: "colonnes", props: {}, left: [{ component: "titre", props: { text: "g" } }], right: [] },
     ]);
-    const p = page.blocs.map((b) => ("props" in b ? b.props : b));
-    expect(p[2]).toEqual({ niveau: "info", titre: "E", texte: null, elements: ["Clio", "208", "Mégane"], autres: 0 });
-    expect(p[3]).toEqual({ chiffres: [{ valeur: "3", libelle: "n" }] });
-    expect(p[4]).toEqual({ champs: [{ libelle: "nom", valeur: "WebAiOs" }, { libelle: "url", valeur: "https://gitlab.com/p" }, { libelle: "total", valeur: fr.format(1234.5) }], autres: 0 });
-    expect(p[5]).toEqual({ champs: [{ libelle: "Nom", valeur: "WebAiOs" }], autres: 0 });
-    expect(p[6]).toEqual({ valeurs: ["Renault", "Peugeot", "Renault"], autres: 0 });
-    expect(p[7]).toEqual({ valeurs: results.projet.pieges, autres: 0 });
-    expect(page.blocs[8]).toEqual({ composant: "groupe", props: { titre: "G", replie: true }, blocs: [{ composant: "titre", props: { texte: "dans" } }] });
-    expect(page.blocs[9]).toEqual({ composant: "colonnes", props: {}, gauche: [{ composant: "titre", props: { texte: "g" } }], droite: [] });
-    expect(page).toMatchObject({ secours: false, vide: false, coupes: 0 });
+    const p = page.blocks.map((b) => ("props" in b ? b.props : b));
+    expect(p[2]).toEqual({ level: "info", title: "E", text: null, items: ["Clio", "208", "Mégane"], others: 0 });
+    expect(p[3]).toEqual({ figures: [{ value: "3", label: "n" }] });
+    expect(p[4]).toEqual({ fields: [{ label: "nom", value: "WebAiOs" }, { label: "url", value: "https://gitlab.com/p" }, { label: "total", value: fr.format(1234.5) }], others: 0 });
+    expect(p[5]).toEqual({ fields: [{ label: "Nom", value: "WebAiOs" }], others: 0 });
+    expect(p[6]).toEqual({ values: ["Renault", "Peugeot", "Renault"], others: 0 });
+    expect(p[7]).toEqual({ values: results.project.traps, others: 0 });
+    expect(page.blocks[8]).toEqual({ component: "groupe", props: { title: "G", collapsed: true }, blocks: [{ component: "titre", props: { text: "dans" } }] });
+    expect(page.blocks[9]).toEqual({ component: "colonnes", props: {}, left: [{ component: "titre", props: { text: "g" } }], right: [] });
+    expect(page).toMatchObject({ fallback: false, empty: false, cuts: 0 });
   });
 
   it("a reference that no longer evaluates (saved plan, other results): error callout, no exception", () => {
-    const page = render([{ composant: "liste", props: { elements: "disparu", titre: "t" } }, { composant: "titre", props: { texte: "ok" } }]);
-    expect(page.blocs[0]).toMatchObject({ composant: "erreur" });
-    expect((page.blocs[0] as { message: string }).message).not.toContain("disparu");
-    expect(page.blocs[1]).toEqual({ composant: "titre", props: { texte: "ok" } });
+    const page = render([{ component: "liste", props: { items: "disparu", title: "t" } }, { component: "titre", props: { text: "ok" } }]);
+    expect(page.blocks[0]).toMatchObject({ component: "erreur" });
+    expect((page.blocks[0] as { message: string }).message).not.toContain("disparu");
+    expect(page.blocks[1]).toEqual({ component: "titre", props: { text: "ok" } });
   });
 
   it("fallback and empty", () => {
-    expect(render([{ composant: "titre", props: { texte: "x" } }], { secours: true }).secours).toBe(true);
-    expect(render([{ composant: "titre", props: { texte: "x" } }], { r: [] }).vide).toBe(true);
-    expect(render([{ composant: "titre", props: { texte: "x" } }], { r: { tickets: [] } }).vide).toBe(true);
-    expect(render([{ composant: "titre", props: { texte: "x" } }], { r: { total: 0 } }).vide).toBe(false);
+    expect(render([{ component: "titre", props: { text: "x" } }], { fallback: true }).fallback).toBe(true);
+    expect(render([{ component: "titre", props: { text: "x" } }], { r: [] }).empty).toBe(true);
+    expect(render([{ component: "titre", props: { text: "x" } }], { r: { tickets: [] } }).empty).toBe(true);
+    expect(render([{ component: "titre", props: { text: "x" } }], { r: { total: 0 } }).empty).toBe(false);
   });
 
   it("damaged plan (no block list, nesting too deep): no exception", () => {
-    expect(resolvePage({} as PlanPage, results, { compte: false, catalogue: catalog, secours: false }).blocs).toEqual([]);
-    let b: PlanBlock = { composant: "titre", props: { texte: "fond" } };
-    for (let i = 0; i < 20_000; i++) b = { composant: "groupe", props: { titre: "g" }, blocs: [b] };
+    expect(resolvePage({} as PlanPage, results, { account: false, catalog: catalog, fallback: false }).blocks).toEqual([]);
+    let b: PlanBlock = { component: "titre", props: { text: "fond" } };
+    for (let i = 0; i < 20_000; i++) b = { component: "groupe", props: { title: "g" }, blocks: [b] };
     expect(() => render([b])).not.toThrow();
   });
 });

@@ -6,43 +6,43 @@ import { ReviewStore, reviewStore, externalProject, ExternalRegistry, Remarks } 
 import { startExternals } from "../../core/design/external";
 
 const folders: string[] = [];
-const services: { arreter(): Promise<void> }[] = [];
+const services: { stop(): Promise<void> }[] = [];
 afterEach(async () => {
-  for (const s of services.splice(0)) await s.arreter();
+  for (const s of services.splice(0)) await s.stop();
   for (const d of folders.splice(0)) rmSync(d, { recursive: true, force: true });
 });
 
 async function prepare(port: number) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "webaios-externes-")));
   folders.push(root);
-  const designFolders = { remarquesEspace: join(root, "espace", ".webaios", "remarques"), prive: join(root, "prive") };
-  mkdirSync(designFolders.prive, { recursive: true });
-  const registry = await ExternalRegistry.ouvrir(designFolders.prive);
+  const designFolders = { spaceRemarks: join(root, "espace", ".webaios", "remarques"), private: join(root, "prive") };
+  mkdirSync(designFolders.private, { recursive: true });
+  const registry = await ExternalRegistry.open(designFolders.private);
   const service = await startExternals({
-    registre: registry, remarques: new Remarks({ dossiers: designFolders }), dossiers: designFolders, port, plages: [],
-    racineEspace: join(root, "espace"), maison: root, notifier: () => undefined,
+    registry: registry, remarks: new Remarks({ folders: designFolders }), folders: designFolders, port, ranges: [],
+    spaceRoot: join(root, "espace"), home: root, notify: () => undefined,
   });
   services.push(service);
-  return { racine: root, dossiersDesign: designFolders, service };
+  return { root: root, designFolders: designFolders, service };
 }
 
 test("a start that fails other than by a taken port (invalid port): off, with the reason", async () => {
   const { service } = await prepare(Number("abc"));
-  const state = service.etat().serveur;
-  expect(state.etat).toBe("eteint");
-  if (state.etat === "eteint") expect(state.raison).toMatch(/^Le MCP externe n'a pas pu démarrer : /);
-  await expect(service.brancher("x")).rejects.toThrow(/n'a pas pu démarrer/);
+  const state = service.state().server;
+  expect(state.state).toBe("eteint");
+  if (state.state === "eteint") expect(state.reason).toMatch(/^Le MCP externe n'a pas pu démarrer : /);
+  await expect(service.connect("x")).rejects.toThrow(/n'a pas pu démarrer/);
 });
 
 test("forgetting during the first photo: the private review repository does not come back", async () => {
-  const { racine: root, dossiersDesign: designFolders, service } = await prepare(0);
+  const { root: root, designFolders: designFolders, service } = await prepare(0);
   const project = join(root, "site");
   mkdirSync(project);
   for (let i = 0; i < 50; i++) writeFileSync(join(project, `f${i}.txt`), `${i}\n`);
   const id = "0123456789abcdef";
-  const depot = reviewStore(designFolders, externalProject(id));
-  const photo = new ReviewStore({ depot, dossier: project }).assurerReference().catch(() => undefined);
-  await service.oublier(id);
+  const repo = reviewStore(designFolders, externalProject(id));
+  const photo = new ReviewStore({ repo, folder: project }).ensureReference().catch(() => undefined);
+  await service.forget(id);
   await photo;
-  expect(existsSync(depot)).toBe(false);
+  expect(existsSync(repo)).toBe(false);
 });

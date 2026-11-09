@@ -7,7 +7,7 @@ const FILE = `${DIR}/permissions.json`;
 const meet = "https://meet.google.com";
 
 let disk: Map<string, string>;
-let questions: { ongletId: string | null; origine: string; permissions: SitePermission[]; lien?: string }[];
+let questions: { tabId: string | null; origin: string; permissions: SitePermission[]; link?: string }[];
 let answer: Outcome;
 let calls: unknown[][];
 let profiles: string[];
@@ -26,7 +26,7 @@ const make = (o: Partial<Parameters<typeof createSitePermissions>[0]> = {}) =>
     files,
     ...o,
   });
-const req = (kind: string, extra: Record<string, unknown> = {}) => ({ ongletId: "o1", fenetreId: "f1", profil: "defaut", origine: meet, kind, ...extra });
+const req = (kind: string, extra: Record<string, unknown> = {}) => ({ tabId: "o1", windowId: "f1", profile: "defaut", origin: meet, kind, ...extra });
 const saved = (path = FILE) => JSON.parse(disk.get(path) ?? "null");
 
 beforeEach(() => {
@@ -40,7 +40,7 @@ beforeEach(() => {
 test("first request → we ask; the decision is remembered and the second goes through without asking", async () => {
   const p = make();
   expect(await p.handle(req("notifications"))).toBe(true);
-  expect(questions).toEqual([{ ongletId: "o1", fenetreId: "f1", origine: meet, permissions: ["notifications"] }]);
+  expect(questions).toEqual([{ tabId: "o1", windowId: "f1", origin: meet, permissions: ["notifications"] }]);
   answer = "refuser";
   expect(await p.handle(req("notifications"))).toBe(true);
   expect(questions).toHaveLength(1);
@@ -53,9 +53,9 @@ test("camera + microphone: both permissions are needed", async () => {
   expect(questions.at(-1)?.permissions).toEqual(["media-camera", "media-micro"]);
   const other = "https://visio.fr";
   answer = "refuser";
-  await p.handle(req("media", { origine: other, mediaTypes: ["audio"] }));
+  await p.handle(req("media", { origin: other, mediaTypes: ["audio"] }));
   answer = "autoriser";
-  expect(await p.handle(req("media", { origine: other, mediaTypes: ["video", "audio"] }))).toBe(false);
+  expect(await p.handle(req("media", { origin: other, mediaTypes: ["video", "audio"] }))).toBe(false);
   expect(questions.at(-1)?.permissions).toEqual(["media-camera"]);
 });
 
@@ -80,7 +80,7 @@ test("verifier answers from the remembered decisions, never asking", async () =>
 
 test("two simultaneous requests for the same permission ask only one question", async () => {
   const p = make();
-  const r = await Promise.all([p.handle(req("geolocation")), p.handle(req("geolocation", { ongletId: "o2" }))]);
+  const r = await Promise.all([p.handle(req("geolocation")), p.handle(req("geolocation", { tabId: "o2" }))]);
   expect(r).toEqual([true, true]);
   expect(questions).toHaveLength(1);
 });
@@ -135,10 +135,10 @@ test("corrupted permissions.json → no decision, no crash", async () => {
 
 test("opening an external application (mailto:…): asked every time with the link, never remembered", async () => {
   const p = make();
-  expect(await p.handle(req("openExternal", { lien: "mailto:a@b.fr" }))).toBe(true);
-  expect(questions.at(-1)).toEqual({ ongletId: "o1", fenetreId: "f1", origine: meet, permissions: ["ouvrir-application"], lien: "mailto:a@b.fr" });
+  expect(await p.handle(req("openExternal", { link: "mailto:a@b.fr" }))).toBe(true);
+  expect(questions.at(-1)).toEqual({ tabId: "o1", windowId: "f1", origin: meet, permissions: ["ouvrir-application"], link: "mailto:a@b.fr" });
   answer = "refuser";
-  expect(await p.handle(req("openExternal", { lien: "zoommtg://x" }))).toBe(false);
+  expect(await p.handle(req("openExternal", { link: "zoommtg://x" }))).toBe(false);
   expect(questions).toHaveLength(2);
   expect(disk.size).toBe(0);
   expect(p.check("defaut", meet, "openExternal")).toBe(false);
@@ -164,7 +164,7 @@ test("drm and midi are kept per (origin, profile); partage-ecran is asked again 
 test("the same origin in another profile is asked again", async () => {
   const p = make();
   await p.handle(req("notifications"));
-  await p.handle(req("notifications", { profil: "pro" }));
+  await p.handle(req("notifications", { profile: "pro" }));
   expect(questions).toHaveLength(2);
   expect(p.check("pro", meet, "notifications")).toBe(true);
   expect(saved(`${DIR}/permissions-pro.json`)).toEqual({ [`${meet} notifications`]: "autoriser" });
@@ -173,7 +173,7 @@ test("the same origin in another profile is asked again", async () => {
 test("each decision is copied into Firefox; forget and removeProfile remove it", async () => {
   const p = make();
   await p.handle(req("media", { mediaTypes: ["video", "audio"] }));
-  await p.handle(req("notifications", { profil: "pro" }));
+  await p.handle(req("notifications", { profile: "pro" }));
   expect(calls.slice(1)).toEqual([
     ["set", "defaut", meet, "media-camera", "autoriser"],
     ["set", "defaut", meet, "media-micro", "autoriser"],
@@ -226,7 +226,7 @@ test("a request arriving before loading ends waits for ready", async () => {
 });
 
 test("the written file has the expected format", async () => {
-  await make().handle(req("geolocation", { origine: "https://a.test" }));
+  await make().handle(req("geolocation", { origin: "https://a.test" }));
   expect(JSON.parse(disk.get(FILE)!)).toEqual({ "https://a.test geolocation": "autoriser" });
 });
 
@@ -254,7 +254,7 @@ test("profile removed during a question: the late answer counts for the request,
   const replies: ((d: Outcome) => void)[] = [];
   const p = make({ ask: (d) => (questions.push(d), new Promise((ok) => replies.push(ok))) });
   await p.ready;
-  const r = p.handle(req("notifications", { profil: "pro" }));
+  const r = p.handle(req("notifications", { profile: "pro" }));
   await vi.waitFor(() => expect(replies).toHaveLength(1));
   await p.removeProfile("pro");
   calls = [];

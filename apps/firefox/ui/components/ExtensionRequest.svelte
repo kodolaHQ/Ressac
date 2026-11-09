@@ -4,19 +4,19 @@
   import { api } from "../state.svelte";
 
   // Everything from the manifest (name, version, sites, domains) is shown as text, never interpreted.
-  let { demande: request, carte: card }: { demande: PendingRequest; carte: ExtensionCard } = $props();
+  let { request: request, card: card }: { request: PendingRequest; card: ExtensionCard } = $props();
 
   // Strengthened grant: « Activer » (and Enter, which clicks the primary button) has no effect until the box is checked.
   let included = $state(false);
-  const blocked = $derived(card.renforce && !included);
+  const blocked = $derived(card.hardened && !included);
   const names = (list: string[]) => list.map((n) => `« ${n} »`).join(", ");
 
   /** The name comes from the manifest: bounded, and shown in its own element (it cannot read as the rest of the title). */
   const NAME_MAX = 60;
   const SITES_MAX = 20;
   const name = $derived.by(() => {
-    const car = [...card.nom];
-    return car.length > NAME_MAX ? `${car.slice(0, NAME_MAX - 1).join("")}…` : card.nom;
+    const car = [...card.name];
+    return car.length > NAME_MAX ? `${car.slice(0, NAME_MAX - 1).join("")}…` : card.name;
   });
   const sites = $derived(
     card.sites.length > SITES_MAX ? `${card.sites.slice(0, SITES_MAX).join(", ")} et ${card.sites.length - SITES_MAX} autres` : card.sites.join(", "),
@@ -24,39 +24,39 @@
 </script>
 
 <div data-testid="demande-extension">
-  {#if card.maj}
+  {#if card.update}
     <h3>Mettre à jour <span class="nom" data-testid="carte-extension-nom">« {name} »</span> ?</h3>
-    <div class="discret">Version {card.maj.de} → {card.version}</div>
+    <div class="discret">Version {card.update.from} → {card.version}</div>
   {:else}
-    <h3>Activer <span class="nom" data-testid="carte-extension-nom">« {name} »</span> dans « {card.espace} » ?</h3>
+    <h3>Activer <span class="nom" data-testid="carte-extension-nom">« {name} »</span> dans « {card.space} » ?</h3>
   {/if}
   <div class="discret">{card.source === "store" ? "Chrome Web Store" : "Écrite par l'agent"}</div>
 
-  {#if card.droits.length > 0}
+  {#if card.rights.length > 0}
     <p class="titre">Ce qu'elle veut faire :</p>
     <ul>
-      {#each card.droits as right, i (i)}<li>{right}</li>{/each}
+      {#each card.rights as right, i (i)}<li>{right}</li>{/each}
     </ul>
   {/if}
 
-  {#if card.tousLesSites}
+  {#if card.allSites}
     <p class="alerte" data-testid="carte-extension-tous-sites">Sur tous les sites que tu visites</p>
   {:else if card.sites.length > 0}
     <p>Sur : {sites}</p>
   {/if}
 
-  {#if card.autresEspaces.length > 0}
-    <p>Elle sera active aussi dans {names(card.autresEspaces)} (même profil).</p>
+  {#if card.otherSpaces.length > 0}
+    <p>Elle sera active aussi dans {names(card.otherSpaces)} (même profil).</p>
   {/if}
 
-  {#if card.remplaceAussi.length > 0}
-    <p class="alerte" data-testid="carte-extension-remplace">La nouvelle version remplacera aussi celle de {names(card.remplaceAussi)}.</p>
+  {#if card.alsoReplaces.length > 0}
+    <p class="alerte" data-testid="carte-extension-remplace">La nouvelle version remplacera aussi celle de {names(card.alsoReplaces)}.</p>
   {/if}
 
   {#if card.source === "agent"}
-    {#if card.reseau}
+    {#if card.network}
       <p>
-        {card.reseau.length === 0 ? "Elle ne peut rien envoyer vers internet." : `Elle pourra envoyer des données à : ${card.reseau.join(", ")}.`}
+        {card.network.length === 0 ? "Elle ne peut rien envoyer vers internet." : `Elle pourra envoyer des données à : ${card.network.join(", ")}.`}
       </p>
     {/if}
     <p class="discret">
@@ -66,7 +66,7 @@
     <p class="discret">L'agent ne voit pas ce que cette extension lit sur les onglets que tu ne lui as pas partagés.</p>
   {/if}
 
-  {#if card.renforce}
+  {#if card.hardened}
     <div class="renforce">
       <p id="carte-extension-avertissement">Elle pourra lire et modifier chaque page de cet espace, comptes connectés compris.</p>
       <label>
@@ -78,12 +78,12 @@
 
   <!-- Enter refuses (Refuser is the primary button): enabling an extension takes a real click. -->
   <div class="actions">
-    <button data-principal onclick={() => api.permissions.repondre(request.id, "refuser")}>Refuser</button>
+    <button data-principal onclick={() => api.permissions.reply(request.id, "refuser")}>Refuser</button>
     <button
       class="autoriser"
       disabled={blocked}
       aria-describedby={blocked ? "carte-extension-raison" : undefined}
-      onclick={() => api.permissions.repondre(request.id, "autoriser", undefined, { confirme: included })}>Activer</button
+      onclick={() => api.permissions.reply(request.id, "autoriser", undefined, { confirmed: included })}>Activer</button
     >
     {#if blocked}<span id="carte-extension-raison" class="lecteur">Coche « Je comprends » pour pouvoir l'activer.</span>{/if}
   </div>

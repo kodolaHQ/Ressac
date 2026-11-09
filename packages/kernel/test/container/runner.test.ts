@@ -14,7 +14,7 @@ test("commande introuvable → 127", async () => {
 });
 
 test("timeout exceeded → 124", async () => {
-  expect((await defaultRunner("sleep", ["5"], { delaiMs: 100 })).code).toBe(CODE_TIMEOUT_EXCEEDED);
+  expect((await defaultRunner("sleep", ["5"], { delayMs: 100 })).code).toBe(CODE_TIMEOUT_EXCEEDED);
 });
 
 const alive = (pid: number) => {
@@ -58,5 +58,5 @@ test("with a (non-cancelled) signal: output, code, timeout and command not found
   const signal = new AbortController().signal;
   expect(await defaultRunner("sh", ["-c", "echo sortie; echo err >&2; exit 3"], { signal })).toEqual({ code: 3, stdout: "sortie\n", stderr: "err\n" });
   expect((await defaultRunner("commande-qui-n-existe-pas", [], { signal })).code).toBe(127);
-  expect((await defaultRunner("sleep", ["5"], { delaiMs: 100, signal })).code).toBe(CODE_TIMEOUT_EXCEEDED);
+  expect((await defaultRunner("sleep", ["5"], { delayMs: 100, signal })).code).toBe(CODE_TIMEOUT_EXCEEDED);
 });

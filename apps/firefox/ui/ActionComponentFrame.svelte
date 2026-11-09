@@ -6,7 +6,7 @@
    * `parent.postMessage` reaches the chrome as a `webaios-composant` event (the copy's bridge), listened on the window
    * root. It can only ask for its height; anything else, a `webaiosOuvrir` link included, is ignored.
    */
-  let { nom: name, props }: { nom: string; props: Record<string, unknown> } = $props();
+  let { name: name, props }: { name: string; props: Record<string, unknown> } = $props();
 
   const MIN_HEIGHT = 20;
   const MAX_HEIGHT = 2000;
@@ -29,7 +29,7 @@
 
   function send() {
     // Opaque origin: « * » is the only possible target; only the current copy receives.
-    if (ours()) iframe?.contentWindow?.postMessage({ type: "composant", props: $state.snapshot(props), theme, largeur: width }, "*");
+    if (ours()) iframe?.contentWindow?.postMessage({ type: "composant", props: $state.snapshot(props), theme, width: width }, "*");
   }
   // On each change (the load goes through DOMFrameContentLoaded).
   $effect(() => {
@@ -58,7 +58,7 @@
       );
     };
     serve();
-    const off = actions.surChange(serve);
+    const off = actions.onChange(serve);
     return () => {
       alive = false;
       off();

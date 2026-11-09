@@ -11,73 +11,73 @@
   import SpaceSelector from "./SpaceSelector.svelte";
 
   let {
-    fenetre: win,
-    cachee: hidden = false,
-    basculerPanneau: togglePanel,
-    agentDuConstructeur: builderAgent,
+    window: win,
+    hidden: hidden = false,
+    togglePanel: togglePanel,
+    builderAgent: builderAgent,
   }: {
-    fenetre: WindowState;
-    cachee?: boolean;
-    basculerPanneau?: (p: Panel) => void;
+    window: WindowState;
+    hidden?: boolean;
+    togglePanel?: (p: Panel) => void;
     /** ✦ on a builder tab: its « Agent » tab (instead of the side panel). */
-    agentDuConstructeur?: () => void;
+    builderAgent?: () => void;
   } = $props();
-  const running = $derived(downloads.liste.filter((t) => t.etat === "en-cours"));
+  const running = $derived(downloads.list.filter((t) => t.state === "en-cours"));
   const progression = $derived.by(() => {
     const total = running.reduce((s, t) => s + t.total, 0);
-    return total ? running.reduce((s, t) => s + t.recus, 0) / total : 0;
+    return total ? running.reduce((s, t) => s + t.received, 0) / total : 0;
   });
-  const space = $derived(appState.valeur?.espaces.find((e) => e.id === win.espaceActif));
+  const space = $derived(appState.value?.spaces.find((e) => e.id === win.activeSpace));
   const activeTab = $derived.by(() => {
-    const id = win.actif[win.espaceActif];
-    return id ? appState.valeur?.onglets[id] : undefined;
+    const id = win.active[win.activeSpace];
+    return id ? appState.value?.tabs[id] : undefined;
   });
-  const activeLink = $derived(activeTab?.lien?.id);
+  const activeLink = $derived(activeTab?.link?.id);
   // In the builder, the agent has its « Agent » tab: ✦ shows it there (like ⌘J), the side panel does not appear.
   const builder = $derived(!!activeTab && workflowUrlTarget(activeTab.url) !== null);
 </script>
 
 <aside class="barre" data-testid="barre-laterale" hidden={hidden}>
-  <UrlBar fenetre={win} />
+  <UrlBar window={win} />
   <div class="defilant">
-    <Essentials fenetre={win} />
+    <Essentials window={win} />
     <ul
       class="epingles"
       data-testid="epingles"
       ondragover={(e) => e.dataTransfer?.types.includes("application/x-webaios-onglet") && e.preventDefault()}
       ondrop={(e) => {
         const id = e.dataTransfer?.getData("application/x-webaios-onglet");
-        if (id) api.agir({ type: "epinglerOnglet", id });
+        if (id) api.dispatch({ type: "epinglerOnglet", id });
       }}
     >
-      {#each space?.epingles ?? [] as favorite (favorite.id)}
+      {#each space?.pinned ?? [] as favorite (favorite.id)}
         <li>
           <button
             data-testid="favori-{favorite.id}"
             class:actif={favorite.id === activeLink}
-            onclick={() => api.agir({ type: "ouvrirFavori", fenetreId: win.id, genre: "epingle", id: favorite.id })}
+            onclick={() => api.dispatch({ type: "ouvrirFavori", windowId: win.id, kind: "epingle", id: favorite.id })}
             oncontextmenu={(e) =>
-              openMenu(e, [{ libelle: "Retirer", agir: () => api.agir({ type: "desepingler", espaceId: win.espaceActif, favoriId: favorite.id }) }])}
+              openMenu(e, [{ label: "Retirer", dispatch: () => api.dispatch({ type: "desepingler", spaceId: win.activeSpace, favoriteId: favorite.id }) }])}
           >
-            <SiteIcon favicon={favorite.favicon} titre={favorite.titre} />
-            <span>{favorite.titre}</span>
+            <SiteIcon favicon={favorite.favicon} title={favorite.title} />
+            <span>{favorite.title}</span>
           </button>
         </li>
       {/each}
     </ul>
-    <div class="espace" data-testid="titre-espace">{space?.icone} {space?.nom}</div>
-    <TabList fenetre={win} />
-    <button class="nouveau" data-testid="nouvel-onglet" onclick={() => api.agir({ type: "afficherPageVide", fenetreId: win.id })}><Icon nom="plus" taille={14} /> Nouvel onglet</button>
+    <div class="espace" data-testid="titre-espace">{space?.icon} {space?.name}</div>
+    <TabList window={win} />
+    <button class="nouveau" data-testid="nouvel-onglet" onclick={() => api.dispatch({ type: "afficherPageVide", windowId: win.id })}><Icon name="plus" size={14} /> Nouvel onglet</button>
   </div>
   <footer>
-    <SpaceSelector fenetre={win} />
+    <SpaceSelector window={win} />
     <button
       class="outil"
       data-testid="bouton-agent"
       aria-label="Agent (⌘J)"
       title="Agent (⌘J)"
-      aria-pressed={!builder && win.panneauAgentOuvert}
-      onclick={() => (builder ? builderAgent?.() : api.agir({ type: "basculerPanneauAgent", fenetreId: win.id }))}><Icon nom="agent" /></button
+      aria-pressed={!builder && win.agentPanelOpen}
+      onclick={() => (builder ? builderAgent?.() : api.dispatch({ type: "basculerPanneauAgent", windowId: win.id }))}><Icon name="agent" /></button
     >
     <button
       class="outil"
@@ -85,7 +85,7 @@
       aria-label="Applications (⇧⌘A)"
       title="Applications (⇧⌘A)"
       aria-pressed={activeTab?.url === URL_APPLICATIONS}
-      onclick={() => api.agir({ type: "ouvrirApplications", fenetreId: win.id })}><Icon nom="applications" /></button
+      onclick={() => api.dispatch({ type: "ouvrirApplications", windowId: win.id })}><Icon name="apps" /></button
     >
     <button
       class="outil"
@@ -93,11 +93,11 @@
       aria-label="Actions"
       title="Actions"
       aria-pressed={activeTab?.url === URL_ACTIONS}
-      onclick={() => api.agir({ type: "ouvrirActions", fenetreId: win.id })}><Icon nom="actions" /></button
+      onclick={() => api.dispatch({ type: "ouvrirActions", windowId: win.id })}><Icon name="actions" /></button
     >
-    {#if downloads.liste.length}
+    {#if downloads.list.length}
       <button class="telechargements" aria-label="Téléchargements" title="Téléchargements" onclick={() => togglePanel?.("telechargements")}>
-        <Icon nom="telecharger" />
+        <Icon name="download" />
         {#if running.length}<span class="pastille" style:--p={progression}></span>{/if}
       </button>
     {/if}

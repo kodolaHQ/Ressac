@@ -30,7 +30,7 @@ const url = (p: string) => server.url("vidola-a.localhost", p);
 
 async function launch(): Promise<void> {
   const actor = testActor(profile);
-  w = await launchWebAiOs({ dataDir, profile, env: { WEBAIOS_TEST_ADRESSES_LOCALES: "1", ...actor.env }, prefs: actor.prefs });
+  w = await launchWebAiOs({ dataDir, profile, env: { WEBAIOS_TEST_LOCAL_ADDRESSES: "1", ...actor.env }, prefs: actor.prefs });
   m = w.marionette;
   await m.setContext("chrome");
   await waitReady(m);
@@ -99,7 +99,7 @@ const mainTabs = () => m.execute<number>(`return [...Services.wm.getEnumerator("
 beforeAll(async () => {
   server = await startSitesServer();
   const pub = (p: string) => server.url("pub.localhost", p);
-  const d = (p: string, body: Parameters<typeof server.definir>[2]) => server.definir("vidola-a.localhost", p, body);
+  const d = (p: string, body: Parameters<typeof server.define>[2]) => server.define("vidola-a.localhost", p, body);
   d("/", `<title>Vidola A</title>
 <a id="pub" href="${pub("/x")}">pub</a>
 <a id="film" href="/film/2">film</a>`);
@@ -107,23 +107,23 @@ beforeAll(async () => {
   d("/plein", '<title>Plein</title><div id="plein" style="height:100px">vidéo</div>');
   d("/quitter", '<title>Quitter</title><script>addEventListener("beforeunload", (e) => { e.preventDefault(); e.returnValue = ""; });</script>');
   d("/fichier", (_req, res) => res.writeHead(200, { "Content-Type": "text/plain", "Content-Disposition": 'attachment; filename="fichier.txt"' }).end("Bonjour"));
-  server.definir("pub.localhost", "/x", "<title>Pub</title>");
-  server.definir("compte.localhost", "/connexion", "<title>Connexion</title>");
+  server.define("pub.localhost", "/x", "<title>Pub</title>");
+  server.define("compte.localhost", "/connexion", "<title>Connexion</title>");
   dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
   profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
-  const vidola = { nom: "Vidola", adresse: url("/"), domaines: ["vidola-a.localhost"], connexion: ["compte.localhost"] };
+  const vidola = { name: "Vidola", url: url("/"), domains: ["vidola-a.localhost"], login: ["compte.localhost"] };
   // Written before the launch: the watcher sees no initial event that would reread the app on the way.
   writeSite(dataDir, "vidola", { declaration: vidola });
-  writeSite(dataDir, "autre", { declaration: { ...vidola, nom: "Autre" } });
+  writeSite(dataDir, "autre", { declaration: { ...vidola, name: "Autre" } });
   await launch();
 }, 90_000);
 afterAll(async () => {
   await w?.close();
-  await server?.fermer();
+  await server?.close();
   if (dataDir) await rm(dataDir, { recursive: true, force: true });
   if (profile) await rm(profile, { recursive: true, force: true });
 });
-beforeEach(() => void server.requetes.splice(0));
+beforeEach(() => void server.requests.splice(0));
 afterEach(async () => {
   try {
     expect(await missingApi(m)).toEqual([]);
@@ -145,7 +145,7 @@ describe("site app window", () => {
     expect(l.bar.slice(0, 2)).toEqual([0, BAR]);
     expect(l.view).toEqual([BAR, 0, l.inner[0], l.inner[1] - BAR]);
     // The *.localhost host reached the loopback server, with its name.
-    expect(server.requetes.some((r) => r.hote === "vidola-a.localhost" && r.chemin === "/")).toBe(true);
+    expect(server.requests.some((r) => r.host === "vidola-a.localhost" && r.path === "/")).toBe(true);
     // Firefox keeps its native title bar: no room left for the window buttons.
     expect(await inSiteBar(m, "vidola", `return doc.defaultView.getComputedStyle(doc.querySelector('[data-testid="barre-site"]')).paddingLeft;`)).toBe("8px");
   });
@@ -161,7 +161,7 @@ describe("site app window", () => {
 
   it("the window's size and place are kept in <dataDir>/sites.json and taken back on reopening", async () => {
     await openAndWait();
-    const frame = { x: 120, y: 90, largeur: 700, hauteur: 520 };
+    const frame = { x: 120, y: 90, width: 700, height: 520 };
     await m.execute(`const win = ${site}; win.moveTo(arguments[0].x, arguments[0].y); win.resizeTo(arguments[0].largeur, arguments[0].hauteur);`, [frame]);
     await waitFor(m, `const win = ${site}; return [win.screenX, win.screenY, win.outerWidth, win.outerHeight].join();`, (v) => v === "120,90,700,520");
     await m.execute(`${site}.close();`);
@@ -230,7 +230,7 @@ describe("site app window", () => {
     for (const c of [null, "userContextIdInternal.webaios-site-autre", "userContextIdInternal.webaios-profil-essai"]) expect(await cookies(c), String(c)).toEqual([]);
     await sleep(2000);
     expect(await inUi(m, "return await ui.webaios.historique.rechercher('vidola', 50, false);")).toEqual([]);
-    expect(Object.values((await state(m)).onglets).some((o) => o.url.includes("vidola"))).toBe(false);
+    expect(Object.values((await state(m)).tabs).some((o) => o.url.includes("vidola"))).toBe(false);
   });
 
   it("⌘W closes the site window without a question", async () => {
@@ -268,7 +268,7 @@ describe("site app window", () => {
     await m.execute(`Services.prefs.setIntPref("browser.download.folderList", 2); Services.prefs.setStringPref("browser.download.dir", arguments[0]);`, [dl]);
     await openAndWait();
     await inSiteView(m, "vidola", "location.href = '/fichier'; return 1;");
-    await expect.poll(() => server.requetes.some((r) => r.chemin === "/fichier")).toBe(true);
+    await expect.poll(() => server.requests.some((r) => r.path === "/fichier")).toBe(true);
     await sleep(1500);
     expect(await inUi(m, "return (await ui.webaios.telechargements.liste()).length;")).toBe(0);
     expect(await m.execute(`return (async () => { const { Downloads } = ChromeUtils.importESModule("resource://gre/modules/Downloads.sys.mjs"); return (await (await Downloads.getList(Downloads.ALL)).getAll()).length; })();`)).toBe(0);
@@ -276,12 +276,12 @@ describe("site app window", () => {
   });
 
   it("the site window is never a WebAiOs window", async () => {
-    const f = (await state(m)).fenetres[0]!;
+    const f = (await state(m)).windows[0]!;
     // ⌃Tab needs two tabs to walk.
-    for (const u of [server.url("compte.localhost", "/connexion"), server.url("pub.localhost", "/x")]) await dispatch(m, { type: "ouvrirOnglet", fenetreId: f.id, url: u });
+    for (const u of [server.url("compte.localhost", "/connexion"), server.url("pub.localhost", "/x")]) await dispatch(m, { type: "ouvrirOnglet", windowId: f.id, url: u });
     const tabs = await mainTabs();
     await openAndWait();
-    expect((await state(m)).fenetres.map((x) => x.id)).toEqual([f.id]);
+    expect((await state(m)).windows.map((x) => x.id)).toEqual([f.id]);
     expect(await m.execute(`const win = ${site}; return [!!win.webaiosWindow, win.document.documentElement.hasAttribute("webaios-main")];`)).toEqual([false, false]);
     await m.execute(`${site}.focus();`);
     await sleep(300);
@@ -329,7 +329,7 @@ describe("site app window", () => {
   it("⌘click and middle click on a link of the app never open a tab of the main window", async () => {
     await openAndWait();
     const tabs = await mainTabs();
-    const tabCount = Object.keys((await state(m)).onglets).length;
+    const tabCount = Object.keys((await state(m)).tabs).length;
     // Every tab opened in any browser window meanwhile, even one the guard closes at once.
     await m.execute(
       `window.webaiosTestOpened = [];
@@ -345,11 +345,11 @@ describe("site app window", () => {
     await clickInView("#pub", { meta: true });
     await expect.poll(() => inStore<string[]>(`return store.sites.blocked("vidola").slice();`)).toContain("pub.localhost");
     await sleep(500);
-    expect(server.requetes.filter((r) => r.hote === "pub.localhost")).toEqual([]);
+    expect(server.requests.filter((r) => r.host === "pub.localhost")).toEqual([]);
     expect(await m.execute(`return ${view}.currentURI.spec;`)).toBe(url("/"));
     expect(await m.execute(`return ${site}.gBrowser.tabs.length;`)).toBe(1);
     expect(await mainTabs()).toBe(tabs);
-    expect(Object.keys((await state(m)).onglets).length).toBe(tabCount);
+    expect(Object.keys((await state(m)).tabs).length).toBe(tabCount);
     expect(await m.execute(`return window.webaiosTestOpened;`)).toEqual([]);
   });
 
@@ -363,7 +363,7 @@ describe("site app window", () => {
     expect(await m.execute(`return document.documentElement.hasAttribute("webaios-main");`)).toBe(true);
     expect(await siteWindowCount(m, "vidola")).toBe(0);
     const s = await state(m);
-    expect(s.fenetres).toHaveLength(1);
-    expect(Object.values(s.onglets).some((o) => o.url.includes("vidola"))).toBe(false);
+    expect(s.windows).toHaveLength(1);
+    expect(Object.values(s.tabs).some((o) => o.url.includes("vidola"))).toBe(false);
   });
 });

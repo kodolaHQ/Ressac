@@ -18,14 +18,14 @@ describe("design copies", () => {
   });
 
   const valid = () => ({
-    selecteur: "h1", etiquette: "h1", html: "<h1>x</h1>", voisinage: { parent: "body", freres: ["p : a"] }, styles: { display: "block" },
-    rect: { x: 1, y: 2, largeur: 3, hauteur: 4 }, adresse: "http://127.0.0.1/", vue: { largeur: 800, hauteur: 600 },
+    selector: "h1", label: "h1", html: "<h1>x</h1>", neighborhood: { parent: "body", siblings: ["p : a"] }, styles: { display: "block" },
+    rect: { x: 1, y: 2, width: 3, height: 4 }, url: "http://127.0.0.1/", view: { width: 800, height: 600 },
   });
 
   it("cleanCapture: the shape checks, then the html is cut", () => {
     expect(cleanCapture(valid())).toEqual(valid());
-    expect(cleanCapture({ ...valid(), rect: { x: Number.NaN, y: 2, largeur: 3, hauteur: 4 } })).toBeNull();
-    expect(cleanCapture({ ...valid(), voisinage: { parent: "body", freres: "p" } })).toBeNull();
+    expect(cleanCapture({ ...valid(), rect: { x: Number.NaN, y: 2, width: 3, height: 4 } })).toBeNull();
+    expect(cleanCapture({ ...valid(), neighborhood: { parent: "body", siblings: "p" } })).toBeNull();
     expect(cleanCapture({ ...valid(), styles: { display: 1 } })).toBeNull();
     expect(cleanCapture(null)).toBeNull();
     expect(cleanCapture("x")).toBeNull();
@@ -36,16 +36,16 @@ describe("design copies", () => {
 
   it("cleanSource: the shape checks", () => {
     expect(cleanSource({ file: {}, line: "x" })).toBeNull();
-    expect(cleanSource({ fichier: {}, ligne: "x" })).toBeNull();
-    expect(cleanSource({ fichier: "a.svelte", ligne: -3, colonne: 1.5 })).toEqual({ fichier: "a.svelte" });
-    expect(cleanSource({ fichier: "src/A.svelte", ligne: 12, colonne: 3 })).toEqual({ fichier: "src/A.svelte", ligne: 12, colonne: 3 });
+    expect(cleanSource({ file: {}, line: "x" })).toBeNull();
+    expect(cleanSource({ file: "a.svelte", line: -3, column: 1.5 })).toEqual({ file: "a.svelte" });
+    expect(cleanSource({ file: "src/A.svelte", line: 12, column: 3 })).toEqual({ file: "src/A.svelte", line: 12, column: 3 });
     expect(cleanSource(null)).toBeNull();
   });
 
   it("targetKey names a target; the site bubble has its size", () => {
-    expect(SITE_BUBBLE_SIZE).toEqual({ largeur: 320, hauteur: 190 });
-    expect(targetKey({ type: "fenetre", fenetreId: "f1" })).toBe("fenetre:f1");
-    expect(targetKey({ type: "app", dossier: "essai" })).toBe("app:essai");
+    expect(SITE_BUBBLE_SIZE).toEqual({ width: 320, height: 190 });
+    expect(targetKey({ type: "fenetre", windowId: "f1" })).toBe("fenetre:f1");
+    expect(targetKey({ type: "app", folder: "essai" })).toBe("app:essai");
     expect(targetKey({ type: "site", id: "tuning" })).toBe("site:tuning");
   });
 
@@ -57,12 +57,12 @@ describe("design copies", () => {
 
   it("bubbleSlot: under the element, bounded to the window", () => {
     const bounds = { x: 300, y: 50, width: 900, height: 750 };
-    expect(bubbleSlot({ x: 10, y: 20, largeur: 100, hauteur: 30 }, 1, bounds, [1200, 800])).toEqual({ x: 310, y: 106, width: 320, height: 170 });
-    expect(bubbleSlot({ x: 1000, y: 700, largeur: 50, hauteur: 30 }, 1, bounds, [1200, 800])).toEqual({ x: 880, y: 630, width: 320, height: 170 });
-    expect(bubbleSlot({ x: 10, y: 20, largeur: 100, hauteur: 30 }, 1, { x: 0, y: 356, width: 1200, height: 44 }, [1200, 400], { hautMin: 356, hauteur: 190 })).toEqual({ x: 10, y: 356, width: 320, height: 190 });
+    expect(bubbleSlot({ x: 10, y: 20, width: 100, height: 30 }, 1, bounds, [1200, 800])).toEqual({ x: 310, y: 106, width: 320, height: 170 });
+    expect(bubbleSlot({ x: 1000, y: 700, width: 50, height: 30 }, 1, bounds, [1200, 800])).toEqual({ x: 880, y: 630, width: 320, height: 170 });
+    expect(bubbleSlot({ x: 10, y: 20, width: 100, height: 30 }, 1, { x: 0, y: 356, width: 1200, height: 44 }, [1200, 400], { minHeight: 356, height: 190 })).toEqual({ x: 10, y: 356, width: 320, height: 190 });
     // A site app: an element at the bottom of a short window stays under the 36 px bar (y 36, not 10).
-    expect(bubbleSlot({ x: 10, y: 150, largeur: 50, hauteur: 20 }, 1, { x: 0, y: 36, width: 1200, height: 164 }, [1200, 200], { hautMin: 36, hauteur: 190 })).toEqual({ x: 10, y: 36, width: 320, height: 190 });
+    expect(bubbleSlot({ x: 10, y: 150, width: 50, height: 20 }, 1, { x: 0, y: 36, width: 1200, height: 164 }, [1200, 200], { minHeight: 36, height: 190 })).toEqual({ x: 10, y: 36, width: 320, height: 190 });
     // Zoomed 1.5: the CSS rect scaled into the window.
-    expect(bubbleSlot({ x: 100, y: 20, largeur: 100, hauteur: 30 }, 1.5, bounds, [1200, 800])).toEqual({ x: 450, y: 131, width: 320, height: 170 });
+    expect(bubbleSlot({ x: 100, y: 20, width: 100, height: 30 }, 1.5, bounds, [1200, 800])).toEqual({ x: 450, y: 131, width: 320, height: 170 });
   });
 });

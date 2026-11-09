@@ -13,11 +13,11 @@ import { promisify } from "node:util";
  * `refus`: the validation fails with that message; `delaiMs`: the version turns public that late; `erreurHttp`: the upload answers that code; `erreurSondage`: the upload and version polls answer that code;
  * `statutFichier`: the version's file ends in that status ("disabled": AMO rejected it after validation).
  */
-export async function startFakeAmo(o: { refus?: string; delaiMs?: number; erreurHttp?: number; erreurSondage?: number; statutFichier?: string } = {}) {
+export async function startFakeAmo(o: { denial?: string; delayMs?: number; httpError?: number; pollError?: number; fileStatus?: string } = {}) {
   const dir = await mkdtemp(path.join(os.tmpdir(), "webaios-fake-amo-"));
-  const sends: { guid: string; version: string; auth: string; methode: string }[] = [];
+  const sends: { guid: string; version: string; auth: string; method: string }[] = [];
   const uploads = new Map<string, string>();
-  const versions = new Map<string, { xpi: string; pret: number }>();
+  const versions = new Map<string, { xpi: string; ready: number }>();
   const guids = new Set<string>();
 
   const server = createServer(async (req, res) => {
@@ -33,7 +33,7 @@ export async function startFakeAmo(o: { refus?: string; delaiMs?: number; erreur
     const auth = String(req.headers.authorization ?? "");
     let m: RegExpExecArray | null;
     if (req.method === "POST" && url.pathname === "/api/v5/addons/upload/") {
-      if (o.erreurHttp) return render(o.erreurHttp, { detail: "fake error" });
+      if (o.httpError) return render(o.httpError, { detail: "fake error" });
       const file = ((await new Response(body, { headers: { "content-type": String(req.headers["content-type"]) } }).formData()).get("upload") as File);
       const uuid = randomUUID();
       const xpi = path.join(dir, `${uuid}.xpi`);
@@ -42,10 +42,10 @@ export async function startFakeAmo(o: { refus?: string; delaiMs?: number; erreur
       return render(201, { uuid, processed: false, valid: false });
     }
     if (req.method === "GET" && (m = /^\/api\/v5\/addons\/upload\/([^/]+)\/$/.exec(url.pathname))) {
-      if (o.erreurSondage) return render(o.erreurSondage, {});
+      if (o.pollError) return render(o.pollError, {});
       if (!uploads.has(m[1]!)) return render(404, {});
-      const messages = o.refus ? [{ type: "error", message: o.refus }] : [];
-      return render(200, { uuid: m[1], processed: true, valid: !o.refus, validation: { messages } });
+      const messages = o.denial ? [{ type: "error", message: o.denial }] : [];
+      return render(200, { uuid: m[1], processed: true, valid: !o.denial, validation: { messages } });
     }
     if ((m = /^\/api\/v5\/addons\/addon\/([^/]+)\/(versions\/(?:v(.+)\/)?)?$/.exec(url.pathname))) {
       const guid = decodeURIComponent(m[1]!);
@@ -55,10 +55,10 @@ export async function startFakeAmo(o: { refus?: string; delaiMs?: number; erreur
       } else if (m[3] === undefined) {
         if (req.method === "POST" && guids.has(guid)) return await create(guid, "POST", JSON.parse(body.toString()).upload);
       } else if (req.method === "GET") {
-        if (o.erreurSondage) return render(o.erreurSondage, {});
+        if (o.pollError) return render(o.pollError, {});
         const v = versions.get(`${guid}@${m[3]}`);
         if (!v) return render(404, {});
-        return render(200, { file: { status: o.statutFichier ?? (Date.now() >= v.pret ? "public" : "unreviewed"), url: `${base}/download/${encodeURIComponent(guid)}/${m[3]}` } });
+        return render(200, { file: { status: o.fileStatus ?? (Date.now() >= v.ready ? "public" : "unreviewed"), url: `${base}/download/${encodeURIComponent(guid)}/${m[3]}` } });
       }
     }
     if (req.method === "GET" && (m = /^\/download\/([^/]+)\/(.+)$/.exec(url.pathname))) {
@@ -75,15 +75,15 @@ export async function startFakeAmo(o: { refus?: string; delaiMs?: number; erreur
       const manifest = JSON.parse((await promisify(execFile)("unzip", ["-p", xpi, "manifest.json"])).stdout);
       if (versions.has(`${guid}@${manifest.version}`)) return render(409, { version: [`Version ${manifest.version} already exists.`] });
       guids.add(guid);
-      versions.set(`${guid}@${manifest.version}`, { xpi, pret: Date.now() + (o.delaiMs ?? 0) });
-      sends.push({ guid, version: manifest.version, auth, methode: method });
+      versions.set(`${guid}@${manifest.version}`, { xpi, ready: Date.now() + (o.delayMs ?? 0) });
+      sends.push({ guid, version: manifest.version, auth, method: method });
       render(method === "PUT" ? 201 : 202, {});
     }
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   return {
     url: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
-    envois: sends,
+    sends: sends,
     async close() {
       server.closeAllConnections();
       await new Promise((resolve) => server.close(resolve));

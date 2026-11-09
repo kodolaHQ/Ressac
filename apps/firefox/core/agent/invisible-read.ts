@@ -5,9 +5,9 @@ import type { BrowserState, ProfileId } from "../../shared/model";
 export const HTML_MAX = 2 * 1024 * 1024;
 
 /** The login profiles a read can use: those of the state that no private space uses. */
-export function readableProfiles(state: Pick<BrowserState, "profils" | "espaces">): ProfileId[] {
-  const privates = new Set(state.espaces.filter((e) => e.prive).map((e) => e.profil));
-  return state.profils.map((p) => p.id).filter((id) => !privates.has(id));
+export function readableProfiles(state: Pick<BrowserState, "profiles" | "spaces">): ProfileId[] {
+  const privates = new Set(state.spaces.filter((e) => e.private).map((e) => e.profile));
+  return state.profiles.map((p) => p.id).filter((id) => !privates.has(id));
 }
 
 /** A comparable host name: lowercase, without a trailing dot (`exemple.test.` is `exemple.test`). */
@@ -31,9 +31,9 @@ export function allowedUrl(raw: string, domains: readonly string[] | undefined, 
 }
 
 interface PartsRead {
-  titre: unknown;
-  texte: unknown;
-  liens: unknown;
+  title: unknown;
+  text: unknown;
+  links: unknown;
 }
 
 /**
@@ -51,19 +51,19 @@ export function accumulateParts(readings: unknown[]): PartsRead {
   let previous: string[] | null = null;
   for (const r of readings) {
     const p = (r ?? {}) as Partial<PartsRead>;
-    title = p.titre ?? title;
-    const here = String(p.texte ?? "").split("\n");
+    title = p.title ?? title;
+    const here = String(p.text ?? "").split("\n");
     if (previous === null) lignes = [...here];
     else lignes = addNext(lignes, previous, here);
     previous = here;
-    for (const l of Array.isArray(p.liens) ? (p.liens as unknown[]) : []) {
-      const raw = (l as { url?: unknown; texte?: unknown } | null) ?? {};
+    for (const l of Array.isArray(p.links) ? (p.links as unknown[]) : []) {
+      const raw = (l as { url?: unknown; text?: unknown } | null) ?? {};
       if (typeof raw.url !== "string") continue;
-      const text = String(raw.texte ?? "");
+      const text = String(raw.text ?? "");
       if (text.length > (liens.get(raw.url)?.length ?? -1)) liens.set(raw.url, text);
     }
   }
-  return { titre: title, texte: lignes.join("\n"), liens: [...liens].map(([url, text]) => ({ url, texte: text })) };
+  return { title: title, text: lignes.join("\n"), links: [...liens].map(([url, text]) => ({ url, text: text })) };
 }
 
 /** Trailing lines of the previous snapshot that can be ignored for the realignment (« Chargement… », « Voir plus » button). */

@@ -24,8 +24,8 @@ const pageText = () => inUi<string>(p!.m, "return doc.querySelector(arguments[0]
 const rowText = (folder: string) => inUi<string>(p!.m, "return doc.querySelector(arguments[0])?.textContent ?? ''", [appRow(folder)]);
 const filterText = (id: string) => inUi<string | null>(p!.m, "return doc.querySelector(arguments[0])?.textContent.replace(/\\s+/g, ' ').trim() ?? null", [`[data-testid="filtre-${id}"]`]);
 const rows = (n: number, ms = 10_000) => waitUi(p!.m, `return doc.querySelectorAll('[data-testid^="appli-"]').length === arguments[0];`, [n], ms);
-const pageTabs = async () => Object.values((await state(p!.m)).onglets).filter((o) => o.url === "webaios://applications").length;
-const windowId = async () => (await state(p!.m)).fenetres[0]!.id;
+const pageTabs = async () => Object.values((await state(p!.m)).tabs).filter((o) => o.url === "webaios://applications").length;
+const windowId = async () => (await state(p!.m)).windows[0]!.id;
 const appWindows = () => p!.m.execute<number>(`return [...Services.wm.getEnumerator("navigator:browser")].filter((w) => w.document.documentElement.hasAttribute("webaios-app")).length;`);
 /** A mouse move through the widget, as an OS one (compact.e2e.ts). */
 const moveMouse = (x: number) =>
@@ -47,20 +47,20 @@ describe("Applications page", () => {
     await pressKeys(m, "Meta+Shift+a");
     await sleep(300);
     expect(await pageTabs()).toBe(1);
-    await dispatch(m, { type: "ouvrirOnglet", fenetreId: await windowId(), url: "about:blank", activer: true });
+    await dispatch(m, { type: "ouvrirOnglet", windowId: await windowId(), url: "about:blank", activate: true });
     await pageShown(false);
     await click(m, '[data-testid="bouton-applications"]');
     await pageShown(true);
     expect(await pageTabs()).toBe(1);
     // From another space: the window's page comes back, in its space.
     const s = await state(m);
-    await dispatch(m, { type: "creerEspace", nom: "Boulot", icone: "💼", prive: false, profil: s.espaces[0]!.profil, fenetreId: s.fenetres[0]!.id });
+    await dispatch(m, { type: "creerEspace", name: "Boulot", icon: "💼", private: false, profile: s.spaces[0]!.profile, windowId: s.windows[0]!.id });
     await pageShown(false);
     await pressKeys(m, "Meta+Shift+a");
     await pageShown(true);
     expect(await pageTabs()).toBe(1);
     // Firefox's ⇧⌘A (add-ons) never ran.
-    expect(Object.values((await state(m)).onglets).some((o) => o.url.startsWith("about:addons"))).toBe(false);
+    expect(Object.values((await state(m)).tabs).some((o) => o.url.startsWith("about:addons"))).toBe(false);
     expect(await m.execute<boolean>(`return gBrowser.browsers.some((b) => b.currentURI.spec.startsWith("about:addons"));`)).toBe(false);
   });
 
@@ -68,7 +68,7 @@ describe("Applications page", () => {
   it("compact mode: the Applications page takes the whole room, the bar comes back on the left", async () => {
     p = await openAppsPage(BLOCK);
     const m = p.m;
-    await dispatch(m, { type: "basculerCompact", fenetreId: await windowId() });
+    await dispatch(m, { type: "basculerCompact", windowId: await windowId() });
     await waitUi(m, `return doc.querySelector('[data-testid="barre-laterale"]').parentElement.inert;`);
     const box = await inUi<{ top: number; left: number }>(
       m,
@@ -122,7 +122,7 @@ describe("Applications page", () => {
 
   // applications.spec.ts:356
   it("Lancer from the page: En marche, port shown, window open; Arrêter closes it", async () => {
-    p = await openAppsPage(BLOCK, { lent: true });
+    p = await openAppsPage(BLOCK, { slow: true });
     const m = p.m;
     await rowButton(m, "essai", "Lancer");
     await rowState(m, "essai", "lancement");
@@ -147,7 +147,7 @@ describe("Applications page", () => {
     await rows(3);
     // Time for the projects' watch to be ready.
     await sleep(500);
-    writeProject(p.dataDir, "nouveau", { manifeste: { nom: "Nouveau" } });
+    writeProject(p.dataDir, "nouveau", { manifest: { name: "Nouveau" } });
     await waitUi(p.m, "return !!doc.querySelector(arguments[0])", [appRow("nouveau")]);
     await expect.poll(() => filterText("tout"), { timeout: 10_000 }).toBe("Tout 4");
   });
@@ -155,17 +155,17 @@ describe("Applications page", () => {
   // applications.spec.ts:387
   it("Docker slow to answer: a new project still appears live", async () => {
     // `docker info` answers in 8 s: the orphans' cleanup is not over when the project comes.
-    p = await openAppsPage(BLOCK, { env: { FAUX_DOCKER_LENT: "1" } });
+    p = await openAppsPage(BLOCK, { env: { FAKE_DOCKER_SLOW: "1" } });
     await rows(3);
     await sleep(500);
-    writeProject(p.dataDir, "nouveau", { manifeste: { nom: "Nouveau" } });
+    writeProject(p.dataDir, "nouveau", { manifest: { name: "Nouveau" } });
     await waitUi(p.m, "return !!doc.querySelector(arguments[0])", [appRow("nouveau")], 4_000);
     expect(stopsLog(p.dataDir)).not.toContain("WEBAIOS_APP=.*");
   });
 
   // applications.spec.ts:398
   it("without Docker: banner and Lancer disabled", async () => {
-    p = await openAppsPage(BLOCK, { env: { FAUX_DOCKER_ABSENT: "1" } });
+    p = await openAppsPage(BLOCK, { env: { FAKE_DOCKER_ABSENT: "1" } });
     await waitUi(p.m, "return doc.querySelector(arguments[0])?.textContent.includes(\"Docker n'est pas lancé\")", [PAGE]);
     const disabled = await waitUi<string>(
       p.m,
@@ -178,13 +178,13 @@ describe("Applications page", () => {
 
   // applications.spec.ts:406
   it("Docker slow to answer: the list shows without waiting", async () => {
-    p = await openAppsPage(BLOCK, { env: { FAUX_DOCKER_LENT: "1" } });
+    p = await openAppsPage(BLOCK, { env: { FAKE_DOCKER_SLOW: "1" } });
     await rows(3, 3_000);
   });
 
   // applications.spec.ts:412
   it("empty list: help text", async () => {
-    p = await openAppsPage(BLOCK, { projets: false });
+    p = await openAppsPage(BLOCK, { projects: false });
     await waitUi(p.m, "return doc.querySelector(arguments[0])?.textContent.includes(\"Demande à l'agent de tester un package ou de construire une app\")", [PAGE]);
     expect(await pageText()).toContain("Rien ici pour l'instant.");
   });

@@ -9,7 +9,7 @@ beforeEach(async () => { folder = await mkdtemp(join(tmpdir(), "composants-")); 
 afterEach(async () => { await rm(folder, { recursive: true, force: true }); });
 
 const decl = (name: string, extra: object = {}) =>
-  JSON.stringify({ nom: name, description: "Barres", proprietes: { donnees: { genre: "reference", description: "Les données", requis: true } }, ...extra });
+  JSON.stringify({ name: name, description: "Barres", properties: { data: { kind: "reference", description: "Les données", required: true } }, ...extra });
 async function write(name: string, json: string | null, html: string | null) {
   await mkdir(join(folder, name), { recursive: true });
   if (json !== null) await writeFile(join(folder, name, "composant.json"), json);
@@ -20,23 +20,23 @@ describe("readAgentComponents", () => {
   it("graphique-barres (composant.json + composant.html) is valid", async () => {
     await write("graphique-barres", decl("graphique-barres"), "<svg></svg>");
     const r = await readAgentComponents(folder);
-    expect(r.invalides).toEqual([]);
-    expect(r.valides).toHaveLength(1);
-    expect(r.valides[0]).toMatchObject({ nom: "graphique-barres", origine: "agent" });
-    expect(r.valides[0]!.proprietes.donnees).toMatchObject({ genre: "reference", requis: true });
+    expect(r.invalids).toEqual([]);
+    expect(r.valid).toHaveLength(1);
+    expect(r.valid[0]).toMatchObject({ name: "graphique-barres", origin: "agent" });
+    expect(r.valid[0]!.properties.donnees).toMatchObject({ kind: "reference", required: true });
   });
 
   it("composant.html absent : invalide « composant.html absent »", async () => {
     await write("sans-html", decl("sans-html"), null);
     const r = await readAgentComponents(folder);
-    expect(r.valides).toEqual([]);
-    expect(r.invalides).toEqual([{ nom: "sans-html", erreur: "composant.html absent" }]);
+    expect(r.valid).toEqual([]);
+    expect(r.invalids).toEqual([{ name: "sans-html", error: "composant.html absent" }]);
   });
 
   it("name different from the folder, name « tableau », kind « fonction », 300 KB html, symbolic link: invalid with a readable error", async () => {
     await write("autre", decl("pas-autre"), "<p></p>");
     await write("tableau", decl("tableau"), "<p></p>");
-    await write("fonc", decl("fonc", { proprietes: { f: { genre: "fonction", description: "x" } } }), "<p></p>");
+    await write("fonc", decl("fonc", { properties: { f: { kind: "fonction", description: "x" } } }), "<p></p>");
     await write("gros", decl("gros"), "x".repeat(300 * 1024));
     await write("cible", decl("cible"), "<p></p>");
     await mkdir(join(folder, "lien-dossier-cible"), { recursive: true });
@@ -44,14 +44,14 @@ describe("readAgentComponents", () => {
     await writeFile(join(folder, "lien-dossier-cible", "composant.json"), decl("lien-dossier-cible"));
     await symlink(join(folder, "cible"), join(folder, "lien"));
     const r = await readAgentComponents(folder);
-    const errors = Object.fromEntries(r.invalides.map((i) => [i.nom, i.erreur]));
-    expect(errors["autre"]).toMatch(/nom/);
-    expect(errors["tableau"]).toMatch(/intégré/);
+    const errors = Object.fromEntries(r.invalids.map((i) => [i.name, i.error]));
+    expect(errors["other"]).toMatch(/nom/);
+    expect(errors["table"]).toMatch(/intégré/);
     expect(errors["fonc"]).toMatch(/composant\.json invalide/);
-    expect(errors["gros"]).toMatch(/256 Ko/);
+    expect(errors["big"]).toMatch(/256 Ko/);
     expect(errors["lien-dossier-cible"]).toMatch(/composant\.html/);
-    expect(errors["lien"]).toBeUndefined();
-    expect(r.valides.map((v) => v.nom)).toEqual(["cible"]);
+    expect(errors["link"]).toBeUndefined();
+    expect(r.valid.map((v) => v.name)).toEqual(["cible"]);
     for (const e of Object.values(errors)) expect(e).not.toContain(folder);
   });
 
@@ -59,22 +59,22 @@ describe("readAgentComponents", () => {
     await write("a-casse", "{pas du json", "<p></p>");
     await write("b-bon", decl("b-bon"), "<p></p>");
     const r = await readAgentComponents(folder);
-    expect(r.valides.map((v) => v.nom)).toEqual(["b-bon"]);
-    expect(r.invalides).toEqual([{ nom: "a-casse", erreur: "composant.json illisible (pas du JSON valide)" }]);
+    expect(r.valid.map((v) => v.name)).toEqual(["b-bon"]);
+    expect(r.invalids).toEqual([{ name: "a-casse", error: "composant.json illisible (pas du JSON valide)" }]);
   });
 
   it("property names __proto__, with a line break, 13 properties, composant.json symbolic link: invalid", async () => {
-    const prop = { genre: "texte", description: "x" };
+    const prop = { kind: "texte", description: "x" };
     await write("proto", '{"nom":"proto","description":"d","proprietes":{"__proto__":{"genre":"texte","description":"x"}}}', "<p></p>");
-    await write("saut", decl("saut", { proprietes: { "a\nb": prop } }), "<p></p>");
+    await write("saut", decl("saut", { properties: { "a\nb": prop } }), "<p></p>");
     const thirteen = Object.fromEntries(Array.from({ length: 13 }, (_, i) => [`p${i}`, prop]));
-    await write("treize", decl("treize", { proprietes: thirteen }), "<p></p>");
+    await write("treize", decl("treize", { properties: thirteen }), "<p></p>");
     await write("lj", null, "<p></p>");
     await writeFile(join(folder, "lj", "reel.json"), decl("lj"));
     await symlink(join(folder, "lj", "reel.json"), join(folder, "lj", "composant.json"));
     const r = await readAgentComponents(folder);
-    expect(r.valides).toEqual([]);
-    const e = Object.fromEntries(r.invalides.map((i) => [i.nom, i.erreur]));
+    expect(r.valid).toEqual([]);
+    const e = Object.fromEntries(r.invalids.map((i) => [i.name, i.error]));
     expect(e["proto"]).toMatch(/composant\.json invalide/);
     expect(e["saut"]).toMatch(/composant\.json invalide/);
     expect(e["treize"]).toMatch(/12 propriétés/);
@@ -82,6 +82,6 @@ describe("readAgentComponents", () => {
   });
 
   it("dossier introuvable : rien", async () => {
-    expect(await readAgentComponents(join(folder, "absent"))).toEqual({ valides: [], invalides: [] });
+    expect(await readAgentComponents(join(folder, "absent"))).toEqual({ valid: [], invalids: [] });
   });
 });

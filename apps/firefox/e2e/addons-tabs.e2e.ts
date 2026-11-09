@@ -25,7 +25,7 @@ beforeEach(async () => {
 });
 afterEach(() => w?.close());
 
-const win = async () => (await state(m)).fenetres[0]!;
+const win = async () => (await state(m)).windows[0]!;
 
 async function waitState<T>(read: (s: BrowserState) => T, ok: (v: T) => boolean, ms = 10_000): Promise<T> {
   const deadline = Date.now() + ms;
@@ -36,7 +36,7 @@ async function waitState<T>(read: (s: BrowserState) => T, ok: (v: T) => boolean,
     await new Promise((r) => setTimeout(r, 100));
   }
 }
-const tabWith = (part: string) => waitState((s) => Object.values(s.onglets).find((o) => o.url.includes(part)), (o) => !!o) as Promise<Tab>;
+const tabWith = (part: string) => waitState((s) => Object.values(s.tabs).find((o) => o.url.includes(part)), (o) => !!o) as Promise<Tab>;
 const selectedId = () => m.execute<string | null>("return gBrowser.selectedTab.getAttribute('webaios-tab-id')");
 /** A chrome script returning `expr` about the about:addons page `win` of WebAiOs tab `id` (it lives in the parent process). */
 const onPage = (id: string, expr: string) =>
@@ -46,12 +46,12 @@ const VIEW = "win?.gViewController?.currentViewId ?? null";
 /** Three steps: the trigger page opens in space A, then the window goes to space B at once. */
 async function triggerFromA(query: string, profile: string): Promise<{ a: string; b: string }> {
   const windowId = (await win()).id;
-  const a = (await win()).espaceActif;
-  await dispatch(m, { type: "creerEspace", nom: "B", icone: "🅱", prive: false, profil: profile, fenetreId: windowId });
-  const b = (await win()).espaceActif;
-  await dispatch(m, { type: "activerEspace", fenetreId: windowId, id: a });
-  await dispatch(m, { type: "ouvrirOnglet", fenetreId: windowId, url: `${server.url}/a.html?${query}` });
-  await dispatch(m, { type: "activerEspace", fenetreId: windowId, id: b });
+  const a = (await win()).activeSpace;
+  await dispatch(m, { type: "creerEspace", name: "B", icon: "🅱", private: false, profile: profile, windowId: windowId });
+  const b = (await win()).activeSpace;
+  await dispatch(m, { type: "activerEspace", windowId: windowId, id: a });
+  await dispatch(m, { type: "ouvrirOnglet", windowId: windowId, url: `${server.url}/a.html?${query}` });
+  await dispatch(m, { type: "activerEspace", windowId: windowId, id: b });
   return { a, b };
 }
 
@@ -60,17 +60,17 @@ describe("tabs opened by add-ons", () => {
     await installAddon(m, probe());
     const { b } = await triggerFromA("ouvrir-onglet", "defaut");
     const opened = await tabWith("ouverte-par-sonde");
-    expect(opened.espaceId).toBe(b);
-    expect((await win()).espaceActif).toBe(b);
+    expect(opened.spaceId).toBe(b);
+    expect((await win()).activeSpace).toBe(b);
   });
 
   it("tabs.create({ active: true }) never changes the window's space", async () => {
     await installAddon(m, probe());
     const { b } = await triggerFromA("ouvrir-actif", "defaut");
     const opened = await tabWith("ouverte-active");
-    expect(opened.espaceId).toBe(b);
-    await waitState((s) => s.fenetres[0]!.actif[b], (id) => id === opened.id);
-    expect((await win()).espaceActif).toBe(b);
+    expect(opened.spaceId).toBe(b);
+    await waitState((s) => s.windows[0]!.active[b], (id) => id === opened.id);
+    expect((await win()).activeSpace).toBe(b);
     expect(await selectedId()).toBe(opened.id);
   });
 
@@ -80,8 +80,8 @@ describe("tabs opened by add-ons", () => {
     await m.execute("window.closedTabs = 0; gBrowser.tabContainer.addEventListener('TabClose', () => window.closedTabs++)");
     const { b } = await triggerFromA("ouvrir-onglet", "nouveau");
     const opened = await tabWith("ouverte-par-sonde");
-    expect(opened.espaceId).toBe(b);
-    const profileB = (await state(m)).espaces.find((e) => e.id === b)!.profil;
+    expect(opened.spaceId).toBe(b);
+    const profileB = (await state(m)).spaces.find((e) => e.id === b)!.profile;
     const container = await m.execute<number>(`return (async () => (await ChromeUtils.importESModule("${STORE}").ready).containerFor(arguments[0]))();`, [profileB]);
     const xul = await waitFor(
       m,
@@ -95,10 +95,10 @@ describe("tabs opened by add-ons", () => {
 
   it("tabs.create with a URL relative to the add-on is adopted", async () => {
     await installAddon(m, probe());
-    await dispatch(m, { type: "ouvrirOnglet", fenetreId: (await win()).id, url: `${server.url}/a.html?ouvrir-page` });
+    await dispatch(m, { type: "ouvrirOnglet", windowId: (await win()).id, url: `${server.url}/a.html?ouvrir-page` });
     const page = await tabWith("/page.html");
     expect(page.url).toMatch(/^moz-extension:\/\/.+\/page\.html$/);
-    await waitState((s) => s.onglets[page.id]?.titre, (t) => t === "Page de la sonde");
+    await waitState((s) => s.tabs[page.id]?.title, (t) => t === "Page de la sonde");
   });
 });
 
@@ -128,14 +128,14 @@ describe("options pages in a tab", () => {
     const page = await tabWith("/options.html");
     await waitFor(m, "return gBrowser.selectedTab.getAttribute('webaios-tab-id')", (v) => v === page.id);
     const windowId = (await win()).id;
-    await dispatch(m, { type: "ouvrirOnglet", fenetreId: windowId, url: `${server.url}/a.html` });
-    await dispatch(m, { type: "creerEspace", nom: "B", icone: "🅱", prive: false, profil: "defaut", fenetreId: windowId });
-    await dispatch(m, { type: "ouvrirOnglet", fenetreId: windowId, url: `${server.url}/b.html` });
+    await dispatch(m, { type: "ouvrirOnglet", windowId: windowId, url: `${server.url}/a.html` });
+    await dispatch(m, { type: "creerEspace", name: "B", icon: "🅱", private: false, profile: "defaut", windowId: windowId });
+    await dispatch(m, { type: "ouvrirOnglet", windowId: windowId, url: `${server.url}/b.html` });
     await openOptionsPage(id);
-    const f = await waitState((s) => s.fenetres[0]!, (x) => x.espaceActif === page.espaceId && x.actif[page.espaceId] === page.id);
-    expect(f.actif[f.espaceActif]).toBe(page.id);
+    const f = await waitState((s) => s.windows[0]!, (x) => x.activeSpace === page.spaceId && x.active[page.spaceId] === page.id);
+    expect(f.active[f.activeSpace]).toBe(page.id);
     expect(await selectedId()).toBe(page.id);
-    expect(Object.values((await state(m)).onglets).filter((o) => o.url.includes("/options.html"))).toHaveLength(1);
+    expect(Object.values((await state(m)).tabs).filter((o) => o.url.includes("/options.html"))).toHaveLength(1);
   });
 });
 
@@ -146,22 +146,22 @@ describe("about:addons", () => {
     const tab = await tabWith("about:addons");
     await waitFor(m, onPage(tab.id, VIEW), (v) => v === "addons://list/extension");
     const s = await state(m);
-    expect(Object.values(s.onglets).filter((o) => o.url.startsWith("about:addons"))).toHaveLength(1);
-    expect(s.fenetres[0]!.actif[s.fenetres[0]!.espaceActif]).toBe(tab.id);
+    expect(Object.values(s.tabs).filter((o) => o.url.startsWith("about:addons"))).toHaveLength(1);
+    expect(s.windows[0]!.active[s.windows[0]!.activeSpace]).toBe(tab.id);
     await waitFor(m, onPage(tab.id, `win.document.querySelector('addon-card[addon-id="button@webaios.test"]')?.textContent ?? ""`), (t: string) => t.includes("Bouton de test"));
   });
 
   it("an add-on's options open as WebAiOs tabs", async () => {
     const windowId = (await win()).id;
     const inTab = await installAddon(m, options({ inTab: true }));
-    await dispatch(m, { type: "ouvrirOnglet", fenetreId: windowId, url: `${server.url}/a.html?options` });
+    await dispatch(m, { type: "ouvrirOnglet", windowId: windowId, url: `${server.url}/a.html?options` });
     const page = await tabWith("/options.html");
     expect(page.url).toMatch(/^moz-extension:\/\/.+\/options\.html$/);
-    expect(page.espaceId).toBe((await win()).espaceActif);
+    expect(page.spaceId).toBe((await win()).activeSpace);
     await uninstallAddon(m, inTab);
 
     const embedded = await installAddon(m, options({ inTab: false }));
-    await dispatch(m, { type: "ouvrirOnglet", fenetreId: windowId, url: `${server.url}/a.html?options` });
+    await dispatch(m, { type: "ouvrirOnglet", windowId: windowId, url: `${server.url}/a.html?options` });
     const addons = await tabWith("about:addons");
     await waitFor(m, onPage(addons.id, VIEW), (v) => v === `addons://detail/${encodeURIComponent(embedded)}/preferences`);
   });
@@ -174,10 +174,10 @@ describe("about:addons", () => {
       return m.execute<string>("return window.webaiosWindow.fenetreId");
     });
     const tab = await tabWith("about:addons");
-    expect(tab.fenetreId).toBe(id2);
-    const after = (await state(m)).fenetres.find((f) => f.id === first.id)!;
-    expect(after.actif).toEqual(first.actif);
-    expect(after.ordre).toEqual(first.ordre);
-    expect(after.espaceActif).toBe(first.espaceActif);
+    expect(tab.windowId).toBe(id2);
+    const after = (await state(m)).windows.find((f) => f.id === first.id)!;
+    expect(after.active).toEqual(first.active);
+    expect(after.order).toEqual(first.order);
+    expect(after.activeSpace).toBe(first.activeSpace);
   });
 });

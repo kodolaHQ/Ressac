@@ -4,14 +4,14 @@
   import SiteIcon from "./SiteIcon.svelte";
   import { openMenu } from "./menu.svelte";
 
-  let { fenetre: win, grand: large = false }: { fenetre: WindowState; grand?: boolean } = $props();
+  let { window: win, large: large = false }: { window: WindowState; large?: boolean } = $props();
   const active = $derived.by(() => {
-    const id = win.actif[win.espaceActif];
-    return id ? appState.valeur?.onglets[id]?.lien?.id : undefined;
+    const id = win.active[win.activeSpace];
+    return id ? appState.value?.tabs[id]?.link?.id : undefined;
   });
 
   function open(f: Favorite) {
-    api.agir({ type: "ouvrirFavori", fenetreId: win.id, genre: "essentiel", id: f.id });
+    api.dispatch({ type: "ouvrirFavori", windowId: win.id, kind: "essentiel", id: f.id });
   }
 </script>
 
@@ -24,18 +24,18 @@
   ondragover={(e) => e.dataTransfer?.types.includes("application/x-webaios-onglet") && e.preventDefault()}
   ondrop={(e) => {
     const id = e.dataTransfer?.getData("application/x-webaios-onglet");
-    if (id) api.agir({ type: "ajouterEssentiel", id });
+    if (id) api.dispatch({ type: "ajouterEssentiel", id });
   }}
 >
-  {#each appState.valeur?.essentiels ?? [] as favorite (favorite.id)}
+  {#each appState.value?.essentials ?? [] as favorite (favorite.id)}
     <button
       data-testid="favori-{favorite.id}"
       class:actif={favorite.id === active}
-      title={favorite.titre}
+      title={favorite.title}
       onclick={() => open(favorite)}
-      oncontextmenu={(e) => openMenu(e, [{ libelle: "Retirer", agir: () => api.agir({ type: "retirerEssentiel", favoriId: favorite.id }) }])}
+      oncontextmenu={(e) => openMenu(e, [{ label: "Retirer", dispatch: () => api.dispatch({ type: "retirerEssentiel", favoriteId: favorite.id }) }])}
     >
-      <SiteIcon favicon={favorite.favicon} titre={favorite.titre} taille={large ? 32 : 18} />
+      <SiteIcon favicon={favorite.favicon} title={favorite.title} size={large ? 32 : 18} />
     </button>
   {/each}
 </div>

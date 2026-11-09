@@ -24,13 +24,13 @@ let dataDir: string;
 let profile: string;
 
 const url = (p: string, host = "vidola-a.localhost") => server.url(host, p);
-const declaration = (start = "/episode/4", extra: object = {}) => ({ nom: "Vidola", adresse: url(start), domaines: ["vidola-a.localhost"], connexion: ["compte.localhost"], reprise: true, ...extra });
+const declaration = (start = "/episode/4", extra: object = {}) => ({ name: "Vidola", url: url(start), domains: ["vidola-a.localhost"], login: ["compte.localhost"], resume: true, ...extra });
 
 const inStore = <T = unknown>(body: string, args: unknown[] = []) =>
   m.execute<T>(`return (async () => { const store = await ChromeUtils.importESModule("${STORE}").ready; ${body} })();`, args);
 const memoryFile = (id = "vidola") => path.join(dataDir, "sites", id, "memoire.json");
 /** memoire.json's positions (written 500 ms after a change), or null. */
-const positions = (id = "vidola"): Record<string, { t: number; duree: number }> | null => (existsSync(memoryFile(id)) ? JSON.parse(readFileSync(memoryFile(id), "utf8")).positions : null);
+const positions = (id = "vidola"): Record<string, { t: number; duration: number }> | null => (existsSync(memoryFile(id)) ? JSON.parse(readFileSync(memoryFile(id), "utf8")).positions : null);
 const viewUrl = (id: string) => m.execute<string | null>(`return ${siteWindowExpr(id)}?.gBrowser?.selectedBrowser.currentURI?.spec ?? null;`);
 const view = <T = unknown>(code: string, o: { frame?: number } = {}) => inSiteView<T>(m, "vidola", `return ${code};`, { frame: o.frame }).catch(() => null);
 /** In the `frame`-th frame of the view: `code`, with `v` the video. */
@@ -52,19 +52,19 @@ async function openAndWait(path: string, id = "vidola") {
 }
 
 /** A fresh app and browser (each test: the memory is the host's, read once). `accord: false` leaves the card up. */
-async function start(o: { accord?: boolean; decl?: object; positions?: Record<string, { t: number; duree: number }> } = {}) {
+async function start(o: { grant?: boolean; decl?: object; positions?: Record<string, { t: number; duration: number }> } = {}) {
   dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
   profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
   const decl = o.decl ?? declaration();
   writeSite(dataDir, "vidola", { declaration: decl });
-  if (o.accord !== false) await grantSite(dataDir, "vidola", decl);
+  if (o.grant !== false) await grantSite(dataDir, "vidola", decl);
   if (o.positions) {
     const when = new Date().toISOString();
     mkdirSync(path.dirname(memoryFile()), { recursive: true });
-    writeFileSync(memoryFile(), JSON.stringify({ version: 1, valeurs: {}, positions: Object.fromEntries(Object.entries(o.positions).map(([k, v]) => [k, { ...v, quand: when }])) }));
+    writeFileSync(memoryFile(), JSON.stringify({ version: 1, values: {}, positions: Object.fromEntries(Object.entries(o.positions).map(([k, v]) => [k, { ...v, when: when }])) }));
   }
   const actor = testActor(profile);
-  w = await launchWebAiOs({ dataDir, profile, env: { WEBAIOS_TEST_ADRESSES_LOCALES: "1", ...actor.env }, prefs: actor.prefs });
+  w = await launchWebAiOs({ dataDir, profile, env: { WEBAIOS_TEST_LOCAL_ADDRESSES: "1", ...actor.env }, prefs: actor.prefs });
   m = w.marionette;
   await m.setContext("chrome");
   await waitReady(m);
@@ -74,26 +74,26 @@ async function start(o: { accord?: boolean; decl?: object; positions?: Record<st
 beforeAll(async () => {
   server = await startSitesServer();
   const pageReader = '<title>Lecteur</title><video id="v" muted autoplay preload="auto" src="/silence-90.wav"></video>';
-  server.definir("lecteur.localhost", "/lecteur.html", pageReader);
-  server.definir("lecteur.localhost", "/silence-90.wav", serveWav(silenceWav(90)));
-  server.definir("vidola-a.localhost", "/episode/4", `<title>Épisode 4</title><iframe id="lecteur" src="${url("/lecteur.html", "lecteur.localhost")}"></iframe>`);
+  server.define("lecteur.localhost", "/lecteur.html", pageReader);
+  server.define("lecteur.localhost", "/silence-90.wav", serveWav(silenceWav(90)));
+  server.define("vidola-a.localhost", "/episode/4", `<title>Épisode 4</title><iframe id="lecteur" src="${url("/lecteur.html", "lecteur.localhost")}"></iframe>`);
   // An advert of 75 s (another domain, another duration) before the player of the episode.
-  server.definir(
+  server.define(
     "vidola-a.localhost",
     "/episode/7",
     `<title>Épisode 7</title><iframe id="pub" src="${url("/pub-video", "pub.localhost")}"></iframe><iframe id="lecteur" src="${url("/lecteur.html", "lecteur.localhost")}"></iframe>`,
   );
-  server.definir("pub.localhost", "/pub-video", '<title>Pub</title><video id="v" muted autoplay preload="auto" src="/pub-75.wav"></video>');
-  server.definir("pub.localhost", "/pub-75.wav", serveWav(silenceWav(75)));
+  server.define("pub.localhost", "/pub-video", '<title>Pub</title><video id="v" muted autoplay preload="auto" src="/pub-75.wav"></video>');
+  server.define("pub.localhost", "/pub-75.wav", serveWav(silenceWav(75)));
   // The player is an about:srcdoc frame (a player that writes its own frame).
-  server.definir(
+  server.define(
     "vidola-a.localhost",
     "/srcdoc",
     `<title>Srcdoc</title><iframe id="lecteur" srcdoc='<video id="v" muted autoplay preload="auto" src="${url("/silence-90.wav", "lecteur.localhost")}"></video>'></iframe>`,
   );
   // A video the page starts itself: no autoplay, so the test decides which events happen.
-  server.definir("vidola-a.localhost", "/manuel", `<title>Manuel</title><video id="v" muted preload="auto" src="${url("/silence-90.wav", "lecteur.localhost")}"></video>`);
-  server.definir("compte.localhost", "/connexion", "<title>Connexion</title>");
+  server.define("vidola-a.localhost", "/manuel", `<title>Manuel</title><video id="v" muted preload="auto" src="${url("/silence-90.wav", "lecteur.localhost")}"></video>`);
+  server.define("compte.localhost", "/connexion", "<title>Connexion</title>");
 }, 30_000);
 afterEach(async () => {
   try {
@@ -105,7 +105,7 @@ afterEach(async () => {
     if (profile) await rm(profile, { recursive: true, force: true });
   }
 });
-afterAll(() => server?.fermer());
+afterAll(() => server?.close());
 
 describe("video resume", () => {
   it('the test seeks the video to 70 s then pauses: positions["/episode/4"].t is about 70, nothing under the player\'s address; reloading: the video starts and currentTime is about 65 (sites.spec.ts:1256)', async () => {
@@ -118,7 +118,7 @@ describe("video resume", () => {
     await expect.poll(() => positions()?.["/episode/4"]?.t ?? null, { timeout: 10_000 }).toBeCloseTo(70, 0);
     const p = positions()!;
     expect(Object.keys(p)).toEqual(["/episode/4"]);
-    expect(p["/episode/4"]!.duree).toBeCloseTo(90, 0);
+    expect(p["/episode/4"]!.duration).toBeCloseTo(90, 0);
     // The page reloaded: the player, loaded again in its frame, resumes 5 s before. (The player is asked only once the
     // page has loaded, frames included: a frame that goes away during a call never answers.)
     await view("(window.marque = 1, location.reload(), 1)");
@@ -128,7 +128,7 @@ describe("video resume", () => {
   });
 
   it("at 88 s then pause: the position is forgotten (sites.spec.ts:1275)", async () => {
-    await start({ positions: { "/episode/4": { t: 70, duree: 90 } } });
+    await start({ positions: { "/episode/4": { t: 70, duration: 90 } } });
     await openAndWait("/episode/4");
     // Resumed at 65 from the kept position.
     await expect.poll(() => player("v && v.currentTime >= 64.9"), { timeout: 15_000 }).toBe(true);
@@ -138,7 +138,7 @@ describe("video resume", () => {
   });
 
   it("without a grant (« Ouvrir sans retouches »): no position noted, nothing resumed (sites.spec.ts:1286)", async () => {
-    await start({ accord: false, positions: { "/episode/4": { t: 70, duree: 90 } } });
+    await start({ grant: false, positions: { "/episode/4": { t: 70, duration: 90 } } });
     await openSite("vidola");
     await expect.poll(() => inStore<string | null>(`return store.sites.viewOf("vidola");`), { timeout: 15_000 }).toBe("accord");
     await inSiteBar(m, "vidola", `doc.querySelector('[data-testid="refuser-site"]').click(); return true;`);
@@ -149,11 +149,11 @@ describe("video resume", () => {
     expect(await player("v.currentTime")).toBeLessThan(10);
     expect(await seekThenPause(40)).toBeCloseTo(40, 0);
     await sleep(1200);
-    expect(positions()).toEqual({ "/episode/4": { t: 70, duree: 90, quand: expect.any(String) } });
+    expect(positions()).toEqual({ "/episode/4": { t: 70, duration: 90, when: expect.any(String) } });
   });
 
   it("an advert of 75 s in another frame: it does not take the position, neither replaces nor erases it by reaching its end; the 90 s player resumes (sites.spec.ts:1301)", async () => {
-    await start({ decl: declaration("/episode/7"), positions: { "/episode/7": { t: 70, duree: 90 } } });
+    await start({ decl: declaration("/episode/7"), positions: { "/episode/7": { t: 70, duration: 90 } } });
     await openAndWait("/episode/7");
     await expect.poll(() => player("v ? v.duration : 0", 0), { timeout: 15_000 }).toBe(75);
     // The player resumes at 65; the advert stays at 0.
@@ -167,14 +167,14 @@ describe("video resume", () => {
     expect(await seekThenPause(30, 0)).toBeCloseTo(30, 0);
     expect(await seekThenPause(74.9, 0)).toBeCloseTo(74.9, 0);
     await sleep(2000);
-    expect(positions()).toEqual({ "/episode/7": { t: expect.closeTo(67, 0), duree: expect.closeTo(90, 0), quand: expect.any(String) } });
+    expect(positions()).toEqual({ "/episode/7": { t: expect.closeTo(67, 0), duration: expect.closeTo(90, 0), when: expect.any(String) } });
     // The episode is still noted afterwards.
     expect(await seekThenPause(75, 1)).toBeCloseTo(75, 0);
     await expect.poll(() => positions()?.["/episode/7"]?.t ?? null, { timeout: 10_000 }).toBeCloseTo(75, 0);
   });
 
   it("a video in an about:srcdoc player frame resumes when the app declares no cadres", async () => {
-    await start({ decl: declaration("/srcdoc"), positions: { "/srcdoc": { t: 70, duree: 90 } } });
+    await start({ decl: declaration("/srcdoc"), positions: { "/srcdoc": { t: 70, duration: 90 } } });
     await openAndWait("/srcdoc");
     await expect.poll(() => player("location.href", 0), { timeout: 15_000 }).toBe("about:srcdoc");
     await waitDuration(90, 0);
@@ -200,8 +200,8 @@ describe("video resume", () => {
   });
 
   it("the sign-in window of the same container notes and resumes nothing", async () => {
-    server.definir("vidola-a.localhost", "/vide", "<title>Vide</title>");
-    await start({ decl: declaration("/vide"), positions: { "/episode/4": { t: 70, duree: 90 } } });
+    server.define("vidola-a.localhost", "/vide", "<title>Vide</title>");
+    await start({ decl: declaration("/vide"), positions: { "/episode/4": { t: 70, duration: 90 } } });
     await openAndWait("/vide");
     await inStore(`store.sites.routeOpen("vidola", arguments[0]);`, [url("/connexion", "compte.localhost")]);
     const small = `[...Services.wm.getEnumerator("navigator:browser")].find((x) => x.document.documentElement.getAttribute("webaios-site-small") === "vidola")?.gBrowser.selectedBrowser`;
@@ -216,14 +216,14 @@ describe("video resume", () => {
     // A pause at 50 notes nothing over the kept 70.
     await inPlayer('(document.getElementById("v").currentTime = 50, document.getElementById("v").play().catch(() => {}), document.getElementById("v").pause(), 1)');
     await sleep(1800);
-    expect(positions()).toEqual({ "/episode/4": { t: 70, duree: 90, quand: expect.any(String) } });
+    expect(positions()).toEqual({ "/episode/4": { t: 70, duration: 90, when: expect.any(String) } });
   });
 
   it("after a host restart memory and resume still work in the open app (Review Focus 5)", async () => {
-    await start({ decl: declaration("/episode/4", { retouches: [{ correspond: ["/episode/*"], js: ["m.js"] }] }), positions: { "/episode/4": { t: 70, duree: 90 } } });
+    await start({ decl: declaration("/episode/4", { tweaks: [{ matches: ["/episode/*"], js: ["m.js"] }] }), positions: { "/episode/4": { t: 70, duration: 90 } } });
     writeSite(dataDir, "vidola", {
-      declaration: declaration("/episode/4", { retouches: [{ correspond: ["/episode/*"], js: ["m.js"] }] }),
-      fichiers: {
+      declaration: declaration("/episode/4", { tweaks: [{ matches: ["/episode/*"], js: ["m.js"] }] }),
+      files: {
         "retouches/m.js": 'document.addEventListener("essai", () => webaiosSite.retenir("k", 1).then(() => (document.documentElement.dataset.r = "ok"), (e) => (document.documentElement.dataset.r = "refus:" + e.message)));',
       },
     });

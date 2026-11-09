@@ -138,8 +138,8 @@ describe("memory summary", () => {
   );
   it("groups by constructor and ignores types outside the list", () => {
     expect(a.total).toBe(1179);
-    expect(a.parConstructeur[0]).toEqual({ nom: "Fuite", nombre: 2, taille: 150 });
-    expect(a.parConstructeur.map((c) => c.nom)).not.toContain("Code");
+    expect(a.byConstructor[0]).toEqual({ name: "Fuite", count: 2, size: 150 });
+    expect(a.byConstructor.map((c) => c.name)).not.toContain("Code");
   });
   it("does not pass on the content of strings", () => {
     const r = summarizeSnapshot(
@@ -148,7 +148,7 @@ describe("memory summary", () => {
         ["string", "autre contenu", 20],
       ]),
     );
-    expect(r.parConstructeur).toEqual([{ nom: "(chaîne)", nombre: 2, taille: 30 }]);
+    expect(r.byConstructor).toEqual([{ name: "(chaîne)", count: 2, size: 30 }]);
   });
   it("memoryText lists the constructors", () => {
     expect(memoryText(a)).toContain("Fuite");
@@ -170,7 +170,7 @@ const census = (objects: Record<string, [number, number]>, total: number): strin
   JSON.stringify({
     format: "webaios-firefox-census",
     total,
-    parConstructeur: Object.entries(objects).map(([name, [count, size]]) => ({ nom: name, nombre: count, taille: size })),
+    byConstructor: Object.entries(objects).map(([name, [count, size]]) => ({ name: name, count: count, size: size })),
   });
 
 describe("recensement Firefox", () => {
@@ -179,8 +179,8 @@ describe("recensement Firefox", () => {
       census({ Function: [10, 500], Object: [40, 4000], Array: [5, 900], strings: [20, 2000] }, 9000),
     );
     expect(r.total).toBe(9000);
-    expect(r.parConstructeur.map((c) => c.nom)).toEqual(["Object", "strings", "Array", "Function"]);
-    expect(r.parConstructeur[0]).toEqual({ nom: "Object", nombre: 40, taille: 4000 });
+    expect(r.byConstructor.map((c) => c.name)).toEqual(["Object", "strings", "Array", "Function"]);
+    expect(r.byConstructor[0]).toEqual({ name: "Object", count: 40, size: 4000 });
   });
   it("compareMemory on two Firefox censuses: the type that grows comes first", () => {
     const a = summarizeSnapshot(census({ Object: [40, 4000], Array: [5, 900] }, 5000));

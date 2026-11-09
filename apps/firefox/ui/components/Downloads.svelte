@@ -3,7 +3,7 @@
   import type { Download } from "../../shared/model";
   import { api, downloads } from "../state.svelte";
 
-  let { fermer: close }: { fermer: () => void } = $props();
+  let { close: close }: { close: () => void } = $props();
 
   function size(bytes: number): string {
     if (bytes < 1024) return `${bytes} o`;
@@ -12,7 +12,7 @@
     return `${(bytes / 1024 ** 3).toFixed(2)} Go`;
   }
 
-  const LABELS: Record<Download["etat"], string> = {
+  const LABELS: Record<Download["state"], string> = {
     "en-cours": "En cours",
     termine: "Terminé",
     annule: "Annulé",
@@ -25,23 +25,23 @@
 <section class="telechargements" data-testid="telechargements" aria-label="Téléchargements">
   <header>
     <h1>Téléchargements</h1>
-    <button class="fermer" aria-label="Fermer les téléchargements" onclick={close}><Icon nom="fermer" taille={12} /></button>
+    <button class="fermer" aria-label="Fermer les téléchargements" onclick={close}><Icon name="close" size={12} /></button>
   </header>
   <ul>
-    {#each downloads.liste as t (t.id)}
-      <li data-testid="telechargement" data-etat={t.etat}>
+    {#each downloads.list as t (t.id)}
+      <li data-testid="telechargement" data-etat={t.state}>
         <div class="infos">
-          <span class="nom">{t.nom}</span>
+          <span class="nom">{t.name}</span>
           <span class="detail">
-            {LABELS[t.etat]} · {t.etat === "en-cours" && t.total ? `${size(t.recus)} sur ${size(t.total)}` : size(t.recus)}
+            {LABELS[t.state]} · {t.state === "en-cours" && t.total ? `${size(t.received)} sur ${size(t.total)}` : size(t.received)}
           </span>
-          {#if t.etat === "en-cours"}
-            <progress max={t.total || undefined} value={t.total ? t.recus : undefined}></progress>
+          {#if t.state === "en-cours"}
+            <progress max={t.total || undefined} value={t.total ? t.received : undefined}></progress>
           {/if}
         </div>
-        {#if t.etat === "termine"}<button onclick={() => api.telechargements.ouvrir(t.id)}>Ouvrir</button>{/if}
-        {#if t.etat === "en-cours"}<button onclick={() => api.telechargements.annuler(t.id)}>Annuler</button>{/if}
-        <button onclick={() => api.telechargements.montrer(t.id)}>Afficher dans le Finder</button>
+        {#if t.state === "termine"}<button onclick={() => api.downloads.open(t.id)}>Ouvrir</button>{/if}
+        {#if t.state === "en-cours"}<button onclick={() => api.downloads.cancel(t.id)}>Annuler</button>{/if}
+        <button onclick={() => api.downloads.show(t.id)}>Afficher dans le Finder</button>
       </li>
     {:else}
       <p class="vide">Aucun téléchargement pendant cette session.</p>

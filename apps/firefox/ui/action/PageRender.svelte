@@ -23,8 +23,8 @@
    * A rendered page (resolved by the kernel: references computed, links and images checked). Everything shows as text,
    * never as HTML. `composants` false (preview): the agent's components are not loaded, a neutral frame replaces them.
    */
-  let { page, action, execution, composants: components = true }: { page: RenderedPage; action: string; execution: string; composants?: boolean } = $props();
-  const ctx: PageContext = $derived({ action, execution });
+  let { page, action, run, components: components = true }: { page: RenderedPage; action: string; run: string; components?: boolean } = $props();
+  const ctx: PageContext = $derived({ action, run });
 
   // A block's props are typed by each component (shapes fixed by the kernel's pages/resolve.ts).
   const p = (b: RenderedBlock) => ("props" in b ? b.props : {}) as never;
@@ -34,45 +34,45 @@
   {#each blocks ?? [] as b, i (i)}
     {#if "message" in b}
       <BlockError message={b.message} />
-    {:else if b.composant === "titre"}
+    {:else if b.component === "titre"}
       <Title p={p(b)} />
-    {:else if b.composant === "paragraphe"}
+    {:else if b.component === "paragraphe"}
       <Paragraph p={p(b)} />
-    {:else if b.composant === "encadre"}
+    {:else if b.component === "encadre"}
       <Boxed p={p(b)} />
-    {:else if b.composant === "chiffre"}
+    {:else if b.component === "chiffre"}
       <Figure p={p(b)} />
-    {:else if b.composant === "chiffres"}
+    {:else if b.component === "chiffres"}
       <Figures p={p(b)} />
-    {:else if b.composant === "liste"}
+    {:else if b.component === "liste"}
       <List p={p(b)} {ctx} />
-    {:else if b.composant === "cartes"}
+    {:else if b.component === "cartes"}
       <Cards p={p(b)} {ctx} />
-    {:else if b.composant === "tableau"}
+    {:else if b.component === "tableau"}
       <Tableau p={p(b)} {ctx} />
-    {:else if b.composant === "champs"}
+    {:else if b.component === "champs"}
       <Champs p={p(b)} />
-    {:else if b.composant === "etiquettes"}
+    {:else if b.component === "etiquettes"}
       <Labels p={p(b)} />
-    {:else if b.composant === "lien"}
+    {:else if b.component === "lien"}
       <Link p={p(b)} {ctx} />
-    {:else if b.composant === "groupe"}
-      <Group p={p(b)}><div class="pa-blocs">{@render list(b.blocs)}</div></Group>
-    {:else if b.composant === "colonnes"}
+    {:else if b.component === "groupe"}
+      <Group p={p(b)}><div class="pa-blocs">{@render list(b.blocks)}</div></Group>
+    {:else if b.component === "colonnes"}
       <Columns>
-        {#snippet gauche()}{@render list(b.gauche)}{/snippet}
-        {#snippet droite()}{@render list(b.droite)}{/snippet}
+        {#snippet left()}{@render list(b.left)}{/snippet}
+        {#snippet right()}{@render list(b.right)}{/snippet}
       </Columns>
     {:else if components}
-      <ComponentFrame nom={b.composant} props={b.props} />
+      <ComponentFrame name={b.component} props={b.props} />
     {:else}
-      <div class="pa-composant-apercu" data-testid="bloc-{b.composant}">{b.composant}</div>
+      <div class="pa-composant-apercu" data-testid="bloc-{b.component}">{b.component}</div>
     {/if}
   {/each}
 {/snippet}
 
 <div class="page-action" data-testid="rendu-page">
-  {#if page.secours}<p class="pa-mention" data-testid="mention-secours">{FALLBACK_MENTION}</p>{/if}
-  {#if page.blocs.length === 0}<p class="pa-vide">{NO_RESULT}</p>{/if}
-  <div class="pa-blocs">{@render list(page.blocs)}</div>
+  {#if page.fallback}<p class="pa-mention" data-testid="mention-secours">{FALLBACK_MENTION}</p>{/if}
+  {#if page.blocks.length === 0}<p class="pa-vide">{NO_RESULT}</p>{/if}
+  <div class="pa-blocs">{@render list(page.blocks)}</div>
 </div>

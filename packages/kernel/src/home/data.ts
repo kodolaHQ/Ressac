@@ -66,7 +66,7 @@ function stateUnderLock<T>(widgetsFolder: string, id: string, f: () => Promise<T
 
 async function writeStateWithoutLock(widgetsFolder: string, id: string, state: WidgetState): Promise<void> {
   // Hour tracking survives all state writes (running, error, grant, workshop stopped).
-  const final = state.heures ? state : { ...state, ...(await currentHours(widgetsFolder, id)) };
+  const final = state.hours ? state : { ...state, ...(await currentHours(widgetsFolder, id)) };
   await writeAtomic(join(widgetsFolder, id, "etat.json"), JSON.stringify(final, null, 2));
 }
 
@@ -87,7 +87,7 @@ export function changeWidgetState(widgetsFolder: string, id: string, f: (state: 
   });
 }
 
-async function currentHours(widgetsFolder: string, id: string): Promise<Pick<WidgetState, "heures">> {
-  const { heures: hours } = await readWidgetState(widgetsFolder, id);
-  return hours ? { heures: hours } : {};
+async function currentHours(widgetsFolder: string, id: string): Promise<Pick<WidgetState, "hours">> {
+  const { hours: hours } = await readWidgetState(widgetsFolder, id);
+  return hours ? { hours: hours } : {};
 }

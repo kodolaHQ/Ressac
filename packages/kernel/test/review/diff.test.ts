@@ -23,22 +23,22 @@ describe("parserDiff", () => {
   test("two-block patch: starts, counts, marks and old/new numbers of each line", () => {
     const blocks = parserDiff(patch);
     expect(blocks).toHaveLength(2);
-    expect(blocks[0]).toMatchObject({ ancienDebut: 1, ancienNombre: 3, nouveauDebut: 1, nouveauNombre: 3 });
-    expect(blocks[0]!.lignes).toEqual([
-      { marque: " ", texte: "a", ancien: 1, nouveau: 1 },
-      { marque: "-", texte: "b", ancien: 2, nouveau: null },
-      { marque: "+", texte: "B", ancien: null, nouveau: 2 },
-      { marque: " ", texte: "c", ancien: 3, nouveau: 3 },
+    expect(blocks[0]).toMatchObject({ oldStart: 1, oldCount: 3, newStart: 1, newCount: 3 });
+    expect(blocks[0]!.lines).toEqual([
+      { mark: " ", text: "a", old: 1, new: 1 },
+      { mark: "-", text: "b", old: 2, new: null },
+      { mark: "+", text: "B", old: null, new: 2 },
+      { mark: " ", text: "c", old: 3, new: 3 },
     ]);
-    expect(blocks[1]).toMatchObject({ ancienDebut: 10, ancienNombre: 2, nouveauDebut: 10, nouveauNombre: 3 });
-    expect(blocks[1]!.lignes.map((l) => [l.marque, l.ancien, l.nouveau])).toEqual([[" ", 10, 10], ["+", null, 11], [" ", 11, 12]]);
+    expect(blocks[1]).toMatchObject({ oldStart: 10, oldCount: 2, newStart: 10, newCount: 3 });
+    expect(blocks[1]!.lines.map((l) => [l.mark, l.old, l.new])).toEqual([[" ", 10, 10], ["+", null, 11], [" ", 11, 12]]);
   });
   test("a « \\ No newline at end of file » line is not a line", () => {
-    expect(parserDiff(patch)[1]!.lignes).toHaveLength(3);
+    expect(parserDiff(patch)[1]!.lines).toHaveLength(3);
   });
   test("header without a count: « @@ -5 +5,0 @@ »", () => {
     const b = parserDiff("@@ -5 +4,0 @@\n-x\n")[0]!;
-    expect(b).toMatchObject({ ancienDebut: 5, ancienNombre: 1, nouveauDebut: 4, nouveauNombre: 0 });
+    expect(b).toMatchObject({ oldStart: 5, oldCount: 1, newStart: 4, newCount: 0 });
   });
   test("newPosition of a deleted line = number of the new line that follows", () => {
     const b = parserDiff(patch)[0]!;

@@ -19,7 +19,7 @@ export const GECKO_ID = "browser_specific_settings.gecko.id refusé : WebAiOs po
 export const STORE_ABSENT = "Le Chrome Web Store n'est pas pris en charge : installe tes modules depuis addons.mozilla.org.";
 
 export interface AmoKey {
-  emetteur: string;
+  emitter: string;
   secret: string;
 }
 
@@ -30,18 +30,18 @@ export const KEYCHAIN_DELAY_MS = 10_000;
  * Test: WEBAIOS_TEST_AMO_URL set → WEBAIOS_TEST_AMO_CLES ("emetteur:secret") or null; else the keychain (service webaios-amo),
  * null when absent or too slow. `commande` and `delai` are only there for tests.
  */
-export async function readAmoKey(env: NodeJS.ProcessEnv = process.env, o: { commande?: string; delai?: number } = {}): Promise<AmoKey | null> {
+export async function readAmoKey(env: NodeJS.ProcessEnv = process.env, o: { command?: string; delay?: number } = {}): Promise<AmoKey | null> {
   if (env.WEBAIOS_TEST_AMO_URL) {
     const keys = env.WEBAIOS_TEST_AMO_CLES;
     // The issuer itself holds colons (user:<id>:<hash>): the secret is what follows the last one.
     const i = keys?.lastIndexOf(":") ?? -1;
-    return keys && i > 0 && i < keys.length - 1 ? { emetteur: keys.slice(0, i), secret: keys.slice(i + 1) } : null;
+    return keys && i > 0 && i < keys.length - 1 ? { emitter: keys.slice(0, i), secret: keys.slice(i + 1) } : null;
   }
   try {
-    const security = (args: string[]) => run(o.commande ?? "security", ["find-generic-password", "-s", "webaios-amo", ...args], { timeout: o.delai ?? KEYCHAIN_DELAY_MS });
+    const security = (args: string[]) => run(o.command ?? "security", ["find-generic-password", "-s", "webaios-amo", ...args], { timeout: o.delay ?? KEYCHAIN_DELAY_MS });
     const [{ stdout: attrs }, { stdout: secret }] = await Promise.all([security([]), security(["-w"])]);
     const issuer = /"acct"<blob>="([^"]*)"/.exec(attrs)?.[1];
-    return issuer && secret.trim() ? { emetteur: issuer, secret: secret.trim() } : null;
+    return issuer && secret.trim() ? { emitter: issuer, secret: secret.trim() } : null;
   } catch {
     // Absent, refused or timed out: the error holds the command's output, so it is never logged.
     return null;
@@ -53,7 +53,7 @@ function token(k: AmoKey): string {
   const b64 = (b: Buffer | string) => Buffer.from(b).toString("base64url");
   const iat = Math.floor(Date.now() / 1000);
   const head = b64(JSON.stringify({ alg: "HS256", typ: "JWT" }));
-  const payload = b64(JSON.stringify({ iss: k.emetteur, jti: randomUUID(), iat, exp: iat + 60 }));
+  const payload = b64(JSON.stringify({ iss: k.emitter, jti: randomUUID(), iat, exp: iat + 60 }));
   return `${head}.${payload}.${b64(createHmac("sha256", k.secret).update(`${head}.${payload}`).digest())}`;
 }
 
@@ -68,16 +68,16 @@ export async function sign(o: {
   xpi: string;
   guid: string;
   version: string;
-  cle: AmoKey;
+  key: AmoKey;
   base: string;
   signal?: AbortSignal;
-  sortie: string;
-  delai?: number;
-  pasMs?: number;
+  output: string;
+  delay?: number;
+  stepMs?: number;
 }): Promise<void> {
   const api = `${o.base}/api/v5`;
-  const end = Date.now() + (o.delai ?? SIGNATURE_DELAY_MS);
-  const step = o.pasMs ?? 2000;
+  const end = Date.now() + (o.delay ?? SIGNATURE_DELAY_MS);
+  const step = o.stepMs ?? 2000;
   const addon = `/addons/addon/${encodeURIComponent(o.guid)}/`;
 
   async function amo(method: string, path: string, payload?: FormData | object): Promise<{ status: number; body: any }> {
@@ -85,7 +85,7 @@ export async function sign(o: {
     try {
       res = await fetch(path.startsWith("http") ? path : api + path, {
         method,
-        headers: { Authorization: `JWT ${token(o.cle)}`, ...(payload && !(payload instanceof FormData) ? { "Content-Type": "application/json" } : {}) },
+        headers: { Authorization: `JWT ${token(o.key)}`, ...(payload && !(payload instanceof FormData) ? { "Content-Type": "application/json" } : {}) },
         body: payload instanceof FormData ? payload : payload ? JSON.stringify(payload) : undefined,
         signal: o.signal,
       });
@@ -147,11 +147,11 @@ export async function sign(o: {
     if (v?.file?.status && v.file.status !== "unreviewed") throw denial(r);
     await wait();
   }
-  const dl = await fetch(v.file.url, { headers: { Authorization: `JWT ${token(o.cle)}` }, signal: o.signal }).catch((e) => {
+  const dl = await fetch(v.file.url, { headers: { Authorization: `JWT ${token(o.key)}` }, signal: o.signal }).catch((e) => {
     if (o.signal?.aborted) throw e;
     throw new SignatureError(signatureImpossible((e as Error).message));
   });
   if (!dl.ok) throw new SignatureError(signatureImpossible(`HTTP ${dl.status}`));
-  await mkdir(path.dirname(o.sortie), { recursive: true });
-  await writeFile(o.sortie, Buffer.from(await dl.arrayBuffer()));
+  await mkdir(path.dirname(o.output), { recursive: true });
+  await writeFile(o.output, Buffer.from(await dl.arrayBuffer()));
 }

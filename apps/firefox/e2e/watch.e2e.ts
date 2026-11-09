@@ -46,11 +46,11 @@ const html = (res: ServerResponse, body: string) => res.writeHead(200, { "Conten
 
 /** Five ads of two models: three Clio 4, two 208. */
 const ADS = [
-  { n: 1, titre: "Renault Clio 4 – 6 500 €" },
-  { n: 2, titre: "Peugeot 208 – 7 200 €" },
-  { n: 3, titre: "Renault Clio 4 – 5 900 €" },
-  { n: 4, titre: "Peugeot 208 – 6 800 €" },
-  { n: 5, titre: "Renault Clio 4 – 7 900 €" },
+  { n: 1, title: "Renault Clio 4 – 6 500 €" },
+  { n: 2, title: "Peugeot 208 – 7 200 €" },
+  { n: 3, title: "Renault Clio 4 – 5 900 €" },
+  { n: 4, title: "Peugeot 208 – 6 800 €" },
+  { n: 5, title: "Renault Clio 4 – 7 900 €" },
 ];
 
 /** The site's and fake servers' settings, reset before each test (the tests of a file run one after the other). */
@@ -73,14 +73,14 @@ beforeAll(async () => {
     if (p === "/recherche")
       return html(
         res,
-        `<title>Annonces</title><h1>Voitures d'occasion</h1><ul>${ADS.map((a) => `<li><a href="/annonce/${a.n}">${a.titre}</a></li>`).join("")}</ul><a href="/aide">Aide</a>`,
+        `<title>Annonces</title><h1>Voitures d'occasion</h1><ul>${ADS.map((a) => `<li><a href="/annonce/${a.n}">${a.title}</a></li>`).join("")}</ul><a href="/aide">Aide</a>`,
       );
     const ad = /^\/annonce\/(\d+)$/.exec(p);
     if (ad) {
       const n = Number(ad[1]);
       if (settings.failingPages.has(n)) return void req.socket.destroy();
       const a = ADS.find((x) => x.n === n);
-      return html(res, `<title>Annonce ${n}</title><p>${a?.titre ?? "?"}, première main, 82 000 km, carnet d'entretien.</p>`);
+      return html(res, `<title>Annonce ${n}</title><p>${a?.title ?? "?"}, première main, 82 000 km, carnet d'entretien.</p>`);
     }
     if (p === "/ddg/") return html(res, readFileSync(path.join(FIXTURES_DDG, settings.ddg), "utf8"));
     if (p === "/court") return html(res, "<title>Court</title>");
@@ -124,7 +124,7 @@ afterEach(async () => {
 
 const notificationsFile = () => path.join(dataDir, "notifications.jsonl");
 /** Notifications written by the app, in order. */
-const notifications = (): { titre: string; texte: string }[] =>
+const notifications = (): { title: string; text: string }[] =>
   existsSync(notificationsFile()) ? readFileSync(notificationsFile(), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)) : [];
 
 /** Launches on `dataDir` (kept), tall enough for every widget to show; waits for the home page. */
@@ -135,7 +135,7 @@ async function launchWatch(): Promise<Marionette> {
     env: {
       WEBAIOS_KEV_URL: kev.url,
       WEBAIOS_OLLAMA_URL: ollama.url,
-      WEBAIOS_TEST_ADRESSES_LOCALES: "1",
+      WEBAIOS_TEST_LOCAL_ADDRESSES: "1",
       WEBAIOS_TEST_DUCKDUCKGO_URL: `${site.url}/ddg/`,
       WEBAIOS_TEST_NOTIFICATIONS: notificationsFile(),
     },
@@ -165,59 +165,59 @@ const ANNOUNCEMENTS_MJS = `export default async (page) => {
 /** The watch widget, after AGENTS.md's commented example (used cars), with a state « hour of the day done ». */
 async function writeWatch(): Promise<void> {
   await writeWidget(dataDir, "voitures", {
-    nom: "Veille voitures",
-    recolte: { heures: ["07:00"], dureeMaxMinutes: 30, notifier: true },
+    name: "Veille voitures",
+    harvest: { hours: ["07:00"], maxDurationMinutes: 30, notify: true },
     declaration: {
-      tailles: { min: { l: 3, h: 3 }, max: { l: 12, h: 8 }, defaut: { l: 6, h: 5 } },
-      sources: { compte: [], publiques: [], web: true },
-      config: { recherche: `${site.url}/recherche`, criteres: "citadine fiable, moins de 100 000 km, moins de 8 000 €" },
+      sizes: { min: { l: 3, h: 3 }, max: { l: 12, h: 8 }, default: { l: 6, h: 5 } },
+      sources: { account: [], public: [], web: true },
+      config: { search: `${site.url}/recherche`, criteria: "citadine fiable, moins de 100 000 km, moins de 8 000 €" },
     },
     workflow: {
       version: 1,
-      blocs: [
-        { id: "recherche", type: "source.page", parametres: { url: "{config.recherche}" } },
-        { id: "annonces", type: "code", parametres: { source: "annonces.mjs" } },
-        { id: "nouvelles", type: "liste.nouveaux", parametres: { cle: "url", garderJours: 30 } },
-        { id: "tri", type: "ia.trier", parametres: { question: "Cette annonce correspond-elle à : {config.criteres} ?", texte: "{titre}" } },
-        { id: "top", type: "liste.garder", parametres: { nombre: 10 } },
-        { id: "fiche", type: "source.page", parametres: { url: "{url}", parElement: true, champ: "fiche" } },
+      blocks: [
+        { id: "recherche", type: "source.page", params: { url: "{config.recherche}" } },
+        { id: "annonces", type: "code", params: { source: "annonces.mjs" } },
+        { id: "nouvelles", type: "liste.nouveaux", params: { key: "url", keepDays: 30 } },
+        { id: "tri", type: "ia.trier", params: { question: "Cette annonce correspond-elle à : {config.criteres} ?", text: "{titre}" } },
+        { id: "top", type: "liste.garder", params: { count: 10 } },
+        { id: "fiche", type: "source.page", params: { url: "{url}", perItem: true, field: "fiche" } },
         {
           id: "fiabilite",
           type: "web.chercher",
-          parametres: { requete: "fiabilité {marque} {modele}", parElement: true, champ: "fiabilite", reutiliser: "modeleComplet", garderJours: 30 },
+          params: { query: "fiabilité {marque} {modele}", perItem: true, field: "fiabilite", reuse: "modeleComplet", keepDays: 30 },
         },
         {
           id: "avis",
           type: "ia.rediger",
-          parametres: {
-            parElement: true,
-            champ: "avis",
-            consigne:
+          params: {
+            perItem: true,
+            field: "avis",
+            prompt:
               "Donne en trois phrases l'intérêt de cette annonce pour : {config.criteres}. Si l'annonce est une page de vérification ou ne décrit pas une voiture, ne réponds rien. Si aucun résultat de recherche n'est donné, juge sans. --- DÉBUT DE L'ANNONCE --- {fiche.texte} --- FIN DE L'ANNONCE --- --- DÉBUT DES RÉSULTATS DE RECHERCHE --- {fiabilite?} --- FIN DES RÉSULTATS DE RECHERCHE ---",
           },
         },
-        { id: "sortie", type: "sortie", parametres: { vers: "widget", auFilDeLEau: true } },
+        { id: "sortie", type: "sortie", params: { to: "widget", live: true } },
       ],
-      liens: [
-        { de: "recherche", vers: "annonces" },
-        { de: "annonces", vers: "nouvelles" },
-        { de: "nouvelles", vers: "tri" },
-        { de: "tri", vers: "top" },
-        { de: "top", vers: "fiche" },
-        { de: "fiche", vers: "fiabilite" },
-        { de: "fiabilite", vers: "avis" },
-        { de: "avis", vers: "sortie" },
+      links: [
+        { from: "recherche", to: "annonces" },
+        { from: "annonces", to: "nouvelles" },
+        { from: "nouvelles", to: "tri" },
+        { from: "tri", to: "top" },
+        { from: "top", to: "fiche" },
+        { from: "fiche", to: "fiabilite" },
+        { from: "fiabilite", to: "avis" },
+        { from: "avis", to: "sortie" },
       ],
     },
-    fichiers: { "annonces.mjs": ANNOUNCEMENTS_MJS, "exemple.json": "[]" },
+    files: { "annonces.mjs": ANNOUNCEMENTS_MJS, "exemple.json": "[]" },
   });
   // « Up to date, hour of the day done »: no run starts by itself during the test.
   const now = new Date().toISOString();
   await writeJson(path.join(dataDir, "widgets", "voitures", "etat.json"), {
-    statut: "ok",
-    derniereMaj: now,
-    derniereTentative: now,
-    heures: { faite: "9999-12-31T23:59", echecs: null },
+    status: "ok",
+    lastUpdate: now,
+    lastAttempt: now,
+    hours: { done: "9999-12-31T23:59", failures: null },
   });
 }
 
@@ -257,13 +257,13 @@ async function harvest(m: Marionette, id: string): Promise<void> {
   await click(m, '[role="menuitem"]', { text: "Mettre à jour maintenant" });
 }
 
-type Ad = { titre: string; url: string; marque: string; modele: string; fiche?: { texte: string }; fiabilite?: unknown[]; avis?: string };
+type Ad = { title: string; url: string; mark: string; model: string; sheet?: { text: string }; reliability?: unknown[]; notice?: string };
 const watchData = (): Ad[] | null => {
   const f = path.join(dataDir, "widgets", "voitures", "donnees.json");
   return existsSync(f) ? readJson(f) : null;
 };
 
-type Run = { statut: string; declencheur: string; blocs: { id: string; statut: string; journal: string[] }[] };
+type Run = { status: string; trigger: string; blocks: { id: string; status: string; log: string[] }[] };
 /** The widget's runs, oldest first. */
 const runs = (id = "voitures"): Run[] => {
   const dir = path.join(dataDir, "widgets", id, "executions");
@@ -282,7 +282,7 @@ const runs = (id = "voitures"): Run[] => {
       }
     });
 };
-const blockStatus = (e: Run, id: string) => e.blocs.find((b) => b.id === id)?.statut;
+const blockStatus = (e: Run, id: string) => e.blocks.find((b) => b.id === id)?.status;
 const adUrl = (n: number) => `${site.url}/annonce/${n}`;
 
 /** Requests the fake DuckDuckGo got since index `from` of the site's log. */
@@ -297,7 +297,7 @@ async function runWatch(m: Marionette): Promise<Run> {
   return runs().at(-1)!;
 }
 
-const NOTIFICATION = { titre: "Veille voitures", texte: "5 nouveaux éléments" };
+const NOTIFICATION = { title: "Veille voitures", text: "5 nouveaux éléments" };
 
 // ---------------------------------------------------------------------------------------------------------------------
 
@@ -322,13 +322,13 @@ it("watch end to end: the widget fills in as it goes (counter seen), a search by
   );
   // Then all, with their page, reliability and opinion.
   await until(() => runs().length, (n) => n === 1, 60_000);
-  expect(runs()[0]!.statut).toBe("reussie");
+  expect(runs()[0]!.status).toBe("reussie");
   const ads = watchData()!;
   expect(ads.map((a) => a.url).sort()).toEqual([1, 2, 3, 4, 5].map(adUrl).sort());
   for (const a of ads) {
-    expect(a.fiche?.texte).toContain("première main");
-    expect(a.fiabilite?.length).toBeGreaterThan(0);
-    expect(a.avis).toBe("Bonne affaire.");
+    expect(a.sheet?.text).toContain("première main");
+    expect(a.reliability?.length).toBeGreaterThan(0);
+    expect(a.notice).toBe("Bonne affaire.");
   }
   await untilEqual(() => progress(m, "voitures"), null);
   await until(() => shown(m, "voitures"), (t) => t.includes("Bonne affaire."));
@@ -345,14 +345,14 @@ it("watch end to end: the widget fills in as it goes (counter seen), a search by
 it("second run: no already-seen listing, no search for an already studied model, no notification", async () => {
   await writeWatch();
   const m = await launchWatch();
-  expect((await runWatch(m)).statut).toBe("reussie");
+  expect((await runWatch(m)).status).toBe("reussie");
   expect(watchData()).toHaveLength(5);
   await until(notifications, (n) => n.length === 1);
 
   const from = site.log.length;
   const promptsBefore = ollama.prompts.length;
   const second = await runWatch(m);
-  expect(second.statut).toBe("reussie");
+  expect(second.status).toBe("reussie");
   // Nothing new: no ad page read again, no search, no opinion asked; the widget shows the empty list.
   expect(adReads(from)).toEqual([]);
   expect(searches(from)).toEqual([]);
@@ -369,24 +369,24 @@ it("a listing whose page fails comes back at the next run", async () => {
   const m = await launchWatch();
   settings.failingPages.add(3);
   const first = await runWatch(m);
-  expect(first.statut).toBe("partielle");
+  expect(first.status).toBe("partielle");
   expect(blockStatus(first, "fiche")).toBe("partiel");
   const withoutPage = watchData()!.find((a) => a.url === adUrl(3))!;
-  expect(withoutPage.fiche).toBeUndefined();
-  expect(withoutPage.avis).toBeUndefined();
+  expect(withoutPage.sheet).toBeUndefined();
+  expect(withoutPage.notice).toBeUndefined();
 
   // The page answers again: only ad 3 comes back, read this time; its model (Clio 4), already studied, is not searched.
   settings.failingPages.clear();
   const from = site.log.length;
   const second = await runWatch(m);
-  expect(second.statut).toBe("reussie");
+  expect(second.status).toBe("reussie");
   expect(adReads(from)).toEqual(["/annonce/3"]);
   expect(searches(from)).toEqual([]);
   const back = watchData()!;
   expect(back.map((a) => a.url)).toEqual([adUrl(3)]);
-  expect(back[0]!.fiche?.texte).toContain("5 900 €");
-  expect(back[0]!.fiabilite?.length).toBeGreaterThan(0);
-  expect(back[0]!.avis).toBe("Bonne affaire.");
+  expect(back[0]!.sheet?.text).toContain("5 900 €");
+  expect(back[0]!.reliability?.length).toBeGreaterThan(0);
+  expect(back[0]!.notice).toBe("Bonne affaire.");
 }, 120_000);
 
 it("a long watch in progress does not prevent a short widget from updating", async () => {
@@ -394,9 +394,9 @@ it("a long watch in progress does not prevent a short widget from updating", asy
   settings.gemmaDelayMs = 8000;
   await writeWatch();
   await writeWidget(dataDir, "court", {
-    nom: "Court",
-    recolte: { minutes: 60 },
-    fichiers: { "recolte.mjs": "export default async () => ({ court: true });", "exemple.json": JSON.stringify({ exemple: "court" }) },
+    name: "Court",
+    harvest: { minutes: 60 },
+    files: { "recolte.mjs": "export default async () => ({ court: true });", "exemple.json": JSON.stringify({ example: "court" }) },
   });
   const m = await launchWatch();
   await untilEqual(() => shown(m, "court"), '{"exemple":"court"}');
@@ -421,15 +421,15 @@ it("DuckDuckGo shows a check: a single request sent, notice without reliability,
   // One request: after the refusal, the run's next searches are not sent.
   expect(searches(from)).toHaveLength(1);
   expect(blockStatus(run, "fiabilite")).toBe("partiel");
-  expect(run.blocs.find((b) => b.id === "fiabilite")!.journal.join("\n")).toContain("Recherche refusée par DuckDuckGo (vérification anti-robot)");
-  expect(run.statut).toBe("partielle");
+  expect(run.blocks.find((b) => b.id === "fiabilite")!.log.join("\n")).toContain("Recherche refusée par DuckDuckGo (vérification anti-robot)");
+  expect(run.status).toBe("partielle");
   // No ad has a reliability; the opinion is written without ({fiabilite?}, see AGENTS.md).
   const ads = watchData()!;
   expect(ads).toHaveLength(5);
   for (const a of ads) {
-    expect(a.fiche?.texte).toContain("première main");
-    expect(a.fiabilite).toBeUndefined();
-    expect(a.avis).toBe("Bonne affaire.");
+    expect(a.sheet?.text).toContain("première main");
+    expect(a.reliability).toBeUndefined();
+    expect(a.notice).toBe("Bonne affaire.");
   }
   // Gemma wrote the five opinions, without any reliability text in its prompt.
   const prompts = ollama.prompts.slice(promptsBefore);
@@ -445,10 +445,10 @@ it("DuckDuckGo shows a check: a single request sent, notice without reliability,
   // DuckDuckGo answers again: the ads failed in `fiabilite` come back, this time with their reliability.
   settings.ddg = "resultats.html";
   const second = await runWatch(m);
-  expect(second.statut).toBe("reussie");
+  expect(second.status).toBe("reussie");
   const again = watchData()!;
   expect(again.map((a) => a.url).sort()).toEqual([1, 2, 3, 4, 5].map(adUrl).sort());
-  for (const a of again) expect(a.fiabilite?.length).toBeGreaterThan(0);
+  for (const a of again) expect(a.reliability?.length).toBeGreaterThan(0);
   // Back, they are not notified a second time. Time for a wrong notification to be written.
   await sleep(1000);
   expect(notifications()).toEqual([NOTIFICATION]);
@@ -456,22 +456,22 @@ it("DuckDuckGo shows a check: a single request sent, notice without reliability,
 
 it('the Gmail widget (account, recolte.mjs) updates as before; with "web": true added, it shows in error with the exact message', async () => {
   const gmail = {
-    nom: "Gmail",
-    recolte: { minutes: 60 },
-    declaration: { sources: { compte: ["127.0.0.1"], publiques: [] }, config: { url: `${site.url}/court` } },
-    fichiers: {
+    name: "Gmail",
+    harvest: { minutes: 60 },
+    declaration: { sources: { account: ["127.0.0.1"], public: [] }, config: { url: `${site.url}/court` } },
+    files: {
       "recolte.mjs": "export default async (webaios) => ({ titre: (await webaios.lirePage(webaios.config.url, { compte: true })).titre });",
-      "exemple.json": JSON.stringify({ exemple: "gmail" }),
+      "exemple.json": JSON.stringify({ example: "gmail" }),
     },
   };
   await writeWidget(dataDir, "gmail", gmail);
   // The grant, already given.
-  await writeJson(path.join(dataDir, "widgets", "accords.json"), { gmail: { domaines: ["127.0.0.1"], publiques: [], profil: "defaut" } });
+  await writeJson(path.join(dataDir, "widgets", "accords.json"), { gmail: { domains: ["127.0.0.1"], public: [], profile: "defaut" } });
   const m = await launchWatch();
   await harvest(m, "gmail");
   await untilEqual(() => shown(m, "gmail"), '{"titre":"Court"}', 20_000);
   expect(readJson(path.join(dataDir, "widgets", "gmail", "etat.json")).statut).toBe("ok");
-  expect(runs("gmail").map((e) => e.statut)).toEqual(["reussie"]);
+  expect(runs("gmail").map((e) => e.status)).toEqual(["reussie"]);
 
   // The agent adds "web": true: the widget is refused, with the exact message, and gains no access.
   const from = site.log.length;
@@ -493,9 +493,9 @@ it("quitting during the watch: on relaunch, the published listings are there, th
   const published = watchData()!;
   expect(published.length).toBeGreaterThan(0);
   expect(published.length).toBeLessThan(5);
-  for (const a of published) expect(a.avis).toBe("Bonne affaire.");
+  for (const a of published) expect(a.notice).toBe("Bonne affaire.");
   // The run is written « interrompue »; no notification for an interrupted run.
-  expect(runs().map((e) => e.statut)).toEqual(["interrompue"]);
+  expect(runs().map((e) => e.status)).toEqual(["interrompue"]);
   expect(notifications()).toEqual([]);
 
   settings.gemmaDelayMs = 0;
@@ -505,7 +505,7 @@ it("quitting during the watch: on relaunch, the published listings are there, th
   // The state is no longer « en cours » (back to the one before), and nothing was started again.
   await untilEqual(() => readJson(path.join(dataDir, "widgets", "voitures", "etat.json")).statut, "ok");
   await untilEqual(() => progress(second, "voitures"), null);
-  expect(runs().map((e) => e.statut)).toEqual(["interrompue"]);
+  expect(runs().map((e) => e.status)).toEqual(["interrompue"]);
 }, 120_000);
 
 it("a click on the notification brings the last window to the front, with no tab switch", async () => {
@@ -513,7 +513,7 @@ it("a click on the notification brings the last window to the front, with no tab
   const second = await newWindow(m);
   await m.command("WebDriver:SwitchToWindow", { handle: second, focus: true });
   const recent = () => m.execute<boolean>("return Services.wm.getMostRecentBrowserWindow() === window;");
-  const before = (await state(m)).fenetres.map((f) => f.actif);
+  const before = (await state(m)).windows.map((f) => f.active);
   expect(await recent()).toBe(true);
   // Minimized, then clicked: the alert's observer (no alert is shown in test mode) restores and focuses it.
   await m.execute("window.minimize();");
@@ -523,5 +523,5 @@ it("a click on the notification brings the last window to the front, with no tab
   );
   await until(() => m.execute<number>("return window.windowState;"), (s) => s !== 2);
   expect(await recent()).toBe(true);
-  expect((await state(m)).fenetres.map((f) => f.actif)).toEqual(before);
+  expect((await state(m)).windows.map((f) => f.active)).toEqual(before);
 }, 60_000);

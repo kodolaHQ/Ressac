@@ -30,8 +30,8 @@ test("watchActions follows ~/WebAiOs/actions and components, once per burst", as
   await writeFile(join(c.actions, "gitlab", "action.json"), "{}");
   await sleep(500);
   expect(calls).toBe(1);
-  await mkdir(join(c.composants, "barres"), { recursive: true });
-  await writeFile(join(c.composants, "barres", "composant.html"), "<svg/>");
+  await mkdir(join(c.components, "barres"), { recursive: true });
+  await writeFile(join(c.components, "barres", "composant.html"), "<svg/>");
   await sleep(500);
   await stop();
   expect(calls).toBe(2);

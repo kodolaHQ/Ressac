@@ -1,8 +1,8 @@
 import type { Execution, ResumeExecution } from "@webaios/kernel";
 
 /** Labels of a run, for the runs bar and a block's tab. */
-export const TRIGGERS: Record<Execution["declencheur"], string> = { planifiee: "Planifiée", manuelle: "Manuelle", agent: "Par l'agent", rejeu: "Essai" };
-export const STATUSES: Record<Execution["statut"], string> = {
+export const TRIGGERS: Record<Execution["trigger"], string> = { planifiee: "Planifiée", manuelle: "Manuelle", agent: "Par l'agent", rejeu: "Essai" };
+export const STATUSES: Record<Execution["status"], string> = {
   reussie: "Réussie",
   partielle: "Partielle",
   echouee: "Échouée",
@@ -10,7 +10,7 @@ export const STATUSES: Record<Execution["statut"], string> = {
   "accord-requis": "Accord requis",
 };
 /** Color of a run's badge: the same scale as the blocks. */
-export const TINTS: Record<Execution["statut"], "ok" | "moyen" | "echec"> = {
+export const TINTS: Record<Execution["status"], "ok" | "moyen" | "echec"> = {
   reussie: "ok",
   partielle: "moyen",
   "accord-requis": "moyen",
@@ -33,6 +33,6 @@ export function duration(start: string | null, end: string | null): string {
 
 /** Output items: those of the `sortie` block (an implicit workflow's last block too). */
 export function outputElements(e: ResumeExecution, output: string | undefined): number | null {
-  const b = (output === undefined ? undefined : e.blocs.find((x) => x.id === output)) ?? e.blocs.at(-1);
-  return b?.elements ?? null;
+  const b = (output === undefined ? undefined : e.blocks.find((x) => x.id === output)) ?? e.blocks.at(-1);
+  return b?.items ?? null;
 }

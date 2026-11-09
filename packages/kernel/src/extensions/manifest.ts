@@ -4,20 +4,20 @@ export type SourceExtension = "store" | "agent";
 
 export interface Scope {
   permissions: string[];
-  hotes: string[];
-  reseau: string[];
-  tousLesSites: boolean;
-  scriptsTousLesSites: boolean;
+  hosts: string[];
+  network: string[];
+  allSites: boolean;
+  allSitesScripts: boolean;
   /** True if the manifest declares content_scripts (absent: false). */
   scripts?: boolean;
 }
 
 export interface ManifestAnalysis {
-  nom: string;
+  name: string;
   version: string;
-  portee: Scope;
-  refus: string[];
-  avertissements: string[];
+  scope: Scope;
+  denial: string[];
+  warnings: string[];
 }
 
 export const NETWORK_MAX = 10;
@@ -59,7 +59,7 @@ function sortedUnique(l: string[]): string[] {
 }
 
 function emptyScope(): Scope {
-  return { permissions: [], hotes: [], reseau: [], tousLesSites: false, scriptsTousLesSites: false };
+  return { permissions: [], hosts: [], network: [], allSites: false, allSitesScripts: false };
 }
 
 function parseRules(
@@ -161,7 +161,7 @@ export function parseManifest(
   o: {
     source: SourceExtension;
     webaios?: unknown;
-    regles?: Record<string, unknown>;
+    rules?: Record<string, unknown>;
     /** The content of the catalogs of `fichiersMessages` (absent or unreadable: `undefined`), for a `__MSG_…__` name. */
     messages?: readonly unknown[];
   },
@@ -169,11 +169,11 @@ export function parseManifest(
   const m = object(raw);
   if (!m) {
     return {
-      nom: "",
+      name: "",
       version: "",
-      portee: emptyScope(),
-      refus: ["Manifeste illisible"],
-      avertissements: [],
+      scope: emptyScope(),
+      denial: ["Manifeste illisible"],
+      warnings: [],
     };
   }
   const agent = o.source === "agent";
@@ -226,7 +226,7 @@ export function parseManifest(
         denial.push("background.service_worker doit être un chemin de fichier");
       }
     }
-    parseRules(m, o.regles ?? {}, denial);
+    parseRules(m, o.rules ?? {}, denial);
     if (Array.isArray(m.optional_permissions) && m.optional_permissions.length > 0) {
       denial.push("optional_permissions refusé : déclare ces droits dans permissions");
     }
@@ -238,23 +238,23 @@ export function parseManifest(
 
   const scope: Scope = {
     permissions,
-    hotes: hosts,
-    reseau: network,
-    tousLesSites: hosts.some((h) => allSitesPattern(h)),
-    scriptsTousLesSites: allScripts,
+    hosts: hosts,
+    network: network,
+    allSites: hosts.some((h) => allSitesPattern(h)),
+    allSitesScripts: allScripts,
     scripts: scripts.length > 0,
   };
-  return { nom: name, version, portee: scope, refus: denial, avertissements: warnings };
+  return { name: name, version, scope: scope, denial: denial, warnings: warnings };
 }
 
 export function widenedScope(granted: Scope, fresh: Scope): boolean {
   const missing = (a: string[], n: string[]) => n.some((x) => !a.includes(x));
   return (
     missing(granted.permissions, fresh.permissions) ||
-    missing(granted.hotes, fresh.hotes) ||
-    missing(granted.reseau, fresh.reseau) ||
-    (!granted.tousLesSites && fresh.tousLesSites) ||
-    (!granted.scriptsTousLesSites && fresh.scriptsTousLesSites) ||
+    missing(granted.hosts, fresh.hosts) ||
+    missing(granted.network, fresh.network) ||
+    (!granted.allSites && fresh.allSites) ||
+    (!granted.allSitesScripts && fresh.allSitesScripts) ||
     (!granted.scripts && !!fresh.scripts)
   );
 }
@@ -267,12 +267,12 @@ export function widenedScope(granted: Scope, fresh: Scope): boolean {
 export function scopeHash(p: Scope): string {
   const sorted = (l: string[]) => [...l].sort();
   const canonical = JSON.stringify({
-    hotes: sorted(p.hotes),
+    hosts: sorted(p.hosts),
     permissions: sorted(p.permissions),
-    reseau: sorted(p.reseau),
+    network: sorted(p.network),
     scripts: !!p.scripts,
-    scriptsTousLesSites: p.scriptsTousLesSites,
-    tousLesSites: p.tousLesSites,
+    allSitesScripts: p.allSitesScripts,
+    allSites: p.allSites,
   });
   return createHash("sha256").update(canonical).digest("hex");
 }
@@ -281,7 +281,7 @@ export function scopeHash(p: Scope): string {
 export function grantStrengthened(p: Scope, source: SourceExtension): boolean {
   return (
     source === "agent" &&
-    (p.scriptsTousLesSites || (p.tousLesSites && p.permissions.includes("scripting")))
+    (p.allSitesScripts || (p.allSites && p.permissions.includes("scripting")))
   );
 }
 
@@ -291,7 +291,7 @@ export function scopeLabels(p: Scope, source: SourceExtension): string[] {
   const added = (cond: boolean, text: string) => {
     if (cond && !output.includes(text)) output.push(text);
   };
-  added(has("scripting") || p.scriptsTousLesSites || !!p.scripts, "Modifier l'apparence et le contenu des pages");
+  added(has("scripting") || p.allSitesScripts || !!p.scripts, "Modifier l'apparence et le contenu des pages");
   added(p.permissions.some((x) => x.startsWith("declarativeNetRequest")), "Bloquer ou modifier des requêtes");
   added(has("declarativeNetRequestFeedback"), "Voir quelles requêtes de tous les onglets ses règles ont touchées");
   added(has("storage", "unlimitedStorage"), "Garder ses réglages");

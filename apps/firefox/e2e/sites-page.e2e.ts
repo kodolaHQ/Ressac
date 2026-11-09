@@ -24,7 +24,7 @@ const dirs: string[] = [];
 const opened: LaunchedWebAiOs[] = [];
 beforeAll(async () => (server = await startSitesServer()));
 afterAll(async () => {
-  await server?.fermer();
+  await server?.close();
   for (const d of dirs) await rm(d, { recursive: true, force: true });
 });
 
@@ -40,15 +40,15 @@ afterEach(async () => {
 
 const url = (p: string, host = "vidola-a.localhost") => server.url(host, p);
 const vidola = (home = true): SiteTest => ({
-  declaration: { nom: "Vidola", adresse: url("/"), domaines: ["vidola-a.localhost"], connexion: [] },
-  ...(home ? { fichiers: { "accueil/index.html": SITE_HOME } } : {}),
+  declaration: { name: "Vidola", url: url("/"), domains: ["vidola-a.localhost"], login: [] },
+  ...(home ? { files: { "accueil/index.html": SITE_HOME } } : {}),
 });
 const memory = (dataDir: string, id = "vidola") => path.join(dataDir, "sites", id, "memoire.json");
 function writeMemory(dataDir: string, id = "vidola"): void {
   mkdirSync(path.join(dataDir, "sites", id), { recursive: true });
   writeFileSync(
     memory(dataDir, id),
-    JSON.stringify({ version: 1, valeurs: { "encours.the-bear": { valeur: { titre: "The Bear" }, adresse: "/serie/the-bear?e=4", quand: new Date().toISOString() } }, positions: {} }),
+    JSON.stringify({ version: 1, values: { "encours.the-bear": { value: { title: "The Bear" }, url: "/serie/the-bear?e=4", when: new Date().toISOString() } }, positions: {} }),
   );
 }
 
@@ -59,7 +59,7 @@ async function launch(o: { prepare?: (dataDir: string) => void; page?: boolean }
   dirs.push(dataDir, profile);
   o.prepare?.(dataDir);
   const actor = testActor(profile);
-  w = await launchWebAiOs({ dataDir, profile, env: { WEBAIOS_TEST_ADRESSES_LOCALES: "1", ...actor.env }, prefs: actor.prefs });
+  w = await launchWebAiOs({ dataDir, profile, env: { WEBAIOS_TEST_LOCAL_ADDRESSES: "1", ...actor.env }, prefs: actor.prefs });
   opened.push(w);
   m = w.marionette;
   await m.setContext("chrome");
@@ -69,7 +69,7 @@ async function launch(o: { prepare?: (dataDir: string) => void; page?: boolean }
   return { dataDir, profile };
 }
 async function openPage(): Promise<void> {
-  await dispatch(m, { type: "ouvrirApplications", fenetreId: (await state(m)).fenetres[0]!.id });
+  await dispatch(m, { type: "ouvrirApplications", windowId: (await state(m)).windows[0]!.id });
   await waitUi(m, "return !!doc.querySelector('[data-testid=\"page-applications\"]')");
 }
 const row = (id: string) => `[data-testid="site-${id}"]`;
@@ -121,10 +121,10 @@ const siteExpr = (id: string) => `[...Services.wm.getEnumerator("navigator:brows
 /** Vidola (with a home), Autre (its current address kept in the profile), and a broken site.json. */
 const section = (dataDir: string) => {
   writeSite(dataDir, "vidola", vidola());
-  writeSite(dataDir, "autre", { declaration: { nom: "Autre", adresse: url("/", "vidola-b.localhost"), domaines: ["vidola-b.localhost"] } });
+  writeSite(dataDir, "autre", { declaration: { name: "Autre", url: url("/", "vidola-b.localhost"), domains: ["vidola-b.localhost"] } });
   writeSite(dataDir, "casse", { declaration: "{ pas du json" });
   mkdirSync(path.join(dataDir, "sites", "autre"), { recursive: true });
-  writeFileSync(path.join(dataDir, "sites", "autre", "adresse.json"), JSON.stringify({ actuel: "vidola-c.localhost", anciens: ["vidola-b.localhost"], depuis: new Date().toISOString() }));
+  writeFileSync(path.join(dataDir, "sites", "autre", "adresse.json"), JSON.stringify({ current: "vidola-c.localhost", previous: ["vidola-b.localhost"], since: new Date().toISOString() }));
 };
 
 describe("Applications page, Sites section", () => {
@@ -198,7 +198,7 @@ describe("Applications page, Sites section", () => {
     await expect.poll(() => cookies("vidola"), { timeout: 10_000 }).toContain("essai=vidola-a.localhost");
     writeMemory(dataDir);
     mkdirSync(path.join(dataDir, "sites", "vidola"), { recursive: true });
-    writeFileSync(path.join(dataDir, "sites", "vidola", "adresse.json"), JSON.stringify({ actuel: "vidola-a.localhost", anciens: [], depuis: null }));
+    writeFileSync(path.join(dataDir, "sites", "vidola", "adresse.json"), JSON.stringify({ current: "vidola-a.localhost", previous: [], since: null }));
     await click(m, '[data-testid="site-vidola-supprimer"]');
     expect(await waitUi<string>(m, "return doc.querySelector('[data-testid=\"confirmation-suppression-site\"]')?.textContent")).toContain("Supprimer « Vidola » ?");
     await click(m, '[data-testid="confirmation-suppression-site"] button', { text: "Annuler" });
@@ -248,12 +248,12 @@ describe("Applications page, Sites section", () => {
 
     writeSite(dataDir, "vidola", vidola());
     await rowText("vidola");
-    server.requetes.splice(0);
+    server.requests.splice(0);
     await click(m, '[data-testid="site-vidola-ouvrir"]');
     // The new home shows no series (the memory is new, empty).
     await expect.poll(() => series("vidola").catch(() => null), { timeout: 15_000 }).toBe("");
     await enter("vidola", url("/"));
-    const seen = server.requetes.filter((r) => r.hote === "vidola-a.localhost");
+    const seen = server.requests.filter((r) => r.host === "vidola-a.localhost");
     expect(seen.length).toBeGreaterThan(0);
     expect(seen.every((r) => r.cookie === undefined)).toBe(true);
     expect(await inSiteView(m, "vidola", `return localStorage.length;`)).toBe(0);
@@ -294,23 +294,23 @@ describe("the agent's site tools", () => {
 
   it("lister_sites and ouvrir_site", async () => {
     const { dataDir } = await withAgent();
-    await expect.poll(async () => (await callTool(dataDir, "lister_sites")).texte, { timeout: 15_000 }).toBe("vidola · Vidola · vidola-a.localhost · fermée");
-    expect(await callTool(dataDir, "ouvrir_site", { id: "vidola" })).toEqual({ texte: "site:vidola", erreur: false });
+    await expect.poll(async () => (await callTool(dataDir, "lister_sites")).text, { timeout: 15_000 }).toBe("vidola · Vidola · vidola-a.localhost · fermée");
+    expect(await callTool(dataDir, "ouvrir_site", { id: "vidola" })).toEqual({ text: "site:vidola", error: false });
     await waitFor(m, `return ${siteExpr("vidola")} !== undefined;`, (v) => v === true);
-    expect((await callTool(dataDir, "lister_sites")).texte).toBe("vidola · Vidola · vidola-a.localhost · ouverte");
-    expect(await callTool(dataDir, "ouvrir_site", { id: "inconnu" })).toEqual({ texte: SITE_UNKNOWN, erreur: true });
+    expect((await callTool(dataDir, "lister_sites")).text).toBe("vidola · Vidola · vidola-a.localhost · ouverte");
+    expect(await callTool(dataDir, "ouvrir_site", { id: "inconnu" })).toEqual({ text: SITE_UNKNOWN, error: true });
   });
 
   // Plan 32 Task 5 brought the app's « donnees-widget » card (before it, no card and an immediate refusal). Refused, the
   // memory is not given (sites.spec.ts:1792); the accorded path is sites-agent.e2e.ts's port of :1799.
   it("memoire_site shows the app's card; Refuser answers SITE_DENIED (sites.spec.ts:1792)", async () => {
     const { dataDir } = await withAgent((d) => (writeSite(d, "vidola", vidola()), writeMemory(d)));
-    await expect.poll(async () => (await callTool(dataDir, "lister_sites")).texte, { timeout: 15_000 }).toContain("vidola");
+    await expect.poll(async () => (await callTool(dataDir, "lister_sites")).text, { timeout: 15_000 }).toContain("vidola");
     const memory = callTool(dataDir, "memoire_site", { id: "vidola" });
     const card = '[data-testid="demande-donnees-widget"]';
     expect(await waitUi<string>(m, `return doc.querySelector(${JSON.stringify(`${card} [data-testid="demande-site"]`)})?.textContent`, [], 15_000)).toContain("« Vidola »");
     await click(m, `${card} button`, { text: "Refuser" });
-    expect(await memory).toEqual({ texte: SITE_DENIED, erreur: false });
+    expect(await memory).toEqual({ text: SITE_DENIED, error: false });
     await waitUi(m, "return !doc.querySelector('[data-testid=\"modale-demande\"]')");
   });
 });

@@ -19,14 +19,14 @@ beforeEach(async () => {
 });
 afterEach(() => w?.close());
 
-const windowId = async () => (await state(m)).fenetres[0]!.id;
+const windowId = async () => (await state(m)).windows[0]!.id;
 const handle = async () => (await m.command<{ value: string }>("WebDriver:GetWindowHandle")).value;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const pressClosing = (combo: string) => pressClosingIn(m, combo);
 async function openTab(win: string, path: string): Promise<string> {
-  const before = new Set(Object.keys((await state(m)).onglets));
-  const after = await dispatch(m, { type: "ouvrirOnglet", fenetreId: win, url: server.url + path });
-  return Object.keys(after.onglets).find((x) => !before.has(x))!;
+  const before = new Set(Object.keys((await state(m)).tabs));
+  const after = await dispatch(m, { type: "ouvrirOnglet", windowId: win, url: server.url + path });
+  return Object.keys(after.tabs).find((x) => !before.has(x))!;
 }
 const newWindow = () => newWindowIn(m);
 /**
@@ -62,18 +62,18 @@ async function closeLastWindow(reopen: string): Promise<{ closed: number; afterE
 describe("the WebAiOs window", () => {
   it("⌘N opens a second WebAiOs window on the active space, with its own sidebar", async () => {
     const first = await windowId();
-    const s = await dispatch(m, { type: "creerEspace", nom: "Travail", icone: "💼", prive: false, profil: "defaut", fenetreId: first });
-    const space = s.espaces.at(-1)!.id;
-    expect(s.fenetres[0]!.espaceActif).toBe(space);
+    const s = await dispatch(m, { type: "creerEspace", name: "Travail", icon: "💼", private: false, profile: "defaut", windowId: first });
+    const space = s.spaces.at(-1)!.id;
+    expect(s.windows[0]!.activeSpace).toBe(space);
     const other = await newWindow();
     const after = await state(m);
-    expect(after.fenetres).toHaveLength(2);
+    expect(after.windows).toHaveLength(2);
     const id = await inWindow(m, other, async () => {
       expect(await m.execute("return document.documentElement.hasAttribute('webaios-main')")).toBe(true);
       return m.execute<string>("return window.webaiosWindow.fenetreId");
     });
     expect(id).not.toBe(first);
-    expect(after.fenetres.find((f) => f.id === id)!.espaceActif).toBe(space);
+    expect(after.windows.find((f) => f.id === id)!.activeSpace).toBe(space);
     // Its sidebar acts on its own window.
     const tab = await openTab(id, "/a.html");
     await inWindow(m, other, () => waitUi(m, "return !!doc.querySelector(arguments[0])", [`[data-testid="onglet-${tab}"]`]));
@@ -91,9 +91,9 @@ describe("the WebAiOs window", () => {
     });
     await waitWindowCount(m, 1);
     const after = await state(m);
-    expect(after.fenetres[0]!.id).toBe(first);
-    expect(after.onglets[tab]).toBeUndefined();
-    expect(after.fenetres[0]!.fermesRecemment[0]?.url).toBe(server.url + "/a.html");
+    expect(after.windows[0]!.id).toBe(first);
+    expect(after.tabs[tab]).toBeUndefined();
+    expect(after.windows[0]!.recentlyClosed[0]?.url).toBe(server.url + "/a.html");
   });
 
   it("macOS: closing the last window keeps the app and its tabs in the state; no XUL tab is left; choisirMoteur does not reopen it; the Dock reopens it with its tabs listed", async () => {
@@ -105,8 +105,8 @@ describe("the WebAiOs window", () => {
     // No window, so no XUL tab: the page closed with it.
     expect(counts).toEqual({ closed: 0, afterEngine: 0 });
     const s = await state(m);
-    expect(s.reglages.moteur).toBe("qwant");
-    expect(s.fenetres.map((f) => f.id)).toEqual([id]);
+    expect(s.settings.engine).toBe("qwant");
+    expect(s.windows.map((f) => f.id)).toEqual([id]);
     expect(await m.execute("return window.webaiosWindow.fenetreId")).toBe(id);
     await waitUi(m, "return !!doc.querySelector(arguments[0])", [`[data-testid="onglet-${tab}"]`]);
     // It still follows the store.
@@ -120,7 +120,7 @@ describe("the WebAiOs window", () => {
     await sleep(300);
     expect(await windowHandles(m)).toHaveLength(1);
     expect(await m.execute("return window.webaiosWindow.fenetreId")).toBe(id);
-    expect((await state(m)).fenetres.map((f) => f.id)).toEqual([id]);
+    expect((await state(m)).windows.map((f) => f.id)).toEqual([id]);
   });
 
   it("⌘W on the empty page of a window without tabs closes it; the app stays", async () => {
@@ -144,7 +144,7 @@ describe("the WebAiOs window", () => {
       await m.execute("window.close()");
     });
     await waitWindowCount(m, 1);
-    expect((await state(m)).fenetres.map((f) => f.id)).toEqual([id]);
+    expect((await state(m)).windows.map((f) => f.id)).toEqual([id]);
     // The last window closed: the hidden window's ⇧⌘P opens a private window, which must not take the kept one.
     await m.execute(
       `return (async () => {
@@ -177,10 +177,10 @@ describe("the WebAiOs window", () => {
       if (Date.now() > deadline) throw new Error("the WebAiOs window did not come back");
       await sleep(100);
     }
-    expect(JSON.parse(await m.execute<string>(`return Services.prefs.getStringPref("webaios.test.private")`))).toEqual({ adopted: false, fenetres: [id] });
+    expect(JSON.parse(await m.execute<string>(`return Services.prefs.getStringPref("webaios.test.private")`))).toEqual({ adopted: false, windows: [id] });
     // The kept window was not consumed: the next window takes it back.
     expect(await m.execute("return window.webaiosWindow.fenetreId")).toBe(id);
-    expect((await state(m)).fenetres.map((f) => f.id)).toEqual([id]);
+    expect((await state(m)).windows.map((f) => f.id)).toEqual([id]);
   });
 
   it("Firefox's menu commands add no tabs; New Window and Close Window lead to WebAiOs windows", async () => {
@@ -189,7 +189,7 @@ describe("the WebAiOs window", () => {
     // doCommand ignores "disabled": that is the path a stray caller takes; no WebAiOs tab may come of it.
     for (const cmd of ["cmd_newNavigatorTab", "menu_newNavigatorTab"]) await m.execute("document.getElementById(arguments[0]).doCommand()", [cmd]);
     await sleep(500);
-    expect(Object.keys((await state(m)).onglets)).toEqual([tab]);
+    expect(Object.keys((await state(m)).tabs)).toEqual([tab]);
     expect(await m.execute("return gBrowser.selectedTab.getAttribute('webaios-tab-id')")).toBe(tab);
     // macOS's native menu item is enabled from its command's "disabled" (nsMenuItemX::SetEnabled); headless has no native menu.
     const items = ["menu_newNavigatorTab", "menu_newNavigator", "menu_newPrivateWindow", "menu_close", "menu_closeWindow", "menu_preferences"];
@@ -202,6 +202,6 @@ describe("the WebAiOs window", () => {
     await m.execute("document.getElementById('cmd_newNavigator').doCommand()");
     const other = (await waitWindowCount(m, 2)).find((h) => h !== old)!;
     await inWindow(m, other, waitReady);
-    expect((await state(m)).fenetres).toHaveLength(2);
+    expect((await state(m)).windows).toHaveLength(2);
   });
 });

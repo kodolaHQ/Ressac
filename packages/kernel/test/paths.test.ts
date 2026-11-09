@@ -12,17 +12,17 @@ afterEach(() => {
 test("default paths under ~/WebAiOs", () => {
   delete process.env.WEBAIOS_RACINE;
   const c = spacePaths();
-  expect(c.racine).toBe(join(homedir(), "WebAiOs"));
-  expect(c.blocs).toBe(join(homedir(), "WebAiOs", "accueil", "blocs"));
+  expect(c.root).toBe(join(homedir(), "WebAiOs"));
+  expect(c.blocks).toBe(join(homedir(), "WebAiOs", "accueil", "blocs"));
   expect(c.widgets).toBe(join(homedir(), "WebAiOs", "accueil", "widgets"));
-  expect(c.configMcp).toBe(join(homedir(), "WebAiOs", ".webaios", "mcp.json"));
+  expect(c.mcpConfig).toBe(join(homedir(), "WebAiOs", ".webaios", "mcp.json"));
 });
 
 test("WEBAIOS_RACINE overrides the root", () => {
   process.env.WEBAIOS_RACINE = "/tmp/ailleurs";
   const c = spacePaths();
-  expect(c.racine).toBe("/tmp/ailleurs");
-  expect(c.profils).toBe("/tmp/ailleurs/.webaios/profils");
+  expect(c.root).toBe("/tmp/ailleurs");
+  expect(c.profiles).toBe("/tmp/ailleurs/.webaios/profils");
 });
 
 test("pathInContainer translates a space path and refuses the rest", () => {
@@ -40,7 +40,7 @@ test("spacePaths().extensions vaut <racine>/extensions", () => {
 test("actions and components under the root", () => {
   const c = spacePaths("/tmp/w");
   expect(c.actions).toBe("/tmp/w/actions");
-  expect(c.composants).toBe("/tmp/w/composants");
+  expect(c.components).toBe("/tmp/w/composants");
 });
 
 test("sites under the root", () => {

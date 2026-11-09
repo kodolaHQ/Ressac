@@ -32,8 +32,8 @@ export function workflowOpen(activeUrl: string | undefined, selection: BuilderSe
   const target = activeUrl ? workflowUrlTarget(activeUrl) : null;
   if (!target) return null;
   const s = selection;
-  if (target.type === "widget") return { widget: target.id, bloc: s && "widget" in s && s.widget === target.id ? s.bloc : null };
-  return { action: target.id, bloc: s && "action" in s && s.action === target.id ? s.bloc : null };
+  if (target.type === "widget") return { widget: target.id, block: s && "widget" in s && s.widget === target.id ? s.block : null };
+  return { action: target.id, block: s && "action" in s && s.action === target.id ? s.block : null };
 }
 
 /** Writes of one widget one after the other (saves and code), different widgets in parallel. */
@@ -52,7 +52,7 @@ export class WriteQueue {
   }
 }
 
-type Context = { chemins: SpacePaths; dossierWidgets: string };
+type Context = { paths: SpacePaths; widgetsFolder: string };
 
 const UNREADABLE_MESSAGE = "Écriture impossible";
 
@@ -92,7 +92,7 @@ async function readFileOnly(path: string): Promise<string | null> {
   }
 }
 
-type Declaration = { declaration: DeclarationWidget; dossier: string } | { absent: true } | { invalide: string };
+type Declaration = { declaration: DeclarationWidget; folder: string } | { absent: true } | { invalid: string };
 
 /** One widget's `widget.json` only, without following a link out of its folder. */
 async function readDeclaration(paths: SpacePaths, id: string): Promise<Declaration> {
@@ -100,41 +100,41 @@ async function readDeclaration(paths: SpacePaths, id: string): Promise<Declarati
   if (!folder) return { absent: true };
   try {
     const [root, real] = await Promise.all([realpath(folder), realpath(join(folder, "widget.json"))]);
-    if (!real.startsWith(root + sep)) return { invalide: "widget.json sort du dossier du widget" };
+    if (!real.startsWith(root + sep)) return { invalid: "widget.json sort du dossier du widget" };
     const text = await readFileOnly(real);
-    if (text === null) return { invalide: "widget.json n'est pas un fichier" };
-    return { declaration: DeclarationWidget.parse(JSON.parse(text)), dossier: folder };
+    if (text === null) return { invalid: "widget.json n'est pas un fichier" };
+    return { declaration: DeclarationWidget.parse(JSON.parse(text)), folder: folder };
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code === "ENOENT") return { absent: true };
-    return { invalide: (e as Error).message };
+    return { invalid: (e as Error).message };
   }
 }
 
 function warningsOf(raw: unknown, d: DeclarationWidget): Warning[] {
   const r = validateWorkflow(raw, validationContext(d));
-  return r.ok ? warnWorkflow(r.valide.workflow, { sources: d.sources, config: d.config, dureeMaxMinutes: d.recolte?.dureeMaxMinutes ?? null }, r.valide) : [];
+  return r.ok ? warnWorkflow(r.valid.workflow, { sources: d.sources, config: d.config, maxDurationMinutes: d.harvest?.maxDurationMinutes ?? null }, r.valid) : [];
 }
 
 /** What the builder opens for a widget; null: unknown widget (or unreadable widget.json), no harvest, or disk error. Writes nothing. */
 export async function readEdit(c: Context, id: string): Promise<WorkflowEdit | null> {
   try {
-    const d = await readDeclaration(c.chemins, id);
+    const d = await readDeclaration(c.paths, id);
     if (!("declaration" in d)) return null;
-    const l = await readDraft(d.dossier, validationContext(d.declaration));
+    const l = await readDraft(d.folder, validationContext(d.declaration));
     if (!l) return null;
     const decl = d.declaration;
-    const r = decl.recolte;
+    const r = decl.harvest;
     return {
       ...l,
-      avertissements: l.brut === null ? [] : warningsOf(l.brut, decl),
+      warnings: l.raw === null ? [] : warningsOf(l.raw, decl),
       widget: {
-        nom: decl.nom,
-        compte: decl.sources.compte,
-        publiques: decl.sources.publiques,
+        name: decl.name,
+        account: decl.sources.account,
+        public: decl.sources.public,
         config: decl.config ?? null,
         web: decl.sources.web,
-        recolte: r
-          ? { minutes: r.minutes ?? null, heures: r.heures ?? [], dureeMaxMinutes: r.dureeMaxMinutes ?? null, notifier: r.notifier === true }
+        harvest: r
+          ? { minutes: r.minutes ?? null, hours: r.hours ?? [], maxDurationMinutes: r.maxDurationMinutes ?? null, notify: r.notify === true }
           : null,
       },
     };
@@ -145,83 +145,83 @@ export async function readEdit(c: Context, id: string): Promise<WorkflowEdit | n
 }
 
 /** Saves the widget's draft; the warnings are those of the validated workflow (none if invalid). Call inside `inSeries`. */
-export async function saveEdit(c: Context, id: string, raw: unknown): Promise<SaveResult & { avertissements: Warning[] }> {
+export async function saveEdit(c: Context, id: string, raw: unknown): Promise<SaveResult & { warnings: Warning[] }> {
   try {
-    const d = await readDeclaration(c.chemins, id);
-    if ("invalide" in d) return { ok: false, erreur: `widget.json invalide : ${d.invalide}`, avertissements: [] };
-    if (!("declaration" in d)) return { ok: false, erreur: "Widget introuvable", avertissements: [] };
+    const d = await readDeclaration(c.paths, id);
+    if ("invalid" in d) return { ok: false, error: `widget.json invalide : ${d.invalid}`, warnings: [] };
+    if (!("declaration" in d)) return { ok: false, error: "Widget introuvable", warnings: [] };
     const r = await saveWorkflow({
-      dossierFichiers: d.dossier,
-      dossierDonnees: join(c.dossierWidgets, id),
-      brut: raw,
-      contexte: validationContext(d.declaration),
+      filesFolder: d.folder,
+      dataFolder: join(c.widgetsFolder, id),
+      raw: raw,
+      context: validationContext(d.declaration),
     });
-    return { ...r, avertissements: r.ok ? warningsOf(raw, d.declaration) : [] };
+    return { ...r, warnings: r.ok ? warningsOf(raw, d.declaration) : [] };
   } catch (e) {
     console.error(`[webaios] enregistrement du workflow du widget ${id} :`, e);
-    return { ok: false, erreur: UNREADABLE_MESSAGE, avertissements: [] };
+    return { ok: false, error: UNREADABLE_MESSAGE, warnings: [] };
   }
 }
 
-export async function readCode(paths: SpacePaths, id: string, name: string): Promise<{ texte: string } | { absent: true } | { erreur: string }> {
+export async function readCode(paths: SpacePaths, id: string, name: string): Promise<{ text: string } | { absent: true } | { error: string }> {
   const folder = await widgetFolderOn(paths, id);
-  if (!folder) return { erreur: "Widget introuvable" };
+  if (!folder) return { error: "Widget introuvable" };
   return readCodeFile(folder, name);
 }
 
 /** Call inside `inSeries`: the folder is checked again just before writing. */
-export async function saveCode(paths: SpacePaths, id: string, name: string, text: string): Promise<{ ok: true } | { ok: false; erreur: string }> {
+export async function saveCode(paths: SpacePaths, id: string, name: string, text: string): Promise<{ ok: true } | { ok: false; error: string }> {
   const folder = await widgetFolderOn(paths, id);
-  if (!folder) return { ok: false, erreur: "Widget introuvable" };
+  if (!folder) return { ok: false, error: "Widget introuvable" };
   try {
     return await storeCode(folder, name, text);
   } catch (e) {
     console.error(`[webaios] code du widget ${id} :`, e);
-    return { ok: false, erreur: UNREADABLE_MESSAGE };
+    return { ok: false, error: UNREADABLE_MESSAGE };
   }
 }
 
 // --- An action's workflow (`webaios://workflow/action/<id>`).
 
-type ActionContext = { chemins: SpacePaths; dossierActions: string };
+type ActionContext = { paths: SpacePaths; actionsFolder: string };
 
 /** `action.json` read, and the action's (confined) folder; null: unknown action; `erreur`: unreadable declaration. */
-async function declarationAction(paths: SpacePaths, id: string): Promise<{ declaration: DeclarationAction; dossier: string } | { erreur: string } | null> {
+async function declarationAction(paths: SpacePaths, id: string): Promise<{ declaration: DeclarationAction; folder: string } | { error: string } | null> {
   const folder = await actionFolder(paths, id);
   const a = folder ? await readAction(paths, id) : null;
   if (!folder || !a) return null;
-  return "erreur" in a ? { erreur: a.erreur } : { declaration: a.declaration, dossier: folder };
+  return "error" in a ? { error: a.error } : { declaration: a.declaration, folder: folder };
 }
 
 function actionWarnings(raw: unknown, d: DeclarationAction): Warning[] {
   const r = validateWorkflow(raw, actionValidationContext(d));
   if (!r.ok) return [];
   return warnWorkflow(
-    r.valide.workflow,
-    { sources: d.sources, config: null, dureeMaxMinutes: d.dureeMaxMinutes ?? null, proprietaire: "action", saisie: d.saisie !== undefined },
-    r.valide,
+    r.valid.workflow,
+    { sources: d.sources, config: null, maxDurationMinutes: d.maxDurationMinutes ?? null, owner: "action", input: d.input !== undefined },
+    r.valid,
   );
 }
 
 /** What the builder opens for an action: its `workflow.json` only (no implicit workflow); null: unknown, unreadable, no workflow or disk error. Writes nothing. */
 export async function readActionEdit(c: ActionContext, id: string): Promise<WorkflowEdit | null> {
   try {
-    const d = await declarationAction(c.chemins, id);
-    if (!d || "erreur" in d) return null;
+    const d = await declarationAction(c.paths, id);
+    if (!d || "error" in d) return null;
     const decl = d.declaration;
-    const l = await readDraft(d.dossier, actionValidationContext(decl));
-    if (!l || l.origine !== "fichier") return null;
+    const l = await readDraft(d.folder, actionValidationContext(decl));
+    if (!l || l.origin !== "fichier") return null;
     return {
       ...l,
-      avertissements: l.brut === null ? [] : actionWarnings(l.brut, decl),
+      warnings: l.raw === null ? [] : actionWarnings(l.raw, decl),
       action: {
-        nom: decl.nom,
-        compte: decl.sources.compte,
-        publiques: decl.sources.publiques,
+        name: decl.name,
+        account: decl.sources.account,
+        public: decl.sources.public,
         web: decl.sources.web,
-        saisie: decl.saisie ?? null,
-        miseEnPage: decl.miseEnPage ?? null,
-        dureeMaxMinutes: decl.dureeMaxMinutes ?? null,
+        input: decl.input ?? null,
+        layout: decl.layout ?? null,
+        maxDurationMinutes: decl.maxDurationMinutes ?? null,
       },
     };
   } catch (e) {
@@ -231,38 +231,38 @@ export async function readActionEdit(c: ActionContext, id: string): Promise<Work
 }
 
 /** Saves the action's draft; `action.json` is never written. Call inside `inSeries`. */
-export async function saveActionEdit(c: ActionContext, id: string, raw: unknown): Promise<SaveResult & { avertissements: Warning[] }> {
+export async function saveActionEdit(c: ActionContext, id: string, raw: unknown): Promise<SaveResult & { warnings: Warning[] }> {
   try {
-    const d = await declarationAction(c.chemins, id);
-    if (!d) return { ok: false, erreur: ACTION_UNKNOWN, avertissements: [] };
-    if ("erreur" in d) return { ok: false, erreur: d.erreur, avertissements: [] };
+    const d = await declarationAction(c.paths, id);
+    if (!d) return { ok: false, error: ACTION_UNKNOWN, warnings: [] };
+    if ("error" in d) return { ok: false, error: d.error, warnings: [] };
     const r = await saveWorkflow({
-      dossierFichiers: d.dossier,
-      dossierDonnees: join(c.dossierActions, id),
-      brut: raw,
-      contexte: actionValidationContext(d.declaration),
+      filesFolder: d.folder,
+      dataFolder: join(c.actionsFolder, id),
+      raw: raw,
+      context: actionValidationContext(d.declaration),
     });
-    return { ...r, avertissements: r.ok ? actionWarnings(raw, d.declaration) : [] };
+    return { ...r, warnings: r.ok ? actionWarnings(raw, d.declaration) : [] };
   } catch (e) {
     console.error(`[webaios] enregistrement du workflow de l'action ${id} :`, e);
-    return { ok: false, erreur: UNREADABLE_MESSAGE, avertissements: [] };
+    return { ok: false, error: UNREADABLE_MESSAGE, warnings: [] };
   }
 }
 
-export async function readActionCode(paths: SpacePaths, id: string, name: string): Promise<{ texte: string } | { absent: true } | { erreur: string }> {
+export async function readActionCode(paths: SpacePaths, id: string, name: string): Promise<{ text: string } | { absent: true } | { error: string }> {
   const folder = await actionFolder(paths, id);
-  if (!folder) return { erreur: ACTION_UNKNOWN };
+  if (!folder) return { error: ACTION_UNKNOWN };
   return readCodeFile(folder, name);
 }
 
 /** Call inside `inSeries`: the folder is checked again just before writing. */
-export async function saveActionCode(paths: SpacePaths, id: string, name: string, text: string): Promise<{ ok: true } | { ok: false; erreur: string }> {
+export async function saveActionCode(paths: SpacePaths, id: string, name: string, text: string): Promise<{ ok: true } | { ok: false; error: string }> {
   const folder = await actionFolder(paths, id);
-  if (!folder) return { ok: false, erreur: ACTION_UNKNOWN };
+  if (!folder) return { ok: false, error: ACTION_UNKNOWN };
   try {
     return await storeCode(folder, name, text);
   } catch (e) {
     console.error(`[webaios] code de l'action ${id} :`, e);
-    return { ok: false, erreur: UNREADABLE_MESSAGE };
+    return { ok: false, error: UNREADABLE_MESSAGE };
   }
 }

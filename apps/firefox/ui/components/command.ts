@@ -4,26 +4,26 @@ import type { ActionShown } from "../../shared/actions";
 import type { ShownSite } from "../../shared/sites";
 import { normalize, suggestionsActions } from "./suggestions";
 
-export type SourceTab = { id: TabId; titre: string; url: string; favicon: string | null };
-export type SiteApp = { genre: "projet" | "site"; id: string; nom: string; action: "ouvrir" | "lancer"; favicon: string | null };
-export type CommandSources = { actions: ActionShown[]; onglets: SourceTab[]; applis: SiteApp[]; historique: Visit[] };
+export type SourceTab = { id: TabId; title: string; url: string; favicon: string | null };
+export type SiteApp = { kind: "projet" | "site"; id: string; name: string; action: "ouvrir" | "lancer"; favicon: string | null };
+export type CommandSources = { actions: ActionShown[]; tabs: SourceTab[]; siteApps: SiteApp[]; history: Visit[] };
 export type CommandLine =
-  | { type: "defaut"; texte: string; libelle: string }
+  | { type: "defaut"; text: string; label: string }
   /** `parametre`: the label of the input the action declares (null: it expects none). */
-  | { type: "action"; id: string; nom: string; saisie: string | null; parametre: string | null }
-  | { type: "onglet"; onglet: SourceTab }
-  | { type: "appli"; appli: SiteApp }
-  | { type: "historique"; url: string; titre: string };
+  | { type: "action"; id: string; name: string; input: string | null; param: string | null }
+  | { type: "onglet"; tab: SourceTab }
+  | { type: "appli"; app: SiteApp }
+  | { type: "historique"; url: string; title: string };
 
-export const LIMITS = { actions: 3, onglets: 3, applis: 3, historique: 5 } as const;
+export const LIMITS = { actions: 3, tabs: 3, siteApps: 3, history: 5 } as const;
 /** Empty field: what the bar offers before any keystroke. */
-export const EMPTY_LIMITS = { actions: 4, onglets: 5 } as const;
+export const EMPTY_LIMITS = { actions: 4, tabs: 5 } as const;
 
 /** The actions offered with an empty field: the most recently launched first, then the others by name; invalid ones dropped. */
 function recentActions(actions: ActionShown[]): ActionShown[] {
   return actions
-    .filter((a) => !a.erreur)
-    .sort((x, y) => (y.dernier?.debut ?? "").localeCompare(x.dernier?.debut ?? "") || normalize(x.nom).localeCompare(normalize(y.nom)))
+    .filter((a) => !a.error)
+    .sort((x, y) => (y.last?.start ?? "").localeCompare(x.last?.start ?? "") || normalize(x.name).localeCompare(normalize(y.name)))
     .slice(0, EMPTY_LIMITS.actions);
 }
 
@@ -34,27 +34,27 @@ function recentActions(actions: ActionShown[]): ActionShown[] {
 export function commandLines(text: string, sources: CommandSources, urlActive: string | null, shownTab: TabId | null = null): CommandLine[] {
   const t = text.trim();
   const label = !t ? "Page d'accueil" : /^\S+\.\S+$/.test(t) ? `Ouvrir ${t}` : `Rechercher « ${t} »`;
-  const lignes: CommandLine[] = [{ type: "defaut", texte: t, libelle: label }];
+  const lignes: CommandLine[] = [{ type: "defaut", text: t, label: label }];
   if (!t) {
-    for (const a of recentActions(sources.actions)) lignes.push({ type: "action", id: a.id, nom: a.nom, saisie: null, parametre: a.saisie?.libelle ?? null });
-    for (const tab of sources.onglets.filter((o) => o.id !== shownTab).slice(0, EMPTY_LIMITS.onglets)) lignes.push({ type: "onglet", onglet: tab });
+    for (const a of recentActions(sources.actions)) lignes.push({ type: "action", id: a.id, name: a.name, input: null, param: a.input?.label ?? null });
+    for (const tab of sources.tabs.filter((o) => o.id !== shownTab).slice(0, EMPTY_LIMITS.tabs)) lignes.push({ type: "onglet", tab: tab });
     return lignes;
   }
   if (urlActive !== null && t === urlActive) return lignes;
 
   const q = normalize(t);
   for (const a of suggestionsActions(t, sources.actions).slice(0, LIMITS.actions)) {
-    const param = sources.actions.find((x) => x.id === a.id)?.saisie?.libelle ?? null;
-    lignes.push({ type: "action", id: a.id, nom: a.nom, saisie: a.saisie, parametre: param });
+    const param = sources.actions.find((x) => x.id === a.id)?.input?.label ?? null;
+    lignes.push({ type: "action", id: a.id, name: a.name, input: a.input, param: param });
   }
-  const tabs = sources.onglets.filter((o) => normalize(o.titre).includes(q) || normalize(o.url).includes(q)).slice(0, LIMITS.onglets);
-  for (const tab of tabs) lignes.push({ type: "onglet", onglet: tab });
-  for (const app of sources.applis.filter((a) => normalize(a.nom).includes(q)).slice(0, LIMITS.applis)) lignes.push({ type: "appli", appli: app });
+  const tabs = sources.tabs.filter((o) => normalize(o.title).includes(q) || normalize(o.url).includes(q)).slice(0, LIMITS.tabs);
+  for (const tab of tabs) lignes.push({ type: "onglet", tab: tab });
+  for (const app of sources.siteApps.filter((a) => normalize(a.name).includes(q)).slice(0, LIMITS.siteApps)) lignes.push({ type: "appli", app: app });
   const listed = new Set(tabs.map((o) => o.url));
-  sources.historique
+  sources.history
     .filter((v) => v.url !== urlActive && !listed.has(v.url))
-    .slice(0, LIMITS.historique)
-    .forEach((v) => lignes.push({ type: "historique", url: v.url, titre: v.titre }));
+    .slice(0, LIMITS.history)
+    .forEach((v) => lignes.push({ type: "historique", url: v.url, title: v.title }));
   return lignes;
 }
 
@@ -74,8 +74,8 @@ export function titleBefore(lignes: CommandLine[], i: number): string | null {
 }
 
 /** An action missing its input: the bar asks for it before launching. */
-export const paramRequest = (l: CommandLine): l is Extract<CommandLine, { type: "action" }> & { parametre: string } =>
-  l.type === "action" && l.parametre !== null && l.saisie === null;
+export const paramRequest = (l: CommandLine): l is Extract<CommandLine, { type: "action" }> & { param: string } =>
+  l.type === "action" && l.param !== null && l.input === null;
 
 /** The parameter proposed by default: the shown page's address, if it is a web page (without its anchor). */
 export function defaultParam(url: string | null | undefined): string {
@@ -100,9 +100,9 @@ export const PARAM_MAX = 2000;
 
 export function projectSiteApp(a: ApplicationShown): SiteApp | null {
   if (a.type === "sans-fiche") return null;
-  return { genre: "projet", id: a.dossier, nom: a.nom, action: a.etat === "en-marche" ? "ouvrir" : "lancer", favicon: a.favicon ?? null };
+  return { kind: "projet", id: a.folder, name: a.name, action: a.state === "en-marche" ? "ouvrir" : "lancer", favicon: a.favicon ?? null };
 }
 
 export function siteSiteApp(s: ShownSite): SiteApp {
-  return { genre: "site", id: s.id, nom: s.nom, action: "ouvrir", favicon: s.icone };
+  return { kind: "site", id: s.id, name: s.name, action: "ouvrir", favicon: s.icon };
 }

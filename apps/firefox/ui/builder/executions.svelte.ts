@@ -2,16 +2,16 @@ import type { DirectWidget, DirectState, Execution, AttemptResult, ResumeExecuti
 import type { ApiWebaios } from "../../shared/api";
 import { isActionKey } from "./target";
 
-export type SourceExecutions = Pick<ApiWebaios["accueil"], "executions" | "execution">;
+export type SourceExecutions = Pick<ApiWebaios["home"], "runs" | "run">;
 /**
  * « ▶ Lancer », « Rejouer depuis ce bloc » and live tracking, addressed by the workflow's key (`targetKey`). `lancer`
  * returns an action's refusal (`erreur`); a widget's never returns one.
  */
 export type Launcher = {
-  lancer(key: string, input?: string | null): Promise<{ execution?: string; erreur?: string }>;
-  rejouer(key: string, execution: string, block: string): Promise<AttemptResult>;
+  launch(key: string, input?: string | null): Promise<{ run?: string; error?: string }>;
+  replay(key: string, execution: string, block: string): Promise<AttemptResult>;
   direct(): Promise<DirectState>;
-  surDirect(callback: (e: DirectState) => void): () => void;
+  onLive(callback: (e: DirectState) => void): () => void;
 };
 
 /** The prefix of the kernel's refusals, reused for a request that fails on the way. */
@@ -33,55 +33,55 @@ export function forgetRunChoices(presents: Iterable<string>): void {
  * run (not a trial); after « Lancer », the new one; after « Rejouer », the trial. Choosing writes nothing.
  */
 export class Executions {
-  liste = $state.raw<ResumeExecution[]>([]);
+  list = $state.raw<ResumeExecution[]>([]);
   /** The user's choice; null: the latest real run. */
-  voulue = $state<string | null>(null);
+  wanted = $state<string | null>(null);
   /** The full chosen run (outputs, logs); null until it is read or if there is none. */
   detail = $state.raw<Execution | null>(null);
   /** The chosen run could not be read (evicted between the list and the detail, or error). */
-  introuvable = $state(false);
+  notFound = $state(false);
   /** What is running right now (all widgets together, one run per lane) and what waits in the queues. */
-  direct = $state.raw<DirectState>({ courants: [], enAttente: [] });
+  direct = $state.raw<DirectState>({ running: [], waiting: [] });
   /** The latest refusal of « Rejouer » (or « Lancer » for an action), as text. */
-  refus = $state<string | null>(null);
+  denial = $state<string | null>(null);
   /** A « Lancer » or « Rejouer » request from this builder has not answered yet. */
-  private demande = $state(false);
-  readonly choisie: ResumeExecution | null = $derived(
-    (this.voulue === null ? undefined : this.liste.find((e) => e.id === this.voulue)) ?? this.liste.find((e) => !e.essai) ?? null,
+  private request = $state(false);
+  readonly chosen: ResumeExecution | null = $derived(
+    (this.wanted === null ? undefined : this.list.find((e) => e.id === this.wanted)) ?? this.list.find((e) => !e.attempt) ?? null,
   );
   /** The run (or trial) of this widget that is running right now. */
-  readonly enDirect: DirectWidget | null = $derived.by(() => this.direct.courants.find((c) => c.widget === this.widget) ?? null);
+  readonly live: DirectWidget | null = $derived.by(() => this.direct.running.find((c) => c.widget === this.widget) ?? null);
   /** Only one run at a time per widget: « Lancer » and « Rejouer » wait. */
-  readonly occupe: boolean = $derived.by(() => this.demande || this.enDirect !== null || this.direct.enAttente.includes(this.widget));
-  private requeteListe = 0;
-  private requeteDetail = 0;
+  readonly busy: boolean = $derived.by(() => this.request || this.live !== null || this.direct.waiting.includes(this.widget));
+  private listRequest = 0;
+  private detailRequest = 0;
 
   constructor(
     readonly widget: string,
     private readonly source: SourceExecutions,
-    private readonly lanceur?: Launcher,
+    private readonly launcher?: Launcher,
   ) {
-    this.voulue = choice.get(widget) ?? null;
+    this.wanted = choice.get(widget) ?? null;
   }
 
   /** Re-reads the list (at opening and on each change of home); a chosen run that disappeared is forgotten. */
-  async charger(): Promise<void> {
-    return this.chargerListe(true);
+  async load(): Promise<void> {
+    return this.loadList(true);
   }
 
   /** Follows the live state; returns what is needed to stop. */
-  suivre(): () => void {
-    if (!this.lanceur) return () => {};
+  follow(): () => void {
+    if (!this.launcher) return () => {};
     let finished = false;
     // A pushed event is more recent than the initial read: the read never overwrites it.
     let received = false;
-    const end = this.lanceur.surDirect((e) => {
+    const end = this.launcher.onLive((e) => {
       received = true;
-      this.appliquerDirect(e);
+      this.applyDirect(e);
     });
-    void this.lanceur
+    void this.launcher
       .direct()
-      .then((e) => !finished && !received && this.appliquerDirect(e))
+      .then((e) => !finished && !received && this.applyDirect(e))
       .catch(() => {});
     return () => {
       finished = true;
@@ -93,34 +93,34 @@ export class Executions {
    * Unfinished blocks are not relayed at the end of a run: when this widget's run stops (or gives way to the next
    * one), the view realigns on the written run instead of keeping « en cours » badges.
    */
-  private appliquerDirect(e: DirectState): void {
-    const before = this.enDirect;
+  private applyDirect(e: DirectState): void {
+    const before = this.live;
     this.direct = e;
-    const after = this.enDirect;
-    if (before && (!after || after.debut !== before.debut || after.genre !== before.genre)) void this.charger().catch(() => {});
+    const after = this.live;
+    if (before && (!after || after.start !== before.start || after.kind !== before.kind)) void this.load().catch(() => {});
   }
 
   /** `relire`: a missing detail makes the list be re-read once (the run is probably gone). */
-  private async chargerListe(reread: boolean): Promise<void> {
-    const n = ++this.requeteListe;
-    const l = await this.source.executions(this.widget);
-    if (n !== this.requeteListe) return;
-    if (!sameJson(l, this.liste)) this.liste = l;
+  private async loadList(reread: boolean): Promise<void> {
+    const n = ++this.listRequest;
+    const l = await this.source.runs(this.widget);
+    if (n !== this.listRequest) return;
+    if (!sameJson(l, this.list)) this.list = l;
     // Another builder of this widget in the window (tab left during « Lancer ») may have changed the choice.
     const kept = choice.get(this.widget) ?? null;
-    if (kept !== this.voulue) this.voulue = kept;
-    if (this.voulue !== null && !l.some((e) => e.id === this.voulue)) this.garder(null);
-    if (!(await this.chargerDetail()) && reread) await this.chargerListe(false);
+    if (kept !== this.wanted) this.wanted = kept;
+    if (this.wanted !== null && !l.some((e) => e.id === this.wanted)) this.keep(null);
+    if (!(await this.loadDetail()) && reread) await this.loadList(false);
   }
 
-  async choisir(id: string | null): Promise<void> {
-    this.garder(id);
-    this.refus = null;
-    if (!(await this.chargerDetail())) await this.chargerListe(false);
+  async choose(id: string | null): Promise<void> {
+    this.keep(id);
+    this.denial = null;
+    if (!(await this.loadDetail())) await this.loadList(false);
   }
 
-  private garder(id: string | null): void {
-    this.voulue = id;
+  private keep(id: string | null): void {
+    this.wanted = id;
     if (id === null) choice.delete(this.widget);
     else choice.set(this.widget, id);
   }
@@ -130,64 +130,64 @@ export class Executions {
    * action refusal, shown), the choice stays. If it is the latest real one, the choice goes back to the default: the
    * following runs take it over.
    */
-  async lancer(input?: string | null): Promise<void> {
-    if (!this.lanceur || this.occupe) return;
-    this.demande = true;
-    this.refus = null;
+  async launch(input?: string | null): Promise<void> {
+    if (!this.launcher || this.busy) return;
+    this.request = true;
+    this.denial = null;
     let execution: string | undefined;
     try {
-      const r = input === undefined ? await this.lanceur.lancer(this.widget) : await this.lanceur.lancer(this.widget, input);
-      execution = r.execution;
-      if (execution !== undefined) this.garder(execution);
-      else if (r.erreur) this.refus = r.erreur;
+      const r = input === undefined ? await this.launcher.launch(this.widget) : await this.launcher.launch(this.widget, input);
+      execution = r.run;
+      if (execution !== undefined) this.keep(execution);
+      else if (r.error) this.denial = r.error;
     } catch (e) {
       console.error(`[webaios] exécution du widget ${this.widget} :`, e);
     } finally {
-      this.demande = false;
+      this.request = false;
     }
-    await this.charger();
-    if (execution !== undefined && this.voulue === execution && this.liste.find((e) => !e.essai)?.id === execution) this.garder(null);
+    await this.load();
+    if (execution !== undefined && this.wanted === execution && this.list.find((e) => !e.attempt)?.id === execution) this.keep(null);
   }
 
   /** « Rejouer depuis ce bloc » with the upstream outputs of the chosen run; the returned trial is chosen. */
-  async rejouer(block: string): Promise<void> {
-    const origin = this.choisie;
-    if (!this.lanceur || this.occupe || !origin) return;
-    this.demande = true;
-    this.refus = null;
+  async replay(block: string): Promise<void> {
+    const origin = this.chosen;
+    if (!this.launcher || this.busy || !origin) return;
+    this.request = true;
+    this.denial = null;
     try {
-      const r = await this.lanceur.rejouer(this.widget, origin.id, block);
-      if (r.ok) this.garder(r.execution);
-      else this.refus = r.erreur;
+      const r = await this.launcher.replay(this.widget, origin.id, block);
+      if (r.ok) this.keep(r.run);
+      else this.denial = r.error;
     } catch (e) {
-      this.refus = REPLAY_PREFIX + ((e as Error)?.message || "erreur inattendue");
+      this.denial = REPLAY_PREFIX + ((e as Error)?.message || "erreur inattendue");
     } finally {
-      this.demande = false;
+      this.request = false;
     }
-    await this.charger();
+    await this.load();
   }
 
   /** false: the chosen run's detail could not be read (`introuvable`). */
-  private async chargerDetail(): Promise<boolean> {
-    const r = this.choisie;
-    const n = ++this.requeteDetail;
+  private async loadDetail(): Promise<boolean> {
+    const r = this.chosen;
+    const n = ++this.detailRequest;
     if (!r) {
       this.detail = null;
-      this.introuvable = false;
+      this.notFound = false;
       return true;
     }
     // Already read and unchanged (same end, same status): nothing to request again.
     const d = this.detail;
-    if (d && d.id === r.id && d.fin === r.fin && d.statut === r.statut) return true;
+    if (d && d.id === r.id && d.end === r.end && d.status === r.status) return true;
     let e: Execution | null;
     try {
-      e = await this.source.execution(this.widget, r.id);
+      e = await this.source.run(this.widget, r.id);
     } catch {
       e = null;
     }
-    if (n !== this.requeteDetail) return true;
+    if (n !== this.detailRequest) return true;
     this.detail = e;
-    this.introuvable = e === null;
+    this.notFound = e === null;
     return e !== null;
   }
 }

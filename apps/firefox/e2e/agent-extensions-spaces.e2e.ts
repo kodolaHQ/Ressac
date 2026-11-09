@@ -14,7 +14,7 @@ import { click, inUi, waitUi } from "./ui";
 
 // The space settings' Extensions section (A7, N1, Review Focus 5), plus spec choice 2: an agent extension's content scripts run only in the spaces it is active in.
 const HOST = "http://127.0.0.1/*";
-const GRANT = { permissions: [], hotes: [HOST], reseau: [], tousLesSites: false, scriptsTousLesSites: false, scripts: true };
+const GRANT = { permissions: [], hosts: [HOST], network: [], allSites: false, allSitesScripts: false, scripts: true };
 const PRIVATE_PROFILE_ERROR = "Donne à cet espace privé son propre profil pour y utiliser des extensions de l'agent";
 const HIDER = {
   "manifest.json": { manifest_version: 3, name: "Cacheur de l'agent", version: "1.0.0", content_scripts: [{ matches: [HOST], css: ["cache.css"] }] },
@@ -56,12 +56,12 @@ async function launch(prepare: (root: string, dataDir: string) => void = () => {
       if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
     await waitUi(w.marionette, "return doc.querySelector('.xterm-rows')?.textContent.includes('prêt>')", [], 20_000, "agent");
   }
-  return { ...w, racine: root, call: (name: string, args: Record<string, unknown> = {}) => callTool(dataDir, name, args) };
+  return { ...w, root: root, call: (name: string, args: Record<string, unknown> = {}) => callTool(dataDir, name, args) };
 }
 
 const registry = (dataDir: string) => {
   const f = path.join(dataDir, "extensions", "etat.json");
-  return existsSync(f) ? (JSON.parse(readFileSync(f, "utf8")) as { extensions: Record<string, { profils: string[]; idChrome: string | null }> }).extensions : {};
+  return existsSync(f) ? (JSON.parse(readFileSync(f, "utf8")) as { extensions: Record<string, { profiles: string[]; addonId: string | null }> }).extensions : {};
 };
 /** The agent's add-on `id` installed and active (or not) in Firefox. */
 const waitActive = (m: Marionette, id: string, active: boolean) =>
@@ -83,15 +83,15 @@ async function poll<T>(read: () => Promise<T>, ok: (v: T) => boolean, ms = 15_00
 }
 const activeSpace = async (m: Marionette) => {
   const s = await state(m);
-  return s.espaces.find((e) => e.id === s.fenetres[0]!.espaceActif)!;
+  return s.spaces.find((e) => e.id === s.windows[0]!.activeSpace)!;
 };
 async function setPrivate(m: Marionette, isPrivate: boolean): Promise<void> {
   const e = await activeSpace(m);
-  await dispatch(m, { type: "reglerEspace", id: e.id, nom: e.nom, icone: e.icone, prive: isPrivate, profil: e.profil } as Action);
+  await dispatch(m, { type: "reglerEspace", id: e.id, name: e.name, icon: e.icon, private: isPrivate, profile: e.profile } as Action);
 }
 async function setSpacePrivate(m: Marionette, id: string): Promise<void> {
-  const e = (await state(m)).espaces.find((x) => x.id === id)!;
-  await dispatch(m, { type: "reglerEspace", id: e.id, nom: e.nom, icone: e.icone, prive: true, profil: e.profil } as Action);
+  const e = (await state(m)).spaces.find((x) => x.id === id)!;
+  await dispatch(m, { type: "reglerEspace", id: e.id, name: e.name, icon: e.icon, private: true, profile: e.profile } as Action);
 }
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 const hostPid = (m: Marionette) => m.execute<number | null>(`return (async () => (await ChromeUtils.importESModule("${STORE}").ready).agent.pid)();`);
@@ -124,9 +124,9 @@ describe("agent extensions per space", () => {
     await waitActive(m, "cacheur@agent.webaios", true);
     const a = await openTab(m, `${server.url}/cache.html`);
     expect(await poll(() => display(m, a), (v) => v === "none,block")).toBe("none,block");
-    await dispatch(m, { type: "creerEspace", nom: "B", icone: "🅱️", prive: false, profil: "nouveau", fenetreId: (await state(m)).fenetres[0]!.id } as Action);
+    await dispatch(m, { type: "creerEspace", name: "B", icon: "🅱️", private: false, profile: "nouveau", windowId: (await state(m)).windows[0]!.id } as Action);
     const b = await openTab(m, `${server.url}/cache.html`);
-    expect((await state(m)).onglets[b]!.espaceId).not.toBe((await state(m)).onglets[a]!.espaceId);
+    expect((await state(m)).tabs[b]!.spaceId).not.toBe((await state(m)).tabs[a]!.spaceId);
     await new Promise((r) => setTimeout(r, 3000));
     expect(await display(m, b)).toBe("block,block");
   });
@@ -142,7 +142,7 @@ describe("agent extensions per space", () => {
         const p = doc.querySelector('[data-testid="panneau-extensions"]');
         return p ? p.textContent : null;`);
     expect(await listed()).toContain("Cacheur");
-    await dispatch(m, { type: "creerEspace", nom: "B", icone: "🅱️", prive: false, profil: "nouveau", fenetreId: (await state(m)).fenetres[0]!.id } as Action);
+    await dispatch(m, { type: "creerEspace", name: "B", icon: "🅱️", private: false, profile: "nouveau", windowId: (await state(m)).windows[0]!.id } as Action);
     await openTab(m, `${server.url}/cache.html`);
     await waitUi(m, `return !doc.querySelector('[data-testid="panneau-extensions"]')?.textContent.includes("Cacheur") || null`);
     expect(await listed()).not.toContain("Cacheur");
@@ -164,7 +164,7 @@ describe("agent extensions per space", () => {
     // The kernel refuses too, without the switch.
     expect(await inUi(m, "return ui.webaios.extensions.basculer('agent:cacheur', arguments[0], true).then((r) => JSON.parse(JSON.stringify(r)))", [e.id])).toEqual({
       ok: false,
-      erreur: PRIVATE_PROFILE_ERROR,
+      error: PRIVATE_PROFILE_ERROR,
     });
   });
 
@@ -173,9 +173,9 @@ describe("agent extensions per space", () => {
     const w = await launch((root, dataDir) => (writeAgentExtension(root, "cacheur", HIDER), grant(dataDir, "cacheur", GRANT)));
     const m = w.marionette;
     await waitActive(m, "cacheur@agent.webaios", true);
-    await until(() => registry(w.dataDir)["agent:cacheur"]?.idChrome === "cacheur@agent.webaios");
+    await until(() => registry(w.dataDir)["agent:cacheur"]?.addonId === "cacheur@agent.webaios");
     const personal = await activeSpace(m);
-    await dispatch(m, { type: "creerEspace", nom: "Lecture", icone: "📚", prive: false, profil: "defaut", fenetreId: (await state(m)).fenetres[0]!.id } as Action);
+    await dispatch(m, { type: "creerEspace", name: "Lecture", icon: "📚", private: false, profile: "defaut", windowId: (await state(m)).windows[0]!.id } as Action);
     await openSettings(m, personal.id);
     expect(await line(m, "Cacheur de l'agent")).toMatchObject({ checked: true, text: expect.stringContaining("Active aussi dans « Lecture » (même profil)") });
     const shown = (id: string) => inUi<string | null>(m, `return doc.querySelector('[data-testid="${id}"]')?.textContent ?? null`);
@@ -189,7 +189,7 @@ describe("agent extensions per space", () => {
       "En enregistrant, ces extensions de l'agent seront désactivées pour ce profil : Cacheur de l'agent. Les onglets ouverts où elles tournent seront rechargés.",
     );
     await click(m, `${MODAL} button[type="submit"]`, { text: "Enregistrer" });
-    await until(() => registry(w.dataDir)["agent:cacheur"]?.profils.length === 0);
+    await until(() => registry(w.dataDir)["agent:cacheur"]?.profiles.length === 0);
     await waitActive(m, "cacheur@agent.webaios", false);
   });
 
@@ -199,9 +199,9 @@ describe("agent extensions per space", () => {
     const m = w.marionette;
     await waitActive(m, "cacheur@agent.webaios", true);
     // Without the modal: the creerEspace action, as another window would send it.
-    await dispatch(m, { type: "creerEspace", nom: "Secret", icone: "🔒", prive: true, profil: "defaut", fenetreId: (await state(m)).fenetres[0]!.id } as Action);
+    await dispatch(m, { type: "creerEspace", name: "Secret", icon: "🔒", private: true, profile: "defaut", windowId: (await state(m)).windows[0]!.id } as Action);
     await waitActive(m, "cacheur@agent.webaios", false);
-    await until(() => registry(w.dataDir)["agent:cacheur"]?.profils.length === 0);
+    await until(() => registry(w.dataDir)["agent:cacheur"]?.profiles.length === 0);
   });
 
   // extensions-agent.spec.ts:1552
@@ -227,8 +227,8 @@ describe("agent extensions per space", () => {
     const a = await openTab(m, `${server.url}/a.html`);
     expect(await poll(() => ticks(m, a), (n) => n > 2)).toBeGreaterThan(2);
     // One more site: disabled, without a reload.
-    writeAgentExtension(w.racine, "tic", tic([HOST, "https://exemple.com/*"]));
-    expect((await w.call("recharger_extension", { id: "tic" })).texte).toContain("desactivee");
+    writeAgentExtension(w.root, "tic", tic([HOST, "https://exemple.com/*"]));
+    expect((await w.call("recharger_extension", { id: "tic" })).text).toContain("desactivee");
     await waitActive(m, "tic@agent.webaios", false);
     await mark(m, a);
     await setPrivate(m, true);
@@ -246,7 +246,7 @@ describe("agent extensions per space", () => {
     const spaceA = (await activeSpace(m)).id;
     const a = await openTab(m, `${server.url}/a.html`);
     expect(await poll(() => ticks(m, a), (n) => n > 2)).toBeGreaterThan(2);
-    await dispatch(m, { type: "creerEspace", nom: "B", icone: "🅱️", prive: false, profil: "nouveau", fenetreId: (await state(m)).fenetres[0]!.id } as Action);
+    await dispatch(m, { type: "creerEspace", name: "B", icon: "🅱️", private: false, profile: "nouveau", windowId: (await state(m)).windows[0]!.id } as Action);
     const spaceB = (await activeSpace(m)).id;
     const toggle = (space: string, active: boolean) =>
       inUi(m, "return ui.webaios.extensions.basculer('agent:tic', arguments[0], arguments[1]).then((r) => JSON.parse(JSON.stringify(r)))", [space, active]);
@@ -284,7 +284,7 @@ describe("agent extensions per space", () => {
     const call = w.call("demander_extension", { id: "cacheur" });
     await waitUi(m, `return doc.querySelector(${JSON.stringify(REQUEST)})?.textContent.includes("Cacheur de l'agent")`, [], 15_000);
     await setPrivate(m, true);
-    expect((await call).texte).toBe("Demande retirée avant la réponse de l'utilisateur.");
+    expect((await call).text).toBe("Demande retirée avant la réponse de l'utilisateur.");
     await waitUi(m, `return !doc.querySelector(${JSON.stringify(REQUEST)})`);
     expect(await agentAddons(m)).toEqual([]);
   });

@@ -20,26 +20,26 @@ import {
 import type { Scope } from "../../src/extensions/manifest.js";
 import { tempFolder } from "../helpers/temp.js";
 
-const scope: Scope = { permissions: [], hotes: [], reseau: [], tousLesSites: false, scriptsTousLesSites: false };
+const scope: Scope = { permissions: [], hosts: [], network: [], allSites: false, allSitesScripts: false };
 const entry = (source: "store" | "agent", override: Partial<ExtensionEntry> = {}): ExtensionEntry => ({
   source,
-  idChrome: null,
-  nom: "X",
+  addonId: null,
+  name: "X",
   version: "1.0",
-  accord: scope,
-  profils: [],
-  epinglee: false,
-  modifieeLe: null,
-  desactivee: null,
-  majEnAttente: null,
-  vues: {},
+  grant: scope,
+  profiles: [],
+  pinned: false,
+  modifiedAt: null,
+  disabled: null,
+  pendingUpdate: null,
+  seenVersions: {},
   ...override,
 });
 const A = "agent:mon-ext";
 const S = "store:" + "a".repeat(32);
 const state = (extensions: Record<string, ExtensionEntry>, allCut = false): ExtensionsState => ({
   version: 1,
-  toutesCoupees: allCut,
+  allCut: allCut,
   extensions,
 });
 const none = new Set<string>();
@@ -49,37 +49,37 @@ describe("extension registry", () => {
     const e = state({ [A]: entry("agent"), [S]: entry("store") });
     const privates = new Set(["p"]);
     expect(() => enable(e, A, "p", privates)).toThrow(PRIVATE_PROFILE_ERROR);
-    expect(enable(e, S, "p", privates).extensions[S]!.profils).toEqual(["p"]);
-    expect(e.extensions[S]!.profils).toEqual([]);
+    expect(enable(e, S, "p", privates).extensions[S]!.profiles).toEqual(["p"]);
+    expect(e.extensions[S]!.profiles).toEqual([]);
     const two = enable(enable(e, A, "q", none), A, "q", none);
-    expect(two.extensions[A]!.profils).toEqual(["q"]);
+    expect(two.extensions[A]!.profiles).toEqual(["q"]);
   });
 
   it("enabling without a grant throws", () => {
-    const e = state({ [A]: entry("agent", { accord: null }) });
+    const e = state({ [A]: entry("agent", { grant: null }) });
     expect(() => enable(e, A, "p", none)).toThrow();
     expect(() => enable(e, "store:" + "b".repeat(32), "p", none)).toThrow();
   });
 
   it("appliquerProfilsPrives removes only the agent's extensions, and lists them", () => {
     const e = state({
-      [A]: entry("agent", { profils: ["p", "q"], vues: { p: "1", q: "1" } }),
-      [S]: entry("store", { profils: ["p"] }),
+      [A]: entry("agent", { profiles: ["p", "q"], seenVersions: { p: "1", q: "1" } }),
+      [S]: entry("store", { profiles: ["p"] }),
     });
     const r = applyPrivateProfiles(e, new Set(["p"]));
-    expect(r.etat.extensions[A]!.profils).toEqual(["q"]);
-    expect(r.etat.extensions[S]!.profils).toEqual(["p"]);
-    expect(r.retirees).toEqual([{ cle: A, profil: "p" }]);
+    expect(r.state.extensions[A]!.profiles).toEqual(["q"]);
+    expect(r.state.extensions[S]!.profiles).toEqual(["p"]);
+    expect(r.removed).toEqual([{ key: A, profile: "p" }]);
   });
 
   it("desactiver, desactiverPartout, retirer, cutAll, epingler", () => {
-    const e = state({ [A]: entry("agent", { profils: ["p", "q"] }) });
-    expect(disable(e, A, "p").extensions[A]!.profils).toEqual(["q"]);
-    expect(disableEverywhere(e, A).extensions[A]!.profils).toEqual([]);
+    const e = state({ [A]: entry("agent", { profiles: ["p", "q"] }) });
+    expect(disable(e, A, "p").extensions[A]!.profiles).toEqual(["q"]);
+    expect(disableEverywhere(e, A).extensions[A]!.profiles).toEqual([]);
     expect(remove(e, A).extensions).toEqual({});
-    expect(cutAll(e, true).toutesCoupees).toBe(true);
-    expect(pin(e, A, true).extensions[A]!.epinglee).toBe(true);
-    expect(e.extensions[A]!.epinglee).toBe(false);
+    expect(cutAll(e, true).allCut).toBe(true);
+    expect(pin(e, A, true).extensions[A]!.pinned).toBe(true);
+    expect(e.extensions[A]!.pinned).toBe(false);
     expect(() => pin(e, "agent:inconnue", true)).toThrow();
   });
 
@@ -108,22 +108,22 @@ describe("fichier etat.json", () => {
   it("a damaged etat.json reads as empty and is not rewritten as long as nothing changes", async () => {
     const folder = await tempFolder();
     await writeFile(join(folder, "etat.json"), "{pas du json");
-    expect(await readExtensionsState(folder)).toEqual({ version: 1, toutesCoupees: false, extensions: {} });
+    expect(await readExtensionsState(folder)).toEqual({ version: 1, allCut: false, extensions: {} });
     expect(await readFile(join(folder, "etat.json"), "utf8")).toBe("{pas du json");
-    expect(await readExtensionsState(join(folder, "absent"))).toEqual({ version: 1, toutesCoupees: false, extensions: {} });
+    expect(await readExtensionsState(join(folder, "absent"))).toEqual({ version: 1, allCut: false, extensions: {} });
   });
 
   it("an entry with an invalid key or shape is ignored, a scope with scripts is kept", async () => {
     const folder = await tempFolder();
-    const good = entry("agent", { accord: { ...scope, scripts: true } });
+    const good = entry("agent", { grant: { ...scope, scripts: true } });
     await writeFile(
       join(folder, "etat.json"),
-      JSON.stringify({ version: 1, toutesCoupees: true, extensions: { [A]: good, "agent:BAD": good, "agent:x": { nom: 1 } } }),
+      JSON.stringify({ version: 1, allCut: true, extensions: { [A]: good, "agent:BAD": good, "agent:x": { name: 1 } } }),
     );
     const lu = await readExtensionsState(folder);
-    expect(lu.toutesCoupees).toBe(true);
+    expect(lu.allCut).toBe(true);
     expect(Object.keys(lu.extensions)).toEqual([A]);
-    expect(lu.extensions[A]!.accord?.scripts).toBe(true);
+    expect(lu.extensions[A]!.grant?.scripts).toBe(true);
   });
 
   it("consolesMasquees (Chromium ids masked from the agent) survives retirer and the re-read; an invalid id is ignored", async () => {
@@ -131,15 +131,15 @@ describe("fichier etat.json", () => {
     const id = "b".repeat(32);
     await writeFile(
       join(folder, "etat.json"),
-      JSON.stringify({ version: 1, toutesCoupees: false, extensions: { [A]: entry("agent") }, consolesMasquees: [id, "pas-un-id", 3, "garde@agent.webaios", "garde@autre.org"] }),
+      JSON.stringify({ version: 1, allCut: false, extensions: { [A]: entry("agent") }, hiddenConsoles: [id, "pas-un-id", 3, "garde@agent.webaios", "garde@autre.org"] }),
     );
     const lu = await readExtensionsState(folder);
-    expect(lu.consolesMasquees).toEqual([id, "garde@agent.webaios"]);
-    expect(remove(lu, A).consolesMasquees).toEqual([id, "garde@agent.webaios"]);
+    expect(lu.hiddenConsoles).toEqual([id, "garde@agent.webaios"]);
+    expect(remove(lu, A).hiddenConsoles).toEqual([id, "garde@agent.webaios"]);
     await changeExtensionsState(folder, (e) => remove(e, A), () => none);
     const reviewed = await readExtensionsState(folder);
     expect(reviewed.extensions).toEqual({});
-    expect(reviewed.consolesMasquees).toEqual([id, "garde@agent.webaios"]);
+    expect(reviewed.hiddenConsoles).toEqual([id, "garde@agent.webaios"]);
   });
 
   const written = (folder: string, content: string) => writeFile(join(folder, "etat.json"), content);
@@ -149,9 +149,9 @@ describe("fichier etat.json", () => {
 
   it("a version 2 file reads as empty and any write is refused, without touching the file", async () => {
     const folder = await tempFolder();
-    const original = JSON.stringify({ version: 2, toutesCoupees: false, extensions: { [A]: entry("agent") } });
+    const original = JSON.stringify({ version: 2, allCut: false, extensions: { [A]: entry("agent") } });
     await written(folder, original);
-    expect(await readExtensionsState(folder)).toEqual({ version: 1, toutesCoupees: false, extensions: {} });
+    expect(await readExtensionsState(folder)).toEqual({ version: 1, allCut: false, extensions: {} });
     await expect(changeExtensionsState(folder, addition("agent:b"), withoutPrivate)).rejects.toThrow(
       "état des extensions d'une version plus récente",
     );
@@ -172,7 +172,7 @@ describe("fichier etat.json", () => {
 
   it("writing after ignored entries keeps a copy of the original file", async () => {
     const folder = await tempFolder();
-    const original = JSON.stringify({ version: 1, toutesCoupees: false, extensions: { [A]: entry("agent"), "agent:x": { nom: 1 } } });
+    const original = JSON.stringify({ version: 1, allCut: false, extensions: { [A]: entry("agent"), "agent:x": { name: 1 } } });
     await written(folder, original);
     await changeExtensionsState(folder, (e) => e, withoutPrivate);
     const copies = await backups(folder);
@@ -210,7 +210,7 @@ describe("fichier etat.json", () => {
   it("confidentiality is evaluated within the serialized modification", async () => {
     const folder = await tempFolder();
     await changeExtensionsState(folder, addition("agent:b"), withoutPrivate);
-    await changeExtensionsState(folder, (e) => ({ ...e, extensions: { ...e.extensions, "agent:b": { ...e.extensions["agent:b"]!, accord: scope } } }), withoutPrivate);
+    await changeExtensionsState(folder, (e) => ({ ...e, extensions: { ...e.extensions, "agent:b": { ...e.extensions["agent:b"]!, grant: scope } } }), withoutPrivate);
     let isPrivate = false;
     const activation = changeExtensionsState(folder, (e, privates) => enable(e, "agent:b", "p", privates), () => new Set(isPrivate ? ["p"] : []));
     isPrivate = true; // the space becomes private after the call but before the execution
@@ -221,20 +221,20 @@ describe("fichier etat.json", () => {
       (e) => enable(e, "agent:b", "p", none),
       () => new Set(["p"]),
     );
-    expect(lu.extensions["agent:b"]!.profils).toEqual([]);
+    expect(lu.extensions["agent:b"]!.profiles).toEqual([]);
   });
 
   it("applis survives modifierEtatExtensions and the re-read; an etat.json without applis re-reads without an .abime-* copy", async () => {
     const folder = await tempFolder();
     await mkdir(folder, { recursive: true });
     await writeFile(join(folder, "etat.json"), JSON.stringify(state({ [S]: entry("store") })));
-    expect((await readExtensionsState(folder)).extensions[S]!.applis).toBeUndefined();
+    expect((await readExtensionsState(folder)).extensions[S]!.siteApps).toBeUndefined();
     await changeExtensionsState(folder, (e) => e, () => none);
     expect((await readdir(folder)).filter((f) => f.includes(".abime-"))).toEqual([]);
-    await changeExtensionsState(folder, (e) => ({ ...e, extensions: { ...e.extensions, [S]: { ...e.extensions[S]!, applis: { vidola: "e1" } } } }), () => none);
-    expect((await readExtensionsState(folder)).extensions[S]!.applis).toEqual({ vidola: "e1" });
+    await changeExtensionsState(folder, (e) => ({ ...e, extensions: { ...e.extensions, [S]: { ...e.extensions[S]!, siteApps: { vidola: "e1" } } } }), () => none);
+    expect((await readExtensionsState(folder)).extensions[S]!.siteApps).toEqual({ vidola: "e1" });
     await changeExtensionsState(folder, (e) => e, () => none);
-    expect((await readExtensionsState(folder)).extensions[S]!.applis).toEqual({ vidola: "e1" });
+    expect((await readExtensionsState(folder)).extensions[S]!.siteApps).toEqual({ vidola: "e1" });
     expect((await readdir(folder)).filter((f) => f.includes(".abime-"))).toEqual([]);
   });
 });

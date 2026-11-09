@@ -10,15 +10,15 @@
    * relaunches nothing; a trial never becomes the action's latest result there. The agent's components are not loaded
    * there (a neutral frame replaces them).
    */
-  let { id, executions }: { id: string; executions: Executions } = $props();
+  let { id, runs: executions }: { id: string; runs: Executions } = $props();
 
   let loaded = $state.raw<PageAction | null | undefined>(undefined);
   /** The chosen run, and what changes its page (its end, its status). */
-  const wanted = $derived(executions.choisie ? `${executions.choisie.id}|${executions.choisie.fin}|${executions.choisie.statut}` : null);
+  const wanted = $derived(executions.chosen ? `${executions.chosen.id}|${executions.chosen.end}|${executions.chosen.status}` : null);
   let request = 0;
   $effect(() => {
     const v = wanted;
-    const execution = executions.choisie?.id ?? null;
+    const execution = executions.chosen?.id ?? null;
     const n = ++request;
     if (v === null || execution === null) {
       loaded = null;
@@ -33,20 +33,20 @@
 </script>
 
 <div class="apercu" data-testid="apercu-action">
-  {#if executions.choisie === null}
+  {#if executions.chosen === null}
     <p class="doux">Aucune exécution pour l'instant.</p>
   {:else if loaded === undefined}
     <p class="doux">Chargement…</p>
   {:else if loaded === null || !loaded.page}
-    <p class="doux">{loaded?.erreur ?? "Pas de page pour cette exécution."}</p>
-  {:else if loaded.page.vide}
+    <p class="doux">{loaded?.error ?? "Pas de page pour cette exécution."}</p>
+  {:else if loaded.page.empty}
     <p class="doux">{NO_RESULT}</p>
   {:else}
     <div class="page">
-      <PageRender page={loaded.page} action={id} execution={loaded.execution} composants={false} />
+      <PageRender page={loaded.page} action={id} run={loaded.run} components={false} />
     </div>
   {/if}
-  {#if executions.choisie?.essai}<p class="doux mention" data-testid="apercu-mention">Aperçu d'un essai : pas le dernier résultat de l'action</p>{/if}
+  {#if executions.chosen?.attempt}<p class="doux mention" data-testid="apercu-mention">Aperçu d'un essai : pas le dernier résultat de l'action</p>{/if}
 </div>
 
 <style>

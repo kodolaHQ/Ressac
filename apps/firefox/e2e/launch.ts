@@ -82,9 +82,9 @@ export async function launchWebAiOs(o: { headed?: boolean; width?: number; heigh
         MOZ_REMOTE_ALLOW_SYSTEM_ACCESS: "1",
         WEBAIOS_DATA_DIR: dataDir,
         // The fake agent writes its traces there.
-        WEBAIOS_RACINE: path.join(dataDir, "espace"),
+        WEBAIOS_ROOT: path.join(dataDir, "espace"),
         // A free port: never the real 5279.
-        WEBAIOS_PORT_MCP_EXTERNE: "0",
+        WEBAIOS_PORT_MCP_EXTERNAL: "0",
         // The host's notifications go to a file, never to the owner's screen (a test passes its own file to read them).
         WEBAIOS_TEST_NOTIFICATIONS: path.join(dataDir, "notifications.jsonl"),
         ...o.env,

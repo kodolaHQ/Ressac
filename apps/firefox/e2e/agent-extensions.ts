@@ -8,8 +8,8 @@ import type { Marionette } from "./marionette";
 /** Writes `<dataDir>/extensions/etat.json` (WebAiOs's registry) with a grant on `agent:<id>`, before a launch. */
 export function grant(dataDir: string, id: string, grant: unknown, profiles: string[] = ["defaut"]): void {
   mkdirSync(path.join(dataDir, "extensions"), { recursive: true });
-  const entry = { source: "agent", idChrome: null, nom: id, version: "1.0.0", accord: grant, profils: profiles, epinglee: false, modifieeLe: null, desactivee: null, majEnAttente: null, vues: {} };
-  writeFileSync(path.join(dataDir, "extensions", "etat.json"), JSON.stringify({ version: 1, toutesCoupees: false, extensions: { [`agent:${id}`]: entry } }));
+  const entry = { source: "agent", addonId: null, name: id, version: "1.0.0", grant: grant, profiles: profiles, pinned: false, modifiedAt: null, disabled: null, pendingUpdate: null, seenVersions: {} };
+  writeFileSync(path.join(dataDir, "extensions", "etat.json"), JSON.stringify({ version: 1, allCut: false, extensions: { [`agent:${id}`]: entry } }));
 }
 
 export type FakeAmo = Awaited<ReturnType<typeof startFakeAmo>>;
@@ -40,7 +40,7 @@ export async function launchWithAmo(o: { amo?: Parameters<typeof startFakeAmo>[0
     w = await launchWebAiOs({
       dataDir: o.dataDir,
       profile: o.profile,
-      env: { WEBAIOS_TEST_AMO_URL: amo.url, WEBAIOS_TEST_AMO_CLES: "user:1:abc:test-secret", ...actor.env, ...o.env },
+      env: { WEBAIOS_TEST_AMO_URL: amo.url, WEBAIOS_TEST_AMO_KEYS: "user:1:abc:test-secret", ...actor.env, ...o.env },
       prefs: { ...actor.prefs, ...o.prefs },
     });
   } catch (e) {
@@ -63,10 +63,10 @@ const NAVIGABLES = "chrome://remote/content/shared/NavigableManager.sys.mjs";
 
 /** Opens `url` in a WebAiOs tab, waits until it is loaded; returns the tab id. */
 export async function openTab(m: Marionette, url: string): Promise<string> {
-  const before = new Set(Object.keys((await state(m)).onglets));
-  const s = await dispatch(m, { type: "ouvrirOnglet", fenetreId: (await state(m)).fenetres[0]!.id, url });
+  const before = new Set(Object.keys((await state(m)).tabs));
+  const s = await dispatch(m, { type: "ouvrirOnglet", windowId: (await state(m)).windows[0]!.id, url });
   await waitFor(m, "return !gBrowser.selectedBrowser.webProgress.isLoadingDocument && gBrowser.selectedBrowser.currentURI.spec !== 'about:blank'", (v) => v === true);
-  return Object.keys(s.onglets).find((id) => !before.has(id))!;
+  return Object.keys(s.tabs).find((id) => !before.has(id))!;
 }
 
 /** Runs `script` in the content page of WebAiOs tab `id`, then comes back to the chrome context. */

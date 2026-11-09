@@ -11,7 +11,7 @@ import { api } from "../state.svelte";
  */
 
 /** What the window's agent shows (preparing, active, error…), the same for all hosts. */
-export const agent = $state<{ etat: AgentPanelState }>({ etat: { etat: "preparation" } });
+export const agent = $state<{ state: AgentPanelState }>({ state: { state: "preparation" } });
 
 let terminal: Terminal | undefined;
 let adjustment: FitAddon | undefined;
@@ -21,9 +21,9 @@ let element: HTMLDivElement | undefined;
 const hosts: HTMLElement[] = [];
 
 // A restarting session (Relancer, profile change) clears the previous one's screen.
-const endState = api.agent.surEtat((e) => {
-  if (e.etat === "preparation" && agent.etat.etat !== "preparation") terminal?.reset();
-  agent.etat = e;
+const endState = api.agent.onState((e) => {
+  if (e.state === "preparation" && agent.state.state !== "preparation") terminal?.reset();
+  agent.state = e;
 });
 let dataEnd: (() => void) | undefined;
 
@@ -39,9 +39,9 @@ function create(hostName: HTMLElement): void {
   terminal.loadAddon(adjustment);
   terminal.open(element);
   adjustment.fit();
-  terminal.onData((d) => api.agent.ecrire(d));
-  dataEnd = api.agent.surDonnees((d) => terminal!.write(d));
-  api.agent.demarrer(size());
+  terminal.onData((d) => api.agent.write(d));
+  dataEnd = api.agent.onData((d) => terminal!.write(d));
+  api.agent.start(size());
 }
 
 /**
@@ -71,7 +71,7 @@ export function adjust(): void {
   if (!terminal || !adjustment || !hostName || hostName.clientWidth === 0 || hostName.clientHeight === 0) return;
   const before = `${terminal.cols}x${terminal.rows}`;
   adjustment.fit();
-  if (`${terminal.cols}x${terminal.rows}` !== before) api.agent.redimensionner(size());
+  if (`${terminal.cols}x${terminal.rows}` !== before) api.agent.resize(size());
 }
 
 export function focus(): void {
@@ -85,7 +85,7 @@ export function hasFocus(): boolean {
 /** New session (Réessayer, Relancer): the screen starts from scratch. */
 export function reset(): void {
   terminal?.reset();
-  api.agent.demarrer(size());
+  api.agent.start(size());
 }
 
 // Hot reload (development): the old module gives back its subscriptions and its terminal, otherwise the agent's

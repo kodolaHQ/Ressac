@@ -209,14 +209,14 @@ export type OpenRequest = (url: string, o: { cookies: boolean }) => ImageRequest
 const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
 
 /** Loads an image, following permitted redirects; null if refused, too big or not an image. */
-export function loadImage(open: OpenRequest, url: string, o: { permise: (url: string) => boolean; cookies: boolean; max: number }): Promise<{ type: string; corps: Uint8Array } | null> {
-  if (!o.permise(url)) return Promise.resolve(null);
+export function loadImage(open: OpenRequest, url: string, o: { allowed: (url: string) => boolean; cookies: boolean; max: number }): Promise<{ type: string; body: Uint8Array } | null> {
+  if (!o.allowed(url)) return Promise.resolve(null);
   return new Promise((render) => {
     let finished = false;
     let hops = 0;
     let current = url;
     let request: ImageRequest | undefined;
-    const finish = (v: { type: string; corps: Uint8Array } | null) => {
+    const finish = (v: { type: string; body: Uint8Array } | null) => {
       if (finished) return;
       finished = true;
       clearTimeout(timer);
@@ -240,7 +240,7 @@ export function loadImage(open: OpenRequest, url: string, o: { permise: (url: st
           return finish(null);
         }
         // A hostile page could redirect to a third party, the machine or the local network: checked before going.
-        if (hops >= REDIRECTIONS_IMAGE || !o.permise(next)) return finish(null);
+        if (hops >= REDIRECTIONS_IMAGE || !o.allowed(next)) return finish(null);
         hops++;
         current = next;
         request!.followRedirect();
@@ -261,7 +261,7 @@ export function loadImage(open: OpenRequest, url: string, o: { permise: (url: st
           const body = new Uint8Array(size);
           let i = 0;
           for (const m of chunks) body.set(m, (i += m.length) - m.length);
-          finish({ type, corps: body });
+          finish({ type, body: body });
         });
         r.on("error", () => finish(null));
         r.on("aborted", () => finish(null));
@@ -384,9 +384,9 @@ export function containerRequests(userContextId: number, o: { anonymous?: boolea
 }
 
 /** A loaded image as a `data:` URL. */
-export function toDataUrl(image: { type: string; corps: Uint8Array }): string {
+export function toDataUrl(image: { type: string; body: Uint8Array }): string {
   let binary = "";
-  for (let i = 0; i < image.corps.length; i += 0x8000) binary += String.fromCharCode(...image.corps.subarray(i, i + 0x8000));
+  for (let i = 0; i < image.body.length; i += 0x8000) binary += String.fromCharCode(...image.body.subarray(i, i + 0x8000));
   return `data:${image.type};base64,${btoa(binary)}`;
 }
 
@@ -405,7 +405,7 @@ export async function siteImage(userContextId: number, url: string, domains: str
   // The place is handed over by the one who frees it (running stays the same).
   else await new Promise<void>((ok) => q!.waiting.push(ok));
   try {
-    const image = await loadImage(containerRequests(userContextId), url, { permise: (u) => imageAllowed(u, domains), cookies: true, max: IMAGE_SITE_MAX });
+    const image = await loadImage(containerRequests(userContextId), url, { allowed: (u) => imageAllowed(u, domains), cookies: true, max: IMAGE_SITE_MAX });
     return image && toDataUrl(image);
   } finally {
     const next = q.waiting.shift();

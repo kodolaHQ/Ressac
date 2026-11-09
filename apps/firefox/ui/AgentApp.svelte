@@ -8,12 +8,12 @@
 
   const win = window.parent.webaiosWindow!;
   const winState = $derived(currentWindow());
-  const agentPanelOpen = $derived(winState?.panneauAgentOuvert ?? false);
+  const agentPanelOpen = $derived(winState?.agentPanelOpen ?? false);
   const activeTab = $derived.by(() => {
-    const id = winState?.actif[winState.espaceActif];
-    return id ? appState.valeur?.onglets[id] : undefined;
+    const id = winState?.active[winState.activeSpace];
+    return id ? appState.value?.tabs[id] : undefined;
   });
-  $effect(() => api.surRaccourci((r) => r === "agent" && focusAgent.n++));
+  $effect(() => api.onShortcut((r) => r === "agent" && focusAgent.n++));
 
   // The panel is open by default on the home page (the agent's session starts there), and closes
   // when leaving it if it opened only for it. Closed by the user on the home page, it stays closed there until next launch.
@@ -45,7 +45,7 @@
     // The action is idempotent: sending it again until the state reflects it toggles nothing.
     const ask = (v: boolean) => {
       expected = v;
-      api.agir({ type: "panneauAgentAccueil", fenetreId: f.id, ouvert: v });
+      api.dispatch({ type: "panneauAgentAccueil", windowId: f.id, open: v });
     };
     if (onHome && !isOpen && !panelClosedOnHome) {
       openedByHome = true;
@@ -68,12 +68,12 @@
     win.setAgentWidth(width);
     if (end) {
       start = null;
-      api.agir({ type: "largeurPanneauAgent", largeur: width });
+      api.dispatch({ type: "largeurPanneauAgent", width: width });
     }
   }
 </script>
 
-<AgentPanel visible={agentPanelOpen} redimensionner={resize} />
+<AgentPanel visible={agentPanelOpen} resize={resize} />
 
 <style>
   :global(html), :global(body) { height: 100%; margin: 0; }

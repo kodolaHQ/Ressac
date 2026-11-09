@@ -10,19 +10,19 @@ import { ENGINE, sentWorkflow } from "../helpers/engine.js";
 const { chaineDe: chainOf, BLOCS_LIVRES: SHIPPED_BLOCKS } = await import(pathToFileURL(join(ENGINE, "interpreteur.mjs")).href);
 
 for (const cas of CASE_CHAIN) {
-  test(`streaming chain: ${cas.nom}`, () => {
-    const r = validateWorkflow(cas.brut, cas.contexte);
-    if (!r.ok) throw new Error(r.erreur);
-    expect(streamingChain(r.valide)).toEqual(cas.attendu);
+  test(`streaming chain: ${cas.name}`, () => {
+    const r = validateWorkflow(cas.raw, cas.context);
+    if (!r.ok) throw new Error(r.error);
+    expect(streamingChain(r.valid)).toEqual(cas.expected);
   });
 
-  test(`streaming chain, the same in the container: ${cas.nom}`, () => {
-    expect(chainOf(sentWorkflow(cas.brut, cas.contexte), SHIPPED_BLOCKS)).toEqual(cas.attendu);
+  test(`streaming chain, the same in the container: ${cas.name}`, () => {
+    expect(chainOf(sentWorkflow(cas.raw, cas.context), SHIPPED_BLOCKS)).toEqual(cas.expected);
   });
 }
 
 test("the chainable blocks: source.page, source.recuperer, ia.rediger, web.chercher", () => {
-  const chainable = [...BLOCK_REGISTRY.values()].filter((d) => d.chaine).map((d) => d.type).sort();
+  const chainable = [...BLOCK_REGISTRY.values()].filter((d) => d.chain).map((d) => d.type).sort();
   expect(chainable).toEqual(["ia.rediger", "source.page", "source.recuperer", "web.chercher"]);
 });
 
@@ -31,6 +31,6 @@ test("BlockDefinition.chaine is consistent with the container's modules", () => 
     const module = SHIPPED_BLOCKS[d.type];
     expect(module, d.type).toBeDefined();
     const chainable = module.parElement === "option" && !module.finaliser && module.echecSiTousEchouent !== true;
-    expect(d.chaine, d.type).toBe(chainable);
+    expect(d.chain, d.type).toBe(chainable);
   }
 });

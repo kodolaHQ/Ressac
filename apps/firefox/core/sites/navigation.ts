@@ -4,7 +4,7 @@ import { localUrl, hostInSite } from "@webaios/kernel";
  * Effective domains of the app, and those of its login (OAuth…). `adressesLocales` (tests only,
  * `WEBAIOS_TEST_ADRESSES_LOCALES=1`) allows local hosts, and http to them; otherwise https only, never local.
  */
-export type NavigationContext = { domaines: readonly string[]; connexion: readonly string[]; adressesLocales?: boolean };
+export type NavigationContext = { domains: readonly string[]; login: readonly string[]; localAddresses?: boolean };
 
 /**
  * The host of an allowed web address, or null: javascript:, about:blank, file:, unreadable address, credentials in
@@ -26,8 +26,8 @@ function webHost(url: string, localUrls: boolean): string | null {
 
 /** Main page: followed to the site or its login, blocked elsewhere (notice in the bar). */
 export function decisionNavigation(url: string, c: NavigationContext): "suivre" | "bloquer" {
-  const host = webHost(url, c.adressesLocales === true);
-  return host !== null && (hostInSite(host, c.domaines) || hostInSite(host, c.connexion)) ? "suivre" : "bloquer";
+  const host = webHost(url, c.localAddresses === true);
+  return host !== null && (hostInSite(host, c.domains) || hostInSite(host, c.login)) ? "suivre" : "bloquer";
 }
 
 /**
@@ -35,8 +35,8 @@ export function decisionNavigation(url: string, c: NavigationContext): "suivre" 
  * same session; the rest (ads, `about:blank` included) is blocked, never opened in a tab.
  */
 export function openDecision(url: string, c: NavigationContext): "dans-l-appli" | "petite-fenetre" | "bloquer" {
-  const host = webHost(url, c.adressesLocales === true);
+  const host = webHost(url, c.localAddresses === true);
   if (host === null) return "bloquer";
-  if (hostInSite(host, c.domaines)) return "dans-l-appli";
-  return hostInSite(host, c.connexion) ? "petite-fenetre" : "bloquer";
+  if (hostInSite(host, c.domains)) return "dans-l-appli";
+  return hostInSite(host, c.login) ? "petite-fenetre" : "bloquer";
 }

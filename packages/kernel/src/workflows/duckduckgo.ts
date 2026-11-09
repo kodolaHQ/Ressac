@@ -6,7 +6,7 @@ export const URL_DUCKDUCKGO = "https://html.duckduckgo.com/html/";
 export const SEARCH_DENIED = "Recherche refusée par DuckDuckGo (vérification anti-robot)";
 export const UNREADABLE_RESULTS = "Résultats illisibles : la page de DuckDuckGo a peut-être changé";
 
-export type SearchResult = { titre: string; url: string; extrait: string };
+export type SearchResult = { title: string; url: string; excerpt: string };
 
 /** Page size read at most; the rest is ignored. */
 const PAGE_MAX = 2 * 1024 * 1024;
@@ -53,8 +53,8 @@ function href(href: string): string | null {
 }
 
 type Token =
-  | { texte: string }
-  | { balise: string; nom: string; ferme: boolean; classes: string[]; brut: string };
+  | { text: string }
+  | { tag: string; name: string; closed: boolean; classes: string[]; raw: string };
 
 const ATTR_CLASS = /\sclass\s*=\s*(?:"([^"]*)"|'([^']*)')/i;
 const attribute = (raw: string, re: RegExp) => {
@@ -76,10 +76,10 @@ function tokens(html: string): Token[] {
       if (raw.length <= TAG_MAX) {
         const name = /^<(\/?)([a-z][a-z0-9]*)/i.exec(raw);
         if (name) {
-          if (start > textFrom) output.push({ texte: html.slice(textFrom, start) });
+          if (start > textFrom) output.push({ text: html.slice(textFrom, start) });
           textFrom = i + 1;
           output.push({
-            balise: raw, nom: name[2]!.toLowerCase(), ferme: name[1] === "/", brut: raw,
+            tag: raw, name: name[2]!.toLowerCase(), closed: name[1] === "/", raw: raw,
             classes: (attribute(raw, ATTR_CLASS) ?? "").split(/\s+/).filter(Boolean),
           });
         }
@@ -87,11 +87,11 @@ function tokens(html: string): Token[] {
       start = -1;
     }
   }
-  if (textFrom < html.length) output.push({ texte: html.slice(textFrom) });
+  if (textFrom < html.length) output.push({ text: html.slice(textFrom) });
   return output;
 }
 
-const isTag = (j: Token): j is Extract<Token, { balise: string }> => "balise" in j;
+const isTag = (j: Token): j is Extract<Token, { tag: string }> => "tag" in j;
 
 /** Raw text up to the matching closing tag (same name, nestings counted) or the end of the block. */
 function textUntil(block: Token[], start: number, name: string): string {
@@ -99,9 +99,9 @@ function textUntil(block: Token[], start: number, name: string): string {
   let t = "";
   for (let k = start + 1; k < block.length; k++) {
     const j = block[k]!;
-    if (!isTag(j)) t += j.texte;
-    else if (j.nom === name) {
-      depth += j.ferme ? -1 : 1;
+    if (!isTag(j)) t += j.text;
+    else if (j.name === name) {
+      depth += j.closed ? -1 : 1;
       if (depth === 0) break;
     }
   }
@@ -111,44 +111,44 @@ function textUntil(block: Token[], start: number, name: string): string {
 export function extractResults(
   html: string,
   count: number,
-): { resultats: SearchResult[] } | { refus: true } | { illisible: true } {
+): { results: SearchResult[] } | { denial: true } | { unreadable: true } {
   const all = tokens(html.length > PAGE_MAX ? html.slice(0, PAGE_MAX) : html);
   // Anti-bot check: only in the markup, never in the page's text.
-  if (all.some((j) => isTag(j) && !j.ferme && /anomaly-modal|\/anomaly\.js|challenge-form/.test(j.brut))) {
-    return { refus: true };
+  if (all.some((j) => isTag(j) && !j.closed && /anomaly-modal|\/anomaly\.js|challenge-form/.test(j.raw))) {
+    return { denial: true };
   }
 
-  const none = all.some((j) => isTag(j) && !j.ferme && j.classes.includes("no-results"));
+  const none = all.some((j) => isTag(j) && !j.closed && j.classes.includes("no-results"));
   return readBlocks(all, count, none);
 }
 
 function readBlocks(all: Token[], count: number, none: boolean) {
   const blocks: Token[][] = [];
   for (const j of all) {
-    if (isTag(j) && !j.ferme && j.nom === "div" && j.classes.includes("result")) blocks.push([j]);
+    if (isTag(j) && !j.closed && j.name === "div" && j.classes.includes("result")) blocks.push([j]);
     else blocks.at(-1)?.push(j);
   }
   const results: SearchResult[] = [];
   const seen = new Set<string>();
   let recognized = false;
   for (const block of blocks) {
-    const start = block[0] as Extract<Token, { balise: string }>;
-    const iLink = block.findIndex((j) => isTag(j) && !j.ferme && j.nom === "a" && j.classes.includes("result__a"));
+    const start = block[0] as Extract<Token, { tag: string }>;
+    const iLink = block.findIndex((j) => isTag(j) && !j.closed && j.name === "a" && j.classes.includes("result__a"));
     if (iLink < 0) continue;
     recognized = true;
     if (start.classes.includes("result--ad")) continue;
-    const link = block[iLink] as Extract<Token, { balise: string }>;
-    const url = href(attribute(link.brut, /\shref\s*=\s*(?:"([^"]*)"|'([^']*)')/i) ?? "");
+    const link = block[iLink] as Extract<Token, { tag: string }>;
+    const url = href(attribute(link.raw, /\shref\s*=\s*(?:"([^"]*)"|'([^']*)')/i) ?? "");
     if (!url || seen.has(url)) continue;
-    const iSnippet = block.findIndex((j) => isTag(j) && !j.ferme && j.classes.includes("result__snippet"));
-    const snippet = iSnippet < 0 ? "" : textUntil(block, iSnippet, (block[iSnippet] as Extract<Token, { balise: string }>).nom);
+    const iSnippet = block.findIndex((j) => isTag(j) && !j.closed && j.classes.includes("result__snippet"));
+    const snippet = iSnippet < 0 ? "" : textUntil(block, iSnippet, (block[iSnippet] as Extract<Token, { tag: string }>).name);
     seen.add(url);
     results.push({
-      titre: clean(decode(textUntil(block, iLink, "a")), 300),
+      title: clean(decode(textUntil(block, iLink, "a")), 300),
       url,
-      extrait: clean(decode(snippet), 1000),
+      excerpt: clean(decode(snippet), 1000),
     });
   }
-  if (recognized) return { resultats: results.slice(0, count) };
-  return none ? { resultats: [] } : { illisible: true as const };
+  if (recognized) return { results: results.slice(0, count) };
+  return none ? { results: [] } : { unreadable: true as const };
 }

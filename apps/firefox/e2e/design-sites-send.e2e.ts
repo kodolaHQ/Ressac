@@ -33,16 +33,16 @@ const url = (host: string, path = "/") => server.url(host, path);
 
 beforeAll(async () => {
   server = await startSitesServer({ port: PORT });
-  server.definir("tuning-a.localhost", "/", TUNING_PAGE);
-  server.definir("tuning-a.localhost", "/autre", OTHER_PAGE);
-  server.definir("compte-tuning.localhost", "/connexion", LOGIN_PAGE);
+  server.define("tuning-a.localhost", "/", TUNING_PAGE);
+  server.define("tuning-a.localhost", "/autre", OTHER_PAGE);
+  server.define("compte-tuning.localhost", "/connexion", LOGIN_PAGE);
   const dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
   const profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
   dirs.push(dataDir, profile);
-  writeSite(dataDir, ID, { declaration: tuningDeclaration(url), fichiers: { "retouches/tuning.css": "/* rien */" } });
+  writeSite(dataDir, ID, { declaration: tuningDeclaration(url), files: { "retouches/tuning.css": "/* rien */" } });
   await grantSite(dataDir, ID, tuningDeclaration(url));
   const a = testActor(profile);
-  w = await launchWebAiOs({ dataDir, profile, env: { WEBAIOS_TEST_ADRESSES_LOCALES: "1", ...a.env }, prefs: a.prefs });
+  w = await launchWebAiOs({ dataDir, profile, env: { WEBAIOS_TEST_LOCAL_ADDRESSES: "1", ...a.env }, prefs: a.prefs });
   m = w.marionette;
   await m.setContext("chrome");
   await waitReady(m);
@@ -50,7 +50,7 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => {
   await w?.close();
-  await server?.fermer();
+  await server?.close();
   for (const d of dirs) await rm(d, { recursive: true, force: true });
 });
 afterEach(async () => {
@@ -66,11 +66,11 @@ const agentInput = () => {
 };
 const TERMINAL = "(doc.querySelector('.xterm-rows')?.textContent ?? '').replace(/\\u00a0/g, ' ')";
 
-const designState = () => inStore<{ actif: boolean; panier: number }>(m, "return await store.design.etat(arguments[0]);", [T]);
+const designState = () => inStore<{ active: boolean; basket: number }>(m, "return await store.design.etat(arguments[0]);", [T]);
 const hosts = () => inSiteView<number>(m, ID, `return document.getElementsByTagName("webaios-viseur").length;`).catch(() => -1);
 const view = <R = unknown>(expr: string) => inSiteView<R>(m, ID, `return ${expr};`).catch(() => null);
 const bar = () =>
-  inSiteBar<{ pressed: string | null; count: string | null; accord: boolean }>(
+  inSiteBar<{ pressed: string | null; count: string | null; grant: boolean }>(
     m,
     ID,
     `return { pressed: doc.querySelector('${tid("site-bouton-design")}')?.getAttribute("aria-pressed") ?? null,
@@ -86,7 +86,7 @@ async function chevron(t: string) {
 const inOverlay = <R = unknown>(body: string, args: unknown[] = []) => overlayOf<R>(m, ID, body, args);
 const bubbleText = () => inOverlay<string | null>(`return doc.querySelector('${tid("bulle-design")}')?.textContent ?? null;`);
 const designKey = () => siteKey(m, ID, "d", ["Meta", "Shift"]);
-const reviewTabs = async () => Object.values((await state(m)).onglets).filter((o) => o.url === reviewUrl(`site-${ID}`));
+const reviewTabs = async () => Object.values((await state(m)).tabs).filter((o) => o.url === reviewUrl(`site-${ID}`));
 
 /** ⇧⌘D in tuning's window: the mode on, the viewfinder armed. */
 async function modeOn() {
@@ -165,8 +165,8 @@ it("tweak changed during the mode: the view reloads without the grant card, the 
       { timeout: 15_000 },
     )
     .toBe("none");
-  await expect.poll(bar, { timeout: 10_000 }).toEqual({ pressed: "false", count: "1", accord: false });
-  expect((await designState()).actif).toBe(false);
+  await expect.poll(bar, { timeout: 10_000 }).toEqual({ pressed: "false", count: "1", grant: false });
+  expect((await designState()).active).toBe(false);
   expect(await hosts()).toBe(0);
 });
 
@@ -182,7 +182,7 @@ it("after site.json and the tweak changed, « Relire ce projet » of the chevron
   await waitUi(m, `return doc.querySelectorAll('${tid("fichier-relecture")}').length === 2`, [], 15_000);
   const names = await inUi<string[]>(m, `return [...doc.querySelectorAll('${tid("fichier-relecture")} .nom-fichier')].map((e) => e.textContent).sort();`);
   expect(names).toEqual(["retouches/tuning.css", "site.json"]);
-  expect((await reviewTabs()).map((o) => o.titre)).toEqual(["Relecture — Tuning"]);
+  expect((await reviewTabs()).map((o) => o.title)).toEqual(["Relecture — Tuning"]);
   // Another tab, then « Relire ce projet » again: the same page comes back.
   await openApplications(m);
   await waitUi(m, `return !doc.querySelector('${PAGE}')`);
@@ -197,10 +197,10 @@ it("the host stopped: ✎ keeps its last state, ⌘⇧D does nothing, Ajouter sh
   const stopHost = () => inStore(m, "await store.agent.stop(); return 1;");
   const startHost = async (basket: number) => {
     await inStore(m, "await store.agent.ensure(); return 1;");
-    await expect.poll(() => designState().then((e) => e.panier, () => null), { timeout: 30_000 }).toBe(basket);
+    await expect.poll(() => designState().then((e) => e.basket, () => null), { timeout: 30_000 }).toBe(basket);
   };
   await toSite(m, ID);
-  const n = (await designState()).panier;
+  const n = (await designState()).basket;
   expect(n).toBeGreaterThan(0);
   // The mode off: ⇧⌘D starts nothing, ✎ stays released.
   await stopHost();
@@ -237,7 +237,7 @@ it("Supprimer with a remark in the cart and a batch sent: remarks and review rep
   await toSite(m, ID);
   // A batch sent (with the tweak test's remark; #banniere is hidden by the tweak: #lien)…
   const sent = batches().length;
-  expect((await designState()).panier).toBe(1);
+  expect((await designState()).basket).toBe(1);
   await modeOn();
   await remark("#lien", "a#lien", "lien plus visible", "2");
   await escape();
@@ -255,12 +255,12 @@ it("Supprimer with a remark in the cart and a batch sent: remarks and review rep
   await expect.poll(() => existsSync(path.join(review, `site-${ID}.git`)), { timeout: 15_000 }).toBe(false);
   expect(existsSync(path.join(review, `site-${ID}.commentaires.json`))).toBe(false);
   // Made again with the same id (another tweak: another tree, so another photo if the old one is gone).
-  writeSite(w.dataDir, ID, { declaration: tuningDeclaration(url), fichiers: { "retouches/tuning.css": "/* neuve */" } });
+  writeSite(w.dataDir, ID, { declaration: tuningDeclaration(url), files: { "retouches/tuning.css": "/* neuve */" } });
   await waitUi(m, `return !!doc.querySelector('${tid(`site-${ID}`)}')`, [], 15_000);
   await expect.poll(() => existsSync(reviewedRef(w.dataDir, `site-${ID}`)), { timeout: 15_000 }).toBe(true);
   expect(readFileSync(reviewedRef(w.dataDir, `site-${ID}`), "utf8")).not.toBe(old);
   await openSite(m, ID);
   await expect.poll(() => inSiteBar(m, ID, `return !!doc.querySelector('${tid("site-bouton-design")}');`), { timeout: 10_000 }).toBe(true);
   expect((await bar()).count).toBeNull();
-  expect((await designState()).panier).toBe(0);
+  expect((await designState()).basket).toBe(0);
 });

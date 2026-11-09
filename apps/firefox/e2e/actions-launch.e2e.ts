@@ -29,17 +29,17 @@ const fill = (testid: string, text: string) =>
   inUi(m, `const f = doc.querySelector(arguments[0]); f.focus(); f.value = arguments[1]; f.dispatchEvent(new ui.Event("input", { bubbles: true }));`, [tid(testid), text]);
 const visible = (selector: string, ms = 30_000) => waitUi(m, "const e = doc.querySelector(arguments[0]); return !!e && e.getBoundingClientRect().height > 0;", [selector], ms);
 const listCalls = () => m.execute<number>("return window.webaiosListCalls;");
-const tabUrls = async () => Object.values((await state(m)).onglets).map((o) => o.url);
+const tabUrls = async () => Object.values((await state(m)).tabs).map((o) => o.url);
 async function setPrivate(isPrivate: boolean): Promise<void> {
   const s = await state(m);
-  const e = s.espaces.find((x) => x.id === s.fenetres[0]!.espaceActif)!;
-  if (e.prive !== isPrivate) await dispatch(m, { type: "reglerEspace", id: e.id, nom: e.nom, icone: e.icone, prive: isPrivate, profil: e.profil } as Action);
+  const e = s.spaces.find((x) => x.id === s.windows[0]!.activeSpace)!;
+  if (e.private !== isPrivate) await dispatch(m, { type: "reglerEspace", id: e.id, name: e.name, icon: e.icon, private: isPrivate, profile: e.profile } as Action);
 }
 /** A web page of the local server shown in a new tab; resolves once its title is in the state. */
 async function openPage(p: string, title: string): Promise<string> {
   const url = pages.url + p;
-  await dispatch(m, { type: "ouvrirOnglet", fenetreId: (await state(m)).fenetres[0]!.id, url });
-  for (const deadline = Date.now() + 10_000; !Object.values((await state(m)).onglets).some((o) => o.url === url && o.titre === title); await new Promise((r) => setTimeout(r, 100)))
+  await dispatch(m, { type: "ouvrirOnglet", windowId: (await state(m)).windows[0]!.id, url });
+  for (const deadline = Date.now() + 10_000; !Object.values((await state(m)).tabs).some((o) => o.url === url && o.title === title); await new Promise((r) => setTimeout(r, 100)))
     if (Date.now() > deadline) throw new Error(`${url} not loaded`);
   return url;
 }
@@ -62,7 +62,7 @@ beforeAll(async () => {
   servers = await startActionServers();
   pages = await startServer();
   w = await launchWebAiOs({
-    env: { WEBAIOS_OLLAMA_URL: servers.ollama.url, WEBAIOS_KEV_URL: servers.kev.url, WEBAIOS_TEST_ADRESSES_LOCALES: "1" },
+    env: { WEBAIOS_OLLAMA_URL: servers.ollama.url, WEBAIOS_KEV_URL: servers.kev.url, WEBAIOS_TEST_LOCAL_ADDRESSES: "1" },
     prefs: { "network.proxy.type": 1, "network.proxy.http": "127.0.0.1", "network.proxy.http_port": 1, "network.proxy.ssl": "127.0.0.1", "network.proxy.ssl_port": 1 },
   });
   m = w.marionette;
@@ -72,12 +72,12 @@ beforeAll(async () => {
   await waitKernel(m);
   const d = w.dataDir;
   // actions.spec.ts lancerAvecSuggestions: one action without input (keyword gitlab), one with.
-  await writeRunnableAction(d, "tickets", { nom: NAME_TICKETS, motsCles: ["gitlab"], code: "export default async () => [{ page: { titre: 'Ticket 1' } }];" });
-  await writeRunnableAction(d, "leboncoin", { nom: "Leboncoin", saisie: "Recherche", code: "export default async () => [{ page: { titre: 'Annonce' } }];" });
+  await writeRunnableAction(d, "tickets", { name: NAME_TICKETS, keywords: ["gitlab"], code: "export default async () => [{ page: { titre: 'Ticket 1' } }];" });
+  await writeRunnableAction(d, "leboncoin", { name: "Leboncoin", input: "Recherche", code: "export default async () => [{ page: { titre: 'Annonce' } }];" });
   // barre-commande.spec.ts: actions without workflow.
-  await writeAction(d, "sans-workflow", { nom: "Zorglub" });
-  await writeAction(d, "resume", { nom: "Résumé vidéo", saisie: { libelle: "Vidéo" } });
-  await writeAction(d, "page-action", { nom: "Page action" });
+  await writeAction(d, "sans-workflow", { name: "Zorglub" });
+  await writeAction(d, "resume", { name: "Résumé vidéo", input: { label: "Vidéo" } });
+  await writeAction(d, "page-action", { name: "Page action" });
   for (const id of ["tickets", "leboncoin", "sans-workflow", "resume", "page-action"]) await listed(id);
   // Counts the `actions.liste` the UI asks the host for.
   await m.execute(`return (async () => {
@@ -91,7 +91,7 @@ beforeEach(async () => {
   servers.reset();
   if (await inUi(m, "return !!doc.querySelector(arguments[0]);", [tid("barre-commande")])) await pressKeys(m, "Escape");
   await setPrivate(false);
-  for (const id of Object.keys((await state(m)).onglets)) await dispatch(m, { type: "fermerOnglet", id } as Action);
+  for (const id of Object.keys((await state(m)).tabs)) await dispatch(m, { type: "fermerOnglet", id } as Action);
 });
 afterAll(async () => {
   expect(await missingApi(m)).toEqual([]);
@@ -180,7 +180,7 @@ describe("launching from the empty page", () => {
     await setPrivate(true);
     await m.execute("window.webaiosListCalls = 0;");
     await emptyPage();
-    await writeRunnableAction(w.dataDir, "privee", { nom: "Autre privee", code: "export default async () => [];" });
+    await writeRunnableAction(w.dataDir, "privee", { name: "Autre privee", code: "export default async () => [];" });
     await fill("saisie-page-vide", "autre");
     await new Promise((r) => setTimeout(r, 1500));
     expect(await q.count(tid("suggestions-actions"))).toBe(0);
@@ -191,7 +191,7 @@ describe("launching from the empty page", () => {
   it("normal space: an actions change asks for the list again (the counter works)", async () => {
     await emptyPage();
     await m.execute("window.webaiosListCalls = 0;");
-    await writeRunnableAction(w.dataDir, "nouvelle", { nom: "Autre nouvelle", code: "export default async () => [];" });
+    await writeRunnableAction(w.dataDir, "nouvelle", { name: "Autre nouvelle", code: "export default async () => [];" });
     await waitFor(m, "return window.webaiosListCalls;", (n: number) => n > 0, 15_000);
     await fill("saisie-page-vide", "autre");
     await q.waitContains(tid("suggestions-actions"), "Autre nouvelle");
@@ -268,7 +268,7 @@ describe("launching from the command bar", () => {
     await pressKeys(m, "Backspace");
     await focused("saisie-commande");
     expect(await q.value(tid("saisie-commande"))).toBe("résumé");
-    expect(Object.keys((await state(m)).onglets)).toHaveLength(1);
+    expect(Object.keys((await state(m)).tabs)).toHaveLength(1);
   });
 
   // barre-commande.spec.ts:253

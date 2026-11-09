@@ -14,7 +14,7 @@ const REFUSED: Record<string, string> = {
 };
 const errorName = (code: string | null) => (code ? (REFUSED[code] ?? code) : "Erreur");
 
-type Champs = Extract<Action, { type: "majOnglet" }>["champs"];
+type Champs = Extract<Action, { type: "majOnglet" }>["fields"];
 
 /**
  * Keeps the XUL tabs of one window in line with its WebAiOs tabs: a XUL tab is created when its
@@ -37,7 +37,7 @@ export class TabSync {
   constructor(
     private readonly gBrowser: any,
     private readonly store: WebAiOsStore,
-    private readonly fenetreId: WindowId,
+    private readonly windowId: WindowId,
   ) {
     this.park(gBrowser.tabs[0]);
     // A popup's link reaches this window with no opener tab, only its popup's browser (TabOpen fires inside addTab).
@@ -49,9 +49,9 @@ export class TabSync {
       // An add-on's tab joins the active space: loaded in its container from the first request (unless the add-on chose one).
       if (this.fromAddon && options!.userContextId === undefined) {
         const state = this.store.state;
-        const f = state.fenetres.find((x) => x.id === this.fenetreId);
-        const space = f && state.espaces.find((e) => e.id === f.espaceActif);
-        if (space) options!.userContextId = this.store.containerFor(space.profil);
+        const f = state.windows.find((x) => x.id === this.windowId);
+        const space = f && state.spaces.find((e) => e.id === f.activeSpace);
+        if (space) options!.userContextId = this.store.containerFor(space.profile);
       }
       try {
         return addTab(uri, options);
@@ -67,7 +67,7 @@ export class TabSync {
     strip.addEventListener("TabAttrModified", (e: CustomEvent) => {
       const changed: string[] = e.detail.changed;
       const tab: any = e.target;
-      if (changed.includes("label") || changed.includes("image")) this.update(tab, { titre: tab.label, favicon: tab.getAttribute("image") || null });
+      if (changed.includes("label") || changed.includes("image")) this.update(tab, { title: tab.label, favicon: tab.getAttribute("image") || null });
     });
     gBrowser.addTabsProgressListener({
       onLocationChange: (browser: any, progress: any, _request: unknown, location: any, flags: number) => {
@@ -78,18 +78,18 @@ export class TabSync {
         this.failures.delete(browser); // read once: an older failure (a download) must not name a later error page
         const code = browser.documentURI ? new URL(browser.documentURI.spec).searchParams.get("e") : null;
         const error = flags & LOCATION_CHANGE_ERROR_PAGE ? (failure !== undefined ? ChromeUtils.getXPCOMErrorName(failure) : errorName(code)) : undefined;
-        this.update(gBrowser.getTabForBrowser(browser), { url: location.spec, ...this.history(browser), ...(error ? { erreur: error, chargement: false } : {}) });
+        this.update(gBrowser.getTabForBrowser(browser), { url: location.spec, ...this.history(browser), ...(error ? { error: error, loading: false } : {}) });
       },
       onStateChange: (browser: any, progress: any, _request: unknown, flags: number, status: number) => {
         if (!progress.isTopLevel || !(flags & STATE_IS_NETWORK)) return;
         const tab = gBrowser.getTabForBrowser(browser);
         if (flags & STATE_START) {
           this.failures.delete(browser);
-          this.update(tab, { chargement: true, plante: false, erreur: null });
+          this.update(tab, { loading: true, crashed: false, error: null });
         } else if (flags & STATE_STOP) {
           if (Components.isSuccessCode(status)) this.failures.delete(browser);
           else this.failures.set(browser, status);
-          this.update(tab, { chargement: false, ...this.history(browser) });
+          this.update(tab, { loading: false, ...this.history(browser) });
         }
       },
     });
@@ -101,7 +101,7 @@ export class TabSync {
         const id = tab?.getAttribute(TAB_ID);
         if (!id || this.tabs.get(id) !== tab) return;
         e.stopPropagation();
-        this.update(tab, { plante: true, chargement: false });
+        this.update(tab, { crashed: true, loading: false });
       },
       true,
     );
@@ -125,7 +125,7 @@ export class TabSync {
    */
   async ensure(id: TabId): Promise<any> {
     const state = this.store.state;
-    const o = state.onglets[id];
+    const o = state.tabs[id];
     if (!o) throw new Error(`Onglet introuvable : ${id}`);
     // shortcut: a XUL tab created for reading lives until its tab leaves the state, upgrade when memory matters.
     if (!this.tabs.has(id)) this.create(state, o);
@@ -135,7 +135,7 @@ export class TabSync {
     if (!pending()) return browser;
     await new Promise<void>((resolve) => {
       // A crashed browser never stops loading, a closed tab neither: no need to wait the 15 s.
-      const unsubscribe = this.store.subscribe((s) => (!s.onglets[id] || s.onglets[id].plante) && done());
+      const unsubscribe = this.store.subscribe((s) => (!s.tabs[id] || s.tabs[id].crashed) && done());
       const listener = {
         onStateChange: (b: any, progress: any, _request: unknown, flags: number) => {
           if (b === browser && progress.isTopLevel && flags & STATE_STOP && flags & STATE_IS_NETWORK && !pending()) done();
@@ -159,18 +159,18 @@ export class TabSync {
   }
 
   sync(state: BrowserState): void {
-    const f = state.fenetres.find((x) => x.id === this.fenetreId);
-    const active = f && f.actif[f.espaceActif];
-    const tab = active ? state.onglets[active] : undefined;
+    const f = state.windows.find((x) => x.id === this.windowId);
+    const active = f && f.active[f.activeSpace];
+    const tab = active ? state.tabs[active] : undefined;
     const web = tab && hasView(tab.url) ? tab : undefined;
     // Gone, or now in another container: the page reopens from scratch at the same URL.
     for (const [id, tab] of [...this.tabs]) {
-      const o = state.onglets[id];
+      const o = state.tabs[id];
       if (!o || this.containerOf(state, o) !== tab.userContextId) this.remove(id, tab);
     }
     if (web && !this.tabs.has(web.id)) this.create(state, web);
     // A crashed or failed page is replaced by the UI's message.
-    const target = web && !web.plante && !web.erreur ? this.tabs.get(web.id) : this.parking;
+    const target = web && !web.crashed && !web.error ? this.tabs.get(web.id) : this.parking;
     if (this.gBrowser.selectedTab !== target) this.select(() => (this.gBrowser.selectedTab = target));
   }
 
@@ -224,19 +224,19 @@ export class TabSync {
       const id = tab.getAttribute(TAB_ID);
       if (!tab.selected || !id || this.tabs.get(id) !== tab) return;
       const state = this.store.state;
-      const f = state.fenetres.find((x) => x.id === this.fenetreId);
+      const f = state.windows.find((x) => x.id === this.windowId);
       // Not yet in the state: a tab being adopted, its ouvrirOnglet follows.
-      if (f && state.onglets[id] && f.actif[f.espaceActif] !== id) this.store.dispatch({ type: "activerOnglet", id });
+      if (f && state.tabs[id] && f.active[f.activeSpace] !== id) this.store.dispatch({ type: "activerOnglet", id });
     });
   }
 
-  private history(browser: any): Pick<Champs, "peutReculer" | "peutAvancer"> {
-    return { peutReculer: browser.canGoBack, peutAvancer: browser.canGoForward };
+  private history(browser: any): Pick<Champs, "canGoBack" | "canGoForward"> {
+    return { canGoBack: browser.canGoBack, canGoForward: browser.canGoForward };
   }
 
-  private update(tab: any, champs: Champs): void {
+  private update(tab: any, fields: Champs): void {
     const id = tab?.getAttribute(TAB_ID);
-    if (id && this.tabs.get(id) === tab) this.store.dispatch({ type: "majOnglet", id, champs });
+    if (id && this.tabs.get(id) === tab) this.store.dispatch({ type: "majOnglet", id, fields });
   }
 
   private onOpen(tab: any): void {
@@ -250,8 +250,8 @@ export class TabSync {
     // Only pages and add-ons open tabs we adopt; any other (about:newtab from a menu…) is Firefox's own: keep our tab displayed.
     if (!opener && !this.fromAddon) return void queueMicrotask(() => tab.selected && this.sync(this.store.state));
     // A page's tab opens next to its source; an add-on's in the window's active space.
-    const f = this.store.state.fenetres.find((x) => x.id === this.fenetreId);
-    const after = opener ?? f?.actif[f.espaceActif];
+    const f = this.store.state.windows.find((x) => x.id === this.windowId);
+    const after = opener ?? f?.active[f.activeSpace];
     const id: TabId = crypto.randomUUID();
     tab.setAttribute(TAB_ID, id);
     this.tabs.set(id, tab);
@@ -260,7 +260,7 @@ export class TabSync {
       if (this.tabs.get(id) !== tab) return;
       // The URL addTab is loading: sync replaces a tab opened in another container than its space's before it loads.
       const url = tab.linkedBrowser.userTypedValue || (tab.linkedBrowser.currentURI?.spec ?? "about:blank");
-      this.store.dispatch({ type: "ouvrirOnglet", fenetreId: this.fenetreId, url, apres: after, activer: tab.selected }, () => id);
+      this.store.dispatch({ type: "ouvrirOnglet", windowId: this.windowId, url, after: after, activate: tab.selected }, () => id);
     });
   }
 

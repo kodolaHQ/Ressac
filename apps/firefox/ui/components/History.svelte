@@ -4,7 +4,7 @@
   import type { WindowState, Visit } from "../../shared/model";
   import { api } from "../state.svelte";
 
-  let { fenetre: win, fermer: close }: { fenetre: WindowState; fermer: () => void } = $props();
+  let { window: win, close: close }: { window: WindowState; close: () => void } = $props();
   let text = $state("");
   let visits = $state<Visit[]>([]);
   let clearChoice = $state(false);
@@ -13,7 +13,7 @@
 
   async function load() {
     const n = ++request;
-    const r = text.trim() ? await api.historique.rechercher(text.trim(), 200) : await api.historique.recents();
+    const r = text.trim() ? await api.history.search(text.trim(), 200) : await api.history.recents();
     if (n === request) visits = r;
   }
 
@@ -33,30 +33,30 @@
   }
 
   const groups = $derived.by(() => {
-    const g: { jour: string; visites: Visit[] }[] = [];
+    const g: { day: string; visits: Visit[] }[] = [];
     for (const v of visits) {
-      const j = day(v.derniereVisite);
-      if (g.at(-1)?.jour !== j) g.push({ jour: j, visites: [] });
-      g.at(-1)!.visites.push(v);
+      const j = day(v.lastVisit);
+      if (g.at(-1)?.day !== j) g.push({ day: j, visits: [] });
+      g.at(-1)!.visits.push(v);
     }
     return g;
   });
 
   async function clear(from?: Date) {
     clearChoice = false;
-    await api.historique.effacer(from?.toISOString());
+    await api.history.erase(from?.toISOString());
     await load();
   }
 
   function open(e: MouseEvent, url: string) {
     e.preventDefault();
-    api.agir({ type: "ouvrirOnglet", fenetreId: win.id, url });
+    api.dispatch({ type: "ouvrirOnglet", windowId: win.id, url });
     close();
   }
 
   function visitMenu(e: MouseEvent, v: Visit) {
-    if (!v.retenu) return;
-    openMenu(e, [{ libelle: "Oublier le texte retenu", agir: () => void api.historique.oublierTexte(v.url, v.espaceId).then(load) }], { libre: true });
+    if (!v.kept) return;
+    openMenu(e, [{ label: "Oublier le texte retenu", dispatch: () => void api.history.forgetText(v.url, v.spaceId).then(load) }], { free: true });
   }
 
     const dayStart = () => {
@@ -81,18 +81,18 @@
         </div>
       {/if}
     </div>
-    <button class="fermer" aria-label="Fermer l'historique" onclick={close}><Icon nom="fermer" taille={12} /></button>
+    <button class="fermer" aria-label="Fermer l'historique" onclick={close}><Icon name="close" size={12} /></button>
   </header>
-  {#each groups as g (g.jour)}
-    <h2>{g.jour}</h2>
+  {#each groups as g (g.day)}
+    <h2>{g.day}</h2>
     <ul>
-      {#each g.visites as v (`${v.espaceId}|${v.url}`)}
-        <li data-prive={v.prive ? "true" : undefined} data-retenu={v.retenu ? "true" : undefined}>
+      {#each g.visits as v (`${v.spaceId}|${v.url}`)}
+        <li data-prive={v.private ? "true" : undefined} data-retenu={v.kept ? "true" : undefined}>
           <a href={v.url} onclick={(e) => open(e, v.url)} oncontextmenu={(e) => visitMenu(e, v)}>
-            <span class="heure">{new Date(v.derniereVisite).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</span>
-            {#if v.prive}<span class="cadenas" title="Espace privé" aria-label="Espace privé">🔒</span>{/if}
-            <span class="titre">{v.titre}</span>
-            {#if v.retenu}<span class="retenu" title="Texte retenu pour l'agent" aria-label="Texte retenu pour l'agent">🧠</span>{/if}
+            <span class="heure">{new Date(v.lastVisit).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</span>
+            {#if v.private}<span class="cadenas" title="Espace privé" aria-label="Espace privé">🔒</span>{/if}
+            <span class="titre">{v.title}</span>
+            {#if v.kept}<span class="retenu" title="Texte retenu pour l'agent" aria-label="Texte retenu pour l'agent">🧠</span>{/if}
             <span class="url">{v.url}</span>
           </a>
         </li>

@@ -24,7 +24,7 @@ test("messages of a site app's window", () => {
 
 test("HomeMessage: the three allowed messages", () => {
   expect(HomeMessage.parse({ type: "pret" })).toEqual({ type: "pret" });
-  expect(HomeMessage.parse({ type: "ouvrir", adresse: "/series/the-bear" })).toEqual({ type: "ouvrir", adresse: "/series/the-bear" });
+  expect(HomeMessage.parse({ type: "ouvrir", url: "/series/the-bear" })).toEqual({ type: "ouvrir", url: "/series/the-bear" });
   expect(HomeMessage.parse({ type: "image", n: 3, url: "https://vidola-a.localhost/a.jpg" })).toEqual({ type: "image", n: 3, url: "https://vidola-a.localhost/a.jpg" });
 });
 
@@ -34,10 +34,10 @@ test("HomeMessage: the rest is refused", () => {
     "pret",
     {},
     { type: "fermer" },
-    { type: "pret", en: "trop" },
+    { type: "pret", in: "trop" },
     { type: "ouvrir" },
-    { type: "ouvrir", adresse: 3 },
-    { type: "ouvrir", adresse: "x".repeat(4097) },
+    { type: "ouvrir", url: 3 },
+    { type: "ouvrir", url: "x".repeat(4097) },
     { type: "image", n: -1, url: "a" },
     { type: "image", n: 1.5, url: "a" },
     { type: "image", n: 1, url: "x".repeat(4097) },

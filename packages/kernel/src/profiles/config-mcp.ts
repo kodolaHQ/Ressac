@@ -4,12 +4,12 @@ import { dirname } from "node:path";
 import { sessionConfigPath, sessionsFolder, type SpacePaths } from "../paths.js";
 import type { Profile } from "./profile.js";
 
-function configContent(format: Profile["configMcp"], server: { url: string; jeton: string }): string {
+function configContent(format: Profile["mcpConfig"], server: { url: string; token: string }): string {
   return JSON.stringify(
     {
       "claude-json": {
         mcpServers: {
-          webaios: { type: "http", url: server.url, headers: { Authorization: `Bearer ${server.jeton}` } },
+          webaios: { type: "http", url: server.url, headers: { Authorization: `Bearer ${server.token}` } },
         },
       },
     }[format],
@@ -21,9 +21,9 @@ function configContent(format: Profile["configMcp"], server: { url: string; jeto
 /** Writes the browser's MCP server declaration, readable by the container's agent. */
 export async function writeMcpConfig(
   c: SpacePaths,
-  format: Profile["configMcp"],
-  server: { url: string; jeton: string },
-  path: string = c.configMcp,
+  format: Profile["mcpConfig"],
+  server: { url: string; token: string },
+  path: string = c.mcpConfig,
 ): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, configContent(format, server), { mode: 0o600 });
@@ -37,8 +37,8 @@ export async function writeMcpConfig(
  */
 export async function writeSessionConfig(
   c: SpacePaths,
-  format: Profile["configMcp"],
-  server: { url: string; jeton: string },
+  format: Profile["mcpConfig"],
+  server: { url: string; token: string },
   session: string,
 ): Promise<void> {
   const folder = sessionsFolder(c);

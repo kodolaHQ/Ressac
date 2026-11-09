@@ -8,15 +8,15 @@ import { tempFolder } from "../helpers/temp.js";
 const GIT = process.env.WEBAIOS_GIT ?? "/usr/bin/git";
 let root: string;
 let folder: string;
-let depot: string;
+let repo: string;
 let r: ReviewStore;
 
 beforeEach(async () => {
   root = await tempFolder();
   folder = join(root, "projet");
-  depot = join(root, "prive", "p.git");
+  repo = join(root, "prive", "p.git");
   await mkdir(folder, { recursive: true });
-  r = new ReviewStore({ depot, dossier: folder });
+  r = new ReviewStore({ repo, folder: folder });
 });
 afterEach(async () => {
   await chmod(folder, 0o755).catch(() => {});
@@ -33,21 +33,21 @@ describe("reference", () => {
   });
   test("assurerReference creates refs/webaios/relu in the private repo; a second call returns false; no .git in the folder", async () => {
     await write("a.txt", "a\n");
-    expect(await r.assurerReference()).toBe(true);
-    expect(await r.assurerReference()).toBe(false);
-    const ref = execFileSync(GIT, ["--git-dir", depot, "rev-parse", "refs/webaios/relu"]).toString().trim();
+    expect(await r.ensureReference()).toBe(true);
+    expect(await r.ensureReference()).toBe(false);
+    const ref = execFileSync(GIT, ["--git-dir", repo, "rev-parse", "refs/webaios/relu"]).toString().trim();
     expect(ref).toMatch(/^[0-9a-f]{40,64}$/);
     expect(await readdir(folder)).toEqual(["a.txt"]);
   });
   test("retenir() then comparer(): no difference", async () => {
     await write("a.txt", "a\n");
-    await r.assurerReference();
+    await r.ensureReference();
     await write("a.txt", "b\n");
-    expect((await r.comparer()).fichiers).toHaveLength(1);
-    await r.retenir();
-    const c = await r.comparer();
-    expect(c.fichiers).toEqual([]);
-    expect(c.arbreRelu).toBe(c.arbreCourant);
+    expect((await r.compare()).files).toHaveLength(1);
+    await r.keep();
+    const c = await r.compare();
+    expect(c.files).toEqual([]);
+    expect(c.reviewedTree).toBe(c.currentTree);
   });
 });
 
@@ -55,26 +55,26 @@ describe("comparer and file", () => {
   test("modification, addition and deletion; blocks with 3 lines of context", async () => {
     await write("m.txt", numbered(20));
     await write("s.txt", "x\ny\n");
-    await r.assurerReference();
+    await r.ensureReference();
     await write("m.txt", numbered(20, (i) => (i === 10 ? "changée" : `ligne ${i}`)));
     await write("n.txt", "un\ndeux\n");
     await rm(join(folder, "s.txt"));
-    const c = await r.comparer();
-    expect(c.fichiers).toEqual([
-      { chemin: "m.txt", statut: "modifie", ajouts: 1, suppressions: 1, affichable: true },
-      { chemin: "n.txt", statut: "ajoute", ajouts: 2, suppressions: 0, affichable: true },
-      { chemin: "s.txt", statut: "supprime", ajouts: 0, suppressions: 2, affichable: true },
+    const c = await r.compare();
+    expect(c.files).toEqual([
+      { path: "m.txt", status: "modifie", additions: 1, deletions: 1, displayable: true },
+      { path: "n.txt", status: "ajoute", additions: 2, deletions: 0, displayable: true },
+      { path: "s.txt", status: "supprime", additions: 0, deletions: 2, displayable: true },
     ]);
-    const f = await r.fichier(c, "m.txt");
-    expect(f.statut).toBe("modifie");
-    expect(f.blocs).toHaveLength(1);
-    const b = f.blocs[0]!;
-    expect(b).toMatchObject({ ancienDebut: 7, ancienNombre: 7, nouveauDebut: 7, nouveauNombre: 7 });
-    expect(b.lignes.filter((l) => l.marque === " ")).toHaveLength(6);
-    expect(b.lignes.find((l) => l.marque === "+")).toMatchObject({ texte: "changée", nouveau: 10 });
+    const f = await r.file(c, "m.txt");
+    expect(f.status).toBe("modifie");
+    expect(f.blocks).toHaveLength(1);
+    const b = f.blocks[0]!;
+    expect(b).toMatchObject({ oldStart: 7, oldCount: 7, newStart: 7, newCount: 7 });
+    expect(b.lines.filter((l) => l.mark === " ")).toHaveLength(6);
+    expect(b.lines.find((l) => l.mark === "+")).toMatchObject({ text: "changée", new: 10 });
   });
   test("exclusions and the folder's .gitignore", async () => {
-    await r.assurerReference();
+    await r.ensureReference();
     for (const d of ["node_modules", "dist", "build", ".next"]) {
       await mkdir(join(folder, d), { recursive: true });
       await write(join(d, "x.js"), "x");
@@ -83,48 +83,48 @@ describe("comparer and file", () => {
     await write(".gitignore", "secret.txt\n");
     await write("secret.txt", "s");
     await write("visible.txt", "v");
-    const c = await r.comparer();
-    expect(c.fichiers.map((f) => f.chemin)).toEqual([".gitignore", "visible.txt"]);
+    const c = await r.compare();
+    expect(c.files.map((f) => f.path)).toEqual([".gitignore", "visible.txt"]);
   });
   test("name « mon fichier é \"x\".txt »: listed and diffed", async () => {
-    await r.assurerReference();
+    await r.ensureReference();
     const name = 'mon fichier é "x".txt';
     await write(name, "salut\n");
-    const c = await r.comparer();
-    expect(c.fichiers.map((f) => f.chemin)).toEqual([name]);
-    const f = await r.fichier(c, name);
-    expect(f.blocs[0]!.lignes).toEqual([{ marque: "+", texte: "salut", ancien: null, nouveau: 1 }]);
+    const c = await r.compare();
+    expect(c.files.map((f) => f.path)).toEqual([name]);
+    const f = await r.file(c, name);
+    expect(f.blocks[0]!.lines).toEqual([{ mark: "+", text: "salut", old: null, new: 1 }]);
   });
   test("binaire, trop gros (octets), trop gros (lignes) : blocs vides", async () => {
-    await r.assurerReference();
+    await r.ensureReference();
     await write("bin.dat", Buffer.from([65, 0, 66]));
     await write("gros.txt", Buffer.alloc(1048577, 97));
     await write("long.txt", numbered(5001));
     await write("limite.txt", Buffer.alloc(1048576, 97));
-    const c = await r.comparer();
-    const by = Object.fromEntries(c.fichiers.map((f) => [f.chemin, f.affichable]));
+    const c = await r.compare();
+    const by = Object.fromEntries(c.files.map((f) => [f.path, f.displayable]));
     expect(by).toEqual({ "bin.dat": "binaire", "gros.txt": "trop-gros", "long.txt": "trop-gros", "limite.txt": true });
-    for (const n of ["bin.dat", "gros.txt", "long.txt"]) expect((await r.fichier(c, n)).blocs).toEqual([]);
+    for (const n of ["bin.dat", "gros.txt", "long.txt"]) expect((await r.file(c, n)).blocks).toEqual([]);
   });
   test("a name that starts with « : » or contains « * » also passes the size check", async () => {
-    await r.assurerReference();
+    await r.ensureReference();
     await write(":gros.txt", Buffer.alloc(1048577, 97));
     await write("gr*s.txt", Buffer.alloc(1048577, 98));
-    const c = await r.comparer();
-    const by = Object.fromEntries(c.fichiers.map((f) => [f.chemin, f.affichable]));
+    const c = await r.compare();
+    const by = Object.fromEntries(c.files.map((f) => [f.path, f.displayable]));
     expect(by).toEqual({ ":gros.txt": "trop-gros", "gr*s.txt": "trop-gros" });
   });
   test("lignes(arbreCourant, chemin, 10, 12) rend ces trois lignes", async () => {
-    await r.assurerReference();
+    await r.ensureReference();
     await write("t.txt", numbered(30));
-    const c = await r.comparer();
-    expect(await r.lignes(c.arbreCourant, "t.txt", 10, 12)).toEqual(["ligne 10", "ligne 11", "ligne 12"]);
+    const c = await r.compare();
+    expect(await r.lines(c.currentTree, "t.txt", 10, 12)).toEqual(["ligne 10", "ligne 11", "ligne 12"]);
   });
   test("supprimer removes the private repo", async () => {
-    await r.assurerReference();
+    await r.ensureReference();
     await r.supprimer();
-    await expect(stat(depot)).rejects.toThrow();
-    expect(await r.assurerReference()).toBe(true);
+    await expect(stat(repo)).rejects.toThrow();
+    expect(await r.ensureReference()).toBe(true);
   });
 });
 
@@ -154,12 +154,12 @@ describe("the project's repo is never touched", () => {
     await write("n.txt", "n\n");
     const statusBefore = g("status", "--porcelain");
     const before = await hash(join(folder, ".git"));
-    await r.assurerReference();
+    await r.ensureReference();
     await write("n.txt", "n2\n");
-    const c = await r.comparer();
-    expect(c.fichiers.map((f) => f.chemin).sort()).toEqual(["n.txt"]);
-    await r.fichier(c, "n.txt");
-    await r.retenir();
+    const c = await r.compare();
+    expect(c.files.map((f) => f.path).sort()).toEqual(["n.txt"]);
+    await r.file(c, "n.txt");
+    await r.keep();
     expect(await hash(join(folder, ".git"))).toEqual(before);
     expect(g("status", "--porcelain")).toBe(statusBefore);
   });
@@ -176,31 +176,31 @@ describe("the project's repo is never touched", () => {
     execFileSync(GIT, ["-C", withCommit, "add", "h.txt"], { env });
     execFileSync(GIT, ["-C", withCommit, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "x"], { env });
     const before = [...(await hash(join(sub, ".git"))), ...(await hash(join(withCommit, ".git")))];
-    await r.assurerReference();
+    await r.ensureReference();
     await writeFile(join(sub, "f.txt"), "g\n");
-    const c = await r.comparer();
-    expect(c.fichiers.every((f) => !f.chemin.includes(".git/") && f.chemin !== "sous")).toBe(true);
-    await r.retenir();
+    const c = await r.compare();
+    expect(c.files.every((f) => !f.path.includes(".git/") && f.path !== "sous")).toBe(true);
+    await r.keep();
     expect([...(await hash(join(sub, ".git"))), ...(await hash(join(withCommit, ".git")))]).toEqual(before);
   });
 });
 
 describe("erreurs", () => {
   test("git absent : GIT_REQUIRED", async () => {
-    const without = new ReviewStore({ depot, dossier: folder, git: "/chemin/absent" });
-    await expect(without.assurerReference()).rejects.toMatchObject({ raison: GIT_REQUIRED });
-    await expect(without.assurerReference()).rejects.toBeInstanceOf(ReviewError);
+    const without = new ReviewStore({ repo, folder: folder, git: "/chemin/absent" });
+    await expect(without.ensureReference()).rejects.toMatchObject({ reason: GIT_REQUIRED });
+    await expect(without.ensureReference()).rejects.toBeInstanceOf(ReviewError);
   });
   test("git whose --version fails: GIT_REQUIRED", async () => {
     const fake = join(root, "faux-git");
     await writeFile(fake, "#!/bin/sh\necho 'xcrun: error' >&2\nexit 1\n", { mode: 0o755 });
-    await expect(new ReviewStore({ depot, dossier: folder, git: fake }).assurerReference()).rejects.toMatchObject({ raison: GIT_REQUIRED });
+    await expect(new ReviewStore({ repo, folder: folder, git: fake }).ensureReference()).rejects.toMatchObject({ reason: GIT_REQUIRED });
   });
   test("WEBAIOS_GIT=/chemin/absent : GIT_REQUIRED", async () => {
     const before = process.env.WEBAIOS_GIT;
     process.env.WEBAIOS_GIT = "/chemin/absent";
     try {
-      await expect(new ReviewStore({ depot, dossier: folder }).assurerReference()).rejects.toMatchObject({ raison: GIT_REQUIRED });
+      await expect(new ReviewStore({ repo, folder: folder }).ensureReference()).rejects.toMatchObject({ reason: GIT_REQUIRED });
     } finally {
       if (before === undefined) delete process.env.WEBAIOS_GIT; else process.env.WEBAIOS_GIT = before;
     }
@@ -211,7 +211,7 @@ describe("erreurs", () => {
     await writeFile(join(folder, "sub", "x.txt"), "x");
     await chmod(join(folder, "sub"), 0o000);
     try {
-      await expect(r.assurerReference()).rejects.toMatchObject({ raison: ACCESS_DENIED });
+      await expect(r.ensureReference()).rejects.toMatchObject({ reason: ACCESS_DENIED });
     } finally {
       await chmod(join(folder, "sub"), 0o755);
     }
@@ -219,6 +219,6 @@ describe("erreurs", () => {
   test.skipIf(process.getuid?.() === 0)("dossier chmod 000 : ACCES_REFUSE", async () => {
     await write("a.txt", "a");
     await chmod(folder, 0o000);
-    await expect(r.assurerReference()).rejects.toMatchObject({ raison: ACCESS_DENIED });
+    await expect(r.ensureReference()).rejects.toMatchObject({ reason: ACCESS_DENIED });
   });
 });

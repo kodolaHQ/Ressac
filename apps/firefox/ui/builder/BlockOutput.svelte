@@ -6,22 +6,22 @@
    * comes from a page or the agent's code: shown as text, never as HTML.
    */
   let {
-    bloc: block,
-    choisie: chosen,
-    execution,
-    introuvable: notFound,
-  }: { bloc: string; choisie: ResumeExecution | null; execution: Execution | null; introuvable: boolean } = $props();
+    block: block,
+    chosen: chosen,
+    run: execution,
+    notFound: notFound,
+  }: { block: string; chosen: ResumeExecution | null; run: Execution | null; notFound: boolean } = $props();
 
   const LABELS: Record<string, string> = {
-    reussi: "réussi",
-    partiel: "partiel",
-    echoue: "échoué",
-    interrompu: "interrompu",
+    succeeded: "réussi",
+    partial: "partiel",
+    fails: "échoué",
+    interrupted: "interrompu",
     "pas-lance": "pas lancé",
-    repris: "repris",
+    resumed: "repris",
   };
 
-  const trace = $derived(execution?.id === chosen?.id ? execution?.blocs.find((b) => b.id === block) : undefined);
+  const trace = $derived(execution?.id === chosen?.id ? execution?.blocks.find((b) => b.id === block) : undefined);
   /**
    * The output is only formatted once the fold is open (it can weigh 256 KB): the open fold, per run and per block.
    * Another run recreates a closed fold, without JSON; the same run re-read (finished meanwhile) keeps it.
@@ -29,7 +29,7 @@
   const key = $derived(trace && execution ? `${execution.id}/${trace.id}` : null);
   let openedOn = $state<string | null>(null);
   const opened = $derived(key !== null && openedOn === key);
-  const json = $derived(opened && trace && trace.sortie !== undefined ? JSON.stringify(trace.sortie, null, 2) : "");
+  const json = $derived(opened && trace && trace.output !== undefined ? JSON.stringify(trace.output, null, 2) : "");
 
   function duration(start: string | null, end: string | null): string | null {
     if (!start || !end) return null;
@@ -45,7 +45,7 @@
   {#if !chosen}
     <p class="doux">Aucune exécution pour l'instant.</p>
   {:else}
-    <p class="doux">{hour(chosen.debut)} · {chosen.declencheur}{chosen.essai ? " (essai)" : ""}</p>
+    <p class="doux">{hour(chosen.start)} · {chosen.trigger}{chosen.attempt ? " (essai)" : ""}</p>
     {#if notFound}
       <p class="doux" data-testid="execution-introuvable">Cette exécution n'est plus lisible.</p>
     {:else if execution?.id !== chosen.id}
@@ -55,25 +55,25 @@
     {:else}
       <dl>
         <dt>Statut</dt>
-        <dd data-testid="statut-bloc">{LABELS[trace.statut] ?? trace.statut}</dd>
-        {#if duration(trace.debut, trace.fin)}<dt>Durée</dt><dd>{duration(trace.debut, trace.fin)}</dd>{/if}
+        <dd data-testid="statut-bloc">{LABELS[trace.status] ?? trace.status}</dd>
+        {#if duration(trace.start, trace.end)}<dt>Durée</dt><dd>{duration(trace.start, trace.end)}</dd>{/if}
         <dt>Éléments</dt>
-        <dd>{trace.elements ?? "—"}</dd>
+        <dd>{trace.items ?? "—"}</dd>
       </dl>
-      {#if trace.statut === "repris" && execution.essai}
-        <p class="doux" data-testid="sortie-reprise">Sortie reprise de l'exécution {execution.essai.origine}</p>
+      {#if trace.status === "repris" && execution.attempt}
+        <p class="doux" data-testid="sortie-reprise">Sortie reprise de l'exécution {execution.attempt.origin}</p>
       {/if}
-      {#if trace.erreur}<p class="erreur" data-testid="erreur-bloc">{trace.erreur}</p>{/if}
-      {#if trace.journal.length > 0}
+      {#if trace.error}<p class="erreur" data-testid="erreur-bloc">{trace.error}</p>{/if}
+      {#if trace.log.length > 0}
         <details>
-          <summary>Journal ({trace.journal.length})</summary>
-          <pre data-testid="journal-bloc">{trace.journal.join("\n")}</pre>
+          <summary>Journal ({trace.log.length})</summary>
+          <pre data-testid="journal-bloc">{trace.log.join("\n")}</pre>
         </details>
       {/if}
-      {#if trace.sortie !== undefined || trace.sortieTronquee}
+      {#if trace.output !== undefined || trace.outputTruncated}
         {#key key}
           <details data-testid="sortie-repliable" open={opened} ontoggle={(e) => (openedOn = e.currentTarget.open ? key : null)}>
-            <summary>Sortie{trace.sortieTronquee ? " (tronquée)" : ""}</summary>
+            <summary>Sortie{trace.outputTruncated ? " (tronquée)" : ""}</summary>
             {#if opened}<pre data-testid="sortie-json">{json}</pre>{/if}
           </details>
         {/key}

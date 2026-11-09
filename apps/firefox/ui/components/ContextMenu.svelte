@@ -4,24 +4,24 @@
 
 <svelte:window onkeydown={(e) => e.key === "Escape" && closeMenu()} onclick={closeMenu} onblur={closeMenu} />
 
-{#if menu.ouvert}
+{#if menu.open}
   <!-- Stays in the sidebar (the web view would cover a menu that overflows onto the content), except on an internal page. -->
-  {@const atBottom = menu.ouvert.y > window.innerHeight / 2}
+  {@const atBottom = menu.open.y > window.innerHeight / 2}
   <div
     class="menu"
     role="menu"
-    style:left="{Math.min(menu.ouvert.x, (menu.ouvert.libre ? window.innerWidth : 240) - 170)}px"
-    style:top={atBottom ? undefined : `${menu.ouvert.y}px`}
-    style:bottom={atBottom ? `${window.innerHeight - menu.ouvert.y}px` : undefined}
+    style:left="{Math.min(menu.open.x, (menu.open.free ? window.innerWidth : 240) - 170)}px"
+    style:top={atBottom ? undefined : `${menu.open.y}px`}
+    style:bottom={atBottom ? `${window.innerHeight - menu.open.y}px` : undefined}
   >
-    {#each menu.ouvert.entrees as entry (entry.libelle)}
+    {#each menu.open.inputs as entry (entry.label)}
       <button
         role="menuitem"
         onclick={(e) => {
           e.stopPropagation();
           closeMenu();
-          entry.agir();
-        }}>{entry.libelle}</button
+          entry.dispatch();
+        }}>{entry.label}</button
       >
     {/each}
   </div>

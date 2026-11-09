@@ -2,17 +2,17 @@ import { expect, test } from "vitest";
 import type { BrowserState } from "../shared/model";
 import { accumulateParts, readableProfiles, allowedUrl } from "../core/agent/invisible-read";
 
-const state = (profiles: string[], spaces: { profil: string; prive: boolean }[]) =>
-  ({ profils: profiles.map((id) => ({ id })), espaces: spaces.map((e, i) => ({ id: `e${i}`, ...e })) }) as unknown as BrowserState;
+const state = (profiles: string[], spaces: { profile: string; private: boolean }[]) =>
+  ({ profiles: profiles.map((id) => ({ id })), spaces: spaces.map((e, i) => ({ id: `e${i}`, ...e })) }) as unknown as BrowserState;
 
 test("readableProfiles excludes a private space's profiles, even shared with a non-private space", () => {
   const e = state(
     ["defaut", "travail", "secret", "libre"],
     [
-      { profil: "defaut", prive: false },
-      { profil: "travail", prive: false },
-      { profil: "travail", prive: true },
-      { profil: "secret", prive: true },
+      { profile: "defaut", private: false },
+      { profile: "travail", private: false },
+      { profile: "travail", private: true },
+      { profile: "secret", private: true },
     ],
   );
   expect(readableProfiles(e)).toEqual(["defaut", "libre"]);
@@ -42,25 +42,25 @@ test("urlPermise refuses local addresses, except for the tests option", () => {
 
 test("accumulateParts: lines kept once in order of appearance, links by address with the longest text", () => {
   const r = accumulateParts([
-    { titre: "A", texte: "en-tête\nx\n10 €\ny", liens: [{ url: "https://e.test/1", texte: "court" }] },
-    { titre: "B", texte: "en-tête\nx\n10 €\ny", liens: [{ url: "https://e.test/1", texte: "plus long" }] },
-    { titre: "C", texte: "en-tête\nz\n10 €\nw", liens: [{ url: "https://e.test/2", texte: "deux" }, { url: 3 }] },
+    { title: "A", text: "en-tête\nx\n10 €\ny", links: [{ url: "https://e.test/1", text: "court" }] },
+    { title: "B", text: "en-tête\nx\n10 €\ny", links: [{ url: "https://e.test/1", text: "plus long" }] },
+    { title: "C", text: "en-tête\nz\n10 €\nw", links: [{ url: "https://e.test/2", text: "deux" }, { url: 3 }] },
   ]);
-  expect(r.titre).toBe("C");
-  expect(r.texte).toBe("en-tête\nx\n10 €\ny\nz\n10 €\nw");
-  expect(r.liens).toEqual([
-    { url: "https://e.test/1", texte: "plus long" },
-    { url: "https://e.test/2", texte: "deux" },
+  expect(r.title).toBe("C");
+  expect(r.text).toBe("en-tête\nx\n10 €\ny\nz\n10 €\nw");
+  expect(r.links).toEqual([
+    { url: "https://e.test/1", text: "plus long" },
+    { url: "https://e.test/2", text: "deux" },
   ]);
 });
 
 test("accumulateParts: a list that advances (virtualized) is realigned on what it shares with the previous snapshot, identical prices kept", () => {
   const r = accumulateParts([
-    { titre: "T", texte: "En-tête\nA1\n4 500 €\nA2\n4 500 €\nChargement…", liens: [] },
+    { title: "T", text: "En-tête\nA1\n4 500 €\nA2\n4 500 €\nChargement…", links: [] },
     // A1 left the page; A2 is still there; A3 and A4 arrive, at the same price.
-    { titre: "T", texte: "En-tête\nA2\n4 500 €\nA3\n4 500 €\nA4\n4 500 €", liens: [] },
+    { title: "T", text: "En-tête\nA2\n4 500 €\nA3\n4 500 €\nA4\n4 500 €", links: [] },
     // Nothing new: the page no longer moved.
-    { titre: "T", texte: "En-tête\nA2\n4 500 €\nA3\n4 500 €\nA4\n4 500 €", liens: [] },
+    { title: "T", text: "En-tête\nA2\n4 500 €\nA3\n4 500 €\nA4\n4 500 €", links: [] },
   ]);
-  expect(r.texte).toBe("En-tête\nA1\n4 500 €\nA2\n4 500 €\nChargement…\nA3\n4 500 €\nA4\n4 500 €");
+  expect(r.text).toBe("En-tête\nA1\n4 500 €\nA2\n4 500 €\nChargement…\nA3\n4 500 €\nA4\n4 500 €");
 });

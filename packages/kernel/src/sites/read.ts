@@ -16,8 +16,8 @@ import {
 } from "./schemas.js";
 
 export type SiteLu =
-  | { id: string; dossier: string; declaration: DeclarationSite; aAccueil: boolean }
-  | { id: string; dossier: string; erreur: string };
+  | { id: string; folder: string; declaration: DeclarationSite; hasHome: boolean }
+  | { id: string; folder: string; error: string };
 export type TweaksRead = { js: Record<string, string>; css: Record<string, string> };
 
 const MAX_ERROR = 300;
@@ -44,45 +44,45 @@ async function readBound(path: string, max: number): Promise<string> {
   }
 }
 
-async function readDeclaration(folder: string, o: { adressesLocales: boolean }): Promise<{ declaration: DeclarationSite } | { erreur: string }> {
+async function readDeclaration(folder: string, o: { localAddresses: boolean }): Promise<{ declaration: DeclarationSite } | { error: string }> {
   const file = join(folder, "site.json");
   let raw: unknown;
   try {
     const s = await lstat(file);
-    if (!s.isFile()) return { erreur: "site.json n'est pas un fichier ordinaire" };
-    if (s.size > SITE_JSON_MAX) return { erreur: `site.json dépasse ${SITE_JSON_MAX / 1024} Ko` };
+    if (!s.isFile()) return { error: "site.json n'est pas un fichier ordinaire" };
+    if (s.size > SITE_JSON_MAX) return { error: `site.json dépasse ${SITE_JSON_MAX / 1024} Ko` };
     raw = JSON.parse((await readBound(file, SITE_JSON_MAX)).replace(/^\uFEFF/, ""));
   } catch (e) {
-    if ((e as Error).message === "trop gros") return { erreur: `site.json dépasse ${SITE_JSON_MAX / 1024} Ko` };
+    if ((e as Error).message === "trop gros") return { error: `site.json dépasse ${SITE_JSON_MAX / 1024} Ko` };
     // Fixed text: the system's message would quote Mac paths.
-    return { erreur: e instanceof SyntaxError ? "site.json illisible (pas du JSON valide)" : "site.json illisible" };
+    return { error: e instanceof SyntaxError ? "site.json illisible (pas du JSON valide)" : "site.json illisible" };
   }
   const r = DeclarationSite.safeParse(raw);
   if (!r.success) {
     const p = r.error.issues[0]!;
     const text = `site.json invalide : ${[...p.path, p.message].join(" : ")}`;
-    return { erreur: text.length > MAX_ERROR ? text.slice(0, MAX_ERROR - 1) + "…" : text };
+    return { error: text.length > MAX_ERROR ? text.slice(0, MAX_ERROR - 1) + "…" : text };
   }
   const denial = checkSiteDeclaration(r.data, o);
-  return denial ? { erreur: `site.json invalide : ${denial}` } : { declaration: r.data };
+  return denial ? { error: `site.json invalide : ${denial}` } : { declaration: r.data };
 }
 
-async function readOne(c: SpacePaths, id: string, o: { adressesLocales: boolean }): Promise<SiteLu> {
+async function readOne(c: SpacePaths, id: string, o: { localAddresses: boolean }): Promise<SiteLu> {
   const folder = join(c.sites, id);
-  if (!ID_SITE.test(id)) return { id, dossier: folder, erreur: SITE_ID_ERROR };
+  if (!ID_SITE.test(id)) return { id, folder: folder, error: SITE_ID_ERROR };
   const lu = await readDeclaration(folder, o);
-  if ("erreur" in lu) return { id, dossier: folder, erreur: lu.erreur };
+  if ("error" in lu) return { id, folder: folder, error: lu.error };
   let hasHome = false;
   try {
     hasHome = (await lstat(join(folder, "accueil", "index.html"))).isFile();
   } catch {
     // no home
   }
-  return { id, dossier: folder, declaration: lu.declaration, aAccueil: hasHome };
+  return { id, folder: folder, declaration: lu.declaration, hasHome: hasHome };
 }
 
 /** The site apps on disk, sorted by id; a broken app is reported, it does not prevent reading the others. */
-export async function readSites(c: SpacePaths, o: { adressesLocales: boolean }): Promise<SiteLu[]> {
+export async function readSites(c: SpacePaths, o: { localAddresses: boolean }): Promise<SiteLu[]> {
   let ids: string[];
   try {
     // `isDirectory` is false for a symbolic link: a link to a folder is ignored.
@@ -97,7 +97,7 @@ export async function readSites(c: SpacePaths, o: { adressesLocales: boolean }):
 }
 
 /** An app by its id; null if the folder does not exist (or is hidden, a symbolic link, an invalid name). */
-export async function readSite(c: SpacePaths, id: string, o: { adressesLocales: boolean }): Promise<SiteLu | null> {
+export async function readSite(c: SpacePaths, id: string, o: { localAddresses: boolean }): Promise<SiteLu | null> {
   if (!id || id.startsWith(".") || /[\\/\0]/.test(id)) return null;
   try {
     if (!(await lstat(join(c.sites, id))).isDirectory()) return null;
@@ -108,14 +108,14 @@ export async function readSite(c: SpacePaths, id: string, o: { adressesLocales: 
 }
 
 /** The files cited by the tweaks, read under `retouches/`: never a link, never outside the folder, bounded. */
-export async function readTweaks(s: Extract<SiteLu, { declaration: DeclarationSite }>): Promise<TweaksRead | { erreur: string }> {
-  const base = join(s.dossier, "retouches");
-  const missing = { erreur: "retouches : dossier de l'appli introuvable" };
+export async function readTweaks(s: Extract<SiteLu, { declaration: DeclarationSite }>): Promise<TweaksRead | { error: string }> {
+  const base = join(s.folder, "retouches");
+  const missing = { error: "retouches : dossier de l'appli introuvable" };
   let realRoot: string;
   try {
     // Neither the app's folder nor `retouches/` can be a link (even replaced since the site was read).
-    if (!(await lstat(s.dossier)).isDirectory()) return missing;
-    const realFolder = await realpath(s.dossier);
+    if (!(await lstat(s.folder)).isDirectory()) return missing;
+    const realFolder = await realpath(s.folder);
     if (!(await lstat(base)).isDirectory()) throw new Error("pas un dossier");
     realRoot = await realpath(base);
     if (!realRoot.startsWith(realFolder + sep)) throw new Error("hors du dossier");
@@ -126,7 +126,7 @@ export async function readTweaks(s: Extract<SiteLu, { declaration: DeclarationSi
   let total = 0;
   for (const kind of ["js", "css"] as const) {
     const alreadyRead = new Set<string>();
-    for (const r of s.declaration.retouches) {
+    for (const r of s.declaration.tweaks) {
       for (const f of r[kind]) {
         if (alreadyRead.has(f)) continue;
         alreadyRead.add(f);
@@ -139,7 +139,7 @@ export async function readTweaks(s: Extract<SiteLu, { declaration: DeclarationSi
           if (total > TWEAKS_MAX_TOTAL) throw new Error("trop gros");
           output[kind][f] = await readBound(path, TWEAK_MAX);
         } catch {
-          return { erreur: tweakFileNotFound(f) };
+          return { error: tweakFileNotFound(f) };
         }
       }
     }

@@ -30,7 +30,7 @@ function relayErrors(): void {
     observe(m: any) {
       if (!(m instanceof Ci.nsIScriptError) || !String(m.sourceName).startsWith(SOURCE) || !m.innerWindowID) return;
       try {
-        WindowGlobalChild.getByInnerWindowId(m.innerWindowID)?.getActor("WebAiOsSite").sendAsyncMessage("erreur", { texte: String(m.errorMessage), source: String(m.sourceName), ligne: Number(m.lineNumber) || 0 });
+        WindowGlobalChild.getByInnerWindowId(m.innerWindowID)?.getActor("WebAiOsSite").sendAsyncMessage("erreur", { text: String(m.errorMessage), source: String(m.sourceName), line: Number(m.lineNumber) || 0 });
       } catch {
         // The window or its actor is gone.
       }
@@ -59,7 +59,7 @@ export class WebAiOsSiteParent extends JSWindowActorParent {
 function valid(r: unknown): FrameInjection | null {
   if (!r || typeof r !== "object") return null;
   const i = r as FrameInjection;
-  return Array.isArray(i.css) && Array.isArray(i.js) && Array.isArray(i.hotes) ? i : null;
+  return Array.isArray(i.css) && Array.isArray(i.js) && Array.isArray(i.hosts) ? i : null;
 }
 
 export class WebAiOsSiteChild extends JSWindowActorChild {
@@ -96,9 +96,9 @@ export class WebAiOsSiteChild extends JSWindowActorChild {
       } catch (e) {
         console.error("[webaios] retouche CSS non posée :", e);
       }
-    if (i.reprise === true) this.resume();
-    if (i.js.length === 0 || typeof i.garde !== "string") return;
-    const kept = i.garde;
+    if (i.resume === true) this.resume();
+    if (i.js.length === 0 || typeof i.guard !== "string") return;
+    const kept = i.guard;
     const doc = this.document as any;
     const sandbox = Cu.Sandbox(doc.nodePrincipal, { sandboxPrototype: win, wantXrays: true, wantComponents: false, sameZoneAs: win, sandboxName: "WebAiOs · retouches" });
     // The page's own legacy `Components` shim (constants only) would show through the prototype: shadowed.
@@ -119,10 +119,10 @@ export class WebAiOsSiteChild extends JSWindowActorChild {
       }
     };
     // The guard first, alone: without it, none of the agent's scripts runs.
-    if (!run(kept, "webaios-garde-page.js") || !run(`__webaiosPortee(${JSON.stringify({ reseau: [], hotes: i.hotes })})`, "webaios-portee.js")) return;
-    if (i.pont) this.bridge(sandbox);
+    if (!run(kept, "webaios-garde-page.js") || !run(`__webaiosPortee(${JSON.stringify({ network: [], hosts: i.hosts })})`, "webaios-portee.js")) return;
+    if (i.bridge) this.bridge(sandbox);
     const scripts = () => {
-      for (const { code, nom: name } of i.js) run(code, name);
+      for (const { code, name: name } of i.js) run(code, name);
     };
     if (doc.readyState === "loading") this.pending = scripts;
     else scripts();
@@ -140,16 +140,16 @@ export class WebAiOsSiteChild extends JSWindowActorChild {
     this.resumed = true;
     const win = this.contentWindow as any;
     const tracking = new ResumeTracking({
-      noter: (t, duration, end) => this.sendAsyncMessage("position", { t, duree: duration, fin: end }),
-      demander: async (duration) => {
+      note: (t, duration, end) => this.sendAsyncMessage("position", { t, duration: duration, end: end }),
+      ask: async (duration) => {
         try {
-          const p: unknown = await this.sendQuery("reprise", { duree: duration });
+          const p: unknown = await this.sendQuery("reprise", { duration: duration });
           return typeof p === "number" && Number.isFinite(p) ? p : null;
         } catch {
           return null;
         }
       },
-      maintenant: () => Date.now(),
+      now: () => Date.now(),
     });
     for (const type of VIDEO_EVENTS)
       win.addEventListener(
@@ -157,7 +157,7 @@ export class WebAiOsSiteChild extends JSWindowActorChild {
         (e: any) => {
           const v = e.target;
           if (!e.isTrusted || !v || ChromeUtils.getClassName(v) !== "HTMLVideoElement") return;
-          void tracking.surEvenement(type, { currentTime: v.currentTime, duration: v.duration, cle: v }).then((p) => {
+          void tracking.onEvent(type, { currentTime: v.currentTime, duration: v.duration, key: v }).then((p) => {
             if (p !== null && p > 0) v.currentTime = p;
           });
         },
@@ -179,7 +179,7 @@ export class WebAiOsSiteChild extends JSWindowActorChild {
             } catch {
               v = undefined;
             }
-            const d = { op, cle: typeof key === "string" ? key : null, ...(op === "retenir" ? { valeur: v } : {}) };
+            const d = { op, key: typeof key === "string" ? key : null, ...(op === "retenir" ? { value: v } : {}) };
             this.sendQuery("memoire", d).then(
               (r: any) => {
                 if (r?.ok === true) resolve(op === "lire" ? Cu.cloneInto(r.valeur, sandbox) : undefined);

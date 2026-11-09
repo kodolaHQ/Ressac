@@ -13,29 +13,29 @@ const ag = (a: Action | null) => {
   if (a) e = apply(e, a, genId);
 };
 const open = (url: string) => {
-  ag({ type: "ouvrirOnglet", fenetreId: F, url });
-  return Object.keys(e.onglets).at(-1)!;
+  ag({ type: "ouvrirOnglet", windowId: F, url });
+  return Object.keys(e.tabs).at(-1)!;
 };
 const active = () => {
-  const f = e.fenetres[0]!;
-  return f.actif[f.espaceActif];
+  const f = e.windows[0]!;
+  return f.active[f.activeSpace];
 };
 
 beforeEach(() => {
   n = 0;
   e = initialState(genId);
-  F = e.fenetres[0]!.id;
+  F = e.windows[0]!.id;
 });
 
 test("⌘1…⌘9: the space's pinned come before the tabs, open or not", () => {
   const p = open("https://epingle.fr");
   ag({ type: "epinglerOnglet", id: p });
-  const favorite = e.espaces[0]!.epingles[0]!.id;
+  const favorite = e.spaces[0]!.pinned[0]!.id;
   ag({ type: "fermerOnglet", id: p }); // the favorite stays, without a tab
   const a = open("https://a.fr");
-  expect(toNth(e, F, 1)).toEqual({ type: "ouvrirFavori", fenetreId: F, genre: "epingle", id: favorite });
+  expect(toNth(e, F, 1)).toEqual({ type: "ouvrirFavori", windowId: F, kind: "epingle", id: favorite });
   ag(toNth(e, F, 1));
-  expect(e.onglets[active()!]?.lien?.id).toBe(favorite);
+  expect(e.tabs[active()!]?.link?.id).toBe(favorite);
   ag(toNth(e, F, 2));
   expect(active()).toBe(a);
 });

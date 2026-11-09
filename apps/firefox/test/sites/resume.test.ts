@@ -11,26 +11,26 @@ function tracking(known: number | null = null) {
   let response: (p: number | null) => void = () => {};
   let deferred = false;
   const s = new ResumeTracking({
-    noter: (t, duration, end) => {
+    note: (t, duration, end) => {
       notes.push([t, duration]);
       ends.push(end);
     },
-    demander: (duration) => {
+    ask: (duration) => {
       requests++;
       durations.push(duration);
       return deferred ? new Promise((ok) => (response = ok)) : Promise.resolve(known);
     },
-    maintenant: () => now,
+    now: () => now,
   });
   return {
     s,
     notes,
-    fins: ends,
-    durees: durations,
-    demandes: () => requests,
-    horloge: (ms: number) => void (now = ms),
-    differer: () => void (deferred = true),
-    repondre: (p: number | null) => response(p),
+    ends: ends,
+    durations: durations,
+    requests: () => requests,
+    clock: (ms: number) => void (now = ms),
+    defer: () => void (deferred = true),
+    reply: (p: number | null) => response(p),
   };
 }
 
@@ -39,12 +39,12 @@ test("the plan's values", () => {
 });
 
 test("timeupdate every second for 35 s: 4 noter (0, 10, 20, 30 s)", async () => {
-  const { s, notes, horloge: clock } = tracking();
+  const { s, notes, clock: clock } = tracking();
   const key = {};
-  expect(await s.surEvenement("play", { currentTime: 0, duration: 1500, cle: key })).toBeNull();
+  expect(await s.onEvent("play", { currentTime: 0, duration: 1500, key: key })).toBeNull();
   for (let t = 0; t <= 35; t++) {
     clock(t * 1000);
-    expect(await s.surEvenement("timeupdate", { currentTime: t, duration: 1500, cle: key })).toBeNull();
+    expect(await s.onEvent("timeupdate", { currentTime: t, duration: 1500, key: key })).toBeNull();
   }
   expect(notes).toEqual([
     [0, 1500],
@@ -55,14 +55,14 @@ test("timeupdate every second for 35 s: 4 noter (0, 10, 20, 30 s)", async () => 
 });
 
 test("pause: noter right away; ended too, marked as the end", async () => {
-  const { s, notes, fins: ends, horloge: clock } = tracking();
+  const { s, notes, ends: ends, clock: clock } = tracking();
   const key = {};
-  await s.surEvenement("play", { currentTime: 0, duration: 1500, cle: key });
-  await s.surEvenement("timeupdate", { currentTime: 1, duration: 1500, cle: key });
+  await s.onEvent("play", { currentTime: 0, duration: 1500, key: key });
+  await s.onEvent("timeupdate", { currentTime: 1, duration: 1500, key: key });
   clock(2000);
-  await s.surEvenement("pause", { currentTime: 2, duration: 1500, cle: key });
+  await s.onEvent("pause", { currentTime: 2, duration: 1500, key: key });
   clock(2500);
-  await s.surEvenement("ended", { currentTime: 1500, duration: 1500, cle: key });
+  await s.onEvent("ended", { currentTime: 1500, duration: 1500, key: key });
   expect(notes).toEqual([
     [1, 1500],
     [2, 1500],
@@ -72,77 +72,77 @@ test("pause: noter right away; ended too, marked as the end", async () => {
 });
 
 test("30 s video: nothing noted, nothing resumed", async () => {
-  const { s, notes, demandes: requests } = tracking(20);
+  const { s, notes, requests: requests } = tracking(20);
   const key = {};
   for (const type of ["loadedmetadata", "play", "timeupdate", "pause", "ended"] as const) {
-    expect(await s.surEvenement(type, { currentTime: 12, duration: 30, cle: key })).toBeNull();
+    expect(await s.onEvent(type, { currentTime: 12, duration: 30, key: key })).toBeNull();
   }
   expect(notes).toEqual([]);
   expect(requests()).toBe(0);
 });
 
 test("non-finite (live) or missing duration: ignored", async () => {
-  const { s, notes, demandes: requests } = tracking(100);
+  const { s, notes, requests: requests } = tracking(100);
   const key = {};
   for (const duration of [Infinity, NaN]) {
-    expect(await s.surEvenement("play", { currentTime: 10, duration, cle: key })).toBeNull();
-    await s.surEvenement("pause", { currentTime: 10, duration, cle: key });
+    expect(await s.onEvent("play", { currentTime: 10, duration, key: key })).toBeNull();
+    await s.onEvent("pause", { currentTime: 10, duration, key: key });
   }
   expect(notes).toEqual([]);
   expect(requests()).toBe(0);
 });
 
 test("play with known position 1390: returns 1385, only once", async () => {
-  const { s, demandes: requests, durees: durations } = tracking(1390);
+  const { s, requests: requests, durations: durations } = tracking(1390);
   const key = {};
-  expect(await s.surEvenement("loadedmetadata", { currentTime: 0, duration: 1500, cle: key })).toBe(1385);
+  expect(await s.onEvent("loadedmetadata", { currentTime: 0, duration: 1500, key: key })).toBe(1385);
   expect(durations).toEqual([1500]);
-  expect(await s.surEvenement("play", { currentTime: 1385, duration: 1500, cle: key })).toBeNull();
-  expect(await s.surEvenement("loadedmetadata", { currentTime: 1385, duration: 1500, cle: key })).toBeNull();
+  expect(await s.onEvent("play", { currentTime: 1385, duration: 1500, key: key })).toBeNull();
+  expect(await s.onEvent("loadedmetadata", { currentTime: 1385, duration: 1500, key: key })).toBeNull();
   expect(requests()).toBe(1);
   // Another element of the page (recreated player) asks for itself, with its duration; the main decides whether to serve it.
-  expect(await s.surEvenement("play", { currentTime: 0, duration: 1500, cle: {} })).toBe(1385);
+  expect(await s.onEvent("play", { currentTime: 0, duration: 1500, key: {} })).toBe(1385);
   expect(requests()).toBe(2);
 });
 
 test("position 3: returns 0", async () => {
   const { s } = tracking(3);
-  expect(await s.surEvenement("play", { currentTime: 0, duration: 1500, cle: {} })).toBe(0);
+  expect(await s.onEvent("play", { currentTime: 0, duration: 1500, key: {} })).toBe(0);
 });
 
 test("a position beyond this video's duration, or that is not a number: nothing resumed", async () => {
-  expect(await tracking(2000).s.surEvenement("play", { currentTime: 0, duration: 1500, cle: {} })).toBeNull();
-  expect(await tracking(Number.NaN).s.surEvenement("play", { currentTime: 0, duration: 1500, cle: {} })).toBeNull();
+  expect(await tracking(2000).s.onEvent("play", { currentTime: 0, duration: 1500, key: {} })).toBeNull();
+  expect(await tracking(Number.NaN).s.onEvent("play", { currentTime: 0, duration: 1500, key: {} })).toBeNull();
 });
 
 test("nothing is noted before the resume is settled: a timeupdate at 0 s does not overwrite the position", async () => {
-  const { s, notes, differer: defer, repondre: reply, horloge: clock } = tracking();
+  const { s, notes, defer: defer, reply: reply, clock: clock } = tracking();
   defer();
   const key = {};
-  const resume = s.surEvenement("play", { currentTime: 0, duration: 1500, cle: key });
-  expect(await s.surEvenement("timeupdate", { currentTime: 0, duration: 1500, cle: key })).toBeNull();
-  expect(await s.surEvenement("pause", { currentTime: 0, duration: 1500, cle: key })).toBeNull();
+  const resume = s.onEvent("play", { currentTime: 0, duration: 1500, key: key });
+  expect(await s.onEvent("timeupdate", { currentTime: 0, duration: 1500, key: key })).toBeNull();
+  expect(await s.onEvent("pause", { currentTime: 0, duration: 1500, key: key })).toBeNull();
   expect(notes).toEqual([]);
   reply(1390);
   expect(await resume).toBe(1385);
   clock(100);
-  await s.surEvenement("timeupdate", { currentTime: 1385, duration: 1500, cle: key });
+  await s.onEvent("timeupdate", { currentTime: 1385, duration: 1500, key: key });
   expect(notes).toEqual([[1385, 1500]]);
 });
 
 test("a request that fails: nothing resumed, the tracking continues", async () => {
   const notes: number[] = [];
-  const s = new ResumeTracking({ noter: (t) => void notes.push(t), demander: () => Promise.reject(new Error("x")), maintenant: () => 0 });
+  const s = new ResumeTracking({ note: (t) => void notes.push(t), ask: () => Promise.reject(new Error("x")), now: () => 0 });
   const key = {};
-  expect(await s.surEvenement("play", { currentTime: 0, duration: 1500, cle: key })).toBeNull();
-  await s.surEvenement("pause", { currentTime: 4, duration: 1500, cle: key });
+  expect(await s.onEvent("play", { currentTime: 0, duration: 1500, key: key })).toBeNull();
+  await s.onEvent("pause", { currentTime: 4, duration: 1500, key: key });
   expect(notes).toEqual([4]);
 });
 
 test("duration known later (stream): the resume is requested at the first event where it is finite", async () => {
-  const { s, demandes: requests } = tracking(500);
+  const { s, requests: requests } = tracking(500);
   const key = {};
-  expect(await s.surEvenement("loadedmetadata", { currentTime: 0, duration: Infinity, cle: key })).toBeNull();
-  expect(await s.surEvenement("timeupdate", { currentTime: 0.2, duration: 1500, cle: key })).toBe(495);
+  expect(await s.onEvent("loadedmetadata", { currentTime: 0, duration: Infinity, key: key })).toBeNull();
+  expect(await s.onEvent("timeupdate", { currentTime: 0.2, duration: 1500, key: key })).toBe(495);
   expect(requests()).toBe(1);
 });

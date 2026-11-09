@@ -10,18 +10,18 @@
    * « Enregistrer le code » or ⌘S writes it. The code never runs here, it is only text.
    */
   /** `widget`: the workflow's key (`targetKey`), a widget's or an action's. */
-  let { widget, nom: name }: { widget: string; nom: string } = $props();
+  let { widget, name: name }: { widget: string; name: string } = $props();
   const depot = repoOf(api.workflow);
 
   // svelte-ignore state_referenced_locally
   // Once saved, the code may unblock the workflow refused for lack of this file (same edit as the builder).
-  const file = new CodeFile(widget, name, depot, (n) => createEdit(widget, depot).codeEnregistre(n));
+  const file = new CodeFile(widget, name, depot, (n) => createEdit(widget, depot).savedCode(n));
 
   $effect(() =>
     untrack(() => {
-      void file.lire();
+      void file.read();
       // The agent may be writing the file: re-read on each change of home (or of the actions).
-      return (isActionKey(widget) ? api.actions.surChange : api.accueil.surChange)(() => void file.lire());
+      return (isActionKey(widget) ? api.actions.onChange : api.home.onChange)(() => void file.read());
     }),
   );
 
@@ -30,7 +30,7 @@
     if (!e.metaKey || e.altKey || e.ctrlKey || e.shiftKey || e.key.toLowerCase() !== "s") return;
     if (e.target instanceof Element && e.target.closest(".xterm")) return;
     e.preventDefault();
-    void file.enregistrer();
+    void file.save();
   }
 </script>
 
@@ -39,28 +39,28 @@
 <section class="code">
   <div class="tete">
     <span class="titre">Code <code>{name}</code></span>
-    {#if file.nonEnregistre}<span class="non-enregistre" data-testid="code-non-enregistre">Code non enregistré</span>{/if}
-    <button data-testid="enregistrer-code" disabled={!file.nonEnregistre || file.enregistrement || file.disque === undefined} onclick={() => file.enregistrer()}
+    {#if file.unsaved}<span class="non-enregistre" data-testid="code-non-enregistre">Code non enregistré</span>{/if}
+    <button data-testid="enregistrer-code" disabled={!file.unsaved || file.recording || file.disk === undefined} onclick={() => file.save()}
       >Enregistrer le code</button
     >
   </div>
-  {#if file.changeSurDisque}
+  {#if file.changedOnDisk}
     <div class="bandeau" role="status" data-testid="code-change">
       <span>Le fichier a changé sur le disque</span>
-      <button data-testid="recharger-code" onclick={() => file.recharger()}>Recharger</button>
-      <button data-testid="garder-code" onclick={() => file.garderLeMien()}>Garder le mien</button>
+      <button data-testid="recharger-code" onclick={() => file.reload()}>Recharger</button>
+      <button data-testid="garder-code" onclick={() => file.keepMine()}>Garder le mien</button>
     </div>
   {/if}
-  {#if file.erreur}<p class="erreur" data-testid="erreur-code">{file.erreur}</p>{/if}
+  {#if file.error}<p class="erreur" data-testid="erreur-code">{file.error}</p>{/if}
   <textarea
     data-testid="editeur-code"
     spellcheck="false"
     autocomplete="off"
     autocapitalize="off"
     wrap="off"
-    disabled={file.disque === undefined}
-    value={file.texte}
-    oninput={(e) => file.saisir(e.currentTarget.value)}
+    disabled={file.disk === undefined}
+    value={file.text}
+    oninput={(e) => file.enter(e.currentTarget.value)}
   ></textarea>
 </section>
 

@@ -7,7 +7,7 @@ export async function callMcpTool(
   name: string,
   args: Record<string, unknown> = {},
   config = join(root, ".webaios", "mcp.json"),
-): Promise<{ texte: string; image?: string; erreur: boolean }> {
+): Promise<{ text: string; image?: string; error: boolean }> {
   const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
   const { StreamableHTTPClientTransport } = await import("@modelcontextprotocol/sdk/client/streamableHttp.js");
   const server = JSON.parse(readFileSync(config, "utf8")).mcpServers.webaios;
@@ -22,9 +22,9 @@ export async function callMcpTool(
       isError?: boolean;
     };
     return {
-      texte: r.content.filter((c) => c.type === "text").map((c) => c.text).join("\n"),
+      text: r.content.filter((c) => c.type === "text").map((c) => c.text).join("\n"),
       ...(r.content.some((c) => c.type === "image") ? { image: r.content.find((c) => c.type === "image")!.data } : {}),
-      erreur: r.isError === true,
+      error: r.isError === true,
     };
   } finally {
     await client.close();

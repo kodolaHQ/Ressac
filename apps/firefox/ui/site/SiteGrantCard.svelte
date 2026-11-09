@@ -5,45 +5,45 @@
    * The grant card for the app's tweaks, in its window: what the agent asks for (domains, sign-in, frames,
    * resume) and what it injects. Everything comes from site.json, written by the agent: shown as text, never as HTML.
    */
-  let { accord: grant, accorder: giveGrant }: { accord: SiteGrantRequest; accorder: (yes: boolean, hash: string) => Promise<void> } = $props();
+  let { grant: grant, onGrant: giveGrant }: { grant: SiteGrantRequest; onGrant: (yes: boolean, hash: string) => Promise<void> } = $props();
   let running = $state(false);
 
   const choose = (yes: boolean) => {
     if (running) return;
     running = true;
     // The hash of the rights shown: the main process only grants those.
-    void giveGrant(yes, grant.empreinte).finally(() => (running = false));
+    void giveGrant(yes, grant.hash).finally(() => (running = false));
   };
 </script>
 
 <section class="zone" data-testid="site-zone-accord">
   <div class="carte" role="dialog" aria-labelledby="titre-accord-site" data-testid="carte-accord-site">
-    <h2 id="titre-accord-site">{tweaksGrantTitle(grant.nom)}</h2>
+    <h2 id="titre-accord-site">{tweaksGrantTitle(grant.name)}</h2>
     <dl>
       <dt>Domaines</dt>
-      <dd data-testid="accord-site-domaines">{grant.domaines.join(", ")}</dd>
-      {#if grant.suivis.length}
+      <dd data-testid="accord-site-domaines">{grant.domains.join(", ")}</dd>
+      {#if grant.tracked.length}
         <dt>Adresses suivies</dt>
-        <dd data-testid="accord-site-suivis">{grant.suivis.join(", ")}</dd>
+        <dd data-testid="accord-site-suivis">{grant.tracked.join(", ")}</dd>
       {/if}
-      {#if grant.connexion.length}
+      {#if grant.login.length}
         <dt>Connexion</dt>
-        <dd data-testid="accord-site-connexion">{grant.connexion.join(", ")}</dd>
+        <dd data-testid="accord-site-connexion">{grant.login.join(", ")}</dd>
       {/if}
-      {#if grant.cadres.length}
+      {#if grant.frames.length}
         <dt>Cadres</dt>
         <dd data-testid="accord-site-cadres">
-          {#each grant.cadres as c (c)}<code>{c}</code>{/each}
+          {#each grant.frames as c (c)}<code>{c}</code>{/each}
         </dd>
       {/if}
-      {#if grant.fichiers.length}
+      {#if grant.files.length}
         <dt>Injecte</dt>
         <dd data-testid="accord-site-fichiers">
-          {#each grant.fichiers as f (f)}<code>{f}</code>{/each}
+          {#each grant.files as f (f)}<code>{f}</code>{/each}
         </dd>
       {/if}
     </dl>
-    {#if grant.reprise}<p data-testid="accord-site-reprise">Reprend les vidéos à la minute</p>{/if}
+    {#if grant.resume}<p data-testid="accord-site-reprise">Reprend les vidéos à la minute</p>{/if}
     <p class="doux">Ses retouches voient et modifient les pages de ces domaines. Une image ajoutée à la page peut encore envoyer des données à un autre site.</p>
     <div class="boutons">
       <button data-testid="refuser-site" disabled={running} onclick={() => choose(false)}>{NO_TWEAKS}</button>

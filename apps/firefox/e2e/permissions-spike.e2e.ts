@@ -217,7 +217,7 @@ let opened = 0;
 /** Opens `url` (made unique: earlier tabs stay open) in a WebAiOs tab of the first window, waits until it is loaded; its browser is window.spikeBrowser. */
 async function open(m: Marionette, page: string): Promise<void> {
   const url = `${page}${page.includes("?") ? "&" : "?"}k=${++opened}`;
-  await dispatch(m, { type: "ouvrirOnglet", fenetreId: (await state(m)).fenetres[0]!.id, url });
+  await dispatch(m, { type: "ouvrirOnglet", windowId: (await state(m)).windows[0]!.id, url });
   await waitFor(
     m,
     // The title, not isLoadingDocument: a page that plays a sound stays "loading".
@@ -486,7 +486,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("site permissions spike", () => {
         await clickGo(m);
       } else {
         // The page leaves at once (to the handler's page): no load to wait for.
-        await dispatch(m, { type: "ouvrirOnglet", fenetreId: (await state(m)).fenetres[0]!.id, url });
+        await dispatch(m, { type: "ouvrirOnglet", windowId: (await state(m)).windows[0]!.id, url });
         await m.execute("window.spikeBrowser = gBrowser.selectedBrowser;");
       }
       await sleep(2000);
@@ -515,15 +515,15 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("site permissions spike", () => {
     await release(m, "cancel");
 
     // The same origin in a space of another profile (another container).
-    const before = (await state(m)).espaces.map((e) => e.id);
-    await dispatch(m, { type: "creerEspace", nom: "Autre", icone: "🧪", prive: false, profil: "nouveau", fenetreId: (await state(m)).fenetres[0]!.id } as Action);
-    note("P6 new space", (await state(m)).espaces.filter((e) => !before.includes(e.id)).map((e) => e.profil));
+    const before = (await state(m)).spaces.map((e) => e.id);
+    await dispatch(m, { type: "creerEspace", name: "Autre", icon: "🧪", private: false, profile: "nouveau", windowId: (await state(m)).windows[0]!.id } as Action);
+    note("P6 new space", (await state(m)).spaces.filter((e) => !before.includes(e.id)).map((e) => e.profile));
     await open(m, `${origin}/p?do=none&p6b`);
     const uc2 = await m.execute<number>("return window.spikeBrowser.contentPrincipal.originAttributes.userContextId");
     note("P6 other container, isolateBy.userContext false (default)", { userContextId: uc2, query: await run(m, origin, "query", { auto: true, extra: "&n=3" }) });
     await m.execute("Services.prefs.getDefaultBranch('').setBoolPref('permissions.isolateBy.userContext', true)");
     note("P6 other container, isolateBy.userContext true at runtime", await run(m, origin, "query", { auto: true, extra: "&n=4" }));
-    await dispatch(m, { type: "activerEspace", fenetreId: (await state(m)).fenetres[0]!.id, id: before[0]! } as Action);
+    await dispatch(m, { type: "activerEspace", windowId: (await state(m)).windows[0]!.id, id: before[0]! } as Action);
     note("P6 first container again, isolateBy.userContext true", await run(m, origin, "query", { auto: true, extra: "&n=5" }));
     note("P6 Services.perms entries", await chrome(m, `return Services.perms.getAllByTypes(arguments[0]).map((p) => [p.principal.origin, p.type]);`, [TYPES]));
 

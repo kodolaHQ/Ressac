@@ -11,13 +11,13 @@ it("isYoutubeVideo: only YouTube /watch pages", () => {
 });
 
 it("composeText: description then body, empty parts omitted", () => {
-  expect(composeText({ description: "Summary", corps: "Page body" })).toBe("Summary\n\nPage body");
-  expect(composeText({ description: "  ", corps: "Body" })).toBe("Body");
-  expect(composeText({ corps: "" })).toBe("");
+  expect(composeText({ description: "Summary", body: "Page body" })).toBe("Summary\n\nPage body");
+  expect(composeText({ description: "  ", body: "Body" })).toBe("Body");
+  expect(composeText({ body: "" })).toBe("");
 });
 
 it("composeText: a YouTube video gives title, channel and description, without the rest of the page", () => {
-  expect(composeText({ video: { titre: "My video", chaine: "My channel", description: "What it is about" }, corps: "comments…" })).toBe(
+  expect(composeText({ video: { title: "My video", chain: "My channel", description: "What it is about" }, body: "comments…" })).toBe(
     "My video\n\nMy channel\n\nWhat it is about",
   );
 });

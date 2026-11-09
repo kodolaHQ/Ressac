@@ -8,19 +8,19 @@ import { tempFolder } from "../helpers/temp.js";
 test("atomic write of the data and the state; default state when etat.json is missing or damaged", async () => {
   const d = await tempFolder();
   expect(await readData(d, "w")).toBeNull();
-  expect(await readWidgetState(d, "w")).toEqual({ statut: "ok", derniereMaj: null, derniereTentative: null });
+  expect(await readWidgetState(d, "w")).toEqual({ status: "ok", lastUpdate: null, lastAttempt: null });
 
-  await writeData(d, "w", { liste: [1, 2] });
-  expect(await readData(d, "w")).toEqual({ liste: [1, 2] });
-  const state = { statut: "accord-requis" as const, derniereMaj: "2026-10-28T07:00:00.000Z", derniereTentative: null, journal: "x" };
+  await writeData(d, "w", { list: [1, 2] });
+  expect(await readData(d, "w")).toEqual({ list: [1, 2] });
+  const state = { status: "accord-requis" as const, lastUpdate: "2026-10-28T07:00:00.000Z", lastAttempt: null, log: "x" };
   await writeWidgetState(d, "w", state);
   expect(await readWidgetState(d, "w")).toEqual(state);
   expect((await readdir(join(d, "w"))).sort()).toEqual(["donnees.json", "etat.json"]); // no .tmp left lying around
 
   await writeFile(join(d, "w", "etat.json"), "{ abîmé");
-  expect((await readWidgetState(d, "w")).statut).toBe("ok");
-  await writeFile(join(d, "w", "etat.json"), JSON.stringify({ statut: "inconnu" }));
-  expect((await readWidgetState(d, "w")).derniereMaj).toBeNull();
+  expect((await readWidgetState(d, "w")).status).toBe("ok");
+  await writeFile(join(d, "w", "etat.json"), JSON.stringify({ status: "inconnu" }));
+  expect((await readWidgetState(d, "w")).lastUpdate).toBeNull();
 });
 
 test("donnees.json is limited to 2 MB", async () => {
@@ -35,11 +35,11 @@ test("donnees.json is limited to 2 MB", async () => {
 test("deleteData also erases the runs and the memory, and keeps etat.json", async () => {
   const d = await tempFolder();
   await writeData(d, "w", { a: 1 });
-  await writeWidgetState(d, "w", { statut: "ok", derniereMaj: null, derniereTentative: null });
-  await writeMemory(join(d, "w"), { b: { type: "liste.nouveaux", valeur: ["x"] } });
+  await writeWidgetState(d, "w", { status: "ok", lastUpdate: null, lastAttempt: null });
+  await writeMemory(join(d, "w"), { b: { type: "liste.nouveaux", value: ["x"] } });
   await writeRun(join(d, "w"), {
-    version: 1, id: "2026-10-29T08-00-00-000Z", proprietaire: { type: "widget", id: "w" }, declencheur: "manuelle",
-    debut: "2026-10-29T08:00:00.000Z", fin: null, statut: "reussie", blocs: [],
+    version: 1, id: "2026-10-29T08-00-00-000Z", owner: { type: "widget", id: "w" }, trigger: "manuelle",
+    start: "2026-10-29T08:00:00.000Z", end: null, status: "reussie", blocks: [],
   });
   await deleteData(d, "w");
   expect((await readdir(join(d, "w"))).sort()).toEqual(["etat.json"]);
@@ -50,33 +50,33 @@ test("deleteData also erases the runs and the memory, and keeps etat.json", asyn
 
 test("writeWidgetState keeps the hours tracking when the written state has none, and replaces it when it has one", async () => {
   const d = await tempFolder();
-  const hours = { faite: "2026-10-29T07:00", echecs: null };
-  await writeWidgetState(d, "w", { statut: "ok", derniereMaj: null, derniereTentative: null, heures: hours });
-  await writeWidgetState(d, "w", { statut: "en-cours", derniereMaj: null, derniereTentative: "2026-10-29T08:00:00.000Z" });
-  expect((await readWidgetState(d, "w")).heures).toEqual(hours);
-  await writeWidgetState(d, "w", { statut: "erreur", derniereMaj: null, derniereTentative: null, erreur: "x" });
-  expect((await readWidgetState(d, "w")).heures).toEqual(hours);
-  const others = { faite: "2026-10-29T07:00", echecs: { heure: "2026-10-29T12:00", nombre: 2 } };
-  await writeWidgetState(d, "w", { statut: "ok", derniereMaj: null, derniereTentative: null, heures: others });
-  expect((await readWidgetState(d, "w")).heures).toEqual(others);
+  const hours = { done: "2026-10-29T07:00", failures: null };
+  await writeWidgetState(d, "w", { status: "ok", lastUpdate: null, lastAttempt: null, hours: hours });
+  await writeWidgetState(d, "w", { status: "en-cours", lastUpdate: null, lastAttempt: "2026-10-29T08:00:00.000Z" });
+  expect((await readWidgetState(d, "w")).hours).toEqual(hours);
+  await writeWidgetState(d, "w", { status: "erreur", lastUpdate: null, lastAttempt: null, error: "x" });
+  expect((await readWidgetState(d, "w")).hours).toEqual(hours);
+  const others = { done: "2026-10-29T07:00", failures: { hour: "2026-10-29T12:00", count: 2 } };
+  await writeWidgetState(d, "w", { status: "ok", lastUpdate: null, lastAttempt: null, hours: others });
+  expect((await readWidgetState(d, "w")).hours).toEqual(others);
   // Without a state file or tracking: nothing is invented.
-  await writeWidgetState(d, "neuf", { statut: "ok", derniereMaj: null, derniereTentative: null });
-  expect("heures" in (await readWidgetState(d, "neuf"))).toBe(false);
+  await writeWidgetState(d, "neuf", { status: "ok", lastUpdate: null, lastAttempt: null });
+  expect("hours" in (await readWidgetState(d, "neuf"))).toBe(false);
 });
 
 test("writes of a widget's state one after the other: a write without tracking does not lose the tracking modified at the same time", async () => {
   const d = await tempFolder();
-  await writeWidgetState(d, "w", { statut: "ok", derniereMaj: null, derniereTentative: null });
+  await writeWidgetState(d, "w", { status: "ok", lastUpdate: null, lastAttempt: null });
   for (let i = 0; i < 20; i++) {
-    const hours = { faite: `2026-10-29T07:${String(i).padStart(2, "0")}`, echecs: null };
+    const hours = { done: `2026-10-29T07:${String(i).padStart(2, "0")}`, failures: null };
     await Promise.all([
-      writeWidgetState(d, "w", { statut: "en-cours", derniereMaj: null, derniereTentative: null }),
-      changeWidgetState(d, "w", (e) => ({ ...e, heures: hours })),
-      writeWidgetState(d, "w", { statut: "ok", derniereMaj: null, derniereTentative: null }),
+      writeWidgetState(d, "w", { status: "en-cours", lastUpdate: null, lastAttempt: null }),
+      changeWidgetState(d, "w", (e) => ({ ...e, hours: hours })),
+      writeWidgetState(d, "w", { status: "ok", lastUpdate: null, lastAttempt: null }),
     ]);
-    expect(await readWidgetState(d, "w")).toEqual({ statut: "ok", derniereMaj: null, derniereTentative: null, heures: hours });
+    expect(await readWidgetState(d, "w")).toEqual({ status: "ok", lastUpdate: null, lastAttempt: null, hours: hours });
   }
   // null: nothing is written.
   await expect(changeWidgetState(d, "w", () => null)).resolves.toBeNull();
-  expect((await readWidgetState(d, "w")).statut).toBe("ok");
+  expect((await readWidgetState(d, "w")).status).toBe("ok");
 });

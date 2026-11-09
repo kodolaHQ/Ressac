@@ -12,17 +12,17 @@ test("readTheme returns theme null without a file", async () => {
 
 test("a valid theme is returned as is", async () => {
   const c = spacePaths(await tempFolder());
-  await mkdir(c.accueil, { recursive: true });
-  await writeFile(join(c.accueil, "theme.json"), '{"version":1,"fond":"#101014","rayon":6,"police":"serif"}');
-  expect(await readTheme(c)).toEqual({ theme: { version: 1, fond: "#101014", rayon: 6, police: "serif" } });
+  await mkdir(c.home, { recursive: true });
+  await writeFile(join(c.home, "theme.json"), '{"version":1,"fond":"#101014","rayon":6,"police":"serif"}');
+  expect(await readTheme(c)).toEqual({ theme: { version: 1, background: "#101014", radius: 6, font: "serif" } });
 });
 
 test("a non-hexadecimal color, a radius of 25 or an unknown font: theme null and the error", async () => {
   const c = spacePaths(await tempFolder());
-  await mkdir(c.accueil, { recursive: true });
+  await mkdir(c.home, { recursive: true });
   for (const invalid of ['{"version":1,"fond":"rouge"}', '{"version":1,"rayon":25}', '{"version":1,"police":"comic"}']) {
-    await writeFile(join(c.accueil, "theme.json"), invalid);
-    const { theme, erreur: error } = await readTheme(c);
+    await writeFile(join(c.home, "theme.json"), invalid);
+    const { theme, error: error } = await readTheme(c);
     expect(theme, invalid).toBeNull();
     expect(error, invalid).toContain("theme.json invalide :");
   }
@@ -30,20 +30,20 @@ test("a non-hexadecimal color, a radius of 25 or an unknown font: theme null and
 
 test("an unknown key: theme null and the error", async () => {
   const c = spacePaths(await tempFolder());
-  await mkdir(c.accueil, { recursive: true });
-  await writeFile(join(c.accueil, "theme.json"), '{"version":1,"inconnu":1}');
-  const { theme, erreur: error } = await readTheme(c);
+  await mkdir(c.home, { recursive: true });
+  await writeFile(join(c.home, "theme.json"), '{"version":1,"inconnu":1}');
+  const { theme, error: error } = await readTheme(c);
   expect(theme).toBeNull();
   expect(error).toContain("theme.json invalide :");
 });
 
 test("an unreadable file leaves the file intact", async () => {
   const c = spacePaths(await tempFolder());
-  await mkdir(c.accueil, { recursive: true });
+  await mkdir(c.home, { recursive: true });
   const content = '{"version":1,"fond":';
-  await writeFile(join(c.accueil, "theme.json"), content);
-  const { theme, erreur: error } = await readTheme(c);
+  await writeFile(join(c.home, "theme.json"), content);
+  const { theme, error: error } = await readTheme(c);
   expect(theme).toBeNull();
   expect(error).toContain("theme.json invalide :");
-  expect(await readFile(join(c.accueil, "theme.json"), "utf8")).toBe(content);
+  expect(await readFile(join(c.home, "theme.json"), "utf8")).toBe(content);
 });

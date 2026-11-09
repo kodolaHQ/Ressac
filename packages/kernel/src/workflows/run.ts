@@ -46,9 +46,9 @@ export interface HarvestProcess {
   stdin: Writable;
   stdout: Readable;
   stderr: Readable;
-  tuer(): void;
+  kill(): void;
   /** Exit code; null if killed by a signal or impossible to launch. */
-  fin: Promise<number | null>;
+  end: Promise<number | null>;
 }
 export type ProcessLauncher = (cmd: string, args: string[]) => HarvestProcess;
 
@@ -58,7 +58,7 @@ export const defaultLaunch: ProcessLauncher = (cmd, args) => {
     child.once("close", (code) => ok(code));
     child.once("error", () => ok(null));
   });
-  return { stdin: child.stdin, stdout: child.stdout, stderr: child.stderr, tuer: () => void child.kill("SIGKILL"), fin: end };
+  return { stdin: child.stdin, stdout: child.stdout, stderr: child.stderr, kill: () => void child.kill("SIGKILL"), end: end };
 };
 
 /** Kernel-side timeout; the container stops by itself after 180 s (+5 s). */
@@ -89,9 +89,9 @@ const SEARCH_HOST = "duckduckgo.com";
  * sent: the interpreter keeps its 150 s). With D minutes: no item run after D × 60 s, container stopped
  * at D × 60 + 30 s, kernel at D × 60 + 50 s.
  */
-export function runDelays(maxDurationMinutes: number | undefined): { conteneurS: number; noyauMs: number; limiteMs?: number } {
-  if (maxDurationMinutes === undefined) return { conteneurS: HARVEST_DELAY_S, noyauMs: RUN_DELAY_MS };
-  return { conteneurS: maxDurationMinutes * 60 + 30, noyauMs: maxDurationMinutes * 60_000 + 50_000, limiteMs: maxDurationMinutes * 60_000 };
+export function runDelays(maxDurationMinutes: number | undefined): { containerS: number; kernelMs: number; limitMs?: number } {
+  if (maxDurationMinutes === undefined) return { containerS: HARVEST_DELAY_S, kernelMs: RUN_DELAY_MS };
+  return { containerS: maxDurationMinutes * 60 + 30, kernelMs: maxDurationMinutes * 60_000 + 50_000, limitMs: maxDurationMinutes * 60_000 };
 }
 
 export const PROFILE_DENIED =
@@ -110,88 +110,88 @@ const BLOCK_LOG_LINES = 200;
 const LOG_BLOCK_CHARS = 500;
 
 export interface WorkflowContext {
-  proprietaire: Owner;
-  valide: ValidWorkflow;
+  owner: Owner;
+  valid: ValidWorkflow;
   /** Folder of the owner's files (`.mjs` of the `code` blocks), mounted read-only on `/widget`. */
-  dossierFichiers: string;
+  filesFolder: string;
   config: unknown;
-  precedent: unknown;
-  memoire: BlocksMemory;
+  previous: unknown;
+  memory: BlocksMemory;
   /**
    * Domains read with the user's account, and public domains allowed when there are some with an account. `web`: web searches
    * allowed and paced open reads (never with an account).
    */
-  sources: { compte: readonly string[]; publiques: readonly string[]; web?: boolean };
+  sources: { account: readonly string[]; public: readonly string[]; web?: boolean };
   /** Re-read at each read with an account; null = grant gone. */
-  accord(): Promise<{ profil: string } | null>;
+  grant(): Promise<{ profile: string } | null>;
   /** The browser refuses the grant's profile (deleted, became private). */
-  surProfilRefuse(): Promise<void>;
-  messageAccordRequis: string;
-  declencheur: Execution["declencheur"];
+  onProfileDenied(): Promise<void>;
+  grantRequiredMessage: string;
+  trigger: Execution["trigger"];
   /**
    * A builder try (plan of `replayPlan`): only the `relances` blocks run, with the `sorties` taken
    * from the original run; no memory sent or kept. `repris`: the taken blocks and their number of items.
    */
-  rejeu?: { relances: string[]; sorties: Record<string, unknown>; repris: Record<string, number | null> };
+  replay?: { reruns: string[]; outputs: Record<string, unknown>; resumed: Record<string, number | null> };
   /** The widget's `recolte.dureeMaxMinutes`: sets the delays and makes the run progressive (except a try). */
-  dureeMaxMinutes?: number;
+  maxDurationMinutes?: number;
   /** Action only: the text typed at launch, sent in `debut` and copied into the run. */
-  saisie?: string;
+  input?: string;
   /** Action only: the per-item blocks send their progress (relayed as an `avancement` trace). */
-  avancement?: true;
+  progress?: true;
   /** Action only: raised, the run is stopped (container killed) and concludes « interrompue » (ACTION_STOPPED). */
   signal?: AbortSignal;
 }
 
 /** An as-it-goes publication: the items already finished, `faits` out of `total`. */
-export type Publication = { donnees: unknown; faits: number; total: number };
+export type Publication = { data: unknown; done: number; total: number };
 
 /**
  * An accepted trace (in order), relayed live to the builder. `avancement`: coming from the container (action
  * only); `lecture`: emitted by the kernel at each accepted read, attached to the last block started and not finished.
  */
 export type DirectTrace =
-  | { bloc: string; etape: "debut" }
-  | { bloc: string; etape: "fin"; statut: "reussi" | "partiel" | "echoue"; elements: number | null }
-  | { bloc: string; etape: "avancement"; faits: number; total: number }
-  | { bloc: string; etape: "lecture"; hote: string };
+  | { block: string; step: "debut" }
+  | { block: string; step: "fin"; status: "reussi" | "partiel" | "echoue"; items: number | null }
+  | { block: string; step: "avancement"; done: number; total: number }
+  | { block: string; step: "lecture"; host: string };
 
 export interface InfraWorkflow {
   /** Folder of the engine on the Mac (`docker/moteur`), mounted read-only. */
-  moteur: string;
-  atelier: Pick<Workshop, "commandeRecolte" | "supprimerRecolte">;
-  lancer?: ProcessLauncher;
+  engine: string;
+  workshop: Pick<Workshop, "harvestCommand" | "deleteHarvest">;
+  launch?: ProcessLauncher;
   /** null: no local AI, `kev` and `gemma` answer with an error. */
-  ia: Pick<LocalAi, "kev" | "gemma"> | null;
-  pont: BrowserBridge;
-  horloge: () => Date;
-  delaiMs?: number;
+  ai: Pick<LocalAi, "kev" | "gemma"> | null;
+  bridge: BrowserBridge;
+  clock: () => Date;
+  delayMs?: number;
   /** Tests only: allows `recuperer` and `lirePage` to local addresses (127.0.0.1…). */
-  adressesLocales?: boolean;
+  localAddresses?: boolean;
   /** Pacing of the searches and open reads (default: DEFAULT_PACING, shared). */
-  menagement?: Pacing;
+  pacing?: Pacing;
   /** Tests only: the base of the DuckDuckGo searches. */
-  urlRecherche?: string;
+  searchUrl?: string;
   /** Called for each accepted trace (never for a rejected line); an error from the relay is ignored. */
-  surTrace?: (t: DirectTrace) => void;
+  onTrace?: (t: DirectTrace) => void;
   /**
    * An as-it-goes chain publication (see `executerWorkflow`). The relays (publications and memory) are
    * done one after the other and all finished before the run returns; an error from a relay is ignored.
    */
-  surPublication?: (p: Publication) => Promise<void>;
+  onPublish?: (p: Publication) => Promise<void>;
   /** Progressive run only: the memory received along the way, at most every MEMORY_GAP_MS. */
-  surMemoire?: (m: BlocksMemory) => Promise<void>;
+  onMemory?: (m: BlocksMemory) => Promise<void>;
 }
 
 export type WorkflowOutcome =
-  | { t: "fin"; sortie: { vers: OutputKind; valeur: unknown }; memoire: BlocksMemory | null }
+  | { t: "fin"; output: { to: OutputKind; value: unknown }; memory: BlocksMemory | null }
   /**
    * `erreurDuCode`: the text comes from the container (the agent's code may have written it), not from the kernel. `memoire` (progressive
    * run only, absent otherwise): the last memory received, null if none.
    */
-  | { t: "echec"; erreur: string; erreurDuCode: boolean; memoire?: BlocksMemory | null }
+  | { t: "echec"; error: string; codeError: boolean; memory?: BlocksMemory | null }
   /** Stopped by the kernel (delay, grant, profile refused, answer too big…): the text is the kernel's. `memoire`: same. */
-  | { t: "arret"; statut: "erreur" | "accord-requis"; erreur: string; memoire?: BlocksMemory | null };
+  | { t: "arret"; status: "erreur" | "accord-requis"; error: string; memory?: BlocksMemory | null };
 
 function args<T>(schema: { safeParse(x: unknown): { success: true; data: T } | { success: false } }, a: unknown, f: string): T {
   const r = schema.safeParse(a);
@@ -202,12 +202,12 @@ function args<T>(schema: { safeParse(x: unknown): { success: true; data: T } | {
 /** The pacing shared by all the kernel's runs, when the caller gives none. */
 export const DEFAULT_PACING = new Pacing();
 
-type Stop = { statut: "erreur" | "accord-requis"; erreur: string };
+type Stop = { status: "erreur" | "accord-requis"; error: string };
 /** The run is stopped: the call receives no answer. */
 const NO_RESPONSE = Symbol("sans réponse");
 
 /** Trace of a block during the run, with what is needed to bound its log. */
-type RunningTrace = BlockTrace & { commence: boolean; fini: boolean; coupees: number };
+type RunningTrace = BlockTrace & { started: boolean; done: boolean; cut: number };
 
 /**
  * Runs a validated workflow in a container without network: sends `debut` (workflow, config, previous) and the
@@ -223,33 +223,33 @@ type RunningTrace = BlockTrace & { commence: boolean; fini: boolean; coupees: nu
 export async function runWorkflow(
   ctx: WorkflowContext,
   infra: InfraWorkflow,
-): Promise<{ issue: WorkflowOutcome; execution: Execution; journal: string }> {
-  const clock = infra.horloge;
-  const localUrls = infra.adressesLocales ?? false;
+): Promise<{ issue: WorkflowOutcome; run: Execution; log: string }> {
+  const clock = infra.clock;
+  const localUrls = infra.localAddresses ?? false;
   const start = clock().toISOString();
-  const { workflow, ordre: order } = ctx.valide;
-  const replay = ctx.rejeu ?? null;
+  const { workflow, order: order } = ctx.valid;
+  const replay = ctx.replay ?? null;
   // For a try, only the rerun blocks send traces, in run order.
-  const relaunches = replay ? new Set(replay.relances) : null;
+  const relaunches = replay ? new Set(replay.reruns) : null;
   const expected = relaunches ? order.filter((id) => relaunches.has(id)) : order;
-  const types = new Map(workflow.blocs.map((b) => [b.id, b.type]));
-  const streaming = workflow.blocs.find((b) => b.id === ctx.valide.sortie.id)?.parametres.auFilDeLEau === true;
-  const progressive = !replay && (ctx.dureeMaxMinutes !== undefined || streaming);
+  const types = new Map(workflow.blocks.map((b) => [b.id, b.type]));
+  const streaming = workflow.blocks.find((b) => b.id === ctx.valid.output.id)?.params.auFilDeLEau === true;
+  const progressive = !replay && (ctx.maxDurationMinutes !== undefined || streaming);
   // A try has no chain: it runs block by block and publishes nothing.
-  const chain = replay ? [] : streamingChain(ctx.valide);
-  const delays = runDelays(ctx.dureeMaxMinutes);
+  const chain = replay ? [] : streamingChain(ctx.valid);
+  const delays = runDelays(ctx.maxDurationMinutes);
   // The validated params of this run: the memory is only taken back if it was kept with the same ones.
-  const hashes = new Map(workflow.blocs.map((b) => [b.id, paramsHash(b.parametres)]));
+  const hashes = new Map(workflow.blocks.map((b) => [b.id, paramsHash(b.params)]));
   const traces = new Map<string, RunningTrace>(
     order.map((id) => [
       id,
-      { id, type: types.get(id)!, statut: "pas-lance", debut: null, fin: null, elements: null, journal: [], commence: false, fini: false, coupees: 0 },
+      { id, type: types.get(id)!, status: "pas-lance", start: null, end: null, items: null, log: [], started: false, done: false, cut: 0 },
     ]),
   );
   if (replay) {
-    for (const [id, elements] of Object.entries(replay.repris)) {
+    for (const [id, items] of Object.entries(replay.resumed)) {
       const t = traces.get(id);
-      if (t && !relaunches!.has(id)) Object.assign(t, { statut: "repris", elements });
+      if (t && !relaunches!.has(id)) Object.assign(t, { status: "repris", elements: items });
     }
   }
   let log = "";
@@ -258,53 +258,53 @@ export async function runWorkflow(
   let stoppedBySignal = false;
 
   const conclude = (outcome: WorkflowOutcome) => {
-    const blocks: BlockTrace[] = [...traces.values()].map(({ commence: started, fini: finished, coupees: cuts, ...t }) => {
+    const blocks: BlockTrace[] = [...traces.values()].map(({ started: started, done: finished, cut: cuts, ...t }) => {
       const b: BlockTrace = { ...t };
       // Started without an end: the container stopped during the block (or was stopped on request).
-      if (started && !finished) b.statut = stoppedBySignal ? "interrompu" : "echoue";
-      if (cuts > 0) b.journal = [`… ${cuts} lignes coupées`, ...t.journal];
+      if (started && !finished) b.status = stoppedBySignal ? "interrompu" : "echoue";
+      if (cuts > 0) b.log = [`… ${cuts} lignes coupées`, ...t.log];
       return b;
     });
-    const status: Execution["statut"] =
+    const status: Execution["status"] =
       outcome.t === "fin"
         ? // A partial block, or one that did not finish (a `fin` that arrived before it): the output is not complete. For a
           // try, only the rerun blocks count.
-          blocks.every((b) => b.statut === "reussi" || (relaunches !== null && !relaunches.has(b.id))) ? "reussie" : "partielle"
-        : outcome.t === "arret" && outcome.statut === "accord-requis"
+          blocks.every((b) => b.status === "reussi" || (relaunches !== null && !relaunches.has(b.id))) ? "reussie" : "partielle"
+        : outcome.t === "arret" && outcome.status === "accord-requis"
           ? "accord-requis"
           : outcome.t === "arret" && stoppedBySignal
             ? "interrompue"
             : "echouee";
-    const execution: Execution = {
+    const run: Execution = {
       version: 1,
       id: idExecution(start),
-      proprietaire: ctx.proprietaire,
-      declencheur: ctx.declencheur,
-      debut: start,
-      fin: clock().toISOString(),
-      statut: status,
-      blocs: blocks,
+      owner: ctx.owner,
+      trigger: ctx.trigger,
+      start: start,
+      end: clock().toISOString(),
+      status: status,
+      blocks: blocks,
     };
-    if (ctx.saisie !== undefined) execution.saisie = ctx.saisie;
+    if (ctx.input !== undefined) run.input = ctx.input;
     if (outcome.t !== "fin") {
-      execution.erreur = outcome.erreur;
-      if (outcome.t === "arret" || !outcome.erreurDuCode) execution.erreurNoyau = true;
+      run.error = outcome.error;
+      if (outcome.t === "arret" || !outcome.codeError) run.kernelError = true;
     }
     if (remark) {
       log = (log ? log + "\n" : "") + remark;
       // Also in the run, in the output block's log.
-      blocks.find((b) => b.id === ctx.valide.sortie.id)?.journal.push(remark);
+      blocks.find((b) => b.id === ctx.valid.output.id)?.log.push(remark);
     }
-    return { issue: outcome, execution, journal: log.slice(-LOG_MAX) };
+    return { issue: outcome, run, log: log.slice(-LOG_MAX) };
   };
-  const failure = (error: string, codeError: boolean): WorkflowOutcome => ({ t: "echec", erreur: truncate(error, MAX_ERROR), erreurDuCode: codeError });
+  const failure = (error: string, codeError: boolean): WorkflowOutcome => ({ t: "echec", error: truncate(error, MAX_ERROR), codeError: codeError });
 
   // For an owner with an account, public reads are limited to the declared domains (empty: none).
-  const hasAccount = ctx.sources.compte.length > 0;
-  const publicDomains = hasAccount ? ctx.sources.publiques : null;
+  const hasAccount = ctx.sources.account.length > 0;
+  const publicDomains = hasAccount ? ctx.sources.public : null;
   // Paced web searches and open reads: only for a widget that declares `web`, never with an account.
   const web = ctx.sources.web === true && !hasAccount;
-  const pacing = infra.menagement ?? DEFAULT_PACING;
+  const pacing = infra.pacing ?? DEFAULT_PACING;
   // Raised at the stop or the end: a search or read still in the queue does not go out, and those in progress (bridge,
   // fetch) are abandoned. Specific to this run: the other runs' reads are not touched.
   const runEnd = new AbortController();
@@ -313,36 +313,36 @@ export async function runWorkflow(
   let openReads = 0;
 
   const startLine = lineStart({
-    precedent: ctx.precedent,
-    maintenant: start,
+    previous: ctx.previous,
+    now: start,
     config: ctx.config ?? null,
-    workflow: { blocs: workflow.blocs, liens: workflow.liens, ordre: order },
-    ...(replay ? { rejeu: { relances: replay.relances, sorties: replay.sorties } } : {}),
-    ...(delays.limiteMs !== undefined ? { limiteMs: delays.limiteMs } : {}),
-    ...(progressive ? { progressif: true as const } : {}),
-    ...(ctx.saisie !== undefined ? { saisie: ctx.saisie } : {}),
-    ...(ctx.avancement ? { avancement: true as const } : {}),
+    workflow: { blocks: workflow.blocks, links: workflow.links, order: order },
+    ...(replay ? { replay: { reruns: replay.reruns, outputs: replay.outputs } } : {}),
+    ...(delays.limitMs !== undefined ? { limitMs: delays.limitMs } : {}),
+    ...(progressive ? { progressive: true as const } : {}),
+    ...(ctx.input !== undefined ? { input: ctx.input } : {}),
+    ...(ctx.progress ? { progress: true as const } : {}),
   });
   // Safety net: the caller measures before (`debutTropGros`) to refuse without writing anything; the harvester would refuse the line.
   if (replay && Buffer.byteLength(startLine) > LINE_MAX_BYTES) {
-    return conclude({ t: "arret", statut: "erreur", erreur: REPLAY_TOO_BIG });
+    return conclude({ t: "arret", status: "erreur", error: REPLAY_TOO_BIG });
   }
 
   // A container of the same name left by an abrupt stop would make `docker run` fail (125); the queues only launch
   // one per owner, so this one can only be a leftover. Before the signal test, perhaps raised meanwhile.
-  await infra.atelier.supprimerRecolte(ctx.proprietaire).catch(() => {});
+  await infra.workshop.deleteHarvest(ctx.owner).catch(() => {});
   // Stopped before even leaving: nothing is launched.
   if (ctx.signal?.aborted) {
     stoppedBySignal = true;
-    return conclude({ t: "arret", statut: "erreur", erreur: ACTION_STOPPED });
+    return conclude({ t: "arret", status: "erreur", error: ACTION_STOPPED });
   }
 
   let process: HarvestProcess;
   try {
-    const [cmd, ...argv] = infra.atelier.commandeRecolte(ctx.proprietaire, ctx.dossierFichiers, infra.moteur, delays.conteneurS);
-    process = (infra.lancer ?? defaultLaunch)(cmd!, argv);
+    const [cmd, ...argv] = infra.workshop.harvestCommand(ctx.owner, ctx.filesFolder, infra.engine, delays.containerS);
+    process = (infra.launch ?? defaultLaunch)(cmd!, argv);
   } catch (e) {
-    return conclude({ t: "arret", statut: "erreur", erreur: `Récolte impossible à lancer : ${message(e)}` });
+    return conclude({ t: "arret", status: "erreur", error: `Récolte impossible à lancer : ${message(e)}` });
   }
 
   let stop: Stop | null = null;
@@ -365,7 +365,7 @@ export async function runWorkflow(
   // `memoireSure` is that of a failure or a stop and of the `surMemoire` relays; an end keeps the last one received
   // (`memoireRecue`), because the output shows everything.
   let safeMemory: BlocksMemory | null = null;
-  let heldMemory: { memoire: BlocksMemory | null; recueA: number } | null = null;
+  let heldMemory: { memory: BlocksMemory | null; receivedAt: number } | null = null;
   let doubtfulMemory = false;
   // The output block's `fin` trace has passed: a memory received afterwards (verifierMemoire, just before `fin`) has
   // resolved all the pending keys, which only the final output shows. It is only used for the `fin` outcome
@@ -373,17 +373,17 @@ export async function runWorkflow(
   let outputDone = false;
   // Adoption happens in the relay queue, after the publications received before it: a memory is only safe
   // if the data it assumes shown has really been written (F1).
-  const adoptInQueue = async (t: { memoire: BlocksMemory | null; recueA: number }) => {
-    if (!t.memoire || doubtfulMemory) return;
-    const memory = t.memoire;
+  const adoptInQueue = async (t: { memory: BlocksMemory | null; receivedAt: number }) => {
+    if (!t.memory || doubtfulMemory) return;
+    const memory = t.memory;
     safeMemory = memory;
-    const onMemory = infra.surMemoire;
-    if (onMemory && (memoryRelayedTo === null || t.recueA - memoryRelayedTo >= MEMORY_GAP_MS)) {
-      memoryRelayedTo = t.recueA;
+    const onMemory = infra.onMemory;
+    if (onMemory && (memoryRelayedTo === null || t.receivedAt - memoryRelayedTo >= MEMORY_GAP_MS)) {
+      memoryRelayedTo = t.receivedAt;
       await onMemory(memory);
     }
   };
-  const adoptMemory = (t: { memoire: BlocksMemory | null; recueA: number }) => queued(() => adoptInQueue(t));
+  const adoptMemory = (t: { memory: BlocksMemory | null; receivedAt: number }) => queued(() => adoptInQueue(t));
   const releaseHeldMemory = () => {
     const t = heldMemory;
     heldMemory = null;
@@ -394,38 +394,38 @@ export async function runWorkflow(
     if (stop) return;
     stop = a;
     runEnd.abort(new Error("Exécution arrêtée"));
-    process.tuer();
+    process.kill();
   };
-  const timer = setTimeout(() => stopRun({ statut: "erreur", erreur: "Délai dépassé" }), infra.delaiMs ?? delays.noyauMs);
+  const timer = setTimeout(() => stopRun({ status: "erreur", error: "Délai dépassé" }), infra.delayMs ?? delays.kernelMs);
   const onSignal = () => {
     if (stop) return;
     stoppedBySignal = true;
-    stopRun({ statut: "erreur", erreur: ACTION_STOPPED });
+    stopRun({ status: "erreur", error: ACTION_STOPPED });
   };
   ctx.signal?.addEventListener("abort", onSignal, { once: true });
 
   process.stdin.on("error", () => {});
   process.stdin.write(startLine);
   // Only the memory of this workflow's blocks, with their type; none for a try.
-  process.stdin.write(memoryLine(replay ? {} : resumeMemory(ctx.memoire, types, hashes)));
+  process.stdin.write(memoryLine(replay ? {} : resumeMemory(ctx.memory, types, hashes)));
   process.stderr.setEncoding("utf8");
   process.stderr.on("data", (d: string) => {
     log = (log + d).slice(-LOG_MAX);
   });
 
-  const reply = (n: number, r: { ok: unknown } | { erreur: string }) => {
+  const reply = (n: number, r: { ok: unknown } | { error: string }) => {
     if (stop || terminal || process.stdin.destroyed || process.stdin.writableEnded) return;
     let line = responseLine(n, r);
-    if (Buffer.byteLength(line) > LINE_MAX_BYTES) line = responseLine(n, { erreur: "Réponse trop grande (4 Mo maximum)" });
+    if (Buffer.byteLength(line) > LINE_MAX_BYTES) line = responseLine(n, { error: "Réponse trop grande (4 Mo maximum)" });
     process.stdin.write(line);
   };
 
   /** Read options: for an owner with an account, the bridge receives the list of domains where it may navigate. */
   // Tests only: the bridge then also allows local addresses (it refuses them otherwise, redirects included).
   const withDomains = (profile: string | null, domains: readonly string[] | null) => ({
-    profil: profile,
-    ...(hasAccount && domains ? { domaines: [...domains] } : {}),
-    ...(localUrls ? { adressesLocales: true } : {}),
+    profile: profile,
+    ...(hasAccount && domains ? { domains: [...domains] } : {}),
+    ...(localUrls ? { localAddresses: true } : {}),
     signal: runEnd.signal,
   });
 
@@ -437,39 +437,39 @@ export async function runWorkflow(
     if (!web) return f();
     if (openReads >= MAX_OPEN_READS) throw new Error(TOO_MANY_READS);
     openReads++;
-    return pacing.lire(u.hostname, f, runEnd.signal);
+    return pacing.read(u.hostname, f, runEnd.signal);
   };
 
   const readPage = async (a: unknown): Promise<unknown> => {
-    const { url, compte: account, defiler: scroll } = args(ReadPageArgs, a, "lirePage");
-    const scrolling = scroll ? { defiler: scroll } : {};
-    const read = infra.pont.lirePageInvisible?.bind(infra.pont);
+    const { url, account: account, scroll: scroll } = args(ReadPageArgs, a, "lirePage");
+    const scrolling = scroll ? { scroll: scroll } : {};
+    const read = infra.bridge.readPageInvisible?.bind(infra.bridge);
     if (!read) throw new Error("Lecture de pages indisponible");
     if (!account) {
       const u = checkUrl(url, publicDomains, localUrls);
       reportRead(u);
-      const page = await openRead(u, (changeHost) => read(u.href, { ...withDomains(null, publicDomains), ...scrolling, ...(changeHost ? { changerHote: changeHost } : {}) }));
+      const page = await openRead(u, (changeHost) => read(u.href, { ...withDomains(null, publicDomains), ...scrolling, ...(changeHost ? { changeHost: changeHost } : {}) }));
       return checkPage(page, publicDomains, localUrls);
     }
     // The domain must be declared in `compte`; the grant is re-read at each read (it may have been withdrawn).
-    const u = checkUrl(url, ctx.sources.compte, localUrls);
-    const grant = await ctx.accord();
+    const u = checkUrl(url, ctx.sources.account, localUrls);
+    const grant = await ctx.grant();
     if (!grant) {
-      stopRun({ statut: "accord-requis", erreur: ctx.messageAccordRequis });
+      stopRun({ status: "accord-requis", error: ctx.grantRequiredMessage });
       return NO_RESPONSE;
     }
     if (stop) return NO_RESPONSE;
     reportRead(u);
     try {
-      const page = await read(u.href, { ...withDomains(grant.profil, ctx.sources.compte), ...scrolling });
-      return checkPage(page, ctx.sources.compte, localUrls);
+      const page = await read(u.href, { ...withDomains(grant.profile, ctx.sources.account), ...scrolling });
+      return checkPage(page, ctx.sources.account, localUrls);
     } catch (e) {
       if (e instanceof ProfileDenied || (e as Error)?.name === "ProfilRefuse") {
         // The caller withdraws the grant (and what was read with it) before the stop: when it concludes, it no longer exists.
         try {
-          await ctx.surProfilRefuse();
+          await ctx.onProfileDenied();
         } finally {
-          stopRun({ statut: "accord-requis", erreur: PROFILE_DENIED });
+          stopRun({ status: "accord-requis", error: PROFILE_DENIED });
         }
         return NO_RESPONSE;
       }
@@ -478,24 +478,24 @@ export async function runWorkflow(
   };
 
   const searchWeb = async (a: unknown): Promise<unknown> => {
-    const { requete: request, nombre: count } = args(SearchWebArgs, a, "chercherWeb");
+    const { query: request, count: count } = args(SearchWebArgs, a, "chercherWeb");
     // Refused here even if the validation let it through: a `code` block or a recolte.mjs may call chercherWeb.
     if (!web) throw new Error(WEB_REQUIRED);
     if (searchDenied) throw new Error(SEARCHES_STOPPED);
     if (searches >= MAX_SEARCHES) throw new Error(SEARCHES_CAP);
-    const readHtml = infra.pont.lireHtmlInvisible?.bind(infra.pont);
+    const readHtml = infra.bridge.readHtmlInvisible?.bind(infra.bridge);
     if (!readHtml) throw new Error(SEARCH_UNAVAILABLE);
     searches++;
     reportRead(SEARCH_HOST);
-    const r = await pacing.rechercher(
+    const r = await pacing.search(
       async () => {
-        const { html } = await readHtml(searchUrl(request, infra.urlRecherche ?? URL_DUCKDUCKGO), {
-          ...(localUrls ? { adressesLocales: true } : {}),
+        const { html } = await readHtml(searchUrl(request, infra.searchUrl ?? URL_DUCKDUCKGO), {
+          ...(localUrls ? { localAddresses: true } : {}),
           signal: runEnd.signal,
         });
         const reads = extractResults(html, Infinity);
         // Marked before releasing the lane: a queued search sees the refusal before going out.
-        if ("refus" in reads) searchDenied = true;
+        if ("denial" in reads) searchDenied = true;
         return reads;
       },
       runEnd.signal,
@@ -504,10 +504,10 @@ export async function runWorkflow(
         if (searchDenied) throw new Error(SEARCHES_STOPPED);
       },
     );
-    if ("refus" in r) throw new Error(SEARCH_DENIED);
-    if ("illisible" in r) throw new Error(UNREADABLE_RESULTS);
+    if ("denial" in r) throw new Error(SEARCH_DENIED);
+    if ("unreadable" in r) throw new Error(UNREADABLE_RESULTS);
     // A result toward the machine or the local network is never returned (it would be read afterwards).
-    return r.resultats.filter((x) => !localUrl(new URL(x.url).hostname)).slice(0, count);
+    return r.results.filter((x) => !localUrl(new URL(x.url).hostname)).slice(0, count);
   };
 
   const processCall = async (f: string, a: unknown): Promise<unknown> => {
@@ -525,14 +525,14 @@ export async function runWorkflow(
         return searchWeb(a);
       case "kev": {
         const body = args(ArgsKev, a, "kev");
-        if (!infra.ia) throw new Error("IA locale indisponible");
+        if (!infra.ai) throw new Error("IA locale indisponible");
         // Stop or delay: the in-flight call is abandoned and gives its place back to the shared AI.
-        return infra.ia.kev(body, { signal: runEnd.signal });
+        return infra.ai.kev(body, { signal: runEnd.signal });
       }
       case "gemma": {
         const g = args(ArgsGemma, a, "gemma");
-        if (!infra.ia) throw new Error("IA locale indisponible");
-        return infra.ia.gemma({ ...g, signal: runEnd.signal });
+        if (!infra.ai) throw new Error("IA locale indisponible");
+        return infra.ai.gemma({ ...g, signal: runEnd.signal });
       }
       default:
         throw new Error(`Fonction inconnue : ${f}`);
@@ -552,7 +552,7 @@ export async function runWorkflow(
   const duringTheChain = () => chain.length > 0 && !closing && opened.length === chain.length && opened[0]!.id === chain[0];
   const relay = (t: DirectTrace) => {
     try {
-      infra.surTrace?.(t);
+      infra.onTrace?.(t);
     } catch {
       // The live relay never stops the run.
     }
@@ -561,7 +561,7 @@ export async function runWorkflow(
   function reportRead(target: URL | string) {
     const block = opened.at(-1);
     const host = typeof target === "string" ? target : target.hostname.toLowerCase().replace(/\.+$/, "");
-    if (block) relay({ bloc: block.id, etape: "lecture", hote: host });
+    if (block) relay({ block: block.id, step: "lecture", host: host });
   }
   /** Per block: the time of the last relayed `avancement` line. */
   const progressRelayedTo = new Map<string, number>();
@@ -569,24 +569,24 @@ export async function runWorkflow(
     if (m.t === "memoire") {
       // A try keeps no memory: what the container says about it is ignored.
       if (replay) return;
-      const filtered = markMemory(m.memoire as BlocksMemory, types, hashes);
-      const tooBig = Buffer.byteLength(JSON.stringify({ version: 1, blocs: filtered })) > MEMORY_MAX_BYTES;
+      const filtered = markMemory(m.memory as BlocksMemory, types, hashes);
+      const tooBig = Buffer.byteLength(JSON.stringify({ version: 1, blocks: filtered })) > MEMORY_MAX_BYTES;
       receivedMemory = tooBig ? null : filtered;
       remark = tooBig ? MEMORY_NOT_KEPT : null;
-      if (progressive && !outputDone) heldMemory = { memoire: tooBig ? null : filtered, recueA: clock().getTime() };
+      if (progressive && !outputDone) heldMemory = { memory: tooBig ? null : filtered, receivedAt: clock().getTime() };
       return;
     }
     if (m.t === "publication") {
       const held = heldMemory;
       heldMemory = null;
       const now = clock().getTime();
-      const onPublish = infra.surPublication;
+      const onPublish = infra.onPublish;
       const accepted =
         duringTheChain() &&
-        m.faits <= m.total &&
-        m.donnees !== undefined &&
+        m.done <= m.total &&
+        m.data !== undefined &&
         (publicationRelayedTo === null || now - publicationRelayedTo >= TOLERATED_PUBLICATIONS_GAP_MS) &&
-        Buffer.byteLength(JSON.stringify(m.donnees)) <= DATA_MAX_SIZE &&
+        Buffer.byteLength(JSON.stringify(m.data)) <= DATA_MAX_SIZE &&
         onPublish !== undefined;
       if (!accepted) {
         // The container believes these items shown: its memory is no longer safe before the next accepted publication.
@@ -598,7 +598,7 @@ export async function runWorkflow(
         return;
       }
       publicationRelayedTo = now;
-      const p: Publication = { donnees: m.donnees, faits: m.faits, total: m.total };
+      const p: Publication = { data: m.data, done: m.done, total: m.total };
       // The data first, then the memory they make safe; a refused write leaves it doubtful.
       queued(async () => {
         try {
@@ -613,58 +613,58 @@ export async function runWorkflow(
       return;
     }
     if (m.t === "journal") {
-      const t = traces.get(m.bloc);
-      if (!t || (relaunches && !relaunches.has(m.bloc))) return;
-      t.journal.push(truncate(m.texte, LOG_BLOCK_CHARS));
+      const t = traces.get(m.block);
+      if (!t || (relaunches && !relaunches.has(m.block))) return;
+      t.log.push(truncate(m.text, LOG_BLOCK_CHARS));
       // The room for the « … N lignes coupées » line is kept: 200 lines at most in all.
-      while (t.journal.length + (t.coupees > 0 ? 1 : 0) > BLOCK_LOG_LINES) {
-        t.journal.shift();
-        t.coupees++;
+      while (t.log.length + (t.cut > 0 ? 1 : 0) > BLOCK_LOG_LINES) {
+        t.log.shift();
+        t.cut++;
       }
       return;
     }
     const t = traces.get(m.id);
     if (!t) return;
-    if (m.etape === "avancement") {
+    if (m.step === "avancement") {
       // Only if the caller asked for it, for a block in progress, spaced out (the last one always).
-      if (!ctx.avancement || !opened.includes(t)) return;
+      if (!ctx.progress || !opened.includes(t)) return;
       const now = clock().getTime();
       const before = progressRelayedTo.get(m.id);
-      if (m.faits < m.total && before !== undefined && now - before < TOLERATED_PROGRESS_GAP_MS) return;
+      if (m.done < m.total && before !== undefined && now - before < TOLERATED_PROGRESS_GAP_MS) return;
       progressRelayedTo.set(m.id, now);
-      relay({ bloc: m.id, etape: "avancement", faits: m.faits, total: m.total });
+      relay({ block: m.id, step: "avancement", done: m.done, total: m.total });
       return;
     }
-    if (m.etape === "debut") {
+    if (m.step === "debut") {
       if (expected[next] !== m.id) return;
       // A block already open: only the chain's next block can start, before any end.
       if (opened.length > 0 && (closing || opened[0]!.id !== chain[0] || chain[opened.length] !== m.id)) return;
       next++;
-      t.commence = true;
-      t.debut = clock().toISOString();
+      t.started = true;
+      t.start = clock().toISOString();
       opened.push(t);
-      relay({ bloc: m.id, etape: "debut" });
+      relay({ block: m.id, step: "debut" });
       return;
     }
     if (opened[0] !== t) return;
     opened.shift();
     closing = opened.length > 0;
-    t.fini = true;
-    if (t.id === ctx.valide.sortie.id) outputDone = true;
-    t.fin = clock().toISOString();
-    t.statut = m.statut;
-    if (m.erreur !== undefined) t.erreur = truncate(m.erreur, MAX_ERROR);
-    if (m.sortieTropGrosse) t.sortieTronquee = true;
-    else if (m.sortie !== undefined) {
-      t.elements = Array.isArray(m.sortie) ? m.sortie.length : null;
+    t.done = true;
+    if (t.id === ctx.valid.output.id) outputDone = true;
+    t.end = clock().toISOString();
+    t.status = m.status;
+    if (m.error !== undefined) t.error = truncate(m.error, MAX_ERROR);
+    if (m.outputTooBig) t.outputTruncated = true;
+    else if (m.output !== undefined) {
+      t.items = Array.isArray(m.output) ? m.output.length : null;
       // The kernel never keeps more than 256 KB of a block's output: beyond, the start of its JSON, marked.
-      const text = JSON.stringify(m.sortie);
+      const text = JSON.stringify(m.output);
       if (Buffer.byteLength(text) > OUTPUT_MAX_BYTES) {
-        t.sortie = cut(text, OUTPUT_MAX_BYTES);
-        t.sortieTronquee = true;
-      } else t.sortie = m.sortie;
+        t.output = cut(text, OUTPUT_MAX_BYTES);
+        t.outputTruncated = true;
+      } else t.output = m.output;
     }
-    relay({ bloc: m.id, etape: "fin", statut: m.statut, elements: t.elements });
+    relay({ block: m.id, step: "fin", status: m.status, items: t.items });
   };
 
   const processLine = (line: string) => {
@@ -681,13 +681,13 @@ export async function runWorkflow(
       return;
     }
     if (m.t !== "appel") return processTrace(m);
-    if (inFlight >= MAX_CALLS_IN_FLIGHT) return reply(m.n, { erreur: "Trop d'appels en même temps" });
+    if (inFlight >= MAX_CALLS_IN_FLIGHT) return reply(m.n, { error: "Trop d'appels en même temps" });
     inFlight++;
     // Calls are handled as soon as they arrive, in parallel; each answer carries its call's number.
     processCall(m.f, m.a)
       .then(
         (ok) => ok !== NO_RESPONSE && reply(m.n, { ok: ok ?? null }),
-        (e) => reply(m.n, { erreur: truncate(message(e), MAX_ERROR) }),
+        (e) => reply(m.n, { error: truncate(message(e), MAX_ERROR) }),
       )
       .finally(() => inFlight--);
   };
@@ -700,7 +700,7 @@ export async function runWorkflow(
     let startLine = 0;
     for (let i = d.indexOf(10); i >= 0; i = d.indexOf(10, startLine)) {
       const chunk = d.subarray(startLine, i);
-      if (size + chunk.length > LINE_MAX_BYTES) return stopRun({ statut: "erreur", erreur: "Réponse trop grande" });
+      if (size + chunk.length > LINE_MAX_BYTES) return stopRun({ status: "erreur", error: "Réponse trop grande" });
       const line = Buffer.concat([...buffer, chunk]).toString("utf8");
       buffer = [];
       size = 0;
@@ -711,29 +711,29 @@ export async function runWorkflow(
     const rest = d.subarray(startLine);
     if (!rest.length) return;
     size += rest.length;
-    if (size > LINE_MAX_BYTES) return stopRun({ statut: "erreur", erreur: "Réponse trop grande" });
+    if (size > LINE_MAX_BYTES) return stopRun({ status: "erreur", error: "Réponse trop grande" });
     buffer.push(Buffer.from(rest));
   });
 
-  const code = await process.fin;
+  const code = await process.end;
   clearTimeout(timer);
   ctx.signal?.removeEventListener("abort", onSignal);
   runEnd.abort(new Error("Exécution finie"));
   // The final output is written after the last publication.
   await relais;
   // Progressive run: the last memory received comes back with a failure or a stop.
-  const withMemory = <T extends WorkflowOutcome>(outcome: T): T => (progressive ? { ...outcome, memoire: safeMemory } : outcome);
+  const withMemory = <T extends WorkflowOutcome>(outcome: T): T => (progressive ? { ...outcome, memory: safeMemory } : outcome);
   const end = terminal as HarvesterMessage | null;
   const finalStop = stop as Stop | null;
   if (finalStop) {
     // Killing the docker client leaves the container running: we remove it.
-    await infra.atelier.supprimerRecolte(ctx.proprietaire).catch(() => {});
+    await infra.workshop.deleteHarvest(ctx.owner).catch(() => {});
     return conclude(withMemory({ t: "arret", ...finalStop }));
   }
   if (end?.t === "fin" && code === 0) {
-    return conclude({ t: "fin", sortie: { vers: ctx.valide.sortie.vers, valeur: end.donnees }, memoire: receivedMemory });
+    return conclude({ t: "fin", output: { to: ctx.valid.output.to, value: end.data }, memory: receivedMemory });
   }
-  if (end?.t === "echec") return conclude(withMemory(failure(end.erreur, true)));
+  if (end?.t === "echec") return conclude(withMemory(failure(end.error, true)));
   if (code === 124) return conclude(withMemory(failure("Délai dépassé", false)));
   // The exit code is chosen by the agent's code: it could encode account data in it.
   return conclude(withMemory(failure(`La récolte s'est arrêtée sans résultat (code ${code ?? "aucun"})`, true)));
@@ -744,8 +744,8 @@ function resumeMemory(memory: BlocksMemory, types: Map<string, string>, hashes: 
   const r: BlocksMemory = {};
   for (const [id, e] of Object.entries(memory)) {
     if (types.get(id) !== e?.type) continue;
-    if (e.empreinte !== undefined && e.empreinte !== hashes.get(id)) continue;
-    r[id] = { type: e.type, valeur: e.valeur };
+    if (e.hash !== undefined && e.hash !== hashes.get(id)) continue;
+    r[id] = { type: e.type, value: e.value };
   }
   return r;
 }
@@ -754,7 +754,7 @@ function resumeMemory(memory: BlocksMemory, types: Map<string, string>, hashes: 
 function markMemory(memory: BlocksMemory, types: Map<string, string>, hashes: Map<string, string>): BlocksMemory {
   const r: BlocksMemory = {};
   for (const [id, e] of Object.entries(memory)) {
-    if (types.get(id) === e?.type) r[id] = { type: e.type, valeur: e.valeur, empreinte: hashes.get(id)! };
+    if (types.get(id) === e?.type) r[id] = { type: e.type, value: e.value, hash: hashes.get(id)! };
   }
   return r;
 }

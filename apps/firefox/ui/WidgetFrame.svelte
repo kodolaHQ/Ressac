@@ -9,14 +9,14 @@
    */
   let {
     widget,
-    donnees: data,
-    taille: size,
-    etat: appState,
+    data: data,
+    size: size,
+    state: appState,
   }: {
-    widget: { id: string; nom: string; src: string | null };
-    donnees: unknown;
-    taille: { l: number; h: number };
-    etat: { statut: string; derniereMaj: string | null };
+    widget: { id: string; name: string; src: string | null };
+    data: unknown;
+    size: { l: number; h: number };
+    state: { status: string; lastUpdate: string | null };
   } = $props();
 
   let iframe = $state<HTMLIFrameElement>();
@@ -29,17 +29,17 @@
     iframe?.contentWindow?.postMessage(
       {
         type: "widget",
-        donnees: $state.snapshot(data),
-        taille: { l: size.l, h: size.h },
-        px: { largeur: width, hauteur: height },
-        etat: { statut: appState.statut, derniereMaj: appState.derniereMaj },
+        data: $state.snapshot(data),
+        size: { l: size.l, h: size.h },
+        px: { width: width, height: height },
+        state: { status: appState.status, lastUpdate: appState.lastUpdate },
       },
       "*",
     );
   }
   // On each change of data, state or size (loading goes through DOMFrameContentLoaded).
   $effect(() => {
-    void [data, appState.statut, appState.derniereMaj, size.l, size.h, width, height];
+    void [data, appState.status, appState.lastUpdate, size.l, size.h, width, height];
     send();
   });
 
@@ -65,7 +65,7 @@
     const { type, url } = d as { type?: unknown; url?: unknown };
     if (type !== "ouvrir" || typeof url !== "string") return;
     // The main process only opens the link if a real click by the user just landed in this widget (one link per click).
-    api.accueil.ouvrir(url, widget.id);
+    api.home.open(url, widget.id);
   }
 
   // The guard is a script at the top of the served copy; it removes WebRTC last, so while RTCPeerConnection is still
@@ -73,12 +73,12 @@
   // which the widget can neither remove nor imitate (isTrusted).
   let gestureWindow: Window | null = null;
   function gesture(e: PointerEvent) {
-    if (e.isTrusted) api.accueil.geste(widget.id);
+    if (e.isTrusted) api.home.gesture(widget.id);
   }
   // The widget's link: `webaiosOuvrir` (provided by the guard in the page's world) emits this event, which the
   // parent chrome listens to (an opaque origin cannot post it a message). The request stays subject to the gesture.
   function link(e: Event) {
-    api.accueil.ouvrir(String((e as CustomEvent).detail), widget.id);
+    api.home.open(String((e as CustomEvent).detail), widget.id);
   }
   function detachGesture() {
     gestureWindow?.removeEventListener("pointerdown", gesture, true);
@@ -118,7 +118,7 @@
 <div class="contenu" bind:clientWidth={width} bind:clientHeight={height}>
   {#if widget.src}
     <!-- Without allow-same-origin: the code written by the agent runs in an opaque origin, with no access to the interface. -->
-    <iframe bind:this={iframe} src={widget.src} title={widget.nom} sandbox="allow-scripts"></iframe>
+    <iframe bind:this={iframe} src={widget.src} title={widget.name} sandbox="allow-scripts"></iframe>
   {:else}
     <p class="vide">L'agent n'a pas encore écrit l'affichage de ce widget.</p>
   {/if}

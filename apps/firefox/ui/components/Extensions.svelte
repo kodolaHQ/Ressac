@@ -17,7 +17,7 @@
 
   async function load() {
     const n = ++request;
-    const [l, b] = await Promise.all([api.extensions.liste(), api.extensions.coupees()]);
+    const [l, b] = await Promise.all([api.extensions.list(), api.extensions.cut()]);
     if (n !== request) return;
     lignes = l;
     cuts = b;
@@ -26,13 +26,13 @@
 
   $effect(() => {
     void load();
-    return api.extensions.surChange(() => void load());
+    return api.extensions.onChange(() => void load());
   });
 
   async function make(p: Promise<ExtensionResult>) {
     message = null;
     const r = await p;
-    if (!r.ok) message = r.erreur;
+    if (!r.ok) message = r.error;
     await load();
   }
 
@@ -41,14 +41,14 @@
     const text = input.trim();
     if (!text) return;
     message = null;
-    const r = await api.extensions.installerStore(text);
+    const r = await api.extensions.installStore(text);
     if (r.ok) input = "";
-    else message = r.erreur;
+    else message = r.error;
     await load();
   }
 
   const date = (iso: string) => new Date(iso).toLocaleString("fr-FR", { dateStyle: "medium", timeStyle: "short" });
-  const spaces = (l: ExtensionLine) => (l.espaces.length ? l.espaces.map((e) => `« ${e.nom} » (profil ${e.profil})`).join(", ") : l.applis.length ? "aucun" : "Active nulle part");
+  const spaces = (l: ExtensionLine) => (l.spaces.length ? l.spaces.map((e) => `« ${e.name} » (profil ${e.profile})`).join(", ") : l.siteApps.length ? "aucun" : "Active nulle part");
 </script>
 
 <section class="extensions" data-testid="page-extensions" aria-label="Extensions">
@@ -60,7 +60,7 @@
         role="switch"
         data-testid="couper-extensions"
         checked={cuts}
-        onchange={(e) => void make(api.extensions.toutCouper(e.currentTarget.checked))}
+        onchange={(e) => void make(api.extensions.cutAll(e.currentTarget.checked))}
       />
       Désactiver toutes les extensions
     </label>
@@ -78,46 +78,46 @@
     <p class="vide">Aucune extension. Ajoute-en une depuis le Chrome Web Store, ou demande à l'agent d'en écrire une.</p>
   {/if}
   <ul>
-    {#each lignes as l (l.cle)}
-      <li data-testid="extension-page" data-cle={l.cle}>
+    {#each lignes as l (l.key)}
+      <li data-testid="extension-page" data-cle={l.key}>
         <div class="tete">
-          <b>{l.nom}</b>
+          <b>{l.name}</b>
           <span class="doux">{l.source === "store" ? "Chrome Web Store" : "Écrite par l'agent"} · {l.version}</span>
         </div>
-        {#if l.desactivee}<p class="alerte">{l.desactivee}</p>{/if}
-        {#if l.consoleDebloquee}<p class="alerte" data-testid="console-debloquee">{CONSOLE_UNLOCKED_PAGE}</p>{/if}
-        {#if l.majEnAttente}<p class="doux">Mise à jour {l.majEnAttente} en attente de ton accord.</p>{/if}
-        <p>Droits : {l.droits.length ? l.droits.join(" · ") : "aucun"}</p>
-        <p>Sites : {l.tousLesSites ? "tous les sites" : l.sites.length ? l.sites.join(", ") : "aucun"}</p>
+        {#if l.disabled}<p class="alerte">{l.disabled}</p>{/if}
+        {#if l.consoleUnlocked}<p class="alerte" data-testid="console-debloquee">{CONSOLE_UNLOCKED_PAGE}</p>{/if}
+        {#if l.pendingUpdate}<p class="doux">Mise à jour {l.pendingUpdate} en attente de ton accord.</p>{/if}
+        <p>Droits : {l.rights.length ? l.rights.join(" · ") : "aucun"}</p>
+        <p>Sites : {l.allSites ? "tous les sites" : l.sites.length ? l.sites.join(", ") : "aucun"}</p>
         <p>Espaces : {spaces(l)}</p>
-        {#if l.applis.length}<p data-testid="extension-applis">{activeIn(l.applis)}</p>{/if}
-        {#if l.modifieeLe}<p class="doux">Modifiée le {date(l.modifieeLe)}</p>{/if}
-        {#if l.nonPrisEnCharge.length}<p class="doux">Non pris en charge : {l.nonPrisEnCharge.join(", ")}</p>{/if}
-        {#if l.erreurs.length}
-          <p class="alerte">Erreurs : {details[l.cle] ? l.erreurs.join(" ; ") : l.erreurs[l.erreurs.length - 1]}</p>
+        {#if l.siteApps.length}<p data-testid="extension-applis">{activeIn(l.siteApps)}</p>{/if}
+        {#if l.modifiedAt}<p class="doux">Modifiée le {date(l.modifiedAt)}</p>{/if}
+        {#if l.unsupported.length}<p class="doux">Non pris en charge : {l.unsupported.join(", ")}</p>{/if}
+        {#if l.errors.length}
+          <p class="alerte">Erreurs : {details[l.key] ? l.errors.join(" ; ") : l.errors[l.errors.length - 1]}</p>
         {/if}
-        {#if details[l.cle]}
+        {#if details[l.key]}
           <dl class="details" data-testid="details-extension">
             <dt>Clé</dt>
-            <dd>{l.cle}</dd>
+            <dd>{l.key}</dd>
             <dt>Droits</dt>
-            <dd>{#each l.droits as d (d)}<span>{d}</span>{:else}aucun{/each}</dd>
+            <dd>{#each l.rights as d (d)}<span>{d}</span>{:else}aucun{/each}</dd>
             <dt>Sites</dt>
             <dd>{#each l.sites as s (s)}<span>{s}</span>{:else}aucun{/each}</dd>
             <dt>Erreurs</dt>
-            <dd>{#each l.erreurs as e, i (i)}<span>{e}</span>{:else}aucune{/each}</dd>
+            <dd>{#each l.errors as e, i (i)}<span>{e}</span>{:else}aucune{/each}</dd>
           </dl>
         {/if}
         <div class="actions">
-          {#if l.majEnAttente}<button onclick={() => void make(api.extensions.revoir(l.cle))}>Revoir la mise à jour</button>{/if}
-          {#if l.source === "agent" && l.desactivee === DISABLED_SCOPE}
-            <button onclick={() => void make(api.extensions.revoir(l.cle))}>Revoir l'accord</button>
+          {#if l.pendingUpdate}<button onclick={() => void make(api.extensions.review(l.key))}>Revoir la mise à jour</button>{/if}
+          {#if l.source === "agent" && l.disabled === DISABLED_SCOPE}
+            <button onclick={() => void make(api.extensions.review(l.key))}>Revoir l'accord</button>
           {/if}
-          {#if l.desactivee === DISABLED_CRASHES}<button onclick={() => void make(api.extensions.reactiver(l.cle))}>Réactiver</button>{/if}
-          {#if l.consoleDebloquee}<button onclick={() => void make(api.extensions.couperDeblocage(l.cle))}>Couper le déblocage</button>{/if}
-          <button disabled={l.espaces.length === 0 && l.applis.length === 0} onclick={() => void make(api.extensions.desactiverPartout(l.cle))}>Désactiver partout</button>
+          {#if l.disabled === DISABLED_CRASHES}<button onclick={() => void make(api.extensions.reactivate(l.key))}>Réactiver</button>{/if}
+          {#if l.consoleUnlocked}<button onclick={() => void make(api.extensions.cutUnlock(l.key))}>Couper le déblocage</button>{/if}
+          <button disabled={l.spaces.length === 0 && l.siteApps.length === 0} onclick={() => void make(api.extensions.disableEverywhere(l.key))}>Désactiver partout</button>
           <button onclick={() => (toDelete = l)}>Supprimer</button>
-          <button aria-expanded={!!details[l.cle]} onclick={() => (details[l.cle] = !details[l.cle])}>Détails</button>
+          <button aria-expanded={!!details[l.key]} onclick={() => (details[l.key] = !details[l.key])}>Détails</button>
         </div>
       </li>
     {/each}
@@ -128,7 +128,7 @@
   <div class="voile">
     <div class="confirmation" role="alertdialog" aria-modal="true" data-testid="confirmation-suppression-extension">
       <p>
-        Supprimer « {target.nom} » ? {target.source === "store"
+        Supprimer « {target.name} » ? {target.source === "store"
           ? "Elle sera désinstallée de tous les profils."
           : "Son accord et sa copie seront effacés ; le dossier de l'agent reste."}
       </p>
@@ -137,7 +137,7 @@
         <button
           class="confirmer"
           onclick={() => {
-            const key = target.cle; // {@const} is re-read: after toDelete = null, cible is null
+            const key = target.key; // {@const} is re-read: after toDelete = null, cible is null
             toDelete = null;
             void make(api.extensions.supprimer(key));
           }}>Supprimer</button

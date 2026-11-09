@@ -23,7 +23,7 @@ beforeAll(async () => {
 });
 afterAll(() => server?.close());
 beforeEach(async () => {
-  w = await launchWebAiOs({ env: { WEBAIOS_TEST_ADRESSES_PUBLIQUES: "127.0.0.1", WEBAIOS_MEMOIRE_BOUCLE: "1" } });
+  w = await launchWebAiOs({ env: { WEBAIOS_TEST_PUBLIC_ADDRESSES: "127.0.0.1", WEBAIOS_MEMORY_LOOP: "1" } });
   m = w.marionette;
   await m.setContext("chrome");
   await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
@@ -47,9 +47,9 @@ async function until<T>(read: () => Promise<T>, ok: (v: T) => boolean, ms = 10_0
     await new Promise((r) => setTimeout(r, 100));
   }
 }
-const win = async () => (await state(m)).fenetres[0]!.id;
+const win = async () => (await state(m)).windows[0]!.id;
 const open = (url: string, windowId?: string) =>
-  win().then((f) => dispatch(m, { type: "ouvrirOnglet", fenetreId: windowId ?? f, url }));
+  win().then((f) => dispatch(m, { type: "ouvrirOnglet", windowId: windowId ?? f, url }));
 const loaded = (path: string) =>
   waitFor(m, `return gBrowser.tabs.some((t) => t.linkedBrowser.currentURI.spec.endsWith(${JSON.stringify(path)}) && !t.linkedBrowser.webProgress.isLoadingDocument)`, (v) => v === true);
 
@@ -59,8 +59,8 @@ describe("history noted in the kernel", () => {
     await loaded("/a.html");
     await open(`${base}/b.html`);
     await loaded("/b.html");
-    const v = await until(recents, (r) => r.length === 2 && r.every((x) => x.titre.startsWith("Page")));
-    expect(v.map((x) => [x.url, x.titre, x.visites]).sort()).toEqual([
+    const v = await until(recents, (r) => r.length === 2 && r.every((x) => x.title.startsWith("Page")));
+    expect(v.map((x) => [x.url, x.title, x.visits]).sort()).toEqual([
       [`${base}/a.html`, "Page A", 1],
       [`${base}/b.html`, "Page B", 1],
     ]);
@@ -71,7 +71,7 @@ describe("history noted in the kernel", () => {
     await loaded("/a.html");
     await until(urls, (u) => u.length === 1);
     expect(await urls()).toEqual([`${base}/a.html`]);
-    const id = Object.keys(s.onglets).at(-1)!;
+    const id = Object.keys(s.tabs).at(-1)!;
     const handle = await m.execute<string>(
       `const t = gBrowser.tabs.find((t) => t.getAttribute("webaios-tab-id") === arguments[0]);
        return ChromeUtils.importESModule("${NAVIGABLES}").NavigableManager.getIdForBrowser(t.linkedBrowser);`,
@@ -92,22 +92,22 @@ describe("history noted in the kernel", () => {
     await loaded("/a.html");
     await until(urls, (u) => u.length === 1);
     const s = await state(m);
-    const e = s.espaces.find((x) => x.id === s.fenetres[0]!.espaceActif)!;
-    await dispatch(m, { type: "reglerEspace", id: e.id, nom: e.nom, icone: e.icone, prive: true, profil: e.profil } as Action);
+    const e = s.spaces.find((x) => x.id === s.windows[0]!.activeSpace)!;
+    await dispatch(m, { type: "reglerEspace", id: e.id, name: e.name, icon: e.icon, private: true, profile: e.profile } as Action);
     await open(`${base}/b.html`);
     await loaded("/b.html");
-    const v = await until(recents, (r) => r.length === 2 && r.every((x) => x.prive));
-    expect(v.map((x) => x.prive)).toEqual([true, true]);
+    const v = await until(recents, (r) => r.length === 2 && r.every((x) => x.private));
+    expect(v.map((x) => x.private)).toEqual([true, true]);
   });
 
   it("a visit is noted with its window's space", async () => {
     const other = await newWindow(m);
     const id = await inWindow(m, other, () => m.execute<string>("return window.webaiosWindow.fenetreId"));
-    const s = await dispatch(m, { type: "creerEspace", nom: "B", icone: "🅱", prive: false, profil: "defaut", fenetreId: id });
-    const b = s.espaces.at(-1)!.id;
+    const s = await dispatch(m, { type: "creerEspace", name: "B", icon: "🅱", private: false, profile: "defaut", windowId: id });
+    const b = s.spaces.at(-1)!.id;
     await open(`${base}/a.html`, id);
     const v = await until(recents, (r) => r.length === 1);
-    expect(v[0]!.espaceId).toBe(b);
+    expect(v[0]!.spaceId).toBe(b);
   });
 
   it("an invisible read writes nothing in the history", async () => {
@@ -121,7 +121,7 @@ describe("history noted in the kernel", () => {
 
   it("an unreachable page is not noted", async () => {
     await open("http://127.0.0.1:1/injoignable.html");
-    await until(async () => (await state(m)).onglets, (o) => Object.values(o).some((t) => t.erreur), 15_000);
+    await until(async () => (await state(m)).tabs, (o) => Object.values(o).some((t) => t.error), 15_000);
     expect((await urls()).filter((u) => u.includes("injoignable"))).toEqual([]);
   });
 
@@ -138,41 +138,41 @@ describe("history noted in the kernel", () => {
     await until(async () => existsSync(config), Boolean, 20_000);
     await open(`${base}/a.html`);
     await loaded("/a.html");
-    await until(recents, (r) => r.some((x) => x.titre === "Page A"));
-    expect((await callTool(w.dataDir, "chercher_historique", { requete: "Page A" })).texte).toContain(`${base}/a.html`);
+    await until(recents, (r) => r.some((x) => x.title === "Page A"));
+    expect((await callTool(w.dataDir, "chercher_historique", { query: "Page A" })).text).toContain(`${base}/a.html`);
   });
 
   it("a space turned private while the host is down marks its visits once the host is back", async () => {
     await open(`${base}/a.html`);
     await loaded("/a.html");
-    await until(recents, (r) => r.some((x) => x.titre === "Page A"));
+    await until(recents, (r) => r.some((x) => x.title === "Page A"));
     const host = (body: string) => m.execute<unknown>(`return (async () => { const h = (await ChromeUtils.importESModule("${STORE}").ready).agent; ${body} })();`);
     await host("await h.stop();");
     await until(() => host("return h.pid;"), (pid) => pid === null);
     const s = await state(m);
-    const e = s.espaces.find((x) => x.id === s.fenetres[0]!.espaceActif)!;
-    await dispatch(m, { type: "reglerEspace", id: e.id, nom: e.nom, icone: e.icone, prive: true, profil: e.profil } as Action);
+    const e = s.spaces.find((x) => x.id === s.windows[0]!.activeSpace)!;
+    await dispatch(m, { type: "reglerEspace", id: e.id, name: e.name, icon: e.icon, private: true, profile: e.profile } as Action);
     await host("await h.ensure();");
-    expect((await until(recents, (r) => r.length === 1))[0]!.prive).toBe(true);
-    expect((await callTool(w.dataDir, "chercher_historique", { requete: "Page A" })).texte).not.toContain("a.html");
+    expect((await until(recents, (r) => r.length === 1))[0]!.private).toBe(true);
+    expect((await callTool(w.dataDir, "chercher_historique", { query: "Page A" })).text).not.toContain("a.html");
   });
 });
 
 /** The history lines whose URL contains `part`, as the UI sees them (one per URL and space). */
 const lines_ = async (part: string) =>
-  (await recents()).filter((v) => v.url.includes(part)).map((v) => ({ retenu: v.retenu, prive: v.prive }));
-const retained = (part: string) => until(() => lines_(part), (l) => l.length === 1 && l[0]!.retenu);
+  (await recents()).filter((v) => v.url.includes(part)).map((v) => ({ kept: v.kept, private: v.private }));
+const retained = (part: string) => until(() => lines_(part), (l) => l.length === 1 && l[0]!.kept);
 async function setActiveSpacePrivate(isPrivate: boolean) {
   const s = await state(m);
-  const e = s.espaces.find((x) => x.id === s.fenetres[0]!.espaceActif)!;
-  await dispatch(m, { type: "reglerEspace", id: e.id, nom: e.nom, icone: e.icone, prive: isPrivate, profil: e.profil } as Action);
+  const e = s.spaces.find((x) => x.id === s.windows[0]!.activeSpace)!;
+  await dispatch(m, { type: "reglerEspace", id: e.id, name: e.name, icon: e.icon, private: isPrivate, profile: e.profile } as Action);
 }
-const newSpace = async () => dispatch(m, { type: "creerEspace", nom: "Travail", icone: "💼", prive: false, profil: "defaut", fenetreId: await win() });
+const newSpace = async () => dispatch(m, { type: "creerEspace", name: "Travail", icon: "💼", private: false, profile: "defaut", windowId: await win() });
 
 describe("the agent's memory retains page text", () => {
   it("a page's text is retained and marked in ⌘Y", async () => {
     await open(`${base}/texte.html`);
-    expect(await retained("texte.html")).toEqual([{ retenu: true, prive: false }]);
+    expect(await retained("texte.html")).toEqual([{ kept: true, private: false }]);
     await pressKeys(m, "Meta+y");
     await panelOpen(true);
     await waitUi(m, `const l = [...doc.querySelectorAll(arguments[0] + " li")].find((e) => e.textContent.includes("texte.html") || e.textContent.includes("Texte")); return l?.dataset.retenu === "true" && !!l.querySelector(arguments[1])`, [PANEL, '[aria-label="Texte retenu pour l\'agent"]']);
@@ -183,7 +183,7 @@ describe("the agent's memory retains page text", () => {
   it("the meta description is retained before the body", async () => {
     await open(`${base}/description`);
     await retained("/description");
-    const lu = (await callTool(w.dataDir, "lire_historique", { url: `${base}/description` })).texte;
+    const lu = (await callTool(w.dataDir, "lire_historique", { url: `${base}/description` })).text;
     expect(lu).toMatch(/Resume des licornes\n\nCorps des licornes/);
   });
 
@@ -194,7 +194,7 @@ describe("the agent's memory retains page text", () => {
     await newSpace();
     await open(`${base}/b.html`);
     await retained("b.html");
-    expect(await lines_("a.html")).toEqual([{ retenu: false, prive: true }]);
+    expect(await lines_("a.html")).toEqual([{ kept: false, private: true }]);
   });
 
   it("Oublier le texte retenu keeps the visit", async () => {
@@ -204,14 +204,14 @@ describe("the agent's memory retains page text", () => {
     await panelOpen(true);
     await click(m, `${PANEL} li`, { text: "Page A", button: 2 });
     await click(m, '[role="menuitem"]', { text: "Oublier le texte retenu" });
-    await until(() => lines_("a.html"), (l) => l.length === 1 && !l[0]!.retenu);
-    expect(await lines_("a.html")).toEqual([{ retenu: false, prive: false }]);
+    await until(() => lines_("a.html"), (l) => l.length === 1 && !l[0]!.kept);
+    expect(await lines_("a.html")).toEqual([{ kept: false, private: false }]);
     await waitUi(m, `return ![...doc.querySelectorAll(arguments[0] + " li")].some((l) => l.dataset.retenu === "true")`, [PANEL]);
   });
 
   it("nothing from a page that failed", async () => {
     await open("http://127.0.0.1:1/injoignable.html");
-    await until(async () => (await state(m)).onglets, (o) => Object.values(o).some((t) => t.erreur), 15_000);
+    await until(async () => (await state(m)).tabs, (o) => Object.values(o).some((t) => t.error), 15_000);
     await open(`${base}/b.html`);
     await retained("b.html");
     expect(await lines_("injoignable")).toEqual([]);
@@ -224,14 +224,14 @@ describe("the agent's memory retains page text", () => {
     await waitFor(m, `return gBrowser.tabs.some((t) => t.linkedBrowser.contentTitle === "auth")`, (v) => v === true);
     await open(`${base}/b.html`);
     await retained("b.html");
-    expect(await lines_("/auth")).toEqual([{ retenu: false, prive: false }]);
+    expect(await lines_("/auth")).toEqual([{ kept: false, private: false }]);
   });
 
   it("a space turned private forgets its text", async () => {
     await open(`${base}/a.html`);
     await retained("a.html");
     await setActiveSpacePrivate(true);
-    expect(await until(() => lines_("a.html"), (l) => l[0]?.prive === true)).toEqual([{ retenu: false, prive: true }]);
+    expect(await until(() => lines_("a.html"), (l) => l[0]?.private === true)).toEqual([{ kept: false, private: true }]);
   });
 });
 
@@ -251,8 +251,8 @@ async function visitedAB() {
   await loaded("/a.html");
   const s = await open(`${base}/b.html`);
   await loaded("/b.html");
-  await until(recents, (r) => r.length === 2 && r.every((x) => x.titre.startsWith("Page")));
-  const [first] = Object.keys(s.onglets);
+  await until(recents, (r) => r.length === 2 && r.every((x) => x.title.startsWith("Page")));
+  const [first] = Object.keys(s.tabs);
   await dispatch(m, { type: "fermerOnglet", id: first! } as Action);
 }
 
@@ -265,8 +265,8 @@ describe("history panel", () => {
     await click(m, `${PANEL} a`, { text: "Page A" });
     await panelOpen(false);
     const s = await state(m);
-    expect(Object.keys(s.onglets)).toHaveLength(2);
-    await until(async () => (await state(m)).onglets, (o) => Object.values(o).some((t) => t.titre === "Page A" && t.id === s.fenetres[0]!.actif[s.fenetres[0]!.espaceActif]));
+    expect(Object.keys(s.tabs)).toHaveLength(2);
+    await until(async () => (await state(m)).tabs, (o) => Object.values(o).some((t) => t.title === "Page A" && t.id === s.windows[0]!.active[s.windows[0]!.activeSpace]));
     await pressKeys(m, "Meta+y");
     await panelOpen(true);
     await pressKeys(m, "Escape");
@@ -293,11 +293,11 @@ describe("history panel", () => {
     await loaded("/a.html");
     await until(recents, (r) => r.length === 1);
     const s = await state(m);
-    const e = s.espaces.find((x) => x.id === s.fenetres[0]!.espaceActif)!;
-    await dispatch(m, { type: "reglerEspace", id: e.id, nom: e.nom, icone: e.icone, prive: true, profil: e.profil } as Action);
+    const e = s.spaces.find((x) => x.id === s.windows[0]!.activeSpace)!;
+    await dispatch(m, { type: "reglerEspace", id: e.id, name: e.name, icon: e.icon, private: true, profile: e.profile } as Action);
     await open(`${base}/b.html`);
     await loaded("/b.html");
-    await until(recents, (r) => r.length === 2 && r.every((x) => x.prive));
+    await until(recents, (r) => r.length === 2 && r.every((x) => x.private));
     await pressKeys(m, "Meta+y");
     await panelOpen(true);
     const text = (sel: string) => inUi<string[]>(m, `return [...doc.querySelectorAll(arguments[0])].map((l) => l.textContent)`, [sel]);
@@ -309,7 +309,7 @@ describe("history panel", () => {
   it("switching tab closes the panel", async () => {
     await open(`${base}/a.html`);
     const s = await open(`${base}/b.html`);
-    const [first] = Object.keys(s.onglets);
+    const [first] = Object.keys(s.tabs);
     await pressKeys(m, "Meta+y");
     await panelOpen(true);
     await dispatch(m, { type: "activerOnglet", id: first! } as Action);

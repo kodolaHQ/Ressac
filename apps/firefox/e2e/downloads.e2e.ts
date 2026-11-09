@@ -17,7 +17,7 @@ let dl: string;
 beforeAll(async () => (server = await startServer()));
 afterAll(() => server?.close());
 beforeEach(async () => {
-  w = await launchWebAiOs({ env: { WEBAIOS_TEST_ADRESSES_PUBLIQUES: "127.0.0.1" } });
+  w = await launchWebAiOs({ env: { WEBAIOS_TEST_PUBLIC_ADDRESSES: "127.0.0.1" } });
   m = w.marionette;
   await m.setContext("chrome");
   await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
@@ -36,10 +36,10 @@ afterEach(async () => {
 
 /** Opens telecharger.html in a tab and returns a function that clicks #lien in the page. */
 async function openPage(): Promise<() => Promise<unknown>> {
-  const before = new Set(Object.keys((await state(m)).onglets));
-  const f = (await state(m)).fenetres[0]!.id;
-  const s = await dispatch(m, { type: "ouvrirOnglet", fenetreId: f, url: `${server.url}/telecharger.html` });
-  const id = Object.keys(s.onglets).find((i) => !before.has(i))!;
+  const before = new Set(Object.keys((await state(m)).tabs));
+  const f = (await state(m)).windows[0]!.id;
+  const s = await dispatch(m, { type: "ouvrirOnglet", windowId: f, url: `${server.url}/telecharger.html` });
+  const id = Object.keys(s.tabs).find((i) => !before.has(i))!;
   await waitFor(m, "return gBrowser.selectedBrowser.currentURI.spec.endsWith('/telecharger.html') && !gBrowser.selectedBrowser.webProgress.isLoadingDocument", (v) => v === true);
   return async () => {
     const handle = await m.execute<string>(
@@ -74,12 +74,12 @@ describe("downloads", () => {
     expect(readFileSync(join(dl, "fichier.txt"), "utf8")).toContain("Bonjour");
     await click(m, 'button[aria-label="Téléchargements"]');
     await waitUi(m, `return doc.querySelectorAll('[data-testid="telechargements"] [data-testid="telechargement"]').length === 2`);
-    const first = await inUi<{ etat: string; text: string; show: boolean }>(
+    const first = await inUi<{ state: string; text: string; show: boolean }>(
       m,
       `const e = doc.querySelector('[data-testid="telechargement"]');
        return { etat: e.dataset.etat, text: e.textContent, show: [...e.querySelectorAll("button")].some((b) => b.textContent.includes("Afficher dans le Finder")) };`,
     );
-    expect(first.etat).toBe("termine");
+    expect(first.state).toBe("termine");
     expect(first.text).toContain("fichier(1).txt");
     expect(first.show).toBe(true);
   });

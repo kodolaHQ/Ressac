@@ -2,10 +2,10 @@ import { SvelteMap } from "svelte/reactivity";
 import { CODE_MODEL } from "./add";
 import type { Depot } from "./edit.svelte";
 
-export type DepotCode = Pick<Depot, "lireCode" | "enregistrerCode">;
+export type DepotCode = Pick<Depot, "readCode" | "saveCode">;
 
 /** `base`: the text on disk when the draft began (null: file missing), to spot a change by the agent. */
-type CodeDraft = { texte: string; base: string | null };
+type CodeDraft = { text: string; base: string | null };
 
 /**
  * This window's unsaved codes, by `<widget>/<file>`: they survive block and tab changes; only « Enregistrer le code »
@@ -38,111 +38,111 @@ export function forgetCodes(widget?: string): void {
 /** The `.mjs` file of a `code` block as the editor shows it: text on disk, or the user's draft. */
 export class CodeFile {
   /** Text on disk; null: missing; undefined: not read yet. */
-  disque = $state<string | null | undefined>(undefined);
-  erreur = $state<string | null>(null);
+  disk = $state<string | null | undefined>(undefined);
+  error = $state<string | null>(null);
   /** The file changed on disk since the draft began: [Recharger] [Garder le mien] banner. */
-  changeSurDisque = $state(false);
-  enregistrement = $state(false);
-  private lecture = 0;
+  changedOnDisk = $state(false);
+  recording = $state(false);
+  private readSeq = 0;
 
   constructor(
     readonly widget: string,
-    readonly nom: string,
-    private readonly depot: DepotCode,
+    readonly name: string,
+    private readonly repo: DepotCode,
     /** After each successful save (the workflow refused for lack of this file may start again). */
-    private readonly apresEnregistrement?: (name: string) => void,
+    private readonly afterSave?: (name: string) => void,
   ) {}
 
-  private get cle(): string {
-    return codeKey(this.widget, this.nom);
+  private get key(): string {
+    return codeKey(this.widget, this.name);
   }
 
-  get texte(): string {
-    return drafts.get(this.cle)?.texte ?? this.disque ?? CODE_MODEL;
+  get text(): string {
+    return drafts.get(this.key)?.text ?? this.disk ?? CODE_MODEL;
   }
 
   /** Draft typed by the user (changing block or closing asks for confirmation). */
-  get aBrouillon(): boolean {
-    return drafts.has(this.cle);
+  get hasDraft(): boolean {
+    return drafts.has(this.key);
   }
 
   /** A draft, or a missing file (the shown template does not exist yet). */
-  get nonEnregistre(): boolean {
-    return this.aBrouillon || this.disque === null;
+  get unsaved(): boolean {
+    return this.hasDraft || this.disk === null;
   }
 
   /** (Re)reads the file; a draft is never replaced, only flagged if the disk changed under it. */
-  async lire(): Promise<void> {
-    const n = ++this.lecture;
-    const l = await this.depot.lireCode(this.widget, this.nom);
-    if (n !== this.lecture) return;
-    if ("erreur" in l) {
-      this.erreur = l.erreur;
+  async read(): Promise<void> {
+    const n = ++this.readSeq;
+    const l = await this.repo.readCode(this.widget, this.name);
+    if (n !== this.readSeq) return;
+    if ("error" in l) {
+      this.error = l.error;
       return;
     }
-    if (this.erreur !== null && !this.enregistrement) this.erreur = null;
-    const t = "texte" in l ? l.texte : null;
-    this.disque = t;
-    const b = drafts.get(this.cle);
+    if (this.error !== null && !this.recording) this.error = null;
+    const t = "text" in l ? l.text : null;
+    this.disk = t;
+    const b = drafts.get(this.key);
     if (!b) {
-      this.changeSurDisque = false;
+      this.changedOnDisk = false;
       return;
     }
-    if (t !== null && b.texte === t) {
+    if (t !== null && b.text === t) {
       // The disk caught up with the draft (the agent wrote the same thing): nothing left to save.
-      drafts.delete(this.cle);
-      this.changeSurDisque = false;
+      drafts.delete(this.key);
+      this.changedOnDisk = false;
       return;
     }
-    this.changeSurDisque = t !== b.base;
+    this.changedOnDisk = t !== b.base;
   }
 
-  saisir(text: string): void {
-    if (this.disque === undefined) return;
-    const b = drafts.get(this.cle);
-    if (text === (this.disque ?? CODE_MODEL)) {
-      drafts.delete(this.cle);
-      this.changeSurDisque = false;
-    } else drafts.set(this.cle, { texte: text, base: b ? b.base : this.disque });
+  enter(text: string): void {
+    if (this.disk === undefined) return;
+    const b = drafts.get(this.key);
+    if (text === (this.disk ?? CODE_MODEL)) {
+      drafts.delete(this.key);
+      this.changedOnDisk = false;
+    } else drafts.set(this.key, { text: text, base: b ? b.base : this.disk });
   }
 
   /** « Enregistrer le code » and ⌘S: only when there is something to write. */
-  async enregistrer(): Promise<void> {
-    if (!this.nonEnregistre || this.enregistrement || this.disque === undefined) return;
-    const text = this.texte;
-    this.enregistrement = true;
+  async save(): Promise<void> {
+    if (!this.unsaved || this.recording || this.disk === undefined) return;
+    const text = this.text;
+    this.recording = true;
     try {
-      const r = await this.depot.enregistrerCode(this.widget, this.nom, text);
+      const r = await this.repo.saveCode(this.widget, this.name, text);
       if (!r.ok) {
-        this.erreur = r.erreur;
+        this.error = r.error;
         return;
       }
-      this.erreur = null;
-      this.disque = text;
-      this.changeSurDisque = false;
-      const b = drafts.get(this.cle);
+      this.error = null;
+      this.disk = text;
+      this.changedOnDisk = false;
+      const b = drafts.get(this.key);
       // A keystroke during the write stays a draft, based on what was just written.
-      if (!b || b.texte === text) drafts.delete(this.cle);
-      else drafts.set(this.cle, { texte: b.texte, base: text });
-      this.apresEnregistrement?.(this.nom);
+      if (!b || b.text === text) drafts.delete(this.key);
+      else drafts.set(this.key, { text: b.text, base: text });
+      this.afterSave?.(this.name);
     } catch (e) {
-      this.erreur = (e as Error).message || "Enregistrement impossible";
+      this.error = (e as Error).message || "Enregistrement impossible";
     } finally {
-      this.enregistrement = false;
+      this.recording = false;
     }
   }
 
   /** Banner: drop the draft for the file on disk. */
-  recharger(): void {
-    drafts.delete(this.cle);
-    this.changeSurDisque = false;
+  reload(): void {
+    drafts.delete(this.key);
+    this.changedOnDisk = false;
   }
 
   /** Banner: keep the draft; it will replace the disk version on save. */
-  garderLeMien(): void {
-    const b = drafts.get(this.cle);
-    if (b && this.disque !== undefined) drafts.set(this.cle, { texte: b.texte, base: this.disque });
-    this.changeSurDisque = false;
+  keepMine(): void {
+    const b = drafts.get(this.key);
+    if (b && this.disk !== undefined) drafts.set(this.key, { text: b.text, base: this.disk });
+    this.changedOnDisk = false;
   }
 }
 

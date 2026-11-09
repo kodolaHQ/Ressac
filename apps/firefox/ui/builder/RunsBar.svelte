@@ -7,22 +7,22 @@
    * « Rejouer depuis ce bloc ». A refusal shows as text under the bar.
    */
   let {
-    executions,
+    runs: executions,
     selection,
-    sortie: output,
-    rejouable: replayable,
+    output: output,
+    replayable: replayable,
   }: {
-    executions: Executions;
+    runs: Executions;
     /** The block selected on the canvas. */
     selection: string | null;
     /** Id of the workflow's `sortie` block (its items are the run's). */
-    sortie: string | undefined;
+    output: string | undefined;
     /** The saved workflow is valid and nothing is being saved. */
-    rejouable: boolean;
+    replayable: boolean;
   } = $props();
 
-  const last = $derived(executions.liste.slice(0, 8));
-  const chosen = $derived(executions.choisie?.id ?? null);
+  const last = $derived(executions.list.slice(0, 8));
+  const chosen = $derived(executions.chosen?.id ?? null);
   const elements = (n: number | null) => (n === null ? "" : `${n} élément${n > 1 ? "s" : ""}`);
 </script>
 
@@ -35,15 +35,15 @@
             data-testid="execution-{e.id}"
             class:actif={e.id === chosen}
             aria-pressed={e.id === chosen}
-            title={e.essai ? `Essai depuis « ${e.essai.depart} »` : undefined}
-            onclick={() => void executions.choisir(e.id).catch(() => {})}
+            title={e.attempt ? `Essai depuis « ${e.attempt.start} »` : undefined}
+            onclick={() => void executions.choose(e.id).catch(() => {})}
           >
-            <span class="pastille {TINTS[e.statut]}"></span>
-            <span>{hour(e.debut)}</span>
-            <span class="doux">{TRIGGERS[e.declencheur]}</span>
-            <span>{STATUSES[e.statut]}</span>
+            <span class="pastille {TINTS[e.status]}"></span>
+            <span>{hour(e.start)}</span>
+            <span class="doux">{TRIGGERS[e.trigger]}</span>
+            <span>{STATUSES[e.status]}</span>
             {#if elements(outputElements(e, output))}<span class="doux">{elements(outputElements(e, output))}</span>{/if}
-            {#if e.essai}<span class="essai">essai</span>{/if}
+            {#if e.attempt}<span class="essai">essai</span>{/if}
           </button>
         </li>
       {:else}
@@ -53,12 +53,12 @@
     <button
       class="rejouer"
       data-testid="rejouer"
-      disabled={selection === null || chosen === null || executions.occupe || !replayable}
+      disabled={selection === null || chosen === null || executions.busy || !replayable}
       title={selection === null ? "Sélectionne un bloc" : undefined}
-      onclick={() => selection !== null && void executions.rejouer(selection).catch(() => {})}>Rejouer depuis ce bloc</button
+      onclick={() => selection !== null && void executions.replay(selection).catch(() => {})}>Rejouer depuis ce bloc</button
     >
   </div>
-  {#if executions.refus}<p class="refus" data-testid="refus-rejeu">{executions.refus}</p>{/if}
+  {#if executions.denial}<p class="refus" data-testid="refus-rejeu">{executions.denial}</p>{/if}
 </footer>
 
 <style>

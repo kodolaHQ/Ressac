@@ -166,11 +166,11 @@ export function setupSiteWindow(win: Window, id: string): SiteWindowController |
   win.CanCloseWindow = () => true;
   win.webaiosSiteWindow = controller;
   // Now: gBrowser and its one browser, the view, exist (browser-main.js's DOMContentLoaded ran before this one).
-  protectView(win, () => controller.state().vue === "site");
+  protectView(win, () => controller.state().viewState === "site");
   void win.delayedStartupPromise.then(() => {
     const gBrowser = win.gBrowser;
     // The title is the app's name, never the page's.
-    gBrowser.getWindowTitleForBrowser = () => sites.siteOf(id)?.declaration.nom ?? "";
+    gBrowser.getWindowTitleForBrowser = () => sites.siteOf(id)?.declaration.name ?? "";
     gBrowser.updateTitlebar();
     sites.attach(id, gBrowser.selectedBrowser);
     controller.addons = createSiteAddons(win, controller);

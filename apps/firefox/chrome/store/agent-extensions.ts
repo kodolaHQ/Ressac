@@ -34,7 +34,7 @@ const BACKGROUND_PAGE = "/_generated_background_page.html";
 export const SCOPES_WAIT_MS = 5_000;
 
 export type CheckKind = "urlPermise" | "hotePermis" | "estOnglet";
-type Scopes = Record<string, { cle: string; accord: Scope; profils: ProfileId[]; actif: boolean }>;
+type Scopes = Record<string, { key: string; grant: Scope; profiles: ProfileId[]; active: boolean }>;
 
 export interface AgentExtensions {
   /** The requests the kernel host sends about its extensions (extensions.*, navigateur.espaces). */
@@ -79,15 +79,15 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
 
   const handlers: Record<string, Handler> = {
     // Inactive (decision 4): never installed fresh; an upgrade keeps the disabled state, so it is disabled first.
-    "extensions.installer": async (p: { addonId: string; xpi: string; temporaire: boolean; version: string; actif: boolean }) => {
+    "extensions.installer": async (p: { addonId: string; xpi: string; temporary: boolean; version: string; active: boolean }) => {
       const id = agentId(p.addonId);
       const present = await AddonManager.getAddonByID(id);
-      if (!p.actif && !present) return null;
+      if (!p.active && !present) return null;
       if (present && present.version === p.version) return { version: present.version };
       return own(id, "desactivee", async () => {
-        if (!p.actif && !present.userDisabled) await present.disable();
+        if (!p.active && !present.userDisabled) await present.disable();
         let path = p.xpi;
-        if (p.temporaire) {
+        if (p.temporary) {
           // A temporary add-on is read from its file for as long as it runs: a copy of ours, which the kernel moves.
           const dir = PathUtils.join(PathUtils.tempDir, "webaios-agent-addons");
           await IOUtils.makeDirectory(dir, { ignoreExisting: true });
@@ -95,7 +95,7 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
           await IOUtils.copy(p.xpi, path);
         }
         const file = new FileUtils.File(path);
-        const addon = p.temporaire ? await AddonManager.installTemporaryAddon(file) : await (await AddonManager.getInstallForFile(file)).install();
+        const addon = p.temporary ? await AddonManager.installTemporaryAddon(file) : await (await AddonManager.getInstallForFile(file)).install();
         if (addon?.id !== id) {
           await addon?.uninstall();
           throw new Error(`Module inattendu : ${addon?.id}`);
@@ -108,10 +108,10 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
       const addon = await AddonManager.getAddonByID(agentId(p.addonId));
       if (addon?.isActive) await own(addon.id, "desactivee", () => addon.reload());
     },
-    "extensions.activer": async (p: { addonId: string; actif: boolean }) => {
+    "extensions.activer": async (p: { addonId: string; active: boolean }) => {
       const addon = await AddonManager.getAddonByID(agentId(p.addonId));
-      if (!addon || addon.userDisabled === !p.actif) return;
-      await own(addon.id, "desactivee", () => (p.actif ? addon.enable() : addon.disable()));
+      if (!addon || addon.userDisabled === !p.active) return;
+      await own(addon.id, "desactivee", () => (p.active ? addon.enable() : addon.disable()));
     },
     // `unlessUndone`: a removal from about:addons; kept (false) only if its Undo came. An add-on present again without an
     // Undo was installed back by the kernel before the removal reached it: uninstalled again.
@@ -123,24 +123,24 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
       return true;
     },
     // The grant card, in that window if still open, else the active one; no window: it falls at once.
-    "extensions.accord": (p: { carte: ExtensionCard; fenetre: string | null }, signal) => {
-      const f = p.fenetre && windows.get(p.fenetre) ? p.fenetre : windows.active();
-      return f ? questions.askExtension(p.carte, f, signal) : { accepte: false, empreinte: p.carte.empreinte, retiree: true };
+    "extensions.accord": (p: { card: ExtensionCard; window: string | null }, signal) => {
+      const f = p.window && windows.get(p.window) ? p.window : windows.active();
+      return f ? questions.askExtension(p.card, f, signal) : { accepted: false, hash: p.card.hash, removed: true };
     },
     // The console unlock card, in that window if still open, else the active one; no window: it falls at once.
-    "extensions.deblocage": (p: { nom: string; espaces: string[]; raison: string; agent: string; fenetre: WindowId | null }, signal) => {
-      const f = p.fenetre && windows.get(p.fenetre) ? p.fenetre : windows.active();
+    "extensions.deblocage": (p: { name: string; spaces: string[]; reason: string; agent: string; window: WindowId | null }, signal) => {
+      const f = p.window && windows.get(p.window) ? p.window : windows.active();
       return f ? questions.askConsole(p, f, signal) : "retiree";
     },
     // Firefox's own add-ons for lister_extensions (decision 7): AMO extensions, not the agent's, nor built-in, system or hidden ones.
     "extensions.amo": async () =>
       (await AddonManager.getAddonsByTypes(["extension"]))
         .filter((a: { id: string; isBuiltin: boolean; isSystem: boolean; hidden: boolean }) => !a.id.endsWith(SUFFIX) && !a.isBuiltin && !a.isSystem && !a.hidden)
-        .map((a: { id: string; name: string; version: string; isActive: boolean }) => ({ id: a.id, nom: a.name, version: a.version, actif: a.isActive })),
+        .map((a: { id: string; name: string; version: string; isActive: boolean }) => ({ id: a.id, name: a.name, version: a.version, active: a.isActive })),
     "navigateur.espaces": () => ({
-      espaces: store.state.espaces,
-      fenetres: store.state.fenetres.filter((f) => windows.get(f.id)).map((f) => ({ id: f.id, espaceActif: f.espaceActif })),
-      premierPlan: windows.active() ?? null,
+      spaces: store.state.spaces,
+      windows: store.state.windows.filter((f) => windows.get(f.id)).map((f) => ({ id: f.id, activeSpace: f.activeSpace })),
+      foreground: windows.active() ?? null,
     }),
   };
 
@@ -148,7 +148,7 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
   const pending = new Map<string, "desinstallee" | "desactivee">();
   const send = (addonId: string, what: "desinstallee" | "desactivee") =>
     host()
-      .request("extensions.horsWebaios", { addonId, quoi: what })
+      .request("extensions.horsWebaios", { addonId, what: what })
       .then(() => pending.get(addonId) === what && pending.delete(addonId))
       .catch(() => {});
   AddonManager.addAddonListener({
@@ -180,7 +180,7 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
   void scopesSent.then(() => (scopesArrived = true));
   const scopesKnown = () => (scopesArrived ? scopesSent : Promise.race([scopesSent, new Promise<void>((r) => setTimeout(r, SCOPES_WAIT_MS))]));
   const scopeListeners = new Set<() => void>();
-  handlers["extensions.portees"] = (p: Scopes) => {
+  handlers["extensions.scopes"] = (p: Scopes) => {
     scopes = p;
     scopesSettle();
     for (const cb of scopeListeners) cb();
@@ -196,9 +196,9 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
 
   /** A WebAiOs tab's state entry and space; never the parking tab, never an invisible read (not a tab at all). */
   const tabModelOf = (tab: any) => {
-    const tabModel = !tab || tab.hasAttribute?.(PARKING) ? undefined : store.state.onglets[tab.getAttribute?.(TAB_ID) ?? ""];
-    const space = tabModel && store.state.espaces.find((e) => e.id === tabModel.espaceId);
-    return tabModel && space ? { onglet: tabModel, espace: space } : null;
+    const tabModel = !tab || tab.hasAttribute?.(PARKING) ? undefined : store.state.tabs[tab.getAttribute?.(TAB_ID) ?? ""];
+    const space = tabModel && store.state.spaces.find((e) => e.id === tabModel.spaceId);
+    return tabModel && space ? { tab: tabModel, space: space } : null;
   };
 
   // The tabs each agent extension's scripts were let into: a profile turned private reloads
@@ -216,19 +216,19 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
         }
       }
   };
-  handlers["extensions.rechargerOnglets"] = (p: { addonId: string; profils: ProfileId[] }) => {
-    if (typeof p?.addonId === "string" && Array.isArray(p.profils)) reloadTabs(p.addonId, p.profils);
+  handlers["extensions.reloadTabs"] = (p: { addonId: string; profiles: ProfileId[] }) => {
+    if (typeof p?.addonId === "string" && Array.isArray(p.profiles)) reloadTabs(p.addonId, p.profiles);
   };
 
   // A profile turned private: its agent-script tabs reload here at once, host or not; the kernel takes it out of the
   // registry (extensions.profilsPrives, sent at each change of that set, and at each host start).
-  const privateProfiles = () => [...new Set(store.state.espaces.filter((e) => e.prive).map((e) => e.profil))].sort();
-  const sendPrivate = () => host().notify("extensions.profilsPrives", { prives: privateProfiles() });
+  const privateProfiles = () => [...new Set(store.state.spaces.filter((e) => e.private).map((e) => e.profile))].sort();
+  const sendPrivate = () => host().notify("extensions.profilsPrives", { privateTabs: privateProfiles() });
   let lastPrivate = privateProfiles();
   store.subscribe((state, previous) => {
     const now = privateProfiles();
     // A tab closed: forget it (its element would stay alive in `ran`).
-    if (Object.keys(state.onglets).length < Object.keys(previous.onglets).length) reloadTabs(null, []);
+    if (Object.keys(state.tabs).length < Object.keys(previous.tabs).length) reloadTabs(null, []);
     if (now.join("\n") === lastPrivate.join("\n")) return;
     const turned = now.filter((p) => !lastPrivate.includes(p));
     lastPrivate = now;
@@ -243,13 +243,13 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
     if (maskedSent.has(key)) return;
     maskedSent.add(key);
     host()
-      .request("extensions.aTourne", { addonId, profil: profile, lisible: false })
+      .request("extensions.aTourne", { addonId, profile: profile, readable: false })
       .catch(() => maskedSent.delete(key));
   };
 
   function check(addonId: string, kind: CheckKind, value: unknown): boolean {
     const scope = Object.hasOwn(scopes, addonId) ? scopes[addonId]! : null;
-    if (!scope?.actif) return false;
+    if (!scope?.active) return false;
     switch (kind) {
       case "urlPermise": {
         // Relative: within the extension. Its own pages only; anything else through agentAllowedUrl.
@@ -261,20 +261,20 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
         } catch {
           return false;
         }
-        return u.protocol === "moz-extension:" ? u.host === host : agentAllowedUrl(u.href, scope.accord, "");
+        return u.protocol === "moz-extension:" ? u.host === host : agentAllowedUrl(u.href, scope.grant, "");
       }
       case "hotePermis": {
         const spec = tabOf(value)?.linkedBrowser?.currentURI?.spec;
-        return typeof spec === "string" && agentAllowedHost(spec, scope.accord);
+        return typeof spec === "string" && agentAllowedHost(spec, scope.grant);
       }
       case "estOnglet": {
         // A WebAiOs tab of a non-private space, in the container of a profile where the extension is active (spec choice
         // 2: its content scripts follow its spaces).
         const tab = tabOf(value);
         const t = tabModelOf(tab);
-        if (!t || t.espace.prive || !scope.profils.includes(t.espace.profil) || tab.userContextId !== existingContainer(t.espace.profil)) return false;
+        if (!t || t.space.private || !scope.profiles.includes(t.space.profile) || tab.userContextId !== existingContainer(t.space.profile)) return false;
         // Its scripts will run there: a tab the agent cannot read masks its console for good.
-        if (!access().onglets[t.onglet.id]?.lecture) masked(addonId, t.espace.profil);
+        if (!access().tabs[t.tab.id]?.read) masked(addonId, t.space.profile);
         ran.set(addonId, (ran.get(addonId) ?? new Set()).add(tab));
         return true;
       }
@@ -289,16 +289,16 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
    * ongletLisibleParAgent). A web process is untrusted: the window must be one of its own, looked up here.
    */
   function relayConsole(from: { childID: number; remoteType: string }, data: unknown): void {
-    const d = (data ?? {}) as { addonId?: unknown; niveau?: unknown; texte?: unknown; innerWindowID?: unknown };
+    const d = (data ?? {}) as { addonId?: unknown; level?: unknown; text?: unknown; innerWindowID?: unknown };
     // Any installed agent add-on (its background runs before its grant is written): never an invented id.
     if (typeof d.addonId !== "string" || !d.addonId.endsWith(SUFFIX) || !WebExtensionPolicy.getByID(d.addonId)) return;
-    if (typeof d.niveau !== "string" || typeof d.texte !== "string") return;
-    let tabModel: { ongletId: string | null; url: string } | null = null;
-    if (from.remoteType === "extension" && d.niveau === "error") {
+    if (typeof d.level !== "string" || typeof d.text !== "string") return;
+    let tabModel: { tabId: string | null; url: string } | null = null;
+    if (from.remoteType === "extension" && d.level === "error") {
       // Its background window's error (or console.error): half of a load error, the parent's console has the other.
       const wgp = typeof d.innerWindowID === "number" ? WindowGlobalParent.getByInnerWindowId(d.innerWindowID) : null;
       const spec = wgp?.domProcess?.childID === from.childID && wgp.documentPrincipal?.addonId === d.addonId ? wgp.documentURI?.spec : null;
-      if (typeof spec === "string" && new URL(spec).pathname === BACKGROUND_PAGE) crashes.backgroundError(d.addonId, String((d as { source?: unknown }).source ?? ""), d.texte);
+      if (typeof spec === "string" && new URL(spec).pathname === BACKGROUND_PAGE) crashes.backgroundError(d.addonId, String((d as { source?: unknown }).source ?? ""), d.text);
     }
     if (from.remoteType !== "extension") {
       const wgp = typeof d.innerWindowID === "number" ? WindowGlobalParent.getByInnerWindowId(d.innerWindowID) : null;
@@ -306,10 +306,10 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
       const t = tabModelOf(browser?.ownerDocument?.defaultView?.gBrowser?.getTabForBrowser(browser));
       // The address of the page that wrote it, as the parent knows it: never a later one the tab moved to.
       const url = wgp?.topWindowContext?.documentURI?.spec;
-      tabModel = t && !t.espace.prive && typeof url === "string" ? { ongletId: t.onglet.id, url } : { ongletId: null, url: "" };
+      tabModel = t && !t.space.private && typeof url === "string" ? { tabId: t.tab.id, url } : { tabId: null, url: "" };
     }
-    const m = { horodatage: Date.now(), niveau: consoleLevel(d.niveau === "warn" ? "warning" : d.niveau), texte: d.texte.slice(0, CONSOLE_TEXT_MAX) };
-    host().notify("extensions.console", { addonId: d.addonId, m, onglet: tabModel });
+    const m = { timestamp: Date.now(), level: consoleLevel(d.level === "warn" ? "warning" : d.level), text: d.text.slice(0, CONSOLE_TEXT_MAX) };
+    host().notify("extensions.console", { addonId: d.addonId, m, tab: tabModel });
   }
 
   // The network guard beyond the copy's CSP: every http(s) request an agent
@@ -344,7 +344,7 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
     if (!extension?.id?.endsWith(SUFFIX)) return;
     const manager = extension.tabManager;
     const canAccess = manager.canAccessTab.bind(manager);
-    manager.canAccessTab = (tab) => !tab.hasAttribute(PARKING) && !tabModelOf(tab)?.espace.prive && canAccess(tab);
+    manager.canAccessTab = (tab) => !tab.hasAttribute(PARKING) && !tabModelOf(tab)?.space.private && canAccess(tab);
     let url = extension.uninstallURL;
     Object.defineProperty(extension, "uninstallURL", {
       get: () => (url && check(extension.id, "urlPermise", url) ? url : null),
@@ -356,9 +356,9 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
   for (const policy of WebExtensionPolicy.getActiveExtensions()) if (policy.extension) guardExtension(policy.extension);
 
   // Crashes not acknowledged by a host: sent again with the next extensions.pret, at most PLANTAGES_MAX per extension.
-  const crashesPending: { addonId: string; le: number }[] = [];
+  const crashesPending: { addonId: string; at: number }[] = [];
   const crashes = watchCrashes((addonId) => {
-    const c = { addonId, le: Date.now() };
+    const c = { addonId, at: Date.now() };
     crashesPending.push(c);
     const mine = crashesPending.filter((x) => x.addonId === addonId);
     if (mine.length > MAX_CRASHES) crashesPending.splice(crashesPending.indexOf(mine[0]!), 1);
@@ -377,7 +377,7 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
     shownIn(addonId, profile, isPrivate) {
       if (!addonId.endsWith(SUFFIX)) return true;
       const scope = Object.hasOwn(scopes, addonId) ? scopes[addonId]! : null;
-      return !isPrivate && !!scope?.actif && scope.profils.includes(profile);
+      return !isPrivate && !!scope?.active && scope.profiles.includes(profile);
     },
     onScopes(cb) {
       scopeListeners.add(cb);
@@ -387,13 +387,13 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
     relayConsole,
     hostStarted() {
       sendPrivate();
-      const sent = [...pending].map(([addonId, what]) => ({ addonId, quoi: what }));
+      const sent = [...pending].map(([addonId, what]) => ({ addonId, what: what }));
       const crashes = [...crashesPending];
       host()
-        .request("extensions.pret", { horsWebaios: sent, plantages: crashes })
+        .request("extensions.pret", { outsideWebaios: sent, crashes: crashes })
         .then(
           () => {
-            sent.forEach((h) => pending.get(h.addonId) === h.quoi && pending.delete(h.addonId));
+            sent.forEach((h) => pending.get(h.addonId) === h.what && pending.delete(h.addonId));
             for (const c of crashes) if (crashesPending.includes(c)) crashesPending.splice(crashesPending.indexOf(c), 1);
           },
           (e) => console.error("[extensions] agent extensions not started:", e),

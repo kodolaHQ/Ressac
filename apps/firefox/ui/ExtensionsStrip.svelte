@@ -5,7 +5,7 @@
 
   // The add-on buttons of the active window (chrome/window/addons.ts), copied into this document like ui/api.ts does.
   // `fenetre` only opens the agent's Extensions page: the window announces changes itself (onChange, every tab switch).
-  let { fenetre: win }: { fenetre: WindowState } = $props();
+  let { window: win }: { window: WindowState } = $props();
   const addons = window.parent.webaiosWindow!.addons;
   let buttons = $state<AddonButton[]>(structuredClone(addons.buttons()));
   let updates = $state<PendingUpdate[]>(structuredClone(addons.updates()));
@@ -80,7 +80,7 @@
       {/each}
     </ul>
     <button class="gerer" onclick={act(() => addons.manage())}>Gérer les extensions</button>
-    <button class="gerer" onclick={act(() => api.agir({ type: "ouvrirExtensions", fenetreId: win.id }))}>Extensions de l'agent</button>
+    <button class="gerer" onclick={act(() => api.dispatch({ type: "ouvrirExtensions", windowId: win.id }))}>Extensions de l'agent</button>
     <button class="gerer" onclick={act(() => addons.findMore())}>Trouver des modules</button>
   </div>
 {/if}

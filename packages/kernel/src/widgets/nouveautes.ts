@@ -34,4 +34,4 @@ export function notificationText(n: number): string {
 }
 
 /** What the notification at the end of a watch shows: `titre` = widget name, `texte` = `texteNotification(n)`. */
-export type NotificationWidget = { widget: string; titre: string; texte: string };
+export type NotificationWidget = { widget: string; title: string; text: string };

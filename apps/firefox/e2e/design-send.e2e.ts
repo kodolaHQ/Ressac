@@ -38,7 +38,7 @@ beforeAll(async () => {
   const profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
   dirs.push(dataDir, profile);
   const a = testActor(profile);
-  w = await launchWebAiOs({ dataDir, profile, env: { ...a.env, WEBAIOS_PORTS_APPS: BLOCK }, prefs: a.prefs });
+  w = await launchWebAiOs({ dataDir, profile, env: { ...a.env, WEBAIOS_APP_PORTS: BLOCK }, prefs: a.prefs });
   m = w.marionette;
   await m.setContext("chrome");
   await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
@@ -58,7 +58,7 @@ const svc = <R = unknown>(body: string, args: unknown[] = []) =>
     `return (async (args) => { const store = await ChromeUtils.importESModule("${STORE}").ready, d = store.design; const t = { type: "fenetre", fenetreId: window.webaiosWindow.fenetreId }; ${body} })([...arguments]);`,
     args,
   );
-const state = () => svc<{ actif: boolean; panier: number }>("return await d.etat(t);");
+const state = () => svc<{ active: boolean; basket: number }>("return await d.etat(t);");
 const hosts = () => inBrowser<number>(m, B, `return document.querySelectorAll("webaios-viseur").length;`);
 
 async function open(url: string): Promise<string> {
@@ -86,7 +86,7 @@ const bubble = <T = unknown>(body: string) => frame<T>("webaios-design-calque", 
 const sendText = () => column<string | null>(`return doc?.querySelector('${tid("envoyer-remarques")}')?.textContent ?? null;`);
 const cartCount = () => column<number>(`return doc?.querySelectorAll('${tid("remarque-panier")}').length ?? 0;`);
 const batchList = () =>
-  column<{ etat: string; text: string; traite: boolean }[]>(
+  column<{ state: string; text: string; handled: boolean }[]>(
     `return [...(doc?.querySelectorAll('${tid("lot-envoye")}') ?? [])].map((l) => ({ etat: l.dataset.etat, text: l.textContent, traite: [...l.querySelectorAll("button")].some((b) => b.textContent === "Traité") }));`,
   );
 const alertText = () => column<string | null>(`return doc?.querySelector('[role="alert"]')?.textContent ?? null;`);
@@ -94,27 +94,27 @@ const alertText = () => column<string | null>(`return doc?.querySelector('[role=
 async function modeOn() {
   const width = await inBrowser<number>(m, B, "return innerWidth;");
   await svc("await d.toggle(t); return 1;");
-  await expect.poll(async () => (await state()).actif, { timeout: 10_000 }).toBe(true);
+  await expect.poll(async () => (await state()).active, { timeout: 10_000 }).toBe(true);
   await expect.poll(hosts, { timeout: 10_000 }).toBe(1);
   await expect.poll(sendText, { timeout: 10_000 }).not.toBeNull();
   // The column narrows the page: the next click aims once its layout settled.
   await expect.poll(() => inBrowser<number>(m, B, "return innerWidth;"), { timeout: 10_000 }).toBeLessThan(width);
 }
 async function modeOff() {
-  if ((await state()).actif) await svc("await d.stop(t); return 1;");
+  if ((await state()).active) await svc("await d.stop(t); return 1;");
 }
 
 /** A trusted click on `sel`, its bubble labelled `label`, `text` typed, then « Ajouter au panier »: the cart grows by one. */
 async function remark(sel: string, label: string, text: string) {
-  const n = (await state()).panier;
+  const n = (await state()).basket;
   await trustedMouse(m, B, sel);
   await expect
     .poll(() => bubble<string | null>(`return doc?.querySelector('${tid("bulle-design")}')?.textContent ?? null;`), { timeout: 10_000 })
     .toContain(label);
   await expect.poll(() => bubble<string | null>("return doc?.activeElement?.localName ?? null;"), { timeout: 10_000 }).toBe("textarea");
   await typeText(m, text);
-  await click(m, "button.ajouter", { frame: "calque" });
-  await expect.poll(async () => (await state()).panier, { timeout: 10_000 }).toBe(n + 1);
+  await click(m, "button.ajouter", { frame: "overlay" });
+  await expect.poll(async () => (await state()).basket, { timeout: 10_000 }).toBe(n + 1);
 }
 
 const agentInput = () => {
@@ -132,7 +132,7 @@ describe("to the agent", () => {
     await sleep(600);
     await remark("#envoyer", "button#envoyer", "Bouton en vert");
     await expect.poll(sendText, { timeout: 10_000 }).toBe("Envoyer 2 remarques à l'agent");
-    await click(m, tid("envoyer-remarques"), { frame: "volet" });
+    await click(m, tid("envoyer-remarques"), { frame: "panel" });
     await waitFor(m, "return !document.getElementById('webaios-agent').hidden", (v) => v === true);
     await waitUi(m, `return ${TERMINAL}.includes("faux agent prêt>")`, [], 20_000, "agent");
     await expect.poll(agentInput, { timeout: 10_000 }).toMatch(new RegExp(`^\\[remarques de .+ — démo http://(localhost|127\\.0\\.0\\.1):${PORT} : 1\\) `));
@@ -146,11 +146,11 @@ describe("to the agent", () => {
     expect(readdirSync(path.join(dir, batches[0]!)).filter((n) => n.endsWith(".png"))).toHaveLength(2);
     expect(agentInput()).toContain(`/workspace/.webaios/remarques/demo-${PORT}/${batches[0]}/lot.json] `);
     await expect.poll(cartCount, { timeout: 10_000 }).toBe(0);
-    await expect.poll(batchList, { timeout: 10_000 }).toEqual([expect.objectContaining({ etat: "en-attente", traite: true })]);
+    await expect.poll(batchList, { timeout: 10_000 }).toEqual([expect.objectContaining({ state: "en-attente", handled: true })]);
     expect((await batchList())![0]!.text).toContain("en attente");
     expect((await batchList())![0]!.text).toContain("input#email.champ");
-    await click(m, `${tid("lot-envoye")} button`, { frame: "volet", text: "Traité" });
-    await expect.poll(batchList, { timeout: 10_000 }).toEqual([expect.objectContaining({ etat: "traite", traite: false })]);
+    await click(m, `${tid("lot-envoye")} button`, { frame: "panel", text: "Traité" });
+    await expect.poll(batchList, { timeout: 10_000 }).toEqual([expect.objectContaining({ state: "traite", handled: false })]);
     expect((await batchList())![0]!.text).toContain("traité");
     await modeOff();
   });
@@ -162,7 +162,7 @@ describe("to the agent", () => {
     await expect.poll(sendText, { timeout: 10_000 }).toBe("Envoyer 1 remarque à l'agent");
     const before = agentInput();
     await svc("await store.agent.stop(); return 1;");
-    await click(m, tid("envoyer-remarques"), { frame: "volet" });
+    await click(m, tid("envoyer-remarques"), { frame: "panel" });
     await expect.poll(alertText, { timeout: 10_000 }).toBeTruthy();
     expect(await svc("return d.overlayContext(t, ['panier'])?.mode ?? null;")).toBe("panier");
     await sleep(500);
@@ -196,21 +196,21 @@ describe("an external project", () => {
     await modeOn();
     await remark("#email", "input#email.champ", "Champ plus large");
     await expect.poll(sendText, { timeout: 10_000 }).toBe("Envoyer 1 remarque à Claude Code (Claude Code)");
-    await click(m, tid("envoyer-remarques"), { frame: "volet" });
-    await expect.poll(batchList, { timeout: 10_000 }).toEqual([expect.objectContaining({ etat: "en-attente" })]);
+    await click(m, tid("envoyer-remarques"), { frame: "panel" });
+    await expect.poll(batchList, { timeout: 10_000 }).toEqual([expect.objectContaining({ state: "en-attente" })]);
     // Nothing in the agent's terminal: an external batch pre-fills nothing.
     await sleep(300);
     expect(agentInput()).toBe(before);
-    const read = await p.client.callTool({ name: "lire_remarques", arguments: { dossier: p.dossier } });
+    const read = await p.client.callTool({ name: "lire_remarques", arguments: { folder: p.folder } });
     const image = (read.content as Content).find((x) => x.type === "image");
     expect(image?.mimeType).toBe("image/png");
     expect(Buffer.from(image!.data!, "base64").subarray(0, 8)).toEqual(PNG);
     const text = textOf(read);
     expect(text).toContain("Champ plus large");
-    await expect.poll(batchList, { timeout: 10_000 }).toEqual([expect.objectContaining({ etat: "lu" })]);
+    await expect.poll(batchList, { timeout: 10_000 }).toEqual([expect.objectContaining({ state: "lu" })]);
     const id = /Remarque (e-[0-9a-f]{8})/.exec(text)![1]!;
-    await p.client.callTool({ name: "marquer_traitee", arguments: { dossier: p.dossier, ids: [id], note: "corrigé" } });
-    await expect.poll(batchList, { timeout: 10_000 }).toEqual([expect.objectContaining({ etat: "traite" })]);
+    await p.client.callTool({ name: "marquer_traitee", arguments: { folder: p.folder, ids: [id], note: "corrigé" } });
+    await expect.poll(batchList, { timeout: 10_000 }).toEqual([expect.objectContaining({ state: "traite" })]);
     expect((await batchList())![0]!.text).toContain("corrigé");
     await modeOff();
   });
@@ -222,16 +222,16 @@ describe("an external project", () => {
     await sleep(600);
     await remark("#envoyer", "button#envoyer", "Bouton en vert");
     await expect.poll(cartCount, { timeout: 10_000 }).toBe(2);
-    await click(m, tid("envoyer-remarques"), { frame: "volet" });
+    await click(m, tid("envoyer-remarques"), { frame: "panel" });
     await expect.poll(cartCount, { timeout: 10_000 }).toBe(0);
-    const text = textOf(await p.client.callTool({ name: "lire_remarques", arguments: { dossier: p.dossier } }));
+    const text = textOf(await p.client.callTool({ name: "lire_remarques", arguments: { folder: p.folder } }));
     expect(text).toContain("refuser une adresse sans domaine");
     expect(text).toContain("Bouton en vert");
     expect(text).toContain(`Élément : "#email"`);
     expect(text).toContain(`Élément : "#envoyer"`);
     await modeOff();
     // Claude Code changes the project.
-    writeAppJs(p.dossier, modified(15));
+    writeAppJs(p.folder, modified(15));
     await activate(tab);
     await click(m, ".design .chevron");
     await click(m, '[role="menuitem"]', { text: "Relire ce projet" });
@@ -253,7 +253,7 @@ describe("an external project", () => {
     await click(m, `${tid("formulaire-commentaire")} button`, { text: "Commenter" });
     await click(m, tid("envoyer-commentaires"));
     await waitUi(m, `return doc.querySelector('${tid("commentaire")}')?.textContent.includes("envoyé")`, [], 15_000);
-    const review = textOf(await p.client.callTool({ name: "lire_remarques", arguments: { dossier: p.dossier } }));
+    const review = textOf(await p.client.callTool({ name: "lire_remarques", arguments: { folder: p.folder } }));
     expect(review).toContain('Fichier : "app.js", lignes 15–15');
     expect(review).toContain("garder le mot Envoyer");
     await click(m, tid("marquer-relu"));

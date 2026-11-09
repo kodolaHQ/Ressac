@@ -42,9 +42,9 @@ const ENGINE = join(import.meta.dirname, "..", "..", "docker", "moteur");
 const SCRIPT = join(ENGINE, "recolteur.mjs");
 const NOW = new Date("2026-10-29T10:00:00.000Z");
 
-const toClose: { fermer(): Promise<void> }[] = [];
+const toClose: { close(): Promise<void> }[] = [];
 afterEach(async () => {
-  await Promise.all(toClose.splice(0).map((s) => s.fermer()));
+  await Promise.all(toClose.splice(0).map((s) => s.close()));
 });
 
 async function webServer(routes: Record<string, (res: import("node:http").ServerResponse) => void>) {
@@ -63,8 +63,8 @@ async function webServer(routes: Record<string, (res: import("node:http").Server
   const server = {
     port,
     url: `http://127.0.0.1:${port}`,
-    requetes: requests,
-    fermer: () => new Promise<void>((ok) => { s.closeAllConnections(); s.close(() => ok()); }),
+    requests: requests,
+    close: () => new Promise<void>((ok) => { s.closeAllConnections(); s.close(() => ok()); }),
   };
   toClose.push(server);
   return server;
@@ -72,15 +72,15 @@ async function webServer(routes: Record<string, (res: import("node:http").Server
 
 const valid = (raw: unknown) => {
   const r = validateWorkflow(raw);
-  if (!r.ok) throw new Error(r.erreur);
-  return r.valide;
+  if (!r.ok) throw new Error(r.error);
+  return r.valid;
 };
 
 /** code (file `<id>.mjs`) → … → sortie, in a chain. */
 const chain = (...ids: string[]) => ({
   version: 1,
-  blocs: [...ids.map((id) => ({ id, type: "code", parametres: { source: `${id}.mjs` } })), { id: "sortie", type: "sortie", parametres: { vers: "widget" } }],
-  liens: [...ids, "sortie"].slice(1).map((to, i) => ({ de: [...ids, "sortie"][i]!, vers: to })),
+  blocks: [...ids.map((id) => ({ id, type: "code", params: { source: `${id}.mjs` } })), { id: "sortie", type: "sortie", params: { to: "widget" } }],
+  links: [...ids, "sortie"].slice(1).map((to, i) => ({ from: [...ids, "sortie"][i]!, to: to })),
 });
 
 /** The owner as the bench records it: a widget's id (as before), `action:<id>` for an action. */
@@ -89,69 +89,69 @@ const nameOf = (p: string | Owner) => (typeof p === "string" ? p : p.type === "w
 interface Bench {
   ctx: WorkflowContext;
   infra: InfraWorkflow;
-  commandes: string[][];
-  supprimes: string[];
-  tues: number;
-  refusEnCours: number;
+  commands: string[][];
+  deleted: string[];
+  killed: number;
+  denialPending: number;
 }
 
 /** A widget (files in a temporary folder) and a launcher that runs the harvester locally, without docker. */
 async function bench(
   workflow: unknown,
   files: Record<string, string> = {},
-  o: { compte?: string[]; publiques?: string[]; accord?: { profil: string } | null; pont?: FakeBridge; memoire?: BlocksMemory; delaiMs?: number; lancer?: ProcessLauncher } = {},
+  o: { account?: string[]; public?: string[]; grant?: { profile: string } | null; bridge?: FakeBridge; memory?: BlocksMemory; delayMs?: number; launch?: ProcessLauncher } = {},
 ): Promise<Bench> {
   const folder = await tempFolder();
   for (const [name, content] of Object.entries(files)) await writeFile(join(folder, name), content);
   const b: Bench = {
-    commandes: [],
-    supprimes: [],
-    tues: 0,
-    refusEnCours: 0,
+    commands: [],
+    deleted: [],
+    killed: 0,
+    denialPending: 0,
     ctx: {
-      proprietaire: { type: "widget", id: "essai" },
-      valide: valid(workflow),
-      dossierFichiers: folder,
-      config: { interets: "rust" },
-      precedent: null,
-      memoire: o.memoire ?? {},
-      sources: { compte: o.compte ?? [], publiques: o.publiques ?? [] },
-      accord: async () => (o.accord === undefined ? null : o.accord),
-      surProfilRefuse: async () => {
-        b.refusEnCours++;
+      owner: { type: "widget", id: "essai" },
+      valid: valid(workflow),
+      filesFolder: folder,
+      config: { interests: "rust" },
+      previous: null,
+      memory: o.memory ?? {},
+      sources: { account: o.account ?? [], public: o.public ?? [] },
+      grant: async () => (o.grant === undefined ? null : o.grant),
+      onProfileDenied: async () => {
+        b.denialPending++;
       },
-      messageAccordRequis: "Accord requis pour lire avec ton compte : app.daily.dev",
-      declencheur: "manuelle",
+      grantRequiredMessage: "Accord requis pour lire avec ton compte : app.daily.dev",
+      trigger: "manuelle",
     },
     infra: {
-      moteur: ENGINE,
-      atelier: {
-        commandeRecolte: (p, d, m) => ["docker", "run", nameOf(p), d, m],
-        supprimerRecolte: async (p) => {
-          b.supprimes.push(nameOf(p));
+      engine: ENGINE,
+      workshop: {
+        harvestCommand: (p, d, m) => ["docker", "run", nameOf(p), d, m],
+        deleteHarvest: async (p) => {
+          b.deleted.push(nameOf(p));
         },
       },
-      lancer:
-        o.lancer ??
+      launch:
+        o.launch ??
         ((cmd, args) => {
-          b.commandes.push([cmd, ...args]);
+          b.commands.push([cmd, ...args]);
           const e = spawn(process.execPath, [SCRIPT, folder], { stdio: ["pipe", "pipe", "pipe"] });
           return {
             stdin: e.stdin,
             stdout: e.stdout,
             stderr: e.stderr,
-            tuer: () => {
-              b.tues++;
+            kill: () => {
+              b.killed++;
               e.kill("SIGKILL");
             },
-            fin: new Promise((ok) => e.on("close", (c) => ok(c))),
+            end: new Promise((ok) => e.on("close", (c) => ok(c))),
           };
         }),
-      ia: null,
-      pont: o.pont ?? new FakeBridge([], { actif: null, autoriser: false, lecture: { pages: [] } }),
-      horloge: () => NOW,
-      delaiMs: o.delaiMs,
-      adressesLocales: true,
+      ai: null,
+      bridge: o.bridge ?? new FakeBridge([], { active: null, allow: false, read: { pages: [] } }),
+      clock: () => NOW,
+      delayMs: o.delayMs,
+      localAddresses: true,
     },
   };
   return b;
@@ -171,7 +171,7 @@ const scriptedLauncher = (lignes: unknown[], code = 0): ProcessLauncher => () =>
       setImmediate(() => ok(code));
     });
   });
-  return { stdin, stdout, stderr, tuer: () => {}, fin: end };
+  return { stdin, stdout, stderr, kill: () => {}, end: end };
 };
 
 describe("executerWorkflow", () => {
@@ -180,32 +180,32 @@ describe("executerWorkflow", () => {
       "a.mjs": `export default async (entree, w) => { w.journal("bonjour", 2); return [{ x: 1 }, { x: 2 }, w.config]; };`,
     });
     const r = await runWorkflow(b.ctx, b.infra);
-    expect(r.issue).toEqual({ t: "fin", sortie: { vers: "widget", valeur: [{ x: 1 }, { x: 2 }, { interets: "rust" }] }, memoire: {} });
-    expect(r.execution).toMatchObject({
+    expect(r.issue).toEqual({ t: "fin", output: { to: "widget", value: [{ x: 1 }, { x: 2 }, { interests: "rust" }] }, memory: {} });
+    expect(r.run).toMatchObject({
       version: 1,
       id: "2026-10-29T10-00-00-000Z",
-      proprietaire: { type: "widget", id: "essai" },
-      declencheur: "manuelle",
-      debut: NOW.toISOString(),
-      fin: NOW.toISOString(),
-      statut: "reussie",
+      owner: { type: "widget", id: "essai" },
+      trigger: "manuelle",
+      start: NOW.toISOString(),
+      end: NOW.toISOString(),
+      status: "reussie",
     });
-    expect(r.execution.erreur).toBeUndefined();
-    expect(r.execution.blocs).toEqual([
-      { id: "a", type: "code", statut: "reussi", debut: NOW.toISOString(), fin: NOW.toISOString(), elements: 3, sortie: [{ x: 1 }, { x: 2 }, { interets: "rust" }], journal: ["bonjour 2"] },
-      { id: "sortie", type: "sortie", statut: "reussi", debut: NOW.toISOString(), fin: NOW.toISOString(), elements: 3, sortie: [{ x: 1 }, { x: 2 }, { interets: "rust" }], journal: [] },
+    expect(r.run.error).toBeUndefined();
+    expect(r.run.blocks).toEqual([
+      { id: "a", type: "code", status: "reussi", start: NOW.toISOString(), end: NOW.toISOString(), items: 3, output: [{ x: 1 }, { x: 2 }, { interests: "rust" }], log: ["bonjour 2"] },
+      { id: "sortie", type: "sortie", status: "reussi", start: NOW.toISOString(), end: NOW.toISOString(), items: 3, output: [{ x: 1 }, { x: 2 }, { interests: "rust" }], log: [] },
     ]);
     // The global log keeps what the code writes (stderr), as before workflows.
-    expect(r.journal).toContain("bonjour 2");
-    expect(b.commandes[0]).toEqual(["docker", "run", "essai", b.ctx.dossierFichiers, ENGINE]);
-    expect(b.supprimes).toEqual(["essai"]);
+    expect(r.log).toContain("bonjour 2");
+    expect(b.commands[0]).toEqual(["docker", "run", "essai", b.ctx.filesFolder, ENGINE]);
+    expect(b.deleted).toEqual(["essai"]);
   });
 
   it("a container of the same name left by an abrupt stop is removed before launch", async () => {
     const b = await bench(chain("a"), { "a.mjs": `export default () => 1;` });
-    const launch = b.infra.lancer!;
+    const launch = b.infra.launch!;
     let before: string[] = [];
-    b.infra.lancer = (cmd, args) => ((before = [...b.supprimes]), launch(cmd, args));
+    b.infra.launch = (cmd, args) => ((before = [...b.deleted]), launch(cmd, args));
     await runWorkflow(b.ctx, b.infra);
     expect(before).toEqual(["essai"]);
   });
@@ -215,21 +215,21 @@ describe("executerWorkflow", () => {
     const b = await bench(
       {
         version: 1,
-        blocs: [
-          { id: "liste", type: "code", parametres: { source: "liste.mjs" } },
-          { id: "lire", type: "source.recuperer", parametres: { url: "{url}", parElement: true } },
-          { id: "sortie", type: "sortie", parametres: { vers: "widget" } },
+        blocks: [
+          { id: "liste", type: "code", params: { source: "liste.mjs" } },
+          { id: "lire", type: "source.recuperer", params: { url: "{url}", perItem: true } },
+          { id: "sortie", type: "sortie", params: { to: "widget" } },
         ],
-        liens: [{ de: "liste", vers: "lire" }, { de: "lire", vers: "sortie" }],
+        links: [{ from: "liste", to: "lire" }, { from: "lire", to: "sortie" }],
       },
       { "liste.mjs": `export default async () => [{ url: "${web.url}/a" }, { url: "${web.url}/absente" }];` },
     );
     const r = await runWorkflow(b.ctx, b.infra);
     expect(r.issue.t).toBe("fin");
-    expect(r.execution.statut).toBe("partielle");
-    expect(r.execution.blocs.map((x) => x.statut)).toEqual(["reussi", "partiel", "reussi"]);
-    expect(r.execution.blocs[1]!.sortie).toEqual([{ url: `${web.url}/a`, contenu: "contenu a" }, { url: `${web.url}/absente` }]);
-    expect(r.execution.blocs[1]!.journal.join("\n")).toMatch(/404/);
+    expect(r.run.status).toBe("partielle");
+    expect(r.run.blocks.map((x) => x.status)).toEqual(["reussi", "partiel", "reussi"]);
+    expect(r.run.blocks[1]!.output).toEqual([{ url: `${web.url}/a`, content: "contenu a" }, { url: `${web.url}/absente` }]);
+    expect(r.run.blocks[1]!.log.join("\n")).toMatch(/404/);
   });
 
   it("a failed block: outcome echec, failed run, following blocks pas-lance", async () => {
@@ -238,39 +238,39 @@ describe("executerWorkflow", () => {
       "b.mjs": `export default async (e) => e;`,
     });
     const r = await runWorkflow(b.ctx, b.infra);
-    expect(r.issue).toEqual({ t: "echec", erreur: "cassé : x", erreurDuCode: true });
-    expect(r.execution.statut).toBe("echouee");
-    expect(r.execution.erreur).toBe("cassé : x");
-    expect(r.execution.erreurNoyau).toBeUndefined();
-    expect(r.execution.blocs).toEqual([
-      { id: "a", type: "code", statut: "echoue", debut: NOW.toISOString(), fin: NOW.toISOString(), elements: null, erreur: "cassé : x", journal: [] },
-      { id: "b", type: "code", statut: "pas-lance", debut: null, fin: null, elements: null, journal: [] },
-      { id: "sortie", type: "sortie", statut: "pas-lance", debut: null, fin: null, elements: null, journal: [] },
+    expect(r.issue).toEqual({ t: "echec", error: "cassé : x", codeError: true });
+    expect(r.run.status).toBe("echouee");
+    expect(r.run.error).toBe("cassé : x");
+    expect(r.run.kernelError).toBeUndefined();
+    expect(r.run.blocks).toEqual([
+      { id: "a", type: "code", status: "echoue", start: NOW.toISOString(), end: NOW.toISOString(), items: null, error: "cassé : x", log: [] },
+      { id: "b", type: "code", status: "pas-lance", start: null, end: null, items: null, log: [] },
+      { id: "sortie", type: "sortie", status: "pas-lance", start: null, end: null, items: null, log: [] },
     ]);
   });
 
   it("the memory sent by the container comes back in the fin outcome", async () => {
     const workflow = {
       version: 1,
-      blocs: [
-        { id: "liste", type: "code", parametres: { source: "liste.mjs" } },
-        { id: "nouveaux", type: "liste.nouveaux", parametres: { cle: "url" } },
-        { id: "sortie", type: "sortie", parametres: { vers: "widget" } },
+      blocks: [
+        { id: "liste", type: "code", params: { source: "liste.mjs" } },
+        { id: "nouveaux", type: "liste.nouveaux", params: { key: "url" } },
+        { id: "sortie", type: "sortie", params: { to: "widget" } },
       ],
-      liens: [{ de: "liste", vers: "nouveaux" }, { de: "nouveaux", vers: "sortie" }],
+      links: [{ from: "liste", to: "nouveaux" }, { from: "nouveaux", to: "sortie" }],
     };
     const files = { "liste.mjs": `export default async () => [{ url: "a" }, { url: "b" }];` };
     const first = await bench(workflow, files);
     const r1 = await runWorkflow(first.ctx, first.infra);
-    expect(r1.issue.t === "fin" && r1.issue.sortie.valeur).toEqual([{ url: "a" }, { url: "b" }]);
-    const memory = r1.issue.t === "fin" ? r1.issue.memoire : null;
+    expect(r1.issue.t === "fin" && r1.issue.output.value).toEqual([{ url: "a" }, { url: "b" }]);
+    const memory = r1.issue.t === "fin" ? r1.issue.memory : null;
     expect(memory?.nouveaux?.type).toBe("liste.nouveaux");
 
     // The memory is sent back to the container: nothing new next time. An entry of another block does not pass.
-    const second = await bench(workflow, files, { memoire: { ...memory!, ailleurs: { type: "liste.nouveaux", valeur: [] } } });
+    const second = await bench(workflow, files, { memory: { ...memory!, elsewhere: { type: "liste.nouveaux", value: [] } } });
     const r2 = await runWorkflow(second.ctx, second.infra);
-    expect(r2.issue.t === "fin" && r2.issue.sortie.valeur).toEqual([]);
-    expect(r2.issue.t === "fin" && Object.keys(r2.issue.memoire ?? {})).toEqual(["nouveaux"]);
+    expect(r2.issue.t === "fin" && r2.issue.output.value).toEqual([]);
+    expect(r2.issue.t === "fin" && Object.keys(r2.issue.memory ?? {})).toEqual(["nouveaux"]);
   });
 
   it("a trace for an unknown or malformed block is ignored", async () => {
@@ -287,9 +287,9 @@ describe("executerWorkflow", () => {
       };`,
     });
     const r = await runWorkflow(b.ctx, b.infra);
-    expect(r.issue).toMatchObject({ t: "fin", sortie: { valeur: 1 } });
-    expect(r.execution.blocs.map((x) => x.id)).toEqual(["a", "sortie"]);
-    expect(r.execution.blocs[1]).toMatchObject({ statut: "reussi", sortie: 1 });
+    expect(r.issue).toMatchObject({ t: "fin", output: { value: 1 } });
+    expect(r.run.blocks.map((x) => x.id)).toEqual(["a", "sortie"]);
+    expect(r.run.blocks[1]).toMatchObject({ status: "reussi", output: 1 });
   });
 
   it("a forged trace for a block that is not the next one does not count", async () => {
@@ -303,67 +303,67 @@ describe("executerWorkflow", () => {
       "b.mjs": `export default async (e) => e;`,
     });
     const r = await runWorkflow(b.ctx, b.infra);
-    expect(r.issue).toMatchObject({ t: "echec", erreur: "cassé" });
-    expect(r.execution.blocs.map((x) => x.statut)).toEqual(["echoue", "pas-lance", "pas-lance"]);
-    expect(r.execution.blocs[1]!.sortie).toBeUndefined();
+    expect(r.issue).toMatchObject({ t: "echec", error: "cassé" });
+    expect(r.run.blocks.map((x) => x.status)).toEqual(["echoue", "pas-lance", "pas-lance"]);
+    expect(r.run.blocks[1]!.output).toBeUndefined();
   });
 
   it("forged memory: only the workflow's blocks with their type, the last line before fin counts", async () => {
     const workflow = {
       version: 1,
-      blocs: [
-        { id: "amont", type: "code", parametres: { source: "amont.mjs" } },
-        { id: "nouveaux", type: "liste.nouveaux", parametres: { cle: "url" } },
-        { id: "sortie", type: "sortie", parametres: { vers: "widget" } },
+      blocks: [
+        { id: "amont", type: "code", params: { source: "amont.mjs" } },
+        { id: "nouveaux", type: "liste.nouveaux", params: { key: "url" } },
+        { id: "sortie", type: "sortie", params: { to: "widget" } },
       ],
-      liens: [{ de: "amont", vers: "nouveaux" }, { de: "nouveaux", vers: "sortie" }],
+      links: [{ from: "amont", to: "nouveaux" }, { from: "nouveaux", to: "sortie" }],
     };
     const b = await bench(workflow, {}, {
-      lancer: scriptedLauncher([
-        { t: "memoire", memoire: { nouveaux: { type: "liste.nouveaux", valeur: ["premiere"] } } },
-        { t: "memoire", memoire: { nouveaux: { type: "liste.nouveaux", valeur: ["x"] }, autre: { type: "liste.nouveaux", valeur: 1 }, sortie: { type: "code", valeur: 2 } } },
-        { t: "memoire", memoire: "pas un objet" },
-        { t: "fin", donnees: [] },
-        { t: "memoire", memoire: { nouveaux: { type: "liste.nouveaux", valeur: ["après fin"] } } },
+      launch: scriptedLauncher([
+        { t: "memoire", memory: { newItems: { type: "liste.nouveaux", value: ["premiere"] } } },
+        { t: "memoire", memory: { newItems: { type: "liste.nouveaux", value: ["x"] }, other: { type: "liste.nouveaux", value: 1 }, output: { type: "code", value: 2 } } },
+        { t: "memoire", memory: "pas un objet" },
+        { t: "fin", data: [] },
+        { t: "memoire", memory: { newItems: { type: "liste.nouveaux", value: ["après fin"] } } },
       ]),
     });
     const r = await runWorkflow(b.ctx, b.infra);
-    expect(r.issue).toEqual({ t: "fin", sortie: { vers: "widget", valeur: [] }, memoire: { nouveaux: { type: "liste.nouveaux", valeur: ["x"], empreinte: paramsHash({ cle: "url" }) } } });
+    expect(r.issue).toEqual({ t: "fin", output: { to: "widget", value: [] }, memory: { newItems: { type: "liste.nouveaux", value: ["x"], hash: paramsHash({ key: "url" }) } } });
     // No block trace received: a block never started stays pas-lance.
-    expect(r.execution.blocs.map((x) => x.statut)).toEqual(["pas-lance", "pas-lance", "pas-lance"]);
+    expect(r.run.blocks.map((x) => x.status)).toEqual(["pas-lance", "pas-lance", "pas-lance"]);
   });
 
   it("a memory over 3 MB is dropped with a note in the log", async () => {
-    const b = await bench({ version: 1, blocs: [{ id: "amont", type: "code", parametres: { source: "amont.mjs" } }, { id: "nouveaux", type: "liste.nouveaux", parametres: { cle: "url" } }, { id: "sortie", type: "sortie" , parametres: { vers: "widget" } }], liens: [{ de: "amont", vers: "nouveaux" }, { de: "nouveaux", vers: "sortie" }] }, {}, {
-      lancer: scriptedLauncher([
-        { t: "memoire", memoire: { nouveaux: { type: "liste.nouveaux", valeur: "x".repeat(3.5 * 1024 * 1024) } } },
-        { t: "fin", donnees: 1 },
+    const b = await bench({ version: 1, blocks: [{ id: "amont", type: "code", params: { source: "amont.mjs" } }, { id: "nouveaux", type: "liste.nouveaux", params: { key: "url" } }, { id: "sortie", type: "sortie" , params: { to: "widget" } }], links: [{ from: "amont", to: "nouveaux" }, { from: "nouveaux", to: "sortie" }] }, {}, {
+      launch: scriptedLauncher([
+        { t: "memoire", memory: { newItems: { type: "liste.nouveaux", value: "x".repeat(3.5 * 1024 * 1024) } } },
+        { t: "fin", data: 1 },
       ]),
     });
     const r = await runWorkflow(b.ctx, b.infra);
-    expect(r.issue).toMatchObject({ t: "fin", memoire: null });
-    expect(r.journal).toContain(MEMORY_NOT_KEPT);
+    expect(r.issue).toMatchObject({ t: "fin", memory: null });
+    expect(r.log).toContain(MEMORY_NOT_KEPT);
     // Also in the run, in the output block's log.
-    expect(r.execution.blocs.find((x) => x.id === "sortie")!.journal).toEqual([MEMORY_NOT_KEPT]);
+    expect(r.run.blocks.find((x) => x.id === "sortie")!.log).toEqual([MEMORY_NOT_KEPT]);
   });
 
   it("a trace of a started block without an end gives it failed; block log bounded to 200 lines of 500 characters", async () => {
     const b = await bench(chain("a"), {}, {
-      lancer: scriptedLauncher([
-        { t: "bloc", id: "a", etape: "debut" },
-        ...Array.from({ length: 250 }, (_, i) => ({ t: "journal", bloc: "a", texte: `${i} ${"y".repeat(800)}` })),
-        { t: "echec", erreur: "arrêt" },
+      launch: scriptedLauncher([
+        { t: "bloc", id: "a", step: "debut" },
+        ...Array.from({ length: 250 }, (_, i) => ({ t: "journal", block: "a", text: `${i} ${"y".repeat(800)}` })),
+        { t: "echec", error: "arrêt" },
       ], 1),
     });
     const r = await runWorkflow(b.ctx, b.infra);
-    expect(r.issue).toEqual({ t: "echec", erreur: "arrêt", erreurDuCode: true });
-    const a = r.execution.blocs[0]!;
-    expect(a.statut).toBe("echoue");
-    expect(a.journal).toHaveLength(200);
-    expect(a.journal[0]).toMatch(/51 lignes coupées/);
-    expect(a.journal[199]!.startsWith("249 ")).toBe(true);
-    expect(a.journal.every((l) => l.length <= 500)).toBe(true);
-    expect(r.execution.blocs[1]!.statut).toBe("pas-lance");
+    expect(r.issue).toEqual({ t: "echec", error: "arrêt", codeError: true });
+    const a = r.run.blocks[0]!;
+    expect(a.status).toBe("echoue");
+    expect(a.log).toHaveLength(200);
+    expect(a.log[0]).toMatch(/51 lignes coupées/);
+    expect(a.log[199]!.startsWith("249 ")).toBe(true);
+    expect(a.log.every((l) => l.length <= 500)).toBe(true);
+    expect(r.run.blocks[1]!.status).toBe("pas-lance");
   });
 
   it("a 5 MB output (huge page) arrives truncated and marked, without stopping the run", async () => {
@@ -373,37 +373,37 @@ describe("executerWorkflow", () => {
       "court.mjs": `export default async (e) => ({ longueur: e.length });`,
     });
     const r = await runWorkflow(b.ctx, b.infra);
-    expect(r.issue).toMatchObject({ t: "fin", sortie: { valeur: { longueur: 1024 * 1024 } } });
-    expect(r.execution.statut).toBe("reussie");
-    const [huge, medium, short] = r.execution.blocs;
-    expect(huge).toMatchObject({ statut: "reussi", sortieTronquee: true });
-    expect(huge!.sortie).toBeUndefined();
-    expect(medium).toMatchObject({ statut: "reussi", sortieTronquee: true });
-    expect(typeof medium!.sortie).toBe("string");
-    expect(Buffer.byteLength(medium!.sortie as string)).toBeLessThanOrEqual(OUTPUT_MAX_BYTES);
-    expect((medium!.sortie as string).startsWith('"xxx')).toBe(true);
-    expect(short).toMatchObject({ statut: "reussi", sortie: { longueur: 1024 * 1024 } });
-    expect(short!.sortieTronquee).toBeUndefined();
+    expect(r.issue).toMatchObject({ t: "fin", output: { value: { length: 1024 * 1024 } } });
+    expect(r.run.status).toBe("reussie");
+    const [huge, medium, short] = r.run.blocks;
+    expect(huge).toMatchObject({ status: "reussi", outputTruncated: true });
+    expect(huge!.output).toBeUndefined();
+    expect(medium).toMatchObject({ status: "reussi", outputTruncated: true });
+    expect(typeof medium!.output).toBe("string");
+    expect(Buffer.byteLength(medium!.output as string)).toBeLessThanOrEqual(OUTPUT_MAX_BYTES);
+    expect((medium!.output as string).startsWith('"xxx')).toBe(true);
+    expect(short).toMatchObject({ status: "reussi", output: { length: 1024 * 1024 } });
+    expect(short!.outputTruncated).toBeUndefined();
   });
 
   it("lirePage with an account without a grant: accord-requis stop", async () => {
-    const bridge = new FakeBridge([], { actif: null, autoriser: false, lecture: { pages: [] } });
-    const b = await bench(chain("a"), { "a.mjs": `export default async (e, w) => w.lirePage("https://app.daily.dev/", { compte: true });` }, { compte: ["app.daily.dev"], accord: null, pont: bridge });
+    const bridge = new FakeBridge([], { active: null, allow: false, read: { pages: [] } });
+    const b = await bench(chain("a"), { "a.mjs": `export default async (e, w) => w.lirePage("https://app.daily.dev/", { compte: true });` }, { account: ["app.daily.dev"], grant: null, bridge: bridge });
     const r = await runWorkflow(b.ctx, b.infra);
-    expect(r.issue).toEqual({ t: "arret", statut: "accord-requis", erreur: "Accord requis pour lire avec ton compte : app.daily.dev" });
-    expect(r.execution).toMatchObject({ statut: "accord-requis", erreur: "Accord requis pour lire avec ton compte : app.daily.dev", erreurNoyau: true });
-    expect(r.execution.blocs[0]!.statut).toBe("echoue");
-    expect(bridge.appels.filter((a) => a.methode === "lirePageInvisible")).toHaveLength(0);
-    expect(b.supprimes).toEqual(["essai", "essai"]);
+    expect(r.issue).toEqual({ t: "arret", status: "accord-requis", error: "Accord requis pour lire avec ton compte : app.daily.dev" });
+    expect(r.run).toMatchObject({ status: "accord-requis", error: "Accord requis pour lire avec ton compte : app.daily.dev", kernelError: true });
+    expect(r.run.blocks[0]!.status).toBe("echoue");
+    expect(bridge.calls.filter((a) => a.method === "lirePageInvisible")).toHaveLength(0);
+    expect(b.deleted).toEqual(["essai", "essai"]);
   });
 
   it("ProfileDenied: surProfilRefuse called, PROFILE_DENIED stop", async () => {
-    const bridge = new FakeBridge([], { actif: null, autoriser: false, lecture: { pages: [], refuser: ["perso"] } });
-    const b = await bench(chain("a"), { "a.mjs": `export default async (e, w) => w.lirePage("https://app.daily.dev/", { compte: true });` }, { compte: ["app.daily.dev"], accord: { profil: "perso" }, pont: bridge });
+    const bridge = new FakeBridge([], { active: null, allow: false, read: { pages: [], deny: ["perso"] } });
+    const b = await bench(chain("a"), { "a.mjs": `export default async (e, w) => w.lirePage("https://app.daily.dev/", { compte: true });` }, { account: ["app.daily.dev"], grant: { profile: "perso" }, bridge: bridge });
     const r = await runWorkflow(b.ctx, b.infra);
-    expect(b.refusEnCours).toBe(1);
-    expect(r.issue).toEqual({ t: "arret", statut: "accord-requis", erreur: PROFILE_DENIED });
-    expect(r.execution.statut).toBe("accord-requis");
+    expect(b.denialPending).toBe(1);
+    expect(r.issue).toEqual({ t: "arret", status: "accord-requis", error: PROFILE_DENIED });
+    expect(r.run.status).toBe("accord-requis");
   });
 
   it("an early fin written by the code: partial run, following blocks pas-lance", async () => {
@@ -416,37 +416,37 @@ describe("executerWorkflow", () => {
       "b.mjs": `export default async (e) => e;`,
     });
     const r = await runWorkflow(b.ctx, b.infra);
-    expect(r.issue).toMatchObject({ t: "fin", sortie: { valeur: "tôt" } });
-    expect(r.execution.statut).toBe("partielle");
-    expect(r.execution.blocs.map((x) => x.statut)).toEqual(["echoue", "pas-lance", "pas-lance"]);
+    expect(r.issue).toMatchObject({ t: "fin", output: { value: "tôt" } });
+    expect(r.run.status).toBe("partielle");
+    expect(r.run.blocks.map((x) => x.status)).toEqual(["echoue", "pas-lance", "pas-lance"]);
   });
 
   it("grant removed between two reads with an account: accord-requis stop, no second read", async () => {
-    const bridge = new FakeBridge([], { actif: null, autoriser: false, lecture: { pages: [{ url: "https://app.daily.dev/", titre: "Fil", texte: "articles", liens: [] }] } });
+    const bridge = new FakeBridge([], { active: null, allow: false, read: { pages: [{ url: "https://app.daily.dev/", title: "Fil", text: "articles", links: [] }] } });
     const b = await bench(
       chain("a"),
       { "a.mjs": `export default async (e, w) => { await w.lirePage("https://app.daily.dev/", { compte: true }); return w.lirePage("https://app.daily.dev/", { compte: true }); };` },
-      { compte: ["app.daily.dev"], pont: bridge },
+      { account: ["app.daily.dev"], bridge: bridge },
     );
     let reads = 0;
-    b.ctx.accord = async () => (reads++ === 0 ? { profil: "perso" } : null);
+    b.ctx.grant = async () => (reads++ === 0 ? { profile: "perso" } : null);
     const r = await runWorkflow(b.ctx, b.infra);
-    expect(r.issue).toEqual({ t: "arret", statut: "accord-requis", erreur: "Accord requis pour lire avec ton compte : app.daily.dev" });
-    expect(r.execution.statut).toBe("accord-requis");
-    expect(bridge.appels.filter((a) => a.methode === "lirePageInvisible")).toHaveLength(1);
-    expect(b.supprimes).toEqual(["essai", "essai"]);
+    expect(r.issue).toEqual({ t: "arret", status: "accord-requis", error: "Accord requis pour lire avec ton compte : app.daily.dev" });
+    expect(r.run.status).toBe("accord-requis");
+    expect(bridge.calls.filter((a) => a.method === "lirePageInvisible")).toHaveLength(1);
+    expect(b.deleted).toEqual(["essai", "essai"]);
   });
 
   it("lirePage with an account and a grant: the bridge receives the profile and the declared domains", async () => {
-    const bridge = new FakeBridge([], { actif: null, autoriser: false, lecture: { pages: [{ url: "https://app.daily.dev/", titre: "Fil", texte: "articles", liens: [] }] } });
-    const b = await bench(chain("a"), { "a.mjs": `export default async (e, w) => (await w.lirePage("https://app.daily.dev/", { compte: true })).texte;` }, { compte: ["app.daily.dev"], accord: { profil: "perso" }, pont: bridge });
+    const bridge = new FakeBridge([], { active: null, allow: false, read: { pages: [{ url: "https://app.daily.dev/", title: "Fil", text: "articles", links: [] }] } });
+    const b = await bench(chain("a"), { "a.mjs": `export default async (e, w) => (await w.lirePage("https://app.daily.dev/", { compte: true })).texte;` }, { account: ["app.daily.dev"], grant: { profile: "perso" }, bridge: bridge });
     const r = await runWorkflow(b.ctx, b.infra);
-    expect(r.issue).toMatchObject({ t: "fin", sortie: { valeur: "articles" } });
-    expect(bridge.appels.find((a) => a.methode === "lirePageInvisible")!.args).toEqual(["https://app.daily.dev/", { profil: "perso", domaines: ["app.daily.dev"], adressesLocales: true }]);
+    expect(r.issue).toMatchObject({ t: "fin", output: { value: "articles" } });
+    expect(bridge.calls.find((a) => a.method === "lirePageInvisible")!.args).toEqual(["https://app.daily.dev/", { profile: "perso", domains: ["app.daily.dev"], localAddresses: true }]);
   });
 
   it("lirePage with defiler: the bridge receives it (with or without an account); 0 passes nothing; outside 0 to 20, refused", async () => {
-    const bridge = new FakeBridge([], { actif: null, autoriser: false, lecture: { pages: [] } });
+    const bridge = new FakeBridge([], { active: null, allow: false, read: { pages: [] } });
     const b = await bench(
       chain("a"),
       {
@@ -458,20 +458,20 @@ describe("executerWorkflow", () => {
           await essai(w.lirePage("https://app.daily.dev/d", { defiler: 21 })),
         ];`,
       },
-      { compte: ["app.daily.dev"], publiques: ["app.daily.dev"], accord: { profil: "perso" }, pont: bridge },
+      { account: ["app.daily.dev"], public: ["app.daily.dev"], grant: { profile: "perso" }, bridge: bridge },
     );
     const r = await runWorkflow(b.ctx, b.infra);
-    expect(r.issue).toMatchObject({ t: "fin", sortie: { valeur: ["ok", "ok", "ok", "refus: Arguments invalides pour lirePage"] } });
-    expect(bridge.appels.filter((a) => a.methode === "lirePageInvisible").map((a) => a.args)).toEqual([
-      ["https://app.daily.dev/a", { profil: null, domaines: ["app.daily.dev"], adressesLocales: true, defiler: 8 }],
-      ["https://app.daily.dev/b", { profil: "perso", domaines: ["app.daily.dev"], adressesLocales: true, defiler: 2 }],
-      ["https://app.daily.dev/c", { profil: null, domaines: ["app.daily.dev"], adressesLocales: true }],
+    expect(r.issue).toMatchObject({ t: "fin", output: { value: ["ok", "ok", "ok", "refus: Arguments invalides pour lirePage"] } });
+    expect(bridge.calls.filter((a) => a.method === "lirePageInvisible").map((a) => a.args)).toEqual([
+      ["https://app.daily.dev/a", { profile: null, domains: ["app.daily.dev"], localAddresses: true, scroll: 8 }],
+      ["https://app.daily.dev/b", { profile: "perso", domains: ["app.daily.dev"], localAddresses: true, scroll: 2 }],
+      ["https://app.daily.dev/c", { profile: null, domains: ["app.daily.dev"], localAddresses: true }],
     ]);
   });
 
   it("recuperer to an undeclared domain for an owner with an account: refused", async () => {
     const web = await webServer({ "/": (res) => res.end("ok") });
-    const bridge = new FakeBridge([], { actif: null, autoriser: false, lecture: { pages: [] } });
+    const bridge = new FakeBridge([], { active: null, allow: false, read: { pages: [] } });
     const b = await bench(
       chain("a"),
       {
@@ -483,101 +483,101 @@ describe("executerWorkflow", () => {
           await essai(w.recuperer("${web.url}/")),
         ];`,
       },
-      { compte: ["app.daily.dev"], publiques: ["127.0.0.1"], accord: { profil: "perso" }, pont: bridge },
+      { account: ["app.daily.dev"], public: ["127.0.0.1"], grant: { profile: "perso" }, bridge: bridge },
     );
     const r = await runWorkflow(b.ctx, b.infra);
-    const [external, otherName, page, declare] = (r.issue.t === "fin" ? r.issue.sortie.valeur : []) as string[];
+    const [external, otherName, page, declare] = (r.issue.t === "fin" ? r.issue.output.value : []) as string[];
     expect(external).toMatch(/^refus: .*non déclaré/);
     expect(otherName).toMatch(/^refus: .*non déclaré/);
     expect(page).toMatch(/^refus: .*non déclaré/);
     expect(declare).toBe("ok");
-    expect(web.requetes).toHaveLength(1);
-    expect(bridge.appels.filter((a) => a.methode === "lirePageInvisible")).toHaveLength(0);
+    expect(web.requests).toHaveLength(1);
+    expect(bridge.calls.filter((a) => a.method === "lirePageInvisible")).toHaveLength(0);
   });
 
   it("timeout exceeded: in-flight AI calls are abandoned", async () => {
-    const b = await bench(chain("a"), { "a.mjs": `export default (e, w) => Promise.all([w.kev("s", {}), w.gemma("p")]);` }, { delaiMs: 600 });
+    const b = await bench(chain("a"), { "a.mjs": `export default (e, w) => Promise.all([w.kev("s", {}), w.gemma("p")]);` }, { delayMs: 600 });
     const signals: (AbortSignal | undefined)[] = [];
-    b.infra.ia = {
+    b.infra.ai = {
       kev: (_c, o) => (signals.push(o?.signal), new Promise(() => {})),
       gemma: (g) => (signals.push(g.signal), new Promise(() => {})),
     };
     const r = await runWorkflow(b.ctx, b.infra);
-    expect(r.issue).toMatchObject({ t: "arret", erreur: "Délai dépassé" });
+    expect(r.issue).toMatchObject({ t: "arret", error: "Délai dépassé" });
     expect(signals).toHaveLength(2);
     expect(signals.every((s) => s?.aborted)).toBe(true);
   });
 
   it("timeout exceeded: « Délai dépassé » stop and container removed", async () => {
-    const b = await bench(chain("a"), { "a.mjs": `export default () => new Promise(() => {});` }, { delaiMs: 600 });
+    const b = await bench(chain("a"), { "a.mjs": `export default () => new Promise(() => {});` }, { delayMs: 600 });
     const start = Date.now();
     const r = await runWorkflow(b.ctx, b.infra);
     expect(Date.now() - start).toBeLessThan(5000);
-    expect(r.issue).toEqual({ t: "arret", statut: "erreur", erreur: "Délai dépassé" });
-    expect(r.execution).toMatchObject({ statut: "echouee", erreur: "Délai dépassé", erreurNoyau: true });
-    expect(r.execution.blocs.map((x) => x.statut)).toEqual(["echoue", "pas-lance"]);
-    expect(b.tues).toBeGreaterThan(0);
-    expect(b.supprimes).toEqual(["essai", "essai"]);
+    expect(r.issue).toEqual({ t: "arret", status: "erreur", error: "Délai dépassé" });
+    expect(r.run).toMatchObject({ status: "echouee", error: "Délai dépassé", kernelError: true });
+    expect(r.run.blocks.map((x) => x.status)).toEqual(["echoue", "pas-lance"]);
+    expect(b.killed).toBeGreaterThan(0);
+    expect(b.deleted).toEqual(["essai", "essai"]);
     expect(RUN_DELAY_MS).toBe(200_000);
   });
 
   it("the debut carries the validated workflow and the config; the memory follows", async () => {
     const received: string[] = [];
     const b = await bench(chain("a"), {}, {
-      lancer: () => {
-        const p = scriptedLauncher([{ t: "fin", donnees: null }])("", []);
+      launch: () => {
+        const p = scriptedLauncher([{ t: "fin", data: null }])("", []);
         p.stdin.on("data", (d: Buffer) => received.push(d.toString()));
         return p;
       },
-      memoire: { a: { type: "code", valeur: 1 } },
+      memory: { a: { type: "code", value: 1 } },
     });
-    b.ctx.precedent = { ancien: true };
+    b.ctx.previous = { old: true };
     await runWorkflow(b.ctx, b.infra);
     const lignes = received.join("").trim().split("\n").map((l) => JSON.parse(l));
     expect(lignes[0]).toEqual({
       t: "debut",
-      precedent: { ancien: true },
-      maintenant: NOW.toISOString(),
-      config: { interets: "rust" },
-      workflow: { blocs: b.ctx.valide.workflow.blocs, liens: b.ctx.valide.workflow.liens, ordre: ["a", "sortie"] },
+      previous: { old: true },
+      now: NOW.toISOString(),
+      config: { interests: "rust" },
+      workflow: { blocks: b.ctx.valid.workflow.blocks, links: b.ctx.valid.workflow.links, order: ["a", "sortie"] },
     });
-    expect(lignes[1]).toEqual({ t: "memoire", memoire: { a: { type: "code", valeur: 1 } } });
+    expect(lignes[1]).toEqual({ t: "memoire", memory: { a: { type: "code", value: 1 } } });
   });
 
   /** The lines the container receives (start, memory) and the returned memory, for a workflow `a` → `sortie`. */
   async function memoryViewedByContainer(workflow: unknown, memory: BlocksMemory, rendered: BlocksMemory = {}) {
     const received: string[] = [];
     const b = await bench(workflow, {}, {
-      lancer: () => {
-        const p = scriptedLauncher([{ t: "memoire", memoire: rendered }, { t: "fin", donnees: null }])("", []);
+      launch: () => {
+        const p = scriptedLauncher([{ t: "memoire", memory: rendered }, { t: "fin", data: null }])("", []);
         p.stdin.on("data", (d: Buffer) => received.push(d.toString()));
         return p;
       },
-      memoire: memory,
+      memory: memory,
     });
     const r = await runWorkflow(b.ctx, b.infra);
     const lignes = received.join("").trim().split("\n").map((l) => JSON.parse(l));
-    return { envoyee: lignes[1].memoire as BlocksMemory, rendue: r.issue.t === "fin" ? r.issue.memoire : null, ctx: b.ctx };
+    return { sent: lignes[1].memoire as BlocksMemory, rendered: r.issue.t === "fin" ? r.issue.memory : null, ctx: b.ctx };
   }
 
   it("a memory whose hash no longer matches the parameters is not sent to the container", async () => {
     const wf = (key: string) => ({
       version: 1,
-      blocs: [
-        { id: "a", type: "code", parametres: { source: "a.mjs" } },
-        { id: "n", type: "liste.nouveaux", parametres: { cle: key } },
-        { id: "sortie", type: "sortie", parametres: { vers: "widget" } },
+      blocks: [
+        { id: "a", type: "code", params: { source: "a.mjs" } },
+        { id: "n", type: "liste.nouveaux", params: { key: key } },
+        { id: "sortie", type: "sortie", params: { to: "widget" } },
       ],
-      liens: [{ de: "a", vers: "n" }, { de: "n", vers: "sortie" }],
+      links: [{ from: "a", to: "n" }, { from: "n", to: "sortie" }],
     });
     const memory: BlocksMemory = {
-      n: { type: "liste.nouveaux", valeur: ["x"], empreinte: paramsHash({ cle: "url" }) },
-      a: { type: "code", valeur: 1 }, // old memory without a hash: accepted once
+      n: { type: "liste.nouveaux", value: ["x"], hash: paramsHash({ key: "url" }) },
+      a: { type: "code", value: 1 }, // old memory without a hash: accepted once
     };
     const same = await memoryViewedByContainer(wf("url"), memory);
-    expect(same.envoyee).toEqual({ n: { type: "liste.nouveaux", valeur: ["x"] }, a: { type: "code", valeur: 1 } }); // without the hash
+    expect(same.sent).toEqual({ n: { type: "liste.nouveaux", value: ["x"] }, a: { type: "code", value: 1 } }); // without the hash
     const others = await memoryViewedByContainer(wf("titre"), memory);
-    expect(others.envoyee).toEqual({ a: { type: "code", valeur: 1 } });
+    expect(others.sent).toEqual({ a: { type: "code", value: 1 } });
   });
 
   it("the returned memory is marked with the hash of the run's parameters, even if workflow.json changed meanwhile", async () => {
@@ -585,24 +585,24 @@ describe("executerWorkflow", () => {
     // the run therefore changes nothing about what is marked; the new settings do not find this memory.
     const wf = (key: string) => ({
       version: 1,
-      blocs: [
-        { id: "a", type: "code", parametres: { source: "a.mjs" } },
-        { id: "n", type: "liste.nouveaux", parametres: { cle: key } },
-        { id: "sortie", type: "sortie", parametres: { vers: "widget" } },
+      blocks: [
+        { id: "a", type: "code", params: { source: "a.mjs" } },
+        { id: "n", type: "liste.nouveaux", params: { key: key } },
+        { id: "sortie", type: "sortie", params: { to: "widget" } },
       ],
-      liens: [{ de: "a", vers: "n" }, { de: "n", vers: "sortie" }],
+      links: [{ from: "a", to: "n" }, { from: "n", to: "sortie" }],
     });
-    const first = await memoryViewedByContainer(wf("url"), {}, { n: { type: "liste.nouveaux", valeur: ["vu"] } });
-    expect(first.rendue).toEqual({ n: { type: "liste.nouveaux", valeur: ["vu"], empreinte: paramsHash({ cle: "url" }) } });
+    const first = await memoryViewedByContainer(wf("url"), {}, { n: { type: "liste.nouveaux", value: ["vu"] } });
+    expect(first.rendered).toEqual({ n: { type: "liste.nouveaux", value: ["vu"], hash: paramsHash({ key: "url" }) } });
     // workflow.json changed (cle: titre): the second run receives an empty memory for this block.
-    const second = await memoryViewedByContainer(wf("titre"), first.rendue!);
-    expect(second.envoyee).toEqual({});
+    const second = await memoryViewedByContainer(wf("titre"), first.rendered!);
+    expect(second.sent).toEqual({});
   });
 
   describe("trials (replay from a block)", () => {
     const T = NOW.toISOString();
     /** a → b → c → sortie: replay from c, b reused (2 elements), a neither relaunched nor reused. */
-    const replayFromC = { relances: ["c", "sortie"], sorties: { b: [{ x: 1 }, { x: 2 }] }, repris: { b: 2 } };
+    const replayFromC = { reruns: ["c", "sortie"], outputs: { b: [{ x: 1 }, { x: 2 }] }, resumed: { b: 2 } };
 
     it("a trial returns a run with repris, pas-lance and the relaunched blocks", async () => {
       const b = await bench(chain("a", "b", "c"), {
@@ -610,73 +610,73 @@ describe("executerWorkflow", () => {
         "b.mjs": `export default async () => { throw new Error("b lancé"); };`,
         "c.mjs": `export default async (entree) => entree.map((e) => e.x * 10);`,
       });
-      b.ctx.declencheur = "rejeu";
-      b.ctx.rejeu = replayFromC;
+      b.ctx.trigger = "rejeu";
+      b.ctx.replay = replayFromC;
       const r = await runWorkflow(b.ctx, b.infra);
-      expect(r.issue).toEqual({ t: "fin", sortie: { vers: "widget", valeur: [10, 20] }, memoire: null });
-      expect(r.execution.statut).toBe("reussie");
-      expect(r.execution.declencheur).toBe("rejeu");
-      expect(r.execution.blocs).toEqual([
-        { id: "a", type: "code", statut: "pas-lance", debut: null, fin: null, elements: null, journal: [] },
-        { id: "b", type: "code", statut: "repris", debut: null, fin: null, elements: 2, journal: [] },
-        { id: "c", type: "code", statut: "reussi", debut: T, fin: T, elements: 2, sortie: [10, 20], journal: [] },
-        { id: "sortie", type: "sortie", statut: "reussi", debut: T, fin: T, elements: 2, sortie: [10, 20], journal: [] },
+      expect(r.issue).toEqual({ t: "fin", output: { to: "widget", value: [10, 20] }, memory: null });
+      expect(r.run.status).toBe("reussie");
+      expect(r.run.trigger).toBe("rejeu");
+      expect(r.run.blocks).toEqual([
+        { id: "a", type: "code", status: "pas-lance", start: null, end: null, items: null, log: [] },
+        { id: "b", type: "code", status: "repris", start: null, end: null, items: 2, log: [] },
+        { id: "c", type: "code", status: "reussi", start: T, end: T, items: 2, output: [10, 20], log: [] },
+        { id: "sortie", type: "sortie", status: "reussi", start: T, end: T, items: 2, output: [10, 20], log: [] },
       ]);
     });
 
     it("a trial: the status counts only the relaunched blocks, and lines forged for a reused or non-relaunched block are rejected", async () => {
       const b = await bench(chain("a", "b", "c"), {}, {
-        lancer: scriptedLauncher([
-          { t: "bloc", id: "b", etape: "debut" },
-          { t: "journal", bloc: "b", texte: "forgé" },
-          { t: "bloc", id: "b", etape: "fin", statut: "reussi", sortie: "forgée" },
-          { t: "journal", bloc: "a", texte: "forgé" },
-          { t: "bloc", id: "c", etape: "debut" },
-          { t: "bloc", id: "c", etape: "fin", statut: "reussi", sortie: [1] },
-          { t: "bloc", id: "a", etape: "debut" },
-          { t: "bloc", id: "sortie", etape: "debut" },
-          { t: "bloc", id: "sortie", etape: "fin", statut: "reussi", sortie: [1] },
-          { t: "fin", donnees: [1] },
+        launch: scriptedLauncher([
+          { t: "bloc", id: "b", step: "debut" },
+          { t: "journal", block: "b", text: "forgé" },
+          { t: "bloc", id: "b", step: "fin", status: "reussi", output: "forgée" },
+          { t: "journal", block: "a", text: "forgé" },
+          { t: "bloc", id: "c", step: "debut" },
+          { t: "bloc", id: "c", step: "fin", status: "reussi", output: [1] },
+          { t: "bloc", id: "a", step: "debut" },
+          { t: "bloc", id: "sortie", step: "debut" },
+          { t: "bloc", id: "sortie", step: "fin", status: "reussi", output: [1] },
+          { t: "fin", data: [1] },
         ]),
       });
-      b.ctx.rejeu = replayFromC;
+      b.ctx.replay = replayFromC;
       const relayed: unknown[] = [];
-      b.infra.surTrace = (t) => relayed.push(t);
+      b.infra.onTrace = (t) => relayed.push(t);
       const r = await runWorkflow(b.ctx, b.infra);
-      expect(r.execution.statut).toBe("reussie");
-      expect(r.execution.blocs.map((x) => [x.id, x.statut])).toEqual([["a", "pas-lance"], ["b", "repris"], ["c", "reussi"], ["sortie", "reussi"]]);
-      expect(r.execution.blocs[0]!.journal).toEqual([]);
-      expect(r.execution.blocs[1]).toMatchObject({ elements: 2, journal: [], debut: null });
-      expect(r.execution.blocs[1]!.sortie).toBeUndefined();
+      expect(r.run.status).toBe("reussie");
+      expect(r.run.blocks.map((x) => [x.id, x.status])).toEqual([["a", "pas-lance"], ["b", "repris"], ["c", "reussi"], ["sortie", "reussi"]]);
+      expect(r.run.blocks[0]!.log).toEqual([]);
+      expect(r.run.blocks[1]).toMatchObject({ items: 2, log: [], start: null });
+      expect(r.run.blocks[1]!.output).toBeUndefined();
       expect(relayed.map((t: any) => `${t.etape}:${t.bloc}`)).toEqual(["debut:c", "fin:c", "debut:sortie", "fin:sortie"]);
     });
 
     it("a trial sends no memory and returns none", async () => {
       const received: string[] = [];
       const b = await bench(chain("a", "b", "c"), {}, {
-        lancer: () => {
-          const p = scriptedLauncher([{ t: "memoire", memoire: { c: { type: "code", valeur: "forgée" } } }, { t: "fin", donnees: null }])("", []);
+        launch: () => {
+          const p = scriptedLauncher([{ t: "memoire", memory: { c: { type: "code", value: "forgée" } } }, { t: "fin", data: null }])("", []);
           p.stdin.on("data", (d: Buffer) => received.push(d.toString()));
           return p;
         },
-        memoire: { a: { type: "code", valeur: 1 }, c: { type: "code", valeur: 2 } },
+        memory: { a: { type: "code", value: 1 }, c: { type: "code", value: 2 } },
       });
-      b.ctx.rejeu = replayFromC;
+      b.ctx.replay = replayFromC;
       const r = await runWorkflow(b.ctx, b.infra);
       const lignes = received.join("").trim().split("\n").map((l) => JSON.parse(l));
-      expect(lignes[0].rejeu).toEqual({ relances: ["c", "sortie"], sorties: { b: [{ x: 1 }, { x: 2 }] } });
-      expect(lignes[1]).toEqual({ t: "memoire", memoire: {} });
-      expect(r.issue).toMatchObject({ t: "fin", memoire: null });
+      expect(lignes[0].rejeu).toEqual({ reruns: ["c", "sortie"], outputs: { b: [{ x: 1 }, { x: 2 }] } });
+      expect(lignes[1]).toEqual({ t: "memoire", memory: {} });
+      expect(r.issue).toMatchObject({ t: "fin", memory: null });
     });
 
     it("outputs to reuse of over 4 MB stop the trial without launching a container", async () => {
       const b = await bench(chain("a", "b", "c"));
-      b.ctx.rejeu = { ...replayFromC, sorties: { b: "x".repeat(LINE_MAX_BYTES) } };
+      b.ctx.replay = { ...replayFromC, outputs: { b: "x".repeat(LINE_MAX_BYTES) } };
       const r = await runWorkflow(b.ctx, b.infra);
-      expect(r.issue).toEqual({ t: "arret", statut: "erreur", erreur: REPLAY_TOO_BIG });
+      expect(r.issue).toEqual({ t: "arret", status: "erreur", error: REPLAY_TOO_BIG });
       expect(REPLAY_TOO_BIG).toBe("Rejeu impossible : les sorties à reprendre dépassent 4 Mo");
-      expect(b.commandes).toEqual([]);
-      expect(r.execution).toMatchObject({ statut: "echouee", erreur: REPLAY_TOO_BIG, erreurNoyau: true });
+      expect(b.commands).toEqual([]);
+      expect(r.run).toMatchObject({ status: "echouee", error: REPLAY_TOO_BIG, kernelError: true });
     });
   });
 
@@ -691,34 +691,34 @@ describe("executerWorkflow", () => {
       };`,
     });
     const relayed: unknown[] = [];
-    b.infra.surTrace = (t) => relayed.push(t);
+    b.infra.onTrace = (t) => relayed.push(t);
     const r = await runWorkflow(b.ctx, b.infra);
-    expect(r.issue).toMatchObject({ t: "fin", sortie: { valeur: [1, 2, 3] } });
+    expect(r.issue).toMatchObject({ t: "fin", output: { value: [1, 2, 3] } });
     expect(relayed).toEqual([
-      { bloc: "a", etape: "debut" },
-      { bloc: "a", etape: "fin", statut: "reussi", elements: 3 },
-      { bloc: "sortie", etape: "debut" },
-      { bloc: "sortie", etape: "fin", statut: "reussi", elements: 3 },
+      { block: "a", step: "debut" },
+      { block: "a", step: "fin", status: "reussi", items: 3 },
+      { block: "sortie", step: "debut" },
+      { block: "sortie", step: "fin", status: "reussi", items: 3 },
     ]);
   });
 
   it("a surTrace that throws does not break the run", async () => {
     const b = await bench(chain("a"), { "a.mjs": `export default async () => 1;` });
-    b.infra.surTrace = () => {
+    b.infra.onTrace = () => {
       throw new Error("relais cassé");
     };
     const r = await runWorkflow(b.ctx, b.infra);
-    expect(r.issue).toMatchObject({ t: "fin", sortie: { valeur: 1 } });
-    expect(r.execution.statut).toBe("reussie");
+    expect(r.issue).toMatchObject({ t: "fin", output: { value: 1 } });
+    expect(r.run.status).toBe("reussie");
   });
 
   it("the container impossible to launch: erreur stop, failed run without a launched block", async () => {
     const b = await bench(chain("a"));
-    b.infra.atelier = { commandeRecolte: () => { throw new Error("Docker introuvable"); }, supprimerRecolte: async () => {} };
+    b.infra.workshop = { harvestCommand: () => { throw new Error("Docker introuvable"); }, deleteHarvest: async () => {} };
     const r = await runWorkflow(b.ctx, b.infra);
-    expect(r.issue).toEqual({ t: "arret", statut: "erreur", erreur: "Récolte impossible à lancer : Docker introuvable" });
-    expect(r.execution.statut).toBe("echouee");
-    expect(r.execution.blocs.every((x) => x.statut === "pas-lance")).toBe(true);
+    expect(r.issue).toEqual({ t: "arret", status: "erreur", error: "Récolte impossible à lancer : Docker introuvable" });
+    expect(r.run.status).toBe("echouee");
+    expect(r.run.blocks.every((x) => x.status === "pas-lance")).toBe(true);
   });
 });
 
@@ -727,8 +727,8 @@ describe("executerWorkflow: web search and open reads", () => {
   const page = (name: string) => readFileSync(new URL(`./fixtures/duckduckgo/${name}`, import.meta.url), "utf8");
   const fixtureResults = (() => {
     const r = extractResults(page("resultats.html"), 20);
-    if (!("resultats" in r)) throw new Error("attendu : des résultats");
-    return r.resultats;
+    if (!("results" in r)) throw new Error("attendu : des résultats");
+    return r.results;
   })();
 
   /** Throttle with a fake clock: each wait advances the clock, without ever really waiting. */
@@ -736,25 +736,25 @@ describe("executerWorkflow: web search and open reads", () => {
     let t = 0;
     const waits: number[] = [];
     const pacing = new Pacing({
-      maintenant: () => t,
-      attendre: async (ms) => {
+      now: () => t,
+      wait: async (ms) => {
         waits.push(ms);
         t += ms;
       },
     });
-    return { menagement: pacing, attentes: waits };
+    return { pacing: pacing, waits: waits };
   };
 
   /** A widget `a` → sortie whose code is given; `web` and the throttle set. */
-  async function webBench(code: string, o: { web?: boolean; compte?: string[]; html?: Record<string, string>; pages?: { url: string; titre: string; texte: string; liens: [] }[]; menagement?: Pacing; delaiMs?: number } = {}) {
-    const bridge = new FakeBridge([], { actif: null, autoriser: false, lecture: { pages: o.pages ?? [], html: o.html ?? {} } });
-    const b = await bench(chain("a"), { "a.mjs": code }, { pont: bridge, compte: o.compte, accord: { profil: "perso" }, delaiMs: o.delaiMs });
+  async function webBench(code: string, o: { web?: boolean; account?: string[]; html?: Record<string, string>; pages?: { url: string; title: string; text: string; links: [] }[]; pacing?: Pacing; delayMs?: number } = {}) {
+    const bridge = new FakeBridge([], { active: null, allow: false, read: { pages: o.pages ?? [], html: o.html ?? {} } });
+    const b = await bench(chain("a"), { "a.mjs": code }, { bridge: bridge, account: o.account, grant: { profile: "perso" }, delayMs: o.delayMs });
     b.ctx.sources = { ...b.ctx.sources, ...(o.web !== undefined ? { web: o.web } : {}) };
-    b.infra.menagement = o.menagement ?? fakePacing().menagement;
-    b.infra.urlRecherche = BASE;
-    return { b, pont: bridge, html: () => bridge.appels.filter((a) => a.methode === "lireHtmlInvisible") };
+    b.infra.pacing = o.pacing ?? fakePacing().pacing;
+    b.infra.searchUrl = BASE;
+    return { b, bridge: bridge, html: () => bridge.calls.filter((a) => a.method === "lireHtmlInvisible") };
   }
-  const value = (r: Awaited<ReturnType<typeof runWorkflow>>) => (r.issue.t === "fin" ? r.issue.sortie.valeur : r.issue);
+  const value = (r: Awaited<ReturnType<typeof runWorkflow>>) => (r.issue.t === "fin" ? r.issue.output.value : r.issue);
   /** Code that makes these calls one after the other and returns, for each, the result or « erreur: <message> ». */
   const afterwards = (calls: string[]) => `const essai = (p) => p.then((x) => x, (e) => "erreur: " + e.message);
     export default async (e, w) => { const r = []; ${calls.map((a) => `r.push(await essai(${a}));`).join(" ")} return r; };`;
@@ -766,7 +766,7 @@ describe("executerWorkflow: web search and open reads", () => {
     });
     const r = await runWorkflow(b.ctx, b.infra);
     expect(value(r)).toEqual([fixtureResults.slice(0, 3)]);
-    expect(html().map((a) => a.args)).toEqual([[searchUrl("clio fiabilité", BASE), { adressesLocales: true }]]);
+    expect(html().map((a) => a.args)).toEqual([[searchUrl("clio fiabilité", BASE), { localAddresses: true }]]);
   });
 
   it("chercherWeb drops results to a local address, then cuts to nombre", async () => {
@@ -783,21 +783,21 @@ describe("executerWorkflow: web search and open reads", () => {
     ].map(block).join("");
     const { b } = await webBench(afterwards([`w.chercherWeb("x", { nombre: 2 })`]), { web: true, html: { [searchUrl("x", BASE)]: local } });
     const r = await runWorkflow(b.ctx, b.infra);
-    expect(value(r)).toEqual([[{ titre: "T", url: "https://a.example/", extrait: "E" }, { titre: "T", url: "https://b.example/", extrait: "E" }]]);
+    expect(value(r)).toEqual([[{ title: "T", url: "https://a.example/", excerpt: "E" }, { title: "T", url: "https://b.example/", excerpt: "E" }]]);
   });
 
   it("without web: WEB_REQUIRED, no call to the bridge", async () => {
-    const { b, pont: bridge } = await webBench(afterwards([`w.chercherWeb("x")`]), { html: { [searchUrl("x", BASE)]: page("resultats.html") } });
+    const { b, bridge: bridge } = await webBench(afterwards([`w.chercherWeb("x")`]), { html: { [searchUrl("x", BASE)]: page("resultats.html") } });
     const r = await runWorkflow(b.ctx, b.infra);
     expect(value(r)).toEqual([`erreur: ${WEB_REQUIRED}`]);
-    expect(bridge.appels).toEqual([]);
+    expect(bridge.calls).toEqual([]);
   });
 
   it("widget with an account: WEB_REQUIRED", async () => {
     // web with an account is refused at the widget.json read; the executor refuses anyway.
     const { b, html } = await webBench(afterwards([`w.chercherWeb("x")`]), {
       web: true,
-      compte: ["mail.google.com"],
+      account: ["mail.google.com"],
       html: { [searchUrl("x", BASE)]: page("resultats.html") },
     });
     const r = await runWorkflow(b.ctx, b.infra);
@@ -806,10 +806,10 @@ describe("executerWorkflow: web search and open reads", () => {
   });
 
   it("31e recherche : SEARCHES_CAP, 30 lectures de HTML seulement", async () => {
-    const { menagement: pacing, attentes: waits } = fakePacing();
+    const { pacing: pacing, waits: waits } = fakePacing();
     const { b, html } = await webBench(afterwards(Array.from({ length: 31 }, () => `w.chercherWeb("clio", { nombre: 1 })`)), {
       web: true,
-      menagement: pacing,
+      pacing: pacing,
       html: { [searchUrl("clio", BASE)]: page("resultats.html") },
     });
     const r = await runWorkflow(b.ctx, b.infra);
@@ -832,17 +832,17 @@ describe("executerWorkflow: web search and open reads", () => {
   });
 
   it("a queued search when the refusal arrives does not leave, and does not consume the search gap", async () => {
-    const { menagement: pacing, attentes: waits } = fakePacing();
+    const { pacing: pacing, waits: waits } = fakePacing();
     const { b, html } = await webBench(
       `const essai = (p) => p.then((x) => x, (e) => "erreur: " + e.message);
       export default async (e, w) => Promise.all([essai(w.chercherWeb("a")), essai(w.chercherWeb("b"))]);`,
-      { web: true, menagement: pacing, html: { [searchUrl("a", BASE)]: page("verification.html"), [searchUrl("b", BASE)]: page("resultats.html") } },
+      { web: true, pacing: pacing, html: { [searchUrl("a", BASE)]: page("verification.html"), [searchUrl("b", BASE)]: page("resultats.html") } },
     );
     const r = await runWorkflow(b.ctx, b.infra);
     expect(value(r)).toEqual([`erreur: ${SEARCH_DENIED}`, `erreur: ${SEARCHES_STOPPED}`]);
     expect(html()).toHaveLength(1);
     // « b » waited for nothing; the next search waits 2 s from the end of « a », the only one that was played (not 2 s more).
-    await pacing.rechercher(async () => {});
+    await pacing.search(async () => {});
     expect(waits).toEqual([2000]);
   });
 
@@ -857,9 +857,9 @@ describe("executerWorkflow: web search and open reads", () => {
 
   it("web widget: the 101st open read (pages and feeds) throws TOO_MANY_READS", async () => {
     const web = await webServer({ "/f": (res) => res.end("<rss><channel><item><title>T</title><link>https://x.example/</link></item></channel></rss>") });
-    const { menagement: pacing, attentes: waits } = fakePacing();
-    const spy = vi.spyOn(pacing, "lire");
-    const { b, pont: bridge } = await webBench(
+    const { pacing: pacing, waits: waits } = fakePacing();
+    const spy = vi.spyOn(pacing, "read");
+    const { b, bridge: bridge } = await webBench(
       `const essai = (p) => p.then(() => "ok", (e) => "erreur: " + e.message);
       export default async (e, w) => {
         const r = [];
@@ -870,14 +870,14 @@ describe("executerWorkflow: web search and open reads", () => {
         r.push(await essai(w.recuperer("${web.url}/f")));
         return r;
       };`,
-      { web: true, menagement: pacing },
+      { web: true, pacing: pacing },
     );
     const r = await runWorkflow(b.ctx, b.infra);
     const output = value(r) as string[];
     expect(output.slice(0, 100).every((x) => x === "ok")).toBe(true);
     expect(output.slice(100)).toEqual([`erreur: ${TOO_MANY_READS}`, `erreur: ${TOO_MANY_READS}`]);
-    expect(bridge.appels.filter((a) => a.methode === "lirePageInvisible")).toHaveLength(40);
-    expect(web.requetes).toHaveLength(60);
+    expect(bridge.calls.filter((a) => a.method === "lirePageInvisible")).toHaveLength(40);
+    expect(web.requests).toHaveLength(60);
     // Each goes through the throttle, per host: 1 s between two reads of the same host.
     expect(spy).toHaveBeenCalledTimes(100);
     expect(spy.mock.calls.slice(0, 40).every((c) => c[0] === "www.pages.example")).toBe(true);
@@ -887,13 +887,13 @@ describe("executerWorkflow: web search and open reads", () => {
   });
 
   it("web widget: a read redirected to another site waits for that site's throttle", async () => {
-    const { menagement: pacing, attentes: waits } = fakePacing();
+    const { pacing: pacing, waits: waits } = fakePacing();
     const bridge = new FakeBridge([], {
-      actif: null,
-      autoriser: false,
-      lecture: {
-        pages: [{ url: "https://b.example/2", titre: "deux", texte: "", liens: [] }],
-        redirections: { "https://a.example/court": "https://www.b.example/2", "https://a.example/meme": "https://www.a.example/x" },
+      active: null,
+      allow: false,
+      read: {
+        pages: [{ url: "https://b.example/2", title: "deux", text: "", links: [] }],
+        redirects: { "https://a.example/court": "https://www.b.example/2", "https://a.example/meme": "https://www.a.example/x" },
       },
     });
     const b = await bench(
@@ -905,15 +905,15 @@ describe("executerWorkflow: web search and open reads", () => {
           (await w.lirePage("https://a.example/meme")).url,
         ];`,
       },
-      { pont: bridge },
+      { bridge: bridge },
     );
     b.ctx.sources = { ...b.ctx.sources, web: true };
-    b.infra.menagement = pacing;
+    b.infra.pacing = pacing;
     const r = await runWorkflow(b.ctx, b.infra);
     expect(value(r)).toEqual(["https://b.example/1", "https://www.b.example/2", "https://www.a.example/x"]);
     // b.example read just before: the redirect waits 1 s. a.example, released at the redirect, does not make
     // the 3rd read wait, redirected to the same site (www.).
-    expect(bridge.appels.filter((a) => a.methode === "changerHote").map((a) => a.args[0])).toEqual(["www.b.example", "www.a.example"]);
+    expect(bridge.calls.filter((a) => a.method === "changerHote").map((a) => a.args[0])).toEqual(["www.b.example", "www.a.example"]);
     expect(waits).toEqual([1000]);
   });
 
@@ -928,11 +928,11 @@ describe("executerWorkflow: web search and open reads", () => {
       },
     });
     elsewhere = `http://localhost:${web.port}/f`;
-    const { menagement: pacing, attentes: waits } = fakePacing();
-    const read = vi.spyOn(pacing, "lire");
+    const { pacing: pacing, waits: waits } = fakePacing();
+    const read = vi.spyOn(pacing, "read");
     const { b } = await webBench(
       `export default async (e, w) => [await w.recuperer("${elsewhere}"), await w.recuperer("${web.url}/vers-localhost")];`,
-      { web: true, menagement: pacing },
+      { web: true, pacing: pacing },
     );
     const r = await runWorkflow(b.ctx, b.infra);
     expect(value(r)).toEqual(["fini", "fini"]);
@@ -958,7 +958,7 @@ describe("executerWorkflow: web search and open reads", () => {
     await vi.waitFor(() => expect(changeHost).toHaveBeenCalledWith("localhost"));
     stop.abort(new Error("Exécution arrêtée"));
     await expect(p).rejects.toThrow("Exécution arrêtée");
-    expect(web.requetes).toEqual(["/vers-localhost"]);
+    expect(web.requests).toEqual(["/vers-localhost"]);
   });
 
   it("recuperer: a name that resolves to the machine is refused at connection, without a request", async () => {
@@ -971,20 +971,20 @@ describe("executerWorkflow: web search and open reads", () => {
     } finally {
       resolution.mockRestore();
     }
-    expect(web.requetes).toEqual([]);
+    expect(web.requests).toEqual([]);
   });
 
   it("widget without web: 150 reads go through, no throttle wait", async () => {
-    const spy = new Pacing({ attendre: async () => { throw new Error("aucune attente attendue"); } });
-    const read = vi.spyOn(spy, "lire");
-    const search = vi.spyOn(spy, "rechercher");
-    const { b, pont: bridge } = await webBench(
+    const spy = new Pacing({ wait: async () => { throw new Error("aucune attente attendue"); } });
+    const read = vi.spyOn(spy, "read");
+    const search = vi.spyOn(spy, "search");
+    const { b, bridge: bridge } = await webBench(
       `export default async (e, w) => { for (let i = 0; i < 150; i++) await w.lirePage("https://pages.example/" + i); return "fini"; };`,
-      { menagement: spy },
+      { pacing: spy },
     );
     const r = await runWorkflow(b.ctx, b.infra);
     expect(value(r)).toBe("fini");
-    expect(bridge.appels.filter((a) => a.methode === "lirePageInvisible")).toHaveLength(150);
+    expect(bridge.calls.filter((a) => a.method === "lirePageInvisible")).toHaveLength(150);
     expect(read).not.toHaveBeenCalled();
     expect(search).not.toHaveBeenCalled();
   });
@@ -992,27 +992,27 @@ describe("executerWorkflow: web search and open reads", () => {
   it("run stop: a read waiting for the throttle does not leave", async () => {
     let t = 0;
     const pending: (() => void)[] = [];
-    const pacing = new Pacing({ maintenant: () => t, attendre: () => new Promise<void>((ok) => pending.push(ok)) });
-    const { b, pont: bridge } = await webBench(
+    const pacing = new Pacing({ now: () => t, wait: () => new Promise<void>((ok) => pending.push(ok)) });
+    const { b, bridge: bridge } = await webBench(
       `export default async (e, w) => { await w.lirePage("https://pages.example/1"); return w.lirePage("https://pages.example/2"); };`,
-      { web: true, menagement: pacing, delaiMs: 300 },
+      { web: true, pacing: pacing, delayMs: 300 },
     );
     const r = await runWorkflow(b.ctx, b.infra);
-    expect(r.issue).toEqual({ t: "arret", statut: "erreur", erreur: "Délai dépassé" });
+    expect(r.issue).toEqual({ t: "arret", status: "erreur", error: "Délai dépassé" });
     // The gap elapses after the stop: the queued read does not leave.
     t += 10_000;
     for (const ok of pending.splice(0)) ok();
     await new Promise((ok) => setTimeout(ok, 20));
-    expect(bridge.appels.filter((a) => a.methode === "lirePageInvisible").map((a) => a.args[0])).toEqual(["https://pages.example/1"]);
+    expect(bridge.calls.filter((a) => a.method === "lirePageInvisible").map((a) => a.args[0])).toEqual(["https://pages.example/1"]);
   });
 
   it("end of the run: a search still queued does not leave", async () => {
     let t = 0;
     const pending: (() => void)[] = [];
-    const pacing = new Pacing({ maintenant: () => t, attendre: () => new Promise<void>((ok) => pending.push(ok)) });
+    const pacing = new Pacing({ now: () => t, wait: () => new Promise<void>((ok) => pending.push(ok)) });
     const { b, html } = await webBench(
       `export default async (e, w) => { await w.chercherWeb("a"); w.chercherWeb("b").catch(() => {}); return "fini"; };`,
-      { web: true, menagement: pacing, html: { [searchUrl("a", BASE)]: page("resultats.html") } },
+      { web: true, pacing: pacing, html: { [searchUrl("a", BASE)]: page("resultats.html") } },
     );
     const r = await runWorkflow(b.ctx, b.infra);
     expect(value(r)).toBe("fini");
@@ -1042,55 +1042,55 @@ describe("executerWorkflow: a stop cancels the reads in progress", () => {
         finish(null);
       };
       setImmediate(() => calls.forEach((x, i) => stdout.write(JSON.stringify({ t: "appel", n: i + 1, ...x }) + "\n")));
-      return { stdin, stdout, stderr, tuer: () => kill(), fin: end };
+      return { stdin, stdout, stderr, kill: () => kill(), end: end };
     };
     return {
-      lancer: launch,
+      launch: launch,
       /** The container is removed from outside (quitting the browser). */
-      tuer: () => kill(),
-      reponses: () => received.join("").split("\n").filter((l) => l.includes(`"t":"reponse"`)),
+      kill: () => kill(),
+      responses: () => received.join("").split("\n").filter((l) => l.includes(`"t":"reponse"`)),
     };
   };
-  const cancelledList = (bridge: FakeBridge) => bridge.appels.filter((a) => a.methode === "lectureAnnulee").map((a) => a.args[0]);
-  const value = (r: Awaited<ReturnType<typeof runWorkflow>>) => (r.issue.t === "fin" ? r.issue.sortie.valeur : r.issue);
+  const cancelledList = (bridge: FakeBridge) => bridge.calls.filter((a) => a.method === "lectureAnnulee").map((a) => a.args[0]);
+  const value = (r: Awaited<ReturnType<typeof runWorkflow>>) => (r.issue.t === "fin" ? r.issue.output.value : r.issue);
 
   it("timeout exceeded: pages (public, with an account) and fetch in progress cancelled, nothing comes back to the container", async () => {
     const closed: string[] = [];
     const web = await webServer({ "/lent": (res) => void res.on("close", () => closed.push("/lent")) });
-    const bridge = new FakeBridge([], { actif: null, autoriser: false, lecture: { pages: [], suspendues: ["https://pages.example/a", "https://app.daily.dev/b"] } });
+    const bridge = new FakeBridge([], { active: null, allow: false, read: { pages: [], suspended: ["https://pages.example/a", "https://app.daily.dev/b"] } });
     const c = callsContainer([
       { f: "lirePage", a: { url: "https://pages.example/a" } },
-      { f: "lirePage", a: { url: "https://app.daily.dev/b", compte: true } },
+      { f: "lirePage", a: { url: "https://app.daily.dev/b", account: true } },
       { f: "recuperer", a: { url: `${web.url}/lent` } },
     ]);
-    const b = await bench(chain("a"), {}, { pont: bridge, compte: ["app.daily.dev"], publiques: ["pages.example", "127.0.0.1"], accord: { profil: "perso" }, delaiMs: 300, lancer: c.lancer });
+    const b = await bench(chain("a"), {}, { bridge: bridge, account: ["app.daily.dev"], public: ["pages.example", "127.0.0.1"], grant: { profile: "perso" }, delayMs: 300, launch: c.launch });
     const r = await runWorkflow(b.ctx, b.infra);
-    expect(r.issue).toEqual({ t: "arret", statut: "erreur", erreur: "Délai dépassé" });
+    expect(r.issue).toEqual({ t: "arret", status: "erreur", error: "Délai dépassé" });
     await vi.waitFor(() => {
       expect(cancelledList(bridge).sort()).toEqual(["https://app.daily.dev/b", "https://pages.example/a"]);
       expect(closed).toEqual(["/lent"]);
     });
     await new Promise((ok) => setTimeout(ok, 20));
-    expect(c.reponses()).toEqual([]);
+    expect(c.responses()).toEqual([]);
   });
 
   it("container removed (quit): its reads are cancelled, not those of another run", async () => {
     const bridge = new FakeBridge([], {
-      actif: null,
-      autoriser: false,
-      lecture: { pages: [{ url: "https://pages.example/b", titre: "B", texte: "", liens: [] }], suspendues: ["https://pages.example/a", "https://pages.example/b"] },
+      active: null,
+      allow: false,
+      read: { pages: [{ url: "https://pages.example/b", title: "B", text: "", links: [] }], suspended: ["https://pages.example/a", "https://pages.example/b"] },
     });
-    const other = await bench(chain("a"), { "a.mjs": `export default async (e, w) => (await w.lirePage("https://pages.example/b")).titre;` }, { pont: bridge });
+    const other = await bench(chain("a"), { "a.mjs": `export default async (e, w) => (await w.lirePage("https://pages.example/b")).titre;` }, { bridge: bridge });
     const c = callsContainer([{ f: "lirePage", a: { url: "https://pages.example/a" } }]);
-    const b = await bench(chain("a"), {}, { pont: bridge, lancer: c.lancer });
+    const b = await bench(chain("a"), {}, { bridge: bridge, launch: c.launch });
     const rOther = runWorkflow(other.ctx, other.infra);
     const r = runWorkflow(b.ctx, b.infra);
-    await vi.waitFor(() => expect(bridge.appels.filter((a) => a.methode === "lirePageInvisible")).toHaveLength(2));
-    c.tuer();
+    await vi.waitFor(() => expect(bridge.calls.filter((a) => a.method === "lirePageInvisible")).toHaveLength(2));
+    c.kill();
     expect((await r).issue.t).toBe("echec");
     await vi.waitFor(() => expect(cancelledList(bridge)).toEqual(["https://pages.example/a"]));
     // The other run, for its part, still reads.
-    expect(bridge.relacher("https://pages.example/b")).toBe(1);
+    expect(bridge.release("https://pages.example/b")).toBe(1);
     expect(value(await rOther)).toBe("B");
     expect(cancelledList(bridge)).toEqual(["https://pages.example/a"]);
   });
@@ -1099,39 +1099,39 @@ describe("executerWorkflow: a stop cancels the reads in progress", () => {
     let t = 0;
     const waits: number[] = [];
     const pacing = new Pacing({
-      maintenant: () => t,
-      attendre: async (ms) => {
+      now: () => t,
+      wait: async (ms) => {
         waits.push(ms);
         t += ms;
       },
     });
     const bridge = new FakeBridge([], {
-      actif: null,
-      autoriser: false,
-      lecture: {
-        pages: [{ url: "https://pages.example/2", titre: "deux", texte: "", liens: [] }],
+      active: null,
+      allow: false,
+      read: {
+        pages: [{ url: "https://pages.example/2", title: "deux", text: "", links: [] }],
         html: { [searchUrl("b", BASE)]: readFileSync(new URL("./fixtures/duckduckgo/aucun-resultat.html", import.meta.url), "utf8") },
-        suspendues: ["https://pages.example/1", searchUrl("a", BASE)],
+        suspended: ["https://pages.example/1", searchUrl("a", BASE)],
       },
     });
     const prepare = (bb: Bench) => {
       bb.ctx.sources = { ...bb.ctx.sources, web: true };
-      bb.infra.menagement = pacing;
-      bb.infra.urlRecherche = BASE;
+      bb.infra.pacing = pacing;
+      bb.infra.searchUrl = BASE;
     };
     const c = callsContainer([
       { f: "lirePage", a: { url: "https://pages.example/1" } },
-      { f: "chercherWeb", a: { requete: "a", nombre: 1 } },
+      { f: "chercherWeb", a: { query: "a", count: 1 } },
     ]);
-    const b = await bench(chain("a"), {}, { pont: bridge, delaiMs: 300, lancer: c.lancer });
+    const b = await bench(chain("a"), {}, { bridge: bridge, delayMs: 300, launch: c.launch });
     prepare(b);
-    expect((await runWorkflow(b.ctx, b.infra)).issue).toEqual({ t: "arret", statut: "erreur", erreur: "Délai dépassé" });
+    expect((await runWorkflow(b.ctx, b.infra)).issue).toEqual({ t: "arret", status: "erreur", error: "Délai dépassé" });
     await vi.waitFor(() => expect(cancelledList(bridge).sort()).toEqual(["https://pages.example/1", searchUrl("a", BASE)].sort()));
     // Another run on the same throttle: neither the host's lane nor the searches' lane stays taken.
     const next = await bench(
       chain("a"),
       { "a.mjs": `export default async (e, w) => [(await w.lirePage("https://pages.example/2")).titre, (await w.chercherWeb("b", { nombre: 1 })).length];` },
-      { pont: bridge, delaiMs: 3000 },
+      { bridge: bridge, delayMs: 3000 },
     );
     prepare(next);
     expect(value(await runWorkflow(next.ctx, next.infra))).toEqual(["deux", 0]);
@@ -1143,15 +1143,15 @@ describe("executerWorkflow: a stop cancels the reads in progress", () => {
 
 describe("executerWorkflow: watch (duration, chain, publications, memory along the way)", () => {
   /** liste (code) → fiche → avis (source.recuperer per element) → sortie. */
-  const watch = (o: { auFilDeLEau?: boolean } = {}) => ({
+  const watch = (o: { live?: boolean } = {}) => ({
     version: 1,
-    blocs: [
-      { id: "liste", type: "code", parametres: { source: "liste.mjs" } },
-      { id: "fiche", type: "source.recuperer", parametres: { url: "{url}", parElement: true } },
-      { id: "avis", type: "source.recuperer", parametres: { url: "{url}", parElement: true } },
-      { id: "sortie", type: "sortie", parametres: { vers: "widget", ...(o.auFilDeLEau ? { auFilDeLEau: true } : {}) } },
+    blocks: [
+      { id: "liste", type: "code", params: { source: "liste.mjs" } },
+      { id: "fiche", type: "source.recuperer", params: { url: "{url}", perItem: true } },
+      { id: "avis", type: "source.recuperer", params: { url: "{url}", perItem: true } },
+      { id: "sortie", type: "sortie", params: { to: "widget", ...(o.live ? { live: true } : {}) } },
     ],
-    liens: [{ de: "liste", vers: "fiche" }, { de: "fiche", vers: "avis" }, { de: "avis", vers: "sortie" }],
+    links: [{ from: "liste", to: "fiche" }, { from: "fiche", to: "avis" }, { from: "avis", to: "sortie" }],
   });
 
   /**
@@ -1159,11 +1159,11 @@ describe("executerWorkflow: watch (duration, chain, publications, memory along t
    * is written as is, several lines at once);
    * `recu` receives what the kernel writes to it; `bloque`: it never exits on its own (only killed).
    */
-  const launcherSteps = (step: unknown[], o: { recu?: string[]; bloque?: boolean } = {}): ProcessLauncher => () => {
+  const launcherSteps = (step: unknown[], o: { received?: string[]; blocked?: boolean } = {}): ProcessLauncher => () => {
     const stdout = new PassThrough();
     const stderr = new PassThrough();
     const stdin = new PassThrough();
-    stdin.on("data", (d: Buffer) => o.recu?.push(d.toString()));
+    stdin.on("data", (d: Buffer) => o.received?.push(d.toString()));
     let kill = () => {};
     const end = new Promise<number | null>((ok) => {
       kill = () => ok(null);
@@ -1174,19 +1174,19 @@ describe("executerWorkflow: watch (duration, chain, publications, memory along t
           else stdout.write(typeof p === "string" ? p : JSON.stringify(p) + "\n");
         }
         await new Promise((r) => setImmediate(r));
-        if (o.bloque) return;
+        if (o.blocked) return;
         stdout.end();
         stderr.end();
         setImmediate(() => ok(0));
       })();
     });
-    return { stdin, stdout, stderr, tuer: () => kill(), fin: end };
+    return { stdin, stdout, stderr, kill: () => kill(), end: end };
   };
 
   /** A clock that the steps make advance. */
   const fakeClock = (b: Bench) => {
     let t = NOW.getTime();
-    b.infra.horloge = () => new Date(t);
+    b.infra.clock = () => new Date(t);
     return (ms: number) => () => {
       t += ms;
     };
@@ -1194,15 +1194,15 @@ describe("executerWorkflow: watch (duration, chain, publications, memory along t
 
   /** The workshop's real command, kept to read its `timeout`. */
   const connectWorkshop = (b: Bench) => {
-    const workshop = new Workshop({ chemins: spacePaths("/Users/t/WebAiOs"), docker: "/usr/local/bin/docker" });
+    const workshop = new Workshop({ paths: spacePaths("/Users/t/WebAiOs"), docker: "/usr/local/bin/docker" });
     const commands: string[][] = [];
-    b.infra.atelier = {
-      commandeRecolte: (id, d, m, s) => {
-        const c = workshop.commandeRecolte(id, d, m, s);
+    b.infra.workshop = {
+      harvestCommand: (id, d, m, s) => {
+        const c = workshop.harvestCommand(id, d, m, s);
         commands.push(c);
         return c;
       },
-      supprimerRecolte: async () => {},
+      deleteHarvest: async () => {},
     };
     return () => {
       const c = commands[0]!;
@@ -1221,26 +1221,26 @@ describe("executerWorkflow: watch (duration, chain, publications, memory along t
     }
   }
 
-  const blockStart = (id: string) => ({ t: "bloc", id, etape: "debut" });
-  const blockEnd = (id: string, output: unknown = [{ url: "https://a.example/1" }], status = "reussi") => ({ t: "bloc", id, etape: "fin", statut: status, sortie: output });
-  const pub = (data: unknown, done: number, total: number) => ({ t: "publication", donnees: data, faits: done, total });
+  const blockStart = (id: string) => ({ t: "bloc", id, step: "debut" });
+  const blockEnd = (id: string, output: unknown = [{ url: "https://a.example/1" }], status = "reussi") => ({ t: "bloc", id, step: "fin", status: status, output: output });
+  const pub = (data: unknown, done: number, total: number) => ({ t: "publication", data: data, done: done, total });
   const attempt = (b: Bench) => {
-    b.ctx.declencheur = "rejeu";
-    b.ctx.rejeu = { relances: [...b.ctx.valide.ordre], sorties: {}, repris: {} };
+    b.ctx.trigger = "rejeu";
+    b.ctx.replay = { reruns: [...b.ctx.valid.order], outputs: {}, resumed: {} };
   };
 
   it("the watch() chain is fiche → avis", () => {
-    expect(streamingChain(valid(watch({ auFilDeLEau: true })))).toEqual(["fiche", "avis"]);
+    expect(streamingChain(valid(watch({ live: true })))).toEqual(["fiche", "avis"]);
   });
 
   it("widget without the new fields: debut line identical to today, timeout 180, delay 200 s", async () => {
     const received: string[] = [];
-    const b = await bench(watch(), {}, { lancer: launcherSteps([{ t: "fin", donnees: null }], { recu: received }) });
+    const b = await bench(watch(), {}, { launch: launcherSteps([{ t: "fin", data: null }], { received: received }) });
     const timeout = connectWorkshop(b);
     const delays = await delaysDuring(() => runWorkflow(b.ctx, b.infra));
-    const { workflow, ordre: order } = b.ctx.valide;
+    const { workflow, order: order } = b.ctx.valid;
     expect(received.join("").split("\n")[0]).toBe(
-      JSON.stringify({ t: "debut", precedent: null, maintenant: NOW.toISOString(), config: { interets: "rust" }, workflow: { blocs: workflow.blocs, liens: workflow.liens, ordre: order } }),
+      JSON.stringify({ t: "debut", previous: null, now: NOW.toISOString(), config: { interests: "rust" }, workflow: { blocks: workflow.blocks, links: workflow.links, order: order } }),
     );
     expect(timeout()).toEqual(["timeout", "-k", "5", "180"]);
     expect(delays).toContain(200_000);
@@ -1248,37 +1248,37 @@ describe("executerWorkflow: watch (duration, chain, publications, memory along t
 
   it("Gmail widget (account, recolte.mjs alone): identical debut line, timeout 180, delay 200 s, neither surMemoire nor memoire on an echec", async () => {
     const received: string[] = [];
-    const implicit = { version: 1, blocs: [{ id: "recolte", type: "code", parametres: { source: "recolte.mjs" } }, { id: "sortie", type: "sortie", parametres: { vers: "widget" } }], liens: [{ de: "recolte", vers: "sortie" }] };
+    const implicit = { version: 1, blocks: [{ id: "recolte", type: "code", params: { source: "recolte.mjs" } }, { id: "sortie", type: "sortie", params: { to: "widget" } }], links: [{ from: "recolte", to: "sortie" }] };
     const b = await bench(implicit, {}, {
-      compte: ["mail.google.com"],
-      accord: { profil: "p1" },
-      lancer: launcherSteps([{ t: "memoire", memoire: { recolte: { type: "code", valeur: 1 } } }, { t: "journal", bloc: "recolte", texte: "x" }, { t: "echec", erreur: "cassé" }], { recu: received }),
+      account: ["mail.google.com"],
+      grant: { profile: "p1" },
+      launch: launcherSteps([{ t: "memoire", memory: { harvest: { type: "code", value: 1 } } }, { t: "journal", block: "recolte", text: "x" }, { t: "echec", error: "cassé" }], { received: received }),
     });
     const timeout = connectWorkshop(b);
     const memories: unknown[] = [];
-    b.infra.surMemoire = async (m) => void memories.push(m);
+    b.infra.onMemory = async (m) => void memories.push(m);
     let outcome: unknown;
     const delays = await delaysDuring(async () => {
       outcome = (await runWorkflow(b.ctx, b.infra)).issue;
     });
-    const { workflow, ordre: order } = b.ctx.valide;
+    const { workflow, order: order } = b.ctx.valid;
     expect(received.join("").split("\n")[0]).toBe(
-      JSON.stringify({ t: "debut", precedent: null, maintenant: NOW.toISOString(), config: { interets: "rust" }, workflow: { blocs: workflow.blocs, liens: workflow.liens, ordre: order } }),
+      JSON.stringify({ t: "debut", previous: null, now: NOW.toISOString(), config: { interests: "rust" }, workflow: { blocks: workflow.blocks, links: workflow.links, order: order } }),
     );
     expect(timeout()).toEqual(["timeout", "-k", "5", "180"]);
     expect(delays).toContain(200_000);
     expect(memories).toEqual([]);
-    expect(outcome).toEqual({ t: "echec", erreur: "cassé", erreurDuCode: true });
+    expect(outcome).toEqual({ t: "echec", error: "cassé", codeError: true });
   });
 
   it("dureeMaxMinutes 30: debut carries limiteMs 1,800,000 and progressif, container launched with timeout 1830, delay 1,850 s", async () => {
     const received: string[] = [];
-    const b = await bench(watch(), {}, { lancer: launcherSteps([{ t: "fin", donnees: null }], { recu: received }) });
-    b.ctx.dureeMaxMinutes = 30;
+    const b = await bench(watch(), {}, { launch: launcherSteps([{ t: "fin", data: null }], { received: received }) });
+    b.ctx.maxDurationMinutes = 30;
     const timeout = connectWorkshop(b);
     const delays = await delaysDuring(() => runWorkflow(b.ctx, b.infra));
     const start = JSON.parse(received.join("").split("\n")[0]!);
-    expect(start).toMatchObject({ t: "debut", limiteMs: 1_800_000, progressif: true });
+    expect(start).toMatchObject({ t: "debut", limitMs: 1_800_000, progressive: true });
     expect(timeout()).toEqual(["timeout", "-k", "5", "1830"]);
     expect(delays).toContain(1_850_000);
     expect(delays).not.toContain(200_000);
@@ -1286,89 +1286,89 @@ describe("executerWorkflow: watch (duration, chain, publications, memory along t
 
   it("auFilDeLEau without dureeMaxMinutes: progressif without limiteMs; a trial is never progressive", async () => {
     const received: string[] = [];
-    const b = await bench(watch({ auFilDeLEau: true }), {}, { lancer: launcherSteps([{ t: "fin", donnees: null }], { recu: received }) });
+    const b = await bench(watch({ live: true }), {}, { launch: launcherSteps([{ t: "fin", data: null }], { received: received }) });
     await runWorkflow(b.ctx, b.infra);
     const start = JSON.parse(received.join("").split("\n")[0]!);
     expect(start.progressif).toBe(true);
-    expect("limiteMs" in start).toBe(false);
+    expect("limitMs" in start).toBe(false);
 
     const receivedAttempt: string[] = [];
-    const e = await bench(watch({ auFilDeLEau: true }), {}, { lancer: launcherSteps([{ t: "fin", donnees: null }], { recu: receivedAttempt }) });
-    e.ctx.dureeMaxMinutes = 30;
+    const e = await bench(watch({ live: true }), {}, { launch: launcherSteps([{ t: "fin", data: null }], { received: receivedAttempt }) });
+    e.ctx.maxDurationMinutes = 30;
     attempt(e);
     await runWorkflow(e.ctx, e.infra);
     const attemptStart = JSON.parse(receivedAttempt.join("").split("\n")[0]!);
-    expect("progressif" in attemptStart).toBe(false);
+    expect("progressive" in attemptStart).toBe(false);
     expect(attemptStart.limiteMs).toBe(1_800_000);
   });
 
   it("chain traces accepted; an out-of-order chain end rejected", async () => {
-    const inChain = await bench(watch({ auFilDeLEau: true }), {}, {
-      lancer: launcherSteps([
+    const inChain = await bench(watch({ live: true }), {}, {
+      launch: launcherSteps([
         blockStart("liste"), blockEnd("liste"),
         blockStart("fiche"), blockStart("avis"),
-        { t: "journal", bloc: "fiche", texte: "lu" },
+        { t: "journal", block: "fiche", text: "lu" },
         blockEnd("fiche"), blockEnd("avis"),
         blockStart("sortie"), blockEnd("sortie"),
-        { t: "fin", donnees: [] },
+        { t: "fin", data: [] },
       ]),
     });
     const relayed: unknown[] = [];
-    inChain.infra.surTrace = (t) => relayed.push(t);
+    inChain.infra.onTrace = (t) => relayed.push(t);
     const r = await runWorkflow(inChain.ctx, inChain.infra);
-    expect(r.execution.statut).toBe("reussie");
-    expect(r.execution.blocs.find((x) => x.id === "fiche")!.journal).toEqual(["lu"]);
+    expect(r.run.status).toBe("reussie");
+    expect(r.run.blocks.find((x) => x.id === "fiche")!.log).toEqual(["lu"]);
     expect(relayed).toEqual([
-      { bloc: "liste", etape: "debut" },
-      { bloc: "liste", etape: "fin", statut: "reussi", elements: 1 },
-      { bloc: "fiche", etape: "debut" },
-      { bloc: "avis", etape: "debut" },
-      { bloc: "fiche", etape: "fin", statut: "reussi", elements: 1 },
-      { bloc: "avis", etape: "fin", statut: "reussi", elements: 1 },
-      { bloc: "sortie", etape: "debut" },
-      { bloc: "sortie", etape: "fin", statut: "reussi", elements: 1 },
+      { block: "liste", step: "debut" },
+      { block: "liste", step: "fin", status: "reussi", items: 1 },
+      { block: "fiche", step: "debut" },
+      { block: "avis", step: "debut" },
+      { block: "fiche", step: "fin", status: "reussi", items: 1 },
+      { block: "avis", step: "fin", status: "reussi", items: 1 },
+      { block: "sortie", step: "debut" },
+      { block: "sortie", step: "fin", status: "reussi", items: 1 },
     ]);
 
     // End of avis before that of fiche: rejected; avis started without an end, the output (arriving too early) rejected.
-    const unordered = await bench(watch({ auFilDeLEau: true }), {}, {
-      lancer: launcherSteps([
+    const unordered = await bench(watch({ live: true }), {}, {
+      launch: launcherSteps([
         blockStart("liste"), blockEnd("liste"),
         blockStart("fiche"), blockStart("avis"),
         blockEnd("avis"), blockEnd("fiche"),
         blockStart("sortie"),
-        { t: "fin", donnees: [] },
+        { t: "fin", data: [] },
       ]),
     });
     const relayees2: unknown[] = [];
-    unordered.infra.surTrace = (t) => relayees2.push(t);
+    unordered.infra.onTrace = (t) => relayees2.push(t);
     const r2 = await runWorkflow(unordered.ctx, unordered.infra);
-    expect(r2.execution.blocs.map((x) => x.statut)).toEqual(["reussi", "reussi", "echoue", "pas-lance"]);
-    expect(relayees2).not.toContainEqual(expect.objectContaining({ bloc: "avis", etape: "fin" }));
+    expect(r2.run.blocks.map((x) => x.status)).toEqual(["reussi", "reussi", "echoue", "pas-lance"]);
+    expect(relayees2).not.toContainEqual(expect.objectContaining({ block: "avis", step: "fin" }));
 
     // Without auFilDeLEau: two debut in a row, the second is rejected as today.
     const without = await bench(watch(), {}, {
-      lancer: launcherSteps([
+      launch: launcherSteps([
         blockStart("liste"), blockEnd("liste"),
         blockStart("fiche"), blockStart("avis"),
         blockEnd("fiche"), blockEnd("avis"),
-        { t: "fin", donnees: [] },
+        { t: "fin", data: [] },
       ]),
     });
     const r3 = await runWorkflow(without.ctx, without.infra);
-    expect(r3.execution.blocs.map((x) => x.statut)).toEqual(["reussi", "reussi", "pas-lance", "pas-lance"]);
+    expect(r3.run.blocks.map((x) => x.status)).toEqual(["reussi", "reussi", "pas-lance", "pas-lance"]);
 
     // A trial has no chain: same rejection.
-    const e = await bench(watch({ auFilDeLEau: true }), {}, {
-      lancer: launcherSteps([
+    const e = await bench(watch({ live: true }), {}, {
+      launch: launcherSteps([
         blockStart("liste"), blockEnd("liste"),
         blockStart("fiche"), blockStart("avis"),
         blockEnd("fiche"), blockEnd("avis"),
-        { t: "fin", donnees: [] },
+        { t: "fin", data: [] },
       ]),
     });
     attempt(e);
     const r4 = await runWorkflow(e.ctx, e.infra);
-    expect(r4.execution.blocs.map((x) => x.statut)).toEqual(["reussi", "reussi", "pas-lance", "pas-lance"]);
+    expect(r4.run.blocks.map((x) => x.status)).toEqual(["reussi", "reussi", "pas-lance", "pas-lance"]);
   });
 
   it("publication relayed only during the chain and 5 s apart; ignored before the chain, for a trial, without auFilDeLEau, beyond 2 MB", async () => {
@@ -1390,123 +1390,123 @@ describe("executerWorkflow: watch (duration, chain, publications, memory along t
       blockEnd("avis"),
       advance(5000), pub("après la chaîne", 3, 3),
       blockStart("sortie"), blockEnd("sortie"),
-      { t: "fin", donnees: "finale" },
+      { t: "fin", data: "finale" },
     ];
     const launchWith = async (workflow: unknown, set: (b: Bench) => void = () => {}) => {
       const b = await bench(workflow);
       const advance = fakeClock(b);
-      b.infra.lancer = launcherSteps(step(advance));
+      b.infra.launch = launcherSteps(step(advance));
       set(b);
       const relayed: unknown[] = [];
-      b.infra.surPublication = async (p) => {
+      b.infra.onPublish = async (p) => {
         relayed.push(p);
       };
       const r = await runWorkflow(b.ctx, b.infra);
-      expect(r.issue).toMatchObject({ t: "fin", sortie: { valeur: "finale" } });
+      expect(r.issue).toMatchObject({ t: "fin", output: { value: "finale" } });
       return relayed;
     };
 
-    expect(await launchWith(watch({ auFilDeLEau: true }))).toEqual([
-      { donnees: "A", faits: 1, total: 3 },
-      { donnees: "C", faits: 2, total: 3 },
-      { donnees: "D", faits: 3, total: 3 },
+    expect(await launchWith(watch({ live: true }))).toEqual([
+      { data: "A", done: 1, total: 3 },
+      { data: "C", done: 2, total: 3 },
+      { data: "D", done: 3, total: 3 },
     ]);
-    expect(await launchWith(watch({ auFilDeLEau: true }), attempt)).toEqual([]);
-    expect(await launchWith(watch(), (b) => void (b.ctx.dureeMaxMinutes = 30))).toEqual([]);
+    expect(await launchWith(watch({ live: true }), attempt)).toEqual([]);
+    expect(await launchWith(watch(), (b) => void (b.ctx.maxDurationMinutes = 30))).toEqual([]);
   });
 
   it("a slow surPublication is finished before executerWorkflow returns", async () => {
-    const b = await bench(watch({ auFilDeLEau: true }));
+    const b = await bench(watch({ live: true }));
     const advance = fakeClock(b);
-    b.infra.lancer = launcherSteps([
+    b.infra.launch = launcherSteps([
       blockStart("liste"), blockEnd("liste"), blockStart("fiche"), blockStart("avis"),
       pub("A", 1, 2), advance(5000), pub("B", 2, 2),
       blockEnd("fiche"), blockEnd("avis"), blockStart("sortie"), blockEnd("sortie"),
-      { t: "fin", donnees: "finale" },
+      { t: "fin", data: "finale" },
     ]);
     const finished: unknown[] = [];
     let running = 0;
     let atMost = 0;
-    b.infra.surPublication = async (p) => {
+    b.infra.onPublish = async (p) => {
       running++;
       atMost = Math.max(atMost, running);
       await new Promise((ok) => setTimeout(ok, 80));
-      finished.push(p.donnees);
+      finished.push(p.data);
       running--;
     };
     const r = await runWorkflow(b.ctx, b.infra);
     expect(finished).toEqual(["A", "B"]);
     expect(atMost).toBe(1);
-    expect(r.issue).toMatchObject({ t: "fin", sortie: { valeur: "finale" } });
+    expect(r.issue).toMatchObject({ t: "fin", output: { value: "finale" } });
   });
 
   it("progressive: surMemoire at most every 30 s; an echec carries the last memory received; non-progressive: neither surMemoire nor memoire in the outcome", async () => {
     // The hash of the validated parameters (defaults included) of the liste block.
-    const hash = paramsHash(valid(watch()).workflow.blocs.find((x) => x.id === "liste")!.parametres);
-    const m = (n: number) => ({ t: "memoire", memoire: { liste: { type: "code", valeur: n }, inconnu: { type: "code", valeur: n } } });
-    const marquee = (n: number) => ({ liste: { type: "code", valeur: n, empreinte: hash } });
-    const launchWith = async (d: number | undefined, end: unknown = { t: "echec", erreur: "cassé" }) => {
+    const hash = paramsHash(valid(watch()).workflow.blocks.find((x) => x.id === "liste")!.params);
+    const m = (n: number) => ({ t: "memoire", memory: { list: { type: "code", value: n }, unknown: { type: "code", value: n } } });
+    const marquee = (n: number) => ({ list: { type: "code", value: n, hash: hash } });
+    const launchWith = async (d: number | undefined, end: unknown = { t: "echec", error: "cassé" }) => {
       const b = await bench(watch());
-      if (d !== undefined) b.ctx.dureeMaxMinutes = d;
+      if (d !== undefined) b.ctx.maxDurationMinutes = d;
       const advance = fakeClock(b);
-      b.infra.lancer = launcherSteps([m(1), advance(10_000), m(2), advance(25_000), m(3), m(4), end]);
+      b.infra.launch = launcherSteps([m(1), advance(10_000), m(2), advance(25_000), m(3), m(4), end]);
       const relayed: unknown[] = [];
-      b.infra.surMemoire = async (x) => {
+      b.infra.onMemory = async (x) => {
         relayed.push(x);
       };
       const r = await runWorkflow(b.ctx, b.infra);
-      return { r, relayees: relayed };
+      return { r, relayed: relayed };
     };
 
     const prog = await launchWith(30);
-    expect(prog.relayees).toEqual([marquee(1), marquee(3)]);
-    expect(prog.r.issue).toEqual({ t: "echec", erreur: "cassé", erreurDuCode: true, memoire: marquee(4) });
+    expect(prog.relayed).toEqual([marquee(1), marquee(3)]);
+    expect(prog.r.issue).toEqual({ t: "echec", error: "cassé", codeError: true, memory: marquee(4) });
 
     const without = await launchWith(undefined);
-    expect(without.relayees).toEqual([]);
-    expect(without.r.issue).toEqual({ t: "echec", erreur: "cassé", erreurDuCode: true });
+    expect(without.relayed).toEqual([]);
+    expect(without.r.issue).toEqual({ t: "echec", error: "cassé", codeError: true });
 
     // A fin keeps the memory as today.
-    const end = await launchWith(30, { t: "fin", donnees: null });
-    expect(end.r.issue).toMatchObject({ t: "fin", memoire: marquee(4) });
+    const end = await launchWith(30, { t: "fin", data: null });
+    expect(end.r.issue).toMatchObject({ t: "fin", memory: marquee(4) });
   });
 
   it("progressive: a stop (timeout) carries the last memory received; a memory still held (nothing received after) does not count; non-progressive: none", async () => {
     // The hash of the validated parameters (defaults included) of the liste block.
-    const hash = paramsHash(valid(watch()).workflow.blocs.find((x) => x.id === "liste")!.parametres);
+    const hash = paramsHash(valid(watch()).workflow.blocks.find((x) => x.id === "liste")!.params);
     const launchWith = async (d: number | undefined) => {
-      const b = await bench(watch(), {}, { delaiMs: 300 });
-      if (d !== undefined) b.ctx.dureeMaxMinutes = d;
-      b.infra.lancer = launcherSteps(
+      const b = await bench(watch(), {}, { delayMs: 300 });
+      if (d !== undefined) b.ctx.maxDurationMinutes = d;
+      b.infra.launch = launcherSteps(
         [
-          { t: "memoire", memoire: { liste: { type: "code", valeur: 7 } } },
-          { t: "journal", bloc: "liste", texte: "suite" },
+          { t: "memoire", memory: { list: { type: "code", value: 7 } } },
+          { t: "journal", block: "liste", text: "suite" },
           // Held until the next line, which never arrives: it could precede a publication never read.
-          { t: "memoire", memoire: { liste: { type: "code", valeur: 8 } } },
+          { t: "memoire", memory: { list: { type: "code", value: 8 } } },
         ],
-        { bloque: true },
+        { blocked: true },
       );
       return (await runWorkflow(b.ctx, b.infra)).issue;
     };
-    expect(await launchWith(30)).toEqual({ t: "arret", statut: "erreur", erreur: "Délai dépassé", memoire: { liste: { type: "code", valeur: 7, empreinte: hash } } });
-    expect(await launchWith(undefined)).toEqual({ t: "arret", statut: "erreur", erreur: "Délai dépassé" });
+    expect(await launchWith(30)).toEqual({ t: "arret", status: "erreur", error: "Délai dépassé", memory: { list: { type: "code", value: 7, hash: hash } } });
+    expect(await launchWith(undefined)).toEqual({ t: "arret", status: "erreur", error: "Délai dépassé" });
   });
 
   describe("the memory that precedes a publication follows its fate (R34)", () => {
-    const hash = () => paramsHash(valid(watch()).workflow.blocs.find((x) => x.id === "liste")!.parametres);
-    const mem = (n: number) => ({ t: "memoire", memoire: { liste: { type: "code", valeur: n } } });
-    const marquee = (n: number) => ({ liste: { type: "code", valeur: n, empreinte: hash() } });
+    const hash = () => paramsHash(valid(watch()).workflow.blocks.find((x) => x.id === "liste")!.params);
+    const mem = (n: number) => ({ t: "memoire", memory: { list: { type: "code", value: n } } });
+    const marquee = (n: number) => ({ list: { type: "code", value: n, hash: hash() } });
     const openChain = [blockStart("liste"), blockEnd("liste"), blockStart("fiche"), blockStart("avis")];
     const launchWith = async (step: (advance: (ms: number) => () => void) => unknown[]) => {
-      const b = await bench(watch({ auFilDeLEau: true }));
+      const b = await bench(watch({ live: true }));
       const advance = fakeClock(b);
-      b.infra.lancer = launcherSteps(step(advance));
+      b.infra.launch = launcherSteps(step(advance));
       const published: unknown[] = [];
       const memories: unknown[] = [];
-      b.infra.surPublication = async (p) => void published.push(p.donnees);
-      b.infra.surMemoire = async (m) => void memories.push(m);
+      b.infra.onPublish = async (p) => void published.push(p.data);
+      b.infra.onMemory = async (m) => void memories.push(m);
       const r = await runWorkflow(b.ctx, b.infra);
-      return { issue: r.issue, publiees: published, memoires: memories };
+      return { issue: r.issue, published: published, memories: memories };
     };
 
     it("a publication over 2 MB followed by an echec: the outcome carries the earlier memory, even after other memories", async () => {
@@ -1516,11 +1516,11 @@ describe("executerWorkflow: watch (duration, chain, publications, memory along t
         advance(5000), mem(2), pub("x".repeat(2 * 1024 * 1024 + 10), 2, 3),
         // Sent next by the container (verifierMemoire, before echec): it still retains the keys of the rejected publication.
         advance(40_000), mem(3),
-        { t: "echec", erreur: "cassé" },
+        { t: "echec", error: "cassé" },
       ]);
-      expect(r.publiees).toEqual(["A"]);
-      expect(r.memoires).toEqual([marquee(1)]);
-      expect(r.issue).toEqual({ t: "echec", erreur: "cassé", erreurDuCode: true, memoire: marquee(1) });
+      expect(r.published).toEqual(["A"]);
+      expect(r.memories).toEqual([marquee(1)]);
+      expect(r.issue).toEqual({ t: "echec", error: "cassé", codeError: true, memory: marquee(1) });
     });
 
     it("a publication accepted after a rejected one puts the memory back on track", async () => {
@@ -1530,20 +1530,20 @@ describe("executerWorkflow: watch (duration, chain, publications, memory along t
         advance(5000), mem(2), pub("faits > total", 4, 3),
         advance(1000), mem(3), pub("B", 2, 3),
         mem(4),
-        { t: "echec", erreur: "cassé" },
+        { t: "echec", error: "cassé" },
       ]);
-      expect(r.publiees).toEqual(["A", "B"]);
-      expect(r.issue).toEqual({ t: "echec", erreur: "cassé", erreurDuCode: true, memoire: marquee(4) });
+      expect(r.published).toEqual(["A", "B"]);
+      expect(r.issue).toEqual({ t: "echec", error: "cassé", codeError: true, memory: marquee(4) });
     });
 
     it("two publications in the same stdout chunk: the second is rejected and its memory dropped", async () => {
       const line = (x: unknown) => JSON.stringify(x) + "\n";
       const r = await launchWith(() => [
         ...openChain,
-        line(mem(1)) + line(pub("A", 1, 3)) + line(mem(2)) + line(pub("B", 2, 3)) + line({ t: "echec", erreur: "cassé" }),
+        line(mem(1)) + line(pub("A", 1, 3)) + line(mem(2)) + line(pub("B", 2, 3)) + line({ t: "echec", error: "cassé" }),
       ]);
-      expect(r.publiees).toEqual(["A"]);
-      expect(r.issue).toEqual({ t: "echec", erreur: "cassé", erreurDuCode: true, memoire: marquee(1) });
+      expect(r.published).toEqual(["A"]);
+      expect(r.issue).toEqual({ t: "echec", error: "cassé", codeError: true, memory: marquee(1) });
     });
 
     it("a fin keeps the last memory received, as before (the output shows everything)", async () => {
@@ -1553,44 +1553,44 @@ describe("executerWorkflow: watch (duration, chain, publications, memory along t
         advance(1000), mem(2), pub("trop tôt", 2, 3),
         blockEnd("fiche"), blockEnd("avis"), blockStart("sortie"), blockEnd("sortie"),
         mem(3),
-        { t: "fin", donnees: "finale" },
+        { t: "fin", data: "finale" },
       ]);
-      expect(r.issue).toMatchObject({ t: "fin", memoire: marquee(3) });
+      expect(r.issue).toMatchObject({ t: "fin", memory: marquee(3) });
     });
 
     it("F1: a publication's data is written before the memory it makes safe", async () => {
-      const b = await bench(watch({ auFilDeLEau: true }));
-      b.infra.lancer = launcherSteps([...openChain, mem(1), pub("A", 1, 3), { t: "echec", erreur: "cassé" }]);
+      const b = await bench(watch({ live: true }));
+      b.infra.launch = launcherSteps([...openChain, mem(1), pub("A", 1, 3), { t: "echec", error: "cassé" }]);
       const written: string[] = [];
-      b.infra.surPublication = async (p) => {
+      b.infra.onPublish = async (p) => {
         await new Promise((ok) => setTimeout(ok, 20));
-        written.push(`donnees ${p.donnees}`);
+        written.push(`donnees ${p.data}`);
       };
-      b.infra.surMemoire = async (m) => void written.push(`memoire ${m.liste?.valeur}`);
+      b.infra.onMemory = async (m) => void written.push(`memoire ${m.liste?.value}`);
       const r = await runWorkflow(b.ctx, b.infra);
       expect(written).toEqual(["donnees A", "memoire 1"]);
-      expect(r.issue).toMatchObject({ memoire: marquee(1) });
+      expect(r.issue).toMatchObject({ memory: marquee(1) });
     });
 
     it("F1: a refused data write leaves the memory doubtful until the next written publication", async () => {
       const launch = async (step: unknown[]) => {
-        const b = await bench(watch({ auFilDeLEau: true }));
+        const b = await bench(watch({ live: true }));
         const advance = fakeClock(b);
-        b.infra.lancer = launcherSteps(step.map((p) => (p === "avancer" ? advance(5000) : p)));
+        b.infra.launch = launcherSteps(step.map((p) => (p === "avancer" ? advance(5000) : p)));
         const memories: unknown[] = [];
-        b.infra.surPublication = async (p) => {
-          if (p.donnees === "refusee") throw new Error("disque plein");
+        b.infra.onPublish = async (p) => {
+          if (p.data === "refusee") throw new Error("disque plein");
         };
-        b.infra.surMemoire = async (m) => void memories.push(m);
+        b.infra.onMemory = async (m) => void memories.push(m);
         const r = await runWorkflow(b.ctx, b.infra);
-        return { issue: r.issue, memoires: memories };
+        return { issue: r.issue, memories: memories };
       };
-      const denied = await launch([...openChain, mem(1), pub("refusee", 1, 3), mem(2), { t: "journal", bloc: "fiche", texte: "x" }, { t: "echec", erreur: "cassé" }]);
-      expect(denied.memoires).toEqual([]);
-      expect(denied.issue).toEqual({ t: "echec", erreur: "cassé", erreurDuCode: true, memoire: null });
-      const resume = await launch([...openChain, mem(1), pub("refusee", 1, 3), "avancer", mem(2), pub("B", 2, 3), mem(3), { t: "echec", erreur: "cassé" }]);
-      expect(resume.memoires).toEqual([marquee(2)]);
-      expect(resume.issue).toEqual({ t: "echec", erreur: "cassé", erreurDuCode: true, memoire: marquee(3) });
+      const denied = await launch([...openChain, mem(1), pub("refusee", 1, 3), mem(2), { t: "journal", block: "fiche", text: "x" }, { t: "echec", error: "cassé" }]);
+      expect(denied.memories).toEqual([]);
+      expect(denied.issue).toEqual({ t: "echec", error: "cassé", codeError: true, memory: null });
+      const resume = await launch([...openChain, mem(1), pub("refusee", 1, 3), "avancer", mem(2), pub("B", 2, 3), mem(3), { t: "echec", error: "cassé" }]);
+      expect(resume.memories).toEqual([marquee(2)]);
+      expect(resume.issue).toEqual({ t: "echec", error: "cassé", codeError: true, memory: marquee(3) });
     });
 
     it("a memory after the output block's end, then fin: neither relayed nor safe, it only serves the fin outcome", async () => {
@@ -1600,10 +1600,10 @@ describe("executerWorkflow: watch (duration, chain, publications, memory along t
         advance(40_000),
         blockEnd("fiche"), blockEnd("avis"), blockStart("sortie"), blockEnd("sortie"),
         mem(2),
-        { t: "fin", donnees: "finale" },
+        { t: "fin", data: "finale" },
       ]);
-      expect(r.memoires).toEqual([marquee(1)]);
-      expect(r.issue).toMatchObject({ t: "fin", memoire: marquee(2) });
+      expect(r.memories).toEqual([marquee(1)]);
+      expect(r.issue).toMatchObject({ t: "fin", memory: marquee(2) });
     });
 
     it("a memory followed by fin is not relayed, even without an output end trace", async () => {
@@ -1611,10 +1611,10 @@ describe("executerWorkflow: watch (duration, chain, publications, memory along t
         ...openChain,
         mem(1), pub("A", 1, 3),
         advance(40_000), mem(2),
-        { t: "fin", donnees: "finale" },
+        { t: "fin", data: "finale" },
       ]);
-      expect(r.memoires).toEqual([marquee(1)]);
-      expect(r.issue).toMatchObject({ t: "fin", memoire: marquee(2) });
+      expect(r.memories).toEqual([marquee(1)]);
+      expect(r.issue).toMatchObject({ t: "fin", memory: marquee(2) });
     });
 
     it("a memory after the output block's end, then echec: the outcome keeps the earlier safe memory", async () => {
@@ -1623,11 +1623,11 @@ describe("executerWorkflow: watch (duration, chain, publications, memory along t
         mem(1), pub("A", 1, 3),
         advance(40_000),
         blockEnd("fiche"), blockEnd("avis"), blockStart("sortie"), blockEnd("sortie"),
-        mem(2), { t: "journal", bloc: "sortie", texte: "après" },
-        { t: "echec", erreur: "cassé" },
+        mem(2), { t: "journal", block: "sortie", text: "après" },
+        { t: "echec", error: "cassé" },
       ]);
-      expect(r.memoires).toEqual([marquee(1)]);
-      expect(r.issue).toEqual({ t: "echec", erreur: "cassé", erreurDuCode: true, memoire: marquee(1) });
+      expect(r.memories).toEqual([marquee(1)]);
+      expect(r.issue).toEqual({ t: "echec", error: "cassé", codeError: true, memory: marquee(1) });
     });
   });
 
@@ -1649,35 +1649,35 @@ describe("executerWorkflow: watch (duration, chain, publications, memory along t
 
 describe("executerWorkflow: input, progress, reads and stop (actions)", () => {
   /** A fake container: writes its lines, then waits to be killed (`bloque`) or exits with 0. `recu`: what it receives. */
-  const launcherLines = (lignes: unknown[], o: { recu?: string[]; bloque?: boolean; tue?: () => void } = {}): ProcessLauncher => () => {
+  const launcherLines = (lignes: unknown[], o: { received?: string[]; blocked?: boolean; killed?: () => void } = {}): ProcessLauncher => () => {
     const stdout = new PassThrough();
     const stderr = new PassThrough();
     const stdin = new PassThrough();
-    stdin.on("data", (d: Buffer) => o.recu?.push(d.toString()));
+    stdin.on("data", (d: Buffer) => o.received?.push(d.toString()));
     let kill = () => {};
     const end = new Promise<number | null>((ok) => {
       kill = () => {
-        o.tue?.();
+        o.killed?.();
         stdout.end();
         stderr.end();
         ok(null);
       };
       setImmediate(() => {
         for (const l of lignes) stdout.write(JSON.stringify(l) + "\n");
-        if (o.bloque) return;
+        if (o.blocked) return;
         stdout.end();
         stderr.end();
         setImmediate(() => ok(0));
       });
     });
-    return { stdin, stdout, stderr, tuer: () => kill(), fin: end };
+    return { stdin, stdout, stderr, kill: () => kill(), end: end };
   };
 
   it("a widget's debut line is identical to before (snapshot)", async () => {
     const received: string[] = [];
-    const b = await bench(chain("a"), {}, { lancer: launcherLines([{ t: "fin", donnees: null }], { recu: received }) });
+    const b = await bench(chain("a"), {}, { launch: launcherLines([{ t: "fin", data: null }], { received: received }) });
     await runWorkflow(b.ctx, b.infra);
-    const workflow = JSON.stringify({ blocs: b.ctx.valide.workflow.blocs, liens: b.ctx.valide.workflow.liens, ordre: ["a", "sortie"] });
+    const workflow = JSON.stringify({ blocks: b.ctx.valid.workflow.blocks, links: b.ctx.valid.workflow.links, order: ["a", "sortie"] });
     expect(received.join("").split("\n")[0]).toBe(
       `{"t":"debut","precedent":null,"maintenant":"2026-10-29T10:00:00.000Z","config":{"interets":"rust"},"workflow":${workflow}}`,
     );
@@ -1686,69 +1686,69 @@ describe("executerWorkflow: input, progress, reads and stop (actions)", () => {
   it("an action sends saisie and avancement in debut", async () => {
     const received: string[] = [];
     const owners: unknown[] = [];
-    const b = await bench(chain("a"), {}, { lancer: launcherLines([{ t: "fin", donnees: [] }], { recu: received }) });
-    b.ctx.proprietaire = { type: "action", id: "leboncoin" };
-    b.ctx.saisie = "clio lyon";
-    b.ctx.avancement = true;
-    b.infra.atelier.commandeRecolte = (p, d, m) => (owners.push(p), ["docker", "run", nameOf(p), d, m]);
+    const b = await bench(chain("a"), {}, { launch: launcherLines([{ t: "fin", data: [] }], { received: received }) });
+    b.ctx.owner = { type: "action", id: "leboncoin" };
+    b.ctx.input = "clio lyon";
+    b.ctx.progress = true;
+    b.infra.workshop.harvestCommand = (p, d, m) => (owners.push(p), ["docker", "run", nameOf(p), d, m]);
     const r = await runWorkflow(b.ctx, b.infra);
     const start = JSON.parse(received.join("").split("\n")[0]!);
-    expect(start).toMatchObject({ t: "debut", saisie: "clio lyon", avancement: true });
-    expect(r.execution).toMatchObject({ proprietaire: { type: "action", id: "leboncoin" }, saisie: "clio lyon" });
+    expect(start).toMatchObject({ t: "debut", input: "clio lyon", progress: true });
+    expect(r.run).toMatchObject({ owner: { type: "action", id: "leboncoin" }, input: "clio lyon" });
     // The workshop receives the whole owner: an action's container has its own name.
     expect(owners).toEqual([{ type: "action", id: "leboncoin" }]);
   });
 
   it("a lirePage of https://gitlab.com/x emits lecture « gitlab.com » on the current block", async () => {
-    const bridge = new FakeBridge([], { actif: null, autoriser: false, lecture: { pages: [{ url: "https://gitlab.com/x", titre: "X", texte: "", liens: [] }] } });
+    const bridge = new FakeBridge([], { active: null, allow: false, read: { pages: [{ url: "https://gitlab.com/x", title: "X", text: "", links: [] }] } });
     const b = await bench(
       chain("a", "b"),
       {
         "a.mjs": `export default async () => 1;`,
         "b.mjs": `export default async (e, w) => (await w.lirePage("https://gitlab.com/x")).titre;`,
       },
-      { pont: bridge },
+      { bridge: bridge },
     );
-    b.ctx.proprietaire = { type: "action", id: "gitlab" };
+    b.ctx.owner = { type: "action", id: "gitlab" };
     const relayed: DirectTrace[] = [];
-    b.infra.surTrace = (t) => relayed.push(t);
+    b.infra.onTrace = (t) => relayed.push(t);
     const r = await runWorkflow(b.ctx, b.infra);
-    expect(r.issue).toMatchObject({ t: "fin", sortie: { valeur: "X" } });
+    expect(r.issue).toMatchObject({ t: "fin", output: { value: "X" } });
     expect(relayed).toEqual([
-      { bloc: "a", etape: "debut" },
-      { bloc: "a", etape: "fin", statut: "reussi", elements: null },
-      { bloc: "b", etape: "debut" },
-      { bloc: "b", etape: "lecture", hote: "gitlab.com" },
-      { bloc: "b", etape: "fin", statut: "reussi", elements: null },
-      { bloc: "sortie", etape: "debut" },
-      { bloc: "sortie", etape: "fin", statut: "reussi", elements: null },
+      { block: "a", step: "debut" },
+      { block: "a", step: "fin", status: "reussi", items: null },
+      { block: "b", step: "debut" },
+      { block: "b", step: "lecture", host: "gitlab.com" },
+      { block: "b", step: "fin", status: "reussi", items: null },
+      { block: "sortie", step: "debut" },
+      { block: "sortie", step: "fin", status: "reussi", items: null },
     ]);
   });
 
   it("a refused read (undeclared domain) emits no lecture", async () => {
-    const b = await bench(chain("a"), { "a.mjs": `export default async (e, w) => { try { await w.lirePage("https://tiers.example/"); } catch { return "refusée"; } };` }, { compte: ["gitlab.com"], publiques: [] });
+    const b = await bench(chain("a"), { "a.mjs": `export default async (e, w) => { try { await w.lirePage("https://tiers.example/"); } catch { return "refusée"; } };` }, { account: ["gitlab.com"], public: [] });
     const relayed: DirectTrace[] = [];
-    b.infra.surTrace = (t) => relayed.push(t);
+    b.infra.onTrace = (t) => relayed.push(t);
     const r = await runWorkflow(b.ctx, b.infra);
-    expect(r.issue).toMatchObject({ t: "fin", sortie: { valeur: "refusée" } });
-    expect(relayed.some((t) => t.etape === "lecture")).toBe(false);
+    expect(r.issue).toMatchObject({ t: "fin", output: { value: "refusée" } });
+    expect(relayed.some((t) => t.step === "lecture")).toBe(false);
   });
 
   it("signal raised: container killed, status interrompue, error ACTION_STOPPED, erreurNoyau", async () => {
     let tue = 0;
     const stop = new AbortController();
-    const b = await bench(chain("a"), {}, { lancer: launcherLines([{ t: "bloc", id: "a", etape: "debut" }], { bloque: true, tue: () => tue++ }) });
-    b.ctx.proprietaire = { type: "action", id: "gitlab" };
+    const b = await bench(chain("a"), {}, { launch: launcherLines([{ t: "bloc", id: "a", step: "debut" }], { blocked: true, killed: () => tue++ }) });
+    b.ctx.owner = { type: "action", id: "gitlab" };
     b.ctx.signal = stop.signal;
-    b.infra.surTrace = (t) => {
-      if (t.etape === "debut") setImmediate(() => stop.abort());
+    b.infra.onTrace = (t) => {
+      if (t.step === "debut") setImmediate(() => stop.abort());
     };
     const r = await runWorkflow(b.ctx, b.infra);
     expect(tue).toBe(1);
-    expect(r.issue).toEqual({ t: "arret", statut: "erreur", erreur: ACTION_STOPPED });
-    expect(r.execution).toMatchObject({ statut: "interrompue", erreur: ACTION_STOPPED, erreurNoyau: true });
-    expect(r.execution.blocs[0]!.statut).toBe("interrompu");
-    expect(b.supprimes).toEqual(["action:gitlab", "action:gitlab"]);
+    expect(r.issue).toEqual({ t: "arret", status: "erreur", error: ACTION_STOPPED });
+    expect(r.run).toMatchObject({ status: "interrompue", error: ACTION_STOPPED, kernelError: true });
+    expect(r.run.blocks[0]!.status).toBe("interrompu");
+    expect(b.deleted).toEqual(["action:gitlab", "action:gitlab"]);
   });
 
   it("an already-raised signal: nothing is launched, run interrupted", async () => {
@@ -1757,59 +1757,59 @@ describe("executerWorkflow: input, progress, reads and stop (actions)", () => {
     const b = await bench(chain("a"));
     b.ctx.signal = stop.signal;
     const r = await runWorkflow(b.ctx, b.infra);
-    expect(b.commandes).toEqual([]);
-    expect(r.execution).toMatchObject({ statut: "interrompue", erreur: ACTION_STOPPED, erreurNoyau: true });
+    expect(b.commands).toEqual([]);
+    expect(r.run).toMatchObject({ status: "interrompue", error: ACTION_STOPPED, kernelError: true });
   });
 
   it("an avancement line with faits > total is rejected", async () => {
     const b = await bench(chain("a"), {}, {
-      lancer: launcherLines([
-        { t: "bloc", id: "a", etape: "debut" },
-        { t: "bloc", id: "a", etape: "avancement", faits: 3, total: 2 },
-        { t: "bloc", id: "a", etape: "avancement", faits: -1, total: 2 },
-        { t: "bloc", id: "sortie", etape: "avancement", faits: 1, total: 2 },
-        { t: "bloc", id: "a", etape: "avancement", faits: 2, total: 2 },
-        { t: "bloc", id: "a", etape: "fin", statut: "reussi", sortie: [1, 2] },
-        { t: "bloc", id: "a", etape: "avancement", faits: 2, total: 2 },
-        { t: "bloc", id: "sortie", etape: "debut" },
-        { t: "bloc", id: "sortie", etape: "fin", statut: "reussi", sortie: [1, 2] },
-        { t: "fin", donnees: [1, 2] },
+      launch: launcherLines([
+        { t: "bloc", id: "a", step: "debut" },
+        { t: "bloc", id: "a", step: "avancement", done: 3, total: 2 },
+        { t: "bloc", id: "a", step: "avancement", done: -1, total: 2 },
+        { t: "bloc", id: "sortie", step: "avancement", done: 1, total: 2 },
+        { t: "bloc", id: "a", step: "avancement", done: 2, total: 2 },
+        { t: "bloc", id: "a", step: "fin", status: "reussi", output: [1, 2] },
+        { t: "bloc", id: "a", step: "avancement", done: 2, total: 2 },
+        { t: "bloc", id: "sortie", step: "debut" },
+        { t: "bloc", id: "sortie", step: "fin", status: "reussi", output: [1, 2] },
+        { t: "fin", data: [1, 2] },
       ]),
     });
-    b.ctx.avancement = true;
+    b.ctx.progress = true;
     const relayed: DirectTrace[] = [];
-    b.infra.surTrace = (t) => relayed.push(t);
+    b.infra.onTrace = (t) => relayed.push(t);
     await runWorkflow(b.ctx, b.infra);
     // Only that of the current block, with faits ≤ total, passes; an avancement outside its block is ignored.
-    expect(relayed.filter((t) => t.etape === "avancement")).toEqual([{ bloc: "a", etape: "avancement", faits: 2, total: 2 }]);
+    expect(relayed.filter((t) => t.step === "avancement")).toEqual([{ block: "a", step: "avancement", done: 2, total: 2 }]);
   });
 
   it("avancement: at most one per PROGRESS_GAP_MS and per block, the last (faits = total) always; ignored without avancement", async () => {
     let t = 0;
     const lignes = [
-      { t: "bloc", id: "a", etape: "debut" },
-      ...[1, 2, 3, 4].map((done) => ({ t: "bloc", id: "a", etape: "avancement", faits: done, total: 4 })),
-      { t: "bloc", id: "a", etape: "fin", statut: "reussi", sortie: [] },
-      { t: "bloc", id: "sortie", etape: "debut" },
-      { t: "bloc", id: "sortie", etape: "fin", statut: "reussi", sortie: [] },
-      { t: "fin", donnees: [] },
+      { t: "bloc", id: "a", step: "debut" },
+      ...[1, 2, 3, 4].map((done) => ({ t: "bloc", id: "a", step: "avancement", done: done, total: 4 })),
+      { t: "bloc", id: "a", step: "fin", status: "reussi", output: [] },
+      { t: "bloc", id: "sortie", step: "debut" },
+      { t: "bloc", id: "sortie", step: "fin", status: "reussi", output: [] },
+      { t: "fin", data: [] },
     ];
-    const updateEntry = await bench(chain("a"), {}, { lancer: launcherLines(lignes) });
-    updateEntry.ctx.avancement = true;
+    const updateEntry = await bench(chain("a"), {}, { launch: launcherLines(lignes) });
+    updateEntry.ctx.progress = true;
     // 300 ms between two received lines.
-    updateEntry.infra.horloge = () => new Date(NOW.getTime() + (t += 300));
+    updateEntry.infra.clock = () => new Date(NOW.getTime() + (t += 300));
     const relayed: DirectTrace[] = [];
-    updateEntry.infra.surTrace = (x) => relayed.push(x);
+    updateEntry.infra.onTrace = (x) => relayed.push(x);
     await runWorkflow(updateEntry.ctx, updateEntry.infra);
-    const done = relayed.flatMap((x) => (x.etape === "avancement" ? [x.faits] : []));
+    const done = relayed.flatMap((x) => (x.step === "avancement" ? [x.done] : []));
     expect(done[0]).toBe(1);
     expect(done.at(-1)).toBe(4);
     expect(done.length).toBeLessThan(4);
 
-    const without = await bench(chain("a"), {}, { lancer: launcherLines(lignes) });
+    const without = await bench(chain("a"), {}, { launch: launcherLines(lignes) });
     const relayees2: DirectTrace[] = [];
-    without.infra.surTrace = (x) => relayees2.push(x);
+    without.infra.onTrace = (x) => relayees2.push(x);
     await runWorkflow(without.ctx, without.infra);
-    expect(relayees2.some((x) => x.etape === "avancement")).toBe(false);
+    expect(relayees2.some((x) => x.step === "avancement")).toBe(false);
   });
 });

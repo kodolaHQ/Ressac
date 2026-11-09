@@ -23,20 +23,20 @@ export const urlImage = (id: string, execution: string, url: string) => `${SCHEM
 /** An action as the « Actions » page and the suggestions show it. */
 export type ActionShown = {
   id: string;
-  nom: string;
+  name: string;
   description: string;
-  motsCles: string[];
-  saisie: { libelle: string } | null;
+  keywords: string[];
+  input: { label: string } | null;
   /** Domains read with the user's account (empty: public sources only). */
-  compte: string[];
+  account: string[];
   /** Public sites the action contacts (shown on the account's grant card). */
-  publiques: string[];
+  public: string[];
   /** The account grant is given. */
-  accord: boolean;
+  grant: boolean;
   /** The most recent real execution (not a trial). */
-  dernier: { execution: string; debut: string; statut: Execution["statut"] } | null;
+  last: { run: string; start: string; status: Execution["status"] } | null;
   /** `action.json` unreadable or invalid. */
-  erreur?: string;
+  error?: string;
   /** The last launch was refused without writing anything (workshop stopped, workflow.json missing…): its message. */
-  refus?: string;
+  denial?: string;
 };

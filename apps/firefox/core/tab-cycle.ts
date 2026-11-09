@@ -11,7 +11,7 @@ const CAPTURE_DELAY_MS = 1000;
 
 interface InProgress {
   p: Walk;
-  minuteur: ReturnType<typeof setTimeout> | undefined;
+  timeout: ReturnType<typeof setTimeout> | undefined;
   /** The panel was sent to the UI (null will have to be sent to it). */
   visible: boolean;
 }
@@ -22,143 +22,143 @@ interface InProgress {
  */
 export class TabCycle {
   /** Tabs used, from most to least recent, per window. */
-  private historiques = new Map<WindowId, TabId[]>();
-  private actifs = new Map<WindowId, TabId | null>();
-  private parcours = new Map<WindowId, InProgress>();
-  private readonly delaiMs: number;
+  private histories = new Map<WindowId, TabId[]>();
+  private actives = new Map<WindowId, TabId | null>();
+  private cycle = new Map<WindowId, InProgress>();
+  private readonly delayMs: number;
   private captures: ReturnType<typeof createGrouper>;
 
   constructor(
     private readonly o: {
-      etat(): BrowserState;
-      agir(a: Action): void;
-      envoyer(windowId: WindowId, p: TabsPanel | null): void;
-      apercu(id: TabId): string | null;
-      capturer(windowId: WindowId): Promise<void>;
+      state(): BrowserState;
+      dispatch(a: Action): void;
+      send(windowId: WindowId, p: TabsPanel | null): void;
+      preview(id: TabId): string | null;
+      capture(windowId: WindowId): Promise<void>;
       /** Gives the keyboard back to the page displayed in the window (the UI took it to capture the panel's background). */
-      rendreFocus(windowId: WindowId): void;
+      restoreFocus(windowId: WindowId): void;
       /**
        * The main window has focus. Otherwise (detached developer tools…), the release of ⌃ would never reach it
        * and the window would not lose focus: a cycle would stay stuck there.
        */
-      estFocalisee(windowId: WindowId): boolean;
-      delaiMs?: number;
+      isFocused(windowId: WindowId): boolean;
+      delayMs?: number;
     },
   ) {
-    this.delaiMs = o.delaiMs ?? PANEL_DELAY_MS;
-    this.captures = createGrouper(CAPTURE_DELAY_MS, (f) => void this.o.capturer(f).catch(() => {}));
+    this.delayMs = o.delayMs ?? PANEL_DELAY_MS;
+    this.captures = createGrouper(CAPTURE_DELAY_MS, (f) => void this.o.capture(f).catch(() => {}));
   }
 
   /** ⌃Tab (1) or ⌃⇧Tab (-1) from the menu. */
-  parcourir(windowId: WindowId, delta: 1 | -1): void {
-    const current = this.parcours.get(windowId);
+  browse(windowId: WindowId, delta: 1 | -1): void {
+    const current = this.cycle.get(windowId);
     if (current) {
       current.p = advance(current.p, delta);
-      if (current.visible) this.envoyerPanneau(windowId, current);
+      if (current.visible) this.sendPanel(windowId, current);
       return;
     }
-    const p = start(recentOrder(this.o.etat(), windowId, this.historiques.get(windowId) ?? []), delta);
+    const p = start(recentOrder(this.o.state(), windowId, this.histories.get(windowId) ?? []), delta);
     if (!p) return;
     // Window without focus: immediate switch, like a brief press, without cycle or panel.
-    if (!this.o.estFocalisee(windowId)) return this.o.agir(this.activation(windowId, p.liste[p.selection]!));
-    const running: InProgress = { p, minuteur: undefined, visible: false };
-    this.parcours.set(windowId, running);
+    if (!this.o.isFocused(windowId)) return this.o.dispatch(this.activation(windowId, p.list[p.selection]!));
+    const running: InProgress = { p, timeout: undefined, visible: false };
+    this.cycle.set(windowId, running);
     // The displayed tab may have changed since its last capture: its card must be up to date.
-    void this.o.capturer(windowId).catch(() => {});
-    running.minuteur = setTimeout(() => {
-      running.minuteur = undefined;
-      if (this.parcours.get(windowId) !== running) return;
+    void this.o.capture(windowId).catch(() => {});
+    running.timeout = setTimeout(() => {
+      running.timeout = undefined;
+      if (this.cycle.get(windowId) !== running) return;
       running.visible = true;
-      this.envoyerPanneau(windowId, running);
-    }, this.delaiMs);
+      this.sendPanel(windowId, running);
+    }, this.delayMs);
   }
 
   /** ⌃ released in the window (UI or page): activates the selection. No effect outside a cycle. */
-  toucheRelachee(windowId: WindowId): void {
-    const c = this.parcours.get(windowId);
-    if (c) this.terminer(windowId, c.p.liste[c.p.selection]);
+  keyReleased(windowId: WindowId): void {
+    const c = this.cycle.get(windowId);
+    if (c) this.finish(windowId, c.p.list[c.p.selection]);
   }
 
   /** Message from the panel (already validated by zod). */
   message(windowId: WindowId, m: TabCycleMessage): void {
-    const c = this.parcours.get(windowId);
+    const c = this.cycle.get(windowId);
     if (!c) return;
     switch (m.type) {
       case "valider":
-        return this.toucheRelachee(windowId);
+        return this.keyReleased(windowId);
       case "annuler":
-        return this.annuler(windowId);
+        return this.cancel(windowId);
       case "choisir":
-        if (c.p.liste.includes(m.id)) this.terminer(windowId, m.id);
+        if (c.p.list.includes(m.id)) this.finish(windowId, m.id);
         return;
       case "survoler": {
-        const i = c.p.liste.indexOf(m.id);
+        const i = c.p.list.indexOf(m.id);
         if (i < 0 || i === c.p.selection) return;
         c.p = { ...c.p, selection: i };
-        if (c.visible) this.envoyerPanneau(windowId, c);
+        if (c.visible) this.sendPanel(windowId, c);
         return;
       }
       case "avancer":
-        return this.parcourir(windowId, m.delta);
+        return this.browse(windowId, m.delta);
     }
   }
 
   /** Esc: close without changing tab. */
-  annuler(windowId: WindowId): void {
-    if (this.parcours.has(windowId)) this.terminer(windowId, undefined);
+  cancel(windowId: WindowId): void {
+    if (this.cycle.has(windowId)) this.finish(windowId, undefined);
   }
 
   /** The window loses focus (⌘Tab to another app): close without changing tab or taking back focus. */
-  fenetreQuittee(windowId: WindowId): void {
-    if (this.parcours.has(windowId)) this.terminer(windowId, undefined, false);
+  windowLeft(windowId: WindowId): void {
+    if (this.cycle.has(windowId)) this.finish(windowId, undefined, false);
   }
 
   /** At each new state: tab usage, tabs removed from the cycles, vanished windows. */
-  surEtat(state: BrowserState): void {
-    const present = new Set(state.fenetres.map((f) => f.id));
-    for (const f of state.fenetres) {
-      const active = f.actif[f.espaceActif] ?? null;
-      if (this.actifs.get(f.id) !== active) {
-        this.actifs.set(f.id, active);
+  onState(state: BrowserState): void {
+    const present = new Set(state.windows.map((f) => f.id));
+    for (const f of state.windows) {
+      const active = f.active[f.activeSpace] ?? null;
+      if (this.actives.get(f.id) !== active) {
+        this.actives.set(f.id, active);
         if (active) {
-          this.historiques.set(f.id, noteUsage(this.historiques.get(f.id) ?? [], active));
-          this.captures.planifier(f.id);
+          this.histories.set(f.id, noteUsage(this.histories.get(f.id) ?? [], active));
+          this.captures.schedule(f.id);
         }
       }
     }
-    for (const [f, h] of this.historiques) {
-      if (!present.has(f)) this.historiques.delete(f);
-      else if (h.some((id) => !state.onglets[id])) this.historiques.set(f, h.filter((id) => !!state.onglets[id]));
+    for (const [f, h] of this.histories) {
+      if (!present.has(f)) this.histories.delete(f);
+      else if (h.some((id) => !state.tabs[id])) this.histories.set(f, h.filter((id) => !!state.tabs[id]));
     }
-    for (const f of this.actifs.keys()) {
+    for (const f of this.actives.keys()) {
       if (!present.has(f)) {
-        this.actifs.delete(f);
-        this.captures.oublier(f);
+        this.actives.delete(f);
+        this.captures.forget(f);
       }
     }
-    for (const [f, c] of this.parcours) {
+    for (const [f, c] of this.cycle) {
       // Closed, moved to another window or outside the displayed space: the tab leaves the cycle.
       const allowed = new Set(present.has(f) ? walkableTabs(state, f) : []);
       let p: Walk | null = c.p;
-      for (const id of c.p.liste) if (p && !allowed.has(id)) p = remove(p, id);
+      for (const id of c.p.list) if (p && !allowed.has(id)) p = remove(p, id);
       if (p === c.p) continue;
-      if (!p) this.terminer(f, undefined);
+      if (!p) this.finish(f, undefined);
       else {
         c.p = p;
-        if (c.visible) this.envoyerPanneau(f, c);
+        if (c.visible) this.sendPanel(f, c);
       }
     }
   }
 
   /** `focus`: give the keyboard back to the displayed page if the panel had taken it, once the tab has changed. */
-  private terminer(windowId: WindowId, enable: TabId | undefined, focus = true): void {
-    const c = this.parcours.get(windowId);
+  private finish(windowId: WindowId, enable: TabId | undefined, focus = true): void {
+    const c = this.cycle.get(windowId);
     if (!c) return;
-    clearTimeout(c.minuteur);
-    this.parcours.delete(windowId);
-    if (c.visible) this.o.envoyer(windowId, null);
-    if (enable) this.o.agir(this.activation(windowId, enable));
-    if (c.visible && focus) this.o.rendreFocus(windowId);
+    clearTimeout(c.timeout);
+    this.cycle.delete(windowId);
+    if (c.visible) this.o.send(windowId, null);
+    if (enable) this.o.dispatch(this.activation(windowId, enable));
+    if (c.visible && focus) this.o.restoreFocus(windowId);
   }
 
   /**
@@ -166,17 +166,17 @@ export class TabCycle {
    * belong to a sibling space with the same key, which activerOnglet would make active instead).
    */
   private activation(windowId: WindowId, id: TabId): Action {
-    const link = this.o.etat().onglets[id]?.lien;
-    return link?.type === "essentiel" ? { type: "ouvrirFavori", fenetreId: windowId, genre: "essentiel", id: link.id } : { type: "activerOnglet", id };
+    const link = this.o.state().tabs[id]?.link;
+    return link?.type === "essentiel" ? { type: "ouvrirFavori", windowId: windowId, kind: "essentiel", id: link.id } : { type: "activerOnglet", id };
   }
 
-  private envoyerPanneau(windowId: WindowId, c: InProgress): void {
-    const state = this.o.etat();
-    const { debut: start, fin: end } = visibleWindow(c.p);
-    const cards = c.p.liste.slice(start, end).map((id) => {
-      const o = state.onglets[id];
-      return { id, titre: o?.titre ?? "", favicon: o?.favicon ?? null, apercu: this.o.apercu(id) };
+  private sendPanel(windowId: WindowId, c: InProgress): void {
+    const state = this.o.state();
+    const { start: start, end: end } = visibleWindow(c.p);
+    const cards = c.p.list.slice(start, end).map((id) => {
+      const o = state.tabs[id];
+      return { id, title: o?.title ?? "", favicon: o?.favicon ?? null, preview: this.o.preview(id) };
     });
-    this.o.envoyer(windowId, { cartes: cards, selection: c.p.selection - start });
+    this.o.send(windowId, { cards: cards, selection: c.p.selection - start });
   }
 }

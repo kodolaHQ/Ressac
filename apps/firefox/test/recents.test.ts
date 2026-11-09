@@ -13,14 +13,14 @@ const ag = (a: Action | null) => {
   if (a) e = apply(e, a, genId);
 };
 const open = (url: string) => {
-  ag({ type: "ouvrirOnglet", fenetreId: F, url });
-  return Object.keys(e.onglets).at(-1)!;
+  ag({ type: "ouvrirOnglet", windowId: F, url });
+  return Object.keys(e.tabs).at(-1)!;
 };
 
 beforeEach(() => {
   n = 0;
   e = initialState(genId);
-  F = e.fenetres[0]!.id;
+  F = e.windows[0]!.id;
 });
 
 test("recentOrder: active first, history, then the rest; closed ignored", () => {
@@ -52,16 +52,16 @@ test("avancer boucle", () => {
 });
 
 test("retirer", () => {
-  const p = { liste: ["a", "b", "c"], selection: 1 };
-  expect(remove(p, "b")).toEqual({ liste: ["a", "c"], selection: 1 });
-  expect(remove({ liste: ["a", "b", "c"], selection: 2 }, "c")).toEqual({ liste: ["a", "b"], selection: 1 });
-  expect(remove({ liste: ["a", "b", "c"], selection: 2 }, "a")).toEqual({ liste: ["b", "c"], selection: 1 });
-  expect(remove({ liste: ["a", "b"], selection: 1 }, "a")).toBeNull();
+  const p = { list: ["a", "b", "c"], selection: 1 };
+  expect(remove(p, "b")).toEqual({ list: ["a", "c"], selection: 1 });
+  expect(remove({ list: ["a", "b", "c"], selection: 2 }, "c")).toEqual({ list: ["a", "b"], selection: 1 });
+  expect(remove({ list: ["a", "b", "c"], selection: 2 }, "a")).toEqual({ list: ["b", "c"], selection: 1 });
+  expect(remove({ list: ["a", "b"], selection: 1 }, "a")).toBeNull();
 });
 
 test("visibleWindow", () => {
   const list = Array.from({ length: 10 }, (_, i) => String(i));
-  expect(visibleWindow({ liste: list, selection: 0 })).toEqual({ debut: 0, fin: 7 });
-  expect(visibleWindow({ liste: list, selection: 9 })).toEqual({ debut: 3, fin: 10 });
-  expect(visibleWindow({ liste: list.slice(0, 4), selection: 2 })).toEqual({ debut: 0, fin: 4 });
+  expect(visibleWindow({ list: list, selection: 0 })).toEqual({ start: 0, end: 7 });
+  expect(visibleWindow({ list: list, selection: 9 })).toEqual({ start: 3, end: 10 });
+  expect(visibleWindow({ list: list.slice(0, 4), selection: 2 })).toEqual({ start: 0, end: 4 });
 });

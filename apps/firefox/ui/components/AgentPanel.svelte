@@ -6,14 +6,14 @@
 
   let {
     visible,
-    integre: builtIn = false,
-    redimensionner: resize,
+    builtin: builtIn = false,
+    resize: resize,
   }: {
     visible: boolean;
     /** In the builder's « Agent » tab: no width handle, always shown in its host. */
-    integre?: boolean;
+    builtin?: boolean;
     /** The user drags the left edge: wanted width in pixels; `fin` on release. */
-    redimensionner?: (width: number, end: boolean) => void;
+    resize?: (width: number, end: boolean) => void;
   } = $props();
   let section: HTMLElement;
 
@@ -36,12 +36,12 @@
     handle.addEventListener("pointercancel", drop);
   }
   let hostEl: HTMLDivElement;
-  const appState = $derived(terminalAgent.agent.etat);
+  const appState = $derived(terminalAgent.agent.state);
 
-  let profiles = $state<{ id: string; nom: string }[]>([]);
-  const agentProfile = $derived(browserState.valeur?.reglages.profilAgent ?? "claude");
+  let profiles = $state<{ id: string; name: string }[]>([]);
+  const agentProfile = $derived(browserState.value?.settings.agentProfile ?? "claude");
   $effect(() => {
-    if (visible) api.agent.profils().then((p) => (profiles = p), () => {});
+    if (visible) api.agent.profiles().then((p) => (profiles = p), () => {});
   });
   // A single profile: nothing to choose. The menu stays if the chosen profile has disappeared, so it can be changed.
   const profileChoice = $derived(profiles.length >= 2 || (profiles.length > 0 && !profiles.some((p) => p.id === agentProfile)));
@@ -94,25 +94,25 @@
         data-testid="profil-agent"
         aria-label="Profil d'agent"
         value={agentProfile}
-        onchange={(e) => api.agir({ type: "choisirProfilAgent", profil: e.currentTarget.value })}
+        onchange={(e) => api.dispatch({ type: "choisirProfilAgent", profile: e.currentTarget.value })}
       >
-        {#each profiles as p (p.id)}<option value={p.id}>{p.nom}</option>{/each}
+        {#each profiles as p (p.id)}<option value={p.id}>{p.name}</option>{/each}
       </select>
     </header>
   {/if}
-  {#if appState.etat === "preparation"}
+  {#if appState.state === "preparation"}
     <p class="message">Préparation de l'agent… (la première fois, la construction du conteneur prend quelques minutes)</p>
-  {:else if appState.etat === "docker-absent"}
+  {:else if appState.state === "docker-absent"}
     <p class="message">Docker n'est pas lancé. La navigation fonctionne ; seul l'agent est indisponible.</p>
     <button onclick={terminalAgent.reset}>Réessayer</button>
-  {:else if appState.etat === "erreur"}
+  {:else if appState.state === "erreur"}
     <p class="message">L'agent n'a pas pu démarrer : {appState.message}</p>
     <button onclick={terminalAgent.reset}>Réessayer</button>
-  {:else if appState.etat === "termine"}
+  {:else if appState.state === "termine"}
     <p class="message">L'agent s'est arrêté.</p>
     <button onclick={terminalAgent.reset}>Relancer</button>
   {/if}
-  <div class="terminal" bind:this={hostEl} class:masque={appState.etat !== "actif" && appState.etat !== "termine"}></div>
+  <div class="terminal" bind:this={hostEl} class:masque={appState.state !== "actif" && appState.state !== "termine"}></div>
 </section>
 
 <style>

@@ -61,12 +61,12 @@ const TICKETS_LAYOUT = "un chiffre clé, les tickets par priorité, les trois pl
 const TICKETS = "tickets-gitlab";
 /** Gemma's plan for the tickets: a key figure, the most urgent in a box, the table by priority (actions.spec.ts:1193). */
 const TICKETS_PLAN = {
-  blocs: [
-    { composant: "chiffre", props: { valeur: "compter(filtrer(tickets, priorite = urgent))", libelle: "Tickets urgents" } },
-    { composant: "encadre", props: { niveau: "attention", titre: "À traiter d'abord", elements: "garder(filtrer(tickets, priorite = urgent), 3)", champ: "titre" } },
+  blocks: [
+    { component: "chiffre", props: { value: "compter(filtrer(tickets, priorite = urgent))", label: "Tickets urgents" } },
+    { component: "encadre", props: { level: "attention", title: "À traiter d'abord", items: "garder(filtrer(tickets, priorite = urgent), 3)", field: "titre" } },
     {
-      composant: "tableau",
-      props: { elements: "regrouper(tickets, priorite)", colonnes: [{ champ: "titre", libelle: "Ticket" }, { champ: "projet", libelle: "Projet" }], lien: "url" },
+      component: "tableau",
+      props: { items: "regrouper(tickets, priorite)", columns: [{ field: "titre", label: "Ticket" }, { field: "projet", label: "Projet" }], link: "url" },
     },
   ],
 };
@@ -99,13 +99,13 @@ async function waitTicketsPage(): Promise<void> {
   expect(await q.count(`${page} ${tid("mention-secours")}`)).toBe(0);
 }
 
-const tabUrls = async () => Object.values((await state(m)).onglets).map((o) => o.url);
+const tabUrls = async () => Object.values((await state(m)).tabs).map((o) => o.url);
 
 beforeAll(async () => {
   servers = await startActionServers();
   const site = servers.site.url;
   w = await launchWebAiOs({
-    env: { WEBAIOS_OLLAMA_URL: servers.ollama.url, WEBAIOS_KEV_URL: servers.kev.url, WEBAIOS_TEST_ADRESSES_LOCALES: "1", WEBAIOS_TEST_ACTION_IMAGES: servers.images.url },
+    env: { WEBAIOS_OLLAMA_URL: servers.ollama.url, WEBAIOS_KEV_URL: servers.kev.url, WEBAIOS_TEST_LOCAL_ADDRESSES: "1", WEBAIOS_TEST_ACTION_IMAGES: servers.images.url },
   });
   m = w.marionette;
   q = uiQueries(m);
@@ -114,21 +114,21 @@ beforeAll(async () => {
   await waitKernel(m);
   const d = w.dataDir;
   await writeAction(d, "annonces-leboncoin", {
-    nom: "Annonces Leboncoin",
-    saisie: { libelle: "Recherche" },
+    name: "Annonces Leboncoin",
+    input: { label: "Recherche" },
     sources: { web: true },
-    miseEnPage: "des cartes avec le prix et la ville, les moins chères en premier",
+    layout: "des cartes avec le prix et la ville, les moins chères en premier",
     workflow: chained([
-      { id: "recherche", type: "source.page", parametres: { url: `${site}/leboncoin/recherche?text={saisie}` } },
-      { id: "extraire", type: "code", parametres: { source: "extraire.mjs" } },
-      { id: "sortie", type: "sortie", parametres: { vers: "page" } },
+      { id: "recherche", type: "source.page", params: { url: `${site}/leboncoin/recherche?text={saisie}` } },
+      { id: "extraire", type: "code", params: { source: "extraire.mjs" } },
+      { id: "sortie", type: "sortie", params: { to: "page" } },
     ]),
-    fichiers: { "extraire.mjs": EXTRACT_ADS },
+    files: { "extraire.mjs": EXTRACT_ADS },
   });
   const leak = `${site}/tiers?d=${SECRET}`;
   await writeRunnableAction(d, "hostile", {
-    nom: "Hostile",
-    compte: ["127.0.0.1"],
+    name: "Hostile",
+    account: ["127.0.0.1"],
     code: `export default async () => ({
       compte: { jeton: ${JSON.stringify(SECRET)} },
       tickets: [{ titre: "Connexion impossible", photo: "https://img.exemple.org/avatar.png", fuite: ${JSON.stringify(leak)} }],
@@ -136,30 +136,30 @@ beforeAll(async () => {
   });
   // AGENTS.md's « Tickets GitLab »: source.page with the account, then extraire, then the page (actions.spec.ts:1173).
   await writeAction(d, TICKETS, {
-    nom: "Tickets GitLab",
-    motsCles: ["gitlab", "tickets"],
-    sources: { compte: ["127.0.0.1"] },
-    miseEnPage: TICKETS_LAYOUT,
+    name: "Tickets GitLab",
+    keywords: ["gitlab", "tickets"],
+    sources: { account: ["127.0.0.1"] },
+    layout: TICKETS_LAYOUT,
     workflow: chained([
-      { id: "tickets", type: "source.page", parametres: { url: `${site}/gitlab/tickets`, compte: true } },
-      { id: "extraire", type: "code", parametres: { source: "extraire.mjs" } },
-      { id: "sortie", type: "sortie", parametres: { vers: "page" } },
+      { id: "tickets", type: "source.page", params: { url: `${site}/gitlab/tickets`, account: true } },
+      { id: "extraire", type: "code", params: { source: "extraire.mjs" } },
+      { id: "sortie", type: "sortie", params: { to: "page" } },
     ]),
-    fichiers: { "extraire.mjs": EXTRACT_TICKETS },
+    files: { "extraire.mjs": EXTRACT_TICKETS },
   });
   await writeRunnableAction(d, "taches", {
-    nom: "Tâches",
+    name: "Tâches",
     code: `export default async () => ({ taches: [{ nom: "Alpha", etat: "ouvert" }, { nom: "Bravo", etat: "fermé" }] });`,
   });
   for (const id of ["un", "deux", "trois"]) await writePagesAction(d, site, id, `Pages ${id}`);
-  const grant = { domaines: ["127.0.0.1"], publiques: [], profil: "defaut" };
+  const grant = { domains: ["127.0.0.1"], public: [], profile: "defaut" };
   await mkdir(actionsDataDir(d), { recursive: true });
   await writeFile(path.join(actionsDataDir(d), "accords.json"), JSON.stringify({ hostile: grant, [TICKETS]: grant }));
   for (const id of ["annonces-leboncoin", "hostile", TICKETS, "taches", "un", "deux", "trois"]) await waitUi(m, "return (await ui.webaios.actions.liste()).some((a) => a.id === arguments[0]);", [id], 30_000);
 }, 90_000);
 beforeEach(async () => {
   servers.reset();
-  for (const id of Object.keys((await state(m)).onglets)) await dispatch(m, { type: "fermerOnglet", id } as Action);
+  for (const id of Object.keys((await state(m)).tabs)) await dispatch(m, { type: "fermerOnglet", id } as Action);
 });
 afterAll(async () => {
   expect(await missingApi(m)).toEqual([]);
@@ -170,7 +170,7 @@ afterAll(async () => {
 describe("action scenarios", () => {
   // actions.spec.ts:1232
   it("spec success: type « git », validate, see the progress, then a key figure, a table by priority and a « à traiter d'abord » box", { timeout: 120_000 }, async () => {
-    servers.settings.lenteurSiteMs = 1500;
+    servers.settings.siteSlownessMs = 1500;
     servers.settings.plan = TICKETS_PLAN;
     const before = (await runsOnDisk(w.dataDir, TICKETS)).length;
     const from = servers.ollama.prompts.length;
@@ -243,16 +243,16 @@ describe("action scenarios", () => {
 
   // actions.spec.ts:1474
   it("three actions launched: the third says « En attente : deux actions tournent déjà », then runs", { timeout: 150_000 }, async () => {
-    servers.settings.lenteurSiteMs = 3000;
+    servers.settings.siteSlownessMs = 3000;
     // The first two, launched as the agent or the Actions page would (without waiting for their end).
     await inUi(m, "void ui.webaios.actions.lancer('un', null); void ui.webaios.actions.lancer('deux', null);");
     await waitUi(m, "return (await ui.webaios.actions.direct()).courantes.length === 2;", [], 30_000);
     await openAction(m, "trois", "Pages trois");
     await click(m, tid("relancer-action"));
     await q.waitText(tid("en-attente"), "En attente : deux actions tournent déjà", 30_000);
-    const feed = await inUi<{ courantes: { action: string }[]; enAttente: { action: string }[] }>(m, "return JSON.parse(JSON.stringify(await ui.webaios.actions.direct()));");
-    expect(feed.enAttente.map((a) => a.action)).toEqual(["trois"]);
-    expect(feed.courantes.map((a) => a.action).sort()).toEqual(["deux", "un"]);
+    const feed = await inUi<{ running: { action: string }[]; waiting: { action: string }[] }>(m, "return JSON.parse(JSON.stringify(await ui.webaios.actions.direct()));");
+    expect(feed.waiting.map((a) => a.action)).toEqual(["trois"]);
+    expect(feed.running.map((a) => a.action).sort()).toEqual(["deux", "un"]);
     // A slot frees up: the third runs, then shows its page.
     await q.waitCount(tid("en-attente"), 0, 60_000);
     await visible(tid("rendu-page"), 60_000);
@@ -265,7 +265,7 @@ describe("action scenarios", () => {
   // actions.spec.ts:1334
   it("Leboncoin « leboncoin clio lyon »: the input reaches the URL read, cards with photos loaded", { timeout: 120_000 }, async () => {
     servers.settings.plan = {
-      blocs: [{ composant: "cartes", props: { elements: "trier(annonces, prix)", titre: "titre", sousTitre: "ville", valeur: "prix", image: "photo", lien: "url" } }],
+      blocks: [{ component: "cartes", props: { items: "trier(annonces, prix)", title: "titre", subtitle: "ville", value: "prix", image: "photo", link: "url" } }],
     };
     // A cookie on the image host (127.0.0.1), set by a tab of the default container: an image load must not send it.
     await m.execute(
@@ -321,18 +321,18 @@ describe("action scenarios", () => {
     const site = servers.site.url;
     const title = `<img src=${site}/tiers?d=titre>Tickets`;
     servers.settings.plan = {
-      blocs: [
-        { composant: "titre", props: { texte: title } },
+      blocks: [
+        { component: "titre", props: { text: title } },
         // An address composed by Gemma: a field is only a name, this block is dropped.
-        { composant: "lien", props: { objet: "compte", url: `"${site}/tiers?d=" + jeton`, texte: "Ouvrir" } },
+        { component: "lien", props: { object: "compte", url: `"${site}/tiers?d=" + jeton`, text: "Ouvrir" } },
         // A field holding no address: the link stays text.
-        { composant: "lien", props: { objet: "compte", url: "jeton", texte: "Voir le jeton" } },
+        { component: "lien", props: { object: "compte", url: "jeton", text: "Voir le jeton" } },
         // A results address to the (local) test server: inert. An action with an account's image: neutral.
-        { composant: "cartes", props: { elements: "tickets", titre: "titre", image: "photo", lien: "fuite" } },
+        { component: "cartes", props: { items: "tickets", title: "titre", image: "photo", link: "fuite" } },
       ],
     };
     const since = servers.site.log.length;
-    await dispatch(m, { type: "ouvrirAction", fenetreId: (await state(m)).fenetres[0]!.id, id: "hostile", nom: "Hostile" });
+    await dispatch(m, { type: "ouvrirAction", windowId: (await state(m)).windows[0]!.id, id: "hostile", name: "Hostile" });
     await visible(tid("page-action"), 10_000);
     await click(m, tid("relancer-action"));
     const page = tid("rendu-page");

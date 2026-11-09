@@ -13,7 +13,7 @@ import { click, inUi, waitUi } from "./ui";
 // Agent app helpers.
 
 /** A fake app's ports (one block of 5 per e2e file: they run in parallel) and a short delay before « En erreur ». */
-export const APPS_ENV = (block: [number, number]) => ({ WEBAIOS_PORTS_APPS: `${block[0]}-${block[1]}`, WEBAIOS_DELAI_APP_MS: "3000" });
+export const APPS_ENV = (block: [number, number]) => ({ WEBAIOS_APP_PORTS: `${block[0]}-${block[1]}`, WEBAIOS_APP_DELAY_MS: "3000" });
 
 // 1×1 PNG, the app's same-origin icon.
 const PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
@@ -38,13 +38,13 @@ createServer((req, res) => {
   res.end('<title>Essai ${folder}</title><a href="https://exemple.invalide/">lien</a>');
 }).listen(Number(process.env.PORT));
 `,
-  plante: () => `process.stderr.write("boum\\n");
+  crashed: () => `process.stderr.write("boum\\n");
 process.exit(3);
 `,
-  muet: () => `setInterval(() => {}, 1000);
+  muted: () => `setInterval(() => {}, 1000);
 `,
   // A sign-up form: the design mode's test page in an app window.
-  formulaire: () => `import { createServer } from "node:http";
+  form: () => `import { createServer } from "node:http";
 createServer((req, res) => {
   res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
   res.end('<title>Inscription</title><form id="inscription"><input id="email" class="champ" type="email"> <button id="envoyer" type="button">Envoyer</button></form>');
@@ -56,17 +56,17 @@ createServer((req, res) => {
  * Writes a project: `<dataDir>/espace/projets/<dossier>/` with `serveur.mjs` and, if `manifeste` is given,
  * `webaios.json` (a string is written as is; an object completes `{ type: "application", lancement: "node serveur.mjs" }`).
  */
-export function writeProject(dataDir: string, folder: string, o: { manifeste?: object | string; serveur?: keyof typeof SERVERS } = {}): void {
+export function writeProject(dataDir: string, folder: string, o: { manifest?: object | string; server?: keyof typeof SERVERS } = {}): void {
   const dir = join(dataDir, "espace", "projets", folder);
   mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, "serveur.mjs"), SERVERS[o.serveur ?? "ok"](folder));
-  if (o.manifeste === undefined) return;
-  writeFileSync(join(dir, "webaios.json"), typeof o.manifeste === "string" ? o.manifeste : JSON.stringify({ type: "application", lancement: "node serveur.mjs", ...o.manifeste }));
+  writeFileSync(join(dir, "serveur.mjs"), SERVERS[o.server ?? "ok"](folder));
+  if (o.manifest === undefined) return;
+  writeFileSync(join(dir, "webaios.json"), typeof o.manifest === "string" ? o.manifest : JSON.stringify({ type: "application", launch: "node serveur.mjs", ...o.manifest }));
 }
 
 /** Launches app « essai » with the agent's tool; returns its port. */
 export async function launchAttempt(dataDir: string): Promise<number> {
-  const { texte: text } = await callTool(dataDir, "lancer_application", { dossier: "essai" });
+  const { text: text } = await callTool(dataDir, "lancer_application", { folder: "essai" });
   expect(text).toMatch(/en marche sur http:\/\/localhost:\d+/);
   return Number(/localhost:(\d+)/.exec(text)![1]);
 }
@@ -127,17 +127,17 @@ export interface AppsPage {
  */
 export async function openAppsPage(
   block: [number, number],
-  o: { env?: Record<string, string>; projets?: boolean; lent?: boolean; sansFiche?: string[]; prepare?: (dataDir: string) => void; dataDir?: string; profile?: string; page?: boolean } = {},
+  o: { env?: Record<string, string>; projects?: boolean; slow?: boolean; noManifest?: string[]; prepare?: (dataDir: string) => void; dataDir?: string; profile?: string; page?: boolean } = {},
 ): Promise<AppsPage> {
   const dataDir = o.dataDir ?? (await mkdtemp(join(os.tmpdir(), "webaios-data-")));
   const profile = o.profile ?? (await mkdtemp(join(os.tmpdir(), "webaios-firefox-")));
   if (!o.dataDir) {
-    if (o.projets ?? true) {
-      writeProject(dataDir, "essai", { manifeste: { nom: "Essai", ...(o.lent ? { lancement: "sleep 1 && node serveur.mjs" } : {}) } });
-      writeProject(dataDir, "zod", { manifeste: { type: "poc", origine: "https://github.com/colinhacks/zod" } });
+    if (o.projects ?? true) {
+      writeProject(dataDir, "essai", { manifest: { name: "Essai", ...(o.slow ? { launch: "sleep 1 && node serveur.mjs" } : {}) } });
+      writeProject(dataDir, "zod", { manifest: { type: "poc", origin: "https://github.com/colinhacks/zod" } });
       writeProject(dataDir, "vieux");
     }
-    for (const d of o.sansFiche ?? []) writeProject(dataDir, d);
+    for (const d of o.noManifest ?? []) writeProject(dataDir, d);
     o.prepare?.(dataDir);
   }
   const w = await launchWebAiOs({ dataDir, profile, env: { ...APPS_ENV(block), ...o.env } });
@@ -146,7 +146,7 @@ export async function openAppsPage(
   await waitReady(m);
   await expect.poll(() => existsSync(join(dataDir, "espace", ".webaios", "mcp.json")), { timeout: 15_000 }).toBe(true);
   if (o.page ?? true) {
-    await dispatch(m, { type: "ouvrirApplications", fenetreId: (await state(m)).fenetres[0]!.id });
+    await dispatch(m, { type: "ouvrirApplications", windowId: (await state(m)).windows[0]!.id });
     await waitUi(m, "return !!doc.querySelector('[data-testid=\"page-applications\"]')");
   }
   return { w, m, dataDir, profile };

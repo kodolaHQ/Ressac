@@ -18,13 +18,13 @@ describe("state store", () => {
 
   it("starts with one space and no tab", async () => {
     const s = await state(w.marionette);
-    expect(s.espaces.map((e) => e.nom)).toEqual(["Perso"]);
-    expect(Object.keys(s.onglets)).toHaveLength(0);
+    expect(s.spaces.map((e) => e.name)).toEqual(["Perso"]);
+    expect(Object.keys(s.tabs)).toHaveLength(0);
   });
 
   it("saves a change to session.json within 2 s", async () => {
     const s = await state(w.marionette);
-    await dispatch(w.marionette, { type: "ouvrirOnglet", fenetreId: s.fenetres[0]!.id, url: "https://exemple.test/" });
+    await dispatch(w.marionette, { type: "ouvrirOnglet", windowId: s.windows[0]!.id, url: "https://exemple.test/" });
     const file = path.join(w.dataDir, "session.json");
     // Waits for the content, not the file: an earlier save may already have written it, without the tab.
     const urls = async () =>
@@ -73,7 +73,7 @@ describe("restart on an unchanged session", () => {
     const before = { text: await readFile(file, "utf8"), mtime: statSync(file).mtimeMs };
     w = await launchWebAiOs({ dataDir });
     await w.marionette.setContext("chrome");
-    expect((await state(w.marionette)).fenetres).toHaveLength(1);
+    expect((await state(w.marionette)).windows).toHaveLength(1);
     // Longer than the frame's 300 ms timer plus the recorder's 500 ms delay: a write would have landed.
     await new Promise((r) => setTimeout(r, 2000));
     expect({ text: await readFile(file, "utf8"), mtime: statSync(file).mtimeMs }).toEqual(before);
@@ -102,6 +102,6 @@ describe("unreadable session", () => {
     );
     expect(path.basename(aside!)).toMatch(/^session\.json\..+\.corrompu$/);
     expect((await readdir(dataDir)).filter((n) => n.endsWith(".corrompu"))).toEqual([path.basename(aside!)]);
-    expect((await state(w!.marionette)).espaces).toHaveLength(1);
+    expect((await state(w!.marionette)).spaces).toHaveLength(1);
   });
 });

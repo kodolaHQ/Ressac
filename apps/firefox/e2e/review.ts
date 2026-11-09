@@ -25,14 +25,14 @@ export const modified = (...n: number[]) => LINES.map((l, i) => (n.includes(i + 
 
 /** The Applications page of the first window, with its « Projets externes » section. */
 export async function openApplications(m: Marionette): Promise<void> {
-  await dispatch(m, { type: "ouvrirApplications", fenetreId: (await state(m)).fenetres[0]!.id });
+  await dispatch(m, { type: "ouvrirApplications", windowId: (await state(m)).windows[0]!.id });
   await waitUi(m, "return !!doc.querySelector('[data-testid=\"projets-externes\"]')");
 }
 
 const COMMAND = /http:\/\/127\.0\.0\.1:(\d+)\/mcp-externe --header "Authorization: Bearer ([0-9a-f]{64})"/;
 
 /** « Brancher un Claude Code » (named `nom` if given), then the command shown, read with a regex. */
-export async function connectClient(m: Marionette, name?: string): Promise<{ commande: string; port: number; jeton: string }> {
+export async function connectClient(m: Marionette, name?: string): Promise<{ command: string; port: number; token: string }> {
   await waitUi(m, "return doc.querySelector('[data-testid=\"brancher-externe\"]')?.disabled === false", [], 15_000);
   await click(m, '[data-testid="brancher-externe"]');
   if (name !== undefined)
@@ -49,7 +49,7 @@ export async function connectClient(m: Marionette, name?: string): Promise<{ com
   const command = await waitUi<string>(m, "return doc.querySelector('[data-testid=\"commande-branchement\"]')?.textContent ?? null");
   const r = COMMAND.exec(command);
   if (!r) throw new Error(`no connection command in: ${command}`);
-  return { commande: command, port: Number(r[1]), jeton: r[2]! };
+  return { command: command, port: Number(r[1]), token: r[2]! };
 }
 
 export async function mcpClient(port: number, token: string): Promise<Client> {
@@ -69,19 +69,19 @@ export const reviewedRef = (dataDir: string, project: string) => join(dataDir, "
  */
 export async function declareProject(
   m: Marionette,
-  o: { dataDir: string; nom?: string; ports?: number[]; snapshot?: boolean },
-): Promise<{ dossier: string; id: string; port: number; jeton: string; client: Client }> {
-  const folder = projectDir(o.nom ?? "mon-site");
+  o: { dataDir: string; name?: string; ports?: number[]; snapshot?: boolean },
+): Promise<{ folder: string; id: string; port: number; token: string; client: Client }> {
+  const folder = projectDir(o.name ?? "mon-site");
   writeAppJs(folder, LINES);
   writeFileSync(join(folder, "logo.bin"), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
-  const { port, jeton: token } = await connectClient(m);
+  const { port, token: token } = await connectClient(m);
   const client = await mcpClient(port, token);
-  await client.callTool({ name: "declarer_projet", arguments: { dossier: folder, ports: o.ports ?? [18765] } });
+  await client.callTool({ name: "declarer_projet", arguments: { folder: folder, ports: o.ports ?? [18765] } });
   await waitUi(m, "return !!doc.querySelector('[data-testid=\"projet-externe\"]')", [], 15_000);
   const id = createHash("sha256").update(folder).digest("hex").slice(0, 16);
   for (const deadline = Date.now() + 15_000; o.snapshot !== false && !existsSync(reviewedRef(o.dataDir, `ext-${id}`)); await new Promise((r) => setTimeout(r, 100)))
     if (Date.now() > deadline) throw new Error(`no first review snapshot of ext-${id}`);
-  return { dossier: folder, id, port, jeton: token, client };
+  return { folder: folder, id, port, token: token, client };
 }
 
 /** The status of a raw POST to `/mcp-externe` (node:http: any Host header goes out as given, which fetch does not promise). */
@@ -97,7 +97,7 @@ export function rawStatus(port: number, headers: Record<string, string>): Promis
 }
 
 /** The notifications the host wrote to WEBAIOS_TEST_NOTIFICATIONS, in order. */
-export function readNotifications(file: string): { titre: string; texte: string }[] {
+export function readNotifications(file: string): { title: string; text: string }[] {
   return existsSync(file) ? readFileSync(file, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l)) : [];
 }
 

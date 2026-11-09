@@ -26,15 +26,15 @@ afterEach(async () => {
   }
 });
 
-const win = async () => (await state(m)).fenetres[0]!;
+const win = async () => (await state(m)).windows[0]!;
 const activeId = async () => {
   const f = await win();
-  return f.actif[f.espaceActif] ?? null;
+  return f.active[f.activeSpace] ?? null;
 };
 async function open(path: string): Promise<string> {
-  const before = new Set(Object.keys((await state(m)).onglets));
-  const after = await dispatch(m, { type: "ouvrirOnglet", fenetreId: (await win()).id, url: server.url + path });
-  return Object.keys(after.onglets).find((id) => !before.has(id))!;
+  const before = new Set(Object.keys((await state(m)).tabs));
+  const after = await dispatch(m, { type: "ouvrirOnglet", windowId: (await win()).id, url: server.url + path });
+  return Object.keys(after.tabs).find((id) => !before.has(id))!;
 }
 async function waitState<T>(read: (s: BrowserState) => T, ok: (v: T) => boolean, ms = 10_000): Promise<T> {
   const deadline = Date.now() + ms;
@@ -45,8 +45,8 @@ async function waitState<T>(read: (s: BrowserState) => T, ok: (v: T) => boolean,
     await new Promise((r) => setTimeout(r, 100));
   }
 }
-const waitActive = (id: string) => waitState((s) => s.fenetres[0]!.actif[s.fenetres[0]!.espaceActif], (a) => a === id);
-const waitTitle = (id: string, title: string) => waitState((s) => s.onglets[id]?.titre, (t) => t === title);
+const waitActive = (id: string) => waitState((s) => s.windows[0]!.active[s.windows[0]!.activeSpace], (a) => a === id);
+const waitTitle = (id: string, title: string) => waitState((s) => s.tabs[id]?.title, (t) => t === title);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const PANEL = '[data-testid="panneau-onglets"]';
 const panelShown = () => inUi<boolean>(m, `return !!doc.querySelector('${PANEL}')`);

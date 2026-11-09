@@ -64,13 +64,13 @@ describe("design viewfinder actor", () => {
     const a = await arm();
     await trustedMouse(m, B, "#envoyer");
     const c = cleanCapture(((await a.result()) as { r?: unknown }).r);
-    expect(c?.selecteur).toBe("#envoyer");
-    expect(c?.etiquette).toBe("button#envoyer");
-    expect(c?.voisinage.parent).toBe("form#inscription");
+    expect(c?.selector).toBe("#envoyer");
+    expect(c?.label).toBe("button#envoyer");
+    expect(c?.neighborhood.parent).toBe("form#inscription");
     expect(Object.keys(c?.styles ?? {})).toHaveLength(26);
     expect(c?.html.startsWith("<button")).toBe(true);
-    expect(c!.rect.largeur).toBeGreaterThan(0);
-    expect(c?.adresse).toBe(`${servers.page}/`);
+    expect(c!.rect.width).toBeGreaterThan(0);
+    expect(c?.url).toBe(`${servers.page}/`);
     expect((await pageLog(m, B)).reactions).toEqual([]);
     expect(await inPage("return location.href;")).toBe(`${servers.page}/`);
   });
@@ -80,7 +80,7 @@ describe("design viewfinder actor", () => {
     await open("/");
     const a = await arm();
     await trustedMouse(m, B, "#lien");
-    expect(((await a.result()) as { r?: { selecteur: string } }).r?.selecteur).toBe("#lien");
+    expect(((await a.result()) as { r?: { selector: string } }).r?.selector).toBe("#lien");
     await sleep(500);
     expect(await inPage("return location.href;")).toBe(`${servers.page}/`);
   });
@@ -91,8 +91,8 @@ describe("design viewfinder actor", () => {
     const a = await arm();
     await trustedMouse(m, B, "li:nth-child(2)");
     const c = cleanCapture(((await a.result()) as { r?: unknown }).r);
-    expect(await inPage(`const l = document.querySelectorAll(${JSON.stringify(c!.selecteur)}); return l.length === 1 && l[0].textContent === "deux";`)).toBe(true);
-    expect(c!.voisinage.freres.length).toBeGreaterThan(0);
+    expect(await inPage(`const l = document.querySelectorAll(${JSON.stringify(c!.selector)}); return l.length === 1 && l[0].textContent === "deux";`)).toBe(true);
+    expect(c!.neighborhood.siblings.length).toBeGreaterThan(0);
   });
 
   // design.spec.ts:112
@@ -110,7 +110,7 @@ describe("design viewfinder actor", () => {
     await clean();
     a = await arm();
     await trustedMouse(m, B, "#email");
-    expect(((await a.result()) as { r?: { selecteur: string } }).r?.selecteur).toBe("#email");
+    expect(((await a.result()) as { r?: { selector: string } }).r?.selector).toBe("#email");
     await clean();
     a = await arm();
     await stopActor(m, B);
@@ -121,14 +121,14 @@ describe("design viewfinder actor", () => {
   // design.spec.ts:135, :236
   it("source: data-source read, none gives null, malformed values are discarded", async () => {
     await open("/");
-    expect(await readSource(m, B, "p[data-source]")).toEqual({ fichier: "src/Inscription.svelte", ligne: 12 });
+    expect(await readSource(m, B, "p[data-source]")).toEqual({ file: "src/Inscription.svelte", line: 12 });
     expect(await readSource(m, B, "#nue")).toBeNull();
     // Set by the page's own script (its world, where lireSource reads).
     const pageSets = (code: string) => inPage(`const s = document.createElement("script"); s.textContent = ${JSON.stringify(code)}; document.head.append(s); s.remove(); return 1;`);
     await pageSets(`document.querySelector("#nue").__svelte_meta = { loc: { file: {}, line: "x" } }`);
     expect(await readSource(m, B, "#nue")).toBeNull();
     await pageSets(`document.querySelector("#nue").__svelte_meta = { loc: { file: "a.svelte", line: -3, column: 1.5 } }`);
-    expect(await readSource(m, B, "#nue")).toEqual({ fichier: "a.svelte" });
+    expect(await readSource(m, B, "#nue")).toEqual({ file: "a.svelte" });
     await pageSets(`Object.defineProperty(document.querySelector("#nue"), "__svelte_meta", { get() { throw new Error("no"); } })`);
     expect(await readSource(m, B, "#nue")).toBeNull();
     expect(await inPage("return Object.keys(window.wrappedJSObject ?? window).filter((k) => /viseur|webaios/i.test(k));")).toEqual([]);
@@ -173,7 +173,7 @@ describe("design viewfinder actor", () => {
     expect(await inPage("return location.href;")).toBe(`${servers.page}/`);
     expect(await a.result(200)).toBe("pending");
     await trustedMouse(m, B, "#envoyer", { count: 2 });
-    expect(((await a.result()) as { r?: { selecteur: string } }).r?.selecteur).toBe("#envoyer");
+    expect(((await a.result()) as { r?: { selector: string } }).r?.selector).toBe("#envoyer");
     await sleep(300);
     expect((await pageLog(m, B)).reactions).toEqual([]);
     expect(await m.execute("return gBrowser.tabs.length;")).toBe(tabs);
@@ -188,27 +188,27 @@ describe("design viewfinder actor", () => {
     expect(await hosts()).toBe(1);
     expect(await a.result(100)).toBe("pending");
     await trustedMouse(m, B, "#email");
-    expect(((await a.result()) as { r?: { selecteur: string } }).r?.selecteur).toBe("#email");
+    expect(((await a.result()) as { r?: { selector: string } }).r?.selector).toBe("#email");
   });
 
   it("hostile page: window capture listeners set before arming see nothing", async () => {
     await open("/hooks");
     // Points measured before arming (the page hooks getBoundingClientRect), then its log emptied.
-    const at = { email: await center(m, B, "#email"), lien: await center(m, B, "#lien"), envoyer: await center(m, B, "#envoyer") };
+    const at = { email: await center(m, B, "#email"), link: await center(m, B, "#lien"), send: await center(m, B, "#envoyer") };
     await clearLog(m, B);
     const tabs = await m.execute<number>("return gBrowser.tabs.length;");
     const a = await armActor(m, B);
     await sleep(200);
     await trustedMouse(m, B, at.email, { move: true });
-    await trustedMouse(m, B, at.lien, { button: 1 });
-    await trustedMouse(m, B, at.lien, { button: 2 });
+    await trustedMouse(m, B, at.link, { button: 1 });
+    await trustedMouse(m, B, at.link, { button: 2 });
     await sleep(200);
     const midRight = await pageLog(m, B);
-    await trustedMouse(m, B, at.envoyer, { count: 2 });
-    const c = (await a.result()) as { r?: { selecteur: string } };
+    await trustedMouse(m, B, at.send, { count: 2 });
+    const c = (await a.result()) as { r?: { selector: string } };
     await sleep(300);
     const page = await pageLog(m, B);
-    expect(c.r?.selecteur).toBe("#envoyer");
+    expect(c.r?.selector).toBe("#envoyer");
     for (const p of [midRight, page]) {
       expect(p.early).toEqual([]);
       expect(p.docEarly).toEqual([]);
@@ -230,7 +230,7 @@ describe("design viewfinder actor", () => {
     };
     let a = await arm();
     await trustedMouse(m, B, "#email");
-    expect(((await a.result()) as { r?: { selecteur: string } }).r?.selecteur).toBe("#email");
+    expect(((await a.result()) as { r?: { selector: string } }).r?.selector).toBe("#email");
     await afterSwallow();
     await reaches();
     a = await arm();
@@ -269,7 +269,7 @@ describe("design viewfinder actor", () => {
     await open("/hooks");
     let a = await arm();
     await trustedMouse(m, B, "#email");
-    expect(((await a.result()) as { r?: { selecteur: string } }).r?.selecteur).toBe("#email");
+    expect(((await a.result()) as { r?: { selector: string } }).r?.selector).toBe("#email");
     await stopActor(m, B);
     await clearLog(m, B);
     await trustedMouse(m, B, "#email");
@@ -302,7 +302,7 @@ describe("design viewfinder actor", () => {
     await sleep(200);
     expect(await hosts()).toBe(1);
     await trustedMouse(m, B, "#envoyer");
-    expect(((await a.result()) as { r?: { selecteur: string } }).r?.selecteur).toBe("#envoyer");
+    expect(((await a.result()) as { r?: { selector: string } }).r?.selector).toBe("#envoyer");
   });
 
   it("a trusted Escape stops and never reaches the page; other keys do", async () => {
@@ -323,7 +323,7 @@ describe("design viewfinder actor", () => {
     const a = await arm();
     await trustedMouse(m, B, "#b");
     const c = cleanCapture(((await a.result()) as { r?: unknown }).r);
-    expect(c?.selecteur).toBe("#b");
+    expect(c?.selector).toBe("#b");
     expect(Object.keys(c?.styles ?? {})).toHaveLength(26);
     expect(await hosts()).toBe(0);
   });

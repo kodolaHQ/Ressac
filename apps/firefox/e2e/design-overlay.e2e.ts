@@ -33,7 +33,7 @@ const dirs: string[] = [];
 /** WebAiOs on the demo's port block, on `dataDir` and `profile`, its host answering. */
 async function boot(): Promise<void> {
   const a = testActor(profile);
-  w = await launchWebAiOs({ dataDir, profile, env: { ...a.env, WEBAIOS_PORTS_APPS: "15305-15309" }, prefs: a.prefs });
+  w = await launchWebAiOs({ dataDir, profile, env: { ...a.env, WEBAIOS_APP_PORTS: "15305-15309" }, prefs: a.prefs });
   m = w.marionette;
   await m.setContext("chrome");
   await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
@@ -60,7 +60,7 @@ const svc = <R = unknown>(body: string, args: unknown[] = []) =>
     `return (async (args) => { const store = await ChromeUtils.importESModule("${STORE}").ready, d = store.design; const t = { type: "fenetre", fenetreId: window.webaiosWindow.fenetreId }; ${body} })([...arguments]);`,
     args,
   );
-const state = () => svc<{ actif: boolean; panier: number; projet: { projet: string } | null }>("return await d.etat(t);");
+const state = () => svc<{ active: boolean; basket: number; project: { project: string } | null }>("return await d.etat(t);");
 /** The UI's own api.design.basculer(), as ✎ will call it. */
 const toggle = () => inUi(m, "ui.webaios.design.basculer(); return 1;");
 const inPage = <T = unknown>(script: string) => inBrowser<T>(m, B, script);
@@ -89,11 +89,11 @@ const pageWidth = () => inPage<number>("return innerWidth;");
 /** The mode on through the UI, the viewfinder armed. */
 async function modeOn() {
   await toggle();
-  await expect.poll(async () => (await state()).actif, { timeout: 10_000 }).toBe(true);
+  await expect.poll(async () => (await state()).active, { timeout: 10_000 }).toBe(true);
   await expect.poll(hosts, { timeout: 10_000 }).toBe(1);
 }
 async function modeOff() {
-  if ((await state()).actif) await svc("await d.stop(t); return 1;");
+  if ((await state()).active) await svc("await d.stop(t); return 1;");
   await expect.poll(columnShown, { timeout: 10_000 }).toBe(false);
 }
 
@@ -106,11 +106,11 @@ async function aim(sel: string, label: string) {
 
 /** `text` typed in the bubble, then « Ajouter au panier »: the cart grows by one. */
 async function remark(sel: string, label: string, text: string) {
-  const n = (await state()).panier;
+  const n = (await state()).basket;
   await aim(sel, label);
   await typeText(m, text);
-  await click(m, "button.ajouter", { frame: "calque" });
-  await expect.poll(async () => (await state()).panier, { timeout: 10_000 }).toBe(n + 1);
+  await click(m, "button.ajouter", { frame: "overlay" });
+  await expect.poll(async () => (await state()).basket, { timeout: 10_000 }).toBe(n + 1);
 }
 
 describe("design overlay", () => {
@@ -134,11 +134,11 @@ describe("design overlay", () => {
     // Escape in the page: the mode stops, the column closes, the cart stays.
     await m.execute(`${B}.focus();`);
     await pressKeys(m, "Escape");
-    await expect.poll(async () => (await state()).actif, { timeout: 10_000 }).toBe(false);
+    await expect.poll(async () => (await state()).active, { timeout: 10_000 }).toBe(false);
     await expect.poll(columnShown, { timeout: 10_000 }).toBe(false);
     await expect.poll(pageWidth, { timeout: 10_000 }).toBe(before);
     expect(await hosts()).toBe(0);
-    expect((await state()).panier).toBe(1);
+    expect((await state()).basket).toBe(1);
     expect(await inPage("return window.reactions;")).toEqual([]);
   });
 
@@ -165,16 +165,16 @@ describe("design overlay", () => {
     const before = await pageWidth();
     await modeOn();
     await expect.poll(pageWidth, { timeout: 10_000 }).toBe(before - 300);
-    const g = await m.execute<{ browserRight: number; voletLeft: number; voletWidth: number; voletRight: number; right: number; atVolet: string | undefined; top: number; tabboxTop: number; bottom: number; height: number }>(
+    const g = await m.execute<{ browserRight: number; panelLeft: number; panelWidth: number; panelRight: number; right: number; atPanel: string | undefined; top: number; tabboxTop: number; bottom: number; height: number }>(
       `const b = ${B}.getBoundingClientRect(), f = document.getElementById("webaios-design-volet"), v = f.getBoundingClientRect();
        const agent = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--webaios-agent")) || 0;
        return { browserRight: b.right, voletLeft: v.left, voletWidth: v.width, voletRight: v.right, right: window.innerWidth - agent, atVolet: document.elementFromPoint(v.left + 10, v.top + v.height / 2)?.id,
          top: v.top, tabboxTop: document.getElementById("tabbrowser-tabbox").getBoundingClientRect().top, bottom: v.bottom, height: window.innerHeight };`,
     );
-    expect(g.voletWidth).toBe(300);
-    expect(g.browserRight).toBe(g.voletLeft);
-    expect(g.voletRight).toBe(g.right);
-    expect(g.atVolet).toBe("webaios-design-volet");
+    expect(g.panelWidth).toBe(300);
+    expect(g.browserRight).toBe(g.panelLeft);
+    expect(g.panelRight).toBe(g.right);
+    expect(g.atPanel).toBe("webaios-design-volet");
     expect([g.top, g.bottom]).toEqual([g.tabboxTop, g.height]);
     await modeOff();
     await expect.poll(pageWidth, { timeout: 10_000 }).toBe(before);
@@ -199,14 +199,14 @@ describe("design overlay", () => {
   it("the bubble takes the keyboard, ⌘Enter adds, Escape cancels, then the page has it back", async () => {
     await open();
     await modeOn();
-    const n = (await state()).panier;
+    const n = (await state()).basket;
     await aim("#email", "input#email.champ");
     expect(await m.execute("return document.activeElement?.id;")).toBe("webaios-design-calque");
     await inPage("window.typed = []; addEventListener('keydown', (e) => typed.push(e.key), true); return 1;");
     await typeText(m, "ab");
     expect(await frameOf<string>("webaios-design-calque", "return doc.querySelector('textarea').value;").then((f) => f?.v)).toBe("ab");
     await pressKeys(m, "Meta+Enter");
-    await expect.poll(async () => (await state()).panier, { timeout: 10_000 }).toBe(n + 1);
+    await expect.poll(async () => (await state()).basket, { timeout: 10_000 }).toBe(n + 1);
     await expect.poll(bubbleShown, { timeout: 10_000 }).toBe(false);
     await expect.poll(() => m.execute("return document.activeElement?.localName;"), { timeout: 10_000 }).toBe("browser");
     await expect.poll(hosts, { timeout: 10_000 }).toBe(1);
@@ -216,7 +216,7 @@ describe("design overlay", () => {
     await expect.poll(bubbleShown, { timeout: 10_000 }).toBe(false);
     await expect.poll(() => m.execute("return document.activeElement?.localName;"), { timeout: 10_000 }).toBe("browser");
     // Nothing leaves without ⌘Enter or « Ajouter »: the text typed then cancelled is not in the cart.
-    expect((await state()).panier).toBe(n + 1);
+    expect((await state()).basket).toBe(n + 1);
     expect(await inPage("return window.typed;")).toEqual([]);
     await pressKeys(m, "b");
     await expect.poll(() => inPage<string[]>("return window.typed;"), { timeout: 10_000 }).toEqual(["b"]);
@@ -251,8 +251,8 @@ describe("design overlay", () => {
     await open();
     await modeOn();
     await expect.poll(columnShown, { timeout: 10_000 }).toBe(true);
-    await click(m, 'button[aria-label="Fermer le panier"]', { frame: "volet" });
-    await expect.poll(async () => (await state()).actif, { timeout: 10_000 }).toBe(false);
+    await click(m, 'button[aria-label="Fermer le panier"]', { frame: "panel" });
+    await expect.poll(async () => (await state()).active, { timeout: 10_000 }).toBe(false);
     await expect.poll(columnShown, { timeout: 10_000 }).toBe(false);
     await expect.poll(hosts, { timeout: 10_000 }).toBe(0);
     // Panier cleared: nothing opens the column again.
@@ -271,7 +271,7 @@ describe("design overlay", () => {
         `const api = document.getElementById("webaios-design-volet").contentWindow.webaios;
          return Promise.all([api.panier("demo-15307"), api.lots("app-autre"), api.envoyer("demo-15307"), api.retirer("demo-15307", "e"), api.traite("demo-15307", "l")]);`,
       );
-      expect(answers).toEqual([[], [], { ok: false, erreur: INVALID_REQUEST }, null, null]);
+      expect(answers).toEqual([[], [], { ok: false, error: INVALID_REQUEST }, null, null]);
       // The column's own reads of its project go on; nothing ever asked for another project.
       expect(await m.execute<string[]>(`return window.__calls.filter((c) => c.startsWith("design.") && !c.startsWith("design.suivi") && !c.endsWith(" ${PROJECT}"));`)).toEqual([]);
       const own = await m.execute<unknown[]>(`return document.getElementById("webaios-design-volet").contentWindow.webaios.panier(arguments[0]);`, [PROJECT]);
@@ -300,7 +300,7 @@ describe("design overlay", () => {
     await expect.poll(() => inPage<number>("return scrollY;"), { timeout: 10_000 }).toBe(700);
     await modeOn();
     await aim("#cible", "div#cible");
-    const r = await inPage<{ x: number; y: number; largeur: number; hauteur: number }>(`const r = document.querySelector("#cible").getBoundingClientRect(); return { x: r.x, y: r.y, largeur: r.width, hauteur: r.height };`);
+    const r = await inPage<{ x: number; y: number; width: number; height: number }>(`const r = document.querySelector("#cible").getBoundingClientRect(); return { x: r.x, y: r.y, largeur: r.width, hauteur: r.height };`);
     const g = await m.execute<{ z: number; x: number; y: number; width: number; height: number; w: number; h: number }>(
       `const r = ${B}.getBoundingClientRect(); return { z: ${B}.fullZoom, x: r.x, y: r.y, width: r.width, height: r.height, w: window.innerWidth, h: window.innerHeight };`,
     );
@@ -308,8 +308,8 @@ describe("design overlay", () => {
     const p = bubbleSlot(r, g.z, g, [g.w, g.h]);
     expect(f.rect).toEqual({ x: p.x, y: p.y, width: p.width, height: p.height });
     // Under the element as the chrome shows it (CSS px × zoom, from the view's edge).
-    expect(f.rect.y).toBeGreaterThanOrEqual(g.y + (r.y + r.hauteur) * 1.5);
-    await click(m, "button.annuler", { frame: "calque" });
+    expect(f.rect.y).toBeGreaterThanOrEqual(g.y + (r.y + r.height) * 1.5);
+    await click(m, "button.annuler", { frame: "overlay" });
     await expect.poll(bubbleShown, { timeout: 10_000 }).toBe(false);
     await modeOff();
     await m.execute(`${B}.fullZoom = 1;`);
@@ -318,35 +318,35 @@ describe("design overlay", () => {
   it("pushState under an open bubble keeps the remark, then the viewfinder is armed again", async () => {
     await open();
     await modeOn();
-    const n = (await state()).panier;
+    const n = (await state()).basket;
     await aim("#email", "input#email.champ");
     await inPage(`history.pushState({}, "", "/x"); return 1;`);
     await sleep(300);
     expect(await bubbleShown()).toBe(true);
     await typeText(m, "reste");
-    await click(m, "button.ajouter", { frame: "calque" });
-    await expect.poll(async () => (await state()).panier, { timeout: 10_000 }).toBe(n + 1);
+    await click(m, "button.ajouter", { frame: "overlay" });
+    await expect.poll(async () => (await state()).basket, { timeout: 10_000 }).toBe(n + 1);
     await expect.poll(hosts, { timeout: 10_000 }).toBe(1);
-    expect((await state()).actif).toBe(true);
+    expect((await state()).active).toBe(true);
     await modeOff();
   });
 
   it("design.spec.ts:379 two remarks, reload then restart: the mode is off, the cart stays (<dataDir>/espace/.webaios/remarques/demo-15308)", { timeout: 120_000 }, async () => {
     await open();
-    const n = (await state()).panier;
+    const n = (await state()).basket;
     await modeOn();
     await remark("#email", "input#email.champ", "Champ plus large");
     await expect.poll(hosts, { timeout: 10_000 }).toBe(1);
     await remark("#envoyer", "button#envoyer", "Bouton en vert");
     await m.execute(`${B}.reload();`);
-    await expect.poll(async () => (await state()).actif, { timeout: 10_000 }).toBe(false);
+    await expect.poll(async () => (await state()).active, { timeout: 10_000 }).toBe(false);
     await expect.poll(columnShown, { timeout: 10_000 }).toBe(false);
-    expect((await state()).panier).toBe(n + 2);
+    expect((await state()).basket).toBe(n + 2);
     await w.close();
     await boot();
     await open();
-    await expect.poll(async () => (await state()).panier, { timeout: 15_000 }).toBe(n + 2);
-    expect((await state()).actif).toBe(false);
+    await expect.poll(async () => (await state()).basket, { timeout: 15_000 }).toBe(n + 2);
+    expect((await state()).active).toBe(false);
     expect(await columnShown()).toBe(false);
     const file = path.join(dataDir, "espace", ".webaios", "remarques", PROJECT, "panier.json");
     expect(existsSync(file)).toBe(true);
@@ -360,7 +360,7 @@ describe("design overlay", () => {
     await aim("#email", "input#email.champ");
     await svc("await store.agent.stop(); return 1;");
     await typeText(m, "perdue");
-    await click(m, "button.ajouter", { frame: "calque" });
+    await click(m, "button.ajouter", { frame: "overlay" });
     await expect.poll(() => frameOf<string | null>("webaios-design-calque", `return doc.querySelector('[role="alert"]')?.textContent ?? null;`).then((f) => f?.v ?? null), { timeout: 10_000 }).toBeTruthy();
     expect(await bubbleShown()).toBe(true);
     expect(await svc("return d.overlayContext(t)?.mode ?? null;")).toBe("bulle");

@@ -23,12 +23,12 @@ const clock = (() => {
 function deferred<T>() {
   let resolve!: (v: T) => void;
   const promise = new Promise<T>((ok) => (resolve = ok));
-  return { promesse: promise, resoudre: resolve };
+  return { promise: promise, resolve: resolve };
 }
 
 const files: FileActions[] = [];
 afterEach(async () => {
-  await Promise.all(files.splice(0).map((f) => f.arreterTout()));
+  await Promise.all(files.splice(0).map((f) => f.stopAll()));
 });
 
 async function prepare(o: Partial<OptionsFileActions> = {}) {
@@ -37,18 +37,18 @@ async function prepare(o: Partial<OptionsFileActions> = {}) {
   const directs: ActionsState[] = [];
   const deleted: unknown[] = [];
   const f = new FileActions({
-    chemins: c,
-    dossierActions: actionsFolder,
-    moteur: ENGINE,
-    atelier: { etat: async () => "demarre", commandeRecolte: (p) => ["docker", JSON.stringify(p)], supprimerRecolte: async (p) => void deleted.push(p) },
-    pont: new FakeBridge([], { actif: null, autoriser: false }),
-    repartiteur: null,
-    horloge: clock,
-    surDirect: (e) => directs.push(e),
+    paths: c,
+    actionsFolder: actionsFolder,
+    engine: ENGINE,
+    workshop: { state: async () => "demarre", harvestCommand: (p) => ["docker", JSON.stringify(p)], deleteHarvest: async (p) => void deleted.push(p) },
+    bridge: new FakeBridge([], { active: null, allow: false }),
+    dispatcher: null,
+    clock: clock,
+    onLive: (e) => directs.push(e),
     ...o,
   });
   files.push(f);
-  return { f, c, dossierActions: actionsFolder, directs, supprimes: deleted };
+  return { f, c, actionsFolder: actionsFolder, directs, deleted: deleted };
 }
 
 /** A fake run per action, which waits for `liberer(id)`. */
@@ -58,11 +58,11 @@ function kept() {
   const run = (o: OptionsAction) => {
     launched.push(o);
     const d = deferred<LaunchResult>();
-    ends.set(o.id, d.resoudre);
-    return d.promesse;
+    ends.set(o.id, d.resolve);
+    return d.promise;
   };
-  const release = (id: string) => ends.get(id)!({ statut: "reussie", execution: `ex-${id}` });
-  return { executer: run, lancees: launched, liberer: release };
+  const release = (id: string) => ends.get(id)!({ status: "reussie", run: `ex-${id}` });
+  return { run: run, launchedList: launched, release: release };
 }
 
 const waitUntil = async (f: () => boolean, ms = 5000) => {
@@ -77,202 +77,202 @@ describe("FileActions", () => {
   it("three actions: two run, the third waits and appears in enAttente", async () => {
     expect(CONCURRENT_ACTIONS).toBe(2);
     const r = kept();
-    const { f } = await prepare({ executer: r.executer });
-    const a = f.lancer("a", { saisie: null, declencheur: "manuelle" });
-    const b = f.lancer("b", { saisie: "clio lyon", declencheur: "manuelle" });
-    const c = f.lancer("c", { saisie: null, declencheur: "agent" });
-    await waitUntil(() => r.lancees.length === 2);
-    expect(r.lancees.map((o) => o.id)).toEqual(["a", "b"]);
+    const { f } = await prepare({ run: r.run });
+    const a = f.launch("a", { input: null, trigger: "manuelle" });
+    const b = f.launch("b", { input: "clio lyon", trigger: "manuelle" });
+    const c = f.launch("c", { input: null, trigger: "agent" });
+    await waitUntil(() => r.launchedList.length === 2);
+    expect(r.launchedList.map((o) => o.id)).toEqual(["a", "b"]);
     const d = f.direct();
-    expect(d.courantes.map((x) => x.action)).toEqual(["a", "b"]);
-    expect(d.courantes[1]).toMatchObject({ saisie: "clio lyon", essai: false, etape: "workflow", blocs: {} });
-    expect(d.enAttente.map((x) => x.action)).toEqual(["c"]);
-    expect(a.deja || b.deja || c.deja).toBe(false);
-    r.liberer("a");
-    expect(await a.fin).toEqual({ statut: "reussie", execution: "ex-a" });
-    await waitUntil(() => r.lancees.length === 3);
-    expect(f.direct().enAttente).toEqual([]);
-    r.liberer("b");
-    r.liberer("c");
-    await Promise.all([b.fin, c.fin]);
-    expect(f.direct()).toEqual({ courantes: [], enAttente: [] });
+    expect(d.running.map((x) => x.action)).toEqual(["a", "b"]);
+    expect(d.running[1]).toMatchObject({ input: "clio lyon", attempt: false, step: "workflow", blocks: {} });
+    expect(d.waiting.map((x) => x.action)).toEqual(["c"]);
+    expect(a.already || b.already || c.already).toBe(false);
+    r.release("a");
+    expect(await a.end).toEqual({ status: "reussie", run: "ex-a" });
+    await waitUntil(() => r.launchedList.length === 3);
+    expect(f.direct().waiting).toEqual([]);
+    r.release("b");
+    r.release("c");
+    await Promise.all([b.end, c.end]);
+    expect(f.direct()).toEqual({ running: [], waiting: [] });
   });
 
   it("relaunching a running action returns deja: true and the same end", async () => {
     const r = kept();
-    const { f } = await prepare({ executer: r.executer });
-    const first = f.lancer("a", { saisie: null, declencheur: "manuelle" });
-    const second = f.lancer("a", { saisie: "autre", declencheur: "manuelle" });
-    expect(second.deja).toBe(true);
-    expect(second.fin).toBe(first.fin);
-    expect(f.essayer("a", "x", "y").deja).toBe(true);
-    await waitUntil(() => r.lancees.length === 1);
-    r.liberer("a");
-    await first.fin;
+    const { f } = await prepare({ run: r.run });
+    const first = f.launch("a", { input: null, trigger: "manuelle" });
+    const second = f.launch("a", { input: "autre", trigger: "manuelle" });
+    expect(second.already).toBe(true);
+    expect(second.end).toBe(first.end);
+    expect(f.try("a", "x", "y").already).toBe(true);
+    await waitUntil(() => r.launchedList.length === 1);
+    r.release("a");
+    await first.end;
     // Finished: a new request goes through.
-    const third = f.lancer("a", { saisie: null, declencheur: "manuelle" });
-    expect(third.deja).toBe(false);
-    await waitUntil(() => r.lancees.length === 2);
-    r.liberer("a");
-    await third.fin;
+    const third = f.launch("a", { input: null, trigger: "manuelle" });
+    expect(third.already).toBe(false);
+    await waitUntil(() => r.launchedList.length === 2);
+    r.release("a");
+    await third.end;
   });
 
   it("a waiting action that is stopped leaves the queue without running", async () => {
     const r = kept();
-    const { f } = await prepare({ executer: r.executer });
-    f.lancer("a", { saisie: null, declencheur: "manuelle" });
-    f.lancer("b", { saisie: null, declencheur: "manuelle" });
-    const c = f.lancer("c", { saisie: null, declencheur: "manuelle" });
-    await waitUntil(() => r.lancees.length === 2);
-    expect(f.arreter("c")).toBe(true);
-    expect((await c.fin).statut).toBe("interrompue");
-    expect(f.direct().enAttente).toEqual([]);
-    expect(f.arreter("inconnue")).toBe(false);
+    const { f } = await prepare({ run: r.run });
+    f.launch("a", { input: null, trigger: "manuelle" });
+    f.launch("b", { input: null, trigger: "manuelle" });
+    const c = f.launch("c", { input: null, trigger: "manuelle" });
+    await waitUntil(() => r.launchedList.length === 2);
+    expect(f.stop("c")).toBe(true);
+    expect((await c.end).status).toBe("interrompue");
+    expect(f.direct().waiting).toEqual([]);
+    expect(f.stop("inconnue")).toBe(false);
     // A running action receives the signal.
-    expect(f.arreter("a")).toBe(true);
-    expect(r.lancees[0]!.signal.aborted).toBe(true);
-    r.liberer("a");
-    r.liberer("b");
+    expect(f.stop("a")).toBe(true);
+    expect(r.launchedList[0]!.signal.aborted).toBe(true);
+    r.release("a");
+    r.release("b");
   });
 
   it("attend pret avant de lancer", async () => {
     const r = kept();
     const ready = deferred<void>();
-    const { f } = await prepare({ executer: r.executer, pret: ready.promesse });
-    f.lancer("a", { saisie: null, declencheur: "manuelle" });
+    const { f } = await prepare({ run: r.run, ready: ready.promise });
+    f.launch("a", { input: null, trigger: "manuelle" });
     await new Promise((ok) => setTimeout(ok, 20));
-    expect(r.lancees).toEqual([]);
-    ready.resoudre();
-    await waitUntil(() => r.lancees.length === 1);
-    r.liberer("a");
+    expect(r.launchedList).toEqual([]);
+    ready.resolve();
+    await waitUntil(() => r.launchedList.length === 1);
+    r.release("a");
   });
 
   it("each action has its priority AI access, forgotten at the end", async () => {
     const r = kept();
     const dispatcher = createAiDispatcher({ kev: async () => ({}), gemma: async () => "ok" } as never);
-    const keys: { cle: string; prioritaire?: boolean }[] = [];
+    const keys: { key: string; priority?: boolean }[] = [];
     let forgotten = 0;
     const spy = {
-      pour: (key: string, o?: { prioritaire?: boolean }) => {
-        keys.push({ cle: key, ...(o?.prioritaire !== undefined ? { prioritaire: o.prioritaire } : {}) });
-        const access = dispatcher.pour(key, o);
-        return { ...access, oublier: () => (forgotten++, access.oublier()) };
+      for: (key: string, o?: { priority?: boolean }) => {
+        keys.push({ key: key, ...(o?.priority !== undefined ? { priority: o.priority } : {}) });
+        const access = dispatcher.for(key, o);
+        return { ...access, forget: () => (forgotten++, access.forget()) };
       },
     };
-    const { f } = await prepare({ executer: r.executer, repartiteur: spy });
-    const a = f.lancer("a", { saisie: null, declencheur: "manuelle" });
-    await waitUntil(() => r.lancees.length === 1);
-    expect(r.lancees[0]!.ia).not.toBeNull();
+    const { f } = await prepare({ run: r.run, dispatcher: spy });
+    const a = f.launch("a", { input: null, trigger: "manuelle" });
+    await waitUntil(() => r.launchedList.length === 1);
+    expect(r.launchedList[0]!.ai).not.toBeNull();
     expect(keys).toHaveLength(1);
-    expect(keys[0]!.cle).toMatch(/^action:a:2026-/);
-    expect(keys[0]!.prioritaire).toBe(true);
-    r.liberer("a");
-    await a.fin;
+    expect(keys[0]!.key).toMatch(/^action:a:2026-/);
+    expect(keys[0]!.priority).toBe(true);
+    r.release("a");
+    await a.end;
     expect(forgotten).toBe(1);
   });
 
   it("an action starts while a widget harvest is running", async () => {
     const r = kept();
-    const { f, c } = await prepare({ executer: r.executer });
-    await writeWidget(c, "lent", declarationWidget(undefined, { recolte: { minutes: 60 } }), { "recolte.mjs": "export default () => 1" });
+    const { f, c } = await prepare({ run: r.run });
+    await writeWidget(c, "lent", declarationWidget(undefined, { harvest: { minutes: 60 } }), { "recolte.mjs": "export default () => 1" });
     const keptHarvest = deferred<void>();
     let harvestStarted = false;
     const p = new WidgetsScheduler({
-      chemins: c,
-      dossierWidgets: await tempFolder(),
-      moteur: ENGINE,
-      atelier: { etat: async () => "demarre", commandeRecolte: () => ["docker"], supprimerRecolte: async () => {} },
-      pont: new FakeBridge([], { actif: null, autoriser: false }),
-      ia: null,
-      recolter: async (_o: HarvestOptions) => {
+      paths: c,
+      widgetsFolder: await tempFolder(),
+      engine: ENGINE,
+      workshop: { state: async () => "demarre", harvestCommand: () => ["docker"], deleteHarvest: async () => {} },
+      bridge: new FakeBridge([], { active: null, allow: false }),
+      ai: null,
+      harvest: async (_o: HarvestOptions) => {
         harvestStarted = true;
-        await keptHarvest.promesse;
-        return { etat: { statut: "ok", derniereMaj: null, derniereTentative: null } };
+        await keptHarvest.promise;
+        return { state: { status: "ok", lastUpdate: null, lastAttempt: null } };
       },
     });
-    const harvest = p.recolterMaintenant("lent");
+    const harvest = p.harvestNow("lent");
     await waitUntil(() => harvestStarted);
-    const a = f.lancer("a", { saisie: null, declencheur: "manuelle" });
-    await waitUntil(() => r.lancees.length === 1);
-    r.liberer("a");
-    expect((await a.fin).statut).toBe("reussie");
-    keptHarvest.resoudre();
+    const a = f.launch("a", { input: null, trigger: "manuelle" });
+    await waitUntil(() => r.launchedList.length === 1);
+    r.release("a");
+    expect((await a.end).status).toBe("reussie");
+    keptHarvest.resolve();
     await harvest;
-    await p.arreter();
+    await p.stop();
   });
 
   it("lecture and avancement traces fill direct()", async () => {
     const r = kept();
-    const { f, directs } = await prepare({ executer: r.executer });
-    const a = f.lancer("a", { saisie: null, declencheur: "manuelle" });
-    await waitUntil(() => r.lancees.length === 1);
-    const o = r.lancees[0]!;
-    o.surTrace({ bloc: "lire", etape: "debut" });
-    o.surTrace({ bloc: "lire", etape: "lecture", hote: "gitlab.com" });
-    o.surTrace({ bloc: "lire", etape: "avancement", faits: 7, total: 12 });
-    expect(f.direct().courantes[0]!.blocs).toEqual({ lire: { statut: "en-cours", elements: null, hote: "gitlab.com", faits: 7, total: 12 } });
-    o.surTrace({ bloc: "lire", etape: "fin", statut: "reussi", elements: 12 });
-    expect(f.direct().courantes[0]!.blocs.lire).toMatchObject({ statut: "reussi", elements: 12 });
-    o.surEtape("mise-en-page");
-    expect(f.direct().courantes[0]!.etape).toBe("mise-en-page");
+    const { f, directs } = await prepare({ run: r.run });
+    const a = f.launch("a", { input: null, trigger: "manuelle" });
+    await waitUntil(() => r.launchedList.length === 1);
+    const o = r.launchedList[0]!;
+    o.onTrace({ block: "lire", step: "debut" });
+    o.onTrace({ block: "lire", step: "lecture", host: "gitlab.com" });
+    o.onTrace({ block: "lire", step: "avancement", done: 7, total: 12 });
+    expect(f.direct().running[0]!.blocks).toEqual({ read: { status: "en-cours", items: null, host: "gitlab.com", done: 7, total: 12 } });
+    o.onTrace({ block: "lire", step: "fin", status: "reussi", items: 12 });
+    expect(f.direct().running[0]!.blocks.lire).toMatchObject({ status: "reussi", items: 12 });
+    o.onStep("mise-en-page");
+    expect(f.direct().running[0]!.step).toBe("mise-en-page");
     // surDirect is called on each change.
-    expect(directs.some((d) => d.courantes[0]?.blocs.lire?.hote === "gitlab.com")).toBe(true);
-    expect(directs.at(-1)!.courantes[0]!.etape).toBe("mise-en-page");
+    expect(directs.some((d) => d.running[0]?.blocks.lire?.host === "gitlab.com")).toBe(true);
+    expect(directs.at(-1)!.running[0]!.step).toBe("mise-en-page");
     // direct() is a copy.
-    f.direct().courantes[0]!.blocs.lire!.statut = "echoue";
-    expect(f.direct().courantes[0]!.blocs.lire!.statut).toBe("reussi");
-    r.liberer("a");
-    await a.fin;
-    expect(directs.at(-1)).toEqual({ courantes: [], enAttente: [] });
+    f.direct().running[0]!.blocks.lire!.status = "echoue";
+    expect(f.direct().running[0]!.blocks.lire!.status).toBe("reussi");
+    r.release("a");
+    await a.end;
+    expect(directs.at(-1)).toEqual({ running: [], waiting: [] });
   });
 
   it("the block type relayed by the trace goes into direct()", async () => {
     const r = kept();
-    const { f } = await prepare({ executer: r.executer });
-    const a = f.lancer("a", { saisie: null, declencheur: "manuelle" });
-    await waitUntil(() => r.lancees.length === 1);
-    const o = r.lancees[0]!;
-    o.surTrace({ bloc: "trier", etape: "debut", type: "ia.trier" });
-    expect(f.direct().courantes[0]!.blocs.trier).toEqual({ statut: "en-cours", elements: null, type: "ia.trier" });
-    o.surTrace({ bloc: "trier", etape: "fin", statut: "reussi", elements: 2, type: "ia.trier" });
-    expect(f.direct().courantes[0]!.blocs.trier).toEqual({ statut: "reussi", elements: 2, type: "ia.trier" });
-    r.liberer("a");
-    await a.fin;
+    const { f } = await prepare({ run: r.run });
+    const a = f.launch("a", { input: null, trigger: "manuelle" });
+    await waitUntil(() => r.launchedList.length === 1);
+    const o = r.launchedList[0]!;
+    o.onTrace({ block: "trier", step: "debut", type: "ia.trier" });
+    expect(f.direct().running[0]!.blocks.trier).toEqual({ status: "en-cours", items: null, type: "ia.trier" });
+    o.onTrace({ block: "trier", step: "fin", status: "reussi", items: 2, type: "ia.trier" });
+    expect(f.direct().running[0]!.blocks.trier).toEqual({ status: "reussi", items: 2, type: "ia.trier" });
+    r.release("a");
+    await a.end;
   });
 
   it("arreterTout: written run interrupted", async () => {
     const c0 = spacePaths(await tempFolder());
     const folder = join(c0.actions, "public");
     await mkdir(folder, { recursive: true });
-    await writeFile(join(folder, "action.json"), JSON.stringify({ nom: "P", sources: { publiques: ["gitlab.com"] } }));
+    await writeFile(join(folder, "action.json"), JSON.stringify({ name: "P", sources: { public: ["gitlab.com"] } }));
     await writeFile(
       join(folder, "workflow.json"),
       JSON.stringify({
         version: 1,
-        blocs: [{ id: "lire", type: "code", parametres: { source: "lire.mjs" } }, { id: "sortie", type: "sortie", parametres: { vers: "page" } }],
-        liens: [{ de: "lire", vers: "sortie" }],
+        blocks: [{ id: "lire", type: "code", params: { source: "lire.mjs" } }, { id: "sortie", type: "sortie", params: { to: "page" } }],
+        links: [{ from: "lire", to: "sortie" }],
       }),
     );
     await writeFile(join(folder, "lire.mjs"), `export default async (e, w) => ({ t: (await w.lirePage("https://gitlab.com/x")).titre });`);
-    const bridge = new FakeBridge([], { actif: null, autoriser: false, lecture: { pages: [], suspendues: ["https://gitlab.com/x"] } });
-    const { f, dossierActions: actionsFolder, supprimes: deleted } = await prepare({
-      chemins: c0,
-      pont: bridge,
-      adressesLocales: true,
-      lancer: () => {
+    const bridge = new FakeBridge([], { active: null, allow: false, read: { pages: [], suspended: ["https://gitlab.com/x"] } });
+    const { f, actionsFolder: actionsFolder, deleted: deleted } = await prepare({
+      paths: c0,
+      bridge: bridge,
+      localAddresses: true,
+      launch: () => {
         const e = spawn(process.execPath, [SCRIPT, folder], { stdio: ["pipe", "pipe", "pipe"] });
-        return { stdin: e.stdin, stdout: e.stdout, stderr: e.stderr, tuer: () => void e.kill("SIGKILL"), fin: new Promise((ok) => e.on("close", (x) => ok(x))) };
+        return { stdin: e.stdin, stdout: e.stdout, stderr: e.stderr, kill: () => void e.kill("SIGKILL"), end: new Promise((ok) => e.on("close", (x) => ok(x))) };
       },
     });
-    const a = f.lancer("public", { saisie: null, declencheur: "manuelle" });
-    await waitUntil(() => bridge.appels.some((x) => x.methode === "lirePageInvisible"));
-    await f.arreterTout();
-    const r = await a.fin;
-    expect(r.statut).toBe("interrompue");
-    const e = await readRun(join(actionsFolder, "public"), r.execution!);
-    expect(e).toMatchObject({ statut: "interrompue", erreur: "Interrompue : WebAiOs s'est arrêté", erreurNoyau: true });
+    const a = f.launch("public", { input: null, trigger: "manuelle" });
+    await waitUntil(() => bridge.calls.some((x) => x.method === "lirePageInvisible"));
+    await f.stopAll();
+    const r = await a.end;
+    expect(r.status).toBe("interrompue");
+    const e = await readRun(join(actionsFolder, "public"), r.run!);
+    expect(e).toMatchObject({ status: "interrompue", error: "Interrompue : WebAiOs s'est arrêté", kernelError: true });
     expect(deleted).toContainEqual({ type: "action", id: "public" });
     // After the stop, nothing leaves anymore.
-    expect((await f.lancer("public", { saisie: null, declencheur: "manuelle" }).fin).statut).toBe("interrompue");
+    expect((await f.launch("public", { input: null, trigger: "manuelle" }).end).status).toBe("interrompue");
   });
 });

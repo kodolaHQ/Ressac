@@ -22,12 +22,12 @@ const AGENT_NODES_MAX = 5000;
 
 export type { Group };
 /** `url` null : lien inerte (texte seul). */
-export type Link = { texte: string; url: string | null };
-export type Image = { url: string } | { neutre: true } | null;
+export type Link = { text: string; url: string | null };
+export type Image = { url: string } | { neutral: true } | null;
 export type RenderedBlock =
-  | { composant: string; props: Record<string, unknown>; blocs?: RenderedBlock[]; gauche?: RenderedBlock[]; droite?: RenderedBlock[] }
-  | { composant: "erreur"; message: string };
-export type RenderedPage = { blocs: RenderedBlock[]; secours: boolean; vide: boolean; coupes: number };
+  | { component: string; props: Record<string, unknown>; blocks?: RenderedBlock[]; left?: RenderedBlock[]; right?: RenderedBlock[] }
+  | { component: "erreur"; message: string };
+export type RenderedPage = { blocks: RenderedBlock[]; fallback: boolean; empty: boolean; cuts: number };
 
 class Unreadable extends Error {}
 
@@ -80,11 +80,11 @@ function ask(o: Record<string, unknown>, k: string, v: unknown): void {
 }
 
 type Context = {
-  resultats: unknown; compte: boolean; defs: Map<string, ComponentDefinition>; coupes: number; blocs: number;
-  chaines: Set<string> | null;
+  results: unknown; account: boolean; defs: Map<string, ComponentDefinition>; cuts: number; blocks: number;
+  chains: Set<string> | null;
 };
 
-const chains = (ctx: Context) => (ctx.chaines ??= chainsOf(ctx.resultats));
+const chains = (ctx: Context) => (ctx.chains ??= chainsOf(ctx.results));
 
 function urlAllowed(v: unknown, ctx: Context, httpsOnly: boolean): string | null {
   if (typeof v !== "string" || v.length > URL_MAX || !chains(ctx).has(v)) return null;
@@ -100,32 +100,32 @@ function urlAllowed(v: unknown, ctx: Context, httpsOnly: boolean): string | null
 }
 
 function linkOf(v: unknown, label: string, ctx: Context): Link {
-  return { texte: label || text(v), url: urlAllowed(v, ctx, false) };
+  return { text: label || text(v), url: urlAllowed(v, ctx, false) };
 }
 
 function imageOf(v: unknown, ctx: Context): Image {
   if (typeof v !== "string" || v === "") return null;
-  if (ctx.compte) return { neutre: true };
+  if (ctx.account) return { neutral: true };
   const url = urlAllowed(v, ctx, true);
   return url === null ? null : { url };
 }
 
 // ---- Defensive reading of a plan's properties ----
 
-function valueFor(ref: unknown, ctx: Context): { valeur: unknown; groupee: boolean } {
+function valueFor(ref: unknown, ctx: Context): { value: unknown; grouped: boolean } {
   if (typeof ref !== "string") throw new Unreadable();
   const r = readReference(ref);
-  if ("erreur" in r) throw new Unreadable();
-  const v = evaluate(r, ctx.resultats);
-  if ("erreur" in v) throw new Unreadable();
-  return { valeur: v.valeur, groupee: r.ops.at(-1)?.op === "regrouper" };
+  if ("error" in r) throw new Unreadable();
+  const v = evaluate(r, ctx.results);
+  if ("error" in v) throw new Unreadable();
+  return { value: v.value, grouped: r.ops.at(-1)?.op === "regrouper" };
 }
 
 function fieldOf(v: unknown): string {
   if (typeof v !== "string") throw new Unreadable();
   const r = readReference(v);
-  if ("erreur" in r || r.ops.length > 0 || r.chemin === "$") throw new Unreadable();
-  return r.chemin;
+  if ("error" in r || r.ops.length > 0 || r.path === "$") throw new Unreadable();
+  return r.path;
 }
 
 const a = (props: Record<string, unknown>, k: string) => Object.hasOwn(props, k) && props[k] !== undefined && props[k] !== null;
@@ -148,25 +148,25 @@ function objectOf(v: unknown): Record<string, unknown> {
 }
 
 /** A collection cut to `ELEMENTS_MAX` items in all (sections included); the rest is counted. */
-function collection<T>(loaded: { valeur: unknown; groupee: boolean }, ctx: Context, make: (e: unknown) => T) {
-  if (!Array.isArray(loaded.valeur)) throw new Unreadable();
-  if (!loaded.groupee) {
-    const others = Math.max(0, loaded.valeur.length - ELEMENTS_MAX);
-    ctx.coupes += others;
-    return { elements: loaded.valeur.slice(0, ELEMENTS_MAX).map(make), autres: others };
+function collection<T>(loaded: { value: unknown; grouped: boolean }, ctx: Context, make: (e: unknown) => T) {
+  if (!Array.isArray(loaded.value)) throw new Unreadable();
+  if (!loaded.grouped) {
+    const others = Math.max(0, loaded.value.length - ELEMENTS_MAX);
+    ctx.cuts += others;
+    return { items: loaded.value.slice(0, ELEMENTS_MAX).map(make), others: others };
   }
   let rest = ELEMENTS_MAX;
   let others = 0;
   const groups: Group<T>[] = [];
-  for (const g of loaded.valeur as Group<unknown>[]) {
-    const elements = Array.isArray(g?.elements) ? g.elements : [];
+  for (const g of loaded.value as Group<unknown>[]) {
+    const elements = Array.isArray(g?.items) ? g.items : [];
     const taken = elements.slice(0, rest);
     others += elements.length - taken.length;
     rest -= taken.length;
-    if (taken.length > 0) groups.push({ valeur: text(g.valeur), elements: taken.map(make) });
+    if (taken.length > 0) groups.push({ value: text(g.value), items: taken.map(make) });
   }
-  ctx.coupes += others;
-  return { groupes: groups, autres: others };
+  ctx.cuts += others;
+  return { groups: groups, others: others };
 }
 
 function labelsOf(v: unknown): string[] {
@@ -175,48 +175,48 @@ function labelsOf(v: unknown): string[] {
   return t ? [t] : [];
 }
 
-function columnsOf(v: unknown): { champ: string; libelle: string }[] {
+function columnsOf(v: unknown): { field: string; label: string }[] {
   if (!Array.isArray(v)) throw new Unreadable();
   return v.map((c) => {
     const o = objectOf(c);
     const field = fieldOf(o.champ);
-    return { champ: field, libelle: typeof o.libelle === "string" ? cut(o.libelle) : field };
+    return { field: field, label: typeof o.libelle === "string" ? cut(o.libelle) : field };
   });
 }
 
 function textsOf(loaded: unknown[], ctx: Context, read: (e: unknown) => unknown) {
   const others = Math.max(0, loaded.length - ELEMENTS_MAX);
-  ctx.coupes += others;
-  return { valeurs: loaded.slice(0, ELEMENTS_MAX).map((e) => text(read(e))).filter(Boolean), autres: others };
+  ctx.cuts += others;
+  return { values: loaded.slice(0, ELEMENTS_MAX).map((e) => text(read(e))).filter(Boolean), others: others };
 }
 
 function builtIn(name: string, p: Record<string, unknown>, ctx: Context): Record<string, unknown> {
   switch (name) {
     case "titre":
-      return { texte: literal(p, "texte", true) };
+      return { text: literal(p, "texte", true) };
     case "paragraphe":
-      return { texte: a(p, "valeur") ? compactText(valueFor(p.valeur, ctx).valeur) : literal(p, "texte", true) };
+      return { text: a(p, "valeur") ? compactText(valueFor(p.valeur, ctx).value) : literal(p, "texte", true) };
     case "encadre": {
-      let elements: string[] | null = null;
+      let items: string[] | null = null;
       let others = 0;
       if (a(p, "elements")) {
-        const l = valueFor(p.elements, ctx).valeur;
+        const l = valueFor(p.elements, ctx).value;
         if (!Array.isArray(l)) throw new Unreadable();
         const field = fieldOf(p.champ);
-        ({ valeurs: elements, autres: others } = textsOf(l, ctx, (e) => readPath(e, field)));
+        ({ values: items, others: others } = textsOf(l, ctx, (e) => readPath(e, field)));
       }
       const level = literal(p, "niveau", true);
       if (!["info", "avis", "attention"].includes(level)) throw new Unreadable();
-      return { niveau: level, titre: literal(p, "titre"), texte: literal(p, "texte"), elements, autres: others };
+      return { level: level, title: literal(p, "titre"), text: literal(p, "texte"), elements: items, others: others };
     }
     case "chiffre":
-      return { valeur: text(valueFor(p.valeur, ctx).valeur), libelle: literal(p, "libelle", true) };
+      return { value: text(valueFor(p.valeur, ctx).value), label: literal(p, "libelle", true) };
     case "chiffres": {
       if (!Array.isArray(p.chiffres)) throw new Unreadable();
       return {
-        chiffres: p.chiffres.slice(0, 6).map((c) => {
+        figures: p.chiffres.slice(0, 6).map((c) => {
           const o = objectOf(c);
-          return { valeur: text(valueFor(o.valeur, ctx).valeur), libelle: literal(o, "libelle", true) };
+          return { value: text(valueFor(o.valeur, ctx).value), label: literal(o, "libelle", true) };
         }),
       };
     }
@@ -225,9 +225,9 @@ function builtIn(name: string, p: Record<string, unknown>, ctx: Context): Record
       return collection(valueFor(p.elements, ctx), ctx, (e) => {
         const t = text(readPath(e, title));
         return {
-          titre: t,
-          sousTitre: subtitle === null ? null : text(readPath(e, subtitle)),
-          lien: link === null ? null : linkOf(readPath(e, link), t, ctx),
+          title: t,
+          subtitle: subtitle === null ? null : text(readPath(e, subtitle)),
+          link: link === null ? null : linkOf(readPath(e, link), t, ctx),
         };
       });
     }
@@ -238,12 +238,12 @@ function builtIn(name: string, p: Record<string, unknown>, ctx: Context): Record
       return collection(valueFor(p.elements, ctx), ctx, (e) => {
         const t = text(readPath(e, title));
         return {
-          titre: t,
-          sousTitre: subtitle ? text(read(e, subtitle)) : null,
+          title: t,
+          subtitle: subtitle ? text(read(e, subtitle)) : null,
           image: image ? imageOf(read(e, image), ctx) : null,
-          valeur: value ? text(read(e, value)) : null,
-          etiquettes: labels ? labelsOf(read(e, labels)) : [],
-          lien: link ? linkOf(read(e, link), t, ctx) : null,
+          value: value ? text(read(e, value)) : null,
+          tags: labels ? labelsOf(read(e, labels)) : [],
+          link: link ? linkOf(read(e, link), t, ctx) : null,
         };
       });
     }
@@ -252,39 +252,39 @@ function builtIn(name: string, p: Record<string, unknown>, ctx: Context): Record
       const link = optField(p, "lien");
       const r = collection(valueFor(p.elements, ctx), ctx, (e) => {
         const values: Record<string, string> = {};
-        for (const c of columns) ask(values, c.champ, text(readPath(e, c.champ)));
-        return { valeurs: values, lien: link === null ? null : linkOf(readPath(e, link), "", ctx) };
+        for (const c of columns) ask(values, c.field, text(readPath(e, c.field)));
+        return { values: values, link: link === null ? null : linkOf(readPath(e, link), "", ctx) };
       });
-      return { colonnes: columns, ...r };
+      return { columns: columns, ...r };
     }
     case "champs": {
-      const object = objectOf(valueFor(p.objet, ctx).valeur);
+      const object = objectOf(valueFor(p.objet, ctx).value);
       const champs = a(p, "champs")
-        ? columnsOf(p.champs).slice(0, 12).map((c) => ({ libelle: c.libelle, valeur: text(readPath(object, c.champ)) }))
-        : Object.keys(object).filter((k) => primitive(object[k])).map((k) => ({ libelle: cut(k), valeur: text(object[k]) }));
+        ? columnsOf(p.champs).slice(0, 12).map((c) => ({ label: c.label, value: text(readPath(object, c.field)) }))
+        : Object.keys(object).filter((k) => primitive(object[k])).map((k) => ({ label: cut(k), value: text(object[k]) }));
       const others = Math.max(0, champs.length - ELEMENTS_MAX);
-      ctx.coupes += others;
-      return { champs: champs.slice(0, ELEMENTS_MAX), autres: others };
+      ctx.cuts += others;
+      return { fields: champs.slice(0, ELEMENTS_MAX), others: others };
     }
     case "etiquettes": {
       if (a(p, "valeurs")) {
-        const l = valueFor(p.valeurs, ctx).valeur;
+        const l = valueFor(p.valeurs, ctx).value;
         if (!Array.isArray(l)) throw new Unreadable();
         return textsOf(l.filter(primitive), ctx, (e) => e);
       }
-      const l = valueFor(p.elements, ctx).valeur;
+      const l = valueFor(p.elements, ctx).value;
       if (!Array.isArray(l)) throw new Unreadable();
       const field = fieldOf(p.champ);
       return textsOf(l, ctx, (e) => readPath(e, field));
     }
     case "lien": {
-      const object = objectOf(valueFor(p.objet, ctx).valeur);
+      const object = objectOf(valueFor(p.objet, ctx).value);
       const url = readPath(object, fieldOf(p.url));
       const label = a(p, "champTexte") ? text(readPath(object, fieldOf(p.champTexte))) : (literal(p, "texte") ?? "");
-      return { lien: linkOf(url, label, ctx) };
+      return { link: linkOf(url, label, ctx) };
     }
     case "groupe":
-      return { titre: literal(p, "titre", true), replie: p.replie === true };
+      return { title: literal(p, "titre", true), collapsed: p.replie === true };
     case "colonnes":
       return {};
     default:
@@ -293,14 +293,14 @@ function builtIn(name: string, p: Record<string, unknown>, ctx: Context): Record
 }
 
 /** The value of a reference for an agent component: own properties, lists at 200, texts cut, size bounded. */
-function clamp(v: unknown, ctx: Context, budget: { noeuds: number }, prof = 0): unknown {
-  if (--budget.noeuds < 0) return null;
+function clamp(v: unknown, ctx: Context, budget: { nodes: number }, prof = 0): unknown {
+  if (--budget.nodes < 0) return null;
   if (typeof v === "string") return cut(v);
   if (typeof v === "number") return Number.isFinite(v) ? v : null;
   if (typeof v === "boolean" || v === null) return v;
   if (typeof v !== "object" || prof >= AGENT_DEPTH) return null;
   if (Array.isArray(v)) {
-    if (v.length > ELEMENTS_MAX) ctx.coupes += v.length - ELEMENTS_MAX;
+    if (v.length > ELEMENTS_MAX) ctx.cuts += v.length - ELEMENTS_MAX;
     return v.slice(0, ELEMENTS_MAX).map((e) => clamp(e, ctx, budget, prof + 1));
   }
   const o: Record<string, unknown> = {};
@@ -310,14 +310,14 @@ function clamp(v: unknown, ctx: Context, budget: { noeuds: number }, prof = 0): 
 
 function agent(def: ComponentDefinition, p: Record<string, unknown>, ctx: Context): Record<string, unknown> {
   const props: Record<string, unknown> = {};
-  for (const [name, pr] of Object.entries(def.proprietes)) {
+  for (const [name, pr] of Object.entries(def.properties)) {
     if (!a(p, name)) {
-      if (pr.requis) throw new Unreadable();
+      if (pr.required) throw new Unreadable();
       continue;
     }
     const v = p[name];
-    switch (pr.genre) {
-      case "reference": props[name] = clamp(valueFor(v, ctx).valeur, ctx, { noeuds: AGENT_NODES_MAX }); break;
+    switch (pr.kind) {
+      case "reference": props[name] = clamp(valueFor(v, ctx).value, ctx, { nodes: AGENT_NODES_MAX }); break;
       case "champ": props[name] = fieldOf(v); break;
       case "texte": props[name] = literal(p, name); break;
       case "nombre":
@@ -338,28 +338,28 @@ function resolveBlocks(blocks: unknown, level: number, ctx: Context): RenderedBl
   if (!Array.isArray(blocks)) return [];
   const renders: RenderedBlock[] = [];
   for (const b of blocks as PlanBlock[]) {
-    if (++ctx.blocs > MAX_PAGE_BLOCKS) break;
+    if (++ctx.blocks > MAX_PAGE_BLOCKS) break;
     if (b === null || typeof b !== "object") continue;
-    const name = typeof b.composant === "string" ? b.composant.slice(0, 40) : "?";
+    const name = typeof b.component === "string" ? b.component.slice(0, 40) : "?";
     const def = ctx.defs.get(name);
     if (!def) {
-      renders.push({ composant: "erreur", message: COMPONENT_UNAVAILABLE(name) });
+      renders.push({ component: "erreur", message: COMPONENT_UNAVAILABLE(name) });
       continue;
     }
     try {
       const p = b.props !== null && typeof b.props === "object" ? b.props : {};
-      const rendered: RenderedBlock = { composant: name, props: def.origine === "agent" ? agent(def, p, ctx) : builtIn(name, p, ctx) };
-      if (def.origine === "integre" && level < PAGE_DEPTH) {
-        if (name === "groupe") rendered.blocs = resolveBlocks(b.blocs, level + 1, ctx);
+      const rendered: RenderedBlock = { component: name, props: def.origin === "agent" ? agent(def, p, ctx) : builtIn(name, p, ctx) };
+      if (def.origin === "integre" && level < PAGE_DEPTH) {
+        if (name === "groupe") rendered.blocks = resolveBlocks(b.blocks, level + 1, ctx);
         if (name === "colonnes") {
-          rendered.gauche = resolveBlocks(b.gauche, level + 1, ctx);
-          rendered.droite = resolveBlocks(b.droite, level + 1, ctx);
+          rendered.left = resolveBlocks(b.left, level + 1, ctx);
+          rendered.right = resolveBlocks(b.right, level + 1, ctx);
         }
       }
       renders.push(rendered);
     } catch (e) {
       if (!(e instanceof Unreadable)) throw e;
-      renders.push({ composant: "erreur", message: UNREADABLE_BLOCK(name) });
+      renders.push({ component: "erreur", message: UNREADABLE_BLOCK(name) });
     }
   }
   return renders;
@@ -368,9 +368,9 @@ function resolveBlocks(blocks: unknown, level: number, ctx: Context): RenderedBl
 export function resolvePage(
   plan: PlanPage,
   results: unknown,
-  o: { compte: boolean; catalogue: ComponentDefinition[]; secours: boolean },
+  o: { account: boolean; catalog: ComponentDefinition[]; fallback: boolean },
 ): RenderedPage {
-  const ctx: Context = { resultats: results, compte: o.compte, defs: new Map(o.catalogue.map((d) => [d.nom, d])), coupes: 0, blocs: 0, chaines: null };
-  const blocks = resolveBlocks(plan?.blocs, 0, ctx);
-  return { blocs: blocks, secours: o.secours, vide: emptyResults(results), coupes: ctx.coupes };
+  const ctx: Context = { results: results, account: o.account, defs: new Map(o.catalog.map((d) => [d.name, d])), cuts: 0, blocks: 0, chains: null };
+  const blocks = resolveBlocks(plan?.blocks, 0, ctx);
+  return { blocks: blocks, fallback: o.fallback, empty: emptyResults(results), cuts: ctx.cuts };
 }

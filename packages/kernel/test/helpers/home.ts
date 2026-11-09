@@ -4,9 +4,9 @@ import type { SpacePaths } from "../../src/paths.js";
 
 /** Valid widget declaration, with an editable default size. */
 export const declarationWidget = (defaultValue = { l: 4, h: 4 }, extra: Record<string, unknown> = {}) => ({
-  nom: "Widget",
+  name: "Widget",
   description: "Un widget de test",
-  tailles: { min: { l: 1, h: 1 }, max: { l: 12, h: 8 }, defaut: defaultValue },
+  sizes: { min: { l: 1, h: 1 }, max: { l: 12, h: 8 }, default: defaultValue },
   ...extra,
 });
 

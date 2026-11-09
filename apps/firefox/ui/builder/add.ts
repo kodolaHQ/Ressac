@@ -11,7 +11,7 @@ export const CODE_MODEL = "export default async (entree, webaios) => {\n  return
  * new unlinked block then only fails on its input; an address, with no neutral value, is left to fill in.
  */
 export function freshParams(c: BlockCatalogEntry): Record<string, unknown> {
-  return Object.fromEntries(c.champs.filter((f) => f.requis && f.defaut !== undefined).map((f) => [f.nom, structuredClone(f.defaut)]));
+  return Object.fromEntries(c.fields.filter((f) => f.required && f.default !== undefined).map((f) => [f.name, structuredClone(f.default)]));
 }
 
 /** `point`, or the first free place below it (a block dropped at the center does not cover a displayed block). */

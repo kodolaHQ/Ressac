@@ -1,16 +1,16 @@
 <script lang="ts">
   import { andOthers } from "../types";
 
-  let { p }: { p: { niveau: "info" | "avis" | "attention"; titre: string | null; texte: string | null; elements: string[] | null; autres: number } } = $props();
+  let { p }: { p: { level: "info" | "avis" | "attention"; title: string | null; text: string | null; items: string[] | null; others: number } } = $props();
 </script>
 
-<div class="pa-encadre {p.niveau}" data-testid="bloc-encadre" role="note">
-  {#if p.titre}<strong class="pa-texte">{p.titre}</strong>{/if}
-  {#if p.texte}<p>{p.texte}</p>{/if}
-  {#if p.elements?.length}
+<div class="pa-encadre {p.level}" data-testid="bloc-encadre" role="note">
+  {#if p.title}<strong class="pa-texte">{p.title}</strong>{/if}
+  {#if p.text}<p>{p.text}</p>{/if}
+  {#if p.items?.length}
     <ul>
-      {#each p.elements as e, i (i)}<li class="pa-texte">{e}</li>{/each}
+      {#each p.items as e, i (i)}<li class="pa-texte">{e}</li>{/each}
     </ul>
   {/if}
-  {#if p.autres > 0}<p class="pa-autres">{andOthers(p.autres)}</p>{/if}
+  {#if p.others > 0}<p class="pa-autres">{andOthers(p.others)}</p>{/if}
 </div>

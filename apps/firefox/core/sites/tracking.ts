@@ -1,7 +1,7 @@
 import { changeUrl, readUrlState, findUrl, type DeclarationSite, type UrlState } from "@webaios/kernel";
 import { TRACKING_INTERVAL_MS } from "../../shared/sites";
 
-export type TrackingResult = { t: "change"; domaine: string; etat: UrlState } | { t: "introuvable" } | { t: "inchangee" } | { t: "trop-tot" };
+export type TrackingResult = { t: "change"; domain: string; state: UrlState } | { t: "introuvable" } | { t: "inchangee" } | { t: "trop-tot" };
 
 /** The host of an address, lowercase and without a trailing dot; "" if it is unreadable. */
 function hostOf(url: string): string {
@@ -19,49 +19,49 @@ function hostOf(url: string): string {
  */
 export class UrlTracking {
   /** Last read started, per app. */
-  private readonly dernieres = new Map<string, number>();
+  private readonly lasts = new Map<string, number>();
 
   constructor(
     private readonly o: {
       /** The links of the reference page, read without cookies or profile. */
-      lireLiens(page: string, signal?: AbortSignal): Promise<string[]>;
-      dossierSites: string;
-      adressesLocales: boolean;
-      maintenant(): number;
+      readLinks(page: string, signal?: AbortSignal): Promise<string[]>;
+      sitesFolder: string;
+      localAddresses: boolean;
+      now(): number;
     },
   ) {}
 
   /** The app is deleted: the next app with the same id restarts without a recent read. */
-  oublier(id: string): void {
-    this.dernieres.delete(id);
+  forget(id: string): void {
+    this.lasts.delete(id);
   }
 
-  async chercher(id: string, d: DeclarationSite, signal?: AbortSignal): Promise<TrackingResult> {
-    const tracking = d.suiviAdresse;
+  async find(id: string, d: DeclarationSite, signal?: AbortSignal): Promise<TrackingResult> {
+    const tracking = d.urlTracking;
     if (!tracking) return { t: "introuvable" };
-    const now = this.o.maintenant();
-    const last = this.dernieres.get(id);
+    const now = this.o.now();
+    const last = this.lasts.get(id);
     if (last !== undefined && now - last < TRACKING_INTERVAL_MS) return { t: "trop-tot" };
     // Noted before the read: a second request during it reads nothing.
-    this.dernieres.set(id, now);
+    this.lasts.set(id, now);
     let liens: string[];
     try {
-      liens = await this.o.lireLiens(tracking.page, signal);
+      liens = await this.o.readLinks(tracking.page, signal);
       if (signal?.aborted) return { t: "introuvable" };
     } catch {
       return { t: "introuvable" };
     }
-    const found = findUrl(liens, { page: tracking.page, motif: tracking.motif, adressesLocales: this.o.adressesLocales });
+    const found = findUrl(liens, { page: tracking.page, pattern: tracking.pattern, localAddresses: this.o.localAddresses });
     if (!found) return { t: "introuvable" };
     if (signal?.aborted) return { t: "introuvable" };
-    const currentUrl = await readUrlState(this.o.dossierSites, id);
+    const currentUrl = await readUrlState(this.o.sitesFolder, id);
     // Cancelled during the re-reading of the state (app deletion): nothing is written.
     if (signal?.aborted) return { t: "introuvable" };
-    const current = currentUrl?.actuel ?? hostOf(d.adresse);
+    const current = currentUrl?.current ?? hostOf(d.url);
     if (found.hostname === current) return { t: "inchangee" };
     try {
-      const state = await changeUrl(this.o.dossierSites, id, d, found.hostname);
-      return { t: "change", domaine: state.actuel, etat: state };
+      const state = await changeUrl(this.o.sitesFolder, id, d, found.hostname);
+      return { t: "change", domain: state.current, state: state };
     } catch {
       return { t: "introuvable" };
     }

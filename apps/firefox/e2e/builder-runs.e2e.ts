@@ -17,18 +17,18 @@ import { openBuilder, readWorkflow, widgetDir, writeWidget } from "./workflows";
 /** A workflow shipped by the agent, without positions: a page, its links taken by code, sorted by Kev, then their texts. */
 const WATCH_WORKFLOW = {
   version: 1,
-  blocs: [
-    { id: "page", type: "source.page", parametres: { url: "{config.url}" } },
-    { id: "liens", type: "code", nom: "Liens de la page", parametres: { source: "liens.mjs" } },
-    { id: "tri", type: "ia.trier", nom: "Tri par Kev", parametres: { question: "Parle d'IA ?", texte: "{texte}", seuil: 0.5 } },
-    { id: "textes", type: "code", parametres: { source: "textes.mjs" } },
-    { id: "sortie", type: "sortie", parametres: { vers: "widget" } },
+  blocks: [
+    { id: "page", type: "source.page", params: { url: "{config.url}" } },
+    { id: "liens", type: "code", name: "Liens de la page", params: { source: "liens.mjs" } },
+    { id: "tri", type: "ia.trier", name: "Tri par Kev", params: { question: "Parle d'IA ?", text: "{texte}", threshold: 0.5 } },
+    { id: "textes", type: "code", params: { source: "textes.mjs" } },
+    { id: "sortie", type: "sortie", params: { to: "widget" } },
   ],
-  liens: [
-    { de: "page", vers: "liens" },
-    { de: "liens", vers: "tri" },
-    { de: "tri", vers: "textes" },
-    { de: "textes", vers: "sortie" },
+  links: [
+    { from: "page", to: "liens" },
+    { from: "liens", to: "tri" },
+    { from: "tri", to: "textes" },
+    { from: "textes", to: "sortie" },
   ],
 };
 const LIENS = "export default async (page) => page.liens;";
@@ -88,11 +88,11 @@ const snapshot = async (dir: string, recursive = false) => {
 /** A widget on WATCH_WORKFLOW reading `/liens?<id>`; `slow`: its last code block waits 2.5 s. */
 const writeWatch = (id: string, o: { slow?: boolean; declaration?: Record<string, unknown> } = {}) =>
   writeWidget(dataDir, id, {
-    nom: "Veille",
-    recolte: { minutes: 60 },
+    name: "Veille",
+    harvest: { minutes: 60 },
     declaration: { config: { url: `${site.url}/liens?${id}` }, ...o.declaration },
     workflow: WATCH_WORKFLOW,
-    fichiers: { "liens.mjs": LIENS, "textes.mjs": o.slow ? SLOW_TEXTS : TEXTS, "exemple.json": JSON.stringify({ exemple: "veille" }) },
+    files: { "liens.mjs": LIENS, "textes.mjs": o.slow ? SLOW_TEXTS : TEXTS, "exemple.json": JSON.stringify({ example: "veille" }) },
   });
 /** No state: harvested at launch (scheduled). */
 const dropState = (id: string) => rm(dataOf(id), { recursive: true });
@@ -105,11 +105,11 @@ const writeState = async (id: string, state: Record<string, unknown>) => {
 const trace = (block: string, type: string, start: string, fields: Record<string, unknown>) => ({
   id: block,
   type,
-  statut: "reussi",
-  debut: start,
-  fin: start,
-  elements: null,
-  journal: [],
+  status: "reussi",
+  start: start,
+  end: start,
+  items: null,
+  log: [],
   ...fields,
 });
 async function writeExecution(owner: string, id: string, blocks: unknown[]): Promise<void> {
@@ -117,36 +117,36 @@ async function writeExecution(owner: string, id: string, blocks: unknown[]): Pro
   await mkdir(executionsOf(owner), { recursive: true });
   await writeFile(
     path.join(executionsOf(owner), `${id}.json`),
-    JSON.stringify({ version: 1, id, proprietaire: { type: "widget", id: owner }, declencheur: "planifiee", debut: start, fin: start, statut: "reussie", blocs: blocks }),
+    JSON.stringify({ version: 1, id, owner: { type: "widget", id: owner }, trigger: "planifiee", start: start, end: start, status: "reussie", blocks: blocks }),
   );
 }
 
 /** 30 blocks: six code sources, each followed by three lists, merged, then sorted and shaped. */
-function thirtyBlocks(): { workflow: { version: number; blocs: unknown[]; liens: unknown[] }; fichiers: Record<string, string> } {
-  const blocks: { id: string; type: string; parametres: Record<string, unknown> }[] = [];
-  const liens: { de: string; vers: string }[] = [];
+function thirtyBlocks(): { workflow: { version: number; blocks: unknown[]; links: unknown[] }; files: Record<string, string> } {
+  const blocks: { id: string; type: string; params: Record<string, unknown> }[] = [];
+  const links: { from: string; to: string }[] = [];
   const files: Record<string, string> = {};
   for (let i = 1; i <= 6; i++) {
-    blocks.push({ id: `source-${i}`, type: "code", parametres: { source: `source-${i}.mjs` } });
+    blocks.push({ id: `source-${i}`, type: "code", params: { source: `source-${i}.mjs` } });
     files[`source-${i}.mjs`] = `export default async () => [{ url: "https://exemple.invalid/${i}" }];`;
-    blocks.push({ id: `nouveaux-${i}`, type: "liste.nouveaux", parametres: { cle: "url" } });
-    blocks.push({ id: `dedoublonner-${i}`, type: "liste.dedoublonner", parametres: { cles: ["url"] } });
-    blocks.push({ id: `garder-${i}`, type: "liste.garder", parametres: { nombre: 10 } });
-    liens.push({ de: `source-${i}`, vers: `nouveaux-${i}` }, { de: `nouveaux-${i}`, vers: `dedoublonner-${i}` }, { de: `dedoublonner-${i}`, vers: `garder-${i}` });
-    liens.push({ de: `garder-${i}`, vers: "fusion" });
+    blocks.push({ id: `nouveaux-${i}`, type: "liste.nouveaux", params: { key: "url" } });
+    blocks.push({ id: `dedoublonner-${i}`, type: "liste.dedoublonner", params: { keys: ["url"] } });
+    blocks.push({ id: `garder-${i}`, type: "liste.garder", params: { count: 10 } });
+    links.push({ from: `source-${i}`, to: `nouveaux-${i}` }, { from: `nouveaux-${i}`, to: `dedoublonner-${i}` }, { from: `dedoublonner-${i}`, to: `garder-${i}` });
+    links.push({ from: `garder-${i}`, to: "fusion" });
   }
   blocks.push(
-    { id: "fusion", type: "code", parametres: { source: "fusion.mjs" } },
-    { id: "tri", type: "ia.trier", parametres: { question: "Parle d'IA ?", texte: "{url}", seuil: 0.5 } },
-    { id: "garder", type: "liste.garder", parametres: { nombre: 20 } },
-    { id: "dedoublonner", type: "liste.dedoublonner", parametres: { cles: ["url"] } },
-    { id: "forme", type: "code", parametres: { source: "forme.mjs" } },
-    { id: "sortie", type: "sortie", parametres: { vers: "widget" } },
+    { id: "fusion", type: "code", params: { source: "fusion.mjs" } },
+    { id: "tri", type: "ia.trier", params: { question: "Parle d'IA ?", text: "{url}", threshold: 0.5 } },
+    { id: "garder", type: "liste.garder", params: { count: 20 } },
+    { id: "dedoublonner", type: "liste.dedoublonner", params: { keys: ["url"] } },
+    { id: "forme", type: "code", params: { source: "forme.mjs" } },
+    { id: "sortie", type: "sortie", params: { to: "widget" } },
   );
   files["fusion.mjs"] = "export default async (entrees) => Object.values(entrees).flat();";
   files["forme.mjs"] = "export default async (liens) => ({ liens });";
-  liens.push({ de: "fusion", vers: "tri" }, { de: "tri", vers: "garder" }, { de: "garder", vers: "dedoublonner" }, { de: "dedoublonner", vers: "forme" }, { de: "forme", vers: "sortie" });
-  return { workflow: { version: 1, blocs: blocks, liens }, fichiers: files };
+  links.push({ from: "fusion", to: "tri" }, { from: "tri", to: "garder" }, { from: "garder", to: "dedoublonner" }, { from: "dedoublonner", to: "forme" }, { from: "forme", to: "sortie" });
+  return { workflow: { version: 1, blocks: blocks, links }, files: files };
 }
 
 const TRUNCATED = "2026-10-29T10-00-00-000Z";
@@ -155,7 +155,7 @@ const SIMPLE_CODE = "export default async () => ({ bon: true });";
 /** A state « up to date » whose hours tracking says all done: no hour is due during the test. */
 const noHourDue = () => {
   const now = new Date().toISOString();
-  return { statut: "ok", derniereMaj: now, derniereTentative: now, heures: { faite: "9999-12-31T23:59", echecs: null } };
+  return { status: "ok", lastUpdate: now, lastAttempt: now, hours: { done: "9999-12-31T23:59", failures: null } };
 };
 
 beforeAll(async () => {
@@ -184,79 +184,79 @@ beforeAll(async () => {
   await writeWatch("tronque");
   const start = "2026-10-29T10:00:00.000Z";
   await writeExecution("tronque", TRUNCATED, [
-    trace("page", "source.page", start, { sortie: { titre: "Liens" } }),
-    trace("liens", "code", start, { elements: 2, sortie: '[{"texte":"Nouveau', sortieTronquee: true }),
-    trace("tri", "ia.trier", start, { elements: 1, sortie: [] }),
-    trace("textes", "code", start, { sortie: { liens: [] } }),
-    trace("sortie", "sortie", start, { sortie: { liens: [] } }),
+    trace("page", "source.page", start, { output: { title: "Liens" } }),
+    trace("liens", "code", start, { items: 2, output: '[{"texte":"Nouveau', outputTruncated: true }),
+    trace("tri", "ia.trier", start, { items: 1, output: [] }),
+    trace("textes", "code", start, { output: { links: [] } }),
+    trace("sortie", "sortie", start, { output: { links: [] } }),
   ]);
   await writeWatch("grise", { slow: true });
   await dropState("grise");
   // Like a Gmail widget: widget.json, recolte.mjs, affichage.html, an account, no workflow.json.
   await writeWidget(dataDir, "gmail", {
-    nom: "Gmail",
-    recolte: { minutes: 60 },
-    declaration: { sources: { compte: ["127.0.0.1"], publiques: [] }, config: { url: `${site.url}/boite` } },
-    fichiers: {
+    name: "Gmail",
+    harvest: { minutes: 60 },
+    declaration: { sources: { account: ["127.0.0.1"], public: [] }, config: { url: `${site.url}/boite` } },
+    files: {
       "recolte.mjs": "export default async (webaios) => ({ vu: (await webaios.lirePage(webaios.config.url, { compte: true })).titre });",
-      "exemple.json": JSON.stringify({ exemple: "gmail" }),
+      "exemple.json": JSON.stringify({ example: "gmail" }),
     },
   });
   // The grant is missing and was just asked: no run starts at launch.
   const now = new Date().toISOString();
   await writeState("gmail", {
-    statut: "accord-requis",
-    derniereMaj: now,
-    derniereTentative: now,
-    erreur: "Accord requis pour lire avec ton compte : 127.0.0.1",
-    erreurNoyau: true,
+    status: "accord-requis",
+    lastUpdate: now,
+    lastAttempt: now,
+    error: "Accord requis pour lire avec ton compte : 127.0.0.1",
+    kernelError: true,
   });
   // Two past runs, to choose another than the last.
   for (const id of GMAIL_RUNS) {
     const d = id.replace(/T(\d\d)-(\d\d)-(\d\d)-(\d{3})Z$/, "T$1:$2:$3.$4Z");
-    await writeExecution("gmail", id, [trace("recolte", "code", d, { sortie: { vu: id } }), trace("sortie", "sortie", d, { sortie: { vu: id } })]);
+    await writeExecution("gmail", id, [trace("recolte", "code", d, { output: { seen: id } }), trace("sortie", "sortie", d, { output: { seen: id } })]);
   }
   await writeWidget(dataDir, "simple", {
-    nom: "Simple",
-    recolte: { minutes: 60 },
-    fichiers: { "recolte.mjs": SIMPLE_CODE, "exemple.json": JSON.stringify({ exemple: "simple" }) },
+    name: "Simple",
+    harvest: { minutes: 60 },
+    files: { "recolte.mjs": SIMPLE_CODE, "exemple.json": JSON.stringify({ example: "simple" }) },
   });
   await dropState("simple");
   await writeWatch("coupe");
   const big = thirtyBlocks();
-  await writeWidget(dataDir, "grand", { nom: "Grand", recolte: { minutes: 60 }, workflow: big.workflow, fichiers: big.fichiers });
+  await writeWidget(dataDir, "grand", { name: "Grand", harvest: { minutes: 60 }, workflow: big.workflow, files: big.files });
   await writeWidget(dataDir, "web", {
-    nom: "Veille",
-    recolte: { heures: ["07:00", "19:00"], dureeMaxMinutes: 30, notifier: true },
-    declaration: { sources: { compte: [], publiques: [], web: true }, config: { url: `${site.url}/liens?web` } },
+    name: "Veille",
+    harvest: { hours: ["07:00", "19:00"], maxDurationMinutes: 30, notify: true },
+    declaration: { sources: { account: [], public: [], web: true }, config: { url: `${site.url}/liens?web` } },
     workflow: WATCH_WORKFLOW,
-    fichiers: { "liens.mjs": LIENS, "textes.mjs": TEXTS },
+    files: { "liens.mjs": LIENS, "textes.mjs": TEXTS },
   });
   await writeState("web", noHourDue());
   await writeWatch("sansweb");
   await writeWidget(dataDir, "fil", {
-    nom: "Veille",
-    recolte: { minutes: 60 },
+    name: "Veille",
+    harvest: { minutes: 60 },
     declaration: { config: { url: `${site.url}/liens?fil` } },
     workflow: {
       version: 1,
-      blocs: [
-        { id: "page", type: "source.page", parametres: { url: "{config.url}" } },
-        { id: "liens", type: "code", parametres: { source: "liens.mjs" } },
-        { id: "garder", type: "liste.garder", parametres: { nombre: 5 } },
-        { id: "sortie", type: "sortie", parametres: { vers: "widget", auFilDeLEau: true } },
+      blocks: [
+        { id: "page", type: "source.page", params: { url: "{config.url}" } },
+        { id: "liens", type: "code", params: { source: "liens.mjs" } },
+        { id: "garder", type: "liste.garder", params: { count: 5 } },
+        { id: "sortie", type: "sortie", params: { to: "widget", live: true } },
       ],
-      liens: [
-        { de: "page", vers: "liens" },
-        { de: "liens", vers: "garder" },
-        { de: "garder", vers: "sortie" },
+      links: [
+        { from: "page", to: "liens" },
+        { from: "liens", to: "garder" },
+        { from: "garder", to: "sortie" },
       ],
     },
-    fichiers: { "liens.mjs": LIENS },
+    files: { "liens.mjs": LIENS },
   });
   await writeWatch("relance", { slow: true });
 
-  w = await launchWebAiOs({ dataDir, height: 1400, env: { WEBAIOS_KEV_URL: kev.url, WEBAIOS_OLLAMA_URL: ollama.url, WEBAIOS_TEST_ADRESSES_LOCALES: "1" } });
+  w = await launchWebAiOs({ dataDir, height: 1400, env: { WEBAIOS_KEV_URL: kev.url, WEBAIOS_OLLAMA_URL: ollama.url, WEBAIOS_TEST_LOCAL_ADDRESSES: "1" } });
   m = w.marionette;
   await m.setContext("chrome");
   await waitReady(m);
@@ -268,12 +268,12 @@ afterAll(async () => {
 });
 afterEach(async () => {
   expect(await missingApi(m)).toEqual([]);
-  for (const o of Object.values((await state(m)).onglets)) if (o.url.startsWith("webaios://workflow/")) await dispatch(m, { type: "fermerOnglet", id: o.id });
+  for (const o of Object.values((await state(m)).tabs)) if (o.url.startsWith("webaios://workflow/")) await dispatch(m, { type: "fermerOnglet", id: o.id });
 });
 
 /** Back to the home page of the window. */
 async function home(): Promise<void> {
-  await dispatch(m, { type: "afficherPageVide", fenetreId: (await state(m)).fenetres[0]!.id });
+  await dispatch(m, { type: "afficherPageVide", windowId: (await state(m)).windows[0]!.id });
   await waitUi(m, "return !!doc.querySelector('[data-testid=\"widget-lancer\"]')");
 }
 
@@ -409,11 +409,11 @@ describe("the workflow builder's runs", () => {
     await poll(() => thresholdOf("rejouer"), 0.05);
     await saved();
     const before = {
-      donnees: await content(path.join(dir, "donnees.json")),
-      memoire: await content(path.join(dir, "memoire.json")),
-      etat: await content(path.join(dir, "etat.json")),
+      data: await content(path.join(dir, "donnees.json")),
+      memory: await content(path.join(dir, "memoire.json")),
+      state: await content(path.join(dir, "etat.json")),
     };
-    expect(before.donnees).not.toBeNull();
+    expect(before.data).not.toBeNull();
     const pages = reads.get("rejouer") ?? 0;
     // The harvest at launch did read the fake site: its log counts.
     expect(pages).toBeGreaterThan(0);
@@ -444,9 +444,9 @@ describe("the workflow builder's runs", () => {
 
     // The page was not read again; neither the data, the memory nor the widget's state moved.
     expect(reads.get("rejouer")).toBe(pages);
-    expect(await content(path.join(dir, "donnees.json"))).toBe(before.donnees);
-    expect(await content(path.join(dir, "memoire.json"))).toBe(before.memoire);
-    expect(await content(path.join(dir, "etat.json"))).toBe(before.etat);
+    expect(await content(path.join(dir, "donnees.json"))).toBe(before.data);
+    expect(await content(path.join(dir, "memoire.json"))).toBe(before.memory);
+    expect(await content(path.join(dir, "etat.json"))).toBe(before.state);
 
     // The « Exécutions » tab: all of them, the trial marked with its starting block; choosing one goes back to the canvas.
     await click(m, tid("vue-executions"));
@@ -471,7 +471,7 @@ describe("the workflow builder's runs", () => {
       const last = (await runs("rejouer")).filter((f) => f.includes("-essai")).at(-1)!.replace(/\.json$/, "");
       await waitPressed(tid(`execution-${last}`));
       await waitText(tid("pastille-tri"), "2");
-      expect((await readJson(path.join(executionsOf("rejouer"), `${last}.json`))).essai).toEqual({ depart: "tri", origine: origin });
+      expect((await readJson(path.join(executionsOf("rejouer"), `${last}.json`))).essai).toEqual({ start: "tri", origin: origin });
     }
     expect(reads.get("rejouer")).toBe(pages);
   });
@@ -557,7 +557,7 @@ describe("the workflow builder's runs", () => {
     const written = await readWorkflow(dataDir, "simple");
     expect(written.blocs.map((x: { id: string; type: string }) => `${x.id}:${x.type}`)).toEqual(["recolte:code", "sortie:sortie"]);
     expect(written.blocs[0].parametres).toMatchObject({ source: "recolte.mjs" });
-    expect(written.liens).toEqual([{ de: "recolte", vers: "sortie" }]);
+    expect(written.liens).toEqual([{ from: "recolte", to: "sortie" }]);
     expect(await readFile(path.join(dir, "recolte.mjs"), "utf8")).toBe(SIMPLE_CODE);
 
     // The widget now goes through workflow.json: same data.
@@ -569,7 +569,7 @@ describe("the workflow builder's runs", () => {
     expect(last.statut).toBe("reussie");
     expect(last.declencheur).toBe("manuelle");
     await poll(() => homeData("simple"), '{"bon":true}');
-    expect(await readJson(path.join(dataOf("simple"), "donnees.json"))).toEqual({ bon: true });
+    expect(await readJson(path.join(dataOf("simple"), "donnees.json"))).toEqual({ good: true });
     expect((await readJson(path.join(dataOf("simple"), "etat.json"))).statut).toBe("ok");
   });
 
@@ -596,7 +596,7 @@ describe("the workflow builder's runs", () => {
   });
 
   it("a 30-block workflow opens readable: no node overlaps, all in view after fitView", async () => {
-    expect(thirtyBlocks().workflow.blocs).toHaveLength(30);
+    expect(thirtyBlocks().workflow.blocks).toHaveLength(30);
     const before = await snapshot(widgetDir(dataDir, "grand"));
     await builder("grand");
     await saved();
@@ -652,11 +652,11 @@ describe("the workflow builder's runs", () => {
 
     await writeAsAgent("sansweb", {
       version: 1,
-      blocs: [
-        { id: "chercher", type: "web.chercher", parametres: { requete: "voitures" } },
-        { id: "sortie", type: "sortie", parametres: { vers: "widget" } },
+      blocks: [
+        { id: "chercher", type: "web.chercher", params: { query: "voitures" } },
+        { id: "sortie", type: "sortie", params: { to: "widget" } },
       ],
-      liens: [{ de: "chercher", vers: "sortie" }],
+      links: [{ from: "chercher", to: "sortie" }],
     });
     await waitVisible(tid("noeud-chercher"));
     await waitContains(tid("etat-enregistrement"), "Non enregistré : ");
@@ -674,7 +674,7 @@ describe("the workflow builder's runs", () => {
     const box = tid("champ-auFilDeLEau");
     await waitTrue(`${el(box)}?.checked === true`);
     await click(m, box);
-    await poll(async () => (await readWorkflow(dataDir, "fil")).blocs.find((b: { id: string }) => b.id === "sortie").parametres, { vers: "widget" });
+    await poll(async () => (await readWorkflow(dataDir, "fil")).blocs.find((b: { id: string }) => b.id === "sortie").parametres, { to: "widget" });
     await waitCount(tid("avertissement-sortie"), 0);
   });
 

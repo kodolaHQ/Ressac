@@ -10,7 +10,7 @@ const RETRY_MS = 15 * MINUTE;
 const MAX_HOUR_RETRIES = 3;
 
 /** What « prochaine » reads from the widget's state: the scheduler's rules after a failure. */
-export type NextState = Pick<WidgetState, "statut" | "derniereTentative" | "heures">;
+export type NextState = Pick<WidgetState, "status" | "lastAttempt" | "hours">;
 
 /** « aujourd'hui HH:MM » or « demain HH:MM » (never further: a fixed hour comes back tomorrow at the latest). */
 function label(when: Date, now: Date): string {
@@ -26,15 +26,15 @@ const instant = (iso: string | null | undefined) => (iso ? Date.parse(iso) : NaN
  * never caught up). Null with no retry to come.
  */
 function retryHour(hours: readonly string[], now: Date, appState: NextState | undefined): Date | null {
-  const tracking = appState?.heures;
-  if (!appState || !tracking?.echecs) return null;
+  const tracking = appState?.hours;
+  if (!appState || !tracking?.failures) return null;
   const current = `${two(now.getHours())}:${two(now.getMinutes())}`;
   const reached = hours.filter((h) => h <= current).sort().at(-1);
   if (!reached) return null;
   const slot = `${now.getFullYear()}-${two(now.getMonth() + 1)}-${two(now.getDate())}T${reached}`;
-  if (tracking.faite != null && tracking.faite >= slot) return null;
-  if (tracking.echecs.heure !== slot || tracking.echecs.nombre > MAX_HOUR_RETRIES) return null;
-  const markers = [tracking.echecs.fin, appState.derniereTentative].map(instant).filter((t) => !Number.isNaN(t));
+  if (tracking.done != null && tracking.done >= slot) return null;
+  if (tracking.failures.hour !== slot || tracking.failures.count > MAX_HOUR_RETRIES) return null;
+  const markers = [tracking.failures.end, appState.lastAttempt].map(instant).filter((t) => !Number.isNaN(t));
   const when = new Date(Math.max(now.getTime(), ...markers.map((t) => t + RETRY_MS)));
   return when.toDateString() === now.toDateString() ? when : null;
 }
@@ -49,7 +49,7 @@ function retryHour(hours: readonly string[], now: Date, appState: NextState | un
 export function nextRun(
   hours: readonly string[],
   now: Date,
-  frequency?: { minutes: number; derniereMaj: string | null },
+  frequency?: { minutes: number; lastUpdate: string | null },
   appState?: NextState,
 ): string | null {
   if (hours.length === 0) return null;
@@ -67,10 +67,10 @@ export function nextRun(
   }
   if (!frequency) return label(next, now);
   const markers = [now.getTime()];
-  const last = instant(frequency.derniereMaj);
+  const last = instant(frequency.lastUpdate);
   if (!Number.isNaN(last)) markers.push(last + frequency.minutes * MINUTE);
-  const attempt = instant(appState?.derniereTentative);
-  if (appState?.statut === "erreur" && !Number.isNaN(attempt)) markers.push(attempt + RETRY_MS);
+  const attempt = instant(appState?.lastAttempt);
+  if (appState?.status === "erreur" && !Number.isNaN(attempt)) markers.push(attempt + RETRY_MS);
   const byFrequency = new Date(Math.max(...markers));
   // To the minute: the second is not shown.
   byFrequency.setSeconds(0, 0);

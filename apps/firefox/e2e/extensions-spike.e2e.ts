@@ -78,8 +78,8 @@ async function firefoxCopy(o: { id: string; n: number; extra?: Record<string, un
   const dir = await mkdtemp(path.join(os.tmpdir(), "webaios-spike-copy-"));
   await writeTree(path.join(dir, "source"), { ...SOURCE, ...o.files });
   const target = path.join(dir, "copy");
-  const { analyse: analysis } = await prepareCopy({ source: path.join(dir, "source"), cible: target, dossierGardes: DEFAULT_GUARDS });
-  if (analysis.refus.length) throw new Error(`copy refused: ${analysis.refus.join("; ")}`);
+  const { analysis: analysis } = await prepareCopy({ source: path.join(dir, "source"), target: target, keptFolder: DEFAULT_GUARDS });
+  if (analysis.denial.length) throw new Error(`copy refused: ${analysis.denial.join("; ")}`);
   const manifest = JSON.parse(await readFile(path.join(target, "manifest.json"), "utf8"));
   const gecko = { id: o.id, ...((o.extra?.gecko as object) ?? {}) };
   manifest.browser_specific_settings = { gecko };
@@ -201,10 +201,10 @@ async function until<T>(read: () => T | Promise<T>, ms = 10_000): Promise<T> {
 
 /** Opens `url` in a WebAiOs tab and waits until the selected browser shows it; returns the WebAiOs tab id. */
 async function open(m: Marionette, url: string): Promise<string> {
-  const before = new Set(Object.keys((await state(m)).onglets));
-  const s = await dispatch(m, { type: "ouvrirOnglet", fenetreId: (await state(m)).fenetres[0]!.id, url });
+  const before = new Set(Object.keys((await state(m)).tabs));
+  const s = await dispatch(m, { type: "ouvrirOnglet", windowId: (await state(m)).windows[0]!.id, url });
   await waitFor(m, `return gBrowser.selectedBrowser.currentURI.spec === ${JSON.stringify(url)} && !gBrowser.selectedBrowser.webProgress.isLoadingDocument`, (v) => v === true);
-  return Object.keys(s.onglets).find((id) => !before.has(id))!;
+  return Object.keys(s.tabs).find((id) => !before.has(id))!;
 }
 
 /** The test actors of S5 and S6, written in src/browser/base/content/webaios (where the real one will live) for the run only. */
@@ -291,7 +291,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("agent extensions spike", () => {
   it.skipIf(!process.env.WEBAIOS_AMO)("S1: real unlisted signing on addons.mozilla.org", { timeout: 90 * 60_000 }, async () => {
     const keys = await readAmoKey({});
     if (!keys) return note("S1", "not done: keys absent");
-    note("S1 issuer", keys.emetteur.replace(/[^:]+$/, "…"));
+    note("S1 issuer", keys.emitter.replace(/[^:]+$/, "…"));
     note("S1 guid", SPIKE_ID);
     // Plan 25 decision 2: `1.0` → `1.0.0.<n>`. WEBAIOS_SPIKE_EXTRA (JSON) is merged into the copy's manifest, for
     // what a first upload shows AMO requires (rerun with it rather than guess).
@@ -304,7 +304,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("agent extensions spike", () => {
       const { xpi, manifest } = await firefoxCopy({ id: SPIKE_ID, n, extra });
       const t0 = Date.now();
       try {
-        await sign({ xpi, guid: SPIKE_ID, version: manifest.version, cle: keys, base: AMO_URL, sortie: path.join(SIGNED, `${SPIKE_ID}-${manifest.version}.xpi`) });
+        await sign({ xpi, guid: SPIKE_ID, version: manifest.version, key: keys, base: AMO_URL, output: path.join(SIGNED, `${SPIKE_ID}-${manifest.version}.xpi`) });
       } catch (e) {
         note(`S1 sign ${manifest.version}`, (e as Error).message);
         break;
@@ -516,7 +516,7 @@ setTimeout(() => { throw new Error("s6-uncaught-${label}"); }, 50);
       await waitFor(m, `return !!window.webaiosWindow.addons.buttons().find((b) => b.id === ${JSON.stringify(f.id)})?.enabled`, (v) => v === true);
       await m.execute(`window.webaiosWindow.addons.click(arguments[0], { x: 0, y: 0, width: 24, height: 24 });`, [f.id]);
       await until(() => notes(server.paths, "s5-popup").length > 0);
-      await dispatch(m, { type: "ouvrirOnglet", fenetreId: (await state(m)).fenetres[0]!.id, url: `${server.url}/texte.html?options` });
+      await dispatch(m, { type: "ouvrirOnglet", windowId: (await state(m)).windows[0]!.id, url: `${server.url}/texte.html?options` });
       await until(() => notes(server.paths, "s5-options").length > 0);
       for (const label of ["background", "popup", "options"]) note(`S5 ${label}`, notes(server.paths, `s5-${label}`));
       note("S6 start after pages", await m.execute(START_CONSOLE));

@@ -95,15 +95,15 @@ async function oldLayout(path: string): Promise<boolean> {
 
 /** Old blocks and the old layout are set aside in `accueil/.corbeille/blocs-<timestamp>`, never destroyed. */
 async function setAsideBlocks(c: SpacePaths): Promise<void> {
-  const blocks = existsSync(c.blocs);
-  const available = existsSync(c.disposition) && (await oldLayout(c.disposition));
+  const blocks = existsSync(c.blocks);
+  const available = existsSync(c.layout) && (await oldLayout(c.layout));
   if (!blocks && !available) return;
-  const target = join(c.accueil, ".corbeille", `blocs-${timestamp()}`);
+  const target = join(c.home, ".corbeille", `blocs-${timestamp()}`);
   await mkdir(dirname(target), { recursive: true });
-  if (blocks) await renameIfPresent(c.blocs, target);
+  if (blocks) await renameIfPresent(c.blocks, target);
   if (available) {
     await mkdir(target, { recursive: true });
-    await renameIfPresent(c.disposition, join(target, "disposition.json"));
+    await renameIfPresent(c.layout, join(target, "disposition.json"));
   }
 }
 
@@ -123,10 +123,10 @@ async function filesOf(folder: string, prefix = ""): Promise<string[]> {
  */
 async function matches(c: SpacePaths, models: string): Promise<[string, string][]> {
   const pairs: [string, string][] = [
-    ["AGENTS.md", join(c.racine, "AGENTS.md")],
-    ["CLAUDE.md", join(c.racine, "CLAUDE.md")],
-    ["profil-claude.json", join(c.profils, "claude.json")],
-    ["disposition.json", c.disposition],
+    ["AGENTS.md", join(c.root, "AGENTS.md")],
+    ["CLAUDE.md", join(c.root, "CLAUDE.md")],
+    ["profil-claude.json", join(c.profiles, "claude.json")],
+    ["disposition.json", c.layout],
   ];
   if (!existsSync(c.widgets)) {
     for (const f of await filesOf(join(models, "widgets"))) pairs.push([join("widgets", f), join(c.widgets, f)]);
@@ -249,7 +249,7 @@ async function toggleStartWidget(c: SpacePaths, models: string, id: keyof typeof
 
 /** `recolte.mjs` of a switched starter widget goes to `accueil/.corbeille/<id>-recolte-<timestamp>.mjs`. */
 async function storeHarvest(c: SpacePaths, id: string): Promise<void> {
-  const trash = join(c.accueil, ".corbeille");
+  const trash = join(c.home, ".corbeille");
   await mkdir(trash, { recursive: true });
   await renameIfPresent(join(c.widgets, id, "recolte.mjs"), join(trash, `${id}-recolte-${timestamp()}.mjs`));
 }
@@ -270,8 +270,8 @@ async function migrateStartDisplay(c: SpacePaths, models: string, id: keyof type
 }
 
 /** Creates the workspace from the templates, without overwriting an existing file (except an AGENTS.md of an old template). */
-export async function initSpace(c: SpacePaths, models = DEFAULT_MODELS): Promise<{ crees: string[] }> {
-  const crees: string[] = [];
+export async function initSpace(c: SpacePaths, models = DEFAULT_MODELS): Promise<{ created: string[] }> {
+  const created: string[] = [];
   await setAsideBlocks(c);
   for (const [model, destination] of await matches(c, models)) {
     const update = model === "AGENTS.md" && (await agentsRestForOld(destination, join(models, model)));
@@ -280,7 +280,7 @@ export async function initSpace(c: SpacePaths, models = DEFAULT_MODELS): Promise
     try {
       // COPYFILE_EXCL: if the file appears in the meantime, we do not overwrite it.
       await copyFile(join(models, model), destination, update ? 0 : constants.COPYFILE_EXCL);
-      crees.push(destination);
+      created.push(destination);
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
     }
@@ -288,7 +288,7 @@ export async function initSpace(c: SpacePaths, models = DEFAULT_MODELS): Promise
   for (const id of Object.keys(DISPLAYS_SHIPPED) as (keyof typeof DISPLAYS_SHIPPED)[]) {
     // Best effort, widget by widget: a failed display never blocks launch.
     try {
-      if (await migrateStartDisplay(c, models, id)) crees.push(join(c.widgets, id, "affichage.html"));
+      if (await migrateStartDisplay(c, models, id)) created.push(join(c.widgets, id, "affichage.html"));
     } catch (e) {
       console.error(`[webaios] migration de l'affichage du widget ${id} :`, e);
     }
@@ -296,17 +296,17 @@ export async function initSpace(c: SpacePaths, models = DEFAULT_MODELS): Promise
   for (const id of Object.keys(HARVESTS_SHIPPED) as (keyof typeof HARVESTS_SHIPPED)[]) {
     // Best effort, widget by widget: a failed switch never blocks launch (the widget keeps its recolte.mjs).
     try {
-      crees.push(...(await toggleStartWidget(c, models, id)));
+      created.push(...(await toggleStartWidget(c, models, id)));
     } catch (e) {
       console.error(`[webaios] bascule du widget ${id} en workflow :`, e);
     }
   }
-  await mkdir(c.projets, { recursive: true });
+  await mkdir(c.projects, { recursive: true });
   await mkdir(c.extensions, { recursive: true });
   await mkdir(c.actions, { recursive: true });
-  await mkdir(c.composants, { recursive: true });
+  await mkdir(c.components, { recursive: true });
   await mkdir(c.sites, { recursive: true });
-  return { crees };
+  return { created };
 }
 
 /** sha256 of the shipped `CLAUDE.md` and agent profile templates before the English formats: a copy left as shipped is replaced. */

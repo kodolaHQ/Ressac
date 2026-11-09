@@ -26,7 +26,7 @@ afterEach(async () => {
 });
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const toggle = async () => dispatch(m, { type: "basculerCompact", fenetreId: (await state(m)).fenetres[0]!.id });
+const toggle = async () => dispatch(m, { type: "basculerCompact", windowId: (await state(m)).windows[0]!.id });
 
 /** The page's box, the UI iframe's width, and whether the sidebar shows. */
 const layout = () =>
@@ -52,7 +52,7 @@ const moveMouse = (x: number) =>
   );
 
 async function openPage(): Promise<void> {
-  await dispatch(m, { type: "ouvrirOnglet", fenetreId: (await state(m)).fenetres[0]!.id, url: `${server.url}/icone` });
+  await dispatch(m, { type: "ouvrirOnglet", windowId: (await state(m)).windows[0]!.id, url: `${server.url}/icone` });
   await waitFor(m, "return gBrowser.selectedBrowser.currentURI.spec", (u: string) => u.startsWith(server.url));
   await waitUi(m, `return !frame.hasAttribute("full");`);
 }
@@ -111,7 +111,7 @@ describe("compact mode", () => {
     await openPage();
     await pressKeys(m, "Meta+Shift+s");
     await waitSidebar(false);
-    expect((await state(m)).fenetres[0]!.compact).toBe(true);
+    expect((await state(m)).windows[0]!.compact).toBe(true);
     await pressKeys(m, "Meta+Shift+s");
     await waitSidebar(true);
     expect(await layout()).toMatchObject({ page: 240, frame: 240 });

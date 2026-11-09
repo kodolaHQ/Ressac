@@ -31,39 +31,39 @@ const expectedList = [
 
 test("creates the full space in an empty folder", async () => {
   const c = spacePaths(await tempFolder());
-  const { crees } = await initSpace(c);
-  for (const f of expectedList) expect(existsSync(join(c.racine, f)), f).toBe(true);
-  expect(existsSync(c.projets)).toBe(true);
+  const { created: crees } = await initSpace(c);
+  for (const f of expectedList) expect(existsSync(join(c.root, f)), f).toBe(true);
+  expect(existsSync(c.projects)).toBe(true);
   expect(existsSync(c.extensions)).toBe(true);
   expect(existsSync(c.actions)).toBe(true);
   expect(existsSync(c.sites)).toBe(true);
-  expect(existsSync(c.composants)).toBe(true);
+  expect(existsSync(c.components)).toBe(true);
   expect(crees.length).toBe(expectedList.length);
 });
 
 test("never overwrites an existing file", async () => {
   const c = spacePaths(await tempFolder());
-  await mkdir(c.accueil, { recursive: true });
+  await mkdir(c.home, { recursive: true });
   const personal = '{"version":2,"widgets":[]}';
-  await writeFile(join(c.racine, "AGENTS.md"), "perso");
-  await writeFile(c.disposition, personal);
-  const { crees } = await initSpace(c);
-  expect(await readFile(join(c.racine, "AGENTS.md"), "utf8")).toBe("perso");
-  expect(await readFile(c.disposition, "utf8")).toBe(personal);
-  expect(crees).not.toContain(join(c.racine, "AGENTS.md"));
-  expect(crees).not.toContain(c.disposition);
+  await writeFile(join(c.root, "AGENTS.md"), "perso");
+  await writeFile(c.layout, personal);
+  const { created: crees } = await initSpace(c);
+  expect(await readFile(join(c.root, "AGENTS.md"), "utf8")).toBe("perso");
+  expect(await readFile(c.layout, "utf8")).toBe(personal);
+  expect(crees).not.toContain(join(c.root, "AGENTS.md"));
+  expect(crees).not.toContain(c.layout);
 });
 
 test("idempotent: a second call creates nothing", async () => {
   const c = spacePaths(await tempFolder());
   await initSpace(c);
-  expect((await initSpace(c)).crees).toEqual([]);
+  expect((await initSpace(c)).created).toEqual([]);
 });
 
 test("AGENTS.md mentions the required elements", async () => {
   const c = spacePaths(await tempFolder());
   await initSpace(c);
-  const text = await readFile(join(c.racine, "AGENTS.md"), "utf8");
+  const text = await readFile(join(c.root, "AGENTS.md"), "utf8");
   for (const m of ["page_courante", "ouvrir_onglet", "5280", "5299", "0.0.0.0", "etat.json", "/workspace/projets"]) {
     expect(text, m).toContain(m);
   }
@@ -73,8 +73,8 @@ test("a new space gets the three starter widgets and the v2 layout", async () =>
   const c = spacePaths(await tempFolder());
   await initSpace(c);
   expect((await readdir(c.widgets)).sort()).toEqual(["actus-tech", "daily-dev", "meteo"]);
-  expect(existsSync(c.blocs)).toBe(false);
-  const available = Layout.parse(JSON.parse(await readFile(c.disposition, "utf8")));
+  expect(existsSync(c.blocks)).toBe(false);
+  const available = Layout.parse(JSON.parse(await readFile(c.layout, "utf8")));
   expect(available.widgets.map((w) => w.id)).toEqual(["actus-tech", "daily-dev", "meteo"]);
   for (const id of ["meteo", "actus-tech", "daily-dev"]) {
     const d = DeclarationWidget.parse(JSON.parse(await readFile(join(c.widgets, id, "widget.json"), "utf8")));
@@ -82,23 +82,23 @@ test("a new space gets the three starter widgets and the v2 layout", async () =>
     if (id !== "meteo") expect(JSON.stringify(d.config)).toContain("sécurité informatique");
   }
   const daily = DeclarationWidget.parse(JSON.parse(await readFile(join(c.widgets, "daily-dev", "widget.json"), "utf8")));
-  expect(daily.sources.compte).toEqual(["app.daily.dev"]);
+  expect(daily.sources.account).toEqual(["app.daily.dev"]);
 });
 
 test("existing blocks move to accueil/.corbeille/blocs-…, nothing is destroyed", async () => {
   const c = spacePaths(await tempFolder());
-  await mkdir(join(c.blocs, "mien"), { recursive: true });
-  await writeFile(join(c.blocs, "mien", "bloc.json"), '{"a":1}');
-  await writeFile(c.disposition, '{"ordre":["mien"]}');
+  await mkdir(join(c.blocks, "mien"), { recursive: true });
+  await writeFile(join(c.blocks, "mien", "bloc.json"), '{"a":1}');
+  await writeFile(c.layout, '{"ordre":["mien"]}');
   await initSpace(c);
-  expect(existsSync(c.blocs)).toBe(false);
-  const trash = join(c.accueil, ".corbeille");
+  expect(existsSync(c.blocks)).toBe(false);
+  const trash = join(c.home, ".corbeille");
   const folders = await readdir(trash);
   expect(folders).toHaveLength(1);
   expect(folders[0]).toMatch(/^blocs-\d{4}-\d\d-\d\dT[^:]+$/);
   expect(await readFile(join(trash, folders[0]!, "mien", "bloc.json"), "utf8")).toBe('{"a":1}');
   expect(await readFile(join(trash, folders[0]!, "disposition.json"), "utf8")).toBe('{"ordre":["mien"]}');
-  expect(Layout.safeParse(JSON.parse(await readFile(c.disposition, "utf8"))).success).toBe(true);
+  expect(Layout.safeParse(JSON.parse(await readFile(c.layout, "utf8"))).success).toBe(true);
   expect(existsSync(join(c.widgets, "meteo", "widget.json"))).toBe(true);
   // A second launch sets nothing aside.
   await initSpace(c);
@@ -108,37 +108,37 @@ test("existing blocks move to accueil/.corbeille/blocs-…, nothing is destroyed
 test("a v3 layout (Firefox) is kept at launch", async () => {
   const c = spacePaths(await tempFolder());
   const personal = '{"version":3,"widgets":[{"id":"meteo","x":0,"y":0,"l":500,"h":180}]}';
-  await mkdir(c.accueil, { recursive: true });
-  await writeFile(c.disposition, personal);
+  await mkdir(c.home, { recursive: true });
+  await writeFile(c.layout, personal);
   await initSpace(c);
-  expect(await readFile(c.disposition, "utf8")).toBe(personal);
-  expect(existsSync(join(c.accueil, ".corbeille"))).toBe(false);
+  expect(await readFile(c.layout, "utf8")).toBe(personal);
+  expect(existsSync(join(c.home, ".corbeille"))).toBe(false);
 });
 
 test("a deleted starter widget does not come back at the next launch", async () => {
   const c = spacePaths(await tempFolder());
   await initSpace(c);
   await rm(join(c.widgets, "meteo"), { recursive: true });
-  await writeFile(c.disposition, '{"version":2,"widgets":[]}');
+  await writeFile(c.layout, '{"version":2,"widgets":[]}');
   await initSpace(c);
   expect(existsSync(join(c.widgets, "meteo"))).toBe(false);
-  expect(await readFile(c.disposition, "utf8")).toBe('{"version":2,"widgets":[]}');
+  expect(await readFile(c.layout, "utf8")).toBe('{"version":2,"widgets":[]}');
 });
 
 test("AGENTS.md, CLAUDE.md and the profile are recreated if missing", async () => {
   const c = spacePaths(await tempFolder());
   await initSpace(c);
-  await rm(join(c.racine, "AGENTS.md"));
-  await rm(join(c.profils, "claude.json"));
+  await rm(join(c.root, "AGENTS.md"));
+  await rm(join(c.profiles, "claude.json"));
   await initSpace(c);
-  expect(existsSync(join(c.racine, "AGENTS.md"))).toBe(true);
-  expect(existsSync(join(c.profils, "claude.json"))).toBe(true);
+  expect(existsSync(join(c.root, "AGENTS.md"))).toBe(true);
+  expect(existsSync(join(c.profiles, "claude.json"))).toBe(true);
 });
 
 test("two simultaneous initializations create each file only once", async () => {
   const c = spacePaths(await tempFolder());
   const [a, b] = await Promise.all([initSpace(c), initSpace(c)]);
-  const all = [...a.crees, ...b.crees];
+  const all = [...a.created, ...b.created];
   expect(new Set(all).size).toBe(all.length);
   expect(all.length).toBe(expectedList.length);
 });
@@ -150,9 +150,9 @@ test("a shipped AGENTS.md (its hash is known) is replaced by the current templat
   const h = sha256(old);
   OLD_AGENTS.add(h);
   try {
-    await writeFile(join(c.racine, "AGENTS.md"), old);
+    await writeFile(join(c.root, "AGENTS.md"), old);
     await initSpace(c);
-    expect(await readFile(join(c.racine, "AGENTS.md"), "utf8")).toBe(model);
+    expect(await readFile(join(c.root, "AGENTS.md"), "utf8")).toBe(model);
   } finally {
     OLD_AGENTS.delete(h);
   }
@@ -161,9 +161,9 @@ test("a shipped AGENTS.md (its hash is known) is replaced by the current templat
 test("an AGENTS.md edited by the user is kept", async () => {
   const c = spacePaths(await tempFolder());
   const edited = "# Mes règles\nrien d'autre\n";
-  await writeFile(join(c.racine, "AGENTS.md"), edited);
+  await writeFile(join(c.root, "AGENTS.md"), edited);
   await initSpace(c);
-  expect(await readFile(join(c.racine, "AGENTS.md"), "utf8")).toBe(edited);
+  expect(await readFile(join(c.root, "AGENTS.md"), "utf8")).toBe(edited);
 });
 
 test("the AGENTS.md template is pinned: before editing it, add this hash to OLD_AGENTS, then update the pin", async () => {
@@ -186,15 +186,15 @@ test("the AGENTS.md template describes the design mode remarks of site apps", as
 
 test("the site.json examples given in AGENTS.md (YouTube, Vidola) are valid for the site app schema", async () => {
   const text = await readFile(join(DEFAULT_MODELS, "AGENTS.md"), "utf8");
-  const blocks = [...text.matchAll(/```json site\.json:([a-z]+)\n([\s\S]*?)```/g)].map((m) => ({ nom: m[1]!, json: m[2]! }));
-  expect(blocks.map((b) => b.nom).sort()).toEqual(["vidola", "youtube"]);
-  for (const { nom: name, json } of blocks) {
+  const blocks = [...text.matchAll(/```json site\.json:([a-z]+)\n([\s\S]*?)```/g)].map((m) => ({ name: m[1]!, json: m[2]! }));
+  expect(blocks.map((b) => b.name).sort()).toEqual(["vidola", "youtube"]);
+  for (const { name: name, json } of blocks) {
     const r = DeclarationSite.safeParse(JSON.parse(json));
     expect(r.success, `${name} : ${r.success ? "" : r.error.message}`).toBe(true);
     if (!r.success) continue;
-    expect(checkSiteDeclaration(r.data, { adressesLocales: false }), name).toBeNull();
+    expect(checkSiteDeclaration(r.data, { localAddresses: false }), name).toBeNull();
     // Each declared tweak file is shown in AGENTS.md.
-    for (const r2 of r.data.retouches) for (const f of [...r2.js, ...r2.css]) expect(text, `${name} : retouches/${f}`).toContain(`retouches/${f}`);
+    for (const r2 of r.data.tweaks) for (const f of [...r2.js, ...r2.css]) expect(text, `${name} : retouches/${f}`).toContain(`retouches/${f}`);
   }
 });
 
@@ -244,7 +244,7 @@ for (const file of readdirSync(join(import.meta.dirname, "shipped-harvests")).so
     // What the user sees and sets is never touched.
     await writeFile(join(c.widgets, id, "widget.json"), '{"nom":"le mien"}');
     await writeFile(join(c.widgets, id, "affichage.html"), "<p>le mien</p>");
-    const { crees } = await initSpace(c);
+    const { created: crees } = await initSpace(c);
 
     expect(existsSync(join(c.widgets, id, "recolte.mjs"))).toBe(false);
     for (const f of START_CODE(id)) {
@@ -253,13 +253,13 @@ for (const file of readdirSync(join(import.meta.dirname, "shipped-harvests")).so
     }
     expect(await readFile(join(c.widgets, id, "widget.json"), "utf8")).toBe('{"nom":"le mien"}');
     expect(await readFile(join(c.widgets, id, "affichage.html"), "utf8")).toBe("<p>le mien</p>");
-    const trash = await readdir(join(c.accueil, ".corbeille"));
+    const trash = await readdir(join(c.home, ".corbeille"));
     expect(trash).toHaveLength(1);
     expect(trash[0]).toMatch(new RegExp(`^${id}-recolte-\\d{4}-\\d\\d-\\d\\dT[^:]+\\.mjs$`));
-    expect(await readFile(join(c.accueil, ".corbeille", trash[0]!), "utf8")).toBe(old);
+    expect(await readFile(join(c.home, ".corbeille", trash[0]!), "utf8")).toBe(old);
     // The other starter widgets did not move, and a second launch does nothing anymore.
-    expect((await initSpace(c)).crees).toEqual([]);
-    expect(await readdir(join(c.accueil, ".corbeille"))).toHaveLength(1);
+    expect((await initSpace(c)).created).toEqual([]);
+    expect(await readdir(join(c.home, ".corbeille"))).toHaveLength(1);
   });
 }
 
@@ -271,7 +271,7 @@ test("a modified starter widget is left alone", async () => {
   await initSpace(c);
   expect(await readFile(join(c.widgets, "actus-tech", "recolte.mjs"), "utf8")).toBe(modified);
   for (const f of START_CODE("actus-tech")) expect(existsSync(join(c.widgets, "actus-tech", f)), f).toBe(false);
-  expect(existsSync(join(c.accueil, ".corbeille"))).toBe(false);
+  expect(existsSync(join(c.home, ".corbeille"))).toBe(false);
 });
 
 test("a starter widget that already has its workflow.json, or its own .mjs of the same name, is left alone", async () => {
@@ -290,7 +290,7 @@ test("a starter widget that already has its workflow.json, or its own .mjs of th
   expect(existsSync(join(d.widgets, "daily-dev", "workflow.json"))).toBe(false);
   expect(existsSync(join(d.widgets, "daily-dev", "articles.mjs"))).toBe(false);
   expect(await readFile(join(d.widgets, "daily-dev", "liens.mjs"), "utf8")).toBe("export default () => [];");
-  expect(existsSync(join(d.accueil, ".corbeille"))).toBe(false);
+  expect(existsSync(join(d.home, ".corbeille"))).toBe(false);
 });
 
 test("an interrupted switch (template workflow.json already there, shipped recolte.mjs left) puts recolte.mjs away", async () => {
@@ -299,13 +299,13 @@ test("an interrupted switch (template workflow.json already there, shipped recol
   await initSpace(c);
   // The template's code and workflow.json copied, recolte.mjs not yet put away.
   await writeFile(join(c.widgets, "daily-dev", "recolte.mjs"), old);
-  const { crees } = await initSpace(c);
+  const { created: crees } = await initSpace(c);
   expect(crees).toEqual([]);
   expect(existsSync(join(c.widgets, "daily-dev", "recolte.mjs"))).toBe(false);
-  const trash = await readdir(join(c.accueil, ".corbeille"));
+  const trash = await readdir(join(c.home, ".corbeille"));
   expect(trash).toHaveLength(1);
   expect(trash[0]).toMatch(/^daily-dev-recolte-/);
-  expect(await readFile(join(c.accueil, ".corbeille", trash[0]!), "utf8")).toBe(old);
+  expect(await readFile(join(c.home, ".corbeille", trash[0]!), "utf8")).toBe(old);
   for (const f of START_CODE("daily-dev")) {
     expect(await readFile(join(c.widgets, "daily-dev", f), "utf8"), f).toBe(await readFile(join(DEFAULT_MODELS, "widgets", "daily-dev", f), "utf8"));
   }
@@ -330,7 +330,7 @@ test("an agent widget (gmail) is left alone, even with a shipped recolte.mjs", a
   expect((await readdir(gmail)).sort()).toEqual(Object.keys(files).sort());
   for (const [f, content] of Object.entries(files)) expect(await readFile(join(gmail, f), "utf8")).toBe(content);
   expect(await readdir(copy)).toEqual(["recolte.mjs"]);
-  expect(existsSync(join(c.accueil, ".corbeille"))).toBe(false);
+  expect(existsSync(join(c.home, ".corbeille"))).toBe(false);
 });
 
 test("a shipped recolte.mjs that is a symbolic link is not followed", async () => {
@@ -385,7 +385,7 @@ test("a new space gets the workflows", async () => {
   for (const [id, files] of Object.entries(START_FILES)) {
     expect((await readdir(join(c.widgets, id))).sort(), id).toEqual([...files].sort());
   }
-  expect(existsSync(join(c.accueil, ".corbeille"))).toBe(false);
+  expect(existsSync(join(c.home, ".corbeille"))).toBe(false);
 });
 
 // ——— Migration of the displays shipped before Firefox ———
@@ -413,14 +413,14 @@ for (const file of readdirSync(DISPLAYS).sort()) {
     const c = spacePaths(await tempFolder());
     await initSpace(c);
     await writeFile(join(c.widgets, id, "affichage.html"), old);
-    const { crees } = await initSpace(c);
+    const { created: crees } = await initSpace(c);
     expect(await readFile(join(c.widgets, id, "affichage.html"), "utf8")).toBe(
       await readFile(join(DEFAULT_MODELS, "widgets", id, "affichage.html"), "utf8"),
     );
     // The copy of the current template is already up to date: nothing to replace.
     if (old !== (await readFile(join(DEFAULT_MODELS, "widgets", id, "affichage.html"), "utf8"))) expect(crees).toContain(join(c.widgets, id, "affichage.html"));
     // A second launch does nothing anymore.
-    expect((await initSpace(c)).crees).toEqual([]);
+    expect((await initSpace(c)).created).toEqual([]);
   });
 }
 
@@ -430,7 +430,7 @@ test("a starter display modified by the user is left alone", async () => {
   const c = spacePaths(await tempFolder());
   await initSpace(c);
   await writeFile(join(c.widgets, "meteo", "affichage.html"), modified);
-  const { crees } = await initSpace(c);
+  const { created: crees } = await initSpace(c);
   expect(await readFile(join(c.widgets, "meteo", "affichage.html"), "utf8")).toBe(modified);
   expect(crees).toEqual([]);
 });

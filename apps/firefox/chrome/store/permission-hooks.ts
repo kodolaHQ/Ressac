@@ -39,7 +39,7 @@ function watchGone(browser: any, cb: () => void): () => void {
 export function registerPermissionHooks(o: {
   sitePermissions: SitePermissions;
   /** The WebAiOs tab behind a browser (a popup's: its opener's tab), or null. */
-  tabOf(browser: any): { ongletId: TabId; fenetreId: WindowId; profil: ProfileId } | null;
+  tabOf(browser: any): { tabId: TabId; windowId: WindowId; profile: ProfileId } | null;
   isInvisible(browser: any): boolean;
 }): () => void {
   /**
@@ -47,7 +47,7 @@ export function registerPermissionHooks(o: {
    * browser without a tab, or an opaque or unreadable origin (file:, data:, the system principal…).
    * Returns what withdraws the question.
    */
-  const ask = (browser: any, principal: any, request: Pick<SiteRequest, "kind" | "mediaTypes" | "lien">, respond: (ok: boolean) => void) => {
+  const ask = (browser: any, principal: any, request: Pick<SiteRequest, "kind" | "mediaTypes" | "link">, respond: (ok: boolean) => void) => {
     const gone = new AbortController();
     const tab = browser && !o.isInvisible(browser) ? o.tabOf(browser) : null;
     let origin = "null";
@@ -57,7 +57,7 @@ export function registerPermissionHooks(o: {
     if (!tab || origin === "null") return respond(false), gone;
     const unwatch = watchGone(browser, () => gone.abort());
     o.sitePermissions
-      .handle({ ...tab, origine: origin, ...request, signal: gone.signal })
+      .handle({ ...tab, origin: origin, ...request, signal: gone.signal })
       .then(respond, () => respond(false))
       .finally(unwatch);
     return gone;
@@ -117,7 +117,7 @@ export function registerPermissionHooks(o: {
     // Typed in the address bar (no principal, or the system one): asked in the name of the site the tab shows.
     if (!principal || principal.isSystemPrincipal) principal = bc?.top?.currentWindowGlobal?.documentPrincipal;
     if (principal)
-      ask(bc?.top?.embedderElement, principal, { kind: "openExternal", lien: uri.spec }, (ok) => {
+      ask(bc?.top?.embedderElement, principal, { kind: "openExternal", link: uri.spec }, (ok) => {
         if (!ok) return;
         // A macOS application with no chosen one: its default (nothing is stored).
         if (handler.hasDefaultHandler && !handler.preferredApplicationHandler) handler.preferredAction = Ci.nsIHandlerInfo.useSystemDefault;

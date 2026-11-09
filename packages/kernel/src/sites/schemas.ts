@@ -45,25 +45,25 @@ const framePattern = z
 
 const Tweak = z
   .object({
-    correspond: z.array(z.string().max(500).refine((m) => m.startsWith("/"), PATH_MATCHES)).min(1).max(20),
+    matches: z.array(z.string().max(500).refine((m) => m.startsWith("/"), PATH_MATCHES)).min(1).max(20),
     js: z.array(tweakPath(/^[A-Za-z0-9._/-]+\.(js|mjs)$/, "chemin relatif vers un .js ou .mjs")).max(20).default([]),
     css: z.array(tweakPath(/^[A-Za-z0-9._/-]+\.css$/, "chemin relatif vers un .css")).max(20).default([]),
-    cadres: z.union([z.literal(false), z.array(framePattern).min(1).max(20)], { error: FRAME_PATTERNS }).default(false),
+    frames: z.union([z.literal(false), z.array(framePattern).min(1).max(20)], { error: FRAME_PATTERNS }).default(false),
   })
   .strict();
 export type Tweak = z.infer<typeof Tweak>;
 
 export const DeclarationSite = z
   .object({
-    nom: z.string().min(1).max(60),
+    name: z.string().min(1).max(60),
     description: z.string().max(200).default(""),
-    adresse: url,
-    domaines: z.array(host).min(1).max(20),
-    connexion: z.array(host).max(10).default([]),
-    suiviAdresse: z.object({ page: url, motif: z.string().min(2).max(60) }).strict().optional(),
-    retouches: z.array(Tweak).max(20).default([]),
-    reprise: z.boolean().default(false),
-    icone: z
+    url: url,
+    domains: z.array(host).min(1).max(20),
+    login: z.array(host).max(10).default([]),
+    urlTracking: z.object({ page: url, pattern: z.string().min(2).max(60) }).strict().optional(),
+    tweaks: z.array(Tweak).max(20).default([]),
+    resume: z.boolean().default(false),
+    icon: z
       .string()
       .max(200)
       .regex(/^[A-Za-z0-9._/-]+\.(png|svg|jpg|webp)$/, "chemin relatif vers une image .png, .svg, .jpg ou .webp")
@@ -97,14 +97,14 @@ export function trueDomain(h: string, localUrls: boolean): boolean {
 }
 
 /** The rules that the schema alone does not state: the address and the tracking page, and the address's domain. */
-export function checkSiteDeclaration(d: DeclarationSite, o: { adressesLocales: boolean }): string | null {
-  const start = urlAccepted(d.adresse, o.adressesLocales);
+export function checkSiteDeclaration(d: DeclarationSite, o: { localAddresses: boolean }): string | null {
+  const start = urlAccepted(d.url, o.localAddresses);
   if (!start) return HTTPS_ONLY;
-  if (d.suiviAdresse && !urlAccepted(d.suiviAdresse.page, o.adressesLocales)) return HTTPS_ONLY;
-  const real = (h: string) => trueDomain(h, o.adressesLocales);
-  if (![...d.domaines, ...d.connexion].every(real) || [...d.domaines, ...d.connexion].some((h) => h === "localhost" || h.endsWith(".")))
+  if (d.urlTracking && !urlAccepted(d.urlTracking.page, o.localAddresses)) return HTTPS_ONLY;
+  const real = (h: string) => trueDomain(h, o.localAddresses);
+  if (![...d.domains, ...d.login].every(real) || [...d.domains, ...d.login].some((h) => h === "localhost" || h.endsWith(".")))
     return INVALID_DOMAIN;
   const h = start.hostname.toLowerCase();
-  if (!d.domaines.some((dom) => h === dom || h.endsWith(`.${dom}`))) return URL_OUTSIDE_DOMAINS;
+  if (!d.domains.some((dom) => h === dom || h.endsWith(`.${dom}`))) return URL_OUTSIDE_DOMAINS;
   return null;
 }

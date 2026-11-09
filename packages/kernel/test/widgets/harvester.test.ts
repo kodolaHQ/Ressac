@@ -12,7 +12,7 @@ const { BLOCS_LIVRES: SHIPPED_BLOCKS, LIMITE_GLOBALE_MS: GLOBAL_LIMIT_MS, echean
 const SCRIPT = join(import.meta.dirname, "..", "..", "docker", "moteur", "recolteur.mjs");
 
 type Call = { t: "appel"; n: number; f: string; a: any };
-type Responder = (call: Call) => Promise<{ ok: unknown } | { erreur: string }> | { ok: unknown } | { erreur: string };
+type Responder = (call: Call) => Promise<{ ok: unknown } | { error: string }> | { ok: unknown } | { error: string };
 
 /** A widget that has only `recolte.mjs` (like the user's Gmail), launched the way the kernel does it. */
 async function launch(code: string, reply: Responder = () => ({ ok: null }), config: unknown = {}) {
@@ -21,7 +21,7 @@ async function launch(code: string, reply: Responder = () => ({ ok: null }), con
   const child = spawn("node", [SCRIPT, folder], { stdio: ["pipe", "pipe", "pipe"] });
   let stderr = "";
   child.stderr.on("data", (d) => (stderr += d));
-  const lignes: any[] = [];
+  const lines: any[] = [];
   const calls: Call[] = [];
   let buffer = "";
   const finished = new Promise<void>((ok) => child.on("close", () => ok()));
@@ -32,7 +32,7 @@ async function launch(code: string, reply: Responder = () => ({ ok: null }), con
       const line = buffer.slice(0, i);
       buffer = buffer.slice(i + 1);
       const m = JSON.parse(line);
-      lignes.push(m);
+      lines.push(m);
       if (m.t === "appel") {
         calls.push(m);
         void Promise.resolve(reply(m)).then((r) => child.stdin.write(JSON.stringify({ t: "reponse", n: m.n, ...r }) + "\n"));
@@ -40,11 +40,11 @@ async function launch(code: string, reply: Responder = () => ({ ok: null }), con
     }
   });
   child.stdin.write(
-    JSON.stringify({ t: "debut", precedent: { v: 1 }, maintenant: "2026-10-28T10:00:00.000Z", config, workflow: sentWorkflow(implicitWorkflow()) }) + "\n",
+    JSON.stringify({ t: "debut", previous: { v: 1 }, now: "2026-10-28T10:00:00.000Z", config, workflow: sentWorkflow(implicitWorkflow()) }) + "\n",
   );
-  child.stdin.write(JSON.stringify({ t: "memoire", memoire: {} }) + "\n");
+  child.stdin.write(JSON.stringify({ t: "memoire", memory: {} }) + "\n");
   await finished;
-  return { lignes, appels: calls, stderr, terminal: lignes.find((l) => l.t === "fin" || l.t === "echec") };
+  return { lines, calls, stderr, terminal: lines.find((l) => l.t === "fin" || l.t === "echec") };
 }
 
 describe("recolteur (implicit workflow of a lone recolte.mjs)", () => {
@@ -56,7 +56,7 @@ describe("recolteur (implicit workflow of a lone recolte.mjs)", () => {
     );
     expect(r.terminal).toEqual({
       t: "fin",
-      donnees: { cfg: { a: 1 }, prec: { v: 1 }, quand: "2026-10-28T10:00:00.000Z" },
+      data: { cfg: { a: 1 }, prev: { v: 1 }, when: "2026-10-28T10:00:00.000Z" },
     });
   });
 
@@ -69,19 +69,19 @@ describe("recolteur (implicit workflow of a lone recolte.mjs)", () => {
       };`,
       (a) =>
         a.f === "lirePage"
-          ? { ok: { url: a.a.url, titre: "T", texte: "x", liens: [] } }
+          ? { ok: { url: a.a.url, title: "T", text: "x", links: [] } }
           : { ok: { q: { type: "noul", noul: 0.9 } } },
     );
-    expect(r.appels.map((a) => [a.n, a.f])).toEqual([[1, "lirePage"], [2, "kev"]]);
-    expect(r.appels[0]!.a).toEqual({ url: "https://a.fr/", compte: true });
-    expect(r.appels[1]!.a).toEqual({ state: "etat", questions: { q: { type: "noul" } } });
+    expect(r.calls.map((a) => [a.n, a.f])).toEqual([[1, "lirePage"], [2, "kev"]]);
+    expect(r.calls[0]!.a).toEqual({ url: "https://a.fr/", account: true });
+    expect(r.calls[1]!.a).toEqual({ state: "etat", questions: { q: { type: "noul" } } });
     expect(r.terminal.donnees.k).toEqual({ q: { type: "noul", noul: 0.9 } });
     expect(r.terminal.donnees.p.titre).toBe("T");
   });
 
   it("a widget exception gives { t: echec } with the message", async () => {
     const r = await launch(`export default async () => { throw new Error("boum"); };`);
-    expect(r.terminal).toEqual({ t: "echec", erreur: expect.stringContaining("boum") });
+    expect(r.terminal).toEqual({ t: "echec", error: expect.stringContaining("boum") });
   });
 
   it("a result that is not JSON gives echec", async () => {
@@ -92,9 +92,9 @@ describe("recolteur (implicit workflow of a lone recolte.mjs)", () => {
   it("a kernel { erreur } response becomes an exception in the widget", async () => {
     const r = await launch(
       `export default async (w) => { try { await w.recuperer("https://x.fr/"); } catch (e) { return { attrape: e.message }; } };`,
-      () => ({ erreur: "domaine refusé" }),
+      () => ({ error: "domaine refusé" }),
     );
-    expect(r.terminal).toEqual({ t: "fin", donnees: { attrape: "domaine refusé" } });
+    expect(r.terminal).toEqual({ t: "fin", data: { caught: "domaine refusé" } });
   });
 
   it("lireFlux reads an RSS 2.0 and an Atom (CDATA, entities)", async () => {
@@ -113,11 +113,11 @@ describe("recolteur (implicit workflow of a lone recolte.mjs)", () => {
     );
     const d = r.terminal.donnees;
     expect(d.rss).toHaveLength(2);
-    expect(d.rss[0]).toMatchObject({ titre: "Salut <b>toi</b>", url: "https://a.fr/1", date: "Mon, 26 Oct 2026 10:00:00 GMT" });
+    expect(d.rss[0]).toMatchObject({ title: "Salut <b>toi</b>", url: "https://a.fr/1", date: "Mon, 26 Oct 2026 10:00:00 GMT" });
     expect(d.rss[0].resume).toContain('<ok> "q" it\'s');
     expect(d.rss[1].titre).toBe("Deux");
     expect(d.atom).toEqual([
-      { titre: "Un", url: "https://b.fr/1", date: "2026-10-27T08:00:00Z", resume: "Le <i>résumé</i>" },
+      { title: "Un", url: "https://b.fr/1", date: "2026-10-27T08:00:00Z", resume: "Le <i>résumé</i>" },
     ]);
   });
 
@@ -138,10 +138,10 @@ describe("recolteur (implicit workflow of a lone recolte.mjs)", () => {
         return { ok: { q: { type: "noul", noul: i / 20 } } };
       },
     );
-    expect(r.appels).toHaveLength(20);
-    expect(r.appels.every((a) => a.f === "kev" && /^el\d+$/.test(a.a.state))).toBe(true);
-    expect(Object.values(r.appels[0]!.a.questions)[0]).toEqual({ type: "noul", instructions: "intéressant ?" });
-    expect(JSON.stringify(r.appels[0]!.a.questions)).not.toContain("el0");
+    expect(r.calls).toHaveLength(20);
+    expect(r.calls.every((a) => a.f === "kev" && /^el\d+$/.test(a.a.state))).toBe(true);
+    expect(Object.values(r.calls[0]!.a.questions)[0]).toEqual({ type: "noul", instructions: "intéressant ?" });
+    expect(JSON.stringify(r.calls[0]!.a.questions)).not.toContain("el0");
     expect(max).toBeLessThanOrEqual(8);
     expect(max).toBeGreaterThan(1);
     const res = r.terminal.donnees as { element: { id: number }; p: number }[];
@@ -162,9 +162,9 @@ describe("recolteur (implicit workflow of a lone recolte.mjs)", () => {
     expect(r.stderr).toContain("bonjour");
     expect(r.stderr).toContain("direct");
     // stdout carries only the protocol: the implicit block's traces, the memory, the end.
-    expect(r.lignes.map((l) => l.t)).toEqual(["bloc", "journal", "bloc", "bloc", "bloc", "memoire", "fin"]);
-    expect(r.lignes.find((l) => l.t === "journal")).toEqual({ t: "journal", bloc: "recolte", texte: expect.stringContaining("bonjour") });
-    expect(r.terminal).toEqual({ t: "fin", donnees: 1 });
+    expect(r.lines.map((l) => l.t)).toEqual(["bloc", "journal", "bloc", "bloc", "bloc", "memoire", "fin"]);
+    expect(r.lines.find((l) => l.t === "journal")).toEqual({ t: "journal", block: "recolte", text: expect.stringContaining("bonjour") });
+    expect(r.terminal).toEqual({ t: "fin", data: 1 });
   });
 });
 
@@ -178,50 +178,50 @@ describe("recolteur: duration limit (limiteMs)", () => {
       workflow: sentWorkflow(
         {
           version: 1,
-          blocs: [block("liste", "code", { source: "liste.mjs" }), block("cherche", "web.chercher", { requete: "{modele}", parElement: true }), output],
-          liens: chain("liste", "cherche", "sortie"),
+          blocks: [block("liste", "code", { source: "liste.mjs" }), block("cherche", "web.chercher", { query: "{modele}", perItem: true }), output],
+          links: chain("liste", "cherche", "sortie"),
         },
-        { web: true, dureeMaxMinutes: 1, proprietaire: "widget" as const, saisie: false },
+        { web: true, maxDurationMinutes: 1, owner: "widget" as const, input: false },
       ),
-      memoire: {},
-      maintenant: "2026-10-29T10:00:00.000Z",
-      dossier: "/nulle-part",
-      horloge: () => now,
-      echeance: deadlineOf({ t: "debut", limiteMs: 1000 }, 0),
-      tracer: (m: unknown) => traces.push(m),
-      appeler: async () => {
+      memory: {},
+      now: "2026-10-29T10:00:00.000Z",
+      folder: "/nulle-part",
+      clock: () => now,
+      deadline: deadlineOf({ t: "debut", limitMs: 1000 }, 0),
+      trace: (m: unknown) => traces.push(m),
+      call: async () => {
         launched.push(now);
         await Promise.resolve();
         now += 300;
         return [];
       },
-      blocs: { ...SHIPPED_BLOCKS, code: { parElement: "non", executer: async () => ({ sortie: Array.from({ length: 20 }, (_, i) => ({ modele: `m${i}` })) }) } },
+      blocks: { ...SHIPPED_BLOCKS, code: { perItem: "non", run: async () => ({ output: Array.from({ length: 20 }, (_, i) => ({ model: `m${i}` })) }) } },
     });
     // Pairs launched at 0, 600; at 1200, nothing more.
     expect(launched).toEqual([0, 0, 600, 600]);
-    expect(traces.find((l) => l.t === "bloc" && l.id === "cherche" && l.etape === "fin")).toMatchObject({ statut: "partiel" });
-    expect(traces).toContainEqual({ t: "journal", bloc: "cherche", texte: "temps écoulé : 16 élément(s) non lancé(s)" });
+    expect(traces.find((l) => l.t === "bloc" && l.id === "cherche" && l.etape === "fin")).toMatchObject({ status: "partiel" });
+    expect(traces).toContainEqual({ t: "journal", block: "cherche", text: "temps écoulé : 16 élément(s) non lancé(s)" });
   });
 
   it("in the container, limiteMs of the debut line is the deadline: 20 ms, elapsed during the list, no element launched", async () => {
     const r = await launchWorkflow({
       workflow: {
         version: 1,
-        blocs: [block("liste", "code", { source: "liste.mjs" }), block("cherche", "web.chercher", { requete: "{modele}", parElement: true }), output],
-        liens: chain("liste", "cherche", "sortie"),
+        blocks: [block("liste", "code", { source: "liste.mjs" }), block("cherche", "web.chercher", { query: "{modele}", perItem: true }), output],
+        links: chain("liste", "cherche", "sortie"),
       },
-      contexte: { web: true, dureeMaxMinutes: 1, proprietaire: "widget" as const, saisie: false },
-      fichiers: { "liste.mjs": `export default async () => { await new Promise((ok) => setTimeout(ok, 80)); return [{ modele: "a" }, { modele: "b" }]; };` },
-      debut: { limiteMs: 20 },
-      repondre: () => ({ ok: [] }),
+      context: { web: true, maxDurationMinutes: 1, owner: "widget" as const, input: false },
+      files: { "liste.mjs": `export default async () => { await new Promise((ok) => setTimeout(ok, 80)); return [{ modele: "a" }, { modele: "b" }]; };` },
+      start: { limitMs: 20 },
+      reply: () => ({ ok: [] }),
     });
-    expect(r.appels).toEqual([]);
-    expect(r.finBloc("cherche")).toMatchObject({ statut: "partiel" });
+    expect(r.calls).toEqual([]);
+    expect(r.blockEnd("cherche")).toMatchObject({ status: "partiel" });
   });
 
   it("without limiteMs: 150 s as before", () => {
     expect(GLOBAL_LIMIT_MS).toBe(150_000);
     expect(deadlineOf({ t: "debut" }, 1_000)).toBe(151_000);
-    expect(deadlineOf({ t: "debut", limiteMs: 1_000 }, 1_000)).toBe(2_000);
+    expect(deadlineOf({ t: "debut", limitMs: 1_000 }, 1_000)).toBe(2_000);
   });
 });

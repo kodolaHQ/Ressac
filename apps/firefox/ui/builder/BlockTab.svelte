@@ -16,32 +16,32 @@
    */
   let {
     widget,
-    edition: edit,
-    executions,
-    catalogue: catalog,
+    editing: edit,
+    runs: executions,
+    catalog: catalog,
     selection,
-  }: { widget: string; edition: Edit; executions: Executions; catalogue: Map<string, BlockCatalogEntry>; selection: string | null } = $props();
+  }: { widget: string; editing: Edit; runs: Executions; catalog: Map<string, BlockCatalogEntry>; selection: string | null } = $props();
 
-  const block = $derived(selection === null ? undefined : edit.brouillon?.blocs.find((b) => b.id === selection));
+  const block = $derived(selection === null ? undefined : edit.draft?.blocks.find((b) => b.id === selection));
   const c = $derived(block ? catalog.get(block.type) : undefined);
-  const error = $derived(!edit.validation.ok && block && edit.validation.bloc === block.id ? edit.validation.erreur : null);
-  const warnings = $derived(block ? edit.avertissements.filter((a) => a.bloc === block.id) : []);
+  const error = $derived(!edit.validation.ok && block && edit.validation.block === block.id ? edit.validation.error : null);
+  const warnings = $derived(block ? edit.warnings.filter((a) => a.block === block.id) : []);
 
   /** Fields offered in a template: those of the upstream block's output at the chosen run, then the configuration. */
   const available = $derived.by(() => {
     const d = executions.detail;
     if (!block || !d) return null;
-    const upstream = edit.brouillon?.liens.find((l) => l.vers === block.id)?.de;
-    const output = upstream === undefined ? undefined : d.blocs.find((b) => b.id === upstream)?.sortie;
+    const upstream = edit.draft?.links.find((l) => l.to === block.id)?.from;
+    const output = upstream === undefined ? undefined : d.blocks.find((b) => b.id === upstream)?.output;
     return availableFields(output, edit.widget?.config);
   });
-  const source = $derived(block?.type === "code" && typeof block.parametres.source === "string" ? block.parametres.source : null);
+  const source = $derived(block?.type === "code" && typeof block.params.source === "string" ? block.params.source : null);
 </script>
 
 <div class="volet" data-testid="volet-bloc">
   {#if block}
     {#key block.id}
-      <h3><span>{c?.libelle ?? block.type}</span> <code>{block.type}</code></h3>
+      <h3><span>{c?.label ?? block.type}</span> <code>{block.type}</code></h3>
       {#if error}<p class="erreur" data-testid="erreur-validation">{error}</p>{/if}
       {#if warnings.length > 0}
         <ul class="avertissements" data-testid="avertissement-{block.id}">
@@ -49,14 +49,14 @@
         </ul>
       {/if}
       {#if c}
-        <BlockForm edition={edit} bloc={block} catalogue={c} disponibles={available} />
+        <BlockForm editing={edit} block={block} catalog={c} available={available} />
       {:else}
         <p class="doux">Type de bloc inconnu : ses réglages ne s'éditent pas ici.</p>
       {/if}
       {#if source}
-        {#key source}<CodeEditor {widget} nom={source} />{/key}
+        {#key source}<CodeEditor {widget} name={source} />{/key}
       {/if}
-      <BlockOutput bloc={block.id} choisie={executions.choisie} execution={executions.detail} introuvable={executions.introuvable} />
+      <BlockOutput block={block.id} chosen={executions.chosen} run={executions.detail} notFound={executions.notFound} />
     {/key}
   {:else if isActionKey(widget)}
     <ActionPanel action={edit.action} />

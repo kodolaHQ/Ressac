@@ -6,8 +6,8 @@ export const REPLAY_PREFIX = "Rejeu impossible : ";
 export const REPLAY_TOO_BIG = `${REPLAY_PREFIX}les sorties à reprendre dépassent 4 Mo`;
 
 export type ReplayPlan =
-  | { ok: true; relances: string[]; sorties: Record<string, unknown>; repris: Record<string, number | null>; origine: string }
-  | { ok: false; erreur: string };
+  | { ok: true; reruns: string[]; outputs: Record<string, unknown>; resumed: Record<string, number | null>; origin: string }
+  | { ok: false; error: string };
 
 /** How many runs a replay goes back at most to find a taken output (try of a try of a try…). */
 export const REPLAY_DEPTH = 8;
@@ -21,38 +21,38 @@ export const REPLAY_DEPTH = 8;
  * read, the size of what is taken is measured separately (`debutTropGros`).
  */
 export function replayPlan(valid: ValidWorkflow, origin: Execution | null, start: string, earlier: Execution[] = []): ReplayPlan {
-  const denial = (cause: string): ReplayPlan => ({ ok: false, erreur: REPLAY_PREFIX + cause });
+  const denial = (cause: string): ReplayPlan => ({ ok: false, error: REPLAY_PREFIX + cause });
   if (!origin) return denial("exécution introuvable");
-  if (!valid.ordre.includes(start)) return denial(`le bloc « ${start} » n'est pas dans le workflow`);
+  if (!valid.order.includes(start)) return denial(`le bloc « ${start} » n'est pas dans le workflow`);
 
   const next = new Map<string, string[]>();
-  for (const l of valid.workflow.liens) next.set(l.de, [...(next.get(l.de) ?? []), l.vers]);
+  for (const l of valid.workflow.links) next.set(l.from, [...(next.get(l.from) ?? []), l.to]);
   const reachedList = new Set<string>([start]);
   const stack = [start];
   while (stack.length) for (const s of next.get(stack.pop()!) ?? []) if (!reachedList.has(s)) (reachedList.add(s), stack.push(s));
-  const relaunches = valid.ordre.filter((id) => reachedList.has(id));
+  const relaunches = valid.order.filter((id) => reachedList.has(id));
 
   const upstream = new Set<string>();
-  for (const id of relaunches) for (const p of valid.predecesseurs[id] ?? []) if (!reachedList.has(p)) upstream.add(p);
+  for (const id of relaunches) for (const p of valid.predecessors[id] ?? []) if (!reachedList.has(p)) upstream.add(p);
 
-  const sorties: Record<string, unknown> = {};
+  const outputs: Record<string, unknown> = {};
   const resumed: Record<string, number | null> = {};
   const chain = [origin, ...earlier].slice(0, REPLAY_DEPTH);
   const sources = new Set<string>();
-  for (const id of valid.ordre.filter((b) => upstream.has(b))) {
-    let trace: Execution["blocs"][number] | undefined;
+  for (const id of valid.order.filter((b) => upstream.has(b))) {
+    let trace: Execution["blocks"][number] | undefined;
     for (const e of chain) {
-      trace = e.blocs.find((b) => b.id === id);
-      if (trace?.statut !== "repris" || !e.essai) {
+      trace = e.blocks.find((b) => b.id === id);
+      if (trace?.status !== "repris" || !e.attempt) {
         if (trace) sources.add(e.id);
         break;
       }
     }
-    if (!trace || (trace.statut !== "reussi" && trace.statut !== "partiel")) return denial(`la sortie de « ${id} » manque dans cette exécution`);
-    if (trace.sortieTronquee) return denial(`la sortie de « ${id} » a été tronquée dans cette exécution`);
-    if (trace.sortie === undefined) return denial(`la sortie de « ${id} » manque dans cette exécution`);
-    sorties[id] = trace.sortie;
-    resumed[id] = trace.elements;
+    if (!trace || (trace.status !== "reussi" && trace.status !== "partiel")) return denial(`la sortie de « ${id} » manque dans cette exécution`);
+    if (trace.outputTruncated) return denial(`la sortie de « ${id} » a été tronquée dans cette exécution`);
+    if (trace.output === undefined) return denial(`la sortie de « ${id} » manque dans cette exécution`);
+    outputs[id] = trace.output;
+    resumed[id] = trace.items;
   }
-  return { ok: true, relances: relaunches, sorties, repris: resumed, origine: sources.size === 1 ? [...sources][0]! : origin.id };
+  return { ok: true, reruns: relaunches, outputs, resumed: resumed, origin: sources.size === 1 ? [...sources][0]! : origin.id };
 }

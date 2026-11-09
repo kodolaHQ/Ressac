@@ -4,13 +4,13 @@ import { DEFAULT_PROFILE } from "../../shared/model";
 export type SitePermission = Permission | "partage-ecran" | "drm" | "midi";
 
 export interface SiteRequest {
-  ongletId: TabId | null;
-  fenetreId: WindowId | null;
-  profil: ProfileId;
-  origine: string;
+  tabId: TabId | null;
+  windowId: WindowId | null;
+  profile: ProfileId;
+  origin: string;
   kind: string;
   mediaTypes?: readonly string[];
-  lien?: string;
+  link?: string;
   /** The request is gone (its page navigated or closed): its question falls. */
   signal?: AbortSignal;
 }
@@ -84,7 +84,7 @@ const defaultFiles: Files = {
 export function createSitePermissions(o: {
   dataDir: string;
   profiles: () => ProfileId[];
-  ask: (d: { ongletId: TabId | null; fenetreId: WindowId | null; origine: string; permissions: SitePermission[]; lien?: string }, signal?: AbortSignal) => Promise<Outcome>;
+  ask: (d: { tabId: TabId | null; windowId: WindowId | null; origin: string; permissions: SitePermission[]; link?: string }, signal?: AbortSignal) => Promise<Outcome>;
   firefox: { set(profile: ProfileId, origin: string, p: SitePermission, d: Decision): void; remove(profile: ProfileId | null, origin: string | null): void };
   files?: Files;
 }): SitePermissions {
@@ -134,22 +134,22 @@ export function createSitePermissions(o: {
     async handle(r) {
       await ready;
       if (NO_REQUEST.has(r.kind)) return true;
-      const { ongletId: tabId, fenetreId: windowId, origine: origin, signal } = r;
+      const { tabId: tabId, windowId: windowId, origin: origin, signal } = r;
       // Handing a link to another application: asked every time, with the link in view.
       if (r.kind === "openExternal") {
-        if (!r.lien) return false;
-        return (await o.ask({ ongletId: tabId, fenetreId: windowId, origine: origin, permissions: ["ouvrir-application"], lien: r.lien }, signal)) === "autoriser";
+        if (!r.link) return false;
+        return (await o.ask({ tabId: tabId, windowId: windowId, origin: origin, permissions: ["ouvrir-application"], link: r.link }, signal)) === "autoriser";
       }
       const permissions = translate(r.kind, r.mediaTypes);
       if (permissions.length === 0) return false;
-      if (permissions.every((p) => NOT_KEPT.has(p))) return (await o.ask({ ongletId: tabId, fenetreId: windowId, origine: origin, permissions }, signal)) === "autoriser";
-      const decisions = of(r.profil);
-      const k = (p: SitePermission) => `${r.profil}\n${key(origin, p)}`;
+      if (permissions.every((p) => NOT_KEPT.has(p))) return (await o.ask({ tabId: tabId, windowId: windowId, origin: origin, permissions }, signal)) === "autoriser";
+      const decisions = of(r.profile);
+      const k = (p: SitePermission) => `${r.profile}\n${key(origin, p)}`;
       const unknown = permissions.filter((p) => !decisions[key(origin, p)]);
       // One question pending per (profile, origin, permission): another banner already asks it.
       const fresh = unknown.filter((p) => !pending.has(k(p)));
       if (fresh.length) {
-        const answer = o.ask({ ongletId: tabId, fenetreId: windowId, origine: origin, permissions: fresh }, signal);
+        const answer = o.ask({ tabId: tabId, windowId: windowId, origin: origin, permissions: fresh }, signal);
         for (const p of fresh) pending.set(k(p), answer);
         const done = () => fresh.forEach((p) => pending.delete(k(p)));
         void answer.then((d) => {
@@ -158,9 +158,9 @@ export function createSitePermissions(o: {
           if (d === "retiree") return;
           for (const p of fresh) decisions[key(origin, p)] = d;
           // The profile was removed while the question was open: the answer holds for this request only.
-          if (memo.get(r.profil) !== decisions) return;
-          for (const p of fresh) mirror(() => o.firefox.set(r.profil, origin, p, d));
-          void save(r.profil);
+          if (memo.get(r.profile) !== decisions) return;
+          for (const p of fresh) mirror(() => o.firefox.set(r.profile, origin, p, d));
+          void save(r.profile);
         }, done);
       }
       await Promise.all(unknown.map((p) => pending.get(k(p))));

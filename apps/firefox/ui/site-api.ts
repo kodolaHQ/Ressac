@@ -16,54 +16,54 @@ export function createSiteApi(c: SiteWindowController): ApiSite {
     window.addEventListener("unload", unsubscribe, { once: true });
     return unsubscribe;
   };
-  let lastDesign: Awaited<ReturnType<SiteWindowController["design"]["etat"]>> | null = null;
+  let lastDesign: Awaited<ReturnType<SiteWindowController["design"]["state"]>> | null = null;
   return {
-    etat: async () => structuredClone(c.state()),
-    surEtat: (cb) => untilUnload(c.onState((e) => cb(structuredClone(e)))),
-    entrer: () => c.enter(),
-    accueil: () => c.home(),
-    precedent: () => c.back(),
-    suivant: () => c.forward(),
-    recharger: () => c.reload(),
-    ouvrirBloque: () => c.openBlocked(),
-    chercherAdresse: () => c.findAddress(),
+    state: async () => structuredClone(c.state()),
+    onState: (cb) => untilUnload(c.onState((e) => cb(structuredClone(e)))),
+    enter: () => c.enter(),
+    home: () => c.home(),
+    previous: () => c.back(),
+    next: () => c.forward(),
+    reload: () => c.reload(),
+    openBlocked: () => c.openBlocked(),
+    lookupAddress: () => c.findAddress(),
     // Refuses a non-boolean choice and an unbounded hash.
-    accorder: async (yes, hash) => {
+    grant: async (yes, hash) => {
       if (typeof yes !== "boolean" || (hash !== undefined && (typeof hash !== "string" || hash.length > 128))) throw new Error("invalid accord request");
-      await c.accord(yes, hash ?? "");
+      await c.grant(yes, hash ?? "");
     },
     // Rejects when the memory cannot be read: HomeFrame then sends nothing.
-    memoire: async () => {
+    memory: async () => {
       const m = await c.memory();
       if (!m) throw new Error("site app memory unavailable");
       return structuredClone(m);
     },
-    surMemoire: (cb) => untilUnload(c.onMemory((m) => cb(structuredClone(m)))),
-    ouvrir: async (url) => c.openFromHome(url),
+    onMemory: (cb) => untilUnload(c.onMemory((m) => cb(structuredClone(m)))),
+    open: async (url) => c.openFromHome(url),
     image: async (url) => c.image(url),
     extensions: {
-      liste: async () => [],
-      basculer: async () => ({ ok: false, erreur: "Pas encore disponible dans WebAiOs-Firefox." }),
-      barre: async () => ({ partition: "", onglet: null, actions: [] }),
-      surChange: off,
-      gerer: () => {},
-      panneau: () => {},
-      surFermer: off,
+      list: async () => [],
+      toggle: async () => ({ ok: false, error: "Pas encore disponible dans WebAiOs-Firefox." }),
+      bar: async () => ({ partition: "", tab: null, actions: [] }),
+      onChange: off,
+      manage: () => {},
+      panel: () => {},
+      onClose: off,
     },
     design: {
       // A host that does not answer: the last state again, never a rejection (spec §5.10);
       // SiteDesignButton would grey ✎ on a rejection.
-      etat: () =>
+      state: () =>
         Promise.resolve()
-          .then(() => c.design.etat())
+          .then(() => c.design.state())
           .then(
             (e) => structuredClone((lastDesign = e)),
             (e) => (lastDesign ? structuredClone(lastDesign) : Promise.reject(local(e))),
           ),
-      basculer: () => c.design.toggle(),
-      relire: () => c.design.relire(),
-      ouvrirPanier: () => c.design.openCart(),
-      surChange: (cb) => untilUnload(c.design.onChange(() => cb())),
+      toggle: () => c.design.toggle(),
+      review: () => c.design.review(),
+      openBasket: () => c.design.openCart(),
+      onChange: (cb) => untilUnload(c.design.onChange(() => cb())),
     },
   };
 }

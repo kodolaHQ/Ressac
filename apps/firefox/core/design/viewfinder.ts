@@ -1,7 +1,7 @@
 import { HTML_MAX, CAPTURE_MARGIN, USEFUL_STYLES, TRUNCATED, type DesignContext } from "@webaios/kernel";
 
 export interface ViewfinderCapture extends Omit<DesignContext, "source"> {
-  rect: { x: number; y: number; largeur: number; hauteur: number };
+  rect: { x: number; y: number; width: number; height: number };
 }
 type RectCss = ViewfinderCapture["rect"];
 
@@ -128,10 +128,10 @@ export function viewfinderScript(): string {
  * CSS rect of the element widened by the margin, in view pixels (× zoom), bounded to the view and rounded, then shifted by
  * `decalage` (the position of a frame in its page).
  */
-export function rectCapture(rect: RectCss, view: { largeur: number; hauteur: number }, zoom: number, offset = { x: 0, y: 0 }): { x: number; y: number; width: number; height: number } {
+export function rectCapture(rect: RectCss, view: { width: number; height: number }, zoom: number, offset = { x: 0, y: 0 }): { x: number; y: number; width: number; height: number } {
   const left = Math.max(0, Math.round(rect.x * zoom - CAPTURE_MARGIN));
   const top = Math.max(0, Math.round(rect.y * zoom - CAPTURE_MARGIN));
-  const right = Math.min(Math.round(view.largeur * zoom), Math.round((rect.x + rect.largeur) * zoom + CAPTURE_MARGIN));
-  const bottom = Math.min(Math.round(view.hauteur * zoom), Math.round((rect.y + rect.hauteur) * zoom + CAPTURE_MARGIN));
+  const right = Math.min(Math.round(view.width * zoom), Math.round((rect.x + rect.width) * zoom + CAPTURE_MARGIN));
+  const bottom = Math.min(Math.round(view.height * zoom), Math.round((rect.y + rect.height) * zoom + CAPTURE_MARGIN));
   return { x: left + Math.round(offset.x * zoom), y: top + Math.round(offset.y * zoom), width: Math.max(0, right - left), height: Math.max(0, bottom - top) };
 }

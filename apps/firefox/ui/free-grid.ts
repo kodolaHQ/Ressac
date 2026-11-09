@@ -34,8 +34,8 @@ export function freeUnits(t: { l: number; h: number }): { l: number; h: number }
  * neighbor when the pointer aims beyond its opposite edge; only a pointer that overlaps it by the near edge
  * stops.
  */
-export function moveFree(o: { p: FreePlacement; x: number; y: number; autres: readonly FreePlacement[]; largeurPx: number }): FreePlacement {
-  const { p, autres: others, largeurPx: widthPx } = o;
+export function moveFree(o: { p: FreePlacement; x: number; y: number; others: readonly FreePlacement[]; widthPx: number }): FreePlacement {
+  const { p, others: others, widthPx: widthPx } = o;
   // The pointer's target, fixed: bounds reached along the way do not change the gesture's direction.
   const targetX = clamp(snapX(o.x), 0, FREE_WIDTH - p.l);
   const targetY = Math.max(0, snapY(o.y));
@@ -93,9 +93,9 @@ export function resizeFree(o: {
   h: number;
   min: { l: number; h: number };
   max: { l: number; h: number };
-  autres: readonly FreePlacement[];
+  others: readonly FreePlacement[];
 }): FreePlacement {
-  const { p, min, max, autres: others } = o;
+  const { p, min, max, others: others } = o;
   const minL = Math.max(1, Math.min(min.l, FREE_WIDTH));
   // Requested height: it tells which neighbors cross the height during the width computation.
   const wantedH = clamp(snapY(o.h), Math.max(1, min.h), max.h);
@@ -128,8 +128,8 @@ export function resizeFree(o: {
  * home's margins or center. Alignments are looked for within one snap step: the preview is snapped, the neighbor
  * may not be.
  */
-export function freeGuides(o: { p: FreePlacement; autres: readonly FreePlacement[]; largeurPx: number }): { x: number[]; y: number[] } {
-  const { p, autres: others, largeurPx: widthPx } = o;
+export function freeGuides(o: { p: FreePlacement; others: readonly FreePlacement[]; widthPx: number }): { x: number[]; y: number[] } {
+  const { p, others: others, widthPx: widthPx } = o;
   const px = (thousandths: number) => (thousandths / FREE_WIDTH) * widthPx;
   const otherXs = others.filter((a) => a.id !== p.id);
   const targetXs = [0, widthPx / 2, widthPx, ...otherXs.flatMap((a) => [px(a.x), px(a.x + a.l / 2), px(a.x + a.l)])];

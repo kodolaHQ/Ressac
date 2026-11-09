@@ -12,20 +12,20 @@ test("targetKey: a widget's id as is, action:<id> for an action, and back", () =
 
 test("actionsDirect: a current action becomes a run (or a trial) of its key, without its progress traces", () => {
   const d = actionsDirect({
-    courantes: [
+    running: [
       {
         action: "gitlab",
-        debut: "2026-10-31T08:00:00.000Z",
-        saisie: "x",
-        essai: true,
-        etape: "workflow",
-        blocs: { lire: { statut: "en-cours", elements: null, hote: "gitlab.com", faits: 1, total: 3, type: "source.page" } },
+        start: "2026-10-31T08:00:00.000Z",
+        input: "x",
+        attempt: true,
+        step: "workflow",
+        blocks: { read: { status: "en-cours", items: null, host: "gitlab.com", done: 1, total: 3, type: "source.page" } },
       },
     ],
-    enAttente: [{ action: "autre", depuis: "2026-10-31T08:00:00.000Z" }],
+    waiting: [{ action: "autre", since: "2026-10-31T08:00:00.000Z" }],
   });
   expect(d).toEqual({
-    courants: [{ widget: "action:gitlab", genre: "essai", debut: "2026-10-31T08:00:00.000Z", blocs: { lire: { statut: "en-cours", elements: null } } }],
-    enAttente: ["action:autre"],
+    running: [{ widget: "action:gitlab", kind: "essai", start: "2026-10-31T08:00:00.000Z", blocks: { read: { status: "en-cours", items: null } } }],
+    waiting: ["action:autre"],
   });
 });

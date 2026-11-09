@@ -10,19 +10,19 @@
 
 <section class="action" data-testid="panneau-action">
   {#if action}
-    <p class="nom" data-testid="action-nom">{action.nom}</p>
+    <p class="nom" data-testid="action-nom">{action.name}</p>
     <dl>
       <dt>Domaines avec compte</dt>
-      <dd data-testid="action-compte">{action.compte.length ? action.compte.join(", ") : "aucun"}</dd>
+      <dd data-testid="action-compte">{action.account.length ? action.account.join(", ") : "aucun"}</dd>
       <dt>Domaines publics</dt>
-      <dd data-testid="action-publiques">{action.publiques.length ? action.publiques.join(", ") : "aucun"}</dd>
+      <dd data-testid="action-publiques">{action.public.length ? action.public.join(", ") : "aucun"}</dd>
       <dt>Saisie demandée au lancement</dt>
-      <dd data-testid="action-saisie">{action.saisie ? action.saisie.libelle : "aucune"}</dd>
+      <dd data-testid="action-saisie">{action.input ? action.input.label : "aucune"}</dd>
       <dt>Consigne de mise en page</dt>
-      <dd class="consigne" data-testid="action-mise-en-page">{action.miseEnPage ?? "aucune"}</dd>
+      <dd class="consigne" data-testid="action-mise-en-page">{action.layout ?? "aucune"}</dd>
     </dl>
     {#if action.web}<p class="ligne" data-testid="action-web">Accès au web : ouvert</p>{/if}
-    {#if action.dureeMaxMinutes}<p class="ligne">Durée maximale : {action.dureeMaxMinutes} min</p>{/if}
+    {#if action.maxDurationMinutes}<p class="ligne">Durée maximale : {action.maxDurationMinutes} min</p>{/if}
   {/if}
   <p class="doux">Pour changer les sources, la saisie ou la mise en page, demande-le à l'agent.</p>
   <p class="doux">Sélectionne un bloc pour voir ses réglages.</p>

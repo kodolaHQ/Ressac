@@ -8,7 +8,7 @@
    * Background of a window modal: the page shown at opening (`ongletId`, null: none, or a panel hides it), frozen
    * and blurred, under a veil. `surPret`: the capture is taken (or abandoned), the modal can show.
    */
-  let { ongletId: tabId, surPret: onReady }: { ongletId: TabId | null; surPret: () => void } = $props();
+  let { tabId: tabId, onReady: onReady }: { tabId: TabId | null; onReady: () => void } = $props();
 
   /** Beyond that, the page fades without a capture: the modal must not wait. */
   const PREVIEW_WAIT_MS = 1000;
@@ -33,25 +33,25 @@
       zone = modal.zone;
       // The capture is taken: the native view can fade behind the modal.
       mask = true;
-      modal.masqueurs++;
+      modal.maskers++;
       onReady();
     };
     const fallback = setTimeout(() => open(null), PREVIEW_WAIT_MS);
     api
-      .apercuPage(captureTab)
+      .pagePreview(captureTab)
       .then(open, () => open(null))
       .finally(() => clearTimeout(fallback));
     return () => {
       finished = true;
       clearTimeout(fallback);
-      if (mask) modal.masqueurs--;
+      if (mask) modal.maskers--;
       mask = false;
     };
   });
 </script>
 
 {#if preview && zone}
-  <div class="apercu" style:left="{zone.x}px" style:top="{zone.y}px" style:width="{zone.largeur}px" style:height="{zone.hauteur}px">
+  <div class="apercu" style:left="{zone.x}px" style:top="{zone.y}px" style:width="{zone.width}px" style:height="{zone.height}px">
     <img data-testid="modale-apercu" src={preview} alt="" />
   </div>
 {/if}

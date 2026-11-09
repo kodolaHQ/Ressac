@@ -19,8 +19,8 @@ export function mountSiteMenu(win: Window, store: WebAiOsStore, windowId: Window
   item.id = "webaios-forget-permissions";
   item.setAttribute("label", "Oublier les autorisations de ce site");
   item.addEventListener("command", () => {
-    const f = store.state.fenetres.find((x) => x.id === windowId);
-    const tab = f && store.state.onglets[f.actif[f.espaceActif] ?? ""];
+    const f = store.state.windows.find((x) => x.id === windowId);
+    const tab = f && store.state.tabs[f.active[f.activeSpace] ?? ""];
     if (!tab) return;
     try {
       void store.sitePermissions.forget(tabProfile(store.state, tab), new URL(tab.url).origin);

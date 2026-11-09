@@ -9,19 +9,19 @@
 
 <section class="widget" data-testid="panneau-widget">
   {#if widget}
-    <p class="nom" data-testid="widget-nom">{widget.nom}</p>
+    <p class="nom" data-testid="widget-nom">{widget.name}</p>
     <dl>
       <dt>Domaines avec compte</dt>
-      <dd data-testid="widget-compte">{widget.compte.length ? widget.compte.join(", ") : "aucun"}</dd>
+      <dd data-testid="widget-compte">{widget.account.length ? widget.account.join(", ") : "aucun"}</dd>
       <dt>Domaines publics</dt>
-      <dd data-testid="widget-publiques">{widget.publiques.length ? widget.publiques.join(", ") : "aucun"}</dd>
+      <dd data-testid="widget-publiques">{widget.public.length ? widget.public.join(", ") : "aucun"}</dd>
     </dl>
     {#if widget.web}<p class="ligne" data-testid="widget-web">Accès au web : ouvert</p>{/if}
-    {#if widget.recolte?.heures.length}
-      <p class="ligne" data-testid="widget-heures">Heures prévues : {widget.recolte.heures.join(", ")}</p>
+    {#if widget.harvest?.hours.length}
+      <p class="ligne" data-testid="widget-heures">Heures prévues : {widget.harvest.hours.join(", ")}</p>
     {/if}
-    {#if widget.recolte?.dureeMaxMinutes}<p class="ligne">Durée maximale : {widget.recolte.dureeMaxMinutes} min</p>{/if}
-    {#if widget.recolte?.notifier}<p class="ligne">Notification à la fin : oui</p>{/if}
+    {#if widget.harvest?.maxDurationMinutes}<p class="ligne">Durée maximale : {widget.harvest.maxDurationMinutes} min</p>{/if}
+    {#if widget.harvest?.notify}<p class="ligne">Notification à la fin : oui</p>{/if}
     <p class="libelle">Configuration</p>
     <pre data-testid="widget-config">{config}</pre>
   {/if}

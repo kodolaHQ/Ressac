@@ -1,7 +1,7 @@
 <script lang="ts">
   import { iconUrl } from "../../shared/icon";
 
-  let { favicon, titre: title, taille: size = 16 }: { favicon: string | null; titre: string; taille?: number } = $props();
+  let { favicon, title: title, size: size = 16 }: { favicon: string | null; title: string; size?: number } = $props();
   let error = $state(false);
   // The UI has no network: an http(s) favicon goes through webaios-icone: (shared/icon.ts).
   const source = $derived(favicon ? iconUrl(favicon) : null);

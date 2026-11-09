@@ -13,13 +13,13 @@ export const NO_VALUE = "(sans valeur)";
 
 export type Operation =
   | { op: "compter" }
-  | { op: "trier"; champ: string; desc: boolean }
+  | { op: "trier"; field: string; desc: boolean }
   | { op: "garder"; n: number }
-  | { op: "filtrer"; champ: string; comparaison: "=" | "~" | ">" | "<"; valeur: string | number }
-  | { op: "regrouper"; champ: string };
+  | { op: "filtrer"; field: string; comparison: "=" | "~" | ">" | "<"; value: string | number }
+  | { op: "regrouper"; field: string };
 /** `ops`: from the inside to the outside. */
-export type Reference = { chemin: string; ops: Operation[] };
-export type Group<T> = { valeur: string; elements: T[] };
+export type Reference = { path: string; ops: Operation[] };
+export type Group<T> = { value: string; items: T[] };
 
 // ---- Reading references ----
 
@@ -61,20 +61,20 @@ const OPERATIONS = ["compter", "trier", "garder", "filtrer", "regrouper"];
 
 class Reader {
   private i = 0;
-  constructor(private readonly jetons: Token[]) {}
-  private pos() { return this.jetons[this.i]; }
-  private sym(v: string): boolean { const j = this.pos(); return j?.t === "sym" && j.v === v; }
-  private attendre(v: string): void {
+  constructor(private readonly tokens: Token[]) {}
+  private peek() { return this.tokens[this.i]; }
+  private sym(v: string): boolean { const j = this.peek(); return j?.t === "sym" && j.v === v; }
+  private wait(v: string): void {
     if (!this.sym(v)) throw new PlanError(`« ${v} » attendu`);
     this.i++;
   }
-  fini(): boolean { return this.i >= this.jetons.length; }
+  done(): boolean { return this.i >= this.tokens.length; }
 
   /** A path of `mot` segments separated by dots (whole numbers allowed: list indexes). */
   private segments(): string {
     const chunks: string[] = [];
     for (;;) {
-      const j = this.pos();
+      const j = this.peek();
       let seg: string;
       if (j?.t === "mot") seg = j.v;
       else if (j?.t === "nombre" && Number.isInteger(j.v) && j.v >= 0) seg = String(j.v);
@@ -87,45 +87,45 @@ class Reader {
     return chunks.join(".");
   }
 
-  champ(): string { return this.segments(); }
+  field(): string { return this.segments(); }
 
   reference(): Reference {
-    if (this.sym("$")) { this.i++; return { chemin: "$", ops: [] }; }
-    const j = this.jetons[this.i];
-    const next = this.jetons[this.i + 1];
+    if (this.sym("$")) { this.i++; return { path: "$", ops: [] }; }
+    const j = this.tokens[this.i];
+    const next = this.tokens[this.i + 1];
     if (j?.t === "mot" && OPERATIONS.includes(j.v) && next?.t === "sym" && next.v === "(") {
       this.i += 2;
       const inner = this.reference();
       const op = this.arguments(j.v);
-      this.attendre(")");
+      this.wait(")");
       inner.ops.push(op);
       if (inner.ops.length > MAX_OPERATIONS) throw new PlanError(`plus de ${MAX_OPERATIONS} opérations imbriquées`);
       return inner;
     }
-    return { chemin: this.segments(), ops: [] };
+    return { path: this.segments(), ops: [] };
   }
 
-  private virgule(): void { this.attendre(","); }
+  private comma(): void { this.wait(","); }
 
   private arguments(name: string): Operation {
     switch (name) {
       case "compter": return { op: "compter" };
-      case "regrouper": this.virgule(); return { op: "regrouper", champ: this.champ() };
+      case "regrouper": this.comma(); return { op: "regrouper", field: this.field() };
       case "trier": {
-        this.virgule();
-        const field = this.champ();
+        this.comma();
+        const field = this.field();
         let desc = false;
         if (this.sym(",")) {
           this.i++;
-          const j = this.pos();
+          const j = this.peek();
           if ((j?.t === "texte" || j?.t === "mot") && j.v === "desc") { desc = true; this.i++; }
           else throw new PlanError('seul "desc" est permis comme troisième argument de trier');
         }
-        return { op: "trier", champ: field, desc };
+        return { op: "trier", field: field, desc };
       }
       case "garder": {
-        this.virgule();
-        const j = this.pos();
+        this.comma();
+        const j = this.peek();
         if (j?.t !== "nombre" || !Number.isInteger(j.v) || j.v < 1 || j.v > KEEP_MAX) {
           throw new PlanError(`garder : un entier de 1 à ${KEEP_MAX} est attendu`);
         }
@@ -133,34 +133,34 @@ class Reader {
         return { op: "garder", n: j.v };
       }
       default: {
-        this.virgule();
-        const field = this.champ();
-        const c = this.pos();
+        this.comma();
+        const field = this.field();
+        const c = this.peek();
         if (c?.t !== "sym" || !["=", "~", ">", "<"].includes(c.v)) throw new PlanError("filtrer : = ~ > ou < attendu");
         this.i++;
-        const v = this.pos();
+        const v = this.peek();
         if (v?.t !== "nombre" && v?.t !== "texte" && v?.t !== "mot") throw new PlanError("filtrer : valeur attendue");
         this.i++;
         const comparison = c.v as "=" | "~" | ">" | "<";
         if ((comparison === ">" || comparison === "<") && v.t !== "nombre") throw new PlanError("filtrer : un nombre est attendu avec > et <");
-        return { op: "filtrer", champ: field, comparaison: comparison, valeur: v.v };
+        return { op: "filtrer", field: field, comparison: comparison, value: v.v };
       }
     }
   }
 }
 
-export function readReference(text: string): Reference | { erreur: string } {
-  if (typeof text !== "string") return { erreur: "référence : texte attendu" };
-  if (text.length > REFERENCE_MAX) return { erreur: `référence trop longue (plus de ${REFERENCE_MAX} caractères)` };
+export function readReference(text: string): Reference | { error: string } {
+  if (typeof text !== "string") return { error: "référence : texte attendu" };
+  if (text.length > REFERENCE_MAX) return { error: `référence trop longue (plus de ${REFERENCE_MAX} caractères)` };
   const tokens = split(text);
-  if (typeof tokens === "string") return { erreur: tokens };
+  if (typeof tokens === "string") return { error: tokens };
   try {
     const reader = new Reader(tokens);
     const ref = reader.reference();
-    if (!reader.fini()) throw new PlanError("texte en trop après la référence");
+    if (!reader.done()) throw new PlanError("texte en trop après la référence");
     return ref;
   } catch (e) {
-    if (e instanceof PlanError) return { erreur: e.message };
+    if (e instanceof PlanError) return { error: e.message };
     throw e;
   }
 }
@@ -204,7 +204,7 @@ function apply(op: Operation, entry: unknown): unknown {
     case "compter": return entry.length;
     case "garder": return entry.slice(0, op.n);
     case "trier": {
-      const keys = entry.map((e, i) => ({ e, i, k: readPath(e, op.champ) }));
+      const keys = entry.map((e, i) => ({ e, i, k: readPath(e, op.field) }));
       const direction = op.desc ? -1 : 1;
       keys.sort((x, y) => {
         const ax = absent(x.k) || !primitive(x.k), ay = absent(y.k) || !primitive(y.k);
@@ -214,7 +214,7 @@ function apply(op: Operation, entry: unknown): unknown {
       return keys.map((c) => c.e);
     }
     case "filtrer": {
-      const { champ: field, comparaison: comparison, valeur: value } = op;
+      const { field: field, comparison: comparison, value: value } = op;
       const searches = comparison === "~" ? normalize(String(value)) : "";
       return entry.filter((e) => {
         const v = readPath(e, field);
@@ -228,70 +228,70 @@ function apply(op: Operation, entry: unknown): unknown {
     case "regrouper": {
       const groups = new Map<string, unknown[]>();
       for (const e of entry) {
-        const v = readPath(e, op.champ);
+        const v = readPath(e, op.field);
         const key = primitive(v) && v !== "" ? String(v) : NO_VALUE;
         const g = groups.get(key);
         if (g) g.push(e);
         else groups.set(key, [e]);
       }
-      return [...groups].map(([value, elements]): Group<unknown> => ({ valeur: value, elements }));
+      return [...groups].map(([value, items]): Group<unknown> => ({ value: value, items }));
     }
   }
 }
 
 /** Computes a reference on the results, without ever modifying them. */
-export function evaluate(ref: Reference, results: unknown): { valeur: unknown } | { erreur: string } {
-  let value = readPath(results, ref.chemin);
-  if (value === undefined) return { erreur: `chemin absent : ${ref.chemin}` };
+export function evaluate(ref: Reference, results: unknown): { value: unknown } | { error: string } {
+  let value = readPath(results, ref.path);
+  if (value === undefined) return { error: `chemin absent : ${ref.path}` };
   try {
     for (const op of ref.ops) value = apply(op, value);
   } catch (e) {
-    if (e instanceof PlanError) return { erreur: e.message };
+    if (e instanceof PlanError) return { error: e.message };
     throw e;
   }
-  return { valeur: value };
+  return { value: value };
 }
 
 // ---- The plan ----
 
-export type PlanBlock = { composant: string; props: Record<string, unknown>; blocs?: PlanBlock[]; gauche?: PlanBlock[]; droite?: PlanBlock[] };
-export type PlanPage = { blocs: PlanBlock[] };
+export type PlanBlock = { component: string; props: Record<string, unknown>; blocks?: PlanBlock[]; left?: PlanBlock[]; right?: PlanBlock[] };
+export type PlanPage = { blocks: PlanBlock[] };
 
 const PlanBlockSchema: z.ZodType<PlanBlock> = z.lazy(() =>
   z.object({
-    composant: z.string().regex(/^[a-z0-9-]{1,40}$/),
+    component: z.string().regex(/^[a-z0-9-]{1,40}$/),
     props: z.record(z.string(), z.unknown()).refine((p) => Object.keys(p).length <= PROPS_MAX, `${PROPS_MAX} propriétés au plus`),
-    blocs: z.array(PlanBlockSchema).optional(),
-    gauche: z.array(PlanBlockSchema).optional(),
-    droite: z.array(PlanBlockSchema).optional(),
+    blocks: z.array(PlanBlockSchema).optional(),
+    left: z.array(PlanBlockSchema).optional(),
+    right: z.array(PlanBlockSchema).optional(),
   }),
 );
 
 const CONTAINERS = ["groupe", "colonnes"];
 
 /** Total number of blocks, and greatest nesting depth of containers (the page does not count). */
-function measure(blocks: PlanBlock[], level: number): { total: number; trop: boolean } {
+function measure(blocks: PlanBlock[], level: number): { total: number; tooMuch: boolean } {
   let total = 0;
   let too = false;
   for (const b of blocks) {
     total++;
-    const children = [b.blocs, b.gauche, b.droite].filter((l): l is PlanBlock[] => l !== undefined);
-    if (CONTAINERS.includes(b.composant) || children.length > 0) {
+    const children = [b.blocks, b.left, b.right].filter((l): l is PlanBlock[] => l !== undefined);
+    if (CONTAINERS.includes(b.component) || children.length > 0) {
       if (level >= PAGE_DEPTH) too = true;
     }
     for (const list of children) {
       const m = measure(list, level + 1);
       total += m.total;
-      too ||= m.trop;
+      too ||= m.tooMuch;
     }
   }
-  return { total, trop: too };
+  return { total, tooMuch: too };
 }
 
 export const PlanPage = z
-  .object({ blocs: z.array(PlanBlockSchema).min(1) })
+  .object({ blocks: z.array(PlanBlockSchema).min(1) })
   .superRefine((plan, ctx) => {
-    const { total, trop: too } = measure(plan.blocs, 0);
+    const { total, tooMuch: too } = measure(plan.blocks, 0);
     if (total > MAX_PAGE_BLOCKS) ctx.addIssue({ code: "custom", message: `plus de ${MAX_PAGE_BLOCKS} blocs` });
     if (too) ctx.addIssue({ code: "custom", message: `blocs imbriqués sur plus de ${PAGE_DEPTH} niveaux` });
   });

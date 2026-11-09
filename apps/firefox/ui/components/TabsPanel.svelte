@@ -7,9 +7,9 @@
    * ⌃Tab panel: recent tabs as preview cards, the selection outlined. The main process holds the traversal (order,
    * selection, ⌃ release); the panel only displays it and sends back mouse, Escape and ⌃ release.
    */
-  let { panneau: panel }: { panneau: TabsPanel } = $props();
+  let { panel: panel }: { panel: TabsPanel } = $props();
 
-  const send = api.parcoursOnglets;
+  const send = api.tabCycle;
 
   /**
    * The mouse only picks a card after a real movement: a panel that appears (or changes cards) under a still mouse
@@ -43,27 +43,27 @@
 />
 
 <div class="panneau" data-testid="panneau-onglets" role="listbox" aria-label="Onglets récents">
-  {#each panel.cartes as card, i (card.id)}
+  {#each panel.cards as card, i (card.id)}
     <div
       class="carte"
       data-testid="carte-onglet"
       role="option"
       tabindex="-1"
       aria-selected={i === panel.selection}
-      title={card.titre}
+      title={card.title}
       onpointermove={() => moved && i !== panel.selection && send({ type: "survoler", id: card.id })}
       onclick={() => send({ type: "choisir", id: card.id })}
     >
       <div class="apercu">
-        {#if card.apercu}
-          <img src={card.apercu} alt="" />
+        {#if card.preview}
+          <img src={card.preview} alt="" />
         {:else}
-          <div class="secours"><SiteIcon favicon={card.favicon} titre={card.titre} taille={40} /></div>
+          <div class="secours"><SiteIcon favicon={card.favicon} title={card.title} size={40} /></div>
         {/if}
       </div>
       <div class="legende">
-        <SiteIcon favicon={card.favicon} titre={card.titre} />
-        <span class="titre">{card.titre}</span>
+        <SiteIcon favicon={card.favicon} title={card.title} />
+        <span class="titre">{card.title}</span>
       </div>
     </div>
   {/each}

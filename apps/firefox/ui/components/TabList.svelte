@@ -6,26 +6,26 @@
   import SiteIcon from "./SiteIcon.svelte";
   import { openMenu } from "./menu.svelte";
 
-  let { fenetre: win }: { fenetre: WindowState } = $props();
-  const order = $derived(win.ordre[win.espaceActif] ?? []);
-  const active = $derived(win.actif[win.espaceActif]);
+  let { window: win }: { window: WindowState } = $props();
+  const order = $derived(win.order[win.activeSpace] ?? []);
+  const active = $derived(win.active[win.activeSpace]);
   /** Drop point: before or after the hovered tab, depending on the half under the mouse (the line shows it). */
-  let hover = $state<{ index: number; apres: boolean } | null>(null);
+  let hover = $state<{ index: number; after: boolean } | null>(null);
 
   function drop(e: DragEvent, index: number) {
-    const after = hover?.index === index && hover.apres;
+    const after = hover?.index === index && hover.after;
     hover = null;
     const id = e.dataTransfer?.getData("application/x-webaios-onglet");
     if (!id) return;
     // deplacerOnglet counts without the moved tab: coming from above shifts the target by one.
     const position = index + (after ? 1 : 0);
-    api.agir({ type: "deplacerOnglet", id, index: order.indexOf(id) < position ? position - 1 : position });
+    api.dispatch({ type: "deplacerOnglet", id, index: order.indexOf(id) < position ? position - 1 : position });
   }
 </script>
 
 <ul class="onglets" role="tablist" aria-orientation="vertical">
   {#each order as id, index (id)}
-    {@const tab = appState.valeur?.onglets[id]}
+    {@const tab = appState.value?.tabs[id]}
     {@const agentRights = accessOf(id)}
     {#if tab}
       <li
@@ -34,38 +34,38 @@
         tabindex="0"
         aria-selected={id === active}
         aria-current={id === active ? "page" : undefined}
-        class:avant={hover?.index === index && !hover.apres}
-        class:apres={hover?.index === index && hover.apres}
+        class:avant={hover?.index === index && !hover.after}
+        class:apres={hover?.index === index && hover.after}
         draggable="true"
         ondragstart={(e) => e.dataTransfer?.setData("application/x-webaios-onglet", id)}
         ondragover={(e) => {
           e.preventDefault();
           const r = e.currentTarget.getBoundingClientRect();
-          hover = { index, apres: e.clientY > r.top + r.height / 2 };
+          hover = { index, after: e.clientY > r.top + r.height / 2 };
         }}
         ondragleave={() => (hover = null)}
         ondrop={(e) => drop(e, index)}
-        onclick={() => api.agir({ type: "activerOnglet", id })}
-        onkeydown={(e) => (e.key === "Enter" || e.key === " ") && api.agir({ type: "activerOnglet", id })}
+        onclick={() => api.dispatch({ type: "activerOnglet", id })}
+        onkeydown={(e) => (e.key === "Enter" || e.key === " ") && api.dispatch({ type: "activerOnglet", id })}
         onauxclick={(e) => e.button === 1 && closeTab(id)}
         oncontextmenu={(e) =>
           openMenu(e, [
-            { libelle: "Épingler", agir: () => api.agir({ type: "epinglerOnglet", id }) },
-            { libelle: "Ajouter aux essentiels", agir: () => api.agir({ type: "ajouterEssentiel", id }) },
-            { libelle: "Fermer", agir: () => closeTab(id) },
+            { label: "Épingler", dispatch: () => api.dispatch({ type: "epinglerOnglet", id }) },
+            { label: "Ajouter aux essentiels", dispatch: () => api.dispatch({ type: "ajouterEssentiel", id }) },
+            { label: "Fermer", dispatch: () => closeTab(id) },
           ])}
       >
-        {#if tab.chargement}<span class="roue" aria-label="Chargement"></span>{:else}<SiteIcon favicon={tab.favicon} titre={tab.titre} />{/if}
-        <span class="titre">{tab.titre}</span>
-        {#if agentRights}<AccessBadge {id} etat={agentRights} />{/if}
-        {#if tab.ouvertParAgent}<span class="agent" title="Ouvert par l'agent">✦</span>{/if}
+        {#if tab.loading}<span class="roue" aria-label="Chargement"></span>{:else}<SiteIcon favicon={tab.favicon} title={tab.title} />{/if}
+        <span class="titre">{tab.title}</span>
+        {#if agentRights}<AccessBadge {id} state={agentRights} />{/if}
+        {#if tab.openedByAgent}<span class="agent" title="Ouvert par l'agent">✦</span>{/if}
         <button
           class="fermer"
           aria-label="Fermer l'onglet"
           onclick={(e) => {
             e.stopPropagation();
             closeTab(id);
-          }}><Icon nom="fermer" taille={12} /></button
+          }}><Icon name="close" size={12} /></button
         >
       </li>
     {/if}

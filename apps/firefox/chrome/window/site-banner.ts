@@ -34,9 +34,9 @@ export function mountSiteBanner(win: Window, store: WebAiOsStore, windowId: Wind
   deny.addEventListener("click", () => shown && store.questions.answer(shown.id, "refuser"));
   allow.addEventListener("click", () => shown && store.questions.answer(shown.id, "autoriser"));
   const render = () => {
-    const f = store.state.fenetres.find((x) => x.id === windowId);
-    const active = f?.actif[f.espaceActif];
-    const d = store.questions.pending().find((d) => (d.fenetreId ? d.fenetreId === windowId : d.ongletId === null || d.ongletId === active));
+    const f = store.state.windows.find((x) => x.id === windowId);
+    const active = f?.active[f.activeSpace];
+    const d = store.questions.pending().find((d) => (d.windowId ? d.windowId === windowId : d.tabId === null || d.tabId === active));
     shown = d && !d.permissions.some((p) => AGENT.includes(p)) ? d : undefined;
     banner.hidden = !shown;
     if (shown) text.textContent = bannerText(shown as PendingRequest & { permissions: SitePermission[] });

@@ -16,19 +16,19 @@ export const NO_PORT_LEFT_MESSAGE = "Plus de port libre : arrête une applicatio
 export type AppState = "arretee" | "preparation" | "lancement" | "en-marche" | "erreur";
 
 export interface Application {
-  dossier: string;
-  nom: string;
+  folder: string;
+  name: string;
   type: "application" | "poc" | "sans-fiche";
-  origine?: string;
-  sansFiche?: string;
-  creeLe: string;
-  etat: AppState;
+  origin?: string;
+  noManifest?: string;
+  createdAt: string;
+  state: AppState;
   port?: number;
-  erreur?: string;
+  error?: string;
 }
 
 /** Launches an app's `docker exec` client; argv[0] is the docker CLI. */
-export type Launcher = (argv: string[]) => { surFin(r: (code: number | null) => void): void; tuer(): void };
+export type Launcher = (argv: string[]) => { onEnd(r: (code: number | null) => void): void; kill(): void };
 
 const defaultLauncher: Launcher = (argv) => {
   const p = spawn(argv[0]!, argv.slice(1), { stdio: "ignore" });
@@ -41,7 +41,7 @@ const defaultLauncher: Launcher = (argv) => {
   };
   p.on("exit", (code) => finish(code));
   p.on("error", () => finish(null));
-  return { surFin: (r) => callbacks.push(r), tuer: () => p.kill() };
+  return { onEnd: (r) => callbacks.push(r), kill: () => p.kill() };
 };
 
 /**
@@ -64,219 +64,219 @@ type Outcome = { type: "pret" } | { type: "fin"; code: number | null } | { type:
 
 /** A launch in progress or running. `arret`: the stop was requested, the end of the process is no longer an error. */
 interface Launch {
-  arret: boolean;
-  processus?: ReturnType<Launcher>;
-  reveiller?: (i: Outcome) => void;
+  stop: boolean;
+  process?: ReturnType<Launcher>;
+  wake?: (i: Outcome) => void;
 }
 
 interface Tracking {
-  etat: AppState;
+  state: AppState;
   port?: number;
-  erreur?: string;
-  lancement?: Launch;
+  error?: string;
+  launch?: Launch;
 }
 
 export class ApplicationManager {
-  private readonly chemins: SpacePaths;
-  private readonly atelier: Workshop;
-  private readonly lanceur: Launcher;
+  private readonly paths: SpacePaths;
+  private readonly workshop: Workshop;
+  private readonly launcher: Launcher;
   private readonly ports: [number, number];
-  private readonly delaiPretMs: number;
-  private readonly intervalleSondeMs: number;
-  private readonly sonder: (port: number) => Promise<"http" | "occupe" | "libre">;
-  private readonly surChange: () => void;
-  private readonly suivis = new Map<string, Tracking>();
+  private readonly readyDelayMs: number;
+  private readonly probeIntervalMs: number;
+  private readonly probe: (port: number) => Promise<"http" | "occupe" | "libre">;
+  private readonly onChange: () => void;
+  private readonly tracked = new Map<string, Tracking>();
   /** Last launch requested per folder: two launches of the same app follow each other. */
   private readonly files = new Map<string, Promise<unknown>>();
   /**
    * Number of stops requested per folder. A launch notes this number when requested: if it changed when the
    * launch really starts (waiting in the queue, reading projects), the stop targeted it too.
    */
-  private readonly arrets = new Map<string, number>();
-  private finSurveillance?: () => Promise<void>;
+  private readonly stops = new Map<string, number>();
+  private watchEnd?: () => Promise<void>;
   /**
    * Stop scripts in progress per folder, and cleanup of orphans at startup: they target processes by their
    * mark, at each signal. A launch awaits them before starting its process, otherwise it would be killed with the old one.
    */
-  private readonly arretsEnCours = new Map<string, Promise<void>>();
-  private menage: Promise<void> = Promise.resolve();
+  private readonly stopsRunning = new Map<string, Promise<void>>();
+  private paced: Promise<void> = Promise.resolve();
 
   constructor(o: {
-    chemins: SpacePaths;
-    atelier: Workshop;
-    lanceur?: Launcher;
+    paths: SpacePaths;
+    workshop: Workshop;
+    launcher?: Launcher;
     ports?: [number, number];
-    delaiPretMs?: number;
+    readyDelayMs?: number;
     /** For tests: the gap between two port probes. */
-    intervalleSondeMs?: number;
-    sonder?: (port: number) => Promise<"http" | "occupe" | "libre">;
-    surChange?: () => void;
+    probeIntervalMs?: number;
+    probe?: (port: number) => Promise<"http" | "occupe" | "libre">;
+    onChange?: () => void;
   }) {
-    this.chemins = o.chemins;
-    this.atelier = o.atelier;
-    this.lanceur = o.lanceur ?? defaultLauncher;
+    this.paths = o.paths;
+    this.workshop = o.workshop;
+    this.launcher = o.launcher ?? defaultLauncher;
     this.ports = o.ports ?? containerPortRange();
-    this.delaiPretMs = o.delaiPretMs ?? READY_DELAY_MS;
-    this.intervalleSondeMs = o.intervalleSondeMs ?? PROBE_INTERVAL_MS;
-    this.sonder = o.sonder ?? probeByDefault;
-    this.surChange = o.surChange ?? (() => {});
+    this.readyDelayMs = o.readyDelayMs ?? READY_DELAY_MS;
+    this.probeIntervalMs = o.probeIntervalMs ?? PROBE_INTERVAL_MS;
+    this.probe = o.probe ?? probeByDefault;
+    this.onChange = o.onChange ?? (() => {});
   }
 
   /** To be called once per browser life: apps of a previous life are stopped. */
-  async demarrer(): Promise<void> {
+  async start(): Promise<void> {
     // Watching first: the cleanup waits for Docker, sometimes a long time, and the page must follow the projects until then.
-    this.finSurveillance ??= watchProjects(this.chemins, () => this.surChange());
+    this.watchEnd ??= watchProjects(this.paths, () => this.onChange());
     // Noted right away: a launch requested during this cleanup waits for it.
-    this.menage = (async () => {
-      if ((await this.atelier.etat()) === "demarre") await this.atelier.arreterApplicationsOrphelines();
+    this.paced = (async () => {
+      if ((await this.workshop.state()) === "demarre") await this.workshop.stopOrphanApps();
     })();
-    await this.menage;
+    await this.paced;
   }
 
-  async arreterSurveillance(): Promise<void> {
-    await this.finSurveillance?.();
-    this.finSurveillance = undefined;
+  async stopWatching(): Promise<void> {
+    await this.watchEnd?.();
+    this.watchEnd = undefined;
   }
 
   /** In-memory state of an app, without reading the disk. */
-  etatDe(folder: string): AppState {
-    return this.suivis.get(folder)?.etat ?? "arretee";
+  stateOf(folder: string): AppState {
+    return this.tracked.get(folder)?.state ?? "arretee";
   }
 
-  async liste(): Promise<Application[]> {
-    return (await readProjects(this.chemins)).map((p) => this.vue(p));
+  async list(): Promise<Application[]> {
+    return (await readProjects(this.paths)).map((p) => this.view(p));
   }
 
-  private vue(p: ProjectRead): Application {
-    const s = this.suivis.get(p.dossier);
+  private view(p: ProjectRead): Application {
+    const s = this.tracked.get(p.folder);
     return {
-      dossier: p.dossier,
-      nom: p.nom,
-      creeLe: p.creeLe,
-      ...("manifeste" in p
-        ? { type: p.manifeste.type, ...(p.manifeste.origine ? { origine: p.manifeste.origine } : {}) }
-        : { type: "sans-fiche" as const, sansFiche: p.sansFiche }),
-      etat: s?.etat ?? "arretee",
+      folder: p.folder,
+      name: p.name,
+      createdAt: p.createdAt,
+      ...("manifest" in p
+        ? { type: p.manifest.type, ...(p.manifest.origin ? { origin: p.manifest.origin } : {}) }
+        : { type: "sans-fiche" as const, noManifest: p.noManifest }),
+      state: s?.state ?? "arretee",
       ...(s?.port !== undefined ? { port: s.port } : {}),
-      ...(s?.erreur !== undefined ? { erreur: s.erreur } : {}),
+      ...(s?.error !== undefined ? { error: s.error } : {}),
     };
   }
 
-  private changer(folder: string, s: Tracking): void {
-    this.suivis.set(folder, s);
-    this.surChange();
+  private change(folder: string, s: Tracking): void {
+    this.tracked.set(folder, s);
+    this.onChange();
   }
 
   /** Resolves to « en-marche », « erreur », or « arretee » if the app is stopped in the meantime. Restarts a running app. */
-  lancer(folder: string): Promise<Application> {
-    const token = this.arrets.get(folder) ?? 0;
-    const next = (this.files.get(folder) ?? Promise.resolve()).catch(() => {}).then(() => this.lancerMaintenant(folder, token));
+  launch(folder: string): Promise<Application> {
+    const token = this.stops.get(folder) ?? 0;
+    const next = (this.files.get(folder) ?? Promise.resolve()).catch(() => {}).then(() => this.launchNow(folder, token));
     this.files.set(folder, next);
     return next;
   }
 
-  private async lancerMaintenant(folder: string, token: number): Promise<Application> {
-    const project = (await readProjects(this.chemins)).find((p) => p.dossier === folder);
+  private async launchNow(folder: string, token: number): Promise<Application> {
+    const project = (await readProjects(this.paths)).find((p) => p.folder === folder);
     if (!project) throw new Error(`Projet inconnu : ${folder}`);
-    if (!("manifeste" in project)) throw new Error(`Projet sans fiche, impossible à lancer (${project.sansFiche}) : ${folder}`);
+    if (!("manifest" in project)) throw new Error(`Projet sans fiche, impossible à lancer (${project.noManifest}) : ${folder}`);
     // Restart: internal stop of the current instance, which does not count as a requested stop.
-    if (this.suivis.get(folder)?.lancement) await this.arreterLancement(folder);
-    if ((this.arrets.get(folder) ?? 0) !== token) {
-      if (this.etatDe(folder) !== "arretee") this.changer(folder, { etat: "arretee" });
-      return this.vue(project);
+    if (this.tracked.get(folder)?.launch) await this.stopLaunch(folder);
+    if ((this.stops.get(folder) ?? 0) !== token) {
+      if (this.stateOf(folder) !== "arretee") this.change(folder, { state: "arretee" });
+      return this.view(project);
     }
 
-    const l: Launch = { arret: false };
+    const l: Launch = { stop: false };
     /** Final state of the launch, unless the stop was requested in the meantime (the app is then « arretee »). */
     const end = (s: Tracking) => {
-      if (!l.arret) this.changer(folder, s);
-      return this.vue(project);
+      if (!l.stop) this.change(folder, s);
+      return this.view(project);
     };
-    this.suivis.set(folder, { ...this.suivis.get(folder), etat: this.etatDe(folder), lancement: l });
+    this.tracked.set(folder, { ...this.tracked.get(folder), state: this.stateOf(folder), launch: l });
 
     try {
-      let state = await this.atelier.etat();
-      if (l.arret) return this.vue(project);
+      let state = await this.workshop.state();
+      if (l.stop) return this.view(project);
       if (state !== "docker-absent" && state !== "demarre") {
-        this.changer(folder, { etat: "preparation", lancement: l });
-        state = await this.atelier.assurerDemarre();
-        if (l.arret) return this.vue(project);
+        this.change(folder, { state: "preparation", launch: l });
+        state = await this.workshop.ensureStarted();
+        if (l.stop) return this.view(project);
       }
-      if (state === "docker-absent") return end({ etat: "erreur", erreur: "Docker n'est pas lancé." });
+      if (state === "docker-absent") return end({ state: "erreur", error: "Docker n'est pas lancé." });
     } catch (e) {
-      return end({ etat: "erreur", erreur: (e as Error).message });
+      return end({ state: "erreur", error: (e as Error).message });
     }
 
-    await Promise.all([this.menage, this.arretsEnCours.get(folder)].map((p) => p?.catch(() => {})));
-    if (l.arret) return this.vue(project);
-    const port = await this.choisirPort();
-    if (l.arret) return this.vue(project);
-    if (port === null) return end({ etat: "erreur", erreur: NO_PORT_LEFT_MESSAGE });
-    this.changer(folder, { etat: "lancement", port, lancement: l });
+    await Promise.all([this.paced, this.stopsRunning.get(folder)].map((p) => p?.catch(() => {})));
+    if (l.stop) return this.view(project);
+    const port = await this.choosePort();
+    if (l.stop) return this.view(project);
+    if (port === null) return end({ state: "erreur", error: NO_PORT_LEFT_MESSAGE });
+    this.change(folder, { state: "lancement", port, launch: l });
 
-    const outcome = new Promise<Outcome>((r) => (l.reveiller = r));
-    l.processus = this.lanceur(this.atelier.commandeApplication(folder, project.manifeste.lancement, port));
-    l.processus.surFin((code) => {
-      if (l.arret) return;
-      if (l.reveiller) l.reveiller({ type: "fin", code });
-      else void this.finInattendue(folder, l, code);
+    const outcome = new Promise<Outcome>((r) => (l.wake = r));
+    l.process = this.launcher(this.workshop.appCommand(folder, project.manifest.launch, port));
+    l.process.onEnd((code) => {
+      if (l.stop) return;
+      if (l.wake) l.wake({ type: "fin", code });
+      else void this.unexpectedEnd(folder, l, code);
     });
 
-    const delay = setTimeout(() => l.reveiller?.({ type: "delai" }), this.delaiPretMs);
+    const delay = setTimeout(() => l.wake?.({ type: "delai" }), this.readyDelayMs);
     let probe: NodeJS.Timeout | undefined;
     const probeLater = () => {
       probe = setTimeout(async () => {
-        if ((await this.sonder(port)) === "http") l.reveiller?.({ type: "pret" });
-        else if (l.reveiller) probeLater();
-      }, this.intervalleSondeMs);
+        if ((await this.probe(port)) === "http") l.wake?.({ type: "pret" });
+        else if (l.wake) probeLater();
+      }, this.probeIntervalMs);
     };
     probeLater();
     const i = await outcome;
-    l.reveiller = undefined;
+    l.wake = undefined;
     clearTimeout(delay);
     clearTimeout(probe);
 
     switch (i.type) {
       case "arret":
-        return this.vue(project);
+        return this.view(project);
       case "pret":
-        return end({ etat: "en-marche", port, lancement: l });
+        return end({ state: "en-marche", port, launch: l });
       case "fin":
-        await this.finInattendue(folder, l, i.code);
-        return this.vue(project);
+        await this.unexpectedEnd(folder, l, i.code);
+        return this.view(project);
       case "delai": {
-        const error = await this.avecJournal(folder, `L'application ne répond pas sur le port ${port} après ${Math.round(this.delaiPretMs / 1000)} s.`);
-        if (l.arret) return this.vue(project);
+        const error = await this.withLog(folder, `L'application ne répond pas sur le port ${port} après ${Math.round(this.readyDelayMs / 1000)} s.`);
+        if (l.stop) return this.view(project);
         // Stop requested before killing: the end of the process does not replace this message.
-        l.arret = true;
-        this.changer(folder, { etat: "erreur", erreur: error });
-        await this.atelier.arreterApplication(folder);
-        l.processus.tuer();
-        return this.vue(project);
+        l.stop = true;
+        this.change(folder, { state: "erreur", error: error });
+        await this.workshop.stopApp(folder);
+        l.process.kill();
+        return this.view(project);
       }
     }
   }
 
   /** The process ended without a stop request: during launch or running, it is an error. */
-  private async finInattendue(folder: string, l: Launch, code: number | null): Promise<void> {
-    const error = await this.avecJournal(folder, `Arrêtée avec le code ${code ?? "inconnu"}`);
-    if (l.arret || this.suivis.get(folder)?.lancement !== l) return;
-    l.arret = true;
-    this.changer(folder, { etat: "erreur", erreur: error });
+  private async unexpectedEnd(folder: string, l: Launch, code: number | null): Promise<void> {
+    const error = await this.withLog(folder, `Arrêtée avec le code ${code ?? "inconnu"}`);
+    if (l.stop || this.tracked.get(folder)?.launch !== l) return;
+    l.stop = true;
+    this.change(folder, { state: "erreur", error: error });
   }
 
-  private async avecJournal(folder: string, message: string): Promise<string> {
-    const end = await this.journal(folder, ERROR_LINES);
+  private async withLog(folder: string, message: string): Promise<string> {
+    const end = await this.log(folder, ERROR_LINES);
     return end ? `${message}\n${end}` : message;
   }
 
   /** First port of the range neither taken by a tracked app nor busy on the machine. */
-  private async choisirPort(): Promise<number | null> {
+  private async choosePort(): Promise<number | null> {
     const taken = (p: number) =>
-      [...this.suivis.values()].some((s) => s.port === p && (s.etat === "lancement" || s.etat === "en-marche"));
+      [...this.tracked.values()].some((s) => s.port === p && (s.state === "lancement" || s.state === "en-marche"));
     for (let p = this.ports[0]; p <= this.ports[1]; p++) {
       if (taken(p)) continue;
-      const r = await this.sonder(p);
+      const r = await this.probe(p);
       // Re-checked after the probe: another launch may have taken it in the meantime.
       if (r === "libre" && !taken(p)) return p;
     }
@@ -284,47 +284,47 @@ export class ApplicationManager {
   }
 
   /** Stops the app, and cancels its launches requested but not yet started. */
-  async arreter(folder: string): Promise<void> {
-    this.arrets.set(folder, (this.arrets.get(folder) ?? 0) + 1);
-    await this.arreterLancement(folder);
+  async stop(folder: string): Promise<void> {
+    this.stops.set(folder, (this.stops.get(folder) ?? 0) + 1);
+    await this.stopLaunch(folder);
   }
 
-  private async arreterLancement(folder: string): Promise<void> {
-    const l = this.suivis.get(folder)?.lancement;
+  private async stopLaunch(folder: string): Promise<void> {
+    const l = this.tracked.get(folder)?.launch;
     if (!l) return;
-    l.arret = true;
-    this.changer(folder, { etat: "arretee" });
-    l.reveiller?.({ type: "arret" });
-    const stop = this.atelier.arreterApplication(folder);
-    this.arretsEnCours.set(folder, stop);
+    l.stop = true;
+    this.change(folder, { state: "arretee" });
+    l.wake?.({ type: "arret" });
+    const stop = this.workshop.stopApp(folder);
+    this.stopsRunning.set(folder, stop);
     try {
       await stop;
     } finally {
-      if (this.arretsEnCours.get(folder) === stop) this.arretsEnCours.delete(folder);
+      if (this.stopsRunning.get(folder) === stop) this.stopsRunning.delete(folder);
     }
-    l.processus?.tuer();
+    l.process?.kill();
   }
 
   /** Project deleted: its state (an error, a port) must not reappear on a project recreated under that name. */
-  oublier(folder: string): void {
-    const s = this.suivis.get(folder);
+  forget(folder: string): void {
+    const s = this.tracked.get(folder);
     // A launch in progress keeps its state: it is up to the stop to finish it.
-    if (!s || s.lancement) return;
-    this.suivis.delete(folder);
-    this.surChange();
+    if (!s || s.launch) return;
+    this.tracked.delete(folder);
+    this.onChange();
   }
 
-  async toutArreter(): Promise<void> {
-    const folders = new Set([...this.suivis.keys(), ...this.files.keys()]);
-    await Promise.all([...folders].map((d) => this.arreter(d)));
+  async stopAll(): Promise<void> {
+    const folders = new Set([...this.tracked.keys(), ...this.files.keys()]);
+    await Promise.all([...folders].map((d) => this.stop(d)));
   }
 
   /** The last `lignes` lines of the app's log (read on the Mac), empty if it does not exist. */
-  async journal(folder: string, lignes = 50): Promise<string> {
+  async log(folder: string, lignes = 50): Promise<string> {
     if (!validFolder(folder)) throw new Error(`dossier d'application invalide : ${folder}`);
     let content: string;
     try {
-      content = await readFile(join(this.chemins.journaux, `${folder}.log`), "utf8");
+      content = await readFile(join(this.paths.logs, `${folder}.log`), "utf8");
     } catch {
       return "";
     }

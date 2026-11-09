@@ -77,7 +77,7 @@ window.addEventListener(
     const ready: Promise<WebAiOsStore> = ChromeUtils.importESModule(STORE).ready;
     // After Firefox's own startup: a tab loaded before it (a restored tab) stays on about:blank.
     void Promise.all([ready, window.delayedStartupPromise]).then(([store]) => {
-      const { fenetreId: windowId, first } = store.windows.claim(window);
+      const { windowId: windowId, first } = store.windows.claim(window);
       try {
         window.webaiosWindow = createController(window.gBrowser, frame, agentFrame, store, windowId);
       } catch (e) {

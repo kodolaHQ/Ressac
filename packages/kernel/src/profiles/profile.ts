@@ -4,45 +4,45 @@ import { join } from "node:path";
 import { z } from "zod";
 import type { SpacePaths } from "../paths.js";
 
-const WILDCARDS = { mcpConfig: "{mcpConfig}", consigne: "{consigne}" } as const;
+const WILDCARDS = { mcpConfig: "{mcpConfig}", prompt: "{consigne}" } as const;
 
 export const Profile = z.object({
   id: z.string().min(1),
-  nom: z.string().min(1),
-  interactif: z.array(z.string()).min(1),
+  name: z.string().min(1),
+  interactive: z.array(z.string()).min(1),
   // Background tasks never have access to the browser's tools (spec §8.2).
-  nonInteractif: z.array(z.string()).min(1).refine((a) => !a.includes(WILDCARDS.mcpConfig), {
+  nonInteractive: z.array(z.string()).min(1).refine((a) => !a.includes(WILDCARDS.mcpConfig), {
     message: "nonInteractif ne doit pas recevoir {mcpConfig}",
   }),
-  configMcp: z.literal("claude-json"),
+  mcpConfig: z.literal("claude-json"),
 });
 export type Profile = z.infer<typeof Profile>;
 
 export async function loadProfiles(
   c: SpacePaths,
-): Promise<{ profils: Profile[]; erreurs: { fichier: string; message: string }[] }> {
+): Promise<{ profiles: Profile[]; errors: { file: string; message: string }[] }> {
   const profiles: Profile[] = [];
-  const errors: { fichier: string; message: string }[] = [];
-  if (!existsSync(c.profils)) return { profils: profiles, erreurs: errors };
-  for (const name of (await readdir(c.profils)).filter((n) => n.endsWith(".json")).sort()) {
-    const file = join(c.profils, name);
+  const errors: { file: string; message: string }[] = [];
+  if (!existsSync(c.profiles)) return { profiles: profiles, errors: errors };
+  for (const name of (await readdir(c.profiles)).filter((n) => n.endsWith(".json")).sort()) {
+    const file = join(c.profiles, name);
     try {
       profiles.push(Profile.parse(JSON.parse(await readFile(file, "utf8"))));
     } catch (e) {
-      errors.push({ fichier: file, message: (e as Error).message });
+      errors.push({ file: file, message: (e as Error).message });
     }
   }
-  return { profils: profiles, erreurs: errors };
+  return { profiles: profiles, errors: errors };
 }
 
 /** Builds a profile's command; each wildcard replaces a whole argument. */
 export function buildCommand(
   p: Profile,
-  mode: "interactif" | "nonInteractif",
-  vars: { mcpConfig?: string; consigne?: string },
+  mode: "interactive" | "nonInteractive",
+  vars: { mcpConfig?: string; prompt?: string },
 ): string[] {
   const model = p[mode];
-  if (mode === "nonInteractif" && model.includes(WILDCARDS.mcpConfig)) {
+  if (mode === "nonInteractive" && model.includes(WILDCARDS.mcpConfig)) {
     throw new Error(`Profil ${p.id} : nonInteractif ne doit pas recevoir {mcpConfig}`);
   }
   return model.map((arg) => {

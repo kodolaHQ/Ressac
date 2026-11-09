@@ -3,26 +3,26 @@ import { FIELD_PER_ELEMENT, fieldsPerElementOnly, Template, ParamsPerElement, ty
 
 export const definition: BlockDefinition = {
   type: "ia.rediger",
-  libelle: "Rédiger avec Gemma",
-  famille: "IA",
+  label: "Rédiger avec Gemma",
+  family: "IA",
   description: "Fait écrire un texte à Gemma à partir d'une consigne.",
-  entree: "parElement",
-  champs: [
-    { nom: "consigne", libelle: "Consigne", aide: "Les {chemins} sont remplacés par les valeurs de l'élément.", requis: true, defaut: "Résume : {texte}", genre: "gabarit" },
-    { nom: "champ", libelle: "Champ de la réponse", requis: false, defaut: "texte", genre: "texte" },
-    { nom: "json", libelle: "Réponse en JSON", requis: false, defaut: false, genre: "case" },
-    { nom: "texteMax", libelle: "Taille maximale du texte", requis: false, defaut: 12_000, genre: "nombre", min: 1, max: 200_000, entier: true },
+  input: "parElement",
+  fields: [
+    { name: "consigne", label: "Consigne", help: "Les {chemins} sont remplacés par les valeurs de l'élément.", required: true, default: "Résume : {texte}", kind: "gabarit" },
+    { name: "champ", label: "Champ de la réponse", required: false, default: "texte", kind: "texte" },
+    { name: "json", label: "Réponse en JSON", required: false, default: false, kind: "case" },
+    { name: "texteMax", label: "Taille maximale du texte", required: false, default: 12_000, kind: "nombre", min: 1, max: 200_000, integer: true },
     FIELD_PER_ELEMENT,
     ...fieldsPerElementOnly(),
   ],
-  parElement: "option",
-  chaine: true,
-  parametres: z
+  perItem: "option",
+  chain: true,
+  params: z
     .object({
-      consigne: Template,
-      champ: z.string().min(1).max(40).default("texte"),
+      prompt: Template,
+      field: z.string().min(1).max(40).default("texte"),
       json: z.boolean().default(false),
-      texteMax: z.number().int().min(1).max(200_000).default(12_000),
+      maxText: z.number().int().min(1).max(200_000).default(12_000),
       ...ParamsPerElement,
     })
     .strict(),

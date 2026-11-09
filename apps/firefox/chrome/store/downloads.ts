@@ -16,7 +16,7 @@ export interface DownloadLike {
 /** succeeded → termine, error → interrompu (blocked files too), canceled → annule, else en-cours; total 0 without progress. */
 export function toItem(id: string, d: DownloadLike): Download {
   const state = d.succeeded ? "termine" : d.error ? "interrompu" : d.canceled ? "annule" : "en-cours";
-  return { id, nom: d.target.path.split(/[\\/]/).pop() ?? "", chemin: d.target.path, recus: d.currentBytes, total: d.hasProgress ? d.totalBytes : 0, etat: state };
+  return { id, name: d.target.path.split(/[\\/]/).pop() ?? "", path: d.target.path, received: d.currentBytes, total: d.hasProgress ? d.totalBytes : 0, state: state };
 }
 
 export interface DownloadsList {

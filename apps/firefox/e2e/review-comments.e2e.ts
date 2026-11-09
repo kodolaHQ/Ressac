@@ -91,7 +91,7 @@ async function reread(): Promise<void> {
 /** A declared project with lines `n` of app.js changed, its Review page open on app.js. */
 async function pageOnAppJs(...n: number[]) {
   const p = await declareProject(m, { dataDir: w!.dataDir });
-  writeAppJs(p.dossier, modified(...n));
+  writeAppJs(p.folder, modified(...n));
   await reread();
   await openFile("app.js");
   await waitCount(ADDED, n.length);
@@ -117,7 +117,7 @@ function filesOf(dir: string): string[] {
   return out;
 }
 
-const SITE = { declaration: { nom: "Essai", adresse: "https://essai.example/", domaines: ["essai.example"] }, fichiers: { "app.js": LINES.join("\n") + "\n" } };
+const SITE = { declaration: { name: "Essai", url: "https://essai.example/", domains: ["essai.example"] }, files: { "app.js": LINES.join("\n") + "\n" } };
 /** A site app « essai » (app.js, line 15 changed after its first photo), its Review page open on app.js. */
 async function siteOnAppJs(): Promise<void> {
   await launch({ prepare: (d) => writeSite(d, "essai", SITE) });
@@ -187,12 +187,12 @@ it("three lines added at the top of app.js then Rafraîchir: the comment follows
   try {
     await click(m, extra(15));
     await comment("garder l'ancien nom");
-    writeAppJs(p.dossier, ["a", "b", "c", ...modified(15)]);
+    writeAppJs(p.folder, ["a", "b", "c", ...modified(15)]);
     await refresh();
     await waitText(COMMENT, "Ligne 18");
     expect(await text(COMMENT)).not.toContain(LIGNE_CHANGEE);
     expect(await commentUnder()).toBe("18");
-    writeAppJs(p.dossier, ["a", "b", "c", ...LINES.map((l, i) => (i === 14 ? "ligne 15 réécrite" : l))]);
+    writeAppJs(p.folder, ["a", "b", "c", ...LINES.map((l, i) => (i === 14 ? "ligne 15 réécrite" : l))]);
     await refresh();
     await waitText(COMMENT, LIGNE_CHANGEE);
     expect(await text(COMMENT)).toContain("garder l'ancien nom");
@@ -231,7 +231,7 @@ it("external project: « Envoyer 1 commentaire à Claude Code (…) », lire_rem
   await launch();
   const p = await declareProject(m, { dataDir: w!.dataDir });
   try {
-    writeAppJs(p.dossier, modified(2));
+    writeAppJs(p.folder, modified(2));
     await reread();
     await openFile("app.js");
     await waitText(line(2), "ligne 2 modifiée");
@@ -240,7 +240,7 @@ it("external project: « Envoyer 1 commentaire à Claude Code (…) », lire_rem
     expect(await text(SEND)).toBe("Envoyer 1 commentaire à Claude Code (Claude Code)");
     await click(m, SEND);
     await waitText(COMMENT, "envoyé");
-    const t = textOf(await p.client.callTool({ name: "lire_remarques", arguments: { dossier: p.dossier } }));
+    const t = textOf(await p.client.callTool({ name: "lire_remarques", arguments: { folder: p.folder } }));
     expect(t).toContain("(relecture, lot ");
     expect(t).toContain("texte de l'utilisateur : renommer");
     expect(t).toContain('Fichier : "app.js", lignes 2–2');
@@ -260,7 +260,7 @@ it("attendre_remarques started before the send returns the batch as soon as « E
     await click(m, extra(15));
     await comment("Bouton plus grand");
     const start = Date.now();
-    const waiting = p.client.callTool({ name: "attendre_remarques", arguments: { dossier: p.dossier, delai_s: 30 } });
+    const waiting = p.client.callTool({ name: "attendre_remarques", arguments: { folder: p.folder, delay_s: 30 } });
     await new Promise((r) => setTimeout(r, 400));
     await click(m, SEND);
     expect(textOf(await waiting)).toContain("Bouton plus grand");
@@ -282,7 +282,7 @@ it("no file of the external project (registries, repository, batches) appears un
     await new Promise((r) => setTimeout(r, 800));
     for (const f of filesOf(path.join(w!.dataDir, "espace"))) {
       expect(f, f).not.toMatch(/externes|relecture|ext-[0-9a-f]{16}/);
-      if (statSync(f).isFile() && statSync(f).size < 2_000_000) expect(readFileSync(f, "utf8"), f).not.toContain(p.jeton);
+      if (statSync(f).isFile() && statSync(f).size < 2_000_000) expect(readFileSync(f, "utf8"), f).not.toContain(p.token);
     }
     expect(filesOf(path.join(w!.dataDir, "design", "remarques", `ext-${p.id}`)).some((f) => f.endsWith("lot.json"))).toBe(true);
   } finally {
@@ -298,7 +298,7 @@ it("after « Révoquer », envoyer-commentaires is disabled, with NO_CLIENT as i
     await click(m, extra(15));
     await comment("Une remarque");
     expect(await inUi(m, "return doc.querySelector(arguments[0]).disabled", [SEND])).toBe(false);
-    const review = Object.values((await state(m)).onglets).find((o) => o.url === reviewUrl(`ext-${p.id}`))!.id;
+    const review = Object.values((await state(m)).tabs).find((o) => o.url === reviewUrl(`ext-${p.id}`))!.id;
     await openApplications(m);
     await click(m, `${tid("client-externe")} button`, { text: "Révoquer" });
     await waitCount(tid("client-externe"), 0);
@@ -331,8 +331,8 @@ it("a path with spaces and accents shows its diff and takes a comment", async ()
   await launch();
   const p = await declareProject(m, { dataDir: w!.dataDir });
   try {
-    mkdirSync(path.join(p.dossier, "dossier é"));
-    writeFileSync(path.join(p.dossier, "dossier é", "a b.js"), "const a = 1;\nconst b = 2;\n");
+    mkdirSync(path.join(p.folder, "dossier é"));
+    writeFileSync(path.join(p.folder, "dossier é", "a b.js"), "const a = 1;\nconst b = 2;\n");
     await reread();
     await waitUi(m, `return [...doc.querySelectorAll('${tid("fichier-relecture")} .nom-fichier')].some((e) => e.textContent === "dossier é/a b.js")`);
     await openFile("dossier é/a b.js");

@@ -35,7 +35,7 @@ import type { SiteApps } from "./sites";
 import type { Store } from "./store";
 import type { WindowRegistry } from "./windows";
 
-export type DesignTarget = { type: "fenetre"; fenetreId: WindowId } | { type: "app"; dossier: string } | { type: "site"; id: string };
+export type DesignTarget = { type: "fenetre"; windowId: WindowId } | { type: "app"; folder: string } | { type: "site"; id: string };
 
 export interface DesignOverlays {
   show(key: string, win: Window, place: { x: number; y: number; width: number; height: number }, ctx: OverlayContext): void;
@@ -46,7 +46,7 @@ export interface DesignOverlays {
 }
 
 export interface DesignService {
-  etat(t: DesignTarget): Promise<DesignState>;
+  state(t: DesignTarget): Promise<DesignState>;
   toggle(t: DesignTarget): Promise<void>;
   /** ⇧⌘D in `win`: the design target of that window; a site app's sign-in window: the avis in the app's bar. */
   shortcut(win: Window): void;
@@ -56,7 +56,7 @@ export interface DesignService {
   /** Bubble Annuler/Escape, message click, cart « Fermer ». */
   cancel(t: DesignTarget): void;
   openCart(t: DesignTarget): Promise<void>;
-  relire(t: DesignTarget): Promise<void>;
+  review(t: DesignTarget): Promise<void>;
   /** What the target's overlay shows: the first of `modes` it has (the bubble, then the cart, then the message). */
   overlayContext(t: DesignTarget, modes?: OverlayContext["mode"][]): OverlayContext | null;
   /** Hides one overlay of the target: the message's timeout, the cart column closed by its window. */
@@ -83,17 +83,17 @@ interface View {
 interface Session {
   target: DesignTarget;
   key: string;
-  projet: DesignTracking["projet"];
+  project: DesignTracking["project"];
   browser: any;
   win: Window;
   /** The page's WindowGlobalParent when the mode started: the only one armed, read and captured. */
   wgp: any;
   generation: number;
-  memeDocument: boolean;
+  sameDocument: boolean;
   /** An arm query is pending. */
   armed: boolean;
-  attente: { contexte: DesignContext; capture: string | null } | null;
-  destination: { destination: string | null; sansDestination: string | null };
+  pending: { context: DesignContext; capture: string | null } | null;
+  destination: { destination: string | null; noDestination: string | null };
   /** The page's viewfinder: the actor of `wgp`, or the chrome's own on a site app's home frame (spike S6). */
   query(name: "arm" | "stop" | "source" | "unguard", data?: { code?: string }): Promise<unknown>;
   /** A site app's home: `browser` is its frame. */
@@ -118,13 +118,13 @@ const within = <T>(p: Promise<T>, ms: number, late: T): Promise<T> => {
   return Promise.race([p, new Promise<T>((ok) => (timer = setTimeout(() => ok(late), ms)))]).finally(() => clearTimeout(timer));
 };
 
-const sourceText = (s: DesignContext["source"]): string | null => (s ? (s.ligne !== undefined ? `${s.fichier}:${s.ligne}` : s.fichier) : null);
+const sourceText = (s: DesignContext["source"]): string | null => (s ? (s.line !== undefined ? `${s.file}:${s.line}` : s.file) : null);
 
 /**
  * The element's PNG (base64, no prefix): rectCapture's rectangle in view pixels × zoom,
  * drawn by the page's WindowGlobal only (spike S2), then cut to round(size × dpr). null when empty or failed.
  */
-export async function capturePng(browser: any, rect: ViewfinderCapture["rect"], view: ViewfinderCapture["vue"], wgp: any = browser.browsingContext?.currentWindowGlobal): Promise<string | null> {
+export async function capturePng(browser: any, rect: ViewfinderCapture["rect"], view: ViewfinderCapture["view"], wgp: any = browser.browsingContext?.currentWindowGlobal): Promise<string | null> {
   try {
     const win = browser.ownerDocument.defaultView;
     // The home's frame (an <iframe>) has no fullZoom.
@@ -177,7 +177,7 @@ export function createDesign(o: {
   /** The target's page, from the chrome only: the selected tab of a main window, or an agent app's view. */
   const view = (t: DesignTarget): View | null => {
     if (t.type === "fenetre") {
-      const win = o.windows.get(t.fenetreId)?.window as any;
+      const win = o.windows.get(t.windowId)?.window as any;
       const browser = win && !win.closed ? win.gBrowser?.selectedBrowser : null;
       return browser ? { browser, win } : null;
     }
@@ -185,7 +185,7 @@ export function createDesign(o: {
       const d = o.sites.designView(t.id);
       return d ? { browser: d.home ?? d.browser, win: d.win } : null;
     }
-    const v = o.apps.viewFor(t.dossier);
+    const v = o.apps.viewFor(t.folder);
     return v ? { browser: v.browser, win: v.window } : null;
   };
   const pageOf = (b: any) => b.browsingContext?.currentWindowGlobal;
@@ -193,7 +193,7 @@ export function createDesign(o: {
   const tracking = (t: DesignTarget, v: View, wgp: any = pageOf(v.browser)) =>
     o.agent.request<DesignTracking | null>(
       "design.suivi",
-      t.type === "fenetre" ? { url: String(wgp?.documentURI?.spec ?? "") } : t.type === "app" ? { projet: "app-" + t.dossier } : { projet: "site-" + t.id },
+      t.type === "fenetre" ? { url: String(wgp?.documentURI?.spec ?? "") } : t.type === "app" ? { project: "app-" + t.folder } : { project: "site-" + t.id },
     );
   const current = (s: Session, g: number) => sessions.get(s.key) === s && s.generation === g;
 
@@ -249,7 +249,7 @@ export function createDesign(o: {
     // Never a second arm while one is pending (the actor would leave the first unanswered).
     if (s.armed) return;
     const g = ++s.generation;
-    s.memeDocument = false;
+    s.sameDocument = false;
     if (pageOf(s.browser) !== s.wgp) return service.stop(s.target);
     s.armed = true;
     clearTimeout(s.unguardTimer);
@@ -264,30 +264,30 @@ export function createDesign(o: {
     if (!r) {
       unguardFrames(s);
       // A same-document navigation stopped the viewfinder: armed again, the mode stays. Else Escape, page gone: it stops.
-      return s.memeDocument ? arm(s) : service.stop(s.target);
+      return s.sameDocument ? arm(s) : service.stop(s.target);
     }
     s.unguardTimer = setTimeout(() => s.armed || unguardFrames(s), SWALLOW_MS);
     const capture = cleanCapture(r);
     if (!capture) return service.stop(s.target);
     // A site app's pages: nothing is read in the page's world, the source stays unknown. Its home is the agent's code: read.
     const site = s.target.type === "site" && !s.home;
-    const source = site ? null : cleanSource(await within(s.query("source", { code: sourceExpression(capture.selecteur) }).catch(() => null), SOURCE_TIMEOUT_MS, null));
+    const source = site ? null : cleanSource(await within(s.query("source", { code: sourceExpression(capture.selector) }).catch(() => null), SOURCE_TIMEOUT_MS, null));
     if (!current(s, g)) return;
     if (pageOf(s.browser) !== s.wgp) return service.stop(s.target);
-    const png = await capturePng(s.browser, capture.rect, capture.vue, s.wgp);
+    const png = await capturePng(s.browser, capture.rect, capture.view, s.wgp);
     if (!current(s, g)) return;
     const { rect, ...context } = capture;
     // The home's address as the kernel knows it (no served copy's token): it tags such remarks [accueil] (pty/context.ts).
-    if (s.home && s.target.type === "site") context.adresse = `webaios-site://${s.target.id}${new URL(context.adresse).pathname}`;
-    s.attente = { contexte: { ...context, source }, capture: png };
+    if (s.home && s.target.type === "site") context.url = `webaios-site://${s.target.id}${new URL(context.url).pathname}`;
+    s.pending = { context: { ...context, source }, capture: png };
     const v = view(s.target);
     if (v?.browser !== s.browser || pageOf(s.browser) !== s.wgp || s.win.closed) return service.stop(s.target);
     const b = s.target.type === "site" ? o.sites.designView(s.target.id)?.bounds : s.browser.getBoundingClientRect();
     if (!b) return service.stop(s.target);
     const bounds = { x: b.x, y: b.y, width: b.width, height: b.height };
     const win: [number, number] = [s.win.innerWidth, s.win.innerHeight];
-    const place = bubbleSlot(rect, s.browser.fullZoom ?? 1, bounds, win, site ? { hautMin: bounds.y, hauteur: SITE_BUBBLE_SIZE.hauteur } : s.home ? { hautMin: bounds.y } : {});
-    show(s.key, s.win, place, { mode: "bulle", message: null, projet: s.projet.projet, etiquette: context.etiquette, source: sourceText(source), ...s.destination, avertissement: site ? CAPTURE_WARNING_SITE : null });
+    const place = bubbleSlot(rect, s.browser.fullZoom ?? 1, bounds, win, site ? { minHeight: bounds.y, height: SITE_BUBBLE_SIZE.height } : s.home ? { minHeight: bounds.y } : {});
+    show(s.key, s.win, place, { mode: "bulle", message: null, project: s.project.project, label: context.label, source: sourceText(source), ...s.destination, warning: site ? CAPTURE_WARNING_SITE : null });
   }
 
   /** A throw anywhere after the arm (a bug, a window gone mid-way): the session stops, its frames unguarded. */
@@ -301,7 +301,7 @@ export function createDesign(o: {
   // A window id comes back when the last window reopens (windows.ts keeps it): a closed agent app window forgets its target too.
   o.apps.onClosed(() => {
     for (const key of new Set([...sessions.keys(), ...contexts.keys()]))
-      if (key.startsWith("app:") && !o.apps.viewFor(key.slice(4))) service.forget({ type: "app", dossier: key.slice(4) });
+      if (key.startsWith("app:") && !o.apps.viewFor(key.slice(4))) service.forget({ type: "app", folder: key.slice(4) });
   });
   o.sites.onClosed(() => {
     for (const key of new Set([...sessions.keys(), ...contexts.keys()]))
@@ -311,16 +311,16 @@ export function createDesign(o: {
   const service: DesignService = {
     overlays: { show() {}, hide() {}, forget() {}, onColumnClosed: () => () => {} },
 
-    async etat(t) {
+    async state(t) {
       const s = sessions.get(targetKey(t));
       const v = s ? null : view(t);
       // A host that does not answer rejects: the button keeps its last state.
-      const r = s ? await o.agent.request<DesignTracking | null>("design.suivi", { projet: s.projet.projet }) : v ? await tracking(t, v) : null;
-      const project = r?.projet ?? s?.projet ?? null;
-      if (!project) return { actif: false, projet: null, indisponible: t.type === "site" ? UNAVAILABLE_DESIGN_SITE : UNAVAILABLE_DESIGN, destination: null, sansDestination: null, panier: 0, nom: "" };
+      const r = s ? await o.agent.request<DesignTracking | null>("design.suivi", { project: s.project.project }) : v ? await tracking(t, v) : null;
+      const project = r?.project ?? s?.project ?? null;
+      if (!project) return { active: false, project: null, unavailable: t.type === "site" ? UNAVAILABLE_DESIGN_SITE : UNAVAILABLE_DESIGN, destination: null, noDestination: null, basket: 0, name: "" };
       // A site app: its project is known even where the mode does not start (card, sign-in page, fullscreen).
       const unavailable = t.type === "site" && !s && !o.sites.designView(t.id)?.available ? UNAVAILABLE_DESIGN_SITE : null;
-      return { actif: !!s, projet: project, indisponible: unavailable, destination: r?.destination ?? null, sansDestination: r?.sansDestination ?? null, panier: r?.panier ?? 0, nom: r?.nom ?? "" };
+      return { active: !!s, project: project, unavailable: unavailable, destination: r?.destination ?? null, noDestination: r?.noDestination ?? null, basket: r?.basket ?? 0, name: r?.name ?? "" };
     },
 
     async toggle(t) {
@@ -338,14 +338,14 @@ export function createDesign(o: {
       if (t.type === "site" && r && !sessions.has(key)) {
         const now = o.sites.designView(t.id);
         if (!now?.available) return o.sites.infoNotice(t.id, UNAVAILABLE_DESIGN_SITE);
-        if (now.vue !== site!.vue) return;
+        if (now.viewState !== site!.viewState) return;
       }
       if (!r || !wgp || sessions.has(key) || view(t)?.browser !== v.browser || pageOf(v.browser) !== wgp) {
         // A tab outside the followed projects (the host said so): why nothing happens, nothing injected.
         if (r === null && t.type === "fenetre" && !sessions.has(key) && view(t)?.browser === v.browser) {
           const b = v.browser.getBoundingClientRect();
           const place = { x: b.x + b.width - MESSAGE_MARGIN - MESSAGE_WIDTH, y: b.y + MESSAGE_MARGIN, width: MESSAGE_WIDTH, height: MESSAGE_HEIGHT };
-          show(key, v.win, place, { mode: "message", message: UNAVAILABLE_DESIGN, projet: "", etiquette: "", source: null, destination: null, sansDestination: null, avertissement: null });
+          show(key, v.win, place, { mode: "message", message: UNAVAILABLE_DESIGN, project: "", label: "", source: null, destination: null, noDestination: null, warning: null });
         }
         return;
       }
@@ -356,7 +356,7 @@ export function createDesign(o: {
         onLocationChange(b: any, webProgress: any, _request: unknown, _location: unknown, flags: number) {
           if (b !== browser || !webProgress.isTopLevel) return;
           if (!(flags & Ci.nsIWebProgressListener.LOCATION_CHANGE_SAME_DOCUMENT)) return off();
-          s.memeDocument = true;
+          s.sameDocument = true;
           // The viewfinder is stopped, its null answer arms it again; a stop that never answers ends the mode.
           if (s.armed) void disarm(s).then((ok) => ok || (s.armed && sessions.get(key) === s && off()));
         },
@@ -368,7 +368,7 @@ export function createDesign(o: {
       // A site app's own stops: ⌂, « Entrer dans le site », an element's fullscreen.
       const offState =
         t.type === "site" && site
-          ? o.sites.controller(t.id)?.onState((e) => (e.vue !== site.vue || win.document.documentElement.hasAttribute("inDOMFullscreen")) && off())
+          ? o.sites.controller(t.id)?.onState((e) => (e.viewState !== site.viewState || win.document.documentElement.hasAttribute("inDOMFullscreen")) && off())
           : undefined;
       gBrowser.addTabsProgressListener(progress);
       gBrowser.tabContainer.addEventListener("TabSelect", onSelect);
@@ -379,8 +379,8 @@ export function createDesign(o: {
       const home = t.type === "site" && browser === site?.home;
       const s: Session = {
         query: home ? homeViewfinder(browser).query : (name, data) => ask(wgp, name, data), home,
-        target: t, key, projet: r.projet, browser, win, wgp, generation: 0, memeDocument: false, armed: false, attente: null,
-        destination: { destination: r.destination, sansDestination: r.sansDestination }, guarded: new Set(), unguardTimer: undefined,
+        target: t, key, project: r.project, browser, win, wgp, generation: 0, sameDocument: false, armed: false, pending: null,
+        destination: { destination: r.destination, noDestination: r.noDestination }, guarded: new Set(), unguardTimer: undefined,
         cleanup: () => {
           offState?.();
           gBrowser.removeTabsProgressListener(progress);
@@ -400,16 +400,16 @@ export function createDesign(o: {
       const doc = win.document.documentElement;
       const windowId = (win as any).webaiosWindow?.fenetreId as WindowId | undefined;
       const main = !!windowId && o.windows.get(windowId)?.window === win;
-      const app = o.apps.dossierOf(win);
+      const app = o.apps.folderOf(win);
       const choice = chooseDesignTarget({
-        appli: app,
+        app: app,
         site: doc.getAttribute("webaios-site") ?? undefined,
-        petiteDeSite: doc.getAttribute("webaios-site-small") ?? undefined,
-        autreFenetre: !main && !app,
-        fenetreActive: main ? windowId : undefined,
+        siteSmall: doc.getAttribute("webaios-site-small") ?? undefined,
+        otherWindow: !main && !app,
+        activeWindow: main ? windowId : undefined,
       });
       if (choice.type === "avis-site") o.sites.infoNotice(choice.id, UNAVAILABLE_DESIGN_SITE);
-      else if (choice.type === "cible") void service.toggle(choice.cible);
+      else if (choice.type === "cible") void service.toggle(choice.target);
     },
 
     async stop(t) {
@@ -417,7 +417,7 @@ export function createDesign(o: {
       if (!s) return;
       sessions.delete(s.key);
       s.generation++;
-      s.attente = null;
+      s.pending = null;
       s.armed = false;
       s.cleanup();
       unguardFrames(s);
@@ -428,17 +428,17 @@ export function createDesign(o: {
 
     async add(t, text) {
       const s = sessions.get(targetKey(t));
-      const waiting = s?.attente;
-      if (!s || !waiting) return { ok: false, erreur: NOTHING_AIMED };
+      const waiting = s?.pending;
+      if (!s || !waiting) return { ok: false, error: NOTHING_AIMED };
       let r: ExtensionResult;
       try {
-        r = await o.agent.request<ExtensionResult>("design.ajouter", { projet: s.projet.projet, texte: text, contexte: waiting.contexte, capture: waiting.capture });
+        r = await o.agent.request<ExtensionResult>("design.ajouter", { project: s.project.project, text: text, context: waiting.context, capture: waiting.capture });
       } catch (e) {
         // Spec §5.10: the call's error, the mode stays.
-        return { ok: false, erreur: e instanceof Error ? e.message : String(e) };
+        return { ok: false, error: e instanceof Error ? e.message : String(e) };
       }
-      if (!r.ok || sessions.get(s.key) !== s || s.attente !== waiting) return r;
-      s.attente = null;
+      if (!r.ok || sessions.get(s.key) !== s || s.pending !== waiting) return r;
+      s.pending = null;
       hide(s.key, "bulle");
       giveKeyboard(s);
       void armSafe(s);
@@ -448,11 +448,11 @@ export function createDesign(o: {
     cancel(t) {
       const key = targetKey(t);
       const s = sessions.get(key);
-      if (!s?.attente) {
+      if (!s?.pending) {
         hide(key, "message");
         return hide(key, "panier");
       }
-      s.attente = null;
+      s.pending = null;
       hide(key, "bulle");
       giveKeyboard(s);
       void armSafe(s);
@@ -467,16 +467,16 @@ export function createDesign(o: {
       // A site app's cart starts under its bar.
       const y = t.type === "site" ? SITE_BAR_HEIGHT + MARGIN : MARGIN;
       const place = { x: Math.max(0, l - MARGIN - BASKET_WIDTH), y, width: Math.min(BASKET_WIDTH, l), height: Math.max(0, h - y - MARGIN) };
-      show(targetKey(t), v.win, place, { mode: "panier", message: null, projet: r.projet.projet, etiquette: "", source: null, destination: r.destination, sansDestination: r.sansDestination, avertissement: null });
+      show(targetKey(t), v.win, place, { mode: "panier", message: null, project: r.project.project, label: "", source: null, destination: r.destination, noDestination: r.noDestination, warning: null });
     },
 
-    async relire(t) {
+    async review(t) {
       const v = view(t);
       const r = v ? await tracking(t, v).catch(() => null) : null;
-      if (!r || r.projet.type === "demo") return;
-      const windowId = t.type === "fenetre" ? t.fenetreId : await o.mainWindow();
+      if (!r || r.project.type === "demo") return;
+      const windowId = t.type === "fenetre" ? t.windowId : await o.mainWindow();
       if (!windowId) return;
-      o.dispatch({ type: "ouvrirRelecture", fenetreId: windowId, projet: r.projet.projet, nom: r.nom.slice(0, 80) });
+      o.dispatch({ type: "ouvrirRelecture", windowId: windowId, project: r.project.project, name: r.name.slice(0, 80) });
       if (t.type !== "fenetre") o.toFront(windowId);
     },
 
@@ -517,36 +517,36 @@ export function createDesign(o: {
 // Trust boundary: the frame is a system-principal chrome document, so it could reach the chrome itself; this API is a
 // convention for the UI, and the real guards are these chrome-side checks and the host's.
 export function overlayApi(
-  o: { design: DesignService; host: Pick<AgentHost, "request" | "on">; modes?: OverlayContext["mode"][]; annuler?: () => void },
+  o: { design: DesignService; host: Pick<AgentHost, "request" | "on">; modes?: OverlayContext["mode"][]; cancel?: () => void },
   t: DesignTarget,
 ): OverlayApi {
-  const allowed = (p: unknown): p is string => typeof p === "string" && ID_PROJECT.test(p) && o.design.overlayContext(t)?.projet === p;
+  const allowed = (p: unknown): p is string => typeof p === "string" && ID_PROJECT.test(p) && o.design.overlayContext(t)?.project === p;
   const id = (x: unknown): x is string => typeof x === "string" && x.length <= DESIGN_ID_MAX;
   // Spec §5.10, the host stopped: DesignBasket reads again after a failed send and would show a rejected read as an
   // empty cart. The last answer stands instead; a restarted host is read again (surChange).
   const last = new Map<string, unknown>();
   const read = <T>(method: string, p: string): Promise<T> =>
-    o.host.request<T>(method, { projet: p }).then(
+    o.host.request<T>(method, { project: p }).then(
       (v) => (last.set(`${method} ${p}`, v), v),
       (e) => (last.has(`${method} ${p}`) ? (last.get(`${method} ${p}`) as T) : Promise.reject(e)),
     );
   return {
-    contexte: async () => o.design.overlayContext(t, o.modes),
-    async ajouter(text) {
-      if (typeof text !== "string" || text.length > REMARK_TEXT_MAX) return { ok: false, erreur: INVALID_REQUEST };
+    context: async () => o.design.overlayContext(t, o.modes),
+    async add(text) {
+      if (typeof text !== "string" || text.length > REMARK_TEXT_MAX) return { ok: false, error: INVALID_REQUEST };
       return o.design.add(t, text);
     },
-    annuler: () => (o.annuler ? o.annuler() : o.design.cancel(t)),
-    panier: async (p) => (allowed(p) ? read<ShownElement[]>("design.panier", p) : []),
-    lots: async (p) => (allowed(p) ? read<BatchShown[]>("design.lots", p) : []),
-    async retirer(p, x) {
-      if (allowed(p) && id(x)) await o.host.request("design.retirer", { projet: p, id: x });
+    cancel: () => (o.cancel ? o.cancel() : o.design.cancel(t)),
+    basket: async (p) => (allowed(p) ? read<ShownElement[]>("design.panier", p) : []),
+    batches: async (p) => (allowed(p) ? read<BatchShown[]>("design.lots", p) : []),
+    async remove(p, x) {
+      if (allowed(p) && id(x)) await o.host.request("design.retirer", { project: p, id: x });
     },
-    async traite(p, batch) {
-      if (allowed(p) && id(batch)) await o.host.request("design.traite", { projet: p, lot: batch });
+    async handled(p, batch) {
+      if (allowed(p) && id(batch)) await o.host.request("design.traite", { project: p, batch: batch });
     },
-    envoyer: async (p) => (allowed(p) ? o.host.request<ExtensionResult>("design.envoyer", { projet: p }) : { ok: false, erreur: INVALID_REQUEST }),
-    surChange(cb) {
+    send: async (p) => (allowed(p) ? o.host.request<ExtensionResult>("design.envoyer", { project: p }) : { ok: false, error: INVALID_REQUEST }),
+    onChange(cb) {
       // accueil.change: sent at each kernel start (host/host.ts), so a restarted host's cart is read again.
       const offs = [...["design.change", "accueil.change"].map((m) => o.host.on(m, () => cb())), o.design.onChange(cb)];
       return () => offs.forEach((f) => f());

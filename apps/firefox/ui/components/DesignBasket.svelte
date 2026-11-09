@@ -4,16 +4,16 @@
   /** A project's basket: its remarks, and sending to its destination. */
   let {
     api,
-    projet: project,
+    project: project,
     destination,
-    sansDestination: withoutDestination,
-    fermer: close,
+    noDestination: withoutDestination,
+    close: close,
   }: {
-    api: Pick<ApiDesign, "panier" | "retirer" | "envoyer" | "lots" | "traite" | "surChange">;
-    projet: string;
+    api: Pick<ApiDesign, "basket" | "remove" | "send" | "batches" | "handled" | "onChange">;
+    project: string;
     destination: string | null;
-    sansDestination: string | null;
-    fermer?: () => void;
+    noDestination: string | null;
+    close?: () => void;
   } = $props();
 
   let elements = $state<ShownElement[]>([]);
@@ -25,7 +25,7 @@
   async function reread() {
     const n = ++request;
     const p = project;
-    const [list, sent] = await Promise.all([api.panier(p).catch(() => []), api.lots(p).catch(() => [])]);
+    const [list, sent] = await Promise.all([api.basket(p).catch(() => []), api.batches(p).catch(() => [])]);
     if (n === request) {
       elements = list;
       batches = sent;
@@ -41,7 +41,7 @@
   async function markProcessed(batch: string) {
     error = null;
     try {
-      await api.traite(project, batch);
+      await api.handled(project, batch);
     } catch (e) {
       error = message(e);
     }
@@ -51,7 +51,7 @@
   $effect(() => {
     void project;
     void reread();
-    return api.surChange(() => void reread());
+    return api.onChange(() => void reread());
   });
 
   const n = $derived(elements.length);
@@ -61,8 +61,8 @@
     sending = true;
     error = null;
     try {
-      const r = await api.envoyer(project);
-      if (!r.ok) error = r.erreur;
+      const r = await api.send(project);
+      if (!r.ok) error = r.error;
     } catch (e) {
       error = message(e);
     } finally {
@@ -86,10 +86,10 @@
       {#each elements as e (e.id)}
         <li data-testid="remarque-panier">
           <div class="tete">
-            <code class="etiquette">{e.etiquette}</code>
-            <button class="supprimer" aria-label="Supprimer" onclick={() => void api.retirer(project, e.id)}>×</button>
+            <code class="etiquette">{e.label}</code>
+            <button class="supprimer" aria-label="Supprimer" onclick={() => void api.remove(project, e.id)}>×</button>
           </div>
-          <p class="texte">{start(e.texte)}</p>
+          <p class="texte">{start(e.text)}</p>
           {#if e.source}<p class="source">{e.source}</p>{/if}
         </li>
       {/each}
@@ -100,17 +100,17 @@
       <h3>Envoyés</h3>
       <ul>
         {#each batches as l (l.id)}
-          <li data-testid="lot-envoye" data-etat={l.etat}>
+          <li data-testid="lot-envoye" data-etat={l.state}>
             <div class="tete">
-              <span class="etat">{STATES[l.etat]}</span>
-              <span class="quand">{hour(l.cree)} · {l.destination === "agent" ? "agent" : "Claude Code"} · {l.elements.length}</span>
-              {#if l.destination === "agent" && l.etat !== "traite"}
+              <span class="etat">{STATES[l.state]}</span>
+              <span class="quand">{hour(l.created)} · {l.destination === "agent" ? "agent" : "Claude Code"} · {l.items.length}</span>
+              {#if l.destination === "agent" && l.state !== "traite"}
                 <button class="traite" onclick={() => void markProcessed(l.id)}>Traité</button>
               {/if}
             </div>
-            {#each l.elements as e (e.id)}
-              <p class="sous"><code class="etiquette">{e.etiquette}</code> {start(e.texte)}</p>
-              {#if e.traite?.note}<p class="note">{e.traite.note}</p>{/if}
+            {#each l.items as e (e.id)}
+              <p class="sous"><code class="etiquette">{e.label}</code> {start(e.text)}</p>
+              {#if e.handled?.note}<p class="note">{e.handled.note}</p>{/if}
             {/each}
           </li>
         {/each}

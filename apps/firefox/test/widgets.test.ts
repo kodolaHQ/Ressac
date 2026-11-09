@@ -3,33 +3,33 @@ import { DEFAULT_WIDGET_STATE, type DeclarationWidget, type HomeState, type Widg
 import { validatePlacements, toShownWidgets } from "../host/widgets";
 
 const declaration = (o: Partial<DeclarationWidget> = {}): DeclarationWidget => ({
-  nom: "Démo",
+  name: "Démo",
   description: "",
-  tailles: { min: { l: 2, h: 1 }, max: { l: 6, h: 4 }, defaut: { l: 4, h: 2 } },
-  sources: { compte: [], publiques: [], web: false },
+  sizes: { min: { l: 2, h: 1 }, max: { l: 6, h: 4 }, default: { l: 4, h: 2 } },
+  sources: { account: [], public: [], web: false },
   ...o,
 });
 
 const widget = (o: Partial<Extract<WidgetLu, { declaration: DeclarationWidget }>> = {}): WidgetLu => ({
   id: "demo",
-  dossier: "/espace/accueil/widgets/demo",
+  folder: "/espace/accueil/widgets/demo",
   declaration: declaration(),
-  etat: { ...DEFAULT_WIDGET_STATE },
-  donnees: null,
-  exemple: null,
-  aRecolte: false,
-  aWorkflow: false,
-  aAffichage: true,
+  state: { ...DEFAULT_WIDGET_STATE },
+  data: null,
+  example: null,
+  hasHarvest: false,
+  hasWorkflow: false,
+  hasDisplay: true,
   ...o,
 });
 
-const state = (widgets: WidgetLu[]): HomeState => ({ disposition: [], widgets });
+const state = (widgets: WidgetLu[]): HomeState => ({ layout: [], widgets });
 
 describe("toShownWidgets", () => {
   it("returns the data, the example, the state and the display versioned by date", () => {
-    const theme = { version: 1 as const, fond: "#101014" };
+    const theme = { version: 1 as const, background: "#101014" };
     const lu = toShownWidgets({
-      etat: state([widget({ donnees: { n: 1 }, exemple: { n: 0 }, etat: { ...DEFAULT_WIDGET_STATE, statut: "en-cours" } })]),
+      state: state([widget({ data: { n: 1 }, example: { n: 0 }, state: { ...DEFAULT_WIDGET_STATE, status: "en-cours" } })]),
       placements: [],
       theme,
       mtimes: { demo: 1730000000123 },
@@ -38,43 +38,43 @@ describe("toShownWidgets", () => {
     expect(lu.widgets).toEqual([
       {
         id: "demo",
-        nom: "Démo",
+        name: "Démo",
         // 4 units wide out of 12 → 333 ‰; 2 rows of 90 px.
         placement: { id: "demo", x: 0, y: 0, l: 333, h: 180 },
-        tailles: { min: { l: 2, h: 1 }, max: { l: 6, h: 4 }, defaut: { l: 4, h: 2 } },
+        sizes: { min: { l: 2, h: 1 }, max: { l: 6, h: 4 }, default: { l: 4, h: 2 } },
         src: "resource://webaios-widget-demo/affichage-1730000000123.html",
-        donnees: { n: 1 },
-        exemple: { n: 0 },
-        etat: { ...DEFAULT_WIDGET_STATE, statut: "en-cours" },
-        compte: [],
-        publiques: [],
-        aRecolte: false,
-        heures: [],
+        data: { n: 1 },
+        example: { n: 0 },
+        state: { ...DEFAULT_WIDGET_STATE, status: "en-cours" },
+        account: [],
+        public: [],
+        hasHarvest: false,
+        hours: [],
         minutes: null,
       },
     ]);
   });
 
   it("without a display, src is null and the date is not read", () => {
-    const lu = toShownWidgets({ etat: state([widget({ aAffichage: false })]), placements: [], theme: null, mtimes: {} });
+    const lu = toShownWidgets({ state: state([widget({ hasDisplay: false })]), placements: [], theme: null, mtimes: {} });
     expect(lu.theme).toBeNull();
     expect(lu.widgets[0]).toMatchObject({ src: null });
   });
 
   it("keeps the wanted place when it comes from disposition.json", () => {
-    const lu = toShownWidgets({ etat: state([widget()]), placements: [{ id: "demo", x: 250, y: 360, l: 100, h: 90 }], theme: null, mtimes: {} });
+    const lu = toShownWidgets({ state: state([widget()]), placements: [{ id: "demo", x: 250, y: 360, l: 100, h: 90 }], theme: null, mtimes: {} });
     expect(lu.widgets[0]?.placement).toEqual({ id: "demo", x: 250, y: 360, l: 100, h: 90 });
   });
 
   it("places an unreadable widget at its default size (4 × 2)", () => {
     const lu = toShownWidgets({
-      etat: state([{ id: "casse", dossier: "/espace/accueil/widgets/casse", erreur: "widget.json invalide" }]),
+      state: state([{ id: "casse", folder: "/espace/accueil/widgets/casse", error: "widget.json invalide" }]),
       placements: [],
       theme: null,
       mtimes: {},
     });
     expect(lu.widgets).toEqual([
-      { id: "casse", erreur: "widget.json invalide", placement: { id: "casse", x: 0, y: 0, l: 333, h: 180 } },
+      { id: "casse", error: "widget.json invalide", placement: { id: "casse", x: 0, y: 0, l: 333, h: 180 } },
     ]);
   });
 });

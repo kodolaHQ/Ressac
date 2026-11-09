@@ -9,24 +9,24 @@ export const GEMMA_JSON_INVALID = "Gemma n'a pas rendu du JSON valide";
 
 type AiAccess = Pick<LocalAi, "kev" | "gemma">;
 /** `auDemarrage`: called when the call really goes to the AI. `signal` raised in the queue: denied without leaving; in flight: forwarded. */
-export type AiCallOptions = { auDemarrage?: () => void; signal?: AbortSignal };
+export type AiCallOptions = { onStartup?: () => void; signal?: AbortSignal };
 /** A run's view; `oublier` (at its end) denies its calls still queued and those that would come after. */
 export type AiAccessRun = {
   kev(body: Parameters<LocalAi["kev"]>[0], o?: AiCallOptions): ReturnType<LocalAi["kev"]>;
   gemma(g: Parameters<LocalAi["gemma"]>[0], o?: AiCallOptions): ReturnType<LocalAi["gemma"]>;
-  oublier(): void;
+  forget(): void;
 };
-export type AiDispatcher = { pour(key: string, o?: { prioritaire?: boolean }): AiAccessRun };
+export type AiDispatcher = { for(key: string, o?: { priority?: boolean }): AiAccessRun };
 
 type Call = {
-  lancer: () => Promise<unknown>;
+  launch: () => Promise<unknown>;
   ok: (v: unknown) => void;
   ko: (e: unknown) => void;
-  auDemarrage?: () => void;
+  onStartup?: () => void;
   /** Detaches the signal listener (at the call's departure or its denial). */
-  detacher: () => void;
+  detach: () => void;
 };
-type File = { prioritaire: boolean; appels: Call[] };
+type File = { priority: boolean; calls: Call[] };
 
 /**
  * Serves local AI calls in turn between runs: each `cle` (a run) has its queue, and when
@@ -35,13 +35,13 @@ type File = { prioritaire: boolean; appels: Call[] };
  * turn among themselves; a call in flight is never interrupted. At most `simultanes` calls in flight; an error blocks
  * neither its queue nor the others.
  */
-export function createAiDispatcher(ai: AiAccess, o: { simultanes?: number } = {}): AiDispatcher {
-  const concurrent = o.simultanes ?? AI_SIMULTANEOUS;
+export function createAiDispatcher(ai: AiAccess, o: { concurrent?: number } = {}): AiDispatcher {
+  const concurrent = o.concurrent ?? AI_SIMULTANEOUS;
   /** Pending calls, per run; a key with no pending call is no longer there. */
   const files = new Map<string, File>();
   /** The keys that wait, in the order they will be served: priority ones first. */
-  const turns = { prioritaire: [] as string[], normal: [] as string[] };
-  const turnOf = (f: File) => (f.prioritaire ? turns.prioritaire : turns.normal);
+  const turns = { priority: [] as string[], normal: [] as string[] };
+  const turnOf = (f: File) => (f.priority ? turns.priority : turns.normal);
   let inFlight = 0;
 
   const removeKey = (key: string, file: File) => {
@@ -52,24 +52,24 @@ export function createAiDispatcher(ai: AiAccess, o: { simultanes?: number } = {}
   };
 
   const serve = () => {
-    while (inFlight < concurrent && (turns.prioritaire.length || turns.normal.length)) {
-      const turn = turns.prioritaire.length ? turns.prioritaire : turns.normal;
+    while (inFlight < concurrent && (turns.priority.length || turns.normal.length)) {
+      const turn = turns.priority.length ? turns.priority : turns.normal;
       const key = turn.shift()!;
       const file = files.get(key)!;
-      const call = file.appels.shift()!;
-      if (file.appels.length) turn.push(key);
+      const call = file.calls.shift()!;
+      if (file.calls.length) turn.push(key);
       else files.delete(key);
-      call.detacher();
+      call.detach();
       inFlight++;
       // `then` also catches an error thrown right away by the call.
       Promise.resolve()
         .then(() => {
           try {
-            call.auDemarrage?.();
+            call.onStartup?.();
           } catch (e) {
             console.error("[webaios] départ d'un appel à l'IA :", e);
           }
-          return call.lancer();
+          return call.launch();
         })
         .then(call.ok, call.ko)
         .finally(() => {
@@ -85,44 +85,44 @@ export function createAiDispatcher(ai: AiAccess, o: { simultanes?: number } = {}
       if (signal?.aborted) return ko(new Error(AI_ABANDONED));
       let file = files.get(key);
       if (!file) {
-        file = { prioritaire: priority, appels: [] };
+        file = { priority: priority, calls: [] };
         files.set(key, file);
         turnOf(file).push(key);
       }
-      const call: Call = { lancer: launch, ok: ok as (v: unknown) => void, ko, auDemarrage: oa.auDemarrage, detacher: () => {} };
+      const call: Call = { launch: launch, ok: ok as (v: unknown) => void, ko, onStartup: oa.onStartup, detach: () => {} };
       if (signal) {
         const abandon = () => {
           const f = files.get(key);
-          const i = f ? f.appels.indexOf(call) : -1;
+          const i = f ? f.calls.indexOf(call) : -1;
           if (f && i >= 0) {
-            f.appels.splice(i, 1);
-            if (!f.appels.length) removeKey(key, f);
+            f.calls.splice(i, 1);
+            if (!f.calls.length) removeKey(key, f);
           }
           ko(new Error(AI_ABANDONED));
         };
         signal.addEventListener("abort", abandon, { once: true });
-        call.detacher = () => signal.removeEventListener("abort", abandon);
+        call.detach = () => signal.removeEventListener("abort", abandon);
       }
-      file.appels.push(call);
+      file.calls.push(call);
       serve();
     });
 
   return {
-    pour: (key, op = {}) => {
-      const priority = op.prioritaire ?? false;
+    for: (key, op = {}) => {
+      const priority = op.priority ?? false;
       let forgotten = false;
       const invoke = <T>(launch: () => Promise<T>, oa: AiCallOptions = {}): Promise<T> =>
         forgotten ? Promise.reject(new Error(AI_ABANDONED)) : put(key, priority, launch, oa);
       return {
         kev: (body, oa) => invoke(() => ai.kev(body, oa?.signal ? { signal: oa.signal } : undefined), oa),
         gemma: (g, oa) => invoke(() => ai.gemma(oa?.signal ? { ...g, signal: g.signal ? AbortSignal.any([g.signal, oa.signal]) : oa.signal } : g), oa),
-        oublier: () => {
+        forget: () => {
           forgotten = true;
           const file = files.get(key);
           if (!file) return;
           removeKey(key, file);
-          for (const a of file.appels) {
-            a.detacher();
+          for (const a of file.calls) {
+            a.detach();
             a.ko(new Error(AI_ABANDONED));
           }
         },

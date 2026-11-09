@@ -18,18 +18,18 @@ import { openBuilder, widgetDir, writeWidget } from "./workflows";
 
 const WATCH_WORKFLOW = {
   version: 1,
-  blocs: [
-    { id: "page", type: "source.page", parametres: { url: "{config.url}" } },
-    { id: "liens", type: "code", nom: "Liens de la page", parametres: { source: "liens.mjs" } },
-    { id: "tri", type: "ia.trier", nom: "Tri par Kev", parametres: { question: "Parle d'IA ?", texte: "{texte}", seuil: 0.5 } },
-    { id: "textes", type: "code", parametres: { source: "textes.mjs" } },
-    { id: "sortie", type: "sortie", parametres: { vers: "widget" } },
+  blocks: [
+    { id: "page", type: "source.page", params: { url: "{config.url}" } },
+    { id: "liens", type: "code", name: "Liens de la page", params: { source: "liens.mjs" } },
+    { id: "tri", type: "ia.trier", name: "Tri par Kev", params: { question: "Parle d'IA ?", text: "{texte}", threshold: 0.5 } },
+    { id: "textes", type: "code", params: { source: "textes.mjs" } },
+    { id: "sortie", type: "sortie", params: { to: "widget" } },
   ],
-  liens: [
-    { de: "page", vers: "liens" },
-    { de: "liens", vers: "tri" },
-    { de: "tri", vers: "textes" },
-    { de: "textes", vers: "sortie" },
+  links: [
+    { from: "page", to: "liens" },
+    { from: "liens", to: "tri" },
+    { from: "tri", to: "textes" },
+    { from: "textes", to: "sortie" },
   ],
 };
 
@@ -52,8 +52,8 @@ async function launch(): Promise<void> {
     "textes.mjs": "export default async (liens) => ({ liens: liens.map((l) => l.texte) });",
   };
   for (const id of ["veille", "autre"])
-    await writeWidget(dataDir, id, { nom: id === "veille" ? "Veille" : "Autre", recolte: { minutes: 60 }, declaration: { config: { url: "https://exemple.invalid/liens" } }, workflow: WATCH_WORKFLOW, fichiers: files });
-  await writeWidget(dataDir, "casse", { nom: "Cassé", recolte: { minutes: 60 }, workflow: '{ "version": 1, "blocs": [ { "id": "page", "type": "source.pa' });
+    await writeWidget(dataDir, id, { name: id === "veille" ? "Veille" : "Autre", harvest: { minutes: 60 }, declaration: { config: { url: "https://exemple.invalid/liens" } }, workflow: WATCH_WORKFLOW, files: files });
+  await writeWidget(dataDir, "casse", { name: "Cassé", harvest: { minutes: 60 }, workflow: '{ "version": 1, "blocs": [ { "id": "page", "type": "source.pa' });
   w = await launchWebAiOs({ dataDir, height: 1400 });
   m = w.marionette;
   await m.setContext("chrome");
@@ -111,7 +111,7 @@ async function builder(id: string): Promise<void> {
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 const lastSessionConfig = () =>
   path.join(dataDir, "espace", (JSON.parse(read(path.join(dataDir, "espace", "faux-agent-args.json"))) as string[]).at(-1)!.replace(/^\/workspace\//, ""));
-const workflowOpen = async (config: string) => (await callMcpTool(path.join(dataDir, "espace"), "workflow_ouvert", {}, config)).texte;
+const workflowOpen = async (config: string) => (await callMcpTool(path.join(dataDir, "espace"), "workflow_ouvert", {}, config)).text;
 async function poll(read: () => Promise<string>, expected: string, ms = 10_000): Promise<void> {
   const deadline = Date.now() + ms;
   for (;;) {
@@ -267,13 +267,13 @@ describe("the builder's Agent tab", () => {
     };
     await writeAsAgent({
       ...WATCH_WORKFLOW,
-      blocs: [...WATCH_WORKFLOW.blocs.slice(0, 3), { id: "garder", type: "liste.garder", parametres: { nombre: 5 } }, ...WATCH_WORKFLOW.blocs.slice(3)],
-      liens: [
-        { de: "page", vers: "liens" },
-        { de: "liens", vers: "tri" },
-        { de: "tri", vers: "garder" },
-        { de: "garder", vers: "textes" },
-        { de: "textes", vers: "sortie" },
+      blocks: [...WATCH_WORKFLOW.blocks.slice(0, 3), { id: "garder", type: "liste.garder", params: { count: 5 } }, ...WATCH_WORKFLOW.blocks.slice(3)],
+      links: [
+        { from: "page", to: "liens" },
+        { from: "liens", to: "tri" },
+        { from: "tri", to: "garder" },
+        { from: "garder", to: "textes" },
+        { from: "textes", to: "sortie" },
       ],
     });
     await waitCount("noeud-garder", 1);
@@ -284,7 +284,7 @@ describe("the builder's Agent tab", () => {
     // An invalid draft, then a new version from the agent: the banner offers both.
     await click(m, '[data-testid="palette-liste.dedoublonner"]');
     await waitUi(m, "return !!doc.querySelector('[data-testid=\"etat-enregistrement\"]')?.textContent.includes('entrée manquante')");
-    await writeAsAgent({ ...WATCH_WORKFLOW, blocs: WATCH_WORKFLOW.blocs.map((b) => (b.id === "tri" ? { ...b, parametres: { ...b.parametres, seuil: 0.8 } } : b)) });
+    await writeAsAgent({ ...WATCH_WORKFLOW, blocks: WATCH_WORKFLOW.blocks.map((b) => (b.id === "tri" ? { ...b, params: { ...b.params, threshold: 0.8 } } : b)) });
     await waitCount("bandeau-fichier", 1);
     const visible = (testid: string) => inUi<boolean>(m, `const r = doc.querySelector('[data-testid="${testid}"]')?.getBoundingClientRect(); return !!r && r.width > 0 && r.height > 0`);
     expect(await visible("bandeau-fichier")).toBe(true);
@@ -317,7 +317,7 @@ describe("workflow_ouvert", () => {
     session = lastSessionConfig();
     await poll(open, '{"widget":"veille","bloc":"tri"}');
     // The main token (no window) sees no builder.
-    expect((await callTool(dataDir, "workflow_ouvert")).texte).toBe(NO_WORKFLOW_OPEN);
+    expect((await callTool(dataDir, "workflow_ouvert")).text).toBe(NO_WORKFLOW_OPEN);
     // Builder left: nothing open.
     await newTab();
     await poll(open, NO_WORKFLOW_OPEN);

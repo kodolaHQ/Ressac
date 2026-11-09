@@ -24,7 +24,7 @@
 
   // Primitives: a page read again gives new objects with the same values, which must not ask for the image again.
   const action = $derived(ctx.action);
-  const execution = $derived(ctx.execution);
+  const execution = $derived(ctx.run);
   const url = $derived("url" in image ? image.url : null);
 
   $effect(() => {

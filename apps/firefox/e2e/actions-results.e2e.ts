@@ -13,7 +13,7 @@ let servers: Awaited<ReturnType<typeof startActionServers>>;
 const launched: LaunchedWebAiOs[] = [];
 
 async function launch(env: Record<string, string> = {}) {
-  const w = await launchWebAiOs({ env: { WEBAIOS_OLLAMA_URL: servers.ollama.url, WEBAIOS_KEV_URL: servers.kev.url, WEBAIOS_TEST_ADRESSES_LOCALES: "1", ...env } });
+  const w = await launchWebAiOs({ env: { WEBAIOS_OLLAMA_URL: servers.ollama.url, WEBAIOS_KEV_URL: servers.kev.url, WEBAIOS_TEST_LOCAL_ADDRESSES: "1", ...env } });
   launched.push(w);
   const m = w.marionette;
   await m.setContext("chrome");
@@ -36,7 +36,7 @@ afterAll(async () => {
 
 // actions.spec.ts:641
 it("workshop stopped (no Docker): « Relancer » shows the error instead of nothing", { timeout: 90_000 }, async () => {
-  const { w, m, q } = await launch({ FAUX_DOCKER_ABSENT: "1" });
+  const { w, m, q } = await launch({ FAKE_DOCKER_ABSENT: "1" });
   await writePagesAction(w.dataDir, servers.site.url);
   await openAction(m, "pages", "Pages");
   await click(m, tid("relancer-action"));
@@ -55,7 +55,7 @@ describe("action results", () => {
 
   // actions.spec.ts:663
   it("empty results: « Aucun résultat », no prompt", { timeout: 60_000 }, async () => {
-    await writeRunnableAction(w.dataDir, "vide", { nom: "Vide", code: "export default async () => ({ tickets: [] });" });
+    await writeRunnableAction(w.dataDir, "vide", { name: "Vide", code: "export default async () => ({ tickets: [] });" });
     const prompts = servers.ollama.prompts.length;
     await openAction(m, "vide", "Vide");
     await click(m, tid("relancer-action"));
@@ -66,7 +66,7 @@ describe("action results", () => {
 
   // actions.spec.ts:682
   it("an account action without grant: the card, then the run after the grant", { timeout: 60_000 }, async () => {
-    await writeRunnableAction(w.dataDir, "courrier", { nom: "Courrier", compte: ["127.0.0.1"], code: `export default async () => ({ messages: [{ sujet: "Bonjour" }] });` });
+    await writeRunnableAction(w.dataDir, "courrier", { name: "Courrier", account: ["127.0.0.1"], code: `export default async () => ({ messages: [{ sujet: "Bonjour" }] });` });
     await openAction(m, "courrier", "Courrier");
     const card = tid("carte-accord");
     await q.waitText(`${card} :is(h1, h2, h3, h4)`, "Autoriser l'action « Courrier » à lire avec ton compte");
@@ -83,17 +83,17 @@ describe("action results", () => {
 
   // actions.spec.ts:734
   it("closing the tab while running: the result shows in the previous results", { timeout: 120_000 }, async () => {
-    servers.settings.lenteurSiteMs = 1500;
+    servers.settings.siteSlownessMs = 1500;
     await writePagesAction(w.dataDir, servers.site.url);
     await openAction(m, "pages", "Pages");
     await click(m, tid("relancer-action"));
     await waitUi(m, "return !!doc.querySelector(arguments[0]);", [tid("avancement-action")], 30_000);
     // Closing the tab does not stop the run.
-    const tab = Object.values((await state(m)).onglets).find((o) => o.url.startsWith("webaios://action/pages"))!;
+    const tab = Object.values((await state(m)).tabs).find((o) => o.url.startsWith("webaios://action/pages"))!;
     await dispatch(m, { type: "fermerOnglet", id: tab.id });
     // The tabs of this file's earlier tests stay open: another action's page may show now, never this one.
     await waitUi(m, "return doc.querySelector(arguments[0])?.textContent !== 'Pages';", [tid("nom-action")]);
-    expect(Object.values((await state(m)).onglets).some((o) => o.url.startsWith("webaios://action/pages"))).toBe(false);
+    expect(Object.values((await state(m)).tabs).some((o) => o.url.startsWith("webaios://action/pages"))).toBe(false);
     for (const deadline = Date.now() + 60_000; (await runsOnDisk(w.dataDir, "pages")).length !== 1; ) {
       if (Date.now() > deadline) throw new Error("no run written");
       await new Promise((r) => setTimeout(r, 200));
@@ -108,7 +108,7 @@ describe("action results", () => {
 
   // actions.spec.ts:773
   it("a run that no longer exists: « Ce résultat n'existe plus » and the last result one click away; an unknown action says so", async () => {
-    await writeRunnableAction(w.dataDir, "annonces", { nom: "Annonces", code: "export default async () => ({});" });
+    await writeRunnableAction(w.dataDir, "annonces", { name: "Annonces", code: "export default async () => ({});" });
     const LAST = "2026-10-31T08-00-00-000Z";
     await writeResult(w.dataDir, "annonces", LAST, "2026-10-31T08:00:00.000Z", "Dernier");
     const prompts = servers.ollama.prompts.length;
@@ -118,7 +118,7 @@ describe("action results", () => {
     await click(m, tid("voir-dernier-resultat"));
     await q.waitText(tid("bloc-titre"), "Dernier");
     await q.waitCount(tid("resultat-disparu"), 0);
-    await dispatch(m, { type: "ouvrirOnglet", fenetreId: (await state(m)).fenetres[0]!.id, url: "webaios://action/inconnue" });
+    await dispatch(m, { type: "ouvrirOnglet", windowId: (await state(m)).windows[0]!.id, url: "webaios://action/inconnue" });
     await q.waitText(tid("erreur-action"), "Action inconnue");
     expect(servers.ollama.prompts.length).toBe(prompts);
     expect(await runsOnDisk(w.dataDir, "annonces")).toEqual([`${LAST}.json`]);
@@ -126,13 +126,13 @@ describe("action results", () => {
 
   // actions.spec.ts:712 (last: it leaves the window's space private)
   it("a webaios://action/x tab in a private space: ACTIONS_IN_PRIVATE_SPACE, nothing launched", async () => {
-    await writeRunnableAction(w.dataDir, "x", { nom: "X", code: "export default async () => ({ a: 1 });" });
+    await writeRunnableAction(w.dataDir, "x", { name: "X", code: "export default async () => ({ a: 1 });" });
     await writeResult(w.dataDir, "x", "2026-10-31T08-00-00-000Z", "2026-10-31T08:00:00.000Z", "Secret");
     const prompts = servers.ollama.prompts.length;
     const s = await state(m);
-    const e = s.espaces.find((x) => x.id === s.fenetres[0]!.espaceActif)!;
-    await dispatch(m, { type: "reglerEspace", id: e.id, nom: e.nom, icone: e.icone, prive: true, profil: e.profil } as Action);
-    await dispatch(m, { type: "ouvrirOnglet", fenetreId: s.fenetres[0]!.id, url: "webaios://action/x" });
+    const e = s.spaces.find((x) => x.id === s.windows[0]!.activeSpace)!;
+    await dispatch(m, { type: "reglerEspace", id: e.id, name: e.name, icon: e.icon, private: true, profile: e.profile } as Action);
+    await dispatch(m, { type: "ouvrirOnglet", windowId: s.windows[0]!.id, url: "webaios://action/x" });
     await q.waitText(tid("action-espace-prive"), "Les actions ne sont pas disponibles dans un espace privé");
     expect(await q.count(tid("page-action"))).toBe(0);
     expect(await inUi(m, "return doc.body.textContent.includes('Secret');")).toBe(false);

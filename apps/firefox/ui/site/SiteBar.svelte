@@ -5,10 +5,10 @@
   import { SITE_BAR_HEIGHT, SEARCH_URL, blockedLink, OPEN_IN_A_TAB, type SiteWindowState } from "../../shared/sites";
   import type { ApiSite } from "../../shared/api";
 
-  let { etat: appState, api }: { etat: SiteWindowState; api: ApiSite } = $props();
+  let { state: appState, api }: { state: SiteWindowState; api: ApiSite } = $props();
   /** macOS: the window buttons are in the bar, on the left. */
   const mac = navigator.userAgent.includes("Mac");
-  const onSite = $derived(appState.vue === "site");
+  const onSite = $derived(appState.viewState === "site");
   /** The design mode chevron unfolds its entries in place of the title. */
   let menuDesign = $state(false);
 </script>
@@ -16,36 +16,36 @@
 <!-- The background is draggable (moves the window); each button and the mention are clickable (no-drag). -->
 <header data-testid="barre-site" class:mac style:height="{SITE_BAR_HEIGHT}px">
   <nav>
-    <button data-testid="site-precedent" aria-label="Reculer" disabled={!onSite || !appState.peutReculer} onclick={() => api.precedent()}><Icon nom="reculer" /></button>
-    <button data-testid="site-suivant" aria-label="Avancer" disabled={!onSite || !appState.peutAvancer} onclick={() => api.suivant()}><Icon nom="avancer" /></button>
-    {#if appState.aAccueil}
-      <button data-testid="site-accueil" aria-label="Accueil de l'appli" aria-pressed={appState.vue === "accueil"} disabled={appState.vue === "accord"} onclick={() => api.accueil()}><Icon nom="accueil" /></button>
+    <button data-testid="site-precedent" aria-label="Reculer" disabled={!onSite || !appState.canGoBack} onclick={() => api.previous()}><Icon name="back" /></button>
+    <button data-testid="site-suivant" aria-label="Avancer" disabled={!onSite || !appState.canGoForward} onclick={() => api.next()}><Icon name="forward" /></button>
+    {#if appState.hasHome}
+      <button data-testid="site-accueil" aria-label="Accueil de l'appli" aria-pressed={appState.viewState === "accueil"} disabled={appState.viewState === "accord"} onclick={() => api.home()}><Icon name="home" /></button>
     {/if}
-    <button data-testid="site-recharger" aria-label="Recharger" disabled={!onSite} onclick={() => api.recharger()}><Icon nom="recharger" /></button>
+    <button data-testid="site-recharger" aria-label="Recharger" disabled={!onSite} onclick={() => api.reload()}><Icon name="reload" /></button>
   </nav>
   <div class="titre">
     {#if !menuDesign}
-      <span data-testid="site-nom" class="nom">{appState.nom}</span>
-      <span data-testid="site-domaine" class="domaine">{appState.domaine}</span>
+      <span data-testid="site-nom" class="nom">{appState.name}</span>
+      <span data-testid="site-domaine" class="domaine">{appState.domain}</span>
     {/if}
   </div>
-  {#if appState.suivi && onSite}
-    <button data-testid="site-chercher-adresse" class="chercher" disabled={appState.recherche} aria-busy={appState.recherche} onclick={() => api.chercherAdresse()}>{SEARCH_URL}</button>
+  {#if appState.tracking && onSite}
+    <button data-testid="site-chercher-adresse" class="chercher" disabled={appState.search} aria-busy={appState.search} onclick={() => api.lookupAddress()}>{SEARCH_URL}</button>
   {/if}
-  {#if appState.avis}
-    <div data-testid="site-avis" class="avis" data-genre={appState.avis.genre} role="status">
-      {#if appState.avis.genre === "lien-bloque"}
-        <span>{blockedLink(appState.avis.domaine)}</span>
-        <button data-testid="site-ouvrir-onglet" onclick={() => api.ouvrirBloque()}>{OPEN_IN_A_TAB}</button>
+  {#if appState.notice}
+    <div data-testid="site-avis" class="avis" data-genre={appState.notice.kind} role="status">
+      {#if appState.notice.kind === "lien-bloque"}
+        <span>{blockedLink(appState.notice.domain)}</span>
+        <button data-testid="site-ouvrir-onglet" onclick={() => api.openBlocked()}>{OPEN_IN_A_TAB}</button>
       {:else}
-        <span>{appState.avis.texte}</span>
+        <span>{appState.notice.text}</span>
       {/if}
     </div>
   {/if}
   <!-- Right: the design mode (every view), then the active add-ons' buttons (« site » view only). -->
   <div class="extensions">
-    <SiteDesignButton {api} etat={appState} bind:menuOuvert={menuDesign} />
-    <SiteExtensionsButtons {api} surSite={onSite} />
+    <SiteDesignButton {api} state={appState} bind:menuOpen={menuDesign} />
+    <SiteExtensionsButtons {api} onSite={onSite} />
   </div>
 </header>
 

@@ -26,15 +26,15 @@ afterEach(async () => {
   }
 });
 
-const win = async () => (await state(m)).fenetres[0]!;
+const win = async () => (await state(m)).windows[0]!;
 const activeId = async () => {
   const f = await win();
-  return f.actif[f.espaceActif] ?? null;
+  return f.active[f.activeSpace] ?? null;
 };
 async function open(path: string): Promise<string> {
-  const before = new Set(Object.keys((await state(m)).onglets));
-  const after = await dispatch(m, { type: "ouvrirOnglet", fenetreId: (await win()).id, url: server.url + path });
-  return Object.keys(after.onglets).find((id) => !before.has(id))!;
+  const before = new Set(Object.keys((await state(m)).tabs));
+  const after = await dispatch(m, { type: "ouvrirOnglet", windowId: (await win()).id, url: server.url + path });
+  return Object.keys(after.tabs).find((id) => !before.has(id))!;
 }
 async function waitState<T>(read: (s: BrowserState) => T, ok: (v: T) => boolean, ms = 10_000): Promise<T> {
   const deadline = Date.now() + ms;
@@ -45,7 +45,7 @@ async function waitState<T>(read: (s: BrowserState) => T, ok: (v: T) => boolean,
     await new Promise((r) => setTimeout(r, 100));
   }
 }
-const waitTitle = (id: string, title: string) => waitState((s) => s.onglets[id]?.titre, (t) => t === title);
+const waitTitle = (id: string, title: string) => waitState((s) => s.tabs[id]?.title, (t) => t === title);
 const barOpen = () => inUi<boolean>(m, "return !!doc.querySelector('[data-testid=\"barre-commande\"]')");
 const waitBar = (open: boolean) => waitUi(m, "return !!doc.querySelector('[data-testid=\"barre-commande\"]') === arguments[0]", [open]);
 /** Types `text` in the command bar field and presses Enter. */
@@ -66,42 +66,42 @@ describe("WebAiOs shortcuts", () => {
     await pressKeys(m, "Meta+t");
     await waitBar(true);
     expect(await m.execute<number>("return gBrowser.tabs.length")).toBe(tabs);
-    expect(Object.keys((await state(m)).onglets)).toEqual([a]);
+    expect(Object.keys((await state(m)).tabs)).toEqual([a]);
   });
 
   it("⌘T + address opens a tab; ⌘W closes it; ⇧⌘T reopens it with its URL", async () => {
     await pressKeys(m, "Meta+t");
     await submit(server.url + "/b.html");
-    const b = await waitState((s) => Object.keys(s.onglets), (ids) => ids.length === 1).then((ids) => ids[0]!);
+    const b = await waitState((s) => Object.keys(s.tabs), (ids) => ids.length === 1).then((ids) => ids[0]!);
     await waitTitle(b, "Page B");
     await pressKeys(m, "Meta+w");
-    await waitState((s) => Object.keys(s.onglets).length, (n) => n === 0);
+    await waitState((s) => Object.keys(s.tabs).length, (n) => n === 0);
     await pressKeys(m, "Meta+Shift+t");
-    const urls = await waitState((s) => Object.values(s.onglets).map((o) => o.url), (u) => u.length === 1);
+    const urls = await waitState((s) => Object.values(s.tabs).map((o) => o.url), (u) => u.length === 1);
     expect(urls).toEqual([server.url + "/b.html"]);
   });
 
   it("⌃2 activates the second space", async () => {
-    const first = (await win()).espaceActif;
-    await dispatch(m, { type: "creerEspace", nom: "Boulot", icone: "💼", prive: false, profil: "defaut", fenetreId: (await win()).id });
-    const second = (await win()).espaceActif;
-    await dispatch(m, { type: "activerEspace", fenetreId: (await win()).id, id: first });
+    const first = (await win()).activeSpace;
+    await dispatch(m, { type: "creerEspace", name: "Boulot", icon: "💼", private: false, profile: "defaut", windowId: (await win()).id });
+    const second = (await win()).activeSpace;
+    await dispatch(m, { type: "activerEspace", windowId: (await win()).id, id: first });
     await pressKeys(m, "Control+2");
-    await waitState((s) => s.fenetres[0]!.espaceActif, (e) => e === second);
+    await waitState((s) => s.windows[0]!.activeSpace, (e) => e === second);
   });
 
   it("Firefox's next/previous tab keys do not leave the space", async () => {
     const a = await open("/a.html");
     await waitTitle(a, "Page A");
-    await dispatch(m, { type: "creerEspace", nom: "Boulot", icone: "💼", prive: false, profil: "defaut", fenetreId: (await win()).id });
-    const second = (await win()).espaceActif;
+    await dispatch(m, { type: "creerEspace", name: "Boulot", icon: "💼", private: false, profile: "defaut", windowId: (await win()).id });
+    const second = (await win()).activeSpace;
     const b = await open("/b.html");
     await waitTitle(b, "Page B");
     await focusPage();
     for (const combo of ["Control+PageUp", "Control+PageDown", "Meta+Alt+ArrowLeft", "Meta+Alt+ArrowRight", "Meta+Shift+{", "Meta+Shift+}"]) {
       await pressKeys(m, combo);
       await new Promise((r) => setTimeout(r, 200));
-      expect([combo, (await win()).espaceActif, await activeId()]).toEqual([combo, second, b]);
+      expect([combo, (await win()).activeSpace, await activeId()]).toEqual([combo, second, b]);
       expect(await m.execute<string | null>("return gBrowser.selectedTab.getAttribute('webaios-tab-id')")).toBe(b);
     }
   });
@@ -125,7 +125,7 @@ describe("WebAiOs shortcuts", () => {
     await dispatch(m, { type: "activerOnglet", id: a });
     await focusPage();
     await pressKeys(m, "Meta+9");
-    await waitState((s) => s.fenetres[0]!.actif[s.fenetres[0]!.espaceActif], (id) => id === c);
+    await waitState((s) => s.windows[0]!.active[s.windows[0]!.activeSpace], (id) => id === c);
   });
 
   it("a page that swallows every key: ⌘T still opens the bar and ⌘W still closes the tab", async () => {
@@ -139,7 +139,7 @@ describe("WebAiOs shortcuts", () => {
     await focusPage();
     expect(await activeId()).toBe(id);
     await pressKeys(m, "Meta+w");
-    await waitState((s) => Object.keys(s.onglets).length, (n) => n === 0);
+    await waitState((s) => Object.keys(s.tabs).length, (n) => n === 0);
     expect(await barOpen()).toBe(false);
   });
 

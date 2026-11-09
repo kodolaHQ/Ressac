@@ -15,7 +15,7 @@ const HOST = "http://127.0.0.1/*";
 const manifest = (matches: string[]) => ({ manifest_version: 3, name: "Cacheur de l'agent", version: "1.0.0", content_scripts: [{ matches, css: ["cache.css"] }] });
 const CACHE = "#cache-moi { display: none !important; }\n";
 const CACHE_ALL = "#cache-moi, #reste { display: none !important; }\n";
-const GRANT = { permissions: [], hotes: [HOST], reseau: [], tousLesSites: false, scriptsTousLesSites: false, scripts: true };
+const GRANT = { permissions: [], hosts: [HOST], network: [], allSites: false, allSitesScripts: false, scripts: true };
 const ID = "cacheur@agent.webaios";
 
 let server: Awaited<ReturnType<typeof startServer>>;
@@ -69,7 +69,7 @@ describe("agent extensions: registry, signed install, restart", () => {
       const w = await launch(f);
       await settle(w);
       expect(await agentAddons(w.marionette)).toEqual([]);
-      expect(w.amo.envois).toEqual([]);
+      expect(w.amo.sends).toEqual([]);
       await w.close();
     }
     expect(existsSync(path.join(f.dataDir, "extensions", "copies", "cacheur"))).toBe(false);
@@ -84,7 +84,7 @@ describe("agent extensions: registry, signed install, restart", () => {
     const w = await launch(f);
     await settle(w);
     expect(await agentAddons(w.marionette)).toEqual([]);
-    expect(w.amo.envois).toEqual([]);
+    expect(w.amo.sends).toEqual([]);
     expect(existsSync(path.join(f.dataDir, "extensions", "copies", "cacheur"))).toBe(false);
   });
 
@@ -94,10 +94,10 @@ describe("agent extensions: registry, signed install, restart", () => {
     grant(f.dataDir, "cacheur", GRANT);
     const w = await launch(f);
     await waitAddon(w, "1.0.0.1");
-    expect(w.amo.envois.map((e) => [e.guid, e.version])).toEqual([[ID, "1.0.0.1"]]);
+    expect(w.amo.sends.map((e) => [e.guid, e.version])).toEqual([[ID, "1.0.0.1"]]);
     // The registry is written once Firefox installed it: a moment after the add-on shows.
-    await until(() => (registry(f.dataDir)["agent:cacheur"] as { idChrome?: string }).idChrome === ID);
-    expect(registry(f.dataDir)["agent:cacheur"]).toMatchObject({ idChrome: ID, accord: GRANT, desactivee: null });
+    await until(() => (registry(f.dataDir)["agent:cacheur"] as { addonId?: string }).addonId === ID);
+    expect(registry(f.dataDir)["agent:cacheur"]).toMatchObject({ addonId: ID, grant: GRANT, disabled: null });
   });
 
   // The page half of extensions-agent.spec.ts:102: the page guard asks the background, which injects the CSS once the
@@ -129,22 +129,22 @@ describe("agent extensions: registry, signed install, restart", () => {
     // Written again by the next kernel: its own port and token.
     rmSync(path.join(root(f.dataDir), ".webaios", "mcp.json"));
 
-    w = await launch({ ...f, amo: { delaiMs: 60_000 } });
+    w = await launch({ ...f, amo: { delayMs: 60_000 } });
     await waitAddon(w, "1.0.0.1");
     writeAgentExtension(root(f.dataDir), "cacheur", { "cache.css": CACHE_ALL });
     await until(() => existsSync(path.join(root(f.dataDir), ".webaios", "mcp.json")));
     // Never answered: the app quits during the signature.
     callTool(f.dataDir, "recharger_extension", { id: "cacheur" }).catch(() => {});
     const amo = w.amo;
-    await until(() => amo.envois.some((e) => e.version === "1.0.0.2"));
+    await until(() => amo.sends.some((e) => e.version === "1.0.0.2"));
     expect(await agentAddons(w.marionette)).toEqual([{ id: ID, version: "1.0.0.1", isActive: true }]);
     await w.close();
     expect(JSON.parse(readFileSync(path.join(f.dataDir, "extensions", "signes", "cacheur.json"), "utf8")).version).toBe("1.0.0.1");
 
     w = await launch(f);
     await waitAddon(w, "1.0.0.3");
-    expect(w.amo.envois.map((e) => e.version)).toEqual(["1.0.0.3"]);
-    expect(JSON.parse(readFileSync(path.join(f.dataDir, "extensions", "amo-versions.json"), "utf8"))).toEqual({ cacheur: 3 });
+    expect(w.amo.sends.map((e) => e.version)).toEqual(["1.0.0.3"]);
+    expect(JSON.parse(readFileSync(path.join(f.dataDir, "extensions", "amo-versions.json"), "utf8"))).toEqual({ hider: 3 });
   });
 
   it("uninstalled from about:addons: gone from the registry", async () => {
@@ -207,7 +207,7 @@ describe("agent extensions: registry, signed install, restart", () => {
     await settle(w);
     expect("agent:cacheur" in registry(f.dataDir)).toBe(false);
     expect(await agentAddons(w.marionette)).toEqual([]);
-    expect(w.amo.envois).toEqual([]);
+    expect(w.amo.sends).toEqual([]);
   });
 
   it("an inactive grant is never installed nor active", async () => {
@@ -216,7 +216,7 @@ describe("agent extensions: registry, signed install, restart", () => {
     grant(f.dataDir, "cacheur", GRANT, []);
     const w = await launch(f);
     await settle(w);
-    expect(w.amo.envois.map((e) => e.version)).toEqual(["1.0.0.1"]);
+    expect(w.amo.sends.map((e) => e.version)).toEqual(["1.0.0.1"]);
     expect(await agentAddons(w.marionette)).toEqual([]);
   });
 

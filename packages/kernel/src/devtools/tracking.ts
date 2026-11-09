@@ -19,70 +19,70 @@ function originOf(url: string): string | null {
 export class DevToolsTracking {
   readonly attaches = new Set<string>();
   /** Origin of each tab when it was attached. */
-  private readonly origines = new Map<string, string | null>();
+  private readonly origins = new Map<string, string | null>();
   /** Tabs where the user opened their own tools: the attachment failed. */
-  readonly occupes = new Set<string>();
+  readonly busy = new Set<string>();
   private file: Promise<void> = Promise.resolve();
-  private planifie = false;
-  private arrete = false;
-  private readonly desabonner: () => void;
+  private scheduled = false;
+  private stopped = false;
+  private readonly unsubscribe: () => void;
 
   constructor(
-    private readonly politique: AccessPolicy,
-    private readonly outils: BrowserDevTools,
-    private readonly onglets: () => Promise<TabInfo[]>,
+    private readonly policy: AccessPolicy,
+    private readonly tools: BrowserDevTools,
+    private readonly tabs: () => Promise<TabInfo[]>,
   ) {
-    this.desabonner = politique.surChange(() => this.planifier());
-    this.planifier();
+    this.unsubscribe = policy.onChange(() => this.schedule());
+    this.schedule();
   }
 
   /** Only one reconciliation at a time; the changes that happen while it runs trigger a single one. */
-  private planifier(): void {
-    if (this.planifie || this.arrete) return;
-    this.planifie = true;
+  private schedule(): void {
+    if (this.scheduled || this.stopped) return;
+    this.scheduled = true;
     this.file = this.file
       .then(() => {
-        this.planifie = false;
-        return this.arrete ? undefined : this.reconcilier();
+        this.scheduled = false;
+        return this.stopped ? undefined : this.reconcile();
       })
       .catch(() => {});
   }
 
-  private async reconcilier(): Promise<void> {
-    const tabs = (await this.onglets()).filter((o) => this.politique.droitsDev(o).length);
+  private async reconcile(): Promise<void> {
+    const tabs = (await this.tabs()).filter((o) => this.policy.devRights(o).length);
     const wanted = new Map(tabs.map((o) => [o.id, originOf(o.url)]));
     for (const [id, origin] of wanted) {
       if (this.attaches.has(id)) {
-        if (this.origines.get(id) === origin) continue;
+        if (this.origins.get(id) === origin) continue;
         // Same tab, other origin: we restart from the displayed page.
         this.attaches.delete(id);
-        this.origines.delete(id);
-        await this.outils.detacher(id).catch(() => {});
+        this.origins.delete(id);
+        await this.tools.detach(id).catch(() => {});
       }
       try {
-        await this.outils.attacher(id);
+        await this.tools.attach(id);
         this.attaches.add(id);
-        this.origines.set(id, origin);
-        this.occupes.delete(id);
+        this.origins.set(id, origin);
+        this.busy.delete(id);
       } catch (e) {
-        if (e instanceof DevToolsBusy) this.occupes.add(id);
+        if (e instanceof DevToolsBusy) this.busy.add(id);
       }
     }
     for (const id of [...this.attaches]) {
       if (wanted.has(id)) continue;
       this.attaches.delete(id);
-      this.origines.delete(id);
-      await this.outils.detacher(id).catch(() => {});
+      this.origins.delete(id);
+      await this.tools.detach(id).catch(() => {});
     }
-    for (const id of [...this.occupes]) if (!wanted.has(id)) this.occupes.delete(id);
+    for (const id of [...this.busy]) if (!wanted.has(id)) this.busy.delete(id);
   }
 
-  arreter(): void {
-    this.arrete = true;
-    this.desabonner();
-    for (const id of this.attaches) void this.outils.detacher(id).catch(() => {});
+  stop(): void {
+    this.stopped = true;
+    this.unsubscribe();
+    for (const id of this.attaches) void this.tools.detach(id).catch(() => {});
     this.attaches.clear();
-    this.origines.clear();
-    this.occupes.clear();
+    this.origins.clear();
+    this.busy.clear();
   }
 }

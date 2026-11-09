@@ -50,28 +50,28 @@ let w: LaunchedWebAiOs;
 let m: Marionette;
 const dirs: string[] = [];
 const url = (host: string, path = "/") => server.url(host, path);
-const vidola = () => ({ nom: "Vidola", adresse: url("vidola-a.localhost", "/design"), domaines: ["vidola-a.localhost"], retouches: [{ correspond: ["/design"], js: ["sonde.js"], css: ["cacher.css"] }] });
+const vidola = () => ({ name: "Vidola", url: url("vidola-a.localhost", "/design"), domains: ["vidola-a.localhost"], tweaks: [{ matches: ["/design"], js: ["sonde.js"], css: ["cacher.css"] }] });
 
 beforeAll(async () => {
   server = await startSitesServer({ port: PORT });
-  server.definir("tuning-a.localhost", "/", TUNING_PAGE);
-  server.definir("tuning-a.localhost", "/autre", OTHER_PAGE);
-  server.definir("tuning-a.localhost", "/csp", (_req: unknown, res: ServerResponse) => void res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": CSP }).end(CSP_PAGE));
-  server.definir("tuning-a.localhost", "/oop", TUNING_PAGE.replace("<script>", `<iframe id="cadre" src="http://127.0.0.1:${FRAME_PORT}/frame" style="width:300px;height:120px;border:0"></iframe><script>`));
-  server.definir("compte-tuning.localhost", "/connexion", LOGIN_PAGE);
-  server.definir("vidola-a.localhost", "/design", S5_PAGE);
+  server.define("tuning-a.localhost", "/", TUNING_PAGE);
+  server.define("tuning-a.localhost", "/autre", OTHER_PAGE);
+  server.define("tuning-a.localhost", "/csp", (_req: unknown, res: ServerResponse) => void res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": CSP }).end(CSP_PAGE));
+  server.define("tuning-a.localhost", "/oop", TUNING_PAGE.replace("<script>", `<iframe id="cadre" src="http://127.0.0.1:${FRAME_PORT}/frame" style="width:300px;height:120px;border:0"></iframe><script>`));
+  server.define("compte-tuning.localhost", "/connexion", LOGIN_PAGE);
+  server.define("vidola-a.localhost", "/design", S5_PAGE);
   frames = await startServer({ port: FRAME_PORT, routes: { "/frame": (_req, res) => void res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }).end(FRAME_PAGE) } });
   const dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
   const profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
   dirs.push(dataDir, profile);
-  writeSite(dataDir, "tuning", { declaration: tuningDeclaration(url), fichiers: { "retouches/tuning.css": "/* rien */" } });
-  writeSite(dataDir, "avec-accueil", { declaration: withHomeDeclaration(url), fichiers: { "accueil/index.html": WITH_HOME } });
-  writeSite(dataDir, "vidola", { declaration: vidola(), fichiers: { "retouches/sonde.js": TWEAK, "retouches/cacher.css": ".cache { display: none; }" } });
+  writeSite(dataDir, "tuning", { declaration: tuningDeclaration(url), files: { "retouches/tuning.css": "/* rien */" } });
+  writeSite(dataDir, "avec-accueil", { declaration: withHomeDeclaration(url), files: { "accueil/index.html": WITH_HOME } });
+  writeSite(dataDir, "vidola", { declaration: vidola(), files: { "retouches/sonde.js": TWEAK, "retouches/cacher.css": ".cache { display: none; }" } });
   await grantSite(dataDir, "tuning", tuningDeclaration(url));
   await grantSite(dataDir, "vidola", vidola());
   const a = testActor(profile);
   // An element's fullscreen without a gesture: the test's gestures would be the viewfinder's while it aims.
-  w = await launchWebAiOs({ dataDir, profile, env: { WEBAIOS_TEST_ADRESSES_LOCALES: "1", ...a.env }, prefs: { ...a.prefs, "full-screen-api.allow-trusted-requests-only": false } });
+  w = await launchWebAiOs({ dataDir, profile, env: { WEBAIOS_TEST_LOCAL_ADDRESSES: "1", ...a.env }, prefs: { ...a.prefs, "full-screen-api.allow-trusted-requests-only": false } });
   m = w.marionette;
   await m.setContext("chrome");
   await waitReady(m);
@@ -79,7 +79,7 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => {
   await w?.close();
-  await server?.fermer();
+  await server?.close();
   await frames?.close();
   for (const d of dirs) await rm(d, { recursive: true, force: true });
 });
@@ -87,22 +87,22 @@ afterEach(async () => {
   await inStore(m, `for (const id of arguments[0]) { await store.design.stop({ type: "site", id }); store.design.closeOverlay({ type: "site", id }, "panier"); } return 1;`, [IDS]);
 });
 
-const state = (id: string) => inStore<{ actif: boolean; projet: { projet: string } | null; indisponible: string | null; panier: number }>(m, "return await store.design.etat(arguments[0]);", [T(id)]);
+const state = (id: string) => inStore<{ active: boolean; project: { project: string } | null; unavailable: string | null; basket: number }>(m, "return await store.design.etat(arguments[0]);", [T(id)]);
 const toggle = (id: string) => inStore(m, "await store.design.toggle(arguments[0]); return 1;", [T(id)]);
 const add = (id: string, text: string) => inStore<{ ok: boolean }>(m, "return await store.design.add(arguments[0], arguments[1]);", [T(id), text]);
 const bubble = (id: string) =>
-  inStore<{ etiquette: string; source: string | null; avertissement: string | null; projet: string } | null>(m, 'return store.design.overlayContext(arguments[0], ["bulle"]);', [T(id)]);
+  inStore<{ label: string; source: string | null; warning: string | null; project: string } | null>(m, 'return store.design.overlayContext(arguments[0], ["bulle"]);', [T(id)]);
 const cart = (id: string) => inStore<number>(m, `return (await store.agent.request("design.suivi", { projet: "site-" + arguments[0] })).panier;`, [id]);
 const hosts = (id: string) => inSiteView<number>(m, id, `return document.getElementsByTagName("webaios-viseur").length;`).catch(() => -1);
 const overlayRect = (id: string) => overlayOf<{ x: number; y: number; width: number; height: number }>(m, id, "const r = f.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height };");
-const notice = (id: string) => inStore<{ genre: string; texte?: string } | null>(m, "return store.sites.controller(arguments[0]).state().avis;", [id]);
+const notice = (id: string) => inStore<{ kind: string; text?: string } | null>(m, "return store.sites.controller(arguments[0]).state().avis;", [id]);
 const view = <T = unknown>(id: string, expr: string) => inSiteView<T>(m, id, `return ${expr};`).catch(() => null);
 const geometry = (id: string) =>
   m.execute<{ x: number; y: number; width: number; height: number; w: number; h: number; z: number }>(
     `const b = ${viewExpr(id)}, r = b.getBoundingClientRect(), win = ${siteExpr(id)}; return { x: r.x, y: r.y, width: r.width, height: r.height, w: win.innerWidth, h: win.innerHeight, z: b.fullZoom };`,
   );
 const cssRect = (id: string, sel: string) =>
-  inSiteView<{ x: number; y: number; largeur: number; hauteur: number }>(m, id, `const r = document.querySelector(${JSON.stringify(sel)}).getBoundingClientRect(); return { x: r.x, y: r.y, largeur: r.width, hauteur: r.height };`);
+  inSiteView<{ x: number; y: number; width: number; height: number }>(m, id, `const r = document.querySelector(${JSON.stringify(sel)}).getBoundingClientRect(); return { x: r.x, y: r.y, largeur: r.width, hauteur: r.height };`);
 
 /** Toggles the mode on (the viewfinder in the page), then a trusted click at `p` (read before): the bubble. */
 async function aimAt(id: string, p: { x: number; y: number }) {
@@ -133,7 +133,7 @@ describe("design mode, site target, the view", () => {
     const probe = `(() => ({ webaiosSite: typeof webaiosSite, portee: typeof __webaiosPortee, fichier: typeof __webaiosFichier, retoucheSecret: typeof __retoucheSecret,
       Components: typeof Components, ChromeUtils: typeof ChromeUtils, Services: typeof Services }))()`;
     const sees = await (await armActor(m, viewExpr("vidola"), probe)).result();
-    expect(sees).toEqual({ r: { webaiosSite: "undefined", portee: "undefined", fichier: "undefined", retoucheSecret: "undefined", Components: "undefined", ChromeUtils: "undefined", Services: "undefined" } });
+    expect(sees).toEqual({ r: { webaiosSite: "undefined", scope: "undefined", file: "undefined", tweakSecret: "undefined", Components: "undefined", ChromeUtils: "undefined", Services: "undefined" } });
     await sleep(600);
     const p = await viewPoint(m, "vidola", "#cible");
     await toggle("vidola");
@@ -142,7 +142,7 @@ describe("design mode, site target, the view", () => {
     expect(during.fakeIsMine).toBe(true);
     expect(during.shadow).toBe("null");
     await siteMouse(m, "vidola", p);
-    await expect.poll(() => bubble("vidola"), { timeout: 10_000 }).toMatchObject({ etiquette: "div#cible" });
+    await expect.poll(() => bubble("vidola"), { timeout: 10_000 }).toMatchObject({ label: "div#cible" });
     const after = await tweak();
     expect(after.fakeIsMine).toBe(true);
     expect(after.log.fake).toBe(0);
@@ -172,7 +172,7 @@ describe("design mode, site target, the view", () => {
     expect(keys).toContain("email:y:true");
     // The bubble on #mdp: added to the cart, its value nowhere in what is kept.
     await siteMouse(m, "vidola", pPassword);
-    await expect.poll(() => bubble("vidola"), { timeout: 10_000 }).toMatchObject({ etiquette: "input#mdp" });
+    await expect.poll(() => bubble("vidola"), { timeout: 10_000 }).toMatchObject({ label: "input#mdp" });
     expect(JSON.stringify(await bubble("vidola"))).not.toContain("hunter2");
     expect(await add("vidola", "mot de passe")).toEqual({ ok: true });
     const files = projectFiles("vidola");
@@ -192,7 +192,7 @@ describe("design mode, site target, the view", () => {
     await siteMouse(m, "vidola", p, { button: 1 });
     await siteMouse(m, "vidola", p, { button: 2 });
     await siteMouse(m, "vidola", p);
-    await expect.poll(() => bubble("vidola"), { timeout: 10_000 }).toMatchObject({ etiquette: "p#nue" });
+    await expect.poll(() => bubble("vidola"), { timeout: 10_000 }).toMatchObject({ label: "p#nue" });
     const log = await pageLog(m, viewExpr("vidola"));
     expect(log).toMatchObject({ reactions: [], early: [], docEarly: [], hooked: [], fakeStop: 0 });
     const keys1 = await view<string[]>("vidola", "Object.keys(window)");
@@ -206,7 +206,7 @@ describe("design mode, site target, the view", () => {
 
   it("the capture shows the page only", async () => {
     await toSite(m, "vidola", "/design");
-    const rc = rectCapture(await cssRect("vidola", "#cible"), (await view<{ largeur: number; hauteur: number }>("vidola", "({ largeur: innerWidth, hauteur: innerHeight })"))!, 1);
+    const rc = rectCapture(await cssRect("vidola", "#cible"), (await view<{ width: number; height: number }>("vidola", "({ largeur: innerWidth, hauteur: innerHeight })"))!, 1);
     // A magenta chrome cover over #cible (clicks pass through it).
     await m.execute(
       `const win = ${siteExpr("vidola")}, b = ${viewExpr("vidola")}.getBoundingClientRect(), [rc] = arguments;
@@ -230,7 +230,7 @@ describe("design mode, site target, the view", () => {
       await expect.poll(() => hosts("vidola"), { timeout: 10_000 }).toBe(1);
       const before2 = new Set(pngs("vidola"));
       await siteMouse(m, "vidola", { x: pForm.x, y: (await geometry("vidola")).y + 3 });
-      await expect.poll(() => bubble("vidola"), { timeout: 10_000 }).toMatchObject({ etiquette: "form#inscription" });
+      await expect.poll(() => bubble("vidola"), { timeout: 10_000 }).toMatchObject({ label: "form#inscription" });
       expect(await add("vidola", "haut")).toEqual({ ok: true });
       const top = pngs("vidola").find((f) => !before2.has(f))!;
       const t = await readPng(m, top, [[1, 0], [50, 0], [100, 0]]);
@@ -246,13 +246,13 @@ describe("design mode, site target, the view", () => {
     const r = await cssRect("tuning", "#lien");
     const p = await viewPoint(m, "tuning", "#lien");
     const b = await aimAt("tuning", p);
-    expect(b).toMatchObject({ etiquette: "a#lien", avertissement: CAPTURE_WARNING_SITE, source: null, projet: "site-tuning" });
+    expect(b).toMatchObject({ label: "a#lien", warning: CAPTURE_WARNING_SITE, source: null, project: "site-tuning" });
     await sleep(300);
     expect(await view("tuning", "location.href")).toBe(start);
     expect(await view("tuning", "window.reactions")).toEqual([]);
     const g = await geometry("tuning");
     expect(g.y).toBe(36);
-    const expected = bubbleSlot(r, 1, g, [g.w, g.h], { hautMin: 36, hauteur: 190 });
+    const expected = bubbleSlot(r, 1, g, [g.w, g.h], { minHeight: 36, height: 190 });
     await expect.poll(() => overlayRect("tuning"), { timeout: 10_000 }).toEqual(expected);
     await expect
       .poll(() => overlayOf(m, "tuning", `return doc.querySelector('[data-testid="avertissement-bulle"]')?.textContent ?? null;`), { timeout: 10_000 })
@@ -260,7 +260,7 @@ describe("design mode, site target, the view", () => {
     // A page's data-source is never read in a site app.
     await toSite(m, "vidola", "/design");
     const ps = await viewPoint(m, "vidola", "p[data-source]");
-    expect(await aimAt("vidola", ps)).toMatchObject({ etiquette: "p", source: null });
+    expect(await aimAt("vidola", ps)).toMatchObject({ label: "p", source: null });
   });
 
   it("openCart of a site: the cart at y 48, 340 wide, 12 px from the right and the bottom", async () => {
@@ -276,17 +276,17 @@ describe("design mode, site target, the view", () => {
     await toSite(m, "tuning");
     const n = await cart("tuning");
     await aimAt("tuning", await viewPoint(m, "tuning", "#banniere"));
-    expect((await bubble("tuning"))?.etiquette).toBe("div#banniere.cookies");
+    expect((await bubble("tuning"))?.label).toBe("div#banniere.cookies");
     expect(await add("tuning", "Cacher la bannière")).toEqual({ ok: true });
     expect(await cart("tuning")).toBe(n + 1);
     await expect.poll(() => hosts("tuning"), { timeout: 10_000 }).toBe(1);
     await view("tuning", "(history.pushState({}, '', '/meme-document'), 1)");
     await sleep(500);
-    expect((await state("tuning")).actif).toBe(true);
+    expect((await state("tuning")).active).toBe(true);
     await expect.poll(() => hosts("tuning"), { timeout: 10_000 }).toBe(1);
     await view("tuning", "(location.href = '/autre', 1)");
     await expect.poll(() => view("tuning", "document.title"), { timeout: 10_000 }).toBe("Autre");
-    await expect.poll(async () => (await state("tuning")).actif, { timeout: 10_000 }).toBe(false);
+    await expect.poll(async () => (await state("tuning")).active, { timeout: 10_000 }).toBe(false);
     expect(await hosts("tuning")).toBe(0);
     expect(await cart("tuning")).toBe(n + 1);
   });
@@ -294,7 +294,7 @@ describe("design mode, site target, the view", () => {
   // design-sites.spec.ts:473
   it("/csp page (strict CSP and Trusted Types): the viewfinder arms, a click on #b gives button#b", async () => {
     await toSite(m, "tuning", "/csp");
-    expect(await aimAt("tuning", await viewPoint(m, "tuning", "#b"))).toMatchObject({ etiquette: "button#b" });
+    expect(await aimAt("tuning", await viewPoint(m, "tuning", "#b"))).toMatchObject({ label: "button#b" });
   });
 
   it("the site's stops: ⌂ (an app with a home), element fullscreen, the window closing: the mode stops, nothing left in the page, the cart stays", async () => {
@@ -306,7 +306,7 @@ describe("design mode, site target, the view", () => {
     expect(await add("avec-accueil", "lien")).toEqual({ ok: true });
     await expect.poll(() => hosts("avec-accueil"), { timeout: 10_000 }).toBe(1);
     await inStore(m, "store.sites.controller(arguments[0]).home(); return 1;", ["avec-accueil"]);
-    await expect.poll(async () => (await state("avec-accueil")).actif, { timeout: 10_000 }).toBe(false);
+    await expect.poll(async () => (await state("avec-accueil")).active, { timeout: 10_000 }).toBe(false);
     await expect.poll(() => hosts("avec-accueil"), { timeout: 10_000 }).toBe(0);
     expect(await cart("avec-accueil")).toBe(n + 1);
 
@@ -316,16 +316,16 @@ describe("design mode, site target, the view", () => {
     await expect.poll(() => hosts("tuning"), { timeout: 10_000 }).toBe(1);
     await view("tuning", "(void document.getElementById('films').requestFullscreen(), 1)");
     await waitFor(m, `return ${siteExpr("tuning")}.document.documentElement.hasAttribute("inDOMFullscreen");`, (v) => v === true);
-    await expect.poll(async () => (await state("tuning")).actif, { timeout: 10_000 }).toBe(false);
+    await expect.poll(async () => (await state("tuning")).active, { timeout: 10_000 }).toBe(false);
     await expect.poll(() => hosts("tuning"), { timeout: 10_000 }).toBe(0);
-    expect((await state("tuning")).indisponible).toBe(UNAVAILABLE_DESIGN_SITE);
+    expect((await state("tuning")).unavailable).toBe(UNAVAILABLE_DESIGN_SITE);
     await toggle("tuning");
     await sleep(300);
     expect(await hosts("tuning")).toBe(0);
-    expect(await notice("tuning")).toEqual({ genre: "info", texte: UNAVAILABLE_DESIGN_SITE });
+    expect(await notice("tuning")).toEqual({ kind: "info", text: UNAVAILABLE_DESIGN_SITE });
     await view("tuning", "(void document.exitFullscreen(), 1)");
     await waitFor(m, `return ${siteExpr("tuning")}.document.documentElement.hasAttribute("inDOMFullscreen");`, (v) => v === false);
-    await expect.poll(async () => (await state("tuning")).indisponible, { timeout: 10_000 }).toBeNull();
+    await expect.poll(async () => (await state("tuning")).unavailable, { timeout: 10_000 }).toBeNull();
 
     // The window closing during the bubble: the mode and its overlay context are forgotten, the cart stays.
     const k = await cart("tuning");
@@ -336,8 +336,8 @@ describe("design mode, site target, the view", () => {
     await siteMouse(m, "tuning", link);
     await expect.poll(() => overlayRect("tuning"), { timeout: 10_000 }).not.toBeNull();
     await inStore(m, "await store.sites.close(arguments[0]); return 1;", ["tuning"]);
-    await expect.poll(async () => (await state("tuning")).actif, { timeout: 10_000 }).toBe(false);
-    expect(await state("tuning")).toMatchObject({ projet: null, indisponible: UNAVAILABLE_DESIGN_SITE });
+    await expect.poll(async () => (await state("tuning")).active, { timeout: 10_000 }).toBe(false);
+    expect(await state("tuning")).toMatchObject({ project: null, unavailable: UNAVAILABLE_DESIGN_SITE });
     expect(await inStore(m, "return store.design.overlayContext(arguments[0]);", [T("tuning")])).toBeNull();
     expect(await cart("tuning")).toBe(k + 1);
   });
@@ -346,21 +346,21 @@ describe("design mode, site target, the view", () => {
     await toSite(m, "tuning");
     await view("tuning", `(location.href = ${JSON.stringify(url("compte-tuning.localhost", "/connexion"))}, 1)`);
     await expect.poll(() => view("tuning", "document.title"), { timeout: 10_000 }).toBe("Connexion");
-    await expect.poll(async () => (await state("tuning")).indisponible, { timeout: 10_000 }).toBe(UNAVAILABLE_DESIGN_SITE);
+    await expect.poll(async () => (await state("tuning")).unavailable, { timeout: 10_000 }).toBe(UNAVAILABLE_DESIGN_SITE);
     const t0 = Date.now();
     await toggle("tuning");
-    expect(await notice("tuning")).toEqual({ genre: "info", texte: UNAVAILABLE_DESIGN_SITE });
+    expect(await notice("tuning")).toEqual({ kind: "info", text: UNAVAILABLE_DESIGN_SITE });
     await sleep(300);
     expect(await hosts("tuning")).toBe(0);
-    expect((await state("tuning")).actif).toBe(false);
+    expect((await state("tuning")).active).toBe(false);
     await expect.poll(() => notice("tuning"), { timeout: 10_000 }).toBeNull();
     expect(Date.now() - t0).toBeGreaterThanOrEqual(4500);
     // A blocked link's mention carries « Ouvrir dans un onglet »: the info never replaces it.
     await inStore(m, "store.sites.controller(arguments[0]).blocked(arguments[1]); return 1;", ["tuning", "http://ailleurs.localhost/"]);
-    expect((await notice("tuning"))?.genre).toBe("lien-bloque");
+    expect((await notice("tuning"))?.kind).toBe("lien-bloque");
     await toggle("tuning");
     await sleep(300);
-    expect((await notice("tuning"))?.genre).toBe("lien-bloque");
+    expect((await notice("tuning"))?.kind).toBe("lien-bloque");
     expect(await hosts("tuning")).toBe(0);
   });
 
@@ -371,15 +371,15 @@ describe("design mode, site target, the view", () => {
     await sleep(300);
     try {
       const r = await cssRect("vidola", "#cible");
-      const viewOf = (await view<{ largeur: number; hauteur: number }>("vidola", "({ largeur: innerWidth, hauteur: innerHeight })"))!;
+      const viewOf = (await view<{ width: number; height: number }>("vidola", "({ largeur: innerWidth, hauteur: innerHeight })"))!;
       const p = await viewPoint(m, "vidola", "#cible");
       const g = await geometry("vidola");
       expect(g.z).toBe(1.5);
       const before = new Set(pngs("vidola"));
       await aimAt("vidola", p);
-      const expected = bubbleSlot(r, 1.5, g, [g.w, g.h], { hautMin: 36, hauteur: 190 });
+      const expected = bubbleSlot(r, 1.5, g, [g.w, g.h], { minHeight: 36, height: 190 });
       await expect.poll(() => overlayRect("vidola"), { timeout: 10_000 }).toEqual(expected);
-      expect(expected.y).toBeGreaterThan(g.y + (r.y + r.hauteur) * 1.5);
+      expect(expected.y).toBeGreaterThan(g.y + (r.y + r.height) * 1.5);
       expect(await add("vidola", "zoom")).toEqual({ ok: true });
       const file = pngs("vidola").find((f) => !before.has(f))!;
       const dpr = await m.execute<number>(`return ${siteExpr("vidola")}.devicePixelRatio;`);

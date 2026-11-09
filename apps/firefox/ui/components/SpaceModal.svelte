@@ -13,33 +13,33 @@
    * Creation or settings of a space: the `spaceSettings` draft, mounted as long as it exists. `ongletId`: the page
    * shown at opening, captured for the background (null: none, or a panel hides it).
    */
-  let { fenetreId: windowId, ongletId: tabId }: { fenetreId: WindowId; ongletId: TabId | null } = $props();
+  let { windowId: windowId, tabId: tabId }: { windowId: WindowId; tabId: TabId | null } = $props();
   // The draft is shared state: the fields modify it in place.
-  const draft = untrack(() => spaceSettings.brouillon)!;
+  const draft = untrack(() => spaceSettings.draft)!;
 
   let card: HTMLElement;
   let nameField: HTMLInputElement;
   let ready = $state(false);
 
-  const spaces = $derived(appState.valeur?.espaces ?? []);
-  const options = $derived(profileOptions(spaces, appState.valeur?.profils ?? [], draft.id));
+  const spaces = $derived(appState.value?.spaces ?? []);
+  const options = $derived(profileOptions(spaces, appState.value?.profiles ?? [], draft.id));
   const fresh = $derived(draft.id === null);
-  const valid = $derived(draft.nom.trim() !== "" && draft.profil !== PROFILE_TO_CHOOSE);
-  const losesConnections = $derived(choiceLosesConnections(spaces, draft.id, draft.profil));
+  const valid = $derived(draft.name.trim() !== "" && draft.profile !== PROFILE_TO_CHOOSE);
+  const losesConnections = $derived(choiceLosesConnections(spaces, draft.id, draft.profile));
 
   // Extensions: the rows seen from the space's saved profile (an existing space only).
   let lignes = $state<SpaceExtensionLine[] | null>(null);
   let extensionError = $state<string | null>(null);
   const saved = $derived(spaces.find((e) => e.id === draft.id));
-  const profileChanged = $derived(!!saved && draft.profil !== saved.profil);
-  const linesKey = $derived(saved ? `${saved.id}|${saved.profil}|${saved.prive}|${spaces.map((e) => `${e.nom}:${e.profil}`).join(",")}` : "");
+  const profileChanged = $derived(!!saved && draft.profile !== saved.profile);
+  const linesKey = $derived(saved ? `${saved.id}|${saved.profile}|${saved.private}|${spaces.map((e) => `${e.name}:${e.profile}`).join(",")}` : "");
   const warned = $derived(
     lignes && !fresh
-      ? warnings({ id: draft.id, prive: draft.prive, profil: draft.profil }, spaces, lignes)
-      : { privePartage: [], agentDesactivees: [] },
+      ? warnings({ id: draft.id, private: draft.private, profile: draft.profile }, spaces, lignes)
+      : { sharedPrivate: [], agentDisabled: [] },
   );
   async function loadLines() {
-    if (draft.id !== null) lignes = await api.extensions.pourEspace(draft.id);
+    if (draft.id !== null) lignes = await api.extensions.forSpace(draft.id);
   }
   $effect(() => {
     void linesKey;
@@ -48,19 +48,19 @@
   async function toggle(l: SpaceExtensionLine, field: HTMLInputElement) {
     if (draft.id === null) return;
     extensionError = null;
-    const r = await api.extensions.basculer(l.cle, draft.id, field.checked);
-    if (!r.ok) extensionError = r.erreur;
+    const r = await api.extensions.toggle(l.key, draft.id, field.checked);
+    if (!r.ok) extensionError = r.error;
     await loadLines();
     // The switch takes back what the registry says (card refused, error).
-    const view = lignes?.find((x) => x.cle === l.cle);
+    const view = lignes?.find((x) => x.key === l.key);
     if (view && field.isConnected) field.checked = view.active;
   }
 
   // The choice no longer designates any profile (the state changed meanwhile): a new space goes back to « à choisir »,
   // an existing space to the first one offered.
   $effect(() => {
-    if (draft.profil === PROFILE_TO_CHOOSE || options.some((o) => o.valeur === draft.profil)) return;
-    draft.profil = fresh ? PROFILE_TO_CHOOSE : options[0]!.valeur;
+    if (draft.profile === PROFILE_TO_CHOOSE || options.some((o) => o.value === draft.profile)) return;
+    draft.profile = fresh ? PROFILE_TO_CHOOSE : options[0]!.value;
   });
   // The space being set was deleted (from another window): nothing left to set.
   $effect(() => {
@@ -70,7 +70,7 @@
   onMount(() => {
     const before = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     nameField.focus();
-    const endChange = api.extensions.surChange(() => void loadLines());
+    const endChange = api.extensions.onChange(() => void loadLines());
     return () => {
       endChange();
       // Focus goes back where it was, if it is still in the interface, when the rest is no longer inert.
@@ -81,17 +81,17 @@
   });
 
   function close() {
-    spaceSettings.brouillon = null;
+    spaceSettings.draft = null;
   }
 
   function validate(e?: SubmitEvent) {
     e?.preventDefault();
     if (!valid) return;
-    const name = draft.nom.trim();
-    const icon = draft.icone.trim() || "📁";
-    const { id, prive: isPrivate, profil: profile } = draft;
-    if (id === null) api.agir({ type: "creerEspace", nom: name, icone: icon, prive: isPrivate, profil: profile, fenetreId: windowId });
-    else api.agir({ type: "reglerEspace", id, nom: name, icone: icon, prive: isPrivate, profil: profile });
+    const name = draft.name.trim();
+    const icon = draft.icon.trim() || "📁";
+    const { id, private: isPrivate, profile: profile } = draft;
+    if (id === null) api.dispatch({ type: "creerEspace", name: name, icon: icon, private: isPrivate, profile: profile, windowId: windowId });
+    else api.dispatch({ type: "reglerEspace", id, name: name, icon: icon, private: isPrivate, profile: profile });
     close();
   }
 
@@ -102,7 +102,7 @@
   function clavier(e: KeyboardEvent) {
     // The command bar opened on top keeps the keyboard: the hidden modal reacts to nothing, even if focus has left the
     // bar's field (neither Enter, nor Escape before the ⌃Tab panel takes over, nor Tab).
-    if (command.ouverte || e.isComposing) return;
+    if (command.open || e.isComposing) return;
     if (e.key === "Escape") {
       e.preventDefault();
       close();
@@ -128,25 +128,25 @@
 <svelte:window onkeydown={clavier} />
 
 <!-- Under the command bar, nothing in the modal can take focus (native Tab from the page body). -->
-<div class="modale" class:prete={ready} data-testid="modale-espace" inert={!!command.ouverte}>
-  <FrozenBackground ongletId={tabId} surPret={() => (ready = true)} />
+<div class="modale" class:prete={ready} data-testid="modale-espace" inert={!!command.open}>
+  <FrozenBackground tabId={tabId} onReady={() => (ready = true)} />
   <div class="carte" bind:this={card} role="dialog" aria-modal="true" aria-labelledby="titre-espace">
     <form onsubmit={validate}>
       <h2 id="titre-espace">{fresh ? "Nouvel espace" : "Réglages de l'espace"}</h2>
       <div class="champ">
-        <input class="icone" bind:value={draft.icone} aria-label="Icône" maxlength="4" />
-        <input bind:this={nameField} bind:value={draft.nom} aria-label="Nom de l'espace" placeholder="Nom" />
+        <input class="icone" bind:value={draft.icon} aria-label="Icône" maxlength="4" />
+        <input bind:this={nameField} bind:value={draft.name} aria-label="Nom de l'espace" placeholder="Nom" />
       </div>
       <div class="bloc">
-        <label class="case"><input type="checkbox" bind:checked={draft.prive} aria-describedby="note-prive" /> <b>Espace privé</b></label>
+        <label class="case"><input type="checkbox" bind:checked={draft.private} aria-describedby="note-prive" /> <b>Espace privé</b></label>
         <p class="note" id="note-prive">L'agent ne voit pas ces onglets, ne lit rien, n'a pas les outils de développement, et rien n'est retenu dans sa mémoire.</p>
       </div>
       <div class="bloc">
         <label class="libelle" for="profil-espace">Profil de connexion</label>
-        <select id="profil-espace" bind:value={draft.profil} aria-describedby="note-profil">
+        <select id="profil-espace" bind:value={draft.profile} aria-describedby="note-profil">
           {#if fresh}<option value={PROFILE_TO_CHOOSE} disabled>Choisir un profil…</option>{/if}
-          {#each options as o (o.valeur)}
-            <option value={o.valeur}>{o.libelle}</option>
+          {#each options as o (o.value)}
+            <option value={o.value}>{o.label}</option>
           {/each}
         </select>
         <p class="note" id="note-profil">
@@ -162,26 +162,26 @@
           {:else if lignes && lignes.length === 0}
             <p class="note">Aucune extension installée.</p>
           {:else if lignes}
-            {#each lignes as l (l.cle)}
-              <div class="extension" data-testid="extension-ligne" data-cle={l.cle}>
+            {#each lignes as l (l.key)}
+              <div class="extension" data-testid="extension-ligne" data-cle={l.key}>
                 <label class="case">
-                  <input type="checkbox" role="switch" checked={l.active} disabled={l.grisee !== null} onchange={(e) => void toggle(l, e.currentTarget)} />
-                  <b>{l.nom}</b>
+                  <input type="checkbox" role="switch" checked={l.active} disabled={l.greyedOut !== null} onchange={(e) => void toggle(l, e.currentTarget)} />
+                  <b>{l.name}</b>
                   <span class="source">{l.source === "agent" ? "écrite par l'agent" : "Chrome Web Store"}</span>
                 </label>
-                {#if l.active && l.aussiDans.length > 0}<p class="note">Active aussi dans « {l.aussiDans.join(", ")} » (même profil)</p>{/if}
-                {#if l.grisee}<p class="note">{l.grisee}</p>{/if}
+                {#if l.active && l.alsoIn.length > 0}<p class="note">Active aussi dans « {l.alsoIn.join(", ")} » (même profil)</p>{/if}
+                {#if l.greyedOut}<p class="note">{l.greyedOut}</p>{/if}
               </div>
             {/each}
           {/if}
           {#if extensionError}<p class="note alerte" role="alert" data-testid="erreur-extension">{extensionError}</p>{/if}
-          {#if draft.prive && warned.privePartage.length > 0}
+          {#if draft.private && warned.sharedPrivate.length > 0}
             <p class="note" data-testid="avertissement-extensions-prive">
-              Cet espace privé partage son profil avec « {warned.privePartage.join(", ")} » : les extensions actives dans ce profil tournent aussi ici. Pour qu'elles n'y tournent jamais, donne-lui son propre profil.
+              Cet espace privé partage son profil avec « {warned.sharedPrivate.join(", ")} » : les extensions actives dans ce profil tournent aussi ici. Pour qu'elles n'y tournent jamais, donne-lui son propre profil.
             </p>
           {/if}
-          {#if warned.agentDesactivees.length > 0}
-            <p class="note alerte" data-testid="extensions-desactivees">En enregistrant, ces extensions de l'agent seront désactivées pour ce profil : {warned.agentDesactivees.join(", ")}. Les onglets ouverts où elles tournent seront rechargés.</p>
+          {#if warned.agentDisabled.length > 0}
+            <p class="note alerte" data-testid="extensions-desactivees">En enregistrant, ces extensions de l'agent seront désactivées pour ce profil : {warned.agentDisabled.join(", ")}. Les onglets ouverts où elles tournent seront rechargés.</p>
           {/if}
         </div>
       {/if}

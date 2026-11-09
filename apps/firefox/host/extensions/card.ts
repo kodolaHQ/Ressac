@@ -5,25 +5,25 @@ import type { Space } from "../../shared/model.ts";
 /** The grant card of an agent extension, to activate it in `espace` (pure). */
 export function cardOf(
   a: ManifestAnalysis,
-  o: { cle: string; espace: Space; espaces: Space[]; maj?: { de: string }; remplaceAussi?: string[] },
+  o: { key: string; space: Space; spaces: Space[]; update?: { from: string }; alsoReplaces?: string[] },
 ): ExtensionCard {
-  const p = a.portee;
+  const p = a.scope;
   return {
-    cle: o.cle,
-    nom: a.nom,
+    key: o.key,
+    name: a.name,
     source: "agent",
     version: a.version,
-    droits: scopeLabels(p, "agent"),
-    sites: [...p.hotes],
-    tousLesSites: p.tousLesSites,
-    reseau: [...p.reseau],
-    renforce: grantStrengthened(p, "agent"),
-    espace: o.espace.nom,
-    espaceId: o.espace.id,
-    autresEspaces: o.espaces.filter((e) => e.profil === o.espace.profil && e.id !== o.espace.id).map((e) => e.nom),
-    remplaceAussi: [...(o.remplaceAussi ?? [])],
-    maj: o.maj ? { de: o.maj.de } : null,
-    empreinte: scopeHash(p),
+    rights: scopeLabels(p, "agent"),
+    sites: [...p.hosts],
+    allSites: p.allSites,
+    network: [...p.network],
+    hardened: grantStrengthened(p, "agent"),
+    space: o.space.name,
+    spaceId: o.space.id,
+    otherSpaces: o.spaces.filter((e) => e.profile === o.space.profile && e.id !== o.space.id).map((e) => e.name),
+    alsoReplaces: [...(o.alsoReplaces ?? [])],
+    update: o.update ? { from: o.update.from } : null,
+    hash: scopeHash(p),
   };
 }
 

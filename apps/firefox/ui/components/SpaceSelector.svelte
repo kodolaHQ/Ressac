@@ -6,30 +6,30 @@
   import { losesConnections, PROFILE_TO_CHOOSE } from "./spaceProfiles";
   import { spaceSettings } from "./spaceSettings.svelte";
 
-  let { fenetre: win }: { fenetre: WindowState } = $props();
+  let { window: win }: { window: WindowState } = $props();
   /** Space to delete awaiting confirmation (it contains tabs, or it takes sign-ins with it). */
-  let toDelete = $state<{ espace: Space; onglets: number; connexions: boolean } | null>(null);
+  let toDelete = $state<{ space: Space; tabs: number; logins: boolean } | null>(null);
 
   function remove(space: Space) {
-    const n = Object.values(appState.valeur?.onglets ?? {}).filter((o) => o.espaceId === space.id).length;
-    const connexions = losesConnections(appState.valeur?.espaces ?? [], space);
-    if (n > 0 || connexions) toDelete = { espace: space, onglets: n, connexions };
-    else api.agir({ type: "supprimerEspace", id: space.id });
+    const n = Object.values(appState.value?.tabs ?? {}).filter((o) => o.spaceId === space.id).length;
+    const logins = losesConnections(appState.value?.spaces ?? [], space);
+    if (n > 0 || logins) toDelete = { space: space, tabs: n, logins };
+    else api.dispatch({ type: "supprimerEspace", id: space.id });
   }
 
   // A setting keeps the space's current profile (alone or shared); a new space has none: the user chooses.
   const set = (space: Space) =>
-    (spaceSettings.brouillon = { id: space.id, nom: space.nom, icone: space.icone, prive: space.prive, profil: space.profil });
+    (spaceSettings.draft = { id: space.id, name: space.name, icon: space.icon, private: space.private, profile: space.profile });
   function create() {
-    spaceSettings.brouillon = { id: null, nom: "", icone: "📁", prive: false, profil: PROFILE_TO_CHOOSE };
+    spaceSettings.draft = { id: null, name: "", icon: "📁", private: false, profile: PROFILE_TO_CHOOSE };
   }
 </script>
 
 {#if toDelete}
-  {@const { espace: space, onglets: tabs, connexions } = toDelete}
+  {@const { space: space, tabs: tabs, logins: connexions } = toDelete}
   <div class="confirmation" role="alertdialog" aria-label="Supprimer l'espace">
     <p>
-      {#if tabs > 0}Supprimer l'espace « {space.nom} » et ses {tabs} onglet{tabs > 1 ? "s" : ""} ?{:else}Supprimer l'espace « {space.nom} » ?{/if}
+      {#if tabs > 0}Supprimer l'espace « {space.name} » et ses {tabs} onglet{tabs > 1 ? "s" : ""} ?{:else}Supprimer l'espace « {space.name} » ?{/if}
       {#if connexions}Les connexions de cet espace seront perdues.{/if}
     </p>
     <div class="boutons">
@@ -37,7 +37,7 @@
       <button
         class="danger"
         onclick={() => {
-          api.agir({ type: "supprimerEspace", id: space.id });
+          api.dispatch({ type: "supprimerEspace", id: space.id });
           toDelete = null;
         }}>Supprimer</button
       >
@@ -45,22 +45,22 @@
   </div>
 {/if}
 <nav class="espaces">
-  {#each appState.valeur?.espaces ?? [] as space (space.id)}
+  {#each appState.value?.spaces ?? [] as space (space.id)}
     <button
       data-testid="espace-{space.id}"
-      aria-current={space.id === win.espaceActif ? "true" : undefined}
-      title={space.prive ? `${space.nom} (privé)` : space.nom}
-      data-prive={space.prive || undefined}
-      onclick={() => api.agir({ type: "activerEspace", fenetreId: win.id, id: space.id })}
+      aria-current={space.id === win.activeSpace ? "true" : undefined}
+      title={space.private ? `${space.name} (privé)` : space.name}
+      data-prive={space.private || undefined}
+      onclick={() => api.dispatch({ type: "activerEspace", windowId: win.id, id: space.id })}
       oncontextmenu={(e) =>
         openMenu(e, [
-          { libelle: "Réglages", agir: () => set(space) },
-          ...((appState.valeur?.espaces.length ?? 0) > 1 ? [{ libelle: "Supprimer", agir: () => remove(space) }] : []),
+          { label: "Réglages", dispatch: () => set(space) },
+          ...((appState.value?.spaces.length ?? 0) > 1 ? [{ label: "Supprimer", dispatch: () => remove(space) }] : []),
         ])}
-      >{space.icone}{#if space.prive}<span class="cadenas" aria-hidden="true">🔒</span>{/if}</button
+      >{space.icon}{#if space.private}<span class="cadenas" aria-hidden="true">🔒</span>{/if}</button
     >
   {/each}
-  <button data-testid="nouvel-espace" title="Nouvel espace" onclick={create}><Icon nom="plus" /></button>
+  <button data-testid="nouvel-espace" title="Nouvel espace" onclick={create}><Icon name="plus" /></button>
 </nav>
 
 <style>

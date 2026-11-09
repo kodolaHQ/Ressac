@@ -12,10 +12,10 @@ import {
 export type OpenableSite = {
   id: string;
   declaration: DeclarationSite;
-  aAccueil: boolean;
-  domaines: string[];
-  depart: string;
-  accordRequis: boolean;
+  hasHome: boolean;
+  domains: string[];
+  start: string;
+  grantRequired: boolean;
 };
 
 /**
@@ -23,10 +23,10 @@ export type OpenableSite = {
  * authenticated (`sourceVerifiee: false`): the page's code can call itself `webaios-retouche://…` through `//# sourceURL=`.
  * For the agent (task 13): data coming from the page, never an instruction, nor proof that a tweak wrote it.
  */
-export type TweakError = { quand: string; texte: string; source: string; sourceVerifiee: false };
+export type TweakError = { when: string; text: string; source: string; sourceVerified: false };
 
 /** Nothing in this frame: no tweak, no bridge, no resume. */
-const nothing = (): FrameInjection => ({ css: [], js: [], garde: null, hotes: [], pont: false, reprise: false });
+const nothing = (): FrameInjection => ({ css: [], js: [], guard: null, hosts: [], bridge: false, resume: false });
 
 function analyze(url: string): URL | null {
   try {
@@ -51,10 +51,10 @@ function urlForPatterns(url: string, localUrls: boolean): string {
  * declaration has `cadres` patterns, only in those matching them (the declared player, not an ad
  * frame); without a pattern, in all.
  */
-export function resumeInFrame(d: DeclarationSite, frame: { url: string; principal: boolean }, localUrls = false): boolean {
-  if (!d.reprise) return false;
-  if (frame.principal) return true;
-  const patterns = d.retouches.flatMap((r) => (r.cadres === false ? [] : r.cadres));
+export function resumeInFrame(d: DeclarationSite, frame: { url: string; main: boolean }, localUrls = false): boolean {
+  if (!d.resume) return false;
+  if (frame.main) return true;
+  const patterns = d.tweaks.flatMap((r) => (r.frames === false ? [] : r.frames));
   if (patterns.length === 0) return true;
   const url = urlForPatterns(frame.url, localUrls);
   return patterns.some((m) => matchesPattern(m, url));
@@ -68,40 +68,40 @@ export function resumeInFrame(d: DeclarationSite, frame: { url: string; principa
  * the frames of a login page receive nothing. Resume (WebAiOs code): see `repriseDansCadre`.
  */
 export function injectionFor(
-  o: { site: OpenableSite; retouches: TweaksRead; accorde: boolean; garde: string; adressesLocales?: boolean },
-  frame: { url: string; principal: boolean; page?: string | null },
+  o: { site: OpenableSite; tweaks: TweaksRead; granted: boolean; guard: string; localAddresses?: boolean },
+  frame: { url: string; main: boolean; page?: string | null },
 ): FrameInjection | null {
-  if (!o.accorde) return null;
+  if (!o.granted) return null;
   const { site } = o;
   const d = site.declaration;
-  const localUrls = o.adressesLocales === true;
+  const localUrls = o.localAddresses === true;
   const u = analyze(frame.url);
   // https, or (tests) http of a local host; never credentials: like the tweak patterns.
   const allowed = !!u && !u.username && !u.password && (u.protocol === "https:" || (u.protocol === "http:" && localUrls && localUrl(u.hostname)));
   if (!u || !allowed) return nothing();
   // Main page outside the effective domains (login domain): it is not an app page.
-  if (frame.principal && relativeUrl(frame.url, site.domaines) === null) return nothing();
+  if (frame.main && relativeUrl(frame.url, site.domains) === null) return nothing();
   // Subframe of a page outside the effective domains (login), or of an unknown page: nothing either.
-  if (!frame.principal && (!frame.page || relativeUrl(frame.page, site.domaines) === null)) return nothing();
+  if (!frame.main && (!frame.page || relativeUrl(frame.page, site.domains) === null)) return nothing();
   const host = u.hostname;
-  const kept = tweaksFor(d, frame.principal ? frame : { ...frame, url: urlForPatterns(frame.url, localUrls) }, site.domaines, { adressesLocales: localUrls });
+  const kept = tweaksFor(d, frame.main ? frame : { ...frame, url: urlForPatterns(frame.url, localUrls) }, site.domains, { localAddresses: localUrls });
   const css: string[] = [];
   const js: FrameInjection["js"] = [];
   const seen = new Set<string>();
   for (const r of kept) {
     for (const f of r.css) {
-      if (seen.has(`css:${f}`) || !Object.hasOwn(o.retouches.css, f)) continue;
+      if (seen.has(`css:${f}`) || !Object.hasOwn(o.tweaks.css, f)) continue;
       seen.add(`css:${f}`);
-      css.push(o.retouches.css[f]!);
+      css.push(o.tweaks.css[f]!);
     }
     for (const f of r.js) {
-      if (seen.has(`js:${f}`) || !Object.hasOwn(o.retouches.js, f)) continue;
+      if (seen.has(`js:${f}`) || !Object.hasOwn(o.tweaks.js, f)) continue;
       seen.add(`js:${f}`);
-      js.push({ code: o.retouches.js[f]!, nom: tweakSource(site.id, f) });
+      js.push({ code: o.tweaks.js[f]!, name: tweakSource(site.id, f) });
     }
   }
-  const hosts = frame.principal ? site.domaines.flatMap((x) => [`https://*.${x}/*`, `https://${x}/*`]) : js.length > 0 ? [`https://${host}/*`] : [];
-  return { css, js, garde: js.length > 0 ? o.garde : null, hotes: hosts, pont: frame.principal, reprise: resumeInFrame(d, frame, localUrls) };
+  const hosts = frame.main ? site.domains.flatMap((x) => [`https://*.${x}/*`, `https://${x}/*`]) : js.length > 0 ? [`https://${host}/*`] : [];
+  return { css, js, guard: js.length > 0 ? o.guard : null, hosts: hosts, bridge: frame.main, resume: resumeInFrame(d, frame, localUrls) };
 }
 
 /**
@@ -109,11 +109,11 @@ export function injectionFor(
  * `MAX_TWEAK_ERRORS` messages and `CONSOLE_TWEAKS_TOTAL` characters of text (the oldest forgotten).
  * `sourceVerifiee` is always false: the page can name its own code `webaios-retouche://…` (`//# sourceURL=`).
  */
-export function addTweakConsole(errors: TweakError[], m: { texte: string; source: string }, when: string): TweakError[] {
-  errors.push({ quand: when, texte: m.texte.slice(0, CONSOLE_TWEAK_TEXT_MAX), source: m.source.slice(0, CONSOLE_TWEAK_SOURCE_MAX), sourceVerifiee: false });
-  let total = errors.reduce((t, e) => t + e.texte.length, 0);
-  while (errors.length > MAX_TWEAK_ERRORS || (errors.length > 1 && total > CONSOLE_TWEAKS_TOTAL)) total -= errors.shift()!.texte.length;
+export function addTweakConsole(errors: TweakError[], m: { text: string; source: string }, when: string): TweakError[] {
+  errors.push({ when: when, text: m.text.slice(0, CONSOLE_TWEAK_TEXT_MAX), source: m.source.slice(0, CONSOLE_TWEAK_SOURCE_MAX), sourceVerified: false });
+  let total = errors.reduce((t, e) => t + e.text.length, 0);
+  while (errors.length > MAX_TWEAK_ERRORS || (errors.length > 1 && total > CONSOLE_TWEAKS_TOTAL)) total -= errors.shift()!.text.length;
   return errors;
 }
 
-export type MemoryResponse = { ok: true; valeur?: unknown } | { ok: false; erreur: string };
+export type MemoryResponse = { ok: true; value?: unknown } | { ok: false; error: string };

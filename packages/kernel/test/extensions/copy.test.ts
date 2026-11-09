@@ -14,9 +14,9 @@ import { tempFolder } from "../helpers/temp.js";
 
 // Hooks to simulate a folder modified during the read, or a failing rename.
 const brackets = vi.hoisted(() => ({
-  apresLstat: null as null | ((p: string) => Promise<void>),
-  apresReaddir: null as null | ((p: string) => Promise<void>),
-  avantRename: null as null | ((from: string, to: string) => void),
+  afterLstat: null as null | ((p: string) => Promise<void>),
+  afterReaddir: null as null | ((p: string) => Promise<void>),
+  beforeRename: null as null | ((from: string, to: string) => void),
 }));
 vi.mock("node:fs/promises", async (importOriginal) => {
   const orig = await importOriginal<typeof import("node:fs/promises")>();
@@ -24,24 +24,24 @@ vi.mock("node:fs/promises", async (importOriginal) => {
     ...orig,
     lstat: (async (p: string, ...r: unknown[]) => {
       const v = await (orig.lstat as (...a: unknown[]) => Promise<unknown>)(p, ...r);
-      if (brackets.apresLstat) await brackets.apresLstat(p);
+      if (brackets.afterLstat) await brackets.afterLstat(p);
       return v;
     }) as typeof orig.lstat,
     readdir: (async (p: string, ...r: unknown[]) => {
       const v = await (orig.readdir as (...a: unknown[]) => Promise<unknown>)(p, ...r);
-      if (brackets.apresReaddir) await brackets.apresReaddir(p);
+      if (brackets.afterReaddir) await brackets.afterReaddir(p);
       return v;
     }) as typeof orig.readdir,
     rename: (async (from: string, to: string) => {
-      brackets.avantRename?.(from, to);
+      brackets.beforeRename?.(from, to);
       return orig.rename(from, to);
     }) as typeof orig.rename,
   };
 });
 afterEach(() => {
-  brackets.apresLstat = null;
-  brackets.apresReaddir = null;
-  brackets.avantRename = null;
+  brackets.afterLstat = null;
+  brackets.afterReaddir = null;
+  brackets.beforeRename = null;
 });
 
 const GUARDS = ["webaios-correctifs-page.js", "webaios-garde-page.js", "webaios-garde-fond.js"];
@@ -81,8 +81,8 @@ describe("prepareCopy", () => {
       }),
     });
     const c = await target();
-    const { analyse: analysis } = await prepareCopy({ source: src, cible: c, dossierGardes: DEFAULT_GUARDS });
-    expect(analysis.refus).toEqual([]);
+    const { analysis: analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
+    expect(analysis.denial).toEqual([]);
     const m = await readJson(join(c, "manifest.json"));
     expect(m.content_security_policy).toEqual({ extension_pages: cspAgent([]) });
     expect(cspAgent([])).toBe(
@@ -91,10 +91,10 @@ describe("prepareCopy", () => {
   });
 
   it("with webaios.json { reseau: [\"api.exemple.com\"] }: connect-src contains https:// and wss://api.exemple.com, webaios.json absent from the copy", async () => {
-    const src = await source({ "manifest.json": baseManifest(), "webaios.json": { reseau: ["api.exemple.com"] } });
+    const src = await source({ "manifest.json": baseManifest(), "webaios.json": { network: ["api.exemple.com"] } });
     const c = await target();
-    const { analyse: analysis } = await prepareCopy({ source: src, cible: c, dossierGardes: DEFAULT_GUARDS });
-    expect(analysis.portee.reseau).toEqual(["api.exemple.com"]);
+    const { analysis: analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
+    expect(analysis.scope.network).toEqual(["api.exemple.com"]);
     const m = await readJson(join(c, "manifest.json"));
     expect(m.content_security_policy.extension_pages).toContain("connect-src 'self' https://api.exemple.com wss://api.exemple.com;");
     expect(existsSync(join(c, "webaios.json"))).toBe(false);
@@ -103,7 +103,7 @@ describe("prepareCopy", () => {
   it("key and update_url removed", async () => {
     const src = await source({ "manifest.json": baseManifest({ key: "MIIB...", update_url: "https://x.example/u" }) });
     const c = await target();
-    await prepareCopy({ source: src, cible: c, dossierGardes: DEFAULT_GUARDS });
+    await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
     const m = await readJson(join(c, "manifest.json"));
     expect("key" in m).toBe(false);
     expect("update_url" in m).toBe(false);
@@ -122,7 +122,7 @@ describe("prepareCopy", () => {
           { matches: ["https://b.example/*"], css: ["s.css"] },
         ],
       }),
-      "webaios.json": { reseau: ["api.exemple.com"] },
+      "webaios.json": { network: ["api.exemple.com"] },
       "a.js": "function double(x) { return 2 * x; }",
       "b.js": "globalThis.resultat = double(21);",
       "c/d.js": "3",
@@ -131,8 +131,8 @@ describe("prepareCopy", () => {
       "lisez-moi.txt": "x",
     });
     const c = await target();
-    const { analyse: analysis } = await prepareCopy({ source: src, cible: c, dossierGardes: DEFAULT_GUARDS });
-    expect(analysis.refus).toEqual([]);
+    const { analysis: analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
+    expect(analysis.denial).toEqual([]);
     const m = await readJson(join(c, "manifest.json"));
     // Table: each .js and .css file of the agent, sorted; one marker each.
     const table = [["a.js", "js"], ["b.js", "js"], ["c/d.js", "js"], ["evade.js", "js"], ["s.css", "css"]];
@@ -158,7 +158,7 @@ describe("prepareCopy", () => {
     expect(background.startsWith(`const __webaiosFichiers = ${JSON.stringify(table)};\n`)).toBe(true);
     expect(background.endsWith(await readFile(join(DEFAULT_GUARDS, "webaios-garde-fond.js"), "utf8"))).toBe(true);
     expect(await readFile(join(c, "webaios-portee.js"), "utf8")).toBe(
-      `globalThis.__webaiosPortee(${JSON.stringify({ reseau: ["api.exemple.com"], hotes: analysis.portee.hotes })});\n`,
+      `globalThis.__webaiosPortee(${JSON.stringify({ network: ["api.exemple.com"], hosts: analysis.scope.hosts })});\n`,
     );
     for (const g of GUARDS) expect(existsSync(join(c, g)), g).toBe(true);
   });
@@ -171,7 +171,7 @@ describe("prepareCopy", () => {
       "s.css": "p{}",
     });
     const c = await target();
-    await prepareCopy({ source: src, cible: c, dossierGardes: DEFAULT_GUARDS });
+    await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
     const m = await readJson(join(c, "manifest.json"));
     const launch = (reply: (msg: unknown, callback: (r: unknown) => void, runtime: Record<string, unknown>) => void) => {
       const timers: (() => void)[] = [];
@@ -190,16 +190,16 @@ describe("prepareCopy", () => {
       expect(ctx.vu).toBeUndefined();
       // The timers one by one: the request leaves after the markers, the retries after.
       for (let i = 0; i < 100 && timers.length > 0; i++) timers.shift()!();
-      return { ctx, erreurs: errors };
+      return { ctx, errors: errors };
     };
     const messages: unknown[] = [];
     const yes = launch((msg, callback) => {
       messages.push(msg);
-      callback({ onglet: true });
+      callback({ tab: true });
     });
-    expect(messages).toEqual([{ webaios: "contexte", fichiers: [2, 0, 1] }]);
+    expect(messages).toEqual([{ webaios: "contexte", files: [2, 0, 1] }]);
     expect(yes.ctx.vu).toBeUndefined();
-    expect(yes.erreurs).toEqual([]);
+    expect(yes.errors).toEqual([]);
     // No answer: lastError read, retries, then abandonment written with the reason.
     let attempts = 0;
     const non = launch((_msg, callback, runtime) => {
@@ -209,8 +209,8 @@ describe("prepareCopy", () => {
       delete runtime.lastError;
     });
     expect(attempts).toBe(20);
-    expect(non.erreurs).toHaveLength(1);
-    expect(non.erreurs[0]!.map(String).join(" ")).toContain("Could not establish connection");
+    expect(non.errors).toHaveLength(1);
+    expect(non.errors[0]!.map(String).join(" ")).toContain("Could not establish connection");
   });
 
   it("a content script in the page's world (world: MAIN) is refused (analysis); a missing script too", async () => {
@@ -218,7 +218,7 @@ describe("prepareCopy", () => {
       "manifest.json": baseManifest({ content_scripts: [{ matches: ["https://a.example/*"], js: ["a.js"], world: "MAIN" }] }),
       "a.js": "1",
     });
-    expect((await prepareCopy({ source: main, cible: await target(), dossierGardes: DEFAULT_GUARDS })).analyse.refus).toEqual([
+    expect((await prepareCopy({ source: main, target: await target(), keptFolder: DEFAULT_GUARDS })).analysis.denial).toEqual([
       'Script de contenu refusé : world "MAIN" n\'est pas permis',
     ]);
     const src = await source({
@@ -226,15 +226,15 @@ describe("prepareCopy", () => {
       "a.js": "1",
     });
     const c = await target();
-    const { analyse: analysis } = await prepareCopy({ source: src, cible: c, dossierGardes: DEFAULT_GUARDS });
-    expect(analysis.refus).toEqual(["Script de contenu introuvable : absent.js", "Script de contenu introuvable : ../a.js"]);
+    const { analysis: analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
+    expect(analysis.denial).toEqual(["Script de contenu introuvable : absent.js", "Script de contenu introuvable : ../a.js"]);
     expect(existsSync(c)).toBe(false);
   });
 
   it("classic service worker: webaios-fond.js does importScripts of both; module: import of both, type module kept", async () => {
     const src = await source({ "manifest.json": baseManifest({ background: { service_worker: "bg/sw.js" } }), "bg/sw.js": "" });
     const c = await target();
-    await prepareCopy({ source: src, cible: c, dossierGardes: DEFAULT_GUARDS });
+    await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
     const m = await readJson(join(c, "manifest.json"));
     expect(m.background).toEqual({ service_worker: "webaios-fond.js" });
     const background = await readFile(join(c, "webaios-fond.js"), "utf8");
@@ -246,7 +246,7 @@ describe("prepareCopy", () => {
       "sw.js": "export {}",
     });
     const cM = await target();
-    await prepareCopy({ source: srcM, cible: cM, dossierGardes: DEFAULT_GUARDS });
+    await prepareCopy({ source: srcM, target: cM, keptFolder: DEFAULT_GUARDS });
     const mM = await readJson(join(cM, "manifest.json"));
     expect(mM.background).toEqual({ service_worker: "webaios-fond.js", type: "module" });
     const backgroundM = await readFile(join(cM, "webaios-fond.js"), "utf8");
@@ -257,7 +257,7 @@ describe("prepareCopy", () => {
   it("without a background: a minimal webaios-fond.js service worker (the guard alone) is declared, for onInstalled and the rulesets", async () => {
     const src = await source({ "manifest.json": baseManifest() });
     const c = await target();
-    await prepareCopy({ source: src, cible: c, dossierGardes: DEFAULT_GUARDS });
+    await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
     const m = await readJson(join(c, "manifest.json"));
     expect(m.background).toEqual({ service_worker: "webaios-fond.js" });
     const background = await readFile(join(c, "webaios-fond.js"), "utf8");
@@ -277,7 +277,7 @@ describe("prepareCopy", () => {
     });
     await writeFile(join(src, "latin1.html"), Buffer.from([0x3c, 0x70, 0x3e, 0xe9, 0x3c, 0x2f, 0x70, 0x3e]));
     const c = await target();
-    await prepareCopy({ source: src, cible: c, dossierGardes: DEFAULT_GUARDS });
+    await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
     const scripts = (html: string) => [...html.matchAll(/<script[^>]*>/gi)].map((x) => x[0]);
 
     const popup = await readFile(join(c, "popup.html"), "utf8");
@@ -296,8 +296,8 @@ describe("prepareCopy", () => {
     for (const ext of ["xhtml", "xht", "xml", "xsl", "xslt", "mht", "mhtml", "XHTML"]) {
       const src = await source({ "manifest.json": baseManifest(), [`p.${ext}`]: "<x/>" });
       const c = await target();
-      const { analyse: analysis } = await prepareCopy({ source: src, cible: c, dossierGardes: DEFAULT_GUARDS });
-      expect(analysis.refus.some((r) => r.includes(`p.${ext}`)), ext).toBe(true);
+      const { analysis: analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
+      expect(analysis.denial.some((r) => r.includes(`p.${ext}`)), ext).toBe(true);
       expect(existsSync(c)).toBe(false);
     }
   });
@@ -310,13 +310,13 @@ describe("prepareCopy", () => {
       '<svg><a\nONCLICK="x()"/></svg>',
     ]) {
       const src = await source({ "manifest.json": baseManifest(), "i/icone.svg": svg });
-      const { analyse: analysis } = await prepareCopy({ source: src, cible: await target(), dossierGardes: DEFAULT_GUARDS });
-      expect(analysis.refus.some((r) => r.includes("i/icone.svg")), svg).toBe(true);
+      const { analysis: analysis } = await prepareCopy({ source: src, target: await target(), keptFolder: DEFAULT_GUARDS });
+      expect(analysis.denial.some((r) => r.includes("i/icone.svg")), svg).toBe(true);
     }
     const src = await source({ "manifest.json": baseManifest(), "icone.svg": '<svg><path d="M0 0"/></svg>' });
     const c = await target();
-    const { analyse: analysis } = await prepareCopy({ source: src, cible: c, dossierGardes: DEFAULT_GUARDS });
-    expect(analysis.refus).toEqual([]);
+    const { analysis: analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
+    expect(analysis.denial).toEqual([]);
     expect(existsSync(join(c, "icone.svg"))).toBe(true);
   });
 
@@ -336,8 +336,8 @@ describe("prepareCopy", () => {
       const src = await source({ "manifest.json": baseManifest() });
       await writeFile(join(src, name), content);
       const c = await target();
-      const { analyse: analysis } = await prepareCopy({ source: src, cible: c, dossierGardes: DEFAULT_GUARDS });
-      const r = analysis.refus.find((x) => x.includes(name));
+      const { analysis: analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
+      const r = analysis.denial.find((x) => x.includes(name));
       expect(r, name).toBeDefined();
       expect(r, name).toContain(pattern);
       expect(existsSync(c)).toBe(false);
@@ -347,7 +347,7 @@ describe("prepareCopy", () => {
       "icone.svg": '<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><title>Étoile</title><path fill="#fc0" d="M12 2l3 7h7l-6 4 2 7-6-4-6 4 2-7-6-4h7z"/></svg>',
     });
     const c = await target();
-    expect((await prepareCopy({ source: icon, cible: c, dossierGardes: DEFAULT_GUARDS })).analyse.refus).toEqual([]);
+    expect((await prepareCopy({ source: icon, target: c, keptFolder: DEFAULT_GUARDS })).analysis.denial).toEqual([]);
     expect(existsSync(join(c, "icone.svg"))).toBe(true);
   });
 
@@ -356,8 +356,8 @@ describe("prepareCopy", () => {
       const src = await source({ "manifest.json": baseManifest() });
       await writeFile(join(src, "popup.html"), Buffer.concat([Buffer.from(bom), Buffer.from("<p>x</p>", "utf16le")]));
       const c = await target();
-      const { analyse: analysis } = await prepareCopy({ source: src, cible: c, dossierGardes: DEFAULT_GUARDS });
-      expect(analysis.refus.some((r) => r.includes("popup.html")), String(bom)).toBe(true);
+      const { analysis: analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
+      expect(analysis.denial.some((r) => r.includes("popup.html")), String(bom)).toBe(true);
       expect(existsSync(c)).toBe(false);
     }
   });
@@ -366,8 +366,8 @@ describe("prepareCopy", () => {
     for (const background of [{ scripts: ["a.js"] }, { page: "fond.html" }, { service_worker: "sw.js", scripts: ["a.js"] }]) {
       const src = await source({ "manifest.json": baseManifest({ background }), "a.js": "", "sw.js": "", "fond.html": "" });
       const c = await target();
-      const { analyse: analysis } = await prepareCopy({ source: src, cible: c, dossierGardes: DEFAULT_GUARDS });
-      expect(analysis.refus.length, JSON.stringify(background)).toBeGreaterThan(0);
+      const { analysis: analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
+      expect(analysis.denial.length, JSON.stringify(background)).toBeGreaterThan(0);
       expect(existsSync(c)).toBe(false);
     }
   });
@@ -376,19 +376,19 @@ describe("prepareCopy", () => {
     const deep = Array.from({ length: 33 }, (_, i) => `d${i}`).join("/");
     const src = await source({ "manifest.json": baseManifest(), [`${deep}/f.js`]: "" });
     const c = await target();
-    const { analyse: analysis } = await prepareCopy({ source: src, cible: c, dossierGardes: DEFAULT_GUARDS });
-    expect(analysis.refus.some((r) => r.includes("32"))).toBe(true);
+    const { analysis: analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
+    expect(analysis.denial.some((r) => r.includes("32"))).toBe(true);
     expect(existsSync(c)).toBe(false);
     const ok = await source({ "manifest.json": baseManifest(), [`${Array.from({ length: 31 }, (_, i) => `d${i}`).join("/")}/f.js`]: "" });
-    expect((await prepareCopy({ source: ok, cible: await target(), dossierGardes: DEFAULT_GUARDS })).analyse.refus).toEqual([]);
+    expect((await prepareCopy({ source: ok, target: await target(), keptFolder: DEFAULT_GUARDS })).analysis.denial).toEqual([]);
   });
 
   it("more than 5000 entries (folders included) refused", async () => {
     const src = await source({ "manifest.json": baseManifest() });
     for (let i = 0; i < MAX_ENTRIES; i++) await mkdir(join(src, `v${i}`));
     const c = await target();
-    const { analyse: analysis } = await prepareCopy({ source: src, cible: c, dossierGardes: DEFAULT_GUARDS });
-    expect(analysis.refus.some((r) => r.includes(String(MAX_ENTRIES)))).toBe(true);
+    const { analysis: analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
+    expect(analysis.denial.some((r) => r.includes(String(MAX_ENTRIES)))).toBe(true);
     expect(existsSync(c)).toBe(false);
   });
 
@@ -397,12 +397,12 @@ describe("prepareCopy", () => {
     await writeFile(outside, "clé privée");
     const c = await target();
     const first = await source({ "manifest.json": baseManifest(), "a.js": "ancien" });
-    await prepareCopy({ source: first, cible: c, dossierGardes: DEFAULT_GUARDS });
+    await prepareCopy({ source: first, target: c, keptFolder: DEFAULT_GUARDS });
 
     const src = await source({ "manifest.json": baseManifest(), "a.js": "nouveau" });
     await symlink(outside, join(src, "lien.txt"));
-    const { analyse: analysis } = await prepareCopy({ source: src, cible: c, dossierGardes: DEFAULT_GUARDS });
-    expect(analysis.refus.some((r) => r.includes("lien.txt"))).toBe(true);
+    const { analysis: analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
+    expect(analysis.denial.some((r) => r.includes("lien.txt"))).toBe(true);
     expect(await readFile(join(c, "a.js"), "utf8")).toBe("ancien");
     expect(existsSync(join(c, "lien.txt"))).toBe(false);
     expect(await readdir(dirname(c))).toEqual(["essai"]);
@@ -413,8 +413,8 @@ describe("prepareCopy", () => {
     for (let i = 0; i < FILES_MAX; i++) files[`f/${i}.txt`] = "x";
     const src = await source(files);
     const c = await target();
-    const { analyse: analysis } = await prepareCopy({ source: src, cible: c, dossierGardes: DEFAULT_GUARDS });
-    expect(analysis.refus.length).toBeGreaterThan(0);
+    const { analysis: analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
+    expect(analysis.denial.length).toBeGreaterThan(0);
     expect(existsSync(c)).toBe(false);
     expect(existsSync(dirname(c)) ? await readdir(dirname(c)) : []).toEqual([]);
   });
@@ -422,8 +422,8 @@ describe("prepareCopy", () => {
   it("an analysis with refusals writes nothing and returns the refusals", async () => {
     const src = await source({ "manifest.json": baseManifest({ permissions: ["debugger"] }) });
     const c = await target();
-    const { analyse: analysis } = await prepareCopy({ source: src, cible: c, dossierGardes: DEFAULT_GUARDS });
-    expect(analysis.refus).toEqual(["Droit refusé : debugger"]);
+    const { analysis: analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
+    expect(analysis.denial).toEqual(["Droit refusé : debugger"]);
     expect(existsSync(c)).toBe(false);
     expect(existsSync(dirname(c)) ? await readdir(dirname(c)) : []).toEqual([]);
   });
@@ -437,16 +437,16 @@ describe("prepareCopy", () => {
       "regles/r.json": [{ id: 1, action: { type: "redirect", redirect: { url: "https://x.example" } }, condition: {} }],
     });
     const c = await target();
-    const { analyse: analysis } = await prepareCopy({ source: src, cible: c, dossierGardes: DEFAULT_GUARDS });
-    expect(analysis.refus).toEqual(["Règle DNR refusée (redirect) dans regles/r.json, règle 1"]);
+    const { analysis: analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
+    expect(analysis.denial).toEqual(["Règle DNR refusée (redirect) dans regles/r.json, règle 1"]);
     expect(existsSync(c)).toBe(false);
   });
 
   it("a file name reserved for WebAiOs is refused, whatever the case", async () => {
     for (const name of ["webaios-fond.js", "WebAiOs-Fond.js", "WEBAIOS-GARDE-PAGE.JS", "webaios-fichiers/0.js", "webaios-portee.js", "Webaios-Env/a.js"]) {
       const src = await source({ "manifest.json": baseManifest(), [name]: "1" });
-      const { analyse: analysis } = await prepareCopy({ source: src, cible: await target(), dossierGardes: DEFAULT_GUARDS });
-      expect(analysis.refus.some((r) => r.includes(name)), name).toBe(true);
+      const { analysis: analysis } = await prepareCopy({ source: src, target: await target(), keptFolder: DEFAULT_GUARDS });
+      expect(analysis.denial.some((r) => r.includes(name)), name).toBe(true);
     }
   });
 
@@ -456,8 +456,8 @@ describe("prepareCopy", () => {
     const src = await source({ "manifest.json": baseManifest(), "a/b/c.js": "" });
     await symlink(outside, join(src, "a/b/lien.js"));
     const c = await target();
-    const { analyse: analysis } = await prepareCopy({ source: src, cible: c, dossierGardes: DEFAULT_GUARDS });
-    expect(analysis.refus.some((r) => r.includes("a/b/lien.js"))).toBe(true);
+    const { analysis: analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
+    expect(analysis.denial.some((r) => r.includes("a/b/lien.js"))).toBe(true);
     expect(existsSync(c)).toBe(false);
   });
 
@@ -467,15 +467,15 @@ describe("prepareCopy", () => {
     const src = await source({ "manifest.json": baseManifest() });
     await symlink(outside, join(src, "ssh"));
     const c = await target();
-    const { analyse: analysis } = await prepareCopy({ source: src, cible: c, dossierGardes: DEFAULT_GUARDS });
-    expect(analysis.refus.some((r) => r.includes("ssh"))).toBe(true);
+    const { analysis: analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
+    expect(analysis.denial.some((r) => r.includes("ssh"))).toBe(true);
     expect(existsSync(c)).toBe(false);
 
     const real = await source({ "manifest.json": baseManifest() });
     const rootLink = join(dirname(real), "lien-racine");
     await symlink(real, rootLink);
-    const r = await prepareCopy({ source: rootLink, cible: c, dossierGardes: DEFAULT_GUARDS });
-    expect(r.analyse.refus.length).toBeGreaterThan(0);
+    const r = await prepareCopy({ source: rootLink, target: c, keptFolder: DEFAULT_GUARDS });
+    expect(r.analysis.denial.length).toBeGreaterThan(0);
     expect(existsSync(c)).toBe(false);
   });
 
@@ -485,8 +485,8 @@ describe("prepareCopy", () => {
     const src = await source({ "manifest.json": baseManifest() });
     await link(outside, join(src, "physique.txt"));
     const c = await target();
-    const { analyse: analysis } = await prepareCopy({ source: src, cible: c, dossierGardes: DEFAULT_GUARDS });
-    expect(analysis.refus.some((r) => r.includes("physique.txt"))).toBe(true);
+    const { analysis: analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
+    expect(analysis.denial.some((r) => r.includes("physique.txt"))).toBe(true);
     expect(existsSync(c)).toBe(false);
   });
 
@@ -494,57 +494,57 @@ describe("prepareCopy", () => {
     const outside = join(await tempFolder(), "secret");
     await writeFile(outside, "clé privée");
     const src = await source({ "manifest.json": baseManifest(), "a.js": "1" });
-    brackets.apresLstat = async (p) => {
+    brackets.afterLstat = async (p) => {
       if (p === join(src, "a.js")) {
-        brackets.apresLstat = null;
+        brackets.afterLstat = null;
         await rm(p);
         await symlink(outside, p);
       }
     };
     const c = await target();
-    const { analyse: analysis } = await prepareCopy({ source: src, cible: c, dossierGardes: DEFAULT_GUARDS });
-    expect(analysis.refus.some((r) => r.includes("a.js"))).toBe(true);
+    const { analysis: analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
+    expect(analysis.denial.some((r) => r.includes("a.js"))).toBe(true);
     expect(existsSync(c)).toBe(false);
   });
 
   it("a file replaced by another file after its lstat is refused", async () => {
     const src = await source({ "manifest.json": baseManifest(), "a.js": "1" });
-    brackets.apresLstat = async (p) => {
+    brackets.afterLstat = async (p) => {
       if (p === join(src, "a.js")) {
-        brackets.apresLstat = null;
+        brackets.afterLstat = null;
         await writeFile(join(src, "b.tmp"), "2");
         await rename(join(src, "b.tmp"), p);
       }
     };
-    const { analyse: analysis } = await prepareCopy({ source: src, cible: await target(), dossierGardes: DEFAULT_GUARDS });
-    expect(analysis.refus.some((r) => r.includes("a.js"))).toBe(true);
+    const { analysis: analysis } = await prepareCopy({ source: src, target: await target(), keptFolder: DEFAULT_GUARDS });
+    expect(analysis.denial.some((r) => r.includes("a.js"))).toBe(true);
   });
 
   it("a subfolder replaced by a link during its read is refused", async () => {
     const outside = await tempFolder();
     await writeFile(join(outside, "id_ed25519"), "x");
     const src = await source({ "manifest.json": baseManifest(), "sous/id_ed25519": "leurre" });
-    brackets.apresReaddir = async (p) => {
+    brackets.afterReaddir = async (p) => {
       if (p === join(src, "sous")) {
-        brackets.apresReaddir = null;
+        brackets.afterReaddir = null;
         await rename(p, join(src, "ailleurs"));
         await symlink(outside, p);
       }
     };
     const c = await target();
-    const { analyse: analysis } = await prepareCopy({ source: src, cible: c, dossierGardes: DEFAULT_GUARDS });
-    expect(analysis.refus.some((r) => r.includes("sous"))).toBe(true);
+    const { analysis: analysis } = await prepareCopy({ source: src, target: c, keptFolder: DEFAULT_GUARDS });
+    expect(analysis.denial.some((r) => r.includes("sous"))).toBe(true);
     expect(existsSync(c)).toBe(false);
   });
 
   it("the old copy is put back in place if the second rename fails", async () => {
     const c = await target();
-    await prepareCopy({ source: await source({ "manifest.json": baseManifest(), "a.js": "ancien" }), cible: c, dossierGardes: DEFAULT_GUARDS });
-    brackets.avantRename = (from, to) => {
+    await prepareCopy({ source: await source({ "manifest.json": baseManifest(), "a.js": "ancien" }), target: c, keptFolder: DEFAULT_GUARDS });
+    brackets.beforeRename = (from, to) => {
       if (from.endsWith(".tmp") && to === c) throw Object.assign(new Error("échec simulé"), { code: "EIO" });
     };
     const second = await source({ "manifest.json": baseManifest(), "b.js": "nouveau" });
-    await expect(prepareCopy({ source: second, cible: c, dossierGardes: DEFAULT_GUARDS })).rejects.toThrow("échec simulé");
+    await expect(prepareCopy({ source: second, target: c, keptFolder: DEFAULT_GUARDS })).rejects.toThrow("échec simulé");
     expect(await readFile(join(c, "a.js"), "utf8")).toBe("ancien");
     expect(existsSync(join(c, "b.js"))).toBe(false);
     expect(await readdir(dirname(c))).toEqual(["essai"]);
@@ -553,7 +553,7 @@ describe("prepareCopy", () => {
   it("the temporary folder is deleted after a write error", async () => {
     const c = await target();
     const src = await source({ "manifest.json": baseManifest(), "a.js": "" });
-    await expect(prepareCopy({ source: src, cible: c, dossierGardes: join(src, "absent") })).rejects.toThrow();
+    await expect(prepareCopy({ source: src, target: c, keptFolder: join(src, "absent") })).rejects.toThrow();
     expect(existsSync(c)).toBe(false);
     expect(await readdir(dirname(c))).toEqual([]);
   });
@@ -561,11 +561,11 @@ describe("prepareCopy", () => {
   it("a second copy replaces the first in one go (no mixing of files)", async () => {
     const c = await target();
     const first = await source({ "manifest.json": baseManifest(), "a.js": "a", "sous/x.js": "x" });
-    await prepareCopy({ source: first, cible: c, dossierGardes: DEFAULT_GUARDS });
+    await prepareCopy({ source: first, target: c, keptFolder: DEFAULT_GUARDS });
     expect(existsSync(join(c, "a.js"))).toBe(true);
 
     const second = await source({ "manifest.json": baseManifest({ version: "2.0" }), "b.js": "b" });
-    await prepareCopy({ source: second, cible: c, dossierGardes: DEFAULT_GUARDS });
+    await prepareCopy({ source: second, target: c, keptFolder: DEFAULT_GUARDS });
     expect((await readdir(c)).sort()).toEqual(["b.js", "manifest.json", "webaios-fichiers", "webaios-fond.js", "webaios-portee.js", ...GUARDS].sort());
     expect((await readJson(join(c, "manifest.json"))).version).toBe("2.0");
     // Neither a temporary folder nor an old copy left alongside.
@@ -574,12 +574,12 @@ describe("prepareCopy", () => {
 
   it("same source, same hash; one byte changed, another hash", async () => {
     const src = await source({ "manifest.json": baseManifest(), "a.js": "abc" });
-    const e1 = (await prepareCopy({ source: src, cible: await target(), dossierGardes: DEFAULT_GUARDS })).empreinte;
-    const e2 = (await prepareCopy({ source: src, cible: await target(), dossierGardes: DEFAULT_GUARDS })).empreinte;
+    const e1 = (await prepareCopy({ source: src, target: await target(), keptFolder: DEFAULT_GUARDS })).hash;
+    const e2 = (await prepareCopy({ source: src, target: await target(), keptFolder: DEFAULT_GUARDS })).hash;
     expect(e1).toMatch(/^[0-9a-f]{64}$/);
     expect(e2).toBe(e1);
     await writeFile(join(src, "a.js"), "abd");
-    const e3 = (await prepareCopy({ source: src, cible: await target(), dossierGardes: DEFAULT_GUARDS })).empreinte;
+    const e3 = (await prepareCopy({ source: src, target: await target(), keptFolder: DEFAULT_GUARDS })).hash;
     expect(e3).not.toBe(e1);
   });
 });
@@ -587,8 +587,8 @@ describe("prepareCopy", () => {
 describe("webaios-correctifs-page.js", () => {
   it("redefines storage.sync on storage.local and sets browser, no effect the second time", async () => {
     const code = await readFile(join(DEFAULT_GUARDS, "webaios-correctifs-page.js"), "utf8");
-    const local = { nom: "local" };
-    const chrome = { storage: { local, sync: { nom: "sync" } } };
+    const local = { name: "local" };
+    const chrome = { storage: { local, sync: { name: "sync" } } };
     const ctx: Record<string, unknown> = { chrome };
     ctx.globalThis = ctx;
     runInNewContext(code, ctx);
@@ -609,7 +609,7 @@ describe("localized names (_locales)", () => {
       "_locales/en/messages.json": { extName: { message: "Name" } },
       "_locales/fr/messages.json": { extname: { message: "Nom" } },
     });
-    const { analyse: analysis } = await prepareCopy({ source: src, cible: await target(), dossierGardes: DEFAULT_GUARDS });
-    expect(analysis.nom).toBe("Nom");
+    const { analysis: analysis } = await prepareCopy({ source: src, target: await target(), keptFolder: DEFAULT_GUARDS });
+    expect(analysis.name).toBe("Nom");
   });
 });

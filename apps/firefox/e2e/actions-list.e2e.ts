@@ -29,8 +29,8 @@ async function waitRuns(id: string, n: number): Promise<void> {
 }
 async function setPrivate(isPrivate: boolean): Promise<void> {
   const s = await state(m);
-  const e = s.espaces.find((x) => x.id === s.fenetres[0]!.espaceActif)!;
-  if (e.prive !== isPrivate) await dispatch(m, { type: "reglerEspace", id: e.id, nom: e.nom, icone: e.icone, prive: isPrivate, profil: e.profil } as Action);
+  const e = s.spaces.find((x) => x.id === s.windows[0]!.activeSpace)!;
+  if (e.private !== isPrivate) await dispatch(m, { type: "reglerEspace", id: e.id, name: e.name, icon: e.icon, private: isPrivate, profile: e.profile } as Action);
 }
 /** Opens the « Actions » page of the sidebar. */
 async function openActionsPage(): Promise<void> {
@@ -40,20 +40,20 @@ async function openActionsPage(): Promise<void> {
 /** The window's tabs closed, the space public again. */
 async function fresh(): Promise<void> {
   await setPrivate(false);
-  for (const id of Object.keys((await state(m)).onglets)) await dispatch(m, { type: "fermerOnglet", id } as Action);
+  for (const id of Object.keys((await state(m)).tabs)) await dispatch(m, { type: "fermerOnglet", id } as Action);
 }
 /** « Tickets » (keywords, last result) and « Leboncoin » (input, never launched). */
 async function writeTwoActions(d: string): Promise<void> {
-  await writeRunnableAction(d, "tickets", { nom: NAME_TICKETS, motsCles: ["gitlab", "tickets"], code: "export default async () => [{ page: { titre: 'Ticket 1' } }];" });
+  await writeRunnableAction(d, "tickets", { name: NAME_TICKETS, keywords: ["gitlab", "tickets"], code: "export default async () => [{ page: { titre: 'Ticket 1' } }];" });
   await writeResult(d, "tickets", EXECUTION, YESTERDAY, "Ticket 1");
-  await writeRunnableAction(d, "leboncoin", { nom: "Leboncoin", saisie: "Recherche", code: "export default async () => [{ page: { titre: 'Annonce' } }];" });
+  await writeRunnableAction(d, "leboncoin", { name: "Leboncoin", input: "Recherche", code: "export default async () => [{ page: { titre: 'Annonce' } }];" });
 }
 async function launch(prepare: (dataDir: string) => Promise<void>): Promise<void> {
   const dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
   kept.push(dataDir);
   await prepare(dataDir);
   // A fake Gemma and Kev: no layout request leaves for a real Ollama.
-  w = await launchWebAiOs({ dataDir, env: { WEBAIOS_OLLAMA_URL: servers.ollama.url, WEBAIOS_KEV_URL: servers.kev.url, WEBAIOS_TEST_ADRESSES_LOCALES: "1" } });
+  w = await launchWebAiOs({ dataDir, env: { WEBAIOS_OLLAMA_URL: servers.ollama.url, WEBAIOS_KEV_URL: servers.kev.url, WEBAIOS_TEST_LOCAL_ADDRESSES: "1" } });
   m = w.marionette;
   q = uiQueries(m);
   await m.setContext("chrome");
@@ -92,11 +92,11 @@ describe("the Actions page", () => {
         await writeTwoActions(d);
         // An action that reads with the account, its grant given and a result (actions.spec.ts:1063, :1097).
         for (const id of ["compte", "accord"]) {
-          await writeRunnableAction(d, id, { nom: "Avec compte", compte: ["127.0.0.1"], code: "export default async () => [{ page: { titre: 'x' } }];" });
+          await writeRunnableAction(d, id, { name: "Avec compte", account: ["127.0.0.1"], code: "export default async () => [{ page: { titre: 'x' } }];" });
           await writeResult(d, id, EXECUTION, YESTERDAY, "Secret");
         }
-        const grant = { domaines: ["127.0.0.1"], publiques: [], profil: "defaut" };
-        await writeFile(path.join(actionsDataDir(d), "accords.json"), JSON.stringify({ compte: grant, accord: grant }));
+        const grant = { domains: ["127.0.0.1"], public: [], profile: "defaut" };
+        await writeFile(path.join(actionsDataDir(d), "accords.json"), JSON.stringify({ account: grant, grant: grant }));
         // actions.spec.ts:1122
         await mkdir(path.join(d, "espace", "actions", "cassee"), { recursive: true });
         await writeFile(path.join(d, "espace", "actions", "cassee", "action.json"), "{ pas du json");
@@ -149,7 +149,7 @@ describe("the Actions page", () => {
     await waitUi(m, "return !!doc.querySelector('[data-testid^=\"onglet-\"]') && [...doc.querySelectorAll('[data-testid^=\"onglet-\"]')].some((e) => e.textContent.includes(arguments[0]));", [
       `Workflow — ${NAME_TICKETS}`,
     ]);
-    expect(Object.values((await state(m)).onglets).filter((o) => o.url === "webaios://workflow/action/tickets")).toHaveLength(1);
+    expect(Object.values((await state(m)).tabs).filter((o) => o.url === "webaios://workflow/action/tickets")).toHaveLength(1);
     await visible(tid("constructeur"));
   });
 

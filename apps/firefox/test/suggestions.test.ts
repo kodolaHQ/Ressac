@@ -4,19 +4,19 @@ import { normalize, suggestionsActions, SUGGESTIONS_MAX } from "../ui/components
 
 const action = (id: string, name: string, o: Partial<ActionShown> = {}): ActionShown => ({
   id,
-  nom: name,
+  name: name,
   description: "",
-  motsCles: [],
-  saisie: null,
-  compte: [],
-  publiques: [],
-  accord: true,
-  dernier: null,
+  keywords: [],
+  input: null,
+  account: [],
+  public: [],
+  grant: true,
+  last: null,
   ...o,
 });
 
-const TICKETS = action("tickets", "Mes tickets GitLab à traiter", { motsCles: ["gitlab"] });
-const LEBONCOIN = action("lbc", "Leboncoin", { saisie: { libelle: "Recherche" } });
+const TICKETS = action("tickets", "Mes tickets GitLab à traiter", { keywords: ["gitlab"] });
+const LEBONCOIN = action("lbc", "Leboncoin", { input: { label: "Recherche" } });
 const GITLAB = action("gl", "GitLab");
 
 test("normaliser: without accents or case, spaces collapsed", () => {
@@ -24,8 +24,8 @@ test("normaliser: without accents or case, spaces collapsed", () => {
 });
 
 test("« git » suggests « Mes tickets GitLab à traiter » (keyword gitlab)", () => {
-  expect(suggestionsActions("git", [TICKETS]).map((s) => s.nom)).toEqual(["Mes tickets GitLab à traiter"]);
-  expect(suggestionsActions("git", [TICKETS])[0]!.saisie).toBeNull();
+  expect(suggestionsActions("git", [TICKETS]).map((s) => s.name)).toEqual(["Mes tickets GitLab à traiter"]);
+  expect(suggestionsActions("git", [TICKETS])[0]!.input).toBeNull();
 });
 
 test("« TICK » and « tîck » suggest it too", () => {
@@ -34,12 +34,12 @@ test("« TICK » and « tîck » suggest it too", () => {
 });
 
 test("« leboncoin clio lyon » → Leboncoin, entry « clio lyon »", () => {
-  expect(suggestionsActions("leboncoin clio lyon", [LEBONCOIN])).toEqual([{ id: "lbc", nom: "Leboncoin", saisie: "clio lyon" }]);
-  expect(suggestionsActions("  LeBonCoin   Clio  Lyon ", [LEBONCOIN])[0]!.saisie).toBe("Clio  Lyon");
+  expect(suggestionsActions("leboncoin clio lyon", [LEBONCOIN])).toEqual([{ id: "lbc", name: "Leboncoin", input: "clio lyon" }]);
+  expect(suggestionsActions("  LeBonCoin   Clio  Lyon ", [LEBONCOIN])[0]!.input).toBe("Clio  Lyon");
 });
 
 test("« leboncoin » alone → entry null", () => {
-  expect(suggestionsActions("leboncoin", [LEBONCOIN])).toEqual([{ id: "lbc", nom: "Leboncoin", saisie: null }]);
+  expect(suggestionsActions("leboncoin", [LEBONCOIN])).toEqual([{ id: "lbc", name: "Leboncoin", input: null }]);
 });
 
 test("« gitlab bug » does not suggest GitLab (without an entry)", () => {
@@ -58,10 +58,10 @@ test("empty text: []", () => {
 });
 
 test("an action in error is never suggested", () => {
-  expect(suggestionsActions("git", [action("x", "GitLab", { erreur: "illisible" })])).toEqual([]);
+  expect(suggestionsActions("git", [action("x", "GitLab", { error: "illisible" })])).toEqual([]);
 });
 
 test("exact terms first, then name order", () => {
-  const list = [action("p", "Aide gitlabo"), action("c", "Zèbre"  , { motsCles: ["gitlab"] }), action("a", "Gitlab")];
+  const list = [action("p", "Aide gitlabo"), action("c", "Zèbre"  , { keywords: ["gitlab"] }), action("a", "Gitlab")];
   expect(suggestionsActions("gitlab", list).map((s) => s.id)).toEqual(["a", "c", "p"]);
 });

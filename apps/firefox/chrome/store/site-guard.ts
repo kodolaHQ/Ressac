@@ -16,7 +16,7 @@ export function httpHost(url: string): string | null {
 }
 
 export interface BlockedNotice {
-  readonly avis: BarNotice | null;
+  readonly notice: BarNotice | null;
   /** A navigation or an open was refused: its URL is kept for « Ouvrir dans un onglet », the bar shows its domain. */
   block(url: string): void;
   /** « Ouvrir dans un onglet »: the last blocked URL, once; the mention falls (the caller broadcasts). */
@@ -38,7 +38,7 @@ export function blockedNotice(broadcast: () => void): BlockedNotice {
     broadcast();
   };
   return {
-    get avis() {
+    get notice() {
       return notice;
     },
     block(u) {
@@ -46,8 +46,8 @@ export function blockedNotice(broadcast: () => void): BlockedNotice {
       // Nothing to open in a tab: refused without a mention.
       if (!domain) return;
       url = u;
-      if (notice?.genre === "lien-bloque" && notice.domaine === domain) return;
-      notice = { genre: "lien-bloque", domaine: domain };
+      if (notice?.kind === "lien-bloque" && notice.domain === domain) return;
+      notice = { kind: "lien-bloque", domain: domain };
       if (timer) return;
       const wait = sent + NOTICE_GAP_MS - Date.now();
       if (wait <= 0) send();
@@ -56,7 +56,7 @@ export function blockedNotice(broadcast: () => void): BlockedNotice {
     take() {
       const u = url;
       url = null;
-      if (notice?.genre === "lien-bloque") notice = null;
+      if (notice?.kind === "lien-bloque") notice = null;
       return u;
     },
     clear() {

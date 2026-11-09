@@ -81,7 +81,7 @@ async function kernelUp(): Promise<void> {
 beforeAll(async () => {
   demo = await startDemo();
   third = await startDemo();
-  w = await launchWebAiOs({ env: { WEBAIOS_PORTS_CONTENEUR: `${demo.port}-${demo.port}` } });
+  w = await launchWebAiOs({ env: { WEBAIOS_CONTAINER_PORTS: `${demo.port}-${demo.port}` } });
   m = w.marionette;
   await m.setContext("chrome");
   await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
@@ -98,7 +98,7 @@ afterAll(async () => {
 });
 
 const call = (name: string, args: Record<string, unknown> = {}) => callTool(w.dataDir, name, args);
-const tool = async (name: string, args: Record<string, unknown> = {}) => (await call(name, args)).texte;
+const tool = async (name: string, args: Record<string, unknown> = {}) => (await call(name, args)).text;
 async function poll<T>(read: () => Promise<T>, ok: (v: T) => boolean, ms = 10_000): Promise<T> {
   const deadline = Date.now() + ms;
   for (;;) {
@@ -112,7 +112,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** A demo opened by the agent (all four rights, no card), loaded; the first lire_console attaches. */
 async function openDemo(query = ""): Promise<string> {
-  const { texte: id, erreur: error } = await call("ouvrir_onglet", { url: `${demo.url}/${query}` });
+  const { text: id, error: error } = await call("ouvrir_onglet", { url: `${demo.url}/${query}` });
   expect(error, id).toBe(false);
   await poll(() => tool("executer_js", { id, code: "document.readyState" }), (t) => t === '"complete"');
   expect(await tool("lire_console", { id })).not.toContain("Erreur");
@@ -147,7 +147,7 @@ it("demo: executer_js returns document.title; recharger keeps the messages with 
   await poll(() => tool("lire_console", { id }), (t) => /bonjour de la page[\s\S]*— page rechargée —[\s\S]*page chargée/.test(t));
   // Evaluation goes to the reloaded page (its new target), and a reload without cache works too.
   expect(await tool("executer_js", { id, code: "typeof boum" })).toBe('"function"');
-  expect(await tool("recharger", { id, sans_cache: true })).toBe(`Onglet ${id} rechargé.`);
+  expect(await tool("recharger", { id, no_cache: true })).toBe(`Onglet ${id} rechargé.`);
   expect(await tool("executer_js", { id, code: "document.title" })).toBe('"Démo"');
 });
 
@@ -170,7 +170,7 @@ it("demo: a promise that never resolves: executer_js answers on its deadline, th
   const id = await openDemo();
   const t0 = Date.now();
   const r = await call("executer_js", { id, code: "new Promise(() => {})" });
-  expect(r.texte).toContain("n'a pas répondu");
+  expect(r.text).toContain("n'a pas répondu");
   expect(Date.now() - t0).toBeLessThan(20_000);
   expect(await tool("executer_js", { id, code: "1 + 1" })).toBe("2");
 }, 60_000);
@@ -178,9 +178,9 @@ it("demo: a promise that never resolves: executer_js answers on its deadline, th
 it("demo: lire_reseau lists a fetch (status, duration); lire_requete returns its body", async () => {
   const id = await openDemo();
   expect(await tool("executer_js", { id, code: "await (await fetch('/data.json?n=1')).text()" })).toBe('"{\\"ok\\":true}"');
-  const line = await poll(() => tool("lire_reseau", { id, filtre: "data.json" }), (t) => / · 200 · /.test(t));
+  const line = await poll(() => tool("lire_reseau", { id, filter: "data.json" }), (t) => / · 200 · /.test(t));
   expect(line).toMatch(/^\S+ · GET · 200 · http:\/\/127\.0\.0\.1:\d+\/data\.json\?n=1 · fetch · \d+ ms · \d+ o$/);
-  const detail = await tool("lire_requete", { id, requete: line.split(" · ")[0] });
+  const detail = await tool("lire_requete", { id, query: line.split(" · ")[0] });
   expect(detail).toContain("Statut : 200");
   expect(detail).toContain('Corps :\n{"ok":true}');
 });
@@ -196,8 +196,8 @@ it("demo: a 1 MB console message is truncated with a mention", async () => {
 it("Cookie and Authorization shown on a demo", async () => {
   const id = await openDemo();
   await tool("executer_js", { id, code: "document.cookie = 'essai=1'; await (await fetch('/data.json?h=1', { headers: { Authorization: 'Bearer demo' } })).text()" });
-  const line = await poll(() => tool("lire_reseau", { id, filtre: "h=1" }), (t) => / · 200 · /.test(t));
-  const detail = await tool("lire_requete", { id, requete: line.split(" · ")[0] });
+  const line = await poll(() => tool("lire_reseau", { id, filter: "h=1" }), (t) => / · 200 · /.test(t));
+  const detail = await tool("lire_requete", { id, query: line.split(" · ")[0] });
   expect(detail).toMatch(/authorization: Bearer demo/i);
   // The cookie jar also holds vu=1, set by an earlier response.
   expect(detail).toMatch(/\n  cookie: .*essai=1/i);
@@ -247,23 +247,23 @@ it("lire_console and lire_reseau show nothing from an extension that writes to t
 
 it("the same site in a private space: nothing of its tab in the attached tab's buffers", async () => {
   const id = await openDemo();
-  const windowId = (await state(m)).fenetres[0]!.id;
-  const home = (await state(m)).onglets[id]!.espaceId;
+  const windowId = (await state(m)).windows[0]!.id;
+  const home = (await state(m)).tabs[id]!.spaceId;
   /** Opens the demo with `?log=<log>` in that space, shown (a tab never shown is not loaded), and waits for its page. */
   const openIn = async (spaceId: string, log: string) => {
-    const known = new Set(Object.keys((await state(m)).onglets));
-    const s = await dispatch(m, { type: "ouvrirOnglet", fenetreId: windowId, url: `${demo.url}/?log=${log}`, espaceId: spaceId, activer: true } as Action);
-    await dispatch(m, { type: "activerOnglet", id: Object.keys(s.onglets).find((x) => !known.has(x))! } as Action);
+    const known = new Set(Object.keys((await state(m)).tabs));
+    const s = await dispatch(m, { type: "ouvrirOnglet", windowId: windowId, url: `${demo.url}/?log=${log}`, spaceId: spaceId, activate: true } as Action);
+    await dispatch(m, { type: "activerOnglet", id: Object.keys(s.tabs).find((x) => !known.has(x))! } as Action);
     await waitFor(m, `return gBrowser.tabs.some((t) => t.linkedBrowser.currentURI.spec.endsWith("log=${log}") && t.linkedBrowser.contentTitle === "Démo")`, (v) => v === true);
   };
   try {
     // Same site, same container, private space.
-    const secret = (await dispatch(m, { type: "creerEspace", nom: "Secret", icone: "🔒", prive: true, profil: "defaut", fenetreId: windowId } as Action)).espaces.at(-1)!;
+    const secret = (await dispatch(m, { type: "creerEspace", name: "Secret", icon: "🔒", private: true, profile: "defaut", windowId: windowId } as Action)).spaces.at(-1)!;
     await openIn(secret.id, "prive");
     // Same site, another tab of the same space.
     await openIn(home, "autre");
     // Same site, another container.
-    const other = (await dispatch(m, { type: "creerEspace", nom: "Autre", icone: "🅱️", prive: false, profil: "nouveau", fenetreId: windowId } as Action)).espaces.at(-1)!;
+    const other = (await dispatch(m, { type: "creerEspace", name: "Autre", icon: "🅱️", private: false, profile: "nouveau", windowId: windowId } as Action)).spaces.at(-1)!;
     await openIn(other.id, "conteneur");
   } finally {
     // Back to the demo's space: the next tests open their demos there.
@@ -274,15 +274,15 @@ it("the same site in a private space: nothing of its tab in the attached tab's b
   const text = await poll(() => tool("lire_console", { id }), (t) => t.includes("ici"));
   await sleep(500);
   expect(await tool("lire_console", { id })).not.toMatch(/tag-|page chargée/);
-  expect(await tool("lire_reseau", { id, filtre: "log=" })).toBe("Aucune requête.");
+  expect(await tool("lire_reseau", { id, filter: "log=" })).toBe("Aucune requête.");
   expect(text).not.toContain("tag-");
 });
 
 it("a private space's tab: lire_console answers PRIVATE_TEXT, without a card", async () => {
   const id = await openDemo();
   const s = await state(m);
-  const e = s.espaces.find((x) => x.id === s.onglets[id]!.espaceId)!;
-  const setPrivate = (isPrivate: boolean) => dispatch(m, { type: "reglerEspace", id: e.id, nom: e.nom, icone: e.icone, prive: isPrivate, profil: e.profil } as Action);
+  const e = s.spaces.find((x) => x.id === s.tabs[id]!.spaceId)!;
+  const setPrivate = (isPrivate: boolean) => dispatch(m, { type: "reglerEspace", id: e.id, name: e.name, icon: e.icon, private: isPrivate, profile: e.profile } as Action);
   await setPrivate(true);
   try {
     await poll(() => tool("lire_console", { id }), (t) => t === PRIVATE_TEXT);
@@ -299,14 +299,14 @@ it("changing site empties the buffers", async () => {
   const id = await openDemo();
   await tool("executer_js", { id, code: "console.log('avant'); await fetch('/data.json?avant=1'); 1" });
   await poll(() => tool("lire_console", { id }), (t) => t.includes("avant"));
-  await poll(() => tool("lire_reseau", { id, filtre: "avant=1" }), (t) => t.includes(" · 200 · "));
+  await poll(() => tool("lire_reseau", { id, filter: "avant=1" }), (t) => t.includes(" · 200 · "));
   // localhost: another origin, still the agent's demo (its port).
   expect(await tool("naviguer", { id, url: `http://localhost:${demo.port}/` })).toContain("→");
   await poll(() => tool("executer_js", { id, code: "location.host" }), (t) => t === `"localhost:${demo.port}"`);
   await tool("executer_js", { id, code: "console.log('après'); 1" });
   const text = await poll(() => tool("lire_console", { id }), (t) => t.includes("après"));
   expect(text).not.toContain("avant");
-  expect(await tool("lire_reseau", { id, filtre: "avant=1" })).toBe("Aucune requête.");
+  expect(await tool("lire_reseau", { id, filter: "avant=1" })).toBe("Aucune requête.");
 });
 
 // The consent card, on a tab the user opened on a third-party site.
@@ -322,9 +322,9 @@ let thirdTabs = 0;
 async function openThird(): Promise<string> {
   const url = `${third.url}/?tiers=${++thirdTabs}`;
   const s0 = await state(m);
-  const known = new Set(Object.keys(s0.onglets));
-  const s = await dispatch(m, { type: "ouvrirOnglet", fenetreId: s0.fenetres[0]!.id, url, activer: true } as Action);
-  const id = Object.keys(s.onglets).find((x) => !known.has(x))!;
+  const known = new Set(Object.keys(s0.tabs));
+  const s = await dispatch(m, { type: "ouvrirOnglet", windowId: s0.windows[0]!.id, url, activate: true } as Action);
+  const id = Object.keys(s.tabs).find((x) => !known.has(x))!;
   await waitFor(m, `return gBrowser.tabs.some((t) => t.linkedBrowser.currentURI.spec === ${JSON.stringify(url)} && t.linkedBrowser.contentTitle === "Démo")`, (v) => v === true);
   return id;
 }
@@ -334,7 +334,7 @@ const answerCard = (button: "Refuser" | "Autoriser la sélection") => click(m, `
 const checked = (right: string) => inUi<boolean>(m, `return doc.querySelector('${CARD} input[data-droit="${right}"]').checked`);
 /** Asks `droits` on the tab and allows them all on the card. */
 async function grant(id: string, rights: string[]): Promise<string> {
-  const pending = tool("demander_outils_dev", { id, droits: rights, raison: "Essai de la pastille." });
+  const pending = tool("demander_outils_dev", { id, rights: rights, reason: "Essai de la pastille." });
   await cardText();
   await answerCard("Autoriser la sélection");
   return pending;
@@ -365,7 +365,7 @@ it("third-party tab: lire_console shows the card with « Console et erreurs » t
 
 it("unticking Réseau in a console+reseau request: only console is granted; the next lire_reseau answers refused without a card", async () => {
   const id = await openThird();
-  const pending = tool("demander_outils_dev", { id, droits: ["console", "reseau"], raison: "Le bouton ne réagit pas." });
+  const pending = tool("demander_outils_dev", { id, rights: ["console", "reseau"], reason: "Le bouton ne réagit pas." });
   const text = await cardText();
   expect(text).toContain("« Le bouton ne réagit pas. »");
   expect(text).toContain("peut contenir des données de connexion");
@@ -380,7 +380,7 @@ it("unticking Réseau in a console+reseau request: only console is granted; the 
 
 it("navigating a third-party tab to a demo URL that answers 204: the tab stays third-party, executer_js does not run there without a card", async () => {
   const id = await openThird();
-  const url = (await state(m)).onglets[id]!.url;
+  const url = (await state(m)).tabs[id]!.url;
   const navigating = tool("naviguer", { id, url: `${demo.url}/vide` });
   await waitUi(m, `return !!doc.querySelector('${READ_CARD}')`);
   await click(m, `${READ_CARD} button`, { text: "Autoriser une fois" });
@@ -388,7 +388,7 @@ it("navigating a third-party tab to a demo URL that answers 204: the tab stays t
   await poll(async () => demo.hits.includes("/vide"), (v) => v);
   await sleep(500);
   // The tab is still on the third-party page: its read access (given to the demo origin) no longer covers it.
-  expect((await state(m)).onglets[id]!.url).toBe(url);
+  expect((await state(m)).tabs[id]!.url).toBe(url);
   const line = (await tool("lister_onglets")).split("\n").find((l) => l.startsWith(`${id} · `));
   expect(line).toBeDefined();
   expect(line).not.toContain("/vide");
@@ -406,9 +406,9 @@ it("navigating a third-party tab to a demo URL that answers 204: the tab stays t
 it("two requests: only one card at a time, the second after the first is answered", async () => {
   const id = await openThird();
   const other = await openThird();
-  const first = tool("demander_outils_dev", { id, droits: ["console"], raison: "Première." });
+  const first = tool("demander_outils_dev", { id, rights: ["console"], reason: "Première." });
   expect(await cardText()).toContain("Première.");
-  const second = tool("demander_outils_dev", { id: other, droits: ["console"], raison: "Seconde." });
+  const second = tool("demander_outils_dev", { id: other, rights: ["console"], reason: "Seconde." });
   await sleep(500);
   expect(await inUi(m, `return doc.querySelectorAll('${CARD}').length`)).toBe(1);
   expect(await cardText()).toContain("Première.");
@@ -433,8 +433,8 @@ it("Cookie and Authorization masked on a third-party tab", async () => {
   const id = await openThird();
   await grant(id, ["reseau", "agir"]);
   await tool("executer_js", { id, code: "document.cookie = 'tiers=1'; await (await fetch('/data.json?tiers-h=1', { headers: { Authorization: 'Bearer secret' } })).text()" });
-  const line = await poll(() => tool("lire_reseau", { id, filtre: "tiers-h=1" }), (t) => / · 200 · /.test(t));
-  const detail = await tool("lire_requete", { id, requete: line.split(" · ")[0] });
+  const line = await poll(() => tool("lire_reseau", { id, filter: "tiers-h=1" }), (t) => / · 200 · /.test(t));
+  const detail = await tool("lire_requete", { id, query: line.split(" · ")[0] });
   expect(detail).not.toContain("Bearer secret");
   expect(detail).not.toContain("tiers=1");
   expect(detail).not.toMatch(/set-cookie: vu=1/i);
@@ -512,8 +512,8 @@ it("space turned private: the badge disappears, the debugger is detached and the
   await tool("lire_console", { id });
   expect(await attached()).toContain(id);
   const s = await state(m);
-  const e = s.espaces.find((x) => x.id === s.onglets[id]!.espaceId)!;
-  const setPrivate = (isPrivate: boolean) => dispatch(m, { type: "reglerEspace", id: e.id, nom: e.nom, icone: e.icone, prive: isPrivate, profil: e.profil } as Action);
+  const e = s.spaces.find((x) => x.id === s.tabs[id]!.spaceId)!;
+  const setPrivate = (isPrivate: boolean) => dispatch(m, { type: "reglerEspace", id: e.id, name: e.name, icon: e.icon, private: isPrivate, profile: e.profile } as Action);
   await setPrivate(true);
   try {
     await waitUi(m, `return !doc.querySelector('${BADGE}')`);
@@ -533,7 +533,7 @@ it("space turned private: the badge disappears, the debugger is detached and the
 
 it("Esc refuses the devtools card; Enter allows the selection", async () => {
   const id = await openThird();
-  const pending = tool("demander_outils_dev", { id, droits: ["console", "reseau"], raison: "Au clavier." });
+  const pending = tool("demander_outils_dev", { id, rights: ["console", "reseau"], reason: "Au clavier." });
   expect(await cardText()).toContain("Au clavier.");
   await armed();
   // The focus stays trapped in the modal.
@@ -550,7 +550,7 @@ it("Esc refuses the devtools card; Enter allows the selection", async () => {
   expect(await pending).toBe("Droits accordés : console\nRefusés : reseau");
   await cardGone();
 
-  const refusal = tool("demander_outils_dev", { id, droits: ["performances"], raison: "Échap." });
+  const refusal = tool("demander_outils_dev", { id, rights: ["performances"], reason: "Échap." });
   expect(await cardText()).toContain("Échap.");
   await armed();
   await pressKeys(m, "Escape");
@@ -561,7 +561,7 @@ it("Esc refuses the devtools card; Enter allows the selection", async () => {
 it("Enter pressed as soon as the request arrives allows nothing; once the card has been visible for a while, it does", async () => {
   const id = await openThird();
   let answered = false;
-  const pending = tool("demander_outils_dev", { id, droits: ["console"], raison: "Trop tôt." }).finally(() => (answered = true));
+  const pending = tool("demander_outils_dev", { id, rights: ["console"], reason: "Trop tôt." }).finally(() => (answered = true));
   await cardText();
   // Typing in the page the moment the card comes: that key is no consent.
   await pressKeys(m, "Enter");
@@ -613,7 +613,7 @@ it("demo: profiler_performances (2 s) returns a summary with the page's costly f
   const id = await openDemo();
   await tool("executer_js", { id, code: "window.busy = setInterval(() => busyLoop(50), 100); 1" });
   try {
-    const r = await tool("profiler_performances", { id, duree_s: 2 });
+    const r = await tool("profiler_performances", { id, duration_s: 2 });
     expect(r).toMatch(/^busyLoop \(http:\/\/127\.0\.0\.1:\d+\/:\d+\) — [\d.]+ ms, [\d.]+ %$/m);
     for (const metric of ["Nodes", "JSHeapUsedSize", "LayoutCount", "ScriptDuration", "TaskDuration"]) expect(r).toContain(`${metric} : `);
     const relPath = /Profil : \/workspace\/(\.webaios\/profilage\/\S+\.cpuprofile)$/m.exec(r)?.[1];
@@ -629,7 +629,7 @@ it("demo: profiler_performances (2 s) returns a summary with the page's costly f
 
 it("demo: profiler_performances with recharger returns a summary", async () => {
   const id = await openDemo("?busy");
-  const r = await tool("profiler_performances", { id, recharger: true });
+  const r = await tool("profiler_performances", { id, reload: true });
   expect(r).toMatch(/^busyLoop \(/m);
   expect(r).toContain("ScriptDuration : ");
   expect(r).toMatch(/Profil : \/workspace\/\.webaios\/profilage\/\S+\.cpuprofile$/m);
@@ -641,7 +641,7 @@ it("Firefox's profiler already running: profiler_performances refuses and does n
   await m.execute("return (async () => { await Services.profiler.StartProfiler(1 << 20, 1, ['js'], ['GeckoMain']); })();");
   try {
     const before = profiles();
-    expect(await tool("profiler_performances", { id, duree_s: 0.5 })).toContain("Le profileur de Firefox est déjà en cours (about:profiling ou un autre profil de l'agent)");
+    expect(await tool("profiler_performances", { id, duration_s: 0.5 })).toContain("Le profileur de Firefox est déjà en cours (about:profiling ou un autre profil de l'agent)");
     expect(await profilerActive()).toBe(true);
     expect(profiles()).toEqual(before);
   } finally {
@@ -670,7 +670,7 @@ it("third-party: the file goes into the profiling folder and the agent receives 
   const id = await openThird();
   await grant(id, ["performances"]);
   const before = profiles();
-  const r = await tool("profiler_performances", { id, duree_s: 0.5 });
+  const r = await tool("profiler_performances", { id, duration_s: 0.5 });
   const name = /^Profil : profil:(\S+\.cpuprofile)$/m.exec(r)?.[1];
   expect(name, r).toBeDefined();
   expect(existsSync(path.join(w.dataDir, "profilage", name!))).toBe(true);
@@ -683,13 +683,13 @@ async function profileCutBySiteChange(leave: (id: string) => Promise<unknown>, t
   const id = await openDemo();
   const before = profiles();
   const t0 = Date.now();
-  const pending = call("profiler_performances", { id, duree_s: 20 });
+  const pending = call("profiler_performances", { id, duration_s: 20 });
   await sleep(1000);
   await leave(id);
   const r = await pending;
   expect(Date.now() - t0).toBeLessThan(10_000);
-  expect(texts.some((t) => r.texte.includes(t))).toBe(true);
-  expect(r.texte).not.toContain("Profil :");
+  expect(texts.some((t) => r.text.includes(t))).toBe(true);
+  expect(r.text).not.toContain("Profil :");
   expect(profiles()).toEqual(before);
   expect(await profilerActive()).toBe(false);
 }
@@ -709,7 +709,7 @@ it("executer_js cut by navigating to another site quickly answers the cut text",
   const pending = call("executer_js", { id, code: "new Promise((r) => setTimeout(() => r(1), 8000))" });
   await sleep(500);
   expect(await tool("naviguer", { id, url: `http://localhost:${demo.port}/` })).toContain("→");
-  expect(CUT_BY_OWN_NAVIGATION).toContain((await pending).texte);
+  expect(CUT_BY_OWN_NAVIGATION).toContain((await pending).text);
   expect(Date.now() - t0).toBeLessThan(6000);
 }, 60_000);
 

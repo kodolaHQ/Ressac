@@ -6,13 +6,13 @@ import {
 import type { DeclarationSite } from "../../src/sites/schemas.js";
 
 const decl: DeclarationSite = {
-  nom: "Vidola", description: "", adresse: "https://www.vidola-a.example/accueil", domaines: ["vidola-a.example"],
-  connexion: [], retouches: [
-    { correspond: ["/series/*"], js: ["a.js"], css: [], cadres: false },
-    { correspond: ["/film/*"], js: [], css: ["b.css"], cadres: ["https://*.clipsy.*/*"] },
-  ], reprise: false,
+  name: "Vidola", description: "", url: "https://www.vidola-a.example/accueil", domains: ["vidola-a.example"],
+  login: [], tweaks: [
+    { matches: ["/series/*"], js: ["a.js"], css: [], frames: false },
+    { matches: ["/film/*"], js: [], css: ["b.css"], frames: ["https://*.clipsy.*/*"] },
+  ], resume: false,
 };
-const state: UrlState = { actuel: "vidola-b.example", anciens: ["vidola-a.example"], depuis: null };
+const state: UrlState = { current: "vidola-b.example", previous: ["vidola-a.example"], since: null };
 
 describe("hostInSite", () => {
   it("exact, subdomain, case-insensitive, trailing dot", () => {
@@ -31,7 +31,7 @@ describe("effective domains and start", () => {
   it("start: host replaced by the current one when it changed", () => {
     expect(startUrl(decl, null)).toBe("https://www.vidola-a.example/accueil");
     expect(startUrl(decl, state)).toBe("https://vidola-b.example/accueil");
-    expect(startUrl(decl, { actuel: "vidola-a.example", anciens: [], depuis: null })).toBe("https://www.vidola-a.example/accueil");
+    expect(startUrl(decl, { current: "vidola-a.example", previous: [], since: null })).toBe("https://www.vidola-a.example/accueil");
   });
 });
 
@@ -46,7 +46,7 @@ describe("relativeUrl", () => {
 describe("urlOnDomain", () => {
   const dom = ["vidola-a.example", "vidola-b.example"];
   const start = "https://vidola-b.example/accueil";
-  const o = { adressesLocales: false };
+  const o = { localAddresses: false };
   it("a current one in numeric notation of a local address keeps the start's host", () => {
     expect(urlOnDomain("/x", "0x7f.1", dom, start, o)).toBe("https://vidola-b.example/x");
     expect(urlOnDomain("/x", "2130706433", dom, start, o)).toBe("https://vidola-b.example/x");
@@ -62,7 +62,7 @@ describe("urlOnDomain", () => {
       expect(urlOnDomain(a, "vidola-b.example", dom, start, o)).toBeNull();
   });
   it("non-local http refused even in test; invalid current: start's host", () => {
-    const t = { adressesLocales: true };
+    const t = { localAddresses: true };
     expect(urlOnDomain("http://vidola-a.example/x", "vidola-b.example", dom, "http://vidola-b.example/", t)).toBeNull();
     expect(urlOnDomain("/x", "evil.com/@x", dom, start, o)).toBe("https://vidola-b.example/x");
     expect(urlOnDomain("/x", "127.0.0.1", dom, start, o)).toBe("https://vidola-b.example/x");
@@ -70,7 +70,7 @@ describe("urlOnDomain", () => {
   });
   it("keeps the start's scheme and port (tests)", () => {
     const d = "http://vidola-b.localhost:4321/";
-    expect(urlOnDomain("http://vidola-a.localhost:9/s", "vidola-b.localhost", ["vidola-a.localhost", "vidola-b.localhost"], d, { adressesLocales: true }))
+    expect(urlOnDomain("http://vidola-a.localhost:9/s", "vidola-b.localhost", ["vidola-a.localhost", "vidola-b.localhost"], d, { localAddresses: true }))
       .toBe("http://vidola-b.localhost:4321/s");
   });
 });
@@ -111,35 +111,35 @@ describe("domaines Unicode", () => {
   it("normalized to punycode", () => {
     expect(hostInSite("www.xn--bcher-kva.example", ["bücher.example"])).toBe(true);
     expect(hostInSite("www.bücher.example", ["bücher.example"])).toBe(true);
-    expect(effectiveDomains({ ...decl, domaines: ["Bücher.example"] }, null)).toEqual(["xn--bcher-kva.example"]);
+    expect(effectiveDomains({ ...decl, domains: ["Bücher.example"] }, null)).toEqual(["xn--bcher-kva.example"]);
   });
 });
 
 describe("tweaksFor", () => {
   const dom = ["vidola-a.example", "vidola-b.example"];
   it("main: path pattern on any effective domain", () => {
-    expect(tweaksFor(decl, { url: "https://vidola-a.example/series/x", principal: true }, dom)).toEqual([decl.retouches[0]]);
-    expect(tweaksFor(decl, { url: "https://vidola-b.example/film/1?a=2", principal: true }, dom)).toEqual([decl.retouches[1]]);
-    expect(tweaksFor(decl, { url: "https://pub.example/series/x", principal: true }, dom)).toEqual([]);
-    expect(tweaksFor(decl, { url: "https://vidola-a.example/autre", principal: true }, dom)).toEqual([]);
+    expect(tweaksFor(decl, { url: "https://vidola-a.example/series/x", main: true }, dom)).toEqual([decl.tweaks[0]]);
+    expect(tweaksFor(decl, { url: "https://vidola-b.example/film/1?a=2", main: true }, dom)).toEqual([decl.tweaks[1]]);
+    expect(tweaksFor(decl, { url: "https://pub.example/series/x", main: true }, dom)).toEqual([]);
+    expect(tweaksFor(decl, { url: "https://vidola-a.example/autre", main: true }, dom)).toEqual([]);
   });
   it("refuse http (hors test local), identifiants", () => {
-    expect(tweaksFor(decl, { url: "http://vidola-a.example/series/x", principal: true }, dom)).toEqual([]);
-    expect(tweaksFor(decl, { url: "https://u:p@vidola-a.example/series/x", principal: true }, dom)).toEqual([]);
-    expect(tweaksFor(decl, { url: "http://x.clipsy.io/e", principal: false }, dom)).toEqual([]);
-    const loc = { ...decl, domaines: ["a.localhost"] };
-    expect(tweaksFor(loc, { url: "http://a.localhost:5/series/x", principal: true }, ["a.localhost"], { adressesLocales: true })).toEqual([decl.retouches[0]]);
-    expect(tweaksFor(loc, { url: "http://a.localhost:5/series/x", principal: true }, ["a.localhost"])).toEqual([]);
+    expect(tweaksFor(decl, { url: "http://vidola-a.example/series/x", main: true }, dom)).toEqual([]);
+    expect(tweaksFor(decl, { url: "https://u:p@vidola-a.example/series/x", main: true }, dom)).toEqual([]);
+    expect(tweaksFor(decl, { url: "http://x.clipsy.io/e", main: false }, dom)).toEqual([]);
+    const loc = { ...decl, domains: ["a.localhost"] };
+    expect(tweaksFor(loc, { url: "http://a.localhost:5/series/x", main: true }, ["a.localhost"], { localAddresses: true })).toEqual([decl.tweaks[0]]);
+    expect(tweaksFor(loc, { url: "http://a.localhost:5/series/x", main: true }, ["a.localhost"])).toEqual([]);
   });
   it("subframe: only with frames", () => {
-    expect(tweaksFor(decl, { url: "https://www.clipsy.io/embed-1", principal: false }, dom)).toEqual([decl.retouches[1]]);
-    expect(tweaksFor(decl, { url: "https://lecteur.example/x", principal: false }, dom)).toEqual([]);
-    expect(tweaksFor(decl, { url: "https://vidola-a.example/series/x", principal: false }, dom)).toEqual([]);
+    expect(tweaksFor(decl, { url: "https://www.clipsy.io/embed-1", main: false }, dom)).toEqual([decl.tweaks[1]]);
+    expect(tweaksFor(decl, { url: "https://lecteur.example/x", main: false }, dom)).toEqual([]);
+    expect(tweaksFor(decl, { url: "https://vidola-a.example/series/x", main: false }, dom)).toEqual([]);
   });
 });
 
 describe("findUrl: a real domain name", () => {
-  const o = { page: "https://adresses.example/", motif: "vidola", adressesLocales: false };
+  const o = { page: "https://adresses.example/", pattern: "vidola", localAddresses: false };
   it("without a dot (intranet) or whose last label is numeric: refused, as in site.json", () => {
     for (const link of ["https://vidola/", "https://vidola-box/", "https://vidola.1/", "https://vidola.12/"]) {
       expect(findUrl([link], o), link).toBeNull();
@@ -147,19 +147,19 @@ describe("findUrl: a real domain name", () => {
     expect(findUrl(["https://vidola-b.example/"], o)?.hostname).toBe("vidola-b.example");
   });
   it("in test mode, vidola-b.localhost stays allowed, vidola alone does not", () => {
-    const t = { ...o, adressesLocales: true };
+    const t = { ...o, localAddresses: true };
     expect(findUrl(["http://vidola-b.localhost:80/"], t)?.hostname).toBe("vidola-b.localhost");
     expect(findUrl(["http://vidola/"], t)).toBeNull();
   });
 });
 
 describe("findUrl", () => {
-  const o = { page: "https://ww1.vidola-adresses.example/", motif: "vidola", adressesLocales: false };
+  const o = { page: "https://ww1.vidola-adresses.example/", pattern: "vidola", localAddresses: false };
   it("first safe link whose host contains the pattern", () => {
     expect(findUrl([
       "/contact", "https://ww1.vidola-adresses.example/a", "https://sous.ww1.vidola-adresses.example/b", "http://vidola.voyage",
       "https://127.0.0.1/vidola", "https://tiers.example/vidola", "javascript:vidola", "https://u:p@vidola.fr/", "https://VIDOLA.voyage/accueil",
-    ], o)).toEqual({ hostname: "vidola.voyage", origine: "https://vidola.voyage/", port: null });
+    ], o)).toEqual({ hostname: "vidola.voyage", origin: "https://vidola.voyage/", port: null });
   });
   it("no candidate", () => {
     expect(findUrl(["/x", "https://tiers.example/vidola"], o)).toBeNull();
@@ -168,11 +168,11 @@ describe("findUrl", () => {
   });
   it("excludes the page's parent domain; own hostname, without port or trailing dot", () => {
     expect(findUrl(["https://vidola-adresses.example/"], o)).toBeNull();
-    expect(findUrl(["https://vidola.voyage.:8443/x"], o)).toEqual({ hostname: "vidola.voyage", origine: "https://vidola.voyage/", port: null });
+    expect(findUrl(["https://vidola.voyage.:8443/x"], o)).toEqual({ hostname: "vidola.voyage", origin: "https://vidola.voyage/", port: null });
     expect(findUrl(["/\\vidola.voyage", "//vidola.voyage/"], o)).toBeNull();
   });
   it("adresses locales seulement en test", () => {
     expect(findUrl(["https://vidola-b.localhost/"], o)).toBeNull();
-    expect(findUrl(["http://vidola-b.localhost:8/x"], { ...o, page: "http://adresses.localhost:8/", adressesLocales: true })).toEqual({ hostname: "vidola-b.localhost", origine: "http://vidola-b.localhost:8/", port: "8" });
+    expect(findUrl(["http://vidola-b.localhost:8/x"], { ...o, page: "http://adresses.localhost:8/", localAddresses: true })).toEqual({ hostname: "vidola-b.localhost", origin: "http://vidola-b.localhost:8/", port: "8" });
   });
 });

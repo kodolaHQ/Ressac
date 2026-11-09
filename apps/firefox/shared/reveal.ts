@@ -18,25 +18,25 @@ export function exitZone(x: number): LeftZone {
 }
 
 export interface Reveal {
-  revelee: boolean;
+  revealed: boolean;
   /** The mouse left the edge since the last hiding: returning to it reveals the bar again. */
-  armee: boolean;
+  armed: boolean;
 }
 
-export const INITIAL_REVEAL: Reveal = { revelee: false, armee: true };
+export const INITIAL_REVEAL: Reveal = { revealed: false, armed: true };
 
 /**
  * The mouse moves into `zone`. Hysteresis: the bar is revealed at the edge, stays open over itself and its margin, and only
  * closes (`masquer`, after a short delay) beyond that; a mouse left at the edge after a hiding must leave it
  * before revealing it again. So the page shifting under a still mouse does not make the bar blink.
  */
-export function onZone(r: Reveal, zone: LeftZone): Reveal & { masquer: boolean } {
-  const armed = r.armee || zone !== "bord";
-  if (r.revelee) return { revelee: true, armee: armed, masquer: zone === "loin" };
-  return { revelee: zone === "bord" && armed, armee: armed, masquer: false };
+export function onZone(r: Reveal, zone: LeftZone): Reveal & { hide: boolean } {
+  const armed = r.armed || zone !== "bord";
+  if (r.revealed) return { revealed: true, armed: armed, hide: zone === "loin" };
+  return { revealed: zone === "bord" && armed, armed: armed, hide: false };
 }
 
 /** The bar hides while the mouse is in `zone`. */
 export function hide(zone: LeftZone): Reveal {
-  return { revelee: false, armee: zone !== "bord" };
+  return { revealed: false, armed: zone !== "bord" };
 }

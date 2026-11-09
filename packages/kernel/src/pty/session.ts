@@ -2,21 +2,21 @@ import { spawn, type IPty } from "node-pty";
 
 /** A CLI agent running in a pseudo-terminal (displayed by xterm.js on the UI side). */
 export class SessionAgent {
-  private actif = true;
+  private alive = true;
 
   private constructor(
     private readonly pty: IPty,
     /** Stops the agent where it really runs (the container), in addition to the local terminal. */
-    private readonly arreterDistant?: () => void | Promise<void>,
+    private readonly stopRemote?: () => void | Promise<void>,
   ) {
     pty.onExit(() => {
-      this.actif = false;
+      this.alive = false;
     });
   }
 
-  static demarrer(
+  static start(
     command: string[],
-    o: { cols: number; rows: number; env?: Record<string, string>; arreterDistant?: () => void | Promise<void> },
+    o: { cols: number; rows: number; env?: Record<string, string>; stopRemote?: () => void | Promise<void> },
   ): SessionAgent {
     const [file, ...args] = command;
     if (!file) throw new Error("Commande vide");
@@ -27,36 +27,36 @@ export class SessionAgent {
         rows: o.rows,
         env: { ...(process.env as Record<string, string>), ...o.env },
       }),
-      o.arreterDistant,
+      o.stopRemote,
     );
   }
 
   get active(): boolean {
-    return this.actif;
+    return this.alive;
   }
 
-  ecrire(data: string): void {
-    if (this.actif) this.pty.write(data);
+  write(data: string): void {
+    if (this.alive) this.pty.write(data);
   }
 
-  redimensionner(cols: number, rows: number): void {
-    if (this.actif) this.pty.resize(cols, rows);
+  resize(cols: number, rows: number): void {
+    if (this.alive) this.pty.resize(cols, rows);
   }
 
-  surDonnees(callback: (d: string) => void): () => void {
+  onData(callback: (d: string) => void): () => void {
     const subscription = this.pty.onData(callback);
     return () => subscription.dispose();
   }
 
-  surFin(callback: (code: number) => void): () => void {
+  onEnd(callback: (code: number) => void): () => void {
     const subscription = this.pty.onExit(({ exitCode }) => callback(exitCode));
     return () => subscription.dispose();
   }
 
   /** Returns once the agent is stopped where it runs (the container), not only the local terminal. */
-  async arreter(): Promise<void> {
-    if (!this.actif) return;
-    const remote = Promise.resolve(this.arreterDistant?.()).catch(() => {});
+  async stop(): Promise<void> {
+    if (!this.alive) return;
+    const remote = Promise.resolve(this.stopRemote?.()).catch(() => {});
     this.pty.kill();
     await remote;
   }

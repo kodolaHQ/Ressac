@@ -5,8 +5,8 @@ const FRAMES = {
   sidebar: { id: "webaios-sidebar", mounted: '[data-testid="barre-laterale"]' },
   agent: { id: "webaios-agent", mounted: '[data-testid="panneau-agent"]' },
   // The design mode's overlay (bubble, message) and a main window's cart column (chrome/window/design-overlays.ts).
-  calque: { id: "webaios-design-calque", mounted: "#app" },
-  volet: { id: "webaios-design-volet", mounted: "#app" },
+  overlay: { id: "webaios-design-calque", mounted: "#app" },
+  panel: { id: "webaios-design-volet", mounted: "#app" },
 };
 export type Frame = keyof typeof FRAMES;
 

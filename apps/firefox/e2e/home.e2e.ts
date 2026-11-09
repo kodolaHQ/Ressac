@@ -21,9 +21,9 @@ interface PlacementTest {
 }
 
 interface TestGrant {
-  domaines: string[];
-  publiques: string[];
-  profil: string;
+  domains: string[];
+  public: string[];
+  profile: string;
 }
 
 type TestGrants = Record<string, TestGrant>;
@@ -35,20 +35,20 @@ const GRANTS = (dataDir: string) => path.join(WIDGETS(dataDir), "accords.json");
 const STATE = (dataDir: string, id: string) => path.join(WIDGETS(dataDir), id, "etat.json");
 const DATA = (dataDir: string, id: string) => path.join(WIDGETS(dataDir), id, "donnees.json");
 
-async function writeWidget(dataDir: string, id: string, o: { nom: string; affichage: string; declaration?: Record<string, unknown> }): Promise<void> {
+async function writeWidget(dataDir: string, id: string, o: { name: string; display: string; declaration?: Record<string, unknown> }): Promise<void> {
   const folder = path.join(HOME(dataDir), "widgets", id);
   await mkdir(folder, { recursive: true });
   await writeFile(
     path.join(folder, "widget.json"),
     JSON.stringify({
-      nom: o.nom,
+      name: o.name,
       description: "",
-      tailles: { min: { l: 2, h: 1 }, max: { l: 6, h: 4 }, defaut: { l: 3, h: 2 } },
-      sources: { compte: [], publiques: [], web: false },
+      sizes: { min: { l: 2, h: 1 }, max: { l: 6, h: 4 }, default: { l: 3, h: 2 } },
+      sources: { account: [], public: [], web: false },
       ...o.declaration,
     }),
   );
-  await writeFile(path.join(folder, "affichage.html"), o.affichage);
+  await writeFile(path.join(folder, "affichage.html"), o.display);
 }
 
 async function writeHarvest(dataDir: string, id: string, code: string): Promise<void> {
@@ -163,17 +163,17 @@ describe("the home page", () => {
     dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-accueil-"));
     notifications = path.join(dataDir, "notifications.jsonl");
     await mkdir(path.join(HOME(dataDir), "widgets"), { recursive: true });
-    await writeWidget(dataDir, "alpha", { nom: "Alpha", affichage: DISPLAY("alpha") });
-    await writeWidget(dataDir, "beta", { nom: "Beta", affichage: DISPLAY("beta") });
+    await writeWidget(dataDir, "alpha", { name: "Alpha", display: DISPLAY("alpha") });
+    await writeWidget(dataDir, "beta", { name: "Beta", display: DISPLAY("beta") });
     // A network hint in the display: served replaced by DISPLAY_DENIED, before any script.
     await writeWidget(dataDir, "refus", {
-      nom: "Refus",
-      affichage: '<!doctype html><title>refus</title><link rel="stylesheet" href="https://exemple.invalid/x.css"><p>jamais</p>',
+      name: "Refus",
+      display: '<!doctype html><title>refus</title><link rel="stylesheet" href="https://exemple.invalid/x.css"><p>jamais</p>',
     });
     // A link requested at load (ignored) and another on click (accepted only after a real press).
     await writeWidget(dataDir, "lien", {
-      nom: "Lien",
-      affichage: `<!doctype html><meta charset="utf-8"><title>lien</title><button id="go">ouvrir</button>
+      name: "Lien",
+      display: `<!doctype html><meta charset="utf-8"><title>lien</title><button id="go">ouvrir</button>
 <script>
   webaiosOuvrir("https://exemple.invalid/auto");
   document.getElementById("go").onclick = () => webaiosOuvrir("https://exemple.invalid/clic");
@@ -182,12 +182,12 @@ describe("the home page", () => {
     // A widget that reads with the account: the grant banner shows as long as no grant is given. Its harvest only reads
     // once `config.lire` is set (the « another profile asks again » test), so that the grant is at stake.
     await writeWidget(dataDir, "compte", {
-      nom: "Compte",
-      affichage: DISPLAY_DATA,
+      name: "Compte",
+      display: DISPLAY_DATA,
       declaration: {
-        recolte: { minutes: 60 },
-        sources: { compte: ["exemple.invalid"], publiques: [], web: false },
-        config: { lire: false, url: "https://exemple.invalid/x" },
+        harvest: { minutes: 60 },
+        sources: { account: ["exemple.invalid"], public: [], web: false },
+        config: { read: false, url: "https://exemple.invalid/x" },
       },
     });
     await writeHarvest(
@@ -197,42 +197,42 @@ describe("the home page", () => {
     );
     // Another widget with an account: the user refuses it (the banner does not come back from the session).
     await writeWidget(dataDir, "sans-accord", {
-      nom: "Sans accord",
-      affichage: DISPLAY_DATA,
-      declaration: { recolte: { minutes: 60 }, sources: { compte: ["exemple.invalid"], publiques: [], web: false } },
+      name: "Sans accord",
+      display: DISPLAY_DATA,
+      declaration: { harvest: { minutes: 60 }, sources: { account: ["exemple.invalid"], public: [], web: false } },
     });
     await writeHarvest(dataDir, "sans-accord", `export default async () => ({ secret: "du compte" });`);
     // A slow harvest: « en cours » stays visible, then the data arrives.
     await writeWidget(dataDir, "lent", {
-      nom: "Lent",
-      affichage: DISPLAY_DATA,
-      declaration: { recolte: { minutes: 60 }, sources: { compte: [], publiques: [], web: false } },
+      name: "Lent",
+      display: DISPLAY_DATA,
+      declaration: { harvest: { minutes: 60 }, sources: { account: [], public: [], web: false } },
     });
     await writeHarvest(dataDir, "lent", `export default async () => { await new Promise((r) => setTimeout(r, 2500)); return { fait: Date.now() }; };`);
     // A harvest that fails.
     await writeWidget(dataDir, "echec", {
-      nom: "Échec",
-      affichage: DISPLAY_DATA,
-      declaration: { recolte: { minutes: 60 }, sources: { compte: [], publiques: [], web: false } },
+      name: "Échec",
+      display: DISPLAY_DATA,
+      declaration: { harvest: { minutes: 60 }, sources: { account: [], public: [], web: false } },
     });
     await writeHarvest(dataDir, "echec", `export default async () => { throw new Error("boum"); };`);
     // A watch that notifies its news (first harvest: both items are new).
     await writeWidget(dataDir, "veille", {
-      nom: "Veille",
-      affichage: DISPLAY_DATA,
-      declaration: { recolte: { minutes: 60, notifier: true }, sources: { compte: [], publiques: [], web: false } },
+      name: "Veille",
+      display: DISPLAY_DATA,
+      declaration: { harvest: { minutes: 60, notify: true }, sources: { account: [], public: [], web: false } },
     });
     await writeHarvest(dataDir, "veille", `export default async () => [{ url: "https://exemple.invalid/a" }, { url: "https://exemple.invalid/b" }];`);
     // A widget with a grant and data, harvested beforehand: the removal must take all three.
     await writeWidget(dataDir, "retrait", {
-      nom: "Retrait",
-      affichage: DISPLAY_DATA,
-      declaration: { sources: { compte: ["exemple.invalid"], publiques: [], web: false } },
+      name: "Retrait",
+      display: DISPLAY_DATA,
+      declaration: { sources: { account: ["exemple.invalid"], public: [], web: false } },
     });
     const now = new Date().toISOString();
-    await writeJson(STATE(dataDir, "retrait"), { statut: "ok", derniereMaj: now, derniereTentative: now });
-    await writeJson(DATA(dataDir, "retrait"), { ancien: "compte" });
-    await writeJson(GRANTS(dataDir), { retrait: { domaines: ["exemple.invalid"], publiques: [], profil: "defaut" } });
+    await writeJson(STATE(dataDir, "retrait"), { status: "ok", lastUpdate: now, lastAttempt: now });
+    await writeJson(DATA(dataDir, "retrait"), { old: "compte" });
+    await writeJson(GRANTS(dataDir), { removal: { domains: ["exemple.invalid"], public: [], profile: "defaut" } });
     await writeLayout(dataDir, [
       { id: "alpha", x: 0, y: 0, l: 250, h: 180 },
       { id: "beta", x: 500, y: 0, l: 250, h: 180 },
@@ -277,7 +277,7 @@ describe("the home page", () => {
   });
 
   it("a widget added by the agent appears without restarting", async () => {
-    await writeWidget(dataDir, "nouveau", { nom: "Nouveau", affichage: DISPLAY("nouveau") });
+    await writeWidget(dataDir, "nouveau", { name: "Nouveau", display: DISPLAY("nouveau") });
     const titles = await wait(
       () => inUi<string[]>(m, `return [...doc.querySelectorAll('[data-testid="titre-widget"]')].map((e) => e.textContent);`),
       (ts) => ts.includes("Nouveau"),
@@ -287,11 +287,11 @@ describe("the home page", () => {
   });
 
   it("a tall home page keeps the favourites whole, above the widgets", async () => {
-    const s = await dispatch(m, { type: "ouvrirOnglet", fenetreId: (await state(m)).fenetres[0]!.id, url: "https://exemple.invalid/favori" });
-    const tab = Object.entries(s.onglets).find(([, o]) => o.url.includes("/favori"))![0];
+    const s = await dispatch(m, { type: "ouvrirOnglet", windowId: (await state(m)).windows[0]!.id, url: "https://exemple.invalid/favori" });
+    const tab = Object.entries(s.tabs).find(([, o]) => o.url.includes("/favori"))![0];
     await dispatch(m, { type: "ajouterEssentiel", id: tab });
     await dispatch(m, { type: "fermerOnglet", id: tab });
-    const r = await waitUi<{ bas: number; accueil: number; defile: boolean }>(
+    const r = await waitUi<{ bottom: number; home: number; scrolled: boolean }>(
       m,
       `const f = doc.querySelector('[data-testid="essentiels-page-vide"] [data-testid^="favori-"]');
        const a = doc.querySelector('[data-testid="accueil"]');
@@ -299,8 +299,8 @@ describe("the home page", () => {
        const p = a.parentElement;
        return { bas: f.getBoundingClientRect().bottom, accueil: a.getBoundingClientRect().top, defile: p.scrollHeight > p.clientHeight };`,
     );
-    expect(r.defile).toBe(true);
-    expect(r.bas).toBeLessThanOrEqual(r.accueil);
+    expect(r.scrolled).toBe(true);
+    expect(r.bottom).toBeLessThanOrEqual(r.home);
   });
 
   it("dragging a widget moves no other", async () => {
@@ -352,7 +352,7 @@ describe("the home page", () => {
   it("the agent's theme changes the home's colors; an invalid theme goes back to the default", async () => {
     const background = () => inUi<string>(m, `return ui.getComputedStyle(doc.querySelector('[data-testid="accueil"]')).backgroundColor;`);
     const defaultValue = await background();
-    await writeFile(path.join(HOME(dataDir), "theme.json"), JSON.stringify({ version: 1, fond: "#101014", accent: "#8b7cf6", rayon: 4 }));
+    await writeFile(path.join(HOME(dataDir), "theme.json"), JSON.stringify({ version: 1, background: "#101014", accent: "#8b7cf6", radius: 4 }));
     await wait(background, (c) => c === "rgb(16, 16, 20)", "le fond du thème");
     await writeFile(path.join(HOME(dataDir), "theme.json"), "{ pas du json");
     await wait(background, (c) => c === defaultValue, "le retour au thème par défaut");
@@ -360,7 +360,7 @@ describe("the home page", () => {
 
   it("a widget link only opens after a real press, never at load nor by a simulated click", async () => {
     await waitUi(m, `return !!doc.querySelector('[data-testid="widget-lien"] iframe')?.contentDocument?.getElementById("go");`, [], 15_000);
-    const urls = async () => Object.values((await state(m)).onglets).map((o) => o.url);
+    const urls = async () => Object.values((await state(m)).tabs).map((o) => o.url);
     // The load's send: no gesture, no tab.
     await new Promise((r) => setTimeout(r, 2000));
     expect((await urls()).filter((u) => u.includes("exemple.invalid"))).toEqual([]);
@@ -383,7 +383,7 @@ describe("the home page", () => {
     await wait(urls, (us) => us.includes("https://exemple.invalid/clic"), "l'ouverture du lien");
     expect((await urls()).filter((u) => u.includes("/auto"))).toEqual([]);
     // The opening activated a tab: the home is no longer mounted (EmptyPage). We close it again for what follows.
-    const tab = Object.entries((await state(m)).onglets).find(([, o]) => o.url.includes("exemple.invalid/clic"))?.[0];
+    const tab = Object.entries((await state(m)).tabs).find(([, o]) => o.url.includes("exemple.invalid/clic"))?.[0];
     expect(tab).toBeDefined();
     await dispatch(m, { type: "fermerOnglet", id: tab! });
     await waitUi(m, `return !!doc.querySelector('[data-testid="accueil"]') && !!doc.querySelector('[data-testid="widget-alpha"]');`, [], 15_000);
@@ -417,10 +417,10 @@ describe("the home page", () => {
     expect(profiles).toEqual([["defaut", true]]);
     await click(m, '[data-testid="carte-accord"] button', { text: "Autoriser" });
     // The grant names the shown domains and the chosen profile; the harvest starts and its data reaches the frame.
-    const grant = await wait(() => readGrants(dataDir), (a) => a.compte?.profil === "defaut", "l'écriture de l'accord");
-    expect(grant.compte).toEqual({ domaines: ["exemple.invalid"], publiques: [], profil: "defaut" });
+    const grant = await wait(() => readGrants(dataDir), (a) => a.compte?.profile === "defaut", "l'écriture de l'accord");
+    expect(grant.compte).toEqual({ domains: ["exemple.invalid"], public: [], profile: "defaut" });
     await wait(() => (existsSync(DATA(dataDir, "compte")) ? readJson<unknown>(DATA(dataDir, "compte")) : Promise.resolve(null)), (d) => d !== null, "les données de la récolte");
-    expect(await readJson(DATA(dataDir, "compte"))).toEqual({ vu: "compte" });
+    expect(await readJson(DATA(dataDir, "compte"))).toEqual({ seen: "compte" });
     await wait(() => dataText(m, "compte"), (t) => t === '{"vu":"compte"}', "les données dans le cadre");
     expect(await waitUi(m, `return !doc.querySelector('[data-testid="widget-compte"] [data-testid="bandeau-accord"]');`)).toBe(true);
   });
@@ -428,12 +428,12 @@ describe("the home page", () => {
   it("Refuser does not come back: the banner stays hidden after the page is reread", async () => {
     await waitUi(m, `return !!doc.querySelector('[data-testid="widget-sans-accord"] [data-testid="bandeau-accord"]');`, [], 15_000);
     // A grant and data from before (as after another profile): the denial must really erase them.
-    await writeJson(GRANTS(dataDir), { ...(await readGrants(dataDir)), "sans-accord": { domaines: ["exemple.invalid"], publiques: [], profil: "defaut" } });
+    await writeJson(GRANTS(dataDir), { ...(await readGrants(dataDir)), "sans-accord": { domains: ["exemple.invalid"], public: [], profile: "defaut" } });
     await writeJson(DATA(dataDir, "sans-accord"), { secret: "du compte" });
     await click(m, '[data-testid="widget-sans-accord"] [data-testid="bandeau-accord"] button', { text: "Refuser" });
     expect(await waitUi(m, `return !doc.querySelector('[data-testid="widget-sans-accord"] [data-testid="bandeau-accord"]');`)).toBe(true);
     // An added widget forces a reread (accueil.change): the denial holds for the session, the banner does not come back.
-    await writeWidget(dataDir, "temoin", { nom: "Témoin", affichage: DISPLAY("témoin") });
+    await writeWidget(dataDir, "temoin", { name: "Témoin", display: DISPLAY("témoin") });
     await wait(
       () => inUi<string[]>(m, `return [...doc.querySelectorAll('[data-testid="titre-widget"]')].map((e) => e.textContent);`),
       (ts) => ts.includes("Témoin"),
@@ -442,20 +442,20 @@ describe("the home page", () => {
     expect(await inUi<boolean>(m, `return !!doc.querySelector('[data-testid="widget-sans-accord"] [data-testid="bandeau-accord"]');`)).toBe(false);
     await wait(() => readGrants(dataDir), (a) => a["sans-accord"] === undefined, "le retrait de l'accord refusé");
     await wait(async () => existsSync(DATA(dataDir, "sans-accord")), (present) => !present, "le retrait des données du refus");
-    expect(await readJson<{ statut: string }>(STATE(dataDir, "sans-accord"))).toMatchObject({ statut: "accord-requis" });
+    expect(await readJson<{ status: string }>(STATE(dataDir, "sans-accord"))).toMatchObject({ status: "accord-requis" });
   });
 
   it("a grant that names an invalid profile asks again: the harvest refuses it, the grant and its data go away", async () => {
     // The grant names a sign-in profile; a profile absent from the session makes it unusable. (A profile that
     // becomes private only asks again at the widget's next scheduled harvest: see the README's limit.)
     const declaration = await readJson<Record<string, unknown>>(path.join(HOME(dataDir), "widgets", "compte", "widget.json"));
-    await writeJson(path.join(HOME(dataDir), "widgets", "compte", "widget.json"), { ...declaration, config: { lire: true, url: "https://exemple.invalid/x" } });
-    await writeJson(GRANTS(dataDir), { ...(await readGrants(dataDir)), compte: { domaines: ["exemple.invalid"], publiques: [], profil: "absent" } });
+    await writeJson(path.join(HOME(dataDir), "widgets", "compte", "widget.json"), { ...declaration, config: { read: true, url: "https://exemple.invalid/x" } });
+    await writeJson(GRANTS(dataDir), { ...(await readGrants(dataDir)), account: { domains: ["exemple.invalid"], public: [], profile: "absent" } });
     await harvest(m, "compte");
     await waitUi(m, `return !!doc.querySelector('[data-testid="widget-compte"] [data-testid="bandeau-accord"]');`, [], 20_000);
     expect((await readGrants(dataDir)).compte).toBeUndefined();
     expect(existsSync(DATA(dataDir, "compte"))).toBe(false);
-    expect(await readJson<{ statut: string }>(STATE(dataDir, "compte"))).toMatchObject({ statut: "accord-requis" });
+    expect(await readJson<{ status: string }>(STATE(dataDir, "compte"))).toMatchObject({ status: "accord-requis" });
     // The new request offers a profile again.
     await click(m, '[data-testid="widget-compte"] [data-testid="bandeau-accord"] button', { text: "Autoriser…" });
     const profiles = await waitUi<[string, boolean][]>(m, `const rs = [...doc.querySelectorAll('[data-testid="carte-accord"] input[type="radio"]')]; return rs.length ? rs.map((r) => [r.value, r.checked]) : null;`);
@@ -464,12 +464,12 @@ describe("the home page", () => {
   });
 
   it("a manual harvest goes through « en cours » then fills the widget", async () => {
-    const data = () => (existsSync(DATA(dataDir, "lent")) ? readJson<{ fait: number }>(DATA(dataDir, "lent")) : Promise.resolve(null));
+    const data = () => (existsSync(DATA(dataDir, "lent")) ? readJson<{ done: number }>(DATA(dataDir, "lent")) : Promise.resolve(null));
     await wait(data, (d) => d !== null, "les données du lancement", 20_000);
     const before = await wait(
       async () => {
         try {
-          return JSON.parse(await dataText(m, "lent")) as { fait: number };
+          return JSON.parse(await dataText(m, "lent")) as { done: number };
         } catch {
           return null;
         }
@@ -483,33 +483,33 @@ describe("the home page", () => {
     const after = await wait(
       async () => {
         try {
-          return JSON.parse(await dataText(m, "lent")) as { fait: number };
+          return JSON.parse(await dataText(m, "lent")) as { done: number };
         } catch {
           return null;
         }
       },
-      (d) => d !== null && d.fait > before!.fait,
+      (d) => d !== null && d.done > before!.done,
       "les nouvelles données dans le cadre",
       20_000,
     );
-    expect(after!.fait).toBeGreaterThan(before!.fait);
+    expect(after!.done).toBeGreaterThan(before!.done);
   });
 
   it("a failed harvest says so and leaves no data", async () => {
     const text = await wait(() => widgetText(m, "echec"), (t) => t.includes("échec du") && t.includes("boum"), "l'échec de la récolte", 20_000);
     expect(text).toContain("échec du");
     expect(existsSync(DATA(dataDir, "echec"))).toBe(false);
-    expect(await readJson<{ statut: string; erreur: string }>(STATE(dataDir, "echec"))).toMatchObject({ statut: "erreur", erreur: "boum" });
+    expect(await readJson<{ status: string; error: string }>(STATE(dataDir, "echec"))).toMatchObject({ status: "erreur", error: "boum" });
   });
 
   it("a news harvest writes its notification into WEBAIOS_TEST_NOTIFICATIONS", async () => {
     const lignes = await wait(
-      async () => ((existsSync(notifications) ? (await readFile(notifications, "utf8")).trim().split("\n").filter(Boolean) : []).map((l) => JSON.parse(l) as { titre: string; texte: string })),
-      (ls) => ls.some((n) => n.titre === "Veille"),
+      async () => ((existsSync(notifications) ? (await readFile(notifications, "utf8")).trim().split("\n").filter(Boolean) : []).map((l) => JSON.parse(l) as { title: string; text: string })),
+      (ls) => ls.some((n) => n.title === "Veille"),
       "la notification de nouveautés",
       20_000,
     );
-    expect(lignes).toContainEqual({ titre: "Veille", texte: "2 nouveaux éléments" });
+    expect(lignes).toContainEqual({ title: "Veille", text: "2 nouveaux éléments" });
   });
 
   it("Retirer: the folder goes into .corbeille, the grant and the data are erased", async () => {
@@ -532,8 +532,8 @@ describe("the home page", () => {
     expect(existsSync(path.join(HOME(dataDir), "widgets", "retrait"))).toBe(false);
     // The host removes the grant then the data: both together.
     await wait(
-      async () => ({ accord: (await readGrants(dataDir)).retrait, donnees: existsSync(DATA(dataDir, "retrait")) }),
-      (v) => v.accord === undefined && !v.donnees,
+      async () => ({ grant: (await readGrants(dataDir)).retrait, data: existsSync(DATA(dataDir, "retrait")) }),
+      (v) => v.grant === undefined && !v.data,
       "le retrait de l'accord et des données",
     );
   });
@@ -561,7 +561,7 @@ describe("the home page after a host restart", () => {
   beforeAll(async () => {
     dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-accueil-relance-"));
     await mkdir(path.join(HOME(dataDir), "widgets"), { recursive: true });
-    await writeWidget(dataDir, "alpha", { nom: "Alpha", affichage: DISPLAY("alpha") });
+    await writeWidget(dataDir, "alpha", { name: "Alpha", display: DISPLAY("alpha") });
     w = await launchWebAiOs({ dataDir });
     m = w.marionette;
     await m.setContext("chrome");
@@ -576,7 +576,7 @@ describe("the home page after a host restart", () => {
   it("a widget added while the host was stopped shows once it starts again (Réessayer)", async () => {
     await m.execute(`return (async () => { await window.webaiosWindow.store.agent.stop(); return true; })();`);
     await waitFor<number | null>(m, `return window.webaiosWindow.store.agent.pid;`, (pid) => pid === null);
-    await writeWidget(dataDir, "pendant-arret", { nom: "Pendant l'arrêt", affichage: DISPLAY("pendant-arret") });
+    await writeWidget(dataDir, "pendant-arret", { name: "Pendant l'arrêt", display: DISPLAY("pendant-arret") });
     await m.execute(`return (async () => { await window.webaiosWindow.store.agent.ensure(); return true; })();`);
     expect(await wait(titles, (ts) => ts.includes("Pendant l'arrêt"), "the widget added while the host was stopped", 20_000)).toContain("Alpha");
   });
@@ -591,16 +591,16 @@ describe("the home page, workshop stopped", () => {
     dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-accueil-atelier-"));
     await mkdir(path.join(HOME(dataDir), "widgets"), { recursive: true });
     await writeWidget(dataDir, "veille", {
-      nom: "Veille",
-      affichage: DISPLAY_DATA,
-      declaration: { recolte: { minutes: 60 }, sources: { compte: [], publiques: [], web: false } },
+      name: "Veille",
+      display: DISPLAY_DATA,
+      declaration: { harvest: { minutes: 60 }, sources: { account: [], public: [], web: false } },
     });
     await writeHarvest(dataDir, "veille", `export default async () => [{ url: "https://exemple.invalid/a" }];`);
     // Data from a previous harvest, and a due state: the launch check must keep them.
-    await writeJson(DATA(dataDir, "veille"), { vieux: true });
-    await writeJson(STATE(dataDir, "veille"), { statut: "ok", derniereMaj: "2026-01-01T00:00:00.000Z", derniereTentative: "2026-01-01T00:00:00.000Z" });
+    await writeJson(DATA(dataDir, "veille"), { old: true });
+    await writeJson(STATE(dataDir, "veille"), { status: "ok", lastUpdate: "2026-01-01T00:00:00.000Z", lastAttempt: "2026-01-01T00:00:00.000Z" });
     await writeLayout(dataDir, [{ id: "veille", x: 0, y: 0, l: 250, h: 180 }]);
-    w = await launchWebAiOs({ dataDir, env: { FAUX_DOCKER_ABSENT: "1" } });
+    w = await launchWebAiOs({ dataDir, env: { FAKE_DOCKER_ABSENT: "1" } });
     m = w.marionette;
     await m.setContext("chrome");
     await waitReady(m);
@@ -612,12 +612,12 @@ describe("the home page, workshop stopped", () => {
 
   it("without a workshop, the harvest does not run: « atelier arrêté », the data kept", async () => {
     await wait(() => widgetText(m, "veille"), (t) => t.includes("mise à jour impossible : atelier arrêté"), "l'atelier arrêté", 20_000);
-    expect(await readJson(DATA(dataDir, "veille"))).toEqual({ vieux: true });
+    expect(await readJson(DATA(dataDir, "veille"))).toEqual({ old: true });
     // « Mettre à jour maintenant » launches nothing either: nothing changes, the interface says so after its delay.
     await harvest(m, "veille");
     await wait(() => widgetText(m, "veille"), (t) => t.includes("Sans effet pour l'instant"), "l'action sans effet", 12_000);
-    expect(await readJson<{ statut: string }>(STATE(dataDir, "veille"))).toMatchObject({ statut: "atelier-arrete" });
-    expect(await readJson(DATA(dataDir, "veille"))).toEqual({ vieux: true });
+    expect(await readJson<{ status: string }>(STATE(dataDir, "veille"))).toMatchObject({ status: "atelier-arrete" });
+    expect(await readJson(DATA(dataDir, "veille"))).toEqual({ old: true });
     // The page stays displayed.
     expect(await inUi<string[]>(m, `return [...doc.querySelectorAll('[data-testid="titre-widget"]')].map((e) => e.textContent);`)).toEqual(["Veille"]);
   });

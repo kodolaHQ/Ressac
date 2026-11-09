@@ -49,18 +49,18 @@ let profile: string;
 const url = (p: string, host = "vidola-a.localhost") => server.url(host, p);
 const reader = () => server.url("lecteur.localhost", "/*").replace(/^http:/, "https:");
 const vidola = () => ({
-  nom: "Vidola",
-  adresse: url("/serie/the-bear"),
-  domaines: ["vidola-a.localhost"],
-  connexion: ["compte.localhost"],
-  retouches: [
-    { correspond: ["/serie/*"], js: ["serie.js"], css: ["cacher.css"] },
-    { correspond: ["/jamais"], js: ["cadre.js"], cadres: [reader()] },
-    { correspond: ["/erreur"], js: ["erreur.js", "apres.js"] },
+  name: "Vidola",
+  url: url("/serie/the-bear"),
+  domains: ["vidola-a.localhost"],
+  login: ["compte.localhost"],
+  tweaks: [
+    { matches: ["/serie/*"], js: ["serie.js"], css: ["cacher.css"] },
+    { matches: ["/jamais"], js: ["cadre.js"], frames: [reader()] },
+    { matches: ["/erreur"], js: ["erreur.js", "apres.js"] },
   ],
 });
 /** The second app (Review Focus 2): its own domain, memory and console. */
-const other = () => ({ nom: "Autre", adresse: url("/serie/b", "vidola-b.localhost"), domaines: ["vidola-b.localhost"], retouches: [{ correspond: ["/serie/*"], js: ["b.js"] }] });
+const other = () => ({ name: "Autre", url: url("/serie/b", "vidola-b.localhost"), domains: ["vidola-b.localhost"], tweaks: [{ matches: ["/serie/*"], js: ["b.js"] }] });
 const B_JS = 'webaiosSite.retenir("b", 1).then(() => (document.documentElement.dataset.retenu = "oui")); throw new Error("erreur de B");';
 
 const inStore = <T = unknown>(body: string, args: unknown[] = []) =>
@@ -72,7 +72,7 @@ const view = <T = unknown>(expr: string, o: { id?: string; frame?: number } = {}
 /** `typeof name` in the page's own world (a <script> of the page; the test's script has Xrays, like a tweak). */
 const pageTypeof = (name: string) =>
   view<string>(`(() => { const s = document.createElement("script"); s.textContent = "document.documentElement.dataset.vu = typeof " + ${JSON.stringify(name)}; document.documentElement.append(s); s.remove(); return document.documentElement.dataset.vu; })()`);
-const errors = (id = "vidola") => inStore<{ texte: string; source: string; sourceVerifiee: boolean }[]>(`return store.sites.errors(arguments[0]);`, [id]);
+const errors = (id = "vidola") => inStore<{ text: string; source: string; sourceVerified: boolean }[]>(`return store.sites.errors(arguments[0]);`, [id]);
 const memory = (id: string) => {
   const f = path.join(dataDir, "sites", id, "memoire.json");
   return existsSync(f) ? JSON.parse(readFileSync(f, "utf8")) : null;
@@ -98,24 +98,24 @@ async function command(c: string): Promise<string | null> {
 
 beforeAll(async () => {
   server = await startSitesServer();
-  server.definir("vidola-a.localhost", "/serie/the-bear", '<title>The Bear</title><div class="shorts" id="shorts">shorts</div><input type="password" id="mdp"><p>épisode</p>');
-  server.definir("vidola-a.localhost", "/film/2", "<title>Film</title>");
-  server.definir("vidola-a.localhost", "/lecteur", `<title>Lecteur</title><iframe id="l" src="${url("/v", "lecteur.localhost")}"></iframe>`);
-  server.definir("lecteur.localhost", "/v", "<title>Vidéo</title><video></video>");
-  server.definir("vidola-a.localhost", "/erreur", "<title>Erreur</title><p id='p'>la page marche</p>");
+  server.define("vidola-a.localhost", "/serie/the-bear", '<title>The Bear</title><div class="shorts" id="shorts">shorts</div><input type="password" id="mdp"><p>épisode</p>');
+  server.define("vidola-a.localhost", "/film/2", "<title>Film</title>");
+  server.define("vidola-a.localhost", "/lecteur", `<title>Lecteur</title><iframe id="l" src="${url("/v", "lecteur.localhost")}"></iframe>`);
+  server.define("lecteur.localhost", "/v", "<title>Vidéo</title><video></video>");
+  server.define("vidola-a.localhost", "/erreur", "<title>Erreur</title><p id='p'>la page marche</p>");
   // A page that stops DOMContentLoaded from window, in capture, before any other listener it knows.
-  server.definir(
+  server.define(
     "vidola-a.localhost",
     "/serie/bloque",
     '<title>Bloque</title><script>window.addEventListener("DOMContentLoaded", (e) => e.stopImmediatePropagation(), true); document.addEventListener("DOMContentLoaded", (e) => e.stopImmediatePropagation(), true);</script><div class="shorts" id="shorts">shorts</div><input type="password" id="mdp">',
   );
-  server.definir("compte.localhost", "/connexion", "<title>Connexion</title>");
-  server.definir("vidola-b.localhost", "/serie/b", "<title>B</title><p>b</p>");
+  server.define("compte.localhost", "/connexion", "<title>Connexion</title>");
+  server.define("vidola-b.localhost", "/serie/b", "<title>B</title><p>b</p>");
   dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
   profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
   writeSite(dataDir, "vidola", {
     declaration: vidola(),
-    fichiers: {
+    files: {
       "retouches/serie.js": TWEAK_SERIES,
       "retouches/cacher.css": ".shorts { display: none; }",
       "retouches/cadre.js": 'document.documentElement.dataset.cadre = "oui"; document.documentElement.dataset.pont = typeof webaiosSite;',
@@ -123,11 +123,11 @@ beforeAll(async () => {
       "retouches/apres.js": 'document.documentElement.dataset.apres = "oui"; setTimeout(() => { throw new Error("plus tard"); });',
     },
   });
-  writeSite(dataDir, "autre", { declaration: other(), fichiers: { "retouches/b.js": B_JS } });
+  writeSite(dataDir, "autre", { declaration: other(), files: { "retouches/b.js": B_JS } });
   await grantSite(dataDir, "vidola", vidola());
   await grantSite(dataDir, "autre", other());
   const actor = testActor(profile);
-  w = await launchWebAiOs({ dataDir, profile, env: { WEBAIOS_TEST_ADRESSES_LOCALES: "1", ...actor.env }, prefs: actor.prefs });
+  w = await launchWebAiOs({ dataDir, profile, env: { WEBAIOS_TEST_LOCAL_ADDRESSES: "1", ...actor.env }, prefs: actor.prefs });
   m = w.marionette;
   await m.setContext("chrome");
   await waitReady(m);
@@ -135,11 +135,11 @@ beforeAll(async () => {
 }, 90_000);
 afterAll(async () => {
   await w?.close();
-  await server?.fermer();
+  await server?.close();
   if (dataDir) await rm(dataDir, { recursive: true, force: true });
   if (profile) await rm(profile, { recursive: true, force: true });
 });
-beforeEach(() => void server.requetes.splice(0));
+beforeEach(() => void server.requests.splice(0));
 afterEach(async () => {
   try {
     expect(await missingApi(m)).toEqual([]);
@@ -158,7 +158,7 @@ describe("tweaks", () => {
   it('a JS tweak remembers encours.the-bear through webaiosSite.retenir; the memory read by the test has adresse "/serie/the-bear" (sites.spec.ts:815)', async () => {
     await openAt("vidola", "/serie/the-bear");
     await expect.poll(() => view("document.documentElement.dataset.retenu")).toBe("oui");
-    await expect.poll(() => memory("vidola")?.valeurs?.["encours.the-bear"] ?? null, { timeout: 5000 }).toMatchObject({ valeur: { titre: "The Bear", episode: "S2E4" }, adresse: "/serie/the-bear" });
+    await expect.poll(() => memory("vidola")?.valeurs?.["encours.the-bear"] ?? null, { timeout: 5000 }).toMatchObject({ value: { title: "The Bear", episode: "S2E4" }, url: "/serie/the-bear" });
     expect(await command("lire")).toBe('ok:{"titre":"The Bear","episode":"S2E4"}');
     // A non-JSON value: the memory's named refusal.
     expect(await command("non-json")).toBe("refus:Valeur refusée : JSON seulement");
@@ -168,7 +168,7 @@ describe("tweaks", () => {
     await openAt("vidola", "/serie/the-bear");
     await expect.poll(() => view("document.documentElement.dataset.monde")).toBeTruthy();
     expect(JSON.parse(String(await view("document.documentElement.dataset.monde")))).toEqual({
-      require: "undefined", ipcRenderer: "undefined", process: "undefined", pont: "object", Components: "undefined", ChromeUtils: "undefined", Services: "undefined",
+      require: "undefined", ipcRenderer: "undefined", process: "undefined", bridge: "object", Components: "undefined", ChromeUtils: "undefined", Services: "undefined",
     });
   });
 
@@ -192,11 +192,11 @@ describe("tweaks", () => {
     await openAt("vidola", "/serie/the-bear");
     await expect.poll(() => view("document.body.dataset.retouche")).toBe("oui");
     await view(`(document.documentElement.dataset.pub = ${JSON.stringify(url("/x", "pub.localhost"))}, 1)`);
-    server.requetes.splice(0);
+    server.requests.splice(0);
     expect(await command("fetch-pub")).toMatch(/^refus:/);
     expect(await command("fetch-site")).toBe("ok:200");
-    expect(server.requetes.filter((r) => r.hote === "pub.localhost")).toEqual([]);
-    expect(server.requetes.some((r) => r.hote === "vidola-a.localhost" && r.chemin === "/film/2")).toBe(true);
+    expect(server.requests.filter((r) => r.host === "pub.localhost")).toEqual([]);
+    expect(server.requests.some((r) => r.host === "vidola-a.localhost" && r.path === "/film/2")).toBe(true);
   });
 
   it('a password field filled by the test: the tweak reads "" (sites.spec.ts:867)', async () => {
@@ -211,28 +211,28 @@ describe("tweaks", () => {
     await openAt("vidola", "/serie/the-bear");
     await expect.poll(() => view("document.body.dataset.retouche")).toBe("oui");
     await view(`(document.documentElement.dataset.pub = ${JSON.stringify(url("/x", "pub.localhost"))}, document.documentElement.dataset.pubHote = "pub.localhost", 1)`);
-    server.requetes.splice(0);
+    server.requests.splice(0);
     expect(await command("elargir")).toMatch(/^refus:/);
-    expect(server.requetes.filter((r) => r.hote === "pub.localhost")).toEqual([]);
+    expect(server.requests.filter((r) => r.host === "pub.localhost")).toEqual([]);
   });
 
   it("a tweak that throws: erreurs_retouches has it, the page works (sites.spec.ts:886)", async () => {
     await openAt("vidola", "/serie/the-bear");
     await go("/erreur");
     await expect.poll(() => view("document.documentElement.dataset.apres ?? null")).toBe("oui");
-    await expect.poll(async () => (await errors()).map((e) => e.texte).join("\n"), { timeout: 10_000 }).toContain("retouche cassée");
-    await expect.poll(async () => (await errors()).map((e) => e.texte).join("\n"), { timeout: 10_000 }).toContain("plus tard");
-    const e = (await errors()).find((x) => x.texte.includes("retouche cassée"))!;
+    await expect.poll(async () => (await errors()).map((e) => e.text).join("\n"), { timeout: 10_000 }).toContain("retouche cassée");
+    await expect.poll(async () => (await errors()).map((e) => e.text).join("\n"), { timeout: 10_000 }).toContain("plus tard");
+    const e = (await errors()).find((x) => x.text.includes("retouche cassée"))!;
     expect(e.source).toMatch(/^webaios-retouche:\/\/vidola\/erreur\.js/);
     // The source says it is a tweak: nothing proves it (the page can name itself so).
-    expect(e.sourceVerifiee).toBe(false);
+    expect(e.sourceVerified).toBe(false);
     expect(await view('document.getElementById("p").textContent')).toBe("la page marche");
   });
 
   it("a tweak that throws later (setTimeout) is in erreurs_retouches too, with its source; the console empties when the window closes", async () => {
     await openAt("vidola", "/serie/the-bear");
     await go("/erreur");
-    await expect.poll(async () => (await errors()).find((e) => e.texte.includes("plus tard"))?.source ?? null, { timeout: 10_000 }).toMatch(/^webaios-retouche:\/\/vidola\/apres\.js/);
+    await expect.poll(async () => (await errors()).find((e) => e.text.includes("plus tard"))?.source ?? null, { timeout: 10_000 }).toMatch(/^webaios-retouche:\/\/vidola\/apres\.js/);
     await inStore(`await store.sites.close("vidola");`);
     expect(await errors()).toEqual([]);
   });
@@ -266,7 +266,7 @@ describe("tweaks", () => {
   for (const [cas, grant] of [
     ["without accord", () => ({})],
     // The grant from before the frame pattern was added: it covers less than the declaration asks for.
-    ["with an accord that covers less than the declaration", () => ({ vidola: { domaines: ["vidola-a.localhost"], connexion: ["compte.localhost"], cadres: [], reprise: false } })],
+    ["with an accord that covers less than the declaration", () => ({ vidola: { domains: ["vidola-a.localhost"], login: ["compte.localhost"], frames: [], resume: false } })],
   ] as const)
     it(`${cas}: nothing is loaded before the card is answered, then neither the agent's CSS nor script in the page (sites.spec.ts:944)`, async () => {
       const grants = path.join(dataDir, "sites-accords.json");
@@ -278,7 +278,7 @@ describe("tweaks", () => {
         await sleep(300);
         // The card blocks the view: it loads nothing.
         expect(await m.execute<string>(`return ${siteWindowExpr("vidola")}.gBrowser.selectedBrowser.currentURI.spec;`)).toBe("about:blank");
-        expect(server.requetes.filter((r) => r.hote === "vidola-a.localhost")).toEqual([]);
+        expect(server.requests.filter((r) => r.host === "vidola-a.localhost")).toEqual([]);
         // « Ouvrir sans retouches »: the page loads, and nothing of the agent is in it.
         await inSiteBar(m, "vidola", `doc.querySelector('[data-testid="refuser-site"]').click(); return true;`);
         await expect.poll(() => viewUrl("vidola"), { timeout: 15_000 }).toBe(url("/serie/the-bear"));
@@ -312,13 +312,13 @@ describe("tweaks", () => {
     await expect.poll(() => view("document.documentElement.dataset.retenu", { id: "autre" })).toBe("oui");
     await expect.poll(() => view("document.documentElement.dataset.retenu")).toBe("oui");
     await go("/erreur");
-    await expect.poll(async () => (await errors("autre")).map((e) => e.texte).join("\n"), { timeout: 10_000 }).toContain("erreur de B");
-    await expect.poll(async () => (await errors()).map((e) => e.texte).join("\n"), { timeout: 10_000 }).toContain("retouche cassée");
-    expect((await errors()).map((e) => e.texte).join("\n")).not.toContain("erreur de B");
-    expect((await errors("autre")).map((e) => e.texte).join("\n")).not.toContain("retouche cassée");
+    await expect.poll(async () => (await errors("autre")).map((e) => e.text).join("\n"), { timeout: 10_000 }).toContain("erreur de B");
+    await expect.poll(async () => (await errors()).map((e) => e.text).join("\n"), { timeout: 10_000 }).toContain("retouche cassée");
+    expect((await errors()).map((e) => e.text).join("\n")).not.toContain("erreur de B");
+    expect((await errors("autre")).map((e) => e.text).join("\n")).not.toContain("retouche cassée");
     // A's tweak never ran in B's view, nor its CSS.
     expect(await view("document.body.dataset.retouche ?? null", { id: "autre" })).toBeNull();
-    await expect.poll(() => memory("autre")?.valeurs ?? null, { timeout: 5000 }).toMatchObject({ b: { valeur: 1, adresse: "/serie/b" } });
+    await expect.poll(() => memory("autre")?.valeurs ?? null, { timeout: 5000 }).toMatchObject({ b: { value: 1, url: "/serie/b" } });
     expect(Object.keys(memory("autre").valeurs)).toEqual(["b"]);
     await expect.poll(() => memory("vidola")?.valeurs ?? null, { timeout: 5000 }).toHaveProperty(["encours.the-bear"]);
     expect(memory("vidola").valeurs).not.toHaveProperty("b");

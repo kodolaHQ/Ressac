@@ -232,10 +232,10 @@ describe("the UI's network", () => {
        return hit; })();`,
       [sel, click],
     );
-  const tabUrls = async () => Object.values((await state(m)).onglets).map((o) => o.url);
+  const tabUrls = async () => Object.values((await state(m)).tabs).map((o) => o.url);
   /** Closes the tab whose address contains `part` (its opening hid the home), then waits for widget `id` again. */
   async function closeTab(part: string, id: string): Promise<void> {
-    const tab = Object.entries((await state(m)).onglets).find(([, o]) => o.url.includes(part))?.[0];
+    const tab = Object.entries((await state(m)).tabs).find(([, o]) => o.url.includes(part))?.[0];
     expect(tab, part).toBeDefined();
     await dispatch(m, { type: "fermerOnglet", id: tab! });
     await expect.poll(() => m.execute(`return !!${widgetDoc(id)}?.body?.firstChild;`), { timeout: 15_000 }).toBe(true);
@@ -268,14 +268,14 @@ describe("the UI's network", () => {
     widgetFiles(dataDir, "sonde", DISPLAY);
     widgetFiles(dataDir, "lien", linksDisplay);
     widgetFiles(dataDir, "ombre", shadowDisplay);
-    writeProject(dataDir, "essai", { manifeste: {} });
-    const netsite = { nom: "Netsite", adresse: `http://netsite.localhost:${HTTP}/page`, domaines: ["netsite.localhost"] };
+    writeProject(dataDir, "essai", { manifest: {} });
+    const netsite = { name: "Netsite", url: `http://netsite.localhost:${HTTP}/page`, domains: ["netsite.localhost"] };
     writeSite(dataDir, "netsite", { declaration: netsite });
     await grantSite(dataDir, "netsite", netsite);
-    const withHome = { nom: "Netsite accueil", adresse: `http://netsite-accueil.localhost:${HTTP}/page`, domaines: ["netsite-accueil.localhost"] };
-    writeSite(dataDir, "netsite-accueil", { declaration: withHome, fichiers: { "accueil/index.html": '<!doctype html><meta charset="utf-8"><p id="h">accueil</p>' } });
+    const withHome = { name: "Netsite accueil", url: `http://netsite-accueil.localhost:${HTTP}/page`, domains: ["netsite-accueil.localhost"] };
+    writeSite(dataDir, "netsite-accueil", { declaration: withHome, files: { "accueil/index.html": '<!doctype html><meta charset="utf-8"><p id="h">accueil</p>' } });
     await grantSite(dataDir, "netsite-accueil", withHome);
-    w = await launchWebAiOs({ dataDir, prefs: NET_PREFS, env: { ...netEnv(logDir), WEBAIOS_TEST_ADRESSES_LOCALES: "1", ...APPS_ENV([15370, 15374]) } });
+    w = await launchWebAiOs({ dataDir, prefs: NET_PREFS, env: { ...netEnv(logDir), WEBAIOS_TEST_LOCAL_ADDRESSES: "1", ...APPS_ENV([15370, 15374]) } });
     m = w.marionette;
     await m.setContext("chrome");
     await waitReady(m);
@@ -301,7 +301,7 @@ describe("the UI's network", () => {
     await expect.poll(() => data("fuite-data"), { timeout: 10_000 }).toBe('"reste"');
     await expect.poll(() => m.execute(`return ${widgetDoc("fuite-cadres")}?.getElementById("t") ? true : false;`), { timeout: 10_000 }).toBe(true);
     await sleep(3000);
-    expect(await spy()).toEqual({ rtc: "erreur TypeError", imbrique: "…", js: "posé", vide: "erreur SecurityError", srcdoc: "about:blank" });
+    expect(await spy()).toEqual({ rtc: "erreur TypeError", nested: "…", js: "posé", empty: "erreur SecurityError", srcdoc: "about:blank" });
     expect(await data("fuite")).toBe('"reste"');
     expect(await data("fuite-data")).toBe('"reste"');
     const uris = await m.execute<string[]>(
@@ -394,7 +394,7 @@ describe("the UI's network", () => {
       [SFX],
     );
     // The witness: a tab's navigation resolves its name.
-    await dispatch(m, { type: "ouvrirOnglet", fenetreId: (await state(m)).fenetres[0]!.id, url: `http://temoin.${SFX}:${HTTP}/`, activer: true });
+    await dispatch(m, { type: "ouvrirOnglet", windowId: (await state(m)).windows[0]!.id, url: `http://temoin.${SFX}:${HTTP}/`, activate: true });
     await expect.poll(() => net.hits.some((h) => h.label === "temoin"), { timeout: 15_000 }).toBe(true);
     await closeTab("temoin.", "sonde");
     await sleep(3000);
@@ -433,16 +433,16 @@ describe("the UI's network", () => {
     const refusals = (await uiRefusals(m)).join("\n");
     for (const what of ["bar-img.", "badge-img."]) expect(refusals, what).toContain(what);
     expect(await size()).toEqual([88, 28]);
-    await callTool(dataDir, "arreter_application", { dossier: "essai" }).catch(() => {});
+    await callTool(dataDir, "arreter_application", { folder: "essai" }).catch(() => {});
     await m.execute(`return (async () => { const store = await ChromeUtils.importESModule("${STORE}").ready; for (const id of store.sites.openIds()) await store.sites.close(id); })();`);
   });
 
   // accueil.spec.ts:883
   it("a favicon shows in the tab list, fetched by the tab, never by the UI (the UI has no network)", { timeout: 60_000 }, async () => {
     const refused0 = (await uiRefusals(m)).length;
-    await dispatch(m, { type: "ouvrirOnglet", fenetreId: (await state(m)).fenetres[0]!.id, url: `http://${host("icone")}/avec-icone`, activer: true });
+    await dispatch(m, { type: "ouvrirOnglet", windowId: (await state(m)).windows[0]!.id, url: `http://${host("icone")}/avec-icone`, activate: true });
     let id = "";
-    await expect.poll(async () => (id = Object.entries((await state(m)).onglets).find(([, o]) => o.url.includes("/avec-icone"))?.[0] ?? ""), { timeout: 10_000 }).not.toBe("");
+    await expect.poll(async () => (id = Object.entries((await state(m)).tabs).find(([, o]) => o.url.includes("/avec-icone"))?.[0] ?? ""), { timeout: 10_000 }).not.toBe("");
     const icon = () =>
       m.execute<{ src: string; width: number } | null>(
         `const i = document.getElementById("webaios-sidebar").contentDocument.querySelector(arguments[0]); return i ? { src: i.src, width: i.complete ? i.naturalWidth : 0 } : null;`,
@@ -458,16 +458,16 @@ describe("the UI's network", () => {
 
   it("the tabs and the agent's reads keep their network: a tab's image, fetch, WebSocket and WebRTC TURN/TCP reach the local servers, and an invisible read returns the page", { timeout: 120_000 }, async () => {
     const refused0 = (await uiRefusals(m)).length;
-    const windowId = (await state(m)).fenetres[0]!.id;
+    const windowId = (await state(m)).windows[0]!.id;
     const seen = (name: string) => net.hits.filter((h) => h.label === name).map((h) => `${h.method} ${h.path}`);
-    await dispatch(m, { type: "ouvrirOnglet", fenetreId: windowId, url: `http://${host("tab-page")}/page`, activer: true });
+    await dispatch(m, { type: "ouvrirOnglet", windowId: windowId, url: `http://${host("tab-page")}/page`, activate: true });
     await expect
       .poll(() => seen("tab-page"), { timeout: 15_000 })
       .toEqual(expect.arrayContaining(["GET /page", "GET /s2/witness/img", "GET /s2/witness/fetch", "UPGRADE /s2/witness/ws", "POST /s2/witness/beacon"]));
     await closeTab("tab-page.", "sonde");
     const tcp0 = net.tcp.length;
     const udp0 = net.udp.length;
-    await dispatch(m, { type: "ouvrirOnglet", fenetreId: windowId, url: `http://${host("tab-rtc")}/rtc`, activer: true });
+    await dispatch(m, { type: "ouvrirOnglet", windowId: windowId, url: `http://${host("tab-rtc")}/rtc`, activate: true });
     const result = await waitFor(m, `const b = gBrowser.selectedBrowser; return b.currentURI.spec.includes("/rtc") && b.contentTitle.startsWith("{") ? b.contentTitle : "";`, (v: string) => v !== "", 20_000);
     expect({ tcp: tcpSince(tcp0) > 0, udp: net.udp.length - udp0 > 0 }, result).toEqual({ tcp: true, udp: true });
     await closeTab("tab-rtc.", "sonde");
@@ -526,7 +526,7 @@ describe("the UI's network", () => {
     // Behind the CSP, the net would refuse it too: the predicate judges the home the UI's.
     expect(await m.execute(`return ChromeUtils.importESModule("${STORE}").uiNetwork.isUiDocument(${home});`)).toBe(true);
     expect(refused.filter((r) => /netsite(-accueil)?\.localhost|\/page|localhost:/.test(r) || r.includes(`:${port}`))).toEqual([]);
-    await callTool(dataDir, "arreter_application", { dossier: "essai" }).catch(() => {});
+    await callTool(dataDir, "arreter_application", { folder: "essai" }).catch(() => {});
     await m.execute(`return (async () => { const store = await ChromeUtils.importESModule("${STORE}").ready; for (const id of store.sites.openIds()) await store.sites.close(id); })();`);
   });
 
@@ -570,7 +570,7 @@ describe("the UI's network", () => {
        return out;`,
       [SFX],
     );
-    expect(dns).toEqual({ sonde: false, tard: false });
+    expect(dns).toEqual({ probe: false, late: false });
     await sleep(3000);
     expect({ names: (await names()).filter((n) => n.startsWith("rr-")), tcp: tcpSince(tcp0) }).toEqual({ names: [], tcp: 0 });
   });
@@ -651,7 +651,7 @@ describe("the UI's network", () => {
   it("a press on a tab's link still warms up its connection", { timeout: 60_000 }, async () => {
     const tcp0 = net.tcp.length;
     const url = `http://${host("tab-link")}/link?h=${encodeURIComponent(`http://tab-md.${SFX}:15366/`)}`;
-    await dispatch(m, { type: "ouvrirOnglet", fenetreId: (await state(m)).fenetres[0]!.id, url, activer: true });
+    await dispatch(m, { type: "ouvrirOnglet", windowId: (await state(m)).windows[0]!.id, url, activate: true });
     await expect.poll(() => net.hits.some((h) => h.label === "tab-link"), { timeout: 15_000 }).toBe(true);
     await waitFor(m, `const b = gBrowser.selectedBrowser; return b.currentURI.spec === ${JSON.stringify(url)} && !b.webProgress.isLoadingDocument;`, (v) => v === true, 15_000);
     await sleep(500);

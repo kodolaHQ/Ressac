@@ -4,10 +4,10 @@ import { api } from "../state.svelte";
  * Command bar (⌘T, ⌘L). `mode`: "nouveau" opens in a new tab, "actif" replaces the active tab's page. `texte`:
  * starting input. Each opening creates a new object: reopening midway resets the input.
  */
-export const command = $state<{ ouverte: null | { mode: "nouveau" | "actif"; texte: string } }>({ ouverte: null });
+export const command = $state<{ open: null | { mode: "nouveau" | "actif"; text: string } }>({ open: null });
 
 export function openCommand(mode: "nouveau" | "actif", text = ""): void {
-  command.ouverte = { mode, texte: text };
+  command.open = { mode, text: text };
 }
 
 /**
@@ -18,10 +18,10 @@ export const focusEmptyPage = $state({ n: 0 });
 
 /** `rendreFocus`: the keyboard returns to the shown page (Escape, click on the veil, validation) or to the home field. */
 export function closeCommand(returnFocus = false): void {
-  if (!command.ouverte) return;
-  command.ouverte = null;
+  if (!command.open) return;
+  command.open = null;
   if (returnFocus) {
-    api.rendreFocusPage();
+    api.returnFocusToPage();
     focusEmptyPage.n++;
   }
 }

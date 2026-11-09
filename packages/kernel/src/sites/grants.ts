@@ -10,10 +10,10 @@ import { ID_SITE, type DeclarationSite } from "./schemas.js";
  * patterns and the video resume at the time of the grant. Changing `correspond` or the code asks for nothing again.
  */
 export const SiteRights = z.object({
-  domaines: z.array(z.string()),
-  connexion: z.array(z.string()),
-  cadres: z.array(z.string()),
-  reprise: z.boolean(),
+  domains: z.array(z.string()),
+  login: z.array(z.string()),
+  frames: z.array(z.string()),
+  resume: z.boolean(),
 });
 export type SiteRights = z.infer<typeof SiteRights>;
 
@@ -32,7 +32,7 @@ const unique = (l: string[]) => [...new Set(l)];
  */
 export function siteReadHash(d: DeclarationSite): string {
   const canon = (l: string[]) => unique(l.map((x) => x.toLowerCase())).sort();
-  return createHash("sha256").update(JSON.stringify({ nom: d.nom, domaines: canon(d.domaines), connexion: canon(d.connexion) })).digest("hex");
+  return createHash("sha256").update(JSON.stringify({ name: d.name, domains: canon(d.domains), login: canon(d.login) })).digest("hex");
 }
 
 /**
@@ -42,20 +42,20 @@ export function siteReadHash(d: DeclarationSite): string {
  */
 export function siteExtensionsHash(d: DeclarationSite): string {
   const canon = (l: string[]) => unique(l.map((x) => x.toLowerCase())).sort();
-  return createHash("sha256").update(JSON.stringify({ domaines: canon(d.domaines), connexion: canon(d.connexion) })).digest("hex");
+  return createHash("sha256").update(JSON.stringify({ domains: canon(d.domains), login: canon(d.login) })).digest("hex");
 }
 
 /** At least one tweak, or the video resume. */
 export function grantNeeded(d: DeclarationSite): boolean {
-  return d.retouches.length > 0 || d.reprise;
+  return d.tweaks.length > 0 || d.resume;
 }
 
 export function rightsOf(d: DeclarationSite): SiteRights {
   return {
-    domaines: unique(d.domaines.map((x) => x.toLowerCase())),
-    connexion: unique(d.connexion.map((x) => x.toLowerCase())),
-    cadres: unique(d.retouches.flatMap((r) => (r.cadres === false ? [] : r.cadres))),
-    reprise: d.reprise,
+    domains: unique(d.domains.map((x) => x.toLowerCase())),
+    login: unique(d.login.map((x) => x.toLowerCase())),
+    frames: unique(d.tweaks.flatMap((r) => (r.frames === false ? [] : r.frames))),
+    resume: d.resume,
   };
 }
 
@@ -65,15 +65,15 @@ export function grantCovers(a: SiteRights | null, d: DeclarationSite): boolean {
   const wanted = rightsOf(d);
   const inside = (x: string[], y: string[]) => x.every((v) => y.includes(v));
   const granted = {
-    domaines: a.domaines.map((x) => x.toLowerCase()),
-    connexion: a.connexion.map((x) => x.toLowerCase()),
-    cadres: a.cadres,
+    domains: a.domains.map((x) => x.toLowerCase()),
+    login: a.login.map((x) => x.toLowerCase()),
+    frames: a.frames,
   };
   return (
-    inside(wanted.domaines, granted.domaines) &&
-    inside(wanted.connexion, granted.connexion) &&
-    inside(wanted.cadres, granted.cadres) &&
-    (!wanted.reprise || a.reprise)
+    inside(wanted.domains, granted.domains) &&
+    inside(wanted.login, granted.login) &&
+    inside(wanted.frames, granted.frames) &&
+    (!wanted.resume || a.resume)
   );
 }
 

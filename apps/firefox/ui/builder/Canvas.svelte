@@ -14,21 +14,21 @@
   const MIN_ZOOM = 0.2;
 
   let {
-    edition: edit,
-    catalogue: catalog,
-    pastilles: badges,
+    editing: edit,
+    catalog: catalog,
+    badges: badges,
     onselection: onselect,
-    onajouter: onadd,
+    onadd: onadd,
   }: {
-    edition: Edit;
-    catalogue: Map<string, BlockCatalogEntry>;
-    pastilles: Record<string, Badge>;
+    editing: Edit;
+    catalog: Map<string, BlockCatalogEntry>;
+    badges: Record<string, Badge>;
     onselection: (block: string | null) => void;
-    onajouter: (type: string, position: { x: number; y: number }) => void;
+    onadd: (type: string, position: { x: number; y: number }) => void;
   } = $props();
 
   const flow = useSvelteFlow();
-  const nodeTypes: NodeTypes = { bloc: BlockNode };
+  const nodeTypes: NodeTypes = { block: BlockNode };
   let zone: HTMLDivElement;
   let nodes = $state.raw<Noeud[]>([]);
   let edges = $state.raw<Edge[]>([]);
@@ -38,7 +38,7 @@
 
   /** Nodes and links drawn from the draft (the shown selection is kept). */
   function rebuild(): void {
-    const b = edit.brouillon;
+    const b = edit.draft;
     if (!b) return;
     const currents = untrack(() => nodes);
     if (currents.some((n) => n.dragging)) {
@@ -47,14 +47,14 @@
     }
     postponed = false;
     const selected = new Set(currents.filter((n) => n.selected).map((n) => n.id));
-    const withInput = new Set(b.liens.map((l) => l.vers));
-    const withOutput = new Set(b.liens.map((l) => l.de));
-    const blockError = edit.validation.ok ? null : (edit.validation.bloc ?? null);
-    const error = edit.validation.ok ? null : edit.validation.erreur;
-    nodes = b.blocs.map((x) => {
+    const withInput = new Set(b.links.map((l) => l.to));
+    const withOutput = new Set(b.links.map((l) => l.from));
+    const blockError = edit.validation.ok ? null : (edit.validation.block ?? null);
+    const error = edit.validation.ok ? null : edit.validation.error;
+    nodes = b.blocks.map((x) => {
       const c = catalog.get(x.type);
       // A block with an optional input but no input has no input handle, except a `code` that reads its input.
-      const withoutInput = c?.entree === "facultative" && !(x.type === "code" && x.parametres.appel !== "recolte");
+      const withoutInput = c?.input === "facultative" && !(x.type === "code" && x.params.appel !== "recolte");
       return {
         id: x.id,
         type: "bloc" as const,
@@ -62,37 +62,37 @@
         selected: selected.has(x.id),
         deletable: x.type !== "sortie",
         data: {
-          titre: x.nom ?? x.id,
+          title: x.name ?? x.id,
           type: x.type,
-          pastille: badges[x.id] ?? null,
-          erreur: blockError === x.id ? error : null,
-          avertissements: edit.avertissements.filter((a) => a.bloc === x.id).map((a) => a.message),
-          entree: !withoutInput || withInput.has(x.id),
-          sortie: x.type !== "sortie" || withOutput.has(x.id),
+          badge: badges[x.id] ?? null,
+          error: blockError === x.id ? error : null,
+          warnings: edit.warnings.filter((a) => a.block === x.id).map((a) => a.message),
+          input: !withoutInput || withInput.has(x.id),
+          output: x.type !== "sortie" || withOutput.has(x.id),
         },
       };
     });
-    edges = b.liens.map((l) => ({ id: `${l.de}->${l.vers}`, source: l.de, target: l.vers }));
+    edges = b.links.map((l) => ({ id: `${l.from}->${l.to}`, source: l.from, target: l.to }));
   }
 
   $effect(() => {
-    void [edit.brouillon, edit.positions, edit.validation, edit.avertissements, badges, catalog];
+    void [edit.draft, edit.positions, edit.validation, edit.warnings, badges, catalog];
     rebuild();
   });
 
   function linked(c: Connection): void {
-    edit.modifier((b) => link(b, c.source, c.target));
+    edit.edit((b) => link(b, c.source, c.target));
     // A refused link (from the output, duplicate…) disappears.
     rebuild();
   }
 
   function deleted({ nodes: n, edges: e }: { nodes: Noeud[]; edges: Edge[] }): void {
-    edit.modifier((b) => deleteBlocks(e.reduce((r, l) => deleteLink(r, l.source, l.target), b), n.map((x) => x.id)));
+    edit.edit((b) => deleteBlocks(e.reduce((r, l) => deleteLink(r, l.source, l.target), b), n.map((x) => x.id)));
     rebuild();
   }
 
   function moved(): void {
-    edit.deplacer(Object.fromEntries(nodes.map((n) => [n.id, { x: Math.round(n.position.x), y: Math.round(n.position.y) }])));
+    edit.move(Object.fromEntries(nodes.map((n) => [n.id, { x: Math.round(n.position.x), y: Math.round(n.position.y) }])));
     // A change that arrived during the drag (file, badges) is drawn now.
     if (postponed) setTimeout(rebuild, 0);
   }
@@ -106,18 +106,18 @@
   }
 
   /** Center of the view, in canvas coordinates (top-left corner of a centered block). */
-  export function centre(): { x: number; y: number } {
+  export function center(): { x: number; y: number } {
     const r = zone.getBoundingClientRect();
     const p = flow.screenToFlowPosition({ x: r.x + r.width / 2, y: r.y + r.height / 2 });
     return { x: p.x - HALF.x, y: p.y - HALF.y };
   }
 
   /** Puts the shown selection back on `id` (a block change refused by the user). */
-  export function selectionner(id: string | null): void {
+  export function select(id: string | null): void {
     nodes = nodes.map((n) => (n.selected === (n.id === id) ? n : { ...n, selected: n.id === id }));
   }
 
-  export function ajusterVue(): void {
+  export function adjustView(): void {
     void flow.fitView({ maxZoom: 1 });
   }
 </script>

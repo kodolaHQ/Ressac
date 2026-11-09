@@ -27,7 +27,7 @@ afterAll(() => net?.close());
 async function launch(fail: string, prepare: (dataDir: string) => Promise<void> | void): Promise<{ w: LaunchedWebAiOs; m: Marionette; dataDir: string }> {
   const dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
   await prepare(dataDir);
-  const w = await launchWebAiOs({ dataDir, prefs: NET_PREFS, env: { WEBAIOS_TEST_UI_NETWORK_FAIL: fail, WEBAIOS_TEST_ADRESSES_LOCALES: "1" } });
+  const w = await launchWebAiOs({ dataDir, prefs: NET_PREFS, env: { WEBAIOS_TEST_UI_NETWORK_FAIL: fail, WEBAIOS_TEST_LOCAL_ADDRESSES: "1" } });
   await w.marionette.setContext("chrome");
   return { w, m: w.marionette, dataDir };
 }
@@ -36,7 +36,7 @@ describe("the observer failing to install", () => {
   let l: Awaited<ReturnType<typeof launch>>;
   beforeAll(async () => {
     l = await launch("observer", async (dataDir) => {
-      const failsite = { nom: "Failsite", adresse: `http://failsite.localhost:${HTTP}/page`, domaines: ["failsite.localhost"] };
+      const failsite = { name: "Failsite", url: `http://failsite.localhost:${HTTP}/page`, domains: ["failsite.localhost"] };
       writeSite(dataDir, "failsite", { declaration: failsite });
       await grantSite(dataDir, "failsite", failsite);
     });
@@ -60,7 +60,7 @@ describe("the observer failing to install", () => {
     expect(uris).toEqual(["about:blank", "about:blank", "about:blank"]);
     expect(await consoleWith(m, "[ui-network] the UI's network guard is missing")).not.toEqual([]);
     // A tab still loads.
-    await dispatch(m, { type: "ouvrirOnglet", fenetreId: (await state(m)).fenetres[0]!.id, url: `http://127.0.0.1:${HTTP}/temoin`, activer: true });
+    await dispatch(m, { type: "ouvrirOnglet", windowId: (await state(m)).windows[0]!.id, url: `http://127.0.0.1:${HTTP}/temoin`, activate: true });
     await expect.poll(() => net.hits.some((h) => h.path === "/temoin"), { timeout: 15_000 }).toBe(true);
   });
 });

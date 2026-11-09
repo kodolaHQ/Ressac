@@ -14,44 +14,44 @@ export class WebAiOsPageChild extends JSWindowActorChild {
     const el = doc.scrollingElement || doc.documentElement;
     switch (m.name) {
       case "getText":
-        return { texte: (doc.body?.innerText ?? "").slice(0, TEXT_MAX), selection: String(win.getSelection() ?? "") };
+        return { text: (doc.body?.innerText ?? "").slice(0, TEXT_MAX), selection: String(win.getSelection() ?? "") };
       // The parts of the page retained for the agent's memory.
       case "getParts": {
         const text = (sel: string) => (doc.querySelector(sel) as HTMLElement | null)?.innerText ?? "";
         const description = (doc.querySelector('meta[name="description"]') as HTMLMetaElement | null)?.content ?? "";
         if (m.data?.video)
           return {
-            corps: "",
+            body: "",
             video: {
-              titre: text("h1.ytd-watch-metadata") || doc.title,
-              chaine: text("ytd-watch-metadata #channel-name a") || text("#owner #channel-name a"),
+              title: text("h1.ytd-watch-metadata") || doc.title,
+              chain: text("ytd-watch-metadata #channel-name a") || text("#owner #channel-name a"),
               description: text("#description") || description,
             },
           };
-        return { description, corps: (doc.body?.innerText ?? "").slice(0, MEMORY_TEXT_MAX) };
+        return { description, body: (doc.body?.innerText ?? "").slice(0, MEMORY_TEXT_MAX) };
       }
       // Invisible reading. The parent bounds and checks what comes back.
       case "read": {
         const seen = new Set<string>();
-        const liens: { texte: string; url: string }[] = [];
+        const links: { text: string; url: string }[] = [];
         for (const a of doc.querySelectorAll("a[href]") as NodeListOf<HTMLAnchorElement>) {
-          if (liens.length >= m.data.liens) break;
+          if (links.length >= m.data.liens) break;
           const url = a.href;
           if (typeof url !== "string" || !/^https?:/i.test(url) || seen.has(url)) continue;
           seen.add(url);
-          liens.push({ texte: (a.innerText || a.textContent || "").replace(/\s+/g, " ").trim(), url });
+          links.push({ text: (a.innerText || a.textContent || "").replace(/\s+/g, " ").trim(), url });
         }
-        return { titre: doc.title, texte: (doc.body?.innerText ?? "").slice(0, m.data.texte), liens };
+        return { title: doc.title, text: (doc.body?.innerText ?? "").slice(0, m.data.texte), liens: links };
       }
       // The page's height, then one screen down: never a click, a key or focus; the page sees an ordinary scroll.
       case "scroll": {
         const height = el ? el.scrollHeight : 0;
         (el ?? win).scrollBy(0, win.innerHeight || 900);
-        return { hauteur: height };
+        return { height: height };
       }
       case "measure":
-        if (!el) return { hauteur: 0, bas: true };
-        return { hauteur: el.scrollHeight, bas: el.scrollTop + (win.innerHeight || el.clientHeight) >= el.scrollHeight - 2 };
+        if (!el) return { height: 0, bottom: true };
+        return { height: el.scrollHeight, bottom: el.scrollTop + (win.innerHeight || el.clientHeight) >= el.scrollHeight - 2 };
       case "html":
         return (doc.documentElement?.outerHTML ?? "").slice(0, m.data.max);
     }

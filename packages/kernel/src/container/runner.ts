@@ -9,7 +9,7 @@ export interface RunResult {
 }
 
 /** `signal`: cancels the command (its whole process group is killed), the result then has the code CODE_CANCELLED. */
-export type Runner = (command: string, args: string[], opts?: { delaiMs?: number; signal?: AbortSignal }) => Promise<RunResult>;
+export type Runner = (command: string, args: string[], opts?: { delayMs?: number; signal?: AbortSignal }) => Promise<RunResult>;
 
 /** Code returned when the timeout is exceeded (same convention as timeout(1)). */
 export const CODE_TIMEOUT_EXCEEDED = 124;
@@ -61,18 +61,18 @@ export const toolsPath = (): string => [process.env.PATH ?? "", ...TOOLS_FOLDERS
 
 /** Launches a command without ever throwing: a failure reads in `code`. */
 export const defaultRunner: Runner = (command, args, opts = {}) => {
-  if (opts.signal) return runCancelable(command, args, opts.signal, opts.delaiMs);
+  if (opts.signal) return runCancelable(command, args, opts.signal, opts.delayMs);
   return new Promise((resolve) => {
     const PATH = toolsPath();
     execFile(
       command,
       args,
-      { timeout: opts.delaiMs, maxBuffer: 64 * 1024 * 1024, env: { ...process.env, PATH } },
+      { timeout: opts.delayMs, maxBuffer: 64 * 1024 * 1024, env: { ...process.env, PATH } },
       (error, stdout, stderr) => {
         if (!error) return resolve({ code: 0, stdout, stderr });
         const e = error as NodeJS.ErrnoException & { killed?: boolean; code?: number | string };
         if (e.code === "ENOENT") return resolve({ code: 127, stdout, stderr: `${command} introuvable` });
-        if (e.killed && opts.delaiMs) return resolve({ code: CODE_TIMEOUT_EXCEEDED, stdout, stderr: "Délai dépassé" });
+        if (e.killed && opts.delayMs) return resolve({ code: CODE_TIMEOUT_EXCEEDED, stdout, stderr: "Délai dépassé" });
         resolve({ code: typeof e.code === "number" ? e.code : 1, stdout, stderr });
       },
     );

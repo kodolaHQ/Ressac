@@ -32,7 +32,7 @@ async function boot(prefs: Record<string, string | number | boolean> = {}): Prom
   const profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
   dirs.push(dataDir, profile);
   const a = testActor(profile);
-  const l = await launchWebAiOs({ dataDir, profile, env: { ...a.env, WEBAIOS_PORTS_APPS: "15300-15304" }, prefs: { ...a.prefs, ...prefs } });
+  const l = await launchWebAiOs({ dataDir, profile, env: { ...a.env, WEBAIOS_APP_PORTS: "15300-15304" }, prefs: { ...a.prefs, ...prefs } });
   launched.push(l);
   const mm = l.marionette;
   await mm.setContext("chrome");
@@ -70,10 +70,10 @@ const svc = <R = unknown>(body: string, args: unknown[] = []) =>
     `return (async (args) => { const d = (await ChromeUtils.importESModule("${STORE}").ready).design; const t = { type: "fenetre", fenetreId: window.webaiosWindow.fenetreId }; ${body} })([...arguments]);`,
     args,
   );
-const state = () => svc<{ actif: boolean; panier: number; indisponible: string | null; projet: { projet: string } | null }>("return await d.etat(t);");
+const state = () => svc<{ active: boolean; basket: number; unavailable: string | null; project: { project: string } | null }>("return await d.etat(t);");
 const toggle = () => svc("await d.toggle(t); return 1;");
 const stopMode = () => svc("await d.stop(t); return 1;");
-const add = (text: string) => svc<{ ok: boolean; erreur?: string }>("return await d.add(t, args[0]);", [text]);
+const add = (text: string) => svc<{ ok: boolean; error?: string }>("return await d.add(t, args[0]);", [text]);
 
 async function open(p: string, base = servers.page): Promise<void> {
   await openTab(m, `${base}${p}`);
@@ -81,7 +81,7 @@ async function open(p: string, base = servers.page): Promise<void> {
 }
 const inPage = <T = unknown>(script: string) => inBrowser<T>(m, B, script);
 const hosts = () => inPage<number>(`return document.querySelectorAll("webaios-viseur").length;`);
-const bubbles = () => m.execute<{ place: { x: number; y: number; width: number; height: number }; ctx: { etiquette: string; source: string | null; projet: string; mode: string } }[]>(
+const bubbles = () => m.execute<{ place: { x: number; y: number; width: number; height: number }; ctx: { label: string; source: string | null; project: string; mode: string } }[]>(
   `return window.__overlay.filter((e) => e.op === "show" && e.ctx.mode === "bulle");`,
 );
 
@@ -157,7 +157,7 @@ async function captureTarget(zoom: number) {
     `const r = document.querySelector("#cible").getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height, vw: innerWidth, vh: innerHeight };`,
   );
   const dpr = await m.execute<number>("return window.devicePixelRatio;");
-  const dip = rectCapture({ x: page.x, y: page.y, largeur: page.w, hauteur: page.h }, { largeur: page.vw, hauteur: page.vh }, zoom);
+  const dip = rectCapture({ x: page.x, y: page.y, width: page.w, height: page.h }, { width: page.vw, height: page.vh }, zoom);
   const expected = { width: Math.round(dip.width * dpr), height: Math.round(dip.height * dpr) };
   const png = await readPng(file, [[Math.floor(expected.width / 2), Math.floor(expected.height / 2)], [2, 2]]);
   await stopMode();
@@ -207,8 +207,8 @@ describe("design service", () => {
   it("toggle on the demo, a trusted click on #email: the bubble context names input#email.champ, its place is bubbleSlot's", async () => {
     await open("/");
     const b = await aim("#email");
-    expect(b.ctx).toMatchObject({ mode: "bulle", etiquette: "input#email.champ", projet: `demo-${PORT}` });
-    const r = await inPage<{ x: number; y: number; largeur: number; hauteur: number }>(`const r = document.querySelector("#email").getBoundingClientRect(); return { x: r.x, y: r.y, largeur: r.width, hauteur: r.height };`);
+    expect(b.ctx).toMatchObject({ mode: "bulle", label: "input#email.champ", project: `demo-${PORT}` });
+    const r = await inPage<{ x: number; y: number; width: number; height: number }>(`const r = document.querySelector("#email").getBoundingClientRect(); return { x: r.x, y: r.y, largeur: r.width, hauteur: r.height };`);
     const g = await m.execute<{ z: number; x: number; y: number; width: number; height: number; w: number; h: number }>(
       `const r = ${B}.getBoundingClientRect(); return { z: ${B}.fullZoom, x: r.x, y: r.y, width: r.width, height: r.height, w: window.innerWidth, h: window.innerHeight };`,
     );
@@ -216,14 +216,14 @@ describe("design service", () => {
     expect(await svc("return d.overlayContext(t);")).toEqual(b.ctx);
     // The bubble is open: the viewfinder waits; Annuler arms it again.
     expect(await hosts()).toBe(0);
-    expect((await state()).actif).toBe(true);
+    expect((await state()).active).toBe(true);
     await svc("d.cancel(t); return 1;");
     await expect.poll(hosts, { timeout: 10_000 }).toBe(1);
     // Only the bubble: the UI's cart column (Task 3) shows while the mode is on.
     expect(await svc('return d.overlayContext(t, ["bulle", "message"]);')).toBeNull();
     await stopMode();
     expect(await hosts()).toBe(0);
-    expect((await state()).actif).toBe(false);
+    expect((await state()).active).toBe(false);
   });
 
   it("a data-source element: the bubble's source is src/Inscription.svelte:12", async () => {
@@ -241,11 +241,11 @@ describe("design service", () => {
     await inPage(`history.pushState({}, "", "/x"); return 1;`);
     await expect.poll(queries, { timeout: 10_000 }).toEqual(["arm", "stop", "arm"]);
     await expect.poll(hosts, { timeout: 10_000 }).toBe(1);
-    expect((await state()).actif).toBe(true);
+    expect((await state()).active).toBe(true);
     const n = (await bubbles()).length;
     await trustedMouse(m, B, "#email");
     await expect.poll(async () => (await bubbles()).length, { timeout: 10_000 }).toBe(n + 1);
-    expect((await bubbles()).at(-1)!.ctx.etiquette).toBe("input#email.champ");
+    expect((await bubbles()).at(-1)!.ctx.label).toBe("input#email.champ");
     await stopMode();
   });
 
@@ -254,13 +254,13 @@ describe("design service", () => {
     await aim("#email");
     expect(await add("reste")).toEqual({ ok: true });
     await expect.poll(hosts, { timeout: 10_000 }).toBe(1);
-    const cart = (await state()).panier;
+    const cart = (await state()).basket;
     expect(cart).toBeGreaterThan(0);
     await m.execute(`${B}.reload();`);
-    await expect.poll(async () => (await state()).actif, { timeout: 10_000 }).toBe(false);
+    await expect.poll(async () => (await state()).active, { timeout: 10_000 }).toBe(false);
     await waitFor(m, `return !${B}.webProgress.isLoadingDocument;`, (v) => v === true);
     expect(await hosts()).toBe(0);
-    expect((await state()).panier).toBe(cart);
+    expect((await state()).basket).toBe(cart);
   });
 
   it("another tab, the tab closed: the mode stops", async () => {
@@ -271,15 +271,15 @@ describe("design service", () => {
     await open("/");
     await m.execute("gBrowser.selectedTab = window.__designTabA;");
     await waitFor(m, "return gBrowser.selectedTab === window.__designTabA;", (v) => v === true);
-    expect((await state()).actif).toBe(false);
+    expect((await state()).active).toBe(false);
     expect(await hosts()).toBe(0);
     await toggle();
     await expect.poll(hosts, { timeout: 10_000 }).toBe(1);
     await m.execute("gBrowser.removeTab(window.__designTabA);");
-    await expect.poll(async () => (await state()).actif, { timeout: 10_000 }).toBe(false);
+    await expect.poll(async () => (await state()).active, { timeout: 10_000 }).toBe(false);
     // The session is gone: toggling the tab shown now starts a new one, never stops an old one.
     await toggle();
-    await expect.poll(async () => (await state()).actif, { timeout: 10_000 }).toBe(true);
+    await expect.poll(async () => (await state()).active, { timeout: 10_000 }).toBe(true);
     await stopMode();
   });
 
@@ -334,15 +334,15 @@ describe("design service", () => {
     await sleep(500);
     expect(await hosts()).toBe(0);
     expect(await queries()).toEqual([]);
-    expect(await state()).toMatchObject({ actif: false, projet: null, indisponible: UNAVAILABLE_DESIGN });
+    expect(await state()).toMatchObject({ active: false, project: null, unavailable: UNAVAILABLE_DESIGN });
   });
 
   it("an answer of the wrong shape stops the mode, no bubble", async () => {
     await open("/");
     const n = (await bubbles()).length;
-    await record({ arm: JSON.stringify({ selecteur: 1, rect: {} }) });
+    await record({ arm: JSON.stringify({ selector: 1, rect: {} }) });
     await toggle();
-    await expect.poll(async () => (await state()).actif, { timeout: 10_000 }).toBe(false);
+    await expect.poll(async () => (await state()).active, { timeout: 10_000 }).toBe(false);
     expect((await bubbles()).length).toBe(n);
     expect(await queries()).toEqual(expect.arrayContaining(["arm", "stop"]));
   });
@@ -374,7 +374,7 @@ describe("design service", () => {
       await stopMode();
       expect(Date.now() - t0).toBeLessThan(how === "hang" ? 2500 : 1000);
       expect(await queries()).toEqual(["stop", "unguard"]);
-      expect((await state()).actif).toBe(false);
+      expect((await state()).active).toBe(false);
       // The guard is gone: a trusted click reaches the page (the viewfinder's own listeners never take a click).
       await clearLog(m, B);
       await trustedMouse(m, B, "#email");
@@ -389,7 +389,7 @@ describe("design service", () => {
     await toggle();
     await expect.poll(hosts, { timeout: 10_000 }).toBe(1);
     await m.execute(`Cc["@mozilla.org/processtools-service;1"].getService(Ci.nsIProcessToolsService).crash(${B}.browsingContext.currentWindowGlobal.domProcess.osPid);`);
-    await expect.poll(async () => (await state()).actif, { timeout: 10_000 }).toBe(false);
+    await expect.poll(async () => (await state()).active, { timeout: 10_000 }).toBe(false);
   });
 
   // Review minor 3: the project comes from the armed document's own address, never from the <browser>'s.
@@ -402,7 +402,7 @@ describe("design service", () => {
       await sleep(500);
       expect(await hosts()).toBe(0);
       expect(await queries()).toEqual([]);
-      expect((await state()).projet).toBeNull();
+      expect((await state()).project).toBeNull();
     } finally {
       await m.execute(`delete ${B}.currentURI; return 1;`);
       await stopMode();
@@ -419,7 +419,7 @@ describe("design service", () => {
       await toggle();
       await expect.poll(hosts, { timeout: 10_000 }).toBe(1);
       await trustedMouse(m, B, { x: 60, y: 20 });
-      await expect.poll(async () => (await state()).actif, { timeout: 10_000 }).toBe(false);
+      await expect.poll(async () => (await state()).active, { timeout: 10_000 }).toBe(false);
       expect((await bubbles()).length).toBe(n);
     } finally {
       await m.execute(`delete ${B}.getBoundingClientRect; return 1;`);

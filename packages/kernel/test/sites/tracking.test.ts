@@ -9,8 +9,8 @@ import { changeUrl, readUrlState, deleteSiteData } from "../../src/sites/trackin
 import { tempFolder } from "../helpers/temp.js";
 
 const decl: DeclarationSite = {
-  nom: "Vidola", description: "", adresse: "https://www.vidola-a.example/film?x=1", domaines: ["vidola-a.example"],
-  connexion: [], retouches: [], reprise: true,
+  name: "Vidola", description: "", url: "https://www.vidola-a.example/film?x=1", domains: ["vidola-a.example"],
+  login: [], tweaks: [], resume: true,
 };
 const exists = (p: string) => stat(p).then(() => true, () => false);
 
@@ -18,21 +18,21 @@ test("changeUrl a → b: anciens [a]; then c: anciens [a, b]", async () => {
   const d = await tempFolder();
   expect(await readUrlState(d, "w")).toBeNull();
   const e1 = await changeUrl(d, "w", decl, "vidola-b.example");
-  expect(e1).toMatchObject({ actuel: "vidola-b.example", anciens: ["www.vidola-a.example"] });
-  expect(e1.depuis).not.toBeNull();
+  expect(e1).toMatchObject({ current: "vidola-b.example", previous: ["www.vidola-a.example"] });
+  expect(e1.since).not.toBeNull();
   const e2 = await changeUrl(d, "w", decl, "vidola-c.example");
-  expect(e2.anciens).toEqual(["www.vidola-a.example", "vidola-b.example"]);
+  expect(e2.previous).toEqual(["www.vidola-a.example", "vidola-b.example"]);
   expect(await readUrlState(d, "w")).toEqual(e2);
   // going back to an old one: no longer in anciens; no duplicate
   const e3 = await changeUrl(d, "w", decl, "VIDOLA-B.example.");
-  expect(e3.actuel).toBe("vidola-b.example");
-  expect(e3.anciens).toEqual(["www.vidola-a.example", "vidola-c.example"]);
+  expect(e3.current).toBe("vidola-b.example");
+  expect(e3.previous).toEqual(["www.vidola-a.example", "vidola-c.example"]);
   await expect(changeUrl(d, "w", decl, "pas valide/")).rejects.toThrow();
 });
 
 test("effectiveDomains unites them with those of site.json", async () => {
   const d = await tempFolder();
-  const e = await changeUrl(d, "w", { ...decl, adresse: "https://vidola-a.example/" }, "vidola-b.example");
+  const e = await changeUrl(d, "w", { ...decl, url: "https://vidola-a.example/" }, "vidola-b.example");
   expect(effectiveDomains(decl, e)).toEqual(["vidola-a.example", "vidola-b.example"]);
 });
 
@@ -46,9 +46,9 @@ test("deleteSiteData erases memory, address and grant of that site only", async 
   const p = await tempFolder();
   const ds = join(p, "sites");
   for (const id of ["a", "b"]) {
-    const m = await SiteMemory.ouvrir(ds, id);
-    m.retenir("k", 1, null);
-    await m.vider();
+    const m = await SiteMemory.open(ds, id);
+    m.keep("k", 1, null);
+    await m.clear();
     await changeUrl(ds, id, decl, "vidola-b.example");
     await storeSiteGrant(p, id, decl);
   }
@@ -76,8 +76,8 @@ test("changeUrl keeps the 100 most recent old ones", async () => {
   const d = await tempFolder();
   let e = await changeUrl(d, "w", decl, "s0.example");
   for (let i = 1; i <= 105; i++) e = await changeUrl(d, "w", decl, `s${i}.example`);
-  expect(e.anciens).toHaveLength(100);
-  expect(e.anciens.at(-1)).toBe("s104.example");
+  expect(e.previous).toHaveLength(100);
+  expect(e.previous.at(-1)).toBe("s104.example");
   expect(await readUrlState(d, "w")).toEqual(e);
 });
 

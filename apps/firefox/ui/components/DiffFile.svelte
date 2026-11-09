@@ -9,25 +9,25 @@
    * opens a comment on a hunk line (Shift+click or drag extend the range, within the hunk).
    */
   let {
-    projet: project,
-    jeton: token,
+    project: project,
+    token: token,
     diff,
-    commentaires: comments,
-    surChange: onChange,
-  }: { projet: string; jeton: string; diff: DiffFile; commentaires: DiffComment[]; surChange: () => void } = $props();
+    comments: comments,
+    onChange: onChange,
+  }: { project: string; token: string; diff: DiffFile; comments: DiffComment[]; onChange: () => void } = $props();
 
-  type Block = DiffFile["blocs"][number];
+  type Block = DiffFile["blocks"][number];
   /** Position of a hunk line: its new number, the next line's for a removal (like the kernel). */
   function position(b: Block, i: number): number {
-    for (let k = i; k < b.lignes.length; k++) {
-      const n = b.lignes[k]!.nouveau;
+    for (let k = i; k < b.lines.length; k++) {
+      const n = b.lines[k]!.new;
       if (n !== null) return n;
     }
-    return b.nouveauDebut + b.nouveauNombre;
+    return b.newStart + b.newCount;
   }
 
   /** The range in progress: its hunk, the anchor line and the other end (indices in the hunk). */
-  let selection = $state<{ bloc: number; ancre: number; bout: number } | null>(null);
+  let selection = $state<{ block: number; anchor: number; end: number } | null>(null);
   let dragged = $state(false);
   let text = $state("");
   let error = $state<string | null>(null);
@@ -35,43 +35,43 @@
 
   const range = $derived.by(() => {
     if (!selection) return null;
-    const b = diff.blocs[selection.bloc]!;
-    const p1 = position(b, selection.ancre);
-    const p2 = position(b, selection.bout);
+    const b = diff.blocks[selection.block]!;
+    const p1 = position(b, selection.anchor);
+    const p2 = position(b, selection.end);
     const start = Math.min(p1, p2);
     const end = Math.max(p1, p2);
     let last = -1;
-    b.lignes.forEach((_, k) => {
+    b.lines.forEach((_, k) => {
       const p = position(b, k);
       if (p >= start && p <= end) last = k;
     });
-    return { bloc: selection.bloc, debut: start, fin: end, derniere: last };
+    return { block: selection.block, start: start, end: end, last: last };
   });
   const chosen = (block: number, k: number) => {
-    if (!range || range.bloc !== block) return false;
-    const p = position(diff.blocs[block]!, k);
-    return p >= range.debut && p <= range.fin;
+    if (!range || range.block !== block) return false;
+    const p = position(diff.blocks[block]!, k);
+    return p >= range.start && p <= range.end;
   };
 
   /** `+` pressed: a new range, or (Shift) the other end of the current range, refused outside its hunk. */
   function aim(block: number, k: number, expand: boolean) {
     error = null;
     if (expand && selection) {
-      if (selection.bloc !== block) {
+      if (selection.block !== block) {
         error = RANGE_OUTSIDE_BLOCK;
-        selection = { ...selection, bout: selection.ancre };
+        selection = { ...selection, end: selection.anchor };
         return;
       }
-      selection = { ...selection, bout: k };
+      selection = { ...selection, end: k };
       return;
     }
     if (!selection) text = "";
-    selection = { bloc: block, ancre: k, bout: k };
+    selection = { block: block, anchor: k, end: k };
     dragged = true;
   }
   /** While dragging: the range follows the mouse, within the hunk only. */
   function hover(block: number, k: number) {
-    if (dragged && selection && selection.bloc === block) selection = { ...selection, bout: k };
+    if (dragged && selection && selection.block === block) selection = { ...selection, end: k };
   }
   function close() {
     selection = null;
@@ -82,11 +82,11 @@
     if (!range || sending) return;
     sending = true;
     try {
-      const r = await api.relecture.commenter(project, token, { fichier: diff.chemin, debut: range.debut, fin: range.fin, texte: text });
+      const r = await api.review.comment(project, token, { file: diff.path, start: range.start, end: range.end, text: text });
       if (r.ok) {
         close();
         onChange();
-      } else error = r.erreur;
+      } else error = r.error;
     } catch {
       error = "Le commentaire n'a pas pu être enregistré.";
     } finally {
@@ -109,10 +109,10 @@
     const elsewhere: DiffComment[] = [];
     for (const c of comments) {
       let where: string | null = null;
-      for (let i = 0; i < diff.blocs.length && where === null; i++) {
-        const b = diff.blocs[i]!;
-        for (let k = b.lignes.length - 1; k >= 0; k--) {
-          if (position(b, k) === c.fin) {
+      for (let i = 0; i < diff.blocks.length && where === null; i++) {
+        const b = diff.blocks[i]!;
+        for (let k = b.lines.length - 1; k >= 0; k--) {
+          if (position(b, k) === c.end) {
             where = `${i}:${k}`;
             break;
           }
@@ -121,40 +121,40 @@
       if (where === null) elsewhere.push(c);
       else sub.set(where, [...(sub.get(where) ?? []), c]);
     }
-    return { sous: sub, ailleurs: elsewhere };
+    return { under: sub, elsewhere: elsewhere };
   });
 
-  type Line = { marque: " " | "+" | "-"; texte: string; ancien: number | null; nouveau: number | null };
+  type Line = { mark: " " | "+" | "-"; text: string; old: number | null; new: number | null };
   /** Unfolded lines of each gap (before hunk i; i = number of hunks: after the last one). */
-  type Interval = { lignes: Line[]; fini: boolean };
+  type Interval = { lines: Line[]; done: boolean };
   let intervals = $state<Record<number, Interval>>({});
   let onLoaded = $state<number | null>(null);
 
-  const blockStart = (b: DiffFile["blocs"][number]) => (b.nouveauNombre === 0 ? b.nouveauDebut + 1 : b.nouveauDebut);
-  const blockEnd = (b: DiffFile["blocs"][number]) => (b.nouveauNombre === 0 ? b.nouveauDebut + 1 : b.nouveauDebut + b.nouveauNombre);
+  const blockStart = (b: DiffFile["blocks"][number]) => (b.newCount === 0 ? b.newStart + 1 : b.newStart);
+  const blockEnd = (b: DiffFile["blocks"][number]) => (b.newCount === 0 ? b.newStart + 1 : b.newStart + b.newCount);
 
   /** The hidden gap before hunk i: first new lines, last one (null: to the end of the file), old − new offset. */
-  function cache(i: number): { debut: number; fin: number | null; decalage: number } | null {
-    const blocks = diff.blocs;
-    if (diff.statut === "supprime" || blocks.length === 0) return null;
+  function cache(i: number): { start: number; end: number | null; offset: number } | null {
+    const blocks = diff.blocks;
+    if (diff.status === "supprime" || blocks.length === 0) return null;
     if (i === blocks.length) {
-      if (diff.statut === "ajoute") return null;
+      if (diff.status === "ajoute") return null;
       const d = blocks[i - 1]!;
-      return { debut: blockEnd(d), fin: null, decalage: d.ancienDebut + d.ancienNombre - (d.nouveauDebut + d.nouveauNombre) };
+      return { start: blockEnd(d), end: null, offset: d.oldStart + d.oldCount - (d.newStart + d.newCount) };
     }
     const b = blocks[i]!;
     const start = i === 0 ? 1 : blockEnd(blocks[i - 1]!);
-    return { debut: start, fin: blockStart(b) - 1, decalage: b.ancienDebut - b.nouveauDebut };
+    return { start: start, end: blockStart(b) - 1, offset: b.oldStart - b.newStart };
   }
 
-  function remaining(i: number): { debut: number; fin: number | null; decalage: number } | null {
+  function remaining(i: number): { start: number; end: number | null; offset: number } | null {
     const c = cache(i);
     if (!c) return null;
     const already = intervals[i];
-    if (already?.fini) return null;
-    const start = c.debut + (already?.lignes.length ?? 0);
-    if (c.fin !== null && start > c.fin) return null;
-    return { ...c, debut: start };
+    if (already?.done) return null;
+    const start = c.start + (already?.lines.length ?? 0);
+    if (c.end !== null && start > c.end) return null;
+    return { ...c, start: start };
   }
 
   async function expand(i: number) {
@@ -162,25 +162,25 @@
     if (!r || onLoaded !== null) return;
     onLoaded = i;
     try {
-      const end = r.fin === null ? r.debut + EXPANDED_LINES - 1 : Math.min(r.fin, r.debut + EXPANDED_LINES - 1);
-      const texts = await api.relecture.lignes(project, token, diff.chemin, r.debut, end);
-      const already = intervals[i]?.lignes ?? [];
-      const fresh = texts.map((text, k) => ({ marque: " " as const, texte: text, nouveau: r.debut + k, ancien: r.debut + k + r.decalage }));
+      const end = r.end === null ? r.start + EXPANDED_LINES - 1 : Math.min(r.end, r.start + EXPANDED_LINES - 1);
+      const texts = await api.review.lines(project, token, diff.path, r.start, end);
+      const already = intervals[i]?.lines ?? [];
+      const fresh = texts.map((text, k) => ({ mark: " " as const, text: text, new: r.start + k, old: r.start + k + r.offset }));
       const all = [...already, ...fresh];
-      const finished = texts.length < end - r.debut + 1 || (r.fin !== null && r.debut + texts.length > r.fin);
-      intervals = { ...intervals, [i]: { lignes: all, fini: finished } };
+      const finished = texts.length < end - r.start + 1 || (r.end !== null && r.start + texts.length > r.end);
+      intervals = { ...intervals, [i]: { lines: all, done: finished } };
     } catch {
-      intervals = { ...intervals, [i]: { lignes: intervals[i]?.lignes ?? [], fini: true } };
+      intervals = { ...intervals, [i]: { lines: intervals[i]?.lines ?? [], done: true } };
     } finally {
       onLoaded = null;
     }
   }
 
-  const cls = (l: Line) => (l.marque === "+" ? "ajout" : l.marque === "-" ? "retrait" : "contexte");
+  const cls = (l: Line) => (l.mark === "+" ? "ajout" : l.mark === "-" ? "retrait" : "contexte");
 </script>
 
 {#snippet row(l: Line)}
-  <div class="ligne {cls(l)}" data-testid="ligne-diff" data-ancien={l.ancien ?? ""} data-nouveau={l.nouveau ?? ""}><span class="marge"></span><span class="num">{l.ancien ?? ""}</span><span class="num">{l.nouveau ?? ""}</span><span class="code">{l.texte}</span></div>
+  <div class="ligne {cls(l)}" data-testid="ligne-diff" data-ancien={l.old ?? ""} data-nouveau={l.new ?? ""}><span class="marge"></span><span class="num">{l.old ?? ""}</span><span class="num">{l.new ?? ""}</span><span class="code">{l.text}</span></div>
 {/snippet}
 
 {#snippet blockRow(l: Line, block: number, k: number)}
@@ -189,13 +189,13 @@
     class="ligne {cls(l)}"
     class:choisie={chosen(block, k)}
     data-testid="ligne-diff"
-    data-ancien={l.ancien ?? ""}
-    data-nouveau={l.nouveau ?? ""}
+    data-ancien={l.old ?? ""}
+    data-nouveau={l.new ?? ""}
     onmouseenter={() => hover(block, k)}
   ><span class="marge"><button
         class="ajouter"
         data-testid="ajouter-commentaire"
-        aria-label="Commenter la ligne {position(diff.blocs[block]!, k)}"
+        aria-label="Commenter la ligne {position(diff.blocks[block]!, k)}"
         title="Commenter (Maj+clic ou glisser : plusieurs lignes)"
         onmousedown={(e) => {
           if (e.button !== 0) return;
@@ -206,11 +206,11 @@
           // Keyboard (Enter, Space): no mousedown.
           if (e.detail === 0) aim(block, k, e.shiftKey);
         }}></button
-      ></span><span class="num">{l.ancien ?? ""}</span><span class="num">{l.nouveau ?? ""}</span><span class="code">{l.texte}</span></div>
-  {#each places.sous.get(`${block}:${k}`) ?? [] as c (c.id)}<ReviewComment projet={project} commentaire={c} surChange={onChange} />{/each}
-  {#if range && range.bloc === block && range.derniere === k}
+      ></span><span class="num">{l.old ?? ""}</span><span class="num">{l.new ?? ""}</span><span class="code">{l.text}</span></div>
+  {#each places.under.get(`${block}:${k}`) ?? [] as c (c.id)}<ReviewComment project={project} comment={c} onChange={onChange} />{/each}
+  {#if range && range.block === block && range.last === k}
     <form class="formulaire" data-testid="formulaire-commentaire" onsubmit={(e) => { e.preventDefault(); void validate(); }}>
-      <div class="plage">{range.debut === range.fin ? `Ligne ${range.debut}` : `Lignes ${range.debut}–${range.fin}`}</div>
+      <div class="plage">{range.start === range.end ? `Ligne ${range.start}` : `Lignes ${range.start}–${range.end}`}</div>
       <!-- svelte-ignore a11y_autofocus -->
       <textarea bind:value={text} rows="3" autofocus placeholder="DiffComment (texte simple, Markdown montré tel quel)" onkeydown={key}></textarea>
       {#if error}<p class="erreur" data-testid="erreur-commentaire">{error}</p>{/if}
@@ -223,7 +223,7 @@
 {/snippet}
 
 {#snippet interval(i: number)}
-  {#each intervals[i]?.lignes ?? [] as l (l.nouveau)}{@render row(l)}{/each}
+  {#each intervals[i]?.lines ?? [] as l (l.new)}{@render row(l)}{/each}
   {#if remaining(i)}
     <button class="deplier" data-testid="deplier-contexte" disabled={onLoaded !== null} onclick={() => void expand(i)}>Afficher les lignes cachées</button>
   {/if}
@@ -231,20 +231,20 @@
 
 <svelte:window onmouseup={() => (dragged = false)} />
 
-<section class="diff" data-testid="diff-fichier" aria-label="Diff de {diff.chemin}">
-  <h3 class="chemin">{diff.chemin}</h3>
-  {#each places.ailleurs as c (c.id)}<ReviewComment projet={project} commentaire={c} surChange={onChange} />{/each}
-  {#if diff.affichable !== true}
-    <p class="non-affichable">{NOT_DISPLAYABLE[diff.affichable]}</p>
-  {:else if diff.blocs.length === 0}
+<section class="diff" data-testid="diff-fichier" aria-label="Diff de {diff.path}">
+  <h3 class="chemin">{diff.path}</h3>
+  {#each places.elsewhere as c (c.id)}<ReviewComment project={project} comment={c} onChange={onChange} />{/each}
+  {#if diff.displayable !== true}
+    <p class="non-affichable">{NOT_DISPLAYABLE[diff.displayable]}</p>
+  {:else if diff.blocks.length === 0}
     <p class="non-affichable">Aucune ligne modifiée.</p>
   {:else}
     <div class="code-diff">
-      {#each diff.blocs as b, i (i)}
+      {#each diff.blocks as b, i (i)}
         {@render interval(i)}
-        {#each b.lignes as l, k (k)}{@render blockRow(l, i, k)}{/each}
+        {#each b.lines as l, k (k)}{@render blockRow(l, i, k)}{/each}
       {/each}
-      {@render interval(diff.blocs.length)}
+      {@render interval(diff.blocks.length)}
     </div>
   {/if}
 </section>

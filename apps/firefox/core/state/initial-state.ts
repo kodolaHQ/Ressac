@@ -5,22 +5,22 @@ export function initialState(genId: () => string = randomUUID): BrowserState {
   const space = genId();
   return {
     version: 2,
-    espaces: [{ id: space, nom: "Perso", icone: "🏠", epingles: [], prive: false, profil: DEFAULT_PROFILE }],
-    profils: [{ id: DEFAULT_PROFILE }],
-    essentiels: [],
-    onglets: {},
-    fenetres: [
+    spaces: [{ id: space, name: "Perso", icon: "🏠", pinned: [], private: false, profile: DEFAULT_PROFILE }],
+    profiles: [{ id: DEFAULT_PROFILE }],
+    essentials: [],
+    tabs: {},
+    windows: [
       {
         id: genId(),
-        espaceActif: space,
-        ordre: { [space]: [] },
-        actif: { [space]: null },
+        activeSpace: space,
+        order: { [space]: [] },
+        active: { [space]: null },
         compact: false,
-        panneauAgentOuvert: false,
-        fermesRecemment: [],
-        cadre: null,
+        agentPanelOpen: false,
+        recentlyClosed: [],
+        frame: null,
       },
     ],
-    reglages: { moteur: "google", profilAgent: "claude", largeurPanneauAgent: 420 },
+    settings: { engine: "google", agentProfile: "claude", agentPanelWidth: 420 },
   };
 }

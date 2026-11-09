@@ -38,15 +38,15 @@ afterEach(async () => {
   }
 });
 
-const win = async () => (await state(m)).fenetres[0]!;
+const win = async () => (await state(m)).windows[0]!;
 const activeId = async () => {
   const f = await win();
-  return f.actif[f.espaceActif] ?? null;
+  return f.active[f.activeSpace] ?? null;
 };
 async function open(path: string): Promise<string> {
-  const before = new Set(Object.keys((await state(m)).onglets));
-  const after = await dispatch(m, { type: "ouvrirOnglet", fenetreId: (await win()).id, url: server.url + path });
-  return Object.keys(after.onglets).find((id) => !before.has(id))!;
+  const before = new Set(Object.keys((await state(m)).tabs));
+  const after = await dispatch(m, { type: "ouvrirOnglet", windowId: (await win()).id, url: server.url + path });
+  return Object.keys(after.tabs).find((id) => !before.has(id))!;
 }
 async function waitState<T>(read: (s: BrowserState) => T, ok: (v: T) => boolean, ms = 10_000): Promise<T> {
   const deadline = Date.now() + ms;
@@ -57,7 +57,7 @@ async function waitState<T>(read: (s: BrowserState) => T, ok: (v: T) => boolean,
     await new Promise((r) => setTimeout(r, 100));
   }
 }
-const waitTitle = (id: string, title: string) => waitState((s) => s.onglets[id]?.titre, (t) => t === title);
+const waitTitle = (id: string, title: string) => waitState((s) => s.tabs[id]?.title, (t) => t === title);
 const waitBar = (open: boolean) => waitUi(m, "return !!doc.querySelector('[data-testid=\"barre-commande\"]') === arguments[0]", [open]);
 /** The bar's field has the keyboard: focused in the UI, and the UI iframe focused in the window. */
 const fieldFocused = () =>
@@ -115,7 +115,7 @@ async function stillPending(reading: Promise<unknown>): Promise<void> {
 }
 /** « Nouvel espace » open with a draft ready to be created; returns the space count. */
 async function newSpaceDraft(): Promise<number> {
-  const count = (await state(m)).espaces.length;
+  const count = (await state(m)).spaces.length;
   const MODAL = '[data-testid="modale-espace"]';
   await click(m, '[data-testid="nouvel-espace"]');
   await waitUi(m, "return doc.querySelector(arguments[0] + ' h2')?.textContent === 'Nouvel espace'", [MODAL]);
@@ -131,7 +131,7 @@ async function newSpaceDraft(): Promise<number> {
 async function draftKept(count: number): Promise<void> {
   await new Promise((r) => setTimeout(r, 500));
   expect(await inUi(m, "return doc.querySelector('[data-testid=\"modale-espace\"] h2')?.textContent")).toBe("Nouvel espace");
-  expect((await state(m)).espaces.length).toBe(count);
+  expect((await state(m)).spaces.length).toBe(count);
 }
 
 describe("Command bar", () => {
@@ -143,11 +143,11 @@ describe("Command bar", () => {
     const profile = await mkdtemp(join(os.tmpdir(), "webaios-firefox-"));
     try {
       writeSite(dataDir, "vidola", {
-        declaration: { nom: "Vidola", adresse: sites.url("vidola-a.localhost", "/"), domaines: ["vidola-a.localhost"], connexion: [] },
-        fichiers: { "accueil/index.html": SITE_HOME },
+        declaration: { name: "Vidola", url: sites.url("vidola-a.localhost", "/"), domains: ["vidola-a.localhost"], login: [] },
+        files: { "accueil/index.html": SITE_HOME },
       });
       const actor = testActor(profile);
-      w = await launchWebAiOs({ dataDir, profile, env: { WEBAIOS_TEST_ADRESSES_LOCALES: "1", ...actor.env }, prefs: actor.prefs });
+      w = await launchWebAiOs({ dataDir, profile, env: { WEBAIOS_TEST_LOCAL_ADDRESSES: "1", ...actor.env }, prefs: actor.prefs });
       m = w.marionette;
       await m.setContext("chrome");
       await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
@@ -164,7 +164,7 @@ describe("Command bar", () => {
     } finally {
       // afterEach closes w; the folders go in afterAll.
       kept.push(dataDir, profile);
-      await sites.fermer();
+      await sites.close();
     }
   });
 
@@ -189,7 +189,7 @@ describe("Command bar", () => {
     await pressKeys(m, "Meta+t");
     await type(server.url + "/b.html");
     await pressKeys(m, "Enter");
-    const ids = await waitState((s) => Object.keys(s.onglets), (i) => i.length === 2);
+    const ids = await waitState((s) => Object.keys(s.tabs), (i) => i.length === 2);
     const b = ids.find((id) => id !== a)!;
     expect(await activeId()).toBe(b);
     await waitTitle(b, "Page B");
@@ -205,7 +205,7 @@ describe("Command bar", () => {
     await type(server.url + "/b.html");
     await pressKeys(m, "Enter");
     await waitTitle(a, "Page B");
-    expect(Object.keys((await state(m)).onglets)).toEqual([a]);
+    expect(Object.keys((await state(m)).tabs)).toEqual([a]);
   });
 
   it("⌘L on the empty page gives an empty field", async () => {
@@ -250,8 +250,8 @@ describe("Command bar", () => {
     await waitUi(m, "return doc.querySelectorAll('[data-testid=\"ligne-commande\"][data-type=\"onglet\"]').length === 1");
     await pressKeys(m, "ArrowDown");
     await pressKeys(m, "Enter");
-    await waitState((s) => s.fenetres[0]!.actif[s.fenetres[0]!.espaceActif], (id) => id === a);
-    expect(Object.keys((await state(m)).onglets)).toHaveLength(2);
+    await waitState((s) => s.windows[0]!.active[s.windows[0]!.activeSpace], (id) => id === a);
+    expect(Object.keys((await state(m)).tabs)).toHaveLength(2);
   });
 
   it("↑ and ↓ loop over the lines", async () => {
@@ -306,7 +306,7 @@ describe("Command bar", () => {
 
   // barre-commande.spec.ts:284
   it("an empty ⌘T: the actions, then the other open tabs, not the shown one; Enter shows the empty page", async () => {
-    await writeAction(w.dataDir, "sans-workflow", { nom: "Zorglub" });
+    await writeAction(w.dataDir, "sans-workflow", { name: "Zorglub" });
     await waitUi(m, "return (await ui.webaios.actions.liste()).length > 0", [], 30_000);
     await withPageA();
     const b = await open("/b.html");
@@ -462,7 +462,7 @@ describe("Command bar", () => {
     expect(await inUi(m, `return doc.querySelectorAll('[data-testid="ligne-commande"][data-type="onglet"]').length`)).toBe(0);
     await pressKeys(m, "ArrowDown");
     await pressKeys(m, "Enter");
-    const s = await waitState((s) => Object.values(s.onglets), (o) => o.length === 2 && o.some((t) => t.url.endsWith("/b.html")));
+    const s = await waitState((s) => Object.values(s.tabs), (o) => o.length === 2 && o.some((t) => t.url.endsWith("/b.html")));
     expect(s).toHaveLength(2);
   });
 
@@ -470,7 +470,7 @@ describe("Command bar", () => {
   it("a URL visited in two spaces is offered once", async () => {
     const a = await open("/a.html");
     await waitTitle(a, "Page A");
-    await dispatch(m, { type: "creerEspace", nom: "Travail", icone: "💼", prive: false, profil: "defaut", fenetreId: (await win()).id });
+    await dispatch(m, { type: "creerEspace", name: "Travail", icon: "💼", private: false, profile: "defaut", windowId: (await win()).id });
     const b = await open("/a.html");
     await waitTitle(b, "Page A");
     await waitUi(m, "return (await ui.webaios.historique.recents()).length === 2", [], 15_000);

@@ -6,21 +6,21 @@ import type { Execution, ResumeExecution } from "@webaios/kernel";
  * then come from an older run); otherwise the example, with the mention « données non gardées ».
  */
 export function previewData(o: {
-  choisie: ResumeExecution | null;
+  chosen: ResumeExecution | null;
   detail: Execution | null;
-  liste: ResumeExecution[];
-  widget: { donnees: unknown; exemple: unknown };
-}): { donnees: unknown; mention: boolean } {
-  const { choisie: chosen, detail, widget } = o;
+  list: ResumeExecution[];
+  widget: { data: unknown; example: unknown };
+}): { data: unknown; mention: boolean } {
+  const { chosen: chosen, detail, widget } = o;
   if (chosen && detail?.id === chosen.id) {
-    const output = detail.blocs.find((b) => b.type === "sortie");
-    if (output && output.sortie !== undefined && !output.sortieTronquee) return { donnees: output.sortie, mention: false };
+    const output = detail.blocks.find((b) => b.type === "sortie");
+    if (output && output.output !== undefined && !output.outputTruncated) return { data: output.output, mention: false };
   }
-  const lastTrue = o.liste.find((e) => !e.essai)?.id ?? null;
+  const lastTrue = o.list.find((e) => !e.attempt)?.id ?? null;
   if (!chosen || chosen.id === lastTrue) {
-    const succeeded = !chosen || chosen.statut === "reussie" || chosen.statut === "partielle";
-    if (widget.donnees != null) return { donnees: widget.donnees, mention: !succeeded };
-    return { donnees: widget.exemple, mention: chosen !== null };
+    const succeeded = !chosen || chosen.status === "reussie" || chosen.status === "partielle";
+    if (widget.data != null) return { data: widget.data, mention: !succeeded };
+    return { data: widget.example, mention: chosen !== null };
   }
-  return { donnees: widget.exemple, mention: true };
+  return { data: widget.example, mention: true };
 }

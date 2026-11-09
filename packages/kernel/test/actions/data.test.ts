@@ -10,11 +10,11 @@ import { tempFolder } from "../helpers/temp.js";
 
 const timestamp = (i: number) => new Date(Date.UTC(2026, 9, 31, 8, 0, i)).toISOString();
 const execution = (start: string, attempt = false): Execution => ({
-  version: 1, id: attempt ? attemptId(start) : idExecution(start), proprietaire: { type: "action", id: "a" },
-  declencheur: "manuelle", debut: start, fin: start, statut: "reussie", blocs: [],
+  version: 1, id: attempt ? attemptId(start) : idExecution(start), owner: { type: "action", id: "a" },
+  trigger: "manuelle", start: start, end: start, status: "reussie", blocks: [],
 });
 const result = (id: string, results: unknown = { n: 1 }): ActionResult => ({
-  version: 1, execution: id, saisie: null, resultats: results, plan: null, secours: false, vide: false,
+  version: 1, run: id, input: null, results: results, plan: null, fallback: false, empty: false,
 });
 const add = async (d: string, start: string, attempt = false, results?: unknown) => {
   const e = execution(start, attempt);
@@ -28,8 +28,8 @@ test("result written then re-read; lastResult ignores trials", async () => {
   const real = await add(d, timestamp(0), false, { v: "vrai" });
   const attempt = await add(d, timestamp(5), true, { v: "essai" });
   expect(await readResult(d, "a", real)).toEqual(result(real, { v: "vrai" }));
-  expect((await readResult(d, "a", attempt))?.resultats).toEqual({ v: "essai" });
-  expect((await lastResult(d, "a"))?.execution).toBe(real);
+  expect((await readResult(d, "a", attempt))?.results).toEqual({ v: "essai" });
+  expect((await lastResult(d, "a"))?.run).toBe(real);
   expect(await readResult(d, "a", "2020-01-01T00-00-00-000Z")).toBeNull();
   expect(await readResult(d, "a", "../../x")).toBeNull();
 });
@@ -38,9 +38,9 @@ test("lastResult: the most recent real run that has a result", async () => {
   const d = await tempFolder();
   const a = await add(d, timestamp(0));
   const b = await add(d, timestamp(2), false, { v: "recent" });
-  expect((await lastResult(d, "a"))?.execution).toBe(b);
+  expect((await lastResult(d, "a"))?.run).toBe(b);
   await writeRun(join(d, "a"), execution(timestamp(1))); // run without a result (failure)
-  expect((await lastResult(d, "a"))?.execution).toBe(b);
+  expect((await lastResult(d, "a"))?.run).toBe(b);
   expect(a).not.toBe(b);
   expect(await lastResult(await tempFolder(), "a")).toBeNull();
 });
@@ -77,7 +77,7 @@ test("a huge result is refused, a damaged file is ignored", async () => {
 test("deleteDataAction erases runs, results and memory", async () => {
   const d = await tempFolder();
   const id = await add(d, timestamp(0));
-  await writeMemory(join(d, "a"), { b: { type: "t", valeur: 1 } });
+  await writeMemory(join(d, "a"), { b: { type: "t", value: 1 } });
   for (const f of ["executions", "resultats", "memoire.json"]) expect(existsSync(join(d, "a", f)), f).toBe(true);
   await deleteDataAction(d, "a");
   for (const f of ["executions", "resultats", "memoire.json"]) expect(existsSync(join(d, "a", f)), f).toBe(false);
@@ -93,7 +93,7 @@ test("oublierActionsDisparues erases the data and grant of an action whose folde
     const e = execution(timestamp(0));
     await writeRun(d, e);
     await writeResult(actionsFolder, id, result(e.id));
-    await giveGrant(actionsFolder, id, { domaines: ["gitlab.com"], publiques: [], profil: "p" });
+    await giveGrant(actionsFolder, id, { domains: ["gitlab.com"], public: [], profile: "p" });
   }
   await forgetGoneActions(c, actionsFolder);
   expect(existsSync(join(actionsFolder, "disparue"))).toBe(false);
@@ -107,7 +107,7 @@ test("oublierActionsDisparues: without an actions folder (space moved), data and
   const e = execution(timestamp(0));
   await writeRun(join(actionsFolder, "x"), e);
   await writeResult(actionsFolder, "x", result(e.id));
-  await giveGrant(actionsFolder, "x", { domaines: ["gitlab.com"], publiques: [], profil: "p" });
+  await giveGrant(actionsFolder, "x", { domains: ["gitlab.com"], public: [], profile: "p" });
   await forgetGoneActions(c, actionsFolder);
   expect(existsSync(join(actionsFolder, "x", "resultats"))).toBe(true);
   expect(Object.keys(await readGrants(actionsFolder))).toEqual(["x"]);
@@ -126,10 +126,10 @@ test("oublierActionsDisparues: a symbolic link named like the action is not the 
 test("a well-formed plan is re-read; a malformed plan makes the result be rejected", async () => {
   const d = await tempFolder();
   const id = idExecution(timestamp(0));
-  const plan = { blocs: [{ composant: "titre", props: { texte: "x" } }] };
+  const plan = { blocks: [{ component: "titre", props: { text: "x" } }] };
   await writeRun(join(d, "a"), execution(timestamp(0)));
   await writeResult(d, "a", { ...result(id), plan });
   expect((await readResult(d, "a", id))?.plan).toEqual(plan);
-  await writeResult(d, "a", { ...result(id), plan: { blocs: [{ composant: "Pas Bon", props: {} }] } as never });
+  await writeResult(d, "a", { ...result(id), plan: { blocks: [{ component: "Pas Bon", props: {} }] } as never });
   expect(await readResult(d, "a", id)).toBeNull();
 });

@@ -95,7 +95,7 @@ export function widgetFiles(dataDir: string, id: string, html: string, example?:
   mkdirSync(dir, { recursive: true });
   writeFileSync(
     path.join(dir, "widget.json"),
-    JSON.stringify({ nom: id, description: "", tailles: { min: { l: 2, h: 1 }, max: { l: 6, h: 4 }, defaut: { l: 3, h: 2 } }, sources: { compte: [], publiques: [], web: false } }),
+    JSON.stringify({ name: id, description: "", sizes: { min: { l: 2, h: 1 }, max: { l: 6, h: 4 }, default: { l: 3, h: 2 } }, sources: { account: [], public: [], web: false } }),
   );
   writeFileSync(path.join(dir, "affichage.html"), html);
   if (example !== undefined) writeFileSync(path.join(dir, "exemple.json"), JSON.stringify(example));

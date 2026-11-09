@@ -33,41 +33,41 @@ export const confirmSiteDeletion = (name: string) =>
 export const editWithAgent = (id: string) => `Appli de site ~/WebAiOs/sites/${id}/ : `;
 
 export type BarNotice =
-  | { genre: "lien-bloque"; domaine: string } // the blocked URL stays in the main process
-  | { genre: "adresse-changee" | "introuvable" | "inchangee"; texte: string }
+  | { kind: "lien-bloque"; domain: string } // the blocked URL stays in the main process
+  | { kind: "adresse-changee" | "introuvable" | "inchangee"; text: string }
   /** A transient notice (design mode unavailable here…), cleared after `DUREE_AVIS_INFO_MS` or at the next page. */
-  | { genre: "info"; texte: string };
+  | { kind: "info"; text: string };
 
 /** Display duration of an `info` notice in the bar, in ms. */
 export const INFO_NOTICE_DURATION_MS = 5000;
 
 export type SiteGrantRequest = {
-  nom: string;
-  domaines: string[];
-  connexion: string[];
-  cadres: string[];
-  reprise: boolean;
-  fichiers: string[];
-  correspond: string[];
+  name: string;
+  domains: string[];
+  login: string[];
+  frames: string[];
+  resume: boolean;
+  files: string[];
+  matches: string[];
   /** Domains where the site was found again by address tracking (outside `domaines`): the tweaks run there too. */
-  suivis: string[];
+  tracked: string[];
   /** sha256 (hex) of the requested rights (`droitsDe`): « Autoriser » only applies to those the card showed. */
-  empreinte: string;
+  hash: string;
 };
 
 export type SiteWindowState = {
   id: string;
-  nom: string;
-  vue: "accord" | "accueil" | "site";
-  aAccueil: boolean;
-  domaine: string;
-  peutReculer: boolean;
-  peutAvancer: boolean;
-  suivi: boolean;
+  name: string;
+  viewState: "accord" | "accueil" | "site";
+  hasHome: boolean;
+  domain: string;
+  canGoBack: boolean;
+  canGoForward: boolean;
+  tracking: boolean;
   /** A read of the reference page is in progress (the « Chercher la nouvelle adresse » button is waiting). */
-  recherche: boolean;
-  avis: BarNotice | null;
-  accord: SiteGrantRequest | null;
+  search: boolean;
+  notice: BarNotice | null;
+  grant: SiteGrantRequest | null;
 };
 
 /** Maximum length of an address requested by the home (open, image). */
@@ -83,13 +83,13 @@ export const HOME_OPEN_GAP_MS = 1000;
 /** What the home (isolated frame, the agent's code) may request: nothing else is relayed. */
 export const HomeMessage = z.discriminatedUnion("type", [
   z.strictObject({ type: z.literal("pret") }),
-  z.strictObject({ type: z.literal("ouvrir"), adresse: z.string().max(HOME_URL_MAX) }),
+  z.strictObject({ type: z.literal("ouvrir"), url: z.string().max(HOME_URL_MAX) }),
   z.strictObject({ type: z.literal("image"), n: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER), url: z.string().max(HOME_URL_MAX) }),
 ]);
 export type HomeMessage = z.infer<typeof HomeMessage>;
 
 export type MessageToHome =
-  | { type: "memoire"; valeurs: Record<string, MemoryEntry>; positions: Record<string, PositionVideo>; domaine: string }
+  | { type: "memoire"; values: Record<string, MemoryEntry>; positions: Record<string, PositionVideo>; domain: string }
   | { type: "image"; n: number; data: string | null };
 
 /** Console errors of the tweaks kept per open app (the most recent). */
@@ -106,8 +106,8 @@ export const tweakSource = (id: string, file: string) => `webaios-retouche://${i
  * What the site actor (chrome/agent/site-actor.ts) puts into a frame of a site app's view. `pont`: `webaiosSite` in the
  * tweaks' world (main frame on the site only); `reprise`: the video resume (WebAiOs's code).
  */
-export type FrameInjection = { css: string[]; js: { code: string; nom: string }[]; garde: string | null; hotes: string[]; pont: boolean; reprise: boolean };
+export type FrameInjection = { css: string[]; js: { code: string; name: string }[]; guard: string | null; hosts: string[]; bridge: boolean; resume: boolean };
 
-export type ShownSite = { id: string; nom: string; description: string; domaine: string | null; icone: string | null; ouverte: boolean; erreur?: string; erreurAction?: string; sansActions?: true };
+export type ShownSite = { id: string; name: string; description: string; domain: string | null; icon: string | null; open: boolean; error?: string; actionError?: string; noActions?: true };
 
 export type ActionSite = "ouvrir" | "modifier" | "oublier" | "dossier" | "supprimer" | "relire";

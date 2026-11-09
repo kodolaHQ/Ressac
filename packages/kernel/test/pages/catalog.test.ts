@@ -4,12 +4,12 @@ import { catalogText, BUILTIN_COMPONENTS } from "../../src/pages/catalog.js";
 describe("catalog of built-in components", () => {
   it("each built-in component has a description and at least one required property or children", () => {
     for (const c of BUILTIN_COMPONENTS) {
-      expect(c.origine).toBe("integre");
+      expect(c.origin).toBe("integre");
       expect(c.description.length).toBeGreaterThan(0);
-      const required = Object.values(c.proprietes).some((p) => p.requis);
-      expect(required || ["colonnes", "paragraphe", "etiquettes"].includes(c.nom), c.nom).toBe(true);
+      const required = Object.values(c.properties).some((p) => p.required);
+      expect(required || ["colonnes", "paragraphe", "etiquettes"].includes(c.name), c.name).toBe(true);
     }
-    expect(BUILTIN_COMPONENTS.map((c) => c.nom)).toEqual([
+    expect(BUILTIN_COMPONENTS.map((c) => c.name)).toEqual([
       "titre", "paragraphe", "encadre", "chiffre", "chiffres", "liste", "cartes", "tableau", "champs", "etiquettes", "lien", "groupe", "colonnes",
     ]);
   });

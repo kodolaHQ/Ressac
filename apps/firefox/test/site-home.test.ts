@@ -146,14 +146,14 @@ describe("site home resources", () => {
         end: () => go(url),
       };
     };
-    const o = { permise: (u: string) => new URL(u).hostname === "site.test", cookies: true, max: 10 };
+    const o = { allowed: (u: string) => new URL(u).hostname === "site.test", cookies: true, max: 10 };
     const got: unknown[] = [];
     for (const p of ["/a.png", "/r", "/out", "/html", "/big", "/404", "/l0"]) {
       const log: string[] = [];
       const a = await loadImage(fake(log, (s) => new TextEncoder().encode(s)) as unknown as OpenRequest, `https://site.test${p}`, o);
-      got.push([p, a && { type: a.type, corps: Buffer.from(a.corps).toString() }, log.length]);
+      got.push([p, a && { type: a.type, body: Buffer.from(a.body).toString() }, log.length]);
     }
-    const png = { type: "image/png", corps: "PNG" };
+    const png = { type: "image/png", body: "PNG" };
     // Path, image kept, requests made: a redirect to another host, a non-image, an oversized body, a 404 and a redirect loop give nothing.
     expect(got).toEqual([["/a.png", png, 1], ["/r", png, 2], ["/out", null, 1], ["/html", null, 1], ["/big", null, 1], ["/404", null, 1], ["/l0", null, 4]]);
   });
@@ -223,7 +223,7 @@ describe("serveHome: a hostile home folder (Review Focus 3)", () => {
   });
 
   it("copies only the served types, nothing else", async () => {
-    app({ "index.html": "<p>accueil</p>", "page.HTML": "<p>p</p>", "x.svg": "<svg/>", "a.js": "1", "x.xhtml": "<x/>", "x.xht": "<x/>", "x.htm": "<p/>", "x.shtml": "<p/>", "x.xml": "<x/>", "sans": "x", "x.exe": "x" });
+    app({ "index.html": "<p>accueil</p>", "page.HTML": "<p>p</p>", "x.svg": "<svg/>", "a.js": "1", "x.xhtml": "<x/>", "x.xht": "<x/>", "x.htm": "<p/>", "x.shtml": "<p/>", "x.xml": "<x/>", "without": "x", "x.exe": "x" });
     const url = await serveHome(data, "vidola");
     expect(served(url!)).toEqual(["a.js", "index.html", "page.HTML", "x.svg"]);
     expect(copied(url!, "page.HTML")).toContain("Content-Security-Policy");

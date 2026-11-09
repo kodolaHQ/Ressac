@@ -14,11 +14,11 @@ afterEach(() => {
 
 const workflow = {
   version: 1,
-  blocs: [
-    { id: "page", type: "source.page", position: { x: 0, y: 0 }, parametres: { url: "https://x.test/" } },
-    { id: "sortie", type: "sortie", position: { x: 1, y: 0 }, parametres: {} },
+  blocks: [
+    { id: "page", type: "source.page", position: { x: 0, y: 0 }, params: { url: "https://x.test/" } },
+    { id: "sortie", type: "sortie", position: { x: 1, y: 0 }, params: {} },
   ],
-  liens: [{ de: "page", vers: "sortie" }],
+  links: [{ from: "page", to: "sortie" }],
 };
 
 function mount() {
@@ -27,49 +27,49 @@ function mount() {
   const paths = spacePaths(join(root, "espace"));
   const folder = join(paths.widgets, "veille");
   mkdirSync(folder, { recursive: true });
-  const decl = { nom: "Veille", tailles: { min: { l: 1, h: 1 }, max: { l: 4, h: 4 }, defaut: { l: 2, h: 2 } }, sources: { compte: [], publiques: ["x.test"] } };
+  const decl = { name: "Veille", sizes: { min: { l: 1, h: 1 }, max: { l: 4, h: 4 }, default: { l: 2, h: 2 } }, sources: { account: [], public: ["x.test"] } };
   writeFileSync(join(folder, "widget.json"), JSON.stringify(decl));
   writeFileSync(join(folder, "workflow.json"), JSON.stringify(workflow));
-  return { racine: root, chemins: paths, dossier: folder, c: { chemins: paths, dossierWidgets: join(root, "widgets") } };
+  return { root: root, paths: paths, folder: folder, c: { paths: paths, widgetsFolder: join(root, "widgets") } };
 }
 
 describe("widget workflow edition", () => {
   it("reads the blocks, saves a valid draft, refuses an invalid one without touching the file", async () => {
     const m = mount();
     const e = await readEdit(m.c, "veille");
-    expect(e).toMatchObject({ origine: "fichier", validation: { ok: true }, widget: { nom: "Veille" } });
-    expect((e?.brut as typeof workflow).blocs.map((b) => b.id)).toEqual(["page", "sortie"]);
-    const moved = { ...workflow, blocs: [{ ...workflow.blocs[0]!, position: { x: 5, y: 5 } }, workflow.blocs[1]!] };
-    expect(await saveEdit(m.c, "veille", moved)).toMatchObject({ ok: true, avertissements: [] });
-    const saved = readFileSync(join(m.dossier, "workflow.json"), "utf8");
+    expect(e).toMatchObject({ origin: "fichier", validation: { ok: true }, widget: { name: "Veille" } });
+    expect((e?.raw as typeof workflow).blocks.map((b) => b.id)).toEqual(["page", "sortie"]);
+    const moved = { ...workflow, blocks: [{ ...workflow.blocks[0]!, position: { x: 5, y: 5 } }, workflow.blocks[1]!] };
+    expect(await saveEdit(m.c, "veille", moved)).toMatchObject({ ok: true, warnings: [] });
+    const saved = readFileSync(join(m.folder, "workflow.json"), "utf8");
     expect(JSON.parse(saved).blocs[0].position).toEqual({ x: 5, y: 5 });
-    const bad = await saveEdit(m.c, "veille", { version: 1, blocs: [], liens: [] });
-    expect(bad).toMatchObject({ ok: false, avertissements: [] });
-    expect(readFileSync(join(m.dossier, "workflow.json"), "utf8")).toBe(saved);
+    const bad = await saveEdit(m.c, "veille", { version: 1, blocks: [], links: [] });
+    expect(bad).toMatchObject({ ok: false, warnings: [] });
+    expect(readFileSync(join(m.folder, "workflow.json"), "utf8")).toBe(saved);
   });
 
   it("refuse a symlinked widget folder and a hostile code name", async () => {
     const m = mount();
     const outside = realpathSync(mkdtempSync(join(tmpdir(), "workflow-outside-")));
     dirs.push(outside);
-    writeFileSync(join(outside, "widget.json"), readFileSync(join(m.dossier, "widget.json")));
+    writeFileSync(join(outside, "widget.json"), readFileSync(join(m.folder, "widget.json")));
     writeFileSync(join(outside, "tri.mjs"), "secret");
-    renameSync(m.dossier, join(m.chemins.widgets, "old"));
-    symlinkSync(outside, m.dossier);
+    renameSync(m.folder, join(m.paths.widgets, "old"));
+    symlinkSync(outside, m.folder);
     expect(await readEdit(m.c, "veille")).toBeNull();
-    expect(await saveEdit(m.c, "veille", workflow)).toMatchObject({ ok: false, erreur: "Widget introuvable", avertissements: [] });
-    expect(await readCode(m.chemins, "veille", "tri.mjs")).toEqual({ erreur: "Widget introuvable" });
-    expect(await saveCode(m.chemins, "veille", "neuf.mjs", "pwned")).toEqual({ ok: false, erreur: "Widget introuvable" });
+    expect(await saveEdit(m.c, "veille", workflow)).toMatchObject({ ok: false, error: "Widget introuvable", warnings: [] });
+    expect(await readCode(m.paths, "veille", "tri.mjs")).toEqual({ error: "Widget introuvable" });
+    expect(await saveCode(m.paths, "veille", "neuf.mjs", "pwned")).toEqual({ ok: false, error: "Widget introuvable" });
     expect(existsSync(join(outside, "workflow.json"))).toBe(false);
     expect(existsSync(join(outside, "neuf.mjs"))).toBe(false);
 
-    const real = join(m.chemins.widgets, "reel");
+    const real = join(m.paths.widgets, "reel");
     mkdirSync(real);
-    expect(await readCode(m.chemins, "reel", "../x.mjs")).toEqual({ erreur: expect.any(String) });
-    expect(await saveCode(m.chemins, "reel", "../x.mjs", "pwned")).toMatchObject({ ok: false });
-    expect(existsSync(join(m.chemins.widgets, "x.mjs"))).toBe(false);
-    expect(await saveCode(m.chemins, "reel", "tri.mjs", "ok")).toEqual({ ok: true });
-    expect(await readCode(m.chemins, "reel", "tri.mjs")).toEqual({ texte: "ok" });
+    expect(await readCode(m.paths, "reel", "../x.mjs")).toEqual({ error: expect.any(String) });
+    expect(await saveCode(m.paths, "reel", "../x.mjs", "pwned")).toMatchObject({ ok: false });
+    expect(existsSync(join(m.paths.widgets, "x.mjs"))).toBe(false);
+    expect(await saveCode(m.paths, "reel", "tri.mjs", "ok")).toEqual({ ok: true });
+    expect(await readCode(m.paths, "reel", "tri.mjs")).toEqual({ text: "ok" });
   });
 });
 
@@ -95,9 +95,9 @@ describe("WriteQueue", () => {
 
 describe("workflowOpen", () => {
   it("gives the open widget and the block selected on it only", () => {
-    expect(workflowOpen("webaios://workflow/veille", { widget: "veille", bloc: "tri" })).toEqual({ widget: "veille", bloc: "tri" });
-    expect(workflowOpen("webaios://workflow/veille", { widget: "autre", bloc: "tri" })).toEqual({ widget: "veille", bloc: null });
-    expect(workflowOpen("https://x.test/", { widget: "veille", bloc: "tri" })).toBeNull();
+    expect(workflowOpen("webaios://workflow/veille", { widget: "veille", block: "tri" })).toEqual({ widget: "veille", block: "tri" });
+    expect(workflowOpen("webaios://workflow/veille", { widget: "autre", block: "tri" })).toEqual({ widget: "veille", block: null });
+    expect(workflowOpen("https://x.test/", { widget: "veille", block: "tri" })).toBeNull();
     expect(workflowOpen(undefined, undefined)).toBeNull();
   });
 });
@@ -118,14 +118,14 @@ describe("fenetres.actives mirror", () => {
     const { createStore } = await import("../chrome/store/store");
     const { sendMirror, trackState } = await import("../chrome/agent/bridge");
     const store = createStore(initialState());
-    const f = store.state.fenetres[0]!.id;
+    const f = store.state.windows[0]!.id;
     const windows = { active: () => f } as unknown as Parameters<typeof trackState>[2];
     const sent: [string, unknown][] = [];
     const notify = (m: string, p: unknown) => void sent.push([m, p]);
     sendMirror(store, windows, notify);
     trackState(store, { notify, request: () => Promise.resolve() } as unknown as Parameters<typeof trackState>[1], windows);
-    store.dispatch({ type: "ouvrirOnglet", fenetreId: f, url: "webaios://workflow/veille" }, () => "t1");
-    store.dispatch({ type: "ouvrirOnglet", fenetreId: f, url: "https://x.test/" }, () => "t2");
+    store.dispatch({ type: "ouvrirOnglet", windowId: f, url: "webaios://workflow/veille" }, () => "t1");
+    store.dispatch({ type: "ouvrirOnglet", windowId: f, url: "https://x.test/" }, () => "t2");
     expect(sent.filter(([m]) => m === "fenetres.actives").map(([, p]) => p)).toEqual([{ [f]: null }, { [f]: "webaios://workflow/veille" }, { [f]: null }]);
   });
 });
@@ -138,28 +138,28 @@ function mountAction(decl: object) {
   const folder = join(paths.actions, "gitlab");
   mkdirSync(folder, { recursive: true });
   writeFileSync(join(folder, "action.json"), JSON.stringify(decl));
-  return { chemins: paths, dossier: folder, c: { chemins: paths, dossierActions: join(root, "actions") } };
+  return { paths: paths, folder: folder, c: { paths: paths, actionsFolder: join(root, "actions") } };
 }
 
 describe("action workflow edition", () => {
-  const withInput = { nom: "GitLab", saisie: { libelle: "Projet" }, sources: { publiques: ["gitlab.com"] }, miseEnPage: "Un tableau", dureeMaxMinutes: 5 };
-  const read = { id: "lire", type: "code", position: { x: 0, y: 0 }, parametres: { source: "lire.mjs" } };
-  const toPage = { id: "sortie", type: "sortie", position: { x: 1, y: 0 }, parametres: { vers: "page" } };
-  const wf = { version: 1, blocs: [read, toPage], liens: [{ de: "lire", vers: "sortie" }] };
+  const withInput = { name: "GitLab", input: { label: "Projet" }, sources: { public: ["gitlab.com"] }, layout: "Un tableau", maxDurationMinutes: 5 };
+  const read = { id: "lire", type: "code", position: { x: 0, y: 0 }, params: { source: "lire.mjs" } };
+  const toPage = { id: "sortie", type: "sortie", position: { x: 1, y: 0 }, params: { to: "page" } };
+  const wf = { version: 1, blocks: [read, toPage], links: [{ from: "lire", to: "sortie" }] };
 
   it("a symlinked action folder gives null and writes nothing outside", async () => {
     const m = mountAction(withInput);
     const outside = realpathSync(mkdtempSync(join(tmpdir(), "workflow-outside-")));
     dirs.push(outside);
-    writeFileSync(join(outside, "action.json"), readFileSync(join(m.dossier, "action.json")));
+    writeFileSync(join(outside, "action.json"), readFileSync(join(m.folder, "action.json")));
     writeFileSync(join(outside, "workflow.json"), JSON.stringify(wf));
     writeFileSync(join(outside, "lire.mjs"), "secret");
-    rmSync(m.dossier, { recursive: true });
-    symlinkSync(outside, m.dossier);
-    expect(await copy.actionFolder(m.chemins, "gitlab")).toBeNull();
+    rmSync(m.folder, { recursive: true });
+    symlinkSync(outside, m.folder);
+    expect(await copy.actionFolder(m.paths, "gitlab")).toBeNull();
     expect(await copy.readActionEdit(m.c, "gitlab")).toBeNull();
-    expect(await copy.readActionCode(m.chemins, "gitlab", "lire.mjs")).toEqual({ erreur: expect.any(String) });
-    expect(await copy.saveActionCode(m.chemins, "gitlab", "neuf.mjs", "pwned")).toMatchObject({ ok: false });
+    expect(await copy.readActionCode(m.paths, "gitlab", "lire.mjs")).toEqual({ error: expect.any(String) });
+    expect(await copy.saveActionCode(m.paths, "gitlab", "neuf.mjs", "pwned")).toMatchObject({ ok: false });
     expect(await copy.saveActionEdit(m.c, "gitlab", wf)).toMatchObject({ ok: false });
     expect(existsSync(join(outside, "neuf.mjs"))).toBe(false);
   });

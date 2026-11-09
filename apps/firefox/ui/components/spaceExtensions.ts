@@ -2,10 +2,10 @@ import type { Space, SpaceId, ProfileId } from "../../shared/model";
 
 /** What must be known about an extension to warn: where it is active. */
 export interface ProfileExtension {
-  cle: string;
-  nom: string;
+  key: string;
+  name: string;
   source: "store" | "agent";
-  profils: ProfileId[];
+  profiles: ProfileId[];
 }
 
 /**
@@ -15,14 +15,14 @@ export interface ProfileExtension {
  * which the main process disables as soon as a space of the profile is private.
  */
 export function warnings(
-  b: { id: SpaceId | null; prive: boolean; profil: ProfileId },
+  b: { id: SpaceId | null; private: boolean; profile: ProfileId },
   spaces: Space[],
   lignes: ProfileExtension[],
-): { privePartage: string[]; agentDesactivees: string[] } {
-  const actives = lignes.filter((l) => l.profils.includes(b.profil));
-  if (!b.prive || actives.length === 0) return { privePartage: [], agentDesactivees: [] };
+): { sharedPrivate: string[]; agentDisabled: string[] } {
+  const actives = lignes.filter((l) => l.profiles.includes(b.profile));
+  if (!b.private || actives.length === 0) return { sharedPrivate: [], agentDisabled: [] };
   return {
-    privePartage: spaces.filter((e) => e.id !== b.id && e.profil === b.profil).map((e) => e.nom),
-    agentDesactivees: actives.filter((l) => l.source === "agent").map((l) => l.nom),
+    sharedPrivate: spaces.filter((e) => e.id !== b.id && e.profile === b.profile).map((e) => e.name),
+    agentDisabled: actives.filter((l) => l.source === "agent").map((l) => l.name),
   };
 }

@@ -4,26 +4,26 @@ import { profilesForGrant, openableUrl } from "../ui/home-profiles";
 
 const space = (id: string, name: string, profile: ProfileId, isPrivate = false): Space => ({
   id,
-  nom: name,
-  icone: "",
-  epingles: [],
-  prive: isPrivate,
-  profil: profile,
+  name: name,
+  icon: "",
+  pinned: [],
+  private: isPrivate,
+  profile: profile,
 });
 
 const win = (id: string, activeSpace: SpaceId): WindowState => ({
   id,
-  espaceActif: activeSpace,
-  ordre: {},
-  actif: {},
+  activeSpace: activeSpace,
+  order: {},
+  active: {},
   compact: false,
-  panneauAgentOuvert: false,
-  fermesRecemment: [],
-  cadre: null,
+  agentPanelOpen: false,
+  recentlyClosed: [],
+  frame: null,
 });
 
 const state = (spaces: Space[], profiles: ProfileId[], windows: WindowState[]) =>
-  ({ espaces: spaces, profils: profiles.map((id) => ({ id })), fenetres: windows }) as Pick<BrowserState, "profils" | "espaces" | "fenetres">;
+  ({ spaces: spaces, profiles: profiles.map((id) => ({ id })), windows: windows }) as Pick<BrowserState, "profiles" | "spaces" | "windows">;
 
 test("a profile used by a private space is excluded, even shared with a non-private space", () => {
   const s = state(
@@ -41,16 +41,16 @@ test("the window's active space's profile is ticked by default, if it is readabl
     [win("f1", "e1"), win("f2", "e3")],
   );
   expect(profilesForGrant(s, "f1")).toEqual([
-    { id: "defaut", libelle: "Profil de « Boulot »", parDefaut: false },
-    { id: "perso", libelle: "Profil de « Perso »", parDefaut: true },
+    { id: "defaut", label: "Profil de « Boulot »", isDefault: false },
+    { id: "perso", label: "Profil de « Perso »", isDefault: true },
   ]);
   // The active space is private: its profile is excluded, so nothing is ticked.
-  expect(profilesForGrant(s, "f2").every((p) => !p.parDefaut)).toBe(true);
+  expect(profilesForGrant(s, "f2").every((p) => !p.isDefault)).toBe(true);
 });
 
 test("a profile without a space keeps a neutral label", () => {
   const s = state([space("e1", "Perso", "perso")], ["perso", "autre"], [win("f1", "e1")]);
-  expect(profilesForGrant(s, "f1")).toContainEqual({ id: "autre", libelle: "Profil « autre »", parDefaut: false });
+  expect(profilesForGrant(s, "f1")).toContainEqual({ id: "autre", label: "Profil « autre »", isDefault: false });
 });
 
 test("a widget link: http(s) only, never the machine nor the local network", () => {

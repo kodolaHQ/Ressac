@@ -13,34 +13,34 @@ import type { ValidWorkflow } from "./validate.js";
  * is not a contiguous slice of the run order. A try has no chain: it is up to the caller to judge.
  */
 export function streamingChain(v: ValidWorkflow): string[] {
-  const blocks = new Map(v.workflow.blocs.map((b) => [b.id, b]));
-  if (blocks.get(v.sortie.id)?.parametres.auFilDeLEau !== true) return [];
-  const upstream = v.predecesseurs[v.sortie.id]!;
+  const blocks = new Map(v.workflow.blocks.map((b) => [b.id, b]));
+  if (blocks.get(v.output.id)?.params.auFilDeLEau !== true) return [];
+  const upstream = v.predecessors[v.output.id]!;
   if (upstream.length !== 1) return [];
 
   const successors = new Map<string, string[]>();
-  for (const [id, preds] of Object.entries(v.predecesseurs)) {
+  for (const [id, preds] of Object.entries(v.predecessors)) {
     for (const p of preds) successors.set(p, [...(successors.get(p) ?? []), id]);
   }
 
   const chain: string[] = [];
-  let next = v.sortie.id;
+  let next = v.output.id;
   let current: string | undefined = upstream[0];
   while (current !== undefined) {
     const b = blocks.get(current)!;
-    if (BLOCK_REGISTRY.get(b.type)?.chaine !== true || b.parametres.parElement !== true) break;
+    if (BLOCK_REGISTRY.get(b.type)?.chain !== true || b.params.parElement !== true) break;
     const after = successors.get(current) ?? [];
     if (after.length !== 1 || after[0] !== next) break;
     chain.unshift(current);
-    const before: string[] = v.predecesseurs[current]!;
+    const before: string[] = v.predecessors[current]!;
     if (before.length !== 1) break;
     next = current;
     current = before[0];
   }
 
   while (chain.length > 0) {
-    const start = v.ordre.indexOf(chain[0]!);
-    if (chain.every((id, i) => v.ordre[start + i] === id)) break;
+    const start = v.order.indexOf(chain[0]!);
+    if (chain.every((id, i) => v.order[start + i] === id)) break;
     chain.shift();
   }
   return chain;

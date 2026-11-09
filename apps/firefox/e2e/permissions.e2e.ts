@@ -111,8 +111,8 @@ describe("site permissions", () => {
   /** Opens `/p?do=<what>` (made unique) of `base` in a WebAiOs tab of the first window; returns its tab id once loaded. */
   async function open(base: string, what: string, o: { auto?: boolean; extra?: string } = { auto: true }): Promise<string> {
     const url = `${base}/p?do=${what}${o.auto ? "&auto" : ""}${o.extra ?? ""}&k=${++opened}`;
-    const s = await dispatch(m, { type: "ouvrirOnglet", fenetreId: (await state(m)).fenetres[0]!.id, url });
-    const id = Object.entries(s.onglets).find(([, t]) => t.url === url)![0];
+    const s = await dispatch(m, { type: "ouvrirOnglet", windowId: (await state(m)).windows[0]!.id, url });
+    const id = Object.entries(s.tabs).find(([, t]) => t.url === url)![0];
     await waitFor(m, `return !!${browser(id)}?.contentTitle`, (v) => v === true);
     return id;
   }
@@ -228,7 +228,7 @@ describe("site permissions", () => {
     await waitBanner((t) => t !== null);
     await answer("Autoriser");
     expect(await result(first)).toEqual({ ok: "granted" });
-    await dispatch(m, { type: "creerEspace", nom: "Autre", icone: "🅰", prive: false, profil: "nouveau", fenetreId: (await state(m)).fenetres[0]!.id });
+    await dispatch(m, { type: "creerEspace", name: "Autre", icon: "🅰", private: false, profile: "nouveau", windowId: (await state(m)).windows[0]!.id });
     const id = await open(base, "notif");
     expect(await waitBanner((t) => t !== null)).toMatch(/^127\.0\.0\.1:\d+ veut vous envoyer des notifications$/);
     await answer("Refuser");
@@ -286,11 +286,11 @@ describe("site permissions", () => {
 
   it("an invisible read that asks for notifications: denied, without a banner", async () => {
     const base = await origin();
-    const read = await chrome<{ titre: string }>(
+    const read = await chrome<{ title: string }>(
       `const s = await ChromeUtils.importESModule("${STORE}").ready; return s.readPage(arguments[0], { profil: null, adressesLocales: true });`,
       [`${base}/p?do=notif&auto`],
     );
-    expect(read.titre).toBe('done:{"ok":"default"}');
+    expect(read.title).toBe('done:{"ok":"default"}');
     expect(await pending()).toEqual([]);
     expect(await banner()).toBeNull();
     expect(await saved()).not.toHaveProperty(`${base} notifications`);
@@ -317,9 +317,9 @@ describe("site permissions", () => {
 
   it("a private space: same questions, kept by its profile", async () => {
     const base = await origin();
-    await dispatch(m, { type: "creerEspace", nom: "Privé", icone: "🔒", prive: true, profil: "nouveau", fenetreId: (await state(m)).fenetres[0]!.id });
+    await dispatch(m, { type: "creerEspace", name: "Privé", icon: "🔒", private: true, profile: "nouveau", windowId: (await state(m)).windows[0]!.id });
     const s = await state(m);
-    const profile = s.espaces.find((e) => e.nom === "Privé")!.profil;
+    const profile = s.spaces.find((e) => e.name === "Privé")!.profile;
     const id = await open(base, "notif");
     expect(await waitBanner((t) => t !== null)).toMatch(/^127\.0\.0\.1:\d+ veut vous envoyer des notifications$/);
     await answer("Autoriser");
@@ -476,10 +476,10 @@ describe("site permissions", () => {
 
   it("a deleted profile: its permissions.json and its decisions in Firefox disappear", { timeout: 60_000 }, async () => {
     const base = await origin();
-    const windowId = (await state(m)).fenetres[0]!.id;
-    await dispatch(m, { type: "creerEspace", nom: "Jetable", icone: "🗑", prive: false, profil: "nouveau", fenetreId: windowId });
-    const space = (await state(m)).espaces.find((e) => e.nom === "Jetable")!;
-    const file = path.join(dirs.dataDir, `permissions-${space.profil}.json`);
+    const windowId = (await state(m)).windows[0]!.id;
+    await dispatch(m, { type: "creerEspace", name: "Jetable", icon: "🗑", private: false, profile: "nouveau", windowId: windowId });
+    const space = (await state(m)).spaces.find((e) => e.name === "Jetable")!;
+    const file = path.join(dirs.dataDir, `permissions-${space.profile}.json`);
     const id = await open(base, "notif");
     await waitBanner((t) => t !== null);
     await answer("Autoriser");

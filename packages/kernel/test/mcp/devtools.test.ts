@@ -13,10 +13,10 @@ import { spacePaths } from "../../src/paths.js";
 import { profileFiles } from "../../src/kernel.js";
 import { tempFolder } from "../helpers/temp.js";
 
-const github: TabInfo = { id: "github", titre: "sveltejs/svelte", url: "https://github.com/sveltejs/svelte", espace: "perso" };
-const gmail: TabInfo = { id: "gmail", titre: "Gmail", url: "https://mail.google.com/mail/u/0/", espace: "perso" };
-const vidola: TabInfo = { id: "site:vidola", titre: "Vidola", url: "https://vidola-a.example/film/1", espace: "", site: "vidola" };
-const appTodo: TabInfo = { id: "app:todo", titre: "Todo", url: "http://localhost:5280/", espace: "perso", application: "todo" };
+const github: TabInfo = { id: "github", title: "sveltejs/svelte", url: "https://github.com/sveltejs/svelte", space: "perso" };
+const gmail: TabInfo = { id: "gmail", title: "Gmail", url: "https://mail.google.com/mail/u/0/", space: "perso" };
+const vidola: TabInfo = { id: "site:vidola", title: "Vidola", url: "https://vidola-a.example/film/1", space: "", site: "vidola" };
+const appTodo: TabInfo = { id: "app:todo", title: "Todo", url: "http://localhost:5280/", space: "perso", app: "todo" };
 
 const DENIAL = "Accès refusé par l'utilisateur à cet outil sur cet onglet.";
 const CUT = "Accès coupé par l'utilisateur.";
@@ -32,26 +32,26 @@ let isPrivate: string;
 const token = generateToken();
 
 async function start(o: {
-  outilsDev?: boolean;
-  accorderDev?: DevRight[];
-  bloquer?: boolean;
-  profils?: Partial<ReturnType<typeof profileFiles>>;
+  devTools?: boolean;
+  grantDev?: DevRight[];
+  block?: boolean;
+  profiles?: Partial<ReturnType<typeof profileFiles>>;
   /** Answer of the site app's card (absent: no card, refusal). */
   site?: boolean;
 } = {}) {
   bridge = new FakeBridge([github, gmail, appTodo, vidola], {
-    actif: "github",
-    autoriser: false,
-    outilsDev: o.outilsDev ?? true,
-    ...(o.accorderDev ? { accorderDev: o.accorderDev } : {}),
-    ...(o.bloquer ? { bloquer: true } : {}),
-    ...(o.site !== undefined ? { donneesWidget: o.site } : {}),
+    active: "github",
+    allow: false,
+    devTools: o.devTools ?? true,
+    ...(o.grantDev ? { grantDev: o.grantDev } : {}),
+    ...(o.block ? { block: true } : {}),
+    ...(o.site !== undefined ? { widgetData: o.site } : {}),
   });
   policy = new AccessPolicy();
   root = await tempFolder();
   isPrivate = join(await tempFolder(), "profilage");
-  const profiles = { ...profileFiles(spacePaths(root), isPrivate), ...o.profils };
-  server = await startMcpServer({ pont: bridge, politique: policy, jeton: token, agent: "Claude", profils: profiles });
+  const profiles = { ...profileFiles(spacePaths(root), isPrivate), ...o.profiles };
+  server = await startMcpServer({ bridge: bridge, policy: policy, token: token, agent: "Claude", profiles: profiles });
   client = new Client({ name: "test", version: "0" });
   await client.connect(
     new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${server.port}/mcp`), {
@@ -61,10 +61,10 @@ async function start(o: {
 }
 
 afterEach(async () => {
-  tracking?.arreter();
+  tracking?.stop();
   tracking = undefined;
   await client?.close();
-  await server?.arreter();
+  await server?.stop();
   client = undefined;
   server = undefined;
 });
@@ -73,10 +73,10 @@ const invoke = async (name: string, args: Record<string, unknown>) => {
   const r = await client!.callTool({ name, arguments: args });
   return (r.content as { type: string; text?: string }[]).map((c) => c.text ?? "").join("\n");
 };
-const devRequests = () => bridge.appels.filter((a) => a.methode === "demanderOutilsDev");
+const devRequests = () => bridge.calls.filter((a) => a.method === "demanderOutilsDev");
 
 test("without pont.outilsDev, no dev tool is listed", async () => {
-  await start({ outilsDev: false });
+  await start({ devTools: false });
   const names = (await client!.listTools()).tools.map((t) => t.name);
   expect(names).not.toContain("lire_console");
   expect(names).not.toContain("demander_outils_dev");
@@ -95,46 +95,46 @@ test("with pont.outilsDev, the nine dev tools are listed", async () => {
 });
 
 test('lire_console on a third-party tab without the right: a request with rights ["console"]; granted → messages returned (timestamp, level, text)', async () => {
-  await start({ accorderDev: ["console"] });
+  await start({ grantDev: ["console"] });
   const h = Date.parse("2026-10-27T10:00:00.000Z");
-  bridge.fixerConsole("github", [
-    { horodatage: h, niveau: "error", texte: "TypeError: x is undefined", pile: "at f (app.js:1:2)" },
-    { horodatage: h + 1000, niveau: "log", texte: "bonjour" },
+  bridge.setConsole("github", [
+    { timestamp: h, level: "error", text: "TypeError: x is undefined", stack: "at f (app.js:1:2)" },
+    { timestamp: h + 1000, level: "log", text: "bonjour" },
   ]);
   const r = await invoke("lire_console", { id: "github" });
   expect(devRequests()).toHaveLength(1);
-  const [o, d] = devRequests()[0]!.args as [TabInfo, { droits: DevRight[]; raison: string; agent: string }];
+  const [o, d] = devRequests()[0]!.args as [TabInfo, { rights: DevRight[]; reason: string; agent: string }];
   expect(o.id).toBe("github");
-  expect(d).toEqual({ droits: ["console"], raison: "L'agent veut utiliser lire_console.", agent: "Claude" });
+  expect(d).toEqual({ rights: ["console"], reason: "L'agent veut utiliser lire_console.", agent: "Claude" });
   expect(r).toContain("2026-10-27T10:00:00.000Z");
   expect(r).toContain("[error] TypeError: x is undefined");
   expect(r).toContain("at f (app.js:1:2)");
   expect(r).toContain("[log] bonjour");
   // filtres
-  expect(await invoke("lire_console", { id: "github", niveau: "log" })).not.toContain("TypeError");
-  expect(await invoke("lire_console", { id: "github", depuis: h + 500 })).not.toContain("TypeError");
+  expect(await invoke("lire_console", { id: "github", level: "log" })).not.toContain("TypeError");
+  expect(await invoke("lire_console", { id: "github", since: h + 500 })).not.toContain("TypeError");
   expect(devRequests()).toHaveLength(1);
 });
 
 test("demander_outils_dev: only the granted rights are returned; the unchecked ones are blocked (second call: no request, answer refused)", async () => {
-  await start({ accorderDev: ["console"] });
-  const r = await invoke("demander_outils_dev", { id: "github", droits: ["console", "reseau"], raison: "Déboguer l'erreur" });
+  await start({ grantDev: ["console"] });
+  const r = await invoke("demander_outils_dev", { id: "github", rights: ["console", "reseau"], reason: "Déboguer l'erreur" });
   expect(r).toContain("Droits accordés : console");
   expect(r).not.toMatch(/accordés : .*reseau/);
-  expect(policy.droitsDev(github)).toEqual(["console"]);
-  expect(policy.peutDemander("github", "reseau")).toBe(false);
-  expect((devRequests()[0]!.args[1] as { raison: string }).raison).toBe("Déboguer l'erreur");
-  expect(await invoke("demander_outils_dev", { id: "github", droits: ["reseau"], raison: "encore" })).toBe(DENIAL);
+  expect(policy.devRights(github)).toEqual(["console"]);
+  expect(policy.canAsk("github", "reseau")).toBe(false);
+  expect((devRequests()[0]!.args[1] as { reason: string }).reason).toBe("Déboguer l'erreur");
+  expect(await invoke("demander_outils_dev", { id: "github", rights: ["reseau"], reason: "encore" })).toBe(DENIAL);
   expect(await invoke("lire_reseau", { id: "github" })).toBe(DENIAL);
   expect(devRequests()).toHaveLength(1);
 });
 
 test("after politique.interactionUtilisateur, the refused right can be asked again", async () => {
-  await start({ accorderDev: [] });
+  await start({ grantDev: [] });
   expect(await invoke("lire_console", { id: "github" })).toBe(DENIAL);
   expect(await invoke("lire_console", { id: "github" })).toBe(DENIAL);
   expect(devRequests()).toHaveLength(1);
-  policy.interactionUtilisateur(github);
+  policy.userInteraction(github);
   expect(await invoke("lire_console", { id: "github" })).toBe(DENIAL);
   expect(devRequests()).toHaveLength(2);
 });
@@ -142,59 +142,59 @@ test("after politique.interactionUtilisateur, the refused right can be asked aga
 test("without demanderOutilsDev on the bridge: immediate refusal", async () => {
   await start();
   expect(await invoke("lire_console", { id: "github" })).toBe(DENIAL);
-  expect(bridge.demanderOutilsDev).toBeUndefined();
+  expect(bridge.askDevTools).toBeUndefined();
 });
 
 test("built (app:todo): lire_console and executer_js without a request", async () => {
-  await start({ accorderDev: [] });
-  policy.ongletOuvertParAgent(appTodo);
-  bridge.fixerConsole("app:todo", [{ horodatage: 0, niveau: "warn", texte: "attention" }]);
+  await start({ grantDev: [] });
+  policy.tabOpenedByAgent(appTodo);
+  bridge.setConsole("app:todo", [{ timestamp: 0, level: "warn", text: "attention" }]);
   expect(await invoke("lire_console", { id: "app:todo" })).toContain("[warn] attention");
   expect(await invoke("executer_js", { id: "app:todo", code: "1 + 1" })).toBe(JSON.stringify({ code: "1 + 1" }));
   expect(await invoke("executer_js", { id: "app:todo", code: "throw boom" })).toContain("Exception : boom");
-  expect(await invoke("recharger", { id: "app:todo", sans_cache: true })).toContain("rechargé");
-  expect(bridge.appels.some((a) => a.methode === "recharger" && a.args[1] === true)).toBe(true);
+  expect(await invoke("recharger", { id: "app:todo", no_cache: true })).toContain("rechargé");
+  expect(bridge.calls.some((a) => a.method === "recharger" && a.args[1] === true)).toBe(true);
   expect(devRequests()).toHaveLength(0);
 });
 
 test("executer_js truncates a value that is too long", async () => {
   await start();
-  policy.ongletOuvertParAgent(appTodo);
+  policy.tabOpenedByAgent(appTodo);
   const r = await invoke("executer_js", { id: "app:todo", code: "x".repeat(3000) });
   expect(r.endsWith("… [tronqué]")).toBe(true);
   expect(r.length).toBeLessThan(2100);
 });
 
 test("lire_reseau on a third-party tab masks Cookie and access_token; on a built one, nothing is masked", async () => {
-  await start({ accorderDev: ["reseau"] });
+  await start({ grantDev: ["reseau"] });
   const request = {
-    id: "r1", horodatage: 0, methode: "GET", url: "https://github.com/api?access_token=abc123&page=2", statut: 200,
-    dureeMs: 12, taille: 345, type: "Fetch", enTetesRequete: { Cookie: "session=xyz" }, enTetesReponse: { "Content-Type": "application/json" },
+    id: "r1", timestamp: 0, method: "GET", url: "https://github.com/api?access_token=abc123&page=2", status: 200,
+    durationMs: 12, size: 345, type: "Fetch", requestHeaders: { Cookie: "session=xyz" }, responseHeaders: { "Content-Type": "application/json" },
   };
-  bridge.fixerReseau("github", [request]);
-  bridge.fixerReseau("app:todo", [request]);
+  bridge.setNetwork("github", [request]);
+  bridge.setNetwork("app:todo", [request]);
   const list = await invoke("lire_reseau", { id: "github" });
   expect(list).toContain("r1");
   expect(list).toContain("access_token=«masqué»&page=2");
   expect(list).not.toContain("abc123");
   // the filter applies to the displayed URL: it does not allow guessing a secret
-  expect(await invoke("lire_reseau", { id: "github", filtre: "abc123" })).not.toContain("r1");
-  const detail = await invoke("lire_requete", { id: "github", requete: "r1" });
+  expect(await invoke("lire_reseau", { id: "github", filter: "abc123" })).not.toContain("r1");
+  const detail = await invoke("lire_requete", { id: "github", query: "r1" });
   expect(detail).toContain("Cookie: «masqué»");
   expect(detail).not.toContain("session=xyz");
   expect(detail).toContain("Content-Type: application/json");
   expect(detail).toContain("Corps de r1");
-  expect(await invoke("lire_requete", { id: "github", requete: "inconnue" })).toContain("introuvable");
+  expect(await invoke("lire_requete", { id: "github", query: "inconnue" })).toContain("introuvable");
 
-  policy.ongletOuvertParAgent(appTodo);
+  policy.tabOpenedByAgent(appTodo);
   expect(await invoke("lire_reseau", { id: "app:todo" })).toContain("access_token=abc123");
-  expect(await invoke("lire_requete", { id: "app:todo", requete: "r1" })).toContain("Cookie: session=xyz");
+  expect(await invoke("lire_requete", { id: "app:todo", query: "r1" })).toContain("Cookie: session=xyz");
 });
 
 test("profiler_performances: on a third-party site, the .cpuprofile stays outside the space (reference profil:…); a built one writes under /workspace", async () => {
-  await start({ accorderDev: ["performances"] });
-  const r = await invoke("profiler_performances", { id: "github", duree_s: 2 });
-  expect(bridge.appels.find((a) => a.methode === "profiler")!.args[1]).toEqual({ dureeMs: 2000 });
+  await start({ grantDev: ["performances"] });
+  const r = await invoke("profiler_performances", { id: "github", duration_s: 2 });
+  expect(bridge.calls.find((a) => a.method === "profiler")!.args[1]).toEqual({ durationMs: 2000 });
   expect(r).toContain("calculer");
   expect(r).toContain("Nodes : 42");
   const reference = /Profil : (profil:\S+\.cpuprofile)$/.exec(r)?.[1];
@@ -203,24 +203,24 @@ test("profiler_performances: on a third-party site, the .cpuprofile stays outsid
   expect(existsSync(join(root, ".webaios", "profilage"))).toBe(false);
 
   // a built app writes in its project
-  policy.ongletOuvertParAgent(appTodo);
-  const app = await invoke("profiler_performances", { id: "app:todo", recharger: true });
+  policy.tabOpenedByAgent(appTodo);
+  const app = await invoke("profiler_performances", { id: "app:todo", reload: true });
   expect(app).toMatch(/Profil : \/workspace\/projets\/todo\/\.webaios\/profilage\/\S+\.cpuprofile/);
   // a built demo, in .webaios/profilage
-  const demo = await bridge.ouvrirOnglet("http://localhost:5281/");
-  policy.ongletOuvertParAgent(demo);
-  const d = await invoke("profiler_performances", { id: demo.id, duree_s: 1 });
+  const demo = await bridge.openTab("http://localhost:5281/");
+  policy.tabOpenedByAgent(demo);
+  const d = await invoke("profiler_performances", { id: demo.id, duration_s: 1 });
   expect(d).toMatch(/Profil : \/workspace\/\.webaios\/profilage\/\S+\.cpuprofile$/);
 });
 
 test("instantane_memoire then comparer_memoire", async () => {
-  await start({ accorderDev: ["performances"] });
+  await start({ grantDev: ["performances"] });
   const a = await invoke("instantane_memoire", { id: "github" });
   expect(a).toContain("Total :");
   expect(a).toContain("Fuite : 2 objets");
   const pathA = /Instantané : (\S+\.heapsnapshot)/.exec(a)![1]!;
   expect(pathA).toMatch(/^profil:[^/]+\.heapsnapshot$/);
-  bridge.agrandirTas();
+  bridge.growHeap();
   const b = await invoke("instantane_memoire", { id: "github" });
   const pathB = /Instantané : (\S+\.heapsnapshot)/.exec(b)![1]!;
   expect(pathB).not.toBe(pathA);
@@ -249,13 +249,13 @@ test("instantane_memoire then comparer_memoire", async () => {
 });
 
 test("cut during instantane_memoire (bloquer: true): answer « Accès coupé par l'utilisateur. », no file left", async () => {
-  await start({ accorderDev: ["performances"], bloquer: true });
+  await start({ grantDev: ["performances"], block: true });
   const call = invoke("instantane_memoire", { id: "github" });
-  await vi.waitFor(() => expect(bridge.appels.some((a) => a.methode === "instantaneMemoire")).toBe(true));
-  expect(policy.etat().github?.enCours).toBe(true);
-  policy.couper("github", "performances");
+  await vi.waitFor(() => expect(bridge.calls.some((a) => a.method === "instantaneMemoire")).toBe(true));
+  expect(policy.state().github?.running).toBe(true);
+  policy.cut("github", "performances");
   expect(await call).toBe(CUT);
-  expect(policy.etat().github?.enCours ?? false).toBe(false);
+  expect(policy.state().github?.running ?? false).toBe(false);
   const folder = isPrivate;
   expect(existsSync(folder) ? await readdir(folder) : []).toEqual([]);
 });
@@ -263,14 +263,14 @@ test("cut during instantane_memoire (bloquer: true): answer « Accès coupé par
 test("cut while the profile is being written: the partial file is erased", async () => {
   let written = "";
   await start({
-    accorderDev: ["performances"],
-    profils: {
-      ecrireProfil: async (_o, name, content) => {
+    grantDev: ["performances"],
+    profiles: {
+      writeProfile: async (_o, name, content) => {
         const folder = join(root, ".webaios", "profilage");
         await mkdir(folder, { recursive: true });
         await writeFile(join(folder, name), content);
         written = join(folder, name);
-        policy.couper("github");
+        policy.cut("github");
         return `/workspace/.webaios/profilage/${name}`;
       },
     },
@@ -281,28 +281,28 @@ test("cut while the profile is being written: the partial file is erased", async
 });
 
 test("the tab changes site during the request: nothing is granted", async () => {
-  await start({ accorderDev: ["console"] });
-  const ask = bridge.demanderOutilsDev!.bind(bridge);
-  bridge.demanderOutilsDev = async (o, d) => {
-    await bridge.naviguer(o.id, "https://autre.example/");
+  await start({ grantDev: ["console"] });
+  const ask = bridge.askDevTools!.bind(bridge);
+  bridge.askDevTools = async (o, d) => {
+    await bridge.navigate(o.id, "https://autre.example/");
     return ask(o, d);
   };
   expect(await invoke("lire_console", { id: "github" })).toBe(DENIAL);
-  expect(policy.droitsDev({ ...github, url: "https://autre.example/" })).toEqual([]);
-  expect(policy.droitsDev(github)).toEqual([]);
+  expect(policy.devRights({ ...github, url: "https://autre.example/" })).toEqual([]);
+  expect(policy.devRights(github)).toEqual([]);
 });
 
 test("two simultaneous requests for the same tab: a single card", async () => {
-  await start({ accorderDev: ["console"] });
-  const ask = bridge.demanderOutilsDev!.bind(bridge);
+  await start({ grantDev: ["console"] });
+  const ask = bridge.askDevTools!.bind(bridge);
   let release!: () => void;
   const lock = new Promise<void>((ok) => (release = ok));
-  bridge.demanderOutilsDev = async (o, d) => {
+  bridge.askDevTools = async (o, d) => {
     const r = ask(o, d);
     await lock;
     return r;
   };
-  bridge.fixerConsole("github", [{ horodatage: 0, niveau: "log", texte: "salut" }]);
+  bridge.setConsole("github", [{ timestamp: 0, level: "log", text: "salut" }]);
   const a = invoke("lire_console", { id: "github" });
   await vi.waitFor(() => expect(devRequests()).toHaveLength(1));
   const b = invoke("lire_console", { id: "github" });
@@ -314,27 +314,27 @@ test("two simultaneous requests for the same tab: a single card", async () => {
 });
 
 test("DevToolsTracking: attaches at the first right, detaches when everything is cut; DevToolsBusy → the tool returns the message", async () => {
-  await start({ accorderDev: ["console"] });
-  tracking = new DevToolsTracking(policy, bridge.outilsDev!, () => bridge.listerOnglets());
-  const callsOf = (m: string, id: string) => bridge.appels.filter((a) => a.methode === m && a.args[0] === id).length;
+  await start({ grantDev: ["console"] });
+  tracking = new DevToolsTracking(policy, bridge.devTools!, () => bridge.listTabs());
+  const callsOf = (m: string, id: string) => bridge.calls.filter((a) => a.method === m && a.args[0] === id).length;
 
-  policy.accorderDev(github, ["console"], []);
+  policy.grantDev(github, ["console"], []);
   await vi.waitFor(() => expect(tracking!.attaches.has("github")).toBe(true));
-  policy.accorderDev(github, ["reseau"], []);
+  policy.grantDev(github, ["reseau"], []);
   await new Promise((r) => setTimeout(r, 20));
   expect(callsOf("attacher", "github")).toBe(1);
 
-  policy.couper("github", "console");
+  policy.cut("github", "console");
   await new Promise((r) => setTimeout(r, 20));
   expect(tracking.attaches.has("github")).toBe(true);
-  policy.couper("github");
+  policy.cut("github");
   await vi.waitFor(() => expect(tracking!.attaches.has("github")).toBe(false));
   expect(callsOf("detacher", "github")).toBe(1);
 
   // The user opened their tools on Gmail
-  bridge.occuper("gmail");
-  policy.accorderDev(gmail, ["console"], []);
-  await vi.waitFor(() => expect(tracking!.occupes.has("gmail")).toBe(true));
+  bridge.occupy("gmail");
+  policy.grantDev(gmail, ["console"], []);
+  await vi.waitFor(() => expect(tracking!.busy.has("gmail")).toBe(true));
   expect(tracking.attaches.has("gmail")).toBe(false);
   expect(await invoke("lire_console", { id: "gmail" })).toBe("Les outils de développement de l'utilisateur sont ouverts sur cet onglet.");
 });
@@ -342,19 +342,19 @@ test("DevToolsTracking: attaches at the first right, detaches when everything is
 test("profileFiles: refuses a path outside the profile folders", async () => {
   const r = await tempFolder();
   const p = profileFiles(spacePaths(r));
-  const path = await p.ecrireProfil(appTodo, "x.heapsnapshot", "{}", true);
+  const path = await p.writeProfile(appTodo, "x.heapsnapshot", "{}", true);
   expect(path).toBe("/workspace/projets/todo/.webaios/profilage/x.heapsnapshot");
-  expect(await p.lireProfil(path)).toBe("{}");
-  await p.supprimerProfil(path);
+  expect(await p.readProfile(path)).toBe("{}");
+  await p.deleteProfile(path);
   expect(existsSync(join(r, "projets", "todo", ".webaios", "profilage", "x.heapsnapshot"))).toBe(false);
   for (const fake of ["/workspace/AGENTS.md", "/workspace/.webaios/mcp.json", "/workspace/projets/todo/../../.webaios/mcp.json", "/etc/passwd", "relatif.cpuprofile"]) {
-    await expect(p.lireProfil(fake)).rejects.toThrow();
-    await expect(p.supprimerProfil(fake)).rejects.toThrow();
+    await expect(p.readProfile(fake)).rejects.toThrow();
+    await expect(p.deleteProfile(fake)).rejects.toThrow();
   }
-  await expect(p.ecrireProfil({ ...appTodo, application: "../x" }, "y.cpuprofile", "{}", true)).rejects.toThrow();
-  await expect(p.ecrireProfil(github, "../y.cpuprofile", "{}", true)).rejects.toThrow();
+  await expect(p.writeProfile({ ...appTodo, app: "../x" }, "y.cpuprofile", "{}", true)).rejects.toThrow();
+  await expect(p.writeProfile(github, "../y.cpuprofile", "{}", true)).rejects.toThrow();
   // without a private folder, a third-party site's profile is not saved (never in the space)
-  await expect(p.ecrireProfil(github, "z.cpuprofile", "{}", false)).rejects.toThrow(/indisponible/);
+  await expect(p.writeProfile(github, "z.cpuprofile", "{}", false)).rejects.toThrow(/indisponible/);
   expect(existsSync(join(r, ".webaios", "profilage", "z.cpuprofile"))).toBe(false);
 });
 
@@ -365,15 +365,15 @@ test("profileFiles: a profiling folder as a symbolic link is refused, on write a
   await mkdir(join(r, ".webaios"), { recursive: true });
   await symlink(outside, join(r, ".webaios", "profilage"));
   const p = profileFiles(spacePaths(r));
-  await expect(p.ecrireProfil(github, "y.cpuprofile", "{}", true)).rejects.toThrow(/hors des profils/);
+  await expect(p.writeProfile(github, "y.cpuprofile", "{}", true)).rejects.toThrow(/hors des profils/);
   expect(existsSync(join(outside, "y.cpuprofile"))).toBe(false);
-  await expect(p.lireProfil("/workspace/.webaios/profilage/x.heapsnapshot")).rejects.toThrow(/hors des profils/);
-  await expect(p.supprimerProfil("/workspace/.webaios/profilage/x.heapsnapshot")).rejects.toThrow(/hors des profils/);
+  await expect(p.readProfile("/workspace/.webaios/profilage/x.heapsnapshot")).rejects.toThrow(/hors des profils/);
+  await expect(p.deleteProfile("/workspace/.webaios/profilage/x.heapsnapshot")).rejects.toThrow(/hors des profils/);
   expect(existsSync(join(outside, "x.heapsnapshot"))).toBe(true);
   // a link higher up (the project folder) too
   await mkdir(join(r, "projets"), { recursive: true });
   await symlink(outside, join(r, "projets", "todo"));
-  await expect(p.ecrireProfil(appTodo, "z.cpuprofile", "{}", true)).rejects.toThrow(/hors des profils/);
+  await expect(p.writeProfile(appTodo, "z.cpuprofile", "{}", true)).rejects.toThrow(/hors des profils/);
   expect(existsSync(join(outside, ".webaios"))).toBe(false);
 });
 
@@ -386,19 +386,19 @@ test("profileFiles: a file as a symbolic link is neither read, nor erased, nor o
   await mkdir(folder, { recursive: true });
   await symlink(target, join(folder, "lien.heapsnapshot"));
   const p = profileFiles(spacePaths(r));
-  await expect(p.lireProfil("/workspace/.webaios/profilage/lien.heapsnapshot")).rejects.toThrow(/hors des profils/);
-  await expect(p.supprimerProfil("/workspace/.webaios/profilage/lien.heapsnapshot")).rejects.toThrow(/hors des profils/);
-  await expect(p.ecrireProfil(github, "lien.heapsnapshot", "écrasé", true)).rejects.toThrow();
+  await expect(p.readProfile("/workspace/.webaios/profilage/lien.heapsnapshot")).rejects.toThrow(/hors des profils/);
+  await expect(p.deleteProfile("/workspace/.webaios/profilage/lien.heapsnapshot")).rejects.toThrow(/hors des profils/);
+  await expect(p.writeProfile(github, "lien.heapsnapshot", "écrasé", true)).rejects.toThrow();
   expect(await readFile(target, "utf8")).toBe("secret");
   expect(existsSync(join(folder, "lien.heapsnapshot"))).toBe(true);
 });
 
 test("lire_console and lire_reseau: at most 100,000 characters, the most recent entries kept", async () => {
   await start();
-  policy.ongletOuvertParAgent(appTodo);
-  bridge.fixerConsole(
+  policy.tabOpenedByAgent(appTodo);
+  bridge.setConsole(
     "app:todo",
-    Array.from({ length: 100 }, (_, i) => ({ horodatage: i, niveau: "log" as const, texte: `m${i}-`.padEnd(1500, "x") })),
+    Array.from({ length: 100 }, (_, i) => ({ timestamp: i, level: "log" as const, text: `m${i}-`.padEnd(1500, "x") })),
   );
   const r = await invoke("lire_console", { id: "app:todo" });
   expect(r.length).toBeLessThanOrEqual(100_000);
@@ -410,11 +410,11 @@ test("lire_console and lire_reseau: at most 100,000 characters, the most recent 
   expect(r).not.toContain(`m${omitted - 1}-`);
   expect(r).toContain(`m${omitted}-`);
 
-  bridge.fixerReseau(
+  bridge.setNetwork(
     "app:todo",
     Array.from({ length: 200 }, (_, i) => ({
-      id: `r${i}`, horodatage: i, methode: "GET", url: `http://localhost:5280/${i}-${"y".repeat(1000)}`,
-      enTetesRequete: {}, enTetesReponse: {},
+      id: `r${i}`, timestamp: i, method: "GET", url: `http://localhost:5280/${i}-${"y".repeat(1000)}`,
+      requestHeaders: {}, responseHeaders: {},
     })),
   );
   const network = await invoke("lire_reseau", { id: "app:todo" });
@@ -422,53 +422,53 @@ test("lire_console and lire_reseau: at most 100,000 characters, the most recent 
   expect(network).toMatch(/^\d+ entrées plus anciennes omises\.\n/);
   expect(network).toContain("r199 ·");
   // under the limit: nothing omitted
-  bridge.fixerConsole("app:todo", [{ horodatage: 0, niveau: "log", texte: "court" }]);
+  bridge.setConsole("app:todo", [{ timestamp: 0, level: "log", text: "court" }]);
   expect(await invoke("lire_console", { id: "app:todo" })).not.toContain("omises");
 });
 
 test("site change during instantane_memoire: « L'onglet a changé de site : accès retiré. »", async () => {
-  await start({ accorderDev: ["performances"], bloquer: true });
+  await start({ grantDev: ["performances"], block: true });
   const call = invoke("instantane_memoire", { id: "github" });
-  await vi.waitFor(() => expect(bridge.appels.some((a) => a.methode === "instantaneMemoire")).toBe(true));
-  await bridge.naviguer("github", "https://autre.example/");
-  policy.ongletNavigue("github", "https://autre.example/");
+  await vi.waitFor(() => expect(bridge.calls.some((a) => a.method === "instantaneMemoire")).toBe(true));
+  await bridge.navigate("github", "https://autre.example/");
+  policy.tabNavigated("github", "https://autre.example/");
   expect(await call).toBe("L'onglet a changé de site : accès retiré.");
 });
 
 test("the site changes between the grant and the call: the bridge is not called", async () => {
   await start();
-  policy.ongletOuvertParAgent(appTodo);
-  const listTool = bridge.listerOnglets.bind(bridge);
+  policy.tabOpenedByAgent(appTodo);
+  const listTool = bridge.listTabs.bind(bridge);
   let n = 0;
-  bridge.listerOnglets = async () => {
+  bridge.listTabs = async () => {
     // 1 : obtenir ; 2 : relecture avant l'appel
     if (++n === 2) {
-      await bridge.naviguer("app:todo", "https://autre.example/");
-      policy.ongletNavigue("app:todo", "https://autre.example/");
+      await bridge.navigate("app:todo", "https://autre.example/");
+      policy.tabNavigated("app:todo", "https://autre.example/");
     }
     return listTool();
   };
   expect(await invoke("executer_js", { id: "app:todo", code: "1" })).toBe("L'onglet a changé de site : accès retiré.");
-  expect(bridge.appels.some((a) => a.methode === "executer")).toBe(false);
+  expect(bridge.calls.some((a) => a.method === "executer")).toBe(false);
 });
 
 test("an error after the profile is written also erases the file", async () => {
-  await start({ accorderDev: ["performances"] });
+  await start({ grantDev: ["performances"] });
   const folder = isPrivate;
-  bridge.outilsDev!.instantaneMemoire = async () => "pas du json";
+  bridge.devTools!.memorySnapshot = async () => "pas du json";
   const r = await invoke("instantane_memoire", { id: "github" });
   expect(r).toMatch(/^Erreur/);
   expect(existsSync(folder) ? await readdir(folder) : []).toEqual([]);
 });
 
 test("cut answers right away even if the bridge ignores the signal; its late result writes no file", async () => {
-  await start({ accorderDev: ["performances"] });
+  await start({ grantDev: ["performances"] });
   const folder = isPrivate;
   let finish!: (s: string) => void;
-  bridge.outilsDev!.instantaneMemoire = () => new Promise<string>((ok) => (finish = ok));
+  bridge.devTools!.memorySnapshot = () => new Promise<string>((ok) => (finish = ok));
   const call = invoke("instantane_memoire", { id: "github" });
   await vi.waitFor(() => expect(finish).toBeDefined());
-  policy.couper("github", "performances");
+  policy.cut("github", "performances");
   expect(await call).toBe(CUT);
   finish(JSON.stringify({ snapshot: { meta: { node_fields: [], node_types: [] } }, nodes: [], strings: [] }));
   await new Promise((r) => setTimeout(r, 50));
@@ -479,78 +479,78 @@ test("profileFiles: a third-party site writes in the private folder and receives
   const r = await tempFolder();
   const folder = join(await tempFolder(), "profilage");
   const p = profileFiles(spacePaths(r), folder);
-  const ref = await p.ecrireProfil(github, "x.heapsnapshot", "{}", false);
+  const ref = await p.writeProfile(github, "x.heapsnapshot", "{}", false);
   expect(ref).toBe("profil:x.heapsnapshot");
   expect(existsSync(join(folder, "x.heapsnapshot"))).toBe(true);
   expect(existsSync(join(r, ".webaios"))).toBe(false);
-  expect(await p.lireProfil(ref)).toBe("{}");
-  await expect(p.ecrireProfil(github, "x.heapsnapshot", "écrasé", false)).rejects.toThrow();
+  expect(await p.readProfile(ref)).toBe("{}");
+  await expect(p.writeProfile(github, "x.heapsnapshot", "écrasé", false)).rejects.toThrow();
   for (const fake of ["profil:../x.heapsnapshot", "profil:a/b", "profil:", "profil:.."]) {
-    await expect(p.lireProfil(fake)).rejects.toThrow();
-    await expect(p.supprimerProfil(fake)).rejects.toThrow();
+    await expect(p.readProfile(fake)).rejects.toThrow();
+    await expect(p.deleteProfile(fake)).rejects.toThrow();
   }
-  await p.supprimerProfil(ref);
+  await p.deleteProfile(ref);
   expect(existsSync(join(folder, "x.heapsnapshot"))).toBe(false);
-  await p.supprimerProfil(ref); // already erased: without error
+  await p.deleteProfile(ref); // already erased: without error
 });
 
 test("page without an origin (about:blank, data:, file:): immediate refusal, no card", async () => {
-  await start({ accorderDev: ["console"] });
+  await start({ grantDev: ["console"] });
   for (const url of ["about:blank", "data:text/html,<p>x</p>", "file:///Users/someone/a.html"]) {
-    const o = await bridge.ouvrirOnglet(url);
+    const o = await bridge.openTab(url);
     expect(await invoke("lire_console", { id: o.id })).toBe(DENIAL);
-    expect(await invoke("demander_outils_dev", { id: o.id, droits: ["console"], raison: "voir" })).toBe(DENIAL);
+    expect(await invoke("demander_outils_dev", { id: o.id, rights: ["console"], reason: "voir" })).toBe(DENIAL);
   }
   expect(devRequests()).toHaveLength(0);
 });
 
 test("the reason shown on the card is bounded to 300 characters (…)", async () => {
-  await start({ accorderDev: ["console"] });
-  await invoke("demander_outils_dev", { id: "github", droits: ["console"], raison: "a".repeat(1000) });
-  const reason = (devRequests()[0]!.args[1] as { raison: string }).raison;
+  await start({ grantDev: ["console"] });
+  await invoke("demander_outils_dev", { id: "github", rights: ["console"], reason: "a".repeat(1000) });
+  const reason = (devRequests()[0]!.args[1] as { reason: string }).reason;
   expect(reason).toHaveLength(300);
   expect(reason.endsWith("…")).toBe(true);
-  await invoke("demander_outils_dev", { id: "gmail", droits: ["console"], raison: "b".repeat(300) });
-  expect((devRequests()[1]!.args[1] as { raison: string }).raison).toBe("b".repeat(300));
+  await invoke("demander_outils_dev", { id: "gmail", rights: ["console"], reason: "b".repeat(300) });
+  expect((devRequests()[1]!.args[1] as { reason: string }).reason).toBe("b".repeat(300));
 });
 
 test("new conversation during the card: the card is withdrawn (signal) and a late answer grants nothing", async () => {
-  await start({ accorderDev: ["console"] });
+  await start({ grantDev: ["console"] });
   let signal: AbortSignal | undefined;
   let reply!: (d: DevRight[]) => void;
-  bridge.demanderOutilsDev = (_o, _d, s) => {
+  bridge.askDevTools = (_o, _d, s) => {
     signal = s;
     return new Promise<DevRight[]>((ok) => (reply = ok));
   };
   const call = invoke("lire_console", { id: "github" });
   await vi.waitFor(() => expect(signal).toBeDefined());
   expect(signal!.aborted).toBe(false);
-  policy.reinitialiser();
+  policy.reset();
   expect(signal!.aborted).toBe(true);
   reply(["console"]); // The user clicks anyway (or the browser ignores the signal)
   expect(await call).toBe(DENIAL);
-  expect(policy.droitsDev(github)).toEqual([]);
-  expect(policy.peutDemander("github", "console")).toBe(true);
+  expect(policy.devRights(github)).toEqual([]);
+  expect(policy.canAsk("github", "console")).toBe(true);
 });
 
 test("lire_console masks the tokens in URLs in the messages and stacks of a third-party site; not on a built one", async () => {
-  await start({ accorderDev: ["console"] });
+  await start({ grantDev: ["console"] });
   const messages = [
     {
-      horodatage: 0,
-      niveau: "error" as const,
-      texte: "GET https://api.github.com/user?access_token=abc123&page=2 401",
-      pile: "at f (https://github.com/app.js?sig=zzz999:1:2)",
+      timestamp: 0,
+      level: "error" as const,
+      text: "GET https://api.github.com/user?access_token=abc123&page=2 401",
+      stack: "at f (https://github.com/app.js?sig=zzz999:1:2)",
     },
   ];
-  bridge.fixerConsole("github", messages);
-  bridge.fixerConsole("app:todo", messages);
+  bridge.setConsole("github", messages);
+  bridge.setConsole("app:todo", messages);
   const r = await invoke("lire_console", { id: "github" });
   expect(r).toContain("https://api.github.com/user?access_token=«masqué»&page=2 401");
   expect(r).toContain("at f (https://github.com/app.js?sig=«masqué»)");
   expect(r).not.toContain("abc123");
   expect(r).not.toContain("zzz999");
-  policy.ongletOuvertParAgent(appTodo);
+  policy.tabOpenedByAgent(appTodo);
   const raw = await invoke("lire_console", { id: "app:todo" });
   expect(raw).toContain("access_token=abc123");
   expect(raw).toContain("sig=zzz999");
@@ -558,32 +558,32 @@ test("lire_console masks the tokens in URLs in the messages and stacks of a thir
 
 test("DevToolsTracking: a tab that keeps its rights on another origin (relaunched app) is detached then reattached", async () => {
   await start();
-  tracking = new DevToolsTracking(policy, bridge.outilsDev!, () => bridge.listerOnglets());
-  const calls = () => bridge.appels.filter((a) => ["attacher", "detacher"].includes(a.methode) && a.args[0] === "app:todo").map((a) => a.methode);
-  policy.construite(appTodo);
+  tracking = new DevToolsTracking(policy, bridge.devTools!, () => bridge.listTabs());
+  const calls = () => bridge.calls.filter((a) => ["attacher", "detacher"].includes(a.method) && a.args[0] === "app:todo").map((a) => a.method);
+  policy.built(appTodo);
   await vi.waitFor(() => expect(calls()).toEqual(["attacher"]));
   // relaunched on another port: the window navigates, it is built again on its new origin
-  await bridge.naviguer("app:todo", "http://localhost:5290/");
-  policy.ongletNavigue("app:todo", "http://localhost:5290/");
-  policy.construite({ ...appTodo, url: "http://localhost:5290/" });
+  await bridge.navigate("app:todo", "http://localhost:5290/");
+  policy.tabNavigated("app:todo", "http://localhost:5290/");
+  policy.built({ ...appTodo, url: "http://localhost:5290/" });
   await vi.waitFor(() => expect(calls()).toEqual(["attacher", "detacher", "attacher"]));
   expect(tracking.attaches.has("app:todo")).toBe(true);
   // same origin, other page: nothing moves
-  await bridge.naviguer("app:todo", "http://localhost:5290/autre");
-  policy.ongletNavigue("app:todo", "http://localhost:5290/autre");
+  await bridge.navigate("app:todo", "http://localhost:5290/autre");
+  policy.tabNavigated("app:todo", "http://localhost:5290/autre");
   await new Promise((r) => setTimeout(r, 20));
   expect(calls()).toEqual(["attacher", "detacher", "attacher"]);
 });
 
 test("private space: each dev tool answers PRIVATE_TEXT, without a card or a debugger call", async () => {
-  await start({ accorderDev: ["console", "reseau", "performances", "agir"] });
-  bridge.rendrePrive("github");
+  await start({ grantDev: ["console", "reseau", "performances", "agir"] });
+  bridge.makePrivate("github");
   const calls: [string, Record<string, unknown>][] = [
-    ["demander_outils_dev", { id: "github", droits: ["console"], raison: "déboguer" }],
+    ["demander_outils_dev", { id: "github", rights: ["console"], reason: "déboguer" }],
     ["lire_console", { id: "github" }],
     ["lire_reseau", { id: "github" }],
-    ["lire_requete", { id: "github", requete: "1" }],
-    ["profiler_performances", { id: "github", duree_s: 1 }],
+    ["lire_requete", { id: "github", query: "1" }],
+    ["profiler_performances", { id: "github", duration_s: 1 }],
     ["instantane_memoire", { id: "github" }],
     ["comparer_memoire", { id: "github", a: "x", b: "y" }],
     ["executer_js", { id: "github", code: "1" }],
@@ -595,76 +595,76 @@ test("private space: each dev tool answers PRIVATE_TEXT, without a card or a deb
     expect(r.isError, name).toBeFalsy();
   }
   expect(devRequests()).toHaveLength(0);
-  expect(bridge.appels.filter((a) => !["listerOnglets"].includes(a.methode))).toEqual([]);
+  expect(bridge.calls.filter((a) => !["listerOnglets"].includes(a.method))).toEqual([]);
 });
 
 test("private space during a call: it is cut and answers PRIVATE_TEXT", async () => {
-  await start({ accorderDev: ["performances"], bloquer: true });
-  const r = invoke("profiler_performances", { id: "github", duree_s: 30 });
-  await vi.waitFor(() => expect(bridge.appels.some((a) => a.methode === "profiler")).toBe(true));
-  bridge.rendrePrive("github");
-  policy.ongletFerme("github"); // what the browser does when the tab becomes private
+  await start({ grantDev: ["performances"], block: true });
+  const r = invoke("profiler_performances", { id: "github", duration_s: 30 });
+  await vi.waitFor(() => expect(bridge.calls.some((a) => a.method === "profiler")).toBe(true));
+  bridge.makePrivate("github");
+  policy.tabClosed("github"); // what the browser does when the tab becomes private
   expect(await r).toBe(PRIVATE_TEXT);
 });
 
 // ——— Site app windows: the app's grant AND the dev tools' ———
 
-const siteCards = () => bridge.appels.filter((a) => a.methode === "demanderDonneesWidget");
+const siteCards = () => bridge.calls.filter((a) => a.method === "demanderDonneesWidget");
 
 test("lire_console with the site's grant but without a dev right: refused", async () => {
-  await start({ accorderDev: [], site: true });
-  policy.accorderLectureSite("vidola");
-  bridge.fixerConsole("site:vidola", [{ horodatage: 0, niveau: "error", texte: "secret de la page" }]);
+  await start({ grantDev: [], site: true });
+  policy.grantSiteRead("vidola");
+  bridge.setConsole("site:vidola", [{ timestamp: 0, level: "error", text: "secret de la page" }]);
   expect(await invoke("lire_console", { id: "site:vidola" })).toBe(DENIAL);
   expect(devRequests()).toHaveLength(1);
   expect(siteCards()).toHaveLength(0);
-  expect(bridge.appels.some((a) => a.methode === "console")).toBe(false);
+  expect(bridge.calls.some((a) => a.method === "console")).toBe(false);
   expect(await invoke("lire_reseau", { id: "site:vidola" })).toBe(DENIAL);
-  expect(bridge.appels.some((a) => a.methode === "reseau")).toBe(false);
+  expect(bridge.calls.some((a) => a.method === "reseau")).toBe(false);
 });
 
 test("lire_console with the dev right but without the site's grant: the app's card, refused → refused, without a tools card", async () => {
-  await start({ accorderDev: ["console", "reseau"], site: false });
-  bridge.fixerConsole("site:vidola", [{ horodatage: 0, niveau: "error", texte: "secret de la page" }]);
+  await start({ grantDev: ["console", "reseau"], site: false });
+  bridge.setConsole("site:vidola", [{ timestamp: 0, level: "error", text: "secret de la page" }]);
   // A dev right already held is not enough.
-  policy.accorderDev(vidola, ["console"], []);
+  policy.grantDev(vidola, ["console"], []);
   expect(await invoke("lire_console", { id: "site:vidola" })).toBe(DENIAL);
-  expect(siteCards().map((c) => c.args[0])).toEqual([{ id: "vidola", nom: "Vidola", agent: "Claude", genre: "site" }]);
+  expect(siteCards().map((c) => c.args[0])).toEqual([{ id: "vidola", name: "Vidola", agent: "Claude", kind: "site" }]);
   expect(devRequests()).toHaveLength(0);
-  expect(bridge.appels.some((a) => a.methode === "console")).toBe(false);
-  expect(await invoke("demander_outils_dev", { id: "site:vidola", droits: ["reseau"], raison: "voir" })).toBe(DENIAL);
+  expect(bridge.calls.some((a) => a.method === "console")).toBe(false);
+  expect(await invoke("demander_outils_dev", { id: "site:vidola", rights: ["reseau"], reason: "voir" })).toBe(DENIAL);
   expect(devRequests()).toHaveLength(0);
 });
 
 test("lire_console on a site app whose site.json was rewritten (other hash): the app's card comes back first", async () => {
-  await start({ accorderDev: ["console"], site: true });
-  bridge.modifierOnglet("site:vidola", { empreinte: "e1" });
-  bridge.fixerConsole("site:vidola", [{ horodatage: 0, niveau: "error", texte: "message" }]);
+  await start({ grantDev: ["console"], site: true });
+  bridge.editTab("site:vidola", { hash: "e1" });
+  bridge.setConsole("site:vidola", [{ timestamp: 0, level: "error", text: "message" }]);
   expect(await invoke("lire_console", { id: "site:vidola" })).toContain("message");
   expect(siteCards()).toHaveLength(1);
-  bridge.modifierOnglet("site:vidola", { empreinte: "e2" });
-  expect(policy.droitsDev({ ...vidola, empreinte: "e2" })).toEqual([]);
+  bridge.editTab("site:vidola", { hash: "e2" });
+  expect(policy.devRights({ ...vidola, hash: "e2" })).toEqual([]);
   await invoke("lire_console", { id: "site:vidola" });
   expect(siteCards()).toHaveLength(2);
 });
 
 test("lire_console: site.json rewritten during the app's card (other hash): nothing is read", async () => {
-  await start({ accorderDev: ["console"] });
-  bridge.modifierOnglet("site:vidola", { empreinte: "e1" });
-  bridge.fixerConsole("site:vidola", [{ horodatage: 0, niveau: "error", texte: "secret de la page" }]);
+  await start({ grantDev: ["console"] });
+  bridge.editTab("site:vidola", { hash: "e1" });
+  bridge.setConsole("site:vidola", [{ timestamp: 0, level: "error", text: "secret de la page" }]);
   let reply: ((yes: boolean) => void) | undefined;
-  bridge.demanderDonneesWidget = () => new Promise<boolean>((ok) => (reply = ok));
+  bridge.askWidgetData = () => new Promise<boolean>((ok) => (reply = ok));
   const r = invoke("lire_console", { id: "site:vidola" });
   await vi.waitFor(() => expect(reply).toBeDefined());
-  bridge.modifierOnglet("site:vidola", { empreinte: "autre" });
+  bridge.editTab("site:vidola", { hash: "autre" });
   reply!(true);
   expect(await r).toBe(DENIAL);
-  expect(bridge.appels.some((a) => a.methode === "console")).toBe(false);
+  expect(bridge.calls.some((a) => a.method === "console")).toBe(false);
 });
 
 test("lire_console on a site app: both grants → the messages, URLs masked (the site is not built by the agent)", async () => {
-  await start({ accorderDev: ["console"], site: true });
-  bridge.fixerConsole("site:vidola", [{ horodatage: 0, niveau: "error", texte: "échec https://vidola-a.example/api?token=abc" }]);
+  await start({ grantDev: ["console"], site: true });
+  bridge.setConsole("site:vidola", [{ timestamp: 0, level: "error", text: "échec https://vidola-a.example/api?token=abc" }]);
   const r = await invoke("lire_console", { id: "site:vidola" });
   expect(r).toContain("[error] échec");
   expect(r).not.toContain("token=abc");
@@ -672,8 +672,8 @@ test("lire_console on a site app: both grants → the messages, URLs masked (the
   expect(siteCards()).toHaveLength(1);
   expect(devRequests()).toHaveLength(1);
   // New conversation: both grants drop.
-  policy.reinitialiser();
-  bridge.appels.length = 0;
+  policy.reset();
+  bridge.calls.length = 0;
   await invoke("lire_console", { id: "site:vidola" });
   expect(siteCards()).toHaveLength(1);
 });

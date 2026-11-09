@@ -23,7 +23,7 @@
   let last = 0;
   function load() {
     const n = ++last;
-    api.accueil.lire().then(
+    api.home.read().then(
       ({ widgets: reads, theme: lu }) => {
         if (n !== last) return;
         widgets = reads;
@@ -36,7 +36,7 @@
   }
   $effect(() => {
     load();
-    return api.accueil.surChange(load);
+    return api.home.onChange(load);
   });
 
   // The theme validated by the kernel only touches the home root, not the sidebar or the agent.
@@ -50,11 +50,11 @@
    * Actions sent with no possible reply (grant, update): a warning if THIS widget's state does not move. Only a change
    * of this widget (state, data, or its removal) lifts the wait and the warning.
    */
-  const waits = new Map<string, { signature: string; minuterie: ReturnType<typeof setTimeout> }>();
+  const waits = new Map<string, { signature: string; timer: ReturnType<typeof setTimeout> }>();
   let warnings = $state<Record<string, string>>({});
   const signature = (id: string) => {
     const w = widgets.find((x) => x.id === id);
-    return !w ? "absent" : "erreur" in w ? `illisible:${w.erreur}` : JSON.stringify([w.etat, w.donnees !== null]);
+    return !w ? "absent" : "error" in w ? `illisible:${w.error}` : JSON.stringify([w.state, w.data !== null]);
   };
   function withoutWarning(id: string) {
     if (!(id in warnings)) return;
@@ -62,34 +62,34 @@
     warnings = rest;
   }
   function act(id: string, action: () => void) {
-    clearTimeout(waits.get(id)?.minuterie);
+    clearTimeout(waits.get(id)?.timer);
     withoutWarning(id);
     action();
     // The wait stays after the warning: it is the widget's change that lifts both.
     const timer = setTimeout(() => (warnings = { ...warnings, [id]: NO_EFFECT }), NO_EFFECT_DELAY_MS);
-    waits.set(id, { signature: signature(id), minuterie: timer });
+    waits.set(id, { signature: signature(id), timer: timer });
   }
   function checkPending() {
     for (const [id, a] of waits) {
       if (signature(id) === a.signature) continue;
-      clearTimeout(a.minuterie);
+      clearTimeout(a.timer);
       waits.delete(id);
       withoutWarning(id);
     }
   }
   $effect(() => () => {
-    for (const a of waits.values()) clearTimeout(a.minuterie);
+    for (const a of waits.values()) clearTimeout(a.timer);
   });
 
   /** Widgets whose read with the user's account was refused, during this page session. */
   let refuses = $state<Record<string, true>>({});
   let toRemove = $state<ShownWidget | null>(null);
-  let grantFor = $state<Extract<ShownWidget, { compte: string[] }> | null>(null);
-  const name = (w: ShownWidget) => ("nom" in w ? w.nom : w.id);
+  let grantFor = $state<Extract<ShownWidget, { account: string[] }> | null>(null);
+  const name = (w: ShownWidget) => ("name" in w ? w.name : w.id);
 
   // Drag and resize: a live free preview, then the layout sent on release.
   let widthPx = $state(0);
-  let gesture: { id: string; mode: "deplacer" | "taille"; x0: number; y0: number; depart: FreePlacement[]; p0: FreePlacement; tailles: { min: { l: number; h: number }; max: { l: number; h: number } } } | null =
+  let gesture: { id: string; mode: "deplacer" | "taille"; x0: number; y0: number; start: FreePlacement[]; p0: FreePlacement; sizes: { min: { l: number; h: number }; max: { l: number; h: number } } } | null =
     null;
   let inGesture = $state(false);
   let preview = $state.raw<FreePlacement[] | null>(null);
@@ -108,9 +108,9 @@
       mode,
       x0: e.clientX,
       y0: e.clientY,
-      depart: start,
+      start: start,
       p0,
-      tailles: "tailles" in w ? { min: freeSizes(w.tailles.min), max: freeSizes(w.tailles.max) } : FREE_SIZES,
+      sizes: "sizes" in w ? { min: freeSizes(w.sizes.min), max: freeSizes(w.sizes.max) } : FREE_SIZES,
     };
     inGesture = true;
     preview = start;
@@ -122,16 +122,16 @@
     // Thousandths of the width for x/w, pixels for y/h.
     const dx = widthPx > 0 ? ((e.clientX - g.x0) / widthPx) * FREE_WIDTH : 0;
     const dy = e.clientY - g.y0;
-    const others = g.depart.filter((q) => q.id !== g.id);
+    const others = g.start.filter((q) => q.id !== g.id);
     const p = g.mode === "deplacer"
-      ? moveFree({ p: g.p0, x: g.p0.x + dx, y: g.p0.y + dy, autres: others, largeurPx: widthPx })
-      : resizeFree({ p: g.p0, l: g.p0.l + dx, h: g.p0.h + dy, min: g.tailles.min, max: g.tailles.max, autres: others });
-    preview = g.depart.map((q) => (q.id === g.id ? p : q));
-    guides = freeGuides({ p, autres: others, largeurPx: widthPx });
+      ? moveFree({ p: g.p0, x: g.p0.x + dx, y: g.p0.y + dy, others: others, widthPx: widthPx })
+      : resizeFree({ p: g.p0, l: g.p0.l + dx, h: g.p0.h + dy, min: g.sizes.min, max: g.sizes.max, others: others });
+    preview = g.start.map((q) => (q.id === g.id ? p : q));
+    guides = freeGuides({ p, others: others, widthPx: widthPx });
   }
   function finish(cancelled: boolean) {
     if (!gesture) return;
-    const { depart: start } = gesture;
+    const { start: start } = gesture;
     const final = preview;
     gesture = null;
     inGesture = false;
@@ -146,7 +146,7 @@
     // Immediately on screen; the folder watch will confirm.
     const byId = new Map(final.map((p) => [p.id, p]));
     widgets = widgets.map((w) => ({ ...w, placement: byId.get(w.id) ?? w.placement }));
-    api.accueil.placer(final);
+    api.home.place(final);
   }
 </script>
 
@@ -167,19 +167,19 @@
           <HomeWidget
             {widget}
             placement={p}
-            geste={inGesture}
-            avertissement={warnings[widget.id] ?? null}
-            refuse={!!refuses[widget.id]}
-            commencer={(mode, e) => commencer(widget, mode, e)}
-            retirer={() => (toRemove = widget)}
-            autoriser={() => "compte" in widget && (grantFor = widget)}
-            refuser={() => {
+            gesture={inGesture}
+            warning={warnings[widget.id] ?? null}
+            denied={!!refuses[widget.id]}
+            start={(mode, e) => commencer(widget, mode, e)}
+            remove={() => (toRemove = widget)}
+            allow={() => "account" in widget && (grantFor = widget)}
+            deny={() => {
               // No wait: after a refusal, the kernel rewrites the same « accord-requis » state, so nothing would change on screen.
               refuses = { ...refuses, [widget.id]: true };
-              api.accueil.refuserAccord(widget.id);
+              api.home.denyGrant(widget.id);
             }}
-            recolter={() => act(widget.id, () => api.accueil.recolter(widget.id))}
-            voirWorkflow={() => "nom" in widget && api.agir({ type: "ouvrirWorkflow", fenetreId: api.fenetreId, id: widget.id, nom: widget.nom })}
+            harvest={() => act(widget.id, () => api.home.harvest(widget.id))}
+            viewWorkflow={() => "name" in widget && api.dispatch({ type: "ouvrirWorkflow", windowId: api.windowId, id: widget.id, name: widget.name })}
           />
         </div>
       {/each}
@@ -198,26 +198,26 @@
 {#if grantFor}
   {@const target = grantFor}
   <AccountGrantCard
-    sujet="widget"
-    profilsPourAccord={api.accueil.profilsPourAccord}
-    nom={target.nom}
-    domaines={target.compte}
-    publiques={target.publiques}
-    fermer={() => (grantFor = null)}
-    autoriser={(profile) => {
+    subject="widget"
+    profilesForGrant={api.home.profilesForGrant}
+    name={target.name}
+    domains={target.account}
+    public={target.public}
+    close={() => (grantFor = null)}
+    allow={(profile) => {
       // {@const} is re-read: after accordPour = null, cible is null. The grant covers exactly what was shown.
-      const { id, compte: account, publiques: publics } = target;
+      const { id, account: account, public: publics } = target;
       grantFor = null;
       const { [id]: _, ...rest } = refuses;
       refuses = rest;
       act(id, () =>
-        api.accueil.accorder({ id, profil: profile, compte: [...account], publiques: [...publics] }).then(
+        api.home.grant({ id, profile: profile, account: [...account], public: [...publics] }).then(
           (r) => {
             if (r.ok) return;
             // Refused (the request changed meanwhile…): nothing is granted, the banner shows the new request.
-            clearTimeout(waits.get(id)?.minuterie);
+            clearTimeout(waits.get(id)?.timer);
             waits.delete(id);
-            warnings = { ...warnings, [id]: `Accord non enregistré : ${r.erreur}` };
+            warnings = { ...warnings, [id]: `Accord non enregistré : ${r.error}` };
             load();
           },
           () => {},
@@ -240,7 +240,7 @@
             const id = target.id; // {@const} is re-read: after aRetirer = null, cible is null
             toRemove = null;
             widgets = widgets.filter((w) => w.id !== id);
-            api.accueil.retirer(id);
+            api.home.remove(id);
           }}>Retirer</button
         >
       </div>

@@ -29,7 +29,7 @@ async function readWidget(c: SpacePaths, widgetsFolder: string, id: string): Pro
   try {
     declaration = DeclarationWidget.parse(await readJsonIn(folder, "widget.json"));
   } catch (e) {
-    return { id, dossier: folder, erreur: `widget.json invalide : ${(e as Error).message}` };
+    return { id, folder: folder, error: `widget.json invalide : ${(e as Error).message}` };
   }
   let example: unknown | null = null;
   try {
@@ -38,24 +38,24 @@ async function readWidget(c: SpacePaths, widgetsFolder: string, id: string): Pro
     // exemple.json absent or damaged: no example.
   }
   const [data, state] = await Promise.all([readData(widgetsFolder, id), readWidgetState(widgetsFolder, id)]);
-  const aWorkflow = existsSync(join(folder, "workflow.json"));
+  const hasWorkflow = existsSync(join(folder, "workflow.json"));
   return {
     id,
-    dossier: folder,
+    folder: folder,
     declaration,
-    etat: state,
-    donnees: data,
-    exemple: example,
-    aRecolte: aWorkflow || existsSync(join(folder, "recolte.mjs")),
-    aWorkflow,
-    aAffichage: existsSync(join(folder, "affichage.html")),
+    state: state,
+    data: data,
+    example: example,
+    hasHarvest: hasWorkflow || existsSync(join(folder, "recolte.mjs")),
+    hasWorkflow,
+    hasDisplay: existsSync(join(folder, "affichage.html")),
   };
 }
 
 /** Readable placements of disposition.json. The old format (`{ ordre }`) or a damaged file gives []. */
 async function readPlacements(c: SpacePaths): Promise<Placement[]> {
   try {
-    const raw = JSON.parse(await readFile(c.disposition, "utf8")) as { version?: unknown; widgets?: unknown };
+    const raw = JSON.parse(await readFile(c.layout, "utf8")) as { version?: unknown; widgets?: unknown };
     if (raw.version !== 2 || !Array.isArray(raw.widgets)) return [];
     return raw.widgets.flatMap((w) => {
       const p = Placement.safeParse(w);
@@ -131,7 +131,7 @@ function firstFreeSlot(busy: Rectangle[], l: number, h: number): { x: number; y:
 /** Placements of disposition.json in free units. Another version, a damaged file or an overlap gives []. */
 export async function readFreeLayout(c: SpacePaths): Promise<FreePlacement[]> {
   try {
-    const available = FreeLayout.safeParse(JSON.parse(await readFile(c.disposition, "utf8")));
+    const available = FreeLayout.safeParse(JSON.parse(await readFile(c.layout, "utf8")));
     if (!available.success) return [];
     const { widgets } = available.data;
     if (widgets.some((a, i) => widgets.slice(i + 1).some((b) => overlaps(a, b)))) return [];
@@ -172,14 +172,14 @@ export function placeMissingFree(
 
 /** Reads the home page. A broken widget is reported, it does not prevent reading the others. */
 export async function readHome(c: SpacePaths, widgetsFolder: string): Promise<HomeState> {
-  if (!existsSync(c.widgets)) return { disposition: [], widgets: [] };
+  if (!existsSync(c.widgets)) return { layout: [], widgets: [] };
   const ids = (await readdir(c.widgets, { withFileTypes: true }))
     .filter((e) => e.isDirectory() && ID_WIDGET.test(e.name))
     .map((e) => e.name)
     .sort();
   const widgets = await Promise.all(ids.map((id) => readWidget(c, widgetsFolder, id)));
   // A widget in error has no known size: it is not placed.
-  const defaults = new Map(widgets.flatMap((w) => ("declaration" in w ? [[w.id, w.declaration.tailles.defaut] as const] : [])));
+  const defaults = new Map(widgets.flatMap((w) => ("declaration" in w ? [[w.id, w.declaration.sizes.default] as const] : [])));
   const layout = placeMissing(ids, await readPlacements(c), defaults);
-  return { disposition: layout, widgets };
+  return { layout: layout, widgets };
 }

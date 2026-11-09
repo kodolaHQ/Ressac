@@ -1,8 +1,8 @@
 import type { WindowId } from "../../shared/model";
 
-export type DesignTarget = { type: "fenetre"; fenetreId: WindowId } | { type: "app"; dossier: string } | { type: "site"; id: string };
+export type DesignTarget = { type: "fenetre"; windowId: WindowId } | { type: "app"; folder: string } | { type: "site"; id: string };
 
-export type DesignChoice = { type: "cible"; cible: DesignTarget } | { type: "avis-site"; id: string } | { type: "rien" };
+export type DesignChoice = { type: "cible"; target: DesignTarget } | { type: "avis-site"; id: string } | { type: "rien" };
 
 /**
  * The window targeted by ⌘⇧D, according to what is in the foreground (spec §4.3): an agent app window, then a
@@ -10,11 +10,11 @@ export type DesignChoice = { type: "cible"; cible: DesignTarget } | { type: "avi
  * nothing switches); another window that is not a main window targets nothing (never the tab of the main
  * window that is behind); otherwise, the active main window.
  */
-export function chooseDesignTarget(o: { appli?: string; site?: string; petiteDeSite?: string; autreFenetre: boolean; fenetreActive?: WindowId }): DesignChoice {
-  if (o.appli) return { type: "cible", cible: { type: "app", dossier: o.appli } };
-  if (o.site) return { type: "cible", cible: { type: "site", id: o.site } };
-  if (o.petiteDeSite) return { type: "avis-site", id: o.petiteDeSite };
-  if (o.autreFenetre) return { type: "rien" };
-  if (o.fenetreActive) return { type: "cible", cible: { type: "fenetre", fenetreId: o.fenetreActive } };
+export function chooseDesignTarget(o: { app?: string; site?: string; siteSmall?: string; otherWindow: boolean; activeWindow?: WindowId }): DesignChoice {
+  if (o.app) return { type: "cible", target: { type: "app", folder: o.app } };
+  if (o.site) return { type: "cible", target: { type: "site", id: o.site } };
+  if (o.siteSmall) return { type: "avis-site", id: o.siteSmall };
+  if (o.otherWindow) return { type: "rien" };
+  if (o.activeWindow) return { type: "cible", target: { type: "fenetre", windowId: o.activeWindow } };
   return { type: "rien" };
 }

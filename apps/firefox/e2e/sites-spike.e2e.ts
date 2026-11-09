@@ -60,16 +60,16 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("site app spike", () => {
   let m: Marionette;
   let profile: string;
   const pub = (p: string) => server.url("pub.localhost", p);
-  const rules = (domains = ["vidola-a.localhost"], tweaks: object[] = []) => ({ id: "vidola", nom: "Vidola", adresse: server.url("vidola-a.localhost", "/"), domaines: domains, connexion: ["compte.localhost"], retouches: tweaks });
+  const rules = (domains = ["vidola-a.localhost"], tweaks: object[] = []) => ({ id: "vidola", name: "Vidola", url: server.url("vidola-a.localhost", "/"), domains: domains, login: ["compte.localhost"], tweaks: tweaks });
   const view = `${siteWindowExpr("vidola")}.gBrowser.selectedBrowser`;
   const viewUrl = () => m.execute<string>(`return ${view}.currentURI.spec;`);
-  const toPub = () => server.requetes.filter((r) => r.hote === "pub.localhost" && r.chemin !== "/cadre").map((r) => `${r.methode} ${r.chemin}`);
+  const toPub = () => server.requests.filter((r) => r.host === "pub.localhost" && r.path !== "/cadre").map((r) => `${r.method} ${r.path}`);
   const blocked = () => m.execute<string[]>(`return ChromeUtils.importESModule("${STORE}").sites.blocked("vidola").slice();`);
   const browserWindows = () => m.execute<number>(`return [...Services.wm.getEnumerator("navigator:browser")].length;`);
   // As the host's SiteChrome (host/sites.ts preparer), granted.
   const openSite = (r = rules(), tweaks: TweaksRead = { js: {}, css: {} }) =>
     m.execute(`ChromeUtils.importESModule("${STORE}").sites.open(arguments[0], null, arguments[1]);`, [
-      { id: r.id, declaration: DeclarationSite.parse({ nom: r.nom, adresse: r.adresse, domaines: r.domaines, connexion: r.connexion, retouches: r.retouches }), aAccueil: false, domaines: r.domaines, depart: r.adresse, accordRequis: false },
+      { id: r.id, declaration: DeclarationSite.parse({ name: r.name, url: r.url, domains: r.domains, login: r.login, tweaks: r.tweaks }), hasHome: false, domains: r.domains, start: r.url, grantRequired: false },
       tweaks,
     ]);
   /** Waits until the view has loaded `url`. */
@@ -77,27 +77,27 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("site app spike", () => {
   /** Runs `act`, waits, then notes the view's URL, what reached pub.localhost, the mentions and the window count. */
   async function measure(what: string, act: () => Promise<unknown>, wait = 1000) {
     const before = (await blocked()).length;
-    server.requetes.splice(0);
+    server.requests.splice(0);
     const result = await act().catch((e) => `threw: ${String(e).slice(0, 160)}`);
     await sleep(wait);
     const r = {
       result,
       url: await viewUrl(),
-      toPub: toPub(),
-      requests: server.requetes.map((q) => `${q.methode} ${q.hote}${q.chemin}`),
+      toPublic: toPub(),
+      requests: server.requests.map((q) => `${q.method} ${q.host}${q.path}`),
       blocked: (await blocked()).slice(before),
       windows: await browserWindows(),
-      tabs: Object.keys((await state(m)).onglets).length,
+      tabs: Object.keys((await state(m)).tabs).length,
     };
     note(what, r);
     // Security: nothing ever reaches pub.localhost (its ad frame on the home page aside).
-    expect(r.toPub, what).toEqual([]);
+    expect(r.toPublic, what).toEqual([]);
     return r;
   }
 
   beforeAll(async () => {
     server = await startSitesServer();
-    const d = (p: string, body: Parameters<typeof server.definir>[2], host = "vidola-a.localhost") => server.definir(host, p, body);
+    const d = (p: string, body: Parameters<typeof server.define>[2], host = "vidola-a.localhost") => server.define(host, p, body);
     d("/", `<title>Vidola A</title>
 <a id="pub" href="${pub("/x")}">pub</a>
 <a id="aller-pub" href="/aller-pub">aller</a>
@@ -116,7 +116,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("site app spike", () => {
     d("/", "<title>Vidola B</title>", "vidola-b.localhost");
     profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
     const actor = testActor(profile);
-    w = await launchWebAiOs({ profile, env: { WEBAIOS_TEST_ADRESSES_LOCALES: "1", ...actor.env }, prefs: actor.prefs });
+    w = await launchWebAiOs({ profile, env: { WEBAIOS_TEST_LOCAL_ADDRESSES: "1", ...actor.env }, prefs: actor.prefs });
     m = w.marionette;
     await m.setContext("chrome");
     await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
@@ -126,10 +126,10 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("site app spike", () => {
   }, 90_000);
   afterAll(async () => {
     await w?.close();
-    await server?.fermer();
+    await server?.close();
     if (profile) await rm(profile, { recursive: true, force: true });
   });
-  beforeEach(() => void server.requetes.splice(0));
+  beforeEach(() => void server.requests.splice(0));
 
   it("(a) the window: marked before claim, one browser in its container, out of the registry", async () => {
     const r = await m.execute(
@@ -217,7 +217,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("site app spike", () => {
           userContextId: b.getAttribute("usercontextid"), viewUserContextId: ${view}.getAttribute("usercontextid"), opener: !!b.browsingContext.opener, toolboxHidden: w.document.getElementById("navigator-toolbox").hidden };`);
     await measure("(b) window.open to compte.localhost with features", () => inSiteView(m, "vidola", `window.open(${JSON.stringify(login)}, "connexion", "width=500,height=650"); return 1;`, { gesture: true }), 2000);
     note("(b) sign-in window", await waitFor(m, `return !!(${small}) && !(${small}).gBrowser.selectedBrowser.webProgress.isLoadingDocument;`, (v) => v === true).then(smallInfo, (e) => String(e)));
-    note("(b) sign-in window reached compte", server.requetes.some((r) => r.hote === "compte.localhost"));
+    note("(b) sign-in window reached compte", server.requests.some((r) => r.host === "compte.localhost"));
     // With a gesture, from the page world; what the assignment did is written on the page.
     const opener = await measure("(b) opener.location from the sign-in window", async () => {
       await inBrowser(m, `(${small}).gBrowser.selectedBrowser`, pageWorld(`const u = ${JSON.stringify(pub("/opener"))}; const r = [];
@@ -248,8 +248,8 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("site app spike", () => {
     await viewAt(server.url("vidola-a.localhost", "/film/2"));
     await openSite(rules());
     const r = await measure("(b) history.back() to vidola-b, removed", () => inSiteView(m, "vidola", "history.back(); return 1;"));
-    note("(b) history.back(): requests to vidola-b", server.requetes.filter((q) => q.hote === "vidola-b.localhost").length);
-    expect(server.requetes.filter((q) => q.hote === "vidola-b.localhost")).toEqual([]);
+    note("(b) history.back(): requests to vidola-b", server.requests.filter((q) => q.host === "vidola-b.localhost").length);
+    expect(server.requests.filter((q) => q.host === "vidola-b.localhost")).toEqual([]);
     expect(r.url).toBe(server.url("vidola-a.localhost", "/film/2"));
     note("(b) history.back(): url", r.url);
     await back();
@@ -258,7 +258,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("site app spike", () => {
   it("(c) the sandbox: no chrome, no page world, password hidden, after a stopped DOMContentLoaded", async () => {
     // Plan 32: the probe is the app's tweak, in the page and in the lecteur.localhost frame (its `cadres`).
     const reader = server.url("lecteur.localhost", "/*").replace(/^http:/, "https:");
-    await openSite(rules(undefined, [{ correspond: ["/sonde"], js: ["sonde.js"], cadres: [reader] }]), { js: { "sonde.js": PROBE }, css: {} });
+    await openSite(rules(undefined, [{ matches: ["/sonde"], js: ["sonde.js"], frames: [reader] }]), { js: { "sonde.js": PROBE }, css: {} });
     const probe = server.url("vidola-a.localhost", "/sonde");
     await inSiteView(m, "vidola", `location.href = ${JSON.stringify(probe)}`);
     await viewAt(probe);
@@ -274,7 +274,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("site app spike", () => {
       // Security: through its Xray view the sandbox sees no chrome, nothing of the page, and no password.
       for (const k of ["Components", "ChromeUtils", "Services", "require", "process", "secret", "windowSecret"]) expect(got.probe[k], k).toBe("undefined");
       expect(got.pw).toBe('""');
-      expect(got.page).toMatchObject({ probeVar: "undefined", probeGlobal: "undefined", portee: "undefined", pwLength: 7 });
+      expect(got.page).toMatchObject({ probeVar: "undefined", probeGlobal: "undefined", scope: "undefined", pwLength: 7 });
     }
     // An ordinary tab with the same page: the actor does nothing there.
     note(
@@ -307,7 +307,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("site app spike", () => {
     const dir = path.join(w.dataDir, "webaios-sites", "vidola");
     await mkdir(dir, { recursive: true });
     await writeFile(path.join(dir, "index.html"), served);
-    const memory = { type: "memoire", valeurs: { "encours.the-bear": { valeur: { titre: "The Bear", episode: "S2E4" }, adresse: "/serie/the-bear?e=4", quand: new Date().toISOString() } }, positions: {}, domaine: "vidola-a.localhost" };
+    const memory = { type: "memoire", values: { "encours.the-bear": { value: { title: "The Bear", episode: "S2E4" }, url: "/serie/the-bear?e=4", when: new Date().toISOString() } }, positions: {}, domain: "vidola-a.localhost" };
     note(
       "(d) frame",
       await inSiteBar(

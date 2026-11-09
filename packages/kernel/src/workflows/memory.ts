@@ -9,11 +9,11 @@ export const MEMORY_MAX_BYTES = 3 * 1024 * 1024;
  * Memory of a widget's blocks: by block id, its type, what it kept from one run to the next and
  * the hash of the params with which it kept it (absent from an old memory).
  */
-export type BlocksMemory = Record<string, { type: string; valeur: unknown; empreinte?: string }>;
+export type BlocksMemory = Record<string, { type: string; value: unknown; hash?: string }>;
 
 const MemoryFile = z.object({
   version: z.literal(1),
-  blocs: z.record(z.string(), z.object({ type: z.string(), valeur: z.unknown(), empreinte: z.string().optional() })),
+  blocks: z.record(z.string(), z.object({ type: z.string(), value: z.unknown(), hash: z.string().optional() })),
 });
 
 function canonical(v: unknown): unknown {
@@ -58,7 +58,7 @@ export async function readMemory(dataFolder: string): Promise<BlocksMemory> {
   const path = join(dataFolder, "memoire.json");
   try {
     if ((await stat(path)).size > MEMORY_MAX_BYTES) return {};
-    return MemoryFile.parse(JSON.parse(await readFile(path, "utf8"))).blocs as BlocksMemory;
+    return MemoryFile.parse(JSON.parse(await readFile(path, "utf8"))).blocks as BlocksMemory;
   } catch {
     return {};
   }
@@ -66,7 +66,7 @@ export async function readMemory(dataFolder: string): Promise<BlocksMemory> {
 
 /** Writes the memory; false, without writing anything, if it exceeds 3 MB. */
 export async function writeMemory(dataFolder: string, m: BlocksMemory): Promise<boolean> {
-  const text = JSON.stringify({ version: 1, blocs: m });
+  const text = JSON.stringify({ version: 1, blocks: m });
   if (Buffer.byteLength(text) > MEMORY_MAX_BYTES) return false;
   const target = join(dataFolder, "memoire.json");
   await mkdir(dataFolder, { recursive: true });

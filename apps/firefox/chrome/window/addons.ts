@@ -60,11 +60,11 @@ export function createAddons(o: {
   tabs: TabSync;
   anchors: Anchors;
   store: WebAiOsStore;
-  fenetreId: WindowId;
+  windowId: WindowId;
 }): WindowAddons {
   const activeSpace = () => {
-    const f = o.store.state.fenetres.find((x) => x.id === o.fenetreId);
-    return f ? o.store.state.espaces.find((e) => e.id === f.espaceActif) : undefined;
+    const f = o.store.state.windows.find((x) => x.id === o.windowId);
+    return f ? o.store.state.spaces.find((e) => e.id === f.activeSpace) : undefined;
   };
   return addonsCore({
     win: o.win,
@@ -72,7 +72,7 @@ export function createAddons(o: {
     anchors: o.anchors,
     shown(id) {
       const space = activeSpace();
-      return !space || o.store.agentExtensions.shownIn(id, space.profil, space.prive);
+      return !space || o.store.agentExtensions.shownIn(id, space.profile, space.private);
     },
     page: () => !!o.tabs.displayed(),
     watch: [
@@ -82,13 +82,13 @@ export function createAddons(o: {
         let lastSpace = "";
         return o.store.subscribe(() => {
           const e = activeSpace();
-          const key = e ? `${e.id}|${e.profil}|${e.prive}` : "";
+          const key = e ? `${e.id}|${e.profile}|${e.private}` : "";
           if (key !== lastSpace) (lastSpace = key), notify();
         });
       },
     ],
     manage: () => void (o.win as any).BrowserAddonUI.openAddonsMgr(ADDONS_LIST),
-    findMore: () => void o.store.dispatch({ type: "ouvrirOnglet", fenetreId: o.fenetreId, url: "https://addons.mozilla.org/fr/firefox/" }),
+    findMore: () => void o.store.dispatch({ type: "ouvrirOnglet", windowId: o.windowId, url: "https://addons.mozilla.org/fr/firefox/" }),
   });
 }
 
@@ -105,7 +105,7 @@ export function createSiteAddons(win: Window, view: SiteWindowController): Windo
     gBrowser: w.gBrowser,
     anchors: setupAnchors(win, bar),
     shown: (id) => !id.endsWith(AGENT_SUFFIX),
-    page: () => view.state().vue === "site" && /^https?:/.test(w.gBrowser.selectedBrowser.currentURI?.spec ?? ""),
+    page: () => view.state().viewState === "site" && /^https?:/.test(w.gBrowser.selectedBrowser.currentURI?.spec ?? ""),
     watch: [(notify) => view.onState(notify)],
     manage() {
       const main = BrowserWindowTracker.getTopWindow() ?? w.OpenBrowserWindow();

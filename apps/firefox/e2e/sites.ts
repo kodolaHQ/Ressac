@@ -20,18 +20,18 @@ export async function startSitesServer(o: { port?: number } = {}): Promise<{
   port: number;
   /** `http://<host>:<port><path>`. */
   url(host: string, relPath?: string): string;
-  definir(host: string, relPath: string, route: SiteRoute): void;
-  couper(host: string, yes?: boolean): void;
-  requetes: { hote: string; chemin: string; methode: string; cookie: string | undefined }[];
-  fermer(): Promise<void>;
+  define(host: string, relPath: string, route: SiteRoute): void;
+  cut(host: string, yes?: boolean): void;
+  requests: { host: string; path: string; method: string; cookie: string | undefined }[];
+  close(): Promise<void>;
 }> {
   const routes = new Map<string, SiteRoute>();
   const coupes = new Set<string>();
-  const requests: { hote: string; chemin: string; methode: string; cookie: string | undefined }[] = [];
+  const requests: { host: string; path: string; method: string; cookie: string | undefined }[] = [];
   const server = createServer((req, res) => {
     const host = (req.headers.host ?? "").replace(/:\d+$/, "").toLowerCase();
     const relPath = req.url ?? "/";
-    requests.push({ hote: host, chemin: relPath, methode: req.method ?? "GET", cookie: req.headers.cookie });
+    requests.push({ host: host, path: relPath, method: req.method ?? "GET", cookie: req.headers.cookie });
     if (coupes.has(host)) return void req.socket.resetAndDestroy();
     const route = routes.get(`${host} ${relPath}`) ?? routes.get(`${host} ${relPath.split("?")[0]}`);
     if (typeof route === "function") return route(req, res);
@@ -54,10 +54,10 @@ export async function startSitesServer(o: { port?: number } = {}): Promise<{
   return {
     port,
     url: (host, relPath = "/") => `http://${host}:${port}${relPath}`,
-    definir: (host, relPath, route) => void routes.set(`${host} ${relPath}`, route),
-    couper: (host, yes = true) => void (yes ? coupes.add(host) : coupes.delete(host)),
-    requetes: requests,
-    fermer: () =>
+    define: (host, relPath, route) => void routes.set(`${host} ${relPath}`, route),
+    cut: (host, yes = true) => void (yes ? coupes.add(host) : coupes.delete(host)),
+    requests: requests,
+    close: () =>
       new Promise((ok) => {
         server.closeAllConnections();
         server.close(() => ok());
@@ -78,7 +78,7 @@ export function resolveLocalHosts(m: Marionette, hosts: string[]): Promise<unkno
 export interface SiteTest {
   declaration: object | string;
   /** Paths relative to the app's folder (`accueil/index.html`, `retouches/a.js`…) → content. */
-  fichiers?: Record<string, string | Buffer>;
+  files?: Record<string, string | Buffer>;
 }
 
 /** Writes a site app into `<dataDir>/espace/sites/<id>/` (what the agent would write there). */
@@ -86,7 +86,7 @@ export function writeSite(dataDir: string, id: string, s: SiteTest): void {
   const folder = path.join(dataDir, "espace", "sites", id);
   mkdirSync(folder, { recursive: true });
   writeFileSync(path.join(folder, "site.json"), typeof s.declaration === "string" ? s.declaration : JSON.stringify(s.declaration));
-  for (const [relPath, content] of Object.entries(s.fichiers ?? {})) {
+  for (const [relPath, content] of Object.entries(s.files ?? {})) {
     mkdirSync(path.join(folder, relPath, ".."), { recursive: true });
     writeFileSync(path.join(folder, relPath), content);
   }

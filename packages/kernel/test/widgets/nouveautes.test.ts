@@ -3,7 +3,7 @@ import { countNew, elementsOf, identity, notificationText } from "../../src/widg
 
 describe("nouveautes", () => {
   it("identity by url, otherwise canonical JSON (key order irrelevant)", () => {
-    expect(identity({ url: "https://a.example/1", titre: "x" })).toBe(identity({ titre: "autre", url: "https://a.example/1" }));
+    expect(identity({ url: "https://a.example/1", title: "x" })).toBe(identity({ title: "autre", url: "https://a.example/1" }));
     expect(identity({ url: "https://a.example/1" })).not.toBe(identity({ url: "https://a.example/2" }));
     expect(identity({ a: 1, b: { c: 2, d: 3 } })).toBe(identity({ b: { d: 3, c: 2 }, a: 1 }));
     expect(identity({ a: 1 })).not.toBe(identity({ a: 2 }));
@@ -15,12 +15,12 @@ describe("nouveautes", () => {
 
   it("object data { annonces: [...] }: its elements count", () => {
     expect(elementsOf([1, 2])).toEqual([1, 2]);
-    expect(elementsOf({ annonces: [{ id: 1 }, { id: 2 }], titre: "x", autres: [{ id: 3 }] })).toEqual([{ id: 1 }, { id: 2 }, { id: 3 }]);
+    expect(elementsOf({ announcements: [{ id: 1 }, { id: 2 }], title: "x", others: [{ id: 3 }] })).toEqual([{ id: 1 }, { id: 2 }, { id: 3 }]);
     expect(elementsOf(null)).toEqual([]);
     expect(elementsOf("texte")).toEqual([]);
-    expect(elementsOf({ titre: "x" })).toEqual([]);
-    const before = { annonces: [{ url: "https://a.example/1", prix: 10 }] };
-    const after = { annonces: [{ url: "https://a.example/1", prix: 12 }, { url: "https://a.example/2" }, { url: "https://a.example/3" }] };
+    expect(elementsOf({ title: "x" })).toEqual([]);
+    const before = { announcements: [{ url: "https://a.example/1", price: 10 }] };
+    const after = { announcements: [{ url: "https://a.example/1", price: 12 }, { url: "https://a.example/2" }, { url: "https://a.example/3" }] };
     expect(countNew(before, after)).toBe(2);
     expect(countNew(null, after)).toBe(3);
     expect(countNew(after, after)).toBe(0);

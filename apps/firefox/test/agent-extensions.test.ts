@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const ID = "reseau@agent.webaios";
-const GRANT = { permissions: [], hotes: ["https://hote.test/*"], reseau: ["accorde.test"], tousLesSites: false, scriptsTousLesSites: false, scripts: false };
+const GRANT = { permissions: [], hosts: ["https://hote.test/*"], network: ["accorde.test"], allSites: false, allSitesScripts: false, scripts: false };
 const HOST = "0f7c6f4e-1111-4222-8333-444455556666";
 
 let observer: (subject: unknown) => void = () => {};
@@ -43,7 +43,7 @@ const tabElement = (id: number, t: FakeTab) => {
 /** The chrome module with Firefox simulated: one policy (ID → HOST), tabs by id with their attributes and address. */
 async function load(
   tabs: Record<number, FakeTab> = {},
-  o: { lecture?: string[]; requests?: unknown[][]; notified?: unknown[][]; running?: unknown[] } = {},
+  o: { read?: string[]; requests?: unknown[][]; notified?: unknown[][]; running?: unknown[] } = {},
 ) {
   reloads.length = 0;
   tabElements.clear();
@@ -76,27 +76,27 @@ async function load(
   const { createAgentExtensions } = await import("../chrome/store/agent-extensions");
   // WebAiOs tabs onglet-<n>: 5 is in a private space, 6 in another profile's, the others in the default one.
   const spaces = [
-    { id: "e1", prive: false, profil: "defaut" },
-    { id: "e2", prive: true, profil: "secret" },
-    { id: "e3", prive: false, profil: "autre" },
+    { id: "e1", private: false, profile: "defaut" },
+    { id: "e2", private: true, profile: "secret" },
+    { id: "e3", private: false, profile: "autre" },
   ];
-  const tabMap = Object.fromEntries([1, 2, 3, 4, 5, 6].map((n) => [`onglet-${n}`, { id: `onglet-${n}`, espaceId: n === 5 ? "e2" : n === 6 ? "e3" : "e1" }]));
-  type State = { espaces: typeof spaces; onglets: typeof tabMap };
+  const tabMap = Object.fromEntries([1, 2, 3, 4, 5, 6].map((n) => [`onglet-${n}`, { id: `onglet-${n}`, spaceId: n === 5 ? "e2" : n === 6 ? "e3" : "e1" }]));
+  type State = { spaces: typeof spaces; tabs: typeof tabMap };
   const listeners: ((state: State, previous: State) => void)[] = [];
-  const store = { state: { espaces: spaces, onglets: tabMap } as State, subscribe: (l: (state: State, previous: State) => void) => void listeners.push(l) };
-  const access = () => ({ agent: "L'agent", onglets: Object.fromEntries((o.lecture ?? []).map((id) => [id, { lecture: true, droits: [], construite: false, enCours: false }])) });
+  const store = { state: { spaces: spaces, tabs: tabMap } as State, subscribe: (l: (state: State, previous: State) => void) => void listeners.push(l) };
+  const access = () => ({ agent: "L'agent", tabs: Object.fromEntries((o.read ?? []).map((id) => [id, { read: true, rights: [], built: false, running: false }])) });
   const host = { request: (...a: unknown[]) => (o.requests?.push(a), Promise.resolve()), notify: (...a: unknown[]) => void o.notified?.push(a) };
   const x = createAgentExtensions(store as never, {} as never, {} as never, () => host as never, access as never);
   /** A new state, as the store sends it to its subscribers. */
   const setSpaces = (e: typeof spaces) => {
     const previous = store.state;
-    store.state = { ...previous, espaces: e };
+    store.state = { ...previous, spaces: e };
     listeners.forEach((l) => l(store.state, previous));
   };
   return Object.assign(x, { setSpaces });
 }
 const grant = (x: Awaited<ReturnType<typeof load>>, active = true) =>
-  x.handlers["extensions.portees"]!({ [ID]: { cle: "agent:reseau", accord: GRANT, profils: ["defaut"], actif: active } }, new AbortController().signal);
+  x.handlers["extensions.scopes"]!({ [ID]: { key: "agent:reseau", grant: GRANT, profiles: ["defaut"], active: active } }, new AbortController().signal);
 
 beforeEach(() => parentApi.conduit.recv.set("APICall", firefoxRecv));
 afterEach(() => {
@@ -174,14 +174,14 @@ describe("agent extension checkpoints", () => {
   it("check: estOnglet is false in a private space; a tab the agent cannot read sends extensions.aTourne once per profile", async () => {
     const requests: unknown[][] = [];
     const tab = { attrs: ["webaios-tab-id"], url: "https://hote.test/a" };
-    const x = await load({ 1: tab, 2: tab, 5: tab }, { lecture: ["onglet-1"], requests });
+    const x = await load({ 1: tab, 2: tab, 5: tab }, { read: ["onglet-1"], requests });
     grant(x);
     expect(x.check(ID, "estOnglet", 5)).toBe(false);
     expect(x.check(ID, "estOnglet", 1)).toBe(true);
     expect(requests).toEqual([]);
     expect(x.check(ID, "estOnglet", 2)).toBe(true);
     expect(x.check(ID, "estOnglet", 2)).toBe(true);
-    expect(requests).toEqual([["extensions.aTourne", { addonId: ID, profil: "defaut", lisible: false }]]);
+    expect(requests).toEqual([["extensions.aTourne", { addonId: ID, profile: "defaut", readable: false }]]);
   });
 
   it("check: estOnglet is false in a profile where the extension is not active, or in a container not its space's", async () => {
@@ -196,40 +196,40 @@ describe("agent extension checkpoints", () => {
     grant(x);
     for (const t of [1, 3, 4]) x.check(ID, "estOnglet", t);
     tab3.doc = 2;
-    const reload = (p: unknown) => x.handlers["extensions.rechargerOnglets"]!(p, new AbortController().signal);
-    reload({ addonId: "autre@agent.webaios", profils: ["defaut"] });
+    const reload = (p: unknown) => x.handlers["extensions.reloadTabs"]!(p, new AbortController().signal);
+    reload({ addonId: "autre@agent.webaios", profiles: ["defaut"] });
     expect(reloads).toEqual([]);
-    reload({ addonId: ID, profils: ["defaut"] });
+    reload({ addonId: ID, profiles: ["defaut"] });
     expect(reloads).toEqual([1, 3, 4]);
-    reload({ addonId: ID, profils: ["defaut"] });
+    reload({ addonId: ID, profiles: ["defaut"] });
     expect(reloads).toEqual([1, 3, 4]);
   });
 
   it("a profile turned private reloads at once, without the host, every tab an agent script was let into there", async () => {
     const x = await load({ 1: { attrs: ["webaios-tab-id"], url: "https://hote.test/a" }, 2: { attrs: ["webaios-tab-id"], url: "https://hote.test/b" } });
-    x.handlers["extensions.portees"]!(
-      { [ID]: { cle: "agent:reseau", accord: GRANT, profils: ["defaut"], actif: true }, "autre@agent.webaios": { cle: "agent:autre", accord: GRANT, profils: ["defaut"], actif: true } },
+    x.handlers["extensions.scopes"]!(
+      { [ID]: { key: "agent:reseau", grant: GRANT, profiles: ["defaut"], active: true }, "autre@agent.webaios": { key: "agent:autre", grant: GRANT, profiles: ["defaut"], active: true } },
       new AbortController().signal,
     );
     x.check(ID, "estOnglet", 1);
     x.check("autre@agent.webaios", "estOnglet", 2);
     // Switched off there since (out of its profiles): its script still runs, the tab reloads all the same.
     grant(x);
-    x.setSpaces([{ id: "e1", prive: false, profil: "defaut" }, { id: "e2", prive: true, profil: "secret" }, { id: "e3", prive: false, profil: "autre" }]);
+    x.setSpaces([{ id: "e1", private: false, profile: "defaut" }, { id: "e2", private: true, profile: "secret" }, { id: "e3", private: false, profile: "autre" }]);
     expect(reloads).toEqual([]);
-    x.setSpaces([{ id: "e1", prive: true, profil: "defaut" }, { id: "e2", prive: true, profil: "secret" }, { id: "e3", prive: false, profil: "autre" }]);
+    x.setSpaces([{ id: "e1", private: true, profile: "defaut" }, { id: "e2", private: true, profile: "secret" }, { id: "e3", private: false, profile: "autre" }]);
     expect(reloads).toEqual([1, 2]);
   });
 
   it("extensions.profilsPrives is sent when the set of private profiles changes, and at a host start", async () => {
     const notified: unknown[][] = [];
     const x = await load({}, { notified });
-    x.setSpaces([{ id: "e1", prive: false, profil: "defaut" }, { id: "e2", prive: true, profil: "secret" }]);
+    x.setSpaces([{ id: "e1", private: false, profile: "defaut" }, { id: "e2", private: true, profile: "secret" }]);
     expect(notified).toEqual([]);
-    x.setSpaces([{ id: "e1", prive: true, profil: "defaut" }, { id: "e2", prive: true, profil: "secret" }]);
-    expect(notified).toEqual([["extensions.profilsPrives", { prives: ["defaut", "secret"] }]]);
+    x.setSpaces([{ id: "e1", private: true, profile: "defaut" }, { id: "e2", private: true, profile: "secret" }]);
+    expect(notified).toEqual([["extensions.profilsPrives", { privateTabs: ["defaut", "secret"] }]]);
     x.hostStarted();
-    expect(notified.at(-1)).toEqual(["extensions.profilsPrives", { prives: ["defaut", "secret"] }]);
+    expect(notified.at(-1)).toEqual(["extensions.profilsPrives", { privateTabs: ["defaut", "secret"] }]);
   });
 
   it("an agent extension's TabManager never reaches the parking tab nor a private space's tab", async () => {

@@ -14,7 +14,7 @@ const MAX_ERROR = 200;
 const LABEL_MAX = 60;
 const AGENT_TEXT_MAX = 400;
 
-export type ValidationResult = { ok: true; plan: PlanPage; ecartes: string[] } | { ok: false; erreurs: string[] };
+export type ValidationResult = { ok: true; plan: PlanPage; discarded: string[] } | { ok: false; errors: string[] };
 
 class Gap extends Error {}
 
@@ -26,9 +26,9 @@ const EXPECTED: Record<string, "liste" | "objet" | "simple"> = {
 };
 /** The property that carries the items where its fields are read. */
 const SOURCE: Record<string, string> = {
-  encadre: "elements", liste: "elements", cartes: "elements", tableau: "elements", etiquettes: "elements", lien: "objet", champs: "objet",
+  framed: "elements", list: "elements", cards: "elements", table: "elements", tags: "elements", link: "objet", fields: "objet",
 };
-const CHILDREN: Record<string, ("blocs" | "gauche" | "droite")[]> = { groupe: ["blocs"], colonnes: ["gauche", "droite"] };
+const CHILDREN: Record<string, ("blocks" | "left" | "right")[]> = { groupe: ["blocks"], colonnes: ["left", "right"] };
 
 function cut(s: string): string {
   return s.length > MAX_ERROR ? s.slice(0, MAX_ERROR - 1) + "…" : s;
@@ -60,24 +60,24 @@ const present = (props: Record<string, unknown>, name: string) => Object.hasOwn(
 function checkReference(text: unknown, expected: "liste" | "objet" | "simple" | undefined, results: unknown) {
   if (typeof text !== "string") throw new Gap("référence attendue (un texte)");
   const ref = readReference(text);
-  if ("erreur" in ref) throw new Gap(ref.erreur);
+  if ("error" in ref) throw new Gap(ref.error);
   const r = evaluate(ref, results);
-  if ("erreur" in r) throw new Gap(r.erreur);
-  const v = r.valeur;
+  if ("error" in r) throw new Gap(r.error);
+  const v = r.value;
   if (expected === "liste" && !Array.isArray(v)) throw new Gap("liste attendue");
   if (expected === "objet" && (v === null || typeof v !== "object" || Array.isArray(v))) throw new Gap("objet attendu");
   if (expected === "simple" && !primitive(v)) throw new Gap("valeur simple attendue");
-  return { texte: text, valeur: v, groupee: ref.ops.at(-1)?.op === "regrouper" };
+  return { text: text, value: v, grouped: ref.ops.at(-1)?.op === "regrouper" };
 }
 
 /** A field: a path relative to an item, never a reference nor a free text (an address written by Gemma fails here). */
 function readField(text: unknown): string {
   if (typeof text !== "string") throw new Gap("nom de champ attendu");
   const ref = readReference(text);
-  if ("erreur" in ref) throw new Gap(ref.erreur);
+  if ("error" in ref) throw new Gap(ref.error);
   if (ref.ops.length > 0) throw new Gap("un nom de champ est attendu, pas une référence");
-  if (ref.chemin === "$") throw new Gap("nom de champ attendu");
-  return ref.chemin;
+  if (ref.path === "$") throw new Gap("nom de champ attendu");
+  return ref.path;
 }
 
 function checkText(v: unknown, max: number): string {
@@ -101,31 +101,31 @@ type Checked = { props: Record<string, unknown>; reference: boolean };
 
 function checkProps(def: ComponentDefinition, raw: Record<string, unknown>, results: unknown): Checked {
   const props: Record<string, unknown> = {};
-  const values: Record<string, { valeur: unknown; groupee: boolean }> = {};
-  const fieldsToCheck: { nom: string; champ: string }[] = [];
+  const values: Record<string, { value: unknown; grouped: boolean }> = {};
+  const fieldsToCheck: { name: string; field: string }[] = [];
   let reference = false;
-  const builtIn = def.origine === "integre";
+  const builtIn = def.origin === "integre";
 
-  for (const [name, pr] of Object.entries(def.proprietes) as [string, Property][]) {
+  for (const [name, pr] of Object.entries(def.properties) as [string, Property][]) {
     if (!present(raw, name)) {
-      if (pr.requis) throw new Gap(`${name} : requise`);
+      if (pr.required) throw new Gap(`${name} : requise`);
       continue;
     }
     const v = raw[name];
     try {
-      switch (pr.genre) {
+      switch (pr.kind) {
         case "reference": {
           // « $ » given to a paragraph: all the results as compact text, the last-resort layout.
-          const expected = builtIn && !(def.nom === "paragraphe" && v === "$") ? EXPECTED[`${def.nom}.${name}`] : undefined;
+          const expected = builtIn && !(def.name === "paragraphe" && v === "$") ? EXPECTED[`${def.name}.${name}`] : undefined;
           const r = checkReference(v, expected, results);
-          props[name] = r.texte;
+          props[name] = r.text;
           values[name] = r;
           reference = true;
           break;
         }
         case "champ":
           props[name] = readField(v);
-          fieldsToCheck.push({ nom: name, champ: props[name] as string });
+          fieldsToCheck.push({ name: name, field: props[name] as string });
           break;
         case "texte":
           props[name] = checkText(v, pr.max ?? AGENT_TEXT_MAX);
@@ -139,7 +139,7 @@ function checkProps(def: ComponentDefinition, raw: Record<string, unknown>, resu
           props[name] = v;
           break;
         case "choix": {
-          const choice = pr.choix ?? [];
+          const choice = pr.choices ?? [];
           if (typeof v !== "string" || !choice.includes(v)) {
             throw new Gap(`${choice.slice(0, -1).join(", ")}${choice.length > 1 ? " ou " : ""}${choice.at(-1) ?? ""} attendu`);
           }
@@ -152,8 +152,8 @@ function checkProps(def: ComponentDefinition, raw: Record<string, unknown>, resu
             const o = objectOf(e, forme);
             const field = readField(o.champ);
             const label = present(o, "libelle") ? checkText(o.libelle, LABEL_MAX) : field;
-            fieldsToCheck.push({ nom: name, champ: field });
-            return { champ: field, libelle: label };
+            fieldsToCheck.push({ name: name, field: field });
+            return { field: field, label: label };
           });
           break;
         }
@@ -163,8 +163,8 @@ function checkProps(def: ComponentDefinition, raw: Record<string, unknown>, resu
             const o = objectOf(e, forme);
             if (!present(o, "valeur")) throw new Gap("valeur requise");
             if (!present(o, "libelle")) throw new Gap("libelle requis");
-            const value = checkReference(o.valeur, "simple", results).texte;
-            return { valeur: value, libelle: checkText(o.libelle, LABEL_MAX) };
+            const value = checkReference(o.valeur, "simple", results).text;
+            return { value: value, label: checkText(o.libelle, LABEL_MAX) };
           });
           reference = true;
           break;
@@ -176,14 +176,14 @@ function checkProps(def: ComponentDefinition, raw: Record<string, unknown>, resu
     }
   }
 
-  if (builtIn) applyRules(def.nom, props);
+  if (builtIn) applyRules(def.name, props);
 
   // A field must exist in at least one item of the referenced list (an empty list says nothing).
-  const source = builtIn ? SOURCE[def.nom] : undefined;
+  const source = builtIn ? SOURCE[def.name] : undefined;
   const loaded = source !== undefined && Object.hasOwn(props, source) ? values[source] : undefined;
   if (loaded) {
     const elements = elementsOf(loaded);
-    for (const { nom: name, champ: field } of fieldsToCheck) {
+    for (const { name: name, field: field } of fieldsToCheck) {
       if (!Object.hasOwn(props, name)) continue;
       if (elements.length > 0 && !elements.some((e) => readPath(e, field) !== undefined)) {
         throw new Gap(`${name} : champ « ${field} » absent de tous les éléments`);
@@ -193,10 +193,10 @@ function checkProps(def: ComponentDefinition, raw: Record<string, unknown>, resu
   return { props, reference };
 }
 
-function elementsOf(loaded: { valeur: unknown; groupee: boolean }): unknown[] {
-  if (!Array.isArray(loaded.valeur)) return [loaded.valeur];
-  if (!loaded.groupee) return loaded.valeur;
-  return (loaded.valeur as Group<unknown>[]).flatMap((g) => g.elements);
+function elementsOf(loaded: { value: unknown; grouped: boolean }): unknown[] {
+  if (!Array.isArray(loaded.value)) return [loaded.value];
+  if (!loaded.grouped) return loaded.value;
+  return (loaded.value as Group<unknown>[]).flatMap((g) => g.items);
 }
 
 /** The catalog's « one or the other » rules. */
@@ -222,36 +222,36 @@ function applyRules(name: string, props: Record<string, unknown>): void {
 
 function countBlocks(b: PlanBlock): number {
   let n = 0;
-  for (const l of [b.blocs, b.gauche, b.droite]) for (const e of l ?? []) n += 1 + countBlocks(e);
+  for (const l of [b.blocks, b.left, b.right]) for (const e of l ?? []) n += 1 + countBlocks(e);
   return n;
 }
 
-type Context = { defs: Map<string, ComponentDefinition>; resultats: unknown; ecartes: string[]; n: number; references: number };
+type Context = { defs: Map<string, ComponentDefinition>; results: unknown; discarded: string[]; n: number; references: number };
 
 function validateBlocks(blocks: PlanBlock[], ctx: Context): PlanBlock[] {
   const guards: PlanBlock[] = [];
   for (const b of blocks) {
     const n = ++ctx.n;
-    const def = ctx.defs.get(b.composant);
+    const def = ctx.defs.get(b.component);
     if (!def) {
       // Unknown: kept (drawn as an error box), its children will not be drawn.
       ctx.n += countBlocks(b);
-      guards.push({ composant: b.composant, props: Object.fromEntries(Object.entries(b.props)) });
+      guards.push({ component: b.component, props: Object.fromEntries(Object.entries(b.props)) });
       continue;
     }
     let v: Checked;
     try {
-      v = checkProps(def, b.props, ctx.resultats);
+      v = checkProps(def, b.props, ctx.results);
     } catch (e) {
       if (!(e instanceof Gap)) throw e;
-      ctx.ecartes.push(cut(`${n}. ${b.composant} : ${e.message}`));
+      ctx.discarded.push(cut(`${n}. ${b.component} : ${e.message}`));
       ctx.n += countBlocks(b);
       continue;
     }
     if (v.reference) ctx.references++;
-    const kept: PlanBlock = { composant: b.composant, props: v.props };
-    const children = def.origine === "integre" ? (CHILDREN[def.nom] ?? []) : [];
-    for (const key of ["blocs", "gauche", "droite"] as const) {
+    const kept: PlanBlock = { component: b.component, props: v.props };
+    const children = def.origin === "integre" ? (CHILDREN[def.name] ?? []) : [];
+    for (const key of ["blocks", "left", "right"] as const) {
       const list = b[key];
       if (list === undefined) continue;
       if (children.includes(key)) kept[key] = validateBlocks(list, ctx);
@@ -262,22 +262,22 @@ function validateBlocks(blocks: PlanBlock[], ctx: Context): PlanBlock[] {
   return guards;
 }
 
-export function validatePlan(raw: unknown, o: { catalogue: ComponentDefinition[]; resultats: unknown }): ValidationResult {
+export function validatePlan(raw: unknown, o: { catalog: ComponentDefinition[]; results: unknown }): ValidationResult {
   try {
     const too = precheck(raw);
-    if (too) return { ok: false, erreurs: [too] };
+    if (too) return { ok: false, errors: [too] };
     const r = PlanPage.safeParse(raw);
     if (!r.success) {
       return {
         ok: false,
-        erreurs: r.error.issues.slice(0, MAX_ERRORS).map((i) => cut(i.path.length ? `${i.path.join(".")} : ${i.message}` : i.message)),
+        errors: r.error.issues.slice(0, MAX_ERRORS).map((i) => cut(i.path.length ? `${i.path.join(".")} : ${i.message}` : i.message)),
       };
     }
-    const ctx: Context = { defs: new Map(o.catalogue.map((d) => [d.nom, d])), resultats: o.resultats, ecartes: [], n: 0, references: 0 };
-    const blocks = validateBlocks(r.data.blocs, ctx);
-    if (ctx.references === 0) return { ok: false, erreurs: [PLAN_REFERENCES_NOTHING, ...ctx.ecartes] };
-    return { ok: true, plan: { blocs: blocks }, ecartes: ctx.ecartes };
+    const ctx: Context = { defs: new Map(o.catalog.map((d) => [d.name, d])), results: o.results, discarded: [], n: 0, references: 0 };
+    const blocks = validateBlocks(r.data.blocks, ctx);
+    if (ctx.references === 0) return { ok: false, errors: [PLAN_REFERENCES_NOTHING, ...ctx.discarded] };
+    return { ok: true, plan: { blocks: blocks }, discarded: ctx.discarded };
   } catch {
-    return { ok: false, erreurs: ["plan illisible"] };
+    return { ok: false, errors: ["plan illisible"] };
   }
 }

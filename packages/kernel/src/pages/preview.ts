@@ -68,14 +68,14 @@ function forme(root: unknown, depth: number): Dict {
     ask("$", root);
     return f;
   }
-  const stack: { v: Dict; prefixe: string; niveau: number }[] = [{ v: root, prefixe: "", niveau: 1 }];
+  const stack: { v: Dict; prefix: string; level: number }[] = [{ v: root, prefix: "", level: 1 }];
   while (stack.length > 0) {
-    const { v, prefixe: prefix, niveau: level } = stack.shift()!;
+    const { v, prefix: prefix, level: level } = stack.shift()!;
     for (const k of Object.keys(v).slice(0, KEYS_MAX)) {
       const path = prefix + k;
       const e = v[k];
       ask(path, e);
-      if (isObject(e) && level < depth) stack.push({ v: e, prefixe: path + ".", niveau: level + 1 });
+      if (isObject(e) && level < depth) stack.push({ v: e, prefix: path + ".", level: level + 1 });
     }
   }
   return f;
@@ -103,7 +103,7 @@ function examples(root: unknown, depth: number): unknown {
 export function resultsPreview(results: unknown): string {
   const attempts: [number, boolean][] = [[4, true], [3, true], [2, true], [4, false], [3, false], [2, false], [1, false]];
   for (const [depth, withExamples] of attempts) {
-    const s = JSON.stringify(withExamples ? { forme: forme(results, depth), exemples: examples(results, depth) } : { forme: forme(results, depth) });
+    const s = JSON.stringify(withExamples ? { shape: forme(results, depth), examples: examples(results, depth) } : { shape: forme(results, depth) });
     if (s.length <= PREVIEW_MAX) return s;
   }
   // Last resort: the first paths only.
@@ -111,12 +111,12 @@ export function resultsPreview(results: unknown): string {
   const kept = dict();
   for (const k of Object.keys(f)) {
     kept[k] = f[k];
-    if (JSON.stringify({ forme: kept }).length > PREVIEW_MAX) {
+    if (JSON.stringify({ shape: kept }).length > PREVIEW_MAX) {
       delete kept[k];
       break;
     }
   }
-  return JSON.stringify({ forme: kept });
+  return JSON.stringify({ shape: kept });
 }
 
 /** `null`, `""`, `[]`, `{}`, or an object whose values are all empty (recursively). Iterative. */

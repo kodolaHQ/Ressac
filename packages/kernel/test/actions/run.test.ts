@@ -23,24 +23,24 @@ let instant = Date.parse("2026-10-31T10:00:00.000Z");
 const clock = () => new Date((instant += 1000));
 
 const PLAN = {
-  blocs: [
-    { composant: "titre", props: { texte: "Tickets" } },
-    { composant: "liste", props: { elements: "tickets", titre: "titre" } },
+  blocks: [
+    { component: "titre", props: { text: "Tickets" } },
+    { component: "liste", props: { items: "tickets", title: "titre" } },
   ],
 };
 
 /** A fake Gemma (a run's access): `reponse` returns the plan; its calls are counted. */
-function fakeGemma(response: (o?: { signal?: AbortSignal; auDemarrage?: () => void }) => Promise<unknown> = async () => PLAN) {
+function fakeGemma(response: (o?: { signal?: AbortSignal; onStartup?: () => void }) => Promise<unknown> = async () => PLAN) {
   const calls: string[] = [];
-  const ai: AiAccessRun & { appels: string[] } = {
-    appels: calls,
+  const ai: AiAccessRun & { calls: string[] } = {
+    calls: calls,
     kev: async () => ({}),
     gemma: async (g, o) => {
       calls.push(g.prompt);
-      o?.auDemarrage?.();
+      o?.onStartup?.();
       return response(o) as never;
     },
-    oublier: () => {},
+    forget: () => {},
   };
   return ai;
 }
@@ -52,48 +52,48 @@ afterEach(async () => {
 
 interface Bench {
   c: SpacePaths;
-  dossierActions: string;
-  dossier: string;
-  commandes: string[][];
-  supprimes: unknown[];
-  pont: FakeBridge;
-  lancer: ProcessLauncher;
+  actionsFolder: string;
+  folder: string;
+  commands: string[][];
+  deleted: unknown[];
+  bridge: FakeBridge;
+  launch: ProcessLauncher;
 }
 
 const workflow = () =>
   JSON.stringify({
     version: 1,
-    blocs: [{ id: "lire", type: "code", parametres: { source: "lire.mjs" } }, { id: "sortie", type: "sortie", parametres: { vers: "page" } }],
-    liens: [{ de: "lire", vers: "sortie" }],
+    blocks: [{ id: "lire", type: "code", params: { source: "lire.mjs" } }, { id: "sortie", type: "sortie", params: { to: "page" } }],
+    links: [{ from: "lire", to: "sortie" }],
   });
 
-async function prepare(id: string, declaration: unknown, code: string, o: { suspendues?: string[] } = {}): Promise<Bench> {
+async function prepare(id: string, declaration: unknown, code: string, o: { suspended?: string[] } = {}): Promise<Bench> {
   const root = await tempFolder();
   const c = spacePaths(root);
   const folder = join(c.actions, id);
   await mkdir(folder, { recursive: true });
-  await mkdir(c.composants, { recursive: true });
+  await mkdir(c.components, { recursive: true });
   await writeFile(join(folder, "action.json"), JSON.stringify(declaration));
   await writeFile(join(folder, "workflow.json"), workflow());
   await writeFile(join(folder, "lire.mjs"), code);
   const actionsFolder = await tempFolder();
   toClean.push(root, actionsFolder);
   const bridge = new FakeBridge([], {
-    actif: null,
-    autoriser: false,
-    lecture: { pages: [{ url: "https://gitlab.com/tickets", titre: "Ouvrir la porte", texte: "", liens: [] }], ...(o.suspendues ? { suspendues: o.suspendues } : {}) },
+    active: null,
+    allow: false,
+    read: { pages: [{ url: "https://gitlab.com/tickets", title: "Ouvrir la porte", text: "", links: [] }], ...(o.suspended ? { suspended: o.suspended } : {}) },
   });
   const b: Bench = {
     c,
-    dossierActions: actionsFolder,
-    dossier: folder,
-    commandes: [],
-    supprimes: [],
-    pont: bridge,
-    lancer: (cmd, args) => {
-      b.commandes.push([cmd, ...args]);
+    actionsFolder: actionsFolder,
+    folder: folder,
+    commands: [],
+    deleted: [],
+    bridge: bridge,
+    launch: (cmd, args) => {
+      b.commands.push([cmd, ...args]);
       const e = spawn(process.execPath, [SCRIPT, folder], { stdio: ["pipe", "pipe", "pipe"] });
-      return { stdin: e.stdin, stdout: e.stdout, stderr: e.stderr, tuer: () => void e.kill("SIGKILL"), fin: new Promise((ok) => e.on("close", (x) => ok(x))) };
+      return { stdin: e.stdin, stdout: e.stdout, stderr: e.stderr, kill: () => void e.kill("SIGKILL"), end: new Promise((ok) => e.on("close", (x) => ok(x))) };
     },
   };
   return b;
@@ -101,29 +101,29 @@ async function prepare(id: string, declaration: unknown, code: string, o: { susp
 
 const options = (b: Bench, id: string, o: Partial<OptionsAction> = {}): OptionsAction => ({
   id,
-  chemins: b.c,
-  dossierActions: b.dossierActions,
-  moteur: ENGINE,
-  atelier: {
-    commandeRecolte: (p, d, m) => ["docker", "run", JSON.stringify(p), d, m],
-    supprimerRecolte: async (p) => void b.supprimes.push(p),
+  paths: b.c,
+  actionsFolder: b.actionsFolder,
+  engine: ENGINE,
+  workshop: {
+    harvestCommand: (p, d, m) => ["docker", "run", JSON.stringify(p), d, m],
+    deleteHarvest: async (p) => void b.deleted.push(p),
   },
-  lancer: b.lancer,
-  pont: b.pont,
-  ia: fakeGemma(),
-  horloge: clock,
-  saisie: null,
-  declencheur: "manuelle",
+  launch: b.launch,
+  bridge: b.bridge,
+  ai: fakeGemma(),
+  clock: clock,
+  input: null,
+  trigger: "manuelle",
   signal: new AbortController().signal,
-  surTrace: () => {},
-  surEtape: () => {},
-  adressesLocales: true,
+  onTrace: () => {},
+  onStep: () => {},
+  localAddresses: true,
   ...o,
 });
 
-const GITLAB = { nom: "GitLab", sources: { compte: ["gitlab.com"] }, miseEnPage: "Les tickets en liste" };
+const GITLAB = { name: "GitLab", sources: { account: ["gitlab.com"] }, layout: "Les tickets en liste" };
 const CODE_GITLAB = `export default async (e, w) => { const p = await w.lirePage("https://gitlab.com/tickets", { compte: true }); return { tickets: [{ titre: p.titre }] }; };`;
-const gitlabGrant = (b: Bench) => giveGrant(b.dossierActions, "gitlab", { domaines: ["gitlab.com"], publiques: [], profil: "perso" });
+const gitlabGrant = (b: Bench) => giveGrant(b.actionsFolder, "gitlab", { domains: ["gitlab.com"], public: [], profile: "perso" });
 
 describe("runAction", () => {
   it("GitLab action with a grant: run reussie, result and plan written, status reussie", async () => {
@@ -131,209 +131,209 @@ describe("runAction", () => {
     await gitlabGrant(b);
     const ai = fakeGemma();
     const steps: string[] = [];
-    const r = await runAction(options(b, "gitlab", { ia: ai, surEtape: (e) => steps.push(e) }));
-    expect(r).toMatchObject({ statut: "reussie" });
-    expect(r.execution).toBeDefined();
-    const e = await readRun(join(b.dossierActions, "gitlab"), r.execution!);
-    expect(e).toMatchObject({ statut: "reussie", proprietaire: { type: "action", id: "gitlab" }, declencheur: "manuelle" });
-    const res = await readResult(b.dossierActions, "gitlab", r.execution!);
+    const r = await runAction(options(b, "gitlab", { ai: ai, onStep: (e) => steps.push(e) }));
+    expect(r).toMatchObject({ status: "reussie" });
+    expect(r.run).toBeDefined();
+    const e = await readRun(join(b.actionsFolder, "gitlab"), r.run!);
+    expect(e).toMatchObject({ status: "reussie", owner: { type: "action", id: "gitlab" }, trigger: "manuelle" });
+    const res = await readResult(b.actionsFolder, "gitlab", r.run!);
     expect(res).toEqual({
       version: 1,
-      execution: r.execution,
-      saisie: null,
-      resultats: { tickets: [{ titre: "Ouvrir la porte" }] },
+      run: r.run,
+      input: null,
+      results: { tickets: [{ title: "Ouvrir la porte" }] },
       plan: PLAN,
-      secours: false,
-      vide: false,
+      fallback: false,
+      empty: false,
     });
-    expect(ai.appels).toHaveLength(1);
+    expect(ai.calls).toHaveLength(1);
     // The action's instruction is given to Gemma.
-    expect(ai.appels[0]).toContain("Les tickets en liste");
+    expect(ai.calls[0]).toContain("Les tickets en liste");
     expect(steps).toEqual(["mise-en-page"]);
   });
 
   it("without a grant: accord-requis, no container launched, nothing written", async () => {
     const b = await prepare("gitlab", GITLAB, CODE_GITLAB);
     const r = await runAction(options(b, "gitlab"));
-    expect(r).toEqual({ statut: "accord-requis", erreur: actionGrantRequired(DeclarationAction.parse(GITLAB)), erreurNoyau: true });
-    expect(r.erreur).toBe("Accord requis pour lire avec ton compte : gitlab.com");
-    expect(b.commandes).toEqual([]);
-    expect(existsSync(join(b.dossierActions, "gitlab"))).toBe(false);
+    expect(r).toEqual({ status: "accord-requis", error: actionGrantRequired(DeclarationAction.parse(GITLAB)), kernelError: true });
+    expect(r.error).toBe("Accord requis pour lire avec ton compte : gitlab.com");
+    expect(b.commands).toEqual([]);
+    expect(existsSync(join(b.actionsFolder, "gitlab"))).toBe(false);
   });
 
   it("a stale grant (domains changed) is removed, the data erased", async () => {
     const b = await prepare("gitlab", GITLAB, CODE_GITLAB);
     await gitlabGrant(b);
     const first = await runAction(options(b, "gitlab"));
-    expect(first.statut).toBe("reussie");
-    await writeFile(join(b.dossier, "action.json"), JSON.stringify({ ...GITLAB, sources: { compte: ["gitlab.com", "github.com"] } }));
+    expect(first.status).toBe("reussie");
+    await writeFile(join(b.folder, "action.json"), JSON.stringify({ ...GITLAB, sources: { account: ["gitlab.com", "github.com"] } }));
     const r = await runAction(options(b, "gitlab"));
-    expect(r.statut).toBe("accord-requis");
-    expect(await listRuns(join(b.dossierActions, "gitlab"))).toEqual([]);
+    expect(r.status).toBe("accord-requis");
+    expect(await listRuns(join(b.actionsFolder, "gitlab"))).toEqual([]);
   });
 
   it("unknown action: ACTION_UNKNOWN, nothing written", async () => {
     const b = await prepare("gitlab", GITLAB, CODE_GITLAB);
     const r = await runAction(options(b, "absente"));
-    expect(r).toMatchObject({ statut: "invalide", erreur: ACTION_UNKNOWN });
-    expect(existsSync(join(b.dossierActions, "absente"))).toBe(false);
+    expect(r).toMatchObject({ status: "invalide", error: ACTION_UNKNOWN });
+    expect(existsSync(join(b.actionsFolder, "absente"))).toBe(false);
   });
 
   it("invalid workflow: invalide status, nothing written, no container", async () => {
-    const b = await prepare("cassee", { nom: "C", sources: {} }, `export default async () => 1;`);
-    await writeFile(join(b.dossier, "workflow.json"), "{pas du json");
+    const b = await prepare("cassee", { name: "C", sources: {} }, `export default async () => 1;`);
+    await writeFile(join(b.folder, "workflow.json"), "{pas du json");
     const r = await runAction(options(b, "cassee"));
-    expect(r.statut).toBe("invalide");
-    expect(r.erreur).toBeTruthy();
-    expect(b.commandes).toEqual([]);
-    expect(existsSync(join(b.dossierActions, "cassee"))).toBe(false);
+    expect(r.status).toBe("invalide");
+    expect(r.error).toBeTruthy();
+    expect(b.commands).toEqual([]);
+    expect(existsSync(join(b.actionsFolder, "cassee"))).toBe(false);
   });
 
   it("saisie requise absente : requiredInput(\"Recherche\")", async () => {
-    const b = await prepare("leboncoin", { nom: "Leboncoin", sources: {}, saisie: { libelle: "Recherche" } }, `export default async (e, w) => ({ q: w.saisie });`);
+    const b = await prepare("leboncoin", { name: "Leboncoin", sources: {}, input: { label: "Recherche" } }, `export default async (e, w) => ({ q: w.saisie });`);
     for (const input of [null, "   "]) {
-      const r = await runAction(options(b, "leboncoin", { saisie: input }));
-      expect(r).toEqual({ statut: "invalide", erreur: requiredInput("Recherche"), erreurNoyau: true });
+      const r = await runAction(options(b, "leboncoin", { input: input }));
+      expect(r).toEqual({ status: "invalide", error: requiredInput("Recherche"), kernelError: true });
     }
     expect(requiredInput("Recherche")).toBe("Saisie requise : Recherche");
-    expect(b.commandes).toEqual([]);
+    expect(b.commands).toEqual([]);
   });
 
   it("« clio lyon » arrives in debut.saisie and in Execution.saisie", async () => {
-    const b = await prepare("leboncoin", { nom: "Leboncoin", sources: {}, saisie: { libelle: "Recherche" } }, `export default async (e, w) => ({ annonces: [{ titre: w.saisie }] });`);
-    const r = await runAction(options(b, "leboncoin", { saisie: "  clio lyon  " }));
-    expect(r.statut).toBe("reussie");
-    const e = await readRun(join(b.dossierActions, "leboncoin"), r.execution!);
-    expect(e?.saisie).toBe("clio lyon");
-    const res = await readResult(b.dossierActions, "leboncoin", r.execution!);
+    const b = await prepare("leboncoin", { name: "Leboncoin", sources: {}, input: { label: "Recherche" } }, `export default async (e, w) => ({ annonces: [{ titre: w.saisie }] });`);
+    const r = await runAction(options(b, "leboncoin", { input: "  clio lyon  " }));
+    expect(r.status).toBe("reussie");
+    const e = await readRun(join(b.actionsFolder, "leboncoin"), r.run!);
+    expect(e?.input).toBe("clio lyon");
+    const res = await readResult(b.actionsFolder, "leboncoin", r.run!);
     // The agent's code received the input (sent in debut).
-    expect(res?.resultats).toEqual({ annonces: [{ titre: "clio lyon" }] });
-    expect(res?.saisie).toBe("clio lyon");
+    expect(res?.results).toEqual({ announcements: [{ title: "clio lyon" }] });
+    expect(res?.input).toBe("clio lyon");
     // The summary carries it too (menu of the previous results on the action's page).
-    expect((await listRuns(join(b.dossierActions, "leboncoin")))[0]?.saisie).toBe("clio lyon");
+    expect((await listRuns(join(b.actionsFolder, "leboncoin")))[0]?.input).toBe("clio lyon");
   });
 
   it("an input that is too long is cut to 200 characters", async () => {
-    const b = await prepare("leboncoin", { nom: "Leboncoin", sources: {}, saisie: { libelle: "Recherche" } }, `export default async (e, w) => ({ annonces: [{ titre: w.saisie }] });`);
-    const r = await runAction(options(b, "leboncoin", { saisie: "x".repeat(500) }));
-    expect(r.statut).toBe("reussie");
-    expect((await readRun(join(b.dossierActions, "leboncoin"), r.execution!))?.saisie).toBe("x".repeat(200));
+    const b = await prepare("leboncoin", { name: "Leboncoin", sources: {}, input: { label: "Recherche" } }, `export default async (e, w) => ({ annonces: [{ titre: w.saisie }] });`);
+    const r = await runAction(options(b, "leboncoin", { input: "x".repeat(500) }));
+    expect(r.status).toBe("reussie");
+    expect((await readRun(join(b.actionsFolder, "leboncoin"), r.run!))?.input).toBe("x".repeat(200));
   });
 
   it("empty results: empty result, Gemma never called", async () => {
-    const b = await prepare("vide", { nom: "V", sources: {} }, `export default async () => ({ tickets: [] });`);
+    const b = await prepare("vide", { name: "V", sources: {} }, `export default async () => ({ tickets: [] });`);
     const ai = fakeGemma();
-    const r = await runAction(options(b, "vide", { ia: ai }));
-    expect(r.statut).toBe("reussie");
-    const res = await readResult(b.dossierActions, "vide", r.execution!);
-    expect(res).toMatchObject({ vide: true, plan: null, secours: false });
-    expect(ai.appels).toEqual([]);
+    const r = await runAction(options(b, "vide", { ai: ai }));
+    expect(r.status).toBe("reussie");
+    const res = await readResult(b.actionsFolder, "vide", r.run!);
+    expect(res).toMatchObject({ empty: true, plan: null, fallback: false });
+    expect(ai.calls).toEqual([]);
   });
 
   it("Gemma absente : plan de secours, secours true", async () => {
-    const b = await prepare("simple", { nom: "S", sources: {} }, `export default async () => ({ tickets: [{ titre: "a" }] });`);
-    const r = await runAction(options(b, "simple", { ia: null }));
-    expect(r.statut).toBe("reussie");
-    const res = await readResult(b.dossierActions, "simple", r.execution!);
-    expect(res?.secours).toBe(true);
-    expect(res?.plan?.blocs.length).toBeGreaterThan(0);
+    const b = await prepare("simple", { name: "S", sources: {} }, `export default async () => ({ tickets: [{ titre: "a" }] });`);
+    const r = await runAction(options(b, "simple", { ai: null }));
+    expect(r.status).toBe("reussie");
+    const res = await readResult(b.actionsFolder, "simple", r.run!);
+    expect(res?.fallback).toBe(true);
+    expect(res?.plan?.blocks.length).toBeGreaterThan(0);
   });
 
   it("the blocks' memory is written after the result; a failure does not touch it", async () => {
-    const b = await prepare("memo", { nom: "M", sources: {} }, `export default async () => 1;`);
+    const b = await prepare("memo", { name: "M", sources: {} }, `export default async () => 1;`);
     const lignes = (end: unknown) => [
-      { t: "bloc", id: "lire", etape: "debut" },
-      { t: "bloc", id: "lire", etape: "fin", statut: "reussi", sortie: { tickets: [{ titre: "a" }] } },
-      { t: "memoire", memoire: { lire: { type: "code", valeur: { vu: 1 } } } },
-      { t: "bloc", id: "sortie", etape: "debut" },
-      { t: "bloc", id: "sortie", etape: "fin", statut: "reussi", sortie: { tickets: [{ titre: "a" }] } },
+      { t: "bloc", id: "lire", step: "debut" },
+      { t: "bloc", id: "lire", step: "fin", status: "reussi", output: { tickets: [{ title: "a" }] } },
+      { t: "memoire", memory: { read: { type: "code", value: { seen: 1 } } } },
+      { t: "bloc", id: "sortie", step: "debut" },
+      { t: "bloc", id: "sortie", step: "fin", status: "reussi", output: { tickets: [{ title: "a" }] } },
       end,
     ];
-    const r = await runAction(options(b, "memo", { lancer: launcherLines(lignes({ t: "fin", donnees: { tickets: [{ titre: "a" }] } })) }));
-    expect(r.statut).toBe("reussie");
-    expect((await readMemory(join(b.dossierActions, "memo"))).lire).toMatchObject({ type: "code", valeur: { vu: 1 } });
-    const failure = await runAction(options(b, "memo", { lancer: launcherLines([{ t: "memoire", memoire: { lire: { type: "code", valeur: { vu: 2 } } } }, { t: "echec", erreur: "cassé" }]) }));
-    expect(failure.statut).toBe("echouee");
-    expect((await readMemory(join(b.dossierActions, "memo"))).lire).toMatchObject({ valeur: { vu: 1 } });
+    const r = await runAction(options(b, "memo", { launch: launcherLines(lignes({ t: "fin", data: { tickets: [{ title: "a" }] } })) }));
+    expect(r.status).toBe("reussie");
+    expect((await readMemory(join(b.actionsFolder, "memo"))).lire).toMatchObject({ type: "code", value: { seen: 1 } });
+    const failure = await runAction(options(b, "memo", { launch: launcherLines([{ t: "memoire", memory: { read: { type: "code", value: { seen: 2 } } } }, { t: "echec", error: "cassé" }]) }));
+    expect(failure.status).toBe("echouee");
+    expect((await readMemory(join(b.actionsFolder, "memo"))).lire).toMatchObject({ value: { seen: 1 } });
   });
 
   it("action deleted just before the memory write: the memory is not written", async () => {
-    const b = await prepare("memo", { nom: "M", sources: {} }, `export default async () => 1;`);
+    const b = await prepare("memo", { name: "M", sources: {} }, `export default async () => 1;`);
     const lignes = [
-      { t: "bloc", id: "lire", etape: "debut" },
-      { t: "bloc", id: "lire", etape: "fin", statut: "reussi", sortie: { tickets: [{ titre: "a" }] } },
-      { t: "memoire", memoire: { lire: { type: "code", valeur: { vu: 1 } } } },
-      { t: "bloc", id: "sortie", etape: "debut" },
-      { t: "bloc", id: "sortie", etape: "fin", statut: "reussi", sortie: { tickets: [{ titre: "a" }] } },
-      { t: "fin", donnees: { tickets: [{ titre: "a" }] } },
+      { t: "bloc", id: "lire", step: "debut" },
+      { t: "bloc", id: "lire", step: "fin", status: "reussi", output: { tickets: [{ title: "a" }] } },
+      { t: "memoire", memory: { read: { type: "code", value: { seen: 1 } } } },
+      { t: "bloc", id: "sortie", step: "debut" },
+      { t: "bloc", id: "sortie", step: "fin", status: "reussi", output: { tickets: [{ title: "a" }] } },
+      { t: "fin", data: { tickets: [{ title: "a" }] } },
     ];
-    const dataFolder = join(b.dossierActions, "memo");
+    const dataFolder = join(b.actionsFolder, "memo");
     // The memory is held (as during the erasing of its data): the run waits its turn to write it.
     let release!: () => void;
     const held = withMemory(dataFolder, () => new Promise<void>((ok) => (release = ok)));
-    const end = runAction(options(b, "memo", { lancer: launcherLines(lignes) }));
+    const end = runAction(options(b, "memo", { launch: launcherLines(lignes) }));
     await waitUntil(() => existsSync(join(dataFolder, "resultats")));
     // The time the re-read that follows the result takes: the action is still there.
     await new Promise((ok) => setTimeout(ok, 200));
-    await rm(b.dossier, { recursive: true, force: true });
+    await rm(b.folder, { recursive: true, force: true });
     release();
     await held;
     const r = await end;
-    expect(r.erreur).toBe(ACTION_UNKNOWN);
+    expect(r.error).toBe(ACTION_UNKNOWN);
     expect(await readMemory(dataFolder)).toEqual({});
     expect(await listRuns(dataFolder)).toEqual([]);
   });
 
   it("grant removed during the run: nothing remains", async () => {
-    const b = await prepare("gitlab", GITLAB, CODE_GITLAB, { suspendues: ["https://gitlab.com/tickets"] });
+    const b = await prepare("gitlab", GITLAB, CODE_GITLAB, { suspended: ["https://gitlab.com/tickets"] });
     await gitlabGrant(b);
     const end = runAction(options(b, "gitlab"));
-    await waitUntil(() => b.pont.appels.some((a) => a.methode === "lirePageInvisible"));
-    await removeGrant(b.dossierActions, "gitlab");
-    b.pont.relacher("https://gitlab.com/tickets");
+    await waitUntil(() => b.bridge.calls.some((a) => a.method === "lirePageInvisible"));
+    await removeGrant(b.actionsFolder, "gitlab");
+    b.bridge.release("https://gitlab.com/tickets");
     const r = await end;
-    expect(r.statut).toBe("accord-requis");
-    expect(r.execution).toBeUndefined();
-    expect(await listRuns(join(b.dossierActions, "gitlab"))).toEqual([]);
-    expect(await lastResult(b.dossierActions, "gitlab")).toBeNull();
+    expect(r.status).toBe("accord-requis");
+    expect(r.run).toBeUndefined();
+    expect(await listRuns(join(b.actionsFolder, "gitlab"))).toEqual([]);
+    expect(await lastResult(b.actionsFolder, "gitlab")).toBeNull();
   });
 
   it("folder deleted during: nothing is written", async () => {
-    const b = await prepare("public", { nom: "P", sources: { publiques: ["gitlab.com"] } }, `export default async (e, w) => ({ tickets: [{ titre: (await w.lirePage("https://gitlab.com/tickets")).titre }] });`, {
-      suspendues: ["https://gitlab.com/tickets"],
+    const b = await prepare("public", { name: "P", sources: { public: ["gitlab.com"] } }, `export default async (e, w) => ({ tickets: [{ titre: (await w.lirePage("https://gitlab.com/tickets")).titre }] });`, {
+      suspended: ["https://gitlab.com/tickets"],
     });
     const end = runAction(options(b, "public"));
-    await waitUntil(() => b.pont.appels.some((a) => a.methode === "lirePageInvisible"));
-    await rm(b.dossier, { recursive: true, force: true });
-    b.pont.relacher("https://gitlab.com/tickets");
+    await waitUntil(() => b.bridge.calls.some((a) => a.method === "lirePageInvisible"));
+    await rm(b.folder, { recursive: true, force: true });
+    b.bridge.release("https://gitlab.com/tickets");
     const r = await end;
-    expect(r.execution).toBeUndefined();
-    expect(r.statut).toBe("invalide");
-    expect(r.erreur).toBe(ACTION_UNKNOWN);
-    expect(await listRuns(join(b.dossierActions, "public"))).toEqual([]);
+    expect(r.run).toBeUndefined();
+    expect(r.status).toBe("invalide");
+    expect(r.error).toBe(ACTION_UNKNOWN);
+    expect(await listRuns(join(b.actionsFolder, "public"))).toEqual([]);
   });
 
   it("actions folder missing for a moment during the run: nothing is written, the history stays", async () => {
-    const b = await prepare("public", { nom: "P", sources: { publiques: ["gitlab.com"] } }, `export default async (e, w) => ({ tickets: [{ titre: (await w.lirePage("https://gitlab.com/tickets")).titre }] });`);
+    const b = await prepare("public", { name: "P", sources: { public: ["gitlab.com"] } }, `export default async (e, w) => ({ tickets: [{ titre: (await w.lirePage("https://gitlab.com/tickets")).titre }] });`);
     const first = await runAction(options(b, "public"));
-    expect(first.statut).toBe("reussie");
-    const beforeMemory = await readMemory(join(b.dossierActions, "public"));
+    expect(first.status).toBe("reussie");
+    const beforeMemory = await readMemory(join(b.actionsFolder, "public"));
     // During the second one's layout, the actions folder disappears (volume unmounted, renamed…).
     const elsewhere = `${b.c.actions}-ailleurs`;
     const ai = fakeGemma(async () => {
       await rename(b.c.actions, elsewhere);
       return PLAN;
     });
-    const r = await runAction(options(b, "public", { ia: ai }));
+    const r = await runAction(options(b, "public", { ai: ai }));
     await rename(elsewhere, b.c.actions);
-    expect(r).toMatchObject({ statut: "invalide", erreur: ACTION_UNKNOWN });
-    expect((await listRuns(join(b.dossierActions, "public"))).map((e) => e.id)).toEqual([first.execution]);
-    expect((await lastResult(b.dossierActions, "public"))?.execution).toBe(first.execution);
-    expect(await readMemory(join(b.dossierActions, "public"))).toEqual(beforeMemory);
+    expect(r).toMatchObject({ status: "invalide", error: ACTION_UNKNOWN });
+    expect((await listRuns(join(b.actionsFolder, "public"))).map((e) => e.id)).toEqual([first.run]);
+    expect((await lastResult(b.actionsFolder, "public"))?.run).toBe(first.run);
+    expect(await readMemory(join(b.actionsFolder, "public"))).toEqual(beforeMemory);
   });
 
   it("kernel stop during the layout: run interrupted, without a result", async () => {
-    const b = await prepare("simple", { nom: "S", sources: {} }, `export default async () => ({ tickets: [{ titre: "a" }] });`);
+    const b = await prepare("simple", { name: "S", sources: {} }, `export default async () => ({ tickets: [{ titre: "a" }] });`);
     const stop = new AbortController();
     let quit = false;
     const ai = fakeGemma(
@@ -346,28 +346,28 @@ describe("runAction", () => {
           });
         }),
     );
-    const r = await runAction(options(b, "simple", { ia: ai, signal: stop.signal, interrompue: () => quit }));
-    expect(r).toMatchObject({ statut: "interrompue", erreur: "Interrompue : WebAiOs s'est arrêté", erreurNoyau: true });
-    expect(await readRun(join(b.dossierActions, "simple"), r.execution!)).toMatchObject({ statut: "interrompue" });
-    expect(await readResult(b.dossierActions, "simple", r.execution!)).toBeNull();
+    const r = await runAction(options(b, "simple", { ai: ai, signal: stop.signal, interrupted: () => quit }));
+    expect(r).toMatchObject({ status: "interrompue", error: "Interrompue : WebAiOs s'est arrêté", kernelError: true });
+    expect(await readRun(join(b.actionsFolder, "simple"), r.run!)).toMatchObject({ status: "interrompue" });
+    expect(await readResult(b.actionsFolder, "simple", r.run!)).toBeNull();
   });
 
   it("signal raised during the workflow: interrompue, ACTION_STOPPED; during the layout: reussie with fallback plan", async () => {
-    const b = await prepare("public", { nom: "P", sources: { publiques: ["gitlab.com"] } }, `export default async (e, w) => ({ tickets: [{ titre: (await w.lirePage("https://gitlab.com/tickets")).titre }] });`, {
-      suspendues: ["https://gitlab.com/tickets"],
+    const b = await prepare("public", { name: "P", sources: { public: ["gitlab.com"] } }, `export default async (e, w) => ({ tickets: [{ titre: (await w.lirePage("https://gitlab.com/tickets")).titre }] });`, {
+      suspended: ["https://gitlab.com/tickets"],
     });
     const stop = new AbortController();
     const end = runAction(options(b, "public", { signal: stop.signal }));
-    await waitUntil(() => b.pont.appels.some((a) => a.methode === "lirePageInvisible"));
+    await waitUntil(() => b.bridge.calls.some((a) => a.method === "lirePageInvisible"));
     stop.abort();
     const r = await end;
-    expect(r).toMatchObject({ statut: "interrompue", erreur: ACTION_STOPPED, erreurNoyau: true });
-    const e = await readRun(join(b.dossierActions, "public"), r.execution!);
-    expect(e).toMatchObject({ statut: "interrompue", erreur: ACTION_STOPPED });
-    expect(await readResult(b.dossierActions, "public", r.execution!)).toBeNull();
+    expect(r).toMatchObject({ status: "interrompue", error: ACTION_STOPPED, kernelError: true });
+    const e = await readRun(join(b.actionsFolder, "public"), r.run!);
+    expect(e).toMatchObject({ status: "interrompue", error: ACTION_STOPPED });
+    expect(await readResult(b.actionsFolder, "public", r.run!)).toBeNull();
 
     // During the layout: Gemma waits, the stop gives the fallback layout.
-    const b2 = await prepare("simple", { nom: "S", sources: {} }, `export default async () => ({ tickets: [{ titre: "a" }] });`);
+    const b2 = await prepare("simple", { name: "S", sources: {} }, `export default async () => ({ tickets: [{ titre: "a" }] });`);
     const arret2 = new AbortController();
     const ai = fakeGemma(
       (o) =>
@@ -376,55 +376,55 @@ describe("runAction", () => {
           setImmediate(() => arret2.abort());
         }),
     );
-    const r2 = await runAction(options(b2, "simple", { ia: ai, signal: arret2.signal }));
-    expect(r2.statut).toBe("reussie");
-    expect((await readResult(b2.dossierActions, "simple", r2.execution!))?.secours).toBe(true);
+    const r2 = await runAction(options(b2, "simple", { ai: ai, signal: arret2.signal }));
+    expect(r2.status).toBe("reussie");
+    expect((await readResult(b2.actionsFolder, "simple", r2.run!))?.fallback).toBe(true);
   });
 
   it("kernel stop (interrompue): written run interrupted", async () => {
-    const b = await prepare("public", { nom: "P", sources: { publiques: ["gitlab.com"] } }, `export default async (e, w) => ({ tickets: [{ titre: (await w.lirePage("https://gitlab.com/tickets")).titre }] });`, {
-      suspendues: ["https://gitlab.com/tickets"],
+    const b = await prepare("public", { name: "P", sources: { public: ["gitlab.com"] } }, `export default async (e, w) => ({ tickets: [{ titre: (await w.lirePage("https://gitlab.com/tickets")).titre }] });`, {
+      suspended: ["https://gitlab.com/tickets"],
     });
     const stop = new AbortController();
-    const end = runAction(options(b, "public", { signal: stop.signal, interrompue: () => true }));
-    await waitUntil(() => b.pont.appels.some((a) => a.methode === "lirePageInvisible"));
+    const end = runAction(options(b, "public", { signal: stop.signal, interrupted: () => true }));
+    await waitUntil(() => b.bridge.calls.some((a) => a.method === "lirePageInvisible"));
     stop.abort();
     const r = await end;
-    expect(r.statut).toBe("interrompue");
-    const e = await readRun(join(b.dossierActions, "public"), r.execution!);
-    expect(e).toMatchObject({ statut: "interrompue", erreur: "Interrompue : WebAiOs s'est arrêté", erreurNoyau: true });
+    expect(r.status).toBe("interrompue");
+    const e = await readRun(join(b.actionsFolder, "public"), r.run!);
+    expect(e).toMatchObject({ status: "interrompue", error: "Interrompue : WebAiOs s'est arrêté", kernelError: true });
   });
 
   it("the workflow's traces are relayed", async () => {
-    const b = await prepare("simple", { nom: "S", sources: {} }, `export default async () => ({ tickets: [{ titre: "a" }] });`);
+    const b = await prepare("simple", { name: "S", sources: {} }, `export default async () => ({ tickets: [{ titre: "a" }] });`);
     const traces: TraceAction[] = [];
-    await runAction(options(b, "simple", { surTrace: (t) => traces.push(t) }));
-    expect(traces).toContainEqual({ bloc: "lire", etape: "debut", type: "code" });
+    await runAction(options(b, "simple", { onTrace: (t) => traces.push(t) }));
+    expect(traces).toContainEqual({ block: "lire", step: "debut", type: "code" });
     // Each trace carries the block's type: the action's page shows its catalog label.
-    expect(traces.every((t) => t.type === (t.bloc === "lire" ? "code" : "sortie"))).toBe(true);
+    expect(traces.every((t) => t.type === (t.block === "lire" ? "code" : "sortie"))).toBe(true);
   });
 
   it("trial: -essai run, result written, neither memory nor last result changed", async () => {
-    const b = await prepare("simple", { nom: "S", sources: {} }, `export default async () => ({ tickets: [{ titre: "a" }] });`);
+    const b = await prepare("simple", { name: "S", sources: {} }, `export default async () => ({ tickets: [{ titre: "a" }] });`);
     const real = await runAction(options(b, "simple"));
-    expect(real.statut).toBe("reussie");
-    const memoryBefore = await readMemory(join(b.dossierActions, "simple"));
+    expect(real.status).toBe("reussie");
+    const memoryBefore = await readMemory(join(b.actionsFolder, "simple"));
     const ai = fakeGemma();
-    const r = await runAction(options(b, "simple", { ia: ai, declencheur: "rejeu", essai: { origine: real.execution!, depart: "lire" } }));
-    expect(r.statut).toBe("reussie");
-    expect(r.execution).toMatch(/-essai$/);
-    const e = await readRun(join(b.dossierActions, "simple"), r.execution!);
-    expect(e).toMatchObject({ declencheur: "rejeu", essai: { depart: "lire", origine: real.execution } });
-    expect((await readResult(b.dossierActions, "simple", r.execution!))?.plan).toEqual(PLAN);
-    expect((await lastResult(b.dossierActions, "simple"))?.execution).toBe(real.execution);
-    expect(await readMemory(join(b.dossierActions, "simple"))).toEqual(memoryBefore);
+    const r = await runAction(options(b, "simple", { ai: ai, trigger: "rejeu", attempt: { origin: real.run!, start: "lire" } }));
+    expect(r.status).toBe("reussie");
+    expect(r.run).toMatch(/-essai$/);
+    const e = await readRun(join(b.actionsFolder, "simple"), r.run!);
+    expect(e).toMatchObject({ trigger: "rejeu", attempt: { start: "lire", origin: real.run } });
+    expect((await readResult(b.actionsFolder, "simple", r.run!))?.plan).toEqual(PLAN);
+    expect((await lastResult(b.actionsFolder, "simple"))?.run).toBe(real.run);
+    expect(await readMemory(join(b.actionsFolder, "simple"))).toEqual(memoryBefore);
   });
 
   it("trial from a missing run: refused, nothing written", async () => {
-    const b = await prepare("simple", { nom: "S", sources: {} }, `export default async () => ({ tickets: [{ titre: "a" }] });`);
-    const r = await runAction(options(b, "simple", { declencheur: "rejeu", essai: { origine: "2020-01-01T00-00-00-000Z", depart: "lire" } }));
-    expect(r.statut).toBe("invalide");
-    expect(b.commandes).toEqual([]);
+    const b = await prepare("simple", { name: "S", sources: {} }, `export default async () => ({ tickets: [{ titre: "a" }] });`);
+    const r = await runAction(options(b, "simple", { trigger: "rejeu", attempt: { origin: "2020-01-01T00-00-00-000Z", start: "lire" } }));
+    expect(r.status).toBe("invalide");
+    expect(b.commands).toEqual([]);
   });
 });
 
@@ -442,7 +442,7 @@ function launcherLines(lignes: unknown[]): ProcessLauncher {
         setImmediate(() => ok(0));
       });
     });
-    return { stdin, stdout, stderr, tuer: () => {}, fin: end };
+    return { stdin, stdout, stderr, kill: () => {}, end: end };
   };
 }
 

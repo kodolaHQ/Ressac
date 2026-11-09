@@ -2,30 +2,30 @@ import { z } from "zod";
 import { fieldsPerElementOnly, Template, ParamsPerElement, type BlockDefinition } from "./common.js";
 
 // ia.trier always scores item by item: `parElement` is not a param.
-const { parElement: _byElement, ...commonParams } = ParamsPerElement;
+const { perItem: _byElement, ...commonParams } = ParamsPerElement;
 
 export const definition: BlockDefinition = {
   type: "ia.trier",
-  libelle: "Trier avec Kev",
-  famille: "IA",
+  label: "Trier avec Kev",
+  family: "IA",
   description: "Note chaque élément avec Kev et garde ceux qui passent le seuil.",
-  entree: "requise",
-  champs: [
-    { nom: "question", libelle: "Question", aide: "Ce que Kev doit juger, par exemple « Est-ce intéressant ? ».", requis: true, defaut: "Est-ce intéressant ?", genre: "gabarit" },
-    { nom: "texte", libelle: "Texte à juger", aide: "Les {chemins} sont remplacés par les valeurs de l'élément.", requis: true, defaut: "{titre}", genre: "gabarit" },
-    { nom: "seuil", libelle: "Seuil", requis: false, defaut: 0.5, genre: "nombre", min: 0, max: 1 },
-    { nom: "champ", libelle: "Champ de la note", requis: false, defaut: "p", genre: "texte" },
+  input: "requise",
+  fields: [
+    { name: "question", label: "Question", help: "Ce que Kev doit juger, par exemple « Est-ce intéressant ? ».", required: true, default: "Est-ce intéressant ?", kind: "gabarit" },
+    { name: "texte", label: "Texte à juger", help: "Les {chemins} sont remplacés par les valeurs de l'élément.", required: true, default: "{titre}", kind: "gabarit" },
+    { name: "seuil", label: "Seuil", required: false, default: 0.5, kind: "nombre", min: 0, max: 1 },
+    { name: "champ", label: "Champ de la note", required: false, default: "p", kind: "texte" },
     // ia.trier always scores item by item: the common fields do not carry the « only per item » mark.
-    ...fieldsPerElementOnly().map(({ parElementSeulement: _mark, ...c }) => c),
+    ...fieldsPerElementOnly().map(({ perItemOnly: _mark, ...c }) => c),
   ],
-  parElement: "toujours",
-  chaine: false,
-  parametres: z
+  perItem: "toujours",
+  chain: false,
+  params: z
     .object({
       question: Template,
-      texte: Template,
-      seuil: z.number().min(0).max(1).default(0.5),
-      champ: z.string().min(1).max(40).default("p"),
+      text: Template,
+      threshold: z.number().min(0).max(1).default(0.5),
+      field: z.string().min(1).max(40).default("p"),
       ...commonParams,
     })
     .strict(),

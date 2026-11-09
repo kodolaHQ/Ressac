@@ -22,28 +22,28 @@ const DISPLAY = `<!doctype html><meta charset="utf-8"><pre id="donnees"></pre>
 export async function writeWidget(
   dataDir: string,
   id: string,
-  o: { nom: string; workflow?: unknown; recolte?: Record<string, unknown>; declaration?: Record<string, unknown>; fichiers?: Record<string, string> },
+  o: { name: string; workflow?: unknown; harvest?: Record<string, unknown>; declaration?: Record<string, unknown>; files?: Record<string, string> },
 ): Promise<void> {
   const dir = widgetDir(dataDir, id);
   await mkdir(dir, { recursive: true });
   await writeFile(
     path.join(dir, "widget.json"),
     JSON.stringify({
-      nom: o.nom,
+      name: o.name,
       description: "",
-      tailles: { min: { l: 2, h: 1 }, max: { l: 6, h: 4 }, defaut: { l: 3, h: 2 } },
-      sources: { compte: [], publiques: [], web: false },
-      ...(o.recolte ? { recolte: o.recolte } : {}),
+      sizes: { min: { l: 2, h: 1 }, max: { l: 6, h: 4 }, default: { l: 3, h: 2 } },
+      sources: { account: [], public: [], web: false },
+      ...(o.harvest ? { harvest: o.harvest } : {}),
       ...o.declaration,
     }),
   );
   await writeFile(path.join(dir, "affichage.html"), DISPLAY);
   if (o.workflow !== undefined) await writeFile(path.join(dir, "workflow.json"), typeof o.workflow === "string" ? o.workflow : JSON.stringify(o.workflow));
-  for (const [name, text] of Object.entries(o.fichiers ?? {})) await writeFile(path.join(dir, name), text);
+  for (const [name, text] of Object.entries(o.files ?? {})) await writeFile(path.join(dir, name), text);
   const state = path.join(dataDir, "widgets", id);
   await mkdir(state, { recursive: true });
   const now = new Date().toISOString();
-  await writeFile(path.join(state, "etat.json"), JSON.stringify({ statut: "ok", derniereMaj: now, derniereTentative: now }));
+  await writeFile(path.join(state, "etat.json"), JSON.stringify({ status: "ok", lastUpdate: now, lastAttempt: now }));
 }
 
 /** The widget's workflow.json as on disk. */

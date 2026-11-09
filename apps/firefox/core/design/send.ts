@@ -2,18 +2,18 @@ import { pathInContainer, remarksPrefix, type SpacePaths, type ProjectId, type B
 import type { WindowId } from "../../shared/model";
 
 export interface SendOptions {
-  chemins: SpacePaths;
+  paths: SpacePaths;
   /** The main window the agent considers active. */
-  fenetreAgent(): WindowId | undefined;
-  dossierLot(p: ProjectId, batch: string): string;
+  agentWindow(): WindowId | undefined;
+  batchFolder(p: ProjectId, batch: string): string;
   /** `agent.preRemplir`: opens the panel and puts the text in the input, without sending it. */
-  preRemplir(f: WindowId, text: string): void;
+  prefill(f: WindowId, text: string): void;
   /** Like ⌘J: the agent's terminal takes the keyboard. */
-  donnerLeTerminal(f: WindowId): void;
+  giveTerminal(f: WindowId): void;
   /** The main window comes to the front (no effect in invisible mode). */
-  devant(f: WindowId): void;
+  toFront(f: WindowId): void;
   /** No main window: reopen one (like the Review page), which receives the text. */
-  rouvrir?(): void;
+  reopen?(): void;
 }
 
 /** No main window, even reopened: the batch is written, but nothing could be pre-filled. */
@@ -26,19 +26,19 @@ export const NO_WINDOW = "Aucune fenêtre principale pour l'agent : le lot est e
 export function createSend(o: SendOptions): (p: TrackedProject, batch: Batch) => Promise<void> {
   return async (p, batch) => {
     if (p.type === "externe") return;
-    let f = o.fenetreAgent();
+    let f = o.agentWindow();
     if (f === undefined) {
-      o.rouvrir?.();
-      f = o.fenetreAgent();
+      o.reopen?.();
+      f = o.agentWindow();
     }
     if (f === undefined) throw new Error(NO_WINDOW);
-    const batchPath = pathInContainer(o.dossierLot(batch.projet, batch.id), o.chemins);
+    const batchPath = pathInContainer(o.batchFolder(batch.project, batch.id), o.paths);
     const project =
-      p.type === "app" ? ({ type: "app", nom: p.nom, dossier: p.dossier } as const)
-      : p.type === "site" ? ({ type: "site", nom: p.nom, id: p.id } as const)
+      p.type === "app" ? ({ type: "app", name: p.name, folder: p.folder } as const)
+      : p.type === "site" ? ({ type: "site", name: p.name, id: p.id } as const)
       : ({ type: "demo", port: p.port } as const);
-    o.preRemplir(f, remarksPrefix({ projet: project, lot: batch, cheminLot: batchPath }));
-    o.donnerLeTerminal(f);
-    o.devant(f);
+    o.prefill(f, remarksPrefix({ project: project, batch: batch, batchPath: batchPath }));
+    o.giveTerminal(f);
+    o.toFront(f);
   };
 }

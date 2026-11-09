@@ -8,9 +8,9 @@ describe("regroupeur", () => {
   it("groups two close schedulings into a single call", () => {
     const make = vi.fn();
     const r = createGrouper(1000, make);
-    r.planifier("a");
+    r.schedule("a");
     vi.advanceTimersByTime(500);
-    r.planifier("a");
+    r.schedule("a");
     vi.advanceTimersByTime(999);
     expect(make).not.toHaveBeenCalled();
     vi.advanceTimersByTime(1);
@@ -21,8 +21,8 @@ describe("regroupeur", () => {
   it("forgetting before the deadline cancels the call", () => {
     const make = vi.fn();
     const r = createGrouper(1000, make);
-    r.planifier("a");
-    r.oublier("a");
+    r.schedule("a");
+    r.forget("a");
     vi.advanceTimersByTime(5000);
     expect(make).not.toHaveBeenCalled();
   });

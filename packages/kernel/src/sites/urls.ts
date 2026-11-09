@@ -3,7 +3,7 @@ import { localUrl } from "../workflows/access.js";
 import { trueDomain, type DeclarationSite, type Tweak } from "./schemas.js";
 
 /** The app's domains, never in site.json: the current one, and the old ones that must still be recognized. */
-export type UrlState = { actuel: string; anciens: string[]; depuis: string | null };
+export type UrlState = { current: string; previous: string[]; since: string | null };
 
 const VALID_HOST = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
 /** Lowercase, trailing dot removed, Unicode converted to ASCII (punycode); "" if the name is invalid. */
@@ -32,21 +32,21 @@ export function hostInSite(host: string, domains: readonly string[]): boolean {
 }
 
 export function effectiveDomains(d: DeclarationSite, e: UrlState | null): string[] {
-  const all = [...d.domaines, ...(e ? [...e.anciens, e.actuel] : [])].map(clean);
+  const all = [...d.domains, ...(e ? [...e.previous, e.current] : [])].map(clean);
   return [...new Set(all)];
 }
 
 /** The declared address, whose host is replaced by the current address when the site changed domain. */
 export function startUrl(d: DeclarationSite, e: UrlState | null): string {
-  if (!e) return d.adresse;
+  if (!e) return d.url;
   let u: URL;
   try {
-    u = new URL(d.adresse);
+    u = new URL(d.url);
   } catch {
-    return d.adresse;
+    return d.url;
   }
-  if (hostInSite(u.hostname, [e.actuel])) return d.adresse;
-  u.hostname = e.actuel;
+  if (hostInSite(u.hostname, [e.current])) return d.url;
+  u.hostname = e.current;
   return u.href;
 }
 
@@ -74,13 +74,13 @@ export function urlOnDomain(
   current: string,
   domains: readonly string[],
   start: string,
-  o: { adressesLocales: boolean },
+  o: { localAddresses: boolean },
 ): string | null {
   const base = analyze(start);
   if (!base) return null;
   // An invalid `actuel` leaves the start host.
   const n = clean(current);
-  const valid = VALID_HOST.test(n) && (o.adressesLocales || !localUrl(n));
+  const valid = VALID_HOST.test(n) && (o.localAddresses || !localUrl(n));
   const outputHost = valid ? n : base.hostname;
   let u: URL;
   if (url.startsWith("/")) {
@@ -90,15 +90,15 @@ export function urlOnDomain(
     u = r;
   } else {
     const r = analyze(url);
-    if (!r || !hostInSite(r.hostname, domains) || !acceptedSchema(r, o.adressesLocales)) return null;
+    if (!r || !hostInSite(r.hostname, domains) || !acceptedSchema(r, o.localAddresses)) return null;
     u = r;
   }
   const output = analyze(`${base.protocol}//${base.host}${u.pathname}${u.search}${u.hash}`);
   if (!output) return null;
   output.hostname = outputHost;
   // `actuel` in numeric notation (0x7f.1, 2130706433) is only normalized here: checked again, otherwise the start host.
-  if (!o.adressesLocales && localUrl(output.hostname)) output.hostname = base.hostname;
-  if (!acceptedSchema(output, o.adressesLocales)) return null;
+  if (!o.localAddresses && localUrl(output.hostname)) output.hostname = base.hostname;
+  if (!acceptedSchema(output, o.localAddresses)) return null;
   return output.href;
 }
 
@@ -143,18 +143,18 @@ export function matchesPattern(pattern: string, text: string): boolean {
 /** The tweaks that apply to a frame: main frame by path, subframe by full-address pattern. */
 export function tweaksFor(
   d: DeclarationSite,
-  frame: { url: string; principal: boolean },
+  frame: { url: string; main: boolean },
   domains: readonly string[],
-  o: { adressesLocales: boolean } = { adressesLocales: false },
+  o: { localAddresses: boolean } = { localAddresses: false },
 ): Tweak[] {
   const u = analyze(frame.url);
-  if (!u || !acceptedSchema(u, o.adressesLocales)) return [];
-  if (frame.principal) {
+  if (!u || !acceptedSchema(u, o.localAddresses)) return [];
+  if (frame.main) {
     const rel = relativeUrl(frame.url, domains);
     if (rel === null) return [];
-    return d.retouches.filter((r) => r.correspond.some((m) => matchesPattern(m, rel)));
+    return d.tweaks.filter((r) => r.matches.some((m) => matchesPattern(m, rel)));
   }
-  return d.retouches.filter((r) => r.cadres !== false && r.cadres.some((m) => matchesPattern(m, frame.url)));
+  return d.tweaks.filter((r) => r.frames !== false && r.frames.some((m) => matchesPattern(m, frame.url)));
 }
 
 /**
@@ -164,21 +164,21 @@ export function tweaksFor(
  */
 export function findUrl(
   liens: readonly string[],
-  o: { page: string; motif: string; adressesLocales: boolean },
-): { hostname: string; origine: string; port: string | null } | null {
+  o: { page: string; pattern: string; localAddresses: boolean },
+): { hostname: string; origin: string; port: string | null } | null {
   const page = analyze(o.page);
-  const pattern = o.motif.toLowerCase();
+  const pattern = o.pattern.toLowerCase();
   if (!page || !pattern) return null;
   const two = (h: string) => h.split(".").slice(-2).join(".");
   const pageHost = clean(page.hostname);
   for (const link of liens) {
     const u = analyze(link);
-    if (!u || !acceptedSchema(u, o.adressesLocales)) continue;
+    if (!u || !acceptedSchema(u, o.localAddresses)) continue;
     const h = clean(u.hostname);
     if (!h || !VALID_HOST.test(h) || !h.includes(pattern) || two(h) === two(pageHost)) continue;
-    if (!trueDomain(h, o.adressesLocales)) continue;
-    const port = o.adressesLocales && u.port ? u.port : null;
-    return { hostname: h, origine: `${u.protocol}//${h}${port ? `:${port}` : ""}/`, port };
+    if (!trueDomain(h, o.localAddresses)) continue;
+    const port = o.localAddresses && u.port ? u.port : null;
+    return { hostname: h, origin: `${u.protocol}//${h}${port ? `:${port}` : ""}/`, port };
   }
   return null;
 }

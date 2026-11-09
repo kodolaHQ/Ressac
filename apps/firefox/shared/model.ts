@@ -33,12 +33,12 @@ export const ACTION_PREFIX = "webaios://action/";
 const ID_EXECUTION = /^[0-9TZ-]+(?:-essai)?$/;
 export const urlAction = (id: string, execution?: string) => ACTION_PREFIX + id + (execution ? `/${execution}` : "");
 /** The action (and execution) of an action page, or null if the URL is not one (never a path). */
-export function actionOfUrl(url: string): { id: string; execution: string | null } | null {
+export function actionOfUrl(url: string): { id: string; run: string | null } | null {
   if (!url.startsWith(ACTION_PREFIX)) return null;
-  const [id, execution, ...rest] = url.slice(ACTION_PREFIX.length).split("/");
+  const [id, run, ...rest] = url.slice(ACTION_PREFIX.length).split("/");
   if (rest.length || !id || !ID_ACTION.test(id)) return null;
-  if (execution === undefined) return { id, execution: null };
-  return execution.length <= 64 && ID_EXECUTION.test(execution) ? { id, execution } : null;
+  if (run === undefined) return { id, run: null };
+  return run.length <= 64 && ID_EXECUTION.test(run) ? { id, run } : null;
 }
 /** An internal page (`webaios:`) has no view: the UI displays it, like the blank page. */
 export const hasView = (url: string) => !url.startsWith("webaios:");
@@ -57,7 +57,7 @@ export type TabId = string;
 /** The agent's access to tabs, with the name of the agent holding it. */
 export interface AccessState {
   agent: string;
-  onglets: Record<TabId, TabAccessState>;
+  tabs: Record<TabId, TabAccessState>;
 }
 export type SpaceId = string;
 export type WindowId = string;
@@ -65,30 +65,30 @@ export type SearchEngine = "google" | "duckduckgo" | "qwant";
 
 export interface Tab {
   id: TabId;
-  fenetreId: WindowId;
-  espaceId: SpaceId;
+  windowId: WindowId;
+  spaceId: SpaceId;
   url: string;
-  titre: string;
+  title: string;
   favicon: string | null;
   /** Link to a persistent favorite: the tab materializes an essential or a pinned tab. */
-  lien: { type: "essentiel" | "epingle"; id: string } | null;
-  ouvertParAgent: boolean;
-  chargement: boolean;
-  peutReculer: boolean;
-  peutAvancer: boolean;
+  link: { type: "essentiel" | "epingle"; id: string } | null;
+  openedByAgent: boolean;
+  loading: boolean;
+  canGoBack: boolean;
+  canGoForward: boolean;
   /** Facteur de zoom, 1 = 100 %. */
   zoom: number;
   /** The page's rendering process crashed. */
-  plante: boolean;
+  crashed: boolean;
   /** Page load failure (Chromium code, e.g. ERR_NAME_NOT_RESOLVED); volatile. */
-  erreur: string | null;
+  error: string | null;
 }
 
 /** Persistent favorite displayed in the sidebar even without an open tab (Arc/Zen model). */
 export interface Favorite {
   id: string;
   url: string;
-  titre: string;
+  title: string;
   favicon: string | null;
 }
 
@@ -102,54 +102,54 @@ export interface ConnectionProfile {
 
 export interface Space {
   id: SpaceId;
-  nom: string;
-  icone: string;
-  epingles: Favorite[];
+  name: string;
+  icon: string;
+  pinned: Favorite[];
   /** Invisible to the agent: its tabs are neither listed, nor read, nor kept. */
-  prive: boolean;
-  profil: ProfileId;
+  private: boolean;
+  profile: ProfileId;
 }
 
 export interface RecentlyClosed {
   url: string;
-  espaceId: SpaceId;
+  spaceId: SpaceId;
 }
 
 /** Size and position of a window on screen, in points. */
 export interface FrameBounds {
   x: number;
   y: number;
-  largeur: number;
-  hauteur: number;
+  width: number;
+  height: number;
 }
 
 export interface WindowState {
   id: WindowId;
-  espaceActif: SpaceId;
+  activeSpace: SpaceId;
   /** Normal tabs of this window, per space. */
-  ordre: Record<SpaceId, TabId[]>;
-  actif: Record<SpaceId, TabId | null>;
+  order: Record<SpaceId, TabId[]>;
+  active: Record<SpaceId, TabId | null>;
   compact: boolean;
-  panneauAgentOuvert: boolean;
+  agentPanelOpen: boolean;
   /** 20 at most, most recent first. */
-  fermesRecemment: RecentlyClosed[];
+  recentlyClosed: RecentlyClosed[];
   /** Last known frame; null until the window has been moved or resized. */
-  cadre: FrameBounds | null;
+  frame: FrameBounds | null;
 }
 
 export interface BrowserState {
   version: 2;
   /** Au moins un espace. */
-  espaces: Space[];
+  spaces: Space[];
   /** The login profiles used by at least one space. */
-  profils: ConnectionProfile[];
+  profiles: ConnectionProfile[];
   /** Shared by all spaces and all windows. */
-  essentiels: Favorite[];
-  onglets: Record<TabId, Tab>;
-  fenetres: WindowState[];
-  reglages: { moteur: SearchEngine; /** Profil d'agent (fichier .webaios/profils/<id>.json). */ profilAgent: string;
+  essentials: Favorite[];
+  tabs: Record<TabId, Tab>;
+  windows: WindowState[];
+  settings: { engine: SearchEngine; /** Profil d'agent (fichier .webaios/profils/<id>.json). */ agentProfile: string;
     /** Width of the agent panel, in pixels (the user sets it by dragging its left edge). */
-    largeurPanneauAgent: number;
+    agentPanelWidth: number;
   };
 }
 
@@ -158,58 +158,58 @@ export interface BrowserState {
  * An unknown space has a key of its own, which matches no existing space.
  */
 export function spaceKey(state: BrowserState, spaceId: SpaceId): string {
-  const space = state.espaces.find((e) => e.id === spaceId);
-  return space ? `${space.profil}|${space.prive}` : `\0inconnu|${spaceId}`;
+  const space = state.spaces.find((e) => e.id === spaceId);
+  return space ? `${space.profile}|${space.private}` : `\0inconnu|${spaceId}`;
 }
 
 /** The tab is in a private space; an unknown space counts as private. */
 export function privateTab(state: BrowserState, tab: Tab): boolean {
-  return state.espaces.find((e) => e.id === tab.espaceId)?.prive ?? true;
+  return state.spaces.find((e) => e.id === tab.spaceId)?.private ?? true;
 }
 
 /** The login profiles in use: those of the state and those of its spaces. Only a profile outside this set is erased. */
-export function profilesInUse(state: Pick<BrowserState, "profils" | "espaces">): Set<ProfileId> {
-  return new Set([...state.profils.map((p) => p.id), ...state.espaces.map((e) => e.profil)]);
+export function profilesInUse(state: Pick<BrowserState, "profiles" | "spaces">): Set<ProfileId> {
+  return new Set([...state.profiles.map((p) => p.id), ...state.spaces.map((e) => e.profile)]);
 }
 
 /**
  * The space where to count a visit (and the kept text) of the tab: the one that displays it in its window — a shared
  * essential is seen in the active space —, otherwise its own. Private if that space or the tab's is (unknown: private).
  */
-export function historyContext(state: BrowserState, id: TabId): { espaceId: SpaceId; prive: boolean } | null {
-  const o = state.onglets[id];
+export function historyContext(state: BrowserState, id: TabId): { spaceId: SpaceId; private: boolean } | null {
+  const o = state.tabs[id];
   if (!o) return null;
-  const f = state.fenetres.find((x) => x.id === o.fenetreId);
-  const spaceId = f && f.actif[f.espaceActif] === id ? f.espaceActif : o.espaceId;
-  const isPrivate = (state.espaces.find((e) => e.id === spaceId)?.prive ?? true) || privateTab(state, o);
-  return { espaceId: spaceId, prive: isPrivate };
+  const f = state.windows.find((x) => x.id === o.windowId);
+  const spaceId = f && f.active[f.activeSpace] === id ? f.activeSpace : o.spaceId;
+  const isPrivate = (state.spaces.find((e) => e.id === spaceId)?.private ?? true) || privateTab(state, o);
+  return { spaceId: spaceId, private: isPrivate };
 }
 
 /** The tab's login profile, that of its space (the default profile if the space is unknown). */
 export function tabProfile(state: BrowserState, tab: Tab): ProfileId {
-  return state.espaces.find((e) => e.id === tab.espaceId)?.profil ?? DEFAULT_PROFILE;
+  return state.spaces.find((e) => e.id === tab.spaceId)?.profile ?? DEFAULT_PROFILE;
 }
 
 /** A history page: one row per URL and per space (`espaceId` empty: no space, old visits). */
 export interface Visit {
   url: string;
-  titre: string;
-  derniereVisite: string; // ISO
-  visites: number;
-  espaceId: string;
+  title: string;
+  lastVisit: string; // ISO
+  visits: number;
+  spaceId: string;
   /** Seen in a private space (or a space that has become private since). */
-  prive: boolean;
+  private: boolean;
   /** This visit's text is kept in the agent's memory. */
-  retenu: boolean;
+  kept: boolean;
 }
 
 export interface Download {
   id: string;
-  nom: string;
-  chemin: string;
-  recus: number;
+  name: string;
+  path: string;
+  received: number;
   total: number; // 0 si inconnu
-  etat: "en-cours" | "termine" | "annule" | "interrompu";
+  state: "en-cours" | "termine" | "annule" | "interrompu";
 }
 
 export type Permission =
@@ -236,13 +236,13 @@ export type Decision = "autoriser" | "refuser";
 export type Outcome = Decision | "retiree";
 /** A question asked to the user: one or two permissions (camera and microphone together), a single answer. */
 export interface Request {
-  ongletId: TabId | null;
-  origine: string;
+  tabId: TabId | null;
+  origin: string;
   permissions: Permission[];
   /** « ouvrir-application »: the link to hand to another application (mailto:, zoommtg:…). */
-  lien?: string;
+  link?: string;
   /** « lire-onglet »: title of the targeted tab; « donnees-widget », « console-extension »: name of the widget or extension, displayed as is. */
-  titre?: string;
+  title?: string;
   /** « donnees-widget »: the id of the widget whose data the agent wants to see. */
   widget?: string;
   /** « donnees-widget »: the id of the action whose results the agent wants to see (instead of a widget). */
@@ -250,15 +250,15 @@ export interface Request {
   /** « donnees-widget »: the id of the site app the agent wants to see (its pages and its memory), instead of a widget. */
   site?: string;
   /** « lire-onglet »: the question is displayed only in this window (otherwise, according to `ongletId`). */
-  fenetreId?: WindowId;
+  windowId?: WindowId;
   /** « lire-onglet » and « outils-dev »: the targeted tab; if it is closed, the question is refused. */
-  cible?: TabId;
+  target?: TabId;
   /** « outils-dev »: the rights requested by the agent, pre-checked. */
-  droits?: DevRight[];
+  rights?: DevRight[];
   /** « console-extension »: the spaces of the profiles where the extension is active (what the unlock covers). */
-  espaces?: string[];
+  spaces?: string[];
   /** « outils-dev », « console-extension »: the reason given by the agent. */
-  raison?: string;
+  reason?: string;
   /** « outils-dev » and « donnees-widget »: the agent's name, displayed as is. */
   agent?: string;
   /** « extension »: the grant card, displayed as text. */

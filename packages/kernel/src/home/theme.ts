@@ -9,27 +9,27 @@ const color = z.string().regex(/^#[0-9a-fA-F]{6}$/, "couleur #rrggbb attendue");
 /** Home page theme, written by the agent; the Firefox page applies it, absent or invalid it keeps the default. */
 export const HomeTheme = z.object({
   version: z.literal(1),
-  fond: color.optional(),
-  carte: color.optional(),
-  texte: color.optional(),
-  texteDoux: color.optional(),
+  background: color.optional(),
+  card: color.optional(),
+  text: color.optional(),
+  mutedText: color.optional(),
   accent: color.optional(),
-  bord: color.optional(),
-  rayon: z.number().int().min(0).max(24).optional(),
-  espace: z.number().int().min(0).max(24).optional(),
-  police: z.enum(["system", "serif", "mono"]).optional(),
+  border: color.optional(),
+  radius: z.number().int().min(0).max(24).optional(),
+  space: z.number().int().min(0).max(24).optional(),
+  font: z.enum(["system", "serif", "mono"]).optional(),
 }).strict();
 export type HomeTheme = z.infer<typeof HomeTheme>;
 
 /** theme: null if absent. erreur: present and invalid (the default applies, the file is never rewritten). */
-export async function readTheme(c: SpacePaths): Promise<{ theme: HomeTheme | null; erreur?: string }> {
+export async function readTheme(c: SpacePaths): Promise<{ theme: HomeTheme | null; error?: string }> {
   let raw: unknown;
   try {
-    raw = JSON.parse(await readFile(join(c.accueil, "theme.json"), "utf8"));
+    raw = JSON.parse(await readFile(join(c.home, "theme.json"), "utf8"));
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code === "ENOENT") return { theme: null };
-    return { theme: null, erreur: `theme.json invalide : ${(e as Error).message}` };
+    return { theme: null, error: `theme.json invalide : ${(e as Error).message}` };
   }
   const r = HomeTheme.safeParse(raw);
-  return r.success ? { theme: r.data } : { theme: null, erreur: `theme.json invalide : ${r.error.message}` };
+  return r.success ? { theme: r.data } : { theme: null, error: `theme.json invalide : ${r.error.message}` };
 }

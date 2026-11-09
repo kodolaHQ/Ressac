@@ -165,7 +165,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode spikes (plan 35)", () =
   const resultIn = (ms: number) => Promise.race([result(), sleep(ms).then(() => "pending" as const)]);
 
   async function open(url: string) {
-    await dispatch(m, { type: "ouvrirOnglet", fenetreId: (await state(m)).fenetres[0]!.id, url });
+    await dispatch(m, { type: "ouvrirOnglet", windowId: (await state(m)).windows[0]!.id, url });
     await waitFor(m, `return gBrowser.selectedBrowser.currentURI.spec === ${JSON.stringify(url)} && !gBrowser.selectedBrowser.webProgress.isLoadingDocument`, (v) => v === true);
     await chrome(m, "gBrowser.selectedBrowser.focus();");
   }
@@ -229,7 +229,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode spikes (plan 35)", () =
     await sleep(100);
     await mouse("li:nth-child(2)");
     const li = (await result()).r;
-    note("S1 li", { selecteur: li?.selecteur, freres: li?.voisinage?.freres });
+    note("S1 li", { selector: li?.selecteur, siblings: li?.voisinage?.freres });
     expect(await inPage(`(() => { const l = document.querySelectorAll(${JSON.stringify(li?.selecteur)}); return l.length === 1 && l[0].textContent === "deux"; })()`)).toBe(true);
   });
 
@@ -306,9 +306,9 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode spikes (plan 35)", () =
     await mouse("#email", { move: true });
     await mouse("#envoyer");
     const c = await result();
-    const seen = { selecteur: c.r?.selecteur, hooked: await inPage("window.hooked"), early: await inPage("window.early"), reactions: await inPage("window.reactions"), fakeStop: await inPage("window.fakeStop"), front: await ask("front") };
+    const seen = { selector: c.r?.selecteur, hooked: await inPage("window.hooked"), early: await inPage("window.early"), reactions: await inPage("window.reactions"), fakeStop: await inPage("window.fakeStop"), front: await ask("front") };
     note("S1 hostile page", seen);
-    expect(seen.selecteur).toBe("#envoyer");
+    expect(seen.selector).toBe("#envoyer");
     expect(seen.hooked).toEqual([]);
     expect(seen.fakeStop).toBe(0);
     expect(seen.reactions).toEqual([]);
@@ -365,7 +365,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode spikes (plan 35)", () =
     const frame = await ask("frame");
     await mouse("#b");
     const c = await result();
-    note("S1 csp", { frame, selecteur: c.r?.selecteur, e: c.e, styles: Object.keys(c.r?.styles ?? {}).length });
+    note("S1 csp", { frame, selector: c.r?.selecteur, e: c.e, styles: Object.keys(c.r?.styles ?? {}).length });
     expect(frame?.cadre.display).toBe("block");
     expect(c.r?.selecteur).toBe("#b");
     expect(await ask("hosts")).toBe(0);
@@ -394,9 +394,9 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode spikes (plan 35)", () =
     await mouse("#envoyer", { count: 2 });
     const c = await result();
     await sleep(300);
-    const seen = { selecteur: c.r?.selecteur, frame: frame?.cadre.display, label: frame?.etiquette.text, page: await inPage(PAGE_SAW), midRight, newTabs: (await chrome(m, "return gBrowser.tabs.length;")) - tabs, href: await inPage("location.href"), guard: await ask("guardSeen"), hooked: await inPage("window.hooked"), listeners0, armedListeners };
+    const seen = { selector: c.r?.selecteur, frame: frame?.cadre.display, label: frame?.etiquette.text, page: await inPage(PAGE_SAW), midRight, newTabs: (await chrome(m, "return gBrowser.tabs.length;")) - tabs, href: await inPage("location.href"), guard: await ask("guardSeen"), hooked: await inPage("window.hooked"), listeners0, armedListeners };
     note("S1 fix hostile page", seen);
-    expect(seen.selecteur).toBe("#envoyer");
+    expect(seen.selector).toBe("#envoyer");
     expect(seen.frame).toBe("block");
     expect(seen.label).toBe("input#email.champ");
     for (const p of [seen.midRight, seen.page]) {
@@ -496,7 +496,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode spikes (plan 35)", () =
     const a = { hosts: await ask("hosts"), process: (await ask("info")).remoteType };
     await mouse("#envoyer");
     const r = await result();
-    note("S1 fix two tabs", { tabA, b, a, selecteur: r.r?.selecteur });
+    note("S1 fix two tabs", { tabA, b, a, selector: r.r?.selecteur });
     expect(b.page.reactions).toContain("click:email");
     expect(b.hosts).toBe(0);
     expect(a.hosts).toBe(1);
@@ -587,7 +587,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode spikes (plan 35)", () =
       const viewSnap = await snapshot(css, zoom * dpr, { drawView: true, samples: [[Math.floor((dip.width * dpr) / 2), Math.floor((dip.height * dpr) / 2)], [2, 2]] });
       const pageSnap = await snapshot({ ...css, y: css.y + scrollY }, zoom * dpr, { samples: [[Math.floor((dip.width * dpr) / 2), Math.floor((dip.height * dpr) / 2)], [2, 2]] });
       const expected = { width: Math.round(dip.width * dpr), height: Math.round(dip.height * dpr) };
-      out.push({ zoom, dpr, rect: c.rect, vue: c.vue, dip, scrollY, expected, view: { png: viewSnap.png, centre: viewSnap.samples[0], corner: viewSnap.samples[1] }, page: { png: pageSnap.png, centre: pageSnap.samples[0], corner: pageSnap.samples[1] } });
+      out.push({ zoom, dpr, rect: c.rect, viewState: c.vue, dip, scrollY, expected, view: { png: viewSnap.png, center: viewSnap.samples[0], corner: viewSnap.samples[1] }, page: { png: pageSnap.png, center: pageSnap.samples[0], corner: pageSnap.samples[1] } });
     }
     note("S2 rectCapture", out);
     for (const o of out as any[]) {
@@ -757,7 +757,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode spikes (plan 35)", () =
   const healthySource = (r: any) => {
     const ok = (n: unknown) => typeof n === "number" && Number.isInteger(n) && n > 0;
     if (!r || typeof r !== "object" || typeof r.fichier !== "string" || r.fichier.length > 1024 || r.fichier === "") return null;
-    return { fichier: r.fichier, ...(ok(r.ligne) ? { ligne: r.ligne } : {}), ...(ok(r.colonne) ? { colonne: r.colonne } : {}) };
+    return { file: r.fichier, ...(ok(r.ligne) ? { line: r.ligne } : {}), ...(ok(r.colonne) ? { column: r.colonne } : {}) };
   };
   const source = async (sel: string) => {
     const raw = await ask("source", { code: SOURCE_CODE(sel) });
@@ -777,10 +777,10 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode spikes (plan 35)", () =
     await inPage(`window.getterRuns = 0; Object.defineProperty(document.querySelector("#nue"), "__svelte_meta", { get() { getterRuns++; throw new Error("x"); } })`);
     const throwing = await source("#nue");
     note("S4 data-source", { ds, none, bad1, bad2, throwing, getterRuns: await inPage("window.getterRuns") });
-    expect(ds.kept).toEqual({ fichier: "src/Inscription.svelte", ligne: 12 });
+    expect(ds.kept).toEqual({ file: "src/Inscription.svelte", line: 12 });
     expect(none.kept).toBeNull();
     expect(bad1.kept).toBeNull();
-    expect(bad2.kept).toEqual({ fichier: "a.svelte" });
+    expect(bad2.kept).toEqual({ file: "a.svelte" });
     expect(throwing.kept).toBeNull();
     const after = await inPage<string[]>("Object.keys(window).sort()");
     expect(after.filter((k) => /viseur|webaios/i.test(k))).toEqual([]);
@@ -793,7 +793,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode spikes (plan 35)", () =
     const button = await source("#plus");
     const section = await source("section");
     note("S4 svelte", { button, section });
-    expect(button.kept?.fichier).toMatch(/Essai\.svelte$/);
-    expect(button.kept?.ligne).toBeGreaterThan(0);
+    expect(button.kept?.file).toMatch(/Essai\.svelte$/);
+    expect(button.kept?.line).toBeGreaterThan(0);
   });
 });

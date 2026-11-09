@@ -7,7 +7,7 @@ import { tempFolder } from "../helpers/temp.js";
 
 async function space() {
   const c = spacePaths(await tempFolder());
-  await mkdir(c.accueil, { recursive: true });
+  await mkdir(c.home, { recursive: true });
   return c;
 }
 
@@ -21,17 +21,17 @@ test("lireDispositionLibre reads version 3 and returns [] for version 2, a damag
     { id: "a", x: 0, y: 0, l: 500, h: 90 },
     { id: "b", x: 500, y: 0, l: 500, h: 90 },
   ];
-  await writeFile(c.disposition, JSON.stringify({ version: 3, widgets }));
+  await writeFile(c.layout, JSON.stringify({ version: 3, widgets }));
   expect(await readFreeLayout(c)).toEqual(widgets);
 
-  await writeFile(c.disposition, JSON.stringify({ version: 2, widgets }));
+  await writeFile(c.layout, JSON.stringify({ version: 2, widgets }));
   expect(await readFreeLayout(c)).toEqual([]);
 
-  await writeFile(c.disposition, "{ pas du json");
+  await writeFile(c.layout, "{ pas du json");
   expect(await readFreeLayout(c)).toEqual([]);
 
   await writeFile(
-    c.disposition,
+    c.layout,
     JSON.stringify({ version: 3, widgets: [{ id: "a", x: 400, y: 0, l: 500, h: 90 }, { id: "b", x: 500, y: 0, l: 500, h: 90 }] }),
   );
   expect(await readFreeLayout(c)).toEqual([]);

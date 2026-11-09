@@ -11,69 +11,69 @@ export const PRIVATE_PROFILE_ERROR = "Donne à cet espace privé son propre prof
 
 const ScopeSchema = z.object({
   permissions: z.array(z.string()),
-  hotes: z.array(z.string()),
-  reseau: z.array(z.string()),
-  tousLesSites: z.boolean(),
-  scriptsTousLesSites: z.boolean(),
+  hosts: z.array(z.string()),
+  network: z.array(z.string()),
+  allSites: z.boolean(),
+  allSitesScripts: z.boolean(),
   scripts: z.boolean().optional(),
 });
 
 const EntrySchema = z.object({
   source: z.enum(["store", "agent"]),
-  idChrome: z.string().nullable(),
-  nom: z.string(),
+  addonId: z.string().nullable(),
+  name: z.string(),
   version: z.string(),
-  accord: ScopeSchema.nullable(),
-  profils: z.array(z.string()),
-  epinglee: z.boolean(),
-  modifieeLe: z.string().nullable(),
-  desactivee: z.object({ raison: z.enum(["portee-elargie", "plantages"]), le: z.string() }).nullable(),
-  majEnAttente: z.object({ version: z.string(), portee: ScopeSchema, chemin: z.string() }).nullable(),
-  vues: z.record(z.string(), z.string()),
-  applis: z.record(z.string(), z.string()).optional(),
-  consoleMasquee: z.array(z.string()).optional(),
+  grant: ScopeSchema.nullable(),
+  profiles: z.array(z.string()),
+  pinned: z.boolean(),
+  modifiedAt: z.string().nullable(),
+  disabled: z.object({ reason: z.enum(["portee-elargie", "plantages"]), at: z.string() }).nullable(),
+  pendingUpdate: z.object({ version: z.string(), scope: ScopeSchema, path: z.string() }).nullable(),
+  seenVersions: z.record(z.string(), z.string()),
+  siteApps: z.record(z.string(), z.string()).optional(),
+  hiddenConsole: z.array(z.string()).optional(),
 });
 
 export interface ExtensionEntry {
   source: SourceExtension;
   /** Agent: null before the first load. */
-  idChrome: string | null;
-  nom: string;
+  addonId: string | null;
+  name: string;
   version: string;
   /** Scope accepted by the user; null: never granted. */
-  accord: Scope | null;
+  grant: Scope | null;
   /** Profiles where the extension is active. */
-  profils: ProfileId[];
-  epinglee: boolean;
+  profiles: ProfileId[];
+  pinned: boolean;
   /** ISO; agent: last copy reloaded. */
-  modifieeLe: string | null;
-  desactivee: { raison: "portee-elargie" | "plantages"; le: string } | null;
+  modifiedAt: string | null;
+  disabled: { reason: "portee-elargie" | "plantages"; at: string } | null;
   /** Store. */
-  majEnAttente: { version: string; portee: Scope; chemin: string } | null;
+  pendingUpdate: { version: string; scope: Scope; path: string } | null;
   /** Last version started in each profile. */
-  vues: Record<ProfileId, string>;
+  seenVersions: Record<ProfileId, string>;
   /**
    * Store: site apps where it is active, with the hash of their domains (`siteExtensionsHash`) at the time
    * of activation. Absent: none.
    */
-  applis?: Record<IdSite, string>;
+  siteApps?: Record<IdSite, string>;
   /**
    * Agent: profiles where it ran in a tab the agent cannot read. Its service worker and pages console
    * stays hidden from it; never reset (its storage may have kept what it read there), erased with the entry.
    */
-  consoleMasquee?: ProfileId[];
+  hiddenConsole?: ProfileId[];
 }
 
 export interface ExtensionsState {
   version: 1;
-  toutesCoupees: boolean;
+  allCut: boolean;
   extensions: Record<string, ExtensionEntry>;
   /**
    * Chromium ids of the agent's extensions whose service worker and pages console stays hidden from it (they
    * ran in a tab it cannot read). Survives the entry's deletion: a copy recreated at the same
    * place has the same id. Never emptied.
    */
-  consolesMasquees?: string[];
+  hiddenConsoles?: string[];
 }
 
 const ID_STORE = /^[a-p]{32}$/;
@@ -97,7 +97,7 @@ export function extensionKey(source: SourceExtension, id: string): string {
   return key;
 }
 
-const empty = (): ExtensionsState => ({ version: 1, toutesCoupees: false, extensions: {} });
+const empty = (): ExtensionsState => ({ version: 1, allCut: false, extensions: {} });
 
 function entryOf(e: ExtensionsState, key: string): ExtensionEntry {
   const x = e.extensions[key];
@@ -112,23 +112,23 @@ function updateEntry(e: ExtensionsState, key: string, change: (x: ExtensionEntry
 export function enable(e: ExtensionsState, key: string, profile: ProfileId, privateProfiles: ReadonlySet<ProfileId>): ExtensionsState {
   const x = entryOf(e, key);
   if (x.source === "agent" && privateProfiles.has(profile)) throw new Error(PRIVATE_PROFILE_ERROR);
-  if (!x.accord) throw new Error(`extension sans accord : ${key}`);
-  return updateEntry(e, key, (y) => (y.profils.includes(profile) ? y : { ...y, profils: [...y.profils, profile] }));
+  if (!x.grant) throw new Error(`extension sans accord : ${key}`);
+  return updateEntry(e, key, (y) => (y.profiles.includes(profile) ? y : { ...y, profiles: [...y.profiles, profile] }));
 }
 
 export function disable(e: ExtensionsState, key: string, profile: ProfileId): ExtensionsState {
-  return updateEntry(e, key, (y) => ({ ...y, profils: y.profils.filter((p) => p !== profile) }));
+  return updateEntry(e, key, (y) => ({ ...y, profiles: y.profiles.filter((p) => p !== profile) }));
 }
 
 export function disableEverywhere(e: ExtensionsState, key: string): ExtensionsState {
   return updateEntry(e, key, (y) => {
-    const { applis: _, ...rest } = y;
-    return { ...rest, profils: [] };
+    const { siteApps: _, ...rest } = y;
+    return { ...rest, profiles: [] };
   });
 }
 
 export function cutAll(e: ExtensionsState, yes: boolean): ExtensionsState {
-  return { ...e, toutesCoupees: yes };
+  return { ...e, allCut: yes };
 }
 
 export function remove(e: ExtensionsState, key: string): ExtensionsState {
@@ -137,35 +137,35 @@ export function remove(e: ExtensionsState, key: string): ExtensionsState {
 }
 
 export function pin(e: ExtensionsState, key: string, yes: boolean): ExtensionsState {
-  return updateEntry(e, key, (y) => ({ ...y, epinglee: yes }));
+  return updateEntry(e, key, (y) => ({ ...y, pinned: yes }));
 }
 
 /** Removes each agent extension from private profiles; the Store ones stay. */
 export function applyPrivateProfiles(
   e: ExtensionsState,
   privateProfiles: ReadonlySet<ProfileId>,
-): { etat: ExtensionsState; retirees: { cle: string; profil: ProfileId }[] } {
-  const removed: { cle: string; profil: ProfileId }[] = [];
+): { state: ExtensionsState; removed: { key: string; profile: ProfileId }[] } {
+  const removed: { key: string; profile: ProfileId }[] = [];
   const extensions: Record<string, ExtensionEntry> = {};
   for (const [key, x] of Object.entries(e.extensions)) {
     if (x.source !== "agent") {
       extensions[key] = x;
       continue;
     }
-    for (const profile of x.profils) if (privateProfiles.has(profile)) removed.push({ cle: key, profil: profile });
-    extensions[key] = { ...x, profils: x.profils.filter((p) => !privateProfiles.has(p)) };
+    for (const profile of x.profiles) if (privateProfiles.has(profile)) removed.push({ key: key, profile: profile });
+    extensions[key] = { ...x, profiles: x.profiles.filter((p) => !privateProfiles.has(p)) };
   }
-  return { etat: { ...e, extensions }, retirees: removed };
+  return { state: { ...e, extensions }, removed: removed };
 }
 
 const file = (folder: string) => join(folder, "etat.json");
 
 interface Reading {
-  etat: ExtensionsState;
+  state: ExtensionsState;
   /** File present but unreadable, of unknown shape, or with entries that were ignored. */
-  abime: boolean;
+  damaged: boolean;
   /** File of a newer version: empty read, write denied. */
-  futur: boolean;
+  future: boolean;
 }
 
 async function read(folder: string): Promise<Reading> {
@@ -173,19 +173,19 @@ async function read(folder: string): Promise<Reading> {
   try {
     text = await readFile(file(folder), "utf8");
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return { etat: empty(), abime: false, futur: false };
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return { state: empty(), damaged: false, future: false };
     throw error;
   }
   let raw: unknown;
   try {
     raw = JSON.parse(text);
   } catch {
-    return { etat: empty(), abime: true, futur: false };
+    return { state: empty(), damaged: true, future: false };
   }
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { etat: empty(), abime: true, futur: false };
-  const b = raw as { version?: unknown; toutesCoupees?: unknown; extensions?: unknown; consolesMasquees?: unknown };
-  if (typeof b.version === "number" && b.version > 1) return { etat: empty(), abime: false, futur: true };
-  if (b.version !== 1) return { etat: empty(), abime: true, futur: false };
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { state: empty(), damaged: true, future: false };
+  const b = raw as { version?: unknown; allCut?: unknown; extensions?: unknown; hiddenConsoles?: unknown };
+  if (typeof b.version === "number" && b.version > 1) return { state: empty(), damaged: false, future: true };
+  if (b.version !== 1) return { state: empty(), damaged: true, future: false };
   const extensions: Record<string, ExtensionEntry> = {};
   let damaged = false;
   if (b.extensions && typeof b.extensions === "object" && !Array.isArray(b.extensions)) {
@@ -196,10 +196,10 @@ async function read(folder: string): Promise<Reading> {
       else damaged = true;
     }
   } else if (b.extensions !== undefined) damaged = true;
-  const hidden = Array.isArray(b.consolesMasquees) ? b.consolesMasquees.filter((x): x is string => typeof x === "string" && (ID_STORE.test(x) || ID_FIREFOX_AGENT.test(x))) : [];
-  const state: ExtensionsState = { version: 1, toutesCoupees: b.toutesCoupees === true, extensions };
-  if (hidden.length) state.consolesMasquees = [...new Set(hidden)];
-  return { etat: state, abime: damaged, futur: false };
+  const hidden = Array.isArray(b.hiddenConsoles) ? b.hiddenConsoles.filter((x): x is string => typeof x === "string" && (ID_STORE.test(x) || ID_FIREFOX_AGENT.test(x))) : [];
+  const state: ExtensionsState = { version: 1, allCut: b.allCut === true, extensions };
+  if (hidden.length) state.hiddenConsoles = [...new Set(hidden)];
+  return { state: state, damaged: damaged, future: false };
 }
 
 /**
@@ -207,7 +207,7 @@ async function read(folder: string): Promise<Reading> {
  * (see `modifierEtatExtensions`). Throws for any read error other than ENOENT.
  */
 export async function readExtensionsState(folder: string): Promise<ExtensionsState> {
-  return (await read(folder)).etat;
+  return (await read(folder)).state;
 }
 
 /** One write at a time per folder; temporary file then `rename`. */
@@ -227,11 +227,11 @@ export function changeExtensionsState(
   const previous = files.get(folder) ?? Promise.resolve();
   const next = previous.catch(() => {}).then(async () => {
     const lu = await read(folder);
-    if (lu.futur) throw new Error("état des extensions d'une version plus récente");
+    if (lu.future) throw new Error("état des extensions d'une version plus récente");
     const privates = privateProfiles();
-    const fresh = applyPrivateProfiles(change(lu.etat, privates), privates).etat;
+    const fresh = applyPrivateProfiles(change(lu.state, privates), privates).state;
     await mkdir(folder, { recursive: true });
-    if (lu.abime) await copyFile(file(folder), `${file(folder)}.abime-${new Date().toISOString().replace(/[:.]/g, "-")}`);
+    if (lu.damaged) await copyFile(file(folder), `${file(folder)}.abime-${new Date().toISOString().replace(/[:.]/g, "-")}`);
     const temp = `${file(folder)}.${randomUUID()}.tmp`;
     try {
       await writeFile(temp, JSON.stringify(fresh, null, 2));

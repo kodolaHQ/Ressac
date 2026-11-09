@@ -9,7 +9,7 @@
   import { suggestionsActions } from "./suggestions";
   import type { ActionShown } from "../../shared/actions";
 
-  let { fenetre: win }: { fenetre: WindowState } = $props();
+  let { window: win }: { window: WindowState } = $props();
   let input = $state("");
   let field: HTMLInputElement;
 
@@ -21,7 +21,7 @@
 
   // Actions are not available in a private space (a missing space counts as private): the list is then not even
   // requested.
-  const inPrivate = $derived(appState.valeur?.espaces.find((e) => e.id === win.espaceActif)?.prive ?? true);
+  const inPrivate = $derived(appState.value?.spaces.find((e) => e.id === win.activeSpace)?.private ?? true);
   let actions = $state.raw<ActionShown[]>([]);
   let last = 0;
   $effect(() => {
@@ -31,7 +31,7 @@
     }
     const load = () => {
       const n = ++last;
-      api.actions.liste().then(
+      api.actions.list().then(
         (l) => {
           if (n === last) actions = l;
         },
@@ -39,7 +39,7 @@
       );
     };
     load();
-    return api.actions.surChange(load);
+    return api.actions.onChange(load);
   });
 
   // Escape closes the list until the next keystroke.
@@ -58,17 +58,17 @@
     const s = suggestions[i];
     if (s) {
       chosen = -1;
-      void api.actions.ouvrir(s.id, s.saisie).then(
+      void api.actions.open(s.id, s.input).then(
         (r) => {
           if (r.ok) {
             input = "";
             denial = "";
-          } else denial = r.erreur;
+          } else denial = r.error;
         },
         () => (denial = "Le service des actions ne répond pas"),
       );
     } else if (input.trim()) {
-      api.naviguer(null, input.trim());
+      api.navigate(null, input.trim());
       input = "";
     }
   }
@@ -117,11 +117,11 @@
       aria-activedescendant={suggestions.length && chosen >= 0 ? `suggestion-action-${chosen}` : undefined}
     />
     {#if suggestions.length}
-      <SuggestionsActions {suggestions} ligneHabituelle={usualLine} choisie={chosen} choisir={(i) => validate(i)} />
+      <SuggestionsActions {suggestions} usualLine={usualLine} chosen={chosen} choose={(i) => validate(i)} />
     {/if}
     {#if denial}<p class="refus" data-testid="refus-action">{denial}</p>{/if}
   </form>
-  <Essentials fenetre={win} grand />
+  <Essentials window={win} large />
   <Home />
 </div>
 

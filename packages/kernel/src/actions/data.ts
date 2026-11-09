@@ -12,12 +12,12 @@ import { ID_ACTION } from "./schemas.js";
 /** What an action run returned: its results, the layout chosen for them and how it was chosen. */
 export type ActionResult = {
   version: 1;
-  execution: string;
-  saisie: string | null;
-  resultats: unknown;
+  run: string;
+  input: string | null;
+  results: unknown;
   plan: PlanPage | null;
-  secours: boolean;
-  vide: boolean;
+  fallback: boolean;
+  empty: boolean;
 };
 
 /** Margin beyond the workflow's data: the plan, the input and the envelope. */
@@ -26,12 +26,12 @@ export const RESULT_MAX_BYTES = DATA_MAX_SIZE + RESULT_MARGIN_BYTES;
 
 const ResultFile = z.object({
   version: z.literal(1),
-  execution: z.string(),
-  saisie: z.string().nullable(),
-  resultats: z.unknown(),
+  run: z.string(),
+  input: z.string().nullable(),
+  results: z.unknown(),
   plan: PlanPage.nullable(),
-  secours: z.boolean(),
-  vide: z.boolean(),
+  fallback: z.boolean(),
+  empty: z.boolean(),
 });
 
 const resultsFolder = (dataFolder: string) => join(dataFolder, "resultats");
@@ -42,14 +42,14 @@ const resultsFolder = (dataFolder: string) => join(dataFolder, "resultats");
  */
 export async function writeResult(actionsFolder: string, id: string, r: ActionResult): Promise<void> {
   if (!ID_ACTION.test(id)) throw new Error(`id d'action invalide : ${id}`);
-  if (!ID_EXECUTION.test(r.execution)) throw new Error(`id d'exécution invalide : ${r.execution}`);
+  if (!ID_EXECUTION.test(r.run)) throw new Error(`id d'exécution invalide : ${r.run}`);
   const text = JSON.stringify(r);
   if (Buffer.byteLength(text) > RESULT_MAX_BYTES) throw new Error("résultat trop gros");
   const dataFolder = join(actionsFolder, id);
   const folder = resultsFolder(dataFolder);
-  await writeAtomic(join(folder, `${r.execution}.json`), text);
+  await writeAtomic(join(folder, `${r.run}.json`), text);
   const kept = new Set((await listRuns(dataFolder)).map((e) => e.id));
-  kept.add(r.execution);
+  kept.add(r.run);
   let names: string[] = [];
   try {
     names = await readdir(folder);
@@ -76,7 +76,7 @@ export async function readResult(actionsFolder: string, id: string, execution: s
 export async function lastResult(actionsFolder: string, id: string): Promise<ActionResult | null> {
   if (!ID_ACTION.test(id)) return null;
   for (const e of await listRuns(join(actionsFolder, id))) {
-    if (e.essai || e.id.endsWith("-essai")) continue;
+    if (e.attempt || e.id.endsWith("-essai")) continue;
     const r = await readResult(actionsFolder, id, e.id);
     if (r) return r;
   }

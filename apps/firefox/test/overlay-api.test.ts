@@ -5,9 +5,9 @@ import { overlayApi, type DesignService } from "../chrome/store/design";
 import { INVALID_REQUEST, REMARK_TEXT_MAX } from "../shared/design-guards";
 import { wrapOverlayApi } from "../ui/overlay-api";
 
-const T = { type: "fenetre" as const, fenetreId: "F" };
+const T = { type: "fenetre" as const, windowId: "F" };
 const ctx = (mode: OverlayContext["mode"], project: string): OverlayContext => ({
-  mode, message: null, projet: project, etiquette: "input#email.champ", source: null, destination: "l'agent", sansDestination: null, avertissement: null,
+  mode, message: null, project: project, label: "input#email.champ", source: null, destination: "l'agent", noDestination: null, warning: null,
 });
 
 /** A fake service (its overlay showing `shown`) and host; every call noted. */
@@ -30,27 +30,27 @@ describe("overlayApi", () => {
   it("the overlay API bounds the remark: 4,001 characters refused without a call (Demande invalide), 4,000 passes", async () => {
     const { design, host, calls } = setup();
     const api = overlayApi({ design, host }, T);
-    expect(await api.ajouter("x".repeat(REMARK_TEXT_MAX + 1))).toEqual({ ok: false, erreur: INVALID_REQUEST });
-    expect(await api.ajouter(42 as unknown as string)).toEqual({ ok: false, erreur: INVALID_REQUEST });
+    expect(await api.add("x".repeat(REMARK_TEXT_MAX + 1))).toEqual({ ok: false, error: INVALID_REQUEST });
+    expect(await api.add(42 as unknown as string)).toEqual({ ok: false, error: INVALID_REQUEST });
     expect(calls).toEqual([]);
-    expect(await api.ajouter("x".repeat(REMARK_TEXT_MAX))).toEqual({ ok: true });
+    expect(await api.add("x".repeat(REMARK_TEXT_MAX))).toEqual({ ok: true });
     expect(calls).toEqual(["add:4000"]);
   });
 
   it("projetPermis: only the project the overlay shows reaches the host; another one gets [], nothing or Demande invalide", async () => {
     const { design, host, calls } = setup();
     const api = overlayApi({ design, host }, T);
-    expect(await api.panier("demo-1")).toEqual([]);
-    expect(await api.lots("app-autre")).toEqual([]);
-    await api.retirer("demo-1", "e1");
-    await api.traite("demo-1", "l1");
-    expect(await api.envoyer("demo-1")).toEqual({ ok: false, erreur: INVALID_REQUEST });
+    expect(await api.basket("demo-1")).toEqual([]);
+    expect(await api.batches("app-autre")).toEqual([]);
+    await api.remove("demo-1", "e1");
+    await api.handled("demo-1", "l1");
+    expect(await api.send("demo-1")).toEqual({ ok: false, error: INVALID_REQUEST });
     // A bad id for the right project, too.
-    await api.retirer("demo-15308", "x".repeat(65));
+    await api.remove("demo-15308", "x".repeat(65));
     expect(calls).toEqual([]);
-    await api.panier("demo-15308");
-    await api.retirer("demo-15308", "e1");
-    expect(await api.envoyer("demo-15308")).toEqual({ ok: true });
+    await api.basket("demo-15308");
+    await api.remove("demo-15308", "e1");
+    expect(await api.send("demo-15308")).toEqual({ ok: true });
     expect(calls).toEqual(['design.panier {"projet":"demo-15308"}', 'design.retirer {"projet":"demo-15308","id":"e1"}', 'design.envoyer {"projet":"demo-15308"}']);
   });
 
@@ -66,30 +66,30 @@ describe("overlayApi", () => {
       on: (m: string) => (on.push(m), () => {}),
     };
     const api = overlayApi({ design, host }, T);
-    expect(await api.panier("demo-15308")).toEqual([{ id: "e1" }]);
+    expect(await api.basket("demo-15308")).toEqual([{ id: "e1" }]);
     down = true;
-    expect(await api.panier("demo-15308")).toEqual([{ id: "e1" }]);
-    await expect(api.lots("demo-15308")).rejects.toThrow("hôte arrêté");
-    api.surChange(() => {});
+    expect(await api.basket("demo-15308")).toEqual([{ id: "e1" }]);
+    await expect(api.batches("demo-15308")).rejects.toThrow("hôte arrêté");
+    api.onChange(() => {});
     expect(on).toEqual(["design.change", "accueil.change"]);
   });
 
   it("a message (project '') allows no cart at all", async () => {
     const { design, host, calls } = setup({ message: ctx("message", "") });
-    expect(await overlayApi({ design, host }, T).panier("")).toEqual([]);
+    expect(await overlayApi({ design, host }, T).basket("")).toEqual([]);
     expect(calls).toEqual([]);
   });
 
   it("each frame reads its own modes; the column's annuler is its own", async () => {
     const { design, host, calls } = setup({ bulle: ctx("bulle", "demo-15308"), panier: ctx("panier", "demo-15308") });
     let closed = 0;
-    const column = overlayApi({ design, host, modes: ["panier"], annuler: () => closed++ }, T);
+    const column = overlayApi({ design, host, modes: ["panier"], cancel: () => closed++ }, T);
     const overlay = overlayApi({ design, host, modes: ["bulle", "message"] }, T);
-    expect((await column.contexte())?.mode).toBe("panier");
-    expect((await overlay.contexte())?.mode).toBe("bulle");
-    column.annuler();
+    expect((await column.context())?.mode).toBe("panier");
+    expect((await overlay.context())?.mode).toBe("bulle");
+    column.cancel();
     expect([closed, calls]).toEqual([1, []]);
-    overlay.annuler();
+    overlay.cancel();
     expect(calls).toEqual(["cancel"]);
   });
 });
@@ -100,11 +100,11 @@ describe("wrapOverlayApi", () => {
 
   it("an answer is a copy, never the chrome's object", async () => {
     const shown = ctx("bulle", "demo-15308");
-    const api = wrapOverlayApi(raw({ contexte: async () => shown, panier: async () => foreign.value as never }), (f) => f);
-    const c = await api.contexte();
+    const api = wrapOverlayApi(raw({ context: async () => shown, basket: async () => foreign.value as never }), (f) => f);
+    const c = await api.context();
     expect(c).toEqual(shown);
     expect(c).not.toBe(shown);
-    const p = (await api.panier("demo-15308")) as unknown as { a: number[] };
+    const p = (await api.basket("demo-15308")) as unknown as { a: number[] };
     expect(p).not.toBe(foreign.value);
     expect(Object.getPrototypeOf(p)).toBe(Object.prototype);
   });
@@ -112,17 +112,17 @@ describe("wrapOverlayApi", () => {
   it("a rejection is an Error of the caller's realm, with its message; a throw too", async () => {
     const api = wrapOverlayApi(
       raw({
-        envoyer: () => Promise.reject(new foreign.Error("hôte arrêté")),
-        lots: () => {
+        send: () => Promise.reject(new foreign.Error("hôte arrêté")),
+        batches: () => {
           throw new foreign.Error("cassé");
         },
       }),
       (f) => f,
     );
-    const e = await api.envoyer("demo-15308").catch((x: unknown) => x);
+    const e = await api.send("demo-15308").catch((x: unknown) => x);
     expect(e).toBeInstanceOf(Error);
     expect((e as Error).message).toBe("hôte arrêté");
-    const e2 = await api.lots("demo-15308").catch((x: unknown) => x);
+    const e2 = await api.batches("demo-15308").catch((x: unknown) => x);
     expect(e2).toBeInstanceOf(Error);
     expect((e2 as Error).message).toBe("cassé");
   });
@@ -130,8 +130,8 @@ describe("wrapOverlayApi", () => {
   it("listeners are removed when the frame unloads", () => {
     let off = 0;
     let unload: (() => void) | undefined;
-    const api = wrapOverlayApi(raw({ surChange: () => () => void off++ }), (f) => ((unload = f), f));
-    api.surChange(() => {});
+    const api = wrapOverlayApi(raw({ onChange: () => () => void off++ }), (f) => ((unload = f), f));
+    api.onChange(() => {});
     expect(off).toBe(0);
     unload!();
     expect(off).toBe(1);

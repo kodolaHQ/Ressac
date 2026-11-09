@@ -28,21 +28,21 @@
    * away: the keystroke following the shortcut does not wait for the capture.
    */
   let {
-    fenetre: win,
-    ongletActif: activeTab,
-    cede: yields,
-    fermerPanneau: closePanel,
+    window: win,
+    activeTab: activeTab,
+    yields: yields,
+    closePanel: closePanel,
   }: {
-    fenetre: WindowState;
-    ongletActif: Tab | undefined;
+    window: WindowState;
+    activeTab: Tab | undefined;
     /** The ⌃Tab panel is open on top: it keeps Escape. */
-    cede: boolean;
+    yields: boolean;
     /** Closes the interface panel (history…) laid over the page. */
-    fermerPanneau: () => void;
+    closePanel: () => void;
   } = $props();
 
   // Actions are not available in a private space (a missing space counts as private), like on the empty page.
-  const inPrivate = $derived(appState.valeur?.espaces.find((e) => e.id === win.espaceActif)?.prive ?? true);
+  const inPrivate = $derived(appState.value?.spaces.find((e) => e.id === win.activeSpace)?.private ?? true);
   let actions = $state.raw<ActionShown[]>([]);
   let projects = $state.raw<SiteApp[]>([]);
   let sites = $state.raw<SiteApp[]>([]);
@@ -67,22 +67,22 @@
       actions = [];
       return;
     }
-    return follow(() => api.actions.liste(), (l) => (actions = l), (r) => api.actions.surChange(r));
+    return follow(() => api.actions.list(), (l) => (actions = l), (r) => api.actions.onChange(r));
   });
-  $effect(() => follow(() => api.applications.liste(), (l) => (projects = l.applications.map(projectSiteApp).filter((a) => a !== null)), (r) => api.applications.surChange(r)));
-  $effect(() => follow(() => api.sites.liste(), (l) => (sites = l.map(siteSiteApp)), (r) => api.sites.surChange(r)));
+  $effect(() => follow(() => api.apps.list(), (l) => (projects = l.apps.map(projectSiteApp).filter((a) => a !== null)), (r) => api.apps.onChange(r)));
+  $effect(() => follow(() => api.sites.list(), (l) => (sites = l.map(siteSiteApp)), (r) => api.sites.onChange(r)));
 
   // The tabs the active space shows: same scope as ⌃Tab.
   const tabs = $derived.by<SourceTab[]>(() => {
-    const e = appState.valeur;
+    const e = appState.value;
     if (!e) return [];
     return walkableTabs(e, win.id).flatMap((id) => {
-      const o = e.onglets[id];
-      return o ? [{ id: o.id, titre: o.titre, url: o.url, favicon: o.favicon }] : [];
+      const o = e.tabs[id];
+      return o ? [{ id: o.id, title: o.title, url: o.url, favicon: o.favicon }] : [];
     });
   });
 
-  const sources: CommandSources = $derived({ actions, onglets: tabs, applis: [...projects, ...sites], historique: hist });
+  const sources: CommandSources = $derived({ actions, tabs: tabs, siteApps: [...projects, ...sites], history: hist });
 
   let text = $state("");
   let denial = $state("");
@@ -96,7 +96,7 @@
       hist = [];
       return;
     }
-    api.historique.rechercher(t, LIMITS.historique, true).then(
+    api.history.search(t, LIMITS.history, true).then(
       (v) => n === request && (hist = v),
       () => n === request && (hist = []),
     );
@@ -106,11 +106,11 @@
   let field: HTMLInputElement | undefined = $state();
 
   /** A chosen action awaiting its input: the bar asks for it in a second field, the list hides. */
-  let param = $state<{ id: string; nom: string; libelle: string } | null>(null);
+  let param = $state<{ id: string; name: string; label: string } | null>(null);
   let paramValue = $state("");
   let paramField: HTMLInputElement | undefined = $state();
 
-  const mode = $derived(command.ouverte?.mode ?? "nouveau");
+  const mode = $derived(command.open?.mode ?? "nouveau");
   const lignes: CommandLine[] = $derived(commandLines(text, sources, mode === "actif" ? (activeTab?.url ?? null) : null, activeTab?.id ?? null));
   // A late source may shorten the list: the selection stays on a row that exists (the first otherwise).
   const chosen = $derived(rawChosen >= 0 && rawChosen < lignes.length ? rawChosen : 0);
@@ -124,11 +124,11 @@
 
   // On each opening (the first, or a reopening in the other mode): starting input, all selected in « actif » mode.
   $effect(() => {
-    const o = command.ouverte;
+    const o = command.open;
     if (!o) return;
     runningAction = false;
     param = null;
-    text = o.texte;
+    text = o.text;
     rawChosen = 0;
     denial = "";
     void tick().then(() => {
@@ -140,9 +140,9 @@
   /** The only function that acts: a chosen row (Enter or click). */
   function run(l: CommandLine) {
     const target = mode === "actif" ? (activeTab?.id ?? null) : null;
-    if (l.type === "defaut" && l.texte === "") {
+    if (l.type === "defaut" && l.text === "") {
       // Home: no effect if it is already shown; an interface panel laid over it closes.
-      api.agir({ type: "afficherPageVide", fenetreId: win.id });
+      api.dispatch({ type: "afficherPageVide", windowId: win.id });
       closePanel();
       closeCommand();
       // Already on home, it is not remounted: its field takes the keyboard back (and takes it when mounting otherwise).
@@ -151,36 +151,36 @@
     }
     if (l.type === "action") {
       if (paramRequest(l)) enterParam(l);
-      else launchAction(l.id, l.saisie);
+      else launchAction(l.id, l.input);
       return;
     }
-    if (l.type === "defaut") api.naviguer(target, l.texte);
-    else if (l.type === "historique") api.naviguer(target, l.url);
+    if (l.type === "defaut") api.navigate(target, l.text);
+    else if (l.type === "historique") api.navigate(target, l.url);
     else if (l.type === "onglet") {
       // Like the sidebar and ⌃Tab: an essential opens through its favorite (its tab may belong to a sibling space).
-      const link = appState.valeur?.onglets[l.onglet.id]?.lien;
-      api.agir(link?.type === "essentiel" ? { type: "ouvrirFavori", fenetreId: win.id, genre: "essentiel", id: link.id } : { type: "activerOnglet", id: l.onglet.id });
-    } else if (l.appli.genre === "projet") api.applications.agir(l.appli.id, l.appli.action);
-    else api.sites.agir(l.appli.id, "ouvrir");
+      const link = appState.value?.tabs[l.tab.id]?.link;
+      api.dispatch(link?.type === "essentiel" ? { type: "ouvrirFavori", windowId: win.id, kind: "essentiel", id: link.id } : { type: "activerOnglet", id: l.tab.id });
+    } else if (l.app.kind === "projet") api.apps.dispatch(l.app.id, l.app.action);
+    else api.sites.dispatch(l.app.id, "ouvrir");
     closeCommand(true);
   }
 
   /** Opens the action's page and launches it with `saisie` (without a required input and absent: the page asks for it). */
   function launchAction(id: string, input: string | null) {
     if (runningAction) return;
-    const o = command.ouverte;
+    const o = command.open;
     const n = ++launch;
     runningAction = true;
     denial = "";
-    void api.actions.ouvrir(id, input).then(
+    void api.actions.open(id, input).then(
       (r) => {
-        if (o !== command.ouverte || n !== launch) return;
+        if (o !== command.open || n !== launch) return;
         runningAction = false;
         if (r.ok) closeCommand();
-        else denial = r.erreur;
+        else denial = r.error;
       },
       () => {
-        if (o !== command.ouverte || n !== launch) return;
+        if (o !== command.open || n !== launch) return;
         runningAction = false;
         denial = "Le service des actions ne répond pas";
       },
@@ -188,10 +188,10 @@
   }
 
   /** Switches to the action's input, prefilled with the shown page's address, all selected. */
-  function enterParam(l: Extract<CommandLine, { type: "action" }> & { parametre: string }) {
+  function enterParam(l: Extract<CommandLine, { type: "action" }> & { param: string }) {
     launch++;
     runningAction = false;
-    param = { id: l.id, nom: l.nom, libelle: l.parametre };
+    param = { id: l.id, name: l.name, label: l.param };
     paramValue = paramDefault;
     denial = "";
     void tick().then(() => {
@@ -258,38 +258,38 @@
   }
 
   const label = (l: CommandLine): string =>
-    l.type === "defaut" ? l.libelle : l.type === "action" ? l.nom : l.type === "onglet" ? l.onglet.titre : l.type === "appli" ? l.appli.nom : l.titre || l.url;
+    l.type === "defaut" ? l.label : l.type === "action" ? l.name : l.type === "onglet" ? l.tab.title : l.type === "appli" ? l.app.name : l.title || l.url;
   // History keeps no favicon: the site's, at the usual address (except in a private visit, nothing leaves).
   const visitFavicon = (url: string): string | null =>
-    /^https?:\/\//i.test(url) && hist.some((v) => v.url === url && !v.prive) ? `${new URL(url).origin}/favicon.ico` : null;
+    /^https?:\/\//i.test(url) && hist.some((v) => v.url === url && !v.private) ? `${new URL(url).origin}/favicon.ico` : null;
   const favicon = (l: CommandLine): string | null =>
-    l.type === "onglet" ? l.onglet.favicon : l.type === "appli" ? l.appli.favicon : l.type === "historique" ? visitFavicon(l.url) : null;
+    l.type === "onglet" ? l.tab.favicon : l.type === "appli" ? l.app.favicon : l.type === "historique" ? visitFavicon(l.url) : null;
   const badgeText = (l: CommandLine): string =>
     l.type === "action" ? "Action" : l.type === "onglet" ? "Onglet" : l.type === "appli" ? "Appli" : l.type === "historique" ? "Historique" : "";
   const detail = (l: CommandLine): string =>
     l.type === "onglet"
-      ? l.onglet.url
+      ? l.tab.url
       : l.type === "historique"
         ? l.url
         : l.type === "action"
-          ? l.saisie !== null
-            ? `« ${l.saisie} »`
-            : (l.parametre ?? "")
+          ? l.input !== null
+            ? `« ${l.input} »`
+            : (l.param ?? "")
           : "";
   const pictogram = (l: CommandLine): IconName =>
     l.type === "defaut"
-      ? l.texte === ""
-        ? "accueil"
-        : /^\S+\.\S+$/.test(l.texte)
+      ? l.text === ""
+        ? "home"
+        : /^\S+\.\S+$/.test(l.text)
           ? "globe"
-          : "chercher"
+          : "find"
       : l.type === "action"
         ? "actions"
         : l.type === "onglet"
-          ? "onglet"
+          ? "tab"
           : l.type === "appli"
-            ? "applications"
-            : "horloge";
+            ? "apps"
+            : "clock";
 </script>
 
 <!-- In capture: the bar goes before everything else (modal, history…), and Escape only closes it. -->
@@ -313,21 +313,21 @@
   <div class="boite" data-testid="barre-commande" role="dialog" aria-label="Barre de commande" tabindex="-1" onmousedown={(e) => !(e.target instanceof HTMLInputElement) && e.preventDefault()}>
     {#if param}
       <div class="ligne-parametre">
-        <span class="pastille" data-testid="pastille-commande"><Icon nom="actions" taille={13} />{param.nom}</span>
+        <span class="pastille" data-testid="pastille-commande"><Icon name="actions" size={13} />{param.name}</span>
         <input
           bind:this={paramField}
           bind:value={paramValue}
           oninput={() => (denial = "")}
           onkeydown={paramKey}
           data-testid="parametre-commande"
-          placeholder={param.libelle}
-          aria-label={param.libelle}
+          placeholder={param.label}
+          aria-label={param.label}
           maxlength={PARAM_MAX}
           spellcheck="false"
           autocomplete="off"
         />
       </div>
-      <p class="aide" data-testid="aide-parametre">{param.libelle} · Entrée pour lancer · Échap pour revenir</p>
+      <p class="aide" data-testid="aide-parametre">{param.label} · Entrée pour lancer · Échap pour revenir</p>
       {#if denial}<p class="refus" data-testid="refus-commande">{denial}</p>{/if}
     {:else}
     <input
@@ -348,7 +348,7 @@
         <li role="option" aria-selected={i === chosen} data-testid="ligne-commande" data-type={l.type}>
           <button type="button" tabindex="-1" class:choisie={i === chosen} onmousemove={() => choose(i)} onclick={() => run(l)}>
             <span class="pictogramme" data-type={l.type}>
-              {#if favicon(l)}<SiteIcon favicon={favicon(l)} titre={label(l)} />{:else}<Icon nom={pictogram(l)} taille={14} />{/if}
+              {#if favicon(l)}<SiteIcon favicon={favicon(l)} title={label(l)} />{:else}<Icon name={pictogram(l)} size={14} />{/if}
             </span>
             <span class="libelle">{label(l)}</span>
             {#if detail(l)}<span class="detail">{detail(l)}</span>{/if}

@@ -452,12 +452,12 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("widget home spike", () => {
     note("P4 alerts service", alerts);
     note("P4 test file", { path: notifications, exists: await readFile(notifications, "utf8").then(() => true, () => false) });
     // The e2e path is the host writing the file (task 4): launchWebAiOs passes WEBAIOS_TEST_NOTIFICATIONS to the app.
-    await writeFile(notifications, JSON.stringify({ titre: "spike", texte: "P4" }) + "\n", { flag: "a" });
+    await writeFile(notifications, JSON.stringify({ title: "spike", text: "P4" }) + "\n", { flag: "a" });
     note("P4 test file after one write", { lines: (await readFile(notifications, "utf8")).trim().split("\n").length });
   });
 
   it("P5: srcdoc in the sidebar (the CSP it inherits)", { timeout: 120_000 }, async () => {
-    const inSidebar = await inUi<{ url: string | null; title: string | null; origin: string; principal: unknown }>(
+    const inSidebar = await inUi<{ url: string | null; title: string | null; origin: string; main: unknown }>(
       m,
       `
       const f = doc.createElement("iframe");
@@ -481,26 +481,26 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("widget home spike", () => {
     const home = path.join(root, "accueil");
     const widgets = path.join(home, "widgets");
     const data = path.join(w.dataDir, "widgets");
-    const declaration = { nom: "Démo", tailles: { min: { l: 3, h: 2 }, max: { l: 6, h: 4 }, defaut: { l: 3, h: 2 } }, sources: { compte: [], publiques: [], web: false } };
+    const declaration = { name: "Démo", sizes: { min: { l: 3, h: 2 }, max: { l: 6, h: 4 }, default: { l: 3, h: 2 } }, sources: { account: [], public: [], web: false } };
     await mkdir(path.join(widgets, "demo"), { recursive: true });
     await writeFile(path.join(widgets, "demo", "widget.json"), JSON.stringify(declaration));
     await writeFile(path.join(widgets, "demo", "affichage.html"), "<!doctype html><title>démo</title>");
     await writeFile(path.join(widgets, "demo", "exemple.json"), JSON.stringify({ ok: true }));
     await mkdir(path.join(data, "demo"), { recursive: true });
     await writeFile(path.join(data, "demo", "donnees.json"), JSON.stringify({ n: 1 }));
-    await writeFile(path.join(data, "demo", "etat.json"), JSON.stringify({ statut: "ok", derniereMaj: null, derniereTentative: null }));
+    await writeFile(path.join(data, "demo", "etat.json"), JSON.stringify({ status: "ok", lastUpdate: null, lastAttempt: null }));
     await writeFile(path.join(home, "disposition.json"), JSON.stringify({ version: 2, widgets: [{ id: "demo", x: 0, y: 0, l: 3, h: 2 }] }));
-    await writeFile(path.join(home, "theme.json"), JSON.stringify({ version: 1, fond: "#101014", rayon: 6 }));
+    await writeFile(path.join(home, "theme.json"), JSON.stringify({ version: 1, background: "#101014", radius: 6 }));
 
     const paths = spacePaths(root);
     const state = await readHome(paths, data);
     note("P6 lireAccueil", {
-      cheminWidgets: paths.widgets,
-      dossierDonnees: data,
-      widgets: state.widgets.map((x) => ("erreur" in x ? { id: x.id, erreur: x.erreur } : { id: x.id, nom: x.declaration.nom, aAffichage: x.aAffichage, donnees: x.donnees, aRecolte: x.aRecolte })),
-      disposition: state.disposition,
+      widgetsPath: paths.widgets,
+      dataFolder: data,
+      widgets: state.widgets.map((x) => ("error" in x ? { id: x.id, error: x.error } : { id: x.id, name: x.declaration.name, hasDisplay: x.hasDisplay, data: x.data, hasHarvest: x.hasHarvest })),
+      layout: state.layout,
       themeExists: await readFile(path.join(home, "theme.json"), "utf8").then(() => true, () => false),
-      folder: { widgets: await readdir(widgets), donnees: await readdir(data) },
+      folder: { widgets: await readdir(widgets), data: await readdir(data) },
     });
 
     await mkdir(path.join(widgets, "fuite"));
@@ -513,7 +513,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("widget home spike", () => {
     const display = await realpath(path.join(widgets, "fuite-affichage", "affichage.html")).catch((e) => String(e));
     note("P6 confinement", {
       symlinkedJson: after.widgets.find((x) => x.id === "fuite"),
-      symlinkedAffichage: { dossier: folder, reel: display, allowed: String(display).startsWith(folder + path.sep) },
+      symlinkedDisplay: { folder: folder, real: display, allowed: String(display).startsWith(folder + path.sep) },
     });
 
     note(
@@ -527,31 +527,31 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("widget home spike", () => {
     );
     const tree = async (dir: string) => readdir(dir).catch(() => []);
     note("P6 host files", {
-      espace: await tree(path.join(root, ".webaios")),
-      profils: await tree(path.join(root, ".webaios", "profils")),
-      historique: await readFile(path.join(w.dataDir, "historique.sqlite"), "utf8").then(() => true, () => false),
+      space: await tree(path.join(root, ".webaios")),
+      profiles: await tree(path.join(root, ".webaios", "profils")),
+      history: await readFile(path.join(w.dataDir, "historique.sqlite"), "utf8").then(() => true, () => false),
     });
   });
 
   it("P7: an invisible read with a profile's container, without a permission banner; the Docker atelier", { timeout: 180_000 }, async () => {
-    const before = (await state(m)).espaces.map((e) => e.id);
-    await dispatch(m, { type: "creerEspace", nom: "Spike", icone: "🧪", prive: false, profil: "nouveau", fenetreId: (await state(m)).fenetres[0]!.id });
-    const space = (await state(m)).espaces.filter((e) => !before.includes(e.id));
-    const profile = space[0]?.profil;
+    const before = (await state(m)).spaces.map((e) => e.id);
+    await dispatch(m, { type: "creerEspace", name: "Spike", icon: "🧪", private: false, profile: "nouveau", windowId: (await state(m)).windows[0]!.id });
+    const space = (await state(m)).spaces.filter((e) => !before.includes(e.id));
+    const profile = space[0]?.profile;
     const uc = await chrome(m, `return (await ChromeUtils.importESModule("${STORE}").ready).containerFor(arguments[0]);`, [profile]);
-    note("P7 profile", { profil: profile, userContextId: uc });
+    note("P7 profile", { profile: profile, userContextId: uc });
 
     // A cookie set in the profile's space: the invisible read with that profile must see it, a public read must not.
-    await dispatch(m, { type: "ouvrirOnglet", fenetreId: (await state(m)).fenetres[0]!.id, url: `${pages.url}/p?set=${encodeURIComponent(`spike=${profile}`)}`, espaceId: space[0]!.id, activer: true } as Action);
+    await dispatch(m, { type: "ouvrirOnglet", windowId: (await state(m)).windows[0]!.id, url: `${pages.url}/p?set=${encodeURIComponent(`spike=${profile}`)}`, spaceId: space[0]!.id, activate: true } as Action);
     await sleep(1500);
     const read = (url: string, o: unknown) =>
-      chrome<{ titre?: string; err?: string }>(m, `
+      chrome<{ title?: string; err?: string }>(m, `
         const s = await ChromeUtils.importESModule("${STORE}").ready;
         try { const p = await s.readPage(arguments[0], arguments[1]); return { titre: p.titre }; } catch (e) { return { err: String(e && e.message || e).slice(0, 200) }; }`, [url, o]);
-    note("P7 invisible read, same profile", await read(`${pages.url}/p`, { profil: profile, adressesLocales: true }));
-    note("P7 invisible read, public container", await read(`${pages.url}/p`, { profil: null, adressesLocales: true }));
+    note("P7 invisible read, same profile", await read(`${pages.url}/p`, { profile: profile, localAddresses: true }));
+    note("P7 invisible read, public container", await read(`${pages.url}/p`, { profile: null, localAddresses: true }));
     note("P7 permission request in a read, and the banner", {
-      page: await read(`${pages.url}/p?notif=1`, { profil: profile, adressesLocales: true }),
+      page: await read(`${pages.url}/p?notif=1`, { profile: profile, localAddresses: true }),
       banner: await chrome(m, `
         const b = gBrowser.selectedBrowser;
         const box = gBrowser.getNotificationBox ? gBrowser.getNotificationBox(b) : null;
@@ -559,7 +559,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("widget home spike", () => {
     });
 
     const fakeDocker = (() => {
-      const env = { ...process.env, PATH: `${FAKE_TOOLS}${path.delimiter}${process.env.PATH ?? ""}`, WEBAIOS_RACINE: path.join(w.dataDir, "espace") };
+      const env = { ...process.env, PATH: `${FAKE_TOOLS}${path.delimiter}${process.env.PATH ?? ""}`, WEBAIOS_ROOT: path.join(w.dataDir, "espace") };
       try {
         return { ok: true, out: execFileSync("docker", ["inspect", "webaios-atelier-firefox"], { env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim().slice(0, 120) };
       } catch (e: any) {
@@ -572,7 +572,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("widget home spike", () => {
       fakeTools: FAKE_TOOLS,
       container: "webaios-atelier-firefox",
       ports: "5300-5319",
-      harvestStates: (await readHome(spacePaths(path.join(w.dataDir, "espace")), path.join(w.dataDir, "widgets"))).widgets.flatMap((x) => ("erreur" in x ? [] : [{ id: x.id, etat: x.etat }])),
+      harvestStates: (await readHome(spacePaths(path.join(w.dataDir, "espace")), path.join(w.dataDir, "widgets"))).widgets.flatMap((x) => ("error" in x ? [] : [{ id: x.id, state: x.state }])),
     });
   });
 });

@@ -8,35 +8,35 @@ import { DeclarationAction, ID_ACTION } from "./schemas.js";
 export const ACTION_JSON_MAX_SIZE = 64 * 1024;
 
 export type ReadAction =
-  | { id: string; dossier: string; declaration: DeclarationAction; aWorkflow: boolean }
-  | { id: string; dossier: string; erreur: string };
+  | { id: string; folder: string; declaration: DeclarationAction; hasWorkflow: boolean }
+  | { id: string; folder: string; error: string };
 
 const MAX_ERROR = 300;
 
-async function readDeclaration(folder: string): Promise<{ declaration: DeclarationAction } | { erreur: string }> {
+async function readDeclaration(folder: string): Promise<{ declaration: DeclarationAction } | { error: string }> {
   const file = join(folder, "action.json");
   let raw: unknown;
   try {
     const s = await lstat(file);
-    if (!s.isFile()) return { erreur: "action.json n'est pas un fichier ordinaire" };
-    if (s.size > ACTION_JSON_MAX_SIZE) return { erreur: `action.json dépasse ${ACTION_JSON_MAX_SIZE / 1024} Ko` };
+    if (!s.isFile()) return { error: "action.json n'est pas un fichier ordinaire" };
+    if (s.size > ACTION_JSON_MAX_SIZE) return { error: `action.json dépasse ${ACTION_JSON_MAX_SIZE / 1024} Ko` };
     raw = JSON.parse(await readFile(file, "utf8"));
   } catch (e) {
     // Fixed text: the system's message would quote Mac paths.
-    return { erreur: e instanceof SyntaxError ? "action.json illisible (pas du JSON valide)" : "action.json illisible" };
+    return { error: e instanceof SyntaxError ? "action.json illisible (pas du JSON valide)" : "action.json illisible" };
   }
   const r = DeclarationAction.safeParse(raw);
   if (r.success) return { declaration: r.data };
   const p = r.error.issues[0]!;
   const text = `action.json invalide : ${[...p.path, p.message].join(" : ")}`;
-  return { erreur: text.length > MAX_ERROR ? text.slice(0, MAX_ERROR - 1) + "…" : text };
+  return { error: text.length > MAX_ERROR ? text.slice(0, MAX_ERROR - 1) + "…" : text };
 }
 
 async function readOne(c: SpacePaths, id: string): Promise<ReadAction> {
   const folder = join(c.actions, id);
   const lu = await readDeclaration(folder);
-  if ("erreur" in lu) return { id, dossier: folder, erreur: lu.erreur };
-  return { id, dossier: folder, declaration: lu.declaration, aWorkflow: await exists(join(folder, "workflow.json")) };
+  if ("error" in lu) return { id, folder: folder, error: lu.error };
+  return { id, folder: folder, declaration: lu.declaration, hasWorkflow: await exists(join(folder, "workflow.json")) };
 }
 
 /** Actions on disk, sorted by name; a broken action is reported, it does not prevent reading the others. */
@@ -64,16 +64,16 @@ export async function readAction(c: SpacePaths, id: string): Promise<ReadAction 
 
 /** What the action's declaration changes to the rules of its workflow. */
 export function actionValidationContext(d: DeclarationAction): ValidationContext {
-  return { web: d.sources.web, dureeMaxMinutes: d.dureeMaxMinutes ?? null, proprietaire: "action", saisie: d.saisie !== undefined };
+  return { web: d.sources.web, maxDurationMinutes: d.maxDurationMinutes ?? null, owner: "action", input: d.input !== undefined };
 }
 
 /** An action's workflow: `workflow.json` only (no implicit workflow from a `recolte.mjs`). Nothing is run. */
 export async function actionWorkflow(
   a: ReadAction,
-): Promise<{ t: "ok"; valide: ValidWorkflow } | { t: "invalide" | "illisible"; erreur: string } | { t: "absent" }> {
-  if ("erreur" in a) return { t: "illisible", erreur: a.erreur };
-  if (!(await exists(join(a.dossier, "workflow.json")))) return { t: "absent" };
-  const lu = await readRawWorkflow(a.dossier);
-  const r = "erreur" in lu ? workflowError(lu.erreur) : validateWorkflow(lu.brut, actionValidationContext(a.declaration));
-  return r.ok ? { t: "ok", valide: r.valide } : { t: "invalide", erreur: r.erreur };
+): Promise<{ t: "ok"; valid: ValidWorkflow } | { t: "invalide" | "illisible"; error: string } | { t: "absent" }> {
+  if ("error" in a) return { t: "illisible", error: a.error };
+  if (!(await exists(join(a.folder, "workflow.json")))) return { t: "absent" };
+  const lu = await readRawWorkflow(a.folder);
+  const r = "error" in lu ? workflowError(lu.error) : validateWorkflow(lu.raw, actionValidationContext(a.declaration));
+  return r.ok ? { t: "ok", valid: r.valid } : { t: "invalide", error: r.error };
 }

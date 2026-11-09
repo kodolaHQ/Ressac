@@ -19,20 +19,20 @@ const codeGitlab = (mark: string) => `export default async (_e, w) => [{ titre: 
 /** An action with an input: a `code` block that gives the input (and `marque`), then the output to the page. */
 const writeGitlab = (id: string, mark = "un") =>
   writeAction(w.dataDir, id, {
-    nom: NAME,
-    saisie: { libelle: "Projet" },
-    sources: { publiques: ["gitlab.com"] },
-    miseEnPage: GITLAB_INSTRUCTION,
-    dureeMaxMinutes: 5,
+    name: NAME,
+    input: { label: "Projet" },
+    sources: { public: ["gitlab.com"] },
+    layout: GITLAB_INSTRUCTION,
+    maxDurationMinutes: 5,
     workflow: {
       version: 1,
-      blocs: [
-        { id: "lire", type: "code", parametres: { source: "lire.mjs" } },
-        { id: "sortie", type: "sortie", parametres: { vers: "page" } },
+      blocks: [
+        { id: "lire", type: "code", params: { source: "lire.mjs" } },
+        { id: "sortie", type: "sortie", params: { to: "page" } },
       ],
-      liens: [{ de: "lire", vers: "sortie" }],
+      links: [{ from: "lire", to: "sortie" }],
     },
-    fichiers: { "lire.mjs": codeGitlab(mark) },
+    files: { "lire.mjs": codeGitlab(mark) },
   });
 const actionDir = (id: string) => path.join(w.dataDir, "espace", "actions", id);
 
@@ -60,8 +60,8 @@ const lastSessionConfig = () =>
   path.join(w.dataDir, "espace", (JSON.parse(readFileSync(path.join(w.dataDir, "espace", "faux-agent-args.json"), "utf8")) as string[]).at(-1)!.replace(/^\/workspace\//, ""));
 async function setPrivate(isPrivate: boolean): Promise<void> {
   const s = await state(m);
-  const e = s.espaces.find((x) => x.id === s.fenetres[0]!.espaceActif)!;
-  if (e.prive !== isPrivate) await dispatch(m, { type: "reglerEspace", id: e.id, nom: e.nom, icone: e.icone, prive: isPrivate, profil: e.profil } as Action);
+  const e = s.spaces.find((x) => x.id === s.windows[0]!.activeSpace)!;
+  if (e.private !== isPrivate) await dispatch(m, { type: "reglerEspace", id: e.id, name: e.name, icon: e.icon, private: isPrivate, profile: e.profile } as Action);
 }
 
 /** Opens the action's builder from its page (« Voir le workflow »), once the kernel serves the actions. */
@@ -118,7 +118,7 @@ describe("the builder of an action", () => {
     // The agent knows it is the action's workflow, and the block chosen.
     // The window's agent session (the fake agent notes its arguments once started).
     await poll(() => existsSync(path.join(w.dataDir, "espace", "faux-agent-args.json")), (v) => v, "the agent session", 20_000);
-    const open = async () => (await callMcpTool(path.join(w.dataDir, "espace"), "workflow_ouvert", {}, lastSessionConfig())).texte;
+    const open = async () => (await callMcpTool(path.join(w.dataDir, "espace"), "workflow_ouvert", {}, lastSessionConfig())).text;
     await poll(open, (t) => t === '{"action":"gitlab-a","bloc":null}', "workflow_ouvert", 20_000);
     await click(m, tid("noeud-lire"));
     await poll(open, (t) => t === '{"action":"gitlab-a","bloc":"lire"}', "workflow_ouvert", 20_000);
@@ -154,7 +154,7 @@ describe("the builder of an action", () => {
     await waitUi(m, "return doc.querySelector(arguments[0]).getAttribute('aria-pressed') === 'true';", [button], 30_000);
     expect(await q.text(button)).toContain("Manuelle");
     await q.waitText(tid("pastille-lire"), "1");
-    expect(await readJson(path.join(actionsDataDir(w.dataDir), "gitlab-b", "executions", file!))).toMatchObject({ declencheur: "manuelle", saisie: "webaios", statut: "reussie" });
+    expect(await readJson(path.join(actionsDataDir(w.dataDir), "gitlab-b", "executions", file!))).toMatchObject({ trigger: "manuelle", input: "webaios", status: "reussie" });
     // The preview shows this run's page (the agent's components are never loaded there).
     await click(m, tid("bouton-apercu"));
     await q.waitContains(tid("apercu-action"), "ticket-webaios-un", 30_000);
@@ -218,11 +218,11 @@ describe("the builder of an action", () => {
         ),
       ).toEqual([
         null,
-        { ok: false, erreur: "Les actions ne sont pas disponibles dans un espace privé", avertissements: [] },
-        { erreur: "Les actions ne sont pas disponibles dans un espace privé" },
-        { ok: false, erreur: "Les actions ne sont pas disponibles dans un espace privé" },
-        { ok: false, erreur: "Les actions ne sont pas disponibles dans un espace privé" },
-        { erreur: "Les actions ne sont pas disponibles dans un espace privé" },
+        { ok: false, error: "Les actions ne sont pas disponibles dans un espace privé", warnings: [] },
+        { error: "Les actions ne sont pas disponibles dans un espace privé" },
+        { ok: false, error: "Les actions ne sont pas disponibles dans un espace privé" },
+        { ok: false, error: "Les actions ne sont pas disponibles dans un espace privé" },
+        { error: "Les actions ne sont pas disponibles dans un espace privé" },
       ]);
       await sleep(500);
       expect(snapshot(actionDir("gitlab-d"))).toEqual(before);

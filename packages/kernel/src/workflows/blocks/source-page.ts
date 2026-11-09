@@ -4,37 +4,37 @@ import { FIELD_PER_ELEMENT, fieldsPerElementOnly, Template, ParamsPerElement, ty
 
 export const definition: BlockDefinition = {
   type: "source.page",
-  libelle: "Lire une page",
-  famille: "Sources",
+  label: "Lire une page",
+  family: "Sources",
   description: "Lit le texte d'une page web.",
-  entree: "parElement",
-  champs: [
-    { nom: "url", libelle: "Adresse", aide: "Les {chemins} sont remplacés par les valeurs de l'élément.", requis: true, genre: "gabarit" },
-    { nom: "compte", libelle: "Avec mon compte", requis: false, defaut: false, genre: "case" },
+  input: "parElement",
+  fields: [
+    { name: "url", label: "Adresse", help: "Les {chemins} sont remplacés par les valeurs de l'élément.", required: true, kind: "gabarit" },
+    { name: "compte", label: "Avec mon compte", required: false, default: false, kind: "case" },
     {
-      nom: "defiler",
-      libelle: "Écrans à faire défiler",
-      aide: "Pour une page qui charge en défilant. Vide ou 0 : pas de défilement.",
-      requis: false,
-      genre: "nombre",
+      name: "defiler",
+      label: "Écrans à faire défiler",
+      help: "Pour une page qui charge en défilant. Vide ou 0 : pas de défilement.",
+      required: false,
+      kind: "nombre",
       min: 0,
       max: SCROLL_MAX,
-      entier: true,
+      integer: true,
     },
     FIELD_PER_ELEMENT,
     ...fieldsPerElementOnly(),
-    { nom: "champ", libelle: "Champ du résultat", requis: false, defaut: "page", genre: "texte" },
+    { name: "champ", label: "Champ du résultat", required: false, default: "page", kind: "texte" },
   ],
-  parElement: "option",
-  chaine: true,
-  parametres: z
+  perItem: "option",
+  chain: true,
+  params: z
     .object({
       url: Template,
-      compte: z.boolean().default(false),
+      account: z.boolean().default(false),
       // Without a default: the hash of the params of an existing block (its memory) does not change.
-      defiler: z.number().int().min(0).max(SCROLL_MAX).optional(),
+      scroll: z.number().int().min(0).max(SCROLL_MAX).optional(),
       ...ParamsPerElement,
-      champ: z.string().min(1).max(40).default("page"),
+      field: z.string().min(1).max(40).default("page"),
     })
     .strict(),
 };

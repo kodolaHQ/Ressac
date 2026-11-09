@@ -9,7 +9,7 @@ const other = "http://autre-pub.localhost/x";
 
 function watched() {
   const sent: (string | null)[] = [];
-  const n = blockedNotice(() => sent.push(n.avis?.genre === "lien-bloque" ? n.avis.domaine : null));
+  const n = blockedNotice(() => sent.push(n.notice?.kind === "lien-bloque" ? n.notice.domain : null));
   return { n, sent };
 }
 
@@ -24,7 +24,7 @@ it("twenty alternated blocks over 1.2 s: at most 3 broadcasts, the last one pub.
   expect(sent.length).toBeGreaterThanOrEqual(1);
   expect(sent.length).toBeLessThanOrEqual(3);
   expect(sent.at(-1)).toBe("pub.localhost");
-  expect(n.avis).toEqual({ genre: "lien-bloque", domaine: "pub.localhost" });
+  expect(n.notice).toEqual({ kind: "lien-bloque", domain: "pub.localhost" });
 });
 
 it("one mention per domain; the last URL is kept for « Ouvrir dans un onglet »", () => {
@@ -34,7 +34,7 @@ it("one mention per domain; the last URL is kept for « Ouvrir dans un onglet »
   vi.advanceTimersByTime(2000);
   expect(sent).toEqual(["pub.localhost"]);
   expect(n.take()).toBe("http://pub.localhost/y");
-  expect(n.avis).toBeNull();
+  expect(n.notice).toBeNull();
   expect(n.take()).toBeNull();
 });
 
@@ -43,7 +43,7 @@ it("about:blank and javascript: are refused without a mention", () => {
   for (const u of ["about:blank", "javascript:alert(1)", "", "pas une adresse"]) n.block(u);
   vi.advanceTimersByTime(2000);
   expect(sent).toEqual([]);
-  expect(n.avis).toBeNull();
+  expect(n.notice).toBeNull();
   expect(n.take()).toBeNull();
 });
 
@@ -51,7 +51,7 @@ it("a new page clears the mention and the URL; the next block is shown again", (
   const { n, sent } = watched();
   n.block(pub);
   n.clear();
-  expect(n.avis).toBeNull();
+  expect(n.notice).toBeNull();
   expect(n.take()).toBeNull();
   vi.advanceTimersByTime(NOTICE_GAP_MS);
   n.block(pub);

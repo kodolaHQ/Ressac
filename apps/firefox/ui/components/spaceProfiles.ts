@@ -7,8 +7,8 @@ export type ProfileChoice = ProfileId | "nouveau";
 export const PROFILE_TO_CHOOSE = "";
 
 export interface ProfileOption {
-  valeur: ProfileChoice;
-  libelle: string;
+  value: ProfileChoice;
+  label: string;
 }
 
 /**
@@ -20,21 +20,21 @@ export interface ProfileOption {
 export function profileOptions(spaces: Space[], profiles: ConnectionProfile[], spaceId: SpaceId | null): ProfileOption[] {
   const rule = spaces.find((e) => e.id === spaceId);
   const others = spaces.filter((e) => e.id !== spaceId);
-  const clean: ProfileChoice = rule && !others.some((e) => e.profil === rule.profil) ? rule.profil : "nouveau";
+  const clean: ProfileChoice = rule && !others.some((e) => e.profile === rule.profile) ? rule.profile : "nouveau";
   const shared = profiles.flatMap((p) => {
-    const names = others.filter((e) => e.profil === p.id).map((e) => e.nom);
-    return names.length > 0 ? [{ valeur: p.id, libelle: `Partagé avec « ${names.join(", ")} »` }] : [];
+    const names = others.filter((e) => e.profile === p.id).map((e) => e.name);
+    return names.length > 0 ? [{ value: p.id, label: `Partagé avec « ${names.join(", ")} »` }] : [];
   });
-  return [{ valeur: clean, libelle: rule ? "Son propre profil" : "Nouveau profil" }, ...shared];
+  return [{ value: clean, label: rule ? "Son propre profil" : "Nouveau profil" }, ...shared];
 }
 
 /** Deleting this space erases its sign-ins: it is the last one using a profile other than the default. */
 export function losesConnections(spaces: Space[], space: Space): boolean {
-  return space.profil !== DEFAULT_PROFILE && !spaces.some((e) => e.id !== space.id && e.profil === space.profil);
+  return space.profile !== DEFAULT_PROFILE && !spaces.some((e) => e.id !== space.id && e.profile === space.profile);
 }
 
 /** Setting space `espaceId` to profile `choix` erases its sign-ins: it leaves a profile it was the last one on. */
 export function choiceLosesConnections(spaces: Space[], spaceId: SpaceId | null, choice: ProfileChoice): boolean {
   const space = spaces.find((e) => e.id === spaceId);
-  return !!space && choice !== space.profil && losesConnections(spaces, space);
+  return !!space && choice !== space.profile && losesConnections(spaces, space);
 }

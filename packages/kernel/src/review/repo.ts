@@ -17,23 +17,23 @@ const REF = "refs/webaios/relu";
 const PATHS_BATCH = 200;
 
 export class ReviewError extends Error {
-  constructor(readonly raison: typeof GIT_REQUIRED | typeof ACCESS_DENIED, detail?: string) {
-    super(detail ? `${raison} : ${detail}` : raison);
+  constructor(readonly reason: typeof GIT_REQUIRED | typeof ACCESS_DENIED, detail?: string) {
+    super(detail ? `${reason} : ${detail}` : reason);
     this.name = "ErreurRelecture";
   }
 }
 
-export interface ModifiedFile { chemin: string; statut: "ajoute" | "modifie" | "supprime"; ajouts: number; suppressions: number; affichable: true | "binaire" | "trop-gros" }
-export interface Comparison { arbreRelu: string; arbreCourant: string; fichiers: ModifiedFile[] }
-export interface DiffFile { chemin: string; statut: ModifiedFile["statut"]; affichable: ModifiedFile["affichable"]; blocs: Block[] }
+export interface ModifiedFile { path: string; status: "ajoute" | "modifie" | "supprime"; additions: number; deletions: number; displayable: true | "binaire" | "trop-gros" }
+export interface Comparison { reviewedTree: string; currentTree: string; files: ModifiedFile[] }
+export interface DiffFile { path: string; status: ModifiedFile["status"]; displayable: ModifiedFile["displayable"]; blocks: Block[] }
 
 const defaultGit = () => process.env.WEBAIOS_GIT ?? "/usr/bin/git";
 
-function launch(git: string, args: string[], env: NodeJS.ProcessEnv, cwd?: string, warnings?: { texte: string }): Promise<string> {
+function launch(git: string, args: string[], env: NodeJS.ProcessEnv, cwd?: string, warnings?: { text: string }): Promise<string> {
   return new Promise((resolve, reject) => {
     execFile(git, args, { env, cwd, encoding: "utf8", maxBuffer: 512 * 1024 * 1024 }, (err, stdout, stderr) => {
       if (!err) {
-        if (warnings) warnings.texte = stderr;
+        if (warnings) warnings.text = stderr;
         return resolve(stdout);
       }
       const e = err as NodeJS.ErrnoException & { code?: string | number };
@@ -55,92 +55,92 @@ export async function gitAvailable(git: string = defaultGit()): Promise<boolean>
 const files = new Map<string, Promise<unknown>>();
 
 export class ReviewStore {
-  private readonly depot: string;
-  private readonly dossier: string;
+  private readonly repo: string;
+  private readonly folder: string;
   private readonly git: string;
 
-  constructor(o: { depot: string; dossier: string; git?: string }) {
-    this.depot = o.depot;
-    this.dossier = o.dossier;
+  constructor(o: { repo: string; folder: string; git?: string }) {
+    this.repo = o.repo;
+    this.folder = o.folder;
     this.git = o.git ?? defaultGit();
   }
 
   /** The operations on the same repository go one after the other. */
-  private serie<T>(f: () => Promise<T>): Promise<T> {
-    const queue = files.get(this.depot) ?? Promise.resolve();
+  private series<T>(f: () => Promise<T>): Promise<T> {
+    const queue = files.get(this.repo) ?? Promise.resolve();
     const next = queue.then(f, f);
-    files.set(this.depot, next.catch(() => {}));
+    files.set(this.repo, next.catch(() => {}));
     return next;
   }
 
   private env(): NodeJS.ProcessEnv {
     return {
       PATH: process.env.PATH,
-      HOME: this.depot,
-      XDG_CONFIG_HOME: this.depot,
+      HOME: this.repo,
+      XDG_CONFIG_HOME: this.repo,
       GIT_CONFIG_NOSYSTEM: "1",
       GIT_CONFIG_GLOBAL: "/dev/null",
       GIT_TERMINAL_PROMPT: "0",
       GIT_OPTIONAL_LOCKS: "0",
-      GIT_CEILING_DIRECTORIES: dirname(this.dossier),
-      GIT_DIR: this.depot,
-      GIT_WORK_TREE: this.dossier,
-      GIT_INDEX_FILE: join(this.depot, "index-webaios"),
+      GIT_CEILING_DIRECTORIES: dirname(this.folder),
+      GIT_DIR: this.repo,
+      GIT_WORK_TREE: this.folder,
+      GIT_INDEX_FILE: join(this.repo, "index-webaios"),
       GIT_AUTHOR_NAME: "WebAiOs", GIT_AUTHOR_EMAIL: "webaios@localhost",
       GIT_COMMITTER_NAME: "WebAiOs", GIT_COMMITTER_EMAIL: "webaios@localhost",
     };
   }
 
   private async g(args: string[]): Promise<string> {
-    return launch(this.git, args, this.env(), this.dossier);
+    return launch(this.git, args, this.env(), this.folder);
   }
 
-  private gitVerifie: Promise<boolean> | null = null;
+  private gitVerified: Promise<boolean> | null = null;
 
-  private async preparer(): Promise<void> {
-    this.gitVerifie ??= gitAvailable(this.git);
-    if (!(await this.gitVerifie)) throw new ReviewError(GIT_REQUIRED, this.git);
+  private async prepare(): Promise<void> {
+    this.gitVerified ??= gitAvailable(this.git);
+    if (!(await this.gitVerified)) throw new ReviewError(GIT_REQUIRED, this.git);
     try {
-      await access(this.dossier, constants.R_OK | constants.X_OK);
-      await readdir(this.dossier);
+      await access(this.folder, constants.R_OK | constants.X_OK);
+      await readdir(this.folder);
     } catch (e) {
       const code = (e as NodeJS.ErrnoException).code;
-      if (code === "EACCES" || code === "EPERM") throw new ReviewError(ACCESS_DENIED, this.dossier);
+      if (code === "EACCES" || code === "EPERM") throw new ReviewError(ACCESS_DENIED, this.folder);
       throw e;
     }
-    if (!(await exists(join(this.depot, "HEAD")))) {
-      await mkdir(dirname(this.depot), { recursive: true, mode: 0o700 });
+    if (!(await exists(join(this.repo, "HEAD")))) {
+      await mkdir(dirname(this.repo), { recursive: true, mode: 0o700 });
       const env = { ...this.env() };
       delete env.GIT_DIR; delete env.GIT_WORK_TREE; delete env.GIT_INDEX_FILE;
-      await launch(this.git, ["init", "--bare", "-q", "--template=", this.depot], env, dirname(this.depot));
-      await mkdir(join(this.depot, "info"), { recursive: true });
-      await writeFile(join(this.depot, "info", "exclude"), EXCLUSIONS.join("\n") + "\n");
+      await launch(this.git, ["init", "--bare", "-q", "--template=", this.repo], env, dirname(this.repo));
+      await mkdir(join(this.repo, "info"), { recursive: true });
+      await writeFile(join(this.repo, "info", "exclude"), EXCLUSIONS.join("\n") + "\n");
     }
   }
 
-  private async photoInterne(): Promise<string> {
-    await this.preparer();
+  private async internalSnapshot(): Promise<string> {
+    await this.prepare();
     for (let attempt = 0; ; attempt++) {
       try {
-        const av = { texte: "" };
-        await launch(this.git, ["add", "-A"], this.env(), this.dossier, av);
-        if (/could not open directory|Permission denied|Operation not permitted/i.test(av.texte)) throw new ReviewError(ACCESS_DENIED, av.texte.trim());
+        const av = { text: "" };
+        await launch(this.git, ["add", "-A"], this.env(), this.folder, av);
+        if (/could not open directory|Permission denied|Operation not permitted/i.test(av.text)) throw new ReviewError(ACCESS_DENIED, av.text.trim());
         break;
       } catch (e) {
         if (e instanceof ReviewError) throw e;
         const s = (e as { stderr?: string }).stderr ?? "";
-        if (/Operation not permitted|Permission denied/i.test(s)) throw new ReviewError(ACCESS_DENIED, this.dossier);
+        if (/Operation not permitted|Permission denied/i.test(s)) throw new ReviewError(ACCESS_DENIED, this.folder);
         // A subfolder that is a repository without a commit cannot become a link: we exclude it.
         const nested = /'(.+)\/' does not have a commit checked out/.exec(s);
         if (!nested || attempt >= 50) throw e;
         const pattern = "/" + nested[1]!.replace(/[\\*?[\]!#]/g, "\\$&") + "/\n";
-        await appendFile(join(this.depot, "info", "exclude"), pattern);
+        await appendFile(join(this.repo, "info", "exclude"), pattern);
       }
     }
     return (await this.g(["write-tree"])).trim();
   }
 
-  private async refRelu(): Promise<string | null> {
+  private async reviewedRef(): Promise<string | null> {
     try {
       return (await this.g(["rev-parse", "-q", "--verify", REF])).trim() || null;
     } catch {
@@ -148,40 +148,40 @@ export class ReviewStore {
     }
   }
 
-  private async retenirInterne(tree: string): Promise<void> {
-    const parent = await this.refRelu();
+  private async keepInternal(tree: string): Promise<void> {
+    const parent = await this.reviewedRef();
     const args = ["commit-tree", tree, ...(parent ? ["-p", parent] : []), "-m", `relu ${new Date().toISOString()}`];
     const commit = (await this.g(args)).trim();
     await this.g(["update-ref", REF, commit]);
   }
 
-  assurerReference(): Promise<boolean> {
-    return this.serie(async () => {
-      await this.preparer();
-      if (await this.refRelu()) return false;
-      await this.retenirInterne(await this.photoInterne());
+  ensureReference(): Promise<boolean> {
+    return this.series(async () => {
+      await this.prepare();
+      if (await this.reviewedRef()) return false;
+      await this.keepInternal(await this.internalSnapshot());
       return true;
     });
   }
 
-  photo(): Promise<string> {
-    return this.serie(() => this.photoInterne());
+  snapshot(): Promise<string> {
+    return this.series(() => this.internalSnapshot());
   }
 
-  retenir(tree?: string): Promise<void> {
-    return this.serie(async () => this.retenirInterne(tree ?? (await this.photoInterne())));
+  keep(tree?: string): Promise<void> {
+    return this.series(async () => this.keepInternal(tree ?? (await this.internalSnapshot())));
   }
 
-  comparer(): Promise<Comparison> {
-    return this.serie(async () => {
-      await this.preparer();
-      const current = await this.photoInterne();
-      if (!(await this.refRelu())) await this.retenirInterne(current);
+  compare(): Promise<Comparison> {
+    return this.series(async () => {
+      await this.prepare();
+      const current = await this.internalSnapshot();
+      if (!(await this.reviewedRef())) await this.keepInternal(current);
       const reviewed = (await this.g(["rev-parse", `${REF}^{tree}`])).trim();
-      if (reviewed === current) return { arbreRelu: reviewed, arbreCourant: current, fichiers: [] };
+      if (reviewed === current) return { reviewedTree: reviewed, currentTree: current, files: [] };
 
       const raw = (await this.g(["diff-tree", "-r", "--no-renames", "-z", "--raw", reviewed, current])).split("\0");
-      const statuses = new Map<string, ModifiedFile["statut"]>();
+      const statuses = new Map<string, ModifiedFile["status"]>();
       for (let i = 0; i + 1 < raw.length; i += 2) {
         const meta = raw[i]!.split(" "); // ":ancienMode nouveauMode ancienSha nouveauSha STATUT"
         const path = raw[i + 1]!;
@@ -190,13 +190,13 @@ export class ReviewStore {
         const s = meta[4]![0];
         statuses.set(path, s === "A" ? "ajoute" : s === "D" ? "supprime" : "modifie");
       }
-      if (statuses.size === 0) return { arbreRelu: reviewed, arbreCourant: current, fichiers: [] };
+      if (statuses.size === 0) return { reviewedTree: reviewed, currentTree: current, files: [] };
 
-      const nums = new Map<string, { ajouts: number; suppressions: number; binaire: boolean }>();
+      const nums = new Map<string, { additions: number; deletions: number; binary: boolean }>();
       for (const recorder of (await this.g(["diff-tree", "-r", "--no-renames", "-z", "--numstat", reviewed, current])).split("\0")) {
         const [a, d, ...rest] = recorder.split("\t");
         if (rest.length === 0) continue;
-        nums.set(rest.join("\t"), a === "-" ? { ajouts: 0, suppressions: 0, binaire: true } : { ajouts: Number(a), suppressions: Number(d), binaire: false });
+        nums.set(rest.join("\t"), a === "-" ? { additions: 0, deletions: 0, binary: true } : { additions: Number(a), deletions: Number(d), binary: false });
       }
 
       const paths = [...statuses.keys()];
@@ -215,35 +215,35 @@ export class ReviewStore {
       }
 
       const files: ModifiedFile[] = paths.sort().map((path) => {
-        const n = nums.get(path) ?? { ajouts: 0, suppressions: 0, binaire: false };
-        const displayable: ModifiedFile["affichable"] = n.binaire
+        const n = nums.get(path) ?? { additions: 0, deletions: 0, binary: false };
+        const displayable: ModifiedFile["displayable"] = n.binary
           ? "binaire"
-          : (sizes.get(path) ?? 0) > BYTES_LIMIT || n.ajouts + n.suppressions > DIFF_LINES_LIMIT ? "trop-gros" : true;
-        return { chemin: path, statut: statuses.get(path)!, ajouts: n.ajouts, suppressions: n.suppressions, affichable: displayable };
+          : (sizes.get(path) ?? 0) > BYTES_LIMIT || n.additions + n.deletions > DIFF_LINES_LIMIT ? "trop-gros" : true;
+        return { path: path, status: statuses.get(path)!, additions: n.additions, deletions: n.deletions, displayable: displayable };
       });
-      return { arbreRelu: reviewed, arbreCourant: current, fichiers: files };
+      return { reviewedTree: reviewed, currentTree: current, files: files };
     });
   }
 
-  fichier(c: Comparison, path: string): Promise<DiffFile> {
-    return this.serie(async () => {
-      const f = c.fichiers.find((x) => x.chemin === path);
+  file(c: Comparison, path: string): Promise<DiffFile> {
+    return this.series(async () => {
+      const f = c.files.find((x) => x.path === path);
       if (!f) throw new Error(`fichier absent de la comparaison : ${path}`);
-      if (f.affichable !== true) return { chemin: path, statut: f.statut, affichable: f.affichable, blocs: [] };
-      const patch = await this.g(["diff-tree", "-p", `-U${DIFF_CONTEXT}`, "--no-color", "--no-ext-diff", "--no-textconv", "--no-renames", c.arbreRelu, c.arbreCourant, "--", `:(literal)${path}`]);
-      return { chemin: path, statut: f.statut, affichable: true, blocs: parserDiff(patch) };
+      if (f.displayable !== true) return { path: path, status: f.status, displayable: f.displayable, blocks: [] };
+      const patch = await this.g(["diff-tree", "-p", `-U${DIFF_CONTEXT}`, "--no-color", "--no-ext-diff", "--no-textconv", "--no-renames", c.reviewedTree, c.currentTree, "--", `:(literal)${path}`]);
+      return { path: path, status: f.status, displayable: true, blocks: parserDiff(patch) };
     });
   }
 
-  lignes(tree: string, path: string, start: number, end: number): Promise<string[]> {
-    return this.serie(async () => {
+  lines(tree: string, path: string, start: number, end: number): Promise<string[]> {
+    return this.series(async () => {
       const content = await this.g(["cat-file", "blob", `${tree}:${path}`]);
       return content.split("\n").slice(Math.max(0, start - 1), end);
     });
   }
 
   supprimer(): Promise<void> {
-    return this.serie(() => rm(this.depot, { recursive: true, force: true }));
+    return this.series(() => rm(this.repo, { recursive: true, force: true }));
   }
 }
 

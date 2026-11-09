@@ -14,28 +14,28 @@ export function createBadgeApi(raw: BadgeChrome): BadgeApi {
     return unsubscribe;
   };
   return {
-    acces: {
-      etat: () =>
+    access: {
+      state: () =>
         Promise.resolve()
-          .then(() => structuredClone(raw.acces.etat()))
+          .then(() => structuredClone(raw.access.state()))
           .catch((e) => Promise.reject(local(e))),
-      couper: (id, right) => raw.acces.couper(id, right),
+      cut: (id, right) => raw.access.cut(id, right),
     },
-    surAcces: (cb) => untilUnload(raw.surAcces((e) => cb(structuredClone(e)))),
-    pastilleTaille: (opened) => void (typeof opened === "boolean" && raw.pastilleTaille(opened)),
+    onAccess: (cb) => untilUnload(raw.onAccess((e) => cb(structuredClone(e)))),
+    badgeSize: (opened) => void (typeof opened === "boolean" && raw.badgeSize(opened)),
     design: {
-      etat: () =>
+      state: () =>
         Promise.resolve()
-          .then(() => raw.design.etat())
+          .then(() => raw.design.state())
           .then(
             (e) => structuredClone(e),
             (e) => Promise.reject(local(e)),
           ),
-      basculer: () => raw.design.basculer(),
-      panier: () => raw.design.panier(),
-      relire: () => raw.design.relire(),
+      toggle: () => raw.design.toggle(),
+      basket: () => raw.design.basket(),
+      review: () => raw.design.review(),
       // design.svelte.ts, in this bundle for App.svelte, subscribes as it loads; AppBadge reads the state as its menu opens.
-      surChange: () => () => {},
+      onChange: () => () => {},
     } as BadgeApi["design"],
   };
 }

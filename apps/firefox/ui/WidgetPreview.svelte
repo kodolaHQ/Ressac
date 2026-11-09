@@ -12,7 +12,7 @@
    * The floating preview of the widget as the home page shows it (same isolated frame), with
    * the chosen run's data. The Firefox home places widgets freely: its placement is turned back into grid units.
    */
-  let { id, executions }: { id: string; executions: Executions } = $props();
+  let { id, runs: executions }: { id: string; runs: Executions } = $props();
 
   /** Width of a home column at its maximum width (1200 px, 12 columns). */
   const COLUMN_PX = 89;
@@ -22,19 +22,19 @@
     let n = 0;
     const load = () => {
       const m = ++n;
-      void api.accueil
-        .lire()
+      void api.home
+        .read()
         .then(({ widgets }) => m === n && (widget = widgets.find((w) => w.id === id) ?? null))
         .catch(() => {});
     };
     load();
-    return api.accueil.surChange(load);
+    return api.home.onChange(load);
   }));
 
-  const shown = $derived(widget && !("erreur" in widget) ? widget : null);
+  const shown = $derived(widget && !("error" in widget) ? widget : null);
   const preview = $derived(
     shown
-      ? previewData({ choisie: executions.choisie, detail: executions.detail, liste: executions.liste, widget: shown })
+      ? previewData({ chosen: executions.chosen, detail: executions.detail, list: executions.list, widget: shown })
       : null,
   );
   const size = $derived(shown ? freeUnits(shown.placement) : { l: 1, h: 1 });
@@ -44,14 +44,14 @@
 
 <div class="apercu" data-testid="apercu-widget">
   {#if !shown || !preview}
-    <p class="doux">{widget && "erreur" in widget ? `Widget illisible : ${widget.erreur}` : "Chargement…"}</p>
+    <p class="doux">{widget && "error" in widget ? `Widget illisible : ${widget.error}` : "Chargement…"}</p>
   {:else}
     <div class="cadre" style:width="{width}px" style:height="{height}px">
       <WidgetFrame
         widget={shown}
-        donnees={preview.donnees}
-        taille={size}
-        etat={{ statut: shown.etat.statut, derniereMaj: shown.etat.derniereMaj }}
+        data={preview.data}
+        size={size}
+        state={{ status: shown.state.status, lastUpdate: shown.state.lastUpdate }}
       />
     </div>
     {#if preview.mention}<p class="doux mention" data-testid="apercu-mention">Aperçu : données non gardées dans cette exécution</p>{/if}

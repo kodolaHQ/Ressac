@@ -20,14 +20,14 @@ export function wrapOverlayApi(raw: OverlayApi, untilUnload: (unsubscribe: () =>
         (e) => Promise.reject(local(e)),
       );
   return {
-    contexte: () => copy(() => raw.contexte()),
-    ajouter: (text) => copy(() => raw.ajouter(text)),
-    annuler: () => raw.annuler(),
-    panier: (p) => copy(() => raw.panier(p)),
-    retirer: (p, id) => copy(() => raw.retirer(p, id)),
-    envoyer: (p) => copy(() => raw.envoyer(p)),
-    lots: (p) => copy(() => raw.lots(p)),
-    traite: (p, batch) => copy(() => raw.traite(p, batch)),
-    surChange: (cb) => untilUnload(raw.surChange(() => cb())),
+    context: () => copy(() => raw.context()),
+    add: (text) => copy(() => raw.add(text)),
+    cancel: () => raw.cancel(),
+    basket: (p) => copy(() => raw.basket(p)),
+    remove: (p, id) => copy(() => raw.remove(p, id)),
+    send: (p) => copy(() => raw.send(p)),
+    batches: (p) => copy(() => raw.batches(p)),
+    handled: (p, batch) => copy(() => raw.handled(p, batch)),
+    onChange: (cb) => untilUnload(raw.onChange(() => cb())),
   };
 }

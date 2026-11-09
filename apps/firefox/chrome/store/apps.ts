@@ -13,8 +13,8 @@ import { frameFeatures, frameOf, installGuard, openInContainer } from "./sites";
 export const APP_WINDOW_KEY = "webaios-app";
 
 interface OpenApp {
-  dossier: string;
-  nom: string;
+  folder: string;
+  name: string;
   /** `http://localhost:<port>`: follows a relaunch on another port. */
   origin: string;
   userContextId: number;
@@ -32,16 +32,16 @@ let dataDir = "";
 /** After quit-application-granted, a window closing is the quit's, never the user's (spike S8). */
 let quitting = false;
 const closeListeners = new Set<() => void>();
-let access: () => AccessState = () => ({ agent: "L'agent", onglets: {} });
-let design: Pick<DesignService, "etat" | "toggle" | "openCart" | "relire"> | null = null;
+let access: () => AccessState = () => ({ agent: "L'agent", tabs: {} });
+let design: Pick<DesignService, "state" | "toggle" | "openCart" | "review"> | null = null;
 
 /** What the badge frame of an app window gets from the chrome (ui/badge-api.ts copies every value it hands over). */
 export interface BadgeChrome {
-  acces: { etat(): AccessState; couper(id: unknown, right: unknown): void };
-  surAcces(cb: (e: AccessState) => void): () => void;
-  pastilleTaille(openedApp: unknown): void;
+  access: { state(): AccessState; cut(id: unknown, right: unknown): void };
+  onAccess(cb: (e: AccessState) => void): () => void;
+  badgeSize(openedApp: unknown): void;
   /** Its window's design mode (target `app`, from the window, never from the frame). */
-  design: { etat(): Promise<DesignState>; basculer(): void; panier(): void; relire(): void };
+  design: { state(): Promise<DesignState>; toggle(): void; basket(): void; review(): void };
 }
 
 // Badge sizes: closed, the WebAiOs button alone or with the agent's access; open, its bubble or menu.
@@ -101,9 +101,9 @@ function closeStray(browser: any): void {
 
 /** The window is gone (from its creation on): the host is told, unless it was replaced or forgotten meanwhile. */
 function closed(a: OpenApp): void {
-  if (open.get(a.dossier) === a) {
-    open.delete(a.dossier);
-    host?.notify("applications.fenetreFermee", { dossier: a.dossier, byUser: !a.wanted && !quitting });
+  if (open.get(a.folder) === a) {
+    open.delete(a.folder);
+    host?.notify("applications.fenetreFermee", { folder: a.folder, byUser: !a.wanted && !quitting });
   }
   told();
 }
@@ -129,23 +129,23 @@ export const apps = {
    * Opens the app's window on `http://localhost:<port>/`, or reloads the open one there (a relaunch, maybe on another
    * port: the guard follows the new origin). An invalid dossier opens nothing.
    */
-  open(a: { dossier: string; nom: string; port: number }, frame: FrameBounds | null): void {
-    if (typeof a?.dossier !== "string" || !validFolder(a.dossier) || typeof a.nom !== "string" || !Number.isInteger(a.port) || a.port <= 0 || a.port > 65535) return;
+  open(a: { folder: string; name: string; port: number }, frame: FrameBounds | null): void {
+    if (typeof a?.folder !== "string" || !validFolder(a.folder) || typeof a.name !== "string" || !Number.isInteger(a.port) || a.port <= 0 || a.port > 65535) return;
     const origin = `http://localhost:${a.port}`;
-    const known = open.get(a.dossier);
+    const known = open.get(a.folder);
     if (known && !known.window.closed) {
-      known.nom = a.nom;
+      known.name = a.name;
       known.origin = origin;
       load(known);
-      apps.show(a.dossier);
+      apps.show(a.folder);
       return;
     }
-    const userContextId = appContainer(a.dossier);
+    const userContextId = appContainer(a.folder);
     const marker = Cc["@mozilla.org/hash-property-bag;1"].createInstance(Ci.nsIWritablePropertyBag2);
-    marker.setPropertyAsAString(APP_WINDOW_KEY, a.dossier);
+    marker.setPropertyAsAString(APP_WINDOW_KEY, a.folder);
     const win = openInContainer(userContextId, marker, frameFeatures(frame));
-    const app: OpenApp = { dossier: a.dossier, nom: a.nom, origin, userContextId, window: win, view: null, wanted: false };
-    open.set(a.dossier, app);
+    const app: OpenApp = { folder: a.folder, name: a.name, origin, userContextId, window: win, view: null, wanted: false };
+    open.set(a.folder, app);
     const onClose = {
       observe(w: unknown, topic: string) {
         if (topic !== "domwindowclosed" || w !== win) return;
@@ -193,16 +193,16 @@ export const apps = {
   /** The host is gone: every app window closes, as wanted closes, and is forgotten at once (spec §13.8). */
   closeAll(): void {
     for (const a of [...open.values()]) {
-      open.delete(a.dossier);
+      open.delete(a.folder);
       void closeWindow(a);
     }
   },
   /** The app as its window reads it while it is set up (app-window.ts): undefined if it is not this window's. */
-  appOf(win: Window): Pick<OpenApp, "dossier" | "nom" | "origin"> | undefined {
+  appOf(win: Window): Pick<OpenApp, "folder" | "name" | "origin"> | undefined {
     return [...open.values()].find((a) => a.window === win);
   },
-  dossierOf(win: Window): string | undefined {
-    return apps.appOf(win)?.dossier;
+  folderOf(win: Window): string | undefined {
+    return apps.appOf(win)?.folder;
   },
   /** The window is set up: its view is attached and sent to the app. */
   attach(win: Window, browser: any): void {
@@ -217,7 +217,7 @@ export const apps = {
   navigated(win: Window, url: string): void {
     const a = [...open.values()].find((x) => x.window === win);
     if (!a) return;
-    host?.notify("applications.navigation", { dossier: a.dossier, url, titre: apps.titleOf(a) });
+    host?.notify("applications.navigation", { folder: a.folder, url, title: apps.titleOf(a) });
     told();
   },
   /** The frame (resize, move, close) and a kept favicon, for the host's memory. */
@@ -225,11 +225,11 @@ export const apps = {
     const a = [...open.values()].find((x) => x.window === win);
     if (!a) return;
     const frame = o.frame ? frameOf(win) : null;
-    if (frame) host?.notify("applications.noter", { dossier: a.dossier, cadre: frame });
-    if (o.favicon) host?.notify("applications.noter", { dossier: a.dossier, favicon: o.favicon });
+    if (frame) host?.notify("applications.noter", { folder: a.folder, frame: frame });
+    if (o.favicon) host?.notify("applications.noter", { folder: a.folder, favicon: o.favicon });
   },
-  titleOf(a: Pick<OpenApp, "nom" | "view">): string {
-    return String(a.view?.contentTitle ?? "").trim() || a.nom;
+  titleOf(a: Pick<OpenApp, "name" | "view">): string {
+    return String(a.view?.contentTitle ?? "").trim() || a.name;
   },
   /** The app view's <browser> and its window. */
   viewFor(folder: string): { browser: any; window: Window } | undefined {
@@ -237,12 +237,12 @@ export const apps = {
     return a?.view && !a.window.closed ? { browser: a.view, window: a.window } : undefined;
   },
   /** The open windows for the agent, seen as `app:<dossier>` tabs. */
-  forAgent(): { dossier: string; titre: string; url: string }[] {
+  forAgent(): { folder: string; title: string; url: string }[] {
     return [...open.values()]
       .filter((a) => !a.window.closed)
       .map((a) => {
         const url: string = a.view?.currentURI?.spec ?? "";
-        return { dossier: a.dossier, titre: apps.titleOf(a), url: url && url !== "about:blank" ? url : a.origin + "/" };
+        return { folder: a.folder, title: apps.titleOf(a), url: url && url !== "about:blank" ? url : a.origin + "/" };
       });
   },
   /** Navigation on `app:`: in the window on the app's origin, else false (the bridge opens a tab). */
@@ -293,20 +293,20 @@ export const apps = {
    * that access and its menu change, its own app's design mode. Undefined if the window is not an app's.
    */
   badge(win: Window, size: (width: number, height: number) => void): BadgeChrome | undefined {
-    const folder = apps.dossierOf(win);
+    const folder = apps.folderOf(win);
     if (!folder) return undefined;
     const id = "app:" + folder;
-    const target = { type: "app" as const, dossier: folder };
+    const target = { type: "app" as const, folder: folder };
     // Never another tab's access.
     const own = (): AccessState => {
       const e = access();
-      const t = e.onglets[id];
-      return { agent: e.agent, onglets: t ? { [id]: t } : {} };
+      const t = e.tabs[id];
+      return { agent: e.agent, tabs: t ? { [id]: t } : {} };
     };
     let opened = false;
     const place = () => {
-      const t = access().onglets[id];
-      const [width, height] = opened ? BADGE.open : t && (t.lecture || t.droits.length > 0) ? BADGE.withAccess : BADGE.closed;
+      const t = access().tabs[id];
+      const [width, height] = opened ? BADGE.open : t && (t.read || t.rights.length > 0) ? BADGE.withAccess : BADGE.closed;
       size(width, height);
     };
     const listeners = new Set<(e: AccessState) => void>();
@@ -323,35 +323,35 @@ export const apps = {
     win.addEventListener("unload", () => offs.forEach((f) => f?.()), { once: true });
     place();
     return {
-      acces: {
-        etat: own,
+      access: {
+        state: own,
         // Its own app's access only.
-        couper: (cut, right) => {
-          if (cut === id && (right === undefined || typeof right === "string")) host?.notify("politique.couper", { id, droit: right });
+        cut: (cut, right) => {
+          if (cut === id && (right === undefined || typeof right === "string")) host?.notify("politique.couper", { id, right: right });
         },
       },
-      surAcces(cb) {
+      onAccess(cb) {
         listeners.add(cb);
         return () => void listeners.delete(cb);
       },
-      pastilleTaille(openedApp) {
+      badgeSize(openedApp) {
         if (typeof openedApp !== "boolean") return;
         opened = openedApp;
         place();
       },
       design: {
         // Set by bindApps, before any app window opens.
-        etat: () => design!.etat(target),
-        basculer: () => void design!.toggle(target),
-        panier: () => void design!.openCart(target),
+        state: () => design!.state(target),
+        toggle: () => void design!.toggle(target),
+        basket: () => void design!.openCart(target),
         // The Review page of any app, one without manifest included.
-        relire: () => void design!.relire(target),
+        review: () => void design!.review(target),
       },
     };
   },
   /** The host's requests (host/applications.ts chrome), positional params. */
   handlers: {
-    "apps.ouvrir": ([a, frame]: [{ dossier: string; nom: string; port: number }, FrameBounds | null]) => apps.open(a, frame),
+    "apps.ouvrir": ([a, frame]: [{ folder: string; name: string; port: number }, FrameBounds | null]) => apps.open(a, frame),
     "apps.fermer": ([folder]: [string]) => apps.close(folder),
     "apps.montrer": ([folder]: [string]) => apps.show(folder),
     "apps.effacer": ([folder]: [string]) => apps.erase(folder),

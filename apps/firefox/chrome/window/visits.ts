@@ -7,7 +7,7 @@ const { LOCATION_CHANGE_ERROR_PAGE, LOCATION_CHANGE_SAME_DOCUMENT, STATE_START, 
 /** The page's text is read this long after it settled. */
 const CAPTURE_DELAY_MS = 1500;
 
-type Context = { espaceId: string; prive: boolean } | null;
+type Context = { spaceId: string; private: boolean } | null;
 
 /**
  * For a top-level document response: its browser, and whether it is HTTP-authenticated (sent an Authorization header
@@ -57,21 +57,21 @@ export function trackVisits(gBrowser: any, history: History, context: (id: strin
     const url: string = browser.currentURI?.spec ?? "";
     const id = idOf(gBrowser.getTabForBrowser(browser));
     const c = id && context(id);
-    if (!c || c.prive || !/^https?:\/\//.test(url) || skipped.has(browser)) return;
-    timers.set(browser, window.setTimeout(() => void retain(browser, id, url, c.espaceId).catch(() => {}), CAPTURE_DELAY_MS));
+    if (!c || c.private || !/^https?:\/\//.test(url) || skipped.has(browser)) return;
+    timers.set(browser, window.setTimeout(() => void retain(browser, id, url, c.spaceId).catch(() => {}), CAPTURE_DELAY_MS));
   };
   const retain = async (browser: any, id: string, url: string, spaceId: string) => {
     timers.delete(browser);
     const stillHere = () => {
       const c = context(id);
-      return browser.currentURI?.spec === url && c && !c.prive && c.espaceId === spaceId;
+      return browser.currentURI?.spec === url && c && !c.private && c.spaceId === spaceId;
     };
     if (!stillHere()) return;
     const actor = browser.browsingContext.currentWindowGlobal.getActor("WebAiOsPage");
     const parts: PageParts | undefined = await actor.sendQuery("getParts", { video: isYoutubeVideo(url) });
     // An actor built before getParts existed answers nothing: fall back to the body text alone.
     const text = parts ? composeText(parts) : String((await actor.sendQuery("getText"))?.texte ?? "");
-    if (stillHere() && text.trim()) history.retain({ url, espaceId: spaceId, titre: browser.contentTitle || url, texte: text });
+    if (stillHere() && text.trim()) history.retain({ url, spaceId: spaceId, title: browser.contentTitle || url, text: text });
   };
   gBrowser.addTabsProgressListener({
     onStateChange: (browser: any, progress: any, _request: unknown, flags: number, status: number) => {

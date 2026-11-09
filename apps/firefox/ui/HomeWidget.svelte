@@ -9,31 +9,31 @@
   let {
     widget,
     placement,
-    geste: gesture,
-    avertissement: warning,
-    refuse: denied,
-    commencer,
-    retirer: remove,
-    autoriser: allow,
-    refuser: deny,
-    recolter: harvest,
-    voirWorkflow: seeWorkflow,
+    gesture: gesture,
+    warning: warning,
+    denied: denied,
+    start: commencer,
+    remove: remove,
+    allow: allow,
+    deny: deny,
+    harvest: harvest,
+    viewWorkflow: seeWorkflow,
   }: {
     widget: ShownWidget;
     /** The place shown (the preview's during a drag). */
     placement: FreePlacement;
     /** A drag or resize is under way on the grid: the frame does not capture the mouse. */
-    geste: boolean;
+    gesture: boolean;
     /** The requested action changed nothing (widget service missing…). */
-    avertissement: string | null;
+    warning: string | null;
     /** The user refused the read with their account: the banner does not come back. */
-    refuse: boolean;
-    commencer: (mode: "deplacer" | "taille", e: PointerEvent) => void;
-    retirer: () => void;
-    autoriser: () => void;
-    refuser: () => void;
-    recolter: () => void;
-    voirWorkflow: () => void;
+    denied: boolean;
+    start: (mode: "deplacer" | "taille", e: PointerEvent) => void;
+    remove: () => void;
+    allow: () => void;
+    deny: () => void;
+    harvest: () => void;
+    viewWorkflow: () => void;
   } = $props();
 
   const date = (iso: string | null | undefined) =>
@@ -49,13 +49,13 @@
   });
   // Never for a widget waiting for the user's grant: nothing goes out without them.
   const next = $derived(
-    "erreur" in widget || widget.etat.statut === "accord-requis"
+    "error" in widget || widget.state.status === "accord-requis"
       ? null
       : nextRun(
-          widget.heures,
+          widget.hours,
           now,
-          widget.minutes !== null ? { minutes: widget.minutes, derniereMaj: widget.etat.derniereMaj } : undefined,
-          widget.etat,
+          widget.minutes !== null ? { minutes: widget.minutes, lastUpdate: widget.state.lastUpdate } : undefined,
+          widget.state,
         ),
   );
 
@@ -73,21 +73,21 @@
   <!-- The header is the drag handle: the widget's frame swallows the mouse events. -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <header onpointerdown={handle}>
-    {#if "erreur" in widget}
-      <p class="illisible">Widget « {widget.id} » illisible : {widget.erreur}</p>
+    {#if "error" in widget}
+      <p class="illisible">Widget « {widget.id} » illisible : {widget.error}</p>
     {:else}
-      <h2 data-testid="titre-widget">{widget.nom}</h2>
-      {#if widget.etat.statut === "en-cours"}
-        {#if widget.etat.progression}
-          <span class="badge" data-testid="progression">mise à jour… {widget.etat.progression.faits} / {widget.etat.progression.total}</span>
+      <h2 data-testid="titre-widget">{widget.name}</h2>
+      {#if widget.state.status === "en-cours"}
+        {#if widget.state.progress}
+          <span class="badge" data-testid="progression">mise à jour… {widget.state.progress.done} / {widget.state.progress.total}</span>
         {:else}
           <span class="badge">mise à jour…</span>
         {/if}
-      {:else if widget.etat.statut === "erreur"}
-        <span class="badge echec" title={widget.etat.journal ?? ""}
-          >échec du {date(widget.etat.derniereTentative)} : {widget.etat.erreur ?? "erreur inconnue"}</span
+      {:else if widget.state.status === "erreur"}
+        <span class="badge echec" title={widget.state.log ?? ""}
+          >échec du {date(widget.state.lastAttempt)} : {widget.state.error ?? "erreur inconnue"}</span
         >
-      {:else if widget.etat.statut === "atelier-arrete"}
+      {:else if widget.state.status === "atelier-arrete"}
         <span class="badge echec">mise à jour impossible : atelier arrêté</span>
       {:else if next}
         <span class="badge doux" data-testid="prochaine">prochaine : {next}</span>
@@ -95,13 +95,13 @@
     {/if}
     <div class="actions">
       <button class="menu" aria-label="Options du widget" title="Options du widget" onclick={() => (menuOpen = !menuOpen)}>
-        <Icon nom="options" taille={14} />
+        <Icon name="options" size={14} />
       </button>
       {#if menuOpen}
         <div class="liste" role="menu">
-          {#if !("erreur" in widget)}
+          {#if !("error" in widget)}
             <button role="menuitem" onclick={() => ((menuOpen = false), harvest())}>Mettre à jour maintenant</button>
-            {#if widget.aRecolte}
+            {#if widget.hasHarvest}
               <button role="menuitem" onclick={() => ((menuOpen = false), seeWorkflow())}>Voir / modifier le workflow</button>
             {/if}
           {/if}
@@ -110,11 +110,11 @@
       {/if}
     </div>
   </header>
-  {#if !("erreur" in widget)}
-    {#if widget.etat.statut === "accord-requis" && !denied}
+  {#if !("error" in widget)}
+    {#if widget.state.status === "accord-requis" && !denied}
       <div class="bandeau" data-testid="bandeau-accord">
         <span
-          >Ce widget veut lire {widget.compte.join(", ")} avec ton compte{#if widget.publiques.length}, et pourra contacter : {widget.publiques.join(", ")}{:else}, et ne contactera aucun autre site{/if}.</span
+          >Ce widget veut lire {widget.account.join(", ")} avec ton compte{#if widget.public.length}, et pourra contacter : {widget.public.join(", ")}{:else}, et ne contactera aucun autre site{/if}.</span
         >
         <button onclick={allow}>Autoriser…</button>
         <button onclick={deny}>Refuser</button>
@@ -123,9 +123,9 @@
     {#if warning}<p class="avertissement">{warning}</p>{/if}
     <WidgetFrame
       {widget}
-      donnees={widget.donnees ?? widget.exemple}
-      taille={size}
-      etat={{ statut: widget.etat.statut, derniereMaj: widget.etat.derniereMaj }}
+      data={widget.data ?? widget.example}
+      size={size}
+      state={{ status: widget.state.status, lastUpdate: widget.state.lastUpdate }}
     />
   {:else if warning}
     <p class="avertissement">{warning}</p>

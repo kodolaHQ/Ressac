@@ -16,52 +16,52 @@ const STOP_WAIT_MS = 15_000;
 /** A running action, from its traces: what its page shows during the run. */
 export type DirectAction = {
   action: string;
-  debut: string;
-  saisie: string | null;
-  essai: boolean;
-  etape: "workflow" | "mise-en-page";
+  start: string;
+  input: string | null;
+  attempt: boolean;
+  step: "workflow" | "mise-en-page";
   /** `type`: that of the block in the workflow (its label is the catalog's). */
-  blocs: Record<string, { statut: "en-cours" | "reussi" | "partiel" | "echoue"; elements: number | null; faits?: number; total?: number; hote?: string; type?: string }>;
+  blocks: Record<string, { status: "en-cours" | "reussi" | "partiel" | "echoue"; items: number | null; done?: number; total?: number; host?: string; type?: string }>;
 };
-export type ActionsState = { courantes: DirectAction[]; enAttente: { action: string; depuis: string }[] };
+export type ActionsState = { running: DirectAction[]; waiting: { action: string; since: string }[] };
 /** `deja`: the action was already running (or waiting); `fin` is that of this run. */
-export type ActionLaunch = { deja: boolean; fin: Promise<LaunchResult> };
+export type ActionLaunch = { already: boolean; end: Promise<LaunchResult> };
 export type { LaunchResult };
 
 export interface OptionsFileActions {
-  chemins: SpacePaths;
-  dossierActions: string;
-  moteur: string;
-  atelier: Pick<Workshop, "etat" | "commandeRecolte" | "supprimerRecolte">;
-  lancer?: ProcessLauncher;
-  pont: BrowserBridge;
+  paths: SpacePaths;
+  actionsFolder: string;
+  engine: string;
+  workshop: Pick<Workshop, "state" | "harvestCommand" | "deleteHarvest">;
+  launch?: ProcessLauncher;
+  bridge: BrowserBridge;
   /** The dispatcher shared with the widgets; null without local AI. */
-  repartiteur: Pick<AiDispatcher, "pour"> | null;
-  horloge?: () => Date;
+  dispatcher: Pick<AiDispatcher, "for"> | null;
+  clock?: () => Date;
   /** Workshop start: no action leaves before. */
-  pret?: Promise<unknown>;
+  ready?: Promise<unknown>;
   /** Called on each change of `direct()`; must return control right away. */
-  surDirect?: (e: ActionsState) => void;
-  adressesLocales?: boolean;
-  menagement?: Pacing;
-  urlRecherche?: string;
-  delaiMiseEnPageMs?: number;
+  onLive?: (e: ActionsState) => void;
+  localAddresses?: boolean;
+  pacing?: Pacing;
+  searchUrl?: string;
+  layoutDelayMs?: number;
   /** Bounded wait for running actions at shutdown (15 s by default). */
-  attenteArretMs?: number;
+  stopWaitMs?: number;
   /** Tests: replaces the real run of an action. */
-  executer?: (o: OptionsAction) => Promise<LaunchResult>;
+  run?: (o: OptionsAction) => Promise<LaunchResult>;
 }
 
 type Request = {
   id: string;
-  saisie: string | null;
-  declencheur: Execution["declencheur"];
-  essai: { origine: string; depart: string } | null;
+  input: string | null;
+  trigger: Execution["trigger"];
+  attempt: { origin: string; start: string } | null;
   ctl: AbortController;
-  fin: Promise<LaunchResult>;
-  depuis: string;
+  end: Promise<LaunchResult>;
+  since: string;
   /** Present while waiting for a slot: grants it (true) or gives up (false). */
-  placer?: (ok: boolean) => void;
+  place?: (ok: boolean) => void;
   direct?: DirectAction;
 };
 
@@ -71,37 +71,37 @@ type Request = {
  * time per action (a request while it runs or waits returns that one).
  */
 export class FileActions {
-  private readonly o: OptionsFileActions & { horloge: () => Date; executer: (o: OptionsAction) => Promise<LaunchResult> };
+  private readonly o: OptionsFileActions & { clock: () => Date; run: (o: OptionsAction) => Promise<LaunchResult> };
   /** Per action, its pending or running request. */
-  private readonly parAction = new Map<string, Request>();
+  private readonly perAction = new Map<string, Request>();
   /** Requests that have a slot (they run), in the order they got it. */
-  private enCours: Request[] = [];
+  private running: Request[] = [];
   /** Requests waiting for a slot. */
-  private attente: Request[] = [];
-  private arrete = false;
+  private pending: Request[] = [];
+  private isStopped = false;
 
   constructor(o: OptionsFileActions) {
-    this.o = { ...o, horloge: o.horloge ?? (() => new Date()), executer: o.executer ?? runAction };
+    this.o = { ...o, clock: o.clock ?? (() => new Date()), run: o.run ?? runAction };
   }
 
-  lancer(id: string, o: { saisie: string | null; declencheur: Execution["declencheur"] }): ActionLaunch {
-    return this.demander(id, { saisie: cutInput(o.saisie), declencheur: o.declencheur, essai: null });
+  launch(id: string, o: { input: string | null; trigger: Execution["trigger"] }): ActionLaunch {
+    return this.ask(id, { input: cutInput(o.input), trigger: o.trigger, attempt: null });
   }
 
   /** Builder trial: replays from `depart` with the upstream outputs of run `origine`. */
-  essayer(id: string, origin: string, start: string): ActionLaunch {
-    return this.demander(id, { saisie: null, declencheur: "rejeu", essai: { origine: origin, depart: start } });
+  try(id: string, origin: string, start: string): ActionLaunch {
+    return this.ask(id, { input: null, trigger: "rejeu", attempt: { origin: origin, start: start } });
   }
 
   /** Stops this action's run (or removes it from the queue); false if it neither runs nor waits. */
-  arreter(id: string): boolean {
-    const d = this.parAction.get(id);
+  stop(id: string): boolean {
+    const d = this.perAction.get(id);
     if (!d) return false;
     d.ctl.abort();
-    if (d.placer) {
-      this.attente = this.attente.filter((x) => x !== d);
-      d.placer(false);
-      this.signalerDirect();
+    if (d.place) {
+      this.pending = this.pending.filter((x) => x !== d);
+      d.place(false);
+      this.signalDirect();
     }
     return true;
   }
@@ -109,8 +109,8 @@ export class FileActions {
   direct(): ActionsState {
     // A copy: the caller does not see the tracked state move, and cannot modify it.
     return structuredClone({
-      courantes: this.enCours.flatMap((d) => (d.direct ? [d.direct] : [])),
-      enAttente: this.attente.map((d) => ({ action: d.id, depuis: d.depuis })),
+      running: this.running.flatMap((d) => (d.direct ? [d.direct] : [])),
+      waiting: this.pending.map((d) => ({ action: d.id, since: d.since })),
     });
   }
 
@@ -118,144 +118,144 @@ export class FileActions {
    * Kernel shutdown: all actions are stopped (those running write an « interrupted » run),
    * their containers deleted, and they are awaited in a bounded way. Nothing leaves afterwards.
    */
-  async arreterTout(): Promise<void> {
-    this.arrete = true;
-    const ends = [...this.parAction.values()].map((d) => d.fin.catch(() => {}));
-    for (const id of [...this.parAction.keys()]) this.arreter(id);
-    await this.supprimerConteneurs();
+  async stopAll(): Promise<void> {
+    this.isStopped = true;
+    const ends = [...this.perAction.values()].map((d) => d.end.catch(() => {}));
+    for (const id of [...this.perAction.keys()]) this.stop(id);
+    await this.deleteContainers();
     let timer: NodeJS.Timeout | undefined;
-    await Promise.race([Promise.all(ends), new Promise((ok) => (timer = setTimeout(ok, this.o.attenteArretMs ?? STOP_WAIT_MS)))]);
+    await Promise.race([Promise.all(ends), new Promise((ok) => (timer = setTimeout(ok, this.o.stopWaitMs ?? STOP_WAIT_MS)))]);
     clearTimeout(timer);
     // Still not finished: their container may have started after the first deletion.
-    await this.supprimerConteneurs();
+    await this.deleteContainers();
   }
 
-  private async supprimerConteneurs(): Promise<void> {
-    await Promise.all(this.enCours.map((d) => this.o.atelier.supprimerRecolte({ type: "action", id: d.id }).catch(() => {})));
+  private async deleteContainers(): Promise<void> {
+    await Promise.all(this.running.map((d) => this.o.workshop.deleteHarvest({ type: "action", id: d.id }).catch(() => {})));
   }
 
-  private demander(id: string, o: Pick<Request, "saisie" | "declencheur" | "essai">): ActionLaunch {
-    const existing = this.parAction.get(id);
-    if (existing) return { deja: true, fin: existing.fin };
-    if (this.arrete) return { deja: false, fin: Promise.resolve(this.arretee()) };
-    const d: Request = { id, ...o, ctl: new AbortController(), fin: Promise.resolve(this.arretee()), depuis: this.o.horloge().toISOString() };
+  private ask(id: string, o: Pick<Request, "input" | "trigger" | "attempt">): ActionLaunch {
+    const existing = this.perAction.get(id);
+    if (existing) return { already: true, end: existing.end };
+    if (this.isStopped) return { already: false, end: Promise.resolve(this.stopped()) };
+    const d: Request = { id, ...o, ctl: new AbortController(), end: Promise.resolve(this.stopped()), since: this.o.clock().toISOString() };
     // The request leaves the map before its end is returned: a request made after the end starts again.
-    d.fin = this.derouler(d).finally(() => {
-      if (this.parAction.get(id) === d) this.parAction.delete(id);
+    d.end = this.unroll(d).finally(() => {
+      if (this.perAction.get(id) === d) this.perAction.delete(id);
     });
-    this.parAction.set(id, d);
-    return { deja: false, fin: d.fin };
+    this.perAction.set(id, d);
+    return { already: false, end: d.end };
   }
 
   /** Stopped before running: nothing is written. */
-  private arretee(): LaunchResult {
-    return { statut: "interrompue", erreur: this.arrete ? INTERRUPTED_ERROR : ACTION_STOPPED, erreurNoyau: true };
+  private stopped(): LaunchResult {
+    return { status: "interrompue", error: this.isStopped ? INTERRUPTED_ERROR : ACTION_STOPPED, kernelError: true };
   }
 
-  private async derouler(d: Request): Promise<LaunchResult> {
+  private async unroll(d: Request): Promise<LaunchResult> {
     try {
-      await this.o.pret?.catch(() => {});
-      if (this.arrete || d.ctl.signal.aborted) return this.arretee();
-      if (!(await this.place(d))) return this.arretee();
+      await this.o.ready?.catch(() => {});
+      if (this.isStopped || d.ctl.signal.aborted) return this.stopped();
+      if (!(await this.place(d))) return this.stopped();
       try {
-        return await this.executer(d);
+        return await this.run(d);
       } finally {
-        this.liberer(d);
+        this.release(d);
       }
     } catch (e) {
       // The exception text may quote what the action read: only a fixed kernel message is returned.
       console.error(`[webaios] action ${d.id} :`, e);
-      return { statut: "echouee", erreur: INTERNAL_ACTION_ERROR, erreurNoyau: true };
+      return { status: "echouee", error: INTERNAL_ACTION_ERROR, kernelError: true };
     }
   }
 
   /** Takes a slot, or waits for its own; false if the request is stopped in the meantime. */
   private place(d: Request): Promise<boolean> {
-    if (this.enCours.length < CONCURRENT_ACTIONS) {
-      this.enCours.push(d);
+    if (this.running.length < CONCURRENT_ACTIONS) {
+      this.running.push(d);
       return Promise.resolve(true);
     }
     return new Promise<boolean>((ok) => {
-      d.depuis = this.o.horloge().toISOString();
-      d.placer = (yes) => {
-        delete d.placer;
+      d.since = this.o.clock().toISOString();
+      d.place = (yes) => {
+        delete d.place;
         ok(yes);
       };
-      this.attente.push(d);
-      this.signalerDirect();
+      this.pending.push(d);
+      this.signalDirect();
     });
   }
 
-  private liberer(d: Request): void {
-    this.enCours = this.enCours.filter((x) => x !== d);
-    const next = this.attente.shift();
+  private release(d: Request): void {
+    this.running = this.running.filter((x) => x !== d);
+    const next = this.pending.shift();
     if (next) {
-      this.enCours.push(next);
-      next.placer?.(true);
+      this.running.push(next);
+      next.place?.(true);
     }
-    this.signalerDirect();
+    this.signalDirect();
   }
 
-  private async executer(d: Request): Promise<LaunchResult> {
-    const start = this.o.horloge().toISOString();
-    const tracking: DirectAction = { action: d.id, debut: start, saisie: d.saisie, essai: d.essai !== null, etape: "workflow", blocs: {} };
+  private async run(d: Request): Promise<LaunchResult> {
+    const start = this.o.clock().toISOString();
+    const tracking: DirectAction = { action: d.id, start: start, input: d.input, attempt: d.attempt !== null, step: "workflow", blocks: {} };
     d.direct = tracking;
-    this.signalerDirect();
-    if ((await this.o.atelier.etat().catch(() => "absent")) !== "demarre") {
-      return { statut: "echouee", erreur: WORKSHOP_STOPPED_ERROR, erreurNoyau: true };
+    this.signalDirect();
+    if ((await this.o.workshop.state().catch(() => "absent")) !== "demarre") {
+      return { status: "echouee", error: WORKSHOP_STOPPED_ERROR, kernelError: true };
     }
     const onTrace = (t: TraceAction) => {
       if (d.direct !== tracking) return;
-      const b = tracking.blocs[t.bloc];
-      if (t.etape === "debut") tracking.blocs[t.bloc] = { statut: "en-cours", elements: null };
-      else if (t.etape === "fin") tracking.blocs[t.bloc] = { statut: t.statut, elements: t.elements };
-      else if (t.etape === "avancement") tracking.blocs[t.bloc] = { ...(b ?? { statut: "en-cours", elements: null }), faits: t.faits, total: t.total };
-      else tracking.blocs[t.bloc] = { ...(b ?? { statut: "en-cours", elements: null }), hote: t.hote };
-      if (t.type !== undefined) tracking.blocs[t.bloc]!.type = t.type;
-      this.signalerDirect();
+      const b = tracking.blocks[t.block];
+      if (t.step === "debut") tracking.blocks[t.block] = { status: "en-cours", items: null };
+      else if (t.step === "fin") tracking.blocks[t.block] = { status: t.status, items: t.items };
+      else if (t.step === "avancement") tracking.blocks[t.block] = { ...(b ?? { status: "en-cours", items: null }), done: t.done, total: t.total };
+      else tracking.blocks[t.block] = { ...(b ?? { status: "en-cours", items: null }), host: t.host };
+      if (t.type !== undefined) tracking.blocks[t.block]!.type = t.type;
+      this.signalDirect();
     };
     const onStep = (e: "mise-en-page") => {
       if (d.direct !== tracking) return;
-      tracking.etape = e;
-      this.signalerDirect();
+      tracking.step = e;
+      this.signalDirect();
     };
     // Each run has its own queue of AI calls, served before those of widgets.
-    const ai = this.o.repartiteur?.pour(`action:${d.id}:${start}`, { prioritaire: true }) ?? null;
+    const ai = this.o.dispatcher?.for(`action:${d.id}:${start}`, { priority: true }) ?? null;
     try {
-      return await this.o.executer({
+      return await this.o.run({
         id: d.id,
-        chemins: this.o.chemins,
-        dossierActions: this.o.dossierActions,
-        moteur: this.o.moteur,
-        atelier: this.o.atelier,
-        ...(this.o.lancer ? { lancer: this.o.lancer } : {}),
-        pont: this.o.pont,
-        ia: ai,
-        horloge: this.o.horloge,
-        saisie: d.saisie,
-        declencheur: d.declencheur,
+        paths: this.o.paths,
+        actionsFolder: this.o.actionsFolder,
+        engine: this.o.engine,
+        workshop: this.o.workshop,
+        ...(this.o.launch ? { launch: this.o.launch } : {}),
+        bridge: this.o.bridge,
+        ai: ai,
+        clock: this.o.clock,
+        input: d.input,
+        trigger: d.trigger,
         signal: d.ctl.signal,
-        surTrace: onTrace,
-        surEtape: onStep,
-        ...(d.essai ? { essai: d.essai } : {}),
-        interrompue: () => this.arrete,
-        ...(this.o.adressesLocales ? { adressesLocales: true } : {}),
-        ...(this.o.menagement ? { menagement: this.o.menagement } : {}),
-        ...(this.o.urlRecherche !== undefined ? { urlRecherche: this.o.urlRecherche } : {}),
-        ...(this.o.delaiMiseEnPageMs !== undefined ? { delaiMiseEnPageMs: this.o.delaiMiseEnPageMs } : {}),
+        onTrace: onTrace,
+        onStep: onStep,
+        ...(d.attempt ? { attempt: d.attempt } : {}),
+        interrupted: () => this.isStopped,
+        ...(this.o.localAddresses ? { localAddresses: true } : {}),
+        ...(this.o.pacing ? { pacing: this.o.pacing } : {}),
+        ...(this.o.searchUrl !== undefined ? { searchUrl: this.o.searchUrl } : {}),
+        ...(this.o.layoutDelayMs !== undefined ? { layoutDelayMs: this.o.layoutDelayMs } : {}),
       });
     } finally {
       // Its calls still queued no longer leave: they would take the place of other runs.
-      ai?.oublier();
+      ai?.forget();
       delete d.direct;
     }
   }
 
   /** An error from the callback must never stop a run. */
-  private signalerDirect(): void {
-    if (!this.o.surDirect) return;
+  private signalDirect(): void {
+    if (!this.o.onLive) return;
     try {
-      this.o.surDirect(this.direct());
+      this.o.onLive(this.direct());
     } catch (e) {
       console.error("[webaios] suivi des actions :", e);
     }

@@ -29,154 +29,154 @@ describe("review service", () => {
     writeFileSync(join(projects, "essai", "a.txt"), "un\n");
     writeFileSync(join(sites, "tuning", "site.json"), "{}\n");
     writeFileSync(join(sites, "tuning", "retouches", "tuning.css"), "/* rien */\n");
-    const folders = { remarquesEspace: join(root, "remarques"), prive: join(root, "prive") };
-    const remarks = new Remarks({ dossiers: folders });
-    const sent: { projet: TrackedProject; lot: Batch }[] = [];
+    const folders = { spaceRemarks: join(root, "remarques"), private: join(root, "prive") };
+    const remarks = new Remarks({ folders: folders });
+    const sent: { project: TrackedProject; batch: Batch }[] = [];
     const registry = {
-      projets: () => [{ id: EXT.slice(4), nom: "Ext", dossier: join(projects, "essai"), ports: [], client: "client-0001", declare: "" }],
-      clients: () => [{ id: "client-0001", nom: "Claude", empreinte: "", cree: "" }],
+      projects: () => [{ id: EXT.slice(4), name: "Ext", folder: join(projects, "essai"), ports: [], client: "client-0001", declared: "" }],
+      clients: () => [{ id: "client-0001", name: "Claude", hash: "", created: "" }],
     };
     const service = new ReviewService({
-      dossiers: folders, chemins: { projets: projects, sites } as SpacePaths, registre: () => registry as never,
-      sites: async () => [{ id: "tuning", nom: "Tuning" }], remarques: remarks,
-      envoyer: async (project, batch) => void sent.push({ projet: project, lot: batch }),
+      folders: folders, paths: { projects: projects, sites } as SpacePaths, registry: () => registry as never,
+      sites: async () => [{ id: "tuning", name: "Tuning" }], remarks: remarks,
+      send: async (project, batch) => void sent.push({ project: project, batch: batch }),
     });
-    const review = join(folders.prive, "relecture");
-    return { service, remarques: remarks, sent, root, projets: projects, sites, relecture: review, write: (t: string, n = "a.txt") => writeFileSync(join(projects, "essai", n), t) };
+    const review = join(folders.private, "relecture");
+    return { service, remarks: remarks, sent, root, projects: projects, sites, review: review, write: (t: string, n = "a.txt") => writeFileSync(join(projects, "essai", n), t) };
   }
   /** Opens once so the project's first snapshot is taken, writes `before` first; returns after `after` is written. */
   async function opened(s: ReturnType<typeof prepare>, before: string, after: string) {
     s.write(before);
-    await s.service.ouvrir(EXT);
+    await s.service.open(EXT);
     s.write(after);
-    const v = await s.service.ouvrir(EXT);
-    if (v.etat !== "ok") throw new Error(v.raison);
+    const v = await s.service.open(EXT);
+    if (v.state !== "ok") throw new Error(v.reason);
     return v;
   }
-  const ok = <T extends { etat: string }>(v: T) => {
-    if (v.etat !== "ok") throw new Error(JSON.stringify(v));
-    return v as T & { etat: "ok"; jeton: string };
+  const ok = <T extends { state: string }>(v: T) => {
+    if (v.state !== "ok") throw new Error(JSON.stringify(v));
+    return v as T & { state: "ok"; token: string };
   };
 
   it("two opens give two tokens; an unknown token is refused", async () => {
     const s = prepare();
-    await s.service.ouvrir(EXT);
+    await s.service.open(EXT);
     s.write("deux\n");
-    const v1 = ok(await s.service.ouvrir(EXT));
+    const v1 = ok(await s.service.open(EXT));
     s.write("trois\n");
-    const v2 = ok(await s.service.ouvrir(EXT));
-    expect(v1.jeton).toMatch(g.REVIEW_TOKEN);
-    expect(v2.jeton).not.toBe(v1.jeton);
-    const added = async (j: string) => (await s.service.fichier(EXT, j, "a.txt")).blocs.flatMap((b) => b.lignes.filter((l) => l.marque === "+").map((l) => l.texte));
-    expect(await added(v1.jeton)).toEqual(["deux"]);
-    expect(await added(v2.jeton)).toEqual(["trois"]);
-    expect(await s.service.lignes(EXT, v1.jeton, "a.txt", 1, 5)).toEqual(["deux"]);
+    const v2 = ok(await s.service.open(EXT));
+    expect(v1.token).toMatch(g.REVIEW_TOKEN);
+    expect(v2.token).not.toBe(v1.token);
+    const added = async (j: string) => (await s.service.file(EXT, j, "a.txt")).blocks.flatMap((b) => b.lines.filter((l) => l.mark === "+").map((l) => l.text));
+    expect(await added(v1.token)).toEqual(["deux"]);
+    expect(await added(v2.token)).toEqual(["trois"]);
+    expect(await s.service.lines(EXT, v1.token, "a.txt", 1, 5)).toEqual(["deux"]);
     s.write("quatre\n");
-    expect(await s.service.ouvrir(EXT, v1.jeton)).toMatchObject({ etat: "ok", jeton: v1.jeton });
-    expect(await added(v1.jeton)).toEqual(["deux"]);
-    await expect(s.service.fichier(EXT, unknown, "a.txt")).rejects.toThrow(UNKNOWN_COMPARISON);
-    await expect(s.service.lignes(EXT, unknown, "a.txt", 1, 2)).rejects.toThrow(UNKNOWN_COMPARISON);
+    expect(await s.service.open(EXT, v1.token)).toMatchObject({ state: "ok", token: v1.token });
+    expect(await added(v1.token)).toEqual(["deux"]);
+    await expect(s.service.file(EXT, unknown, "a.txt")).rejects.toThrow(UNKNOWN_COMPARISON);
+    await expect(s.service.lines(EXT, unknown, "a.txt", 1, 2)).rejects.toThrow(UNKNOWN_COMPARISON);
   });
 
   it("keeps at most 8 comparisons per project: the oldest drops", async () => {
     const s = prepare();
-    await s.service.ouvrir(EXT);
+    await s.service.open(EXT);
     const tokens: string[] = [];
     for (let i = 0; i < 9; i++) {
       s.write(`v${i}\n`);
-      tokens.push(ok(await s.service.ouvrir(EXT)).jeton);
+      tokens.push(ok(await s.service.open(EXT)).token);
     }
-    await expect(s.service.fichier(EXT, tokens[0]!, "a.txt")).rejects.toThrow(UNKNOWN_COMPARISON);
-    expect((await s.service.fichier(EXT, tokens[1]!, "a.txt")).chemin).toBe("a.txt");
+    await expect(s.service.file(EXT, tokens[0]!, "a.txt")).rejects.toThrow(UNKNOWN_COMPARISON);
+    expect((await s.service.file(EXT, tokens[1]!, "a.txt")).path).toBe("a.txt");
   }, 20_000);
 
   it("a range overflowing the block is refused", async () => {
     const s = prepare();
     const v = await opened(s, text(), text(5, 25));
-    const c = (start: number, end: number, text: string, j = v.jeton) => s.service.commenter(EXT, j, { fichier: "a.txt", debut: start, fin: end, texte: text });
-    expect(await c(5, 25, "trop large")).toEqual({ ok: false, erreur: RANGE_OUTSIDE_BLOCK });
-    expect(await c(1, 3, "hors du diff")).toEqual({ ok: false, erreur: RANGE_OUTSIDE_BLOCK });
+    const c = (start: number, end: number, text: string, j = v.token) => s.service.comment(EXT, j, { file: "a.txt", start: start, end: end, text: text });
+    expect(await c(5, 25, "trop large")).toEqual({ ok: false, error: RANGE_OUTSIDE_BLOCK });
+    expect(await c(1, 3, "hors du diff")).toEqual({ ok: false, error: RANGE_OUTSIDE_BLOCK });
     expect(await c(4, 5, "  ")).toMatchObject({ ok: false });
-    expect(await c(4, 5, "x", unknown)).toEqual({ ok: false, erreur: UNKNOWN_COMPARISON });
+    expect(await c(4, 5, "x", unknown)).toEqual({ ok: false, error: UNKNOWN_COMPARISON });
     expect(await c(4, 5, "bien")).toEqual({ ok: true });
-    const [first] = await s.service.commentaires(EXT);
-    expect(first).toMatchObject({ fichier: "a.txt", debut: 4, fin: 5, texte: "bien", envoye: false, resolu: false });
-    expect(first!.lignes).toEqual([{ marque: " ", texte: "ligne 4" }, { marque: "-", texte: "ligne 5" }, { marque: "+", texte: "ligne 5 modifiée" }]);
+    const [first] = await s.service.comments(EXT);
+    expect(first).toMatchObject({ file: "a.txt", start: 4, end: 5, text: "bien", sent: false, resolved: false });
+    expect(first!.lines).toEqual([{ mark: " ", text: "ligne 4" }, { mark: "-", text: "ligne 5" }, { mark: "+", text: "ligne 5 modifiée" }]);
   });
 
   it("relu keeps the tree shown: a file changed after ouvrir() stays in the next diff", async () => {
     const s = prepare();
     const v = await opened(s, "un\n", "deux\n");
     s.write("autre\n", "b.txt");
-    const after = ok(await s.service.relu(EXT, v.jeton));
-    expect(after.comparaison.fichiers.map((f) => f.chemin)).toEqual(["b.txt"]);
-    await expect(s.service.relu(EXT, v.jeton)).rejects.toThrow(UNKNOWN_COMPARISON);
-    await expect(s.service.relu(EXT, unknown)).rejects.toThrow(UNKNOWN_COMPARISON);
+    const after = ok(await s.service.reviewed(EXT, v.token));
+    expect(after.comparison.files.map((f) => f.path)).toEqual(["b.txt"]);
+    await expect(s.service.reviewed(EXT, v.token)).rejects.toThrow(UNKNOWN_COMPARISON);
+    await expect(s.service.reviewed(EXT, unknown)).rejects.toThrow(UNKNOWN_COMPARISON);
   });
 
   it("relu drops resolved comments and keeps the others", async () => {
     const s = prepare();
     const v = await opened(s, text(), text(15));
-    await s.service.commenter(EXT, v.jeton, { fichier: "a.txt", debut: 15, fin: 15, texte: "un" });
-    await s.service.commenter(EXT, v.jeton, { fichier: "a.txt", debut: 14, fin: 14, texte: "deux" });
-    const [one] = await s.service.commentaires(EXT);
-    await s.service.resoudre(EXT, one!.id, true);
-    const after = ok(await s.service.relu(EXT, v.jeton));
-    expect(after.comparaison.fichiers).toEqual([]);
-    expect(after.commentaires.map((c) => [c.texte, c.fichier])).toEqual([["deux", "a.txt"]]);
+    await s.service.comment(EXT, v.token, { file: "a.txt", start: 15, end: 15, text: "un" });
+    await s.service.comment(EXT, v.token, { file: "a.txt", start: 14, end: 14, text: "deux" });
+    const [one] = await s.service.comments(EXT);
+    await s.service.resolve(EXT, one!.id, true);
+    const after = ok(await s.service.reviewed(EXT, v.token));
+    expect(after.comparison.files).toEqual([]);
+    expect(after.comments.map((c) => [c.text, c.file])).toEqual([["deux", "a.txt"]]);
   });
 
   it("envoyer makes a relecture lot with file, lines and marks; a second send takes the unresolved ones", async () => {
     const s = prepare();
     const v = await opened(s, text(), text(15));
-    expect(v).toMatchObject({ destination: "Claude Code (Claude)", sansDestination: null });
-    expect(await s.service.envoyer(EXT)).toMatchObject({ ok: false });
-    await s.service.commenter(EXT, v.jeton, { fichier: "a.txt", debut: 15, fin: 15, texte: "garder l'ancien nom" });
-    await s.service.commenter(EXT, v.jeton, { fichier: "a.txt", debut: 13, fin: 14, texte: "et ici" });
-    expect(await s.service.envoyer(EXT)).toEqual({ ok: true });
-    const batches = await s.remarques.lots(EXT);
+    expect(v).toMatchObject({ destination: "Claude Code (Claude)", noDestination: null });
+    expect(await s.service.send(EXT)).toMatchObject({ ok: false });
+    await s.service.comment(EXT, v.token, { file: "a.txt", start: 15, end: 15, text: "garder l'ancien nom" });
+    await s.service.comment(EXT, v.token, { file: "a.txt", start: 13, end: 14, text: "et ici" });
+    expect(await s.service.send(EXT)).toEqual({ ok: true });
+    const batches = await s.remarks.batches(EXT);
     expect(batches).toHaveLength(1);
     expect(batches[0]).toMatchObject({ destination: "mcp" });
-    expect(batches[0]!.elements.map((e) => ({ type: e.type, texte: e.texte, contexte: e.contexte }))).toEqual([
-      { type: "relecture", texte: "garder l'ancien nom", contexte: { fichier: "a.txt", debut: 15, fin: 15, lignes: [{ marque: "-", texte: "ligne 15" }, { marque: "+", texte: "ligne 15 modifiée" }] } },
-      { type: "relecture", texte: "et ici", contexte: { fichier: "a.txt", debut: 13, fin: 14, lignes: [{ marque: " ", texte: "ligne 13" }, { marque: " ", texte: "ligne 14" }] } },
+    expect(batches[0]!.items.map((e) => ({ type: e.type, text: e.text, context: e.context }))).toEqual([
+      { type: "relecture", text: "garder l'ancien nom", context: { file: "a.txt", start: 15, end: 15, lines: [{ mark: "-", text: "ligne 15" }, { mark: "+", text: "ligne 15 modifiée" }] } },
+      { type: "relecture", text: "et ici", context: { file: "a.txt", start: 13, end: 14, lines: [{ mark: " ", text: "ligne 13" }, { mark: " ", text: "ligne 14" }] } },
     ]);
     expect(s.sent).toHaveLength(1);
-    expect(s.sent[0]!.projet).toMatchObject({ type: "externe", projet: EXT, client: "client-0001" });
-    expect(s.sent[0]!.lot.id).toBe(batches[0]!.id);
-    const left = await s.service.commentaires(EXT);
-    expect(left.map((c) => c.envoye)).toEqual([true, true]);
-    await s.service.resoudre(EXT, left[0]!.id, true);
-    expect(await s.service.envoyer(EXT)).toEqual({ ok: true });
-    const all = await s.remarques.lots(EXT);
+    expect(s.sent[0]!.project).toMatchObject({ type: "externe", project: EXT, client: "client-0001" });
+    expect(s.sent[0]!.batch.id).toBe(batches[0]!.id);
+    const left = await s.service.comments(EXT);
+    expect(left.map((c) => c.sent)).toEqual([true, true]);
+    await s.service.resolve(EXT, left[0]!.id, true);
+    expect(await s.service.send(EXT)).toEqual({ ok: true });
+    const all = await s.remarks.batches(EXT);
     expect(all).toHaveLength(2);
-    expect(all.find((l) => l.id !== batches[0]!.id)!.elements.map((e) => e.texte)).toEqual(["et ici"]);
+    expect(all.find((l) => l.id !== batches[0]!.id)!.items.map((e) => e.text)).toEqual(["et ici"]);
   });
 
   it("simultaneous comment operations lose nothing", async () => {
     const s = prepare();
     const v = await opened(s, text(), text(15));
-    for (let i = 0; i < 8; i++) await s.service.commenter(EXT, v.jeton, { fichier: "a.txt", debut: 15, fin: 15, texte: `n${i}` });
-    const ids = (await s.service.commentaires(EXT)).map((c) => c.id);
+    for (let i = 0; i < 8; i++) await s.service.comment(EXT, v.token, { file: "a.txt", start: 15, end: 15, text: `n${i}` });
+    const ids = (await s.service.comments(EXT)).map((c) => c.id);
     await Promise.all([
-      ...ids.slice(0, 4).map((id) => s.service.resoudre(EXT, id, true)),
-      ...ids.slice(4).map((id, i) => s.service.modifierCommentaire(EXT, id, `modifié ${i}`)),
-      s.service.ouvrir(EXT, v.jeton),
-      s.service.commenter(EXT, v.jeton, { fichier: "a.txt", debut: 13, fin: 14, texte: "nouveau" }),
+      ...ids.slice(0, 4).map((id) => s.service.resolve(EXT, id, true)),
+      ...ids.slice(4).map((id, i) => s.service.editComment(EXT, id, `modifié ${i}`)),
+      s.service.open(EXT, v.token),
+      s.service.comment(EXT, v.token, { file: "a.txt", start: 13, end: 14, text: "nouveau" }),
     ]);
-    const l = await s.service.commentaires(EXT);
+    const l = await s.service.comments(EXT);
     expect(l).toHaveLength(9);
-    expect(l.filter((c) => c.resolu).map((c) => c.id)).toEqual(ids.slice(0, 4));
-    expect(l.filter((c) => c.texte.startsWith("modifié")).map((c) => c.id)).toEqual(ids.slice(4));
+    expect(l.filter((c) => c.resolved).map((c) => c.id)).toEqual(ids.slice(0, 4));
+    expect(l.filter((c) => c.text.startsWith("modifié")).map((c) => c.id)).toEqual(ids.slice(4));
   });
 
   it("an external project's own folder is never touched: no .git inside, the bare repository is private", async () => {
     const s = prepare();
     await opened(s, "un\n", "deux\n");
-    expect(existsSync(join(s.projets, "essai", ".git"))).toBe(false);
-    expect(readdirSync(s.relecture).filter((n) => n.endsWith(".git"))).toEqual([`${EXT}.git`]);
-    expect((await s.service.projet("ext-ffffffffffffffff"))).toBeNull();
-    expect(await s.service.ouvrir("ext-ffffffffffffffff")).toMatchObject({ etat: "indisponible", raison: "projet inconnu" });
+    expect(existsSync(join(s.projects, "essai", ".git"))).toBe(false);
+    expect(readdirSync(s.review).filter((n) => n.endsWith(".git"))).toEqual([`${EXT}.git`]);
+    expect((await s.service.project("ext-ffffffffffffffff"))).toBeNull();
+    expect(await s.service.open("ext-ffffffffffffffff")).toMatchObject({ state: "indisponible", reason: "projet inconnu" });
   });
 
   it("a site folder that is a symlink gives null and creates no repository", async () => {
@@ -187,91 +187,91 @@ describe("review service", () => {
       mkdirSync(target);
       writeFileSync(join(target, "secret.txt"), "x\n");
       symlinkSync(target, join(s.sites, "tuning"));
-      expect(await s.service.projet("site-tuning")).toBeNull();
-      await s.service.priseEnChargeSites(["tuning"]);
-      await s.service.assurer("site-tuning");
-      expect(await s.service.ouvrir("site-tuning")).toMatchObject({ etat: "indisponible", raison: "projet inconnu" });
-      expect(existsSync(join(s.relecture, "site-tuning.git"))).toBe(false);
+      expect(await s.service.project("site-tuning")).toBeNull();
+      await s.service.handleSites(["tuning"]);
+      await s.service.ensure("site-tuning");
+      expect(await s.service.open("site-tuning")).toMatchObject({ state: "indisponible", reason: "projet inconnu" });
+      expect(existsSync(join(s.review, "site-tuning.git"))).toBe(false);
     }
   });
 
   it("a real site folder gives its name; an absent site gives null", async () => {
     const s = prepare();
-    expect(await s.service.projet("site-tuning")).toEqual({ nom: "Tuning", dossier: join(s.sites, "tuning") });
-    expect(await s.service.projet("site-absent")).toBeNull();
+    expect(await s.service.project("site-tuning")).toEqual({ name: "Tuning", folder: join(s.sites, "tuning") });
+    expect(await s.service.project("site-absent")).toBeNull();
     mkdirSync(join(s.sites, "autre"));
-    expect(await s.service.projet("site-autre")).toEqual({ nom: "autre", dossier: join(s.sites, "autre") });
+    expect(await s.service.project("site-autre")).toEqual({ name: "autre", folder: join(s.sites, "autre") });
   });
 
   it("priseEnChargeSites snapshots valid sites only; assurer a second time does not move the reference", async () => {
     const s = prepare();
-    await s.service.priseEnChargeSites(["tuning", "../x"]);
-    const ref = join(s.relecture, "site-tuning.git", "refs", "webaios", "relu");
+    await s.service.handleSites(["tuning", "../x"]);
+    const ref = join(s.review, "site-tuning.git", "refs", "webaios", "relu");
     expect(existsSync(ref)).toBe(true);
-    expect(readdirSync(s.relecture).filter((n) => n.endsWith(".git"))).toEqual(["site-tuning.git"]);
+    expect(readdirSync(s.review).filter((n) => n.endsWith(".git"))).toEqual(["site-tuning.git"]);
     const before = readFileSync(ref, "utf8");
     writeFileSync(join(s.sites, "tuning", "site.json"), '{"nom":"Tuning"}\n');
-    await s.service.assurer("site-tuning");
+    await s.service.ensure("site-tuning");
     expect(readFileSync(ref, "utf8")).toBe(before);
     expect(existsSync(join(s.sites, "tuning", ".git"))).toBe(false);
-    const v = ok(await s.service.ouvrir("site-tuning"));
-    expect(v.comparaison.fichiers.map((f) => f.chemin)).toEqual(["site.json"]);
-    expect(v).toMatchObject({ nom: "Tuning", destination: "l'agent", sansDestination: null });
+    const v = ok(await s.service.open("site-tuning"));
+    expect(v.comparison.files.map((f) => f.path)).toEqual(["site.json"]);
+    expect(v).toMatchObject({ name: "Tuning", destination: "l'agent", noDestination: null });
   });
 
   it("assurer of a site takes its snapshot; of an app id or an unknown site it does nothing", async () => {
     const s = prepare();
-    await s.service.assurer("app-essai");
-    await s.service.assurer("site-absent");
-    expect(existsSync(s.relecture)).toBe(false);
-    await s.service.assurer("site-tuning");
-    expect(existsSync(join(s.relecture, "site-tuning.git", "refs", "webaios", "relu"))).toBe(true);
+    await s.service.ensure("app-essai");
+    await s.service.ensure("site-absent");
+    expect(existsSync(s.review)).toBe(false);
+    await s.service.ensure("site-tuning");
+    expect(existsSync(join(s.review, "site-tuning.git", "refs", "webaios", "relu"))).toBe(true);
   });
 
   it("envoyer of a site follows projectForSite", async () => {
     const s = prepare();
     const css = join(s.sites, "tuning", "retouches", "tuning.css");
     writeFileSync(css, Array.from({ length: 5 }, (_, i) => `/* ${i} */`).join("\n") + "\n");
-    await s.service.priseEnChargeSites(["tuning"]);
+    await s.service.handleSites(["tuning"]);
     writeFileSync(css, ["/* 0 */", "/* 1 */", "a { color: red }", "/* 3 */", "/* 4 */"].join("\n") + "\n");
-    const v = ok(await s.service.ouvrir("site-tuning"));
-    expect(await s.service.commenter("site-tuning", v.jeton, { fichier: "retouches/tuning.css", debut: 3, fin: 3, texte: "plus doux" })).toEqual({ ok: true });
-    expect(await s.service.envoyer("site-tuning")).toEqual({ ok: true });
-    expect(s.sent[0]!.projet).toEqual({ type: "site", projet: "site-tuning", id: "tuning", nom: "Tuning" });
+    const v = ok(await s.service.open("site-tuning"));
+    expect(await s.service.comment("site-tuning", v.token, { file: "retouches/tuning.css", start: 3, end: 3, text: "plus doux" })).toEqual({ ok: true });
+    expect(await s.service.send("site-tuning")).toEqual({ ok: true });
+    expect(s.sent[0]!.project).toEqual({ type: "site", project: "site-tuning", id: "tuning", name: "Tuning" });
   });
 
   it("effacer removes the repository and the comments file, and forgets the comparisons", async () => {
     const s = prepare();
-    await s.service.priseEnChargeSites(["tuning"]);
+    await s.service.handleSites(["tuning"]);
     writeFileSync(join(s.sites, "tuning", "site.json"), '{"a":1}\n');
-    const v = ok(await s.service.ouvrir("site-tuning"));
-    expect(await s.service.commenter("site-tuning", v.jeton, { fichier: "site.json", debut: 1, fin: 1, texte: "à voir" })).toEqual({ ok: true });
-    expect(existsSync(join(s.relecture, "site-tuning.commentaires.json"))).toBe(true);
-    await s.service.effacer("site-tuning");
-    expect(existsSync(join(s.relecture, "site-tuning.git"))).toBe(false);
-    expect(existsSync(join(s.relecture, "site-tuning.commentaires.json"))).toBe(false);
-    await expect(s.service.fichier("site-tuning", v.jeton, "site.json")).rejects.toThrow(UNKNOWN_COMPARISON);
-    expect(await s.service.commentaires("site-tuning")).toEqual([]);
-    await s.service.assurer("site-tuning");
-    expect(await s.service.ouvrir("site-tuning")).toMatchObject({ etat: "ok", comparaison: { fichiers: [] } });
+    const v = ok(await s.service.open("site-tuning"));
+    expect(await s.service.comment("site-tuning", v.token, { file: "site.json", start: 1, end: 1, text: "à voir" })).toEqual({ ok: true });
+    expect(existsSync(join(s.review, "site-tuning.commentaires.json"))).toBe(true);
+    await s.service.erase("site-tuning");
+    expect(existsSync(join(s.review, "site-tuning.git"))).toBe(false);
+    expect(existsSync(join(s.review, "site-tuning.commentaires.json"))).toBe(false);
+    await expect(s.service.file("site-tuning", v.token, "site.json")).rejects.toThrow(UNKNOWN_COMPARISON);
+    expect(await s.service.comments("site-tuning")).toEqual([]);
+    await s.service.ensure("site-tuning");
+    expect(await s.service.open("site-tuning")).toMatchObject({ state: "ok", comparison: { files: [] } });
   });
 
   it("a snapshot taken between effacer and the trash is erased by the second effacer, also after the trash", async () => {
     const s = prepare();
-    await s.service.priseEnChargeSites(["tuning"]);
-    const ref = join(s.relecture, "site-tuning.git", "refs", "webaios", "relu");
-    const first = s.service.effacer("site-tuning");
-    const photo = s.service.priseEnChargeSites(["tuning"]);
+    await s.service.handleSites(["tuning"]);
+    const ref = join(s.review, "site-tuning.git", "refs", "webaios", "relu");
+    const first = s.service.erase("site-tuning");
+    const photo = s.service.handleSites(["tuning"]);
     await Promise.all([first, photo]);
     expect(existsSync(ref)).toBe(true);
     const { renameSync } = await import("node:fs");
     renameSync(join(s.sites, "tuning"), join(s.root, "corbeille-tuning"));
-    const late = s.service.priseEnChargeSites(["tuning"]);
-    await Promise.all([late, s.service.effacer("site-tuning")]);
-    expect(existsSync(join(s.relecture, "site-tuning.git"))).toBe(false);
-    expect(existsSync(join(s.relecture, "site-tuning.commentaires.json"))).toBe(false);
-    await s.service.priseEnChargeSites(["tuning"]);
-    expect(existsSync(join(s.relecture, "site-tuning.git"))).toBe(false);
+    const late = s.service.handleSites(["tuning"]);
+    await Promise.all([late, s.service.erase("site-tuning")]);
+    expect(existsSync(join(s.review, "site-tuning.git"))).toBe(false);
+    expect(existsSync(join(s.review, "site-tuning.commentaires.json"))).toBe(false);
+    await s.service.handleSites(["tuning"]);
+    expect(existsSync(join(s.review, "site-tuning.git"))).toBe(false);
   });
 });
 
@@ -314,19 +314,19 @@ describe("design guards", () => {
 
   it("checkDesignContext: viewfinder.ts's rules, strict, known keys only", () => {
     const ok = {
-      selecteur: "#b", etiquette: "b", html: "a".repeat(HTML_MAX) + TRUNCATED, adresse: "http://x/", voisinage: { parent: "p", freres: [] },
-      styles: { color: "red" }, source: { fichier: "a.svelte", ligne: 1, colonne: 2 }, vue: { largeur: 1, hauteur: 2 },
+      selector: "#b", label: "b", html: "a".repeat(HTML_MAX) + TRUNCATED, url: "http://x/", neighborhood: { parent: "p", siblings: [] },
+      styles: { color: "red" }, source: { file: "a.svelte", line: 1, column: 2 }, view: { width: 1, height: 2 },
     };
     expect(g.checkDesignContext({ ...ok, rect: { x: 1 } })).toEqual(ok);
     expect(g.checkDesignContext({ ...ok, source: null }).source).toBeNull();
     for (const bad of [
-      null, "x", { ...ok, html: "a".repeat(HTML_MAX + TRUNCATED.length + 1) }, { ...ok, vue: { largeur: Infinity, hauteur: 1 } },
-      { ...ok, voisinage: { parent: "p", freres: [1] } }, { ...ok, styles: { a: null } }, { ...ok, etiquette: 2 },
+      null, "x", { ...ok, html: "a".repeat(HTML_MAX + TRUNCATED.length + 1) }, { ...ok, view: { width: Infinity, height: 1 } },
+      { ...ok, neighborhood: { parent: "p", siblings: [1] } }, { ...ok, styles: { a: null } }, { ...ok, label: 2 },
     ]) expect(() => g.checkDesignContext(bad)).toThrow(g.INVALID_REQUEST);
     // sourceSaine: a bad source field is dropped, the remark stays (a Svelte loc.column of 0 is real).
-    expect(g.checkDesignContext({ ...ok, source: { fichier: "a", ligne: 0, colonne: 3 } }).source).toEqual({ fichier: "a", colonne: 3 });
-    expect(g.checkDesignContext({ ...ok, source: { fichier: "a", ligne: 4, colonne: 1.5 } }).source).toEqual({ fichier: "a", ligne: 4 });
-    for (const source of [undefined, "x", { fichier: "a".repeat(1025) }, { fichier: "" }, { ligne: 2 }]) expect(g.checkDesignContext({ ...ok, source }).source).toBeNull();
+    expect(g.checkDesignContext({ ...ok, source: { file: "a", line: 0, column: 3 } }).source).toEqual({ file: "a", column: 3 });
+    expect(g.checkDesignContext({ ...ok, source: { file: "a", line: 4, column: 1.5 } }).source).toEqual({ file: "a", line: 4 });
+    for (const source of [undefined, "x", { file: "a".repeat(1025) }, { file: "" }, { line: 2 }]) expect(g.checkDesignContext({ ...ok, source }).source).toBeNull();
   });
 
   it("checkCapture: null, or a PNG of at most 8 MiB", () => {

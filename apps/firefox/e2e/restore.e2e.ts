@@ -38,7 +38,7 @@ async function quit(): Promise<void> {
   await w!.close();
   w = undefined;
 }
-const win = async (m: Marionette) => (await state(m)).fenetres[0]!;
+const win = async (m: Marionette) => (await state(m)).windows[0]!;
 const marked = (m: Marionette) => m.execute<number>("return gBrowser.tabs.filter((t) => t.hasAttribute('webaios-tab-id')).length");
 
 // Each test starts from fresh folders.
@@ -53,17 +53,17 @@ describe("restore at startup", () => {
     let m = await start();
     const windowId = (await win(m)).id;
     const open = async (p: string, enable = false) => {
-      const before = new Set(Object.keys((await state(m)).onglets));
-      const after = await dispatch(m, { type: "ouvrirOnglet", fenetreId: windowId, url: server.url + p, activer: enable });
-      return Object.keys(after.onglets).find((id) => !before.has(id))!;
+      const before = new Set(Object.keys((await state(m)).tabs));
+      const after = await dispatch(m, { type: "ouvrirOnglet", windowId: windowId, url: server.url + p, activate: enable });
+      return Object.keys(after.tabs).find((id) => !before.has(id))!;
     };
     const a = await open("/a.html");
     const b = await open("/b.html");
     await open("/texte.html", true);
     await dispatch(m, { type: "epinglerOnglet", id: a });
     await dispatch(m, { type: "ajouterEssentiel", id: b });
-    await dispatch(m, { type: "creerEspace", nom: "Boulot", icone: "💼", prive: false, profil: "defaut", fenetreId: windowId } as Action);
-    const work = (await state(m)).espaces.find((e) => e.nom === "Boulot")!;
+    await dispatch(m, { type: "creerEspace", name: "Boulot", icon: "💼", private: false, profile: "defaut", windowId: windowId } as Action);
+    const work = (await state(m)).spaces.find((e) => e.name === "Boulot")!;
     const c = await open("/b.html?n=1", true);
     await newWindow(m);
     const before = await state(m);
@@ -75,7 +75,7 @@ describe("restore at startup", () => {
     await new Promise((r) => setTimeout(r, 2000));
     expect(await windowHandles(m)).toHaveLength(2);
     const after = await state(m);
-    expect(after.fenetres).toHaveLength(2);
+    expect(after.windows).toHaveLength(2);
     // Each window gets its own active space back: the first one is on Boulot, with its tab.
     const seen: { handle: string; id: string; pair: unknown }[] = [];
     for (const handle of handles)
@@ -89,15 +89,15 @@ describe("restore at startup", () => {
       );
     expect(seen.map((x) => x.pair)).toContainEqual(["💼", 1]);
     // The checks below are on the first state window, whichever window Marionette started on.
-    await m.command("WebDriver:SwitchToWindow", { handle: seen.find((x) => x.id === after.fenetres[0]!.id)!.handle, focus: false });
-    expect(after.espaces.map((e) => [e.nom, e.icone, e.epingles.length])).toEqual(before.espaces.map((e) => [e.nom, e.icone, e.epingles.length]));
-    expect(after.essentiels).toEqual(before.essentiels);
-    const f = after.fenetres[0]!;
-    expect(f.espaceActif).toBe(work.id);
-    expect(f.actif).toEqual(before.fenetres[0]!.actif);
-    expect(f.actif[work.id]).toBe(c);
-    expect(f.ordre).toEqual(before.fenetres[0]!.ordre);
-    const urls = (s: typeof before) => Object.fromEntries(Object.values(s.onglets).map((o) => [o.id, o.url]));
+    await m.command("WebDriver:SwitchToWindow", { handle: seen.find((x) => x.id === after.windows[0]!.id)!.handle, focus: false });
+    expect(after.spaces.map((e) => [e.name, e.icon, e.pinned.length])).toEqual(before.spaces.map((e) => [e.name, e.icon, e.pinned.length]));
+    expect(after.essentials).toEqual(before.essentials);
+    const f = after.windows[0]!;
+    expect(f.activeSpace).toBe(work.id);
+    expect(f.active).toEqual(before.windows[0]!.active);
+    expect(f.active[work.id]).toBe(c);
+    expect(f.order).toEqual(before.windows[0]!.order);
+    const urls = (s: typeof before) => Object.fromEntries(Object.values(s.tabs).map((o) => [o.id, o.url]));
     expect(urls(after)).toEqual(urls(before));
     // The active tab of the active space is displayed, on its page.
     await waitFor(m, "return gBrowser.selectedTab.getAttribute('webaios-tab-id')", (v) => v === c);
@@ -125,11 +125,11 @@ describe("restore at startup", () => {
     fresh();
     let m = await start();
     const windowId = (await win(m)).id;
-    await dispatch(m, { type: "creerEspace", nom: "Propre", icone: "🔒", prive: false, profil: "nouveau", fenetreId: windowId } as Action);
+    await dispatch(m, { type: "creerEspace", name: "Propre", icon: "🔒", private: false, profile: "nouveau", windowId: windowId } as Action);
     const open = async (p: string) => {
-      const before = new Set(Object.keys((await state(m)).onglets));
-      const after = await dispatch(m, { type: "ouvrirOnglet", fenetreId: windowId, url: server.url + p });
-      return Object.keys(after.onglets).find((id) => !before.has(id))!;
+      const before = new Set(Object.keys((await state(m)).tabs));
+      const after = await dispatch(m, { type: "ouvrirOnglet", windowId: windowId, url: server.url + p });
+      return Object.keys(after.tabs).find((id) => !before.has(id))!;
     };
     const title = (id: string, t: string) => waitFor(m, `return (async () => (await ChromeUtils.importESModule("chrome://browser/content/webaios/store.sys.mjs").ready).state.onglets[${JSON.stringify(id)}]?.titre)();`, (v) => v === t);
     await title(await open("/cookie"), "cookie");
@@ -156,21 +156,21 @@ describe("restore at startup", () => {
 
     m = await start();
     const f = await win(m);
-    expect(f.ordre[f.espaceActif]).toHaveLength(100);
+    expect(f.order[f.activeSpace]).toHaveLength(100);
     expect(await marked(m)).toBe(1);
     expect(await m.execute<number>("return gBrowser.tabs.length")).toBe(2);
-    await dispatch(m, { type: "activerOnglet", id: f.ordre[f.espaceActif]![0]! });
+    await dispatch(m, { type: "activerOnglet", id: f.order[f.activeSpace]![0]! });
     await waitFor(m, "return gBrowser.tabs.filter((t) => t.hasAttribute('webaios-tab-id')).length", (n) => n === 2);
   });
 
   it("keeps the chosen search engine and uses it from ⌘T", async () => {
     fresh();
     let m = await start();
-    await dispatch(m, { type: "choisirMoteur", moteur: "duckduckgo" });
+    await dispatch(m, { type: "choisirMoteur", engine: "duckduckgo" });
     await quit();
 
     m = await start();
-    expect((await state(m)).reglages.moteur).toBe("duckduckgo");
+    expect((await state(m)).settings.engine).toBe("duckduckgo");
     // No network in tests: watch the requests and cancel them.
     await m.execute(`
       window.webaiosRequests = [];
@@ -186,29 +186,29 @@ describe("restore at startup", () => {
   it("a change made right before quitting survives (no wait for the 500 ms recorder)", async () => {
     fresh();
     let m = await start();
-    await dispatch(m, { type: "choisirMoteur", moteur: "qwant" });
+    await dispatch(m, { type: "choisirMoteur", engine: "qwant" });
     await quit(); // straight after the dispatch
     m = await start();
-    expect((await state(m)).reglages.moteur).toBe("qwant");
+    expect((await state(m)).settings.engine).toBe("qwant");
   });
 
   it("a v1 session (before configurable spaces) gets its tabs and essential back, and is rewritten as v2", async () => {
     fresh();
     dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
-    const tab = (id: string, url: string, link: unknown = null) => ({ id, fenetreId: "f1", espaceId: "e1", url, titre: id, favicon: null, lien: link, ouvertParAgent: false, zoom: 1 });
+    const tab = (id: string, url: string, link: unknown = null) => ({ id, windowId: "f1", spaceId: "e1", url, title: id, favicon: null, link: link, openedByAgent: false, zoom: 1 });
     const v1 = {
       version: 1,
-      espaces: [{ id: "e1", nom: "Perso", icone: "🏠", epingles: [] }],
-      essentiels: [{ id: "fav-c", url: `${server.url}/texte.html`, titre: "Texte", favicon: null }],
-      onglets: {
+      spaces: [{ id: "e1", name: "Perso", icon: "🏠", pinned: [] }],
+      essentials: [{ id: "fav-c", url: `${server.url}/texte.html`, title: "Texte", favicon: null }],
+      tabs: {
         "o-a": tab("o-a", `${server.url}/a.html`),
         "o-b": tab("o-b", `${server.url}/b.html`),
         "o-c": tab("o-c", `${server.url}/texte.html`, { type: "essentiel", id: "fav-c" }),
       },
-      fenetres: [
-        { id: "f1", espaceActif: "e1", ordre: { e1: ["o-a", "o-b"] }, actif: { e1: "o-b" }, compact: false, panneauAgentOuvert: false, fermesRecemment: [], cadre: null },
+      windows: [
+        { id: "f1", activeSpace: "e1", order: { e1: ["o-a", "o-b"] }, active: { e1: "o-b" }, compact: false, agentPanelOpen: false, recentlyClosed: [], frame: null },
       ],
-      reglages: { moteur: "google", profilAgent: "claude", largeurPanneauAgent: 420 },
+      settings: { engine: "google", agentProfile: "claude", agentPanelWidth: 420 },
     };
     const file = path.join(dataDir, "session.json");
     await writeFile(file, JSON.stringify(v1));
@@ -221,7 +221,7 @@ describe("restore at startup", () => {
     const written = await read();
     expect(written.profils).toEqual([{ id: "defaut" }]);
     expect(Object.keys(written.onglets).sort()).toEqual(["o-a", "o-b", "o-c"]);
-    expect(written.essentiels).toEqual(v1.essentiels);
+    expect(written.essentiels).toEqual(v1.essentials);
     expect(written.onglets["o-c"].lien).toEqual({ type: "essentiel", id: "fav-c" });
     // The essential opens on its tab from before, in the default container.
     await click(m, '[data-testid="favori-fav-c"]');
@@ -231,7 +231,7 @@ describe("restore at startup", () => {
       (v) => v.title === "Texte",
     );
     expect(shown).toEqual({ url: `${server.url}/texte.html`, title: "Texte", ctx: 0 });
-    expect(Object.keys((await state(m)).onglets)).toHaveLength(3);
+    expect(Object.keys((await state(m)).tabs)).toHaveLength(3);
   });
 
   it("an unreadable session: one notification, with the .corrompu path", async () => {

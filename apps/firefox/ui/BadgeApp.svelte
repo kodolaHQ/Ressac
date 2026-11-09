@@ -11,11 +11,11 @@
   let design = $state<DesignState | null>(null);
   let root = $state<HTMLElement>();
   // The view grows while the bubble or the menu is open, and only gets in the app's way during that time.
-  $effect(() => api.pastilleTaille(access.bullesOuvertes > 0 || menuOpen));
+  $effect(() => api.badgeSize(access.openBubbles > 0 || menuOpen));
 
   async function toggleMenu() {
     menuOpen = !menuOpen;
-    if (menuOpen) design = await api.design.etat().catch(() => null);
+    if (menuOpen) design = await api.design.state().catch(() => null);
   }
   function choose(act: () => void) {
     menuOpen = false;
@@ -30,14 +30,14 @@
 
 <main>
   <div class="ligne">
-    {#if appState}<AccessBadge {id} etat={appState} />{/if}
+    {#if appState}<AccessBadge {id} state={appState} />{/if}
     <span class="webaios" bind:this={root}>
       <button class="pastille" data-testid="pastille-webaios" aria-label="WebAiOs" aria-haspopup="menu" aria-expanded={menuOpen} onclick={toggleMenu}>✎</button>
       {#if menuOpen}
         <div class="menu" role="menu">
-          <button role="menuitem" class:actif={design?.actif} onclick={() => choose(() => api.design.basculer())}>Mode design <kbd>⌘⇧D</kbd></button>
-          <button role="menuitem" onclick={() => choose(() => api.design.panier())}>Panier ({design?.panier ?? 0})</button>
-          <button role="menuitem" onclick={() => choose(() => api.design.relire())}>Relire ce projet</button>
+          <button role="menuitem" class:actif={design?.active} onclick={() => choose(() => api.design.toggle())}>Mode design <kbd>⌘⇧D</kbd></button>
+          <button role="menuitem" onclick={() => choose(() => api.design.basket())}>Panier ({design?.basket ?? 0})</button>
+          <button role="menuitem" onclick={() => choose(() => api.design.review())}>Relire ce projet</button>
         </div>
       {/if}
     </span>

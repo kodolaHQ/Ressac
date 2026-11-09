@@ -5,21 +5,21 @@ import type { BrowserState, WindowId } from "../shared/model";
 // node:net.
 
 /** The sign-in profiles a read may use: those of the state that no private space uses. */
-export function readableProfiles(appState: Pick<BrowserState, "profils" | "espaces">): string[] {
-  const privates = new Set(appState.espaces.filter((e) => e.prive).map((e) => e.profil));
-  return appState.profils.map((p) => p.id).filter((id) => !privates.has(id));
+export function readableProfiles(appState: Pick<BrowserState, "profiles" | "spaces">): string[] {
+  const privates = new Set(appState.spaces.filter((e) => e.private).map((e) => e.profile));
+  return appState.profiles.map((p) => p.id).filter((id) => !privates.has(id));
 }
 
 /**
  * The profiles a grant may use: never a private space's (even shared with a non-private space).
  * Checked by default: the window's active space's, if it is readable.
  */
-export function profilesForGrant(appState: Pick<BrowserState, "profils" | "espaces" | "fenetres">, windowId: WindowId | undefined): ProfileForGrant[] {
-  const win = appState.fenetres.find((f) => f.id === windowId);
-  const active = win ? appState.espaces.find((e) => e.id === win.espaceActif)?.profil : undefined;
+export function profilesForGrant(appState: Pick<BrowserState, "profiles" | "spaces" | "windows">, windowId: WindowId | undefined): ProfileForGrant[] {
+  const win = appState.windows.find((f) => f.id === windowId);
+  const active = win ? appState.spaces.find((e) => e.id === win.activeSpace)?.profile : undefined;
   return readableProfiles(appState).map((id) => {
-    const spaces = appState.espaces.filter((e) => e.profil === id).map((e) => e.nom);
-    return { id, libelle: spaces.length ? `Profil de « ${spaces.join(", ")} »` : `Profil « ${id} »`, parDefaut: id === active };
+    const spaces = appState.spaces.filter((e) => e.profile === id).map((e) => e.name);
+    return { id, label: spaces.length ? `Profil de « ${spaces.join(", ")} »` : `Profil « ${id} »`, isDefault: id === active };
   });
 }
 

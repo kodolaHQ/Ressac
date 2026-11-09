@@ -15,33 +15,33 @@ export const targetOfKey = (key: string): Owner =>
 export const isActionKey = (key: string): boolean => key.startsWith(ACTION_PREFIX);
 
 /** Reading and writing the workflow and its codes, addressed by key. */
-export function repoOf(w: Pick<ApiWebaios["workflow"], "lire" | "enregistrer" | "lireCode" | "enregistrerCode">): Depot {
+export function repoOf(w: Pick<ApiWebaios["workflow"], "read" | "save" | "readCode" | "saveCode">): Depot {
   return {
-    lire: (key) => w.lire(targetOfKey(key)),
-    enregistrer: (key, b) => w.enregistrer(targetOfKey(key), b),
-    lireCode: (key, name) => w.lireCode(targetOfKey(key), name),
-    enregistrerCode: (key, name, text) => w.enregistrerCode(targetOfKey(key), name, text),
+    read: (key) => w.read(targetOfKey(key)),
+    save: (key, b) => w.save(targetOfKey(key), b),
+    readCode: (key, name) => w.readCode(targetOfKey(key), name),
+    saveCode: (key, name, text) => w.saveCode(targetOfKey(key), name, text),
   };
 }
 
 /** The runs of a widget (stored with home) or of an action. */
-export function runsSourceOf(api: Pick<ApiWebaios, "accueil" | "actions">, target: Owner): SourceExecutions {
-  if (target.type === "widget") return api.accueil;
-  return { executions: () => api.actions.executions(target.id), execution: (_key, e) => api.actions.execution(target.id, e) };
+export function runsSourceOf(api: Pick<ApiWebaios, "home" | "actions">, target: Owner): SourceExecutions {
+  if (target.type === "widget") return api.home;
+  return { runs: () => api.actions.runs(target.id), run: (_key, e) => api.actions.run(target.id, e) };
 }
 
 /** What is running, seen as for widgets: a current action becomes a run (or a trial) of its key. */
 export function actionsDirect(e: ActionsState): DirectState {
   return {
-    courants: e.courantes.map(
+    running: e.running.map(
       (c): DirectWidget => ({
         widget: ACTION_PREFIX + c.action,
-        genre: c.essai ? "essai" : "execution",
-        debut: c.debut,
-        blocs: Object.fromEntries(Object.entries(c.blocs).map(([id, b]) => [id, { statut: b.statut, elements: b.elements }])),
+        kind: c.attempt ? "essai" : "execution",
+        start: c.start,
+        blocks: Object.fromEntries(Object.entries(c.blocks).map(([id, b]) => [id, { status: b.status, items: b.items }])),
       }),
     ),
-    enAttente: e.enAttente.map((a) => ACTION_PREFIX + a.action),
+    waiting: e.waiting.map((a) => ACTION_PREFIX + a.action),
   };
 }
 
@@ -49,9 +49,9 @@ export function actionsDirect(e: ActionsState): DirectState {
 export function launcherOf(api: Pick<ApiWebaios, "workflow" | "actions">, target: Owner): Launcher {
   const w = api.workflow;
   const common = {
-    lancer: (key: string, input?: string | null) => w.lancer(targetOfKey(key), input),
-    rejouer: (key: string, execution: string, block: string) => w.rejouer(targetOfKey(key), execution, block),
+    launch: (key: string, input?: string | null) => w.launch(targetOfKey(key), input),
+    replay: (key: string, execution: string, block: string) => w.replay(targetOfKey(key), execution, block),
   };
-  if (target.type === "widget") return { ...common, direct: () => w.direct(), surDirect: (r) => w.surDirect(r) };
-  return { ...common, direct: () => api.actions.direct().then(actionsDirect), surDirect: (r) => api.actions.surDirect((e) => r(actionsDirect(e))) };
+  if (target.type === "widget") return { ...common, direct: () => w.direct(), onLive: (r) => w.onLive(r) };
+  return { ...common, direct: () => api.actions.direct().then(actionsDirect), onLive: (r) => api.actions.onLive((e) => r(actionsDirect(e))) };
 }

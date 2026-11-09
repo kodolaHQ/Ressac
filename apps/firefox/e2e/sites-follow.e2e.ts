@@ -28,19 +28,19 @@ let profile: string;
 const a = (p: string) => server.url("vidola-a.localhost", p);
 const b = (p: string) => server.url("vidola-b.localhost", p);
 const pub = (p: string) => server.url("pub.localhost", p);
-const reference = (...links: string[]) => server.definir("adresses.localhost", "/", `<title>Adresses</title>${links.map((l) => `<a href="${l}">${l}</a>`).join("<br>")}`);
-const referenceReads = () => server.requetes.filter((r) => r.hote === "adresses.localhost").length;
+const reference = (...links: string[]) => server.define("adresses.localhost", "/", `<title>Adresses</title>${links.map((l) => `<a href="${l}">${l}</a>`).join("<br>")}`);
+const referenceReads = () => server.requests.filter((r) => r.host === "adresses.localhost").length;
 const declaration = (start = a("/serie/the-bear"), extra: object = {}) => ({
-  nom: "Vidola",
-  adresse: start,
-  domaines: ["vidola-a.localhost"],
-  connexion: ["compte.localhost"],
-  suiviAdresse: { page: server.url("adresses.localhost", "/"), motif: "vidola" },
+  name: "Vidola",
+  url: start,
+  domains: ["vidola-a.localhost"],
+  login: ["compte.localhost"],
+  urlTracking: { page: server.url("adresses.localhost", "/"), pattern: "vidola" },
   ...extra,
 });
 const addressFile = (id: string) => {
   const f = path.join(dataDir, "sites", id, "adresse.json");
-  return existsSync(f) ? (JSON.parse(readFileSync(f, "utf8")) as { actuel: string; anciens: string[] }) : null;
+  return existsSync(f) ? (JSON.parse(readFileSync(f, "utf8")) as { current: string; previous: string[] }) : null;
 };
 
 const inStore = <T = unknown>(body: string, args: unknown[] = []) =>
@@ -93,7 +93,7 @@ const homeFrame = <T>(id: string, body: string) =>
 
 /** Writes (and grants) app `id`, opens it. `open: false` leaves it closed. */
 async function setup(id: string, decl: object, files: Record<string, string> = {}, o: { grant?: boolean } = {}): Promise<void> {
-  writeSite(dataDir, id, { declaration: decl, fichiers: files });
+  writeSite(dataDir, id, { declaration: decl, files: files });
   if (o.grant) await grantSite(dataDir, id, decl);
 }
 /** Opens `id` and waits for its page (`path` on vidola-a) to be loaded. */
@@ -105,20 +105,20 @@ async function openAndWait(id: string, p = "/"): Promise<void> {
 
 beforeAll(async () => {
   server = await startSitesServer();
-  const d = (p: string, body: Parameters<typeof server.definir>[2]) => server.definir("vidola-a.localhost", p, body);
+  const d = (p: string, body: Parameters<typeof server.define>[2]) => server.define("vidola-a.localhost", p, body);
   d("/serie/the-bear", SERIES);
-  server.definir("vidola-b.localhost", "/serie/the-bear", SERIES);
+  server.define("vidola-b.localhost", "/serie/the-bear", SERIES);
   d("/parque", (_req, res) => res.writeHead(302, { Location: pub("/arrivee") }).end());
   d("/", `<title>Vidola A</title><a id="pub" href="${pub("/x")}">pub</a><a id="aller-pub" href="/aller-pub">aller</a>`);
   d("/aller-pub", (_req, res) => res.writeHead(302, { Location: pub("/arrivee") }).end());
   d("/film/2", "<title>Film 2</title>");
-  server.definir("vidola-b.localhost", "/film/2", "<title>Film 2 B</title>");
-  server.definir("pub.localhost", "/x", "<title>Pub</title>");
-  server.definir("pub.localhost", "/arrivee", "<title>Arrivée pub</title>");
+  server.define("vidola-b.localhost", "/film/2", "<title>Film 2 B</title>");
+  server.define("pub.localhost", "/x", "<title>Pub</title>");
+  server.define("pub.localhost", "/arrivee", "<title>Arrivée pub</title>");
   dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
   profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
   const actor = testActor(profile);
-  w = await launchWebAiOs({ dataDir, profile, env: { WEBAIOS_TEST_ADRESSES_LOCALES: "1", ...actor.env }, prefs: actor.prefs });
+  w = await launchWebAiOs({ dataDir, profile, env: { WEBAIOS_TEST_LOCAL_ADDRESSES: "1", ...actor.env }, prefs: actor.prefs });
   m = w.marionette;
   await m.setContext("chrome");
   await waitReady(m);
@@ -126,17 +126,17 @@ beforeAll(async () => {
 }, 90_000);
 afterAll(async () => {
   await w?.close();
-  await server?.fermer();
+  await server?.close();
   if (dataDir) await rm(dataDir, { recursive: true, force: true });
   if (profile) await rm(profile, { recursive: true, force: true });
 });
 beforeEach(() => {
-  server.requetes.splice(0);
-  server.couper("vidola-a.localhost", false);
+  server.requests.splice(0);
+  server.cut("vidola-a.localhost", false);
   reference(b("/"));
 });
 afterEach(async () => {
-  server.couper("vidola-a.localhost", false);
+  server.cut("vidola-a.localhost", false);
   try {
     expect(await missingApi(m)).toEqual([]);
   } finally {
@@ -147,32 +147,32 @@ afterEach(async () => {
 describe("site app address follow", () => {
   it("vidola-a stopped, adresses.localhost lists vidola-b: the window goes to vidola-b and says so; reopened: vidola-b directly, no reading (sites.spec.ts:1357)", async () => {
     await setup("t58", declaration());
-    server.couper("vidola-a.localhost");
+    server.cut("vidola-a.localhost");
     await openSite("t58");
     await viewAt("t58", b("/serie/the-bear"));
     await expectText("t58", "site-avis", NOTICE_CHANGED);
     await expectText("t58", "site-domaine", "vidola-b.localhost");
-    expect(addressFile("t58")).toMatchObject({ actuel: "vidola-b.localhost", anciens: ["vidola-a.localhost"] });
+    expect(addressFile("t58")).toMatchObject({ current: "vidola-b.localhost", previous: ["vidola-a.localhost"] });
     expect(referenceReads()).toBe(1);
     await inStore(`await store.sites.close("t58");`);
     await expect.poll(() => siteWindowCount(m, "t58")).toBe(0);
-    server.requetes.splice(0);
+    server.requests.splice(0);
     await openSite("t58");
     await viewAt("t58", b("/serie/the-bear"));
     await expectText("t58", "site-domaine", "vidola-b.localhost");
     expect(referenceReads()).toBe(0);
-    expect(server.requetes.some((r) => r.hote === "vidola-a.localhost")).toBe(false);
+    expect(server.requests.some((r) => r.host === "vidola-a.localhost")).toBe(false);
   });
 
   it("a /serie/* tweak applies on vidola-b; the memory kept on vidola-a reopens from the home on vidola-b (sites.spec.ts:1384)", async () => {
-    const decl = declaration(a("/serie/the-bear"), { retouches: [{ correspond: ["/serie/*"], css: ["cacher.css"] }] });
+    const decl = declaration(a("/serie/the-bear"), { tweaks: [{ matches: ["/serie/*"], css: ["cacher.css"] }] });
     await setup("t59", decl, { "accueil/index.html": SITE_HOME, "retouches/cacher.css": ".shorts { display: none; }" }, { grant: true });
     mkdirSync(path.join(dataDir, "sites", "t59"), { recursive: true });
     writeFileSync(
       path.join(dataDir, "sites", "t59", "memoire.json"),
-      JSON.stringify({ version: 1, valeurs: { "encours.the-bear": { valeur: { titre: "The Bear" }, adresse: "/serie/the-bear?e=4", quand: new Date().toISOString() } }, positions: {} }),
+      JSON.stringify({ version: 1, values: { "encours.the-bear": { value: { title: "The Bear" }, url: "/serie/the-bear?e=4", when: new Date().toISOString() } }, positions: {} }),
     );
-    server.couper("vidola-a.localhost");
+    server.cut("vidola-a.localhost");
     await openSite("t59");
     await expect.poll(() => homeFrame("t59", `return home.contentDocument.getElementById("series").textContent;`), { timeout: 15_000 }).toContain("The Bear");
     await barClick("t59", "site-entrer");
@@ -192,8 +192,8 @@ describe("site app address follow", () => {
     await expectText("t60", "site-avis", NOTICE_CHANGED);
     // The aimed path does not exist at vidola-b: it goes there anyway (the site answers there).
     await viewAt("t60", b("/parque"));
-    expect(addressFile("t60")?.actuel).toBe("vidola-b.localhost");
-    expect(server.requetes.some((r) => r.hote === "pub.localhost")).toBe(false);
+    expect(addressFile("t60")?.current).toBe("vidola-b.localhost");
+    expect(server.requests.some((r) => r.host === "pub.localhost")).toBe(false);
   });
 
   it("a redirect off the site after a click in the page does not start the follow (sites.spec.ts:1432)", async () => {
@@ -209,12 +209,12 @@ describe("site app address follow", () => {
   it("a trapped reference page: « Adresse introuvable sur adresses.localhost », the app stays on vidola-a (sites.spec.ts:1444)", async () => {
     reference(server.url("vidola.adresses.localhost", "/"), server.url("adresses.localhost", "/vidola-b"), pub("/vidola"), "http://vidola-b.example/", "javascript:alert(1)");
     await setup("t62", declaration());
-    server.couper("vidola-a.localhost");
+    server.cut("vidola-a.localhost");
     await openSite("t62");
     await expectText("t62", "site-avis", "Adresse introuvable sur adresses.localhost");
     await expectText("t62", "site-domaine", "vidola-a.localhost");
     expect(addressFile("t62")).toBeNull();
-    expect(server.requetes.some((r) => r.hote === "vidola-b.localhost" || r.hote === "pub.localhost")).toBe(false);
+    expect(server.requests.some((r) => r.host === "vidola-b.localhost" || r.host === "pub.localhost")).toBe(false);
   });
 
   it("the reference read sends no cookie, even if the app's container and the default one hold one for adresses.localhost (sites.spec.ts:1457)", async () => {
@@ -235,10 +235,10 @@ describe("site app address follow", () => {
       [server.url("adresses.localhost", "/cookie")],
     );
     expect(seen).toBe(2);
-    server.requetes.splice(0);
+    server.requests.splice(0);
     await barClick("t63", "site-chercher-adresse");
     await expect.poll(referenceReads, { timeout: 20_000 }).toBeGreaterThan(0);
-    const reads = server.requetes.filter((r) => r.hote === "adresses.localhost");
+    const reads = server.requests.filter((r) => r.host === "adresses.localhost");
     expect(reads.every((r) => r.cookie === undefined)).toBe(true);
   });
 
@@ -255,7 +255,7 @@ describe("site app address follow", () => {
   });
 
   it("while reading the button is disabled and busy; a click too early gives the last result again after a blocked link (sites.spec.ts:1485)", async () => {
-    server.definir("adresses.localhost", "/", (_req, res) => {
+    server.define("adresses.localhost", "/", (_req, res) => {
       setTimeout(() => res.writeHead(200, { "Content-Type": "text/html" }).end(`<title>Adresses</title><a href="${a("/")}">a</a>`), 1200);
     });
     await setup("t65", declaration(a("/")));
@@ -268,7 +268,7 @@ describe("site app address follow", () => {
     // A blocked link replaces the notice; a click too early (no reading) gives the last result again.
     await inSiteView(m, "t65", "document.getElementById('pub').click(); return 1;", { gesture: true });
     await expectNotice("t65", "pub.localhost");
-    server.requetes.splice(0);
+    server.requests.splice(0);
     await barClick("t65", "site-chercher-adresse");
     await expectText("t65", "site-avis", UNCHANGED_NOTICE);
     expect(referenceReads()).toBe(0);
@@ -285,7 +285,7 @@ describe("site app address follow", () => {
 
   it("↻ in the bar while vidola-a now redirects to pub.localhost: the follow starts (reload is a load WebAiOs started)", async () => {
     let parked = false;
-    server.definir("vidola-a.localhost", "/recharge", (_req, res) => (parked ? res.writeHead(302, { Location: pub("/arrivee") }).end() : res.writeHead(200, { "Content-Type": "text/html" }).end("<title>R</title>ok")));
+    server.define("vidola-a.localhost", "/recharge", (_req, res) => (parked ? res.writeHead(302, { Location: pub("/arrivee") }).end() : res.writeHead(200, { "Content-Type": "text/html" }).end("<title>R</title>ok")));
     await setup("t68", declaration(a("/recharge")));
     await openAndWait("t68", "/recharge");
     expect(referenceReads()).toBe(0);
@@ -293,11 +293,11 @@ describe("site app address follow", () => {
     await barClick("t68", "site-recharger");
     await expectText("t68", "site-avis", NOTICE_CHANGED);
     expect(referenceReads()).toBe(1);
-    expect(server.requetes.some((r) => r.hote === "pub.localhost")).toBe(false);
+    expect(server.requests.some((r) => r.host === "pub.localhost")).toBe(false);
   });
 
   it("an app without suiviAdresse has no button (sites.spec.ts:1521)", async () => {
-    await setup("t67", declaration(a("/"), { suiviAdresse: undefined }));
+    await setup("t67", declaration(a("/"), { urlTracking: undefined }));
     await openAndWait("t67");
     expect(await bar<number>("t67", `return doc.querySelectorAll('[data-testid="site-chercher-adresse"]').length + 1;`)).toBe(1);
   });

@@ -33,36 +33,36 @@ const UNREADABLE_WIDGET_SIZE = { l: 4, h: 2 };
  * to force the frame to reload when the agent rewrites it.
  */
 export function toShownWidgets(o: {
-  etat: HomeState;
+  state: HomeState;
   placements: FreePlacement[];
   theme: HomeTheme | null;
   mtimes: Record<string, number>;
 }): { widgets: ShownWidget[]; theme: HomeTheme | null } {
-  const defaults = new Map(o.etat.widgets.map((w) => [w.id, freeSizes("declaration" in w ? w.declaration.tailles.defaut : UNREADABLE_WIDGET_SIZE)] as const));
+  const defaults = new Map(o.state.widgets.map((w) => [w.id, freeSizes("declaration" in w ? w.declaration.sizes.default : UNREADABLE_WIDGET_SIZE)] as const));
   const placements = placeMissingFree(
-    o.etat.widgets.map((w) => w.id),
+    o.state.widgets.map((w) => w.id),
     o.placements,
     defaults,
   );
   const widgets = placements.flatMap((placement): ShownWidget[] => {
-    const w = o.etat.widgets.find((x) => x.id === placement.id);
+    const w = o.state.widgets.find((x) => x.id === placement.id);
     if (!w) return [];
-    if ("erreur" in w) return [{ id: w.id, erreur: w.erreur, placement }];
+    if ("error" in w) return [{ id: w.id, error: w.error, placement }];
     return [
       {
         id: w.id,
-        nom: w.declaration.nom,
+        name: w.declaration.name,
         placement,
-        tailles: w.declaration.tailles,
-        src: w.aAffichage ? displayUrl(w.id, o.mtimes[w.id] ?? 0) : null,
-        donnees: w.donnees,
-        exemple: w.exemple,
-        etat: w.etat,
-        compte: w.declaration.sources.compte,
-        publiques: w.declaration.sources.publiques,
-        aRecolte: w.aRecolte,
-        heures: w.declaration.recolte?.heures ?? [],
-        minutes: w.declaration.recolte?.minutes ?? null,
+        sizes: w.declaration.sizes,
+        src: w.hasDisplay ? displayUrl(w.id, o.mtimes[w.id] ?? 0) : null,
+        data: w.data,
+        example: w.example,
+        state: w.state,
+        account: w.declaration.sources.account,
+        public: w.declaration.sources.public,
+        hasHarvest: w.hasHarvest,
+        hours: w.declaration.harvest?.hours ?? [],
+        minutes: w.declaration.harvest?.minutes ?? null,
       },
     ];
   });
@@ -102,18 +102,18 @@ export function validatePlacements(raw: unknown, ids: readonly string[]): FreePl
 /** Writes to disposition.json one by one, in request order: none reads the state another is about to change. */
 const layoutQueue = new Map<string, Promise<void>>();
 function inSeries(c: SpacePaths, write: () => Promise<void>): Promise<void> {
-  const next = (layoutQueue.get(c.disposition) ?? Promise.resolve()).then(write);
+  const next = (layoutQueue.get(c.layout) ?? Promise.resolve()).then(write);
   const end = next.catch(() => {});
-  layoutQueue.set(c.disposition, end);
-  void end.then(() => layoutQueue.get(c.disposition) === end && layoutQueue.delete(c.disposition));
+  layoutQueue.set(c.layout, end);
+  void end.then(() => layoutQueue.get(c.layout) === end && layoutQueue.delete(c.layout));
   return next;
 }
 
 async function writeLayout(c: SpacePaths, widgets: readonly FreePlacement[]): Promise<void> {
-  await mkdir(c.accueil, { recursive: true });
-  const temp = `${c.disposition}.${randomUUID()}.tmp`;
+  await mkdir(c.home, { recursive: true });
+  const temp = `${c.layout}.${randomUUID()}.tmp`;
   await writeFile(temp, JSON.stringify({ version: 3, widgets }, null, 2));
-  await rename(temp, c.disposition);
+  await rename(temp, c.layout);
 }
 
 /** The new layout, already validated: atomic write, in series (two close drags are not lost). */
@@ -129,7 +129,7 @@ export async function removeWidget(c: SpacePaths, id: string, forget: (id: strin
   if (!ID_WIDGET.test(id)) throw new Error(`id de widget invalide : ${id}`);
   await inSeries(c, async () => {
     const remaining = (await readFreeLayout(c)).filter((p) => p.id !== id);
-    const trash = join(c.accueil, ".corbeille");
+    const trash = join(c.home, ".corbeille");
     await mkdir(trash, { recursive: true });
     await rename(join(c.widgets, id), join(trash, `${id}-${Date.now()}`));
     await writeLayout(c, remaining);

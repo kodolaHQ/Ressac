@@ -18,21 +18,21 @@ export const Block = z
   .object({
     id: z.string().regex(BLOCK_ID, "id de bloc invalide (a-z, 0-9 et - , 40 caractères au plus)"),
     type: z.string().min(1).max(60),
-    nom: z.string().max(60).optional(),
+    name: z.string().max(60).optional(),
     position: z.object({ x: z.number(), y: z.number() }).strict().default({ x: 0, y: 0 }),
-    parametres: z.record(z.string(), z.unknown()).default({}),
+    params: z.record(z.string(), z.unknown()).default({}),
   })
   .strict();
 export type Block = z.infer<typeof Block>;
 
-export const Link = z.object({ de: z.string().min(1).max(40), vers: z.string().min(1).max(40) }).strict();
+export const Link = z.object({ from: z.string().min(1).max(40), to: z.string().min(1).max(40) }).strict();
 export type Link = z.infer<typeof Link>;
 
 export const Workflow = z
   .object({
     version: z.literal(1),
-    blocs: z.array(Block).max(MAX_BLOCKS),
-    liens: z.array(Link).max(MAX_LIENS).default([]),
+    blocks: z.array(Block).max(MAX_BLOCKS),
+    links: z.array(Link).max(MAX_LIENS).default([]),
   })
   .strict();
 export type Workflow = z.infer<typeof Workflow>;

@@ -9,7 +9,7 @@ import { addonIdOf, firefoxManifest, firefoxDenial, zipper } from "../host/exten
 import { DEFAULT_GUARDS, prepareCopy } from "../../../packages/kernel/src/index.ts";
 import { startFakeAmo } from "./fake-amo";
 
-const key = { emetteur: "user:1:abc", secret: "s3cr3t-do-not-leak" };
+const key = { emitter: "user:1:abc", secret: "s3cr3t-do-not-leak" };
 const dirs: string[] = [];
 const fakes: { close(): Promise<void> }[] = [];
 afterEach(async () => {
@@ -17,14 +17,14 @@ afterEach(async () => {
   dirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true }));
 });
 
-async function xpiOf(guid: string, version: string): Promise<{ xpi: string; sortie: string }> {
+async function xpiOf(guid: string, version: string): Promise<{ xpi: string; output: string }> {
   const d = mkdtempSync(join(tmpdir(), "webaios-amo-test-"));
   dirs.push(d);
   mkdirSync(join(d, "copie"));
   writeFileSync(join(d, "copie", "manifest.json"), JSON.stringify({ manifest_version: 2, name: "t", version, browser_specific_settings: { gecko: { id: guid } } }));
   const xpi = join(d, "t.xpi");
   await zipper(join(d, "copie"), xpi);
-  return { xpi, sortie: join(d, "signe.xpi") };
+  return { xpi, output: join(d, "signe.xpi") };
 }
 
 const fake = async (o?: Parameters<typeof startFakeAmo>[0]) => {
@@ -37,40 +37,40 @@ describe("AMO client", () => {
   it("signs a new id then a new version; the JWT carries the issuer", async () => {
     const amo = await fake();
     const a = await xpiOf("t@agent.webaios", "1.0.0.1");
-    await sign({ ...a, guid: "t@agent.webaios", version: "1.0.0.1", cle: key, base: amo.url, pasMs: 10 });
+    await sign({ ...a, guid: "t@agent.webaios", version: "1.0.0.1", key: key, base: amo.url, stepMs: 10 });
     const b = await xpiOf("t@agent.webaios", "1.0.0.2");
-    await sign({ ...b, guid: "t@agent.webaios", version: "1.0.0.2", cle: key, base: amo.url, pasMs: 10 });
-    expect(amo.envois.map((e) => [e.methode, e.version])).toEqual([["PUT", "1.0.0.1"], ["POST", "1.0.0.2"]]);
-    for (const e of amo.envois) {
+    await sign({ ...b, guid: "t@agent.webaios", version: "1.0.0.2", key: key, base: amo.url, stepMs: 10 });
+    expect(amo.sends.map((e) => [e.method, e.version])).toEqual([["PUT", "1.0.0.1"], ["POST", "1.0.0.2"]]);
+    for (const e of amo.sends) {
       expect(e.auth.startsWith("JWT ")).toBe(true);
       const [, body] = e.auth.slice(4).split(".");
       const token = JSON.parse(Buffer.from(body!, "base64url").toString());
-      expect(token.iss).toBe(key.emetteur);
+      expect(token.iss).toBe(key.emitter);
       expect(token.exp - token.iat).toBeLessThanOrEqual(300);
     }
-    expect(existsSync(a.sortie) && existsSync(b.sortie)).toBe(true);
+    expect(existsSync(a.output) && existsSync(b.output)).toBe(true);
   });
 
   it("an AMO refusal comes back as is; a stall times out; a 500 is a network error", async () => {
-    const error = async (o: Parameters<typeof startFakeAmo>[0], extra: { delai?: number } = {}) => {
+    const error = async (o: Parameters<typeof startFakeAmo>[0], extra: { delay?: number } = {}) => {
       const amo = await fake(o);
       const a = await xpiOf("t@agent.webaios", "1.0.0.1");
-      const e = await sign({ ...a, guid: "t@agent.webaios", version: "1.0.0.1", cle: key, base: amo.url, pasMs: 10, ...extra }).then(() => null, (x) => x);
+      const e = await sign({ ...a, guid: "t@agent.webaios", version: "1.0.0.1", key: key, base: amo.url, stepMs: 10, ...extra }).then(() => null, (x) => x);
       expect(e).toBeInstanceOf(SignatureError);
       expect(e.message).not.toContain(key.secret);
       return e.message;
     };
-    expect(await error({ refus: "Invalid manifest" })).toBe(deniedSignature("Invalid manifest"));
-    expect(await error({ delaiMs: 5000 }, { delai: 200 })).toBe(SLOW_SIGNATURE);
-    expect(await error({ erreurSondage: 403 }, { delai: 300 })).toBe(signatureImpossible("HTTP 403"));
-    expect(await error({ erreurHttp: 500 })).toBe(signatureImpossible("HTTP 500"));
+    expect(await error({ denial: "Invalid manifest" })).toBe(deniedSignature("Invalid manifest"));
+    expect(await error({ delayMs: 5000 }, { delay: 200 })).toBe(SLOW_SIGNATURE);
+    expect(await error({ pollError: 403 }, { delay: 300 })).toBe(signatureImpossible("HTTP 403"));
+    expect(await error({ httpError: 500 })).toBe(signatureImpossible("HTTP 500"));
   });
 
   it("a version AMO rejects after validation is refused at once, with AMO's text", async () => {
-    const amo = await fake({ statutFichier: "disabled" });
+    const amo = await fake({ fileStatus: "disabled" });
     const a = await xpiOf("t@agent.webaios", "1.0.0.1");
     const start = Date.now();
-    const e = await sign({ ...a, guid: "t@agent.webaios", version: "1.0.0.1", cle: key, base: amo.url, pasMs: 10, delai: 5000 }).then(() => null, (x) => x);
+    const e = await sign({ ...a, guid: "t@agent.webaios", version: "1.0.0.1", key: key, base: amo.url, stepMs: 10, delay: 5000 }).then(() => null, (x) => x);
     expect(e).toBeInstanceOf(SignatureError);
     expect(e.message.startsWith(deniedSignature(""))).toBe(true);
     expect(e.message).toContain("disabled");
@@ -86,7 +86,7 @@ describe("AMO client", () => {
     const spy = vi.spyOn(console, "error").mockImplementation((...a) => void errors.push(a));
     const warn = vi.spyOn(console, "warn").mockImplementation((...a) => void errors.push(a));
     const start = Date.now();
-    expect(await readAmoKey({}, { commande: slow, delai: 200 })).toBeNull();
+    expect(await readAmoKey({}, { command: slow, delay: 200 })).toBeNull();
     expect(Date.now() - start).toBeLessThan(5000);
     spy.mockRestore();
     warn.mockRestore();
@@ -94,8 +94,8 @@ describe("AMO client", () => {
   });
 
   it("keys: test env, absent", async () => {
-    expect(await readAmoKey({ WEBAIOS_TEST_AMO_URL: "x", WEBAIOS_TEST_AMO_CLES: "e:s" })).toEqual({ emetteur: "e", secret: "s" });
-    expect(await readAmoKey({ WEBAIOS_TEST_AMO_URL: "x", WEBAIOS_TEST_AMO_CLES: "user:1:abc:s" })).toEqual({ emetteur: "user:1:abc", secret: "s" });
+    expect(await readAmoKey({ WEBAIOS_TEST_AMO_URL: "x", WEBAIOS_TEST_AMO_KEYS: "e:s" })).toEqual({ emitter: "e", secret: "s" });
+    expect(await readAmoKey({ WEBAIOS_TEST_AMO_URL: "x", WEBAIOS_TEST_AMO_KEYS: "user:1:abc:s" })).toEqual({ emitter: "user:1:abc", secret: "s" });
     expect(await readAmoKey({ WEBAIOS_TEST_AMO_URL: "x" })).toBeNull();
   });
 
@@ -124,8 +124,8 @@ describe("AMO client", () => {
         }),
       );
       const staging = join(d, `copie-${n}`);
-      const r = await prepareCopy({ source, cible: staging, dossierGardes: DEFAULT_GUARDS });
-      expect(r.analyse.refus).toEqual([]);
+      const r = await prepareCopy({ source, target: staging, keptFolder: DEFAULT_GUARDS });
+      expect(r.analysis.denial).toEqual([]);
       const raw = JSON.parse(readFileSync(join(staging, "manifest.json"), "utf8"));
       expect(firefoxDenial(raw, readdirSync(staging, { recursive: true }) as string[])).toEqual([]);
       const f = /^importScripts\("webaios-garde-fond\.js", ("(?:[^"\\]|\\.)*")\);$/m.exec(readFileSync(join(staging, "webaios-fond.js"), "utf8"));
@@ -135,7 +135,7 @@ describe("AMO client", () => {
       const output = join(d, `${n}.signe.xpi`);
       await zipper(staging, xpi);
       const t = Date.now();
-      await sign({ xpi, sortie: output, guid: addonIdOf(folder), version: String(manifest.version), cle: k, base: AMO_URL });
+      await sign({ xpi, output: output, guid: addonIdOf(folder), version: String(manifest.version), key: k, base: AMO_URL });
       console.log(`version ${manifest.version} signed in ${Math.round((Date.now() - t) / 1000)} s`);
       const { stdout } = await promisify(execFile)("unzip", ["-l", output]);
       expect(stdout).toContain("META-INF/cose.sig");

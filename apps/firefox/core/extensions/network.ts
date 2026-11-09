@@ -45,7 +45,7 @@ export function patternCovers(pattern: string, u: URL): boolean {
 
 /** A host of `accord.reseau` (exact name). */
 function inNetwork(u: URL, grant: Scope): boolean {
-  return grant.reseau.includes(u.hostname.toLowerCase());
+  return grant.network.includes(u.hostname.toLowerCase());
 }
 
 /**
@@ -59,11 +59,11 @@ export function agentAllowedUrl(url: string, grant: Scope, idChrome: string): bo
   if (u.protocol === "chrome-extension:") return u.host === idChrome;
   if (u.protocol !== "http:" && u.protocol !== "https:") return false;
   if (u.username || u.password) return false;
-  return inNetwork(u, grant) || grant.hotes.some((m) => patternCovers(m, u));
+  return inNetwork(u, grant) || grant.hosts.some((m) => patternCovers(m, u));
 }
 
 /** Is the tab at address `url` a site of the granted hosts (scripts, CSS)? */
 export function agentAllowedHost(url: string, grant: Scope): boolean {
   const u = read(url);
-  return !!u && grant.hotes.some((m) => patternCovers(m, u));
+  return !!u && grant.hosts.some((m) => patternCovers(m, u));
 }

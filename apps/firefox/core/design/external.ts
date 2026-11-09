@@ -22,11 +22,11 @@ const NAME_MAX = 60;
 export const failureReason = (e: unknown): string => `Le MCP externe n'a pas pu démarrer : ${e instanceof Error ? e.message : String(e)}`;
 
 export interface ExternalService {
-  etat(): ExternalsState;
-  brancher(name: string): Promise<{ commande: string }>;
-  revoquer(id: string): Promise<void>;
-  oublier(id: string): Promise<void>;
-  arreter(): Promise<void>;
+  state(): ExternalsState;
+  connect(name: string): Promise<{ command: string }>;
+  revoke(id: string): Promise<void>;
+  forget(id: string): Promise<void>;
+  stop(): Promise<void>;
 }
 
 /**
@@ -34,74 +34,74 @@ export interface ExternalService {
  * Code (registry, first review snapshot, notification) and the Applications page's gestures.
  */
 export async function startExternals(o: {
-  registre: ExternalRegistry;
-  remarques: Remarks;
-  dossiers: DesignFolders;
+  registry: ExternalRegistry;
+  remarks: Remarks;
+  folders: DesignFolders;
   port: number;
-  plages: [number, number][];
-  racineEspace: string;
-  maison: string;
+  ranges: [number, number][];
+  spaceRoot: string;
+  home: string;
   /** Notification of a project's first declaration. */
-  notifier(n: { titre: string; texte: string }): void;
+  notify(n: { title: string; text: string }): void;
 }): Promise<ExternalService> {
-  let server: { port: number; arreter(): Promise<void> } | null = null;
-  let serverState: ExternalsState["serveur"];
+  let server: { port: number; stop(): Promise<void> } | null = null;
+  let serverState: ExternalsState["server"];
   try {
     server = await startExternalServer({
-      registre: o.registre,
-      remarques: o.remarques,
+      registry: o.registry,
+      remarks: o.remarks,
       port: o.port,
-      declarer: async (client, d): Promise<DeclarationResult> => {
-        const r = await o.registre.declarer(client.id, d, { plages: o.plages, racineEspace: o.racineEspace, maison: o.maison });
-        if (r.lisible) {
+      declare: async (client, d): Promise<DeclarationResult> => {
+        const r = await o.registry.declare(client.id, d, { ranges: o.ranges, spaceRoot: o.spaceRoot, home: o.home });
+        if (r.readable) {
           // The review's first snapshot is taken in the background: an error does not prevent the declaration.
-          const id = externalProject(r.projet.id);
-          void new ReviewStore({ depot: reviewStore(o.dossiers, id), dossier: r.projet.dossier })
-            .assurerReference()
+          const id = externalProject(r.project.id);
+          void new ReviewStore({ repo: reviewStore(o.folders, id), folder: r.project.folder })
+            .ensureReference()
             .catch((e) => console.error("[externes] première photo de relecture impossible :", e));
         }
-        if (r.premiere) o.notifier({ titre: "WebAiOs", texte: `${client.nom} a branché le projet ${r.projet.nom}` });
-        return { projet: r.projet, ...(r.lisible ? {} : { avertissement: UNREADABLE_WARNING }) };
+        if (r.first) o.notify({ title: "WebAiOs", text: `${client.name} a branché le projet ${r.project.name}` });
+        return { project: r.project, ...(r.readable ? {} : { warning: UNREADABLE_WARNING }) };
       },
     });
-    serverState = { etat: "pret", port: server.port };
+    serverState = { state: "pret", port: server.port };
   } catch (e) {
     // Port taken or any other error: the section says so, never « démarre » endlessly.
-    if ((e as NodeJS.ErrnoException).code === "EADDRINUSE") serverState = { etat: "eteint", raison: portTaken(o.port) };
+    if ((e as NodeJS.ErrnoException).code === "EADDRINUSE") serverState = { state: "eteint", reason: portTaken(o.port) };
     else {
       console.error("[externes] démarrage impossible :", e);
-      serverState = { etat: "eteint", raison: failureReason(e) };
+      serverState = { state: "eteint", reason: failureReason(e) };
     }
   }
 
   return {
-    etat: () => {
-      const clients = o.registre.clients();
+    state: () => {
+      const clients = o.registry.clients();
       return {
-        serveur: serverState,
-        projets: o.registre.projets().map((p) => ({ ...p, client: p.client, nomClient: clients.find((c) => c.id === p.client)?.nom ?? null })),
-        clients: clients.map((c) => ({ id: c.id, nom: c.nom, cree: c.cree })),
+        server: serverState,
+        projects: o.registry.projects().map((p) => ({ ...p, client: p.client, clientName: clients.find((c) => c.id === p.client)?.name ?? null })),
+        clients: clients.map((c) => ({ id: c.id, name: c.name, created: c.created })),
       };
     },
-    brancher: async (name) => {
-      if (serverState.etat !== "pret") throw new Error(serverState.raison);
+    connect: async (name) => {
+      if (serverState.state !== "pret") throw new Error(serverState.reason);
       const clean = name.trim().slice(0, NAME_MAX) || DEFAULT_NAME;
-      const { jeton: token } = await o.registre.brancher(clean);
-      return { commande: pluggedCommand(serverState.port, token) };
+      const { token: token } = await o.registry.connect(clean);
+      return { command: pluggedCommand(serverState.port, token) };
     },
-    revoquer: (id) => o.registre.revoquer(id),
-    oublier: async (id) => {
+    revoke: (id) => o.registry.revoke(id),
+    forget: async (id) => {
       const project = externalProject(id);
-      await o.registre.oublier(id);
-      await o.remarques.oublier(project);
+      await o.registry.forget(id);
+      await o.remarks.forget(project);
       await Promise.all([
         // Through the repository queue: goes after a first snapshot in progress, which would otherwise recreate it.
-        new ReviewStore({ depot: reviewStore(o.dossiers, project), dossier: o.racineEspace }).supprimer(),
-        rm(commentsFile(o.dossiers, project), { force: true }),
+        new ReviewStore({ repo: reviewStore(o.folders, project), folder: o.spaceRoot }).supprimer(),
+        rm(commentsFile(o.folders, project), { force: true }),
       ]);
     },
-    arreter: async () => {
-      await server?.arreter();
+    stop: async () => {
+      await server?.stop();
     },
   };
 }

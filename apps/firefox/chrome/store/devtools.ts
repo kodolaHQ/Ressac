@@ -138,7 +138,7 @@ const fromExtension = (file: unknown, frames: Frame[] | null | undefined) =>
 function feedConsole(buffer: TabBuffer, r: any, TYPES: any): void {
   if (r.resourceType === TYPES.CONSOLE_MESSAGE) {
     if (fromExtension(r.filename, r.stacktrace)) return;
-    buffer.evenement("Runtime.consoleAPICalled", {
+    buffer.event("Runtime.consoleAPICalled", {
       type: r.level === "warn" ? "warning" : r.level,
       args: (r.arguments ?? []).map((a: unknown) => ({ value: gripText(a) })),
       timestamp: r.timeStamp,
@@ -153,9 +153,9 @@ function feedConsole(buffer: TabBuffer, r: any, TYPES: any): void {
   const text = gripText(e.errorMessage).replace(/^uncaught exception: /, "");
   // A rejection's stack is not in `stacktrace` but in its exception (note D1).
   const stack = e.stacktrace?.length ? callFrames(e.stacktrace) : stackFrames(grip(e.exception)?.preview?.stack);
-  if (e.warning || e.info) buffer.evenement("Log.entryAdded", { entry: { level: e.warning ? "warning" : "info", text, timestamp: e.timeStamp, stackTrace: stack } });
+  if (e.warning || e.info) buffer.event("Log.entryAdded", { entry: { level: e.warning ? "warning" : "info", text, timestamp: e.timeStamp, stackTrace: stack } });
   else
-    buffer.evenement("Runtime.exceptionThrown", {
+    buffer.event("Runtime.exceptionThrown", {
       timestamp: e.timeStamp,
       exceptionDetails: { text: e.isPromiseRejection ? "Uncaught (in promise)" : "Uncaught", exception: { description: text }, stackTrace: stack },
     });
@@ -173,29 +173,29 @@ const headerRecord = (r: any): Record<string, string> => {
 function requestOf(r: any, h: { req: Record<string, string>; res: Record<string, string> } | undefined): NetworkRequest {
   return {
     id: String(r.resourceId),
-    horodatage: r.timeStamp ?? Date.now(),
-    methode: r.method ?? "GET",
+    timestamp: r.timeStamp ?? Date.now(),
+    method: r.method ?? "GET",
     url: r.url ?? "",
     // Firefox gives the status as a string (note D2).
-    ...(r.status ? { statut: Number(r.status) } : {}),
-    ...(typeof r.totalTime === "number" ? { dureeMs: r.totalTime } : {}),
-    ...(typeof r.transferredSize === "number" ? { taille: r.transferredSize } : {}),
+    ...(r.status ? { status: Number(r.status) } : {}),
+    ...(typeof r.totalTime === "number" ? { durationMs: r.totalTime } : {}),
+    ...(typeof r.transferredSize === "number" ? { size: r.transferredSize } : {}),
     ...(r.cause?.type ? { type: r.cause.type } : {}),
-    enTetesRequete: { ...h?.req },
-    enTetesReponse: { ...h?.res },
-    ...(r.blockedReason ? { erreur: String(r.blockedReason) } : {}),
+    requestHeaders: { ...h?.req },
+    responseHeaders: { ...h?.res },
+    ...(r.blockedReason ? { error: String(r.blockedReason) } : {}),
   };
 }
 
 type Leaf = { count: number; bytes: number };
 /** A census `{ objects: {<class>: leaf}, strings: leaf, scripts: leaf, other: {<type>: leaf}, domNode: {…} }`: one entry per leaf, named by its key. */
 export function censusToSnapshot(census: Record<string, Leaf | Record<string, Leaf>>): FirefoxSnapshot {
-  const byName = new Map<string, { nom: string; nombre: number; taille: number }>();
+  const byName = new Map<string, { name: string; count: number; size: number }>();
   let total = 0;
   const add = (name: string, l: Leaf) => {
-    const e = byName.get(name) ?? { nom: name, nombre: 0, taille: 0 };
-    e.nombre += l.count;
-    e.taille += l.bytes;
+    const e = byName.get(name) ?? { name: name, count: 0, size: 0 };
+    e.count += l.count;
+    e.size += l.bytes;
     total += l.bytes;
     byName.set(name, e);
   };
@@ -203,7 +203,7 @@ export function censusToSnapshot(census: Record<string, Leaf | Record<string, Le
     if (typeof (v as Leaf).count === "number") add(key, v as Leaf);
     else for (const [name, l] of Object.entries(v ?? {})) if (typeof l?.count === "number") add(name, l);
   }
-  return { format: "webaios-firefox-census", total, parConstructeur: [...byName.values()] };
+  return { format: "webaios-firefox-census", total, byConstructor: [...byName.values()] };
 }
 
 interface GeckoThread {
@@ -273,7 +273,7 @@ export function geckoToCpuProfile(t: GeckoThread, categories: { name: string }[]
   });
   for (const n of nodes) if (!n.children!.length) delete n.children;
   const profile: CpuProfile = { nodes, samples, timeDeltas, startTime: Math.round((times[0] ?? 0) * 1000), endTime: Math.round((times.at(-1) ?? 0) * 1000) };
-  return { profil: profile, scriptMs, taskMs };
+  return { profile: profile, scriptMs, taskMs };
 }
 
 function abortError(signal: AbortSignal): unknown {
@@ -301,7 +301,7 @@ export function createDevTools(o: {
   const siteView = (id: string) =>
     id.startsWith(SITE_PREFIX) ? o.sites?.viewFor(id.slice(SITE_PREFIX.length)) : id.startsWith(APP_PREFIX) ? o.apps?.viewFor(id.slice(APP_PREFIX.length)) : undefined;
   /** The page's address now: the app view's for a site app or agent app window, the tab's otherwise. */
-  const urlOf = (id: string) => String((isWindow(id) ? siteView(id)?.browser.currentURI?.spec : o.store.state.onglets[id]?.url) ?? "");
+  const urlOf = (id: string) => String((isWindow(id) ? siteView(id)?.browser.currentURI?.spec : o.store.state.tabs[id]?.url) ?? "");
   const entries = new Map<string, { browser: any; origin: string | null; session: Promise<Session> }>();
   let current: string | null = null;
   /** Bumped by owner() and release(): a call that was loading its tab meanwhile attaches nothing. */
@@ -317,7 +317,7 @@ export function createDevTools(o: {
         s.leave();
         s.nextTarget.catch(() => {});
         s.rejectNext(new Error(DETACHED_TEXT));
-        s.buffer.vider();
+        s.buffer.clear();
         s.requests.clear();
         s.headers.clear();
         return s.commands.destroy();
@@ -329,7 +329,7 @@ export function createDevTools(o: {
 
   // A tab closed or turned private: detached at once, its buffers emptied. A site app window: when it closes.
   o.store.subscribe((state) => {
-    for (const id of [...entries.keys()]) if (!isWindow(id) && (!state.onglets[id] || o.isPrivate(id))) drop(id);
+    for (const id of [...entries.keys()]) if (!isWindow(id) && (!state.tabs[id] || o.isPrivate(id))) drop(id);
   });
   const dropClosed = () => {
     for (const id of [...entries.keys()]) if (isWindow(id) && !siteView(id)) drop(id);
@@ -383,7 +383,7 @@ export function createDevTools(o: {
             if (r.resourceType === TYPES.DOCUMENT_EVENT) {
               if (r.name !== "will-navigate" || r.targetFront?.isTopLevel === false) continue;
               // Same site: the messages stay, marked. Another site: they are worth nothing, the session goes.
-              if (originOf(String(r.newURI ?? "")) === s.origin) s.buffer.rechargement();
+              if (originOf(String(r.newURI ?? "")) === s.origin) s.buffer.reload();
               else return ((s.siteChanged = true), dropMe());
             } else if (r.resourceType === TYPES.NETWORK_EVENT) {
               if (String(r.url ?? "").startsWith(EXTENSION)) continue;
@@ -409,7 +409,7 @@ export function createDevTools(o: {
   async function session(id: string): Promise<Session> {
     const site = isWindow(id);
     const check = () => {
-      if (site ? !siteView(id) : !o.store.state.onglets[id]) {
+      if (site ? !siteView(id) : !o.store.state.tabs[id]) {
         drop(id);
         throw new TabNotFound(id);
       }
@@ -421,7 +421,7 @@ export function createDevTools(o: {
     check();
     const gen = generation;
     const view = site ? siteView(id) : undefined;
-    const tabWindow = site ? undefined : o.windows.get(o.store.state.onglets[id]!.fenetreId);
+    const tabWindow = site ? undefined : o.windows.get(o.store.state.tabs[id]!.windowId);
     if (!view && !tabWindow) throw new TabNotFound(id);
     const win = view ? view.window : tabWindow!.window;
     const browser = view ? view.browser : await tabWindow!.controller.ensure(id);
@@ -506,7 +506,7 @@ export function createDevTools(o: {
         await sleep(PROMISE_POLL_MS);
       }
     }
-    return { valeur: await valueText(s, value) };
+    return { value: await valueText(s, value) };
   }
 
   /** Rejects as soon as the call is cut (signal) or its session dropped (another site, revoked owner, tab closed). */
@@ -525,10 +525,10 @@ export function createDevTools(o: {
   let profiling = false;
 
   const impl = {
-    attacher: async (id: string) => void (await session(id)),
-    detacher: async (id: string) => drop(id),
+    attach: async (id: string) => void (await session(id)),
+    detach: async (id: string) => drop(id),
     console: async (id: string) => (await session(id)).buffer.console(),
-    async reseau(id: string): Promise<NetworkRequest[]> {
+    async network(id: string): Promise<NetworkRequest[]> {
       const s = await session(id);
       const ask = (r: any, type: string) => s.commands.client.request({ to: r.actor, type });
       // Asked once the request is over; a request of a page left behind may have lost its actor (empty then).
@@ -542,7 +542,7 @@ export function createDevTools(o: {
       );
       return [...s.requests.entries()].map(([key, r]) => requestOf(r, s.headers.get(key)));
     },
-    async corps(id: string, request: string) {
+    async body(id: string, request: string) {
       const s = await session(id);
       const r = s.requests.get(String(request));
       if (!r) throw new Error(`Requête introuvable : ${request}`);
@@ -550,9 +550,9 @@ export function createDevTools(o: {
       let text = content?.text;
       if (text && typeof text === "object" && text.type === "longString")
         text = (await s.commands.client.request({ to: text.actor, type: "substring", start: 0, end: Math.min(text.length, BODY_MAX) })).substring;
-      return { corps: String(text ?? ""), base64: content?.encoding === "base64" };
+      return { body: String(text ?? ""), base64: content?.encoding === "base64" };
     },
-    async executer(id: string, code: string, signal?: AbortSignal): Promise<JsResult> {
+    async run(id: string, code: string, signal?: AbortSignal): Promise<JsResult> {
       if (signal?.aborted) throw abortError(signal);
       const s = await session(id);
       const stop = new AbortController();
@@ -578,14 +578,14 @@ export function createDevTools(o: {
         stop.abort();
       }
     },
-    async recharger(id: string, noCache: boolean): Promise<void> {
+    async reload(id: string, noCache: boolean): Promise<void> {
       const s = await session(id);
       // Resolves at dom-complete (note D4); a page that never finishes still answers.
       await Promise.race([reloadTop(id, s, !!noCache), sleep(NAVIGATION_TIMEOUT_MS)]);
       if (s.dropped && originOf(urlOf(id)) !== s.origin) throw new Error(SITE_CHANGED_TEXT);
     },
     /** Gecko's profiler on the tab's process only (note D5), converted to a .cpuprofile; always stopped once started here. */
-    async profiler(id: string, opts: { dureeMs?: number; recharger?: boolean }, signal?: AbortSignal) {
+    async profile(id: string, opts: { durationMs?: number; reload?: boolean }, signal?: AbortSignal) {
       if (signal?.aborted) throw abortError(signal);
       const s = await session(id);
       const wg = s.browser.browsingContext?.currentWindowGlobal;
@@ -600,9 +600,9 @@ export function createDevTools(o: {
         start.catch(() => {});
         try {
           await Promise.race([start, c.wait]);
-          const work = opts?.recharger
+          const work = opts?.reload
             ? Promise.race([reloadTop(id, s, false), sleep(PROFILE_LOAD_TIMEOUT_MS)])
-            : sleep(Math.min(Math.max(0, opts?.dureeMs ?? PROFILE_MS), PROFILE_MAX_MS));
+            : sleep(Math.min(Math.max(0, opts?.durationMs ?? PROFILE_MS), PROFILE_MAX_MS));
           await Promise.race([work, c.wait]);
           data = await Promise.race([Services.profiler.getProfileDataAsync(), c.wait]);
         } finally {
@@ -630,13 +630,13 @@ export function createDevTools(o: {
         if (heap) metrics.JSHeapUsedSize = heap.jsObjectsSize + heap.jsStringsSize + heap.jsOtherSize;
         const nodes = grip((await Promise.race([within(run(s, 'document.getElementsByTagName("*").length')).catch(() => null), c.wait]))?.result);
         if (typeof nodes === "number") metrics.Nodes = nodes;
-        return { profil: r.profil, metriques: metrics };
+        return { profile: r.profile, metrics: metrics };
       } finally {
         c.done();
       }
     },
     /** The memory actor's census (note D6), as the kernel's FirefoxSnapshot: classes, never a string's content. */
-    async instantaneMemoire(id: string, signal?: AbortSignal): Promise<string> {
+    async memorySnapshot(id: string, signal?: AbortSignal): Promise<string> {
       if (signal?.aborted) throw abortError(signal);
       const s = await session(id);
       const c = cut(s, signal);
@@ -679,7 +679,7 @@ export function createDevTools(o: {
       const r = await (impl as Record<string, (...a: unknown[]) => Promise<unknown>>)[method]!(...args, signal);
       if (token !== current) {
         // An attachment that ended after the revocation is undone.
-        if (method === "attacher") drop(String(args[0]));
+        if (method === "attach") drop(String(args[0]));
         throw new Error(REVOKED_TEXT);
       }
       return r;

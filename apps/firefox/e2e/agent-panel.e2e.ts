@@ -33,7 +33,7 @@ const shown = () => waitFor(m, "return !document.getElementById('webaios-agent')
 const hidden = () => waitFor(m, "return document.getElementById('webaios-agent').hidden", (v) => v === true);
 /** Opens a tab and waits for its page; the panel the home page opened closes. */
 async function openTab(path: string): Promise<void> {
-  await dispatch(m, { type: "ouvrirOnglet", fenetreId: (await state(m)).fenetres[0]!.id, url: `${server.url}${path}` });
+  await dispatch(m, { type: "ouvrirOnglet", windowId: (await state(m)).windows[0]!.id, url: `${server.url}${path}` });
   await waitFor(
     m,
     `return gBrowser.selectedBrowser.currentURI.spec.endsWith(${JSON.stringify(path)}) && !gBrowser.selectedBrowser.webProgress.isLoadingDocument`,
@@ -65,8 +65,8 @@ const panelShows = (text: string, ms = 20_000) =>
 const retryButton = () => waitUi(m, "return [...doc.querySelectorAll('button')].some((b) => b.textContent === 'Réessayer')", [], 10_000, "agent");
 
 it("without Docker, browsing works", async () => {
-  await launch({ FAUX_DOCKER_ABSENT: "1" });
-  await dispatch(m, { type: "ouvrirOnglet", fenetreId: (await state(m)).fenetres[0]!.id, url: `${server.url}/a.html` });
+  await launch({ FAKE_DOCKER_ABSENT: "1" });
+  await dispatch(m, { type: "ouvrirOnglet", windowId: (await state(m)).windows[0]!.id, url: `${server.url}/a.html` });
   await waitFor(m, "return gBrowser.selectedBrowser.contentTitle", (v) => v === "Page A");
 });
 
@@ -94,7 +94,7 @@ it("a huge output does not freeze the UI", async () => {
 });
 
 it("a container that cannot start → error and Réessayer", async () => {
-  await launch({ FAUX_DOCKER_ECHEC: "1" });
+  await launch({ FAKE_DOCKER_FAILURE: "1" });
   await shown();
   await panelShows("L'agent n'a pas pu démarrer :");
   await panelShows("échec simulé");
@@ -107,7 +107,7 @@ it("a second profile in .webaios/profils appears in the panel; choosing it resta
     mkdirSync(join(dataDir, "espace", ".webaios", "profils"), { recursive: true });
     writeFileSync(
       join(dataDir, "espace", ".webaios", "profils", "autre.json"),
-      JSON.stringify({ id: "autre", nom: "Autre", interactif: ["autre-agent", "--mcp", "{mcpConfig}"], nonInteractif: ["autre-agent", "-p", "{consigne}"], configMcp: "claude-json" }),
+      JSON.stringify({ id: "autre", name: "Autre", interactive: ["autre-agent", "--mcp", "{mcpConfig}"], nonInteractive: ["autre-agent", "-p", "{consigne}"], mcpConfig: "claude-json" }),
     );
     await launch(undefined, dataDir);
     await shown();
@@ -198,7 +198,7 @@ it("a keypress after a keydown the terminal consumed is not sent again (macOS, p
 });
 
 it("after Réessayer, each key still reaches the agent once and shows once", async () => {
-  await launch({ FAUX_DOCKER_SANS_CONTENEUR: "1", FAUX_DOCKER_RUN_ECHOUE: "1" });
+  await launch({ FAKE_DOCKER_NO_CONTAINER: "1", FAKE_DOCKER_RUN_FAILED: "1" });
   await shown();
   await click(m, "button", { text: "Réessayer", frame: "agent" });
   await homeAgent();
@@ -235,7 +235,7 @@ it("closing and reopening the panel keeps the conversation", async () => {
 });
 
 it("Docker absent → message and Réessayer", async () => {
-  await launch({ FAUX_DOCKER_ABSENT: "1" });
+  await launch({ FAKE_DOCKER_ABSENT: "1" });
   await shown();
   await waitUi(
     m,
@@ -283,7 +283,7 @@ it("opening the panel on a tab shares it: page_courante reads without asking", a
   await openTab("/texte.html");
   await toggleWithButton();
   await shown();
-  expect((await callTool(w!.dataDir, "page_courante")).texte).toContain("Le chat dort");
+  expect((await callTool(w!.dataDir, "page_courante")).text).toContain("Le chat dort");
 });
 
 describe("one agent session per window", () => {
@@ -385,21 +385,21 @@ describe("one agent session per window", () => {
       await terminalShows("faux agent prêt>");
       return m.execute<string>("return window.webaiosWindow.fenetreId");
     });
-    await dispatch(m, { type: "ouvrirOnglet", fenetreId: b, url: `${server.url}/texte.html` });
-    await dispatch(m, { type: "basculerPanneauAgent", fenetreId: b });
+    await dispatch(m, { type: "ouvrirOnglet", windowId: b, url: `${server.url}/texte.html` });
+    await dispatch(m, { type: "basculerPanneauAgent", windowId: b });
     // A, focused: a tab in a private space; the private mirror is computed while A is active.
     const idA = await focus(a);
-    const s = await dispatch(m, { type: "creerEspace", nom: "Secret", icone: "🔒", prive: true, profil: "defaut", fenetreId: idA });
-    await dispatch(m, { type: "ouvrirOnglet", fenetreId: idA, url: `${server.url}/a.html`, espaceId: s.espaces.at(-1)!.id });
+    const s = await dispatch(m, { type: "creerEspace", name: "Secret", icon: "🔒", private: true, profile: "defaut", windowId: idA });
+    await dispatch(m, { type: "ouvrirOnglet", windowId: idA, url: `${server.url}/a.html`, spaceId: s.spaces.at(-1)!.id });
     // Both pages loaded: no late title change may refresh the mirror after the focus.
     for (const end = Date.now() + 10_000; ; await new Promise((r) => setTimeout(r, 100))) {
-      const titles = Object.values((await state(m)).onglets).map((o) => o.titre).sort();
+      const titles = Object.values((await state(m)).tabs).map((o) => o.title).sort();
       if (titles.join() === "Page A,Texte") break;
       if (Date.now() > end) throw new Error(`pages not loaded: ${titles}`);
     }
-    expect((await callTool(w!.dataDir, "page_courante")).texte).toBe("Cet onglet est dans un espace privé : l'agent n'y a pas accès.");
+    expect((await callTool(w!.dataDir, "page_courante")).text).toBe("Cet onglet est dans un espace privé : l'agent n'y a pas accès.");
     // Focus B, with no state change.
     await focus(second);
-    expect((await callTool(w!.dataDir, "page_courante")).texte).toContain("Le chat dort");
+    expect((await callTool(w!.dataDir, "page_courante")).text).toContain("Le chat dort");
   });
 });

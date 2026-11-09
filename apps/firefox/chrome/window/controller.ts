@@ -15,7 +15,7 @@ import { TabSync } from "./tabs";
 import { trackVisits } from "./visits";
 
 export interface WindowController {
-  readonly fenetreId: WindowId;
+  readonly windowId: WindowId;
   readonly store: WebAiOsStore;
   /** toUrl(input, moteur); a tab with a XUL tab loads it, one without gets majOnglet{url}; null opens a new tab. */
   navigate(tabId: TabId | null, input: string): void;
@@ -86,16 +86,16 @@ export function createController(
   // The store outlives the window (macOS keeps running without one): drop this window's listeners when it goes, then
   // its state window (its tabs leave with it).
   const unsubscribe = [store.subscribe((state) => tabs.sync(state)), mountSiteBanner(window, store, windowId)];
-  applyFrame(store.state.fenetres.find((f) => f.id === windowId)?.cadre ?? null);
+  applyFrame(store.state.windows.find((f) => f.id === windowId)?.frame ?? null);
   // Size and position kept for the next start (grouped: a drag fires dozens of events).
   let frameTimer: ReturnType<typeof setTimeout> | undefined;
   const recordFrame = () => {
     clearTimeout(frameTimer);
     if (window.windowState === window.STATE_FULLSCREEN || window.windowState === window.STATE_MINIMIZED) return;
-    const frame = { x: window.screenX, y: window.screenY, largeur: window.outerWidth, hauteur: window.outerHeight };
-    const old = store.state.fenetres.find((f) => f.id === windowId)?.cadre;
+    const frame = { x: window.screenX, y: window.screenY, width: window.outerWidth, height: window.outerHeight };
+    const old = store.state.windows.find((f) => f.id === windowId)?.frame;
     if (old && (Object.keys(frame) as (keyof typeof frame)[]).every((k) => old[k] === frame[k])) return;
-    store.dispatch({ type: "cadrerFenetre", id: windowId, cadre: frame });
+    store.dispatch({ type: "cadrerFenetre", id: windowId, frame: frame });
   };
   const planFrame = () => {
     clearTimeout(frameTimer);
@@ -115,7 +115,7 @@ export function createController(
     { once: true },
   );
   // The agent panel: --webaios-agent is its width when open, 0 when closed (the page and the UI make room for it).
-  const agentOpen = (state: BrowserState) => !!state.fenetres.find((x) => x.id === windowId)?.panneauAgentOuvert;
+  const agentOpen = (state: BrowserState) => !!state.windows.find((x) => x.id === windowId)?.agentPanelOpen;
   const showAgent = (state: BrowserState) => {
     const open = agentOpen(state);
     // Closed while the terminal had the keyboard (⌘J, ✦): it goes back to the page, or to the UI when no page shows.
@@ -124,7 +124,7 @@ export function createController(
       else frame.focus();
     }
     agentFrame.hidden = !open;
-    const width = Math.min(AGENT_WIDTH_MAX, Math.max(AGENT_WIDTH_MIN, state.reglages.largeurPanneauAgent));
+    const width = Math.min(AGENT_WIDTH_MAX, Math.max(AGENT_WIDTH_MIN, state.settings.agentPanelWidth));
     document.documentElement.style.setProperty("--webaios-agent", open ? `${width}px` : "0px");
     // Laid out now: the panel focuses its terminal right after this change, which needs the iframe visible.
     agentFrame.getBoundingClientRect();
@@ -133,7 +133,7 @@ export function createController(
   // Only on a change of its own: an unrelated action while the handle is dragged keeps the dragged width.
   unsubscribe.push(
     store.subscribe((state, previous) => {
-      if (agentOpen(state) !== agentOpen(previous) || state.reglages.largeurPanneauAgent !== previous.reglages.largeurPanneauAgent) showAgent(state);
+      if (agentOpen(state) !== agentOpen(previous) || state.settings.agentPanelWidth !== previous.settings.agentPanelWidth) showAgent(state);
     }),
   );
   // After a tab switch Firefox gives the keyboard to the selected browser; the parking tab is no page, the UI keeps it.
@@ -146,9 +146,9 @@ export function createController(
    * or the tab's own (a crashed page comes back by loading it again). Back/forward history is lost with it.
    */
   const revive = (id: TabId, url?: string): boolean => {
-    if (!store.state.onglets[id]?.plante) return false;
+    if (!store.state.tabs[id]?.crashed) return false;
     tabs.recreate(id);
-    store.dispatch({ type: "majOnglet", id, champs: { plante: false, ...(url ? { url } : {}) } });
+    store.dispatch({ type: "majOnglet", id, fields: { crashed: false, ...(url ? { url } : {}) } });
     return true;
   };
   const shortcutListeners = new Set<(r: ShortcutAction) => void>();
@@ -157,29 +157,29 @@ export function createController(
   const leftZoneListeners = new Set<(z: LeftZone) => void>();
   // ⌃Tab: recent order and the walk in progress. No page previews in step 2: cards show the icon.
   const walk = new TabCycle({
-    etat: () => store.state,
-    agir: (a) => store.dispatch(a),
-    envoyer: (_, p) => {
+    state: () => store.state,
+    dispatch: (a) => store.dispatch(a),
+    send: (_, p) => {
       // Escape and the ⌃ release must reach the panel.
       if (p && document.activeElement !== frame) frame.focus();
       for (const cb of panelListeners) cb(p);
     },
-    apercu: () => null,
-    capturer: () => Promise.resolve(),
+    preview: () => null,
+    capture: () => Promise.resolve(),
     // Once the UI has dropped the panel: a command bar still open keeps the keyboard (the page is not shown).
-    rendreFocus: () => void setTimeout(() => !frame.hasAttribute("full") && controller.focusPage()),
+    restoreFocus: () => void setTimeout(() => !frame.hasAttribute("full") && controller.focusPage()),
     // Headless (e2e), no window ever has the focus: the walk is still tested there.
-    estFocalisee: () => Services.focus.activeWindow === window || Services.env.exists("MOZ_HEADLESS"),
+    isFocused: () => Services.focus.activeWindow === window || Services.env.exists("MOZ_HEADLESS"),
   });
-  walk.surEtat(store.state);
-  unsubscribe.push(store.subscribe((state) => walk.surEtat(state)));
+  walk.onState(store.state);
+  unsubscribe.push(store.subscribe((state) => walk.onState(state)));
 
   const run = (s: Shortcut) => {
     const state = store.state;
-    const f = state.fenetres.find((x) => x.id === windowId);
-    const active = f?.actif[f.espaceActif];
+    const f = state.windows.find((x) => x.id === windowId);
+    const active = f?.active[f.activeSpace];
     // ⌘W on the empty page closes the window, only if none of its spaces has a tab.
-    if (s.type === "raccourci" && s.r === "fermerOnglet" && !active && !Object.values(state.onglets).some((o) => o.fenetreId === windowId))
+    if (s.type === "raccourci" && s.r === "fermerOnglet" && !active && !Object.values(state.tabs).some((o) => o.windowId === windowId))
       window.close();
     else if (s.type === "raccourci") {
       frame.focus(); // the UI field must get the keys typed next, even from a web page
@@ -187,30 +187,30 @@ export function createController(
     } else if (s.type === "panneau") {
       frame.focus();
       for (const cb of panelKeyListeners) cb(s.p);
-    } else if (s.type === "rouvrir") store.dispatch({ type: "rouvrirOngletFerme", fenetreId: windowId });
+    } else if (s.type === "rouvrir") store.dispatch({ type: "rouvrirOngletFerme", windowId: windowId });
     else if (s.type === "nieme") {
       const action = toNth(state, windowId, s.n);
       if (action) store.dispatch(action);
     } else if (s.type === "espace") {
-      const space = state.espaces[s.n - 1];
-      if (space) store.dispatch({ type: "activerEspace", fenetreId: windowId, id: space.id });
+      const space = state.spaces[s.n - 1];
+      if (space) store.dispatch({ type: "activerEspace", windowId: windowId, id: space.id });
     } else if (s.type === "naviguer") {
       if (active) controller.command(active, s.c);
-    } else if (s.type === "parcourir") walk.parcourir(windowId, s.delta);
+    } else if (s.type === "parcourir") walk.browse(windowId, s.delta);
     else if (s.type === "agent") {
       // On a widget's builder tab: its Agent tab, beside the open panel (the agent shows in that tab). An action's
       // workflow tab shows the internal page (not ported): the plain toggle.
-      if (active && workflowUrlTarget(state.onglets[active]?.url ?? "")?.type === "widget") return controller.openAgent();
+      if (active && workflowUrlTarget(state.tabs[active]?.url ?? "")?.type === "widget") return controller.openAgent();
       // Toggle, then, opened from a web page, the keyboard goes to the terminal.
-      store.dispatch({ type: "basculerPanneauAgent", fenetreId: windowId });
+      store.dispatch({ type: "basculerPanneauAgent", windowId: windowId });
       if (agentOpen(store.state)) {
         agentFrame.focus();
         for (const cb of shortcutListeners) cb("agent");
       }
-    } else if (s.type === "compact") store.dispatch({ type: "basculerCompact", fenetreId: windowId });
+    } else if (s.type === "compact") store.dispatch({ type: "basculerCompact", windowId: windowId });
     else if (s.type === "fenetre") window.OpenBrowserWindow();
     else if (s.type === "fermerFenetre") window.close();
-    else if (s.type === "applications") store.dispatch({ type: "ouvrirApplications", fenetreId: windowId });
+    else if (s.type === "applications") store.dispatch({ type: "ouvrirApplications", windowId: windowId });
     else if (s.type === "design") store.design.shortcut(window);
   };
   // Capture on the window: our keys act before the page sees them (a page that swallows every key keeps none of them).
@@ -222,7 +222,7 @@ export function createController(
     run(s);
   };
   const onKeyUp = (e: KeyboardEvent) => {
-    if (e.key === "Control") walk.toucheRelachee(windowId);
+    if (e.key === "Control") walk.keyReleased(windowId);
   };
   window.addEventListener("keydown", onKeyDown, true);
   window.addEventListener("keyup", onKeyUp, true);
@@ -256,7 +256,7 @@ export function createController(
     });
   // ⌘Tab to another app during a walk: it ends without a tab change. Not "blur": moving the keyboard from a page to the UI
   // blurs the window too.
-  window.addEventListener("deactivate", () => walk.fenetreQuittee(windowId));
+  window.addEventListener("deactivate", () => walk.windowLeft(windowId));
   // ⇧click asks Firefox for a new window: a page's link opens a background tab instead, as ⌘click (TabSync adopts it).
   const openLinkIn = window.openLinkIn;
   window.openLinkIn = (url, where, params) => {
@@ -297,15 +297,15 @@ export function createController(
   }
 
   const controller: WindowController = {
-    fenetreId: windowId,
+    windowId: windowId,
     store,
     navigate(tabId, input) {
-      const url = toUrl(input, store.state.reglages.moteur);
+      const url = toUrl(input, store.state.settings.engine);
       if (!url) return;
-      if (!tabId) return void store.dispatch({ type: "ouvrirOnglet", fenetreId: windowId, url });
+      if (!tabId) return void store.dispatch({ type: "ouvrirOnglet", windowId: windowId, url });
       if (revive(tabId, url)) return;
       const browser = browserOf(tabId);
-      if (!browser) return void store.dispatch({ type: "majOnglet", id: tabId, champs: { url } });
+      if (!browser) return void store.dispatch({ type: "majOnglet", id: tabId, fields: { url } });
       // What the user typed in the address bar: Firefox loads it with the system principal too.
       browser.loadURI(Services.io.newURI(url), { triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal() });
       browser.focus();
@@ -316,7 +316,7 @@ export function createController(
       // Revived at its old URL, then loaded below like any agent load: never with the system principal.
       revive(tabId);
       const tab = tabs.tab(tabId);
-      if (!tab) return void store.dispatch({ type: "majOnglet", id: tabId, champs: { url } });
+      if (!tab) return void store.dispatch({ type: "majOnglet", id: tabId, fields: { url } });
       const triggeringPrincipal = Services.scriptSecurityManager.createContentPrincipal(uri, { userContextId: tab.userContextId });
       tab.linkedBrowser.loadURI(uri, { triggeringPrincipal });
     },
@@ -334,7 +334,7 @@ export function createController(
     async closeTab(tabId) {
       const close = () => void store.dispatch({ type: "fermerOnglet", id: tabId });
       const browser = browserOf(tabId);
-      if (!browser || store.state.onglets[tabId]?.plante || !browser.hasBeforeUnload) return close();
+      if (!browser || store.state.tabs[tabId]?.crashed || !browser.hasBeforeUnload) return close();
       if (asking.has(tabId)) return;
       asking.add(tabId);
       try {
@@ -345,8 +345,8 @@ export function createController(
         clearTimeout(timer);
         if (permit) return close();
         // Firefox selects the tab its question opens on: the state follows, or the sidebar would show another tab as active.
-        const f = store.state.fenetres.find((x) => x.id === windowId);
-        const before = f?.actif[f.espaceActif];
+        const f = store.state.windows.find((x) => x.id === windowId);
+        const before = f?.active[f.activeSpace];
         if (before !== tabId) store.dispatch({ type: "activerOnglet", id: tabId });
         const { prompt } = Services;
         const flags =
@@ -366,7 +366,7 @@ export function createController(
         ).catch(() => null);
         if (result?.getProperty("buttonNumClicked") === 0) close();
         // Rester changes nothing, as a window-modal dialog: the tab shown before comes back.
-        else if (before && before !== tabId && store.state.onglets[before]) store.dispatch({ type: "activerOnglet", id: before });
+        else if (before && before !== tabId && store.state.tabs[before]) store.dispatch({ type: "activerOnglet", id: before });
       } finally {
         asking.delete(tabId);
       }
@@ -403,7 +403,7 @@ export function createController(
       if (agentOpen(store.state)) document.documentElement.style.setProperty("--webaios-agent", `${px}px`);
     },
     openAgent() {
-      if (!agentOpen(store.state)) store.dispatch({ type: "basculerPanneauAgent", fenetreId: windowId });
+      if (!agentOpen(store.state)) store.dispatch({ type: "basculerPanneauAgent", windowId: windowId });
       agentFrame.focus();
       for (const cb of shortcutListeners) cb("agent");
     },
@@ -420,7 +420,7 @@ export function createController(
       return () => void panelListeners.delete(cb);
     },
     tabSwitch: (m) => walk.message(windowId, m),
-    addons: createAddons({ win: window, gBrowser, tabs, anchors, store, fenetreId: windowId }),
+    addons: createAddons({ win: window, gBrowser, tabs, anchors, store, windowId: windowId }),
   };
   return controller;
 }
@@ -430,11 +430,11 @@ function applyFrame(c: FrameBounds | null): void {
   if (!c) return;
   const screen = Cc["@mozilla.org/gfx/screenmanager;1"]
     .getService(Ci.nsIScreenManager)
-    .screenForRect(Math.round(c.x), Math.round(c.y), Math.round(c.largeur), Math.round(c.hauteur));
+    .screenForRect(Math.round(c.x), Math.round(c.y), Math.round(c.width), Math.round(c.height));
   const [x, y, width, height] = [{ value: 0 }, { value: 0 }, { value: 0 }, { value: 0 }];
   screen.GetAvailRectDisplayPix(x, y, width, height);
   const frame = visibleFrame(c, [{ x: x.value, y: y.value, width: width.value, height: height.value }]);
   if (!frame) return;
   window.moveTo(frame.x, frame.y);
-  window.resizeTo(frame.largeur, frame.hauteur);
+  window.resizeTo(frame.width, frame.height);
 }

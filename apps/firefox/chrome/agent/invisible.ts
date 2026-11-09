@@ -38,13 +38,13 @@ const HOST_PAGE = "chrome://global/content/backgroundPageThumbs.xhtml";
 const PUBLIC_IDENTITY = "userContextIdInternal.webaios-reading";
 
 interface Parts {
-  titre: unknown;
-  texte: unknown;
-  liens: unknown;
+  title: unknown;
+  text: unknown;
+  links: unknown;
 }
 interface Bounds {
-  texte: number;
-  liens: number;
+  text: number;
+  links: number;
 }
 
 /** What one read asks the page actor, and how the answer (untrusted: a web process) is shaped. */
@@ -186,21 +186,21 @@ async function createBrowser(userContextId: number, o: { private: boolean }): Pr
 async function load<T>(
   store: Store,
   url: string,
-  o: PageReadOptions & { menagee?: string },
+  o: PageReadOptions & { pacedId?: string },
   signal: AbortSignal | undefined,
   reading: Reading<T>,
   screens: number,
   waitHost?: WaitHost,
 ): Promise<T> {
-  const { profil: profile, domaines: domains } = o;
-  const allowLocal = o.adressesLocales === true;
+  const { profile: profile, domains: domains } = o;
+  const allowLocal = o.localAddresses === true;
   const allowed = (u: string) => allowedUrl(u, domains, true) && (allowLocal || !localLiteral(hostOf(u)));
   const checkProfile = () => {
     if (profile !== null && !readableProfiles(store.state).includes(profile)) throw new ProfileDenied(profile);
   };
   checkProfile();
   if (!allowed(url)) throw new Error(`Adresse refusée pour une lecture : ${hostOf(url)}`);
-  const paced = o.menagee !== undefined && waitHost !== undefined;
+  const paced = o.pacedId !== undefined && waitHost !== undefined;
   let target = url;
   // Fixed when the first page starts loading: paced redirections and their waits count in the 30 s.
   let deadline = 0;
@@ -234,7 +234,7 @@ async function load<T>(
       // Another site (paced read): its turn is awaited holding no browser nor place, else two reads redirected to the
       // site of a third, itself waiting for a place, would block every read. A loop between sites fails fast.
       if (jumps >= MAX_HOPS) throw new Error("Trop de redirections");
-      await untilDeadline((s) => waitHost!(o.menagee!, new URL(redirection).hostname, s), deadline, signal);
+      await untilDeadline((s) => waitHost!(o.pacedId!, new URL(redirection).hostname, s), deadline, signal);
       target = redirection;
     }
   } finally {
@@ -266,39 +266,39 @@ function screensOf(scroll: unknown): number {
 
 /** The page may have influenced everything but the types and the bounds. */
 function shapePage(url: string, p: Parts, b: Bounds): ReadPage {
-  const liens: ReadPage["liens"] = [];
+  const links: ReadPage["links"] = [];
   const seen = new Set<string>();
-  for (const l of Array.isArray(p.liens) ? (p.liens as unknown[]) : []) {
-    if (liens.length >= b.liens) break;
-    const raw = (l as { url?: unknown; texte?: unknown } | null) ?? {};
+  for (const l of Array.isArray(p.links) ? (p.links as unknown[]) : []) {
+    if (links.length >= b.links) break;
+    const raw = (l as { url?: unknown; text?: unknown } | null) ?? {};
     const link = typeof raw.url === "string" ? raw.url : "";
     if (!/^https?:\/\//i.test(link) || seen.has(link)) continue;
     seen.add(link);
-    liens.push({ texte: String(raw.texte ?? "").replace(/\s+/g, " ").trim(), url: link });
+    links.push({ text: String(raw.text ?? "").replace(/\s+/g, " ").trim(), url: link });
   }
-  return { url, titre: String(p.titre ?? ""), texte: String(p.texte ?? "").slice(0, b.texte), liens };
+  return { url, title: String(p.title ?? ""), text: String(p.text ?? "").slice(0, b.text), links };
 }
 
 /** Reads a page invisibly, public (`profil: null`) or with a login profile no private space uses. Nothing is kept. */
 export function readPage(
   store: Store,
   url: string,
-  o: PageReadOptions & { menagee?: string },
+  o: PageReadOptions & { pacedId?: string },
   signal?: AbortSignal,
   waitHost?: WaitHost,
 ): Promise<ReadPage> {
-  const screens = screensOf(o.defiler);
-  const bounds = screens > 0 ? { texte: MAX_SCROLL_TEXT, liens: MAX_SCROLL_LINKS } : { texte: MAX_TEXT, liens: MAX_LIENS };
+  const screens = screensOf(o.scroll);
+  const bounds = screens > 0 ? { text: MAX_SCROLL_TEXT, links: MAX_SCROLL_LINKS } : { text: MAX_TEXT, links: MAX_LIENS };
   return load(store, url, o, signal, {
     read: (actor) => actor.sendQuery("read", bounds),
-    shape: (u, raw) => shapePage(u, (raw ?? { titre: "", texte: "", liens: [] }) as Parts, bounds),
+    shape: (u, raw) => shapePage(u, (raw ?? { title: "", text: "", links: [] }) as Parts, bounds),
     cumulate: accumulateParts,
   }, screens, waitHost);
 }
 
 /** The HTML of a public page (2 MB at most), always in an emptied private container; `url` is the final address. */
-export function readHtml(store: Store, url: string, o: { adressesLocales?: boolean }, signal?: AbortSignal): Promise<{ url: string; html: string }> {
-  return load(store, url, { profil: null, adressesLocales: o.adressesLocales === true }, signal, {
+export function readHtml(store: Store, url: string, o: { localAddresses?: boolean }, signal?: AbortSignal): Promise<{ url: string; html: string }> {
+  return load(store, url, { profile: null, localAddresses: o.localAddresses === true }, signal, {
     read: (actor) => actor.sendQuery("html", { max: HTML_MAX }),
     shape: (u, raw) => ({ url: u, html: typeof raw === "string" ? raw.slice(0, HTML_MAX) : "" }),
   }, 0);
@@ -415,9 +415,9 @@ function readIn<T>(
         wake = ok;
         pause = setTimeout(ok, ms);
       });
-    const measure = async (name: string): Promise<{ hauteur: number; bas: boolean }> => {
-      const raw = (await actor().sendQuery(name)) as { hauteur?: unknown; bas?: unknown } | null;
-      return { hauteur: typeof raw?.hauteur === "number" ? raw.hauteur : 0, bas: raw?.bas === true };
+    const measure = async (name: string): Promise<{ height: number; bottom: boolean }> => {
+      const raw = (await actor().sendQuery(name)) as { height?: unknown; bottom?: unknown } | null;
+      return { height: typeof raw?.height === "number" ? raw.height : 0, bottom: raw?.bottom === true };
     };
     /** One screen at a time until `screens`, the bottom of a page that stopped growing, or the forced read. */
     const scrollThenRead = async () => {
@@ -433,8 +433,8 @@ function readIn<T>(
             readings.push(await reading.read(actor()));
             if (done) return;
           }
-          const { hauteur: before } = await measure("scroll");
-          let m = { hauteur: before, bas: false };
+          const { height: before } = await measure("scroll");
+          let m = { height: before, bottom: false };
           let height = -1;
           let since = Date.now();
           for (;;) {
@@ -442,14 +442,14 @@ function readIn<T>(
             m = await measure("measure");
             if (done) return;
             const now = Date.now();
-            if (m.hauteur !== height || loading) {
-              height = m.hauteur;
+            if (m.height !== height || loading) {
+              height = m.height;
               since = now;
             }
             if (now >= forcedAt || now - since >= QUIET_SCROLL_MS) break;
             await sleep(Math.min(READING_MS, forcedAt - now));
           }
-          if (m.bas && m.hauteur <= before) break;
+          if (m.bottom && m.height <= before) break;
         }
       } catch {
         // A scroll failed (the page navigates): no more scrolling, read at the next calm or the forced read.

@@ -65,18 +65,18 @@ let w: LaunchedWebAiOs;
 let m: Marionette;
 const dirs: string[] = [];
 const url = (host: string, path = "/") => server.url(host, path);
-const declarationProbe = () => ({ ...withHomeDeclaration(url), nom: "Sonde" });
+const declarationProbe = () => ({ ...withHomeDeclaration(url), name: "Sonde" });
 
 async function launch(prefs: Record<string, string | number | boolean> = {}) {
   const dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
   const profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
   dirs.push(dataDir, profile);
-  writeSite(dataDir, "avec-accueil", { declaration: withHomeDeclaration(url), fichiers: { "accueil/index.html": WITH_HOME } });
-  writeSite(dataDir, "sonde", { declaration: declarationProbe(), fichiers: { "accueil/index.html": HOME } });
-  writeSite(dataDir, "tuning", { declaration: tuningDeclaration(url), fichiers: { "retouches/tuning.css": "/* rien */" } });
+  writeSite(dataDir, "avec-accueil", { declaration: withHomeDeclaration(url), files: { "accueil/index.html": WITH_HOME } });
+  writeSite(dataDir, "sonde", { declaration: declarationProbe(), files: { "accueil/index.html": HOME } });
+  writeSite(dataDir, "tuning", { declaration: tuningDeclaration(url), files: { "retouches/tuning.css": "/* rien */" } });
   await grantSite(dataDir, "tuning", tuningDeclaration(url));
   const a = testActor(profile);
-  w = await launchWebAiOs({ dataDir, profile, env: { WEBAIOS_TEST_ADRESSES_LOCALES: "1", ...a.env }, prefs: { ...a.prefs, ...prefs } });
+  w = await launchWebAiOs({ dataDir, profile, env: { WEBAIOS_TEST_LOCAL_ADDRESSES: "1", ...a.env }, prefs: { ...a.prefs, ...prefs } });
   m = w.marionette;
   await m.setContext("chrome");
   await waitReady(m);
@@ -88,20 +88,20 @@ async function close() {
 
 beforeAll(async () => {
   server = await startSitesServer({ port: PORT });
-  server.definir("tuning-a.localhost", "/", TUNING_PAGE);
+  server.define("tuning-a.localhost", "/", TUNING_PAGE);
 });
 afterAll(async () => {
-  await server?.fermer();
+  await server?.close();
   for (const d of dirs) await rm(d, { recursive: true, force: true });
 });
 afterEach(async () => {
   await inStore(m, `for (const id of arguments[0]) { await store.design.stop({ type: "site", id }); store.design.closeOverlay({ type: "site", id }, "panier"); } return 1;`, [IDS]);
 });
 
-const state = (id: string) => inStore<{ actif: boolean; panier: number }>(m, "return await store.design.etat(arguments[0]);", [T(id)]);
+const state = (id: string) => inStore<{ active: boolean; basket: number }>(m, "return await store.design.etat(arguments[0]);", [T(id)]);
 const toggle = (id: string) => inStore(m, "await store.design.toggle(arguments[0]); return 1;", [T(id)]);
 const add = (id: string, text: string) => inStore<{ ok: boolean }>(m, "return await store.design.add(arguments[0], arguments[1]);", [T(id), text]);
-const bubble = (id: string) => inStore<{ etiquette: string; source: string | null; avertissement: string | null } | null>(m, 'return store.design.overlayContext(arguments[0], ["bulle"]);', [T(id)]);
+const bubble = (id: string) => inStore<{ label: string; source: string | null; warning: string | null } | null>(m, 'return store.design.overlayContext(arguments[0], ["bulle"]);', [T(id)]);
 const view = (id: string) => inStore<string | null>(m, "return store.sites.viewOf(arguments[0]);", [id]);
 /** `body` with `f` the home's frame, `hdoc` its document and `hwin` its window (chrome access). */
 const inHome = <T = unknown>(id: string, body: string, args: unknown[] = []) =>
@@ -131,7 +131,7 @@ const overlayTop = (id: string) => overlayOf<number>(m, id, "return f.getBoundin
 const bubbleText = (id: string) => overlayOf<string | null>(m, id, `return doc.querySelector('${tid("bulle-design")}')?.textContent ?? null;`);
 /** The home element's rectangle, in its frame's CSS pixels (as the viewfinder's capture). */
 const homeRect = (id: string, sel: string) =>
-  inHome<{ x: number; y: number; largeur: number; hauteur: number; vue: { largeur: number; hauteur: number } }>(
+  inHome<{ x: number; y: number; width: number; height: number; view: { width: number; height: number } }>(
     id,
     `const r = hdoc.querySelector(arguments[0]).getBoundingClientRect(); return { x: r.x, y: r.y, largeur: r.width, hauteur: r.height, vue: { largeur: hwin.innerWidth, hauteur: hwin.innerHeight } };`,
     [sel],
@@ -283,8 +283,8 @@ describe("design mode on a site app's home", () => {
     await sleep(500);
     expect(await bubble("sonde")).toBeNull();
     const b = await aimHome("sonde", "#cible");
-    expect(b.etiquette).toBe("div#cible");
-    expect(b.avertissement).toBeNull();
+    expect(b.label).toBe("div#cible");
+    expect(b.warning).toBeNull();
     expect(await homeLog("sonde")).toMatchObject({ early: [], reactions: [] });
     expect((await homeKeys("sonde")).filter((k) => !keys0.includes(k))).toEqual([]);
   });
@@ -296,14 +296,14 @@ describe("design mode on a site app's home", () => {
     await expect.poll(() => homeHosts("sonde"), { timeout: 10_000 }).toBe(1);
     await sleep(600);
     const b = await aimHome("sonde", "#nue");
-    expect(b.etiquette).toBe("p#nue");
+    expect(b.label).toBe("p#nue");
     expect(b.source).toBeNull();
   });
 
   it("the home's PNG is the frame's only", async () => {
     await homeOn("sonde");
     const r = await homeRect("sonde", "#cible");
-    const rc = rectCapture({ x: r.x, y: r.y, largeur: r.largeur, hauteur: r.hauteur }, r.vue, 1);
+    const rc = rectCapture({ x: r.x, y: r.y, width: r.width, height: r.height }, r.view, 1);
     // A magenta cover in the bar's document over #cible: the window shows it, the capture must not.
     await inHome("sonde", `const h = f.getBoundingClientRect(), rc = arguments[0], cover = doc.createElement("div"); cover.id = "e2e-cover";
       cover.style.cssText = "position:fixed;z-index:10;pointer-events:none;background:rgb(255,0,255);left:" + (h.left + rc.x) + "px;top:" + (h.top + rc.y) + "px;width:" + rc.width + "px;height:" + rc.height + "px";
@@ -331,7 +331,7 @@ describe("design mode on a site app's home", () => {
     await asHome("sonde", "fabricate()");
     await sleep(500);
     expect(await bubble("sonde")).toBeNull();
-    expect((await state("sonde")).actif).toBe(true);
+    expect((await state("sonde")).active).toBe(true);
     expect(await homeHosts("sonde")).toBe(1);
     // The home's own events reached it (untrusted): the guard let them through, untouched.
     expect((await homeLog("sonde")).keys).toEqual(["Escape:false"]);
@@ -349,13 +349,13 @@ describe("design mode on a site app's home", () => {
     const errors0 = await m.execute<number>(`return Services.console.getMessageArray().filter((x) => /dead object/.test(String(x.message ?? x))).length;`);
     writeFileSync(path.join(w.dataDir, "espace", "sites", "sonde", "accueil", "index.html"), HOME.replace("<title>Accueil</title>", "<title>Accueil 2</title>"));
     await expect.poll(async () => (await bar("sonde")).pressed, { timeout: 10_000 }).toBe("false");
-    expect((await state("sonde")).actif).toBe(false);
+    expect((await state("sonde")).active).toBe(false);
     await expect.poll(() => inHome("sonde", "return hdoc?.readyState === 'complete' ? hdoc.title : null;"), { timeout: 15_000 }).toBe("Accueil 2");
     expect(await m.execute<number>(`return Services.console.getMessageArray().filter((x) => /dead object/.test(String(x.message ?? x))).length;`)).toBe(errors0);
     // A new arm works on the new document.
     await toggle("sonde");
     await expect.poll(() => homeHosts("sonde"), { timeout: 10_000 }).toBe(1);
-    expect((await aimHome("sonde", "#cible")).etiquette).toBe("div#cible");
+    expect((await aimHome("sonde", "#cible")).label).toBe("div#cible");
   });
 
   it("⌂ while aiming in the site view, then ⇧⌘D on the home: the home is aimed, the view is not", async () => {
@@ -370,7 +370,7 @@ describe("design mode on a site app's home", () => {
     await expect.poll(() => homeHosts("avec-accueil"), { timeout: 10_000 }).toBe(1);
     await sleep(300);
     expect(await viewHosts("avec-accueil")).toBe(0);
-    expect((await aimHome("avec-accueil", "#titre")).etiquette).toBe("h1#titre");
+    expect((await aimHome("avec-accueil", "#titre")).label).toBe("h1#titre");
   });
 });
 
@@ -383,19 +383,19 @@ describe("design mode in a site app at density 2", () => {
     expect(await m.execute(`return ${siteExpr("tuning")}?.devicePixelRatio ?? window.devicePixelRatio;`)).toBe(2);
     // The view (tuning).
     await toSite(m, "tuning");
-    const r = await inSiteView<{ x: number; y: number; largeur: number; hauteur: number; vue: { largeur: number; hauteur: number } }>(
+    const r = await inSiteView<{ x: number; y: number; width: number; height: number; view: { width: number; height: number } }>(
       m,
       "tuning",
       `const r = document.querySelector("#banniere").getBoundingClientRect(); return { x: r.x, y: r.y, largeur: r.width, hauteur: r.height, vue: { largeur: innerWidth, hauteur: innerHeight } };`,
     );
     const zoom = await m.execute<number>(`return ${viewExpr("tuning")}.fullZoom;`);
-    const rv = rectCapture({ x: r.x, y: r.y, largeur: r.largeur, hauteur: r.hauteur }, r.vue, zoom);
+    const rv = rectCapture({ x: r.x, y: r.y, width: r.width, height: r.height }, r.view, zoom);
     let before = pngs("tuning");
     await toggle("tuning");
     await expect.poll(() => viewHosts("tuning"), { timeout: 10_000 }).toBe(1);
     await siteMouse(m, "tuning", await viewPoint(m, "tuning", "#banniere"));
     await expect.poll(() => bubble("tuning"), { timeout: 10_000 }).not.toBeNull();
-    expect((await bubble("tuning"))!.etiquette).toBe("div#banniere.cookies");
+    expect((await bubble("tuning"))!.label).toBe("div#banniere.cookies");
     expect((await add("tuning", "Liste")).ok).toBe(true);
     await expect.poll(() => pngs("tuning").length, { timeout: 10_000 }).toBe(before.length + 1);
     let png = await readPng(m, pngs("tuning").find((f) => !before.includes(f))!, []);
@@ -404,7 +404,7 @@ describe("design mode in a site app at density 2", () => {
     // The home (sonde).
     await homeOn("sonde");
     const h = await homeRect("sonde", "#cible");
-    const rh = rectCapture({ x: h.x, y: h.y, largeur: h.largeur, hauteur: h.hauteur }, h.vue, 1);
+    const rh = rectCapture({ x: h.x, y: h.y, width: h.width, height: h.height }, h.view, 1);
     before = pngs("sonde");
     await aimHome("sonde", "#cible");
     expect((await add("sonde", "Cible")).ok).toBe(true);

@@ -90,7 +90,7 @@ let opened = 0;
 /** Opens `url` (made unique) in a WebAiOs tab of the first window and waits for its script; the browser is window.spikeBrowsers[name]. */
 async function open(m: Marionette, name: string, page: string): Promise<void> {
   const url = `${page}${page.includes("?") ? "&" : "?"}k=${++opened}`;
-  await dispatch(m, { type: "ouvrirOnglet", fenetreId: (await state(m)).fenetres[0]!.id, url });
+  await dispatch(m, { type: "ouvrirOnglet", windowId: (await state(m)).windows[0]!.id, url });
   await waitFor(
     m,
     `const b = gBrowser.browsers.findLast((b) => b.currentURI.spec === ${JSON.stringify(url)} && b.contentTitle === "loaded");
@@ -415,9 +415,9 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("agent dev tools spike", () => {
     note("D5 profile", rest);
     if (main) {
       const r = geckoToCpuProfile(main, prof.categories.map((name: string) => ({ name })), new Set([prof.innerWindowId]));
-      note("D5 conversion", { nodes: r.profil.nodes.length, samples: r.profil.samples.length, scriptMs: Math.round(r.scriptMs), taskMs: Math.round(r.taskMs),
-        durationMs: Math.round((r.profil.endTime - r.profil.startTime) / 1000) });
-      note("D5 resumerProfil", summarizeProfile(r.profil, { LayoutCount: prof.reflows, ScriptDuration: r.scriptMs / 1000, TaskDuration: r.taskMs / 1000 }, 8).split("\n"));
+      note("D5 conversion", { nodes: r.profile.nodes.length, samples: r.profile.samples.length, scriptMs: Math.round(r.scriptMs), taskMs: Math.round(r.taskMs),
+        durationMs: Math.round((r.profile.endTime - r.profile.startTime) / 1000) });
+      note("D5 resumerProfil", summarizeProfile(r.profile, { LayoutCount: prof.reflows, ScriptDuration: r.scriptMs / 1000, TaskDuration: r.taskMs / 1000 }, 8).split("\n"));
     }
     // Metrics: memory actor measure() (sizeOfTab) and, privileged in the page's process, a frame script.
     note("D5 memory.measure()", await chrome(m, `

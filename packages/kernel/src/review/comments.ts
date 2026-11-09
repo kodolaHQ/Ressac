@@ -9,21 +9,21 @@ import { newPosition, type Block } from "./diff.js";
 export const EMPTY_REMARK = "Une remarque vide n'est pas acceptée.";
 
 export interface Comment {
-  id: string; fichier: string; debut: number; fin: number;
-  lignes: { marque: " " | "+" | "-"; texte: string }[];
-  texte: string; cree: string; envoye: boolean; resolu: boolean; ligneChangee: boolean;
+  id: string; file: string; start: number; end: number;
+  lines: { mark: " " | "+" | "-"; text: string }[];
+  text: string; created: string; sent: boolean; resolved: boolean; lineChanged: boolean;
 }
 
 const Schema = z.array(z.object({
-  id: z.string(), fichier: z.string(), debut: z.number(), fin: z.number(),
-  lignes: z.array(z.object({ marque: z.enum([" ", "+", "-"]), texte: z.string() })),
-  texte: z.string(), cree: z.string(), envoye: z.boolean(), resolu: z.boolean(), ligneChangee: z.boolean(),
+  id: z.string(), file: z.string(), start: z.number(), end: z.number(),
+  lines: z.array(z.object({ mark: z.enum([" ", "+", "-"]), text: z.string() })),
+  text: z.string(), created: z.string(), sent: z.boolean(), resolved: z.boolean(), lineChanged: z.boolean(),
 }));
 
-interface Shown { marque: " " | "+" | "-"; texte: string; position: number; bloc: number; indice: number }
+interface Shown { mark: " " | "+" | "-"; text: string; position: number; block: number; hint: number }
 
 function shownList(blocks: Block[]): Shown[] {
-  return blocks.flatMap((b, block) => b.lignes.map((l, hint) => ({ marque: l.marque, texte: l.texte, position: newPosition(b, hint), bloc: block, indice: hint })));
+  return blocks.flatMap((b, block) => b.lines.map((l, hint) => ({ mark: l.mark, text: l.text, position: newPosition(b, hint), block: block, hint: hint })));
 }
 
 function nearest<T>(items: T[], pos: (t: T) => number, target: number): T {
@@ -33,109 +33,109 @@ function nearest<T>(items: T[], pos: (t: T) => number, target: number): T {
 /** Pure re-anchoring: a comment is never deleted, only moved or marked « ligne changée ». */
 export function rejoin(c: Comment, blocks: Block[]): Comment {
   const lignes = shownList(blocks);
-  const n = c.lignes.length;
+  const n = c.lines.length;
   const windows: Shown[][] = [];
   if (n > 0) {
     for (let i = 0; i + n <= lignes.length; i++) {
       const f = lignes.slice(i, i + n);
       // The text alone: a « + » line becomes context again after « Marquer comme relu ».
-      if (f.every((l, k) => l.bloc === f[0]!.bloc && l.texte === c.lignes[k]!.texte)) windows.push(f);
+      if (f.every((l, k) => l.block === f[0]!.block && l.text === c.lines[k]!.text)) windows.push(f);
     }
   }
   if (windows.length > 0) {
-    const f = nearest(windows, (w) => w[0]!.position, c.debut);
-    return { ...c, debut: f[0]!.position, fin: f[n - 1]!.position, ligneChangee: false };
+    const f = nearest(windows, (w) => w[0]!.position, c.start);
+    return { ...c, start: f[0]!.position, end: f[n - 1]!.position, lineChanged: false };
   }
-  const sameText = n > 0 ? lignes.filter((l) => l.texte === c.lignes[0]!.texte) : [];
+  const sameText = n > 0 ? lignes.filter((l) => l.text === c.lines[0]!.text) : [];
   if (sameText.length > 0) {
-    const l = nearest(sameText, (x) => x.position, c.debut);
-    return { ...c, debut: l.position, fin: l.position, ligneChangee: true };
+    const l = nearest(sameText, (x) => x.position, c.start);
+    return { ...c, start: l.position, end: l.position, lineChanged: true };
   }
   if (lignes.length > 0) {
-    const l = nearest(lignes, (x) => x.position, c.debut);
-    return { ...c, debut: l.position, fin: l.position, ligneChangee: true };
+    const l = nearest(lignes, (x) => x.position, c.start);
+    return { ...c, start: l.position, end: l.position, lineChanged: true };
   }
-  return { ...c, ligneChangee: true };
+  return { ...c, lineChanged: true };
 }
 
 export class ReviewComments {
-  private ecritures: Promise<unknown> = Promise.resolve();
+  private writes: Promise<unknown> = Promise.resolve();
 
-  constructor(private readonly fichier: string) {}
+  constructor(private readonly file: string) {}
 
-  private async lire(): Promise<Comment[]> {
+  private async read(): Promise<Comment[]> {
     let raw: string;
-    try { raw = await readFile(this.fichier, "utf8"); } catch { return []; }
+    try { raw = await readFile(this.file, "utf8"); } catch { return []; }
     try { return Schema.parse(JSON.parse(raw)); } catch { return []; }
   }
 
   // Serialized read-modify-write: two simultaneous calls do not overwrite each other.
-  private transformer<T>(f: (list: Comment[]) => { liste: Comment[]; resultat: T }): Promise<T> {
-    const tache = this.ecritures.then(async () => {
-      const { liste: list, resultat: result } = f(await this.lire());
-      await writePrivateJson(this.fichier, list);
+  private transform<T>(f: (list: Comment[]) => { list: Comment[]; result: T }): Promise<T> {
+    const tache = this.writes.then(async () => {
+      const { list: list, result: result } = f(await this.read());
+      await writePrivateJson(this.file, list);
       return result;
     });
-    this.ecritures = tache.catch(() => undefined);
+    this.writes = tache.catch(() => undefined);
     return tache;
   }
 
-  async liste(): Promise<Comment[]> {
-    await this.ecritures;
-    return this.lire();
+  async list(): Promise<Comment[]> {
+    await this.writes;
+    return this.read();
   }
 
-  ajouter(c: Pick<Comment, "fichier" | "debut" | "fin" | "lignes" | "texte">): Promise<Comment> {
-    if (c.texte.trim() === "") return Promise.reject(new Error(EMPTY_REMARK));
-    return this.transformer((list) => {
+  add(c: Pick<Comment, "file" | "start" | "end" | "lines" | "text">): Promise<Comment> {
+    if (c.text.trim() === "") return Promise.reject(new Error(EMPTY_REMARK));
+    return this.transform((list) => {
       const fresh: Comment = {
-        id: `c-${randomBytes(4).toString("hex")}`, fichier: c.fichier, debut: c.debut, fin: c.fin,
-        lignes: c.lignes.map((l) => ({ marque: l.marque, texte: l.texte })), texte: c.texte,
-        cree: new Date().toISOString(), envoye: false, resolu: false, ligneChangee: false,
+        id: `c-${randomBytes(4).toString("hex")}`, file: c.file, start: c.start, end: c.end,
+        lines: c.lines.map((l) => ({ mark: l.mark, text: l.text })), text: c.text,
+        created: new Date().toISOString(), sent: false, resolved: false, lineChanged: false,
       };
-      return { liste: [...list, fresh], resultat: fresh };
+      return { list: [...list, fresh], result: fresh };
     });
   }
 
-  modifier(id: string, text: string): Promise<void> {
+  edit(id: string, text: string): Promise<void> {
     if (text.trim() === "") return Promise.reject(new Error(EMPTY_REMARK));
-    return this.transformer((list) => ({ liste: list.map((c) => (c.id === id ? { ...c, texte: text, envoye: false } : c)), resultat: undefined }));
+    return this.transform((list) => ({ list: list.map((c) => (c.id === id ? { ...c, text: text, sent: false } : c)), result: undefined }));
   }
 
-  resoudre(id: string, resolved: boolean): Promise<void> {
-    return this.transformer((list) => ({ liste: list.map((c) => (c.id === id ? { ...c, resolu: resolved } : c)), resultat: undefined }));
+  resolve(id: string, resolved: boolean): Promise<void> {
+    return this.transform((list) => ({ list: list.map((c) => (c.id === id ? { ...c, resolved: resolved } : c)), result: undefined }));
   }
 
   supprimer(id: string): Promise<void> {
-    return this.transformer((list) => ({ liste: list.filter((c) => c.id !== id), resultat: undefined }));
+    return this.transform((list) => ({ list: list.filter((c) => c.id !== id), result: undefined }));
   }
 
-  recollerFichier(path: string, diff: DiffFile | null): Promise<Comment[]> {
-    return this.transformer((list) => {
-      const next = list.map((c) => (c.fichier !== path ? c : diff ? rejoin(c, diff.blocs) : { ...c, ligneChangee: true }));
-      return { liste: next, resultat: next.filter((c) => c.fichier === path) };
+  pasteFile(path: string, diff: DiffFile | null): Promise<Comment[]> {
+    return this.transform((list) => {
+      const next = list.map((c) => (c.file !== path ? c : diff ? rejoin(c, diff.blocks) : { ...c, lineChanged: true }));
+      return { list: next, result: next.filter((c) => c.file === path) };
     });
   }
 
-  async aEnvoyer(): Promise<Comment[]> {
-    return (await this.liste()).filter((c) => !c.resolu);
+  async toSend(): Promise<Comment[]> {
+    return (await this.list()).filter((c) => !c.resolved);
   }
 
-  marquerEnvoyes(ids: string[]): Promise<void> {
+  markSent(ids: string[]): Promise<void> {
     const idSet = new Set(ids);
-    return this.transformer((list) => ({ liste: list.map((c) => (idSet.has(c.id) ? { ...c, envoye: true } : c)), resultat: undefined }));
+    return this.transform((list) => ({ list: list.map((c) => (idSet.has(c.id) ? { ...c, sent: true } : c)), result: undefined }));
   }
 
   /** Marks as sent those whose text is still the one that left (a change in the meantime stays to be sent). */
-  marquerEnvoyesSiInchanges(sent: { id: string; texte: string }[]): Promise<void> {
-    const texts = new Map(sent.map((e) => [e.id, e.texte]));
-    return this.transformer((list) => ({
-      liste: list.map((c) => (texts.get(c.id) === c.texte ? { ...c, envoye: true } : c)),
-      resultat: undefined,
+  markSentIfUnchanged(sent: { id: string; text: string }[]): Promise<void> {
+    const texts = new Map(sent.map((e) => [e.id, e.text]));
+    return this.transform((list) => ({
+      list: list.map((c) => (texts.get(c.id) === c.text ? { ...c, sent: true } : c)),
+      result: undefined,
     }));
   }
 
-  apresRelu(): Promise<void> {
-    return this.transformer((list) => ({ liste: list.filter((c) => !c.resolu), resultat: undefined }));
+  afterReviewed(): Promise<void> {
+    return this.transform((list) => ({ list: list.filter((c) => !c.resolved), result: undefined }));
   }
 }

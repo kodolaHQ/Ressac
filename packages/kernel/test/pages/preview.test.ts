@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { PREVIEW_MAX, resultsPreview, emptyResults } from "../../src/pages/preview.js";
 
-const ticket = (i: number) => ({ titre: `Ticket ${i} ` + "x".repeat(200), priorite: "haute", url: `https://gitlab.com/t/${i}` });
+const ticket = (i: number) => ({ title: `Ticket ${i} ` + "x".repeat(200), priority: "haute", url: `https://gitlab.com/t/${i}` });
 
 describe("resultsPreview", () => {
   it("describes the shape of a list of objects and keeps 3 examples", () => {
@@ -12,7 +12,7 @@ describe("resultsPreview", () => {
   });
 
   it("2 MB of results: preview ≤ 6,000 characters, the tickets shape remains", () => {
-    const big = { tickets: Array.from({ length: 10_000 }, (_, i) => ticket(i)), texte: "y".repeat(2_000_000) };
+    const big = { tickets: Array.from({ length: 10_000 }, (_, i) => ticket(i)), text: "y".repeat(2_000_000) };
     const s = resultsPreview(big);
     expect(s.length).toBeLessThanOrEqual(PREVIEW_MAX);
     expect(JSON.parse(s).forme.tickets).toContain("liste (10000) d'objets");
@@ -34,7 +34,7 @@ describe("resultsPreview", () => {
 
   it("hundreds of wide keys stay bounded, and __proto__ is a key like any other", () => {
     const large: Record<string, unknown> = JSON.parse('{"__proto__": {"x": 1}}');
-    for (let i = 0; i < 500; i++) large["cle" + i + "é".repeat(50)] = { n: i, liste: [1, 2, 3, 4] };
+    for (let i = 0; i < 500; i++) large["cle" + i + "é".repeat(50)] = { n: i, list: [1, 2, 3, 4] };
     const s = resultsPreview(large);
     expect(s.length).toBeLessThanOrEqual(PREVIEW_MAX);
     expect(() => JSON.parse(s)).not.toThrow();
