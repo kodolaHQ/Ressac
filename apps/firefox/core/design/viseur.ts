@@ -12,7 +12,7 @@ type RectCss = CaptureViseur["rect"];
 export function scriptViseur(): string {
   return `(() => {
   if (typeof globalThis.__viseurArret === "function") globalThis.__viseurArret();
-  // Un nouvel armement retire l'avalement des clics laissé par la capture précédente : il a ses propres écouteurs.
+  // A new arming removes the click swallowing left by the previous capture: it has its own listeners.
   if (typeof globalThis.__viseurAvaler === "function") globalThis.__viseurAvaler();
   const STYLES = ${JSON.stringify(STYLES_UTILES)};
   const HTML_MAX = ${HTML_MAX};
@@ -66,9 +66,9 @@ export function scriptViseur(): string {
     };
 
     const bloque = (e) => { e.preventDefault(); e.stopImmediatePropagation(); };
-    // Les événements fabriqués par la page (isTrusted faux) passent sans être touchés : seuls ceux de l'utilisateur comptent.
+    // Events made by the page (isTrusted false) pass untouched: only the user's count.
     const surSouris = (e) => { if (e.isTrusted) bloque(e); };
-    // Pendant la visée, « click » est traité à part (surClic) ; l'avaler seul après la capture.
+    // While aiming, « click » is handled apart (surClic); swallow it alone after the capture.
     const TYPES_VISEE = ["pointerdown", "pointerup", "mousedown", "mouseup", "auxclick", "contextmenu", "dblclick"];
     const TYPES_SOURIS = ["pointerdown", "pointerup", "mousedown", "mouseup", "click", "auxclick", "contextmenu", "dblclick"];
     const surMove = (e) => { if (e.target instanceof Element) placer(e.target); };
@@ -76,7 +76,7 @@ export function scriptViseur(): string {
       for (const t of TYPES_SOURIS) window.removeEventListener(t, surSouris, true);
       window.removeEventListener("click", surClic, true);
       if (valeur) {
-        // La fin d'un double clic (deuxième clic, dblclick) ne doit pas atteindre la page.
+        // The end of a double click (second click, dblclick) must not reach the page.
         for (const t of TYPES_SOURIS) window.addEventListener(t, surSouris, true);
         const avaler = () => {
           clearTimeout(minuterie);
