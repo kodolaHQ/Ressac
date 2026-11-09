@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 import { defineConfig } from "vite";
@@ -6,7 +6,9 @@ import { hostPath, nodePath, tsxPath } from "./scripts/paths";
 
 const shim = (name: string) => fileURLToPath(new URL(`chrome/shims/${name}.ts`, import.meta.url));
 // Mounted only in a site app's bar: their styles are injected there, never bundled into the main UI's stylesheet.
-const INJECTED_CSS = ["/site/FenetreSite.svelte", "/ui/SiteAddonsStrip.svelte"];
+const INJECTED_CSS = ["ui/site/SiteWindow.svelte", "ui/SiteAddonsStrip.svelte"];
+// A rename must not silently leak these styles into the main UI.
+for (const f of INJECTED_CSS) if (!existsSync(new URL(f, import.meta.url))) throw new Error(`INJECTED_CSS: ${f} is missing`);
 
 // Three bundles, one per `--mode` (scripts/ui.sh builds all of them):
 // - sidebar: privileged Firefox page (chrome://browser/content/webaios/sidebar.html), one script and one stylesheet
@@ -84,7 +86,7 @@ export default defineConfig(({ mode }) => {
   return {
     // SiteWindow's :global(html, body) rules (opaque background, font) would reach the main UI through the shared
     // stylesheet: injected, they only land in the site bar's document, when it mounts.
-    plugins: [svelte({ dynamicCompileOptions: ({ filename }) => (INJECTED_CSS.some((f) => filename.endsWith(f)) ? { css: "injected" } : undefined) })],
+    plugins: [svelte({ dynamicCompileOptions: ({ filename }) => (INJECTED_CSS.some((f) => filename.endsWith("/" + f)) ? { css: "injected" } : undefined) })],
     // Library mode leaves process.env.NODE_ENV in place (@xyflow/svelte reads it); a privileged page has no process.
     define: { "process.env.NODE_ENV": JSON.stringify("production") },
     build: {
