@@ -1,98 +1,98 @@
 <script lang="ts">
-  import { commande } from "./commande.svelte";
+  import { command } from "./commande.svelte";
   import { onMount, untrack } from "svelte";
   import type { SpaceExtensionLine } from "../../shared/extensions";
   import type { WindowId, TabId } from "../../shared/modele";
-  import { api, etat } from "../etat.svelte";
-  import { avertissements } from "./extensionsEspace";
-  import FondFige from "./FondFige.svelte";
-  import { choixPerdConnexions, optionsProfil, PROFIL_A_CHOISIR } from "./profilsEspace";
-  import { reglagesEspace } from "./reglagesEspace.svelte";
+  import { api, appState } from "../etat.svelte";
+  import { warnings } from "./extensionsEspace";
+  import FrozenBackground from "./FondFige.svelte";
+  import { choiceLosesConnections, profileOptions, PROFILE_TO_CHOOSE } from "./profilsEspace";
+  import { spaceSettings } from "./reglagesEspace.svelte";
 
   /**
    * Creation or settings of a space: the `reglagesEspace` draft, mounted as long as it exists. `ongletId`: the page
    * shown at opening, captured for the background (null: none, or a panel hides it).
    */
-  let { fenetreId, ongletId }: { fenetreId: WindowId; ongletId: TabId | null } = $props();
+  let { fenetreId: windowId, ongletId: tabId }: { fenetreId: WindowId; ongletId: TabId | null } = $props();
   // The draft is shared state: the fields modify it in place.
-  const brouillon = untrack(() => reglagesEspace.brouillon)!;
+  const draft = untrack(() => spaceSettings.brouillon)!;
 
   let carte: HTMLElement;
-  let champNom: HTMLInputElement;
-  let prete = $state(false);
+  let nameField: HTMLInputElement;
+  let ready = $state(false);
 
-  const espaces = $derived(etat.valeur?.espaces ?? []);
-  const options = $derived(optionsProfil(espaces, etat.valeur?.profils ?? [], brouillon.id));
-  const nouveau = $derived(brouillon.id === null);
-  const valide = $derived(brouillon.nom.trim() !== "" && brouillon.profil !== PROFIL_A_CHOISIR);
-  const perdConnexions = $derived(choixPerdConnexions(espaces, brouillon.id, brouillon.profil));
+  const spaces = $derived(appState.valeur?.espaces ?? []);
+  const options = $derived(profileOptions(spaces, appState.valeur?.profils ?? [], draft.id));
+  const fresh = $derived(draft.id === null);
+  const valid = $derived(draft.nom.trim() !== "" && draft.profil !== PROFILE_TO_CHOOSE);
+  const losesConnections = $derived(choiceLosesConnections(spaces, draft.id, draft.profil));
 
   // Extensions: the rows seen from the space's saved profile (an existing space only).
   let lignes = $state<SpaceExtensionLine[] | null>(null);
-  let erreurExtension = $state<string | null>(null);
-  const enregistre = $derived(espaces.find((e) => e.id === brouillon.id));
-  const profilChange = $derived(!!enregistre && brouillon.profil !== enregistre.profil);
-  const cleLignes = $derived(enregistre ? `${enregistre.id}|${enregistre.profil}|${enregistre.prive}|${espaces.map((e) => `${e.nom}:${e.profil}`).join(",")}` : "");
-  const avertis = $derived(
-    lignes && !nouveau
-      ? avertissements({ id: brouillon.id, prive: brouillon.prive, profil: brouillon.profil }, espaces, lignes)
+  let extensionError = $state<string | null>(null);
+  const saved = $derived(spaces.find((e) => e.id === draft.id));
+  const profileChanged = $derived(!!saved && draft.profil !== saved.profil);
+  const linesKey = $derived(saved ? `${saved.id}|${saved.profil}|${saved.prive}|${spaces.map((e) => `${e.nom}:${e.profil}`).join(",")}` : "");
+  const warned = $derived(
+    lignes && !fresh
+      ? warnings({ id: draft.id, prive: draft.prive, profil: draft.profil }, spaces, lignes)
       : { privePartage: [], agentDesactivees: [] },
   );
   async function chargerLignes() {
-    if (brouillon.id !== null) lignes = await api.extensions.pourEspace(brouillon.id);
+    if (draft.id !== null) lignes = await api.extensions.pourEspace(draft.id);
   }
   $effect(() => {
-    void cleLignes;
+    void linesKey;
     void chargerLignes();
   });
-  async function basculer(l: SpaceExtensionLine, champ: HTMLInputElement) {
-    if (brouillon.id === null) return;
-    erreurExtension = null;
-    const r = await api.extensions.basculer(l.cle, brouillon.id, champ.checked);
-    if (!r.ok) erreurExtension = r.erreur;
+  async function toggle(l: SpaceExtensionLine, champ: HTMLInputElement) {
+    if (draft.id === null) return;
+    extensionError = null;
+    const r = await api.extensions.basculer(l.cle, draft.id, champ.checked);
+    if (!r.ok) extensionError = r.erreur;
     await chargerLignes();
     // The switch takes back what the registry says (card refused, error).
-    const vue = lignes?.find((x) => x.cle === l.cle);
-    if (vue && champ.isConnected) champ.checked = vue.active;
+    const view = lignes?.find((x) => x.cle === l.cle);
+    if (view && champ.isConnected) champ.checked = view.active;
   }
 
   // The choice no longer designates any profile (the state changed meanwhile): a new space goes back to « à choisir »,
   // an existing space to the first one offered.
   $effect(() => {
-    if (brouillon.profil === PROFIL_A_CHOISIR || options.some((o) => o.valeur === brouillon.profil)) return;
-    brouillon.profil = nouveau ? PROFIL_A_CHOISIR : options[0]!.valeur;
+    if (draft.profil === PROFILE_TO_CHOOSE || options.some((o) => o.valeur === draft.profil)) return;
+    draft.profil = fresh ? PROFILE_TO_CHOOSE : options[0]!.valeur;
   });
   // The space being set was deleted (from another window): nothing left to set.
   $effect(() => {
-    if (brouillon.id !== null && !espaces.some((e) => e.id === brouillon.id)) fermer();
+    if (draft.id !== null && !spaces.some((e) => e.id === draft.id)) close();
   });
 
   onMount(() => {
-    const avant = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    champNom.focus();
+    const before = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    nameField.focus();
     const finChange = api.extensions.surChange(() => void chargerLignes());
     return () => {
       finChange();
       // Focus goes back where it was, if it is still in the interface, when the rest is no longer inert.
       queueMicrotask(() => {
-        if (avant?.isConnected && avant !== document.body) avant.focus();
+        if (before?.isConnected && before !== document.body) before.focus();
       });
     };
   });
 
-  function fermer() {
-    reglagesEspace.brouillon = null;
+  function close() {
+    spaceSettings.brouillon = null;
   }
 
-  function valider(e?: SubmitEvent) {
+  function validate(e?: SubmitEvent) {
     e?.preventDefault();
-    if (!valide) return;
-    const nom = brouillon.nom.trim();
-    const icone = brouillon.icone.trim() || "📁";
-    const { id, prive, profil } = brouillon;
-    if (id === null) api.agir({ type: "creerEspace", nom, icone, prive, profil, fenetreId });
-    else api.agir({ type: "reglerEspace", id, nom, icone, prive, profil });
-    fermer();
+    if (!valid) return;
+    const name = draft.nom.trim();
+    const icon = draft.icone.trim() || "📁";
+    const { id, prive: isPrivate, profil: profile } = draft;
+    if (id === null) api.agir({ type: "creerEspace", nom: name, icone: icon, prive: isPrivate, profil: profile, fenetreId: windowId });
+    else api.agir({ type: "reglerEspace", id, nom: name, icone: icon, prive: isPrivate, profil: profile });
+    close();
   }
 
   const focusables = () =>
@@ -102,24 +102,24 @@
   function clavier(e: KeyboardEvent) {
     // The command bar opened on top keeps the keyboard: the hidden modal reacts to nothing, even if focus has left the
     // bar's field (neither Enter, nor Escape before the ⌃Tab panel takes over, nor Tab).
-    if (commande.ouverte || e.isComposing) return;
+    if (command.ouverte || e.isComposing) return;
     if (e.key === "Escape") {
       e.preventDefault();
-      fermer();
+      close();
     } else if (e.key === "Enter") {
       // A focused button keeps its own action; everywhere else, Enter saves.
       if (e.target instanceof HTMLElement && e.target.closest("button")) return;
       e.preventDefault();
-      if (!e.repeat) valider();
+      if (!e.repeat) validate();
     } else if (e.key === "Tab") {
       // Focus does not leave the modal: Tab loops over its controls.
-      const liste = focusables();
-      if (liste.length === 0) return e.preventDefault();
-      const i = liste.indexOf(document.activeElement as HTMLElement);
-      const cible = e.shiftKey ? (i <= 0 ? liste.at(-1) : null) : i === -1 || i === liste.length - 1 ? liste[0] : null;
-      if (cible) {
+      const list = focusables();
+      if (list.length === 0) return e.preventDefault();
+      const i = list.indexOf(document.activeElement as HTMLElement);
+      const target = e.shiftKey ? (i <= 0 ? list.at(-1) : null) : i === -1 || i === list.length - 1 ? list[0] : null;
+      if (target) {
         e.preventDefault();
-        cible.focus();
+        target.focus();
       }
     }
   }
@@ -128,23 +128,23 @@
 <svelte:window onkeydown={clavier} />
 
 <!-- Under the command bar, nothing in the modal can take focus (native Tab from the page body). -->
-<div class="modale" class:prete data-testid="modale-espace" inert={!!commande.ouverte}>
-  <FondFige {ongletId} surPret={() => (prete = true)} />
+<div class="modale" class:prete={ready} data-testid="modale-espace" inert={!!command.ouverte}>
+  <FrozenBackground ongletId={tabId} surPret={() => (ready = true)} />
   <div class="carte" bind:this={carte} role="dialog" aria-modal="true" aria-labelledby="titre-espace">
-    <form onsubmit={valider}>
-      <h2 id="titre-espace">{nouveau ? "Nouvel espace" : "Réglages de l'espace"}</h2>
+    <form onsubmit={validate}>
+      <h2 id="titre-espace">{fresh ? "Nouvel espace" : "Réglages de l'espace"}</h2>
       <div class="champ">
-        <input class="icone" bind:value={brouillon.icone} aria-label="Icône" maxlength="4" />
-        <input bind:this={champNom} bind:value={brouillon.nom} aria-label="Nom de l'espace" placeholder="Nom" />
+        <input class="icone" bind:value={draft.icone} aria-label="Icône" maxlength="4" />
+        <input bind:this={nameField} bind:value={draft.nom} aria-label="Nom de l'espace" placeholder="Nom" />
       </div>
       <div class="bloc">
-        <label class="case"><input type="checkbox" bind:checked={brouillon.prive} aria-describedby="note-prive" /> <b>Espace privé</b></label>
+        <label class="case"><input type="checkbox" bind:checked={draft.prive} aria-describedby="note-prive" /> <b>Espace privé</b></label>
         <p class="note" id="note-prive">L'agent ne voit pas ces onglets, ne lit rien, n'a pas les outils de développement, et rien n'est retenu dans sa mémoire.</p>
       </div>
       <div class="bloc">
         <label class="libelle" for="profil-espace">Profil de connexion</label>
-        <select id="profil-espace" bind:value={brouillon.profil} aria-describedby="note-profil">
-          {#if nouveau}<option value={PROFIL_A_CHOISIR} disabled>Choisir un profil…</option>{/if}
+        <select id="profil-espace" bind:value={draft.profil} aria-describedby="note-profil">
+          {#if fresh}<option value={PROFILE_TO_CHOOSE} disabled>Choisir un profil…</option>{/if}
           {#each options as o (o.valeur)}
             <option value={o.valeur}>{o.libelle}</option>
           {/each}
@@ -152,12 +152,12 @@
         <p class="note" id="note-profil">
           Cookies, comptes connectés, autorisations des sites. Changer de profil : les onglets de l'espace se rechargent, tu devras peut-être te reconnecter.
         </p>
-        {#if perdConnexions}<p class="note alerte" role="alert" data-testid="perte-connexions">Les connexions de cet espace seront perdues.</p>{/if}
+        {#if losesConnections}<p class="note alerte" role="alert" data-testid="perte-connexions">Les connexions de cet espace seront perdues.</p>{/if}
       </div>
-      {#if !nouveau}
+      {#if !fresh}
         <div class="bloc" data-testid="extensions-espace">
           <span class="libelle">Extensions</span>
-          {#if profilChange}
+          {#if profileChanged}
             <p class="note">Enregistre d'abord le changement de profil pour régler ses extensions.</p>
           {:else if lignes && lignes.length === 0}
             <p class="note">Aucune extension installée.</p>
@@ -165,7 +165,7 @@
             {#each lignes as l (l.cle)}
               <div class="extension" data-testid="extension-ligne" data-cle={l.cle}>
                 <label class="case">
-                  <input type="checkbox" role="switch" checked={l.active} disabled={l.grisee !== null} onchange={(e) => void basculer(l, e.currentTarget)} />
+                  <input type="checkbox" role="switch" checked={l.active} disabled={l.grisee !== null} onchange={(e) => void toggle(l, e.currentTarget)} />
                   <b>{l.nom}</b>
                   <span class="source">{l.source === "agent" ? "écrite par l'agent" : "Chrome Web Store"}</span>
                 </label>
@@ -174,20 +174,20 @@
               </div>
             {/each}
           {/if}
-          {#if erreurExtension}<p class="note alerte" role="alert" data-testid="erreur-extension">{erreurExtension}</p>{/if}
-          {#if brouillon.prive && avertis.privePartage.length > 0}
+          {#if extensionError}<p class="note alerte" role="alert" data-testid="erreur-extension">{extensionError}</p>{/if}
+          {#if draft.prive && warned.privePartage.length > 0}
             <p class="note" data-testid="avertissement-extensions-prive">
-              Cet espace privé partage son profil avec « {avertis.privePartage.join(", ")} » : les extensions actives dans ce profil tournent aussi ici. Pour qu'elles n'y tournent jamais, donne-lui son propre profil.
+              Cet espace privé partage son profil avec « {warned.privePartage.join(", ")} » : les extensions actives dans ce profil tournent aussi ici. Pour qu'elles n'y tournent jamais, donne-lui son propre profil.
             </p>
           {/if}
-          {#if avertis.agentDesactivees.length > 0}
-            <p class="note alerte" data-testid="extensions-desactivees">En enregistrant, ces extensions de l'agent seront désactivées pour ce profil : {avertis.agentDesactivees.join(", ")}. Les onglets ouverts où elles tournent seront rechargés.</p>
+          {#if warned.agentDesactivees.length > 0}
+            <p class="note alerte" data-testid="extensions-desactivees">En enregistrant, ces extensions de l'agent seront désactivées pour ce profil : {warned.agentDesactivees.join(", ")}. Les onglets ouverts où elles tournent seront rechargés.</p>
           {/if}
         </div>
       {/if}
       <div class="actions">
-        <button type="button" onclick={fermer}>Annuler</button>
-        <button type="submit" class="principal" disabled={!valide}>{nouveau ? "Créer" : "Enregistrer"}</button>
+        <button type="button" onclick={close}>Annuler</button>
+        <button type="submit" class="principal" disabled={!valid}>{fresh ? "Créer" : "Enregistrer"}</button>
       </div>
     </form>
   </div>

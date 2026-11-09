@@ -1,79 +1,79 @@
 <script lang="ts">
   // The agent panel of the window, in its own iframe.
   import { untrack } from "svelte";
-  import PanneauAgent from "../ui/composants/PanneauAgent.svelte";
+  import AgentPanel from "../ui/composants/PanneauAgent.svelte";
   import { focusAgent } from "../ui/composants/agent.svelte";
-  import { api, etat, fenetreCourante } from "../ui/etat.svelte";
+  import { api, appState, currentWindow } from "../ui/etat.svelte";
   import { AGENT_WIDTH_MAX, AGENT_WIDTH_MIN } from "../shared/modele";
 
   const win = window.parent.webaiosWindow!;
-  const fenetre = $derived(fenetreCourante());
-  const panneauAgentOuvert = $derived(fenetre?.panneauAgentOuvert ?? false);
-  const ongletActif = $derived.by(() => {
-    const id = fenetre?.actif[fenetre.espaceActif];
-    return id ? etat.valeur?.onglets[id] : undefined;
+  const winState = $derived(currentWindow());
+  const agentPanelOpen = $derived(winState?.panneauAgentOuvert ?? false);
+  const activeTab = $derived.by(() => {
+    const id = winState?.actif[winState.espaceActif];
+    return id ? appState.valeur?.onglets[id] : undefined;
   });
   $effect(() => api.surRaccourci((r) => r === "agent" && focusAgent.n++));
 
   // The panel is open by default on the home page (the agent's session starts there), and closes
   // when leaving it if it opened only for it. Closed by the user on the home page, it stays closed there until next launch.
-  let panneauFermeSurAccueil = false;
+  let panelClosedOnHome = false;
   /** Opening asked by the home page, not back in the state yet (null: none). */
-  let attendu: boolean | null = null;
-  let ouvertParAccueil = false;
-  let ouvertAvant = false;
+  let expected: boolean | null = null;
+  let openedByHome = false;
+  let openedBefore = false;
   $effect(() => {
-    const ouvert = panneauAgentOuvert;
-    const f = fenetre;
+    const isOpen = agentPanelOpen;
+    const f = winState;
     if (!f) return;
-    const surAccueil = !ongletActif;
-    if (ouvert !== ouvertAvant) {
+    const onHome = !activeTab;
+    if (isOpen !== openedBefore) {
       // A change from elsewhere (⌘J, ✦ button): the panel now belongs to the user.
-      const deUtilisateur = ouvert !== attendu;
+      const ofUser = isOpen !== expected;
       // Opened by the user: the terminal takes the keyboard. Opened again by the home page: it does not.
-      if (deUtilisateur && ouvert) untrack(() => focusAgent.n++);
-      if (deUtilisateur) ouvertParAccueil = false;
-      if (deUtilisateur && surAccueil && !ouvert) panneauFermeSurAccueil = true;
-      attendu = null;
+      if (ofUser && isOpen) untrack(() => focusAgent.n++);
+      if (ofUser) openedByHome = false;
+      if (ofUser && onHome && !isOpen) panelClosedOnHome = true;
+      expected = null;
     }
-    ouvertAvant = ouvert;
+    openedBefore = isOpen;
     // A tab showed before the opening went through: it was refused (see panneauAgentAccueil).
-    if (!surAccueil && !ouvert) {
-      attendu = null;
-      ouvertParAccueil = false;
+    if (!onHome && !isOpen) {
+      expected = null;
+      openedByHome = false;
     }
     // The action is idempotent: sending it again until the state reflects it toggles nothing.
     const demander = (v: boolean) => {
-      attendu = v;
+      expected = v;
       api.agir({ type: "panneauAgentAccueil", fenetreId: f.id, ouvert: v });
     };
-    if (surAccueil && !ouvert && !panneauFermeSurAccueil) {
-      ouvertParAccueil = true;
+    if (onHome && !isOpen && !panelClosedOnHome) {
+      openedByHome = true;
       demander(true);
-    } else if (!surAccueil && ouvert && ouvertParAccueil) {
-      ouvertParAccueil = false;
+    } else if (!onHome && isOpen && openedByHome) {
+      openedByHome = false;
       demander(false);
     }
   });
 
   /** Width of this iframe when the drag started. */
   let debut: number | null = null;
-  function redimensionner(voulue: number, fin: boolean) {
+  function resize(wanted: number, fin: boolean) {
     // The handle measures in this iframe, whose left edge moves with the width: back to window coordinates.
     debut ??= window.innerWidth;
-    const reelle = voulue - debut + window.innerWidth;
+    const real = wanted - debut + window.innerWidth;
     // Always room for the page: 300 px at least beside the sidebar.
     const max = Math.min(AGENT_WIDTH_MAX, window.parent.innerWidth - win.sidebarWidth() - 300);
-    const largeur = Math.round(Math.max(AGENT_WIDTH_MIN, Math.min(max, reelle)));
-    win.setAgentWidth(largeur);
+    const width = Math.round(Math.max(AGENT_WIDTH_MIN, Math.min(max, real)));
+    win.setAgentWidth(width);
     if (fin) {
       debut = null;
-      api.agir({ type: "largeurPanneauAgent", largeur });
+      api.agir({ type: "largeurPanneauAgent", largeur: width });
     }
   }
 </script>
 
-<PanneauAgent visible={panneauAgentOuvert} {redimensionner} />
+<AgentPanel visible={agentPanelOpen} redimensionner={resize} />
 
 <style>
   :global(html), :global(body) { height: 100%; margin: 0; }

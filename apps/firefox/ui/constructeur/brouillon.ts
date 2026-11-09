@@ -1,72 +1,72 @@
 import type { Draft } from "../../shared/api";
 
 export type { Draft as Brouillon };
-type BlocBrouillon = Draft["blocs"][number];
+type DraftBlock = Draft["blocs"][number];
 type Position = { x: number; y: number };
 
-const estObjet = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
 /** Lenient reading of a `workflow.json` (or its received copy); null if the blocks are unusable. */
-export function versBrouillon(brut: unknown): Draft | null {
-  if (!estObjet(brut) || !Array.isArray(brut.blocs)) return null;
-  const blocs: BlocBrouillon[] = [];
+export function toDraft(brut: unknown): Draft | null {
+  if (!isObject(brut) || !Array.isArray(brut.blocs)) return null;
+  const blocs: DraftBlock[] = [];
   for (const b of brut.blocs) {
-    if (!estObjet(b) || typeof b.id !== "string" || typeof b.type !== "string") return null;
-    const p = estObjet(b.position) ? b.position : {};
-    const bloc: BlocBrouillon = {
+    if (!isObject(b) || typeof b.id !== "string" || typeof b.type !== "string") return null;
+    const p = isObject(b.position) ? b.position : {};
+    const bloc: DraftBlock = {
       id: b.id,
       type: b.type,
       position: { x: typeof p.x === "number" && Number.isFinite(p.x) ? p.x : 0, y: typeof p.y === "number" && Number.isFinite(p.y) ? p.y : 0 },
-      parametres: estObjet(b.parametres) ? b.parametres : {},
+      parametres: isObject(b.parametres) ? b.parametres : {},
     };
     if (typeof b.nom === "string") bloc.nom = b.nom;
     blocs.push(bloc);
   }
   const liens = Array.isArray(brut.liens)
-    ? brut.liens.flatMap((l) => (estObjet(l) && typeof l.de === "string" && typeof l.vers === "string" ? [{ de: l.de, vers: l.vers }] : []))
+    ? brut.liens.flatMap((l) => (isObject(l) && typeof l.de === "string" && typeof l.vers === "string" ? [{ de: l.de, vers: l.vers }] : []))
     : [];
   return { version: 1, blocs, liens };
 }
 
 /** `ia.trier` → `ia-trier`, then `ia-trier-2`, … (40 characters at most). */
-export function idPourType(type: string, existants: Iterable<string>): string {
-  const pris = new Set(existants);
+export function idPourType(type: string, existing: Iterable<string>): string {
+  const taken = new Set(existing);
   const base = type.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "bloc";
-  const coupe = (s: string, suffixe: string) => s.slice(0, 40 - suffixe.length).replace(/-+$/, "") + suffixe;
+  const coupe = (s: string, suffix: string) => s.slice(0, 40 - suffix.length).replace(/-+$/, "") + suffix;
   let id = coupe(base, "");
-  for (let n = 2; pris.has(id); n++) id = coupe(base, `-${n}`);
+  for (let n = 2; taken.has(id); n++) id = coupe(base, `-${n}`);
   return id;
 }
 
-export function ajouterBloc(b: Draft, type: string, position: Position, parametres: Record<string, unknown>): { brouillon: Draft; id: string } {
+export function addBlock(b: Draft, type: string, position: Position, params: Record<string, unknown>): { brouillon: Draft; id: string } {
   if (type === "sortie" && b.blocs.some((x) => x.type === "sortie")) return { brouillon: b, id: "" };
   const id = idPourType(type, b.blocs.map((x) => x.id));
-  return { brouillon: { ...b, blocs: [...b.blocs, { id, type, position: { ...position }, parametres }] }, id };
+  return { brouillon: { ...b, blocs: [...b.blocs, { id, type, position: { ...position }, parametres: params }] }, id };
 }
 
-export function relier(b: Draft, de: string, vers: string): Draft {
-  if (de === vers) return b;
-  if (b.liens.some((l) => l.de === de && l.vers === vers)) return b;
+export function relier(b: Draft, de: string, to: string): Draft {
+  if (de === to) return b;
+  if (b.liens.some((l) => l.de === de && l.vers === to)) return b;
   const ids = new Set(b.blocs.map((x) => x.id));
-  if (!ids.has(de) || !ids.has(vers)) return b;
+  if (!ids.has(de) || !ids.has(to)) return b;
   if (b.blocs.find((x) => x.id === de)!.type === "sortie") return b;
-  return { ...b, liens: [...b.liens, { de, vers }] };
+  return { ...b, liens: [...b.liens, { de, vers: to }] };
 }
 
-export function supprimerBlocs(b: Draft, ids: Iterable<string>): Draft {
-  const supprimables = new Set(b.blocs.filter((x) => x.type !== "sortie").map((x) => x.id));
-  const a = new Set([...ids].filter((i) => supprimables.has(i)));
+export function deleteBlocks(b: Draft, ids: Iterable<string>): Draft {
+  const deletable = new Set(b.blocs.filter((x) => x.type !== "sortie").map((x) => x.id));
+  const a = new Set([...ids].filter((i) => deletable.has(i)));
   if (a.size === 0) return b;
   return { ...b, blocs: b.blocs.filter((x) => !a.has(x.id)), liens: b.liens.filter((l) => !a.has(l.de) && !a.has(l.vers)) };
 }
 
-export function supprimerLien(b: Draft, de: string, vers: string): Draft {
-  const liens = b.liens.filter((l) => !(l.de === de && l.vers === vers));
+export function deleteLink(b: Draft, de: string, to: string): Draft {
+  const liens = b.liens.filter((l) => !(l.de === de && l.vers === to));
   return liens.length === b.liens.length ? b : { ...b, liens };
 }
 
 /** Returns `b` itself when no position really changes (a click writes nothing). */
-export function deplacer(b: Draft, positions: Record<string, Position>): Draft {
+export function move(b: Draft, positions: Record<string, Position>): Draft {
   let change = false;
   const blocs = b.blocs.map((x) => {
     const p = positions[x.id];
@@ -77,32 +77,32 @@ export function deplacer(b: Draft, positions: Record<string, Position>): Draft {
   return change ? { ...b, blocs } : b;
 }
 
-export function regler(b: Draft, id: string, parametres: Record<string, unknown>): Draft {
+export function set(b: Draft, id: string, params: Record<string, unknown>): Draft {
   if (!b.blocs.some((x) => x.id === id)) return b;
-  return { ...b, blocs: b.blocs.map((x) => (x.id === id ? { ...x, parametres } : x)) };
+  return { ...b, blocs: b.blocs.map((x) => (x.id === id ? { ...x, parametres: params } : x)) };
 }
 
-export function renommer(b: Draft, id: string, nom: string): Draft {
+export function rename(b: Draft, id: string, name: string): Draft {
   if (!b.blocs.some((x) => x.id === id)) return b;
   return {
     ...b,
     blocs: b.blocs.map((x) => {
       if (x.id !== id) return x;
-      const { nom: _ancien, ...reste } = x;
-      return nom === "" ? reste : { ...reste, nom: nom.slice(0, 60) };
+      const { nom: _old, ...rest } = x;
+      return name === "" ? rest : { ...rest, nom: name.slice(0, 60) };
     }),
   };
 }
 
-function canonique(v: unknown): unknown {
-  if (Array.isArray(v)) return v.map(canonique);
-  if (estObjet(v)) return Object.fromEntries(Object.keys(v).sort().map((k) => [k, canonique(v[k])]));
+function canonical(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(canonical);
+  if (isObject(v)) return Object.fromEntries(Object.keys(v).sort().map((k) => [k, canonical(v[k])]));
   return v;
 }
-export const memeBrouillon = (a: Draft, b: Draft): boolean => JSON.stringify(canonique(a)) === JSON.stringify(canonique(b));
+export const sameDraft = (a: Draft, b: Draft): boolean => JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
 
 /** Stack of states for undo / redo; at most `max` states, the current one included. */
-export class Historique {
+export class History {
   courant: Draft;
   private passe: Draft[] = [];
   private futur: Draft[] = [];
@@ -112,7 +112,7 @@ export class Historique {
     this.courant = initial;
   }
   faire(b: Draft, fusion?: string): void {
-    if (b === this.courant || memeBrouillon(b, this.courant)) return;
+    if (b === this.courant || sameDraft(b, this.courant)) return;
     if (fusion === undefined || fusion !== this.fusion || this.passe.length === 0) {
       this.passe.push(this.courant);
       if (this.passe.length >= this.max) this.passe.shift();
@@ -123,19 +123,19 @@ export class Historique {
   }
   annuler(): Draft | null {
     this.fusion = null;
-    const avant = this.passe.pop();
-    if (!avant) return null;
+    const before = this.passe.pop();
+    if (!before) return null;
     this.futur.push(this.courant);
-    this.courant = avant;
-    return avant;
+    this.courant = before;
+    return before;
   }
   retablir(): Draft | null {
     this.fusion = null;
-    const apres = this.futur.pop();
-    if (!apres) return null;
+    const after = this.futur.pop();
+    if (!after) return null;
     this.passe.push(this.courant);
-    this.courant = apres;
-    return apres;
+    this.courant = after;
+    return after;
   }
   reinitialiser(b: Draft): void {
     this.fusion = null;
@@ -149,12 +149,12 @@ export class Historique {
  * What to do when `workflow.json` changes on disk?
  * `envoyes`: drafts sent for saving and not yet confirmed (their echo is ignored).
  */
-export function suivreFichier(o: { local: Draft; dernierConnu: Draft | null; disque: Draft | null; envoyes?: Draft[] }): "ignorer" | "adopter" | "proposer" | "illisible" {
-  const { local, dernierConnu, disque } = o;
-  if (!disque) return "illisible";
-  if (memeBrouillon(disque, local)) return "ignorer";
-  if (dernierConnu && memeBrouillon(disque, dernierConnu)) return "ignorer";
-  if ((o.envoyes ?? []).some((e) => memeBrouillon(disque, e))) return "ignorer";
-  if (dernierConnu && memeBrouillon(local, dernierConnu)) return "adopter";
+export function followFile(o: { local: Draft; dernierConnu: Draft | null; disque: Draft | null; envoyes?: Draft[] }): "ignorer" | "adopter" | "proposer" | "illisible" {
+  const { local, dernierConnu: lastKnown, disque: disk } = o;
+  if (!disk) return "illisible";
+  if (sameDraft(disk, local)) return "ignorer";
+  if (lastKnown && sameDraft(disk, lastKnown)) return "ignorer";
+  if ((o.envoyes ?? []).some((e) => sameDraft(disk, e))) return "ignorer";
+  if (lastKnown && sameDraft(local, lastKnown)) return "adopter";
   return "proposer";
 }

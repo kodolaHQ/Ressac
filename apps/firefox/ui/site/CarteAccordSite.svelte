@@ -5,14 +5,14 @@
    * The grant card for the app's tweaks, in its window: what the agent asks for (domains, sign-in, frames,
    * resume) and what it injects. Everything comes from site.json, written by the agent: shown as text, never as HTML.
    */
-  let { accord, accorder }: { accord: SiteGrantRequest; accorder: (oui: boolean, empreinte: string) => Promise<void> } = $props();
+  let { accord, accorder }: { accord: SiteGrantRequest; accorder: (yes: boolean, hash: string) => Promise<void> } = $props();
   let enCours = $state(false);
 
-  const choisir = (oui: boolean) => {
+  const choose = (yes: boolean) => {
     if (enCours) return;
     enCours = true;
     // The hash of the rights shown: the main process only grants those.
-    void accorder(oui, accord.empreinte).finally(() => (enCours = false));
+    void accorder(yes, accord.empreinte).finally(() => (enCours = false));
   };
 </script>
 
@@ -46,8 +46,8 @@
     {#if accord.reprise}<p data-testid="accord-site-reprise">Reprend les vidéos à la minute</p>{/if}
     <p class="doux">Ses retouches voient et modifient les pages de ces domaines. Une image ajoutée à la page peut encore envoyer des données à un autre site.</p>
     <div class="boutons">
-      <button data-testid="refuser-site" disabled={enCours} onclick={() => choisir(false)}>{NO_TWEAKS}</button>
-      <button data-testid="accorder-site" class="principal" disabled={enCours} onclick={() => choisir(true)}>{AUTORISER}</button>
+      <button data-testid="refuser-site" disabled={enCours} onclick={() => choose(false)}>{NO_TWEAKS}</button>
+      <button data-testid="accorder-site" class="principal" disabled={enCours} onclick={() => choose(true)}>{AUTORISER}</button>
     </div>
   </div>
 </section>

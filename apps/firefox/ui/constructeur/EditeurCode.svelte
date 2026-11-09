@@ -1,66 +1,66 @@
 <script lang="ts">
   import { untrack } from "svelte";
   import { api } from "../etat.svelte";
-  import { depotDe, estCleAction } from "./cible";
-  import { FichierCode } from "./codes.svelte";
-  import { creerEdition } from "./edition.svelte";
+  import { depotDe, isActionKey } from "./cible";
+  import { CodeFile } from "./codes.svelte";
+  import { createEdit } from "./edition.svelte";
 
   /**
    * The `.mjs` file of a `code` block. Nothing is written on typing (the running widget would read half-written code):
    * « Enregistrer le code » or ⌘S writes it. The code never runs here, it is only text.
    */
   /** `widget`: the workflow's key (`cleCible`), a widget's or an action's. */
-  let { widget, nom }: { widget: string; nom: string } = $props();
+  let { widget, nom: name }: { widget: string; nom: string } = $props();
   const depot = depotDe(api.workflow);
 
   // svelte-ignore state_referenced_locally
   // Once saved, the code may unblock the workflow refused for lack of this file (same edit as the builder).
-  const fichier = new FichierCode(widget, nom, depot, (n) => creerEdition(widget, depot).codeEnregistre(n));
+  const file = new CodeFile(widget, name, depot, (n) => createEdit(widget, depot).codeEnregistre(n));
 
   $effect(() =>
     untrack(() => {
-      void fichier.lire();
+      void file.lire();
       // The agent may be writing the file: re-read on each change of home (or of the actions).
-      return (estCleAction(widget) ? api.actions.surChange : api.accueil.surChange)(() => void fichier.lire());
+      return (isActionKey(widget) ? api.actions.surChange : api.accueil.surChange)(() => void file.lire());
     }),
   );
 
   /** ⌘S: saves the code (no menu: the page has no « Enregistrer » of its own), except when typed in the agent's terminal. */
-  function touche(e: KeyboardEvent): void {
+  function key(e: KeyboardEvent): void {
     if (!e.metaKey || e.altKey || e.ctrlKey || e.shiftKey || e.key.toLowerCase() !== "s") return;
     if (e.target instanceof Element && e.target.closest(".xterm")) return;
     e.preventDefault();
-    void fichier.enregistrer();
+    void file.enregistrer();
   }
 </script>
 
-<svelte:window onkeydown={touche} />
+<svelte:window onkeydown={key} />
 
 <section class="code">
   <div class="tete">
-    <span class="titre">Code <code>{nom}</code></span>
-    {#if fichier.nonEnregistre}<span class="non-enregistre" data-testid="code-non-enregistre">Code non enregistré</span>{/if}
-    <button data-testid="enregistrer-code" disabled={!fichier.nonEnregistre || fichier.enregistrement || fichier.disque === undefined} onclick={() => fichier.enregistrer()}
+    <span class="titre">Code <code>{name}</code></span>
+    {#if file.nonEnregistre}<span class="non-enregistre" data-testid="code-non-enregistre">Code non enregistré</span>{/if}
+    <button data-testid="enregistrer-code" disabled={!file.nonEnregistre || file.enregistrement || file.disque === undefined} onclick={() => file.enregistrer()}
       >Enregistrer le code</button
     >
   </div>
-  {#if fichier.changeSurDisque}
+  {#if file.changeSurDisque}
     <div class="bandeau" role="status" data-testid="code-change">
       <span>Le fichier a changé sur le disque</span>
-      <button data-testid="recharger-code" onclick={() => fichier.recharger()}>Recharger</button>
-      <button data-testid="garder-code" onclick={() => fichier.garderLeMien()}>Garder le mien</button>
+      <button data-testid="recharger-code" onclick={() => file.recharger()}>Recharger</button>
+      <button data-testid="garder-code" onclick={() => file.garderLeMien()}>Garder le mien</button>
     </div>
   {/if}
-  {#if fichier.erreur}<p class="erreur" data-testid="erreur-code">{fichier.erreur}</p>{/if}
+  {#if file.erreur}<p class="erreur" data-testid="erreur-code">{file.erreur}</p>{/if}
   <textarea
     data-testid="editeur-code"
     spellcheck="false"
     autocomplete="off"
     autocapitalize="off"
     wrap="off"
-    disabled={fichier.disque === undefined}
-    value={fichier.texte}
-    oninput={(e) => fichier.saisir(e.currentTarget.value)}
+    disabled={file.disque === undefined}
+    value={file.texte}
+    oninput={(e) => file.saisir(e.currentTarget.value)}
   ></textarea>
 </section>
 

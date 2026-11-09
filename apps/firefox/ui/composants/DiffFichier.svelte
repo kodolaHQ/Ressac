@@ -2,17 +2,17 @@
   import type { Commentaire, DiffFichier } from "../../shared/api";
   import { EXPANDED_LINES, NOT_DISPLAYABLE, RANGE_OUTSIDE_BLOCK } from "../../shared/modele";
   import { api } from "../etat.svelte";
-  import CommentaireRelecture from "./CommentaireRelecture.svelte";
+  import ReviewComment from "./CommentaireRelecture.svelte";
 
   /**
    * A file's unified diff; the lines hidden between hunks unfold by 20. The code stays read-only: the margin's `+`
    * opens a comment on a hunk line (Shift+click or drag extend the range, within the hunk).
    */
   let {
-    projet,
-    jeton,
+    projet: project,
+    jeton: token,
     diff,
-    commentaires,
+    commentaires: comments,
     surChange,
   }: { projet: string; jeton: string; diff: DiffFichier; commentaires: Commentaire[]; surChange: () => void } = $props();
 
@@ -28,10 +28,10 @@
 
   /** The range in progress: its hunk, the anchor line and the other end (indices in the hunk). */
   let selection = $state<{ bloc: number; ancre: number; bout: number } | null>(null);
-  let glisse = $state(false);
-  let texte = $state("");
-  let erreur = $state<string | null>(null);
-  let envoi = $state(false);
+  let dragged = $state(false);
+  let text = $state("");
+  let error = $state<string | null>(null);
+  let sending = $state(false);
 
   const plage = $derived.by(() => {
     if (!selection) return null;
@@ -40,74 +40,74 @@
     const p2 = position(b, selection.bout);
     const debut = Math.min(p1, p2);
     const fin = Math.max(p1, p2);
-    let derniere = -1;
+    let last = -1;
     b.lignes.forEach((_, k) => {
       const p = position(b, k);
-      if (p >= debut && p <= fin) derniere = k;
+      if (p >= debut && p <= fin) last = k;
     });
-    return { bloc: selection.bloc, debut, fin, derniere };
+    return { bloc: selection.bloc, debut, fin, derniere: last };
   });
-  const choisie = (bloc: number, k: number) => {
+  const chosen = (bloc: number, k: number) => {
     if (!plage || plage.bloc !== bloc) return false;
     const p = position(diff.blocs[bloc]!, k);
     return p >= plage.debut && p <= plage.fin;
   };
 
   /** `+` pressed: a new range, or (Shift) the other end of the current range, refused outside its hunk. */
-  function viser(bloc: number, k: number, etendre: boolean) {
-    erreur = null;
-    if (etendre && selection) {
+  function aim(bloc: number, k: number, expand: boolean) {
+    error = null;
+    if (expand && selection) {
       if (selection.bloc !== bloc) {
-        erreur = RANGE_OUTSIDE_BLOCK;
+        error = RANGE_OUTSIDE_BLOCK;
         selection = { ...selection, bout: selection.ancre };
         return;
       }
       selection = { ...selection, bout: k };
       return;
     }
-    if (!selection) texte = "";
+    if (!selection) text = "";
     selection = { bloc, ancre: k, bout: k };
-    glisse = true;
+    dragged = true;
   }
   /** While dragging: the range follows the mouse, within the hunk only. */
-  function survol(bloc: number, k: number) {
-    if (glisse && selection && selection.bloc === bloc) selection = { ...selection, bout: k };
+  function hover(bloc: number, k: number) {
+    if (dragged && selection && selection.bloc === bloc) selection = { ...selection, bout: k };
   }
-  function fermer() {
+  function close() {
     selection = null;
-    texte = "";
-    erreur = null;
+    text = "";
+    error = null;
   }
-  async function valider() {
-    if (!plage || envoi) return;
-    envoi = true;
+  async function validate() {
+    if (!plage || sending) return;
+    sending = true;
     try {
-      const r = await api.relecture.commenter(projet, jeton, { fichier: diff.chemin, debut: plage.debut, fin: plage.fin, texte });
+      const r = await api.relecture.commenter(project, token, { fichier: diff.chemin, debut: plage.debut, fin: plage.fin, texte: text });
       if (r.ok) {
-        fermer();
+        close();
         surChange();
-      } else erreur = r.erreur;
+      } else error = r.erreur;
     } catch {
-      erreur = "Le commentaire n'a pas pu être enregistré.";
+      error = "Le commentaire n'a pas pu être enregistré.";
     } finally {
-      envoi = false;
+      sending = false;
     }
   }
-  function touche(e: KeyboardEvent) {
+  function key(e: KeyboardEvent) {
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
-      void valider();
+      void validate();
     } else if (e.key === "Escape") {
       e.preventDefault();
-      fermer();
+      close();
     }
   }
 
   /** Each comment under the last shown line of its range (first hunk that has the line `fin`); otherwise at the top. */
   const places = $derived.by(() => {
     const sous = new Map<string, Commentaire[]>();
-    const ailleurs: Commentaire[] = [];
-    for (const c of commentaires) {
+    const elsewhere: Commentaire[] = [];
+    for (const c of comments) {
       let ou: string | null = null;
       for (let i = 0; i < diff.blocs.length && ou === null; i++) {
         const b = diff.blocs[i]!;
@@ -118,16 +118,16 @@
           }
         }
       }
-      if (ou === null) ailleurs.push(c);
+      if (ou === null) elsewhere.push(c);
       else sous.set(ou, [...(sous.get(ou) ?? []), c]);
     }
-    return { sous, ailleurs };
+    return { sous, ailleurs: elsewhere };
   });
 
   type Ligne = { marque: " " | "+" | "-"; texte: string; ancien: number | null; nouveau: number | null };
   /** Unfolded lines of each gap (before hunk i; i = number of hunks: after the last one). */
-  type Intervalle = { lignes: Ligne[]; fini: boolean };
-  let intervalles = $state<Record<number, Intervalle>>({});
+  type Interval = { lignes: Ligne[]; fini: boolean };
+  let intervals = $state<Record<number, Interval>>({});
   let charge = $state<number | null>(null);
 
   const debutBloc = (b: DiffFichier["blocs"][number]) => (b.nouveauNombre === 0 ? b.nouveauDebut + 1 : b.nouveauDebut);
@@ -150,48 +150,48 @@
   function restant(i: number): { debut: number; fin: number | null; decalage: number } | null {
     const c = cache(i);
     if (!c) return null;
-    const deja = intervalles[i];
-    if (deja?.fini) return null;
-    const debut = c.debut + (deja?.lignes.length ?? 0);
+    const already = intervals[i];
+    if (already?.fini) return null;
+    const debut = c.debut + (already?.lignes.length ?? 0);
     if (c.fin !== null && debut > c.fin) return null;
     return { ...c, debut };
   }
 
-  async function deplier(i: number) {
+  async function expand(i: number) {
     const r = restant(i);
     if (!r || charge !== null) return;
     charge = i;
     try {
       const fin = r.fin === null ? r.debut + EXPANDED_LINES - 1 : Math.min(r.fin, r.debut + EXPANDED_LINES - 1);
-      const textes = await api.relecture.lignes(projet, jeton, diff.chemin, r.debut, fin);
-      const deja = intervalles[i]?.lignes ?? [];
-      const nouvelles = textes.map((texte, k) => ({ marque: " " as const, texte, nouveau: r.debut + k, ancien: r.debut + k + r.decalage }));
-      const toutes = [...deja, ...nouvelles];
-      const fini = textes.length < fin - r.debut + 1 || (r.fin !== null && r.debut + textes.length > r.fin);
-      intervalles = { ...intervalles, [i]: { lignes: toutes, fini } };
+      const texts = await api.relecture.lignes(project, token, diff.chemin, r.debut, fin);
+      const already = intervals[i]?.lignes ?? [];
+      const fresh = texts.map((text, k) => ({ marque: " " as const, texte: text, nouveau: r.debut + k, ancien: r.debut + k + r.decalage }));
+      const all = [...already, ...fresh];
+      const finished = texts.length < fin - r.debut + 1 || (r.fin !== null && r.debut + texts.length > r.fin);
+      intervals = { ...intervals, [i]: { lignes: all, fini: finished } };
     } catch {
-      intervalles = { ...intervalles, [i]: { lignes: intervalles[i]?.lignes ?? [], fini: true } };
+      intervals = { ...intervals, [i]: { lignes: intervals[i]?.lignes ?? [], fini: true } };
     } finally {
       charge = null;
     }
   }
 
-  const classe = (l: Ligne) => (l.marque === "+" ? "ajout" : l.marque === "-" ? "retrait" : "contexte");
+  const cls = (l: Ligne) => (l.marque === "+" ? "ajout" : l.marque === "-" ? "retrait" : "contexte");
 </script>
 
-{#snippet rangee(l: Ligne)}
-  <div class="ligne {classe(l)}" data-testid="ligne-diff" data-ancien={l.ancien ?? ""} data-nouveau={l.nouveau ?? ""}><span class="marge"></span><span class="num">{l.ancien ?? ""}</span><span class="num">{l.nouveau ?? ""}</span><span class="code">{l.texte}</span></div>
+{#snippet row(l: Ligne)}
+  <div class="ligne {cls(l)}" data-testid="ligne-diff" data-ancien={l.ancien ?? ""} data-nouveau={l.nouveau ?? ""}><span class="marge"></span><span class="num">{l.ancien ?? ""}</span><span class="num">{l.nouveau ?? ""}</span><span class="code">{l.texte}</span></div>
 {/snippet}
 
-{#snippet rangeeBloc(l: Ligne, bloc: number, k: number)}
+{#snippet blockRow(l: Ligne, bloc: number, k: number)}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
-    class="ligne {classe(l)}"
-    class:choisie={choisie(bloc, k)}
+    class="ligne {cls(l)}"
+    class:choisie={chosen(bloc, k)}
     data-testid="ligne-diff"
     data-ancien={l.ancien ?? ""}
     data-nouveau={l.nouveau ?? ""}
-    onmouseenter={() => survol(bloc, k)}
+    onmouseenter={() => hover(bloc, k)}
   ><span class="marge"><button
         class="ajouter"
         data-testid="ajouter-commentaire"
@@ -200,40 +200,40 @@
         onmousedown={(e) => {
           if (e.button !== 0) return;
           e.preventDefault();
-          viser(bloc, k, e.shiftKey);
+          aim(bloc, k, e.shiftKey);
         }}
         onclick={(e) => {
           // Keyboard (Enter, Space): no mousedown.
-          if (e.detail === 0) viser(bloc, k, e.shiftKey);
+          if (e.detail === 0) aim(bloc, k, e.shiftKey);
         }}></button
       ></span><span class="num">{l.ancien ?? ""}</span><span class="num">{l.nouveau ?? ""}</span><span class="code">{l.texte}</span></div>
-  {#each places.sous.get(`${bloc}:${k}`) ?? [] as c (c.id)}<CommentaireRelecture {projet} commentaire={c} {surChange} />{/each}
+  {#each places.sous.get(`${bloc}:${k}`) ?? [] as c (c.id)}<ReviewComment projet={project} commentaire={c} {surChange} />{/each}
   {#if plage && plage.bloc === bloc && plage.derniere === k}
-    <form class="formulaire" data-testid="formulaire-commentaire" onsubmit={(e) => { e.preventDefault(); void valider(); }}>
+    <form class="formulaire" data-testid="formulaire-commentaire" onsubmit={(e) => { e.preventDefault(); void validate(); }}>
       <div class="plage">{plage.debut === plage.fin ? `Ligne ${plage.debut}` : `Lignes ${plage.debut}–${plage.fin}`}</div>
       <!-- svelte-ignore a11y_autofocus -->
-      <textarea bind:value={texte} rows="3" autofocus placeholder="Commentaire (texte simple, Markdown montré tel quel)" onkeydown={touche}></textarea>
-      {#if erreur}<p class="erreur" data-testid="erreur-commentaire">{erreur}</p>{/if}
+      <textarea bind:value={text} rows="3" autofocus placeholder="Commentaire (texte simple, Markdown montré tel quel)" onkeydown={key}></textarea>
+      {#if error}<p class="erreur" data-testid="erreur-commentaire">{error}</p>{/if}
       <div class="actions">
-        <button type="button" onclick={fermer}>Annuler</button>
-        <button type="submit" disabled={envoi || texte.trim() === ""}>Commenter</button>
+        <button type="button" onclick={close}>Annuler</button>
+        <button type="submit" disabled={sending || text.trim() === ""}>Commenter</button>
       </div>
     </form>
   {/if}
 {/snippet}
 
-{#snippet intervalle(i: number)}
-  {#each intervalles[i]?.lignes ?? [] as l (l.nouveau)}{@render rangee(l)}{/each}
+{#snippet interval(i: number)}
+  {#each intervals[i]?.lignes ?? [] as l (l.nouveau)}{@render row(l)}{/each}
   {#if restant(i)}
-    <button class="deplier" data-testid="deplier-contexte" disabled={charge !== null} onclick={() => void deplier(i)}>Afficher les lignes cachées</button>
+    <button class="deplier" data-testid="deplier-contexte" disabled={charge !== null} onclick={() => void expand(i)}>Afficher les lignes cachées</button>
   {/if}
 {/snippet}
 
-<svelte:window onmouseup={() => (glisse = false)} />
+<svelte:window onmouseup={() => (dragged = false)} />
 
 <section class="diff" data-testid="diff-fichier" aria-label="Diff de {diff.chemin}">
   <h3 class="chemin">{diff.chemin}</h3>
-  {#each places.ailleurs as c (c.id)}<CommentaireRelecture {projet} commentaire={c} {surChange} />{/each}
+  {#each places.ailleurs as c (c.id)}<ReviewComment projet={project} commentaire={c} {surChange} />{/each}
   {#if diff.affichable !== true}
     <p class="non-affichable">{NOT_DISPLAYABLE[diff.affichable]}</p>
   {:else if diff.blocs.length === 0}
@@ -241,10 +241,10 @@
   {:else}
     <div class="code-diff">
       {#each diff.blocs as b, i (i)}
-        {@render intervalle(i)}
-        {#each b.lignes as l, k (k)}{@render rangeeBloc(l, i, k)}{/each}
+        {@render interval(i)}
+        {#each b.lignes as l, k (k)}{@render blockRow(l, i, k)}{/each}
       {/each}
-      {@render intervalle(diff.blocs.length)}
+      {@render interval(diff.blocs.length)}
     </div>
   {/if}
 </section>

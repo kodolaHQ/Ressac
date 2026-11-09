@@ -1,10 +1,10 @@
 <script lang="ts">
   import ImagePage from "../../ActionImage.svelte";
   import LienPage from "../LienPage.svelte";
-  import { etAutres, sections, type Collection, type ContextePage, type ImagePage as Image, type LienPage as Lien } from "../types";
+  import { andOthers, sections, type Collection, type PageContext, type ImagePage as Image, type LienPage as Lien } from "../types";
 
   type Carte = { titre: string; sousTitre: string | null; image: Image; valeur: string | null; etiquettes: string[]; lien: Lien | null };
-  let { p, ctx }: { p: Collection<Carte>; ctx: ContextePage } = $props();
+  let { p, ctx }: { p: Collection<Carte>; ctx: PageContext } = $props();
 </script>
 
 <div data-testid="bloc-cartes">
@@ -26,5 +26,5 @@
       {/each}
     </div>
   {/each}
-  {#if p.autres > 0}<p class="pa-autres">{etAutres(p.autres)}</p>{/if}
+  {#if p.autres > 0}<p class="pa-autres">{andOthers(p.autres)}</p>{/if}
 </div>

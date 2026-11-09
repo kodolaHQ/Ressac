@@ -2,22 +2,22 @@
   import type { ShownWidget } from "../shared/api";
   import type { FreePlacement } from "../../../packages/noyau/src/accueil/schemas";
   import CadreWidget from "./CadreWidget.svelte";
-  import Icone from "../ui/composants/Icone.svelte";
-  import { prochaineExecution } from "../ui/composants/prochaine";
-  import { unitesLibres } from "./grille-libre";
+  import Icon from "../ui/composants/Icone.svelte";
+  import { nextRun } from "../ui/composants/prochaine";
+  import { freeUnits } from "./grille-libre";
 
   let {
     widget,
     placement,
     geste,
-    avertissement,
+    avertissement: warning,
     refuse,
     commencer,
     retirer,
     autoriser,
     refuser,
-    recolter,
-    voirWorkflow,
+    recolter: harvest,
+    voirWorkflow: seeWorkflow,
   }: {
     widget: ShownWidget;
     /** The place shown (the preview's during a drag). */
@@ -39,32 +39,32 @@
   const date = (iso: string | null | undefined) =>
     iso ? new Date(iso).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" }) : "date inconnue";
 
-  let menuOuvert = $state(false);
+  let menuOpen = $state(false);
 
   /** Re-read every minute: « prochaine : … » goes from today to tomorrow without waiting for a widget change. */
-  let maintenant = $state(new Date());
+  let now = $state(new Date());
   $effect(() => {
-    const minuterie = setInterval(() => (maintenant = new Date()), 60_000);
-    return () => clearInterval(minuterie);
+    const timer = setInterval(() => (now = new Date()), 60_000);
+    return () => clearInterval(timer);
   });
   // Never for a widget waiting for the user's grant: nothing goes out without them.
-  const prochaine = $derived(
+  const next = $derived(
     "erreur" in widget || widget.etat.statut === "accord-requis"
       ? null
-      : prochaineExecution(
+      : nextRun(
           widget.heures,
-          maintenant,
+          now,
           widget.minutes !== null ? { minutes: widget.minutes, derniereMaj: widget.etat.derniereMaj } : undefined,
           widget.etat,
         ),
   );
 
   // The real size becomes the grid units the display receives in postMessage.
-  const taille = $derived(unitesLibres({ l: placement.l, h: placement.h }));
+  const taille = $derived(freeUnits({ l: placement.l, h: placement.h }));
 
-  function poignee(e: PointerEvent) {
+  function handle(e: PointerEvent) {
     if (e.target instanceof Element && e.target.closest("button")) return;
-    menuOuvert = false;
+    menuOpen = false;
     commencer("deplacer", e);
   }
 </script>
@@ -72,7 +72,7 @@
 <article class="widget" class:geste data-testid="widget-{widget.id}">
   <!-- The header is the drag handle: the widget's frame swallows the mouse events. -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <header onpointerdown={poignee}>
+  <header onpointerdown={handle}>
     {#if "erreur" in widget}
       <p class="illisible">Widget « {widget.id} » illisible : {widget.erreur}</p>
     {:else}
@@ -89,23 +89,23 @@
         >
       {:else if widget.etat.statut === "atelier-arrete"}
         <span class="badge echec">mise à jour impossible : atelier arrêté</span>
-      {:else if prochaine}
-        <span class="badge doux" data-testid="prochaine">prochaine : {prochaine}</span>
+      {:else if next}
+        <span class="badge doux" data-testid="prochaine">prochaine : {next}</span>
       {/if}
     {/if}
     <div class="actions">
-      <button class="menu" aria-label="Options du widget" title="Options du widget" onclick={() => (menuOuvert = !menuOuvert)}>
-        <Icone nom="options" taille={14} />
+      <button class="menu" aria-label="Options du widget" title="Options du widget" onclick={() => (menuOpen = !menuOpen)}>
+        <Icon nom="options" taille={14} />
       </button>
-      {#if menuOuvert}
+      {#if menuOpen}
         <div class="liste" role="menu">
           {#if !("erreur" in widget)}
-            <button role="menuitem" onclick={() => ((menuOuvert = false), recolter())}>Mettre à jour maintenant</button>
+            <button role="menuitem" onclick={() => ((menuOpen = false), harvest())}>Mettre à jour maintenant</button>
             {#if widget.aRecolte}
-              <button role="menuitem" onclick={() => ((menuOuvert = false), voirWorkflow())}>Voir / modifier le workflow</button>
+              <button role="menuitem" onclick={() => ((menuOpen = false), seeWorkflow())}>Voir / modifier le workflow</button>
             {/if}
           {/if}
-          <button role="menuitem" onclick={() => ((menuOuvert = false), retirer())}>Retirer</button>
+          <button role="menuitem" onclick={() => ((menuOpen = false), retirer())}>Retirer</button>
         </div>
       {/if}
     </div>
@@ -120,18 +120,18 @@
         <button onclick={refuser}>Refuser</button>
       </div>
     {/if}
-    {#if avertissement}<p class="avertissement">{avertissement}</p>{/if}
+    {#if warning}<p class="avertissement">{warning}</p>{/if}
     <CadreWidget
       {widget}
       donnees={widget.donnees ?? widget.exemple}
       {taille}
       etat={{ statut: widget.etat.statut, derniereMaj: widget.etat.derniereMaj }}
     />
-  {:else if avertissement}
-    <p class="avertissement">{avertissement}</p>
+  {:else if warning}
+    <p class="avertissement">{warning}</p>
   {/if}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="poignee-taille" data-testid="poignee-taille" title="Redimensionner" onpointerdown={(e) => ((menuOuvert = false), commencer("taille", e))}></div>
+  <div class="poignee-taille" data-testid="poignee-taille" title="Redimensionner" onpointerdown={(e) => ((menuOpen = false), commencer("taille", e))}></div>
 </article>
 
 <style>

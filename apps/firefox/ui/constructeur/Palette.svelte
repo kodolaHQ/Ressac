@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { CatalogueBloc, BlockFamily } from "@webaios/noyau";
-  import { GLISSER_BLOC } from "./ajout";
+  import { DRAG_BLOCK } from "./ajout";
 
   /**
    * Blocks by family: a click drops one at the center of the view, a drag where it is released. `web`: the widget (or
@@ -11,7 +11,7 @@
     aSortie,
     web,
     action = false,
-    onajouter,
+    onajouter: onadd,
   }: { catalogue: CatalogueBloc[]; aSortie: boolean; web: boolean; action?: boolean; onajouter: (type: string) => void } = $props();
 
   const SANS_WEB = $derived(
@@ -19,10 +19,10 @@
       ? 'L\'action doit déclarer "web": true dans ses sources (action.json) : demande-le à l\'agent.'
       : 'Le widget doit déclarer "web": true : demande-le à l\'agent.',
   );
-  const grise = (type: string) => type === "web.chercher" && !web;
+  const grayed = (type: string) => type === "web.chercher" && !web;
 
-  let repliees = $state<Partial<Record<BlockFamily, boolean>>>({});
-  const familles = $derived.by(() => {
+  let collapsed = $state<Partial<Record<BlockFamily, boolean>>>({});
+  const families = $derived.by(() => {
     const r = new Map<BlockFamily, CatalogueBloc[]>();
     // A single output: it is no longer offered while there is one.
     for (const c of catalogue) if (!(c.type === "sortie" && aSortie)) r.set(c.famille, [...(r.get(c.famille) ?? []), c]);
@@ -31,27 +31,27 @@
 </script>
 
 <nav class="palette" aria-label="Blocs">
-  {#each familles as [famille, blocs] (famille)}
+  {#each families as [family, blocs] (family)}
     <section>
-      <button class="famille" aria-expanded={!repliees[famille]} onclick={() => (repliees[famille] = !repliees[famille])}>
-        <span class="chevron" class:replie={repliees[famille]}>▾</span>{famille}
+      <button class="famille" aria-expanded={!collapsed[family]} onclick={() => (collapsed[family] = !collapsed[family])}>
+        <span class="chevron" class:replie={collapsed[family]}>▾</span>{family}
       </button>
-      {#if !repliees[famille]}
+      {#if !collapsed[family]}
         <ul>
           {#each blocs as c (c.type)}
             <li>
               <button
                 class="bloc"
-                draggable={!grise(c.type)}
-                disabled={grise(c.type)}
+                draggable={!grayed(c.type)}
+                disabled={grayed(c.type)}
                 data-testid="palette-{c.type}"
-                title={grise(c.type) ? SANS_WEB : c.description}
+                title={grayed(c.type) ? SANS_WEB : c.description}
                 ondragstart={(e) => {
-                  if (grise(c.type)) return void e.preventDefault();
-                  e.dataTransfer?.setData(GLISSER_BLOC, c.type);
+                  if (grayed(c.type)) return void e.preventDefault();
+                  e.dataTransfer?.setData(DRAG_BLOCK, c.type);
                   if (e.dataTransfer) e.dataTransfer.effectAllowed = "copy";
                 }}
-                onclick={() => onajouter(c.type)}
+                onclick={() => onadd(c.type)}
               >
                 {c.libelle}
               </button>

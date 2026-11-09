@@ -1,13 +1,13 @@
 import { DEFAULT_PROFILE, type Space, type SpaceId, type ProfileId, type ConnectionProfile } from "../../shared/modele";
 
 /** Choice of a space's sign-in profile, as `creerEspace` and `reglerEspace` receive it. */
-export type ChoixProfil = ProfileId | "nouveau";
+export type ProfileChoice = ProfileId | "nouveau";
 
 /** No profile chosen yet: a new space does not preselect one, the user chooses (« Créer » waits). */
-export const PROFIL_A_CHOISIR = "";
+export const PROFILE_TO_CHOOSE = "";
 
-export interface OptionProfil {
-  valeur: ChoixProfil;
+export interface ProfileOption {
+  valeur: ProfileChoice;
   libelle: string;
 }
 
@@ -17,24 +17,24 @@ export interface OptionProfil {
  * other space. « Son propre profil » keeps the space's current profile if it is the only one using it (creating a
  * new one would erase its sign-ins).
  */
-export function optionsProfil(espaces: Space[], profils: ConnectionProfile[], espaceId: SpaceId | null): OptionProfil[] {
-  const regle = espaces.find((e) => e.id === espaceId);
-  const autres = espaces.filter((e) => e.id !== espaceId);
-  const propre: ChoixProfil = regle && !autres.some((e) => e.profil === regle.profil) ? regle.profil : "nouveau";
-  const partages = profils.flatMap((p) => {
-    const noms = autres.filter((e) => e.profil === p.id).map((e) => e.nom);
-    return noms.length > 0 ? [{ valeur: p.id, libelle: `Partagé avec « ${noms.join(", ")} »` }] : [];
+export function profileOptions(spaces: Space[], profiles: ConnectionProfile[], spaceId: SpaceId | null): ProfileOption[] {
+  const regle = spaces.find((e) => e.id === spaceId);
+  const others = spaces.filter((e) => e.id !== spaceId);
+  const clean: ProfileChoice = regle && !others.some((e) => e.profil === regle.profil) ? regle.profil : "nouveau";
+  const shared = profiles.flatMap((p) => {
+    const names = others.filter((e) => e.profil === p.id).map((e) => e.nom);
+    return names.length > 0 ? [{ valeur: p.id, libelle: `Partagé avec « ${names.join(", ")} »` }] : [];
   });
-  return [{ valeur: propre, libelle: regle ? "Son propre profil" : "Nouveau profil" }, ...partages];
+  return [{ valeur: clean, libelle: regle ? "Son propre profil" : "Nouveau profil" }, ...shared];
 }
 
 /** Deleting this space erases its sign-ins: it is the last one using a profile other than the default. */
-export function perdConnexions(espaces: Space[], espace: Space): boolean {
-  return espace.profil !== DEFAULT_PROFILE && !espaces.some((e) => e.id !== espace.id && e.profil === espace.profil);
+export function losesConnections(spaces: Space[], space: Space): boolean {
+  return space.profil !== DEFAULT_PROFILE && !spaces.some((e) => e.id !== space.id && e.profil === space.profil);
 }
 
 /** Setting space `espaceId` to profile `choix` erases its sign-ins: it leaves a profile it was the last one on. */
-export function choixPerdConnexions(espaces: Space[], espaceId: SpaceId | null, choix: ChoixProfil): boolean {
-  const espace = espaces.find((e) => e.id === espaceId);
-  return !!espace && choix !== espace.profil && perdConnexions(espaces, espace);
+export function choiceLosesConnections(spaces: Space[], spaceId: SpaceId | null, choice: ProfileChoice): boolean {
+  const space = spaces.find((e) => e.id === spaceId);
+  return !!space && choice !== space.profil && losesConnections(spaces, space);
 }

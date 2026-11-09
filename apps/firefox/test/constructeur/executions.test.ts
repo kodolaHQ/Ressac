@@ -1,6 +1,6 @@
 import type { DirectWidget, DirectState, Execution, ResumeExecution } from "@webaios/noyau";
 import { beforeEach, expect, test } from "vitest";
-import { Executions, oublierChoixExecutions, type Lanceur, type SourceExecutions } from "../../ui/constructeur/executions.svelte";
+import { Executions, forgetRunChoices, type Launcher, type SourceExecutions } from "../../ui/constructeur/executions.svelte";
 
 const resume = (id: string, essai = false): ResumeExecution => ({
   id,
@@ -113,7 +113,7 @@ function lanceurFaux(f: ReturnType<typeof faux>) {
   const appels: string[] = [];
   const rappels: Rappel[] = [];
   let finir: (() => void) | null = null;
-  const lanceur: Lanceur = {
+  const lanceur: Launcher = {
     direct: async () => ({ courants: [], enAttente: [] }),
     surDirect: (r) => {
       rappels.push(r);
@@ -142,7 +142,7 @@ const attendreQue = async (cond: () => boolean) => {
   for (let i = 0; i < 50 && !cond(); i++) await new Promise((r) => setTimeout(r, 0));
 };
 
-beforeEach(() => oublierChoixExecutions([]));
+beforeEach(() => forgetRunChoices([]));
 
 test("busy when a run of this widget is running or waiting; not for another widget", async () => {
   const f = faux([resume("b")]);
@@ -283,7 +283,7 @@ test("the choice of a run is kept per widget in the window (switching tabs does 
   await y.charger();
   expect(y.choisie?.id).toBe("a");
   expect(new Executions("v", f.source).voulue).toBeNull();
-  oublierChoixExecutions(["v"]);
+  forgetRunChoices(["v"]);
   expect(new Executions("w", f.source).voulue).toBeNull();
 });
 

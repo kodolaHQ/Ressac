@@ -5,13 +5,13 @@
   // The app's design mode (plan 18): ✎ (⌘⇧D), its counter, and the « Panier » / « Relire ce projet » chevron. A list
   // under the bar would be hidden by the site's view: both entries unfold in the bar, in place of the title
   // (`menuOuvert`, read by the bar), and fold back on choice, on Escape, on a click elsewhere in the bar or after 5 s.
-  let { api, etat, menuOuvert = $bindable(false) }: { api: ApiSite; etat: SiteWindowState; menuOuvert?: boolean } = $props();
-  const DUREE_MENU_MS = 5000;
+  let { api, etat: appState, menuOuvert: menuOpen = $bindable(false) }: { api: ApiSite; etat: SiteWindowState; menuOuvert?: boolean } = $props();
+  const MENU_DURATION_MS = 5000;
   let design = $state<DesignState | null>(null);
-  let racine = $state<HTMLElement | null>(null);
+  let root = $state<HTMLElement | null>(null);
   let lecture = 0;
 
-  async function relire(): Promise<void> {
+  async function reread(): Promise<void> {
     const n = ++lecture;
     const e = await api.design.etat().catch(() => null);
     if (n === lecture) design = e;
@@ -19,51 +19,51 @@
 
   // Re-read on each window state received (view, page, full screen…) and on each change of the mode or the basket.
   $effect(() => {
-    void etat;
-    void relire();
+    void appState;
+    void reread();
   });
-  $effect(() => api.design.surChange(() => void relire()));
+  $effect(() => api.design.surChange(() => void reread()));
 
-  const actif = $derived(design?.actif ?? false);
-  const indisponible = $derived(!design || design.indisponible !== null);
+  const active = $derived(design?.actif ?? false);
+  const unavailable = $derived(!design || design.indisponible !== null);
 
   // Folds back by itself after 5 s.
   $effect(() => {
-    if (!menuOuvert) return;
-    const minuterie = setTimeout(() => (menuOuvert = false), DUREE_MENU_MS);
-    return () => clearTimeout(minuterie);
+    if (!menuOpen) return;
+    const timer = setTimeout(() => (menuOpen = false), MENU_DURATION_MS);
+    return () => clearTimeout(timer);
   });
 
-  function choisir(agir: () => void) {
-    menuOuvert = false;
-    agir();
+  function choose(act: () => void) {
+    menuOpen = false;
+    act();
   }
-  function clicAilleurs(e: MouseEvent) {
-    if (menuOuvert && racine && !(e.target instanceof Node && racine.contains(e.target))) menuOuvert = false;
+  function clickElsewhere(e: MouseEvent) {
+    if (menuOpen && root && !(e.target instanceof Node && root.contains(e.target))) menuOpen = false;
   }
 </script>
 
-<svelte:window onkeydown={(e) => menuOuvert && e.key === "Escape" && (menuOuvert = false)} onclick={clicAilleurs} />
+<svelte:window onkeydown={(e) => menuOpen && e.key === "Escape" && (menuOpen = false)} onclick={clickElsewhere} />
 
-<span class="design" bind:this={racine}>
-  {#if menuOuvert}
+<span class="design" bind:this={root}>
+  {#if menuOpen}
     <span class="entrees" role="menu" aria-label="Mode design">
-      <button role="menuitem" data-testid="site-menu-design-panier" onclick={() => choisir(() => api.design.ouvrirPanier())}>Panier</button>
-      <button role="menuitem" data-testid="site-menu-design-relire" onclick={() => choisir(() => api.design.relire())}>Relire ce projet</button>
+      <button role="menuitem" data-testid="site-menu-design-panier" onclick={() => choose(() => api.design.ouvrirPanier())}>Panier</button>
+      <button role="menuitem" data-testid="site-menu-design-relire" onclick={() => choose(() => api.design.relire())}>Relire ce projet</button>
     </span>
   {/if}
   <button
     class="bouton"
     data-testid="site-bouton-design"
     aria-label="Mode design"
-    aria-pressed={actif}
-    disabled={indisponible}
-    title={indisponible ? (design?.indisponible ?? "") : "Mode design (⌘⇧D)"}
+    aria-pressed={active}
+    disabled={unavailable}
+    title={unavailable ? (design?.indisponible ?? "") : "Mode design (⌘⇧D)"}
     onclick={() => api.design.basculer()}
     >✎{#if design && design.panier > 0}<span class="compteur" data-testid="site-compteur-panier">{design.panier}</span>{/if}</button
   >
   <!-- Always active: the basket and the review stay reachable where the mode does not start (home, card…). -->
-  <button class="chevron" data-testid="site-menu-design" aria-label="Menu du mode design" aria-expanded={menuOuvert} onclick={() => (menuOuvert = !menuOuvert)}>▾</button>
+  <button class="chevron" data-testid="site-menu-design" aria-label="Menu du mode design" aria-expanded={menuOpen} onclick={() => (menuOpen = !menuOpen)}>▾</button>
 </span>
 
 <style>

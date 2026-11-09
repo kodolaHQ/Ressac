@@ -1,21 +1,21 @@
 import type { WidgetState } from "@webaios/noyau";
 
-const deux = (n: number) => String(n).padStart(2, "0");
+const two = (n: number) => String(n).padStart(2, "0");
 const MINUTE = 60_000;
 // Copied from the scheduler (packages/noyau/src/widgets/heures.ts: REESSAI_HEURE_MS, REESSAIS_HEURE_MAX;
 // planificateur.ts: REESSAI_ERREUR_MS): the rendering only imports types from the kernel.
 /** A failure is retried at the earliest 15 min after the last attempt (or the end of the failure, for a fixed hour). */
-const REESSAI_MS = 15 * MINUTE;
+const RETRY_MS = 15 * MINUTE;
 /** At most 3 retries at a fixed hour after its first failure. */
-const REESSAIS_HEURE_MAX = 3;
+const MAX_HOUR_RETRIES = 3;
 
 /** What « prochaine » reads from the widget's state: the scheduler's rules after a failure. */
-export type EtatProchaine = Pick<WidgetState, "statut" | "derniereTentative" | "heures">;
+export type NextState = Pick<WidgetState, "statut" | "derniereTentative" | "heures">;
 
 /** « aujourd'hui HH:MM » or « demain HH:MM » (never further: a fixed hour comes back tomorrow at the latest). */
-function libelle(quand: Date, maintenant: Date): string {
-  const memeJour = quand.toDateString() === maintenant.toDateString();
-  return `${memeJour ? "aujourd'hui" : "demain"} ${deux(quand.getHours())}:${deux(quand.getMinutes())}`;
+function label(when: Date, now: Date): string {
+  const sameDay = when.toDateString() === now.toDateString();
+  return `${sameDay ? "aujourd'hui" : "demain"} ${two(when.getHours())}:${two(when.getMinutes())}`;
 }
 
 const instant = (iso: string | null | undefined) => (iso ? Date.parse(iso) : NaN);
@@ -25,18 +25,18 @@ const instant = (iso: string | null | undefined) => (iso ? Date.parse(iso) : NaN
  * end of the failure and the last attempt, as long as retries remain and only the same day (yesterday's slot is
  * never caught up). Null with no retry to come.
  */
-function reessaiHeure(heures: readonly string[], maintenant: Date, etat: EtatProchaine | undefined): Date | null {
-  const suivi = etat?.heures;
-  if (!etat || !suivi?.echecs) return null;
-  const actuelle = `${deux(maintenant.getHours())}:${deux(maintenant.getMinutes())}`;
-  const atteinte = heures.filter((h) => h <= actuelle).sort().at(-1);
-  if (!atteinte) return null;
-  const creneau = `${maintenant.getFullYear()}-${deux(maintenant.getMonth() + 1)}-${deux(maintenant.getDate())}T${atteinte}`;
-  if (suivi.faite != null && suivi.faite >= creneau) return null;
-  if (suivi.echecs.heure !== creneau || suivi.echecs.nombre > REESSAIS_HEURE_MAX) return null;
-  const reperes = [suivi.echecs.fin, etat.derniereTentative].map(instant).filter((t) => !Number.isNaN(t));
-  const quand = new Date(Math.max(maintenant.getTime(), ...reperes.map((t) => t + REESSAI_MS)));
-  return quand.toDateString() === maintenant.toDateString() ? quand : null;
+function retryHour(hours: readonly string[], now: Date, appState: NextState | undefined): Date | null {
+  const tracking = appState?.heures;
+  if (!appState || !tracking?.echecs) return null;
+  const current = `${two(now.getHours())}:${two(now.getMinutes())}`;
+  const reached = hours.filter((h) => h <= current).sort().at(-1);
+  if (!reached) return null;
+  const slot = `${now.getFullYear()}-${two(now.getMonth() + 1)}-${two(now.getDate())}T${reached}`;
+  if (tracking.faite != null && tracking.faite >= slot) return null;
+  if (tracking.echecs.heure !== slot || tracking.echecs.nombre > MAX_HOUR_RETRIES) return null;
+  const markers = [tracking.echecs.fin, appState.derniereTentative].map(instant).filter((t) => !Number.isNaN(t));
+  const when = new Date(Math.max(now.getTime(), ...markers.map((t) => t + RETRY_MS)));
+  return when.toDateString() === now.toDateString() ? when : null;
 }
 
 /**
@@ -46,33 +46,33 @@ function reessaiHeure(heures: readonly string[], maintenant: Date, etat: EtatPro
  * data). With `etat`, the scheduler's rules after a failure: the frequency of a widget in error also waits 15 min
  * since the last attempt, and a failed fixed hour is retried (see `reessaiHeure`).
  */
-export function prochaineExecution(
-  heures: readonly string[],
-  maintenant: Date,
+export function nextRun(
+  hours: readonly string[],
+  now: Date,
   frequence?: { minutes: number; derniereMaj: string | null },
-  etat?: EtatProchaine,
+  appState?: NextState,
 ): string | null {
-  if (heures.length === 0) return null;
-  const actuelle = `${deux(maintenant.getHours())}:${deux(maintenant.getMinutes())}`;
+  if (hours.length === 0) return null;
+  const current = `${two(now.getHours())}:${two(now.getMinutes())}`;
   // « HH:MM » on two digits: the order of the texts is the order of the hours.
-  const triees = [...heures].sort();
-  const aujourdhui = triees.find((h) => h > actuelle);
-  const [h, m] = (aujourdhui ?? triees[0]!).split(":").map(Number);
-  let prochaine = new Date(maintenant.getFullYear(), maintenant.getMonth(), maintenant.getDate() + (aujourdhui ? 0 : 1), h, m);
-  const reessai = reessaiHeure(heures, maintenant, etat);
-  if (reessai && reessai < prochaine) {
-    prochaine = reessai;
+  const sorted = [...hours].sort();
+  const today = sorted.find((h) => h > current);
+  const [h, m] = (today ?? sorted[0]!).split(":").map(Number);
+  let next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + (today ? 0 : 1), h, m);
+  const retry = retryHour(hours, now, appState);
+  if (retry && retry < next) {
+    next = retry;
     // To the minute: the second is not shown.
-    prochaine.setSeconds(0, 0);
+    next.setSeconds(0, 0);
   }
-  if (!frequence) return libelle(prochaine, maintenant);
-  const reperes = [maintenant.getTime()];
-  const derniere = instant(frequence.derniereMaj);
-  if (!Number.isNaN(derniere)) reperes.push(derniere + frequence.minutes * MINUTE);
-  const tentative = instant(etat?.derniereTentative);
-  if (etat?.statut === "erreur" && !Number.isNaN(tentative)) reperes.push(tentative + REESSAI_MS);
-  const parFrequence = new Date(Math.max(...reperes));
+  if (!frequence) return label(next, now);
+  const markers = [now.getTime()];
+  const last = instant(frequence.derniereMaj);
+  if (!Number.isNaN(last)) markers.push(last + frequence.minutes * MINUTE);
+  const tentative = instant(appState?.derniereTentative);
+  if (appState?.statut === "erreur" && !Number.isNaN(tentative)) markers.push(tentative + RETRY_MS);
+  const parFrequence = new Date(Math.max(...markers));
   // To the minute: the second is not shown.
   parFrequence.setSeconds(0, 0);
-  return libelle(parFrequence < prochaine ? parFrequence : prochaine, maintenant);
+  return label(parFrequence < next ? parFrequence : next, now);
 }

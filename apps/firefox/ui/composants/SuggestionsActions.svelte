@@ -4,9 +4,9 @@
   /** The proposed actions, then the usual row (search or address): `choisie` = -1: no choice. */
   let {
     suggestions,
-    ligneHabituelle,
-    choisie,
-    choisir,
+    ligneHabituelle: usualLine,
+    choisie: chosen,
+    choisir: choose,
   }: { suggestions: Suggestion[]; ligneHabituelle: string; choisie: number; choisir: (i: number) => void } = $props();
 </script>
 
@@ -15,11 +15,11 @@
     <li
       id="suggestion-action-{i}"
       role="option"
-      aria-selected={i === choisie}
+      aria-selected={i === chosen}
       data-testid="suggestion-action"
       onmousedown={(e) => {
         e.preventDefault();
-        choisir(i);
+        choose(i);
       }}
     >
       {s.saisie ? `${s.nom} — ${s.saisie}` : s.nom}
@@ -29,14 +29,14 @@
     id="suggestion-action-{suggestions.length}"
     class="habituelle"
     role="option"
-    aria-selected={choisie === suggestions.length}
+    aria-selected={chosen === suggestions.length}
     data-testid="suggestion-habituelle"
     onmousedown={(e) => {
       e.preventDefault();
-      choisir(suggestions.length);
+      choose(suggestions.length);
     }}
   >
-    {ligneHabituelle}
+    {usualLine}
   </li>
 </ul>
 

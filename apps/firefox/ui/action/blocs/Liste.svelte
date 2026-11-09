@@ -1,9 +1,9 @@
 <script lang="ts">
   import LienPage from "../LienPage.svelte";
-  import { etAutres, sections, type Collection, type ContextePage, type LienPage as Lien } from "../types";
+  import { andOthers, sections, type Collection, type PageContext, type LienPage as Lien } from "../types";
 
   type Element = { titre: string; sousTitre: string | null; lien: Lien | null };
-  let { p, ctx }: { p: Collection<Element>; ctx: ContextePage } = $props();
+  let { p, ctx }: { p: Collection<Element>; ctx: PageContext } = $props();
 </script>
 
 <div data-testid="bloc-liste">
@@ -18,5 +18,5 @@
       {/each}
     </ul>
   {/each}
-  {#if p.autres > 0}<p class="pa-autres">{etAutres(p.autres)}</p>{/if}
+  {#if p.autres > 0}<p class="pa-autres">{andOthers(p.autres)}</p>{/if}
 </div>

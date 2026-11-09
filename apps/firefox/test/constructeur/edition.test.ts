@@ -1,9 +1,9 @@
 import { catalogueBlocs, validateWorkflow, implicitWorkflow } from "@webaios/noyau";
 import { expect, test } from "vitest";
 import type { Draft, EditionWorkflow } from "../../shared/api";
-import { MODELE_CODE, parametresNeufs, placeLibre } from "../../ui/constructeur/ajout";
-import { regler, relier } from "../../ui/constructeur/brouillon";
-import { creerEdition, Edition, EN_ATTENTE_DU_CHOIX, oublierEditions, type Depot } from "../../ui/constructeur/edition.svelte";
+import { CODE_MODEL, freshParams, freeSlot } from "../../ui/constructeur/ajout";
+import { set, relier } from "../../ui/constructeur/brouillon";
+import { createEdit, Edition, AWAITING_CHOICE, forgetEdits, type Depot } from "../../ui/constructeur/edition.svelte";
 
 const bloc = (id: string, type: string, parametres: Record<string, unknown> = {}) => ({ id, type, position: { x: 0, y: 0 }, parametres });
 /** Workflow shipped without positions. */
@@ -137,7 +137,7 @@ test("a new code block gets its template file (never an existing file) before be
   await attendre();
   expect(id).toBe("code");
   expect(f.etat.fichiers["code.mjs"]).toBe("// de l'agent");
-  expect(f.etat.fichiers["code-2.mjs"]).toBe(MODELE_CODE);
+  expect(f.etat.fichiers["code-2.mjs"]).toBe(CODE_MODEL);
   expect(f.ecritures.at(-1)!.blocs.find((b) => b.id === "code")!.parametres).toEqual({ source: "code-2.mjs" });
   expect(e.etatEnregistrement).toBe("enregistre");
 });
@@ -224,20 +224,20 @@ test("the implicit workflow (Gmail) opens laid out, without a write", async () =
 
 test("one edition per widget in the window", () => {
   const { depot } = faux(livre());
-  expect(creerEdition("w1", depot)).toBe(creerEdition("w1", depot));
-  expect(creerEdition("w1", depot)).not.toBe(creerEdition("w2", depot));
+  expect(createEdit("w1", depot)).toBe(createEdit("w1", depot));
+  expect(createEdit("w1", depot)).not.toBe(createEdit("w2", depot));
 });
 
 test("new parameters: neutral values for required fields, no invented address", () => {
-  expect(parametresNeufs(catalogue("liste.garder"))).toEqual({ nombre: 10 });
-  expect(parametresNeufs(catalogue("liste.nouveaux"))).toEqual({ cle: "url" });
-  expect(parametresNeufs(catalogue("ia.trier"))).toEqual({ question: "Est-ce intéressant ?", texte: "{titre}" });
-  expect(parametresNeufs(catalogue("source.page"))).toEqual({});
+  expect(freshParams(catalogue("liste.garder"))).toEqual({ nombre: 10 });
+  expect(freshParams(catalogue("liste.nouveaux"))).toEqual({ cle: "url" });
+  expect(freshParams(catalogue("ia.trier"))).toEqual({ question: "Est-ce intéressant ?", texte: "{titre}" });
+  expect(freshParams(catalogue("source.page"))).toEqual({});
 });
 
 test("placeLibre shifts below the displayed blocks", () => {
-  expect(placeLibre({ x: 10, y: 0 }, [])).toEqual({ x: 10, y: 0 });
-  expect(placeLibre({ x: 10, y: 0 }, [{ x: 0, y: 0 }, { x: 0, y: 110 }])).toEqual({ x: 10, y: 220 });
+  expect(freeSlot({ x: 10, y: 0 }, [])).toEqual({ x: 10, y: 0 });
+  expect(freeSlot({ x: 10, y: 0 }, [{ x: 0, y: 0 }, { x: 0, y: 110 }])).toEqual({ x: 10, y: 220 });
 });
 
 // Fix round 1 (review of task 9)
@@ -262,7 +262,7 @@ test("I1: a gesture during the banner writes nothing and the banner stays; « Ga
   await attendre();
   expect(f.ecritures).toEqual([]);
   expect(e.bandeau).toBe("proposer");
-  expect(e.etatEnregistrement).toEqual({ invalide: EN_ATTENTE_DU_CHOIX });
+  expect(e.etatEnregistrement).toEqual({ invalide: AWAITING_CHOICE });
   expect((f.etat.disque as Draft).blocs[0]!.parametres).toEqual({ source: "b.mjs" });
   e.garderLaMienne();
   await attendre();
@@ -321,11 +321,11 @@ test("M2: relire during an in-flight save ignores the echo of the draft sent", a
 
 test("M3: the edition of a widget that left the home is forgotten; a reused id starts from scratch", () => {
   const { depot } = faux(livre());
-  const a = creerEdition("parti", depot);
-  const b = creerEdition("reste", depot);
-  oublierEditions(["reste"]);
-  expect(creerEdition("parti", depot)).not.toBe(a);
-  expect(creerEdition("reste", depot)).toBe(b);
+  const a = createEdit("parti", depot);
+  const b = createEdit("reste", depot);
+  forgetEdits(["reste"]);
+  expect(createEdit("parti", depot)).not.toBe(a);
+  expect(createEdit("reste", depot)).toBe(b);
 });
 
 test("M4: with no free file name (read error) or no template write, the Code block is not added", async () => {
@@ -366,7 +366,7 @@ test("N1: a draft queued behind an in-flight save is kept if the banner appears 
   expect(f.ecritures).toHaveLength(1);
   expect(f.ecritures[0]!.blocs.find((b) => b.id === "tri")!.position).toEqual({ x: 300, y: 40 });
   expect(e.bandeau).toBe("proposer");
-  expect(e.etatEnregistrement).toEqual({ invalide: EN_ATTENTE_DU_CHOIX });
+  expect(e.etatEnregistrement).toEqual({ invalide: AWAITING_CHOICE });
   // Taking its version also drops the queued draft.
   e.prendreVersionDisque();
   await attendre();
@@ -389,7 +389,7 @@ test("N2: a save that succeeds during the banner leaves the header waiting for t
   await attendre();
   await attendre();
   expect(e.bandeau).toBe("proposer");
-  expect(e.etatEnregistrement).toEqual({ invalide: EN_ATTENTE_DU_CHOIX });
+  expect(e.etatEnregistrement).toEqual({ invalide: AWAITING_CHOICE });
 });
 
 test("N1: a read error on the first name stops the search (never a random next name)", async () => {
@@ -423,7 +423,7 @@ test("N2: « Prendre sa version » before the end of an in-flight save also drop
 test("T10: keystrokes in the same field (same merge key) make a single history entry", async () => {
   const f = faux(livre());
   const e = await ouverte(f);
-  const seuil = (s: number) => (b: Draft) => regler(b, "tri", { ...b.blocs.find((x) => x.id === "tri")!.parametres, seuil: s });
+  const seuil = (s: number) => (b: Draft) => set(b, "tri", { ...b.blocs.find((x) => x.id === "tri")!.parametres, seuil: s });
   e.modifier(seuil(0.6), "tri/seuil/1");
   await attendre();
   e.modifier(seuil(0.7), "tri/seuil/1");
@@ -452,7 +452,7 @@ test("source of a code block to a missing file: refused; once the code is saved,
     return enregistrer(id, b);
   };
   const e = await ouverte(f);
-  e.modifier((b) => regler(b, "garder", { source: "b.mjs" }));
+  e.modifier((b) => set(b, "garder", { source: "b.mjs" }));
   await attendre();
   expect(e.etatEnregistrement).toEqual({ invalide: "fichier b.mjs absent", bloc: "garder" });
   expect(f.ecritures).toEqual([]);
@@ -463,7 +463,7 @@ test("source of a code block to a missing file: refused; once the code is saved,
   await attendre();
   expect(f.ecritures).toEqual([]);
 
-  f.etat.fichiers["b.mjs"] = MODELE_CODE;
+  f.etat.fichiers["b.mjs"] = CODE_MODEL;
   e.codeEnregistre("b.mjs");
   expect(e.etatEnregistrement).toBe("en-cours");
   await attendre();

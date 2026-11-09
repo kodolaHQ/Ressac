@@ -4,10 +4,10 @@
   /** A project's basket: its remarks, and sending to its destination. */
   let {
     api,
-    projet,
+    projet: project,
     destination,
     sansDestination,
-    fermer,
+    fermer: close,
   }: {
     api: Pick<ApiDesign, "panier" | "retirer" | "envoyer" | "lots" | "traite" | "surChange">;
     projet: string;
@@ -17,58 +17,58 @@
   } = $props();
 
   let elements = $state<ShownElement[]>([]);
-  let erreur = $state<string | null>(null);
-  let envoi = $state(false);
+  let error = $state<string | null>(null);
+  let sending = $state(false);
   let lots = $state<BatchShown[]>([]);
-  let requete = 0;
+  let request = 0;
 
-  async function relire() {
-    const n = ++requete;
-    const p = projet;
-    const [liste, envoyes] = await Promise.all([api.panier(p).catch(() => []), api.lots(p).catch(() => [])]);
-    if (n === requete) {
-      elements = liste;
-      lots = envoyes;
+  async function reread() {
+    const n = ++request;
+    const p = project;
+    const [list, sent] = await Promise.all([api.panier(p).catch(() => []), api.lots(p).catch(() => [])]);
+    if (n === request) {
+      elements = list;
+      lots = sent;
     }
   }
 
-  const ETATS = { "en-attente": "en attente", lu: "lu", traite: "traité" } as const;
-  const heure = (iso: string) => {
+  const STATES = { "en-attente": "en attente", lu: "lu", traite: "traité" } as const;
+  const hour = (iso: string) => {
     const d = new Date(iso);
     return Number.isNaN(d.getTime()) ? "" : d.toLocaleString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
   };
   const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
-  async function marquerTraite(lot: string) {
-    erreur = null;
+  async function markProcessed(lot: string) {
+    error = null;
     try {
-      await api.traite(projet, lot);
+      await api.traite(project, lot);
     } catch (e) {
-      erreur = message(e);
+      error = message(e);
     }
-    void relire();
+    void reread();
   }
 
   $effect(() => {
-    void projet;
-    void relire();
-    return api.surChange(() => void relire());
+    void project;
+    void reread();
+    return api.surChange(() => void reread());
   });
 
   const n = $derived(elements.length);
-  const libelle = $derived(`Envoyer ${n} remarque${n > 1 ? "s" : ""} à ${destination ?? "…"}`);
+  const label = $derived(`Envoyer ${n} remarque${n > 1 ? "s" : ""} à ${destination ?? "…"}`);
 
-  async function envoyer() {
-    envoi = true;
-    erreur = null;
+  async function send() {
+    sending = true;
+    error = null;
     try {
-      const r = await api.envoyer(projet);
-      if (!r.ok) erreur = r.erreur;
+      const r = await api.envoyer(project);
+      if (!r.ok) error = r.erreur;
     } catch (e) {
-      erreur = message(e);
+      error = message(e);
     } finally {
-      envoi = false;
+      sending = false;
     }
-    void relire();
+    void reread();
   }
 
   const debut = (t: string) => (t.length > 120 ? `${t.slice(0, 120)}…` : t);
@@ -77,7 +77,7 @@
 <aside class="panier" data-testid="panier-design" aria-label="Panier du mode design">
   <header>
     <h2>Panier</h2>
-    {#if fermer}<button class="fermer" aria-label="Fermer le panier" onclick={fermer}>×</button>{/if}
+    {#if close}<button class="fermer" aria-label="Fermer le panier" onclick={close}>×</button>{/if}
   </header>
   {#if n === 0}
     <p class="vide">Aucune remarque. Clique un élément de la page pour en écrire une.</p>
@@ -87,7 +87,7 @@
         <li data-testid="remarque-panier">
           <div class="tete">
             <code class="etiquette">{e.etiquette}</code>
-            <button class="supprimer" aria-label="Supprimer" onclick={() => void api.retirer(projet, e.id)}>×</button>
+            <button class="supprimer" aria-label="Supprimer" onclick={() => void api.retirer(project, e.id)}>×</button>
           </div>
           <p class="texte">{debut(e.texte)}</p>
           {#if e.source}<p class="source">{e.source}</p>{/if}
@@ -102,10 +102,10 @@
         {#each lots as l (l.id)}
           <li data-testid="lot-envoye" data-etat={l.etat}>
             <div class="tete">
-              <span class="etat">{ETATS[l.etat]}</span>
-              <span class="quand">{heure(l.cree)} · {l.destination === "agent" ? "agent" : "Claude Code"} · {l.elements.length}</span>
+              <span class="etat">{STATES[l.etat]}</span>
+              <span class="quand">{hour(l.cree)} · {l.destination === "agent" ? "agent" : "Claude Code"} · {l.elements.length}</span>
               {#if l.destination === "agent" && l.etat !== "traite"}
-                <button class="traite" onclick={() => void marquerTraite(l.id)}>Traité</button>
+                <button class="traite" onclick={() => void markProcessed(l.id)}>Traité</button>
               {/if}
             </div>
             {#each l.elements as e (e.id)}
@@ -119,8 +119,8 @@
   {/if}
   <footer>
     {#if destination === null && sansDestination}<p class="raison">{sansDestination}</p>{/if}
-    {#if erreur}<p class="raison" role="alert">{erreur}</p>{/if}
-    <button class="envoyer" data-testid="envoyer-remarques" disabled={n === 0 || destination === null || envoi} onclick={envoyer}>{libelle}</button>
+    {#if error}<p class="raison" role="alert">{error}</p>{/if}
+    <button class="envoyer" data-testid="envoyer-remarques" disabled={n === 0 || destination === null || sending} onclick={send}>{label}</button>
   </footer>
 </aside>
 

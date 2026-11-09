@@ -3,10 +3,10 @@ import type { HomeTheme } from "../../../packages/noyau/src/accueil/theme";
 // The theme validated by the kernel becomes CSS variables on the home root; when absent, home keeps the
 // application's variables (and follows light/dark mode). A color is re-checked here: nothing but a
 // #rrggbb must reach the style, even if the object was not validated.
-const COULEUR = /^#[0-9a-f]{6}$/i;
+const COLOR = /^#[0-9a-f]{6}$/i;
 
 /** Theme key → suffix of the `--accueil-*` variable. */
-const COULEURS = { fond: "fond", carte: "carte", texte: "texte", texteDoux: "texte-doux", accent: "accent", bord: "bord" } as const;
+const COLORS = { fond: "fond", carte: "carte", texte: "texte", texteDoux: "texte-doux", accent: "accent", bord: "bord" } as const;
 
 const POLICES = {
   system: '-apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif',
@@ -17,9 +17,9 @@ const POLICES = {
 export function variablesTheme(t: HomeTheme | null): Record<string, string> {
   const variables: Record<string, string> = {};
   if (!t) return variables;
-  for (const [cle, suffixe] of Object.entries(COULEURS)) {
-    const couleur = t[cle as keyof typeof COULEURS];
-    if (typeof couleur === "string" && COULEUR.test(couleur)) variables[`--accueil-${suffixe}`] = couleur;
+  for (const [key, suffix] of Object.entries(COLORS)) {
+    const color = t[key as keyof typeof COLORS];
+    if (typeof color === "string" && COLOR.test(color)) variables[`--accueil-${suffix}`] = color;
   }
   if (Number.isInteger(t.rayon) && t.rayon! >= 0 && t.rayon! <= 24) variables["--accueil-rayon"] = `${t.rayon}px`;
   if (Number.isInteger(t.espace) && t.espace! >= 0 && t.espace! <= 24) variables["--accueil-espace"] = `${t.espace}px`;

@@ -22,7 +22,7 @@ export function createBadgeApi(raw: BadgeChrome): ApiPastille {
       couper: (id, droit) => raw.acces.couper(id, droit),
     },
     surAcces: (cb) => untilUnload(raw.surAcces((e) => cb(structuredClone(e)))),
-    pastilleTaille: (ouverte) => void (typeof ouverte === "boolean" && raw.pastilleTaille(ouverte)),
+    pastilleTaille: (opened) => void (typeof opened === "boolean" && raw.pastilleTaille(opened)),
     design: {
       etat: () =>
         Promise.resolve()

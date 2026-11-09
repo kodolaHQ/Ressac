@@ -2,57 +2,57 @@
   import { onMount, untrack } from "svelte";
   import type { TabId } from "../../shared/modele";
   import { api } from "../etat.svelte";
-  import { modale } from "./modale.svelte";
+  import { modal } from "./modale.svelte";
 
   /**
    * Background of a window modal: the page shown at opening (`ongletId`, null: none, or a panel hides it), frozen
    * and blurred, under a veil. `surPret`: the capture is taken (or abandoned), the modal can show.
    */
-  let { ongletId, surPret }: { ongletId: TabId | null; surPret: () => void } = $props();
+  let { ongletId: tabId, surPret: onReady }: { ongletId: TabId | null; surPret: () => void } = $props();
 
   /** Beyond that, the page fades without a capture: the modal must not wait. */
-  const ATTENTE_APERCU_MS = 1000;
+  const PREVIEW_WAIT_MS = 1000;
 
-  let apercu = $state<string | null>(null);
+  let preview = $state<string | null>(null);
   // Page area at capture time: the image stays there, even if the window is resized afterwards.
-  let zone = $state(untrack(() => modale.zone));
+  let zone = $state(untrack(() => modal.zone));
   // The captured tab: if another one shows (or a panel), the frozen image is no longer the right page.
-  const ongletCapture = untrack(() => ongletId);
+  const captureTab = untrack(() => tabId);
   $effect(() => {
-    if (ongletId !== ongletCapture) apercu = null;
+    if (tabId !== captureTab) preview = null;
   });
 
   onMount(() => {
-    let finie = false;
+    let finished = false;
     // This background counts among the maskers once the capture is taken (or abandoned), and removes itself only once.
     let masque = false;
-    const ouvrir = (url: string | null) => {
-      if (finie) return;
-      finie = true;
-      apercu = url;
-      zone = modale.zone;
+    const open = (url: string | null) => {
+      if (finished) return;
+      finished = true;
+      preview = url;
+      zone = modal.zone;
       // The capture is taken: the native view can fade behind the modal.
       masque = true;
-      modale.masqueurs++;
-      surPret();
+      modal.masqueurs++;
+      onReady();
     };
-    const secours = setTimeout(() => ouvrir(null), ATTENTE_APERCU_MS);
+    const fallback = setTimeout(() => open(null), PREVIEW_WAIT_MS);
     api
-      .apercuPage(ongletCapture)
-      .then(ouvrir, () => ouvrir(null))
-      .finally(() => clearTimeout(secours));
+      .apercuPage(captureTab)
+      .then(open, () => open(null))
+      .finally(() => clearTimeout(fallback));
     return () => {
-      finie = true;
-      clearTimeout(secours);
-      if (masque) modale.masqueurs--;
+      finished = true;
+      clearTimeout(fallback);
+      if (masque) modal.masqueurs--;
       masque = false;
     };
   });
 </script>
 
-{#if apercu && zone}
+{#if preview && zone}
   <div class="apercu" style:left="{zone.x}px" style:top="{zone.y}px" style:width="{zone.largeur}px" style:height="{zone.hauteur}px">
-    <img data-testid="modale-apercu" src={apercu} alt="" />
+    <img data-testid="modale-apercu" src={preview} alt="" />
   </div>
 {/if}
 <div class="voile"></div>

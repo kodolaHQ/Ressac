@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ShownWidget } from "../shared/api";
 import { DISPLAY_DENIED, CSP_WIDGET, displayServed, copyPath, forgetWidget, preparerWidget, displayUrl } from "../chrome/window/widget-frame";
 import { NETWORK_HINTS_PATTERN } from "../shared/indices-reseau";
-import { servirAffichages } from "../ui/api";
+import { serveDisplays } from "../ui/api";
 
 let racine: string;
 let widgets: string;
@@ -162,10 +162,10 @@ describe("servirAffichages", () => {
       oublier: async (_d: string, id: string) => void oublies.push(id),
     };
     const w = (id: string) => ({ id, src: `resource://webaios-widget-${id}/affichage-1.html` }) as unknown as ShownWidget;
-    await servirAffichages([w("a"), w("b")], "/data", prepares, outil);
+    await serveDisplays([w("a"), w("b")], "/data", prepares, outil);
     expect(prepares).toEqual(new Set(["a", "b"]));
     expect(oublies).toEqual([]);
-    await servirAffichages([w("a")], "/data", prepares, outil);
+    await serveDisplays([w("a")], "/data", prepares, outil);
     // « a » is still displayed: its substitution stays.
     expect(prepares).toEqual(new Set(["a"]));
     expect(oublies).toEqual(["b"]);

@@ -3,16 +3,16 @@
   import type { FreePlacement } from "../../../packages/noyau/src/accueil/schemas";
   import type { HomeTheme } from "../../../packages/noyau/src/accueil/theme";
   import { api } from "../ui/etat.svelte";
-  import CarteAccordCompte from "./CarteAccordCompte.svelte";
-  import WidgetAccueil from "./WidgetAccueil.svelte";
-  import { deplacerLibre, guidesLibres, LARGEUR_LIBRE, redimensionnerLibre, taillesLibres } from "./grille-libre";
+  import AccountGrantCard from "./CarteAccordCompte.svelte";
+  import HomeWidget from "./WidgetAccueil.svelte";
+  import { moveFree, freeGuides, FREE_WIDTH, resizeFree, freeSizes } from "./grille-libre";
   import { variablesTheme } from "./theme";
 
   /** How long an action may leave the page unchanged before a warning shows (widget service missing…). */
-  const DELAI_SANS_EFFET_MS = 6000;
-  const SANS_EFFET = "Sans effet pour l'instant : le service des widgets ne répond pas (agent arrêté ?).";
+  const NO_EFFECT_DELAY_MS = 6000;
+  const NO_EFFECT = "Sans effet pour l'instant : le service des widgets ne répond pas (agent arrêté ?).";
   // An unreadable widget has no declared sizes: it may take whatever room it wants.
-  const TAILLES_LIBRES = { min: { l: 1, h: 1 }, max: { l: LARGEUR_LIBRE, h: 1000 } };
+  const FREE_SIZES = { min: { l: 1, h: 1 }, max: { l: FREE_WIDTH, h: 1000 } };
 
   // Replaced as a whole on each read: no deep proxy (the data goes to the frames as is).
   let widgets = $state.raw<ShownWidget[]>([]);
@@ -20,16 +20,16 @@
   /** The first read is done: the empty screen does not flash before it. */
   let charge = $state(false);
   // Overlapping reads (burst of changes): only the last one counts.
-  let derniere = 0;
+  let last = 0;
   function charger() {
-    const n = ++derniere;
+    const n = ++last;
     api.accueil.lire().then(
       ({ widgets: lus, theme: lu }) => {
-        if (n !== derniere) return;
+        if (n !== last) return;
         widgets = lus;
         theme = lu;
         charge = true;
-        verifierAttentes();
+        checkPending();
       },
       () => {},
     );
@@ -42,7 +42,7 @@
   // The theme validated by the kernel only touches the home root, not the sidebar or the agent.
   const styleTheme = $derived(
     Object.entries(variablesTheme(theme))
-      .map(([cle, valeur]) => `${cle}: ${valeur}`)
+      .map(([key, valeur]) => `${key}: ${valeur}`)
       .join("; "),
   );
 
@@ -50,51 +50,51 @@
    * Actions sent with no possible reply (grant, update): a warning if THIS widget's state does not move. Only a change
    * of this widget (state, data, or its removal) lifts the wait and the warning.
    */
-  const attentes = new Map<string, { signature: string; minuterie: ReturnType<typeof setTimeout> }>();
-  let avertissements = $state<Record<string, string>>({});
+  const waits = new Map<string, { signature: string; minuterie: ReturnType<typeof setTimeout> }>();
+  let warnings = $state<Record<string, string>>({});
   const signature = (id: string) => {
     const w = widgets.find((x) => x.id === id);
     return !w ? "absent" : "erreur" in w ? `illisible:${w.erreur}` : JSON.stringify([w.etat, w.donnees !== null]);
   };
-  function sansAvertissement(id: string) {
-    if (!(id in avertissements)) return;
-    const { [id]: _, ...reste } = avertissements;
-    avertissements = reste;
+  function withoutWarning(id: string) {
+    if (!(id in warnings)) return;
+    const { [id]: _, ...rest } = warnings;
+    warnings = rest;
   }
-  function agir(id: string, action: () => void) {
-    clearTimeout(attentes.get(id)?.minuterie);
-    sansAvertissement(id);
+  function act(id: string, action: () => void) {
+    clearTimeout(waits.get(id)?.minuterie);
+    withoutWarning(id);
     action();
     // The wait stays after the warning: it is the widget's change that lifts both.
-    const minuterie = setTimeout(() => (avertissements = { ...avertissements, [id]: SANS_EFFET }), DELAI_SANS_EFFET_MS);
-    attentes.set(id, { signature: signature(id), minuterie });
+    const timer = setTimeout(() => (warnings = { ...warnings, [id]: NO_EFFECT }), NO_EFFECT_DELAY_MS);
+    waits.set(id, { signature: signature(id), minuterie: timer });
   }
-  function verifierAttentes() {
-    for (const [id, a] of attentes) {
+  function checkPending() {
+    for (const [id, a] of waits) {
       if (signature(id) === a.signature) continue;
       clearTimeout(a.minuterie);
-      attentes.delete(id);
-      sansAvertissement(id);
+      waits.delete(id);
+      withoutWarning(id);
     }
   }
   $effect(() => () => {
-    for (const a of attentes.values()) clearTimeout(a.minuterie);
+    for (const a of waits.values()) clearTimeout(a.minuterie);
   });
 
   /** Widgets whose read with the user's account was refused, during this page session. */
   let refuses = $state<Record<string, true>>({});
   let aRetirer = $state<ShownWidget | null>(null);
   let accordPour = $state<Extract<ShownWidget, { compte: string[] }> | null>(null);
-  const nom = (w: ShownWidget) => ("nom" in w ? w.nom : w.id);
+  const name = (w: ShownWidget) => ("nom" in w ? w.nom : w.id);
 
   // Drag and resize: a live free preview, then the layout sent on release.
-  let largeurPx = $state(0);
+  let widthPx = $state(0);
   let geste: { id: string; mode: "deplacer" | "taille"; x0: number; y0: number; depart: FreePlacement[]; p0: FreePlacement; tailles: { min: { l: number; h: number }; max: { l: number; h: number } } } | null =
     null;
   let enGeste = $state(false);
-  let apercu = $state.raw<FreePlacement[] | null>(null);
+  let preview = $state.raw<FreePlacement[] | null>(null);
   let guides = $state.raw<{ x: number[]; y: number[] }>({ x: [], y: [] });
-  const placements = $derived(new Map((apercu ?? widgets.map((w) => w.placement)).map((p) => [p.id, p])));
+  const placements = $derived(new Map((preview ?? widgets.map((w) => w.placement)).map((p) => [p.id, p])));
   const hauteur = $derived(Math.max(0, ...[...placements.values()].map((p) => p.y + p.h)));
 
   function commencer(w: ShownWidget, mode: "deplacer" | "taille", e: PointerEvent) {
@@ -110,34 +110,34 @@
       y0: e.clientY,
       depart,
       p0,
-      tailles: "tailles" in w ? { min: taillesLibres(w.tailles.min), max: taillesLibres(w.tailles.max) } : TAILLES_LIBRES,
+      tailles: "tailles" in w ? { min: freeSizes(w.tailles.min), max: freeSizes(w.tailles.max) } : FREE_SIZES,
     };
     enGeste = true;
-    apercu = depart;
+    preview = depart;
     guides = { x: [], y: [] };
   }
-  function bouger(e: PointerEvent) {
+  function move(e: PointerEvent) {
     const g = geste;
     if (!g) return;
     // Thousandths of the width for x/w, pixels for y/h.
-    const dx = largeurPx > 0 ? ((e.clientX - g.x0) / largeurPx) * LARGEUR_LIBRE : 0;
+    const dx = widthPx > 0 ? ((e.clientX - g.x0) / widthPx) * FREE_WIDTH : 0;
     const dy = e.clientY - g.y0;
-    const autres = g.depart.filter((q) => q.id !== g.id);
+    const others = g.depart.filter((q) => q.id !== g.id);
     const p = g.mode === "deplacer"
-      ? deplacerLibre({ p: g.p0, x: g.p0.x + dx, y: g.p0.y + dy, autres, largeurPx })
-      : redimensionnerLibre({ p: g.p0, l: g.p0.l + dx, h: g.p0.h + dy, min: g.tailles.min, max: g.tailles.max, autres });
-    apercu = g.depart.map((q) => (q.id === g.id ? p : q));
-    guides = guidesLibres({ p, autres, largeurPx });
+      ? moveFree({ p: g.p0, x: g.p0.x + dx, y: g.p0.y + dy, autres: others, largeurPx: widthPx })
+      : resizeFree({ p: g.p0, l: g.p0.l + dx, h: g.p0.h + dy, min: g.tailles.min, max: g.tailles.max, autres: others });
+    preview = g.depart.map((q) => (q.id === g.id ? p : q));
+    guides = freeGuides({ p, autres: others, largeurPx: widthPx });
   }
-  function finir(annule: boolean) {
+  function finish(cancelled: boolean) {
     if (!geste) return;
     const { depart } = geste;
-    const final = apercu;
+    const final = preview;
     geste = null;
     enGeste = false;
-    apercu = null;
+    preview = null;
     guides = { x: [], y: [] };
-    if (annule || !final) return;
+    if (cancelled || !final) return;
     const change = final.some((p, i) => {
       const a = depart[i]!;
       return p.x !== a.x || p.y !== a.y || p.l !== a.l || p.h !== a.h;
@@ -150,11 +150,11 @@
   }
 </script>
 
-<svelte:window onpointermove={bouger} onpointerup={() => finir(false)} onpointercancel={() => finir(true)} />
+<svelte:window onpointermove={move} onpointerup={() => finish(false)} onpointercancel={() => finish(true)} />
 
 <section class="accueil" style={styleTheme} data-testid="accueil" data-theme={theme ? "agent" : "defaut"}>
   {#if widgets.length}
-    <div class="grille" class:geste={enGeste} bind:clientWidth={largeurPx} style:height="{hauteur}px">
+    <div class="grille" class:geste={enGeste} bind:clientWidth={widthPx} style:height="{hauteur}px">
       {#each widgets as widget (widget.id)}
         {@const p = placements.get(widget.id) ?? widget.placement}
         <div
@@ -164,11 +164,11 @@
           style:width="{p.l / 10}%"
           style:height="{p.h}px"
         >
-          <WidgetAccueil
+          <HomeWidget
             {widget}
             placement={p}
             geste={enGeste}
-            avertissement={avertissements[widget.id] ?? null}
+            avertissement={warnings[widget.id] ?? null}
             refuse={!!refuses[widget.id]}
             commencer={(mode, e) => commencer(widget, mode, e)}
             retirer={() => (aRetirer = widget)}
@@ -178,7 +178,7 @@
               refuses = { ...refuses, [widget.id]: true };
               api.accueil.refuserAccord(widget.id);
             }}
-            recolter={() => agir(widget.id, () => api.accueil.recolter(widget.id))}
+            recolter={() => act(widget.id, () => api.accueil.recolter(widget.id))}
             voirWorkflow={() => "nom" in widget && api.agir({ type: "ouvrirWorkflow", fenetreId: api.fenetreId, id: widget.id, nom: widget.nom })}
           />
         </div>
@@ -196,28 +196,28 @@
 </section>
 
 {#if accordPour}
-  {@const cible = accordPour}
-  <CarteAccordCompte
+  {@const target = accordPour}
+  <AccountGrantCard
     sujet="widget"
     profilsPourAccord={api.accueil.profilsPourAccord}
-    nom={cible.nom}
-    domaines={cible.compte}
-    publiques={cible.publiques}
+    nom={target.nom}
+    domaines={target.compte}
+    publiques={target.publiques}
     fermer={() => (accordPour = null)}
-    autoriser={(profil) => {
+    autoriser={(profile) => {
       // {@const} is re-read: after accordPour = null, cible is null. The grant covers exactly what was shown.
-      const { id, compte, publiques } = cible;
+      const { id, compte: account, publiques: publics } = target;
       accordPour = null;
-      const { [id]: _, ...reste } = refuses;
-      refuses = reste;
-      agir(id, () =>
-        api.accueil.accorder({ id, profil, compte: [...compte], publiques: [...publiques] }).then(
+      const { [id]: _, ...rest } = refuses;
+      refuses = rest;
+      act(id, () =>
+        api.accueil.accorder({ id, profil: profile, compte: [...account], publiques: [...publics] }).then(
           (r) => {
             if (r.ok) return;
             // Refused (the request changed meanwhile…): nothing is granted, the banner shows the new request.
-            clearTimeout(attentes.get(id)?.minuterie);
-            attentes.delete(id);
-            avertissements = { ...avertissements, [id]: `Accord non enregistré : ${r.erreur}` };
+            clearTimeout(waits.get(id)?.minuterie);
+            waits.delete(id);
+            warnings = { ...warnings, [id]: `Accord non enregistré : ${r.erreur}` };
             charger();
           },
           () => {},
@@ -228,16 +228,16 @@
 {/if}
 
 {#if aRetirer}
-  {@const cible = aRetirer}
+  {@const target = aRetirer}
   <div class="voile">
     <div class="confirmation" role="alertdialog" aria-modal="true" data-testid="confirmation-retrait">
-      <p>Retirer « {nom(cible)} » de la page d'accueil ?</p>
+      <p>Retirer « {name(target)} » de la page d'accueil ?</p>
       <div class="boutons">
         <button onclick={() => (aRetirer = null)}>Annuler</button>
         <button
           class="principal"
           onclick={() => {
-            const id = cible.id; // {@const} is re-read: after aRetirer = null, cible is null
+            const id = target.id; // {@const} is re-read: after aRetirer = null, cible is null
             aRetirer = null;
             widgets = widgets.filter((w) => w.id !== id);
             api.accueil.retirer(id);

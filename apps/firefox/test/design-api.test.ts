@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { Action } from "../shared/api";
 import { HOST_EXITED, HOST_STOPPED, type AgentHost } from "../chrome/agent/host";
 import { failureReason } from "../shared/design-guards";
-import { createExternesApi, createRelectureApi } from "../ui/design-api";
+import { createExternesApi, createReviewApi } from "../ui/design-api";
 
 /** A fake kernel host: answers by method (a missing one rejects, as a stopped host does), notes every call. */
 function setup(answers: Record<string, (p: any) => unknown> = {}) {
@@ -90,7 +90,7 @@ describe("createRelectureApi", () => {
   function relecture() {
     const calls: { method: string; params: unknown }[] = [];
     const host = { request: async (method: string, params?: unknown) => (calls.push({ method, params }), { method, params }) } as Pick<AgentHost, "request">;
-    return { api: createRelectureApi({ host }), calls };
+    return { api: createReviewApi({ host }), calls };
   }
 
   it("each member rejects an invalid input without calling the host", async () => {
@@ -155,7 +155,7 @@ describe("createRelectureApi", () => {
 
   it("answers are copies; a host rejection keeps its message", async () => {
     const answer = { etat: "ok", fichiers: [] };
-    const api = createRelectureApi({
+    const api = createReviewApi({
       host: {
         request: async (method: string) => {
           if (method === "relecture.envoyer") throw new Error("projet inconnu");

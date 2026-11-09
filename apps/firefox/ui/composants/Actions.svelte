@@ -2,9 +2,9 @@
   import type { Execution } from "@webaios/noyau";
   import type { ActionShown } from "../../shared/actions";
   import { api } from "../etat.svelte";
-  import Icone from "./Icone.svelte";
+  import Icon from "./Icone.svelte";
 
-  const STATUTS: Record<Execution["statut"], string> = {
+  const STATUSES: Record<Execution["statut"], string> = {
     reussie: "Réussie",
     partielle: "Partielle",
     echouee: "Échouée",
@@ -13,24 +13,24 @@
   };
 
   /** Same text as the kernel (actions/executer.ts). */
-  const saisieRequise = (libelle: string) => `Saisie requise : ${libelle}`;
+  const requiredInput = (label: string) => `Saisie requise : ${label}`;
 
-  let liste = $state<ActionShown[]>([]);
+  let list = $state<ActionShown[]>([]);
   let chargee = $state(false);
-  let requete = 0;
+  let request = 0;
   /** Action whose input is asked inline (« Lancer »), and what the user types in it. */
-  let saisieDe = $state<string | null>(null);
-  let saisie = $state("");
+  let inputOf = $state<string | null>(null);
+  let input = $state("");
   /** Action whose deletion awaits the user's confirmation. */
   let aConfirmer = $state<{ action: ActionShown; genre: "supprimer" | "accord" } | null>(null);
   /** Refusal returned by the main process (open, delete), shown above the list. */
-  let refus = $state<string | null>(null);
+  let denial = $state<string | null>(null);
 
   async function charger() {
-    const n = ++requete;
+    const n = ++request;
     const r = await api.actions.liste();
-    if (n !== requete) return;
-    liste = r;
+    if (n !== request) return;
+    list = r;
     chargee = true;
   }
 
@@ -39,50 +39,50 @@
     return api.actions.surChange(() => void charger());
   });
 
-  async function lancer(a: ActionShown, texte: string | null) {
-    refus = null;
+  async function lancer(a: ActionShown, text: string | null) {
+    denial = null;
     // Input required and empty: the field stays open with its message, nothing is launched.
-    if (a.saisie && !texte?.trim()) {
-      refus = saisieRequise(a.saisie.libelle);
+    if (a.saisie && !text?.trim()) {
+      denial = requiredInput(a.saisie.libelle);
       return;
     }
-    saisieDe = null;
-    const r = await api.actions.ouvrir(a.id, texte);
-    if (!r.ok) refus = r.erreur;
+    inputOf = null;
+    const r = await api.actions.ouvrir(a.id, text);
+    if (!r.ok) denial = r.erreur;
   }
 
-  function demanderLancement(a: ActionShown) {
+  function requestLaunch(a: ActionShown) {
     if (a.saisie) {
-      saisieDe = saisieDe === a.id ? null : a.id;
-      saisie = "";
+      inputOf = inputOf === a.id ? null : a.id;
+      input = "";
     } else void lancer(a, null);
   }
 
   async function confirmer(c: { action: ActionShown; genre: "supprimer" | "accord" }) {
     aConfirmer = null;
-    refus = null;
+    denial = null;
     if (c.genre === "accord") await api.actions.refuserAccord(c.action.id);
     else {
       const r = await api.actions.supprimer(c.action.id);
-      if (!r.ok) refus = r.erreur;
+      if (!r.ok) denial = r.erreur;
     }
     await charger();
   }
 
   /** « 30 oct. 08:00 » */
-  const quand = (iso: string) => new Date(iso).toLocaleString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  const when = (iso: string) => new Date(iso).toLocaleString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
-  const dernier = (a: ActionShown) => (a.dernier ? `${STATUTS[a.dernier.statut]} · ${quand(a.dernier.debut)}` : "Jamais lancée");
+  const dernier = (a: ActionShown) => (a.dernier ? `${STATUSES[a.dernier.statut]} · ${when(a.dernier.debut)}` : "Jamais lancée");
 </script>
 
 <section class="actions" data-testid="page-actions" aria-label="Actions">
   <h1>Actions</h1>
-  {#if refus}<p class="bandeau" role="status" data-testid="refus-actions">{refus}</p>{/if}
-  {#if chargee && liste.length === 0}
+  {#if denial}<p class="bandeau" role="status" data-testid="refus-actions">{denial}</p>{/if}
+  {#if chargee && list.length === 0}
     <p class="vide">Aucune action. Demande à l'agent de t'en créer une.</p>
   {:else}
     <ul>
-      {#each liste as a (a.id)}
+      {#each list as a (a.id)}
         <li data-testid="ligne-action-{a.id}">
           <div class="nom">
             <b>{a.nom}</b>
@@ -92,7 +92,7 @@
               {#if a.motsCles.length}<span data-testid="mots-cles-{a.id}">{a.motsCles.join(", ")}</span>{/if}
               <span class="dernier" data-testid="dernier-{a.id}">{dernier(a)}</span>
             {/if}
-            {#if saisieDe === a.id && a.saisie}
+            {#if inputOf === a.id && a.saisie}
               <!-- svelte-ignore a11y_autofocus -->
               <input
                 class="saisie"
@@ -101,17 +101,17 @@
                 aria-label={a.saisie.libelle}
                 spellcheck="false"
                 autofocus
-                bind:value={saisie}
+                bind:value={input}
                 onkeydown={(e) => {
-                  if (e.key === "Enter") void lancer(a, saisie);
-                  else if (e.key === "Escape") saisieDe = null;
+                  if (e.key === "Enter") void lancer(a, input);
+                  else if (e.key === "Escape") inputOf = null;
                 }}
               />
             {/if}
           </div>
           <div class="boutons">
             {#if !a.erreur}
-              <button data-testid="lancer-{a.id}" onclick={() => demanderLancement(a)}><Icone nom="actions" taille={12} /> Lancer</button>
+              <button data-testid="lancer-{a.id}" onclick={() => requestLaunch(a)}><Icon nom="actions" taille={12} /> Lancer</button>
             {/if}
             <button data-testid="voir-workflow-{a.id}" onclick={() => api.actions.voirWorkflow(a.id)}>Voir le workflow</button>
             {#if a.accord}<button data-testid="retirer-accord-{a.id}" onclick={() => (aConfirmer = { action: a, genre: "accord" })}>Retirer l'accord</button>{/if}
@@ -125,13 +125,13 @@
 
 {#if aConfirmer}
   {@const c = aConfirmer}
-  {@const cible = c.action}
+  {@const target = c.action}
   <div class="voile" data-testid="voile-suppression-action">
     <div class="confirmation" role="alertdialog" aria-modal="true" data-testid="confirmation-suppression-action">
       {#if c.genre === "accord"}
-        <p>Retirer l'accord de « {cible.nom} » ? Ses exécutions, ses résultats et sa mémoire seront effacés.</p>
+        <p>Retirer l'accord de « {target.nom} » ? Ses exécutions, ses résultats et sa mémoire seront effacés.</p>
       {:else}
-        <p>Supprimer « {cible.nom} » ? Son dossier ira dans la corbeille ; ses résultats et son accord seront effacés.</p>
+        <p>Supprimer « {target.nom} » ? Son dossier ira dans la corbeille ; ses résultats et son accord seront effacés.</p>
       {/if}
       <div class="confirmer-boutons">
         <button data-testid="annuler-suppression-action" onclick={() => (aConfirmer = null)}>Annuler</button>

@@ -6,16 +6,16 @@
    * workflow », the time of the shown result and the menu of previous results. Nothing is launched without a click (or Enter).
    */
   let {
-    nom,
-    saisie = $bindable(""),
-    libelleSaisie,
+    nom: name,
+    saisie: input = $bindable(""),
+    libelleSaisie: inputLabel,
     debut,
-    occupee,
-    dejaLancee,
-    precedentes,
+    occupee: busy,
+    dejaLancee: alreadyLaunched,
+    precedentes: previous,
     lancer,
-    voirWorkflow,
-    choisir,
+    voirWorkflow: seeWorkflow,
+    choisir: choose,
   }: {
     nom: string;
     /** The field's text, pre-filled with the shown result's input. */
@@ -34,15 +34,15 @@
     choisir: (execution: string) => void;
   } = $props();
 
-  let menuOuvert = $state(false);
-  const saisieManquante = $derived(libelleSaisie !== null && saisie.trim() === "");
+  let menuOpen = $state(false);
+  const missingInput = $derived(inputLabel !== null && input.trim() === "");
 
   const FORMAT = new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short" });
-  const heure = (iso: string) => {
+  const hour = (iso: string) => {
     const d = new Date(iso);
     return Number.isNaN(d.getTime()) ? iso : FORMAT.format(d);
   };
-  const STATUTS: Record<Execution["statut"], string> = {
+  const STATUSES: Record<Execution["statut"], string> = {
     reussie: "réussie",
     partielle: "partielle",
     echouee: "échouée",
@@ -50,68 +50,68 @@
     "accord-requis": "accord requis",
   };
 
-  function valider() {
-    if (!occupee && !saisieManquante) lancer();
+  function validate() {
+    if (!busy && !missingInput) lancer();
   }
 
   // The menu closes on a click elsewhere and on Escape.
   $effect(() => {
-    if (!menuOuvert) return;
-    const fermer = (e: Event) => {
-      if (e instanceof KeyboardEvent ? e.key === "Escape" : !(e.target as Element | null)?.closest?.(".precedents")) menuOuvert = false;
+    if (!menuOpen) return;
+    const close = (e: Event) => {
+      if (e instanceof KeyboardEvent ? e.key === "Escape" : !(e.target as Element | null)?.closest?.(".precedents")) menuOpen = false;
     };
-    window.addEventListener("pointerdown", fermer);
-    window.addEventListener("keydown", fermer);
+    window.addEventListener("pointerdown", close);
+    window.addEventListener("keydown", close);
     return () => {
-      window.removeEventListener("pointerdown", fermer);
-      window.removeEventListener("keydown", fermer);
+      window.removeEventListener("pointerdown", close);
+      window.removeEventListener("keydown", close);
     };
   });
 </script>
 
 <header class="entete">
-  <h1 data-testid="nom-action">{nom}</h1>
+  <h1 data-testid="nom-action">{name}</h1>
   <div class="commandes">
-    {#if libelleSaisie !== null}
+    {#if inputLabel !== null}
       <label class="saisie">
-        <span>{libelleSaisie}</span>
+        <span>{inputLabel}</span>
         <input
           data-testid="saisie-action"
-          bind:value={saisie}
+          bind:value={input}
           maxlength="200"
           onkeydown={(e) => {
             if (e.key === "Enter") {
               e.preventDefault();
-              valider();
+              validate();
             }
           }}
         />
       </label>
     {/if}
-    <button class="principal" data-testid="relancer-action" disabled={occupee || saisieManquante} onclick={valider}>
-      {dejaLancee ? "Relancer" : "Lancer"}
+    <button class="principal" data-testid="relancer-action" disabled={busy || missingInput} onclick={validate}>
+      {alreadyLaunched ? "Relancer" : "Lancer"}
     </button>
-    <button data-testid="voir-workflow" onclick={voirWorkflow}>Voir le workflow</button>
-    {#if debut}<span class="heure" data-testid="heure-resultat">{heure(debut)}</span>{/if}
-    {#if precedentes && precedentes.length > 0}
+    <button data-testid="voir-workflow" onclick={seeWorkflow}>Voir le workflow</button>
+    {#if debut}<span class="heure" data-testid="heure-resultat">{hour(debut)}</span>{/if}
+    {#if previous && previous.length > 0}
       <div class="precedents">
-        <button data-testid="resultats-precedents" aria-haspopup="menu" aria-expanded={menuOuvert} onclick={() => (menuOuvert = !menuOuvert)}>
+        <button data-testid="resultats-precedents" aria-haspopup="menu" aria-expanded={menuOpen} onclick={() => (menuOpen = !menuOpen)}>
           Résultats précédents
         </button>
-        {#if menuOuvert}
+        {#if menuOpen}
           <div class="menu" role="menu">
-            {#each precedentes as e (e.id)}
+            {#each previous as e (e.id)}
               <button
                 role="menuitem"
                 data-testid="resultat-{e.id}"
                 onclick={() => {
-                  menuOuvert = false;
-                  choisir(e.id);
+                  menuOpen = false;
+                  choose(e.id);
                 }}
               >
-                <span>{heure(e.debut)}</span>
+                <span>{hour(e.debut)}</span>
                 {#if e.saisie}<span class="doux">{e.saisie}</span>{/if}
-                <span class="statut {e.statut}">{STATUTS[e.statut]}</span>
+                <span class="statut {e.statut}">{STATUSES[e.statut]}</span>
               </button>
             {/each}
           </div>

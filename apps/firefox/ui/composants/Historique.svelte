@@ -1,94 +1,94 @@
 <script lang="ts">
-  import Icone from "./Icone.svelte";
-  import { ouvrirMenu } from "./menu.svelte";
+  import Icon from "./Icone.svelte";
+  import { openMenu } from "./menu.svelte";
   import type { WindowState, Visite } from "../../shared/modele";
   import { api } from "../etat.svelte";
 
-  let { fenetre, fermer }: { fenetre: WindowState; fermer: () => void } = $props();
-  let texte = $state("");
+  let { fenetre: win, fermer: close }: { fenetre: WindowState; fermer: () => void } = $props();
+  let text = $state("");
   let visites = $state<Visite[]>([]);
-  let choixEffacer = $state(false);
+  let clearChoice = $state(false);
   let champ: HTMLInputElement;
-  let requete = 0;
+  let request = 0;
 
   async function charger() {
-    const n = ++requete;
-    const r = texte.trim() ? await api.historique.rechercher(texte.trim(), 200) : await api.historique.recents();
-    if (n === requete) visites = r;
+    const n = ++request;
+    const r = text.trim() ? await api.historique.rechercher(text.trim(), 200) : await api.historique.recents();
+    if (n === request) visites = r;
   }
 
   $effect(() => {
-    void texte;
+    void text;
     void charger();
   });
   $effect(() => champ.focus());
 
-  function jour(iso: string): string {
+  function day(iso: string): string {
     const d = new Date(iso);
-    const aujourdhui = new Date();
-    const hier = new Date(aujourdhui.getFullYear(), aujourdhui.getMonth(), aujourdhui.getDate() - 1);
-    if (d.toDateString() === aujourdhui.toDateString()) return "Aujourd'hui";
-    if (d.toDateString() === hier.toDateString()) return "Hier";
+    const today = new Date();
+    const yesterday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
+    if (d.toDateString() === today.toDateString()) return "Aujourd'hui";
+    if (d.toDateString() === yesterday.toDateString()) return "Hier";
     return d.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
   }
 
-  const groupes = $derived.by(() => {
+  const groups = $derived.by(() => {
     const g: { jour: string; visites: Visite[] }[] = [];
     for (const v of visites) {
-      const j = jour(v.derniereVisite);
+      const j = day(v.derniereVisite);
       if (g.at(-1)?.jour !== j) g.push({ jour: j, visites: [] });
       g.at(-1)!.visites.push(v);
     }
     return g;
   });
 
-  async function effacer(depuis?: Date) {
-    choixEffacer = false;
-    await api.historique.effacer(depuis?.toISOString());
+  async function effacer(from?: Date) {
+    clearChoice = false;
+    await api.historique.effacer(from?.toISOString());
     await charger();
   }
 
-  function ouvrir(e: MouseEvent, url: string) {
+  function open(e: MouseEvent, url: string) {
     e.preventDefault();
-    api.agir({ type: "ouvrirOnglet", fenetreId: fenetre.id, url });
-    fermer();
+    api.agir({ type: "ouvrirOnglet", fenetreId: win.id, url });
+    close();
   }
 
   function menuVisite(e: MouseEvent, v: Visite) {
     if (!v.retenu) return;
-    ouvrirMenu(e, [{ libelle: "Oublier le texte retenu", agir: () => void api.historique.oublierTexte(v.url, v.espaceId).then(charger) }], { libre: true });
+    openMenu(e, [{ libelle: "Oublier le texte retenu", agir: () => void api.historique.oublierTexte(v.url, v.espaceId).then(charger) }], { libre: true });
   }
 
-    const debutDuJour = () => {
+    const dayStart = () => {
     const d = new Date();
     return new Date(d.getFullYear(), d.getMonth(), d.getDate());
   };
 </script>
 
-<svelte:window onkeydown={(e) => e.key === "Escape" && fermer()} />
+<svelte:window onkeydown={(e) => e.key === "Escape" && close()} />
 
 <section class="historique" data-testid="historique" aria-label="Historique">
   <header>
     <h1>Historique</h1>
-    <input bind:this={champ} type="search" bind:value={texte} placeholder="Rechercher dans l'historique" spellcheck="false" />
+    <input bind:this={champ} type="search" bind:value={text} placeholder="Rechercher dans l'historique" spellcheck="false" />
     <div class="effacer">
-      <button onclick={() => (choixEffacer = !choixEffacer)}>Effacer l'historique</button>
-      {#if choixEffacer}
+      <button onclick={() => (clearChoice = !clearChoice)}>Effacer l'historique</button>
+      {#if clearChoice}
         <div class="choix">
           <button onclick={() => effacer(new Date(Date.now() - 3600_000))}>Dernière heure</button>
-          <button onclick={() => effacer(debutDuJour())}>Aujourd'hui</button>
+          <button onclick={() => effacer(dayStart())}>Aujourd'hui</button>
           <button onclick={() => effacer()}>Tout</button>
         </div>
       {/if}
     </div>
-    <button class="fermer" aria-label="Fermer l'historique" onclick={fermer}><Icone nom="fermer" taille={12} /></button>
+    <button class="fermer" aria-label="Fermer l'historique" onclick={close}><Icon nom="fermer" taille={12} /></button>
   </header>
-  {#each groupes as g (g.jour)}
+  {#each groups as g (g.jour)}
     <h2>{g.jour}</h2>
     <ul>
       {#each g.visites as v (`${v.espaceId}|${v.url}`)}
         <li data-prive={v.prive ? "true" : undefined} data-retenu={v.retenu ? "true" : undefined}>
-          <a href={v.url} onclick={(e) => ouvrir(e, v.url)} oncontextmenu={(e) => menuVisite(e, v)}>
+          <a href={v.url} onclick={(e) => open(e, v.url)} oncontextmenu={(e) => menuVisite(e, v)}>
             <span class="heure">{new Date(v.derniereVisite).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</span>
             {#if v.prive}<span class="cadenas" title="Espace privé" aria-label="Espace privé">🔒</span>{/if}
             <span class="titre">{v.titre}</span>
@@ -99,7 +99,7 @@
       {/each}
     </ul>
   {:else}
-    <p class="vide">{texte ? "Aucun résultat." : "L'historique est vide."}</p>
+    <p class="vide">{text ? "Aucun résultat." : "L'historique est vide."}</p>
   {/each}
 </section>
 

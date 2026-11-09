@@ -1,43 +1,43 @@
 <script lang="ts">
   import type { DesignState } from "../shared/api";
-  import { acces, accesDe } from "./acces.svelte";
-  import PastilleAcces from "./composants/PastilleAcces.svelte";
+  import { access, accessOf } from "./acces.svelte";
+  import AccessBadge from "./composants/PastilleAcces.svelte";
 
   /** `app:<folder>`: the only id whose access this view shows. */
   let { id }: { id: string } = $props();
-  const etat = $derived(accesDe(id));
+  const appState = $derived(accessOf(id));
   const api = window.webaios as unknown as import("../shared/api").ApiPastille;
-  let menuOuvert = $state(false);
+  let menuOpen = $state(false);
   let design = $state<DesignState | null>(null);
-  let racine = $state<HTMLElement>();
+  let root = $state<HTMLElement>();
   // The view grows while the bubble or the menu is open, and only gets in the app's way during that time.
-  $effect(() => api.pastilleTaille(acces.bullesOuvertes > 0 || menuOuvert));
+  $effect(() => api.pastilleTaille(access.bullesOuvertes > 0 || menuOpen));
 
-  async function basculerMenu() {
-    menuOuvert = !menuOuvert;
-    if (menuOuvert) design = await api.design.etat().catch(() => null);
+  async function toggleMenu() {
+    menuOpen = !menuOpen;
+    if (menuOpen) design = await api.design.etat().catch(() => null);
   }
-  function choisir(agir: () => void) {
-    menuOuvert = false;
-    agir();
+  function choose(act: () => void) {
+    menuOpen = false;
+    act();
   }
   function dehors(e: PointerEvent) {
-    if (menuOuvert && !racine?.contains(e.target as Node)) menuOuvert = false;
+    if (menuOpen && !root?.contains(e.target as Node)) menuOpen = false;
   }
 </script>
 
-<svelte:window onpointerdown={dehors} onblur={() => (menuOuvert = false)} onkeydown={(e) => e.key === "Escape" && (menuOuvert = false)} />
+<svelte:window onpointerdown={dehors} onblur={() => (menuOpen = false)} onkeydown={(e) => e.key === "Escape" && (menuOpen = false)} />
 
 <main>
   <div class="ligne">
-    {#if etat}<PastilleAcces {id} {etat} />{/if}
-    <span class="webaios" bind:this={racine}>
-      <button class="pastille" data-testid="pastille-webaios" aria-label="WebAiOs" aria-haspopup="menu" aria-expanded={menuOuvert} onclick={basculerMenu}>✎</button>
-      {#if menuOuvert}
+    {#if appState}<AccessBadge {id} etat={appState} />{/if}
+    <span class="webaios" bind:this={root}>
+      <button class="pastille" data-testid="pastille-webaios" aria-label="WebAiOs" aria-haspopup="menu" aria-expanded={menuOpen} onclick={toggleMenu}>✎</button>
+      {#if menuOpen}
         <div class="menu" role="menu">
-          <button role="menuitem" class:actif={design?.actif} onclick={() => choisir(() => api.design.basculer())}>Mode design <kbd>⌘⇧D</kbd></button>
-          <button role="menuitem" onclick={() => choisir(() => api.design.panier())}>Panier ({design?.panier ?? 0})</button>
-          <button role="menuitem" onclick={() => choisir(() => api.design.relire())}>Relire ce projet</button>
+          <button role="menuitem" class:actif={design?.actif} onclick={() => choose(() => api.design.basculer())}>Mode design <kbd>⌘⇧D</kbd></button>
+          <button role="menuitem" onclick={() => choose(() => api.design.panier())}>Panier ({design?.panier ?? 0})</button>
+          <button role="menuitem" onclick={() => choose(() => api.design.relire())}>Relire ce projet</button>
         </div>
       {/if}
     </span>

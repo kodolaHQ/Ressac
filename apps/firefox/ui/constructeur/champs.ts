@@ -1,10 +1,10 @@
 const MAX = 50;
-const estObjet = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
 /** Fields offered in a template: keys of the first item (or of the object), then `config.<key>`. */
-export function champsDisponibles(sortieAmont: unknown, config: unknown): string[] {
-  const exemple = Array.isArray(sortieAmont) ? sortieAmont[0] : sortieAmont;
-  const champs = estObjet(exemple) ? Object.keys(exemple) : [];
-  if (estObjet(config)) champs.push(...Object.keys(config).map((k) => `config.${k}`));
+export function availableFields(upstreamOutput: unknown, config: unknown): string[] {
+  const example = Array.isArray(upstreamOutput) ? upstreamOutput[0] : upstreamOutput;
+  const champs = isObject(example) ? Object.keys(example) : [];
+  if (isObject(config)) champs.push(...Object.keys(config).map((k) => `config.${k}`));
   return champs.slice(0, MAX);
 }

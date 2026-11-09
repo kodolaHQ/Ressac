@@ -6,40 +6,40 @@
    * `parent.postMessage` reaches the chrome as a `webaios-composant` event (the copy's bridge), listened on the window
    * root. It can only ask for its height; anything else, a `webaiosOuvrir` link included, is ignored.
    */
-  let { nom, props }: { nom: string; props: Record<string, unknown> } = $props();
+  let { nom: name, props }: { nom: string; props: Record<string, unknown> } = $props();
 
   const HAUTEUR_MIN = 20;
   const HAUTEUR_MAX = 2000;
   const actions = window.webaios.actions;
   let iframe = $state<HTMLIFrameElement>();
   let src = $state<string | null>(null);
-  let largeur = $state(0);
+  let width = $state(0);
   let hauteur = $state(150);
   const sombre = matchMedia("(prefers-color-scheme: dark)");
   let theme = $state<"clair" | "sombre">(sombre.matches ? "sombre" : "clair");
 
   $effect(() => {
-    const suivre = () => (theme = sombre.matches ? "sombre" : "clair");
-    sombre.addEventListener("change", suivre);
-    return () => sombre.removeEventListener("change", suivre);
+    const follow = () => (theme = sombre.matches ? "sombre" : "clair");
+    sombre.addEventListener("change", follow);
+    return () => sombre.removeEventListener("change", follow);
   });
 
   /** The frame shows the current copy: never an older copy, nor a page it navigated to. */
   const ours = () => !!src && iframe?.contentDocument?.documentURI === src;
 
-  function envoyer() {
+  function send() {
     // Opaque origin: « * » is the only possible target; only the current copy receives.
-    if (ours()) iframe?.contentWindow?.postMessage({ type: "composant", props: $state.snapshot(props), theme, largeur }, "*");
+    if (ours()) iframe?.contentWindow?.postMessage({ type: "composant", props: $state.snapshot(props), theme, largeur: width }, "*");
   }
   // On each change (the load goes through DOMFrameContentLoaded).
   $effect(() => {
-    void [props, theme, largeur];
-    envoyer();
+    void [props, theme, width];
+    send();
   });
 
   // Served on mount and on each actions.change; each serve is paired with a release, the last one when unmounted.
   $effect(() => {
-    const n = nom;
+    const n = name;
     let alive = true;
     let held = 0;
     const serve = () => {
@@ -87,7 +87,7 @@
     const root = (window as unknown as { windowRoot: EventTarget }).windowRoot;
     (root.addEventListener as (t: string, l: EventListener, c: boolean, untrusted: boolean) => void)("webaios-composant", surMessage, true, true);
     // An iframe of this chrome page never gets `load`: DOMFrameContentLoaded comes once the component's scripts have run.
-    const charge = (e: Event) => iframe && e.target === iframe && envoyer();
+    const charge = (e: Event) => iframe && e.target === iframe && send();
     document.addEventListener("DOMFrameContentLoaded", charge, true);
     return () => {
       root.removeEventListener("webaios-composant", surMessage, true);
@@ -96,12 +96,12 @@
   });
 </script>
 
-<div data-testid="bloc-{nom}" bind:clientWidth={largeur}>
+<div data-testid="bloc-{name}" bind:clientWidth={width}>
   <iframe
     bind:this={iframe}
     class="pa-composant"
     data-testid="cadre-composant"
-    title={nom}
+    title={name}
     src={src ?? "about:blank"}
     sandbox="allow-scripts"
     style:height="{hauteur}px"

@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Executions } from "./executions.svelte";
-  import { DECLENCHEURS, elementsEnSortie, heure, STATUTS, TEINTES } from "./libelles";
+  import { TRIGGERS, elementsEnSortie, hour, STATUSES, TINTS } from "./libelles";
 
   /**
    * The bottom bar: the last 8 runs (choosing one updates the badges, the « Bloc » tab and the preview) and
@@ -10,7 +10,7 @@
     executions,
     selection,
     sortie,
-    rejouable,
+    rejouable: replayable,
   }: {
     executions: Executions;
     /** The block selected on the canvas. */
@@ -21,27 +21,27 @@
     rejouable: boolean;
   } = $props();
 
-  const dernieres = $derived(executions.liste.slice(0, 8));
-  const choisie = $derived(executions.choisie?.id ?? null);
+  const last = $derived(executions.liste.slice(0, 8));
+  const chosen = $derived(executions.choisie?.id ?? null);
   const elements = (n: number | null) => (n === null ? "" : `${n} élément${n > 1 ? "s" : ""}`);
 </script>
 
 <footer class="barre">
   <div class="ligne">
     <ul class="executions">
-      {#each dernieres as e (e.id)}
+      {#each last as e (e.id)}
         <li>
           <button
             data-testid="execution-{e.id}"
-            class:actif={e.id === choisie}
-            aria-pressed={e.id === choisie}
+            class:actif={e.id === chosen}
+            aria-pressed={e.id === chosen}
             title={e.essai ? `Essai depuis « ${e.essai.depart} »` : undefined}
             onclick={() => void executions.choisir(e.id).catch(() => {})}
           >
-            <span class="pastille {TEINTES[e.statut]}"></span>
-            <span>{heure(e.debut)}</span>
-            <span class="doux">{DECLENCHEURS[e.declencheur]}</span>
-            <span>{STATUTS[e.statut]}</span>
+            <span class="pastille {TINTS[e.statut]}"></span>
+            <span>{hour(e.debut)}</span>
+            <span class="doux">{TRIGGERS[e.declencheur]}</span>
+            <span>{STATUSES[e.statut]}</span>
             {#if elements(elementsEnSortie(e, sortie))}<span class="doux">{elements(elementsEnSortie(e, sortie))}</span>{/if}
             {#if e.essai}<span class="essai">essai</span>{/if}
           </button>
@@ -53,7 +53,7 @@
     <button
       class="rejouer"
       data-testid="rejouer"
-      disabled={selection === null || choisie === null || executions.occupe || !rejouable}
+      disabled={selection === null || chosen === null || executions.occupe || !replayable}
       title={selection === null ? "Sélectionne un bloc" : undefined}
       onclick={() => selection !== null && void executions.rejouer(selection).catch(() => {})}>Rejouer depuis ce bloc</button
     >

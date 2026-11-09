@@ -2,15 +2,15 @@
   import type { ActionApplication, ApplicationShown, ApplicationList } from "../../shared/api";
   import { confirmForget, confirmerSuppressionSite, FORGET_MEMORY, type ActionSite, type ShownSite } from "../../shared/sites";
   import { api } from "../etat.svelte";
-  import Icone from "./Icone.svelte";
-  import ProjetsExternes from "./ProjetsExternes.svelte";
-  import { ouvrirMenu, type EntreeMenu } from "./menu.svelte";
+  import Icon from "./Icone.svelte";
+  import ExternalProjects from "./ProjetsExternes.svelte";
+  import { openMenu, type EntreeMenu } from "./menu.svelte";
 
-  type Filtre = "tout" | "application" | "poc" | "sans-fiche" | "en-marche" | "arretee" | "erreur";
+  type Filter = "tout" | "application" | "poc" | "sans-fiche" | "en-marche" | "arretee" | "erreur";
 
   /** Running in the panel's sense: everything that is neither stopped nor in error. */
   const active = (a: ApplicationShown) => a.etat === "en-marche" || a.etat === "lancement" || a.etat === "preparation";
-  const FILTRES: Record<Filtre, (a: ApplicationShown) => boolean> = {
+  const FILTERS: Record<Filter, (a: ApplicationShown) => boolean> = {
     tout: () => true,
     application: (a) => a.type === "application",
     poc: (a) => a.type === "poc",
@@ -20,7 +20,7 @@
     erreur: (a) => a.etat === "erreur",
   };
   /** « Sans fiche » and « En erreur » only appear if they hold at least one project. */
-  const GROUPES: { titre: string; filtres: { id: Filtre; libelle: string; siPresent?: boolean }[] }[] = [
+  const GROUPS: { titre: string; filtres: { id: Filter; libelle: string; siPresent?: boolean }[] }[] = [
     {
       titre: "Type",
       filtres: [
@@ -40,26 +40,26 @@
     },
   ];
 
-  let donnees = $state<ApplicationList>({ atelier: "ok", applications: [] });
+  let data = $state<ApplicationList>({ atelier: "ok", applications: [] });
   let chargee = $state(false);
-  let filtre = $state<Filtre>("tout");
-  let texte = $state("");
+  let filter = $state<Filter>("tout");
+  let text = $state("");
   let champ: HTMLInputElement;
-  let requete = 0;
+  let request = 0;
   /** Project whose deletion awaits the user's confirmation. */
-  let aSupprimer = $state<ApplicationShown | null>(null);
+  let toDelete = $state<ApplicationShown | null>(null);
 
   /** The site apps (« Sites » section): re-read on each change of the list or of their state. */
   let sites = $state<ShownSite[]>([]);
-  let requeteSites = 0;
+  let sitesRequest = 0;
   /** Site app whose forgetting or deletion awaits the user's confirmation. */
-  let siteAOublier = $state<ShownSite | null>(null);
-  let siteASupprimer = $state<ShownSite | null>(null);
+  let siteToForget = $state<ShownSite | null>(null);
+  let siteToDelete = $state<ShownSite | null>(null);
 
   async function chargerSites() {
-    const n = ++requeteSites;
+    const n = ++sitesRequest;
     const r = await api.sites.liste();
-    if (n === requeteSites) sites = r;
+    if (n === sitesRequest) sites = r;
   }
 
   $effect(() => {
@@ -67,17 +67,17 @@
     return api.sites.surChange(() => void chargerSites());
   });
 
-  const agirSite = (s: ShownSite, action: ActionSite) => api.sites.agir(s.id, action);
+  const actSite = (s: ShownSite, action: ActionSite) => api.sites.agir(s.id, action);
   const lignesSites = $derived.by(() => {
-    const cherche = texte.trim().toLowerCase();
-    return sites.filter((s) => !cherche || [s.nom, s.id, s.domaine ?? "", s.description].some((x) => x.toLowerCase().includes(cherche)));
+    const searches = text.trim().toLowerCase();
+    return sites.filter((s) => !searches || [s.nom, s.id, s.domaine ?? "", s.description].some((x) => x.toLowerCase().includes(searches)));
   });
 
   async function charger() {
-    const n = ++requete;
+    const n = ++request;
     const r = await api.applications.liste();
-    if (n !== requete) return;
-    donnees = r;
+    if (n !== request) return;
+    data = r;
     chargee = true;
   }
 
@@ -87,16 +87,16 @@
   });
   $effect(() => champ.focus());
 
-  const compte = (f: Filtre) => donnees.applications.filter(FILTRES[f]).length;
+  const account = (f: Filter) => data.applications.filter(FILTERS[f]).length;
   // A filter that disappears from the panel (no app in error anymore…) gives way to Tout.
-  const filtreEffectif = $derived(GROUPES.flatMap((g) => g.filtres).some((x) => x.id === filtre && (!x.siPresent || compte(x.id) > 0)) ? filtre : "tout");
+  const effectiveFilter = $derived(GROUPS.flatMap((g) => g.filtres).some((x) => x.id === filter && (!x.siPresent || account(x.id) > 0)) ? filter : "tout");
 
   /** Running first, then the most recent last launch, then the most recent creation. */
   const lignes = $derived.by(() => {
-    const cherche = texte.trim().toLowerCase();
-    return donnees.applications
-      .filter(FILTRES[filtreEffectif])
-      .filter((a) => !cherche || [a.nom, a.dossier, a.origine ?? ""].some((x) => x.toLowerCase().includes(cherche)))
+    const searches = text.trim().toLowerCase();
+    return data.applications
+      .filter(FILTERS[effectiveFilter])
+      .filter((a) => !searches || [a.nom, a.dossier, a.origine ?? ""].some((x) => x.toLowerCase().includes(searches)))
       .sort(
         (a, b) =>
           Number(active(b)) - Number(active(a)) ||
@@ -105,10 +105,10 @@
       );
   });
 
-  const sansDocker = $derived(donnees.atelier === "docker-absent");
+  const sansDocker = $derived(data.atelier === "docker-absent");
 
   const TYPES = { application: "Application", poc: "POC", "sans-fiche": "Sans fiche" } as const;
-  const ETATS = {
+  const STATES = {
     arretee: "Arrêtée",
     preparation: "Préparation de l'atelier…",
     lancement: "Lancement…",
@@ -117,30 +117,30 @@
   } as const;
 
   /** « hier », « il y a 3 j », « 22 oct. » */
-  function quand(iso: string): string {
+  function when(iso: string): string {
     const d = new Date(iso);
-    const jour = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
-    const ecart = Math.round((jour(new Date()) - jour(d)) / 86_400_000);
-    if (ecart <= 0) return "aujourd'hui";
-    if (ecart === 1) return "hier";
-    if (ecart < 7) return `il y a ${ecart} j`;
+    const day = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+    const gap = Math.round((day(new Date()) - day(d)) / 86_400_000);
+    if (gap <= 0) return "aujourd'hui";
+    if (gap === 1) return "hier";
+    if (gap < 7) return `il y a ${gap} j`;
     return d.toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
   }
 
   function details(a: ApplicationShown): string {
-    const morceaux: string[] = [TYPES[a.type]];
-    if (a.origine) morceaux.push(`depuis ${a.origine.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "")}`);
-    morceaux.push(a.port !== undefined && active(a) ? `port ${a.port}` : quand(a.creeLe));
-    return morceaux.join(" · ");
+    const chunks: string[] = [TYPES[a.type]];
+    if (a.origine) chunks.push(`depuis ${a.origine.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "")}`);
+    chunks.push(a.port !== undefined && active(a) ? `port ${a.port}` : when(a.creeLe));
+    return chunks.join(" · ");
   }
 
   /**
    * First line of a reason or an error, for a tooltip. A manifest refused by zod carries the list of problems as
    * multi-line JSON: we keep the first one.
    */
-  function court(raison: string | undefined): string | undefined {
-    if (!raison) return undefined;
-    const m = /^(webaios\.json invalide : )(\[[\s\S]*)$/.exec(raison);
+  function court(reason: string | undefined): string | undefined {
+    if (!reason) return undefined;
+    const m = /^(webaios\.json invalide : )(\[[\s\S]*)$/.exec(reason);
     if (m) {
       try {
         const [p] = JSON.parse(m[2]!) as { path?: (string | number)[]; message?: string }[];
@@ -149,18 +149,18 @@
         // Not JSON: first line.
       }
     }
-    return raison.split("\n")[0];
+    return reason.split("\n")[0];
   }
 
-  const agir = (a: ApplicationShown, action: ActionApplication) => api.applications.agir(a.dossier, action);
+  const act = (a: ApplicationShown, action: ActionApplication) => api.applications.agir(a.dossier, action);
 
   /** Visible buttons and ⋯ menu entries depending on the state (spec §5). */
   function actions(a: ApplicationShown): { boutons: { libelle: string; action: ActionApplication; lance?: boolean }[]; menu: EntreeMenu[] } {
-    const entree = (libelle: string, action: ActionApplication): EntreeMenu => ({
-      libelle,
-      agir: () => (action === "supprimer" ? (aSupprimer = a) : agir(a, action)),
+    const entree = (label: string, action: ActionApplication): EntreeMenu => ({
+      libelle: label,
+      agir: () => (action === "supprimer" ? (toDelete = a) : act(a, action)),
     });
-    const promouvoir = a.type === "poc" ? [entree("Passer en application", "promouvoir")] : [];
+    const promote = a.type === "poc" ? [entree("Passer en application", "promouvoir")] : [];
     if (a.type === "sans-fiche") return { boutons: [{ libelle: "Déboguer", action: "deboguer" }], menu: [entree("Supprimer", "supprimer")] };
     switch (a.etat) {
       case "preparation":
@@ -181,7 +181,7 @@
             { libelle: "Déboguer", action: "deboguer" },
             { libelle: "Relire", action: "relire" },
           ],
-          menu: [entree("Supprimer", "supprimer"), ...promouvoir],
+          menu: [entree("Supprimer", "supprimer"), ...promote],
         };
       case "arretee":
         return {
@@ -190,7 +190,7 @@
             { libelle: "Déboguer", action: "deboguer" },
             { libelle: "Relire", action: "relire" },
           ],
-          menu: [entree("Supprimer", "supprimer"), ...promouvoir, entree("Afficher le dossier", "dossier")],
+          menu: [entree("Supprimer", "supprimer"), ...promote, entree("Afficher le dossier", "dossier")],
         };
     }
   }
@@ -198,29 +198,29 @@
 
 <section class="applications" data-testid="page-applications" aria-label="Applications">
   <nav class="volet" aria-label="Filtres">
-    {#each GROUPES as g (g.titre)}
+    {#each GROUPS as g (g.titre)}
       <h2>{g.titre}</h2>
-      {#each g.filtres.filter((x) => !x.siPresent || compte(x.id) > 0) as x (x.id)}
-        <button data-testid="filtre-{x.id}" class:actif={filtreEffectif === x.id} aria-pressed={filtreEffectif === x.id} onclick={() => (filtre = x.id)}
-          >{x.libelle} <span class="n">{compte(x.id)}</span></button
+      {#each g.filtres.filter((x) => !x.siPresent || account(x.id) > 0) as x (x.id)}
+        <button data-testid="filtre-{x.id}" class:actif={effectiveFilter === x.id} aria-pressed={effectiveFilter === x.id} onclick={() => (filter = x.id)}
+          >{x.libelle} <span class="n">{account(x.id)}</span></button
         >
       {/each}
     {/each}
   </nav>
   <div class="principal">
     <label class="recherche">
-      <Icone nom="chercher" taille={14} />
-      <input bind:this={champ} bind:value={texte} type="search" data-testid="recherche-applications" placeholder="Chercher une appli…" spellcheck="false" />
+      <Icon nom="chercher" taille={14} />
+      <input bind:this={champ} bind:value={text} type="search" data-testid="recherche-applications" placeholder="Chercher une appli…" spellcheck="false" />
     </label>
     {#if sansDocker}
       <p class="bandeau" role="status">Docker n'est pas lancé. La liste reste visible, mais aucune appli ne peut être lancée.</p>
     {/if}
-    {#if chargee && donnees.applications.length === 0 && sites.length === 0}
+    {#if chargee && data.applications.length === 0 && sites.length === 0}
       <p class="vide">Rien ici pour l'instant. Demande à l'agent de tester un package ou de construire une app.</p>
     {:else}
       <ul>
         {#each lignes as a (a.dossier)}
-          {@const { boutons, menu } = actions(a)}
+          {@const { boutons: buttons, menu } = actions(a)}
           <li data-testid="appli-{a.dossier}" data-etat={a.etat}>
             <span class="icone">
               {#if a.favicon}<img src={a.favicon} alt="" width="16" height="16" />{:else}✦{/if}
@@ -232,11 +232,11 @@
             {#if a.type === "sans-fiche"}
               <span class="etat" title={court(a.sansFiche)}><span class="pastille arretee"></span>Sans fiche</span>
             {:else}
-              <span class="etat" title={court(a.erreur)}><span class="pastille {a.etat}"></span>{ETATS[a.etat]}</span>
+              <span class="etat" title={court(a.erreur)}><span class="pastille {a.etat}"></span>{STATES[a.etat]}</span>
             {/if}
             <div class="actions">
-              {#each boutons as b (b.action)}
-                <button disabled={b.lance && sansDocker} onclick={() => agir(a, b.action)}>{b.libelle}</button>
+              {#each buttons as b (b.action)}
+                <button disabled={b.lance && sansDocker} onclick={() => act(a, b.action)}>{b.libelle}</button>
               {/each}
               <button
                 class="options"
@@ -244,8 +244,8 @@
                 title="Plus d'actions"
                 onclick={(e) => {
                   e.stopPropagation(); // the window would close the menu right away
-                  ouvrirMenu(e, menu, { libre: true });
-                }}><Icone nom="options" /></button
+                  openMenu(e, menu, { libre: true });
+                }}><Icon nom="options" /></button
               >
             </div>
           </li>
@@ -281,13 +281,13 @@
               {#if !s.sansActions}
               <div class="actions">
                 {#if s.erreur === undefined}
-                  <button data-testid="site-{s.id}-ouvrir" onclick={() => agirSite(s, "ouvrir")}>Ouvrir</button>
+                  <button data-testid="site-{s.id}-ouvrir" onclick={() => actSite(s, "ouvrir")}>Ouvrir</button>
                 {/if}
-                <button data-testid="site-{s.id}-modifier" onclick={() => agirSite(s, "modifier")}>Modifier avec l'agent</button>
-                <button data-testid="site-{s.id}-oublier" onclick={() => (siteAOublier = s)}>{FORGET_MEMORY}</button>
-                <button data-testid="site-{s.id}-dossier" onclick={() => agirSite(s, "dossier")}>Afficher le dossier</button>
-                <button data-testid="site-{s.id}-relire" onclick={() => agirSite(s, "relire")}>Relire</button>
-                <button data-testid="site-{s.id}-supprimer" onclick={() => (siteASupprimer = s)}>Supprimer</button>
+                <button data-testid="site-{s.id}-modifier" onclick={() => actSite(s, "modifier")}>Modifier avec l'agent</button>
+                <button data-testid="site-{s.id}-oublier" onclick={() => (siteToForget = s)}>{FORGET_MEMORY}</button>
+                <button data-testid="site-{s.id}-dossier" onclick={() => actSite(s, "dossier")}>Afficher le dossier</button>
+                <button data-testid="site-{s.id}-relire" onclick={() => actSite(s, "relire")}>Relire</button>
+                <button data-testid="site-{s.id}-supprimer" onclick={() => (siteToDelete = s)}>Supprimer</button>
               </div>
               {/if}
             </li>
@@ -295,24 +295,24 @@
         </ul>
       </section>
     {/if}
-    <ProjetsExternes />
+    <ExternalProjects />
   </div>
 </section>
 
-{#if siteAOublier}
-  {@const cible = siteAOublier}
+{#if siteToForget}
+  {@const target = siteToForget}
   <div class="voile">
     <div class="confirmation" role="alertdialog" aria-modal="true" data-testid="confirmation-oubli-site">
-      <p>{confirmForget(cible.nom)}</p>
+      <p>{confirmForget(target.nom)}</p>
       <div class="boutons">
-        <button onclick={() => (siteAOublier = null)}>Annuler</button>
+        <button onclick={() => (siteToForget = null)}>Annuler</button>
         <button
           class="confirmer"
           data-testid="confirmer-oubli-site"
           onclick={() => {
-            const s = cible;
-            siteAOublier = null;
-            agirSite(s, "oublier");
+            const s = target;
+            siteToForget = null;
+            actSite(s, "oublier");
           }}>Oublier</button
         >
       </div>
@@ -320,20 +320,20 @@
   </div>
 {/if}
 
-{#if siteASupprimer}
-  {@const cible = siteASupprimer}
+{#if siteToDelete}
+  {@const target = siteToDelete}
   <div class="voile">
     <div class="confirmation" role="alertdialog" aria-modal="true" data-testid="confirmation-suppression-site">
-      <p>{confirmerSuppressionSite(cible.nom)}</p>
+      <p>{confirmerSuppressionSite(target.nom)}</p>
       <div class="boutons">
-        <button onclick={() => (siteASupprimer = null)}>Annuler</button>
+        <button onclick={() => (siteToDelete = null)}>Annuler</button>
         <button
           class="confirmer"
           data-testid="confirmer-suppression-site"
           onclick={() => {
-            const s = cible;
-            siteASupprimer = null;
-            agirSite(s, "supprimer");
+            const s = target;
+            siteToDelete = null;
+            actSite(s, "supprimer");
           }}>Supprimer</button
         >
       </div>
@@ -341,19 +341,19 @@
   </div>
 {/if}
 
-{#if aSupprimer}
-  {@const cible = aSupprimer}
+{#if toDelete}
+  {@const target = toDelete}
   <div class="voile">
     <div class="confirmation" role="alertdialog" aria-modal="true" data-testid="confirmation-suppression">
-      <p>Supprimer « {cible.nom} » ? Son dossier sera effacé.</p>
+      <p>Supprimer « {target.nom} » ? Son dossier sera effacé.</p>
       <div class="boutons">
-        <button onclick={() => (aSupprimer = null)}>Annuler</button>
+        <button onclick={() => (toDelete = null)}>Annuler</button>
         <button
           class="confirmer"
           onclick={() => {
-            const a = cible; // {@const} is re-read: after aSupprimer = null, cible is null
-            aSupprimer = null;
-            agir(a, "supprimer");
+            const a = target; // {@const} is re-read: after aSupprimer = null, cible is null
+            toDelete = null;
+            act(a, "supprimer");
           }}>Supprimer</button
         >
       </div>

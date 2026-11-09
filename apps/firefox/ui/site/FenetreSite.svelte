@@ -1,34 +1,34 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import BarreSite from "./BarreSite.svelte";
-  import CadreAccueil from "../SiteHomeFrame.svelte";
+  import SiteBar from "./BarreSite.svelte";
+  import HomeFrame from "../SiteHomeFrame.svelte";
   import CarteAccordSite from "./CarteAccordSite.svelte";
   import type { SiteWindowState } from "../../shared/sites";
   import type { ApiSite } from "../../shared/api";
 
   /** The only API of this page: the main process knows which app it is the interface of. */
   const api = (window as unknown as { webaios: { site: ApiSite } }).webaios.site;
-  let etat = $state<SiteWindowState | null>(null);
+  let appState = $state<SiteWindowState | null>(null);
 
   onMount(() => {
-    const fin = api.surEtat((e) => (etat = e));
+    const fin = api.surEtat((e) => (appState = e));
     void api.etat().then((e) => {
-      if (e && !etat) etat = e;
+      if (e && !appState) appState = e;
     });
     return fin;
   });
   $effect(() => {
-    if (etat) document.title = etat.nom;
+    if (appState) document.title = appState.nom;
   });
 </script>
 
-{#if etat}
-  <BarreSite {etat} {api} />
+{#if appState}
+  <SiteBar etat={appState} {api} />
   <!-- Under the bar: the site's view (set by the main process) in « site » view, home otherwise. -->
-  {#if etat.vue === "accueil"}
-    <CadreAccueil id={etat.id} {api} />
-  {:else if etat.vue === "accord" && etat.accord}
-    <CarteAccordSite accord={etat.accord} accorder={(oui, empreinte) => api.accorder(oui, empreinte)} />
+  {#if appState.vue === "accueil"}
+    <HomeFrame id={appState.id} {api} />
+  {:else if appState.vue === "accord" && appState.accord}
+    <CarteAccordSite accord={appState.accord} accorder={(yes, hash) => api.accorder(yes, hash)} />
   {/if}
 {/if}
 

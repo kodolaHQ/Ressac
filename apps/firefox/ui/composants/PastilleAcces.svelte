@@ -1,37 +1,37 @@
 <script lang="ts">
   import type { TabAccessState } from "@webaios/noyau";
-  import BulleAcces from "./BulleAcces.svelte";
+  import AccessBubble from "./BulleAcces.svelte";
 
-  let { id, etat }: { id: string; etat: TabAccessState } = $props();
-  const niveau = $derived(etat.droits.includes("agir") ? "agir" : "lecture");
-  let ouverte = $state(false);
-  let racine = $state<HTMLSpanElement>();
+  let { id, etat: appState }: { id: string; etat: TabAccessState } = $props();
+  const level = $derived(appState.droits.includes("agir") ? "agir" : "lecture");
+  let opened = $state(false);
+  let root = $state<HTMLSpanElement>();
 
   /** A click elsewhere (outside the badge and its bubble) or Escape closes the bubble. */
   function dehors(e: PointerEvent) {
-    if (ouverte && !racine?.contains(e.target as Node) && !(e.target as Element).closest?.('[data-testid="bulle-acces"]')) ouverte = false;
+    if (opened && !root?.contains(e.target as Node) && !(e.target as Element).closest?.('[data-testid="bulle-acces"]')) opened = false;
   }
 </script>
 
-<svelte:window onpointerdown={dehors} onblur={() => (ouverte = false)} onkeydown={(e) => e.key === "Escape" && (ouverte = false)} />
+<svelte:window onpointerdown={dehors} onblur={() => (opened = false)} onkeydown={(e) => e.key === "Escape" && (opened = false)} />
 
-<span class="racine" bind:this={racine}>
+<span class="racine" bind:this={root}>
   <button
     class="pastille"
-    class:pulse={etat.enCours}
+    class:pulse={appState.enCours}
     data-testid="pastille-acces"
-    data-niveau={niveau}
+    data-niveau={level}
     aria-label="Accès de l'agent à cet onglet"
-    aria-expanded={ouverte}
+    aria-expanded={opened}
     draggable="false"
     onclick={(e) => {
       e.stopPropagation(); // do not activate the tab
-      ouverte = !ouverte;
+      opened = !opened;
     }}
     onkeydown={(e) => e.stopPropagation()}
-    ondblclick={(e) => e.stopPropagation()}>{niveau === "agir" ? "⚡" : "👁"}</button
+    ondblclick={(e) => e.stopPropagation()}>{level === "agir" ? "⚡" : "👁"}</button
   >
-  {#if ouverte && racine}<BulleAcces {id} {etat} ancre={racine} />{/if}
+  {#if opened && root}<AccessBubble {id} etat={appState} ancre={root} />{/if}
 </span>
 
 <style>

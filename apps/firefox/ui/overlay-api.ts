@@ -21,7 +21,7 @@ export function wrapOverlayApi(raw: OverlayApi, untilUnload: (unsubscribe: () =>
       );
   return {
     contexte: () => copy(() => raw.contexte()),
-    ajouter: (texte) => copy(() => raw.ajouter(texte)),
+    ajouter: (text) => copy(() => raw.ajouter(text)),
     annuler: () => raw.annuler(),
     panier: (p) => copy(() => raw.panier(p)),
     retirer: (p, id) => copy(() => raw.retirer(p, id)),

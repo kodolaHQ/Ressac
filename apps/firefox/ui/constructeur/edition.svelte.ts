@@ -1,29 +1,29 @@
 import type { Warning, CatalogueBloc } from "@webaios/noyau";
 import type { ApiWebaios, EditionWorkflow } from "../../shared/api";
-import { MODELE_CODE, parametresNeufs } from "./ajout";
-import { ajouterBloc, deplacer, Historique, memeBrouillon, suivreFichier, versBrouillon, type Brouillon } from "./brouillon";
-import { disposer, positionsAffichees, sansDisposition } from "./disposition";
-import { estCleAction } from "./cible";
-import { oublierChoixExecutions } from "./executions.svelte";
+import { CODE_MODEL, freshParams } from "./ajout";
+import { addBlock, move, History, sameDraft, followFile, toDraft, type Brouillon } from "./brouillon";
+import { disposer, shownPositions, sansDisposition } from "./disposition";
+import { isActionKey } from "./cible";
+import { forgetRunChoices } from "./executions.svelte";
 
 type Position = { x: number; y: number };
 export type Validation = { ok: true } | { ok: false; erreur: string; bloc?: string };
-export type EtatEnregistrement = "enregistre" | "en-cours" | { invalide: string; bloc?: string } | { erreur: string };
+export type SaveState = "enregistre" | "en-cours" | { invalide: string; bloc?: string } | { erreur: string };
 /** `illisible`: `workflow.json` is not readable at opening (truncated JSON…); `introuvable`: neither widget nor harvest. */
-export type Chargement = "chargement" | "pret" | "introuvable" | { illisible: string };
+export type Load = "chargement" | "pret" | "introuvable" | { illisible: string };
 /** Reading and writing the workflow, addressed by the workflow's key (`cleCible`). */
 export type Depot = {
-  lire(cle: string): ReturnType<ApiWebaios["workflow"]["lire"]>;
-  enregistrer(cle: string, brouillon: Brouillon): ReturnType<ApiWebaios["workflow"]["enregistrer"]>;
-  lireCode(cle: string, nom: string): ReturnType<ApiWebaios["workflow"]["lireCode"]>;
-  enregistrerCode(cle: string, nom: string, texte: string): ReturnType<ApiWebaios["workflow"]["enregistrerCode"]>;
+  lire(key: string): ReturnType<ApiWebaios["workflow"]["lire"]>;
+  enregistrer(key: string, draft: Brouillon): ReturnType<ApiWebaios["workflow"]["enregistrer"]>;
+  lireCode(key: string, name: string): ReturnType<ApiWebaios["workflow"]["lireCode"]>;
+  enregistrerCode(key: string, name: string, text: string): ReturnType<ApiWebaios["workflow"]["enregistrerCode"]>;
 };
 export type Viewport = { x: number; y: number; zoom: number };
 
-const PREFIXE_NON_ENREGISTRE = /^Non enregistré : /;
+const UNSAVED_PREFIX = /^Non enregistré : /;
 /** A gesture while the banner offers the agent's version: nothing goes out before the user's choice. */
-export const EN_ATTENTE_DU_CHOIX = "l'agent a modifié le workflow, choisis une version";
-const memeJson = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+export const AWAITING_CHOICE = "l'agent a modifié le workflow, choisis une version";
+const sameJson = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
 /**
  * The editing state of a widget's workflow in this window: draft, history, validation, saving. Only a gesture from
@@ -33,13 +33,13 @@ export class Edition {
   brouillon = $state.raw<Brouillon | null>(null);
   validation = $state.raw<Validation>({ ok: true });
   avertissements = $state.raw<Warning[]>([]);
-  etatEnregistrement = $state.raw<EtatEnregistrement>("enregistre");
+  etatEnregistrement = $state.raw<SaveState>("enregistre");
   /** The latest version seen on disk (or confirmed by a save). */
   dernierConnu = $state.raw<Brouillon | null>(null);
   bandeau = $state<null | "proposer" | "illisible">(null);
   /** Displayed positions: the draft's, or the automatic layout of a workflow that has none. */
   positions = $state.raw<Record<string, Position>>({});
-  chargement = $state.raw<Chargement>("chargement");
+  chargement = $state.raw<Load>("chargement");
   widget = $state.raw<NonNullable<EditionWorkflow["widget"]> | null>(null);
   /** What the action whose workflow this is declares; null for a widget. */
   action = $state.raw<NonNullable<EditionWorkflow["action"]> | null>(null);
@@ -49,7 +49,7 @@ export class Edition {
   /** Canvas view, kept when the tab changes (no reframing on return). */
   viewport: Viewport | null = null;
 
-  private historique: Historique | null = null;
+  private historique: History | null = null;
   /** Disk version the banner offers. */
   private versionDisque: { brouillon: Brouillon; lecture: EditionWorkflow } | null = null;
   /** Drafts sent for saving, not yet confirmed: their echo on disk is ignored. */
@@ -82,27 +82,27 @@ export class Edition {
     this.widget = l.widget ?? null;
     this.action = l.action ?? null;
     this.origine = l.origine;
-    const disque = l.brut === null ? null : versBrouillon(l.brut);
-    if (!disque) {
+    const disk = l.brut === null ? null : toDraft(l.brut);
+    if (!disk) {
       this.chargement = { illisible: l.validation.ok ? "workflow.json illisible" : l.validation.erreur };
       this.disqueValide = false;
       return;
     }
-    this.historique = new Historique(disque);
-    this.dernierConnu = disque;
-    this.positions = positionsAffichees(disque, null);
-    this.adopterLecture(disque, l);
+    this.historique = new History(disk);
+    this.dernierConnu = disk;
+    this.positions = shownPositions(disk, null);
+    this.adopterLecture(disk, l);
     this.chargement = "pret";
   }
 
   /** Shows `disque` as read (validation and warnings of the disk); writes nothing. */
-  private adopterLecture(disque: Brouillon, l: EditionWorkflow): void {
-    this.brouillon = disque;
-    this.positions = positionsAffichees(disque, this.positions);
-    this.dernierConnu = disque;
+  private adopterLecture(disk: Brouillon, l: EditionWorkflow): void {
+    this.brouillon = disk;
+    this.positions = shownPositions(disk, this.positions);
+    this.dernierConnu = disk;
     this.validation = l.validation;
     this.avertissements = l.avertissements;
-    this.etatEnregistrement = l.validation.ok ? "enregistre" : invalide(l.validation.erreur, l.validation.bloc);
+    this.etatEnregistrement = l.validation.ok ? "enregistre" : invalid(l.validation.erreur, l.validation.bloc);
     this.disqueValide = l.validation.ok;
     this.bandeau = null;
     this.versionDisque = null;
@@ -122,8 +122,8 @@ export class Edition {
       this.charger(l);
       return;
     }
-    const disque = l.brut === null ? null : versBrouillon(l.brut);
-    const decision = suivreFichier({ local: this.brouillon, dernierConnu: this.dernierConnu, disque, envoyes: this.envoyes });
+    const disk = l.brut === null ? null : toDraft(l.brut);
+    const decision = followFile({ local: this.brouillon, dernierConnu: this.dernierConnu, disque: disk, envoyes: this.envoyes });
     if (decision === "illisible") {
       this.bandeau = "illisible";
       this.disqueValide = false;
@@ -131,30 +131,30 @@ export class Edition {
     }
     if (decision === "adopter") {
       this.origine = l.origine;
-      this.historique.faire(disque!);
-      this.adopterLecture(disque!, l);
+      this.historique.faire(disk!);
+      this.adopterLecture(disk!, l);
       return;
     }
     if (decision === "proposer") {
-      this.versionDisque = { brouillon: disque!, lecture: l };
+      this.versionDisque = { brouillon: disk!, lecture: l };
       this.bandeau = "proposer";
       return;
     }
     // Ignore: the disk is the draft, its last known version or an echo.
     this.origine = l.origine;
-    if (memeBrouillon(disque!, this.brouillon)) {
-      this.dernierConnu = disque;
+    if (sameDraft(disk!, this.brouillon)) {
+      this.dernierConnu = disk;
       this.disqueValide = l.validation.ok;
       this.bandeau = null;
       this.versionDisque = null;
       if (this.retenu) {
         // The disk caught up with the held draft: nothing left to choose or send.
         this.retenu = null;
-        this.etatEnregistrement = l.validation.ok ? "enregistre" : invalide(l.validation.erreur, l.validation.bloc);
+        this.etatEnregistrement = l.validation.ok ? "enregistre" : invalid(l.validation.erreur, l.validation.bloc);
       }
       if (this.etatEnregistrement !== "en-cours") {
-        if (!memeJson(this.validation, l.validation)) this.validation = l.validation;
-        if (!memeJson(this.avertissements, l.avertissements)) this.avertissements = l.avertissements;
+        if (!sameJson(this.validation, l.validation)) this.validation = l.validation;
+        if (!sameJson(this.avertissements, l.avertissements)) this.avertissements = l.avertissements;
       }
     } else if (this.bandeau === "illisible") {
       this.bandeau = null;
@@ -179,11 +179,11 @@ export class Edition {
    */
   garderLaMienne(): void {
     if (this.versionDisque) this.dernierConnu = this.versionDisque.brouillon;
-    const envoyer = this.retenu !== null || this.validation.ok;
+    const send = this.retenu !== null || this.validation.ok;
     this.versionDisque = null;
     this.bandeau = null;
     this.retenu = null;
-    if (this.brouillon && envoyer) this.enregistrer(this.brouillon);
+    if (this.brouillon && send) this.enregistrer(this.brouillon);
   }
 
   /**
@@ -207,21 +207,21 @@ export class Edition {
   }
 
   /** `figer`: the displayed positions alone are enough to save (a drag); otherwise `f` must change the draft. */
-  private changer(f: (b: Brouillon) => Brouillon, figer: boolean, fusion?: string): void {
-    const avant = this.brouillon;
-    if (!avant || !this.historique) return;
-    const base = deplacer(avant, this.positions);
-    const apres = f(base);
-    if (!figer && (apres === base || memeBrouillon(apres, base))) return;
-    if (apres === avant || memeBrouillon(apres, avant)) return;
-    this.historique.faire(apres, fusion);
-    this.appliquer(apres);
+  private changer(f: (b: Brouillon) => Brouillon, freeze: boolean, fusion?: string): void {
+    const before = this.brouillon;
+    if (!before || !this.historique) return;
+    const base = move(before, this.positions);
+    const after = f(base);
+    if (!freeze && (after === base || sameDraft(after, base))) return;
+    if (after === before || sameDraft(after, before)) return;
+    this.historique.faire(after, fusion);
+    this.appliquer(after);
   }
 
   /** Adds a catalog block; a `code` block gets its file (template that returns its input) before existing. */
   async ajouter(c: CatalogueBloc, position: Position): Promise<string> {
     if (!this.brouillon) return "";
-    const parametres = parametresNeufs(c);
+    const params = freshParams(c);
     if (c.type === "code") {
       const source = await this.fichierLibre(c.type);
       // Never another block's file: without a free name (or without being able to write the template), the block is not added.
@@ -229,16 +229,16 @@ export class Edition {
         this.etatEnregistrement = { erreur: "aucun nom de fichier libre pour le bloc Code" };
         return "";
       }
-      const r = await this.depot.enregistrerCode(this.id, source, MODELE_CODE);
+      const r = await this.depot.enregistrerCode(this.id, source, CODE_MODEL);
       if (!r.ok) {
         this.etatEnregistrement = { erreur: r.erreur };
         return "";
       }
-      parametres.source = source;
+      params.source = source;
     }
     let id = "";
     this.modifier((b) => {
-      const r = ajouterBloc(b, c.type, position, parametres);
+      const r = addBlock(b, c.type, position, params);
       id = r.id;
       return r.brouillon;
     });
@@ -248,13 +248,13 @@ export class Edition {
   /** `<id>.mjs` of the future block, or the next free one: never an existing file nor another block's file. */
   private async fichierLibre(type: string): Promise<string | null> {
     const b = this.brouillon!;
-    const { id } = ajouterBloc(b, type, { x: 0, y: 0 }, {});
-    const pris = new Set(b.blocs.map((x) => x.parametres.source).filter((s): s is string => typeof s === "string"));
+    const { id } = addBlock(b, type, { x: 0, y: 0 }, {});
+    const taken = new Set(b.blocs.map((x) => x.parametres.source).filter((s): s is string => typeof s === "string"));
     for (let n = 1; n <= 50; n++) {
-      const nom = `${id}${n === 1 ? "" : `-${n}`}.mjs`;
-      if (pris.has(nom)) continue;
-      const lu = await this.depot.lireCode(this.id, nom);
-      if ("absent" in lu) return nom;
+      const name = `${id}${n === 1 ? "" : `-${n}`}.mjs`;
+      if (taken.has(name)) continue;
+      const lu = await this.depot.lireCode(this.id, name);
+      if ("absent" in lu) return name;
       if ("erreur" in lu) return null;
     }
     return null;
@@ -290,9 +290,9 @@ export class Edition {
    * `historique`: return to a past state; without a layout, it takes the automatic layout again (not the displayed
    * positions, which would keep the undone move).
    */
-  private appliquer(b: Brouillon, historique = false): void {
+  private appliquer(b: Brouillon, hist = false): void {
     this.brouillon = b;
-    this.positions = positionsAffichees(b, historique && sansDisposition(b) ? null : this.positions);
+    this.positions = shownPositions(b, hist && sansDisposition(b) ? null : this.positions);
     if (this.bandeau === "proposer") {
       this.retenir(b);
       return;
@@ -309,7 +309,7 @@ export class Edition {
 
   private retenir(b: Brouillon): void {
     this.retenu = b;
-    this.etatEnregistrement = { invalide: EN_ATTENTE_DU_CHOIX };
+    this.etatEnregistrement = { invalide: AWAITING_CHOICE };
   }
 
   /** Saves go out one by one; a draft outdated before its turn is not sent. */
@@ -346,7 +346,7 @@ export class Edition {
         if (this.prochain) continue;
         if (this.choixAttendu()) {
           // The banner appeared in flight: the header keeps waiting for the user's choice.
-          this.etatEnregistrement = { invalide: EN_ATTENTE_DU_CHOIX };
+          this.etatEnregistrement = { invalide: AWAITING_CHOICE };
         } else if (!("ok" in r)) {
           this.etatEnregistrement = { erreur: r.erreur };
         } else if (r.ok) {
@@ -356,7 +356,7 @@ export class Edition {
         } else {
           this.validation = { ok: false, erreur: r.erreur, ...(r.bloc === undefined ? {} : { bloc: r.bloc }) };
           this.avertissements = r.avertissements;
-          this.etatEnregistrement = invalide(r.erreur, r.bloc);
+          this.etatEnregistrement = invalid(r.erreur, r.bloc);
         }
       }
     } finally {
@@ -365,9 +365,9 @@ export class Edition {
   }
 }
 
-function invalide(erreur: string, bloc?: string): EtatEnregistrement {
-  const texte = erreur.replace(PREFIXE_NON_ENREGISTRE, "");
-  return bloc === undefined ? { invalide: texte } : { invalide: texte, bloc };
+function invalid(error: string, bloc?: string): SaveState {
+  const text = error.replace(UNSAVED_PREFIX, "");
+  return bloc === undefined ? { invalide: text } : { invalide: text, bloc };
 }
 
 /** One edit per widget and per window: changing tab loses neither an invalid draft nor the history. */
@@ -377,27 +377,27 @@ const editions = new Map<string, Edition>();
  * Forgets the edits of widgets no longer on home: a reused id never picks up the old history. Actions' edits (key
  * `action:<id>`) do not depend on home: they stay.
  */
-export function oublierEditions(presents: Iterable<string>): void {
+export function forgetEdits(presents: Iterable<string>): void {
   const ids = new Set(presents);
-  for (const id of [...editions.keys()]) if (!ids.has(id) && !estCleAction(id)) editions.delete(id);
-  oublierChoixExecutions(ids);
+  for (const id of [...editions.keys()]) if (!ids.has(id) && !isActionKey(id)) editions.delete(id);
+  forgetRunChoices(ids);
 }
 
-let suivi = false;
+let tracking = false;
 /** Once per window: on each change of home, the edits of departed widgets are forgotten. */
-export function suivreDisparitions(accueil: Pick<ApiWebaios["accueil"], "lire" | "surChange">): void {
-  if (suivi) return;
-  suivi = true;
-  accueil.surChange(() => {
-    void accueil
+export function followDisappearances(home: Pick<ApiWebaios["accueil"], "lire" | "surChange">): void {
+  if (tracking) return;
+  tracking = true;
+  home.surChange(() => {
+    void home
       .lire()
       // An empty list is more likely a home unreadable for a moment: nothing is forgotten on it.
-      .then((ws) => ws.length > 0 && oublierEditions(ws.map((w) => w.id)))
+      .then((ws) => ws.length > 0 && forgetEdits(ws.map((w) => w.id)))
       .catch(() => {});
   });
 }
 
-export function creerEdition(id: string, depot: Depot): Edition {
+export function createEdit(id: string, depot: Depot): Edition {
   let e = editions.get(id);
   if (!e) {
     e = new Edition(id, depot);

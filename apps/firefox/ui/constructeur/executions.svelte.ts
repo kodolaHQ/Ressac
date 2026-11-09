@@ -1,31 +1,31 @@
 import type { DirectWidget, DirectState, Execution, AttemptResult, ResumeExecution } from "@webaios/noyau";
 import type { ApiWebaios } from "../../shared/api";
-import { estCleAction } from "./cible";
+import { isActionKey } from "./cible";
 
 export type SourceExecutions = Pick<ApiWebaios["accueil"], "executions" | "execution">;
 /**
  * « ▶ Lancer », « Rejouer depuis ce bloc » and live tracking, addressed by the workflow's key (`cleCible`). `lancer`
  * returns an action's refusal (`erreur`); a widget's never returns one.
  */
-export type Lanceur = {
-  lancer(cle: string, saisie?: string | null): Promise<{ execution?: string; erreur?: string }>;
-  rejouer(cle: string, execution: string, bloc: string): Promise<AttemptResult>;
+export type Launcher = {
+  lancer(key: string, input?: string | null): Promise<{ execution?: string; erreur?: string }>;
+  rejouer(key: string, execution: string, bloc: string): Promise<AttemptResult>;
   direct(): Promise<DirectState>;
   surDirect(rappel: (e: DirectState) => void): () => void;
 };
 
 /** The prefix of the kernel's refusals, reused for a request that fails on the way. */
-const PREFIXE_REJEU = "Rejeu impossible : ";
+const REPLAY_PREFIX = "Rejeu impossible : ";
 
-const memeJson = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+const sameJson = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
 /** The user's choice, per widget and per window: changing tab does not lose it. */
-const choix = new Map<string, string>();
+const choice = new Map<string, string>();
 
 /** Forgets the choice of widgets no longer on home (an action's, key `action:<id>`, stays). */
-export function oublierChoixExecutions(presents: Iterable<string>): void {
+export function forgetRunChoices(presents: Iterable<string>): void {
   const ids = new Set(presents);
-  for (const id of [...choix.keys()]) if (!ids.has(id) && !estCleAction(id)) choix.delete(id);
+  for (const id of [...choice.keys()]) if (!ids.has(id) && !isActionKey(id)) choice.delete(id);
 }
 
 /**
@@ -59,9 +59,9 @@ export class Executions {
   constructor(
     readonly widget: string,
     private readonly source: SourceExecutions,
-    private readonly lanceur?: Lanceur,
+    private readonly lanceur?: Launcher,
   ) {
-    this.voulue = choix.get(widget) ?? null;
+    this.voulue = choice.get(widget) ?? null;
   }
 
   /** Re-reads the list (at opening and on each change of home); a chosen run that disappeared is forgotten. */
@@ -72,19 +72,19 @@ export class Executions {
   /** Follows the live state; returns what is needed to stop. */
   suivre(): () => void {
     if (!this.lanceur) return () => {};
-    let fini = false;
+    let finished = false;
     // A pushed event is more recent than the initial read: the read never overwrites it.
-    let recu = false;
+    let received = false;
     const fin = this.lanceur.surDirect((e) => {
-      recu = true;
+      received = true;
       this.appliquerDirect(e);
     });
     void this.lanceur
       .direct()
-      .then((e) => !fini && !recu && this.appliquerDirect(e))
+      .then((e) => !finished && !received && this.appliquerDirect(e))
       .catch(() => {});
     return () => {
-      fini = true;
+      finished = true;
       fin();
     };
   }
@@ -94,23 +94,23 @@ export class Executions {
    * one), the view realigns on the written run instead of keeping « en cours » badges.
    */
   private appliquerDirect(e: DirectState): void {
-    const avant = this.enDirect;
+    const before = this.enDirect;
     this.direct = e;
-    const apres = this.enDirect;
-    if (avant && (!apres || apres.debut !== avant.debut || apres.genre !== avant.genre)) void this.charger().catch(() => {});
+    const after = this.enDirect;
+    if (before && (!after || after.debut !== before.debut || after.genre !== before.genre)) void this.charger().catch(() => {});
   }
 
   /** `relire`: a missing detail makes the list be re-read once (the run is probably gone). */
-  private async chargerListe(relire: boolean): Promise<void> {
+  private async chargerListe(reread: boolean): Promise<void> {
     const n = ++this.requeteListe;
     const l = await this.source.executions(this.widget);
     if (n !== this.requeteListe) return;
-    if (!memeJson(l, this.liste)) this.liste = l;
+    if (!sameJson(l, this.liste)) this.liste = l;
     // Another builder of this widget in the window (tab left during « Lancer ») may have changed the choice.
-    const garde = choix.get(this.widget) ?? null;
-    if (garde !== this.voulue) this.voulue = garde;
+    const kept = choice.get(this.widget) ?? null;
+    if (kept !== this.voulue) this.voulue = kept;
     if (this.voulue !== null && !l.some((e) => e.id === this.voulue)) this.garder(null);
-    if (!(await this.chargerDetail()) && relire) await this.chargerListe(false);
+    if (!(await this.chargerDetail()) && reread) await this.chargerListe(false);
   }
 
   async choisir(id: string | null): Promise<void> {
@@ -121,8 +121,8 @@ export class Executions {
 
   private garder(id: string | null): void {
     this.voulue = id;
-    if (id === null) choix.delete(this.widget);
-    else choix.set(this.widget, id);
+    if (id === null) choice.delete(this.widget);
+    else choice.set(this.widget, id);
   }
 
   /**
@@ -130,13 +130,13 @@ export class Executions {
    * action refusal, shown), the choice stays. If it is the latest real one, the choice goes back to the default: the
    * following runs take it over.
    */
-  async lancer(saisie?: string | null): Promise<void> {
+  async lancer(input?: string | null): Promise<void> {
     if (!this.lanceur || this.occupe) return;
     this.demande = true;
     this.refus = null;
     let execution: string | undefined;
     try {
-      const r = saisie === undefined ? await this.lanceur.lancer(this.widget) : await this.lanceur.lancer(this.widget, saisie);
+      const r = input === undefined ? await this.lanceur.lancer(this.widget) : await this.lanceur.lancer(this.widget, input);
       execution = r.execution;
       if (execution !== undefined) this.garder(execution);
       else if (r.erreur) this.refus = r.erreur;
@@ -151,16 +151,16 @@ export class Executions {
 
   /** « Rejouer depuis ce bloc » with the upstream outputs of the chosen run; the returned trial is chosen. */
   async rejouer(bloc: string): Promise<void> {
-    const origine = this.choisie;
-    if (!this.lanceur || this.occupe || !origine) return;
+    const origin = this.choisie;
+    if (!this.lanceur || this.occupe || !origin) return;
     this.demande = true;
     this.refus = null;
     try {
-      const r = await this.lanceur.rejouer(this.widget, origine.id, bloc);
+      const r = await this.lanceur.rejouer(this.widget, origin.id, bloc);
       if (r.ok) this.garder(r.execution);
       else this.refus = r.erreur;
     } catch (e) {
-      this.refus = PREFIXE_REJEU + ((e as Error)?.message || "erreur inattendue");
+      this.refus = REPLAY_PREFIX + ((e as Error)?.message || "erreur inattendue");
     } finally {
       this.demande = false;
     }

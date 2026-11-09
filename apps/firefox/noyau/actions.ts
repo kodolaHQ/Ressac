@@ -24,7 +24,7 @@ import {
 } from "../../../packages/noyau/src/index.ts";
 import type { ActionShown } from "../shared/actions.ts";
 import type { Accord } from "../shared/api.ts";
-import { urlOuvrable } from "../ui/accueil-profils.ts";
+import { openableUrl } from "../ui/accueil-profils.ts";
 
 // The disk and kernel half of the actions service.
 
@@ -32,7 +32,7 @@ export const MESSAGE_SANS_NOYAU = "Le service des actions ne répond pas (agent 
 const NO_ACTION: ActionsState = { courantes: [], enAttente: [] };
 
 /** https only, never the machine. Keep in sync with chrome/store/action-media.ts. */
-const imageAddressAllowed = (url: string) => url.startsWith("https://") && urlOuvrable(url);
+const imageAddressAllowed = (url: string) => url.startsWith("https://") && openableUrl(url);
 
 /**
  * The refusal half of a result image's load: a result image is fetched only for a current action
@@ -56,7 +56,7 @@ export async function actionImageAllowed(
 
 /** A link of an action's page opens only if its address is, as is, in the run's results, in http(s). */
 export async function linkAllowed(dossierActions: string, id: string, execution: string, url: string): Promise<boolean> {
-  if (!urlOuvrable(url)) return false;
+  if (!openableUrl(url)) return false;
   const r = await readResult(dossierActions, id, execution);
   return !!r && chainsOf(r.resultats).has(url);
 }

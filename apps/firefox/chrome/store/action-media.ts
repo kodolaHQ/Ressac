@@ -1,7 +1,7 @@
 // What an action's page shows besides its text: the result images, loaded anonymously in a container of their own,
 // and the agent's components, served as sanitized resource:// copies (the widget displays' mechanism, plan 27) with
 // the site home's parent.postMessage bridge (plan 31). Spike: docs/superpowers/notes/2026-11-06-actions-firefox-spike.md.
-import { urlOuvrable } from "../../ui/accueil-profils";
+import { openableUrl } from "../../ui/accueil-profils";
 import { CSP_WIDGET, displayServed } from "../window/widget-frame";
 import { containerFor } from "./containers";
 import { containerRequests, isLink, loadImage, realPath, toDataUrl } from "./site-home";
@@ -25,7 +25,7 @@ export function actionImageTestUrl(url: string, origin: string | undefined): str
 }
 
 /** https only, never the machine. */
-const allowed = (u: string) => u.startsWith("https://") && urlOuvrable(u);
+const allowed = (u: string) => u.startsWith("https://") && openableUrl(u);
 
 /** A result image as a `data:` URL (no cookie, no referrer, checked redirects), or null. */
 export async function actionImage(url: string): Promise<string | null> {

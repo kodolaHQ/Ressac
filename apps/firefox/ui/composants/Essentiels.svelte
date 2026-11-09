@@ -1,17 +1,17 @@
 <script lang="ts">
   import type { WindowState, Favorite } from "../../shared/modele";
-  import { api, etat } from "../etat.svelte";
-  import IconeSite from "./IconeSite.svelte";
-  import { ouvrirMenu } from "./menu.svelte";
+  import { api, appState } from "../etat.svelte";
+  import SiteIcon from "./IconeSite.svelte";
+  import { openMenu } from "./menu.svelte";
 
-  let { fenetre, grand = false }: { fenetre: WindowState; grand?: boolean } = $props();
-  const actif = $derived.by(() => {
-    const id = fenetre.actif[fenetre.espaceActif];
-    return id ? etat.valeur?.onglets[id]?.lien?.id : undefined;
+  let { fenetre: win, grand = false }: { fenetre: WindowState; grand?: boolean } = $props();
+  const active = $derived.by(() => {
+    const id = win.actif[win.espaceActif];
+    return id ? appState.valeur?.onglets[id]?.lien?.id : undefined;
   });
 
-  function ouvrir(f: Favorite) {
-    api.agir({ type: "ouvrirFavori", fenetreId: fenetre.id, genre: "essentiel", id: f.id });
+  function open(f: Favorite) {
+    api.agir({ type: "ouvrirFavori", fenetreId: win.id, genre: "essentiel", id: f.id });
   }
 </script>
 
@@ -27,15 +27,15 @@
     if (id) api.agir({ type: "ajouterEssentiel", id });
   }}
 >
-  {#each etat.valeur?.essentiels ?? [] as favori (favori.id)}
+  {#each appState.valeur?.essentiels ?? [] as favorite (favorite.id)}
     <button
-      data-testid="favori-{favori.id}"
-      class:actif={favori.id === actif}
-      title={favori.titre}
-      onclick={() => ouvrir(favori)}
-      oncontextmenu={(e) => ouvrirMenu(e, [{ libelle: "Retirer", agir: () => api.agir({ type: "retirerEssentiel", favoriId: favori.id }) }])}
+      data-testid="favori-{favorite.id}"
+      class:actif={favorite.id === active}
+      title={favorite.titre}
+      onclick={() => open(favorite)}
+      oncontextmenu={(e) => openMenu(e, [{ libelle: "Retirer", agir: () => api.agir({ type: "retirerEssentiel", favoriId: favorite.id }) }])}
     >
-      <IconeSite favicon={favori.favicon} titre={favori.titre} taille={grand ? 32 : 18} />
+      <SiteIcon favicon={favorite.favicon} titre={favorite.titre} taille={grand ? 32 : 18} />
     </button>
   {/each}
 </div>

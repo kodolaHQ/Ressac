@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { etAutres } from "../types";
+  import { andOthers } from "../types";
 
   let { p }: { p: { champs: { libelle: string; valeur: string }[]; autres: number } } = $props();
 </script>
@@ -8,5 +8,5 @@
   <dl class="pa-champs">
     {#each p.champs as c, i (i)}<dt>{c.libelle}</dt><dd>{c.valeur || "—"}</dd>{/each}
   </dl>
-  {#if p.autres > 0}<p class="pa-autres">{etAutres(p.autres)}</p>{/if}
+  {#if p.autres > 0}<p class="pa-autres">{andOthers(p.autres)}</p>{/if}
 </div>

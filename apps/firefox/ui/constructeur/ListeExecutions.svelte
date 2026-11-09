@@ -1,15 +1,15 @@
 <script lang="ts">
   import type { Executions } from "./executions.svelte";
-  import { date, DECLENCHEURS, duree, STATUTS, TEINTES } from "./libelles";
+  import { date, TRIGGERS, duration, STATUSES, TINTS } from "./libelles";
 
   /** The « Exécutions » tab: the whole kept history, trials marked with their starting block. Choosing one goes back there. */
-  let { executions, onchoisie }: { executions: Executions; onchoisie: () => void } = $props();
+  let { executions, onchoisie: onchoose }: { executions: Executions; onchoisie: () => void } = $props();
 
-  const choisie = $derived(executions.choisie?.id ?? null);
+  const chosen = $derived(executions.choisie?.id ?? null);
 
-  async function choisir(id: string): Promise<void> {
+  async function choose(id: string): Promise<void> {
     await executions.choisir(id).catch(() => {});
-    onchoisie();
+    onchoose();
   }
 </script>
 
@@ -20,12 +20,12 @@
     <ul>
       {#each executions.liste as e (e.id)}
         <li>
-          <button data-testid="execution-{e.id}" class:actif={e.id === choisie} aria-pressed={e.id === choisie} onclick={() => void choisir(e.id)}>
-            <span class="pastille {TEINTES[e.statut]}"></span>
+          <button data-testid="execution-{e.id}" class:actif={e.id === chosen} aria-pressed={e.id === chosen} onclick={() => void choose(e.id)}>
+            <span class="pastille {TINTS[e.statut]}"></span>
             <span class="quand">{date(e.debut)}</span>
-            <span>{DECLENCHEURS[e.declencheur]}</span>
-            <span>{STATUTS[e.statut]}</span>
-            <span class="doux">{duree(e.debut, e.fin)}</span>
+            <span>{TRIGGERS[e.declencheur]}</span>
+            <span>{STATUSES[e.statut]}</span>
+            <span class="doux">{duration(e.debut, e.fin)}</span>
             {#if e.essai}<span class="essai">essai depuis « {e.essai.depart} »</span>{/if}
           </button>
         </li>

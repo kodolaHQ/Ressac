@@ -2,13 +2,13 @@
   import { iconUrl } from "../../shared/icone";
 
   let { favicon, titre, taille = 16 }: { favicon: string | null; titre: string; taille?: number } = $props();
-  let erreur = $state(false);
+  let error = $state(false);
   // The UI has no network: an http(s) favicon goes through webaios-icone: (shared/icone.ts).
   const source = $derived(favicon ? iconUrl(favicon) : null);
 </script>
 
-{#if source && !erreur}
-  <img src={source} alt="" width={taille} height={taille} onerror={() => (erreur = true)} />
+{#if source && !error}
+  <img src={source} alt="" width={taille} height={taille} onerror={() => (error = true)} />
 {:else}
   <span class="lettre" style:width="{taille}px" style:height="{taille}px" style:font-size="{taille * 0.6}px">{(titre.replace(/^https?:\/\/(www\.)?/, "")[0] ?? "?").toUpperCase()}</span>
 {/if}

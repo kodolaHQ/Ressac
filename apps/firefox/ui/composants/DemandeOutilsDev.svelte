@@ -4,7 +4,7 @@
   import { siteDe, type PendingRequest } from "../../shared/modele";
   import { api } from "../etat.svelte";
 
-  let { demande }: { demande: PendingRequest } = $props();
+  let { demande: request }: { demande: PendingRequest } = $props();
 
   // The four rights, in the card's order. `sensible`: the warning shown below.
   const DROITS: { droit: DroitDev; icone: string; nom: string; detail: string; sensible?: string }[] = [
@@ -16,20 +16,20 @@
 
   // Pre-checked: what the agent asked for; the user can add or remove some.
   // Initialized once: the list of requests is rebroadcast on each new question, without touching the selection.
-  let coches = $state<DroitDev[]>(untrack(() => [...(demande.droits ?? [])]));
+  let checked = $state<DroitDev[]>(untrack(() => [...(request.droits ?? [])]));
 
   // Never an exception here: an unreadable origin (about:blank, data:…) is shown as is.
-  const site = $derived(siteDe(demande.origine));
-  const cocher = (droit: DroitDev, actif: boolean) => (coches = actif ? [...coches, droit] : coches.filter((d) => d !== droit));
+  const site = $derived(siteDe(request.origine));
+  const check = (droit: DroitDev, active: boolean) => (checked = active ? [...checked, droit] : checked.filter((d) => d !== droit));
 </script>
 
 <div data-testid="demande-outils-dev">
-  <h3>{demande.agent ?? "L'agent"} veut accéder aux outils de développement</h3>
-  <div class="site">🔒 {site} · onglet « {demande.titre ?? site} »</div>
-  <div class="raison">« {demande.raison} »</div>
+  <h3>{request.agent ?? "L'agent"} veut accéder aux outils de développement</h3>
+  <div class="site">🔒 {site} · onglet « {request.titre ?? site} »</div>
+  <div class="raison">« {request.raison} »</div>
   {#each DROITS as d (d.droit)}
     <label class="droit">
-      <input type="checkbox" data-droit={d.droit} checked={coches.includes(d.droit)} onchange={(e) => cocher(d.droit, e.currentTarget.checked)} />
+      <input type="checkbox" data-droit={d.droit} checked={checked.includes(d.droit)} onchange={(e) => check(d.droit, e.currentTarget.checked)} />
       <div>
         <b>{d.icone} {d.nom}</b>
         <span>{d.detail}</span>
@@ -38,8 +38,8 @@
     </label>
   {/each}
   <div class="actions">
-    <button onclick={() => api.permissions.repondre(demande.id, "refuser")}>Refuser</button>
-    <button class="autoriser" data-principal onclick={() => api.permissions.repondre(demande.id, "autoriser", $state.snapshot(coches))}>Autoriser la sélection</button>
+    <button onclick={() => api.permissions.repondre(request.id, "refuser")}>Refuser</button>
+    <button class="autoriser" data-principal onclick={() => api.permissions.repondre(request.id, "autoriser", $state.snapshot(checked))}>Autoriser la sélection</button>
   </div>
   <div class="note">Valable pour cette conversation · tombe si l'onglet change de site</div>
 </div>

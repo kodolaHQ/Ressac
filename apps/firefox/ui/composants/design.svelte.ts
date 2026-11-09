@@ -7,15 +7,15 @@ import { api } from "../etat.svelte";
  */
 export const design = $state<{ etat: DesignState | null; panierDemande: boolean }>({ etat: null, panierDemande: false });
 
-let requete = 0;
-export async function relireDesign(): Promise<void> {
-  const n = ++requete;
+let request = 0;
+export async function rereadDesign(): Promise<void> {
+  const n = ++request;
   try {
     const e = await api.design.etat();
-    if (n === requete) design.etat = e;
+    if (n === request) design.etat = e;
   } catch {
     // Main process not ready: the next broadcast will re-read.
   }
 }
 
-api.design.surChange(() => void relireDesign());
+api.design.surChange(() => void rereadDesign());

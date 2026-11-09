@@ -49,8 +49,8 @@ export function createExternesApi(o: {
       const offs = ["externes.change", HOST_EXITED, "accueil.change"].map((m) => host.on(m, () => cb()));
       return o.untilUnload(() => offs.forEach((f) => f()));
     },
-    async brancher(nom) {
-      const n = checkClientName(nom);
+    async brancher(name) {
+      const n = checkClientName(name);
       return host.request<{ commande: string }>("externes.brancher", { nom: n }).then(
         (r) => structuredClone(r),
         (e) => Promise.reject(local(e)),
@@ -65,8 +65,8 @@ export function createExternesApi(o: {
     relire(id) {
       if (typeof id !== "string" || !EXTERNAL_ID.test(id)) return;
       void host.request<string | null>("externes.nom", { id }).then(
-        (nom) => {
-          if (typeof nom === "string") o.dispatch({ type: "ouvrirRelecture", fenetreId: o.fenetre, projet: "ext-" + id, nom: nom.slice(0, 80) });
+        (name) => {
+          if (typeof name === "string") o.dispatch({ type: "ouvrirRelecture", fenetreId: o.fenetre, projet: "ext-" + id, nom: name.slice(0, 80) });
         },
         (e) => console.error("[webaios] externes.nom :", local(e).message),
       );
@@ -75,49 +75,49 @@ export function createExternesApi(o: {
 }
 
 /** The Review page: the shared guards, then the handler of the same name; a rejection keeps its message. */
-export function createRelectureApi(o: { host: Pick<AgentHost, "request"> }): ApiWebaios["relecture"] {
+export function createReviewApi(o: { host: Pick<AgentHost, "request"> }): ApiWebaios["relecture"] {
   const ask = <T>(method: string, params: Record<string, unknown>): Promise<T> =>
     o.host.request<T>(method, params).then(
       (v) => structuredClone(v),
       (e) => Promise.reject(local(e)),
     );
   return {
-    async ouvrir(projet, jeton) {
-      return ask("relecture.ouvrir", { projet: checkProject(projet), jeton: jeton === undefined || jeton === null ? null : checkToken(jeton) });
+    async ouvrir(project, token) {
+      return ask("relecture.ouvrir", { projet: checkProject(project), jeton: token === undefined || token === null ? null : checkToken(token) });
     },
-    async fichier(projet, jeton, chemin) {
-      return ask("relecture.fichier", { projet: checkProject(projet), jeton: checkToken(jeton), chemin: checkPath(chemin) });
+    async fichier(project, token, path) {
+      return ask("relecture.fichier", { projet: checkProject(project), jeton: checkToken(token), chemin: checkPath(path) });
     },
-    async lignes(projet, jeton, chemin, debut, fin) {
-      const p = checkProject(projet);
+    async lignes(project, token, path, debut, fin) {
+      const p = checkProject(project);
       [debut, fin] = checkLines(debut, fin);
-      return ask("relecture.lignes", { projet: p, jeton: checkToken(jeton), chemin: checkPath(chemin), debut, fin });
+      return ask("relecture.lignes", { projet: p, jeton: checkToken(token), chemin: checkPath(path), debut, fin });
     },
-    async commentaires(projet) {
-      return ask("relecture.commentaires", { projet: checkProject(projet) });
+    async commentaires(project) {
+      return ask("relecture.commentaires", { projet: checkProject(project) });
     },
-    async commenter(projet, jeton, c) {
-      const p = checkProject(projet);
+    async commenter(project, token, c) {
+      const p = checkProject(project);
       if (typeof c !== "object" || c === null) throw new Error("lignes invalides");
       const [debut, fin] = checkLines(c.debut, c.fin);
-      return ask("relecture.commenter", { projet: p, jeton: checkToken(jeton), c: { fichier: checkPath(c.fichier), debut, fin, texte: checkText(c.texte) } });
+      return ask("relecture.commenter", { projet: p, jeton: checkToken(token), c: { fichier: checkPath(c.fichier), debut, fin, texte: checkText(c.texte) } });
     },
-    async modifierCommentaire(projet, id, texte) {
-      return ask("relecture.modifierCommentaire", { projet: checkProject(projet), id: checkComment(id), texte: checkText(texte) });
+    async modifierCommentaire(project, id, text) {
+      return ask("relecture.modifierCommentaire", { projet: checkProject(project), id: checkComment(id), texte: checkText(text) });
     },
-    async resoudre(projet, id, resolu) {
-      const p = checkProject(projet);
-      const r = checkResolved(resolu);
+    async resoudre(project, id, resolved) {
+      const p = checkProject(project);
+      const r = checkResolved(resolved);
       return ask("relecture.resoudre", { projet: p, id: checkComment(id), resolu: r });
     },
-    async supprimerCommentaire(projet, id) {
-      return ask("relecture.supprimerCommentaire", { projet: checkProject(projet), id: checkComment(id) });
+    async supprimerCommentaire(project, id) {
+      return ask("relecture.supprimerCommentaire", { projet: checkProject(project), id: checkComment(id) });
     },
-    async envoyer(projet) {
-      return ask("relecture.envoyer", { projet: checkProject(projet) });
+    async envoyer(project) {
+      return ask("relecture.envoyer", { projet: checkProject(project) });
     },
-    async relu(projet, jeton) {
-      return ask("relecture.relu", { projet: checkProject(projet), jeton: checkToken(jeton) });
+    async relu(project, token) {
+      return ask("relecture.relu", { projet: checkProject(project), jeton: checkToken(token) });
     },
   };
 }
@@ -134,11 +134,11 @@ export function createDesignApi(o: { win: WindowController; untilUnload: (f: () 
       (v) => structuredClone(v),
       (e) => Promise.reject(local(e)),
     );
-  const etat = () => copy(design.etat(t));
-  const allowed = async (p: unknown): Promise<boolean> => typeof p === "string" && ID_PROJECT.test(p) && p === (await etat().catch(() => null))?.projet?.projet;
+  const appState = () => copy(design.etat(t));
+  const allowed = async (p: unknown): Promise<boolean> => typeof p === "string" && ID_PROJECT.test(p) && p === (await appState().catch(() => null))?.projet?.projet;
   const id = (x: unknown): x is string => typeof x === "string" && x.length <= DESIGN_ID_MAX;
   return {
-    etat,
+    etat: appState,
     basculer: () => void design.toggle(t),
     relire: () => void design.relire(t),
     panier: async (p) => ((await allowed(p)) ? copy(host.request<ShownElement[]>("design.panier", { projet: p })) : []),

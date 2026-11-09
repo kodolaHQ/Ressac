@@ -7,12 +7,12 @@
    */
   let {
     bloc,
-    choisie,
+    choisie: chosen,
     execution,
-    introuvable,
+    introuvable: notFound,
   }: { bloc: string; choisie: ResumeExecution | null; execution: Execution | null; introuvable: boolean } = $props();
 
-  const LIBELLES: Record<string, string> = {
+  const LABELS: Record<string, string> = {
     reussi: "réussi",
     partiel: "partiel",
     echoue: "échoué",
@@ -21,42 +21,42 @@
     repris: "repris",
   };
 
-  const trace = $derived(execution?.id === choisie?.id ? execution?.blocs.find((b) => b.id === bloc) : undefined);
+  const trace = $derived(execution?.id === chosen?.id ? execution?.blocs.find((b) => b.id === bloc) : undefined);
   /**
    * The output is only formatted once the fold is open (it can weigh 256 KB): the open fold, per run and per block.
    * Another run recreates a closed fold, without JSON; the same run re-read (finished meanwhile) keeps it.
    */
-  const cle = $derived(trace && execution ? `${execution.id}/${trace.id}` : null);
-  let ouverteSur = $state<string | null>(null);
-  const ouverte = $derived(cle !== null && ouverteSur === cle);
-  const json = $derived(ouverte && trace && trace.sortie !== undefined ? JSON.stringify(trace.sortie, null, 2) : "");
+  const key = $derived(trace && execution ? `${execution.id}/${trace.id}` : null);
+  let openedOn = $state<string | null>(null);
+  const opened = $derived(key !== null && openedOn === key);
+  const json = $derived(opened && trace && trace.sortie !== undefined ? JSON.stringify(trace.sortie, null, 2) : "");
 
-  function duree(debut: string | null, fin: string | null): string | null {
+  function duration(debut: string | null, fin: string | null): string | null {
     if (!debut || !fin) return null;
     const ms = Date.parse(fin) - Date.parse(debut);
     if (!Number.isFinite(ms) || ms < 0) return null;
     return ms < 1000 ? `${ms} ms` : `${(ms / 1000).toLocaleString("fr-FR", { maximumFractionDigits: 1 })} s`;
   }
-  const heure = (iso: string) => new Date(iso).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "medium" });
+  const hour = (iso: string) => new Date(iso).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "medium" });
 </script>
 
 <section class="sortie" data-testid="sortie-bloc">
   <h3>À l'exécution choisie</h3>
-  {#if !choisie}
+  {#if !chosen}
     <p class="doux">Aucune exécution pour l'instant.</p>
   {:else}
-    <p class="doux">{heure(choisie.debut)} · {choisie.declencheur}{choisie.essai ? " (essai)" : ""}</p>
-    {#if introuvable}
+    <p class="doux">{hour(chosen.debut)} · {chosen.declencheur}{chosen.essai ? " (essai)" : ""}</p>
+    {#if notFound}
       <p class="doux" data-testid="execution-introuvable">Cette exécution n'est plus lisible.</p>
-    {:else if execution?.id !== choisie.id}
+    {:else if execution?.id !== chosen.id}
       <p class="doux">Chargement…</p>
     {:else if !trace}
       <p class="doux">Ce bloc n'était pas dans cette exécution.</p>
     {:else}
       <dl>
         <dt>Statut</dt>
-        <dd data-testid="statut-bloc">{LIBELLES[trace.statut] ?? trace.statut}</dd>
-        {#if duree(trace.debut, trace.fin)}<dt>Durée</dt><dd>{duree(trace.debut, trace.fin)}</dd>{/if}
+        <dd data-testid="statut-bloc">{LABELS[trace.statut] ?? trace.statut}</dd>
+        {#if duration(trace.debut, trace.fin)}<dt>Durée</dt><dd>{duration(trace.debut, trace.fin)}</dd>{/if}
         <dt>Éléments</dt>
         <dd>{trace.elements ?? "—"}</dd>
       </dl>
@@ -71,10 +71,10 @@
         </details>
       {/if}
       {#if trace.sortie !== undefined || trace.sortieTronquee}
-        {#key cle}
-          <details data-testid="sortie-repliable" open={ouverte} ontoggle={(e) => (ouverteSur = e.currentTarget.open ? cle : null)}>
+        {#key key}
+          <details data-testid="sortie-repliable" open={opened} ontoggle={(e) => (openedOn = e.currentTarget.open ? key : null)}>
             <summary>Sortie{trace.sortieTronquee ? " (tronquée)" : ""}</summary>
-            {#if ouverte}<pre data-testid="sortie-json">{json}</pre>{/if}
+            {#if opened}<pre data-testid="sortie-json">{json}</pre>{/if}
           </details>
         {/key}
       {/if}

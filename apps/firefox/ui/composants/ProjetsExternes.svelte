@@ -2,19 +2,19 @@
   import type { ExternalsState } from "../../shared/api";
   import { api } from "../etat.svelte";
 
-  let etat = $state<ExternalsState | null>(null);
-  let requete = 0;
+  let appState = $state<ExternalsState | null>(null);
+  let request = 0;
   /** Client name input before the command; null when the form is closed. */
-  let nom = $state<string | null>(null);
+  let name = $state<string | null>(null);
   /** The hookup command, shown once (token included); cleared on close. */
-  let commande = $state<string | null>(null);
-  let erreur = $state<string | null>(null);
-  let copie = $state(false);
+  let command = $state<string | null>(null);
+  let error = $state<string | null>(null);
+  let copy = $state(false);
 
   async function charger() {
-    const n = ++requete;
+    const n = ++request;
     const r = await api.externes.liste();
-    if (n === requete) etat = r;
+    if (n === request) appState = r;
   }
   $effect(() => {
     void charger();
@@ -22,40 +22,40 @@
   });
 
   async function brancher() {
-    erreur = null;
+    error = null;
     try {
-      const r = await api.externes.brancher(nom ?? "");
-      commande = r.commande;
-      nom = null;
-      copie = false;
+      const r = await api.externes.brancher(name ?? "");
+      command = r.commande;
+      name = null;
+      copy = false;
     } catch {
-      erreur = "Le branchement a échoué.";
+      error = "Le branchement a échoué.";
     }
   }
-  function fermerCommande() {
-    commande = null;
-    copie = false;
+  function closeCommand() {
+    command = null;
+    copy = false;
   }
   async function copier() {
-    if (commande === null) return;
+    if (command === null) return;
     try {
-      await navigator.clipboard.writeText(commande);
-      copie = true;
+      await navigator.clipboard.writeText(command);
+      copy = true;
     } catch {
-      copie = false;
+      copy = false;
     }
   }
-  const eteint = $derived(etat?.serveur.etat === "eteint");
+  const turnedOff = $derived(appState?.serveur.etat === "eteint");
 </script>
 
 <section class="externes" data-testid="projets-externes" aria-label="Projets externes">
   <h2 class="titre">Projets externes</h2>
-  {#if etat}
-    {#if etat.serveur.etat === "eteint"}
-      <p class="raison" data-testid="raison-externes">{etat.serveur.raison}</p>
+  {#if appState}
+    {#if appState.serveur.etat === "eteint"}
+      <p class="raison" data-testid="raison-externes">{appState.serveur.raison}</p>
     {/if}
     <ul>
-      {#each etat.projets as p (p.id)}
+      {#each appState.projets as p (p.id)}
         <li data-testid="projet-externe">
           <div class="nom">
             <b>{p.nom}</b>
@@ -69,7 +69,7 @@
           </div>
         </li>
       {/each}
-      {#each etat.clients as c (c.id)}
+      {#each appState.clients as c (c.id)}
         <li data-testid="client-externe">
           <div class="nom">
             <b>{c.nom}</b>
@@ -80,22 +80,22 @@
           </div>
         </li>
       {/each}
-      {#if etat.projets.length === 0 && etat.clients.length === 0}
+      {#if appState.projets.length === 0 && appState.clients.length === 0}
         <li class="aucune">Aucun Claude Code branché.</li>
       {/if}
     </ul>
   {/if}
 
-  {#if commande !== null}
+  {#if command !== null}
     <div class="commande">
       <p>Colle cette commande dans un terminal : elle ne sera plus affichée.</p>
-      <code data-testid="commande-branchement">{commande}</code>
+      <code data-testid="commande-branchement">{command}</code>
       <div class="actions">
-        <button data-testid="copier-commande" onclick={copier}>{copie ? "Copié" : "Copier"}</button>
-        <button data-testid="fermer-commande" onclick={fermerCommande}>Fermer</button>
+        <button data-testid="copier-commande" onclick={copier}>{copy ? "Copié" : "Copier"}</button>
+        <button data-testid="fermer-commande" onclick={closeCommand}>Fermer</button>
       </div>
     </div>
-  {:else if nom !== null}
+  {:else if name !== null}
     <form
       class="formulaire"
       onsubmit={(e) => {
@@ -103,14 +103,14 @@
         void brancher();
       }}
     >
-      <label>Nom du client <input data-testid="nom-brancher" bind:value={nom} placeholder="Claude Code" maxlength="60" /></label>
+      <label>Nom du client <input data-testid="nom-brancher" bind:value={name} placeholder="Claude Code" maxlength="60" /></label>
       <button type="submit" data-testid="valider-brancher">Brancher</button>
-      <button type="button" onclick={() => (nom = null)}>Annuler</button>
+      <button type="button" onclick={() => (name = null)}>Annuler</button>
     </form>
   {:else}
-    <button class="brancher" data-testid="brancher-externe" disabled={eteint || etat === null} onclick={() => (nom = "Claude Code")}>Brancher un Claude Code</button>
+    <button class="brancher" data-testid="brancher-externe" disabled={turnedOff || appState === null} onclick={() => (name = "Claude Code")}>Brancher un Claude Code</button>
   {/if}
-  {#if erreur}<p class="raison" role="alert">{erreur}</p>{/if}
+  {#if error}<p class="raison" role="alert">{error}</p>{/if}
 </section>
 
 <style>

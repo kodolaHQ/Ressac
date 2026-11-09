@@ -5,25 +5,25 @@
   import PageAction from "../ui/action/PageAction.svelte";
   import Actions from "../ui/composants/Actions.svelte";
   import Applications from "../ui/composants/Applications.svelte";
-  import BarreCommande from "../ui/composants/BarreCommande.svelte";
-  import BarreLaterale from "../ui/composants/BarreLaterale.svelte";
+  import CommandBar from "../ui/composants/BarreCommande.svelte";
+  import Sidebar from "../ui/composants/BarreLaterale.svelte";
   import Extensions from "../ui/composants/Extensions.svelte";
-  import FondFige from "../ui/composants/FondFige.svelte";
-  import Historique from "../ui/composants/Historique.svelte";
-  import MenuContextuel from "../ui/composants/MenuContextuel.svelte";
-  import ModaleDemande from "../ui/composants/ModaleDemande.svelte";
-  import ModaleEspace from "../ui/composants/ModaleEspace.svelte";
-  import PageVide from "../ui/composants/PageVide.svelte";
-  import Telechargements from "../ui/composants/Telechargements.svelte";
-  import PanneauOnglets from "../ui/composants/PanneauOnglets.svelte";
-  import Relecture from "../ui/composants/Relecture.svelte";
+  import FrozenBackground from "../ui/composants/FondFige.svelte";
+  import History from "../ui/composants/Historique.svelte";
+  import ContextMenu from "../ui/composants/MenuContextuel.svelte";
+  import RequestModal from "../ui/composants/ModaleDemande.svelte";
+  import SpaceModal from "../ui/composants/ModaleEspace.svelte";
+  import EmptyPage from "../ui/composants/PageVide.svelte";
+  import Downloads from "../ui/composants/Telechargements.svelte";
+  import TabsPanel from "../ui/composants/PanneauOnglets.svelte";
+  import Review from "../ui/composants/Relecture.svelte";
   import { focusAgent } from "../ui/composants/agent.svelte";
-  import { design, relireDesign } from "../ui/composants/design.svelte";
-  import { commande, fermerCommande, focusPageVide, ouvrirCommande } from "../ui/composants/commande.svelte";
-  import { estDemandeAgent } from "../ui/composants/modale.svelte";
+  import { design, rereadDesign } from "../ui/composants/design.svelte";
+  import { command, closeCommand, focusEmptyPage, openCommand } from "../ui/composants/commande.svelte";
+  import { isAgentRequest } from "../ui/composants/modale.svelte";
   import { menu } from "../ui/composants/menu.svelte";
-  import { reglagesEspace } from "../ui/composants/reglagesEspace.svelte";
-  import { acces, api, demandeDe, etat, fenetreCourante, fermerOnglet } from "../ui/etat.svelte";
+  import { spaceSettings } from "../ui/composants/reglagesEspace.svelte";
+  import { access, api, requestOf, appState, currentWindow, closeTab } from "../ui/etat.svelte";
   import { actionDeUrl, hasView, workflowUrlTarget, reviewUrlProject, URL_ACTIONS, URL_APPLICATIONS, URL_EXTENSIONS } from "../shared/modele";
   import { ACTIONS_IN_PRIVATE_SPACE } from "../shared/actions";
   import { masquer, INITIAL_REVEAL, surZone, type ZoneGauche } from "../shared/revelation";
@@ -33,61 +33,61 @@
   import PageError from "./PageError.svelte";
   import WorkflowBuilder from "./WorkflowBuilder.svelte";
 
-  const MASQUAGE_MS = 300;
+  const HIDING_MS = 300;
 
   const win = window.parent.webaiosWindow!;
 
-  const fenetre = $derived(fenetreCourante());
-  const ongletActif = $derived.by(() => {
-    const id = fenetre?.actif[fenetre.espaceActif];
-    return id ? etat.valeur?.onglets[id] : undefined;
+  const winState = $derived(currentWindow());
+  const activeTab = $derived.by(() => {
+    const id = winState?.actif[winState.espaceActif];
+    return id ? appState.valeur?.onglets[id] : undefined;
   });
   // A crashed or failed page shows our message instead (the window parks its <browser>).
-  const pageWeb = $derived(!!ongletActif && hasView(ongletActif.url) && !ongletActif.plante && !ongletActif.erreur);
+  const pageWeb = $derived(!!activeTab && hasView(activeTab.url) && !activeTab.plante && !activeTab.erreur);
   /** The history or downloads panel over the content area (⌘Y, ⇧⌘J, the sidebar's button); another tab closes it. */
-  let panneau = $state<Panel | null>(null);
-  const fermerPanneau = () => {
-    panneau = null;
+  let panel = $state<Panel | null>(null);
+  const closePanel = () => {
+    panel = null;
     api.rendreFocusPage();
   };
-  const basculerPanneau = (p: Panel) => (panneau === p ? fermerPanneau() : (panneau = p));
+  const togglePanel = (p: Panel) => (panel === p ? closePanel() : (panel = p));
   /** A widget's or an action's workflow builder is the active tab. */
-  const cibleConstructeur = $derived(ongletActif ? workflowUrlTarget(ongletActif.url) : null);
+  const builderTarget = $derived(activeTab ? workflowUrlTarget(activeTab.url) : null);
   // An action's page launches nothing when opened. Refused when the tab's space (or the one shown)
   // is private; a space not found counts as private.
-  const pageAction = $derived(ongletActif ? actionDeUrl(ongletActif.url) : null);
-  const projetRelecture = $derived(ongletActif ? reviewUrlProject(ongletActif.url) : null);
-  const actionEnPrive = $derived.by(() => {
-    const espaces = etat.valeur?.espaces ?? [];
-    const prive = (id: string | undefined) => espaces.find((e) => e.id === id)?.prive ?? true;
-    return prive(fenetre?.espaceActif) || prive(ongletActif?.espaceId);
+  const pageAction = $derived(activeTab ? actionDeUrl(activeTab.url) : null);
+  const reviewProject = $derived(activeTab ? reviewUrlProject(activeTab.url) : null);
+  const privateAction = $derived.by(() => {
+    const spaces = appState.valeur?.espaces ?? [];
+    const isPrivate = (id: string | undefined) => spaces.find((e) => e.id === id)?.prive ?? true;
+    return isPrivate(winState?.espaceActif) || isPrivate(activeTab?.espaceId);
   });
   /**
    * ⌘J or ✦ on a builder tab: its Agent tab. A UI panel over it closes first; the
    * request waits for the builder to mount again, so that it sees it.
    */
-  function agentDuConstructeur(): void {
-    if (panneau === null) return void focusAgent.n++;
-    panneau = null;
+  function builderAgent(): void {
+    if (panel === null) return void focusAgent.n++;
+    panel = null;
     void tick().then(() => focusAgent.n++);
   }
-  $effect(() => api.surPanneau(basculerPanneau));
+  $effect(() => api.surPanneau(togglePanel));
   // ZoneContenu's design mode: it follows the tab shown and its address (the chrome stops the mode if it changes).
   $effect(() => {
-    void ongletActif?.id;
-    void ongletActif?.url;
-    void relireDesign();
+    void activeTab?.id;
+    void activeTab?.url;
+    void rereadDesign();
   });
   /** The cart column: while the design mode is on, or asked by « Panier ». */
-  const panierDesign = $derived.by(() => {
+  const designBasket = $derived.by(() => {
     const e = design.etat;
-    return e?.projet && panneau === null && (e.actif || design.panierDemande) ? e : null;
+    return e?.projet && panel === null && (e.actif || design.panierDemande) ? e : null;
   });
   const firefox = api as unknown as ApiFirefox;
   // The column is a chrome frame beside the page: opened again on another project, so that it shows that one's cart.
   // A string, not the state object (new at each read): the column opens once per project, never at each read.
-  const projetVolet = $derived(panierDesign?.projet?.projet ?? null);
-  $effect(() => firefox.designVolet(projetVolet !== null));
+  const drawerProject = $derived(designBasket?.projet?.projet ?? null);
+  $effect(() => firefox.designVolet(drawerProject !== null));
   $effect(() =>
     firefox.surVoletFerme(() => {
       design.panierDemande = false;
@@ -95,23 +95,23 @@
     }),
   );
   // The command bar targets the tab active when it opened: if another one shows, it closes.
-  const idActif = $derived(ongletActif?.id);
+  const activeId = $derived(activeTab?.id);
   $effect(() => {
-    void idActif;
+    void activeId;
     untrack(() => {
-      commande.ouverte = null;
-      panneau = null;
+      command.ouverte = null;
+      panel = null;
     });
   });
   // An agent's question covers the whole window, agent panel included. It comes before an open command bar, which closes.
-  const demande = $derived(demandeDe(fenetre, ongletActif));
-  const demandeAgent = $derived(demande && estDemandeAgent(demande) ? demande : undefined);
-  const idDemandeAgent = $derived(demandeAgent?.id);
+  const request = $derived(requestOf(winState, activeTab));
+  const agentRequest = $derived(request && isAgentRequest(request) ? request : undefined);
+  const agentRequestId = $derived(agentRequest?.id);
   $effect(() => {
-    if (idDemandeAgent !== undefined) untrack(() => fermerCommande());
+    if (agentRequestId !== undefined) untrack(() => closeCommand());
   });
   // Before the card mounts and takes the keyboard: the terminal or the page gets it back once the last card goes.
-  const carteAgent = $derived(idDemandeAgent !== undefined);
+  const carteAgent = $derived(agentRequestId !== undefined);
   $effect.pre(() => {
     if (!carteAgent) return;
     const giveBack = untrack(() => win.rememberFocus());
@@ -130,130 +130,130 @@
   $effect(() =>
     api.surRaccourci((r) => {
       if (r === "fermerOnglet") {
-        if (ongletActif) fermerOnglet(ongletActif.id);
-      } else if (r === "commande") ouvrirCommande("nouveau");
+        if (activeTab) closeTab(activeTab.id);
+      } else if (r === "commande") openCommand("nouveau");
       else if (r === "adresse") {
-        if (ongletActif) ouvrirCommande("actif", ongletActif.url);
-        else ouvrirCommande("nouveau");
-      } else if (r === "agent" && cibleConstructeur) agentDuConstructeur();
+        if (activeTab) openCommand("actif", activeTab.url);
+        else openCommand("nouveau");
+      } else if (r === "agent" && builderTarget) builderAgent();
     }),
   );
   // Overlays cover the agent panel too; the empty page and internal pages only fill the space left of it.
-  const overlay = $derived(!!demandeAgent || !!reglagesEspace.brouillon || !!menu.ouvert || !!commande.ouverte || !!tabPanel);
-  $effect(() => win.setFullWindow(overlay ? "window" : !pageWeb || !!panneau));
+  const overlay = $derived(!!agentRequest || !!spaceSettings.brouillon || !!menu.ouvert || !!command.ouverte || !!tabPanel);
+  $effect(() => win.setFullWindow(overlay ? "window" : !pageWeb || !!panel));
 
   // Compact mode: touching the left edge reveals the sidebar. It floats over the page, which
   // keeps its size: resizing a page on every frame of the slide would not be smooth.
   // The controller reports the mouse everywhere in the window; the decision is in revelation.ts.
-  const compact = $derived(fenetre?.compact ?? false);
-  let revelee = $state(false);
-  let armee = INITIAL_REVEAL.armee;
+  const compact = $derived(winState?.compact ?? false);
+  let revealed = $state(false);
+  let armed = INITIAL_REVEAL.armee;
   let zone: ZoneGauche = "loin";
-  let minuterie: ReturnType<typeof setTimeout> | undefined;
-  const barreVisible = $derived(!compact || revelee);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const barVisible = $derived(!compact || revealed);
 
-  function surZoneSouris(z: ZoneGauche) {
+  function onMouseZone(z: ZoneGauche) {
     zone = z;
     if (!compact) return;
-    const r = surZone({ revelee, armee }, z);
-    armee = r.armee;
-    revelee = r.revelee;
-    if (r.masquer) planifierMasquage();
-    else clearTimeout(minuterie);
+    const r = surZone({ revelee: revealed, armee: armed }, z);
+    armed = r.armee;
+    revealed = r.revelee;
+    if (r.masquer) scheduleHide();
+    else clearTimeout(timer);
   }
-  function planifierMasquage() {
-    clearTimeout(minuterie);
+  function scheduleHide() {
+    clearTimeout(timer);
     // The access bubble is mounted outside the sidebar: while it is open, the sidebar stays.
-    if (!revelee || acces.bullesOuvertes > 0) return;
-    minuterie = setTimeout(() => {
-      if (zone !== "loin" || acces.bullesOuvertes > 0) return;
+    if (!revealed || access.bullesOuvertes > 0) return;
+    timer = setTimeout(() => {
+      if (zone !== "loin" || access.bullesOuvertes > 0) return;
       const r = masquer(zone);
-      revelee = r.revelee;
-      armee = r.armee;
-    }, MASQUAGE_MS);
+      revealed = r.revelee;
+      armed = r.armee;
+    }, HIDING_MS);
   }
   // Once the bubble closes, hiding resumes if the mouse is already away from the sidebar.
   $effect(() => {
-    if (acces.bullesOuvertes === 0) untrack(() => zone === "loin" && planifierMasquage());
+    if (access.bullesOuvertes === 0) untrack(() => zone === "loin" && scheduleHide());
   });
-  $effect(() => api.surZoneGauche(surZoneSouris));
+  $effect(() => api.surZoneGauche(onMouseZone));
   $effect(() => win.setSidebarColumn(!compact));
-  $effect(() => win.setSidebarVisible(barreVisible));
+  $effect(() => win.setSidebarVisible(barVisible));
   $effect(() => {
     if (!compact) {
-      clearTimeout(minuterie);
-      revelee = false;
+      clearTimeout(timer);
+      revealed = false;
     }
   });
 </script>
 
 <!-- A tab switch to the parking tab blurs the field the empty page had just focused; the controller then focuses this
      iframe again (TabSwitchDone), and the empty page takes the keyboard back. -->
-<svelte:window onfocus={() => document.activeElement === document.body && focusPageVide.n++} />
+<svelte:window onfocus={() => document.activeElement === document.body && focusEmptyPage.n++} />
 
-<div class="fenetre" inert={!!demandeAgent || !!reglagesEspace.brouillon || !!commande.ouverte} class:compact class:couverte={overlay}>
-  <div class="colonne" class:repliee={!barreVisible} inert={!barreVisible}>
-    {#if fenetre}
+<div class="fenetre" inert={!!agentRequest || !!spaceSettings.brouillon || !!command.ouverte} class:compact class:couverte={overlay}>
+  <div class="colonne" class:repliee={!barVisible} inert={!barVisible}>
+    {#if winState}
       <!-- ✦ on a builder tab: the controller opens the panel and sends "agent", handled above. -->
-      <BarreLaterale {fenetre} {basculerPanneau} agentDuConstructeur={() => win.openAgent()} />
+      <Sidebar fenetre={winState} basculerPanneau={togglePanel} agentDuConstructeur={() => win.openAgent()} />
     {:else}
       <aside data-testid="barre-laterale"></aside>
     {/if}
   </div>
-  <main class="contenu" class:opaque={!pageWeb || !!panneau} data-testid="zone-contenu">
-    {#if fenetre && panneau === "historique"}
-      <Historique {fenetre} fermer={fermerPanneau} />
-    {:else if panneau === "telechargements"}
-      <Telechargements fermer={fermerPanneau} />
-    {:else if fenetre && !ongletActif}
-      <PageVide {fenetre} />
-    {:else if ongletActif && (ongletActif.plante || ongletActif.erreur)}
-      <PageError onglet={ongletActif} />
-    {:else if ongletActif?.url === URL_EXTENSIONS}
+  <main class="contenu" class:opaque={!pageWeb || !!panel} data-testid="zone-contenu">
+    {#if winState && panel === "historique"}
+      <History fenetre={winState} fermer={closePanel} />
+    {:else if panel === "telechargements"}
+      <Downloads fermer={closePanel} />
+    {:else if winState && !activeTab}
+      <EmptyPage fenetre={winState} />
+    {:else if activeTab && (activeTab.plante || activeTab.erreur)}
+      <PageError onglet={activeTab} />
+    {:else if activeTab?.url === URL_EXTENSIONS}
       <Extensions />
-    {:else if ongletActif?.url === URL_APPLICATIONS}
+    {:else if activeTab?.url === URL_APPLICATIONS}
       <Applications />
-    {:else if ongletActif?.url === URL_ACTIONS}
-      {#if actionEnPrive}
+    {:else if activeTab?.url === URL_ACTIONS}
+      {#if privateAction}
         <p class="plante" data-testid="action-espace-prive">{ACTIONS_IN_PRIVATE_SPACE}</p>
       {:else}
         <Actions />
       {/if}
-    {:else if cibleConstructeur}
-      {#if cibleConstructeur.type === "action" && actionEnPrive}
+    {:else if builderTarget}
+      {#if builderTarget.type === "action" && privateAction}
         <p class="plante" data-testid="action-espace-prive">{ACTIONS_IN_PRIVATE_SPACE}</p>
       {:else}
-        {#key `${cibleConstructeur.type}:${cibleConstructeur.id}`}<WorkflowBuilder cible={cibleConstructeur} />{/key}
+        {#key `${builderTarget.type}:${builderTarget.id}`}<WorkflowBuilder cible={builderTarget} />{/key}
       {/if}
     {:else if pageAction}
-      {#if actionEnPrive}
+      {#if privateAction}
         <p class="plante" data-testid="action-espace-prive">{ACTIONS_IN_PRIVATE_SPACE}</p>
       {:else}
         {#key `${pageAction.id}/${pageAction.execution}`}<PageAction id={pageAction.id} execution={pageAction.execution} />{/key}
       {/if}
-    {:else if projetRelecture}
-      {#key `${ongletActif?.id}:${projetRelecture}`}<Relecture projet={projetRelecture} ongletId={ongletActif?.id ?? ""} />{/key}
-    {:else if ongletActif && !pageWeb}
+    {:else if reviewProject}
+      {#key `${activeTab?.id}:${reviewProject}`}<Review projet={reviewProject} ongletId={activeTab?.id ?? ""} />{/key}
+    {:else if activeTab && !pageWeb}
       <InternalPage />
     {/if}
   </main>
 </div>
-<MenuContextuel />
+<ContextMenu />
 <!-- No page capture under the modals in step 2: the web page shows through the veil. An agent's question comes before
      the space settings, which come back with their draft. -->
-{#if demandeAgent}
-  <ModaleDemande demande={demandeAgent} ongletId={null} />
-{:else if reglagesEspace.brouillon && fenetre}
-  <ModaleEspace fenetreId={fenetre.id} ongletId={null} />
+{#if agentRequest}
+  <RequestModal demande={agentRequest} ongletId={null} />
+{:else if spaceSettings.brouillon && winState}
+  <SpaceModal fenetreId={winState.id} ongletId={null} />
 {/if}
 {#if tabPanel}
-  <FondFige ongletId={ongletActif?.id ?? null} surPret={() => (tabPanelReady = true)} />
-  {#if tabPanelReady}<PanneauOnglets panneau={tabPanel} />{/if}
+  <FrozenBackground ongletId={activeTab?.id ?? null} surPret={() => (tabPanelReady = true)} />
+  {#if tabPanelReady}<TabsPanel panneau={tabPanel} />{/if}
 {/if}
-{#if commande.ouverte && fenetre}
+{#if command.ouverte && winState}
   <div class="couche-commande">
-    <FondFige ongletId={ongletActif?.id ?? null} surPret={() => {}} />
-    <BarreCommande {fenetre} {ongletActif} cede={!!tabPanel} fermerPanneau={() => (panneau = null)} />
+    <FrozenBackground ongletId={activeTab?.id ?? null} surPret={() => {}} />
+    <CommandBar fenetre={winState} ongletActif={activeTab} cede={!!tabPanel} fermerPanneau={() => (panel = null)} />
   </div>
 {/if}
 

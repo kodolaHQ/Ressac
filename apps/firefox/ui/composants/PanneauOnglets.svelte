@@ -1,15 +1,15 @@
 <script lang="ts">
   import type { TabsPanel } from "../../shared/api";
   import { api } from "../etat.svelte";
-  import IconeSite from "./IconeSite.svelte";
+  import SiteIcon from "./IconeSite.svelte";
 
   /**
    * ⌃Tab panel: recent tabs as preview cards, the selection outlined. The main process holds the traversal (order,
    * selection, ⌃ release); the panel only displays it and sends back mouse, Escape and ⌃ release.
    */
-  let { panneau }: { panneau: TabsPanel } = $props();
+  let { panneau: panel }: { panneau: TabsPanel } = $props();
 
-  const envoyer = api.parcoursOnglets;
+  const send = api.parcoursOnglets;
 
   /**
    * The mouse only picks a card after a real movement: a panel that appears (or changes cards) under a still mouse
@@ -29,13 +29,13 @@
   onpointermovecapture={noterPlace}
   onkeyup={(e) => {
     // Redundant with the interface's `before-input-event` (no effect outside a traversal): the panel never stays stuck.
-    if (e.key === "Control") envoyer({ type: "valider" });
+    if (e.key === "Control") send({ type: "valider" });
   }}
   onkeydowncapture={(e) => {
     if (e.key === "Escape") {
       e.preventDefault();
       e.stopImmediatePropagation();
-      envoyer({ type: "annuler" });
+      send({ type: "annuler" });
     }
     // ⌃Tab and ⌃⇧Tab: the menu accelerator already advances the traversal, interface focus included. Nothing to send here
     // (it would be a double step), and above all no preventDefault: a key consumed by the page no longer reaches the menu.
@@ -43,26 +43,26 @@
 />
 
 <div class="panneau" data-testid="panneau-onglets" role="listbox" aria-label="Onglets récents">
-  {#each panneau.cartes as carte, i (carte.id)}
+  {#each panel.cartes as carte, i (carte.id)}
     <div
       class="carte"
       data-testid="carte-onglet"
       role="option"
       tabindex="-1"
-      aria-selected={i === panneau.selection}
+      aria-selected={i === panel.selection}
       title={carte.titre}
-      onpointermove={() => bouge && i !== panneau.selection && envoyer({ type: "survoler", id: carte.id })}
-      onclick={() => envoyer({ type: "choisir", id: carte.id })}
+      onpointermove={() => bouge && i !== panel.selection && send({ type: "survoler", id: carte.id })}
+      onclick={() => send({ type: "choisir", id: carte.id })}
     >
       <div class="apercu">
         {#if carte.apercu}
           <img src={carte.apercu} alt="" />
         {:else}
-          <div class="secours"><IconeSite favicon={carte.favicon} titre={carte.titre} taille={40} /></div>
+          <div class="secours"><SiteIcon favicon={carte.favicon} titre={carte.titre} taille={40} /></div>
         {/if}
       </div>
       <div class="legende">
-        <IconeSite favicon={carte.favicon} titre={carte.titre} />
+        <SiteIcon favicon={carte.favicon} titre={carte.titre} />
         <span class="titre">{carte.titre}</span>
       </div>
     </div>

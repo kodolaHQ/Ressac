@@ -1,42 +1,42 @@
 <script lang="ts">
-  import BarreExtensions from "../ExtensionsStrip.svelte";
-  import BoutonDesign from "./BoutonDesign.svelte";
-  import PastilleAcces from "./PastilleAcces.svelte";
-  import Icone from "./Icone.svelte";
+  import ExtensionsBar from "../ExtensionsStrip.svelte";
+  import DesignButton from "./BoutonDesign.svelte";
+  import AccessBadge from "./PastilleAcces.svelte";
+  import Icon from "./Icone.svelte";
   import type { WindowState, Visite } from "../../shared/modele";
-  import { accesDe, api, etat } from "../etat.svelte";
+  import { accessOf, api, appState } from "../etat.svelte";
 
-  let { fenetre }: { fenetre: WindowState } = $props();
-  const onglet = $derived.by(() => {
-    const id = fenetre.actif[fenetre.espaceActif];
-    return id ? etat.valeur?.onglets[id] : undefined;
+  let { fenetre: win }: { fenetre: WindowState } = $props();
+  const tab = $derived.by(() => {
+    const id = win.actif[win.espaceActif];
+    return id ? appState.valeur?.onglets[id] : undefined;
   });
-  const droitsAgent = $derived(onglet ? accesDe(onglet.id) : undefined);
-  let saisie = $state<string | null>(null); // non-null during editing
+  const droitsAgent = $derived(tab ? accessOf(tab.id) : undefined);
+  let input = $state<string | null>(null); // non-null during editing
   let champ: HTMLInputElement;
   let suggestions = $state<Visite[]>([]);
-  let choisie = $state(-1);
-  let requete = 0;
+  let chosen = $state(-1);
+  let request = 0;
 
-  async function suggerer(texte: string) {
-    const n = ++requete;
-    const r = texte.trim() ? await api.historique.rechercher(texte.trim(), 6, true) : [];
-    if (n === requete && saisie !== null) {
+  async function suggest(text: string) {
+    const n = ++request;
+    const r = text.trim() ? await api.historique.rechercher(text.trim(), 6, true) : [];
+    if (n === request && input !== null) {
       suggestions = r;
-      choisie = -1;
+      chosen = -1;
     }
   }
 
-  function fermerSuggestions() {
-    requete++;
+  function closeSuggestions() {
+    request++;
     suggestions = [];
-    choisie = -1;
+    chosen = -1;
   }
 
-  function aller(texte: string) {
-    api.naviguer(onglet?.id ?? null, texte);
-    saisie = null;
-    fermerSuggestions();
+  function aller(text: string) {
+    api.naviguer(tab?.id ?? null, text);
+    input = null;
+    closeSuggestions();
     champ.blur();
   }
 
@@ -44,14 +44,14 @@
     if (e.key === "Escape") champ.blur();
     else if (e.key === "ArrowDown" && suggestions.length) {
       e.preventDefault();
-      choisie = (choisie + 1) % suggestions.length;
+      chosen = (chosen + 1) % suggestions.length;
     } else if (e.key === "ArrowUp" && suggestions.length) {
       e.preventDefault();
-      choisie = choisie <= 0 ? suggestions.length - 1 : choisie - 1;
+      chosen = chosen <= 0 ? suggestions.length - 1 : chosen - 1;
     }
   }
 
-  function hote(url: string): string {
+  function hostName(url: string): string {
     try {
       const u = new URL(url);
       return u.protocol === "http:" || u.protocol === "https:" ? u.hostname.replace(/^www\./, "") : url;
@@ -60,52 +60,52 @@
     }
   }
 
-  function valider(e: SubmitEvent) {
+  function validate(e: SubmitEvent) {
     e.preventDefault();
-    const suggestion = suggestions[choisie];
-    const texte = suggestion?.url ?? saisie?.trim();
-    if (texte) aller(texte);
+    const suggestion = suggestions[chosen];
+    const text = suggestion?.url ?? input?.trim();
+    if (text) aller(text);
     else champ.blur();
   }
 </script>
 
 <div class="navigation">
-  <button aria-label="Reculer" disabled={!onglet?.peutReculer} onclick={() => onglet && api.commande(onglet.id, "reculer")}><Icone nom="reculer" /></button>
-  <button aria-label="Avancer" disabled={!onglet?.peutAvancer} onclick={() => onglet && api.commande(onglet.id, "avancer")}><Icone nom="avancer" /></button>
-  {#if onglet?.chargement}
-    <button aria-label="Arrêter" onclick={() => api.commande(onglet.id, "arreter")}><Icone nom="fermer" /></button>
+  <button aria-label="Reculer" disabled={!tab?.peutReculer} onclick={() => tab && api.commande(tab.id, "reculer")}><Icon nom="reculer" /></button>
+  <button aria-label="Avancer" disabled={!tab?.peutAvancer} onclick={() => tab && api.commande(tab.id, "avancer")}><Icon nom="avancer" /></button>
+  {#if tab?.chargement}
+    <button aria-label="Arrêter" onclick={() => api.commande(tab.id, "arreter")}><Icon nom="fermer" /></button>
   {:else}
-    <button aria-label="Recharger" disabled={!onglet} onclick={() => onglet && api.commande(onglet.id, "recharger")}><Icone nom="recharger" /></button>
+    <button aria-label="Recharger" disabled={!tab} onclick={() => tab && api.commande(tab.id, "recharger")}><Icon nom="recharger" /></button>
   {/if}
   <button
     class="compact"
-    aria-label={fenetre.compact ? "Quitter le mode compact" : "Mode compact"}
-    title={fenetre.compact ? "Quitter le mode compact (⌘⇧S)" : "Mode compact (⌘⇧S)"}
-    aria-pressed={fenetre.compact}
-    onclick={() => api.agir({ type: "basculerCompact", fenetreId: fenetre.id })}><Icone nom="barre" /></button>
-  <BoutonDesign />
+    aria-label={win.compact ? "Quitter le mode compact" : "Mode compact"}
+    title={win.compact ? "Quitter le mode compact (⌘⇧S)" : "Mode compact (⌘⇧S)"}
+    aria-pressed={win.compact}
+    onclick={() => api.agir({ type: "basculerCompact", fenetreId: win.id })}><Icon nom="barre" /></button>
+  <DesignButton />
 </div>
 <div class="ligne">
-<form onsubmit={valider}>
+<form onsubmit={validate}>
   <input
     bind:this={champ}
     data-testid="barre-adresse"
     class:avec-acces={droitsAgent}
-    value={saisie ?? (onglet ? hote(onglet.url) : "")}
+    value={input ?? (tab ? hostName(tab.url) : "")}
     placeholder="Rechercher ou saisir une adresse"
     spellcheck="false"
     oninput={(e) => {
-      saisie = e.currentTarget.value;
-      void suggerer(saisie);
+      input = e.currentTarget.value;
+      void suggest(input);
     }}
     onfocus={(e) => {
-      saisie = onglet?.url ?? "";
+      input = tab?.url ?? "";
       const el = e.currentTarget;
       requestAnimationFrame(() => el.select());
     }}
     onblur={() => {
-      saisie = null;
-      fermerSuggestions();
+      input = null;
+      closeSuggestions();
     }}
     onkeydown={clavier}
     role="combobox"
@@ -113,14 +113,14 @@
     aria-controls="suggestions"
     aria-autocomplete="list"
   />
-  {#if onglet && droitsAgent}<span class="acces"><PastilleAcces id={onglet.id} etat={droitsAgent} /></span>{/if}
+  {#if tab && droitsAgent}<span class="acces"><AccessBadge id={tab.id} etat={droitsAgent} /></span>{/if}
   {#if suggestions.length}
     <ul class="suggestions" id="suggestions" role="listbox">
       {#each suggestions as v, i (v.url)}
         <li
           data-testid="suggestion"
           role="option"
-          aria-selected={i === choisie}
+          aria-selected={i === chosen}
           onmousedown={(e) => {
             e.preventDefault();
             aller(v.url);
@@ -133,7 +133,7 @@
     </ul>
   {/if}
 </form>
-<BarreExtensions {fenetre} />
+<ExtensionsBar fenetre={win} />
 </div>
 
 <style>

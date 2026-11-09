@@ -1,8 +1,8 @@
 <script lang="ts">
   import LienPage from "../LienPage.svelte";
-  import type { ContextePage, LienPage as Lien } from "../types";
+  import type { PageContext, LienPage as Lien } from "../types";
 
-  let { p, ctx }: { p: { lien: Lien }; ctx: ContextePage } = $props();
+  let { p, ctx }: { p: { lien: Lien }; ctx: PageContext } = $props();
 </script>
 
 <div data-testid="bloc-lien"><LienPage lien={p.lien} {ctx} /></div>

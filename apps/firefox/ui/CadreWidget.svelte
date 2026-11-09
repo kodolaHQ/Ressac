@@ -9,9 +9,9 @@
    */
   let {
     widget,
-    donnees,
+    donnees: data,
     taille,
-    etat,
+    etat: appState,
   }: {
     widget: { id: string; nom: string; src: string | null };
     donnees: unknown;
@@ -20,39 +20,39 @@
   } = $props();
 
   let iframe = $state<HTMLIFrameElement>();
-  let largeur = $state(0);
+  let width = $state(0);
   let hauteur = $state(0);
 
-  function envoyer() {
+  function send() {
     brancherGeste();
     // The frame has an opaque origin (sandbox without allow-same-origin): « * » is the only possible target.
     iframe?.contentWindow?.postMessage(
       {
         type: "widget",
-        donnees: $state.snapshot(donnees),
+        donnees: $state.snapshot(data),
         taille: { l: taille.l, h: taille.h },
-        px: { largeur, hauteur },
-        etat: { statut: etat.statut, derniereMaj: etat.derniereMaj },
+        px: { largeur: width, hauteur },
+        etat: { statut: appState.statut, derniereMaj: appState.derniereMaj },
       },
       "*",
     );
   }
   // On each change of data, state or size (loading goes through DOMFrameContentLoaded).
   $effect(() => {
-    void [donnees, etat.statut, etat.derniereMaj, taille.l, taille.h, largeur, hauteur];
-    envoyer();
+    void [data, appState.statut, appState.derniereMaj, taille.l, taille.h, width, hauteur];
+    send();
   });
 
   // The widget only takes the keyboard under the pointer (a click by the user): a focus() from its code is handed back
   // to the interface element that had it.
-  let avant = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
+  let before = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
   function surFocusin(e: FocusEvent) {
-    if (e.target instanceof HTMLElement && e.target !== iframe) avant = e.target;
+    if (e.target instanceof HTMLElement && e.target !== iframe) before = e.target;
   }
   function surBlur() {
     setTimeout(() => {
       if (!iframe || !document.hasFocus() || document.activeElement !== iframe || iframe.matches(":hover")) return;
-      if (avant?.isConnected) avant.focus();
+      if (before?.isConnected) before.focus();
       else iframe.blur();
     });
   }
@@ -71,7 +71,7 @@
   // The guard is a script at the top of the served copy; it removes WebRTC last, so while RTCPeerConnection is still
   // there it could not fully install: no press is recorded then (fail closed). This listener is set by the chrome,
   // which the widget can neither remove nor imitate (isTrusted).
-  let fenetreGeste: Window | null = null;
+  let gestureWindow: Window | null = null;
   function geste(e: PointerEvent) {
     if (e.isTrusted) api.accueil.geste(widget.id);
   }
@@ -81,9 +81,9 @@
     api.accueil.ouvrir(String((e as CustomEvent).detail), widget.id);
   }
   function detacherGeste() {
-    fenetreGeste?.removeEventListener("pointerdown", geste, true);
-    fenetreGeste?.removeEventListener("webaios-ouvrir", lien, true);
-    fenetreGeste = null;
+    gestureWindow?.removeEventListener("pointerdown", geste, true);
+    gestureWindow?.removeEventListener("webaios-ouvrir", lien, true);
+    gestureWindow = null;
   }
   function brancherGeste() {
     detacherGeste();
@@ -92,7 +92,7 @@
     if (!cadre) return;
     // No condition on the guard: the gesture is an `isTrusted` press seen by the chrome, which the page cannot
     // forge; the guard's state does not change that. It protects data output, not this link.
-    fenetreGeste = cadre as unknown as Window;
+    gestureWindow = cadre as unknown as Window;
     cadre.addEventListener("pointerdown", geste as EventListener, true);
     cadre.addEventListener("webaios-ouvrir", lien, true);
   }
@@ -100,7 +100,7 @@
   onDestroy(detacherGeste);
 
   function surCharge() {
-    envoyer();
+    send();
     brancherGeste();
   }
   // An iframe of this chrome page never gets `load` (measured: neither the element nor its `onload`), so the data would
@@ -115,7 +115,7 @@
 
 <svelte:window onmessage={surMessage} onfocusin={surFocusin} onblur={surBlur} />
 
-<div class="contenu" bind:clientWidth={largeur} bind:clientHeight={hauteur}>
+<div class="contenu" bind:clientWidth={width} bind:clientHeight={hauteur}>
   {#if widget.src}
     <!-- Without allow-same-origin: the code written by the agent runs in an opaque origin, with no access to the interface. -->
     <iframe bind:this={iframe} src={widget.src} title={widget.nom} sandbox="allow-scripts"></iframe>

@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 declare module "*.svelte" {
   import type { Component } from "svelte";
-  const composant: Component<Record<string, unknown>>;
-  export default composant;
+  const component: Component<Record<string, unknown>>;
+  export default component;
 }
 declare module "*.css";

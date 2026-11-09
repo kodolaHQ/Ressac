@@ -2,13 +2,13 @@
   import type { ProfileForGrant } from "../shared/api";
 
   let {
-    sujet,
-    nom,
-    domaines,
-    publiques,
-    profilsPourAccord,
+    sujet: subject,
+    nom: name,
+    domaines: domains,
+    publiques: publics,
+    profilsPourAccord: profilesForGrant,
     autoriser,
-    fermer,
+    fermer: close,
   }: {
     /** What asks for the grant: a home widget or an action. */
     sujet: "widget" | "action";
@@ -17,49 +17,49 @@
     publiques: string[];
     /** The profiles offered (never a private space's), read by the subject's service. */
     profilsPourAccord: () => Promise<ProfileForGrant[]>;
-    autoriser: (profil: string) => void;
+    autoriser: (profile: string) => void;
     fermer: () => void;
   } = $props();
 
-  let profils = $state<ProfileForGrant[] | null>(null);
-  let erreur = $state<string | null>(null);
-  let choisi = $state<string | null>(null);
+  let profiles = $state<ProfileForGrant[] | null>(null);
+  let error = $state<string | null>(null);
+  let chosen = $state<string | null>(null);
 
   $effect(() => {
-    profilsPourAccord().then(
+    profilesForGrant().then(
       (ps) => {
-        profils = ps;
-        choisi = (ps.find((p) => p.parDefaut) ?? ps[0])?.id ?? null;
+        profiles = ps;
+        chosen = (ps.find((p) => p.parDefaut) ?? ps[0])?.id ?? null;
       },
-      (e: unknown) => (erreur = e instanceof Error ? e.message : String(e)),
+      (e: unknown) => (error = e instanceof Error ? e.message : String(e)),
     );
   });
 </script>
 
 <div class="voile">
   <div class="carte" role="dialog" aria-modal="true" aria-labelledby="titre-accord" data-testid="carte-accord">
-    <h2 id="titre-accord">{#if sujet === "action"}Autoriser l'action « {nom} » à lire avec ton compte{:else}Autoriser « {nom} » à lire avec ton compte{/if}</h2>
-    <p data-testid="accord-compte">{sujet === "action" ? "Cette action" : "Ce widget"} veut lire {domaines.join(", ")} avec ton compte, connecté avec le profil choisi.</p>
+    <h2 id="titre-accord">{#if subject === "action"}Autoriser l'action « {name} » à lire avec ton compte{:else}Autoriser « {name} » à lire avec ton compte{/if}</h2>
+    <p data-testid="accord-compte">{subject === "action" ? "Cette action" : "Ce widget"} veut lire {domains.join(", ")} avec ton compte, connecté avec le profil choisi.</p>
     <p data-testid="accord-publiques">
-      {#if publiques.length}Et pourra contacter : {publiques.join(", ")}.{:else}Et ne contactera aucun autre site.{/if}
+      {#if publics.length}Et pourra contacter : {publics.join(", ")}.{:else}Et ne contactera aucun autre site.{/if}
     </p>
     <p>Les profils des espaces privés ne sont jamais proposés.</p>
-    {#if erreur}
-      <p class="erreur">Profils illisibles : {erreur}</p>
-    {:else if profils === null}
+    {#if error}
+      <p class="erreur">Profils illisibles : {error}</p>
+    {:else if profiles === null}
       <p>Chargement des profils…</p>
-    {:else if profils.length === 0}
+    {:else if profiles.length === 0}
       <p>Aucun profil utilisable.</p>
     {:else}
       <div class="profils" role="radiogroup">
-        {#each profils as p (p.id)}
-          <label><input type="radio" name="profil-accord" value={p.id} bind:group={choisi} /> {p.libelle}</label>
+        {#each profiles as p (p.id)}
+          <label><input type="radio" name="profil-accord" value={p.id} bind:group={chosen} /> {p.libelle}</label>
         {/each}
       </div>
     {/if}
     <div class="boutons">
-      <button onclick={fermer}>Annuler</button>
-      <button class="principal" disabled={!choisi} onclick={() => choisi && autoriser(choisi)}>Autoriser</button>
+      <button onclick={close}>Annuler</button>
+      <button class="principal" disabled={!chosen} onclick={() => chosen && autoriser(chosen)}>Autoriser</button>
     </div>
   </div>
 </div>

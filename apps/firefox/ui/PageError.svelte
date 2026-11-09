@@ -3,19 +3,19 @@
   import type { Tab } from "../shared/modele";
   import { api } from "../ui/etat.svelte";
 
-  let { onglet }: { onglet: Tab } = $props();
+  let { onglet: tab }: { onglet: Tab } = $props();
 </script>
 
-{#if onglet.erreur}
+{#if tab.erreur}
   <div class="plante">
     <p>Impossible d'ouvrir cette page.</p>
-    <p class="detail">{onglet.url} — {onglet.erreur}</p>
-    <button onclick={() => api.naviguer(onglet.id, onglet.url)}>Recharger</button>
+    <p class="detail">{tab.url} — {tab.erreur}</p>
+    <button onclick={() => api.naviguer(tab.id, tab.url)}>Recharger</button>
   </div>
-{:else if onglet.plante}
+{:else if tab.plante}
   <div class="plante">
     <p>Cette page a planté.</p>
-    <button onclick={() => api.commande(onglet.id, "recharger")}>Recharger</button>
+    <button onclick={() => api.commande(tab.id, "recharger")}>Recharger</button>
   </div>
 {/if}
 

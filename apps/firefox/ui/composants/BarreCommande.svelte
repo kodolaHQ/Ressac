@@ -1,37 +1,37 @@
 <script lang="ts">
   import { tick, untrack } from "svelte";
   import type { WindowState, Tab } from "../../shared/modele";
-  import { api, etat } from "../etat.svelte";
-  import { fermerCommande, commande, focusPageVide } from "./commande.svelte";
+  import { api, appState } from "../etat.svelte";
+  import { closeCommand, command, focusEmptyPage } from "./commande.svelte";
   import {
-    LIMITES,
-    PARAMETRE_MAX,
-    appliSourceDeProjet,
-    appliSourceDeSite,
-    demandeParametre,
-    lignesCommande,
-    parametreParDefaut,
-    titreAvant,
-    type AppliSource,
-    type LigneCommande,
-    type OngletSource,
-    type SourcesCommande,
+    LIMITS,
+    PARAM_MAX,
+    projectSiteApp,
+    siteSiteApp,
+    paramRequest,
+    commandLines,
+    defaultParam,
+    titleBefore,
+    type SiteApp,
+    type CommandLine,
+    type SourceTab,
+    type CommandSources,
   } from "./commande";
   import { walkableTabs } from "../../shared/onglets-parcourables";
   import type { ActionShown } from "../../shared/actions";
   import type { Visite } from "../../shared/modele";
-  import IconeSite from "./IconeSite.svelte";
-  import Icone, { type NomIcone } from "./Icone.svelte";
+  import SiteIcon from "./IconeSite.svelte";
+  import Icon, { type IconName } from "./Icone.svelte";
 
   /**
    * Command bar (⌘T, ⌘L): a box above the frozen, blurred page (FondFige, mounted by App). The field is mounted right
    * away: the keystroke following the shortcut does not wait for the capture.
    */
   let {
-    fenetre,
-    ongletActif,
+    fenetre: win,
+    ongletActif: activeTab,
     cede,
-    fermerPanneau,
+    fermerPanneau: closePanel,
   }: {
     fenetre: WindowState;
     ongletActif: Tab | undefined;
@@ -42,19 +42,19 @@
   } = $props();
 
   // Actions are not available in a private space (a missing space counts as private), like on the empty page.
-  const enPrive = $derived(etat.valeur?.espaces.find((e) => e.id === fenetre.espaceActif)?.prive ?? true);
+  const inPrivate = $derived(appState.valeur?.espaces.find((e) => e.id === win.espaceActif)?.prive ?? true);
   let actions = $state.raw<ActionShown[]>([]);
-  let projets = $state.raw<AppliSource[]>([]);
-  let sites = $state.raw<AppliSource[]>([]);
-  let historique = $state.raw<Visite[]>([]);
+  let projects = $state.raw<SiteApp[]>([]);
+  let sites = $state.raw<SiteApp[]>([]);
+  let hist = $state.raw<Visite[]>([]);
 
   /** Re-reads a source at startup and on each of its changes; only the last reply counts. */
-  function suivre<T>(lire: () => Promise<T>, poser: (v: T) => void, surChange: (rappel: () => void) => () => void): () => void {
-    let derniere = 0;
+  function follow<T>(lire: () => Promise<T>, poser: (v: T) => void, surChange: (rappel: () => void) => () => void): () => void {
+    let last = 0;
     const charger = () => {
-      const n = ++derniere;
+      const n = ++last;
       lire().then(
-        (v) => n === derniere && poser(v),
+        (v) => n === last && poser(v),
         () => {},
       );
     };
@@ -63,74 +63,74 @@
   }
 
   $effect(() => {
-    if (enPrive) {
+    if (inPrivate) {
       actions = [];
       return;
     }
-    return suivre(() => api.actions.liste(), (l) => (actions = l), (r) => api.actions.surChange(r));
+    return follow(() => api.actions.liste(), (l) => (actions = l), (r) => api.actions.surChange(r));
   });
-  $effect(() => suivre(() => api.applications.liste(), (l) => (projets = l.applications.map(appliSourceDeProjet).filter((a) => a !== null)), (r) => api.applications.surChange(r)));
-  $effect(() => suivre(() => api.sites.liste(), (l) => (sites = l.map(appliSourceDeSite)), (r) => api.sites.surChange(r)));
+  $effect(() => follow(() => api.applications.liste(), (l) => (projects = l.applications.map(projectSiteApp).filter((a) => a !== null)), (r) => api.applications.surChange(r)));
+  $effect(() => follow(() => api.sites.liste(), (l) => (sites = l.map(siteSiteApp)), (r) => api.sites.surChange(r)));
 
   // The tabs the active space shows: same scope as ⌃Tab.
-  const onglets = $derived.by<OngletSource[]>(() => {
-    const e = etat.valeur;
+  const tabs = $derived.by<SourceTab[]>(() => {
+    const e = appState.valeur;
     if (!e) return [];
-    return walkableTabs(e, fenetre.id).flatMap((id) => {
+    return walkableTabs(e, win.id).flatMap((id) => {
       const o = e.onglets[id];
       return o ? [{ id: o.id, titre: o.titre, url: o.url, favicon: o.favicon }] : [];
     });
   });
 
-  const sources: SourcesCommande = $derived({ actions, onglets, applis: [...projets, ...sites], historique });
+  const sources: CommandSources = $derived({ actions, onglets: tabs, applis: [...projects, ...sites], historique: hist });
 
-  let texte = $state("");
-  let refus = $state("");
-  let requete = 0;
+  let text = $state("");
+  let denial = $state("");
+  let request = 0;
 
   // History is requested again on each keystroke; a reply that arrives after a more recent keystroke is ignored.
   $effect(() => {
-    const t = texte.trim();
-    const n = ++requete;
+    const t = text.trim();
+    const n = ++request;
     if (!t) {
-      historique = [];
+      hist = [];
       return;
     }
-    api.historique.rechercher(t, LIMITES.historique, true).then(
-      (v) => n === requete && (historique = v),
-      () => n === requete && (historique = []),
+    api.historique.rechercher(t, LIMITS.historique, true).then(
+      (v) => n === request && (hist = v),
+      () => n === request && (hist = []),
     );
   });
 
-  let choisieBrute = $state(0);
+  let rawChosen = $state(0);
   let champ: HTMLInputElement | undefined = $state();
 
   /** A chosen action awaiting its input: the bar asks for it in a second field, the list hides. */
-  let parametre = $state<{ id: string; nom: string; libelle: string } | null>(null);
-  let valeurParametre = $state("");
-  let champParametre: HTMLInputElement | undefined = $state();
+  let param = $state<{ id: string; nom: string; libelle: string } | null>(null);
+  let paramValue = $state("");
+  let paramField: HTMLInputElement | undefined = $state();
 
-  const mode = $derived(commande.ouverte?.mode ?? "nouveau");
-  const lignes: LigneCommande[] = $derived(lignesCommande(texte, sources, mode === "actif" ? (ongletActif?.url ?? null) : null, ongletActif?.id ?? null));
+  const mode = $derived(command.ouverte?.mode ?? "nouveau");
+  const lignes: CommandLine[] = $derived(commandLines(text, sources, mode === "actif" ? (activeTab?.url ?? null) : null, activeTab?.id ?? null));
   // A late source may shorten the list: the selection stays on a row that exists (the first otherwise).
-  const choisie = $derived(choisieBrute >= 0 && choisieBrute < lignes.length ? choisieBrute : 0);
-  const choisir = (i: number) => (choisieBrute = i);
+  const chosen = $derived(rawChosen >= 0 && rawChosen < lignes.length ? rawChosen : 0);
+  const choose = (i: number) => (rawChosen = i);
 
   // An action launched: a second Enter does not relaunch it, and its reply arriving after a close or another
   // opening (each is a new object) is ignored.
   let actionEnCours = false;
   /** Changes on each launch and each list ↔ input switch: the reply of an abandoned launch is ignored. */
-  let lancement = 0;
+  let launch = 0;
 
   // On each opening (the first, or a reopening in the other mode): starting input, all selected in « actif » mode.
   $effect(() => {
-    const o = commande.ouverte;
+    const o = command.ouverte;
     if (!o) return;
     actionEnCours = false;
-    parametre = null;
-    texte = o.texte;
-    choisieBrute = 0;
-    refus = "";
+    param = null;
+    text = o.texte;
+    rawChosen = 0;
+    denial = "";
     void tick().then(() => {
       champ?.focus();
       if (o.mode === "actif") champ?.select();
@@ -138,98 +138,98 @@
   });
 
   /** The only function that acts: a chosen row (Enter or click). */
-  function executer(l: LigneCommande) {
-    const cible = mode === "actif" ? (ongletActif?.id ?? null) : null;
+  function executer(l: CommandLine) {
+    const target = mode === "actif" ? (activeTab?.id ?? null) : null;
     if (l.type === "defaut" && l.texte === "") {
       // Home: no effect if it is already shown; an interface panel laid over it closes.
-      api.agir({ type: "afficherPageVide", fenetreId: fenetre.id });
-      fermerPanneau();
-      fermerCommande();
+      api.agir({ type: "afficherPageVide", fenetreId: win.id });
+      closePanel();
+      closeCommand();
       // Already on home, it is not remounted: its field takes the keyboard back (and takes it when mounting otherwise).
-      focusPageVide.n++;
+      focusEmptyPage.n++;
       return;
     }
     if (l.type === "action") {
-      if (demandeParametre(l)) entrerParametre(l);
+      if (paramRequest(l)) enterParam(l);
       else lancerAction(l.id, l.saisie);
       return;
     }
-    if (l.type === "defaut") api.naviguer(cible, l.texte);
-    else if (l.type === "historique") api.naviguer(cible, l.url);
+    if (l.type === "defaut") api.naviguer(target, l.texte);
+    else if (l.type === "historique") api.naviguer(target, l.url);
     else if (l.type === "onglet") {
       // Like the sidebar and ⌃Tab: an essential opens through its favorite (its tab may belong to a sibling space).
-      const lien = etat.valeur?.onglets[l.onglet.id]?.lien;
-      api.agir(lien?.type === "essentiel" ? { type: "ouvrirFavori", fenetreId: fenetre.id, genre: "essentiel", id: lien.id } : { type: "activerOnglet", id: l.onglet.id });
+      const lien = appState.valeur?.onglets[l.onglet.id]?.lien;
+      api.agir(lien?.type === "essentiel" ? { type: "ouvrirFavori", fenetreId: win.id, genre: "essentiel", id: lien.id } : { type: "activerOnglet", id: l.onglet.id });
     } else if (l.appli.genre === "projet") api.applications.agir(l.appli.id, l.appli.action);
     else api.sites.agir(l.appli.id, "ouvrir");
-    fermerCommande(true);
+    closeCommand(true);
   }
 
   /** Opens the action's page and launches it with `saisie` (without a required input and absent: the page asks for it). */
-  function lancerAction(id: string, saisie: string | null) {
+  function lancerAction(id: string, input: string | null) {
     if (actionEnCours) return;
-    const o = commande.ouverte;
-    const n = ++lancement;
+    const o = command.ouverte;
+    const n = ++launch;
     actionEnCours = true;
-    refus = "";
-    void api.actions.ouvrir(id, saisie).then(
+    denial = "";
+    void api.actions.ouvrir(id, input).then(
       (r) => {
-        if (o !== commande.ouverte || n !== lancement) return;
+        if (o !== command.ouverte || n !== launch) return;
         actionEnCours = false;
-        if (r.ok) fermerCommande();
-        else refus = r.erreur;
+        if (r.ok) closeCommand();
+        else denial = r.erreur;
       },
       () => {
-        if (o !== commande.ouverte || n !== lancement) return;
+        if (o !== command.ouverte || n !== launch) return;
         actionEnCours = false;
-        refus = "Le service des actions ne répond pas";
+        denial = "Le service des actions ne répond pas";
       },
     );
   }
 
   /** Switches to the action's input, prefilled with the shown page's address, all selected. */
-  function entrerParametre(l: Extract<LigneCommande, { type: "action" }> & { parametre: string }) {
-    lancement++;
+  function enterParam(l: Extract<CommandLine, { type: "action" }> & { parametre: string }) {
+    launch++;
     actionEnCours = false;
-    parametre = { id: l.id, nom: l.nom, libelle: l.parametre };
-    valeurParametre = defautParametre;
-    refus = "";
+    param = { id: l.id, nom: l.nom, libelle: l.parametre };
+    paramValue = paramDefault;
+    denial = "";
     void tick().then(() => {
-      champParametre?.focus();
-      champParametre?.select();
+      paramField?.focus();
+      paramField?.select();
     });
   }
 
   // The shown page navigates during input: the proposed address follows, as long as the user has not edited it.
-  const defautParametre = $derived(parametreParDefaut(ongletActif?.url));
-  let prerempli = "";
+  const paramDefault = $derived(defaultParam(activeTab?.url));
+  let prefilled = "";
   $effect(() => {
-    const d = defautParametre;
+    const d = paramDefault;
     untrack(() => {
-      if (parametre && valeurParametre === prerempli && d !== prerempli) {
-        valeurParametre = d;
-        void tick().then(() => champParametre?.select());
+      if (param && paramValue === prefilled && d !== prefilled) {
+        paramValue = d;
+        void tick().then(() => paramField?.select());
       }
-      prerempli = d;
+      prefilled = d;
     });
   });
 
   /** Goes back to the list, the typed text intact. */
-  function sortirParametre() {
-    lancement++;
+  function exitParam() {
+    launch++;
     actionEnCours = false;
-    parametre = null;
-    refus = "";
+    param = null;
+    denial = "";
     void tick().then(() => champ?.focus());
   }
 
-  function toucheParametre(e: KeyboardEvent) {
-    if (e.isComposing || !parametre) return;
+  function paramKey(e: KeyboardEvent) {
+    if (e.isComposing || !param) return;
     if (e.key === "Enter") {
-      if (!e.repeat) lancerAction(parametre.id, valeurParametre.trim() || null);
-    } else if (e.key === "Backspace" && valeurParametre === "") {
+      if (!e.repeat) lancerAction(param.id, paramValue.trim() || null);
+    } else if (e.key === "Backspace" && paramValue === "") {
       // A held key clears the field without going back to the list (nor clearing the typed text afterwards).
-      if (!e.repeat) sortirParametre();
+      if (!e.repeat) exitParam();
     }
     else if (e.key !== "Tab") return;
     e.preventDefault();
@@ -241,32 +241,32 @@
    * and would otherwise act on what cannot be seen. Tab and ⇧Tab do nothing: the keyboard stays in the field, nothing
    * behind the veil can take it.
    */
-  function touche(e: KeyboardEvent) {
+  function key(e: KeyboardEvent) {
     if (e.isComposing) return;
-    if (e.key === "ArrowDown") choisir((choisie + 1) % Math.max(lignes.length, 1));
-    else if (e.key === "ArrowUp") choisir((choisie - 1 + lignes.length) % Math.max(lignes.length, 1));
+    if (e.key === "ArrowDown") choose((chosen + 1) % Math.max(lignes.length, 1));
+    else if (e.key === "ArrowUp") choose((chosen - 1 + lignes.length) % Math.max(lignes.length, 1));
     else if (e.key === "Enter") {
-      const l = lignes[choisie];
+      const l = lignes[chosen];
       if (l && !e.repeat) executer(l);
     } else if (e.key === "Tab") {
       // Tab on an action awaiting its input: it is given right away, like Enter.
-      const l = lignes[choisie];
-      if (l && demandeParametre(l) && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) entrerParametre(l);
+      const l = lignes[chosen];
+      if (l && paramRequest(l) && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) enterParam(l);
     } else return;
     e.preventDefault();
     e.stopPropagation();
   }
 
-  const libelle = (l: LigneCommande): string =>
+  const label = (l: CommandLine): string =>
     l.type === "defaut" ? l.libelle : l.type === "action" ? l.nom : l.type === "onglet" ? l.onglet.titre : l.type === "appli" ? l.appli.nom : l.titre || l.url;
   // History keeps no favicon: the site's, at the usual address (except in a private visit, nothing leaves).
   const faviconVisite = (url: string): string | null =>
-    /^https?:\/\//i.test(url) && historique.some((v) => v.url === url && !v.prive) ? `${new URL(url).origin}/favicon.ico` : null;
-  const favicon = (l: LigneCommande): string | null =>
+    /^https?:\/\//i.test(url) && hist.some((v) => v.url === url && !v.prive) ? `${new URL(url).origin}/favicon.ico` : null;
+  const favicon = (l: CommandLine): string | null =>
     l.type === "onglet" ? l.onglet.favicon : l.type === "appli" ? l.appli.favicon : l.type === "historique" ? faviconVisite(l.url) : null;
-  const etiquette = (l: LigneCommande): string =>
+  const etiquette = (l: CommandLine): string =>
     l.type === "action" ? "Action" : l.type === "onglet" ? "Onglet" : l.type === "appli" ? "Appli" : l.type === "historique" ? "Historique" : "";
-  const detail = (l: LigneCommande): string =>
+  const detail = (l: CommandLine): string =>
     l.type === "onglet"
       ? l.onglet.url
       : l.type === "historique"
@@ -276,7 +276,7 @@
             ? `« ${l.saisie} »`
             : (l.parametre ?? "")
           : "";
-  const pictogramme = (l: LigneCommande): NomIcone =>
+  const pictogram = (l: CommandLine): IconName =>
     l.type === "defaut"
       ? l.texte === ""
         ? "accueil"
@@ -294,63 +294,63 @@
 
 <!-- In capture: the bar goes before everything else (modal, history…), and Escape only closes it. -->
 <svelte:window
-  onblur={() => fermerCommande()}
+  onblur={() => closeCommand()}
   onkeydowncapture={(e) => {
     if (e.key !== "Escape" || cede) return;
     e.preventDefault();
     e.stopImmediatePropagation();
     // In an action's input, Escape first goes back to the list.
     // A held key only does that first step.
-    if (parametre) {
-      if (!e.repeat) sortirParametre();
-    } else if (!e.repeat) fermerCommande(true);
+    if (param) {
+      if (!e.repeat) exitParam();
+    } else if (!e.repeat) closeCommand(true);
   }}
 />
 
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-<div class="fond" onclick={(e) => e.target === e.currentTarget && fermerCommande(true)}>
+<div class="fond" onclick={(e) => e.target === e.currentTarget && closeCommand(true)}>
   <!-- A click in the box outside the field (margin, rows, refusal) does not take its focus; a row's click still acts. -->
   <div class="boite" data-testid="barre-commande" role="dialog" aria-label="Barre de commande" tabindex="-1" onmousedown={(e) => !(e.target instanceof HTMLInputElement) && e.preventDefault()}>
-    {#if parametre}
+    {#if param}
       <div class="ligne-parametre">
-        <span class="pastille" data-testid="pastille-commande"><Icone nom="actions" taille={13} />{parametre.nom}</span>
+        <span class="pastille" data-testid="pastille-commande"><Icon nom="actions" taille={13} />{param.nom}</span>
         <input
-          bind:this={champParametre}
-          bind:value={valeurParametre}
-          oninput={() => (refus = "")}
-          onkeydown={toucheParametre}
+          bind:this={paramField}
+          bind:value={paramValue}
+          oninput={() => (denial = "")}
+          onkeydown={paramKey}
           data-testid="parametre-commande"
-          placeholder={parametre.libelle}
-          aria-label={parametre.libelle}
-          maxlength={PARAMETRE_MAX}
+          placeholder={param.libelle}
+          aria-label={param.libelle}
+          maxlength={PARAM_MAX}
           spellcheck="false"
           autocomplete="off"
         />
       </div>
-      <p class="aide" data-testid="aide-parametre">{parametre.libelle} · Entrée pour lancer · Échap pour revenir</p>
-      {#if refus}<p class="refus" data-testid="refus-commande">{refus}</p>{/if}
+      <p class="aide" data-testid="aide-parametre">{param.libelle} · Entrée pour lancer · Échap pour revenir</p>
+      {#if denial}<p class="refus" data-testid="refus-commande">{denial}</p>{/if}
     {:else}
     <input
       bind:this={champ}
-      bind:value={texte}
-      oninput={() => (choisir(0), (refus = ""))}
-      onkeydown={touche}
+      bind:value={text}
+      oninput={() => (choose(0), (denial = ""))}
+      onkeydown={key}
       data-testid="saisie-commande"
       placeholder="Rechercher ou saisir une adresse"
       spellcheck="false"
       autocomplete="off"
     />
-    {#if refus}<p class="refus" data-testid="refus-commande">{refus}</p>{/if}
+    {#if denial}<p class="refus" data-testid="refus-commande">{denial}</p>{/if}
     <ul role="listbox">
       {#each lignes as l, i (i)}
-        {@const titre = titreAvant(lignes, i)}
+        {@const titre = titleBefore(lignes, i)}
         {#if titre}<li role="presentation" class="section" data-testid="section-commande">{titre}</li>{/if}
-        <li role="option" aria-selected={i === choisie} data-testid="ligne-commande" data-type={l.type}>
-          <button type="button" tabindex="-1" class:choisie={i === choisie} onmousemove={() => choisir(i)} onclick={() => executer(l)}>
+        <li role="option" aria-selected={i === chosen} data-testid="ligne-commande" data-type={l.type}>
+          <button type="button" tabindex="-1" class:choisie={i === chosen} onmousemove={() => choose(i)} onclick={() => executer(l)}>
             <span class="pictogramme" data-type={l.type}>
-              {#if favicon(l)}<IconeSite favicon={favicon(l)} titre={libelle(l)} />{:else}<Icone nom={pictogramme(l)} taille={14} />{/if}
+              {#if favicon(l)}<SiteIcon favicon={favicon(l)} titre={label(l)} />{:else}<Icon nom={pictogram(l)} taille={14} />{/if}
             </span>
-            <span class="libelle">{libelle(l)}</span>
+            <span class="libelle">{label(l)}</span>
             {#if detail(l)}<span class="detail">{detail(l)}</span>{/if}
             {#if etiquette(l)}<span class="etiquette">{etiquette(l)}</span>{/if}
           </button>

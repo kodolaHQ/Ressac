@@ -28,7 +28,7 @@
   }
 
   /** Opaque origin: the target can only be « * »; only this frame's document receives. */
-  const envoyer = (m: MessageToHome) => {
+  const send = (m: MessageToHome) => {
     if (ours()) cadre?.contentWindow?.postMessage(m, "*");
   };
 
@@ -40,7 +40,7 @@
       () => {},
     );
 
-  let fenetreGeste: Window | null = null;
+  let gestureWindow: Window | null = null;
   const geste = (e: Event) => e.isTrusted && ours() && controller.homeGesture();
 
   onMount(() => {
@@ -55,12 +55,12 @@
       const r = HomeMessage.safeParse(data);
       if (!r.success) return;
       const m = r.data;
-      if (m.type === "pret") void api.memoire().then(envoyer, () => {});
+      if (m.type === "pret") void api.memoire().then(send, () => {});
       else if (m.type === "ouvrir") void api.ouvrir(m.adresse).catch(() => {});
       else
         void api.image(m.url).then(
-          (data) => envoyer({ type: "image", n: m.n, data }),
-          () => envoyer({ type: "image", n: m.n, data: null }),
+          (data) => send({ type: "image", n: m.n, data }),
+          () => send({ type: "image", n: m.n, data: null }),
         );
     };
     // The window root sees the events of the window's in-process frames, the `pret` sent while the home is parsed too.
@@ -71,20 +71,20 @@
       if (!cadre || e.target !== cadre) return;
       // about:blank (the only other page guardHome lets load): back to its own page.
       if (src && !ours()) return void (cadre.src = src);
-      fenetreGeste?.removeEventListener("pointerdown", geste, true);
-      fenetreGeste = (cadre.contentDocument?.defaultView as Window | null) ?? null;
-      fenetreGeste?.addEventListener("pointerdown", geste, true);
+      gestureWindow?.removeEventListener("pointerdown", geste, true);
+      gestureWindow = (cadre.contentDocument?.defaultView as Window | null) ?? null;
+      gestureWindow?.addEventListener("pointerdown", geste, true);
     };
     document.addEventListener("DOMFrameContentLoaded", charge, true);
     controller.guardHome(cadre!);
     refresh();
-    const finEtat = api.surEtat(refresh);
-    const fin = api.surMemoire(envoyer);
+    const endState = api.surEtat(refresh);
+    const fin = api.surMemoire(send);
     return () => {
       root.removeEventListener("webaios-home", surMessage, true);
       document.removeEventListener("DOMFrameContentLoaded", charge, true);
-      fenetreGeste?.removeEventListener("pointerdown", geste, true);
-      finEtat();
+      gestureWindow?.removeEventListener("pointerdown", geste, true);
+      endState();
       fin();
     };
   });

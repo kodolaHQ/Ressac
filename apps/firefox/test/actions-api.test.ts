@@ -5,7 +5,7 @@ import type { BrowserState } from "../shared/modele";
 import { apply } from "../core/etat/actions";
 import { initialState } from "../core/etat/etat-initial";
 import { HOST_EXITED, type AgentHost } from "../chrome/agent/host";
-import { createActionsApi, espaceActifPrive } from "../ui/actions-api";
+import { createActionsApi, activeSpacePrivate } from "../ui/actions-api";
 
 const NONE = { courantes: [], enAttente: [] };
 const DEBUT = "2026-10-31T08:00:00.000Z";
@@ -78,7 +78,7 @@ describe("espaceActifPrive", () => {
     turnPrivate();
     cases.push([etat(), F]);
     cases.push([apply(etat(), { type: "creerEspace", nom: "B", icone: "🅱", prive: false, profil: "defaut", fenetreId: F }, genId), F]);
-    const got = cases.map(([s, f]) => espaceActifPrive(s, f));
+    const got = cases.map(([s, f]) => activeSpacePrivate(s, f));
     expect(got).toEqual([false, true, true, true, false]);
   });
 });
@@ -228,8 +228,8 @@ describe("createActionsApi", () => {
     set(apply(etat(), { type: "ouvrirFenetre" }, genId));
     const P = etat().fenetres[1]!.id;
     set(apply(etat(), { type: "creerEspace", nom: "Banque", icone: "🏦", prive: true, profil: "nouveau", fenetreId: P }, genId));
-    expect(espaceActifPrive(etat(), F)).toBe(false);
-    expect(espaceActifPrive(etat(), P)).toBe(true);
+    expect(activeSpacePrivate(etat(), F)).toBe(false);
+    expect(activeSpacePrivate(etat(), P)).toBe(true);
     const pub = api(F);
     const priv = api(P);
     const seenPub = vi.fn();

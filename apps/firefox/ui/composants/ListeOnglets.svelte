@@ -1,71 +1,71 @@
 <script lang="ts">
-  import Icone from "./Icone.svelte";
+  import Icon from "./Icone.svelte";
   import type { WindowState } from "../../shared/modele";
-  import { accesDe, api, etat, fermerOnglet } from "../etat.svelte";
-  import PastilleAcces from "./PastilleAcces.svelte";
-  import IconeSite from "./IconeSite.svelte";
-  import { ouvrirMenu } from "./menu.svelte";
+  import { accessOf, api, appState, closeTab } from "../etat.svelte";
+  import AccessBadge from "./PastilleAcces.svelte";
+  import SiteIcon from "./IconeSite.svelte";
+  import { openMenu } from "./menu.svelte";
 
-  let { fenetre }: { fenetre: WindowState } = $props();
-  const ordre = $derived(fenetre.ordre[fenetre.espaceActif] ?? []);
-  const actif = $derived(fenetre.actif[fenetre.espaceActif]);
+  let { fenetre: win }: { fenetre: WindowState } = $props();
+  const order = $derived(win.ordre[win.espaceActif] ?? []);
+  const active = $derived(win.actif[win.espaceActif]);
   /** Drop point: before or after the hovered tab, depending on the half under the mouse (the line shows it). */
-  let survol = $state<{ index: number; apres: boolean } | null>(null);
+  let hover = $state<{ index: number; apres: boolean } | null>(null);
 
   function deposer(e: DragEvent, index: number) {
-    const apres = survol?.index === index && survol.apres;
-    survol = null;
+    const after = hover?.index === index && hover.apres;
+    hover = null;
     const id = e.dataTransfer?.getData("application/x-webaios-onglet");
     if (!id) return;
     // deplacerOnglet counts without the moved tab: coming from above shifts the target by one.
-    const position = index + (apres ? 1 : 0);
-    api.agir({ type: "deplacerOnglet", id, index: ordre.indexOf(id) < position ? position - 1 : position });
+    const position = index + (after ? 1 : 0);
+    api.agir({ type: "deplacerOnglet", id, index: order.indexOf(id) < position ? position - 1 : position });
   }
 </script>
 
 <ul class="onglets" role="tablist" aria-orientation="vertical">
-  {#each ordre as id, index (id)}
-    {@const onglet = etat.valeur?.onglets[id]}
-    {@const droitsAgent = accesDe(id)}
-    {#if onglet}
+  {#each order as id, index (id)}
+    {@const tab = appState.valeur?.onglets[id]}
+    {@const droitsAgent = accessOf(id)}
+    {#if tab}
       <li
         data-testid="onglet-{id}"
         role="tab"
         tabindex="0"
-        aria-selected={id === actif}
-        aria-current={id === actif ? "page" : undefined}
-        class:avant={survol?.index === index && !survol.apres}
-        class:apres={survol?.index === index && survol.apres}
+        aria-selected={id === active}
+        aria-current={id === active ? "page" : undefined}
+        class:avant={hover?.index === index && !hover.apres}
+        class:apres={hover?.index === index && hover.apres}
         draggable="true"
         ondragstart={(e) => e.dataTransfer?.setData("application/x-webaios-onglet", id)}
         ondragover={(e) => {
           e.preventDefault();
           const r = e.currentTarget.getBoundingClientRect();
-          survol = { index, apres: e.clientY > r.top + r.height / 2 };
+          hover = { index, apres: e.clientY > r.top + r.height / 2 };
         }}
-        ondragleave={() => (survol = null)}
+        ondragleave={() => (hover = null)}
         ondrop={(e) => deposer(e, index)}
         onclick={() => api.agir({ type: "activerOnglet", id })}
         onkeydown={(e) => (e.key === "Enter" || e.key === " ") && api.agir({ type: "activerOnglet", id })}
-        onauxclick={(e) => e.button === 1 && fermerOnglet(id)}
+        onauxclick={(e) => e.button === 1 && closeTab(id)}
         oncontextmenu={(e) =>
-          ouvrirMenu(e, [
+          openMenu(e, [
             { libelle: "Épingler", agir: () => api.agir({ type: "epinglerOnglet", id }) },
             { libelle: "Ajouter aux essentiels", agir: () => api.agir({ type: "ajouterEssentiel", id }) },
-            { libelle: "Fermer", agir: () => fermerOnglet(id) },
+            { libelle: "Fermer", agir: () => closeTab(id) },
           ])}
       >
-        {#if onglet.chargement}<span class="roue" aria-label="Chargement"></span>{:else}<IconeSite favicon={onglet.favicon} titre={onglet.titre} />{/if}
-        <span class="titre">{onglet.titre}</span>
-        {#if droitsAgent}<PastilleAcces {id} etat={droitsAgent} />{/if}
-        {#if onglet.ouvertParAgent}<span class="agent" title="Ouvert par l'agent">✦</span>{/if}
+        {#if tab.chargement}<span class="roue" aria-label="Chargement"></span>{:else}<SiteIcon favicon={tab.favicon} titre={tab.titre} />{/if}
+        <span class="titre">{tab.titre}</span>
+        {#if droitsAgent}<AccessBadge {id} etat={droitsAgent} />{/if}
+        {#if tab.ouvertParAgent}<span class="agent" title="Ouvert par l'agent">✦</span>{/if}
         <button
           class="fermer"
           aria-label="Fermer l'onglet"
           onclick={(e) => {
             e.stopPropagation();
-            fermerOnglet(id);
-          }}><Icone nom="fermer" taille={12} /></button
+            closeTab(id);
+          }}><Icon nom="fermer" taille={12} /></button
         >
       </li>
     {/if}

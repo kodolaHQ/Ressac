@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { etAutres } from "../types";
+  import { andOthers } from "../types";
 
   let { p }: { p: { niveau: "info" | "avis" | "attention"; titre: string | null; texte: string | null; elements: string[] | null; autres: number } } = $props();
 </script>
@@ -12,5 +12,5 @@
       {#each p.elements as e, i (i)}<li class="pa-texte">{e}</li>{/each}
     </ul>
   {/if}
-  {#if p.autres > 0}<p class="pa-autres">{etAutres(p.autres)}</p>{/if}
+  {#if p.autres > 0}<p class="pa-autres">{andOthers(p.autres)}</p>{/if}
 </div>

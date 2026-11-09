@@ -1,66 +1,66 @@
 <script lang="ts">
-  import Icone from "./Icone.svelte";
+  import Icon from "./Icone.svelte";
   import type { Space, WindowState } from "../../shared/modele";
-  import { api, etat } from "../etat.svelte";
-  import { ouvrirMenu } from "./menu.svelte";
-  import { perdConnexions, PROFIL_A_CHOISIR } from "./profilsEspace";
-  import { reglagesEspace } from "./reglagesEspace.svelte";
+  import { api, appState } from "../etat.svelte";
+  import { openMenu } from "./menu.svelte";
+  import { losesConnections, PROFILE_TO_CHOOSE } from "./profilsEspace";
+  import { spaceSettings } from "./reglagesEspace.svelte";
 
-  let { fenetre }: { fenetre: WindowState } = $props();
+  let { fenetre: win }: { fenetre: WindowState } = $props();
   /** Space to delete awaiting confirmation (it contains tabs, or it takes sign-ins with it). */
-  let aSupprimer = $state<{ espace: Space; onglets: number; connexions: boolean } | null>(null);
+  let toDelete = $state<{ espace: Space; onglets: number; connexions: boolean } | null>(null);
 
-  function supprimer(espace: Space) {
-    const n = Object.values(etat.valeur?.onglets ?? {}).filter((o) => o.espaceId === espace.id).length;
-    const connexions = perdConnexions(etat.valeur?.espaces ?? [], espace);
-    if (n > 0 || connexions) aSupprimer = { espace, onglets: n, connexions };
-    else api.agir({ type: "supprimerEspace", id: espace.id });
+  function remove(space: Space) {
+    const n = Object.values(appState.valeur?.onglets ?? {}).filter((o) => o.espaceId === space.id).length;
+    const connexions = losesConnections(appState.valeur?.espaces ?? [], space);
+    if (n > 0 || connexions) toDelete = { espace: space, onglets: n, connexions };
+    else api.agir({ type: "supprimerEspace", id: space.id });
   }
 
   // A setting keeps the space's current profile (alone or shared); a new space has none: the user chooses.
-  const regler = (espace: Space) =>
-    (reglagesEspace.brouillon = { id: espace.id, nom: espace.nom, icone: espace.icone, prive: espace.prive, profil: espace.profil });
-  function creer() {
-    reglagesEspace.brouillon = { id: null, nom: "", icone: "📁", prive: false, profil: PROFIL_A_CHOISIR };
+  const set = (space: Space) =>
+    (spaceSettings.brouillon = { id: space.id, nom: space.nom, icone: space.icone, prive: space.prive, profil: space.profil });
+  function create() {
+    spaceSettings.brouillon = { id: null, nom: "", icone: "📁", prive: false, profil: PROFILE_TO_CHOOSE };
   }
 </script>
 
-{#if aSupprimer}
-  {@const { espace, onglets, connexions } = aSupprimer}
+{#if toDelete}
+  {@const { espace: space, onglets: tabs, connexions } = toDelete}
   <div class="confirmation" role="alertdialog" aria-label="Supprimer l'espace">
     <p>
-      {#if onglets > 0}Supprimer l'espace « {espace.nom} » et ses {onglets} onglet{onglets > 1 ? "s" : ""} ?{:else}Supprimer l'espace « {espace.nom} » ?{/if}
+      {#if tabs > 0}Supprimer l'espace « {space.nom} » et ses {tabs} onglet{tabs > 1 ? "s" : ""} ?{:else}Supprimer l'espace « {space.nom} » ?{/if}
       {#if connexions}Les connexions de cet espace seront perdues.{/if}
     </p>
     <div class="boutons">
-      <button onclick={() => (aSupprimer = null)}>Annuler</button>
+      <button onclick={() => (toDelete = null)}>Annuler</button>
       <button
         class="danger"
         onclick={() => {
-          api.agir({ type: "supprimerEspace", id: espace.id });
-          aSupprimer = null;
+          api.agir({ type: "supprimerEspace", id: space.id });
+          toDelete = null;
         }}>Supprimer</button
       >
     </div>
   </div>
 {/if}
 <nav class="espaces">
-  {#each etat.valeur?.espaces ?? [] as espace (espace.id)}
+  {#each appState.valeur?.espaces ?? [] as space (space.id)}
     <button
-      data-testid="espace-{espace.id}"
-      aria-current={espace.id === fenetre.espaceActif ? "true" : undefined}
-      title={espace.prive ? `${espace.nom} (privé)` : espace.nom}
-      data-prive={espace.prive || undefined}
-      onclick={() => api.agir({ type: "activerEspace", fenetreId: fenetre.id, id: espace.id })}
+      data-testid="espace-{space.id}"
+      aria-current={space.id === win.espaceActif ? "true" : undefined}
+      title={space.prive ? `${space.nom} (privé)` : space.nom}
+      data-prive={space.prive || undefined}
+      onclick={() => api.agir({ type: "activerEspace", fenetreId: win.id, id: space.id })}
       oncontextmenu={(e) =>
-        ouvrirMenu(e, [
-          { libelle: "Réglages", agir: () => regler(espace) },
-          ...((etat.valeur?.espaces.length ?? 0) > 1 ? [{ libelle: "Supprimer", agir: () => supprimer(espace) }] : []),
+        openMenu(e, [
+          { libelle: "Réglages", agir: () => set(space) },
+          ...((appState.valeur?.espaces.length ?? 0) > 1 ? [{ libelle: "Supprimer", agir: () => remove(space) }] : []),
         ])}
-      >{espace.icone}{#if espace.prive}<span class="cadenas" aria-hidden="true">🔒</span>{/if}</button
+      >{space.icone}{#if space.prive}<span class="cadenas" aria-hidden="true">🔒</span>{/if}</button
     >
   {/each}
-  <button data-testid="nouvel-espace" title="Nouvel espace" onclick={creer}><Icone nom="plus" /></button>
+  <button data-testid="nouvel-espace" title="Nouvel espace" onclick={create}><Icon nom="plus" /></button>
 </nav>
 
 <style>

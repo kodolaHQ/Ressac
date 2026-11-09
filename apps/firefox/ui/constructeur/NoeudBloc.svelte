@@ -2,7 +2,7 @@
   import type { Node } from "@xyflow/svelte";
   import type { Pastille } from "./pastilles";
 
-  export type DonneesNoeud = {
+  export type NodeData = {
     /** Block name, or its id. */
     titre: string;
     type: string;
@@ -13,10 +13,10 @@
     entree: boolean;
     sortie: boolean;
   };
-  export type NoeudBloc = Node<DonneesNoeud, "bloc">;
+  export type BlockNode = Node<NodeData, "bloc">;
 
   /** Badge color: the same scale as the home page. */
-  const TEINTES: Record<string, "ok" | "moyen" | "echec" | "neutre" | "en-cours"> = {
+  const TINTS: Record<string, "ok" | "moyen" | "echec" | "neutre" | "en-cours"> = {
     reussi: "ok",
     partiel: "moyen",
     echoue: "echec",
@@ -30,7 +30,7 @@
 <script lang="ts">
   import { Handle, Position, type NodeProps } from "@xyflow/svelte";
 
-  let { id, data, selected }: NodeProps<NoeudBloc> = $props();
+  let { id, data, selected }: NodeProps<BlockNode> = $props();
   const marque = $derived(data.erreur ?? (data.avertissements.length ? data.avertissements.join("\n") : null));
 </script>
 
@@ -46,7 +46,7 @@
   <div class="ligne">
     <b class="titre">{data.titre}</b>
     {#if data.pastille}
-      <span class="pastille {TEINTES[data.pastille.statut] ?? 'neutre'}" data-testid="pastille-{id}" title={data.pastille.statut}
+      <span class="pastille {TINTS[data.pastille.statut] ?? 'neutre'}" data-testid="pastille-{id}" title={data.pastille.statut}
         >{data.pastille.elements ?? ""}</span
       >
     {/if}

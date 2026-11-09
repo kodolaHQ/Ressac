@@ -1,42 +1,42 @@
 <script lang="ts">
   import type { OverlayApi, OverlayContext } from "../shared/api";
-  import PanierDesign from "./composants/PanierDesign.svelte";
+  import DesignBasket from "./composants/PanierDesign.svelte";
 
   const api = window.webaios as unknown as OverlayApi;
-  let contexte = $state<OverlayContext | null>(null);
-  let texte = $state("");
-  let erreur = $state<string | null>(null);
+  let context = $state<OverlayContext | null>(null);
+  let text = $state("");
+  let error = $state<string | null>(null);
   let champ = $state<HTMLTextAreaElement>();
-  let requete = 0;
+  let request = 0;
 
-  async function relire() {
-    const n = ++requete;
+  async function reread() {
+    const n = ++request;
     const c = await api.contexte().catch(() => null);
-    if (n !== requete) return;
+    if (n !== request) return;
     // A new bubble (another element) starts from an empty text.
-    if (c?.mode !== "bulle" || contexte?.mode !== "bulle" || c.etiquette !== contexte.etiquette || c.source !== contexte.source) {
-      texte = "";
-      erreur = null;
+    if (c?.mode !== "bulle" || context?.mode !== "bulle" || c.etiquette !== context.etiquette || c.source !== context.source) {
+      text = "";
+      error = null;
     }
-    contexte = c;
+    context = c;
   }
-  void relire();
-  api.surChange(() => void relire());
+  void reread();
+  api.surChange(() => void reread());
 
   $effect(() => {
-    if (contexte?.mode === "bulle" && champ) champ.focus();
+    if (context?.mode === "bulle" && champ) champ.focus();
   });
 
-  async function ajouter() {
-    const r = await api.ajouter(texte);
-    if (r.ok) texte = "";
-    else erreur = r.erreur;
+  async function add() {
+    const r = await api.ajouter(text);
+    if (r.ok) text = "";
+    else error = r.erreur;
   }
 
   function clavier(e: KeyboardEvent) {
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
-      void ajouter();
+      void add();
     } else if (e.key === "Escape") {
       e.preventDefault();
       api.annuler();
@@ -44,27 +44,27 @@
   }
 </script>
 
-{#if contexte?.mode === "bulle"}
+{#if context?.mode === "bulle"}
   <div class="bulle" data-testid="bulle-design" role="dialog" aria-label="Remarque sur l'élément">
     <div class="tete">
-      <code class="etiquette">{contexte.etiquette}</code>
-      {#if contexte.source}<span class="source">{contexte.source}</span>{/if}
+      <code class="etiquette">{context.etiquette}</code>
+      {#if context.source}<span class="source">{context.source}</span>{/if}
     </div>
-    {#if contexte.avertissement}<p class="avertissement" data-testid="avertissement-bulle">{contexte.avertissement}</p>{/if}
-    <textarea bind:this={champ} bind:value={texte} onkeydown={clavier} placeholder="Ta remarque sur cet élément" maxlength="4000"></textarea>
-    {#if erreur}<p class="erreur" role="alert">{erreur}</p>{/if}
+    {#if context.avertissement}<p class="avertissement" data-testid="avertissement-bulle">{context.avertissement}</p>{/if}
+    <textarea bind:this={champ} bind:value={text} onkeydown={clavier} placeholder="Ta remarque sur cet élément" maxlength="4000"></textarea>
+    {#if error}<p class="erreur" role="alert">{error}</p>{/if}
     <div class="actions">
       <button class="annuler" onclick={() => api.annuler()}>Annuler</button>
-      <button class="ajouter" onclick={() => void ajouter()}>Ajouter au panier <kbd>⌘↩</kbd></button>
+      <button class="ajouter" onclick={() => void add()}>Ajouter au panier <kbd>⌘↩</kbd></button>
     </div>
   </div>
-{:else if contexte?.mode === "message"}
+{:else if context?.mode === "message"}
   <!-- Not interactive: only a click closes it (like the next keystroke, on the main process side). -->
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
-  <div class="message" data-testid="message-design" role="status" onclick={() => api.annuler()}>{contexte.message}</div>
-{:else if contexte?.mode === "panier"}
+  <div class="message" data-testid="message-design" role="status" onclick={() => api.annuler()}>{context.message}</div>
+{:else if context?.mode === "panier"}
   <div class="volet">
-    <PanierDesign {api} projet={contexte.projet} destination={contexte.destination} sansDestination={contexte.sansDestination} fermer={() => api.annuler()} />
+    <DesignBasket {api} projet={context.projet} destination={context.destination} sansDestination={context.sansDestination} fermer={() => api.annuler()} />
   </div>
 {/if}
 

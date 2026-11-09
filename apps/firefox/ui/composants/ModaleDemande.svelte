@@ -1,58 +1,58 @@
 <script lang="ts">
-  import { commande } from "./commande.svelte";
+  import { command } from "./commande.svelte";
   import { onMount, tick, untrack } from "svelte";
   import { UNLOCK_REASON_LENGTH, unlockedConsoleText } from "../../shared/extensions-messages";
   import { siteDe, type PendingRequest, type TabId } from "../../shared/modele";
   import { api } from "../etat.svelte";
-  import DemandeExtension from "./DemandeExtension.svelte";
-  import DemandeOutilsDev from "./DemandeOutilsDev.svelte";
-  import FondFige from "./FondFige.svelte";
+  import ExtensionRequest from "./DemandeExtension.svelte";
+  import DevToolsRequest from "./DemandeOutilsDev.svelte";
+  import FrozenBackground from "./FondFige.svelte";
 
   /** `ongletId`: the page shown at opening, captured for the background (null: none, or a panel hides it). */
-  let { demande, ongletId }: { demande: PendingRequest; ongletId: TabId | null } = $props();
+  let { demande: request, ongletId: tabId }: { demande: PendingRequest; ongletId: TabId | null } = $props();
 
   /** Enter only authorizes a card visible for at least this delay: a keystroke meant for the page is not a grant. */
-  const DELAI_ENTREE_MS = 400;
+  const ENTRY_DELAY_MS = 400;
 
   let carte: HTMLElement;
-  let prete = $state(false);
+  let ready = $state(false);
   // Enter armed: the card has been visible since DELAI_ENTREE_MS (re-armed on each request from the queue).
-  let armee = $state(false);
-  let minuterieEntree: ReturnType<typeof setTimeout> | undefined;
+  let armed = $state(false);
+  let entryTimer: ReturnType<typeof setTimeout> | undefined;
   function armer() {
-    clearTimeout(minuterieEntree);
-    armee = false;
-    if (prete) minuterieEntree = setTimeout(() => (armee = true), DELAI_ENTREE_MS);
+    clearTimeout(entryTimer);
+    armed = false;
+    if (ready) entryTimer = setTimeout(() => (armed = true), ENTRY_DELAY_MS);
   }
 
-  const outilsDev = $derived(demande.permissions.includes("outils-dev"));
-  const donneesWidget = $derived(demande.permissions.includes("donnees-widget"));
-  const extension = $derived(demande.permissions.includes("extension"));
-  const consoleExtension = $derived(demande.permissions.includes("console-extension"));
+  const devTools = $derived(request.permissions.includes("outils-dev"));
+  const widgetData = $derived(request.permissions.includes("donnees-widget"));
+  const extension = $derived(request.permissions.includes("extension"));
+  const consoleExtension = $derived(request.permissions.includes("console-extension"));
   /** Extension name (manifest) and agent reason: data, shown as text and bounded. */
-  const nomExtension = $derived((demande.titre ?? demande.origine).slice(0, 60));
+  const extensionName = $derived((request.titre ?? request.origine).slice(0, 60));
   /** The spaces the unlock covers: names given by the user, shown as text and bounded. */
-  const espacesExtension = $derived((demande.espaces ?? []).slice(0, 20).map((e) => e.slice(0, 60)));
-  const raisonAgent = $derived((demande.raison ?? "").slice(0, UNLOCK_REASON_LENGTH));
-  const site = $derived(siteDe(demande.origine));
+  const extensionSpaces = $derived((request.espaces ?? []).slice(0, 20).map((e) => e.slice(0, 60)));
+  const agentReason = $derived((request.raison ?? "").slice(0, UNLOCK_REASON_LENGTH));
+  const site = $derived(siteDe(request.origine));
 
   // A single opening for the whole queue: following requests replace the content, the page stays hidden.
   onMount(() => {
-    const avant = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const before = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     carte.focus();
     return () => {
-      clearTimeout(minuterieEntree);
+      clearTimeout(entryTimer);
       // Focus goes back where it was, if it is still in the interface (not on the web page, which takes its own back):
       // after the update, when the rest of the interface is no longer inert.
       queueMicrotask(() => {
-        if (avant?.isConnected && avant !== document.body) avant.focus();
+        if (before?.isConnected && before !== document.body) before.focus();
       });
     };
   });
 
   // Next request in the queue: its content replaces the old one, focus stays in the modal.
   $effect(() => {
-    void demande.id;
+    void request.id;
     untrack(armer);
     void tick().then(() => {
       if (carte && !carte.contains(document.activeElement)) carte.focus();
@@ -61,37 +61,37 @@
 
   // The command bar opened or closed on top re-arms Enter: the keystroke that closed it is not a grant.
   $effect(() => {
-    void commande.ouverte;
+    void command.ouverte;
     untrack(armer);
   });
 
-  const refuser = () => api.permissions.repondre(demande.id, "refuser");
+  const refuser = () => api.permissions.repondre(request.id, "refuser");
   const focusables = () =>
     [...carte.querySelectorAll<HTMLElement>("button, input, [tabindex]:not([tabindex='-1'])")].filter((e) => !e.hasAttribute("disabled"));
 
   function clavier(e: KeyboardEvent) {
     // The command bar opened on top keeps the keyboard: the hidden modal reacts to nothing, even if focus has left the
     // bar's field (neither Enter, nor Escape before the ⌃Tab panel takes over, nor Tab).
-    if (commande.ouverte || e.isComposing) return;
+    if (command.ouverte || e.isComposing) return;
     if (e.key === "Escape") {
       e.preventDefault();
       refuser();
     } else if (e.key === "Enter") {
       // Card not visible yet, or only for too short a time: Enter does nothing, even on a button.
-      if (!armee) return e.preventDefault();
+      if (!armed) return e.preventDefault();
       // A focused button keeps its own action; everywhere else (checkboxes included), Enter authorizes.
       if (e.target instanceof HTMLElement && e.target.closest("button")) return;
       e.preventDefault();
       if (!e.repeat) carte.querySelector<HTMLButtonElement>("[data-principal]")?.click();
     } else if (e.key === "Tab") {
       // Focus does not leave the modal: Tab loops over its controls.
-      const liste = focusables();
-      if (liste.length === 0) return e.preventDefault();
-      const i = liste.indexOf(document.activeElement as HTMLElement);
-      const cible = e.shiftKey ? (i <= 0 ? liste.at(-1) : null) : i === -1 || i === liste.length - 1 ? liste[0] : null;
-      if (cible) {
+      const list = focusables();
+      if (list.length === 0) return e.preventDefault();
+      const i = list.indexOf(document.activeElement as HTMLElement);
+      const target = e.shiftKey ? (i <= 0 ? list.at(-1) : null) : i === -1 || i === list.length - 1 ? list[0] : null;
+      if (target) {
         e.preventDefault();
-        cible.focus();
+        target.focus();
       }
     }
   }
@@ -100,11 +100,11 @@
 <svelte:window onkeydown={clavier} />
 
 <!-- Under the command bar, nothing in the modal can take focus (native Tab from the page body). -->
-<div class="modale" class:prete data-testid="modale-demande" data-armee={armee || undefined} inert={!!commande.ouverte}>
-  <FondFige
-    {ongletId}
+<div class="modale" class:prete={ready} data-testid="modale-demande" data-armee={armed || undefined} inert={!!command.ouverte}>
+  <FrozenBackground
+    ongletId={tabId}
     surPret={() => {
-      prete = true;
+      ready = true;
       armer();
     }}
   />
@@ -114,13 +114,13 @@
     tabindex="-1"
     role="alertdialog"
     aria-modal="true"
-    aria-describedby={demande.extension?.renforce ? "carte-extension-avertissement" : undefined}
-    aria-label={outilsDev
+    aria-describedby={request.extension?.renforce ? "carte-extension-avertissement" : undefined}
+    aria-label={devTools
       ? "Demande d'accès aux outils de développement"
-      : donneesWidget
-        ? demande.action !== undefined
+      : widgetData
+        ? request.action !== undefined
           ? "Demande d'accès aux résultats d'une action"
-          : demande.site !== undefined
+          : request.site !== undefined
             ? "Demande d'accès à une appli de site"
             : "Demande d'accès aux données d'un widget"
         : extension
@@ -129,12 +129,12 @@
             ? "Débloquer la console d'une extension"
             : "Demande d'autorisation"}
   >
-    {#key demande.id}
-      {#if outilsDev}
-        <DemandeOutilsDev {demande} />
+    {#key request.id}
+      {#if devTools}
+        <DevToolsRequest demande={request} />
       {:else if extension}
-        {#if demande.extension}
-          <DemandeExtension {demande} carte={demande.extension} />
+        {#if request.extension}
+          <ExtensionRequest demande={request} carte={request.extension} />
         {:else}
           <!-- Never set without a card; if it were, nothing activates without having been shown. -->
           <div class="lecture">
@@ -144,35 +144,35 @@
         {/if}
       {:else if consoleExtension}
         <div class="lecture" data-testid="demande-console-extension">
-          <p>{unlockedConsoleText(nomExtension, espacesExtension)}</p>
-          {#if raisonAgent}<p class="raison">Raison donnée par {demande.agent ?? "l'agent"} : « {raisonAgent} »</p>{/if}
+          <p>{unlockedConsoleText(extensionName, extensionSpaces)}</p>
+          {#if agentReason}<p class="raison">Raison donnée par {request.agent ?? "l'agent"} : « {agentReason} »</p>{/if}
           <div class="actions">
             <!-- Enter refuses: showing the agent what an extension reads on unshared tabs takes a real click. -->
             <button data-principal onclick={refuser}>Refuser</button>
-            <button class="autoriser" onclick={() => api.permissions.repondre(demande.id, "autoriser")}>Débloquer</button>
+            <button class="autoriser" onclick={() => api.permissions.repondre(request.id, "autoriser")}>Débloquer</button>
           </div>
         </div>
-      {:else if donneesWidget}
+      {:else if widgetData}
         <div class="lecture" data-testid="demande-donnees-widget">
-          {#if demande.action !== undefined}
-            <p>L'agent veut voir les résultats de l'action « {demande.titre ?? demande.action} » (lus avec ton compte).</p>
-          {:else if demande.site !== undefined}
-            <p data-testid="demande-site">L'agent veut voir l'appli de site « {demande.titre ?? demande.site} » (connectée à ton compte) : ses pages et sa mémoire, pour cette conversation.</p>
+          {#if request.action !== undefined}
+            <p>L'agent veut voir les résultats de l'action « {request.titre ?? request.action} » (lus avec ton compte).</p>
+          {:else if request.site !== undefined}
+            <p data-testid="demande-site">L'agent veut voir l'appli de site « {request.titre ?? request.site} » (connectée à ton compte) : ses pages et sa mémoire, pour cette conversation.</p>
           {:else}
-            <p>L'agent veut voir les données du widget « {demande.titre ?? demande.widget} » (lues avec ton compte).</p>
+            <p>L'agent veut voir les données du widget « {request.titre ?? request.widget} » (lues avec ton compte).</p>
           {/if}
           <div class="actions">
             <!-- Enter refuses: showing the agent data read with the account takes a real click. -->
             <button data-principal onclick={refuser}>Refuser</button>
-            <button class="autoriser" onclick={() => api.permissions.repondre(demande.id, "autoriser")}>Autoriser pour cette conversation</button>
+            <button class="autoriser" onclick={() => api.permissions.repondre(request.id, "autoriser")}>Autoriser pour cette conversation</button>
           </div>
         </div>
       {:else}
         <div class="lecture" data-testid="demande-permission">
-          <p>L'agent veut lire l'onglet « {demande.titre ?? site} »</p>
+          <p>L'agent veut lire l'onglet « {request.titre ?? site} »</p>
           <div class="actions">
             <button onclick={refuser}>Refuser</button>
-            <button class="autoriser" data-principal onclick={() => api.permissions.repondre(demande.id, "autoriser")}>Autoriser une fois</button>
+            <button class="autoriser" data-principal onclick={() => api.permissions.repondre(request.id, "autoriser")}>Autoriser une fois</button>
           </div>
         </div>
       {/if}

@@ -4,19 +4,19 @@
   import { api } from "../etat.svelte";
 
   // Everything from the manifest (name, version, sites, domains) is shown as text, never interpreted.
-  let { demande, carte }: { demande: PendingRequest; carte: CarteExtension } = $props();
+  let { demande: request, carte }: { demande: PendingRequest; carte: CarteExtension } = $props();
 
   // Strengthened grant: « Activer » (and Enter, which clicks the primary button) has no effect until the box is checked.
-  let compris = $state(false);
-  const bloque = $derived(carte.renforce && !compris);
-  const noms = (liste: string[]) => liste.map((n) => `« ${n} »`).join(", ");
+  let included = $state(false);
+  const blocked = $derived(carte.renforce && !included);
+  const names = (list: string[]) => list.map((n) => `« ${n} »`).join(", ");
 
   /** The name comes from the manifest: bounded, and shown in its own element (it cannot read as the rest of the title). */
-  const NOM_MAX = 60;
+  const NAME_MAX = 60;
   const SITES_MAX = 20;
-  const nom = $derived.by(() => {
+  const name = $derived.by(() => {
     const car = [...carte.nom];
-    return car.length > NOM_MAX ? `${car.slice(0, NOM_MAX - 1).join("")}…` : carte.nom;
+    return car.length > NAME_MAX ? `${car.slice(0, NAME_MAX - 1).join("")}…` : carte.nom;
   });
   const sites = $derived(
     carte.sites.length > SITES_MAX ? `${carte.sites.slice(0, SITES_MAX).join(", ")} et ${carte.sites.length - SITES_MAX} autres` : carte.sites.join(", "),
@@ -25,10 +25,10 @@
 
 <div data-testid="demande-extension">
   {#if carte.maj}
-    <h3>Mettre à jour <span class="nom" data-testid="carte-extension-nom">« {nom} »</span> ?</h3>
+    <h3>Mettre à jour <span class="nom" data-testid="carte-extension-nom">« {name} »</span> ?</h3>
     <div class="discret">Version {carte.maj.de} → {carte.version}</div>
   {:else}
-    <h3>Activer <span class="nom" data-testid="carte-extension-nom">« {nom} »</span> dans « {carte.espace} » ?</h3>
+    <h3>Activer <span class="nom" data-testid="carte-extension-nom">« {name} »</span> dans « {carte.espace} » ?</h3>
   {/if}
   <div class="discret">{carte.source === "store" ? "Chrome Web Store" : "Écrite par l'agent"}</div>
 
@@ -46,11 +46,11 @@
   {/if}
 
   {#if carte.autresEspaces.length > 0}
-    <p>Elle sera active aussi dans {noms(carte.autresEspaces)} (même profil).</p>
+    <p>Elle sera active aussi dans {names(carte.autresEspaces)} (même profil).</p>
   {/if}
 
   {#if carte.remplaceAussi.length > 0}
-    <p class="alerte" data-testid="carte-extension-remplace">La nouvelle version remplacera aussi celle de {noms(carte.remplaceAussi)}.</p>
+    <p class="alerte" data-testid="carte-extension-remplace">La nouvelle version remplacera aussi celle de {names(carte.remplaceAussi)}.</p>
   {/if}
 
   {#if carte.source === "agent"}
@@ -70,7 +70,7 @@
     <div class="renforce">
       <p id="carte-extension-avertissement">Elle pourra lire et modifier chaque page de cet espace, comptes connectés compris.</p>
       <label>
-        <input type="checkbox" data-testid="carte-extension-confirmer" aria-describedby="carte-extension-avertissement" bind:checked={compris} />
+        <input type="checkbox" data-testid="carte-extension-confirmer" aria-describedby="carte-extension-avertissement" bind:checked={included} />
         Je comprends : elle lira toutes les pages de cet espace
       </label>
     </div>
@@ -78,14 +78,14 @@
 
   <!-- Enter refuses (Refuser is the primary button): enabling an extension takes a real click. -->
   <div class="actions">
-    <button data-principal onclick={() => api.permissions.repondre(demande.id, "refuser")}>Refuser</button>
+    <button data-principal onclick={() => api.permissions.repondre(request.id, "refuser")}>Refuser</button>
     <button
       class="autoriser"
-      disabled={bloque}
-      aria-describedby={bloque ? "carte-extension-raison" : undefined}
-      onclick={() => api.permissions.repondre(demande.id, "autoriser", undefined, { confirme: compris })}>Activer</button
+      disabled={blocked}
+      aria-describedby={blocked ? "carte-extension-raison" : undefined}
+      onclick={() => api.permissions.repondre(request.id, "autoriser", undefined, { confirme: included })}>Activer</button
     >
-    {#if bloque}<span id="carte-extension-raison" class="lecteur">Coche « Je comprends » pour pouvoir l'activer.</span>{/if}
+    {#if blocked}<span id="carte-extension-raison" class="lecteur">Coche « Je comprends » pour pouvoir l'activer.</span>{/if}
   </div>
 </div>
 

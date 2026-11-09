@@ -1,173 +1,173 @@
 <script lang="ts" module>
   /** The token of the comparison shown by each tab: a remounted page finds it as is. */
-  const jetons = new Map<string, string>();
+  const tokens = new Map<string, string>();
 </script>
 
 <script lang="ts">
   import type { Commentaire, DiffFichier as Diff, FichierModifie, ReviewView } from "../../shared/api";
   import { api } from "../etat.svelte";
-  import DiffFichier from "./DiffFichier.svelte";
+  import DiffFile from "./DiffFichier.svelte";
 
   /**
    * A project's Review page: what changed since the last review, with comments on lines. The comparison is made at
    * opening and kept as is until « Rafraîchir »; « Marquer comme relu » records what it shows.
    */
-  let { projet, ongletId }: { projet: string; ongletId: string } = $props();
-  let jeton = $state<string | null>(null);
+  let { projet: project, ongletId: tabId }: { projet: string; ongletId: string } = $props();
+  let token = $state<string | null>(null);
 
-  let vue = $state<ReviewView | null>(null);
-  let choisi = $state<string | null>(null);
+  let view = $state<ReviewView | null>(null);
+  let chosen = $state<string | null>(null);
   let diff = $state<Diff | null>(null);
-  let erreurDiff = $state<string | null>(null);
+  let diffError = $state<string | null>(null);
   let enCours = $state(false);
-  let commentaires = $state<Commentaire[]>([]);
+  let comments = $state<Commentaire[]>([]);
   let message = $state<string | null>(null);
-  let requete = 0;
-  let requeteCommentaires = 0;
-  let requeteDiff = 0;
+  let request = 0;
+  let commentsRequest = 0;
+  let diffRequest = 0;
 
-  const STATUTS = { ajoute: "+", supprime: "−", modifie: "~" } as const;
-  const LIBELLES = { ajoute: "ajouté", supprime: "supprimé", modifie: "modifié" } as const;
+  const STATUSES = { ajoute: "+", supprime: "−", modifie: "~" } as const;
+  const LABELS = { ajoute: "ajouté", supprime: "supprimé", modifie: "modifié" } as const;
 
   /** `garder`: the tab's comparison if it is still kept; otherwise (« Rafraîchir ») a new one. */
-  async function charger(garder: boolean) {
-    const n = ++requete;
+  async function charger(keep: boolean) {
+    const n = ++request;
     enCours = true;
     try {
-      const v = await api.relecture.ouvrir(projet, garder ? jetons.get(ongletId) : undefined);
-      if (n !== requete) return;
-      await montrer(v);
+      const v = await api.relecture.ouvrir(project, keep ? tokens.get(tabId) : undefined);
+      if (n !== request) return;
+      await show(v);
     } catch {
-      if (n === requete) vue = { etat: "indisponible", nom: "", raison: "la relecture n'a pas pu être ouverte" };
+      if (n === request) view = { etat: "indisponible", nom: "", raison: "la relecture n'a pas pu être ouverte" };
     } finally {
-      if (n === requete) enCours = false;
+      if (n === request) enCours = false;
     }
   }
 
   /** A received comparison (opening, « Rafraîchir », « Marquer comme relu »): its token, its files, its comments. */
-  async function montrer(v: ReviewView) {
-    ++requeteCommentaires;
-    vue = v;
-    commentaires = v.etat === "ok" ? v.commentaires : [];
-    jeton = v.etat === "ok" ? v.jeton : null;
-    if (jeton) jetons.set(ongletId, jeton);
-    else jetons.delete(ongletId);
-    const fichiers = v.etat === "ok" ? v.comparaison.fichiers : [];
+  async function show(v: ReviewView) {
+    ++commentsRequest;
+    view = v;
+    comments = v.etat === "ok" ? v.commentaires : [];
+    token = v.etat === "ok" ? v.jeton : null;
+    if (token) tokens.set(tabId, token);
+    else tokens.delete(tabId);
+    const files = v.etat === "ok" ? v.comparaison.fichiers : [];
     // The chosen file stays chosen if it is still modified; otherwise the first one.
-    const garde = fichiers.find((f) => f.chemin === choisi) ?? fichiers[0];
-    choisi = garde?.chemin ?? null;
-    await afficher(choisi);
+    const kept = files.find((f) => f.chemin === chosen) ?? files[0];
+    chosen = kept?.chemin ?? null;
+    await display(chosen);
   }
 
   /** Comments re-read after a change (add, edit, reattachment of a shown file). */
-  async function rechargerCommentaires() {
-    const n = ++requeteCommentaires;
+  async function reloadComments() {
+    const n = ++commentsRequest;
     try {
-      const l = await api.relecture.commentaires(projet);
-      if (n === requeteCommentaires) commentaires = l;
+      const l = await api.relecture.commentaires(project);
+      if (n === commentsRequest) comments = l;
     } catch {
       // La liste reste celle d'avant.
     }
   }
 
-  const sansPrefixe = (e: unknown) =>
+  const withoutPrefix = (e: unknown) =>
     e instanceof Error ? e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "") : String(e);
 
-  async function envoyerCommentaires() {
+  async function sendComments() {
     message = null;
     enCours = true;
     try {
-      const r = await api.relecture.envoyer(projet);
+      const r = await api.relecture.envoyer(project);
       if (!r.ok) message = r.erreur;
     } catch (e) {
-      message = sansPrefixe(e);
+      message = withoutPrefix(e);
     } finally {
       enCours = false;
-      await rechargerCommentaires();
+      await reloadComments();
     }
   }
 
-  async function marquerRelu() {
-    if (jeton === null) return;
+  async function markReviewed() {
+    if (token === null) return;
     message = null;
-    const n = ++requete;
+    const n = ++request;
     enCours = true;
     try {
-      const v = await api.relecture.relu(projet, jeton);
-      if (n === requete) await montrer(v);
+      const v = await api.relecture.relu(project, token);
+      if (n === request) await show(v);
     } catch (e) {
-      if (n === requete) message = sansPrefixe(e);
+      if (n === request) message = withoutPrefix(e);
     } finally {
-      if (n === requete) enCours = false;
+      if (n === request) enCours = false;
     }
   }
 
   /** Reopening the file already shown re-reads the same diff (same token): the display, with its comment in progress, is not remounted. */
-  async function afficher(chemin: string | null) {
-    const n = ++requeteDiff;
-    choisi = chemin;
-    erreurDiff = null;
-    if (chemin === null || jeton === null) {
+  async function display(path: string | null) {
+    const n = ++diffRequest;
+    chosen = path;
+    diffError = null;
+    if (path === null || token === null) {
       diff = null;
       return;
     }
     try {
-      const d = await api.relecture.fichier(projet, jeton, chemin);
-      if (n === requeteDiff) diff = d;
+      const d = await api.relecture.fichier(project, token, path);
+      if (n === diffRequest) diff = d;
       // Opening the file reattached its comments to the diff.
-      await rechargerCommentaires();
+      await reloadComments();
     } catch {
-      if (n === requeteDiff) {
+      if (n === diffRequest) {
         diff = null;
-        erreurDiff = "Ce fichier n'est plus dans cette comparaison : Rafraîchis la relecture.";
+        diffError = "Ce fichier n'est plus dans cette comparaison : Rafraîchis la relecture.";
       }
     }
   }
 
   $effect(() => {
-    void projet;
-    void ongletId;
+    void project;
+    void tabId;
     void charger(true);
   });
 
-  const fichiers = $derived<FichierModifie[]>(vue?.etat === "ok" ? vue.comparaison.fichiers : []);
-  const aEnvoyer = $derived(commentaires.filter((c) => !c.resolu).length);
-  const duFichier = $derived(diff ? commentaires.filter((c) => c.fichier === diff!.chemin) : []);
+  const files = $derived<FichierModifie[]>(view?.etat === "ok" ? view.comparaison.fichiers : []);
+  const toSend = $derived(comments.filter((c) => !c.resolu).length);
+  const ofFile = $derived(diff ? comments.filter((c) => c.fichier === diff!.chemin) : []);
 </script>
 
 <section class="relecture" data-testid="page-relecture" aria-label="Relecture">
   <header>
-    <h2>{vue?.nom ?? ""}</h2>
-    {#if vue?.etat === "ok"}
-      {#if aEnvoyer > 0}
-        <button data-testid="envoyer-commentaires" disabled={enCours || vue.destination === null} title={vue.sansDestination ?? ""}
-          onclick={() => void envoyerCommentaires()}
-          >Envoyer {aEnvoyer} commentaire{aEnvoyer > 1 ? "s" : ""} à {vue.destination ?? "personne"}</button
+    <h2>{view?.nom ?? ""}</h2>
+    {#if view?.etat === "ok"}
+      {#if toSend > 0}
+        <button data-testid="envoyer-commentaires" disabled={enCours || view.destination === null} title={view.sansDestination ?? ""}
+          onclick={() => void sendComments()}
+          >Envoyer {toSend} commentaire{toSend > 1 ? "s" : ""} à {view.destination ?? "personne"}</button
         >
       {/if}
-      <button data-testid="marquer-relu" disabled={enCours || jeton === null} onclick={() => void marquerRelu()}>Marquer comme relu</button>
+      <button data-testid="marquer-relu" disabled={enCours || token === null} onclick={() => void markReviewed()}>Marquer comme relu</button>
     {/if}
     <button onclick={() => void charger(false)} disabled={enCours}>Rafraîchir</button>
   </header>
   {#if message}<p class="message" data-testid="erreur-relecture">{message}</p>{/if}
-  {#if vue?.etat === "indisponible"}
-    <p class="indisponible" data-testid="relecture-indisponible">Relecture indisponible : {vue.raison}</p>
-  {:else if vue?.etat === "ok"}
+  {#if view?.etat === "indisponible"}
+    <p class="indisponible" data-testid="relecture-indisponible">Relecture indisponible : {view.raison}</p>
+  {:else if view?.etat === "ok"}
     <div class="corps">
       <nav class="liste" aria-label="Fichiers modifiés">
-        {#if fichiers.length === 0}
+        {#if files.length === 0}
           <p class="vide">Rien n'a changé depuis la dernière relecture.</p>
         {/if}
-        {#each fichiers as f (f.chemin)}
-          <button class="fichier" class:choisi={f.chemin === choisi} data-testid="fichier-relecture" aria-pressed={f.chemin === choisi}
-            title={LIBELLES[f.statut]} onclick={() => void afficher(f.chemin)}
-            ><span class="statut {f.statut}">{STATUTS[f.statut]}</span><span class="nom-fichier">{f.chemin}</span><span class="compte">+{f.ajouts} −{f.suppressions}</span></button
+        {#each files as f (f.chemin)}
+          <button class="fichier" class:choisi={f.chemin === chosen} data-testid="fichier-relecture" aria-pressed={f.chemin === chosen}
+            title={LABELS[f.statut]} onclick={() => void display(f.chemin)}
+            ><span class="statut {f.statut}">{STATUSES[f.statut]}</span><span class="nom-fichier">{f.chemin}</span><span class="compte">+{f.ajouts} −{f.suppressions}</span></button
           >
         {/each}
-        {#if commentaires.length > 0}
+        {#if comments.length > 0}
           <h3>Commentaires</h3>
           <ul class="commentaires">
-            {#each commentaires as c (c.id)}
+            {#each comments as c (c.id)}
               <li data-testid="commentaire-relecture" class:resolu={c.resolu}>
                 <span class="ou">{c.fichier}:{c.debut}{c.fin !== c.debut ? `–${c.fin}` : ""}</span>
                 <span>{c.texte}</span>
@@ -177,10 +177,10 @@
         {/if}
       </nav>
       <div class="centre">
-        {#if erreurDiff}
-          <p class="vide">{erreurDiff}</p>
-        {:else if diff && jeton}
-          {#key `${jeton}\n${diff.chemin}`}<DiffFichier {projet} {jeton} {diff} commentaires={duFichier} surChange={() => void rechargerCommentaires()} />{/key}
+        {#if diffError}
+          <p class="vide">{diffError}</p>
+        {:else if diff && token}
+          {#key `${token}\n${diff.chemin}`}<DiffFile projet={project} jeton={token} {diff} commentaires={ofFile} surChange={() => void reloadComments()} />{/key}
         {/if}
       </div>
     </div>

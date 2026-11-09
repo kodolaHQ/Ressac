@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import type { ActionShown } from "../shared/actions";
-import { normaliser, suggestionsActions, SUGGESTIONS_MAX } from "../ui/composants/suggestions";
+import { normalize, suggestionsActions, SUGGESTIONS_MAX } from "../ui/composants/suggestions";
 
 const action = (id: string, nom: string, o: Partial<ActionShown> = {}): ActionShown => ({
   id,
@@ -20,7 +20,7 @@ const LEBONCOIN = action("lbc", "Leboncoin", { saisie: { libelle: "Recherche" } 
 const GITLAB = action("gl", "GitLab");
 
 test("normaliser: without accents or case, spaces collapsed", () => {
-  expect(normaliser("  TîCK   Été ")).toBe("tick ete");
+  expect(normalize("  TîCK   Été ")).toBe("tick ete");
 });
 
 test("« git » suggests « Mes tickets GitLab à traiter » (keyword gitlab)", () => {

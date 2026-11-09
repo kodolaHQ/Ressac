@@ -1,9 +1,9 @@
 <script lang="ts">
-  import Icone from "./Icone.svelte";
+  import Icon from "./Icone.svelte";
   import type { Download } from "../../shared/modele";
-  import { api, telechargements } from "../etat.svelte";
+  import { api, downloads } from "../etat.svelte";
 
-  let { fermer }: { fermer: () => void } = $props();
+  let { fermer: close }: { fermer: () => void } = $props();
 
   function taille(octets: number): string {
     if (octets < 1024) return `${octets} o`;
@@ -12,7 +12,7 @@
     return `${(octets / 1024 ** 3).toFixed(2)} Go`;
   }
 
-  const LIBELLES: Record<Download["etat"], string> = {
+  const LABELS: Record<Download["etat"], string> = {
     "en-cours": "En cours",
     termine: "Terminé",
     annule: "Annulé",
@@ -20,20 +20,20 @@
   };
 </script>
 
-<svelte:window onkeydown={(e) => e.key === "Escape" && fermer()} />
+<svelte:window onkeydown={(e) => e.key === "Escape" && close()} />
 
 <section class="telechargements" data-testid="telechargements" aria-label="Téléchargements">
   <header>
     <h1>Téléchargements</h1>
-    <button class="fermer" aria-label="Fermer les téléchargements" onclick={fermer}><Icone nom="fermer" taille={12} /></button>
+    <button class="fermer" aria-label="Fermer les téléchargements" onclick={close}><Icon nom="fermer" taille={12} /></button>
   </header>
   <ul>
-    {#each telechargements.liste as t (t.id)}
+    {#each downloads.liste as t (t.id)}
       <li data-testid="telechargement" data-etat={t.etat}>
         <div class="infos">
           <span class="nom">{t.nom}</span>
           <span class="detail">
-            {LIBELLES[t.etat]} · {t.etat === "en-cours" && t.total ? `${taille(t.recus)} sur ${taille(t.total)}` : taille(t.recus)}
+            {LABELS[t.etat]} · {t.etat === "en-cours" && t.total ? `${taille(t.recus)} sur ${taille(t.total)}` : taille(t.recus)}
           </span>
           {#if t.etat === "en-cours"}
             <progress max={t.total || undefined} value={t.total ? t.recus : undefined}></progress>

@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { fermerMenu, menu } from "./menu.svelte";
+  import { closeMenu, menu } from "./menu.svelte";
 </script>
 
-<svelte:window onkeydown={(e) => e.key === "Escape" && fermerMenu()} onclick={fermerMenu} onblur={fermerMenu} />
+<svelte:window onkeydown={(e) => e.key === "Escape" && closeMenu()} onclick={closeMenu} onblur={closeMenu} />
 
 {#if menu.ouvert}
   <!-- Stays in the sidebar (the web view would cover a menu that overflows onto the content), except on an internal page. -->
@@ -19,7 +19,7 @@
         role="menuitem"
         onclick={(e) => {
           e.stopPropagation();
-          fermerMenu();
+          closeMenu();
           entree.agir();
         }}>{entree.libelle}</button
       >

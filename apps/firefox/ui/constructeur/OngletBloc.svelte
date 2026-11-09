@@ -1,13 +1,13 @@
 <script lang="ts">
   import type { CatalogueBloc } from "@webaios/noyau";
-  import { champsDisponibles } from "./champs";
+  import { availableFields } from "./champs";
   import type { Edition } from "./edition.svelte";
-  import EditeurCode from "./EditeurCode.svelte";
+  import CodeEditor from "./EditeurCode.svelte";
   import type { Executions } from "./executions.svelte";
-  import FormulaireBloc from "./FormulaireBloc.svelte";
-  import { estCleAction } from "./cible";
-  import PanneauAction from "./PanneauAction.svelte";
-  import PanneauWidget from "./PanneauWidget.svelte";
+  import BlockForm from "./FormulaireBloc.svelte";
+  import { isActionKey } from "./cible";
+  import ActionPanel from "./PanneauAction.svelte";
+  import WidgetPanel from "./PanneauWidget.svelte";
   import SortieBloc from "./SortieBloc.svelte";
 
   /**
@@ -24,16 +24,16 @@
 
   const bloc = $derived(selection === null ? undefined : edition.brouillon?.blocs.find((b) => b.id === selection));
   const c = $derived(bloc ? catalogue.get(bloc.type) : undefined);
-  const erreur = $derived(!edition.validation.ok && bloc && edition.validation.bloc === bloc.id ? edition.validation.erreur : null);
-  const avertissements = $derived(bloc ? edition.avertissements.filter((a) => a.bloc === bloc.id) : []);
+  const error = $derived(!edition.validation.ok && bloc && edition.validation.bloc === bloc.id ? edition.validation.erreur : null);
+  const warnings = $derived(bloc ? edition.avertissements.filter((a) => a.bloc === bloc.id) : []);
 
   /** Fields offered in a template: those of the upstream block's output at the chosen run, then the configuration. */
-  const disponibles = $derived.by(() => {
+  const available = $derived.by(() => {
     const d = executions.detail;
     if (!bloc || !d) return null;
-    const amont = edition.brouillon?.liens.find((l) => l.vers === bloc.id)?.de;
-    const sortie = amont === undefined ? undefined : d.blocs.find((b) => b.id === amont)?.sortie;
-    return champsDisponibles(sortie, edition.widget?.config);
+    const upstream = edition.brouillon?.liens.find((l) => l.vers === bloc.id)?.de;
+    const sortie = upstream === undefined ? undefined : d.blocs.find((b) => b.id === upstream)?.sortie;
+    return availableFields(sortie, edition.widget?.config);
   });
   const source = $derived(bloc?.type === "code" && typeof bloc.parametres.source === "string" ? bloc.parametres.source : null);
 </script>
@@ -42,26 +42,26 @@
   {#if bloc}
     {#key bloc.id}
       <h3><span>{c?.libelle ?? bloc.type}</span> <code>{bloc.type}</code></h3>
-      {#if erreur}<p class="erreur" data-testid="erreur-validation">{erreur}</p>{/if}
-      {#if avertissements.length > 0}
+      {#if error}<p class="erreur" data-testid="erreur-validation">{error}</p>{/if}
+      {#if warnings.length > 0}
         <ul class="avertissements" data-testid="avertissement-{bloc.id}">
-          {#each avertissements as a, i (i)}<li>⚠ {a.message}</li>{/each}
+          {#each warnings as a, i (i)}<li>⚠ {a.message}</li>{/each}
         </ul>
       {/if}
       {#if c}
-        <FormulaireBloc {edition} {bloc} catalogue={c} {disponibles} />
+        <BlockForm {edition} {bloc} catalogue={c} disponibles={available} />
       {:else}
         <p class="doux">Type de bloc inconnu : ses réglages ne s'éditent pas ici.</p>
       {/if}
       {#if source}
-        {#key source}<EditeurCode {widget} nom={source} />{/key}
+        {#key source}<CodeEditor {widget} nom={source} />{/key}
       {/if}
       <SortieBloc bloc={bloc.id} choisie={executions.choisie} execution={executions.detail} introuvable={executions.introuvable} />
     {/key}
-  {:else if estCleAction(widget)}
-    <PanneauAction action={edition.action} />
+  {:else if isActionKey(widget)}
+    <ActionPanel action={edition.action} />
   {:else}
-    <PanneauWidget widget={edition.widget} />
+    <WidgetPanel widget={edition.widget} />
   {/if}
 </div>
 

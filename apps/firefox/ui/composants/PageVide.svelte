@@ -1,39 +1,39 @@
 <script lang="ts">
   import type { WindowState } from "../../shared/modele";
   import { onMount, untrack } from "svelte";
-  import { focusPageVide } from "./commande.svelte";
-  import { api, etat } from "../etat.svelte";
-  import Accueil from "../Accueil.svelte";
-  import Essentiels from "./Essentiels.svelte";
+  import { focusEmptyPage } from "./commande.svelte";
+  import { api, appState } from "../etat.svelte";
+  import Home from "../Accueil.svelte";
+  import Essentials from "./Essentiels.svelte";
   import SuggestionsActions from "./SuggestionsActions.svelte";
   import { suggestionsActions } from "./suggestions";
   import type { ActionShown } from "../../shared/actions";
 
-  let { fenetre }: { fenetre: WindowState } = $props();
-  let saisie = $state("");
+  let { fenetre: win }: { fenetre: WindowState } = $props();
+  let input = $state("");
   let champ: HTMLInputElement;
 
   onMount(() => champ.focus());
   // The command bar closed onto home gives the keyboard back to it.
   $effect(() => {
-    if (focusPageVide.n > 0) untrack(() => champ?.focus());
+    if (focusEmptyPage.n > 0) untrack(() => champ?.focus());
   });
 
   // Actions are not available in a private space (a missing space counts as private): the list is then not even
   // requested.
-  const enPrive = $derived(etat.valeur?.espaces.find((e) => e.id === fenetre.espaceActif)?.prive ?? true);
+  const inPrivate = $derived(appState.valeur?.espaces.find((e) => e.id === win.espaceActif)?.prive ?? true);
   let actions = $state.raw<ActionShown[]>([]);
-  let derniere = 0;
+  let last = 0;
   $effect(() => {
-    if (enPrive) {
+    if (inPrivate) {
       actions = [];
       return;
     }
     const charger = () => {
-      const n = ++derniere;
+      const n = ++last;
       api.actions.liste().then(
         (l) => {
-          if (n === derniere) actions = l;
+          if (n === last) actions = l;
         },
         () => {},
       );
@@ -43,48 +43,48 @@
   });
 
   // Escape closes the list until the next keystroke.
-  let fermee = $state(false);
-  let choisie = $state(-1);
-  const suggestions = $derived(enPrive || fermee ? [] : suggestionsActions(saisie, actions));
-  const ligneHabituelle = $derived(/^\S+\.\S+$/.test(saisie.trim()) ? `Ouvrir ${saisie.trim()}` : `Rechercher « ${saisie.trim()} »`);
+  let closed = $state(false);
+  let chosen = $state(-1);
+  const suggestions = $derived(inPrivate || closed ? [] : suggestionsActions(input, actions));
+  const usualLine = $derived(/^\S+\.\S+$/.test(input.trim()) ? `Ouvrir ${input.trim()}` : `Rechercher « ${input.trim()} »`);
 
-  let refus = $state("");
-  const cles = $derived(suggestions.map((x) => x.id).join("\0"));
+  let denial = $state("");
+  const keys = $derived(suggestions.map((x) => x.id).join("\0"));
   $effect(() => {
-    void cles;
-    choisie = -1;
+    void keys;
+    chosen = -1;
   });
-  function valider(i: number) {
+  function validate(i: number) {
     const s = suggestions[i];
     if (s) {
-      choisie = -1;
+      chosen = -1;
       void api.actions.ouvrir(s.id, s.saisie).then(
         (r) => {
           if (r.ok) {
-            saisie = "";
-            refus = "";
-          } else refus = r.erreur;
+            input = "";
+            denial = "";
+          } else denial = r.erreur;
         },
-        () => (refus = "Le service des actions ne répond pas"),
+        () => (denial = "Le service des actions ne répond pas"),
       );
-    } else if (saisie.trim()) {
-      api.naviguer(null, saisie.trim());
-      saisie = "";
+    } else if (input.trim()) {
+      api.naviguer(null, input.trim());
+      input = "";
     }
   }
-  function touche(e: KeyboardEvent) {
+  function key(e: KeyboardEvent) {
     if (suggestions.length === 0) return;
     const n = suggestions.length + 1;
     if (e.key === "ArrowDown") {
       e.preventDefault();
-      choisie = (choisie + 1) % n;
+      chosen = (chosen + 1) % n;
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
-      choisie = choisie < 0 ? n - 1 : choisie - 1;
+      chosen = chosen < 0 ? n - 1 : chosen - 1;
     } else if (e.key === "Escape") {
       e.preventDefault();
-      fermee = true;
-      choisie = -1;
+      closed = true;
+      chosen = -1;
     }
   }
 </script>
@@ -93,36 +93,36 @@
   <form
     onsubmit={(e) => {
       e.preventDefault();
-      valider(choisie);
-      choisie = -1;
+      validate(chosen);
+      chosen = -1;
     }}
   >
     <input
       bind:this={champ}
-      bind:value={saisie}
+      bind:value={input}
       oninput={() => {
-        fermee = false;
-        refus = "";
-        choisie = -1;
+        closed = false;
+        denial = "";
+        chosen = -1;
       }}
-      onblur={() => (fermee = true)}
-      onfocus={() => (fermee = false)}
-      onkeydown={touche}
+      onblur={() => (closed = true)}
+      onfocus={() => (closed = false)}
+      onkeydown={key}
       data-testid="saisie-page-vide"
       placeholder="Rechercher ou saisir une adresse"
       spellcheck="false"
       role={suggestions.length ? "combobox" : undefined}
       aria-expanded={suggestions.length ? true : undefined}
       aria-controls={suggestions.length ? "suggestions-actions" : undefined}
-      aria-activedescendant={suggestions.length && choisie >= 0 ? `suggestion-action-${choisie}` : undefined}
+      aria-activedescendant={suggestions.length && chosen >= 0 ? `suggestion-action-${chosen}` : undefined}
     />
     {#if suggestions.length}
-      <SuggestionsActions {suggestions} {ligneHabituelle} {choisie} choisir={(i) => valider(i)} />
+      <SuggestionsActions {suggestions} ligneHabituelle={usualLine} choisie={chosen} choisir={(i) => validate(i)} />
     {/if}
-    {#if refus}<p class="refus" data-testid="refus-action">{refus}</p>{/if}
+    {#if denial}<p class="refus" data-testid="refus-action">{denial}</p>{/if}
   </form>
-  <Essentiels {fenetre} grand />
-  <Accueil />
+  <Essentials fenetre={win} grand />
+  <Home />
 </div>
 
 <style>

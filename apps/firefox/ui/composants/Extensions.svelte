@@ -8,17 +8,17 @@
   let lignes = $state<LigneExtension[]>([]);
   let coupees = $state(false);
   let chargee = $state(false);
-  let saisie = $state("");
+  let input = $state("");
   let message = $state<string | null>(null);
   let details = $state<Record<string, boolean>>({});
   /** Extension whose deletion awaits the user's confirmation. */
-  let aSupprimer = $state<LigneExtension | null>(null);
-  let requete = 0;
+  let toDelete = $state<LigneExtension | null>(null);
+  let request = 0;
 
   async function charger() {
-    const n = ++requete;
+    const n = ++request;
     const [l, b] = await Promise.all([api.extensions.liste(), api.extensions.coupees()]);
-    if (n !== requete) return;
+    if (n !== request) return;
     lignes = l;
     coupees = b;
     chargee = true;
@@ -29,26 +29,26 @@
     return api.extensions.surChange(() => void charger());
   });
 
-  async function faire(p: Promise<ExtensionResult>) {
+  async function make(p: Promise<ExtensionResult>) {
     message = null;
     const r = await p;
     if (!r.ok) message = r.erreur;
     await charger();
   }
 
-  async function ajouter(e: SubmitEvent) {
+  async function add(e: SubmitEvent) {
     e.preventDefault();
-    const texte = saisie.trim();
-    if (!texte) return;
+    const text = input.trim();
+    if (!text) return;
     message = null;
-    const r = await api.extensions.installerStore(texte);
-    if (r.ok) saisie = "";
+    const r = await api.extensions.installerStore(text);
+    if (r.ok) input = "";
     else message = r.erreur;
     await charger();
   }
 
   const date = (iso: string) => new Date(iso).toLocaleString("fr-FR", { dateStyle: "medium", timeStyle: "short" });
-  const espaces = (l: LigneExtension) => (l.espaces.length ? l.espaces.map((e) => `« ${e.nom} » (profil ${e.profil})`).join(", ") : l.applis.length ? "aucun" : "Active nulle part");
+  const spaces = (l: LigneExtension) => (l.espaces.length ? l.espaces.map((e) => `« ${e.nom} » (profil ${e.profil})`).join(", ") : l.applis.length ? "aucun" : "Active nulle part");
 </script>
 
 <section class="extensions" data-testid="page-extensions" aria-label="Extensions">
@@ -60,15 +60,15 @@
         role="switch"
         data-testid="couper-extensions"
         checked={coupees}
-        onchange={(e) => void faire(api.extensions.toutCouper(e.currentTarget.checked))}
+        onchange={(e) => void make(api.extensions.toutCouper(e.currentTarget.checked))}
       />
       Désactiver toutes les extensions
     </label>
   </header>
-  <form class="ajout" onsubmit={ajouter}>
+  <form class="ajout" onsubmit={add}>
     <label>
       Ajouter depuis le Chrome Web Store
-      <input data-testid="ajout-store" bind:value={saisie} placeholder="Adresse de sa page ou identifiant" spellcheck="false" />
+      <input data-testid="ajout-store" bind:value={input} placeholder="Adresse de sa page ou identifiant" spellcheck="false" />
     </label>
     <button type="submit">Ajouter</button>
   </form>
@@ -89,7 +89,7 @@
         {#if l.majEnAttente}<p class="doux">Mise à jour {l.majEnAttente} en attente de ton accord.</p>{/if}
         <p>Droits : {l.droits.length ? l.droits.join(" · ") : "aucun"}</p>
         <p>Sites : {l.tousLesSites ? "tous les sites" : l.sites.length ? l.sites.join(", ") : "aucun"}</p>
-        <p>Espaces : {espaces(l)}</p>
+        <p>Espaces : {spaces(l)}</p>
         {#if l.applis.length}<p data-testid="extension-applis">{activeDans(l.applis)}</p>{/if}
         {#if l.modifieeLe}<p class="doux">Modifiée le {date(l.modifieeLe)}</p>{/if}
         {#if l.nonPrisEnCharge.length}<p class="doux">Non pris en charge : {l.nonPrisEnCharge.join(", ")}</p>{/if}
@@ -109,37 +109,37 @@
           </dl>
         {/if}
         <div class="actions">
-          {#if l.majEnAttente}<button onclick={() => void faire(api.extensions.revoir(l.cle))}>Revoir la mise à jour</button>{/if}
+          {#if l.majEnAttente}<button onclick={() => void make(api.extensions.revoir(l.cle))}>Revoir la mise à jour</button>{/if}
           {#if l.source === "agent" && l.desactivee === DISABLED_SCOPE}
-            <button onclick={() => void faire(api.extensions.revoir(l.cle))}>Revoir l'accord</button>
+            <button onclick={() => void make(api.extensions.revoir(l.cle))}>Revoir l'accord</button>
           {/if}
-          {#if l.desactivee === DISABLED_CRASHES}<button onclick={() => void faire(api.extensions.reactiver(l.cle))}>Réactiver</button>{/if}
-          {#if l.consoleDebloquee}<button onclick={() => void faire(api.extensions.couperDeblocage(l.cle))}>Couper le déblocage</button>{/if}
-          <button disabled={l.espaces.length === 0 && l.applis.length === 0} onclick={() => void faire(api.extensions.desactiverPartout(l.cle))}>Désactiver partout</button>
-          <button onclick={() => (aSupprimer = l)}>Supprimer</button>
+          {#if l.desactivee === DISABLED_CRASHES}<button onclick={() => void make(api.extensions.reactiver(l.cle))}>Réactiver</button>{/if}
+          {#if l.consoleDebloquee}<button onclick={() => void make(api.extensions.couperDeblocage(l.cle))}>Couper le déblocage</button>{/if}
+          <button disabled={l.espaces.length === 0 && l.applis.length === 0} onclick={() => void make(api.extensions.desactiverPartout(l.cle))}>Désactiver partout</button>
+          <button onclick={() => (toDelete = l)}>Supprimer</button>
           <button aria-expanded={!!details[l.cle]} onclick={() => (details[l.cle] = !details[l.cle])}>Détails</button>
         </div>
       </li>
     {/each}
   </ul>
 </section>
-{#if aSupprimer}
-  {@const cible = aSupprimer}
+{#if toDelete}
+  {@const target = toDelete}
   <div class="voile">
     <div class="confirmation" role="alertdialog" aria-modal="true" data-testid="confirmation-suppression-extension">
       <p>
-        Supprimer « {cible.nom} » ? {cible.source === "store"
+        Supprimer « {target.nom} » ? {target.source === "store"
           ? "Elle sera désinstallée de tous les profils."
           : "Son accord et sa copie seront effacés ; le dossier de l'agent reste."}
       </p>
       <div class="boutons">
-        <button onclick={() => (aSupprimer = null)}>Annuler</button>
+        <button onclick={() => (toDelete = null)}>Annuler</button>
         <button
           class="confirmer"
           onclick={() => {
-            const cle = cible.cle; // {@const} is re-read: after aSupprimer = null, cible is null
-            aSupprimer = null;
-            void faire(api.extensions.supprimer(cle));
+            const key = target.cle; // {@const} is re-read: after aSupprimer = null, cible is null
+            toDelete = null;
+            void make(api.extensions.supprimer(key));
           }}>Supprimer</button
         >
       </div>

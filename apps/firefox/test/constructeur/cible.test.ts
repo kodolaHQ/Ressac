@@ -1,13 +1,13 @@
 import { expect, test } from "vitest";
-import { cibleDeCle, cleCible, directDesActions, estCleAction } from "../../ui/constructeur/cible";
+import { targetOfKey, targetKey, directDesActions, isActionKey } from "../../ui/constructeur/cible";
 
 test("cleCible: a widget's id as is, action:<id> for an action, and back", () => {
-  expect(cleCible({ type: "widget", id: "gitlab" })).toBe("gitlab");
-  expect(cleCible({ type: "action", id: "gitlab" })).toBe("action:gitlab");
-  expect(cibleDeCle("gitlab")).toEqual({ type: "widget", id: "gitlab" });
-  expect(cibleDeCle("action:gitlab")).toEqual({ type: "action", id: "gitlab" });
-  expect(estCleAction("action:gitlab")).toBe(true);
-  expect(estCleAction("gitlab")).toBe(false);
+  expect(targetKey({ type: "widget", id: "gitlab" })).toBe("gitlab");
+  expect(targetKey({ type: "action", id: "gitlab" })).toBe("action:gitlab");
+  expect(targetOfKey("gitlab")).toEqual({ type: "widget", id: "gitlab" });
+  expect(targetOfKey("action:gitlab")).toEqual({ type: "action", id: "gitlab" });
+  expect(isActionKey("action:gitlab")).toBe(true);
+  expect(isActionKey("gitlab")).toBe(false);
 });
 
 test("directDesActions: a current action becomes a run (or a trial) of its key, without its progress traces", () => {

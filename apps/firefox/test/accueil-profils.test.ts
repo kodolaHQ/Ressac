@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import type { Space, WindowState, BrowserState, SpaceId, ProfileId } from "../shared/modele";
-import { profilsPourAccord, urlOuvrable } from "../ui/accueil-profils";
+import { profilesForGrant, openableUrl } from "../ui/accueil-profils";
 
 const espace = (id: string, nom: string, profil: ProfileId, prive = false): Space => ({
   id,
@@ -31,7 +31,7 @@ test("a profile used by a private space is excluded, even shared with a non-priv
     ["defaut", "perso", "prive"],
     [fenetre("f1", "e1")],
   );
-  expect(profilsPourAccord(s, "f1").map((p) => p.id)).toEqual(["defaut"]);
+  expect(profilesForGrant(s, "f1").map((p) => p.id)).toEqual(["defaut"]);
 });
 
 test("the window's active space's profile is ticked by default, if it is readable", () => {
@@ -40,29 +40,29 @@ test("the window's active space's profile is ticked by default, if it is readabl
     ["defaut", "perso", "prive"],
     [fenetre("f1", "e1"), fenetre("f2", "e3")],
   );
-  expect(profilsPourAccord(s, "f1")).toEqual([
+  expect(profilesForGrant(s, "f1")).toEqual([
     { id: "defaut", libelle: "Profil de « Boulot »", parDefaut: false },
     { id: "perso", libelle: "Profil de « Perso »", parDefaut: true },
   ]);
   // The active space is private: its profile is excluded, so nothing is ticked.
-  expect(profilsPourAccord(s, "f2").every((p) => !p.parDefaut)).toBe(true);
+  expect(profilesForGrant(s, "f2").every((p) => !p.parDefaut)).toBe(true);
 });
 
 test("a profile without a space keeps a neutral label", () => {
   const s = etat([espace("e1", "Perso", "perso")], ["perso", "autre"], [fenetre("f1", "e1")]);
-  expect(profilsPourAccord(s, "f1")).toContainEqual({ id: "autre", libelle: "Profil « autre »", parDefaut: false });
+  expect(profilesForGrant(s, "f1")).toContainEqual({ id: "autre", libelle: "Profil « autre »", parDefaut: false });
 });
 
 test("a widget link: http(s) only, never the machine nor the local network", () => {
-  expect(urlOuvrable("https://exemple.test/article")).toBe(true);
-  expect(urlOuvrable("http://exemple.test/")).toBe(true);
-  expect(urlOuvrable("javascript:alert(1)")).toBe(false);
-  expect(urlOuvrable("file:///etc/hosts")).toBe(false);
-  expect(urlOuvrable("https://localhost/")).toBe(false);
-  expect(urlOuvrable("http://127.0.0.1:5300/")).toBe(false);
-  expect(urlOuvrable("http://[::1]/")).toBe(false);
-  expect(urlOuvrable("http://10.1.2.3/")).toBe(false);
-  expect(urlOuvrable("http://192.168.1.4/")).toBe(false);
-  expect(urlOuvrable("http://machine.local/")).toBe(false);
-  expect(urlOuvrable("pas une url")).toBe(false);
+  expect(openableUrl("https://exemple.test/article")).toBe(true);
+  expect(openableUrl("http://exemple.test/")).toBe(true);
+  expect(openableUrl("javascript:alert(1)")).toBe(false);
+  expect(openableUrl("file:///etc/hosts")).toBe(false);
+  expect(openableUrl("https://localhost/")).toBe(false);
+  expect(openableUrl("http://127.0.0.1:5300/")).toBe(false);
+  expect(openableUrl("http://[::1]/")).toBe(false);
+  expect(openableUrl("http://10.1.2.3/")).toBe(false);
+  expect(openableUrl("http://192.168.1.4/")).toBe(false);
+  expect(openableUrl("http://machine.local/")).toBe(false);
+  expect(openableUrl("pas une url")).toBe(false);
 });

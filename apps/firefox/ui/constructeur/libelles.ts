@@ -1,8 +1,8 @@
 import type { Execution, ResumeExecution } from "@webaios/noyau";
 
 /** Labels of a run, for the runs bar and a block's tab. */
-export const DECLENCHEURS: Record<Execution["declencheur"], string> = { planifiee: "Planifiée", manuelle: "Manuelle", agent: "Par l'agent", rejeu: "Essai" };
-export const STATUTS: Record<Execution["statut"], string> = {
+export const TRIGGERS: Record<Execution["declencheur"], string> = { planifiee: "Planifiée", manuelle: "Manuelle", agent: "Par l'agent", rejeu: "Essai" };
+export const STATUSES: Record<Execution["statut"], string> = {
   reussie: "Réussie",
   partielle: "Partielle",
   echouee: "Échouée",
@@ -10,7 +10,7 @@ export const STATUTS: Record<Execution["statut"], string> = {
   "accord-requis": "Accord requis",
 };
 /** Color of a run's badge: the same scale as the blocks. */
-export const TEINTES: Record<Execution["statut"], "ok" | "moyen" | "echec"> = {
+export const TINTS: Record<Execution["statut"], "ok" | "moyen" | "echec"> = {
   reussie: "ok",
   partielle: "moyen",
   "accord-requis": "moyen",
@@ -18,11 +18,11 @@ export const TEINTES: Record<Execution["statut"], "ok" | "moyen" | "echec"> = {
   interrompue: "echec",
 };
 
-export const heure = (iso: string) => new Date(iso).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+export const hour = (iso: string) => new Date(iso).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 export const date = (iso: string) => new Date(iso).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "medium" });
 
 /** « 0,4 s », « 12 s », « 2 min 05 s »; « en cours » without an end. */
-export function duree(debut: string | null, fin: string | null): string {
+export function duration(debut: string | null, fin: string | null): string {
   if (!debut) return "—";
   if (!fin) return "en cours";
   const ms = Math.max(0, new Date(fin).getTime() - new Date(debut).getTime());

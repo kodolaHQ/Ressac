@@ -1,14 +1,14 @@
 <script lang="ts">
-  import Icone from "../composants/Icone.svelte";
-  import BoutonDesignSite from "./BoutonDesignSite.svelte";
-  import BoutonsExtensionsSite from "../SiteAddonsStrip.svelte";
+  import Icon from "../composants/Icone.svelte";
+  import SiteDesignButton from "./BoutonDesignSite.svelte";
+  import SiteExtensionsButtons from "../SiteAddonsStrip.svelte";
   import { SITE_BAR_HEIGHT, SEARCH_URL, blockedLink, OPEN_IN_A_TAB, type SiteWindowState } from "../../shared/sites";
   import type { ApiSite } from "../../shared/api";
 
-  let { etat, api }: { etat: SiteWindowState; api: ApiSite } = $props();
+  let { etat: appState, api }: { etat: SiteWindowState; api: ApiSite } = $props();
   /** macOS: the window buttons are in the bar, on the left. */
   const mac = navigator.userAgent.includes("Mac");
-  const surSite = $derived(etat.vue === "site");
+  const surSite = $derived(appState.vue === "site");
   /** The design mode chevron unfolds its entries in place of the title. */
   let menuDesign = $state(false);
 </script>
@@ -16,36 +16,36 @@
 <!-- The background is draggable (moves the window); each button and the mention are clickable (no-drag). -->
 <header data-testid="barre-site" class:mac style:height="{SITE_BAR_HEIGHT}px">
   <nav>
-    <button data-testid="site-precedent" aria-label="Reculer" disabled={!surSite || !etat.peutReculer} onclick={() => api.precedent()}><Icone nom="reculer" /></button>
-    <button data-testid="site-suivant" aria-label="Avancer" disabled={!surSite || !etat.peutAvancer} onclick={() => api.suivant()}><Icone nom="avancer" /></button>
-    {#if etat.aAccueil}
-      <button data-testid="site-accueil" aria-label="Accueil de l'appli" aria-pressed={etat.vue === "accueil"} disabled={etat.vue === "accord"} onclick={() => api.accueil()}><Icone nom="accueil" /></button>
+    <button data-testid="site-precedent" aria-label="Reculer" disabled={!surSite || !appState.peutReculer} onclick={() => api.precedent()}><Icon nom="reculer" /></button>
+    <button data-testid="site-suivant" aria-label="Avancer" disabled={!surSite || !appState.peutAvancer} onclick={() => api.suivant()}><Icon nom="avancer" /></button>
+    {#if appState.aAccueil}
+      <button data-testid="site-accueil" aria-label="Accueil de l'appli" aria-pressed={appState.vue === "accueil"} disabled={appState.vue === "accord"} onclick={() => api.accueil()}><Icon nom="accueil" /></button>
     {/if}
-    <button data-testid="site-recharger" aria-label="Recharger" disabled={!surSite} onclick={() => api.recharger()}><Icone nom="recharger" /></button>
+    <button data-testid="site-recharger" aria-label="Recharger" disabled={!surSite} onclick={() => api.recharger()}><Icon nom="recharger" /></button>
   </nav>
   <div class="titre">
     {#if !menuDesign}
-      <span data-testid="site-nom" class="nom">{etat.nom}</span>
-      <span data-testid="site-domaine" class="domaine">{etat.domaine}</span>
+      <span data-testid="site-nom" class="nom">{appState.nom}</span>
+      <span data-testid="site-domaine" class="domaine">{appState.domaine}</span>
     {/if}
   </div>
-  {#if etat.suivi && surSite}
-    <button data-testid="site-chercher-adresse" class="chercher" disabled={etat.recherche} aria-busy={etat.recherche} onclick={() => api.chercherAdresse()}>{SEARCH_URL}</button>
+  {#if appState.suivi && surSite}
+    <button data-testid="site-chercher-adresse" class="chercher" disabled={appState.recherche} aria-busy={appState.recherche} onclick={() => api.chercherAdresse()}>{SEARCH_URL}</button>
   {/if}
-  {#if etat.avis}
-    <div data-testid="site-avis" class="avis" data-genre={etat.avis.genre} role="status">
-      {#if etat.avis.genre === "lien-bloque"}
-        <span>{blockedLink(etat.avis.domaine)}</span>
+  {#if appState.avis}
+    <div data-testid="site-avis" class="avis" data-genre={appState.avis.genre} role="status">
+      {#if appState.avis.genre === "lien-bloque"}
+        <span>{blockedLink(appState.avis.domaine)}</span>
         <button data-testid="site-ouvrir-onglet" onclick={() => api.ouvrirBloque()}>{OPEN_IN_A_TAB}</button>
       {:else}
-        <span>{etat.avis.texte}</span>
+        <span>{appState.avis.texte}</span>
       {/if}
     </div>
   {/if}
   <!-- Right: the design mode (every view), then the active add-ons' buttons (« site » view only). -->
   <div class="extensions">
-    <BoutonDesignSite {api} {etat} bind:menuOuvert={menuDesign} />
-    <BoutonsExtensionsSite {api} {surSite} />
+    <SiteDesignButton {api} etat={appState} bind:menuOuvert={menuDesign} />
+    <SiteExtensionsButtons {api} {surSite} />
   </div>
 </header>
 

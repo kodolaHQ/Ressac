@@ -1,12 +1,12 @@
 <script lang="ts">
   import { api } from "../etat.svelte";
-  import type { ContextePage, LienPage } from "./types";
+  import type { PageContext, LienPage } from "./types";
 
   /**
    * A page link: a button, never an `<a href>` (the main process only opens the address if it appears as is in the
    * results). Without a permitted address, the text alone.
    */
-  let { lien, ctx }: { lien: LienPage; ctx: ContextePage } = $props();
+  let { lien, ctx }: { lien: LienPage; ctx: PageContext } = $props();
 </script>
 
 {#if lien.url === null}

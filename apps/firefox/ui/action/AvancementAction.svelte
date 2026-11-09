@@ -10,36 +10,36 @@
    * « Mise en page… »; queued: « En attente ».
    * `courante` null and `enAttente` false: nothing to show.
    */
-  let { courante, enAttente, arreter }: { courante: DirectAction | null; enAttente: boolean; arreter: () => void } = $props();
+  let { courante, enAttente: pending, arreter: stop }: { courante: DirectAction | null; enAttente: boolean; arreter: () => void } = $props();
 
   // The kernel forgets a per-item block's count when it ends: the line keeps the last one seen (« 3 / 3 »). A new
   // run remounts this component (keyed on its start), nothing gets mixed up.
-  let comptes = $state<Record<string, { faits: number; total: number }>>({});
+  let accounts = $state<Record<string, { faits: number; total: number }>>({});
   $effect(() => {
     for (const [id, b] of Object.entries(courante?.blocs ?? {})) {
       if (b.total === undefined) continue;
       const c = { faits: b.faits ?? 0, total: b.total };
-      const vu = untrack(() => comptes[id]);
-      if (vu?.faits !== c.faits || vu?.total !== c.total) comptes[id] = c;
+      const vu = untrack(() => accounts[id]);
+      if (vu?.faits !== c.faits || vu?.total !== c.total) accounts[id] = c;
     }
   });
-  const lignes = $derived(Object.entries(courante?.blocs ?? {}).map(([id, b]) => ({ id, ...b, compte: b.total !== undefined ? { faits: b.faits ?? 0, total: b.total } : comptes[id] })));
+  const lignes = $derived(Object.entries(courante?.blocs ?? {}).map(([id, b]) => ({ id, ...b, compte: b.total !== undefined ? { faits: b.faits ?? 0, total: b.total } : accounts[id] })));
   /** The catalog label of each block type; the block id until it is read (or unknown type). */
-  let libelles = $state.raw<ReadonlyMap<string, string>>(new Map());
+  let labels = $state.raw<ReadonlyMap<string, string>>(new Map());
   $effect(() =>
     untrack(() => {
       void api.workflow
         .catalogue()
-        .then((c) => (libelles = new Map(c.map((b) => [b.type, b.libelle]))))
+        .then((c) => (labels = new Map(c.map((b) => [b.type, b.libelle]))))
         .catch(() => {});
     }),
   );
-  const libelle = (l: (typeof lignes)[number]) => (l.statut === "en-cours" && l.hote ? lectureDe(l.hote) : ((l.type && libelles.get(l.type)) ?? l.id));
+  const label = (l: (typeof lignes)[number]) => (l.statut === "en-cours" && l.hote ? lectureDe(l.hote) : ((l.type && labels.get(l.type)) ?? l.id));
   const MARQUES = { "en-cours": "…", reussi: "✓", partiel: "≈", echoue: "✗" } as const;
 </script>
 
 <section class="avancement" data-testid="avancement-action" aria-live="polite">
-  {#if enAttente && !courante}
+  {#if pending && !courante}
     <p class="attente" data-testid="en-attente">{PENDING}</p>
   {/if}
   {#if courante}
@@ -47,7 +47,7 @@
       {#each lignes as l (l.id)}
         <li class={l.statut} data-testid="ligne-bloc">
           <span class="marque" aria-hidden="true">{MARQUES[l.statut]}</span>
-          <span class="libelle">{libelle(l)}</span>
+          <span class="libelle">{label(l)}</span>
           {#if l.compte}<span class="compteur" data-testid="compteur-bloc">{l.compte.faits} / {l.compte.total}</span>{/if}
         </li>
       {/each}
@@ -56,7 +56,7 @@
       {/if}
     </ol>
   {/if}
-  <button data-testid="arreter-action" onclick={arreter}>Arrêter</button>
+  <button data-testid="arreter-action" onclick={stop}>Arrêter</button>
 </section>
 
 <style>

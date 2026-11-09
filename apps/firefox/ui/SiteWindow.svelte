@@ -1,9 +1,9 @@
 <script lang="ts">
   // The site app window's bar: FenetreSite, on window.webaios.site (ui/site-api.ts).
-  import FenetreSite from "../ui/site/FenetreSite.svelte";
+  import SiteWindow from "../ui/site/FenetreSite.svelte";
 </script>
 
-<FenetreSite />
+<SiteWindow />
 
 <style>
   /* Firefox keeps its native title bar (browser.tabs.inTitlebar 0): no room to leave for the macOS window buttons. */

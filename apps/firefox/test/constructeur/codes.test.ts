@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "vitest";
-import { MODELE_CODE } from "../../ui/constructeur/ajout";
-import { codesNonEnregistres, FichierCode, garderCodesDe, oublierCodes, type DepotCode } from "../../ui/constructeur/codes.svelte";
+import { CODE_MODEL } from "../../ui/constructeur/ajout";
+import { unsavedCodes, CodeFile, keepCodesOf, forgetCodes, type DepotCode } from "../../ui/constructeur/codes.svelte";
 
 function faux(fichiers: Record<string, string> = {}) {
   const etat = { fichiers: { ...fichiers }, refus: false };
@@ -17,28 +17,28 @@ function faux(fichiers: Record<string, string> = {}) {
   return { depot, etat, ecritures };
 }
 
-afterEach(() => oublierCodes());
+afterEach(() => forgetCodes());
 
 test("a keystroke creates an unsaved draft, nothing is written; Enregistrer writes it and clears it", async () => {
   const f = faux({ "a.mjs": "v1" });
-  const c = new FichierCode("w", "a.mjs", f.depot);
+  const c = new CodeFile("w", "a.mjs", f.depot);
   await c.lire();
   expect(c.texte).toBe("v1");
   expect(c.nonEnregistre).toBe(false);
   c.saisir("v2");
   expect(c.texte).toBe("v2");
   expect(c.nonEnregistre).toBe(true);
-  expect(codesNonEnregistres("w")).toEqual(["a.mjs"]);
+  expect(unsavedCodes("w")).toEqual(["a.mjs"]);
   expect(f.ecritures).toEqual([]);
   await c.enregistrer();
   expect(f.ecritures).toEqual([{ nom: "a.mjs", texte: "v2" }]);
   expect(c.nonEnregistre).toBe(false);
-  expect(codesNonEnregistres("w")).toEqual([]);
+  expect(unsavedCodes("w")).toEqual([]);
 });
 
 test("going back to the disk's text clears the draft; Enregistrer without a draft writes nothing", async () => {
   const f = faux({ "a.mjs": "v1" });
-  const c = new FichierCode("w", "a.mjs", f.depot);
+  const c = new CodeFile("w", "a.mjs", f.depot);
   await c.lire();
   c.saisir("v2");
   c.saisir("v1");
@@ -49,31 +49,31 @@ test("going back to the disk's text clears the draft; Enregistrer without a draf
 
 test("the draft outlives the editor (block or tab change): a new editor picks it up", async () => {
   const f = faux({ "a.mjs": "v1" });
-  const c = new FichierCode("w", "a.mjs", f.depot);
+  const c = new CodeFile("w", "a.mjs", f.depot);
   await c.lire();
   c.saisir("mien");
-  const d = new FichierCode("w", "a.mjs", f.depot);
+  const d = new CodeFile("w", "a.mjs", f.depot);
   await d.lire();
   expect(d.texte).toBe("mien");
   expect(d.nonEnregistre).toBe(true);
-  expect(codesNonEnregistres("autre")).toEqual([]);
+  expect(unsavedCodes("autre")).toEqual([]);
 });
 
 test("missing file: the template is shown, unsaved, without a draft until something is typed", async () => {
   const f = faux();
-  const c = new FichierCode("w", "neuf.mjs", f.depot);
+  const c = new CodeFile("w", "neuf.mjs", f.depot);
   await c.lire();
-  expect(c.texte).toBe(MODELE_CODE);
+  expect(c.texte).toBe(CODE_MODEL);
   expect(c.nonEnregistre).toBe(true);
-  expect(codesNonEnregistres("w")).toEqual([]);
+  expect(unsavedCodes("w")).toEqual([]);
   await c.enregistrer();
-  expect(f.ecritures).toEqual([{ nom: "neuf.mjs", texte: MODELE_CODE }]);
+  expect(f.ecritures).toEqual([{ nom: "neuf.mjs", texte: CODE_MODEL }]);
   expect(c.nonEnregistre).toBe(false);
 });
 
 test("the file changes on disk during a draft: banner; Recharger takes the disk", async () => {
   const f = faux({ "a.mjs": "v1" });
-  const c = new FichierCode("w", "a.mjs", f.depot);
+  const c = new CodeFile("w", "a.mjs", f.depot);
   await c.lire();
   c.saisir("mien");
   await c.lire();
@@ -90,7 +90,7 @@ test("the file changes on disk during a draft: banner; Recharger takes the disk"
 
 test("Garder le mien: the banner goes, the draft stays and is saved over it", async () => {
   const f = faux({ "a.mjs": "v1" });
-  const c = new FichierCode("w", "a.mjs", f.depot);
+  const c = new CodeFile("w", "a.mjs", f.depot);
   await c.lire();
   c.saisir("mien");
   f.etat.fichiers["a.mjs"] = "agent";
@@ -106,7 +106,7 @@ test("Garder le mien: the banner goes, the draft stays and is saved over it", as
 
 test("without a draft, a change on disk is shown as is; a disk equal to the draft clears it", async () => {
   const f = faux({ "a.mjs": "v1" });
-  const c = new FichierCode("w", "a.mjs", f.depot);
+  const c = new CodeFile("w", "a.mjs", f.depot);
   await c.lire();
   f.etat.fichiers["a.mjs"] = "agent";
   await c.lire();
@@ -121,7 +121,7 @@ test("without a draft, a change on disk is shown as is; a disk equal to the draf
 test("write refused: the draft stays with the error", async () => {
   const f = faux({ "a.mjs": "v1" });
   f.etat.refus = true;
-  const c = new FichierCode("w", "a.mjs", f.depot);
+  const c = new CodeFile("w", "a.mjs", f.depot);
   await c.lire();
   c.saisir("v2");
   await c.enregistrer();
@@ -131,7 +131,7 @@ test("write refused: the draft stays with the error", async () => {
 
 test("a keystroke during the save stays a draft", async () => {
   const f = faux({ "a.mjs": "v1" });
-  const c = new FichierCode("w", "a.mjs", f.depot);
+  const c = new CodeFile("w", "a.mjs", f.depot);
   await c.lire();
   c.saisir("v2");
   const p = c.enregistrer();
@@ -144,34 +144,34 @@ test("a keystroke during the save stays a draft", async () => {
 
 test("oublierCodes(widget) only clears that widget's drafts", async () => {
   const f = faux({ "a.mjs": "v1" });
-  const a = new FichierCode("w", "a.mjs", f.depot);
-  const b = new FichierCode("x", "a.mjs", f.depot);
+  const a = new CodeFile("w", "a.mjs", f.depot);
+  const b = new CodeFile("x", "a.mjs", f.depot);
   await a.lire();
   await b.lire();
   a.saisir("1");
   b.saisir("2");
-  oublierCodes("w");
-  expect(codesNonEnregistres("w")).toEqual([]);
-  expect(codesNonEnregistres("x")).toEqual(["a.mjs"]);
-  expect(codesNonEnregistres()).toEqual(["x/a.mjs"]);
+  forgetCodes("w");
+  expect(unsavedCodes("w")).toEqual([]);
+  expect(unsavedCodes("x")).toEqual(["a.mjs"]);
+  expect(unsavedCodes()).toEqual(["x/a.mjs"]);
 });
 
 test("garderCodesDe drops the drafts of widgets whose builder is no longer open", async () => {
   const f = faux({ "a.mjs": "v1" });
-  const a = new FichierCode("w", "a.mjs", f.depot);
-  const b = new FichierCode("x", "a.mjs", f.depot);
+  const a = new CodeFile("w", "a.mjs", f.depot);
+  const b = new CodeFile("x", "a.mjs", f.depot);
   await a.lire();
   await b.lire();
   a.saisir("1");
   b.saisir("2");
-  garderCodesDe(["x", "autre"]);
-  expect(codesNonEnregistres()).toEqual(["x/a.mjs"]);
+  keepCodesOf(["x", "autre"]);
+  expect(unsavedCodes()).toEqual(["x/a.mjs"]);
 });
 
 test("a saved code signals it (the workflow blocked on that file restarts); a refusal signals nothing", async () => {
   const f = faux();
   const signales: string[] = [];
-  const c = new FichierCode("w", "b.mjs", f.depot, (nom) => signales.push(nom));
+  const c = new CodeFile("w", "b.mjs", f.depot, (nom) => signales.push(nom));
   await c.lire();
   f.etat.refus = true;
   await c.enregistrer();

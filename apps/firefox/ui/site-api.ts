@@ -28,9 +28,9 @@ export function createSiteApi(c: SiteWindowController): ApiSite {
     ouvrirBloque: () => c.openBlocked(),
     chercherAdresse: () => c.findAddress(),
     // Refuses a non-boolean choice and an unbounded hash.
-    accorder: async (oui, empreinte) => {
-      if (typeof oui !== "boolean" || (empreinte !== undefined && (typeof empreinte !== "string" || empreinte.length > 128))) throw new Error("invalid accord request");
-      await c.accord(oui, empreinte ?? "");
+    accorder: async (yes, hash) => {
+      if (typeof yes !== "boolean" || (hash !== undefined && (typeof hash !== "string" || hash.length > 128))) throw new Error("invalid accord request");
+      await c.accord(yes, hash ?? "");
     },
     // Rejects when the memory cannot be read: CadreAccueil then sends nothing.
     memoire: async () => {
@@ -39,7 +39,7 @@ export function createSiteApi(c: SiteWindowController): ApiSite {
       return structuredClone(m);
     },
     surMemoire: (cb) => untilUnload(c.onMemory((m) => cb(structuredClone(m)))),
-    ouvrir: async (adresse) => c.openFromHome(adresse),
+    ouvrir: async (url) => c.openFromHome(url),
     image: async (url) => c.image(url),
     extensions: {
       liste: async () => [],

@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { PageAction } from "@webaios/noyau";
   import { NO_RESULT } from "../../shared/actions";
-  import RenduPage from "../action/RenduPage.svelte";
+  import PageRender from "../action/RenduPage.svelte";
   import { api } from "../etat.svelte";
   import type { Executions } from "./executions.svelte";
 
@@ -14,12 +14,12 @@
 
   let lue = $state.raw<PageAction | null | undefined>(undefined);
   /** The chosen run, and what changes its page (its end, its status). */
-  const voulue = $derived(executions.choisie ? `${executions.choisie.id}|${executions.choisie.fin}|${executions.choisie.statut}` : null);
-  let requete = 0;
+  const wanted = $derived(executions.choisie ? `${executions.choisie.id}|${executions.choisie.fin}|${executions.choisie.statut}` : null);
+  let request = 0;
   $effect(() => {
-    const v = voulue;
+    const v = wanted;
     const execution = executions.choisie?.id ?? null;
-    const n = ++requete;
+    const n = ++request;
     if (v === null || execution === null) {
       lue = null;
       return;
@@ -27,8 +27,8 @@
     lue = undefined;
     void api.actions
       .page(id, execution)
-      .then((p) => n === requete && (lue = p))
-      .catch(() => n === requete && (lue = null));
+      .then((p) => n === request && (lue = p))
+      .catch(() => n === request && (lue = null));
   });
 </script>
 
@@ -43,7 +43,7 @@
     <p class="doux">{NO_RESULT}</p>
   {:else}
     <div class="page">
-      <RenduPage page={lue.page} action={id} execution={lue.execution} composants={false} />
+      <PageRender page={lue.page} action={id} execution={lue.execution} composants={false} />
     </div>
   {/if}
   {#if executions.choisie?.essai}<p class="doux mention" data-testid="apercu-mention">Aperçu d'un essai : pas le dernier résultat de l'action</p>{/if}

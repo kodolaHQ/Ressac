@@ -3,22 +3,22 @@ import type { Action, ApiWebaios } from "../shared/api";
 import type { BrowserState, WindowId } from "../shared/modele";
 import { HOST_EXITED, type AgentHost } from "../chrome/agent/host";
 import type { WebAiOsStore } from "../chrome/store";
-import { profilsLisibles, profilsPourAccord } from "./accueil-profils";
+import { readableProfiles, profilesForGrant } from "./accueil-profils";
 
 // The window half of the actions service: private spaces, dispatches, the pace of
 // links, the direct feed's filter and the grant profiles. The disk and kernel half is the host's (noyau/actions.ts).
 
 /** A missing window or space counts as private. */
-export function espaceActifPrive(etat: Pick<BrowserState, "espaces" | "fenetres">, f: WindowId): boolean {
-  const fenetre = etat.fenetres.find((x) => x.id === f);
-  return !fenetre || (etat.espaces.find((e) => e.id === fenetre.espaceActif)?.prive ?? true);
+export function activeSpacePrivate(appState: Pick<BrowserState, "espaces" | "fenetres">, f: WindowId): boolean {
+  const win = appState.fenetres.find((x) => x.id === f);
+  return !win || (appState.espaces.find((e) => e.id === win.espaceActif)?.prive ?? true);
 }
 
 /** The actions API, plus what the Firefox page asks the chrome for: result images and agent components. */
 export type ActionsFirefox = ApiWebaios["actions"] & {
   image(id: string, execution: string, url: string): Promise<string | null>;
-  serveComponent(nom: string): Promise<string | null>;
-  releaseComponent(nom: string): void;
+  serveComponent(name: string): Promise<string | null>;
+  releaseComponent(name: string): void;
 };
 
 // Shown when the actions service has no kernel (same texts as noyau/actions.ts).
@@ -33,17 +33,17 @@ export function createActionsApi(o: {
   untilUnload: (unsubscribe: () => void) => () => void;
   media: WebAiOsStore["actionMedia"];
 }): ActionsFirefox {
-  const { host, fenetre } = o;
+  const { host, fenetre: win } = o;
   /** Read at each call and again after each wait: the window may have moved to a private space meanwhile. */
-  const prive = () => {
+  const isPrivate = () => {
     const s = o.state();
-    return !s || espaceActifPrive(s, fenetre);
+    return !s || activeSpacePrivate(s, win);
   };
-  const refus = { ok: false as const, erreur: ACTIONS_IN_PRIVATE_SPACE };
+  const denial = { ok: false as const, erreur: ACTIONS_IN_PRIVATE_SPACE };
   /** The host stopped or did not answer a request: the next `acces` reads again (afterRestart). */
   let hostDown = false;
   /** The `acces` handled so far: a refusal answered before one of them but handled after it still reads again. */
-  let accesSeen = 0;
+  let accessSeen = 0;
   /** The last answer to each read of the page: a host that stopped answers nothing, and the page keeps what it showed. */
   const lastRead = new Map<string, unknown>();
   /**
@@ -51,9 +51,9 @@ export function createActionsApi(o: {
    * answer: with `keep`, the last answer to the same request, otherwise `empty`.
    */
   const ask = async <T>(method: string, params: unknown, empty: () => T, keep = false): Promise<T> => {
-    if (prive()) return empty();
+    if (isPrivate()) return empty();
     const key = JSON.stringify([method, params]);
-    const seen = accesSeen;
+    const seen = accessSeen;
     const r = await host.request<T>(method, params).then(
       (v) => {
         if (keep) lastRead.set(key, v);
@@ -61,12 +61,12 @@ export function createActionsApi(o: {
       },
       () => {
         // An acces handled meanwhile may be the kernel's first, read with this refusal in one go: read again now.
-        if (accesSeen !== seen) readAgain();
+        if (accessSeen !== seen) readAgain();
         else hostDown = true;
         return keep && lastRead.has(key) ? structuredClone(lastRead.get(key) as T) : empty();
       },
     );
-    return prive() ? empty() : r;
+    return isPrivate() ? empty() : r;
   };
   /**
    * The host stopped, or did not answer this API (a page opened while it was down): the first `acces`, sent once its
@@ -78,7 +78,7 @@ export function createActionsApi(o: {
   o.untilUnload(host.on(HOST_EXITED, () => (hostDown = true)));
   o.untilUnload(
     host.on("acces", () => {
-      accesSeen++;
+      accessSeen++;
       if (!hostDown) return;
       hostDown = false;
       readAgain();
@@ -94,10 +94,10 @@ export function createActionsApi(o: {
   /** The store references this document holds on each component; the serves answered null in a private space. */
   const served = new Map<string, number>();
   const unserved = new Map<string, number>();
-  const bump = (m: Map<string, number>, nom: string, d: number) => {
-    const n = (m.get(nom) ?? 0) + d;
-    if (n > 0) m.set(nom, n);
-    else m.delete(nom);
+  const bump = (m: Map<string, number>, name: string, d: number) => {
+    const n = (m.get(name) ?? 0) + d;
+    if (n > 0) m.set(name, n);
+    else m.delete(name);
   };
   const afterRestart = (cb: () => void) => (restarted.add(cb), () => void restarted.delete(cb));
   /** When this window last opened a link of an action's page: a page cannot make links leave in a burst. */
@@ -109,20 +109,20 @@ export function createActionsApi(o: {
       return o.untilUnload(() => offs.forEach((f) => f()));
     },
     // Read without launching, check private again, open the page, then launch: in two host calls.
-    async ouvrir(id, saisie) {
-      if (prive()) return refus;
-      const p = await ask<{ ok: true; nom: string; lancer: boolean } | { ok: false; erreur: string } | null>("actions.preparer", { id, saisie }, () => null);
-      if (prive()) return refus;
+    async ouvrir(id, input) {
+      if (isPrivate()) return denial;
+      const p = await ask<{ ok: true; nom: string; lancer: boolean } | { ok: false; erreur: string } | null>("actions.preparer", { id, saisie: input }, () => null);
+      if (isPrivate()) return denial;
       if (!p) return { ok: false, erreur: MESSAGE_SANS_NOYAU };
       if (!p.ok) return p;
-      o.dispatch({ type: "ouvrirAction", fenetreId: fenetre, id, nom: p.nom });
+      o.dispatch({ type: "ouvrirAction", fenetreId: win, id, nom: p.nom });
       // A host that dies meanwhile: the next `acces` reads the page again, as after a rejected `ask`.
-      if (p.lancer) host.request("actions.lancer", { id, saisie }).catch((e) => ((hostDown = true), console.error(`[webaios] action ${id} :`, e)));
+      if (p.lancer) host.request("actions.lancer", { id, saisie: input }).catch((e) => ((hostDown = true), console.error(`[webaios] action ${id} :`, e)));
       return { ok: true };
     },
-    lancer: (id, saisie) => ask("actions.lancer", { id, saisie }, () => ({ statut: "invalide" as const, erreur: prive() ? ACTIONS_IN_PRIVATE_SPACE : MESSAGE_SANS_NOYAU })),
+    lancer: (id, input) => ask("actions.lancer", { id, saisie: input }, () => ({ statut: "invalide" as const, erreur: isPrivate() ? ACTIONS_IN_PRIVATE_SPACE : MESSAGE_SANS_NOYAU })),
     arreter(id) {
-      if (!prive()) host.notify("actions.arreter", { id });
+      if (!isPrivate()) host.notify("actions.arreter", { id });
     },
     page: (id, execution) => ask("actions.page", { id, execution }, () => null, true),
     executions: (id) => ask("actions.executions", { id }, () => [], true),
@@ -130,44 +130,44 @@ export function createActionsApi(o: {
     direct: () => ask("actions.direct", undefined, NO_ACTION),
     surDirect(rappel) {
       // Only while this window's space is not private, judged at each event.
-      const offFeed = host.on("actions.direct", (e) => !prive() && rappel(structuredClone(e)));
+      const offFeed = host.on("actions.direct", (e) => !isPrivate() && rappel(structuredClone(e)));
       // A host that started again sent no feed meanwhile: the runs are read again.
-      const offs = [offFeed, afterRestart(() => void api.direct().then((e) => !prive() && rappel(e)))];
+      const offs = [offFeed, afterRestart(() => void api.direct().then((e) => !isPrivate() && rappel(e)))];
       return o.untilUnload(() => offs.forEach((f) => f()));
     },
     async ouvrirLien(id, execution, url) {
-      if (prive()) return;
-      const maintenant = Date.now();
+      if (isPrivate()) return;
+      const now = Date.now();
       // A page that would open links in a burst (to make data leave): one per second at most.
-      if (maintenant - dernierLien < 1000) return console.warn("[webaios] lien d'action ignoré (trop rapproché) :", url);
+      if (now - dernierLien < 1000) return console.warn("[webaios] lien d'action ignoré (trop rapproché) :", url);
       // Taken now: a second click while the host checks this link is too close. A refused link gives the second back.
-      const avant = dernierLien;
-      dernierLien = maintenant;
-      const permis = await ask("actions.lienPermis", { id, execution, url }, () => false);
-      if (permis !== true || prive()) {
-        if (dernierLien === maintenant) dernierLien = avant;
-        if (permis !== true) console.warn("[webaios] lien d'action refusé :", url);
+      const before = dernierLien;
+      dernierLien = now;
+      const allowed = await ask("actions.lienPermis", { id, execution, url }, () => false);
+      if (allowed !== true || isPrivate()) {
+        if (dernierLien === now) dernierLien = before;
+        if (allowed !== true) console.warn("[webaios] lien d'action refusé :", url);
         return;
       }
-      o.dispatch({ type: "ouvrirOnglet", fenetreId: fenetre, url, activer: true });
+      o.dispatch({ type: "ouvrirOnglet", fenetreId: win, url, activer: true });
     },
     profilsPourAccord: async () => {
       const s = o.state();
-      return !s || prive() ? [] : profilsPourAccord(s, fenetre);
+      return !s || isPrivate() ? [] : profilesForGrant(s, win);
     },
     async accorder(a) {
-      if (prive()) return refus;
+      if (isPrivate()) return denial;
       // Never a profile a private space uses: the state is read again at the moment of the grant.
-      if (!profilsLisibles(o.state()!).includes(a.profil)) return { ok: false, erreur: "Ce profil ne peut pas servir à un accord" };
+      if (!readableProfiles(o.state()!).includes(a.profil)) return { ok: false, erreur: "Ce profil ne peut pas servir à un accord" };
       // A host that does not answer means no kernel; the kernel's own refusals come back as answers.
       const r = await host.request<{ ok: true } | { ok: false; erreur: string }>("actions.accorder", a).then(
         (v) => structuredClone(v),
         () => ({ ok: false as const, erreur: MESSAGE_SANS_NOYAU }),
       );
-      return prive() ? refus : r;
+      return isPrivate() ? denial : r;
     },
     async refuserAccord(id) {
-      if (prive()) return;
+      if (isPrivate()) return;
       // The host stops the run first, then erases the grant and the results.
       await host.request("actions.refuserAccord", { id }).then(
         () => forget(id),
@@ -175,42 +175,42 @@ export function createActionsApi(o: {
       );
     },
     async supprimer(id) {
-      if (prive()) return refus;
+      if (isPrivate()) return denial;
       const r = await host.request<{ ok: true } | { ok: false; erreur: string }>("actions.supprimer", { id }).then(
         (v) => structuredClone(v),
         () => ((hostDown = true), { ok: false as const, erreur: MESSAGE_SANS_NOYAU }),
       );
       if (r.ok) forget(id);
-      return prive() ? refus : r;
+      return isPrivate() ? denial : r;
     },
     async voirWorkflow(id) {
-      const nom = await ask<string | null>("actions.nom", { id }, () => null);
-      if (nom && !prive()) o.dispatch({ type: "ouvrirWorkflow", fenetreId: fenetre, id, nom, proprietaire: "action" });
+      const name = await ask<string | null>("actions.nom", { id }, () => null);
+      if (name && !isPrivate()) o.dispatch({ type: "ouvrirWorkflow", fenetreId: win, id, nom: name, proprietaire: "action" });
     },
     // A result image, in two halves: the host's checks, then the store's anonymous load. Never from lastRead:
     // a cached image would outlive a refusal (a deleted run, an grant given since).
     async image(id, execution, url) {
       if ((await ask("actions.imagePermise", { id, execution, url }, () => false)) !== true) return null;
       const data = await o.media.image(url);
-      return prive() ? null : data;
+      return isPrivate() ? null : data;
     },
     // Each serve is paired with a release (store refcount); a private space's serve takes no reference.
-    async serveComponent(nom) {
-      if (prive()) return bump(unserved, nom, 1), null;
-      bump(served, nom, 1);
-      const url = await o.media.serve(nom);
-      return prive() ? null : url;
+    async serveComponent(name) {
+      if (isPrivate()) return bump(unserved, name, 1), null;
+      bump(served, name, 1);
+      const url = await o.media.serve(name);
+      return isPrivate() ? null : url;
     },
-    releaseComponent(nom) {
-      if (unserved.has(nom)) return bump(unserved, nom, -1);
-      if (!served.has(nom)) return;
-      bump(served, nom, -1);
-      void o.media.release(nom);
+    releaseComponent(name) {
+      if (unserved.has(name)) return bump(unserved, name, -1);
+      if (!served.has(name)) return;
+      bump(served, name, -1);
+      void o.media.release(name);
     },
   };
   // A document that goes releases what it still shows.
   o.untilUnload(() => {
-    for (const [nom, n] of served) for (let i = 0; i < n; i++) void o.media.release(nom);
+    for (const [name, n] of served) for (let i = 0; i < n; i++) void o.media.release(name);
     served.clear();
   });
   return api;

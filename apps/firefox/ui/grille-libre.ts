@@ -7,25 +7,25 @@ export const PAS_X = 5;
 /** Vertical snap step, in pixels. */
 export const PAS_Y = 8;
 /** Thousandths of the home width (same value as the kernel; copied so as not to load zod in the interface). */
-export const LARGEUR_LIBRE = 1000;
+export const FREE_WIDTH = 1000;
 /** Columns and rows declared by a widget: the size sent to the display is rounded to these units. */
-export const COLONNES = 12;
-export const RANGEE_PX = 90;
+export const COLUMNS = 12;
+export const ROW_PX = 90;
 
-const borner = (v: number, min: number, max: number) => Math.max(min, Math.min(v, max));
-const aimantX = (x: number) => Math.round(x / PAS_X) * PAS_X;
-const aimantY = (y: number) => Math.round(y / PAS_Y) * PAS_Y;
+const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(v, max));
+const snapX = (x: number) => Math.round(x / PAS_X) * PAS_X;
+const snapY = (y: number) => Math.round(y / PAS_Y) * PAS_Y;
 
-const chevauchent = (a: FreePlacement, b: FreePlacement) => a.x < b.x + b.l && b.x < a.x + a.l && a.y < b.y + b.h && b.y < a.y + a.h;
+const overlap = (a: FreePlacement, b: FreePlacement) => a.x < b.x + b.l && b.x < a.x + a.l && a.y < b.y + b.h && b.y < a.y + a.h;
 
 /** Declared sizes (units 1…12) to free units (thousandths, pixels): the copy of the kernel's `taillesLibres`. */
-export function taillesLibres(t: { l: number; h: number }): { l: number; h: number } {
-  return { l: Math.max(1, Math.round((t.l * LARGEUR_LIBRE) / COLONNES)), h: Math.max(1, t.h * RANGEE_PX) };
+export function freeSizes(t: { l: number; h: number }): { l: number; h: number } {
+  return { l: Math.max(1, Math.round((t.l * FREE_WIDTH) / COLUMNS)), h: Math.max(1, t.h * ROW_PX) };
 }
 
 /** The reverse: the real size (thousandths, pixels) in rounded units, for `postMessage`. */
-export function unitesLibres(t: { l: number; h: number }): { l: number; h: number } {
-  return { l: Math.max(1, Math.round((t.l * COLONNES) / LARGEUR_LIBRE)), h: Math.max(1, Math.round(t.h / RANGEE_PX)) };
+export function freeUnits(t: { l: number; h: number }): { l: number; h: number } {
+  return { l: Math.max(1, Math.round((t.l * COLUMNS) / FREE_WIDTH)), h: Math.max(1, Math.round(t.h / ROW_PX)) };
 }
 
 /**
@@ -34,51 +34,51 @@ export function unitesLibres(t: { l: number; h: number }): { l: number; h: numbe
  * neighbor when the pointer aims beyond its opposite edge; only a pointer that overlaps it by the near edge
  * stops.
  */
-export function deplacerLibre(o: { p: FreePlacement; x: number; y: number; autres: readonly FreePlacement[]; largeurPx: number }): FreePlacement {
-  const { p, autres, largeurPx } = o;
+export function moveFree(o: { p: FreePlacement; x: number; y: number; autres: readonly FreePlacement[]; largeurPx: number }): FreePlacement {
+  const { p, autres: others, largeurPx: widthPx } = o;
   // The pointer's target, fixed: bounds reached along the way do not change the gesture's direction.
-  const cibleX = borner(aimantX(o.x), 0, LARGEUR_LIBRE - p.l);
-  const cibleY = Math.max(0, aimantY(o.y));
-  const dx = cibleX - p.x;
-  const dy = cibleY - p.y;
-  let x = cibleX;
-  let y = cibleY;
+  const targetX = clamp(snapX(o.x), 0, FREE_WIDTH - p.l);
+  const targetY = Math.max(0, snapY(o.y));
+  const dx = targetX - p.x;
+  const dy = targetY - p.y;
+  let x = targetX;
+  let y = targetY;
   // Several walls may follow one another: we do another pass as long as another widget is touched.
   for (let tour = 0; tour < 8; tour++) {
-    const gene = autres.find((a) => a.id !== p.id && chevauchent({ ...p, x, y }, a));
+    const gene = others.find((a) => a.id !== p.id && overlap({ ...p, x, y }, a));
     if (!gene) break;
     // Crossing is only allowed if the targeted place is really free: the pointer's target may be beyond the
     // neighbor while the home edge brings the widget back onto it (we then stop at the near edge).
-    const bornerX = () => {
+    const clampX = () => {
       if (dx > 0) {
-        if (cibleX >= gene.x + gene.l && !chevauchent({ ...p, x: cibleX, y }, gene)) x = cibleX;
+        if (targetX >= gene.x + gene.l && !overlap({ ...p, x: targetX, y }, gene)) x = targetX;
         else x = Math.min(x, Math.max(p.x, gene.x - p.l));
       } else if (dx < 0) {
-        if (cibleX + p.l <= gene.x && !chevauchent({ ...p, x: cibleX, y }, gene)) x = cibleX;
+        if (targetX + p.l <= gene.x && !overlap({ ...p, x: targetX, y }, gene)) x = targetX;
         else x = Math.min(p.x, Math.max(x, gene.x + gene.l));
       }
     };
-    const bornerY = () => {
+    const clampY = () => {
       if (dy > 0) {
-        if (cibleY >= gene.y + gene.h && !chevauchent({ ...p, x, y: cibleY }, gene)) y = cibleY;
+        if (targetY >= gene.y + gene.h && !overlap({ ...p, x, y: targetY }, gene)) y = targetY;
         else y = Math.min(y, Math.max(p.y, gene.y - p.h));
       } else if (dy < 0) {
-        if (cibleY + p.h <= gene.y && !chevauchent({ ...p, x, y: cibleY }, gene)) y = cibleY;
+        if (targetY + p.h <= gene.y && !overlap({ ...p, x, y: targetY }, gene)) y = targetY;
         else y = Math.min(p.y, Math.max(y, gene.y + gene.h));
       }
     };
     // The last edge touched wins: the axis that moved the most is bounded first, the other only if the overlap
     // remains (a diagonal drag does not jump to the neighbor's corner). Both axes are compared in pixels.
-    if (Math.abs(dx) * largeurPx >= Math.abs(dy) * LARGEUR_LIBRE) {
-      bornerX();
-      if (chevauchent({ ...p, x, y }, gene)) bornerY();
+    if (Math.abs(dx) * widthPx >= Math.abs(dy) * FREE_WIDTH) {
+      clampX();
+      if (overlap({ ...p, x, y }, gene)) clampY();
     } else {
-      bornerY();
-      if (chevauchent({ ...p, x, y }, gene)) bornerX();
+      clampY();
+      if (overlap({ ...p, x, y }, gene)) clampX();
     }
   }
   // A stop on a left edge coming from the right may aim at home's right edge: we stay there.
-  x = borner(x, 0, LARGEUR_LIBRE - p.l);
+  x = clamp(x, 0, FREE_WIDTH - p.l);
   return { ...p, x, y };
 }
 
@@ -87,7 +87,7 @@ export function deplacerLibre(o: { p: FreePlacement; x: number; y: number; autre
  * stopped at the left edge of a neighbor to its right or at the top edge of a neighbor that crosses its width, on the
  * left as on the right (never a written overlap).
  */
-export function redimensionnerLibre(o: {
+export function resizeFree(o: {
   p: FreePlacement;
   l: number;
   h: number;
@@ -95,31 +95,31 @@ export function redimensionnerLibre(o: {
   max: { l: number; h: number };
   autres: readonly FreePlacement[];
 }): FreePlacement {
-  const { p, min, max, autres } = o;
-  const minL = Math.max(1, Math.min(min.l, LARGEUR_LIBRE));
+  const { p, min, max, autres: others } = o;
+  const minL = Math.max(1, Math.min(min.l, FREE_WIDTH));
   // Requested height: it tells which neighbors cross the height during the width computation.
-  const hSouhaite = borner(aimantY(o.h), Math.max(1, min.h), max.h);
+  const wantedH = clamp(snapY(o.h), Math.max(1, min.h), max.h);
   // Only neighbors on the current rows block the width: a lower neighbor is stopped by the h computation.
   const vertical = (a: FreePlacement) => a.id !== p.id && a.y < p.y + p.h && p.y < a.y + a.h;
-  const bord = (depuis: number) => Math.min(LARGEUR_LIBRE, ...autres.filter((a) => vertical(a) && a.x >= depuis).map((a) => a.x));
+  const bord = (from: number) => Math.min(FREE_WIDTH, ...others.filter((a) => vertical(a) && a.x >= from).map((a) => a.x));
   // The minimum does not fit before the neighbour (or the right edge): the widget moves back instead of going under its
   // minimum. It moves back without entering a neighbour on its left.
-  const gauche = Math.max(0, ...autres.filter((a) => vertical(a) && a.x + a.l <= p.x).map((a) => a.x + a.l));
+  const gauche = Math.max(0, ...others.filter((a) => vertical(a) && a.x + a.l <= p.x).map((a) => a.x + a.l));
   const x = Math.max(gauche, Math.min(p.x, bord(p.x) - minL));
-  const droite = bord(x);
-  const xFinal = Math.max(gauche, Math.min(x, droite - minL));
-  const maxL = Math.max(1, Math.min(max.l, droite - xFinal));
-  const l = borner(aimantX(o.l), Math.max(1, Math.min(minL, maxL)), maxL);
+  const right = bord(x);
+  const xFinal = Math.max(gauche, Math.min(x, right - minL));
+  const maxL = Math.max(1, Math.min(max.l, right - xFinal));
+  const l = clamp(snapX(o.l), Math.max(1, Math.min(minL, maxL)), maxL);
   // Growing downward touches a neighbor as soon as the widths cross, whether it is on the left or the right.
-  const dessous = autres
+  const below = others
     .filter((a) => a.id !== p.id && a.x < xFinal + l && xFinal < a.x + a.l && a.y >= p.y)
     .map((a) => a.y - p.y);
-  const hMax = Math.max(1, Math.min(max.h, ...dessous));
+  const hMax = Math.max(1, Math.min(max.h, ...below));
   return {
     ...p,
     x: xFinal,
     l,
-    h: borner(hSouhaite, Math.max(1, min.h), hMax),
+    h: clamp(wantedH, Math.max(1, min.h), hMax),
   };
 }
 
@@ -128,16 +128,16 @@ export function redimensionnerLibre(o: {
  * home's margins or center. Alignments are looked for within one snap step: the preview is snapped, the neighbor
  * may not be.
  */
-export function guidesLibres(o: { p: FreePlacement; autres: readonly FreePlacement[]; largeurPx: number }): { x: number[]; y: number[] } {
-  const { p, autres, largeurPx } = o;
-  const px = (milliemes: number) => (milliemes / LARGEUR_LIBRE) * largeurPx;
-  const autresX = autres.filter((a) => a.id !== p.id);
-  const ciblesX = [0, largeurPx / 2, largeurPx, ...autresX.flatMap((a) => [px(a.x), px(a.x + a.l / 2), px(a.x + a.l)])];
-  const ciblesY = autresX.flatMap((a) => [a.y, a.y + a.h / 2, a.y + a.h]);
-  const alignes = (valeurs: number[], cibles: number[], tolerance: number) =>
-    [...new Set(valeurs.filter((v) => cibles.some((c) => Math.abs(c - v) <= tolerance)).map((v) => Math.round(v * 100) / 100))];
+export function freeGuides(o: { p: FreePlacement; autres: readonly FreePlacement[]; largeurPx: number }): { x: number[]; y: number[] } {
+  const { p, autres: others, largeurPx: widthPx } = o;
+  const px = (milliemes: number) => (milliemes / FREE_WIDTH) * widthPx;
+  const otherXs = others.filter((a) => a.id !== p.id);
+  const targetXs = [0, widthPx / 2, widthPx, ...otherXs.flatMap((a) => [px(a.x), px(a.x + a.l / 2), px(a.x + a.l)])];
+  const targetYs = otherXs.flatMap((a) => [a.y, a.y + a.h / 2, a.y + a.h]);
+  const aligned = (valeurs: number[], targets: number[], tolerance: number) =>
+    [...new Set(valeurs.filter((v) => targets.some((c) => Math.abs(c - v) <= tolerance)).map((v) => Math.round(v * 100) / 100))];
   return {
-    x: alignes([px(p.x), px(p.x + p.l / 2), px(p.x + p.l)], ciblesX, (PAS_X * largeurPx) / LARGEUR_LIBRE),
-    y: alignes([p.y, p.y + p.h / 2, p.y + p.h], ciblesY, PAS_Y),
+    x: aligned([px(p.x), px(p.x + p.l / 2), px(p.x + p.l)], targetXs, (PAS_X * widthPx) / FREE_WIDTH),
+    y: aligned([p.y, p.y + p.h / 2, p.y + p.h], targetYs, PAS_Y),
   };
 }

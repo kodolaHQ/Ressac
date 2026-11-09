@@ -1,12 +1,12 @@
 <script lang="ts">
-  import type { ContextePage, ImagePage } from "../ui/action/types";
+  import type { PageContext, ImagePage } from "../ui/action/types";
 
   /**
    * A result image, checked by the host then loaded by the chrome without cookies or
    * referrer (ui/actions-api.ts image), shown as a `data:` URL. Neutral (an action with an account), pending, refused or
    * undecodable: a neutral placeholder of the same size. Asked only once near the view (lazy loading).
    */
-  let { image, ctx }: { image: NonNullable<ImagePage>; ctx: ContextePage } = $props();
+  let { image, ctx }: { image: NonNullable<ImagePage>; ctx: PageContext } = $props();
   let data = $state<string | null>(null);
   let slot = $state<HTMLDivElement>();
   let near = $state(false);
