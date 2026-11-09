@@ -14,17 +14,17 @@ const contexte = (plages: [number, number][] = [[5280, 5299]]): ContexteDisponib
 });
 
 describe("projetPourAdresse", () => {
-  test("http://localhost:15280/x d'une appli lancée sur 15280 donne app-essai", () => {
+  test("http://localhost:15280/x of an app launched on 15280 gives app-essai", () => {
     expect(projetPourAdresse("http://localhost:15280/x", contexte())).toEqual({ type: "app", projet: "app-essai", dossier: "essai", nom: "Essai" });
   });
-  test("port 5290 sans appli donne demo-5290, 15283 avec plage étendue donne demo-15283", () => {
+  test("port 5290 without an app gives demo-5290, 15283 with extended range gives demo-15283", () => {
     expect(projetPourAdresse("http://localhost:5290/", contexte())).toEqual({ type: "demo", projet: "demo-5290", port: 5290 });
     expect(projetPourAdresse("http://127.0.0.1:15283/", contexte([[5280, 5299], [15280, 15284]]))).toEqual({ type: "demo", projet: "demo-15283", port: 15283 });
   });
-  test("127.0.0.1:4321 déclaré par un projet externe donne externe", () => {
+  test("127.0.0.1:4321 declared by an external project gives externe", () => {
     expect(projetPourAdresse("http://127.0.0.1:4321/", contexte())).toEqual({ type: "externe", projet: "ext-0123456789abcdef", dossier: externe.dossier, nom: "site", client: "c1" });
   });
-  test("tout le reste donne null", () => {
+  test("everything else gives null", () => {
     for (const u of ["https://localhost:4321", "http://exemple.fr:4321", "http://localhost:4322", "file:///tmp/x", "webaios://applications", "http://localhost/", "pas une url"]) {
       expect(projetPourAdresse(u, contexte())).toBeNull();
     }
@@ -32,7 +32,7 @@ describe("projetPourAdresse", () => {
 });
 
 describe("plagesConteneur", () => {
-  test("défaut, plage valide, valeur invalide", () => {
+  test("default, valid range, invalid value", () => {
     expect(plagesConteneur(undefined)).toEqual([[5280, 5299]]);
     expect(plagesConteneur("15280-15284")).toEqual([[5280, 5299], [15280, 15284]]);
     expect(plagesConteneur("n'importe")).toEqual([[5280, 5299]]);
@@ -54,7 +54,7 @@ describe("ids", () => {
     for (const ko of ["app-../x", "ext-XYZ", "demo-", "app-"]) expect(ID_PROJET.test(ko)).toBe(false);
     expect(ID_PROJET.test(projetApp("a")) && ID_PROJET.test(projetDemo(5280)) && ID_PROJET.test(projetExterne("0123456789abcdef"))).toBe(true);
   });
-  test("idExterne est stable et fait 16 caractères hex", () => {
+  test("idExterne is stable and is 16 hex characters", () => {
     expect(idExterne("/a/b")).toBe(idExterne("/a/b"));
     expect(idExterne("/a/b")).toMatch(/^[0-9a-f]{16}$/);
     expect(idExterne("/a/b")).not.toBe(idExterne("/a/c"));
@@ -68,13 +68,13 @@ describe("dossiers", () => {
     expect(dossierRemarques(d, "app-essai")).toBe("/r/.webaios/remarques/app-essai");
     expect(dossierRemarques(d, "demo-5280")).toBe("/r/.webaios/remarques/demo-5280");
   });
-  test("depotRelecture et fichierCommentaires sous prive/relecture", () => {
+  test("depotRelecture and fichierCommentaires under prive/relecture", () => {
     expect(depotRelecture(d, "app-essai")).toBe("/u/design/relecture/app-essai.git");
     expect(fichierCommentaires(d, "ext-0123456789abcdef")).toBe("/u/design/relecture/ext-0123456789abcdef.commentaires.json");
   });
 });
 
-describe("destinationDe et fenêtre d'appli", () => {
+describe("destinationDe and app window", () => {
   test("destinations", () => {
     expect(destinationDe(projetPourFenetreApp("essai", "Essai"), [])).toEqual({ libelle: "l'agent" });
     expect(destinationDe({ type: "demo", projet: "demo-5280", port: 5280 }, [])).toEqual({ libelle: "l'agent" });
@@ -91,7 +91,7 @@ describe("projet de site", () => {
     for (const ok of ["site-tuning", "site-a", `site-${"a".repeat(60)}`]) expect(ID_PROJET.test(ok)).toBe(true);
     for (const ko of ["site-", "site-A", "site-../x", "site--x", `site-${"a".repeat(61)}`, "site-a_b"]) expect(ID_PROJET.test(ko)).toBe(false);
   });
-  test("dossierRemarques côté espace, destination l'agent, messages exacts", () => {
+  test("dossierRemarques on the space side, destination the agent, exact messages", () => {
     const d: DossiersDesign = { remarquesEspace: "/e/remarques", prive: "/p" };
     expect(dossierRemarques(d, "site-tuning")).toBe(join(d.remarquesEspace, "site-tuning"));
     expect(projetPourSite("tuning", "Tuning")).toEqual({ type: "site", projet: "site-tuning", id: "tuning", nom: "Tuning" });

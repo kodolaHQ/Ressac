@@ -12,7 +12,7 @@ import {
 } from "../../src/extensions/copie.js";
 import { dossierTemporaire } from "../aide/temporaire.js";
 
-// Crochets pour simuler un dossier modifié pendant la lecture, ou un renommage en échec.
+// Hooks to simulate a folder modified during the read, or a failing rename.
 const crochets = vi.hoisted(() => ({
   apresLstat: null as null | ((p: string) => Promise<void>),
   apresReaddir: null as null | ((p: string) => Promise<void>),
@@ -74,7 +74,7 @@ async function cible(): Promise<string> {
 const lireJson = async (chemin: string) => JSON.parse(await readFile(chemin, "utf8")) as Record<string, any>;
 
 describe("preparerCopie", () => {
-  it("la copie a la CSP cspAgent([]) et rien d'autre de l'agent dans content_security_policy", async () => {
+  it("the copy has the CSP cspAgent([]) and nothing else from the agent in content_security_policy", async () => {
     const src = await source({
       "manifest.json": manifesteBase({
         content_security_policy: { extension_pages: "script-src 'self' 'unsafe-eval'; connect-src *", sandbox: "x" },
@@ -90,7 +90,7 @@ describe("preparerCopie", () => {
     );
   });
 
-  it("avec webaios.json { reseau: [\"api.exemple.com\"] } : connect-src contient https:// et wss://api.exemple.com, webaios.json absent de la copie", async () => {
+  it("with webaios.json { reseau: [\"api.exemple.com\"] }: connect-src contains https:// and wss://api.exemple.com, webaios.json absent from the copy", async () => {
     const src = await source({ "manifest.json": manifesteBase(), "webaios.json": { reseau: ["api.exemple.com"] } });
     const c = await cible();
     const { analyse } = await preparerCopie({ source: src, cible: c, dossierGardes: GARDES_PAR_DEFAUT });
@@ -100,7 +100,7 @@ describe("preparerCopie", () => {
     expect(existsSync(join(c, "webaios.json"))).toBe(false);
   });
 
-  it("key et update_url retirés", async () => {
+  it("key and update_url removed", async () => {
     const src = await source({ "manifest.json": manifesteBase({ key: "MIIB...", update_url: "https://x.example/u" }) });
     const c = await cible();
     await preparerCopie({ source: src, cible: c, dossierGardes: GARDES_PAR_DEFAUT });
@@ -110,8 +110,8 @@ describe("preparerCopie", () => {
     expect(m.name).toBe("Essai");
   });
 
-  it("une entrée de content_scripts ne déclare que des fichiers de WebAiOs (correctifs, garde, portée, un repère par fichier de l'agent, CSS d'abord) ; les fichiers de l'agent restent tels quels, la table est en tête du garde de fond", async () => {
-    // evade.js fermerait une enveloppe textuelle : il n'est plus jamais collé dans un autre fichier.
+  it("a content_scripts entry declares only WebAiOs files (fixes, guard, scope, one marker per agent file, CSS first); the agent's files stay as they are, the table is at the head of the background guard", async () => {
+    // evade.js would close a text wrapper: it is never pasted into another file anymore.
     const evade = "});\ndocument.documentElement.setAttribute('data-evade', '1');\nglobalThis.__webaiosApres(() => {\n";
     const src = await source({
       "manifest.json": manifesteBase({
@@ -134,7 +134,7 @@ describe("preparerCopie", () => {
     const { analyse } = await preparerCopie({ source: src, cible: c, dossierGardes: GARDES_PAR_DEFAUT });
     expect(analyse.refus).toEqual([]);
     const m = await lireJson(join(c, "manifest.json"));
-    // Table : chaque fichier .js et .css de l'agent, triés ; un repère chacun.
+    // Table: each .js and .css file of the agent, sorted; one marker each.
     const table = [["a.js", "js"], ["b.js", "js"], ["c/d.js", "js"], ["evade.js", "js"], ["s.css", "css"]];
     const tete = ["webaios-correctifs-page.js", "webaios-garde-page.js", "webaios-portee.js"];
     const reperes = (...n: number[]) => n.map((i) => `webaios-fichiers/${i}.js`);
@@ -147,11 +147,11 @@ describe("preparerCopie", () => {
       expect(await readFile(join(c, `webaios-fichiers/${i}.js`), "utf8")).toBe(`globalThis.__webaiosFichier(${i});\n`);
     }
     expect(existsSync(join(c, "webaios-fichiers/5.js"))).toBe(false);
-    // Les fichiers de l'agent : intacts, jamais enveloppés ni regroupés.
+    // The agent's files: intact, never wrapped nor grouped.
     expect(await readFile(join(c, "evade.js"), "utf8")).toBe(evade);
     expect(existsSync(join(c, "webaios-env"))).toBe(false);
     expect(existsSync(join(c, "webaios-cs-0.js"))).toBe(false);
-    // Le fond les injecte par scripting, dans les sites des scripts de contenu.
+    // The background injects them by scripting, in the content scripts' sites.
     expect(m.permissions).toEqual(["scripting"]);
     expect(m.host_permissions).toEqual(["https://h.example/*", "https://a.example/*", "https://b.example/*"]);
     const fond = await readFile(join(c, "webaios-garde-fond.js"), "utf8");
@@ -163,7 +163,7 @@ describe("preparerCopie", () => {
     for (const g of GARDES) expect(existsSync(join(c, g)), g).toBe(true);
   });
 
-  it("dans un monde sans DOM, les fichiers d'une entrée ne font que demander le contexte, repères dans l'ordre ; rien de l'agent ne tourne ; sans réponse, lastError est lu et l'abandon est écrit", async () => {
+  it("in a world without a DOM, an entry's files only ask for the context, markers in order; nothing of the agent runs; without an answer, lastError is read and the abandonment is written", async () => {
     const src = await source({
       "manifest.json": manifesteBase({ content_scripts: [{ matches: ["https://a.example/*"], js: ["a.js", "b.js"], css: ["s.css"] }] }),
       "a.js": "globalThis.vu = 1;",
@@ -188,7 +188,7 @@ describe("preparerCopie", () => {
       ctx.globalThis = ctx;
       for (const f of m.content_scripts[0].js as string[]) runInNewContext(readFileSync(join(c, f), "utf8"), ctx);
       expect(ctx.vu).toBeUndefined();
-      // Les minuteries une à une : la demande part après les repères, les relances ensuite.
+      // The timers one by one: the request leaves after the markers, the retries after.
       for (let i = 0; i < 100 && minuteries.length > 0; i++) minuteries.shift()!();
       return { ctx, erreurs };
     };
@@ -200,7 +200,7 @@ describe("preparerCopie", () => {
     expect(messages).toEqual([{ webaios: "contexte", fichiers: [2, 0, 1] }]);
     expect(oui.ctx.vu).toBeUndefined();
     expect(oui.erreurs).toEqual([]);
-    // Pas de réponse : lastError lu, relances, puis abandon écrit avec la raison.
+    // No answer: lastError read, retries, then abandonment written with the reason.
     let essais = 0;
     const non = lancer((_msg, rappel, runtime) => {
       essais++;
@@ -213,7 +213,7 @@ describe("preparerCopie", () => {
     expect(non.erreurs[0]!.map(String).join(" ")).toContain("Could not establish connection");
   });
 
-  it("un script de contenu dans le monde de la page (world: MAIN) est refusé (analyse) ; un script introuvable aussi", async () => {
+  it("a content script in the page's world (world: MAIN) is refused (analysis); a missing script too", async () => {
     const main = await source({
       "manifest.json": manifesteBase({ content_scripts: [{ matches: ["https://a.example/*"], js: ["a.js"], world: "MAIN" }] }),
       "a.js": "1",
@@ -231,7 +231,7 @@ describe("preparerCopie", () => {
     expect(existsSync(c)).toBe(false);
   });
 
-  it("service worker classique : webaios-fond.js fait importScripts des deux ; module : import des deux, type module gardé", async () => {
+  it("classic service worker: webaios-fond.js does importScripts of both; module: import of both, type module kept", async () => {
     const src = await source({ "manifest.json": manifesteBase({ background: { service_worker: "bg/sw.js" } }), "bg/sw.js": "" });
     const c = await cible();
     await preparerCopie({ source: src, cible: c, dossierGardes: GARDES_PAR_DEFAUT });
@@ -254,7 +254,7 @@ describe("preparerCopie", () => {
     expect(imports).toEqual(["./webaios-garde-fond.js", "./sw.js"]);
   });
 
-  it("sans fond : un service worker minimal webaios-fond.js (le garde seul) est déclaré, pour onInstalled et les rulesets", async () => {
+  it("without a background: a minimal webaios-fond.js service worker (the guard alone) is declared, for onInstalled and the rulesets", async () => {
     const src = await source({ "manifest.json": manifesteBase() });
     const c = await cible();
     await preparerCopie({ source: src, cible: c, dossierGardes: GARDES_PAR_DEFAUT });
@@ -265,7 +265,7 @@ describe("preparerCopie", () => {
     expect([...fond.matchAll(/importScripts\(/g)]).toHaveLength(1);
   });
 
-  it("le garde de fond est préfixé à chaque page HTML (octets bruts, chemin absolu), les scripts existants restent après", async () => {
+  it("the background guard is prefixed to each HTML page (raw bytes, absolute path), the existing scripts stay after", async () => {
     const GARDE = '<script src="/webaios-garde-fond.js"></script>';
     const src = await source({
       "manifest.json": manifesteBase(),
@@ -292,7 +292,7 @@ describe("preparerCopie", () => {
     );
   });
 
-  it("les fichiers qui font un document hors HTML sont refusés", async () => {
+  it("files that make a non-HTML document are refused", async () => {
     for (const ext of ["xhtml", "xht", "xml", "xsl", "xslt", "mht", "mhtml", "XHTML"]) {
       const src = await source({ "manifest.json": manifesteBase(), [`p.${ext}`]: "<x/>" });
       const c = await cible();
@@ -302,7 +302,7 @@ describe("preparerCopie", () => {
     }
   });
 
-  it("un SVG avec du script est refusé, un SVG simple passe", async () => {
+  it("an SVG with script is refused, a simple SVG passes", async () => {
     for (const svg of [
       '<svg><SCRIPT href="x.js"/></svg>',
       "<svg><foreignobject><div/></foreignobject></svg>",
@@ -320,7 +320,7 @@ describe("preparerCopie", () => {
     expect(existsSync(join(c, "icone.svg"))).toBe(true);
   });
 
-  it("SVG : règle fermée (préfixe d'espace de noms, UTF-16, javascript:, entité, octets invalides), .svgz refusé", async () => {
+  it("SVG: closed rule (namespace prefix, UTF-16, javascript:, entity, invalid bytes), .svgz refused", async () => {
     const cas: [string, Buffer | string, string][] = [
       ["s.svg", '<svg xmlns:s="http://www.w3.org/2000/svg"><s:script href="x.js"/></svg>', "script"],
       ["u16.svg", Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from('<svg><script href="x.js"/></svg>', "utf16le")]), "UTF-16"],
@@ -351,7 +351,7 @@ describe("preparerCopie", () => {
     expect(existsSync(join(c, "icone.svg"))).toBe(true);
   });
 
-  it("une page HTML en UTF-16 ou UTF-32 (BOM) est refusée", async () => {
+  it("an HTML page in UTF-16 or UTF-32 (BOM) is refused", async () => {
     for (const bom of [[0xff, 0xfe], [0xfe, 0xff], [0xff, 0xfe, 0x00, 0x00], [0x00, 0x00, 0xfe, 0xff]]) {
       const src = await source({ "manifest.json": manifesteBase() });
       await writeFile(join(src, "popup.html"), Buffer.concat([Buffer.from(bom), Buffer.from("<p>x</p>", "utf16le")]));
@@ -362,7 +362,7 @@ describe("preparerCopie", () => {
     }
   });
 
-  it("background.scripts ou background.page refusés", async () => {
+  it("background.scripts or background.page refused", async () => {
     for (const background of [{ scripts: ["a.js"] }, { page: "fond.html" }, { service_worker: "sw.js", scripts: ["a.js"] }]) {
       const src = await source({ "manifest.json": manifesteBase({ background }), "a.js": "", "sw.js": "", "fond.html": "" });
       const c = await cible();
@@ -372,7 +372,7 @@ describe("preparerCopie", () => {
     }
   });
 
-  it("plus de 32 niveaux de dossiers refusés", async () => {
+  it("more than 32 folder levels refused", async () => {
     const profond = Array.from({ length: 33 }, (_, i) => `d${i}`).join("/");
     const src = await source({ "manifest.json": manifesteBase(), [`${profond}/f.js`]: "" });
     const c = await cible();
@@ -383,7 +383,7 @@ describe("preparerCopie", () => {
     expect((await preparerCopie({ source: ok, cible: await cible(), dossierGardes: GARDES_PAR_DEFAUT })).analyse.refus).toEqual([]);
   });
 
-  it("plus de 5000 entrées (dossiers compris) refusées", async () => {
+  it("more than 5000 entries (folders included) refused", async () => {
     const src = await source({ "manifest.json": manifesteBase() });
     for (let i = 0; i < ENTREES_MAX; i++) await mkdir(join(src, `v${i}`));
     const c = await cible();
@@ -392,7 +392,7 @@ describe("preparerCopie", () => {
     expect(existsSync(c)).toBe(false);
   });
 
-  it("un lien symbolique (vers un fichier hors du dossier) est refusé, cible inchangée", async () => {
+  it("a symbolic link (to a file outside the folder) is refused, target unchanged", async () => {
     const dehors = join(await dossierTemporaire(), "secret");
     await writeFile(dehors, "clé privée");
     const c = await cible();
@@ -408,7 +408,7 @@ describe("preparerCopie", () => {
     expect(await readdir(dirname(c))).toEqual(["essai"]);
   });
 
-  it("2001 fichiers refusés", async () => {
+  it("2001 files refused", async () => {
     const fichiers: Record<string, string | object> = { "manifest.json": manifesteBase() };
     for (let i = 0; i < FICHIERS_MAX; i++) fichiers[`f/${i}.txt`] = "x";
     const src = await source(fichiers);
@@ -419,7 +419,7 @@ describe("preparerCopie", () => {
     expect(existsSync(dirname(c)) ? await readdir(dirname(c)) : []).toEqual([]);
   });
 
-  it("une analyse avec refus n'écrit rien et rend les refus", async () => {
+  it("an analysis with refusals writes nothing and returns the refusals", async () => {
     const src = await source({ "manifest.json": manifesteBase({ permissions: ["debugger"] }) });
     const c = await cible();
     const { analyse } = await preparerCopie({ source: src, cible: c, dossierGardes: GARDES_PAR_DEFAUT });
@@ -428,7 +428,7 @@ describe("preparerCopie", () => {
     expect(existsSync(dirname(c)) ? await readdir(dirname(c)) : []).toEqual([]);
   });
 
-  it("les règles DNR sont lues dans le dossier et vérifiées", async () => {
+  it("the DNR rules are read in the folder and checked", async () => {
     const src = await source({
       "manifest.json": manifesteBase({
         permissions: ["declarativeNetRequest"],
@@ -442,7 +442,7 @@ describe("preparerCopie", () => {
     expect(existsSync(c)).toBe(false);
   });
 
-  it("un nom de fichier réservé à WebAiOs est refusé, quelle que soit la casse", async () => {
+  it("a file name reserved for WebAiOs is refused, whatever the case", async () => {
     for (const nom of ["webaios-fond.js", "WebAiOs-Fond.js", "WEBAIOS-GARDE-PAGE.JS", "webaios-fichiers/0.js", "webaios-portee.js", "Webaios-Env/a.js"]) {
       const src = await source({ "manifest.json": manifesteBase(), [nom]: "1" });
       const { analyse } = await preparerCopie({ source: src, cible: await cible(), dossierGardes: GARDES_PAR_DEFAUT });
@@ -450,7 +450,7 @@ describe("preparerCopie", () => {
     }
   });
 
-  it("un lien symbolique dans un sous-dossier est refusé", async () => {
+  it("a symbolic link in a subfolder is refused", async () => {
     const dehors = join(await dossierTemporaire(), "secret");
     await writeFile(dehors, "x");
     const src = await source({ "manifest.json": manifesteBase(), "a/b/c.js": "" });
@@ -461,7 +461,7 @@ describe("preparerCopie", () => {
     expect(existsSync(c)).toBe(false);
   });
 
-  it("un lien symbolique vers un dossier est refusé, la racine aussi", async () => {
+  it("a symbolic link to a folder is refused, the root too", async () => {
     const dehors = await dossierTemporaire();
     await writeFile(join(dehors, "id_ed25519"), "x");
     const src = await source({ "manifest.json": manifesteBase() });
@@ -479,7 +479,7 @@ describe("preparerCopie", () => {
     expect(existsSync(c)).toBe(false);
   });
 
-  it("un lien physique est refusé", async () => {
+  it("a hard link is refused", async () => {
     const dehors = join(await dossierTemporaire(), "secret");
     await writeFile(dehors, "x");
     const src = await source({ "manifest.json": manifesteBase() });
@@ -490,7 +490,7 @@ describe("preparerCopie", () => {
     expect(existsSync(c)).toBe(false);
   });
 
-  it("un fichier remplacé par un lien après son lstat est refusé (rien n'est lu hors du dossier)", async () => {
+  it("a file replaced by a link after its lstat is refused (nothing is read outside the folder)", async () => {
     const dehors = join(await dossierTemporaire(), "secret");
     await writeFile(dehors, "clé privée");
     const src = await source({ "manifest.json": manifesteBase(), "a.js": "1" });
@@ -507,7 +507,7 @@ describe("preparerCopie", () => {
     expect(existsSync(c)).toBe(false);
   });
 
-  it("un fichier remplacé par un autre fichier après son lstat est refusé", async () => {
+  it("a file replaced by another file after its lstat is refused", async () => {
     const src = await source({ "manifest.json": manifesteBase(), "a.js": "1" });
     crochets.apresLstat = async (p) => {
       if (p === join(src, "a.js")) {
@@ -520,7 +520,7 @@ describe("preparerCopie", () => {
     expect(analyse.refus.some((r) => r.includes("a.js"))).toBe(true);
   });
 
-  it("un sous-dossier remplacé par un lien pendant sa lecture est refusé", async () => {
+  it("a subfolder replaced by a link during its read is refused", async () => {
     const dehors = await dossierTemporaire();
     await writeFile(join(dehors, "id_ed25519"), "x");
     const src = await source({ "manifest.json": manifesteBase(), "sous/id_ed25519": "leurre" });
@@ -537,7 +537,7 @@ describe("preparerCopie", () => {
     expect(existsSync(c)).toBe(false);
   });
 
-  it("l'ancienne copie est remise en place si le second renommage échoue", async () => {
+  it("the old copy is put back in place if the second rename fails", async () => {
     const c = await cible();
     await preparerCopie({ source: await source({ "manifest.json": manifesteBase(), "a.js": "ancien" }), cible: c, dossierGardes: GARDES_PAR_DEFAUT });
     crochets.avantRename = (de, vers) => {
@@ -550,7 +550,7 @@ describe("preparerCopie", () => {
     expect(await readdir(dirname(c))).toEqual(["essai"]);
   });
 
-  it("le dossier temporaire est supprimé après une erreur d'écriture", async () => {
+  it("the temporary folder is deleted after a write error", async () => {
     const c = await cible();
     const src = await source({ "manifest.json": manifesteBase(), "a.js": "" });
     await expect(preparerCopie({ source: src, cible: c, dossierGardes: join(src, "absent") })).rejects.toThrow();
@@ -558,7 +558,7 @@ describe("preparerCopie", () => {
     expect(await readdir(dirname(c))).toEqual([]);
   });
 
-  it("une seconde copie remplace la première d'un coup (aucun mélange de fichiers)", async () => {
+  it("a second copy replaces the first in one go (no mixing of files)", async () => {
     const c = await cible();
     const premiere = await source({ "manifest.json": manifesteBase(), "a.js": "a", "sous/x.js": "x" });
     await preparerCopie({ source: premiere, cible: c, dossierGardes: GARDES_PAR_DEFAUT });
@@ -568,11 +568,11 @@ describe("preparerCopie", () => {
     await preparerCopie({ source: seconde, cible: c, dossierGardes: GARDES_PAR_DEFAUT });
     expect((await readdir(c)).sort()).toEqual(["b.js", "manifest.json", "webaios-fichiers", "webaios-fond.js", "webaios-portee.js", ...GARDES].sort());
     expect((await lireJson(join(c, "manifest.json"))).version).toBe("2.0");
-    // Ni dossier temporaire ni ancienne copie laissés à côté.
+    // Neither a temporary folder nor an old copy left alongside.
     expect(await readdir(dirname(c))).toEqual(["essai"]);
   });
 
-  it("même source, même empreinte ; un octet changé, autre empreinte", async () => {
+  it("same source, same hash; one byte changed, another hash", async () => {
     const src = await source({ "manifest.json": manifesteBase(), "a.js": "abc" });
     const e1 = (await preparerCopie({ source: src, cible: await cible(), dossierGardes: GARDES_PAR_DEFAUT })).empreinte;
     const e2 = (await preparerCopie({ source: src, cible: await cible(), dossierGardes: GARDES_PAR_DEFAUT })).empreinte;
@@ -585,7 +585,7 @@ describe("preparerCopie", () => {
 });
 
 describe("webaios-correctifs-page.js", () => {
-  it("redéfinit storage.sync sur storage.local et pose browser, sans effet la seconde fois", async () => {
+  it("redefines storage.sync on storage.local and sets browser, no effect the second time", async () => {
     const code = await readFile(join(GARDES_PAR_DEFAUT, "webaios-correctifs-page.js"), "utf8");
     const local = { nom: "local" };
     const chrome = { storage: { local, sync: { nom: "sync" } } };
@@ -600,10 +600,10 @@ describe("webaios-correctifs-page.js", () => {
   });
 });
 
-describe("noms localisés (_locales)", () => {
+describe("localized names (_locales)", () => {
   const manifesteLocalise = { manifest_version: 3, name: "__MSG_extName__", version: "1.0", default_locale: "en" };
 
-  it("preparerCopie résout le nom de l'agent depuis _locales (fr d'abord)", async () => {
+  it("preparerCopie resolves the agent's name from _locales (fr first)", async () => {
     const src = await source({
       "manifest.json": manifesteLocalise,
       "_locales/en/messages.json": { extName: { message: "Name" } },

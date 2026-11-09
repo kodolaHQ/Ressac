@@ -1,4 +1,4 @@
-// Harnais du moteur des workflows : lance recolteur.mjs dans un processus Node et répond à ses appels.
+// Workflow engine harness: launches recolteur.mjs in a Node process and answers its calls.
 import { spawn } from "node:child_process";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -13,8 +13,8 @@ export type Appel = { t: "appel"; n: number; f: string; a: any };
 export type Repondeur = (appel: Appel) => Promise<{ ok: unknown } | { erreur: string }> | { ok: unknown } | { erreur: string };
 
 /**
- * Le workflow tel que le noyau l'envoie : validé (avec ce que le widget déclare, les règles d'avant sans lui),
- * paramètres par défaut remplis, avec l'ordre.
+ * The workflow as the core sends it: validated (with what the widget declares, the earlier rules without it),
+ * default parameters filled in, with the order.
  */
 export function workflowEnvoye(brut: unknown, contexte: ContexteValidation = CONTEXTE_PAR_DEFAUT) {
   const r = validerWorkflow(brut, contexte);
@@ -30,9 +30,9 @@ export async function lancer(o: {
   precedent?: unknown;
   repondre?: Repondeur;
   rejeu?: { relances: string[]; sorties: Record<string, unknown> };
-  /** Ce que le widget déclare (`web`, `dureeMaxMinutes`) : la validation du workflow envoyé. */
+  /** What the widget declares (`web`, `dureeMaxMinutes`): the validation of the workflow sent. */
   contexte?: ContexteValidation;
-  /** Clés ajoutées à la ligne `debut` (absentes sinon, comme pour un widget d'aujourd'hui). */
+  /** Keys added to the `debut` line (absent otherwise, like for a widget today). */
   debut?: { progressif?: true; limiteMs?: number; saisie?: string; avancement?: true };
 }) {
   const dossier = await dossierTemporaire();

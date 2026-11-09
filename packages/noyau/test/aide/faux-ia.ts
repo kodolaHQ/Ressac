@@ -29,7 +29,7 @@ const json = (res: import("node:http").ServerResponse, code: number, o: unknown)
   res.end(JSON.stringify(o));
 };
 
-/** Faux Kev : /v1/models et /v1/systemone. */
+/** Fake Kev: /v1/models and /v1/systemone. */
 export const fauxKev = (answers: unknown = { q: { type: "noul", noul: 0.91 } }) =>
   demarrer((r, res) => {
     if (r.url === "/v1/models") return json(res, 200, { data: [] });
@@ -37,7 +37,7 @@ export const fauxKev = (answers: unknown = { q: { type: "noul", noul: 0.91 } }) 
     json(res, 404, {});
   });
 
-/** Faux Ollama : /api/chat répond `contenu`. */
+/** Fake Ollama: /api/chat answers `contenu`. */
 export const fauxOllama = (contenu: string) =>
   demarrer((r, res) => {
     if (r.url === "/api/chat") return json(res, 200, { message: { content: contenu } });
@@ -45,7 +45,7 @@ export const fauxOllama = (contenu: string) =>
     json(res, 404, {});
   });
 
-/** Port sur lequel rien n'écoute. */
+/** Port on which nothing listens. */
 export async function urlInjoignable(): Promise<string> {
   const s = createServer();
   await new Promise<void>((ok) => s.listen(0, "127.0.0.1", ok));
@@ -54,7 +54,7 @@ export async function urlInjoignable(): Promise<string> {
   return `http://127.0.0.1:${port}`;
 }
 
-/** Faux Ollama qui ne répond jamais à /api/chat ; `coupees` compte les requêtes abandonnées par le client. */
+/** Fake Ollama that never answers /api/chat; `coupees` counts the requests abandoned by the client. */
 export async function fauxOllamaMuet(): Promise<FauxServeur & { coupees: () => number }> {
   let coupees = 0;
   const s = await demarrer((_r, res) => {

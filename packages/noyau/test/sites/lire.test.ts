@@ -25,7 +25,7 @@ function avecDeclaration(s: SiteLu | null) {
   return s;
 }
 
-test("deux sites lus, triés ; un site.json abîmé donne un SiteLu en erreur sans gêner l'autre", async () => {
+test("two sites read, sorted; a damaged site.json gives a SiteLu in error without bothering the other", async () => {
   const c = await espace();
   await site(c, "zeta", decl("Zeta"));
   await site(c, "alpha", "{pas du json");
@@ -37,7 +37,7 @@ test("deux sites lus, triés ; un site.json abîmé donne un SiteLu en erreur sa
   expect(sites[1]).toMatchObject({ declaration: { nom: "Milieu" }, aAccueil: false });
 });
 
-test("une déclaration invalide ou qui échoue à verifierDeclarationSite est une erreur", async () => {
+test("an invalid declaration or one that fails verifierDeclarationSite is an error", async () => {
   const c = await espace();
   await site(c, "a", JSON.stringify({ nom: "A", adresse: "http://a.example/", domaines: ["a.example"] }));
   await site(c, "b", JSON.stringify({ nom: "B", adresse: "https://a.example/", domaines: ["a.example"], permissions: [] }));
@@ -49,7 +49,7 @@ test("une déclaration invalide ou qui échoue à verifierDeclarationSite est un
   expect(await lireSites(c, { adressesLocales: true })).toHaveLength(3);
 });
 
-test("aAccueil vrai seulement avec accueil/index.html", async () => {
+test("aAccueil true only with accueil/index.html", async () => {
   const c = await espace();
   await site(c, "avec", decl("Avec"));
   await mkdir(join(c.sites, "avec", "accueil"), { recursive: true });
@@ -60,7 +60,7 @@ test("aAccueil vrai seulement avec accueil/index.html", async () => {
   expect(avecDeclaration(await lireSite(c, "sans", o)).aAccueil).toBe(false);
 });
 
-test("dossier caché, .corbeille ou lien symbolique ignoré ; un nom hors règle est « sans fiche » avec la règle", async () => {
+test("hidden folder, .corbeille or symbolic link ignored; a name outside the rule is « sans fiche » with the rule", async () => {
   const c = await espace();
   await site(c, "ok", decl("Ok"));
   await site(c, ".cache", decl("Caché"));
@@ -80,7 +80,7 @@ test("dossier caché, .corbeille ou lien symbolique ignoré ; un nom hors règle
   expect(await lireSite(c, "MonSite", o)).toMatchObject({ erreur: ERREUR_ID_SITE });
 });
 
-test("lireSites : dossier des sites absent", async () => {
+test("lireSites: sites folder absent", async () => {
   const c = cheminsEspace(await dossierTemporaire());
   expect(await lireSites(c, o)).toEqual([]);
 });
@@ -106,14 +106,14 @@ test("lireRetouches : fichier absent, lien symbolique vers /etc/hosts, fichier d
   await writeFile(join(c.sites, "r", "retouches", "b.js"), "x".repeat(300 * 1024));
   const gros = avecDeclaration({ ...s, declaration: { ...s.declaration, retouches: [{ correspond: ["/*"], js: ["b.js"], css: [], cadres: false }] } });
   expect(await lireRetouches(gros)).toEqual({ erreur: fichierRetoucheIntrouvable("b.js") });
-  // Cinq fichiers de 250 Ko : chacun passe, le total (1,2 Mo) non.
+  // Five 250 KB files: each passes, the total (1.2 MB) does not.
   const noms = ["m1.js", "m2.js", "m3.js", "m4.js", "m5.js"];
   for (const n of noms) await writeFile(join(c.sites, "r", "retouches", n), "x".repeat(250 * 1024));
   const total = avecDeclaration({ ...s, declaration: { ...s.declaration, retouches: [{ correspond: ["/*"], js: noms, css: [], cadres: false }] } });
   expect(await lireRetouches(total)).toMatchObject({ erreur: expect.stringContaining("fichier introuvable ou trop gros") });
 });
 
-test("lireRetouches : un dossier retouches/ qui est un lien hors du site est refusé", async () => {
+test("lireRetouches: a retouches/ folder that is a link outside the site is refused", async () => {
   const c = await espace();
   await site(c, "r", decl("R", { retouches: [{ correspond: ["/*"], js: ["a.js"] }] }));
   const dehors = await dossierTemporaire();
@@ -122,7 +122,7 @@ test("lireRetouches : un dossier retouches/ qui est un lien hors du site est ref
   expect(await lireRetouches(avecDeclaration(await lireSite(c, "r", o)))).toEqual({ erreur: fichierRetoucheIntrouvable("a.js") });
 });
 
-test("surveillerSites signale « retouches » quand retouches/a.js change et « declaration » pour site.json", async () => {
+test("surveillerSites signals « retouches » when retouches/a.js changes and « declaration » for site.json", async () => {
   const c = await espace();
   await site(c, "w", decl("W"));
   await mkdir(join(c.sites, "w", "retouches"), { recursive: true });
@@ -148,7 +148,7 @@ test("surveillerSites signale « retouches » quand retouches/a.js change et « 
   await arreter();
 });
 
-test("lireRetouches : dossier d'appli remplacé par un lien après lireSite", async () => {
+test("lireRetouches: app folder replaced by a link after lireSite", async () => {
   const c = await espace();
   await site(c, "r", decl("R", { retouches: [{ correspond: ["/*"], js: ["a.js"] }] }));
   const s = avecDeclaration(await lireSite(c, "r", o));
@@ -160,7 +160,7 @@ test("lireRetouches : dossier d'appli remplacé par un lien après lireSite", as
   expect(await lireRetouches(s)).toMatchObject({ erreur: expect.any(String) });
 });
 
-test("lireRetouches : un sous-dossier de retouches/ lien vers l'extérieur est refusé", async () => {
+test("lireRetouches: a subfolder of retouches/ linking to the outside is refused", async () => {
   const c = await espace();
   await site(c, "r", decl("R", { retouches: [{ correspond: ["/*"], js: ["sous/a.js"] }] }));
   const dehors = await dossierTemporaire();
@@ -170,7 +170,7 @@ test("lireRetouches : un sous-dossier de retouches/ lien vers l'extérieur est r
   expect(await lireRetouches(avecDeclaration(await lireSite(c, "r", o)))).toEqual({ erreur: fichierRetoucheIntrouvable("sous/a.js") });
 });
 
-test("lireRetouches : un fichier cité par plusieurs retouches n'est lu qu'une fois", async () => {
+test("lireRetouches: a file cited by several retouches is read only once", async () => {
   const c = await espace();
   await site(c, "r", decl("R", { retouches: [{ correspond: ["/*"], js: ["a.js"], css: ["a.css"] }, { correspond: ["/x"], js: ["a.js"], css: ["a.css"] }] }));
   await mkdir(join(c.sites, "r", "retouches"), { recursive: true });
@@ -179,14 +179,14 @@ test("lireRetouches : un fichier cité par plusieurs retouches n'est lu qu'une f
   expect(await lireRetouches(avecDeclaration(await lireSite(c, "r", o)))).toEqual({ js: { "a.js": "J" }, css: { "a.css": "C" } });
 });
 
-test("lireRetouches : un fichier de retouche qui est un répertoire est refusé", async () => {
+test("lireRetouches: a retouche file that is a directory is refused", async () => {
   const c = await espace();
   await site(c, "r", decl("R", { retouches: [{ correspond: ["/*"], js: ["a.js"] }] }));
   await mkdir(join(c.sites, "r", "retouches", "a.js"), { recursive: true });
   expect(await lireRetouches(avecDeclaration(await lireSite(c, "r", o)))).toEqual({ erreur: fichierRetoucheIntrouvable("a.js") });
 });
 
-test("site.json lien symbolique, JSON null ou [], BOM, exactement 64 Ko", async () => {
+test("site.json symbolic link, JSON null or [], BOM, exactly 64 KB", async () => {
   const c = await espace();
   const dehors = await dossierTemporaire();
   await writeFile(join(dehors, "site.json"), decl("Lien"));

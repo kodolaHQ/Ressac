@@ -8,27 +8,27 @@ const demo: OngletInfo = { id: "3", titre: "Démo", url: "http://localhost:5280/
 let p: PolitiqueAcces;
 beforeEach(() => (p = new PolitiqueAcces()));
 
-test("aucun accès par défaut", () => {
+test("no access by default", () => {
   expect(p.peutLire(gmail)).toBe(false);
 });
 
-test("interaction depuis un onglet → accès à cet onglet seulement", () => {
+test("interaction from a tab → access to that tab only", () => {
   p.interactionUtilisateur(github);
   expect(p.peutLire(github)).toBe(true);
   expect(p.peutLire(gmail)).toBe(false);
 });
 
-test("onglet ouvert par l'agent → accès", () => {
+test("tab opened by the agent → access", () => {
   p.ongletOuvertParAgent(demo);
   expect(p.peutLire(demo)).toBe(true);
 });
 
-test("accorder (réponse oui à une demande) → accès", () => {
+test("accorder (yes answer to a request) → access", () => {
   p.accorder(gmail);
   expect(p.peutLire(gmail)).toBe(true);
 });
 
-test("L'utilisateur change de site → autorisation caduque, même s'il revient", () => {
+test("The user changes site → authorization lapsed, even if they come back", () => {
   p.interactionUtilisateur(github);
   p.ongletNavigue(github.id, "https://mail.google.com/");
   expect(p.peutLire({ ...github, url: "https://mail.google.com/" })).toBe(false);
@@ -36,24 +36,24 @@ test("L'utilisateur change de site → autorisation caduque, même s'il revient"
   expect(p.peutLire(github)).toBe(false);
 });
 
-test("même site, autre page → accès conservé", () => {
+test("same site, other page → access kept", () => {
   p.interactionUtilisateur(github);
   p.ongletNavigue(github.id, "https://github.com/sveltejs/kit");
   expect(p.peutLire({ ...github, url: "https://github.com/sveltejs/kit" })).toBe(true);
 });
 
-test("l'URL actuelle compte même sans événement de navigation", () => {
+test("the current URL counts even without a navigation event", () => {
   p.interactionUtilisateur(github);
   expect(p.peutLire({ ...github, url: "https://evil.test/" })).toBe(false);
 });
 
-test("l'agent navigue son onglet de démo vers un autre port → accès conservé", () => {
+test("the agent navigates its demo tab to another port → access kept", () => {
   p.ongletOuvertParAgent(demo);
   p.navigationParAgent(demo.id, "http://localhost:5281/");
   expect(p.peutLire({ ...demo, url: "http://localhost:5281/" })).toBe(true);
 });
 
-test("reinitialiser retire tout ; ongletFerme retire l'onglet", () => {
+test("reinitialiser removes everything; ongletFerme removes the tab", () => {
   p.interactionUtilisateur(github);
   p.accorder(gmail);
   p.ongletFerme(gmail.id);
@@ -68,35 +68,35 @@ test("URL invalide → jamais lisible", () => {
   expect(p.peutLire({ ...github, url: "pas une url" })).toBe(false);
 });
 
-test("l'agent ouvre lui-même Gmail → pas d'accès sans demande", () => {
+test("the agent opens Gmail itself → no access without a request", () => {
   p.ongletOuvertParAgent({ ...gmail, id: "9" });
   expect(p.peutLire({ ...gmail, id: "9" })).toBe(false);
 });
 
-test("l'agent navigue sa démo vers un site extérieur → accès perdu", () => {
+test("the agent navigates its demo to an outside site → access lost", () => {
   p.ongletOuvertParAgent(demo);
   p.navigationParAgent(demo.id, "https://mail.google.com/");
   expect(p.peutLire({ ...demo, url: "https://mail.google.com/" })).toBe(false);
 });
 
-test("démo sur 127.0.0.1 ouverte par l'agent → accès", () => {
+test("demo on 127.0.0.1 opened by the agent → access", () => {
   const d = { ...demo, url: "http://127.0.0.1:5280/" };
   p.ongletOuvertParAgent(d);
   expect(p.peutLire(d)).toBe(true);
 });
 
-test("l'agent navigue sur le même site un onglet que l'utilisateur lui a donné → accès conservé", () => {
+test("the agent navigates on the same site a tab the user gave it → access kept", () => {
   p.interactionUtilisateur(github);
   p.navigationParAgent(github.id, "https://github.com/sveltejs/kit");
   expect(p.peutLire({ ...github, url: "https://github.com/sveltejs/kit" })).toBe(true);
 });
 
-// --- Droits des outils de développement ---
+// --- Dev tools rights ---
 
 const app: OngletInfo = { id: "4", titre: "Mon app", url: "http://localhost:8123/", espace: "perso", application: "mon-app" };
 const port3000: OngletInfo = { id: "5", titre: "Dev", url: "http://localhost:3000/", espace: "perso" };
 
-test("construite : app:<dossier> et localhost:5285 ouvert par l'agent ont les quatre droits ; localhost:3000 n'en a aucun", () => {
+test("built: app:<folder> and localhost:5285 opened by the agent have the four rights; localhost:3000 has none", () => {
   const demo5285 = { ...demo, url: "http://localhost:5285/" };
   p.ongletOuvertParAgent(app);
   p.ongletOuvertParAgent(demo5285);
@@ -123,13 +123,13 @@ test("built: the default demo range follows WEBAIOS_PORTS_CONTENEUR", () => {
   }
 });
 
-test("construite : le prédicat de port est configurable", () => {
+test("built: the port predicate is configurable", () => {
   const q = new PolitiqueAcces({ portConstruit: (port) => port === 3000 });
   q.ongletOuvertParAgent(port3000);
   expect(q.estConstruite(port3000)).toBe(true);
 });
 
-test("construite : quitter l'origine retire les droits ; y renaviguer (agent) les rend", () => {
+test("built: leaving the origin removes the rights; navigating back to it (agent) restores them", () => {
   p.ongletOuvertParAgent(demo);
   p.navigationParAgent(demo.id, "https://github.com/");
   expect(p.droitsDev({ ...demo, url: "https://github.com/" })).toEqual([]);
@@ -140,7 +140,7 @@ test("construite : quitter l'origine retire les droits ; y renaviguer (agent) le
   expect(p.droitsDev(demo)).toEqual([]);
 });
 
-test("accorderDev : seuls les droits cochés ; tombent au changement de site, à la fermeture, à reinitialiser", () => {
+test("accorderDev: only the checked rights; they drop on site change, on close, on reinitialiser", () => {
   p.accorderDev(github, ["console", "agir"], ["reseau"]);
   expect(p.droitsDev(github)).toEqual(["console", "agir"]);
   p.ongletNavigue(github.id, "https://mail.google.com/");
@@ -153,7 +153,7 @@ test("accorderDev : seuls les droits cochés ; tombent au changement de site, à
   expect(p.droitsDev(github)).toEqual([]);
 });
 
-test("refus : peutDemander faux pour (onglet, droit) refusé jusqu'à interactionUtilisateur ; un autre droit reste demandable", () => {
+test("refusal: peutDemander false for a refused (tab, right) until interactionUtilisateur; another right stays requestable", () => {
   p.accorderDev(github, [], ["reseau"]);
   expect(p.peutDemander(github.id, "reseau")).toBe(false);
   expect(p.peutDemander(github.id, "console")).toBe(true);
@@ -164,7 +164,7 @@ test("refus : peutDemander faux pour (onglet, droit) refusé jusqu'à interactio
   expect(p.peutDemander(github.id, "reseau")).toBe(true);
 });
 
-test("couper(id, \"agir\") retire ce seul droit ; couper(id) retire tout, lecture comprise ; une construite coupée le reste jusqu'à reinitialiser", () => {
+test("couper(id, \"agir\") removes that right only; couper(id) removes everything, reading included; a built one that is cut stays so until reinitialiser", () => {
   p.interactionUtilisateur(github);
   p.accorderDev(github, ["console", "agir"], []);
   p.couper(github.id, "agir");
@@ -184,7 +184,7 @@ test("couper(id, \"agir\") retire ce seul droit ; couper(id) retire tout, lectur
   expect(p.droitsDev({ ...demo, url: "http://localhost:5281/" })).toHaveLength(4);
 });
 
-test("etat() : lecture, droits, construite, enCours (utilisation true/false équilibrés)", () => {
+test("etat(): reading, rights, built, enCours (utilisation true/false balanced)", () => {
   expect(p.etat()).toEqual({});
   p.interactionUtilisateur(github);
   p.accorderDev(gmail, ["reseau"], []);
@@ -201,7 +201,7 @@ test("etat() : lecture, droits, construite, enCours (utilisation true/false équ
   expect(p.etat()[demo.id]).toBeUndefined();
 });
 
-test("surChange appelé à chaque mutation, désabonnement effectif", () => {
+test("surChange called on each mutation, unsubscribe effective", () => {
   let n = 0;
   const stop = p.surChange(() => n++);
   p.interactionUtilisateur(github);
@@ -218,17 +218,17 @@ test("surChange appelé à chaque mutation, désabonnement effectif", () => {
   expect(n).toBe(8);
 });
 
-test("construite coupée : relancer l'appli (fermeture puis réouverture de app:x) ne rend pas les droits ; reinitialiser les rend", () => {
+test("cut built: relaunching the app (closing then reopening app:x) does not restore the rights; reinitialiser does", () => {
   const app: OngletInfo = { id: "app:x", titre: "X", url: "http://localhost:5281/", espace: "", application: "x" };
   p.construite(app);
   p.couper("app:x");
   p.ongletFerme("app:x");
-  // relancée sur un autre port : même fenêtre d'appli
+  // relaunched on another port: same app window
   const relancee = { ...app, url: "http://localhost:5290/" };
   p.construite(relancee);
   expect(p.estConstruite(relancee)).toBe(true);
   expect(p.droitsDev(relancee)).toEqual([]);
-  // l'agent ouvre l'ancienne origine de l'appli dans un onglet : coupée aussi
+  // the agent opens the app's old origin in a tab: cut as well
   const onglet: OngletInfo = { id: "9", titre: "X", url: "http://localhost:5281/", espace: "" };
   p.ongletOuvertParAgent(onglet);
   expect(p.droitsDev(onglet)).toEqual([]);
@@ -237,7 +237,7 @@ test("construite coupée : relancer l'appli (fermeture puis réouverture de app:
   expect(p.droitsDev(onglet)).toEqual(DROITS_DEV);
 });
 
-test("démo coupée : un nouvel onglet de l'agent sur la même origine n'a aucun droit ; une autre origine si ; un seul droit coupé reste coupé", () => {
+test("cut demo: a new agent tab on the same origin has no right; another origin does; a single cut right stays cut", () => {
   p.ongletOuvertParAgent(demo);
   p.couper(demo.id, "agir");
   p.ongletFerme(demo.id);
@@ -252,20 +252,20 @@ test("démo coupée : un nouvel onglet de l'agent sur la même origine n'a aucun
   const autre: OngletInfo = { ...demo, id: "6", url: "http://localhost:5281/" };
   p.ongletOuvertParAgent(autre);
   expect(p.droitsDev(autre)).toEqual(DROITS_DEV);
-  // L'utilisateur réaccorde lui-même : le droit revient
+  // The user grants again themselves: the right comes back
   p.accorderDev(encore, ["console"], []);
   expect(p.droitsDev(encore)).toEqual(["console"]);
   p.reinitialiser();
   expect(p.droitsDev(encore)).toEqual(DROITS_DEV);
 });
 
-test("conversation : change à chaque reinitialiser", () => {
+test("conversation: changes at each reinitialiser", () => {
   const avant = p.conversation;
   p.reinitialiser();
   expect(p.conversation).toBe(avant + 1);
 });
 
-test("accorder signale le changement (la pastille de lecture suit) ; rien si l'accès est déjà là", () => {
+test("accorder signals the change (the read badge follows); nothing if access is already there", () => {
   let n = 0;
   p.surChange(() => n++);
   p.accorder(gmail);
@@ -285,7 +285,7 @@ test("accorderLectureSite(\"vidola\") : peutLire de site:vidola vrai, de site:yo
   expect(n).toBe(1);
   expect(p.lectureSiteAccordee("vidola")).toBe(true);
   expect(p.peutLire(vidola)).toBe(true);
-  // L'accord porte sur l'appli, pas sur l'origine : la page peut changer dans le site.
+  // The grant is about the app, not the origin: the page may change within the site.
   expect(p.peutLire({ ...vidola, url: "https://vidola-b.example/serie/2" })).toBe(true);
   expect(p.peutLire(youtube)).toBe(false);
   p.reinitialiser();
@@ -293,24 +293,24 @@ test("accorderLectureSite(\"vidola\") : peutLire de site:vidola vrai, de site:yo
   expect(p.peutLire(vidola)).toBe(false);
 });
 
-test("appli de site : une autorisation d'origine (onglet du même domaine, ou accorder sur la fenêtre) ne l'ouvre pas", () => {
+test("site app: an origin authorization (tab of the same domain, or accorder on the window) does not open it", () => {
   const onglet: OngletInfo = { id: "7", titre: "Vidola", url: "https://vidola-a.example/film/1", espace: "perso" };
   p.accorder(onglet);
   p.interactionUtilisateur(onglet);
   expect(p.peutLire(onglet)).toBe(true);
   expect(p.peutLire(vidola)).toBe(false);
-  // Même posée sur l'id de la fenêtre, une autorisation d'origine ne compte pas.
+  // Even set on the window id, an origin authorization does not count.
   p.accorder(vidola);
   p.interactionUtilisateur(vidola);
   p.ongletOuvertParAgent(vidola);
   expect(p.peutLire(vidola)).toBe(false);
-  // Ni les données d'un widget ou d'une action du même nom.
+  // Nor does the data of a widget or an action of the same name.
   p.accorderDonneesWidget("vidola");
   p.accorderDonneesAction("vidola");
   expect(p.peutLire(vidola)).toBe(false);
 });
 
-test("appli de site : ses droits de développement ne valent qu'avec son accord ; une nouvelle conversation retire les deux", () => {
+test("site app: its dev rights are only valid with its grant; a new conversation removes both", () => {
   p.accorderDev(vidola, ["console"], []);
   expect(p.droitsDev(vidola)).toEqual([]);
   p.accorderLectureSite("vidola");
@@ -319,7 +319,7 @@ test("appli de site : ses droits de développement ne valent qu'avec son accord 
   expect(p.droitsDev(vidola)).toEqual([]);
 });
 
-test("lecture d'une appli de site liée à l'empreinte de sa déclaration : une autre empreinte ne compte pas", () => {
+test("reading of a site app tied to the hash of its declaration: another hash does not count", () => {
   p.accorderLectureSite("vidola", "e1");
   expect(p.lectureSiteAccordee("vidola", "e1")).toBe(true);
   expect(p.peutLire({ ...vidola, empreinte: "e1" })).toBe(true);
@@ -335,7 +335,7 @@ test("lecture d'une appli de site liée à l'empreinte de sa déclaration : une 
   expect(p.lectureSiteAccordee("vidola", "e1")).toBe(false);
 });
 
-test("retirerLectureSite (appli supprimée) : l'accord tombe, la pastille suit ; les cartes en attente le voient (retraitsLectureSite)", () => {
+test("retirerLectureSite (app deleted): the grant drops, the badge follows; pending cards see it (retraitsLectureSite)", () => {
   p.accorderLectureSite("vidola", "e1");
   p.accorderLectureSite("youtube", "y");
   let n = 0;
@@ -344,7 +344,7 @@ test("retirerLectureSite (appli supprimée) : l'accord tombe, la pastille suit ;
   expect(n).toBe(1);
   expect(p.lectureSiteAccordee("vidola", "e1")).toBe(false);
   expect(p.lectureSiteAccordee("youtube", "y")).toBe(true);
-  // Même sans accord (une carte encore en attente), le retrait est compté et signalé.
+  // Even without a grant (a card still pending), the removal is counted and signaled.
   const avant = p.retraitsLectureSite("vidola");
   p.retirerLectureSite("vidola");
   expect(p.retraitsLectureSite("vidola")).toBe(avant + 1);

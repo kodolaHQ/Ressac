@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 import { PontFactice } from "../../src/mcp/pont-factice.js";
 
-test("lecture.html rend le HTML de l'URL et note l'appel", async () => {
+test("lecture.html returns the URL's HTML and records the call", async () => {
   const pont = new PontFactice([], {
     actif: null,
     autoriser: false,

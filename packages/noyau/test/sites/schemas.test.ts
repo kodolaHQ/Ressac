@@ -25,13 +25,13 @@ const messages = (v: unknown) => {
   return r.success ? [] : r.error.issues.map((i) => i.message);
 };
 
-test("l'exemple Vidola (domaines, suiviAdresse, retouches avec cadres, reprise) est accepté", () => {
+test("the Vidola example (domains, suiviAdresse, retouches with frames, reprise) is accepted", () => {
   const r = DeclarationSite.safeParse(vidola);
   expect(r.success).toBe(true);
   if (r.success) expect(r.data.connexion).toEqual([]);
 });
 
-test("l'exemple YouTube (connexion, retouche css qui cache les Shorts) est accepté", () => {
+test("the YouTube example (login, css retouche that hides Shorts) is accepted", () => {
   const r = DeclarationSite.safeParse({
     nom: "YouTube",
     adresse: "https://www.youtube.com/",
@@ -55,19 +55,19 @@ test('correspond "series/*" donne CORRESPOND_CHEMIN', () => {
   expect(messages({ ...vidola, retouches: [{ correspond: ["series/*"] }] })).toContain(CORRESPOND_CHEMIN);
 });
 
-test("un chemin de retouche avec .. ou absolu est refusé", () => {
+test("a retouche path with .. or absolute is refused", () => {
   for (const js of ["../x.js", "a/../x.js", "/x.js"]) {
     expect(DeclarationSite.safeParse({ ...vidola, retouches: [{ correspond: ["/*"], js: [js] }] }).success, js).toBe(false);
   }
   expect(DeclarationSite.safeParse({ ...vidola, retouches: [{ correspond: ["/*"], js: ["x.txt"] }] }).success).toBe(false);
 });
 
-test("une clé inconnue (permissions) est refusée", () => {
+test("an unknown key (permissions) is refused", () => {
   expect(DeclarationSite.safeParse({ ...vidola, permissions: ["tout"] }).success).toBe(false);
   expect(DeclarationSite.safeParse({ ...vidola, suiviAdresse: { page: "https://a.example/", motif: "ab", x: 1 } }).success).toBe(false);
 });
 
-test('21 domaines, "*.x.com", "X.com:443", un schéma refusés', () => {
+test('21 domains, "*.x.com", "X.com:443", a scheme refused', () => {
   const vingtEtUn = Array.from({ length: 21 }, (_, i) => `s${i}.example`);
   expect(DeclarationSite.safeParse({ ...vidola, domaines: vingtEtUn }).success).toBe(false);
   for (const d of ["*.x.com", "X.com:443", "https://x.com", "x.com/", ""]) {
@@ -76,7 +76,7 @@ test('21 domaines, "*.x.com", "X.com:443", un schéma refusés', () => {
   expect(DeclarationSite.safeParse({ ...vidola, domaines: [] }).success).toBe(false);
 });
 
-test("nom, motif de suivi, icône", () => {
+test("name, tracking pattern, icon", () => {
   expect(DeclarationSite.safeParse({ ...vidola, nom: "" }).success).toBe(false);
   expect(DeclarationSite.safeParse({ ...vidola, nom: "x".repeat(61) }).success).toBe(false);
   expect(DeclarationSite.safeParse({ ...vidola, suiviAdresse: { page: "https://a.example/", motif: "a" } }).success).toBe(false);
@@ -88,7 +88,7 @@ test("nom, motif de suivi, icône", () => {
 const decl = (patch: Record<string, unknown>) => DeclarationSite.parse({ ...vidola, ...patch });
 const strict = { adressesLocales: false };
 
-test("verifierDeclarationSite : https seulement, jamais une adresse locale", () => {
+test("verifierDeclarationSite: https only, never a local address", () => {
   expect(verifierDeclarationSite(decl({}), strict)).toBeNull();
   expect(verifierDeclarationSite(decl({ adresse: "http://vidola-a.example/" }), strict)).toBe(HTTPS_SEULEMENT);
   expect(verifierDeclarationSite(decl({ adresse: "https://192.168.1.2/", domaines: ["192.168.1.2"] }), strict)).toBe(HTTPS_SEULEMENT);
@@ -96,11 +96,11 @@ test("verifierDeclarationSite : https seulement, jamais une adresse locale", () 
   expect(verifierDeclarationSite(decl({ suiviAdresse: { page: "https://127.0.0.1/", motif: "vidola" } }), strict)).toBe(HTTPS_SEULEMENT);
 });
 
-test("verifierDeclarationSite : avec adressesLocales, http d'un hôte local est permis", () => {
+test("verifierDeclarationSite: with adressesLocales, http of a local host is allowed", () => {
   const d = decl({ adresse: "http://vidola-a.localhost:5000/", domaines: ["vidola-a.localhost"], suiviAdresse: { page: "http://adresses.localhost:5001/", motif: "vidola" } });
   expect(verifierDeclarationSite(d, { adressesLocales: true })).toBeNull();
   expect(verifierDeclarationSite(d, strict)).toBe(HTTPS_SEULEMENT);
-  // http d'un hôte public reste refusé.
+  // http of a public host stays refused.
   expect(verifierDeclarationSite(decl({ adresse: "http://vidola-a.example/" }), { adressesLocales: true })).toBe(HTTPS_SEULEMENT);
 });
 
@@ -110,7 +110,7 @@ test("verifierDeclarationSite : domaine de l'adresse", () => {
   expect(verifierDeclarationSite(decl({ adresse: "https://xvidola-a.example/" }), strict)).toBe(ADRESSE_HORS_DOMAINES);
 });
 
-test("js n'accepte que .js et .mjs, css que .css ; ./ et // refusés", () => {
+test("js accepts only .js and .mjs, css only .css; ./ and // refused", () => {
   const r = (retouche: object) => DeclarationSite.safeParse({ ...vidola, retouches: [{ correspond: ["/*"], ...retouche }] }).success;
   expect(r({ js: ["a.mjs"] })).toBe(true);
   expect(r({ js: ["a.css"] })).toBe(false);
@@ -119,12 +119,12 @@ test("js n'accepte que .js et .mjs, css que .css ; ./ et // refusés", () => {
   expect(r({ css: ["./a.css"] })).toBe(false);
 });
 
-test("ID_SITE : minuscules, chiffres, tirets, 60 au plus", () => {
+test("ID_SITE: lowercase, digits, dashes, 60 at most", () => {
   for (const ok of ["vidola", "a", "mon-site-2", "x".repeat(60)]) expect(ID_SITE.test(ok), ok).toBe(true);
   for (const ko of ["MonSite", "a_b", "a.b", "-a", "", "x".repeat(61), "a b"]) expect(ID_SITE.test(ko), ko).toBe(false);
 });
 
-test("verifierDeclarationSite : domaines et connexion sans IP, adresse locale ni nom sans point", () => {
+test("verifierDeclarationSite: domains and login without IP, local address or dotless name", () => {
   for (const d of ["localhost", "127.0.0.1", "192.168.1.1", "com", "monsite", "intranet.local", "exemple.123"]) {
     expect(verifierDeclarationSite(decl({ domaines: ["vidola-a.example", d] }), strict), d).toBe(DOMAINE_INVALIDE);
     expect(verifierDeclarationSite(decl({ connexion: [d] }), strict), d).toBe(DOMAINE_INVALIDE);

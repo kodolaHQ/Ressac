@@ -27,7 +27,7 @@ let suivi: SuiviOutilsDev | undefined;
 let pont: PontFactice;
 let politique: PolitiqueAcces;
 let racine: string;
-/** Dossier hors de l'espace (profil du navigateur) pour les profils des sites que l'agent n'a pas construits. */
+/** Folder outside the space (browser profile) for the profiles of sites the agent did not build. */
 let prive: string;
 const jeton = genererJeton();
 
@@ -36,7 +36,7 @@ async function demarrer(o: {
   accorderDev?: DroitDev[];
   bloquer?: boolean;
   profils?: Partial<ReturnType<typeof fichiersProfils>>;
-  /** Réponse de la carte de l'appli de site (absente : pas de carte, refus). */
+  /** Answer of the site app's card (absent: no card, refusal). */
   site?: boolean;
 } = {}) {
   pont = new PontFactice([github, gmail, appTodo, vidola], {
@@ -75,7 +75,7 @@ const appeler = async (name: string, args: Record<string, unknown>) => {
 };
 const demandesDev = () => pont.appels.filter((a) => a.methode === "demanderOutilsDev");
 
-test("sans pont.outilsDev, aucun outil de développement n'est listé", async () => {
+test("without pont.outilsDev, no dev tool is listed", async () => {
   await demarrer({ outilsDev: false });
   const noms = (await client!.listTools()).tools.map((t) => t.name);
   expect(noms).not.toContain("lire_console");
@@ -83,7 +83,7 @@ test("sans pont.outilsDev, aucun outil de développement n'est listé", async ()
   expect(noms).toHaveLength(6);
 });
 
-test("avec pont.outilsDev, les neuf outils de développement sont listés", async () => {
+test("with pont.outilsDev, the nine dev tools are listed", async () => {
   await demarrer();
   const noms = (await client!.listTools()).tools.map((t) => t.name);
   expect(noms).toEqual(
@@ -94,7 +94,7 @@ test("avec pont.outilsDev, les neuf outils de développement sont listés", asyn
   );
 });
 
-test('lire_console sur un onglet tiers sans droit : une demande avec droits ["console"] ; accordé → messages renvoyés (horodatage, niveau, texte)', async () => {
+test('lire_console on a third-party tab without the right: a request with rights ["console"]; granted → messages returned (timestamp, level, text)', async () => {
   await demarrer({ accorderDev: ["console"] });
   const h = Date.parse("2026-10-27T10:00:00.000Z");
   pont.fixerConsole("github", [
@@ -116,7 +116,7 @@ test('lire_console sur un onglet tiers sans droit : une demande avec droits ["co
   expect(demandesDev()).toHaveLength(1);
 });
 
-test("demander_outils_dev : seuls les droits accordés sont renvoyés ; les décochés sont bloqués (deuxième appel : aucune demande, réponse refusée)", async () => {
+test("demander_outils_dev: only the granted rights are returned; the unchecked ones are blocked (second call: no request, answer refused)", async () => {
   await demarrer({ accorderDev: ["console"] });
   const r = await appeler("demander_outils_dev", { id: "github", droits: ["console", "reseau"], raison: "Déboguer l'erreur" });
   expect(r).toContain("Droits accordés : console");
@@ -129,7 +129,7 @@ test("demander_outils_dev : seuls les droits accordés sont renvoyés ; les déc
   expect(demandesDev()).toHaveLength(1);
 });
 
-test("après politique.interactionUtilisateur, le droit refusé peut être redemandé", async () => {
+test("after politique.interactionUtilisateur, the refused right can be asked again", async () => {
   await demarrer({ accorderDev: [] });
   expect(await appeler("lire_console", { id: "github" })).toBe(REFUS);
   expect(await appeler("lire_console", { id: "github" })).toBe(REFUS);
@@ -139,13 +139,13 @@ test("après politique.interactionUtilisateur, le droit refusé peut être redem
   expect(demandesDev()).toHaveLength(2);
 });
 
-test("sans demanderOutilsDev sur le pont : refus immédiat", async () => {
+test("without demanderOutilsDev on the bridge: immediate refusal", async () => {
   await demarrer();
   expect(await appeler("lire_console", { id: "github" })).toBe(REFUS);
   expect(pont.demanderOutilsDev).toBeUndefined();
 });
 
-test("construite (app:todo) : lire_console et executer_js sans demande", async () => {
+test("built (app:todo): lire_console and executer_js without a request", async () => {
   await demarrer({ accorderDev: [] });
   politique.ongletOuvertParAgent(appTodo);
   pont.fixerConsole("app:todo", [{ horodatage: 0, niveau: "warn", texte: "attention" }]);
@@ -157,7 +157,7 @@ test("construite (app:todo) : lire_console et executer_js sans demande", async (
   expect(demandesDev()).toHaveLength(0);
 });
 
-test("executer_js tronque une valeur trop longue", async () => {
+test("executer_js truncates a value that is too long", async () => {
   await demarrer();
   politique.ongletOuvertParAgent(appTodo);
   const r = await appeler("executer_js", { id: "app:todo", code: "x".repeat(3000) });
@@ -165,7 +165,7 @@ test("executer_js tronque une valeur trop longue", async () => {
   expect(r.length).toBeLessThan(2100);
 });
 
-test("lire_reseau sur un onglet tiers masque Cookie et access_token ; sur une construite, rien n'est masqué", async () => {
+test("lire_reseau on a third-party tab masks Cookie and access_token; on a built one, nothing is masked", async () => {
   await demarrer({ accorderDev: ["reseau"] });
   const requete = {
     id: "r1", horodatage: 0, methode: "GET", url: "https://github.com/api?access_token=abc123&page=2", statut: 200,
@@ -177,7 +177,7 @@ test("lire_reseau sur un onglet tiers masque Cookie et access_token ; sur une co
   expect(liste).toContain("r1");
   expect(liste).toContain("access_token=«masqué»&page=2");
   expect(liste).not.toContain("abc123");
-  // le filtre porte sur l'URL affichée : il ne permet pas de deviner un secret
+  // the filter applies to the displayed URL: it does not allow guessing a secret
   expect(await appeler("lire_reseau", { id: "github", filtre: "abc123" })).not.toContain("r1");
   const detail = await appeler("lire_requete", { id: "github", requete: "r1" });
   expect(detail).toContain("Cookie: «masqué»");
@@ -191,7 +191,7 @@ test("lire_reseau sur un onglet tiers masque Cookie et access_token ; sur une co
   expect(await appeler("lire_requete", { id: "app:todo", requete: "r1" })).toContain("Cookie: session=xyz");
 });
 
-test("profiler_performances : sur un site tiers, le .cpuprofile reste hors de l'espace (référence profil:…) ; une construite écrit sous /workspace", async () => {
+test("profiler_performances: on a third-party site, the .cpuprofile stays outside the space (reference profil:…); a built one writes under /workspace", async () => {
   await demarrer({ accorderDev: ["performances"] });
   const r = await appeler("profiler_performances", { id: "github", duree_s: 2 });
   expect(pont.appels.find((a) => a.methode === "profiler")!.args[1]).toEqual({ dureeMs: 2000 });
@@ -202,18 +202,18 @@ test("profiler_performances : sur un site tiers, le .cpuprofile reste hors de l'
   expect(existsSync(join(prive, reference!.slice("profil:".length)))).toBe(true);
   expect(existsSync(join(racine, ".webaios", "profilage"))).toBe(false);
 
-  // une appli construite écrit dans son projet
+  // a built app writes in its project
   politique.ongletOuvertParAgent(appTodo);
   const app = await appeler("profiler_performances", { id: "app:todo", recharger: true });
   expect(app).toMatch(/Profil : \/workspace\/projets\/todo\/\.webaios\/profilage\/\S+\.cpuprofile/);
-  // une démo construite, dans .webaios/profilage
+  // a built demo, in .webaios/profilage
   const demo = await pont.ouvrirOnglet("http://localhost:5281/");
   politique.ongletOuvertParAgent(demo);
   const d = await appeler("profiler_performances", { id: demo.id, duree_s: 1 });
   expect(d).toMatch(/Profil : \/workspace\/\.webaios\/profilage\/\S+\.cpuprofile$/);
 });
 
-test("instantane_memoire puis comparer_memoire", async () => {
+test("instantane_memoire then comparer_memoire", async () => {
   await demarrer({ accorderDev: ["performances"] });
   const a = await appeler("instantane_memoire", { id: "github" });
   expect(a).toContain("Total :");
@@ -226,19 +226,19 @@ test("instantane_memoire puis comparer_memoire", async () => {
   expect(cheminB).not.toBe(cheminA);
   const c = await appeler("comparer_memoire", { id: "github", a: cheminA, b: cheminB });
   expect(c).toContain("Fuite +1");
-  // hors des dossiers de profils : refusé
+  // outside the profile folders: refused
   expect(await appeler("comparer_memoire", { id: "github", a: "/workspace/AGENTS.md", b: cheminB })).toBe(
     "Instantané illisible : /workspace/AGENTS.md.",
   );
   expect(await appeler("comparer_memoire", { id: "github", a: "/workspace/.webaios/profilage/../mcp.json", b: cheminB })).toBe(
     "Instantané illisible : /workspace/.webaios/profilage/../mcp.json.",
   );
-  // un fichier du dossier qui n'est pas un instantané : jamais son contenu dans la réponse
+  // a file in the folder that is not a snapshot: never its content in the answer
   await mkdir(join(racine, ".webaios", "profilage"), { recursive: true });
   await writeFile(join(racine, ".webaios", "profilage", "faux.heapsnapshot"), "secret de l'utilisateur");
   const faux = await appeler("comparer_memoire", { id: "github", a: "/workspace/.webaios/profilage/faux.heapsnapshot", b: cheminB });
   expect(faux).toBe("Instantané illisible : /workspace/.webaios/profilage/faux.heapsnapshot.");
-  // une référence ne sort jamais du dossier privé
+  // a reference never leaves the private folder
   for (const ref of ["profil:../x.heapsnapshot", "profil:", "profil:inconnu.heapsnapshot"]) {
     expect(await appeler("comparer_memoire", { id: "github", a: ref, b: cheminB })).toBe(`Instantané illisible : ${ref}.`);
   }
@@ -248,7 +248,7 @@ test("instantane_memoire puis comparer_memoire", async () => {
   );
 });
 
-test("couper pendant instantane_memoire (bloquer: true) : réponse « Accès coupé par l'utilisateur. », aucun fichier laissé", async () => {
+test("cut during instantane_memoire (bloquer: true): answer « Accès coupé par l'utilisateur. », no file left", async () => {
   await demarrer({ accorderDev: ["performances"], bloquer: true });
   const appel = appeler("instantane_memoire", { id: "github" });
   await vi.waitFor(() => expect(pont.appels.some((a) => a.methode === "instantaneMemoire")).toBe(true));
@@ -260,7 +260,7 @@ test("couper pendant instantane_memoire (bloquer: true) : réponse « Accès cou
   expect(existsSync(dossier) ? await readdir(dossier) : []).toEqual([]);
 });
 
-test("couper pendant l'écriture du profil : le fichier partiel est effacé", async () => {
+test("cut while the profile is being written: the partial file is erased", async () => {
   let ecrit = "";
   await demarrer({
     accorderDev: ["performances"],
@@ -280,7 +280,7 @@ test("couper pendant l'écriture du profil : le fichier partiel est effacé", as
   await vi.waitFor(() => expect(existsSync(ecrit)).toBe(false));
 });
 
-test("l'onglet change de site pendant la demande : rien n'est accordé", async () => {
+test("the tab changes site during the request: nothing is granted", async () => {
   await demarrer({ accorderDev: ["console"] });
   const demander = pont.demanderOutilsDev!.bind(pont);
   pont.demanderOutilsDev = async (o, d) => {
@@ -292,7 +292,7 @@ test("l'onglet change de site pendant la demande : rien n'est accordé", async (
   expect(politique.droitsDev(github)).toEqual([]);
 });
 
-test("deux demandes simultanées pour le même onglet : une seule carte", async () => {
+test("two simultaneous requests for the same tab: a single card", async () => {
   await demarrer({ accorderDev: ["console"] });
   const demander = pont.demanderOutilsDev!.bind(pont);
   let liberer!: () => void;
@@ -313,7 +313,7 @@ test("deux demandes simultanées pour le même onglet : une seule carte", async 
   expect(demandesDev()).toHaveLength(1);
 });
 
-test("SuiviOutilsDev : attache au premier droit, détache quand tout est coupé ; OutilsDevOccupes → l'outil renvoie le message", async () => {
+test("SuiviOutilsDev: attaches at the first right, detaches when everything is cut; OutilsDevOccupes → the tool returns the message", async () => {
   await demarrer({ accorderDev: ["console"] });
   suivi = new SuiviOutilsDev(politique, pont.outilsDev!, () => pont.listerOnglets());
   const appelsDe = (m: string, id: string) => pont.appels.filter((a) => a.methode === m && a.args[0] === id).length;
@@ -331,7 +331,7 @@ test("SuiviOutilsDev : attache au premier droit, détache quand tout est coupé 
   await vi.waitFor(() => expect(suivi!.attaches.has("github")).toBe(false));
   expect(appelsDe("detacher", "github")).toBe(1);
 
-  // L'utilisateur a ouvert ses outils sur Gmail
+  // The user opened their tools on Gmail
   pont.occuper("gmail");
   politique.accorderDev(gmail, ["console"], []);
   await vi.waitFor(() => expect(suivi!.occupes.has("gmail")).toBe(true));
@@ -339,7 +339,7 @@ test("SuiviOutilsDev : attache au premier droit, détache quand tout est coupé 
   expect(await appeler("lire_console", { id: "gmail" })).toBe("Les outils de développement de l'utilisateur sont ouverts sur cet onglet.");
 });
 
-test("fichiersProfils : refuse un chemin hors des dossiers de profils", async () => {
+test("fichiersProfils: refuses a path outside the profile folders", async () => {
   const r = await dossierTemporaire();
   const p = fichiersProfils(cheminsEspace(r));
   const chemin = await p.ecrireProfil(appTodo, "x.heapsnapshot", "{}", true);
@@ -353,12 +353,12 @@ test("fichiersProfils : refuse un chemin hors des dossiers de profils", async ()
   }
   await expect(p.ecrireProfil({ ...appTodo, application: "../x" }, "y.cpuprofile", "{}", true)).rejects.toThrow();
   await expect(p.ecrireProfil(github, "../y.cpuprofile", "{}", true)).rejects.toThrow();
-  // sans dossier privé, le profil d'un site tiers n'est pas enregistré (jamais dans l'espace)
+  // without a private folder, a third-party site's profile is not saved (never in the space)
   await expect(p.ecrireProfil(github, "z.cpuprofile", "{}", false)).rejects.toThrow(/indisponible/);
   expect(existsSync(join(r, ".webaios", "profilage", "z.cpuprofile"))).toBe(false);
 });
 
-test("fichiersProfils : un dossier de profilage en lien symbolique est refusé, à l'écriture comme à la lecture", async () => {
+test("fichiersProfils: a profiling folder as a symbolic link is refused, on write as on read", async () => {
   const r = await dossierTemporaire();
   const dehors = await dossierTemporaire();
   await writeFile(join(dehors, "x.heapsnapshot"), "secret");
@@ -370,14 +370,14 @@ test("fichiersProfils : un dossier de profilage en lien symbolique est refusé, 
   await expect(p.lireProfil("/workspace/.webaios/profilage/x.heapsnapshot")).rejects.toThrow(/hors des profils/);
   await expect(p.supprimerProfil("/workspace/.webaios/profilage/x.heapsnapshot")).rejects.toThrow(/hors des profils/);
   expect(existsSync(join(dehors, "x.heapsnapshot"))).toBe(true);
-  // un lien plus haut (le dossier du projet) aussi
+  // a link higher up (the project folder) too
   await mkdir(join(r, "projets"), { recursive: true });
   await symlink(dehors, join(r, "projets", "todo"));
   await expect(p.ecrireProfil(appTodo, "z.cpuprofile", "{}", true)).rejects.toThrow(/hors des profils/);
   expect(existsSync(join(dehors, ".webaios"))).toBe(false);
 });
 
-test("fichiersProfils : un fichier en lien symbolique n'est ni lu, ni effacé, ni écrasé", async () => {
+test("fichiersProfils: a file as a symbolic link is neither read, nor erased, nor overwritten", async () => {
   const r = await dossierTemporaire();
   const dehors = await dossierTemporaire();
   const cible = join(dehors, "cible.txt");
@@ -393,7 +393,7 @@ test("fichiersProfils : un fichier en lien symbolique n'est ni lu, ni effacé, n
   expect(existsSync(join(dossier, "lien.heapsnapshot"))).toBe(true);
 });
 
-test("lire_console et lire_reseau : au plus 100 000 caractères, les entrées les plus récentes gardées", async () => {
+test("lire_console and lire_reseau: at most 100,000 characters, the most recent entries kept", async () => {
   await demarrer();
   politique.ongletOuvertParAgent(appTodo);
   pont.fixerConsole(
@@ -421,12 +421,12 @@ test("lire_console et lire_reseau : au plus 100 000 caractères, les entrées le
   expect(reseau.length).toBeLessThanOrEqual(100_000);
   expect(reseau).toMatch(/^\d+ entrées plus anciennes omises\.\n/);
   expect(reseau).toContain("r199 ·");
-  // sous la limite : rien d'omis
+  // under the limit: nothing omitted
   pont.fixerConsole("app:todo", [{ horodatage: 0, niveau: "log", texte: "court" }]);
   expect(await appeler("lire_console", { id: "app:todo" })).not.toContain("omises");
 });
 
-test("changement de site pendant instantane_memoire : « L'onglet a changé de site : accès retiré. »", async () => {
+test("site change during instantane_memoire: « L'onglet a changé de site : accès retiré. »", async () => {
   await demarrer({ accorderDev: ["performances"], bloquer: true });
   const appel = appeler("instantane_memoire", { id: "github" });
   await vi.waitFor(() => expect(pont.appels.some((a) => a.methode === "instantaneMemoire")).toBe(true));
@@ -435,7 +435,7 @@ test("changement de site pendant instantane_memoire : « L'onglet a changé de s
   expect(await appel).toBe("L'onglet a changé de site : accès retiré.");
 });
 
-test("le site change entre l'accord et l'appel : le pont n'est pas appelé", async () => {
+test("the site changes between the grant and the call: the bridge is not called", async () => {
   await demarrer();
   politique.ongletOuvertParAgent(appTodo);
   const lister = pont.listerOnglets.bind(pont);
@@ -452,7 +452,7 @@ test("le site change entre l'accord et l'appel : le pont n'est pas appelé", asy
   expect(pont.appels.some((a) => a.methode === "executer")).toBe(false);
 });
 
-test("une erreur après l'écriture du profil efface aussi le fichier", async () => {
+test("an error after the profile is written also erases the file", async () => {
   await demarrer({ accorderDev: ["performances"] });
   const dossier = prive;
   pont.outilsDev!.instantaneMemoire = async () => "pas du json";
@@ -461,7 +461,7 @@ test("une erreur après l'écriture du profil efface aussi le fichier", async ()
   expect(existsSync(dossier) ? await readdir(dossier) : []).toEqual([]);
 });
 
-test("couper répond tout de suite même si le pont ignore le signal ; son résultat tardif n'écrit aucun fichier", async () => {
+test("cut answers right away even if the bridge ignores the signal; its late result writes no file", async () => {
   await demarrer({ accorderDev: ["performances"] });
   const dossier = prive;
   let finir!: (s: string) => void;
@@ -475,7 +475,7 @@ test("couper répond tout de suite même si le pont ignore le signal ; son résu
   expect(existsSync(dossier) ? await readdir(dossier) : []).toEqual([]);
 });
 
-test("fichiersProfils : un site tiers écrit dans le dossier privé et reçoit une référence profil:<nom>", async () => {
+test("fichiersProfils: a third-party site writes in the private folder and receives a reference profil:<name>", async () => {
   const r = await dossierTemporaire();
   const dossier = join(await dossierTemporaire(), "profilage");
   const p = fichiersProfils(cheminsEspace(r), dossier);
@@ -491,10 +491,10 @@ test("fichiersProfils : un site tiers écrit dans le dossier privé et reçoit u
   }
   await p.supprimerProfil(ref);
   expect(existsSync(join(dossier, "x.heapsnapshot"))).toBe(false);
-  await p.supprimerProfil(ref); // déjà effacé : sans erreur
+  await p.supprimerProfil(ref); // already erased: without error
 });
 
-test("page sans origine (about:blank, data:, file:) : refus immédiat, aucune carte", async () => {
+test("page without an origin (about:blank, data:, file:): immediate refusal, no card", async () => {
   await demarrer({ accorderDev: ["console"] });
   for (const url of ["about:blank", "data:text/html,<p>x</p>", "file:///Users/user/a.html"]) {
     const o = await pont.ouvrirOnglet(url);
@@ -504,7 +504,7 @@ test("page sans origine (about:blank, data:, file:) : refus immédiat, aucune ca
   expect(demandesDev()).toHaveLength(0);
 });
 
-test("la raison affichée sur la carte est bornée à 300 caractères (…)", async () => {
+test("the reason shown on the card is bounded to 300 characters (…)", async () => {
   await demarrer({ accorderDev: ["console"] });
   await appeler("demander_outils_dev", { id: "github", droits: ["console"], raison: "a".repeat(1000) });
   const raison = (demandesDev()[0]!.args[1] as { raison: string }).raison;
@@ -514,7 +514,7 @@ test("la raison affichée sur la carte est bornée à 300 caractères (…)", as
   expect((demandesDev()[1]!.args[1] as { raison: string }).raison).toBe("b".repeat(300));
 });
 
-test("nouvelle conversation pendant la carte : la carte est retirée (signal) et une réponse tardive n'accorde rien", async () => {
+test("new conversation during the card: the card is withdrawn (signal) and a late answer grants nothing", async () => {
   await demarrer({ accorderDev: ["console"] });
   let signal: AbortSignal | undefined;
   let repondre!: (d: DroitDev[]) => void;
@@ -527,13 +527,13 @@ test("nouvelle conversation pendant la carte : la carte est retirée (signal) et
   expect(signal!.aborted).toBe(false);
   politique.reinitialiser();
   expect(signal!.aborted).toBe(true);
-  repondre(["console"]); // L'utilisateur clique quand même (ou le navigateur ignore le signal)
+  repondre(["console"]); // The user clicks anyway (or the browser ignores the signal)
   expect(await appel).toBe(REFUS);
   expect(politique.droitsDev(github)).toEqual([]);
   expect(politique.peutDemander("github", "console")).toBe(true);
 });
 
-test("lire_console masque les jetons des URL dans les messages et les piles d'un site tiers ; pas sur une construite", async () => {
+test("lire_console masks the tokens in URLs in the messages and stacks of a third-party site; not on a built one", async () => {
   await demarrer({ accorderDev: ["console"] });
   const messages = [
     {
@@ -556,26 +556,26 @@ test("lire_console masque les jetons des URL dans les messages et les piles d'un
   expect(brut).toContain("sig=zzz999");
 });
 
-test("SuiviOutilsDev : un onglet qui garde ses droits sur une autre origine (appli relancée) est détaché puis rattaché", async () => {
+test("SuiviOutilsDev: a tab that keeps its rights on another origin (relaunched app) is detached then reattached", async () => {
   await demarrer();
   suivi = new SuiviOutilsDev(politique, pont.outilsDev!, () => pont.listerOnglets());
   const appels = () => pont.appels.filter((a) => ["attacher", "detacher"].includes(a.methode) && a.args[0] === "app:todo").map((a) => a.methode);
   politique.construite(appTodo);
   await vi.waitFor(() => expect(appels()).toEqual(["attacher"]));
-  // relancée sur un autre port : la fenêtre navigue, elle est de nouveau construite sur sa nouvelle origine
+  // relaunched on another port: the window navigates, it is built again on its new origin
   await pont.naviguer("app:todo", "http://localhost:5290/");
   politique.ongletNavigue("app:todo", "http://localhost:5290/");
   politique.construite({ ...appTodo, url: "http://localhost:5290/" });
   await vi.waitFor(() => expect(appels()).toEqual(["attacher", "detacher", "attacher"]));
   expect(suivi.attaches.has("app:todo")).toBe(true);
-  // même origine, autre page : rien ne bouge
+  // same origin, other page: nothing moves
   await pont.naviguer("app:todo", "http://localhost:5290/autre");
   politique.ongletNavigue("app:todo", "http://localhost:5290/autre");
   await new Promise((r) => setTimeout(r, 20));
   expect(appels()).toEqual(["attacher", "detacher", "attacher"]);
 });
 
-test("espace privé : chaque outil de développement répond TEXTE_PRIVE, sans carte ni appel au débogueur", async () => {
+test("private space: each dev tool answers TEXTE_PRIVE, without a card or a debugger call", async () => {
   await demarrer({ accorderDev: ["console", "reseau", "performances", "agir"] });
   pont.rendrePrive("github");
   const appels: [string, Record<string, unknown>][] = [
@@ -598,20 +598,20 @@ test("espace privé : chaque outil de développement répond TEXTE_PRIVE, sans c
   expect(pont.appels.filter((a) => !["listerOnglets"].includes(a.methode))).toEqual([]);
 });
 
-test("espace privé pendant un appel : il est coupé et répond TEXTE_PRIVE", async () => {
+test("private space during a call: it is cut and answers TEXTE_PRIVE", async () => {
   await demarrer({ accorderDev: ["performances"], bloquer: true });
   const r = appeler("profiler_performances", { id: "github", duree_s: 30 });
   await vi.waitFor(() => expect(pont.appels.some((a) => a.methode === "profiler")).toBe(true));
   pont.rendrePrive("github");
-  politique.ongletFerme("github"); // ce que fait le navigateur quand l'onglet devient privé
+  politique.ongletFerme("github"); // what the browser does when the tab becomes private
   expect(await r).toBe(TEXTE_PRIVE);
 });
 
-// ——— Fenêtres d'applis de site : l'accord de l'appli ET celui des outils de développement ———
+// ——— Site app windows: the app's grant AND the dev tools' ———
 
 const cartesSite = () => pont.appels.filter((a) => a.methode === "demanderDonneesWidget");
 
-test("lire_console avec l'accord du site mais sans droit de développement : refusé", async () => {
+test("lire_console with the site's grant but without a dev right: refused", async () => {
   await demarrer({ accorderDev: [], site: true });
   politique.accorderLectureSite("vidola");
   pont.fixerConsole("site:vidola", [{ horodatage: 0, niveau: "error", texte: "secret de la page" }]);
@@ -623,10 +623,10 @@ test("lire_console avec l'accord du site mais sans droit de développement : ref
   expect(pont.appels.some((a) => a.methode === "reseau")).toBe(false);
 });
 
-test("lire_console avec le droit de développement mais sans l'accord du site : la carte de l'appli, refusée → refusé, sans carte d'outils", async () => {
+test("lire_console with the dev right but without the site's grant: the app's card, refused → refused, without a tools card", async () => {
   await demarrer({ accorderDev: ["console", "reseau"], site: false });
   pont.fixerConsole("site:vidola", [{ horodatage: 0, niveau: "error", texte: "secret de la page" }]);
-  // Un droit de développement déjà tenu ne suffit pas.
+  // A dev right already held is not enough.
   politique.accorderDev(vidola, ["console"], []);
   expect(await appeler("lire_console", { id: "site:vidola" })).toBe(REFUS);
   expect(cartesSite().map((c) => c.args[0])).toEqual([{ id: "vidola", nom: "Vidola", agent: "Claude", genre: "site" }]);
@@ -636,7 +636,7 @@ test("lire_console avec le droit de développement mais sans l'accord du site : 
   expect(demandesDev()).toHaveLength(0);
 });
 
-test("lire_console sur une appli de site dont site.json a été réécrit (autre empreinte) : la carte de l'appli revient avant tout", async () => {
+test("lire_console on a site app whose site.json was rewritten (other hash): the app's card comes back first", async () => {
   await demarrer({ accorderDev: ["console"], site: true });
   pont.modifierOnglet("site:vidola", { empreinte: "e1" });
   pont.fixerConsole("site:vidola", [{ horodatage: 0, niveau: "error", texte: "message" }]);
@@ -648,7 +648,7 @@ test("lire_console sur une appli de site dont site.json a été réécrit (autre
   expect(cartesSite()).toHaveLength(2);
 });
 
-test("lire_console : site.json réécrit pendant la carte de l'appli (autre empreinte) : rien n'est lu", async () => {
+test("lire_console: site.json rewritten during the app's card (other hash): nothing is read", async () => {
   await demarrer({ accorderDev: ["console"] });
   pont.modifierOnglet("site:vidola", { empreinte: "e1" });
   pont.fixerConsole("site:vidola", [{ horodatage: 0, niveau: "error", texte: "secret de la page" }]);
@@ -662,7 +662,7 @@ test("lire_console : site.json réécrit pendant la carte de l'appli (autre empr
   expect(pont.appels.some((a) => a.methode === "console")).toBe(false);
 });
 
-test("lire_console sur une appli de site : les deux accords → les messages, URL masquées (le site n'est pas construit par l'agent)", async () => {
+test("lire_console on a site app: both grants → the messages, URLs masked (the site is not built by the agent)", async () => {
   await demarrer({ accorderDev: ["console"], site: true });
   pont.fixerConsole("site:vidola", [{ horodatage: 0, niveau: "error", texte: "échec https://vidola-a.example/api?token=abc" }]);
   const r = await appeler("lire_console", { id: "site:vidola" });
@@ -671,7 +671,7 @@ test("lire_console sur une appli de site : les deux accords → les messages, UR
   expect(r).toContain("token=«masqué»");
   expect(cartesSite()).toHaveLength(1);
   expect(demandesDev()).toHaveLength(1);
-  // Nouvelle conversation : les deux accords tombent.
+  // New conversation: both grants drop.
   politique.reinitialiser();
   pont.appels.length = 0;
   await appeler("lire_console", { id: "site:vidola" });

@@ -18,14 +18,14 @@ afterEach(async () => {
 });
 const garder = <T extends FauxServeur>(s: T) => (aFermer.push(s), s);
 const rapide = { sondageMs: 10, verifInactiviteMs: 10 };
-/** git clone factice réussi : crée le dépôt dans le dossier de clonage. */
+/** Successful fake git clone: creates the repo in the clone folder. */
 const clonage = (dossier: string) => async (): Promise<Reponse> => {
   await mkdir(join(dossier, "kev.clone-en-cours", ".git"), { recursive: true });
   return { code: 0 };
 };
 
 describe("IaLocale", () => {
-  it("kev() transmet state et questions et rend answers", async () => {
+  it("kev() passes state and questions and returns answers", async () => {
     const kev = garder(await fauxKev());
     const { executer } = executeurFactice([]);
     const ia = new IaLocale({ dossier: await dossierTemporaire(), executer, kevUrl: kev.url });
@@ -61,7 +61,7 @@ describe("IaLocale", () => {
     expect(kev.requetes.find((x) => x.url === "/v1/systemone")!.corps).toEqual({ state: "texte", questions: {} });
   });
 
-  it("gemma() envoie le modèle gemma4:e4b-mlx, think false, et analyse le JSON si demandé", async () => {
+  it("gemma() sends the gemma4:e4b-mlx model, think false, and parses the JSON if requested", async () => {
     const ollama = garder(await fauxOllama('{"a":1}'));
     const { executer } = executeurFactice([]);
     const ia = new IaLocale({ dossier: await dossierTemporaire(), executer, ollamaUrl: ollama.url });
@@ -78,7 +78,7 @@ describe("IaLocale", () => {
     expect(ollama.requetes[1]!.corps.format).toBeUndefined();
   });
 
-  it("gemma avec un signal levé abandonne la requête vers Ollama (faux serveur)", async () => {
+  it("gemma with a raised signal aborts the request to Ollama (fake server)", async () => {
     const ollama = garder(await fauxOllamaMuet());
     const { executer } = executeurFactice([]);
     const ia = new IaLocale({ dossier: await dossierTemporaire(), executer, ollamaUrl: ollama.url });
@@ -88,12 +88,12 @@ describe("IaLocale", () => {
     controleur.abort();
     await expect(appel).rejects.toThrow(IA_ABANDONNEE);
     await vi.waitFor(() => expect(ollama.coupees()).toBe(1));
-    // Déjà levé : rien ne part.
+    // Already raised: nothing leaves.
     await expect(ia.gemma({ prompt: "y", signal: controleur.signal })).rejects.toThrow(IA_ABANDONNEE);
     expect(ollama.requetes).toHaveLength(1);
   });
 
-  it("kev avec un signal levé abandonne la requête vers Kev", async () => {
+  it("kev with a raised signal aborts the request to Kev", async () => {
     const kev = garder(await fauxOllamaMuet());
     const { executer } = executeurFactice([]);
     const ia = new IaLocale({ dossier: await dossierTemporaire(), executer, kevUrl: kev.url });
@@ -104,20 +104,20 @@ describe("IaLocale", () => {
     expect(kev.requetes).toHaveLength(0);
   });
 
-  it("Ollama injoignable : erreur « Ollama n'est pas lancé »", async () => {
+  it("Ollama unreachable: error « Ollama n'est pas lancé »", async () => {
     const { executer } = executeurFactice([]);
     const ia = new IaLocale({ dossier: await dossierTemporaire(), executer, ollamaUrl: await urlInjoignable() });
     await expect(ia.gemma({ prompt: "x" })).rejects.toThrow("Ollama n'est pas lancé");
   });
 
-  it("Kev absent : « IA locale non installée »", async () => {
+  it("Kev absent: « IA locale non installée »", async () => {
     const { executer } = executeurFactice([]);
     const ia = new IaLocale({ dossier: await dossierTemporaire(), executer, ...rapide });
     await expect(ia.kev({ state: "", questions: {} })).rejects.toThrow("IA locale non installée");
     expect(ia.etat().etat).toBe("non-installee");
   });
 
-  it("sans kevUrl, kev() lance la commande uv pinnée dans <dossier>/kev, attend /v1/models, puis passe active", async () => {
+  it("without kevUrl, kev() launches the pinned uv command in <folder>/kev, waits for /v1/models, then goes active", async () => {
     const dossier = await dossierTemporaire();
     await mkdir(join(dossier, "kev", ".git"), { recursive: true });
     const kev = garder(await fauxKev());
@@ -127,7 +127,7 @@ describe("IaLocale", () => {
     let ia!: IaLocale;
     const lancer = (cmd: string, args: string[], o: { cwd: string }): ProcessusIa => {
       lancements.push({ cmd, args, cwd: o.cwd });
-      // Kev met un peu de temps à répondre : on le branche à l'adresse du faux serveur.
+      // Kev takes a while to answer: we plug it to the fake server's address.
       (ia as any).kevUrl = kev.url;
       return { arreter() {}, surSortie() {} };
     };
@@ -143,7 +143,7 @@ describe("IaLocale", () => {
     expect(ia.etat().etat).toBe("active");
   });
 
-  it("Kev mort au démarrage : « Kev n'a pas démarré : <dernières lignes> »", async () => {
+  it("Kev dead at startup: « Kev n'a pas démarré : <last lines> »", async () => {
     const dossier = await dossierTemporaire();
     await mkdir(join(dossier, "kev", ".git"), { recursive: true });
     const { executer } = executeurFactice([]);
@@ -157,7 +157,7 @@ describe("IaLocale", () => {
     expect(ia.etat().etat).toBe("erreur");
   });
 
-  it("deux appels pendant le démarrage ne lancent qu'un processus", async () => {
+  it("two calls during startup launch only one process", async () => {
     const dossier = await dossierTemporaire();
     await mkdir(join(dossier, "kev", ".git"), { recursive: true });
     const kev = garder(await fauxKev());
@@ -169,7 +169,7 @@ describe("IaLocale", () => {
       setTimeout(() => { (ia as any).kevUrl = kev.url; }, 60);
       return { arreter() {}, surSortie() {} };
     };
-    // port 1 : rien n'y répond (un vrai Kev peut écouter sur 8008 pendant les tests).
+    // port 1: nothing answers there (a real Kev may listen on 8008 during the tests).
     ia = new IaLocale({ dossier, executer, lancer, port: 1, ...rapide });
     aArreter.push(ia);
     await Promise.all([ia.kev({ state: "a", questions: {} }), ia.kev({ state: "b", questions: {} })]);
@@ -177,7 +177,7 @@ describe("IaLocale", () => {
     expect(kev.requetes.filter((r) => r.url === "/v1/systemone")).toHaveLength(2);
   });
 
-  it("arreter() pendant le démarrage : état arretee, sans erreur, sans minuteur", async () => {
+  it("arreter() during startup: state arretee, no error, no timer", async () => {
     const dossier = await dossierTemporaire();
     await mkdir(join(dossier, "kev", ".git"), { recursive: true });
     const { executer } = executeurFactice([]);
@@ -198,7 +198,7 @@ describe("IaLocale", () => {
     expect((ia as any).minuteur).toBeUndefined();
   });
 
-  it("après 10 min sans appel, Kev est arrêté (horloge factice)", async () => {
+  it("after 10 min without a call, Kev is stopped (fake clock)", async () => {
     const dossier = await dossierTemporaire();
     await mkdir(join(dossier, "kev", ".git"), { recursive: true });
     const kev = garder(await fauxKev());
@@ -223,7 +223,7 @@ describe("IaLocale", () => {
     expect(arrete).toBe(1);
   });
 
-  it("arreter() au repos laisse relancer Kev ; fermer() refuse ensuite kev() et gemma() sans rien lancer", async () => {
+  it("arreter() at rest lets Kev be relaunched; fermer() then refuses kev() and gemma() without launching anything", async () => {
     const dossier = await dossierTemporaire();
     await mkdir(join(dossier, "kev", ".git"), { recursive: true });
     const kev = garder(await fauxKev());
@@ -252,7 +252,7 @@ describe("IaLocale", () => {
     expect(ollama.requetes).toHaveLength(0);
   });
 
-  it("accès d'un noyau : une fois fermé, il refuse et arrête Kev ; un autre accès relance Kev", async () => {
+  it("a core's access: once closed, it refuses and stops Kev; another access relaunches Kev", async () => {
     const dossier = await dossierTemporaire();
     await mkdir(join(dossier, "kev", ".git"), { recursive: true });
     const kev = garder(await fauxKev());
@@ -272,16 +272,16 @@ describe("IaLocale", () => {
     await premier.fermer();
     expect(arretes).toBe(1);
     expect(ia.etat().etat).toBe("arretee");
-    // Une récolte en retard du noyau arrêté ne relance pas Kev.
+    // A late harvest of the stopped core does not relaunch Kev.
     await expect(premier.kev({ state: "", questions: {} })).rejects.toThrow("IA locale fermée");
     await expect(premier.gemma({ prompt: "x" })).rejects.toThrow("IA locale fermée");
     expect(lances).toBe(1);
-    // Le noyau suivant (autre profil d'agent) a son propre accès.
+    // The next core (other agent profile) has its own access.
     await ia.acces().kev({ state: "", questions: {} });
     expect(lances).toBe(2);
   });
 
-  it("installer() enchaîne uv, git clone kev-1.0, uv sync, ollama pull, et reprend une installation partielle", async () => {
+  it("installer() chains uv, git clone kev-1.0, uv sync, ollama pull, and resumes a partial install", async () => {
     const dossier = await dossierTemporaire();
     const { executer, appels } = executeurFactice([
       [/^uv --version/, { code: 0, stdout: "uv 0.5\n" }],
@@ -294,7 +294,7 @@ describe("IaLocale", () => {
     await ia.installer((l) => lignes.push(l));
     const cmds = appels.map((a) => [a.commande, ...a.args].join(" "));
     expect(cmds[0]).toBe("uv --version");
-    // Cloné à côté puis renommé : un clone interrompu ne laisse jamais un `kev/.git` à moitié rempli.
+    // Cloned alongside then renamed: an interrupted clone never leaves a half-filled `kev/.git`.
     expect(cmds[1]).toBe(`git clone --depth 1 --branch kev-1.0 https://github.com/jaredpalmer/kev.git ${join(dossier, "kev.clone-en-cours")}`);
     expect(existsSync(join(dossier, "kev", ".git"))).toBe(true);
     expect(existsSync(join(dossier, "kev.clone-en-cours"))).toBe(false);
@@ -304,7 +304,7 @@ describe("IaLocale", () => {
     expect(lignes).toContain("success");
     expect(appels.find((a) => a.args[0] === "sync")!.args).toEqual(["sync", "--extra", "serve", "--project", join(dossier, "kev")]);
 
-    // reprise : le dépôt est déjà là, pas de nouveau clone
+    // resume: the repo is already there, no new clone
     const second = executeurFactice([
       [/^uv --version/, { code: 0 }],
       [/rev-parse HEAD/, { code: 0, stdout: COMMIT }],
@@ -314,7 +314,7 @@ describe("IaLocale", () => {
     expect(second.appels.some((a) => a.args[0] === "sync")).toBe(true);
   });
 
-  it("installer() refuse sans uv, et refuse un commit inattendu", async () => {
+  it("installer() refuses without uv, and refuses an unexpected commit", async () => {
     const sansUv = executeurFactice([[/^uv --version/, { code: 127 }]]);
     await expect(new IaLocale({ dossier: await dossierTemporaire(), executer: sansUv.executer }).installer(() => {}))
       .rejects.toThrow("installe uv : brew install uv");
@@ -326,7 +326,7 @@ describe("IaLocale", () => {
 });
 
 describe("IaLocale : quitter annule l'installation", () => {
-  /** git clone factice qui reste en cours (fichiers partiels écrits) jusqu'à l'annulation ; `ignorer` : sourd au signal. */
+  /** Fake git clone that stays in progress (partial files written) until cancellation; `ignorer`: deaf to the signal. */
   function cloneSansFin(dossier: string, ignorer = false) {
     const recus: (AbortSignal | undefined)[] = [];
     let demarre!: () => void;
@@ -347,7 +347,7 @@ describe("IaLocale : quitter annule l'installation", () => {
     return { executer, recus, enCours };
   }
 
-  it("fermer() pendant le clone : le processus reçoit l'annulation, rien d'autre n'est lancé, le clone partiel est effacé, puis une nouvelle installation repart proprement", async () => {
+  it("fermer() during the clone: the process receives the cancellation, nothing else is launched, the partial clone is erased, then a new install restarts cleanly", async () => {
     const dossier = await dossierTemporaire();
     const faux = cloneSansFin(dossier);
     const ia = new IaLocale({ dossier, executer: faux.executer });
@@ -360,7 +360,7 @@ describe("IaLocale : quitter annule l'installation", () => {
     expect(existsSync(join(dossier, "kev.clone-en-cours"))).toBe(false);
     await expect(ia.installer(() => {})).rejects.toThrow("IA locale fermée");
 
-    // Lancement suivant : nouvelle IaLocale, l'installation reprend depuis le début.
+    // Next launch: new IaLocale, the install restarts from the beginning.
     const { executer, appels } = executeurFactice([
       [/^git clone/, clonage(dossier)],
       [/rev-parse HEAD/, { code: 0, stdout: COMMIT }],
@@ -371,7 +371,7 @@ describe("IaLocale : quitter annule l'installation", () => {
     expect(existsSync(join(dossier, "kev", ".git"))).toBe(true);
   });
 
-  it("chaque commande de l'installation reçoit le signal d'annulation (uv sync, ollama pull)", async () => {
+  it("each install command receives the cancellation signal (uv sync, ollama pull)", async () => {
     const dossier = await dossierTemporaire();
     await mkdir(join(dossier, "kev", ".git"), { recursive: true });
     let pull: AbortSignal | undefined;
@@ -394,7 +394,7 @@ describe("IaLocale : quitter annule l'installation", () => {
     expect(pull.aborted).toBe(true);
   });
 
-  it("fermer() n'attend pas au-delà du délai un processus qui ignore l'annulation ; le reste du clone est effacé au lancement suivant", async () => {
+  it("fermer() does not wait beyond the delay for a process that ignores the cancellation; the rest of the clone is erased at the next launch", async () => {
     const dossier = await dossierTemporaire();
     const faux = cloneSansFin(dossier, true);
     const ia = new IaLocale({ dossier, executer: faux.executer, delaiAnnulationMs: 50 });
@@ -403,7 +403,7 @@ describe("IaLocale : quitter annule l'installation", () => {
     const debut = Date.now();
     await ia.fermer();
     expect(Date.now() - debut).toBeLessThan(1000);
-    expect(existsSync(join(dossier, "kev.clone-en-cours", ".git"))).toBe(true); // le processus sourd tient encore ses fichiers
+    expect(existsSync(join(dossier, "kev.clone-en-cours", ".git"))).toBe(true); // the deaf process still holds its files
 
     const vuAuClone: boolean[] = [];
     const { executer } = executeurFactice([
@@ -414,12 +414,12 @@ describe("IaLocale : quitter annule l'installation", () => {
       [/rev-parse HEAD/, { code: 0, stdout: COMMIT }],
     ]);
     await new IaLocale({ dossier, executer }).installer(() => {});
-    expect(vuAuClone).toEqual([false]); // le reste a été effacé avant de recloner
+    expect(vuAuClone).toEqual([false]); // the rest was erased before recloning
     expect(existsSync(join(dossier, "kev", ".git", "pack-partiel"))).toBe(false);
   });
 });
 
-describe("lancerProcessusIa (Kev : uv lance un enfant Python)", () => {
+describe("lancerProcessusIa (Kev: uv launches a Python child)", () => {
   const vivant = (pid: number) => {
     try {
       process.kill(pid, 0);
@@ -433,7 +433,7 @@ describe("lancerProcessusIa (Kev : uv lance un enfant Python)", () => {
     while (!f() && Date.now() < fin) await new Promise((r) => setTimeout(r, 20));
     return f();
   };
-  /** Lance `sh -c script` ; le script écrit le pid de son enfant sur la première ligne. */
+  /** Launches `sh -c script`; the script writes its child's pid on the first line. */
   async function lancerAvecEnfant(script: string, delaiKillMs?: number) {
     const p = lancerProcessusIa("sh", ["-c", script], { cwd: process.cwd(), ...(delaiKillMs ? { delaiKillMs } : {}) });
     const pid = await new Promise<number>((ok) => p.surLigne?.((l) => ok(Number(l))));
@@ -442,7 +442,7 @@ describe("lancerProcessusIa (Kev : uv lance un enfant Python)", () => {
     return { p, pid, sorti: () => sorti };
   }
 
-  it("arreter() tue aussi les enfants (tout le groupe), pas seulement le premier processus", async () => {
+  it("arreter() also kills the children (the whole group), not only the first process", async () => {
     const { p, pid, sorti } = await lancerAvecEnfant("sleep 300 & echo $!; wait");
     expect(vivant(pid)).toBe(true);
     p.arreter();
@@ -450,11 +450,11 @@ describe("lancerProcessusIa (Kev : uv lance un enfant Python)", () => {
     expect(await attendreVrai(sorti)).toBe(true);
   });
 
-  it("un groupe qui ignore SIGTERM est tué par SIGKILL après le délai", async () => {
+  it("a group that ignores SIGTERM is killed by SIGKILL after the delay", async () => {
     const { p, pid } = await lancerAvecEnfant("trap '' TERM; sleep 300 & echo $!; wait", 200);
     p.arreter();
     await new Promise((r) => setTimeout(r, 100));
-    expect(vivant(pid)).toBe(true); // SIGTERM ignoré
+    expect(vivant(pid)).toBe(true); // SIGTERM ignored
     expect(await attendreVrai(() => !vivant(pid))).toBe(true);
   });
 });

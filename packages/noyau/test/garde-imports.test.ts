@@ -13,7 +13,7 @@ function fichiers(dossier: string): string[] {
 test("src/workflows n'importe ni widgets/, accueil/, actions/ ni pages/", () => {
   const sources = fichiers(join(racine, "src", "workflows"));
   expect(sources.length).toBeGreaterThan(0);
-  // `from "…"`, `import "…"` (effet de bord) et `import("…")` (dynamique).
+  // `from "…"`, `import "…"` (side effect) and `import("…")` (dynamic).
   const interdit = /(?:\bfrom|\bimport)\s*\(?\s*["'](\.\.\/)+(widgets|accueil|actions|pages)\//;
   for (const exemple of [
     'import { x } from "../widgets/recolte.js";',

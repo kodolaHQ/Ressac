@@ -61,7 +61,7 @@ const appel = (c: Client, name: string, args: Record<string, unknown>) => c.call
 
 const CORPS = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" });
 const ENTETES = { "Content-Type": "application/json", Accept: "application/json, text/event-stream" };
-/** fetch interdit de poser Host/Origin à volonté : on passe par node:http. */
+/** fetch forbids setting Host/Origin at will: we go through node:http. */
 function brut(port: number, chemin: string, entetes: Record<string, string>): Promise<number> {
   return new Promise((ok, ko) => {
     const r = request({ host: "127.0.0.1", port, path: chemin, method: "POST", headers: { ...ENTETES, ...entetes } }, (res) => { res.resume(); ok(res.statusCode ?? 0); });
@@ -71,7 +71,7 @@ function brut(port: number, chemin: string, entetes: Record<string, string>): Pr
 }
 
 describe("serveur MCP externe", () => {
-  test("liste exactement les 4 outils : declarer_projet, lire_remarques, attendre_remarques, marquer_traitee ; chacun exige dossier", async () => {
+  test("lists exactly the 4 tools: declarer_projet, lire_remarques, attendre_remarques, marquer_traitee; each requires dossier", async () => {
     const k = await cadre();
     const { c } = await k.brancher();
     const { tools } = await c.listTools();
@@ -82,7 +82,7 @@ describe("serveur MCP externe", () => {
     }
   });
 
-  test("sans jeton, mauvais jeton, jeton révoqué → 401 ; le jeton principal d'un serveur demarrerServeurMcp → 401 ici, et un jeton externe → 401 sur demarrerServeurMcp", async () => {
+  test("no token, wrong token, revoked token → 401; the main token of a demarrerServeurMcp server → 401 here, and an external token → 401 on demarrerServeurMcp", async () => {
     const k = await cadre();
     const b = await k.brancher();
     const auth = (j: string) => ({ Authorization: `Bearer ${j}`, Host: `127.0.0.1:${k.serveur.port}` });
@@ -101,13 +101,13 @@ describe("serveur MCP externe", () => {
     expect(await brut(interne.port, "/mcp", { Authorization: `Bearer ${autre.jeton}` })).toBe(401);
   });
 
-  test("Origin: http://evil.example → 403 ; Host: host.docker.internal:<port> → 403 ; Host: localhost:<port> accepté ; /mcp → 404", async () => {
+  test("Origin: http://evil.example → 403; Host: host.docker.internal:<port> → 403; Host: localhost:<port> accepted; /mcp → 404", async () => {
     const k = await cadre();
     const { jeton } = await k.brancher();
     const p = k.serveur.port;
     const auth = { Authorization: `Bearer ${jeton}` };
     expect(await brut(p, "/mcp-externe", { ...auth, Origin: "http://evil.example" })).toBe(403);
-    // L'Origin passe avant le jeton.
+    // The Origin check comes before the token.
     expect(await brut(p, "/mcp-externe", { Origin: "http://evil.example" })).toBe(403);
     expect(await brut(p, "/mcp-externe", { ...auth, Host: `host.docker.internal:${p}` })).toBe(403);
     expect(await brut(p, "/mcp-externe", { ...auth, Host: "localhost" })).toBe(403);
@@ -115,7 +115,7 @@ describe("serveur MCP externe", () => {
     expect(await brut(p, "/mcp", auth)).toBe(404);
   });
 
-  test("declarer_projet puis lire_remarques sur le même dossier : AUCUNE_REMARQUE ; après envoyerPanier (mcp) : le texte de l'utilisateur, le sélecteur, PREFIXE_DONNEES_PAGE avant le html, et une image PNG", async () => {
+  test("declarer_projet then lire_remarques on the same folder: AUCUNE_REMARQUE; after envoyerPanier (mcp): the user's text, the selector, PREFIXE_DONNEES_PAGE before the html, and a PNG image", async () => {
     const k = await cadre();
     const { c, client } = await k.brancher();
     const dossier = await k.dossierProjet("site");
@@ -142,7 +142,7 @@ describe("serveur MCP externe", () => {
     expect(Buffer.from(images[0]!.data!, "base64")).toEqual(PNG);
   });
 
-  test("le html de la page n'apparaît jamais avant PREFIXE_DONNEES_PAGE dans le texte rendu", async () => {
+  test("the page's html never appears before PREFIXE_DONNEES_PAGE in the rendered text", async () => {
     const k = await cadre();
     const { c, client } = await k.brancher();
     const dossier = await k.dossierProjet("site");
@@ -156,7 +156,7 @@ describe("serveur MCP externe", () => {
     expect(t).toContain(piege);
   });
 
-  test("une valeur venue de la page ne forge pas une remarque : elle est échappée", async () => {
+  test("a value coming from the page does not forge a remark: it is escaped", async () => {
     const k = await cadre();
     const { c, client } = await k.brancher();
     const dossier = await k.dossierProjet("site");
@@ -173,7 +173,7 @@ describe("serveur MCP externe", () => {
     expect(t2.split("\n").filter((l) => l.startsWith("Remarque e-00000000"))).toEqual([]);
   });
 
-  test("relecture : fichier, lignes et marques", async () => {
+  test("review: file, lines and marks", async () => {
     const k = await cadre();
     const { c, client } = await k.brancher();
     const dossier = await k.dossierProjet("site");
@@ -186,7 +186,7 @@ describe("serveur MCP externe", () => {
     expect(t).toContain("+const x = 1;");
   });
 
-  test("client B appelle lire_remarques avec le dossier de A → projetNonDeclare ; marquer_traitee de B sur un id de A → projetNonDeclare, rien ne change", async () => {
+  test("client B calls lire_remarques with A's folder → projetNonDeclare; B's marquer_traitee on an id of A → projetNonDeclare, nothing changes", async () => {
     const k = await cadre();
     const a = await k.brancher("A");
     const b = await k.brancher("B");
@@ -204,7 +204,7 @@ describe("serveur MCP externe", () => {
     expect(apres.id).toBe(lot.id);
   });
 
-  test("lire_remarques passe le lot à « lu » ; marquer_traitee de tous ses ids → etatLot \"traite\", note gardée ; un id inconnu est listé", async () => {
+  test("lire_remarques sets the batch to « lu »; marquer_traitee of all its ids → etatLot \"traite\", note kept; an unknown id is listed", async () => {
     const k = await cadre();
     const { c, client } = await k.brancher();
     const dossier = await k.dossierProjet("site");
@@ -224,7 +224,7 @@ describe("serveur MCP externe", () => {
     expect(texte(await appel(c, "lire_remarques", { dossier }))).toBe(AUCUNE_REMARQUE);
   });
 
-  test("attendre_remarques (delai_s 30) rend dès qu'un lot est envoyé pour ce projet (moins d'1 s) ; delai_s 1 sans lot → AUCUNE_REMARQUE après ~1 s ; delai_s 0 traité comme 1 et 10000 comme 300 (vérifié par l'argument passé à remarques.attendre)", async () => {
+  test("attendre_remarques (delai_s 30) returns as soon as a batch is sent for this project (under 1 s); delai_s 1 without a batch → AUCUNE_REMARQUE after ~1 s; delai_s 0 treated as 1 and 10000 as 300 (checked by the argument passed to remarques.attendre)", async () => {
     const k = await cadre();
     const { c, client } = await k.brancher();
     const dossier = await k.dossierProjet("site");
@@ -240,7 +240,7 @@ describe("serveur MCP externe", () => {
     expect(Date.now() - debut).toBeLessThan(2000);
     expect(k.remarques.nombreAttentes()).toBe(0);
 
-    // Le lot reçu n'est pas traité : il serait rendu tout de suite. On le traite pour tester le délai.
+    // The received batch is not processed: it would be returned right away. We process it to test the delay.
     await k.remarques.marquerLotTraite(id, (await k.remarques.lots(id))[0]!.id);
     const espion = vi.spyOn(k.remarques, "attendre");
     const t0 = Date.now();
@@ -254,7 +254,7 @@ describe("serveur MCP externe", () => {
     expect(espion.mock.calls.map((x) => x[1])).toEqual([1000, 300_000, 60_000]);
   });
 
-  test("des lots déjà « lu » et non traités ne réveillent pas attendre_remarques : il attend le délai (ou un nouveau lot), puis les rend", async () => {
+  test("batches already « lu » and unprocessed do not wake attendre_remarques: it waits for the delay (or a new batch), then returns them", async () => {
     const k = await cadre();
     const { c, client } = await k.brancher();
     const dossier = await k.dossierProjet("site");
@@ -266,7 +266,7 @@ describe("serveur MCP externe", () => {
     const t0 = Date.now();
     expect(texte(await appel(c, "attendre_remarques", { dossier, delai_s: 1 }))).toContain("déjà lue");
     expect(Date.now() - t0).toBeGreaterThanOrEqual(900);
-    // Un nouveau lot réveille l'attente tout de suite, et tout ce qui n'est pas traité est rendu.
+    // A new batch wakes the wait right away, and everything unprocessed is returned.
     const attente = appel(c, "attendre_remarques", { dossier, delai_s: 30 });
     await vi.waitFor(() => expect(k.remarques.nombreAttentes()).toBe(1));
     await k.remarques.ajouterAuPanier(id, { texte: "nouvelle", contexte: ctx(), capture: null });
@@ -278,7 +278,7 @@ describe("serveur MCP externe", () => {
     expect(t).toContain("déjà lue");
   });
 
-  test("attendre_remarques rend tout de suite ce qui est déjà à lire", async () => {
+  test("attendre_remarques returns right away what is already to read", async () => {
     const k = await cadre();
     const { c, client } = await k.brancher();
     const dossier = await k.dossierProjet("site");
@@ -292,7 +292,7 @@ describe("serveur MCP externe", () => {
     expect(k.remarques.nombreAttentes()).toBe(0);
   });
 
-  test("deux clients de même jeton attendent sur le même projet : les deux reçoivent le lot", async () => {
+  test("two clients with the same token wait on the same project: both receive the batch", async () => {
     const k = await cadre();
     const a = await k.brancher();
     const dossier = await k.dossierProjet("site");
@@ -310,7 +310,7 @@ describe("serveur MCP externe", () => {
     expect(texte(await p2)).toContain("pour deux");
   });
 
-  test("requête coupée pendant attendre_remarques : l'attente est abandonnée (aucun réveil gardé)", async () => {
+  test("request cut during attendre_remarques: the wait is abandoned (no kept wake-up)", async () => {
     const k = await cadre();
     const { c, client, jeton } = await k.brancher();
     const dossier = await k.dossierProjet("site");
@@ -328,11 +328,11 @@ describe("serveur MCP externe", () => {
     await vi.waitFor(() => expect(k.remarques.nombreAttentes()).toBe(0));
   });
 
-  test("declarer_projet d'un dossier illisible : réussite avec AVERTISSEMENT_ILLISIBLE dans le texte ; une erreur de validation → isError", async () => {
+  test("declarer_projet of an unreadable folder: success with AVERTISSEMENT_ILLISIBLE in the text; a validation error → isError", async () => {
     const k = await cadre();
     const { c } = await k.brancher();
     const dossier = await k.dossierProjet("site");
-    // Un registre dont la déclaration signale « illisible » (le vrai cas EACCES dépend du système).
+    // A registry whose declaration reports « illisible » (the real EACCES case depends on the system).
     const k2 = await demarrerServeurExterne({
       registre: k.registre, remarques: k.remarques, port: 0,
       declarer: async (client, d) => {
@@ -357,7 +357,7 @@ describe("serveur MCP externe", () => {
     expect(texte(ports)).toContain("Entre 1 et 10 ports.");
   });
 
-  test("deux serveurs sur le même port fixe : le second rejette EADDRINUSE", async () => {
+  test("two servers on the same fixed port: the second rejects EADDRINUSE", async () => {
     const k = await cadre();
     await expect(
       demarrerServeurExterne({ registre: k.registre, remarques: k.remarques, port: k.serveur.port, declarer: async () => { throw new Error("non"); } }),

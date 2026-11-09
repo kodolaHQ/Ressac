@@ -13,7 +13,7 @@ const horloge = () => new Date(Date.UTC(2026, 0, 1) + n++ * 1000).toISOString();
 const ouvrir = (d: string) => MemoireSite.ouvrir(d, "s", { maintenant: horloge });
 const existe = (p: string) => stat(p).then(() => true, () => false);
 
-test("retenir puis lire, relu par une nouvelle instance après vider()", async () => {
+test("retenir then read, re-read by a new instance after vider()", async () => {
   const d = await dossierTemporaire();
   const m = await ouvrir(d);
   const v = { serie: "The Bear", saison: 2, episode: 4 };
@@ -28,7 +28,7 @@ test("retenir puis lire, relu par une nouvelle instance après vider()", async (
   expect(m2.lire("encours.the-bear")).toBeNull();
 });
 
-test("l'écriture est différée d'au plus ECRITURE_MEMOIRE_MS et groupée", async () => {
+test("the write is deferred by at most ECRITURE_MEMOIRE_MS and grouped", async () => {
   const d = await dossierTemporaire();
   const m = await ouvrir(d);
   m.retenir("a", 1, null);
@@ -38,7 +38,7 @@ test("l'écriture est différée d'au plus ECRITURE_MEMOIRE_MS et groupée", asy
   expect(JSON.parse(await readFile(fichier(d), "utf8")).valeurs).toMatchObject({ a: { valeur: 1 }, b: { valeur: 2 } });
 });
 
-test("valeur de 300 Ko : MEMOIRE_PLEINE, mémoire inchangée", async () => {
+test("300 KB value: MEMOIRE_PLEINE, memory unchanged", async () => {
   const m = await ouvrir(await dossierTemporaire());
   m.retenir("petite", 1, null);
   m.noterPosition("/v", 100, 2400);
@@ -47,7 +47,7 @@ test("valeur de 300 Ko : MEMOIRE_PLEINE, mémoire inchangée", async () => {
   expect(JSON.stringify(m.contenu())).toBe(avant);
 });
 
-test("les positions les plus anciennes sont oubliées avant de refuser", async () => {
+test("the oldest positions are forgotten before refusing", async () => {
   const m = await ouvrir(await dossierTemporaire());
   for (let i = 0; i < 400; i++) m.noterPosition(`/video/${i}-${"x".repeat(300)}`, 100, 2400);
   expect(m.retenir("grosse", "x".repeat(200 * 1024), null)).toEqual({ ok: true });
@@ -67,14 +67,14 @@ test("fonction, cycle, undefined : VALEUR_NON_JSON", async () => {
   expect(m.lire("k")).toBeNull();
 });
 
-test("clé vide ou de 201 caractères : CLE_INVALIDE", async () => {
+test("empty or 201-character key: CLE_INVALIDE", async () => {
   const m = await ouvrir(await dossierTemporaire());
   expect(m.retenir("", 1, null)).toEqual({ ok: false, erreur: CLE_INVALIDE });
   expect(m.retenir("a".repeat(CLE_MAX + 1), 1, null)).toEqual({ ok: false, erreur: CLE_INVALIDE });
   expect(m.retenir("a".repeat(CLE_MAX), 1, null)).toEqual({ ok: true });
 });
 
-test("__proto__ est une clé comme une autre", async () => {
+test("__proto__ is a key like any other", async () => {
   const d = await dossierTemporaire();
   const m = await ouvrir(d);
   expect(m.retenir("__proto__", { polluee: true }, null)).toEqual({ ok: true });
@@ -88,7 +88,7 @@ test("__proto__ est une clé comme une autre", async () => {
   expect(Object.getPrototypeOf(m2.contenu().valeurs)).toBeNull();
 });
 
-test("noterPosition : 1390/2400 gardée, 2300/2400 oubliée", async () => {
+test("noterPosition: 1390/2400 kept, 2300/2400 forgotten", async () => {
   const m = await ouvrir(await dossierTemporaire());
   m.noterPosition("/v", 1390, 2400);
   expect(m.position("/v")?.t).toBe(1390);
@@ -99,7 +99,7 @@ test("noterPosition : 1390/2400 gardée, 2300/2400 oubliée", async () => {
   expect(m.position("/w")).toBeNull();
 });
 
-test("600 positions : 500 gardées, les 100 plus anciennes parties", async () => {
+test("600 positions: 500 kept, the 100 oldest gone", async () => {
   const m = await ouvrir(await dossierTemporaire());
   for (let i = 0; i < 600; i++) m.noterPosition(`/v/${i}`, 100, 2400);
   expect(Object.keys(m.contenu().positions)).toHaveLength(POSITIONS_MAX);
@@ -108,7 +108,7 @@ test("600 positions : 500 gardées, les 100 plus anciennes parties", async () =>
   expect(m.position("/v/599")).not.toBeNull();
 });
 
-test("memoire.json abîmé : mémoire vide, puis réécrit proprement", async () => {
+test("damaged memoire.json: empty memory, then cleanly rewritten", async () => {
   const d = await dossierTemporaire();
   await mkdir(join(d, "s"), { recursive: true });
   await writeFile(fichier(d), "{pas du json");
@@ -121,7 +121,7 @@ test("memoire.json abîmé : mémoire vide, puis réécrit proprement", async ()
   expect((await ouvrir(d)).contenu().valeurs).toEqual({});
 });
 
-test("deux retenir simultanés : les deux clés présentes", async () => {
+test("two simultaneous retenir: both keys present", async () => {
   const d = await dossierTemporaire();
   const m = await ouvrir(d);
   await Promise.all([
@@ -133,7 +133,7 @@ test("deux retenir simultanés : les deux clés présentes", async () => {
   expect([m2.lire("cadre1"), m2.lire("cadre2")]).toEqual([1, 2]);
 });
 
-test("effacer : fichier absent, contenu vide, écriture en attente annulée, surChange notifié", async () => {
+test("effacer: file absent, content empty, pending write cancelled, surChange notified", async () => {
   const d = await dossierTemporaire();
   const m = await ouvrir(d);
   m.retenir("a", 1, null);
@@ -153,7 +153,7 @@ test("effacer : fichier absent, contenu vide, écriture en attente annulée, sur
   expect(appels).toBe(1);
 });
 
-test("surChange est notifié à retenir, oublier, noterPosition", async () => {
+test("surChange is notified on retenir, oublier, noterPosition", async () => {
   const m = await ouvrir(await dossierTemporaire());
   let appels = 0;
   m.surChange(() => appels++);
@@ -170,7 +170,7 @@ const imbrique = (n: number) => {
 };
 const taille = (m: MemoireSite) => Buffer.byteLength(JSON.stringify(m.contenu()));
 
-test("valeur très imbriquée, cyclique ou en bombe de références : refus sans exception", async () => {
+test("deeply nested, cyclic or reference-bomb value: refusal without an exception", async () => {
   const m = await ouvrir(await dossierTemporaire());
   expect(PROFONDEUR_MEMOIRE_MAX).toBe(32);
   expect(m.retenir("ok", imbrique(32), null)).toEqual({ ok: true });
@@ -190,7 +190,7 @@ test("valeur très imbriquée, cyclique ou en bombe de références : refus sans
   expect(m.lire("trop")).toBeNull();
 });
 
-test("noterPosition refuse une position qui ne tient pas et garde le total sous 256 Ko", async () => {
+test("noterPosition refuses a position that does not fit and keeps the total under 256 KB", async () => {
   const m = await ouvrir(await dossierTemporaire());
   expect(m.retenir("gros", "x".repeat(TAILLE_MEMOIRE_SITE - 250), null)).toEqual({ ok: true });
   m.noterPosition("/" + "y".repeat(2000), 10, 100);
@@ -198,7 +198,7 @@ test("noterPosition refuse une position qui ne tient pas et garde le total sous 
   expect(taille(m)).toBeLessThanOrEqual(TAILLE_MEMOIRE_SITE);
 });
 
-test("l'éviction suit quand, jamais l'ordre des clés, et garde la position écrite", async () => {
+test("eviction follows quand, never the key order, and keeps the written position", async () => {
   const m = await ouvrir(await dossierTemporaire());
   m.noterPosition("b", 10, 100);
   m.noterPosition("5", 10, 100);
@@ -211,7 +211,7 @@ test("l'éviction suit quand, jamais l'ordre des clés, et garde la position éc
   expect(taille(m)).toBeLessThanOrEqual(TAILLE_MEMOIRE_SITE);
 });
 
-test("un retenir à la limite avec 500 positions reste rapide", async () => {
+test("a retenir at the limit with 500 positions stays fast", async () => {
   const m = await ouvrir(await dossierTemporaire());
   for (let i = 0; i < 500; i++) m.noterPosition(`/v/${i}-${"x".repeat(100)}`, 10, 100);
   const t0 = performance.now();
@@ -219,7 +219,7 @@ test("un retenir à la limite avec 500 positions reste rapide", async () => {
   expect((performance.now() - t0) / 20).toBeLessThan(15);
 });
 
-test("un fichier relu est ramené aux bornes", async () => {
+test("a re-read file is brought back to the bounds", async () => {
   const d = await dossierTemporaire();
   await mkdir(join(d, "s"), { recursive: true });
   const valeurs: Record<string, unknown> = {};
@@ -236,7 +236,7 @@ test("un fichier relu est ramené aux bornes", async () => {
   expect(Object.keys(m.contenu().positions).length).toBeLessThanOrEqual(POSITIONS_MAX);
 });
 
-test("contenu() et lire() rendent des copies", async () => {
+test("contenu() and lire() return copies", async () => {
   const m = await ouvrir(await dossierTemporaire());
   m.retenir("a", { x: [1] }, null);
   m.noterPosition("/v", 5, 100);
@@ -250,7 +250,7 @@ test("contenu() et lire() rendent des copies", async () => {
   expect(m.lire("zzz")).toBeNull();
 });
 
-test("valeur énorme : refus avant tout JSON.parse", async () => {
+test("huge value: refusal before any JSON.parse", async () => {
   const m = await ouvrir(await dossierTemporaire());
   const parse = vi.spyOn(JSON, "parse");
   try {
@@ -262,7 +262,7 @@ test("valeur énorme : refus avant tout JSON.parse", async () => {
   }
 });
 
-test("échec d'écriture : les données restent et vider() réessaie", async () => {
+test("write failure: the data stays and vider() retries", async () => {
   const d = await dossierTemporaire();
   await writeFile(join(d, "s"), "je suis un fichier");
   const m = await ouvrir(d);
@@ -275,7 +275,7 @@ test("échec d'écriture : les données restent et vider() réessaie", async () 
   expect([brut.valeurs.a.valeur, brut.valeurs.b.valeur]).toEqual([1, 2]);
 });
 
-test("version inconnue : lue vide, sauvegardée en .bak, pas écrasée", async () => {
+test("unknown version: read as empty, saved as .bak, not overwritten", async () => {
   const d = await dossierTemporaire();
   await mkdir(join(d, "s"), { recursive: true });
   const futur = JSON.stringify({ version: 2, autre: "forme" });
@@ -289,7 +289,7 @@ test("version inconnue : lue vide, sauvegardée en .bak, pas écrasée", async (
   expect(await readFile(join(d, "s", "memoire.json.v2.bak"), "utf8")).toBe(futur);
 });
 
-test("version inconnue deux fois : la première sauvegarde .bak n'est pas écrasée", async () => {
+test("unknown version twice: the first .bak backup is not overwritten", async () => {
   const d = await dossierTemporaire();
   await mkdir(join(d, "s"), { recursive: true });
   const un = JSON.stringify({ version: 2, n: 1 });

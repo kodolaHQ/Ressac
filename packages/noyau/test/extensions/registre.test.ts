@@ -44,8 +44,8 @@ const etat = (extensions: Record<string, EntreeExtension>, toutesCoupees = false
 });
 const aucun = new Set<string>();
 
-describe("registre des extensions", () => {
-  it("activer une extension de l'agent dans un profil privé lève ERREUR_PROFIL_PRIVE ; une extension du Store y est activée", () => {
+describe("extension registry", () => {
+  it("enabling an agent extension in a private profile throws ERREUR_PROFIL_PRIVE; a Store extension is enabled there", () => {
     const e = etat({ [A]: entree("agent"), [S]: entree("store") });
     const prives = new Set(["p"]);
     expect(() => activer(e, A, "p", prives)).toThrow(ERREUR_PROFIL_PRIVE);
@@ -55,13 +55,13 @@ describe("registre des extensions", () => {
     expect(deux.extensions[A]!.profils).toEqual(["q"]);
   });
 
-  it("activer sans accord lève", () => {
+  it("enabling without a grant throws", () => {
     const e = etat({ [A]: entree("agent", { accord: null }) });
     expect(() => activer(e, A, "p", aucun)).toThrow();
     expect(() => activer(e, "store:" + "b".repeat(32), "p", aucun)).toThrow();
   });
 
-  it("appliquerProfilsPrives retire seulement les extensions de l'agent, et les liste", () => {
+  it("appliquerProfilsPrives removes only the agent's extensions, and lists them", () => {
     const e = etat({
       [A]: entree("agent", { profils: ["p", "q"], vues: { p: "1", q: "1" } }),
       [S]: entree("store", { profils: ["p"] }),
@@ -96,7 +96,7 @@ describe("registre des extensions", () => {
 });
 
 describe("fichier etat.json", () => {
-  it("deux modifications simultanées gardent les deux changements", async () => {
+  it("two simultaneous modifications keep both changes", async () => {
     const dossier = await dossierTemporaire();
     const ajouter = (cle: string) =>
       modifierEtatExtensions(dossier, (e) => ({ ...e, extensions: { ...e.extensions, [cle]: entree("agent") } }), () => aucun);
@@ -105,7 +105,7 @@ describe("fichier etat.json", () => {
     expect(Object.keys(lu.extensions).sort()).toEqual(["agent:a", "agent:b", "agent:c"]);
   });
 
-  it("un etat.json abîmé se lit vide et n'est pas réécrit tant que rien ne change", async () => {
+  it("a damaged etat.json reads as empty and is not rewritten as long as nothing changes", async () => {
     const dossier = await dossierTemporaire();
     await writeFile(join(dossier, "etat.json"), "{pas du json");
     expect(await lireEtatExtensions(dossier)).toEqual({ version: 1, toutesCoupees: false, extensions: {} });
@@ -113,7 +113,7 @@ describe("fichier etat.json", () => {
     expect(await lireEtatExtensions(join(dossier, "absent"))).toEqual({ version: 1, toutesCoupees: false, extensions: {} });
   });
 
-  it("une entrée à clé ou forme invalide est ignorée, une portée avec scripts se conserve", async () => {
+  it("an entry with an invalid key or shape is ignored, a scope with scripts is kept", async () => {
     const dossier = await dossierTemporaire();
     const bonne = entree("agent", { accord: { ...portee, scripts: true } });
     await writeFile(
@@ -126,7 +126,7 @@ describe("fichier etat.json", () => {
     expect(lu.extensions[A]!.accord?.scripts).toBe(true);
   });
 
-  it("consolesMasquees (ids Chromium masqués à l'agent) survit à retirer et à la relecture ; un id invalide est ignoré", async () => {
+  it("consolesMasquees (Chromium ids masked from the agent) survives retirer and the re-read; an invalid id is ignored", async () => {
     const dossier = await dossierTemporaire();
     const id = "b".repeat(32);
     await writeFile(
@@ -147,7 +147,7 @@ describe("fichier etat.json", () => {
   const ajout = (cle: string) => (e: EtatExtensions) => ({ ...e, extensions: { ...e.extensions, [cle]: entree("agent") } });
   const sansPrive = () => aucun;
 
-  it("un fichier de version 2 se lit vide et toute écriture est refusée, sans toucher au fichier", async () => {
+  it("a version 2 file reads as empty and any write is refused, without touching the file", async () => {
     const dossier = await dossierTemporaire();
     const original = JSON.stringify({ version: 2, toutesCoupees: false, extensions: { [A]: entree("agent") } });
     await ecrit(dossier, original);
@@ -159,7 +159,7 @@ describe("fichier etat.json", () => {
     expect(await sauvegardes(dossier)).toEqual([]);
   });
 
-  it("écrire après un fichier abîmé garde une copie des octets d'origine", async () => {
+  it("writing after a damaged file keeps a copy of the original bytes", async () => {
     const dossier = await dossierTemporaire();
     await ecrit(dossier, "{pas du json");
     await modifierEtatExtensions(dossier, ajout("agent:b"), sansPrive);
@@ -170,7 +170,7 @@ describe("fichier etat.json", () => {
     expect(await sauvegardes(dossier)).toHaveLength(1);
   });
 
-  it("écrire après des entrées ignorées garde une copie du fichier d'origine", async () => {
+  it("writing after ignored entries keeps a copy of the original file", async () => {
     const dossier = await dossierTemporaire();
     const original = JSON.stringify({ version: 1, toutesCoupees: false, extensions: { [A]: entree("agent"), "agent:x": { nom: 1 } } });
     await ecrit(dossier, original);
@@ -180,14 +180,14 @@ describe("fichier etat.json", () => {
     expect(await readFile(join(dossier, copies[0]!), "utf8")).toBe(original);
   });
 
-  it("seul ENOENT se lit vide : une autre erreur de lecture lève", async () => {
+  it("only ENOENT reads as empty: another read error throws", async () => {
     const dossier = await dossierTemporaire();
     await mkdir(join(dossier, "etat.json"));
     await expect(lireEtatExtensions(dossier)).rejects.toThrow();
     await expect(modifierEtatExtensions(dossier, ajout("agent:b"), sansPrive)).rejects.toThrow();
   });
 
-  it("un temporaire résiduel est ignoré", async () => {
+  it("a leftover temporary is ignored", async () => {
     const dossier = await dossierTemporaire();
     await ecrit(dossier, JSON.stringify(etat({ [A]: entree("agent") })));
     await writeFile(join(dossier, "etat.json.xyz.tmp"), "reste");
@@ -196,7 +196,7 @@ describe("fichier etat.json", () => {
     expect(await sauvegardes(dossier)).toEqual([]);
   });
 
-  it("un changer qui lève n'empêche pas la modification suivante", async () => {
+  it("a changer that throws does not prevent the next modification", async () => {
     const dossier = await dossierTemporaire();
     const rate = modifierEtatExtensions(dossier, () => {
       throw new Error("boum");
@@ -207,15 +207,15 @@ describe("fichier etat.json", () => {
     expect(Object.keys((await lireEtatExtensions(dossier)).extensions)).toEqual(["agent:b"]);
   });
 
-  it("la confidentialité est évaluée dans la modification sérialisée", async () => {
+  it("confidentiality is evaluated within the serialized modification", async () => {
     const dossier = await dossierTemporaire();
     await modifierEtatExtensions(dossier, ajout("agent:b"), sansPrive);
     await modifierEtatExtensions(dossier, (e) => ({ ...e, extensions: { ...e.extensions, "agent:b": { ...e.extensions["agent:b"]!, accord: portee } } }), sansPrive);
     let prive = false;
     const activation = modifierEtatExtensions(dossier, (e, prives) => activer(e, "agent:b", "p", prives), () => new Set(prive ? ["p"] : []));
-    prive = true; // l'espace devient privé après l'appel mais avant l'exécution
+    prive = true; // the space becomes private after the call but before the execution
     await expect(activation).rejects.toThrow(ERREUR_PROFIL_PRIVE);
-    // activation passée par un ensemble périmé : le retrait suit quand même
+    // activation passed through a stale set: the removal follows anyway
     const lu = await modifierEtatExtensions(
       dossier,
       (e) => activer(e, "agent:b", "p", aucun),
@@ -224,7 +224,7 @@ describe("fichier etat.json", () => {
     expect(lu.extensions["agent:b"]!.profils).toEqual([]);
   });
 
-  it("applis survit à modifierEtatExtensions et à la relecture ; un etat.json sans applis se relit sans copie .abime-*", async () => {
+  it("applis survives modifierEtatExtensions and the re-read; an etat.json without applis re-reads without an .abime-* copy", async () => {
     const dossier = await dossierTemporaire();
     await mkdir(dossier, { recursive: true });
     await writeFile(join(dossier, "etat.json"), JSON.stringify(etat({ [S]: entree("store") })));

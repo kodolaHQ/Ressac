@@ -24,7 +24,7 @@ async function cadre(debut = new Date("2026-11-02T10:00:00Z")) {
 const pause = (ms: number) => new Promise((ok) => setTimeout(ok, ms));
 
 describe("Remarques", () => {
-  test("ajouterAuPanier puis une nouvelle instance : le panier est relu du disque avec la capture <id>.png", async () => {
+  test("ajouterAuPanier then a new instance: the cart is re-read from disk with the capture <id>.png", async () => {
     const { dossiers, r } = await cadre();
     const e = await r.ajouterAuPanier("app-essai", { texte: "Plus grand", contexte: ctx(), capture: PNG });
     expect(e.id).toMatch(/^e-[0-9a-f]{8}$/);
@@ -35,7 +35,7 @@ describe("Remarques", () => {
     expect(await readFile(join(dossierRemarques(dossiers, "app-essai"), `${e.id}.png`))).toEqual(PNG);
   });
 
-  test("texte vide → REMARQUE_VIDE ; html de 5 000 caractères → 4 096 + « … [tronqué] »", async () => {
+  test("empty text → REMARQUE_VIDE; 5,000-character html → 4,096 + « … [tronqué] »", async () => {
     const { r } = await cadre();
     await expect(r.ajouterAuPanier("app-essai", { texte: "  ", contexte: ctx(), capture: null })).rejects.toThrow(REMARQUE_VIDE);
     const e = await r.ajouterAuPanier("app-essai", { texte: "ok", contexte: ctx("a".repeat(5000)), capture: null });
@@ -45,7 +45,7 @@ describe("Remarques", () => {
     expect(tronquerHtml("court")).toBe("court");
   });
 
-  test("retirerDuPanier efface l'élément et sa capture", async () => {
+  test("retirerDuPanier erases the item and its capture", async () => {
     const { dossiers, r } = await cadre();
     const e = await r.ajouterAuPanier("app-essai", { texte: "a", contexte: ctx(), capture: PNG });
     await r.retirerDuPanier("app-essai", e.id);
@@ -53,7 +53,7 @@ describe("Remarques", () => {
     expect(await existe(join(dossierRemarques(dossiers, "app-essai"), `${e.id}.png`))).toBe(false);
   });
 
-  test("envoyerPanier : lot.json avec les deux éléments, captures déplacées, panier vide ; panier vide → PANIER_VIDE", async () => {
+  test("envoyerPanier: lot.json with both items, captures moved, cart empty; empty cart → PANIER_VIDE", async () => {
     const { dossiers, r } = await cadre();
     await expect(r.envoyerPanier("app-essai", { destination: "agent" })).rejects.toThrow(PANIER_VIDE);
     const a = await r.ajouterAuPanier("app-essai", { texte: "a", contexte: ctx(), capture: PNG });
@@ -71,7 +71,7 @@ describe("Remarques", () => {
     expect((await r.lots("app-essai")).map((l) => l.id)).toEqual([lot.id]);
   });
 
-  test("app-essai écrit sous remarquesEspace/app-essai ; ext-… sous prive/remarques/ext-…", async () => {
+  test("app-essai writes under remarquesEspace/app-essai; ext-… under prive/remarques/ext-…", async () => {
     const { dossiers, r } = await cadre();
     const ext = "ext-0123456789abcdef";
     await r.ajouterAuPanier("app-essai", { texte: "a", contexte: ctx(), capture: null });
@@ -81,11 +81,11 @@ describe("Remarques", () => {
     expect(await existe(join(dossiers.prive, "remarques", "app-essai"))).toBe(false);
     expect((await stat(join(dossiers.prive, "remarques", ext, "panier.json"))).mode & 0o777).toBe(0o600);
     expect((await stat(join(dossiers.prive, "remarques", ext))).mode & 0o777).toBe(0o700);
-    // côté espace, l'agent du conteneur doit pouvoir lire
+    // on the space side, the container's agent must be able to read
     expect((await stat(join(dossiers.remarquesEspace, "app-essai", "panier.json"))).mode & 0o044).not.toBe(0);
   });
 
-  test("états : en-attente → aLire le rend et pose lu → marquerTraites de tous ses éléments → traite ; note gardée", async () => {
+  test("states: en-attente → aLire returns it and sets lu → marquerTraites of all its items → traite; note kept", async () => {
     const { r } = await cadre();
     await r.ajouterAuPanier("app-essai", { texte: "a", contexte: ctx(), capture: null });
     await r.ajouterAuPanier("app-essai", { texte: "b", contexte: ctx(), capture: null });
@@ -105,7 +105,7 @@ describe("Remarques", () => {
     expect(lot.elements[1]!.traite?.note).toBeUndefined();
   });
 
-  test("aLire ne rend que les éléments non traités et jamais un lot destination agent", async () => {
+  test("aLire returns only the unprocessed items and never an agent-destination batch", async () => {
     const { r } = await cadre();
     await r.ajouterAuPanier("app-essai", { texte: "x", contexte: ctx(), capture: null });
     await r.envoyerPanier("app-essai", { destination: "agent" });
@@ -119,7 +119,7 @@ describe("Remarques", () => {
     expect(lus[0]!.elements.map((e) => e.texte)).toEqual(["b"]);
   });
 
-  test("marquerTraites avec un id inconnu ou d'un autre projet : rendu dans inconnus, rien d'autre ne change", async () => {
+  test("marquerTraites with an unknown id or one from another project: returned in inconnus, nothing else changes", async () => {
     const { r } = await cadre();
     const autre = await r.ajouterAuPanier("app-autre", { texte: "z", contexte: ctx(), capture: null });
     await r.envoyerPanier("app-autre", { destination: "mcp" });
@@ -132,7 +132,7 @@ describe("Remarques", () => {
     expect(e.id).not.toBe(autre.id);
   });
 
-  test("envoyerRelecture crée un lot d'éléments relecture", async () => {
+  test("envoyerRelecture creates a batch of relecture items", async () => {
     const { r } = await cadre();
     const lot = await r.envoyerRelecture("app-essai", [{ texte: "revoir", contexte: rel }], { destination: "mcp", client: "c" });
     expect(lot.elements[0]).toMatchObject({ type: "relecture", texte: "revoir" });
@@ -141,7 +141,7 @@ describe("Remarques", () => {
     await expect(r.envoyerRelecture("app-essai", [], { destination: "agent" })).rejects.toThrow(PANIER_VIDE);
   });
 
-  test("attendre : réveillé par un lot mcp du même projet, pas par un autre, échéance, abort sans réveil gardé", async () => {
+  test("attendre: woken by an mcp batch of the same project, not by another, deadline, abort without a kept wake-up", async () => {
     const { r } = await cadre();
     const envoi = async (p: string, d: "agent" | "mcp" = "mcp") => {
       await r.ajouterAuPanier(p, { texte: "a", contexte: ctx(), capture: null });
@@ -162,7 +162,7 @@ describe("Remarques", () => {
     await envoi("app-essai", "agent");
     await pause(30);
     expect(fini).toBe(false);
-    await autre; // à l'échéance
+    await autre; // at the deadline
     expect(r.nombreAttentes()).toBe(0);
 
     const ctl = new AbortController();
@@ -177,7 +177,7 @@ describe("Remarques", () => {
     expect(r.nombreAttentes()).toBe(0);
   });
 
-  test("deux attentes sur le même projet sont réveillées toutes les deux", async () => {
+  test("two waits on the same project are both woken", async () => {
     const { r } = await cadre();
     const a = r.attendre("app-essai", 5000);
     const b = r.attendre("app-essai", 5000);
@@ -188,7 +188,7 @@ describe("Remarques", () => {
     expect(r.nombreAttentes()).toBe(0);
   });
 
-  test("purger (+31 j) ne supprime que le lot entièrement traité ; à +29 j garde tout", async () => {
+  test("purger (+31 d) only deletes the fully processed batch; at +29 d keeps everything", async () => {
     const { dossiers, horloge, r } = await cadre();
     const mk = async (p: string, textes: string[]) => {
       for (const texte of textes) await r.ajouterAuPanier(p, { texte, contexte: ctx(), capture: PNG });
@@ -204,7 +204,7 @@ describe("Remarques", () => {
     await r.marquerTraites("app-essai", traite.elements.map((e) => e.id));
     await r.marquerTraites("app-essai", [partiel.elements[0]!.id]);
     await r.marquerTraites("ext-0123456789abcdef", extTraite.elements.map((e) => e.id));
-    // pose « lu » sur le lot lu seulement : on le fait via aLire puis on remet les autres en attente sur disque
+    // sets « lu » on the read batch only: done through aLire then the others are put back to pending on disk
     await r.aLire("app-essai");
     const ecrit = join(dossiers.remarquesEspace, "app-essai", attente.id, "lot.json");
     const brut = JSON.parse(await readFile(ecrit, "utf8"));
@@ -222,7 +222,7 @@ describe("Remarques", () => {
     expect(await existe(join(dossiers.prive, "remarques", "ext-0123456789abcdef", extTraite.id))).toBe(false);
   });
 
-  test("panier.json trafiqué : capture hors du dossier ignorée, aucun fichier extérieur déplacé", async () => {
+  test("tampered panier.json: capture outside the folder ignored, no outside file moved", async () => {
     const { dossiers, r } = await cadre();
     const dossier = dossierRemarques(dossiers, "app-essai");
     await mkdir(dossier, { recursive: true });
@@ -238,7 +238,7 @@ describe("Remarques", () => {
     expect(await existe(victime)).toBe(true);
   });
 
-  test("lot.json trafiqué : id et projet imposés par le dossier ; purge et écritures restent chez le lot", async () => {
+  test("tampered lot.json: id and project imposed by the folder; purge and writes stay within the batch", async () => {
     const { dossiers, horloge, r } = await cadre();
     const ext = "ext-0123456789abcdef";
     await r.ajouterAuPanier(ext, { texte: "secret", contexte: ctx(), capture: null });
@@ -261,7 +261,7 @@ describe("Remarques", () => {
     expect(await r.lots("app-essai")).toEqual([]);
   });
 
-  test("marquerLotTraite traite tous les éléments du lot", async () => {
+  test("marquerLotTraite processes all the items of the batch", async () => {
     const { r } = await cadre();
     await r.ajouterAuPanier("app-essai", { texte: "a", contexte: ctx(), capture: null });
     await r.ajouterAuPanier("app-essai", { texte: "b", contexte: ctx(), capture: null });
@@ -272,7 +272,7 @@ describe("Remarques", () => {
     expect(apres.elements.every((e) => e.traite)).toBe(true);
   });
 
-  test("oublier efface le projet ; surChange notifie panier et lots", async () => {
+  test("oublier erases the project; surChange notifies cart and batches", async () => {
     const { dossiers, r } = await cadre();
     const vus: string[] = [];
     const arret = r.surChange((p) => vus.push(p));
@@ -287,22 +287,22 @@ describe("Remarques", () => {
     await mkdir(dossiers.remarquesEspace, { recursive: true });
   });
 
-  test("dossier des remarques, d'un projet ou d'un lot posé en lien symbolique (le conteneur y écrit) : rien n'est écrit au bout du lien", async () => {
+  test("remarques folder, of a project or of a batch set as a symbolic link (the container writes there): nothing is written at the end of the link", async () => {
     const { dossiers, r } = await cadre();
     const dehors = join(dossiers.prive, "..", "dehors");
     await mkdir(dehors, { recursive: true });
-    // Le dossier d'un projet est un lien.
+    // A project's folder is a link.
     await mkdir(dossiers.remarquesEspace, { recursive: true });
     await symlink(dehors, join(dossiers.remarquesEspace, "app-lien"));
     await expect(r.ajouterAuPanier("app-lien", { texte: "x", contexte: ctx(), capture: PNG })).rejects.toThrow(DOSSIER_LIEN);
     await expect(r.envoyerRelecture("app-lien", [{ texte: "x", contexte: rel }], { destination: "agent" })).rejects.toThrow(DOSSIER_LIEN);
-    // La racine des remarques elle-même est un lien.
+    // The remarques root itself is a link.
     const autre = await cadre();
     await mkdir(join(autre.dossiers.remarquesEspace, ".."), { recursive: true });
     await symlink(dehors, autre.dossiers.remarquesEspace);
     await expect(autre.r.ajouterAuPanier("app-essai", { texte: "x", contexte: ctx(), capture: null })).rejects.toThrow(DOSSIER_LIEN);
     expect(await readdir(dehors)).toEqual([]);
-    // Le dossier d'un lot est un lien : son lot.json au bout du lien n'est pas réécrit.
+    // A batch's folder is a link: its lot.json at the end of the link is not rewritten.
     const lot = await r.envoyerRelecture("app-essai", [{ texte: "y", contexte: rel }], { destination: "agent" });
     const dossierLot = r.dossierLot("app-essai", lot.id);
     const contenu = await readFile(join(dossierLot, "lot.json"), "utf8");
@@ -315,7 +315,7 @@ describe("Remarques", () => {
     expect(await readFile(join(dehorsLot, "lot.json"), "utf8")).toBe(contenu);
   });
 
-  test("identifiant de projet invalide refusé", async () => {
+  test("invalid project identifier refused", async () => {
     const { r } = await cadre();
     await expect(r.panier("../x")).rejects.toThrow();
     expect(() => r.dossierLot("app-essai", "../x")).toThrow();
@@ -323,7 +323,7 @@ describe("Remarques", () => {
 });
 
 describe("lot de site tiers", () => {
-  test("envoyerPanier et envoyerRelecture d'un site-<id> portent origine et avertissement ; une appli non", async () => {
+  test("envoyerPanier and envoyerRelecture of a site-<id> carry origin and warning; an app does not", async () => {
     const { r } = await cadre();
     await r.ajouterAuPanier("site-tuning", { texte: "cache ça", contexte: ctx(), capture: PNG });
     const lot = await r.envoyerPanier("site-tuning", { destination: "agent" });

@@ -1,7 +1,7 @@
 import { expect, test, vi } from "vitest";
 import { creerRepartiteurIa, IA_ABANDONNEE, IA_SIMULTANES } from "../../src/ia/repartiteur.js";
 
-/** Une IA factice : chaque appel attend qu'on le termine de l'extérieur. */
+/** A fake AI: each call waits to be finished from the outside. */
 function iaFactice() {
   const journal: string[] = [];
   const enCours: { nom: string; finir: (v?: unknown) => void; echouer: (e: Error) => void }[] = [];
@@ -25,7 +25,7 @@ function iaFactice() {
       kev: (corps: { state: unknown; questions: Record<string, unknown> }) => appel(`kev ${String(corps.state)}`),
       gemma: (o: { prompt: string }) => appel(`gemma ${o.prompt}`),
     },
-    /** Termine le plus ancien appel en vol. */
+    /** Finishes the oldest in-flight call. */
     finirPremier: async (erreur?: Error) => {
       const a = enCours.shift()!;
       if (erreur) a.echouer(erreur);
@@ -41,7 +41,7 @@ test("IA_SIMULTANES vaut 4", () => {
   expect(IA_SIMULTANES).toBe(4);
 });
 
-test("deux exécutions : l'appel de la courte passe entre deux appels de la longue", async () => {
+test("two runs: the short one's call goes through between two calls of the long one", async () => {
   const f = iaFactice();
   const r = creerRepartiteurIa(f.ia, { simultanes: 1 });
   const longue = r.pour("veille:2026-10-29T10:00:00.000Z");
@@ -56,7 +56,7 @@ test("deux exécutions : l'appel de la courte passe entre deux appels de la long
   expect(await Promise.all(appels)).toEqual(["gemma L1", "gemma L2", "gemma L3", "gemma C1"]);
 });
 
-test("jamais plus de 4 appels en vol", async () => {
+test("never more than 4 calls in flight", async () => {
   const f = iaFactice();
   const r = creerRepartiteurIa(f.ia);
   const appels: Promise<unknown>[] = [];
@@ -67,11 +67,11 @@ test("jamais plus de 4 appels en vol", async () => {
   await Promise.all(appels);
   expect(f.journal).toHaveLength(12);
   expect(f.max()).toBe(4);
-  // Les quatre de « a » partent tout de suite ; ensuite « b » et « c » sont servis à tour de rôle.
+  // The four of « a » leave right away; then « b » and « c » are served in turn.
   expect(f.journal.slice(4, 8)).toEqual(["kev b0", "kev c0", "kev b1", "kev c1"]);
 });
 
-test("un appel en erreur n'arrête pas sa file", async () => {
+test("a failing call does not stop its queue", async () => {
   const f = iaFactice();
   const r = creerRepartiteurIa(f.ia, { simultanes: 1 });
   const ia = r.pour("x");
@@ -85,7 +85,7 @@ test("un appel en erreur n'arrête pas sa file", async () => {
   expect(await second).toBe("gemma 2");
 });
 
-test("un appel qui lève tout de suite n'arrête pas sa file", async () => {
+test("a call that throws right away does not stop its queue", async () => {
   let n = 0;
   const r = creerRepartiteurIa(
     {
@@ -103,7 +103,7 @@ test("un appel qui lève tout de suite n'arrête pas sa file", async () => {
   expect(await ia.kev({ state: 2, questions: {} })).toBe("ok");
 });
 
-test("oublier : les appels en file de l'exécution sont refusés sans partir, comme ceux qui viennent après", async () => {
+test("oublier: the run's queued calls are refused without leaving, like those that come after", async () => {
   const f = iaFactice();
   const r = creerRepartiteurIa(f.ia, { simultanes: 1 });
   const a = r.pour("a");
@@ -116,7 +116,7 @@ test("oublier : les appels en file de l'exécution sont refusés sans partir, co
   a.oublier();
   await refus;
   await expect(a.gemma({ prompt: "a3" })).rejects.toThrow(IA_ABANDONNEE);
-  // L'appel déjà en vol finit normalement ; la place va ensuite à « b ».
+  // The call already in flight ends normally; the slot then goes to « b ».
   await f.finirPremier();
   expect(await a1).toBe("gemma a1");
   await f.finirPremier();
@@ -124,7 +124,7 @@ test("oublier : les appels en file de l'exécution sont refusés sans partir, co
   expect(f.journal).toEqual(["gemma a1", "gemma b1"]);
 });
 
-test("4 en vol, 2 widgets en file, puis une action prioritaire : la place libérée va à l'action", async () => {
+test("4 in flight, 2 widgets queued, then a priority action: the freed slot goes to the action", async () => {
   const f = iaFactice();
   const r = creerRepartiteurIa(f.ia);
   const appels: Promise<unknown>[] = [];
@@ -141,7 +141,7 @@ test("4 en vol, 2 widgets en file, puis une action prioritaire : la place libér
   expect(f.journal.slice(5)).toEqual(["gemma w4", "gemma w5"]);
 });
 
-test("sans prioritaire, l'ordre est celui d'aujourd'hui (tests existants inchangés)", async () => {
+test("without a priority one, the order is today's (existing tests unchanged)", async () => {
   const f = iaFactice();
   const r = creerRepartiteurIa(f.ia, { simultanes: 1 });
   const appels = [r.pour("x").gemma({ prompt: "x1" }), r.pour("a").gemma({ prompt: "a1" }), r.pour("a").gemma({ prompt: "a2" }), r.pour("b").gemma({ prompt: "b1" }), r.pour("c").gemma({ prompt: "c1" })];
@@ -151,7 +151,7 @@ test("sans prioritaire, l'ordre est celui d'aujourd'hui (tests existants inchang
   expect(f.journal).toEqual(["gemma x1", "gemma a1", "gemma b1", "gemma c1", "gemma a2"]);
 });
 
-test("deux actions prioritaires se partagent les places à tour de rôle", async () => {
+test("two priority actions share the slots in turn", async () => {
   const f = iaFactice();
   const r = creerRepartiteurIa(f.ia, { simultanes: 1 });
   const w = r.pour("widget");
@@ -163,11 +163,11 @@ test("deux actions prioritaires se partagent les places à tour de rôle", async
   await attendre();
   while (f.enCours.length) await f.finirPremier();
   await Promise.all(appels);
-  // w1 était déjà en vol : il n'est jamais interrompu.
+  // w1 was already in flight: it is never interrupted.
   expect(f.journal).toEqual(["kev w1", "kev a1", "kev b1", "kev a2", "kev b2", "kev w2"]);
 });
 
-test("auDemarrage appelé au départ réel, pas à la mise en file", async () => {
+test("auDemarrage called at the real start, not when queued", async () => {
   const f = iaFactice();
   const r = creerRepartiteurIa(f.ia, { simultanes: 1 });
   const premier = r.pour("a").gemma({ prompt: "1" });
@@ -182,7 +182,7 @@ test("auDemarrage appelé au départ réel, pas à la mise en file", async () =>
   await Promise.all([premier, second]);
 });
 
-test("signal levé en file : refus IA_ABANDONNEE, l'IA n'est pas appelée", async () => {
+test("signal raised in the queue: IA_ABANDONNEE refusal, the AI is not called", async () => {
   const f = iaFactice();
   const r = creerRepartiteurIa(f.ia, { simultanes: 1 });
   const premier = r.pour("a").gemma({ prompt: "1" });
@@ -194,7 +194,7 @@ test("signal levé en file : refus IA_ABANDONNEE, l'IA n'est pas appelée", asyn
   const refus = expect(enFile).rejects.toThrow(IA_ABANDONNEE);
   controleur.abort();
   await refus;
-  // Déjà levé : refusé tout de suite.
+  // Already raised: refused right away.
   await expect(r.pour("b").kev({ state: 0, questions: {} }, { signal: controleur.signal })).rejects.toThrow(IA_ABANDONNEE);
   await f.finirPremier();
   await f.finirPremier();
@@ -203,7 +203,7 @@ test("signal levé en file : refus IA_ABANDONNEE, l'IA n'est pas appelée", asyn
   expect(demarre).not.toHaveBeenCalled();
 });
 
-test("signal levé en vol : transmis à l'IA", async () => {
+test("signal raised in flight: passed to the AI", async () => {
   const recus: (AbortSignal | undefined)[] = [];
   const r = creerRepartiteurIa({
     kev: async (_c: unknown, o?: { signal?: AbortSignal }) => (recus.push(o?.signal), "k"),

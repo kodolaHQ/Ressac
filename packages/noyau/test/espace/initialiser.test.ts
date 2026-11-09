@@ -12,13 +12,13 @@ import { dossierTemporaire } from "../aide/temporaire.js";
 
 const sha256 = (contenu: string | Buffer) => createHash("sha256").update(contenu).digest("hex");
 
-/** Les fichiers des widgets de départ dans un espace neuf : des workflows, sans recolte.mjs. */
+/** The starter widgets' files in a new space: workflows, without recolte.mjs. */
 const FICHIERS_DEPART: Record<string, string[]> = {
   meteo: ["widget.json", "exemple.json", "affichage.html", "workflow.json", "ville.mjs", "prevision.mjs"],
   "actus-tech": ["widget.json", "exemple.json", "affichage.html", "workflow.json", "articles.mjs"],
   "daily-dev": ["widget.json", "exemple.json", "affichage.html", "workflow.json", "liens.mjs", "articles.mjs"],
 };
-/** Le code de la bascule : workflow.json et les .mjs du modèle. */
+/** The switch code: workflow.json and the template's .mjs files. */
 const CODE_DEPART = (id: string) => FICHIERS_DEPART[id]!.filter((f) => f === "workflow.json" || f.endsWith(".mjs"));
 
 const attendus = [
@@ -100,7 +100,7 @@ test("existing blocks move to accueil/.corbeille/blocs-…, nothing is destroyed
   expect(await readFile(join(corbeille, dossiers[0]!, "disposition.json"), "utf8")).toBe('{"ordre":["mien"]}');
   expect(Disposition.safeParse(JSON.parse(await readFile(c.disposition, "utf8"))).success).toBe(true);
   expect(existsSync(join(c.widgets, "meteo", "widget.json"))).toBe(true);
-  // Un second lancement ne remet rien de côté.
+  // A second launch sets nothing aside.
   await initialiserEspace(c);
   expect(await readdir(corbeille)).toHaveLength(1);
 });
@@ -187,7 +187,7 @@ test("the site.json examples given in AGENTS.md (YouTube, Vidola) are valid for 
     expect(r.success, `${nom} : ${r.success ? "" : r.error.message}`).toBe(true);
     if (!r.success) continue;
     expect(verifierDeclarationSite(r.data, { adressesLocales: false }), nom).toBeNull();
-    // Chaque fichier de retouche déclaré est montré dans AGENTS.md.
+    // Each declared retouche file is shown in AGENTS.md.
     for (const r2 of r.data.retouches) for (const f of [...r2.js, ...r2.css]) expect(texte, `${nom} : retouches/${f}`).toContain(`retouches/${f}`);
   }
 });
@@ -203,11 +203,11 @@ test("the references given as examples in AGENTS.md are valid for the plan reade
   }
 });
 
-// ——— Bascule des widgets de départ en workflows ———
+// ——— Switching the starter widgets to workflows ———
 
 const LIVREES = join(import.meta.dirname, "recoltes-livrees");
 
-/** Un espace dont le widget `id` est resté à une ancienne version livrée (recolte.mjs, sans workflow). */
+/** A space whose widget `id` stayed at an old shipped version (recolte.mjs, no workflow). */
 async function espaceAvecAncienneRecolte(id: string, recolte: string) {
   const c = cheminsEspace(await dossierTemporaire());
   await initialiserEspace(c);
@@ -235,7 +235,7 @@ for (const fichier of readdirSync(join(import.meta.dirname, "recoltes-livrees"))
   test(`an unmodified starter widget becomes a workflow, its recolte.mjs goes to the trash (${fichier})`, async () => {
     const ancienne = await readFile(join(LIVREES, fichier), "utf8");
     const c = await espaceAvecAncienneRecolte(id, ancienne);
-    // Ce que l'utilisateur voit et règle n'est jamais touché.
+    // What the user sees and sets is never touched.
     await writeFile(join(c.widgets, id, "widget.json"), '{"nom":"le mien"}');
     await writeFile(join(c.widgets, id, "affichage.html"), "<p>le mien</p>");
     const { crees } = await initialiserEspace(c);
@@ -251,7 +251,7 @@ for (const fichier of readdirSync(join(import.meta.dirname, "recoltes-livrees"))
     expect(corbeille).toHaveLength(1);
     expect(corbeille[0]).toMatch(new RegExp(`^${id}-recolte-\\d{4}-\\d\\d-\\d\\dT[^:]+\\.mjs$`));
     expect(await readFile(join(c.accueil, ".corbeille", corbeille[0]!), "utf8")).toBe(ancienne);
-    // Les autres widgets de départ n'ont pas bougé, et un second lancement ne fait plus rien.
+    // The other starter widgets did not move, and a second launch does nothing anymore.
     expect((await initialiserEspace(c)).crees).toEqual([]);
     expect(await readdir(join(c.accueil, ".corbeille"))).toHaveLength(1);
   });
@@ -291,7 +291,7 @@ test("an interrupted switch (template workflow.json already there, shipped recol
   const ancienne = await readFile(join(LIVREES, "daily-dev-4d4c5f1.mjs"), "utf8");
   const c = cheminsEspace(await dossierTemporaire());
   await initialiserEspace(c);
-  // Code et workflow.json du modèle copiés, recolte.mjs pas encore rangé.
+  // The template's code and workflow.json copied, recolte.mjs not yet put away.
   await writeFile(join(c.widgets, "daily-dev", "recolte.mjs"), ancienne);
   const { crees } = await initialiserEspace(c);
   expect(crees).toEqual([]);
@@ -316,7 +316,7 @@ test("an agent widget (gmail) is left alone, even with a shipped recolte.mjs", a
     "affichage.html": "<p>gmail</p>",
   };
   for (const [f, contenu] of Object.entries(fichiers)) await writeFile(join(gmail, f), contenu);
-  // Même une copie exacte d'une récolte livrée, hors d'un dossier de départ, reste où elle est.
+  // Even an exact copy of a shipped harvest, outside a starter folder, stays where it is.
   const copie = join(c.widgets, "meteo-bis");
   await mkdir(copie);
   await writeFile(join(copie, "recolte.mjs"), await readFile(join(LIVREES, "meteo-4d4c5f1.mjs")));
@@ -347,7 +347,7 @@ test("a failed switch does not block the launch: the other widgets go through, t
   await writeFile(join(c.widgets, "actus-tech", "recolte.mjs"), await readFile(join(LIVREES, "actus-tech-4d4c5f1.mjs")));
   for (const f of CODE_DEPART("daily-dev")) await rm(join(c.widgets, "daily-dev", f));
   await writeFile(join(c.widgets, "daily-dev", "recolte.mjs"), await readFile(join(LIVREES, "daily-dev-4d4c5f1.mjs")));
-  // daily-dev absent des modèles, et une copie de meteo qui échoue (fichier illisible).
+  // daily-dev absent from the templates, and a meteo copy that fails (unreadable file).
   await rm(join(modeles, "widgets", "daily-dev"), { recursive: true });
   await chmod(join(modeles, "widgets", "meteo", "prevision.mjs"), 0o000);
   const erreur = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -365,9 +365,9 @@ test("a failed switch does not block the launch: the other widgets go through, t
   expect(existsSync(join(c.widgets, "daily-dev", "workflow.json"))).toBe(false);
   expect(existsSync(join(c.widgets, "meteo", "recolte.mjs"))).toBe(true);
   expect(existsSync(join(c.widgets, "meteo", "workflow.json"))).toBe(false);
-  expect(notes).toBe(1); // meteo ; daily-dev, absent des modèles, est simplement sauté
+  expect(notes).toBe(1); // meteo; daily-dev, absent from the templates, is simply skipped
 
-  // Au lancement suivant, la copie de meteo réussit (le .mjs déjà copié est identique au modèle).
+  // On the next launch, the meteo copy succeeds (the already-copied .mjs is identical to the template).
   await initialiserEspace(c, modeles);
   expect(existsSync(join(c.widgets, "meteo", "workflow.json"))).toBe(true);
   expect(existsSync(join(c.widgets, "meteo", "recolte.mjs"))).toBe(false);
@@ -382,7 +382,7 @@ test("a new space gets the workflows", async () => {
   expect(existsSync(join(c.accueil, ".corbeille"))).toBe(false);
 });
 
-// ——— Migration des affichages livrés avant Firefox ———
+// ——— Migration of the displays shipped before Firefox ———
 
 const AFFICHAGES = join(import.meta.dirname, "affichages-livres");
 
@@ -412,7 +412,7 @@ for (const fichier of readdirSync(AFFICHAGES).sort()) {
       await readFile(join(MODELES_PAR_DEFAUT, "widgets", id, "affichage.html"), "utf8"),
     );
     expect(crees).toContain(join(c.widgets, id, "affichage.html"));
-    // Un second lancement ne fait plus rien.
+    // A second launch does nothing anymore.
     expect((await initialiserEspace(c)).crees).toEqual([]);
   });
 }

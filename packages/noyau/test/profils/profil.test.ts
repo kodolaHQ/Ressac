@@ -13,7 +13,7 @@ test("construireCommande interactif remplace {mcpConfig}", () => {
   ]);
 });
 
-test("nonInteractif : la consigne reste un seul argument, même avec espaces et guillemets", () => {
+test("nonInteractif: the instruction stays a single argument, even with spaces and quotes", () => {
   const consigne = `Résume "ça" ; rm -rf /`;
   const cmd = construireCommande(claude, "nonInteractif", { consigne });
   expect(cmd.at(-1)).toBe(consigne);
@@ -24,13 +24,13 @@ test("variable manquante → erreur", () => {
   expect(() => construireCommande(claude, "interactif", {})).toThrow(/mcpConfig/);
 });
 
-test("un profil nonInteractif avec {mcpConfig} est refusé", () => {
+test("a nonInteractif profile with {mcpConfig} is refused", () => {
   const fautif = { ...claude, nonInteractif: ["x", "{mcpConfig}", "{consigne}"] };
   expect(() => construireCommande(fautif, "nonInteractif", { consigne: "c", mcpConfig: "/m" })).toThrow();
   expect(Profil.safeParse(fautif).success).toBe(false);
 });
 
-test("chargerProfils ignore un profil invalide et le signale", async () => {
+test("chargerProfils ignores an invalid profile and reports it", async () => {
   const c = cheminsEspace(await dossierTemporaire());
   await mkdir(c.profils, { recursive: true });
   await writeFile(join(c.profils, "claude.json"), JSON.stringify(claude));

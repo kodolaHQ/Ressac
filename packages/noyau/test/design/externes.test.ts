@@ -22,7 +22,7 @@ async function cadre() {
 }
 
 describe("RegistreExternes", () => {
-  test("brancher crée un client dont seul le sha256 du jeton est écrit ; clientDuJeton le rend", async () => {
+  test("brancher creates a client of which only the sha256 of the token is written; clientDuJeton returns it", async () => {
     const c = await cadre();
     const r = await RegistreExternes.ouvrir(c.prive);
     const { client, jeton } = await r.brancher("Mon Claude");
@@ -39,7 +39,7 @@ describe("RegistreExternes", () => {
     expect(relu.clientDuJeton(jeton)?.id).toBe(client.id);
   });
 
-  test("les fichiers ont le mode 0600, leur dossier 0700", async () => {
+  test("the files have mode 0600, their folder 0700", async () => {
     const c = await cadre();
     const r = await RegistreExternes.ouvrir(c.prive);
     const { client } = await r.brancher("x");
@@ -49,7 +49,7 @@ describe("RegistreExternes", () => {
     expect((await stat(c.prive)).mode & 0o777).toBe(0o700);
   });
 
-  test("revoquer : le jeton ne marche plus, les projets restent avec client null", async () => {
+  test("revoquer: the token no longer works, the projects stay with client null", async () => {
     const c = await cadre();
     const r = await RegistreExternes.ouvrir(c.prive);
     const { client, jeton } = await r.brancher("x");
@@ -60,7 +60,7 @@ describe("RegistreExternes", () => {
     expect(r.projets().find((p) => p.id === projet.id)?.client).toBeNull();
   });
 
-  test("declarer refuse les dossiers invalides avec les messages exacts", async () => {
+  test("declarer refuses invalid folders with the exact messages", async () => {
     const c = await cadre();
     const r = await RegistreExternes.ouvrir(c.prive);
     const { client } = await r.brancher("x");
@@ -84,7 +84,7 @@ describe("RegistreExternes", () => {
     expect(r.projets()).toEqual([]);
   });
 
-  test("declarer refuse les ports hors bornes, non entiers ou du conteneur ; accepte 4321", async () => {
+  test("declarer refuses out-of-range, non-integer or container ports; accepts 4321", async () => {
     const c = await cadre();
     const r = await RegistreExternes.ouvrir(c.prive);
     const { client } = await r.brancher("x");
@@ -98,7 +98,7 @@ describe("RegistreExternes", () => {
     expect(projet.ports).toEqual([4321]);
   });
 
-  test("déclarer deux fois le même dossier (dont par lien symbolique) : un seul projet mis à jour", async () => {
+  test("declaring the same folder twice (including through a symbolic link): a single project updated", async () => {
     const c = await cadre();
     const r = await RegistreExternes.ouvrir(c.prive);
     const a = (await r.brancher("a")).client;
@@ -117,7 +117,7 @@ describe("RegistreExternes", () => {
     expect(trois.projet.nom).toBe("Beau");
   });
 
-  test("un port repris est retiré de l'autre projet", async () => {
+  test("a reclaimed port is removed from the other project", async () => {
     const c = await cadre();
     const r = await RegistreExternes.ouvrir(c.prive);
     const { client } = await r.brancher("x");
@@ -126,7 +126,7 @@ describe("RegistreExternes", () => {
     expect(r.projets().find((p) => p.id === pa.projet.id)?.ports).toEqual([4400]);
   });
 
-  test("projetDe : seulement pour le client du projet, dossier avec / final accepté", async () => {
+  test("projetDe: only for the project's client, folder with trailing / accepted", async () => {
     const c = await cadre();
     const r = await RegistreExternes.ouvrir(c.prive);
     const a = (await r.brancher("a")).client;
@@ -138,7 +138,7 @@ describe("RegistreExternes", () => {
     expect(await r.projetDe(a.id, join(c.maison, "absent"))).toBeNull();
   });
 
-  test.skipIf(process.getuid?.() === 0)("dossier chmod 000 : declarer réussit avec lisible faux", async () => {
+  test.skipIf(process.getuid?.() === 0)("folder chmod 000: declarer succeeds with lisible false", async () => {
     const c = await cadre();
     const r = await RegistreExternes.ouvrir(c.prive);
     const { client } = await r.brancher("x");
@@ -151,7 +151,7 @@ describe("RegistreExternes", () => {
     } finally { await chmod(dossier, 0o700); }
   });
 
-  test("un clients-externes.json sous racineEspace/.webaios n'est jamais lu", async () => {
+  test("a clients-externes.json under racineEspace/.webaios is never read", async () => {
     const c = await cadre();
     const jeton = "jeton-pose-par-l-agent";
     await mkdir(join(c.racineEspace, ".webaios"), { recursive: true });
@@ -163,7 +163,7 @@ describe("RegistreExternes", () => {
     expect(r.clientDuJeton(jeton)).toBeNull();
   });
 
-  test("un fichier illisible est copié en .abime-<date> et le registre repart vide", async () => {
+  test("an unreadable file is copied to .abime-<date> and the registry starts empty again", async () => {
     const c = await cadre();
     await mkdir(c.prive, { recursive: true });
     await writeFile(join(c.prive, "projets-externes.json"), "{pas du json");
@@ -172,7 +172,7 @@ describe("RegistreExternes", () => {
     expect((await readdir(c.prive)).some((f) => f.startsWith("projets-externes.json.abime-"))).toBe(true);
   });
 
-  test("oublier retire le projet ; surChange est appelé après chaque écriture", async () => {
+  test("oublier removes the project; surChange is called after each write", async () => {
     const c = await cadre();
     const r = await RegistreExternes.ouvrir(c.prive);
     let n = 0;
@@ -187,14 +187,14 @@ describe("RegistreExternes", () => {
     expect(n).toBe(3);
   });
 
-  test("revoquer : si l'écriture échoue, l'appel est rejeté et le client reste cohérent avec le disque", async () => {
+  test("revoquer: if the write fails, the call is rejected and the client stays consistent with the disk", async () => {
     const c = await cadre();
     const r = await RegistreExternes.ouvrir(c.prive);
     const { client, jeton } = await r.brancher("x");
     const fichier = join(c.prive, "clients-externes.json");
     const contenu = await readFile(fichier, "utf8");
     await rm(fichier);
-    await mkdir(join(fichier, "bloque"), { recursive: true }); // le rename du fichier sur ce dossier échoue
+    await mkdir(join(fichier, "bloque"), { recursive: true }); // the file's rename on this folder fails
     await expect(r.revoquer(client.id)).rejects.toThrow();
     expect(r.clientDuJeton(jeton)?.id).toBe(client.id);
     await rm(fichier, { recursive: true });

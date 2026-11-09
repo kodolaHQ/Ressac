@@ -12,10 +12,10 @@ import {
 } from "../../src/outils-dev/resumes.js";
 
 describe("tronquer", () => {
-  it("garde les chaînes courtes", () => {
+  it("keeps short strings", () => {
     expect(tronquer("salut")).toBe("salut");
   });
-  it("coupe les chaînes longues avec le suffixe", () => {
+  it("cuts long strings with the suffix", () => {
     const r = tronquer("a".repeat(LONGUEUR_MAX + 10));
     expect(r).toBe("a".repeat(LONGUEUR_MAX) + "… [tronqué]");
     expect(tronquer("abcdef", 3)).toBe("abc… [tronqué]");
@@ -23,7 +23,7 @@ describe("tronquer", () => {
 });
 
 describe("masquerEnTetes", () => {
-  it("masque les quatre en-têtes sans tenir compte de la casse", () => {
+  it("masks the four headers regardless of case", () => {
     const r = masquerEnTetes({
       Cookie: "a=1",
       "Set-Cookie": "b=2",
@@ -42,20 +42,20 @@ describe("masquerEnTetes", () => {
 });
 
 describe("masquerUrl", () => {
-  it("masque la valeur des paramètres sensibles", () => {
+  it("masks the value of sensitive parameters", () => {
     expect(masquerUrl("https://x.fr/p?access_token=abc&q=chat")).toBe(
       "https://x.fr/p?access_token=«masqué»&q=chat",
     );
   });
-  it("masque aussi les paramètres du fragment", () => {
+  it("also masks the fragment's parameters", () => {
     expect(masquerUrl("https://x/cb#access_token=abc&state=1")).toBe(
       "https://x/cb#access_token=«masqué»&state=1",
     );
   });
-  it("laisse une URL invalide telle quelle", () => {
+  it("leaves an invalid URL as is", () => {
     expect(masquerUrl("pas une url")).toBe("pas une url");
   });
-  it("laisse intacte une URL sans paramètre sensible", () => {
+  it("leaves a URL without a sensitive parameter intact", () => {
     expect(masquerUrl("https://x.fr/p?q=chat")).toBe("https://x.fr/p?q=chat");
   });
 });
@@ -73,7 +73,7 @@ const profil: ProfilCpu = {
 };
 
 describe("resumerProfil", () => {
-  it("nomme d'abord la fonction la plus coûteuse, avec ses ms", () => {
+  it("names the most expensive function first, with its ms", () => {
     const t = resumerProfil(profil, {
       Nodes: 120,
       JSHeapUsedSize: 5 * 1024 * 1024,
@@ -92,20 +92,20 @@ describe("resumerProfil", () => {
     expect(t).toContain("ScriptDuration : 12.3 ms");
     expect(t).toContain("TaskDuration : 500 ms");
   });
-  it("limite à n fonctions", () => {
+  it("limits to n functions", () => {
     const t = resumerProfil(profil, {}, 1);
     expect(t).not.toContain("(anonyme)");
     expect(t.split("\n")).toHaveLength(1);
   });
-  it("charge chaque échantillon de l'intervalle qui le suit", () => {
-    // écarts inégaux : l'ancien calcul (écart avant) donnerait 31 ms à l'anonyme et 2 ms à « calculer »
+  it("charges each sample to the interval that follows it", () => {
+    // uneven gaps: the old computation (gap before) would give 31 ms to the anonymous one and 2 ms to « calculer »
     const t = resumerProfil({ ...profil, samples: [3, 2, 3], timeDeltas: [1000, 2000, 30000], endTime: 38000 }, {});
     expect(t.split("\n")[0]).toContain("calculer (http://x/a.js:4) — 30 ms");
     expect(t).toContain("(anonyme) (http://x/b.js:8) — 7 ms");
   });
 });
 
-/** Instantané V8 minimal : 6 champs par nœud. */
+/** Minimal V8 snapshot: 6 fields per node. */
 function instantane(noeuds: [string, string, number][]): string {
   const strings: string[] = [];
   const types = ["hidden", "array", "string", "object", "code", "closure", "regexp", "number", "native"];
@@ -127,7 +127,7 @@ function instantane(noeuds: [string, string, number][]): string {
   });
 }
 
-describe("résumé mémoire", () => {
+describe("memory summary", () => {
   const a = resumerInstantane(
     instantane([
       ["object", "Fuite", 100],
@@ -136,12 +136,12 @@ describe("résumé mémoire", () => {
       ["code", "Code", 999],
     ]),
   );
-  it("regroupe par constructeur et ignore les types hors liste", () => {
+  it("groups by constructor and ignores types outside the list", () => {
     expect(a.total).toBe(1179);
     expect(a.parConstructeur[0]).toEqual({ nom: "Fuite", nombre: 2, taille: 150 });
     expect(a.parConstructeur.map((c) => c.nom)).not.toContain("Code");
   });
-  it("ne transmet pas le contenu des chaînes", () => {
+  it("does not pass on the content of strings", () => {
     const r = resumerInstantane(
       instantane([
         ["string", "mot-de-passe-secret", 10],
@@ -150,10 +150,10 @@ describe("résumé mémoire", () => {
     );
     expect(r.parConstructeur).toEqual([{ nom: "(chaîne)", nombre: 2, taille: 30 }]);
   });
-  it("texteMemoire liste les constructeurs", () => {
+  it("texteMemoire lists the constructors", () => {
     expect(texteMemoire(a)).toContain("Fuite");
   });
-  it("comparerMemoire signale la croissance", () => {
+  it("comparerMemoire flags the growth", () => {
     const b = resumerInstantane(
       instantane([
         ...Array.from({ length: 5 }, () => ["object", "Fuite", 100] as [string, string, number]),
@@ -174,7 +174,7 @@ const recensement = (objets: Record<string, [number, number]>, total: number): s
   });
 
 describe("recensement Firefox", () => {
-  it("resumerInstantane lit un recensement Firefox : total et constructeurs triés par taille", () => {
+  it("resumerInstantane reads a Firefox census: total and constructors sorted by size", () => {
     const r = resumerInstantane(
       recensement({ Function: [10, 500], Object: [40, 4000], Array: [5, 900], strings: [20, 2000] }, 9000),
     );
@@ -182,7 +182,7 @@ describe("recensement Firefox", () => {
     expect(r.parConstructeur.map((c) => c.nom)).toEqual(["Object", "strings", "Array", "Function"]);
     expect(r.parConstructeur[0]).toEqual({ nom: "Object", nombre: 40, taille: 4000 });
   });
-  it("comparerMemoire sur deux recensements Firefox : le type qui grossit est en tête", () => {
+  it("comparerMemoire on two Firefox censuses: the type that grows comes first", () => {
     const a = resumerInstantane(recensement({ Object: [40, 4000], Array: [5, 900] }, 5000));
     const b = resumerInstantane(recensement({ Object: [400, 40000], Array: [5, 900] }, 41000));
     const t = comparerMemoire(a, b);

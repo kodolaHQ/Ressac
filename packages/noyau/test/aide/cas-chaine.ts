@@ -1,5 +1,5 @@
-// Cas de la chaîne au fil de l'eau : workflows bruts (à valider) et chaîne attendue. Partagés entre la règle du noyau
-// (chaineAuFilDeLEau) et celle de l'interpréteur du conteneur, qui doivent rendre la même chaîne.
+// Streaming chain cases: raw workflows (to validate) and expected chain. Shared between the core's rule
+// (chaineAuFilDeLEau) and the container interpreter's one, which must return the same chain.
 
 type Bloc = { id: string; type: string; parametres: Record<string, unknown> };
 type Lien = { de: string; vers: string };
@@ -10,7 +10,7 @@ export type CasChaine = {
   nom: string;
   brut: { version: 1; blocs: Bloc[]; liens: Lien[] };
   attendu: string[];
-  /** Ce que le widget déclare (web.chercher demande `web`) ; les règles d'avant sans lui. */
+  /** What the widget declares (web.chercher requires `web`); the earlier rules without it. */
   contexte?: ContexteValidation;
 };
 
@@ -24,7 +24,7 @@ const sortie = (auFilDeLEau?: boolean) => b("sortie", "sortie", auFilDeLEau === 
 const suite = (...ids: string[]): Lien[] => ids.slice(1).map((id, i) => ({ de: ids[i]!, vers: id }));
 const wf = (blocs: Bloc[], liens: Lien[]) => ({ version: 1 as const, blocs, liens });
 
-/** annonces → nouvelles → tri → top, la tête commune des cas. */
+/** annonces → nouvelles → tri → top, the common head of the cases. */
 const tete = [
   b("annonces", "source.flux", { urls: ["https://x.fr/rss"] }),
   b("nouvelles", "liste.nouveaux", { cle: "url" }),
@@ -90,7 +90,7 @@ export const CAS_CHAINE: CasChaine[] = [
   },
   {
     nom: "tranche non contiguë dans ordre : les premiers blocs sont retirés",
-    // « isole » (sans lien) se place entre fiche et avis dans l'ordre d'exécution.
+    // « isole » (without a link) sits between fiche and avis in the run order.
     brut: wf(
       [...tete, page("fiche"), b("isole", "source.flux", { urls: ["https://z.fr/rss"] }), recuperer("infos"), rediger("avis"), sortie(true)],
       [...LIENS_TETE, ...suite("top", "fiche", "infos", "avis", "sortie")],

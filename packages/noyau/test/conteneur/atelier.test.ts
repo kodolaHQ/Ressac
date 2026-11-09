@@ -11,23 +11,23 @@ import { executeurFactice } from "../aide/executeur-factice.js";
 
 const chemins = cheminsEspace("/Users/t/WebAiOs");
 
-test("docker introuvable → docker-absent, sans exception", async () => {
+test("docker not found → docker-absent, without an exception", async () => {
   expect(await new Atelier({ chemins, docker: null }).etat()).toBe("docker-absent");
   expect(await new Atelier({ chemins, docker: null }).assurerDemarre()).toBe("docker-absent");
 });
 
-test("docker info en échec → docker-absent", async () => {
+test("docker info failing → docker-absent", async () => {
   const { executer } = executeurFactice([[/ info/, { code: 1, stderr: "Cannot connect" }]]);
   expect(await new Atelier({ chemins, docker: "docker", executer }).etat()).toBe("docker-absent");
 });
 
-test("trouverDocker trouve OrbStack hors du PATH", () => {
+test("trouverDocker finds OrbStack outside the PATH", () => {
   expect(trouverDocker({ PATH: "/usr/bin", HOME: "/Users/t" }, (p) => p === "/Users/t/.orbstack/bin/docker")).toBe(
     "/Users/t/.orbstack/bin/docker",
   );
 });
 
-test("trouverDocker préfère le PATH, et renvoie null si rien", () => {
+test("trouverDocker prefers the PATH, and returns null if nothing", () => {
   expect(trouverDocker({ PATH: "/a:/b", HOME: "/h" }, (p) => p === "/b/docker" || p === "/usr/local/bin/docker")).toBe(
     "/b/docker",
   );
@@ -45,7 +45,7 @@ test("etat selon docker inspect", async () => {
   }
 });
 
-test("assurerDemarre sur absent : build si image manquante puis run avec les bons arguments", async () => {
+test("assurerDemarre on absent: build if the image is missing then run with the right arguments", async () => {
   let lance = false;
   const { executer, appels } = executeurFactice([
     [/ image inspect /, { code: 1 }],
@@ -68,7 +68,7 @@ test("assurerDemarre sur absent : build si image manquante puis run avec les bon
   expect(run.args.slice(-2)).toEqual(["sleep", "infinity"]);
 });
 
-test("assurerDemarre sur arrete → docker start", async () => {
+test("assurerDemarre on arrete → docker start", async () => {
   let demarre = false;
   const { executer, appels } = executeurFactice([
     [/ inspect -f .*Mounts/, { code: 0, stdout: `${chemins.racine}|${empreinteDockerfile()}\n` }],
@@ -80,7 +80,7 @@ test("assurerDemarre sur arrete → docker start", async () => {
   expect(appels.some((a) => a.args[0] === "run")).toBe(false);
 });
 
-test("commandeExec interactif et non interactif", () => {
+test("commandeExec interactive and non-interactive", () => {
   const a = new Atelier({ chemins, docker: "/opt/homebrew/bin/docker" });
   expect(a.commandeExec(["claude"], { interactif: true })).toEqual([
     "/opt/homebrew/bin/docker", "exec", "-it", "-w", "/workspace", "webaios-atelier", "claude",
@@ -90,13 +90,13 @@ test("commandeExec interactif et non interactif", () => {
   ]);
 });
 
-test("les sondes docker ont un délai (Docker Desktop bloqué au démarrage)", async () => {
+test("the docker probes have a timeout (Docker Desktop stuck at startup)", async () => {
   const { executer, appels } = executeurFactice([[/ inspect /, { code: 0, stdout: "true\n" }]]);
   await new Atelier({ chemins, docker: "docker", executer }).etat();
   for (const a of appels) expect(a.opts?.delaiMs, a.args.join(" ")).toBeGreaterThan(0);
 });
 
-test("les ports publiés évitent ceux de Vite (5173…) : 5280-5299", async () => {
+test("the published ports avoid Vite's (5173…): 5280-5299", async () => {
   const { executer, appels } = executeurFactice([
     [/ image inspect /, { code: 0 }],
     [/ inspect -f/, { code: 1 }],
@@ -105,17 +105,17 @@ test("les ports publiés évitent ceux de Vite (5173…) : 5280-5299", async () 
   expect(appels.find((a) => a.args[0] === "run")!.args).toContain("127.0.0.1:5280-5299:5280-5299");
 });
 
-test("trouverDocker trouve Docker Desktop installé par utilisateur (~/.docker/bin)", () => {
+test("trouverDocker finds Docker Desktop installed per user (~/.docker/bin)", () => {
   expect(trouverDocker({ PATH: "/usr/bin", HOME: "/Users/t" }, (p) => p === "/Users/t/.docker/bin/docker")).toBe(
     "/Users/t/.docker/bin/docker",
   );
 });
 
-test("executeurParDefaut ajoute ~/.docker/bin au PATH (assistants d'identifiants)", () => {
+test("executeurParDefaut adds ~/.docker/bin to the PATH (credential helpers)", () => {
   expect(DOSSIERS_OUTILS).toContain(join(homedir(), ".docker", "bin"));
 });
 
-// Conteneur existant créé sur un autre dossier ou avec un ancien Dockerfile → recréé.
+// Existing container created on another folder or with an old Dockerfile → recreated.
 function fauxDocker(o: { source: string; empreinteConteneur: string; empreinteImage: string; running?: string }) {
   let recree = false;
   const f = executeurFactice([
@@ -128,14 +128,14 @@ function fauxDocker(o: { source: string; empreinteConteneur: string; empreinteIm
   return f;
 }
 
-test("conteneur existant sur le bon dossier et la bonne image → gardé", async () => {
+test("existing container on the right folder and the right image → kept", async () => {
   const e = empreinteDockerfile();
   const { executer, appels } = fauxDocker({ source: chemins.racine, empreinteConteneur: e, empreinteImage: e });
   expect(await new Atelier({ chemins, docker: "docker", executer }).assurerDemarre()).toBe("demarre");
   expect(appels.some((a) => a.args[0] === "rm")).toBe(false);
 });
 
-test("conteneur existant monté sur un autre dossier → supprimé puis recréé", async () => {
+test("existing container mounted on another folder → removed then recreated", async () => {
   const e = empreinteDockerfile();
   const { executer, appels } = fauxDocker({ source: "/tmp/ailleurs", empreinteConteneur: e, empreinteImage: e });
   await new Atelier({ chemins, docker: "docker", executer }).assurerDemarre();
@@ -143,7 +143,7 @@ test("conteneur existant monté sur un autre dossier → supprimé puis recréé
   expect(appels.some((a) => a.args[0] === "run")).toBe(true);
 });
 
-test("Dockerfile modifié → image reconstruite et conteneur recréé", async () => {
+test("modified Dockerfile → image rebuilt and container recreated", async () => {
   const { executer, appels } = fauxDocker({ source: chemins.racine, empreinteConteneur: "ancienne", empreinteImage: "ancienne" });
   await new Atelier({ chemins, docker: "docker", executer }).assurerDemarre();
   const build = appels.find((a) => a.args[0] === "build")!;
@@ -151,7 +151,7 @@ test("Dockerfile modifié → image reconstruite et conteneur recréé", async (
   expect(appels.some((a) => a.args.join(" ") === "rm -f webaios-atelier")).toBe(true);
 });
 
-test("session interactive : son PID est noté dans le conteneur, et l'arrêter l'y tue (tuer le client docker ne suffit pas)", async () => {
+test("interactive session: its PID is noted in the container, and stopping it kills it there (killing the docker client is not enough)", async () => {
   const { executer, appels } = executeurFactice([]);
   const a = new Atelier({ chemins, docker: "/opt/homebrew/bin/docker", executer });
   const pid = "/tmp/webaios-session-ab12.pid";
@@ -167,7 +167,7 @@ test("session interactive : son PID est noté dans le conteneur, et l'arrêter l
   expect(() => a.commandeSession("../x", ["claude"])).toThrow();
 });
 
-test("deux démarrages en même temps : une seule construction d'image et un seul conteneur", async () => {
+test("two starts at the same time: a single image build and a single container", async () => {
   let finirBuild!: () => void;
   let lance = false;
   const { executer, appels } = executeurFactice([
@@ -186,7 +186,7 @@ test("deux démarrages en même temps : une seule construction d'image et un seu
   expect(appels.filter((x) => x.args[0] === "run")).toHaveLength(1);
 });
 
-test("après un échec, un nouveau démarrage réessaie", async () => {
+test("after a failure, a new start retries", async () => {
   let echecs = 0;
   const { executer, appels } = executeurFactice([
     [/ image inspect /, { code: 1 }],
@@ -199,7 +199,7 @@ test("après un échec, un nouveau démarrage réessaie", async () => {
   expect(appels.filter((x) => x.args[0] === "build")).toHaveLength(2);
 });
 
-test("construction et lancement du conteneur ont un délai maximal", async () => {
+test("building and launching the container have a maximum timeout", async () => {
   let lance = false;
   const { executer, appels } = executeurFactice([
     [/ image inspect /, { code: 1 }],
@@ -220,9 +220,9 @@ const vivant = (pid: number) => {
   }
 };
 
-test("le script d'arrêt tue un agent qui ignore HUP et TERM (claude les intercepte), et tout son groupe", async () => {
+test("the stop script kills an agent that ignores HUP and TERM (claude intercepts them), and its whole group", async () => {
   const f = join(mkdtempSync(join(tmpdir(), "webaios-arret-")), "session.pid");
-  // Comme commandeSession : le shell note son PID puis devient l'agent ; ici un agent sourd à HUP et TERM, avec un enfant.
+  // Like commandeSession: the shell notes its PID then becomes the agent; here an agent deaf to HUP and TERM, with a child.
   const agent = spawn("sh", ["-c", `echo $$ > ${f}; exec "$@"`, "webaios-session", "sh", "-c", "trap '' HUP TERM; sleep 60 & wait"], {
     detached: true,
     stdio: "ignore",
@@ -235,7 +235,7 @@ test("le script d'arrêt tue un agent qui ignore HUP et TERM (claude les interce
   expect(Date.now() - debut).toBeLessThan(8000);
   expect(vivant(agent.pid!)).toBe(false);
   expect(existsSync(f)).toBe(false);
-  // Plus aucun processus du groupe (le sleep lancé par l'agent).
+  // No process of the group left (the sleep launched by the agent).
   expect(() => process.kill(-agent.pid!, 0)).toThrow();
 }, 15_000);
 
@@ -248,7 +248,7 @@ test("commandeApplication", () => {
   ]);
 });
 
-test("arreterApplication ne vise que sa marque", async () => {
+test("arreterApplication only targets its own mark", async () => {
   const { executer, appels } = executeurFactice([]);
   await new Atelier({ chemins, docker: "docker", executer }).arreterApplication("todo");
   const appel = appels.find((x) => x.args[0] === "exec")!;
@@ -267,20 +267,20 @@ test("arreterApplicationsOrphelines vise WEBAIOS_APP=.*", async () => {
   expect(script).not.toContain("WEBAIOS_SESSION");
 });
 
-test("arreterApplication : le point d'un nom de dossier n'est pas un joker de grep", async () => {
+test("arreterApplication: the dot in a folder name is not a grep wildcard", async () => {
   const { executer, appels } = executeurFactice([]);
   await new Atelier({ chemins, docker: "docker", executer }).arreterApplication("my.app");
   const script = appels.find((x) => x.args[0] === "exec")!.args[4]!;
   const motif = /grep -qzx '([^']*)'/.exec(script)![1]!;
   expect(motif).toBe("WEBAIOS_APP=my\\.app");
-  // Le motif tel que grep le lit : « my.app » est visé, « myxapp » ne l'est pas.
+  // The pattern as grep reads it: « my.app » is targeted, « myxapp » is not.
   const vise = (valeur: string) =>
     new Promise<boolean>((ok) => execFile("sh", ["-c", `printf '%s' "$1" | grep -qx "$2"`, "sh", valeur, motif], (e) => ok(!e)));
   expect(await vise("WEBAIOS_APP=my.app")).toBe(true);
   expect(await vise("WEBAIOS_APP=myxapp")).toBe(false);
 });
 
-test("commandeRecolte monte le moteur en lecture seule et lance /opt/webaios/moteur/recolteur.mjs", () => {
+test("commandeRecolte mounts the engine read-only and launches /opt/webaios/moteur/recolteur.mjs", () => {
   const atelier = new Atelier({ chemins, docker: "/usr/local/bin/docker" });
   const c = atelier.commandeRecolte("meteo", "/Users/t/WebAiOs/accueil/widgets/meteo", "/app/docker/moteur");
   expect(c).toEqual([
@@ -297,11 +297,11 @@ test("commandeRecolte monte le moteur en lecture seule et lance /opt/webaios/mot
     "timeout", "-k", "5", "180",
     "node", "/opt/webaios/moteur/recolteur.mjs", "/widget",
   ]);
-  // Le dossier du moteur est monté tel quel, pas son parent : rien d'autre du paquet n'entre dans le conteneur.
+  // The engine folder is mounted as is, not its parent: nothing else of the package enters the container.
   expect(() => atelier.commandeRecolte("meteo", "/d", "/app/x:y")).toThrow();
 });
 
-test("commandeRecolte d'une action nomme le conteneur webaios-action-<id> ; d'un widget, webaios-recolte-<id>", async () => {
+test("commandeRecolte of an action names the container webaios-action-<id>; of a widget, webaios-recolte-<id>", async () => {
   const atelier = new Atelier({ chemins, docker: "/usr/local/bin/docker" });
   const nom = (c: string[]) => c[c.indexOf("--name") + 1];
   expect(nom(atelier.commandeRecolte({ type: "action", id: "gitlab" }, "/d", "/app/docker/moteur"))).toBe("webaios-action-gitlab");
@@ -310,7 +310,7 @@ test("commandeRecolte d'une action nomme le conteneur webaios-action-<id> ; d'un
   expect(nomRecolte({ type: "action", id: "gitlab" })).toBe("webaios-action-gitlab");
   expect(nomRecolte("meteo")).toBe("webaios-recolte-meteo");
   expect(() => nomRecolte({ type: "action", id: "../x" })).toThrow();
-  // La suppression vise le même nom.
+  // The removal targets the same name.
   const appels: string[][] = [];
   const supprimeur = new Atelier({ chemins, docker: "/usr/local/bin/docker", executer: async (_c, args) => (appels.push(args), { code: 0, stdout: "", stderr: "" }) });
   await supprimeur.supprimerRecolte({ type: "action", id: "gitlab" });
@@ -318,12 +318,12 @@ test("commandeRecolte d'une action nomme le conteneur webaios-action-<id> ; d'un
   expect(appels).toEqual([["rm", "-f", "webaios-action-gitlab"], ["rm", "-f", "webaios-recolte-meteo"]]);
 });
 
-test("commandeRecolte avec delaiS 1830 : timeout -k 5 1830", () => {
+test("commandeRecolte with delaiS 1830: timeout -k 5 1830", () => {
   const atelier = new Atelier({ chemins, docker: "/usr/local/bin/docker" });
   const c = atelier.commandeRecolte("veille", "/d", "/app/docker/moteur", 1830);
   const i = c.indexOf("timeout");
   expect(c.slice(i, i + 4)).toEqual(["timeout", "-k", "5", "1830"]);
-  // Sans délai donné : 180 s comme avant.
+  // Without a given delay: 180 s as before.
   const d = atelier.commandeRecolte("veille", "/d", "/app/docker/moteur");
   expect(d.slice(d.indexOf("timeout"), d.indexOf("timeout") + 4)).toEqual(["timeout", "-k", "5", "180"]);
 });

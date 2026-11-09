@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 import { SessionAgent } from "../../src/pty/session.js";
 
-test("SessionAgent : écho via /bin/cat et fin", async () => {
+test("SessionAgent: echo via /bin/cat and end", async () => {
   const s = SessionAgent.demarrer(["/bin/cat"], { cols: 80, rows: 24 });
   expect(s.active).toBe(true);
   let recu = "";
@@ -14,7 +14,7 @@ test("SessionAgent : écho via /bin/cat et fin", async () => {
   expect(s.active).toBe(false);
 });
 
-test("se désabonner coupe les rappels", async () => {
+test("unsubscribing cuts the callbacks", async () => {
   const s = SessionAgent.demarrer(["/bin/cat"], { cols: 80, rows: 24 });
   let appels = 0;
   const desabonner = s.surDonnees(() => appels++);
@@ -25,7 +25,7 @@ test("se désabonner coupe les rappels", async () => {
   expect(appels).toBe(0);
 });
 
-test("arreter prévient aussi le conteneur (arreterDistant), une seule fois", async () => {
+test("arreter also notifies the container (arreterDistant), only once", async () => {
   let distants = 0;
   const s = SessionAgent.demarrer(["/bin/cat"], { cols: 80, rows: 24, arreterDistant: () => void distants++ });
   const fin = new Promise<number>((ok) => s.surFin(ok));
@@ -35,7 +35,7 @@ test("arreter prévient aussi le conteneur (arreterDistant), une seule fois", as
   expect(distants).toBe(1);
 });
 
-test("arreter rend la main une fois l'agent arrêté dans le conteneur (⌘Q n'en laisse pas tourner)", async () => {
+test("arreter hands back control once the agent is stopped in the container (⌘Q leaves none running)", async () => {
   let finir!: () => void;
   const s = SessionAgent.demarrer(["/bin/cat"], { cols: 80, rows: 24, arreterDistant: () => new Promise<void>((ok) => (finir = ok)) });
   let rendu = false;

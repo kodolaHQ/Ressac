@@ -34,7 +34,7 @@ async function creerSansDocker() {
 
 const lireMcp = async (n: Noyau) => JSON.parse(await readFile(n.chemins.configMcp, "utf8")).mcpServers.webaios;
 
-/** Atelier dont le « docker » est un faux script (il ne dort que pour un `exec -it`, une session ; tout autre appel échoue vite) : un pty de session ne touche jamais le vrai Docker. */
+/** Workshop whose « docker » is a fake script (it only sleeps for an `exec -it`, one session; any other call fails fast): a session pty never touches the real Docker. */
 async function atelierSansDocker(racine: string, executer: Executeur): Promise<Atelier> {
   const faux = join(`${racine}-bin`, "docker");
   await mkdir(dirname(faux), { recursive: true });
@@ -42,7 +42,7 @@ async function atelierSansDocker(racine: string, executer: Executeur): Promise<A
   return new Atelier({ chemins: cheminsEspace(racine), executer, docker: faux });
 }
 
-test("creerNoyau initialise l'espace et écrit mcp.json avec host.docker.internal", async () => {
+test("creerNoyau initializes the space and writes mcp.json with host.docker.internal", async () => {
   const n = await creerSansDocker();
   expect(existsSync(join(n.chemins.racine, "AGENTS.md"))).toBe(true);
   const mcp = await lireMcp(n);
@@ -50,7 +50,7 @@ test("creerNoyau initialise l'espace et écrit mcp.json avec host.docker.interna
   expect(mcp.headers.Authorization).toMatch(/^Bearer [0-9a-f]{64}$/);
 });
 
-test("Docker absent : creerNoyau réussit, etatAtelier → docker-absent, ouvrirSessionAgent lève ErreurAtelier", async () => {
+test("Docker absent: creerNoyau succeeds, etatAtelier → docker-absent, ouvrirSessionAgent throws ErreurAtelier", async () => {
   const n = await creerSansDocker();
   expect(await n.etatAtelier()).toBe("docker-absent");
   const erreur = await n.ouvrirSessionAgent({ cols: 80, rows: 24 }).catch((e) => e);
@@ -58,7 +58,7 @@ test("Docker absent : creerNoyau réussit, etatAtelier → docker-absent, ouvrir
   expect(erreur.etat).toBe("docker-absent");
 });
 
-test("le serveur MCP répond avec le jeton, puis arreter le ferme", async () => {
+test("the MCP server answers with the token, then arreter closes it", async () => {
   const n = await creerSansDocker();
   const mcp = await lireMcp(n);
   const local = mcp.url.replace("host.docker.internal", "127.0.0.1");
@@ -76,20 +76,20 @@ test("profil inconnu → erreur claire", async () => {
   ).rejects.toThrow(/inconnu/);
 });
 
-test("creerNoyau n'attend pas une construction d'image lente", async () => {
+test("creerNoyau does not wait for a slow image build", async () => {
   const racine = await dossierTemporaire();
   const { executer } = executeurFactice([
     [/ info$/, { code: 0 }],
     [/ inspect -f/, { code: 1 }],
     [/ image inspect /, { code: 1 }],
-    [/ build /, () => new Promise(() => {})], // ne se termine jamais
+    [/ build /, () => new Promise(() => {})], // never ends
   ]);
   const debut = Date.now();
   noyau = await creerNoyau({ dossierWidgets: `${racine}-widgets`, dossierActions: `${racine}-actions`, pont: new PontFactice([], { actif: null, autoriser: false }), racine, executer });
   expect(Date.now() - debut).toBeLessThan(2000);
 });
 
-test("échec de démarrage du conteneur : creerNoyau réussit, la session lève ErreurAtelier avec le message", async () => {
+test("container start failure: creerNoyau succeeds, the session throws ErreurAtelier with the message", async () => {
   const racine = await dossierTemporaire();
   const { executer } = executeurFactice([
     [/ info$/, { code: 0 }],
@@ -103,7 +103,7 @@ test("échec de démarrage du conteneur : creerNoyau réussit, la session lève 
   expect(erreur.message).toContain("port is already allocated");
 });
 
-test("construction échouée au lancement : la première session rend cet échec sans reconstruire aussitôt", async () => {
+test("build failed at launch: the first session returns that failure without rebuilding right away", async () => {
   const racine = await dossierTemporaire();
   const { executer, appels } = executeurFactice([
     [/ info$/, { code: 0 }],
@@ -115,18 +115,18 @@ test("construction échouée au lancement : la première session rend cet échec
   const erreur = await noyau.ouvrirSessionAgent({ cols: 80, rows: 24 }).catch((e) => e);
   expect(erreur.message).toContain("réseau coupé");
   expect(appels.filter((a) => a.args[0] === "build")).toHaveLength(1);
-  // Réessayer : une nouvelle tentative.
+  // Retry: a new attempt.
   await noyau.ouvrirSessionAgent({ cols: 80, rows: 24 }).catch(() => {});
   expect(appels.filter((a) => a.args[0] === "build")).toHaveLength(2);
 });
 
-test("au lancement, une fois le conteneur prêt, les agents d'une app précédente sont arrêtés avant toute session", async () => {
+test("at launch, once the container is ready, the agents of a previous app are stopped before any session", async () => {
   const racine = await dossierTemporaire();
   const { executer, appels } = executeurFactice([
     [/ info$/, { code: 0 }],
     [/ inspect -f/, { code: 0, stdout: "true\n" }],
   ]);
-  // Conteneur à jour : la sonde de montage renvoie la racine et l'empreinte attendues.
+  // Up-to-date container: the mount probe returns the expected root and hash.
   const { empreinteDockerfile } = await import("../src/conteneur/atelier.js");
   const executerAJour: typeof executer = (c, args, o) =>
     args.includes("{{.State.Running}}") ? executer(c, args, o) : args[0] === "inspect" ? Promise.resolve({ code: 0, stdout: `${racine}|${empreinteDockerfile()}\n`, stderr: "" }) : executer(c, args, o);
@@ -134,12 +134,12 @@ test("au lancement, une fois le conteneur prêt, les agents d'une app précéden
   noyau = await creerNoyau({ dossierWidgets: `${racine}-widgets`, dossierActions: `${racine}-actions`, pont: new PontFactice([], { actif: null, autoriser: false }), racine, executer: executerAJour, atelier });
   await noyau.ouvrirSessionAgent({ cols: 80, rows: 24 }).then((s) => s.arreter(), () => {});
   const execs = appels.filter((a) => a.args[0] === "exec").map((a) => a.args.join(" "));
-  // Le nettoyage (toutes les sessions marquées) passe avant l'arrêt de la session ouverte ici.
+  // The cleanup (all marked sessions) runs before the open session is stopped here.
   expect(execs[0]).toContain("/tmp/webaios-session-*.pid");
   expect(execs[1]).toMatch(/webaios-session-[0-9a-f]+\.pid/);
 });
 
-test("creerNoyau lit modèles et Dockerfile depuis ressources", async () => {
+test("creerNoyau reads models and Dockerfile from resources", async () => {
   const racine = await dossierTemporaire();
   const copie = await dossierTemporaire();
   await cp(join(import.meta.dirname, "..", "modeles"), join(copie, "modeles"), { recursive: true });
@@ -150,7 +150,7 @@ test("creerNoyau lit modèles et Dockerfile depuis ressources", async () => {
   expect(await readFile(join(racine, "AGENTS.md"), "utf8")).toBe("# copie");
 });
 
-test("creerNoyau réutilise l'atelier fourni", async () => {
+test("creerNoyau reuses the provided workshop", async () => {
   const racine = await dossierTemporaire();
   const { executer } = executeurFactice([[/ info$/, { code: 1, stderr: "absent" }]]);
   const atelier = new Atelier({ chemins: cheminsEspace(racine), executer });
@@ -160,7 +160,7 @@ test("creerNoyau réutilise l'atelier fourni", async () => {
   expect(etat).toHaveBeenCalled();
 });
 
-test("arreter : nouvelle conversation pour la politique (les cartes en attente tombent) et outils de développement libérés", async () => {
+test("arreter: new conversation for the policy (pending cards drop) and dev tools released", async () => {
   const racine = await dossierTemporaire();
   const { executer } = executeurFactice([[/ info$/, { code: 1 }]]);
   const liberes: number[] = [];
@@ -180,7 +180,7 @@ test("arreter : nouvelle conversation pour la politique (les cartes en attente t
   expect(n).toBe(2);
 });
 
-test("noyau : arreter() arrête le planificateur et l'IA locale", async () => {
+test("noyau: arreter() stops the scheduler and the local AI", async () => {
   const racine = await dossierTemporaire();
   const { executer } = executeurFactice([[/ info$/, { code: 1 }]]);
   const ordre: string[] = [];
@@ -189,7 +189,7 @@ test("noyau : arreter() arrête le planificateur et l'IA locale", async () => {
     await original.call(this);
     ordre.push("planificateur");
   });
-  // Le noyau ferme son propre accès à l'IA (une récolte en retard ne relance pas Kev), pas l'IA partagée.
+  // The core closes its own access to the AI (a late harvest does not restart Kev), not the shared AI.
   const acces = { kev: vi.fn(), gemma: vi.fn(), fermer: vi.fn(async () => void ordre.push("ia")) };
   const ia = { acces: () => acces, arreter: vi.fn() } as unknown as IaLocale;
   const n = await creerNoyau({ dossierWidgets: `${racine}-widgets`, dossierActions: `${racine}-actions`, pont: new PontFactice([], { actif: null, autoriser: false }), racine, executer, ia });
@@ -200,7 +200,7 @@ test("noyau : arreter() arrête le planificateur et l'IA locale", async () => {
   planif.mockRestore();
 });
 
-test("noyau : lireAccueil lit les widgets ; ia vaut null sans IA locale", async () => {
+test("noyau: lireAccueil reads the widgets; ia is null without local AI", async () => {
   const racine = await dossierTemporaire();
   const { executer } = executeurFactice([[/ info$/, { code: 1 }]]);
   noyau = await creerNoyau({ dossierWidgets: `${racine}-widgets`, dossierActions: `${racine}-actions`, pont: new PontFactice([], { actif: null, autoriser: false }), racine, executer });
@@ -210,7 +210,7 @@ test("noyau : lireAccueil lit les widgets ; ia vaut null sans IA locale", async 
   expect(noyau.ia).toBeNull();
 });
 
-test("noyau : accorder enregistre l'accord (domaines triés), prévient et lance une récolte ; refuserAccord le retire", async () => {
+test("noyau: accorder records the grant (domains sorted), notifies and starts a harvest; refuserAccord removes it", async () => {
   const racine = await dossierTemporaire();
   const dossierWidgets = `${racine}-widgets`;
   const { executer } = executeurFactice([[/ info$/, { code: 1 }]]);
@@ -225,9 +225,9 @@ test("noyau : accorder enregistre l'accord (domaines triés), prévient et lance
   await noyau.accorder({ id: "daily", profil: "perso", compte: ["a.dev", "b.dev"], publiques: ["z.com", "y.com"] });
   expect((await lireAccords(dossierWidgets)).daily).toEqual({ domaines: ["a.dev", "b.dev"], publiques: ["y.com", "z.com"], profil: "perso" });
   expect(surChange).toHaveBeenCalled();
-  // Docker absent : la récolte lancée aboutit à « atelier arrêté ».
+  // Docker absent: the started harvest ends with « atelier arrêté ».
   await vi.waitFor(async () => expect((await lireEtatWidget(dossierWidgets, "daily")).statut).toBe("atelier-arrete"));
-  // Messages écrits par le noyau : marqués comme tels (ils peuvent sortir vers l'agent sans accord).
+  // Messages written by the core: marked as such (they can go out to the agent without a grant).
   expect((await lireEtatWidget(dossierWidgets, "daily")).erreurNoyau).toBe(true);
 
   surChange.mockClear();
@@ -237,7 +237,7 @@ test("noyau : accorder enregistre l'accord (domaines triés), prévient et lance
   expect(surChange).toHaveBeenCalled();
 });
 
-test("noyau : accorder refuse un widget sans compte", async () => {
+test("noyau: accorder refuses a widget without an account", async () => {
   const racine = await dossierTemporaire();
   const { executer } = executeurFactice([[/ info$/, { code: 1 }]]);
   noyau = await creerNoyau({ dossierWidgets: `${racine}-widgets`, dossierActions: `${racine}-actions`, pont: new PontFactice([], { actif: null, autoriser: false }), racine, executer });
@@ -245,7 +245,7 @@ test("noyau : accorder refuse un widget sans compte", async () => {
   await expect(noyau.accorder({ id: "meteo", profil: "perso", compte: [], publiques: [] })).rejects.toThrow(/compte/);
 });
 
-test("noyau : accorder refuse si la déclaration n'est plus celle montrée à l'utilisateur (compte ou publiques)", async () => {
+test("noyau: accorder refuses if the declaration is no longer the one shown to the user (account or public ones)", async () => {
   const racine = await dossierTemporaire();
   const dossierWidgets = `${racine}-widgets`;
   const { executer } = executeurFactice([[/ info$/, { code: 1 }]]);
@@ -256,17 +256,17 @@ test("noyau : accorder refuse si la déclaration n'est plus celle montrée à l'
     declarationWidget(undefined, { recolte: { minutes: 60 }, sources: { compte: ["app.daily.dev"], publiques: ["espion.example"] } }),
     { "recolte.mjs": "export default () => 1" },
   );
-  // Montré sans le domaine public (ancienne déclaration) : refusé.
+  // Shown without the public domain (old declaration): refused.
   await expect(noyau.accorder({ id: "daily", profil: "perso", compte: ["app.daily.dev"], publiques: [] })).rejects.toThrow(/a changé/);
   await expect(noyau.accorder({ id: "daily", profil: "perso", compte: ["autre.dev"], publiques: ["espion.example"] })).rejects.toThrow(/a changé/);
   await expect(noyau.accorder({ id: "daily", profil: "perso", compte: ["app.daily.dev", "app.daily.dev"], publiques: ["espion.example"] })).rejects.toThrow(/a changé/);
   expect(await lireAccords(dossierWidgets)).toEqual({});
-  // Exactement ce qui est déclaré : accordé.
+  // Exactly what is declared: granted.
   await noyau.accorder({ id: "daily", profil: "perso", compte: ["app.daily.dev"], publiques: ["espion.example"] });
   expect((await lireAccords(dossierWidgets)).daily).toEqual({ domaines: ["app.daily.dev"], publiques: ["espion.example"], profil: "perso" });
 });
 
-test("noyau : refuserAccord efface les données ; compte retiré ensuite → donnees_widget ne rend rien du compte", async () => {
+test("noyau: refuserAccord erases the data; account removed afterwards → donnees_widget returns nothing of the account", async () => {
   const racine = await dossierTemporaire();
   const dossierWidgets = `${racine}-widgets`;
   const { executer } = executeurFactice([[/ info$/, { code: 1 }]]);
@@ -277,7 +277,7 @@ test("noyau : refuserAccord efface les données ; compte retiré ensuite → don
   await ecrireDonnees(dossierWidgets, "daily", { secret: "du compte" });
   await noyau.refuserAccord("daily");
   expect(await lireDonnees(dossierWidgets, "daily")).toBeNull();
-  // L'agent retire compte : le widget redevient public, sans rien du compte.
+  // The agent removes the account: the widget becomes public again, with nothing from the account.
   await ecrireWidget(noyau.chemins, "daily", decl([]), { "recolte.mjs": "export default () => 1" });
   const mcp = await lireMcp(noyau);
   const client = new Client({ name: "test", version: "0" });
@@ -293,7 +293,7 @@ test("noyau : refuserAccord efface les données ; compte retiré ensuite → don
   expect(t).toContain("Aucune donnée");
 });
 
-test("noyau : rejouer passe par la file du planificateur ; surDirect suit la file et se désabonne", async () => {
+test("noyau: rejouer goes through the scheduler queue; surDirect follows the queue and unsubscribes", async () => {
   const n = await creerSansDocker();
   await ecrireWidget(n.chemins, "meteo", declarationWidget(undefined, { recolte: { minutes: 60 } }), { "recolte.mjs": "export default () => 1" });
   const vus: unknown[] = [];
@@ -308,7 +308,7 @@ test("noyau : rejouer passe par la file du planificateur ; surDirect suit la fil
   expect(vus).toHaveLength(avant);
 });
 
-// Docker « prêt » (exécuteur factice) ; le pty de la session lance un faux binaire qui dort, jamais le vrai Docker.
+// Docker « ready » (fake executor); the session pty launches a fake binary that sleeps, never the real Docker.
 async function creerPret() {
   const racine = await dossierTemporaire();
   const { executer } = executeurFactice([
@@ -323,7 +323,7 @@ async function creerPret() {
   return noyau;
 }
 
-test("une session ouverte pour une fenêtre écrit sa propre config MCP, supprimée à la fin de la session", async () => {
+test("a session opened for a window writes its own MCP config, deleted when the session ends", async () => {
   const n = await creerPret();
   const dossier = join(n.chemins.interne, "sessions");
   const session = await n.ouvrirSessionAgent({ cols: 80, rows: 24, fenetre: "F1" });
@@ -339,7 +339,7 @@ test("une session ouverte pour une fenêtre écrit sa propre config MCP, supprim
   await vi.waitFor(async () => expect(await readdir(dossier)).toEqual([]));
 });
 
-test("au démarrage du noyau, les configs de session laissées par un plantage sont purgées", async () => {
+test("at core startup, session configs left behind by a crash are purged", async () => {
   const racine = await dossierTemporaire();
   const dossier = join(cheminsEspace(racine).interne, "sessions");
   await mkdir(dossier, { recursive: true });
@@ -349,7 +349,7 @@ test("au démarrage du noyau, les configs de session laissées par un plantage s
   expect(existsSync(join(dossier, "reste.json"))).toBe(false);
 });
 
-test("arreter supprime la config d'une session encore ouverte", async () => {
+test("arreter deletes the config of a still-open session", async () => {
   const n = await creerPret();
   const dossier = join(n.chemins.interne, "sessions");
   const session = await n.ouvrirSessionAgent({ cols: 80, rows: 24, fenetre: "F1" });
@@ -362,7 +362,7 @@ test("arreter supprime la config d'une session encore ouverte", async () => {
   await session.arreter();
 });
 
-test("une session dont le dossier est un lien symbolique est refusée, rien n'est écrit ailleurs", async () => {
+test("a session whose folder is a symbolic link is refused, nothing is written elsewhere", async () => {
   const n = await creerPret();
   const cible = await dossierTemporaire();
   const dossier = join(n.chemins.interne, "sessions");
@@ -386,7 +386,7 @@ const executionAction = (id: string, debut: string): Execution => ({
   version: 1, id: idExecution(debut), proprietaire: { type: "action", id }, declencheur: "manuelle", debut, fin: debut, statut: "reussie", blocs: [],
 });
 
-test("noyau.actions : page(id, null) rend le dernier résultat résolu ; page d'une exécution inconnue : null", async () => {
+test("noyau.actions: page(id, null) returns the last resolved result; page of an unknown run: null", async () => {
   const { n, dossierActions } = await creerAvecActions(async (racine) => {
     const dossier = join(cheminsEspace(racine).actions, "gitlab");
     await mkdir(dossier, { recursive: true });
@@ -411,7 +411,7 @@ test("noyau.actions : page(id, null) rend le dernier résultat résolu ; page d'
   expect(n.actions.direct()).toEqual({ courantes: [], enAttente: [] });
 });
 
-test("noyau.actions : page() d'une action réécrite sans compte mais encore accordée compte comme lisant avec le compte", async () => {
+test("noyau.actions: page() of an action rewritten without an account but still granted counts as reading with the account", async () => {
   const { n, dossierActions } = await creerAvecActions(async (racine, dossierActions) => {
     const dossier = join(cheminsEspace(racine).actions, "gitlab");
     await mkdir(dossier, { recursive: true });
@@ -425,7 +425,7 @@ test("noyau.actions : page() d'une action réécrite sans compte mais encore acc
   expect(await n.actions.page("gitlab", null)).toMatchObject({ execution: e.id, compte: true });
 });
 
-test("noyau.actions : au démarrage, les données d'une action disparue sont effacées", async () => {
+test("noyau.actions: at startup, the data of a vanished action is erased", async () => {
   const { dossierActions } = await creerAvecActions(async (racine, dossierActions) => {
     await mkdir(cheminsEspace(racine).actions, { recursive: true });
     await ecrireExecution(join(dossierActions, "partie"), executionAction("partie", "2026-10-31T08:00:00.000Z"));
@@ -435,7 +435,7 @@ test("noyau.actions : au démarrage, les données d'une action disparue sont eff
   expect((await lireAccords(dossierActions)).partie).toBeUndefined();
 });
 
-test("noyau.actions : accorder enregistre l'accord sans rien lancer ; refuserAccord le retire et efface", async () => {
+test("noyau.actions: accorder records the grant without running anything; refuserAccord removes it and erases", async () => {
   const { n, dossierActions } = await creerAvecActions(async (racine) => {
     const dossier = join(cheminsEspace(racine).actions, "gitlab");
     await mkdir(dossier, { recursive: true });
