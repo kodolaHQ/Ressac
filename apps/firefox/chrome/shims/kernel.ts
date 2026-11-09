@@ -12,7 +12,7 @@ export type { ReadPage } from "../../../../packages/kernel/src/workflows/protoco
 // Copied: design/remarques.ts imports node:crypto and node:fs. What core/design/viseur.ts imports, so it
 // loads as is in the store (test/shims.test.ts compares them with the originals).
 import { HTML_MAX, TRUNCATED } from "../../shared/design-guards";
-export { HTML_MAX, TRUNCATED as TRUNCATED };
+export { HTML_MAX, TRUNCATED };
 export const CAPTURE_MARGIN = 16;
 export const VIEWFINDER_WORLD = 1999;
 export const USEFUL_STYLES = [

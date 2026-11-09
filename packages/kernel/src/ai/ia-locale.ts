@@ -266,7 +266,7 @@ export class LocalAi {
       r = await fetch(`${model ? this.ollamaUrl : this.kevUrl}/v1/systemone`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(model ? { ...body, model: model } : body),
+        body: JSON.stringify(model ? { ...body, model } : body),
         signal: delayAnd(KEV_DELAY_MS, o.signal),
       });
     } catch (e) {

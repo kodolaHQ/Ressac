@@ -35,7 +35,7 @@ export class ResumeTracking {
    * it is returned (a `timeupdate` at 0 s does not overwrite the kept position).
    */
   async surEvenement(type: VideoEvent, v: { currentTime: number; duration: number; cle: object }): Promise<number | null> {
-    const { currentTime: t, duration: duration } = v;
+    const { currentTime: t, duration } = v;
     if (!Number.isFinite(duration) || duration < MIN_RESUME_DURATION_S || !Number.isFinite(t) || t < 0) return null;
     const state = this.etats.get(v.cle);
     if (!state) {

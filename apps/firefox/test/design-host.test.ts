@@ -69,7 +69,7 @@ async function callTool(d: DesignHost, name: string, args: Record<string, unknow
     new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${server.port}/mcp-externe`), { requestInit: { headers: { Authorization: `Bearer ${token}` } } }),
   );
   try {
-    const r = (await client.callTool({ name: name, arguments: args })) as { content: { text?: string }[]; isError?: boolean };
+    const r = (await client.callTool({ name, arguments: args })) as { content: { text?: string }[]; isError?: boolean };
     return { texte: r.content.map((c) => c.text ?? "").join("\n"), erreur: r.isError === true };
   } finally {
     await client.close();

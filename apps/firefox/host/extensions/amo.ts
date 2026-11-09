@@ -84,7 +84,7 @@ export async function sign(o: {
     let res: Response;
     try {
       res = await fetch(path.startsWith("http") ? path : api + path, {
-        method: method,
+        method,
         headers: { Authorization: `JWT ${token(o.cle)}`, ...(payload && !(payload instanceof FormData) ? { "Content-Type": "application/json" } : {}) },
         body: payload instanceof FormData ? payload : payload ? JSON.stringify(payload) : undefined,
         signal: o.signal,

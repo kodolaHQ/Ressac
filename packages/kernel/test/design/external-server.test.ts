@@ -64,7 +64,7 @@ const HEADERS = { "Content-Type": "application/json", Accept: "application/json,
 /** fetch forbids setting Host/Origin at will: we go through node:http. */
 function raw(port: number, path: string, headers: Record<string, string>): Promise<number> {
   return new Promise((ok, ko) => {
-    const r = request({ host: "127.0.0.1", port, path: path, method: "POST", headers: { ...HEADERS, ...headers } }, (res) => { res.resume(); ok(res.statusCode ?? 0); });
+    const r = request({ host: "127.0.0.1", port, path, method: "POST", headers: { ...HEADERS, ...headers } }, (res) => { res.resume(); ok(res.statusCode ?? 0); });
     r.on("error", ko);
     r.end(BODY);
   });

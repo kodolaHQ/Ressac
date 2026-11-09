@@ -32,7 +32,7 @@
     // Without a sidebar (app window badge), the bubble aligns with the badge's right edge.
     const width = column ? Math.max(120, column.width - 2 * MARGIN) : Math.max(120, Math.min(280, windowW - 2 * MARGIN));
     const left = column ? column.left + MARGIN : Math.max(MARGIN, r.right - width);
-    return { left: left, width: width, top: Math.max(MARGIN, Math.min(r.bottom + 6, windowH - height - MARGIN)) };
+    return { left, width, top: Math.max(MARGIN, Math.min(r.bottom + 6, windowH - height - MARGIN)) };
   });
   $effect(() => {
     // Read then written: without untrack, the effect would rerun itself.

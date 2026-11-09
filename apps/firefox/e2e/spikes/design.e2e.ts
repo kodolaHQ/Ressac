@@ -181,7 +181,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode spikes (plan 35)", () =
        window.synthesizeMouseEvent("mousemove", x, y, { button: 0, clickCount: 0 });
        await new Promise((r) => setTimeout(r, 50));
        if (move) return;
-       for (let i = 1; i <= count; i++) { window.synthesizeMouseEvent("mousedown", x, y, { button: button, clickCount: i }); window.synthesizeMouseEvent("mouseup", x, y, { button: button, clickCount: i }); }
+       for (let i = 1; i <= count; i++) { window.synthesizeMouseEvent("mousedown", x, y, { button, clickCount: i }); window.synthesizeMouseEvent("mouseup", x, y, { button, clickCount: i }); }
        if (button === 2) window.synthesizeMouseEvent("contextmenu", x, y, { button: 2, clickCount: 1 });`,
       [c, o.button ?? 0, o.count ?? 1, o.move ?? false],
     );

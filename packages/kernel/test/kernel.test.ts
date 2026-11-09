@@ -127,7 +127,7 @@ test("at launch, once the container is ready, the agents of a previous app are s
     [/ inspect -f/, { code: 0, stdout: "true\n" }],
   ]);
   // Up-to-date container: the mount probe returns the expected root and hash.
-  const { dockerfileHash: dockerfileHash } = await import("../src/container/workshop.js");
+  const { dockerfileHash } = await import("../src/container/workshop.js");
   const runUpToDate: typeof run = (c, args, o) =>
     args.includes("{{.State.Running}}") ? run(c, args, o) : args[0] === "inspect" ? Promise.resolve({ code: 0, stdout: `${root}|${dockerfileHash()}\n`, stderr: "" }) : run(c, args, o);
   const workshop = await workshopWithoutDocker(root, runUpToDate);
@@ -315,7 +315,7 @@ async function createReady() {
     [/ info$/, { code: 0 }],
     [/ inspect -f/, { code: 0, stdout: "true\n" }],
   ]);
-  const { dockerfileHash: dockerfileHash } = await import("../src/container/workshop.js");
+  const { dockerfileHash } = await import("../src/container/workshop.js");
   const runUpToDate: typeof run = (c, args, o) =>
     args.includes("{{.State.Running}}") ? run(c, args, o) : args[0] === "inspect" ? Promise.resolve({ code: 0, stdout: `${root}|${dockerfileHash()}\n`, stderr: "" }) : run(c, args, o);
   const workshop = await workshopWithoutDocker(root, runUpToDate);

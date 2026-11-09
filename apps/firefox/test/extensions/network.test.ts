@@ -463,8 +463,8 @@ test("guard: on the context's request, the background injects the markers' files
   expect(await emit({ webaios: "contexte", fichiers: [3, 0, 2] }, { tab: { id: 4 }, frameId: 2, documentId: "D" })).toEqual({ onglet: true });
   const target = { tabId: 4, documentIds: ["D"] };
   expect(calls).toEqual([
-    ["scripting.insertCSS", [{ target: target, files: ["s.css"] }]],
-    ["scripting.executeScript", [{ target: target, files: [...PAGE_GUARDS, "a.js", "c/d.js"], injectImmediately: true }]],
+    ["scripting.insertCSS", [{ target, files: ["s.css"] }]],
+    ["scripting.executeScript", [{ target, files: [...PAGE_GUARDS, "a.js", "c/d.js"], injectImmediately: true }]],
   ]);
   // Without documentId: the sender's frame.
   calls.length = 0;

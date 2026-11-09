@@ -17,7 +17,7 @@ export async function callMcpTool(
   const client = new Client({ name: "test", version: "0" });
   await client.connect(transport);
   try {
-    const r = (await client.callTool({ name: name, arguments: args })) as {
+    const r = (await client.callTool({ name, arguments: args })) as {
       content: { type: string; text?: string; data?: string }[];
       isError?: boolean;
     };

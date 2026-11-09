@@ -55,9 +55,9 @@ test("without a token or with a wrong token → 401", async () => {
   const url = `http://127.0.0.1:${server.port}/mcp`;
   const body = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" });
   const headers = { "Content-Type": "application/json", Accept: "application/json, text/event-stream" };
-  expect((await fetch(url, { method: "POST", headers: headers, body: body })).status).toBe(401);
+  expect((await fetch(url, { method: "POST", headers, body })).status).toBe(401);
   expect(
-    (await fetch(url, { method: "POST", headers: { ...headers, Authorization: "Bearer faux" }, body: body })).status,
+    (await fetch(url, { method: "POST", headers: { ...headers, Authorization: "Bearer faux" }, body })).status,
   ).toBe(401);
 });
 

@@ -20,7 +20,7 @@ const { createInterface } = await import("node:readline");
 const { appendFileSync } = await import("node:fs");
 const { stat } = await import("node:fs/promises");
 // Imported after the env is set and stdout redirected: nothing in the kernel can write to stdout at load time.
-const { ACTION_UNKNOWN: ACTION_UNKNOWN, Workshop, blockCatalog, loadProfiles: loadProfiles, spacePaths: spacePaths, createKernel: createKernel, defaultRunner: defaultRunner, LocalAi, readHome: readHome, readFreeLayout: readFreeLayout, readTheme, Pacing: Pacing, contextPrefix: contextPrefix, removeGrant, deleteData: deleteData, watchActions: watchActions } = await import("../../../packages/kernel/src/index.ts");
+const { ACTION_UNKNOWN, Workshop, blockCatalog, loadProfiles, spacePaths, createKernel, defaultRunner, LocalAi, readHome, readFreeLayout, readTheme, Pacing, contextPrefix, removeGrant, deleteData, watchActions } = await import("../../../packages/kernel/src/index.ts");
 const { SessionsAgent } = await import("../core/agent/sessions.ts");
 const { History } = await import("../core/history.ts");
 const { createRpc } = await import("../shared/rpc.ts");

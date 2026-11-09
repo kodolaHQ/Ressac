@@ -85,7 +85,7 @@ function createExternalServer(o: {
       const raw = await readFile(file);
       return raw.length > CAPTURE_MAX ? null : raw;
     });
-    return content.length === 0 ? text(NO_REMARK) : { content: content };
+    return content.length === 0 ? text(NO_REMARK) : { content };
   };
 
   server.registerTool(

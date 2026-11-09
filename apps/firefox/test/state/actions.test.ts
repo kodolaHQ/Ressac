@@ -742,7 +742,7 @@ test("profilsEnUsage: by identifier, spaces included", () => {
 
 // Plan 17, task 11: a project's review page.
 test("ouvrirRelecture opens webaios://relecture/app-essai titled « Relecture — Essai »; a second call returns to the same tab", async () => {
-  const { reviewUrl: reviewUrl } = await import("../../shared/model");
+  const { reviewUrl } = await import("../../shared/model");
   ag({ type: "ouvrirRelecture", fenetreId: F, projet: "app-essai", nom: "Essai" });
   const pages = () => Object.values(e.onglets).filter((o) => o.url === "webaios://relecture/app-essai");
   expect(pages()).toHaveLength(1);
@@ -756,8 +756,8 @@ test("ouvrirRelecture opens webaios://relecture/app-essai titled « Relecture �
 });
 
 test("projetDeUrlRelecture refuses webaios://relecture/../x and webaios://relecture/app-", async () => {
-  const { reviewUrlProject: reviewUrlProject } = await import("../../shared/model");
-  const { PROJECT_ID: PROJECT_ID } = await import("@webaios/kernel");
+  const { reviewUrlProject } = await import("../../shared/model");
+  const { PROJECT_ID } = await import("@webaios/kernel");
   expect(reviewUrlProject("webaios://relecture/../x")).toBeNull();
   expect(reviewUrlProject("webaios://relecture/app-")).toBeNull();
   expect(reviewUrlProject("webaios://relecture/app-essai/x")).toBeNull();
@@ -765,11 +765,11 @@ test("projetDeUrlRelecture refuses webaios://relecture/../x and webaios://relect
   expect(reviewUrlProject("webaios://relecture/app-essai")).toBe("app-essai");
   expect(reviewUrlProject("webaios://relecture/ext-0123456789abcdef")).toBe("ext-0123456789abcdef");
   // The UI copies follow the kernel.
-  const { NOT_DISPLAYABLE: NOT_DISPLAYABLE } = await import("../../shared/model");
-  const { BINARY_FILE: BINARY_FILE, FILE_TOO_BIG: FILE_TOO_BIG } = await import("@webaios/kernel");
+  const { NOT_DISPLAYABLE } = await import("../../shared/model");
+  const { BINARY_FILE, FILE_TOO_BIG } = await import("@webaios/kernel");
   expect(NOT_DISPLAYABLE).toEqual({ binaire: BINARY_FILE, "trop-gros": FILE_TOO_BIG });
-  const { PAGE_LINE_CHANGED: PAGE_LINE_CHANGED } = await import("../../shared/model");
-  const { LINE_CHANGED: LINE_CHANGED } = await import("@webaios/kernel");
+  const { PAGE_LINE_CHANGED } = await import("../../shared/model");
+  const { LINE_CHANGED } = await import("@webaios/kernel");
   expect(PAGE_LINE_CHANGED).toBe(LINE_CHANGED);
   for (const p of ["app-essai", "app-.x", "ext-0123456789abcdef", "ext-0123", "demo-15283", "demo-", "app-a/b", "site-tuning", "site-", "site-A", "site-../x"])
     expect(reviewUrlProject(`webaios://relecture/${p}`) !== null).toBe(PROJECT_ID.test(p));

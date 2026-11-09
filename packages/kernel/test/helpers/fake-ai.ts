@@ -40,7 +40,7 @@ export const fakeKev = (answers: unknown = { q: { type: "noul", noul: 0.91 } }) 
 /** Fake Ollama: /api/chat answers `contenu`. */
 export const fakeOllama = (content: string) =>
   start((r, res) => {
-    if (r.url === "/api/chat") return json(res, 200, { message: { content: content } });
+    if (r.url === "/api/chat") return json(res, 200, { message: { content } });
     if (r.url === "/api/tags") return json(res, 200, { models: [{ name: "gemma4:e4b-mlx" }] });
     json(res, 404, {});
   });

@@ -48,7 +48,7 @@ export function bubbleSlot(
     x: clamp(bounds.x + rect.x * zoom, win[0] - BUBBLE_SIZE.largeur),
     y: Math.max(o.hautMin ?? 0, clamp(bounds.y + (rect.y + rect.hauteur) * zoom + BUBBLE_GAP, win[1] - height)),
     width: BUBBLE_SIZE.largeur,
-    height: height,
+    height,
   };
 }
 
