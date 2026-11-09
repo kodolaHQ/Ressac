@@ -78,7 +78,7 @@ test("attendreReponse: with no answer by the deadline, the question is withdrawn
   }
 });
 
-test("attendreReponse : autoriser → oui, refuser → non", async () => {
+test("attendreReponse: allow → yes, deny → no", async () => {
   await expect(attendreReponse((repondre) => (repondre("autoriser"), () => {}), 1000)).resolves.toBe(true);
   await expect(attendreReponse((repondre) => (repondre("refuser"), () => {}), 1000)).resolves.toBe(false);
 });

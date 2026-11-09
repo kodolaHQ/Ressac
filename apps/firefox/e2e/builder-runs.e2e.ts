@@ -366,7 +366,7 @@ const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 const agent = (body: string) => m.execute(`return (async () => { const agent = (await ChromeUtils.importESModule("${STORE}").ready).agent; ${body} })();`);
 
 describe("the workflow builder's runs", () => {
-  it("▶ Lancer : pastilles en cours puis éléments par bloc, nouvelle exécution choisie, aperçu à jour", async () => {
+  it("▶ Lancer: pastilles in progress then items per block, new run chosen, preview up to date", async () => {
     await home();
     await trackErrors();
     await builder("lancer");
@@ -391,7 +391,7 @@ describe("the workflow builder's runs", () => {
     expect(await errors()).toEqual([]);
   });
 
-  it("Rejouer depuis tri après avoir changé le seuil : essai marqué, page non relue, données, mémoire et état inchangés, aperçu de l'essai", async () => {
+  it("Rejouer depuis tri after changing the threshold: trial marked, page not reread, data, memory and state unchanged, trial preview", async () => {
     await home();
     // Without a state: harvested at launch (a real run, the page read once).
     await poll(() => homeData("rejouer"), '{"liens":["Nouveau modèle IA"]}', 20_000);
@@ -476,7 +476,7 @@ describe("the workflow builder's runs", () => {
     expect(reads.get("rejouer")).toBe(pages);
   });
 
-  it("Rejouer depuis un bloc dont la sortie amont est tronquée : message « Rejeu impossible : … tronquée … », aucune exécution ajoutée", async () => {
+  it("Rejouer from a block whose upstream output is truncated: message « Rejeu impossible : … tronquée … », no run added", async () => {
     await builder("tronque");
     await waitPressed(tid(`execution-${TRUNCATED}`));
     await click(m, tid("noeud-tri"));
@@ -487,7 +487,7 @@ describe("the workflow builder's runs", () => {
     await waitDisabled(tid("rejouer"), false);
   });
 
-  it("pendant une exécution, Lancer et Rejouer sont grisés", async () => {
+  it("during a run, Lancer and Rejouer are greyed out", async () => {
     await home();
     // Without a state: harvested at launch, it has a run to replay.
     await poll(() => homeData("grise"), '{"liens":["Nouveau modèle IA"]}', 20_000);
@@ -508,7 +508,7 @@ describe("the workflow builder's runs", () => {
     await waitText(tid("pastille-tri"), "1");
   });
 
-  it("un widget avec seulement recolte.mjs et un compte : le constructeur montre recolte → sortie ; ouvrir, sélectionner, réorganiser, choisir une exécution n'écrivent rien", async () => {
+  it("a widget with only recolte.mjs and an account: the builder shows recolte → sortie; opening, selecting, rearranging, choosing a run write nothing", async () => {
     const dir = widgetDir(dataDir, "gmail");
     await home();
     await trackErrors();
@@ -541,7 +541,7 @@ describe("the workflow builder's runs", () => {
     expect(await errors()).toEqual([]);
   });
 
-  it("modifier le workflow implicite crée workflow.json, garde recolte.mjs, et le widget se met à jour avec les mêmes données", async () => {
+  it("modifying the implicit workflow creates workflow.json, keeps recolte.mjs, and the widget updates with the same data", async () => {
     const dir = widgetDir(dataDir, "simple");
     await home();
     // Without a state: harvested at launch, by recolte.mjs alone.
@@ -573,7 +573,7 @@ describe("the workflow builder's runs", () => {
     expect((await readJson(path.join(dataOf("simple"), "etat.json"))).statut).toBe("ok");
   });
 
-  it("l'agent écrit un workflow.json coupé : le canevas reste, le bandeau dit « illisible », le widget affiche « Workflow invalide : … »", async () => {
+  it("the agent writes a cut-off workflow.json: the canvas stays, the banner says « illisible », the widget shows « Workflow invalide : … »", async () => {
     const file = path.join(widgetDir(dataDir, "coupe"), "workflow.json");
     await builder("coupe");
     await waitVisible(tid("noeud-tri"));
@@ -595,7 +595,7 @@ describe("the workflow builder's runs", () => {
     expect((await readJson(path.join(dataOf("coupe"), "etat.json"))).erreur).toMatch(/^Workflow invalide : /);
   });
 
-  it("un workflow de 30 blocs s'ouvre lisible : aucun nœud ne se chevauche, tous dans la vue après fitView", async () => {
+  it("a 30-block workflow opens readable: no node overlaps, all in view after fitView", async () => {
     expect(thirtyBlocks().workflow.blocs).toHaveLength(30);
     const before = await snapshot(widgetDir(dataDir, "grand"));
     await builder("grand");
@@ -618,7 +618,7 @@ describe("the workflow builder's runs", () => {
     expect(await snapshot(widgetDir(dataDir, "grand"))).toEqual(before);
   });
 
-  it("le panneau Widget d'un widget web affiche « Accès au web : ouvert » et ses heures ; Chercher sur le web s'ajoute depuis la palette", async () => {
+  it("the Widget panel of a web widget shows « Accès au web : ouvert » and its hours; Chercher sur le web is added from the palette", async () => {
     const declaration = await readFile(path.join(widgetDir(dataDir, "web"), "widget.json"), "utf8");
     await builder("web");
     const panel = tid("panneau-widget");
@@ -636,7 +636,7 @@ describe("the workflow builder's runs", () => {
     expect(await readFile(path.join(widgetDir(dataDir, "web"), "widget.json"), "utf8")).toBe(declaration);
   });
 
-  it("dans un widget sans web, Chercher sur le web est grisé ; un web.chercher écrit par l'agent rend « Non enregistré » / « Workflow invalide : web.chercher … »", async () => {
+  it("in a widget without web, Chercher sur le web is greyed out; a web.chercher written by the agent renders « Non enregistré » / « Workflow invalide : web.chercher … »", async () => {
     await builder("sansweb");
     await waitVisible(tid("noeud-tri"));
     // Nothing about the web in the panel of a widget without access.
@@ -663,7 +663,7 @@ describe("the workflow builder's runs", () => {
     await waitContains(tid("etat-enregistrement"), 'Workflow invalide : web.chercher : le widget doit déclarer "web": true');
   });
 
-  it("auFilDeLEau derrière Garder les N premiers : avertissement sur la sortie", async () => {
+  it("auFilDeLEau behind Garder les N premiers: warning on the output", async () => {
     await builder("fil");
     await click(m, tid("noeud-sortie"));
     await waitContains(tid("avertissement-sortie"), "rien à publier au fil de l'eau : l'entrée de la sortie n'est pas traitée élément par élément");

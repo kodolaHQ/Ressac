@@ -11,7 +11,7 @@ const actus = (): Brouillon => ({
   liens: [lien("flux", "uniques"), lien("uniques", "tri"), lien("tri", "top"), lien("top", "a-resumer"), lien("a-resumer", "pages"), lien("pages", "resumes"), lien("top", "articles"), lien("resumes", "articles"), lien("articles", "sortie")],
 });
 
-test("disposer : actus en colonnes (flux 0, uniques 1, …, articles 7, sortie 8)", () => {
+test("disposer: news in columns (flux 0, uniques 1, …, articles 7, sortie 8)", () => {
   const p = disposer(actus());
   expect(p.flux).toEqual({ x: 0, y: 0 });
   expect(p.uniques!.x).toBe(COLONNE_PX);

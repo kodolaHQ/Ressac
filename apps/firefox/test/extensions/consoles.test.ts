@@ -4,7 +4,7 @@ import { CONSOLE_MAX, ConsolesExtensions, FENETRE_PLANTAGES_MS, PLANTAGES_MAX } 
 const ID = "a".repeat(32);
 const AUTRE = "b".repeat(32);
 
-test("valeurs : 500 messages, 3 plantages en 60 s", () => {
+test("values: 500 messages, 3 crashes in 60 s", () => {
   expect(CONSOLE_MAX).toBe(500);
   expect(PLANTAGES_MAX).toBe(3);
   expect(FENETRE_PLANTAGES_MS).toBe(60_000);

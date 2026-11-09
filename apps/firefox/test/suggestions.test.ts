@@ -33,12 +33,12 @@ test("« TICK » and « tîck » suggest it too", () => {
   expect(suggestionsActions("tîck", [TICKETS])).toHaveLength(1);
 });
 
-test("« leboncoin clio lyon » → Leboncoin, saisie « clio lyon »", () => {
+test("« leboncoin clio lyon » → Leboncoin, entry « clio lyon »", () => {
   expect(suggestionsActions("leboncoin clio lyon", [LEBONCOIN])).toEqual([{ id: "lbc", nom: "Leboncoin", saisie: "clio lyon" }]);
   expect(suggestionsActions("  LeBonCoin   Clio  Lyon ", [LEBONCOIN])[0]!.saisie).toBe("Clio  Lyon");
 });
 
-test("« leboncoin » seul → saisie null", () => {
+test("« leboncoin » alone → entry null", () => {
   expect(suggestionsActions("leboncoin", [LEBONCOIN])).toEqual([{ id: "lbc", nom: "Leboncoin", saisie: null }]);
 });
 
@@ -52,7 +52,7 @@ test("7 matching actions: 5", () => {
   expect(suggestionsActions("alp", sept)).toHaveLength(5);
 });
 
-test("texte vide : []", () => {
+test("empty text: []", () => {
   expect(suggestionsActions("", [TICKETS])).toEqual([]);
   expect(suggestionsActions("   ", [TICKETS])).toEqual([]);
 });

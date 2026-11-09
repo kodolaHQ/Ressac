@@ -24,7 +24,7 @@ test("javascript: refused, whatever the case", () => {
   expect(versUrl("  JavaScript:alert(1)", "google")).toBeNull();
 });
 
-test("saisie vide → null", () => expect(versUrl("   ", "google")).toBeNull());
+test("empty entry → null", () => expect(versUrl("   ", "google")).toBeNull());
 
 test("an invalid URL (« http:// » alone) → search instead of an exception", () => {
   expect(versUrl("http://", "google")).toBe("https://www.google.com/search?q=http%3A%2F%2F");

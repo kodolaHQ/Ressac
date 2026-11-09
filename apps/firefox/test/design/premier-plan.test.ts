@@ -5,7 +5,7 @@ test("app and site at once → app target", () => {
   expect(choisirCibleDesign({ appli: "essai", site: "tuning", autreFenetre: true, fenetreActive: "f1" })).toEqual({ type: "cible", cible: { type: "app", dossier: "essai" } });
 });
 
-test("site seul → cible site", () => {
+test("site alone → site target", () => {
   expect(choisirCibleDesign({ site: "tuning", autreFenetre: true, fenetreActive: "f1" })).toEqual({ type: "cible", cible: { type: "site", id: "tuning" } });
 });
 

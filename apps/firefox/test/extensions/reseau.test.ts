@@ -522,7 +522,7 @@ test("guard: onMessage answers { webaios: \"contexte\" } with estOnglet(sender.t
   expect(await emettre({ webaios: "contexte" }, { tab: { id: 6 } })).toEqual({ onglet: false });
   expect(vus).toEqual([]);
   (Object.getPrototypeOf(onMessage) as { removeListener: Function }).removeListener.call(onMessage, parProto);
-  // Les autres messages lui parviennent.
+  // The other messages reach it.
   expect(await emettre({ autre: 1 }, { tab: { id: 4 } })).toEqual({ onglet: true });
   expect(vus).toEqual([{ autre: 1 }]);
   onMessage.removeListener(agent);

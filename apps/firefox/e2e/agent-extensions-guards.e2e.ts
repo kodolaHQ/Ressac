@@ -413,11 +413,11 @@ const EXTENSION_GARDE = {
     ],
   },
   "webaios.json": { reseau: ["accorde.test"] },
-  // Écrit pour sortir d'une enveloppe textuelle (`});` … `(() => {`) : ne tourne nulle part, ni avant la réponse du fond.
+  // Written to break out of a textual wrapper (`});` … `(() => {`): runs nowhere, not even before the background's answer.
   "evade.js": '});\ndocument.documentElement.setAttribute("data-evade", "1");\nglobalThis.__webaiosApres(() => {\n',
-  // Une feuille de l'agent qui charge une image d'autre.test : jamais demandée depuis une lecture invisible.
+  // An agent stylesheet that loads an image from autre.test: never requested from an invisible read.
   "fuite.css": "html { background-image: url(https://autre.test/cs-css); }\n",
-  // Sans déclaration lexicale : relancé dans le même monde, il compterait chaque passage (contenu.js, lui, lèverait sur ses `const`).
+  // Without a lexical declaration: rerun in the same world, it would count every pass (contenu.js, for its part, would throw on its `const`).
   "outils.js": `document.documentElement.setAttribute("data-agent-compte", String(Number(document.documentElement.getAttribute("data-agent-compte") || 0) + 1));
 function noter(cle, valeur) {
   const r = JSON.parse(document.documentElement.getAttribute("data-agent") || "{}");

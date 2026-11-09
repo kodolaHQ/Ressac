@@ -122,7 +122,7 @@ describe("network", () => {
     ]);
   });
 
-  test("loadingFailed note l'erreur", () => {
+  test("loadingFailed notes the error", () => {
     const t = new TamponOnglet();
     envoi(t, "r2", "http://localhost:1/");
     t.evenement("Network.loadingFailed", { requestId: "r2", timestamp: 100.5, errorText: "net::ERR_CONNECTION_REFUSED", type: "Fetch" });
@@ -161,7 +161,7 @@ test("the caps are adjustable", () => {
   expect(t.console().map((m) => m.texte)).toEqual(["m1", "m2"]);
 });
 
-describe("contextes d'extension", () => {
+describe("extension contexts", () => {
   const contexte = (t: TamponOnglet, id: number, origin: string) =>
     t.evenement("Runtime.executionContextCreated", { context: { id, origin, name: "x" } });
   const logDans = (t: TamponOnglet, id: number, texte: string) =>

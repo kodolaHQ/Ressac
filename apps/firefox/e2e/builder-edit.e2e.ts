@@ -332,7 +332,7 @@ describe("the workflow builder", () => {
     expect(await agentTab()).toBe("true");
   });
 
-  it("ajouter un bloc par la palette le rend « Non enregistré : … entrée manquante » ; le relier l'enregistre", async () => {
+  it("adding a block through the palette makes it « Non enregistré : … entrée manquante »; linking it saves it", async () => {
     await builder("add");
     await waitCount("noeud-tri", 1);
     // The output already exists: it is not offered.
@@ -355,7 +355,7 @@ describe("the workflow builder", () => {
     expect(positions.size).toBe(written.blocs.length);
   });
 
-  it("⌘Z annule l'ajout et réenregistre", async () => {
+  it("⌘Z undoes the addition and saves again", async () => {
     await builder("undo");
     await click(m, '[data-testid="palette-liste.garder"]');
     await waitCount("noeud-liste-garder", 1);
@@ -377,7 +377,7 @@ describe("the workflow builder", () => {
     await waitCount("noeud-liste-garder", 1);
   });
 
-  it("ajouter un bloc Code écrit son fichier .mjs (modèle qui rend son entrée) et enregistre le workflow", async () => {
+  it("adding a Code block writes its .mjs file (template that returns its input) and saves the workflow", async () => {
     await builder("add-code");
     await click(m, '[data-testid="palette-code"]');
     await waitCount("noeud-code", 1);
@@ -387,7 +387,7 @@ describe("the workflow builder", () => {
     expect(block).toMatchObject({ type: "code", parametres: { source: "code.mjs" } });
   });
 
-  it("le constructeur d'un widget en workflow montre ses blocs et, par bloc, les éléments de la dernière exécution ; ▶ Lancer en ajoute une", async () => {
+  it("a workflow widget's builder shows its blocks and, per block, the items of the last run; ▶ Lancer adds one", async () => {
     await home();
     const data = () => inUi<string>(m, `return doc.querySelector('[data-testid="widget-run"] iframe')?.contentDocument?.getElementById("donnees")?.textContent ?? ""`);
     await poll(data, '{"liens":["Nouveau modèle IA"]}', 20_000);
@@ -413,7 +413,7 @@ describe("the workflow builder", () => {
     expect(await readWorkflow(dataDir, "run")).toEqual(WORKFLOW_VEILLE);
   });
 
-  it("un widget avec seulement recolte.mjs s'ouvre en workflow implicite (recolte → sortie) sans créer de workflow.json", async () => {
+  it("a widget with only recolte.mjs opens as an implicit workflow (recolte → sortie) without creating a workflow.json", async () => {
     await home();
     await waitUi(m, `return !!doc.querySelector('[data-testid="widget-compte"] [data-testid="bandeau-accord"]')?.textContent.includes("127.0.0.1")`);
     const dir = widgetDir(dataDir, "compte");
@@ -433,7 +433,7 @@ describe("the workflow builder", () => {
     expect(await snapshot(dir)).toEqual(before);
   });
 
-  it("un workflow.json invalide s'ouvre avec son erreur et ne se lance pas ; illisible, il le dit", async () => {
+  it("an invalid workflow.json opens with its error and does not run; unreadable, it says so", async () => {
     await builder("cycle");
     await waitContains("etat-enregistrement", "Non enregistré : Workflow invalide : ");
     await waitContains("etat-enregistrement", "cycle");
@@ -445,7 +445,7 @@ describe("the workflow builder", () => {
     expect(await inUi(m, `return ${q("lancer")}.disabled`)).toBe(true);
   });
 
-  it("Suppr supprime la sélection mais jamais la sortie", async () => {
+  it("Suppr deletes the selection but never the output", async () => {
     await builder("suppr");
     await click(m, '[data-testid="noeud-sortie"]');
     await pressKeys(m, "Delete");
@@ -468,7 +468,7 @@ describe("the workflow builder", () => {
     expect(await readWorkflow(dataDir, "suppr")).toEqual(WORKFLOW_VEILLE);
   });
 
-  it("⌘Z tapé dans un champ de texte ne défait pas le canevas", async () => {
+  it("⌘Z typed in a text field does not undo the canvas", async () => {
     await builder("field");
     await click(m, '[data-testid="palette-liste.garder"]');
     await waitCount("noeud-liste-garder", 1);
@@ -483,7 +483,7 @@ describe("the workflow builder", () => {
     await waitCount("noeud-liste-garder", 0);
   });
 
-  it("l'agent réécrit workflow.json pendant un brouillon invalide : bandeau, « Garder la mienne » puis « Prendre sa version »", async () => {
+  it("the agent rewrites workflow.json during an invalid draft: banner, « Garder la mienne » then « Prendre sa version »", async () => {
     await builder("agent");
     const file = path.join(widgetDir(dataDir, "agent"), "workflow.json");
     await click(m, '[data-testid="palette-liste.garder"]');
@@ -519,7 +519,7 @@ describe("the workflow builder", () => {
     expect(await thresholdOf("agent")).toBe(0.9);
   });
 
-  it("changer le seuil d'ia.trier dans l'onglet Bloc réécrit workflow.json et efface la mémoire de ce bloc seulement", async () => {
+  it("changing ia.trier's threshold in the Bloc tab rewrites workflow.json and erases that block's memory only", async () => {
     const memory = path.join(dataOf("seuil"), "memoire.json");
     await writeFile(memory, JSON.stringify({ version: 1, blocs: { tri: { type: "ia.trier", valeur: { vus: ["a"] } }, textes: { type: "code", valeur: { vus: ["b"] } } } }));
     await builder("seuil");
@@ -567,7 +567,7 @@ describe("the workflow builder", () => {
     await poll(() => thresholdOf("seuil"), 0.5);
   });
 
-  it("un gabarit {config.inconnu} affiche un avertissement et s'enregistre quand même", async () => {
+  it("a {config.inconnu} template shows a warning and saves anyway", async () => {
     await builder("gabarit");
     await click(m, '[data-testid="noeud-tri"]');
     const questionOf = async () => (await readWorkflow(dataDir, "gabarit")).blocs.find((b: { id: string }) => b.id === "tri").parametres.question;
@@ -590,7 +590,7 @@ describe("the workflow builder", () => {
     expect(liens).toEqual(WORKFLOW_VEILLE.blocs[1]);
   });
 
-  it("le code d'un bloc code ne s'écrit qu'avec Enregistrer le code ; ⌘S aussi", async () => {
+  it("a code block's code is only written with Enregistrer le code; ⌘S too", async () => {
     await builder("code");
     const code = path.join(widgetDir(dataDir, "code"), "liens.mjs");
     await click(m, '[data-testid="noeud-liens"]');
@@ -661,7 +661,7 @@ describe("the workflow builder", () => {
     expect(await readFile(code, "utf8")).toBe("export default async (page) => page.liens; // agent");
   });
 
-  it("une sortie qui contient <img src=x onerror=…> s'affiche en texte", async () => {
+  it("an output that contains <img src=x onerror=…> is displayed as text", async () => {
     const trap = '<img src=x onerror="window.piege=1">';
     const start = "2026-10-29T10:00:00.000Z";
     const id = "2026-10-29T10-00-00-000Z";

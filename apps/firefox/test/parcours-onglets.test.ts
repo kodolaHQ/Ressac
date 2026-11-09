@@ -134,7 +134,7 @@ test("tab closed during the walk: selection within bounds, then end when one is 
   expect(actif()).toBe(c);
 });
 
-test("0 ou 1 onglet : parcourir ne fait rien", () => {
+test("0 or 1 tab: parcourir does nothing", () => {
   p.parcourir(F, 1);
   expect(vi.getTimerCount()).toBe(0);
   ouvrir("https://a.fr");
@@ -154,7 +154,7 @@ test("release outside a walk: nothing", () => {
   expect(envoyer).not.toHaveBeenCalled();
 });
 
-test("messages de l'interface : survoler, choisir, avancer, valider", () => {
+test("interface messages: hover, choose, advance, confirm", () => {
   const { a, b, c } = troisOnglets();
   p.parcourir(F, 1);
   vi.advanceTimersByTime(250);
@@ -255,7 +255,7 @@ test("focus returned to the displayed page after a walk with a panel (confirmed 
   expect(rendreFocus).toHaveBeenCalledTimes(2);
   expect(actifAuFocus).toEqual([c, c]);
 
-  // Choisi d'un clic : pareil.
+  // Chosen by a click: same.
   p.parcourir(F, 1);
   vi.advanceTimersByTime(250);
   p.message(F, { type: "choisir", id: a });

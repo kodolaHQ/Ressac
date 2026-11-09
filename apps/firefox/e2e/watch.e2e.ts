@@ -301,7 +301,7 @@ const NOTIFICATION = { titre: "Veille voitures", texte: "5 nouveaux éléments" 
 
 // ---------------------------------------------------------------------------------------------------------------------
 
-it("veille de bout en bout : le widget se remplit au fil de l'eau (compteur vu), une recherche par modèle, une notification « 5 nouveaux éléments »", async () => {
+it("watch end to end: the widget fills in as it goes (counter seen), a search by model, a « 5 nouveaux éléments » notification", async () => {
   // A slow Gemma: the ads finish one after the other, the progress and the publications show.
   settings.gemmaDelayMs = 2500;
   await writeWatch();
@@ -342,7 +342,7 @@ it("veille de bout en bout : le widget se remplit au fil de l'eau (compteur vu),
   await untilEqual(notifications, [NOTIFICATION]);
 }, 120_000);
 
-it("seconde exécution : aucune annonce déjà vue, aucune recherche pour un modèle déjà étudié, aucune notification", async () => {
+it("second run: no already-seen listing, no search for an already studied model, no notification", async () => {
   await writeWatch();
   const m = await launchWatch();
   expect((await runWatch(m)).statut).toBe("reussie");
@@ -364,7 +364,7 @@ it("seconde exécution : aucune annonce déjà vue, aucune recherche pour un mod
   expect(notifications()).toEqual([NOTIFICATION]);
 }, 120_000);
 
-it("une annonce dont la page échoue revient à l'exécution suivante", async () => {
+it("a listing whose page fails comes back at the next run", async () => {
   await writeWatch();
   const m = await launchWatch();
   settings.failingPages.add(3);
@@ -389,7 +389,7 @@ it("une annonce dont la page échoue revient à l'exécution suivante", async ()
   expect(back[0]!.avis).toBe("Bonne affaire.");
 }, 120_000);
 
-it("une veille longue en cours n'empêche pas un widget court de se mettre à jour", async () => {
+it("a long watch in progress does not prevent a short widget from updating", async () => {
   // Each opinion takes 8 s: the watch lasts much longer than the short widget's harvest.
   settings.gemmaDelayMs = 8000;
   await writeWatch();
@@ -411,7 +411,7 @@ it("une veille longue en cours n'empêche pas un widget court de se mettre à jo
   expect(runs()).toEqual([]);
 }, 120_000);
 
-it("DuckDuckGo montre une vérification : une seule requête envoyée, avis sans fiabilité, bloc partiel ; les annonces reviennent ensuite avec leur fiabilité", async () => {
+it("DuckDuckGo shows a check: a single request sent, notice without reliability, partial block; the listings come back afterwards with their reliability", async () => {
   settings.ddg = "verification.html";
   await writeWatch();
   const from = site.log.length;
@@ -454,7 +454,7 @@ it("DuckDuckGo montre une vérification : une seule requête envoyée, avis sans
   expect(notifications()).toEqual([NOTIFICATION]);
 }, 180_000);
 
-it('le widget Gmail (compte, recolte.mjs) se met à jour comme avant ; avec "web": true ajouté, il s\'affiche en erreur avec le message exact', async () => {
+it('the Gmail widget (account, recolte.mjs) updates as before; with "web": true added, it shows in error with the exact message', async () => {
   const gmail = {
     nom: "Gmail",
     recolte: { minutes: 60 },
@@ -481,7 +481,7 @@ it('le widget Gmail (compte, recolte.mjs) se met à jour comme avant ; avec "web
   expect(site.log.slice(from)).toEqual([]);
 }, 60_000);
 
-it("quitter pendant la veille : à la relance, les annonces publiées sont là, l'exécution est interrompue", async () => {
+it("quitting during the watch: on relaunch, the published listings are there, the run is ended as interrupted", async () => {
   settings.gemmaDelayMs = 6000;
   await writeWatch();
   const first = await launchWatch();
@@ -508,7 +508,7 @@ it("quitter pendant la veille : à la relance, les annonces publiées sont là, 
   expect(runs().map((e) => e.statut)).toEqual(["interrompue"]);
 }, 120_000);
 
-it("un clic sur la notification met au premier plan la dernière fenêtre, sans changer d'onglet", async () => {
+it("a click on the notification brings the last window to the front, with no tab switch", async () => {
   const m = await launchWatch();
   const second = await newWindow(m);
   await m.command("WebDriver:SwitchToWindow", { handle: second, focus: true });

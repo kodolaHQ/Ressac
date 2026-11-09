@@ -15,7 +15,7 @@ test("empty text without sources: a single default line « Page d'accueil »", (
   expect(lignesCommande("", VIDE, null)).toEqual([{ type: "defaut", texte: "", libelle: "Page d'accueil" }]);
 });
 
-test("adresse : « Ouvrir exemple.fr » en premier ; mots : « Rechercher »", () => {
+test("address: « Ouvrir exemple.fr » first; words: « Rechercher »", () => {
   expect(lignesCommande(" exemple.fr ", VIDE, null)[0]).toEqual({ type: "defaut", texte: "exemple.fr", libelle: "Ouvrir exemple.fr" });
   expect(lignesCommande("chat noir", VIDE, null)[0]).toEqual({ type: "defaut", texte: "chat noir", libelle: "Rechercher « chat noir »" });
 });
@@ -25,7 +25,7 @@ test("group order: default, actions, tabs, apps, history", () => {
   expect(lignesCommande("chat", S, null).map((l) => l.type)).toEqual(["defaut", "action", "onglet", "appli", "historique"]);
 });
 
-test("limites : 3 onglets, 5 visites", () => {
+test("limits: 3 tabs, 5 visits", () => {
   const S: SourcesCommande = { ...VIDE, onglets: [1, 2, 3, 4, 5].map((i) => onglet(`o${i}`, `chat ${i}`)), historique: [1, 2, 3, 4, 5, 6, 7, 8].map((i) => visite(`https://h${i}.fr/`, `chat ${i}`)) };
   const l = lignesCommande("chat", S, null);
   expect(l.filter((x) => x.type === "onglet")).toHaveLength(3);

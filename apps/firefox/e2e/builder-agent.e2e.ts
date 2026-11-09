@@ -123,7 +123,7 @@ async function poll(read: () => Promise<string>, expected: string, ms = 10_000):
 }
 
 describe("the builder's Agent tab", () => {
-  it("l'onglet Agent montre la même conversation que le panneau, sans doublon de sortie", async () => {
+  it("the Agent tab shows the same conversation as the panel, without output duplicates", async () => {
     await launch();
     await homeAgent();
     await typeInTerminal("premier");
@@ -158,7 +158,7 @@ describe("the builder's Agent tab", () => {
     await oneTerminal();
   });
 
-  it("⌘J et ✦ dans le constructeur ouvrent l'onglet Agent et le panneau de l'agent, sans contexte pré-rempli", async () => {
+  it("⌘J and ✦ in the builder open the Agent tab and the agent panel, without pre-filled context", async () => {
     await launch();
     await homeAgent();
     await builder("veille");
@@ -179,7 +179,7 @@ describe("the builder's Agent tab", () => {
     await oneTerminal();
   });
 
-  it("workflow.json illisible : pas de canevas, mais ⌘J ouvre quand même l'onglet Agent", async () => {
+  it("unreadable workflow.json: no canvas, but ⌘J still opens the Agent tab", async () => {
     await launch();
     await homeAgent();
     await openBuilder(m, "casse");
@@ -191,7 +191,7 @@ describe("the builder's Agent tab", () => {
     await terminalShows("faux agent prêt>");
   });
 
-  it("entrer dans le constructeur puis en sortir ne donne pas le clavier au terminal de l'agent ; ✦ le lui donne", async () => {
+  it("entering the builder then leaving it does not give the keyboard to the agent's terminal; ✦ gives it", async () => {
     await launch();
     await homeAgent();
     await builder("veille");
@@ -210,7 +210,7 @@ describe("the builder's Agent tab", () => {
     for (const end = Date.now() + 10_000; !(await terminalFocused()); await sleep(100)) if (Date.now() > end) throw new Error("the terminal did not take the keyboard");
   });
 
-  it("panneau fermé : Agent → Bloc → Agent garde une seule conversation et un seul terminal", async () => {
+  it("panel closed: Agent → Bloc → Agent keeps a single conversation and a single terminal", async () => {
     await launch();
     await homeAgent();
     // The panel closed by the user on the home page.
@@ -233,7 +233,7 @@ describe("the builder's Agent tab", () => {
     await oneTerminal();
   });
 
-  it("l'historique posé sur le constructeur : ⌘J le referme et ouvre l'onglet Agent", async () => {
+  it("history laid over the builder: ⌘J closes it and opens the Agent tab", async () => {
     await launch();
     await homeAgent();
     await builder("veille");
@@ -247,7 +247,7 @@ describe("the builder's Agent tab", () => {
     await terminalShows("faux agent prêt>");
   });
 
-  it("l'agent réécrit workflow.json : le canevas montre le nouveau bloc sans changer le zoom ; avec un brouillon invalide, le bandeau propose les deux versions", async () => {
+  it("the agent rewrites workflow.json: the canvas shows the new block without changing the zoom; with an invalid draft, the banner offers both versions", async () => {
     await launch();
     await builder("veille");
     await waitCount("noeud-tri", 1);
@@ -295,7 +295,7 @@ describe("the builder's Agent tab", () => {
 });
 
 describe("workflow_ouvert", () => {
-  it("workflow_ouvert (appelerOutil avec le jeton de la session de cette fenêtre) rend le widget et le bloc sélectionné", async () => {
+  it("workflow_ouvert (appelerOutil with the token of this window's session) returns the widget and the selected block", async () => {
     await launch();
     await homeAgent();
     let session = lastSessionConfig();

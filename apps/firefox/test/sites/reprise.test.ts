@@ -105,7 +105,7 @@ test("play with known position 1390: returns 1385, only once", async () => {
   expect(demandes()).toBe(2);
 });
 
-test("position 3 : rend 0", async () => {
+test("position 3: returns 0", async () => {
   const { s } = suivi(3);
   expect(await s.surEvenement("play", { currentTime: 0, duration: 1500, cle: {} })).toBe(0);
 });

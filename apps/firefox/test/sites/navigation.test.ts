@@ -19,7 +19,7 @@ test("main frame: a sign-in domain is followed", () => {
   expect(decisionNavigation("https://accounts.google.com/o/oauth2", { ...c, connexion: [] })).toBe("bloquer");
 });
 
-test("cadre principal : seulement http(s)", () => {
+test("main frame: http(s) only", () => {
   for (const url of ["javascript:alert(1)", "about:blank", "file:///etc/passwd", "data:text/html,x", "ftp://vidola-a.example/", "pas une adresse", ""]) {
     expect(decisionNavigation(url, c)).toBe("bloquer");
   }

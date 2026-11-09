@@ -121,7 +121,7 @@ async function openDemo(query = ""): Promise<string> {
 
 const noCard = async () => expect(await inUi(m, `return !!doc.querySelector('[data-testid="demande-permission"], [data-testid="demande-outils-dev"]')`)).toBe(false);
 
-it("démo : lire_console renvoie le console.log et l'erreur non rattrapée avec sa pile, sans carte", async () => {
+it("demo: lire_console returns the console.log and the uncaught error with its stack, without a card", async () => {
   const id = await openDemo();
   // Attached after the load: the page's own "page chargée" is not there.
   expect(await tool("lire_console", { id })).toBe("Aucun message.");
@@ -133,7 +133,7 @@ it("démo : lire_console renvoie le console.log et l'erreur non rattrapée avec 
   await noCard();
 });
 
-it("démo : executer_js renvoie document.title ; recharger garde les messages avec « — page rechargée — »", async () => {
+it("demo: executer_js returns document.title; recharger keeps the messages with « — page rechargée — »", async () => {
   const id = await openDemo();
   expect(await tool("executer_js", { id, code: "document.title" })).toBe('"Démo"');
   expect(await tool("executer_js", { id, code: "await Promise.resolve({ a: [1, 2] })" })).toBe('{"a":[1,2]}');
@@ -151,7 +151,7 @@ it("démo : executer_js renvoie document.title ; recharger garde les messages av
   expect(await tool("executer_js", { id, code: "document.title" })).toBe('"Démo"');
 });
 
-it("démo : executer_js attend une promesse ; une exception revient avec sa pile", async () => {
+it("demo: executer_js waits for a promise; an exception comes back with its stack", async () => {
   const id = await openDemo();
   expect(await tool("executer_js", { id, code: "new Promise((r) => setTimeout(() => r(42), 50))" })).toBe("42");
   expect(await tool("executer_js", { id, code: "const v = await new Promise((r) => setTimeout(() => r(21), 50)); v * 2" })).toBe("42");
@@ -166,7 +166,7 @@ it("démo : executer_js attend une promesse ; une exception revient avec sa pile
   expect(text).not.toContain("rejet");
 });
 
-it("démo : une promesse qui ne se résout jamais : executer_js répond sur son délai, l'appel suivant marche", async () => {
+it("demo: a promise that never resolves: executer_js answers on its deadline, the next call works", async () => {
   const id = await openDemo();
   const t0 = Date.now();
   const r = await call("executer_js", { id, code: "new Promise(() => {})" });
@@ -175,7 +175,7 @@ it("démo : une promesse qui ne se résout jamais : executer_js répond sur son 
   expect(await tool("executer_js", { id, code: "1 + 1" })).toBe("2");
 }, 60_000);
 
-it("démo : lire_reseau liste un fetch (statut, durée) ; lire_requete rend son corps", async () => {
+it("demo: lire_reseau lists a fetch (status, duration); lire_requete returns its body", async () => {
   const id = await openDemo();
   expect(await tool("executer_js", { id, code: "await (await fetch('/data.json?n=1')).text()" })).toBe('"{\\"ok\\":true}"');
   const line = await poll(() => tool("lire_reseau", { id, filtre: "data.json" }), (t) => / · 200 · /.test(t));
@@ -185,7 +185,7 @@ it("démo : lire_reseau liste un fetch (statut, durée) ; lire_requete rend son 
   expect(detail).toContain('Corps :\n{"ok":true}');
 });
 
-it("démo : un message de console de 1 Mo est tronqué avec mention", async () => {
+it("demo: a 1 MB console message is truncated with a mention", async () => {
   const id = await openDemo();
   await tool("executer_js", { id, code: "console.log('x'.repeat(1_000_000)); 1" });
   const text = await poll(() => tool("lire_console", { id }), (t) => t.includes("xxxx"));
@@ -193,7 +193,7 @@ it("démo : un message de console de 1 Mo est tronqué avec mention", async () =
   expect(text.length).toBeLessThan(5000);
 });
 
-it("Cookie et Authorization montrés sur une démo", async () => {
+it("Cookie and Authorization shown on a demo", async () => {
   const id = await openDemo();
   await tool("executer_js", { id, code: "document.cookie = 'essai=1'; await (await fetch('/data.json?h=1', { headers: { Authorization: 'Bearer demo' } })).text()" });
   const line = await poll(() => tool("lire_reseau", { id, filtre: "h=1" }), (t) => / · 200 · /.test(t));
@@ -204,7 +204,7 @@ it("Cookie et Authorization montrés sur une démo", async () => {
   expect(detail).toMatch(/set-cookie: vu=1/i);
 });
 
-it("lire_console et lire_reseau ne montrent rien d'une extension qui écrit dans la console et fait des requêtes depuis son script de contenu", async () => {
+it("lire_console and lire_reseau show nothing from an extension that writes to the console and makes requests from its content script", async () => {
   // Its content script, on the event the page also hears: a log, a fetch of the page's own origin with a header, a 404,
   // a cross-origin fetch that CORS refuses, and an exception; then a mark on the page.
   const script = `document.addEventListener("declencher", async () => {
@@ -245,7 +245,7 @@ it("lire_console et lire_reseau ne montrent rien d'une extension qui écrit dans
   }
 });
 
-it("le même site dans un espace privé : rien de son onglet dans les tampons de l'onglet attaché", async () => {
+it("the same site in a private space: nothing of its tab in the attached tab's buffers", async () => {
   const id = await openDemo();
   const fenetreId = (await state(m)).fenetres[0]!.id;
   const home = (await state(m)).onglets[id]!.espaceId;
@@ -278,7 +278,7 @@ it("le même site dans un espace privé : rien de son onglet dans les tampons de
   expect(text).not.toContain("tag-");
 });
 
-it("un onglet d'un espace privé : lire_console répond TEXTE_PRIVE, sans carte", async () => {
+it("a private space's tab: lire_console answers TEXTE_PRIVE, without a card", async () => {
   const id = await openDemo();
   const s = await state(m);
   const e = s.espaces.find((x) => x.id === s.onglets[id]!.espaceId)!;
@@ -295,7 +295,7 @@ it("un onglet d'un espace privé : lire_console répond TEXTE_PRIVE, sans carte"
   }
 });
 
-it("changer de site vide les tampons", async () => {
+it("changing site empties the buffers", async () => {
   const id = await openDemo();
   await tool("executer_js", { id, code: "console.log('avant'); await fetch('/data.json?avant=1'); 1" });
   await poll(() => tool("lire_console", { id }), (t) => t.includes("avant"));
@@ -348,7 +348,7 @@ async function clickBadge(id: string): Promise<void> {
 /** The card has the keyboard, and Enter is armed. */
 const armed = () => waitUi(m, `return !!doc.querySelector('${MODAL}[data-armee]') && !!doc.activeElement?.closest('${MODAL}')`);
 
-it("onglet tiers : lire_console affiche la carte avec « Console et erreurs » coché et la raison ; Autoriser la sélection → messages renvoyés", async () => {
+it("third-party tab: lire_console shows the card with « Console et erreurs » ticked and the reason; Autoriser la sélection → messages returned", async () => {
   const id = await openThird();
   const pending = tool("lire_console", { id });
   const text = await cardText();
@@ -363,7 +363,7 @@ it("onglet tiers : lire_console affiche la carte avec « Console et erreurs » c
   await cardGone();
 });
 
-it("décocher Réseau dans une demande console+reseau : seul console est accordé ; lire_reseau suivant répond refusé sans carte", async () => {
+it("unticking Réseau in a console+reseau request: only console is granted; the next lire_reseau answers refused without a card", async () => {
   const id = await openThird();
   const pending = tool("demander_outils_dev", { id, droits: ["console", "reseau"], raison: "Le bouton ne réagit pas." });
   const text = await cardText();
@@ -378,7 +378,7 @@ it("décocher Réseau dans une demande console+reseau : seul console est accord�
   await noCard();
 });
 
-it("naviguer un onglet tiers vers une URL de démo qui répond 204 : l'onglet reste tiers, executer_js n'y tourne pas sans carte", async () => {
+it("navigating a third-party tab to a demo URL that answers 204: the tab stays third-party, executer_js does not run there without a card", async () => {
   const id = await openThird();
   const url = (await state(m)).onglets[id]!.url;
   const navigating = tool("naviguer", { id, url: `${demo.url}/vide` });
@@ -403,7 +403,7 @@ it("naviguer un onglet tiers vers une URL de démo qui répond 204 : l'onglet re
   expect(answer).not.toContain("tiers=");
 });
 
-it("deux demandes : une seule carte à la fois, la seconde après réponse à la première", async () => {
+it("two requests: only one card at a time, the second after the first is answered", async () => {
   const id = await openThird();
   const other = await openThird();
   const first = tool("demander_outils_dev", { id, droits: ["console"], raison: "Première." });
@@ -420,7 +420,7 @@ it("deux demandes : une seule carte à la fois, la seconde après réponse à la
   await cardGone();
 });
 
-it("Refuser : l'outil répond refusé", async () => {
+it("Refuser: the tool answers refused", async () => {
   const id = await openThird();
   const pending = tool("lire_console", { id });
   await cardText();
@@ -429,7 +429,7 @@ it("Refuser : l'outil répond refusé", async () => {
   await cardGone();
 });
 
-it("Cookie et Authorization masqués sur un onglet tiers", async () => {
+it("Cookie and Authorization masked on a third-party tab", async () => {
   const id = await openThird();
   await grant(id, ["reseau", "agir"]);
   await tool("executer_js", { id, code: "document.cookie = 'tiers=1'; await (await fetch('/data.json?tiers-h=1', { headers: { Authorization: 'Bearer secret' } })).text()" });
@@ -443,7 +443,7 @@ it("Cookie et Authorization masqués sur un onglet tiers", async () => {
   expect(detail).toMatch(/set-cookie: «masqué»/i);
 });
 
-it("lecture accordée (Autoriser une fois) : pastille 👁 sur l'onglet et dans la barre d'adresse", async () => {
+it("read granted (Autoriser une fois): 👁 badge on the tab and in the address bar", async () => {
   const id = await openThird();
   expect(await inUi(m, "return !!doc.querySelector(arguments[0])", [tabBadge(id)])).toBe(false);
   const reading = call("lire_onglet", { id });
@@ -454,13 +454,13 @@ it("lecture accordée (Autoriser une fois) : pastille 👁 sur l'onglet et dans 
   await waitUi(m, `return doc.querySelector('form ${BADGE}')?.dataset.niveau === "lecture"`);
 });
 
-it("agir accordé : pastille ⚡", async () => {
+it("act granted: ⚡ badge", async () => {
   const id = await openThird();
   await grant(id, ["agir"]);
   await waitUi(m, `const p = doc.querySelector(arguments[0]); return p?.dataset.niveau === "agir" && p.textContent.includes("⚡")`, [tabBadge(id)]);
 });
 
-it("clic sur la pastille : la bulle liste les droits ; Couper sur « console » retire ce droit (lire_console redemande)", async () => {
+it("click on the badge: the bubble lists the rights; Couper on « console » removes that right (lire_console asks again)", async () => {
   const id = await openThird();
   await grant(id, ["console", "reseau"]);
   await clickBadge(id);
@@ -476,7 +476,7 @@ it("clic sur la pastille : la bulle liste les droits ; Couper sur « console » 
   expect(await pending).toBe(REFUS);
 });
 
-it("Couper l'accès : la pastille disparaît, lire_onglet redemande", async () => {
+it("Couper l'accès: the badge disappears, lire_onglet asks again", async () => {
   const id = await openThird();
   await grant(id, ["console"]);
   await clickBadge(id);
@@ -488,7 +488,7 @@ it("Couper l'accès : la pastille disparaît, lire_onglet redemande", async () =
   await reading;
 });
 
-it("couper « Agir » pendant un executer_js : l'appel répond le texte de coupure", async () => {
+it("cutting « Agir » during an executer_js: the call answers the cut text", async () => {
   const id = await openThird();
   await grant(id, ["console", "agir"]);
   const t0 = Date.now();
@@ -504,7 +504,7 @@ it("couper « Agir » pendant un executer_js : l'appel répond le texte de coupu
   await pressKeys(m, "Escape");
 }, 30_000);
 
-it("espace rendu privé : la pastille disparaît, le débogueur est détaché et les outils répondent privé sans carte", async () => {
+it("space turned private: the badge disappears, the debugger is detached and the tools answer private without a card", async () => {
   const id = await openThird();
   await grant(id, ["console", "agir"]);
   await waitUi(m, `return doc.querySelector(arguments[0])?.dataset.niveau === "agir"`, [tabBadge(id)]);
@@ -531,7 +531,7 @@ it("espace rendu privé : la pastille disparaît, le débogueur est détaché et
   expect(await pending).toBe(REFUS);
 });
 
-it("Échap refuse la carte des outils de développement ; Entrée autorise la sélection", async () => {
+it("Esc refuses the devtools card; Enter allows the selection", async () => {
   const id = await openThird();
   const pending = tool("demander_outils_dev", { id, droits: ["console", "reseau"], raison: "Au clavier." });
   expect(await cardText()).toContain("Au clavier.");
@@ -558,7 +558,7 @@ it("Échap refuse la carte des outils de développement ; Entrée autorise la s�
   await cardGone();
 });
 
-it("Entrée frappée dès l'arrivée de la demande n'autorise rien ; une fois la carte visible depuis un moment, si", async () => {
+it("Enter pressed as soon as the request arrives allows nothing; once the card has been visible for a while, it does", async () => {
   const id = await openThird();
   let answered = false;
   const pending = tool("demander_outils_dev", { id, droits: ["console"], raison: "Trop tôt." }).finally(() => (answered = true));
@@ -573,7 +573,7 @@ it("Entrée frappée dès l'arrivée de la demande n'autorise rien ; une fois la
   await cardGone();
 });
 
-it("les outils de développement de l'utilisateur ouverts sur l'onglet : ils restent utilisables, et l'agent lit la console", async () => {
+it("the user's devtools open on the tab: they stay usable, and the agent reads the console", async () => {
   const id = await openDemo("?boite");
   const url = `${demo.url}/?boite`;
   await m.execute(
@@ -609,7 +609,7 @@ const PROFILING = () => path.join(w.dataDir, "espace", ".webaios", "profilage");
 const profiles = () => (existsSync(PROFILING()) ? readdirSync(PROFILING()) : []);
 const profilerActive = () => m.execute<boolean>("return Services.profiler.IsActive();");
 
-it("démo : profiler_performances (2 s) rend un résumé avec la fonction coûteuse de la page et écrit le fichier dans l'espace", async () => {
+it("demo: profiler_performances (2 s) returns a summary with the page's costly function and writes the file in the workspace", async () => {
   const id = await openDemo();
   await tool("executer_js", { id, code: "window.busy = setInterval(() => busyLoop(50), 100); 1" });
   try {
@@ -627,7 +627,7 @@ it("démo : profiler_performances (2 s) rend un résumé avec la fonction coûte
   }
 }, 60_000);
 
-it("démo : profiler_performances avec recharger rend un résumé", async () => {
+it("demo: profiler_performances with recharger returns a summary", async () => {
   const id = await openDemo("?busy");
   const r = await tool("profiler_performances", { id, recharger: true });
   expect(r).toMatch(/^busyLoop \(/m);
@@ -636,7 +636,7 @@ it("démo : profiler_performances avec recharger rend un résumé", async () => 
   expect(await profilerActive()).toBe(false);
 }, 60_000);
 
-it("le profileur de Firefox déjà en marche : profiler_performances refuse et ne l'arrête pas", async () => {
+it("Firefox's profiler already running: profiler_performances refuses and does not stop it", async () => {
   const id = await openDemo();
   await m.execute("return (async () => { await Services.profiler.StartProfiler(1 << 20, 1, ['js'], ['GeckoMain']); })();");
   try {
@@ -649,7 +649,7 @@ it("le profileur de Firefox déjà en marche : profiler_performances refuse et n
   }
 });
 
-it("démo : deux instantane_memoire puis comparer_memoire : le type que la page fait grossir est en tête", async () => {
+it("demo: two instantane_memoire then comparer_memoire: the type the page makes grow comes first", async () => {
   const id = await openDemo();
   const snapshot = async () => {
     const r = await tool("instantane_memoire", { id });
@@ -666,7 +666,7 @@ it("démo : deux instantane_memoire puis comparer_memoire : le type que la page 
   expect(r.split("\n")[1], r).toMatch(/^Object \+\d{5}/);
 });
 
-it("tiers : le fichier va dans le dossier de profilage et l'agent reçoit une référence profil:", async () => {
+it("third-party: the file goes into the profiling folder and the agent receives a profil: reference", async () => {
   const id = await openThird();
   await grant(id, ["performances"]);
   const before = profiles();
@@ -694,16 +694,16 @@ async function profileCutBySiteChange(leave: (id: string) => Promise<unknown>, t
   expect(await profilerActive()).toBe(false);
 }
 
-it("naviguer vers un autre site pendant profiler_performances : l'appel répond le texte de coupure, aucun fichier partiel", async () => {
+it("navigating to another site during profiler_performances: the call answers the cut text, no partial file", async () => {
   // localhost: another origin, still the agent's demo (its port). The noyau cuts the right before the load commits.
   await profileCutBySiteChange(async (id) => expect(await tool("naviguer", { id, url: `http://localhost:${demo.port}/` })).toContain("→"), CUT_BY_OWN_NAVIGATION);
 }, 60_000);
 
-it("la page s'en va d'elle-même pendant profiler_performances : l'appel répond, aucun fichier partiel", async () => {
+it("the page leaves by itself during profiler_performances: the call answers, no partial file", async () => {
   await profileCutBySiteChange((id) => tool("executer_js", { id, code: `setTimeout(() => (location.href = "http://localhost:${demo.port}/"), 0); 1` }), ["L'onglet a changé de site."]);
 }, 60_000);
 
-it("executer_js coupé par naviguer vers un autre site répond vite le texte de coupure", async () => {
+it("executer_js cut by navigating to another site quickly answers the cut text", async () => {
   const id = await openDemo();
   const t0 = Date.now();
   const pending = call("executer_js", { id, code: "new Promise((r) => setTimeout(() => r(1), 8000))" });
@@ -713,7 +713,7 @@ it("executer_js coupé par naviguer vers un autre site répond vite le texte de 
   expect(Date.now() - t0).toBeLessThan(6000);
 }, 60_000);
 
-it("l'hôte redémarre : le nouveau noyau ne voit pas les anciens messages", async () => {
+it("the host restarts: the new kernel does not see the old messages", async () => {
   const id = await openDemo();
   await tool("executer_js", { id, code: "console.log('ancien noyau'); 1" });
   await poll(() => tool("lire_console", { id }), (t) => t.includes("ancien noyau"));
@@ -732,7 +732,7 @@ it("l'hôte redémarre : le nouveau noyau ne voit pas les anciens messages", asy
   expect(text).not.toContain("ancien noyau");
 }, 90_000);
 
-it("aucun port de débogage n'écoute", async () => {
+it("no debugging port is listening", async () => {
   // Every tool above ran in this browser: nothing new listens (Marionette's port set apart).
   expect((await listening(m, w)).filter((l) => !before.includes(l))).toEqual([]);
 });

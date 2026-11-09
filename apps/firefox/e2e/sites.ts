@@ -18,7 +18,7 @@ export type SiteRoute = string | ((req: IncomingMessage, res: ServerResponse) =>
  */
 export async function startSitesServer(o: { port?: number } = {}): Promise<{
   port: number;
-  /** `http://<hote>:<port><chemin>`. */
+  /** `http://<host>:<port><path>`. */
   url(hote: string, chemin?: string): string;
   definir(hote: string, chemin: string, route: SiteRoute): void;
   couper(hote: string, oui?: boolean): void;

@@ -18,7 +18,7 @@ test("deplacer pushes overlapped widgets down, in a cascade", () => {
   const par = Object.fromEntries(apres.map((q) => [q.id, q]));
   expect(par.a).toEqual(p("a", 4, 0, 4, 2));
   expect(par.b).toEqual(p("b", 4, 2, 4, 2)); // juste sous a
-  expect(par.c).toEqual(p("c", 4, 4, 4, 3)); // juste sous b, en cascade
+  expect(par.c).toEqual(p("c", 4, 4, 4, 3)); // just under b, in a cascade
   expect(par.d).toEqual(p("d", 0, 6, 2, 1)); // not touched
   sansChevauchement(apres);
   expect(avant[0]).toEqual(p("a", 0, 0, 4, 2)); // the input is not modified
@@ -29,7 +29,7 @@ test("deplacer keeps the widget within the 12 columns and above 0", () => {
   expect(apres[0]).toEqual(p("a", 8, 0, 4, 2));
 });
 
-test("deplacer : un id inconnu ne change rien", () => {
+test("deplacer: an unknown id changes nothing", () => {
   const avant = [p("a", 0, 0, 4, 2)];
   expect(deplacer(avant, "x", 3, 3)).toEqual(avant);
 });

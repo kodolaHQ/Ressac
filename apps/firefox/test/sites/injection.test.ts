@@ -85,7 +85,7 @@ test("tests only: a local http sub-frame matches the https patterns (the test se
   expect(injectionPour(o, cadre)?.js ?? []).toEqual([]);
 });
 
-test("page hors site (connexion) : aucune retouche", () => {
+test("page outside the site (sign-in): no tweak", () => {
   const i = injectionPour(avec(), { url: "https://compte.example/series/x", principal: true });
   expect(i).toEqual({ css: [], js: [], garde: null, hotes: [], pont: false, reprise: false });
   for (const url of ["about:blank", "javascript:alert(1)", "https://pub.example/series/x", ""]) {

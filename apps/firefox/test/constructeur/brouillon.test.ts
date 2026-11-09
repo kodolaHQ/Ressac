@@ -107,7 +107,7 @@ describe("Historique", () => {
     expect(n).toBe(99);
     expect(dernier).toEqual(etat(1));
   });
-  test("reinitialiser vide l'historique", () => {
+  test("reinitialiser clears the history", () => {
     const h = new Historique(etat(0));
     h.faire(etat(1)); h.reinitialiser(etat(9));
     expect(h.courant).toEqual(etat(9));
@@ -130,7 +130,7 @@ describe("suivreFichier", () => {
   test("first load (dernierConnu null) and different disk → offer", () => {
     expect(suivreFichier({ local: A, dernierConnu: null, disque: B, envoyes: [] })).toBe("proposer");
   });
-  test("JSON illisible → illisible", () => {
+  test("unreadable JSON → illisible", () => {
     expect(suivreFichier({ local: A, dernierConnu: A, disque: null, envoyes: [] })).toBe("illisible");
   });
   test("disk equal to an in-flight draft while the local one moved on → ignore", () => {

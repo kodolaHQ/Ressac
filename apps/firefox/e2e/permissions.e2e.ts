@@ -178,7 +178,7 @@ describe("site permissions", () => {
     for (const f of firefox as unknown[]) expect(f).toEqual({ panel: "closed", notifications: [] });
   });
 
-  it("une page qui demande les notifications affiche le bandeau ; Autoriser → Notification.permission === 'granted'", { timeout: 120_000 }, async () => {
+  it("a page that asks for notifications shows the banner; Autoriser → Notification.permission === 'granted'", { timeout: 120_000 }, async () => {
     const base = await origin();
     const id = await open(base, "notif");
     expect(await waitBanner((t) => t !== null)).toMatch(/^127\.0\.0\.1:\d+ veut vous envoyer des notifications$/);
@@ -194,14 +194,14 @@ describe("site permissions", () => {
     expect(await result(await open(base, "perm"))).toEqual({ ok: "granted" });
   });
 
-  it("Refuser → la page reçoit 'denied'", async () => {
+  it("Refuser → the page receives 'denied'", async () => {
     const id = await open(await origin(), "notif");
     await waitBanner((t) => t !== null);
     await answer("Refuser");
     expect(await result(id)).toEqual({ ok: "denied" });
   });
 
-  it("la question d'une popup s'affiche sur l'onglet qui l'a ouverte, pas dans les autres fenêtres", { timeout: 60_000 }, async () => {
+  it("a popup's question shows on the tab that opened it, not in the other windows", { timeout: 60_000 }, async () => {
     const other = await newWindow(m);
     await open(await origin(), "popup");
     await waitFor(m, `return [...Services.wm.getEnumerator("navigator:browser")].some((w) => w.gBrowser.selectedBrowser.currentURI.spec.includes("&popup"))`, (v) => v === true);
@@ -210,7 +210,7 @@ describe("site permissions", () => {
     expect(await inWindow(m, other, banner)).toBeNull();
   });
 
-  it("la position : demandée une fois, retenue après un rechargement", async () => {
+  it("location: asked once, kept after a reload", async () => {
     const base = await origin();
     const id = await open(base, "geo");
     expect(await waitBanner((t) => t !== null)).toMatch(/^127\.0\.0\.1:\d+ veut connaître votre position$/);
@@ -222,7 +222,7 @@ describe("site permissions", () => {
     expect(await saved()).toMatchObject({ [`${base} geolocation`]: "autoriser" });
   });
 
-  it("la même origine dans un espace d'un autre profil est redemandée", async () => {
+  it("the same origin in a space of another profile is asked again", async () => {
     const base = await origin();
     const first = await open(base, "notif");
     await waitBanner((t) => t !== null);
@@ -235,7 +235,7 @@ describe("site permissions", () => {
     expect(await result(id)).toEqual({ ok: "denied" });
   });
 
-  it("fermer l'onglet pendant la question : refusé, redemandé au prochain chargement", async () => {
+  it("closing the tab during the question: denied, asked again at the next load", async () => {
     const base = await origin();
     const id = await open(base, "notif");
     await waitBanner((t) => t !== null);
@@ -246,7 +246,7 @@ describe("site permissions", () => {
     expect(await waitBanner((t) => t !== null)).toMatch(/^127\.0\.0\.1:\d+ veut vous envoyer des notifications$/);
   });
 
-  it("l'onglet change de site pendant la question : le bandeau disparaît, rien n'est retenu", async () => {
+  it("the tab changes site during the question: the banner disappears, nothing is kept", async () => {
     const base = await origin();
     const id = await open(base, "geo");
     await waitBanner((t) => t !== null);
@@ -258,7 +258,7 @@ describe("site permissions", () => {
     expect(await saved()).not.toHaveProperty(`${base} geolocation`);
   });
 
-  it("deux demandes en même temps : un seul bandeau", async () => {
+  it("two requests at the same time: a single banner", async () => {
     const id = await open(await origin(), "notif2");
     await waitBanner((t) => t !== null);
     await new Promise((r) => setTimeout(r, 500));
@@ -268,7 +268,7 @@ describe("site permissions", () => {
     expect(await result(id)).toEqual({ ok: ["granted", "granted"] });
   });
 
-  it("storage-access, xr, persistent-storage : refusés sans bandeau", { timeout: 60_000 }, async () => {
+  it("storage-access, xr, persistent-storage: denied without a banner", { timeout: 60_000 }, async () => {
     const base = await origin();
     const port = new URL(base).port;
     await m.execute(`Cc["@mozilla.org/network/native-dns-override;1"].getService(Ci.nsINativeDNSResolverOverride).addIPOverride("site2.localhost", "127.0.0.1");`);
@@ -284,7 +284,7 @@ describe("site permissions", () => {
     expect(await banner()).toBeNull();
   });
 
-  it("une lecture invisible qui demande les notifications : refusée, sans bandeau", async () => {
+  it("an invisible read that asks for notifications: denied, without a banner", async () => {
     const base = await origin();
     const read = await chrome<{ titre: string }>(
       `const s = await ChromeUtils.importESModule("${STORE}").ready; return s.readPage(arguments[0], { profil: null, adressesLocales: true });`,
@@ -296,7 +296,7 @@ describe("site permissions", () => {
     expect(await saved()).not.toHaveProperty(`${base} notifications`);
   });
 
-  it("le bandeau ne couvre pas la page : le haut de la page est sous le bandeau", async () => {
+  it("the banner does not cover the page: the top of the page is under the banner", async () => {
     const top = "return gBrowser.selectedBrowser.getBoundingClientRect().top";
     const base = await origin();
     await open(base, "none");
@@ -315,7 +315,7 @@ describe("site permissions", () => {
     await waitFor(m, top, (t: number) => t === before);
   });
 
-  it("un espace privé : mêmes questions, retenues par son profil", async () => {
+  it("a private space: same questions, kept by its profile", async () => {
     const base = await origin();
     await dispatch(m, { type: "creerEspace", nom: "Privé", icone: "🔒", prive: true, profil: "nouveau", fenetreId: (await state(m)).fenetres[0]!.id });
     const s = await state(m);
@@ -332,7 +332,7 @@ describe("site permissions", () => {
     expect(await saved()).not.toHaveProperty(`${base} notifications`);
   });
 
-  it("le bandeau suit l'onglet : caché sur un autre onglet, revenu en y revenant", async () => {
+  it("the banner follows the tab: hidden on another tab, back when coming back to it", async () => {
     const base = await origin();
     const asking = await open(base, "notif");
     await waitBanner((t) => t !== null);
@@ -342,7 +342,7 @@ describe("site permissions", () => {
     expect(await waitBanner((t) => t !== null)).toMatch(/^127\.0\.0\.1:\d+ veut vous envoyer des notifications$/);
   });
 
-  it("une demande de caméra d'un site reste un bandeau, pas une modale : la page reste affichée", async () => {
+  it("a site's camera request stays a banner, not a modal: the page stays displayed", async () => {
     const id = await open(await origin(), "cam");
     expect(await waitBanner((t) => t !== null)).toMatch(/^127\.0\.0\.1:\d+ veut utiliser votre caméra$/);
     expect(await m.execute(`return gBrowser.selectedBrowser.checkVisibility() && gBrowser.getTabDialogBox(gBrowser.selectedBrowser)._tabDialogManager._dialogs.length`)).toBe(0);
@@ -350,7 +350,7 @@ describe("site permissions", () => {
     expect(await result(id)).toEqual({ ok: ["video"] });
   });
 
-  it("caméra et micro ensemble : un seul bandeau « utiliser votre caméra et votre micro », retenu ; un rechargement ne redemande pas", async () => {
+  it("camera and microphone together: a single banner « utiliser votre caméra et votre micro », kept; a reload does not ask again", async () => {
     const base = await origin();
     const id = await open(base, "both");
     expect(await waitBanner((t) => t !== null)).toMatch(/^127\.0\.0\.1:\d+ veut utiliser votre caméra et votre micro$/);
@@ -368,7 +368,7 @@ describe("site permissions", () => {
     expect(await result(other)).toEqual({ err: "NotAllowedError" });
   });
 
-  it("un cadre d'un autre site demande la caméra : le bandeau nomme le cadre, la décision est retenue pour lui", { timeout: 60_000 }, async () => {
+  it("a frame from another site asks for the camera: the banner names the frame, the decision is kept for it", { timeout: 60_000 }, async () => {
     const base = await origin();
     const port = new URL(base).port;
     await m.execute(`Cc["@mozilla.org/network/native-dns-override;1"].getService(Ci.nsINativeDNSResolverOverride).addIPOverride("site2.localhost", "127.0.0.1");`);
@@ -381,7 +381,7 @@ describe("site permissions", () => {
     expect(await saved()).not.toHaveProperty(`${base} media-camera`);
   });
 
-  it("le partage d'écran : le bandeau à chaque fois", { timeout: 60_000 }, async () => {
+  it("screen sharing: the banner every time", { timeout: 60_000 }, async () => {
     const id = await open(await origin(), "screen", {});
     for (let i = 0; i < 2; i++) {
       await clickGo(id);
@@ -394,7 +394,7 @@ describe("site permissions", () => {
     expect(Object.keys(await saved()).filter((k) => /screen|partage/.test(k))).toEqual([]);
   });
 
-  it("un lien vers une autre application : le bandeau avec le lien, à chaque fois", { timeout: 60_000 }, async () => {
+  it("a link to another application: the banner with the link, every time", { timeout: 60_000 }, async () => {
     const base = await origin();
     const handler = await origin();
     const handled = servers[servers.length - 1]!.handled;
@@ -425,7 +425,7 @@ describe("site permissions", () => {
     expect(Object.keys(await saved()).filter((k) => /ouvrir|application/.test(k))).toEqual([]);
   });
 
-  it("DRM : le bandeau, puis navigator.requestMediaKeySystemAccess('org.w3.clearkey', …) réussit ; retenu", { timeout: 60_000 }, async () => {
+  it("DRM: the banner, then navigator.requestMediaKeySystemAccess('org.w3.clearkey', …) succeeds; kept", { timeout: 60_000 }, async () => {
     const base = await origin();
     const id = await open(base, "drm");
     expect(await waitBanner((t) => t !== null)).toMatch(/^127\.0\.0\.1:\d+ veut lire des contenus protégés \(DRM\)$/);
@@ -437,7 +437,7 @@ describe("site permissions", () => {
     expect(await saved()).toMatchObject({ [`${base} drm`]: "autoriser" });
   });
 
-  it("MIDI : le bandeau, puis navigator.requestMIDIAccess() réussit ; aucun module dans about:addons", { timeout: 60_000 }, async () => {
+  it("MIDI: the banner, then navigator.requestMIDIAccess() succeeds; no module in about:addons", { timeout: 60_000 }, async () => {
     const id = await open(await origin(), "midi");
     expect(await waitBanner((t) => t !== null)).toMatch(/^127\.0\.0\.1:\d+ veut utiliser vos appareils MIDI$/);
     await answer("Autoriser");
@@ -446,7 +446,7 @@ describe("site permissions", () => {
     expect(addons).toEqual([]);
   });
 
-  it("un son se lit sans clic (lecture automatique autorisée)", async () => {
+  it("a sound plays without a click (autoplay allowed)", async () => {
     const id = await open(await origin(), "audio");
     expect(await result(id)).toEqual({ ok: "allowed" });
   });
@@ -457,7 +457,7 @@ describe("site permissions", () => {
   /** Triggers the « Navigation » menu entry of the current window by its command, as a click on it does. */
   const forgetFromMenu = () => m.execute(`document.getElementById("webaios-forget-permissions").doCommand();`);
 
-  it("Oublier les autorisations de ce site : la page redemande, Notification.permission repasse à 'default'", { timeout: 60_000 }, async () => {
+  it("Oublier les autorisations de ce site: the page asks again, Notification.permission goes back to 'default'", { timeout: 60_000 }, async () => {
     const base = await origin();
     const id = await open(base, "notif");
     await waitBanner((t) => t !== null);
@@ -474,7 +474,7 @@ describe("site permissions", () => {
     expect(await result(again)).toEqual({ ok: "denied" });
   });
 
-  it("un profil supprimé : son permissions.json et ses décisions dans Firefox disparaissent", { timeout: 60_000 }, async () => {
+  it("a deleted profile: its permissions.json and its decisions in Firefox disappear", { timeout: 60_000 }, async () => {
     const base = await origin();
     const fenetreId = (await state(m)).fenetres[0]!.id;
     await dispatch(m, { type: "creerEspace", nom: "Jetable", icone: "🗑", prive: false, profil: "nouveau", fenetreId });
@@ -492,7 +492,7 @@ describe("site permissions", () => {
     expect(await inFirefox()).toBe(0);
   });
 
-  it("une réponse rangée dans Firefox avant ce bloc est retirée au démarrage : le site redemande par le bandeau", { timeout: 90_000 }, async () => {
+  it("an answer stored in Firefox before this block is removed at startup: the site asks again through the banner", { timeout: 90_000 }, async () => {
     const base = await origin();
     await chrome(`Services.perms.addFromPrincipal(Services.scriptSecurityManager.createContentPrincipal(Services.io.newURI(arguments[0]), {}), "desktop-notification", Services.perms.ALLOW_ACTION, Services.perms.EXPIRE_NEVER);`, [base]);
     await w.close();
@@ -503,7 +503,7 @@ describe("site permissions", () => {
     expect(await result(id)).toEqual({ ok: "denied" });
   });
 
-  it("permissions.json survit au redémarrage, et Firefox le réapplique", { timeout: 90_000 }, async () => {
+  it("permissions.json survives the restart, and Firefox applies it again", { timeout: 90_000 }, async () => {
     const base = await origin();
     const id = await open(base, "notif");
     await waitBanner((t) => t !== null);
@@ -517,7 +517,7 @@ describe("site permissions", () => {
     expect(await banner()).toBeNull();
   });
 
-  it("un lien vers une autre application tapé dans la barre d'adresse : le bandeau au nom du site affiché", { timeout: 60_000 }, async () => {
+  it("a link to another application typed in the address bar: the banner in the displayed site's name", { timeout: 60_000 }, async () => {
     // The webaios-test: handler registered by the previous test stays known to this profile.
     const id = await open(await origin(), "none", {});
     // As the address bar does: a load with the system principal, no page behind it.
@@ -527,7 +527,7 @@ describe("site permissions", () => {
     await waitBanner((t) => t === null);
   });
 
-  it("les modules DRM sont demandés à Mozilla sous la version de Firefox, pas celle de WebAiOs", async () => {
+  it("DRM modules are requested from Mozilla under Firefox's version, not WebAiOs's", async () => {
     // Under the app's own version (0.1.0) Mozilla's update server offers no Widevine, so no DRM ever works.
     const url = await chrome<string>(`Services.prefs.clearUserPref("media.gmp-manager.url");
       const { GMPInstallManager } = ChromeUtils.importESModule("resource://gre/modules/GMPInstallManager.sys.mjs");
@@ -535,7 +535,7 @@ describe("site permissions", () => {
     expect(url).toContain(`/GMP/${await m.execute<string>("return Services.appinfo.platformVersion;")}/`);
   });
 
-  it("le plein écran : accordé sans question, sans avertissement de Firefox sur la page", { timeout: 60_000 }, async () => {
+  it("fullscreen: granted without a question, without a Firefox warning on the page", { timeout: 60_000 }, async () => {
     const id = await open(await origin(), "fs", {});
     await clickGo(id);
     try {
@@ -548,7 +548,7 @@ describe("site permissions", () => {
     }
   });
 
-  it("lire le presse-papiers : refusé sans question, sans le menu « Coller » de Firefox", { timeout: 60_000 }, async () => {
+  it("reading the clipboard: denied without a question, without Firefox's « Coller » menu", { timeout: 60_000 }, async () => {
     // Headless Firefox keeps its own in-memory clipboard: the machine's is not touched.
     await m.execute(`Cc["@mozilla.org/widget/clipboardhelper;1"].getService(Ci.nsIClipboardHelper).copyString("from-elsewhere");`);
     const id = await open(await origin(), "clipr", {});
@@ -558,7 +558,7 @@ describe("site permissions", () => {
     expect(await banner()).toBeNull();
   });
 
-  it("une popup bloquée n'affiche aucune barre de Firefox", { timeout: 60_000 }, async () => {
+  it("a blocked popup shows no Firefox bar", { timeout: 60_000 }, async () => {
     // Marionette turns the popup blocker off: on again for this test, as for a person.
     await m.execute("Services.prefs.setBoolPref('dom.disable_open_during_load', true);");
     try {

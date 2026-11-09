@@ -8,9 +8,9 @@ import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
 import { click, inUi, waitUi } from "./ui";
 
-// La page d'accueil dans la barre latérale : widgets du dossier, placement libre, thème de l'agent, cadre isolé et liens,
-// puis accords, récoltes (manuelle, en échec, atelier arrêté), notifications, retrait et host arrêté.
-// Non lancé dans ce worktree (pas de build ni de moteur) : à lancer après `pnpm build:ui` par l'utilisateur.
+// The home page in the sidebar: folder widgets, free placement, the agent's theme, isolated frame and links,
+// then grants, harvests (manual, failed, workshop stopped), notifications, removal and host stopped.
+// Not run in this worktree (no build or engine): to run after `pnpm build:ui` by the user.
 
 interface PlacementTest {
   id: string;
@@ -87,9 +87,9 @@ async function attendre<T>(read: () => Promise<T>, ok: (v: T) => boolean, what: 
 }
 
 /**
- * Un glisser ou un redimensionnement, par événements de pointeur directs dans l'interface. Le geste ne dépend pas de
- * `isTrusted` (seuls les liens du widget le font, et ils passent par `synthesizeMouseEvent`) : ce test porte sur le
- * placement et l'écriture de disposition.json.
+ * A drag or a resize, through pointer events sent directly in the interface. The gesture does not depend on
+ * `isTrusted` (only the widget's links do, and they go through `synthesizeMouseEvent`): this test covers the
+ * placement and the writing of disposition.json.
  */
 async function glisser(m: Marionette, selection: string, dx: number, dy: number): Promise<void> {
   await inUi(
@@ -109,7 +109,7 @@ async function glisser(m: Marionette, selection: string, dx: number, dy: number)
   );
 }
 
-/** Le texte affiché dans le cadre d'un widget (origine opaque : on lit le document depuis le contexte chrome). */
+/** The text displayed in a widget's frame (opaque origin: the document is read from the chrome context). */
 function texteCadre(m: Marionette, id: string): Promise<string> {
   return inUi(
     m,
@@ -119,7 +119,7 @@ function texteCadre(m: Marionette, id: string): Promise<string> {
   );
 }
 
-/** Les données reçues par l'affichage (le `<pre id="donnees">` de AFFICHAGE_DONNEES), pas tout le corps du cadre. */
+/** The data received by the display (the `<pre id="donnees">` of AFFICHAGE_DONNEES), not the whole frame body. */
 function texteDonnees(m: Marionette, id: string): Promise<string> {
   return inUi(
     m,
@@ -129,12 +129,12 @@ function texteDonnees(m: Marionette, id: string): Promise<string> {
   );
 }
 
-/** Le texte d'une carte de widget : en-tête, bandeau d'accord et avertissements compris. */
+/** The text of a widget card: header, grant banner and warnings included. */
 function texteWidget(m: Marionette, id: string): Promise<string> {
   return inUi(m, `return doc.querySelector('[data-testid="widget-' + arguments[0] + '"]')?.textContent ?? "";`, [id]);
 }
 
-/** « Mettre à jour maintenant » par le menu du widget. */
+/** « Mettre à jour maintenant » through the widget's menu. */
 async function recolter(m: Marionette, id: string): Promise<void> {
   await click(m, `[data-testid="widget-${id}"] button[aria-label="Options du widget"]`);
   await click(m, '[role="menuitem"]', { text: "Mettre à jour maintenant" });
@@ -142,18 +142,18 @@ async function recolter(m: Marionette, id: string): Promise<void> {
 
 const AFFICHAGE = (titre: string) => `<!doctype html><meta charset="utf-8"><title>${titre}</title><p>${titre}</p>`;
 
-/** Un affichage qui rend les données reçues par postMessage, pour voir arriver une récolte. */
+/** A display that renders the data received by postMessage, to see a harvest arrive. */
 const AFFICHAGE_DONNEES = `<!doctype html><meta charset="utf-8"><pre id="donnees"></pre>
 <script>
   addEventListener("message", (e) => {
-    // L'origine d'un cadre sandbox est opaque : event.source n'est pas parent côté page (mesuré). Le message
-    // vient du chrome, seul à connaître ce cadre : on ne vérifie que son type.
+    // A sandbox frame's origin is opaque: event.source is not the parent on the page side (measured). The message
+    // comes from the chrome, the only one to know this frame: only its type is checked.
     if (!e.data || e.data.type !== "widget") return;
     document.getElementById("donnees").textContent = JSON.stringify(e.data.donnees);
   });
 </script>`;
 
-describe("la page d'accueil", () => {
+describe("the home page", () => {
   let dataDir: string;
   let w: LaunchedWebAiOs;
   let m: Marionette;
@@ -165,12 +165,12 @@ describe("la page d'accueil", () => {
     await mkdir(path.join(ACCUEIL(dataDir), "widgets"), { recursive: true });
     await ecrireWidget(dataDir, "alpha", { nom: "Alpha", affichage: AFFICHAGE("alpha") });
     await ecrireWidget(dataDir, "beta", { nom: "Beta", affichage: AFFICHAGE("beta") });
-    // Un indice réseau dans l'affichage : servi remplacé par AFFICHAGE_REFUSE, avant tout script.
+    // A network hint in the display: served replaced by AFFICHAGE_REFUSE, before any script.
     await ecrireWidget(dataDir, "refus", {
       nom: "Refus",
       affichage: '<!doctype html><title>refus</title><link rel="stylesheet" href="https://exemple.invalid/x.css"><p>jamais</p>',
     });
-    // Un lien demandé au chargement (ignoré) et un autre au clic (accepté seulement après un vrai appui).
+    // A link requested at load (ignored) and another on click (accepted only after a real press).
     await ecrireWidget(dataDir, "lien", {
       nom: "Lien",
       affichage: `<!doctype html><meta charset="utf-8"><title>lien</title><button id="go">ouvrir</button>
@@ -179,8 +179,8 @@ describe("la page d'accueil", () => {
   document.getElementById("go").onclick = () => webaiosOuvrir("https://exemple.invalid/clic");
 </script>`,
     });
-    // Un widget qui lit avec le compte : le bandeau d'accord paraît tant qu'aucun accord n'est donné. Sa récolte ne lit
-    // qu'une fois `config.lire` posé (le test « un autre profil redemande »), pour que l'accord soit en jeu.
+    // A widget that reads with the account: the grant banner shows as long as no grant is given. Its harvest only reads
+    // once `config.lire` is set (the « another profile asks again » test), so that the grant is at stake.
     await ecrireWidget(dataDir, "compte", {
       nom: "Compte",
       affichage: AFFICHAGE_DONNEES,
@@ -195,35 +195,35 @@ describe("la page d'accueil", () => {
       "compte",
       `export default async (w) => { if (w.config?.lire) await w.lirePage(w.config.url, { compte: true }); return { vu: "compte" }; };`,
     );
-    // Un autre widget à compte : L'utilisateur le refuse (le bandeau ne revient pas de la session).
+    // Another widget with an account: the user refuses it (the banner does not come back from the session).
     await ecrireWidget(dataDir, "sans-accord", {
       nom: "Sans accord",
       affichage: AFFICHAGE_DONNEES,
       declaration: { recolte: { minutes: 60 }, sources: { compte: ["exemple.invalid"], publiques: [], web: false } },
     });
     await ecrireRecolte(dataDir, "sans-accord", `export default async () => ({ secret: "du compte" });`);
-    // Une récolte lente : « en cours » reste visible, puis les données arrivent.
+    // A slow harvest: « en cours » stays visible, then the data arrives.
     await ecrireWidget(dataDir, "lent", {
       nom: "Lent",
       affichage: AFFICHAGE_DONNEES,
       declaration: { recolte: { minutes: 60 }, sources: { compte: [], publiques: [], web: false } },
     });
     await ecrireRecolte(dataDir, "lent", `export default async () => { await new Promise((r) => setTimeout(r, 2500)); return { fait: Date.now() }; };`);
-    // Une récolte qui échoue.
+    // A harvest that fails.
     await ecrireWidget(dataDir, "echec", {
       nom: "Échec",
       affichage: AFFICHAGE_DONNEES,
       declaration: { recolte: { minutes: 60 }, sources: { compte: [], publiques: [], web: false } },
     });
     await ecrireRecolte(dataDir, "echec", `export default async () => { throw new Error("boum"); };`);
-    // Une veille qui notifie ses nouveautés (première récolte : les deux éléments sont nouveaux).
+    // A watch that notifies its news (first harvest: both items are new).
     await ecrireWidget(dataDir, "veille", {
       nom: "Veille",
       affichage: AFFICHAGE_DONNEES,
       declaration: { recolte: { minutes: 60, notifier: true }, sources: { compte: [], publiques: [], web: false } },
     });
     await ecrireRecolte(dataDir, "veille", `export default async () => [{ url: "https://exemple.invalid/a" }, { url: "https://exemple.invalid/b" }];`);
-    // Un widget avec accord et données, récolté d'avance : le retrait doit emporter les trois.
+    // A widget with a grant and data, harvested beforehand: the removal must take all three.
     await ecrireWidget(dataDir, "retrait", {
       nom: "Retrait",
       affichage: AFFICHAGE_DONNEES,
@@ -245,7 +245,7 @@ describe("la page d'accueil", () => {
       { id: "veille", x: 0, y: 800, l: 250, h: 180 },
       { id: "retrait", x: 500, y: 800, l: 250, h: 180 },
     ]);
-    // Une notification de test est un fichier, jamais une bulle macOS.
+    // A test notification is a file, never a macOS bubble.
     w = await launchWebAiOs({ dataDir, env: { WEBAIOS_TEST_NOTIFICATIONS: notifications } });
     m = w.marionette;
     await m.setContext("chrome");
@@ -256,7 +256,7 @@ describe("la page d'accueil", () => {
     await rm(dataDir, { recursive: true, force: true });
   });
 
-  it("l'écran sans onglet montre les widgets du dossier, servis par resource://webaios-widget-", async () => {
+  it("the screen without a tab shows the folder's widgets, served by resource://webaios-widget-", async () => {
     const titres = await attendre(
       () => inUi<string[]>(m, `return [...doc.querySelectorAll('[data-testid="titre-widget"]')].map((e) => e.textContent);`),
       (ts) => ts.length === 10,
@@ -266,7 +266,7 @@ describe("la page d'accueil", () => {
     expect(titres).toEqual(["Alpha", "Beta", "Refus", "Lien", "Compte", "Sans accord", "Lent", "Échec", "Veille", "Retrait"]);
     const src = await inUi(m, `return doc.querySelector('[data-testid="widget-alpha"] iframe')?.getAttribute("src") ?? "";`);
     expect(src).toMatch(/^resource:\/\/webaios-widget-alpha\/affichage-\d+\.html$/);
-    // Le cadre est isolé : le document du widget n'a pas le principal système de la sidebar (origine opaque, sandbox).
+    // The frame is isolated: the widget's document does not have the sidebar's system principal (opaque origin, sandbox).
     const systeme = await waitUi<string>(
       m,
       `const d = doc.querySelector('[data-testid="widget-alpha"] iframe')?.contentDocument; return d ? String(d.nodePrincipal.isSystemPrincipal) : null;`,
@@ -276,7 +276,7 @@ describe("la page d'accueil", () => {
     expect(systeme).toBe("false");
   });
 
-  it("un widget ajouté par l'agent apparaît sans redémarrer", async () => {
+  it("a widget added by the agent appears without restarting", async () => {
     await ecrireWidget(dataDir, "nouveau", { nom: "Nouveau", affichage: AFFICHAGE("nouveau") });
     const titres = await attendre(
       () => inUi<string[]>(m, `return [...doc.querySelectorAll('[data-testid="titre-widget"]')].map((e) => e.textContent);`),
@@ -303,13 +303,13 @@ describe("la page d'accueil", () => {
     expect(r.bas).toBeLessThanOrEqual(r.accueil);
   });
 
-  it("glisser un widget ne déplace aucun autre", async () => {
+  it("dragging a widget moves no other", async () => {
     const avant = await lireDisposition(dataDir);
     const betaAvant = avant.find((p) => p.id === "beta")!;
-    // Loin vers la droite en passant par-dessus bêta : un glisser peut traverser un voisin, et alpha s'arrête au
-    // bord droit de l'accueil (750 = 1000 ‰ - 250 ‰), sans déplacer bêta.
+    // Far to the right passing over bêta: a drag can cross a neighbour, and alpha stops at the
+    // right edge of the home (750 = 1000 ‰ - 250 ‰), without moving bêta.
     await glisser(m, '[data-testid="widget-alpha"] header', 1200, 0);
-    // La lecture peut tomber pendant une écriture : une liste vide ou illisible ne doit pas faire échouer l'attente.
+    // The read can land during a write: an empty or unreadable list must not make the wait fail.
     const apres = await attendre(
       () => lireDisposition(dataDir).catch(() => [] as PlacementTest[]),
       (ps) => (ps.find((p) => p.id === "alpha")?.x ?? 0) > 0,
@@ -319,13 +319,13 @@ describe("la page d'accueil", () => {
     const beta = apres.find((p) => p.id === "beta")!;
     expect(alpha.x).toBeGreaterThan(0);
     expect(alpha.x + alpha.l).toBeLessThanOrEqual(1000);
-    // Alpha passe au-delà de bêta : il ne peut pas être lâché sur un autre widget, mais le glisser le survole.
+    // Alpha goes beyond bêta: it cannot be dropped on another widget, but the drag flies over it.
     expect(alpha.x).toBe(750);
     expect(beta).toEqual(betaAvant);
   });
 
-  it("redimensionner reste dans les bornes et ne déborde pas à droite", async () => {
-    // Max déclaré : 6 unités de large (500 ‰) et 4 rangées (360 px).
+  it("resizing stays within bounds and does not overflow on the right", async () => {
+    // Declared max: 6 units wide (500 ‰) and 4 rows (360 px).
     await glisser(m, '[data-testid="widget-beta"] [data-testid="poignee-taille"]', 600, 300);
     const apres = await attendre(
       () => lireDisposition(dataDir).catch(() => [] as PlacementTest[]),
@@ -336,20 +336,20 @@ describe("la page d'accueil", () => {
       "l'écriture du redimensionnement",
     );
     const beta = apres.find((p) => p.id === "beta")!;
-    expect(beta.l).toBeGreaterThanOrEqual(167); // min : 2 unités
-    expect(beta.l).toBeLessThanOrEqual(500); // max : 6 unités
+    expect(beta.l).toBeGreaterThanOrEqual(167); // min: 2 units
+    expect(beta.l).toBeLessThanOrEqual(500); // max: 6 units
     expect(beta.h).toBeLessThanOrEqual(360);
     expect(beta.x + beta.l).toBeLessThanOrEqual(1000);
   });
 
-  it("un <link> dans l'affichage est remplacé par AFFICHAGE_REFUSE", async () => {
+  it("a <link> in the display is replaced by AFFICHAGE_REFUSE", async () => {
     await waitUi(m, `return !!doc.querySelector('[data-testid="widget-refus"] iframe');`, [], 15_000);
     const texte = await attendre(() => texteCadre(m, "refus"), (t) => t.includes("Affichage refusé"), "le refus de l'affichage");
     expect(texte).toContain("Affichage refusé");
     expect(texte).not.toContain("jamais");
   });
 
-  it("le thème de l'agent change les couleurs de l'accueil ; un thème invalide revient au défaut", async () => {
+  it("the agent's theme changes the home's colors; an invalid theme goes back to the default", async () => {
     const fond = () => inUi<string>(m, `return ui.getComputedStyle(doc.querySelector('[data-testid="accueil"]')).backgroundColor;`);
     const defaut = await fond();
     await writeFile(path.join(ACCUEIL(dataDir), "theme.json"), JSON.stringify({ version: 1, fond: "#101014", accent: "#8b7cf6", rayon: 4 }));
@@ -358,17 +358,17 @@ describe("la page d'accueil", () => {
     await attendre(fond, (c) => c === defaut, "le retour au thème par défaut");
   });
 
-  it("un lien du widget ne s'ouvre qu'après un vrai appui, jamais au chargement ni par un clic simulé", async () => {
+  it("a widget link only opens after a real press, never at load nor by a simulated click", async () => {
     await waitUi(m, `return !!doc.querySelector('[data-testid="widget-lien"] iframe')?.contentDocument?.getElementById("go");`, [], 15_000);
     const urls = async () => Object.values((await state(m)).onglets).map((o) => o.url);
-    // L'envoi du chargement : aucun geste, aucun onglet.
+    // The load's send: no gesture, no tab.
     await new Promise((r) => setTimeout(r, 2000));
     expect((await urls()).filter((u) => u.includes("exemple.invalid"))).toEqual([]);
-    // Un clic simulé par le script : isTrusted faux, aucun geste, aucun onglet.
+    // A click simulated by the script: isTrusted false, no gesture, no tab.
     await inUi(m, `doc.querySelector('[data-testid="widget-lien"] iframe').contentDocument.getElementById("go").click();`);
     await new Promise((r) => setTimeout(r, 2000));
     expect((await urls()).filter((u) => u.includes("exemple.invalid"))).toEqual([]);
-    // Un vrai appui dans le cadre : l'acteur signale le geste, le lien s'ouvre.
+    // A real press in the frame: the actor signals the gesture, the link opens.
     await inUi(
       m,
       `const f = doc.querySelector('[data-testid="widget-lien"] iframe');
@@ -382,33 +382,33 @@ describe("la page d'accueil", () => {
     );
     await attendre(urls, (us) => us.includes("https://exemple.invalid/clic"), "l'ouverture du lien");
     expect((await urls()).filter((u) => u.includes("/auto"))).toEqual([]);
-    // L'ouverture a activé un onglet : l'accueil n'est plus monté (PageVide). On le referme pour la suite.
+    // The opening activated a tab: the home is no longer mounted (PageVide). We close it again for what follows.
     const onglet = Object.entries((await state(m)).onglets).find(([, o]) => o.url.includes("exemple.invalid/clic"))?.[0];
     expect(onglet).toBeDefined();
     await dispatch(m, { type: "fermerOnglet", id: onglet! });
     await waitUi(m, `return !!doc.querySelector('[data-testid="accueil"]') && !!doc.querySelector('[data-testid="widget-alpha"]');`, [], 15_000);
   });
 
-  it("un affichage de widget n'ouvre aucune fenêtre de Firefox", async () => {
+  it("a widget display opens no Firefox window", async () => {
     await waitUi(m, `return !!doc.querySelector('[data-testid="widget-alpha"] iframe')?.contentDocument;`, [], 15_000);
     await waitWindowCount(m, 1);
     await new Promise((r) => setTimeout(r, 500));
     expect(await waitWindowCount(m, 1)).toHaveLength(1);
-    // Aucun <browser> de premier niveau ne charge la substitution resource:// : c'est un cadre de la barre latérale.
+    // No top-level <browser> loads the resource:// substitution: it is a frame of the sidebar.
     const top = await waitFor<number>(m, `return [...gBrowser.browsers].filter((b) => b.currentURI?.spec?.startsWith("resource://webaios-widget-")).length;`, (n) => n === 0);
     expect(top).toBe(0);
   });
 
-  it("la carte d'accord : Autoriser retient le profil choisi et lance la récolte avec le compte", async () => {
+  it("the grant card: Autoriser keeps the chosen profile and starts the harvest with the account", async () => {
     await waitUi(m, `return !!doc.querySelector('[data-testid="widget-compte"] [data-testid="bandeau-accord"]');`, [], 15_000);
     expect(await texteWidget(m, "compte")).toContain("exemple.invalid");
-    // Rien n'est lu avec le compte tant que l'utilisateur n'a pas accordé.
+    // Nothing is read with the account until the user has granted.
     expect(existsSync(DONNEES(dataDir, "compte"))).toBe(false);
     await click(m, '[data-testid="widget-compte"] [data-testid="bandeau-accord"] button', { text: "Autoriser…" });
     const carte = await waitUi<string>(m, `const c = doc.querySelector('[data-testid="carte-accord"]'); return c ? c.textContent : "";`);
     expect(carte).toContain("exemple.invalid");
     expect(carte).toContain("ne contactera aucun autre site");
-    // Le profil de l'espace actif (le profil par défaut) est coché.
+    // The active space's profile (the default profile) is ticked.
     const profils = await waitUi<[string, boolean][]>(
       m,
       `const rs = [...doc.querySelectorAll('[data-testid="carte-accord"] input[type="radio"]')];
@@ -416,7 +416,7 @@ describe("la page d'accueil", () => {
     );
     expect(profils).toEqual([["defaut", true]]);
     await click(m, '[data-testid="carte-accord"] button', { text: "Autoriser" });
-    // L'accord nomme les domaines montrés et le profil choisi ; la récolte démarre et ses données arrivent au cadre.
+    // The grant names the shown domains and the chosen profile; the harvest starts and its data reaches the frame.
     const accord = await attendre(() => lireAccords(dataDir), (a) => a.compte?.profil === "defaut", "l'écriture de l'accord");
     expect(accord.compte).toEqual({ domaines: ["exemple.invalid"], publiques: [], profil: "defaut" });
     await attendre(() => (existsSync(DONNEES(dataDir, "compte")) ? lireJson<unknown>(DONNEES(dataDir, "compte")) : Promise.resolve(null)), (d) => d !== null, "les données de la récolte");
@@ -425,14 +425,14 @@ describe("la page d'accueil", () => {
     expect(await waitUi(m, `return !doc.querySelector('[data-testid="widget-compte"] [data-testid="bandeau-accord"]');`)).toBe(true);
   });
 
-  it("Refuser ne revient pas : le bandeau reste caché après une relecture de la page", async () => {
+  it("Refuser does not come back: the banner stays hidden after the page is reread", async () => {
     await waitUi(m, `return !!doc.querySelector('[data-testid="widget-sans-accord"] [data-testid="bandeau-accord"]');`, [], 15_000);
-    // Un accord et des données d'avant (comme après un autre profil) : le refus doit vraiment les effacer.
+    // A grant and data from before (as after another profile): the denial must really erase them.
     await ecrireJson(ACCORDS(dataDir), { ...(await lireAccords(dataDir)), "sans-accord": { domaines: ["exemple.invalid"], publiques: [], profil: "defaut" } });
     await ecrireJson(DONNEES(dataDir, "sans-accord"), { secret: "du compte" });
     await click(m, '[data-testid="widget-sans-accord"] [data-testid="bandeau-accord"] button', { text: "Refuser" });
     expect(await waitUi(m, `return !doc.querySelector('[data-testid="widget-sans-accord"] [data-testid="bandeau-accord"]');`)).toBe(true);
-    // Un widget ajouté force une relecture (accueil.change) : le refus vaut pour la session, le bandeau ne revient pas.
+    // An added widget forces a reread (accueil.change): the denial holds for the session, the banner does not come back.
     await ecrireWidget(dataDir, "temoin", { nom: "Témoin", affichage: AFFICHAGE("témoin") });
     await attendre(
       () => inUi<string[]>(m, `return [...doc.querySelectorAll('[data-testid="titre-widget"]')].map((e) => e.textContent);`),
@@ -445,9 +445,9 @@ describe("la page d'accueil", () => {
     expect(await lireJson<{ statut: string }>(ETAT(dataDir, "sans-accord"))).toMatchObject({ statut: "accord-requis" });
   });
 
-  it("un accord qui nomme un profil invalide redemande : la récolte le refuse, l'accord et ses données partent", async () => {
-    // L'accord nomme un profil de connexion ; un profil absent de la session le rend inutilisable. (Un profil qui
-    // devient privé ne redemande qu'à la prochaine récolte planifiée du widget : voir la limite du README.)
+  it("a grant that names an invalid profile asks again: the harvest refuses it, the grant and its data go away", async () => {
+    // The grant names a sign-in profile; a profile absent from the session makes it unusable. (A profile that
+    // becomes private only asks again at the widget's next scheduled harvest: see the README's limit.)
     const declaration = await lireJson<Record<string, unknown>>(path.join(ACCUEIL(dataDir), "widgets", "compte", "widget.json"));
     await ecrireJson(path.join(ACCUEIL(dataDir), "widgets", "compte", "widget.json"), { ...declaration, config: { lire: true, url: "https://exemple.invalid/x" } });
     await ecrireJson(ACCORDS(dataDir), { ...(await lireAccords(dataDir)), compte: { domaines: ["exemple.invalid"], publiques: [], profil: "absent" } });
@@ -456,14 +456,14 @@ describe("la page d'accueil", () => {
     expect((await lireAccords(dataDir)).compte).toBeUndefined();
     expect(existsSync(DONNEES(dataDir, "compte"))).toBe(false);
     expect(await lireJson<{ statut: string }>(ETAT(dataDir, "compte"))).toMatchObject({ statut: "accord-requis" });
-    // La nouvelle demande propose de nouveau un profil.
+    // The new request offers a profile again.
     await click(m, '[data-testid="widget-compte"] [data-testid="bandeau-accord"] button', { text: "Autoriser…" });
     const profils = await waitUi<[string, boolean][]>(m, `const rs = [...doc.querySelectorAll('[data-testid="carte-accord"] input[type="radio"]')]; return rs.length ? rs.map((r) => [r.value, r.checked]) : null;`);
     expect(profils.map(([id]) => id)).toContain("defaut");
     await click(m, '[data-testid="carte-accord"] button', { text: "Annuler" });
   });
 
-  it("une récolte à la main passe par « en cours » puis remplit le widget", async () => {
+  it("a manual harvest goes through « en cours » then fills the widget", async () => {
     const data = () => (existsSync(DONNEES(dataDir, "lent")) ? lireJson<{ fait: number }>(DONNEES(dataDir, "lent")) : Promise.resolve(null));
     await attendre(data, (d) => d !== null, "les données du lancement", 20_000);
     const avant = await attendre(
@@ -478,7 +478,7 @@ describe("la page d'accueil", () => {
       "les données dans le cadre",
     );
     await recolter(m, "lent");
-    // L'état « en cours » est écrit avant le conteneur : le badge reste visible pendant la récolte lente.
+    // The « en cours » state is written before the container: the badge stays visible during the slow harvest.
     await waitUi(m, `return (doc.querySelector('[data-testid="widget-lent"] header')?.textContent ?? '').includes('mise à jour…');`, [], 10_000);
     const apres = await attendre(
       async () => {
@@ -495,14 +495,14 @@ describe("la page d'accueil", () => {
     expect(apres!.fait).toBeGreaterThan(avant!.fait);
   });
 
-  it("une récolte en échec le dit et ne laisse pas de données", async () => {
+  it("a failed harvest says so and leaves no data", async () => {
     const texte = await attendre(() => texteWidget(m, "echec"), (t) => t.includes("échec du") && t.includes("boum"), "l'échec de la récolte", 20_000);
     expect(texte).toContain("échec du");
     expect(existsSync(DONNEES(dataDir, "echec"))).toBe(false);
     expect(await lireJson<{ statut: string; erreur: string }>(ETAT(dataDir, "echec"))).toMatchObject({ statut: "erreur", erreur: "boum" });
   });
 
-  it("une récolte de nouveautés écrit sa notification dans WEBAIOS_TEST_NOTIFICATIONS", async () => {
+  it("a news harvest writes its notification into WEBAIOS_TEST_NOTIFICATIONS", async () => {
     const lignes = await attendre(
       async () => ((existsSync(notifications) ? (await readFile(notifications, "utf8")).trim().split("\n").filter(Boolean) : []).map((l) => JSON.parse(l) as { titre: string; texte: string })),
       (ls) => ls.some((n) => n.titre === "Veille"),
@@ -512,8 +512,8 @@ describe("la page d'accueil", () => {
     expect(lignes).toContainEqual({ titre: "Veille", texte: "2 nouveaux éléments" });
   });
 
-  it("Retirer : le dossier part dans .corbeille, l'accord et les données sont effacés", async () => {
-    // Le widget a un accord et des données avant le retrait.
+  it("Retirer: the folder goes into .corbeille, the grant and the data are erased", async () => {
+    // The widget has a grant and data before the removal.
     expect(existsSync(path.join(ACCUEIL(dataDir), "widgets", "retrait"))).toBe(true);
     expect((await lireAccords(dataDir)).retrait).toBeDefined();
     expect(existsSync(DONNEES(dataDir, "retrait"))).toBe(true);
@@ -530,7 +530,7 @@ describe("la page d'accueil", () => {
     );
     expect(corbeille.some((n) => n.startsWith("retrait-"))).toBe(true);
     expect(existsSync(path.join(ACCUEIL(dataDir), "widgets", "retrait"))).toBe(false);
-    // Le host retire l'accord puis les données : les deux ensemble.
+    // The host removes the grant then the data: both together.
     await attendre(
       async () => ({ accord: (await lireAccords(dataDir)).retrait, donnees: existsSync(DONNEES(dataDir, "retrait")) }),
       (v) => v.accord === undefined && !v.donnees,
@@ -538,13 +538,13 @@ describe("la page d'accueil", () => {
     );
   });
 
-  it("host arrêté : les actions restent sans effet et la page reste affichée", async () => {
+  it("host stopped: the actions stay without effect and the page stays displayed", async () => {
     await m.execute(`return (async () => { await window.webaiosWindow.store.agent.stop(); return true; })();`);
     await waitFor<number | null>(m, `return window.webaiosWindow.store.agent.pid;`, (pid) => pid === null);
     await recolter(m, "veille");
     const texte = await attendre(() => texteWidget(m, "veille"), (t) => t.includes("Sans effet pour l'instant"), "l'avertissement sans effet", 12_000);
     expect(texte).toContain("le service des widgets ne répond pas");
-    // Les widgets restent affichés, cadres compris.
+    // The widgets stay displayed, frames included.
     expect(await inUi<string[]>(m, `return [...doc.querySelectorAll('[data-testid="titre-widget"]')].map((e) => e.textContent);`)).toContain("Veille");
     await waitUi(m, `return !!doc.querySelector('[data-testid="widget-veille"] iframe');`);
   });
@@ -582,7 +582,7 @@ describe("the home page after a host restart", () => {
   });
 });
 
-describe("la page d'accueil, atelier arrêté", () => {
+describe("the home page, workshop stopped", () => {
   let dataDir: string;
   let w: LaunchedWebAiOs;
   let m: Marionette;
@@ -596,7 +596,7 @@ describe("la page d'accueil, atelier arrêté", () => {
       declaration: { recolte: { minutes: 60 }, sources: { compte: [], publiques: [], web: false } },
     });
     await ecrireRecolte(dataDir, "veille", `export default async () => [{ url: "https://exemple.invalid/a" }];`);
-    // Des données d'une récolte d'avant, et un état dû : la vérification du lancement doit les garder.
+    // Data from a previous harvest, and a due state: the launch check must keep them.
     await ecrireJson(DONNEES(dataDir, "veille"), { vieux: true });
     await ecrireJson(ETAT(dataDir, "veille"), { statut: "ok", derniereMaj: "2026-01-01T00:00:00.000Z", derniereTentative: "2026-01-01T00:00:00.000Z" });
     await ecrireDisposition(dataDir, [{ id: "veille", x: 0, y: 0, l: 250, h: 180 }]);
@@ -610,15 +610,15 @@ describe("la page d'accueil, atelier arrêté", () => {
     await rm(dataDir, { recursive: true, force: true });
   });
 
-  it("sans atelier, la récolte ne tourne pas : « atelier arrêté », les données gardées", async () => {
+  it("without a workshop, the harvest does not run: « atelier arrêté », the data kept", async () => {
     await attendre(() => texteWidget(m, "veille"), (t) => t.includes("mise à jour impossible : atelier arrêté"), "l'atelier arrêté", 20_000);
     expect(await lireJson(DONNEES(dataDir, "veille"))).toEqual({ vieux: true });
-    // « Mettre à jour maintenant » ne lance rien non plus : rien ne change, l'interface le dit après son délai.
+    // « Mettre à jour maintenant » launches nothing either: nothing changes, the interface says so after its delay.
     await recolter(m, "veille");
     await attendre(() => texteWidget(m, "veille"), (t) => t.includes("Sans effet pour l'instant"), "l'action sans effet", 12_000);
     expect(await lireJson<{ statut: string }>(ETAT(dataDir, "veille"))).toMatchObject({ statut: "atelier-arrete" });
     expect(await lireJson(DONNEES(dataDir, "veille"))).toEqual({ vieux: true });
-    // La page reste affichée.
+    // The page stays displayed.
     expect(await inUi<string[]>(m, `return [...doc.querySelectorAll('[data-testid="titre-widget"]')].map((e) => e.textContent);`)).toEqual(["Veille"]);
   });
 });

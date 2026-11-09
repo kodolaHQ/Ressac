@@ -8,7 +8,7 @@ let n = 0;
 const genId = () => `g${++n}`;
 let e: EtatNavigateur;
 let F: string; // window
-let P: string; // espace « Perso »
+let P: string; // space « Perso »
 const ag = (a: Action) => (e = appliquer(e, a, genId));
 const fen = () => e.fenetres.find((f) => f.id === F)!;
 const ordre = (esp = P) => fen().ordre[esp] ?? [];
@@ -105,7 +105,7 @@ test("link opened from a tab of a background space: it stays in that space; from
   expect(e.onglets[m]!.espaceId).toBe(D);
 });
 
-test("onglet ouvert par l'agent : ouvertParAgent vrai", () => {
+test("tab opened by the agent: ouvertParAgent true", () => {
   const a = ouvrir("http://localhost:5280/", { ouvertParAgent: true });
   expect(e.onglets[a]!.ouvertParAgent).toBe(true);
 });
@@ -231,7 +231,7 @@ test("activerEspace keeps each space's own active tab", () => {
   expect(actif(B)).toBe(b);
 });
 
-test("activerOnglet d'un autre espace bascule l'espace actif", () => {
+test("activerOnglet of another space switches the active space", () => {
   ag({ type: "creerEspace", nom: "Boulot", icone: "💼", prive: false, profil: "defaut", fenetreId: F });
   const B = e.espaces[1]!.id;
   const b = ouvrir("https://b.test/");
@@ -734,7 +734,7 @@ test("ouvrirWorkflow of an action opens webaios://workflow/action/<id>", () => {
   expect(Object.values(e.onglets).map((o) => o.url)).toEqual(["webaios://workflow/action/gitlab", urlWorkflow("gitlab")]);
 });
 
-test("profilsEnUsage : par identifiant, espaces compris", () => {
+test("profilsEnUsage: by identifier, spaces included", () => {
   const copie = structuredClone(e);
   copie.espaces[0]!.profil = "autre";
   expect(profilsEnUsage(copie)).toEqual(new Set(["defaut", "autre"]));
