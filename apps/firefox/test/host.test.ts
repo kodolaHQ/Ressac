@@ -1,6 +1,6 @@
 import { execFileSync, spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
@@ -17,6 +17,7 @@ import { startFakeAmo } from "./fake-amo";
 import { callMcpTool } from "./mcp";
 
 const tools = join(import.meta.dirname, "tools");
+const MIGRATION_FIXTURE = join(import.meta.dirname, "../../../packages/kernel/test/migration/fixtures/v1");
 const tabs = [
   { id: "t1", title: "Un", url: "https://un.test/", space: "Perso" },
   { id: "t2", title: "Deux", url: "https://deux.test/", space: "Perso" },
@@ -137,6 +138,29 @@ describe("agent host", { timeout: 30_000 }, () => {
     expect(existsSync(join(h.root, ".webaios", "mcp.json"))).toBe(true);
     const r = await callMcpTool(h.root, "list_tabs");
     expect(r.text).toContain("onglet non partagé");
+  });
+
+  it("migrates old data before anything reads it, and says so once", async () => {
+    const notes = join(tmpdir(), `webaios-notes-${process.pid}-${Date.now()}.jsonl`);
+    const h = startHost({ WEBAIOS_TEST_NOTIFICATIONS: notes }, (d) => {
+      cpSync(MIGRATION_FIXTURE, d, { recursive: true });
+      writeFileSync(join(d, ".format-version"), JSON.stringify({ store: 2, kernel: 1 }));
+    });
+    await h.rpc.request("start", { agentProfile: "claude" });
+    await h.rpc.request("start", { agentProfile: "claude" });
+    expect(existsSync(join(h.dataDir, "espace"))).toBe(false);
+    expect(JSON.parse(readFileSync(join(h.dataDir, ".format-version"), "utf8"))).toEqual({ store: 2, kernel: 2 });
+    const lines = readFileSync(notes, "utf8").trim().split("\n");
+    expect(lines).toHaveLength(1);
+    expect(JSON.parse(lines[0]!).text).toContain("migration-anglais.md");
+    rmSync(notes, { force: true });
+  });
+
+  it("old data the store has not backed up: the host stops, nothing written", async () => {
+    const h = startHost({}, (d) => cpSync(MIGRATION_FIXTURE, d, { recursive: true }));
+    expect(await h.exited).toBe(2);
+    expect(existsSync(join(h.dataDir, "espace"))).toBe(true);
+    expect(h.stderr()).toContain("copie de sauvegarde");
   });
 
   it("a private tab is hidden from the agent", async () => {

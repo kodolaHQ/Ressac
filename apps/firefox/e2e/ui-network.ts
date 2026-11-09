@@ -91,7 +91,7 @@ export async function resolvedNames(logDir: string): Promise<string[]> {
 
 /** A widget `id` of the space's home with display `html`, and optional example data (example.json). */
 export function widgetFiles(dataDir: string, id: string, html: string, example?: unknown): void {
-  const dir = path.join(dataDir, "espace/home/widgets", id);
+  const dir = path.join(dataDir, "workspace/home/widgets", id);
   mkdirSync(dir, { recursive: true });
   writeFileSync(
     path.join(dir, "widget.json"),

@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "blocs": {
+    "nouveaux": { "type": "liste.nouveaux", "valeur": [["https://un.test", "2026-11-01T08:00:00.000Z"]], "empreinte": "fed3b24ead3ab499" },
+    "tri": { "type": "ia.trier", "valeur": { "reutilises": [["https://un.test", 0.9, "2026-11-01T08:00:00.000Z"]] }, "empreinte": "0000000000000000" },
+    "resumes": { "type": "ia.rediger", "valeur": { "reutilises": [] }, "empreinte": "378d1cfadda9f1e5" },
+    "lire": { "type": "source.page", "valeur": { "reutilises": [] } },
+    "parti": { "type": "liste.nouveaux", "valeur": [], "empreinte": "1111111111111111" }
+  }
+}

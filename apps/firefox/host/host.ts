@@ -21,6 +21,7 @@ const { appendFileSync } = await import("node:fs");
 const { stat } = await import("node:fs/promises");
 // Imported after the env is set and stdout redirected: nothing in the kernel can write to stdout at load time.
 const { ACTION_UNKNOWN, Workshop, blockCatalog, loadProfiles, spacePaths, createKernel, defaultRunner, LocalAi, readHome, readFreeLayout, readTheme, Pacing, contextPrefix, removeGrant, deleteData, watchActions } = await import("../../../packages/kernel/src/index.ts");
+const { migrateKernel } = await import("../../../packages/kernel/src/migration/index.ts");
 const { SessionsAgent } = await import("../core/agent/sessions.ts");
 const { History } = await import("../core/history.ts");
 const { createRpc } = await import("../shared/rpc.ts");
@@ -62,6 +63,15 @@ const {
 const dataDir = process.env.WEBAIOS_DATA_DIR;
 if (!dataDir) {
   console.error("[webaios] WEBAIOS_DATA_DIR manquant");
+  process.exit(2);
+}
+// The English formats (kernel half): before anything reads the data, the workspace setup and the history included.
+// A newer format, or old data the store has not backed up: the host stops, nothing written.
+let migrationReport: string | null = null;
+try {
+  migrationReport = (await migrateKernel({ dataDir })).report;
+} catch (e) {
+  console.error(`[webaios] migration des données arrêtée : ${(e as Error).message}`);
   process.exit(2);
 }
 const root = join(dataDir, "workspace");
@@ -202,6 +212,11 @@ const stopKernel = async (n: Kernel | null) => {
 const start = async () => {
   const n = await ready;
   if (!n) throw new Error(error ?? "le noyau de l'agent n'a pas démarré");
+  // Said once, when the browser is there to show it (same channel as the home's notifications).
+  if (migrationReport) {
+    notify({ title: "Données passées aux noms anglais", text: `Le code de l'agent à corriger et le reste sont dans ${migrationReport}` });
+    migrationReport = null;
+  }
   return { agent: n.agent };
 };
 
@@ -273,7 +288,7 @@ const rpc = createRpc({
       }
     },
     "access.state": accessState,
-    // Home page: the widgets of espace/home/widgets, their data and state, the validated theme,
+    // Home page: the widgets of workspace/home/widgets, their data and state, the validated theme,
     // with the free placement (version 3).
     "home.read": async () => {
       const n = await ready;

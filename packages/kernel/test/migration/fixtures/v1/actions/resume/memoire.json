@@ -1,0 +1,1 @@
+{ "version": 1, "blocs": { "ecrire": { "type": "ia.rediger", "valeur": { "reutilises": [["k", "v", "2026-11-01T00:00:00.000Z"]] }, "empreinte": "2b91e4be22a2edd0" } } }

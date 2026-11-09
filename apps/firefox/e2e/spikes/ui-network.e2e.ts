@@ -120,7 +120,7 @@ try { f.contentWindow.location.href = "http://${p}-${d}-nav.${SFX}:${HTTP}/s2/${
 </script>`;
 
 function widgetFiles(dataDir: string, id: string, display: string): void {
-  const dir = path.join(dataDir, "espace/home/widgets", id);
+  const dir = path.join(dataDir, "workspace/home/widgets", id);
   mkdirSync(dir, { recursive: true });
   writeFileSync(
     path.join(dir, "widget.json"),

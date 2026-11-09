@@ -13,15 +13,15 @@ const STARTER_WIDGETS = path.resolve(import.meta.dirname, "../../../packages/ker
 
 /**
  * A new space gets the starter widgets, harvested at launch on the real web (the fake docker runs harvests on the Mac).
- * Seeds them without their `recolte`, so they are never due; the space setup never overwrites an existing widgets folder.
+ * Seeds them without their `harvest`, so they are never due; the space setup never overwrites an existing widgets folder.
  */
 async function seedStarterWidgets(dataDir: string): Promise<void> {
-  const widgets = path.join(dataDir, "espace/home/widgets");
+  const widgets = path.join(dataDir, "workspace/home/widgets");
   if (existsSync(widgets)) return;
   for (const id of await readdir(STARTER_WIDGETS)) {
     await cp(path.join(STARTER_WIDGETS, id), path.join(widgets, id), { recursive: true });
     const file = path.join(widgets, id, "widget.json");
-    const { recolte: _, ...widget } = JSON.parse(await readFile(file, "utf8"));
+    const { harvest: _, ...widget } = JSON.parse(await readFile(file, "utf8"));
     await writeFile(file, JSON.stringify(widget, null, 2));
   }
 }

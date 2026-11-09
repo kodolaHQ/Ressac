@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Météo</title>
+<style>
+  :root { color-scheme: light dark; --fond: #ffffff; --texte: #1c1c1e; --doux: #6b6b70; --trait: #e4e4e7; }
+  @media (prefers-color-scheme: dark) { :root { --fond: #1c1c1e; --texte: #f2f2f4; --doux: #9a9aa2; --trait: #3a3a3e; } }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--fond); color: var(--texte); font: 13px/1.3 system-ui, -apple-system, sans-serif; }
+  body { padding: 10px 12px; overflow: auto; display: flex; flex-direction: column; gap: 8px; }
+  .ville { color: var(--doux); font-size: 12px; }
+  .actuel { display: flex; align-items: baseline; gap: 10px; }
+  .temp { font-size: 34px; font-weight: 600; line-height: 1; }
+  .libelle { font-size: 14px; }
+  .rang { display: flex; gap: 10px; overflow-x: auto; padding-top: 6px; border-top: 1px solid var(--trait); }
+  .case { flex: 0 0 auto; text-align: center; min-width: 52px; }
+  .case small { display: block; color: var(--doux); font-size: 11px; }
+  .jours { display: flex; flex-direction: column; gap: 3px; padding-top: 6px; border-top: 1px solid var(--trait); }
+  .jour { display: flex; justify-content: space-between; gap: 8px; }
+  .jour span:last-child { color: var(--doux); white-space: nowrap; }
+  .message { color: var(--doux); font-size: 14px; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div id="sans-ville" class="message" hidden>Dis à l'agent ta ville (par exemple : « ma ville est Bordeaux »)</div>
+<div id="meteo" hidden>
+  <div class="ville" id="ville"></div>
+  <div class="actuel"><span class="temp" id="temp"></span><span class="libelle" id="libelle"></span></div>
+</div>
+<div class="rang" id="heures" hidden></div>
+<div class="jours" id="jours" hidden></div>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const deg = (n) => Math.round(Number(n)) + "°";
+  const JOURS = ["dim.", "lun.", "mar.", "mer.", "jeu.", "ven.", "sam."];
+  function nomJour(date) {
+    const d = new Date(String(date) + "T12:00:00");
+    return isNaN(d) ? String(date) : JOURS[d.getDay()];
+  }
+  function afficher(m) {
+    const d = m.donnees || {};
+    const aVille = typeof d.ville === "string" && d.ville && d.actuel;
+    $("sans-ville").hidden = !!aVille;
+    $("meteo").hidden = !aVille;
+    $("heures").hidden = true;
+    $("jours").hidden = true;
+    if (!aVille) return;
+    $("ville").textContent = d.ville;
+    $("temp").textContent = deg(d.actuel.temperature);
+    $("libelle").textContent = String(d.actuel.libelle ?? "");
+    const l = (m.taille && m.taille.l) || 0, h = (m.taille && m.taille.h) || 0;
+    if (l >= 4 && Array.isArray(d.heures) && d.heures.length) {
+      const zone = $("heures");
+      zone.replaceChildren();
+      for (const x of d.heures) {
+        const c = document.createElement("div");
+        c.className = "case";
+        const t = document.createElement("div");
+        t.textContent = deg(x.temperature);
+        const s = document.createElement("small");
+        s.textContent = String(x.heure ?? "");
+        c.append(t, s);
+        c.title = String(x.libelle ?? "");
+        zone.append(c);
+      }
+      zone.hidden = false;
+    }
+    if (h >= 3 && Array.isArray(d.jours) && d.jours.length) {
+      const zone = $("jours");
+      zone.replaceChildren();
+      for (const j of d.jours) {
+        const r = document.createElement("div");
+        r.className = "jour";
+        const a = document.createElement("span");
+        a.textContent = nomJour(j.date) + " " + String(j.libelle ?? "");
+        const b = document.createElement("span");
+        b.textContent = deg(j.min) + " / " + deg(j.max);
+        r.append(a, b);
+        zone.append(r);
+      }
+      zone.hidden = false;
+    }
+  }
+  // Firefox: a sandboxed resource:// frame does not see parent, e.source === parent is false there.
+  addEventListener("message", (e) => { if (e.data && e.data.type === "widget") afficher(e.data); });
+</script>
+</body>
+</html>

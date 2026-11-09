@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "blocs": [
+    { "id": "page", "type": "source.page", "position": { "x": 0, "y": 0 }, "parametres": { "url": "{saisie}" } },
+    { "id": "chercher", "type": "web.chercher", "position": { "x": 0, "y": 100 }, "parametres": { "requete": "{saisie}", "nombre": 3 } },
+    { "id": "fetch", "type": "source.recuperer", "position": { "x": 0, "y": 200 }, "parametres": { "url": "https://api.test/x", "format": "texte" } },
+    { "id": "garder", "type": "liste.garder", "position": { "x": 0, "y": 300 }, "parametres": { "nombre": 2 } },
+    { "id": "ecrire", "type": "ia.rediger", "position": { "x": 200, "y": 0 }, "parametres": { "consigne": "Résume : {page.texte} {recherche.0.extrait} {contenu}", "json": true } },
+    { "id": "sortie", "type": "sortie", "position": { "x": 400, "y": 0 }, "parametres": { "vers": "page" } }
+  ],
+  "liens": [{ "de": "page", "vers": "ecrire" }, { "de": "chercher", "vers": "ecrire" }, { "de": "fetch", "vers": "garder" }, { "de": "garder", "vers": "ecrire" }, { "de": "ecrire", "vers": "sortie" }]
+}

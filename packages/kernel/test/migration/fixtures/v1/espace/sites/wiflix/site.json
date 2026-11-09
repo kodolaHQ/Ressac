@@ -1,0 +1,11 @@
+{
+  "nom": "Vidola",
+  "description": "Des séries",
+  "adresse": "https://vidola.example/",
+  "domaines": ["vidola.example"],
+  "connexion": ["auth.vidola.example"],
+  "suiviAdresse": { "page": "https://annuaire.example/vidola", "motif": "vidola" },
+  "retouches": [{ "correspond": ["/series/*"], "js": ["a.js"], "css": [], "cadres": ["https://player.example/*"] }],
+  "reprise": true,
+  "icone": "accueil/icone.png"
+}

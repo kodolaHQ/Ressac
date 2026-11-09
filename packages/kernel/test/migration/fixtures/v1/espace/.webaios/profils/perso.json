@@ -1,0 +1,1 @@
+{ "id": "perso", "nom": "Perso", "interactif": ["claude", "--mcp-config", "{mcpConfig}"], "nonInteractif": ["claude", "-p", "{consigne}"], "configMcp": "claude-json" }

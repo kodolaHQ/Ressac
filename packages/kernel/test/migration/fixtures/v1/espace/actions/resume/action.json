@@ -1,0 +1,9 @@
+{
+  "nom": "Résumer",
+  "description": "Résume une page",
+  "motsCles": ["résumé"],
+  "saisie": { "libelle": "Adresse" },
+  "sources": { "compte": [], "publiques": [], "web": true },
+  "miseEnPage": "Un titre puis le résumé",
+  "dureeMaxMinutes": 5
+}

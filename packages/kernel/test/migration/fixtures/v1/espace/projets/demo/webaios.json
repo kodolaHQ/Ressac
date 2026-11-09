@@ -1,0 +1,1 @@
+{ "nom": "Démo", "type": "application", "lancement": "npm run dev -- --port {port}", "origine": "http://localhost:5173" }

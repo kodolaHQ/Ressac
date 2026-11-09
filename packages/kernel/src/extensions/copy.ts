@@ -90,7 +90,7 @@ interface Marker {
  * special file, a replacement during the read, or exceeding the limits gives a denial (the walk
  * stops).
  */
-async function readFolder(source: string): Promise<{ files: Map<string, Buffer>; denial: string[]; root?: RootRead }> {
+export async function readFolder(source: string): Promise<{ files: Map<string, Buffer>; denial: string[]; root?: RootRead }> {
   const files = new Map<string, Buffer>();
   const root = join(await realpath(dirname(source)), basename(source));
   let size = 0;
@@ -182,7 +182,7 @@ async function readFolder(source: string): Promise<{ files: Map<string, Buffer>;
   return { files: files, denial: [], root: loaded };
 }
 
-function hashOf(files: Map<string, Buffer>): string {
+export function hashOf(files: Map<string, Buffer>): string {
   const h = createHash("sha256");
   for (const path of [...files.keys()].sort()) {
     const content = files.get(path)!;

@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "toutesCoupees": false,
+  "consolesMasquees": ["bloqueur@agent.webaios"],
+  "extensions": {
+    "store:abcdefghijklmnopabcdefghijklmnop": { "source": "store", "idChrome": "ublock@example", "nom": "uBlock", "version": "1.0", "accord": { "permissions": ["storage"], "hotes": ["<all_urls>"], "reseau": [], "tousLesSites": true, "scriptsTousLesSites": true }, "profils": ["defaut", "site-vidola"], "epinglee": true, "modifieeLe": null, "desactivee": null, "majEnAttente": { "version": "1.1", "portee": { "permissions": [], "hotes": [], "reseau": [], "tousLesSites": false, "scriptsTousLesSites": false }, "chemin": "/tmp/x.xpi" }, "vues": { "defaut": "1.0" }, "applis": { "vidola": "608992e3d11efd7b08aa38289124aae4bc36393fcc01e8e9aa6cd456804baa21", "parti": "abc" } },
+    "agent:bloqueur": { "source": "agent", "idChrome": "bloqueur@agent.webaios", "nom": "Bloqueur", "version": "1.0", "accord": { "permissions": [], "hotes": [], "reseau": ["api.bloqueur.example"], "tousLesSites": false, "scriptsTousLesSites": false, "scripts": false }, "profils": ["defaut"], "epinglee": false, "modifieeLe": "2026-11-01T00:00:00.000Z", "desactivee": { "raison": "portee-elargie", "le": "2026-11-02T00:00:00.000Z" }, "majEnAttente": null, "vues": {}, "consoleMasquee": ["defaut"] }
+  }
+}

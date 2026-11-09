@@ -1,0 +1,1 @@
+{ "vidola": { "domaines": ["vidola.example"], "connexion": ["auth.vidola.example"], "cadres": ["https://player.example/*"], "reprise": true } }
