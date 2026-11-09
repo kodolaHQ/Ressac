@@ -103,7 +103,7 @@ export function bridgeHandlers(
   const getText = async (browser: any) => {
     const r = await browser.browsingContext.currentWindowGlobal.getActor("WebAiOsPage").sendQuery("getText");
     // The child runs in a web process: its answer is not trusted.
-    const text = String(r?.texte ?? "").slice(0, TEXT_MAX);
+    const text = String(r?.text ?? "").slice(0, TEXT_MAX);
     const selection = String(r?.selection ?? "").slice(0, TEXT_MAX);
     return selection ? { text: text, selection } : { text: text };
   };

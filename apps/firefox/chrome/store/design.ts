@@ -398,7 +398,7 @@ export function createDesign(o: {
 
     shortcut(win) {
       const doc = win.document.documentElement;
-      const windowId = (win as any).webaiosWindow?.fenetreId as WindowId | undefined;
+      const windowId = (win as any).webaiosWindow?.windowId as WindowId | undefined;
       const main = !!windowId && o.windows.get(windowId)?.window === win;
       const app = o.apps.folderOf(win);
       const choice = chooseDesignTarget({

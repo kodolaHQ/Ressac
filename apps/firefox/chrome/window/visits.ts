@@ -70,7 +70,7 @@ export function trackVisits(gBrowser: any, history: History, context: (id: strin
     const actor = browser.browsingContext.currentWindowGlobal.getActor("WebAiOsPage");
     const parts: PageParts | undefined = await actor.sendQuery("getParts", { video: isYoutubeVideo(url) });
     // An actor built before getParts existed answers nothing: fall back to the body text alone.
-    const text = parts ? composeText(parts) : String((await actor.sendQuery("getText"))?.texte ?? "");
+    const text = parts ? composeText(parts) : String((await actor.sendQuery("getText"))?.text ?? "");
     if (stillHere() && text.trim()) history.retain({ url, spaceId: spaceId, title: browser.contentTitle || url, text: text });
   };
   gBrowser.addTabsProgressListener({
