@@ -13,7 +13,7 @@ const refus = (brut: unknown): string => {
   return r.erreur;
 };
 
-test("un workflow valide donne l'ordre topologique, à égalité dans l'ordre des blocs", () => {
+test("a valid workflow gives the topological order, ties in block order", () => {
   const r = validerWorkflow(
     wf(
       [
@@ -31,7 +31,7 @@ test("un workflow valide donne l'ordre topologique, à égalité dans l'ordre de
   expect(r.valide.sortie).toEqual({ id: "s", vers: "widget" });
 });
 
-test("les paramètres reçoivent leurs défauts", () => {
+test("parameters receive their defaults", () => {
   const r = validerWorkflow(wf([{ id: "src", type: "source.flux", parametres: { urls: ["https://x.fr/rss"] } }, { id: "tri", type: "ia.trier", parametres: { question: "q", texte: "t" } }, sortie()], [{ de: "src", vers: "tri" }, { de: "tri", vers: "s" }]));
   if (!r.ok) throw new Error(r.erreur);
   const tri = r.valide.workflow.blocs[1]!;
@@ -40,51 +40,51 @@ test("les paramètres reçoivent leurs défauts", () => {
   expect(r.valide.workflow.blocs[2]!.parametres).toEqual({ vers: "widget" });
 });
 
-test("le workflow implicite est valide", () => {
+test("the implicit workflow is valid", () => {
   const r = validerWorkflow(workflowImplicite());
   expect(r.ok && r.valide.ordre).toEqual(["recolte", "sortie"]);
 });
 
-test("un JSON non conforme au schéma est refusé", () => {
+test("a JSON not conforming to the schema is refused", () => {
   expect(refus({ version: 2, blocs: [] })).toContain("version");
   expect(refus("pas un objet")).toMatch(/^Workflow invalide : /);
   expect(refus(wf([{ id: "A B", type: "sortie" }]))).toContain("blocs.0.id");
 });
 
-test("un type inconnu est refusé", () => {
+test("an unknown type is refused", () => {
   expect(refus(wf([{ id: "x", type: "web.inconnu" }, sortie()]))).toBe("Workflow invalide : type inconnu : web.inconnu");
 });
 
-test("un cycle est nommé", () => {
+test("a cycle is named", () => {
   const blocs = [{ id: "a", type: "liste.garder", parametres: { nombre: 1 } }, { id: "b", type: "liste.garder", parametres: { nombre: 1 } }, sortie()];
   expect(refus(wf(blocs, [{ de: "a", vers: "b" }, { de: "b", vers: "a" }]))).toBe("Workflow invalide : cycle : a → b → a");
   expect(refus(wf(blocs, [{ de: "a", vers: "a" }]))).toBe("Workflow invalide : cycle : a → a");
 });
 
-test("un lien vers un bloc absent est refusé", () => {
+test("a link to a missing block is refused", () => {
   expect(refus(wf([sortie()], [{ de: "s", vers: "x" }]))).toBe("Workflow invalide : lien vers un bloc absent : x");
 });
 
-test("un id de bloc en double est refusé", () => {
+test("a duplicate block id is refused", () => {
   const b = { id: "a", type: "liste.garder", parametres: { nombre: 1 } };
   expect(refus(wf([b, b, sortie()]))).toBe("Workflow invalide : id de bloc en double : a");
 });
 
-test("une sortie est obligatoire et unique", () => {
+test("one sortie is mandatory and unique", () => {
   expect(refus(wf([{ id: "a", type: "liste.garder", parametres: { nombre: 1 } }]))).toBe("Workflow invalide : aucune sortie");
   expect(refus(wf([sortie("s1"), sortie("s2")]))).toBe("Workflow invalide : plusieurs sorties : s1, s2");
 });
 
-test("une destination de sortie inconnue est refusée", () => {
+test("an unknown output destination is refused", () => {
   expect(refus(wf([sortie("s", { vers: "notification" })]))).toContain("s.vers : vers inconnu : notification");
 });
 
-test("des paramètres invalides sont nommés par l'id du bloc", () => {
+test("invalid parameters are named by the block id", () => {
   expect(refus(wf([{ id: "tri", type: "ia.trier", parametres: { question: "q", texte: "t", seuil: 2 } }, sortie()]))).toMatch(/^Workflow invalide : tri\.seuil : /);
   expect(refus(wf([{ id: "tri", type: "ia.trier", parametres: { texte: "t" } }, sortie()]))).toMatch(/tri\.question/);
 });
 
-test("source.page : defiler entier de 0 à 20, facultatif et sans défaut (l'empreinte d'un bloc existant ne change pas)", () => {
+test("source.page: defiler an integer from 0 to 20, optional and without a default (an existing block's hash does not change)", () => {
   const page = (parametres: object) => wf([{ id: "p", type: "source.page", parametres: { url: "https://a.fr/", ...parametres } }, sortie()], [{ de: "p", vers: "s" }]);
   for (const defiler of [21, -1, 1.5, "8"]) expect(refus(page({ defiler }))).toMatch(/^Workflow invalide : p\.defiler : /);
   const r = validerWorkflow(page({ defiler: 8 }));
@@ -93,24 +93,24 @@ test("source.page : defiler entier de 0 à 20, facultatif et sans défaut (l'emp
   expect(sans.ok && sans.valide.workflow.blocs[0]!.parametres).not.toHaveProperty("defiler");
 });
 
-test("un fichier de bloc code hors du dossier est refusé", () => {
+test("a code block file outside the folder is refused", () => {
   for (const source of ["../x.mjs", "/etc/x.mjs", "x.js", "a/b.mjs"]) {
     expect(refus(wf([{ id: "c", type: "code", parametres: { source } }, sortie()]))).toMatch(/^Workflow invalide : c\.source : /);
   }
 });
 
-test("parElement est refusé sur un type qui ne l'accepte pas", () => {
+test("parElement is refused on a type that does not accept it", () => {
   expect(refus(wf([{ id: "g", type: "liste.garder", parametres: { nombre: 1, parElement: true } }, sortie()]))).toContain("g.parElement");
 });
 
-test("chaque type du registre a un module et un schéma de paramètres", () => {
+test("each registry type has a module and a parameter schema", () => {
   const types = ["source.page", "source.flux", "source.recuperer", "web.chercher", "liste.nouveaux", "liste.dedoublonner", "liste.garder", "ia.trier", "ia.rediger", "code", "sortie"];
   expect([...REGISTRE_BLOCS.keys()].sort()).toEqual([...types].sort());
   for (const t of types) expect(typeof REGISTRE_BLOCS.get(t)!.parametres.safeParse).toBe("function");
   expect(REGISTRE_BLOCS.get("ia.trier")!.parElement).toBe("toujours");
 });
 
-test("les messages courants de zod sont dits en français", () => {
+test("zod's common messages are worded in French", () => {
   expect(refus({ version: 2, blocs: [] })).toBe('Workflow invalide : version : 1 attendu');
   expect(refus({ version: 1, blocs: "x" })).toBe("Workflow invalide : blocs : liste attendue");
   expect(refus({ version: 1 })).toBe("Workflow invalide : blocs : manquant (liste attendue)");
@@ -121,16 +121,16 @@ test("les messages courants de zod sont dits en français", () => {
   expect(refus(wf([sortie()], [{ de: "", vers: "s" }]))).toBe("Workflow invalide : liens.0.de : vide");
   expect(refus(wf([{ ...sortie(), nom: "x".repeat(61) }]))).toBe("Workflow invalide : blocs.0.nom : 60 caractères au plus");
   expect(refus({ ...wf([sortie()]), autre: 1 })).toBe("Workflow invalide : autre : paramètre inconnu");
-  // Un message écrit dans un schéma est gardé tel quel.
+  // A message written in a schema is kept as is.
   expect(refus(wf([sortie("ID!")]))).toContain("id de bloc invalide");
 });
 
-test("plus de 100 blocs, ou plus de 400 liens : refusé", () => {
+test("more than 100 blocks, or more than 400 links: refused", () => {
   const blocs = Array.from({ length: 101 }, (_, i) => ({ id: `b${i}`, type: "liste.garder", parametres: { nombre: 1 } }));
   expect(refus(wf(blocs))).toBe("Workflow invalide : blocs : 100 éléments au plus");
   const liens = Array.from({ length: 401 }, () => ({ de: "s", vers: "s" }));
   expect(refus(wf([sortie()], liens))).toBe("Workflow invalide : liens : 400 éléments au plus");
-  // À la limite : accepté par le schéma (100 blocs, 400 liens).
+  // At the limit: accepted by the schema (100 blocks, 400 links).
   const cent = [{ id: "b0", type: "source.flux", parametres: { urls: ["https://x.fr/rss"] } }, ...blocs.slice(1, 99), sortie()];
   const chaine = cent.slice(1).map((b, i) => ({ de: cent[i]!.id, vers: b.id }));
   const doublons = Array.from({ length: 400 - chaine.length }, () => chaine[0]!);
@@ -145,7 +145,7 @@ const blocErreur = (brut: unknown): string | undefined => {
   return r.bloc;
 };
 
-test("une erreur de paramètre nomme le bloc en cause", () => {
+test("a parameter error names the block concerned", () => {
   const brut = wf([{ id: "tri", type: "ia.trier", parametres: { question: "q", texte: "t", seuil: 2 } }, sortie()], [{ de: "tri", vers: "s" }]);
   expect(blocErreur(brut)).toBe("tri");
   expect(blocErreur(wf([{ id: "x", type: "web.inconnu" }, sortie()]))).toBe("x");
@@ -156,12 +156,12 @@ test("une erreur de paramètre nomme le bloc en cause", () => {
   expect(blocErreur(wf([sortie()], [{ de: "a", vers: "b" }]))).toBeUndefined();
 });
 
-test("un cycle nomme son premier bloc dans l'ordre du tableau", () => {
+test("a cycle names its first block in the array order", () => {
   const blocs = [{ id: "b", type: "liste.garder", parametres: { nombre: 1 } }, { id: "a", type: "liste.garder", parametres: { nombre: 1 } }, sortie()];
   expect(blocErreur(wf(blocs, [{ de: "a", vers: "b" }, { de: "b", vers: "a" }]))).toBe("b");
 });
 
-test("un bloc dont l'entrée est requise et sans prédécesseur est refusé", () => {
+test("a block whose input is required and without a predecessor is refused", () => {
   const brut = wf([{ id: "top", type: "liste.garder", parametres: { nombre: 3 } }, sortie()], [{ de: "top", vers: "s" }]);
   expect(refus(brut)).toBe("Workflow invalide : top : entrée manquante (relie un bloc avant lui)");
   expect(blocErreur(brut)).toBe("top");
@@ -169,22 +169,22 @@ test("un bloc dont l'entrée est requise et sans prédécesseur est refusé", ()
   expect(refus(tri)).toContain("tri : entrée manquante");
 });
 
-test("une sortie sans prédécesseur est refusée", () => {
+test("an output without a predecessor is refused", () => {
   expect(refus(wf([sortie()]))).toBe("Workflow invalide : s : entrée manquante (relie un bloc avant lui)");
 });
 
-test("source.page sans parElement n'a pas besoin d'entrée ; avec parElement, si", () => {
+test("source.page without parElement needs no input; with parElement, it does", () => {
   const avec = (parElement: boolean) =>
     wf([{ id: "p", type: "source.page", parametres: { url: "https://x.fr", parElement } }, sortie()], [{ de: "p", vers: "s" }]);
   expect(validerWorkflow(avec(false)).ok).toBe(true);
   expect(refus(avec(true))).toContain("p : entrée manquante");
 });
 
-test("l'entrée manquante passe après la sortie unique et les cycles", () => {
+test("the missing input comes after the unique output and the cycles", () => {
   expect(refus(wf([{ id: "top", type: "liste.garder", parametres: { nombre: 3 } }]))).toBe("Workflow invalide : aucune sortie");
 });
 
-test("le workflow implicite et les trois modèles livrés restent valides", () => {
+test("the implicit workflow and the three shipped templates stay valid", () => {
   expect(validerWorkflow(workflowImplicite()).ok).toBe(true);
   for (const m of ["meteo", "actus-tech", "daily-dev"]) {
     const brut = JSON.parse(readFileSync(new URL(`../../modeles/widgets/${m}/workflow.json`, import.meta.url), "utf8"));
@@ -199,7 +199,7 @@ const avecPage = (parametres: Record<string, unknown>) =>
     [{ de: "f", vers: "p" }, { de: "p", vers: "s" }],
   );
 
-test("budgetSecondes 600 refusé sans durée (170 au plus), accepté avec dureeMaxMinutes 30, 1900 refusé (1800 au plus)", () => {
+test("budgetSecondes 600 refused without a duration (170 at most), accepted with dureeMaxMinutes 30, 1900 refused (1800 at most)", () => {
   expect(refus(avecPage({ budgetSecondes: 600 }))).toBe("Workflow invalide : p.budgetSecondes : 170 au plus");
   expect(validerWorkflow(avecPage({ budgetSecondes: 170 })).ok).toBe(true);
   const long = { web: false, dureeMaxMinutes: 30, proprietaire: "widget" as const, saisie: false };
@@ -211,7 +211,7 @@ test("budgetSecondes 600 refusé sans durée (170 au plus), accepté avec dureeM
   expect(CONTEXTE_PAR_DEFAUT).toEqual({ web: false, dureeMaxMinutes: null, proprietaire: "widget" as const, saisie: false });
 });
 
-test("garderJours sans reutiliser refusé sur source.page, accepté sur liste.nouveaux", () => {
+test("garderJours without reutiliser refused on source.page, accepted on liste.nouveaux", () => {
   const r = validerWorkflow(avecPage({ garderJours: 7 }));
   expect(r).toEqual({ ok: false, erreur: "Workflow invalide : p.garderJours : seulement avec reutiliser", bloc: "p" });
   const avec = validerWorkflow(avecPage({ garderJours: 7, reutiliser: "url" }));
@@ -224,13 +224,13 @@ test("garderJours sans reutiliser refusé sur source.page, accepté sur liste.no
   expect(lu.ok && lu.valide.workflow.blocs[1]!.parametres).toEqual({ cle: "url", garderJours: 30 });
 });
 
-test("garderJours 0 et 366 refusés", () => {
+test("garderJours 0 and 366 refused", () => {
   expect(refus(avecPage({ garderJours: 0, reutiliser: "url" }))).toBe("Workflow invalide : p.garderJours : au moins 1");
   expect(refus(avecPage({ garderJours: 366, reutiliser: "url" }))).toBe("Workflow invalide : p.garderJours : 365 au plus");
   expect(refus(avecPage({ garderJours: 1.5, reutiliser: "url" }))).toContain("p.garderJours");
 });
 
-test("sortie : auFilDeLEau facultatif, absent des paramètres validés quand il n'est pas écrit", () => {
+test("sortie: auFilDeLEau optional, absent from the validated parameters when not written", () => {
   const base = wf([{ id: "f", type: "source.flux", parametres: { urls: ["https://x.fr/rss"] } }, sortie()], [{ de: "f", vers: "s" }]);
   const r = validerWorkflow(base);
   expect(r.ok && r.valide.workflow.blocs[1]!.parametres).toEqual({ vers: "widget" });
@@ -239,7 +239,7 @@ test("sortie : auFilDeLEau facultatif, absent des paramètres validés quand il 
   expect(refus(wf([sortie("s", { auFilDeLEau: "oui" })]))).toContain("s.auFilDeLEau");
 });
 
-test("les trois modèles livrés et le workflow implicite restent valides, contexte par défaut", () => {
+test("the three shipped templates and the implicit workflow stay valid, default context", () => {
   expect(validerWorkflow(workflowImplicite(), CONTEXTE_PAR_DEFAUT).ok).toBe(true);
   for (const m of ["meteo", "actus-tech", "daily-dev"]) {
     const brut = JSON.parse(readFileSync(new URL(`../../modeles/widgets/${m}/workflow.json`, import.meta.url), "utf8"));
@@ -254,14 +254,14 @@ const avecRecherche = (parametres: Record<string, unknown> = {}) =>
     [{ de: "f", vers: "w" }, { de: "w", vers: "s" }],
   );
 
-test('web.chercher sans web : « Workflow invalide : web.chercher : le widget doit déclarer "web": true », bloc en cause', () => {
+test('web.chercher without web: « Workflow invalide : web.chercher : le widget doit déclarer "web": true », block concerned', () => {
   expect(WEB_REQUIS).toBe('web.chercher : le widget doit déclarer "web": true');
   const attendu = { ok: false, erreur: 'Workflow invalide : web.chercher : le widget doit déclarer "web": true', bloc: "w" };
   expect(validerWorkflow(avecRecherche())).toEqual(attendu);
   expect(validerWorkflow(avecRecherche(), { web: false, dureeMaxMinutes: 30, proprietaire: "widget" as const, saisie: false })).toEqual(attendu);
 });
 
-test("web.chercher avec web : valide, nombre 8 et champ recherche par défaut", () => {
+test("web.chercher with web: valid, nombre 8 and default champ recherche", () => {
   const r = validerWorkflow(avecRecherche(), { web: true, dureeMaxMinutes: null, proprietaire: "widget" as const, saisie: false });
   if (!r.ok) throw new Error(r.erreur);
   expect(r.valide.workflow.blocs[1]!.parametres).toEqual({ requete: "{titre} avis", nombre: 8, parElement: true, siErreur: "sauter", champ: "recherche" });
@@ -276,31 +276,31 @@ const flux = { id: "f", type: "source.flux", parametres: { urls: ["https://x.fr/
 const avecSortie = (extra: object, vers?: string) =>
   wf([flux, { id: "s", type: "sortie", parametres: { ...(vers === undefined ? {} : { vers }), ...extra } }], [{ de: "f", vers: "s" }]);
 
-test("un widget avec vers \"page\" est refusé (SORTIE_PAGE_REFUSEE, bloc = la sortie)", () => {
+test("a widget with vers \"page\" is refused (SORTIE_PAGE_REFUSEE, block = the sortie)", () => {
   expect(SORTIE_PAGE_REFUSEE).toBe('sortie : vers "page" seulement dans une action');
   expect(validerWorkflow(avecSortie({}, "page"))).toEqual({ ok: false, erreur: "Workflow invalide : " + SORTIE_PAGE_REFUSEE, bloc: "s" });
 });
 
-test("une action avec vers \"widget\" ou sans vers est refusée (SORTIE_PAGE_REQUISE)", () => {
+test("an action with vers \"widget\" or without vers is refused (SORTIE_PAGE_REQUISE)", () => {
   expect(SORTIE_PAGE_REQUISE).toBe('sortie : une action rend une page (vers: "page")');
   const attendu = { ok: false, erreur: "Workflow invalide : " + SORTIE_PAGE_REQUISE, bloc: "s" };
   expect(validerWorkflow(avecSortie({}, "widget"), action)).toEqual(attendu);
   expect(validerWorkflow(avecSortie({}), action)).toEqual(attendu);
 });
 
-test("une action avec vers \"page\" est valide, sortie.vers === \"page\"", () => {
+test("an action with vers \"page\" is valid, sortie.vers === \"page\"", () => {
   const r = validerWorkflow(avecSortie({}, "page"), action);
   if (!r.ok) throw new Error(r.erreur);
   expect(r.valide.sortie).toEqual({ id: "s", vers: "page" });
 });
 
-test("auFilDeLEau dans une action : FIL_DE_L_EAU_ACTION", () => {
+test("auFilDeLEau in an action: FIL_DE_L_EAU_ACTION", () => {
   expect(FIL_DE_L_EAU_ACTION).toBe("sortie.auFilDeLEau : pas dans une action");
   expect(validerWorkflow(avecSortie({ auFilDeLEau: true }, "page"), action)).toEqual({ ok: false, erreur: "Workflow invalide : " + FIL_DE_L_EAU_ACTION, bloc: "s" });
   expect(validerWorkflow(avecSortie({ auFilDeLEau: false }, "page"), action).ok).toBe(true);
 });
 
-test("les paramètres validés d'un widget sont identiques à avant (vers \"widget\", pas de clé ajoutée)", () => {
+test("a widget's validated parameters are identical to before (vers \"widget\", no key added)", () => {
   const r = validerWorkflow(workflowImplicite(), CONTEXTE_PAR_DEFAUT);
   if (!r.ok) throw new Error(r.erreur);
   expect(CONTEXTE_PAR_DEFAUT).toEqual({ web: false, dureeMaxMinutes: null, proprietaire: "widget", saisie: false });

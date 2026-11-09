@@ -41,44 +41,44 @@ const wf = (cle = "url", extra: Record<string, unknown> = {}) => ({
 const enreg = (brut: unknown) => enregistrerWorkflow({ dossierFichiers: fichiers, dossierDonnees: donnees, brut });
 const lireJson = async () => JSON.parse(await readFile(join(fichiers, "workflow.json"), "utf8"));
 
-test("un workflow valide est écrit atomiquement et relu identique", async () => {
+test("a valid workflow is written atomically and re-read identical", async () => {
   expect(await enreg(wf())).toEqual({ ok: true, ecrit: true, memoireEffacee: [] });
   expect(await lireJson()).toEqual(wf());
   expect((await readFile(join(fichiers, "workflow.json"), "utf8")).endsWith("}\n")).toBe(true);
-  expect((await readdir(fichiers)).sort()).toEqual(["a.mjs", "workflow.json"]); // pas de .tmp
+  expect((await readdir(fichiers)).sort()).toEqual(["a.mjs", "workflow.json"]); // no .tmp
   const lu = await lireBrouillon(fichiers);
   expect(lu).toMatchObject({ origine: "fichier", brut: wf(), validation: { ok: true } });
 });
 
-test("un workflow invalide n'écrit rien et rend l'erreur avec le bloc en cause", async () => {
-  const sansLien = { ...wf(), liens: [{ de: "a", vers: "s" }] }; // n sans entrée
+test("an invalid workflow writes nothing and returns the error with the block concerned", async () => {
+  const sansLien = { ...wf(), liens: [{ de: "a", vers: "s" }] }; // n without an input
   const r = await enreg(sansLien);
   expect(r).toMatchObject({ ok: false, bloc: "n" });
   expect(await readdir(fichiers)).toEqual(["a.mjs"]);
 });
 
-test("un bloc code dont le fichier .mjs est absent est refusé (R3), avec le bloc", async () => {
+test("a code block whose .mjs file is missing is refused (R3), with the block", async () => {
   const brut = wf();
   brut.blocs[0]!.parametres = { source: "absent.mjs" };
   expect(await enreg(brut)).toEqual({ ok: false, erreur: "Non enregistré : fichier absent.mjs absent", bloc: "a" });
   expect(await readdir(fichiers)).toEqual(["a.mjs"]);
 });
 
-test("enregistrer le même workflow n'écrit rien (ecrit false, mtime inchangé)", async () => {
+test("saving the same workflow writes nothing (ecrit false, mtime unchanged)", async () => {
   await enreg(wf());
   const passe = new Date("2020-01-01T00:00:00Z");
   await utimes(join(fichiers, "workflow.json"), passe, passe);
-  // Même workflow, clés dans un autre ordre.
+  // Same workflow, keys in another order.
   const memeAutrement = { liens: wf().liens, blocs: wf().blocs.map((b) => ({ parametres: b.parametres, position: b.position, type: b.type, id: b.id })), version: 1 };
   expect(await enreg(memeAutrement)).toEqual({ ok: true, ecrit: false, memoireEffacee: [] });
   expect((await stat(join(fichiers, "workflow.json"))).mtime).toEqual(passe);
 });
 
-test("l'implicite enregistré tel quel n'écrit rien ; modifié, il crée workflow.json et recolte.mjs reste", async () => {
+test("the implicit one saved as is writes nothing; modified, it creates workflow.json and recolte.mjs stays", async () => {
   await writeFile(join(fichiers, "recolte.mjs"), "export default () => []");
   const avant = await lireBrouillon(fichiers);
   expect(avant).toMatchObject({ origine: "implicite", brut: workflowImplicite(), validation: { ok: true } });
-  expect((await readdir(fichiers)).sort()).toEqual(["a.mjs", "recolte.mjs"]); // lire n'écrit rien
+  expect((await readdir(fichiers)).sort()).toEqual(["a.mjs", "recolte.mjs"]); // lire writes nothing
   expect(await enreg(avant!.brut)).toEqual({ ok: true, ecrit: false, memoireEffacee: [] });
   expect((await readdir(fichiers)).sort()).toEqual(["a.mjs", "recolte.mjs"]);
 
@@ -88,7 +88,7 @@ test("l'implicite enregistré tel quel n'écrit rien ; modifié, il crée workfl
   expect((await readdir(fichiers)).sort()).toEqual(["a.mjs", "recolte.mjs", "workflow.json"]);
 });
 
-test("changer les paramètres d'un bloc efface sa mémoire, pas celle des autres ; changer son nom ou sa position ne l'efface pas", async () => {
+test("changing a block's parameters erases its memory, not the others'; changing its name or position does not erase it", async () => {
   await enreg(wf());
   const m = {
     n: { type: "liste.nouveaux", valeur: ["x"], empreinte: empreinteParametres({ cle: "url" }) },
@@ -105,25 +105,25 @@ test("changer les paramètres d'un bloc efface sa mémoire, pas celle des autres
   expect(await lireMemoire(donnees)).toEqual({ a: m.a });
 });
 
-test("changer les paramètres efface aussi une mémoire d'avant les empreintes ; une entrée déjà aux nouveaux réglages reste", async () => {
+test("changing the parameters also erases a memory from before the hashes; an entry already at the new settings stays", async () => {
   await enreg(wf());
   await ecrireMemoire(donnees, { n: { type: "liste.nouveaux", valeur: ["x"] }, a: { type: "code", valeur: 1 } });
   expect(await enreg(wf("titre"))).toEqual({ ok: true, ecrit: true, memoireEffacee: ["n"] });
   expect(await lireMemoire(donnees)).toEqual({ a: { type: "code", valeur: 1 } });
 
-  // Une exécution qui a déjà tourné avec les nouveaux réglages (entre l'écriture et l'effacement) garde sa mémoire.
+  // A run that already ran with the new settings (between the write and the erase) keeps its memory.
   const neuve = { n: { type: "liste.nouveaux", valeur: ["y"], empreinte: empreinteParametres({ cle: "id" }) } };
   await ecrireMemoire(donnees, neuve);
   expect(await enreg(wf("id"))).toEqual({ ok: true, ecrit: true, memoireEffacee: [] });
   expect(await lireMemoire(donnees)).toEqual(neuve);
 });
 
-test("l'effacement attend le verrou de la mémoire (pris par les exécutions) et passe avant l'écriture du workflow", async () => {
+test("the erase waits for the memory lock (held by the runs) and goes before the workflow write", async () => {
   await enreg(wf());
   await ecrireMemoire(donnees, { n: { type: "liste.nouveaux", valeur: ["x"], empreinte: empreinteParametres({ cle: "url" }) } });
   let liberer!: () => void;
   const relache = new Promise<void>((r) => (liberer = r));
-  // Une exécution partie avec les anciens réglages écrit sa mémoire pendant l'enregistrement.
+  // A run started with the old settings writes its memory during the save.
   const execution = avecMemoire(donnees, async () => {
     await relache;
     await ecrireMemoire(donnees, {
@@ -133,16 +133,16 @@ test("l'effacement attend le verrou de la mémoire (pris par les exécutions) et
   });
   const enregistrement = enreg(wf("titre"));
   await new Promise((r) => setTimeout(r, 30));
-  // Rien n'est écrit tant que l'exécution tient la mémoire : ni l'effacement, ni le workflow.
+  // Nothing is written while the run holds the memory: neither the erase, nor the workflow.
   expect(JSON.parse(await readFile(join(fichiers, "workflow.json"), "utf8")).blocs[1].parametres).toEqual({ cle: "url" });
   liberer();
   await execution;
   expect(await enregistrement).toEqual({ ok: true, ecrit: true, memoireEffacee: ["n"] });
-  // La mémoire fraîche de l'exécution reste ; celle du bloc changé part.
+  // The run's fresh memory stays; the changed block's goes away.
   expect(await lireMemoire(donnees)).toEqual({ a: { type: "code", valeur: "fraiche" } });
 });
 
-test("rien à effacer : memoire.json n'est pas réécrit", async () => {
+test("nothing to erase: memoire.json is not rewritten", async () => {
   await enreg(wf());
   await ecrireMemoire(donnees, { a: { type: "code", valeur: 1 } });
   const passe = new Date("2020-01-01T00:00:00Z");
@@ -151,7 +151,7 @@ test("rien à effacer : memoire.json n'est pas réécrit", async () => {
   expect((await stat(join(donnees, "memoire.json"))).mtime).toEqual(passe);
 });
 
-test("changer les paramètres de l'implicite efface aussi la mémoire (comparé à l'implicite)", async () => {
+test("changing the implicit one's parameters also erases the memory (compared to the implicit one)", async () => {
   await writeFile(join(fichiers, "recolte.mjs"), "export default () => []");
   await ecrireMemoire(donnees, { recolte: { type: "code", valeur: 1 } });
   const change = workflowImplicite();
@@ -159,7 +159,7 @@ test("changer les paramètres de l'implicite efface aussi la mémoire (comparé 
   expect(await enreg(change)).toEqual({ ok: true, ecrit: true, memoireEffacee: ["recolte"] });
 });
 
-test("workflow.json lien symbolique vers l'extérieur : refusé, la cible n'est pas touchée", async () => {
+test("workflow.json symbolic link to the outside: refused, the target is not touched", async () => {
   const dehors = join(racine, "dehors.json");
   await writeFile(dehors, "intact");
   await symlink(dehors, join(fichiers, "workflow.json"));
@@ -168,7 +168,7 @@ test("workflow.json lien symbolique vers l'extérieur : refusé, la cible n'est 
   expect(await lireBrouillon(fichiers)).toMatchObject({ origine: "fichier", brut: null, validation: { ok: false } });
 });
 
-test("plus de 256 Ko : refusé ; dossier du widget absent : Widget introuvable", async () => {
+test("over 256 KB: refused; widget folder missing: Widget introuvable", async () => {
   const gros = wf();
   gros.blocs[1]!.parametres = { cle: "x".repeat(300 * 1024) };
   expect((await enreg(gros)).ok).toBe(false);
@@ -177,7 +177,7 @@ test("plus de 256 Ko : refusé ; dossier du widget absent : Widget introuvable",
   expect(r).toEqual({ ok: false, erreur: "Widget introuvable" });
 });
 
-test("lireBrouillon rend le JSON même invalide, null pour un JSON coupé, l'implicite pour recolte.mjs seul", async () => {
+test("lireBrouillon returns the JSON even invalid, null for a cut JSON, the implicit one for recolte.mjs alone", async () => {
   expect(await lireBrouillon(fichiers)).toBeNull();
   const invalide = { ...wf(), liens: [] };
   await writeFile(join(fichiers, "workflow.json"), JSON.stringify(invalide));
@@ -189,7 +189,7 @@ test("lireBrouillon rend le JSON même invalide, null pour un JSON coupé, l'imp
   expect(await lireBrouillon(fichiers)).toMatchObject({ brut: null, validation: { ok: false } });
 });
 
-test("lireCode / enregistrerCode refusent ../x.mjs, x.js, un lien sortant, plus de 256 Ko ; un fichier absent rend absent", async () => {
+test("lireCode / enregistrerCode refuse ../x.mjs, x.js, an outgoing link, over 256 KB; a missing file returns absent", async () => {
   for (const nom of ["../x.mjs", "x.js", "A.mjs", "sous/x.mjs"]) {
     expect(await lireCode(fichiers, nom)).toHaveProperty("erreur");
     expect(await enregistrerCode(fichiers, nom, "x")).toMatchObject({ ok: false });
@@ -216,7 +216,7 @@ test("lireCode / enregistrerCode refusent ../x.mjs, x.js, un lien sortant, plus 
   expect((await readdir(fichiers)).filter((n) => n.endsWith(".tmp"))).toEqual([]);
 });
 
-test("changer garderJours de liste.nouveaux n'efface pas sa mémoire ; changer cle l'efface", async () => {
+test("changing liste.nouveaux's garderJours does not erase its memory; changing cle erases it", async () => {
   const avecGarder = (cle: string, garderJours?: number) => {
     const w = wf(cle);
     if (garderJours !== undefined) w.blocs[1]!.parametres = { cle, garderJours } as never;
@@ -232,7 +232,7 @@ test("changer garderJours de liste.nouveaux n'efface pas sa mémoire ; changer c
   expect(await lireMemoire(donnees)).toEqual({});
 });
 
-test("le workflow en place est relu avec le contexte du widget : un widget long efface la mémoire et ne réécrit pas un fichier identique", async () => {
+test("the workflow in place is re-read with the widget's context: a long widget erases the memory and does not rewrite an identical file", async () => {
   const contexte = { web: false, dureeMaxMinutes: 30, proprietaire: "widget" as const, saisie: false };
   const long = (cle: string) => {
     const w = wf(cle);
@@ -241,7 +241,7 @@ test("le workflow en place est relu avec le contexte du widget : un widget long 
     return w;
   };
   const enregLong = (brut: unknown) => enregistrerWorkflow({ dossierFichiers: fichiers, dossierDonnees: donnees, brut, contexte });
-  // Sans le contexte, ce workflow est refusé (600 s > 170 s).
+  // Without the context, this workflow is refused (600 s > 170 s).
   expect(await enreg(long("url"))).toMatchObject({ ok: false, bloc: "p" });
   expect(await enregLong(long("url"))).toEqual({ ok: true, ecrit: true, memoireEffacee: [] });
   expect(await lireBrouillon(fichiers, contexte)).toMatchObject({ validation: { ok: true } });
@@ -256,7 +256,7 @@ test("le workflow en place est relu avec le contexte du widget : un widget long 
   expect(await enregLong(long("titre"))).toEqual({ ok: true, ecrit: true, memoireEffacee: ["n"] });
 });
 
-test("enregistrer web.chercher dans un widget sans web : refusé, rien d'écrit", async () => {
+test("saving web.chercher in a widget without web: refused, nothing written", async () => {
   const brut = wf();
   brut.blocs.splice(1, 0, { id: "w", type: "web.chercher", position: { x: 0, y: 0 }, parametres: { requete: "{titre}", parElement: true } } as never);
   brut.liens = [{ de: "a", vers: "w" }, { de: "w", vers: "n" }, { de: "n", vers: "s" }];
@@ -264,6 +264,6 @@ test("enregistrer web.chercher dans un widget sans web : refusé, rien d'écrit"
   expect(await enreg(brut)).toEqual(attendu);
   expect(await enregistrerWorkflow({ dossierFichiers: fichiers, dossierDonnees: donnees, brut, contexte: { web: false, dureeMaxMinutes: 30, proprietaire: "widget" as const, saisie: false } })).toEqual(attendu);
   expect(await readdir(fichiers)).toEqual(["a.mjs"]);
-  // Avec web, le même workflow est écrit.
+  // With web, the same workflow is written.
   expect(await enregistrerWorkflow({ dossierFichiers: fichiers, dossierDonnees: donnees, brut, contexte: { web: true, dureeMaxMinutes: null, proprietaire: "widget" as const, saisie: false } })).toMatchObject({ ok: true, ecrit: true });
 });

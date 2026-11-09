@@ -4,17 +4,17 @@ import { join } from "node:path";
 import { MEMOIRE_MAX_OCTETS, ecrireMemoire, empreinteParametres, lireMemoire } from "../../src/index.js";
 import { dossierTemporaire } from "../aide/temporaire.js";
 
-test("une mémoire de plus de 3 Mo n'est pas écrite ; une mémoire abîmée se lit vide", async () => {
+test("a memory over 3 MB is not written; a damaged memory reads as empty", async () => {
   const d = await dossierTemporaire();
   expect(await lireMemoire(d)).toEqual({});
   const petite = { tri: { type: "ia.trier", valeur: { cle: { p: 0.5 } } } };
   expect(await ecrireMemoire(d, petite)).toBe(true);
   expect(await lireMemoire(d)).toEqual(petite);
-  expect(await readdir(d)).toEqual(["memoire.json"]); // pas de .tmp qui traîne
+  expect(await readdir(d)).toEqual(["memoire.json"]); // no .tmp left lying around
 
   const grosse = { tri: { type: "ia.trier", valeur: "x".repeat(MEMOIRE_MAX_OCTETS) } };
   expect(await ecrireMemoire(d, grosse)).toBe(false);
-  expect(await lireMemoire(d)).toEqual(petite); // rien n'a été écrasé
+  expect(await lireMemoire(d)).toEqual(petite); // nothing was overwritten
 
   await writeFile(join(d, "memoire.json"), "{ abîmé");
   expect(await lireMemoire(d)).toEqual({});
@@ -22,7 +22,7 @@ test("une mémoire de plus de 3 Mo n'est pas écrite ; une mémoire abîmée se 
   expect(await lireMemoire(d)).toEqual({});
 });
 
-test("empreinteParametres ne dépend pas de l'ordre des clés, mais des valeurs", () => {
+test("empreinteParametres does not depend on key order, but on values", () => {
   const a = { cle: "url", n: { x: 1, y: [1, { b: 2, a: 1 }] } };
   const b = { n: { y: [1, { a: 1, b: 2 }], x: 1 }, cle: "url" };
   expect(empreinteParametres(a)).toBe(empreinteParametres(b));
@@ -30,7 +30,7 @@ test("empreinteParametres ne dépend pas de l'ordre des clés, mais des valeurs"
   expect(empreinteParametres({ cle: "titre" })).not.toBe(empreinteParametres({ cle: "url" }));
 });
 
-test("l'empreinte survit à lireMemoire / ecrireMemoire (R5) ; une ancienne mémoire sans empreinte se lit encore", async () => {
+test("the hash survives lireMemoire / ecrireMemoire (R5); an old memory without a hash still reads", async () => {
   const d = await dossierTemporaire();
   const m = { tri: { type: "ia.trier", valeur: 1, empreinte: "0123456789abcdef" }, vieux: { type: "code", valeur: 2 } };
   await ecrireMemoire(d, m);

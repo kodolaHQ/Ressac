@@ -10,18 +10,18 @@ import { MOTEUR, SCRIPT, bloc, chaine, lancer, sortie } from "../aide/moteur.js"
 import { PLAFOND_RECHERCHES, RECHERCHES_ARRETEES } from "../../src/workflows/acces.js";
 import { RECHERCHE_REFUSEE } from "../../src/workflows/duckduckgo.js";
 
-// Le moteur est du JavaScript du conteneur : importé tel quel, sans types.
+// The engine is the container's JavaScript: imported as is, without types.
 const { executerWorkflow } = await import(pathToFileURL(join(MOTEUR, "interpreteur.mjs")).href);
 const { default: listeNouveaux } = await import(pathToFileURL(join(MOTEUR, "blocs", "liste-nouveaux.mjs")).href);
 const { default: listeGarder } = await import(pathToFileURL(join(MOTEUR, "blocs", "liste-garder.mjs")).href);
 const { ElementNonLance } = await import(pathToFileURL(join(MOTEUR, "erreurs.mjs")).href);
 
-describe("interpréteur (dans le conteneur)", () => {
-  it("exécute les blocs dans l'ordre et envoie debut puis fin de chaque bloc avant fin", async () => {
+describe("interpreter (in the container)", () => {
+  it("runs the blocks in order and sends debut then fin for each block before fin", async () => {
     const r = await lancer({
       workflow: {
         version: 1,
-        // Dans le désordre du tableau : l'ordre vient des liens.
+        // In the array's disorder: the order comes from the links.
         blocs: [sortie, bloc("garder", "liste.garder", { nombre: 2 }), bloc("src", "code", { source: "src.mjs" })],
         liens: chaine("src", "garder", "sortie"),
       },
@@ -39,7 +39,7 @@ describe("interpréteur (dans le conteneur)", () => {
     expect(r.terminal).toEqual({ t: "fin", donnees: [1, 2] });
   });
 
-  it("un bloc à plusieurs entrées reçoit { id: sortie }", async () => {
+  it("a block with several inputs receives { id: output }", async () => {
     const r = await lancer({
       workflow: {
         version: 1,
@@ -60,7 +60,7 @@ describe("interpréteur (dans le conteneur)", () => {
     expect(r.terminal).toEqual({ t: "fin", donnees: { a: { entreeDeA: null }, b: "B" } });
   });
 
-  it("code reçoit (entree, webaios) avec config, precedent, maintenant, journal ; ses lignes de journal sont rattachées au bloc et vont aussi sur stderr", async () => {
+  it("code receives (entree, webaios) with config, precedent, maintenant, journal; its log lines are attached to the block and also go to stderr", async () => {
     const r = await lancer({
       workflow: {
         version: 1,
@@ -91,7 +91,7 @@ describe("interpréteur (dans le conteneur)", () => {
     expect(r.appels[0]!.a).toEqual({ url: "https://a.fr/" });
   });
 
-  it("code avec appel: recolte appelle default(webaios) comme aujourd'hui", async () => {
+  it("code with appel: recolte calls default(webaios) as today", async () => {
     const r = await lancer({
       workflow: {
         version: 1,
@@ -109,7 +109,7 @@ describe("interpréteur (dans le conteneur)", () => {
     expect(r.terminal).toEqual({ t: "fin", donnees: { cfg: { a: 1 }, prec: { v: 2 }, k: { q: { type: "noul", noul: 0.5 } } } });
   });
 
-  it("une erreur levée par le code finit le bloc échoué et l'exécution en echec avec le même message", async () => {
+  it("an error thrown by the code ends the block failed and the run in echec with the same message", async () => {
     const r = await lancer({
       workflow: { version: 1, blocs: [bloc("recolte", "code", { source: "recolte.mjs", appel: "recolte" }), sortie], liens: chaine("recolte", "sortie") },
       fichiers: { "recolte.mjs": `export default async () => { throw new Error("boum"); };` },
@@ -119,7 +119,7 @@ describe("interpréteur (dans le conteneur)", () => {
     expect(r.lignes.some((l) => l.t === "memoire")).toBe(false);
   });
 
-  it("un fichier code absent fait échouer le bloc, les suivants sont pas lancés, puis echec", async () => {
+  it("a missing code file fails the block, the following ones are not launched, then echec", async () => {
     const r = await lancer({
       workflow: {
         version: 1,
@@ -133,7 +133,7 @@ describe("interpréteur (dans le conteneur)", () => {
     expect(r.code).toBe(1);
   });
 
-  it("liste.nouveaux ne garde que les clés jamais vues et retient au plus 5000 clés", async () => {
+  it("liste.nouveaux keeps only the never-seen keys and retains at most 5000 keys", async () => {
     const anciennes = Array.from({ length: 5000 }, (_, i) => `k${i}`);
     const r = await lancer({
       workflow: {
@@ -149,14 +149,14 @@ describe("interpréteur (dans le conteneur)", () => {
     expect(m.type).toBe("liste.nouveaux");
     expect(m.valeur).toHaveLength(5000);
     const cles = m.valeur.map(([c]: [string, string]) => c);
-    // Les clés vues cette fois sont les plus récentes ; les plus anciennes jamais revues sont oubliées.
+    // The keys seen this time are the most recent; the oldest never seen again are forgotten.
     expect(cles.slice(-4)).toEqual(["k4999", "neuf", "k0", "autre"]);
     expect(cles).not.toContain("k1");
     expect(cles).not.toContain("k2");
     expect(cles).toContain("k3");
   });
 
-  it("liste.nouveaux : un doublon dans la même liste n'est pas nouveau ; une clé longue est gardée coupée à 500 caractères", async () => {
+  it("liste.nouveaux: a duplicate in the same list is not new; a long key is kept cut to 500 characters", async () => {
     const longue = "u".repeat(800);
     const r = await lancer({
       workflow: {
@@ -177,11 +177,11 @@ describe("interpréteur (dans le conteneur)", () => {
     ]);
   });
 
-  it("liste.dedoublonner : doublon sur l'une des clés normalisées (utm_, www., / final ; accents et casse du titre)", async () => {
+  it("liste.dedoublonner: duplicate on one of the normalized keys (utm_, www., trailing /; title accents and case)", async () => {
     const elements = [
       { titre: "Été à Paris", url: "https://www.a.fr/x/?utm_source=rss&id=1" },
-      { titre: "Autre", url: "https://a.fr/x?id=1" }, // même URL normalisée
-      { titre: "ete a paris!", url: "https://b.fr/y" }, // même titre normalisé
+      { titre: "Autre", url: "https://a.fr/x?id=1" }, // same normalized URL
+      { titre: "ete a paris!", url: "https://b.fr/y" }, // same normalized title
       { titre: "Troisième", url: "https://b.fr/z" },
       { titre: "Sans url" },
       { titre: "Sans url 2" },
@@ -197,7 +197,7 @@ describe("interpréteur (dans le conteneur)", () => {
     expect(r.terminal.donnees).toEqual([elements[0], elements[3], elements[4], elements[5]]);
   });
 
-  it("liste.garder garde les N premiers ; une entrée qui n'est pas une liste fait échouer le bloc", async () => {
+  it("liste.garder keeps the first N; an input that is not a list fails the block", async () => {
     const ok = await lancer({
       workflow: {
         version: 1,
@@ -218,7 +218,7 @@ describe("interpréteur (dans le conteneur)", () => {
     expect(ko.finBloc("g")).toMatchObject({ statut: "echoue", erreur: "liste attendue en entrée" });
   });
 
-  it("la mémoire envoyée avant fin ne contient que les blocs du workflow, avec leur type ; une mémoire d'un autre type est ignorée", async () => {
+  it("the memory sent before fin contains only the workflow's blocks, with their type; a memory of another type is ignored", async () => {
     const r = await lancer({
       workflow: {
         version: 1,
@@ -226,11 +226,11 @@ describe("interpréteur (dans le conteneur)", () => {
         liens: chaine("src", "nv", "sortie"),
       },
       memoire: {
-        // Même id, autre type : ignorée (tout est nouveau).
+        // Same id, other type: ignored (everything is new).
         nv: { type: "liste.dedoublonner", valeur: ["1"] },
-        // Bloc qui n'existe plus : oubliée.
+        // Block that no longer exists: forgotten.
         ancien: { type: "liste.nouveaux", valeur: ["z"] },
-        // Bloc présent, même type, sans nouvelle valeur : gardée telle quelle.
+        // Block present, same type, without a new value: kept as is.
         src: { type: "code", valeur: { garde: true } },
       },
       fichiers: { "src.mjs": `export default async () => [{ id: 1 }, { id: 2 }];` },
@@ -244,7 +244,7 @@ describe("interpréteur (dans le conteneur)", () => {
     });
   });
 
-  it("une sortie de bloc trop grosse pour une ligne est envoyée sans sortie, avec sortieTropGrosse", async () => {
+  it("a block output too big for a line is sent without output, with sortieTropGrosse", async () => {
     const r = await lancer({
       workflow: {
         version: 1,
@@ -260,7 +260,7 @@ describe("interpréteur (dans le conteneur)", () => {
     expect(r.terminal).toEqual({ t: "fin", donnees: 4 * 1024 * 1024 + 10 });
   });
 
-  it("un debut sans workflow est refusé : recolte.mjs ne tourne plus hors workflow", async () => {
+  it("a debut without a workflow is refused: recolte.mjs no longer runs outside a workflow", async () => {
     const dossier = await dossierTemporaire();
     await writeFile(join(dossier, "recolte.mjs"), `export default async () => ({ lance: true });`);
     const enfant = spawn("node", [SCRIPT, dossier], { stdio: ["pipe", "pipe", "pipe"] });
@@ -272,7 +272,7 @@ describe("interpréteur (dans le conteneur)", () => {
     expect(out.trim().split("\n").map((l) => JSON.parse(l))).toEqual([{ t: "echec", erreur: "debut sans workflow" }]);
   });
 
-  it("le workflow implicite d'un recolte.mjs : default(webaios) avec la config de debut, journal sur stderr", async () => {
+  it("the implicit workflow of a recolte.mjs: default(webaios) with the debut config, log on stderr", async () => {
     const r = await lancer({
       workflow: workflowImplicite(),
       config: { a: 1 },
@@ -285,8 +285,8 @@ describe("interpréteur (dans le conteneur)", () => {
   });
 });
 
-describe("interpréteur : rejeu depuis un bloc", () => {
-  it("avec rejeu, seuls les blocs relancés sont tracés, dans l'ordre, et reçoivent les sorties reprises", async () => {
+describe("interpreter: replay from a block", () => {
+  it("with replay, only the relaunched blocks are traced, in order, and receive the reused outputs", async () => {
     const r = await lancer({
       workflow: {
         version: 1,
@@ -300,7 +300,7 @@ describe("interpréteur : rejeu depuis un bloc", () => {
       rejeu: { relances: ["b", "sortie"], sorties: { src: [1, 2] } },
     });
     expect(r.code).toBe(0);
-    // Aucune trace pour src, et aucune mémoire rendue : le noyau n'en garde pas pour un essai.
+    // No trace for src, and no memory returned: the core keeps none for a trial.
     expect(r.traces.map((l) => (l.t === "bloc" ? `${l.etape}:${l.id}` : l.t))).toEqual([
       "debut:b", "fin:b",
       "debut:sortie", "fin:sortie",
@@ -309,7 +309,7 @@ describe("interpréteur : rejeu depuis un bloc", () => {
     expect(r.terminal).toEqual({ t: "fin", donnees: { recu: [1, 2] } });
   });
 
-  it("un bloc relancé à deux entrées reçoit { id: sortie } mêlant reprise et relance", async () => {
+  it("a relaunched block with two inputs receives { id: output } mixing reuse and relaunch", async () => {
     const r = await lancer({
       workflow: {
         version: 1,
@@ -327,7 +327,7 @@ describe("interpréteur : rejeu depuis un bloc", () => {
     expect(r.lignes.filter((l) => l.t === "bloc" && l.etape === "debut").map((l) => l.id)).toEqual(["b", "tout", "sortie"]);
   });
 
-  it("sans le bloc sortie parmi les relancés, les données sont null", async () => {
+  it("without the sortie block among the relaunched ones, the data is null", async () => {
     const r = await lancer({
       workflow: { version: 1, blocs: [bloc("a", "code", { source: "a.mjs" }), sortie], liens: chaine("a", "sortie") },
       fichiers: { "a.mjs": `export default async () => "a";` },
@@ -337,9 +337,9 @@ describe("interpréteur : rejeu depuis un bloc", () => {
     expect(r.finBloc("sortie")).toBeUndefined();
   });
 
-  it("avec rejeu, l'interpréteur ignore la mémoire reçue : liste.nouveaux laisse tout passer, reutiliser ne reprend rien, aucun bloc ne rend de mémoire", async () => {
-    // Le noyau envoie une mémoire vide pour un essai ; l'interpréteur ne s'y fie pas : même une mémoire reçue
-    // (y compris celle d'un bloc non relancé) n'est ni lue ni rendue.
+  it("with replay, the interpreter ignores the received memory: liste.nouveaux lets everything through, reutiliser reuses nothing, no block returns a memory", async () => {
+    // The core sends an empty memory for a trial; the interpreter does not rely on it: even a received memory
+    // (including that of a block not relaunched) is neither read nor returned.
     const calcules: string[] = [];
     const r = await executer({
       entree: "jamais lu",
@@ -373,7 +373,7 @@ describe("interpréteur : rejeu depuis un bloc", () => {
   });
 });
 
-/** Exécution directe de l'interpréteur, avec un registre de blocs de test. */
+/** Direct run of the interpreter, with a registry of test blocks. */
 async function executer(o: {
   blocs: { id: string; type: string; parametres?: Record<string, unknown> }[];
   registre: Record<string, unknown>;
@@ -385,7 +385,7 @@ async function executer(o: {
   progressif?: boolean;
   avancement?: boolean;
   saisie?: string;
-  /** Appelé à chaque ligne envoyée, au moment où elle part. */
+  /** Called on each line sent, at the moment it leaves. */
   espion?: (m: any) => void;
 }) {
   const traces: any[] = [];
@@ -437,8 +437,8 @@ async function executer(o: {
 const attendre = (ms: number) => new Promise((ok) => setTimeout(ok, ms));
 const liste = (n: number) => Array.from({ length: n }, (_, i) => ({ n: i }));
 
-describe("interpréteur : saisie et avancement (actions)", () => {
-  /** Un bloc par élément dont chaque élément prend 300 ms sur l'horloge factice. */
+describe("interpreter: input and progress (actions)", () => {
+  /** A per-element block where each element takes 300 ms on the fake clock. */
   const lent = (horloge: { t: number }) => ({
     "test.lent": {
       parElement: "toujours",
@@ -450,7 +450,7 @@ describe("interpréteur : saisie et avancement (actions)", () => {
     },
   });
 
-  it("avec avancement, un bloc par élément sur 12 éléments envoie des avancement espacés et le dernier 12/12", async () => {
+  it("with progress, a per-element block over 12 elements sends spaced avancement lines and the last one 12/12", async () => {
     const horloge = { t: 0 };
     const heures: number[] = [];
     const r = await executer({
@@ -467,19 +467,19 @@ describe("interpréteur : saisie et avancement (actions)", () => {
     const avancements = r.traces.filter((l) => l.etape === "avancement");
     expect(avancements.every((l) => l.t === "bloc" && l.id === "b" && l.total === 12)).toBe(true);
     expect(avancements.at(-1)).toEqual({ t: "bloc", id: "b", etape: "avancement", faits: 12, total: 12 });
-    // Espacés d'au moins ECART_AVANCEMENT_MS, sauf le dernier, toujours envoyé.
+    // Spaced by at least ECART_AVANCEMENT_MS, except the last, always sent.
     for (let i = 1; i < heures.length - 1; i++) expect(heures[i]! - heures[i - 1]!).toBeGreaterThanOrEqual(1000);
     expect(avancements.length).toBeGreaterThanOrEqual(2);
     expect(avancements.length).toBeLessThan(12);
     const faits = avancements.map((l) => l.faits);
     expect([...faits].sort((a, b) => a - b)).toEqual(faits);
-    // Entre le début et la fin du bloc.
+    // Between the start and the end of the block.
     const indice = (f: (l: any) => boolean) => r.traces.findIndex(f);
     expect(indice((l) => l.etape === "avancement")).toBeGreaterThan(indice((l) => l.id === "b" && l.etape === "debut"));
     expect(r.traces.findLastIndex((l) => l.etape === "avancement")).toBeLessThan(indice((l) => l.id === "b" && l.etape === "fin"));
   });
 
-  it("sans avancement, aucune ligne avancement", async () => {
+  it("without progress, no avancement line", async () => {
     const horloge = { t: 0 };
     const r = await executer({
       entree: liste(12),
@@ -491,7 +491,7 @@ describe("interpréteur : saisie et avancement (actions)", () => {
     expect(r.traces.some((l) => l.etape === "avancement")).toBe(false);
   });
 
-  it("ctx.saisie est donné au code", async () => {
+  it("ctx.saisie is given to the code", async () => {
     const workflow = {
       version: 1,
       blocs: [bloc("lire", "source.page", { url: "https://www.leboncoin.fr/recherche?text={saisie}" }), bloc("c", "code", { source: "c.mjs" }), sortie],
@@ -502,7 +502,7 @@ describe("interpréteur : saisie et avancement (actions)", () => {
     const r = await lancer({ workflow, fichiers, repondre, debut: { saisie: "clio lyon" } });
     expect(r.terminal).toEqual({ t: "fin", donnees: { saisie: "clio lyon", aLaCle: true } });
     expect(r.appels[0]!.a.url).toBe("https://www.leboncoin.fr/recherche?text=clio%20lyon");
-    // Un bloc du moteur la reçoit aussi dans son ctx.
+    // An engine block receives it too in its ctx.
     let vue: unknown;
     await executer({
       entree: null,
@@ -511,12 +511,12 @@ describe("interpréteur : saisie et avancement (actions)", () => {
       saisie: "clio lyon",
     });
     expect(vue).toBe("clio lyon");
-    // Un widget (sans saisie) : rien de nouveau dans webaios.
+    // A widget (without input): nothing new in webaios.
     const widget = await lancer({ workflow: { ...workflow, blocs: [bloc("lire", "code", { source: "c.mjs" }), bloc("c", "code", { source: "c.mjs" }), sortie] }, fichiers });
     expect(widget.terminal).toEqual({ t: "fin", donnees: { saisie: null, aLaCle: false } });
   });
 
-  it("ECART_AVANCEMENT_MS égal dans interpreteur.mjs et executer.ts", async () => {
+  it("ECART_AVANCEMENT_MS equal in interpreteur.mjs and executer.ts", async () => {
     const interpreteur = await import(pathToFileURL(join(MOTEUR, "interpreteur.mjs")).href);
     const { ECART_AVANCEMENT_MS } = await import("../../src/workflows/executer.js");
     expect(ECART_AVANCEMENT_MS).toBe(1000);
@@ -524,8 +524,8 @@ describe("interpréteur : saisie et avancement (actions)", () => {
   });
 });
 
-describe("interpréteur : blocs par élément", () => {
-  it("par élément : deux éléments à la fois, résultat sous champ, ordre gardé", async () => {
+describe("interpreter: per-element blocks", () => {
+  it("per element: two elements at a time, result under champ, order kept", async () => {
     let enCours = 0;
     let max = 0;
     const r = await executer({
@@ -537,7 +537,7 @@ describe("interpréteur : blocs par élément", () => {
           async traiterElement(ctx: any) {
             enCours++;
             max = Math.max(max, enCours);
-            // Les premiers finissent après les suivants : l'ordre de la sortie reste celui de l'entrée.
+            // The first ones finish after the following ones: the output order stays the input's.
             await attendre(ctx.element.n < 2 ? 40 : 5);
             enCours--;
             return ctx.element.n * 2;
@@ -551,7 +551,7 @@ describe("interpréteur : blocs par élément", () => {
     expect(r.finBloc("double")).toMatchObject({ statut: "reussi" });
   });
 
-  it("par élément « option » : sans parElement, executer tourne une fois sur toute l'entrée", async () => {
+  it("per element « option »: without parElement, executer runs once on the whole input", async () => {
     const r = await executer({
       entree: liste(3),
       blocs: [{ id: "b", type: "test.option", parametres: { parElement: false, champ: "x" } }, { id: "sortie", type: "sortie" }],
@@ -566,7 +566,7 @@ describe("interpréteur : blocs par élément", () => {
     expect(r.resultat!.donnees).toBe(3);
   });
 
-  it("par élément : une entrée qui n'est pas une liste fait échouer le bloc", async () => {
+  it("per element: an input that is not a list fails the block", async () => {
     const r = await executer({
       entree: { pas: "liste" },
       blocs: [{ id: "b", type: "test.x", parametres: { champ: "x" } }, { id: "sortie", type: "sortie" }],
@@ -576,7 +576,7 @@ describe("interpréteur : blocs par élément", () => {
     expect(r.finBloc("b")).toMatchObject({ statut: "echoue", erreur: "liste attendue en entrée" });
   });
 
-  it("par élément : un élément en échec est sauté, le bloc finit partiel ; siErreur echouer fait échouer le bloc", async () => {
+  it("per element: a failing element is skipped, the block ends partial; siErreur echouer fails the block", async () => {
     const registre = {
       "test.x": {
         parElement: "toujours",
@@ -605,7 +605,7 @@ describe("interpréteur : blocs par élément", () => {
     expect(echoue.traces.some((l) => l.id === "sortie")).toBe(false);
   });
 
-  it("par élément : tous les éléments en échec font échouer un bloc qui le demande, même avec sauter ; les autres finissent partiel ; une liste vide n'est pas un échec", async () => {
+  it("per element: all elements failing fail a block that asks for it, even with sauter; the others end partial; an empty list is not a failure", async () => {
     const registre = {
       "test.x": { parElement: "toujours", echecSiTousEchouent: true, traiterElement: async () => { throw new Error("Kev indisponible"); } },
       "test.enrichir": { parElement: "toujours", traiterElement: async () => { throw new Error("page illisible"); } },
@@ -637,7 +637,7 @@ describe("interpréteur : blocs par élément", () => {
     expect(vide.finBloc("b")).toMatchObject({ statut: "reussi", sortie: [] });
   });
 
-  it("par élément : une valeur de gabarit absente laisse l'élément sans champ, sans erreur ; en mode simple la sortie est null", async () => {
+  it("per element: a missing template value leaves the element without a field, without an error; in simple mode the output is null", async () => {
     const registre = {
       "test.gabarit": {
         parElement: "option",
@@ -646,7 +646,7 @@ describe("interpréteur : blocs par élément", () => {
       },
     };
     const parElement = await executer({
-      // Une ancienne valeur sous `champ` ne survit pas à un élément sans valeur cette fois.
+      // An old value under `champ` does not survive an element without a value this time.
       entree: [{ url: "a b", u: "ancienne" }, { autre: 1, u: "ancienne" }],
       blocs: [{ id: "b", type: "test.gabarit", parametres: { parElement: true, champ: "u" } }, { id: "sortie", type: "sortie" }],
       registre,
@@ -664,7 +664,7 @@ describe("interpréteur : blocs par élément", () => {
     expect(simple.journal("b")).toEqual(["valeur absente : config.ville"]);
   });
 
-  it("par élément : un repère facultatif {chemin?} absent donne une chaîne vide, présent il est rempli ; l'élément est traité", async () => {
+  it("per element: an optional marker {chemin?} that is absent gives an empty string, present it is filled; the element is processed", async () => {
     const registre = {
       "test.gabarit": { parElement: "option", traiterElement: async (ctx: any) => ctx.remplir("Avis de {titre} ; fiabilité : {fiabilite?}.").texte },
     };
@@ -680,8 +680,8 @@ describe("interpréteur : blocs par élément", () => {
     expect(r.finBloc("b")).toMatchObject({ statut: "reussi" });
   });
 
-  it("budgetSecondes : passé le temps, plus aucun élément lancé, les suivants sans champ, bloc partiel", async () => {
-    // Horloge simulée : chaque élément « dure » 300 ms, la fin de l'élément avance l'heure.
+  it("budgetSecondes: past the time, no more element launched, the following ones without champ, partial block", async () => {
+    // Simulated clock: each element « lasts » 300 ms, the element's end advances the time.
     let maintenant = 0;
     const lances: number[] = [];
     const r = await executer({
@@ -700,7 +700,7 @@ describe("interpréteur : blocs par élément", () => {
         },
       },
     });
-    // Les deux éléments en cours finissent avant la vérification suivante : paires lancées à 0 et 600 ; à 1200, plus rien.
+    // The two elements in progress finish before the next check: pairs launched at 0 and 600; at 1200, nothing more.
     expect(lances).toEqual([0, 1, 2, 3]);
     const sortie = r.resultat!.donnees as { n: number; r?: string }[];
     expect(sortie.filter((e) => e.r === "fait").map((e) => e.n)).toEqual([0, 1, 2, 3]);
@@ -709,7 +709,7 @@ describe("interpréteur : blocs par élément", () => {
     expect(r.journal("b")).toContain("temps écoulé : 8 élément(s) non lancé(s)");
   });
 
-  it("le temps global (150 s depuis debut) arrête aussi de lancer des éléments", async () => {
+  it("the global time (150 s since debut) also stops launching elements", async () => {
     let maintenant = 0;
     let lances = 0;
     const r = await executer({
@@ -729,12 +729,12 @@ describe("interpréteur : blocs par élément", () => {
         },
       },
     });
-    // Paires lancées à 0 et 200 ; à 400, plus rien.
+    // Pairs launched at 0 and 200; at 400, nothing more.
     expect(lances).toBe(4);
     expect(r.finBloc("b")).toMatchObject({ statut: "partiel" });
   });
 
-  it("parmi les éléments lancés, aucun réussi et au moins un en échec : le bloc échoue (non lancés et valeurs absentes ne comptent pas)", async () => {
+  it("among the launched elements, none succeeded and at least one failed: the block fails (not launched and absent values do not count)", async () => {
     let maintenant = 0;
     const registre = {
       "test.ko": {
@@ -765,7 +765,7 @@ describe("interpréteur : blocs par élément", () => {
     expect(absente.finBloc("b")).toMatchObject({ statut: "echoue" });
   });
 
-  it("reutiliser reprend la valeur de la mémoire sans appel et range les nouvelles", async () => {
+  it("reutiliser reuses the memory's value without a call and stores the new ones", async () => {
     const calcules: string[] = [];
     const r = await executer({
       entree: [{ url: "https://a.fr/1" }, { url: "https://a.fr/2" }, { url: null }],
@@ -787,8 +787,8 @@ describe("interpréteur : blocs par élément", () => {
       { url: "https://a.fr/2", resume: "résumé de https://a.fr/2" },
       { url: null, resume: "résumé de null" },
     ]);
-    // Les valeurs reprises ou calculées sont les plus récentes ; un élément sans clé n'est pas rangé. Les anciennes
-    // paires sans date sont datées de maintenant.
+    // The reused or computed values are the most recent; an element without a key is not stored. The old
+    // pairs without a date are dated now.
     const m = "2026-10-29T10:00:00.000Z";
     expect(r.resultat!.memoire.b).toEqual({
       type: "test.resume",
@@ -796,7 +796,7 @@ describe("interpréteur : blocs par élément", () => {
     });
   });
 
-  it("reutiliser garde au plus 2 Mo par bloc, en oubliant les plus anciennes", async () => {
+  it("reutiliser keeps at most 2 MB per block, forgetting the oldest", async () => {
     const gros = "x".repeat(600 * 1024);
     const r = await executer({
       entree: liste(5).map((e) => ({ ...e, cle: `k${e.n}` })),
@@ -807,7 +807,7 @@ describe("interpréteur : blocs par élément", () => {
     expect(gardees).toEqual(["k2", "k3", "k4"]);
   });
 
-  it("toute la mémoire envoyée tient en 2,5 Mo : les plus anciennes valeurs du plus gros bloc partent d'abord", async () => {
+  it("all the memory sent fits in 2.5 MB: the oldest values of the biggest block go first", async () => {
     const gros = "x".repeat(450 * 1024);
     const r = await executer({
       entree: liste(5).map((e) => ({ ...e, cle: `k${e.n}` })),
@@ -821,12 +821,12 @@ describe("interpréteur : blocs par élément", () => {
     const memoire = r.resultat!.memoire;
     expect(Buffer.byteLength(JSON.stringify(memoire))).toBeLessThanOrEqual(2.5 * 1024 * 1024);
     const cles = (id: string) => (memoire[id]!.valeur as { reutilises: [string, string][] }).reutilises.map(([k]) => k);
-    // Chacun borné à 2 Mo (4 gardées), puis le plus gros perd sa plus ancienne, tour à tour.
+    // Each bounded to 2 MB (4 kept), then the biggest loses its oldest, in turn.
     expect(cles("b1")).toEqual(["k3", "k4"]);
     expect(cles("b2")).toEqual(["k2", "k3", "k4"]);
   });
 
-  it("finaliser reçoit la liste enrichie et rend la sortie du bloc", async () => {
+  it("finaliser receives the enriched list and returns the block's output", async () => {
     const r = await executer({
       entree: liste(4),
       blocs: [{ id: "b", type: "test.trier", parametres: { champ: "p" } }, { id: "sortie", type: "sortie" }],
@@ -841,7 +841,7 @@ describe("interpréteur : blocs par élément", () => {
     expect(r.resultat!.donnees).toEqual([{ n: 3, p: 0.75 }, { n: 2, p: 0.5 }]);
   });
 
-  it("un bloc simple peut finir partiel ; un type sans module échoue « type inconnu dans le conteneur »", async () => {
+  it("a simple block can end partial; a type without a module fails « type inconnu dans le conteneur »", async () => {
     const partiel = await executer({
       entree: 1,
       blocs: [{ id: "b", type: "test.p", parametres: {} }, { id: "sortie", type: "sortie" }],
@@ -863,7 +863,7 @@ describe("interpréteur : blocs par élément", () => {
   });
 });
 
-describe("interpréteur : web.chercher", () => {
+describe("interpreter: web.chercher", () => {
   const WEB = { web: true, dureeMaxMinutes: null, proprietaire: "widget" as const, saisie: false };
   const annonces = [
     { marque: "Peugeot", modele: "208 & co/é" },
@@ -883,7 +883,7 @@ describe("interpréteur : web.chercher", () => {
   const resultat = (requete: string) => [{ titre: "Avis " + requete, url: "https://avis.fr/1", extrait: "Bien", rang: 1 }];
   const journalDe = (r: { lignes: any[] }, id: string) => r.lignes.filter((l) => l.t === "journal" && l.bloc === id).map((l) => l.texte);
 
-  it("web.chercher par élément range la liste sous recherche, requête remplie avec {marque} {modele} sans encodage", async () => {
+  it("web.chercher per element stores the list under recherche, query filled with {marque} {modele} without encoding", async () => {
     const r = await lancer({
       workflow: workflow({ nombre: 5 }),
       fichiers,
@@ -905,7 +905,7 @@ describe("interpréteur : web.chercher", () => {
     expect(r.finBloc("cherche")).toMatchObject({ statut: "reussi" });
   });
 
-  it("plafond atteint : les éléments restants sans champ, bloc partiel, même avec siErreur echouer", async () => {
+  it("ceiling reached: the remaining elements without champ, partial block, even with siErreur echouer", async () => {
     let n = 0;
     const r = await lancer({
       workflow: workflow({ siErreur: "echouer" }),
@@ -919,25 +919,25 @@ describe("interpréteur : web.chercher", () => {
     expect(donnees.filter((e) => !("recherche" in e))).toHaveLength(2);
     expect(r.finBloc("cherche")).toMatchObject({ statut: "partiel" });
     const journal = journalDe(r, "cherche");
-    // Une ligne pour le premier refus, une pour les éléments qui suivent : pas une par élément.
+    // One line for the first refusal, one for the elements that follow: not one per element.
     expect(journal.filter((t) => /^élément \d : /.test(t))).toEqual([expect.stringContaining(` : ${PLAFOND_RECHERCHES}`)]);
     expect(journal.length).toBeLessThanOrEqual(2);
-    // Le bloc sortie a bien tourné.
+    // The sortie block did run.
     expect(r.finBloc("sortie")).toMatchObject({ statut: "reussi" });
   });
 
-  it("après le premier refus du noyau, plus aucune recherche : les éléments restants non lancés, une seule ligne de plus", async () => {
+  it("after the core's first refusal, no more search: the remaining elements not launched, only one more line", async () => {
     const vingt = Array.from({ length: 20 }, (_, i) => ({ marque: "M" + i, modele: "X" }));
     const r = await lancer({
       workflow: workflow({ reutiliser: "marque" }),
       fichiers: { "liste.mjs": `export default async () => (${JSON.stringify(vingt)});` },
       contexte: WEB,
-      // M15 est déjà connu : il est repris sans recherche, même après le refus.
+      // M15 is already known: it is reused without a search, even after the refusal.
       memoire: { cherche: { type: "web.chercher", valeur: { reutilises: [["M15", [{ titre: "Connu", url: "https://avis.fr/15", extrait: "" }]]] } } },
       repondre: (a) => (a.a.requete.startsWith("M0 ") ? { ok: resultat(a.a.requete) } : { erreur: RECHERCHES_ARRETEES }),
     });
     expect(r.terminal.t).toBe("fin");
-    // M0 et M1 partent ensemble (deux à la fois) ; M1 refusé, M2 au plus a pu partir avant que le refus soit connu.
+    // M0 and M1 leave together (two at a time); M1 refused, M2 at most could leave before the refusal was known.
     expect(r.appels.length).toBeLessThanOrEqual(3);
     const donnees = r.terminal.donnees as Record<string, unknown>[];
     expect(donnees.filter((e) => "recherche" in e).map((e) => e.marque)).toEqual(["M0", "M15"]);
@@ -948,7 +948,7 @@ describe("interpréteur : web.chercher", () => {
     expect(journal[1]).toBe("17 autre(s) élément(s) non lancé(s)");
   });
 
-  it("en mode simple, le succès rend la liste elle-même, remise en forme (non textes en \"\", clés en trop retirées)", async () => {
+  it("in simple mode, success returns the list itself, reshaped (non-texts as \"\", extra keys removed)", async () => {
     const r = await lancer({
       workflow: { version: 1, blocs: [bloc("cherche", "web.chercher", { requete: "rust" }), sortie], liens: chaine("cherche", "sortie") },
       contexte: WEB,
@@ -958,7 +958,7 @@ describe("interpréteur : web.chercher", () => {
     expect(r.finBloc("cherche")).toMatchObject({ statut: "reussi" });
   });
 
-  it("une réponse qui n'est pas une liste : « résultats de recherche invalides »", async () => {
+  it("a response that is not a list: « résultats de recherche invalides »", async () => {
     const r = await lancer({
       workflow: { version: 1, blocs: [bloc("cherche", "web.chercher", { requete: "rust" }), sortie], liens: chaine("cherche", "sortie") },
       contexte: WEB,
@@ -967,7 +967,7 @@ describe("interpréteur : web.chercher", () => {
     expect(r.finBloc("cherche")).toMatchObject({ statut: "echoue", erreur: "résultats de recherche invalides" });
   });
 
-  it("la requête remplie est coupée à 500 caractères et débarrassée de ses blancs ; vide, c'est une valeur absente", async () => {
+  it("the filled query is cut to 500 characters and stripped of its blanks; empty, it is an absent value", async () => {
     const elements = [{ marque: "  " + "a".repeat(400), modele: "b".repeat(400) }, { marque: "   ", modele: "  " }];
     const r = await lancer({
       workflow: workflow({ requete: "{marque} {modele}" }),
@@ -982,7 +982,7 @@ describe("interpréteur : web.chercher", () => {
     expect(journalDe(r, "cherche")).toEqual(["élément 2 : valeur absente : requete"]);
   });
 
-  it("RECHERCHE_REFUSEE sur un élément avec siErreur echouer : le bloc échoue", async () => {
+  it("RECHERCHE_REFUSEE on an element with siErreur echouer: the block fails", async () => {
     const r = await lancer({
       workflow: workflow({ siErreur: "echouer" }),
       fichiers,
@@ -993,7 +993,7 @@ describe("interpréteur : web.chercher", () => {
     expect(r.terminal).toEqual({ t: "echec", erreur: RECHERCHE_REFUSEE });
   });
 
-  it("en mode simple, le plafond est une erreur ordinaire", async () => {
+  it("in simple mode, the ceiling is an ordinary error", async () => {
     const r = await lancer({
       workflow: {
         version: 1,
@@ -1009,7 +1009,7 @@ describe("interpréteur : web.chercher", () => {
     expect(r.terminal).toEqual({ t: "echec", erreur: PLAFOND_RECHERCHES });
   });
 
-  it("rejeu depuis le bloc après web.chercher : aucun appel chercherWeb", async () => {
+  it("replay from the block after web.chercher: no chercherWeb call", async () => {
     const recherches = annonces.map((e) => ({ ...e, recherche: [{ titre: "T", url: "https://avis.fr/1", extrait: "E" }] }));
     const r = await lancer({
       workflow: {
@@ -1027,43 +1027,43 @@ describe("interpréteur : web.chercher", () => {
   });
 });
 
-describe("interpréteur : mémoire datée (garderJours)", () => {
+describe("interpreter: dated memory (garderJours)", () => {
   const MAINTENANT = "2026-10-29T10:00:00.000Z";
   const ilYa = (jours: number) => new Date(Date.parse(MAINTENANT) - jours * 86_400_000).toISOString();
   const nouveaux = (entree: unknown[], memoire: unknown, parametres: Record<string, unknown> = {}) =>
     listeNouveaux.executer({ entree, parametres: { cle: "url", ...parametres }, memoire, journal: () => {}, maintenant: MAINTENANT });
 
-  it("une clé vue il y a 31 jours avec garderJours 30 redevient nouvelle ; à 29 jours, non", async () => {
+  it("a key seen 31 days ago with garderJours 30 becomes new again; at 29 days, not", async () => {
     const r = await nouveaux([{ url: "vieille" }, { url: "recente" }], [["vieille", ilYa(31)], ["recente", ilYa(29)], ["oubliee", ilYa(31)]], {
       garderJours: 30,
     });
     expect(r.sortie).toEqual([{ url: "vieille" }]);
     expect(r.nouvelles).toEqual(["vieille"]);
-    // L'entrée trop vieille et jamais revue n'est pas réécrite ; les clés revues prennent la date du jour.
+    // The too-old, never-seen-again entry is not rewritten; the seen-again keys take today's date.
     expect(r.memoire).toEqual([["vieille", MAINTENANT], ["recente", MAINTENANT]]);
   });
 
-  it("sans garderJours, une clé de 400 jours reste vue", async () => {
+  it("without garderJours, a 400-day-old key stays seen", async () => {
     const r = await nouveaux([{ url: "a" }, { url: "b" }], [["a", ilYa(400)], ["autre", ilYa(400)]]);
     expect(r.sortie).toEqual([{ url: "b" }]);
     expect(r.nouvelles).toEqual(["b"]);
     expect(r.memoire).toEqual([["autre", ilYa(400)], ["a", MAINTENANT], ["b", MAINTENANT]]);
   });
 
-  it("une clé revue prend la date du jour", async () => {
+  it("a seen-again key takes today's date", async () => {
     const r = await nouveaux([{ url: "a" }], [["a", ilYa(10)], ["b", ilYa(5)]], { garderJours: 30 });
     expect(r.sortie).toEqual([]);
     expect(r.nouvelles).toEqual([]);
     expect(r.memoire).toEqual([["b", ilYa(5)], ["a", MAINTENANT]]);
   });
 
-  it("ancienne mémoire en textes : lue comme vue, réécrite datée de maintenant", async () => {
+  it("old memory in texts: read as seen, rewritten dated now", async () => {
     const r = await nouveaux([{ url: "a" }, { url: "c" }], ["a", "b"], { garderJours: 1 });
     expect(r.sortie).toEqual([{ url: "c" }]);
     expect(r.memoire).toEqual([["b", MAINTENANT], ["a", MAINTENANT], ["c", MAINTENANT]]);
   });
 
-  it("dans le conteneur, liste.nouveaux reçoit maintenant de la ligne debut et rend une mémoire datée", async () => {
+  it("in the container, liste.nouveaux receives maintenant from the debut line and returns a dated memory", async () => {
     const r = await lancer({
       workflow: {
         version: 1,
@@ -1087,7 +1087,7 @@ describe("interpréteur : mémoire datée (garderJours)", () => {
     },
   });
 
-  it("reutiliser avec garderJours 30 : valeur de 31 jours recalculée, de 29 jours reprise sans appel et sa date gardée", async () => {
+  it("reutiliser with garderJours 30: 31-day value recomputed, 29-day one reused without a call and its date kept", async () => {
     const calcules: string[] = [];
     const r = await executer({
       entree: [{ url: "vieille" }, { url: "recente" }],
@@ -1102,14 +1102,14 @@ describe("interpréteur : mémoire datée (garderJours)", () => {
       { url: "vieille", resume: "résumé de vieille" },
       { url: "recente", resume: "gardé" },
     ]);
-    // L'entrée trop vieille jamais revue est oubliée ; la reprise ne rafraîchit pas la date.
+    // The too-old entry never seen again is forgotten; the reuse does not refresh the date.
     expect([...(r.resultat!.memoire.b!.valeur as { reutilises: unknown[] }).reutilises].sort()).toEqual([
       ["recente", "gardé", ilYa(29)],
       ["vieille", "résumé de vieille", MAINTENANT],
     ]);
   });
 
-  it("sans garderJours, reutiliser reprend une valeur de 400 jours", async () => {
+  it("without garderJours, reutiliser reuses a 400-day value", async () => {
     const calcules: string[] = [];
     const r = await executer({
       entree: [{ url: "a" }],
@@ -1121,7 +1121,7 @@ describe("interpréteur : mémoire datée (garderJours)", () => {
     expect(r.resultat!.memoire.b!.valeur).toEqual({ reutilises: [["a", "très ancien", ilYa(400)]] });
   });
 
-  it("anciennes paires [cle, valeur] de reutiliser reprises sans appel", async () => {
+  it("old [cle, valeur] pairs of reutiliser reused without a call", async () => {
     const calcules: string[] = [];
     const r = await executer({
       entree: [{ url: "a" }],
@@ -1134,7 +1134,7 @@ describe("interpréteur : mémoire datée (garderJours)", () => {
     expect(r.resultat!.memoire.b!.valeur).toEqual({ reutilises: [["b", "autre", MAINTENANT], ["a", "ancien", MAINTENANT]] });
   });
 
-  it("reutiliser : deux éléments de même clé traités en même temps ne font qu'un appel", async () => {
+  it("reutiliser: two elements with the same key processed at the same time make only one call", async () => {
     let appels = 0;
     const r = await executer({
       entree: [{ modele: "Clio", n: 1 }, { modele: "Clio", n: 2 }, { modele: "208", n: 3 }],
@@ -1159,7 +1159,7 @@ describe("interpréteur : mémoire datée (garderJours)", () => {
     expect(r.finBloc("b")).toMatchObject({ statut: "reussi" });
   });
 
-  it("reutiliser : si le calcul en cours de la même clé échoue, le second élément calcule lui-même", async () => {
+  it("reutiliser: if the in-progress computation of the same key fails, the second element computes itself", async () => {
     const lances: number[] = [];
     const r = await executer({
       entree: [{ modele: "Clio", n: 1 }, { modele: "Clio", n: 2 }],
@@ -1182,7 +1182,7 @@ describe("interpréteur : mémoire datée (garderJours)", () => {
   });
 });
 
-describe("interpréteur : exécution progressive", () => {
+describe("interpreter: progressive run", () => {
   const MAINTENANT = "2026-10-29T10:00:00.000Z";
   const VIEUX = "2026-10-01T10:00:00.000Z";
   const memoires = (r: { traces: any[] }) => r.traces.filter((l) => l.t === "memoire").map((l) => l.memoire);
@@ -1207,7 +1207,7 @@ describe("interpréteur : exécution progressive", () => {
       registre: { "liste.nouveaux": listeNouveaux, "test.avis": avis("Panda") },
     });
 
-  // nouvelles → tri → garder 2 → lire (une lecture en échec) → sortie
+  // nouvelles → tri → garder 2 → lire (one failing read) → sortie
   const veille = (progressif: boolean) =>
     executer({
       progressif,
@@ -1242,22 +1242,22 @@ describe("interpréteur : exécution progressive", () => {
       },
     });
 
-  it("progressif : une erreur de bloc envoie la mémoire (fiabilités déjà trouvées) avant echec", async () => {
+  it("progressive: a block error sends the memory (reliabilities already found) before echec", async () => {
     const r = await echecAvis(true);
     expect(r.erreur?.message).toBe("raté");
     expect(memoires(r)).toEqual([
       {
-        // a, b, c n'ont fini aucune suite de blocs : pas retenues, elles reviendront.
+        // a, b, c finished no block sequence: not retained, they will come back.
         nv: { type: "liste.nouveaux", valeur: [["vieille", VIEUX]] },
         avis: { type: "test.avis", valeur: { reutilises: [["Clio", "avis Clio", MAINTENANT], ["208", "avis 208", MAINTENANT]] } },
       },
     ]);
-    // Envoyée après la fin échouée du bloc, juste avant de relever l'erreur (donc avant echec).
+    // Sent after the block's failed end, just before rethrowing the error (so before echec).
     expect(r.traces.at(-1)?.t).toBe("memoire");
     expect(r.traces.at(-2)).toMatchObject({ t: "bloc", id: "avis", etape: "fin", statut: "echoue" });
   });
 
-  it("progressif : mémoire envoyée au plus toutes les 30 s (horloge factice), et la dernière avant fin", async () => {
+  it("progressive: memory sent at most every 30 s (fake clock), and the last one before fin", async () => {
     let maintenant = 0;
     const r = await executer({
       progressif: true,
@@ -1276,12 +1276,12 @@ describe("interpréteur : exécution progressive", () => {
       },
     });
     expect(r.erreur).toBeNull();
-    // Dix éléments de 10 s, deux à la fois : les paires finissent à 20, 40, 60, 80, 100 s. Vérifiée à la fin de chaque
-    // élément et de chaque bloc, la mémoire part à 40 s (4 avis) et à 80 s (8 avis) seulement : ni à 20, ni à 60, ni à 100.
+    // Ten 10 s elements, two at a time: the pairs finish at 20, 40, 60, 80, 100 s. Checked at the end of each
+    // element and each block, the memory leaves at 40 s (4 opinions) and 80 s (8 opinions) only: not at 20, 60 or 100.
     expect(memoires(r).map((m) => m.lent.valeur.reutilises.length)).toEqual([4, 8]);
     expect((r.resultat!.memoire.lent!.valeur as { reutilises: unknown[] }).reutilises).toHaveLength(10);
 
-    // Dans le conteneur : la dernière mémoire juste avant fin, comme aujourd'hui.
+    // In the container: the last memory just before fin, as today.
     const c = await lancer({
       workflow: { version: 1, blocs: [bloc("src", "code", { source: "src.mjs" }), sortie], liens: chaine("src", "sortie") },
       fichiers: { "src.mjs": `export default async () => [1];` },
@@ -1290,15 +1290,15 @@ describe("interpréteur : exécution progressive", () => {
     expect(c.traces.slice(-2).map((l) => l.t)).toEqual(["memoire", "fin"]);
   });
 
-  it("progressif : nouvelles → tri → garder 2 → lire (une lecture en échec) → sortie : la clé de l'annonce en échec n'est pas retenue, celles écartées par garder et par le tri le sont, les deux lues aussi", async () => {
+  it("progressive: nouvelles → tri → garder 2 → lire (one failing read) → sortie: the failing listing's key is not retained, those dropped by garder and by the sort are, the two read ones too", async () => {
     const r = await veille(true);
     expect(r.erreur).toBeNull();
     expect(r.resultat!.donnees).toEqual([{ url: "c", note: 9, n: 9, page: "texte" }, { url: "d", note: 9, n: 9 }]);
-    // b écartée par le tri, e et f par garder, c lue et sortie ; d en échec ; a revue prend la date du jour.
+    // b dropped by the sort, e and f by garder, c read and output; d failed; a seen again takes today's date.
     expect(r.resultat!.memoire.nv!.valeur).toEqual([["a", MAINTENANT], ["b", MAINTENANT], ["c", MAINTENANT], ["e", MAINTENANT], ["f", MAINTENANT]]);
   });
 
-  it("progressif : élément non lancé faute de temps : sa clé n'est pas retenue", async () => {
+  it("progressive: element not launched for lack of time: its key is not retained", async () => {
     let maintenant = 0;
     const r = await executer({
       progressif: true,
@@ -1325,7 +1325,7 @@ describe("interpréteur : exécution progressive", () => {
     expect(r.resultat!.memoire.nv!.valeur).toEqual(["u0", "u1", "u2", "u3"].map((c) => [c, MAINTENANT]));
   });
 
-  it("progressif : élément refusé par le noyau (ElementNonLance) : sa clé n'est pas retenue", async () => {
+  it("progressive: element refused by the core (ElementNonLance): its key is not retained", async () => {
     const r = await executer({
       progressif: true,
       entree: liste(3).map((e) => ({ ...e, url: `u${e.n}` })),
@@ -1348,7 +1348,7 @@ describe("interpréteur : exécution progressive", () => {
     expect(r.resultat!.memoire.nv!.valeur).toEqual([["u0", MAINTENANT], ["u1", MAINTENANT]]);
   });
 
-  it("sans progressif : toutes les nouvelles clés retenues et aucune mémoire avant echec (comme avant)", async () => {
+  it("without progressive: all the new keys retained and no memory before echec (as before)", async () => {
     const r = await veille(false);
     expect(r.resultat!.memoire.nv!.valeur).toEqual(["a", "b", "c", "d", "e", "f"].map((c) => [c, MAINTENANT]));
     expect(memoires(r)).toEqual([]);
@@ -1367,7 +1367,7 @@ describe("interpréteur : exécution progressive", () => {
   });
   const abc = () => ["a", "b", "c"].map((url) => ({ url }));
 
-  it("progressif : un code qui renomme le champ de la clé puis un élément en échec : rien de résolu après, b revient, une ligne de journal", async () => {
+  it("progressive: code that renames the key field then a failing element: nothing resolved afterwards, b comes back, one log line", async () => {
     const r = await executer({
       progressif: true,
       entree: abc(),
@@ -1390,7 +1390,7 @@ describe("interpréteur : exécution progressive", () => {
     );
   });
 
-  it("progressif : un code qui renomme le champ de la clé sans échec ensuite : toutes retenues après sortie", async () => {
+  it("progressive: code that renames the key field without a failure afterwards: all retained after the output", async () => {
     const r = await executer({
       progressif: true,
       entree: abc(),
@@ -1408,7 +1408,7 @@ describe("interpréteur : exécution progressive", () => {
     expect(r.journal("nv")).toEqual([]);
   });
 
-  it("progressif : un code qui filtre écarte b (résolue), c en échec plus loin n'est pas retenue", async () => {
+  it("progressive: code that filters drops b (resolved), c failing further on is not retained", async () => {
     const r = await executer({
       progressif: true,
       entree: abc(),
@@ -1428,7 +1428,7 @@ describe("interpréteur : exécution progressive", () => {
     expect(r.resultat!.memoire.nv!.valeur).toEqual([["a", MAINTENANT], ["b", MAINTENANT]]);
   });
 
-  it("progressif : branches parallèles, b écartée par garder sur l'une et en échec sur l'autre, n'est pas retenue (dans les deux ordres)", async () => {
+  it("progressive: parallel branches, b dropped by garder on one and failing on the other, is not retained (in both orders)", async () => {
     for (const ordre of [["src", "nv", "garder", "lire", "sortie"], ["src", "nv", "lire", "garder", "sortie"]]) {
       const traces: any[] = [];
       const r = await executerWorkflow({
@@ -1467,7 +1467,7 @@ describe("interpréteur : exécution progressive", () => {
     }
   });
 
-  it("progressif : les clés en suspens sont retirées avant le plafond de 5000 clés", async () => {
+  it("progressive: pending keys are removed before the 5000-key ceiling", async () => {
     const anciennes = Array.from({ length: 5000 }, (_, i) => [`k${i}`, VIEUX]);
     const r = await executer({
       progressif: true,
@@ -1480,11 +1480,11 @@ describe("interpréteur : exécution progressive", () => {
       ],
       registre: { "liste.nouveaux": listeNouveaux, "test.lire": lireSaufSur("x") },
     });
-    // x en échec n'est pas retenue et ne fait pas oublier k0.
+    // x failing is not retained and does not make k0 forgotten.
     expect(r.resultat!.memoire.nv!.valeur).toEqual(anciennes);
   });
 
-  it("un essai (rejeu) progressif n'envoie aucune mémoire", async () => {
+  it("a progressive trial (replay) sends no memory", async () => {
     let maintenant = 0;
     const r = await executer({
       progressif: true,
@@ -1510,7 +1510,7 @@ describe("interpréteur : exécution progressive", () => {
     expect(memoires(r)).toEqual([]);
   });
 
-  it("reutiliser : si le calcul en cours de la même clé est refusé par le noyau, le second élément n'en relance pas", async () => {
+  it("reutiliser: if the in-progress computation of the same key is refused by the core, the second element does not relaunch it", async () => {
     const lances: number[] = [];
     const r = await executer({
       entree: [{ modele: "Clio", n: 1 }, { modele: "Clio", n: 2 }],
@@ -1531,9 +1531,9 @@ describe("interpréteur : exécution progressive", () => {
   });
 });
 
-describe("interpréteur : chaîne au fil de l'eau", () => {
+describe("interpreter: streaming chain", () => {
   type Evenement = string;
-  /** Un bloc chaînable de test : note `debut:<bloc>:<n>` et `fin:<bloc>:<n>` et rend `<bloc> <n>`. */
+  /** A chainable test block: notes `debut:<block>:<n>` and `fin:<block>:<n>` and returns `<block> <n>`. */
   const etape = (nom: string, evenements: Evenement[], o: { duree?: (n: number) => number; horloge?: { t: number }; echoueSur?: number; tours?: (n: number) => number } = {}) => ({
     parElement: "option",
     async executer(ctx: any) {
@@ -1543,7 +1543,7 @@ describe("interpréteur : chaîne au fil de l'eau", () => {
     async traiterElement(ctx: any) {
       const n = ctx.element.n;
       evenements.push(`debut:${nom}:${n}`);
-      // Un élément « lent » attend plus de tours de la file des micro-tâches : il finit après d'autres lancés après lui.
+      // A « slow » element waits more micro-task queue turns: it finishes after others launched after it.
       for (let k = 0; k < (o.tours?.(n) ?? 1); k++) await Promise.resolve();
       if (o.horloge && o.duree) o.horloge.t += o.duree(n);
       evenements.push(`fin:${nom}:${n}`);
@@ -1567,7 +1567,7 @@ describe("interpréteur : chaîne au fil de l'eau", () => {
   const resume = (r: { traces: any[] }) =>
     r.traces.filter((l) => l.t === "bloc").map((l) => `${l.etape}:${l.id}`);
 
-  it("au fil de l'eau : chaque annonce traverse fiche → fiabilite → avis avant d'être terminée, deux à la fois", async () => {
+  it("streaming: each listing goes through fiche → fiabilite → avis before being finished, two at a time", async () => {
     const evenements: Evenement[] = [];
     const r = await executer({
       progressif: true,
@@ -1576,13 +1576,13 @@ describe("interpréteur : chaîne au fil de l'eau", () => {
       registre: registreChaine(evenements),
     });
     expect(r.erreur).toBeNull();
-    // Chaque annonce passe les trois blocs dans l'ordre.
+    // Each listing passes the three blocks in order.
     for (let n = 0; n < 6; n++) {
       const pos = (e: string) => evenements.indexOf(e);
       expect(pos(`fin:fiche:${n}`)).toBeLessThan(pos(`debut:fiabilite:${n}`));
       expect(pos(`fin:fiabilite:${n}`)).toBeLessThan(pos(`debut:avis:${n}`));
     }
-    // Deux annonces à la fois au plus : une annonce est en cours du début de sa fiche à la fin de son avis.
+    // Two listings at a time at most: a listing is in progress from the start of its fiche to the end of its avis.
     let enCours = 0;
     let max = 0;
     for (const e of evenements) {
@@ -1590,16 +1590,16 @@ describe("interpréteur : chaîne au fil de l'eau", () => {
       if (e.startsWith("fin:avis:")) enCours--;
     }
     expect(max).toBe(2);
-    // La troisième ne commence qu'après qu'une des deux premières a fini son avis.
+    // The third only starts after one of the first two has finished its avis.
     expect(Math.min(evenements.indexOf("fin:avis:0"), evenements.indexOf("fin:avis:1"))).toBeLessThan(evenements.indexOf("debut:fiche:2"));
     expect(r.resultat!.donnees).toEqual(liste(6).map((e) => ({ ...e, page: `fiche ${e.n}`, fiabilite: `fiabilite ${e.n}`, avis: `avis ${e.n}` })));
   });
 
-  it("publications : éléments terminés dans l'ordre de la liste, au plus une toutes les 5 s, faits et total justes", async () => {
+  it("publications: elements finished in list order, at most one every 5 s, done and total correct", async () => {
     const evenements: Evenement[] = [];
     const horloge = { t: 0 };
     const traces: any[] = [];
-    // L'annonce 0 est lente (fiche de 9 s, et plus de tours) : l'annonce 1 finit avant elle. Les autres blocs prennent 1 s.
+    // Listing 0 is slow (9 s fiche, and more turns): listing 1 finishes before it. The other blocks take 1 s.
     const r = await executer({
       progressif: true,
       entree: liste(10),
@@ -1613,9 +1613,9 @@ describe("interpréteur : chaîne au fil de l'eau", () => {
     const final = liste(10).map((e) => ({ ...e, page: `fiche ${e.n}`, fiabilite: `fiabilite ${e.n}`, avis: `avis ${e.n}` }));
     expect(pubs.length).toBeGreaterThan(1);
     expect(pubs.length).toBeLessThan(10);
-    // La première dès la première annonce terminée : l'annonce 1, avant la 0.
+    // The first as soon as the first listing is finished: listing 1, before 0.
     expect(pubs[0]).toEqual({ t: "publication", donnees: [final[1]], faits: 1, total: 10 });
-    // Une fois l'annonce 0 terminée, elle vient en tête : l'ordre est celui de la liste, pas celui des fins.
+    // Once listing 0 is finished, it comes first: the order is the list's, not the finishes'.
     expect(pubs.at(-1).donnees[0]).toEqual(final[0]);
     let faitsAvant = 0;
     for (const p of pubs) {
@@ -1623,19 +1623,19 @@ describe("interpréteur : chaîne au fil de l'eau", () => {
       expect(p.faits).toBe(p.donnees.length);
       expect(p.faits).toBeGreaterThan(faitsAvant);
       faitsAvant = p.faits;
-      // Dans l'ordre de la liste, tels qu'après le dernier bloc.
+      // In list order, as after the last block.
       const ns = p.donnees.map((e: any) => e.n);
       expect(ns).toEqual([...ns].sort((a: number, b: number) => a - b));
       for (const e of p.donnees) expect(e).toEqual(final[e.n]);
     }
-    // Chaque publication juste après une ligne memoire ; 5 s au moins entre deux publications (heure de la mémoire
-    // envoyée juste avant, vue par le fil des traces).
+    // Each publication right after a memoire line; 5 s at least between two publications (time of the memory
+    // sent just before, seen by the trace stream).
     const indices = traces.map((l, i) => (l.t === "publication" ? i : -1)).filter((i) => i >= 0);
     for (const i of indices) expect(traces[i - 1].t).toBe("memoire");
     expect(r.resultat!.donnees).toEqual(final);
   });
 
-  it("publications : jamais deux à moins de 5 s (heure de l'horloge factice à chaque publication)", async () => {
+  it("publications: never two within 5 s (fake clock time at each publication)", async () => {
     const horloge = { t: 0 };
     const heures: number[] = [];
     const evenements: Evenement[] = [];
@@ -1666,12 +1666,12 @@ describe("interpréteur : chaîne au fil de l'eau", () => {
     });
     expect(heures[0]).toBeLessThan(5000);
     for (let i = 1; i < heures.length; i++) expect(heures[i]! - heures[i - 1]!).toBeGreaterThanOrEqual(5000);
-    // 20 annonces de 2,1 s deux à la fois (~21 s) : plusieurs publications, pas une par annonce.
+    // 20 listings of 2.1 s two at a time (~21 s): several publications, not one per listing.
     expect(heures.length).toBeGreaterThanOrEqual(3);
     expect(heures.length).toBeLessThanOrEqual(6);
   });
 
-  it("traces : debut des trois blocs puis leurs fins dans l'ordre ; sortie de chaque bloc = la liste après lui", async () => {
+  it("traces: debut of the three blocks then their ends in order; each block's output = the list after it", async () => {
     const r = await executer({ progressif: true, entree: liste(3), blocs: BLOCS_CHAINE(), registre: registreChaine([]) });
     expect(resume(r)).toEqual([
       "debut:src", "fin:src",
@@ -1685,10 +1685,10 @@ describe("interpréteur : chaîne au fil de l'eau", () => {
     expect(r.finBloc("sortie").sortie).toEqual(liste(3).map((e) => ({ ...e, page: `fiche ${e.n}`, fiabilite: `fiabilite ${e.n}`, avis: `avis ${e.n}` })));
   });
 
-  it("budgetSecondes de fiche compté depuis le début de la chaîne : les annonces suivantes passent sans page, partiel", async () => {
+  it("fiche's budgetSecondes counted from the start of the chain: the following listings pass without a page, partial", async () => {
     const evenements: Evenement[] = [];
     const horloge = { t: 0 };
-    // fiche ne prend pas de temps, fiabilite 600 ms : passé 1 s depuis le début de la chaîne, plus de fiche.
+    // fiche takes no time, fiabilite 600 ms: past 1 s since the start of the chain, no more fiche.
     const r = await executer({
       progressif: true,
       entree: liste(5),
@@ -1708,7 +1708,7 @@ describe("interpréteur : chaîne au fil de l'eau", () => {
     );
   });
 
-  it("sans auFilDeLEau : appels et traces bloc par bloc, identiques à aujourd'hui", async () => {
+  it("without auFilDeLEau: calls and traces block by block, identical to today", async () => {
     const evenements: Evenement[] = [];
     const r = await executer({ progressif: true, entree: liste(3), blocs: BLOCS_CHAINE({}), registre: registreChaine(evenements) });
     expect(r.erreur).toBeNull();
@@ -1722,7 +1722,7 @@ describe("interpréteur : chaîne au fil de l'eau", () => {
     expect(publications(r)).toEqual([]);
   });
 
-  it("sans progressif (une exécution qui n'est pas progressive) : bloc par bloc, aucune publication", async () => {
+  it("without progressive (a run that is not progressive): block by block, no publication", async () => {
     const evenements: Evenement[] = [];
     const r = await executer({ entree: liste(3), blocs: BLOCS_CHAINE(), registre: registreChaine(evenements) });
     expect(resume(r)).toEqual([
@@ -1731,7 +1731,7 @@ describe("interpréteur : chaîne au fil de l'eau", () => {
     expect(publications(r)).toEqual([]);
   });
 
-  it("essai (rejeu) d'un workflow auFilDeLEau : bloc par bloc, aucune publication", async () => {
+  it("trial (replay) of an auFilDeLEau workflow: block by block, no publication", async () => {
     const evenements: Evenement[] = [];
     const r = await executer({
       progressif: true,
@@ -1748,7 +1748,7 @@ describe("interpréteur : chaîne au fil de l'eau", () => {
     expect(publications(r)).toEqual([]);
   });
 
-  it("auFilDeLEau derrière liste.garder : aucune publication, sortie à la fin", async () => {
+  it("auFilDeLEau behind liste.garder: no publication, output at the end", async () => {
     const evenements: Evenement[] = [];
     const [fiche, fiabilite, avis, s] = BLOCS_CHAINE();
     const r = await executer({
@@ -1766,7 +1766,7 @@ describe("interpréteur : chaîne au fil de l'eau", () => {
     expect(r.resultat!.donnees).toHaveLength(2);
   });
 
-  it("un élément en échec dans la chaîne (sauter) est terminé sans le champ, il est publié ; le bloc finit partiel", async () => {
+  it("a failing element in the chain (sauter) is finished without the field, it is published; the block ends partial", async () => {
     const r = await executer({
       progressif: true,
       entree: liste(3),
@@ -1784,7 +1784,7 @@ describe("interpréteur : chaîne au fil de l'eau", () => {
     ]);
   });
 
-  it("siErreur echouer dans la chaîne : le bloc en cause échoue, les autres de la chaîne finissent partiel, puis mémoire et erreur", async () => {
+  it("siErreur echouer in the chain: the block concerned fails, the others of the chain end partial, then memory and error", async () => {
     const r = await executer({
       progressif: true,
       entree: liste(4),
@@ -1799,7 +1799,7 @@ describe("interpréteur : chaîne au fil de l'eau", () => {
     expect(r.traces.at(-1)?.t).toBe("memoire");
   });
 
-  it("clés : une annonce arrivée au bout de la chaîne est retenue dans la mémoire envoyée avant sa publication ; une annonce en échec ne l'est pas", async () => {
+  it("keys: a listing that reached the end of the chain is retained in the memory sent before its publication; a failing listing is not", async () => {
     const r = await executer({
       progressif: true,
       entree: liste(3).map((e) => ({ ...e, url: `u${e.n}` })),
@@ -1808,15 +1808,15 @@ describe("interpréteur : chaîne au fil de l'eau", () => {
     });
     expect(r.erreur).toBeNull();
     const pubs = r.traces.map((l, i) => [l, i] as const).filter(([l]) => l.t === "publication");
-    // La première publication (u0 seule) suit une mémoire qui retient déjà u0.
+    // The first publication (u0 alone) follows a memory that already retains u0.
     const [premiere, i] = pubs[0]!;
     expect(premiere.donnees.map((e: any) => e.url)).toEqual(["u0"]);
     expect(r.traces[i - 1].memoire.nv.valeur.map((e: any) => e[0])).toEqual(["u0"]);
-    // À la fin : u0 et u2 retenues, u1 (avis en échec) reviendra.
+    // At the end: u0 and u2 retained, u1 (failing opinion) will come back.
     expect((r.resultat!.memoire.nv!.valeur as [string, string][]).map((e) => e[0])).toEqual(["u0", "u2"]);
   });
 
-  it("clés : un élément terminé moins de 5 s après une publication, puis un echouer : sa clé n'est pas dans la dernière mémoire", async () => {
+  it("keys: an element finished less than 5 s after a publication, then an echouer: its key is not in the last memory", async () => {
     const evenements: Evenement[] = [];
     const r = await executer({
       progressif: true,
@@ -1826,21 +1826,21 @@ describe("interpréteur : chaîne au fil de l'eau", () => {
       registre: { "liste.nouveaux": listeNouveaux, ...registreChaine(evenements, {}, { fiabilite: { echoueSur: 2 } }) },
     });
     expect(r.erreur?.message).toBe("fiabilite raté");
-    // u0 publiée ; u1 terminée ensuite (pas publiée, moins de 5 s) ; puis u2 échoue.
+    // u0 published; u1 finished afterwards (not published, under 5 s); then u2 fails.
     expect(publications(r).map((p) => p.donnees.map((e: any) => e.url))).toEqual([["u0"]]);
     expect(evenements.indexOf("fin:avis:1")).toBeGreaterThanOrEqual(0);
     expect(evenements.indexOf("fin:avis:1")).toBeLessThan(evenements.indexOf("fin:fiabilite:2"));
     const derniere = r.traces.filter((l) => l.t === "memoire").at(-1);
     expect(r.traces.at(-1)).toBe(derniere);
-    // u1 n'a jamais été montrée : elle revient la fois suivante.
+    // u1 was never shown: it comes back next time.
     expect(derniere.memoire.nv.valeur.map((e: any) => e[0])).toEqual(["u0"]);
   });
 
-  it("une publication de plus de 2 Mo (TAILLE_MAX_DONNEES) n'est pas envoyée, et aucune de ses clés n'est retenue avant la fin de la chaîne", async () => {
+  it("a publication over 2 MB (TAILLE_MAX_DONNEES) is not sent, and none of its keys is retained before the end of the chain", async () => {
     const evenements: Evenement[] = [];
     const horloge = { t: 0 };
     const gros = "x".repeat(1.2 * 1024 * 1024);
-    // u0 finit vite et est publiée seule (1,2 Mo) ; u1, lente, finit plus de 5 s après : [u0, u1] ferait 2,4 Mo.
+    // u0 finishes fast and is published alone (1.2 MB); u1, slow, finishes more than 5 s later: [u0, u1] would be 2.4 MB.
     const r = await executer({
       progressif: true,
       horloge: () => horloge.t,
@@ -1853,21 +1853,21 @@ describe("interpréteur : chaîne au fil de l'eau", () => {
     });
     expect(r.erreur).toBeNull();
     expect(publications(r).map((p) => p.donnees.map((e: any) => e.url))).toEqual([["u0"]]);
-    // Jusqu'à la fin de la chaîne, aucune mémoire ne retient u1 (jamais montrée par une publication).
+    // Until the end of the chain, no memory retains u1 (never shown by a publication).
     const finChaine = r.traces.findIndex((l) => l.t === "bloc" && l.etape === "fin" && l.id === "fiche");
     const memoires = r.traces.slice(0, finChaine).filter((l) => l.t === "memoire");
     expect(memoires.length).toBeGreaterThan(0);
     for (const m of memoires) expect((m.memoire.nv?.valeur ?? []).map((e: any) => e[0])).not.toContain("u1");
-    // La sortie montre tout : u1 est retenue à la fin.
+    // The output shows everything: u1 is retained at the end.
     expect((r.resultat!.memoire.nv!.valeur as any[]).map((e) => e[0])).toEqual(["u0", "u1"]);
   });
 
-  it("clés : la mémoire envoyée par verifierMemoire après la chaîne ne retient pas un élément terminé mais pas publié ; sortie le retient", async () => {
+  it("keys: the memory sent by verifierMemoire after the chain does not retain an element finished but not published; the output does", async () => {
     const horloge = { t: 0 };
     const traces: any[] = [];
     const r = await executerWorkflow({
       workflow: {
-        // « lent », sans lien, tourne entre la chaîne (fiche) et la sortie, et prend 40 s.
+        // « lent », without a link, runs between the chain (fiche) and the output, and takes 40 s.
         blocs: [
           { id: "src", type: "test.source", parametres: {} },
           { id: "nv", type: "liste.nouveaux", parametres: { cle: "url" } },
@@ -1907,7 +1907,7 @@ describe("interpréteur : chaîne au fil de l'eau", () => {
     expect(r.memoire.nv.valeur.map((e: any) => e[0])).toEqual(["u0", "u1"]);
   });
 
-  it("clés : la clé perdue avant la chaîne puis un élément en échec dans la chaîne : rien de plus n'est retenu (R31)", async () => {
+  it("keys: the key lost before the chain then a failing element in the chain: nothing more is retained (R31)", async () => {
     const r = await executer({
       progressif: true,
       entree: liste(3).map((e) => ({ ...e, url: `u${e.n}` })),
@@ -1927,7 +1927,7 @@ describe("interpréteur : chaîne au fil de l'eau", () => {
     expect(r.journal("nv").join("\n")).toContain("n'est plus dans les éléments");
   });
 
-  it("dans le conteneur : debut progressif et sortie auFilDeLEau, les lignes publication viennent avant la fin", async () => {
+  it("in the container: progressive debut and auFilDeLEau output, the publication lines come before fin", async () => {
     const r = await lancer({
       workflow: {
         version: 1,

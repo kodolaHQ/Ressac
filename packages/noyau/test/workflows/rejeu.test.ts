@@ -18,7 +18,7 @@ const origine = (modifs: Record<string, Partial<TraceBloc>> = {}, sans: string[]
 });
 const erreur = (p: ReturnType<typeof planRejeu>) => (p.ok ? "accepté à tort" : p.erreur);
 
-test("rejouer depuis resumes relance resumes, articles, sortie et reprend pages et top", () => {
+test("rejouer from resumes relaunches resumes, articles, sortie and reuses pages and top", () => {
   const p = planRejeu(valide, origine({ pages: { elements: 8 }, top: { elements: 15 } }), "resumes");
   if (!p.ok) throw new Error(p.erreur);
   expect(p.relances).toEqual(["resumes", "articles", "sortie"]);
@@ -27,7 +27,7 @@ test("rejouer depuis resumes relance resumes, articles, sortie et reprend pages 
   expect(p.repris).toEqual({ pages: 8, top: 15 });
 });
 
-test("rejouer depuis un bloc sans prédécesseur relance tout son aval, sans rien reprendre", () => {
+test("rejouer from a block without a predecessor relaunches all its downstream, reusing nothing", () => {
   const p = planRejeu(valide, origine(), "flux");
   if (!p.ok) throw new Error(p.erreur);
   expect(p.relances).toEqual(valide.ordre);
@@ -39,28 +39,28 @@ test("refus : origine introuvable", () => {
   expect(erreur(planRejeu(valide, null, "resumes"))).toBe("Rejeu impossible : exécution introuvable");
 });
 
-test("refus : bloc absent du workflow", () => {
+test("refusal: block absent from the workflow", () => {
   expect(erreur(planRejeu(valide, origine(), "fantome"))).toBe("Rejeu impossible : le bloc « fantome » n'est pas dans le workflow");
 });
 
-test("refus : sortie amont absente (bloc pas lancé)", () => {
+test("refusal: upstream output absent (block not launched)", () => {
   const p = planRejeu(valide, origine({ pages: { statut: "pas-lance", sortie: undefined } }), "resumes");
   expect(erreur(p)).toBe("Rejeu impossible : la sortie de « pages » manque dans cette exécution");
 });
 
-test("refus : sortie amont en échec", () => {
+test("refusal: upstream output failed", () => {
   expect(erreur(planRejeu(valide, origine({ top: { statut: "echoue" } }), "resumes"))).toBe(
     "Rejeu impossible : la sortie de « top » manque dans cette exécution",
   );
 });
 
-test("refus : sortie amont reprise (l'origine est elle-même un essai)", () => {
+test("refusal: upstream output reused (the origin is itself a trial)", () => {
   expect(erreur(planRejeu(valide, origine({ pages: { statut: "repris" } }), "resumes"))).toBe(
     "Rejeu impossible : la sortie de « pages » manque dans cette exécution",
   );
 });
 
-test("refus : sortie amont reprise et origine de l'essai élaguée", () => {
+test("refusal: upstream output reused and the trial's origin pruned", () => {
   const essai = { ...origine({ pages: { statut: "repris", sortie: undefined } }), id: "e1-essai", essai: { depart: "resumes", origine: "reel" } };
   expect(erreur(planRejeu(valide, essai, "resumes", []))).toBe("Rejeu impossible : la sortie de « pages » manque dans cette exécution");
 });
@@ -70,7 +70,7 @@ const essaiDe = (id: string, depuis: string, modifs: Record<string, Partial<Trac
 });
 const reprisSans = { statut: "repris", sortie: undefined } as const;
 
-test("rejouer depuis le même bloc en partant d'un essai reprend les sorties de son origine, qu'il nomme", () => {
+test("rejouer from the same block starting from a trial reuses the outputs of its origin, which it names", () => {
   const reel = { ...origine({ pages: { elements: 8, sortie: "p-reel" }, top: { elements: 15, sortie: "t-reel" } }), id: "reel" };
   const essai = essaiDe("e1-essai", "reel", { pages: { ...reprisSans, elements: 8 }, top: { ...reprisSans, elements: 15 } });
   const p = planRejeu(valide, essai, "resumes", [reel]);
@@ -81,7 +81,7 @@ test("rejouer depuis le même bloc en partant d'un essai reprend les sorties de 
   expect(p.origine).toBe("reel");
 });
 
-test("un essai d'essai remonte la chaîne jusqu'à la vraie exécution", () => {
+test("a trial of a trial goes back up the chain to the real run", () => {
   const reel = { ...origine({ top: { sortie: "t-reel" }, pages: { sortie: "p-reel" } }), id: "reel" };
   const e1 = essaiDe("e1-essai", "reel", { top: reprisSans, pages: reprisSans });
   const e2 = essaiDe("e2-essai", "e1-essai", { top: reprisSans, pages: reprisSans });
@@ -91,9 +91,9 @@ test("un essai d'essai remonte la chaîne jusqu'à la vraie exécution", () => {
   expect(p.origine).toBe("reel");
 });
 
-test("sorties mêlées (relancées par l'essai, reprises de son origine) : l'origine nommée est l'essai", () => {
+test("mixed outputs (relaunched by the trial, reused from its origin): the named origin is the trial", () => {
   const reel = { ...origine({ top: { sortie: "t-reel" } }), id: "reel" };
-  // L'essai est parti de « a-resumer » : top est repris, pages a tourné dans l'essai.
+  // The trial started from « a-resumer »: top is reused, pages ran in the trial.
   const e1 = essaiDe("e1-essai", "reel", { flux: reprisSans, uniques: reprisSans, tri: reprisSans, top: reprisSans, pages: { sortie: "p-essai" } });
   const p = planRejeu(valide, e1, "resumes", [reel]);
   if (!p.ok) throw new Error(p.erreur);
@@ -101,46 +101,46 @@ test("sorties mêlées (relancées par l'essai, reprises de son origine) : l'ori
   expect(p.origine).toBe("e1-essai");
 });
 
-test("refus : sortie reprise de l'origine de l'essai tronquée", () => {
+test("refusal: output reused from the trial's origin truncated", () => {
   const reel = { ...origine({ top: { sortieTronquee: true, sortie: "[{…" } }), id: "reel" };
   const essai = essaiDe("e1-essai", "reel", { top: reprisSans, pages: reprisSans });
   expect(erreur(planRejeu(valide, essai, "resumes", [reel]))).toBe("Rejeu impossible : la sortie de « top » a été tronquée dans cette exécution");
 });
 
-test("refus : sortie amont réussie mais sans sortie gardée", () => {
+test("refusal: upstream output succeeded but without a kept output", () => {
   expect(erreur(planRejeu(valide, origine({ pages: { sortie: undefined } }), "resumes"))).toBe(
     "Rejeu impossible : la sortie de « pages » manque dans cette exécution",
   );
 });
 
-test("refus : sortie amont tronquée", () => {
+test("refusal: upstream output truncated", () => {
   expect(erreur(planRejeu(valide, origine({ top: { sortieTronquee: true, sortie: "[{…" } }), "resumes"))).toBe(
     "Rejeu impossible : la sortie de « top » a été tronquée dans cette exécution",
   );
 });
 
-test("refus : bloc ajouté en amont depuis l'exécution", () => {
+test("refusal: block added upstream since the run", () => {
   expect(erreur(planRejeu(valide, origine({}, ["pages"]), "resumes"))).toBe(
     "Rejeu impossible : la sortie de « pages » manque dans cette exécution",
   );
 });
 
-test("une sortie amont partielle est reprise", () => {
+test("a partial upstream output is reused", () => {
   const p = planRejeu(valide, origine({ pages: { statut: "partiel" } }), "resumes");
   expect(p.ok).toBe(true);
 });
 
-test("debutTropGros mesure la ligne de début avec les sorties à reprendre", () => {
+test("debutTropGros measures the start line with the outputs to reuse", () => {
   const o = { precedent: null, maintenant: "2026-10-29T08:00:00.000Z", config: null, workflow: { blocs: [], liens: [], ordre: [] } };
   const rejeu = (sorties: Record<string, unknown>) => ({ ...o, rejeu: { relances: ["b"], sorties } });
   expect(debutTropGros(o)).toBe(false);
   expect(debutTropGros(rejeu({ a: "x".repeat(1024) }))).toBe(false);
   expect(debutTropGros(rejeu({ a: "x".repeat(LIGNE_MAX_OCTETS) }))).toBe(true);
   expect(octetsLigneDebut(rejeu({}))).toBeGreaterThan(octetsLigneDebut(o));
-  // La mesure est celle de la ligne réellement envoyée, au octet près (é compte deux octets).
+  // The measure is that of the line actually sent, to the byte (é counts two bytes).
   const ligne = rejeu({ a: "é".repeat(1000) });
   expect(octetsLigneDebut(ligne)).toBe(Buffer.byteLength(ligneDebut(ligne)));
   expect(JSON.parse(ligneDebut(ligne)).rejeu).toEqual({ relances: ["b"], sorties: { a: "é".repeat(1000) } });
-  // Sans rejeu, la ligne est celle d'avant : aucune clé `rejeu`.
+  // Without replay, the line is the earlier one: no `rejeu` key.
   expect("rejeu" in JSON.parse(ligneDebut(o))).toBe(false);
 });

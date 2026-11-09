@@ -5,7 +5,7 @@ import { extraireResultats, urlRecherche } from "../../src/workflows/duckduckgo.
 const page = (nom: string) => readFileSync(new URL(`./fixtures/duckduckgo/${nom}`, import.meta.url), "utf8");
 
 describe("extraireResultats", () => {
-  it("resultats.html : 9 résultats dans l'ordre, l'annonce écartée, javascript: écarté, uddg décodé, entités décodées", () => {
+  it("resultats.html: 9 results in order, the ad dropped, javascript: dropped, uddg decoded, entities decoded", () => {
     const r = extraireResultats(page("resultats.html"), 20);
     if (!("resultats" in r)) throw new Error("attendu : des résultats");
     expect(r.resultats).toHaveLength(9);
@@ -22,14 +22,14 @@ describe("extraireResultats", () => {
     expect(new Set(r.resultats.map((x) => x.url)).size).toBe(9);
   });
 
-  it("nombre 3 : les 3 premiers", () => {
+  it("nombre 3: the first 3", () => {
     const tous = extraireResultats(page("resultats.html"), 20);
     const trois = extraireResultats(page("resultats.html"), 3);
     if (!("resultats" in tous) || !("resultats" in trois)) throw new Error("attendu");
     expect(trois.resultats).toEqual(tous.resultats.slice(0, 3));
   });
 
-  it("aucun-resultat.html : liste vide", () => {
+  it("aucun-resultat.html: empty list", () => {
     expect(extraireResultats(page("aucun-resultat.html"), 5)).toEqual({ resultats: [] });
   });
 
@@ -41,14 +41,14 @@ describe("extraireResultats", () => {
     expect(extraireResultats(page("changee.html"), 5)).toEqual({ illisible: true });
   });
 
-  it("les doublons d'url sont écartés", () => {
+  it("duplicate urls are dropped", () => {
     const bloc = (u: string) => `<div class="result"><a class="result__a" href="${u}">T</a><a class="result__snippet">E</a></div>`;
     const r = extraireResultats(bloc("https://a.example/") + bloc("https://a.example/") + bloc("https://b.example/"), 5);
     if (!("resultats" in r)) throw new Error("attendu");
     expect(r.resultats.map((x) => x.url)).toEqual(["https://a.example/", "https://b.example/"]);
   });
 
-  it("un titre de 5 000 caractères est coupé à 300", () => {
+  it("a 5,000-character title is cut to 300", () => {
     const html = `<div class="result results_links"><a class="result__a" href="https://x.example/">${"a".repeat(5000)}</a>
       <a class="result__snippet" href="#">${"b".repeat(3000)}</a></div>`;
     const r = extraireResultats(html, 5);
@@ -58,7 +58,7 @@ describe("extraireResultats", () => {
   });
 });
 
-describe("extraireResultats : pages hostiles et cas limites", () => {
+describe("extraireResultats: hostile pages and edge cases", () => {
   const bloc = (titre: string, href = "https://a.example/", extrait = "E") =>
     `<div class="result"><a class="result__a" href="${href}">${titre}</a><a class="result__snippet">${extrait}</a></div>`;
   const rapide = (html: string) => {
@@ -68,26 +68,26 @@ describe("extraireResultats : pages hostiles et cas limites", () => {
     return r;
   };
 
-  it("24 Ko de « <div class=\" » répétés après un résultat : rapide", () => {
+  it("24 KB of « <div class=\" » repeated after a result: fast", () => {
     rapide(bloc("T") + '<div class="'.repeat(2000));
   });
-  it("54 Ko de balises result__snippet non fermées : rapide", () => {
+  it("54 KB of unclosed result__snippet tags: fast", () => {
     rapide('<div class="result"><a class="result__a" href="https://a.example/">T</a>' + '<p class="result__snippet" '.repeat(2000));
     rapide('<div class="result"><a class="result__a" href="https://a.example/">T</a>' + '<p class="result__snippet">'.repeat(2000));
   });
-  it("une page de 5 Mo est lue sans figer", () => {
+  it("a 5 MB page is read without freezing", () => {
     rapide("<".repeat(5 * 1024 * 1024));
     rapide(bloc("T") + "<a ".repeat(1_000_000));
   });
-  it("« anomaly-modal » dans un titre ou un extrait n'est pas un refus", () => {
+  it("« anomaly-modal » in a title or an excerpt is not a refusal", () => {
     const r = extraireResultats(bloc("anomaly-modal challenge-form /anomaly.js", "https://a.example/", "challenge-form"), 5);
     expect(r).toMatchObject({ resultats: [{ url: "https://a.example/" }] });
   });
-  it("de vrais résultats l'emportent sur un marqueur no-results ; no-results exact seulement", () => {
+  it("real results win over a no-results marker; exact no-results only", () => {
     expect(extraireResultats('<div class="no-results"></div>' + bloc("T"), 5)).toMatchObject({ resultats: [{ titre: "T" }] });
     expect(extraireResultats('<div class="not-no-results"></div>', 5)).toEqual({ illisible: true });
   });
-  it("l'url est normalisée : contrôles retirés, non http(s) et identifiants refusés", () => {
+  it("the url is normalized: controls removed, non-http(s) and credentials refused", () => {
     const u = (v: string) => `//duckduckgo.com/l/?uddg=${encodeURIComponent(v)}`;
     const r = extraireResultats(
       bloc("a", u("https://x.fr/a%0Ab")) + bloc("b", u("ftp://x.fr/")) + bloc("c", u("https://u:p@x.fr/")) + bloc("d", "//exemple.fr/"),
@@ -95,18 +95,18 @@ describe("extraireResultats : pages hostiles et cas limites", () => {
     );
     expect(r).toEqual({ resultats: [{ titre: "a", url: "https://x.fr/a%0Ab", extrait: "E" }] });
   });
-  it("titre et extrait : contrôles, bidi et demi-paires retirés", () => {
+  it("title and excerpt: controls, bidi and half-pairs removed", () => {
     const r = extraireResultats(bloc("A&#8238;B&#x0;C&#xD800;D&#10;E", "https://a.example/", "x&#x202E;y"), 5);
     expect(r).toMatchObject({ resultats: [{ titre: "A BCD E", extrait: "x y" }] });
   });
-  it("un extrait avec une balise de même nom imbriquée n'est pas coupé", () => {
+  it("an excerpt with a nested tag of the same name is not cut", () => {
     const html = '<div class="result"><a class="result__a" href="https://a.example/">T</a><span class="result__snippet">un <span>deux</span> trois</span></div>';
     expect(extraireResultats(html, 5)).toMatchObject({ resultats: [{ extrait: "un deux trois" }] });
   });
 });
 
 describe("urlRecherche", () => {
-  it("encode « fiabilité Clio 4 »", () => {
+  it("encodes « fiabilité Clio 4 »", () => {
     expect(urlRecherche("fiabilité Clio 4")).toBe("https://html.duckduckgo.com/html/?q=fiabilit%C3%A9%20Clio%204");
     expect(urlRecherche("a b", "http://127.0.0.1:1/")).toBe("http://127.0.0.1:1/?q=a%20b");
   });

@@ -6,7 +6,7 @@ const catalogue = catalogueBlocs();
 const de = (type: string) => catalogue.find((b) => b.type === type)!;
 const champ = (type: string, nom: string) => de(type).champs.find((c) => c.nom === nom)!;
 
-test("chaque type du registre a un libellé, une famille et un champ par clé de son schéma, et rien d'autre", () => {
+test("each registry type has a label, a family and a field per key of its schema, and nothing else", () => {
   expect(catalogue.map((b) => b.type).sort()).toEqual([...REGISTRE_BLOCS.keys()].sort());
   for (const [type, definition] of REGISTRE_BLOCS) {
     const bloc = de(type);
@@ -23,7 +23,7 @@ test("chaque type du registre a un libellé, une famille et un champ par clé de
   expect(de("code").famille).toBe("Logique/Code");
 });
 
-test("les défauts et bornes des champs sont ceux des schémas zod", () => {
+test("the fields' defaults and bounds are those of the zod schemas", () => {
   expect(champ("ia.trier", "seuil")).toMatchObject({ requis: false, defaut: 0.5, min: 0, max: 1, genre: "nombre" });
   expect(champ("liste.garder", "nombre")).toMatchObject({ requis: true, min: 1, max: 1000, entier: true });
   expect(champ("code", "appel")).toMatchObject({ genre: "choix", choix: ["entree", "recolte"], defaut: "entree" });
@@ -37,11 +37,11 @@ test("les défauts et bornes des champs sont ceux des schémas zod", () => {
   expect(champ("source.page", "compte").genre).toBe("case");
 });
 
-test("les paramètres requis ont un défaut neutre pour pré-remplir la palette", () => {
+test("required parameters have a neutral default to prefill the palette", () => {
   expect(champ("liste.garder", "nombre").defaut).toBe(10);
   expect(champ("liste.nouveaux", "cle").defaut).toBe("url");
   expect(champ("liste.dedoublonner", "cles").defaut).toEqual(["url"]);
-  // R23 : jamais d'adresse par défaut, le bloc reste invalide tant que l'adresse n'est pas saisie.
+  // R23: never a default address, the block stays invalid until the address is entered.
   const adresses = ["source.page.url", "source.recuperer.url", "source.flux.urls"];
   for (const b of catalogue) {
     for (const c of b.champs) {
@@ -52,7 +52,7 @@ test("les paramètres requis ont un défaut neutre pour pré-remplir la palette"
   }
 });
 
-test("les champs communs du mode par élément sont marqués, sauf pour ia.trier", () => {
+test("the common per-element mode fields are marked, except for ia.trier", () => {
   for (const nom of ["siErreur", "budgetSecondes", "reutiliser"]) {
     expect(champ("source.page", nom).parElementSeulement).toBe(true);
     expect(champ("ia.trier", nom).parElementSeulement).toBeUndefined();
@@ -63,7 +63,7 @@ test("les champs communs du mode par élément sont marqués, sauf pour ia.trier
   expect(de("ia.trier").champs.some((c) => c.nom === "parElement")).toBe(false);
 });
 
-test("l'entrée de chaque type", () => {
+test("the input of each type", () => {
   const entrees = Object.fromEntries(catalogue.map((b) => [b.type, b.entree]));
   expect(entrees).toEqual({
     "source.page": "parElement", "source.flux": "facultative", "source.recuperer": "parElement",
@@ -72,12 +72,12 @@ test("l'entrée de chaque type", () => {
   });
 });
 
-test("le catalogue passe par structuredClone", () => {
+test("the catalog goes through structuredClone", () => {
   expect(structuredClone(catalogue)).toEqual(catalogue);
   expect(JSON.parse(JSON.stringify(catalogue))).toEqual(catalogue);
 });
 
-test("les familles suivent l'ordre Sources, Listes, IA, Logique/Code, Sortie", () => {
+test("the families follow the order Sources, Listes, IA, Logique/Code, Sortie", () => {
   const ordre = ["Sources", "Listes", "IA", "Logique/Code", "Sortie"];
   const rangs = catalogue.map((b) => ordre.indexOf(b.famille));
   expect(rangs.every((r) => r >= 0)).toBe(true);
@@ -85,7 +85,7 @@ test("les familles suivent l'ordre Sources, Listes, IA, Logique/Code, Sortie", (
   expect(new Set(catalogue.map((b) => b.famille))).toEqual(new Set(ordre));
 });
 
-test("garderJours, auFilDeLEau et la borne de budgetSecondes dans le catalogue", () => {
+test("garderJours, auFilDeLEau and the budgetSecondes bound in the catalog", () => {
   for (const type of ["source.page", "source.recuperer", "ia.rediger"]) {
     expect(champ(type, "garderJours"), type).toMatchObject({ libelle: "Garder (jours)", aide: "Sans valeur : pour toujours.", requis: false, genre: "nombre", min: 1, max: 365, entier: true, parElementSeulement: true });
     expect(champ(type, "budgetSecondes"), type).toMatchObject({ max: 3600, aide: "170 s au plus, ou la durée maximale de l'exécution" });
@@ -93,12 +93,12 @@ test("garderJours, auFilDeLEau et la borne de budgetSecondes dans le catalogue",
   expect(champ("ia.trier", "garderJours").parElementSeulement).toBeUndefined();
   expect(champ("liste.nouveaux", "garderJours")).toMatchObject({ libelle: "Oublier après (jours)", requis: false, genre: "nombre", min: 1, max: 365, entier: true });
   expect(champ("sortie", "auFilDeLEau")).toMatchObject({ libelle: "Publier au fil de l'eau", requis: false, genre: "case" });
-  // Sans valeur par défaut : la clé reste absente tant que l'utilisateur ne coche pas (absente = faux).
+  // Without a default value: the key stays absent until the user ticks it (absent = false).
   expect(champ("sortie", "auFilDeLEau")).not.toHaveProperty("defaut");
   expect(de("source.page")).not.toHaveProperty("chaine");
 });
 
-test("web.chercher est dans la famille Sources, après Récupérer une adresse", () => {
+test("web.chercher is in the Sources family, after Récupérer une adresse", () => {
   const types = catalogue.map((b) => b.type);
   expect(types.indexOf("web.chercher")).toBe(types.indexOf("source.recuperer") + 1);
   expect(de("web.chercher")).toMatchObject({

@@ -17,11 +17,11 @@ const execution = (debut: string, blocs: TraceBloc[] = []): Execution => ({
 });
 const horodatage = (i: number) => new Date(Date.UTC(2026, 9, 29, 8, 0, i)).toISOString();
 
-test("idExecution remplace : et . par -", () => {
+test("idExecution replaces : and . with -", () => {
   expect(idExecution("2026-10-29T08:00:01.234Z")).toBe("2026-10-29T08-00-01-234Z");
 });
 
-test("une sortie de plus de 256 Ko est gardée tronquée, en texte, et marquée sortieTronquee", async () => {
+test("an output over 256 KB is kept truncated, as text, and marked sortieTronquee", async () => {
   const d = await dossierTemporaire();
   const grosse = { liste: Array.from({ length: 40000 }, (_, i) => ({ i, t: "abcdefghij" })) };
   const e = execution(horodatage(0), [bloc("a", grosse), bloc("b", { petit: 1 })]);
@@ -35,7 +35,7 @@ test("une sortie de plus de 256 Ko est gardée tronquée, en texte, et marquée 
   expect(lue!.blocs[1]).toEqual(bloc("b", { petit: 1 }));
 });
 
-test("un fichier d'exécution ne dépasse jamais 4 Mo : les plus grosses sorties partent d'abord", async () => {
+test("a run file never exceeds 4 MB: the biggest outputs go first", async () => {
   const d = await dossierTemporaire();
   const blocs = Array.from({ length: 20 }, (_, i) => bloc(`b${i}`, "x".repeat(250 * 1024 - 2 - i)));
   const e = execution(horodatage(0), blocs);
@@ -46,11 +46,11 @@ test("un fichier d'exécution ne dépasse jamais 4 Mo : les plus grosses sorties
   const sans = lue.blocs.filter((b) => b.sortie === undefined);
   expect(sans.length).toBeGreaterThan(0);
   expect(sans.every((b) => b.sortieTronquee === true)).toBe(true);
-  expect(sans.map((b) => b.id)).toContain("b0"); // la plus grosse part en premier
+  expect(sans.map((b) => b.id)).toContain("b0"); // the biggest goes first
   expect(lue.blocs.filter((b) => b.sortie !== undefined).every((b) => b.sortieTronquee === undefined)).toBe(true);
 });
 
-test("seules les 20 dernières exécutions sont gardées", async () => {
+test("only the last 20 runs are kept", async () => {
   const d = await dossierTemporaire();
   for (let i = 0; i < 25; i++) await ecrireExecution(d, execution(horodatage(i)));
   const noms = (await readdir(join(d, "executions"))).sort();
@@ -59,7 +59,7 @@ test("seules les 20 dernières exécutions sont gardées", async () => {
   expect(noms).not.toContain(`${idExecution(horodatage(4))}.json`);
 });
 
-test("listerExecutions rend la plus récente d'abord et ignore un fichier abîmé", async () => {
+test("listerExecutions returns the most recent first and ignores a damaged file", async () => {
   const d = await dossierTemporaire();
   await ecrireExecution(d, execution(horodatage(1), [bloc("a", 1)]));
   await ecrireExecution(d, execution(horodatage(3)));
@@ -74,7 +74,7 @@ test("listerExecutions rend la plus récente d'abord et ignore un fichier abîm�
   expect(await listerExecutions(await dossierTemporaire())).toEqual([]);
 });
 
-test("lireExecution refuse un id qui sort du dossier", async () => {
+test("lireExecution refuses an id that leaves the folder", async () => {
   const d = await dossierTemporaire();
   await writeFile(join(d, "etat.json"), "{}");
   expect(await lireExecution(d, "../etat")).toBeNull();
@@ -83,7 +83,7 @@ test("lireExecution refuse un id qui sort du dossier", async () => {
   expect(await readFile(join(d, "etat.json"), "utf8")).toBe("{}");
 });
 
-test("journaux et erreurs énormes sont bornés : le fichier reste sous 4 Mo", async () => {
+test("huge logs and errors are bounded: the file stays under 4 MB", async () => {
   const d = await dossierTemporaire();
   const blocs = Array.from({ length: 100 }, (_, i) => ({
     ...bloc(`b${i}`), erreur: "e".repeat(100 * 1024),
@@ -99,23 +99,23 @@ test("journaux et erreurs énormes sont bornés : le fichier reste sous 4 Mo", a
   expect(lue.blocs[0]!.journal.some((l) => l.includes("lignes coupées"))).toBe(true);
 });
 
-test("listerExecutions ne relit pas un fichier inchangé (même date, même taille), relit un fichier réécrit", async () => {
+test("listerExecutions does not re-read an unchanged file (same date, same size), re-reads a rewritten file", async () => {
   const d = await dossierTemporaire();
   const e = execution(horodatage(1), [bloc("a")]);
   await ecrireExecution(d, e);
   const chemin = join(d, "executions", `${e.id}.json`);
-  // Une date ronde, que utimes sait remettre à l'identique.
+  // A round date, which utimes can restore identically.
   const date = new Date("2026-10-29T08:00:00.000Z");
   await utimes(chemin, date, date);
   expect((await listerExecutions(d)).map((x) => x.statut)).toEqual(["reussie"]);
-  // Même taille, même date : le fichier n'est pas relu (le résumé gardé reste).
+  // Same size, same date: the file is not re-read (the kept summary stays).
   await writeFile(chemin, (await readFile(chemin, "utf8")).replace('"reussie"', '"echouee"'));
   await utimes(chemin, date, date);
   expect((await listerExecutions(d)).map((x) => x.statut)).toEqual(["reussie"]);
-  // Date changée : relu.
+  // Date changed: re-read.
   await utimes(chemin, date, new Date(date.getTime() + 5000));
   expect((await listerExecutions(d)).map((x) => x.statut)).toEqual(["echouee"]);
-  // Effacé : plus listé.
+  // Erased: no longer listed.
   await rm(chemin);
   expect(await listerExecutions(d)).toEqual([]);
 });
@@ -124,11 +124,11 @@ const essai = (debut: string): Execution => ({
   ...execution(debut), id: idEssai(debut), declencheur: "rejeu", essai: { depart: "b", origine: idExecution(horodatage(0)) },
 });
 
-test("idEssai ajoute -essai à l'identifiant de l'exécution", () => {
+test("idEssai adds -essai to the run's identifier", () => {
   expect(idEssai("2026-10-29T08:00:01.234Z")).toBe("2026-10-29T08-00-01-234Z-essai");
 });
 
-test("25 essais et 25 vraies exécutions : 10 essais et 20 vraies gardés", async () => {
+test("25 trials and 25 real runs: 10 trials and 20 real ones kept", async () => {
   const d = await dossierTemporaire();
   for (let i = 0; i < 25; i++) {
     await ecrireExecution(d, essai(horodatage(i)));
@@ -142,7 +142,7 @@ test("25 essais et 25 vraies exécutions : 10 essais et 20 vraies gardés", asyn
   expect(noms).toContain(`${idExecution(horodatage(5))}.json`);
 });
 
-test("une série d'essais ne chasse aucune vraie exécution", async () => {
+test("a series of trials drives out no real run", async () => {
   const d = await dossierTemporaire();
   for (let i = 0; i < 20; i++) await ecrireExecution(d, execution(horodatage(i)));
   for (let i = 20; i < 60; i++) await ecrireExecution(d, essai(horodatage(i)));
@@ -151,7 +151,7 @@ test("une série d'essais ne chasse aucune vraie exécution", async () => {
   expect(noms).toContain(`${idExecution(horodatage(0))}.json`);
 });
 
-test("listerExecutions marque les essais", async () => {
+test("listerExecutions marks the trials", async () => {
   const d = await dossierTemporaire();
   await ecrireExecution(d, execution(horodatage(1)));
   await ecrireExecution(d, essai(horodatage(2)));
@@ -160,11 +160,11 @@ test("listerExecutions marque les essais", async () => {
   expect(liste.find((r) => r.id === idExecution(horodatage(1)))!.essai).toBeUndefined();
 });
 
-test("lireExecution accepte <horodatage>-essai et refuse ../x-essai", async () => {
+test("lireExecution accepts <timestamp>-essai and refuses ../x-essai", async () => {
   const d = await dossierTemporaire();
   await ecrireExecution(d, essai(horodatage(3)));
   expect((await lireExecution(d, idEssai(horodatage(3))))!.declencheur).toBe("rejeu");
-  // Garde de régression (R21) : déjà vrai avant l'élargissement de ID_EXECUTION.
+  // Regression guard (R21): already true before the widening of ID_EXECUTION.
   await writeFile(join(d, "x-essai.json"), "{}");
   expect(await lireExecution(d, "../x-essai")).toBeNull();
   expect(await lireExecution(d, "x-essai")).toBeNull();
@@ -173,7 +173,7 @@ test("lireExecution accepte <horodatage>-essai et refuse ../x-essai", async () =
   expect(ID_EXECUTION.test("2026-10-29T08-00-00-000Z-essai-essai")).toBe(false);
 });
 
-test("effacerExecutionsEtMemoire efface aussi les essais", async () => {
+test("effacerExecutionsEtMemoire also erases the trials", async () => {
   const d = await dossierTemporaire();
   await ecrireExecution(d, essai(horodatage(3)));
   await effacerExecutionsEtMemoire(d);
@@ -181,7 +181,7 @@ test("effacerExecutionsEtMemoire efface aussi les essais", async () => {
   expect(await listerExecutions(d)).toEqual([]);
 });
 
-test("une exécution d'action (proprietaire action, saisie « clio lyon ») s'écrit et se relit", async () => {
+test("an action run (owner action, saisie « clio lyon ») is written and re-read", async () => {
   const d = await dossierTemporaire();
   const e: Execution = { ...execution(horodatage(0), [bloc("a", { x: 1 })]), proprietaire: { type: "action", id: "recherche" }, saisie: "clio lyon" };
   await ecrireExecution(d, e);
@@ -189,7 +189,7 @@ test("une exécution d'action (proprietaire action, saisie « clio lyon ») s'é
   expect(ACTION_ARRETEE).toBe("Arrêtée à ta demande");
 });
 
-test("une exécution de widget écrite avant ce plan se relit sans changement", async () => {
+test("a widget run written before this plan re-reads unchanged", async () => {
   const d = await dossierTemporaire();
   const e = execution(horodatage(1), [bloc("a")]);
   await ecrireExecution(d, e);

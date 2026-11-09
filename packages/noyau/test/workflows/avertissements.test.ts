@@ -5,10 +5,10 @@ const bloc = (id: string, type: string, parametres: Record<string, unknown>) => 
 const wf = (...blocs: ReturnType<typeof bloc>[]): Workflow => ({ version: 1, blocs, liens: [] });
 const compte = { sources: { compte: ["app.daily.dev"], publiques: ["hn.algolia.com"] }, config: {} };
 
-test("domaine non déclaré pour un widget avec compte (page avec compte, page publique, flux, recuperer)", () => {
+test("undeclared domain for a widget with an account (page with an account, public page, feed, recuperer)", () => {
   const w = wf(
     bloc("p1", "source.page", { url: "https://app.daily.dev/x", compte: true }),
-    bloc("p2", "source.page", { url: "https://app.daily.dev/x", compte: false }), // déclaré en compte, pas en public
+    bloc("p2", "source.page", { url: "https://app.daily.dev/x", compte: false }), // declared as account, not as public
     bloc("p3", "source.page", { url: "https://autre.fr/x", compte: true }),
     bloc("f", "source.flux", { urls: ["https://hn.algolia.com/rss", "https://Flux.example.org./rss"] }),
     bloc("r", "source.recuperer", { url: "https://hn.algolia.com/api" }),
@@ -22,22 +22,22 @@ test("domaine non déclaré pour un widget avec compte (page avec compte, page p
   ]);
 });
 
-test("aucun avertissement de domaine pour un widget sans compte", () => {
+test("no domain warning for a widget without an account", () => {
   const w = wf(bloc("p", "source.page", { url: "https://n-importe.où/x" }), bloc("f", "source.flux", { urls: ["https://z.fr/rss"] }));
   expect(avertirWorkflow(w, { sources: { compte: [], publiques: [] }, config: {} })).toEqual([]);
 });
 
-test("une URL dont l'hôte est un gabarit n'est pas jugée", () => {
+test("a URL whose host is a template is not judged", () => {
   const w = wf(
     bloc("a", "source.page", { url: "https://{domaine}/x" }),
     bloc("b", "source.recuperer", { url: "{url}" }),
     bloc("c", "source.recuperer", { url: "https://{config.hote}.fr/x" }),
-    bloc("d", "source.recuperer", { url: "https://hn.algolia.com/{id}" }), // l'hôte est connu, le chemin est un gabarit
+    bloc("d", "source.recuperer", { url: "https://hn.algolia.com/{id}" }), // the host is known, the path is a template
   );
   expect(avertirWorkflow(w, compte).filter((x) => x.message.startsWith("domaine"))).toEqual([]);
 });
 
-test("{config.ville} sans ville dans la config est signalé, {config.ville} présent ne l'est pas", () => {
+test("{config.ville} without a city in the config is flagged, a present {config.ville} is not", () => {
   const w = wf(bloc("r", "source.recuperer", { url: "https://hn.algolia.com/{config.ville.nom}?q={config.mot}" }));
   const sans = avertirWorkflow(w, { sources: { compte: [], publiques: [] }, config: { mot: "x" } });
   expect(sans).toEqual([{ bloc: "r", message: "config.ville absent de la configuration du widget" }]);
@@ -45,7 +45,7 @@ test("{config.ville} sans ville dans la config est signalé, {config.ville} pré
   expect(avertirWorkflow(w, { sources: { compte: [], publiques: [] }, config: null })).toHaveLength(2);
 });
 
-test("auFilDeLEau derrière liste.garder : AVERTISSEMENT_FIL_DE_L_EAU sur la sortie ; derrière une chaîne : aucun", () => {
+test("auFilDeLEau behind liste.garder: AVERTISSEMENT_FIL_DE_L_EAU on the sortie; behind a chain: none", () => {
   const brut = (avant: ReturnType<typeof bloc>) => ({
     version: 1,
     blocs: [
@@ -67,7 +67,7 @@ test("auFilDeLEau derrière liste.garder : AVERTISSEMENT_FIL_DE_L_EAU sur la sor
   expect(AVERTISSEMENT_FIL_DE_L_EAU).toBe("rien à publier au fil de l'eau : l'entrée de la sortie n'est pas traitée élément par élément");
 });
 
-test("web.chercher sans durée maximale déclarée : avertissement (pas une erreur) ; avec, ou sans le contexte, rien", () => {
+test("web.chercher without a declared maximum duration: warning (not an error); with one, or without the context, nothing", () => {
   const w = wf(bloc("c", "web.chercher", { requete: "x" }), bloc("p", "source.page", { url: "https://a.fr" }));
   const sansCompte = { sources: { compte: [], publiques: [] }, config: {} };
   expect(AVERTISSEMENT_WEB_SANS_DUREE).toBe("sans dureeMaxMinutes, ce widget peut être coupé à 150 s : demande à l'agent de déclarer dureeMaxMinutes");
@@ -76,12 +76,12 @@ test("web.chercher sans durée maximale déclarée : avertissement (pas une erre
   expect(avertirWorkflow(w, sansCompte)).toEqual([]);
 });
 
-test("{config.ville?} facultatif : jamais signalé, même absent de la configuration", () => {
+test("optional {config.ville?}: never flagged, even absent from the config", () => {
   const w = wf(bloc("r", "source.recuperer", { url: "https://hn.algolia.com/x?v={config.ville?}&q={config.mot}" }));
   expect(avertirWorkflow(w, { sources: { compte: [], publiques: [] }, config: {} })).toEqual([{ bloc: "r", message: "config.mot absent de la configuration du widget" }]);
 });
 
-test("{saisie} dans source.page d'une action sans saisie : AVERTISSEMENT_SAISIE ; avec saisie : aucun ; dans un widget : aucun", () => {
+test("{saisie} in source.page of an action without input: AVERTISSEMENT_SAISIE; with input: none; in a widget: none", () => {
   const w = wf(bloc("p", "source.page", { url: "https://x.fr/?q={saisie}" }), bloc("q", "source.page", { url: "https://x.fr/?q={saisie?}" }), bloc("r", "source.page", { url: "https://x.fr/" }));
   const base = { sources: { compte: [], publiques: [] }, config: {} };
   expect(AVERTISSEMENT_SAISIE).toBe("{saisie} : l'action ne déclare pas de saisie");

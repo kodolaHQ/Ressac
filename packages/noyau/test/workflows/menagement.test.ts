@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ECART_LECTURES_MS, ECART_RECHERCHES_MS, Menagement, siteMenage } from "../../src/workflows/menagement.js";
 
-/** Horloge et attente factices : attendre(ms) fait avancer le temps sans dormir. */
+/** Fake clock and wait: attendre(ms) advances time without sleeping. */
 function factice() {
   let t = 1000;
   const attentes: number[] = [];
@@ -13,7 +13,7 @@ function factice() {
 }
 
 describe("Menagement", () => {
-  it("deux recherches : la seconde commence 2 s après la fin de la première", async () => {
+  it("two searches: the second starts 2 s after the end of the first", async () => {
     const { m, maintenant, avancer } = factice();
     const debuts: number[] = [];
     const fins: number[] = [];
@@ -23,7 +23,7 @@ describe("Menagement", () => {
     expect(ECART_RECHERCHES_MS).toBe(2000);
   });
 
-  it("deux lectures du même hôte espacées d'1 s, deux hôtes en même temps", async () => {
+  it("two reads of the same host spaced 1 s apart, two hosts at the same time", async () => {
     const { m, maintenant, avancer } = factice();
     const journal: string[] = [];
     const lecture = (nom: string) => async () => { journal.push(`${nom}@${maintenant()}`); avancer(0); };
@@ -38,7 +38,7 @@ describe("Menagement", () => {
     expect(ECART_LECTURES_MS).toBe(1000);
   });
 
-  it("une recherche dont le signal est levé en attente n'appelle pas f", async () => {
+  it("a search whose signal is raised while waiting does not call f", async () => {
     let liberer!: () => void;
     const m = new Menagement({ maintenant: () => 0, attendre: () => new Promise<void>((r) => { liberer = r; }) });
     await m.rechercher(async () => 1);
@@ -52,7 +52,7 @@ describe("Menagement", () => {
     expect(appels).toBe(0);
   });
 
-  it("une recherche annulée avant son tour ne retarde pas la suivante", async () => {
+  it("a search cancelled before its turn does not delay the next one", async () => {
     const { m, attentes } = factice();
     await m.rechercher(async () => 1);
     const ctrl = new AbortController();
@@ -63,7 +63,7 @@ describe("Menagement", () => {
     expect(attentes).toEqual([ECART_RECHERCHES_MS]);
   });
 
-  it("une erreur de f laisse passer la suivante", async () => {
+  it("an error from f lets the next one through", async () => {
     const { m } = factice();
     const a = m.rechercher(async () => { throw new Error("boum"); });
     const b = m.rechercher(async () => "ok");
@@ -71,7 +71,7 @@ describe("Menagement", () => {
     await expect(b).resolves.toBe("ok");
   });
 
-  it("deux instances ne partagent rien", async () => {
+  it("two instances share nothing", async () => {
     const un = factice();
     const deux = factice();
     await un.m.rechercher(async () => 1);
@@ -79,7 +79,7 @@ describe("Menagement", () => {
     expect(deux.attentes).toEqual([]);
   });
 
-  it("une demande en file dont le signal est levé rejette tout de suite, sans appeler f", async () => {
+  it("a queued request whose signal is raised rejects right away, without calling f", async () => {
     let t = 0;
     const m = new Menagement({ maintenant: () => t, attendre: async (ms) => { t += ms; } });
     let finir!: () => void;
@@ -95,7 +95,7 @@ describe("Menagement", () => {
     expect(appels).toBe(0);
   });
 
-  it("www.a.fr et a.fr partagent une voie, b.fr non", async () => {
+  it("www.a.fr and a.fr share a lane, b.fr does not", async () => {
     const { m, attentes } = factice();
     await m.lire("www.A.fr", async () => {});
     await m.lire("a.fr", async () => {});
@@ -104,7 +104,7 @@ describe("Menagement", () => {
     expect(attentes).toEqual([ECART_LECTURES_MS]);
   });
 
-  it("une horloge reculée n'allonge pas l'attente au-delà de l'écart", async () => {
+  it("a clock set back does not lengthen the wait beyond the gap", async () => {
     const { m, attentes, avancer } = factice();
     await m.rechercher(async () => {});
     avancer(-3_600_000);
@@ -112,7 +112,7 @@ describe("Menagement", () => {
     expect(attentes).toEqual([ECART_RECHERCHES_MS]);
   });
 
-  it("un minuteur parti trop tôt est suivi d'une nouvelle attente", async () => {
+  it("a timer that fired too early is followed by a new wait", async () => {
     let t = 0;
     const attentes: number[] = [];
     const m = new Menagement({ maintenant: () => t, attendre: async (ms) => { attentes.push(ms); t += attentes.length === 1 ? ms - 1 : ms; } });
@@ -121,7 +121,7 @@ describe("Menagement", () => {
     expect(attentes).toEqual([2000, 1]);
   });
 
-  it("une recherche refusée avant son tour (verifier lève) n'appelle pas f et ne consomme pas l'écart", async () => {
+  it("a search refused before its turn (verifier throws) does not call f and does not consume the gap", async () => {
     const { m, attentes } = factice();
     await m.rechercher(async () => 1);
     let appels = 0;
@@ -133,7 +133,7 @@ describe("Menagement", () => {
     expect(attentes).toEqual([ECART_RECHERCHES_MS]);
   });
 
-  it("une recherche refusée pendant son attente ne retarde pas la suivante", async () => {
+  it("a search refused while waiting does not delay the next one", async () => {
     let t = 1000;
     let refusee = false;
     const attentes: number[] = [];
@@ -141,17 +141,17 @@ describe("Menagement", () => {
     await m.rechercher(async () => 1);
     const verifier = () => { if (refusee) throw new Error("refusée"); };
     await expect(m.rechercher(async () => 2, undefined, verifier)).rejects.toThrow("refusée");
-    // L'écart compte toujours depuis la fin de la première : la suivante n'attend plus rien.
+    // The gap still counts from the end of the first: the next one waits for nothing.
     await m.rechercher(async () => 3);
     expect(attentes).toEqual([ECART_RECHERCHES_MS]);
   });
 
-  it("siteMenage : minuscules, sans www. ni point final", () => {
+  it("siteMenage: lowercase, without www. or trailing dot", () => {
     expect(siteMenage("WWW.Exemple.fr.")).toBe("exemple.fr");
     expect(siteMenage("blog.exemple.fr")).toBe("blog.exemple.fr");
   });
 
-  it("une lecture redirigée vers un autre hôte attend l'écart de cet hôte, et rend la voie du premier", async () => {
+  it("a read redirected to another host waits for that host's gap, and returns the first's lane", async () => {
     const { m, attentes, maintenant } = factice();
     await m.lire("b.fr", async () => {});
     let lueA = -1;
@@ -161,14 +161,14 @@ describe("Menagement", () => {
     });
     expect(attentes).toEqual([ECART_LECTURES_MS]);
     expect(lueA).toBe(1000 + ECART_LECTURES_MS);
-    // a.fr rendue à la redirection (t = 1000) : écart écoulé. b.fr, finie à 2000 : 1 s.
+    // a.fr released at the redirect (t = 1000): gap elapsed. b.fr, finished at 2000: 1 s.
     await m.lire("a.fr", async () => {});
     expect(attentes).toEqual([ECART_LECTURES_MS]);
     await m.lire("b.fr", async () => {});
     expect(attentes).toEqual([ECART_LECTURES_MS, ECART_LECTURES_MS]);
   });
 
-  it("redirection vers le même site (www., majuscules) : rien ne change", async () => {
+  it("redirect to the same site (www., uppercase): nothing changes", async () => {
     const { m, attentes } = factice();
     await m.lire("a.fr", async (changerHote) => {
       await changerHote("WWW.a.fr");
@@ -177,7 +177,7 @@ describe("Menagement", () => {
     expect(attentes).toEqual([]);
   });
 
-  it("pendant une lecture redirigée vers b.fr, une lecture de b.fr attend sa fin ; une lecture de a.fr passe", async () => {
+  it("during a read redirected to b.fr, a read of b.fr waits for its end; a read of a.fr goes through", async () => {
     let t = 0;
     const m = new Menagement({ maintenant: () => t, attendre: async (ms) => { t += ms; } });
     let finir!: () => void;
@@ -201,17 +201,17 @@ describe("Menagement", () => {
     expect(journal).toEqual([`a@${ECART_LECTURES_MS}`, `b@${5000 + ECART_LECTURES_MS}`]);
   });
 
-  it("a.fr → b.fr → a.fr : chaque voie reprise à son tour, sans blocage", async () => {
+  it("a.fr → b.fr → a.fr: each lane taken back in turn, without blocking", async () => {
     const { m, attentes } = factice();
     await m.lire("a.fr", async (changerHote) => {
       await changerHote("b.fr");
       await changerHote("a.fr");
     });
-    // Retour sur a.fr, rendue à la première redirection : 1 s d'écart.
+    // Back on a.fr, released at the first redirect: 1 s gap.
     expect(attentes).toEqual([ECART_LECTURES_MS]);
   });
 
-  it("signal levé pendant l'attente d'une redirection : rejetée, aucune voie ne reste prise", async () => {
+  it("signal raised while waiting for a redirect: rejected, no lane stays taken", async () => {
     let t = 0;
     const enAttente: (() => void)[] = [];
     const m = new Menagement({ maintenant: () => t, attendre: () => new Promise<void>((ok) => enAttente.push(ok)) });
@@ -223,7 +223,7 @@ describe("Menagement", () => {
     await expect(p).rejects.toThrow("stop");
     t = 10_000;
     for (const ok of enAttente.splice(0)) ok();
-    // Ni a.fr ni b.fr ne restent prises.
+    // Neither a.fr nor b.fr stays taken.
     await m.lire("a.fr", async () => {});
     await m.lire("b.fr", async () => {});
     expect(enAttente).toEqual([]);
