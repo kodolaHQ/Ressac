@@ -25,11 +25,11 @@
 <body class="narrow">
 <ul id="list"></ul>
 <script>
-  const openLink = (url) => (window.webaiosOuvrir ? window.webaiosOuvrir(url) : parent.postMessage({ type: "ouvrir", url }, "*"));
+  const openLink = (url) => (window.webaiosOpen ? window.webaiosOpen(url) : parent.postMessage({ type: "open", url }, "*"));
   function render(m) {
-    const data = m.donnees || {};
+    const data = m.data || {};
     const articles = Array.isArray(data.articles) ? data.articles : [];
-    const large = (m.px && m.px.largeur >= 360) || (m.taille && m.taille.l >= 4) || (m.px && m.px.hauteur >= 300);
+    const large = (m.px && m.px.width >= 360) || (m.size && m.size.w >= 4) || (m.px && m.px.height >= 300);
     document.body.className = large ? "large" : "narrow";
     const list = document.getElementById("list");
     list.replaceChildren();

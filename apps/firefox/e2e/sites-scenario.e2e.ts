@@ -35,7 +35,7 @@ const block = (marker: string): string => {
   return AGENTS.slice(start, AGENTS.indexOf("\n```", start));
 };
 const cssOf = (file: string): string => {
-  const m = new RegExp("`retouches/" + file.replace(".", "\\.") + "` : `([^`]+)`").exec(AGENTS);
+  const m = new RegExp("`tweaks/" + file.replace(".", "\\.") + "` : `([^`]+)`").exec(AGENTS);
   expect(m, file).not.toBeNull();
   return m![1]!;
 };
@@ -49,17 +49,17 @@ let profile: string;
 const url = (host: string, p: string) => server.url(host, p);
 const declarationVidola = () => {
   const d = JSON.parse(block("```json site.json:vidola"));
-  d.adresse = url("vidola-a.localhost", "/");
-  d.domaines = ["vidola-a.localhost", "images.localhost"];
-  d.suiviAdresse.page = url("adresses.localhost", "/");
-  d.retouches[0].cadres = [url("lecteur.localhost", "/*").replace(/^http:/, "https:")];
+  d.url = url("vidola-a.localhost", "/");
+  d.domains = ["vidola-a.localhost", "images.localhost"];
+  d.urlTracking.page = url("adresses.localhost", "/");
+  d.tweaks[0].frames = [url("lecteur.localhost", "/*").replace(/^http:/, "https:")];
   return d;
 };
 const declarationYoutube = () => {
   const d = JSON.parse(block("```json site.json:youtube"));
-  d.adresse = url("youtube.localhost", "/");
-  d.domaines = ["youtube.localhost"];
-  d.connexion = ["accounts.localhost"];
+  d.url = url("youtube.localhost", "/");
+  d.domains = ["youtube.localhost"];
+  d.login = ["accounts.localhost"];
   return d;
 };
 const siteVidola = () => ({
@@ -118,8 +118,8 @@ const inHome = <T = unknown>(body: string) =>
      if (!hd || !String(hd.documentURI).startsWith("resource://webaios-site-")) return null;
      ${body}`,
   );
-const homeList = () => inHome<string | null>(`return hd.getElementById("liste")?.textContent ?? null;`);
-const seriesCards = () => inHome<{ text: string; src: string | null }[] | null>(`return [...hd.querySelectorAll("#liste button")].map((b) => ({ text: b.textContent, src: b.querySelector("img")?.getAttribute("src") ?? null }));`);
+const homeList = () => inHome<string | null>(`return hd.getElementById("list")?.textContent ?? null;`);
+const seriesCards = () => inHome<{ text: string; src: string | null }[] | null>(`return [...hd.querySelectorAll("#list button")].map((b) => ({ text: b.textContent, src: b.querySelector("img")?.getAttribute("src") ?? null }));`);
 /** The home's series card, once there: its text and its image's src (once its data came back). */
 async function waitSeriesCard(src: RegExp): Promise<void> {
   await expect.poll(async () => (await seriesCards())?.map((c) => c.text) ?? null, { timeout: 15_000 }).toEqual([CARD_TEXT]);
@@ -138,7 +138,7 @@ async function clickSeriesCard(): Promise<void> {
     const [x, y] = await m.execute<[number, number]>(
       `const bar = document.getElementById("webaios-site-bar");
        const home = bar.contentDocument.querySelector('[data-testid="site-cadre-accueil"]');
-       const b = bar.getBoundingClientRect(), h = home.getBoundingClientRect(), e = home.contentDocument.querySelector("#liste button").getBoundingClientRect();
+       const b = bar.getBoundingClientRect(), h = home.getBoundingClientRect(), e = home.contentDocument.querySelector("#list button").getBoundingClientRect();
        return [Math.round(b.left + h.left + e.left + e.width / 2), Math.round(b.top + h.top + e.top + e.height / 2)];`,
     );
     await m.command("WebDriver:PerformActions", {

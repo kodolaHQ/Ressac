@@ -160,7 +160,7 @@ export function watchSites(
   const observer = watch(c.sites, {
     ignoreInitial: true,
     followSymlinks: false,
-    ignored: (p) => p.split(/[\\/]/).some((s) => s === "node_modules" || s === ".corbeille") || p.endsWith(".tmp"),
+    ignored: (p) => p.split(/[\\/]/).some((s) => s === "node_modules" || s === ".trash") || p.endsWith(".tmp"),
   });
   observer.on("all", (event, path) => {
     const parts = path.slice(c.sites.length).split(/[\\/]/).filter(Boolean);

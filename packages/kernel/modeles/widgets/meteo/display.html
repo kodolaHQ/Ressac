@@ -41,7 +41,7 @@
     return isNaN(d) ? String(date) : DAYS[d.getDay()];
   }
   function render(m) {
-    const d = m.donnees || {};
+    const d = m.data || {};
     const hasCity = typeof d.ville === "string" && d.ville && d.actuel;
     $("no-city").hidden = !!hasCity;
     $("weather").hidden = !hasCity;
@@ -51,7 +51,7 @@
     $("city").textContent = d.ville;
     $("temp").textContent = deg(d.actuel.temperature);
     $("label").textContent = String(d.actuel.libelle ?? "");
-    const l = (m.taille && m.taille.l) || 0, h = (m.taille && m.taille.h) || 0;
+    const l = (m.size && m.size.w) || 0, h = (m.size && m.size.h) || 0;
     if (l >= 4 && Array.isArray(d.heures) && d.heures.length) {
       const zone = $("hours");
       zone.replaceChildren();

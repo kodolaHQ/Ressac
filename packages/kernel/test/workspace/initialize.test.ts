@@ -3,7 +3,7 @@ import { existsSync, readdirSync } from "node:fs";
 import { chmod, cp, lstat, mkdir, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { spacePaths } from "../../src/paths.js";
-import { initSpace, DEFAULT_MODELS, HARVESTS_SHIPPED, DISPLAYS_SHIPPED, OLD_AGENTS } from "../../src/workspace/initialize.js";
+import { initSpace, DEFAULT_MODELS, HARVESTS_SHIPPED, DISPLAYS_SHIPPED, OLD_AGENTS, OLD_AGENT_PROFILE, OLD_CLAUDE_MD } from "../../src/workspace/initialize.js";
 import { createHash } from "node:crypto";
 import { DeclarationWidget, Layout } from "../../src/home/schemas.js";
 import { DeclarationSite, checkSiteDeclaration } from "../../src/sites/schemas.js";
@@ -64,7 +64,7 @@ test("AGENTS.md mentions the required elements", async () => {
   const c = spacePaths(await tempFolder());
   await initSpace(c);
   const text = await readFile(join(c.root, "AGENTS.md"), "utf8");
-  for (const m of ["page_courante", "ouvrir_onglet", "5280", "5299", "0.0.0.0", "etat.json", "/workspace/projets"]) {
+  for (const m of ["current_page", "open_tab", "5280", "5299", "0.0.0.0", "state.json", "/workspace/projects"]) {
     expect(text, m).toContain(m);
   }
 });
@@ -166,20 +166,53 @@ test("an AGENTS.md edited by the user is kept", async () => {
   expect(await readFile(join(c.root, "AGENTS.md"), "utf8")).toBe(edited);
 });
 
+test("CLAUDE.md and the agent profile are rewritten only when identical to an old template", async () => {
+  const c = spacePaths(await tempFolder());
+  const oldProfile = '{"id":"ancien"}\n';
+  const oldClaude = "Lis l'ancien AGENTS.md.\n";
+  const added = [sha256(oldProfile), sha256(oldClaude)];
+  (OLD_AGENT_PROFILE as Set<string>).add(added[0]!);
+  (OLD_CLAUDE_MD as Set<string>).add(added[1]!);
+  try {
+    await mkdir(c.profiles, { recursive: true });
+    await writeFile(join(c.profiles, "claude.json"), oldProfile);
+    await writeFile(join(c.root, "CLAUDE.md"), oldClaude);
+    await initSpace(c);
+    expect(await readFile(join(c.profiles, "claude.json"), "utf8")).toBe(await readFile(join(DEFAULT_MODELS, "agent-profile.json"), "utf8"));
+    expect(await readFile(join(c.root, "CLAUDE.md"), "utf8")).toBe(await readFile(join(DEFAULT_MODELS, "CLAUDE.md"), "utf8"));
+    // edited by the user: kept
+    await writeFile(join(c.profiles, "claude.json"), '{"id":"claude","mine":true}');
+    await writeFile(join(c.root, "CLAUDE.md"), "Mes règles.\n");
+    await initSpace(c);
+    expect(await readFile(join(c.profiles, "claude.json"), "utf8")).toBe('{"id":"claude","mine":true}');
+    expect(await readFile(join(c.root, "CLAUDE.md"), "utf8")).toBe("Mes règles.\n");
+  } finally {
+    (OLD_AGENT_PROFILE as Set<string>).delete(added[0]!);
+    (OLD_CLAUDE_MD as Set<string>).delete(added[1]!);
+  }
+});
+
+test("the profile shipped before the English formats (profil-claude.json) is a known old template", () => {
+  expect(OLD_AGENT_PROFILE.has("2e20e733cc7c9aa30c807e227a6547824afbfc1f6a8ffe0c005cc9f51c039085")).toBe(true);
+  expect(OLD_CLAUDE_MD.has("11baa6aab5848a8fff974dabc5e78e9ccc69b8d2a53a91d23fa9a3f0ca73632b")).toBe(true);
+  // the AGENTS.md shipped before the English formats
+  expect(OLD_AGENTS.has("1adea27921eb609aca3b73c58b690fe912c78a3eeba08a4c930f400862b6be36")).toBe(true);
+});
+
 test("the AGENTS.md template is pinned: before editing it, add this hash to OLD_AGENTS, then update the pin", async () => {
   expect(sha256(await readFile(join(import.meta.dirname, "..", "..", "modeles", "AGENTS.md")))).toBe(
-    "1adea27921eb609aca3b73c58b690fe912c78a3eeba08a4c930f400862b6be36",
+    "ee8df7f36a6bfc9fcaeec7dc07a0f363f4ac1e88953f6d1066b498d635249abf",
   );
 });
 
 test("the hash of every shipped version is kept: the list only grows", () => {
-  expect(OLD_AGENTS.size).toBeGreaterThanOrEqual(36);
+  expect(OLD_AGENTS.size).toBeGreaterThanOrEqual(37);
   expect(OLD_AGENTS.has("eaf40a1f51b1e62226e5087c7d7a73cf8b48b84e1e4fb214e89a119d0eb71d96")).toBe(true);
 });
 
 test("the AGENTS.md template describes the design mode remarks of site apps", async () => {
   const text = await readFile(join(DEFAULT_MODELS, "AGENTS.md"), "utf8");
-  for (const pattern of ["Remarques du mode design", "/workspace/.webaios/remarques/site-<id>/", "MutationObserver", "site-tiers", "home/"]) {
+  for (const pattern of ["Remarques du mode design", "/workspace/.webaios/remarks/site-<id>/", "MutationObserver", "third-party-site", "home/"]) {
     expect(text, pattern).toContain(pattern);
   }
 });
@@ -392,9 +425,9 @@ test("a new space gets the workflows", async () => {
 
 const DISPLAYS = join(import.meta.dirname, "shipped-displays");
 
-test("the 12 shipped versions of display.html have the known hashes", async () => {
+test("the 15 shipped versions of display.html have the known hashes", async () => {
   const files = (await readdir(DISPLAYS)).sort();
-  expect(files).toHaveLength(12);
+  expect(files).toHaveLength(15);
   const hashes: Record<string, string[]> = {};
   for (const f of files) {
     const id = f.replace(/-[0-9a-f]{7}\.html$/, "");

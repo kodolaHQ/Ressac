@@ -55,10 +55,11 @@ export const OLD_AGENTS = new Set([
 
 const hash = (content: Buffer) => createHash("sha256").update(content).digest("hex");
 
-async function agentsRestForOld(path: string, template: string): Promise<boolean> {
+/** A copy left at a shipped version (its hash is in `old`) that differs from the current template: it is replaced. */
+async function leftAtOldTemplate(path: string, template: string, old: ReadonlySet<string>): Promise<boolean> {
   try {
     const h = hash(await readFile(path));
-    return OLD_AGENTS.has(h) && h !== hash(await readFile(template));
+    return old.has(h) && h !== hash(await readFile(template));
   } catch {
     return false;
   }
@@ -163,18 +164,21 @@ export const DISPLAYS_SHIPPED: Record<"meteo" | "actus-tech" | "daily-dev", Read
     "41b7f74fbbd384ab88ba8e31a57d0c2b7ee4df1f6081a588f23c888fa3721257",
     "a7e25ca8a7b10d0f48812bef3130fc16a2d6a05799d56a512171a7861e594c56",
     "19a96d4ff1e7fe19e115d61b15d86cf37ef69832d1ec922ca1576876a79dce00",
+    "e9c469982f2f97ed68d95f554382972e2749b57eb85c95ffc669b60297eab297",
   ]),
   "actus-tech": new Set([
     "da8afce4e0676662aa65787df9c913f684f5f6b1c2bf2bf8961a69fa531ba209",
     "0f8306d6c64698eb1a5252075fb273e99fca1811748943e6986591caf18dd081",
     "9057aa911e1fcfe0641d2943fa867ecba587b2e6f04974b17512fe57c552574e",
     "45f707b6454cea62bb36f181d70bc18f6dd2ba034ec0e84561897a3806b8f6bc",
+    "66b319bac163fa6947d4047dd20e567dafa5eb93334b11c4bc9ea3936e66abba",
   ]),
   "daily-dev": new Set([
     "9bc668a4f1515d8f66b9a040a828099432f659ba976263af43aea2696b3a9e99",
     "12184cdd667940b894a9c86e980eb5cfb0da60acc20591665b726124c9a741b1",
     "c5e7c446b7df1754c52e88857daf71f286419d2585d9903ebbb25a650d857ebe",
     "714e787e5ca2dd69a1ac34a7b0f5b599d1aa3ebde11cde57d7ba3500272dcb23",
+    "d1a96303f8474de20ac875874f45eb982c44e742e8cd0a0f8e060ba90466f7e4",
   ]),
 };
 
@@ -269,12 +273,27 @@ async function migrateStartDisplay(c: SpacePaths, models: string, id: keyof type
   return true;
 }
 
-/** Creates the workspace from the templates, without overwriting an existing file (except an AGENTS.md of an old template). */
+/** sha256 of the shipped `CLAUDE.md` and agent profile templates before the English formats: a copy left as shipped is replaced. */
+export const OLD_CLAUDE_MD: ReadonlySet<string> = new Set(["11baa6aab5848a8fff974dabc5e78e9ccc69b8d2a53a91d23fa9a3f0ca73632b"]);
+export const OLD_AGENT_PROFILE: ReadonlySet<string> = new Set(["2e20e733cc7c9aa30c807e227a6547824afbfc1f6a8ffe0c005cc9f51c039085"]);
+
+/** The templates replaced when the user's copy is still a shipped version (the hashes of every old version). */
+const OLD_TEMPLATES: Readonly<Record<string, ReadonlySet<string>>> = {
+  "AGENTS.md": OLD_AGENTS,
+  "CLAUDE.md": OLD_CLAUDE_MD,
+  "agent-profile.json": OLD_AGENT_PROFILE,
+};
+
+/**
+ * Creates the workspace from the templates, without overwriting an existing file, except AGENTS.md, CLAUDE.md and the
+ * agent profile left at an old shipped version.
+ */
 export async function initSpace(c: SpacePaths, models = DEFAULT_MODELS): Promise<{ created: string[] }> {
   const created: string[] = [];
   await setAsideBlocks(c);
   for (const [model, destination] of await matches(c, models)) {
-    const update = model === "AGENTS.md" && (await agentsRestForOld(destination, join(models, model)));
+    const old = OLD_TEMPLATES[model];
+    const update = old !== undefined && (await leftAtOldTemplate(destination, join(models, model), old));
     if (existsSync(destination) && !update) continue;
     await mkdir(dirname(destination), { recursive: true });
     try {
@@ -308,10 +327,6 @@ export async function initSpace(c: SpacePaths, models = DEFAULT_MODELS): Promise
   await mkdir(c.sites, { recursive: true });
   return { created };
 }
-
-/** sha256 of the shipped `CLAUDE.md` and agent profile templates before the English formats: a copy left as shipped is replaced. */
-export const OLD_CLAUDE_MD: ReadonlySet<string> = new Set(["11baa6aab5848a8fff974dabc5e78e9ccc69b8d2a53a91d23fa9a3f0ca73632b"]);
-export const OLD_AGENT_PROFILE: ReadonlySet<string> = new Set(["2e20e733cc7c9aa30c807e227a6547824afbfc1f6a8ffe0c005cc9f51c039085"]);
 
 /**
  * sha256 of the other starter files as shipped before the English formats, by template path (French names): a copy
