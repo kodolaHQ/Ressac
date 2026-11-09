@@ -109,7 +109,7 @@ const contexteWidgets = { chemins, dossierWidgets };
 // Actions' runs, results, grants and refusals: outside the space.
 const dossierActions = join(dataDir, "actions");
 const contexteActions = { chemins, dossierActions };
-// One container for the agent (whatever its profile) and the apps it launches: the kernel's own default (kernel.ts:389).
+// One container for the agent (whatever its profile) and the apps it launches: the kernel's own default (noyau.ts:389).
 const atelier = new Atelier({ chemins });
 
 let noyau: Noyau | null = null;
@@ -154,7 +154,7 @@ const lancerNoyau = (profilId: string): Promise<Noyau | null> => {
     atelier,
     applications: apps.gestionnaire,
     workflowOuvert: (f) => workflowOpen(actives.get(f), selections.get(f)),
-    // Widgets and actions wrote something, or an grant changed: the page reads again.
+    // Widgets and actions wrote something, or a grant changed: the page reads again.
     surChange: () => rpc.notify("accueil.change"),
     notifier,
     ...(process.env.WEBAIOS_TEST_ADRESSES_LOCALES === "1" ? { adressesLocales: true } : {}),
@@ -206,7 +206,7 @@ const demarrer = async () => {
 };
 
 let profil: string | null = null;
-// Another profile: a new kernel (command, MCP config) and a new agent in every panel. Never two noyaux at once:
+// Another profile: a new kernel (command, MCP config) and a new agent in every panel. Never two kernels at once:
 // two MCP servers would write the same mcp.json.
 const changerProfil = (profilAgent: string) => {
   const relancer = profil !== null;

@@ -47,7 +47,7 @@ export async function actionImageAllowed(
   if (!ID_ACTION.test(id) || execution.length > 64 || !ID_EXECUTION.test(execution) || !url || !imageAddressAllowed(url)) return false;
   const action = await o.lireAction(id);
   if (!action || "erreur" in action || action.declaration.sources.compte.length > 0) return false;
-  // An action rewritten without account may keep results read with it: an grant still there is enough to refuse.
+  // An action rewritten without account may keep results read with it: a grant still there is enough to refuse.
   const accords = await lireAccords(o.dossierActions).catch(() => null);
   if (!accords || Object.hasOwn(accords, id)) return false;
   const [resultat, exec] = await Promise.all([lireResultat(o.dossierActions, id, execution), lireExecution(join(o.dossierActions, id), execution)]);

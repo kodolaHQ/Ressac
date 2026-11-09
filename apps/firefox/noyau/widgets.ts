@@ -143,7 +143,7 @@ export async function executionsWidget(dossierWidgets: string, id: string): Prom
   return listerExecutions(join(dossierWidgets, id));
 }
 
-/** An execution of a widget; null if one of the two ids is invalid (never a path). */
+/** An execution of a widget; null if one of the two ids is invalid (never a path) or if it no longer exists. */
 export async function executionWidget(dossierWidgets: string, id: string, execution: string): Promise<Execution | null> {
   if (!ID_WIDGET.test(id) || !ID_EXECUTION.test(execution)) return null;
   return lireExecution(join(dossierWidgets, id), execution);
