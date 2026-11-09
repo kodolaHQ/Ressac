@@ -146,8 +146,8 @@ const AFFICHAGE = (titre: string) => `<!doctype html><meta charset="utf-8"><titl
 const AFFICHAGE_DONNEES = `<!doctype html><meta charset="utf-8"><pre id="donnees"></pre>
 <script>
   addEventListener("message", (e) => {
-    // A sandbox frame's origin is opaque: event.source is not the parent on the page side (measured). The message
-    // comes from the chrome, the only one to know this frame: only its type is checked.
+    // L'origine d'un cadre sandbox est opaque : event.source n'est pas parent côté page (mesuré). Le message
+    // vient du chrome, seul à connaître ce cadre : on ne vérifie que son type.
     if (!e.data || e.data.type !== "widget") return;
     document.getElementById("donnees").textContent = JSON.stringify(e.data.donnees);
   });

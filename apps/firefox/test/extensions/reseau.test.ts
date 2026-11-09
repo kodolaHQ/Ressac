@@ -322,13 +322,13 @@ test("guard: replacing Promise.prototype.then, Function.prototype.apply, Array.i
     `(async () => {
       const redirection = { addRules: [{ id: 1, priority: 1, action: { type: "redirect", redirect: { url: "https://autre.test/" } }, condition: {} }] };
       const vrai = Promise.prototype.then;
-      // (a) then: every continuation receives true.
+      // (a) then : toute suite reçoit true.
       Promise.prototype.then = function (ok, ko) { return vrai.call(this, ok && ((v) => ok(v === false || typeof v === "string" ? true : v)), ko); };
-      // (b) apply: the API's original is stolen and called back.
+      // (b) apply : l'original de l'API est volé et rappelé.
       const vole = [];
       const appliquer = Function.prototype.apply;
       Function.prototype.apply = function (t, a) { vole.push(this); return appliquer.call(this, t, a); };
-      // (c) Array.isArray that changes its mind, empty list iterator.
+      // (c) Array.isArray qui change d'avis, itérateur de liste vide.
       let n = 0;
       Array.isArray = () => n++ % 2 === 0;
       Array.prototype[Symbol.iterator] = function* () {};
