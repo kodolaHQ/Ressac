@@ -11,7 +11,7 @@ export const DOSSIER_NON_ABSOLU = "Le dossier doit être un chemin absolu.";
 export const DOSSIER_INTROUVABLE = "Ce dossier n'existe pas sur le Mac.";
 export const DOSSIER_TROP_LARGE = "Ce dossier est trop large : ni /, ni le dossier personnel.";
 export const DOSSIER_ESPACE = "Ce dossier est dans l'espace de WebAiOs : ses applis se relisent depuis la page Applications.";
-export const AVERTISSEMENT_ILLISIBLE = "WebAiOs ne peut pas lire ce dossier : la relecture sera indisponible tant que vous n'avez pas donné l'accès";
+export const AVERTISSEMENT_ILLISIBLE = "WebAiOs ne peut pas lire ce dossier : la relecture sera indisponible tant que l'utilisateur n'a pas donné l'accès";
 export const portRefuse = (p: number): string =>
   `Port ${p} refusé : entre 1024 et 65535, hors des ports du conteneur de WebAiOs (${plagePortsConteneur().join("–")} et ceux des applis).`;
 
