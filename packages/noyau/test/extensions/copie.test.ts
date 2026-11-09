@@ -8,9 +8,7 @@ import {
   FICHIERS_MAX,
   GARDES_PAR_DEFAUT,
   cspAgent,
-  lireMessages,
   preparerCopie,
-  preparerStore,
 } from "../../src/extensions/copie.js";
 import { dossierTemporaire } from "../aide/temporaire.js";
 
@@ -586,47 +584,6 @@ describe("preparerCopie", () => {
   });
 });
 
-describe("preparerStore", () => {
-  it("preparerStore met le correctif en tête une seule fois même appelé deux fois", async () => {
-    const d = await source({
-      "manifest.json": manifesteBase({
-        content_scripts: [{ matches: ["<all_urls>"], js: ["cs.js"] }, { matches: ["<all_urls>"], css: ["s.css"] }],
-      }),
-      "cs.js": "",
-    });
-    const renommages: string[] = [];
-    crochets.avantRename = (_de, vers) => void renommages.push(vers);
-    await preparerStore(d, GARDES_PAR_DEFAUT);
-    await preparerStore(d, GARDES_PAR_DEFAUT);
-    expect(renommages.filter((v) => v === join(d, "manifest.json"))).toHaveLength(2);
-    expect((await readdir(d)).sort()).toEqual(["cs.js", "manifest.json", "webaios-correctifs-page.js", "webaios-fond.js"]);
-    const m = await lireJson(join(d, "manifest.json"));
-    expect(m.content_scripts[0].js).toEqual(["webaios-correctifs-page.js", "cs.js"]);
-    expect(m.content_scripts[1].js).toBeUndefined();
-    expect(await readFile(join(d, "webaios-correctifs-page.js"), "utf8")).toBe(
-      await readFile(join(GARDES_PAR_DEFAUT, "webaios-correctifs-page.js"), "utf8"),
-    );
-  });
-});
-
-describe("preparerStore : fond minimal", () => {
-  it("sans fond : un service worker minimal est déclaré (idempotent) ; avec un fond, rien ne change", async () => {
-    const d = await source({ "manifest.json": manifesteBase({ declarative_net_request: { rule_resources: [{ id: "r", enabled: true, path: "r.json" }] } }), "r.json": "[]" });
-    await preparerStore(d, GARDES_PAR_DEFAUT);
-    await preparerStore(d, GARDES_PAR_DEFAUT);
-    const m = await lireJson(join(d, "manifest.json"));
-    expect(m.background).toEqual({ service_worker: "webaios-fond.js" });
-    const fond = await readFile(join(d, "webaios-fond.js"), "utf8");
-    expect(fond).not.toContain("importScripts");
-    expect(fond.trim().length).toBeGreaterThan(0);
-
-    const avec = await source({ "manifest.json": manifesteBase({ background: { service_worker: "sw.js", type: "module" } }), "sw.js": "" });
-    await preparerStore(avec, GARDES_PAR_DEFAUT);
-    expect((await lireJson(join(avec, "manifest.json"))).background).toEqual({ service_worker: "sw.js", type: "module" });
-    expect(existsSync(join(avec, "webaios-fond.js"))).toBe(false);
-  });
-});
-
 describe("webaios-correctifs-page.js", () => {
   it("redéfinit storage.sync sur storage.local et pose browser, sans effet la seconde fois", async () => {
     const code = await readFile(join(GARDES_PAR_DEFAUT, "webaios-correctifs-page.js"), "utf8");
@@ -654,24 +611,5 @@ describe("noms localisés (_locales)", () => {
     });
     const { analyse } = await preparerCopie({ source: src, cible: await cible(), dossierGardes: GARDES_PAR_DEFAUT });
     expect(analyse.nom).toBe("Nom");
-  });
-
-  it("lireMessages lit fr, fr_FR puis default_locale ; un fichier absent, illisible, lien ou trop lourd compte comme absent", async () => {
-    const d = await source({
-      "manifest.json": manifesteLocalise,
-      "_locales/en/messages.json": { extName: { message: "Name" } },
-      "_locales/fr_FR/messages.json": "{ pas du json",
-    });
-    expect(await lireMessages(d, manifesteLocalise)).toEqual([undefined, undefined, { extName: { message: "Name" } }]);
-    const ailleurs = await source({ "messages.json": { extName: { message: "Piège" } } });
-    await mkdir(join(d, "_locales", "fr"), { recursive: true });
-    await symlink(join(ailleurs, "messages.json"), join(d, "_locales", "fr", "messages.json"));
-    expect((await lireMessages(d, manifesteLocalise))[0]).toBeUndefined();
-    // Un dossier de locale lié ailleurs : non suivi.
-    await rm(join(d, "_locales", "en"), { recursive: true });
-    await symlink(ailleurs, join(d, "_locales", "en"));
-    expect((await lireMessages(d, manifesteLocalise))[2]).toBeUndefined();
-    await writeFile(join(d, "_locales", "fr_FR", "messages.json"), JSON.stringify({ extName: { message: "x".repeat(2 * 1024 * 1024) } }));
-    expect((await lireMessages(d, manifesteLocalise))[1]).toBeUndefined();
   });
 });

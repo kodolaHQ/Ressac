@@ -2,30 +2,10 @@ import { randomUUID } from "node:crypto";
 import { copyFile, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
-import { ID_SITE } from "../sites/schemas.js";
 import type { Portee, SourceExtension } from "./manifeste.js";
 
 export type IdProfil = string;
 export type IdSite = string;
-
-export const RESERVE_STORE_SITE = "Seules les extensions du Chrome Web Store vont dans une appli de site";
-
-/**
- * La portée d'une appli de site, `site:<id>`, ne sert que de clé (`vues`, sessions des extensions). Aucun id de profil
- * de forme /^[\w-]+$/ ne contient « : », donc aucun ne peut la prendre.
- */
-export const PREFIXE_PORTEE_SITE = "site:";
-
-export function porteeSite(id: IdSite): IdProfil {
-  if (!ID_SITE.test(id)) throw new Error(`id d'appli de site invalide : ${id}`);
-  return `${PREFIXE_PORTEE_SITE}${id}`;
-}
-
-export function siteDePortee(p: string): IdSite | null {
-  if (!p.startsWith(PREFIXE_PORTEE_SITE)) return null;
-  const id = p.slice(PREFIXE_PORTEE_SITE.length);
-  return ID_SITE.test(id) ? id : null;
-}
 
 export const ERREUR_PROFIL_PRIVE = "Donne à cet espace privé son propre profil pour y utiliser des extensions de l'agent";
 
@@ -147,41 +127,6 @@ export function desactiverPartout(e: EtatExtensions, cle: string): EtatExtension
   });
 }
 
-/** Active une extension du Store dans une appli de site, pour l'empreinte de ses domaines d'aujourd'hui. */
-export function activerDansSite(e: EtatExtensions, cle: string, site: IdSite, empreinte: string): EtatExtensions {
-  const x = entreeDe(e, cle);
-  if (x.source !== "store") throw new Error(RESERVE_STORE_SITE);
-  if (!x.accord) throw new Error(`extension sans accord : ${cle}`);
-  return avec(e, cle, (y) => ({ ...y, applis: { ...y.applis, [site]: empreinte } }));
-}
-
-export function desactiverDansSite(e: EtatExtensions, cle: string, site: IdSite): EtatExtensions {
-  return avec(e, cle, (y) => sansAppli(y, site));
-}
-
-function sansAppli(x: EntreeExtension, site: IdSite): EntreeExtension {
-  const { applis, ...reste } = x;
-  if (!applis) return x;
-  const { [site]: _, ...autres } = applis;
-  return Object.keys(autres).length ? { ...reste, applis: autres } : reste;
-}
-
-/** Oublie l'appli : ses activations et la dernière version démarrée dans sa portée. */
-export function retirerSite(e: EtatExtensions, site: IdSite): EtatExtensions {
-  const portee = porteeSite(site);
-  const extensions: Record<string, EntreeExtension> = {};
-  for (const [cle, x] of Object.entries(e.extensions)) {
-    const { [portee]: _, ...vues } = x.vues;
-    extensions[cle] = { ...sansAppli(x, site), vues };
-  }
-  return { ...e, extensions };
-}
-
-/** Ni profil ni appli. */
-export function activeNullePart(x: EntreeExtension): boolean {
-  return x.profils.length === 0 && Object.keys(x.applis ?? {}).length === 0;
-}
-
 export function couperTout(e: EtatExtensions, oui: boolean): EtatExtensions {
   return { ...e, toutesCoupees: oui };
 }
@@ -193,15 +138,6 @@ export function retirer(e: EtatExtensions, cle: string): EtatExtensions {
 
 export function epingler(e: EtatExtensions, cle: string, oui: boolean): EtatExtensions {
   return avec(e, cle, (y) => ({ ...y, epinglee: oui }));
-}
-
-export function retirerProfil(e: EtatExtensions, profil: IdProfil): EtatExtensions {
-  const extensions: Record<string, EntreeExtension> = {};
-  for (const [cle, x] of Object.entries(e.extensions)) {
-    const vues = Object.fromEntries(Object.entries(x.vues).filter(([p]) => p !== profil));
-    extensions[cle] = { ...x, profils: x.profils.filter((p) => p !== profil), vues };
-  }
-  return { ...e, extensions };
 }
 
 /** Retire chaque extension de l'agent des profils privés ; celles du Store restent. */
@@ -220,23 +156,6 @@ export function appliquerProfilsPrives(
     extensions[cle] = { ...x, profils: x.profils.filter((p) => !profilsPrives.has(p)) };
   }
   return { etat: { ...e, extensions }, retirees };
-}
-
-/** Clés actives dans ce profil, avec un accord, non désactivées ; rien pendant la coupure générale. */
-export function chargeesDans(e: EtatExtensions, profil: IdProfil, profilPrive: boolean): string[] {
-  if (e.toutesCoupees) return [];
-  return Object.entries(e.extensions)
-    .filter(([, x]) => !(profilPrive && x.source === "agent"))
-    .filter(([, x]) => x.profils.includes(profil) && x.accord !== null && x.desactivee === null)
-    .map(([cle]) => cle);
-}
-
-/** Clés du Store actives dans cette appli pour cette empreinte, avec un accord, non désactivées ; rien pendant la coupure générale. */
-export function chargeesDansSite(e: EtatExtensions, site: IdSite, empreinte: string | null): string[] {
-  if (e.toutesCoupees || empreinte === null) return [];
-  return Object.entries(e.extensions)
-    .filter(([, x]) => x.source === "store" && x.accord !== null && x.desactivee === null && x.applis?.[site] === empreinte)
-    .map(([cle]) => cle);
 }
 
 const fichier = (dossier: string) => join(dossier, "etat.json");

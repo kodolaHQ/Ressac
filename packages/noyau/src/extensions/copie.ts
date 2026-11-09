@@ -64,45 +64,6 @@ function json(contenu: Buffer | undefined): unknown {
   }
 }
 
-/** Un catalogue `messages.json`, au plus (ceux des extensions courantes font quelques dizaines de Ko). */
-export const TAILLE_MAX_MESSAGES = 1024 * 1024;
-
-/**
- * Les catalogues de `fichiersMessages(manifeste)` lus dans le dossier d'une extension installée (Store, copie de
- * l'agent), dans le même ordre ; `undefined` pour un catalogue absent, illisible, trop lourd (`TAILLE_MAX_MESSAGES`), ou
- * atteint par un lien (`_locales`, le dossier de la locale ou le fichier : aucun n'est suivi).
- */
-export async function lireMessages(dossier: string, manifeste: unknown): Promise<unknown[]> {
-  return Promise.all(fichiersMessages(manifeste).map((rel) => lireCatalogue(dossier, rel)));
-}
-
-async function lireCatalogue(dossier: string, rel: string): Promise<unknown> {
-  try {
-    const morceaux = rel.split("/");
-    for (let i = 1; i < morceaux.length; i++) {
-      if (!(await lstat(join(dossier, ...morceaux.slice(0, i)))).isDirectory()) return undefined;
-    }
-    const fh = await open(join(dossier, ...morceaux), DRAPEAUX_LECTURE);
-    try {
-      const info = await fh.stat();
-      if (!info.isFile() || info.size > TAILLE_MAX_MESSAGES) return undefined;
-      const tampon = Buffer.alloc(TAILLE_MAX_MESSAGES + 1);
-      let lu = 0;
-      for (;;) {
-        const { bytesRead } = await fh.read(tampon, lu, tampon.length - lu, null);
-        if (bytesRead === 0) break;
-        lu += bytesRead;
-        if (lu > TAILLE_MAX_MESSAGES) return undefined;
-      }
-      return json(tampon.subarray(0, lu));
-    } finally {
-      await fh.close();
-    }
-  } catch {
-    return undefined;
-  }
-}
-
 class RefusLecture extends Error {}
 
 const LIENS = new Set(["ELOOP", "EMLINK", "ENOTDIR"]);
@@ -245,16 +206,6 @@ function reglesDe(manifeste: unknown, fichiers: Map<string, Buffer>): Record<str
   return regles;
 }
 
-/** Les scripts donnés en tête de `js` (une seule fois chacun) pour chaque script de contenu qui a du `js`. */
-function scriptsEnTete(manifeste: Manifeste, enTete: string[]): void {
-  if (!Array.isArray(manifeste.content_scripts)) return;
-  for (const cs of manifeste.content_scripts) {
-    const c = objet(cs);
-    if (!c || !Array.isArray(c.js) || c.js.length === 0) continue;
-    c.js = [...enTete, ...c.js.filter((s) => !enTete.includes(s as string))];
-  }
-}
-
 /** Les fichiers que le fond peut injecter dans une page : chaque .js et .css de l'agent, triés (l'indice est le repère). */
 function tableDesFichiers(fichiers: Map<string, Buffer>): [string, "js" | "css"][] {
   const table: [string, "js" | "css"][] = [];
@@ -364,9 +315,6 @@ function refusFichiers(fichiers: Map<string, Buffer>): string[] {
 }
 
 const FOND_MINIMAL_AGENT = `// Généré par WebAiOs : l'extension n'a pas de fond ; celui-ci, le garde seul, active ses rulesets et onInstalled.\nimportScripts(${JSON.stringify(GARDE_FOND)});\n`;
-const FOND_MINIMAL_STORE =
-  "// Généré par WebAiOs : l'extension n'a pas de fond ; celui-ci, vide, laisse le preload des correctifs activer ses rulesets\n// du manifeste et émettre onInstalled.\n";
-
 function fondGenere(original: string, module: boolean): string {
   const chemin = original.replace(/^(\.\/|\/)+/, "");
   const entete = "// Généré par WebAiOs : le garde, puis le service worker de l'extension.\n";
@@ -474,30 +422,4 @@ export async function preparerCopie(o: {
     throw e;
   }
   return { analyse, empreinte, ...lue };
-}
-
-/**
- * Prépare une extension du Store décompressée (idempotent) : correctif `storage.sync` en tête de ses scripts de contenu,
- * et un fond minimal (`webaios-fond.js`, vide) si elle n'en a pas, pour ses rulesets du manifeste et `onInstalled`.
- */
-export async function preparerStore(dossierVersion: string, dossierGardes: string): Promise<void> {
-  const chemin = join(dossierVersion, "manifest.json");
-  const manifeste = json(await readFile(chemin));
-  if (!objet(manifeste)) throw new Error(`Manifeste illisible : ${chemin}`);
-  await copyFile(join(dossierGardes, CORRECTIFS_PAGE), join(dossierVersion, CORRECTIFS_PAGE));
-  scriptsEnTete(manifeste as Manifeste, [CORRECTIFS_PAGE]);
-  const m = manifeste as Manifeste;
-  const fond = objet(m.background);
-  if (!fond || fond.service_worker === FOND) {
-    await writeFile(join(dossierVersion, FOND), FOND_MINIMAL_STORE);
-    m.background = { service_worker: FOND };
-  }
-  const tmp = `${chemin}.${randomUUID()}.tmp`;
-  try {
-    await writeFile(tmp, JSON.stringify(manifeste, null, 2));
-    await rename(tmp, chemin);
-  } catch (e) {
-    await rm(tmp, { force: true });
-    throw e;
-  }
 }

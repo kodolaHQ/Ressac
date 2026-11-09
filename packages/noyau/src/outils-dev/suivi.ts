@@ -74,10 +74,6 @@ export class SuiviOutilsDev {
       this.origines.delete(id);
       await this.outils.detacher(id).catch(() => {});
     }
-    // Attachés sans être suivis ici (par un noyau précédent, ou un appel en retard) : détachés aussi.
-    for (const id of this.outils.attaches?.() ?? []) {
-      if (!voulus.has(id) && !this.attaches.has(id)) await this.outils.detacher(id).catch(() => {});
-    }
     for (const id of [...this.occupes]) if (!voulus.has(id)) this.occupes.delete(id);
   }
 

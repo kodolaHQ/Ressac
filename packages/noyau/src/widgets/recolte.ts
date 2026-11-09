@@ -7,7 +7,6 @@ import type { PontNavigateur } from "../mcp/pont.js";
 import { accordValide, lireAccords, retirerAccord } from "./accords.js";
 import { message, tronquer } from "../workflows/acces.js";
 import {
-  DELAI_EXECUTION_MS,
   ERREUR_MAX,
   JOURNAL_MAX,
   MEMOIRE_NON_GARDEE,
@@ -77,7 +76,6 @@ export type ResultatEssai = { ok: true; execution: string; statut: Execution["st
  */
 export type ResultatRecolte = { etat: EtatWidget; donnees?: unknown; execution?: string; nouveaux?: number };
 
-export const DELAI_RECOLTE_MS = DELAI_EXECUTION_MS;
 const ID = /^[a-z0-9-]+$/;
 
 export const accordRequis = (d: DeclarationWidget) => `Accord requis pour lire avec ton compte : ${d.sources.compte.join(", ")}`;

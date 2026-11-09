@@ -230,7 +230,7 @@ test("la navigation du navigateur pendant naviguer (did-navigate) ne retire pas 
   const id = texte(await client.callTool({ name: "ouvrir_onglet", arguments: { url: "http://localhost:5280" } })).trim();
   const naviguerOrigine = pont.naviguer.bind(pont);
   pont.naviguer = async (i, url) => {
-    politique.ongletNavigue(i, url); // Electron signale la navigation avant que naviguer() ne se termine
+    politique.ongletNavigue(i, url); // the browser reports the navigation before naviguer() resolves
     await naviguerOrigine(i, url);
   };
   await client.callTool({ name: "naviguer", arguments: { id, url: "http://localhost:5281" } });

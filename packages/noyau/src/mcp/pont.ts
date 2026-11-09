@@ -38,7 +38,7 @@ export interface OngletInfo {
   empreinte?: string;
 }
 
-/** Ce que le navigateur (Electron, extension…) fournit au noyau. */
+/** What the browser gives the noyau. */
 export interface PontNavigateur {
   ongletActif(): Promise<OngletInfo | null>;
   listerOnglets(): Promise<OngletInfo[]>;
@@ -138,7 +138,7 @@ export interface RequeteReseau {
 /** Résultat d'`executer` : la valeur déjà sérialisée (JSON ou aperçu), non tronquée ; le noyau tronque. */
 export type ResultatJs = { valeur: string } | { exception: string };
 
-/** Ce que le navigateur fournit pour inspecter un onglet (Chrome DevTools Protocol côté Electron). */
+/** What the browser gives to inspect a tab. */
 export interface OutilsDevNavigateur {
   /** Lève OutilsDevOccupes ou OngletIntrouvable. */
   attacher(id: string): Promise<void>;
@@ -155,8 +155,6 @@ export interface OutilsDevNavigateur {
   instantaneMemoire(id: string, signal: AbortSignal): Promise<string>;
   executer(id: string, code: string, signal: AbortSignal): Promise<ResultatJs>;
   recharger(id: string, sansCache: boolean): Promise<void>;
-  /** Onglets où le débogueur de l'agent est attaché, y compris par un noyau précédent. */
-  attaches?(): string[];
   /**
    * Un accès réservé à un noyau (le navigateur garde ses outils d'un noyau à l'autre). En créer un révoque le précédent :
    * ses appels sont refusés et ses attachements tombent. `liberer` révoque celui-ci (noyau arrêté).

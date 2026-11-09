@@ -72,7 +72,7 @@ export type Disposition = z.infer<typeof Disposition>;
 
 /** Millièmes de la largeur de l'accueil : la grille de 12 colonnes y perd sa précision. */
 export const LARGEUR_LIBRE = 1000;
-/** Une unité de hauteur (celle d'Electron), en pixels. */
+/** One height unit, in pixels. */
 export const RANGEE_PX = 90;
 
 export const PlacementLibre = z

@@ -10,18 +10,6 @@ function fichiers(dossier: string): string[] {
   );
 }
 
-test("le noyau ne dépend pas d'electron", () => {
-  const pkg = JSON.parse(readFileSync(join(racine, "package.json"), "utf8"));
-  for (const champ of ["dependencies", "devDependencies", "peerDependencies"]) {
-    expect(Object.keys(pkg[champ] ?? {})).not.toContain("electron");
-  }
-  const sources = fichiers(join(racine, "src"));
-  expect(sources.length).toBeGreaterThan(0);
-  for (const f of sources) {
-    expect(readFileSync(f, "utf8"), f).not.toMatch(/from ["']electron["']|require\(["']electron["']\)/);
-  }
-});
-
 test("src/workflows n'importe ni widgets/, accueil/, actions/ ni pages/", () => {
   const sources = fichiers(join(racine, "src", "workflows"));
   expect(sources.length).toBeGreaterThan(0);
@@ -40,13 +28,5 @@ test("src/workflows n'importe ni widgets/, accueil/, actions/ ni pages/", () => 
   expect('import { x } from "./acces.js";').not.toMatch(interdit);
   for (const f of sources) {
     expect(readFileSync(f, "utf8"), f).not.toMatch(interdit);
-  }
-});
-
-test("src/sites existe et n'importe pas electron", () => {
-  const sources = fichiers(join(racine, "src", "sites"));
-  expect(sources.length).toBeGreaterThan(0);
-  for (const f of sources) {
-    expect(readFileSync(f, "utf8"), f).not.toMatch(/from ["']electron["']|require\(["']electron["']\)|import\(["']electron["']\)/);
   }
 });

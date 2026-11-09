@@ -76,8 +76,8 @@ async function renommerSiPresent(de: string, vers: string): Promise<void> {
 }
 
 /**
- * Un `disposition.json` d'un autre format (ancien `{ ordre }` ou version inconnue). v2 (Electron) et v3 (Firefox)
- * sont gardés. Illisible : laissé en place.
+ * A `disposition.json` in another format (old `{ ordre }` or unknown version). v2 (the 12-column grid) and v3 (the free
+ * layout) are kept. Unreadable: left in place.
  */
 async function dispositionAncienne(chemin: string): Promise<boolean> {
   try {

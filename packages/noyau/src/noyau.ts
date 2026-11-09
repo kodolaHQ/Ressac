@@ -248,7 +248,7 @@ export interface Noyau {
   arreter(): Promise<void>;
 }
 
-/** Point d'entrée unique pour un navigateur (Electron, extension…) : il fournit son pont, le noyau fait le reste. */
+/** The single entry point for a browser: it gives its bridge, the noyau does the rest. */
 export async function creerNoyau(o: {
   pont: PontNavigateur;
   racine?: string;

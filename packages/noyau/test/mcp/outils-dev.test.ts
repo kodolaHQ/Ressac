@@ -575,14 +575,6 @@ test("SuiviOutilsDev : un onglet qui garde ses droits sur une autre origine (app
   expect(appels()).toEqual(["attacher", "detacher", "attacher"]);
 });
 
-test("SuiviOutilsDev : un onglet attaché par un noyau précédent et sans droit est détaché", async () => {
-  await demarrer();
-  await pont.outilsDev!.attacher("gmail"); // laissé par l'ancien noyau
-  suivi = new SuiviOutilsDev(politique, pont.outilsDev!, () => pont.listerOnglets());
-  await vi.waitFor(() => expect(pont.outilsDev!.attaches()).toEqual([]));
-  expect(pont.appels.some((a) => a.methode === "detacher" && a.args[0] === "gmail")).toBe(true);
-});
-
 test("espace privé : chaque outil de développement répond TEXTE_PRIVE, sans carte ni appel au débogueur", async () => {
   await demarrer({ accorderDev: ["console", "reseau", "performances", "agir"] });
   pont.rendrePrive("github");
