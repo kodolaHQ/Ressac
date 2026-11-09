@@ -6,7 +6,7 @@
   "scripts": {
     "test": "corepack pnpm -r --if-present test",
     "typecheck": "corepack pnpm -r --if-present typecheck",
-    "postinstall": "node scripts/reparer-node-pty.mjs",
+    "postinstall": "node scripts/repair-node-pty.mjs",
     "dev:kernel": "corepack pnpm --filter @webaios/kernel dev",
     "e2e": "corepack pnpm --filter firefox-webaios e2e"
   }
