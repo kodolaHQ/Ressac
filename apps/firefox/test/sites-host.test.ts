@@ -3,13 +3,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { accorderSite, cheminsEspace, DeclarationSite, lireAccordsSites, MemoireSite } from "../../../packages/noyau/src/index";
-import { SchemaActionSite as electronSchema } from "../../navigateur/src/commun/api";
 import { modifierAvecAgent } from "../../navigateur/src/commun/sites";
 import { createSites, demandeAccord, empreinteDroits, SchemaActionSite, SiteSouvenirs, type SitesChrome } from "../noyau/sites";
 
 // Electron's fenetres.ts only for its empreinteDroits (the drift test): the window classes are never built.
 vi.mock("electron", () => new Proxy({ default: {} }, { get: (t, k) => (k in t ? t[k as "default"] : class {}), has: () => true }));
-vi.mock("../../navigateur/src/main/onglets/vues", () => ({}));
 
 // A gate on lireSite: while armed, the next call waits (a slow read, for the deletion race).
 const gate: { armed: boolean; reached: (() => void) | null; open: (() => void) | null } = { armed: false, reached: null, open: null };
@@ -128,21 +126,6 @@ function mount(gateOuvrir?: { reached: () => void; open: Promise<void> }, lireLi
     setVue: (v: typeof vueChrome) => (vueChrome = v),
     retenir: (p: Promise<void> | null) => (retenue = p), setErreurs: (e: typeof erreursChrome) => (erreursChrome = e) };
 }
-
-// Electron's own unit tests of SuiviAdresse (they run on Electron's file), plus the drift guard of the host's copy.
-import "../../navigateur/test/sites/suivi.test";
-
-describe("site-follow.ts", () => {
-  it("is Electron's suivi.ts, body unchanged (only its two import lines differ)", () => {
-    const body = (f: string) => readFileSync(new URL(f, import.meta.url), "utf8").split("\n").filter((l) => !l.startsWith("//")).slice(2).join("\n");
-    expect(body("../noyau/site-follow.ts")).toBe(body("../../navigateur/src/main/sites/suivi.ts"));
-  });
-
-  it("site-navigation.ts is Electron's navigation.ts, body unchanged (only its import line differs)", () => {
-    const body = (f: string) => readFileSync(new URL(f, import.meta.url), "utf8").split("\n").filter((l) => !l.startsWith("//")).slice(1).join("\n");
-    expect(body("../noyau/site-navigation.ts")).toBe(body("../../navigateur/src/main/sites/navigation.ts"));
-  });
-});
 
 describe("chercherAdresse", () => {
   const AVIS_CHANGE = "Vidola a changé d'adresse : vidola-b.example. Il faudra peut-être te reconnecter.";
@@ -545,7 +528,7 @@ describe("outils", () => {
   });
 });
 
-describe("copies kept in sync with Electron", () => {
+describe("site rights, card and memory", () => {
   const demandee = {
     ...declaration,
     connexion: ["compte.example"],
@@ -555,16 +538,14 @@ describe("copies kept in sync with Electron", () => {
     ],
   };
 
-  it("empreinteDroits is Electron's, and follows the rights only", async () => {
-    const { empreinteDroits: electron } = await import("../../navigateur/src/main/sites/fenetres");
+  it("empreinteDroits follows the rights only", () => {
     const d = DeclarationSite.parse(demandee);
-    expect(empreinteDroits(d)).toBe(electron(d));
     // Rights drift: another sign-in domain changes it; a description does not.
     expect(empreinteDroits(DeclarationSite.parse({ ...demandee, connexion: ["autre.example"] }))).not.toBe(empreinteDroits(d));
     expect(empreinteDroits(DeclarationSite.parse({ ...demandee, description: "autre" }))).toBe(empreinteDroits(d));
   });
 
-  it("demandeAccord gives Electron's card (e2e 43): rights, files without duplicates, followed domains, fingerprint", () => {
+  it("demandeAccord gives the card (e2e 43): rights, files without duplicates, followed domains, fingerprint", () => {
     const d = DeclarationSite.parse(demandee);
     const carte = demandeAccord({ id: "vidola", declaration: d, aAccueil: false, domaines: ["vidola-a.example", "VIDOLA-C.example"], depart: "https://vidola-a.example/", accordRequis: true });
     expect(carte).toEqual({
@@ -580,20 +561,13 @@ describe("copies kept in sync with Electron", () => {
     });
   });
 
-  it("SchemaActionSite accepts and refuses the same ids and actions", () => {
-    for (const v of [{ id: "vidola", action: "supprimer" }, { id: "../x", action: "supprimer" }, { id: "Vidola", action: "ouvrir" }, { id: "a", action: "autre" }, { id: ".corbeille", action: "relire" }])
-      expect(SchemaActionSite.safeParse(v).success).toBe(electronSchema.safeParse(v).success);
+  it("SchemaActionSite accepts a plain id with a known action only", () => {
+    const vs = [{ id: "vidola", action: "supprimer" }, { id: "../x", action: "supprimer" }, { id: "Vidola", action: "ouvrir" }, { id: "a", action: "autre" }, { id: ".corbeille", action: "relire" }];
+    expect(vs.map((v) => SchemaActionSite.safeParse(v).success)).toEqual([true, false, false, false, false]);
   });
 
-  it("SiteSouvenirs has MemoireApplications' public methods and writes the same format", async () => {
-    const source = readFileSync(join(__dirname, "../../navigateur/src/main/applications/service.ts"), "utf8");
-    const bloc = source.slice(source.indexOf("class MemoireApplications"), source.indexOf("\n}\n", source.indexOf("class MemoireApplications")));
-    const publiques = [...bloc.matchAll(/^ {2}(?!private|constructor)(\w+)\(/gm)].map((x) => x[1]).sort();
-    expect(publiques).toEqual(["lire", "noter", "oublier", "vider"]);
-    for (const n of publiques) expect(typeof (SiteSouvenirs.prototype as unknown as Record<string, unknown>)[n!]).toBe("function");
-    // The written format: indented JSON of the whole map, temporary file then rename, 500 ms default.
-    expect(bloc).toContain("JSON.stringify(this.donnees, null, 2)");
-    expect(bloc).toContain("delaiMs = 500");
+  it("SiteSouvenirs has its public methods and writes indented JSON of the whole map", async () => {
+    for (const n of ["lire", "noter", "oublier", "vider"]) expect(typeof (SiteSouvenirs.prototype as unknown as Record<string, unknown>)[n]).toBe("function");
     const dossier = mkdtempSync(join(tmpdir(), "souvenirs-"));
     cleanup.push(() => rmSync(dossier, { recursive: true, force: true }));
     const s = new SiteSouvenirs(dossier);

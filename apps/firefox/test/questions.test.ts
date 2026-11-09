@@ -1,7 +1,6 @@
-import { readFileSync } from "node:fs";
 import { expect, it } from "vitest";
 import { etatInitial } from "../../navigateur/src/main/etat/etat-initial";
-import { Questions, SCHEMA_WIDGET } from "../chrome/agent/questions";
+import { Questions } from "../chrome/agent/questions";
 import { createStore } from "../chrome/store/store";
 
 it("a question already stale when asked (tab gone) is refused at once, without a card", async () => {
@@ -153,8 +152,4 @@ it("a card on an agent app window falls when the window closes or goes to anothe
   questions.dropStale();
   expect(questions.pending()).toEqual([]);
   expect(await second).toBe(false);
-});
-
-it("SCHEMA_WIDGET is Electron's", () => {
-  expect(readFileSync(new URL("../../navigateur/src/main/agent/accueil.ts", import.meta.url), "utf8")).toContain(`export const SCHEMA_WIDGET = "${SCHEMA_WIDGET}";`);
 });

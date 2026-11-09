@@ -2,9 +2,8 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { IMAGE_MAX } from "../../navigateur/src/main/agent/actions";
 import { COMPOSANT_HTML_MAX as NOYAU_COMPOSANT_HTML_MAX } from "../../../packages/noyau/src/pages/composants-agent";
-import { ACTION_IMAGE_MAX, COMPOSANT_HTML_MAX, actionImage, actionImageTestUrl, releaseComponent, serveComponent } from "../chrome/store/action-media";
+import { COMPOSANT_HTML_MAX, actionImage, actionImageTestUrl, releaseComponent, serveComponent } from "../chrome/store/action-media";
 
 vi.mock("electron", () => ({}));
 vi.mock("../chrome/store/containers", () => ({ containerFor: (p: string) => (p === "action-images" ? 7 : -1) }));
@@ -84,10 +83,6 @@ beforeEach(() => {
 });
 
 describe("action result images", () => {
-  it("ACTION_IMAGE_MAX is Electron's IMAGE_MAX", () => {
-    expect(ACTION_IMAGE_MAX).toBe(IMAGE_MAX);
-  });
-
   it("actionImageTestUrl keeps the address without an origin, rewrites it under one", () => {
     expect(actionImageTestUrl("https://img.exemple/p.png?x=1", undefined)).toBe("https://img.exemple/p.png?x=1");
     expect(actionImageTestUrl("https://img.exemple/photos/1.jpg", "http://127.0.0.1:4000")).toBe("http://127.0.0.1:4000/img.exemple/photos/1.jpg");

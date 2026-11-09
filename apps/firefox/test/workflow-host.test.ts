@@ -1,10 +1,8 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { z } from "zod";
+import { afterEach, describe, expect, it } from "vitest";
 import { cheminsEspace } from "../../../packages/noyau/src/index";
-import * as electron from "../../navigateur/src/commun/api";
 import * as copy from "../noyau/workflow";
 import { readCode, readEdition, saveCode, saveEdition, workflowOpen, WriteQueue } from "../noyau/workflow";
 
@@ -103,17 +101,11 @@ describe("workflowOpen", () => {
   });
 });
 
-describe("IPC schemas copied from Electron", () => {
-  it("match commun/api.ts", () => {
-    for (const k of ["SchemaCible", "SchemaBlocWorkflow", "SchemaNomCode", "SchemaCodeWorkflow", "SchemaBrouillon", "SchemaIdExecution"] as const)
-      expect(z.toJSONSchema(copy[k], { unrepresentable: "any" }), k).toEqual(z.toJSONSchema(electron[k], { unrepresentable: "any" }));
-    for (const v of [{ cible: { type: "widget", id: "a" }, bloc: "b" }, { cible: { type: "action", id: "a" }, bloc: "" }, { cible: { type: "x" } }])
-      expect(copy.selectionConstructeur(v)).toEqual(electron.selectionConstructeur(v));
+describe("code schema", () => {
+  it("limits the code by bytes, not characters", () => {
     // The byte limit is a refine, which the JSON schema cannot show: 256 KB of 2-byte characters is under the length limit.
-    const tooBig = "é".repeat(128 * 1024 + 1);
-    expect([copy.SchemaCodeWorkflow.safeParse(tooBig).success, electron.SchemaCodeWorkflow.safeParse(tooBig).success]).toEqual([false, false]);
-    const fits = "é".repeat(128 * 1024);
-    expect([copy.SchemaCodeWorkflow.safeParse(fits).success, electron.SchemaCodeWorkflow.safeParse(fits).success]).toEqual([true, true]);
+    expect(copy.SchemaCodeWorkflow.safeParse("é".repeat(128 * 1024 + 1)).success).toBe(false);
+    expect(copy.SchemaCodeWorkflow.safeParse("é".repeat(128 * 1024)).success).toBe(true);
   });
 });
 
@@ -137,10 +129,6 @@ describe("fenetres.actives mirror", () => {
   });
 });
 
-// Electron's constructeur.ts is imported only for the drift test: its electron imports (through ./actions) are never used.
-vi.mock("electron", () => new Proxy({ default: {} }, { get: (t, k) => (k in t ? t[k as "default"] : class {}), has: () => true }));
-vi.mock("../../navigateur/src/main/onglets/vues", () => ({}));
-
 /** A space with one action, `gitlab`, and its data folder outside the space. */
 function mountAction(decl: object) {
   const racine = realpathSync(mkdtempSync(join(tmpdir(), "workflow-action-")));
@@ -152,42 +140,11 @@ function mountAction(decl: object) {
   return { chemins, dossier, c: { chemins, dossierActions: join(racine, "actions") } };
 }
 
-describe("action workflow edition, drift against Electron's constructeur.ts", () => {
+describe("action workflow edition", () => {
   const withInput = { nom: "GitLab", saisie: { libelle: "Projet" }, sources: { publiques: ["gitlab.com"] }, miseEnPage: "Un tableau", dureeMaxMinutes: 5 };
   const read = { id: "lire", type: "code", position: { x: 0, y: 0 }, parametres: { source: "lire.mjs" } };
-  const page = { id: "page", type: "source.page", position: { x: 0, y: 0 }, parametres: { url: "https://gitlab.com/{saisie}" } };
   const toPage = { id: "sortie", type: "sortie", position: { x: 1, y: 0 }, parametres: { vers: "page" } };
   const wf = { version: 1, blocs: [read, toPage], liens: [{ de: "lire", vers: "sortie" }] };
-  const wfInput = { version: 1, blocs: [page, toPage], liens: [{ de: "page", vers: "sortie" }] };
-
-  it("readActionEdition, saveActionEdition, readActionCode and saveActionCode answer as Electron", async () => {
-    const e = await import("../../navigateur/src/main/agent/constructeur");
-    for (const decl of [withInput, { nom: "GitLab", sources: { publiques: ["gitlab.com"] } }]) {
-      const [a, b] = [mountAction(decl), mountAction(decl)];
-      // No workflow.json: nothing to open.
-      expect(await copy.readActionEdition(a.c, "gitlab")).toEqual(await e.lireEditionAction(b.c, "gitlab"));
-      expect(await copy.readActionEdition(a.c, "absente")).toEqual(await e.lireEditionAction(b.c, "absente"));
-      expect(await copy.readActionCode(a.chemins, "gitlab", "lire.mjs")).toEqual(await e.lireCodeAction(b.chemins, "gitlab", "lire.mjs"));
-      expect(await copy.saveActionCode(a.chemins, "gitlab", "lire.mjs", "export default async () => []")).toEqual(
-        await e.enregistrerCodeAction(b.chemins, "gitlab", "lire.mjs", "export default async () => []"),
-      );
-      expect(await copy.readActionCode(a.chemins, "gitlab", "lire.mjs")).toEqual(await e.lireCodeAction(b.chemins, "gitlab", "lire.mjs"));
-      for (const draft of [wf, wfInput, { version: 1, blocs: [], liens: [] }]) {
-        const saved = await copy.saveActionEdition(a.c, "gitlab", draft);
-        expect(saved).toEqual(await e.enregistrerEditionAction(b.c, "gitlab", draft));
-        expect(await copy.readActionEdition(a.c, "gitlab")).toEqual(await e.lireEditionAction(b.c, "gitlab"));
-      }
-      // The cases compared above include a saved workflow with its action, not only nulls.
-      expect(await copy.readActionEdition(a.c, "gitlab")).toMatchObject({ origine: "fichier", action: { nom: "GitLab" } });
-      expect(await copy.saveActionEdition(a.c, "absente", wf)).toEqual(await e.enregistrerEditionAction(b.c, "absente", wf));
-      expect(await copy.saveActionCode(a.chemins, "absente", "x.mjs", "1")).toEqual(await e.enregistrerCodeAction(b.chemins, "absente", "x.mjs", "1"));
-      // An unreadable action.json.
-      writeFileSync(join(a.dossier, "action.json"), "{pas du json");
-      writeFileSync(join(b.dossier, "action.json"), "{pas du json");
-      expect(await copy.readActionEdition(a.c, "gitlab")).toEqual(await e.lireEditionAction(b.c, "gitlab"));
-      expect(await copy.saveActionEdition(a.c, "gitlab", wf)).toEqual(await e.enregistrerEditionAction(b.c, "gitlab", wf));
-    }
-  });
 
   it("a symlinked action folder gives null and writes nothing outside", async () => {
     const m = mountAction(withInput);

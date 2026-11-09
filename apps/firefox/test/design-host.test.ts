@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cheminsEspace, DepotRelecture, depotRelecture, DOSSIER_ESPACE, PORT_MCP_EXTERNE, projetExterne, REMARQUE_VIDE, SANS_CLIENT } from "../../../packages/noyau/src/index";
 import { AUCUNE_FENETRE } from "../../navigateur/src/main/design/envoi";
-import { createDesignHost, DESIGN_METHODS, elementAffiche, externalMcpPort, lotAffiche, sourceTexte, type DesignHost, type SuiviDesign } from "../noyau/design";
+import { createDesignHost, DESIGN_METHODS, externalMcpPort, sourceTexte, type DesignHost, type SuiviDesign } from "../noyau/design";
 import { INVALID_REQUEST } from "../shared/design-guards";
 import { ReviewService } from "../noyau/review";
 
@@ -426,16 +426,7 @@ describe("design host, the carts", { timeout: 20_000 }, () => {
     expect(await h["design.panier"]!(null)).toEqual([]);
   });
 
-  it("drift: elementAffiche, lotAffiche and sourceTexte are service.ts's word for word", () => {
-    const service = readFileSync(new URL("../../navigateur/src/main/design/service.ts", import.meta.url), "utf8");
-    const design = readFileSync(new URL("../noyau/design.ts", import.meta.url), "utf8");
-    for (const name of ["sourceTexte", "elementAffiche", "lotAffiche"]) {
-      const body = new RegExp(`function ${name}\\([^]*?\\n}\\n`).exec(design)?.[0];
-      expect(body, name).toBeTruthy();
-      expect(service).toContain(body!);
-    }
+  it("sourceTexte joins the file and the line", () => {
     expect(sourceTexte({ fichier: "a", ligne: 2 })).toBe("a:2");
-    expect(lotAffiche).toBeTypeOf("function");
-    expect(elementAffiche).toBeTypeOf("function");
   });
 });

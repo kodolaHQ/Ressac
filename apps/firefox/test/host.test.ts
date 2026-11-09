@@ -1165,34 +1165,17 @@ createServer((req, res) => {
     expect(h.stderr()).toContain("arrêt des applis simulé");
   });
 
-  it("drift: plageDePorts, the app tab and SchemaActionApplication match Electron's", async () => {
+  it("plageDePorts, the app tab and SchemaActionApplication", async () => {
     const { plageDePorts, SchemaActionApplication, appTab } = await import("../noyau/applications");
-    const { SchemaActionApplication: electronSchema } = await import("../../navigateur/src/commun/api");
-    const corps = (source: string, debut: string) => source.slice(source.indexOf(debut), source.indexOf("\n}\n", source.indexOf(debut)));
-    const service = readFileSync(join(import.meta.dirname, "../../navigateur/src/main/applications/service.ts"), "utf8");
-    const copie = readFileSync(join(import.meta.dirname, "../noyau/applications.ts"), "utf8");
-    const debut = "export function plageDePorts(";
-    expect(corps(copie, debut)).toBe(corps(service, debut));
     expect(plageDePorts("15280-15284")).toEqual([15280, 15284]);
-    const pont = readFileSync(join(import.meta.dirname, "../../navigateur/src/main/agent/pont.ts"), "utf8");
-    expect(pont).toContain('const PREFIXE_APP = "app:";');
-    expect(pont).toContain('return { id: PREFIXE_APP + a.dossier, titre: a.titre, url: a.url, espace: "", application: a.dossier };');
     expect(appTab({ dossier: "essai", titre: "T", url: "http://localhost:15280/" })).toEqual({ id: "app:essai", titre: "T", url: "http://localhost:15280/", espace: "", application: "essai" });
-    for (const v of [
-      { dossier: "essai", action: "lancer" },
-      { dossier: "../x", action: "supprimer" },
-      { dossier: "My Project", action: "supprimer" },
-      { dossier: "My Project", action: "lancer" },
-      { dossier: ".", action: "deboguer" },
-      { dossier: "essai", action: "autre" },
-      { dossier: 3, action: "lancer" },
-    ])
-      expect(SchemaActionApplication.safeParse(v).success).toBe(electronSchema.safeParse(v).success);
-    // Every action, on a launchable folder and on one that is not.
-    const actions = (sc: { shape: { action: { options: readonly string[] } } }) => sc.shape.action.options;
-    expect(actions(SchemaActionApplication)).toEqual(actions(electronSchema));
-    for (const action of actions(electronSchema))
-      for (const dossier of ["essai", "My Project", ".."])
-        expect(SchemaActionApplication.safeParse({ dossier, action }).success, `${action} ${dossier}`).toBe(electronSchema.safeParse({ dossier, action }).success);
+    const accepted = (dossier: unknown, action: string) => SchemaActionApplication.safeParse({ dossier, action }).success;
+    expect([["essai", "lancer"], ["../x", "supprimer"], ["My Project", "supprimer"], ["My Project", "lancer"], [".", "deboguer"], ["essai", "autre"], [3, "lancer"]].map(([d, a]) => accepted(d, a as string))).toEqual([true, false, true, false, false, false, false]);
+    expect(SchemaActionApplication.shape.action.options).toEqual(["lancer", "arreter", "relancer", "ouvrir", "deboguer", "supprimer", "promouvoir", "dossier", "relire"]);
+    // Only these actions take a folder name that is not a launchable one; none takes a path.
+    for (const action of SchemaActionApplication.shape.action.options) {
+      const anyName = ["deboguer", "supprimer", "dossier"].includes(action);
+      expect(["essai", "My Project", ".."].map((d) => accepted(d, action)), action).toEqual([true, anyName, false]);
+    }
   });
 });

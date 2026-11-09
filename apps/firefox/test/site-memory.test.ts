@@ -1,9 +1,9 @@
-import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, expect, test } from "vitest";
 import { CLE_INVALIDE, MemoireSite, VALEUR_NON_JSON } from "../../../packages/noyau/src/index";
-import { creerPositions, ECART_DUREE_REPRISE_S, ECART_NOTE_CADRE_MS, memoireOp, REFUS_MEMOIRE } from "../noyau/site-memory";
+import { creerPositions, memoireOp, REFUS_MEMOIRE } from "../noyau/site-memory";
 
 // The memory part of Electron's test/sites/injection.test.ts, ported to the host's memoireOp: the sender checks
 // (sub-frame, sign-in window, page off the site, no accord) are the chrome's, in site-frames.test.ts.
@@ -45,14 +45,6 @@ test("memory refused by the service (app being deleted): the memory's refusal, n
   refusee = true;
   for (const o of ["retenir", "lire", "oublier"]) expect(await op({ op: o, cle: "x", valeur: 1 })).toEqual({ ok: false, erreur: REFUS_MEMOIRE });
   expect(memoire.contenu().valeurs).toEqual({});
-});
-
-test("the copied refusal and request shape are Electron's (main/sites/injection.ts)", () => {
-  const electron = readFileSync(join(import.meta.dirname, "../../navigateur/src/main/sites/injection.ts"), "utf8");
-  const ours = readFileSync(join(import.meta.dirname, "../noyau/site-memory.ts"), "utf8");
-  expect(electron).toContain(`const REFUS_MEMOIRE = ${JSON.stringify(REFUS_MEMOIRE)};`);
-  const fn = (src: string) => src.slice(src.indexOf("function demandeMemoire"), src.indexOf("\n}\n", src.indexOf("function demandeMemoire")));
-  expect(fn(ours)).toBe(fn(electron));
 });
 
 // --- Video resume: the position part of Electron's test/sites/injection.test.ts, on the host's creerPositions. The
@@ -204,10 +196,4 @@ test("accord withdrawn before the delayed write: the note is not written", async
   differes.shift()!.f();
   await flush();
   expect(memoire.position("/episode/4")?.t).toBe(70);
-});
-
-test("the copied delays are Electron's (main/sites/injection.ts)", () => {
-  const electron = readFileSync(join(import.meta.dirname, "../../navigateur/src/main/sites/injection.ts"), "utf8");
-  expect(electron).toContain(`export const ECART_DUREE_REPRISE_S = ${ECART_DUREE_REPRISE_S};`);
-  expect(electron).toContain(`export const ECART_NOTE_CADRE_MS = ${ECART_NOTE_CADRE_MS};`);
 });

@@ -2,15 +2,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ACTIONS_EN_ESPACE_PRIVE } from "../../navigateur/src/commun/actions";
 import type { Action } from "../../navigateur/src/commun/api";
 import type { EtatNavigateur } from "../../navigateur/src/commun/modele";
-import { espaceActifPrive as electronEspaceActifPrive } from "../../navigateur/src/main/agent/actions";
 import { appliquer } from "../../navigateur/src/main/etat/actions";
 import { etatInitial } from "../../navigateur/src/main/etat/etat-initial";
 import { HOST_EXITED, type AgentHost } from "../chrome/agent/host";
 import { createActionsApi, espaceActifPrive } from "../ui/actions-api";
-
-// Electron's main/agent/actions.ts is imported only for the drift test: its electron imports are never used here.
-vi.mock("electron", () => new Proxy({ default: {} }, { get: (t, k) => (k in t ? t[k as "default"] : class {}), has: () => true }));
-vi.mock("../../navigateur/src/main/onglets/vues", () => ({}));
 
 const NONE = { courantes: [], enAttente: [] };
 const DEBUT = "2026-10-31T08:00:00.000Z";
@@ -75,7 +70,7 @@ type Api = ReturnType<typeof createActionsApi>;
 afterEach(() => vi.restoreAllMocks());
 
 describe("espaceActifPrive", () => {
-  it("is Electron's (drift)", () => {
+  it("is false only for a window whose active space is private", () => {
     const { F, etat, turnPrivate, genId } = setup();
     const cases: [EtatNavigateur, string][] = [[etat(), F], [etat(), "inconnue"]];
     const sansEspace = { ...etat(), espaces: [] };
@@ -84,7 +79,6 @@ describe("espaceActifPrive", () => {
     cases.push([etat(), F]);
     cases.push([appliquer(etat(), { type: "creerEspace", nom: "B", icone: "🅱", prive: false, profil: "defaut", fenetreId: F }, genId), F]);
     const got = cases.map(([s, f]) => espaceActifPrive(s, f));
-    expect(got).toEqual(cases.map(([s, f]) => electronEspaceActifPrive(s, f)));
     expect(got).toEqual([false, true, true, true, false]);
   });
 });

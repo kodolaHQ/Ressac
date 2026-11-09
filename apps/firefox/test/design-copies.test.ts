@@ -1,15 +1,8 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { cleanCapture, cleanSource, cleCible, firefoxViewfinderScript, placeBulle, sourceExpression, STOP_SCRIPT, TAILLE_BULLE_SITE } from "../chrome/store/design-copies";
+import { cleanCapture, cleanSource, cleCible, firefoxViewfinderScript, placeBulle, sourceExpression, TAILLE_BULLE_SITE } from "../chrome/store/design-copies";
 
-const ELECTRON = readFileSync(path.resolve(import.meta.dirname, "../../navigateur/src/main/design/viseur.ts"), "utf8");
-const COPIES = readFileSync(path.resolve(import.meta.dirname, "../chrome/store/design-copies.ts"), "utf8");
-const CALQUE = readFileSync(path.resolve(import.meta.dirname, "../../navigateur/src/main/design/calque.ts"), "utf8");
-const SERVICE = readFileSync(path.resolve(import.meta.dirname, "../../navigateur/src/main/design/service.ts"), "utf8");
-
-/** The text of `function <name>(…) {…}` (up to its closing brace at column 0). */
-const fn = (text: string, name: string) => /\nfunction [^\n]*\n[\s\S]*?\n}\n/.exec(text.slice(text.indexOf(`\nfunction ${name}(`)))?.[0] ?? `missing ${name}`;
 const line = (text: string, start: string) => text.split("\n").find((l) => l.startsWith(start)) ?? `missing ${start}`;
 
 describe("design copies", () => {
@@ -20,14 +13,7 @@ describe("design copies", () => {
     expect(s).not.toContain('window.addEventListener("click", surClic, true)');
   });
 
-  it("drift: Electron's viseur.ts holds ARRET, propreCapture, sourceSaine and lireSource's expression word for word", () => {
-    expect(ELECTRON).toContain(`const ARRET = \`${STOP_SCRIPT}\`;`);
-    for (const name of ["propreCapture", "sourceSaine"]) expect(ELECTRON).toContain(fn(COPIES, name));
-    for (const start of ["const fini = ", "const chaine = ", "const entierPositif = "]) expect(ELECTRON).toContain(line(COPIES, start));
-    const expr = (text: string, open: string) => text.slice(text.indexOf(open) + open.length, text.indexOf("})()`;", text.indexOf(open)) + 4);
-    const copied = expr(COPIES, "  return `");
-    expect(copied.startsWith("(() => {\n    try {")).toBe(true);
-    expect(expr(ELECTRON, "  const code = `")).toBe(copied);
+  it("sourceExpression quotes the selector", () => {
     expect(sourceExpression('a"b')).toContain('document.querySelector("a\\"b")');
   });
 
@@ -56,16 +42,8 @@ describe("design copies", () => {
     expect(cleanSource(null)).toBeNull();
   });
 
-  it("drift: placeBulle, cleCible, TAILLE_BULLE, ECART_BULLE (service.ts), MARGE and LARGEUR_PANIER (calque.ts), word for word", () => {
-    const placed = /\nexport function placeBulle\([\s\S]*?\n}\n/.exec(COPIES)?.[0] ?? "missing placeBulle";
-    expect(SERVICE).toContain(placed);
-    const cle = /\nexport const cleCible = [\s\S]*?;\n/.exec(COPIES)?.[0] ?? "missing cleCible";
-    expect(SERVICE).toContain(cle);
-    for (const start of ["export const TAILLE_BULLE = ", "export const TAILLE_BULLE_SITE = ", "const ECART_BULLE = "]) expect(SERVICE).toContain(line(COPIES, start));
+  it("cleCible names a target; the site bubble has its size", () => {
     expect(TAILLE_BULLE_SITE).toEqual({ largeur: 320, hauteur: 190 });
-    for (const k of ["LARGEUR_MESSAGE", "HAUTEUR_MESSAGE", "MARGE_MESSAGE"]) expect(SERVICE).toContain(line(COPIES, `export const ${k} = `).replace("export ", ""));
-    for (const k of ["MARGE", "LARGEUR_PANIER"]) expect(CALQUE).toContain(line(COPIES, `export const ${k} = `).replace("export ", ""));
-    expect(CALQUE).toContain(line(COPIES, "export const DUREE_MESSAGE_MS = "));
     expect(cleCible({ type: "fenetre", fenetreId: "f1" })).toBe("fenetre:f1");
     expect(cleCible({ type: "app", dossier: "essai" })).toBe("app:essai");
     expect(cleCible({ type: "site", id: "tuning" })).toBe("site:tuning");

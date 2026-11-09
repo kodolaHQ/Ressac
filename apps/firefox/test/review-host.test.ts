@@ -3,10 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { AVERTISSEMENT_CAPTURE_SITE, HTML_MAX, ID_PROJET, INDISPONIBLE_DESIGN, INDISPONIBLE_DESIGN_SITE, Remarques, TRONQUE, type CheminsEspace, type Lot, type ProjetSuivi } from "../../../packages/noyau/src/index";
-import { JETON_RELECTURE, ServiceRelecture } from "../../navigateur/src/main/design/relecture";
 import { PLAGE_HORS_BLOC } from "../../navigateur/src/commun/modele";
-import { TEXTE_REMARQUE_MAX } from "../../navigateur/src/commun/api";
-import { raisonEchec as electronRaison } from "../../navigateur/src/main/design/externes";
 import { COMPARAISON_INCONNUE, ReviewService } from "../noyau/review";
 import * as g from "../shared/design-guards";
 
@@ -21,7 +18,7 @@ const thirty = Array.from({ length: 30 }, (_, i) => `ligne ${i + 1}`);
 /** a.txt of 30 lines, with the numbered lines rewritten. */
 const text = (...changed: number[]) => thirty.map((l, i) => (changed.includes(i + 1) ? `${l} modifiée` : l)).join("\n") + "\n";
 
-describe.each([["electron", ServiceRelecture], ["firefox", ReviewService]] as const)("review service (%s)", (_name, Service) => {
+describe("review service", () => {
   function prepare() {
     const root = realpathSync(mkdtempSync(join(tmpdir(), "webaios-review-")));
     dirs.push(root);
@@ -39,7 +36,7 @@ describe.each([["electron", ServiceRelecture], ["firefox", ReviewService]] as co
       projets: () => [{ id: EXT.slice(4), nom: "Ext", dossier: join(projets, "essai"), ports: [], client: "client-0001", declare: "" }],
       clients: () => [{ id: "client-0001", nom: "Claude", empreinte: "", cree: "" }],
     };
-    const service = new Service({
+    const service = new ReviewService({
       dossiers, chemins: { projets, sites } as CheminsEspace, registre: () => registre as never,
       sites: async () => [{ id: "tuning", nom: "Tuning" }], remarques,
       envoyer: async (projet, lot) => void sent.push({ projet, lot }),
@@ -69,7 +66,7 @@ describe.each([["electron", ServiceRelecture], ["firefox", ReviewService]] as co
     const v1 = ok(await s.service.ouvrir(EXT));
     s.write("trois\n");
     const v2 = ok(await s.service.ouvrir(EXT));
-    expect(v1.jeton).toMatch(JETON_RELECTURE);
+    expect(v1.jeton).toMatch(g.REVIEW_TOKEN);
     expect(v2.jeton).not.toBe(v1.jeton);
     const added = async (j: string) => (await s.service.fichier(EXT, j, "a.txt")).blocs.flatMap((b) => b.lignes.filter((l) => l.marque === "+").map((l) => l.texte));
     expect(await added(v1.jeton)).toEqual(["deux"]);
@@ -293,24 +290,16 @@ describe.each([["electron", ServiceRelecture], ["firefox", ReviewService]] as co
 });
 
 describe("design guards", () => {
-  it("copy Electron's constants and messages", () => {
+  it("fixes the id, token and text bounds and the failure message", () => {
     expect(g.ID_PROJECT.source).toBe(ID_PROJET.source);
-    expect(g.REVIEW_TOKEN.source).toBe(JETON_RELECTURE.source);
-    expect(g.REMARK_TEXT_MAX).toBe(TEXTE_REMARQUE_MAX);
-    expect(g.raisonEchec(new Error("x"))).toBe(electronRaison(new Error("x")));
-    expect(g.raisonEchec("y")).toBe(electronRaison("y"));
-    const ipc = readFileSync(new URL("../../navigateur/src/main/ipc.ts", import.meta.url), "utf8");
-    for (const line of [
-      "const ID_EXTERNE = /^[0-9a-f]{16}$/;",
-      "const ID_CLIENT = /^[0-9a-f-]{8,64}$/;",
-      "const CHEMIN_RELECTURE_MAX = 4096;",
-      "const ID_COMMENTAIRE = /^c-[0-9a-f]{8}$/;",
-      "nom.length > 200",
-    ]) expect(ipc).toContain(line);
+    expect(g.REVIEW_TOKEN.source).toBe("^[0-9a-f]{40}:[0-9a-f]{40}$");
+    expect(g.REMARK_TEXT_MAX).toBe(4000);
+    expect(g.raisonEchec(new Error("x"))).toBe("Le MCP externe n'a pas pu démarrer : x");
+    expect(g.raisonEchec("y")).toBe("Le MCP externe n'a pas pu démarrer : y");
     expect([g.EXTERNAL_ID.source, g.CLIENT_ID.source, g.REVIEW_PATH_MAX, g.COMMENT_ID.source, g.CLIENT_NAME_MAX]).toEqual(["^[0-9a-f]{16}$", "^[0-9a-f-]{8,64}$", 4096, "^c-[0-9a-f]{8}$", 200]);
   });
 
-  it("each check accepts its edge case and refuses its neighbour with Electron's message", () => {
+  it("each check accepts its edge case and refuses its neighbour with its message", () => {
     expect(g.checkProject(EXT)).toBe(EXT);
     expect(() => g.checkProject("ext-xyz")).toThrow("projet invalide");
     expect(() => g.checkProject(3)).toThrow("projet invalide");
@@ -330,16 +319,11 @@ describe("design guards", () => {
     for (const bad of ["a".repeat(201), 5]) expect(() => g.checkClientName(bad)).toThrow("Nom invalide");
   });
 
-  it("copy Electron's design texts and bounds", () => {
+  it("design texts and bounds are noyau's", () => {
     expect(g.UNAVAILABLE_DESIGN).toBe(INDISPONIBLE_DESIGN);
     expect([g.UNAVAILABLE_DESIGN_SITE, g.CAPTURE_WARNING_SITE]).toEqual([INDISPONIBLE_DESIGN_SITE, AVERTISSEMENT_CAPTURE_SITE]);
     expect([g.HTML_MAX, g.TRONQUE]).toEqual([HTML_MAX, TRONQUE]);
-    const ipc = readFileSync(new URL("../../navigateur/src/main/ipc.ts", import.meta.url), "utf8");
-    expect(ipc).toContain(`const invalide = { ok: false as const, erreur: ${JSON.stringify(g.INVALID_REQUEST)} };`);
-    expect(ipc).toContain(`typeof id === "string" && id.length <= ${g.DESIGN_ID_MAX})`);
-    expect(ipc).toContain(`typeof lot === "string" && lot.length <= ${g.DESIGN_ID_MAX})`);
-    const service = readFileSync(new URL("../../navigateur/src/main/design/service.ts", import.meta.url), "utf8");
-    expect(service).toContain(`return { ok: false, erreur: ${JSON.stringify(g.NOTHING_AIMED)} };`);
+    expect([g.INVALID_REQUEST, g.NOTHING_AIMED, g.DESIGN_ID_MAX]).toEqual(["Demande invalide", "Aucun élément visé.", 64]);
   });
 
   it("checkDesignContext: viseur.ts's rules, strict, known keys only", () => {

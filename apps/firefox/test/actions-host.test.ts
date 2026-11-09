@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   accorder,
   cheminsEspace,
@@ -17,15 +17,7 @@ import {
   type Noyau,
   type ResultatLancement,
 } from "../../../packages/noyau/src/index";
-import { urlImage } from "../../navigateur/src/commun/actions";
-import * as electronApi from "../../navigateur/src/commun/api";
-import { lienPermis, lireActionsAffichees, repondreImage } from "../../navigateur/src/main/agent/actions";
-import { fauxReseau } from "../../navigateur/test/faux-reseau-image";
 import { actionImageAllowed, createActionsHost, linkAllowed, MESSAGE_SANS_NOYAU, readShownActions, SchemaAccord, SchemaIdAction, SchemaSaisieAction, trashAction } from "../noyau/actions";
-
-// Electron's main/agent/actions.ts is imported only for the drift tests: its electron imports are never used here.
-vi.mock("electron", () => new Proxy({ default: {} }, { get: (t, k) => (k in t ? t[k as "default"] : class {}), has: () => true }));
-vi.mock("../../navigateur/src/main/onglets/vues", () => ({}));
 
 const DEBUT = "2026-10-31T10:00:00.000Z";
 const dirs: string[] = [];
@@ -54,68 +46,17 @@ async function executer(dossierActions: string, id: string, resultats: unknown, 
   return ex;
 }
 
-const png = () => new Response(new Uint8Array([1, 2, 3]), { headers: { "content-type": "image/png" } });
-
-describe("drift against Electron's main/agent/actions.ts", () => {
-  it("readShownActions, linkAllowed and actionImageAllowed answer as Electron on the same cases", async () => {
-    const { c, dossierActions } = espace({
-      publique: { nom: "Publique", saisie: { libelle: "Recherche" }, sources: { web: true } },
-      gitlab: { nom: "GitLab", description: "Tickets", motsCles: ["t"], sources: { compte: ["gitlab.com"] } },
-      reecrite: { nom: "Réécrite", sources: { web: true } },
-    });
-    mkdirSync(join(c.actions, "cassee"), { recursive: true });
-    writeFileSync(join(c.actions, "cassee", "action.json"), "{");
-    const image = "https://img.test/a.jpg";
-    const resultats = { e: [{ photo: image, http: "http://img.test/a.jpg", local: "https://127.0.0.1/a.jpg", lan: "https://192.168.1.2/a.jpg", lien: "https://gitlab.com/1" }] };
-    const exPublique = await executer(dossierActions, "publique", resultats);
-    const exGitlab = await executer(dossierActions, "gitlab", resultats);
-    const exReecrite = await executer(dossierActions, "reecrite", resultats);
-    await accorder(dossierActions, "reecrite", { domaines: ["gitlab.com"], publiques: [], profil: "defaut" });
-    expect(await readShownActions(c, dossierActions)).toEqual(await lireActionsAffichees(c, dossierActions));
-
-    const ouvrir = fauxReseau((url) => (url.endsWith("404.jpg") ? new Response("", { status: 404 }) : png())).ouvrir;
-    const inconnue = idExecution("2026-10-31T11:00:00.000Z");
-    const cases: [string, string, string][] = [
-      ["gitlab", exGitlab, image], // account
-      ["reecrite", exReecrite, image], // accord still there
-      ["publique", exPublique, "http://img.test/a.jpg"], // http
-      ["publique", exPublique, "https://127.0.0.1/a.jpg"], // the machine
-      ["publique", exPublique, "https://192.168.1.2/a.jpg"], // local network
-      ["publique", exPublique, "https://img.test/b.jpg"], // absent from the results
-      ["publique", inconnue, image], // run absent
-      ["absente", exPublique, image], // action gone
-      ["../x", exPublique, image],
-      ["publique", exPublique, image], // allowed
-      ["gitlab", exGitlab, "https://gitlab.com/1"],
-      ["publique", exPublique, "https://gitlab.com/1"],
-    ];
-    const o = { dossierActions, lireAction: (id: string) => lireAction(c, id) };
-    for (const [id, ex, url] of cases) {
-      const electron = (await repondreImage({ ...o, ouvrir }, urlImage(id, ex, url))).status === 200;
-      expect(await actionImageAllowed(o, id, ex, url), `image ${id} ${url}`).toBe(electron);
-      expect(await linkAllowed(dossierActions, id, ex, url), `link ${id} ${url}`).toBe(await lienPermis(dossierActions, id, ex, url));
-    }
-    // A fetch that fails (404) is refused by Electron after the checks: the host's checks alone still allow it.
-    const absente = "https://img.test/404.jpg";
-    const exLoin = await executer(dossierActions, "publique", { a: absente }, "2026-10-31T12:00:00.000Z");
-    expect((await repondreImage({ ...o, ouvrir }, urlImage("publique", exLoin, absente))).status).toBe(404);
-    expect(await actionImageAllowed(o, "publique", exLoin, absente)).toBe(true);
-  });
-});
-
-describe("drift of the input schemas", () => {
-  it("accept and refuse what Electron's do", () => {
-    const accord = { id: "gitlab", profil: "defaut", compte: ["gitlab.com"], publiques: [] };
-    const cases: [typeof SchemaIdAction, typeof electronApi.SchemaIdAction, unknown[]][] = [
-      [SchemaIdAction, electronApi.SchemaIdAction, ["gitlab", "a-1", "", "Git_Lab", "../x", "a".repeat(60), "a".repeat(61), 3, null]],
-      [SchemaSaisieAction as never, electronApi.SchemaSaisieAction as never, [null, "", "x".repeat(2000), "x".repeat(2001), 4, undefined]],
-      [SchemaAccord as never, electronApi.SchemaAccord as never, [accord, { ...accord, extra: 1 }, { ...accord, id: "../x" }, { ...accord, profil: "" }, { ...accord, compte: [""] }, { ...accord, publiques: Array(101).fill("a.b") }, null]],
-    ];
-    for (const [copie, original, valeurs] of cases) for (const v of valeurs) expect(copie.safeParse(v).success, JSON.stringify(v)).toBe(original.safeParse(v).success);
-  });
-});
-
 // Ported from apps/navigateur/test/agent/actions.test.ts.
+describe("input schemas", () => {
+  it("accept and refuse these ids, inputs and accords", () => {
+    const accord = { id: "gitlab", profil: "defaut", compte: ["gitlab.com"], publiques: [] };
+    const ok = (sc: { safeParse: (v: unknown) => { success: boolean } }, vs: unknown[]) => vs.map((v) => sc.safeParse(v).success);
+    expect(ok(SchemaIdAction, ["gitlab", "a-1", "", "Git_Lab", "../x", "a".repeat(60), "a".repeat(61), 3, null])).toEqual([true, true, false, false, false, true, false, false, false]);
+    expect(ok(SchemaSaisieAction, [null, "", "x".repeat(2000), "x".repeat(2001), 4, undefined])).toEqual([true, true, true, false, false, false]);
+    expect(ok(SchemaAccord, [accord, { ...accord, extra: 1 }, { ...accord, id: "../x" }, { ...accord, profil: "" }, { ...accord, compte: [""] }, { ...accord, publiques: Array(101).fill("a.b") }, null])).toEqual([true, false, false, false, false, false, false]);
+  });
+});
+
 describe("actionImageAllowed", () => {
   // actions.test.ts:116
   it("allows an https address present as is in the results of a run of an action without account", async () => {

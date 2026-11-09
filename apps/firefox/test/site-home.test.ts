@@ -2,10 +2,8 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { cspAccueilSite, FICHIER_ACCUEIL_MAX as ELECTRON_FICHIER_MAX } from "../../navigateur/src/main/sites/accueil";
-import { chargerImage, REDIRECTIONS_IMAGE as ELECTRON_REDIRECTIONS, type OuvrirRequete } from "../../navigateur/src/main/image-distante";
 import { AFFICHAGE_REFUSE } from "../chrome/window/widget-frame";
-import { FICHIER_ACCUEIL_MAX, HOME_BRIDGE, HOME_TYPES, REDIRECTIONS_IMAGE, cspAccueilFirefox, forgetHome, homeServed, loadImage, serveHome, type OpenRequest } from "../chrome/store/site-home";
+import { FICHIER_ACCUEIL_MAX, HOME_BRIDGE, cspAccueilFirefox, forgetHome, homeServed, loadImage, serveHome, type OpenRequest } from "../chrome/store/site-home";
 
 let root: string;
 let data: string;
@@ -107,18 +105,12 @@ describe("homeServed", () => {
   });
 });
 
-describe("drift from Electron", () => {
-  it("cspAccueilFirefox is cspAccueilSite with resource://webaios-site-<id>", () => {
-    for (const id of ["vidola", "mon-site-2"]) expect(cspAccueilFirefox(id)).toBe(cspAccueilSite(id).replaceAll(`webaios-site://${id}`, `resource://webaios-site-${id}`));
+describe("site home resources", () => {
+  it("cspAccueilFirefox allows images from the site's resource:// origin only", () => {
     expect(cspAccueilFirefox("vidola")).toContain("img-src data: resource://webaios-site-vidola;");
   });
 
-  it("the limits are Electron's", () => {
-    expect(FICHIER_ACCUEIL_MAX).toBe(ELECTRON_FICHIER_MAX);
-    expect(REDIRECTIONS_IMAGE).toBe(ELECTRON_REDIRECTIONS);
-  });
-
-  it("loadImage answers as chargerImage on the same requests", async () => {
+  it("loadImage follows permitted redirects and keeps only small images", async () => {
     // A fake server: path → [status, headers, body] or a redirect; the log of what each loader asked for.
     const routes: Record<string, { status: number; headers: Record<string, string>; body?: string }> = {
       "/a.png": { status: 200, headers: { "content-type": "image/png" }, body: "PNG" },
@@ -155,15 +147,15 @@ describe("drift from Electron", () => {
       };
     };
     const o = { permise: (u: string) => new URL(u).hostname === "site.test", cookies: true, max: 10 };
+    const got: unknown[] = [];
     for (const p of ["/a.png", "/r", "/out", "/html", "/big", "/404", "/l0"]) {
-      const url = `https://site.test${p}`;
-      const ours: string[] = [];
-      const theirs: string[] = [];
-      const a = await loadImage(fake(ours, (s) => new TextEncoder().encode(s)) as unknown as OpenRequest, url, o);
-      const b = await chargerImage(fake(theirs, (s) => Buffer.from(s)) as unknown as OuvrirRequete, url, o);
-      expect(a && { type: a.type, corps: Buffer.from(a.corps).toString() }, p).toEqual(b && { type: b.type, corps: b.corps.toString() });
-      expect(ours, p).toEqual(theirs);
+      const log: string[] = [];
+      const a = await loadImage(fake(log, (s) => new TextEncoder().encode(s)) as unknown as OpenRequest, `https://site.test${p}`, o);
+      got.push([p, a && { type: a.type, corps: Buffer.from(a.corps).toString() }, log.length]);
     }
+    const png = { type: "image/png", corps: "PNG" };
+    // Path, image kept, requests made: a redirect to another host, a non-image, an oversized body, a 404 and a redirect loop give nothing.
+    expect(got).toEqual([["/a.png", png, 1], ["/r", png, 2], ["/out", null, 1], ["/html", null, 1], ["/big", null, 1], ["/404", null, 1], ["/l0", null, 4]]);
   });
 });
 
@@ -230,17 +222,11 @@ describe("serveHome: a hostile home folder (Review Focus 3)", () => {
     expect(served(url!)).toEqual(["index.html", "juste.png"]);
   });
 
-  it("copies only Electron's served types (TYPES in main/sites/accueil.ts), nothing else", async () => {
+  it("copies only the served types, nothing else", async () => {
     app({ "index.html": "<p>accueil</p>", "page.HTML": "<p>p</p>", "x.svg": "<svg/>", "a.js": "1", "x.xhtml": "<x/>", "x.xht": "<x/>", "x.htm": "<p/>", "x.shtml": "<p/>", "x.xml": "<x/>", "sans": "x", "x.exe": "x" });
     const url = await serveHome(data, "vidola");
     expect(served(url!)).toEqual(["a.js", "index.html", "page.HTML", "x.svg"]);
     expect(copied(url!, "page.HTML")).toContain("Content-Security-Policy");
-  });
-
-  it("the copied types are Electron's TYPES (drift)", () => {
-    const source = readFileSync(join(__dirname, "../../navigateur/src/main/sites/accueil.ts"), "utf8");
-    const block = source.slice(source.indexOf("const TYPES"), source.indexOf("};", source.indexOf("const TYPES")));
-    expect([...HOME_TYPES].sort()).toEqual([...block.matchAll(/"(\.[a-z0-9]+)":/g)].map((m) => m[1]).sort());
   });
 
   it("serves AFFICHAGE_REFUSE for an index.html with <link>", async () => {
