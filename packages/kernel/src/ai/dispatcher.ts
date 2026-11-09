@@ -1,4 +1,4 @@
-import type { IaLocale } from "./ia-locale.js";
+import type { LocalAi } from "./ia-locale.js";
 
 /** Local AI calls in flight at the same time, all runs together. */
 export const AI_SIMULTANEOUS = 4;
@@ -7,13 +7,13 @@ export const AI_ABANDONED = "Appel à l'IA abandonné : l'exécution est termin�
 /** Gemma called with `json: true` answered with a text that is not JSON (the layout then retries once). */
 export const GEMMA_JSON_INVALID = "Gemma n'a pas rendu du JSON valide";
 
-type AiAccess = Pick<IaLocale, "kev" | "gemma">;
+type AiAccess = Pick<LocalAi, "kev" | "gemma">;
 /** `auDemarrage`: called when the call really goes to the AI. `signal` raised in the queue: denied without leaving; in flight: forwarded. */
 export type AiCallOptions = { auDemarrage?: () => void; signal?: AbortSignal };
 /** A run's view; `oublier` (at its end) denies its calls still queued and those that would come after. */
 export type AiAccessRun = {
-  kev(corps: Parameters<IaLocale["kev"]>[0], o?: AiCallOptions): ReturnType<IaLocale["kev"]>;
-  gemma(g: Parameters<IaLocale["gemma"]>[0], o?: AiCallOptions): ReturnType<IaLocale["gemma"]>;
+  kev(body: Parameters<LocalAi["kev"]>[0], o?: AiCallOptions): ReturnType<LocalAi["kev"]>;
+  gemma(g: Parameters<LocalAi["gemma"]>[0], o?: AiCallOptions): ReturnType<LocalAi["gemma"]>;
   oublier(): void;
 };
 export type AiDispatcher = { pour(key: string, o?: { prioritaire?: boolean }): AiAccessRun };
@@ -35,32 +35,32 @@ type File = { prioritaire: boolean; appels: Call[] };
  * turn among themselves; a call in flight is never interrupted. At most `simultanes` calls in flight; an error blocks
  * neither its queue nor the others.
  */
-export function createAiDispatcher(ia: AiAccess, o: { simultanes?: number } = {}): AiDispatcher {
+export function createAiDispatcher(ai: AiAccess, o: { simultanes?: number } = {}): AiDispatcher {
   const concurrent = o.simultanes ?? AI_SIMULTANEOUS;
   /** Pending calls, per run; a key with no pending call is no longer there. */
   const files = new Map<string, File>();
   /** The keys that wait, in the order they will be served: priority ones first. */
-  const tours = { prioritaire: [] as string[], normal: [] as string[] };
-  const tourDe = (f: File) => (f.prioritaire ? tours.prioritaire : tours.normal);
-  let enVol = 0;
+  const turns = { prioritaire: [] as string[], normal: [] as string[] };
+  const turnOf = (f: File) => (f.prioritaire ? turns.prioritaire : turns.normal);
+  let inFlight = 0;
 
   const removeKey = (key: string, file: File) => {
     files.delete(key);
-    const tour = tourDe(file);
-    const i = tour.indexOf(key);
-    if (i >= 0) tour.splice(i, 1);
+    const turn = turnOf(file);
+    const i = turn.indexOf(key);
+    if (i >= 0) turn.splice(i, 1);
   };
 
   const serve = () => {
-    while (enVol < concurrent && (tours.prioritaire.length || tours.normal.length)) {
-      const tour = tours.prioritaire.length ? tours.prioritaire : tours.normal;
-      const key = tour.shift()!;
+    while (inFlight < concurrent && (turns.prioritaire.length || turns.normal.length)) {
+      const turn = turns.prioritaire.length ? turns.prioritaire : turns.normal;
+      const key = turn.shift()!;
       const file = files.get(key)!;
       const call = file.appels.shift()!;
-      if (file.appels.length) tour.push(key);
+      if (file.appels.length) turn.push(key);
       else files.delete(key);
       call.detacher();
-      enVol++;
+      inFlight++;
       // `then` also catches an error thrown right away by the call.
       Promise.resolve()
         .then(() => {
@@ -73,13 +73,13 @@ export function createAiDispatcher(ia: AiAccess, o: { simultanes?: number } = {}
         })
         .then(call.ok, call.ko)
         .finally(() => {
-          enVol--;
+          inFlight--;
           serve();
         });
     }
   };
 
-  const put = <T>(key: string, priority: boolean, lancer: () => Promise<T>, oa: AiCallOptions): Promise<T> =>
+  const put = <T>(key: string, priority: boolean, launch: () => Promise<T>, oa: AiCallOptions): Promise<T> =>
     new Promise<T>((ok, ko) => {
       const signal = oa.signal;
       if (signal?.aborted) return ko(new Error(AI_ABANDONED));
@@ -87,9 +87,9 @@ export function createAiDispatcher(ia: AiAccess, o: { simultanes?: number } = {}
       if (!file) {
         file = { prioritaire: priority, appels: [] };
         files.set(key, file);
-        tourDe(file).push(key);
+        turnOf(file).push(key);
       }
-      const call: Call = { lancer, ok: ok as (v: unknown) => void, ko, auDemarrage: oa.auDemarrage, detacher: () => {} };
+      const call: Call = { lancer: launch, ok: ok as (v: unknown) => void, ko, auDemarrage: oa.auDemarrage, detacher: () => {} };
       if (signal) {
         const abandon = () => {
           const f = files.get(key);
@@ -111,11 +111,11 @@ export function createAiDispatcher(ia: AiAccess, o: { simultanes?: number } = {}
     pour: (key, op = {}) => {
       const priority = op.prioritaire ?? false;
       let forgotten = false;
-      const invoke = <T>(lancer: () => Promise<T>, oa: AiCallOptions = {}): Promise<T> =>
-        forgotten ? Promise.reject(new Error(AI_ABANDONED)) : put(key, priority, lancer, oa);
+      const invoke = <T>(launch: () => Promise<T>, oa: AiCallOptions = {}): Promise<T> =>
+        forgotten ? Promise.reject(new Error(AI_ABANDONED)) : put(key, priority, launch, oa);
       return {
-        kev: (corps, oa) => invoke(() => ia.kev(corps, oa?.signal ? { signal: oa.signal } : undefined), oa),
-        gemma: (g, oa) => invoke(() => ia.gemma(oa?.signal ? { ...g, signal: g.signal ? AbortSignal.any([g.signal, oa.signal]) : oa.signal } : g), oa),
+        kev: (body, oa) => invoke(() => ai.kev(body, oa?.signal ? { signal: oa.signal } : undefined), oa),
+        gemma: (g, oa) => invoke(() => ai.gemma(oa?.signal ? { ...g, signal: g.signal ? AbortSignal.any([g.signal, oa.signal]) : oa.signal } : g), oa),
         oublier: () => {
           forgotten = true;
           const file = files.get(key);

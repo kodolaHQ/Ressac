@@ -22,16 +22,16 @@ export function mountSiteBanner(win: Window, store: WebAiOsStore, windowId: Wind
   banner.setAttribute("aria-label", "Demande d'autorisation");
   banner.hidden = true;
   const text = el("span");
-  const refuse = el("button");
-  refuse.textContent = "Refuser";
+  const deny = el("button");
+  deny.textContent = "Refuser";
   const allow = el("button");
   allow.textContent = "Autoriser";
   allow.className = "autoriser";
-  banner.append(text, refuse, allow);
+  banner.append(text, deny, allow);
   doc.getElementById("browser")!.append(banner);
 
   let shown: PendingRequest | undefined;
-  refuse.addEventListener("click", () => shown && store.questions.answer(shown.id, "refuser"));
+  deny.addEventListener("click", () => shown && store.questions.answer(shown.id, "refuser"));
   allow.addEventListener("click", () => shown && store.questions.answer(shown.id, "autoriser"));
   const render = () => {
     const f = store.state.fenetres.find((x) => x.id === windowId);

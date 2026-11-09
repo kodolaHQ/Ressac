@@ -6,7 +6,7 @@
    * comes from a page or the agent's code: shown as text, never as HTML.
    */
   let {
-    bloc,
+    bloc: block,
     choisie: chosen,
     execution,
     introuvable: notFound,
@@ -21,7 +21,7 @@
     repris: "repris",
   };
 
-  const trace = $derived(execution?.id === chosen?.id ? execution?.blocs.find((b) => b.id === bloc) : undefined);
+  const trace = $derived(execution?.id === chosen?.id ? execution?.blocs.find((b) => b.id === block) : undefined);
   /**
    * The output is only formatted once the fold is open (it can weigh 256 KB): the open fold, per run and per block.
    * Another run recreates a closed fold, without JSON; the same run re-read (finished meanwhile) keeps it.
@@ -31,9 +31,9 @@
   const opened = $derived(key !== null && openedOn === key);
   const json = $derived(opened && trace && trace.sortie !== undefined ? JSON.stringify(trace.sortie, null, 2) : "");
 
-  function duration(debut: string | null, fin: string | null): string | null {
-    if (!debut || !fin) return null;
-    const ms = Date.parse(fin) - Date.parse(debut);
+  function duration(start: string | null, end: string | null): string | null {
+    if (!start || !end) return null;
+    const ms = Date.parse(end) - Date.parse(start);
     if (!Number.isFinite(ms) || ms < 0) return null;
     return ms < 1000 ? `${ms} ms` : `${(ms / 1000).toLocaleString("fr-FR", { maximumFractionDigits: 1 })} s`;
   }

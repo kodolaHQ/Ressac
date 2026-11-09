@@ -19,7 +19,7 @@
   } from "./command";
   import { walkableTabs } from "../../shared/walkable-tabs";
   import type { ActionShown } from "../../shared/actions";
-  import type { Visite } from "../../shared/model";
+  import type { Visit } from "../../shared/model";
   import SiteIcon from "./SiteIcon.svelte";
   import Icon, { type IconName } from "./Icon.svelte";
 
@@ -30,7 +30,7 @@
   let {
     fenetre: win,
     ongletActif: activeTab,
-    cede,
+    cede: yields,
     fermerPanneau: closePanel,
   }: {
     fenetre: WindowState;
@@ -46,20 +46,20 @@
   let actions = $state.raw<ActionShown[]>([]);
   let projects = $state.raw<SiteApp[]>([]);
   let sites = $state.raw<SiteApp[]>([]);
-  let hist = $state.raw<Visite[]>([]);
+  let hist = $state.raw<Visit[]>([]);
 
   /** Re-reads a source at startup and on each of its changes; only the last reply counts. */
-  function follow<T>(lire: () => Promise<T>, poser: (v: T) => void, surChange: (rappel: () => void) => () => void): () => void {
+  function follow<T>(read: () => Promise<T>, ask: (v: T) => void, onChange: (callback: () => void) => () => void): () => void {
     let last = 0;
-    const charger = () => {
+    const load = () => {
       const n = ++last;
-      lire().then(
-        (v) => n === last && poser(v),
+      read().then(
+        (v) => n === last && ask(v),
         () => {},
       );
     };
-    charger();
-    return surChange(charger);
+    load();
+    return onChange(load);
   }
 
   $effect(() => {
@@ -103,7 +103,7 @@
   });
 
   let rawChosen = $state(0);
-  let champ: HTMLInputElement | undefined = $state();
+  let field: HTMLInputElement | undefined = $state();
 
   /** A chosen action awaiting its input: the bar asks for it in a second field, the list hides. */
   let param = $state<{ id: string; nom: string; libelle: string } | null>(null);
@@ -118,7 +118,7 @@
 
   // An action launched: a second Enter does not relaunch it, and its reply arriving after a close or another
   // opening (each is a new object) is ignored.
-  let actionEnCours = false;
+  let runningAction = false;
   /** Changes on each launch and each list ↔ input switch: the reply of an abandoned launch is ignored. */
   let launch = 0;
 
@@ -126,19 +126,19 @@
   $effect(() => {
     const o = command.ouverte;
     if (!o) return;
-    actionEnCours = false;
+    runningAction = false;
     param = null;
     text = o.texte;
     rawChosen = 0;
     denial = "";
     void tick().then(() => {
-      champ?.focus();
-      if (o.mode === "actif") champ?.select();
+      field?.focus();
+      if (o.mode === "actif") field?.select();
     });
   });
 
   /** The only function that acts: a chosen row (Enter or click). */
-  function executer(l: CommandLine) {
+  function run(l: CommandLine) {
     const target = mode === "actif" ? (activeTab?.id ?? null) : null;
     if (l.type === "defaut" && l.texte === "") {
       // Home: no effect if it is already shown; an interface panel laid over it closes.
@@ -151,37 +151,37 @@
     }
     if (l.type === "action") {
       if (paramRequest(l)) enterParam(l);
-      else lancerAction(l.id, l.saisie);
+      else launchAction(l.id, l.saisie);
       return;
     }
     if (l.type === "defaut") api.naviguer(target, l.texte);
     else if (l.type === "historique") api.naviguer(target, l.url);
     else if (l.type === "onglet") {
       // Like the sidebar and ⌃Tab: an essential opens through its favorite (its tab may belong to a sibling space).
-      const lien = appState.valeur?.onglets[l.onglet.id]?.lien;
-      api.agir(lien?.type === "essentiel" ? { type: "ouvrirFavori", fenetreId: win.id, genre: "essentiel", id: lien.id } : { type: "activerOnglet", id: l.onglet.id });
+      const link = appState.valeur?.onglets[l.onglet.id]?.lien;
+      api.agir(link?.type === "essentiel" ? { type: "ouvrirFavori", fenetreId: win.id, genre: "essentiel", id: link.id } : { type: "activerOnglet", id: l.onglet.id });
     } else if (l.appli.genre === "projet") api.applications.agir(l.appli.id, l.appli.action);
     else api.sites.agir(l.appli.id, "ouvrir");
     closeCommand(true);
   }
 
   /** Opens the action's page and launches it with `saisie` (without a required input and absent: the page asks for it). */
-  function lancerAction(id: string, input: string | null) {
-    if (actionEnCours) return;
+  function launchAction(id: string, input: string | null) {
+    if (runningAction) return;
     const o = command.ouverte;
     const n = ++launch;
-    actionEnCours = true;
+    runningAction = true;
     denial = "";
     void api.actions.ouvrir(id, input).then(
       (r) => {
         if (o !== command.ouverte || n !== launch) return;
-        actionEnCours = false;
+        runningAction = false;
         if (r.ok) closeCommand();
         else denial = r.erreur;
       },
       () => {
         if (o !== command.ouverte || n !== launch) return;
-        actionEnCours = false;
+        runningAction = false;
         denial = "Le service des actions ne répond pas";
       },
     );
@@ -190,7 +190,7 @@
   /** Switches to the action's input, prefilled with the shown page's address, all selected. */
   function enterParam(l: Extract<CommandLine, { type: "action" }> & { parametre: string }) {
     launch++;
-    actionEnCours = false;
+    runningAction = false;
     param = { id: l.id, nom: l.nom, libelle: l.parametre };
     paramValue = paramDefault;
     denial = "";
@@ -217,16 +217,16 @@
   /** Goes back to the list, the typed text intact. */
   function exitParam() {
     launch++;
-    actionEnCours = false;
+    runningAction = false;
     param = null;
     denial = "";
-    void tick().then(() => champ?.focus());
+    void tick().then(() => field?.focus());
   }
 
   function paramKey(e: KeyboardEvent) {
     if (e.isComposing || !param) return;
     if (e.key === "Enter") {
-      if (!e.repeat) lancerAction(param.id, paramValue.trim() || null);
+      if (!e.repeat) launchAction(param.id, paramValue.trim() || null);
     } else if (e.key === "Backspace" && paramValue === "") {
       // A held key clears the field without going back to the list (nor clearing the typed text afterwards).
       if (!e.repeat) exitParam();
@@ -247,7 +247,7 @@
     else if (e.key === "ArrowUp") choose((chosen - 1 + lignes.length) % Math.max(lignes.length, 1));
     else if (e.key === "Enter") {
       const l = lignes[chosen];
-      if (l && !e.repeat) executer(l);
+      if (l && !e.repeat) run(l);
     } else if (e.key === "Tab") {
       // Tab on an action awaiting its input: it is given right away, like Enter.
       const l = lignes[chosen];
@@ -260,11 +260,11 @@
   const label = (l: CommandLine): string =>
     l.type === "defaut" ? l.libelle : l.type === "action" ? l.nom : l.type === "onglet" ? l.onglet.titre : l.type === "appli" ? l.appli.nom : l.titre || l.url;
   // History keeps no favicon: the site's, at the usual address (except in a private visit, nothing leaves).
-  const faviconVisite = (url: string): string | null =>
+  const visitFavicon = (url: string): string | null =>
     /^https?:\/\//i.test(url) && hist.some((v) => v.url === url && !v.prive) ? `${new URL(url).origin}/favicon.ico` : null;
   const favicon = (l: CommandLine): string | null =>
-    l.type === "onglet" ? l.onglet.favicon : l.type === "appli" ? l.appli.favicon : l.type === "historique" ? faviconVisite(l.url) : null;
-  const etiquette = (l: CommandLine): string =>
+    l.type === "onglet" ? l.onglet.favicon : l.type === "appli" ? l.appli.favicon : l.type === "historique" ? visitFavicon(l.url) : null;
+  const badgeText = (l: CommandLine): string =>
     l.type === "action" ? "Action" : l.type === "onglet" ? "Onglet" : l.type === "appli" ? "Appli" : l.type === "historique" ? "Historique" : "";
   const detail = (l: CommandLine): string =>
     l.type === "onglet"
@@ -296,7 +296,7 @@
 <svelte:window
   onblur={() => closeCommand()}
   onkeydowncapture={(e) => {
-    if (e.key !== "Escape" || cede) return;
+    if (e.key !== "Escape" || yields) return;
     e.preventDefault();
     e.stopImmediatePropagation();
     // In an action's input, Escape first goes back to the list.
@@ -331,7 +331,7 @@
       {#if denial}<p class="refus" data-testid="refus-commande">{denial}</p>{/if}
     {:else}
     <input
-      bind:this={champ}
+      bind:this={field}
       bind:value={text}
       oninput={() => (choose(0), (denial = ""))}
       onkeydown={key}
@@ -343,16 +343,16 @@
     {#if denial}<p class="refus" data-testid="refus-commande">{denial}</p>{/if}
     <ul role="listbox">
       {#each lignes as l, i (i)}
-        {@const titre = titleBefore(lignes, i)}
-        {#if titre}<li role="presentation" class="section" data-testid="section-commande">{titre}</li>{/if}
+        {@const title = titleBefore(lignes, i)}
+        {#if title}<li role="presentation" class="section" data-testid="section-commande">{title}</li>{/if}
         <li role="option" aria-selected={i === chosen} data-testid="ligne-commande" data-type={l.type}>
-          <button type="button" tabindex="-1" class:choisie={i === chosen} onmousemove={() => choose(i)} onclick={() => executer(l)}>
+          <button type="button" tabindex="-1" class:choisie={i === chosen} onmousemove={() => choose(i)} onclick={() => run(l)}>
             <span class="pictogramme" data-type={l.type}>
               {#if favicon(l)}<SiteIcon favicon={favicon(l)} titre={label(l)} />{:else}<Icon nom={pictogram(l)} taille={14} />{/if}
             </span>
             <span class="libelle">{label(l)}</span>
             {#if detail(l)}<span class="detail">{detail(l)}</span>{/if}
-            {#if etiquette(l)}<span class="etiquette">{etiquette(l)}</span>{/if}
+            {#if badgeText(l)}<span class="etiquette">{badgeText(l)}</span>{/if}
           </button>
         </li>
       {/each}

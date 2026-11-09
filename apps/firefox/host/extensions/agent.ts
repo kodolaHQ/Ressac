@@ -5,7 +5,7 @@ import {
   parseManifest,
   applyPrivateProfiles,
   extensionKey,
-  couperTout,
+  cutAll,
   REQUEST_REMOVED,
   disable,
   disableEverywhere,
@@ -16,36 +16,36 @@ import {
   changeExtensionsState,
   widenedScope,
   prepareCopy,
-  retirer,
+  remove,
   type ManifestAnalysis,
-  type ConsolePourAgent,
-  type EntreeExtension,
+  type AgentConsole,
+  type ExtensionEntry,
   type ExtensionsState,
-  type ExtensionPourAgent,
+  type AgentExtension,
   type MessageConsole,
   type ExtensionsTools,
   type Scope,
   type ExtensionConsoleResult,
   type ExtensionRequestResult,
 } from "../../../../packages/kernel/src/index.ts";
-import type { CarteExtension, LigneExtension, SpaceExtensionLine, GrantResponse } from "../../shared/extensions.ts";
+import type { ExtensionCard, ExtensionLine, SpaceExtensionLine, GrantResponse } from "../../shared/extensions.ts";
 import type { ExtensionResult } from "../../shared/api.ts";
 import { DISABLED_CRASHES, DISABLED_SCOPE, UNLOCK_REASON_LENGTH } from "../../shared/extensions-messages.ts";
-import type { Space, Issue } from "../../shared/model.ts";
+import type { Space, Outcome } from "../../shared/model.ts";
 import { ConsolesExtensions, type AgentFilter } from "../../core/extensions/consoles.ts";
 import type { Rpc } from "../../shared/rpc.ts";
-import { AMO_URL, KEYS_ABSENT, SignatureError, readAmoKey, signatureImpossible, signer } from "./amo.ts";
-import { carteDe, unsupported } from "./carte.ts";
-import { addonIdDe, firefoxManifest, nextVersion, firefoxDenial, ID_SUFFIX, zipper } from "./firefox-copy.ts";
+import { AMO_URL, KEYS_ABSENT, SignatureError, readAmoKey, signatureImpossible, sign } from "./amo.ts";
+import { cardOf, unsupported } from "./carte.ts";
+import { addonIdOf, firefoxManifest, nextVersion, firefoxDenial, ID_SUFFIX, zipper } from "./firefox-copy.ts";
 
-export const DOSSIER_ABSENT = "Dossier absent";
+export const FOLDER_ABSENT = "Dossier absent";
 export const ACTIVATION_DENIED = "Activation refusée";
 export const ACTIVATION_REMOVED = REQUEST_REMOVED;
 export const ALL_CUT_AGENT = "Les extensions sont toutes désactivées : rien n'est activé";
 const REMOVED_DURING_CARD = "Extension retirée pendant la carte : rien n'est activé";
 const SPACE_GONE = "Espace disparu pendant la carte : rien n'est activé";
-export const dossierAbsent = (id: string) => `${DOSSIER_ABSENT} : ~/WebAiOs/extensions/${id} n'existe plus (recrée-le, puis recharger_extension)`;
-export const SANS_ACCORD = "Extension sans accord : demande d'abord son activation";
+export const folderAbsent = (id: string) => `${FOLDER_ABSENT} : ~/WebAiOs/extensions/${id} n'existe plus (recrée-le, puis recharger_extension)`;
+export const NO_GRANT = "Extension sans accord : demande d'abord son activation";
 /** Firefox refused the signed .xpi. */
 export const installationImpossible = (m: string) => "Installation impossible : " + m.slice(0, 2000);
 
@@ -80,18 +80,18 @@ interface Marker {
 }
 
 /** Every element from the agent's extensions folder to `<id>` is a real directory (lstat), never a symbolic link. */
-async function pathMarkers(dossierAgent: string, id: string): Promise<Marker[] | string> {
+async function pathMarkers(agentFolder: string, id: string): Promise<Marker[] | string> {
   const markers: Marker[] = [];
-  for (const path of [dossierAgent, join(dossierAgent, id)]) {
+  for (const path of [agentFolder, join(agentFolder, id)]) {
     let info;
     try {
       info = await lstat(path);
     } catch (e) {
-      if ((e as NodeJS.ErrnoException).code === "ENOENT" || (e as NodeJS.ErrnoException).code === "ENOTDIR") return DOSSIER_ABSENT;
+      if ((e as NodeJS.ErrnoException).code === "ENOENT" || (e as NodeJS.ErrnoException).code === "ENOTDIR") return FOLDER_ABSENT;
       return `Dossier illisible : ${(e as Error).message}`;
     }
     if (info.isSymbolicLink()) return `Lien symbolique refusé : ${path}`;
-    if (!info.isDirectory()) return path === dossierAgent ? DOSSIER_ABSENT : `Pas un dossier : ${path}`;
+    if (!info.isDirectory()) return path === agentFolder ? FOLDER_ABSENT : `Pas un dossier : ${path}`;
     markers.push({ chemin: path, dev: info.dev, ino: info.ino });
   }
   return markers;
@@ -118,20 +118,20 @@ function unlockDenial(e: ExtensionsState, privates: ReadonlySet<string>, key: st
 }
 
 /** True if `cle` is no longer what the card showed: a new copy, or active in another profile (the add-on id never changes here). */
-function lienRompu(e: ExtensionsState, key: string, lien: UnlockLink): boolean {
+function brokenLink(e: ExtensionsState, key: string, link: UnlockLink): boolean {
   const x = e.extensions[key];
-  return !x || x.modifieeLe !== lien.marque || x.profils.some((p) => !lien.profils.includes(p));
+  return !x || x.modifieeLe !== link.marque || x.profils.some((p) => !link.profils.includes(p));
 }
 
 /** Decision 4: installed but disabled unless granted, active in a profile, not disabled, and not everything cut. */
-const activeIn = (e: ExtensionsState, x: EntreeExtension | undefined) => !!x?.accord && x.profils.length > 0 && !x.desactivee && !e.toutesCoupees;
+const activeIn = (e: ExtensionsState, x: ExtensionEntry | undefined) => !!x?.accord && x.profils.length > 0 && !x.desactivee && !e.toutesCoupees;
 
 /** What the chrome's guard checkpoints read (`extensions.portees`): each granted agent extension by its add-on id. */
 export type Scopes = Record<string, { cle: string; accord: Scope; profils: string[]; actif: boolean }>;
 export function scopesOf(e: ExtensionsState): Scopes {
   const r: Scopes = {};
   for (const [key, x] of Object.entries(e.extensions))
-    if (x.source === "agent" && x.accord) r[addonIdDe(key.slice("agent:".length))] = { cle: key, accord: x.accord, profils: x.profils, actif: activeIn(e, x) };
+    if (x.source === "agent" && x.accord) r[addonIdOf(key.slice("agent:".length))] = { cle: key, accord: x.accord, profils: x.profils, actif: activeIn(e, x) };
   return r;
 }
 
@@ -154,7 +154,7 @@ export class ExtensionsAgent {
   /** The last refused startup or reload of each key, shown until one passes. */
   private readonly erreursEnvoi = new Map<string, string>();
   /** Unlock cards shown, by key: one at a time, taken down if the extension leaves the registry or changes. */
-  private readonly cartesDeblocage = new Map<string, { reponse: Promise<Issue>; retrait: AbortController; lien: UnlockLink; attentes: number }>();
+  private readonly cartesDeblocage = new Map<string, { reponse: Promise<Outcome>; retrait: AbortController; lien: UnlockLink; attentes: number }>();
   /** Keys whose source changed while closed and that ran nowhere at startup: signed when next activated (appliquer). */
   private readonly aSigner = new Set<string>();
 
@@ -166,12 +166,12 @@ export class ExtensionsAgent {
   async demarrer(): Promise<void> {
     // First: the chrome's checkpoints wait for it (an add-on kept by Firefox starts before this host).
     this.o.rpc.notify("extensions.portees", scopesOf(await readExtensionsState(this.o.dossier)));
-    for (const [sous, rest] of [
+    for (const [sub, rest] of [
       ["copies", /\.(tmp|ancienne|attente)$/],
       ["signes", /\.(attente|envoi)\.xpi$/],
     ] as const) {
-      const names = await readdir(join(this.o.dossier, sous)).catch(() => [] as string[]);
-      for (const name of names) if (rest.test(name)) await rm(join(this.o.dossier, sous, name), { recursive: true, force: true }).catch(() => undefined);
+      const names = await readdir(join(this.o.dossier, sub)).catch(() => [] as string[]);
+      for (const name of names) if (rest.test(name)) await rm(join(this.o.dossier, sub, name), { recursive: true, force: true }).catch(() => undefined);
     }
     const state = await readExtensionsState(this.o.dossier);
     await Promise.all(
@@ -233,11 +233,11 @@ export class ExtensionsAgent {
   }
 
   /** A crash the chrome saw (`extensions.plantage`, or queued in `extensions.pret`; spike S7): the `PLANTAGES_MAX`-th in `FENETRE_PLANTAGES_MS` disables it everywhere. */
-  plantage(addonId: unknown, le?: unknown): void {
+  plantage(addonId: unknown, at?: unknown): void {
     if (typeof addonId !== "string" || !addonId.endsWith(ID_SUFFIX) || !this.cle(addonId.slice(0, -ID_SUFFIX.length))) return;
     // When the chrome saw it (a crash queued while no host ran), never later than now.
     const now = Date.now();
-    this.consoles.plantage(addonId, typeof le === "number" && le <= now ? le : now);
+    this.consoles.plantage(addonId, typeof at === "number" && at <= now ? at : now);
   }
 
   /** Disabled everywhere after crashes (`DESACTIVEE_PLANTAGES`), shown on the page with « Réactiver ». */
@@ -252,14 +252,14 @@ export class ExtensionsAgent {
   }
 
   /** `console_extension`: filtered (unlocked: whole); null if not in the registry. */
-  private async consolePourAgent(id: string, from?: number): Promise<ConsolePourAgent | null> {
+  private async consolePourAgent(id: string, from?: number): Promise<AgentConsole | null> {
     const key = this.cleAgent(id);
     const state = await readExtensionsState(this.o.dossier);
     const x = key ? state.extensions[key] : undefined;
     if (!key || !x) return null;
     const privates = privateProfilesOf(await this.navigateur());
     if (x.profils.some((p) => privates.has(p))) throw new Error(CONSOLE_PRIVATE_PROFILE);
-    return this.consoles.pourAgent(addonIdDe(this.id(key)!), this.filtreAgent(state, key, from));
+    return this.consoles.pourAgent(addonIdOf(this.id(key)!), this.filtreAgent(state, key, from));
   }
 
   /** The console filter: unlocked; ran in an unreadable tab (entry flag, or its add-on id kept after a removal); observing right. */
@@ -269,7 +269,7 @@ export class ExtensionsAgent {
     return {
       ...(from !== undefined ? { depuis: from } : {}),
       debloquee: this.deblocages.has(key),
-      tourneIllisible: (x?.consoleMasquee?.length ?? 0) > 0 || !!state.consolesMasquees?.includes(addonIdDe(this.id(key)!)),
+      tourneIllisible: (x?.consoleMasquee?.length ?? 0) > 0 || !!state.consolesMasquees?.includes(addonIdOf(this.id(key)!)),
       observateur: !a || a.tousLesSites || a.scriptsTousLesSites || a.hotes.length > 0 || a.permissions.some((p) => OBSERVER_RIGHTS.includes(p)),
     };
   }
@@ -282,42 +282,42 @@ export class ExtensionsAgent {
   private async debloquerConsole(id: string, reason: string, x: { fenetre: string | null; agent: string; signal?: AbortSignal }): Promise<ExtensionConsoleResult> {
     const key = this.cleAgent(id);
     const state = await readExtensionsState(this.o.dossier);
-    const entree = key ? state.extensions[key] : undefined;
-    if (!key || !entree) return { ok: false, erreur: `Extension inconnue : ${id}` };
+    const entry = key ? state.extensions[key] : undefined;
+    if (!key || !entry) return { ok: false, erreur: `Extension inconnue : ${id}` };
     const nav = await this.navigateur();
     const denial = unlockDenial(state, privateProfilesOf(nav), key);
     if (denial) return { ok: false, erreur: denial };
     if (this.deblocages.has(key)) return { ok: true };
-    let carte = this.cartesDeblocage.get(key);
-    if (!carte) {
+    let card = this.cartesDeblocage.get(key);
+    if (!card) {
       const removal = new AbortController();
-      const lien = { profils: [...entree.profils], marque: entree.modifieeLe };
+      const link = { profils: [...entry.profils], marque: entry.modifieeLe };
       const request = {
-        nom: entree.nom,
-        espaces: nav.espaces.filter((e) => lien.profils.includes(e.profil) && !e.prive).map((e) => e.nom),
+        nom: entry.nom,
+        espaces: nav.espaces.filter((e) => link.profils.includes(e.profil) && !e.prive).map((e) => e.nom),
         raison: reason.slice(0, UNLOCK_REASON_LENGTH),
         agent: x.agent,
         fenetre: x.fenetre,
       };
       const fresh = {
         retrait: removal,
-        lien,
+        lien: link,
         attentes: 0,
         reponse: this.o.rpc
-          .request<Issue>("extensions.deblocage", request, AbortSignal.any([removal.signal, this.arret.signal]))
-          .catch((): Issue => "retiree")
+          .request<Outcome>("extensions.deblocage", request, AbortSignal.any([removal.signal, this.arret.signal]))
+          .catch((): Outcome => "retiree")
           .finally(() => {
             if (this.cartesDeblocage.get(key) === fresh) this.cartesDeblocage.delete(key);
           }),
       };
       this.cartesDeblocage.set(key, fresh);
-      carte = fresh;
+      card = fresh;
     }
-    const opened = carte;
+    const opened = card;
     opened.attentes++;
     // This call dropped (new conversation) takes the card down only if it is the last one waiting for it.
     let giveUp: () => void = () => {};
-    const abandon = new Promise<Issue>((ok) => (giveUp = () => ok("retiree")));
+    const abandon = new Promise<Outcome>((ok) => (giveUp = () => ok("retiree")));
     let gone = false;
     const from = () => {
       if (gone) return;
@@ -327,9 +327,9 @@ export class ExtensionsAgent {
     };
     if (x.signal?.aborted) from();
     x.signal?.addEventListener("abort", from, { once: true });
-    let issue: Issue;
+    let outcome: Outcome;
     try {
-      issue = await Promise.race([opened.reponse, abandon]);
+      outcome = await Promise.race([opened.reponse, abandon]);
     } finally {
       x.signal?.removeEventListener("abort", from);
       if (!gone) {
@@ -337,11 +337,11 @@ export class ExtensionsAgent {
         opened.attentes--;
       }
     }
-    if (issue === "retiree") return { ok: false, erreur: REQUEST_REMOVED, retiree: true };
-    if (issue !== "autoriser") return { ok: false, erreur: UNLOCK_DENIED, refusee: true };
+    if (outcome === "retiree") return { ok: false, erreur: REQUEST_REMOVED, retiree: true };
+    if (outcome !== "autoriser") return { ok: false, erreur: UNLOCK_DENIED, refusee: true };
     // The state may have changed during the card: checked again on « yes », against what the card showed.
     const after = await readExtensionsState(this.o.dossier);
-    if (unlockDenial(after, privateProfilesOf(await this.navigateur()), key) || lienRompu(after, key, opened.lien)) return { ok: false, erreur: UNLOCK_CHANGED };
+    if (unlockDenial(after, privateProfilesOf(await this.navigateur()), key) || brokenLink(after, key, opened.lien)) return { ok: false, erreur: UNLOCK_CHANGED };
     this.deblocages.set(key, opened.lien);
     this.o.rpc.notify("extensions.change");
     return { ok: true };
@@ -355,8 +355,8 @@ export class ExtensionsAgent {
 
   /** After each registry write: an unlock whose extension left, was disabled, cut, activated elsewhere or recopied ends; its card falls. */
   private verifierDeblocages(e: ExtensionsState, privates: ReadonlySet<string>): void {
-    for (const [key, lien] of [...this.deblocages]) if (unlockDenial(e, privates, key) || lienRompu(e, key, lien)) this.deblocages.delete(key);
-    for (const [key, carte] of this.cartesDeblocage) if (unlockDenial(e, privates, key) || lienRompu(e, key, carte.lien)) carte.retrait.abort();
+    for (const [key, link] of [...this.deblocages]) if (unlockDenial(e, privates, key) || brokenLink(e, key, link)) this.deblocages.delete(key);
+    for (const [key, card] of this.cartesDeblocage) if (unlockDenial(e, privates, key) || brokenLink(e, key, card.lien)) card.retrait.abort();
   }
 
   /** `<id>` or `agent:<id>`. */
@@ -368,7 +368,7 @@ export class ExtensionsAgent {
    * Each registry entry: the non-private spaces where it is active (named), the private ones (counted), its disabling;
    * then Firefox's AMO add-ons (decision 7): global, so active in every space, with no error.
    */
-  private async lister(): Promise<ExtensionPourAgent[]> {
+  private async lister(): Promise<AgentExtension[]> {
     const [nav, state, amo] = await Promise.all([
       this.navigateur(),
       readExtensionsState(this.o.dossier),
@@ -381,16 +381,16 @@ export class ExtensionsAgent {
     const privates = nav.espaces.filter((e) => e.prive).length;
     const opened = nav.espaces.filter((e) => !e.prive).map((e) => e.nom);
     const modules = amo
-      .map((a): ExtensionPourAgent => ({ cle: `store:${a.id}`, source: "store", nom: a.nom, version: a.version, espaces: a.actif ? opened : [], espacesPrives: a.actif ? privates : 0, erreurs: [] }))
+      .map((a): AgentExtension => ({ cle: `store:${a.id}`, source: "store", nom: a.nom, version: a.version, espaces: a.actif ? opened : [], espacesPrives: a.actif ? privates : 0, erreurs: [] }))
       .sort((a, b) => a.nom.localeCompare(b.nom) || a.cle.localeCompare(b.cle));
     const privateProfiles = privateProfilesOf(nav);
     const agent = Object.entries(state.extensions)
-      .map(([key, x]): ExtensionPourAgent => {
+      .map(([key, x]): AgentExtension => {
         const spaces = nav.espaces.filter((e) => x.profils.includes(e.profil));
         const id = this.id(key);
         // Its kept error, its disabling, then its console's errors as console_extension filters them.
         const errors = [...(this.erreursEnvoi.has(key) ? [this.erreursEnvoi.get(key)!] : []), ...(x.desactivee ? [x.desactivee.raison === "plantages" ? DISABLED_CRASHES : DISABLED_SCOPE] : [])];
-        if (id && !x.profils.some((p) => privateProfiles.has(p))) errors.push(...this.consoles.erreursPourAgent(addonIdDe(id), this.filtreAgent(state, key)).slice(-PAGE_CONSOLE_ERRORS));
+        if (id && !x.profils.some((p) => privateProfiles.has(p))) errors.push(...this.consoles.erreursPourAgent(addonIdOf(id), this.filtreAgent(state, key)).slice(-PAGE_CONSOLE_ERRORS));
         return {
           cle: key,
           source: x.source,
@@ -406,10 +406,10 @@ export class ExtensionsAgent {
   }
 
   /** The Extensions page (the agent's only): one row per registry entry, by name. */
-  async liste(): Promise<LigneExtension[]> {
+  async liste(): Promise<ExtensionLine[]> {
     const [nav, state] = await Promise.all([this.navigateur(), readExtensionsState(this.o.dossier)]);
     const privates = privateProfilesOf(nav);
-    const lignes: LigneExtension[] = [];
+    const lignes: ExtensionLine[] = [];
     for (const [key, x] of Object.entries(state.extensions)) {
       const id = this.id(key);
       if (!id || x.source !== "agent") continue;
@@ -426,7 +426,7 @@ export class ExtensionsAgent {
         sites: [...scope.hotes],
         tousLesSites: scope.tousLesSites,
         espaces: nav.espaces.filter((e) => x.profils.includes(e.profil) && !privates.has(e.profil)).map((e) => ({ nom: e.nom, profil: e.profil })),
-        erreurs: [...(this.erreursEnvoi.has(key) ? [this.erreursEnvoi.get(key)!] : []), ...this.consoles.erreurs(addonIdDe(id)).slice(-PAGE_CONSOLE_ERRORS)],
+        erreurs: [...(this.erreursEnvoi.has(key) ? [this.erreursEnvoi.get(key)!] : []), ...this.consoles.erreurs(addonIdOf(id)).slice(-PAGE_CONSOLE_ERRORS)],
         modifieeLe: x.modifieeLe,
         desactivee: disabled,
         majEnAttente: null,
@@ -447,7 +447,7 @@ export class ExtensionsAgent {
   /** « Désactiver toutes les extensions » (kept in the registry, so across a restart): every agent add-on disabled, never uninstalled. */
   async toutCouper(yes: boolean): Promise<ExtensionResult> {
     try {
-      const e = await this.modifier((e) => couperTout(e, yes));
+      const e = await this.modifier((e) => cutAll(e, yes));
       for (const key of Object.keys(e.extensions)) {
         const id = this.id(key);
         if (id) await this.enFile(key, () => this.appliquer(id, key));
@@ -470,7 +470,7 @@ export class ExtensionsAgent {
       return x.desactivee?.raison === "plantages" ? { ...e, extensions: { ...e.extensions, [key]: { ...x, desactivee: null } } } : e;
     });
     const id = this.id(key);
-    if (r.ok && id) this.consoles.oublier(addonIdDe(id));
+    if (r.ok && id) this.consoles.oublier(addonIdOf(id));
     return r;
   }
 
@@ -495,12 +495,12 @@ export class ExtensionsAgent {
   }
 
   /** A registry write for a known agent key, in its queue, then applied to its add-on; an error comes back as text. */
-  private async ecrireCle(key: string, changer: (e: ExtensionsState) => ExtensionsState): Promise<ExtensionResult> {
+  private async ecrireCle(key: string, change: (e: ExtensionsState) => ExtensionsState): Promise<ExtensionResult> {
     const id = this.id(key);
     if (!id || !(key in (await readExtensionsState(this.o.dossier)).extensions)) return { ok: false, erreur: `Extension inconnue : ${key}` };
     try {
       await this.enFile(key, async () => {
-        await this.modifier((e) => (key in e.extensions ? changer(e) : e));
+        await this.modifier((e) => (key in e.extensions ? change(e) : e));
         await this.appliquer(id, key);
       });
       return { ok: true };
@@ -549,25 +549,25 @@ export class ExtensionsAgent {
     if (known?.accord && !known.desactivee && known.profils.includes(profile)) {
       // Already granted and active: nothing asked again, but a folder gone is said.
       const path = await pathMarkers(this.o.dossierAgent, id);
-      if (typeof path === "string") return { ok: false, erreur: path === DOSSIER_ABSENT ? dossierAbsent(id) : path };
+      if (typeof path === "string") return { ok: false, erreur: path === FOLDER_ABSENT ? folderAbsent(id) : path };
       return { ok: true };
     }
 
     const p = await this.preparer(id);
-    if (!p.ok) return { ok: false, erreur: p.refus.map((r) => (r === DOSSIER_ABSENT ? dossierAbsent(id) : r)).join(" ; ") };
-    const effacer = () => rm(p.staging, { recursive: true, force: true });
+    if (!p.ok) return { ok: false, erreur: p.refus.map((r) => (r === FOLDER_ABSENT ? folderAbsent(id) : r)).join(" ; ") };
+    const clear = () => rm(p.staging, { recursive: true, force: true });
     // A signing will be needed: without keys, nothing is shown and nothing leaves.
     if ((await this.garde(id))?.empreinte !== p.empreinte && !(await readAmoKey(this.env))) {
-      await effacer();
+      await clear();
       return { ok: false, erreur: KEYS_ABSENT };
     }
     // Already active elsewhere with a narrower grant: the new copy replaces it there too, the card says so.
     const otherProfiles = known?.accord && widenedScope(known.accord, p.analyse.portee) ? known.profils.filter((x) => x !== profile) : [];
     const alsoReplace = nav.espaces.filter((e) => !e.prive && otherProfiles.includes(e.profil)).map((e) => e.nom);
-    const carte = carteDe(p.analyse, { cle: key, espace: space, espaces: nav.espaces, remplaceAussi: alsoReplace });
-    const r = await this.demanderAccord(key, carte, win, signal);
-    if (!(r.accepte && r.empreinte === carte.empreinte)) {
-      await effacer();
+    const card = cardOf(p.analyse, { cle: key, espace: space, espaces: nav.espaces, remplaceAussi: alsoReplace });
+    const r = await this.demanderAccord(key, card, win, signal);
+    if (!(r.accepte && r.empreinte === card.empreinte)) {
+      await clear();
       return { ok: false, erreur: r.retiree ? ACTIVATION_REMOVED : ACTIVATION_DENIED };
     }
     // The state may have changed during the card: checked again on « yes ».
@@ -584,7 +584,7 @@ export class ExtensionsAgent {
             ? REMOVED_DURING_CARD
             : null;
     if (denial) {
-      await effacer();
+      await clear();
       return { ok: false, erreur: denial };
     }
     const e = await this.envoi(id, key, { accord: p.analyse.portee, activer: { espaceId: space.id, profil: profile, connue: !!known } }, p);
@@ -593,14 +593,14 @@ export class ExtensionsAgent {
   }
 
   /** The card in the chrome (`extensions.accord`); fallen, aborted or unanswerable: « retirée », never a refusal. */
-  private async demanderAccord(key: string, carte: CarteExtension, win: string | null, signal?: AbortSignal): Promise<GrantResponse> {
+  private async demanderAccord(key: string, card: ExtensionCard, win: string | null, signal?: AbortSignal): Promise<GrantResponse> {
     const removal = new AbortController();
     this.cartes.set(key, removal);
     try {
       const signals = [removal.signal, this.arret.signal, ...(signal ? [signal] : [])];
-      return await this.o.rpc.request<GrantResponse>("extensions.accord", { carte, fenetre: win }, AbortSignal.any(signals));
+      return await this.o.rpc.request<GrantResponse>("extensions.accord", { carte: card, fenetre: win }, AbortSignal.any(signals));
     } catch {
-      return { accepte: false, empreinte: carte.empreinte, retiree: true };
+      return { accepte: false, empreinte: card.empreinte, retiree: true };
     } finally {
       if (this.cartes.get(key) === removal) this.cartes.delete(key);
     }
@@ -613,9 +613,9 @@ export class ExtensionsAgent {
     // A card left open for it holds its queue: it falls first.
     this.cartes.get(key)?.abort();
     return this.enFile(key, async () => {
-      const accord = (await readExtensionsState(this.o.dossier)).extensions[key]?.accord;
-      if (!accord) return { etat: "refusee" as const, detail: [SANS_ACCORD] };
-      const r = this.noterEnvoi(key, await this.envoi(id, key, { accord }));
+      const grant = (await readExtensionsState(this.o.dossier)).extensions[key]?.accord;
+      if (!grant) return { etat: "refusee" as const, detail: [NO_GRANT] };
+      const r = this.noterEnvoi(key, await this.envoi(id, key, { accord: grant }));
       if (r.ok) return { etat: "rechargee" as const, detail: [] };
       if (r.erreur === DISABLED_SCOPE) return { etat: "desactivee" as const, detail: [DISABLED_SCOPE] };
       return { etat: "refusee" as const, detail: r.refus ?? [r.erreur] };
@@ -641,10 +641,10 @@ export class ExtensionsAgent {
     this.cartes.get(key)?.abort();
     return this.enFile(key, async () => {
       // Uninstalled first: an entry gone while the add-on stays installed would run without a grant.
-      const done = await this.o.rpc.request("extensions.desinstaller", outsideWebaios ? { addonId: addonIdDe(id), unlessUndone: true } : { addonId: addonIdDe(id) });
+      const done = await this.o.rpc.request("extensions.desinstaller", outsideWebaios ? { addonId: addonIdOf(id), unlessUndone: true } : { addonId: addonIdOf(id) });
       if (done === false) return;
-      await this.modifier((e) => (key in e.extensions ? retirer(e, key) : e));
-      this.consoles.oublier(addonIdDe(id));
+      await this.modifier((e) => (key in e.extensions ? remove(e, key) : e));
+      this.consoles.oublier(addonIdOf(id));
       this.erreursEnvoi.delete(key);
       for (const f of [join("copies", id), join("copies", `${id}.attente`), join("signes", `${id}.xpi`), join("signes", `${id}.json`)])
         await rm(join(this.o.dossier, f), { recursive: true, force: true });
@@ -693,7 +693,7 @@ export class ExtensionsAgent {
     for (const [key, profiles] of byKey) {
       const id = this.id(key);
       if (!id) continue;
-      this.o.rpc.notify("extensions.rechargerOnglets", { addonId: addonIdDe(id), profils: profiles });
+      this.o.rpc.notify("extensions.rechargerOnglets", { addonId: addonIdOf(id), profils: profiles });
       await this.enFile(key, () => this.appliquer(id, key));
     }
   }
@@ -734,9 +734,9 @@ export class ExtensionsAgent {
     const space = nav.espaces.find((e) => e.id === spaceId);
     if (!space) return { ok: false, erreur: "Espace inconnu" };
     const profile = space.profil;
-    const write = (changer: (e: ExtensionsState, privates: ReadonlySet<string>) => ExtensionsState) =>
+    const write = (change: (e: ExtensionsState, privates: ReadonlySet<string>) => ExtensionsState) =>
       this.enFile(key, async () => {
-        await this.modifier(changer);
+        await this.modifier(change);
         await this.appliquer(id, key);
       }).then(
         () => ({ ok: true as const }),
@@ -789,9 +789,9 @@ export class ExtensionsAgent {
   }
 
   /** Registry change; the profiles of private spaces (asked from Firefox) are taken out of every agent extension. */
-  private async modifier(changer: (e: ExtensionsState, privates: ReadonlySet<string>) => ExtensionsState): Promise<ExtensionsState> {
+  private async modifier(change: (e: ExtensionsState, privates: ReadonlySet<string>) => ExtensionsState): Promise<ExtensionsState> {
     const privates = privateProfilesOf(await this.navigateur());
-    const e = await changeExtensionsState(this.o.dossier, changer, () => privates);
+    const e = await changeExtensionsState(this.o.dossier, change, () => privates);
     this.verifierDeblocages(e, privates);
     this.o.rpc.notify("extensions.portees", scopesOf(e));
     this.o.rpc.notify("extensions.change");
@@ -813,7 +813,7 @@ export class ExtensionsAgent {
     if (active && this.aSigner.delete(key)) return this.signerActivee(id, key);
     const kept = await this.garde(id);
     if (kept) await this.installer(id, join(this.o.dossier, "signes", `${id}.xpi`), kept.version, active);
-    await this.o.rpc.request("extensions.activer", { addonId: addonIdDe(id), actif: active });
+    await this.o.rpc.request("extensions.activer", { addonId: addonIdOf(id), actif: active });
   }
 
   /** Active again after a startup that did not sign its changed source: signed now, else the kept version runs. */
@@ -821,7 +821,7 @@ export class ExtensionsAgent {
     const x = (await readExtensionsState(this.o.dossier)).extensions[key];
     const r = x?.accord ? this.noterEnvoi(key, await this.envoi(id, key, { accord: x.accord, demarrage: true })) : null;
     // envoi applied it, or disabled it (broadened scope, folder gone); otherwise the kept version runs.
-    if (!r?.ok && r?.erreur !== DISABLED_SCOPE && !r?.refus?.includes(DOSSIER_ABSENT)) await this.appliquer(id, key);
+    if (!r?.ok && r?.erreur !== DISABLED_SCOPE && !r?.refus?.includes(FOLDER_ABSENT)) await this.appliquer(id, key);
   }
 
   /** Active once envoi is done: a scope-disabled one back within its grant runs again. */
@@ -840,7 +840,7 @@ export class ExtensionsAgent {
 
   /** `actif` false: Firefox installs it only over a present add-on (disabled first), never fresh. */
   private installer(id: string, xpi: string, version: string, active: boolean): Promise<{ version: string } | null> {
-    return this.o.rpc.request("extensions.installer", { addonId: addonIdDe(id), xpi, temporaire: !!this.env.WEBAIOS_TEST_AMO_URL, version, actif: active });
+    return this.o.rpc.request("extensions.installer", { addonId: addonIdOf(id), xpi, temporaire: !!this.env.WEBAIOS_TEST_AMO_URL, version, actif: active });
   }
 
   /**
@@ -856,13 +856,13 @@ export class ExtensionsAgent {
     const p = prepare ?? (await this.preparer(id));
     if (!p.ok) {
       // Only a missing folder stops the running version.
-      if (p.refus.includes(DOSSIER_ABSENT)) await this.o.rpc.request("extensions.activer", { addonId: addonIdDe(id), actif: false });
-      return { ok: false, erreur: p.refus.map((r) => (r === DOSSIER_ABSENT ? dossierAbsent(id) : r)).join(" ; "), refus: p.refus };
+      if (p.refus.includes(FOLDER_ABSENT)) await this.o.rpc.request("extensions.activer", { addonId: addonIdOf(id), actif: false });
+      return { ok: false, erreur: p.refus.map((r) => (r === FOLDER_ABSENT ? folderAbsent(id) : r)).join(" ; "), refus: p.refus };
     }
-    const { analyse, empreinte: hash, staging } = p;
-    const effacer = () => rm(staging, { recursive: true, force: true });
-    if (widenedScope(o.accord, analyse.portee)) {
-      await effacer();
+    const { analyse: analysis, empreinte: hash, staging } = p;
+    const clear = () => rm(staging, { recursive: true, force: true });
+    if (widenedScope(o.accord, analysis.portee)) {
+      await clear();
       await this.modifier((e) => {
         const x = e.extensions[key];
         if (!x || x.desactivee?.raison === "portee-elargie") return e;
@@ -878,20 +878,20 @@ export class ExtensionsAgent {
     // the kept .xpi if it is missing, nothing is sent; a reload restarts the running one.
     const kept = await this.garde(id);
     if (kept?.empreinte === hash) {
-      await effacer();
+      await clear();
       // A reload still counts as a new start (modifieeLe: its console unlock ends).
-      if (!o.demarrage && !o.activer) await this.o.rpc.request("extensions.redemarrer", { addonId: addonIdDe(id) });
+      if (!o.demarrage && !o.activer) await this.o.rpc.request("extensions.redemarrer", { addonId: addonIdOf(id) });
       else change = false;
     } else if (o.demarrage && kept && !(await this.actifApresEnvoi(key))) {
       // Active nowhere: nothing leaves for AMO; the kept version stays until it is activated again.
-      await effacer();
+      await clear();
       this.aSigner.add(key);
       await this.appliquer(id, key);
-      return { ok: true, analyse };
+      return { ok: true, analyse: analysis };
     } else {
       const r = await this.signerEtInstaller(id, p, o.activer ? true : await this.actif(key));
       if (!r.ok) {
-        await effacer();
+        await clear();
         return r;
       }
       this.aSigner.delete(key);
@@ -913,11 +913,11 @@ export class ExtensionsAgent {
           if (e.toutesCoupees) throw new Error(ALL_CUT_AGENT);
           const x = e.extensions[key];
           if (a.connue && !x) throw new Error(REMOVED_DURING_CARD);
-          const base: EntreeExtension = x ?? {
+          const base: ExtensionEntry = x ?? {
             source: "agent",
             idChrome: null,
-            nom: analyse.nom,
-            version: analyse.version,
+            nom: analysis.nom,
+            version: analysis.version,
             accord: null,
             profils: [],
             epinglee: false,
@@ -926,40 +926,40 @@ export class ExtensionsAgent {
             majEnAttente: null,
             vues: {},
           };
-          const entree: EntreeExtension = {
+          const entry: ExtensionEntry = {
             ...base,
-            idChrome: addonIdDe(id),
-            nom: analyse.nom,
-            version: analyse.version,
+            idChrome: addonIdOf(id),
+            nom: analysis.nom,
+            version: analysis.version,
             accord: o.accord,
             modifieeLe: now,
             desactivee: base.desactivee?.raison === "plantages" ? base.desactivee : null,
           };
-          return enable({ ...e, extensions: { ...e.extensions, [key]: entree } }, key, a.profil, privates);
+          return enable({ ...e, extensions: { ...e.extensions, [key]: entry } }, key, a.profil, privates);
         });
       } catch (err) {
-        await this.nonAccordee(id, key, analyse.portee);
+        await this.nonAccordee(id, key, analysis.portee);
         return { ok: false, erreur: (err as Error).message };
       }
       await this.appliquer(id, key);
-      return { ok: true, analyse };
+      return { ok: true, analyse: analysis };
     }
     await this.modifier((e) => {
       const x = e.extensions[key];
       if (!x?.accord) return e;
-      const entree: EntreeExtension = {
+      const entry: ExtensionEntry = {
         ...x,
-        idChrome: addonIdDe(id),
-        nom: analyse.nom,
-        version: analyse.version,
+        idChrome: addonIdOf(id),
+        nom: analysis.nom,
+        version: analysis.version,
         modifieeLe: change || !x.modifieeLe ? now : x.modifieeLe,
         // Back within its grant: it runs again. Not after crashes (re-enabled by hand).
-        desactivee: x.desactivee?.raison === "portee-elargie" && !widenedScope(x.accord, analyse.portee) ? null : x.desactivee,
+        desactivee: x.desactivee?.raison === "portee-elargie" && !widenedScope(x.accord, analysis.portee) ? null : x.desactivee,
       };
-      return { ...e, extensions: { ...e.extensions, [key]: entree } };
+      return { ...e, extensions: { ...e.extensions, [key]: entry } };
     });
     await this.appliquer(id, key);
-    return { ok: true, analyse };
+    return { ok: true, analyse: analysis };
   }
 
   /**
@@ -969,7 +969,7 @@ export class ExtensionsAgent {
   private async nonAccordee(id: string, key: string, scope: Scope): Promise<void> {
     try {
       const x = (await readExtensionsState(this.o.dossier)).extensions[key];
-      if (!x) return void (await this.o.rpc.request("extensions.desinstaller", { addonId: addonIdDe(id) }));
+      if (!x) return void (await this.o.rpc.request("extensions.desinstaller", { addonId: addonIdOf(id) }));
       if (!x.accord || widenedScope(x.accord, scope))
         await this.modifier((e) => {
           const y = e.extensions[key];
@@ -979,7 +979,7 @@ export class ExtensionsAgent {
       await this.appliquer(id, key);
     } catch (e) {
       console.error(`[extensions] ${key} : accord non écrit, désactivée :`, e);
-      await this.o.rpc.request("extensions.activer", { addonId: addonIdDe(id), actif: false }).catch(() => {});
+      await this.o.rpc.request("extensions.activer", { addonId: addonIdOf(id), actif: false }).catch(() => {});
     }
   }
 
@@ -998,7 +998,7 @@ export class ExtensionsAgent {
     await mkdir(signs, { recursive: true });
     try {
       await zipper(p.staging, sending);
-      await signer({ xpi: sending, guid: addonIdDe(id), version, cle: amoKey, base: this.env.WEBAIOS_TEST_AMO_URL || AMO_URL, sortie: waiting, signal: this.arret.signal });
+      await sign({ xpi: sending, guid: addonIdOf(id), version, cle: amoKey, base: this.env.WEBAIOS_TEST_AMO_URL || AMO_URL, sortie: waiting, signal: this.arret.signal });
     } catch (e) {
       await rm(waiting, { force: true });
       return { ok: false, erreur: e instanceof SignatureError ? e.message : signatureImpossible((e as Error).message) };
@@ -1021,7 +1021,7 @@ export class ExtensionsAgent {
    */
   private async preparer(id: string): Promise<Preparation | { ok: false; refus: string[] }> {
     const staging = join(this.o.dossier, "copies", `${id}.attente`);
-    const refuser = async (denial: string[]) => (await rm(staging, { recursive: true, force: true }), { ok: false as const, refus: denial });
+    const deny = async (denial: string[]) => (await rm(staging, { recursive: true, force: true }), { ok: false as const, refus: denial });
     await rm(staging, { recursive: true, force: true });
     const before = await pathMarkers(this.o.dossierAgent, id);
     if (typeof before === "string") return { ok: false, refus: [before] };
@@ -1036,24 +1036,24 @@ export class ExtensionsAgent {
       await mkdir(join(this.o.dossier, "copies"), { recursive: true });
       r = await prepareCopy({ source: join(this.o.dossierAgent, id), cible: staging, dossierGardes: DEFAULT_GUARDS });
     } catch (e) {
-      return refuser([`Copie impossible : ${(e as Error).message}`]);
+      return deny([`Copie impossible : ${(e as Error).message}`]);
     }
     const after = await pathMarkers(this.o.dossierAgent, id);
     const realAfter = await realpath(this.o.dossierAgent).catch(() => "");
     if (typeof after === "string" || !sameMarkers(before, after) || realAfter !== realBefore)
-      return refuser([typeof after === "string" ? after : "Dossier remplacé pendant la copie"]);
+      return deny([typeof after === "string" ? after : "Dossier remplacé pendant la copie"]);
     const lu = before[1]!;
-    if (r.racine && (r.racine.chemin !== join(realBefore, id) || r.racine.dev !== lu.dev || r.racine.ino !== lu.ino)) return refuser(["Dossier remplacé pendant la copie"]);
-    if (r.analyse.refus.length > 0) return refuser(r.analyse.refus);
+    if (r.racine && (r.racine.chemin !== join(realBefore, id) || r.racine.dev !== lu.dev || r.racine.ino !== lu.ino)) return deny(["Dossier remplacé pendant la copie"]);
+    if (r.analyse.refus.length > 0) return deny(r.analyse.refus);
     try {
       const manifest = JSON.parse(await readFile(join(staging, "manifest.json"), "utf8"));
       const denial = firefoxDenial(manifest, await readdir(staging, { recursive: true }));
-      if (denial.length > 0) return refuser(denial);
+      if (denial.length > 0) return deny(denial);
       // The original classic background, read from the copy's own generated webaios-fond.js (never the agent's folder again).
-      const fond = /^importScripts\("webaios-garde-fond\.js", ("(?:[^"\\]|\\.)*")\);$/m.exec(await readFile(join(staging, "webaios-fond.js"), "utf8"));
-      return { ok: true, analyse: r.analyse, empreinte: r.empreinte, staging, fondOriginal: fond ? (JSON.parse(fond[1]!) as string) : undefined };
+      const background = /^importScripts\("webaios-garde-fond\.js", ("(?:[^"\\]|\\.)*")\);$/m.exec(await readFile(join(staging, "webaios-fond.js"), "utf8"));
+      return { ok: true, analyse: r.analyse, empreinte: r.empreinte, staging, fondOriginal: background ? (JSON.parse(background[1]!) as string) : undefined };
     } catch (e) {
-      return refuser([`Copie impossible : ${(e as Error).message}`]);
+      return deny([`Copie impossible : ${(e as Error).message}`]);
     }
   }
 }

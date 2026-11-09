@@ -17,47 +17,47 @@ import {
 const ID_WIDGET = /^[a-z0-9-]+$/;
 
 /** Reads a JSON of the workspace, refusing a symbolic link that would leave the widget's folder. */
-async function lireJsonDans(dossier: string, name: string): Promise<unknown> {
-  const [root, reel] = await Promise.all([realpath(dossier), realpath(join(dossier, name))]);
-  if (!reel.startsWith(root + sep)) throw new Error(`${name} sort du dossier du widget`);
-  return JSON.parse(await readFile(reel, "utf8"));
+async function readJsonIn(folder: string, name: string): Promise<unknown> {
+  const [root, real] = await Promise.all([realpath(folder), realpath(join(folder, name))]);
+  if (!real.startsWith(root + sep)) throw new Error(`${name} sort du dossier du widget`);
+  return JSON.parse(await readFile(real, "utf8"));
 }
 
-async function lireWidget(c: SpacePaths, dossierWidgets: string, id: string): Promise<WidgetLu> {
-  const dossier = join(c.widgets, id);
+async function readWidget(c: SpacePaths, widgetsFolder: string, id: string): Promise<WidgetLu> {
+  const folder = join(c.widgets, id);
   let declaration: DeclarationWidget;
   try {
-    declaration = DeclarationWidget.parse(await lireJsonDans(dossier, "widget.json"));
+    declaration = DeclarationWidget.parse(await readJsonIn(folder, "widget.json"));
   } catch (e) {
-    return { id, dossier, erreur: `widget.json invalide : ${(e as Error).message}` };
+    return { id, dossier: folder, erreur: `widget.json invalide : ${(e as Error).message}` };
   }
   let example: unknown | null = null;
   try {
-    example = await lireJsonDans(dossier, "exemple.json");
+    example = await readJsonIn(folder, "exemple.json");
   } catch {
     // exemple.json absent or damaged: no example.
   }
-  const [data, state] = await Promise.all([readData(dossierWidgets, id), readWidgetState(dossierWidgets, id)]);
-  const aWorkflow = existsSync(join(dossier, "workflow.json"));
+  const [data, state] = await Promise.all([readData(widgetsFolder, id), readWidgetState(widgetsFolder, id)]);
+  const aWorkflow = existsSync(join(folder, "workflow.json"));
   return {
     id,
-    dossier,
+    dossier: folder,
     declaration,
     etat: state,
     donnees: data,
     exemple: example,
-    aRecolte: aWorkflow || existsSync(join(dossier, "recolte.mjs")),
+    aRecolte: aWorkflow || existsSync(join(folder, "recolte.mjs")),
     aWorkflow,
-    aAffichage: existsSync(join(dossier, "affichage.html")),
+    aAffichage: existsSync(join(folder, "affichage.html")),
   };
 }
 
 /** Readable placements of disposition.json. The old format (`{ ordre }`) or a damaged file gives []. */
-async function lirePlacements(c: SpacePaths): Promise<Placement[]> {
+async function readPlacements(c: SpacePaths): Promise<Placement[]> {
   try {
-    const brut = JSON.parse(await readFile(c.disposition, "utf8")) as { version?: unknown; widgets?: unknown };
-    if (brut.version !== 2 || !Array.isArray(brut.widgets)) return [];
-    return brut.widgets.flatMap((w) => {
+    const raw = JSON.parse(await readFile(c.disposition, "utf8")) as { version?: unknown; widgets?: unknown };
+    if (raw.version !== 2 || !Array.isArray(raw.widgets)) return [];
+    return raw.widgets.flatMap((w) => {
       const p = Placement.safeParse(w);
       return p.success ? [p.data] : [];
     });
@@ -71,7 +71,7 @@ type Rectangle = { x: number; y: number; l: number; h: number };
 const overlaps = (a: Rectangle, b: Rectangle) => a.x < b.x + b.l && b.x < a.x + a.l && a.y < b.y + b.h && b.y < a.y + a.h;
 
 /** First free spot: rows from top to bottom, then columns left to right. */
-function premierePlace(busy: Rectangle[], l: number, h: number): { x: number; y: number } {
+function firstPlace(busy: Rectangle[], l: number, h: number): { x: number; y: number } {
   for (let y = 0; ; y++) {
     for (let x = 0; x + l <= COLUMNS; x++) {
       if (!busy.some((o) => overlaps(o, { x, y, l, h }))) return { x, y };
@@ -91,17 +91,17 @@ export function placeMissing(ids: string[], wanted: Placement[], defaults: Map<s
     alreadySeen.add(p.id);
     if (!kept.some((r) => overlaps(r, p))) kept.push(p);
   }
-  const aPlacer = [...wanted.map((p) => p.id), ...ids].filter((id, i, tous) => defaults.has(id) && tous.indexOf(id) === i && !kept.some((r) => r.id === id));
-  for (const id of aPlacer) {
+  const toPlace = [...wanted.map((p) => p.id), ...ids].filter((id, i, all) => defaults.has(id) && all.indexOf(id) === i && !kept.some((r) => r.id === id));
+  for (const id of toPlace) {
     const old = wanted.find((p) => p.id === id);
     const { l, h } = old ?? defaults.get(id)!;
-    kept.push({ id, ...premierePlace(kept, l, h), l, h });
+    kept.push({ id, ...firstPlace(kept, l, h), l, h });
   }
   return kept;
 }
 
-const PAS_X = 8;
-const PAS_Y = 8;
+const STEP_X = 8;
+const STEP_Y = 8;
 
 /**
  * The x values tried: 0, the right edge of each placed widget (a gap can start exactly there, off the 8 ‰ steps),
@@ -109,7 +109,7 @@ const PAS_Y = 8;
  */
 function freeXs(busy: Rectangle[], xMax: number): number[] {
   const xs = new Set<number>([0, xMax]);
-  for (let x = PAS_X; x < xMax; x += PAS_X) xs.add(x);
+  for (let x = STEP_X; x < xMax; x += STEP_X) xs.add(x);
   for (const o of busy) if (o.x + o.l <= xMax) xs.add(o.x + o.l);
   return [...xs].sort((a, b) => a - b);
 }
@@ -123,8 +123,8 @@ function firstFreeSlot(busy: Rectangle[], l: number, h: number): { x: number; y:
       if (!busy.some((o) => overlaps(o, { x, y, l, h }))) return { x, y };
     }
     // A widget's bottom can fall between two steps (90 px high, y = 90): try it too.
-    const bas = busy.map((o) => o.y + o.h).filter((b) => b > y);
-    y = bas.length > 0 ? Math.min(y + PAS_Y, ...bas) : y + PAS_Y;
+    const bottom = busy.map((o) => o.y + o.h).filter((b) => b > y);
+    y = bottom.length > 0 ? Math.min(y + STEP_Y, ...bottom) : y + STEP_Y;
   }
 }
 
@@ -161,8 +161,8 @@ export function placeMissingFree(
     alreadySeen.add(p.id);
     if (!kept.some((r) => overlaps(r, p))) kept.push(p);
   }
-  const aPlacer = [...parses.map((p) => p.id), ...ids].filter((id, i, tous) => defaults.has(id) && tous.indexOf(id) === i && !kept.some((r) => r.id === id));
-  for (const id of aPlacer) {
+  const toPlace = [...parses.map((p) => p.id), ...ids].filter((id, i, all) => defaults.has(id) && all.indexOf(id) === i && !kept.some((r) => r.id === id));
+  for (const id of toPlace) {
     const old = parses.find((p) => p.id === id);
     const { l, h } = old ?? defaults.get(id)!;
     kept.push({ id, ...firstFreeSlot(kept, l, h), l, h });
@@ -171,15 +171,15 @@ export function placeMissingFree(
 }
 
 /** Reads the home page. A broken widget is reported, it does not prevent reading the others. */
-export async function readHome(c: SpacePaths, dossierWidgets: string): Promise<HomeState> {
+export async function readHome(c: SpacePaths, widgetsFolder: string): Promise<HomeState> {
   if (!existsSync(c.widgets)) return { disposition: [], widgets: [] };
   const ids = (await readdir(c.widgets, { withFileTypes: true }))
     .filter((e) => e.isDirectory() && ID_WIDGET.test(e.name))
     .map((e) => e.name)
     .sort();
-  const widgets = await Promise.all(ids.map((id) => lireWidget(c, dossierWidgets, id)));
+  const widgets = await Promise.all(ids.map((id) => readWidget(c, widgetsFolder, id)));
   // A widget in error has no known size: it is not placed.
   const defaults = new Map(widgets.flatMap((w) => ("declaration" in w ? [[w.id, w.declaration.tailles.defaut] as const] : [])));
-  const disposition = placeMissing(ids, await lirePlacements(c), defaults);
-  return { disposition, widgets };
+  const layout = placeMissing(ids, await readPlacements(c), defaults);
+  return { disposition: layout, widgets };
 }

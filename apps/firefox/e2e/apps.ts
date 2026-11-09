@@ -22,7 +22,7 @@ const SERVERS = {
   // /redirige redirects elsewhere server side; /retient refuses to be left; /sans-titre has no <title>.
   // Added for Firefox: /page2 (same origin), /icone?href=<url> (a page whose icon is <url>), /icon.png, /vers-file and
   // /vers-data (redirects off the web).
-  ok: (dossier: string) => `import { createServer } from "node:http";
+  ok: (folder: string) => `import { createServer } from "node:http";
 const PNG = Buffer.from("${PNG}", "base64");
 createServer((req, res) => {
   const u = new URL(req.url, "http://x");
@@ -35,7 +35,7 @@ createServer((req, res) => {
   if (req.url === "/sans-titre") return res.end("<p>sans titre</p>");
   if (req.url === "/page2") return res.end("<title>Page 2</title><p>page 2</p>");
   if (u.pathname === "/icone") return res.end('<title>Icone</title><link rel="icon" href="' + u.searchParams.get("href").replaceAll('"', "") + '">');
-  res.end('<title>Essai ${dossier}</title><a href="https://exemple.invalide/">lien</a>');
+  res.end('<title>Essai ${folder}</title><a href="https://exemple.invalide/">lien</a>');
 }).listen(Number(process.env.PORT));
 `,
   plante: () => `process.stderr.write("boum\\n");
@@ -56,10 +56,10 @@ createServer((req, res) => {
  * Writes a project: `<dataDir>/espace/projets/<dossier>/` with `serveur.mjs` and, if `manifeste` is given,
  * `webaios.json` (a string is written as is; an object completes `{ type: "application", lancement: "node serveur.mjs" }`).
  */
-export function writeProject(dataDir: string, dossier: string, o: { manifeste?: object | string; serveur?: keyof typeof SERVERS } = {}): void {
-  const dir = join(dataDir, "espace", "projets", dossier);
+export function writeProject(dataDir: string, folder: string, o: { manifeste?: object | string; serveur?: keyof typeof SERVERS } = {}): void {
+  const dir = join(dataDir, "espace", "projets", folder);
   mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, "serveur.mjs"), SERVERS[o.serveur ?? "ok"](dossier));
+  writeFileSync(join(dir, "serveur.mjs"), SERVERS[o.serveur ?? "ok"](folder));
   if (o.manifeste === undefined) return;
   writeFileSync(join(dir, "webaios.json"), typeof o.manifeste === "string" ? o.manifeste : JSON.stringify({ type: "application", lancement: "node serveur.mjs", ...o.manifeste }));
 }
@@ -72,12 +72,12 @@ export async function launchAttempt(dataDir: string): Promise<number> {
 }
 
 /** Chrome-context expression: the window of app `dossier` (the attribute set by setupAppWindow), or undefined. */
-export const appWindowExpr = (dossier: string) =>
-  `[...Services.wm.getEnumerator("navigator:browser")].find((w) => w.document.documentElement.getAttribute("webaios-app") === ${JSON.stringify(dossier)})`;
+export const appWindowExpr = (folder: string) =>
+  `[...Services.wm.getEnumerator("navigator:browser")].find((w) => w.document.documentElement.getAttribute("webaios-app") === ${JSON.stringify(folder)})`;
 
 /** Runs `script` in the content of app `dossier`'s view (see inBrowser). */
-export const inAppView = <T>(m: Marionette, dossier: string, script: string, o: { frame?: number; gesture?: boolean } = {}): Promise<T> =>
-  inBrowser<T>(m, `${appWindowExpr(dossier)}.gBrowser.selectedBrowser`, script, o);
+export const inAppView = <T>(m: Marionette, folder: string, script: string, o: { frame?: number; gesture?: boolean } = {}): Promise<T> =>
+  inBrowser<T>(m, `${appWindowExpr(folder)}.gBrowser.selectedBrowser`, script, o);
 
 /** The fake docker's stop scripts so far (`<dataDir>/espace/faux-docker-arrets.log`). */
 export const stopsLog = (dataDir: string): string => {
@@ -163,19 +163,19 @@ export async function closeAppsPage(p: AppsPage | undefined): Promise<void> {
 
 /** The page's app rows (`appli-<dossier>`). */
 export const rowCount = (m: Marionette): Promise<number> => inUi<number>(m, `return doc.querySelectorAll('[data-testid^="appli-"]').length;`);
-export const appRow = (dossier: string) => `[data-testid="appli-${dossier}"]`;
+export const appRow = (folder: string) => `[data-testid="appli-${folder}"]`;
 /** Waits until row `dossier`'s data-etat is `etat`. */
-export const rowState = (m: Marionette, dossier: string, state: string, ms = 10_000) =>
-  waitUi(m, "return doc.querySelector(arguments[0])?.dataset.etat === arguments[1]", [appRow(dossier), state], ms);
+export const rowState = (m: Marionette, folder: string, state: string, ms = 10_000) =>
+  waitUi(m, "return doc.querySelector(arguments[0])?.dataset.etat === arguments[1]", [appRow(folder), state], ms);
 /** Clicks the row's button whose text contains `name`. */
-export const rowButton = (m: Marionette, dossier: string, name: string) => click(m, `${appRow(dossier)} .actions button`, { text: name });
+export const rowButton = (m: Marionette, folder: string, name: string) => click(m, `${appRow(folder)} .actions button`, { text: name });
 /** Opens the row's ⋯ menu and clicks its item `name`. */
-export async function rowMenu(m: Marionette, dossier: string, name: string): Promise<void> {
-  await click(m, `${appRow(dossier)} button.options`);
+export async function rowMenu(m: Marionette, folder: string, name: string): Promise<void> {
+  await click(m, `${appRow(folder)} button.options`);
   await click(m, '[role="menuitem"]', { text: name });
 }
 /** The labels of row `dossier`'s ⋯ menu (left open). */
-export async function rowMenuItems(m: Marionette, dossier: string): Promise<string[]> {
-  await click(m, `${appRow(dossier)} button.options`);
+export async function rowMenuItems(m: Marionette, folder: string): Promise<string[]> {
+  await click(m, `${appRow(folder)} button.options`);
   return waitUi<string[]>(m, `const l = [...doc.querySelectorAll('[role="menuitem"]')].map((e) => e.textContent.trim()); return l.length > 0 && l;`);
 }

@@ -1,5 +1,5 @@
 import type { ComponentDefinition, Property } from "./catalogue.js";
-import { PlanPage, evaluate, lireReference, readPath, type BlocPlan, type Group } from "./plan.js";
+import { PlanPage, evaluate, readReference, readPath, type PlanBlock, type Group } from "./plan.js";
 
 // The validation of Gemma's plan, which is hostile data (it may have read a booby-trapped page). Nothing throws: an
 // unreadable plan returns `ok: false`. The reasons are written by WebAiOs and never quote a value of the results (only
@@ -30,24 +30,24 @@ const SOURCE: Record<string, string> = {
 };
 const CHILDREN: Record<string, ("blocs" | "gauche" | "droite")[]> = { groupe: ["blocs"], colonnes: ["gauche", "droite"] };
 
-function couper(s: string): string {
+function cut(s: string): string {
   return s.length > MAX_ERROR ? s.slice(0, MAX_ERROR - 1) + "…" : s;
 }
 
 /** A raw JSON small and shallow enough to be read without risk; otherwise the reason. Iterative. */
-function precheck(brut: unknown): string | null {
-  const pile: [unknown, number][] = [[brut, 0]];
+function precheck(raw: unknown): string | null {
+  const stack: [unknown, number][] = [[raw, 0]];
   let nodes = 0;
-  while (pile.length > 0) {
-    const [v, prof] = pile.pop()!;
+  while (stack.length > 0) {
+    const [v, prof] = stack.pop()!;
     if (++nodes > RAW_NODES_MAX) return "plan trop gros";
     if (v === null || typeof v !== "object") continue;
     if (prof >= RAW_DEPTH_MAX) return "plan imbriqué trop profondément";
     if (Array.isArray(v)) {
       if (v.length > RAW_NODES_MAX) return "plan trop gros";
-      for (const e of v) pile.push([e, prof + 1]);
+      for (const e of v) stack.push([e, prof + 1]);
     } else {
-      for (const k of Object.keys(v)) pile.push([(v as Record<string, unknown>)[k], prof + 1]);
+      for (const k of Object.keys(v)) stack.push([(v as Record<string, unknown>)[k], prof + 1]);
     }
   }
   return null;
@@ -57,9 +57,9 @@ const primitive = (v: unknown) => v === null || typeof v === "string" || typeof 
 const present = (props: Record<string, unknown>, name: string) => Object.hasOwn(props, name) && props[name] !== undefined && props[name] !== null;
 
 /** A reference read and computed; its value checked according to `attendu`. */
-function verifierReference(text: unknown, expected: "liste" | "objet" | "simple" | undefined, results: unknown) {
+function checkReference(text: unknown, expected: "liste" | "objet" | "simple" | undefined, results: unknown) {
   if (typeof text !== "string") throw new Gap("référence attendue (un texte)");
-  const ref = lireReference(text);
+  const ref = readReference(text);
   if ("erreur" in ref) throw new Gap(ref.erreur);
   const r = evaluate(ref, results);
   if ("erreur" in r) throw new Gap(r.erreur);
@@ -71,9 +71,9 @@ function verifierReference(text: unknown, expected: "liste" | "objet" | "simple"
 }
 
 /** A field: a path relative to an item, never a reference nor a free text (an address written by Gemma fails here). */
-function lireChamp(text: unknown): string {
+function readField(text: unknown): string {
   if (typeof text !== "string") throw new Gap("nom de champ attendu");
-  const ref = lireReference(text);
+  const ref = readReference(text);
   if ("erreur" in ref) throw new Gap(ref.erreur);
   if (ref.ops.length > 0) throw new Gap("un nom de champ est attendu, pas une référence");
   if (ref.chemin === "$") throw new Gap("nom de champ attendu");
@@ -99,33 +99,33 @@ function objectOf(v: unknown, forme: string): Record<string, unknown> {
 
 type Checked = { props: Record<string, unknown>; reference: boolean };
 
-function verifierProps(def: ComponentDefinition, brutes: Record<string, unknown>, results: unknown): Checked {
+function checkProps(def: ComponentDefinition, raw: Record<string, unknown>, results: unknown): Checked {
   const props: Record<string, unknown> = {};
-  const valeurs: Record<string, { valeur: unknown; groupee: boolean }> = {};
-  const champsAVerifier: { nom: string; champ: string }[] = [];
+  const values: Record<string, { valeur: unknown; groupee: boolean }> = {};
+  const fieldsToCheck: { nom: string; champ: string }[] = [];
   let reference = false;
   const builtIn = def.origine === "integre";
 
   for (const [name, pr] of Object.entries(def.proprietes) as [string, Property][]) {
-    if (!present(brutes, name)) {
+    if (!present(raw, name)) {
       if (pr.requis) throw new Gap(`${name} : requise`);
       continue;
     }
-    const v = brutes[name];
+    const v = raw[name];
     try {
       switch (pr.genre) {
         case "reference": {
           // « $ » given to a paragraph: all the results as compact text, the last-resort layout.
           const expected = builtIn && !(def.nom === "paragraphe" && v === "$") ? EXPECTED[`${def.nom}.${name}`] : undefined;
-          const r = verifierReference(v, expected, results);
+          const r = checkReference(v, expected, results);
           props[name] = r.texte;
-          valeurs[name] = r;
+          values[name] = r;
           reference = true;
           break;
         }
         case "champ":
-          props[name] = lireChamp(v);
-          champsAVerifier.push({ nom: name, champ: props[name] as string });
+          props[name] = readField(v);
+          fieldsToCheck.push({ nom: name, champ: props[name] as string });
           break;
         case "texte":
           props[name] = checkText(v, pr.max ?? AGENT_TEXT_MAX);
@@ -150,10 +150,10 @@ function verifierProps(def: ComponentDefinition, brutes: Record<string, unknown>
           const forme = "{ champ, libelle }";
           props[name] = checkList(v, pr.max ?? 8, forme).map((e) => {
             const o = objectOf(e, forme);
-            const champ = lireChamp(o.champ);
-            const label = present(o, "libelle") ? checkText(o.libelle, LABEL_MAX) : champ;
-            champsAVerifier.push({ nom: name, champ });
-            return { champ, libelle: label };
+            const field = readField(o.champ);
+            const label = present(o, "libelle") ? checkText(o.libelle, LABEL_MAX) : field;
+            fieldsToCheck.push({ nom: name, champ: field });
+            return { champ: field, libelle: label };
           });
           break;
         }
@@ -163,8 +163,8 @@ function verifierProps(def: ComponentDefinition, brutes: Record<string, unknown>
             const o = objectOf(e, forme);
             if (!present(o, "valeur")) throw new Gap("valeur requise");
             if (!present(o, "libelle")) throw new Gap("libelle requis");
-            const valeur = verifierReference(o.valeur, "simple", results).texte;
-            return { valeur, libelle: checkText(o.libelle, LABEL_MAX) };
+            const value = checkReference(o.valeur, "simple", results).texte;
+            return { valeur: value, libelle: checkText(o.libelle, LABEL_MAX) };
           });
           reference = true;
           break;
@@ -180,23 +180,23 @@ function verifierProps(def: ComponentDefinition, brutes: Record<string, unknown>
 
   // A field must exist in at least one item of the referenced list (an empty list says nothing).
   const source = builtIn ? SOURCE[def.nom] : undefined;
-  const lue = source !== undefined && Object.hasOwn(props, source) ? valeurs[source] : undefined;
-  if (lue) {
-    const elements = elementsDe(lue);
-    for (const { nom: name, champ } of champsAVerifier) {
+  const loaded = source !== undefined && Object.hasOwn(props, source) ? values[source] : undefined;
+  if (loaded) {
+    const elements = elementsOf(loaded);
+    for (const { nom: name, champ: field } of fieldsToCheck) {
       if (!Object.hasOwn(props, name)) continue;
-      if (elements.length > 0 && !elements.some((e) => readPath(e, champ) !== undefined)) {
-        throw new Gap(`${name} : champ « ${champ} » absent de tous les éléments`);
+      if (elements.length > 0 && !elements.some((e) => readPath(e, field) !== undefined)) {
+        throw new Gap(`${name} : champ « ${field} » absent de tous les éléments`);
       }
     }
   }
   return { props, reference };
 }
 
-function elementsDe(lue: { valeur: unknown; groupee: boolean }): unknown[] {
-  if (!Array.isArray(lue.valeur)) return [lue.valeur];
-  if (!lue.groupee) return lue.valeur;
-  return (lue.valeur as Group<unknown>[]).flatMap((g) => g.elements);
+function elementsOf(loaded: { valeur: unknown; groupee: boolean }): unknown[] {
+  if (!Array.isArray(loaded.valeur)) return [loaded.valeur];
+  if (!loaded.groupee) return loaded.valeur;
+  return (loaded.valeur as Group<unknown>[]).flatMap((g) => g.elements);
 }
 
 /** The catalog's « one or the other » rules. */
@@ -220,63 +220,63 @@ function applyRules(name: string, props: Record<string, unknown>): void {
   }
 }
 
-function compterBlocs(b: BlocPlan): number {
+function countBlocks(b: PlanBlock): number {
   let n = 0;
-  for (const l of [b.blocs, b.gauche, b.droite]) for (const e of l ?? []) n += 1 + compterBlocs(e);
+  for (const l of [b.blocs, b.gauche, b.droite]) for (const e of l ?? []) n += 1 + countBlocks(e);
   return n;
 }
 
 type Context = { defs: Map<string, ComponentDefinition>; resultats: unknown; ecartes: string[]; n: number; references: number };
 
-function validateBlocks(blocs: BlocPlan[], ctx: Context): BlocPlan[] {
-  const guards: BlocPlan[] = [];
-  for (const b of blocs) {
+function validateBlocks(blocks: PlanBlock[], ctx: Context): PlanBlock[] {
+  const guards: PlanBlock[] = [];
+  for (const b of blocks) {
     const n = ++ctx.n;
     const def = ctx.defs.get(b.composant);
     if (!def) {
       // Unknown: kept (drawn as an error box), its children will not be drawn.
-      ctx.n += compterBlocs(b);
+      ctx.n += countBlocks(b);
       guards.push({ composant: b.composant, props: Object.fromEntries(Object.entries(b.props)) });
       continue;
     }
     let v: Checked;
     try {
-      v = verifierProps(def, b.props, ctx.resultats);
+      v = checkProps(def, b.props, ctx.resultats);
     } catch (e) {
       if (!(e instanceof Gap)) throw e;
-      ctx.ecartes.push(couper(`${n}. ${b.composant} : ${e.message}`));
-      ctx.n += compterBlocs(b);
+      ctx.ecartes.push(cut(`${n}. ${b.composant} : ${e.message}`));
+      ctx.n += countBlocks(b);
       continue;
     }
     if (v.reference) ctx.references++;
-    const kept: BlocPlan = { composant: b.composant, props: v.props };
+    const kept: PlanBlock = { composant: b.composant, props: v.props };
     const children = def.origine === "integre" ? (CHILDREN[def.nom] ?? []) : [];
     for (const key of ["blocs", "gauche", "droite"] as const) {
       const list = b[key];
       if (list === undefined) continue;
       if (children.includes(key)) kept[key] = validateBlocks(list, ctx);
-      else ctx.n += list.reduce((s, e) => s + 1 + compterBlocs(e), 0);
+      else ctx.n += list.reduce((s, e) => s + 1 + countBlocks(e), 0);
     }
     guards.push(kept);
   }
   return guards;
 }
 
-export function validatePlan(brut: unknown, o: { catalogue: ComponentDefinition[]; resultats: unknown }): ValidationResult {
+export function validatePlan(raw: unknown, o: { catalogue: ComponentDefinition[]; resultats: unknown }): ValidationResult {
   try {
-    const too = precheck(brut);
+    const too = precheck(raw);
     if (too) return { ok: false, erreurs: [too] };
-    const r = PlanPage.safeParse(brut);
+    const r = PlanPage.safeParse(raw);
     if (!r.success) {
       return {
         ok: false,
-        erreurs: r.error.issues.slice(0, MAX_ERRORS).map((i) => couper(i.path.length ? `${i.path.join(".")} : ${i.message}` : i.message)),
+        erreurs: r.error.issues.slice(0, MAX_ERRORS).map((i) => cut(i.path.length ? `${i.path.join(".")} : ${i.message}` : i.message)),
       };
     }
     const ctx: Context = { defs: new Map(o.catalogue.map((d) => [d.nom, d])), resultats: o.resultats, ecartes: [], n: 0, references: 0 };
-    const blocs = validateBlocks(r.data.blocs, ctx);
+    const blocks = validateBlocks(r.data.blocs, ctx);
     if (ctx.references === 0) return { ok: false, erreurs: [PLAN_REFERENCES_NOTHING, ...ctx.ecartes] };
-    return { ok: true, plan: { blocs }, ecartes: ctx.ecartes };
+    return { ok: true, plan: { blocs: blocks }, ecartes: ctx.ecartes };
   } catch {
     return { ok: false, erreurs: ["plan illisible"] };
   }

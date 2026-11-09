@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import { writePrivateJson } from "../design/atomic-write.js";
 import type { DiffFile } from "./repo.js";
-import { newPosition, type Bloc } from "./diff.js";
+import { newPosition, type Block } from "./diff.js";
 
 /** Re-exported by design/remarques.ts (task 5), which does not redefine it. */
 export const EMPTY_REMARK = "Une remarque vide n'est pas acceptée.";
@@ -22,8 +22,8 @@ const Schema = z.array(z.object({
 
 interface Shown { marque: " " | "+" | "-"; texte: string; position: number; bloc: number; indice: number }
 
-function shownList(blocs: Bloc[]): Shown[] {
-  return blocs.flatMap((b, bloc) => b.lignes.map((l, hint) => ({ marque: l.marque, texte: l.texte, position: newPosition(b, hint), bloc, indice: hint })));
+function shownList(blocks: Block[]): Shown[] {
+  return blocks.flatMap((b, block) => b.lignes.map((l, hint) => ({ marque: l.marque, texte: l.texte, position: newPosition(b, hint), bloc: block, indice: hint })));
 }
 
 function nearest<T>(items: T[], pos: (t: T) => number, target: number): T {
@@ -31,8 +31,8 @@ function nearest<T>(items: T[], pos: (t: T) => number, target: number): T {
 }
 
 /** Pure re-anchoring: a comment is never deleted, only moved or marked « ligne changée ». */
-export function rejoin(c: Comment, blocs: Bloc[]): Comment {
-  const lignes = shownList(blocs);
+export function rejoin(c: Comment, blocks: Block[]): Comment {
+  const lignes = shownList(blocks);
   const n = c.lignes.length;
   const windows: Shown[][] = [];
   if (n > 0) {
@@ -64,9 +64,9 @@ export class ReviewComments {
   constructor(private readonly fichier: string) {}
 
   private async lire(): Promise<Comment[]> {
-    let brut: string;
-    try { brut = await readFile(this.fichier, "utf8"); } catch { return []; }
-    try { return Schema.parse(JSON.parse(brut)); } catch { return []; }
+    let raw: string;
+    try { raw = await readFile(this.fichier, "utf8"); } catch { return []; }
+    try { return Schema.parse(JSON.parse(raw)); } catch { return []; }
   }
 
   // Serialized read-modify-write: two simultaneous calls do not overwrite each other.
@@ -112,8 +112,8 @@ export class ReviewComments {
 
   recollerFichier(path: string, diff: DiffFile | null): Promise<Comment[]> {
     return this.transformer((list) => {
-      const suite = list.map((c) => (c.fichier !== path ? c : diff ? rejoin(c, diff.blocs) : { ...c, ligneChangee: true }));
-      return { liste: suite, resultat: suite.filter((c) => c.fichier === path) };
+      const next = list.map((c) => (c.fichier !== path ? c : diff ? rejoin(c, diff.blocs) : { ...c, ligneChangee: true }));
+      return { liste: next, resultat: next.filter((c) => c.fichier === path) };
     });
   }
 
@@ -122,8 +122,8 @@ export class ReviewComments {
   }
 
   marquerEnvoyes(ids: string[]): Promise<void> {
-    const ensemble = new Set(ids);
-    return this.transformer((list) => ({ liste: list.map((c) => (ensemble.has(c.id) ? { ...c, envoye: true } : c)), resultat: undefined }));
+    const idSet = new Set(ids);
+    return this.transformer((list) => ({ liste: list.map((c) => (idSet.has(c.id) ? { ...c, envoye: true } : c)), resultat: undefined }));
   }
 
   /** Marks as sent those whose text is still the one that left (a change in the meantime stays to be sent). */

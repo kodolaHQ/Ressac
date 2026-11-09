@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { ShownWidget } from "../shared/api";
   import type { FreePlacement } from "../../../packages/kernel/src/home/schemas";
-  import CadreWidget from "./CadreWidget.svelte";
+  import WidgetFrame from "./CadreWidget.svelte";
   import Icon from "./components/Icon.svelte";
   import { nextRun } from "./components/next";
   import { freeUnits } from "./free-grid";
@@ -9,13 +9,13 @@
   let {
     widget,
     placement,
-    geste,
+    geste: gesture,
     avertissement: warning,
-    refuse,
+    refuse: denied,
     commencer,
-    retirer,
-    autoriser,
-    refuser,
+    retirer: remove,
+    autoriser: allow,
+    refuser: deny,
     recolter: harvest,
     voirWorkflow: seeWorkflow,
   }: {
@@ -60,7 +60,7 @@
   );
 
   // The real size becomes the grid units the display receives in postMessage.
-  const taille = $derived(freeUnits({ l: placement.l, h: placement.h }));
+  const size = $derived(freeUnits({ l: placement.l, h: placement.h }));
 
   function handle(e: PointerEvent) {
     if (e.target instanceof Element && e.target.closest("button")) return;
@@ -69,7 +69,7 @@
   }
 </script>
 
-<article class="widget" class:geste data-testid="widget-{widget.id}">
+<article class="widget" class:geste={gesture} data-testid="widget-{widget.id}">
   <!-- The header is the drag handle: the widget's frame swallows the mouse events. -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <header onpointerdown={handle}>
@@ -105,26 +105,26 @@
               <button role="menuitem" onclick={() => ((menuOpen = false), seeWorkflow())}>Voir / modifier le workflow</button>
             {/if}
           {/if}
-          <button role="menuitem" onclick={() => ((menuOpen = false), retirer())}>Retirer</button>
+          <button role="menuitem" onclick={() => ((menuOpen = false), remove())}>Retirer</button>
         </div>
       {/if}
     </div>
   </header>
   {#if !("erreur" in widget)}
-    {#if widget.etat.statut === "accord-requis" && !refuse}
+    {#if widget.etat.statut === "accord-requis" && !denied}
       <div class="bandeau" data-testid="bandeau-accord">
         <span
           >Ce widget veut lire {widget.compte.join(", ")} avec ton compte{#if widget.publiques.length}, et pourra contacter : {widget.publiques.join(", ")}{:else}, et ne contactera aucun autre site{/if}.</span
         >
-        <button onclick={autoriser}>Autoriser…</button>
-        <button onclick={refuser}>Refuser</button>
+        <button onclick={allow}>Autoriser…</button>
+        <button onclick={deny}>Refuser</button>
       </div>
     {/if}
     {#if warning}<p class="avertissement">{warning}</p>{/if}
-    <CadreWidget
+    <WidgetFrame
       {widget}
       donnees={widget.donnees ?? widget.exemple}
-      {taille}
+      taille={size}
       etat={{ statut: widget.etat.statut, derniereMaj: widget.etat.derniereMaj }}
     />
   {:else if warning}

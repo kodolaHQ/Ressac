@@ -5,57 +5,57 @@ import { appendFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createKernel, WorkshopError } from "../kernel.js";
-import { PontFactice } from "../mcp/pont-factice.js";
+import { FakeBridge } from "../mcp/pont-factice.js";
 import type { TabInfo, BrowserBridge } from "../mcp/pont.js";
 
 const github: TabInfo = { id: "github", titre: "sveltejs/svelte", url: "https://github.com/sveltejs/svelte", espace: "perso" };
 const gmail: TabInfo = { id: "gmail", titre: "Gmail — Boîte de réception", url: "https://mail.google.com/mail/u/0/", espace: "perso" };
-const CTRL_CROCHET = "\x1d";
+const CTRL_BRACKET = "\x1d";
 
-const factice = new PontFactice([github, gmail], { actif: "github", autoriser: false });
-let journal = "";
+const fake = new FakeBridge([github, gmail], { actif: "github", autoriser: false });
+let log = "";
 
 // The call log goes into a file: writing on stderr would damage the display of the agent's terminal.
-const pont = new Proxy(factice, {
+const bridge = new Proxy(fake, {
   get(target, key, receiver) {
-    const valeur = Reflect.get(target, key, receiver);
-    if (typeof valeur !== "function") return valeur;
+    const value = Reflect.get(target, key, receiver);
+    if (typeof value !== "function") return value;
     return (...args: unknown[]) => {
-      if (journal) appendFileSync(journal, `${new Date().toISOString()} ${String(key)} ${JSON.stringify(args)}\n`);
+      if (log) appendFileSync(log, `${new Date().toISOString()} ${String(key)} ${JSON.stringify(args)}\n`);
       // No real browser yet: the tabs opened by the agent open in the default browser.
       if (key === "ouvrirOnglet") execFile("open", [String(args[0])]);
-      return valeur.apply(target, args);
+      return value.apply(target, args);
     };
   },
 }) as BrowserBridge;
 
 // Widgets' and actions' data: outside the workspace, in a temporary folder (no browser profile here).
-const noyau = await createKernel({ pont, dossierWidgets: join(tmpdir(), "webaios-dev-widgets"), dossierActions: join(tmpdir(), "webaios-dev-actions") });
-journal = join(noyau.chemins.interne, "dev-pont.log");
-console.log(`Espace : ${noyau.chemins.racine}\nAppels du navigateur factice : tail -f ${journal}\nCtrl-] pour quitter.\n`);
+const kernel = await createKernel({ pont: bridge, dossierWidgets: join(tmpdir(), "webaios-dev-widgets"), dossierActions: join(tmpdir(), "webaios-dev-actions") });
+log = join(kernel.chemins.interne, "dev-pont.log");
+console.log(`Espace : ${kernel.chemins.racine}\nAppels du navigateur factice : tail -f ${log}\nCtrl-] pour quitter.\n`);
 
 let session;
 try {
-  session = await noyau.ouvrirSessionAgent({ cols: process.stdout.columns ?? 100, rows: process.stdout.rows ?? 30 });
+  session = await kernel.ouvrirSessionAgent({ cols: process.stdout.columns ?? 100, rows: process.stdout.rows ?? 30 });
   // After opening: a new session starts without authorization.
-  noyau.politique.interactionUtilisateur(github); // the user « talks to the agent » from the GitHub tab
+  kernel.politique.interactionUtilisateur(github); // the user « talks to the agent » from the GitHub tab
 } catch (e) {
   console.error(e instanceof WorkshopError ? `Agent indisponible : ${e.message}` : e);
-  await noyau.arreter();
+  await kernel.arreter();
   process.exit(1);
 }
 
-const quitter = async (code: number) => {
+const quit = async (code: number) => {
   if (process.stdin.isTTY) process.stdin.setRawMode(false);
   session.arreter();
-  await noyau.arreter();
-  console.log(`\nAppels reçus : ${factice.appels.map((a) => a.methode).join(", ") || "aucun"}`);
+  await kernel.arreter();
+  console.log(`\nAppels reçus : ${fake.appels.map((a) => a.methode).join(", ") || "aucun"}`);
   process.exit(code);
 };
 
 if (process.stdin.isTTY) process.stdin.setRawMode(true);
 process.stdin.setEncoding("utf8");
-process.stdin.on("data", (d: string) => (d === CTRL_CROCHET ? void quitter(0) : session.ecrire(d)));
+process.stdin.on("data", (d: string) => (d === CTRL_BRACKET ? void quit(0) : session.ecrire(d)));
 process.stdout.on("resize", () => session.redimensionner(process.stdout.columns, process.stdout.rows));
 session.surDonnees((d) => process.stdout.write(d));
-session.surFin((code) => void quitter(code));
+session.surFin((code) => void quit(code));

@@ -1,7 +1,7 @@
-import { navigationOutsideSite, TabNotFound, PrivateTab, type DroitDev, type TabInfo, type OptionsLecturePage } from "../shims/kernel";
+import { navigationOutsideSite, TabNotFound, PrivateTab, type DevRight, type TabInfo, type PageReadOptions } from "../shims/kernel";
 import type { BrowserState, WindowId, Tab } from "../../shared/model";
 import { privateTab, WORKFLOW_PREFIX } from "../../shared/model";
-import { changementsPolitique, tabInfos, activeTabOf, appTab, siteTab, originOf, SITE_PREFIX, resolveSpace } from "../../core/agent/pont";
+import { policyChanges, tabInfos, activeTabOf, appTab, siteTab, originOf, SITE_PREFIX, resolveSpace } from "../../core/agent/pont";
 import type { Handler } from "../../shared/rpc";
 import type { AgentApps } from "../store/apps";
 import type { DevTools } from "../store/devtools";
@@ -148,10 +148,10 @@ export function bridgeHandlers(
         return r === "en-attente" ? r : undefined;
       }
       if (id.startsWith(APP_PREFIX)) {
-        const dossier = id.slice(APP_PREFIX.length);
-        if (!apps.viewFor(dossier)) throw new TabNotFound(id);
+        const folder = id.slice(APP_PREFIX.length);
+        if (!apps.viewFor(folder)) throw new TabNotFound(id);
         // The app window never leaves its origin: elsewhere, a tab of the main window.
-        if (!apps.navigateForAgent(dossier, url)) openTab([url]);
+        if (!apps.navigateForAgent(folder, url)) openTab([url]);
         return;
       }
       tab(id);
@@ -167,7 +167,7 @@ export function bridgeHandlers(
     },
     // The dev tools card, in the active window; refused with none to show it. The kernel takes it down (signal) when a
     // new conversation starts.
-    demanderOutilsDev: ([o, d]: [TabInfo, { droits: DroitDev[]; raison: string; agent: string }], signal) => {
+    demanderOutilsDev: ([o, d]: [TabInfo, { droits: DevRight[]; raison: string; agent: string }], signal) => {
       const f = windows.active();
       return f ? questions.askDevTools(o, d, f, signal) : [];
     },
@@ -177,8 +177,8 @@ export function bridgeHandlers(
       const f = windows.active();
       return f ? questions.askWidgetData(o, f, signal) : false;
     },
-    lirePageInvisible: ([url, o]: [string, OptionsLecturePage & { menagee?: string }], signal) =>
-      readPage(store, url, o, signal, (lecture, hostName, s) => host().request("lecture.changerHote", { lecture, hote: hostName }, s)),
+    lirePageInvisible: ([url, o]: [string, PageReadOptions & { menagee?: string }], signal) =>
+      readPage(store, url, o, signal, (reading, hostName, s) => host().request("lecture.changerHote", { lecture: reading, hote: hostName }, s)),
     lireHtmlInvisible: ([url, o]: [string, { adressesLocales?: boolean }], signal) => readHtml(store, url, o ?? {}, signal),
     // The kernel's dev tools (RemoteBridge.outilsDev): one owner per kernel start, its token on every call.
     "outilsDev.owner": () => devtools.owner(),
@@ -202,9 +202,9 @@ export function trackState(store: Store, host: AgentHost, windows: WindowRegistr
   };
   store.subscribe((state, previous) => {
     refresh();
-    const { navigues: navigated, fermes } = changementsPolitique(previous, state);
+    const { navigues: navigated, fermes: closed } = policyChanges(previous, state);
     for (const n of navigated) host.notify("politique.navigue", n);
-    for (const id of fermes) host.notify("politique.ferme", { id });
+    for (const id of closed) host.notify("politique.ferme", { id });
     // Opening the agent panel on a tab gives it to the agent and pre-fills its context.
     for (const f of state.fenetres) {
       const opened = f.panneauAgentOuvert && !previous.fenetres.find((x) => x.id === f.id)?.panneauAgentOuvert;

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { READS_GAP_MS, SEARCHES_GAP_MS, Pacing, siteMenage } from "../../src/workflows/pacing.js";
+import { READS_GAP_MS, SEARCHES_GAP_MS, Pacing, sitePacing } from "../../src/workflows/pacing.js";
 
 /** Fake clock and wait: attendre(ms) advances time without sleeping. */
-function factice() {
+function fake() {
   let t = 1000;
   const waits: number[] = [];
   const m = new Pacing({
@@ -14,25 +14,25 @@ function factice() {
 
 describe("Menagement", () => {
   it("two searches: the second starts 2 s after the end of the first", async () => {
-    const { m, maintenant: now, avancer: advance } = factice();
-    const debuts: number[] = [];
-    const fins: number[] = [];
-    const f = async () => { debuts.push(now()); advance(300); fins.push(now()); };
+    const { m, maintenant: now, avancer: advance } = fake();
+    const starts: number[] = [];
+    const ends: number[] = [];
+    const f = async () => { starts.push(now()); advance(300); ends.push(now()); };
     await Promise.all([m.rechercher(f), m.rechercher(f)]);
-    expect(debuts[1]! - fins[0]!).toBe(SEARCHES_GAP_MS);
+    expect(starts[1]! - ends[0]!).toBe(SEARCHES_GAP_MS);
     expect(SEARCHES_GAP_MS).toBe(2000);
   });
 
   it("two reads of the same host spaced 1 s apart, two hosts at the same time", async () => {
-    const { m, maintenant: now, avancer: advance } = factice();
-    const journal: string[] = [];
-    const lecture = (name: string) => async () => { journal.push(`${name}@${now()}`); advance(0); };
+    const { m, maintenant: now, avancer: advance } = fake();
+    const log: string[] = [];
+    const reading = (name: string) => async () => { log.push(`${name}@${now()}`); advance(0); };
     await Promise.all([
-      m.lire("a.fr", lecture("a1")),
-      m.lire("a.fr", lecture("a2")),
-      m.lire("b.fr", lecture("b1")),
+      m.lire("a.fr", reading("a1")),
+      m.lire("a.fr", reading("a2")),
+      m.lire("b.fr", reading("b1")),
     ]);
-    const t = (n: string) => Number(journal.find((j) => j.startsWith(n + "@"))!.split("@")[1]);
+    const t = (n: string) => Number(log.find((j) => j.startsWith(n + "@"))!.split("@")[1]);
     expect(t("a2") - t("a1")).toBe(READS_GAP_MS);
     expect(t("b1")).toBe(t("a1"));
     expect(READS_GAP_MS).toBe(1000);
@@ -53,7 +53,7 @@ describe("Menagement", () => {
   });
 
   it("a search cancelled before its turn does not delay the next one", async () => {
-    const { m, attentes: waits } = factice();
+    const { m, attentes: waits } = fake();
     await m.rechercher(async () => 1);
     const ctrl = new AbortController();
     ctrl.abort();
@@ -64,7 +64,7 @@ describe("Menagement", () => {
   });
 
   it("an error from f lets the next one through", async () => {
-    const { m } = factice();
+    const { m } = fake();
     const a = m.rechercher(async () => { throw new Error("boum"); });
     const b = m.rechercher(async () => "ok");
     await expect(a).rejects.toThrow("boum");
@@ -72,9 +72,9 @@ describe("Menagement", () => {
   });
 
   it("two instances share nothing", async () => {
-    const un = factice();
-    const two = factice();
-    await un.m.rechercher(async () => 1);
+    const one = fake();
+    const two = fake();
+    await one.m.rechercher(async () => 1);
     await two.m.rechercher(async () => 1);
     expect(two.attentes).toEqual([]);
   });
@@ -83,20 +83,20 @@ describe("Menagement", () => {
     let t = 0;
     const m = new Pacing({ maintenant: () => t, attendre: async (ms) => { t += ms; } });
     let finish!: () => void;
-    const longue = m.lire("a.fr", () => new Promise<void>((r) => { finish = r; }));
+    const lengthy = m.lire("a.fr", () => new Promise<void>((r) => { finish = r; }));
     const ctrl = new AbortController();
     let calls = 0;
     const p = m.lire("a.fr", async () => { calls++; }, ctrl.signal);
     ctrl.abort(new Error("stop"));
     await expect(p).rejects.toThrow("stop");
     finish();
-    await longue;
+    await lengthy;
     await m.lire("a.fr", async () => {});
     expect(calls).toBe(0);
   });
 
   it("www.a.fr and a.fr share a lane, b.fr does not", async () => {
-    const { m, attentes: waits } = factice();
+    const { m, attentes: waits } = fake();
     await m.lire("www.A.fr", async () => {});
     await m.lire("a.fr", async () => {});
     expect(waits).toEqual([READS_GAP_MS]);
@@ -105,7 +105,7 @@ describe("Menagement", () => {
   });
 
   it("a clock set back does not lengthen the wait beyond the gap", async () => {
-    const { m, attentes: waits, avancer: advance } = factice();
+    const { m, attentes: waits, avancer: advance } = fake();
     await m.rechercher(async () => {});
     advance(-3_600_000);
     await m.rechercher(async () => {});
@@ -122,7 +122,7 @@ describe("Menagement", () => {
   });
 
   it("a search refused before its turn (verifier throws) does not call f and does not consume the gap", async () => {
-    const { m, attentes: waits } = factice();
+    const { m, attentes: waits } = fake();
     await m.rechercher(async () => 1);
     let calls = 0;
     const denial = () => { throw new Error("refusée"); };
@@ -139,28 +139,28 @@ describe("Menagement", () => {
     const waits: number[] = [];
     const m = new Pacing({ maintenant: () => t, attendre: async (ms) => { waits.push(ms); t += ms; denied = true; } });
     await m.rechercher(async () => 1);
-    const verifier = () => { if (denied) throw new Error("refusée"); };
-    await expect(m.rechercher(async () => 2, undefined, verifier)).rejects.toThrow("refusée");
+    const check = () => { if (denied) throw new Error("refusée"); };
+    await expect(m.rechercher(async () => 2, undefined, check)).rejects.toThrow("refusée");
     // The gap still counts from the end of the first: the next one waits for nothing.
     await m.rechercher(async () => 3);
     expect(waits).toEqual([SEARCHES_GAP_MS]);
   });
 
   it("siteMenage: lowercase, without www. or trailing dot", () => {
-    expect(siteMenage("WWW.Exemple.fr.")).toBe("exemple.fr");
-    expect(siteMenage("blog.exemple.fr")).toBe("blog.exemple.fr");
+    expect(sitePacing("WWW.Exemple.fr.")).toBe("exemple.fr");
+    expect(sitePacing("blog.exemple.fr")).toBe("blog.exemple.fr");
   });
 
   it("a read redirected to another host waits for that host's gap, and returns the first's lane", async () => {
-    const { m, attentes: waits, maintenant: now } = factice();
+    const { m, attentes: waits, maintenant: now } = fake();
     await m.lire("b.fr", async () => {});
-    let lueA = -1;
+    let readA = -1;
     await m.lire("a.fr", async (changeHost) => {
       await changeHost("b.fr");
-      lueA = now();
+      readA = now();
     });
     expect(waits).toEqual([READS_GAP_MS]);
-    expect(lueA).toBe(1000 + READS_GAP_MS);
+    expect(readA).toBe(1000 + READS_GAP_MS);
     // a.fr released at the redirect (t = 1000): gap elapsed. b.fr, finished at 2000: 1 s.
     await m.lire("a.fr", async () => {});
     expect(waits).toEqual([READS_GAP_MS]);
@@ -169,7 +169,7 @@ describe("Menagement", () => {
   });
 
   it("redirect to the same site (www., uppercase): nothing changes", async () => {
-    const { m, attentes: waits } = factice();
+    const { m, attentes: waits } = fake();
     await m.lire("a.fr", async (changeHost) => {
       await changeHost("WWW.a.fr");
       await changeHost("a.fr");
@@ -183,26 +183,26 @@ describe("Menagement", () => {
     let finish!: () => void;
     let redirected!: () => void;
     const isRedirected = new Promise<void>((r) => (redirected = r));
-    const longue = m.lire("a.fr", async (changeHost) => {
+    const lengthy = m.lire("a.fr", async (changeHost) => {
       await changeHost("b.fr");
       redirected();
       await new Promise<void>((r) => (finish = r));
     });
     await isRedirected;
-    const journal: string[] = [];
-    const b = m.lire("b.fr", async () => void journal.push(`b@${t}`));
-    const a = m.lire("a.fr", async () => void journal.push(`a@${t}`));
+    const log: string[] = [];
+    const b = m.lire("b.fr", async () => void log.push(`b@${t}`));
+    const a = m.lire("a.fr", async () => void log.push(`a@${t}`));
     await a;
-    expect(journal).toEqual([`a@${READS_GAP_MS}`]);
+    expect(log).toEqual([`a@${READS_GAP_MS}`]);
     t = 5000;
     finish();
-    await longue;
+    await lengthy;
     await b;
-    expect(journal).toEqual([`a@${READS_GAP_MS}`, `b@${5000 + READS_GAP_MS}`]);
+    expect(log).toEqual([`a@${READS_GAP_MS}`, `b@${5000 + READS_GAP_MS}`]);
   });
 
   it("a.fr → b.fr → a.fr: each lane taken back in turn, without blocking", async () => {
-    const { m, attentes: waits } = factice();
+    const { m, attentes: waits } = fake();
     await m.lire("a.fr", async (changeHost) => {
       await changeHost("b.fr");
       await changeHost("a.fr");

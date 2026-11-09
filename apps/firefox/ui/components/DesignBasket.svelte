@@ -6,7 +6,7 @@
     api,
     projet: project,
     destination,
-    sansDestination,
+    sansDestination: withoutDestination,
     fermer: close,
   }: {
     api: Pick<ApiDesign, "panier" | "retirer" | "envoyer" | "lots" | "traite" | "surChange">;
@@ -19,7 +19,7 @@
   let elements = $state<ShownElement[]>([]);
   let error = $state<string | null>(null);
   let sending = $state(false);
-  let lots = $state<BatchShown[]>([]);
+  let batches = $state<BatchShown[]>([]);
   let request = 0;
 
   async function reread() {
@@ -28,7 +28,7 @@
     const [list, sent] = await Promise.all([api.panier(p).catch(() => []), api.lots(p).catch(() => [])]);
     if (n === request) {
       elements = list;
-      lots = sent;
+      batches = sent;
     }
   }
 
@@ -38,10 +38,10 @@
     return Number.isNaN(d.getTime()) ? "" : d.toLocaleString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
   };
   const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
-  async function markProcessed(lot: string) {
+  async function markProcessed(batch: string) {
     error = null;
     try {
-      await api.traite(project, lot);
+      await api.traite(project, batch);
     } catch (e) {
       error = message(e);
     }
@@ -71,7 +71,7 @@
     void reread();
   }
 
-  const debut = (t: string) => (t.length > 120 ? `${t.slice(0, 120)}…` : t);
+  const start = (t: string) => (t.length > 120 ? `${t.slice(0, 120)}…` : t);
 </script>
 
 <aside class="panier" data-testid="panier-design" aria-label="Panier du mode design">
@@ -89,17 +89,17 @@
             <code class="etiquette">{e.etiquette}</code>
             <button class="supprimer" aria-label="Supprimer" onclick={() => void api.retirer(project, e.id)}>×</button>
           </div>
-          <p class="texte">{debut(e.texte)}</p>
+          <p class="texte">{start(e.texte)}</p>
           {#if e.source}<p class="source">{e.source}</p>{/if}
         </li>
       {/each}
     </ul>
   {/if}
-  {#if lots.length > 0}
+  {#if batches.length > 0}
     <section class="envoyes" aria-label="Lots envoyés">
       <h3>Envoyés</h3>
       <ul>
-        {#each lots as l (l.id)}
+        {#each batches as l (l.id)}
           <li data-testid="lot-envoye" data-etat={l.etat}>
             <div class="tete">
               <span class="etat">{STATES[l.etat]}</span>
@@ -109,7 +109,7 @@
               {/if}
             </div>
             {#each l.elements as e (e.id)}
-              <p class="sous"><code class="etiquette">{e.etiquette}</code> {debut(e.texte)}</p>
+              <p class="sous"><code class="etiquette">{e.etiquette}</code> {start(e.texte)}</p>
               {#if e.traite?.note}<p class="note">{e.traite.note}</p>{/if}
             {/each}
           </li>
@@ -118,7 +118,7 @@
     </section>
   {/if}
   <footer>
-    {#if destination === null && sansDestination}<p class="raison">{sansDestination}</p>{/if}
+    {#if destination === null && withoutDestination}<p class="raison">{withoutDestination}</p>{/if}
     {#if error}<p class="raison" role="alert">{error}</p>{/if}
     <button class="envoyer" data-testid="envoyer-remarques" disabled={n === 0 || destination === null || sending} onclick={send}>{label}</button>
   </footer>

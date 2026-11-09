@@ -9,11 +9,11 @@
     nom: name,
     saisie: input = $bindable(""),
     libelleSaisie: inputLabel,
-    debut,
+    debut: start,
     occupee: busy,
     dejaLancee: alreadyLaunched,
     precedentes: previous,
-    lancer,
+    lancer: launch,
     voirWorkflow: seeWorkflow,
     choisir: choose,
   }: {
@@ -51,7 +51,7 @@
   };
 
   function validate() {
-    if (!busy && !missingInput) lancer();
+    if (!busy && !missingInput) launch();
   }
 
   // The menu closes on a click elsewhere and on Escape.
@@ -92,7 +92,7 @@
       {alreadyLaunched ? "Relancer" : "Lancer"}
     </button>
     <button data-testid="voir-workflow" onclick={seeWorkflow}>Voir le workflow</button>
-    {#if debut}<span class="heure" data-testid="heure-resultat">{hour(debut)}</span>{/if}
+    {#if start}<span class="heure" data-testid="heure-resultat">{hour(start)}</span>{/if}
     {#if previous && previous.length > 0}
       <div class="precedents">
         <button data-testid="resultats-precedents" aria-haspopup="menu" aria-expanded={menuOpen} onclick={() => (menuOpen = !menuOpen)}>

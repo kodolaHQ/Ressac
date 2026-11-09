@@ -1,25 +1,25 @@
 import { describe, expect, it } from "vitest";
-import { masquer, INITIAL_REVEAL, surZone, zoneGauche, zoneSortie, type Revelation, type ZoneGauche } from "../shared/revelation";
+import { hide, INITIAL_REVEAL, onZone, leftZone, exitZone, type Reveal, type LeftZone } from "../shared/revelation";
 
 /** Replays mouse positions (px from the left edge); a requested hide is applied right away. */
-function walk(xs: number[], depart: Revelation = INITIAL_REVEAL): boolean[] {
-  let r = depart;
+function walk(xs: number[], start: Reveal = INITIAL_REVEAL): boolean[] {
+  let r = start;
   return xs.map((x) => {
-    const zone = zoneGauche(x);
-    const s = surZone(r, zone);
-    r = s.masquer ? masquer(zone) : { revelee: s.revelee, armee: s.armee };
+    const zone = leftZone(x);
+    const s = onZone(r, zone);
+    r = s.masquer ? hide(zone) : { revelee: s.revelee, armee: s.armee };
     return r.revelee;
   });
 }
 
 describe("left edge zones", () => {
   it("edge under 16 px, bar up to 280 px (240 + margin), far beyond", () => {
-    expect([0, 15, 16, 239, 279, 280, 900].map(zoneGauche)).toEqual<ZoneGauche[]>(["bord", "bord", "barre", "barre", "barre", "loin", "loin"]);
+    expect([0, 15, 16, 239, 279, 280, 900].map(leftZone)).toEqual<LeftZone[]>(["bord", "bord", "barre", "barre", "barre", "loin", "loin"]);
   });
   it("a fast exit through the left counts as the edge", () => {
-    expect(zoneSortie(40)).toBe("bord");
-    expect(zoneSortie(60)).toBe("barre");
-    expect(zoneSortie(500)).toBe("loin");
+    expect(exitZone(40)).toBe("bord");
+    expect(exitZone(60)).toBe("barre");
+    expect(exitZone(500)).toBe("loin");
   });
 });
 
@@ -31,16 +31,16 @@ describe("compact-mode bar reveal", () => {
     expect(walk([3, 3, 3, 3])).toEqual([true, true, true, true]);
   });
   it("closes beyond the bar and its margin", () => {
-    const s = surZone({ revelee: true, armee: true }, "loin");
+    const s = onZone({ revelee: true, armee: true }, "loin");
     expect(s).toMatchObject({ revelee: true, masquer: true });
     expect(walk([5, 120, 300])).toEqual([true, true, false]);
   });
   it("does not request a hide while the mouse stays on the bar", () => {
-    expect(surZone({ revelee: true, armee: true }, "barre").masquer).toBe(false);
-    expect(surZone({ revelee: true, armee: true }, "bord").masquer).toBe(false);
+    expect(onZone({ revelee: true, armee: true }, "barre").masquer).toBe(false);
+    expect(onZone({ revelee: true, armee: true }, "bord").masquer).toBe(false);
   });
   it("hidden with the mouse at the edge, it only comes back after the mouse left then found the edge again", () => {
-    const r = masquer("bord");
+    const r = hide("bord");
     expect(walk([3, 5, 2], r)).toEqual([false, false, false]);
     expect(walk([3, 40, 3], r)).toEqual([false, false, true]);
   });

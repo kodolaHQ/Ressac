@@ -40,10 +40,10 @@ export function localUrl(hostName: string): boolean {
 }
 
 /** Only a widget's http(s) link opens: no `javascript:`, no `file:`, no machine address (urlOuvrable). */
-export function openableUrl(brute: string): boolean {
+export function openableUrl(raw: string): boolean {
   let u: URL;
   try {
-    u = new URL(brute);
+    u = new URL(raw);
   } catch {
     return false;
   }

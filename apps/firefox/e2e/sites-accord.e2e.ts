@@ -25,18 +25,18 @@ let profile: string;
 
 const url = (p: string, host = "vidola-a.localhost") => server.url(host, p);
 const reader = () => server.url("lecteur.localhost", "/*").replace(/^http:/, "https:");
-const declaration = (plus: { connexion?: string[] } = {}) => ({
+const declaration = (extra: { connexion?: string[] } = {}) => ({
   nom: "Vidola",
   adresse: url("/serie/the-bear"),
   domaines: ["vidola-a.localhost"],
-  connexion: plus.connexion ?? ["compte.localhost"],
+  connexion: extra.connexion ?? ["compte.localhost"],
   retouches: [{ correspond: ["/serie/*"], js: ["a.js"], css: ["cacher.css"], cadres: [reader()] }],
   reprise: true,
 });
 const A_JS = 'document.body.dataset.retouche = "oui";';
 const FILES = { "retouches/a.js": A_JS, "retouches/cacher.css": ".shorts { display: none; }" };
-const accordsFile = () => path.join(dataDir, "sites-accords.json");
-const accords = (): Record<string, unknown> => (existsSync(accordsFile()) ? JSON.parse(readFileSync(accordsFile(), "utf8")) : {});
+const grantsFile = () => path.join(dataDir, "sites-accords.json");
+const grants = (): Record<string, unknown> => (existsSync(grantsFile()) ? JSON.parse(readFileSync(grantsFile(), "utf8")) : {});
 
 const inStore = <T = unknown>(body: string, args: unknown[] = []) =>
   m.execute<T>(`return (async () => { const store = await ChromeUtils.importESModule("${STORE}").ready; ${body} })();`, args);
@@ -101,7 +101,7 @@ beforeEach(async () => {
   writeSite(dataDir, "vidola", { declaration: declaration(), fichiers: FILES });
   rmSync(path.join(dataDir, "espace", "sites", "vidola", "accueil"), { recursive: true, force: true });
   rmSync(path.join(dataDir, "sites", "vidola"), { recursive: true, force: true });
-  writeFileSync(accordsFile(), "{}");
+  writeFileSync(grantsFile(), "{}");
 });
 afterEach(async () => {
   try {
@@ -140,7 +140,7 @@ describe("grant card", () => {
     expect(await tweak()).toBeNull();
     const memory = path.join(dataDir, "sites", "vidola", "memoire.json");
     expect(!existsSync(memory) || Object.keys(JSON.parse(readFileSync(memory, "utf8")).positions).length === 0).toBe(true);
-    expect(accords().vidola).toBeFalsy();
+    expect(grants().vidola).toBeFalsy();
     // Refusing counts for this open only.
     await reopen();
     expect(await card()).not.toBeNull();
@@ -154,7 +154,7 @@ describe("grant card", () => {
     await expect.poll(() => shorts(), { timeout: 10_000 }).toBe("none");
     await expect.poll(() => tweak()).toBe("oui");
     expect((await viewState())?.visible).toBe(true);
-    expect(accords().vidola).toEqual({ domaines: ["vidola-a.localhost"], connexion: ["compte.localhost"], cadres: [reader()], reprise: true });
+    expect(grants().vidola).toEqual({ domaines: ["vidola-a.localhost"], connexion: ["compte.localhost"], cadres: [reader()], reprise: true });
     await reopen();
     await expect.poll(() => viewUrl(), { timeout: 15_000 }).toBe(url("/serie/the-bear"));
     expect(await card()).toBeNull();
@@ -197,7 +197,7 @@ describe("grant card", () => {
     await click("accorder-site");
     await expect.poll(() => shorts(), { timeout: 15_000 }).toBe("none");
     await view("(window.marque = 1, 1)");
-    writeFileSync(accordsFile(), "{}");
+    writeFileSync(grantsFile(), "{}");
     await openSite();
     await expect.poll(() => card(), { timeout: 10_000 }).not.toBeNull();
     expect((await viewState())?.visible).toBe(false);
@@ -217,13 +217,13 @@ describe("grant card", () => {
     await expect.poll(async () => (await state()).accord?.empreinte, { timeout: 10_000 }).not.toBe(v1);
     await barApi(`await site.accorder(true, arguments[0]); return true;`, [v1]);
     await sleep(300);
-    expect(accords().vidola).toBeFalsy();
+    expect(grants().vidola).toBeFalsy();
     expect(await card("accord-site-connexion")).toContain("evil.localhost");
     expect((await viewState())?.visible).toBe(false);
     // With the hash of the card up to date, the click grants.
     await click("accorder-site");
     await expect.poll(() => shorts(), { timeout: 15_000 }).toBe("none");
-    expect((accords().vidola as { connexion: string[] }).connexion).toEqual(["compte.localhost", "evil.localhost"]);
+    expect((grants().vidola as { connexion: string[] }).connexion).toEqual(["compte.localhost", "evil.localhost"]);
   });
 
   it("the domains added by address tracking are named on the card (sites.spec.ts:1137)", async () => {
@@ -242,7 +242,7 @@ describe("grant card", () => {
     const notBool = await barApi<string>(`return site.accorder("yes", "x").then(() => "accepted", (e) => e.message);`);
     expect(notBool).toBe("invalid accord request");
     await sleep(200);
-    expect(accords().vidola).toBeFalsy();
+    expect(grants().vidola).toBeFalsy();
     expect(await card()).not.toBeNull();
   });
 
@@ -254,7 +254,7 @@ describe("grant card", () => {
     await view(`(location.href = ${JSON.stringify(url("/lecteur"))}, 1)`);
     await expect.poll(() => viewUrl(), { timeout: 10_000 }).toBe(url("/lecteur"));
     await expect.poll(() => view("document.readyState")).toBe("complete");
-    writeFileSync(accordsFile(), "{}");
+    writeFileSync(grantsFile(), "{}");
     await openSite();
     await expect.poll(() => card(), { timeout: 10_000 }).not.toBeNull();
     await expect.poll(() => view("document.readyState")).toBe("complete");
@@ -274,7 +274,7 @@ describe("grant card", () => {
     const inFrame = await view<string[]>(attack, { frame: 0 });
     for (const r of [inView, inFrame]) expect(r!.every((x) => x === "undefined" || x === "blocked")).toBe(true);
     await sleep(500);
-    expect(accords().vidola).toBeFalsy();
+    expect(grants().vidola).toBeFalsy();
     expect(await card()).not.toBeNull();
     expect((await state()).vue).toBe("accord");
   });
@@ -335,7 +335,7 @@ describe("home frame", () => {
     const r = (await home("return JSON.parse(JSON.stringify(fw.attaque));")) as string[];
     expect(r.every((x) => x === "undefined" || x === "blocked")).toBe(true);
     await sleep(500);
-    expect(accords().vidola).toBeFalsy();
+    expect(grants().vidola).toBeFalsy();
   });
 
   it("reopening an app whose home has gone: the view goes to the site (sites.spec.ts:1187)", async () => {

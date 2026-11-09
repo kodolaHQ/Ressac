@@ -29,7 +29,7 @@ const site = siteWindowExpr("vidola");
 const view = `${site}.gBrowser.selectedBrowser`;
 const url = (p: string) => server.url("vidola-a.localhost", p);
 const pub = (p: string) => server.url("pub.localhost", p);
-const connexion = () => server.url("compte.localhost", "/connexion");
+const login = () => server.url("compte.localhost", "/connexion");
 const small = `[...Services.wm.getEnumerator("navigator:browser")].find((x) => x.document.documentElement.getAttribute("webaios-site-small") === "vidola")`;
 const vidola = () => ({ nom: "Vidola", adresse: url("/"), domaines: ["vidola-a.localhost"], connexion: ["compte.localhost"] });
 /** What reached pub.localhost during this test, the home page's ad frame aside. */
@@ -204,16 +204,16 @@ describe("site app navigation", () => {
 
   it("window.open to the sign-in domain: a 500 × 650 window in the app's container, kept on its domains, opening nothing", async () => {
     await openAndWait();
-    await inSiteView(m, "vidola", `window.open(${JSON.stringify(connexion())}, "connexion", "width=500,height=650"); return 1;`, { gesture: true });
+    await inSiteView(m, "vidola", `window.open(${JSON.stringify(login())}, "connexion", "width=500,height=650"); return 1;`, { gesture: true });
     const info = () =>
       m.execute(`const x = ${small}; if (!x) return null; const b = x.gBrowser.selectedBrowser;
         return { sameContainer: b.getAttribute("usercontextid") === ${view}.getAttribute("usercontextid"), url: b.currentURI.spec, width: x.outerWidth, toolbar: x.toolbar.visible };`);
-    await expect.poll(info, { timeout: 10_000 }).toEqual({ sameContainer: true, url: connexion(), width: 500, toolbar: false });
+    await expect.poll(info, { timeout: 10_000 }).toEqual({ sameContainer: true, url: login(), width: 500, toolbar: false });
     const smallBrowser = `(${small}).gBrowser.selectedBrowser`;
     await waitFor(m, `return !${smallBrowser}.webProgress.isLoadingDocument;`, (v) => v === true);
     // It opens nothing: neither the site (the app view stays) nor another sign-in window.
     const windows = await browserWindows();
-    await inBrowser(m, smallBrowser, `window.open(${JSON.stringify(url("/film/2"))}); window.open(${JSON.stringify(connexion())}, "x", "width=400,height=400"); return 1;`, { gesture: true });
+    await inBrowser(m, smallBrowser, `window.open(${JSON.stringify(url("/film/2"))}); window.open(${JSON.stringify(login())}, "x", "width=400,height=400"); return 1;`, { gesture: true });
     await sleep(800);
     expect(await browserWindows()).toBe(windows);
     expect(await viewUrl()).toBe(url("/"));
@@ -298,9 +298,9 @@ describe("site app navigation", () => {
   // Firefox itself refuses opener.location from the sign-in window (SecurityError, spike (b)): nothing to mention.
   it("the sign-in window doing opener.location to pub.localhost: the view stays on the site, no request", async () => {
     await openAndWait();
-    await inSiteView(m, "vidola", `window.open(${JSON.stringify(connexion())}, "connexion", "width=500,height=650"); return 1;`, { gesture: true });
+    await inSiteView(m, "vidola", `window.open(${JSON.stringify(login())}, "connexion", "width=500,height=650"); return 1;`, { gesture: true });
     const smallBrowser = `(${small}).gBrowser.selectedBrowser`;
-    await waitFor(m, `const x = ${small}; return !!x && x.gBrowser.selectedBrowser.currentURI.spec === ${JSON.stringify(connexion())} && !x.gBrowser.selectedBrowser.webProgress.isLoadingDocument;`, (v) => v === true);
+    await waitFor(m, `const x = ${small}; return !!x && x.gBrowser.selectedBrowser.currentURI.spec === ${JSON.stringify(login())} && !x.gBrowser.selectedBrowser.webProgress.isLoadingDocument;`, (v) => v === true);
     expect(await inBrowser(m, smallBrowser, "return !!window.opener;")).toBe(true);
     // From the page world, with a gesture.
     const code = `try { opener.location = ${JSON.stringify(pub("/opener"))}; document.documentElement.dataset.r = "assigned"; } catch (e) { document.documentElement.dataset.r = e.name; }`;
@@ -443,7 +443,7 @@ describe("site app navigation", () => {
         await new Promise((r) => setTimeout(r, 1000));
         return marked();
       })();`,
-      [connexion()],
+      [login()],
     );
     expect(kept).toBe(true);
     await viewAt(url("/"));

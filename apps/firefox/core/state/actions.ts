@@ -4,7 +4,7 @@ import {
   spaceKey,
   AGENT_WIDTH_MAX,
   AGENT_WIDTH_MIN,
-  actionDeUrl,
+  actionOfUrl,
   WORKFLOW_ACTION_PREFIX,
   URL_ACTIONS,
   URL_APPLICATIONS,
@@ -21,7 +21,7 @@ import {
   type Tab,
 } from "../../shared/model";
 
-const MAX_FERMES = 20;
+const MAX_CLOSED = 20;
 
 /** Mutable draft: each handler returns false to leave the state unchanged (same reference). */
 type Draft = BrowserState;
@@ -73,7 +73,7 @@ function open(
 }
 
 /** Activates the window's internal page `url` (in its space) if already open, otherwise opens it. */
-function openInternalPage(d: Draft, genId: () => string, windowId: string, url: string, titre: string): boolean {
+function openInternalPage(d: Draft, genId: () => string, windowId: string, url: string, title: string): boolean {
   const f = win(d, windowId);
   if (!f) return false;
   const spaces = [f.espaceActif, ...Object.keys(f.ordre).filter((x) => x !== f.espaceActif)];
@@ -81,15 +81,15 @@ function openInternalPage(d: Draft, genId: () => string, windowId: string, url: 
     const existing = list(f, space).find((id) => d.onglets[id]?.url === url);
     if (!existing) continue;
     const o = d.onglets[existing]!;
-    if (f.espaceActif === space && f.actif[space] === existing && o.titre === titre) return false;
+    if (f.espaceActif === space && f.actif[space] === existing && o.titre === title) return false;
     // The widget may have been renamed since: the title follows.
-    o.titre = titre;
+    o.titre = title;
     f.actif[space] = existing;
     f.espaceActif = space;
     return true;
   }
   const o = open(d, genId, f, { url });
-  if (o) o.titre = titre;
+  if (o) o.titre = title;
   return !!o;
 }
 
@@ -104,7 +104,7 @@ function openAction(d: Draft, genId: () => string, a: { fenetreId: string; id: s
   const notPrivate = (space: SpaceId) => d.espaces.find((e) => e.id === space)?.prive === false;
   const spaces = [f.espaceActif, ...Object.keys(f.ordre).filter((x) => x !== f.espaceActif)].filter(notPrivate);
   for (const space of spaces) {
-    const existing = list(f, space).find((id) => actionDeUrl(d.onglets[id]?.url ?? "")?.id === a.id);
+    const existing = list(f, space).find((id) => actionOfUrl(d.onglets[id]?.url ?? "")?.id === a.id);
     if (!existing) continue;
     const o = d.onglets[existing]!;
     const url = a.execution ? urlAction(a.id, a.execution) : o.url;
@@ -172,22 +172,22 @@ function forwardShown(d: Draft, spaceId: SpaceId, oldKey: string) {
   for (const f of d.fenetres)
     for (const o of Object.values(d.onglets)) {
       if (o.fenetreId !== f.id || o.espaceId !== spaceId) continue;
-      const resumer = d.espaces.find(
+      const summarize = d.espaces.find(
         (e) => e.id !== spaceId && f.actif[e.id] === o.id && spaceKey(d, e.id) === oldKey,
       );
-      if (!resumer) continue;
+      if (!summarize) continue;
       const l = list(f, spaceId);
       if (l.includes(o.id)) {
         f.ordre[spaceId] = l.filter((x) => x !== o.id);
-        list(f, resumer.id).push(o.id);
+        list(f, summarize.id).push(o.id);
       }
-      o.espaceId = resumer.id;
+      o.espaceId = summarize.id;
       if (f.actif[spaceId] === o.id) f.actif[spaceId] = null;
     }
 }
 
 /** A space displays another space's tab (an essential) only if they have the same key. */
-function dropIncompatibles(d: Draft) {
+function dropIncompatible(d: Draft) {
   for (const f of d.fenetres)
     for (const [space, id] of Object.entries(f.actif)) {
       const o = id ? d.onglets[id] : undefined;
@@ -217,7 +217,7 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       const o = d.onglets[a.id];
       if (!o) return false;
       const f = win(d, o.fenetreId);
-      if (f && !o.lien) f.fermesRecemment = [{ url: o.url, espaceId: o.espaceId }, ...f.fermesRecemment].slice(0, MAX_FERMES);
+      if (f && !o.lien) f.fermesRecemment = [{ url: o.url, espaceId: o.espaceId }, ...f.fermesRecemment].slice(0, MAX_CLOSED);
       deleteTab(d, o);
       return true;
     }
@@ -241,11 +241,11 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
     }
     case "rouvrirOngletFerme": {
       const f = win(d, a.fenetreId);
-      const [dernier, ...rest] = f?.fermesRecemment ?? [];
-      if (!f || !dernier) return false;
+      const [last, ...rest] = f?.fermesRecemment ?? [];
+      if (!f || !last) return false;
       f.fermesRecemment = rest;
-      const space = d.espaces.some((e) => e.id === dernier.espaceId) ? dernier.espaceId : f.espaceActif;
-      open(d, genId, f, { url: dernier.url, espaceId: space });
+      const space = d.espaces.some((e) => e.id === last.espaceId) ? last.espaceId : f.espaceActif;
+      open(d, genId, f, { url: last.url, espaceId: space });
       f.espaceActif = space;
       return true;
     }
@@ -337,7 +337,7 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
       Object.assign(space, { nom: a.nom, icone: a.icone, prive: a.prive, profil: profile });
       if (spaceKey(d, space.id) !== oldKey) forwardShown(d, space.id, oldKey);
       removeUnusedProfiles(d);
-      dropIncompatibles(d);
+      dropIncompatible(d);
       return true;
     }
     case "supprimerEspace": {
@@ -387,7 +387,7 @@ function handle(d: Draft, a: Action, genId: () => string): boolean {
         .filter((o) => !!o)
         .map((o) => ({ url: o.url, espaceId: o.espaceId }))
         .reverse();
-      remaining.fermesRecemment = [...fetched, ...remaining.fermesRecemment].slice(0, MAX_FERMES);
+      remaining.fermesRecemment = [...fetched, ...remaining.fermesRecemment].slice(0, MAX_CLOSED);
       for (const o of Object.values(d.onglets)) if (o.fenetreId === a.id) delete d.onglets[o.id];
       return true;
     }

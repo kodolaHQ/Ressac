@@ -22,7 +22,7 @@ export type ActionsFirefox = ApiWebaios["actions"] & {
 };
 
 // Shown when the actions service has no kernel (same texts as noyau/actions.ts).
-const MESSAGE_SANS_NOYAU = "Le service des actions ne répond pas (agent arrêté ?)";
+const NO_KERNEL_MESSAGE = "Le service des actions ne répond pas (agent arrêté ?)";
 const NO_ACTION = () => ({ courantes: [], enAttente: [] });
 
 export function createActionsApi(o: {
@@ -101,11 +101,11 @@ export function createActionsApi(o: {
   };
   const afterRestart = (cb: () => void) => (restarted.add(cb), () => void restarted.delete(cb));
   /** When this window last opened a link of an action's page: a page cannot make links leave in a burst. */
-  let dernierLien = -Infinity;
+  let lastLink = -Infinity;
   const api: ActionsFirefox = {
     liste: () => ask("actions.liste", undefined, () => [], true),
-    surChange(rappel) {
-      const offs = [host.on("actions.change", () => rappel()), host.on("accueil.change", () => rappel()), afterRestart(() => rappel())];
+    surChange(callback) {
+      const offs = [host.on("actions.change", () => callback()), host.on("accueil.change", () => callback()), afterRestart(() => callback())];
       return o.untilUnload(() => offs.forEach((f) => f()));
     },
     // Read without launching, check private again, open the page, then launch: in two host calls.
@@ -113,14 +113,14 @@ export function createActionsApi(o: {
       if (isPrivate()) return denial;
       const p = await ask<{ ok: true; nom: string; lancer: boolean } | { ok: false; erreur: string } | null>("actions.preparer", { id, saisie: input }, () => null);
       if (isPrivate()) return denial;
-      if (!p) return { ok: false, erreur: MESSAGE_SANS_NOYAU };
+      if (!p) return { ok: false, erreur: NO_KERNEL_MESSAGE };
       if (!p.ok) return p;
       o.dispatch({ type: "ouvrirAction", fenetreId: win, id, nom: p.nom });
       // A host that dies meanwhile: the next `acces` reads the page again, as after a rejected `ask`.
       if (p.lancer) host.request("actions.lancer", { id, saisie: input }).catch((e) => ((hostDown = true), console.error(`[webaios] action ${id} :`, e)));
       return { ok: true };
     },
-    lancer: (id, input) => ask("actions.lancer", { id, saisie: input }, () => ({ statut: "invalide" as const, erreur: isPrivate() ? ACTIONS_IN_PRIVATE_SPACE : MESSAGE_SANS_NOYAU })),
+    lancer: (id, input) => ask("actions.lancer", { id, saisie: input }, () => ({ statut: "invalide" as const, erreur: isPrivate() ? ACTIONS_IN_PRIVATE_SPACE : NO_KERNEL_MESSAGE })),
     arreter(id) {
       if (!isPrivate()) host.notify("actions.arreter", { id });
     },
@@ -128,24 +128,24 @@ export function createActionsApi(o: {
     executions: (id) => ask("actions.executions", { id }, () => [], true),
     execution: (id, execution) => ask("actions.execution", { id, execution }, () => null, true),
     direct: () => ask("actions.direct", undefined, NO_ACTION),
-    surDirect(rappel) {
+    surDirect(callback) {
       // Only while this window's space is not private, judged at each event.
-      const offFeed = host.on("actions.direct", (e) => !isPrivate() && rappel(structuredClone(e)));
+      const offFeed = host.on("actions.direct", (e) => !isPrivate() && callback(structuredClone(e)));
       // A host that started again sent no feed meanwhile: the runs are read again.
-      const offs = [offFeed, afterRestart(() => void api.direct().then((e) => !isPrivate() && rappel(e)))];
+      const offs = [offFeed, afterRestart(() => void api.direct().then((e) => !isPrivate() && callback(e)))];
       return o.untilUnload(() => offs.forEach((f) => f()));
     },
     async ouvrirLien(id, execution, url) {
       if (isPrivate()) return;
       const now = Date.now();
       // A page that would open links in a burst (to make data leave): one per second at most.
-      if (now - dernierLien < 1000) return console.warn("[webaios] lien d'action ignoré (trop rapproché) :", url);
+      if (now - lastLink < 1000) return console.warn("[webaios] lien d'action ignoré (trop rapproché) :", url);
       // Taken now: a second click while the host checks this link is too close. A refused link gives the second back.
-      const before = dernierLien;
-      dernierLien = now;
+      const before = lastLink;
+      lastLink = now;
       const allowed = await ask("actions.lienPermis", { id, execution, url }, () => false);
       if (allowed !== true || isPrivate()) {
-        if (dernierLien === now) dernierLien = before;
+        if (lastLink === now) lastLink = before;
         if (allowed !== true) console.warn("[webaios] lien d'action refusé :", url);
         return;
       }
@@ -162,7 +162,7 @@ export function createActionsApi(o: {
       // A host that does not answer means no kernel; the kernel's own refusals come back as answers.
       const r = await host.request<{ ok: true } | { ok: false; erreur: string }>("actions.accorder", a).then(
         (v) => structuredClone(v),
-        () => ({ ok: false as const, erreur: MESSAGE_SANS_NOYAU }),
+        () => ({ ok: false as const, erreur: NO_KERNEL_MESSAGE }),
       );
       return isPrivate() ? denial : r;
     },
@@ -178,7 +178,7 @@ export function createActionsApi(o: {
       if (isPrivate()) return denial;
       const r = await host.request<{ ok: true } | { ok: false; erreur: string }>("actions.supprimer", { id }).then(
         (v) => structuredClone(v),
-        () => ((hostDown = true), { ok: false as const, erreur: MESSAGE_SANS_NOYAU }),
+        () => ((hostDown = true), { ok: false as const, erreur: NO_KERNEL_MESSAGE }),
       );
       if (r.ok) forget(id);
       return isPrivate() ? denial : r;

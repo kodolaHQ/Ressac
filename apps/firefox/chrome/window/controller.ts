@@ -1,9 +1,9 @@
 import type { TabCycleMessage, Panel, TabsPanel, ShortcutAction } from "../../shared/api";
-import { workflowUrlTarget, historyContext, AGENT_WIDTH_MAX, AGENT_WIDTH_MIN, BAR_WIDTH, type Cadre, type BrowserState, type WindowId, type TabId } from "../../shared/model";
+import { workflowUrlTarget, historyContext, AGENT_WIDTH_MAX, AGENT_WIDTH_MIN, BAR_WIDTH, type FrameBounds, type BrowserState, type WindowId, type TabId } from "../../shared/model";
 import { toUrl } from "../../core/url";
 import { TabCycle } from "../../core/tab-cycle";
 import { toNth } from "../../core/raccourcis";
-import { zoneGauche, zoneSortie, type ZoneGauche } from "../../shared/revelation";
+import { leftZone, exitZone, type LeftZone } from "../../shared/revelation";
 import type { WebAiOsStore } from "../store";
 import { createAddons, type WindowAddons } from "./addons";
 import { routeAddonsManager } from "./addons-manager";
@@ -47,7 +47,7 @@ export interface WindowController {
   /** Width of the sidebar's column: 0 in compact mode. */
   sidebarWidth(): number;
   /** Where the mouse is against the left edge, sent when that changes. */
-  onLeftZone(cb: (z: ZoneGauche) => void): () => void;
+  onLeftZone(cb: (z: LeftZone) => void): () => void;
   /**
    * Notes whether the terminal or the page has the keyboard (an agent card is about to take it) and returns what gives
    * it back: the UI document only knows its own focus, which is its body in both cases.
@@ -92,10 +92,10 @@ export function createController(
   const recordFrame = () => {
     clearTimeout(frameTimer);
     if (window.windowState === window.STATE_FULLSCREEN || window.windowState === window.STATE_MINIMIZED) return;
-    const cadre = { x: window.screenX, y: window.screenY, largeur: window.outerWidth, hauteur: window.outerHeight };
+    const frame = { x: window.screenX, y: window.screenY, largeur: window.outerWidth, hauteur: window.outerHeight };
     const old = store.state.fenetres.find((f) => f.id === windowId)?.cadre;
-    if (old && (Object.keys(cadre) as (keyof typeof cadre)[]).every((k) => old[k] === cadre[k])) return;
-    store.dispatch({ type: "cadrerFenetre", id: windowId, cadre });
+    if (old && (Object.keys(frame) as (keyof typeof frame)[]).every((k) => old[k] === frame[k])) return;
+    store.dispatch({ type: "cadrerFenetre", id: windowId, cadre: frame });
   };
   const planFrame = () => {
     clearTimeout(frameTimer);
@@ -154,7 +154,7 @@ export function createController(
   const shortcutListeners = new Set<(r: ShortcutAction) => void>();
   const panelKeyListeners = new Set<(p: Panel) => void>();
   const panelListeners = new Set<(p: TabsPanel | null) => void>();
-  const leftZoneListeners = new Set<(z: ZoneGauche) => void>();
+  const leftZoneListeners = new Set<(z: LeftZone) => void>();
   // ⌃Tab: recent order and the walk in progress. No page previews in step 2: cards show the icon.
   const walk = new TabCycle({
     etat: () => store.state,
@@ -228,20 +228,20 @@ export function createController(
   window.addEventListener("keyup", onKeyUp, true);
   // Compact mode: the mouse in window px, noted on moves. The page may shift under a still mouse (the
   // sidebar revealed); its last real position is what counts when it leaves the window.
-  let zone: ZoneGauche | null = null;
+  let zone: LeftZone | null = null;
   let lastX = Infinity;
-  const sendZone = (z: ZoneGauche) => {
+  const sendZone = (z: LeftZone) => {
     if (z !== zone) for (const cb of leftZoneListeners) cb(z);
   };
   const onMouseMove = (e: MouseEvent) => {
     lastX = e.screenX - window.mozInnerScreenX;
-    const z = zoneGauche(lastX);
+    const z = leftZone(lastX);
     sendZone(z);
     zone = z;
   };
   const onMouseOut = (e: MouseEvent) => {
     if (e.relatedTarget) return;
-    sendZone(zoneSortie(lastX));
+    sendZone(exitZone(lastX));
     zone = null; // the next move is sent even in the same zone
   };
   window.addEventListener("mousemove", onMouseMove, true);
@@ -426,7 +426,7 @@ export function createController(
 }
 
 /** Puts the window where the state last saw it, if that frame still overlaps a screen. */
-function applyFrame(c: Cadre | null): void {
+function applyFrame(c: FrameBounds | null): void {
   if (!c) return;
   const screen = Cc["@mozilla.org/gfx/screenmanager;1"]
     .getService(Ci.nsIScreenManager)

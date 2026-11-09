@@ -12,7 +12,7 @@
   /** Drop point: before or after the hovered tab, depending on the half under the mouse (the line shows it). */
   let hover = $state<{ index: number; apres: boolean } | null>(null);
 
-  function deposer(e: DragEvent, index: number) {
+  function drop(e: DragEvent, index: number) {
     const after = hover?.index === index && hover.apres;
     hover = null;
     const id = e.dataTransfer?.getData("application/x-webaios-onglet");
@@ -26,7 +26,7 @@
 <ul class="onglets" role="tablist" aria-orientation="vertical">
   {#each order as id, index (id)}
     {@const tab = appState.valeur?.onglets[id]}
-    {@const droitsAgent = accessOf(id)}
+    {@const agentRights = accessOf(id)}
     {#if tab}
       <li
         data-testid="onglet-{id}"
@@ -44,7 +44,7 @@
           hover = { index, apres: e.clientY > r.top + r.height / 2 };
         }}
         ondragleave={() => (hover = null)}
-        ondrop={(e) => deposer(e, index)}
+        ondrop={(e) => drop(e, index)}
         onclick={() => api.agir({ type: "activerOnglet", id })}
         onkeydown={(e) => (e.key === "Enter" || e.key === " ") && api.agir({ type: "activerOnglet", id })}
         onauxclick={(e) => e.button === 1 && closeTab(id)}
@@ -57,7 +57,7 @@
       >
         {#if tab.chargement}<span class="roue" aria-label="Chargement"></span>{:else}<SiteIcon favicon={tab.favicon} titre={tab.titre} />{/if}
         <span class="titre">{tab.titre}</span>
-        {#if droitsAgent}<AccessBadge {id} etat={droitsAgent} />{/if}
+        {#if agentRights}<AccessBadge {id} etat={agentRights} />{/if}
         {#if tab.ouvertParAgent}<span class="agent" title="Ouvert par l'agent">✦</span>{/if}
         <button
           class="fermer"

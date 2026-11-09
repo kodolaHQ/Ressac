@@ -15,7 +15,7 @@ export const targetOfKey = (key: string): Owner =>
 export const isActionKey = (key: string): boolean => key.startsWith(ACTION_PREFIX);
 
 /** Reading and writing the workflow and its codes, addressed by key. */
-export function depotDe(w: Pick<ApiWebaios["workflow"], "lire" | "enregistrer" | "lireCode" | "enregistrerCode">): Depot {
+export function repoOf(w: Pick<ApiWebaios["workflow"], "lire" | "enregistrer" | "lireCode" | "enregistrerCode">): Depot {
   return {
     lire: (key) => w.lire(targetOfKey(key)),
     enregistrer: (key, b) => w.enregistrer(targetOfKey(key), b),
@@ -25,13 +25,13 @@ export function depotDe(w: Pick<ApiWebaios["workflow"], "lire" | "enregistrer" |
 }
 
 /** The runs of a widget (stored with home) or of an action. */
-export function sourceExecutionsDe(api: Pick<ApiWebaios, "accueil" | "actions">, target: Owner): SourceExecutions {
+export function runsSourceOf(api: Pick<ApiWebaios, "accueil" | "actions">, target: Owner): SourceExecutions {
   if (target.type === "widget") return api.accueil;
   return { executions: () => api.actions.executions(target.id), execution: (_key, e) => api.actions.execution(target.id, e) };
 }
 
 /** What is running, seen as for widgets: a current action becomes a run (or a trial) of its key. */
-export function directDesActions(e: ActionsState): DirectState {
+export function actionsDirect(e: ActionsState): DirectState {
   return {
     courants: e.courantes.map(
       (c): DirectWidget => ({
@@ -50,8 +50,8 @@ export function launcherOf(api: Pick<ApiWebaios, "workflow" | "actions">, target
   const w = api.workflow;
   const common = {
     lancer: (key: string, input?: string | null) => w.lancer(targetOfKey(key), input),
-    rejouer: (key: string, execution: string, bloc: string) => w.rejouer(targetOfKey(key), execution, bloc),
+    rejouer: (key: string, execution: string, block: string) => w.rejouer(targetOfKey(key), execution, block),
   };
   if (target.type === "widget") return { ...common, direct: () => w.direct(), surDirect: (r) => w.surDirect(r) };
-  return { ...common, direct: () => api.actions.direct().then(directDesActions), surDirect: (r) => api.actions.surDirect((e) => r(directDesActions(e))) };
+  return { ...common, direct: () => api.actions.direct().then(actionsDirect), surDirect: (r) => api.actions.surDirect((e) => r(actionsDirect(e))) };
 }

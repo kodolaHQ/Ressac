@@ -6,10 +6,10 @@ import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
 
 /** Writes `<dataDir>/extensions/etat.json` (WebAiOs's registry) with a grant on `agent:<id>`, before a launch. */
-export function grant(dataDir: string, id: string, accord: unknown, profiles: string[] = ["defaut"]): void {
+export function grant(dataDir: string, id: string, grant: unknown, profiles: string[] = ["defaut"]): void {
   mkdirSync(path.join(dataDir, "extensions"), { recursive: true });
-  const entree = { source: "agent", idChrome: null, nom: id, version: "1.0.0", accord, profils: profiles, epinglee: false, modifieeLe: null, desactivee: null, majEnAttente: null, vues: {} };
-  writeFileSync(path.join(dataDir, "extensions", "etat.json"), JSON.stringify({ version: 1, toutesCoupees: false, extensions: { [`agent:${id}`]: entree } }));
+  const entry = { source: "agent", idChrome: null, nom: id, version: "1.0.0", accord: grant, profils: profiles, epinglee: false, modifieeLe: null, desactivee: null, majEnAttente: null, vues: {} };
+  writeFileSync(path.join(dataDir, "extensions", "etat.json"), JSON.stringify({ version: 1, toutesCoupees: false, extensions: { [`agent:${id}`]: entry } }));
 }
 
 export type FakeAmo = Awaited<ReturnType<typeof startFakeAmo>>;

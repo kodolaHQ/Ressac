@@ -14,6 +14,6 @@ export function walkableTabs(state: BrowserState, windowId: WindowId): TabId[] {
   const pinned = space.epingles.flatMap((fav) =>
     opened.filter((o) => o.lien?.type === "epingle" && o.lien.id === fav.id && o.espaceId === space.id).map((o) => o.id),
   );
-  const vus = new Set<TabId>();
-  return [...essentials, ...pinned, ...(f.ordre[space.id] ?? [])].filter((id) => !vus.has(id) && !!vus.add(id) && !!state.onglets[id]);
+  const seen = new Set<TabId>();
+  return [...essentials, ...pinned, ...(f.ordre[space.id] ?? [])].filter((id) => !seen.has(id) && !!seen.add(id) && !!state.onglets[id]);
 }

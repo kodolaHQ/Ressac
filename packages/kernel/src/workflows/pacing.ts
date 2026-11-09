@@ -9,7 +9,7 @@ type Route = { queue: Promise<unknown>; fin: number | null; en_cours: number };
 const newRoute = (): Route => ({ queue: Promise.resolve(), fin: null, en_cours: 0 });
 
 /** A host's site for the pacing: lowercase host name, without « www. » or trailing dot (no public suffix list). */
-export const siteMenage = (host: string) => host.toLowerCase().replace(/\.+$/, "").replace(/^www\./, "");
+export const sitePacing = (host: string) => host.toLowerCase().replace(/\.+$/, "").replace(/^www\./, "");
 
 /**
  * Moves a read already started onto another site's lane (redirect): the current lane is released (its
@@ -38,8 +38,8 @@ export class Pacing {
    * `verifier` (optional) is called before each wait and right before `f`: if it throws, the search is rejected
    * with its error without having gone out, and the lane's gap is not consumed (the next one does not wait for it).
    */
-  async rechercher<T>(f: () => Promise<T>, signal?: AbortSignal, verifier?: () => void): Promise<T> {
-    const render = await this.prendre(this.recherches, SEARCHES_GAP_MS, signal, verifier);
+  async rechercher<T>(f: () => Promise<T>, signal?: AbortSignal, check?: () => void): Promise<T> {
+    const render = await this.prendre(this.recherches, SEARCHES_GAP_MS, signal, check);
     return this.executer(() => f(), signal, () => render(true));
   }
 
@@ -48,14 +48,14 @@ export class Pacing {
    * a redirect to another site, to respect that one's pacing.
    */
   async lire<T>(host: string, f: (changeHost: ChangeHost) => Promise<T>, signal?: AbortSignal): Promise<T> {
-    let site = siteMenage(host);
+    let site = sitePacing(host);
     let render: Render | null = await this.prendre(this.voieLecture(site), READS_GAP_MS, signal);
     // Lane changes follow one another: never two at once for the same read.
-    let changements: Promise<void> = Promise.resolve();
+    let changes: Promise<void> = Promise.resolve();
     let finished = false;
     const changeHost: ChangeHost = (other) => {
-      const changement = changements.then(async () => {
-        const fresh = siteMenage(other);
+      const change = changes.then(async () => {
+        const fresh = sitePacing(other);
         if (finished) throw new Error("Lecture déjà finie");
         if (fresh === site && render) return;
         render?.(true);
@@ -68,8 +68,8 @@ export class Pacing {
           render = null;
         }
       });
-      changements = changement.catch(() => undefined);
-      return changement;
+      changes = change.catch(() => undefined);
+      return change;
     };
     return this.executer(() => f(changeHost), signal, () => {
       finished = true;
@@ -119,7 +119,7 @@ export class Pacing {
    * Takes the lane: waits for the end of the previous request then the gap. Returns what is needed to release it. A request whose
    * signal is raised in the queue rejects right away; when its turn comes, it passes without consuming anything.
    */
-  private prendre(route: Route, gap: number, signal?: AbortSignal, verifier?: () => void): Promise<Render> {
+  private prendre(route: Route, gap: number, signal?: AbortSignal, check?: () => void): Promise<Render> {
     route.en_cours++;
     let open!: () => void;
     const rendered = new Promise<void>((r) => (open = r));
@@ -131,12 +131,12 @@ export class Pacing {
       route.en_cours--;
       open();
     };
-    const tour = async (): Promise<void> => {
+    const turn = async (): Promise<void> => {
       // Waits until the gap has elapsed; a clock set back never lengthens the wait beyond the gap,
       // and a timer that fired too early is followed by a new check.
       for (;;) {
         if (signal?.aborted) throw interruption(signal);
-        verifier?.();
+        check?.();
         if (route.fin === null) break;
         const t = this.maintenant();
         if (t < route.fin) route.fin = t; // clock set back: we restart from now
@@ -145,7 +145,7 @@ export class Pacing {
         await this.attendreOuInterrompre(rest, signal);
       }
     };
-    const taken = route.queue.then(tour);
+    const taken = route.queue.then(turn);
     // The next one waits for this one to release the lane; a request that has not had its turn releases it without consuming anything.
     route.queue = taken.then(
       () => rendered,

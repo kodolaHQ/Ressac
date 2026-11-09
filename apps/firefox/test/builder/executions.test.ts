@@ -108,16 +108,16 @@ test("detail in error: not found, no endless wait", async () => {
 // ---------------------------------------------------------------------------------------------------------------------
 // Live, « Lancer » and « Rejouer » (task 11).
 
-type Rappel = (e: DirectState) => void;
+type Callback = (e: DirectState) => void;
 function falseLauncher(f: ReturnType<typeof fake>) {
   const calls: string[] = [];
-  const rappels: Rappel[] = [];
+  const callbacks: Callback[] = [];
   let finish: (() => void) | null = null;
   const launcher: Launcher = {
     direct: async () => ({ courants: [], enAttente: [] }),
     surDirect: (r) => {
-      rappels.push(r);
-      return () => rappels.splice(rappels.indexOf(r), 1);
+      callbacks.push(r);
+      return () => callbacks.splice(callbacks.indexOf(r), 1);
     },
     lancer: async (id) => {
       calls.push(`lancer ${id}`);
@@ -125,17 +125,17 @@ function falseLauncher(f: ReturnType<typeof fake>) {
       f.etat.liste = [resume("nouvelle"), ...f.etat.liste];
       return { execution: "nouvelle" };
     },
-    rejouer: async (id, execution, bloc) => {
-      calls.push(`rejouer ${id} ${execution} ${bloc}`);
-      if (bloc === "page") return { ok: false, erreur: "Rejeu impossible : la sortie de « liens » a été tronquée dans cette exécution" };
+    rejouer: async (id, execution, block) => {
+      calls.push(`rejouer ${id} ${execution} ${block}`);
+      if (block === "page") return { ok: false, erreur: "Rejeu impossible : la sortie de « liens » a été tronquée dans cette exécution" };
       f.etat.liste = [resume("e-essai", true), ...f.etat.liste];
       return { ok: true, execution: "e-essai", statut: "reussie" };
     },
   };
-  return { lanceur: launcher, appels: calls, emettre: (e: DirectState) => rappels.forEach((r) => r(e)), rappels, finir: () => finish?.() };
+  return { lanceur: launcher, appels: calls, emettre: (e: DirectState) => callbacks.forEach((r) => r(e)), rappels: callbacks, finir: () => finish?.() };
 }
-const directDe = (widget: string, blocs: DirectWidget["blocs"] = {}, debut = "d1"): DirectState => ({
-  courants: [{ widget, genre: "execution", debut, blocs }],
+const directOf = (widget: string, blocks: DirectWidget["blocs"] = {}, start = "d1"): DirectState => ({
+  courants: [{ widget, genre: "execution", debut: start, blocs: blocks }],
   enAttente: [],
 });
 const waitUntil = async (cond: () => boolean) => {
@@ -148,18 +148,18 @@ test("busy when a run of this widget is running or waiting; not for another widg
   const f = fake([resume("b")]);
   const l = falseLauncher(f);
   const x = new Executions("w", f.source, l.lanceur);
-  const fin = x.suivre();
+  const end = x.suivre();
   await x.charger();
   expect(x.occupe).toBe(false);
-  l.emettre(directDe("autre"));
+  l.emettre(directOf("autre"));
   expect(x.occupe).toBe(false);
   expect(x.enDirect).toBeNull();
   l.emettre({ courants: [], enAttente: ["w"] });
   expect(x.occupe).toBe(true);
-  l.emettre(directDe("w", { tri: { statut: "en-cours", elements: null } }));
+  l.emettre(directOf("w", { tri: { statut: "en-cours", elements: null } }));
   expect(x.occupe).toBe(true);
   expect(x.enDirect?.blocs.tri?.statut).toBe("en-cours");
-  fin();
+  end();
   expect(l.rappels).toHaveLength(0);
 });
 
@@ -167,7 +167,7 @@ test("occupe when the widget is among the current or waiting ones", async () => 
   const f = fake([resume("b")]);
   const l = falseLauncher(f);
   const x = new Executions("w", f.source, l.lanceur);
-  const fin = x.suivre();
+  const end = x.suivre();
   await x.charger();
   const watch: DirectWidget = { widget: "veille", genre: "execution", debut: "d0", blocs: {} };
   l.emettre({ courants: [watch], enAttente: [] });
@@ -182,7 +182,7 @@ test("occupe when the widget is among the current or waiting ones", async () => 
   expect(x.enDirect).toBeNull();
   l.emettre({ courants: [watch], enAttente: ["autre"] });
   expect(x.occupe).toBe(false);
-  fin();
+  end();
 });
 
 test("end of the run followed live: list and detail reread, no more stale live", async () => {
@@ -191,7 +191,7 @@ test("end of the run followed live: list and detail reread, no more stale live",
   const x = new Executions("w", f.source, l.lanceur);
   x.suivre();
   await x.charger();
-  l.emettre(directDe("w", { tri: { statut: "en-cours", elements: null } }));
+  l.emettre(directOf("w", { tri: { statut: "en-cours", elements: null } }));
   // The scheduled run is written, the live one stops (unfinished blocks are not relayed at the end).
   f.etat.liste = [resume("c"), resume("b")];
   l.emettre({ courants: [], enAttente: [] });
@@ -207,9 +207,9 @@ test("two runs in a row without a pause in the live: reread too", async () => {
   const x = new Executions("w", f.source, l.lanceur);
   x.suivre();
   await x.charger();
-  l.emettre(directDe("w", {}, "d1"));
+  l.emettre(directOf("w", {}, "d1"));
   f.etat.liste = [resume("c"), resume("b")];
-  l.emettre(directDe("w", {}, "d2"));
+  l.emettre(directOf("w", {}, "d2"));
   await waitUntil(() => x.detail?.id === "c");
   expect(x.detail?.id).toBe("c");
 });
@@ -297,7 +297,7 @@ test("the initial read of the live does not overwrite a more recent pushed event
   const x = new Executions("w", f.source, l.lanceur);
   x.suivre();
   l.emettre({ courants: [], enAttente: [] });
-  render(directDe("w"));
+  render(directOf("w"));
   await waitUntil(() => false);
   expect(x.occupe).toBe(false);
   expect(x.enDirect).toBeNull();

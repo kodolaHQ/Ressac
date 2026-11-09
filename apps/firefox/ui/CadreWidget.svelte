@@ -10,7 +10,7 @@
   let {
     widget,
     donnees: data,
-    taille,
+    taille: size,
     etat: appState,
   }: {
     widget: { id: string; nom: string; src: string | null };
@@ -21,17 +21,17 @@
 
   let iframe = $state<HTMLIFrameElement>();
   let width = $state(0);
-  let hauteur = $state(0);
+  let height = $state(0);
 
   function send() {
-    brancherGeste();
+    attachGesture();
     // The frame has an opaque origin (sandbox without allow-same-origin): « * » is the only possible target.
     iframe?.contentWindow?.postMessage(
       {
         type: "widget",
         donnees: $state.snapshot(data),
-        taille: { l: taille.l, h: taille.h },
-        px: { largeur: width, hauteur },
+        taille: { l: size.l, h: size.h },
+        px: { largeur: width, hauteur: height },
         etat: { statut: appState.statut, derniereMaj: appState.derniereMaj },
       },
       "*",
@@ -39,17 +39,17 @@
   }
   // On each change of data, state or size (loading goes through DOMFrameContentLoaded).
   $effect(() => {
-    void [data, appState.statut, appState.derniereMaj, taille.l, taille.h, width, hauteur];
+    void [data, appState.statut, appState.derniereMaj, size.l, size.h, width, height];
     send();
   });
 
   // The widget only takes the keyboard under the pointer (a click by the user): a focus() from its code is handed back
   // to the interface element that had it.
   let before = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
-  function surFocusin(e: FocusEvent) {
+  function onFocusin(e: FocusEvent) {
     if (e.target instanceof HTMLElement && e.target !== iframe) before = e.target;
   }
-  function surBlur() {
+  function onBlur() {
     setTimeout(() => {
       if (!iframe || !document.hasFocus() || document.activeElement !== iframe || iframe.matches(":hover")) return;
       if (before?.isConnected) before.focus();
@@ -57,7 +57,7 @@
     });
   }
 
-  function surMessage(e: MessageEvent) {
+  function onMessage(e: MessageEvent) {
     // The origin of a sandboxed frame is opaque (« null »): the source, never the origin, identifies it.
     if (!iframe || e.source !== iframe.contentWindow) return;
     const d: unknown = e.data;
@@ -72,50 +72,50 @@
   // there it could not fully install: no press is recorded then (fail closed). This listener is set by the chrome,
   // which the widget can neither remove nor imitate (isTrusted).
   let gestureWindow: Window | null = null;
-  function geste(e: PointerEvent) {
+  function gesture(e: PointerEvent) {
     if (e.isTrusted) api.accueil.geste(widget.id);
   }
   // The widget's link: `webaiosOuvrir` (provided by the guard in the page's world) emits this event, which the
   // parent chrome listens to (an opaque origin cannot post it a message). The request stays subject to the gesture.
-  function lien(e: Event) {
+  function link(e: Event) {
     api.accueil.ouvrir(String((e as CustomEvent).detail), widget.id);
   }
-  function detacherGeste() {
-    gestureWindow?.removeEventListener("pointerdown", geste, true);
-    gestureWindow?.removeEventListener("webaios-ouvrir", lien, true);
+  function detachGesture() {
+    gestureWindow?.removeEventListener("pointerdown", gesture, true);
+    gestureWindow?.removeEventListener("webaios-ouvrir", link, true);
     gestureWindow = null;
   }
-  function brancherGeste() {
-    detacherGeste();
+  function attachGesture() {
+    detachGesture();
     // The document's window (defaultView) rather than the frame proxy: it is the one that receives the events.
-    const cadre = iframe?.contentDocument?.defaultView ?? iframe?.contentWindow;
-    if (!cadre) return;
+    const frame = iframe?.contentDocument?.defaultView ?? iframe?.contentWindow;
+    if (!frame) return;
     // No condition on the guard: the gesture is an `isTrusted` press seen by the chrome, which the page cannot
     // forge; the guard's state does not change that. It protects data output, not this link.
-    gestureWindow = cadre as unknown as Window;
-    cadre.addEventListener("pointerdown", geste as EventListener, true);
-    cadre.addEventListener("webaios-ouvrir", lien, true);
+    gestureWindow = frame as unknown as Window;
+    frame.addEventListener("pointerdown", gesture as EventListener, true);
+    frame.addEventListener("webaios-ouvrir", link, true);
   }
-  onMount(brancherGeste);
-  onDestroy(detacherGeste);
+  onMount(attachGesture);
+  onDestroy(detachGesture);
 
-  function surCharge() {
+  function onLoad() {
     send();
-    brancherGeste();
+    attachGesture();
   }
   // An iframe of this chrome page never gets `load` (measured: neither the element nor its `onload`), so the data would
   // never reach a display loaded after its last change. DOMFrameContentLoaded (chrome only, seen from the document) comes
   // once the display's scripts have run.
   $effect(() => {
-    const charge = (e: Event) => iframe && e.target === iframe && surCharge();
-    document.addEventListener("DOMFrameContentLoaded", charge, true);
-    return () => document.removeEventListener("DOMFrameContentLoaded", charge, true);
+    const onLoaded = (e: Event) => iframe && e.target === iframe && onLoad();
+    document.addEventListener("DOMFrameContentLoaded", onLoaded, true);
+    return () => document.removeEventListener("DOMFrameContentLoaded", onLoaded, true);
   });
 </script>
 
-<svelte:window onmessage={surMessage} onfocusin={surFocusin} onblur={surBlur} />
+<svelte:window onmessage={onMessage} onfocusin={onFocusin} onblur={onBlur} />
 
-<div class="contenu" bind:clientWidth={width} bind:clientHeight={hauteur}>
+<div class="contenu" bind:clientWidth={width} bind:clientHeight={height}>
   {#if widget.src}
     <!-- Without allow-same-origin: the code written by the agent runs in an opaque origin, with no access to the interface. -->
     <iframe bind:this={iframe} src={widget.src} title={widget.nom} sandbox="allow-scripts"></iframe>

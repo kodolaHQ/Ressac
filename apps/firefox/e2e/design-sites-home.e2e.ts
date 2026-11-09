@@ -38,7 +38,7 @@ const MOUSE = ["pointerdown", "pointerup", "mousedown", "mouseup", "click", "aux
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const T = (id: string) => ({ type: "site", id });
 const tid = (t: string) => `[data-testid="${t}"]`;
-const CADRE = tid("site-cadre-accueil");
+const FRAME = tid("site-cadre-accueil");
 
 /** Spike S6's home (the agent's code): listens first on its window, keeps a global, a green target with a data-source; `fabricate` makes untrusted events. */
 const HOME = `<!doctype html><meta charset="utf-8"><title>Accueil</title>
@@ -105,7 +105,7 @@ const bubble = (id: string) => inStore<{ etiquette: string; source: string | nul
 const view = (id: string) => inStore<string | null>(m, "return store.sites.viewOf(arguments[0]);", [id]);
 /** `body` with `f` the home's frame, `hdoc` its document and `hwin` its window (chrome access). */
 const inHome = <T = unknown>(id: string, body: string, args: unknown[] = []) =>
-  inSiteBar<T>(m, id, `const f = doc.querySelector('${CADRE}'), hdoc = f?.contentDocument, hwin = hdoc?.defaultView; ${body}`, args);
+  inSiteBar<T>(m, id, `const f = doc.querySelector('${FRAME}'), hdoc = f?.contentDocument, hwin = hdoc?.defaultView; ${body}`, args);
 const homeHosts = (id: string) => inHome<number>(id, `return hdoc ? hdoc.getElementsByTagName("webaios-viseur").length : -1;`).catch(() => -1);
 const viewHosts = (id: string) => inSiteView<number>(m, id, `return document.getElementsByTagName("webaios-viseur").length;`).catch(() => 0);
 const homeLog = (id: string) => inHome<{ early: string[]; reactions: string[]; keys: string[] }>(id, "return JSON.parse(JSON.stringify(hwin.wrappedJSObject.log));");
@@ -192,10 +192,10 @@ describe("design mode on a site app's home", () => {
     await expect.poll(agentInput, { timeout: 20_000 }).toContain("les remarques [accueil] visent son écran d'accueil, à changer dans accueil/");
     expect(agentInput()).toContain('1) [accueil] "h1#titre" : « Titre plus gros »');
     const dir = path.join(w.dataDir, "espace", ".webaios", "remarques", "site-avec-accueil");
-    const [lot] = readdirSync(dir).filter((n) => /^\d{8}T\d{6}Z-[0-9a-f]{4}$/.test(n));
-    const content = JSON.parse(readFileSync(path.join(dir, lot!, "lot.json"), "utf8"));
+    const [batch] = readdirSync(dir).filter((n) => /^\d{8}T\d{6}Z-[0-9a-f]{4}$/.test(n));
+    const content = JSON.parse(readFileSync(path.join(dir, batch!, "lot.json"), "utf8"));
     expect(content.elements[0].contexte.adresse).toBe("webaios-site://avec-accueil/index.html");
-    expect(readdirSync(path.join(dir, lot!)).filter((n) => n.endsWith(".png"))).toHaveLength(1);
+    expect(readdirSync(path.join(dir, batch!)).filter((n) => n.endsWith(".png"))).toHaveLength(1);
   });
 
   it("the home viewfinder's sandbox reaches nothing of the chrome nor the home's globals", async () => {

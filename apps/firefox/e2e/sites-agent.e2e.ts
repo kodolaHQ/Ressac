@@ -95,12 +95,12 @@ describe("the agent on a site app window", () => {
   it("lister_onglets, lire_onglet, capture_ecran and naviguer on the app window, behind the app's card (sites.spec.ts:1669)", async () => {
     await start();
     await openAndWait();
-    const depart = url("/");
+    const startUrl = url("/");
 
     // Without the grant: name, domain and « appli de site », never the address nor the page's title.
     const list = (await call("lister_onglets")).texte;
     expect(list.split("\n")).toContain("site:vidola · Vidola · vidola-a.localhost · appli de site");
-    expect(list).not.toContain(depart);
+    expect(list).not.toContain(startUrl);
     expect(list).not.toContain("Vidola A");
 
     // The app's card, in the main window; refused → refusal, nothing read.
@@ -117,7 +117,7 @@ describe("the agent on a site app window", () => {
     const lu = await reading;
     expect(lu.erreur).toBe(false);
     expect(lu.texte).toContain("Titre : Vidola");
-    expect(lu.texte).toContain(`URL : ${depart}`);
+    expect(lu.texte).toContain(`URL : ${startUrl}`);
     expect(lu.texte).toContain("aller");
     await gone(CARD);
 
@@ -214,10 +214,10 @@ describe("the agent on a site app window", () => {
 
   it("memoire_site, window closed: the card has the app's name; grant → the memory; then the window's tools without a second card (sites.spec.ts:1799)", async () => {
     await start({ vidola: vidola() }, () => {
-      const dossier = path.join(dataDir, "sites", "vidola");
-      mkdirSync(dossier, { recursive: true });
+      const folder = path.join(dataDir, "sites", "vidola");
+      mkdirSync(folder, { recursive: true });
       writeFileSync(
-        path.join(dossier, "memoire.json"),
+        path.join(folder, "memoire.json"),
         JSON.stringify({ version: 1, valeurs: { "encours.the-bear": { valeur: { titre: "The Bear" }, adresse: "/serie/the-bear?e=4", quand: new Date().toISOString() } }, positions: {} }),
       );
     });
@@ -240,9 +240,9 @@ describe("the agent on a site app window", () => {
     // The memory is written ahead: watching the episode is sites-resume.e2e.ts's.
     const EPISODE = "/serie/the-bear?e=4";
     await start({ vidola: vidola() }, () => {
-      const dossier = path.join(dataDir, "sites", "vidola");
-      mkdirSync(dossier, { recursive: true });
-      writeFileSync(path.join(dossier, "memoire.json"), JSON.stringify({ version: 1, valeurs: { "encours.the-bear": { valeur: { titre: "The Bear" }, adresse: EPISODE, quand: new Date().toISOString() } }, positions: {} }));
+      const folder = path.join(dataDir, "sites", "vidola");
+      mkdirSync(folder, { recursive: true });
+      writeFileSync(path.join(folder, "memoire.json"), JSON.stringify({ version: 1, valeurs: { "encours.the-bear": { valeur: { titre: "The Bear" }, adresse: EPISODE, quand: new Date().toISOString() } }, positions: {} }));
     });
     await openAndWait();
     const list = (await call("lister_onglets")).texte;

@@ -1,16 +1,16 @@
 import { join } from "node:path";
 import { describe, expect, test, vi } from "vitest";
 import {
-  PROJECT_ID, DESIGN_UNAVAILABLE, SITE_DESIGN_UNAVAILABLE, SITE_CAPTURE_WARNING, SANS_CLIENT, reviewStore, destinationDe, dossierRemarques, commentsFile, idExterne,
+  PROJECT_ID, DESIGN_UNAVAILABLE, SITE_DESIGN_UNAVAILABLE, SITE_CAPTURE_WARNING, NO_CLIENT, reviewStore, destinationOf, remarksFolder, commentsFile, externalId,
   containerRanges, appProject, demoProject, externalProject, projectForUrl, projectForAppWindow, projectForSite,
-  type AvailabilityContext, type DossiersDesign, type ExternalProject,
+  type AvailabilityContext, type DesignFolders, type ExternalProject,
 } from "../../src/design/projects.js";
 
-const externe: ExternalProject = { id: "0123456789abcdef", nom: "site", dossier: "/Users/t/site", ports: [4321], client: "c1", declare: "2026-11-02T10:00:00Z" };
-const context = (plages: [number, number][] = [[5280, 5299]]): AvailabilityContext => ({
+const external: ExternalProject = { id: "0123456789abcdef", nom: "site", dossier: "/Users/t/site", ports: [4321], client: "c1", declare: "2026-11-02T10:00:00Z" };
+const context = (ranges: [number, number][] = [[5280, 5299]]): AvailabilityContext => ({
   appsLancees: [{ dossier: "essai", nom: "Essai", port: 15280 }],
-  plages,
-  externes: [externe],
+  plages: ranges,
+  externes: [external],
 });
 
 describe("projetPourAdresse", () => {
@@ -22,7 +22,7 @@ describe("projetPourAdresse", () => {
     expect(projectForUrl("http://127.0.0.1:15283/", context([[5280, 5299], [15280, 15284]]))).toEqual({ type: "demo", projet: "demo-15283", port: 15283 });
   });
   test("127.0.0.1:4321 declared by an external project gives externe", () => {
-    expect(projectForUrl("http://127.0.0.1:4321/", context())).toEqual({ type: "externe", projet: "ext-0123456789abcdef", dossier: externe.dossier, nom: "site", client: "c1" });
+    expect(projectForUrl("http://127.0.0.1:4321/", context())).toEqual({ type: "externe", projet: "ext-0123456789abcdef", dossier: external.dossier, nom: "site", client: "c1" });
   });
   test("everything else gives null", () => {
     for (const u of ["https://localhost:4321", "http://exemple.fr:4321", "http://localhost:4322", "file:///tmp/x", "webaios://applications", "http://localhost/", "pas une url"]) {
@@ -55,18 +55,18 @@ describe("ids", () => {
     expect(PROJECT_ID.test(appProject("a")) && PROJECT_ID.test(demoProject(5280)) && PROJECT_ID.test(externalProject("0123456789abcdef"))).toBe(true);
   });
   test("idExterne is stable and is 16 hex characters", () => {
-    expect(idExterne("/a/b")).toBe(idExterne("/a/b"));
-    expect(idExterne("/a/b")).toMatch(/^[0-9a-f]{16}$/);
-    expect(idExterne("/a/b")).not.toBe(idExterne("/a/c"));
+    expect(externalId("/a/b")).toBe(externalId("/a/b"));
+    expect(externalId("/a/b")).toMatch(/^[0-9a-f]{16}$/);
+    expect(externalId("/a/b")).not.toBe(externalId("/a/c"));
   });
 });
 
 describe("dossiers", () => {
-  const d: DossiersDesign = { remarquesEspace: "/r/.webaios/remarques", prive: "/u/design" };
+  const d: DesignFolders = { remarquesEspace: "/r/.webaios/remarques", prive: "/u/design" };
   test("dossierRemarques", () => {
-    expect(dossierRemarques(d, "ext-0123456789abcdef")).toBe("/u/design/remarques/ext-0123456789abcdef");
-    expect(dossierRemarques(d, "app-essai")).toBe("/r/.webaios/remarques/app-essai");
-    expect(dossierRemarques(d, "demo-5280")).toBe("/r/.webaios/remarques/demo-5280");
+    expect(remarksFolder(d, "ext-0123456789abcdef")).toBe("/u/design/remarques/ext-0123456789abcdef");
+    expect(remarksFolder(d, "app-essai")).toBe("/r/.webaios/remarques/app-essai");
+    expect(remarksFolder(d, "demo-5280")).toBe("/r/.webaios/remarques/demo-5280");
   });
   test("depotRelecture and fichierCommentaires under prive/relecture", () => {
     expect(reviewStore(d, "app-essai")).toBe("/u/design/relecture/app-essai.git");
@@ -76,13 +76,13 @@ describe("dossiers", () => {
 
 describe("destinationDe and app window", () => {
   test("destinations", () => {
-    expect(destinationDe(projectForAppWindow("essai", "Essai"), [])).toEqual({ libelle: "l'agent" });
-    expect(destinationDe({ type: "demo", projet: "demo-5280", port: 5280 }, [])).toEqual({ libelle: "l'agent" });
+    expect(destinationOf(projectForAppWindow("essai", "Essai"), [])).toEqual({ libelle: "l'agent" });
+    expect(destinationOf({ type: "demo", projet: "demo-5280", port: 5280 }, [])).toEqual({ libelle: "l'agent" });
     const ext = { type: "externe" as const, projet: "ext-0123456789abcdef", dossier: "/x", nom: "x" };
     const clients = [{ id: "c1", nom: "Mon Mac", empreinte: "h", cree: "2026-11-02" }];
-    expect(destinationDe({ ...ext, client: "c1" }, clients)).toEqual({ libelle: "Claude Code (Mon Mac)" });
-    expect(destinationDe({ ...ext, client: null }, clients)).toEqual({ indisponible: SANS_CLIENT });
-    expect(destinationDe({ ...ext, client: "révoqué" }, clients)).toEqual({ indisponible: SANS_CLIENT });
+    expect(destinationOf({ ...ext, client: "c1" }, clients)).toEqual({ libelle: "Claude Code (Mon Mac)" });
+    expect(destinationOf({ ...ext, client: null }, clients)).toEqual({ indisponible: NO_CLIENT });
+    expect(destinationOf({ ...ext, client: "révoqué" }, clients)).toEqual({ indisponible: NO_CLIENT });
   });
 });
 
@@ -92,10 +92,10 @@ describe("projet de site", () => {
     for (const ko of ["site-", "site-A", "site-../x", "site--x", `site-${"a".repeat(61)}`, "site-a_b"]) expect(PROJECT_ID.test(ko)).toBe(false);
   });
   test("dossierRemarques on the space side, destination the agent, exact messages", () => {
-    const d: DossiersDesign = { remarquesEspace: "/e/remarques", prive: "/p" };
-    expect(dossierRemarques(d, "site-tuning")).toBe(join(d.remarquesEspace, "site-tuning"));
+    const d: DesignFolders = { remarquesEspace: "/e/remarques", prive: "/p" };
+    expect(remarksFolder(d, "site-tuning")).toBe(join(d.remarquesEspace, "site-tuning"));
     expect(projectForSite("tuning", "Tuning")).toEqual({ type: "site", projet: "site-tuning", id: "tuning", nom: "Tuning" });
-    expect(destinationDe(projectForSite("tuning", "Tuning"), [])).toEqual({ libelle: "l'agent" });
+    expect(destinationOf(projectForSite("tuning", "Tuning"), [])).toEqual({ libelle: "l'agent" });
     expect(DESIGN_UNAVAILABLE).toBe("Le mode design marche sur les applis de l'agent, les applis de site et les projets branchés par un Claude Code");
     expect(SITE_DESIGN_UNAVAILABLE).toBe("Le mode design marche dans les pages du site et sur l'accueil, pas sur la carte d'accord, une page de connexion ni en plein écran");
     expect(SITE_CAPTURE_WARNING).toBe("L'extrait et la capture de cet élément iront à l'agent.");

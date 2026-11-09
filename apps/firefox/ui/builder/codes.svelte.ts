@@ -147,7 +147,7 @@ export class CodeFile {
 }
 
 /** Changing block with `nom`'s code unsaved: the user confirms (the draft stays kept). */
-export function confirmerChangementDeBloc(widget: string, name: string): boolean {
+export function confirmBlockChange(widget: string, name: string): boolean {
   if (!drafts.has(codeKey(widget, name))) return true;
   return confirm(`Le code de ${name} n'est pas enregistré. Changer de bloc quand même ? Il reste gardé dans cette fenêtre.`);
 }

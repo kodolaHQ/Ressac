@@ -7,17 +7,17 @@ export const GESTURE_DELAY_MS = 1500;
  * parent process. Only the last gesture of each window counts; it allows a single link, to the only widget where it happened.
  */
 export function gestureGuard<F>(now: () => number = () => Date.now()) {
-  const derniers = new Map<F, { t: number; widget: string }>();
+  const last = new Map<F, { t: number; widget: string }>();
   return {
     /** Real mouse press in the display of widget `widget` of this window. */
     geste(win: F, widget: string) {
-      derniers.set(win, { t: now(), widget });
+      last.set(win, { t: now(), widget });
     },
     /** Link request from widget `widget`: accepted (and the gesture consumed) if its last gesture is recent and its own. */
     accepter(win: F, widget: string): boolean {
-      const g = derniers.get(win);
+      const g = last.get(win);
       if (!g || g.widget !== widget || now() - g.t > GESTURE_DELAY_MS) return false;
-      derniers.delete(win);
+      last.delete(win);
       return true;
     },
   };

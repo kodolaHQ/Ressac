@@ -5,7 +5,7 @@
   import AccountGrantCard from "../components/AccountGrantCard.svelte";
   import { api } from "../state.svelte";
   import ActionProgress from "./ActionProgress.svelte";
-  import EnTeteAction from "./EnTeteAction.svelte";
+  import ActionHeader from "./EnTeteAction.svelte";
   import PageRender from "./PageRender.svelte";
 
   /**
@@ -18,7 +18,7 @@
   /** undefined: not read yet; null: the action does not exist (or no longer). */
   let action = $state<ActionShown | null | undefined>(undefined);
   /** undefined: not read yet; null: no result (never run, or the requested run no longer exists). */
-  let lue = $state<PageAction | null | undefined>(undefined);
+  let loaded = $state<PageAction | null | undefined>(undefined);
   let previous = $state<ResumeExecution[] | null>(null);
   /**
    * Without a requested run: the most recent one, when it gave no result (failure, stop) and is more recent than the
@@ -41,7 +41,7 @@
   let kernelReady = false;
   const MAX_REVIEWS = 15;
   let unmounted = false;
-  async function charger() {
+  async function load() {
     const g = ++generation;
     clearTimeout(review);
     try {
@@ -55,7 +55,7 @@
           : null;
       if (g !== generation || unmounted) return;
       action = list.find((a) => a.id === id) ?? null;
-      lue = page;
+      loaded = page;
       previous = kept;
       lastWithoutResult = withoutResult?.page ? null : withoutResult;
       const shown = lastWithoutResult ?? page;
@@ -69,7 +69,7 @@
       const incomplete = action === null || (kept.length > 0 && !page && !withoutResult);
       if (incomplete && !kernelReady && reviews < MAX_REVIEWS) {
         reviews++;
-        review = setTimeout(() => void charger(), 2000);
+        review = setTimeout(() => void load(), 2000);
       }
     } catch (e) {
       console.error(`[webaios] page de l'action ${id} :`, e);
@@ -77,40 +77,40 @@
   }
 
   $effect(() => {
-    untrack(() => void charger());
-    const fin = api.actions.surChange(() => void charger());
+    untrack(() => void load());
+    const end = api.actions.surChange(() => void load());
     return () => {
       unmounted = true;
       clearTimeout(review);
-      fin();
+      end();
     };
   });
   $effect(() => {
     let received = false;
-    const fin = api.actions.surDirect((e) => {
+    const end = api.actions.surDirect((e) => {
       received = true;
       direct = e;
     });
     void api.actions.direct().then((e) => {
       if (!received) direct = e;
     });
-    return fin;
+    return end;
   });
 
-  const courante = $derived(direct.courantes.find((c) => c.action === id) ?? null);
+  const current = $derived(direct.courantes.find((c) => c.action === id) ?? null);
   const pending = $derived(direct.enAttente.some((a) => a.action === id));
-  const running = $derived(courante !== null || pending);
+  const running = $derived(current !== null || pending);
   const grantNeed = $derived(!!action && action.compte.length > 0 && !action.accord);
   /** The outcome of a launch refused without writing anything: this page's, otherwise a suggestion's or « Lancer »'s. */
   const shownError = $derived(launchError ?? action?.refus ?? null);
   // A run just finished (seen through direct): its result is re-read.
   let wasRunning = false;
   $effect(() => {
-    if (wasRunning && !running) void charger();
+    if (wasRunning && !running) void load();
     wasRunning = running;
   });
 
-  async function lancer() {
+  async function launchAction() {
     if (!action || running || launch) return;
     launchError = null;
     launch = true;
@@ -128,24 +128,24 @@
       launchError = e instanceof Error ? e.message : String(e);
     } finally {
       launch = false;
-      void charger();
+      void load();
     }
   }
 
-  async function accorder(profile: string) {
+  async function giveGrant(profile: string) {
     if (!action) return;
     cardOpen = false;
     // The grant covers exactly what the card showed.
     const r = await api.actions.accorder({ id, profil: profile, compte: [...action.compte], publiques: [...action.publiques] });
     if (!r.ok) {
       launchError = `Accord non enregistré : ${r.erreur}`;
-      await charger();
+      await load();
       return;
     }
     launchError = null;
-    await charger();
+    await load();
     // Once granted, the run starts (if the required input is there).
-    if (action && !grantNeed && (!action.saisie || input.trim())) void lancer();
+    if (action && !grantNeed && (!action.saisie || input.trim())) void launchAction();
   }
 
   const choose = (e: string) => action && api.agir({ type: "ouvrirAction", fenetreId: api.fenetreId, id, nom: action.nom, execution: e });
@@ -155,20 +155,20 @@
   {#if action === null}
     <p class="message erreur" data-testid="erreur-action">{ACTION_UNKNOWN}</p>
   {:else if action}
-    <EnTeteAction
+    <ActionHeader
       nom={action.nom}
       bind:saisie={input}
       libelleSaisie={action.saisie?.libelle ?? null}
-      debut={lastWithoutResult?.debut ?? lue?.debut ?? null}
+      debut={lastWithoutResult?.debut ?? loaded?.debut ?? null}
       occupee={running || launch}
-      dejaLancee={!!lue || (previous?.length ?? 0) > 0}
+      dejaLancee={!!loaded || (previous?.length ?? 0) > 0}
       precedentes={previous}
-      lancer={() => void lancer()}
+      lancer={() => void launchAction()}
       voirWorkflow={() => api.actions.voirWorkflow(id)}
       choisir={choose}
     />
     {#if running}
-      {#key courante?.debut}<ActionProgress {courante} enAttente={pending} arreter={() => api.actions.arreter(id)} />{/key}
+      {#key current?.debut}<ActionProgress courante={current} enAttente={pending} arreter={() => api.actions.arreter(id)} />{/key}
     {:else}
       {#if action.erreur}<p class="message erreur">{action.erreur}</p>{/if}
       {#if grantNeed}
@@ -179,22 +179,22 @@
       {/if}
       {#if shownError}
         <p class="message erreur" data-testid="erreur-action">{shownError}</p>
-      {:else if lastWithoutResult?.erreur ?? lue?.erreur}
-        <p class="message erreur" data-testid="erreur-action">{lastWithoutResult?.erreur ?? lue?.erreur}</p>
+      {:else if lastWithoutResult?.erreur ?? loaded?.erreur}
+        <p class="message erreur" data-testid="erreur-action">{lastWithoutResult?.erreur ?? loaded?.erreur}</p>
       {/if}
-      {#if lue === null && execution !== null}
+      {#if loaded === null && execution !== null}
         <div class="message disparu" data-testid="resultat-disparu">
           <p>{RESULT_GONE}</p>
           {#if previous && previous.length > 0}
             <button data-testid="voir-dernier-resultat" onclick={() => choose(previous![0]!.id)}>Voir le dernier résultat</button>
           {/if}
         </div>
-      {:else if lue === null && !lastWithoutResult && !action.saisie && !grantNeed && !shownError}
+      {:else if loaded === null && !lastWithoutResult && !action.saisie && !grantNeed && !shownError}
         <p class="message" data-testid="pas-de-resultat">Pas encore de résultat</p>
-      {:else if lue?.page?.vide}
+      {:else if loaded?.page?.vide}
         <p class="message" data-testid="aucun-resultat">{NO_RESULT}</p>
-      {:else if lue?.page}
-        <PageRender page={lue.page} action={id} execution={lue.execution} />
+      {:else if loaded?.page}
+        <PageRender page={loaded.page} action={id} execution={loaded.execution} />
       {/if}
     {/if}
     {#if grantNeed && cardOpen}
@@ -205,7 +205,7 @@
         publiques={action.publiques}
         profilsPourAccord={api.actions.profilsPourAccord}
         fermer={() => (cardOpen = false)}
-        autoriser={(profile) => void accorder(profile)}
+        autoriser={(profile) => void giveGrant(profile)}
       />
     {/if}
   {/if}

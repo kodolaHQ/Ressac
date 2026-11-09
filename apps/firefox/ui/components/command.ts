@@ -1,12 +1,12 @@
 import type { ApplicationShown } from "../../shared/api";
-import type { TabId, Visite } from "../../shared/model";
+import type { TabId, Visit } from "../../shared/model";
 import type { ActionShown } from "../../shared/actions";
 import type { ShownSite } from "../../shared/sites";
 import { normalize, suggestionsActions } from "./suggestions";
 
 export type SourceTab = { id: TabId; titre: string; url: string; favicon: string | null };
 export type SiteApp = { genre: "projet" | "site"; id: string; nom: string; action: "ouvrir" | "lancer"; favicon: string | null };
-export type CommandSources = { actions: ActionShown[]; onglets: SourceTab[]; applis: SiteApp[]; historique: Visite[] };
+export type CommandSources = { actions: ActionShown[]; onglets: SourceTab[]; applis: SiteApp[]; historique: Visit[] };
 export type CommandLine =
   | { type: "defaut"; texte: string; libelle: string }
   /** `parametre`: the label of the input the action declares (null: it expects none). */
@@ -60,17 +60,17 @@ export function commandLines(text: string, sources: CommandSources, urlActive: s
 
 export type Section = "actions" | "onglets" | "applis" | "historique";
 
-export const TITRES_SECTIONS: Record<Section, string> = { actions: "Actions", onglets: "Onglets ouverts", applis: "Applis", historique: "Historique" };
+export const SECTION_TITLES: Record<Section, string> = { actions: "Actions", onglets: "Onglets ouverts", applis: "Applis", historique: "Historique" };
 
 /** A row's section: the default row has none, it stays first without a title. */
-export function sectionDe(l: CommandLine): Section | null {
+export function sectionOf(l: CommandLine): Section | null {
   return l.type === "defaut" ? null : l.type === "action" ? "actions" : l.type === "onglet" ? "onglets" : l.type === "appli" ? "applis" : "historique";
 }
 
 /** The title to put before row `i`: its section's when it opens one, null otherwise. */
 export function titleBefore(lignes: CommandLine[], i: number): string | null {
-  const s = sectionDe(lignes[i]!);
-  return s !== null && (i === 0 || sectionDe(lignes[i - 1]!) !== s) ? TITRES_SECTIONS[s] : null;
+  const s = sectionOf(lignes[i]!);
+  return s !== null && (i === 0 || sectionOf(lignes[i - 1]!) !== s) ? SECTION_TITLES[s] : null;
 }
 
 /** An action missing its input: the bar asks for it before launching. */

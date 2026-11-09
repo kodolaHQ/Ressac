@@ -3,21 +3,21 @@ import { existsSync } from "node:fs";
 import { mkdir, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
-  DATA_MAX_SIZE, accorder, spacePaths, lastResult, writeRun, writeMemory, writeResult, attemptId, idExecution,
-  lireAccords, lireExecution, readResult, forgetGoneActions, deleteDataAction, type Execution, type ActionResult,
+  DATA_MAX_SIZE, giveGrant, spacePaths, lastResult, writeRun, writeMemory, writeResult, attemptId, idExecution,
+  readGrants, readRun, readResult, forgetGoneActions, deleteDataAction, type Execution, type ActionResult,
 } from "../../src/index.js";
 import { tempFolder } from "../helpers/temp.js";
 
 const timestamp = (i: number) => new Date(Date.UTC(2026, 9, 31, 8, 0, i)).toISOString();
-const execution = (debut: string, attempt = false): Execution => ({
-  version: 1, id: attempt ? attemptId(debut) : idExecution(debut), proprietaire: { type: "action", id: "a" },
-  declencheur: "manuelle", debut, fin: debut, statut: "reussie", blocs: [],
+const execution = (start: string, attempt = false): Execution => ({
+  version: 1, id: attempt ? attemptId(start) : idExecution(start), proprietaire: { type: "action", id: "a" },
+  declencheur: "manuelle", debut: start, fin: start, statut: "reussie", blocs: [],
 });
 const result = (id: string, results: unknown = { n: 1 }): ActionResult => ({
   version: 1, execution: id, saisie: null, resultats: results, plan: null, secours: false, vide: false,
 });
-const add = async (d: string, debut: string, attempt = false, results?: unknown) => {
-  const e = execution(debut, attempt);
+const add = async (d: string, start: string, attempt = false, results?: unknown) => {
+  const e = execution(start, attempt);
   await writeRun(join(d, "a"), e);
   await writeResult(d, "a", result(e.id, results));
   return e.id;
@@ -49,7 +49,7 @@ test("21 runs: the oldest's result goes with it", async () => {
   const d = await tempFolder();
   const ids: string[] = [];
   for (let i = 0; i < 21; i++) ids.push(await add(d, timestamp(i)));
-  expect(await lireExecution(join(d, "a"), ids[0]!)).toBeNull();
+  expect(await readRun(join(d, "a"), ids[0]!)).toBeNull();
   expect(await readResult(d, "a", ids[0]!)).toBeNull();
   expect(await readResult(d, "a", ids[1]!)).not.toBeNull();
   expect(await readResult(d, "a", ids[20]!)).not.toBeNull();
@@ -86,41 +86,41 @@ test("supprimerDonneesAction erases runs, results and memory", async () => {
 
 test("oublierActionsDisparues erases the data and grant of an action whose folder disappeared, not the others", async () => {
   const c = spacePaths(await tempFolder());
-  const dossierActions = await tempFolder();
+  const actionsFolder = await tempFolder();
   await mkdir(join(c.actions, "vivante"), { recursive: true });
   for (const id of ["vivante", "disparue"]) {
-    const d = join(dossierActions, id);
+    const d = join(actionsFolder, id);
     const e = execution(timestamp(0));
     await writeRun(d, e);
-    await writeResult(dossierActions, id, result(e.id));
-    await accorder(dossierActions, id, { domaines: ["gitlab.com"], publiques: [], profil: "p" });
+    await writeResult(actionsFolder, id, result(e.id));
+    await giveGrant(actionsFolder, id, { domaines: ["gitlab.com"], publiques: [], profil: "p" });
   }
-  await forgetGoneActions(c, dossierActions);
-  expect(existsSync(join(dossierActions, "disparue"))).toBe(false);
-  expect(existsSync(join(dossierActions, "vivante", "resultats"))).toBe(true);
-  expect(Object.keys(await lireAccords(dossierActions))).toEqual(["vivante"]);
+  await forgetGoneActions(c, actionsFolder);
+  expect(existsSync(join(actionsFolder, "disparue"))).toBe(false);
+  expect(existsSync(join(actionsFolder, "vivante", "resultats"))).toBe(true);
+  expect(Object.keys(await readGrants(actionsFolder))).toEqual(["vivante"]);
 });
 
 test("oublierActionsDisparues: without an actions folder (space moved), data and grants stay", async () => {
   const c = spacePaths(await tempFolder()); // c.actions does not exist
-  const dossierActions = await tempFolder();
+  const actionsFolder = await tempFolder();
   const e = execution(timestamp(0));
-  await writeRun(join(dossierActions, "x"), e);
-  await writeResult(dossierActions, "x", result(e.id));
-  await accorder(dossierActions, "x", { domaines: ["gitlab.com"], publiques: [], profil: "p" });
-  await forgetGoneActions(c, dossierActions);
-  expect(existsSync(join(dossierActions, "x", "resultats"))).toBe(true);
-  expect(Object.keys(await lireAccords(dossierActions))).toEqual(["x"]);
+  await writeRun(join(actionsFolder, "x"), e);
+  await writeResult(actionsFolder, "x", result(e.id));
+  await giveGrant(actionsFolder, "x", { domaines: ["gitlab.com"], publiques: [], profil: "p" });
+  await forgetGoneActions(c, actionsFolder);
+  expect(existsSync(join(actionsFolder, "x", "resultats"))).toBe(true);
+  expect(Object.keys(await readGrants(actionsFolder))).toEqual(["x"]);
 });
 
 test("oublierActionsDisparues: a symbolic link named like the action is not the action", async () => {
   const c = spacePaths(await tempFolder());
-  const dossierActions = await tempFolder();
+  const actionsFolder = await tempFolder();
   await mkdir(c.actions, { recursive: true });
   await symlink(await tempFolder(), join(c.actions, "x"));
-  await writeRun(join(dossierActions, "x"), execution(timestamp(0)));
-  await forgetGoneActions(c, dossierActions);
-  expect(existsSync(join(dossierActions, "x"))).toBe(false);
+  await writeRun(join(actionsFolder, "x"), execution(timestamp(0)));
+  await forgetGoneActions(c, actionsFolder);
+  expect(existsSync(join(actionsFolder, "x"))).toBe(false);
 });
 
 test("a well-formed plan is re-read; a malformed plan makes the result be rejected", async () => {

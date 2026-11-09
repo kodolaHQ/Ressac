@@ -1,4 +1,4 @@
-import type { CatalogueBloc } from "@webaios/kernel";
+import type { BlockCatalogEntry } from "@webaios/kernel";
 import { COLUMN_PX, ROW_PX } from "./layout";
 
 type Position = { x: number; y: number };
@@ -10,7 +10,7 @@ export const CODE_MODEL = "export default async (entree, webaios) => {\n  return
  * Parameters of a new block: the required fields that have a neutral value in the catalog (`liste.garder`: 10…). A
  * new unlinked block then only fails on its input; an address, with no neutral value, is left to fill in.
  */
-export function freshParams(c: CatalogueBloc): Record<string, unknown> {
+export function freshParams(c: BlockCatalogEntry): Record<string, unknown> {
   return Object.fromEntries(c.champs.filter((f) => f.requis && f.defaut !== undefined).map((f) => [f.nom, structuredClone(f.defaut)]));
 }
 

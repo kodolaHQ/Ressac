@@ -1,16 +1,16 @@
-import type { ConsolePourAgent, MessageConsole } from "@webaios/kernel";
+import type { AgentConsole, MessageConsole } from "@webaios/kernel";
 
 /** Messages kept per extension: the oldest drop. */
 export const CONSOLE_MAX = 500;
 /** `PLANTAGES_MAX` crashes in `FENETRE_PLANTAGES_MS`: the extension is disabled everywhere. */
-export const PLANTAGES_MAX = 3;
+export const MAX_CRASHES = 3;
 export const CRASH_WINDOW_MS = 60_000;
 
 /**
  * A recorded message: `onglet` for a content script (was the tab view it comes from readable by the agent
  * when it was written?), null for the service worker and the extension's pages.
  */
-interface Entree {
+interface Entry {
   m: MessageConsole;
   onglet: { lisible: boolean } | null;
 }
@@ -36,7 +36,7 @@ export interface AgentFilter {
  * kept and then written later does not pass. The user (Extensions page) sees everything.
  */
 export class ConsolesExtensions {
-  private consoles = new Map<string, Entree[]>();
+  private consoles = new Map<string, Entry[]>();
   private plantages = new Map<string, number[]>();
 
   constructor(
@@ -66,22 +66,22 @@ export class ConsolesExtensions {
   }
 
   /** What the agent sees of the console (copy), those with timestamp ≥ `depuis` if given. */
-  pourAgent(idChrome: string, f: AgentFilter): ConsolePourAgent {
+  pourAgent(idChrome: string, f: AgentFilter): AgentConsole {
     const from = f.depuis;
     const list = (this.consoles.get(idChrome) ?? []).filter((e) => from === undefined || e.m.horodatage >= from);
     const copy = (m: MessageConsole): MessageConsole => ({ horodatage: m.horodatage, niveau: m.niveau, texte: m.texte, ...(m.pile !== undefined ? { pile: m.pile } : {}) });
     if (f.debloquee) return { messages: list.map((e) => copy(e.m)), masques: 0, fondMasque: false, fondObserve: false, debloquee: true };
-    const fondMasque = f.tourneIllisible;
-    const fondObserve = f.observateur;
+    const hiddenBackground = f.tourneIllisible;
+    const observedBackground = f.observateur;
     const messages: MessageConsole[] = [];
-    let masques = 0;
+    let hiddenCount = 0;
     for (const e of list) {
       if (e.onglet) {
         if (e.onglet.lisible) messages.push(copy(e.m));
-        else masques++;
-      } else if (!fondMasque && !fondObserve) messages.push(copy(e.m));
+        else hiddenCount++;
+      } else if (!hiddenBackground && !observedBackground) messages.push(copy(e.m));
     }
-    return { messages, masques, fondMasque, fondObserve, debloquee: false };
+    return { messages, masques: hiddenCount, fondMasque: hiddenBackground, fondObserve: observedBackground, debloquee: false };
   }
 
   /** The texts of the `error`-level messages the agent can see (same filter as `pourAgent`). */
@@ -96,7 +96,7 @@ export class ConsolesExtensions {
   plantage(idChrome: string, timestamp: number): void {
     const recents = (this.plantages.get(idChrome) ?? []).filter((t) => timestamp - t <= CRASH_WINDOW_MS);
     recents.push(timestamp);
-    if (recents.length >= PLANTAGES_MAX) {
+    if (recents.length >= MAX_CRASHES) {
       this.plantages.delete(idChrome);
       this.o.surPlantages(idChrome);
       return;

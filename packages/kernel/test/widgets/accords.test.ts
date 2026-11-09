@@ -3,7 +3,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { DeclarationWidget } from "../../src/home/schemas.js";
 import { DeclarationAction } from "../../src/actions/schemas.js";
-import { grantValid, accorder, lireAccords, retirerAccord } from "../../src/widgets/accords.js";
+import { grantValid, giveGrant, readGrants, removeGrant } from "../../src/widgets/accords.js";
 import { tempFolder } from "../helpers/temp.js";
 
 const declaration = (account: string[], publics: string[]) =>
@@ -16,55 +16,55 @@ const declaration = (account: string[], publics: string[]) =>
 describe("grants", () => {
   it("accorder then lireAccords, retirerAccord", async () => {
     const d = await tempFolder();
-    expect(await lireAccords(d)).toEqual({});
-    await accorder(d, "daily", { domaines: ["app.daily.dev"], publiques: [], profil: "p1" });
-    await accorder(d, "autre", { domaines: ["a.fr"], publiques: ["b.fr"], profil: "p2" });
-    expect(await lireAccords(d)).toEqual({
+    expect(await readGrants(d)).toEqual({});
+    await giveGrant(d, "daily", { domaines: ["app.daily.dev"], publiques: [], profil: "p1" });
+    await giveGrant(d, "autre", { domaines: ["a.fr"], publiques: ["b.fr"], profil: "p2" });
+    expect(await readGrants(d)).toEqual({
       daily: { domaines: ["app.daily.dev"], publiques: [], profil: "p1" },
       autre: { domaines: ["a.fr"], publiques: ["b.fr"], profil: "p2" },
     });
     expect(JSON.parse(await readFile(join(d, "accords.json"), "utf8")).daily.profil).toBe("p1");
-    await retirerAccord(d, "daily");
-    expect(Object.keys(await lireAccords(d))).toEqual(["autre"]);
+    await removeGrant(d, "daily");
+    expect(Object.keys(await readGrants(d))).toEqual(["autre"]);
   });
 
   it("simultaneous writes are not lost", async () => {
     const d = await tempFolder();
     await Promise.all(
-      Array.from({ length: 10 }, (_, i) => accorder(d, `w${i}`, { domaines: ["a.fr"], publiques: [], profil: "p" })),
+      Array.from({ length: 10 }, (_, i) => giveGrant(d, `w${i}`, { domaines: ["a.fr"], publiques: [], profil: "p" })),
     );
-    expect(Object.keys(await lireAccords(d)).sort()).toHaveLength(10);
+    expect(Object.keys(await readGrants(d)).sort()).toHaveLength(10);
   });
 
   it("a damaged file or invalid entries are ignored", async () => {
     const d = await tempFolder();
     await writeFile(join(d, "accords.json"), "{pas du json");
-    expect(await lireAccords(d)).toEqual({});
+    expect(await readGrants(d)).toEqual({});
     await writeFile(join(d, "accords.json"), JSON.stringify({ ok: { domaines: ["a.fr"], publiques: [], profil: "p" }, ko: { profil: 3 } }));
-    expect(Object.keys(await lireAccords(d))).toEqual(["ok"]);
+    expect(Object.keys(await readGrants(d))).toEqual(["ok"]);
   });
 
   it("an invalid id is refused", async () => {
     const d = await tempFolder();
-    await expect(accorder(d, "../x", { domaines: [], publiques: [], profil: "p" })).rejects.toThrow();
-    await expect(retirerAccord(d, "../x")).rejects.toThrow();
+    await expect(giveGrant(d, "../x", { domaines: [], publiques: [], profil: "p" })).rejects.toThrow();
+    await expect(removeGrant(d, "../x")).rejects.toThrow();
   });
 
   it("a grant whose domains no longer match the declaration is no longer valid", () => {
-    const accord = { domaines: ["app.daily.dev", "b.fr"], publiques: ["x.fr"], profil: "p" };
-    expect(grantValid(declaration(["b.fr", "app.daily.dev"], ["x.fr"]), accord)).toBe(true);
-    expect(grantValid(declaration(["app.daily.dev"], ["x.fr"]), accord)).toBe(false);
-    expect(grantValid(declaration(["app.daily.dev", "b.fr", "c.fr"], ["x.fr"]), accord)).toBe(false);
-    expect(grantValid(declaration(["app.daily.dev", "b.fr"], ["x.fr", "y.fr"]), accord)).toBe(false);
-    expect(grantValid(declaration(["app.daily.dev", "b.fr"], []), accord)).toBe(false);
+    const grant = { domaines: ["app.daily.dev", "b.fr"], publiques: ["x.fr"], profil: "p" };
+    expect(grantValid(declaration(["b.fr", "app.daily.dev"], ["x.fr"]), grant)).toBe(true);
+    expect(grantValid(declaration(["app.daily.dev"], ["x.fr"]), grant)).toBe(false);
+    expect(grantValid(declaration(["app.daily.dev", "b.fr", "c.fr"], ["x.fr"]), grant)).toBe(false);
+    expect(grantValid(declaration(["app.daily.dev", "b.fr"], ["x.fr", "y.fr"]), grant)).toBe(false);
+    expect(grantValid(declaration(["app.daily.dev", "b.fr"], []), grant)).toBe(false);
     expect(grantValid(declaration(["app.daily.dev", "b.fr"], ["x.fr"]), undefined)).toBe(false);
   });
 
   it("accordValide accepts any declaration that has sources (widget or action)", () => {
     const action = DeclarationAction.parse({ nom: "A", sources: { compte: ["gitlab.com"], publiques: ["x.fr"] } });
-    const accord = { domaines: ["gitlab.com"], publiques: ["x.fr"], profil: "p" };
-    expect(grantValid(action, accord)).toBe(true);
-    expect(grantValid(action, { ...accord, domaines: ["autre.fr"] })).toBe(false);
+    const grant = { domaines: ["gitlab.com"], publiques: ["x.fr"], profil: "p" };
+    expect(grantValid(action, grant)).toBe(true);
+    expect(grantValid(action, { ...grant, domaines: ["autre.fr"] })).toBe(false);
     expect(grantValid(action)).toBe(false);
   });
 });

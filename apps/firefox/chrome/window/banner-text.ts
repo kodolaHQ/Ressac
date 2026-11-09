@@ -1,4 +1,4 @@
-import { siteDe } from "../../shared/model";
+import { siteOf } from "../../shared/model";
 import type { SitePermission } from "../store/site-permissions";
 
 /** The permission names the banner shows, plus the three kinds of WebAiOs-Firefox. */
@@ -27,6 +27,6 @@ export function bannerText(d: { origine: string; permissions: readonly SitePermi
   const others = d.permissions.filter((p) => !p.startsWith("media-")).map((p) => NAMES[p]);
   const parts = [...(media.length ? [`utiliser ${media.join(" et ")}`] : []), ...others];
   // Never throws: an unreadable origin (about:blank, data:…) is shown as it is.
-  const text = `${siteDe(d.origine)} veut ${parts.join(" et ")}`;
+  const text = `${siteOf(d.origine)} veut ${parts.join(" et ")}`;
   return d.lien ? `${text} : ${d.lien.slice(0, 120)}` : text;
 }

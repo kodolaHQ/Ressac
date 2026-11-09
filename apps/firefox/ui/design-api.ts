@@ -25,7 +25,7 @@ import {
 /** An error from the store's realm, made again in this one (`instanceof Error` fails across realms). */
 export const local = (e: unknown): Error => new Error(typeof (e as Error | null)?.message === "string" ? (e as Error).message : String(e));
 
-export function createExternesApi(o: {
+export function createExternalApi(o: {
   host: Pick<AgentHost, "request" | "on">;
   fenetre: WindowId;
   dispatch: (a: Action) => void;
@@ -88,10 +88,10 @@ export function createReviewApi(o: { host: Pick<AgentHost, "request"> }): ApiWeb
     async fichier(project, token, path) {
       return ask("relecture.fichier", { projet: checkProject(project), jeton: checkToken(token), chemin: checkPath(path) });
     },
-    async lignes(project, token, path, debut, fin) {
+    async lignes(project, token, path, start, end) {
       const p = checkProject(project);
-      [debut, fin] = checkLines(debut, fin);
-      return ask("relecture.lignes", { projet: p, jeton: checkToken(token), chemin: checkPath(path), debut, fin });
+      [start, end] = checkLines(start, end);
+      return ask("relecture.lignes", { projet: p, jeton: checkToken(token), chemin: checkPath(path), debut: start, fin: end });
     },
     async commentaires(project) {
       return ask("relecture.commentaires", { projet: checkProject(project) });
@@ -99,8 +99,8 @@ export function createReviewApi(o: { host: Pick<AgentHost, "request"> }): ApiWeb
     async commenter(project, token, c) {
       const p = checkProject(project);
       if (typeof c !== "object" || c === null) throw new Error("lignes invalides");
-      const [debut, fin] = checkLines(c.debut, c.fin);
-      return ask("relecture.commenter", { projet: p, jeton: checkToken(token), c: { fichier: checkPath(c.fichier), debut, fin, texte: checkText(c.texte) } });
+      const [start, end] = checkLines(c.debut, c.fin);
+      return ask("relecture.commenter", { projet: p, jeton: checkToken(token), c: { fichier: checkPath(c.fichier), debut: start, fin: end, texte: checkText(c.texte) } });
     },
     async modifierCommentaire(project, id, text) {
       return ask("relecture.modifierCommentaire", { projet: checkProject(project), id: checkComment(id), texte: checkText(text) });
@@ -146,8 +146,8 @@ export function createDesignApi(o: { win: WindowController; untilUnload: (f: () 
     async retirer(p, x) {
       if ((await allowed(p)) && id(x)) await copy(host.request("design.retirer", { projet: p, id: x }));
     },
-    async traite(p, lot) {
-      if ((await allowed(p)) && id(lot)) await copy(host.request("design.traite", { projet: p, lot }));
+    async traite(p, batch) {
+      if ((await allowed(p)) && id(batch)) await copy(host.request("design.traite", { projet: p, lot: batch }));
     },
     envoyer: async (p) => ((await allowed(p)) ? copy(host.request<ExtensionResult>("design.envoyer", { projet: p })) : { ok: false, erreur: INVALID_REQUEST }),
     surChange(cb) {

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import LienPage from "../LienPage.svelte";
+  import PageLink from "../LienPage.svelte";
   import { andOthers, sections, type Collection, type PageContext, type LienPage as Lien } from "../types";
 
   type Element = { titre: string; sousTitre: string | null; lien: Lien | null };
@@ -12,7 +12,7 @@
     <ul class="pa-liste">
       {#each s.elements as e, j (j)}
         <li>
-          {#if e.lien}<LienPage lien={e.lien} {ctx} />{:else}<span class="pa-texte">{e.titre}</span>{/if}
+          {#if e.lien}<PageLink lien={e.lien} {ctx} />{:else}<span class="pa-texte">{e.titre}</span>{/if}
           {#if e.sousTitre}<span class="sous-titre">{e.sousTitre}</span>{/if}
         </li>
       {/each}

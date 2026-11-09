@@ -17,16 +17,16 @@
    */
   let place: { x: number; y: number } | null = null;
   /** The move being processed really moved (noted in capture, before the card). */
-  let bouge = false;
-  const noterPlace = (e: PointerEvent) => {
-    bouge = !!place && (place.x !== e.screenX || place.y !== e.screenY);
+  let moved = false;
+  const notePlace = (e: PointerEvent) => {
+    moved = !!place && (place.x !== e.screenX || place.y !== e.screenY);
     place = { x: e.screenX, y: e.screenY };
   };
 </script>
 
 <!-- In capture: the panel goes before everything else (modal, history…), and Escape only closes it. -->
 <svelte:window
-  onpointermovecapture={noterPlace}
+  onpointermovecapture={notePlace}
   onkeyup={(e) => {
     // Redundant with the interface's `before-input-event` (no effect outside a traversal): the panel never stays stuck.
     if (e.key === "Control") send({ type: "valider" });
@@ -43,27 +43,27 @@
 />
 
 <div class="panneau" data-testid="panneau-onglets" role="listbox" aria-label="Onglets récents">
-  {#each panel.cartes as carte, i (carte.id)}
+  {#each panel.cartes as card, i (card.id)}
     <div
       class="carte"
       data-testid="carte-onglet"
       role="option"
       tabindex="-1"
       aria-selected={i === panel.selection}
-      title={carte.titre}
-      onpointermove={() => bouge && i !== panel.selection && send({ type: "survoler", id: carte.id })}
-      onclick={() => send({ type: "choisir", id: carte.id })}
+      title={card.titre}
+      onpointermove={() => moved && i !== panel.selection && send({ type: "survoler", id: card.id })}
+      onclick={() => send({ type: "choisir", id: card.id })}
     >
       <div class="apercu">
-        {#if carte.apercu}
-          <img src={carte.apercu} alt="" />
+        {#if card.apercu}
+          <img src={card.apercu} alt="" />
         {:else}
-          <div class="secours"><SiteIcon favicon={carte.favicon} titre={carte.titre} taille={40} /></div>
+          <div class="secours"><SiteIcon favicon={card.favicon} titre={card.titre} taille={40} /></div>
         {/if}
       </div>
       <div class="legende">
-        <SiteIcon favicon={carte.favicon} titre={carte.titre} />
-        <span class="titre">{carte.titre}</span>
+        <SiteIcon favicon={card.favicon} titre={card.titre} />
+        <span class="titre">{card.titre}</span>
       </div>
     </div>
   {/each}

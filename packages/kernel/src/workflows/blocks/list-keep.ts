@@ -1,7 +1,7 @@
 import { z } from "zod";
-import type { DefinitionBloc } from "./common.js";
+import type { BlockDefinition } from "./common.js";
 
-export const definition: DefinitionBloc = {
+export const definition: BlockDefinition = {
   type: "liste.garder",
   libelle: "Garder les N premiers",
   famille: "Listes",

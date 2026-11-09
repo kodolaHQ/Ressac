@@ -8,13 +8,13 @@
    */
   let { nom: name, props }: { nom: string; props: Record<string, unknown> } = $props();
 
-  const HAUTEUR_MIN = 20;
-  const HAUTEUR_MAX = 2000;
+  const MIN_HEIGHT = 20;
+  const MAX_HEIGHT = 2000;
   const actions = window.webaios.actions;
   let iframe = $state<HTMLIFrameElement>();
   let src = $state<string | null>(null);
   let width = $state(0);
-  let hauteur = $state(150);
+  let height = $state(150);
   const sombre = matchMedia("(prefers-color-scheme: dark)");
   let theme = $state<"clair" | "sombre">(sombre.matches ? "sombre" : "clair");
 
@@ -67,7 +67,7 @@
   });
 
   $effect(() => {
-    const surMessage = (e: Event) => {
+    const onMessage = (e: Event) => {
       if (!iframe || e.target !== iframe.contentWindow || !ours()) return;
       // The component can dispatch this event itself, with any detail.
       const detail: unknown = (e as CustomEvent).detail;
@@ -81,17 +81,17 @@
       if (typeof d !== "object" || d === null) return;
       const { type, px } = d as { type?: unknown; px?: unknown };
       if (type !== "hauteur" || typeof px !== "number" || !Number.isFinite(px)) return;
-      hauteur = Math.round(Math.min(HAUTEUR_MAX, Math.max(HAUTEUR_MIN, px)));
+      height = Math.round(Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, px)));
     };
     // The window root sees the events of the window's in-process frames (SiteHomeFrame.svelte); untrusted ones too.
     const root = (window as unknown as { windowRoot: EventTarget }).windowRoot;
-    (root.addEventListener as (t: string, l: EventListener, c: boolean, untrusted: boolean) => void)("webaios-composant", surMessage, true, true);
+    (root.addEventListener as (t: string, l: EventListener, c: boolean, untrusted: boolean) => void)("webaios-composant", onMessage, true, true);
     // An iframe of this chrome page never gets `load`: DOMFrameContentLoaded comes once the component's scripts have run.
-    const charge = (e: Event) => iframe && e.target === iframe && send();
-    document.addEventListener("DOMFrameContentLoaded", charge, true);
+    const onLoaded = (e: Event) => iframe && e.target === iframe && send();
+    document.addEventListener("DOMFrameContentLoaded", onLoaded, true);
     return () => {
-      root.removeEventListener("webaios-composant", surMessage, true);
-      document.removeEventListener("DOMFrameContentLoaded", charge, true);
+      root.removeEventListener("webaios-composant", onMessage, true);
+      document.removeEventListener("DOMFrameContentLoaded", onLoaded, true);
     };
   });
 </script>
@@ -104,6 +104,6 @@
     title={name}
     src={src ?? "about:blank"}
     sandbox="allow-scripts"
-    style:height="{hauteur}px"
+    style:height="{height}px"
   ></iframe>
 </div>

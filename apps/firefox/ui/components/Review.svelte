@@ -19,7 +19,7 @@
   let chosen = $state<string | null>(null);
   let diff = $state<Diff | null>(null);
   let diffError = $state<string | null>(null);
-  let enCours = $state(false);
+  let running = $state(false);
   let comments = $state<Commentaire[]>([]);
   let message = $state<string | null>(null);
   let request = 0;
@@ -30,9 +30,9 @@
   const LABELS = { ajoute: "ajouté", supprime: "supprimé", modifie: "modifié" } as const;
 
   /** `garder`: the tab's comparison if it is still kept; otherwise (« Rafraîchir ») a new one. */
-  async function charger(keep: boolean) {
+  async function load(keep: boolean) {
     const n = ++request;
-    enCours = true;
+    running = true;
     try {
       const v = await api.relecture.ouvrir(project, keep ? tokens.get(tabId) : undefined);
       if (n !== request) return;
@@ -40,7 +40,7 @@
     } catch {
       if (n === request) view = { etat: "indisponible", nom: "", raison: "la relecture n'a pas pu être ouverte" };
     } finally {
-      if (n === request) enCours = false;
+      if (n === request) running = false;
     }
   }
 
@@ -75,14 +75,14 @@
 
   async function sendComments() {
     message = null;
-    enCours = true;
+    running = true;
     try {
       const r = await api.relecture.envoyer(project);
       if (!r.ok) message = r.erreur;
     } catch (e) {
       message = withoutPrefix(e);
     } finally {
-      enCours = false;
+      running = false;
       await reloadComments();
     }
   }
@@ -91,14 +91,14 @@
     if (token === null) return;
     message = null;
     const n = ++request;
-    enCours = true;
+    running = true;
     try {
       const v = await api.relecture.relu(project, token);
       if (n === request) await show(v);
     } catch (e) {
       if (n === request) message = withoutPrefix(e);
     } finally {
-      if (n === request) enCours = false;
+      if (n === request) running = false;
     }
   }
 
@@ -127,7 +127,7 @@
   $effect(() => {
     void project;
     void tabId;
-    void charger(true);
+    void load(true);
   });
 
   const files = $derived<FichierModifie[]>(view?.etat === "ok" ? view.comparaison.fichiers : []);
@@ -140,14 +140,14 @@
     <h2>{view?.nom ?? ""}</h2>
     {#if view?.etat === "ok"}
       {#if toSend > 0}
-        <button data-testid="envoyer-commentaires" disabled={enCours || view.destination === null} title={view.sansDestination ?? ""}
+        <button data-testid="envoyer-commentaires" disabled={running || view.destination === null} title={view.sansDestination ?? ""}
           onclick={() => void sendComments()}
           >Envoyer {toSend} commentaire{toSend > 1 ? "s" : ""} à {view.destination ?? "personne"}</button
         >
       {/if}
-      <button data-testid="marquer-relu" disabled={enCours || token === null} onclick={() => void markReviewed()}>Marquer comme relu</button>
+      <button data-testid="marquer-relu" disabled={running || token === null} onclick={() => void markReviewed()}>Marquer comme relu</button>
     {/if}
-    <button onclick={() => void charger(false)} disabled={enCours}>Rafraîchir</button>
+    <button onclick={() => void load(false)} disabled={running}>Rafraîchir</button>
   </header>
   {#if message}<p class="message" data-testid="erreur-relecture">{message}</p>{/if}
   {#if view?.etat === "indisponible"}

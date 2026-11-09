@@ -19,12 +19,12 @@ function isLocal(url: string): boolean {
   }
 }
 
-export type DroitDev = "console" | "reseau" | "performances" | "agir";
-export const DROITS_DEV: readonly DroitDev[] = ["console", "reseau", "performances", "agir"];
+export type DevRight = "console" | "reseau" | "performances" | "agir";
+export const DEV_RIGHTS: readonly DevRight[] = ["console", "reseau", "performances", "agir"];
 
 export interface TabAccessState {
   lecture: boolean;
-  droits: DroitDev[];
+  droits: DevRight[];
   construite: boolean;
   enCours: boolean;
 }
@@ -47,16 +47,16 @@ export class AccessPolicy {
   /** tab id → origin where the agent built what it shows */
   private readonly construites = new Map<string, string>();
   /** tab id → rights granted by the user, valid for one origin */
-  private readonly droits = new Map<string, { origine: string; liste: Set<DroitDev> }>();
+  private readonly droits = new Map<string, { origine: string; liste: Set<DevRight> }>();
   /** tab id → rights denied, not askable again before the user's next message */
-  private readonly refus = new Map<string, Set<DroitDev>>();
+  private readonly refus = new Map<string, Set<DevRight>>();
   /** tab id → rights cut (a built one stays cut until the next conversation) */
-  private readonly coupes = new Map<string, Set<DroitDev>>();
+  private readonly coupes = new Map<string, Set<DevRight>>();
   /**
    * Rights cut on what the agent built, by app window (`app:<folder>`) and by origin: they survive
    * the tab closing, so the agent does not get its rights back by relaunching the app or reopening its demo.
    */
-  private readonly coupesConstruites = new Map<string, Set<DroitDev>>();
+  private readonly coupesConstruites = new Map<string, Set<DevRight>>();
   /** tab id → number of tools running */
   private readonly utilisations = new Map<string, number>();
   /** Widgets with an account whose data the user showed the agent (card « donnees-widget »), for this conversation. */
@@ -77,7 +77,7 @@ export class AccessPolicy {
   }
 
   private change(): void {
-    for (const rappel of [...this.ecouteurs]) rappel();
+    for (const callback of [...this.ecouteurs]) callback();
   }
 
   private qualifie(url: string): boolean {
@@ -107,9 +107,9 @@ export class AccessPolicy {
   }
 
   /** Subscription to changes; returns the unsubscribe. */
-  surChange(rappel: () => void): () => void {
-    this.ecouteurs.add(rappel);
-    return () => void this.ecouteurs.delete(rappel);
+  surChange(callback: () => void): () => void {
+    this.ecouteurs.add(callback);
+    return () => void this.ecouteurs.delete(callback);
   }
 
   /** Marks the tab as built by the agent (app window, or local demo on an agent port). */
@@ -132,30 +132,30 @@ export class AccessPolicy {
     return id.startsWith("app:") ? [id, org] : [org];
   }
 
-  private coupeConstruite(id: string, org: string, d: DroitDev): boolean {
+  private coupeConstruite(id: string, org: string, d: DevRight): boolean {
     return this.coupes.get(id)?.has(d) === true || this.clesConstruite(id, org).some((c) => this.coupesConstruites.get(c)?.has(d));
   }
 
-  private droitsDe(id: string, org: string | null, built: boolean): DroitDev[] {
+  private droitsDe(id: string, org: string | null, built: boolean): DevRight[] {
     if (!org) return [];
     const grants = this.droits.get(id);
-    return DROITS_DEV.filter(
+    return DEV_RIGHTS.filter(
       (d) => (grants?.origine === org && grants.liste.has(d)) || (built && !this.coupeConstruite(id, org, d)),
     );
   }
 
   /** Development tool rights valid now for this tab; none on a site app without its grant. */
-  droitsDev(o: TabInfo): DroitDev[] {
+  droitsDev(o: TabInfo): DevRight[] {
     if (o.site !== undefined && !this.lectureSiteAccordee(o.site, o.empreinte)) return [];
     return this.droitsDe(o.id, origin(o.url), this.estConstruite(o));
   }
 
   /** The user ticked `accordes` and left `refuses`: the latter are no longer askable until the user's next message. */
-  accorderDev(o: TabInfo, grants: DroitDev[], refuses: DroitDev[]): void {
+  accorderDev(o: TabInfo, grants: DevRight[], refuses: DevRight[]): void {
     const org = origin(o.url);
     if (org) {
       const current = this.droits.get(o.id);
-      const list = current?.origine === org ? current.liste : new Set<DroitDev>();
+      const list = current?.origine === org ? current.liste : new Set<DevRight>();
       for (const d of grants) {
         list.add(d);
         this.coupes.get(o.id)?.delete(d);
@@ -167,13 +167,13 @@ export class AccessPolicy {
     this.change();
   }
 
-  peutDemander(id: string, d: DroitDev): boolean {
+  peutDemander(id: string, d: DevRight): boolean {
     return !this.refus.get(id)?.has(d);
   }
 
   /** Cuts one right, or all (read included) if `d` is absent. */
-  couper(id: string, d?: DroitDev): void {
-    const targets = d ? [d] : DROITS_DEV;
+  couper(id: string, d?: DevRight): void {
+    const targets = d ? [d] : DEV_RIGHTS;
     const built = this.construites.get(id);
     for (const c of targets) {
       this.droits.get(id)?.liste.delete(c);
@@ -198,10 +198,10 @@ export class AccessPolicy {
     const r: Record<string, TabAccessState> = {};
     for (const id of ids) {
       const built = this.construites.has(id);
-      const lecture = this.autorisations.has(id);
-      const droits = this.droitsDe(id, this.droits.get(id)?.origine ?? this.construites.get(id) ?? null, built);
-      const enCours = this.utilisations.has(id);
-      if (lecture || droits.length || enCours) r[id] = { lecture, droits, construite: built, enCours };
+      const reading = this.autorisations.has(id);
+      const rights = this.droitsDe(id, this.droits.get(id)?.origine ?? this.construites.get(id) ?? null, built);
+      const running = this.utilisations.has(id);
+      if (reading || rights.length || running) r[id] = { lecture: reading, droits: rights, construite: built, enCours: running };
     }
     return r;
   }

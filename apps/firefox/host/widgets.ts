@@ -4,8 +4,8 @@ import { join } from "node:path";
 import {
   ID_EXECUTION,
   readFreeLayout,
-  lireExecution,
-  listerExecutions,
+  readRun,
+  listRuns,
   placeMissingFree,
   FreePlacement,
   freeSizes,
@@ -74,19 +74,19 @@ export function toShownWidgets(o: {
  * overlap. Refused as a whole otherwise (the UI then re-reads the old layout): `lireDispositionLibre`
  * returns [] for an overlapping layout, and writing it would erase the whole placement at the next read.
  */
-export function validatePlacements(brut: unknown, ids: readonly string[]): FreePlacement[] {
-  if (!Array.isArray(brut)) throw new Error("placements invalides : liste attendue");
+export function validatePlacements(raw: unknown, ids: readonly string[]): FreePlacement[] {
+  if (!Array.isArray(raw)) throw new Error("placements invalides : liste attendue");
   const known = new Set(ids);
-  const placements = brut.map((p) => {
+  const placements = raw.map((p) => {
     const r = FreePlacement.safeParse(p);
     if (!r.success) throw new Error(`placements invalides : ${r.error.message}`);
     if (!known.has(r.data.id)) throw new Error(`widget inconnu : ${r.data.id}`);
     return r.data;
   });
-  const vus = new Set<string>();
+  const seen = new Set<string>();
   for (const p of placements) {
-    if (vus.has(p.id)) throw new Error(`widget placé deux fois : ${p.id}`);
-    vus.add(p.id);
+    if (seen.has(p.id)) throw new Error(`widget placé deux fois : ${p.id}`);
+    seen.add(p.id);
   }
   for (let i = 0; i < placements.length; i++) {
     const a = placements[i]!;
@@ -100,13 +100,13 @@ export function validatePlacements(brut: unknown, ids: readonly string[]): FreeP
 }
 
 /** Writes to disposition.json one by one, in request order: none reads the state another is about to change. */
-const fileDisposition = new Map<string, Promise<void>>();
+const layoutQueue = new Map<string, Promise<void>>();
 function inSeries(c: SpacePaths, write: () => Promise<void>): Promise<void> {
-  const suite = (fileDisposition.get(c.disposition) ?? Promise.resolve()).then(write);
-  const fin = suite.catch(() => {});
-  fileDisposition.set(c.disposition, fin);
-  void fin.then(() => fileDisposition.get(c.disposition) === fin && fileDisposition.delete(c.disposition));
-  return suite;
+  const next = (layoutQueue.get(c.disposition) ?? Promise.resolve()).then(write);
+  const end = next.catch(() => {});
+  layoutQueue.set(c.disposition, end);
+  void end.then(() => layoutQueue.get(c.disposition) === end && layoutQueue.delete(c.disposition));
+  return next;
 }
 
 async function writeLayout(c: SpacePaths, widgets: readonly FreePlacement[]): Promise<void> {
@@ -117,7 +117,7 @@ async function writeLayout(c: SpacePaths, widgets: readonly FreePlacement[]): Pr
 }
 
 /** The new layout, already validated: atomic write, in series (two close drags are not lost). */
-export function placerWidgets(c: SpacePaths, placements: readonly FreePlacement[]): Promise<void> {
+export function placeWidgets(c: SpacePaths, placements: readonly FreePlacement[]): Promise<void> {
   return inSeries(c, () => writeLayout(c, placements));
 }
 
@@ -125,26 +125,26 @@ export function placerWidgets(c: SpacePaths, placements: readonly FreePlacement[
  * The user removes a widget: its folder goes to accueil/.corbeille (nothing is destroyed), its place is freed and
  * `oublier` removes its grant and its data (a widget recreated under the same id must not inherit the grant).
  */
-export async function retirerWidget(c: SpacePaths, id: string, forget: (id: string) => Promise<void>): Promise<void> {
+export async function removeWidget(c: SpacePaths, id: string, forget: (id: string) => Promise<void>): Promise<void> {
   if (!ID_WIDGET.test(id)) throw new Error(`id de widget invalide : ${id}`);
   await inSeries(c, async () => {
-    const restants = (await readFreeLayout(c)).filter((p) => p.id !== id);
+    const remaining = (await readFreeLayout(c)).filter((p) => p.id !== id);
     const trash = join(c.accueil, ".corbeille");
     await mkdir(trash, { recursive: true });
     await rename(join(c.widgets, id), join(trash, `${id}-${Date.now()}`));
-    await writeLayout(c, restants);
+    await writeLayout(c, remaining);
   });
   await forget(id);
 }
 
 /** The kept executions of a widget (`<dossierWidgets>/<id>`), outside the space; nothing for an invalid id. */
-export async function executionsWidget(dossierWidgets: string, id: string): Promise<ResumeExecution[]> {
+export async function executionsWidget(widgetsFolder: string, id: string): Promise<ResumeExecution[]> {
   if (!ID_WIDGET.test(id)) return [];
-  return listerExecutions(join(dossierWidgets, id));
+  return listRuns(join(widgetsFolder, id));
 }
 
 /** An execution of a widget; null if one of the two ids is invalid (never a path) or if it no longer exists. */
-export async function executionWidget(dossierWidgets: string, id: string, execution: string): Promise<Execution | null> {
+export async function executionWidget(widgetsFolder: string, id: string, execution: string): Promise<Execution | null> {
   if (!ID_WIDGET.test(id) || !ID_EXECUTION.test(execution)) return null;
-  return lireExecution(join(dossierWidgets, id), execution);
+  return readRun(join(widgetsFolder, id), execution);
 }

@@ -3,13 +3,13 @@ import { mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, utimes, writeFile
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  CODE_MAX_OCTETS,
+  CODE_MAX_BYTES,
   writeMemory,
   paramsHash,
   storeCode,
   saveWorkflow,
   readDraft,
-  lireCode,
+  readCodeFile,
   readMemory,
   withMemory,
   implicitWorkflow,
@@ -38,12 +38,12 @@ const wf = (key = "url", extra: Record<string, unknown> = {}) => ({
   liens: [{ de: "a", vers: "n" }, { de: "n", vers: "s" }],
   ...extra,
 });
-const rec = (brut: unknown) => saveWorkflow({ dossierFichiers: files, dossierDonnees: data, brut });
-const lireJson = async () => JSON.parse(await readFile(join(files, "workflow.json"), "utf8"));
+const rec = (raw: unknown) => saveWorkflow({ dossierFichiers: files, dossierDonnees: data, brut: raw });
+const readJson = async () => JSON.parse(await readFile(join(files, "workflow.json"), "utf8"));
 
 test("a valid workflow is written atomically and re-read identical", async () => {
   expect(await rec(wf())).toEqual({ ok: true, ecrit: true, memoireEffacee: [] });
-  expect(await lireJson()).toEqual(wf());
+  expect(await readJson()).toEqual(wf());
   expect((await readFile(join(files, "workflow.json"), "utf8")).endsWith("}\n")).toBe(true);
   expect((await readdir(files)).sort()).toEqual(["a.mjs", "workflow.json"]); // no .tmp
   const lu = await readDraft(files);
@@ -51,27 +51,27 @@ test("a valid workflow is written atomically and re-read identical", async () =>
 });
 
 test("an invalid workflow writes nothing and returns the error with the block concerned", async () => {
-  const sansLien = { ...wf(), liens: [{ de: "a", vers: "s" }] }; // n without an input
-  const r = await rec(sansLien);
+  const withoutLink = { ...wf(), liens: [{ de: "a", vers: "s" }] }; // n without an input
+  const r = await rec(withoutLink);
   expect(r).toMatchObject({ ok: false, bloc: "n" });
   expect(await readdir(files)).toEqual(["a.mjs"]);
 });
 
 test("a code block whose .mjs file is missing is refused (R3), with the block", async () => {
-  const brut = wf();
-  brut.blocs[0]!.parametres = { source: "absent.mjs" };
-  expect(await rec(brut)).toEqual({ ok: false, erreur: "Non enregistré : fichier absent.mjs absent", bloc: "a" });
+  const raw = wf();
+  raw.blocs[0]!.parametres = { source: "absent.mjs" };
+  expect(await rec(raw)).toEqual({ ok: false, erreur: "Non enregistré : fichier absent.mjs absent", bloc: "a" });
   expect(await readdir(files)).toEqual(["a.mjs"]);
 });
 
 test("saving the same workflow writes nothing (ecrit false, mtime unchanged)", async () => {
   await rec(wf());
-  const passe = new Date("2020-01-01T00:00:00Z");
-  await utimes(join(files, "workflow.json"), passe, passe);
+  const past = new Date("2020-01-01T00:00:00Z");
+  await utimes(join(files, "workflow.json"), past, past);
   // Same workflow, keys in another order.
   const sameOtherwise = { liens: wf().liens, blocs: wf().blocs.map((b) => ({ parametres: b.parametres, position: b.position, type: b.type, id: b.id })), version: 1 };
   expect(await rec(sameOtherwise)).toEqual({ ok: true, ecrit: false, memoireEffacee: [] });
-  expect((await stat(join(files, "workflow.json"))).mtime).toEqual(passe);
+  expect((await stat(join(files, "workflow.json"))).mtime).toEqual(past);
 });
 
 test("the implicit one saved as is writes nothing; modified, it creates workflow.json and recolte.mjs stays", async () => {
@@ -145,10 +145,10 @@ test("the erase waits for the memory lock (held by the runs) and goes before the
 test("nothing to erase: memoire.json is not rewritten", async () => {
   await rec(wf());
   await writeMemory(data, { a: { type: "code", valeur: 1 } });
-  const passe = new Date("2020-01-01T00:00:00Z");
-  await utimes(join(data, "memoire.json"), passe, passe);
+  const past = new Date("2020-01-01T00:00:00Z");
+  await utimes(join(data, "memoire.json"), past, past);
   expect(await rec(wf("titre"))).toEqual({ ok: true, ecrit: true, memoireEffacee: [] });
-  expect((await stat(join(data, "memoire.json"))).mtime).toEqual(passe);
+  expect((await stat(join(data, "memoire.json"))).mtime).toEqual(past);
 });
 
 test("changing the implicit one's parameters also erases the memory (compared to the implicit one)", async () => {
@@ -160,18 +160,18 @@ test("changing the implicit one's parameters also erases the memory (compared to
 });
 
 test("workflow.json symbolic link to the outside: refused, the target is not touched", async () => {
-  const dehors = join(root, "dehors.json");
-  await writeFile(dehors, "intact");
-  await symlink(dehors, join(files, "workflow.json"));
+  const outside = join(root, "dehors.json");
+  await writeFile(outside, "intact");
+  await symlink(outside, join(files, "workflow.json"));
   expect(await rec(wf())).toMatchObject({ ok: false });
-  expect(await readFile(dehors, "utf8")).toBe("intact");
+  expect(await readFile(outside, "utf8")).toBe("intact");
   expect(await readDraft(files)).toMatchObject({ origine: "fichier", brut: null, validation: { ok: false } });
 });
 
 test("over 256 KB: refused; widget folder missing: Widget introuvable", async () => {
-  const gros = wf();
-  gros.blocs[1]!.parametres = { cle: "x".repeat(300 * 1024) };
-  expect((await rec(gros)).ok).toBe(false);
+  const big = wf();
+  big.blocs[1]!.parametres = { cle: "x".repeat(300 * 1024) };
+  expect((await rec(big)).ok).toBe(false);
   expect(await readdir(files)).toEqual(["a.mjs"]);
   const r = await saveWorkflow({ dossierFichiers: join(root, "nulle-part"), dossierDonnees: data, brut: wf() });
   expect(r).toEqual({ ok: false, erreur: "Widget introuvable" });
@@ -191,28 +191,28 @@ test("lireBrouillon returns the JSON even invalid, null for a cut JSON, the impl
 
 test("lireCode / enregistrerCode refuse ../x.mjs, x.js, an outgoing link, over 256 KB; a missing file returns absent", async () => {
   for (const name of ["../x.mjs", "x.js", "A.mjs", "sous/x.mjs"]) {
-    expect(await lireCode(files, name)).toHaveProperty("erreur");
+    expect(await readCodeFile(files, name)).toHaveProperty("erreur");
     expect(await storeCode(files, name, "x")).toMatchObject({ ok: false });
   }
-  expect(await lireCode(files, "nouveau.mjs")).toEqual({ absent: true });
-  expect(await lireCode(files, "a.mjs")).toEqual({ texte: "export default () => []" });
+  expect(await readCodeFile(files, "nouveau.mjs")).toEqual({ absent: true });
+  expect(await readCodeFile(files, "a.mjs")).toEqual({ texte: "export default () => []" });
 
-  const dehors = join(root, "dehors.mjs");
-  await writeFile(dehors, "intact");
-  await symlink(dehors, join(files, "lien.mjs"));
-  const l = await lireCode(files, "lien.mjs");
+  const outside = join(root, "dehors.mjs");
+  await writeFile(outside, "intact");
+  await symlink(outside, join(files, "lien.mjs"));
+  const l = await readCodeFile(files, "lien.mjs");
   expect(l).toHaveProperty("erreur");
   expect(JSON.stringify(l)).not.toContain(root);
   expect(await storeCode(files, "lien.mjs", "écrasé")).toMatchObject({ ok: false });
-  expect(await readFile(dehors, "utf8")).toBe("intact");
+  expect(await readFile(outside, "utf8")).toBe("intact");
 
-  const gros = "x".repeat(CODE_MAX_OCTETS + 1);
-  expect(await storeCode(files, "gros.mjs", gros)).toMatchObject({ ok: false });
-  await writeFile(join(files, "gros2.mjs"), gros);
-  expect(await lireCode(files, "gros2.mjs")).toHaveProperty("erreur");
+  const big = "x".repeat(CODE_MAX_BYTES + 1);
+  expect(await storeCode(files, "gros.mjs", big)).toMatchObject({ ok: false });
+  await writeFile(join(files, "gros2.mjs"), big);
+  expect(await readCodeFile(files, "gros2.mjs")).toHaveProperty("erreur");
 
   expect(await storeCode(files, "nouveau.mjs", "export default 1")).toEqual({ ok: true });
-  expect(await lireCode(files, "nouveau.mjs")).toEqual({ texte: "export default 1" });
+  expect(await readCodeFile(files, "nouveau.mjs")).toEqual({ texte: "export default 1" });
   expect((await readdir(files)).filter((n) => n.endsWith(".tmp"))).toEqual([]);
 });
 
@@ -240,30 +240,30 @@ test("the workflow in place is re-read with the widget's context: a long widget 
     w.liens = [{ de: "a", vers: "p" }, { de: "p", vers: "n" }, { de: "n", vers: "s" }];
     return w;
   };
-  const longSave = (brut: unknown) => saveWorkflow({ dossierFichiers: files, dossierDonnees: data, brut, contexte: context });
+  const longSave = (raw: unknown) => saveWorkflow({ dossierFichiers: files, dossierDonnees: data, brut: raw, contexte: context });
   // Without the context, this workflow is refused (600 s > 170 s).
   expect(await rec(long("url"))).toMatchObject({ ok: false, bloc: "p" });
   expect(await longSave(long("url"))).toEqual({ ok: true, ecrit: true, memoireEffacee: [] });
   expect(await readDraft(files, context)).toMatchObject({ validation: { ok: true } });
   expect(await readDraft(files)).toMatchObject({ validation: { ok: false } });
 
-  const passe = new Date("2020-01-01T00:00:00Z");
-  await utimes(join(files, "workflow.json"), passe, passe);
+  const past = new Date("2020-01-01T00:00:00Z");
+  await utimes(join(files, "workflow.json"), past, past);
   expect(await longSave(long("url"))).toEqual({ ok: true, ecrit: false, memoireEffacee: [] });
-  expect((await stat(join(files, "workflow.json"))).mtime).toEqual(passe);
+  expect((await stat(join(files, "workflow.json"))).mtime).toEqual(past);
 
   await writeMemory(data, { n: { type: "liste.nouveaux", valeur: ["x"], empreinte: paramsHash({ cle: "url" }) } });
   expect(await longSave(long("titre"))).toEqual({ ok: true, ecrit: true, memoireEffacee: ["n"] });
 });
 
 test("saving web.chercher in a widget without web: refused, nothing written", async () => {
-  const brut = wf();
-  brut.blocs.splice(1, 0, { id: "w", type: "web.chercher", position: { x: 0, y: 0 }, parametres: { requete: "{titre}", parElement: true } } as never);
-  brut.liens = [{ de: "a", vers: "w" }, { de: "w", vers: "n" }, { de: "n", vers: "s" }];
+  const raw = wf();
+  raw.blocs.splice(1, 0, { id: "w", type: "web.chercher", position: { x: 0, y: 0 }, parametres: { requete: "{titre}", parElement: true } } as never);
+  raw.liens = [{ de: "a", vers: "w" }, { de: "w", vers: "n" }, { de: "n", vers: "s" }];
   const expected = { ok: false, erreur: 'Workflow invalide : web.chercher : le widget doit déclarer "web": true', bloc: "w" };
-  expect(await rec(brut)).toEqual(expected);
-  expect(await saveWorkflow({ dossierFichiers: files, dossierDonnees: data, brut, contexte: { web: false, dureeMaxMinutes: 30, proprietaire: "widget" as const, saisie: false } })).toEqual(expected);
+  expect(await rec(raw)).toEqual(expected);
+  expect(await saveWorkflow({ dossierFichiers: files, dossierDonnees: data, brut: raw, contexte: { web: false, dureeMaxMinutes: 30, proprietaire: "widget" as const, saisie: false } })).toEqual(expected);
   expect(await readdir(files)).toEqual(["a.mjs"]);
   // With web, the same workflow is written.
-  expect(await saveWorkflow({ dossierFichiers: files, dossierDonnees: data, brut, contexte: { web: true, dureeMaxMinutes: null, proprietaire: "widget" as const, saisie: false } })).toMatchObject({ ok: true, ecrit: true });
+  expect(await saveWorkflow({ dossierFichiers: files, dossierDonnees: data, brut: raw, contexte: { web: true, dureeMaxMinutes: null, proprietaire: "widget" as const, saisie: false } })).toMatchObject({ ok: true, ecrit: true });
 });

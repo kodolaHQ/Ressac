@@ -62,8 +62,8 @@ const viewAt = (m: Marionette, url: string) =>
   waitFor(m, `const b = ${app}?.gBrowser.selectedBrowser; return !!b && b.currentURI.spec === ${JSON.stringify(url)} && !b.webProgress.isLoadingDocument;`, (v) => v === true, 15_000);
 const tabUrls = async (m: Marionette) => Object.values((await state(m)).onglets).map((o) => o.url);
 const win = async (m: Marionette) => (await state(m)).fenetres[0]!.id;
-const act = async (m: Marionette, dossier: string, action: string) =>
-  inStore(m, `await store.agent.request("applications.agir", { dossier: arguments[0], action: arguments[1], fenetre: arguments[2] });`, [dossier, action, await win(m)]);
+const act = async (m: Marionette, folder: string, action: string) =>
+  inStore(m, `await store.agent.request("applications.agir", { dossier: arguments[0], action: arguments[1], fenetre: arguments[2] });`, [folder, action, await win(m)]);
 const list = (m: Marionette) => inStore<{ applications: { dossier: string; etat: string; port?: number; favicon?: string }[] }>(m, `return await store.agent.request("applications.liste");`);
 /** The view is still on `url` and its page was not replaced (window.marque kept). */
 async function stays(m: Marionette, url: string, what: string) {
@@ -108,7 +108,7 @@ describe("one WebAiOs, the app launched in each test", () => {
   }, 90_000);
   afterAll(() => stop(i));
   afterEach(async () => {
-    for (const dossier of ["essai", "autre"]) await callTool(i.dataDir, "arreter_application", { dossier }).catch(() => {});
+    for (const folder of ["essai", "autre"]) await callTool(i.dataDir, "arreter_application", { dossier: folder }).catch(() => {});
     await waitFor(m, `return [...Services.wm.getEnumerator("navigator:browser")].filter((w) => w.document.documentElement.hasAttribute("webaios-app")).length;`, (n) => n === 0);
     await waitFor(m, "for (const t of gBrowser.tabs.slice(1)) gBrowser.removeTab(t); return gBrowser.tabs.length;", (n) => n === 1);
     await expect.poll(async () => (await list(m)).applications.filter((a) => a.etat !== "arretee" && a.etat !== "erreur").length, { timeout: 10_000 }).toBe(0);

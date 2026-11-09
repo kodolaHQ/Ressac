@@ -49,7 +49,7 @@ function retryHour(hours: readonly string[], now: Date, appState: NextState | un
 export function nextRun(
   hours: readonly string[],
   now: Date,
-  frequence?: { minutes: number; derniereMaj: string | null },
+  frequency?: { minutes: number; derniereMaj: string | null },
   appState?: NextState,
 ): string | null {
   if (hours.length === 0) return null;
@@ -65,14 +65,14 @@ export function nextRun(
     // To the minute: the second is not shown.
     next.setSeconds(0, 0);
   }
-  if (!frequence) return label(next, now);
+  if (!frequency) return label(next, now);
   const markers = [now.getTime()];
-  const last = instant(frequence.derniereMaj);
-  if (!Number.isNaN(last)) markers.push(last + frequence.minutes * MINUTE);
-  const tentative = instant(appState?.derniereTentative);
-  if (appState?.statut === "erreur" && !Number.isNaN(tentative)) markers.push(tentative + RETRY_MS);
-  const parFrequence = new Date(Math.max(...markers));
+  const last = instant(frequency.derniereMaj);
+  if (!Number.isNaN(last)) markers.push(last + frequency.minutes * MINUTE);
+  const attempt = instant(appState?.derniereTentative);
+  if (appState?.statut === "erreur" && !Number.isNaN(attempt)) markers.push(attempt + RETRY_MS);
+  const byFrequency = new Date(Math.max(...markers));
   // To the minute: the second is not shown.
-  parFrequence.setSeconds(0, 0);
-  return label(parFrequence < next ? parFrequence : next, now);
+  byFrequency.setSeconds(0, 0);
+  return label(byFrequency < next ? byFrequency : next, now);
 }

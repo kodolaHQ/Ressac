@@ -71,17 +71,17 @@ export async function declareProject(
   m: Marionette,
   o: { dataDir: string; nom?: string; ports?: number[]; snapshot?: boolean },
 ): Promise<{ dossier: string; id: string; port: number; jeton: string; client: Client }> {
-  const dossier = projectDir(o.nom ?? "mon-site");
-  writeAppJs(dossier, LINES);
-  writeFileSync(join(dossier, "logo.bin"), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+  const folder = projectDir(o.nom ?? "mon-site");
+  writeAppJs(folder, LINES);
+  writeFileSync(join(folder, "logo.bin"), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
   const { port, jeton: token } = await connectClient(m);
   const client = await mcpClient(port, token);
-  await client.callTool({ name: "declarer_projet", arguments: { dossier, ports: o.ports ?? [18765] } });
+  await client.callTool({ name: "declarer_projet", arguments: { dossier: folder, ports: o.ports ?? [18765] } });
   await waitUi(m, "return !!doc.querySelector('[data-testid=\"projet-externe\"]')", [], 15_000);
-  const id = createHash("sha256").update(dossier).digest("hex").slice(0, 16);
+  const id = createHash("sha256").update(folder).digest("hex").slice(0, 16);
   for (const deadline = Date.now() + 15_000; o.snapshot !== false && !existsSync(reviewedRef(o.dataDir, `ext-${id}`)); await new Promise((r) => setTimeout(r, 100)))
     if (Date.now() > deadline) throw new Error(`no first review snapshot of ext-${id}`);
-  return { dossier, id, port, jeton: token, client };
+  return { dossier: folder, id, port, jeton: token, client };
 }
 
 /** The status of a raw POST to `/mcp-externe` (node:http: any Host header goes out as given, which fetch does not promise). */

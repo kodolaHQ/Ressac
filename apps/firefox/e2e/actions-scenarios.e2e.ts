@@ -13,7 +13,7 @@ import {
   startActionServers,
   tid,
   uiQueries,
-  waitNoyau,
+  waitKernel,
   writeAction,
   writePagesAction,
   writeRunnableAction,
@@ -111,7 +111,7 @@ beforeAll(async () => {
   q = uiQueries(m);
   await m.setContext("chrome");
   await waitReady(m);
-  await waitNoyau(m);
+  await waitKernel(m);
   const d = w.dataDir;
   await writeAction(d, "annonces-leboncoin", {
     nom: "Annonces Leboncoin",
@@ -152,9 +152,9 @@ beforeAll(async () => {
     code: `export default async () => ({ taches: [{ nom: "Alpha", etat: "ouvert" }, { nom: "Bravo", etat: "fermé" }] });`,
   });
   for (const id of ["un", "deux", "trois"]) await writePagesAction(d, site, id, `Pages ${id}`);
-  const accord = { domaines: ["127.0.0.1"], publiques: [], profil: "defaut" };
+  const grant = { domaines: ["127.0.0.1"], publiques: [], profil: "defaut" };
   await mkdir(actionsDataDir(d), { recursive: true });
-  await writeFile(path.join(actionsDataDir(d), "accords.json"), JSON.stringify({ hostile: accord, [TICKETS]: accord }));
+  await writeFile(path.join(actionsDataDir(d), "accords.json"), JSON.stringify({ hostile: grant, [TICKETS]: grant }));
   for (const id of ["annonces-leboncoin", "hostile", TICKETS, "taches", "un", "deux", "trois"]) await waitUi(m, "return (await ui.webaios.actions.liste()).some((a) => a.id === arguments[0]);", [id], 30_000);
 }, 90_000);
 beforeEach(async () => {

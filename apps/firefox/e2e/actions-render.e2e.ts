@@ -109,7 +109,7 @@ beforeAll(async () => {
   });
   await writeActionWithResult(w.dataDir, "ecrit", { nom: "Ecrit", resultats: { n: 1 }, blocs: [{ composant: "titre", props: { texte: "Ecrit" } }, { composant: "ecrit", props: {} }] });
   await writeActionWithResult(w.dataDir, "sonde", { nom: "Sonde", resultats: { n: 1 }, blocs: [{ composant: "titre", props: { texte: "Sonde" } }, { composant: "sonde", props: {} }] });
-  await writeActionWithResult(w.dataDir, "images", { nom: "Images", resultats: { photos: Object.entries(PHOTOS).map(([titre, photo]) => ({ titre, photo })) }, blocs: cards });
+  await writeActionWithResult(w.dataDir, "images", { nom: "Images", resultats: { photos: Object.entries(PHOTOS).map(([title, photo]) => ({ titre: title, photo })) }, blocs: cards });
 }, 60_000);
 
 afterAll(async () => {

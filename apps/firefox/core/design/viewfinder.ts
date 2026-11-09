@@ -1,4 +1,4 @@
-import { HTML_MAX, MARGE_CAPTURE, STYLES_UTILES, TRUNCATED, type DesignContext } from "@webaios/kernel";
+import { HTML_MAX, CAPTURE_MARGIN, USEFUL_STYLES, TRUNCATED, type DesignContext } from "@webaios/kernel";
 
 export interface ViewfinderCapture extends Omit<DesignContext, "source"> {
   rect: { x: number; y: number; largeur: number; hauteur: number };
@@ -14,7 +14,7 @@ export function viewfinderScript(): string {
   if (typeof globalThis.__viseurArret === "function") globalThis.__viseurArret();
   // A new arming removes the click swallowing left by the previous capture: it has its own listeners.
   if (typeof globalThis.__viseurAvaler === "function") globalThis.__viseurAvaler();
-  const STYLES = ${JSON.stringify(STYLES_UTILES)};
+  const STYLES = ${JSON.stringify(USEFUL_STYLES)};
   const HTML_MAX = ${HTML_MAX};
   const TRONQUE = ${JSON.stringify(TRUNCATED)};
   return new Promise((resolve) => {
@@ -129,9 +129,9 @@ export function viewfinderScript(): string {
  * `decalage` (the position of a frame in its page).
  */
 export function rectCapture(rect: RectCss, view: { largeur: number; hauteur: number }, zoom: number, offset = { x: 0, y: 0 }): { x: number; y: number; width: number; height: number } {
-  const gauche = Math.max(0, Math.round(rect.x * zoom - MARGE_CAPTURE));
-  const top = Math.max(0, Math.round(rect.y * zoom - MARGE_CAPTURE));
-  const right = Math.min(Math.round(view.largeur * zoom), Math.round((rect.x + rect.largeur) * zoom + MARGE_CAPTURE));
-  const bas = Math.min(Math.round(view.hauteur * zoom), Math.round((rect.y + rect.hauteur) * zoom + MARGE_CAPTURE));
-  return { x: gauche + Math.round(offset.x * zoom), y: top + Math.round(offset.y * zoom), width: Math.max(0, right - gauche), height: Math.max(0, bas - top) };
+  const left = Math.max(0, Math.round(rect.x * zoom - CAPTURE_MARGIN));
+  const top = Math.max(0, Math.round(rect.y * zoom - CAPTURE_MARGIN));
+  const right = Math.min(Math.round(view.largeur * zoom), Math.round((rect.x + rect.largeur) * zoom + CAPTURE_MARGIN));
+  const bottom = Math.min(Math.round(view.hauteur * zoom), Math.round((rect.y + rect.hauteur) * zoom + CAPTURE_MARGIN));
+  return { x: left + Math.round(offset.x * zoom), y: top + Math.round(offset.y * zoom), width: Math.max(0, right - left), height: Math.max(0, bottom - top) };
 }

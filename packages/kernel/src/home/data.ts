@@ -18,8 +18,8 @@ async function writeAtomic(target: string, text: string): Promise<void> {
 }
 
 /** Harvested data of a widget, or null if absent, damaged or too big (over 2 MB). */
-export async function readData(dossierWidgets: string, id: string): Promise<unknown | null> {
-  const path = join(dossierWidgets, id, "donnees.json");
+export async function readData(widgetsFolder: string, id: string): Promise<unknown | null> {
+  const path = join(widgetsFolder, id, "donnees.json");
   try {
     if ((await stat(path)).size > DATA_MAX_SIZE) return null;
     return JSON.parse(await readFile(path, "utf8"));
@@ -28,22 +28,22 @@ export async function readData(dossierWidgets: string, id: string): Promise<unkn
   }
 }
 
-export async function writeData(dossierWidgets: string, id: string, data: unknown): Promise<void> {
+export async function writeData(widgetsFolder: string, id: string, data: unknown): Promise<void> {
   const text = JSON.stringify(data ?? null);
   if (Buffer.byteLength(text) > DATA_MAX_SIZE) throw new Error("Données trop grosses (2 Mo au plus)");
-  await writeAtomic(join(dossierWidgets, id, "donnees.json"), text);
+  await writeAtomic(join(widgetsFolder, id, "donnees.json"), text);
 }
 
 /** Erases the harvested data, runs and block memory (for example when an account's grant is withdrawn). */
-export async function deleteData(dossierWidgets: string, id: string): Promise<void> {
+export async function deleteData(widgetsFolder: string, id: string): Promise<void> {
   if (!/^[a-z0-9-]+$/.test(id)) throw new Error(`id de widget invalide : ${id}`);
-  await rm(join(dossierWidgets, id, "donnees.json"), { force: true });
-  await clearRunsAndMemory(join(dossierWidgets, id));
+  await rm(join(widgetsFolder, id, "donnees.json"), { force: true });
+  await clearRunsAndMemory(join(widgetsFolder, id));
 }
 
-export async function readWidgetState(dossierWidgets: string, id: string): Promise<WidgetState> {
+export async function readWidgetState(widgetsFolder: string, id: string): Promise<WidgetState> {
   try {
-    return WidgetState.parse(JSON.parse(await readFile(join(dossierWidgets, id, "etat.json"), "utf8")));
+    return WidgetState.parse(JSON.parse(await readFile(join(widgetsFolder, id, "etat.json"), "utf8")));
   } catch {
     // etat.json absent or damaged: start again from the default state.
     return { ...DEFAULT_WIDGET_STATE };
@@ -53,41 +53,41 @@ export async function readWidgetState(dossierWidgets: string, id: string): Promi
 /** Per widget, the last write of its state: the next one waits for it (each re-reads what it keeps). */
 const stateWrites = new Map<string, Promise<unknown>>();
 
-function stateUnderLock<T>(dossierWidgets: string, id: string, f: () => Promise<T>): Promise<T> {
-  const key = join(dossierWidgets, id);
+function stateUnderLock<T>(widgetsFolder: string, id: string, f: () => Promise<T>): Promise<T> {
+  const key = join(widgetsFolder, id);
   const tache = (stateWrites.get(key) ?? Promise.resolve()).then(f);
-  const fin = tache.catch(() => {});
-  stateWrites.set(key, fin);
-  void fin.then(() => {
-    if (stateWrites.get(key) === fin) stateWrites.delete(key);
+  const end = tache.catch(() => {});
+  stateWrites.set(key, end);
+  void end.then(() => {
+    if (stateWrites.get(key) === end) stateWrites.delete(key);
   });
   return tache;
 }
 
-async function writeStateWithoutLock(dossierWidgets: string, id: string, state: WidgetState): Promise<void> {
+async function writeStateWithoutLock(widgetsFolder: string, id: string, state: WidgetState): Promise<void> {
   // Hour tracking survives all state writes (running, error, grant, workshop stopped).
-  const final = state.heures ? state : { ...state, ...(await currentHours(dossierWidgets, id)) };
-  await writeAtomic(join(dossierWidgets, id, "etat.json"), JSON.stringify(final, null, 2));
+  const final = state.heures ? state : { ...state, ...(await currentHours(widgetsFolder, id)) };
+  await writeAtomic(join(widgetsFolder, id, "etat.json"), JSON.stringify(final, null, 2));
 }
 
 /** Writes of a widget's state go one after the other: none loses another's hour tracking. */
-export function writeWidgetState(dossierWidgets: string, id: string, state: WidgetState): Promise<void> {
-  return stateUnderLock(dossierWidgets, id, () => writeStateWithoutLock(dossierWidgets, id, state));
+export function writeWidgetState(widgetsFolder: string, id: string, state: WidgetState): Promise<void> {
+  return stateUnderLock(widgetsFolder, id, () => writeStateWithoutLock(widgetsFolder, id, state));
 }
 
 /**
  * Re-reads the widget's state and writes what `f` makes of it, with no other write of its state slipping in between
  * the two. `f` returns null: nothing is written. Returns the written state (or null).
  */
-export function changeWidgetState(dossierWidgets: string, id: string, f: (state: WidgetState) => WidgetState | null): Promise<WidgetState | null> {
-  return stateUnderLock(dossierWidgets, id, async () => {
-    const state = f(await readWidgetState(dossierWidgets, id));
-    if (state) await writeStateWithoutLock(dossierWidgets, id, state);
+export function changeWidgetState(widgetsFolder: string, id: string, f: (state: WidgetState) => WidgetState | null): Promise<WidgetState | null> {
+  return stateUnderLock(widgetsFolder, id, async () => {
+    const state = f(await readWidgetState(widgetsFolder, id));
+    if (state) await writeStateWithoutLock(widgetsFolder, id, state);
     return state;
   });
 }
 
-async function currentHours(dossierWidgets: string, id: string): Promise<Pick<WidgetState, "heures">> {
-  const { heures: hours } = await readWidgetState(dossierWidgets, id);
+async function currentHours(widgetsFolder: string, id: string): Promise<Pick<WidgetState, "heures">> {
+  const { heures: hours } = await readWidgetState(widgetsFolder, id);
   return hours ? { heures: hours } : {};
 }

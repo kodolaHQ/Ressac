@@ -61,10 +61,10 @@ describe("deplacerLibre", () => {
 
 describe("redimensionnerLibre", () => {
   it("clamps the size between min and max", () => {
-    const grand = resizeFree({ p: place(), l: 900, h: 900, min: { l: 100, h: 90 }, max: { l: 500, h: 360 }, autres: [] });
-    expect(grand).toMatchObject({ l: 500, h: 360 });
-    const petit = resizeFree({ p: place(), l: 1, h: 1, min: { l: 100, h: 90 }, max: { l: 500, h: 360 }, autres: [] });
-    expect(petit).toMatchObject({ l: 100, h: 90 });
+    const large = resizeFree({ p: place(), l: 900, h: 900, min: { l: 100, h: 90 }, max: { l: 500, h: 360 }, autres: [] });
+    expect(large).toMatchObject({ l: 500, h: 360 });
+    const small = resizeFree({ p: place(), l: 1, h: 1, min: { l: 100, h: 90 }, max: { l: 500, h: 360 }, autres: [] });
+    expect(small).toMatchObject({ l: 100, h: 90 });
   });
 
   it("does not overflow the home's right side", () => {

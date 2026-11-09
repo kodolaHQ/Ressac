@@ -34,7 +34,7 @@ export function advance(p: Walk, delta: 1 | -1): Walk {
 }
 
 /** Removes a tab closed during the cycle; null if fewer than 2 remain. */
-export function retirer(p: Walk, id: TabId): Walk | null {
+export function remove(p: Walk, id: TabId): Walk | null {
   const i = p.liste.indexOf(id);
   if (i < 0) return p;
   const list = p.liste.filter((x) => x !== id);
@@ -44,9 +44,9 @@ export function retirer(p: Walk, id: TabId): Walk | null {
 }
 
 /** Indices [debut, fin) of a window of `taille` cards containing the selection, stuck to the start as long as possible. */
-export function visibleWindow(p: Walk, taille = 7): { debut: number; fin: number } {
+export function visibleWindow(p: Walk, size = 7): { debut: number; fin: number } {
   const n = p.liste.length;
-  if (n <= taille) return { debut: 0, fin: n };
-  const debut = Math.max(0, Math.min(p.selection - taille + 1, n - taille));
-  return { debut, fin: debut + taille };
+  if (n <= size) return { debut: 0, fin: n };
+  const start = Math.max(0, Math.min(p.selection - size + 1, n - size));
+  return { debut: start, fin: start + size };
 }

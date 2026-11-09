@@ -4,9 +4,9 @@ import { readdir, writeFile, mkdir, symlink, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { AccessPolicy, type DroitDev } from "../../src/access/policy.js";
+import { AccessPolicy, type DevRight } from "../../src/access/policy.js";
 import { PRIVATE_TEXT, type TabInfo } from "../../src/mcp/pont.js";
-import { PontFactice } from "../../src/mcp/pont-factice.js";
+import { FakeBridge } from "../../src/mcp/pont-factice.js";
 import { startMcpServer, generateToken } from "../../src/mcp/server.js";
 import { DevToolsTracking } from "../../src/devtools/tracking.js";
 import { spacePaths } from "../../src/paths.js";
@@ -19,13 +19,13 @@ const vidola: TabInfo = { id: "site:vidola", titre: "Vidola", url: "https://vido
 const appTodo: TabInfo = { id: "app:todo", titre: "Todo", url: "http://localhost:5280/", espace: "perso", application: "todo" };
 
 const DENIAL = "Accès refusé par l'utilisateur à cet outil sur cet onglet.";
-const COUPE = "Accès coupé par l'utilisateur.";
+const CUT = "Accès coupé par l'utilisateur.";
 
 let server: Awaited<ReturnType<typeof startMcpServer>> | undefined;
 let client: Client | undefined;
 let tracking: DevToolsTracking | undefined;
-let pont: PontFactice;
-let politique: AccessPolicy;
+let bridge: FakeBridge;
+let policy: AccessPolicy;
 let root: string;
 /** Folder outside the space (browser profile) for the profiles of sites the agent did not build. */
 let isPrivate: string;
@@ -33,13 +33,13 @@ const token = generateToken();
 
 async function start(o: {
   outilsDev?: boolean;
-  accorderDev?: DroitDev[];
+  accorderDev?: DevRight[];
   bloquer?: boolean;
   profils?: Partial<ReturnType<typeof profileFiles>>;
   /** Answer of the site app's card (absent: no card, refusal). */
   site?: boolean;
 } = {}) {
-  pont = new PontFactice([github, gmail, appTodo, vidola], {
+  bridge = new FakeBridge([github, gmail, appTodo, vidola], {
     actif: "github",
     autoriser: false,
     outilsDev: o.outilsDev ?? true,
@@ -47,11 +47,11 @@ async function start(o: {
     ...(o.bloquer ? { bloquer: true } : {}),
     ...(o.site !== undefined ? { donneesWidget: o.site } : {}),
   });
-  politique = new AccessPolicy();
+  policy = new AccessPolicy();
   root = await tempFolder();
   isPrivate = join(await tempFolder(), "profilage");
   const profiles = { ...profileFiles(spacePaths(root), isPrivate), ...o.profils };
-  server = await startMcpServer({ pont, politique, jeton: token, agent: "Claude", profils: profiles });
+  server = await startMcpServer({ pont: bridge, politique: policy, jeton: token, agent: "Claude", profils: profiles });
   client = new Client({ name: "test", version: "0" });
   await client.connect(
     new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${server.port}/mcp`), {
@@ -73,7 +73,7 @@ const invoke = async (name: string, args: Record<string, unknown>) => {
   const r = await client!.callTool({ name, arguments: args });
   return (r.content as { type: string; text?: string }[]).map((c) => c.text ?? "").join("\n");
 };
-const devRequests = () => pont.appels.filter((a) => a.methode === "demanderOutilsDev");
+const devRequests = () => bridge.appels.filter((a) => a.methode === "demanderOutilsDev");
 
 test("without pont.outilsDev, no dev tool is listed", async () => {
   await start({ outilsDev: false });
@@ -97,13 +97,13 @@ test("with pont.outilsDev, the nine dev tools are listed", async () => {
 test('lire_console on a third-party tab without the right: a request with rights ["console"]; granted → messages returned (timestamp, level, text)', async () => {
   await start({ accorderDev: ["console"] });
   const h = Date.parse("2026-10-27T10:00:00.000Z");
-  pont.fixerConsole("github", [
+  bridge.fixerConsole("github", [
     { horodatage: h, niveau: "error", texte: "TypeError: x is undefined", pile: "at f (app.js:1:2)" },
     { horodatage: h + 1000, niveau: "log", texte: "bonjour" },
   ]);
   const r = await invoke("lire_console", { id: "github" });
   expect(devRequests()).toHaveLength(1);
-  const [o, d] = devRequests()[0]!.args as [TabInfo, { droits: DroitDev[]; raison: string; agent: string }];
+  const [o, d] = devRequests()[0]!.args as [TabInfo, { droits: DevRight[]; raison: string; agent: string }];
   expect(o.id).toBe("github");
   expect(d).toEqual({ droits: ["console"], raison: "L'agent veut utiliser lire_console.", agent: "Claude" });
   expect(r).toContain("2026-10-27T10:00:00.000Z");
@@ -121,8 +121,8 @@ test("demander_outils_dev: only the granted rights are returned; the unchecked o
   const r = await invoke("demander_outils_dev", { id: "github", droits: ["console", "reseau"], raison: "Déboguer l'erreur" });
   expect(r).toContain("Droits accordés : console");
   expect(r).not.toMatch(/accordés : .*reseau/);
-  expect(politique.droitsDev(github)).toEqual(["console"]);
-  expect(politique.peutDemander("github", "reseau")).toBe(false);
+  expect(policy.droitsDev(github)).toEqual(["console"]);
+  expect(policy.peutDemander("github", "reseau")).toBe(false);
   expect((devRequests()[0]!.args[1] as { raison: string }).raison).toBe("Déboguer l'erreur");
   expect(await invoke("demander_outils_dev", { id: "github", droits: ["reseau"], raison: "encore" })).toBe(DENIAL);
   expect(await invoke("lire_reseau", { id: "github" })).toBe(DENIAL);
@@ -134,7 +134,7 @@ test("after politique.interactionUtilisateur, the refused right can be asked aga
   expect(await invoke("lire_console", { id: "github" })).toBe(DENIAL);
   expect(await invoke("lire_console", { id: "github" })).toBe(DENIAL);
   expect(devRequests()).toHaveLength(1);
-  politique.interactionUtilisateur(github);
+  policy.interactionUtilisateur(github);
   expect(await invoke("lire_console", { id: "github" })).toBe(DENIAL);
   expect(devRequests()).toHaveLength(2);
 });
@@ -142,24 +142,24 @@ test("after politique.interactionUtilisateur, the refused right can be asked aga
 test("without demanderOutilsDev on the bridge: immediate refusal", async () => {
   await start();
   expect(await invoke("lire_console", { id: "github" })).toBe(DENIAL);
-  expect(pont.demanderOutilsDev).toBeUndefined();
+  expect(bridge.demanderOutilsDev).toBeUndefined();
 });
 
 test("built (app:todo): lire_console and executer_js without a request", async () => {
   await start({ accorderDev: [] });
-  politique.ongletOuvertParAgent(appTodo);
-  pont.fixerConsole("app:todo", [{ horodatage: 0, niveau: "warn", texte: "attention" }]);
+  policy.ongletOuvertParAgent(appTodo);
+  bridge.fixerConsole("app:todo", [{ horodatage: 0, niveau: "warn", texte: "attention" }]);
   expect(await invoke("lire_console", { id: "app:todo" })).toContain("[warn] attention");
   expect(await invoke("executer_js", { id: "app:todo", code: "1 + 1" })).toBe(JSON.stringify({ code: "1 + 1" }));
   expect(await invoke("executer_js", { id: "app:todo", code: "throw boom" })).toContain("Exception : boom");
   expect(await invoke("recharger", { id: "app:todo", sans_cache: true })).toContain("rechargé");
-  expect(pont.appels.some((a) => a.methode === "recharger" && a.args[1] === true)).toBe(true);
+  expect(bridge.appels.some((a) => a.methode === "recharger" && a.args[1] === true)).toBe(true);
   expect(devRequests()).toHaveLength(0);
 });
 
 test("executer_js truncates a value that is too long", async () => {
   await start();
-  politique.ongletOuvertParAgent(appTodo);
+  policy.ongletOuvertParAgent(appTodo);
   const r = await invoke("executer_js", { id: "app:todo", code: "x".repeat(3000) });
   expect(r.endsWith("… [tronqué]")).toBe(true);
   expect(r.length).toBeLessThan(2100);
@@ -171,8 +171,8 @@ test("lire_reseau on a third-party tab masks Cookie and access_token; on a built
     id: "r1", horodatage: 0, methode: "GET", url: "https://github.com/api?access_token=abc123&page=2", statut: 200,
     dureeMs: 12, taille: 345, type: "Fetch", enTetesRequete: { Cookie: "session=xyz" }, enTetesReponse: { "Content-Type": "application/json" },
   };
-  pont.fixerReseau("github", [request]);
-  pont.fixerReseau("app:todo", [request]);
+  bridge.fixerReseau("github", [request]);
+  bridge.fixerReseau("app:todo", [request]);
   const list = await invoke("lire_reseau", { id: "github" });
   expect(list).toContain("r1");
   expect(list).toContain("access_token=«masqué»&page=2");
@@ -186,7 +186,7 @@ test("lire_reseau on a third-party tab masks Cookie and access_token; on a built
   expect(detail).toContain("Corps de r1");
   expect(await invoke("lire_requete", { id: "github", requete: "inconnue" })).toContain("introuvable");
 
-  politique.ongletOuvertParAgent(appTodo);
+  policy.ongletOuvertParAgent(appTodo);
   expect(await invoke("lire_reseau", { id: "app:todo" })).toContain("access_token=abc123");
   expect(await invoke("lire_requete", { id: "app:todo", requete: "r1" })).toContain("Cookie: session=xyz");
 });
@@ -194,7 +194,7 @@ test("lire_reseau on a third-party tab masks Cookie and access_token; on a built
 test("profiler_performances: on a third-party site, the .cpuprofile stays outside the space (reference profil:…); a built one writes under /workspace", async () => {
   await start({ accorderDev: ["performances"] });
   const r = await invoke("profiler_performances", { id: "github", duree_s: 2 });
-  expect(pont.appels.find((a) => a.methode === "profiler")!.args[1]).toEqual({ dureeMs: 2000 });
+  expect(bridge.appels.find((a) => a.methode === "profiler")!.args[1]).toEqual({ dureeMs: 2000 });
   expect(r).toContain("calculer");
   expect(r).toContain("Nodes : 42");
   const reference = /Profil : (profil:\S+\.cpuprofile)$/.exec(r)?.[1];
@@ -203,12 +203,12 @@ test("profiler_performances: on a third-party site, the .cpuprofile stays outsid
   expect(existsSync(join(root, ".webaios", "profilage"))).toBe(false);
 
   // a built app writes in its project
-  politique.ongletOuvertParAgent(appTodo);
+  policy.ongletOuvertParAgent(appTodo);
   const app = await invoke("profiler_performances", { id: "app:todo", recharger: true });
   expect(app).toMatch(/Profil : \/workspace\/projets\/todo\/\.webaios\/profilage\/\S+\.cpuprofile/);
   // a built demo, in .webaios/profilage
-  const demo = await pont.ouvrirOnglet("http://localhost:5281/");
-  politique.ongletOuvertParAgent(demo);
+  const demo = await bridge.ouvrirOnglet("http://localhost:5281/");
+  policy.ongletOuvertParAgent(demo);
   const d = await invoke("profiler_performances", { id: demo.id, duree_s: 1 });
   expect(d).toMatch(/Profil : \/workspace\/\.webaios\/profilage\/\S+\.cpuprofile$/);
 });
@@ -220,7 +220,7 @@ test("instantane_memoire then comparer_memoire", async () => {
   expect(a).toContain("Fuite : 2 objets");
   const pathA = /Instantané : (\S+\.heapsnapshot)/.exec(a)![1]!;
   expect(pathA).toMatch(/^profil:[^/]+\.heapsnapshot$/);
-  pont.agrandirTas();
+  bridge.agrandirTas();
   const b = await invoke("instantane_memoire", { id: "github" });
   const pathB = /Instantané : (\S+\.heapsnapshot)/.exec(b)![1]!;
   expect(pathB).not.toBe(pathA);
@@ -251,13 +251,13 @@ test("instantane_memoire then comparer_memoire", async () => {
 test("cut during instantane_memoire (bloquer: true): answer « Accès coupé par l'utilisateur. », no file left", async () => {
   await start({ accorderDev: ["performances"], bloquer: true });
   const call = invoke("instantane_memoire", { id: "github" });
-  await vi.waitFor(() => expect(pont.appels.some((a) => a.methode === "instantaneMemoire")).toBe(true));
-  expect(politique.etat().github?.enCours).toBe(true);
-  politique.couper("github", "performances");
-  expect(await call).toBe(COUPE);
-  expect(politique.etat().github?.enCours ?? false).toBe(false);
-  const dossier = isPrivate;
-  expect(existsSync(dossier) ? await readdir(dossier) : []).toEqual([]);
+  await vi.waitFor(() => expect(bridge.appels.some((a) => a.methode === "instantaneMemoire")).toBe(true));
+  expect(policy.etat().github?.enCours).toBe(true);
+  policy.couper("github", "performances");
+  expect(await call).toBe(CUT);
+  expect(policy.etat().github?.enCours ?? false).toBe(false);
+  const folder = isPrivate;
+  expect(existsSync(folder) ? await readdir(folder) : []).toEqual([]);
 });
 
 test("cut while the profile is being written: the partial file is erased", async () => {
@@ -266,43 +266,43 @@ test("cut while the profile is being written: the partial file is erased", async
     accorderDev: ["performances"],
     profils: {
       ecrireProfil: async (_o, name, content) => {
-        const dossier = join(root, ".webaios", "profilage");
-        await mkdir(dossier, { recursive: true });
-        await writeFile(join(dossier, name), content);
-        written = join(dossier, name);
-        politique.couper("github");
+        const folder = join(root, ".webaios", "profilage");
+        await mkdir(folder, { recursive: true });
+        await writeFile(join(folder, name), content);
+        written = join(folder, name);
+        policy.couper("github");
         return `/workspace/.webaios/profilage/${name}`;
       },
     },
   });
-  expect(await invoke("profiler_performances", { id: "github" })).toBe(COUPE);
+  expect(await invoke("profiler_performances", { id: "github" })).toBe(CUT);
   expect(written).not.toBe("");
   await vi.waitFor(() => expect(existsSync(written)).toBe(false));
 });
 
 test("the tab changes site during the request: nothing is granted", async () => {
   await start({ accorderDev: ["console"] });
-  const demander = pont.demanderOutilsDev!.bind(pont);
-  pont.demanderOutilsDev = async (o, d) => {
-    await pont.naviguer(o.id, "https://autre.example/");
-    return demander(o, d);
+  const ask = bridge.demanderOutilsDev!.bind(bridge);
+  bridge.demanderOutilsDev = async (o, d) => {
+    await bridge.naviguer(o.id, "https://autre.example/");
+    return ask(o, d);
   };
   expect(await invoke("lire_console", { id: "github" })).toBe(DENIAL);
-  expect(politique.droitsDev({ ...github, url: "https://autre.example/" })).toEqual([]);
-  expect(politique.droitsDev(github)).toEqual([]);
+  expect(policy.droitsDev({ ...github, url: "https://autre.example/" })).toEqual([]);
+  expect(policy.droitsDev(github)).toEqual([]);
 });
 
 test("two simultaneous requests for the same tab: a single card", async () => {
   await start({ accorderDev: ["console"] });
-  const demander = pont.demanderOutilsDev!.bind(pont);
+  const ask = bridge.demanderOutilsDev!.bind(bridge);
   let release!: () => void;
   const lock = new Promise<void>((ok) => (release = ok));
-  pont.demanderOutilsDev = async (o, d) => {
-    const r = demander(o, d);
+  bridge.demanderOutilsDev = async (o, d) => {
+    const r = ask(o, d);
     await lock;
     return r;
   };
-  pont.fixerConsole("github", [{ horodatage: 0, niveau: "log", texte: "salut" }]);
+  bridge.fixerConsole("github", [{ horodatage: 0, niveau: "log", texte: "salut" }]);
   const a = invoke("lire_console", { id: "github" });
   await vi.waitFor(() => expect(devRequests()).toHaveLength(1));
   const b = invoke("lire_console", { id: "github" });
@@ -315,25 +315,25 @@ test("two simultaneous requests for the same tab: a single card", async () => {
 
 test("SuiviOutilsDev: attaches at the first right, detaches when everything is cut; OutilsDevOccupes → the tool returns the message", async () => {
   await start({ accorderDev: ["console"] });
-  tracking = new DevToolsTracking(politique, pont.outilsDev!, () => pont.listerOnglets());
-  const callsOf = (m: string, id: string) => pont.appels.filter((a) => a.methode === m && a.args[0] === id).length;
+  tracking = new DevToolsTracking(policy, bridge.outilsDev!, () => bridge.listerOnglets());
+  const callsOf = (m: string, id: string) => bridge.appels.filter((a) => a.methode === m && a.args[0] === id).length;
 
-  politique.accorderDev(github, ["console"], []);
+  policy.accorderDev(github, ["console"], []);
   await vi.waitFor(() => expect(tracking!.attaches.has("github")).toBe(true));
-  politique.accorderDev(github, ["reseau"], []);
+  policy.accorderDev(github, ["reseau"], []);
   await new Promise((r) => setTimeout(r, 20));
   expect(callsOf("attacher", "github")).toBe(1);
 
-  politique.couper("github", "console");
+  policy.couper("github", "console");
   await new Promise((r) => setTimeout(r, 20));
   expect(tracking.attaches.has("github")).toBe(true);
-  politique.couper("github");
+  policy.couper("github");
   await vi.waitFor(() => expect(tracking!.attaches.has("github")).toBe(false));
   expect(callsOf("detacher", "github")).toBe(1);
 
   // The user opened their tools on Gmail
-  pont.occuper("gmail");
-  politique.accorderDev(gmail, ["console"], []);
+  bridge.occuper("gmail");
+  policy.accorderDev(gmail, ["console"], []);
   await vi.waitFor(() => expect(tracking!.occupes.has("gmail")).toBe(true));
   expect(tracking.attaches.has("gmail")).toBe(false);
   expect(await invoke("lire_console", { id: "gmail" })).toBe("Les outils de développement de l'utilisateur sont ouverts sur cet onglet.");
@@ -360,57 +360,57 @@ test("fichiersProfils: refuses a path outside the profile folders", async () => 
 
 test("fichiersProfils: a profiling folder as a symbolic link is refused, on write as on read", async () => {
   const r = await tempFolder();
-  const dehors = await tempFolder();
-  await writeFile(join(dehors, "x.heapsnapshot"), "secret");
+  const outside = await tempFolder();
+  await writeFile(join(outside, "x.heapsnapshot"), "secret");
   await mkdir(join(r, ".webaios"), { recursive: true });
-  await symlink(dehors, join(r, ".webaios", "profilage"));
+  await symlink(outside, join(r, ".webaios", "profilage"));
   const p = profileFiles(spacePaths(r));
   await expect(p.ecrireProfil(github, "y.cpuprofile", "{}", true)).rejects.toThrow(/hors des profils/);
-  expect(existsSync(join(dehors, "y.cpuprofile"))).toBe(false);
+  expect(existsSync(join(outside, "y.cpuprofile"))).toBe(false);
   await expect(p.lireProfil("/workspace/.webaios/profilage/x.heapsnapshot")).rejects.toThrow(/hors des profils/);
   await expect(p.supprimerProfil("/workspace/.webaios/profilage/x.heapsnapshot")).rejects.toThrow(/hors des profils/);
-  expect(existsSync(join(dehors, "x.heapsnapshot"))).toBe(true);
+  expect(existsSync(join(outside, "x.heapsnapshot"))).toBe(true);
   // a link higher up (the project folder) too
   await mkdir(join(r, "projets"), { recursive: true });
-  await symlink(dehors, join(r, "projets", "todo"));
+  await symlink(outside, join(r, "projets", "todo"));
   await expect(p.ecrireProfil(appTodo, "z.cpuprofile", "{}", true)).rejects.toThrow(/hors des profils/);
-  expect(existsSync(join(dehors, ".webaios"))).toBe(false);
+  expect(existsSync(join(outside, ".webaios"))).toBe(false);
 });
 
 test("fichiersProfils: a file as a symbolic link is neither read, nor erased, nor overwritten", async () => {
   const r = await tempFolder();
-  const dehors = await tempFolder();
-  const target = join(dehors, "cible.txt");
+  const outside = await tempFolder();
+  const target = join(outside, "cible.txt");
   await writeFile(target, "secret");
-  const dossier = join(r, ".webaios", "profilage");
-  await mkdir(dossier, { recursive: true });
-  await symlink(target, join(dossier, "lien.heapsnapshot"));
+  const folder = join(r, ".webaios", "profilage");
+  await mkdir(folder, { recursive: true });
+  await symlink(target, join(folder, "lien.heapsnapshot"));
   const p = profileFiles(spacePaths(r));
   await expect(p.lireProfil("/workspace/.webaios/profilage/lien.heapsnapshot")).rejects.toThrow(/hors des profils/);
   await expect(p.supprimerProfil("/workspace/.webaios/profilage/lien.heapsnapshot")).rejects.toThrow(/hors des profils/);
   await expect(p.ecrireProfil(github, "lien.heapsnapshot", "écrasé", true)).rejects.toThrow();
   expect(await readFile(target, "utf8")).toBe("secret");
-  expect(existsSync(join(dossier, "lien.heapsnapshot"))).toBe(true);
+  expect(existsSync(join(folder, "lien.heapsnapshot"))).toBe(true);
 });
 
 test("lire_console and lire_reseau: at most 100,000 characters, the most recent entries kept", async () => {
   await start();
-  politique.ongletOuvertParAgent(appTodo);
-  pont.fixerConsole(
+  policy.ongletOuvertParAgent(appTodo);
+  bridge.fixerConsole(
     "app:todo",
     Array.from({ length: 100 }, (_, i) => ({ horodatage: i, niveau: "log" as const, texte: `m${i}-`.padEnd(1500, "x") })),
   );
   const r = await invoke("lire_console", { id: "app:todo" });
   expect(r.length).toBeLessThanOrEqual(100_000);
-  const premiere = r.split("\n")[0]!;
-  expect(premiere).toMatch(/^\d+ entrées plus anciennes omises\.$/);
-  const omitted = Number(premiere.split(" ")[0]);
+  const first = r.split("\n")[0]!;
+  expect(first).toMatch(/^\d+ entrées plus anciennes omises\.$/);
+  const omitted = Number(first.split(" ")[0]);
   expect(omitted).toBeGreaterThan(0);
   expect(r).toContain("m99-");
   expect(r).not.toContain(`m${omitted - 1}-`);
   expect(r).toContain(`m${omitted}-`);
 
-  pont.fixerReseau(
+  bridge.fixerReseau(
     "app:todo",
     Array.from({ length: 200 }, (_, i) => ({
       id: `r${i}`, horodatage: i, methode: "GET", url: `http://localhost:5280/${i}-${"y".repeat(1000)}`,
@@ -422,66 +422,66 @@ test("lire_console and lire_reseau: at most 100,000 characters, the most recent 
   expect(network).toMatch(/^\d+ entrées plus anciennes omises\.\n/);
   expect(network).toContain("r199 ·");
   // under the limit: nothing omitted
-  pont.fixerConsole("app:todo", [{ horodatage: 0, niveau: "log", texte: "court" }]);
+  bridge.fixerConsole("app:todo", [{ horodatage: 0, niveau: "log", texte: "court" }]);
   expect(await invoke("lire_console", { id: "app:todo" })).not.toContain("omises");
 });
 
 test("site change during instantane_memoire: « L'onglet a changé de site : accès retiré. »", async () => {
   await start({ accorderDev: ["performances"], bloquer: true });
   const call = invoke("instantane_memoire", { id: "github" });
-  await vi.waitFor(() => expect(pont.appels.some((a) => a.methode === "instantaneMemoire")).toBe(true));
-  await pont.naviguer("github", "https://autre.example/");
-  politique.ongletNavigue("github", "https://autre.example/");
+  await vi.waitFor(() => expect(bridge.appels.some((a) => a.methode === "instantaneMemoire")).toBe(true));
+  await bridge.naviguer("github", "https://autre.example/");
+  policy.ongletNavigue("github", "https://autre.example/");
   expect(await call).toBe("L'onglet a changé de site : accès retiré.");
 });
 
 test("the site changes between the grant and the call: the bridge is not called", async () => {
   await start();
-  politique.ongletOuvertParAgent(appTodo);
-  const lister = pont.listerOnglets.bind(pont);
+  policy.ongletOuvertParAgent(appTodo);
+  const listTool = bridge.listerOnglets.bind(bridge);
   let n = 0;
-  pont.listerOnglets = async () => {
+  bridge.listerOnglets = async () => {
     // 1 : obtenir ; 2 : relecture avant l'appel
     if (++n === 2) {
-      await pont.naviguer("app:todo", "https://autre.example/");
-      politique.ongletNavigue("app:todo", "https://autre.example/");
+      await bridge.naviguer("app:todo", "https://autre.example/");
+      policy.ongletNavigue("app:todo", "https://autre.example/");
     }
-    return lister();
+    return listTool();
   };
   expect(await invoke("executer_js", { id: "app:todo", code: "1" })).toBe("L'onglet a changé de site : accès retiré.");
-  expect(pont.appels.some((a) => a.methode === "executer")).toBe(false);
+  expect(bridge.appels.some((a) => a.methode === "executer")).toBe(false);
 });
 
 test("an error after the profile is written also erases the file", async () => {
   await start({ accorderDev: ["performances"] });
-  const dossier = isPrivate;
-  pont.outilsDev!.instantaneMemoire = async () => "pas du json";
+  const folder = isPrivate;
+  bridge.outilsDev!.instantaneMemoire = async () => "pas du json";
   const r = await invoke("instantane_memoire", { id: "github" });
   expect(r).toMatch(/^Erreur/);
-  expect(existsSync(dossier) ? await readdir(dossier) : []).toEqual([]);
+  expect(existsSync(folder) ? await readdir(folder) : []).toEqual([]);
 });
 
 test("cut answers right away even if the bridge ignores the signal; its late result writes no file", async () => {
   await start({ accorderDev: ["performances"] });
-  const dossier = isPrivate;
+  const folder = isPrivate;
   let finish!: (s: string) => void;
-  pont.outilsDev!.instantaneMemoire = () => new Promise<string>((ok) => (finish = ok));
+  bridge.outilsDev!.instantaneMemoire = () => new Promise<string>((ok) => (finish = ok));
   const call = invoke("instantane_memoire", { id: "github" });
   await vi.waitFor(() => expect(finish).toBeDefined());
-  politique.couper("github", "performances");
-  expect(await call).toBe(COUPE);
+  policy.couper("github", "performances");
+  expect(await call).toBe(CUT);
   finish(JSON.stringify({ snapshot: { meta: { node_fields: [], node_types: [] } }, nodes: [], strings: [] }));
   await new Promise((r) => setTimeout(r, 50));
-  expect(existsSync(dossier) ? await readdir(dossier) : []).toEqual([]);
+  expect(existsSync(folder) ? await readdir(folder) : []).toEqual([]);
 });
 
 test("fichiersProfils: a third-party site writes in the private folder and receives a reference profil:<name>", async () => {
   const r = await tempFolder();
-  const dossier = join(await tempFolder(), "profilage");
-  const p = profileFiles(spacePaths(r), dossier);
+  const folder = join(await tempFolder(), "profilage");
+  const p = profileFiles(spacePaths(r), folder);
   const ref = await p.ecrireProfil(github, "x.heapsnapshot", "{}", false);
   expect(ref).toBe("profil:x.heapsnapshot");
-  expect(existsSync(join(dossier, "x.heapsnapshot"))).toBe(true);
+  expect(existsSync(join(folder, "x.heapsnapshot"))).toBe(true);
   expect(existsSync(join(r, ".webaios"))).toBe(false);
   expect(await p.lireProfil(ref)).toBe("{}");
   await expect(p.ecrireProfil(github, "x.heapsnapshot", "écrasé", false)).rejects.toThrow();
@@ -490,14 +490,14 @@ test("fichiersProfils: a third-party site writes in the private folder and recei
     await expect(p.supprimerProfil(fake)).rejects.toThrow();
   }
   await p.supprimerProfil(ref);
-  expect(existsSync(join(dossier, "x.heapsnapshot"))).toBe(false);
+  expect(existsSync(join(folder, "x.heapsnapshot"))).toBe(false);
   await p.supprimerProfil(ref); // already erased: without error
 });
 
 test("page without an origin (about:blank, data:, file:): immediate refusal, no card", async () => {
   await start({ accorderDev: ["console"] });
   for (const url of ["about:blank", "data:text/html,<p>x</p>", "file:///Users/someone/a.html"]) {
-    const o = await pont.ouvrirOnglet(url);
+    const o = await bridge.ouvrirOnglet(url);
     expect(await invoke("lire_console", { id: o.id })).toBe(DENIAL);
     expect(await invoke("demander_outils_dev", { id: o.id, droits: ["console"], raison: "voir" })).toBe(DENIAL);
   }
@@ -517,20 +517,20 @@ test("the reason shown on the card is bounded to 300 characters (…)", async ()
 test("new conversation during the card: the card is withdrawn (signal) and a late answer grants nothing", async () => {
   await start({ accorderDev: ["console"] });
   let signal: AbortSignal | undefined;
-  let reply!: (d: DroitDev[]) => void;
-  pont.demanderOutilsDev = (_o, _d, s) => {
+  let reply!: (d: DevRight[]) => void;
+  bridge.demanderOutilsDev = (_o, _d, s) => {
     signal = s;
-    return new Promise<DroitDev[]>((ok) => (reply = ok));
+    return new Promise<DevRight[]>((ok) => (reply = ok));
   };
   const call = invoke("lire_console", { id: "github" });
   await vi.waitFor(() => expect(signal).toBeDefined());
   expect(signal!.aborted).toBe(false);
-  politique.reinitialiser();
+  policy.reinitialiser();
   expect(signal!.aborted).toBe(true);
   reply(["console"]); // The user clicks anyway (or the browser ignores the signal)
   expect(await call).toBe(DENIAL);
-  expect(politique.droitsDev(github)).toEqual([]);
-  expect(politique.peutDemander("github", "console")).toBe(true);
+  expect(policy.droitsDev(github)).toEqual([]);
+  expect(policy.peutDemander("github", "console")).toBe(true);
 });
 
 test("lire_console masks the tokens in URLs in the messages and stacks of a third-party site; not on a built one", async () => {
@@ -543,41 +543,41 @@ test("lire_console masks the tokens in URLs in the messages and stacks of a thir
       pile: "at f (https://github.com/app.js?sig=zzz999:1:2)",
     },
   ];
-  pont.fixerConsole("github", messages);
-  pont.fixerConsole("app:todo", messages);
+  bridge.fixerConsole("github", messages);
+  bridge.fixerConsole("app:todo", messages);
   const r = await invoke("lire_console", { id: "github" });
   expect(r).toContain("https://api.github.com/user?access_token=«masqué»&page=2 401");
   expect(r).toContain("at f (https://github.com/app.js?sig=«masqué»)");
   expect(r).not.toContain("abc123");
   expect(r).not.toContain("zzz999");
-  politique.ongletOuvertParAgent(appTodo);
-  const brut = await invoke("lire_console", { id: "app:todo" });
-  expect(brut).toContain("access_token=abc123");
-  expect(brut).toContain("sig=zzz999");
+  policy.ongletOuvertParAgent(appTodo);
+  const raw = await invoke("lire_console", { id: "app:todo" });
+  expect(raw).toContain("access_token=abc123");
+  expect(raw).toContain("sig=zzz999");
 });
 
 test("SuiviOutilsDev: a tab that keeps its rights on another origin (relaunched app) is detached then reattached", async () => {
   await start();
-  tracking = new DevToolsTracking(politique, pont.outilsDev!, () => pont.listerOnglets());
-  const calls = () => pont.appels.filter((a) => ["attacher", "detacher"].includes(a.methode) && a.args[0] === "app:todo").map((a) => a.methode);
-  politique.construite(appTodo);
+  tracking = new DevToolsTracking(policy, bridge.outilsDev!, () => bridge.listerOnglets());
+  const calls = () => bridge.appels.filter((a) => ["attacher", "detacher"].includes(a.methode) && a.args[0] === "app:todo").map((a) => a.methode);
+  policy.construite(appTodo);
   await vi.waitFor(() => expect(calls()).toEqual(["attacher"]));
   // relaunched on another port: the window navigates, it is built again on its new origin
-  await pont.naviguer("app:todo", "http://localhost:5290/");
-  politique.ongletNavigue("app:todo", "http://localhost:5290/");
-  politique.construite({ ...appTodo, url: "http://localhost:5290/" });
+  await bridge.naviguer("app:todo", "http://localhost:5290/");
+  policy.ongletNavigue("app:todo", "http://localhost:5290/");
+  policy.construite({ ...appTodo, url: "http://localhost:5290/" });
   await vi.waitFor(() => expect(calls()).toEqual(["attacher", "detacher", "attacher"]));
   expect(tracking.attaches.has("app:todo")).toBe(true);
   // same origin, other page: nothing moves
-  await pont.naviguer("app:todo", "http://localhost:5290/autre");
-  politique.ongletNavigue("app:todo", "http://localhost:5290/autre");
+  await bridge.naviguer("app:todo", "http://localhost:5290/autre");
+  policy.ongletNavigue("app:todo", "http://localhost:5290/autre");
   await new Promise((r) => setTimeout(r, 20));
   expect(calls()).toEqual(["attacher", "detacher", "attacher"]);
 });
 
 test("private space: each dev tool answers TEXTE_PRIVE, without a card or a debugger call", async () => {
   await start({ accorderDev: ["console", "reseau", "performances", "agir"] });
-  pont.rendrePrive("github");
+  bridge.rendrePrive("github");
   const calls: [string, Record<string, unknown>][] = [
     ["demander_outils_dev", { id: "github", droits: ["console"], raison: "déboguer" }],
     ["lire_console", { id: "github" }],
@@ -595,85 +595,85 @@ test("private space: each dev tool answers TEXTE_PRIVE, without a card or a debu
     expect(r.isError, name).toBeFalsy();
   }
   expect(devRequests()).toHaveLength(0);
-  expect(pont.appels.filter((a) => !["listerOnglets"].includes(a.methode))).toEqual([]);
+  expect(bridge.appels.filter((a) => !["listerOnglets"].includes(a.methode))).toEqual([]);
 });
 
 test("private space during a call: it is cut and answers TEXTE_PRIVE", async () => {
   await start({ accorderDev: ["performances"], bloquer: true });
   const r = invoke("profiler_performances", { id: "github", duree_s: 30 });
-  await vi.waitFor(() => expect(pont.appels.some((a) => a.methode === "profiler")).toBe(true));
-  pont.rendrePrive("github");
-  politique.ongletFerme("github"); // what the browser does when the tab becomes private
+  await vi.waitFor(() => expect(bridge.appels.some((a) => a.methode === "profiler")).toBe(true));
+  bridge.rendrePrive("github");
+  policy.ongletFerme("github"); // what the browser does when the tab becomes private
   expect(await r).toBe(PRIVATE_TEXT);
 });
 
 // ——— Site app windows: the app's grant AND the dev tools' ———
 
-const cartesSite = () => pont.appels.filter((a) => a.methode === "demanderDonneesWidget");
+const siteCards = () => bridge.appels.filter((a) => a.methode === "demanderDonneesWidget");
 
 test("lire_console with the site's grant but without a dev right: refused", async () => {
   await start({ accorderDev: [], site: true });
-  politique.accorderLectureSite("vidola");
-  pont.fixerConsole("site:vidola", [{ horodatage: 0, niveau: "error", texte: "secret de la page" }]);
+  policy.accorderLectureSite("vidola");
+  bridge.fixerConsole("site:vidola", [{ horodatage: 0, niveau: "error", texte: "secret de la page" }]);
   expect(await invoke("lire_console", { id: "site:vidola" })).toBe(DENIAL);
   expect(devRequests()).toHaveLength(1);
-  expect(cartesSite()).toHaveLength(0);
-  expect(pont.appels.some((a) => a.methode === "console")).toBe(false);
+  expect(siteCards()).toHaveLength(0);
+  expect(bridge.appels.some((a) => a.methode === "console")).toBe(false);
   expect(await invoke("lire_reseau", { id: "site:vidola" })).toBe(DENIAL);
-  expect(pont.appels.some((a) => a.methode === "reseau")).toBe(false);
+  expect(bridge.appels.some((a) => a.methode === "reseau")).toBe(false);
 });
 
 test("lire_console with the dev right but without the site's grant: the app's card, refused → refused, without a tools card", async () => {
   await start({ accorderDev: ["console", "reseau"], site: false });
-  pont.fixerConsole("site:vidola", [{ horodatage: 0, niveau: "error", texte: "secret de la page" }]);
+  bridge.fixerConsole("site:vidola", [{ horodatage: 0, niveau: "error", texte: "secret de la page" }]);
   // A dev right already held is not enough.
-  politique.accorderDev(vidola, ["console"], []);
+  policy.accorderDev(vidola, ["console"], []);
   expect(await invoke("lire_console", { id: "site:vidola" })).toBe(DENIAL);
-  expect(cartesSite().map((c) => c.args[0])).toEqual([{ id: "vidola", nom: "Vidola", agent: "Claude", genre: "site" }]);
+  expect(siteCards().map((c) => c.args[0])).toEqual([{ id: "vidola", nom: "Vidola", agent: "Claude", genre: "site" }]);
   expect(devRequests()).toHaveLength(0);
-  expect(pont.appels.some((a) => a.methode === "console")).toBe(false);
+  expect(bridge.appels.some((a) => a.methode === "console")).toBe(false);
   expect(await invoke("demander_outils_dev", { id: "site:vidola", droits: ["reseau"], raison: "voir" })).toBe(DENIAL);
   expect(devRequests()).toHaveLength(0);
 });
 
 test("lire_console on a site app whose site.json was rewritten (other hash): the app's card comes back first", async () => {
   await start({ accorderDev: ["console"], site: true });
-  pont.modifierOnglet("site:vidola", { empreinte: "e1" });
-  pont.fixerConsole("site:vidola", [{ horodatage: 0, niveau: "error", texte: "message" }]);
+  bridge.modifierOnglet("site:vidola", { empreinte: "e1" });
+  bridge.fixerConsole("site:vidola", [{ horodatage: 0, niveau: "error", texte: "message" }]);
   expect(await invoke("lire_console", { id: "site:vidola" })).toContain("message");
-  expect(cartesSite()).toHaveLength(1);
-  pont.modifierOnglet("site:vidola", { empreinte: "e2" });
-  expect(politique.droitsDev({ ...vidola, empreinte: "e2" })).toEqual([]);
+  expect(siteCards()).toHaveLength(1);
+  bridge.modifierOnglet("site:vidola", { empreinte: "e2" });
+  expect(policy.droitsDev({ ...vidola, empreinte: "e2" })).toEqual([]);
   await invoke("lire_console", { id: "site:vidola" });
-  expect(cartesSite()).toHaveLength(2);
+  expect(siteCards()).toHaveLength(2);
 });
 
 test("lire_console: site.json rewritten during the app's card (other hash): nothing is read", async () => {
   await start({ accorderDev: ["console"] });
-  pont.modifierOnglet("site:vidola", { empreinte: "e1" });
-  pont.fixerConsole("site:vidola", [{ horodatage: 0, niveau: "error", texte: "secret de la page" }]);
+  bridge.modifierOnglet("site:vidola", { empreinte: "e1" });
+  bridge.fixerConsole("site:vidola", [{ horodatage: 0, niveau: "error", texte: "secret de la page" }]);
   let reply: ((yes: boolean) => void) | undefined;
-  pont.demanderDonneesWidget = () => new Promise<boolean>((ok) => (reply = ok));
+  bridge.demanderDonneesWidget = () => new Promise<boolean>((ok) => (reply = ok));
   const r = invoke("lire_console", { id: "site:vidola" });
   await vi.waitFor(() => expect(reply).toBeDefined());
-  pont.modifierOnglet("site:vidola", { empreinte: "autre" });
+  bridge.modifierOnglet("site:vidola", { empreinte: "autre" });
   reply!(true);
   expect(await r).toBe(DENIAL);
-  expect(pont.appels.some((a) => a.methode === "console")).toBe(false);
+  expect(bridge.appels.some((a) => a.methode === "console")).toBe(false);
 });
 
 test("lire_console on a site app: both grants → the messages, URLs masked (the site is not built by the agent)", async () => {
   await start({ accorderDev: ["console"], site: true });
-  pont.fixerConsole("site:vidola", [{ horodatage: 0, niveau: "error", texte: "échec https://vidola-a.example/api?token=abc" }]);
+  bridge.fixerConsole("site:vidola", [{ horodatage: 0, niveau: "error", texte: "échec https://vidola-a.example/api?token=abc" }]);
   const r = await invoke("lire_console", { id: "site:vidola" });
   expect(r).toContain("[error] échec");
   expect(r).not.toContain("token=abc");
   expect(r).toContain("token=«masqué»");
-  expect(cartesSite()).toHaveLength(1);
+  expect(siteCards()).toHaveLength(1);
   expect(devRequests()).toHaveLength(1);
   // New conversation: both grants drop.
-  politique.reinitialiser();
-  pont.appels.length = 0;
+  policy.reinitialiser();
+  bridge.appels.length = 0;
   await invoke("lire_console", { id: "site:vidola" });
-  expect(cartesSite()).toHaveLength(1);
+  expect(siteCards()).toHaveLength(1);
 });

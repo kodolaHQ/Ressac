@@ -223,9 +223,9 @@ test("card without a preview: apercu null", () => {
   p.surEtat(e);
   p.parcourir(F, 1);
   vi.advanceTimersByTime(250);
-  const carte = lastSend()!.cartes.find((c) => c.id === a)!;
-  expect(carte.apercu).toBeNull();
-  expect(carte.favicon).toBe(e.onglets[a]!.favicon);
+  const card = lastSend()!.cartes.find((c) => c.id === a)!;
+  expect(card.apercu).toBeNull();
+  expect(card.favicon).toBe(e.onglets[a]!.favicon);
 });
 
 test("focus returned to the displayed page after a walk with a panel (confirmed or cancelled), never without a panel", () => {

@@ -19,21 +19,21 @@ const declaration: DeclarationSite = {
 
 function tracking(liens: string[] | Error) {
   const signals: (AbortSignal | undefined)[] = [];
-  const dossierSites = mkdtempSync(join(tmpdir(), "webaios-suivi-"));
+  const sitesFolder = mkdtempSync(join(tmpdir(), "webaios-suivi-"));
   let now = 1_000_000;
-  let lectures = 0;
+  let reads = 0;
   const s = new UrlTracking({
     lireLiens: async (_page, signal) => {
       signals.push(signal);
-      lectures++;
+      reads++;
       if (liens instanceof Error) throw liens;
       return liens;
     },
-    dossierSites,
+    dossierSites: sitesFolder,
     adressesLocales: false,
     maintenant: () => now,
   });
-  return { s, signaux: signals, dossierSites, lectures: () => lectures, avancer: (ms: number) => void (now += ms) };
+  return { s, signaux: signals, dossierSites: sitesFolder, lectures: () => reads, avancer: (ms: number) => void (now += ms) };
 }
 
 test("the plan's interval is one minute", () => {
@@ -109,16 +109,16 @@ test("a failed read counts in the interval: 30 s later, trop-tot", async () => {
 });
 
 test("the cancellation signal is passed to the read; a cancelled read gives introuvable and changes nothing", async () => {
-  const dossierSites = mkdtempSync(join(tmpdir(), "webaios-suivi-"));
+  const sitesFolder = mkdtempSync(join(tmpdir(), "webaios-suivi-"));
   const control = new AbortController();
   const s = new UrlTracking({
     lireLiens: (_p, signal) => new Promise((_ok, non) => signal?.addEventListener("abort", () => non(new Error("annulée")))),
-    dossierSites,
+    dossierSites: sitesFolder,
     adressesLocales: false,
     maintenant: () => 0,
   });
   const r = s.chercher("vidola", declaration, control.signal);
   control.abort();
   expect((await r).t).toBe("introuvable");
-  expect(await readUrlState(dossierSites, "vidola")).toBeNull();
+  expect(await readUrlState(sitesFolder, "vidola")).toBeNull();
 });

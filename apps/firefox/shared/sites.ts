@@ -24,11 +24,11 @@ export const urlNotFound = (host: string) => `Adresse introuvable sur ${host}`;
 export const urlChanged = (name: string, domain: string) => `${name} a changé d'adresse : ${domain}. Il faudra peut-être te reconnecter.`;
 export const urlUnchanged = (name: string) => `${name} ne répond pas, et sa page de référence donne toujours la même adresse`;
 export const tweaksGrantTitle = (name: string) => `Autoriser les retouches de « ${name} » ?`;
-export const AUTORISER = "Autoriser";
+export const ALLOW = "Autoriser";
 export const NO_TWEAKS = "Ouvrir sans retouches";
 export const FORGET_MEMORY = "Oublier ce que l'appli a retenu";
 export const confirmForget = (name: string) => `Oublier tout ce que « ${name} » a retenu (séries, positions des vidéos) ?`;
-export const confirmerSuppressionSite = (name: string) =>
+export const confirmSiteDeletion = (name: string) =>
   `Supprimer « ${name} » ? Sa connexion et sa mémoire sont effacées, son dossier va à la corbeille.`;
 export const editWithAgent = (id: string) => `Appli de site ~/WebAiOs/sites/${id}/ : `;
 
@@ -106,7 +106,7 @@ export const tweakSource = (id: string, file: string) => `webaios-retouche://${i
  * What the site actor (chrome/agent/site-actor.ts) puts into a frame of a site app's view. `pont`: `webaiosSite` in the
  * tweaks' world (main frame on the site only); `reprise`: the video resume (WebAiOs's code).
  */
-export type InjectionCadre = { css: string[]; js: { code: string; nom: string }[]; garde: string | null; hotes: string[]; pont: boolean; reprise: boolean };
+export type FrameInjection = { css: string[]; js: { code: string; nom: string }[]; garde: string | null; hotes: string[]; pont: boolean; reprise: boolean };
 
 export type ShownSite = { id: string; nom: string; description: string; domaine: string | null; icone: string | null; ouverte: boolean; erreur?: string; erreurAction?: string; sansActions?: true };
 

@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, expect, it } from "vitest";
-import { SANS_CLIENT } from "../../../packages/kernel/src/design/projects";
+import { NO_CLIENT } from "../../../packages/kernel/src/design/projects";
 import { PAGE_LINE_CHANGED as LIGNE_CHANGEE, RANGE_OUTSIDE_BLOCK, reviewUrl } from "../shared/model";
 import { state, waitFor } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
@@ -50,7 +50,7 @@ const SEND = tid("envoyer-commentaires");
 const COMMENT = tid("commentaire");
 const FORM = tid("formulaire-commentaire");
 const line = (n: number) => `${tid("ligne-diff")}[data-nouveau="${n}"]`;
-const plus = (n: number) => `${line(n)} ${tid("ajouter-commentaire")}`;
+const extra = (n: number) => `${line(n)} ${tid("ajouter-commentaire")}`;
 const count = (selector: string) => inUi<number>(m, "return doc.querySelectorAll(arguments[0]).length", [selector]);
 const waitCount = (selector: string, n: number, ms = 10_000) => waitUi(m, "return doc.querySelectorAll(arguments[0]).length === arguments[1]", [selector, n], ms);
 const text = (selector: string) => inUi<string | null>(m, "return doc.querySelector(arguments[0])?.textContent ?? null", [selector]);
@@ -63,8 +63,8 @@ const ADDED = `${tid("ligne-diff")}.ajout`;
 
 /** A Shift+click on the + of line `n`: its mousedown, as DiffFichier reads it (the click helper has no modifiers). */
 async function shiftPlus(n: number): Promise<void> {
-  await waitUi(m, "return !!doc.querySelector(arguments[0])", [plus(n)]);
-  await inUi(m, `doc.querySelector(arguments[0]).dispatchEvent(new ui.MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0, shiftKey: true }))`, [plus(n)]);
+  await waitUi(m, "return !!doc.querySelector(arguments[0])", [extra(n)]);
+  await inUi(m, `doc.querySelector(arguments[0]).dispatchEvent(new ui.MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0, shiftKey: true }))`, [extra(n)]);
 }
 
 /** The open form gets `texte`, then « Commenter »; the form closes. */
@@ -132,7 +132,7 @@ async function siteOnAppJs(): Promise<void> {
 // relecture.spec.ts:251
 it("+ on line 15 of app.js, « garder l'ancien nom »: a comment under the line; « Envoyer 1 commentaire à l'agent »: the agent's terminal holds the line, no \\r, the comment says « envoyé »", { timeout: 60_000 }, async () => {
   await siteOnAppJs();
-  await click(m, plus(15));
+  await click(m, extra(15));
   await comment("garder l'ancien nom");
   await waitCount(COMMENT, 1);
   expect(await text(COMMENT)).toContain("garder l'ancien nom");
@@ -151,8 +151,8 @@ it("+ on line 15 of app.js, « garder l'ancien nom »: a comment under the line;
   await new Promise((r) => setTimeout(r, 300));
   expect(agentInput()).not.toContain("\r");
   await waitText(COMMENT, "envoyé");
-  const lots = path.join(w!.dataDir, "espace", ".webaios", "remarques", "site-essai");
-  expect(filesOf(lots).some((f) => f.endsWith("lot.json"))).toBe(true);
+  const batches = path.join(w!.dataDir, "espace", ".webaios", "remarques", "site-essai");
+  expect(filesOf(batches).some((f) => f.endsWith("lot.json"))).toBe(true);
 });
 
 // relecture.spec.ts:278
@@ -160,7 +160,7 @@ it("Shift+click from line 13 to 16: the comment covers 13–16; a range over two
   await launch();
   const p = await pageOnAppJs(15, 25);
   try {
-    await click(m, plus(13));
+    await click(m, extra(13));
     await shiftPlus(16);
     await waitCount(`${tid("ligne-diff")}.choisie`, 5);
     await comment("tout ce passage");
@@ -168,7 +168,7 @@ it("Shift+click from line 13 to 16: the comment covers 13–16; a range over two
     expect(await text(COMMENT)).toContain("Lignes 13–16");
     expect(await commentUnder()).toBe("16");
     // From line 13 (first block) to line 25 (second block): refused.
-    await click(m, plus(13));
+    await click(m, extra(13));
     await shiftPlus(25);
     await waitUi(m, "return doc.querySelector(arguments[0])?.textContent === arguments[1]", [tid("erreur-commentaire"), RANGE_OUTSIDE_BLOCK]);
     expect(await count(`${tid("ligne-diff")}.choisie`)).toBe(1);
@@ -185,7 +185,7 @@ it("three lines added at the top of app.js then Rafraîchir: the comment follows
   await launch();
   const p = await pageOnAppJs(15);
   try {
-    await click(m, plus(15));
+    await click(m, extra(15));
     await comment("garder l'ancien nom");
     writeAppJs(p.dossier, ["a", "b", "c", ...modified(15)]);
     await refresh();
@@ -206,9 +206,9 @@ it("Résoudre then « Marquer comme relu »: no file left, the resolved comment 
   await launch();
   const p = await pageOnAppJs(15);
   try {
-    await click(m, plus(15));
+    await click(m, extra(15));
     await comment("à résoudre");
-    await click(m, plus(13));
+    await click(m, extra(13));
     await comment("reste ouvert");
     await waitCount(COMMENT, 2);
     // The comment on line 13 comes first: its « Résoudre » is not the one.
@@ -235,7 +235,7 @@ it("external project: « Envoyer 1 commentaire à Claude Code (…) », lire_rem
     await reread();
     await openFile("app.js");
     await waitText(line(2), "ligne 2 modifiée");
-    await click(m, plus(2));
+    await click(m, extra(2));
     await comment("renommer");
     expect(await text(SEND)).toBe("Envoyer 1 commentaire à Claude Code (Claude Code)");
     await click(m, SEND);
@@ -257,7 +257,7 @@ it("attendre_remarques started before the send returns the batch as soon as « E
   await launch();
   const p = await pageOnAppJs(15);
   try {
-    await click(m, plus(15));
+    await click(m, extra(15));
     await comment("Bouton plus grand");
     const start = Date.now();
     const waiting = p.client.callTool({ name: "attendre_remarques", arguments: { dossier: p.dossier, delai_s: 30 } });
@@ -275,7 +275,7 @@ it("no file of the external project (registries, repository, batches) appears un
   await launch();
   const p = await pageOnAppJs(15);
   try {
-    await click(m, plus(15));
+    await click(m, extra(15));
     await comment("Une remarque");
     await click(m, SEND);
     await waitText(COMMENT, "envoyé");
@@ -295,7 +295,7 @@ it("after « Révoquer », envoyer-commentaires is disabled, with SANS_CLIENT as
   await launch();
   const p = await pageOnAppJs(15);
   try {
-    await click(m, plus(15));
+    await click(m, extra(15));
     await comment("Une remarque");
     expect(await inUi(m, "return doc.querySelector(arguments[0]).disabled", [SEND])).toBe(false);
     const review = Object.values((await state(m)).onglets).find((o) => o.url === reviewUrl(`ext-${p.id}`))!.id;
@@ -305,7 +305,7 @@ it("after « Révoquer », envoyer-commentaires is disabled, with SANS_CLIENT as
     await click(m, tid(`onglet-${review}`));
     await waitCount(PAGE, 1);
     await refresh();
-    await waitUi(m, "const b = doc.querySelector(arguments[0]); return b?.disabled && b.title === arguments[1]", [SEND, SANS_CLIENT]);
+    await waitUi(m, "const b = doc.querySelector(arguments[0]); return b?.disabled && b.title === arguments[1]", [SEND, NO_CLIENT]);
   } finally {
     await p.client.close();
   }
@@ -314,7 +314,7 @@ it("after « Révoquer », envoyer-commentaires is disabled, with SANS_CLIENT as
 // Spec §7
 it("deleting the site app erases its review repo and comments", { timeout: 60_000 }, async () => {
   await siteOnAppJs();
-  await click(m, plus(15));
+  await click(m, extra(15));
   await comment("garder l'ancien nom");
   const review = path.join(w!.dataDir, "design", "relecture");
   await expect.poll(() => existsSync(path.join(review, "site-essai.commentaires.json")), { timeout: 10_000 }).toBe(true);
@@ -337,7 +337,7 @@ it("a path with spaces and accents shows its diff and takes a comment", async ()
     await waitUi(m, `return [...doc.querySelectorAll('${tid("fichier-relecture")} .nom-fichier')].some((e) => e.textContent === "dossier é/a b.js")`);
     await openFile("dossier é/a b.js");
     await waitText(line(2), "const b = 2;");
-    await click(m, plus(2));
+    await click(m, extra(2));
     await comment("renommer b");
     await waitCount(COMMENT, 1);
     expect(await text(COMMENT)).toContain("renommer b");

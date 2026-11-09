@@ -20,30 +20,30 @@ const BLOCK: [number, number] = [15295, 15299];
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** Runs `body` in the chrome with `win` (app `dossier`'s window), `f` (its badge frame) and `doc` (the badge's document). */
-const inBadge = <T = unknown>(m: Marionette, dossier: string, body: string, args: unknown[] = []) =>
+const inBadge = <T = unknown>(m: Marionette, folder: string, body: string, args: unknown[] = []) =>
   m.execute<T>(
-    `return (async () => { const win = ${appWindowExpr(dossier)}; const f = win?.document.getElementById("webaios-app-badge"); const doc = f?.contentDocument;
+    `return (async () => { const win = ${appWindowExpr(folder)}; const f = win?.document.getElementById("webaios-app-badge"); const doc = f?.contentDocument;
      if (!doc?.querySelector('[data-testid="pastille-webaios"]')) return null; ${body} })();`,
     args,
   );
 /** The badge frame's place in its window: [right margin, top, width, height]. */
-const place = (m: Marionette, dossier: string) =>
-  inBadge<number[]>(m, dossier, "const r = f.getBoundingClientRect(); return [Math.round(win.innerWidth - r.right), Math.round(r.top), Math.round(r.width), Math.round(r.height)];");
-const sized = (m: Marionette, dossier: string, w: number, h: number) =>
-  expect.poll(() => place(m, dossier), { timeout: 10_000 }).toEqual([12, 12, w, h]);
+const place = (m: Marionette, folder: string) =>
+  inBadge<number[]>(m, folder, "const r = f.getBoundingClientRect(); return [Math.round(win.innerWidth - r.right), Math.round(r.top), Math.round(r.width), Math.round(r.height)];");
+const sized = (m: Marionette, folder: string, w: number, h: number) =>
+  expect.poll(() => place(m, folder), { timeout: 10_000 }).toEqual([12, 12, w, h]);
 /** Clicks `selector` in the badge's document. */
-const clickBadge = (m: Marionette, dossier: string, selector: string, text?: string) =>
+const clickBadge = (m: Marionette, folder: string, selector: string, text?: string) =>
   expect
-    .poll(() => inBadge(m, dossier, "const el = [...doc.querySelectorAll(arguments[0])].find((e) => !arguments[1] || e.textContent.includes(arguments[1])); if (!el) return false; el.click(); return true;", [selector, text ?? null]), { timeout: 10_000 })
+    .poll(() => inBadge(m, folder, "const el = [...doc.querySelectorAll(arguments[0])].find((e) => !arguments[1] || e.textContent.includes(arguments[1])); if (!el) return false; el.click(); return true;", [selector, text ?? null]), { timeout: 10_000 })
     .toBe(true);
 /** The agent's access to app `dossier`, cut from its badge. */
-async function cutAccess(m: Marionette, dossier: string): Promise<void> {
-  await clickBadge(m, dossier, '[data-testid="pastille-acces"]');
-  await clickBadge(m, dossier, '[data-testid="bulle-acces"] button.couper');
-  await expect.poll(() => inBadge(m, dossier, `return doc.querySelectorAll('[data-testid="pastille-acces"]').length;`), { timeout: 10_000 }).toBe(0);
+async function cutAccess(m: Marionette, folder: string): Promise<void> {
+  await clickBadge(m, folder, '[data-testid="pastille-acces"]');
+  await clickBadge(m, folder, '[data-testid="bulle-acces"] button.couper');
+  await expect.poll(() => inBadge(m, folder, `return doc.querySelectorAll('[data-testid="pastille-acces"]').length;`), { timeout: 10_000 }).toBe(0);
 }
 /** The access the badge's own api gives, its tab ids. */
-const badgeAccess = (m: Marionette, dossier: string) => inBadge<string[]>(m, dossier, "return Object.keys((await f.contentWindow.webaios.acces.etat()).onglets);");
+const badgeAccess = (m: Marionette, folder: string) => inBadge<string[]>(m, folder, "return Object.keys((await f.contentWindow.webaios.acces.etat()).onglets);");
 const reviewTabs = async (m: Marionette, project: string) => Object.values((await state(m)).onglets).filter((o) => o.url === reviewUrl(project));
 
 describe("one WebAiOs, essai and autre launched in each test", () => {
@@ -70,16 +70,16 @@ describe("one WebAiOs, essai and autre launched in each test", () => {
   }, 90_000);
   afterAll(() => closeAppsPage(p));
   afterEach(async () => {
-    for (const dossier of ["essai", "autre"]) await callTool(p.dataDir, "arreter_application", { dossier }).catch(() => {});
+    for (const folder of ["essai", "autre"]) await callTool(p.dataDir, "arreter_application", { dossier: folder }).catch(() => {});
     await waitFor(m, `return [...Services.wm.getEnumerator("navigator:browser")].filter((w) => w.document.documentElement.hasAttribute("webaios-app")).length;`, (n) => n === 0);
     await waitFor(m, "for (const t of gBrowser.tabs.slice(1)) gBrowser.removeTab(t); return gBrowser.tabs.length;", (n) => n === 1);
   });
   /** App `dossier` launched with the agent's tool, its view loaded and its badge mounted. */
-  async function launched(dossier = "essai"): Promise<void> {
-    if (dossier === "essai") await launchAttempt(p.dataDir);
-    else expect((await callTool(p.dataDir, "lancer_application", { dossier })).texte).toMatch(/en marche sur/);
-    await waitFor(m, `const b = ${appWindowExpr(dossier)}?.gBrowser.selectedBrowser; return !!b && b.currentURI.spec.startsWith("http://localhost:") && !b.webProgress.isLoadingDocument;`, (v) => v === true, 15_000);
-    await expect.poll(() => place(m, dossier), { timeout: 10_000 }).not.toBeNull();
+  async function launched(folder = "essai"): Promise<void> {
+    if (folder === "essai") await launchAttempt(p.dataDir);
+    else expect((await callTool(p.dataDir, "lancer_application", { dossier: folder })).texte).toMatch(/en marche sur/);
+    await waitFor(m, `const b = ${appWindowExpr(folder)}?.gBrowser.selectedBrowser; return !!b && b.currentURI.spec.startsWith("http://localhost:") && !b.webProgress.isLoadingDocument;`, (v) => v === true, 15_000);
+    await expect.poll(() => place(m, folder), { timeout: 10_000 }).not.toBeNull();
   }
 
   // relecture.spec.ts:52

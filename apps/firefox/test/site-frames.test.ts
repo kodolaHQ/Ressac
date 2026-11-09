@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { DeclarationSite, type TweaksRead } from "../../../packages/kernel/src/index";
-import { CONSOLE_TWEAKS_TOTAL, MAX_TWEAK_ERRORS, type InjectionCadre } from "../shared/sites";
+import { CONSOLE_TWEAKS_TOTAL, MAX_TWEAK_ERRORS, type FrameInjection } from "../shared/sites";
 import type { TweakError } from "../core/sites/injection";
 import { MEMORY_DENIAL } from "../host/site-memory";
 import type { SiteChrome } from "../host/sites";
@@ -65,7 +65,7 @@ describe("frameInjection", () => {
     const ok = app();
     for (const u of ["about:blank", "about:srcdoc"]) {
       const f = ok.v.frame(u);
-      expect(frameInjection(f, siteOfFrame(f, [ok.s]), false)).toEqual({ css: [], js: [], garde: null, hotes: [], pont: false, reprise: false } satisfies InjectionCadre);
+      expect(frameInjection(f, siteOfFrame(f, [ok.s]), false)).toEqual({ css: [], js: [], garde: null, hotes: [], pont: false, reprise: false } satisfies FrameInjection);
     }
     const login = app({ url: "https://compte.example/" });
     const f = login.v.frame("https://www.lecteur.example/v");
@@ -73,12 +73,12 @@ describe("frameInjection", () => {
   });
 
   it("an about:srcdoc player frame of an app page gets the resume when the app declares no cadres, never the tweaks", () => {
-    const sans = app();
-    const free = { ...sans.s, site: { ...sans.s.site, declaration: DeclarationSite.parse({ ...declaration, retouches: [{ correspond: ["/series/*"], js: ["a.js"] }] }) } };
-    const f = sans.v.frame("about:srcdoc");
+    const without = app();
+    const free = { ...without.s, site: { ...without.s.site, declaration: DeclarationSite.parse({ ...declaration, retouches: [{ correspond: ["/series/*"], js: ["a.js"] }] }) } };
+    const f = without.v.frame("about:srcdoc");
     expect(frameInjection(f, siteOfFrame(f, [free]), false)).toEqual({ css: [], js: [], garde: null, hotes: [], pont: false, reprise: true });
     // With `cadres` patterns, a frame without an address of its own matches none; on a sign-in page, nothing.
-    expect(frameInjection(f, siteOfFrame(f, [sans.s]), false)?.reprise).toBe(false);
+    expect(frameInjection(f, siteOfFrame(f, [without.s]), false)?.reprise).toBe(false);
     const login = app({ url: "https://compte.example/" });
     const g = login.v.frame("about:srcdoc");
     expect(frameInjection(g, siteOfFrame(g, [{ ...login.s, site: free.site }]), false)?.reprise).toBe(false);
@@ -111,8 +111,8 @@ describe("frameMemory", () => {
     expect(await frameMemory(small.main, siteOfFrame(small.main, [s]), req, request)).toEqual(denial);
     const login = app({ url: "https://compte.example/" });
     expect(await frameMemory(login.v.main, login.s, req, request)).toEqual(denial);
-    const sans = app({ accordRequis: true });
-    expect(await frameMemory(sans.v.main, sans.s, req, request)).toEqual(denial);
+    const without = app({ accordRequis: true });
+    expect(await frameMemory(without.v.main, without.s, req, request)).toEqual(denial);
     expect(await frameMemory(v.main, s, "x", request)).toEqual(denial);
     expect(request).not.toHaveBeenCalled();
   });
@@ -175,8 +175,8 @@ describe("framePosition and frameResume", () => {
     const reader = withIds(v.frame(READER), 5, 77);
     expect(note(v, { ...s, site: { ...s.site, accordRequis: true } } as never, reader, { t: 70, duree: 90 })).toEqual([]);
     // reprise false in the declaration
-    const sans = { ...s, site: { ...s.site, declaration: { ...declaration, reprise: false } } } as never;
-    expect(note(v, sans, reader, { t: 70, duree: 90 })).toEqual([]);
+    const without = { ...s, site: { ...s.site, declaration: { ...declaration, reprise: false } } } as never;
+    expect(note(v, without, reader, { t: 70, duree: 90 })).toEqual([]);
     // an advert does not match the `cadres` patterns
     expect(note(v, s, withIds(v.frame("https://ads.pub.example/v"), 6, 78), { t: 70, duree: 90 })).toEqual([]);
     // the sign-in window (another <browser>)

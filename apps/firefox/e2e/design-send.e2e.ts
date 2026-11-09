@@ -85,7 +85,7 @@ const column = <T = unknown>(body: string) => frame<T>("webaios-design-volet", b
 const bubble = <T = unknown>(body: string) => frame<T>("webaios-design-calque", body);
 const sendText = () => column<string | null>(`return doc?.querySelector('${tid("envoyer-remarques")}')?.textContent ?? null;`);
 const cartCount = () => column<number>(`return doc?.querySelectorAll('${tid("remarque-panier")}').length ?? 0;`);
-const lots = () =>
+const batchList = () =>
   column<{ etat: string; text: string; traite: boolean }[]>(
     `return [...(doc?.querySelectorAll('${tid("lot-envoye")}') ?? [])].map((l) => ({ etat: l.dataset.etat, text: l.textContent, traite: [...l.querySelectorAll("button")].some((b) => b.textContent === "Traité") }));`,
   );
@@ -146,12 +146,12 @@ describe("to the agent", () => {
     expect(readdirSync(path.join(dir, batches[0]!)).filter((n) => n.endsWith(".png"))).toHaveLength(2);
     expect(agentInput()).toContain(`/workspace/.webaios/remarques/demo-${PORT}/${batches[0]}/lot.json] `);
     await expect.poll(cartCount, { timeout: 10_000 }).toBe(0);
-    await expect.poll(lots, { timeout: 10_000 }).toEqual([expect.objectContaining({ etat: "en-attente", traite: true })]);
-    expect((await lots())![0]!.text).toContain("en attente");
-    expect((await lots())![0]!.text).toContain("input#email.champ");
+    await expect.poll(batchList, { timeout: 10_000 }).toEqual([expect.objectContaining({ etat: "en-attente", traite: true })]);
+    expect((await batchList())![0]!.text).toContain("en attente");
+    expect((await batchList())![0]!.text).toContain("input#email.champ");
     await click(m, `${tid("lot-envoye")} button`, { frame: "volet", text: "Traité" });
-    await expect.poll(lots, { timeout: 10_000 }).toEqual([expect.objectContaining({ etat: "traite", traite: false })]);
-    expect((await lots())![0]!.text).toContain("traité");
+    await expect.poll(batchList, { timeout: 10_000 }).toEqual([expect.objectContaining({ etat: "traite", traite: false })]);
+    expect((await batchList())![0]!.text).toContain("traité");
     await modeOff();
   });
 
@@ -197,7 +197,7 @@ describe("an external project", () => {
     await remark("#email", "input#email.champ", "Champ plus large");
     await expect.poll(sendText, { timeout: 10_000 }).toBe("Envoyer 1 remarque à Claude Code (Claude Code)");
     await click(m, tid("envoyer-remarques"), { frame: "volet" });
-    await expect.poll(lots, { timeout: 10_000 }).toEqual([expect.objectContaining({ etat: "en-attente" })]);
+    await expect.poll(batchList, { timeout: 10_000 }).toEqual([expect.objectContaining({ etat: "en-attente" })]);
     // Nothing in the agent's terminal: an external batch pre-fills nothing.
     await sleep(300);
     expect(agentInput()).toBe(before);
@@ -207,11 +207,11 @@ describe("an external project", () => {
     expect(Buffer.from(image!.data!, "base64").subarray(0, 8)).toEqual(PNG);
     const text = textOf(read);
     expect(text).toContain("Champ plus large");
-    await expect.poll(lots, { timeout: 10_000 }).toEqual([expect.objectContaining({ etat: "lu" })]);
+    await expect.poll(batchList, { timeout: 10_000 }).toEqual([expect.objectContaining({ etat: "lu" })]);
     const id = /Remarque (e-[0-9a-f]{8})/.exec(text)![1]!;
     await p.client.callTool({ name: "marquer_traitee", arguments: { dossier: p.dossier, ids: [id], note: "corrigé" } });
-    await expect.poll(lots, { timeout: 10_000 }).toEqual([expect.objectContaining({ etat: "traite" })]);
-    expect((await lots())![0]!.text).toContain("corrigé");
+    await expect.poll(batchList, { timeout: 10_000 }).toEqual([expect.objectContaining({ etat: "traite" })]);
+    expect((await batchList())![0]!.text).toContain("corrigé");
     await modeOff();
   });
 

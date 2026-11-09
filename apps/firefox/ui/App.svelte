@@ -24,9 +24,9 @@
   import { menu } from "./components/menu.svelte";
   import { spaceSettings } from "./components/spaceSettings.svelte";
   import { access, api, requestOf, appState, currentWindow, closeTab } from "./state.svelte";
-  import { actionDeUrl, hasView, workflowUrlTarget, reviewUrlProject, URL_ACTIONS, URL_APPLICATIONS, URL_EXTENSIONS } from "../shared/model";
+  import { actionOfUrl, hasView, workflowUrlTarget, reviewUrlProject, URL_ACTIONS, URL_APPLICATIONS, URL_EXTENSIONS } from "../shared/model";
   import { ACTIONS_IN_PRIVATE_SPACE } from "../shared/actions";
-  import { masquer, INITIAL_REVEAL, surZone, type ZoneGauche } from "../shared/revelation";
+  import { hide, INITIAL_REVEAL, onZone, type LeftZone } from "../shared/revelation";
   import type { Panel, TabsPanel as TabPanel } from "../shared/api";
   import type { ApiFirefox } from "./api";
   import InternalPage from "./InternalPage.svelte";
@@ -55,7 +55,7 @@
   const builderTarget = $derived(activeTab ? workflowUrlTarget(activeTab.url) : null);
   // An action's page launches nothing when opened. Refused when the tab's space (or the one shown)
   // is private; a space not found counts as private.
-  const pageAction = $derived(activeTab ? actionDeUrl(activeTab.url) : null);
+  const pageAction = $derived(activeTab ? actionOfUrl(activeTab.url) : null);
   const reviewProject = $derived(activeTab ? reviewUrlProject(activeTab.url) : null);
   const privateAction = $derived.by(() => {
     const spaces = appState.valeur?.espaces ?? [];
@@ -111,9 +111,9 @@
     if (agentRequestId !== undefined) untrack(() => closeCommand());
   });
   // Before the card mounts and takes the keyboard: the terminal or the page gets it back once the last card goes.
-  const carteAgent = $derived(agentRequestId !== undefined);
+  const agentCard = $derived(agentRequestId !== undefined);
   $effect.pre(() => {
-    if (!carteAgent) return;
+    if (!agentCard) return;
     const giveBack = untrack(() => win.rememberFocus());
     return () => setTimeout(giveBack);
   });
@@ -148,14 +148,14 @@
   const compact = $derived(winState?.compact ?? false);
   let revealed = $state(false);
   let armed = INITIAL_REVEAL.armee;
-  let zone: ZoneGauche = "loin";
+  let zone: LeftZone = "loin";
   let timer: ReturnType<typeof setTimeout> | undefined;
   const barVisible = $derived(!compact || revealed);
 
-  function onMouseZone(z: ZoneGauche) {
+  function onMouseZone(z: LeftZone) {
     zone = z;
     if (!compact) return;
-    const r = surZone({ revelee: revealed, armee: armed }, z);
+    const r = onZone({ revelee: revealed, armee: armed }, z);
     armed = r.armee;
     revealed = r.revelee;
     if (r.masquer) scheduleHide();
@@ -167,7 +167,7 @@
     if (!revealed || access.bullesOuvertes > 0) return;
     timer = setTimeout(() => {
       if (zone !== "loin" || access.bullesOuvertes > 0) return;
-      const r = masquer(zone);
+      const r = hide(zone);
       revealed = r.revelee;
       armed = r.armee;
     }, HIDING_MS);

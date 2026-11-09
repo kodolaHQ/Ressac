@@ -16,15 +16,15 @@ const isObject = (v: unknown): v is Dict => v !== null && typeof v === "object" 
 /** A dictionary without a prototype: a « __proto__ » key of the results stays a key like any other. */
 const dict = (): Dict => Object.create(null) as Dict;
 
-function couper(s: string, max: number): string {
+function cut(s: string, max: number): string {
   if (s.length <= max) return s;
-  let fin = max;
-  const c = s.charCodeAt(fin - 1);
-  if (c >= 0xd800 && c <= 0xdbff) fin--;
-  return s.slice(0, fin) + "…";
+  let end = max;
+  const c = s.charCodeAt(end - 1);
+  if (c >= 0xd800 && c <= 0xdbff) end--;
+  return s.slice(0, end) + "…";
 }
 
-function nature(v: unknown): string {
+function kindOf(v: unknown): string {
   if (v === null || v === undefined) return "vide";
   if (typeof v === "string") return "texte";
   if (typeof v === "number") return "nombre";
@@ -41,12 +41,12 @@ function describe(v: unknown): string {
     if (sample.every(isObject)) {
       const champs = new Map<string, string>();
       for (const e of sample) {
-        for (const k of Object.keys(e).slice(0, KEYS_MAX)) if (!champs.has(k)) champs.set(k, nature(e[k]));
+        for (const k of Object.keys(e).slice(0, KEYS_MAX)) if (!champs.has(k)) champs.set(k, kindOf(e[k]));
       }
-      const detail = [...champs].slice(0, KEYS_MAX).map(([k, t]) => `${couper(k, 40)}: ${t}`).join(", ");
+      const detail = [...champs].slice(0, KEYS_MAX).map(([k, t]) => `${cut(k, 40)}: ${t}`).join(", ");
       return `liste (${v.length}) d'objets { ${detail} }`;
     }
-    const natures = new Set(sample.map(nature));
+    const natures = new Set(sample.map(kindOf));
     if (natures.size === 1) {
       const n = [...natures][0]!;
       return `liste (${v.length}) de ${n === "texte" ? "textes" : n === "nombre" ? "nombres" : n === "booléen" ? "booléens" : n === "liste" ? "listes" : "valeurs"}`;
@@ -55,27 +55,27 @@ function describe(v: unknown): string {
   }
   if (isObject(v)) {
     const keys = Object.keys(v);
-    return `objet { ${keys.slice(0, KEYS_MAX).map((k) => couper(k, 40)).join(", ")}${keys.length > KEYS_MAX ? ", …" : ""} }`;
+    return `objet { ${keys.slice(0, KEYS_MAX).map((k) => cut(k, 40)).join(", ")}${keys.length > KEYS_MAX ? ", …" : ""} }`;
   }
-  return nature(v);
+  return kindOf(v);
 }
 
 /** Each path and its type, the objects being walked down to `profondeur` levels. */
 function forme(root: unknown, depth: number): Dict {
   const f = dict();
-  const poser = (path: string, v: unknown) => { f[couper(path, PATH_MAX)] = couper(describe(v), DESCRIPTION_MAX); };
+  const ask = (path: string, v: unknown) => { f[cut(path, PATH_MAX)] = cut(describe(v), DESCRIPTION_MAX); };
   if (!isObject(root)) {
-    poser("$", root);
+    ask("$", root);
     return f;
   }
-  const pile: { v: Dict; prefixe: string; niveau: number }[] = [{ v: root, prefixe: "", niveau: 1 }];
-  while (pile.length > 0) {
-    const { v, prefixe: prefix, niveau: level } = pile.shift()!;
+  const stack: { v: Dict; prefixe: string; niveau: number }[] = [{ v: root, prefixe: "", niveau: 1 }];
+  while (stack.length > 0) {
+    const { v, prefixe: prefix, niveau: level } = stack.shift()!;
     for (const k of Object.keys(v).slice(0, KEYS_MAX)) {
       const path = prefix + k;
       const e = v[k];
-      poser(path, e);
-      if (isObject(e) && level < depth) pile.push({ v: e, prefixe: path + ".", niveau: level + 1 });
+      ask(path, e);
+      if (isObject(e) && level < depth) stack.push({ v: e, prefixe: path + ".", niveau: level + 1 });
     }
   }
   return f;
@@ -86,14 +86,14 @@ function examples(root: unknown, depth: number): unknown {
   let nodes = 0;
   const copy = (v: unknown, level: number): unknown => {
     if (++nodes > SAMPLE_NODES_MAX) return "…";
-    if (typeof v === "string") return couper(v, EXAMPLE_TEXT);
+    if (typeof v === "string") return cut(v, EXAMPLE_TEXT);
     if (typeof v === "number") return Number.isFinite(v) ? v : null;
     if (typeof v === "boolean" || v === null) return v;
     if (v === undefined) return null;
     if (level >= depth) return Array.isArray(v) ? `[liste (${v.length})]` : "[objet]";
     if (Array.isArray(v)) return v.slice(0, EXAMPLE_ELEMENTS).map((e) => copy(e, level + 1));
     const o = dict();
-    for (const k of Object.keys(v as Dict).slice(0, KEYS_MAX)) o[couper(k, 40)] = copy((v as Dict)[k], level + 1);
+    for (const k of Object.keys(v as Dict).slice(0, KEYS_MAX)) o[cut(k, 40)] = copy((v as Dict)[k], level + 1);
     return o;
   };
   return copy(root, 0);
@@ -121,16 +121,16 @@ export function resultsPreview(results: unknown): string {
 
 /** `null`, `""`, `[]`, `{}`, or an object whose values are all empty (recursively). Iterative. */
 export function emptyResults(r: unknown): boolean {
-  const pile: unknown[] = [r];
-  while (pile.length > 0) {
-    const v = pile.pop();
+  const stack: unknown[] = [r];
+  while (stack.length > 0) {
+    const v = stack.pop();
     if (v === null || v === undefined || v === "") continue;
     if (Array.isArray(v)) {
       if (v.length === 0) continue;
       return false;
     }
     if (typeof v === "object") {
-      for (const k of Object.keys(v)) pile.push((v as Record<string, unknown>)[k]);
+      for (const k of Object.keys(v)) stack.push((v as Record<string, unknown>)[k]);
       continue;
     }
     return false;

@@ -48,21 +48,21 @@ async function readTextFile(file: string, name: string, max: number, absent: str
   }
 }
 
-async function lireUn(dossier: string, name: string): Promise<ComponentDefinition | string> {
-  const json = await readTextFile(join(dossier, name, "composant.json"), "composant.json", JSON_MAX, "composant.json absent");
+async function readOne(folder: string, name: string): Promise<ComponentDefinition | string> {
+  const json = await readTextFile(join(folder, name, "composant.json"), "composant.json", JSON_MAX, "composant.json absent");
   if ("erreur" in json) return json.erreur;
-  let brut: unknown;
+  let raw: unknown;
   try {
-    brut = JSON.parse(json.texte);
+    raw = JSON.parse(json.texte);
   } catch {
     return "composant.json illisible (pas du JSON valide)";
   }
   // zod silently ignores a « __proto__ » key: we look at the raw keys beforehand.
-  const props = (brut as { proprietes?: unknown } | null)?.proprietes;
+  const props = (raw as { proprietes?: unknown } | null)?.proprietes;
   if (props && typeof props === "object" && Object.keys(props).some((k) => !PROPERTY_NAME.test(k))) {
     return "composant.json invalide : proprietes : nom de propriété non valide";
   }
-  const r = ComponentDeclaration.safeParse(brut);
+  const r = ComponentDeclaration.safeParse(raw);
   if (!r.success) {
     const i = r.error.issues[0]!;
     const t = `composant.json invalide : ${[...i.path, i.message].join(" : ")}`;
@@ -71,24 +71,24 @@ async function lireUn(dossier: string, name: string): Promise<ComponentDefinitio
   const d = r.data;
   if (d.nom !== name) return "composant.json : le nom doit être celui du dossier";
   if (BUILTIN_NAMES.has(d.nom)) return "composant.json : ce nom est celui d'un composant intégré";
-  const html = await readTextFile(join(dossier, name, "composant.html"), "composant.html", COMPONENT_HTML_MAX, "composant.html absent");
+  const html = await readTextFile(join(folder, name, "composant.html"), "composant.html", COMPONENT_HTML_MAX, "composant.html absent");
   if ("erreur" in html) return html.erreur;
   return { nom: d.nom, description: d.description, proprietes: d.proprietes, origine: "agent" };
 }
 
 /** The agent's components, sorted by name; a broken component is reported, it does not prevent reading the others. */
-export async function readAgentComponents(dossier: string): Promise<{ valides: ComponentDefinition[]; invalides: { nom: string; erreur: string }[] }> {
+export async function readAgentComponents(folder: string): Promise<{ valides: ComponentDefinition[]; invalides: { nom: string; erreur: string }[] }> {
   let names: string[];
   try {
     // `isDirectory` is false for a symbolic link: a link to a folder is ignored.
-    names = (await readdir(dossier, { withFileTypes: true })).filter((e) => e.isDirectory() && NAME.test(e.name)).map((e) => e.name).sort();
+    names = (await readdir(folder, { withFileTypes: true })).filter((e) => e.isDirectory() && NAME.test(e.name)).map((e) => e.name).sort();
   } catch {
     return { valides: [], invalides: [] };
   }
   const valid: ComponentDefinition[] = [];
   const invalid: { nom: string; erreur: string }[] = [];
   for (const name of names) {
-    const r = await lireUn(dossier, name);
+    const r = await readOne(folder, name);
     if (typeof r === "string") invalid.push({ nom: name, erreur: r });
     else valid.push(r);
   }

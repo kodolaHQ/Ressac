@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { access, appendFile, constants, mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { parserDiff, type Bloc } from "./diff.js";
+import { parserDiff, type Block } from "./diff.js";
 
 export const GIT_REQUIRED = "git est nécessaire";
 export const ACCESS_DENIED = "accès refusé";
@@ -25,11 +25,11 @@ export class ReviewError extends Error {
 
 export interface ModifiedFile { chemin: string; statut: "ajoute" | "modifie" | "supprime"; ajouts: number; suppressions: number; affichable: true | "binaire" | "trop-gros" }
 export interface Comparison { arbreRelu: string; arbreCourant: string; fichiers: ModifiedFile[] }
-export interface DiffFile { chemin: string; statut: ModifiedFile["statut"]; affichable: ModifiedFile["affichable"]; blocs: Bloc[] }
+export interface DiffFile { chemin: string; statut: ModifiedFile["statut"]; affichable: ModifiedFile["affichable"]; blocs: Block[] }
 
 const defaultGit = () => process.env.WEBAIOS_GIT ?? "/usr/bin/git";
 
-function lancer(git: string, args: string[], env: NodeJS.ProcessEnv, cwd?: string, warnings?: { texte: string }): Promise<string> {
+function launch(git: string, args: string[], env: NodeJS.ProcessEnv, cwd?: string, warnings?: { texte: string }): Promise<string> {
   return new Promise((resolve, reject) => {
     execFile(git, args, { env, cwd, encoding: "utf8", maxBuffer: 512 * 1024 * 1024 }, (err, stdout, stderr) => {
       if (!err) {
@@ -45,7 +45,7 @@ function lancer(git: string, args: string[], env: NodeJS.ProcessEnv, cwd?: strin
 
 export async function gitAvailable(git: string = defaultGit()): Promise<boolean> {
   try {
-    await lancer(git, ["--version"], { PATH: process.env.PATH, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null" });
+    await launch(git, ["--version"], { PATH: process.env.PATH, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null" });
     return true;
   } catch {
     return false;
@@ -68,9 +68,9 @@ export class ReviewStore {
   /** The operations on the same repository go one after the other. */
   private serie<T>(f: () => Promise<T>): Promise<T> {
     const queue = files.get(this.depot) ?? Promise.resolve();
-    const suite = queue.then(f, f);
-    files.set(this.depot, suite.catch(() => {}));
-    return suite;
+    const next = queue.then(f, f);
+    files.set(this.depot, next.catch(() => {}));
+    return next;
   }
 
   private env(): NodeJS.ProcessEnv {
@@ -92,7 +92,7 @@ export class ReviewStore {
   }
 
   private async g(args: string[]): Promise<string> {
-    return lancer(this.git, args, this.env(), this.dossier);
+    return launch(this.git, args, this.env(), this.dossier);
   }
 
   private gitVerifie: Promise<boolean> | null = null;
@@ -112,7 +112,7 @@ export class ReviewStore {
       await mkdir(dirname(this.depot), { recursive: true, mode: 0o700 });
       const env = { ...this.env() };
       delete env.GIT_DIR; delete env.GIT_WORK_TREE; delete env.GIT_INDEX_FILE;
-      await lancer(this.git, ["init", "--bare", "-q", "--template=", this.depot], env, dirname(this.depot));
+      await launch(this.git, ["init", "--bare", "-q", "--template=", this.depot], env, dirname(this.depot));
       await mkdir(join(this.depot, "info"), { recursive: true });
       await writeFile(join(this.depot, "info", "exclude"), EXCLUSIONS.join("\n") + "\n");
     }
@@ -123,7 +123,7 @@ export class ReviewStore {
     for (let attempt = 0; ; attempt++) {
       try {
         const av = { texte: "" };
-        await lancer(this.git, ["add", "-A"], this.env(), this.dossier, av);
+        await launch(this.git, ["add", "-A"], this.env(), this.dossier, av);
         if (/could not open directory|Permission denied|Operation not permitted/i.test(av.texte)) throw new ReviewError(ACCESS_DENIED, av.texte.trim());
         break;
       } catch (e) {
@@ -131,10 +131,10 @@ export class ReviewStore {
         const s = (e as { stderr?: string }).stderr ?? "";
         if (/Operation not permitted|Permission denied/i.test(s)) throw new ReviewError(ACCESS_DENIED, this.dossier);
         // A subfolder that is a repository without a commit cannot become a link: we exclude it.
-        const nid = /'(.+)\/' does not have a commit checked out/.exec(s);
-        if (!nid || attempt >= 50) throw e;
-        const motif = "/" + nid[1]!.replace(/[\\*?[\]!#]/g, "\\$&") + "/\n";
-        await appendFile(join(this.depot, "info", "exclude"), motif);
+        const nested = /'(.+)\/' does not have a commit checked out/.exec(s);
+        if (!nested || attempt >= 50) throw e;
+        const pattern = "/" + nested[1]!.replace(/[\\*?[\]!#]/g, "\\$&") + "/\n";
+        await appendFile(join(this.depot, "info", "exclude"), pattern);
       }
     }
     return (await this.g(["write-tree"])).trim();
@@ -175,41 +175,41 @@ export class ReviewStore {
   comparer(): Promise<Comparison> {
     return this.serie(async () => {
       await this.preparer();
-      const courant = await this.photoInterne();
-      if (!(await this.refRelu())) await this.retenirInterne(courant);
+      const current = await this.photoInterne();
+      if (!(await this.refRelu())) await this.retenirInterne(current);
       const reviewed = (await this.g(["rev-parse", `${REF}^{tree}`])).trim();
-      if (reviewed === courant) return { arbreRelu: reviewed, arbreCourant: courant, fichiers: [] };
+      if (reviewed === current) return { arbreRelu: reviewed, arbreCourant: current, fichiers: [] };
 
-      const brut = (await this.g(["diff-tree", "-r", "--no-renames", "-z", "--raw", reviewed, courant])).split("\0");
+      const raw = (await this.g(["diff-tree", "-r", "--no-renames", "-z", "--raw", reviewed, current])).split("\0");
       const statuses = new Map<string, ModifiedFile["statut"]>();
-      for (let i = 0; i + 1 < brut.length; i += 2) {
-        const meta = brut[i]!.split(" "); // ":ancienMode nouveauMode ancienSha nouveauSha STATUT"
-        const path = brut[i + 1]!;
+      for (let i = 0; i + 1 < raw.length; i += 2) {
+        const meta = raw[i]!.split(" "); // ":ancienMode nouveauMode ancienSha nouveauSha STATUT"
+        const path = raw[i + 1]!;
         if (!meta[0]?.startsWith(":")) break;
         if (meta[0] === ":160000" || meta[1] === "160000") continue;
         const s = meta[4]![0];
         statuses.set(path, s === "A" ? "ajoute" : s === "D" ? "supprime" : "modifie");
       }
-      if (statuses.size === 0) return { arbreRelu: reviewed, arbreCourant: courant, fichiers: [] };
+      if (statuses.size === 0) return { arbreRelu: reviewed, arbreCourant: current, fichiers: [] };
 
       const nums = new Map<string, { ajouts: number; suppressions: number; binaire: boolean }>();
-      for (const recorder of (await this.g(["diff-tree", "-r", "--no-renames", "-z", "--numstat", reviewed, courant])).split("\0")) {
+      for (const recorder of (await this.g(["diff-tree", "-r", "--no-renames", "-z", "--numstat", reviewed, current])).split("\0")) {
         const [a, d, ...rest] = recorder.split("\t");
         if (rest.length === 0) continue;
         nums.set(rest.join("\t"), a === "-" ? { ajouts: 0, suppressions: 0, binaire: true } : { ajouts: Number(a), suppressions: Number(d), binaire: false });
       }
 
       const paths = [...statuses.keys()];
-      const tailles = new Map<string, number>();
-      for (const [tree, filter] of [[reviewed, (c: string) => statuses.get(c) === "supprime"], [courant, (c: string) => statuses.get(c) !== "supprime"]] as const) {
+      const sizes = new Map<string, number>();
+      for (const [tree, filter] of [[reviewed, (c: string) => statuses.get(c) === "supprime"], [current, (c: string) => statuses.get(c) !== "supprime"]] as const) {
         const wanted = paths.filter(filter);
         for (let i = 0; i < wanted.length; i += PATHS_BATCH) {
-          const sortie = await this.g(["ls-tree", "-r", "-l", "-z", tree, "--", ...wanted.slice(i, i + PATHS_BATCH).map((c) => `:(literal)${c}`)]);
-          for (const ligne of sortie.split("\0")) {
-            const t = ligne.indexOf("\t");
+          const output = await this.g(["ls-tree", "-r", "-l", "-z", tree, "--", ...wanted.slice(i, i + PATHS_BATCH).map((c) => `:(literal)${c}`)]);
+          for (const line of output.split("\0")) {
+            const t = line.indexOf("\t");
             if (t < 0) continue;
-            const taille = Number(ligne.slice(0, t).trim().split(/\s+/)[3]);
-            tailles.set(ligne.slice(t + 1), Number.isFinite(taille) ? taille : 0);
+            const size = Number(line.slice(0, t).trim().split(/\s+/)[3]);
+            sizes.set(line.slice(t + 1), Number.isFinite(size) ? size : 0);
           }
         }
       }
@@ -218,10 +218,10 @@ export class ReviewStore {
         const n = nums.get(path) ?? { ajouts: 0, suppressions: 0, binaire: false };
         const displayable: ModifiedFile["affichable"] = n.binaire
           ? "binaire"
-          : (tailles.get(path) ?? 0) > BYTES_LIMIT || n.ajouts + n.suppressions > DIFF_LINES_LIMIT ? "trop-gros" : true;
+          : (sizes.get(path) ?? 0) > BYTES_LIMIT || n.ajouts + n.suppressions > DIFF_LINES_LIMIT ? "trop-gros" : true;
         return { chemin: path, statut: statuses.get(path)!, ajouts: n.ajouts, suppressions: n.suppressions, affichable: displayable };
       });
-      return { arbreRelu: reviewed, arbreCourant: courant, fichiers: files };
+      return { arbreRelu: reviewed, arbreCourant: current, fichiers: files };
     });
   }
 
@@ -235,10 +235,10 @@ export class ReviewStore {
     });
   }
 
-  lignes(tree: string, path: string, debut: number, fin: number): Promise<string[]> {
+  lignes(tree: string, path: string, start: number, end: number): Promise<string[]> {
     return this.serie(async () => {
       const content = await this.g(["cat-file", "blob", `${tree}:${path}`]);
-      return content.split("\n").slice(Math.max(0, debut - 1), fin);
+      return content.split("\n").slice(Math.max(0, start - 1), end);
     });
   }
 

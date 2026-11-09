@@ -148,11 +148,11 @@ export async function openActionPage(m: Marionette, id: string, name: string, ex
 }
 
 /** What the UI says when the actions service does not answer. */
-export const WITHOUT_NOYAU = "Le service des actions ne répond pas (agent arrêté ?)";
+export const WITHOUT_KERNEL = "Le service des actions ne répond pas (agent arrêté ?)";
 
 /** Waits until the kernel serves the actions: an unknown action is then refused as such. */
-export async function waitNoyau(m: Marionette): Promise<void> {
-  await waitUi(m, "return ui.webaios.actions.lancer('inconnue-du-test', null).then((r) => r.erreur !== arguments[0]);", [WITHOUT_NOYAU], 30_000);
+export async function waitKernel(m: Marionette): Promise<void> {
+  await waitUi(m, "return ui.webaios.actions.lancer('inconnue-du-test', null).then((r) => r.erreur !== arguments[0]);", [WITHOUT_KERNEL], 30_000);
 }
 
 /** Opens the action's page (its last result, or `execution`) without launching anything. */
@@ -162,10 +162,10 @@ export async function openAction(m: Marionette, id: string, name: string, execut
 }
 
 /** A workflow whose blocks follow one another in the array's order (actions.spec.ts enChaine). */
-export const chained = (blocs: { id: string; type: string; parametres: Record<string, unknown> }[]) => ({
+export const chained = (blocks: { id: string; type: string; parametres: Record<string, unknown> }[]) => ({
   version: 1,
-  blocs,
-  liens: blocs.slice(1).map((b, i) => ({ de: blocs[i]!.id, vers: b.id })),
+  blocs: blocks,
+  liens: blocks.slice(1).map((b, i) => ({ de: blocks[i]!.id, vers: b.id })),
 });
 
 /** A runnable action: a `code` block, the blocks between, then the output to the page. */
@@ -174,13 +174,13 @@ export function writeRunnableAction(
   id: string,
   o: { nom: string; code: string; compte?: string[]; saisie?: string; motsCles?: string[]; blocs?: { id: string; type: string; parametres: Record<string, unknown> }[] },
 ): Promise<void> {
-  const blocs = [{ id: "liste", type: "code", parametres: { source: "liste.mjs" } }, ...(o.blocs ?? []), { id: "sortie", type: "sortie", parametres: { vers: "page" } }];
+  const blocks = [{ id: "liste", type: "code", parametres: { source: "liste.mjs" } }, ...(o.blocs ?? []), { id: "sortie", type: "sortie", parametres: { vers: "page" } }];
   return writeAction(dataDir, id, {
     nom: o.nom,
     sources: { compte: o.compte ?? [] },
     ...(o.motsCles ? { motsCles: o.motsCles } : {}),
     ...(o.saisie ? { saisie: { libelle: o.saisie } } : {}),
-    workflow: chained(blocs),
+    workflow: chained(blocks),
     fichiers: { "liste.mjs": o.code },
   });
 }
@@ -206,17 +206,17 @@ export async function runStatuses(dataDir: string, id: string): Promise<string[]
 }
 
 /** A finished run and its result (a title), written on disk. */
-export async function writeResult(dataDir: string, id: string, execution: string, debut: string, titre: string, input: string | null = null): Promise<void> {
+export async function writeResult(dataDir: string, id: string, execution: string, start: string, title: string, input: string | null = null): Promise<void> {
   const data = path.join(actionsDataDir(dataDir), id);
   await mkdir(path.join(data, "executions"), { recursive: true });
   await mkdir(path.join(data, "resultats"), { recursive: true });
   await writeFile(
     path.join(data, "executions", `${execution}.json`),
-    JSON.stringify({ version: 1, id: execution, proprietaire: { type: "action", id }, declencheur: "manuelle", debut, fin: debut, statut: "reussie", ...(input ? { saisie: input } : {}), blocs: [] }),
+    JSON.stringify({ version: 1, id: execution, proprietaire: { type: "action", id }, declencheur: "manuelle", debut: start, fin: start, statut: "reussie", ...(input ? { saisie: input } : {}), blocs: [] }),
   );
   await writeFile(
     path.join(data, "resultats", `${execution}.json`),
-    JSON.stringify({ version: 1, execution, saisie: input, resultats: { titre }, plan: { blocs: [{ composant: "titre", props: { texte: titre } }] }, secours: false, vide: false }),
+    JSON.stringify({ version: 1, execution, saisie: input, resultats: { titre: title }, plan: { blocs: [{ composant: "titre", props: { texte: title } }] }, secours: false, vide: false }),
   );
 }
 

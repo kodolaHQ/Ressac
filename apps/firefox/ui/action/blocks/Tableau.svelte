@@ -1,27 +1,27 @@
 <script lang="ts">
-  import LienPage from "../LienPage.svelte";
-  import { trierLignes } from "../tri";
+  import PageLink from "../LienPage.svelte";
+  import { sortLines } from "../tri";
   import { andOthers, sections, type Collection, type PageContext, type LienPage as Lien } from "../types";
 
-  type Ligne = { valeurs: Record<string, string>; lien: Lien | null };
-  let { p, ctx }: { p: Collection<Ligne> & { colonnes: { champ: string; libelle: string }[] }; ctx: PageContext } = $props();
+  type Line = { valeurs: Record<string, string>; lien: Lien | null };
+  let { p, ctx }: { p: Collection<Line> & { colonnes: { champ: string; libelle: string }[] }; ctx: PageContext } = $props();
 
   /** Click on a header: ascending sort; second click on the same one: reverse order. */
-  let tri = $state<{ champ: string; sens: "asc" | "desc" } | null>(null);
+  let sorting = $state<{ champ: string; sens: "asc" | "desc" } | null>(null);
   const withLink = $derived(sections(p).some((s) => s.elements.some((l) => l.lien)));
   const sorted = $derived(
     sections(p).map((s) => {
-      if (!tri) return s;
-      const ligneDe = new Map(s.elements.map((l) => [l.valeurs, l]));
-      return { ...s, elements: trierLignes(s.elements.map((l) => l.valeurs), tri.champ, tri.sens).map((v) => ligneDe.get(v)!) };
+      if (!sorting) return s;
+      const lineOf = new Map(s.elements.map((l) => [l.valeurs, l]));
+      return { ...s, elements: sortLines(s.elements.map((l) => l.valeurs), sorting.champ, sorting.sens).map((v) => lineOf.get(v)!) };
     }),
   );
-  const cellule = (l: Ligne, champ: string) => (Object.hasOwn(l.valeurs, champ) ? l.valeurs[champ] : "");
+  const cell = (l: Line, field: string) => (Object.hasOwn(l.valeurs, field) ? l.valeurs[field] : "");
 
-  function trier(champ: string) {
-    tri = tri?.champ === champ ? { champ, sens: tri.sens === "asc" ? "desc" : "asc" } : { champ, sens: "asc" };
+  function sort(field: string) {
+    sorting = sorting?.champ === field ? { champ: field, sens: sorting.sens === "asc" ? "desc" : "asc" } : { champ: field, sens: "asc" };
   }
-  const ariaSort = (champ: string) => (tri?.champ !== champ ? "none" : tri.sens === "asc" ? "ascending" : "descending");
+  const ariaSort = (field: string) => (sorting?.champ !== field ? "none" : sorting.sens === "asc" ? "ascending" : "descending");
 </script>
 
 <div data-testid="bloc-tableau">
@@ -31,7 +31,7 @@
         <tr>
           {#each p.colonnes as c, i (i)}
             <th scope="col" aria-sort={ariaSort(c.champ)}>
-              <button type="button" onclick={() => trier(c.champ)}>{c.libelle}</button>{#if tri?.champ === c.champ}<span class="sens" aria-hidden="true">{tri.sens === "asc" ? "▲" : "▼"}</span>{/if}
+              <button type="button" onclick={() => sort(c.champ)}>{c.libelle}</button>{#if sorting?.champ === c.champ}<span class="sens" aria-hidden="true">{sorting.sens === "asc" ? "▲" : "▼"}</span>{/if}
             </th>
           {/each}
           {#if withLink}<th scope="col">Lien</th>{/if}
@@ -42,8 +42,8 @@
           {#if s.valeur !== null}<tr><th scope="rowgroup" colspan={p.colonnes.length + (withLink ? 1 : 0)}>{s.valeur}</th></tr>{/if}
           {#each s.elements as l, j (j)}
             <tr>
-              {#each p.colonnes as c, k (k)}<td class="pa-texte">{cellule(l, c.champ)}</td>{/each}
-              {#if withLink}<td>{#if l.lien}<LienPage lien={l.lien} {ctx} />{/if}</td>{/if}
+              {#each p.colonnes as c, k (k)}<td class="pa-texte">{cell(l, c.champ)}</td>{/each}
+              {#if withLink}<td>{#if l.lien}<PageLink lien={l.lien} {ctx} />{/if}</td>{/if}
             </tr>
           {/each}
         </tbody>

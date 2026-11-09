@@ -1,5 +1,5 @@
 import { beforeEach, expect, test, vi } from "vitest";
-import { DROITS_DEV, AccessPolicy } from "../../src/access/policy.js";
+import { DEV_RIGHTS, AccessPolicy } from "../../src/access/policy.js";
 import type { TabInfo } from "../../src/mcp/pont.js";
 
 const github: TabInfo = { id: "1", titre: "svelte", url: "https://github.com/sveltejs/svelte", espace: "perso" };
@@ -194,7 +194,7 @@ test("etat(): reading, rights, built, enCours (utilisation true/false balanced)"
   p.utilisation(github.id, false);
   expect(p.etat()[github.id]).toEqual({ lecture: true, droits: [], construite: false, enCours: true });
   expect(p.etat()[gmail.id]).toEqual({ lecture: false, droits: ["reseau"], construite: false, enCours: false });
-  expect(p.etat()[demo.id]).toEqual({ lecture: true, droits: [...DROITS_DEV], construite: true, enCours: false });
+  expect(p.etat()[demo.id]).toEqual({ lecture: true, droits: [...DEV_RIGHTS], construite: true, enCours: false });
   p.utilisation(github.id, false);
   expect(p.etat()[github.id]?.enCours).toBe(false);
   p.ongletFerme(demo.id);
@@ -233,8 +233,8 @@ test("cut built: relaunching the app (closing then reopening app:x) does not res
   p.ongletOuvertParAgent(tab);
   expect(p.droitsDev(tab)).toEqual([]);
   p.reinitialiser();
-  expect(p.droitsDev(relaunched)).toEqual(DROITS_DEV);
-  expect(p.droitsDev(tab)).toEqual(DROITS_DEV);
+  expect(p.droitsDev(relaunched)).toEqual(DEV_RIGHTS);
+  expect(p.droitsDev(tab)).toEqual(DEV_RIGHTS);
 });
 
 test("cut demo: a new agent tab on the same origin has no right; another origin does; a single cut right stays cut", () => {
@@ -246,17 +246,17 @@ test("cut demo: a new agent tab on the same origin has no right; another origin 
   expect(p.droitsDev(fresh)).toEqual(["console", "reseau", "performances"]);
   p.couper(fresh.id);
   p.ongletFerme(fresh.id);
-  const encore: TabInfo = { ...demo, id: "5" };
-  p.ongletOuvertParAgent(encore);
-  expect(p.droitsDev(encore)).toEqual([]);
+  const still: TabInfo = { ...demo, id: "5" };
+  p.ongletOuvertParAgent(still);
+  expect(p.droitsDev(still)).toEqual([]);
   const other: TabInfo = { ...demo, id: "6", url: "http://localhost:5281/" };
   p.ongletOuvertParAgent(other);
-  expect(p.droitsDev(other)).toEqual(DROITS_DEV);
+  expect(p.droitsDev(other)).toEqual(DEV_RIGHTS);
   // The user grants again themselves: the right comes back
-  p.accorderDev(encore, ["console"], []);
-  expect(p.droitsDev(encore)).toEqual(["console"]);
+  p.accorderDev(still, ["console"], []);
+  expect(p.droitsDev(still)).toEqual(["console"]);
   p.reinitialiser();
-  expect(p.droitsDev(encore)).toEqual(DROITS_DEV);
+  expect(p.droitsDev(still)).toEqual(DEV_RIGHTS);
 });
 
 test("conversation: changes at each reinitialiser", () => {

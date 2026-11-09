@@ -45,10 +45,10 @@ const locks = new Map<string, Promise<unknown>>();
 export function withMemory<T>(dataFolder: string, f: () => Promise<T>): Promise<T> {
   const key = resolve(dataFolder);
   const next = (locks.get(key) ?? Promise.resolve()).catch(() => {}).then(f);
-  const fin = next.catch(() => {});
-  locks.set(key, fin);
-  void fin.then(() => {
-    if (locks.get(key) === fin) locks.delete(key);
+  const end = next.catch(() => {});
+  locks.set(key, end);
+  void end.then(() => {
+    if (locks.get(key) === end) locks.delete(key);
   });
   return next;
 }

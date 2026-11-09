@@ -5,14 +5,14 @@ import type { SpacePaths } from "../paths.js";
 import { writeWidgetState, readWidgetState, changeWidgetState } from "../home/data.js";
 import { readHome } from "../home/lire.js";
 import type { WidgetState, WidgetLu } from "../home/schemas.js";
-import type { Atelier } from "../container/workshop.js";
-import type { IaLocale } from "../ai/ia-locale.js";
+import type { Workshop } from "../container/workshop.js";
+import type { LocalAi } from "../ai/ia-locale.js";
 import { createAiDispatcher, type AiDispatcher } from "../ai/dispatcher.js";
 import type { BrowserBridge } from "../mcp/pont.js";
-import { lireAccords, retirerAccord } from "./accords.js";
+import { readGrants, removeGrant } from "./accords.js";
 import { currentSlot, dueHour, trackingAfter, type HourOutcome, type HoursTracking } from "./hours.js";
 import type { DirectTrace } from "../workflows/executer.js";
-import { lireExecution, type Execution } from "../workflows/executions.js";
+import { readRun, type Execution } from "../workflows/executions.js";
 import type { Pacing } from "../workflows/pacing.js";
 import { notificationText, type NotificationWidget } from "./nouveautes.js";
 import {
@@ -29,9 +29,9 @@ import {
 export { WORKSHOP_STOPPED_ERROR, INTERNAL_HARVEST_ERROR, type AttemptResult };
 
 /** A block of the run in progress, from its traces. */
-export type BlocDirect = { statut: "en-cours" | "reussi" | "partiel" | "echoue"; elements: number | null };
+export type DirectBlock = { statut: "en-cours" | "reussi" | "partiel" | "echoue"; elements: number | null };
 /** A run (real, or builder try) that is running right now. */
-export type DirectWidget = { widget: string; genre: "execution" | "essai"; debut: string; blocs: Record<string, BlocDirect> };
+export type DirectWidget = { widget: string; genre: "execution" | "essai"; debut: string; blocs: Record<string, DirectBlock> };
 /**
  * `courants`: the runs that are running (one per lane at most, in the order they started). `enAttente`:
  * widgets with a request (manual harvest, try) waiting for its turn.
@@ -71,7 +71,7 @@ const age = (iso: string | null, now: Date) => (iso ? now.getTime() - Date.parse
  * attempt. `en-cours` is only relaunched at launch (the previous harvest was interrupted), and only if it has a
  * frequency or an hour to do: otherwise, ours is the one running.
  */
-export function widgetDu(w: WidgetLu, now: Date, o: { auLancement: boolean }): boolean {
+export function widgetOf(w: WidgetLu, now: Date, o: { auLancement: boolean }): boolean {
   if ("erreur" in w || !w.aRecolte || !w.declaration.recolte) return false;
   const { minutes, heures: hours } = w.declaration.recolte;
   const { statut: status, derniereMaj: lastUpdate, derniereTentative: lastAttempt } = w.etat;
@@ -92,9 +92,9 @@ export interface SchedulerOptions {
   dossierWidgets: string;
   /** Folder of the workflow engine (`docker/moteur`), mounted read-only in the container. */
   moteur: string;
-  atelier: Pick<Atelier, "etat" | "commandeRecolte" | "supprimerRecolte">;
+  atelier: Pick<Workshop, "etat" | "commandeRecolte" | "supprimerRecolte">;
   pont: BrowserBridge;
-  ia: Pick<IaLocale, "kev" | "gemma"> | null;
+  ia: Pick<LocalAi, "kev" | "gemma"> | null;
   /** The dispatcher of AI calls, shared with the actions; absent: the scheduler creates its own on `ia`. */
   repartiteur?: ReturnType<typeof createAiDispatcher>;
   horloge?: () => Date;
@@ -207,44 +207,44 @@ export class WidgetsScheduler {
    */
   private async suivre<T>(
     widget: string,
-    genre: DirectWidget["genre"],
-    f: (surTrace: (t: DirectTrace) => void, ia: HarvestOptions["ia"]) => Promise<T>,
-    executionDe: (r: T) => string | undefined,
+    kind: DirectWidget["genre"],
+    f: (onTrace: (t: DirectTrace) => void, ai: HarvestOptions["ia"]) => Promise<T>,
+    runOf: (r: T) => string | undefined,
   ): Promise<T> {
-    const tracking: DirectWidget = { widget, genre, debut: this.o.horloge().toISOString(), blocs: {} };
+    const tracking: DirectWidget = { widget, genre: kind, debut: this.o.horloge().toISOString(), blocs: {} };
     this.enDirect = [...this.enDirect, tracking];
     this.signalerDirect();
-    const surTrace = (t: DirectTrace) => {
+    const onTrace = (t: DirectTrace) => {
       // The `avancement` and `lecture` traces (for the actions) change nothing in a widget's tracking.
       if (!this.enDirect.includes(tracking) || (t.etape !== "debut" && t.etape !== "fin")) return;
       tracking.blocs[t.bloc] = t.etape === "debut" ? { statut: "en-cours", elements: null } : { statut: t.statut, elements: t.elements };
       this.signalerDirect();
     };
     // Each run has its own queue of AI calls.
-    const ia = this.repartiteur?.pour(`${widget}:${tracking.debut}`) ?? null;
+    const ai = this.repartiteur?.pour(`${widget}:${tracking.debut}`) ?? null;
     let r: T | undefined;
     try {
-      r = await f(surTrace, ia);
+      r = await f(onTrace, ai);
       return r;
     } finally {
       // Its calls still in the queue no longer go out: they would take the place of the other runs.
-      ia?.oublier();
-      await this.resynchroniser(tracking, r === undefined ? undefined : executionDe(r));
+      ai?.oublier();
+      await this.resynchroniser(tracking, r === undefined ? undefined : runOf(r));
       this.enDirect = this.enDirect.filter((x) => x !== tracking);
       this.signalerDirect();
     }
   }
 
   private async resynchroniser(tracking: DirectWidget, execution: string | undefined): Promise<void> {
-    const e = execution ? await lireExecution(join(this.o.dossierWidgets, tracking.widget), execution).catch(() => null) : null;
+    const e = execution ? await readRun(join(this.o.dossierWidgets, tracking.widget), execution).catch(() => null) : null;
     if (e) {
-      const blocs: Record<string, BlocDirect> = {};
+      const blocks: Record<string, DirectBlock> = {};
       for (const b of e.blocs) {
         if (b.debut === null) continue;
         const status = b.statut === "reussi" || b.statut === "partiel" ? b.statut : "echoue";
-        blocs[b.id] = { statut: status, elements: b.elements };
+        blocks[b.id] = { statut: status, elements: b.elements };
       }
-      tracking.blocs = blocs;
+      tracking.blocs = blocks;
     } else {
       // Nothing written (denial, grant withdrawn…): a block still in progress will not finish.
       for (const b of Object.values(tracking.blocs)) if (b.statut === "en-cours") b.statut = "echoue";
@@ -310,12 +310,12 @@ export class WidgetsScheduler {
    * progress. The launch check still relaunches it if it is due as an en-cours widget (`du`).
    */
   private async remettreInterrompus(): Promise<void> {
-    const { dossierWidgets } = this.o;
-    const dossiers = await readdir(dossierWidgets, { withFileTypes: true }).catch(() => []);
+    const { dossierWidgets: widgetsFolder } = this.o;
+    const folders = await readdir(widgetsFolder, { withFileTypes: true }).catch(() => []);
     let change = false;
-    for (const d of dossiers) {
+    for (const d of folders) {
       if (!d.isDirectory() || !ID_WIDGET.test(d.name)) continue;
-      const remis = await changeWidgetState(dossierWidgets, d.name, (e) => {
+      const restored = await changeWidgetState(widgetsFolder, d.name, (e) => {
         if (e.statut !== "en-cours") return null;
         const before = e.avant && e.avant.statut !== "en-cours" && e.avant.statut !== "accord-requis" ? e.avant : { statut: "ok" as const };
         return { ...before, derniereMaj: e.derniereMaj, derniereTentative: e.derniereTentative, ...(e.heures ? { heures: e.heures } : {}) };
@@ -323,7 +323,7 @@ export class WidgetsScheduler {
         console.error(`[webaios] état du widget ${d.name} :`, e);
         return null;
       });
-      if (!remis) continue;
+      if (!restored) continue;
       this.interrompus.add(d.name);
       change = true;
     }
@@ -339,7 +339,7 @@ export class WidgetsScheduler {
   /** `widgetDu`, where a widget reset at startup counts, at launch, as still en-cours. */
   private du(w: WidgetLu, o: { auLancement: boolean }): boolean {
     const interrupted = o.auLancement && this.interrompus.has(w.id) && !("erreur" in w) && w.etat.statut !== "accord-requis";
-    return widgetDu(interrupted ? { ...w, etat: { ...w.etat, statut: "en-cours" } } : w, this.o.horloge(), o);
+    return widgetOf(interrupted ? { ...w, etat: { ...w.etat, statut: "en-cours" } } : w, this.o.horloge(), o);
   }
 
   private async verifierMaintenant(o: { auLancement: boolean }): Promise<string[]> {
@@ -352,11 +352,11 @@ export class WidgetsScheduler {
       .sort((a, b) => Number(routeOf(b) === "longue") - Number(routeOf(a) === "longue"));
     if (!due.length) return [];
     const harvests: string[] = [];
-    for (const du of due) {
+    for (const entry of due) {
       if (this.arrete) break;
-      const { id } = du;
+      const { id } = entry;
       if (this.longues.has(id)) continue;
-      const route = routeOf(du);
+      const route = routeOf(entry);
       // Read again under the lock: a harvest requested in the meantime may have updated it.
       const tache = this.seul(id, route, async () => {
         const w = (await this.widgets()).find((x) => x.id === id);
@@ -390,17 +390,17 @@ export class WidgetsScheduler {
     // A widget that has a request waiting or in progress, in either lane, is left for the next
     // check (a watch, in the other lane, may still write in its folder).
     const presents = new Set([...(await this.widgets()).map((w) => w.id), ...this.parWidget.keys()]);
-    const { dossierWidgets } = this.o;
+    const { dossierWidgets: widgetsFolder } = this.o;
     let change = false;
-    for (const id of Object.keys(await lireAccords(dossierWidgets))) {
+    for (const id of Object.keys(await readGrants(widgetsFolder))) {
       if (presents.has(id)) continue;
-      await retirerAccord(dossierWidgets, id);
+      await removeGrant(widgetsFolder, id);
       change = true;
     }
-    const dossiers = await readdir(dossierWidgets, { withFileTypes: true }).catch(() => []);
-    for (const d of dossiers) {
+    const folders = await readdir(widgetsFolder, { withFileTypes: true }).catch(() => []);
+    for (const d of folders) {
       if (!d.isDirectory() || !ID_WIDGET.test(d.name) || presents.has(d.name)) continue;
-      await rm(join(dossierWidgets, d.name), { recursive: true, force: true });
+      await rm(join(widgetsFolder, d.name), { recursive: true, force: true });
       change = true;
     }
     if (change) this.o.surChange?.();
@@ -451,8 +451,8 @@ export class WidgetsScheduler {
             counted = v === "longue";
             this.compterLongue(id, counted ? 1 : -1);
           }
-          const prevue = v;
-          const r = await this.enchainer(prevue, () => this.enCours(id, () => f(prevue)));
+          const planned = v;
+          const r = await this.enchainer(planned, () => this.enCours(id, () => f(planned)));
           if (!(r instanceof OtherRoute)) return r;
           v = r.voie;
         }
@@ -461,10 +461,10 @@ export class WidgetsScheduler {
         counted = false;
       }
     });
-    const fin = tache.catch(() => {});
-    this.parWidget.set(id, fin);
-    void fin.then(() => {
-      if (this.parWidget.get(id) === fin) this.parWidget.delete(id);
+    const end = tache.catch(() => {});
+    this.parWidget.set(id, end);
+    void end.then(() => {
+      if (this.parWidget.get(id) === end) this.parWidget.delete(id);
     });
     return tache;
   }
@@ -489,14 +489,14 @@ export class WidgetsScheduler {
     return state;
   }
 
-  private optionsRecolte(w: WidgetLu, surTrace: (t: DirectTrace) => void, ia: HarvestOptions["ia"]): HarvestOptions {
+  private optionsRecolte(w: WidgetLu, onTrace: (t: DirectTrace) => void, ai: HarvestOptions["ia"]): HarvestOptions {
     return {
       id: w.id,
       widget: w,
       dossierWidgets: this.o.dossierWidgets,
       moteur: this.o.moteur,
       atelier: this.o.atelier,
-      ia,
+      ia: ai,
       pont: this.o.pont,
       horloge: this.o.horloge,
       ...(this.o.surChange ? { surChange: this.o.surChange } : {}),
@@ -504,7 +504,7 @@ export class WidgetsScheduler {
       ...(this.o.menagement ? { menagement: this.o.menagement } : {}),
       ...(this.o.urlRecherche !== undefined ? { urlRecherche: this.o.urlRecherche } : {}),
       interrompue: () => this.arrete,
-      surTrace,
+      surTrace: onTrace,
     };
   }
 
@@ -513,12 +513,12 @@ export class WidgetsScheduler {
    * (tries never go through here).
    */
   private async recolter(w: WidgetLu, trigger: Execution["declencheur"]): Promise<WidgetState & { execution?: string }> {
-    const debut = this.o.horloge();
+    const start = this.o.horloge();
     this.interrompus.delete(w.id);
-    const { resultat: result, issue } = await this.executer(w, trigger, debut);
+    const { resultat: result, issue: outcome } = await this.executer(w, trigger, start);
     const hours = "erreur" in w ? undefined : w.declaration.recolte?.heures;
     if (!hours) return result;
-    const tracking = await this.noterHeure(w.id, currentSlot(hours, debut), issue, this.o.horloge());
+    const tracking = await this.noterHeure(w.id, currentSlot(hours, start), outcome, this.o.horloge());
     return tracking ? { ...result, heures: tracking } : result;
   }
 
@@ -526,10 +526,10 @@ export class WidgetsScheduler {
    * Writes the hours tracking on the re-read state (nothing before the day's first hour, nor for a run with no effect).
    * `fin`: the end of the run, from which the wait before a retry counts.
    */
-  private async noterHeure(id: string, slot: string | null, issue: HourOutcome, fin: Date): Promise<HoursTracking | null> {
-    if (!slot || issue === "sans-effet") return null;
+  private async noterHeure(id: string, slot: string | null, outcome: HourOutcome, end: Date): Promise<HoursTracking | null> {
+    if (!slot || outcome === "sans-effet") return null;
     try {
-      const state = await changeWidgetState(this.o.dossierWidgets, id, (e) => ({ ...e, heures: trackingAfter(e.heures, slot, issue, fin.toISOString()) }));
+      const state = await changeWidgetState(this.o.dossierWidgets, id, (e) => ({ ...e, heures: trackingAfter(e.heures, slot, outcome, end.toISOString()) }));
       this.o.surChange?.();
       return state?.heures ?? null;
     } catch (e) {
@@ -538,7 +538,7 @@ export class WidgetsScheduler {
     }
   }
 
-  private async executer(w: WidgetLu, trigger: Execution["declencheur"], debut: Date): Promise<{ resultat: WidgetState & { execution?: string }; issue: HourOutcome }> {
+  private async executer(w: WidgetLu, trigger: Execution["declencheur"], start: Date): Promise<{ resultat: WidgetState & { execution?: string }; issue: HourOutcome }> {
     const before = await readWidgetState(this.o.dossierWidgets, w.id);
     let state: WidgetState;
     let execution: string | undefined;
@@ -547,7 +547,7 @@ export class WidgetsScheduler {
       ({ etat: state, execution, nouveaux: fresh } = await this.suivre(
         w.id,
         "execution",
-        (surTrace, ia) => this.o.recolter({ ...this.optionsRecolte(w, surTrace, ia), declencheur: trigger }),
+        (onTrace, ai) => this.o.recolter({ ...this.optionsRecolte(w, onTrace, ai), declencheur: trigger }),
         (r) => r.execution,
       ));
     } catch (e) {
@@ -557,7 +557,7 @@ export class WidgetsScheduler {
       state = this.arrete
         ? before
         : // `derniereTentative` is always the start of the attempt, as in the harvest.
-          { statut: "erreur", derniereMaj: before.derniereMaj, derniereTentative: debut.toISOString(), erreur: INTERNAL_HARVEST_ERROR, erreurNoyau: true };
+          { statut: "erreur", derniereMaj: before.derniereMaj, derniereTentative: start.toISOString(), erreur: INTERNAL_HARVEST_ERROR, erreurNoyau: true };
       await writeWidgetState(this.o.dossierWidgets, w.id, state);
       this.o.surChange?.();
       return { resultat: state, issue: this.arrete ? "sans-effet" : "echec" };
@@ -570,8 +570,8 @@ export class WidgetsScheduler {
     }
     if (state.statut === "ok" && fresh !== undefined && fresh > 0) this.notifierFin(w, fresh);
     // Grant required, workshop stopped: the run did not really take place.
-    const issue: HourOutcome = state.statut === "ok" ? "reussie" : state.statut === "erreur" ? "echec" : "sans-effet";
-    return { resultat: { ...state, ...(execution ? { execution } : {}) }, issue };
+    const outcome: HourOutcome = state.statut === "ok" ? "reussie" : state.statut === "erreur" ? "echec" : "sans-effet";
+    return { resultat: { ...state, ...(execution ? { execution } : {}) }, issue: outcome };
   }
 
   /** End notification: title = widget name, text = number of new items, never anything from the data. */
@@ -579,8 +579,8 @@ export class WidgetsScheduler {
     if (!this.o.notifier || "erreur" in w || w.declaration.recolte?.notifier !== true) return;
     try {
       // `nom` is written by the agent: control and invisible characters replaced, on a single line.
-      const titre = w.declaration.nom.replace(/[\p{Cc}\p{Cf}]/gu, " ").replace(/\s+/g, " ").trim() || w.id;
-      this.o.notifier({ widget: w.id, titre, texte: notificationText(fresh) });
+      const title = w.declaration.nom.replace(/[\p{Cc}\p{Cf}]/gu, " ").replace(/\s+/g, " ").trim() || w.id;
+      this.o.notifier({ widget: w.id, titre: title, texte: notificationText(fresh) });
     } catch (e) {
       console.error(`[webaios] notification du widget ${w.id} :`, e);
     }
@@ -612,7 +612,7 @@ export class WidgetsScheduler {
    * `origine`, in the same queue as the real runs (the container carries the widget's id). Without a workshop, refused
    * without touching the widget's state.
    */
-  async rejouer(id: string, origin: string, depart: string): Promise<AttemptResult> {
+  async rejouer(id: string, origin: string, start: string): Promise<AttemptResult> {
     const request = this.demande(id);
     await this.attendrePret();
     // The try follows its widget's lane.
@@ -627,7 +627,7 @@ export class WidgetsScheduler {
           return await this.suivre(
             id,
             "essai",
-            (surTrace, ia) => this.o.recolterEssai({ ...this.optionsRecolte(w, surTrace, ia), declencheur: "rejeu", origine: origin, depart }),
+            (onTrace, ai) => this.o.recolterEssai({ ...this.optionsRecolte(w, onTrace, ai), declencheur: "rejeu", origine: origin, depart: start }),
             (r) => (r.ok ? r.execution : undefined),
           );
         } catch (e) {
@@ -654,9 +654,9 @@ export class WidgetsScheduler {
     this.arrete = true;
     await this.supprimerConteneurs();
     // Bounded: quitting the browser must not wait for a harvest that escaped the shutdown.
-    const tout = Promise.all([this.files.courte, this.files.longue, ...this.parWidget.values()].map((x) => x.catch(() => {})));
+    const all = Promise.all([this.files.courte, this.files.longue, ...this.parWidget.values()].map((x) => x.catch(() => {})));
     let timer: NodeJS.Timeout | undefined;
-    await Promise.race([tout, new Promise((ok) => (timer = setTimeout(ok, this.o.attenteArretMs ?? STOP_WAIT_MS)))]);
+    await Promise.race([all, new Promise((ok) => (timer = setTimeout(ok, this.o.attenteArretMs ?? STOP_WAIT_MS)))]);
     clearTimeout(timer);
     // Still not finished: their container may have started after the first removal.
     await this.supprimerConteneurs();

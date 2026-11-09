@@ -4,13 +4,13 @@ import {
   PrivateTab,
   DevToolsBusy,
   ProfileDenied,
-  type DroitDev,
+  type DevRight,
   type BrowserHistory,
   type TabInfo,
-  type OptionsLecturePage,
+  type PageReadOptions,
   type BrowserDevTools,
   type DevToolsOwner,
-  type PageLue,
+  type ReadPage,
   type BrowserBridge,
 } from "../../../packages/kernel/src/index.ts";
 import type { History } from "../core/history.ts";
@@ -72,8 +72,8 @@ export class RemoteBridge implements BrowserBridge {
   capturer = async (id: string) => Buffer.from(await this.call<string>("capturer", [id]), "base64");
   demanderAutorisation = (o: TabInfo) => this.call<boolean>("demanderAutorisation", [o]);
   // Taken down (signal) when a new conversation starts: no rights.
-  demanderOutilsDev = (o: TabInfo, d: { droits: DroitDev[]; raison: string; agent: string }, signal?: AbortSignal) =>
-    this.call<DroitDev[]>("demanderOutilsDev", [o, d], signal).catch((e) => {
+  demanderOutilsDev = (o: TabInfo, d: { droits: DevRight[]; raison: string; agent: string }, signal?: AbortSignal) =>
+    this.call<DevRight[]>("demanderOutilsDev", [o, d], signal).catch((e) => {
       if (signal?.aborted) return [];
       throw e;
     });
@@ -125,21 +125,21 @@ export class RemoteBridge implements BrowserBridge {
   /** The waits of the paced reads in progress, by the id Firefox echoes back (`lecture.changerHote`). */
   private readonly lecturesMenagees = new Map<string, ChangeHost>();
 
-  lirePageInvisible = async (url: string, o: OptionsLecturePage): Promise<PageLue> => {
+  lirePageInvisible = async (url: string, o: PageReadOptions): Promise<ReadPage> => {
     const { signal, changerHote: changeHost, ...options } = o;
-    if (!changeHost) return this.call<PageLue>("lirePageInvisible", [url, options], signal);
+    if (!changeHost) return this.call<ReadPage>("lirePageInvisible", [url, options], signal);
     const id = crypto.randomUUID();
     this.lecturesMenagees.set(id, changeHost);
     try {
-      return await this.call<PageLue>("lirePageInvisible", [url, { ...options, menagee: id }], signal);
+      return await this.call<ReadPage>("lirePageInvisible", [url, { ...options, menagee: id }], signal);
     } finally {
       this.lecturesMenagees.delete(id);
     }
   };
 
   /** Firefox asks to wait for another site's turn: answered when the kernel's Menagement lets the read go. */
-  changerHote(lecture: string, host: string): Promise<void> {
-    const f = this.lecturesMenagees.get(lecture);
+  changerHote(reading: string, host: string): Promise<void> {
+    const f = this.lecturesMenagees.get(reading);
     return f ? f(host) : Promise.reject(new Error("Lecture inconnue"));
   }
 

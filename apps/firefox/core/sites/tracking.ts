@@ -54,10 +54,10 @@ export class UrlTracking {
     const found = findUrl(liens, { page: tracking.page, motif: tracking.motif, adressesLocales: this.o.adressesLocales });
     if (!found) return { t: "introuvable" };
     if (signal?.aborted) return { t: "introuvable" };
-    const courant = await readUrlState(this.o.dossierSites, id);
+    const currentUrl = await readUrlState(this.o.dossierSites, id);
     // Cancelled during the re-reading of the state (app deletion): nothing is written.
     if (signal?.aborted) return { t: "introuvable" };
-    const current = courant?.actuel ?? hostOf(d.adresse);
+    const current = currentUrl?.actuel ?? hostOf(d.adresse);
     if (found.hostname === current) return { t: "inchangee" };
     try {
       const state = await changeUrl(this.o.dossierSites, id, d, found.hostname);

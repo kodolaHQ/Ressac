@@ -9,12 +9,12 @@ export type AiState = "non-installee" | "arretee" | "demarrage" | "active" | "er
 
 export interface AiProcess {
   arreter(): void;
-  surSortie(rappel: (code: number | null) => void): void;
+  surSortie(callback: (code: number | null) => void): void;
   /** Optional: receives each output line (stdout and stderr), for error messages. */
-  surLigne?(rappel: (ligne: string) => void): void;
+  surLigne?(callback: (line: string) => void): void;
 }
 
-export interface OptionsIaLocale {
+export interface LocalAiOptions {
   /** `<browser profile>/ia-locale`; Kev is cloned there in `kev/`. */
   dossier: string;
   executer: Runner;
@@ -74,23 +74,23 @@ export function launchAiProcess(cmd: string, args: string[], o: { cwd: string; d
         forgetGroup(pid);
       }, o.delaiKillMs ?? KILL_DELAY_MS);
       timer.unref();
-      const verifier = setInterval(() => {
+      const check = setInterval(() => {
         if (exited && !killGroup(pid, 0)) {
           clearTimeout(timer);
-          clearInterval(verifier);
+          clearInterval(check);
           forgetGroup(pid);
         }
       }, 100);
-      verifier.unref();
+      check.unref();
     },
     surSortie: (r) => {
       child.on("exit", (code) => r(code));
       child.on("error", () => r(127));
     },
     surLigne: (r) => {
-      for (const flux of [child.stdout, child.stderr]) {
+      for (const stream of [child.stdout, child.stderr]) {
         let rest = "";
-        flux.on("data", (d: Buffer) => {
+        stream.on("data", (d: Buffer) => {
           const chunks = (rest + d.toString("utf8")).split(/\r?\n/);
           rest = chunks.pop() ?? "";
           chunks.forEach((l) => l && r(l));
@@ -100,12 +100,12 @@ export function launchAiProcess(cmd: string, args: string[], o: { cwd: string; d
   };
 }
 
-const defaultLaunch: NonNullable<OptionsIaLocale["lancer"]> = (cmd, args, o) => launchAiProcess(cmd, args, o);
+const defaultLaunch: NonNullable<LocalAiOptions["lancer"]> = (cmd, args, o) => launchAiProcess(cmd, args, o);
 
 /** The call's timeout, and the caller's signal if there is one. */
 const delayAnd = (ms: number, signal?: AbortSignal) => (signal ? AbortSignal.any([AbortSignal.timeout(ms), signal]) : AbortSignal.timeout(ms));
 /** The caller's signal is raised: the call is abandoned (otherwise the original error). */
-const verifierAbandon = (signal?: AbortSignal) => {
+const checkAbort = (signal?: AbortSignal) => {
   if (signal?.aborted) throw new Error(AI_ABANDONED);
 };
 
@@ -121,12 +121,12 @@ const CANCEL_DELAY_MS = 3000;
  * harvest does not relaunch Kev. The next kernel (another agent profile) gets a new access.
  */
 export interface AiAccess {
-  kev: IaLocale["kev"];
-  gemma: IaLocale["gemma"];
+  kev: LocalAi["kev"];
+  gemma: LocalAi["gemma"];
   fermer(): Promise<void>;
 }
 
-export class IaLocale {
+export class LocalAi {
   private etatCourant: AiState = "arretee";
   private erreurCourante?: string;
   private processus?: AiProcess;
@@ -145,9 +145,9 @@ export class IaLocale {
   private readonly port: number;
   private readonly inactiviteMs: number;
   private readonly horloge: () => number;
-  private readonly lancer: NonNullable<OptionsIaLocale["lancer"]>;
+  private readonly lancer: NonNullable<LocalAiOptions["lancer"]>;
 
-  constructor(private readonly o: OptionsIaLocale) {
+  constructor(private readonly o: LocalAiOptions) {
     this.port = o.port ?? 8008;
     const imposed = o.kevUrl ?? process.env.WEBAIOS_KEV_URL;
     this.kevImposee = Boolean(imposed);
@@ -193,15 +193,15 @@ export class IaLocale {
    * Installs Kev and Gemma. Cancelled by `annulerInstallation()` or `fermer()`: the current command is killed (its whole
    * group), none follows, a partial clone is erased, and the promise is rejected « Installation annulée ».
    */
-  installer(progress: (ligne: string) => void): Promise<void> {
+  installer(progress: (line: string) => void): Promise<void> {
     if (this.fermee) return Promise.reject(new Error(AI_CLOSED_ERROR));
     if (this.installation) return Promise.reject(new Error("Installation déjà en cours"));
     const controller = new AbortController();
-    const fin = this.installerAvec(controller.signal, progress).finally(() => {
+    const end = this.installerAvec(controller.signal, progress).finally(() => {
       if (this.installation?.controleur === controller) this.installation = undefined;
     });
-    this.installation = { controleur: controller, fin: fin.catch(() => {}) };
-    return fin;
+    this.installation = { controleur: controller, fin: end.catch(() => {}) };
+    return end;
   }
 
   /** Cancels the install in progress, if there is one (without waiting for its end). */
@@ -209,31 +209,31 @@ export class IaLocale {
     this.installation?.controleur.abort();
   }
 
-  private async installerAvec(signal: AbortSignal, progress: (ligne: string) => void): Promise<void> {
-    const verifierAnnulation = () => {
+  private async installerAvec(signal: AbortSignal, progress: (line: string) => void): Promise<void> {
+    const checkCancel = () => {
       if (signal.aborted) throw new Error(INSTALL_CANCELLED_ERROR);
     };
-    const executer = async (cmd: string, args: string[], delayMs?: number) => {
-      verifierAnnulation();
+    const run = async (cmd: string, args: string[], delayMs?: number) => {
+      checkCancel();
       const r = await this.o.executer(cmd, args, delayMs ? { delaiMs: delayMs, signal } : { signal });
-      verifierAnnulation();
+      checkCancel();
       return r;
     };
-    const lancer = async (cmd: string, args: string[], delayMs?: number) => {
-      verifierAnnulation();
+    const launch = async (cmd: string, args: string[], delayMs?: number) => {
+      checkCancel();
       progress(`$ ${[cmd, ...args].join(" ")}`);
-      const r = await executer(cmd, args, delayMs);
+      const r = await run(cmd, args, delayMs);
       for (const l of `${r.stdout}\n${r.stderr}`.split(/\r?\n/)) if (l.trim()) progress(l);
       return r;
     };
     // 1. uv
-    if ((await lancer("uv", ["--version"], 10_000)).code !== 0) throw new Error("installe uv : brew install uv");
+    if ((await launch("uv", ["--version"], 10_000)).code !== 0) throw new Error("installe uv : brew install uv");
     // 2. Kev repo at the pinned commit, cloned aside then renamed. The clone folder belongs only to this code: what is left
     // of an interrupted clone (app killed before it could erase it) is erased before recloning.
     if (!existsSync(join(this.dossierKev, ".git"))) {
       await rm(this.dossierClone, { recursive: true, force: true });
       try {
-        const r = await lancer("git", ["clone", "--depth", "1", "--branch", TAG_KEV, DEPOT_KEV, this.dossierClone]);
+        const r = await launch("git", ["clone", "--depth", "1", "--branch", TAG_KEV, DEPOT_KEV, this.dossierClone]);
         if (r.code !== 0) throw new Error(`git clone a échoué : ${r.stderr.trim()}`);
         await rename(this.dossierClone, this.dossierKev);
       } catch (e) {
@@ -241,36 +241,36 @@ export class IaLocale {
         throw e;
       }
     }
-    const tete = await executer("git", ["-C", this.dossierKev, "rev-parse", "HEAD"]);
-    if (tete.code !== 0 || tete.stdout.trim() !== COMMIT_KEV) {
-      throw new Error(`Le commit de Kev n'est pas celui attendu (${COMMIT_KEV}) : ${tete.stdout.trim() || tete.stderr.trim()}`);
+    const head = await run("git", ["-C", this.dossierKev, "rev-parse", "HEAD"]);
+    if (head.code !== 0 || head.stdout.trim() !== COMMIT_KEV) {
+      throw new Error(`Le commit de Kev n'est pas celui attendu (${COMMIT_KEV}) : ${head.stdout.trim() || head.stderr.trim()}`);
     }
     // 3. dependencies (an interrupted sync is resumed by the next one, or by `uv run` at Kev's start)
-    const sync = await lancer("uv", ["sync", "--extra", "serve", "--project", this.dossierKev]);
+    const sync = await launch("uv", ["sync", "--extra", "serve", "--project", this.dossierKev]);
     if (sync.code !== 0) throw new Error(`uv sync a échoué : ${sync.stderr.trim()}`);
     // 4. Gemma model. Killing `ollama pull` cuts its request to the Ollama server, which stops the download and keeps its
     // chunks for resuming: they are Ollama's (shared with the user), we do not touch them.
-    const tire = await lancer("ollama", ["pull", GEMMA_MODEL]);
-    if (tire.code !== 0) throw new Error(`ollama pull a échoué : ${tire.stderr.trim()}`);
+    const pulled = await launch("ollama", ["pull", GEMMA_MODEL]);
+    if (pulled.code !== 0) throw new Error(`ollama pull a échoué : ${pulled.stderr.trim()}`);
   }
 
-  async kev(corps: { state: unknown; questions: Record<string, unknown> }, o: { signal?: AbortSignal } = {}): Promise<unknown> {
+  async kev(body: { state: unknown; questions: Record<string, unknown> }, o: { signal?: AbortSignal } = {}): Promise<unknown> {
     if (this.fermee) throw new Error(AI_CLOSED_ERROR);
-    verifierAbandon(o.signal);
+    checkAbort(o.signal);
     const model = this.kevImposee ? undefined : this.o.modeleDecision;
     if (!model) await this.assurerKev();
-    verifierAbandon(o.signal);
+    checkAbort(o.signal);
     this.dernierUsage = this.horloge();
     let r: Response;
     try {
       r = await fetch(`${model ? this.ollamaUrl : this.kevUrl}/v1/systemone`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(model ? { ...corps, model: model } : corps),
+        body: JSON.stringify(model ? { ...body, model: model } : body),
         signal: delayAnd(KEV_DELAY_MS, o.signal),
       });
     } catch (e) {
-      verifierAbandon(o.signal);
+      checkAbort(o.signal);
       throw new Error(`Kev ne répond pas : ${(e as Error).message}`);
     }
     if (!r.ok) throw new Error(`Kev a répondu ${r.status}`);
@@ -278,17 +278,17 @@ export class IaLocale {
     try {
       return ((await r.json()) as { answers: unknown }).answers;
     } catch (e) {
-      verifierAbandon(o.signal);
+      checkAbort(o.signal);
       throw e;
     }
   }
 
   async gemma(o: { prompt: string; images?: string[]; json?: boolean; signal?: AbortSignal }): Promise<string | unknown> {
     if (this.fermee) throw new Error(AI_CLOSED_ERROR);
-    verifierAbandon(o.signal);
+    checkAbort(o.signal);
     const message: Record<string, unknown> = { role: "user", content: o.prompt };
     if (o.images?.length) message.images = o.images;
-    const corps: Record<string, unknown> = {
+    const body: Record<string, unknown> = {
       model: GEMMA_MODEL,
       messages: [message],
       stream: false,
@@ -296,17 +296,17 @@ export class IaLocale {
       keep_alive: "10m",
       options: { num_ctx: 16384, temperature: 0.2 },
     };
-    if (o.json) corps.format = "json";
+    if (o.json) body.format = "json";
     let r: Response;
     try {
       r = await fetch(`${this.ollamaUrl}/api/chat`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(corps),
+        body: JSON.stringify(body),
         signal: delayAnd(GEMMA_DELAY_MS, o.signal),
       });
     } catch {
-      verifierAbandon(o.signal);
+      checkAbort(o.signal);
       throw new Error("Ollama n'est pas lancé");
     }
     if (!r.ok) throw new Error(`Ollama a répondu ${r.status}`);
@@ -314,7 +314,7 @@ export class IaLocale {
     try {
       response = (await r.json()) as { message?: { content?: string } };
     } catch (e) {
-      verifierAbandon(o.signal);
+      checkAbort(o.signal);
       throw e;
     }
     const content = response.message?.content ?? "";
@@ -343,13 +343,13 @@ export class IaLocale {
 
   /** An access for a kernel, closed with it (see AccesIa). */
   acces(): AiAccess {
-    let ferme = false;
+    let closed = false;
     // Checked before the call: kev() launches Kev synchronously, before its first await; fermer() stops it afterwards.
     return {
-      kev: (corps, o) => (ferme ? Promise.reject(new Error(AI_CLOSED_ERROR)) : this.kev(corps, o)),
-      gemma: (o) => (ferme ? Promise.reject(new Error(AI_CLOSED_ERROR)) : this.gemma(o)),
+      kev: (body, o) => (closed ? Promise.reject(new Error(AI_CLOSED_ERROR)) : this.kev(body, o)),
+      gemma: (o) => (closed ? Promise.reject(new Error(AI_CLOSED_ERROR)) : this.gemma(o)),
       fermer: async () => {
-        ferme = true;
+        closed = true;
         await this.arreter();
       },
     };
@@ -387,22 +387,22 @@ export class IaLocale {
     const gen = ++this.generation;
     this.changer("demarrage");
     const lignes: string[] = [];
-    let sortie: number | null | undefined;
+    let output: number | null | undefined;
     const p = this.lancer("uv", ["run", "--extra", "serve", "python", "-m", "kev.serve", "--run", KEV_MODEL, "--port", String(this.port)], { cwd: this.dossierKev });
     this.processus = p;
     p.surLigne?.((l) => { lignes.push(l); if (lignes.length > 20) lignes.shift(); });
-    let mort = false;
+    let dead = false;
     p.surSortie((code) => {
-      mort = true;
-      sortie = code;
+      dead = true;
+      output = code;
       if (this.processus === p) { this.processus = undefined; if (this.etatCourant === "active") this.changer("arretee"); }
     });
-    const pas = this.o.sondageMs ?? 500;
-    const fin = Date.now() + STARTUP_DELAY_MS;
-    while (Date.now() < fin) {
+    const step = this.o.sondageMs ?? 500;
+    const end = Date.now() + STARTUP_DELAY_MS;
+    while (Date.now() < end) {
       if (gen !== this.generation) return; // arreter() came through here
-      if (mort) {
-        const msg = `Kev n'a pas démarré : ${lignes.slice(-5).join("\n") || `code ${sortie}`}`;
+      if (dead) {
+        const msg = `Kev n'a pas démarré : ${lignes.slice(-5).join("\n") || `code ${output}`}`;
         this.changer("erreur", msg);
         throw new Error(msg);
       }
@@ -416,7 +416,7 @@ export class IaLocale {
           return;
         }
       } catch { /* not ready yet */ }
-      await wait(pas);
+      await wait(step);
     }
     if (gen !== this.generation) return;
     p.arreter();

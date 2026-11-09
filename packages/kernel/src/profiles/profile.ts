@@ -4,14 +4,14 @@ import { join } from "node:path";
 import { z } from "zod";
 import type { SpacePaths } from "../paths.js";
 
-const JOKERS = { mcpConfig: "{mcpConfig}", consigne: "{consigne}" } as const;
+const WILDCARDS = { mcpConfig: "{mcpConfig}", consigne: "{consigne}" } as const;
 
 export const Profile = z.object({
   id: z.string().min(1),
   nom: z.string().min(1),
   interactif: z.array(z.string()).min(1),
   // Background tasks never have access to the browser's tools (spec §8.2).
-  nonInteractif: z.array(z.string()).min(1).refine((a) => !a.includes(JOKERS.mcpConfig), {
+  nonInteractif: z.array(z.string()).min(1).refine((a) => !a.includes(WILDCARDS.mcpConfig), {
     message: "nonInteractif ne doit pas recevoir {mcpConfig}",
   }),
   configMcp: z.literal("claude-json"),
@@ -42,15 +42,15 @@ export function buildCommand(
   vars: { mcpConfig?: string; consigne?: string },
 ): string[] {
   const model = p[mode];
-  if (mode === "nonInteractif" && model.includes(JOKERS.mcpConfig)) {
+  if (mode === "nonInteractif" && model.includes(WILDCARDS.mcpConfig)) {
     throw new Error(`Profil ${p.id} : nonInteractif ne doit pas recevoir {mcpConfig}`);
   }
   return model.map((arg) => {
-    for (const [key, joker] of Object.entries(JOKERS) as [keyof typeof JOKERS, string][]) {
-      if (arg !== joker) continue;
-      const valeur = vars[key];
-      if (valeur === undefined) throw new Error(`Profil ${p.id} : variable ${key} manquante`);
-      return valeur;
+    for (const [key, wildcard] of Object.entries(WILDCARDS) as [keyof typeof WILDCARDS, string][]) {
+      if (arg !== wildcard) continue;
+      const value = vars[key];
+      if (value === undefined) throw new Error(`Profil ${p.id} : variable ${key} manquante`);
+      return value;
     }
     return arg;
   });

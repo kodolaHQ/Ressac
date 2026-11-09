@@ -2,14 +2,14 @@ import type { Action, TabCycleMessage, TabsPanel } from "../shared/api";
 import type { BrowserState, WindowId, TabId } from "../shared/model";
 import { createGrouper } from "./tabs/grouper";
 import { walkableTabs } from "../shared/walkable-tabs";
-import { advance, start, visibleWindow, noteUsage, recentOrder, retirer, type Walk } from "./recents";
+import { advance, start, visibleWindow, noteUsage, recentOrder, remove, type Walk } from "./recents";
 
 /** The panel appears only if ⌃ is still held after this delay (a quick back-and-forth does not make it blink). */
 const PANEL_DELAY_MS = 200;
 /** Capture of the tab that became active, after the fact: it never delays the tab change. */
 const CAPTURE_DELAY_MS = 1000;
 
-interface EnCours {
+interface InProgress {
   p: Walk;
   minuteur: ReturnType<typeof setTimeout> | undefined;
   /** The panel was sent to the UI (null will have to be sent to it). */
@@ -24,7 +24,7 @@ export class TabCycle {
   /** Tabs used, from most to least recent, per window. */
   private historiques = new Map<WindowId, TabId[]>();
   private actifs = new Map<WindowId, TabId | null>();
-  private parcours = new Map<WindowId, EnCours>();
+  private parcours = new Map<WindowId, InProgress>();
   private readonly delaiMs: number;
   private captures: ReturnType<typeof createGrouper>;
 
@@ -51,25 +51,25 @@ export class TabCycle {
 
   /** ⌃Tab (1) or ⌃⇧Tab (-1) from the menu. */
   parcourir(windowId: WindowId, delta: 1 | -1): void {
-    const courant = this.parcours.get(windowId);
-    if (courant) {
-      courant.p = advance(courant.p, delta);
-      if (courant.visible) this.envoyerPanneau(windowId, courant);
+    const current = this.parcours.get(windowId);
+    if (current) {
+      current.p = advance(current.p, delta);
+      if (current.visible) this.envoyerPanneau(windowId, current);
       return;
     }
     const p = start(recentOrder(this.o.etat(), windowId, this.historiques.get(windowId) ?? []), delta);
     if (!p) return;
     // Window without focus: immediate switch, like a brief press, without cycle or panel.
     if (!this.o.estFocalisee(windowId)) return this.o.agir(this.activation(windowId, p.liste[p.selection]!));
-    const enCours: EnCours = { p, minuteur: undefined, visible: false };
-    this.parcours.set(windowId, enCours);
+    const running: InProgress = { p, minuteur: undefined, visible: false };
+    this.parcours.set(windowId, running);
     // The displayed tab may have changed since its last capture: its card must be up to date.
     void this.o.capturer(windowId).catch(() => {});
-    enCours.minuteur = setTimeout(() => {
-      enCours.minuteur = undefined;
-      if (this.parcours.get(windowId) !== enCours) return;
-      enCours.visible = true;
-      this.envoyerPanneau(windowId, enCours);
+    running.minuteur = setTimeout(() => {
+      running.minuteur = undefined;
+      if (this.parcours.get(windowId) !== running) return;
+      running.visible = true;
+      this.envoyerPanneau(windowId, running);
     }, this.delaiMs);
   }
 
@@ -140,7 +140,7 @@ export class TabCycle {
       // Closed, moved to another window or outside the displayed space: the tab leaves the cycle.
       const allowed = new Set(present.has(f) ? walkableTabs(state, f) : []);
       let p: Walk | null = c.p;
-      for (const id of c.p.liste) if (p && !allowed.has(id)) p = retirer(p, id);
+      for (const id of c.p.liste) if (p && !allowed.has(id)) p = remove(p, id);
       if (p === c.p) continue;
       if (!p) this.terminer(f, undefined);
       else {
@@ -166,17 +166,17 @@ export class TabCycle {
    * belong to a sibling space with the same key, which activerOnglet would make active instead).
    */
   private activation(windowId: WindowId, id: TabId): Action {
-    const lien = this.o.etat().onglets[id]?.lien;
-    return lien?.type === "essentiel" ? { type: "ouvrirFavori", fenetreId: windowId, genre: "essentiel", id: lien.id } : { type: "activerOnglet", id };
+    const link = this.o.etat().onglets[id]?.lien;
+    return link?.type === "essentiel" ? { type: "ouvrirFavori", fenetreId: windowId, genre: "essentiel", id: link.id } : { type: "activerOnglet", id };
   }
 
-  private envoyerPanneau(windowId: WindowId, c: EnCours): void {
+  private envoyerPanneau(windowId: WindowId, c: InProgress): void {
     const state = this.o.etat();
-    const { debut, fin } = visibleWindow(c.p);
-    const cartes = c.p.liste.slice(debut, fin).map((id) => {
+    const { debut: start, fin: end } = visibleWindow(c.p);
+    const cards = c.p.liste.slice(start, end).map((id) => {
       const o = state.onglets[id];
       return { id, titre: o?.titre ?? "", favicon: o?.favicon ?? null, apercu: this.o.apercu(id) };
     });
-    this.o.envoyer(windowId, { cartes, selection: c.p.selection - debut });
+    this.o.envoyer(windowId, { cartes: cards, selection: c.p.selection - start });
   }
 }

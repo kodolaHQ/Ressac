@@ -3,7 +3,7 @@ import type { Action } from "../shared/api";
 import type { BrowserState } from "../shared/model";
 import { apply } from "../core/state/actions";
 import { initialState } from "../core/state/initial-state";
-import { advance, start, visibleWindow, noteUsage, recentOrder, retirer } from "../core/recents";
+import { advance, start, visibleWindow, noteUsage, recentOrder, remove } from "../core/recents";
 
 let n = 0;
 const genId = () => `g${++n}`;
@@ -53,10 +53,10 @@ test("avancer boucle", () => {
 
 test("retirer", () => {
   const p = { liste: ["a", "b", "c"], selection: 1 };
-  expect(retirer(p, "b")).toEqual({ liste: ["a", "c"], selection: 1 });
-  expect(retirer({ liste: ["a", "b", "c"], selection: 2 }, "c")).toEqual({ liste: ["a", "b"], selection: 1 });
-  expect(retirer({ liste: ["a", "b", "c"], selection: 2 }, "a")).toEqual({ liste: ["b", "c"], selection: 1 });
-  expect(retirer({ liste: ["a", "b"], selection: 1 }, "a")).toBeNull();
+  expect(remove(p, "b")).toEqual({ liste: ["a", "c"], selection: 1 });
+  expect(remove({ liste: ["a", "b", "c"], selection: 2 }, "c")).toEqual({ liste: ["a", "b"], selection: 1 });
+  expect(remove({ liste: ["a", "b", "c"], selection: 2 }, "a")).toEqual({ liste: ["b", "c"], selection: 1 });
+  expect(remove({ liste: ["a", "b"], selection: 1 }, "a")).toBeNull();
 });
 
 test("fenetreVisible", () => {

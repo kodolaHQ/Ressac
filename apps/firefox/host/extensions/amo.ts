@@ -14,7 +14,7 @@ export const KEYS_ABSENT = "Clés AMO absentes : ajoute-les au trousseau macOS (
 export const deniedSignature = (m: string) => "Signature refusée par addons.mozilla.org : " + m.slice(0, 2000);
 export const SLOW_SIGNATURE = "Signature trop longue : addons.mozilla.org n'a pas rendu le module à temps. Réessaie recharger_extension.";
 export const signatureImpossible = (m: string) => "Signature impossible (réseau ou addons.mozilla.org) : " + m;
-export const VERSION_QUATRE = "version : trois nombres au plus (WebAiOs ajoute le quatrième)";
+export const VERSION_FOUR = "version : trois nombres au plus (WebAiOs ajoute le quatrième)";
 export const GECKO_ID = "browser_specific_settings.gecko.id refusé : WebAiOs pose l'identifiant";
 export const STORE_ABSENT = "Le Chrome Web Store n'est pas pris en charge : installe tes modules depuis addons.mozilla.org.";
 
@@ -52,9 +52,9 @@ export async function readAmoKey(env: NodeJS.ProcessEnv = process.env, o: { comm
 function token(k: AmoKey): string {
   const b64 = (b: Buffer | string) => Buffer.from(b).toString("base64url");
   const iat = Math.floor(Date.now() / 1000);
-  const tete = b64(JSON.stringify({ alg: "HS256", typ: "JWT" }));
-  const corps = b64(JSON.stringify({ iss: k.emetteur, jti: randomUUID(), iat, exp: iat + 60 }));
-  return `${tete}.${corps}.${b64(createHmac("sha256", k.secret).update(`${tete}.${corps}`).digest())}`;
+  const head = b64(JSON.stringify({ alg: "HS256", typ: "JWT" }));
+  const payload = b64(JSON.stringify({ iss: k.emetteur, jti: randomUUID(), iat, exp: iat + 60 }));
+  return `${head}.${payload}.${b64(createHmac("sha256", k.secret).update(`${head}.${payload}`).digest())}`;
 }
 
 export class SignatureError extends Error {}
@@ -64,7 +64,7 @@ export class SignatureError extends Error {}
  * version (POST), wait for the signed file, download it to `sortie`.
  * `delai` and `pasMs` (total wait, polling step) are only there for tests.
  */
-export async function signer(o: {
+export async function sign(o: {
   xpi: string;
   guid: string;
   version: string;
@@ -76,17 +76,17 @@ export async function signer(o: {
   pasMs?: number;
 }): Promise<void> {
   const api = `${o.base}/api/v5`;
-  const fin = Date.now() + (o.delai ?? SIGNATURE_DELAY_MS);
-  const pas = o.pasMs ?? 2000;
+  const end = Date.now() + (o.delai ?? SIGNATURE_DELAY_MS);
+  const step = o.pasMs ?? 2000;
   const addon = `/addons/addon/${encodeURIComponent(o.guid)}/`;
 
-  async function amo(method: string, path: string, corps?: FormData | object): Promise<{ status: number; body: any }> {
+  async function amo(method: string, path: string, payload?: FormData | object): Promise<{ status: number; body: any }> {
     let res: Response;
     try {
       res = await fetch(path.startsWith("http") ? path : api + path, {
         method: method,
-        headers: { Authorization: `JWT ${token(o.cle)}`, ...(corps && !(corps instanceof FormData) ? { "Content-Type": "application/json" } : {}) },
-        body: corps instanceof FormData ? corps : corps ? JSON.stringify(corps) : undefined,
+        headers: { Authorization: `JWT ${token(o.cle)}`, ...(payload && !(payload instanceof FormData) ? { "Content-Type": "application/json" } : {}) },
+        body: payload instanceof FormData ? payload : payload ? JSON.stringify(payload) : undefined,
         signal: o.signal,
       });
     } catch (e) {
@@ -103,12 +103,12 @@ export async function signer(o: {
   }
   const denial = (r: { status: number; body: any }) => new SignatureError(deniedSignature(typeof r.body === "string" ? r.body : JSON.stringify(r.body)));
   const wait = async () => {
-    if (Date.now() + pas > fin) throw new SignatureError(SLOW_SIGNATURE);
+    if (Date.now() + step > end) throw new SignatureError(SLOW_SIGNATURE);
     o.signal?.throwIfAborted();
     await new Promise<void>((resolve, reject) => {
       const finished = () => (clearTimeout(t), o.signal?.removeEventListener("abort", cancelled), resolve());
       const cancelled = () => (clearTimeout(t), reject(o.signal!.reason));
-      const t = setTimeout(finished, pas);
+      const t = setTimeout(finished, step);
       o.signal?.addEventListener("abort", cancelled, { once: true });
     });
   };
@@ -133,8 +133,8 @@ export async function signer(o: {
 
   const exists = await amo("GET", addon);
   if (exists.status !== 404 && exists.status >= 300) throw denial(exists);
-  const cree = exists.status === 404 ? await amo("PUT", addon, { version: { upload: u.uuid } }) : await amo("POST", `${addon}versions/`, { upload: u.uuid });
-  if (cree.status >= 300) throw denial(cree);
+  const created = exists.status === 404 ? await amo("PUT", addon, { version: { upload: u.uuid } }) : await amo("POST", `${addon}versions/`, { upload: u.uuid });
+  if (created.status >= 300) throw denial(created);
 
   let v: any;
   for (;;) {

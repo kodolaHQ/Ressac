@@ -5,14 +5,14 @@ import { z } from "zod";
 import { containerPortRange } from "../container/workshop.js";
 import { generateToken } from "../mcp/server.js";
 import { writePrivateJson } from "./atomic-write.js";
-import { idExterne, type ClientExterne, type ExternalProject } from "./projects.js";
+import { externalId, type ExternalClient, type ExternalProject } from "./projects.js";
 
 export const FOLDER_NOT_ABSOLUTE = "Le dossier doit être un chemin absolu.";
 export const FOLDER_NOT_FOUND = "Ce dossier n'existe pas sur le Mac.";
 export const FOLDER_TOO_LARGE = "Ce dossier est trop large : ni /, ni le dossier personnel.";
 export const SPACE_FOLDER = "Ce dossier est dans l'espace de WebAiOs : ses applis se relisent depuis la page Applications.";
 export const UNREADABLE_WARNING = "WebAiOs ne peut pas lire ce dossier : la relecture sera indisponible tant que l'utilisateur n'a pas donné l'accès";
-export const portRefuse = (p: number): string =>
+export const deniedPort = (p: number): string =>
   `Port ${p} refusé : entre 1024 et 65535, hors des ports du conteneur de WebAiOs (${containerPortRange().join("–")} et ceux des applis).`;
 
 const ProjectSchema = z.object({
@@ -30,18 +30,18 @@ const CLIENTS_FILE = "clients-externes.json";
 
 export interface OptionsDeclaration { plages: [number, number][]; racineEspace: string; maison: string }
 
-const dedans = (dossier: string, root: string): boolean => {
-  const r = relative(root, dossier);
+const inside = (folder: string, root: string): boolean => {
+  const r = relative(root, folder);
   return r === "" || (r !== ".." && !r.startsWith(`..${sep}`) && !isAbsolute(r));
 };
 
-async function lire<T>(file: string, schema: z.ZodType<T>): Promise<T[]> {
-  let brut: string;
-  try { brut = await readFile(file, "utf8"); } catch { return []; }
+async function read<T>(file: string, schema: z.ZodType<T>): Promise<T[]> {
+  let raw: string;
+  try { raw = await readFile(file, "utf8"); } catch { return []; }
   try {
-    const valeur = JSON.parse(brut);
-    if (!Array.isArray(valeur)) throw new Error("liste attendue");
-    return valeur.map((v) => schema.parse(v));
+    const value = JSON.parse(raw);
+    if (!Array.isArray(value)) throw new Error("liste attendue");
+    return value.map((v) => schema.parse(v));
   } catch {
     try { await copyFile(file, `${file}.abime-${new Date().toISOString().replace(/[:.]/g, "-")}`); } catch { /* best-effort copy */ }
     return [];
@@ -52,16 +52,16 @@ export class ExternalRegistry {
   private ecritures: Promise<unknown> = Promise.resolve();
   private readonly ecouteurs = new Set<() => void>();
 
-  private constructor(private readonly prive: string, private liste: ExternalProject[], private lesClients: ClientExterne[]) {}
+  private constructor(private readonly prive: string, private liste: ExternalProject[], private lesClients: ExternalClient[]) {}
 
   static async ouvrir(isPrivate: string): Promise<ExternalRegistry> {
-    const projects = await lire(join(isPrivate, PROJECTS_FILE), ProjectSchema);
-    const clients = await lire(join(isPrivate, CLIENTS_FILE), SchemaClient);
+    const projects = await read(join(isPrivate, PROJECTS_FILE), ProjectSchema);
+    const clients = await read(join(isPrivate, CLIENTS_FILE), SchemaClient);
     return new ExternalRegistry(isPrivate, projects, clients);
   }
 
   projets(): ExternalProject[] { return this.liste.map((p) => ({ ...p, ports: [...p.ports] })); }
-  clients(): ClientExterne[] { return this.lesClients.map((c) => ({ ...c })); }
+  clients(): ExternalClient[] { return this.lesClients.map((c) => ({ ...c })); }
 
   surChange(f: () => void): () => void {
     this.ecouteurs.add(f);
@@ -73,7 +73,7 @@ export class ExternalRegistry {
   }
 
   // Computes the new state, writes it (clients first), and only then adopts it in memory.
-  private modifier<T>(computation: () => { projets?: ExternalProject[]; clients?: ClientExterne[]; resultat: T }): Promise<T> {
+  private modifier<T>(computation: () => { projets?: ExternalProject[]; clients?: ExternalClient[]; resultat: T }): Promise<T> {
     const tache = this.ecritures.then(async () => {
       const { projets: projects, clients, resultat: result } = computation();
       if (clients) await this.ecrireFichier(CLIENTS_FILE, clients);
@@ -87,9 +87,9 @@ export class ExternalRegistry {
     return tache;
   }
 
-  async brancher(name: string): Promise<{ client: ClientExterne; jeton: string }> {
+  async brancher(name: string): Promise<{ client: ExternalClient; jeton: string }> {
     const token = generateToken();
-    const client: ClientExterne = {
+    const client: ExternalClient = {
       id: randomBytes(6).toString("hex"),
       nom: name.trim() || "Claude Code",
       empreinte: createHash("sha256").update(token).digest("hex"),
@@ -99,9 +99,9 @@ export class ExternalRegistry {
     return { client: { ...client }, jeton: token };
   }
 
-  clientDuJeton(token: string): ClientExterne | null {
+  clientDuJeton(token: string): ExternalClient | null {
     const hash = createHash("sha256").update(token).digest();
-    let found: ClientExterne | null = null;
+    let found: ExternalClient | null = null;
     for (const c of this.lesClients) {
       const other = Buffer.from(c.empreinte, "hex");
       if (other.length === hash.length && timingSafeEqual(other, hash)) found = c;
@@ -123,44 +123,44 @@ export class ExternalRegistry {
     o: OptionsDeclaration,
   ): Promise<{ projet: ExternalProject; premiere: boolean; lisible: boolean }> {
     if (!isAbsolute(d.dossier)) throw new Error(FOLDER_NOT_ABSOLUTE);
-    let reel: string;
+    let real: string;
     try {
-      reel = await realpath(d.dossier);
-      if (!(await stat(reel)).isDirectory()) throw new Error("pas un dossier");
+      real = await realpath(d.dossier);
+      if (!(await stat(real)).isDirectory()) throw new Error("pas un dossier");
     } catch { throw new Error(FOLDER_NOT_FOUND); }
     let homeDir = o.maison;
     try { homeDir = await realpath(o.maison); } catch { /* raw path */ }
-    if (reel === sep || reel === homeDir || reel === o.maison) throw new Error(FOLDER_TOO_LARGE);
+    if (real === sep || real === homeDir || real === o.maison) throw new Error(FOLDER_TOO_LARGE);
     let space = o.racineEspace;
     try { space = await realpath(o.racineEspace); } catch { /* raw path */ }
-    if (dedans(reel, space) || dedans(reel, o.racineEspace)) throw new Error(SPACE_FOLDER);
+    if (inside(real, space) || inside(real, o.racineEspace)) throw new Error(SPACE_FOLDER);
     if (d.ports.length < 1 || d.ports.length > 10) throw new Error("Entre 1 et 10 ports.");
     for (const p of d.ports) {
       if (!Number.isInteger(p) || p < 1024 || p > 65535 || o.plages.some(([min, max]) => p >= min && p <= max)) {
-        throw new Error(portRefuse(p));
+        throw new Error(deniedPort(p));
       }
     }
     let readable = true;
-    try { await readdir(reel); } catch (e) {
+    try { await readdir(real); } catch (e) {
       const code = (e as NodeJS.ErrnoException).code;
       if (code === "EACCES" || code === "EPERM") readable = false;
     }
-    const id = idExterne(reel);
+    const id = externalId(real);
     const ports = [...new Set(d.ports)];
     return this.modifier(() => {
       const existing = this.liste.find((p) => p.id === id);
-      const name = d.nom?.trim() || existing?.nom || basename(reel);
-      const project: ExternalProject = { id, nom: name, dossier: reel, ports, client, declare: existing?.declare ?? new Date().toISOString() };
+      const name = d.nom?.trim() || existing?.nom || basename(real);
+      const project: ExternalProject = { id, nom: name, dossier: real, ports, client, declare: existing?.declare ?? new Date().toISOString() };
       const others = this.liste.filter((p) => p.id !== id).map((p) => ({ ...p, ports: p.ports.filter((x) => !ports.includes(x)) }));
       const projects = existing ? this.liste.map((p) => (p.id === id ? project : others.find((a) => a.id === p.id)!)) : [...others, project];
       return { projets: projects, resultat: { projet: { ...project, ports: [...ports] }, premiere: !existing, lisible: readable } };
     });
   }
 
-  async projetDe(client: string, dossier: string): Promise<ExternalProject | null> {
-    let reel: string;
-    try { reel = await realpath(dossier); } catch { return null; }
-    const p = this.liste.find((x) => x.dossier === reel && x.client === client);
+  async projetDe(client: string, folder: string): Promise<ExternalProject | null> {
+    let real: string;
+    try { real = await realpath(folder); } catch { return null; }
+    const p = this.liste.find((x) => x.dossier === real && x.client === client);
     return p ? { ...p, ports: [...p.ports] } : null;
   }
 

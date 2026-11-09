@@ -5,14 +5,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { afterEach, describe, expect, it } from "vitest";
-import { NO_WORKFLOW_OPEN, CONSOLE_UNLOCKED, CONSOLE_BACKGROUND_HIDDEN, CONSOLE_FOND_OBSERVE, REQUEST_REMOVED, PRIVATE_PROFILE_ERROR, hiddenTabs, navigationOutsideSite } from "../../../packages/kernel/src/index";
+import { NO_WORKFLOW_OPEN, CONSOLE_UNLOCKED, CONSOLE_BACKGROUND_HIDDEN, OBSERVED_BACKGROUND_CONSOLE, REQUEST_REMOVED, PRIVATE_PROFILE_ERROR, hiddenTabs, navigationOutsideSite } from "../../../packages/kernel/src/index";
 import { PRIVATE_TEXT } from "../../../packages/kernel/src/mcp/pont";
 import { DISABLED_CRASHES } from "../shared/extensions-messages";
 import { hostPath, nodePath, tsxPath } from "../scripts/paths";
 import { createRpc, type Handler, type Rpc } from "../shared/rpc";
 import { installationImpossible, NOTHING_TO_REVIEW } from "../host/extensions/agent";
 import { KEYS_ABSENT, deniedSignature } from "../host/extensions/amo";
-import type { CarteExtension, GrantResponse } from "../shared/extensions";
+import type { ExtensionCard, GrantResponse } from "../shared/extensions";
 import { startFakeAmo } from "./fake-amo";
 import { callMcpTool } from "./mcp";
 
@@ -43,7 +43,7 @@ function startHost(env: Record<string, string> = {}, prepare?: (dataDir: string)
   const dataDir = o.dataDir ?? realpathSync(mkdtempSync(join(tmpdir(), "webaios-host-")));
   prepare?.(dataDir);
   const root = join(dataDir, "espace");
-  const journal = join(dataDir, "docker.log");
+  const log = join(dataDir, "docker.log");
   const { WEBAIOS_CONTENEUR: _, WEBAIOS_PORTS_CONTENEUR: __, ...parent } = process.env;
   const child = spawn(nodePath, ["--import", tsxPath, hostPath], {
     env: {
@@ -51,7 +51,7 @@ function startHost(env: Record<string, string> = {}, prepare?: (dataDir: string)
       WEBAIOS_DATA_DIR: dataDir,
       // The fake docker and fake agent write their traces there.
       WEBAIOS_RACINE: root,
-      FAUX_DOCKER_JOURNAL: journal,
+      FAUX_DOCKER_JOURNAL: log,
       WEBAIOS_HOST_TEST: "1",
       PATH: `${tools}:${process.env.PATH}`,
       // A free port: never the real 5279.
@@ -78,7 +78,7 @@ function startHost(env: Record<string, string> = {}, prepare?: (dataDir: string)
   });
   createInterface({ input: child.stdout }).on("line", (l) => rpc.receive(l));
   const exited = new Promise<number | null>((r) => child.on("exit", (code) => (rpc.close(`host exited: ${err}`), r(code))));
-  const h = { child, rpc, dataDir, racine: root, journal, stderr: () => err, donnees: () => data, etats: states, exited };
+  const h = { child, rpc, dataDir, racine: root, journal: log, stderr: () => err, donnees: () => data, etats: states, exited };
   hosts.push(h);
   return h;
 }
@@ -286,9 +286,9 @@ describe("agent host", { timeout: 30_000 }, () => {
     const site = { id: "site:vidola", titre: "Vidola", url: "https://vidola.test/", espace: "", site: "vidola", domaine: "vidola.test", empreinte: "e" };
     const navigations: string[] = [];
     const h = startHost({}, (dataDir) => {
-      const dossier = join(dataDir, "espace", "sites", "vidola");
-      mkdirSync(dossier, { recursive: true });
-      writeFileSync(join(dossier, "site.json"), JSON.stringify({ nom: "Vidola", adresse: "https://vidola.test/", domaines: ["vidola.test"], connexion: ["compte.test"] }));
+      const folder = join(dataDir, "espace", "sites", "vidola");
+      mkdirSync(folder, { recursive: true });
+      writeFileSync(join(folder, "site.json"), JSON.stringify({ nom: "Vidola", adresse: "https://vidola.test/", domaines: ["vidola.test"], connexion: ["compte.test"] }));
     }, {
       handlers: {
         listerOnglets: () => [...tabs, site],
@@ -319,8 +319,8 @@ describe("agent host", { timeout: 30_000 }, () => {
 });
 
 describe("history", { timeout: 30_000 }, () => {
-  const visit = (h: Host, url: string, titre: string, o: { prive?: boolean; espaceId?: string } = {}) =>
-    h.rpc.notify("historique.noter", { url, titre, espaceId: o.espaceId ?? "e1", prive: o.prive ?? false });
+  const visit = (h: Host, url: string, title: string, o: { prive?: boolean; espaceId?: string } = {}) =>
+    h.rpc.notify("historique.noter", { url, titre: title, espaceId: o.espaceId ?? "e1", prive: o.prive ?? false });
 
   // A notification runs a microtask after its line, a request at once: a round trip lets the notifications before it land.
   const settle = (h: Host) => h.rpc.request("acces.etat");
@@ -387,7 +387,7 @@ describe("history", { timeout: 30_000 }, () => {
 
 describe("agent extensions", { timeout: 60_000 }, () => {
   const HOST = "http://127.0.0.1/*";
-  const ACCORD = { permissions: [], hotes: [HOST], reseau: [], tousLesSites: false, scriptsTousLesSites: false, scripts: true };
+  const GRANT = { permissions: [], hotes: [HOST], reseau: [], tousLesSites: false, scriptsTousLesSites: false, scripts: true };
   const ID = "ma-ext@agent.webaios";
   const amos: Awaited<ReturnType<typeof startFakeAmo>>[] = [];
   afterEach(async () => {
@@ -408,12 +408,12 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     writeFileSync(join(dir, "fond.js"), "console.log('fond');\n");
     writeFileSync(join(dir, "cache.css"), o.css ?? "#cache-moi { display: none }\n");
   };
-  const grant = (dataDir: string, profiles = ["defaut"], accord: unknown = ACCORD) => {
+  const grant = (dataDir: string, profiles = ["defaut"], grant: unknown = GRANT) => {
     mkdirSync(join(dataDir, "extensions"), { recursive: true });
-    const entree = { source: "agent", idChrome: null, nom: "Cacheur", version: "1.0.0", accord, profils: profiles, epinglee: false, modifieeLe: null, desactivee: null, majEnAttente: null, vues: {} };
-    writeFileSync(join(dataDir, "extensions", "etat.json"), JSON.stringify({ version: 1, toutesCoupees: false, extensions: { "agent:ma-ext": entree } }));
+    const entry = { source: "agent", idChrome: null, nom: "Cacheur", version: "1.0.0", accord: grant, profils: profiles, epinglee: false, modifieeLe: null, desactivee: null, majEnAttente: null, vues: {} };
+    writeFileSync(join(dataDir, "extensions", "etat.json"), JSON.stringify({ version: 1, toutesCoupees: false, extensions: { "agent:ma-ext": entry } }));
   };
-  const entree = (dataDir: string) => (JSON.parse(readFileSync(join(dataDir, "extensions", "etat.json"), "utf8")) as { extensions: Record<string, any> }).extensions["agent:ma-ext"];
+  const entry = (dataDir: string) => (JSON.parse(readFileSync(join(dataDir, "extensions", "etat.json"), "utf8")) as { extensions: Record<string, any> }).extensions["agent:ma-ext"];
 
   /**
    * Firefox's side, as the chrome does it: an inactive add-on is never installed fresh, the same version is not
@@ -435,14 +435,14 @@ describe("agent extensions", { timeout: 60_000 }, () => {
       casse: false,
       espaces: [{ id: "e1", nom: "Perso", profil: "defaut", prive: false }] as { id: string; nom: string; profil: string; prive: boolean }[],
       /** The grant cards asked, and the answer given to each (default: Activer). */
-      cartes: [] as CarteExtension[],
+      cartes: [] as ExtensionCard[],
       /** Every extensions.portees notification, in order. */
       portees: [] as Record<string, unknown>[],
       /** Every extensions.rechargerOnglets notification. */
       recharges: [] as unknown[],
       /** Every extensions.redemarrer request (an unchanged reload). */
       redemarrages: [] as string[],
-      reponse: (c: CarteExtension): GrantResponse => ({ accepte: true, empreinte: c.empreinte }),
+      reponse: (c: ExtensionCard): GrantResponse => ({ accepte: true, empreinte: c.empreinte }),
       handlers: {} as Record<string, Handler>,
     };
     f.handlers = {
@@ -458,7 +458,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
       "extensions.activer": (p: { addonId: string; actif: boolean }) => void activations.push(p),
       "extensions.redemarrer": (p: { addonId: string }) => void f.redemarrages.push(p.addonId),
       "extensions.desinstaller": (p: { addonId: string }) => void (uninstalls.push(p.addonId), presents.delete(p.addonId)),
-      "extensions.accord": (p: { carte: CarteExtension }) => (f.cartes.push(p.carte), f.reponse(p.carte)),
+      "extensions.accord": (p: { carte: ExtensionCard }) => (f.cartes.push(p.carte), f.reponse(p.carte)),
       "navigateur.espaces": () => ({ espaces: f.espaces, fenetres: [{ id: "f1", espaceActif: "e1" }], premierPlan: "f1" }),
       "extensions.portees": (p: Record<string, unknown>) => void f.portees.push(p),
       "extensions.rechargerOnglets": (p: unknown) => void f.recharges.push(p),
@@ -493,9 +493,9 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     expect(amo.envois.map((e) => [e.guid, e.version])).toEqual([[ID, "1.0.0.1"]]);
     expect(f.installs).toEqual([expect.objectContaining({ addonId: ID, version: "1.0.0.1", temporaire: true })]);
     expect(f.activations).toEqual([{ addonId: ID, actif: true }]);
-    expect(entree(h.dataDir)).toMatchObject({ idChrome: ID, accord: ACCORD, desactivee: null });
+    expect(entry(h.dataDir)).toMatchObject({ idChrome: ID, accord: GRANT, desactivee: null });
     // Sent first at startup (before the install), then after each registry change.
-    const scope = { [ID]: { cle: "agent:ma-ext", accord: ACCORD, profils: ["defaut"], actif: true } };
+    const scope = { [ID]: { cle: "agent:ma-ext", accord: GRANT, profils: ["defaut"], actif: true } };
     expect(f.portees[0]).toEqual(scope);
     expect(f.portees.at(-1)).toEqual(scope);
     await stop(h);
@@ -526,7 +526,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     h = launch(amo, f, { dataDir: h.dataDir });
     await h.rpc.request("extensions.pret", {});
     expect(f.installs.map((i) => i.version)).toEqual(["1.0.0.1", "1.0.0.2"]);
-    expect(entree(h.dataDir).desactivee).toBeNull();
+    expect(entry(h.dataDir).desactivee).toBeNull();
     await stop(h);
 
     source(h.dataDir, { hotes: [HOST, "https://exemple.com/*"] });
@@ -535,7 +535,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     await h.rpc.request("extensions.pret", {});
     expect(amo.envois).toHaveLength(2);
     expect(f.installs).toHaveLength(2);
-    expect(entree(h.dataDir)).toMatchObject({ accord: ACCORD, desactivee: { raison: "portee-elargie" } });
+    expect(entry(h.dataDir)).toMatchObject({ accord: GRANT, desactivee: { raison: "portee-elargie" } });
     expect(f.activations).toEqual([{ addonId: ID, actif: false }]);
   });
 
@@ -578,7 +578,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     let h = launch(amo, f, { prepare });
     await h.rpc.request("extensions.pret", {});
     h.rpc.notify("extensions.horsWebaios", { addonId: ID, quoi: "desinstallee" });
-    await until(() => entree(h.dataDir) === undefined);
+    await until(() => entry(h.dataDir) === undefined);
     await until(() => JSON.stringify(f.portees.at(-1)) === "{}");
     expect(existsSync(join(h.dataDir, "extensions", "signes", "ma-ext.xpi"))).toBe(false);
     await stop(h);
@@ -598,7 +598,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     await h.rpc.request("extensions.pret", {});
     await h.rpc.request("extensions.horsWebaios", { addonId: ID, quoi: "desinstallee" });
     expect(requests).toEqual([{ addonId: ID, unlessUndone: true }]);
-    expect(entree(h.dataDir)).toMatchObject({ accord: ACCORD, profils: ["defaut"] });
+    expect(entry(h.dataDir)).toMatchObject({ accord: GRANT, profils: ["defaut"] });
     expect(existsSync(join(h.dataDir, "extensions", "signes", "ma-ext.xpi"))).toBe(true);
   });
 
@@ -626,14 +626,14 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     await h.rpc.request("extensions.pret", {});
     const registry = () => JSON.parse(readFileSync(join(h.dataDir, "extensions", "etat.json"), "utf8"));
     await h.rpc.request("extensions.aTourne", { addonId: ID, profil: "defaut", lisible: true });
-    expect(entree(h.dataDir)?.consoleMasquee).toBeUndefined();
+    expect(entry(h.dataDir)?.consoleMasquee).toBeUndefined();
     for (let i = 0; i < 2; i++) await h.rpc.request("extensions.aTourne", { addonId: ID, profil: "defaut", lisible: false });
     await h.rpc.request("extensions.aTourne", { addonId: "autre@mozilla.org", profil: "defaut", lisible: false });
-    expect(entree(h.dataDir)?.consoleMasquee).toEqual(["defaut"]);
+    expect(entry(h.dataDir)?.consoleMasquee).toEqual(["defaut"]);
     expect(registry().consolesMasquees).toEqual([ID]);
     // Never emptied: it outlives « Supprimer ».
     h.rpc.notify("extensions.horsWebaios", { addonId: ID, quoi: "desinstallee" });
-    await until(() => entree(h.dataDir) === undefined);
+    await until(() => entry(h.dataDir) === undefined);
     expect(registry().consolesMasquees).toEqual([ID]);
   });
 
@@ -641,7 +641,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     const amo = await fakeAmo();
     const f = firefox();
     // No site nor observing right: its background's console shows until it runs in a tab the agent cannot read.
-    const h = launch(amo, f, { prepare: (d) => grant(d, ["defaut"], { ...ACCORD, hotes: [], scripts: false }) });
+    const h = launch(amo, f, { prepare: (d) => grant(d, ["defaut"], { ...GRANT, hotes: [], scripts: false }) });
     await h.rpc.request("demarrer", { profilAgent: "claude" });
     const m = (text: string) => ({ horodatage: Date.now(), niveau: "log", texte: text });
     h.rpc.notify("extensions.console", { addonId: ID, m: m("fond démarré"), onglet: null });
@@ -668,28 +668,28 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     const amo = await fakeAmo();
     const f = firefox();
     const requests: unknown[] = [];
-    let issue = "autoriser";
-    f.handlers["extensions.deblocage"] = (p: unknown) => (requests.push(p), issue);
+    let outcome = "autoriser";
+    f.handlers["extensions.deblocage"] = (p: unknown) => (requests.push(p), outcome);
     const h = launch(amo, f, { prepare });
     await h.rpc.request("extensions.pret", {});
     h.rpc.notify("extensions.console", { addonId: ID, m: { horodatage: Date.now(), niveau: "log", texte: "fond démarré" }, onglet: null });
     // A site: its background is always masked (observing right).
-    expect(await tool(h, "console_extension", { id: "ma-ext" })).toContain(CONSOLE_FOND_OBSERVE);
+    expect(await tool(h, "console_extension", { id: "ma-ext" })).toContain(OBSERVED_BACKGROUND_CONSOLE);
     expect(await tool(h, "debloquer_console", { id: "ma-ext", raison: "r".repeat(300) })).toContain("Console débloquée");
     expect(requests).toEqual([{ nom: "Cacheur", espaces: ["Perso"], raison: "r".repeat(200), agent: expect.any(String), fenetre: null }]);
     let t = await tool(h, "console_extension", { id: "ma-ext" });
     expect(t).toContain("fond démarré");
     expect(t).toContain(CONSOLE_UNLOCKED);
     expect(await tool(h, "refermer_console", { id: "ma-ext" })).toContain("refermée");
-    expect(await tool(h, "console_extension", { id: "ma-ext" })).toContain(CONSOLE_FOND_OBSERVE);
+    expect(await tool(h, "console_extension", { id: "ma-ext" })).toContain(OBSERVED_BACKGROUND_CONSOLE);
     // Unlocked again, then reloaded (a new copy): masked again.
     await tool(h, "debloquer_console", { id: "ma-ext", raison: "r" });
     expect(await tool(h, "recharger_extension", { id: "ma-ext" })).toBe("etat : rechargee");
     t = await tool(h, "console_extension", { id: "ma-ext" });
     expect(t).not.toContain("fond démarré");
-    expect(t).toContain(CONSOLE_FOND_OBSERVE);
+    expect(t).toContain(OBSERVED_BACKGROUND_CONSOLE);
     // Refused: « Déblocage refusé ».
-    issue = "refuser";
+    outcome = "refuser";
     expect(await tool(h, "debloquer_console", { id: "ma-ext", raison: "r" })).toBe("Refusée par l'utilisateur.");
   });
 
@@ -713,7 +713,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     await h.rpc.request("extensions.pret", { horsWebaios: [{ addonId: ID, quoi: "desinstallee" }] });
     expect(f.installs).toEqual([]);
     expect(amo.envois).toEqual([]);
-    expect(entree(h.dataDir)).toBeUndefined();
+    expect(entry(h.dataDir)).toBeUndefined();
   });
 
   it("a failed startup can be retried by a later pret", async () => {
@@ -746,7 +746,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     f.espaces[0]!.prive = true;
     h.rpc.notify("extensions.profilsPrives", { prives: ["defaut"] });
     await until(() => f.activations.at(-1)?.actif === false);
-    expect(entree(h.dataDir).profils).toEqual([]);
+    expect(entry(h.dataDir).profils).toEqual([]);
     expect(f.recharges).toEqual([{ addonId: ID, profils: ["defaut"] }]);
   });
 
@@ -756,19 +756,19 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     f.espaces.push({ id: "e2", nom: "Lecture", profil: "defaut", prive: false }, { id: "e3", nom: "Secret", profil: "secret", prive: true });
     const h = launch(amo, f, { prepare: (d) => (prepare(d), mkdirSync(join(d, "espace", "extensions", "jamais"), { recursive: true })) });
     await h.rpc.request("extensions.pret", {});
-    const ligne = { cle: "agent:ma-ext", nom: "Cacheur", source: "agent", active: true, aussiDans: ["Lecture"], grisee: null, profils: ["defaut"] };
+    const line = { cle: "agent:ma-ext", nom: "Cacheur", source: "agent", active: true, aussiDans: ["Lecture"], grisee: null, profils: ["defaut"] };
     const never = { cle: "agent:jamais", nom: "jamais", source: "agent", active: false, aussiDans: [], grisee: null, profils: [] };
-    expect(await h.rpc.request("extensions.pourEspace", { espaceId: "e1" })).toEqual([ligne, never]);
+    expect(await h.rpc.request("extensions.pourEspace", { espaceId: "e1" })).toEqual([line, never]);
     expect(await h.rpc.request("extensions.pourEspace", { espaceId: "e3" })).toEqual([
-      { ...ligne, active: false, aussiDans: [], grisee: PRIVATE_PROFILE_ERROR },
+      { ...line, active: false, aussiDans: [], grisee: PRIVATE_PROFILE_ERROR },
       { ...never, grisee: PRIVATE_PROFILE_ERROR },
     ]);
     expect(await h.rpc.request("extensions.basculer", { cle: "agent:ma-ext", espaceId: "e3", actif: true })).toEqual({ ok: false, erreur: PRIVATE_PROFILE_ERROR });
     expect(await h.rpc.request("extensions.basculer", { cle: "agent:ma-ext", espaceId: "e1", actif: false })).toEqual({ ok: true });
-    expect(entree(h.dataDir).profils).toEqual([]);
+    expect(entry(h.dataDir).profils).toEqual([]);
     expect(f.activations.at(-1)).toEqual({ addonId: ID, actif: false });
     expect(await h.rpc.request("extensions.basculer", { cle: "agent:ma-ext", espaceId: "e2", actif: true })).toEqual({ ok: true });
-    expect(entree(h.dataDir).profils).toEqual(["defaut"]);
+    expect(entry(h.dataDir).profils).toEqual(["defaut"]);
     expect(f.activations.at(-1)).toEqual({ addonId: ID, actif: true });
     expect(f.cartes).toEqual([]);
     // Never granted: through its card.
@@ -782,19 +782,19 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     f.espaces.push({ id: "e2", nom: "Secret", profil: "secret", prive: true });
     const h = launch(amo, f, { prepare: (d) => (source(d), grant(d, ["defaut", "secret"])) });
     await h.rpc.request("extensions.pret", {});
-    expect(entree(h.dataDir).profils).toEqual(["defaut"]);
+    expect(entry(h.dataDir).profils).toEqual(["defaut"]);
   });
 
   it("demander_extension: refused, nothing sent; Activer: signed and installed, then granted, « Activée »", async () => {
     const amo = await fakeAmo();
     const f = firefox();
     // Nothing granted while the card shows, nor while it installs: the grant is written after the install.
-    const accord = f.handlers["extensions.accord"]!;
-    const installer = f.handlers["extensions.installer"]!;
-    const sansAccord: boolean[] = [];
-    const notGranted = () => !existsSync(join(h.dataDir, "extensions", "etat.json")) || !entree(h.dataDir)?.accord;
-    f.handlers["extensions.accord"] = (p, s) => (sansAccord.push(notGranted()), accord(p, s));
-    f.handlers["extensions.installer"] = (p, s) => (sansAccord.push(notGranted()), installer(p, s));
+    const grant = f.handlers["extensions.accord"]!;
+    const install = f.handlers["extensions.installer"]!;
+    const withoutGrant: boolean[] = [];
+    const notGranted = () => !existsSync(join(h.dataDir, "extensions", "etat.json")) || !entry(h.dataDir)?.accord;
+    f.handlers["extensions.accord"] = (p, s) => (withoutGrant.push(notGranted()), grant(p, s));
+    f.handlers["extensions.installer"] = (p, s) => (withoutGrant.push(notGranted()), install(p, s));
     const h = launch(amo, f, { prepare: source });
     f.reponse = (c) => ({ accepte: false, empreinte: c.empreinte });
     expect(await tool(h, "demander_extension", { id: "ma-ext" })).toBe("Refusée par l'utilisateur.");
@@ -804,8 +804,8 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     expect(f.cartes[1]).toMatchObject({ cle: "agent:ma-ext", nom: "Cacheur", espace: "Perso", espaceId: "e1", sites: [HOST], reseau: [] });
     expect(f.installs).toEqual([expect.objectContaining({ version: "1.0.0.1" })]);
     // Two cards, the signed install; then appliquer's call (same version: a no-op) once granted.
-    expect(sansAccord).toEqual([true, true, true, false]);
-    expect(entree(h.dataDir)).toMatchObject({ idChrome: ID, accord: ACCORD, profils: ["defaut"], desactivee: null });
+    expect(withoutGrant).toEqual([true, true, true, false]);
+    expect(entry(h.dataDir)).toMatchObject({ idChrome: ID, accord: GRANT, profils: ["defaut"], desactivee: null });
     expect(f.activations.at(-1)).toEqual({ addonId: ID, actif: true });
     // Already granted and active there: nothing asked again.
     expect(await tool(h, "demander_extension", { id: "ma-ext" })).toBe("Activée dans « Perso ».");
@@ -851,11 +851,11 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     const r = await tool(h, "recharger_extension", { id: "ma-ext" });
     expect(r).toContain("etat : desactivee");
     expect(r).toContain("demander_extension");
-    expect(entree(h.dataDir)).toMatchObject({ accord: ACCORD, desactivee: { raison: "portee-elargie" } });
+    expect(entry(h.dataDir)).toMatchObject({ accord: GRANT, desactivee: { raison: "portee-elargie" } });
     expect(f.activations.at(-1)).toEqual({ addonId: ID, actif: false });
     expect(await tool(h, "demander_extension", { id: "ma-ext" })).toBe("Activée dans « Perso ».");
     expect(f.cartes).toHaveLength(2);
-    expect(entree(h.dataDir)).toMatchObject({ accord: { hotes: [HOST, "https://exemple.com/*"] }, desactivee: null });
+    expect(entry(h.dataDir)).toMatchObject({ accord: { hotes: [HOST, "https://exemple.com/*"] }, desactivee: null });
     expect(f.installs.map((i) => i.version)).toEqual(["1.0.0.1", "1.0.0.2"]);
     expect(f.activations.at(-1)).toEqual({ addonId: ID, actif: true });
   });
@@ -866,7 +866,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     f.handlers["extensions.amo"] = () => {
       throw new Error("AddonManager absent");
     };
-    const h = launch(amo, f, { prepare: (d) => grant(d, ["defaut"], { ...ACCORD, hotes: [], scripts: false }) });
+    const h = launch(amo, f, { prepare: (d) => grant(d, ["defaut"], { ...GRANT, hotes: [], scripts: false }) });
     await h.rpc.request("demarrer", { profilAgent: "claude" });
     const m = (text: string) => ({ horodatage: Date.now(), niveau: "error", texte: text });
     h.rpc.notify("extensions.console", { addonId: ID, m: m("fond cassé"), onglet: null });
@@ -905,7 +905,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     expect(await h.rpc.request("extensions.revoir", { cle: "agent:ma-ext", fenetre: "f1" })).toEqual({ ok: true });
     expect(f.cartes).toHaveLength(2);
     expect(f.cartes[1]).toMatchObject({ espaceId: "e1", sites: [HOST, "https://exemple.com/*"] });
-    expect(entree(h.dataDir)).toMatchObject({ accord: { hotes: [HOST, "https://exemple.com/*"] }, desactivee: null });
+    expect(entry(h.dataDir)).toMatchObject({ accord: { hotes: [HOST, "https://exemple.com/*"] }, desactivee: null });
     expect(f.activations.at(-1)).toEqual({ addonId: ID, actif: true });
   });
 
@@ -913,17 +913,17 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     const amo = await fakeAmo();
     const f = firefox();
     f.espaces.push({ id: "e2", nom: "Travail", profil: "travail", prive: false });
-    const installer = f.handlers["extensions.installer"]!;
+    const install = f.handlers["extensions.installer"]!;
     // Turns Travail private as the broader version (1.0.0.2) is installed.
     f.handlers["extensions.installer"] = (p, s) => {
       if (p.version === "1.0.0.2") f.espaces[1]!.prive = true;
-      return installer(p, s);
+      return install(p, s);
     };
     const h = launch(amo, f, { prepare });
     await h.rpc.request("extensions.pret", {});
     source(h.dataDir, { hotes: [HOST, "https://exemple.com/*"] });
     expect(await tool(h, "demander_extension", { id: "ma-ext", espace: "Travail" })).toBe(PRIVATE_PROFILE_ERROR);
-    expect(entree(h.dataDir)).toMatchObject({ accord: ACCORD, profils: ["defaut"], desactivee: { raison: "portee-elargie" } });
+    expect(entry(h.dataDir)).toMatchObject({ accord: GRANT, profils: ["defaut"], desactivee: { raison: "portee-elargie" } });
     expect(f.activations.at(-1)).toEqual({ addonId: ID, actif: false });
   });
 
@@ -931,21 +931,21 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     const amo = await fakeAmo();
     const f = firefox();
     f.espaces.push({ id: "e2", nom: "Travail", profil: "travail", prive: false });
-    const installer = f.handlers["extensions.installer"]!;
+    const install = f.handlers["extensions.installer"]!;
     f.handlers["extensions.installer"] = (p, s) => {
       f.espaces.splice(1);
-      return installer(p, s);
+      return install(p, s);
     };
     const h = launch(amo, f, { prepare: source });
     expect(await tool(h, "demander_extension", { id: "ma-ext", espace: "Travail" })).toBe("Espace disparu pendant la carte : rien n'est activé");
-    expect(existsSync(join(h.dataDir, "extensions", "etat.json")) && entree(h.dataDir)).toBeFalsy();
+    expect(existsSync(join(h.dataDir, "extensions", "etat.json")) && entry(h.dataDir)).toBeFalsy();
     expect(f.desinstallations).toEqual([ID]);
   });
 
   it("a new conversation drops the card: « retirée », nothing sent, no grant", async () => {
     const amo = await fakeAmo();
     const f = firefox();
-    f.handlers["extensions.accord"] = (p: { carte: CarteExtension }, signal) => {
+    f.handlers["extensions.accord"] = (p: { carte: ExtensionCard }, signal) => {
       f.cartes.push(p.carte);
       return new Promise((r) => signal.addEventListener("abort", () => r({ accepte: true, empreinte: p.carte.empreinte })));
     };
@@ -955,7 +955,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     await h.rpc.request("agent.demarrer", { fenetre: "f1", taille: { cols: 80, rows: 24 } });
     expect(await call).toBe(REQUEST_REMOVED);
     expect(amo.envois).toEqual([]);
-    expect(existsSync(join(h.dataDir, "extensions", "etat.json")) && entree(h.dataDir)).toBeFalsy();
+    expect(existsSync(join(h.dataDir, "extensions", "etat.json")) && entry(h.dataDir)).toBeFalsy();
     expect(existsSync(join(h.dataDir, "extensions", "copies", "ma-ext.attente"))).toBe(false);
   });
   it("three crashes in a minute disable it everywhere; Réactiver brings it back", async () => {
@@ -969,11 +969,11 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     expect(await tool(h, "lister_extensions")).toContain("erreurs : aucune");
     h.rpc.notify("extensions.plantage", { addonId: ID });
     await until(() => f.activations.at(-1)?.actif === false);
-    expect(entree(h.dataDir)).toMatchObject({ profils: ["defaut"], desactivee: { raison: "plantages" } });
+    expect(entry(h.dataDir)).toMatchObject({ profils: ["defaut"], desactivee: { raison: "plantages" } });
     expect(await tool(h, "lister_extensions")).toContain(`erreurs : ${DISABLED_CRASHES}`);
     expect((await h.rpc.request<{ desactivee: string | null }[]>("extensions.liste"))[0]!.desactivee).toBe(DISABLED_CRASHES);
     expect(await h.rpc.request("extensions.reactiver", { cle: "agent:ma-ext" })).toEqual({ ok: true });
-    expect(entree(h.dataDir)).toMatchObject({ desactivee: null });
+    expect(entry(h.dataDir)).toMatchObject({ desactivee: null });
     expect(f.activations.at(-1)).toEqual({ addonId: ID, actif: true });
     expect(await tool(h, "lister_extensions")).toContain("erreurs : aucune");
     // The count starts again: two more crashes do not disable it.
@@ -987,10 +987,10 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     const t = Date.now();
     // Three crashes, but spread over more than a minute: not disabled.
     await h.rpc.request("extensions.pret", { plantages: [-130_000, -50_000, -20_000].map((d) => ({ addonId: ID, le: t + d })) });
-    expect(entree(h.dataDir)).toMatchObject({ desactivee: null });
+    expect(entry(h.dataDir)).toMatchObject({ desactivee: null });
     h.rpc.notify("extensions.plantage", { addonId: ID, le: t + 1000 });
     await until(() => f.activations.at(-1)?.actif === false);
-    expect(entree(h.dataDir)).toMatchObject({ desactivee: { raison: "plantages" } });
+    expect(entry(h.dataDir)).toMatchObject({ desactivee: { raison: "plantages" } });
   });
 });
 
@@ -1030,7 +1030,7 @@ createServer((req, res) => {
   };
   const list = (h: Host) => h.rpc.request<List>("applications.liste");
   const attempt = async (h: Host) => (await list(h)).applications.find((a) => a.dossier === "essai");
-  const act = (h: Host, action: string, dossier = "essai") => h.rpc.notify("applications.agir", { dossier, action, fenetre: "f1" });
+  const act = (h: Host, action: string, folder = "essai") => h.rpc.notify("applications.agir", { dossier: folder, action, fenetre: "f1" });
   const stops = (h: Host) => (existsSync(join(h.racine, "faux-docker-arrets.log")) ? readFileSync(join(h.racine, "faux-docker-arrets.log"), "utf8") : "");
   const launched = async (h: Host, chrome: { ouvertures: unknown[] }) => {
     act(h, "lancer");
@@ -1114,15 +1114,15 @@ createServer((req, res) => {
   });
 
   it("deboguer pre-fills the window's agent and opens its panel", async () => {
-    const donnes: unknown[] = [];
-    const { h } = startApps({}, { "design.donnerAgent": (p: unknown) => void donnes.push(p) });
+    const given: unknown[] = [];
+    const { h } = startApps({}, { "design.donnerAgent": (p: unknown) => void given.push(p) });
     await h.rpc.request("demarrer", { profilAgent: "claude" });
     await h.rpc.request("agent.demarrer", { fenetre: "f1", taille: { cols: 80, rows: 24 } });
     await until(() => h.donnees().includes("faux agent prêt>"));
     act(h, "deboguer");
     await until(() => h.donnees().includes("essai"));
-    await until(() => donnes.length > 0);
-    expect(donnes).toEqual([["f1"]]);
+    await until(() => given.length > 0);
+    expect(given).toEqual([["f1"]]);
   });
 
   it("the host stops the apps and the sessions on stdin close", async () => {
@@ -1166,11 +1166,11 @@ createServer((req, res) => {
   });
 
   it("plageDePorts, the app tab and SchemaActionApplication", async () => {
-    const { plageDePorts, appTab } = await import("../host/applications");
+    const { portRange, appTab } = await import("../host/applications");
     const { SchemaActionApplication } = await import("../shared/api");
-    expect(plageDePorts("15280-15284")).toEqual([15280, 15284]);
+    expect(portRange("15280-15284")).toEqual([15280, 15284]);
     expect(appTab({ dossier: "essai", titre: "T", url: "http://localhost:15280/" })).toEqual({ id: "app:essai", titre: "T", url: "http://localhost:15280/", espace: "", application: "essai" });
-    const accepted = (dossier: unknown, action: string) => SchemaActionApplication.safeParse({ dossier, action }).success;
+    const accepted = (folder: unknown, action: string) => SchemaActionApplication.safeParse({ dossier: folder, action }).success;
     expect([["essai", "lancer"], ["../x", "supprimer"], ["My Project", "supprimer"], ["My Project", "lancer"], [".", "deboguer"], ["essai", "autre"], [3, "lancer"]].map(([d, a]) => accepted(d, a as string))).toEqual([true, false, true, false, false, false, false]);
     expect(SchemaActionApplication.shape.action.options).toEqual(["lancer", "arreter", "relancer", "ouvrir", "deboguer", "supprimer", "promouvoir", "dossier", "relire"]);
     // Only these actions take a folder name that is not a launchable one; none takes a path.

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { untrack } from "svelte";
   import type { DirectAction } from "@webaios/kernel";
-  import { PENDING, lectureDe, MISE_EN_PAGE } from "../../shared/actions";
+  import { PENDING, readingOf, PAGE_LAYOUT } from "../../shared/actions";
   import { api } from "../state.svelte";
 
   /**
@@ -10,20 +10,20 @@
    * « Mise en page… »; queued: « En attente ».
    * `courante` null and `enAttente` false: nothing to show.
    */
-  let { courante, enAttente: pending, arreter: stop }: { courante: DirectAction | null; enAttente: boolean; arreter: () => void } = $props();
+  let { courante: current, enAttente: pending, arreter: stop }: { courante: DirectAction | null; enAttente: boolean; arreter: () => void } = $props();
 
   // The kernel forgets a per-item block's count when it ends: the line keeps the last one seen (« 3 / 3 »). A new
   // run remounts this component (keyed on its start), nothing gets mixed up.
   let accounts = $state<Record<string, { faits: number; total: number }>>({});
   $effect(() => {
-    for (const [id, b] of Object.entries(courante?.blocs ?? {})) {
+    for (const [id, b] of Object.entries(current?.blocs ?? {})) {
       if (b.total === undefined) continue;
       const c = { faits: b.faits ?? 0, total: b.total };
-      const vu = untrack(() => accounts[id]);
-      if (vu?.faits !== c.faits || vu?.total !== c.total) accounts[id] = c;
+      const seen = untrack(() => accounts[id]);
+      if (seen?.faits !== c.faits || seen?.total !== c.total) accounts[id] = c;
     }
   });
-  const lignes = $derived(Object.entries(courante?.blocs ?? {}).map(([id, b]) => ({ id, ...b, compte: b.total !== undefined ? { faits: b.faits ?? 0, total: b.total } : accounts[id] })));
+  const lignes = $derived(Object.entries(current?.blocs ?? {}).map(([id, b]) => ({ id, ...b, compte: b.total !== undefined ? { faits: b.faits ?? 0, total: b.total } : accounts[id] })));
   /** The catalog label of each block type; the block id until it is read (or unknown type). */
   let labels = $state.raw<ReadonlyMap<string, string>>(new Map());
   $effect(() =>
@@ -34,25 +34,25 @@
         .catch(() => {});
     }),
   );
-  const label = (l: (typeof lignes)[number]) => (l.statut === "en-cours" && l.hote ? lectureDe(l.hote) : ((l.type && labels.get(l.type)) ?? l.id));
-  const MARQUES = { "en-cours": "…", reussi: "✓", partiel: "≈", echoue: "✗" } as const;
+  const label = (l: (typeof lignes)[number]) => (l.statut === "en-cours" && l.hote ? readingOf(l.hote) : ((l.type && labels.get(l.type)) ?? l.id));
+  const MARKS = { "en-cours": "…", reussi: "✓", partiel: "≈", echoue: "✗" } as const;
 </script>
 
 <section class="avancement" data-testid="avancement-action" aria-live="polite">
-  {#if pending && !courante}
+  {#if pending && !current}
     <p class="attente" data-testid="en-attente">{PENDING}</p>
   {/if}
-  {#if courante}
+  {#if current}
     <ol>
       {#each lignes as l (l.id)}
         <li class={l.statut} data-testid="ligne-bloc">
-          <span class="marque" aria-hidden="true">{MARQUES[l.statut]}</span>
+          <span class="marque" aria-hidden="true">{MARKS[l.statut]}</span>
           <span class="libelle">{label(l)}</span>
           {#if l.compte}<span class="compteur" data-testid="compteur-bloc">{l.compte.faits} / {l.compte.total}</span>{/if}
         </li>
       {/each}
-      {#if courante.etape === "mise-en-page"}
-        <li class="en-cours"><span class="marque" aria-hidden="true">…</span><span class="libelle" data-testid="mise-en-page">{MISE_EN_PAGE}</span></li>
+      {#if current.etape === "mise-en-page"}
+        <li class="en-cours"><span class="marque" aria-hidden="true">…</span><span class="libelle" data-testid="mise-en-page">{PAGE_LAYOUT}</span></li>
       {/if}
     </ol>
   {/if}

@@ -23,7 +23,7 @@ export async function startFakeAmo(o: { refus?: string; delaiMs?: number; erreur
   const server = createServer(async (req, res) => {
     const chunks: Buffer[] = [];
     for await (const c of req) chunks.push(c as Buffer);
-    const corps = Buffer.concat(chunks);
+    const body = Buffer.concat(chunks);
     const url = new URL(req.url!, "http://x");
     const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
     const render = (status: number, body: unknown) => {
@@ -34,7 +34,7 @@ export async function startFakeAmo(o: { refus?: string; delaiMs?: number; erreur
     let m: RegExpExecArray | null;
     if (req.method === "POST" && url.pathname === "/api/v5/addons/upload/") {
       if (o.erreurHttp) return render(o.erreurHttp, { detail: "fake error" });
-      const file = ((await new Response(corps, { headers: { "content-type": String(req.headers["content-type"]) } }).formData()).get("upload") as File);
+      const file = ((await new Response(body, { headers: { "content-type": String(req.headers["content-type"]) } }).formData()).get("upload") as File);
       const uuid = randomUUID();
       const xpi = path.join(dir, `${uuid}.xpi`);
       await writeFile(xpi, Buffer.from(await file.arrayBuffer()));
@@ -51,9 +51,9 @@ export async function startFakeAmo(o: { refus?: string; delaiMs?: number; erreur
       const guid = decodeURIComponent(m[1]!);
       if (!m[2]) {
         if (req.method === "GET") return render(guids.has(guid) ? 200 : 404, {});
-        if (req.method === "PUT" && !guids.has(guid)) return await create(guid, "PUT", JSON.parse(corps.toString()).version.upload);
+        if (req.method === "PUT" && !guids.has(guid)) return await create(guid, "PUT", JSON.parse(body.toString()).version.upload);
       } else if (m[3] === undefined) {
-        if (req.method === "POST" && guids.has(guid)) return await create(guid, "POST", JSON.parse(corps.toString()).upload);
+        if (req.method === "POST" && guids.has(guid)) return await create(guid, "POST", JSON.parse(body.toString()).upload);
       } else if (req.method === "GET") {
         if (o.erreurSondage) return render(o.erreurSondage, {});
         const v = versions.get(`${guid}@${m[3]}`);

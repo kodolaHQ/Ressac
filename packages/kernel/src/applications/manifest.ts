@@ -33,49 +33,49 @@ export type ProjectRead = { dossier: string; chemin: string; creeLe: string; nom
 );
 
 /** A folder is launched only if its name passes in a shell command without quotes. */
-export function validFolder(dossier: string): boolean {
-  return FOLDER_NAME.test(dossier);
+export function validFolder(folder: string): boolean {
+  return FOLDER_NAME.test(folder);
 }
 
-async function readProject(c: SpacePaths, dossier: string): Promise<ProjectRead> {
-  const path = join(c.projets, dossier);
+async function readProject(c: SpacePaths, folder: string): Promise<ProjectRead> {
+  const path = join(c.projets, folder);
   const file = join(path, "webaios.json");
-  let creeLe: Date;
+  let createdAt: Date;
   let content: string | undefined;
   try {
     content = await readFile(file, "utf8");
-    creeLe = (await stat(file)).mtime;
+    createdAt = (await stat(file)).mtime;
   } catch {
-    creeLe = (await stat(path)).mtime;
+    createdAt = (await stat(path)).mtime;
   }
-  const base = { dossier, chemin: path, creeLe: creeLe.toISOString() };
-  if (!validFolder(dossier)) return { ...base, nom: dossier, sansFiche: "nom de dossier non pris en charge" };
-  if (content === undefined) return { ...base, nom: dossier, sansFiche: "pas de webaios.json" };
+  const base = { dossier: folder, chemin: path, creeLe: createdAt.toISOString() };
+  if (!validFolder(folder)) return { ...base, nom: folder, sansFiche: "nom de dossier non pris en charge" };
+  if (content === undefined) return { ...base, nom: folder, sansFiche: "pas de webaios.json" };
   try {
     const manifest = Manifest.parse(JSON.parse(content));
-    return { ...base, nom: manifest.nom ?? dossier, manifeste: manifest };
+    return { ...base, nom: manifest.nom ?? folder, manifeste: manifest };
   } catch (e) {
-    return { ...base, nom: dossier, sansFiche: `webaios.json invalide : ${(e as Error).message}` };
+    return { ...base, nom: folder, sansFiche: `webaios.json invalide : ${(e as Error).message}` };
   }
 }
 
 /** Lists the projects. A missing or broken manifest gives a project « sans fiche », never an error. */
 export async function readProjects(c: SpacePaths): Promise<ProjectRead[]> {
-  let entrees;
+  let entries;
   try {
-    entrees = await readdir(c.projets, { withFileTypes: true });
+    entries = await readdir(c.projets, { withFileTypes: true });
   } catch {
     return [];
   }
-  const dossiers = entrees
+  const folders = entries
     .filter((e) => e.isDirectory() && !e.name.startsWith("."))
     .map((e) => e.name)
     .sort();
-  return Promise.all(dossiers.map((d) => readProject(c, d)));
+  return Promise.all(folders.map((d) => readProject(c, d)));
 }
 
 /** Calls `rappel` after each burst of changes of the projects. Returns the stop function. */
-export function watchProjects(c: SpacePaths, rappel: () => void): () => Promise<void> {
+export function watchProjects(c: SpacePaths, callback: () => void): () => Promise<void> {
   mkdirSync(c.projets, { recursive: true });
   let timer: NodeJS.Timeout | undefined;
   const observer = watch(c.projets, {
@@ -85,10 +85,10 @@ export function watchProjects(c: SpacePaths, rappel: () => void): () => Promise<
   });
   observer.on("all", (event, path) => {
     const name = path.split(/[\\/]/).pop();
-    const pertinent = event === "addDir" || event === "unlinkDir" || name === "webaios.json";
-    if (!pertinent) return;
+    const relevant = event === "addDir" || event === "unlinkDir" || name === "webaios.json";
+    if (!relevant) return;
     clearTimeout(timer);
-    timer = setTimeout(rappel, GROUPING_MS);
+    timer = setTimeout(callback, GROUPING_MS);
   });
   return async () => {
     clearTimeout(timer);
@@ -97,8 +97,8 @@ export function watchProjects(c: SpacePaths, rappel: () => void): () => Promise<
 }
 
 /** Changes a project's type, keeping the other fields of the manifest. */
-export async function writeType(c: SpacePaths, dossier: string, type: "application" | "poc"): Promise<void> {
-  const target = join(c.projets, dossier, "webaios.json");
+export async function writeType(c: SpacePaths, folder: string, type: "application" | "poc"): Promise<void> {
+  const target = join(c.projets, folder, "webaios.json");
   const manifest = Manifest.parse(JSON.parse(await readFile(target, "utf8")));
   const temp = `${target}.${process.pid}.tmp`;
   await writeFile(temp, JSON.stringify({ ...manifest, type }, null, 2));

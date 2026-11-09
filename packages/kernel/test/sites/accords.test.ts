@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
-  grantCovers, grantNeeded, accorderSite, droitsDe, siteExtensionsHash, siteReadHash, lireAccordsSites, retirerAccordSite,
+  grantCovers, grantNeeded, storeSiteGrant, rightsOf, siteExtensionsHash, siteReadHash, readSiteGrants, removeSiteGrant,
 } from "../../src/sites/accords.js";
 import type { DeclarationSite } from "../../src/sites/schemas.js";
 import { tempFolder } from "../helpers/temp.js";
@@ -20,17 +20,17 @@ test("without tweak or reprise: no grant needed", () => {
 
 test("droitsDe: union of the frame patterns", () => {
   const d = { ...base, retouches: [...base.retouches, { correspond: ["/a"], js: [], css: ["b.css"], cadres: ["https://x.example/*"] }, { correspond: ["/b"], js: [], css: ["c.css"], cadres: false as const }] };
-  expect(droitsDe(d).cadres).toEqual(["https://*.clipsy.*/*", "https://x.example/*"]);
+  expect(rightsOf(d).cadres).toEqual(["https://*.clipsy.*/*", "https://x.example/*"]);
 });
 
 test("granted then tweaks code changed: still covers", () => {
-  const a = droitsDe(base);
+  const a = rightsOf(base);
   expect(grantCovers(a, { ...base, retouches: [{ ...base.retouches[0]!, js: ["autre.js", "encore.js"] }] })).toBe(true);
   expect(grantCovers(null, base)).toBe(false);
 });
 
 test("domain, login domain, frame pattern added, or reprise set to true: no longer covers", () => {
-  const a = droitsDe(base);
+  const a = rightsOf(base);
   expect(grantCovers(a, { ...base, domaines: ["vidola-a.example", "autre.example"] })).toBe(false);
   expect(grantCovers(a, { ...base, connexion: ["login.example"] })).toBe(false);
   expect(grantCovers(a, { ...base, retouches: [{ ...base.retouches[0]!, cadres: ["https://*.clipsy.*/*", "https://pub.example/*"] }] })).toBe(false);
@@ -39,43 +39,43 @@ test("domain, login domain, frame pattern added, or reprise set to true: no long
 });
 
 test("correspond changed: still covers", () => {
-  const a = droitsDe(base);
+  const a = rightsOf(base);
   expect(grantCovers(a, { ...base, retouches: [{ ...base.retouches[0]!, correspond: ["/films/*"] }] })).toBe(true);
 });
 
 test("retirerAccordSite then lireAccordsSites: absent; file in the profile, simultaneous grants kept", async () => {
   const p = await tempFolder();
-  await Promise.all([accorderSite(p, "a", base), accorderSite(p, "b", base)]);
-  expect(Object.keys(await lireAccordsSites(p)).sort()).toEqual(["a", "b"]);
+  await Promise.all([storeSiteGrant(p, "a", base), storeSiteGrant(p, "b", base)]);
+  expect(Object.keys(await readSiteGrants(p)).sort()).toEqual(["a", "b"]);
   expect(JSON.parse(await readFile(join(p, "sites-accords.json"), "utf8")).a.domaines).toEqual(["vidola-a.example"]);
-  await retirerAccordSite(p, "a");
-  expect(Object.keys(await lireAccordsSites(p))).toEqual(["b"]);
-  await expect(accorderSite(p, "../x", base)).rejects.toThrow();
+  await removeSiteGrant(p, "a");
+  expect(Object.keys(await readSiteGrants(p))).toEqual(["b"]);
+  await expect(storeSiteGrant(p, "../x", base)).rejects.toThrow();
 });
 
 test("ids constructor, toString, __proto__: no grant, nothing throws", async () => {
   const p = await tempFolder();
-  const a = await lireAccordsSites(p);
+  const a = await readSiteGrants(p);
   for (const id of ["constructor", "toString", "__proto__", "hasOwnProperty"]) {
     expect(a[id]).toBeUndefined();
     expect(() => grantCovers(a[id] ?? null, base)).not.toThrow();
   }
-  await accorderSite(p, "constructor", base);
-  await writeFile(join(p, "sites-accords.json"), JSON.stringify({ constructor: droitsDe(base) }));
-  expect((await lireAccordsSites(p))["constructor"]).toEqual(droitsDe(base));
-  expect((await lireAccordsSites(p))["toString"]).toBeUndefined();
+  await storeSiteGrant(p, "constructor", base);
+  await writeFile(join(p, "sites-accords.json"), JSON.stringify({ constructor: rightsOf(base) }));
+  expect((await readSiteGrants(p))["constructor"]).toEqual(rightsOf(base));
+  expect((await readSiteGrants(p))["toString"]).toBeUndefined();
 });
 
 test("failing read (neither absent nor damaged): the write fails without erasing the other grants", async () => {
   const p = await tempFolder();
-  await accorderSite(p, "a", base);
+  await storeSiteGrant(p, "a", base);
   await rm(join(p, "sites-accords.json"));
   await mkdir(join(p, "sites-accords.json")); // read a folder: EISDIR
-  await expect(accorderSite(p, "b", base)).rejects.toThrow();
+  await expect(storeSiteGrant(p, "b", base)).rejects.toThrow();
   await rm(join(p, "sites-accords.json"), { recursive: true });
   await writeFile(join(p, "sites-accords.json"), "{abîmé");
-  await accorderSite(p, "c", base); // damaged: starts from zero
-  expect(Object.keys(await lireAccordsSites(p))).toEqual(["c"]);
+  await storeSiteGrant(p, "c", base); // damaged: starts from zero
+  expect(Object.keys(await readSiteGrants(p))).toEqual(["c"]);
 });
 
 test("empreinteLectureSite: name, domains and login; the order and case of the domains change nothing", () => {

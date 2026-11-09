@@ -4,7 +4,7 @@ import {
   urlUnchanged,
   urlNotFound,
   confirmForget,
-  confirmerSuppressionSite,
+  confirmSiteDeletion,
   blockedLink,
   HomeMessage,
   editWithAgent,
@@ -18,7 +18,7 @@ test("messages of a site app's window", () => {
   expect(urlUnchanged("Vidola")).toBe("Vidola ne répond pas, et sa page de référence donne toujours la même adresse");
   expect(tweaksGrantTitle("Vidola")).toBe("Autoriser les retouches de « Vidola » ?");
   expect(confirmForget("Vidola")).toBe("Oublier tout ce que « Vidola » a retenu (séries, positions des vidéos) ?");
-  expect(confirmerSuppressionSite("Vidola")).toBe("Supprimer « Vidola » ? Sa connexion et sa mémoire sont effacées, son dossier va à la corbeille.");
+  expect(confirmSiteDeletion("Vidola")).toBe("Supprimer « Vidola » ? Sa connexion et sa mémoire sont effacées, son dossier va à la corbeille.");
   expect(editWithAgent("vidola")).toBe("Appli de site ~/WebAiOs/sites/vidola/ : ");
 });
 

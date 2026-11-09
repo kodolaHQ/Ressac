@@ -1,5 +1,5 @@
 import type { Scope } from "../../../../packages/kernel/src/index.ts";
-import type { CarteExtension } from "../../shared/extensions";
+import type { ExtensionCard } from "../../shared/extensions";
 import { agentAllowedHost, agentAllowedUrl } from "../../core/extensions/network";
 import type { AccessState, WindowId, ProfileId } from "../../shared/model";
 import type { Handler } from "../../shared/rpc";
@@ -7,7 +7,7 @@ import type { AgentHost } from "../agent/host";
 import type { Questions } from "../agent/questions";
 import { existingContainer } from "./containers";
 import { createWatchdog } from "./crash-watchdog";
-import { consoleLevel, PLANTAGES_MAX } from "../../core/extensions/consoles";
+import { consoleLevel, MAX_CRASHES } from "../../core/extensions/consoles";
 import type { Store } from "./store";
 import type { WindowRegistry } from "./windows";
 
@@ -123,7 +123,7 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
       return true;
     },
     // The grant card, in that window if still open, else the active one; no window: it falls at once.
-    "extensions.accord": (p: { carte: CarteExtension; fenetre: string | null }, signal) => {
+    "extensions.accord": (p: { carte: ExtensionCard; fenetre: string | null }, signal) => {
       const f = p.fenetre && windows.get(p.fenetre) ? p.fenetre : windows.active();
       return f ? questions.askExtension(p.carte, f, signal) : { accepte: false, empreinte: p.carte.empreinte, retiree: true };
     },
@@ -361,7 +361,7 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
     const c = { addonId, le: Date.now() };
     crashesPending.push(c);
     const mine = crashesPending.filter((x) => x.addonId === addonId);
-    if (mine.length > PLANTAGES_MAX) crashesPending.splice(crashesPending.indexOf(mine[0]!), 1);
+    if (mine.length > MAX_CRASHES) crashesPending.splice(crashesPending.indexOf(mine[0]!), 1);
     host()
       .request("extensions.plantage", c)
       .then(() => crashesPending.includes(c) && crashesPending.splice(crashesPending.indexOf(c), 1))
@@ -388,13 +388,13 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
     hostStarted() {
       sendPrivate();
       const sent = [...pending].map(([addonId, what]) => ({ addonId, quoi: what }));
-      const plantages = [...crashesPending];
+      const crashes = [...crashesPending];
       host()
-        .request("extensions.pret", { horsWebaios: sent, plantages })
+        .request("extensions.pret", { horsWebaios: sent, plantages: crashes })
         .then(
           () => {
             sent.forEach((h) => pending.get(h.addonId) === h.quoi && pending.delete(h.addonId));
-            for (const c of plantages) if (crashesPending.includes(c)) crashesPending.splice(crashesPending.indexOf(c), 1);
+            for (const c of crashes) if (crashesPending.includes(c)) crashesPending.splice(crashesPending.indexOf(c), 1);
           },
           (e) => console.error("[extensions] agent extensions not started:", e),
         )

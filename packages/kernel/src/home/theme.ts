@@ -22,14 +22,14 @@ export const HomeTheme = z.object({
 export type HomeTheme = z.infer<typeof HomeTheme>;
 
 /** theme: null if absent. erreur: present and invalid (the default applies, the file is never rewritten). */
-export async function lireTheme(c: SpacePaths): Promise<{ theme: HomeTheme | null; erreur?: string }> {
-  let brut: unknown;
+export async function readTheme(c: SpacePaths): Promise<{ theme: HomeTheme | null; erreur?: string }> {
+  let raw: unknown;
   try {
-    brut = JSON.parse(await readFile(join(c.accueil, "theme.json"), "utf8"));
+    raw = JSON.parse(await readFile(join(c.accueil, "theme.json"), "utf8"));
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code === "ENOENT") return { theme: null };
     return { theme: null, erreur: `theme.json invalide : ${(e as Error).message}` };
   }
-  const r = HomeTheme.safeParse(brut);
+  const r = HomeTheme.safeParse(raw);
   return r.success ? { theme: r.data } : { theme: null, erreur: `theme.json invalide : ${r.error.message}` };
 }

@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpath
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { SITE_CAPTURE_WARNING, HTML_MAX, PROJECT_ID, DESIGN_UNAVAILABLE, SITE_DESIGN_UNAVAILABLE, Remarques, TRUNCATED, type SpacePaths, type Lot, type TrackedProject } from "../../../packages/kernel/src/index";
+import { SITE_CAPTURE_WARNING, HTML_MAX, PROJECT_ID, DESIGN_UNAVAILABLE, SITE_DESIGN_UNAVAILABLE, Remarks, TRUNCATED, type SpacePaths, type Batch, type TrackedProject } from "../../../packages/kernel/src/index";
 import { RANGE_OUTSIDE_BLOCK } from "../shared/model";
 import { UNKNOWN_COMPARISON, ReviewService } from "../host/review";
 import * as g from "../shared/design-guards";
@@ -29,20 +29,20 @@ describe("review service", () => {
     writeFileSync(join(projects, "essai", "a.txt"), "un\n");
     writeFileSync(join(sites, "tuning", "site.json"), "{}\n");
     writeFileSync(join(sites, "tuning", "retouches", "tuning.css"), "/* rien */\n");
-    const dossiers = { remarquesEspace: join(root, "remarques"), prive: join(root, "prive") };
-    const remarques = new Remarques({ dossiers });
-    const sent: { projet: TrackedProject; lot: Lot }[] = [];
+    const folders = { remarquesEspace: join(root, "remarques"), prive: join(root, "prive") };
+    const remarks = new Remarks({ dossiers: folders });
+    const sent: { projet: TrackedProject; lot: Batch }[] = [];
     const registry = {
       projets: () => [{ id: EXT.slice(4), nom: "Ext", dossier: join(projects, "essai"), ports: [], client: "client-0001", declare: "" }],
       clients: () => [{ id: "client-0001", nom: "Claude", empreinte: "", cree: "" }],
     };
     const service = new ReviewService({
-      dossiers, chemins: { projets: projects, sites } as SpacePaths, registre: () => registry as never,
-      sites: async () => [{ id: "tuning", nom: "Tuning" }], remarques,
-      envoyer: async (project, lot) => void sent.push({ projet: project, lot }),
+      dossiers: folders, chemins: { projets: projects, sites } as SpacePaths, registre: () => registry as never,
+      sites: async () => [{ id: "tuning", nom: "Tuning" }], remarques: remarks,
+      envoyer: async (project, batch) => void sent.push({ projet: project, lot: batch }),
     });
-    const review = join(dossiers.prive, "relecture");
-    return { service, remarques, sent, root, projets: projects, sites, relecture: review, write: (t: string, n = "a.txt") => writeFileSync(join(projects, "essai", n), t) };
+    const review = join(folders.prive, "relecture");
+    return { service, remarques: remarks, sent, root, projets: projects, sites, relecture: review, write: (t: string, n = "a.txt") => writeFileSync(join(projects, "essai", n), t) };
   }
   /** Opens once so the project's first snapshot is taken, writes `before` first; returns after `after` is written. */
   async function opened(s: ReturnType<typeof prepare>, before: string, after: string) {
@@ -93,7 +93,7 @@ describe("review service", () => {
   it("a range overflowing the block is refused", async () => {
     const s = prepare();
     const v = await opened(s, text(), text(5, 25));
-    const c = (debut: number, fin: number, text: string, j = v.jeton) => s.service.commenter(EXT, j, { fichier: "a.txt", debut, fin, texte: text });
+    const c = (start: number, end: number, text: string, j = v.jeton) => s.service.commenter(EXT, j, { fichier: "a.txt", debut: start, fin: end, texte: text });
     expect(await c(5, 25, "trop large")).toEqual({ ok: false, erreur: RANGE_OUTSIDE_BLOCK });
     expect(await c(1, 3, "hors du diff")).toEqual({ ok: false, erreur: RANGE_OUTSIDE_BLOCK });
     expect(await c(4, 5, "  ")).toMatchObject({ ok: false });
@@ -134,23 +134,23 @@ describe("review service", () => {
     await s.service.commenter(EXT, v.jeton, { fichier: "a.txt", debut: 15, fin: 15, texte: "garder l'ancien nom" });
     await s.service.commenter(EXT, v.jeton, { fichier: "a.txt", debut: 13, fin: 14, texte: "et ici" });
     expect(await s.service.envoyer(EXT)).toEqual({ ok: true });
-    const lots = await s.remarques.lots(EXT);
-    expect(lots).toHaveLength(1);
-    expect(lots[0]).toMatchObject({ destination: "mcp" });
-    expect(lots[0]!.elements.map((e) => ({ type: e.type, texte: e.texte, contexte: e.contexte }))).toEqual([
+    const batches = await s.remarques.lots(EXT);
+    expect(batches).toHaveLength(1);
+    expect(batches[0]).toMatchObject({ destination: "mcp" });
+    expect(batches[0]!.elements.map((e) => ({ type: e.type, texte: e.texte, contexte: e.contexte }))).toEqual([
       { type: "relecture", texte: "garder l'ancien nom", contexte: { fichier: "a.txt", debut: 15, fin: 15, lignes: [{ marque: "-", texte: "ligne 15" }, { marque: "+", texte: "ligne 15 modifiée" }] } },
       { type: "relecture", texte: "et ici", contexte: { fichier: "a.txt", debut: 13, fin: 14, lignes: [{ marque: " ", texte: "ligne 13" }, { marque: " ", texte: "ligne 14" }] } },
     ]);
     expect(s.sent).toHaveLength(1);
     expect(s.sent[0]!.projet).toMatchObject({ type: "externe", projet: EXT, client: "client-0001" });
-    expect(s.sent[0]!.lot.id).toBe(lots[0]!.id);
+    expect(s.sent[0]!.lot.id).toBe(batches[0]!.id);
     const left = await s.service.commentaires(EXT);
     expect(left.map((c) => c.envoye)).toEqual([true, true]);
     await s.service.resoudre(EXT, left[0]!.id, true);
     expect(await s.service.envoyer(EXT)).toEqual({ ok: true });
     const all = await s.remarques.lots(EXT);
     expect(all).toHaveLength(2);
-    expect(all.find((l) => l.id !== lots[0]!.id)!.elements.map((e) => e.texte)).toEqual(["et ici"]);
+    expect(all.find((l) => l.id !== batches[0]!.id)!.elements.map((e) => e.texte)).toEqual(["et ici"]);
   });
 
   it("simultaneous comment operations lose nothing", async () => {

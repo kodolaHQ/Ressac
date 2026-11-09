@@ -61,7 +61,7 @@ test("frequency in error: 15 min after the last attempt, not now", () => {
 });
 
 test("fixed hour in failure: retry 15 min after the later of the failure's end and the last attempt", () => {
-  const failure = (count: number, fin?: string) => ({ faite: null, echecs: { heure: "2026-10-29T07:00", nombre: count, ...(fin ? { fin } : {}) } });
+  const failure = (count: number, end?: string) => ({ faite: null, echecs: { heure: "2026-10-29T07:00", nombre: count, ...(end ? { fin: end } : {}) } });
   // Failure of the 07:00 slot, attempt at 07:00, watch finished at 07:30: retry at 07:45.
   expect(nextRun(["07:00", "19:00"], a(7, 35), undefined, inError(iso(7), failure(1, iso(7, 30))))).toBe("aujourd'hui 07:45");
   // Without an end: since the last attempt.

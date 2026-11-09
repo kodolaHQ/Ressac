@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 import { mkdir, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { startUrl, effectiveDomains } from "../../src/sites/urls.js";
-import { accorderSite, lireAccordsSites } from "../../src/sites/accords.js";
+import { storeSiteGrant, readSiteGrants } from "../../src/sites/accords.js";
 import { SiteMemory } from "../../src/sites/memory.js";
 import type { DeclarationSite } from "../../src/sites/schemas.js";
 import { changeUrl, readUrlState, deleteSiteData } from "../../src/sites/tracking.js";
@@ -50,12 +50,12 @@ test("supprimerDonneesSite erases memory, address and grant of that site only", 
     m.retenir("k", 1, null);
     await m.vider();
     await changeUrl(ds, id, decl, "vidola-b.example");
-    await accorderSite(p, id, decl);
+    await storeSiteGrant(p, id, decl);
   }
   await deleteSiteData(p, "a");
   expect(await exists(join(ds, "a", "memoire.json"))).toBe(false);
   expect(await readUrlState(ds, "a")).toBeNull();
-  expect(Object.keys(await lireAccordsSites(p))).toEqual(["b"]);
+  expect(Object.keys(await readSiteGrants(p))).toEqual(["b"]);
   expect(await exists(join(ds, "b", "memoire.json"))).toBe(true);
   expect(await readUrlState(ds, "b")).not.toBeNull();
   await mkdir(ds, { recursive: true });

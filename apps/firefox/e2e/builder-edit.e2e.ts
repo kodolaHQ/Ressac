@@ -665,8 +665,8 @@ describe("the workflow builder", () => {
     const trap = '<img src=x onerror="window.piege=1">';
     const start = "2026-10-29T10:00:00.000Z";
     const id = "2026-10-29T10-00-00-000Z";
-    const trace = (bloc: string, type: string, fields: Record<string, unknown>) => ({
-      id: bloc,
+    const trace = (block: string, type: string, fields: Record<string, unknown>) => ({
+      id: block,
       type,
       statut: "reussi",
       debut: start,

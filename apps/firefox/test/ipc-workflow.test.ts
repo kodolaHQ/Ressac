@@ -1,41 +1,41 @@
 import { expect, test } from "vitest";
-import { SchemaBlocWorkflow, DraftSchema, TargetSchema, SchemaCodeWorkflow, NameCodeSchema, builderSelection } from "../shared/api";
+import { WorkflowBlockSchema, DraftSchema, TargetSchema, SchemaCodeWorkflow, NameCodeSchema, builderSelection } from "../shared/api";
 
-const bloc = (i: number, extra: object = {}) => ({ id: `b${i}`, type: "code", position: { x: 0, y: 0 }, parametres: {}, ...extra });
+const block = (i: number, extra: object = {}) => ({ id: `b${i}`, type: "code", position: { x: 0, y: 0 }, parametres: {}, ...extra });
 
 test("SchemaBrouillon refuses 101 blocks, an id or a name over 200 characters, a NaN position", () => {
-  const ok = { version: 1, blocs: [bloc(1)], liens: [] };
+  const ok = { version: 1, blocs: [block(1)], liens: [] };
   expect(DraftSchema.safeParse(ok).success).toBe(true);
-  expect(DraftSchema.safeParse({ ...ok, blocs: Array.from({ length: 101 }, (_, i) => bloc(i)) }).success).toBe(false);
-  expect(DraftSchema.safeParse({ ...ok, blocs: [bloc(1, { id: "x".repeat(201) })] }).success).toBe(false);
-  expect(DraftSchema.safeParse({ ...ok, blocs: [bloc(1, { id: "" })] }).success).toBe(false);
-  expect(DraftSchema.safeParse({ ...ok, blocs: [bloc(1, { nom: "n".repeat(201) })] }).success).toBe(false);
+  expect(DraftSchema.safeParse({ ...ok, blocs: Array.from({ length: 101 }, (_, i) => block(i)) }).success).toBe(false);
+  expect(DraftSchema.safeParse({ ...ok, blocs: [block(1, { id: "x".repeat(201) })] }).success).toBe(false);
+  expect(DraftSchema.safeParse({ ...ok, blocs: [block(1, { id: "" })] }).success).toBe(false);
+  expect(DraftSchema.safeParse({ ...ok, blocs: [block(1, { nom: "n".repeat(201) })] }).success).toBe(false);
   expect(DraftSchema.safeParse({ ...ok, liens: [{ de: "x".repeat(201), vers: "b1" }] }).success).toBe(false);
-  expect(DraftSchema.safeParse({ ...ok, blocs: [bloc(1, { position: { x: NaN, y: 0 } })] }).success).toBe(false);
-  expect(DraftSchema.safeParse({ ...ok, blocs: [bloc(1, { position: { x: 0, y: Infinity } })] }).success).toBe(false);
+  expect(DraftSchema.safeParse({ ...ok, blocs: [block(1, { position: { x: NaN, y: 0 } })] }).success).toBe(false);
+  expect(DraftSchema.safeParse({ ...ok, blocs: [block(1, { position: { x: 0, y: Infinity } })] }).success).toBe(false);
   expect(DraftSchema.safeParse({ ...ok, version: 2 }).success).toBe(false);
 });
 
 test("SchemaBrouillon lets through an id or a name that only the engine refuses: enregistrerWorkflow names the block", () => {
-  const ok = { version: 1, blocs: [bloc(1, { id: "Tri", nom: "n".repeat(70) })], liens: [{ de: "Tri", vers: "../x" }] };
+  const ok = { version: 1, blocs: [block(1, { id: "Tri", nom: "n".repeat(70) })], liens: [{ de: "Tri", vers: "../x" }] };
   expect(DraftSchema.safeParse(ok).success).toBe(true);
 });
 
 test("SchemaBlocWorkflow: only bounded in size (never a path, the engine answers)", () => {
-  expect(SchemaBlocWorkflow.safeParse("source-1").success).toBe(true);
-  expect(SchemaBlocWorkflow.safeParse("Tri").success).toBe(true);
-  expect(SchemaBlocWorkflow.safeParse("").success).toBe(false);
-  expect(SchemaBlocWorkflow.safeParse("x".repeat(201)).success).toBe(false);
+  expect(WorkflowBlockSchema.safeParse("source-1").success).toBe(true);
+  expect(WorkflowBlockSchema.safeParse("Tri").success).toBe(true);
+  expect(WorkflowBlockSchema.safeParse("").success).toBe(false);
+  expect(WorkflowBlockSchema.safeParse("x".repeat(201)).success).toBe(false);
 });
 
 test("selectionConstructeur: an invalid block becomes null (never a stale block), an invalid target ignores the message", () => {
-  const actus = { type: "widget", id: "actus" };
-  expect(builderSelection({ cible: actus, bloc: "tri" })).toEqual({ widget: "actus", bloc: "tri" });
-  expect(builderSelection({ cible: actus, bloc: "Tri" })).toEqual({ widget: "actus", bloc: "Tri" });
-  expect(builderSelection({ cible: actus, bloc: null })).toEqual({ widget: "actus", bloc: null });
-  expect(builderSelection({ cible: actus, bloc: "x".repeat(201) })).toEqual({ widget: "actus", bloc: null });
-  expect(builderSelection({ cible: actus, bloc: 3 })).toEqual({ widget: "actus", bloc: null });
-  expect(builderSelection({ cible: actus })).toEqual({ widget: "actus", bloc: null });
+  const news = { type: "widget", id: "actus" };
+  expect(builderSelection({ cible: news, bloc: "tri" })).toEqual({ widget: "actus", bloc: "tri" });
+  expect(builderSelection({ cible: news, bloc: "Tri" })).toEqual({ widget: "actus", bloc: "Tri" });
+  expect(builderSelection({ cible: news, bloc: null })).toEqual({ widget: "actus", bloc: null });
+  expect(builderSelection({ cible: news, bloc: "x".repeat(201) })).toEqual({ widget: "actus", bloc: null });
+  expect(builderSelection({ cible: news, bloc: 3 })).toEqual({ widget: "actus", bloc: null });
+  expect(builderSelection({ cible: news })).toEqual({ widget: "actus", bloc: null });
   expect(builderSelection({ cible: { type: "action", id: "gitlab" }, bloc: "lire" })).toEqual({ action: "gitlab", bloc: "lire" });
   expect(builderSelection({ cible: { type: "widget", id: "../x" }, bloc: "tri" })).toBeNull();
   expect(builderSelection({ cible: { type: "action", id: "x".repeat(61) }, bloc: "tri" })).toBeNull();

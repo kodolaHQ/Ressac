@@ -12,7 +12,7 @@ import {
   TWEAK_MAX,
   TWEAKS_MAX_TOTAL,
   SITE_JSON_MAX,
-  verifierDeclarationSite,
+  checkSiteDeclaration,
 } from "./schemas.js";
 
 export type SiteLu =
@@ -24,65 +24,65 @@ const MAX_ERROR = 300;
 const GROUPING_MS = 150;
 
 /** Reads an ordinary file (never a link: O_NOFOLLOW), at most `max` bytes; fails if it is bigger. */
-async function lireBorne(path: string, max: number): Promise<string> {
+async function readBound(path: string, max: number): Promise<string> {
   const f = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
     const st = await f.stat();
     if (!st.isFile()) throw new Error("pas un fichier ordinaire");
     if (st.size > max) throw new Error("trop gros");
-    const tampon = Buffer.alloc(max + 1);
+    const buffer = Buffer.alloc(max + 1);
     let n = 0;
     while (n <= max) {
-      const { bytesRead } = await f.read(tampon, n, max + 1 - n, null);
+      const { bytesRead } = await f.read(buffer, n, max + 1 - n, null);
       if (bytesRead === 0) break;
       n += bytesRead;
     }
     if (n > max) throw new Error("trop gros");
-    return tampon.subarray(0, n).toString("utf8");
+    return buffer.subarray(0, n).toString("utf8");
   } finally {
     await f.close();
   }
 }
 
-async function lireDeclaration(dossier: string, o: { adressesLocales: boolean }): Promise<{ declaration: DeclarationSite } | { erreur: string }> {
-  const file = join(dossier, "site.json");
-  let brut: unknown;
+async function readDeclaration(folder: string, o: { adressesLocales: boolean }): Promise<{ declaration: DeclarationSite } | { erreur: string }> {
+  const file = join(folder, "site.json");
+  let raw: unknown;
   try {
     const s = await lstat(file);
     if (!s.isFile()) return { erreur: "site.json n'est pas un fichier ordinaire" };
     if (s.size > SITE_JSON_MAX) return { erreur: `site.json dépasse ${SITE_JSON_MAX / 1024} Ko` };
-    brut = JSON.parse((await lireBorne(file, SITE_JSON_MAX)).replace(/^\uFEFF/, ""));
+    raw = JSON.parse((await readBound(file, SITE_JSON_MAX)).replace(/^\uFEFF/, ""));
   } catch (e) {
     if ((e as Error).message === "trop gros") return { erreur: `site.json dépasse ${SITE_JSON_MAX / 1024} Ko` };
     // Fixed text: the system's message would quote Mac paths.
     return { erreur: e instanceof SyntaxError ? "site.json illisible (pas du JSON valide)" : "site.json illisible" };
   }
-  const r = DeclarationSite.safeParse(brut);
+  const r = DeclarationSite.safeParse(raw);
   if (!r.success) {
     const p = r.error.issues[0]!;
     const text = `site.json invalide : ${[...p.path, p.message].join(" : ")}`;
     return { erreur: text.length > MAX_ERROR ? text.slice(0, MAX_ERROR - 1) + "…" : text };
   }
-  const denial = verifierDeclarationSite(r.data, o);
+  const denial = checkSiteDeclaration(r.data, o);
   return denial ? { erreur: `site.json invalide : ${denial}` } : { declaration: r.data };
 }
 
-async function lireUn(c: SpacePaths, id: string, o: { adressesLocales: boolean }): Promise<SiteLu> {
-  const dossier = join(c.sites, id);
-  if (!ID_SITE.test(id)) return { id, dossier, erreur: SITE_ID_ERROR };
-  const lu = await lireDeclaration(dossier, o);
-  if ("erreur" in lu) return { id, dossier, erreur: lu.erreur };
+async function readOne(c: SpacePaths, id: string, o: { adressesLocales: boolean }): Promise<SiteLu> {
+  const folder = join(c.sites, id);
+  if (!ID_SITE.test(id)) return { id, dossier: folder, erreur: SITE_ID_ERROR };
+  const lu = await readDeclaration(folder, o);
+  if ("erreur" in lu) return { id, dossier: folder, erreur: lu.erreur };
   let hasHome = false;
   try {
-    hasHome = (await lstat(join(dossier, "accueil", "index.html"))).isFile();
+    hasHome = (await lstat(join(folder, "accueil", "index.html"))).isFile();
   } catch {
     // no home
   }
-  return { id, dossier, declaration: lu.declaration, aAccueil: hasHome };
+  return { id, dossier: folder, declaration: lu.declaration, aAccueil: hasHome };
 }
 
 /** The site apps on disk, sorted by id; a broken app is reported, it does not prevent reading the others. */
-export async function lireSites(c: SpacePaths, o: { adressesLocales: boolean }): Promise<SiteLu[]> {
+export async function readSites(c: SpacePaths, o: { adressesLocales: boolean }): Promise<SiteLu[]> {
   let ids: string[];
   try {
     // `isDirectory` is false for a symbolic link: a link to a folder is ignored.
@@ -93,43 +93,43 @@ export async function lireSites(c: SpacePaths, o: { adressesLocales: boolean }):
   } catch {
     return [];
   }
-  return Promise.all(ids.map((id) => lireUn(c, id, o)));
+  return Promise.all(ids.map((id) => readOne(c, id, o)));
 }
 
 /** An app by its id; null if the folder does not exist (or is hidden, a symbolic link, an invalid name). */
-export async function lireSite(c: SpacePaths, id: string, o: { adressesLocales: boolean }): Promise<SiteLu | null> {
+export async function readSite(c: SpacePaths, id: string, o: { adressesLocales: boolean }): Promise<SiteLu | null> {
   if (!id || id.startsWith(".") || /[\\/\0]/.test(id)) return null;
   try {
     if (!(await lstat(join(c.sites, id))).isDirectory()) return null;
   } catch {
     return null;
   }
-  return lireUn(c, id, o);
+  return readOne(c, id, o);
 }
 
 /** The files cited by the tweaks, read under `retouches/`: never a link, never outside the folder, bounded. */
 export async function readTweaks(s: Extract<SiteLu, { declaration: DeclarationSite }>): Promise<TweaksRead | { erreur: string }> {
   const base = join(s.dossier, "retouches");
-  const manque = { erreur: "retouches : dossier de l'appli introuvable" };
+  const missing = { erreur: "retouches : dossier de l'appli introuvable" };
   let realRoot: string;
   try {
     // Neither the app's folder nor `retouches/` can be a link (even replaced since the site was read).
-    if (!(await lstat(s.dossier)).isDirectory()) return manque;
-    const dossierReel = await realpath(s.dossier);
+    if (!(await lstat(s.dossier)).isDirectory()) return missing;
+    const realFolder = await realpath(s.dossier);
     if (!(await lstat(base)).isDirectory()) throw new Error("pas un dossier");
     realRoot = await realpath(base);
-    if (!realRoot.startsWith(dossierReel + sep)) throw new Error("hors du dossier");
+    if (!realRoot.startsWith(realFolder + sep)) throw new Error("hors du dossier");
   } catch {
     realRoot = "";
   }
-  const sortie: TweaksRead = { js: {}, css: {} };
+  const output: TweaksRead = { js: {}, css: {} };
   let total = 0;
-  for (const genre of ["js", "css"] as const) {
-    const lues = new Set<string>();
+  for (const kind of ["js", "css"] as const) {
+    const alreadyRead = new Set<string>();
     for (const r of s.declaration.retouches) {
-      for (const f of r[genre]) {
-        if (lues.has(f)) continue;
-        lues.add(f);
+      for (const f of r[kind]) {
+        if (alreadyRead.has(f)) continue;
+        alreadyRead.add(f);
         const path = join(base, f);
         try {
           const st = await lstat(path);
@@ -137,14 +137,14 @@ export async function readTweaks(s: Extract<SiteLu, { declaration: DeclarationSi
           if (!realRoot || !(await realpath(path)).startsWith(realRoot + sep)) throw new Error("hors du dossier");
           total += st.size;
           if (total > TWEAKS_MAX_TOTAL) throw new Error("trop gros");
-          sortie[genre][f] = await lireBorne(path, TWEAK_MAX);
+          output[kind][f] = await readBound(path, TWEAK_MAX);
         } catch {
           return { erreur: tweakFileNotFound(f) };
         }
       }
     }
   }
-  return sortie;
+  return output;
 }
 
 /**
@@ -153,7 +153,7 @@ export async function readTweaks(s: Extract<SiteLu, { declaration: DeclarationSi
  */
 export function watchSites(
   c: SpacePaths,
-  rappel: (id: string, what: "declaration" | "retouches" | "accueil") => void,
+  callback: (id: string, what: "declaration" | "retouches" | "accueil") => void,
 ): () => Promise<void> {
   mkdirSync(c.sites, { recursive: true });
   const timers = new Map<string, NodeJS.Timeout>();
@@ -179,7 +179,7 @@ export function watchSites(
       key,
       setTimeout(() => {
         timers.delete(key);
-        rappel(id, q);
+        callback(id, q);
       }, GROUPING_MS),
     );
   });

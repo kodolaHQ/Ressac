@@ -1,5 +1,5 @@
-import type { DroitDev, TabInfo } from "@webaios/kernel";
-import { privateTab, type Decision, type PendingRequest, type Issue, type WindowState, type BrowserState, type SpaceId, type WindowId, type Tab } from "../../shared/model";
+import type { DevRight, TabInfo } from "@webaios/kernel";
+import { privateTab, type Decision, type PendingRequest, type Outcome, type WindowState, type BrowserState, type SpaceId, type WindowId, type Tab } from "../../shared/model";
 
 const info = (state: BrowserState, o: Tab): TabInfo => ({
   id: o.id,
@@ -43,15 +43,15 @@ export function resolveSpace(state: BrowserState, f: WindowState, space?: string
  * What the access policy must learn from a state change: navigations and closings. A tab moved into
  * a private space is closed to the agent: read and developer tools drop.
  */
-export function changementsPolitique(before: BrowserState, after: BrowserState): { navigues: { id: string; url: string }[]; fermes: string[] } {
+export function policyChanges(before: BrowserState, after: BrowserState): { navigues: { id: string; url: string }[]; fermes: string[] } {
   const navigated: { id: string; url: string }[] = [];
-  const fermes: string[] = [];
+  const closed: string[] = [];
   for (const [id, o] of Object.entries(before.onglets)) {
     const n = after.onglets[id];
-    if (!n || (!privateTab(before, o) && privateTab(after, n))) fermes.push(id);
+    if (!n || (!privateTab(before, o) && privateTab(after, n))) closed.push(id);
     else if (n.url !== o.url) navigated.push({ id, url: n.url });
   }
-  return { navigues: navigated, fermes };
+  return { navigues: navigated, fermes: closed };
 }
 
 /** The spaces that just went from non-private to private (the reverse changes nothing in the history). */
@@ -110,11 +110,11 @@ export const QUESTION_DELAY_MS = 120_000;
  * `delaiMs` is `Infinity` for a question with no delay.
  */
 export function waitForResponse(
-  poser: (reply: (d: Issue) => void) => () => void,
+  ask: (reply: (d: Outcome) => void) => () => void,
   delayMs = QUESTION_DELAY_MS,
   signal?: AbortSignal,
 ): Promise<boolean> {
-  return waitForOutcome(poser, delayMs, signal).then((d) => d === "autoriser");
+  return waitForOutcome(ask, delayMs, signal).then((d) => d === "autoriser");
 }
 
 /**
@@ -122,14 +122,14 @@ export function waitForResponse(
  * or withdrawn by whoever asked it).
  */
 export function waitForOutcome(
-  poser: (reply: (d: Issue) => void) => () => void,
+  ask: (reply: (d: Outcome) => void) => () => void,
   delayMs = QUESTION_DELAY_MS,
   signal?: AbortSignal,
-): Promise<Issue> {
+): Promise<Outcome> {
   if (signal?.aborted) return Promise.resolve("retiree");
   return new Promise((ok) => {
     let finished = false;
-    const reply = (d: Issue) => {
+    const reply = (d: Outcome) => {
       if (finished) return;
       finished = true;
       clearTimeout(timer);
@@ -138,12 +138,12 @@ export function waitForOutcome(
     };
     const abandon = () => {
       if (finished) return;
-      retirer();
+      remove();
       reply("retiree");
     };
     // `Infinity`: no delay (a question coming from a click by the user waits for their answer).
     const timer = Number.isFinite(delayMs) ? setTimeout(abandon, delayMs) : undefined;
-    const retirer = poser(reply);
+    const remove = ask(reply);
     signal?.addEventListener("abort", abandon, { once: true });
   });
 }
@@ -153,27 +153,27 @@ export function waitForOutcome(
  * `[]` if they refuse, if the delay expires or if `signal` is raised (the card is then withdrawn).
  */
 export function waitForRights(
-  poser: (reply: (d: Issue, droits?: DroitDev[]) => void) => () => void,
+  ask: (reply: (d: Outcome, rights?: DevRight[]) => void) => () => void,
   delayMs = QUESTION_DELAY_MS,
   signal?: AbortSignal,
-): Promise<DroitDev[]> {
+): Promise<DevRight[]> {
   if (signal?.aborted) return Promise.resolve([]);
   return new Promise((ok) => {
     let finished = false;
-    const reply = (d: Issue, droits: DroitDev[] = []) => {
+    const reply = (d: Outcome, rights: DevRight[] = []) => {
       if (finished) return;
       finished = true;
       clearTimeout(timer);
       signal?.removeEventListener("abort", abandon);
-      ok(d === "autoriser" ? droits : []);
+      ok(d === "autoriser" ? rights : []);
     };
     const abandon = () => {
       if (finished) return;
-      retirer();
+      remove();
       reply("refuser");
     };
     const timer = setTimeout(abandon, delayMs);
-    const retirer = poser(reply);
+    const remove = ask(reply);
     signal?.addEventListener("abort", abandon, { once: true });
   });
 }

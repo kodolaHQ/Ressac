@@ -22,11 +22,11 @@
   let inputOf = $state<string | null>(null);
   let input = $state("");
   /** Action whose deletion awaits the user's confirmation. */
-  let aConfirmer = $state<{ action: ActionShown; genre: "supprimer" | "accord" } | null>(null);
+  let toConfirm = $state<{ action: ActionShown; genre: "supprimer" | "accord" } | null>(null);
   /** Refusal returned by the main process (open, delete), shown above the list. */
   let denial = $state<string | null>(null);
 
-  async function charger() {
+  async function load() {
     const n = ++request;
     const r = await api.actions.liste();
     if (n !== request) return;
@@ -35,11 +35,11 @@
   }
 
   $effect(() => {
-    void charger();
-    return api.actions.surChange(() => void charger());
+    void load();
+    return api.actions.surChange(() => void load());
   });
 
-  async function lancer(a: ActionShown, text: string | null) {
+  async function launch(a: ActionShown, text: string | null) {
     denial = null;
     // Input required and empty: the field stays open with its message, nothing is launched.
     if (a.saisie && !text?.trim()) {
@@ -55,24 +55,24 @@
     if (a.saisie) {
       inputOf = inputOf === a.id ? null : a.id;
       input = "";
-    } else void lancer(a, null);
+    } else void launch(a, null);
   }
 
-  async function confirmer(c: { action: ActionShown; genre: "supprimer" | "accord" }) {
-    aConfirmer = null;
+  async function confirm(c: { action: ActionShown; genre: "supprimer" | "accord" }) {
+    toConfirm = null;
     denial = null;
     if (c.genre === "accord") await api.actions.refuserAccord(c.action.id);
     else {
       const r = await api.actions.supprimer(c.action.id);
       if (!r.ok) denial = r.erreur;
     }
-    await charger();
+    await load();
   }
 
   /** « 30 oct. 08:00 » */
   const when = (iso: string) => new Date(iso).toLocaleString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
-  const dernier = (a: ActionShown) => (a.dernier ? `${STATUSES[a.dernier.statut]} · ${when(a.dernier.debut)}` : "Jamais lancée");
+  const last = (a: ActionShown) => (a.dernier ? `${STATUSES[a.dernier.statut]} · ${when(a.dernier.debut)}` : "Jamais lancée");
 </script>
 
 <section class="actions" data-testid="page-actions" aria-label="Actions">
@@ -90,7 +90,7 @@
               <span class="erreur" data-testid="erreur-{a.id}">{a.erreur}</span>
             {:else}
               {#if a.motsCles.length}<span data-testid="mots-cles-{a.id}">{a.motsCles.join(", ")}</span>{/if}
-              <span class="dernier" data-testid="dernier-{a.id}">{dernier(a)}</span>
+              <span class="dernier" data-testid="dernier-{a.id}">{last(a)}</span>
             {/if}
             {#if inputOf === a.id && a.saisie}
               <!-- svelte-ignore a11y_autofocus -->
@@ -103,7 +103,7 @@
                 autofocus
                 bind:value={input}
                 onkeydown={(e) => {
-                  if (e.key === "Enter") void lancer(a, input);
+                  if (e.key === "Enter") void launch(a, input);
                   else if (e.key === "Escape") inputOf = null;
                 }}
               />
@@ -114,8 +114,8 @@
               <button data-testid="lancer-{a.id}" onclick={() => requestLaunch(a)}><Icon nom="actions" taille={12} /> Lancer</button>
             {/if}
             <button data-testid="voir-workflow-{a.id}" onclick={() => api.actions.voirWorkflow(a.id)}>Voir le workflow</button>
-            {#if a.accord}<button data-testid="retirer-accord-{a.id}" onclick={() => (aConfirmer = { action: a, genre: "accord" })}>Retirer l'accord</button>{/if}
-            <button data-testid="supprimer-{a.id}" onclick={() => (aConfirmer = { action: a, genre: "supprimer" })}>Supprimer</button>
+            {#if a.accord}<button data-testid="retirer-accord-{a.id}" onclick={() => (toConfirm = { action: a, genre: "accord" })}>Retirer l'accord</button>{/if}
+            <button data-testid="supprimer-{a.id}" onclick={() => (toConfirm = { action: a, genre: "supprimer" })}>Supprimer</button>
           </div>
         </li>
       {/each}
@@ -123,8 +123,8 @@
   {/if}
 </section>
 
-{#if aConfirmer}
-  {@const c = aConfirmer}
+{#if toConfirm}
+  {@const c = toConfirm}
   {@const target = c.action}
   <div class="voile" data-testid="voile-suppression-action">
     <div class="confirmation" role="alertdialog" aria-modal="true" data-testid="confirmation-suppression-action">
@@ -134,8 +134,8 @@
         <p>Supprimer « {target.nom} » ? Son dossier ira dans la corbeille ; ses résultats et son accord seront effacés.</p>
       {/if}
       <div class="confirmer-boutons">
-        <button data-testid="annuler-suppression-action" onclick={() => (aConfirmer = null)}>Annuler</button>
-        <button class="confirmer" data-testid="confirmer-suppression-action" onclick={() => void confirmer(c)}>{c.genre === "accord" ? "Retirer l'accord" : "Supprimer"}</button>
+        <button data-testid="annuler-suppression-action" onclick={() => (toConfirm = null)}>Annuler</button>
+        <button class="confirmer" data-testid="confirmer-suppression-action" onclick={() => void confirm(c)}>{c.genre === "accord" ? "Retirer l'accord" : "Supprimer"}</button>
       </div>
     </div>
   </div>

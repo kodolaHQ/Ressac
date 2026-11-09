@@ -1,16 +1,16 @@
 <script lang="ts">
   import { api } from "../state.svelte";
   import { design } from "./design.svelte";
-  import { openMenu, type EntreeMenu } from "./menu.svelte";
+  import { openMenu, type MenuEntry } from "./menu.svelte";
 
   const e = $derived(design.etat);
   const unavailable = $derived(!e || e.indisponible !== null);
 
   function menu(ev: MouseEvent) {
-    const entrees: EntreeMenu[] = [{ libelle: "Panier", agir: () => (design.panierDemande = true) }];
+    const entries: MenuEntry[] = [{ libelle: "Panier", agir: () => (design.panierDemande = true) }];
     // Task 11: the review of the agent's apps and external projects.
-    if (e?.projet && e.projet.type !== "demo") entrees.push({ libelle: "Relire ce projet", agir: () => api.design.relire() });
-    openMenu(ev, entrees);
+    if (e?.projet && e.projet.type !== "demo") entries.push({ libelle: "Relire ce projet", agir: () => api.design.relire() });
+    openMenu(ev, entries);
   }
 </script>
 

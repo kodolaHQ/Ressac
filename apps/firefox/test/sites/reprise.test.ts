@@ -4,16 +4,16 @@ import { MIN_RESUME_DURATION_S, POSITION_GAP_MS, RESUME_BACKOFF_S, ResumeTrackin
 /** A tracker with a test clock and the position the main process returns. */
 function tracking(known: number | null = null) {
   const notes: [number, number][] = [];
-  const fins: boolean[] = [];
+  const ends: boolean[] = [];
   const durations: number[] = [];
   let requests = 0;
   let now = 0;
   let response: (p: number | null) => void = () => {};
   let deferred = false;
   const s = new ResumeTracking({
-    noter: (t, duration, fin) => {
+    noter: (t, duration, end) => {
       notes.push([t, duration]);
-      fins.push(fin);
+      ends.push(end);
     },
     demander: (duration) => {
       requests++;
@@ -25,7 +25,7 @@ function tracking(known: number | null = null) {
   return {
     s,
     notes,
-    fins,
+    fins: ends,
     durees: durations,
     demandes: () => requests,
     horloge: (ms: number) => void (now = ms),
@@ -55,7 +55,7 @@ test("timeupdate every second for 35 s: 4 noter (0, 10, 20, 30 s)", async () => 
 });
 
 test("pause: noter right away; ended too, marked as the end", async () => {
-  const { s, notes, fins, horloge: clock } = tracking();
+  const { s, notes, fins: ends, horloge: clock } = tracking();
   const key = {};
   await s.surEvenement("play", { currentTime: 0, duration: 1500, cle: key });
   await s.surEvenement("timeupdate", { currentTime: 1, duration: 1500, cle: key });
@@ -68,7 +68,7 @@ test("pause: noter right away; ended too, marked as the end", async () => {
     [2, 1500],
     [1500, 1500],
   ]);
-  expect(fins).toEqual([false, false, true]);
+  expect(ends).toEqual([false, false, true]);
 });
 
 test("30 s video: nothing noted, nothing resumed", async () => {
@@ -119,12 +119,12 @@ test("nothing is noted before the resume is settled: a timeupdate at 0 s does no
   const { s, notes, differer: defer, repondre: reply, horloge: clock } = tracking();
   defer();
   const key = {};
-  const reprise = s.surEvenement("play", { currentTime: 0, duration: 1500, cle: key });
+  const resume = s.surEvenement("play", { currentTime: 0, duration: 1500, cle: key });
   expect(await s.surEvenement("timeupdate", { currentTime: 0, duration: 1500, cle: key })).toBeNull();
   expect(await s.surEvenement("pause", { currentTime: 0, duration: 1500, cle: key })).toBeNull();
   expect(notes).toEqual([]);
   reply(1390);
-  expect(await reprise).toBe(1385);
+  expect(await resume).toBe(1385);
   clock(100);
   await s.surEvenement("timeupdate", { currentTime: 1385, duration: 1500, cle: key });
   expect(notes).toEqual([[1385, 1500]]);

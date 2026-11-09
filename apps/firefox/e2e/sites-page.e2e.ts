@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { SITE_INCONNU, SITE_REFUSE } from "../../../packages/kernel/src/mcp/server";
+import { SITE_UNKNOWN, SITE_DENIED } from "../../../packages/kernel/src/mcp/server";
 import { testActor } from "./agent-extensions";
 import { dispatch, state, waitFor } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
@@ -298,7 +298,7 @@ describe("the agent's site tools", () => {
     expect(await callTool(dataDir, "ouvrir_site", { id: "vidola" })).toEqual({ texte: "site:vidola", erreur: false });
     await waitFor(m, `return ${siteExpr("vidola")} !== undefined;`, (v) => v === true);
     expect((await callTool(dataDir, "lister_sites")).texte).toBe("vidola · Vidola · vidola-a.localhost · ouverte");
-    expect(await callTool(dataDir, "ouvrir_site", { id: "inconnu" })).toEqual({ texte: SITE_INCONNU, erreur: true });
+    expect(await callTool(dataDir, "ouvrir_site", { id: "inconnu" })).toEqual({ texte: SITE_UNKNOWN, erreur: true });
   });
 
   // Plan 32 Task 5 brought the app's « donnees-widget » card (before it, no card and an immediate refusal). Refused, the
@@ -310,7 +310,7 @@ describe("the agent's site tools", () => {
     const card = '[data-testid="demande-donnees-widget"]';
     expect(await waitUi<string>(m, `return doc.querySelector(${JSON.stringify(`${card} [data-testid="demande-site"]`)})?.textContent`, [], 15_000)).toContain("« Vidola »");
     await click(m, `${card} button`, { text: "Refuser" });
-    expect(await memory).toEqual({ texte: SITE_REFUSE, erreur: false });
+    expect(await memory).toEqual({ texte: SITE_DENIED, erreur: false });
     await waitUi(m, "return !doc.querySelector('[data-testid=\"modale-demande\"]')");
   });
 });

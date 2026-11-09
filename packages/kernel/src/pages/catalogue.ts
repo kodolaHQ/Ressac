@@ -4,8 +4,8 @@ export type PropertyKind = "reference" | "champ" | "texte" | "nombre" | "case" |
 export type Property = { genre: PropertyKind; description: string; requis: boolean; choix?: string[]; max?: number };
 export type ComponentDefinition = { nom: string; description: string; proprietes: Record<string, Property>; origine: "integre" | "agent" };
 
-const p = (genre: PropertyKind, description: string, required = false, plus: { choix?: string[]; max?: number } = {}): Property => ({
-  genre, description, requis: required, ...plus,
+const p = (kind: PropertyKind, description: string, required = false, extra: { choix?: string[]; max?: number } = {}): Property => ({
+  genre: kind, description, requis: required, ...extra,
 });
 
 function builtIn(name: string, description: string, properties: Record<string, Property>): ComponentDefinition {
@@ -74,12 +74,12 @@ export const BUILTIN_COMPONENTS: ComponentDefinition[] = [
   builtIn("colonnes", "Deux colonnes de blocs (gauche, droite).", {}),
 ];
 
-const FORMES: Partial<Record<PropertyKind, string>> = {
+const SHAPES: Partial<Record<PropertyKind, string>> = {
   colonnes: "colonnes [{champ, libelle}]",
   chiffres: "chiffres [{valeur: référence, libelle}]",
 };
 /** « One or the other » rules that the properties alone do not state. */
-const REGLES: Record<string, string> = {
+const RULES: Record<string, string> = {
   paragraphe: "texte OU valeur.",
   etiquettes: "valeurs OU elements + champ.",
   lien: "texte OU champTexte (champTexte l'emporte).",
@@ -90,12 +90,12 @@ export function catalogText(defs: ComponentDefinition[]): string {
   return defs
     .map((d) => {
       const props = Object.entries(d.proprietes).map(([name, pr]) => {
-        const base = pr.choix ? `${pr.genre} ${pr.choix.join("/")}` : (FORMES[pr.genre] ?? pr.genre);
+        const base = pr.choix ? `${pr.genre} ${pr.choix.join("/")}` : (SHAPES[pr.genre] ?? pr.genre);
         const max = pr.max !== undefined ? ` ≤${pr.max}` : "";
         return `${name} (${base}${max}${pr.requis ? ", requis" : ""})`;
       });
-      const regle = d.origine === "integre" && REGLES[d.nom] ? ` ${REGLES[d.nom]}` : "";
-      return `${d.nom} : ${d.description}${props.length ? ` Propriétés : ${props.join(", ")}.` : ""}${regle}`;
+      const rule = d.origine === "integre" && RULES[d.nom] ? ` ${RULES[d.nom]}` : "";
+      return `${d.nom} : ${d.description}${props.length ? ` Propriétés : ${props.join(", ")}.` : ""}${rule}`;
     })
     .join("\n");
 }

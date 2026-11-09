@@ -12,7 +12,7 @@
    */
   let { id, executions }: { id: string; executions: Executions } = $props();
 
-  let lue = $state.raw<PageAction | null | undefined>(undefined);
+  let loaded = $state.raw<PageAction | null | undefined>(undefined);
   /** The chosen run, and what changes its page (its end, its status). */
   const wanted = $derived(executions.choisie ? `${executions.choisie.id}|${executions.choisie.fin}|${executions.choisie.statut}` : null);
   let request = 0;
@@ -21,29 +21,29 @@
     const execution = executions.choisie?.id ?? null;
     const n = ++request;
     if (v === null || execution === null) {
-      lue = null;
+      loaded = null;
       return;
     }
-    lue = undefined;
+    loaded = undefined;
     void api.actions
       .page(id, execution)
-      .then((p) => n === request && (lue = p))
-      .catch(() => n === request && (lue = null));
+      .then((p) => n === request && (loaded = p))
+      .catch(() => n === request && (loaded = null));
   });
 </script>
 
 <div class="apercu" data-testid="apercu-action">
   {#if executions.choisie === null}
     <p class="doux">Aucune exécution pour l'instant.</p>
-  {:else if lue === undefined}
+  {:else if loaded === undefined}
     <p class="doux">Chargement…</p>
-  {:else if lue === null || !lue.page}
-    <p class="doux">{lue?.erreur ?? "Pas de page pour cette exécution."}</p>
-  {:else if lue.page.vide}
+  {:else if loaded === null || !loaded.page}
+    <p class="doux">{loaded?.erreur ?? "Pas de page pour cette exécution."}</p>
+  {:else if loaded.page.vide}
     <p class="doux">{NO_RESULT}</p>
   {:else}
     <div class="page">
-      <PageRender page={lue.page} action={id} execution={lue.execution} composants={false} />
+      <PageRender page={loaded.page} action={id} execution={loaded.execution} composants={false} />
     </div>
   {/if}
   {#if executions.choisie?.essai}<p class="doux mention" data-testid="apercu-mention">Aperçu d'un essai : pas le dernier résultat de l'action</p>{/if}

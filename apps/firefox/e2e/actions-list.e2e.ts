@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { Action } from "../shared/api";
-import { actionsDataDir, EXECUTION, runsOnDisk, startActionServers, tid, uiQueries, waitNoyau, writeResult, writeRunnableAction } from "./actions";
+import { actionsDataDir, EXECUTION, runsOnDisk, startActionServers, tid, uiQueries, waitKernel, writeResult, writeRunnableAction } from "./actions";
 import { dispatch, state, waitReady } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
@@ -58,7 +58,7 @@ async function launch(prepare: (dataDir: string) => Promise<void>): Promise<void
   q = uiQueries(m);
   await m.setContext("chrome");
   await waitReady(m);
-  await waitNoyau(m);
+  await waitKernel(m);
 }
 async function close(): Promise<void> {
   expect(await missingApi(m)).toEqual([]);
@@ -95,8 +95,8 @@ describe("the Actions page", () => {
           await writeRunnableAction(d, id, { nom: "Avec compte", compte: ["127.0.0.1"], code: "export default async () => [{ page: { titre: 'x' } }];" });
           await writeResult(d, id, EXECUTION, YESTERDAY, "Secret");
         }
-        const accord = { domaines: ["127.0.0.1"], publiques: [], profil: "defaut" };
-        await writeFile(path.join(actionsDataDir(d), "accords.json"), JSON.stringify({ compte: accord, accord }));
+        const grant = { domaines: ["127.0.0.1"], publiques: [], profil: "defaut" };
+        await writeFile(path.join(actionsDataDir(d), "accords.json"), JSON.stringify({ compte: grant, accord: grant }));
         // actions.spec.ts:1122
         await mkdir(path.join(d, "espace", "actions", "cassee"), { recursive: true });
         await writeFile(path.join(d, "espace", "actions", "cassee", "action.json"), "{ pas du json");

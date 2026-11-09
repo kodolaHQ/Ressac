@@ -5,7 +5,7 @@ import {
   ReviewComments,
   ReviewStore,
   reviewStore,
-  destinationDe,
+  destinationOf,
   ReviewError,
   commentsFile,
   PROJECT_ID,
@@ -13,17 +13,17 @@ import {
   projectForSite,
   newPosition,
   EMPTY_REMARK,
-  SANS_CLIENT,
+  NO_CLIENT,
   type SpacePaths,
   type Comment,
   type Comparison,
   type DiffFile,
-  type DossiersDesign,
+  type DesignFolders,
   type ProjectId,
-  type Lot,
+  type Batch,
   type TrackedProject,
   type ExternalRegistry,
-  type Remarques,
+  type Remarks,
 } from "../../../packages/kernel/src/index.ts";
 import type { ExtensionResult, ReviewView } from "../shared/api.ts";
 import { RANGE_OUTSIDE_BLOCK } from "../shared/model.ts";
@@ -47,15 +47,15 @@ export const NO_COMMENT = "Aucun commentaire à envoyer.";
  * A comment's lines, read from the kept diff: those of a single block whose position (new number, that of the next
  * line for a removal) runs from `debut` to `fin`, every position present. null if no block fits.
  */
-export function lignesDuBloc(diff: DiffFile, debut: number, fin: number): Comment["lignes"] | null {
-  if (!Number.isSafeInteger(debut) || !Number.isSafeInteger(fin) || debut < 1 || fin < debut) return null;
+export function blockLines(diff: DiffFile, start: number, end: number): Comment["lignes"] | null {
+  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 1 || end < start) return null;
   for (const b of diff.blocs) {
     const lignes = b.lignes.map((l, i) => ({ marque: l.marque, texte: l.texte, position: newPosition(b, i) }));
-    const dedans = lignes.filter((l) => l.position >= debut && l.position <= fin);
-    const positions = new Set(dedans.map((l) => l.position));
+    const inside = lignes.filter((l) => l.position >= start && l.position <= end);
+    const positions = new Set(inside.map((l) => l.position));
     let full = true;
-    for (let n = debut; n <= fin && full; n++) full = positions.has(n);
-    if (full) return dedans.map(({ marque, texte: text }) => ({ marque, texte: text }));
+    for (let n = start; n <= end && full; n++) full = positions.has(n);
+    if (full) return inside.map(({ marque: mark, texte: text }) => ({ marque: mark, texte: text }));
   }
   return null;
 }
@@ -75,7 +75,7 @@ export class ReviewService {
 
   constructor(
     private readonly o: {
-      dossiers: DossiersDesign;
+      dossiers: DesignFolders;
       chemins: SpacePaths;
       registre: () => ExternalRegistry | null;
       git?: string;
@@ -84,14 +84,14 @@ export class ReviewService {
       /** The site apps' names (their site.json); their id otherwise. */
       sites?: () => Promise<{ id: string; nom: string }[]>;
       /** The batches of sent comments. */
-      remarques: Remarques;
+      remarques: Remarks;
       /** After a batch is written (as in design mode: pre-fill the agent's session; nothing for an external project). */
-      envoyer(p: TrackedProject, lot: Lot): Promise<void>;
+      envoyer(p: TrackedProject, batch: Batch): Promise<void>;
     },
   ) {}
 
-  private depot(p: ProjectId, dossier: string): ReviewStore {
-    return new ReviewStore({ depot: reviewStore(this.o.dossiers, p), dossier, ...(this.o.git ? { git: this.o.git } : {}) });
+  private depot(p: ProjectId, folder: string): ReviewStore {
+    return new ReviewStore({ depot: reviewStore(this.o.dossiers, p), dossier: folder, ...(this.o.git ? { git: this.o.git } : {}) });
   }
 
   /**
@@ -99,11 +99,11 @@ export class ReviewService {
    * into ~/WebAiOs/projets and could plant a link to the home folder there).
    */
   private async dossierApp(d: string): Promise<string | null> {
-    const dossier = join(this.o.chemins.projets, d);
+    const folder = join(this.o.chemins.projets, d);
     try {
-      if (!(await lstat(dossier)).isDirectory()) return null;
-      const [reel, base] = await Promise.all([realpath(dossier), realpath(this.o.chemins.projets)]);
-      return reel.startsWith(base + sep) ? dossier : null;
+      if (!(await lstat(folder)).isDirectory()) return null;
+      const [real, base] = await Promise.all([realpath(folder), realpath(this.o.chemins.projets)]);
+      return real.startsWith(base + sep) ? folder : null;
     } catch {
       return null;
     }
@@ -115,11 +115,11 @@ export class ReviewService {
    */
   private async dossierSite(id: string): Promise<string | null> {
     if (!ID_SITE.test(id)) return null;
-    const dossier = join(this.o.chemins.sites, id);
+    const folder = join(this.o.chemins.sites, id);
     try {
-      if (!(await lstat(dossier)).isDirectory()) return null;
-      const [reel, base] = await Promise.all([realpath(dossier), realpath(this.o.chemins.sites)]);
-      return reel.startsWith(base + sep) ? dossier : null;
+      if (!(await lstat(folder)).isDirectory()) return null;
+      const [real, base] = await Promise.all([realpath(folder), realpath(this.o.chemins.sites)]);
+      return real.startsWith(base + sep) ? folder : null;
     } catch {
       return null;
     }
@@ -127,16 +127,16 @@ export class ReviewService {
 
   /** One task of the snapshot queue (takeovers, `assurer`, `effacer`): one at a time, in order. */
   private enFile(f: () => Promise<void>): Promise<void> {
-    const suite = this.priseEnCours.then(f);
-    this.priseEnCours = suite.catch(() => undefined);
-    return suite;
+    const next = this.priseEnCours.then(f);
+    this.priseEnCours = next.catch(() => undefined);
+    return next;
   }
 
   /** A project's first snapshot in its folder, if missing; an error is swallowed (the page will say it). */
-  private async photo(p: ProjectId, dossier: string | null): Promise<void> {
-    if (!dossier) return;
+  private async photo(p: ProjectId, folder: string | null): Promise<void> {
+    if (!folder) return;
     try {
-      await this.depot(p, dossier).assurerReference();
+      await this.depot(p, folder).assurerReference();
     } catch (e) {
       // git missing, folder unreadable or gone: the page will say so when opened.
       if (!(e instanceof ReviewError)) console.error(`[relecture] prise en charge de ${p} :`, e);
@@ -144,9 +144,9 @@ export class ReviewService {
   }
 
   /** The first snapshot of each app (once per app), one at a time, in the background. */
-  priseEnCharge(dossiers: string[]): Promise<void> {
+  priseEnCharge(folders: string[]): Promise<void> {
     return this.enFile(async () => {
-      for (const d of dossiers) {
+      for (const d of folders) {
         const p = `app-${d}`;
         if (!PROJECT_ID.test(p)) continue;
         await this.photo(p, await this.dossierApp(d));
@@ -192,10 +192,10 @@ export class ReviewService {
     if (!PROJECT_ID.test(p)) return null;
     if (p.startsWith("app-")) {
       const d = p.slice(4);
-      const dossier = await this.dossierApp(d);
-      if (!dossier) return null;
+      const folder = await this.dossierApp(d);
+      if (!folder) return null;
       const name = (await this.o.applis?.().catch(() => []))?.find((a) => a.dossier === d)?.nom ?? d;
-      return { nom: name, dossier };
+      return { nom: name, dossier: folder };
     }
     if (p.startsWith("ext-")) {
       const e = this.o.registre()?.projets().find((x) => `ext-${x.id}` === p);
@@ -203,10 +203,10 @@ export class ReviewService {
     }
     if (p.startsWith("site-")) {
       const id = p.slice(5);
-      const dossier = await this.dossierSite(id);
-      if (!dossier) return null;
+      const folder = await this.dossierSite(id);
+      if (!folder) return null;
       const name = (await this.o.sites?.().catch(() => []))?.find((s) => s.id === id)?.nom ?? id;
-      return { nom: name, dossier };
+      return { nom: name, dossier: folder };
     }
     return null;
   }
@@ -264,11 +264,11 @@ export class ReviewService {
   }
 
   /** Lines of the current version (never of a deleted or non-displayable file). */
-  async lignes(p: ProjectId, token: string, path: string, debut: number, fin: number): Promise<string[]> {
+  async lignes(p: ProjectId, token: string, path: string, start: number, end: number): Promise<string[]> {
     const g = this.garde(p, token, path);
     if (g.fichier.statut === "supprime" || g.fichier.affichable !== true) return [];
-    const a = Math.max(1, Math.floor(debut));
-    const b = Math.min(Math.floor(fin), a + LIGNES_MAX - 1);
+    const a = Math.max(1, Math.floor(start));
+    const b = Math.min(Math.floor(end), a + LIGNES_MAX - 1);
     if (b < a) return [];
     // One more line: if it is missing, the end of the file is reached and its last "\n" does not make an empty line.
     const l = await g.depot.lignes(g.comparaison.arbreCourant, path, a, b + 1);
@@ -314,7 +314,7 @@ export class ReviewService {
 
   private destination(s: TrackedProject | null): { destination: string | null; sansDestination: string | null } {
     if (!s) return { destination: null, sansDestination: UNKNOWN_PROJECT };
-    const d = destinationDe(s, this.o.registre()?.clients() ?? []);
+    const d = destinationOf(s, this.o.registre()?.clients() ?? []);
     return "libelle" in d ? { destination: d.libelle, sansDestination: null } : { destination: null, sansDestination: d.indisponible };
   }
 
@@ -329,7 +329,7 @@ export class ReviewService {
       if (c.texte.trim() === "") return { ok: false, erreur: EMPTY_REMARK };
       const g = this.garde(p, token, c.fichier);
       const diff = await g.depot.fichier(g.comparaison, c.fichier);
-      const lignes = diff.affichable === true ? lignesDuBloc(diff, c.debut, c.fin) : null;
+      const lignes = diff.affichable === true ? blockLines(diff, c.debut, c.fin) : null;
       if (!lignes) return { ok: false, erreur: RANGE_OUTSIDE_BLOCK };
       await this.commentairesDe(p).ajouter({ fichier: c.fichier, debut: c.debut, fin: c.fin, lignes, texte: c.texte });
       return { ok: true };
@@ -357,21 +357,21 @@ export class ReviewService {
       if (!s) return { ok: false, erreur: UNKNOWN_PROJECT };
       let destination: { destination: "agent" | "mcp"; client?: string } = { destination: "agent" };
       if (s.type === "externe") {
-        const d = destinationDe(s, this.o.registre()?.clients() ?? []);
-        if ("indisponible" in d || s.client === null) return { ok: false, erreur: SANS_CLIENT };
+        const d = destinationOf(s, this.o.registre()?.clients() ?? []);
+        if ("indisponible" in d || s.client === null) return { ok: false, erreur: NO_CLIENT };
         destination = { destination: "mcp", client: s.client };
       }
       const comments = this.commentairesDe(p);
       const a = await comments.aEnvoyer();
       if (a.length === 0) return { ok: false, erreur: NO_COMMENT };
-      const lot = await this.o.remarques.envoyerRelecture(
+      const batch = await this.o.remarques.envoyerRelecture(
         p,
         a.map((c) => ({ texte: c.texte, contexte: { fichier: c.fichier, debut: c.debut, fin: c.fin, lignes: c.lignes } })),
         destination,
       );
       // A comment edited during the send stays "not sent": its new text did not go.
       await comments.marquerEnvoyesSiInchanges(a.map((c) => ({ id: c.id, texte: c.texte })));
-      await this.o.envoyer(s, lot);
+      await this.o.envoyer(s, batch);
       return { ok: true };
     } catch (e) {
       return { ok: false, erreur: e instanceof Error ? e.message : String(e) };

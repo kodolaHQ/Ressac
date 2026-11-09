@@ -1,10 +1,10 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { DROITS_DEV, type DroitDev, type AccessPolicy } from "../access/policy.js";
+import { DEV_RIGHTS, type DevRight, type AccessPolicy } from "../access/policy.js";
 import {
   compareMemory,
-  masquerEnTetes,
-  masquerUrl,
+  maskHeaders,
+  maskUrl,
   hideUrlsInText,
   summarizeSnapshot,
   summarizeProfile,
@@ -31,7 +31,7 @@ export interface ProfileFiles {
 type Result = { content: { type: "text"; text: string }[]; isError?: boolean };
 const text = (text: string, isError = false): Result => ({ content: [{ type: "text", text }], ...(isError ? { isError } : {}) });
 
-class Coupe extends Error {}
+class Cut extends Error {}
 
 /** Maximum length of the reason shown on the consent card; beyond it, it is cut with « … ». */
 export const REASON_LENGTH = 300;
@@ -49,10 +49,10 @@ function clamp(lignes: string[], empty: string): string {
   if (!lignes.length) return empty;
   const budget = LIST_LENGTH_MAX - 64; // room for the omission line
   let total = 0;
-  let debut = lignes.length;
-  while (debut > 0 && total + lignes[debut - 1]!.length + 1 <= budget) total += lignes[--debut]!.length + 1;
-  if (debut === 0) return lignes.join("\n");
-  return [`${debut} entrées plus anciennes omises.`, ...lignes.slice(debut)].join("\n");
+  let start = lignes.length;
+  while (start > 0 && total + lignes[start - 1]!.length + 1 <= budget) total += lignes[--start]!.length + 1;
+  if (start === 0) return lignes.join("\n");
+  return [`${start} entrées plus anciennes omises.`, ...lignes.slice(start)].join("\n");
 }
 
 const chronological = <T extends { horodatage: number }>(l: T[]): T[] => [...l].sort((a, b) => a.horodatage - b.horodatage);
@@ -70,8 +70,8 @@ function originOf(url: string): string | null {
 const profileName = (tool: string, extension: string): string =>
   `${new Date().toISOString().replaceAll(":", "")}-${tool}.${extension}`;
 
-const lignesEnTetes = (h: Record<string, string>): string[] =>
-  Object.entries(h).map(([name, valeur]) => `  ${name}: ${truncate(valeur)}`);
+const headerLines = (h: Record<string, string>): string[] =>
+  Object.entries(h).map(([name, value]) => `  ${name}: ${truncate(value)}`);
 
 export function registerDevTools(
   server: McpServer,
@@ -79,7 +79,7 @@ export function registerDevTools(
     pont: BrowserBridge;
     politique: AccessPolicy;
     agent: string;
-    demandes: Map<string, Promise<DroitDev[]>>;
+    demandes: Map<string, Promise<DevRight[]>>;
     /** Tools reserved for the kernel; otherwise, those of the bridge. */
     outils?: BrowserDevTools;
     /**
@@ -89,17 +89,17 @@ export function registerDevTools(
     accesSite?: (o: TabInfo) => Promise<boolean>;
   } & ProfileFiles,
 ): void {
-  const { pont, politique, demandes: requests } = c;
-  const tools = c.outils ?? (pont.outilsDev as BrowserDevTools);
+  const { pont: bridge, politique: policy, demandes: requests } = c;
+  const tools = c.outils ?? (bridge.outilsDev as BrowserDevTools);
 
   async function tab(id: string): Promise<TabInfo> {
-    const o = (await pont.listerOnglets()).find((x) => x.id === id);
-    if (!o) throw pont.estPrive?.(id) ? new PrivateTab(id) : new TabNotFound(id);
+    const o = (await bridge.listerOnglets()).find((x) => x.id === id);
+    if (!o) throw bridge.estPrive?.(id) ? new PrivateTab(id) : new TabNotFound(id);
     return o;
   }
 
   /** The site app's grant, if there is one, still holds (a new conversation withdraws it). */
-  const siteGrantHeld = (o: TabInfo) => o.site === undefined || politique.lectureSiteAccordee(o.site, o.empreinte);
+  const siteGrantHeld = (o: TabInfo) => o.site === undefined || policy.lectureSiteAccordee(o.site, o.empreinte);
 
   /**
    * Obtains the wanted rights: those that are missing and not blocked are asked of the user, one card at a time per
@@ -108,7 +108,7 @@ export function registerDevTools(
    * past conversation (new conversation, kernel stopped) is removed, and its answer is worth nothing. A site app
    * first asks for its own grant (its card if needed): without it, no right, and no dev-tools card put up.
    */
-  async function get(id: string, wanted: DroitDev[], reason: string): Promise<{ tenus: DroitDev[]; onglet: TabInfo }> {
+  async function get(id: string, wanted: DevRight[], reason: string): Promise<{ tenus: DevRight[]; onglet: TabInfo }> {
     reason = clampReason(reason);
     for (;;) {
       let o = await tab(id);
@@ -119,30 +119,30 @@ export function registerDevTools(
         o = await tab(id);
         if (!siteGrantHeld(o)) return { tenus: [], onglet: o };
       }
-      const held = politique.droitsDev(o);
-      const missing = wanted.filter((d) => !held.includes(d) && politique.peutDemander(id, d));
-      const demander = pont.demanderOutilsDev?.bind(pont);
-      if (!missing.length || !demander) return { tenus: wanted.filter((d) => held.includes(d)), onglet: o };
-      const enCours = requests.get(id);
-      if (enCours) {
+      const held = policy.droitsDev(o);
+      const missing = wanted.filter((d) => !held.includes(d) && policy.peutDemander(id, d));
+      const ask = bridge.demanderOutilsDev?.bind(bridge);
+      if (!missing.length || !ask) return { tenus: wanted.filter((d) => held.includes(d)), onglet: o };
+      const running = requests.get(id);
+      if (running) {
         // Another request is shown: we wait for it, then only ask again for what is still missing.
-        await enCours.catch(() => {});
+        await running.catch(() => {});
         continue;
       }
       const origin = originOf(o.url);
-      const conversation = politique.conversation;
+      const conversation = policy.conversation;
       const removal = new AbortController();
-      const unsubscribe = politique.surChange(() => {
-        if (politique.conversation !== conversation) removal.abort();
+      const unsubscribe = policy.surChange(() => {
+        if (policy.conversation !== conversation) removal.abort();
       });
-      const request = demander(o, { droits: missing, raison: reason, agent: c.agent }, removal.signal)
+      const request = ask(o, { droits: missing, raison: reason, agent: c.agent }, removal.signal)
         .then(async (response) => {
-          if (politique.conversation !== conversation) return [];
+          if (policy.conversation !== conversation) return [];
           // The user may have changed site during the question: their grant is for the site they saw.
-          const after = (await pont.listerOnglets()).find((x) => x.id === id);
-          if (!after || originOf(after.url) !== origin || politique.conversation !== conversation) return [];
-          const grants = DROITS_DEV.filter((d) => response.includes(d));
-          politique.accorderDev(after, grants, missing.filter((d) => !grants.includes(d)));
+          const after = (await bridge.listerOnglets()).find((x) => x.id === id);
+          if (!after || originOf(after.url) !== origin || policy.conversation !== conversation) return [];
+          const grants = DEV_RIGHTS.filter((d) => response.includes(d));
+          policy.accorderDev(after, grants, missing.filter((d) => !grants.includes(d)));
           return grants;
         })
         .finally(() => {
@@ -152,7 +152,7 @@ export function registerDevTools(
       requests.set(id, request);
       await request;
       const after = await tab(id);
-      const heldAfter = politique.droitsDev(after);
+      const heldAfter = policy.droitsDev(after);
       return { tenus: wanted.filter((d) => heldAfter.includes(d)), onglet: after };
     }
   }
@@ -164,59 +164,59 @@ export function registerDevTools(
    */
   async function withRight(
     id: string,
-    droit: DroitDev,
+    right: DevRight,
     tool: string,
     f: (o: TabInfo, signal: AbortSignal, write: (name: string, content: string) => Promise<string>) => Promise<Result>,
   ): Promise<Result> {
-    const got = await get(id, [droit], `L'agent veut utiliser ${tool}.`);
-    if (!got.tenus.includes(droit)) return text(TOOL_DENIAL_TEXT);
+    const got = await get(id, [right], `L'agent veut utiliser ${tool}.`);
+    if (!got.tenus.includes(right)) return text(TOOL_DENIAL_TEXT);
     const origin = originOf(got.onglet.url);
     const o = await tab(id);
     const controller = new AbortController();
     const { signal } = controller;
-    const verifier = () => {
-      if (!signal.aborted && (!politique.droitsDev(o).includes(droit) || !siteGrantHeld(o))) controller.abort(new Coupe());
+    const check = () => {
+      if (!signal.aborted && (!policy.droitsDev(o).includes(right) || !siteGrantHeld(o))) controller.abort(new Cut());
     };
     const files: string[] = [];
-    const effacer = (x: string) => c.supprimerProfil(x).catch(() => {});
+    const clear = (x: string) => c.supprimerProfil(x).catch(() => {});
     const write = async (name: string, content: string) => {
-      if (signal.aborted) throw new Coupe();
-      const path = await c.ecrireProfil(o, name, content, politique.estConstruite(o));
+      if (signal.aborted) throw new Cut();
+      const path = await c.ecrireProfil(o, name, content, policy.estConstruite(o));
       // Interrupted during the write: the answer has already gone, the file must not remain.
       if (signal.aborted) {
-        await effacer(path);
-        throw new Coupe();
+        await clear(path);
+        throw new Cut();
       }
       files.push(path);
       return path;
     };
     /** Cut by the user, left for another site, or moved into a private space. */
     const interruptionResponse = async (): Promise<Result> => {
-      if (pont.estPrive?.(id)) return text(PRIVATE_TEXT);
+      if (bridge.estPrive?.(id)) return text(PRIVATE_TEXT);
       const now = await tab(id).catch(() => null);
       return text(now && originOf(now.url) !== origin ? SITE_CHANGED_TEXT : TEXT_CUT);
     };
-    const unsubscribe = politique.surChange(verifier);
-    politique.utilisation(id, true);
+    const unsubscribe = policy.surChange(check);
+    policy.utilisation(id, true);
     try {
-      verifier();
+      check();
       // The site may have changed since the grant: the bridge is not called at all.
       if (signal.aborted) return await interruptionResponse();
-      const abandon = new Promise<never>((_, ko) => signal.addEventListener("abort", () => ko(new Coupe()), { once: true }));
+      const abandon = new Promise<never>((_, ko) => signal.addEventListener("abort", () => ko(new Cut()), { once: true }));
       const call = f(o, signal, write);
       call.catch(() => {}); // a late result after abandonment is ignored
       const r = await Promise.race([call, abandon]);
-      if (signal.aborted) throw new Coupe();
+      if (signal.aborted) throw new Cut();
       return r;
     } catch (e) {
-      await Promise.all(files.map(effacer));
-      if (!signal.aborted && !(e instanceof Coupe)) throw e;
+      await Promise.all(files.map(clear));
+      if (!signal.aborted && !(e instanceof Cut)) throw e;
       return await interruptionResponse();
     } finally {
       // A write still in progress (f failed without waiting for it) deletes its file on seeing the signal raised.
-      if (!signal.aborted) controller.abort(new Coupe());
+      if (!signal.aborted) controller.abort(new Cut());
       unsubscribe();
-      politique.utilisation(id, false);
+      policy.utilisation(id, false);
     }
   }
 
@@ -234,7 +234,7 @@ export function registerDevTools(
     };
 
   const id = z.string();
-  const droit = z.enum(DROITS_DEV as [DroitDev, ...DroitDev[]]);
+  const right = z.enum(DEV_RIGHTS as [DevRight, ...DevRight[]]);
 
   server.registerTool(
     "demander_outils_dev",
@@ -242,10 +242,10 @@ export function registerDevTools(
       description:
         "Demande à l'utilisateur des droits d'outils de développement sur un onglet (console, reseau, performances, agir). " +
         "Ne demander que les droits utiles, avec une raison claire. Renvoie les droits accordés.",
-      inputSchema: { id, droits: z.array(droit).min(1), raison: z.string().min(1) },
+      inputSchema: { id, droits: z.array(right).min(1), raison: z.string().min(1) },
     },
-    protect(async ({ id, droits, raison: reason }) => {
-      const wanted = DROITS_DEV.filter((d) => droits.includes(d));
+    protect(async ({ id, droits: rights, raison: reason }) => {
+      const wanted = DEV_RIGHTS.filter((d) => rights.includes(d));
       const grants = (await get(id, wanted, reason)).tenus;
       if (!grants.length) return text(TOOL_DENIAL_TEXT);
       const refuses = wanted.filter((d) => !grants.includes(d));
@@ -264,20 +264,20 @@ export function registerDevTools(
     protect(async ({ id, depuis: from, niveau: level }) =>
       withRight(id, "console", "lire_console", async (o) => {
         // On a third-party site, the URLs of the messages and stacks are masked as in lire_reseau.
-        const view = politique.estConstruite(o) ? (t: string) => t : hideUrlsInText;
+        const view = policy.estConstruite(o) ? (t: string) => t : hideUrlsInText;
         const messages = chronological(await tools.console(id)).filter(
           (m) => (from === undefined || m.horodatage >= from) && (level === undefined || m.niveau === level),
         );
         const lignes = messages.map((m) => {
-          const ligne = `${new Date(m.horodatage).toISOString()} [${m.niveau}] ${truncate(view(m.texte))}`;
-          return m.pile ? `${ligne}\n${truncate(view(m.pile))}` : ligne;
+          const line = `${new Date(m.horodatage).toISOString()} [${m.niveau}] ${truncate(view(m.texte))}`;
+          return m.pile ? `${line}\n${truncate(view(m.pile))}` : line;
         });
         return text(clamp(lignes, "Aucun message."));
       }),
     ),
   );
 
-  const viewUrl = (o: TabInfo, r: NetworkRequest) => (politique.estConstruite(o) ? r.url : masquerUrl(r.url));
+  const viewUrl = (o: TabInfo, r: NetworkRequest) => (policy.estConstruite(o) ? r.url : maskUrl(r.url));
 
   server.registerTool(
     "lire_reseau",
@@ -319,14 +319,14 @@ export function registerDevTools(
       withRight(id, "reseau", "lire_requete", async (o) => {
         const r = (await tools.reseau(id)).find((x) => x.id === request);
         if (!r) return text(`Requête introuvable : ${request}`, true);
-        const brut = politique.estConstruite(o);
-        let corps: string;
+        const raw = policy.estConstruite(o);
+        let body: string;
         try {
           const c = await tools.corps(id, request);
-          corps = c.base64 ? `Corps (base64) :\n${truncate(c.corps)}` : `Corps :\n${truncate(c.corps)}`;
+          body = c.base64 ? `Corps (base64) :\n${truncate(c.corps)}` : `Corps :\n${truncate(c.corps)}`;
         } catch (e) {
           if (e instanceof DevToolsBusy) throw e;
-          corps = "Corps indisponible.";
+          body = "Corps indisponible.";
         }
         return text(
           [
@@ -336,10 +336,10 @@ export function registerDevTools(
             ...(r.dureeMs !== undefined ? [`Durée : ${Math.round(r.dureeMs)} ms`] : []),
             ...(r.taille !== undefined ? [`Taille : ${r.taille} o`] : []),
             "En-têtes de la requête :",
-            ...lignesEnTetes(brut ? r.enTetesRequete : masquerEnTetes(r.enTetesRequete)),
+            ...headerLines(raw ? r.enTetesRequete : maskHeaders(r.enTetesRequete)),
             "En-têtes de la réponse :",
-            ...lignesEnTetes(brut ? r.enTetesReponse : masquerEnTetes(r.enTetesReponse)),
-            corps,
+            ...headerLines(raw ? r.enTetesReponse : maskHeaders(r.enTetesReponse)),
+            body,
           ].join("\n"),
         );
       }),
@@ -375,9 +375,9 @@ export function registerDevTools(
     },
     protect(async ({ id }) =>
       withRight(id, "performances", "instantane_memoire", async (_o, signal, write) => {
-        const brut = await tools.instantaneMemoire(id, signal);
-        const path = await write(profileName("instantane_memoire", "heapsnapshot"), brut);
-        return text(`${truncate(memoryText(summarizeSnapshot(brut)), SUMMARY_LENGTH)}\nInstantané : ${path}`);
+        const raw = await tools.instantaneMemoire(id, signal);
+        const path = await write(profileName("instantane_memoire", "heapsnapshot"), raw);
+        return text(`${truncate(memoryText(summarizeSnapshot(raw)), SUMMARY_LENGTH)}\nInstantané : ${path}`);
       }),
     ),
   );
@@ -391,7 +391,7 @@ export function registerDevTools(
     protect(async ({ id, a, b }) =>
       withRight(id, "performances", "comparer_memoire", async () => {
         // A read or parse error must never return the file's content.
-        const lus = await Promise.all(
+        const reads = await Promise.all(
           [a, b].map(async (path) => {
             try {
               return summarizeSnapshot(await c.lireProfil(path));
@@ -400,7 +400,7 @@ export function registerDevTools(
             }
           }),
         );
-        const [before, after] = lus;
+        const [before, after] = reads;
         if (typeof before === "string") return text(`Instantané illisible : ${truncate(before, 500)}.`, true);
         if (typeof after === "string") return text(`Instantané illisible : ${truncate(after, 500)}.`, true);
         return text(truncate(compareMemory(before!, after!), SUMMARY_LENGTH));
@@ -427,9 +427,9 @@ export function registerDevTools(
   server.registerTool(
     "recharger",
     { description: "Recharge l'onglet, sans cache si `sans_cache`.", inputSchema: { id, sans_cache: z.boolean().optional() } },
-    protect(async ({ id, sans_cache }) =>
+    protect(async ({ id, sans_cache: no_cache }) =>
       withRight(id, "agir", "recharger", async () => {
-        await tools.recharger(id, sans_cache ?? false);
+        await tools.recharger(id, no_cache ?? false);
         return text(`Onglet ${id} rechargé.`);
       }),
     ),

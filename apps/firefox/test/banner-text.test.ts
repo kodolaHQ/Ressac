@@ -6,8 +6,8 @@ const a = "https://a.test";
 it("the sentences: camera and micro grouped, notifications, the link cut at 120", () => {
   expect(bannerText({ origine: a, permissions: ["media-camera", "media-micro"] })).toBe("a.test veut utiliser votre caméra et votre micro");
   expect(bannerText({ origine: a, permissions: ["notifications"] })).toBe("a.test veut vous envoyer des notifications");
-  const lien = `mailto:${"x".repeat(200)}`;
-  expect(bannerText({ origine: a, permissions: ["ouvrir-application"], lien })).toBe(`a.test veut ouvrir un lien dans une autre application : ${lien.slice(0, 120)}`);
+  const link = `mailto:${"x".repeat(200)}`;
+  expect(bannerText({ origine: a, permissions: ["ouvrir-application"], lien: link })).toBe(`a.test veut ouvrir un lien dans une autre application : ${link.slice(0, 120)}`);
 });
 
 it("the three new kinds", () => {

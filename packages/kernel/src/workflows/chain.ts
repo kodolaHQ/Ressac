@@ -13,8 +13,8 @@ import type { ValidWorkflow } from "./validate.js";
  * is not a contiguous slice of the run order. A try has no chain: it is up to the caller to judge.
  */
 export function streamingChain(v: ValidWorkflow): string[] {
-  const blocs = new Map(v.workflow.blocs.map((b) => [b.id, b]));
-  if (blocs.get(v.sortie.id)?.parametres.auFilDeLEau !== true) return [];
+  const blocks = new Map(v.workflow.blocs.map((b) => [b.id, b]));
+  if (blocks.get(v.sortie.id)?.parametres.auFilDeLEau !== true) return [];
   const upstream = v.predecesseurs[v.sortie.id]!;
   if (upstream.length !== 1) return [];
 
@@ -25,22 +25,22 @@ export function streamingChain(v: ValidWorkflow): string[] {
 
   const chain: string[] = [];
   let next = v.sortie.id;
-  let courant: string | undefined = upstream[0];
-  while (courant !== undefined) {
-    const b = blocs.get(courant)!;
+  let current: string | undefined = upstream[0];
+  while (current !== undefined) {
+    const b = blocks.get(current)!;
     if (BLOCK_REGISTRY.get(b.type)?.chaine !== true || b.parametres.parElement !== true) break;
-    const after = successors.get(courant) ?? [];
+    const after = successors.get(current) ?? [];
     if (after.length !== 1 || after[0] !== next) break;
-    chain.unshift(courant);
-    const before: string[] = v.predecesseurs[courant]!;
+    chain.unshift(current);
+    const before: string[] = v.predecesseurs[current]!;
     if (before.length !== 1) break;
-    next = courant;
-    courant = before[0];
+    next = current;
+    current = before[0];
   }
 
   while (chain.length > 0) {
-    const debut = v.ordre.indexOf(chain[0]!);
-    if (chain.every((id, i) => v.ordre[debut + i] === id)) break;
+    const start = v.ordre.indexOf(chain[0]!);
+    if (chain.every((id, i) => v.ordre[start + i] === id)) break;
     chain.shift();
   }
   return chain;

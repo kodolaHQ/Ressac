@@ -209,13 +209,13 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("site app spike", () => {
     await back();
 
     // The sign-in window: window.open with features (Firefox opens a window itself), then target=_blank (browserDOMWindow).
-    const connexion = server.url("compte.localhost", "/connexion");
-    const small = `[...Services.wm.getEnumerator("navigator:browser")].find((w) => w.document.documentElement.getAttribute("webaios-site-small") === "vidola" && w.gBrowser.selectedBrowser.currentURI.spec === ${JSON.stringify(connexion)})`;
+    const login = server.url("compte.localhost", "/connexion");
+    const small = `[...Services.wm.getEnumerator("navigator:browser")].find((w) => w.document.documentElement.getAttribute("webaios-site-small") === "vidola" && w.gBrowser.selectedBrowser.currentURI.spec === ${JSON.stringify(login)})`;
     const smallInfo = () =>
       m.execute(`const w = ${small}; if (!w) return null; const b = w.gBrowser.selectedBrowser;
         return { outer: [w.outerWidth, w.outerHeight], inner: [w.innerWidth, w.innerHeight], content: [b.clientWidth, b.clientHeight], toolbarVisible: w.toolbar.visible,
           userContextId: b.getAttribute("usercontextid"), viewUserContextId: ${view}.getAttribute("usercontextid"), opener: !!b.browsingContext.opener, toolboxHidden: w.document.getElementById("navigator-toolbox").hidden };`);
-    await measure("(b) window.open to compte.localhost with features", () => inSiteView(m, "vidola", `window.open(${JSON.stringify(connexion)}, "connexion", "width=500,height=650"); return 1;`, { gesture: true }), 2000);
+    await measure("(b) window.open to compte.localhost with features", () => inSiteView(m, "vidola", `window.open(${JSON.stringify(login)}, "connexion", "width=500,height=650"); return 1;`, { gesture: true }), 2000);
     note("(b) sign-in window", await waitFor(m, `return !!(${small}) && !(${small}).gBrowser.selectedBrowser.webProgress.isLoadingDocument;`, (v) => v === true).then(smallInfo, (e) => String(e)));
     note("(b) sign-in window reached compte", server.requetes.some((r) => r.hote === "compte.localhost"));
     // With a gesture, from the page world; what the assignment did is written on the page.
@@ -361,8 +361,8 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("site app spike", () => {
   }, 60_000);
 
   it("(e) closing the app window closes its sign-in windows: nothing of its container stays unguarded", async () => {
-    const connexion = server.url("compte.localhost", "/connexion");
-    await inSiteView(m, "vidola", `window.open(${JSON.stringify(connexion)}, "connexion", "width=500,height=650"); return 1;`, { gesture: true });
+    const login = server.url("compte.localhost", "/connexion");
+    await inSiteView(m, "vidola", `window.open(${JSON.stringify(login)}, "connexion", "width=500,height=650"); return 1;`, { gesture: true });
     const small = `[...Services.wm.getEnumerator("navigator:browser")].filter((w) => w.document.documentElement.getAttribute("webaios-site-small") === "vidola").length`;
     await waitFor(m, `return ${small};`, (n: number) => n === 1);
     await m.execute(`${siteWindowExpr("vidola")}.close();`);

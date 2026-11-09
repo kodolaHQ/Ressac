@@ -57,7 +57,7 @@ const SchemaV2 = CommonSchema.extend({
 const SchemaSession = z.discriminatedUnion("version", [SchemaV1, SchemaV2]);
 
 /** Reads a saved session, whatever its version, as version 2. */
-function enV2(lu: z.infer<typeof SchemaSession>): z.infer<typeof SchemaV2> {
+function toV2(lu: z.infer<typeof SchemaSession>): z.infer<typeof SchemaV2> {
   if (lu.version === 2) {
     // A login profile used by a space is always listed: otherwise it would be taken for a profile to erase.
     const missing = [...new Set(lu.espaces.map((e) => e.profil))].filter((id) => !lu.profils.some((p) => p.id === id));
@@ -87,8 +87,8 @@ async function setAside(path: string, reason: "corrompu" | "illisible"): Promise
 }
 
 /** `garde` receives the name under which an unreadable session was set aside, to tell the user. */
-export async function chargerSession(dossier: string, kept?: (path: string) => void): Promise<BrowserState> {
-  const path = join(dossier, FILE);
+export async function loadSession(folder: string, kept?: (path: string) => void): Promise<BrowserState> {
+  const path = join(folder, FILE);
   let text: string;
   try {
     text = await fs.readFile(path, "utf8");
@@ -99,7 +99,7 @@ export async function chargerSession(dossier: string, kept?: (path: string) => v
     return initialState();
   }
   try {
-    const lu = enV2(SchemaSession.parse(JSON.parse(text)));
+    const lu = toV2(SchemaSession.parse(JSON.parse(text)));
     return {
       ...lu,
       onglets: Object.fromEntries(Object.entries(lu.onglets).map(([id, o]) => [id, { ...o, ...VOLATILE }])),

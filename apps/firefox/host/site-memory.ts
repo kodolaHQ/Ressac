@@ -22,9 +22,9 @@ function memoryRequest(d: unknown): MemoryRequest | null {
  * `sites.memoireOp {id, adresse, op, cle, valeur?}`: the memory work past the sender checks. `memoire(id)`
  * rejects while the app is being deleted: nothing is read or written then.
  */
-export async function memoryOp(memory: (id: string) => Promise<SiteMemory>, brute: unknown): Promise<MemoryResponse> {
-  const p = brute && typeof brute === "object" ? (brute as { id?: unknown; adresse?: unknown }) : {};
-  const d = memoryRequest(brute);
+export async function memoryOp(memory: (id: string) => Promise<SiteMemory>, raw: unknown): Promise<MemoryResponse> {
+  const p = raw && typeof raw === "object" ? (raw as { id?: unknown; adresse?: unknown }) : {};
+  const d = memoryRequest(raw);
   if (typeof p.id !== "string" || typeof p.adresse !== "string" || !d) return { ok: false, erreur: MEMORY_DENIAL };
   const m = await memory(p.id).catch(() => null);
   if (!m) return { ok: false, erreur: MEMORY_DENIAL };
@@ -41,7 +41,7 @@ export async function memoryOp(memory: (id: string) => Promise<SiteMemory>, brut
 export const RESUME_DURATION_GAP_S = 2;
 export const FRAME_NOTE_GAP_MS = 1000;
 /** A frame key is "<browsingContext.id>:<innerWindowId>", from the chrome; anything longer is not one. */
-const CADRE_MAX = 64;
+const FRAME_MAX = 64;
 
 const finished = (x: unknown): x is number => typeof x === "number" && Number.isFinite(x);
 /** Same video: durations within `ECART_DUREE_REPRISE_S`. */
@@ -67,19 +67,19 @@ export function createPositions(o: {
   const now = o.maintenant ?? Date.now;
   const defer = o.differer ?? ((f: () => void, ms: number) => void setTimeout(f, ms));
   /** Per app, per frame: when its last note was written, and the last one that came too early (written at the second's end). */
-  const cadres = new Map<string, Map<string, { derniere: number; enAttente: (() => void) | null }>>();
+  const frames = new Map<string, Map<string, { derniere: number; enAttente: (() => void) | null }>>();
 
   return {
     /**
      * A position noted: it belongs to the page's video of the same duration, another (advert, trailer) neither replaces
      * nor erases it. Without one, the first video long enough notes. Resolves once written (or dropped).
      */
-    async position(brute: unknown): Promise<void> {
-      const p = brute && typeof brute === "object" ? (brute as { id?: unknown; cadre?: unknown; adresse?: unknown; t?: unknown; duree?: unknown; fin?: unknown }) : {};
+    async position(raw: unknown): Promise<void> {
+      const p = raw && typeof raw === "object" ? (raw as { id?: unknown; cadre?: unknown; adresse?: unknown; t?: unknown; duree?: unknown; fin?: unknown }) : {};
       const target = targetOf(p);
-      if (!target || typeof p.cadre !== "string" || p.cadre.length > CADRE_MAX || !finished(p.t) || !finished(p.duree) || !o.accorde(target.id)) return;
+      if (!target || typeof p.cadre !== "string" || p.cadre.length > FRAME_MAX || !finished(p.t) || !finished(p.duree) || !o.accorde(target.id)) return;
       const { t, duree: duration } = p;
-      const fin = p.fin === true;
+      const end = p.fin === true;
       const generationReceived = generation(target.id);
       const write = () =>
         o.memoire(target.id).then(
@@ -92,16 +92,16 @@ export function createPositions(o: {
           },
           (err) => console.error("[sites] position non notée :", err),
         );
-      let parCadre = cadres.get(target.id);
-      if (!parCadre) cadres.set(target.id, (parCadre = new Map()));
+      let byFrame = frames.get(target.id);
+      if (!byFrame) frames.set(target.id, (byFrame = new Map()));
       const hour = now();
-      const state = parCadre.get(p.cadre);
+      const state = byFrame.get(p.cadre);
       if (!state) {
         // shortcut: frame keys live until the app closes (fermee), one per document that noted; fine for a session's videos.
-        parCadre.set(p.cadre, { derniere: hour, enAttente: null });
+        byFrame.set(p.cadre, { derniere: hour, enAttente: null });
         return write();
       }
-      if (fin || hour - state.derniere >= FRAME_NOTE_GAP_MS) {
+      if (end || hour - state.derniere >= FRAME_NOTE_GAP_MS) {
         state.derniere = hour;
         state.enAttente = null;
         return write();
@@ -118,8 +118,8 @@ export function createPositions(o: {
       }, FRAME_NOTE_GAP_MS - (hour - state.derniere));
     },
     /** The page's kept position, for any video of the same duration that asks (recreated player, « Lecteur 2 », reload). */
-    async reprise(brute: unknown): Promise<number | null> {
-      const p = brute && typeof brute === "object" ? (brute as { id?: unknown; adresse?: unknown; duree?: unknown }) : {};
+    async reprise(raw: unknown): Promise<number | null> {
+      const p = raw && typeof raw === "object" ? (raw as { id?: unknown; adresse?: unknown; duree?: unknown }) : {};
       const target = targetOf(p);
       if (!target || !finished(p.duree) || p.duree <= 0 || !o.accorde(target.id)) return null;
       const kept = (await o.memoire(target.id).catch(() => null))?.position(target.adresse);
@@ -131,7 +131,7 @@ export function createPositions(o: {
     },
     /** The app's window closed: its frames are gone. */
     fermee(id: string): void {
-      cadres.delete(id);
+      frames.delete(id);
     },
   };
 }

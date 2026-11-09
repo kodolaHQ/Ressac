@@ -20,16 +20,16 @@ export const REPLAY_DEPTH = 8;
  * the taken outputs come from when there is only one, otherwise the given origin. Pure: no file
  * read, the size of what is taken is measured separately (`debutTropGros`).
  */
-export function replayPlan(valid: ValidWorkflow, origin: Execution | null, depart: string, earlier: Execution[] = []): ReplayPlan {
+export function replayPlan(valid: ValidWorkflow, origin: Execution | null, start: string, earlier: Execution[] = []): ReplayPlan {
   const denial = (cause: string): ReplayPlan => ({ ok: false, erreur: REPLAY_PREFIX + cause });
   if (!origin) return denial("exécution introuvable");
-  if (!valid.ordre.includes(depart)) return denial(`le bloc « ${depart} » n'est pas dans le workflow`);
+  if (!valid.ordre.includes(start)) return denial(`le bloc « ${start} » n'est pas dans le workflow`);
 
   const next = new Map<string, string[]>();
   for (const l of valid.workflow.liens) next.set(l.de, [...(next.get(l.de) ?? []), l.vers]);
-  const reachedList = new Set<string>([depart]);
-  const pile = [depart];
-  while (pile.length) for (const s of next.get(pile.pop()!) ?? []) if (!reachedList.has(s)) (reachedList.add(s), pile.push(s));
+  const reachedList = new Set<string>([start]);
+  const stack = [start];
+  while (stack.length) for (const s of next.get(stack.pop()!) ?? []) if (!reachedList.has(s)) (reachedList.add(s), stack.push(s));
   const relaunches = valid.ordre.filter((id) => reachedList.has(id));
 
   const upstream = new Set<string>();

@@ -1,26 +1,26 @@
 import { join } from "node:path";
 import { writeData, writeWidgetState, readData, readWidgetState, changeWidgetState, deleteData } from "../home/data.js";
 import type { DeclarationWidget, WidgetState, WidgetLu } from "../home/schemas.js";
-import type { Atelier } from "../container/workshop.js";
-import type { IaLocale } from "../ai/ia-locale.js";
+import type { Workshop } from "../container/workshop.js";
+import type { LocalAi } from "../ai/ia-locale.js";
 import type { BrowserBridge } from "../mcp/pont.js";
-import { grantValid, lireAccords, retirerAccord } from "./accords.js";
+import { grantValid, readGrants, removeGrant } from "./accords.js";
 import { message, truncate } from "../workflows/access.js";
 import {
   MAX_ERROR,
-  JOURNAL_MAX,
+  LOG_MAX,
   MEMORY_NOT_KEPT,
   PROFILE_DENIED,
   runDelays,
-  executerWorkflow,
+  runWorkflow,
   type WorkflowContext,
-  type IssueWorkflow,
+  type WorkflowOutcome,
   type ProcessLauncher,
   type Publication,
   type DirectTrace,
 } from "../workflows/executer.js";
-import { writeRun, attemptId, idExecution, lireExecution, listerExecutions, type Execution, type TraceBloc } from "../workflows/executions.js";
-import { lireWorkflow } from "../workflows/lire.js";
+import { writeRun, attemptId, idExecution, readRun, listRuns, type Execution, type BlockTrace } from "../workflows/executions.js";
+import { readWorkflow } from "../workflows/lire.js";
 import type { Pacing } from "../workflows/pacing.js";
 import { withMemory, writeMemory, readMemory, type BlocksMemory } from "../workflows/memory.js";
 import { countNew } from "./nouveautes.js";
@@ -39,10 +39,10 @@ export interface HarvestOptions {
   dossierWidgets: string;
   /** Folder of the workflow engine on the Mac (`docker/moteur`), mounted read-only in the container. */
   moteur: string;
-  atelier: Pick<Atelier, "commandeRecolte" | "supprimerRecolte">;
+  atelier: Pick<Workshop, "commandeRecolte" | "supprimerRecolte">;
   lancer?: ProcessLauncher;
   /** null: no local AI, `kev` and `gemma` answer with an error. */
-  ia: Pick<IaLocale, "kev" | "gemma"> | null;
+  ia: Pick<LocalAi, "kev" | "gemma"> | null;
   pont: BrowserBridge;
   horloge?: () => Date;
   /** Kernel-side timeout; the container stops by itself after 180 s (+5 s). */
@@ -115,7 +115,7 @@ export function kernelError(error: string): boolean {
 }
 
 /** A widget's workflow: `workflow.json`, or `recolte.mjs` alone (implicit workflow). */
-type WorkflowDuWidget =
+type WidgetWorkflow =
   | { t: "ok"; valide: ValidWorkflow; declaration: DeclarationWidget }
   /** The widget is unreadable: its error may quote its files. */
   | { t: "illisible"; erreur: string }
@@ -128,9 +128,9 @@ export function validationContext(d: DeclarationWidget): ValidationContext {
   return { web: d.sources.web, dureeMaxMinutes: d.recolte?.dureeMaxMinutes ?? null, proprietaire: "widget", saisie: false };
 }
 
-async function workflowDuWidget(widget: WidgetLu): Promise<WorkflowDuWidget> {
+async function widgetWorkflow(widget: WidgetLu): Promise<WidgetWorkflow> {
   if ("erreur" in widget) return { t: "illisible", erreur: widget.erreur };
-  const lu = await lireWorkflow(widget.dossier, validationContext(widget.declaration));
+  const lu = await readWorkflow(widget.dossier, validationContext(widget.declaration));
   if (!lu) return { t: "absent" };
   if (!lu.resultat.ok) return { t: "invalide", erreur: truncate(lu.resultat.erreur, MAX_ERROR) };
   return { t: "ok", valide: lu.resultat.valide, declaration: widget.declaration };
@@ -142,15 +142,15 @@ async function workflowDuWidget(widget: WidgetLu): Promise<WorkflowDuWidget> {
  * `peut`: the widget may run (without account, or with a valid grant, which also covers its public domains);
  * `retire`: an expired grant has just been withdrawn.
  */
-async function accordEnRegle(dossierWidgets: string, id: string, declaration: DeclarationWidget): Promise<{ peut: boolean; retire: boolean }> {
-  const grantSaved = (await lireAccords(dossierWidgets))[id];
-  const retire = grantSaved !== undefined && !grantValid(declaration, grantSaved);
-  if (retire) {
-    await retirerAccord(dossierWidgets, id);
-    await deleteData(dossierWidgets, id);
+async function validGrant(widgetsFolder: string, id: string, declaration: DeclarationWidget): Promise<{ peut: boolean; retire: boolean }> {
+  const grantSaved = (await readGrants(widgetsFolder))[id];
+  const removed = grantSaved !== undefined && !grantValid(declaration, grantSaved);
+  if (removed) {
+    await removeGrant(widgetsFolder, id);
+    await deleteData(widgetsFolder, id);
   }
-  const can = declaration.sources.compte.length === 0 || grantValid(declaration, (await lireAccords(dossierWidgets))[id]);
-  return { peut: can, retire };
+  const can = declaration.sources.compte.length === 0 || grantValid(declaration, (await readGrants(widgetsFolder))[id]);
+  return { peut: can, retire: removed };
 }
 
 /**
@@ -172,33 +172,33 @@ async function markGrantRequired(o: HarvestOptions, error: string): Promise<void
 
 /** What a widget's run asks about its grant (re-read at each read with an account). */
 function grantContext(
-  dossierWidgets: string,
+  widgetsFolder: string,
   id: string,
   declaration: DeclarationWidget,
 ): Pick<WorkflowContext, "accord" | "surProfilRefuse" | "messageAccordRequis" | "sources"> {
   return {
     sources: declaration.sources,
     async accord() {
-      const a = (await lireAccords(dossierWidgets))[id];
+      const a = (await readGrants(widgetsFolder))[id];
       return grantValid(declaration, a) ? { profil: a.profil } : null;
     },
     // The grant is withdrawn before the stop: when the run concludes, it no longer exists. What was read with this account goes
     // with it (the widget shows its example until the new grant).
     async surProfilRefuse() {
-      await retirerAccord(dossierWidgets, id);
-      await deleteData(dossierWidgets, id);
+      await removeGrant(widgetsFolder, id);
+      await deleteData(widgetsFolder, id);
     },
     messageAccordRequis: grantRequired(declaration),
   };
 }
 
 /** Has the grant been withdrawn (refuserAccord erases everything)? Always false for a widget without an account. */
-async function accordRetireDe(dossierWidgets: string, id: string, declaration: DeclarationWidget): Promise<boolean> {
-  return declaration.sources.compte.length > 0 && !grantValid(declaration, (await lireAccords(dossierWidgets))[id]);
+async function removedGrantOf(widgetsFolder: string, id: string, declaration: DeclarationWidget): Promise<boolean> {
+  return declaration.sources.compte.length > 0 && !grantValid(declaration, (await readGrants(widgetsFolder))[id]);
 }
 
 /** What the infrastructure receives from the options of a harvest or a try. */
-function infraDe(o: HarvestOptions, clock: () => Date): Parameters<typeof executerWorkflow>[1] {
+function infraOf(o: HarvestOptions, clock: () => Date): Parameters<typeof runWorkflow>[1] {
   return {
     moteur: o.moteur,
     atelier: o.atelier,
@@ -235,17 +235,17 @@ function stateBeforeRun(e: WidgetState): NonNullable<WidgetState["avant"]> {
  * withdrawn, everything read with it goes (data, runs, memory) and the widget waits for a new grant.
  */
 export async function runHarvest(o: HarvestOptions): Promise<HarvestResult> {
-  const { id, widget, dossierWidgets } = o;
+  const { id, widget, dossierWidgets: widgetsFolder } = o;
   if (!ID.test(id) || widget.id !== id) throw new Error(`id de widget invalide : ${id}`);
   const clock = o.horloge ?? (() => new Date());
-  const dataFolder = join(dossierWidgets, id);
+  const dataFolder = join(widgetsFolder, id);
   const owner: Owner = { type: "widget", id };
   const trigger = o.declencheur ?? "planifiee";
-  const precedent = await readWidgetState(dossierWidgets, id);
-  const debut = clock().toISOString();
+  const previous = await readWidgetState(widgetsFolder, id);
+  const start = clock().toISOString();
   // The previous state, kept during the run: restored at the next startup if WebAiOs stops abruptly.
-  const before = stateBeforeRun(precedent);
-  await writeWidgetState(dossierWidgets, id, { statut: "en-cours", derniereMaj: precedent.derniereMaj, derniereTentative: debut, avant: before });
+  const before = stateBeforeRun(previous);
+  await writeWidgetState(widgetsFolder, id, { statut: "en-cours", derniereMaj: previous.derniereMaj, derniereTentative: start, avant: before });
   o.surChange?.();
 
   /** `erreurWidget`: the error text comes from the widget or the container (otherwise, it is written by the kernel). */
@@ -259,15 +259,15 @@ export async function runHarvest(o: HarvestOptions): Promise<HarvestResult> {
   }): Promise<HarvestResult> => {
     const state: WidgetState = {
       statut: r.statut,
-      derniereMaj: r.statut === "ok" ? clock().toISOString() : precedent.derniereMaj,
-      derniereTentative: debut,
+      derniereMaj: r.statut === "ok" ? clock().toISOString() : previous.derniereMaj,
+      derniereTentative: start,
     };
     if (r.erreur) {
       state.erreur = truncate(r.erreur, MAX_ERROR);
       if (!r.erreurWidget) state.erreurNoyau = true;
     }
     if (r.journal) state.journal = r.journal;
-    await writeWidgetState(dossierWidgets, id, state);
+    await writeWidgetState(widgetsFolder, id, state);
     o.surChange?.();
     return {
       etat: state,
@@ -276,24 +276,24 @@ export async function runHarvest(o: HarvestOptions): Promise<HarvestResult> {
     };
   };
   /** A run that the kernel stopped before any container: its blocks are not launched. */
-  const withoutContainer = async (status: Execution["statut"], error: string, blocs: TraceBloc[]): Promise<string> => {
+  const withoutContainer = async (status: Execution["statut"], error: string, blocks: BlockTrace[]): Promise<string> => {
     const e: Execution = {
       version: 1,
-      id: idExecution(debut),
+      id: idExecution(start),
       proprietaire: owner,
       declencheur: trigger,
-      debut,
+      debut: start,
       fin: clock().toISOString(),
       statut: status,
       erreur: error,
       erreurNoyau: true,
-      blocs,
+      blocs: blocks,
     };
     await writeRun(dataFolder, e);
     return e.id;
   };
 
-  const lu = await workflowDuWidget(widget);
+  const lu = await widgetWorkflow(widget);
   // The widget's read error may quote its files: it counts as written by the widget.
   if (lu.t === "illisible") return conclude({ statut: "erreur", erreur: lu.erreur, erreurWidget: true });
   if (lu.t === "absent") return conclude({ statut: "erreur", erreur: NO_WORKFLOW_ERROR });
@@ -301,13 +301,13 @@ export async function runHarvest(o: HarvestOptions): Promise<HarvestResult> {
   if (lu.t === "invalide") return conclude({ statut: "erreur", erreur: lu.erreur, execution: await withoutContainer("echouee", lu.erreur, []) });
   const { valide: valid, declaration } = lu;
   // A widget that reads with the user's account only runs with their grant (an expired grant is withdrawn, with its data).
-  if (!(await accordEnRegle(dossierWidgets, id, declaration)).peut) {
+  if (!(await validGrant(widgetsFolder, id, declaration)).peut) {
     const error = grantRequired(declaration);
     // Already waiting for a grant at the last run: not one more at each scheduling (they would push
     // the history of the real runs out), the last one stands in. Tries do not count.
-    const last = (await listerExecutions(dataFolder)).find((e) => !e.essai);
+    const last = (await listRuns(dataFolder)).find((e) => !e.essai);
     if (last?.statut === "accord-requis") return conclude({ statut: "accord-requis", erreur: error, execution: last.id });
-    const pasLances: TraceBloc[] = valid.ordre.map((b) => ({
+    const notRun: BlockTrace[] = valid.ordre.map((b) => ({
       id: b,
       type: valid.workflow.blocs.find((x) => x.id === b)!.type,
       statut: "pas-lance",
@@ -316,47 +316,47 @@ export async function runHarvest(o: HarvestOptions): Promise<HarvestResult> {
       elements: null,
       journal: [],
     }));
-    return conclude({ statut: "accord-requis", erreur: error, execution: await withoutContainer("accord-requis", error, pasLances) });
+    return conclude({ statut: "accord-requis", erreur: error, execution: await withoutContainer("accord-requis", error, notRun) });
   }
 
   // The grant may have been withdrawn during the run (refuserAccord erases everything), or during a write from here (it may have
   // come after the erasure): nothing read with it remains, not even the run.
-  const accordRetire = () => accordRetireDe(dossierWidgets, id, declaration);
+  const removedGrant = () => removedGrantOf(widgetsFolder, id, declaration);
   /** A run's memory, under the widget's memory lock, if the grant holds; false if too big. */
   const keepMemory = (m: BlocksMemory) =>
-    withMemory(dataFolder, async () => (await accordRetire()) || (await writeMemory(dataFolder, m)));
+    withMemory(dataFolder, async () => (await removedGrant()) || (await writeMemory(dataFolder, m)));
 
   // Progressive run (the engine relays nothing to the others): each accepted publication is written right away,
   // with the progress in the state; the safe memory received along the way too. The engine does these relays one
   // after the other and waits for all of them before returning: the final output, written afterwards, is never overwritten.
   // Grant withdrawn (widget with an account): what was published goes, and nothing more is written along the way.
-  const dataBefore = await readData(dossierWidgets, id);
-  let relaisFermes = false;
+  const dataBefore = await readData(widgetsFolder, id);
+  let closedRelays = false;
   const closeIfGrantRemoved = async (): Promise<boolean> => {
-    if (!(await accordRetire())) return false;
-    relaisFermes = true;
-    await deleteData(dossierWidgets, id);
+    if (!(await removedGrant())) return false;
+    closedRelays = true;
+    await deleteData(widgetsFolder, id);
     return true;
   };
-  const surPublication = async (p: Publication) => {
-    if (relaisFermes) return;
-    await writeData(dossierWidgets, id, p.donnees);
+  const onPublish = async (p: Publication) => {
+    if (closedRelays) return;
+    await writeData(widgetsFolder, id, p.donnees);
     if (await closeIfGrantRemoved()) return;
     const progression = { faits: p.faits, total: p.total };
     // Only on top of this run's en-cours: an accord-requis written in the meantime (refuserAccord) stays.
-    await changeWidgetState(dossierWidgets, id, (e) =>
-      e.statut === "en-cours" ? { statut: "en-cours", derniereMaj: precedent.derniereMaj, derniereTentative: debut, progression, avant: before } : null,
+    await changeWidgetState(widgetsFolder, id, (e) =>
+      e.statut === "en-cours" ? { statut: "en-cours", derniereMaj: previous.derniereMaj, derniereTentative: start, progression, avant: before } : null,
     );
     if (await closeIfGrantRemoved()) return;
     o.surChange?.();
   };
   const onMemory = async (m: BlocksMemory) => {
-    if (relaisFermes) return;
+    if (closedRelays) return;
     await keepMemory(m);
   };
 
   const maxDurationMinutes = declaration.recolte?.dureeMaxMinutes;
-  const { issue, execution, journal: journalExecution } = await executerWorkflow(
+  const { issue: outcome, execution, journal: runLog } = await runWorkflow(
     {
       proprietaire: owner,
       valide: valid,
@@ -364,19 +364,19 @@ export async function runHarvest(o: HarvestOptions): Promise<HarvestResult> {
       config: declaration.config ?? null,
       precedent: dataBefore,
       memoire: await readMemory(dataFolder),
-      ...grantContext(dossierWidgets, id, declaration),
+      ...grantContext(widgetsFolder, id, declaration),
       declencheur: trigger,
       ...(maxDurationMinutes !== undefined ? { dureeMaxMinutes: maxDurationMinutes } : {}),
     },
-    { ...infraDe(o, clock), surPublication, surMemoire: onMemory },
+    { ...infraOf(o, clock), surPublication: onPublish, surMemoire: onMemory },
   );
   // The relays are all finished (the engine waits for them): nothing more is written along the way.
-  relaisFermes = true;
-  let journal = journalExecution;
+  closedRelays = true;
+  let log = runLog;
 
   const denied = async () => {
-    await deleteData(dossierWidgets, id);
-    return conclude({ statut: "accord-requis", erreur: denialMessage(issue, declaration) });
+    await deleteData(widgetsFolder, id);
+    return conclude({ statut: "accord-requis", erreur: denialMessage(outcome, declaration) });
   };
   /**
    * Failure or stop: the run is written; the data (previous, or published along the way) stays. The
@@ -384,43 +384,43 @@ export async function runHarvest(o: HarvestOptions): Promise<HarvestResult> {
    */
   const concludeWithoutData = async (e: Execution, r: Parameters<typeof conclude>[0], memory?: BlocksMemory | null): Promise<HarvestResult> => {
     await writeRun(dataFolder, e);
-    if (await accordRetire()) return denied();
+    if (await removedGrant()) return denied();
     if (memory) {
       await keepMemory(memory);
-      if (await accordRetire()) return denied();
+      if (await removedGrant()) return denied();
     }
     const finished = await conclude({ ...r, execution: e.id });
-    if (await accordRetire()) return denied();
+    if (await removedGrant()) return denied();
     return finished;
   };
-  if (await accordRetire()) return denied();
+  if (await removedGrant()) return denied();
 
-  if (issue.t === "fin") {
+  if (outcome.t === "fin") {
     try {
-      if (issue.sortie.vers === "widget") await writeData(dossierWidgets, id, issue.sortie.valeur);
+      if (outcome.sortie.vers === "widget") await writeData(widgetsFolder, id, outcome.sortie.valeur);
     } catch (e) {
       // Data refused (too big…): the previous ones stay, the run fails kernel-side.
       execution.statut = "echouee";
       execution.erreur = truncate(message(e), MAX_ERROR);
       execution.erreurNoyau = true;
-      return concludeWithoutData(execution, { statut: "erreur", erreur: execution.erreur, journal });
+      return concludeWithoutData(execution, { statut: "erreur", erreur: execution.erreur, journal: log });
     }
-    if (await accordRetire()) return denied();
-    if (issue.memoire) {
-      if (!(await keepMemory(issue.memoire))) {
-        journal = add(journal, MEMORY_NOT_KEPT);
+    if (await removedGrant()) return denied();
+    if (outcome.memoire) {
+      if (!(await keepMemory(outcome.memoire))) {
+        log = add(log, MEMORY_NOT_KEPT);
         // Also in the run, in the output block's log.
         execution.blocs.find((b) => b.id === valid.sortie.id)?.journal.push(MEMORY_NOT_KEPT);
       }
-      if (await accordRetire()) return denied();
+      if (await removedGrant()) return denied();
     }
     await writeRun(dataFolder, execution);
-    if (await accordRetire()) return denied();
-    const ok = await conclude({ statut: "ok", donnees: issue.sortie.valeur, journal, execution: execution.id });
+    if (await removedGrant()) return denied();
+    const ok = await conclude({ statut: "ok", donnees: outcome.sortie.valeur, journal: log, execution: execution.id });
     // Withdrawn during the state write: « ok » must not overwrite the accord-requis written by refuserAccord.
-    if (await accordRetire()) return denied();
+    if (await removedGrant()) return denied();
     // Counted against the data from before the run (those published along the way are not in it).
-    if (declaration.recolte?.notifier === true) return { ...ok, nouveaux: countNew(dataBefore, issue.sortie.valeur) };
+    if (declaration.recolte?.notifier === true) return { ...ok, nouveaux: countNew(dataBefore, outcome.sortie.valeur) };
     return ok;
   }
 
@@ -429,16 +429,16 @@ export async function runHarvest(o: HarvestOptions): Promise<HarvestResult> {
   const interrupted = o.interrompue?.() === true && execution.statut !== "accord-requis";
   if (interrupted) markInterrupted(execution);
   // Progressive run: its last safe memory is kept (never when it stops for lack of a grant).
-  const memory = issue.t === "arret" && issue.statut === "accord-requis" ? null : issue.memoire;
-  return issue.t === "arret"
-    ? concludeWithoutData(execution, { statut: issue.statut, erreur: issue.erreur, journal }, memory)
+  const memory = outcome.t === "arret" && outcome.statut === "accord-requis" ? null : outcome.memoire;
+  return outcome.t === "arret"
+    ? concludeWithoutData(execution, { statut: outcome.statut, erreur: outcome.erreur, journal: log }, memory)
     : // The provenance comes from the engine: `erreurNoyau` absent, the text may have been written by the widget's code.
       // Interrupted: the message is the kernel's, not the text the widget's code may have written.
       concludeWithoutData(
         execution,
         interrupted
-          ? { statut: "erreur", erreur: INTERRUPTED_ERROR, journal }
-          : { statut: "erreur", erreur: issue.erreur, erreurWidget: !execution.erreurNoyau, journal },
+          ? { statut: "erreur", erreur: INTERRUPTED_ERROR, journal: log }
+          : { statut: "erreur", erreur: outcome.erreur, erreurWidget: !execution.erreurNoyau, journal: log },
         memory,
       );
 }
@@ -452,27 +452,27 @@ export async function runHarvest(o: HarvestOptions): Promise<HarvestResult> {
  * goes, try included, and the widget goes to `accord-requis`.
  */
 export async function runAttempt(o: HarvestOptions & { origine: string; depart: string }): Promise<AttemptResult> {
-  const { id, widget, dossierWidgets } = o;
+  const { id, widget, dossierWidgets: widgetsFolder } = o;
   if (!ID.test(id) || widget.id !== id) throw new Error(`id de widget invalide : ${id}`);
   const clock = o.horloge ?? (() => new Date());
-  const dataFolder = join(dossierWidgets, id);
+  const dataFolder = join(widgetsFolder, id);
   const denial = (error: string): AttemptResult => ({ ok: false, erreur: error });
 
-  const lu = await workflowDuWidget(widget);
+  const lu = await widgetWorkflow(widget);
   if (lu.t === "absent") return denial(NO_WORKFLOW_ERROR);
   if (lu.t !== "ok") return denial(lu.erreur);
   const { valide: valid, declaration } = lu;
-  const accord = await accordEnRegle(dossierWidgets, id, declaration);
-  if (!accord.peut) {
+  const grant = await validGrant(widgetsFolder, id, declaration);
+  if (!grant.peut) {
     // Expired grant withdrawn: the widget waits for a new grant. Never given: nothing is written.
-    if (accord.retire) await markGrantRequired(o, grantRequired(declaration));
+    if (grant.retire) await markGrantRequired(o, grantRequired(declaration));
     return denial(grantRequired(declaration));
   }
 
   const [origin, earlier] = await originChain(dataFolder, o.origine);
   const plan = replayPlan(valid, origin, o.depart, earlier);
   if (!plan.ok) return denial(plan.erreur);
-  const precedent = await readData(dossierWidgets, id);
+  const previous = await readData(widgetsFolder, id);
   const config = declaration.config ?? null;
   const workflow = { blocs: valid.workflow.blocs, liens: valid.workflow.liens, ordre: valid.ordre };
   const replay = { relances: plan.relances, sorties: plan.sorties };
@@ -481,45 +481,45 @@ export async function runAttempt(o: HarvestOptions & { origine: string; depart: 
   const { limiteMs: limitMs } = runDelays(maxDurationMinutes);
   // Measured before any container, on the line as it will go out: the harvester would refuse it, and nothing must be written.
   const now = clock().toISOString();
-  if (startTooBig({ precedent, maintenant: now, config, workflow, rejeu: replay, ...(limitMs !== undefined ? { limiteMs: limitMs } : {}) })) {
+  if (startTooBig({ precedent: previous, maintenant: now, config, workflow, rejeu: replay, ...(limitMs !== undefined ? { limiteMs: limitMs } : {}) })) {
     return denial(REPLAY_TOO_BIG);
   }
 
-  const { issue, execution } = await executerWorkflow(
+  const { issue: outcome, execution } = await runWorkflow(
     {
       proprietaire: { type: "widget", id },
       valide: valid,
       dossierFichiers: widget.dossier,
       config,
-      precedent,
+      precedent: previous,
       // A try neither receives nor keeps any memory.
       memoire: {},
-      ...grantContext(dossierWidgets, id, declaration),
+      ...grantContext(widgetsFolder, id, declaration),
       declencheur: "rejeu",
       rejeu: { ...replay, repris: plan.repris },
       ...(maxDurationMinutes !== undefined ? { dureeMaxMinutes: maxDurationMinutes } : {}),
     },
-    infraDe(o, clock),
+    infraOf(o, clock),
   );
   // The executor's safety net (the measure here must have refused before): a refusal, nothing written.
-  if (issue.t === "arret" && issue.erreur === REPLAY_TOO_BIG) return denial(REPLAY_TOO_BIG);
+  if (outcome.t === "arret" && outcome.erreur === REPLAY_TOO_BIG) return denial(REPLAY_TOO_BIG);
 
   // The grant may have been withdrawn during the try, or during its write: nothing read with it remains.
-  const retire = async () => {
-    if (!(await accordRetireDe(dossierWidgets, id, declaration))) return null;
-    await deleteData(dossierWidgets, id);
-    const error = denialMessage(issue, declaration);
+  const removed = async () => {
+    if (!(await removedGrantOf(widgetsFolder, id, declaration))) return null;
+    await deleteData(widgetsFolder, id);
+    const error = denialMessage(outcome, declaration);
     await markGrantRequired(o, error);
     return denial(error);
   };
-  const before = await retire();
+  const before = await removed();
   if (before) return before;
 
   execution.id = attemptId(execution.debut);
   execution.essai = { depart: o.depart, origine: plan.origine };
-  if (issue.t !== "fin" && o.interrompue?.() === true && execution.statut !== "accord-requis") markInterrupted(execution);
+  if (outcome.t !== "fin" && o.interrompue?.() === true && execution.statut !== "accord-requis") markInterrupted(execution);
   await writeRun(dataFolder, execution);
-  const after = await retire();
+  const after = await removed();
   if (after) return after;
   return { ok: true, execution: execution.id, statut: execution.statut };
 }
@@ -529,23 +529,23 @@ export async function runAttempt(o: HarvestOptions & { origine: string; depart: 
  * `repris` blocks find their output there. A pruned origin stops the chain.
  */
 export async function originChain(dataFolder: string, id: string): Promise<[Execution | null, Execution[]]> {
-  const origin = await lireExecution(dataFolder, id);
+  const origin = await readRun(dataFolder, id);
   const earlier: Execution[] = [];
-  const vus = new Set([id]);
+  const seen = new Set([id]);
   let e = origin;
-  while (e?.essai && earlier.length < REPLAY_DEPTH - 1 && !vus.has(e.essai.origine)) {
-    vus.add(e.essai.origine);
-    e = await lireExecution(dataFolder, e.essai.origine);
+  while (e?.essai && earlier.length < REPLAY_DEPTH - 1 && !seen.has(e.essai.origine)) {
+    seen.add(e.essai.origine);
+    e = await readRun(dataFolder, e.essai.origine);
     if (e) earlier.push(e);
   }
   return [origin, earlier];
 }
 
 /** The message of a widget waiting for a new grant: the engine's if it stopped for that (profile refused…). */
-function denialMessage(issue: IssueWorkflow, declaration: DeclarationWidget): string {
-  return issue.t === "arret" && issue.statut === "accord-requis" ? issue.erreur : grantRequired(declaration);
+function denialMessage(outcome: WorkflowOutcome, declaration: DeclarationWidget): string {
+  return outcome.t === "arret" && outcome.statut === "accord-requis" ? outcome.erreur : grantRequired(declaration);
 }
 
-function add(journal: string, ligne: string): string {
-  return ((journal ? journal + "\n" : "") + ligne).slice(-JOURNAL_MAX);
+function add(log: string, line: string): string {
+  return ((log ? log + "\n" : "") + line).slice(-LOG_MAX);
 }

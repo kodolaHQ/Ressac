@@ -22,10 +22,10 @@
     /** ✦ on a builder tab: its « Agent » tab (instead of the side panel). */
     agentDuConstructeur?: () => void;
   } = $props();
-  const enCours = $derived(downloads.liste.filter((t) => t.etat === "en-cours"));
+  const running = $derived(downloads.liste.filter((t) => t.etat === "en-cours"));
   const progression = $derived.by(() => {
-    const total = enCours.reduce((s, t) => s + t.total, 0);
-    return total ? enCours.reduce((s, t) => s + t.recus, 0) / total : 0;
+    const total = running.reduce((s, t) => s + t.total, 0);
+    return total ? running.reduce((s, t) => s + t.recus, 0) / total : 0;
   });
   const space = $derived(appState.valeur?.espaces.find((e) => e.id === win.espaceActif));
   const activeTab = $derived.by(() => {
@@ -98,7 +98,7 @@
     {#if downloads.liste.length}
       <button class="telechargements" aria-label="Téléchargements" title="Téléchargements" onclick={() => togglePanel?.("telechargements")}>
         <Icon nom="telecharger" />
-        {#if enCours.length}<span class="pastille" style:--p={progression}></span>{/if}
+        {#if running.length}<span class="pastille" style:--p={progression}></span>{/if}
       </button>
     {/if}
   </footer>

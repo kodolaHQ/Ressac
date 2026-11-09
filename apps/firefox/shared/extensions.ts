@@ -2,7 +2,7 @@ import type { SourceExtension } from "@webaios/kernel";
 
 // In a module with no dependency on the kernel: the UI imports them (the kernel does not enter its bundle).
 export {
-  activeDans,
+  activeIn as activeDans,
   APP_CLOSED as APPLI_FERMEE,
   NO_SITE_EXTENSION as AUCUNE_EXTENSION_SITE,
   CONSOLE_UNLOCKED_PAGE as CONSOLE_DEBLOQUEE_PAGE,
@@ -31,7 +31,7 @@ export interface SpaceExtensionLine {
 }
 
 /** What an extension's grant card shows (DemandeExtension.svelte): everything is displayed as text there. */
-export interface CarteExtension {
+export interface ExtensionCard {
   cle: string;
   nom: string;
   source: SourceExtension;
@@ -70,7 +70,7 @@ export interface GrantResponse {
 }
 
 /** A row of the Extensions page (everything is displayed as text there: it is data coming from a manifest or a console). */
-export interface LigneExtension {
+export interface ExtensionLine {
   cle: string;
   nom: string;
   source: SourceExtension;
@@ -99,7 +99,7 @@ export interface LigneExtension {
 }
 
 /** A row of a site app's « Extensions » menu (Store extensions only; everything is displayed as text there). */
-export interface LigneExtensionSite {
+export interface SiteExtensionLine {
   cle: string;
   nom: string;
   /** Enabled for the hash of the app's current domains. */

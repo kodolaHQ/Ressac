@@ -1,5 +1,5 @@
-import type { DroitDev, TabAccessState, Owner } from "@webaios/kernel";
-import type { CarteExtension } from "./extensions";
+import type { DevRight, TabAccessState, Owner } from "@webaios/kernel";
+import type { ExtensionCard } from "./extensions";
 
 /** Internal Applications page: a tab without a web page, displayed by the UI. */
 export const URL_APPLICATIONS = "webaios://applications";
@@ -9,7 +9,7 @@ export const URL_EXTENSIONS = "webaios://extensions";
 export const WORKFLOW_PREFIX = "webaios://workflow/";
 export const urlWorkflow = (id: string) => WORKFLOW_PREFIX + id;
 /** The widget of a « Voir le workflow » page, or null if the URL is not one. */
-export function widgetDeUrlWorkflow(url: string): string | null {
+export function widgetOfWorkflowUrl(url: string): string | null {
   if (!url.startsWith(WORKFLOW_PREFIX)) return null;
   const id = url.slice(WORKFLOW_PREFIX.length);
   return /^[a-z0-9-]{1,100}$/.test(id) ? id : null;
@@ -23,7 +23,7 @@ export function workflowUrlTarget(url: string): Owner | null {
     const id = url.slice(WORKFLOW_ACTION_PREFIX.length);
     return ID_ACTION.test(id) ? { type: "action", id } : null;
   }
-  const widget = widgetDeUrlWorkflow(url);
+  const widget = widgetOfWorkflowUrl(url);
   return widget ? { type: "widget", id: widget } : null;
 }
 /** Internal « Actions » page: the list of actions. */
@@ -33,7 +33,7 @@ export const ACTION_PREFIX = "webaios://action/";
 const ID_EXECUTION = /^[0-9TZ-]+(?:-essai)?$/;
 export const urlAction = (id: string, execution?: string) => ACTION_PREFIX + id + (execution ? `/${execution}` : "");
 /** The action (and execution) of an action page, or null if the URL is not one (never a path). */
-export function actionDeUrl(url: string): { id: string; execution: string | null } | null {
+export function actionOfUrl(url: string): { id: string; execution: string | null } | null {
   if (!url.startsWith(ACTION_PREFIX)) return null;
   const [id, execution, ...rest] = url.slice(ACTION_PREFIX.length).split("/");
   if (rest.length || !id || !ID_ACTION.test(id)) return null;
@@ -44,7 +44,7 @@ export function actionDeUrl(url: string): { id: string; execution: string | null
 export const hasView = (url: string) => !url.startsWith("webaios:");
 
 /** The site displayed for a request: the origin's host, or the text as is if it is not one (about:blank…). */
-export function siteDe(origin: string): string {
+export function siteOf(origin: string): string {
   try {
     return new URL(origin).host || origin;
   } catch {
@@ -116,7 +116,7 @@ export interface RecentlyClosed {
 }
 
 /** Size and position of a window on screen, in points. */
-export interface Cadre {
+export interface FrameBounds {
   x: number;
   y: number;
   largeur: number;
@@ -134,7 +134,7 @@ export interface WindowState {
   /** 20 at most, most recent first. */
   fermesRecemment: RecentlyClosed[];
   /** Last known frame; null until the window has been moved or resized. */
-  cadre: Cadre | null;
+  cadre: FrameBounds | null;
 }
 
 export interface BrowserState {
@@ -191,7 +191,7 @@ export function tabProfile(state: BrowserState, tab: Tab): ProfileId {
 }
 
 /** A history page: one row per URL and per space (`espaceId` empty: no space, old visits). */
-export interface Visite {
+export interface Visit {
   url: string;
   titre: string;
   derniereVisite: string; // ISO
@@ -233,7 +233,7 @@ export type Permission =
   | "autre";
 export type Decision = "autoriser" | "refuser";
 /** The outcome of a question: the user's decision, or « retiree » if it lapsed without their answer (timeout, stale…). */
-export type Issue = Decision | "retiree";
+export type Outcome = Decision | "retiree";
 /** A question asked to the user: one or two permissions (camera and microphone together), a single answer. */
 export interface Request {
   ongletId: TabId | null;
@@ -254,7 +254,7 @@ export interface Request {
   /** « lire-onglet » and « outils-dev »: the targeted tab; if it is closed, the question is refused. */
   cible?: TabId;
   /** « outils-dev »: the rights requested by the agent, pre-checked. */
-  droits?: DroitDev[];
+  droits?: DevRight[];
   /** « console-extension »: the spaces of the profiles where the extension is active (what the unlock covers). */
   espaces?: string[];
   /** « outils-dev », « console-extension »: the reason given by the agent. */
@@ -262,7 +262,7 @@ export interface Request {
   /** « outils-dev » and « donnees-widget »: the agent's name, displayed as is. */
   agent?: string;
   /** « extension »: the grant card, displayed as text. */
-  extension?: CarteExtension;
+  extension?: ExtensionCard;
 }
 export interface PendingRequest extends Request {
   id: string;
@@ -273,9 +273,9 @@ export const AGENT_WIDTH_MIN = 280;
 export const AGENT_WIDTH_MAX = 1000;
 
 /** Compact mode: the sidebar reappears when the mouse enters this strip of the left edge (px). */
-export const BORD_REVELATION = 16;
+export const REVEAL_EDGE = 16;
 /** …or when it leaves the page through the left from this distance: a fast gesture skips the strip. */
-export const SORTIE_GAUCHE = 60;
+export const LEFT_EXIT = 60;
 /** Width of the sidebar (px), that of its column in App.svelte. */
 export const BAR_WIDTH = 240;
 /** Once revealed, the bar stays open as long as the mouse does not go beyond its width by more than this margin (px). */

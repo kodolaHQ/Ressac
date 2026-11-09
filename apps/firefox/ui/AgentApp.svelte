@@ -43,31 +43,31 @@
       openedByHome = false;
     }
     // The action is idempotent: sending it again until the state reflects it toggles nothing.
-    const demander = (v: boolean) => {
+    const ask = (v: boolean) => {
       expected = v;
       api.agir({ type: "panneauAgentAccueil", fenetreId: f.id, ouvert: v });
     };
     if (onHome && !isOpen && !panelClosedOnHome) {
       openedByHome = true;
-      demander(true);
+      ask(true);
     } else if (!onHome && isOpen && openedByHome) {
       openedByHome = false;
-      demander(false);
+      ask(false);
     }
   });
 
   /** Width of this iframe when the drag started. */
-  let debut: number | null = null;
-  function resize(wanted: number, fin: boolean) {
+  let start: number | null = null;
+  function resize(wanted: number, end: boolean) {
     // The handle measures in this iframe, whose left edge moves with the width: back to window coordinates.
-    debut ??= window.innerWidth;
-    const real = wanted - debut + window.innerWidth;
+    start ??= window.innerWidth;
+    const real = wanted - start + window.innerWidth;
     // Always room for the page: 300 px at least beside the sidebar.
     const max = Math.min(AGENT_WIDTH_MAX, window.parent.innerWidth - win.sidebarWidth() - 300);
     const width = Math.round(Math.max(AGENT_WIDTH_MIN, Math.min(max, real)));
     win.setAgentWidth(width);
-    if (fin) {
-      debut = null;
+    if (end) {
+      start = null;
       api.agir({ type: "largeurPanneauAgent", largeur: width });
     }
   }

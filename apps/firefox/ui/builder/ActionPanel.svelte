@@ -1,11 +1,11 @@
 <script lang="ts">
-  import type { EditionWorkflow } from "../../shared/api";
+  import type { WorkflowEdit } from "../../shared/api";
 
   /**
    * The action, read-only: `action.json` is never written by WebAiOs (its sources, its input and its page layout
    * instruction are changed by asking the agent). Everything shows as text.
    */
-  let { action }: { action: NonNullable<EditionWorkflow["action"]> | null } = $props();
+  let { action }: { action: NonNullable<WorkflowEdit["action"]> | null } = $props();
 </script>
 
 <section class="action" data-testid="panneau-action">

@@ -94,8 +94,8 @@ test("agent: static rule redirect, modifyHeaders, regexSubstitution refused, eac
 test("agent: webaios.json with 11 domains or a wildcard refused; reseau sorted", () => {
   const eleven = Array.from({ length: 11 }, (_, i) => `a${i}.exemple.com`);
   expect(parseManifest(base, { source: "agent", webaios: { reseau: eleven } }).refus).toHaveLength(1);
-  const joker = parseManifest(base, { source: "agent", webaios: { reseau: ["*.x.com"] } });
-  expect(joker.refus).toEqual(["webaios.json : domaine invalide « *.x.com »"]);
+  const wildcard = parseManifest(base, { source: "agent", webaios: { reseau: ["*.x.com"] } });
+  expect(wildcard.refus).toEqual(["webaios.json : domaine invalide « *.x.com »"]);
   const ok = parseManifest(base, { source: "agent", webaios: { reseau: ["b.com", "a.com"] } });
   expect(ok.refus).toEqual([]);
   expect(ok.portee.reseau).toEqual(["a.com", "b.com"]);
@@ -207,10 +207,10 @@ test("labels: unknown right and order", () => {
 const dnr = { ...base, declarative_net_request: { rule_resources: [{ id: "r", enabled: true, path: "rules.json" }] } };
 
 test("R3-1 agent: rules file missing, not an array, absolute path or with ..: refused", () => {
-  const denial = (path: string, regles: Record<string, unknown>) =>
+  const denial = (path: string, rules: Record<string, unknown>) =>
     parseManifest(
       { ...base, declarative_net_request: { rule_resources: [{ id: "r", enabled: true, path }] } },
-      { source: "agent", regles },
+      { source: "agent", regles: rules },
     ).refus;
   expect(denial("rules.json", {})).toHaveLength(1);
   expect(denial("rules.json", { "rules.json": { id: 1 } })).toHaveLength(1);
@@ -245,9 +245,9 @@ test("R3-3/R3-4 all sites, in host_permissions and in permissions", () => {
 });
 
 test("I3 all sites: ports, public-suffix wildcards, scripts", () => {
-  const tous = ["*://*:*/*", "https://*:443/*", "*://*:8080/*", "*://*.co.uk/*", "https://*.com.au/*", "*://*.gouv.fr:*/*",
+  const all = ["*://*:*/*", "https://*:443/*", "*://*:8080/*", "*://*.co.uk/*", "https://*.com.au/*", "*://*.gouv.fr:*/*",
     "*://*.ac.jp/*", "*://*.com:443/*", "*://*.ne.jp/*", "*://*.or.jp/*", "*://*.edu.au/*", "*://*.gov.uk/*", "*://*.net.br/*", "*://*.org.uk/*"];
-  for (const m of tous) {
+  for (const m of all) {
     const h = parseManifest({ ...base, host_permissions: [m] }, { source: "agent" });
     expect(h.portee.tousLesSites, `host_permissions ${m}`).toBe(true);
     const s = parseManifest({ ...base, content_scripts: [{ matches: [m], js: ["a.js"] }] }, { source: "agent" });

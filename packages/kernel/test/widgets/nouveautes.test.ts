@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { countNew, elementsDe, identity, notificationText } from "../../src/widgets/nouveautes.js";
+import { countNew, elementsOf, identity, notificationText } from "../../src/widgets/nouveautes.js";
 
 describe("nouveautes", () => {
   it("identity by url, otherwise canonical JSON (key order irrelevant)", () => {
@@ -14,11 +14,11 @@ describe("nouveautes", () => {
   });
 
   it("object data { annonces: [...] }: its elements count", () => {
-    expect(elementsDe([1, 2])).toEqual([1, 2]);
-    expect(elementsDe({ annonces: [{ id: 1 }, { id: 2 }], titre: "x", autres: [{ id: 3 }] })).toEqual([{ id: 1 }, { id: 2 }, { id: 3 }]);
-    expect(elementsDe(null)).toEqual([]);
-    expect(elementsDe("texte")).toEqual([]);
-    expect(elementsDe({ titre: "x" })).toEqual([]);
+    expect(elementsOf([1, 2])).toEqual([1, 2]);
+    expect(elementsOf({ annonces: [{ id: 1 }, { id: 2 }], titre: "x", autres: [{ id: 3 }] })).toEqual([{ id: 1 }, { id: 2 }, { id: 3 }]);
+    expect(elementsOf(null)).toEqual([]);
+    expect(elementsOf("texte")).toEqual([]);
+    expect(elementsOf({ titre: "x" })).toEqual([]);
     const before = { annonces: [{ url: "https://a.example/1", prix: 10 }] };
     const after = { annonces: [{ url: "https://a.example/1", prix: 12 }, { url: "https://a.example/2" }, { url: "https://a.example/3" }] };
     expect(countNew(before, after)).toBe(2);

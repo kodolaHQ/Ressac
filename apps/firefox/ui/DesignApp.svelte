@@ -6,7 +6,7 @@
   let context = $state<OverlayContext | null>(null);
   let text = $state("");
   let error = $state<string | null>(null);
-  let champ = $state<HTMLTextAreaElement>();
+  let field = $state<HTMLTextAreaElement>();
   let request = 0;
 
   async function reread() {
@@ -24,7 +24,7 @@
   api.surChange(() => void reread());
 
   $effect(() => {
-    if (context?.mode === "bulle" && champ) champ.focus();
+    if (context?.mode === "bulle" && field) field.focus();
   });
 
   async function add() {
@@ -51,7 +51,7 @@
       {#if context.source}<span class="source">{context.source}</span>{/if}
     </div>
     {#if context.avertissement}<p class="avertissement" data-testid="avertissement-bulle">{context.avertissement}</p>{/if}
-    <textarea bind:this={champ} bind:value={text} onkeydown={clavier} placeholder="Ta remarque sur cet élément" maxlength="4000"></textarea>
+    <textarea bind:this={field} bind:value={text} onkeydown={clavier} placeholder="Ta remarque sur cet élément" maxlength="4000"></textarea>
     {#if error}<p class="erreur" role="alert">{error}</p>{/if}
     <div class="actions">
       <button class="annuler" onclick={() => api.annuler()}>Annuler</button>

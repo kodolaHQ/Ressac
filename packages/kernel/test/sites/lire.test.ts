@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { setTimeout as attendre } from "node:timers/promises";
 import { spacePaths } from "../../src/paths.js";
 import { SITE_ID_ERROR, tweakFileNotFound } from "../../src/sites/schemas.js";
-import { readTweaks, lireSite, lireSites, watchSites, type SiteLu } from "../../src/sites/lire.js";
+import { readTweaks, readSite, readSites, watchSites, type SiteLu } from "../../src/sites/lire.js";
 import { tempFolder } from "../helpers/temp.js";
 
 const o = { adressesLocales: false };
@@ -30,7 +30,7 @@ test("two sites read, sorted; a damaged site.json gives a SiteLu in error withou
   await site(c, "zeta", decl("Zeta"));
   await site(c, "alpha", "{pas du json");
   await site(c, "milieu", decl("Milieu"));
-  const sites = await lireSites(c, o);
+  const sites = await readSites(c, o);
   expect(sites.map((s) => s.id)).toEqual(["alpha", "milieu", "zeta"]);
   expect(sites[0]).toMatchObject({ id: "alpha", dossier: join(c.sites, "alpha") });
   expect("erreur" in sites[0]!).toBe(true);
@@ -42,11 +42,11 @@ test("an invalid declaration or one that fails verifierDeclarationSite is an err
   await site(c, "a", JSON.stringify({ nom: "A", adresse: "http://a.example/", domaines: ["a.example"] }));
   await site(c, "b", JSON.stringify({ nom: "B", adresse: "https://a.example/", domaines: ["a.example"], permissions: [] }));
   await site(c, "c", "x".repeat(70 * 1024));
-  const [a, b, cc] = await lireSites(c, o);
+  const [a, b, cc] = await readSites(c, o);
   expect(a).toMatchObject({ erreur: expect.stringContaining("https seulement") });
   expect(b).toMatchObject({ erreur: expect.stringContaining("site.json invalide") });
   expect(cc).toMatchObject({ erreur: expect.stringContaining("64 Ko") });
-  expect(await lireSites(c, { adressesLocales: true })).toHaveLength(3);
+  expect(await readSites(c, { adressesLocales: true })).toHaveLength(3);
 });
 
 test("aAccueil true only with accueil/index.html", async () => {
@@ -56,8 +56,8 @@ test("aAccueil true only with accueil/index.html", async () => {
   await writeFile(join(c.sites, "avec", "accueil", "index.html"), "<p>");
   await site(c, "sans", decl("Sans"));
   await mkdir(join(c.sites, "sans", "accueil", "index.html"), { recursive: true });
-  expect(withDeclaration(await lireSite(c, "avec", o)).aAccueil).toBe(true);
-  expect(withDeclaration(await lireSite(c, "sans", o)).aAccueil).toBe(false);
+  expect(withDeclaration(await readSite(c, "avec", o)).aAccueil).toBe(true);
+  expect(withDeclaration(await readSite(c, "sans", o)).aAccueil).toBe(false);
 });
 
 test("hidden folder, .corbeille or symbolic link ignored; a name outside the rule is « sans fiche » with the rule", async () => {
@@ -70,19 +70,19 @@ test("hidden folder, .corbeille or symbolic link ignored; a name outside the rul
   await site(c, "a_b", decl("Souligné"));
   await site(c, "x".repeat(61), decl("Long"));
   await symlink(join(c.sites, "ok"), join(c.sites, "lien"));
-  const sites = await lireSites(c, o);
+  const sites = await readSites(c, o);
   expect(sites.map((s) => s.id).sort()).toEqual(["MonSite", "a_b", "nom invalide", "ok", "x".repeat(61)].sort());
   for (const s of sites.filter((s) => s.id !== "ok")) expect(s).toMatchObject({ erreur: SITE_ID_ERROR });
-  expect(await lireSite(c, "lien", o)).toBeNull();
-  expect(await lireSite(c, "absent", o)).toBeNull();
-  expect(await lireSite(c, "../ok", o)).toBeNull();
-  expect(await lireSite(c, ".cache", o)).toBeNull();
-  expect(await lireSite(c, "MonSite", o)).toMatchObject({ erreur: SITE_ID_ERROR });
+  expect(await readSite(c, "lien", o)).toBeNull();
+  expect(await readSite(c, "absent", o)).toBeNull();
+  expect(await readSite(c, "../ok", o)).toBeNull();
+  expect(await readSite(c, ".cache", o)).toBeNull();
+  expect(await readSite(c, "MonSite", o)).toMatchObject({ erreur: SITE_ID_ERROR });
 });
 
 test("lireSites: sites folder absent", async () => {
   const c = spacePaths(await tempFolder());
-  expect(await lireSites(c, o)).toEqual([]);
+  expect(await readSites(c, o)).toEqual([]);
 });
 
 test("lireRetouches : contenus lus", async () => {
@@ -92,20 +92,20 @@ test("lireRetouches : contenus lus", async () => {
   await writeFile(join(c.sites, "r", "retouches", "a.js"), "A");
   await writeFile(join(c.sites, "r", "retouches", "sous", "b.js"), "B");
   await writeFile(join(c.sites, "r", "retouches", "c.css"), "C");
-  expect(await readTweaks(withDeclaration(await lireSite(c, "r", o)))).toEqual({ js: { "a.js": "A", "sous/b.js": "B" }, css: { "c.css": "C" } });
+  expect(await readTweaks(withDeclaration(await readSite(c, "r", o)))).toEqual({ js: { "a.js": "A", "sous/b.js": "B" }, css: { "c.css": "C" } });
 });
 
 test("lireRetouches : fichier absent, lien symbolique vers /etc/hosts, fichier de 300 Ko, total > 1 Mo", async () => {
   const c = await space();
   await site(c, "r", decl("R", { retouches: [{ correspond: ["/*"], js: ["a.js"] }] }));
-  const s = withDeclaration(await lireSite(c, "r", o));
+  const s = withDeclaration(await readSite(c, "r", o));
   expect(await readTweaks(s)).toEqual({ erreur: tweakFileNotFound("a.js") });
   await mkdir(join(c.sites, "r", "retouches"), { recursive: true });
   await symlink("/etc/hosts", join(c.sites, "r", "retouches", "a.js"));
   expect(await readTweaks(s)).toEqual({ erreur: tweakFileNotFound("a.js") });
   await writeFile(join(c.sites, "r", "retouches", "b.js"), "x".repeat(300 * 1024));
-  const gros = withDeclaration({ ...s, declaration: { ...s.declaration, retouches: [{ correspond: ["/*"], js: ["b.js"], css: [], cadres: false }] } });
-  expect(await readTweaks(gros)).toEqual({ erreur: tweakFileNotFound("b.js") });
+  const big = withDeclaration({ ...s, declaration: { ...s.declaration, retouches: [{ correspond: ["/*"], js: ["b.js"], css: [], cadres: false }] } });
+  expect(await readTweaks(big)).toEqual({ erreur: tweakFileNotFound("b.js") });
   // Five 250 KB files: each passes, the total (1.2 MB) does not.
   const names = ["m1.js", "m2.js", "m3.js", "m4.js", "m5.js"];
   for (const n of names) await writeFile(join(c.sites, "r", "retouches", n), "x".repeat(250 * 1024));
@@ -116,10 +116,10 @@ test("lireRetouches : fichier absent, lien symbolique vers /etc/hosts, fichier d
 test("lireRetouches: a retouches/ folder that is a link outside the site is refused", async () => {
   const c = await space();
   await site(c, "r", decl("R", { retouches: [{ correspond: ["/*"], js: ["a.js"] }] }));
-  const dehors = await tempFolder();
-  await writeFile(join(dehors, "a.js"), "secret");
-  await symlink(dehors, join(c.sites, "r", "retouches"));
-  expect(await readTweaks(withDeclaration(await lireSite(c, "r", o)))).toEqual({ erreur: tweakFileNotFound("a.js") });
+  const outside = await tempFolder();
+  await writeFile(join(outside, "a.js"), "secret");
+  await symlink(outside, join(c.sites, "r", "retouches"));
+  expect(await readTweaks(withDeclaration(await readSite(c, "r", o)))).toEqual({ erreur: tweakFileNotFound("a.js") });
 });
 
 test("surveillerSites signals « retouches » when retouches/a.js changes and « declaration » for site.json", async () => {
@@ -127,47 +127,47 @@ test("surveillerSites signals « retouches » when retouches/a.js changes and «
   await site(c, "w", decl("W"));
   await mkdir(join(c.sites, "w", "retouches"), { recursive: true });
   await mkdir(join(c.sites, "w", ".corbeille"), { recursive: true });
-  const vus: string[] = [];
-  const stop = watchSites(c, (id, what) => vus.push(`${id}:${what}`));
+  const seen: string[] = [];
+  const stop = watchSites(c, (id, what) => seen.push(`${id}:${what}`));
   await attendre(400);
   await writeFile(join(c.sites, "w", "retouches", "a.js"), "1");
   await attendre(600);
-  expect(vus).toContain("w:retouches");
-  expect(vus).not.toContain("w:declaration");
+  expect(seen).toContain("w:retouches");
+  expect(seen).not.toContain("w:declaration");
   await writeFile(join(c.sites, "w", "site.json"), decl("W2"));
   await attendre(600);
-  expect(vus).toContain("w:declaration");
+  expect(seen).toContain("w:declaration");
   await mkdir(join(c.sites, "w", "accueil"), { recursive: true });
   await writeFile(join(c.sites, "w", "accueil", "index.html"), "<p>");
   await attendre(600);
-  expect(vus).toContain("w:accueil");
-  const before = vus.length;
+  expect(seen).toContain("w:accueil");
+  const before = seen.length;
   await writeFile(join(c.sites, "w", ".corbeille", "x.json"), "{}");
   await attendre(600);
-  expect(vus.length).toBe(before);
+  expect(seen.length).toBe(before);
   await stop();
 });
 
 test("lireRetouches: app folder replaced by a link after lireSite", async () => {
   const c = await space();
   await site(c, "r", decl("R", { retouches: [{ correspond: ["/*"], js: ["a.js"] }] }));
-  const s = withDeclaration(await lireSite(c, "r", o));
-  const dehors = await tempFolder();
-  await mkdir(join(dehors, "retouches"));
-  await writeFile(join(dehors, "retouches", "a.js"), "secret");
+  const s = withDeclaration(await readSite(c, "r", o));
+  const outside = await tempFolder();
+  await mkdir(join(outside, "retouches"));
+  await writeFile(join(outside, "retouches", "a.js"), "secret");
   await rename(join(c.sites, "r"), join(c.sites, "r-ancien"));
-  await symlink(dehors, join(c.sites, "r"));
+  await symlink(outside, join(c.sites, "r"));
   expect(await readTweaks(s)).toMatchObject({ erreur: expect.any(String) });
 });
 
 test("lireRetouches: a subfolder of retouches/ linking to the outside is refused", async () => {
   const c = await space();
   await site(c, "r", decl("R", { retouches: [{ correspond: ["/*"], js: ["sous/a.js"] }] }));
-  const dehors = await tempFolder();
-  await writeFile(join(dehors, "a.js"), "secret");
+  const outside = await tempFolder();
+  await writeFile(join(outside, "a.js"), "secret");
   await mkdir(join(c.sites, "r", "retouches"), { recursive: true });
-  await symlink(dehors, join(c.sites, "r", "retouches", "sous"));
-  expect(await readTweaks(withDeclaration(await lireSite(c, "r", o)))).toEqual({ erreur: tweakFileNotFound("sous/a.js") });
+  await symlink(outside, join(c.sites, "r", "retouches", "sous"));
+  expect(await readTweaks(withDeclaration(await readSite(c, "r", o)))).toEqual({ erreur: tweakFileNotFound("sous/a.js") });
 });
 
 test("lireRetouches: a file cited by several tweaks is read only once", async () => {
@@ -176,33 +176,33 @@ test("lireRetouches: a file cited by several tweaks is read only once", async ()
   await mkdir(join(c.sites, "r", "retouches"), { recursive: true });
   await writeFile(join(c.sites, "r", "retouches", "a.js"), "J");
   await writeFile(join(c.sites, "r", "retouches", "a.css"), "C");
-  expect(await readTweaks(withDeclaration(await lireSite(c, "r", o)))).toEqual({ js: { "a.js": "J" }, css: { "a.css": "C" } });
+  expect(await readTweaks(withDeclaration(await readSite(c, "r", o)))).toEqual({ js: { "a.js": "J" }, css: { "a.css": "C" } });
 });
 
 test("lireRetouches: a tweak file that is a directory is refused", async () => {
   const c = await space();
   await site(c, "r", decl("R", { retouches: [{ correspond: ["/*"], js: ["a.js"] }] }));
   await mkdir(join(c.sites, "r", "retouches", "a.js"), { recursive: true });
-  expect(await readTweaks(withDeclaration(await lireSite(c, "r", o)))).toEqual({ erreur: tweakFileNotFound("a.js") });
+  expect(await readTweaks(withDeclaration(await readSite(c, "r", o)))).toEqual({ erreur: tweakFileNotFound("a.js") });
 });
 
 test("site.json symbolic link, JSON null or [], BOM, exactly 64 KB", async () => {
   const c = await space();
-  const dehors = await tempFolder();
-  await writeFile(join(dehors, "site.json"), decl("Lien"));
+  const outside = await tempFolder();
+  await writeFile(join(outside, "site.json"), decl("Lien"));
   await mkdir(join(c.sites, "lien"), { recursive: true });
-  await symlink(join(dehors, "site.json"), join(c.sites, "lien", "site.json"));
+  await symlink(join(outside, "site.json"), join(c.sites, "lien", "site.json"));
   await site(c, "nul", "null");
   await site(c, "liste", "[]");
   await site(c, "bom", "\uFEFF" + decl("Bom"));
   const json = decl("Pile");
   await site(c, "pile", json + " ".repeat(64 * 1024 - Buffer.byteLength(json)));
   await site(c, "trop", json + " ".repeat(64 * 1024 + 1 - Buffer.byteLength(json)));
-  const par = Object.fromEntries((await lireSites(c, o)).map((s) => [s.id, s]));
-  expect(par.lien).toMatchObject({ erreur: expect.any(String) });
-  expect(par.nul).toMatchObject({ erreur: expect.stringContaining("site.json invalide") });
-  expect(par.liste).toMatchObject({ erreur: expect.stringContaining("site.json invalide") });
-  expect(par.bom).toMatchObject({ declaration: { nom: "Bom" } });
-  expect(par.pile).toMatchObject({ declaration: { nom: "Pile" } });
-  expect(par.trop).toMatchObject({ erreur: expect.stringContaining("64 Ko") });
+  const by = Object.fromEntries((await readSites(c, o)).map((s) => [s.id, s]));
+  expect(by.lien).toMatchObject({ erreur: expect.any(String) });
+  expect(by.nul).toMatchObject({ erreur: expect.stringContaining("site.json invalide") });
+  expect(by.liste).toMatchObject({ erreur: expect.stringContaining("site.json invalide") });
+  expect(by.bom).toMatchObject({ declaration: { nom: "Bom" } });
+  expect(by.pile).toMatchObject({ declaration: { nom: "Pile" } });
+  expect(by.trop).toMatchObject({ erreur: expect.stringContaining("64 Ko") });
 });

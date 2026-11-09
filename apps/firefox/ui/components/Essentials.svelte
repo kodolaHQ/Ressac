@@ -4,7 +4,7 @@
   import SiteIcon from "./SiteIcon.svelte";
   import { openMenu } from "./menu.svelte";
 
-  let { fenetre: win, grand = false }: { fenetre: WindowState; grand?: boolean } = $props();
+  let { fenetre: win, grand: large = false }: { fenetre: WindowState; grand?: boolean } = $props();
   const active = $derived.by(() => {
     const id = win.actif[win.espaceActif];
     return id ? appState.valeur?.onglets[id]?.lien?.id : undefined;
@@ -17,8 +17,8 @@
 
 <div
   class="essentiels"
-  class:grand
-  data-testid={grand ? "essentiels-page-vide" : "essentiels"}
+  class:grand={large}
+  data-testid={large ? "essentiels-page-vide" : "essentiels"}
   role="group"
   aria-label="Essentiels"
   ondragover={(e) => e.dataTransfer?.types.includes("application/x-webaios-onglet") && e.preventDefault()}
@@ -35,7 +35,7 @@
       onclick={() => open(favorite)}
       oncontextmenu={(e) => openMenu(e, [{ libelle: "Retirer", agir: () => api.agir({ type: "retirerEssentiel", favoriId: favorite.id }) }])}
     >
-      <SiteIcon favicon={favorite.favicon} titre={favorite.titre} taille={grand ? 32 : 18} />
+      <SiteIcon favicon={favorite.favicon} titre={favorite.titre} taille={large ? 32 : 18} />
     </button>
   {/each}
 </div>

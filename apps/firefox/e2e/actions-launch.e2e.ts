@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { Action } from "../shared/api";
-import { actionsDataDir, runsOnDisk, startActionServers, tid, uiQueries, waitNoyau, writeAction, writeRunnableAction } from "./actions";
+import { actionsDataDir, runsOnDisk, startActionServers, tid, uiQueries, waitKernel, writeAction, writeRunnableAction } from "./actions";
 import { dispatch, state, waitFor, waitReady } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
@@ -36,10 +36,10 @@ async function setPrivate(isPrivate: boolean): Promise<void> {
   if (e.prive !== isPrivate) await dispatch(m, { type: "reglerEspace", id: e.id, nom: e.nom, icone: e.icone, prive: isPrivate, profil: e.profil } as Action);
 }
 /** A web page of the local server shown in a new tab; resolves once its title is in the state. */
-async function openPage(p: string, titre: string): Promise<string> {
+async function openPage(p: string, title: string): Promise<string> {
   const url = pages.url + p;
   await dispatch(m, { type: "ouvrirOnglet", fenetreId: (await state(m)).fenetres[0]!.id, url });
-  for (const deadline = Date.now() + 10_000; !Object.values((await state(m)).onglets).some((o) => o.url === url && o.titre === titre); await new Promise((r) => setTimeout(r, 100)))
+  for (const deadline = Date.now() + 10_000; !Object.values((await state(m)).onglets).some((o) => o.url === url && o.titre === title); await new Promise((r) => setTimeout(r, 100)))
     if (Date.now() > deadline) throw new Error(`${url} not loaded`);
   return url;
 }
@@ -69,7 +69,7 @@ beforeAll(async () => {
   q = uiQueries(m);
   await m.setContext("chrome");
   await waitReady(m);
-  await waitNoyau(m);
+  await waitKernel(m);
   const d = w.dataDir;
   // actions.spec.ts lancerAvecSuggestions: one action without input (keyword gitlab), one with.
   await writeRunnableAction(d, "tickets", { nom: NAME_TICKETS, motsCles: ["gitlab"], code: "export default async () => [{ page: { titre: 'Ticket 1' } }];" });

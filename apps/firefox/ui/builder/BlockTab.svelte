@@ -1,14 +1,14 @@
 <script lang="ts">
-  import type { CatalogueBloc } from "@webaios/kernel";
+  import type { BlockCatalogEntry } from "@webaios/kernel";
   import { availableFields } from "./fields";
-  import type { Edition } from "./edition.svelte";
+  import type { Edit } from "./edition.svelte";
   import CodeEditor from "./CodeEditor.svelte";
   import type { Executions } from "./executions.svelte";
   import BlockForm from "./BlockForm.svelte";
   import { isActionKey } from "./target";
   import ActionPanel from "./ActionPanel.svelte";
   import WidgetPanel from "./WidgetPanel.svelte";
-  import SortieBloc from "./BlockOutput.svelte";
+  import BlockOutput from "./BlockOutput.svelte";
 
   /**
    * The « Bloc » tab: the selected block (settings, code, output), or the widget (the action) when none is.
@@ -16,52 +16,52 @@
    */
   let {
     widget,
-    edition,
+    edition: edit,
     executions,
-    catalogue,
+    catalogue: catalog,
     selection,
-  }: { widget: string; edition: Edition; executions: Executions; catalogue: Map<string, CatalogueBloc>; selection: string | null } = $props();
+  }: { widget: string; edition: Edit; executions: Executions; catalogue: Map<string, BlockCatalogEntry>; selection: string | null } = $props();
 
-  const bloc = $derived(selection === null ? undefined : edition.brouillon?.blocs.find((b) => b.id === selection));
-  const c = $derived(bloc ? catalogue.get(bloc.type) : undefined);
-  const error = $derived(!edition.validation.ok && bloc && edition.validation.bloc === bloc.id ? edition.validation.erreur : null);
-  const warnings = $derived(bloc ? edition.avertissements.filter((a) => a.bloc === bloc.id) : []);
+  const block = $derived(selection === null ? undefined : edit.brouillon?.blocs.find((b) => b.id === selection));
+  const c = $derived(block ? catalog.get(block.type) : undefined);
+  const error = $derived(!edit.validation.ok && block && edit.validation.bloc === block.id ? edit.validation.erreur : null);
+  const warnings = $derived(block ? edit.avertissements.filter((a) => a.bloc === block.id) : []);
 
   /** Fields offered in a template: those of the upstream block's output at the chosen run, then the configuration. */
   const available = $derived.by(() => {
     const d = executions.detail;
-    if (!bloc || !d) return null;
-    const upstream = edition.brouillon?.liens.find((l) => l.vers === bloc.id)?.de;
-    const sortie = upstream === undefined ? undefined : d.blocs.find((b) => b.id === upstream)?.sortie;
-    return availableFields(sortie, edition.widget?.config);
+    if (!block || !d) return null;
+    const upstream = edit.brouillon?.liens.find((l) => l.vers === block.id)?.de;
+    const output = upstream === undefined ? undefined : d.blocs.find((b) => b.id === upstream)?.sortie;
+    return availableFields(output, edit.widget?.config);
   });
-  const source = $derived(bloc?.type === "code" && typeof bloc.parametres.source === "string" ? bloc.parametres.source : null);
+  const source = $derived(block?.type === "code" && typeof block.parametres.source === "string" ? block.parametres.source : null);
 </script>
 
 <div class="volet" data-testid="volet-bloc">
-  {#if bloc}
-    {#key bloc.id}
-      <h3><span>{c?.libelle ?? bloc.type}</span> <code>{bloc.type}</code></h3>
+  {#if block}
+    {#key block.id}
+      <h3><span>{c?.libelle ?? block.type}</span> <code>{block.type}</code></h3>
       {#if error}<p class="erreur" data-testid="erreur-validation">{error}</p>{/if}
       {#if warnings.length > 0}
-        <ul class="avertissements" data-testid="avertissement-{bloc.id}">
+        <ul class="avertissements" data-testid="avertissement-{block.id}">
           {#each warnings as a, i (i)}<li>⚠ {a.message}</li>{/each}
         </ul>
       {/if}
       {#if c}
-        <BlockForm {edition} {bloc} catalogue={c} disponibles={available} />
+        <BlockForm edition={edit} bloc={block} catalogue={c} disponibles={available} />
       {:else}
         <p class="doux">Type de bloc inconnu : ses réglages ne s'éditent pas ici.</p>
       {/if}
       {#if source}
         {#key source}<CodeEditor {widget} nom={source} />{/key}
       {/if}
-      <SortieBloc bloc={bloc.id} choisie={executions.choisie} execution={executions.detail} introuvable={executions.introuvable} />
+      <BlockOutput bloc={block.id} choisie={executions.choisie} execution={executions.detail} introuvable={executions.introuvable} />
     {/key}
   {:else if isActionKey(widget)}
-    <ActionPanel action={edition.action} />
+    <ActionPanel action={edit.action} />
   {:else}
-    <WidgetPanel widget={edition.widget} />
+    <WidgetPanel widget={edit.widget} />
   {/if}
 </div>
 

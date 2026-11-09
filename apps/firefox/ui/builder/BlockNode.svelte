@@ -1,12 +1,12 @@
 <script lang="ts" module>
   import type { Node } from "@xyflow/svelte";
-  import type { Pastille } from "./badges";
+  import type { Badge } from "./badges";
 
   export type NodeData = {
     /** Block name, or its id. */
     titre: string;
     type: string;
-    pastille: Pastille | null;
+    pastille: Badge | null;
     /** Validator message when it targets this block. */
     erreur: string | null;
     avertissements: string[];
@@ -31,7 +31,7 @@
   import { Handle, Position, type NodeProps } from "@xyflow/svelte";
 
   let { id, data, selected }: NodeProps<BlockNode> = $props();
-  const marque = $derived(data.erreur ?? (data.avertissements.length ? data.avertissements.join("\n") : null));
+  const mark = $derived(data.erreur ?? (data.avertissements.length ? data.avertissements.join("\n") : null));
 </script>
 
 <div
@@ -40,7 +40,7 @@
   class:en-erreur={data.erreur !== null}
   class:avertit={data.erreur === null && data.avertissements.length > 0}
   data-testid="noeud-{id}"
-  title={marque}
+  title={mark}
 >
   {#if data.entree}<Handle type="target" position={Position.Left} />{/if}
   <div class="ligne">

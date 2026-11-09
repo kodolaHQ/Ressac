@@ -2,20 +2,20 @@
   import type { RenderedBlock, RenderedPage } from "@webaios/kernel";
   import { NO_RESULT, FALLBACK_MENTION } from "../../shared/actions";
   import ComponentFrame from "../ActionComponentFrame.svelte";
-  import Cartes from "./blocks/Cartes.svelte";
+  import Cards from "./blocks/Cartes.svelte";
   import Champs from "./blocks/Champs.svelte";
   import Figure from "./blocks/Figure.svelte";
   import Figures from "./blocks/Figures.svelte";
   import Columns from "./blocks/Columns.svelte";
   import Boxed from "./blocks/Callout.svelte";
   import BlockError from "./blocks/BlockError.svelte";
-  import Etiquettes from "./blocks/Etiquettes.svelte";
+  import Labels from "./blocks/Etiquettes.svelte";
   import Group from "./blocks/Group.svelte";
-  import Lien from "./blocks/Lien.svelte";
+  import Link from "./blocks/Lien.svelte";
   import List from "./blocks/List.svelte";
   import Paragraph from "./blocks/Paragraph.svelte";
   import Tableau from "./blocks/Tableau.svelte";
-  import Titre from "./blocks/Titre.svelte";
+  import Title from "./blocks/Titre.svelte";
   import "./page.css";
   import type { PageContext } from "./types";
 
@@ -30,12 +30,12 @@
   const p = (b: RenderedBlock) => ("props" in b ? b.props : {}) as never;
 </script>
 
-{#snippet list(blocs: RenderedBlock[] | undefined)}
-  {#each blocs ?? [] as b, i (i)}
+{#snippet list(blocks: RenderedBlock[] | undefined)}
+  {#each blocks ?? [] as b, i (i)}
     {#if "message" in b}
       <BlockError message={b.message} />
     {:else if b.composant === "titre"}
-      <Titre p={p(b)} />
+      <Title p={p(b)} />
     {:else if b.composant === "paragraphe"}
       <Paragraph p={p(b)} />
     {:else if b.composant === "encadre"}
@@ -47,15 +47,15 @@
     {:else if b.composant === "liste"}
       <List p={p(b)} {ctx} />
     {:else if b.composant === "cartes"}
-      <Cartes p={p(b)} {ctx} />
+      <Cards p={p(b)} {ctx} />
     {:else if b.composant === "tableau"}
       <Tableau p={p(b)} {ctx} />
     {:else if b.composant === "champs"}
       <Champs p={p(b)} />
     {:else if b.composant === "etiquettes"}
-      <Etiquettes p={p(b)} />
+      <Labels p={p(b)} />
     {:else if b.composant === "lien"}
-      <Lien p={p(b)} {ctx} />
+      <Link p={p(b)} {ctx} />
     {:else if b.composant === "groupe"}
       <Group p={p(b)}><div class="pa-blocs">{@render list(b.blocs)}</div></Group>
     {:else if b.composant === "colonnes"}

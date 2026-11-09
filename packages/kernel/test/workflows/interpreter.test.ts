@@ -6,23 +6,23 @@ import { pathToFileURL } from "node:url";
 import { tempFolder } from "../helpers/temp.js";
 import type { BlocksMemory } from "../../src/workflows/memory.js";
 import { implicitWorkflow } from "../../src/workflows/validate.js";
-import { ENGINE, SCRIPT, bloc, chain, lancer, sortie } from "../helpers/engine.js";
+import { ENGINE, SCRIPT, block, chain, launch, output } from "../helpers/engine.js";
 import { SEARCHES_CAP, SEARCHES_STOPPED } from "../../src/workflows/access.js";
 import { SEARCH_DENIED } from "../../src/workflows/duckduckgo.js";
 
 // The engine is the container's JavaScript: imported as is, without types.
-const { executerWorkflow } = await import(pathToFileURL(join(ENGINE, "interpreteur.mjs")).href);
+const { executerWorkflow: runWorkflow } = await import(pathToFileURL(join(ENGINE, "interpreteur.mjs")).href);
 const { default: newList } = await import(pathToFileURL(join(ENGINE, "blocs", "liste-nouveaux.mjs")).href);
 const { default: keepList } = await import(pathToFileURL(join(ENGINE, "blocs", "liste-garder.mjs")).href);
-const { ElementNonLance } = await import(pathToFileURL(join(ENGINE, "erreurs.mjs")).href);
+const { ElementNonLance: NotRunElement } = await import(pathToFileURL(join(ENGINE, "erreurs.mjs")).href);
 
 describe("interpreter (in the container)", () => {
   it("runs the blocks in order and sends debut then fin for each block before fin", async () => {
-    const r = await lancer({
+    const r = await launch({
       workflow: {
         version: 1,
         // In the array's disorder: the order comes from the links.
-        blocs: [sortie, bloc("garder", "liste.garder", { nombre: 2 }), bloc("src", "code", { source: "src.mjs" })],
+        blocs: [output, block("garder", "liste.garder", { nombre: 2 }), block("src", "code", { source: "src.mjs" })],
         liens: chain("src", "garder", "sortie"),
       },
       fichiers: { "src.mjs": `export default async () => [1, 2, 3];` },
@@ -40,14 +40,14 @@ describe("interpreter (in the container)", () => {
   });
 
   it("a block with several inputs receives { id: output }", async () => {
-    const r = await lancer({
+    const r = await launch({
       workflow: {
         version: 1,
         blocs: [
-          bloc("a", "code", { source: "a.mjs" }),
-          bloc("b", "code", { source: "b.mjs" }),
-          bloc("tout", "code", { source: "tout.mjs" }),
-          sortie,
+          block("a", "code", { source: "a.mjs" }),
+          block("b", "code", { source: "b.mjs" }),
+          block("tout", "code", { source: "tout.mjs" }),
+          output,
         ],
         liens: [{ de: "a", vers: "tout" }, { de: "b", vers: "tout" }, { de: "tout", vers: "sortie" }],
       },
@@ -61,10 +61,10 @@ describe("interpreter (in the container)", () => {
   });
 
   it("code receives (entree, webaios) with config, precedent, maintenant, journal; its log lines are attached to the block and also go to stderr", async () => {
-    const r = await lancer({
+    const r = await launch({
       workflow: {
         version: 1,
-        blocs: [bloc("src", "code", { source: "src.mjs" }), bloc("lire", "code", { source: "lire.mjs" }), sortie],
+        blocs: [block("src", "code", { source: "src.mjs" }), block("lire", "code", { source: "lire.mjs" }), output],
         liens: chain("src", "lire", "sortie"),
       },
       config: { ville: "Bordeaux" },
@@ -92,10 +92,10 @@ describe("interpreter (in the container)", () => {
   });
 
   it("code with appel: recolte calls default(webaios) as today", async () => {
-    const r = await lancer({
+    const r = await launch({
       workflow: {
         version: 1,
-        blocs: [bloc("recolte", "code", { source: "recolte.mjs", appel: "recolte" }), sortie],
+        blocs: [block("recolte", "code", { source: "recolte.mjs", appel: "recolte" }), output],
         liens: chain("recolte", "sortie"),
       },
       config: { a: 1 },
@@ -110,8 +110,8 @@ describe("interpreter (in the container)", () => {
   });
 
   it("an error thrown by the code ends the block failed and the run in echec with the same message", async () => {
-    const r = await lancer({
-      workflow: { version: 1, blocs: [bloc("recolte", "code", { source: "recolte.mjs", appel: "recolte" }), sortie], liens: chain("recolte", "sortie") },
+    const r = await launch({
+      workflow: { version: 1, blocs: [block("recolte", "code", { source: "recolte.mjs", appel: "recolte" }), output], liens: chain("recolte", "sortie") },
       fichiers: { "recolte.mjs": `export default async () => { throw new Error("boum"); };` },
     });
     expect(r.finBloc("recolte")).toEqual({ t: "bloc", id: "recolte", etape: "fin", statut: "echoue", erreur: "boum" });
@@ -120,10 +120,10 @@ describe("interpreter (in the container)", () => {
   });
 
   it("a missing code file fails the block, the following ones are not launched, then echec", async () => {
-    const r = await lancer({
+    const r = await launch({
       workflow: {
         version: 1,
-        blocs: [bloc("a", "code", { source: "absent.mjs" }), bloc("b", "liste.garder", { nombre: 1 }), sortie],
+        blocs: [block("a", "code", { source: "absent.mjs" }), block("b", "liste.garder", { nombre: 1 }), output],
         liens: chain("a", "b", "sortie"),
       },
     });
@@ -135,10 +135,10 @@ describe("interpreter (in the container)", () => {
 
   it("liste.nouveaux keeps only the never-seen keys and retains at most 5000 keys", async () => {
     const olds = Array.from({ length: 5000 }, (_, i) => `k${i}`);
-    const r = await lancer({
+    const r = await launch({
       workflow: {
         version: 1,
-        blocs: [bloc("src", "code", { source: "src.mjs" }), bloc("nv", "liste.nouveaux", { cle: "url" }), sortie],
+        blocs: [block("src", "code", { source: "src.mjs" }), block("nv", "liste.nouveaux", { cle: "url" }), output],
         liens: chain("src", "nv", "sortie"),
       },
       memoire: { nv: { type: "liste.nouveaux", valeur: olds } },
@@ -157,16 +157,16 @@ describe("interpreter (in the container)", () => {
   });
 
   it("liste.nouveaux: a duplicate in the same list is not new; a long key is kept cut to 500 characters", async () => {
-    const longue = "u".repeat(800);
-    const r = await lancer({
+    const lengthy = "u".repeat(800);
+    const r = await launch({
       workflow: {
         version: 1,
-        blocs: [bloc("src", "code", { source: "src.mjs" }), bloc("nv", "liste.nouveaux", { cle: "url" }), sortie],
+        blocs: [block("src", "code", { source: "src.mjs" }), block("nv", "liste.nouveaux", { cle: "url" }), output],
         liens: chain("src", "nv", "sortie"),
       },
       memoire: { nv: { type: "liste.nouveaux", valeur: ["u".repeat(500)] } },
       fichiers: {
-        "src.mjs": `export default async () => [{ url: "a", n: 1 }, { url: "a", n: 2 }, { url: "b" }, { url: ${JSON.stringify(longue)} }];`,
+        "src.mjs": `export default async () => [{ url: "a", n: 1 }, { url: "a", n: 2 }, { url: "b" }, { url: ${JSON.stringify(lengthy)} }];`,
       },
     });
     expect(r.terminal.donnees).toEqual([{ url: "a", n: 1 }, { url: "b" }]);
@@ -186,10 +186,10 @@ describe("interpreter (in the container)", () => {
       { titre: "Sans url" },
       { titre: "Sans url 2" },
     ];
-    const r = await lancer({
+    const r = await launch({
       workflow: {
         version: 1,
-        blocs: [bloc("src", "code", { source: "src.mjs" }), bloc("d", "liste.dedoublonner", { cles: ["url", "titre"] }), sortie],
+        blocs: [block("src", "code", { source: "src.mjs" }), block("d", "liste.dedoublonner", { cles: ["url", "titre"] }), output],
         liens: chain("src", "d", "sortie"),
       },
       fichiers: { "src.mjs": `export default async () => ${JSON.stringify(elements)};` },
@@ -198,19 +198,19 @@ describe("interpreter (in the container)", () => {
   });
 
   it("liste.garder keeps the first N; an input that is not a list fails the block", async () => {
-    const ok = await lancer({
+    const ok = await launch({
       workflow: {
         version: 1,
-        blocs: [bloc("src", "code", { source: "src.mjs" }), bloc("g", "liste.garder", { nombre: 3 }), sortie],
+        blocs: [block("src", "code", { source: "src.mjs" }), block("g", "liste.garder", { nombre: 3 }), output],
         liens: chain("src", "g", "sortie"),
       },
       fichiers: { "src.mjs": `export default async () => [5, 4, 3, 2, 1];` },
     });
     expect(ok.terminal.donnees).toEqual([5, 4, 3]);
-    const ko = await lancer({
+    const ko = await launch({
       workflow: {
         version: 1,
-        blocs: [bloc("src", "code", { source: "src.mjs" }), bloc("g", "liste.garder", { nombre: 3 }), sortie],
+        blocs: [block("src", "code", { source: "src.mjs" }), block("g", "liste.garder", { nombre: 3 }), output],
         liens: chain("src", "g", "sortie"),
       },
       fichiers: { "src.mjs": `export default async () => ({ pas: "une liste" });` },
@@ -219,10 +219,10 @@ describe("interpreter (in the container)", () => {
   });
 
   it("the memory sent before fin contains only the workflow's blocks, with their type; a memory of another type is ignored", async () => {
-    const r = await lancer({
+    const r = await launch({
       workflow: {
         version: 1,
-        blocs: [bloc("src", "code", { source: "src.mjs" }), bloc("nv", "liste.nouveaux", { cle: "id" }), sortie],
+        blocs: [block("src", "code", { source: "src.mjs" }), block("nv", "liste.nouveaux", { cle: "id" }), output],
         liens: chain("src", "nv", "sortie"),
       },
       memoire: {
@@ -245,10 +245,10 @@ describe("interpreter (in the container)", () => {
   });
 
   it("a block output too big for a line is sent without output, with sortieTropGrosse", async () => {
-    const r = await lancer({
+    const r = await launch({
       workflow: {
         version: 1,
-        blocs: [bloc("gros", "code", { source: "gros.mjs" }), bloc("taille", "code", { source: "taille.mjs" }), sortie],
+        blocs: [block("gros", "code", { source: "gros.mjs" }), block("taille", "code", { source: "taille.mjs" }), output],
         liens: chain("gros", "taille", "sortie"),
       },
       fichiers: {
@@ -261,9 +261,9 @@ describe("interpreter (in the container)", () => {
   });
 
   it("a debut without a workflow is refused: recolte.mjs no longer runs outside a workflow", async () => {
-    const dossier = await tempFolder();
-    await writeFile(join(dossier, "recolte.mjs"), `export default async () => ({ lance: true });`);
-    const child = spawn("node", [SCRIPT, dossier], { stdio: ["pipe", "pipe", "pipe"] });
+    const folder = await tempFolder();
+    await writeFile(join(folder, "recolte.mjs"), `export default async () => ({ lance: true });`);
+    const child = spawn("node", [SCRIPT, folder], { stdio: ["pipe", "pipe", "pipe"] });
     let out = "";
     child.stdout.on("data", (d) => (out += d));
     const finished = new Promise<number | null>((ok) => child.on("close", (c) => ok(c)));
@@ -273,7 +273,7 @@ describe("interpreter (in the container)", () => {
   });
 
   it("the implicit workflow of a recolte.mjs: default(webaios) with the debut config, log on stderr", async () => {
-    const r = await lancer({
+    const r = await launch({
       workflow: implicitWorkflow(),
       config: { a: 1 },
       precedent: { v: 1 },
@@ -287,10 +287,10 @@ describe("interpreter (in the container)", () => {
 
 describe("interpreter: replay from a block", () => {
   it("with replay, only the relaunched blocks are traced, in order, and receive the reused outputs", async () => {
-    const r = await lancer({
+    const r = await launch({
       workflow: {
         version: 1,
-        blocs: [bloc("src", "code", { source: "src.mjs" }), bloc("b", "code", { source: "b.mjs" }), sortie],
+        blocs: [block("src", "code", { source: "src.mjs" }), block("b", "code", { source: "b.mjs" }), output],
         liens: chain("src", "b", "sortie"),
       },
       fichiers: {
@@ -310,10 +310,10 @@ describe("interpreter: replay from a block", () => {
   });
 
   it("a relaunched block with two inputs receives { id: output } mixing reuse and relaunch", async () => {
-    const r = await lancer({
+    const r = await launch({
       workflow: {
         version: 1,
-        blocs: [bloc("a", "code", { source: "a.mjs" }), bloc("b", "code", { source: "b.mjs" }), bloc("tout", "code", { source: "tout.mjs" }), sortie],
+        blocs: [block("a", "code", { source: "a.mjs" }), block("b", "code", { source: "b.mjs" }), block("tout", "code", { source: "tout.mjs" }), output],
         liens: [{ de: "a", vers: "tout" }, { de: "b", vers: "tout" }, { de: "tout", vers: "sortie" }],
       },
       fichiers: {
@@ -328,8 +328,8 @@ describe("interpreter: replay from a block", () => {
   });
 
   it("without the sortie block among the relaunched ones, the data is null", async () => {
-    const r = await lancer({
-      workflow: { version: 1, blocs: [bloc("a", "code", { source: "a.mjs" }), sortie], liens: chain("a", "sortie") },
+    const r = await launch({
+      workflow: { version: 1, blocs: [block("a", "code", { source: "a.mjs" }), output], liens: chain("a", "sortie") },
       fichiers: { "a.mjs": `export default async () => "a";` },
       rejeu: { relances: ["a"], sorties: {} },
     });
@@ -341,7 +341,7 @@ describe("interpreter: replay from a block", () => {
     // The kernel sends an empty memory for a trial; the interpreter does not rely on it: even a received memory
     // (including that of a block not relaunched) is neither read nor returned.
     const computed: string[] = [];
-    const r = await executer({
+    const r = await run({
       entree: "jamais lu",
       memoire: {
         src: { type: "test.source", valeur: "ancienne" },
@@ -374,7 +374,7 @@ describe("interpreter: replay from a block", () => {
 });
 
 /** Direct run of the interpreter, with a registry of test blocks. */
-async function executer(o: {
+async function run(o: {
   blocs: { id: string; type: string; parametres?: Record<string, unknown> }[];
   registre: Record<string, unknown>;
   entree: unknown;
@@ -402,7 +402,7 @@ async function executer(o: {
   let error: Error | null = null;
   let result: { donnees: unknown; memoire: BlocksMemory } | null = null;
   try {
-    result = await executerWorkflow({
+    result = await runWorkflow({
       workflow,
       config: null,
       memoire: o.memoire ?? {},
@@ -439,7 +439,7 @@ const list = (n: number) => Array.from({ length: n }, (_, i) => ({ n: i }));
 
 describe("interpreter: input and progress (actions)", () => {
   /** A per-element block where each element takes 300 ms on the fake clock. */
-  const lent = (clock: { t: number }) => ({
+  const slow = (clock: { t: number }) => ({
     "test.lent": {
       parElement: "toujours",
       async traiterElement(ctx: any) {
@@ -453,10 +453,10 @@ describe("interpreter: input and progress (actions)", () => {
   it("with progress, a per-element block over 12 elements sends spaced avancement lines and the last one 12/12", async () => {
     const clock = { t: 0 };
     const hours: number[] = [];
-    const r = await executer({
+    const r = await run({
       entree: list(12),
       blocs: [{ id: "b", type: "test.lent", parametres: { champ: "v" } }, { id: "sortie", type: "sortie" }],
-      registre: lent(clock),
+      registre: slow(clock),
       horloge: () => clock.t,
       avancement: true,
       espion: (m) => {
@@ -481,10 +481,10 @@ describe("interpreter: input and progress (actions)", () => {
 
   it("without progress, no avancement line", async () => {
     const clock = { t: 0 };
-    const r = await executer({
+    const r = await run({
       entree: list(12),
       blocs: [{ id: "b", type: "test.lent", parametres: { champ: "v" } }, { id: "sortie", type: "sortie" }],
-      registre: lent(clock),
+      registre: slow(clock),
       horloge: () => clock.t,
     });
     expect(r.erreur).toBeNull();
@@ -494,17 +494,17 @@ describe("interpreter: input and progress (actions)", () => {
   it("ctx.saisie is given to the code", async () => {
     const workflow = {
       version: 1,
-      blocs: [bloc("lire", "source.page", { url: "https://www.leboncoin.fr/recherche?text={saisie}" }), bloc("c", "code", { source: "c.mjs" }), sortie],
+      blocs: [block("lire", "source.page", { url: "https://www.leboncoin.fr/recherche?text={saisie}" }), block("c", "code", { source: "c.mjs" }), output],
       liens: chain("lire", "c", "sortie"),
     };
     const files = { "c.mjs": `export default async (entree, w) => ({ saisie: w.saisie ?? null, aLaCle: "saisie" in w });` };
     const reply = (a: any) => ({ ok: { url: a.a.url, titre: "", texte: "", liens: [] } });
-    const r = await lancer({ workflow, fichiers: files, repondre: reply, debut: { saisie: "clio lyon" } });
+    const r = await launch({ workflow, fichiers: files, repondre: reply, debut: { saisie: "clio lyon" } });
     expect(r.terminal).toEqual({ t: "fin", donnees: { saisie: "clio lyon", aLaCle: true } });
     expect(r.appels[0]!.a.url).toBe("https://www.leboncoin.fr/recherche?text=clio%20lyon");
     // An engine block receives it too in its ctx.
     let view: unknown;
-    await executer({
+    await run({
       entree: null,
       blocs: [{ id: "b", type: "test.voir" }, { id: "sortie", type: "sortie" }],
       registre: { "test.voir": { parElement: "non", executer: async (ctx: any) => ((view = ctx.saisie), { sortie: null }) } },
@@ -512,7 +512,7 @@ describe("interpreter: input and progress (actions)", () => {
     });
     expect(view).toBe("clio lyon");
     // A widget (without input): nothing new in webaios.
-    const widget = await lancer({ workflow: { ...workflow, blocs: [bloc("lire", "code", { source: "c.mjs" }), bloc("c", "code", { source: "c.mjs" }), sortie] }, fichiers: files });
+    const widget = await launch({ workflow: { ...workflow, blocs: [block("lire", "code", { source: "c.mjs" }), block("c", "code", { source: "c.mjs" }), output] }, fichiers: files });
     expect(widget.terminal).toEqual({ t: "fin", donnees: { saisie: null, aLaCle: false } });
   });
 
@@ -526,20 +526,20 @@ describe("interpreter: input and progress (actions)", () => {
 
 describe("interpreter: per-element blocks", () => {
   it("per element: two elements at a time, result under champ, order kept", async () => {
-    let enCours = 0;
+    let running = 0;
     let max = 0;
-    const r = await executer({
+    const r = await run({
       entree: list(6),
       blocs: [{ id: "double", type: "test.double", parametres: { champ: "d" } }, { id: "sortie", type: "sortie" }],
       registre: {
         "test.double": {
           parElement: "toujours",
           async traiterElement(ctx: any) {
-            enCours++;
-            max = Math.max(max, enCours);
+            running++;
+            max = Math.max(max, running);
             // The first ones finish after the following ones: the output order stays the input's.
             await wait(ctx.element.n < 2 ? 40 : 5);
-            enCours--;
+            running--;
             return ctx.element.n * 2;
           },
         },
@@ -552,7 +552,7 @@ describe("interpreter: per-element blocks", () => {
   });
 
   it("per element « option »: without parElement, executer runs once on the whole input", async () => {
-    const r = await executer({
+    const r = await run({
       entree: list(3),
       blocs: [{ id: "b", type: "test.option", parametres: { parElement: false, champ: "x" } }, { id: "sortie", type: "sortie" }],
       registre: {
@@ -567,7 +567,7 @@ describe("interpreter: per-element blocks", () => {
   });
 
   it("per element: an input that is not a list fails the block", async () => {
-    const r = await executer({
+    const r = await run({
       entree: { pas: "liste" },
       blocs: [{ id: "b", type: "test.x", parametres: { champ: "x" } }, { id: "sortie", type: "sortie" }],
       registre: { "test.x": { parElement: "toujours", traiterElement: async () => 1 } },
@@ -586,16 +586,16 @@ describe("interpreter: per-element blocks", () => {
         },
       },
     };
-    const saute = await executer({
+    const skipped = await run({
       entree: list(3),
       blocs: [{ id: "b", type: "test.x", parametres: { champ: "r" } }, { id: "sortie", type: "sortie" }],
       registre: registry,
     });
-    expect(saute.resultat!.donnees).toEqual([{ n: 0, r: "ok" }, { n: 1 }, { n: 2, r: "ok" }]);
-    expect(saute.finBloc("b")).toMatchObject({ statut: "partiel" });
-    expect(saute.journal("b").join("\n")).toContain("raté");
+    expect(skipped.resultat!.donnees).toEqual([{ n: 0, r: "ok" }, { n: 1 }, { n: 2, r: "ok" }]);
+    expect(skipped.finBloc("b")).toMatchObject({ statut: "partiel" });
+    expect(skipped.journal("b").join("\n")).toContain("raté");
 
-    const failed = await executer({
+    const failed = await run({
       entree: list(3),
       blocs: [{ id: "b", type: "test.x", parametres: { champ: "r", siErreur: "echouer" } }, { id: "sortie", type: "sortie" }],
       registre: registry,
@@ -610,15 +610,15 @@ describe("interpreter: per-element blocks", () => {
       "test.x": { parElement: "toujours", echecSiTousEchouent: true, traiterElement: async () => { throw new Error("Kev indisponible"); } },
       "test.enrichir": { parElement: "toujours", traiterElement: async () => { throw new Error("page illisible"); } },
     };
-    const tous = await executer({
+    const all = await run({
       entree: list(2),
       blocs: [{ id: "b", type: "test.x", parametres: { champ: "r" } }, { id: "sortie", type: "sortie" }],
       registre: registry,
     });
-    expect(tous.finBloc("b")).toMatchObject({ statut: "echoue" });
-    expect(tous.erreur?.message).toContain("Kev indisponible");
+    expect(all.finBloc("b")).toMatchObject({ statut: "echoue" });
+    expect(all.erreur?.message).toContain("Kev indisponible");
 
-    const enrich = await executer({
+    const enrich = await run({
       entree: list(2),
       blocs: [{ id: "b", type: "test.enrichir", parametres: { champ: "r" } }, { id: "sortie", type: "sortie" }],
       registre: registry,
@@ -628,7 +628,7 @@ describe("interpreter: per-element blocks", () => {
     expect(enrich.resultat!.donnees).toEqual(list(2));
     expect(enrich.journal("b").join("\n")).toContain("page illisible");
 
-    const empty = await executer({
+    const empty = await run({
       entree: [],
       blocs: [{ id: "b", type: "test.x", parametres: { champ: "r" } }, { id: "sortie", type: "sortie" }],
       registre: registry,
@@ -645,17 +645,17 @@ describe("interpreter: per-element blocks", () => {
         traiterElement: async (ctx: any) => ctx.remplir("url={url}", { url: true }).texte,
       },
     };
-    const parElement = await executer({
+    const byElement = await run({
       // An old value under `champ` does not survive an element without a value this time.
       entree: [{ url: "a b", u: "ancienne" }, { autre: 1, u: "ancienne" }],
       blocs: [{ id: "b", type: "test.gabarit", parametres: { parElement: true, champ: "u" } }, { id: "sortie", type: "sortie" }],
       registre: registry,
     });
-    expect(parElement.resultat!.donnees).toEqual([{ url: "a b", u: "url=a%20b" }, { autre: 1 }]);
-    expect(parElement.finBloc("b")).toMatchObject({ statut: "reussi" });
-    expect(parElement.journal("b").join("\n")).toContain("valeur absente : url");
+    expect(byElement.resultat!.donnees).toEqual([{ url: "a b", u: "url=a%20b" }, { autre: 1 }]);
+    expect(byElement.finBloc("b")).toMatchObject({ statut: "reussi" });
+    expect(byElement.journal("b").join("\n")).toContain("valeur absente : url");
 
-    const simple = await executer({
+    const simple = await run({
       entree: null,
       blocs: [{ id: "b", type: "test.gabarit", parametres: { parElement: false, champ: "u" } }, { id: "sortie", type: "sortie" }],
       registre: registry,
@@ -668,7 +668,7 @@ describe("interpreter: per-element blocks", () => {
     const registry = {
       "test.gabarit": { parElement: "option", traiterElement: async (ctx: any) => ctx.remplir("Avis de {titre} ; fiabilité : {fiabilite?}.").texte },
     };
-    const r = await executer({
+    const r = await run({
       entree: [{ titre: "A", fiabilite: "bonne" }, { titre: "B" }],
       blocs: [{ id: "b", type: "test.gabarit", parametres: { parElement: true, champ: "avis" } }, { id: "sortie", type: "sortie" }],
       registre: registry,
@@ -683,8 +683,8 @@ describe("interpreter: per-element blocks", () => {
   it("budgetSecondes: past the time, no more element launched, the following ones without champ, partial block", async () => {
     // Simulated clock: each element « lasts » 300 ms, the element's end advances the time.
     let now = 0;
-    const lances: number[] = [];
-    const r = await executer({
+    const launched: number[] = [];
+    const r = await run({
       entree: list(12),
       horloge: () => now,
       blocs: [{ id: "b", type: "test.lent", parametres: { champ: "r", budgetSecondes: 1 } }, { id: "sortie", type: "sortie" }],
@@ -692,7 +692,7 @@ describe("interpreter: per-element blocks", () => {
         "test.lent": {
           parElement: "toujours",
           async traiterElement(ctx: any) {
-            lances.push(ctx.element.n);
+            launched.push(ctx.element.n);
             await Promise.resolve();
             now += 300;
             return "fait";
@@ -701,18 +701,18 @@ describe("interpreter: per-element blocks", () => {
       },
     });
     // The two elements in progress finish before the next check: pairs launched at 0 and 600; at 1200, nothing more.
-    expect(lances).toEqual([0, 1, 2, 3]);
-    const sortie = r.resultat!.donnees as { n: number; r?: string }[];
-    expect(sortie.filter((e) => e.r === "fait").map((e) => e.n)).toEqual([0, 1, 2, 3]);
-    expect(sortie.slice(4).every((e) => !("r" in e))).toBe(true);
+    expect(launched).toEqual([0, 1, 2, 3]);
+    const output = r.resultat!.donnees as { n: number; r?: string }[];
+    expect(output.filter((e) => e.r === "fait").map((e) => e.n)).toEqual([0, 1, 2, 3]);
+    expect(output.slice(4).every((e) => !("r" in e))).toBe(true);
     expect(r.finBloc("b")).toMatchObject({ statut: "partiel" });
     expect(r.journal("b")).toContain("temps écoulé : 8 élément(s) non lancé(s)");
   });
 
   it("the global time (150 s since debut) also stops launching elements", async () => {
     let now = 0;
-    let lances = 0;
-    const r = await executer({
+    let launched = 0;
+    const r = await run({
       entree: list(10),
       horloge: () => now,
       echeance: 250,
@@ -721,7 +721,7 @@ describe("interpreter: per-element blocks", () => {
         "test.lent": {
           parElement: "toujours",
           async traiterElement() {
-            lances++;
+            launched++;
             await Promise.resolve();
             now += 100;
             return 1;
@@ -730,7 +730,7 @@ describe("interpreter: per-element blocks", () => {
       },
     });
     // Pairs launched at 0 and 200; at 400, nothing more.
-    expect(lances).toBe(4);
+    expect(launched).toBe(4);
     expect(r.finBloc("b")).toMatchObject({ statut: "partiel" });
   });
 
@@ -748,16 +748,16 @@ describe("interpreter: per-element blocks", () => {
         },
       },
     };
-    const temps = await executer({
+    const time = await run({
       entree: list(6).map((e) => ({ ...e, url: "u" })),
       horloge: () => now,
       blocs: [{ id: "b", type: "test.ko", parametres: { champ: "r", budgetSecondes: 1 } }, { id: "sortie", type: "sortie" }],
       registre: registry,
     });
-    expect(temps.finBloc("b")).toMatchObject({ statut: "echoue" });
-    expect(temps.erreur?.message).toContain("raté");
+    expect(time.finBloc("b")).toMatchObject({ statut: "echoue" });
+    expect(time.erreur?.message).toContain("raté");
 
-    const absent = await executer({
+    const absent = await run({
       entree: [{ url: "u" }, { autre: 1 }],
       blocs: [{ id: "b", type: "test.ko", parametres: { champ: "r" } }, { id: "sortie", type: "sortie" }],
       registre: registry,
@@ -767,7 +767,7 @@ describe("interpreter: per-element blocks", () => {
 
   it("reutiliser reuses the memory's value without a call and stores the new ones", async () => {
     const computed: string[] = [];
-    const r = await executer({
+    const r = await run({
       entree: [{ url: "https://a.fr/1" }, { url: "https://a.fr/2" }, { url: null }],
       memoire: { b: { type: "test.resume", valeur: { reutilises: [["https://a.fr/1", "déjà fait"], ["https://vieux.fr/", "vieux"]] } } },
       blocs: [{ id: "b", type: "test.resume", parametres: { champ: "resume", reutiliser: "url" } }, { id: "sortie", type: "sortie" }],
@@ -797,26 +797,26 @@ describe("interpreter: per-element blocks", () => {
   });
 
   it("reutiliser keeps at most 2 MB per block, forgetting the oldest", async () => {
-    const gros = "x".repeat(600 * 1024);
-    const r = await executer({
+    const big = "x".repeat(600 * 1024);
+    const r = await run({
       entree: list(5).map((e) => ({ ...e, cle: `k${e.n}` })),
       blocs: [{ id: "b", type: "test.gros", parametres: { champ: "g", reutiliser: "cle" } }, { id: "sortie", type: "sortie" }],
-      registre: { "test.gros": { parElement: "toujours", traiterElement: async () => gros } },
+      registre: { "test.gros": { parElement: "toujours", traiterElement: async () => big } },
     });
     const kept = (r.resultat!.memoire.b!.valeur as { reutilises: [string, string][] }).reutilises.map(([k]) => k);
     expect(kept).toEqual(["k2", "k3", "k4"]);
   });
 
   it("all the memory sent fits in 2.5 MB: the oldest values of the biggest block go first", async () => {
-    const gros = "x".repeat(450 * 1024);
-    const r = await executer({
+    const big = "x".repeat(450 * 1024);
+    const r = await run({
       entree: list(5).map((e) => ({ ...e, cle: `k${e.n}` })),
       blocs: [
         { id: "b1", type: "test.gros", parametres: { champ: "g1", reutiliser: "cle" } },
         { id: "b2", type: "test.gros", parametres: { champ: "g2", reutiliser: "cle" } },
         { id: "sortie", type: "sortie" },
       ],
-      registre: { "test.gros": { parElement: "toujours", traiterElement: async () => gros } },
+      registre: { "test.gros": { parElement: "toujours", traiterElement: async () => big } },
     });
     const memory = r.resultat!.memoire;
     expect(Buffer.byteLength(JSON.stringify(memory))).toBeLessThanOrEqual(2.5 * 1024 * 1024);
@@ -827,7 +827,7 @@ describe("interpreter: per-element blocks", () => {
   });
 
   it("finaliser receives the enriched list and returns the block's output", async () => {
-    const r = await executer({
+    const r = await run({
       entree: list(4),
       blocs: [{ id: "b", type: "test.trier", parametres: { champ: "p" } }, { id: "sortie", type: "sortie" }],
       registre: {
@@ -842,7 +842,7 @@ describe("interpreter: per-element blocks", () => {
   });
 
   it("a simple block can end partial; a type without a module fails « type inconnu dans le conteneur »", async () => {
-    const partial = await executer({
+    const partial = await run({
       entree: 1,
       blocs: [{ id: "b", type: "test.p", parametres: {} }, { id: "sortie", type: "sortie" }],
       registre: {
@@ -858,8 +858,8 @@ describe("interpreter: per-element blocks", () => {
     expect(partial.finBloc("b")).toMatchObject({ statut: "partiel", sortie: 2 });
     expect(partial.journal("b")).toEqual(["un flux en échec"]);
 
-    const inconnu = await executer({ entree: 1, blocs: [{ id: "b", type: "test.absent" }, { id: "sortie", type: "sortie" }], registre: {} });
-    expect(inconnu.erreur?.message).toBe("type inconnu dans le conteneur : test.absent");
+    const unknown = await run({ entree: 1, blocs: [{ id: "b", type: "test.absent" }, { id: "sortie", type: "sortie" }], registre: {} });
+    expect(unknown.erreur?.message).toBe("type inconnu dans le conteneur : test.absent");
   });
 });
 
@@ -873,18 +873,18 @@ describe("interpreter: web.chercher", () => {
   const workflow = (params: Record<string, unknown> = {}) => ({
     version: 1,
     blocs: [
-      bloc("liste", "code", { source: "liste.mjs" }),
-      bloc("cherche", "web.chercher", { requete: "{marque} {modele} fiabilité", parElement: true, ...params }),
-      sortie,
+      block("liste", "code", { source: "liste.mjs" }),
+      block("cherche", "web.chercher", { requete: "{marque} {modele} fiabilité", parElement: true, ...params }),
+      output,
     ],
     liens: chain("liste", "cherche", "sortie"),
   });
   const files = { "liste.mjs": `export default async () => (${JSON.stringify(announcements)});` };
   const result = (request: string) => [{ titre: "Avis " + request, url: "https://avis.fr/1", extrait: "Bien", rang: 1 }];
-  const journalDe = (r: { lignes: any[] }, id: string) => r.lignes.filter((l) => l.t === "journal" && l.bloc === id).map((l) => l.texte);
+  const logOf = (r: { lignes: any[] }, id: string) => r.lignes.filter((l) => l.t === "journal" && l.bloc === id).map((l) => l.texte);
 
   it("web.chercher per element stores the list under recherche, query filled with {marque} {modele} without encoding", async () => {
-    const r = await lancer({
+    const r = await launch({
       workflow: workflow({ nombre: 5 }),
       fichiers: files,
       contexte: WEB,
@@ -907,7 +907,7 @@ describe("interpreter: web.chercher", () => {
 
   it("ceiling reached: the remaining elements without champ, partial block, even with siErreur echouer", async () => {
     let n = 0;
-    const r = await lancer({
+    const r = await launch({
       workflow: workflow({ siErreur: "echouer" }),
       fichiers: files,
       contexte: WEB,
@@ -918,17 +918,17 @@ describe("interpreter: web.chercher", () => {
     expect(data.filter((e) => "recherche" in e)).toHaveLength(1);
     expect(data.filter((e) => !("recherche" in e))).toHaveLength(2);
     expect(r.finBloc("cherche")).toMatchObject({ statut: "partiel" });
-    const journal = journalDe(r, "cherche");
+    const log = logOf(r, "cherche");
     // One line for the first refusal, one for the elements that follow: not one per element.
-    expect(journal.filter((t) => /^élément \d : /.test(t))).toEqual([expect.stringContaining(` : ${SEARCHES_CAP}`)]);
-    expect(journal.length).toBeLessThanOrEqual(2);
+    expect(log.filter((t) => /^élément \d : /.test(t))).toEqual([expect.stringContaining(` : ${SEARCHES_CAP}`)]);
+    expect(log.length).toBeLessThanOrEqual(2);
     // The sortie block did run.
     expect(r.finBloc("sortie")).toMatchObject({ statut: "reussi" });
   });
 
   it("after the kernel's first refusal, no more search: the remaining elements not launched, only one more line", async () => {
     const twenty = Array.from({ length: 20 }, (_, i) => ({ marque: "M" + i, modele: "X" }));
-    const r = await lancer({
+    const r = await launch({
       workflow: workflow({ reutiliser: "marque" }),
       fichiers: { "liste.mjs": `export default async () => (${JSON.stringify(twenty)});` },
       contexte: WEB,
@@ -942,15 +942,15 @@ describe("interpreter: web.chercher", () => {
     const data = r.terminal.donnees as Record<string, unknown>[];
     expect(data.filter((e) => "recherche" in e).map((e) => e.marque)).toEqual(["M0", "M15"]);
     expect(r.finBloc("cherche")).toMatchObject({ statut: "partiel" });
-    const journal = journalDe(r, "cherche");
-    expect(journal).toHaveLength(2);
-    expect(journal[0]).toMatch(new RegExp(`^élément \\d+ : ${SEARCHES_STOPPED.replace(/[()]/g, "\\$&")}$`));
-    expect(journal[1]).toBe("17 autre(s) élément(s) non lancé(s)");
+    const log = logOf(r, "cherche");
+    expect(log).toHaveLength(2);
+    expect(log[0]).toMatch(new RegExp(`^élément \\d+ : ${SEARCHES_STOPPED.replace(/[()]/g, "\\$&")}$`));
+    expect(log[1]).toBe("17 autre(s) élément(s) non lancé(s)");
   });
 
   it("in simple mode, success returns the list itself, reshaped (non-texts as \"\", extra keys removed)", async () => {
-    const r = await lancer({
-      workflow: { version: 1, blocs: [bloc("cherche", "web.chercher", { requete: "rust" }), sortie], liens: chain("cherche", "sortie") },
+    const r = await launch({
+      workflow: { version: 1, blocs: [block("cherche", "web.chercher", { requete: "rust" }), output], liens: chain("cherche", "sortie") },
       contexte: WEB,
       repondre: () => ({ ok: [{ titre: 1, url: "u", extrait: null, rang: 2 }] }),
     });
@@ -959,8 +959,8 @@ describe("interpreter: web.chercher", () => {
   });
 
   it("a response that is not a list: « résultats de recherche invalides »", async () => {
-    const r = await lancer({
-      workflow: { version: 1, blocs: [bloc("cherche", "web.chercher", { requete: "rust" }), sortie], liens: chain("cherche", "sortie") },
+    const r = await launch({
+      workflow: { version: 1, blocs: [block("cherche", "web.chercher", { requete: "rust" }), output], liens: chain("cherche", "sortie") },
       contexte: WEB,
       repondre: () => ({ ok: {} }),
     });
@@ -969,7 +969,7 @@ describe("interpreter: web.chercher", () => {
 
   it("the filled query is cut to 500 characters and stripped of its blanks; empty, it is an absent value", async () => {
     const elements = [{ marque: "  " + "a".repeat(400), modele: "b".repeat(400) }, { marque: "   ", modele: "  " }];
-    const r = await lancer({
+    const r = await launch({
       workflow: workflow({ requete: "{marque} {modele}" }),
       fichiers: { "liste.mjs": `export default async () => (${JSON.stringify(elements)});` },
       contexte: WEB,
@@ -979,11 +979,11 @@ describe("interpreter: web.chercher", () => {
     const data = r.terminal.donnees as Record<string, unknown>[];
     expect("recherche" in data[0]!).toBe(true);
     expect("recherche" in data[1]!).toBe(false);
-    expect(journalDe(r, "cherche")).toEqual(["élément 2 : valeur absente : requete"]);
+    expect(logOf(r, "cherche")).toEqual(["élément 2 : valeur absente : requete"]);
   });
 
   it("RECHERCHE_REFUSEE on an element with siErreur echouer: the block fails", async () => {
-    const r = await lancer({
+    const r = await launch({
       workflow: workflow({ siErreur: "echouer" }),
       fichiers: files,
       contexte: WEB,
@@ -994,10 +994,10 @@ describe("interpreter: web.chercher", () => {
   });
 
   it("in simple mode, the ceiling is an ordinary error", async () => {
-    const r = await lancer({
+    const r = await launch({
       workflow: {
         version: 1,
-        blocs: [bloc("cherche", "web.chercher", { requete: "{config.sujet} actualité" }), sortie],
+        blocs: [block("cherche", "web.chercher", { requete: "{config.sujet} actualité" }), output],
         liens: chain("cherche", "sortie"),
       },
       config: { sujet: "Rust" },
@@ -1010,31 +1010,31 @@ describe("interpreter: web.chercher", () => {
   });
 
   it("replay from the block after web.chercher: no chercherWeb call", async () => {
-    const recherches = announcements.map((e) => ({ ...e, recherche: [{ titre: "T", url: "https://avis.fr/1", extrait: "E" }] }));
-    const r = await lancer({
+    const searches = announcements.map((e) => ({ ...e, recherche: [{ titre: "T", url: "https://avis.fr/1", extrait: "E" }] }));
+    const r = await launch({
       workflow: {
         version: 1,
-        blocs: [...workflow().blocs.slice(0, 2), bloc("garder", "liste.garder", { nombre: 2 }), sortie],
+        blocs: [...workflow().blocs.slice(0, 2), block("garder", "liste.garder", { nombre: 2 }), output],
         liens: chain("liste", "cherche", "garder", "sortie"),
       },
       fichiers: files,
       contexte: WEB,
-      rejeu: { relances: ["garder", "sortie"], sorties: { cherche: recherches } },
+      rejeu: { relances: ["garder", "sortie"], sorties: { cherche: searches } },
       repondre: () => ({ erreur: "aucun appel attendu" }),
     });
     expect(r.appels).toEqual([]);
-    expect(r.terminal).toEqual({ t: "fin", donnees: recherches.slice(0, 2) });
+    expect(r.terminal).toEqual({ t: "fin", donnees: searches.slice(0, 2) });
   });
 });
 
 describe("interpreter: dated memory (garderJours)", () => {
   const NOW = "2026-10-29T10:00:00.000Z";
-  const ilYa = (jours: number) => new Date(Date.parse(NOW) - jours * 86_400_000).toISOString();
-  const fresh = (entree: unknown[], memory: unknown, params: Record<string, unknown> = {}) =>
-    newList.executer({ entree, parametres: { cle: "url", ...params }, memoire: memory, journal: () => {}, maintenant: NOW });
+  const ago = (days: number) => new Date(Date.parse(NOW) - days * 86_400_000).toISOString();
+  const fresh = (entry: unknown[], memory: unknown, params: Record<string, unknown> = {}) =>
+    newList.executer({ entree: entry, parametres: { cle: "url", ...params }, memoire: memory, journal: () => {}, maintenant: NOW });
 
   it("a key seen 31 days ago with garderJours 30 becomes new again; at 29 days, not", async () => {
-    const r = await fresh([{ url: "vieille" }, { url: "recente" }], [["vieille", ilYa(31)], ["recente", ilYa(29)], ["oubliee", ilYa(31)]], {
+    const r = await fresh([{ url: "vieille" }, { url: "recente" }], [["vieille", ago(31)], ["recente", ago(29)], ["oubliee", ago(31)]], {
       garderJours: 30,
     });
     expect(r.sortie).toEqual([{ url: "vieille" }]);
@@ -1044,17 +1044,17 @@ describe("interpreter: dated memory (garderJours)", () => {
   });
 
   it("without garderJours, a 400-day-old key stays seen", async () => {
-    const r = await fresh([{ url: "a" }, { url: "b" }], [["a", ilYa(400)], ["autre", ilYa(400)]]);
+    const r = await fresh([{ url: "a" }, { url: "b" }], [["a", ago(400)], ["autre", ago(400)]]);
     expect(r.sortie).toEqual([{ url: "b" }]);
     expect(r.nouvelles).toEqual(["b"]);
-    expect(r.memoire).toEqual([["autre", ilYa(400)], ["a", NOW], ["b", NOW]]);
+    expect(r.memoire).toEqual([["autre", ago(400)], ["a", NOW], ["b", NOW]]);
   });
 
   it("a seen-again key takes today's date", async () => {
-    const r = await fresh([{ url: "a" }], [["a", ilYa(10)], ["b", ilYa(5)]], { garderJours: 30 });
+    const r = await fresh([{ url: "a" }], [["a", ago(10)], ["b", ago(5)]], { garderJours: 30 });
     expect(r.sortie).toEqual([]);
     expect(r.nouvelles).toEqual([]);
-    expect(r.memoire).toEqual([["b", ilYa(5)], ["a", NOW]]);
+    expect(r.memoire).toEqual([["b", ago(5)], ["a", NOW]]);
   });
 
   it("old memory in texts: read as seen, rewritten dated now", async () => {
@@ -1064,13 +1064,13 @@ describe("interpreter: dated memory (garderJours)", () => {
   });
 
   it("in the container, liste.nouveaux receives maintenant from the debut line and returns a dated memory", async () => {
-    const r = await lancer({
+    const r = await launch({
       workflow: {
         version: 1,
-        blocs: [bloc("src", "code", { source: "src.mjs" }), bloc("nv", "liste.nouveaux", { cle: "url", garderJours: 30 }), sortie],
+        blocs: [block("src", "code", { source: "src.mjs" }), block("nv", "liste.nouveaux", { cle: "url", garderJours: 30 }), output],
         liens: chain("src", "nv", "sortie"),
       },
-      memoire: { nv: { type: "liste.nouveaux", valeur: [["a", ilYa(31)], ["b", ilYa(2)]] } },
+      memoire: { nv: { type: "liste.nouveaux", valeur: [["a", ago(31)], ["b", ago(2)]] } },
       fichiers: { "src.mjs": `export default async () => [{ url: "a" }, { url: "b" }];` },
     });
     expect(r.terminal.donnees).toEqual([{ url: "a" }]);
@@ -1089,10 +1089,10 @@ describe("interpreter: dated memory (garderJours)", () => {
 
   it("reutiliser with garderJours 30: 31-day value recomputed, 29-day one reused without a call and its date kept", async () => {
     const computed: string[] = [];
-    const r = await executer({
+    const r = await run({
       entree: [{ url: "vieille" }, { url: "recente" }],
       memoire: {
-        b: { type: "test.resume", valeur: { reutilises: [["vieille", "ancien", ilYa(31)], ["recente", "gardé", ilYa(29)], ["oubliee", "x", ilYa(40)]] } },
+        b: { type: "test.resume", valeur: { reutilises: [["vieille", "ancien", ago(31)], ["recente", "gardé", ago(29)], ["oubliee", "x", ago(40)]] } },
       },
       blocs: [{ id: "b", type: "test.resume", parametres: { champ: "resume", reutiliser: "url", garderJours: 30 } }, { id: "sortie", type: "sortie" }],
       registre: resume(computed),
@@ -1104,26 +1104,26 @@ describe("interpreter: dated memory (garderJours)", () => {
     ]);
     // The too-old entry never seen again is forgotten; the reuse does not refresh the date.
     expect([...(r.resultat!.memoire.b!.valeur as { reutilises: unknown[] }).reutilises].sort()).toEqual([
-      ["recente", "gardé", ilYa(29)],
+      ["recente", "gardé", ago(29)],
       ["vieille", "résumé de vieille", NOW],
     ]);
   });
 
   it("without garderJours, reutiliser reuses a 400-day value", async () => {
     const computed: string[] = [];
-    const r = await executer({
+    const r = await run({
       entree: [{ url: "a" }],
-      memoire: { b: { type: "test.resume", valeur: { reutilises: [["a", "très ancien", ilYa(400)]] } } },
+      memoire: { b: { type: "test.resume", valeur: { reutilises: [["a", "très ancien", ago(400)]] } } },
       blocs: [{ id: "b", type: "test.resume", parametres: { champ: "resume", reutiliser: "url" } }, { id: "sortie", type: "sortie" }],
       registre: resume(computed),
     });
     expect(computed).toEqual([]);
-    expect(r.resultat!.memoire.b!.valeur).toEqual({ reutilises: [["a", "très ancien", ilYa(400)]] });
+    expect(r.resultat!.memoire.b!.valeur).toEqual({ reutilises: [["a", "très ancien", ago(400)]] });
   });
 
   it("old [cle, valeur] pairs of reutiliser reused without a call", async () => {
     const computed: string[] = [];
-    const r = await executer({
+    const r = await run({
       entree: [{ url: "a" }],
       memoire: { b: { type: "test.resume", valeur: { reutilises: [["a", "ancien"], ["b", "autre"]] } } },
       blocs: [{ id: "b", type: "test.resume", parametres: { champ: "resume", reutiliser: "url", garderJours: 1 } }, { id: "sortie", type: "sortie" }],
@@ -1136,7 +1136,7 @@ describe("interpreter: dated memory (garderJours)", () => {
 
   it("reutiliser: two elements with the same key processed at the same time make only one call", async () => {
     let calls = 0;
-    const r = await executer({
+    const r = await run({
       entree: [{ modele: "Clio", n: 1 }, { modele: "Clio", n: 2 }, { modele: "208", n: 3 }],
       blocs: [{ id: "b", type: "test.avis", parametres: { champ: "avis", reutiliser: "modele" } }, { id: "sortie", type: "sortie" }],
       registre: {
@@ -1160,15 +1160,15 @@ describe("interpreter: dated memory (garderJours)", () => {
   });
 
   it("reutiliser: if the in-progress computation of the same key fails, the second element computes itself", async () => {
-    const lances: number[] = [];
-    const r = await executer({
+    const launched: number[] = [];
+    const r = await run({
       entree: [{ modele: "Clio", n: 1 }, { modele: "Clio", n: 2 }],
       blocs: [{ id: "b", type: "test.avis", parametres: { champ: "avis", reutiliser: "modele" } }, { id: "sortie", type: "sortie" }],
       registre: {
         "test.avis": {
           parElement: "toujours",
           async traiterElement(ctx: any) {
-            lances.push(ctx.element.n);
+            launched.push(ctx.element.n);
             await wait(10);
             if (ctx.element.n === 1) throw new Error("raté");
             return "avis";
@@ -1176,7 +1176,7 @@ describe("interpreter: dated memory (garderJours)", () => {
         },
       },
     });
-    expect(lances).toEqual([1, 2]);
+    expect(launched).toEqual([1, 2]);
     expect(r.resultat!.donnees).toEqual([{ modele: "Clio", n: 1 }, { modele: "Clio", n: 2, avis: "avis" }]);
     expect(r.finBloc("b")).toMatchObject({ statut: "partiel" });
   });
@@ -1186,7 +1186,7 @@ describe("interpreter: progressive run", () => {
   const NOW = "2026-10-29T10:00:00.000Z";
   const OLD = "2026-10-01T10:00:00.000Z";
   const memories = (r: { traces: any[] }) => r.traces.filter((l) => l.t === "memoire").map((l) => l.memoire);
-  const avis = (failedOn: string) => ({
+  const notice = (failedOn: string) => ({
     parElement: "toujours",
     async traiterElement(ctx: any) {
       await Promise.resolve();
@@ -1195,7 +1195,7 @@ describe("interpreter: progressive run", () => {
     },
   });
   const noticeFailure = (progressive: boolean) =>
-    executer({
+    run({
       progressif: progressive,
       entree: [{ url: "a", modele: "Clio" }, { url: "b", modele: "208" }, { url: "c", modele: "Panda" }],
       memoire: { nv: { type: "liste.nouveaux", valeur: [["vieille", OLD]] } },
@@ -1204,12 +1204,12 @@ describe("interpreter: progressive run", () => {
         { id: "avis", type: "test.avis", parametres: { champ: "avis", reutiliser: "modele", siErreur: "echouer" } },
         { id: "sortie", type: "sortie" },
       ],
-      registre: { "liste.nouveaux": newList, "test.avis": avis("Panda") },
+      registre: { "liste.nouveaux": newList, "test.avis": notice("Panda") },
     });
 
   // nouvelles → tri → garder 2 → lire (one failing read) → sortie
   const watch = (progressive: boolean) =>
-    executer({
+    run({
       progressif: progressive,
       entree: ["a", "b", "c", "d", "e", "f"].map((url) => ({ url, note: url === "b" ? 1 : 9 })),
       memoire: { nv: { type: "liste.nouveaux", valeur: [["a", OLD]] } },
@@ -1259,7 +1259,7 @@ describe("interpreter: progressive run", () => {
 
   it("progressive: memory sent at most every 30 s (fake clock), and the last one before fin", async () => {
     let now = 0;
-    const r = await executer({
+    const r = await run({
       progressif: true,
       entree: list(10).map((e) => ({ ...e, url: `u${e.n}` })),
       horloge: () => now,
@@ -1282,8 +1282,8 @@ describe("interpreter: progressive run", () => {
     expect((r.resultat!.memoire.lent!.valeur as { reutilises: unknown[] }).reutilises).toHaveLength(10);
 
     // In the container: the last memory just before fin, as today.
-    const c = await lancer({
-      workflow: { version: 1, blocs: [bloc("src", "code", { source: "src.mjs" }), sortie], liens: chain("src", "sortie") },
+    const c = await launch({
+      workflow: { version: 1, blocs: [block("src", "code", { source: "src.mjs" }), output], liens: chain("src", "sortie") },
       fichiers: { "src.mjs": `export default async () => [1];` },
       debut: { progressif: true },
     });
@@ -1300,7 +1300,7 @@ describe("interpreter: progressive run", () => {
 
   it("progressive: element not launched for lack of time: its key is not retained", async () => {
     let now = 0;
-    const r = await executer({
+    const r = await run({
       progressif: true,
       entree: list(12).map((e) => ({ ...e, url: `u${e.n}` })),
       horloge: () => now,
@@ -1326,7 +1326,7 @@ describe("interpreter: progressive run", () => {
   });
 
   it("progressive: element refused by the kernel (ElementNonLance): its key is not retained", async () => {
-    const r = await executer({
+    const r = await run({
       progressif: true,
       entree: list(3).map((e) => ({ ...e, url: `u${e.n}` })),
       blocs: [
@@ -1339,7 +1339,7 @@ describe("interpreter: progressive run", () => {
         "test.cherche": {
           parElement: "toujours",
           async traiterElement(ctx: any) {
-            if (ctx.element.n === 2) throw new ElementNonLance(SEARCHES_CAP);
+            if (ctx.element.n === 2) throw new NotRunElement(SEARCHES_CAP);
             return "ok";
           },
         },
@@ -1358,17 +1358,17 @@ describe("interpreter: progressive run", () => {
     expect(memories(ko)).toEqual([]);
   });
 
-  const lireSaufSur = (failedOn: string, champ = "url") => ({
+  const readExceptOn = (failedOn: string, field = "url") => ({
     parElement: "toujours",
     async traiterElement(ctx: any) {
-      if (ctx.element[champ] === failedOn) throw new Error("page illisible");
+      if (ctx.element[field] === failedOn) throw new Error("page illisible");
       return "texte";
     },
   });
   const abc = () => ["a", "b", "c"].map((url) => ({ url }));
 
   it("progressive: code that renames the key field then a failing element: nothing resolved afterwards, b comes back, one log line", async () => {
-    const r = await executer({
+    const r = await run({
       progressif: true,
       entree: abc(),
       blocs: [
@@ -1380,7 +1380,7 @@ describe("interpreter: progressive run", () => {
       registre: {
         "liste.nouveaux": newList,
         "test.code": { parElement: "non", executer: async (ctx: any) => ({ sortie: ctx.entree.map((e: any) => ({ lien: e.url })) }) },
-        "test.lire": lireSaufSur("b", "lien"),
+        "test.lire": readExceptOn("b", "lien"),
       },
     });
     expect(r.erreur).toBeNull();
@@ -1391,7 +1391,7 @@ describe("interpreter: progressive run", () => {
   });
 
   it("progressive: code that renames the key field without a failure afterwards: all retained after the output", async () => {
-    const r = await executer({
+    const r = await run({
       progressif: true,
       entree: abc(),
       blocs: [
@@ -1409,7 +1409,7 @@ describe("interpreter: progressive run", () => {
   });
 
   it("progressive: code that filters drops b (resolved), c failing further on is not retained", async () => {
-    const r = await executer({
+    const r = await run({
       progressif: true,
       entree: abc(),
       blocs: [
@@ -1421,7 +1421,7 @@ describe("interpreter: progressive run", () => {
       registre: {
         "liste.nouveaux": newList,
         "test.code": { parElement: "non", executer: async (ctx: any) => ({ sortie: ctx.entree.filter((e: any) => e.url !== "b") }) },
-        "test.lire": lireSaufSur("c"),
+        "test.lire": readExceptOn("c"),
       },
     });
     expect(r.resultat!.donnees).toEqual([{ url: "a", page: "texte" }, { url: "c" }]);
@@ -1431,7 +1431,7 @@ describe("interpreter: progressive run", () => {
   it("progressive: parallel branches, b dropped by garder on one and failing on the other, is not retained (in both orders)", async () => {
     for (const order of [["src", "nv", "garder", "lire", "sortie"], ["src", "nv", "lire", "garder", "sortie"]]) {
       const traces: any[] = [];
-      const r = await executerWorkflow({
+      const r = await runWorkflow({
         workflow: {
           blocs: [
             { id: "src", type: "test.source", parametres: {} },
@@ -1459,7 +1459,7 @@ describe("interpreter: progressive run", () => {
           "test.source": { parElement: "non", executer: async () => ({ sortie: abc() }) },
           "liste.nouveaux": newList,
           "liste.garder": keepList,
-          "test.lire": lireSaufSur("b"),
+          "test.lire": readExceptOn("b"),
           sortie: { parElement: "non", executer: async (ctx: any) => ({ sortie: ctx.entree }) },
         },
       });
@@ -1469,7 +1469,7 @@ describe("interpreter: progressive run", () => {
 
   it("progressive: pending keys are removed before the 5000-key ceiling", async () => {
     const olds = Array.from({ length: 5000 }, (_, i) => [`k${i}`, OLD]);
-    const r = await executer({
+    const r = await run({
       progressif: true,
       entree: [{ url: "x" }],
       memoire: { nv: { type: "liste.nouveaux", valeur: olds } },
@@ -1478,7 +1478,7 @@ describe("interpreter: progressive run", () => {
         { id: "lire", type: "test.lire", parametres: { champ: "page" } },
         { id: "sortie", type: "sortie" },
       ],
-      registre: { "liste.nouveaux": newList, "test.lire": lireSaufSur("x") },
+      registre: { "liste.nouveaux": newList, "test.lire": readExceptOn("x") },
     });
     // x failing is not retained and does not make k0 forgotten.
     expect(r.resultat!.memoire.nv!.valeur).toEqual(olds);
@@ -1486,7 +1486,7 @@ describe("interpreter: progressive run", () => {
 
   it("a progressive trial (replay) sends no memory", async () => {
     let now = 0;
-    const r = await executer({
+    const r = await run({
       progressif: true,
       entree: null,
       horloge: () => now,
@@ -1511,22 +1511,22 @@ describe("interpreter: progressive run", () => {
   });
 
   it("reutiliser: if the in-progress computation of the same key is refused by the kernel, the second element does not relaunch it", async () => {
-    const lances: number[] = [];
-    const r = await executer({
+    const launched: number[] = [];
+    const r = await run({
       entree: [{ modele: "Clio", n: 1 }, { modele: "Clio", n: 2 }],
       blocs: [{ id: "b", type: "test.avis", parametres: { champ: "avis", reutiliser: "modele" } }, { id: "sortie", type: "sortie" }],
       registre: {
         "test.avis": {
           parElement: "toujours",
           async traiterElement(ctx: any) {
-            lances.push(ctx.element.n);
+            launched.push(ctx.element.n);
             await wait(10);
-            throw new ElementNonLance(SEARCHES_CAP);
+            throw new NotRunElement(SEARCHES_CAP);
           },
         },
       },
     });
-    expect(lances).toEqual([1]);
+    expect(launched).toEqual([1]);
     expect(r.finBloc("b")).toMatchObject({ statut: "partiel" });
   });
 });
@@ -1551,16 +1551,16 @@ describe("interpreter: streaming chain", () => {
       return `${name} ${n}`;
     },
   });
-  const CHAIN_BLOCKS = (sortieParams: Record<string, unknown> = { auFilDeLEau: true }, extra: Record<string, Record<string, unknown>> = {}) => [
+  const CHAIN_BLOCKS = (outputParams: Record<string, unknown> = { auFilDeLEau: true }, extra: Record<string, Record<string, unknown>> = {}) => [
     { id: "fiche", type: "test.fiche", parametres: { parElement: true, champ: "page", ...extra.fiche } },
     { id: "fiabilite", type: "test.fiabilite", parametres: { parElement: true, champ: "fiabilite", ...extra.fiabilite } },
     { id: "avis", type: "test.avis", parametres: { parElement: true, champ: "avis", ...extra.avis } },
-    { id: "sortie", type: "sortie", parametres: sortieParams },
+    { id: "sortie", type: "sortie", parametres: outputParams },
   ];
-  const chainRegistry = (events: AppEvent[], o: Parameters<typeof step>[2] = {}, parBloc: Record<string, Parameters<typeof step>[2]> = {}) => ({
-    "test.fiche": step("fiche", events, { ...o, ...parBloc.fiche }),
-    "test.fiabilite": step("fiabilite", events, { ...o, ...parBloc.fiabilite }),
-    "test.avis": step("avis", events, { ...o, ...parBloc.avis }),
+  const chainRegistry = (events: AppEvent[], o: Parameters<typeof step>[2] = {}, byBlock: Record<string, Parameters<typeof step>[2]> = {}) => ({
+    "test.fiche": step("fiche", events, { ...o, ...byBlock.fiche }),
+    "test.fiabilite": step("fiabilite", events, { ...o, ...byBlock.fiabilite }),
+    "test.avis": step("avis", events, { ...o, ...byBlock.avis }),
   });
   const announcement = (n: number) => ({ n, url: `u${n}`, page: `fiche ${n}`, fiabilite: `fiabilite ${n}`, avis: `avis ${n}` });
   const publications = (r: { traces: any[] }) => r.traces.filter((l) => l.t === "publication");
@@ -1569,7 +1569,7 @@ describe("interpreter: streaming chain", () => {
 
   it("streaming: each listing goes through fiche → fiabilite → avis before being finished, two at a time", async () => {
     const events: AppEvent[] = [];
-    const r = await executer({
+    const r = await run({
       progressif: true,
       entree: list(6),
       blocs: CHAIN_BLOCKS(),
@@ -1583,11 +1583,11 @@ describe("interpreter: streaming chain", () => {
       expect(pos(`fin:fiabilite:${n}`)).toBeLessThan(pos(`debut:avis:${n}`));
     }
     // Two listings at a time at most: a listing is in progress from the start of its fiche to the end of its avis.
-    let enCours = 0;
+    let running = 0;
     let max = 0;
     for (const e of events) {
-      if (e.startsWith("debut:fiche:")) max = Math.max(max, ++enCours);
-      if (e.startsWith("fin:avis:")) enCours--;
+      if (e.startsWith("debut:fiche:")) max = Math.max(max, ++running);
+      if (e.startsWith("fin:avis:")) running--;
     }
     expect(max).toBe(2);
     // The third only starts after one of the first two has finished its avis.
@@ -1600,7 +1600,7 @@ describe("interpreter: streaming chain", () => {
     const clock = { t: 0 };
     const traces: any[] = [];
     // Listing 0 is slow (9 s fiche, and more turns): listing 1 finishes before it. The other blocks take 1 s.
-    const r = await executer({
+    const r = await run({
       progressif: true,
       entree: list(10),
       horloge: () => clock.t,
@@ -1646,7 +1646,7 @@ describe("interpreter: streaming chain", () => {
       liens: chain("src", "fiche", "fiabilite", "avis", "sortie"),
       ordre: ["src", "fiche", "fiabilite", "avis", "sortie"],
     };
-    await executerWorkflow({
+    await runWorkflow({
       workflow,
       memoire: {},
       maintenant: "2026-10-29T10:00:00.000Z",
@@ -1672,7 +1672,7 @@ describe("interpreter: streaming chain", () => {
   });
 
   it("traces: debut of the three blocks then their ends in order; each block's output = the list after it", async () => {
-    const r = await executer({ progressif: true, entree: list(3), blocs: CHAIN_BLOCKS(), registre: chainRegistry([]) });
+    const r = await run({ progressif: true, entree: list(3), blocs: CHAIN_BLOCKS(), registre: chainRegistry([]) });
     expect(resume(r)).toEqual([
       "debut:src", "fin:src",
       "debut:fiche", "debut:fiabilite", "debut:avis",
@@ -1689,7 +1689,7 @@ describe("interpreter: streaming chain", () => {
     const events: AppEvent[] = [];
     const clock = { t: 0 };
     // fiche takes no time, fiabilite 600 ms: past 1 s since the start of the chain, no more fiche.
-    const r = await executer({
+    const r = await run({
       progressif: true,
       entree: list(5),
       horloge: () => clock.t,
@@ -1710,12 +1710,12 @@ describe("interpreter: streaming chain", () => {
 
   it("without auFilDeLEau: calls and traces block by block, identical to today", async () => {
     const events: AppEvent[] = [];
-    const r = await executer({ progressif: true, entree: list(3), blocs: CHAIN_BLOCKS({}), registre: chainRegistry(events) });
+    const r = await run({ progressif: true, entree: list(3), blocs: CHAIN_BLOCKS({}), registre: chainRegistry(events) });
     expect(r.erreur).toBeNull();
-    const debuts = events.filter((e) => e.startsWith("debut:"));
-    expect(debuts.slice(0, 3).every((e) => e.startsWith("debut:fiche:"))).toBe(true);
-    expect(debuts.slice(3, 6).every((e) => e.startsWith("debut:fiabilite:"))).toBe(true);
-    expect(debuts.slice(6).every((e) => e.startsWith("debut:avis:"))).toBe(true);
+    const starts = events.filter((e) => e.startsWith("debut:"));
+    expect(starts.slice(0, 3).every((e) => e.startsWith("debut:fiche:"))).toBe(true);
+    expect(starts.slice(3, 6).every((e) => e.startsWith("debut:fiabilite:"))).toBe(true);
+    expect(starts.slice(6).every((e) => e.startsWith("debut:avis:"))).toBe(true);
     expect(resume(r)).toEqual([
       "debut:src", "fin:src", "debut:fiche", "fin:fiche", "debut:fiabilite", "fin:fiabilite", "debut:avis", "fin:avis", "debut:sortie", "fin:sortie",
     ]);
@@ -1724,7 +1724,7 @@ describe("interpreter: streaming chain", () => {
 
   it("without progressive (a run that is not progressive): block by block, no publication", async () => {
     const events: AppEvent[] = [];
-    const r = await executer({ entree: list(3), blocs: CHAIN_BLOCKS(), registre: chainRegistry(events) });
+    const r = await run({ entree: list(3), blocs: CHAIN_BLOCKS(), registre: chainRegistry(events) });
     expect(resume(r)).toEqual([
       "debut:src", "fin:src", "debut:fiche", "fin:fiche", "debut:fiabilite", "fin:fiabilite", "debut:avis", "fin:avis", "debut:sortie", "fin:sortie",
     ]);
@@ -1733,7 +1733,7 @@ describe("interpreter: streaming chain", () => {
 
   it("trial (replay) of an auFilDeLEau workflow: block by block, no publication", async () => {
     const events: AppEvent[] = [];
-    const r = await executer({
+    const r = await run({
       progressif: true,
       entree: list(3),
       blocs: CHAIN_BLOCKS(),
@@ -1750,11 +1750,11 @@ describe("interpreter: streaming chain", () => {
 
   it("auFilDeLEau behind liste.garder: no publication, output at the end", async () => {
     const events: AppEvent[] = [];
-    const [fiche, reliability, avis, s] = CHAIN_BLOCKS();
-    const r = await executer({
+    const [sheet, reliability, notice, s] = CHAIN_BLOCKS();
+    const r = await run({
       progressif: true,
       entree: list(4),
-      blocs: [fiche!, reliability!, avis!, { id: "garder", type: "liste.garder", parametres: { nombre: 2 } }, s!],
+      blocs: [sheet!, reliability!, notice!, { id: "garder", type: "liste.garder", parametres: { nombre: 2 } }, s!],
       registre: { ...chainRegistry(events), "liste.garder": keepList },
     });
     expect(r.erreur).toBeNull();
@@ -1767,7 +1767,7 @@ describe("interpreter: streaming chain", () => {
   });
 
   it("a failing element in the chain (sauter) is finished without the field, it is published; the block ends partial", async () => {
-    const r = await executer({
+    const r = await run({
       progressif: true,
       entree: list(3),
       blocs: CHAIN_BLOCKS(),
@@ -1785,22 +1785,22 @@ describe("interpreter: streaming chain", () => {
   });
 
   it("siErreur echouer in the chain: the block concerned fails, the others of the chain end partial, then memory and error", async () => {
-    const r = await executer({
+    const r = await run({
       progressif: true,
       entree: list(4),
       blocs: CHAIN_BLOCKS({ auFilDeLEau: true }, { fiabilite: { siErreur: "echouer" } }),
       registre: chainRegistry([], {}, { fiabilite: { echoueSur: 1 } }),
     });
     expect(r.erreur?.message).toBe("fiabilite raté");
-    const fins = r.traces.filter((l) => l.t === "bloc" && l.etape === "fin" && l.id !== "src");
-    expect(fins.map((l) => [l.id, l.statut])).toEqual([["fiche", "partiel"], ["fiabilite", "echoue"], ["avis", "partiel"]]);
+    const ends = r.traces.filter((l) => l.t === "bloc" && l.etape === "fin" && l.id !== "src");
+    expect(ends.map((l) => [l.id, l.statut])).toEqual([["fiche", "partiel"], ["fiabilite", "echoue"], ["avis", "partiel"]]);
     expect(r.finBloc("fiabilite").erreur).toBe("fiabilite raté");
     expect(r.traces.some((l) => l.id === "sortie")).toBe(false);
     expect(r.traces.at(-1)?.t).toBe("memoire");
   });
 
   it("keys: a listing that reached the end of the chain is retained in the memory sent before its publication; a failing listing is not", async () => {
-    const r = await executer({
+    const r = await run({
       progressif: true,
       entree: list(3).map((e) => ({ ...e, url: `u${e.n}` })),
       blocs: [{ id: "nv", type: "liste.nouveaux", parametres: { cle: "url" } }, ...CHAIN_BLOCKS()],
@@ -1809,8 +1809,8 @@ describe("interpreter: streaming chain", () => {
     expect(r.erreur).toBeNull();
     const pubs = r.traces.map((l, i) => [l, i] as const).filter(([l]) => l.t === "publication");
     // The first publication (u0 alone) follows a memory that already retains u0.
-    const [premiere, i] = pubs[0]!;
-    expect(premiere.donnees.map((e: any) => e.url)).toEqual(["u0"]);
+    const [first, i] = pubs[0]!;
+    expect(first.donnees.map((e: any) => e.url)).toEqual(["u0"]);
     expect(r.traces[i - 1].memoire.nv.valeur.map((e: any) => e[0])).toEqual(["u0"]);
     // At the end: u0 and u2 retained, u1 (failing opinion) will come back.
     expect((r.resultat!.memoire.nv!.valeur as [string, string][]).map((e) => e[0])).toEqual(["u0", "u2"]);
@@ -1818,7 +1818,7 @@ describe("interpreter: streaming chain", () => {
 
   it("keys: an element finished less than 5 s after a publication, then an echouer: its key is not in the last memory", async () => {
     const events: AppEvent[] = [];
-    const r = await executer({
+    const r = await run({
       progressif: true,
       horloge: () => 0,
       entree: list(3).map((e) => ({ ...e, url: `u${e.n}` })),
@@ -1839,12 +1839,12 @@ describe("interpreter: streaming chain", () => {
   it("a publication over 2 MB (TAILLE_MAX_DONNEES) is not sent, and none of its keys is retained before the end of the chain", async () => {
     const events: AppEvent[] = [];
     const clock = { t: 0 };
-    const gros = "x".repeat(1.2 * 1024 * 1024);
+    const big = "x".repeat(1.2 * 1024 * 1024);
     // u0 finishes fast and is published alone (1.2 MB); u1, slow, finishes more than 5 s later: [u0, u1] would be 2.4 MB.
-    const r = await executer({
+    const r = await run({
       progressif: true,
       horloge: () => clock.t,
-      entree: list(2).map((e) => ({ ...e, url: `u${e.n}`, gros })),
+      entree: list(2).map((e) => ({ ...e, url: `u${e.n}`, gros: big })),
       blocs: [{ id: "nv", type: "liste.nouveaux", parametres: { cle: "url" } }, ...CHAIN_BLOCKS()],
       registre: {
         "liste.nouveaux": newList,
@@ -1865,7 +1865,7 @@ describe("interpreter: streaming chain", () => {
   it("keys: the memory sent by verifierMemoire after the chain does not retain an element finished but not published; the output does", async () => {
     const clock = { t: 0 };
     const traces: any[] = [];
-    const r = await executerWorkflow({
+    const r = await runWorkflow({
       workflow: {
         // « lent », without a link, runs between the chain (fiche) and the output, and takes 40 s.
         blocs: [
@@ -1900,15 +1900,15 @@ describe("interpreter: streaming chain", () => {
       progressif: true,
     });
     expect(traces.filter((l) => l.t === "publication").map((p) => p.donnees.map((e: any) => e.url))).toEqual([["u0"]]);
-    const iLent = traces.findIndex((l) => l.t === "bloc" && l.id === "lent" && l.etape === "fin");
-    const afterSlow = traces[iLent + 1];
+    const iSlow = traces.findIndex((l) => l.t === "bloc" && l.id === "lent" && l.etape === "fin");
+    const afterSlow = traces[iSlow + 1];
     expect(afterSlow.t).toBe("memoire");
     expect(afterSlow.memoire.nv.valeur.map((e: any) => e[0])).toEqual(["u0"]);
     expect(r.memoire.nv.valeur.map((e: any) => e[0])).toEqual(["u0", "u1"]);
   });
 
   it("keys: the key lost before the chain then a failing element in the chain: nothing more is retained (R31)", async () => {
-    const r = await executer({
+    const r = await run({
       progressif: true,
       entree: list(3).map((e) => ({ ...e, url: `u${e.n}` })),
       blocs: [
@@ -1928,13 +1928,13 @@ describe("interpreter: streaming chain", () => {
   });
 
   it("in the container: progressive debut and auFilDeLEau output, the publication lines come before fin", async () => {
-    const r = await lancer({
+    const r = await launch({
       workflow: {
         version: 1,
         blocs: [
-          bloc("src", "code", { source: "src.mjs" }),
-          bloc("fiche", "source.page", { url: "https://x.fr/{url}", parElement: true, champ: "page" }),
-          bloc("sortie", "sortie", { vers: "widget", auFilDeLEau: true }),
+          block("src", "code", { source: "src.mjs" }),
+          block("fiche", "source.page", { url: "https://x.fr/{url}", parElement: true, champ: "page" }),
+          block("sortie", "sortie", { vers: "widget", auFilDeLEau: true }),
         ],
         liens: chain("src", "fiche", "sortie"),
       },

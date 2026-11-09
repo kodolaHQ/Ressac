@@ -8,12 +8,12 @@
   let root = $state<HTMLSpanElement>();
 
   /** A click elsewhere (outside the badge and its bubble) or Escape closes the bubble. */
-  function dehors(e: PointerEvent) {
+  function outside(e: PointerEvent) {
     if (opened && !root?.contains(e.target as Node) && !(e.target as Element).closest?.('[data-testid="bulle-acces"]')) opened = false;
   }
 </script>
 
-<svelte:window onpointerdown={dehors} onblur={() => (opened = false)} onkeydown={(e) => e.key === "Escape" && (opened = false)} />
+<svelte:window onpointerdown={outside} onblur={() => (opened = false)} onkeydown={(e) => e.key === "Escape" && (opened = false)} />
 
 <span class="racine" bind:this={root}>
   <button

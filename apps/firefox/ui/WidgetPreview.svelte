@@ -5,7 +5,7 @@
   import { GAP_PX, ROW_PX } from "./grille";
   import { previewData } from "./builder/preview";
   import type { Executions } from "./builder/executions.svelte";
-  import CadreWidget from "./CadreWidget.svelte";
+  import WidgetFrame from "./CadreWidget.svelte";
   import { freeUnits } from "./free-grid";
 
   /**
@@ -20,15 +20,15 @@
 
   $effect(() => untrack(() => {
     let n = 0;
-    const charger = () => {
+    const load = () => {
       const m = ++n;
       void api.accueil
         .lire()
         .then(({ widgets }) => m === n && (widget = widgets.find((w) => w.id === id) ?? null))
         .catch(() => {});
     };
-    charger();
-    return api.accueil.surChange(charger);
+    load();
+    return api.accueil.surChange(load);
   }));
 
   const shown = $derived(widget && !("erreur" in widget) ? widget : null);
@@ -37,20 +37,20 @@
       ? previewData({ choisie: executions.choisie, detail: executions.detail, liste: executions.liste, widget: shown })
       : null,
   );
-  const taille = $derived(shown ? freeUnits(shown.placement) : { l: 1, h: 1 });
-  const width = $derived(Math.min(480, taille.l * COLUMN_PX + (taille.l - 1) * GAP_PX));
-  const hauteur = $derived(Math.min(360, taille.h * ROW_PX + (taille.h - 1) * GAP_PX));
+  const size = $derived(shown ? freeUnits(shown.placement) : { l: 1, h: 1 });
+  const width = $derived(Math.min(480, size.l * COLUMN_PX + (size.l - 1) * GAP_PX));
+  const height = $derived(Math.min(360, size.h * ROW_PX + (size.h - 1) * GAP_PX));
 </script>
 
 <div class="apercu" data-testid="apercu-widget">
   {#if !shown || !preview}
     <p class="doux">{widget && "erreur" in widget ? `Widget illisible : ${widget.erreur}` : "Chargement…"}</p>
   {:else}
-    <div class="cadre" style:width="{width}px" style:height="{hauteur}px">
-      <CadreWidget
+    <div class="cadre" style:width="{width}px" style:height="{height}px">
+      <WidgetFrame
         widget={shown}
         donnees={preview.donnees}
-        {taille}
+        taille={size}
         etat={{ statut: shown.etat.statut, derniereMaj: shown.etat.derniereMaj }}
       />
     </div>

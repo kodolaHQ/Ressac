@@ -13,7 +13,7 @@
     /** In the builder's « Agent » tab: no width handle, always shown in its host. */
     integre?: boolean;
     /** The user drags the left edge: wanted width in pixels; `fin` on release. */
-    redimensionner?: (width: number, fin: boolean) => void;
+    redimensionner?: (width: number, end: boolean) => void;
   } = $props();
   let section: HTMLElement;
 
@@ -21,9 +21,9 @@
   function tirer(e: PointerEvent) {
     const handle = e.currentTarget as HTMLElement;
     handle.setPointerCapture(e.pointerId);
-    const depart = e.clientX;
+    const start = e.clientX;
     const width = section.getBoundingClientRect().width;
-    const wanted = (ev: PointerEvent) => width + depart - ev.clientX;
+    const wanted = (ev: PointerEvent) => width + start - ev.clientX;
     const move = (ev: PointerEvent) => resize?.(wanted(ev), false);
     const drop = (ev: PointerEvent) => {
       handle.removeEventListener("pointermove", move);
@@ -50,11 +50,11 @@
   // hides it, the conversation goes on. The « Agent » tab borrows it while it is shown.
   // Becoming visible again (leaving the builder, the home page reopening it) does not take the keyboard: a keystroke
   // followed by Enter would go to the agent. Only an explicit request (focusAgent) gives it to the terminal.
-  let detacher: (() => void) | undefined;
-  $effect(() => () => detacher?.());
+  let detach: (() => void) | undefined;
+  $effect(() => () => detach?.());
   $effect(() => {
     if (!visible) return;
-    detacher ??= terminalAgent.attacher(hostEl);
+    detach ??= terminalAgent.attacher(hostEl);
     terminalAgent.adjust();
     const obs = new ResizeObserver(() => terminalAgent.adjust());
     obs.observe(hostEl);
@@ -79,7 +79,7 @@
     served = n;
     const aim = () => visible && terminalAgent.focus();
     void tick().then(aim);
-    const relaunch = setTimeout(() => !terminalAgent.aLeFocus() && aim(), 100);
+    const relaunch = setTimeout(() => !terminalAgent.hasFocus() && aim(), 100);
     return () => clearTimeout(relaunch);
   });
 </script>

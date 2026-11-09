@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 import { SchemaActionApplication } from "../../shared/api";
 
-const valid = (dossier: string, action: string) => SchemaActionApplication.safeParse({ dossier, action }).success;
+const valid = (folder: string, action: string) => SchemaActionApplication.safeParse({ dossier: folder, action }).success;
 
 test("Supprimer, Déboguer, Afficher le dossier: any single-segment folder name", () => {
   for (const action of ["supprimer", "deboguer", "dossier"]) {

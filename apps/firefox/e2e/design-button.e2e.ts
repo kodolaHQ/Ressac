@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { SANS_CLIENT } from "../../../packages/kernel/src/design/projects";
+import { NO_CLIENT } from "../../../packages/kernel/src/design/projects";
 import { reviewUrl } from "../shared/model";
 import { UNAVAILABLE_DESIGN } from "../shared/design-guards";
 import { openTab, testActor } from "./agent-extensions";
@@ -357,7 +357,7 @@ describe("an external project", () => {
     await activate(tab);
     await modeOn();
     await expect.poll(sendButton, { timeout: 10_000 }).toMatchObject({ disabled: true });
-    expect((await sendButton())!.cart).toContain(SANS_CLIENT);
+    expect((await sendButton())!.cart).toContain(NO_CLIENT);
     await modeOff();
   });
 

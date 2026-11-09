@@ -25,14 +25,14 @@
   onMount(() => {
     let finished = false;
     // This background counts among the maskers once the capture is taken (or abandoned), and removes itself only once.
-    let masque = false;
+    let mask = false;
     const open = (url: string | null) => {
       if (finished) return;
       finished = true;
       preview = url;
       zone = modal.zone;
       // The capture is taken: the native view can fade behind the modal.
-      masque = true;
+      mask = true;
       modal.masqueurs++;
       onReady();
     };
@@ -44,8 +44,8 @@
     return () => {
       finished = true;
       clearTimeout(fallback);
-      if (masque) modal.masqueurs--;
-      masque = false;
+      if (mask) modal.masqueurs--;
+      mask = false;
     };
   });
 </script>

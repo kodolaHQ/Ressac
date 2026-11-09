@@ -22,7 +22,7 @@ export class ResumeTracking {
   constructor(
     private readonly o: {
       /** `fin`: the video went to the end (`ended`). */
-      noter(t: number, duration: number, fin: boolean): void;
+      noter(t: number, duration: number, end: boolean): void;
       /** The position kept for the page, if it belongs to a video of this duration (decided by the main process). */
       demander(duration: number): Promise<number | null>;
       maintenant(): number;
@@ -60,10 +60,10 @@ export class ResumeTracking {
     return null;
   }
 
-  private noter(state: State, t: number, duration: number, fin: boolean): void {
+  private noter(state: State, t: number, duration: number, end: boolean): void {
     state.derniere = this.o.maintenant();
     try {
-      this.o.noter(t, duration, fin);
+      this.o.noter(t, duration, end);
     } catch {
       // a position is a convenience
     }

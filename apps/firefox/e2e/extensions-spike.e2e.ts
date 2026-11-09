@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { afterAll, beforeAll, describe, it } from "vitest";
-import { AMO_URL, readAmoKey, signer } from "../host/extensions/amo";
+import { AMO_URL, readAmoKey, sign } from "../host/extensions/amo";
 import { DEFAULT_GUARDS, prepareCopy } from "../../../packages/kernel/src/extensions/copy.ts";
 import { writeXpi, type Fixture } from "./addons";
 import { dispatch, state, waitFor } from "./firefox";
@@ -78,8 +78,8 @@ async function firefoxCopy(o: { id: string; n: number; extra?: Record<string, un
   const dir = await mkdtemp(path.join(os.tmpdir(), "webaios-spike-copy-"));
   await writeTree(path.join(dir, "source"), { ...SOURCE, ...o.files });
   const target = path.join(dir, "copy");
-  const { analyse } = await prepareCopy({ source: path.join(dir, "source"), cible: target, dossierGardes: DEFAULT_GUARDS });
-  if (analyse.refus.length) throw new Error(`copy refused: ${analyse.refus.join("; ")}`);
+  const { analyse: analysis } = await prepareCopy({ source: path.join(dir, "source"), cible: target, dossierGardes: DEFAULT_GUARDS });
+  if (analysis.refus.length) throw new Error(`copy refused: ${analysis.refus.join("; ")}`);
   const manifest = JSON.parse(await readFile(path.join(target, "manifest.json"), "utf8"));
   const gecko = { id: o.id, ...((o.extra?.gecko as object) ?? {}) };
   manifest.browser_specific_settings = { gecko };
@@ -304,7 +304,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("agent extensions spike", () => {
       const { xpi, manifest } = await firefoxCopy({ id: SPIKE_ID, n, extra });
       const t0 = Date.now();
       try {
-        await signer({ xpi, guid: SPIKE_ID, version: manifest.version, cle: keys, base: AMO_URL, sortie: path.join(SIGNED, `${SPIKE_ID}-${manifest.version}.xpi`) });
+        await sign({ xpi, guid: SPIKE_ID, version: manifest.version, cle: keys, base: AMO_URL, sortie: path.join(SIGNED, `${SPIKE_ID}-${manifest.version}.xpi`) });
       } catch (e) {
         note(`S1 sign ${manifest.version}`, (e as Error).message);
         break;

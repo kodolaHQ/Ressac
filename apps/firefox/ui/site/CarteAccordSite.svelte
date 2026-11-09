@@ -1,53 +1,53 @@
 <script lang="ts">
-  import { AUTORISER, NO_TWEAKS, tweaksGrantTitle, type SiteGrantRequest } from "../../shared/sites";
+  import { ALLOW, NO_TWEAKS, tweaksGrantTitle, type SiteGrantRequest } from "../../shared/sites";
 
   /**
    * The grant card for the app's tweaks, in its window: what the agent asks for (domains, sign-in, frames,
    * resume) and what it injects. Everything comes from site.json, written by the agent: shown as text, never as HTML.
    */
-  let { accord, accorder }: { accord: SiteGrantRequest; accorder: (yes: boolean, hash: string) => Promise<void> } = $props();
-  let enCours = $state(false);
+  let { accord: grant, accorder: giveGrant }: { accord: SiteGrantRequest; accorder: (yes: boolean, hash: string) => Promise<void> } = $props();
+  let running = $state(false);
 
   const choose = (yes: boolean) => {
-    if (enCours) return;
-    enCours = true;
+    if (running) return;
+    running = true;
     // The hash of the rights shown: the main process only grants those.
-    void accorder(yes, accord.empreinte).finally(() => (enCours = false));
+    void giveGrant(yes, grant.empreinte).finally(() => (running = false));
   };
 </script>
 
 <section class="zone" data-testid="site-zone-accord">
   <div class="carte" role="dialog" aria-labelledby="titre-accord-site" data-testid="carte-accord-site">
-    <h2 id="titre-accord-site">{tweaksGrantTitle(accord.nom)}</h2>
+    <h2 id="titre-accord-site">{tweaksGrantTitle(grant.nom)}</h2>
     <dl>
       <dt>Domaines</dt>
-      <dd data-testid="accord-site-domaines">{accord.domaines.join(", ")}</dd>
-      {#if accord.suivis.length}
+      <dd data-testid="accord-site-domaines">{grant.domaines.join(", ")}</dd>
+      {#if grant.suivis.length}
         <dt>Adresses suivies</dt>
-        <dd data-testid="accord-site-suivis">{accord.suivis.join(", ")}</dd>
+        <dd data-testid="accord-site-suivis">{grant.suivis.join(", ")}</dd>
       {/if}
-      {#if accord.connexion.length}
+      {#if grant.connexion.length}
         <dt>Connexion</dt>
-        <dd data-testid="accord-site-connexion">{accord.connexion.join(", ")}</dd>
+        <dd data-testid="accord-site-connexion">{grant.connexion.join(", ")}</dd>
       {/if}
-      {#if accord.cadres.length}
+      {#if grant.cadres.length}
         <dt>Cadres</dt>
         <dd data-testid="accord-site-cadres">
-          {#each accord.cadres as c (c)}<code>{c}</code>{/each}
+          {#each grant.cadres as c (c)}<code>{c}</code>{/each}
         </dd>
       {/if}
-      {#if accord.fichiers.length}
+      {#if grant.fichiers.length}
         <dt>Injecte</dt>
         <dd data-testid="accord-site-fichiers">
-          {#each accord.fichiers as f (f)}<code>{f}</code>{/each}
+          {#each grant.fichiers as f (f)}<code>{f}</code>{/each}
         </dd>
       {/if}
     </dl>
-    {#if accord.reprise}<p data-testid="accord-site-reprise">Reprend les vidéos à la minute</p>{/if}
+    {#if grant.reprise}<p data-testid="accord-site-reprise">Reprend les vidéos à la minute</p>{/if}
     <p class="doux">Ses retouches voient et modifient les pages de ces domaines. Une image ajoutée à la page peut encore envoyer des données à un autre site.</p>
     <div class="boutons">
-      <button data-testid="refuser-site" disabled={enCours} onclick={() => choose(false)}>{NO_TWEAKS}</button>
-      <button data-testid="accorder-site" class="principal" disabled={enCours} onclick={() => choose(true)}>{AUTORISER}</button>
+      <button data-testid="refuser-site" disabled={running} onclick={() => choose(false)}>{NO_TWEAKS}</button>
+      <button data-testid="accorder-site" class="principal" disabled={running} onclick={() => choose(true)}>{ALLOW}</button>
     </div>
   </div>
 </section>

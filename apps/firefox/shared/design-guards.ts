@@ -34,9 +34,9 @@ export function checkPath(c: unknown): string {
   return c;
 }
 
-export function checkLines(debut: unknown, fin: unknown): [number, number] {
-  if (!positive(debut) || !positive(fin) || fin < debut) throw new Error("lignes invalides");
-  return [debut, fin];
+export function checkLines(start: unknown, end: unknown): [number, number] {
+  if (!positive(start) || !positive(end) || end < start) throw new Error("lignes invalides");
+  return [start, end];
 }
 
 export function checkText(t: unknown): string {
@@ -86,9 +86,9 @@ const invalid = (): never => {
 /** viseur.ts's propreCapture rules (a bad shape refuses the context) and sourceSaine's (a bad source field is dropped), rebuilt with known keys only. */
 export function checkDesignContext(c: unknown): DesignContext {
   if (!record(c) || !record(c.vue) || !record(c.voisinage) || !record(c.styles)) return invalid();
-  const { selecteur: selector, etiquette, html, adresse: url, vue: view, voisinage: surroundings, styles, source } = c as Record<string, any>;
+  const { selecteur: selector, etiquette: label, html, adresse: url, vue: view, voisinage: surroundings, styles, source } = c as Record<string, any>;
   if (![view.largeur, view.hauteur].every(finite)) return invalid();
-  if (![selector, etiquette, url, surroundings.parent].every((x) => str(x)) || !str(html, HTML_MAX + TRUNCATED.length)) return invalid();
+  if (![selector, label, url, surroundings.parent].every((x) => str(x)) || !str(html, HTML_MAX + TRUNCATED.length)) return invalid();
   if (!Array.isArray(surroundings.freres) || !surroundings.freres.every((f: unknown) => str(f))) return invalid();
   if (!Object.values(styles).every((x) => str(x))) return invalid();
   // As sourceSaine: a bad file gives no source, a bad line or column is dropped; the remark stays.
@@ -97,7 +97,7 @@ export function checkDesignContext(c: unknown): DesignContext {
       ? null
       : { fichier: source.fichier, ...(positiveInt(source.ligne) ? { ligne: source.ligne } : {}), ...(positiveInt(source.colonne) ? { colonne: source.colonne } : {}) };
   return {
-    selecteur: selector, etiquette, html, adresse: url,
+    selecteur: selector, etiquette: label, html, adresse: url,
     vue: { largeur: view.largeur, hauteur: view.hauteur },
     voisinage: { parent: surroundings.parent, freres: [...surroundings.freres] },
     styles: { ...styles },

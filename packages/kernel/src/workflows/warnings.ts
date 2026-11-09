@@ -78,8 +78,8 @@ export function warnWorkflow(
     if (b.type === "web.chercher" && ctx.dureeMaxMinutes === null) r.push({ bloc: b.id, message: WEB_WITHOUT_DURATION_WARNING });
   }
   if (valid) {
-    const sortie = valid.workflow.blocs.find((b) => b.id === valid.sortie.id);
-    if (sortie?.parametres.auFilDeLEau === true && streamingChain(valid).length === 0) {
+    const output = valid.workflow.blocs.find((b) => b.id === valid.sortie.id);
+    if (output?.parametres.auFilDeLEau === true && streamingChain(valid).length === 0) {
       r.push({ bloc: valid.sortie.id, message: STREAMING_WARNING });
     }
   }

@@ -55,7 +55,7 @@ const count = (selector: string) => inUi<number>(m, "return doc.querySelectorAll
 const waitCount = (selector: string, n: number, ms = 10_000) => waitUi(m, "return doc.querySelectorAll(arguments[0]).length === arguments[1]", [selector, n], ms);
 const text = (selector: string) => inUi<string | null>(m, "return doc.querySelector(arguments[0])?.textContent ?? null", [selector]);
 const waitText = (selector: string, t: string, ms = 10_000) => waitUi(m, "return doc.querySelector(arguments[0])?.textContent === arguments[1]", [selector, t], ms);
-const brancherDisabled = () => inUi<boolean | null>(m, "return doc.querySelector('[data-testid=\"brancher-externe\"]')?.disabled ?? null");
+const connectDisabled = () => inUi<boolean | null>(m, "return doc.querySelector('[data-testid=\"brancher-externe\"]')?.disabled ?? null");
 const storeEval = <T>(body: string, args: unknown[] = []) =>
   m.execute<T>(`return (async () => { const store = await ChromeUtils.importESModule("${STORE}").ready; ${body} })();`, args);
 const hostPid = () => storeEval<number | null>("return store.agent.pid;");
@@ -114,17 +114,17 @@ it("« Brancher un Claude Code »: the command with the real port and a 64-hex t
 // externes.spec.ts:76
 it("declarer_projet: the projet-externe line shows; one notification only, even after a second declaration", async () => {
   await launch();
-  const dossier = projectDir("mon-site");
+  const folder = projectDir("mon-site");
   const { port, jeton: token } = await connectClient(m);
   const c = await mcpClient(port, token);
   try {
-    const r = await c.callTool({ name: "declarer_projet", arguments: { dossier, ports: [18765] } });
+    const r = await c.callTool({ name: "declarer_projet", arguments: { dossier: folder, ports: [18765] } });
     expect(textOf(r)).toContain("mon-site");
     await waitCount(tid("projet-externe"), 1);
     const line = (await text(tid("projet-externe")))!;
-    for (const t of ["mon-site", dossier, "18765", "Claude Code"]) expect(line).toContain(t);
+    for (const t of ["mon-site", folder, "18765", "Claude Code"]) expect(line).toContain(t);
     await expect.poll(() => readNotifications(notifications), { timeout: 10_000 }).toEqual([{ titre: "WebAiOs", texte: "Claude Code a branché le projet mon-site" }]);
-    await c.callTool({ name: "declarer_projet", arguments: { dossier, ports: [18765] } });
+    await c.callTool({ name: "declarer_projet", arguments: { dossier: folder, ports: [18765] } });
     await new Promise((r) => setTimeout(r, 500));
     expect(readNotifications(notifications)).toHaveLength(1);
     expect(await count(tid("projet-externe"))).toBe(1);
@@ -180,7 +180,7 @@ it("a port held elsewhere: the section says so, « Brancher » is greyed, and no
   try {
     await launch({ WEBAIOS_PORT_MCP_EXTERNE: String(port) });
     await waitText(tid("raison-externes"), `Le port ${port} est pris : le MCP externe est éteint.`, 15_000);
-    expect(await brancherDisabled()).toBe(true);
+    expect(await connectDisabled()).toBe(true);
     // No fallback: no port of the host answers like the external server (Origin → 403 before any token, as the
     // kernel's own server answers 401).
     const pid = (await waitFor<number | null>(m, `return (async () => (await ChromeUtils.importESModule("${STORE}").ready).agent.pid)();`, (v) => v !== null))!;
@@ -201,7 +201,7 @@ it("a port held elsewhere: the section says so, « Brancher » is greyed, and no
 it("an invalid port (WEBAIOS_PORT_MCP_EXTERNE=abc): the section says the external MCP could not start", async () => {
   await launch({ WEBAIOS_PORT_MCP_EXTERNE: "abc" });
   await waitUi(m, "return doc.querySelector('[data-testid=\"raison-externes\"]')?.textContent.startsWith(arguments[0])", ["Le MCP externe n'a pas pu démarrer : "], 15_000);
-  expect(await brancherDisabled()).toBe(true);
+  expect(await connectDisabled()).toBe(true);
 });
 
 it("a foreign Host, an Origin header, no token, the kernel's main token and a session token are refused", { timeout: 90_000 }, async () => {
@@ -247,9 +247,9 @@ it("a folder under <dataDir> is refused with DOSSIER_ESPACE", async () => {
     const inside = [path.join(w!.dataDir, "design", "x"), path.join(w!.dataDir, "espace", "projets", "x")];
     // Existing folders: a missing one is refused earlier, for another reason.
     for (const d of inside) mkdirSync(d, { recursive: true });
-    for (const dossier of [w!.dataDir, ...inside]) {
-      const r = (await c.callTool({ name: "declarer_projet", arguments: { dossier, ports: [18765] } })) as { isError?: boolean };
-      expect(textOf(r), dossier).toContain(SPACE_FOLDER);
+    for (const folder of [w!.dataDir, ...inside]) {
+      const r = (await c.callTool({ name: "declarer_projet", arguments: { dossier: folder, ports: [18765] } })) as { isError?: boolean };
+      expect(textOf(r), folder).toContain(SPACE_FOLDER);
       expect(r.isError).toBe(true);
     }
     await new Promise((r) => setTimeout(r, 500));
@@ -291,10 +291,10 @@ it("after a host restart the server comes back on the same port and the same tok
   await waitFor<number | null>(m, `return (async () => (await ChromeUtils.importESModule("${STORE}").ready).agent.pid)();`, (pid) => pid === null);
   // While no host runs: the reason, and « Brancher » greyed.
   await waitText(tid("raison-externes"), failureReason(new Error(HOST_STOPPED)));
-  expect(await brancherDisabled()).toBe(true);
+  expect(await connectDisabled()).toBe(true);
   await storeEval("await store.agent.ensure();");
   await waitCount(tid("raison-externes"), 0, 30_000);
-  expect(await brancherDisabled()).toBe(false);
+  expect(await connectDisabled()).toBe(false);
   const after = await mcpClient(port, token);
   try {
     expect((await after.listTools()).tools.length).toBeGreaterThan(0);

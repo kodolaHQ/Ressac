@@ -7,7 +7,7 @@ import { canonicalJson } from "../workflows/memory.js";
  */
 
 /** The items of the data: the list itself, or the first-level lists of an object, one after the other. */
-export function elementsDe(data: unknown): unknown[] {
+export function elementsOf(data: unknown): unknown[] {
   if (Array.isArray(data)) return data;
   if (data === null || typeof data !== "object") return [];
   return Object.values(data).flatMap((v) => (Array.isArray(v) ? v : []));
@@ -23,9 +23,9 @@ export function identity(e: unknown): string {
 }
 
 /** Number of (distinct) items of the data that were not in the previous ones. */
-export function countNew(precedent: unknown, data: unknown): number {
-  const vus = new Set(elementsDe(precedent).map(identity));
-  const fresh = new Set(elementsDe(data).map(identity).filter((i) => !vus.has(i)));
+export function countNew(previous: unknown, data: unknown): number {
+  const seen = new Set(elementsOf(previous).map(identity));
+  const fresh = new Set(elementsOf(data).map(identity).filter((i) => !seen.has(i)));
   return fresh.size;
 }
 

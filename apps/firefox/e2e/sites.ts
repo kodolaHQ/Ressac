@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
-import { accorderSite, DeclarationSite } from "../../../packages/kernel/src/index";
+import { storeSiteGrant, DeclarationSite } from "../../../packages/kernel/src/index";
 import type { Marionette } from "./marionette";
 
 // Site app helpers.
@@ -83,17 +83,17 @@ export interface SiteTest {
 
 /** Writes a site app into `<dataDir>/espace/sites/<id>/` (what the agent would write there). */
 export function writeSite(dataDir: string, id: string, s: SiteTest): void {
-  const dossier = path.join(dataDir, "espace", "sites", id);
-  mkdirSync(dossier, { recursive: true });
-  writeFileSync(path.join(dossier, "site.json"), typeof s.declaration === "string" ? s.declaration : JSON.stringify(s.declaration));
+  const folder = path.join(dataDir, "espace", "sites", id);
+  mkdirSync(folder, { recursive: true });
+  writeFileSync(path.join(folder, "site.json"), typeof s.declaration === "string" ? s.declaration : JSON.stringify(s.declaration));
   for (const [relPath, content] of Object.entries(s.fichiers ?? {})) {
-    mkdirSync(path.join(dossier, relPath, ".."), { recursive: true });
-    writeFileSync(path.join(dossier, relPath), content);
+    mkdirSync(path.join(folder, relPath, ".."), { recursive: true });
+    writeFileSync(path.join(folder, relPath), content);
   }
 }
 
 /** « Autoriser » done ahead (`<dataDir>/sites-accords.json`), by the kernel's own accorderSite: the app opens granted. */
-export const grantSite = (dataDir: string, id: string, declaration: object): Promise<void> => accorderSite(dataDir, id, DeclarationSite.parse(declaration));
+export const grantSite = (dataDir: string, id: string, declaration: object): Promise<void> => storeSiteGrant(dataDir, id, DeclarationSite.parse(declaration));
 
 /** The test home page: it shows the memory it receives and notes every message. */
 export const SITE_HOME = `<!doctype html><meta charset="utf-8"><title>Accueil</title>

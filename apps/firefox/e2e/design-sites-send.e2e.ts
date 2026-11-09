@@ -6,7 +6,7 @@ import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { reviewUrl } from "../shared/model";
 import { THIRD_PARTY_SITE_WARNING } from "../../../packages/kernel/src/design/remarques";
 import { testActor } from "./agent-extensions";
-import { overlayOf, inStore, openSite, siteKey, siteMouse, toSite, TUNING_PAGE, tuningDeclaration, viewExpr, viewPoint, OTHER_PAGE, CONNEXION_PAGE } from "./design-sites";
+import { overlayOf, inStore, openSite, siteKey, siteMouse, toSite, TUNING_PAGE, tuningDeclaration, viewExpr, viewPoint, OTHER_PAGE, LOGIN_PAGE } from "./design-sites";
 import { state, waitFor, waitReady } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
@@ -35,7 +35,7 @@ beforeAll(async () => {
   server = await startSitesServer({ port: PORT });
   server.definir("tuning-a.localhost", "/", TUNING_PAGE);
   server.definir("tuning-a.localhost", "/autre", OTHER_PAGE);
-  server.definir("compte-tuning.localhost", "/connexion", CONNEXION_PAGE);
+  server.definir("compte-tuning.localhost", "/connexion", LOGIN_PAGE);
   const dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
   const profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
   dirs.push(dataDir, profile);
@@ -136,12 +136,12 @@ it("two remarks on tuning then send from the cart: text pre-filled without Enter
   expect(agentInput()).toContain("/workspace/.webaios/remarques/site-tuning/");
   await sleep(300);
   expect(agentInput()).not.toContain("\r");
-  const lots = batches();
-  expect(lots).toHaveLength(1);
-  const lot = JSON.parse(readFileSync(path.join(remarksDir(), lots[0]!, "lot.json"), "utf8"));
-  expect(lot.origine).toBe("site-tiers");
-  expect(lot.avertissement).toBe(THIRD_PARTY_SITE_WARNING);
-  expect(readdirSync(path.join(remarksDir(), lots[0]!)).filter((n) => n.endsWith(".png"))).toHaveLength(2);
+  const batchList = batches();
+  expect(batchList).toHaveLength(1);
+  const batch = JSON.parse(readFileSync(path.join(remarksDir(), batchList[0]!, "lot.json"), "utf8"));
+  expect(batch.origine).toBe("site-tiers");
+  expect(batch.avertissement).toBe(THIRD_PARTY_SITE_WARNING);
+  expect(readdirSync(path.join(remarksDir(), batchList[0]!)).filter((n) => n.endsWith(".png"))).toHaveLength(2);
   await expect.poll(async () => (await bar()).count, { timeout: 10_000 }).toBeNull();
   await expect.poll(() => inOverlay<number>(`return doc.querySelectorAll('${tid("remarque-panier")}').length;`), { timeout: 10_000 }).toBe(0);
   // relecture.assurer took the first photo before the send.

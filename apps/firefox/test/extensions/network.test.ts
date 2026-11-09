@@ -7,7 +7,7 @@ import { agentAllowedHost, patternCovers, agentAllowedUrl } from "../../core/ext
 
 const ID = "a".repeat(32);
 const OTHER = "b".repeat(32);
-const accord: Scope = {
+const grant: Scope = {
   permissions: ["tabs"],
   hotes: ["https://*.hote.test/*", "http://127.0.0.1/*"],
   reseau: ["api.accorde.test"],
@@ -16,25 +16,25 @@ const accord: Scope = {
 };
 
 test("reseau host allowed; hotes host allowed; other host, data:, javascript:, file: refused; chrome-extension:// of another extension refused", () => {
-  expect(agentAllowedUrl("https://api.accorde.test/x?y=1", accord, ID)).toBe(true);
-  expect(agentAllowedUrl("http://api.accorde.test/", accord, ID)).toBe(true);
-  expect(agentAllowedUrl("https://www.hote.test/page", accord, ID)).toBe(true);
-  expect(agentAllowedUrl("https://hote.test/", accord, ID)).toBe(true);
-  expect(agentAllowedUrl("http://127.0.0.1:8123/cache.html", accord, ID)).toBe(true);
-  expect(agentAllowedUrl(`chrome-extension://${ID}/page.html`, accord, ID)).toBe(true);
+  expect(agentAllowedUrl("https://api.accorde.test/x?y=1", grant, ID)).toBe(true);
+  expect(agentAllowedUrl("http://api.accorde.test/", grant, ID)).toBe(true);
+  expect(agentAllowedUrl("https://www.hote.test/page", grant, ID)).toBe(true);
+  expect(agentAllowedUrl("https://hote.test/", grant, ID)).toBe(true);
+  expect(agentAllowedUrl("http://127.0.0.1:8123/cache.html", grant, ID)).toBe(true);
+  expect(agentAllowedUrl(`chrome-extension://${ID}/page.html`, grant, ID)).toBe(true);
 
-  expect(agentAllowedUrl("https://autre.test/", accord, ID)).toBe(false);
-  expect(agentAllowedUrl("https://accorde.test/", accord, ID)).toBe(false);
-  expect(agentAllowedUrl("https://hote.test.autre.test/", accord, ID)).toBe(false);
-  expect(agentAllowedUrl("https://www.hote.test@autre.test/", accord, ID)).toBe(false);
-  expect(agentAllowedUrl("https://u:p@api.accorde.test/", accord, ID)).toBe(false);
-  expect(agentAllowedUrl("data:text/html,<p>x</p>", accord, ID)).toBe(false);
-  expect(agentAllowedUrl("javascript:alert(1)", accord, ID)).toBe(false);
-  expect(agentAllowedUrl("file:///etc/passwd", accord, ID)).toBe(false);
-  expect(agentAllowedUrl(`blob:chrome-extension://${ID}/x`, accord, ID)).toBe(false);
-  expect(agentAllowedUrl("ftp://api.accorde.test/", accord, ID)).toBe(false);
-  expect(agentAllowedUrl(`chrome-extension://${OTHER}/page.html`, accord, ID)).toBe(false);
-  expect(agentAllowedUrl("pas une adresse", accord, ID)).toBe(false);
+  expect(agentAllowedUrl("https://autre.test/", grant, ID)).toBe(false);
+  expect(agentAllowedUrl("https://accorde.test/", grant, ID)).toBe(false);
+  expect(agentAllowedUrl("https://hote.test.autre.test/", grant, ID)).toBe(false);
+  expect(agentAllowedUrl("https://www.hote.test@autre.test/", grant, ID)).toBe(false);
+  expect(agentAllowedUrl("https://u:p@api.accorde.test/", grant, ID)).toBe(false);
+  expect(agentAllowedUrl("data:text/html,<p>x</p>", grant, ID)).toBe(false);
+  expect(agentAllowedUrl("javascript:alert(1)", grant, ID)).toBe(false);
+  expect(agentAllowedUrl("file:///etc/passwd", grant, ID)).toBe(false);
+  expect(agentAllowedUrl(`blob:chrome-extension://${ID}/x`, grant, ID)).toBe(false);
+  expect(agentAllowedUrl("ftp://api.accorde.test/", grant, ID)).toBe(false);
+  expect(agentAllowedUrl(`chrome-extension://${OTHER}/page.html`, grant, ID)).toBe(false);
+  expect(agentAllowedUrl("pas une adresse", grant, ID)).toBe(false);
 });
 
 test("Chrome patterns: scheme, subdomain wildcard, port, path", () => {
@@ -51,9 +51,9 @@ test("Chrome patterns: scheme, subdomain wildcard, port, path", () => {
 });
 
 test("hotePermisAgent: only the granted hosts (not reseau)", () => {
-  expect(agentAllowedHost("https://www.hote.test/", accord)).toBe(true);
-  expect(agentAllowedHost("https://api.accorde.test/", accord)).toBe(false);
-  expect(agentAllowedHost("about:blank", accord)).toBe(false);
+  expect(agentAllowedHost("https://www.hote.test/", grant)).toBe(true);
+  expect(agentAllowedHost("https://api.accorde.test/", grant)).toBe(false);
+  expect(agentAllowedHost("about:blank", grant)).toBe(false);
 });
 
 // --- The guard (packages/kernel/extensions/webaios-garde-fond.js), run in a separate context.
@@ -140,21 +140,21 @@ function guardContext(
 test("guard: updateDynamicRules / updateSessionRules refuse redirect, modifyHeaders, regexSubstitution, transform; block accepted", async () => {
   const { chrome, appels: calls } = guardContext();
   const dnr = chrome.declarativeNetRequest;
-  const regle = (action: unknown) => ({ addRules: [{ id: 1, priority: 1, action, condition: { urlFilter: "x" } }] });
-  await expect(dnr.updateDynamicRules(regle({ type: "redirect", redirect: { url: "https://x.test/" } }))).rejects.toThrow(
+  const rule = (action: unknown) => ({ addRules: [{ id: 1, priority: 1, action, condition: { urlFilter: "x" } }] });
+  await expect(dnr.updateDynamicRules(rule({ type: "redirect", redirect: { url: "https://x.test/" } }))).rejects.toThrow(
     "Règle DNR refusée par WebAiOs (redirect)",
   );
-  await expect(dnr.updateSessionRules(regle({ type: "modifyHeaders", requestHeaders: [] }))).rejects.toThrow(
+  await expect(dnr.updateSessionRules(rule({ type: "modifyHeaders", requestHeaders: [] }))).rejects.toThrow(
     "Règle DNR refusée par WebAiOs (modifyHeaders)",
   );
-  await expect(dnr.updateDynamicRules(regle({ type: "upgradeScheme", redirect: { regexSubstitution: "\\1" } }))).rejects.toThrow(
+  await expect(dnr.updateDynamicRules(rule({ type: "upgradeScheme", redirect: { regexSubstitution: "\\1" } }))).rejects.toThrow(
     "Règle DNR refusée par WebAiOs (regexSubstitution)",
   );
-  await expect(dnr.updateDynamicRules(regle({ type: "upgradeScheme", redirect: { transform: {} } }))).rejects.toThrow(
+  await expect(dnr.updateDynamicRules(rule({ type: "upgradeScheme", redirect: { transform: {} } }))).rejects.toThrow(
     "Règle DNR refusée par WebAiOs (transform)",
   );
   expect(calls).toEqual([]);
-  await expect(dnr.updateDynamicRules(regle({ type: "block" }))).resolves.toBe("ok:updateDynamicRules");
+  await expect(dnr.updateDynamicRules(rule({ type: "block" }))).resolves.toBe("ok:updateDynamicRules");
   await expect(dnr.updateDynamicRules({ removeRuleIds: [1] })).resolves.toBe("ok:updateDynamicRules");
   // Truly replaced: neither rewritten nor removed.
   const kept = dnr.updateDynamicRules;
@@ -167,12 +167,12 @@ test("guard: updateDynamicRules / updateSessionRules refuse redirect, modifyHead
 
 test("guard: a callback receives chrome.runtime.lastError during the call, then it is cleared", async () => {
   const { chrome } = guardContext();
-  const vu = await new Promise((ok) =>
+  const seen = await new Promise((ok) =>
     chrome.declarativeNetRequest.updateDynamicRules({ addRules: [{ id: 1, action: { type: "redirect" } }] }, () =>
       ok((chrome.runtime.lastError as { message: string } | undefined)?.message),
     ),
   );
-  expect(vu).toBe("Règle DNR refusée par WebAiOs (redirect)");
+  expect(seen).toBe("Règle DNR refusée par WebAiOs (redirect)");
   expect(chrome.runtime.lastError).toBeUndefined();
 });
 
@@ -206,10 +206,10 @@ test("guard: without __webaios (preload missing), every address and every tab ar
   const { ctx, chrome } = guardContext();
   delete ctx.__webaios;
   const kept = readFileSync(pathGuard, "utf8");
-  const sans: Record<string, unknown> = { ...ctx, chrome: { ...chrome, tabs: { create: vi.fn() }, scripting: { executeScript: vi.fn() } } };
-  sans.globalThis = sans;
-  runInNewContext(TABLE + kept, sans);
-  const c = sans.chrome as { tabs: { create(d: unknown): Promise<unknown> }; scripting: { executeScript(d: unknown): Promise<unknown> } };
+  const without: Record<string, unknown> = { ...ctx, chrome: { ...chrome, tabs: { create: vi.fn() }, scripting: { executeScript: vi.fn() } } };
+  without.globalThis = without;
+  runInNewContext(TABLE + kept, without);
+  const c = without.chrome as { tabs: { create(d: unknown): Promise<unknown> }; scripting: { executeScript(d: unknown): Promise<unknown> } };
   await expect(c.tabs.create({ url: "https://www.hote.test/" })).rejects.toThrow("URL refusée par WebAiOs");
   // Without preload, no tab is recognized as one.
   await expect(c.scripting.executeScript({ target: { tabId: 4 } })).rejects.toThrow("Onglet refusé par WebAiOs");
@@ -217,10 +217,10 @@ test("guard: without __webaios (preload missing), every address and every tab ar
 
 test("guard: arguments are frozen once (copy), checked and passed as is: an accessor that changes its mind does not let a redirect through", async () => {
   const { chrome, appels: calls } = guardContext({ onglets: [4] });
-  let lectures = 0;
+  let reads = 0;
   const options = {
     get addRules() {
-      return lectures++ === 0 ? [] : [{ id: 1, priority: 1, action: { type: "redirect", redirect: { url: "https://autre.test/" } }, condition: {} }];
+      return reads++ === 0 ? [] : [{ id: 1, priority: 1, action: { type: "redirect", redirect: { url: "https://autre.test/" } }, condition: {} }];
     },
   };
   await chrome.declarativeNetRequest.updateDynamicRules(options).catch(() => {});
@@ -368,16 +368,16 @@ test("guard: executeScript / insertCSS to a view that is not a tab (invisible re
     "Arguments refusés par WebAiOs (world MAIN)",
   );
   expect(calls).toEqual([]);
-  const vu = await new Promise((ok) =>
+  const seen = await new Promise((ok) =>
     chrome.scripting.executeScript({ target: { tabId: 6 }, files: ["x.js"] }, () => ok((chrome.runtime.lastError as { message: string } | undefined)?.message)),
   );
-  expect(vu).toBe("Onglet refusé par WebAiOs");
+  expect(seen).toBe("Onglet refusé par WebAiOs");
 });
 
 test("guard: executeScript({ files }): only files from the table, guards first; ({ func }): guards, then the function in the same documents; without a returned documentId, refused", async () => {
-  let sansDocument = false;
+  let withoutDocument = false;
   const native = vi.fn(async (d: { files?: string[]; func?: unknown }) =>
-    d.files ? [{ frameId: 0, ...(sansDocument ? {} : { documentId: "D0" }) }, { frameId: 3, documentId: "D3" }] : [{ frameId: 0, result: 2 }],
+    d.files ? [{ frameId: 0, ...(withoutDocument ? {} : { documentId: "D0" }) }, { frameId: 3, documentId: "D3" }] : [{ frameId: 0, result: 2 }],
   );
   const g = guardContext({ onglets: [4] }, { executeScript: native });
   for (const f of ["inconnu.js", "../a.js", "/a.js", "./a.js", "s.css", "webaios-garde-page.js"]) {
@@ -392,7 +392,7 @@ test("guard: executeScript({ files }): only files from the table, guards first; 
   expect(native.mock.calls[2]![0]).toEqual({ target: { tabId: 4, documentIds: ["D0", "D3"] }, func: f, args: [1] });
   expect(await new Promise((ok) => g.chrome.scripting.executeScript({ target: { tabId: 4 }, func: f }, ok))).toEqual([{ frameId: 0, result: 2 }]);
   // A document without an id: the function does not go (it could run in a fresh document, without a guard).
-  sansDocument = true;
+  withoutDocument = true;
   const before = native.mock.calls.length;
   await expect(g.chrome.scripting.executeScript({ target: { tabId: 4, allFrames: true }, func: f })).rejects.toThrow("Arguments refusés par WebAiOs (documentId absent)");
   expect(native.mock.calls.length).toBe(before + 1);
@@ -436,10 +436,10 @@ test("guard: getRegisteredContentScripts returns the agent's files; the round tr
   const { chrome, appels: calls, enregistres: saved } = guardContext();
   await chrome.scripting.registerContentScripts([{ id: "a", matches: ["https://hote.test/*"], js: ["a.js", "c/d.js"], css: ["s.css"] }]);
   saved.push(...(calls[0]![1][0] as { id: string }[]));
-  const lus = await chrome.scripting.getRegisteredContentScripts();
-  expect(lus).toEqual([{ id: "a", matches: ["https://hote.test/*"], js: ["a.js", "c/d.js"], css: ["s.css"] }]);
-  expect(await new Promise((ok) => (chrome.scripting.getRegisteredContentScripts as (f: unknown, r: (x: unknown) => void) => void)({ ids: ["a"] }, ok))).toEqual(lus);
-  await chrome.scripting.updateContentScripts(lus);
+  const reads = await chrome.scripting.getRegisteredContentScripts();
+  expect(reads).toEqual([{ id: "a", matches: ["https://hote.test/*"], js: ["a.js", "c/d.js"], css: ["s.css"] }]);
+  expect(await new Promise((ok) => (chrome.scripting.getRegisteredContentScripts as (f: unknown, r: (x: unknown) => void) => void)({ ids: ["a"] }, ok))).toEqual(reads);
+  await chrome.scripting.updateContentScripts(reads);
   expect(calls[1]).toEqual(["scripting.updateContentScripts", [[{ id: "a", matches: ["https://hote.test/*"], js: [...PAGE_GUARDS, marker(3), marker(0), marker(2)] }]]]);
   await chrome.scripting.updateContentScripts([{ id: "a", css: [] }]);
   expect(calls[2]).toEqual(["scripting.updateContentScripts", [[{ id: "a", js: [...PAGE_GUARDS, marker(0), marker(2)] }]]]);
@@ -481,12 +481,12 @@ test("guard: on the context's request, the background injects the markers' files
 
 test("guard: in an agent page (popup, options), the context is neither answered nor injected: only the service worker does it; the agent's listeners do not see it either", async () => {
   const { chrome, appels: calls, emettre: emit } = guardContext({}, {}, { page: true });
-  const vus: unknown[] = [];
-  (chrome.runtime.onMessage as { addListener(f: unknown): void }).addListener((m: unknown) => void vus.push(m));
+  const seen: unknown[] = [];
+  (chrome.runtime.onMessage as { addListener(f: unknown): void }).addListener((m: unknown) => void seen.push(m));
   expect(await emit({ webaios: "contexte", fichiers: [3, 0] }, { tab: { id: 4 }, frameId: 0, documentId: "D" })).toBe("aucune réponse");
   expect(await emit({ webaios: "contexte" }, { tab: { id: 4 } })).toBe("aucune réponse");
   expect(calls).toEqual([]);
-  expect(vus).toEqual([]);
+  expect(seen).toEqual([]);
 });
 
 test("guard: an index outside the table (poisoned prototypes, negative, fractional) never injects anything", async () => {
@@ -501,10 +501,10 @@ test("guard: an index outside the table (poisoned prototypes, negative, fraction
 
 test("guard: onMessage answers { webaios: \"contexte\" } with estOnglet(sender.tab.id); the agent's listeners never see that message", async () => {
   const { chrome, emettre: emit } = guardContext({ nonOnglets: [6] });
-  const vus: unknown[] = [];
+  const seen: unknown[] = [];
   // The agent tries to answer « onglet » itself in the guard's place.
   const agent = (m: unknown, _e: unknown, reply: (x: unknown) => void) => {
-    vus.push(m);
+    seen.push(m);
     reply({ onglet: true });
   };
   const onMessage = chrome.runtime.onMessage as { addListener(f: unknown): void; removeListener(f: unknown): void; hasListener(f: unknown): boolean };
@@ -514,17 +514,17 @@ test("guard: onMessage answers { webaios: \"contexte\" } with estOnglet(sender.t
   expect(await emit({ webaios: "contexte" }, { tab: { id: 4 } })).toEqual({ onglet: true });
   expect(await emit({ webaios: "contexte" }, {})).toEqual({ onglet: false });
   // Through the prototype's method, taken apart: always wrapped.
-  const parProto = (m: unknown, _e: unknown, reply: (x: unknown) => void) => {
-    vus.push(m);
+  const byProto = (m: unknown, _e: unknown, reply: (x: unknown) => void) => {
+    seen.push(m);
     reply({ onglet: true });
   };
-  (Object.getPrototypeOf(onMessage) as { addListener: Function }).addListener.call(onMessage, parProto);
+  (Object.getPrototypeOf(onMessage) as { addListener: Function }).addListener.call(onMessage, byProto);
   expect(await emit({ webaios: "contexte" }, { tab: { id: 6 } })).toEqual({ onglet: false });
-  expect(vus).toEqual([]);
-  (Object.getPrototypeOf(onMessage) as { removeListener: Function }).removeListener.call(onMessage, parProto);
+  expect(seen).toEqual([]);
+  (Object.getPrototypeOf(onMessage) as { removeListener: Function }).removeListener.call(onMessage, byProto);
   // The other messages reach it.
   expect(await emit({ autre: 1 }, { tab: { id: 4 } })).toEqual({ onglet: true });
-  expect(vus).toEqual([{ autre: 1 }]);
+  expect(seen).toEqual([{ autre: 1 }]);
   onMessage.removeListener(agent);
   expect(onMessage.hasListener(agent)).toBe(false);
   // Truly replaced.

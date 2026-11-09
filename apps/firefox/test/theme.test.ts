@@ -6,7 +6,7 @@ describe("variablesTheme", () => {
   it("only returns #rrggbb and ignores a missing key", () => {
     const v = variablesTheme({ version: 1, fond: "#1e1e22", accent: "#8b7cf6" });
     expect(v).toEqual({ "--accueil-fond": "#1e1e22", "--accueil-accent": "#8b7cf6" });
-    for (const valeur of Object.values(v)) expect(valeur).toMatch(/^#[0-9a-f]{6}$/i);
+    for (const value of Object.values(v)) expect(value).toMatch(/^#[0-9a-f]{6}$/i);
   });
 
   it("returns the radius, the space and the font in CSS units", () => {

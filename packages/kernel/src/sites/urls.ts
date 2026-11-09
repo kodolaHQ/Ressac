@@ -32,8 +32,8 @@ export function hostInSite(host: string, domains: readonly string[]): boolean {
 }
 
 export function effectiveDomains(d: DeclarationSite, e: UrlState | null): string[] {
-  const tous = [...d.domaines, ...(e ? [...e.anciens, e.actuel] : [])].map(clean);
-  return [...new Set(tous)];
+  const all = [...d.domaines, ...(e ? [...e.anciens, e.actuel] : [])].map(clean);
+  return [...new Set(all)];
 }
 
 /** The declared address, whose host is replaced by the current address when the site changed domain. */
@@ -50,7 +50,7 @@ export function startUrl(d: DeclarationSite, e: UrlState | null): string {
   return u.href;
 }
 
-function analyser(url: string): URL | null {
+function analyze(url: string): URL | null {
   try {
     return new URL(url);
   } catch {
@@ -60,7 +60,7 @@ function analyser(url: string): URL | null {
 
 /** Path + query (without #) if the host is in the site, otherwise null. */
 export function relativeUrl(url: string, domains: readonly string[]): string | null {
-  const u = analyser(url);
+  const u = analyze(url);
   if (!u || !hostInSite(u.hostname, domains)) return null;
   return u.pathname + u.search;
 }
@@ -73,10 +73,10 @@ export function urlOnDomain(
   url: string,
   current: string,
   domains: readonly string[],
-  depart: string,
+  start: string,
   o: { adressesLocales: boolean },
 ): string | null {
-  const base = analyser(depart);
+  const base = analyze(start);
   if (!base) return null;
   // An invalid `actuel` leaves the start host.
   const n = clean(current);
@@ -85,53 +85,53 @@ export function urlOnDomain(
   let u: URL;
   if (url.startsWith("/")) {
     if (url.startsWith("//") || url.startsWith("/\\")) return null;
-    const r = analyser(`${base.protocol}//${base.host}${url}`);
+    const r = analyze(`${base.protocol}//${base.host}${url}`);
     if (!r || clean(r.hostname) !== clean(base.hostname)) return null;
     u = r;
   } else {
-    const r = analyser(url);
+    const r = analyze(url);
     if (!r || !hostInSite(r.hostname, domains) || !acceptedSchema(r, o.adressesLocales)) return null;
     u = r;
   }
-  const sortie = analyser(`${base.protocol}//${base.host}${u.pathname}${u.search}${u.hash}`);
-  if (!sortie) return null;
-  sortie.hostname = outputHost;
+  const output = analyze(`${base.protocol}//${base.host}${u.pathname}${u.search}${u.hash}`);
+  if (!output) return null;
+  output.hostname = outputHost;
   // `actuel` in numeric notation (0x7f.1, 2130706433) is only normalized here: checked again, otherwise the start host.
-  if (!o.adressesLocales && localUrl(sortie.hostname)) sortie.hostname = base.hostname;
-  if (!acceptedSchema(sortie, o.adressesLocales)) return null;
-  return sortie.href;
+  if (!o.adressesLocales && localUrl(output.hostname)) output.hostname = base.hostname;
+  if (!acceptedSchema(output, o.adressesLocales)) return null;
+  return output.href;
 }
 
 /**
  * Iterative glob matching (two pointers, O(n·m), no exponential backtracking). `*` = any sequence of characters
  * outside `interdits`.
  */
-function glob(motif: string, text: string, forbidden = ""): boolean {
-  let m = 0, t = 0, star = -1, reprise = 0;
+function glob(pattern: string, text: string, forbidden = ""): boolean {
+  let m = 0, t = 0, star = -1, resume = 0;
   while (t < text.length) {
-    if (m < motif.length && motif[m] === "*") {
+    if (m < pattern.length && pattern[m] === "*") {
       star = m++;
-      reprise = t;
-    } else if (m < motif.length && motif[m] === text[t]) {
+      resume = t;
+    } else if (m < pattern.length && pattern[m] === text[t]) {
       m++;
       t++;
-    } else if (star >= 0 && !forbidden.includes(text[reprise]!)) {
+    } else if (star >= 0 && !forbidden.includes(text[resume]!)) {
       m = star + 1;
-      t = ++reprise;
+      t = ++resume;
     } else return false;
   }
-  while (m < motif.length && motif[m] === "*") m++;
-  return m === motif.length;
+  while (m < pattern.length && pattern[m] === "*") m++;
+  return m === pattern.length;
 }
 
 /**
  * Wildcard `*` anchored at both ends. Path: case-sensitive. Full address: scheme, host and path compared
  * separately; a `*` in the host never passes `/ ? # @ :`; a URL with credentials is refused.
  */
-export function correspondMotif(motif: string, text: string): boolean {
-  const full = /^([a-z][a-z0-9+.-]*):\/\/([^/?#]*)(.*)$/is.exec(motif);
-  if (!full) return glob(motif, text);
-  const u = analyser(text);
+export function matchesPattern(pattern: string, text: string): boolean {
+  const full = /^([a-z][a-z0-9+.-]*):\/\/([^/?#]*)(.*)$/is.exec(pattern);
+  if (!full) return glob(pattern, text);
+  const u = analyze(text);
   if (!u || u.username || u.password) return false;
   const [, schema, host, rest] = full as unknown as [string, string, string, string];
   if (u.protocol !== `${schema.toLowerCase()}:`) return false;
@@ -143,18 +143,18 @@ export function correspondMotif(motif: string, text: string): boolean {
 /** The tweaks that apply to a frame: main frame by path, subframe by full-address pattern. */
 export function tweaksFor(
   d: DeclarationSite,
-  cadre: { url: string; principal: boolean },
+  frame: { url: string; principal: boolean },
   domains: readonly string[],
   o: { adressesLocales: boolean } = { adressesLocales: false },
 ): Tweak[] {
-  const u = analyser(cadre.url);
+  const u = analyze(frame.url);
   if (!u || !acceptedSchema(u, o.adressesLocales)) return [];
-  if (cadre.principal) {
-    const rel = relativeUrl(cadre.url, domains);
+  if (frame.principal) {
+    const rel = relativeUrl(frame.url, domains);
     if (rel === null) return [];
-    return d.retouches.filter((r) => r.correspond.some((m) => correspondMotif(m, rel)));
+    return d.retouches.filter((r) => r.correspond.some((m) => matchesPattern(m, rel)));
   }
-  return d.retouches.filter((r) => r.cadres !== false && r.cadres.some((m) => correspondMotif(m, cadre.url)));
+  return d.retouches.filter((r) => r.cadres !== false && r.cadres.some((m) => matchesPattern(m, frame.url)));
 }
 
 /**
@@ -166,16 +166,16 @@ export function findUrl(
   liens: readonly string[],
   o: { page: string; motif: string; adressesLocales: boolean },
 ): { hostname: string; origine: string; port: string | null } | null {
-  const page = analyser(o.page);
-  const motif = o.motif.toLowerCase();
-  if (!page || !motif) return null;
+  const page = analyze(o.page);
+  const pattern = o.motif.toLowerCase();
+  if (!page || !pattern) return null;
   const two = (h: string) => h.split(".").slice(-2).join(".");
   const pageHost = clean(page.hostname);
-  for (const lien of liens) {
-    const u = analyser(lien);
+  for (const link of liens) {
+    const u = analyze(link);
     if (!u || !acceptedSchema(u, o.adressesLocales)) continue;
     const h = clean(u.hostname);
-    if (!h || !VALID_HOST.test(h) || !h.includes(motif) || two(h) === two(pageHost)) continue;
+    if (!h || !VALID_HOST.test(h) || !h.includes(pattern) || two(h) === two(pageHost)) continue;
     if (!trueDomain(h, o.adressesLocales)) continue;
     const port = o.adressesLocales && u.port ? u.port : null;
     return { hostname: h, origine: `${u.protocol}//${h}${port ? `:${port}` : ""}/`, port };

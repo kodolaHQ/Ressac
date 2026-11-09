@@ -11,8 +11,8 @@ function shownElements(state: BrowserState, windowId: WindowId): { elements: Ele
   const elements: Element[] = [...space.epingles.map((p) => ({ favori: p.id })), ...(f.ordre[space.id] ?? []).map((id) => ({ onglet: id }))];
   const active = f.actif[space.id];
   const o = active ? state.onglets[active] : undefined;
-  const courant = o ? elements.findIndex((x) => ("onglet" in x ? x.onglet === o.id : x.favori === o.lien?.id)) : -1;
-  return { elements, courant };
+  const current = o ? elements.findIndex((x) => ("onglet" in x ? x.onglet === o.id : x.favori === o.lien?.id)) : -1;
+  return { elements, courant: current };
 }
 
 function toElement(windowId: WindowId, x: Element | undefined): Action | null {

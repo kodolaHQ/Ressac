@@ -18,14 +18,14 @@ export interface ProfileOption {
  * new one would erase its sign-ins).
  */
 export function profileOptions(spaces: Space[], profiles: ConnectionProfile[], spaceId: SpaceId | null): ProfileOption[] {
-  const regle = spaces.find((e) => e.id === spaceId);
+  const rule = spaces.find((e) => e.id === spaceId);
   const others = spaces.filter((e) => e.id !== spaceId);
-  const clean: ProfileChoice = regle && !others.some((e) => e.profil === regle.profil) ? regle.profil : "nouveau";
+  const clean: ProfileChoice = rule && !others.some((e) => e.profil === rule.profil) ? rule.profil : "nouveau";
   const shared = profiles.flatMap((p) => {
     const names = others.filter((e) => e.profil === p.id).map((e) => e.nom);
     return names.length > 0 ? [{ valeur: p.id, libelle: `Partagé avec « ${names.join(", ")} »` }] : [];
   });
-  return [{ valeur: clean, libelle: regle ? "Son propre profil" : "Nouveau profil" }, ...shared];
+  return [{ valeur: clean, libelle: rule ? "Son propre profil" : "Nouveau profil" }, ...shared];
 }
 
 /** Deleting this space erases its sign-ins: it is the last one using a profile other than the default. */

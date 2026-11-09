@@ -16,8 +16,8 @@ const graph: ComponentDefinition = {
     titre: { genre: "texte", description: "Le titre", requis: false },
   },
 };
-const catalogue = [...BUILTIN_COMPONENTS, graph];
-const validate = (brut: unknown, r: unknown = results) => validatePlan(brut, { catalogue, resultats: r });
+const catalog = [...BUILTIN_COMPONENTS, graph];
+const validate = (raw: unknown, r: unknown = results) => validatePlan(raw, { catalogue: catalog, resultats: r });
 const figure = { composant: "chiffre", props: { valeur: "compter(tickets)", libelle: "Tickets" } };
 
 describe("validerPlan", () => {
@@ -55,22 +55,22 @@ describe("validerPlan", () => {
   });
 
   it("JSON that is not an object: ok false", () => {
-    for (const brut of [null, 3, "plan", [], { blocs: "x" }, { blocs: [] }, undefined]) {
-      const r = validate(brut);
+    for (const raw of [null, 3, "plan", [], { blocs: "x" }, { blocs: [] }, undefined]) {
+      const r = validate(raw);
       expect(r.ok).toBe(false);
       if (!r.ok) expect(r.erreurs.length).toBeGreaterThan(0);
     }
   });
 
   it("unknown component « graphique-barres »: kept", () => {
-    const inconnu = { composant: "graphique-barres", props: { donnees: "tickets" } };
-    const r = validatePlan({ blocs: [figure, inconnu] }, { catalogue: BUILTIN_COMPONENTS, resultats: results });
-    expect(r).toEqual({ ok: true, plan: { blocs: [figure, inconnu] }, ecartes: [] });
+    const unknown = { composant: "graphique-barres", props: { donnees: "tickets" } };
+    const r = validatePlan({ blocs: [figure, unknown] }, { catalogue: BUILTIN_COMPONENTS, resultats: results });
+    expect(r).toEqual({ ok: true, plan: { blocs: [figure, unknown] }, ecartes: [] });
   });
 
   it("agent component: reference, field and text validated", () => {
-    const bloc = { composant: "graphique-barres", props: { donnees: "tickets", etiquette: "titre", titre: "Par ticket" } };
-    expect(validate({ blocs: [bloc] })).toEqual({ ok: true, plan: { blocs: [bloc] }, ecartes: [] });
+    const block = { composant: "graphique-barres", props: { donnees: "tickets", etiquette: "titre", titre: "Par ticket" } };
+    expect(validate({ blocs: [block] })).toEqual({ ok: true, plan: { blocs: [block] }, ecartes: [] });
     const r = validate({ blocs: [figure, { composant: "graphique-barres", props: { donnees: "absents" } }] });
     expect(r.ok && r.ecartes).toEqual(["2. graphique-barres : donnees : chemin absent : absents"]);
   });
@@ -143,10 +143,10 @@ describe("validerPlan", () => {
   });
 
   it("figures: list of { valeur, libelle }, 6 at most", () => {
-    const un = { valeur: "compter(tickets)", libelle: "Tous" };
-    const ok = validate({ blocs: [{ composant: "chiffres", props: { chiffres: [un, { valeur: 'compter(filtrer(tickets, priorite = "haute"))', libelle: "Hautes" }] } }] });
+    const one = { valeur: "compter(tickets)", libelle: "Tous" };
+    const ok = validate({ blocs: [{ composant: "chiffres", props: { chiffres: [one, { valeur: 'compter(filtrer(tickets, priorite = "haute"))', libelle: "Hautes" }] } }] });
     expect(ok.ok).toBe(true);
-    const r = validate({ blocs: [figure, { composant: "chiffres", props: { chiffres: Array(7).fill(un) } }, { composant: "chiffres", props: { chiffres: [{ valeur: "absent", libelle: "x" }] } }] });
+    const r = validate({ blocs: [figure, { composant: "chiffres", props: { chiffres: Array(7).fill(one) } }, { composant: "chiffres", props: { chiffres: [{ valeur: "absent", libelle: "x" }] } }] });
     expect(r.ok && r.ecartes).toEqual(["2. chiffres : chiffres : 6 au plus", "3. chiffres : chiffres : chemin absent : absent"]);
   });
 
@@ -204,9 +204,9 @@ describe("validerPlan", () => {
       for (let i = 0; i < 50; i++) ref = `garder(${ref}, 3)`;
       const r = validate({ blocs: [figure, { composant: "liste", props: { elements: ref, titre: "titre" } }] });
       expect(r.ok && r.ecartes).toEqual(["2. liste : elements : référence trop longue (plus de 300 caractères)"]);
-      let court = "tickets";
-      for (let i = 0; i < 5; i++) court = `garder(${court},3)`;
-      const r2 = validate({ blocs: [figure, { composant: "liste", props: { elements: court, titre: "titre" } }] });
+      let short = "tickets";
+      for (let i = 0; i < 5; i++) short = `garder(${short},3)`;
+      const r2 = validate({ blocs: [figure, { composant: "liste", props: { elements: short, titre: "titre" } }] });
       expect(r2.ok && r2.ecartes).toEqual(["2. liste : elements : plus de 4 opérations imbriquées"]);
     });
 
@@ -226,8 +226,8 @@ describe("validerPlan", () => {
     });
 
     it("__proto__ in the props: lends no property", () => {
-      const brut = JSON.parse('{"blocs":[{"composant":"chiffre","props":{"__proto__":{"libelle":"volé"},"valeur":"compter(tickets)"}}]}');
-      const r = validate(brut);
+      const raw = JSON.parse('{"blocs":[{"composant":"chiffre","props":{"__proto__":{"libelle":"volé"},"valeur":"compter(tickets)"}}]}');
+      const r = validate(raw);
       expect(r.ok).toBe(false);
       if (!r.ok) expect(r.erreurs).toContain("1. chiffre : libelle : requise");
     });

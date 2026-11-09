@@ -56,13 +56,13 @@ describe("design copies", () => {
   });
 
   it("placeBulle: under the element, bounded to the window", () => {
-    const bornes = { x: 300, y: 50, width: 900, height: 750 };
-    expect(bubbleSlot({ x: 10, y: 20, largeur: 100, hauteur: 30 }, 1, bornes, [1200, 800])).toEqual({ x: 310, y: 106, width: 320, height: 170 });
-    expect(bubbleSlot({ x: 1000, y: 700, largeur: 50, hauteur: 30 }, 1, bornes, [1200, 800])).toEqual({ x: 880, y: 630, width: 320, height: 170 });
+    const bounds = { x: 300, y: 50, width: 900, height: 750 };
+    expect(bubbleSlot({ x: 10, y: 20, largeur: 100, hauteur: 30 }, 1, bounds, [1200, 800])).toEqual({ x: 310, y: 106, width: 320, height: 170 });
+    expect(bubbleSlot({ x: 1000, y: 700, largeur: 50, hauteur: 30 }, 1, bounds, [1200, 800])).toEqual({ x: 880, y: 630, width: 320, height: 170 });
     expect(bubbleSlot({ x: 10, y: 20, largeur: 100, hauteur: 30 }, 1, { x: 0, y: 356, width: 1200, height: 44 }, [1200, 400], { hautMin: 356, hauteur: 190 })).toEqual({ x: 10, y: 356, width: 320, height: 190 });
     // A site app: an element at the bottom of a short window stays under the 36 px bar (y 36, not 10).
     expect(bubbleSlot({ x: 10, y: 150, largeur: 50, hauteur: 20 }, 1, { x: 0, y: 36, width: 1200, height: 164 }, [1200, 200], { hautMin: 36, hauteur: 190 })).toEqual({ x: 10, y: 36, width: 320, height: 190 });
     // Zoomed 1.5: the CSS rect scaled into the window.
-    expect(bubbleSlot({ x: 100, y: 20, largeur: 100, hauteur: 30 }, 1.5, bornes, [1200, 800])).toEqual({ x: 450, y: 131, width: 320, height: 170 });
+    expect(bubbleSlot({ x: 100, y: 20, largeur: 100, hauteur: 30 }, 1.5, bounds, [1200, 800])).toEqual({ x: 450, y: 131, width: 320, height: 170 });
   });
 });

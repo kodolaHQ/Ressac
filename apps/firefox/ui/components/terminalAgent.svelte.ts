@@ -27,7 +27,7 @@ const endState = api.agent.surEtat((e) => {
 });
 let dataEnd: (() => void) | undefined;
 
-const taille = () => ({ cols: Math.max(2, terminal?.cols ?? 80), rows: Math.max(2, terminal?.rows ?? 24) });
+const size = () => ({ cols: Math.max(2, terminal?.cols ?? 80), rows: Math.max(2, terminal?.rows ?? 24) });
 
 /** The terminal is born at the first shown host (a size is needed to measure it); the window's session starts with it. */
 function create(hostName: HTMLElement): void {
@@ -41,7 +41,7 @@ function create(hostName: HTMLElement): void {
   adjustment.fit();
   terminal.onData((d) => api.agent.ecrire(d));
   dataEnd = api.agent.surDonnees((d) => terminal!.write(d));
-  api.agent.demarrer(taille());
+  api.agent.demarrer(size());
 }
 
 /**
@@ -57,9 +57,9 @@ export function attacher(hostName: HTMLElement): () => void {
     const i = hosts.lastIndexOf(hostName);
     if (i < 0) return;
     hosts.splice(i, 1);
-    const precedent = hosts.at(-1);
-    if (i === hosts.length && precedent && element) {
-      precedent.append(element);
+    const previous = hosts.at(-1);
+    if (i === hosts.length && previous && element) {
+      previous.append(element);
       adjust();
     }
   };
@@ -71,21 +71,21 @@ export function adjust(): void {
   if (!terminal || !adjustment || !hostName || hostName.clientWidth === 0 || hostName.clientHeight === 0) return;
   const before = `${terminal.cols}x${terminal.rows}`;
   adjustment.fit();
-  if (`${terminal.cols}x${terminal.rows}` !== before) api.agent.redimensionner(taille());
+  if (`${terminal.cols}x${terminal.rows}` !== before) api.agent.redimensionner(size());
 }
 
 export function focus(): void {
   terminal?.focus();
 }
 
-export function aLeFocus(): boolean {
+export function hasFocus(): boolean {
   return !!terminal?.textarea && terminal.textarea === document.activeElement;
 }
 
 /** New session (Réessayer, Relancer): the screen starts from scratch. */
 export function reset(): void {
   terminal?.reset();
-  api.agent.demarrer(taille());
+  api.agent.demarrer(size());
 }
 
 // Hot reload (development): the old module gives back its subscriptions and its terminal, otherwise the agent's

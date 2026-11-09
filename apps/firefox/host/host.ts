@@ -1,6 +1,6 @@
-import type { Noyau, TabInfo } from "../../../packages/kernel/src/index.ts";
-import type { Cadre } from "../shared/model.ts";
-import type { BuilderSelection, TailleTerminal } from "../shared/api.ts";
+import type { Kernel, TabInfo } from "../../../packages/kernel/src/index.ts";
+import type { FrameBounds } from "../shared/model.ts";
+import type { BuilderSelection, TerminalSize } from "../shared/api.ts";
 
 // The agent host: Firefox spawns it and talks JSON-RPC over stdin/stdout, one JSON message per line.
 // stdout carries only the RPC: anything else written there would corrupt it, so it goes to stderr.
@@ -20,7 +20,7 @@ const { createInterface } = await import("node:readline");
 const { appendFileSync } = await import("node:fs");
 const { stat } = await import("node:fs/promises");
 // Imported after the env is set and stdout redirected: nothing in the kernel can write to stdout at load time.
-const { ACTION_UNKNOWN: ACTION_UNKNOWN, Atelier, catalogueBlocs, loadProfiles: loadProfiles, spacePaths: spacePaths, createKernel: createKernel, defaultRunner: defaultRunner, IaLocale, readHome: readHome, readFreeLayout: readFreeLayout, lireTheme, Pacing: Pacing, contextPrefix: contextPrefix, retirerAccord, deleteData: deleteData, watchActions: watchActions } = await import("../../../packages/kernel/src/index.ts");
+const { ACTION_UNKNOWN: ACTION_UNKNOWN, Workshop, blockCatalog, loadProfiles: loadProfiles, spacePaths: spacePaths, createKernel: createKernel, defaultRunner: defaultRunner, LocalAi, readHome: readHome, readFreeLayout: readFreeLayout, readTheme, Pacing: Pacing, contextPrefix: contextPrefix, removeGrant, deleteData: deleteData, watchActions: watchActions } = await import("../../../packages/kernel/src/index.ts");
 const { SessionsAgent } = await import("../core/agent/sessions.ts");
 const { History } = await import("../core/history.ts");
 const { createRpc } = await import("../shared/rpc.ts");
@@ -31,24 +31,24 @@ const { createApplicationsHost } = await import("./applications.ts");
 const { createActionsHost } = await import("./actions.ts");
 const { ExtensionsAgent } = await import("./extensions/agent.ts");
 const { STORE_ABSENT } = await import("./extensions/amo.ts");
-const { executionWidget, executionsWidget, placerWidgets, retirerWidget, validatePlacements, toShownWidgets } = await import("./widgets.ts");
+const { executionWidget, executionsWidget, placeWidgets, removeWidget, validatePlacements, toShownWidgets } = await import("./widgets.ts");
 const { ACTION_ALREADY_RUNNING } = await import("../shared/actions.ts");
 const {
   readActionCode,
-  readActionEdition,
+  readActionEdit,
   readCode,
-  readEdition,
+  readEdit,
   saveActionCode,
-  saveActionEdition,
+  saveActionEdit,
   saveCode,
-  saveEdition,
+  saveEdit,
   workflowOpen,
   WriteQueue,
 } = await import("./workflow.ts");
 const {
-  SchemaAccord,
+  GrantSchema,
   SchemaActionSite,
-  SchemaBlocWorkflow,
+  WorkflowBlockSchema,
   DraftSchema,
   TargetSchema,
   SchemaCodeWorkflow,
@@ -67,7 +67,7 @@ if (!dataDir) {
 const root = join(dataDir, "espace");
 const paths = spacePaths(root);
 // Widgets' data, states and grants: outside the space.
-const dossierWidgets = join(dataDir, "widgets");
+const widgetsFolder = join(dataDir, "widgets");
 // Outside the agent's kernel: the history works even when the kernel does not start.
 const MEMORY_LOOP = process.env.WEBAIOS_MEMOIRE_BOUCLE === "1";
 // The pages whose text the history keeps for the agent's memory: http(s), never the machine (unless WEBAIOS_MEMOIRE_BOUCLE).
@@ -105,21 +105,21 @@ const idAction = (v: unknown): v is string => SchemaIdAction.safeParse(v).succes
 const executionAction = (v: unknown): v is string => SchemaIdExecution.safeParse(v).success;
 // A link's bound.
 const urlAction = (v: unknown): v is string => typeof v === "string" && v.length > 0 && v.length <= 8192;
-const widgetsContext = { chemins: paths, dossierWidgets };
+const widgetsContext = { chemins: paths, dossierWidgets: widgetsFolder };
 // Actions' runs, results, grants and refusals: outside the space.
-const dossierActions = join(dataDir, "actions");
-const actionsContext = { chemins: paths, dossierActions };
+const actionsFolder = join(dataDir, "actions");
+const actionsContext = { chemins: paths, dossierActions: actionsFolder };
 // One container for the agent (whatever its profile) and the apps it launches: the kernel's own default (noyau.ts:389).
-const atelier = new Atelier({ chemins: paths });
+const workshop = new Workshop({ chemins: paths });
 
-let noyau: Noyau | null = null;
+let kernel: Kernel | null = null;
 let error: string | null = null;
-let ready: Promise<Noyau | null> = Promise.resolve(null);
+let ready: Promise<Kernel | null> = Promise.resolve(null);
 let unsubscribe: (() => void) | undefined;
 let homeStop: (() => Promise<void>) | undefined;
 let accessTimer: NodeJS.Timeout | undefined;
 
-const accessState = () => ({ agent: noyau?.agent ?? "L'agent", onglets: noyau?.politique.etat() ?? {} });
+const accessState = () => ({ agent: kernel?.agent ?? "L'agent", onglets: kernel?.politique.etat() ?? {} });
 // A burst of policy changes gives one notification per 50 ms.
 const broadcastAccess = () => {
   accessTimer ??= setTimeout(() => {
@@ -130,45 +130,45 @@ const broadcastAccess = () => {
 
 // The local AI for harvests: Gemma and the decision model both run in Ollama (same
 // /v1/systemone answers). Nothing is installed here: a missing model fails with Ollama's answer.
-const ia = new IaLocale({ dossier: join(dataDir, "ia-locale"), executer: defaultRunner, modeleDecision: "pplx-decider-flash" });
+const ai = new LocalAi({ dossier: join(dataDir, "ia-locale"), executer: defaultRunner, modeleDecision: "pplx-decider-flash" });
 
 // The host is Node and cannot call Cc: in tests it writes the file, otherwise the chrome store shows the alert.
-const notifier = (n: { titre: string; texte: string }) => {
+const notify = (n: { titre: string; texte: string }) => {
   const file = process.env.WEBAIOS_TEST_NOTIFICATIONS;
   if (file) return void appendFileSync(file, JSON.stringify({ titre: n.titre, texte: n.texte }) + "\n");
   rpc.notify("accueil.notification", { titre: n.titre, texte: n.texte });
 };
 
-const lancerNoyau = (profileId: string): Promise<Noyau | null> => {
+const launchKernel = (profileId: string): Promise<Kernel | null> => {
   error = null;
   return createKernel({
     pont: bridge,
     profilId: profileId,
     racine: root,
-    dossierWidgets,
-    dossierActions,
-    ia,
+    dossierWidgets: widgetsFolder,
+    dossierActions: actionsFolder,
+    ia: ai,
     dossierProfilage: join(dataDir, "profilage"),
     extensions: extensions.outils(),
     sites: sites.outils,
-    atelier,
+    atelier: workshop,
     applications: apps.gestionnaire,
     workflowOuvert: (f) => workflowOpen(actives.get(f), selections.get(f)),
     // Widgets and actions wrote something, or a grant changed: the page reads again.
     surChange: () => rpc.notify("accueil.change"),
-    notifier,
+    notifier: notify,
     ...(process.env.WEBAIOS_TEST_ADRESSES_LOCALES === "1" ? { adressesLocales: true } : {}),
     ...(duckduckgo ? { urlRecherche: duckduckgo } : {}),
   }).then(
     (n) => {
-      noyau = n;
-      const offPolitique = n.politique.surChange(broadcastAccess);
+      kernel = n;
+      const offPolicy = n.politique.surChange(broadcastAccess);
       const offDirect = n.surDirect((e) => rpc.notify("workflow.direct", e));
       const offActions = n.actions.surDirect((e) => {
         rpc.notify("actions.direct", e);
         actions.directVu(e);
       });
-      unsubscribe = () => (offPolitique(), offDirect(), offActions());
+      unsubscribe = () => (offPolicy(), offDirect(), offActions());
       // A widget added or rewritten, a placement made in another window, a theme: the page reads again.
       // Unguarded, a watch failure would reject `pret` and every host method with it.
       try {
@@ -189,8 +189,8 @@ const lancerNoyau = (profileId: string): Promise<Noyau | null> => {
   );
 };
 
-const stopKernel = async (n: Noyau | null) => {
-  noyau = null;
+const stopKernel = async (n: Kernel | null) => {
+  kernel = null;
   unsubscribe?.();
   unsubscribe = undefined;
   await homeStop?.();
@@ -211,7 +211,7 @@ let profile: string | null = null;
 const changeProfile = (agentProfile: string) => {
   const relaunch = profile !== null;
   profile = agentProfile;
-  ready = ready.then(stopKernel).then(() => lancerNoyau(agentProfile));
+  ready = ready.then(stopKernel).then(() => launchKernel(agentProfile));
   if (relaunch) void sessions.relancerTout();
   return start();
 };
@@ -231,7 +231,7 @@ const stop = () =>
     await design.arreter();
     await actionsStop?.();
     await stopKernel(await ready);
-    await ia.fermer().catch(() => {});
+    await ai.fermer().catch(() => {});
     clearInterval(purge);
     hist?.fermer();
     await appsStopped;
@@ -246,11 +246,11 @@ const sessions = new SessionsAgent({
   // The user talks to the agent from the tab on screen: it is given to the agent.
   surEnvoi: (f) => {
     rpc.request<TabInfo | null>("ongletActif", [f]).then(
-      (o) => o && noyau?.politique.interactionUtilisateur(o),
+      (o) => o && kernel?.politique.interactionUtilisateur(o),
       () => {},
     );
   },
-  envoyer: (win, canal, v) => rpc.notify(canal === "donnees" ? "agent.donnees" : "agent.etat", canal === "donnees" ? { fenetre: win, d: v } : { fenetre: win, e: v }),
+  envoyer: (win, channel, v) => rpc.notify(channel === "donnees" ? "agent.donnees" : "agent.etat", channel === "donnees" ? { fenetre: win, d: v } : { fenetre: win, e: v }),
 });
 
 const rpc = createRpc({
@@ -262,7 +262,7 @@ const rpc = createRpc({
       return changeProfile(p.profilAgent);
     },
     changerProfil: (p: { profilAgent: string }) => changeProfile(p.profilAgent),
-    "agent.demarrer": (p: { fenetre: string; taille: TailleTerminal }) => sessions.demarrer(p.fenetre, p.taille),
+    "agent.demarrer": (p: { fenetre: string; taille: TerminalSize }) => sessions.demarrer(p.fenetre, p.taille),
     "agent.profils": async () => {
       // The kernel writes the default profile while it starts: the panel may ask before that.
       await ready;
@@ -291,7 +291,7 @@ const rpc = createRpc({
             }
           }),
         );
-        const [placements, theme] = await Promise.all([readFreeLayout(n.chemins), lireTheme(n.chemins)]);
+        const [placements, theme] = await Promise.all([readFreeLayout(n.chemins), readTheme(n.chemins)]);
         // An invalid theme keeps the default: it is reported, never rewritten.
         if (theme.erreur) console.warn(`[webaios] ${theme.erreur}`);
         return toShownWidgets({ etat: state, placements, theme: theme.theme, mtimes });
@@ -303,8 +303,8 @@ const rpc = createRpc({
     "accueil.placer": async (p: { placements?: unknown }) => {
       try {
         // A placement needs no kernel: the space's folders are enough.
-        const ids = (await readHome(paths, dossierWidgets)).widgets.map((w) => w.id);
-        await placerWidgets(paths, validatePlacements(p?.placements, ids));
+        const ids = (await readHome(paths, widgetsFolder)).widgets.map((w) => w.id);
+        await placeWidgets(paths, validatePlacements(p?.placements, ids));
       } catch (e) {
         console.error("[webaios] disposition non écrite :", e);
         // The UI already showed the gesture's preview: it re-reads the old layout instead of leaving it on screen.
@@ -314,11 +314,11 @@ const rpc = createRpc({
     "accueil.retirer": (p: { id?: unknown }) => {
       const id = typeof p?.id === "string" ? p.id : "";
       // The grant and the data read with the account leave with the widget (through the kernel, which also writes the grants).
-      void retirerWidget(paths, id, async (w) => {
+      void removeWidget(paths, id, async (w) => {
         const n = await ready;
         if (n) return n.refuserAccord(w);
-        await retirerAccord(dossierWidgets, w);
-        await deleteData(dossierWidgets, w);
+        await removeGrant(widgetsFolder, w);
+        await deleteData(widgetsFolder, w);
       }).then(
         () => rpc.notify("accueil.change"),
         (e) => console.error(`[webaios] widget ${id} non retiré :`, e),
@@ -349,24 +349,24 @@ const rpc = createRpc({
       await n.recolterMaintenant(p.id).catch((e) => console.error(`[webaios] récolte du widget ${p.id} :`, e));
     },
     // Read without the kernel, like the home page: the executions, outside the space.
-    "accueil.executions": (p: { id?: unknown }) => executionsWidget(dossierWidgets, typeof p?.id === "string" ? p.id : ""),
+    "accueil.executions": (p: { id?: unknown }) => executionsWidget(widgetsFolder, typeof p?.id === "string" ? p.id : ""),
     "accueil.execution": (p: { id?: unknown; execution?: unknown }) =>
-      executionWidget(dossierWidgets, typeof p?.id === "string" ? p.id : "", typeof p?.execution === "string" ? p.execution : ""),
+      executionWidget(widgetsFolder, typeof p?.id === "string" ? p.id : "", typeof p?.execution === "string" ? p.execution : ""),
     // The workflow builder: inputs checked with the shared
     // schemas, a bad one answered with ARGUMENT_INVALIDE's shape. The private-space refusal of an action is the chrome's (api.ts).
-    "workflow.catalogue": () => catalogueBlocs(),
+    "workflow.catalogue": () => blockCatalog(),
     "workflow.lire": (p: { cible?: unknown }) => {
       const target = TargetSchema.safeParse(p?.cible);
       if (!target.success) return null;
-      return target.data.type === "widget" ? readEdition(widgetsContext, target.data.id) : readActionEdition(actionsContext, target.data.id);
+      return target.data.type === "widget" ? readEdit(widgetsContext, target.data.id) : readActionEdit(actionsContext, target.data.id);
     },
     "workflow.enregistrer": (p: { cible?: unknown; brouillon?: unknown }) => {
       const target = TargetSchema.safeParse(p?.cible);
       const draft = DraftSchema.safeParse(p?.brouillon);
       if (!target.success || !draft.success) return { ...INVALID_ARGUMENT, avertissements: [] };
       const id = target.data.id;
-      if (target.data.type === "action") return writes.inSeries(`action:${id}`, () => saveActionEdition(actionsContext, id, draft.data));
-      return writes.inSeries(id, () => saveEdition(widgetsContext, id, draft.data));
+      if (target.data.type === "action") return writes.inSeries(`action:${id}`, () => saveActionEdit(actionsContext, id, draft.data));
+      return writes.inSeries(id, () => saveEdit(widgetsContext, id, draft.data));
     },
     "workflow.lireCode": (p: { cible?: unknown; nom?: unknown }) => {
       const target = TargetSchema.safeParse(p?.cible);
@@ -386,13 +386,13 @@ const rpc = createRpc({
     "workflow.rejouer": async (p: { cible?: unknown; execution?: unknown; bloc?: unknown }) => {
       const target = TargetSchema.safeParse(p?.cible);
       const execution = SchemaIdExecution.safeParse(p?.execution);
-      const bloc = SchemaBlocWorkflow.safeParse(p?.bloc);
-      if (!target.success || !execution.success || !bloc.success) return INVALID_ARGUMENT;
+      const block = WorkflowBlockSchema.safeParse(p?.bloc);
+      if (!target.success || !execution.success || !block.success) return INVALID_ARGUMENT;
       const n = await ready;
       if (!n) return { ok: false as const, erreur: AGENT_STOPPED_MESSAGE };
-      if (target.data.type === "widget") return n.rejouer(target.data.id, execution.data, bloc.data);
+      if (target.data.type === "widget") return n.rejouer(target.data.id, execution.data, block.data);
       // A trial: its result shows in the builder's preview, never as the last result.
-      const l = n.actions.rejouer(target.data.id, execution.data, bloc.data);
+      const l = n.actions.rejouer(target.data.id, execution.data, block.data);
       if (l.deja) return { ok: false as const, erreur: ACTION_ALREADY_RUNNING };
       const r = await l.fin;
       return r.statut !== "invalide" && r.execution !== undefined
@@ -454,7 +454,7 @@ const rpc = createRpc({
     "actions.imagePermise": (p: { id?: unknown; execution?: unknown; url?: unknown }) =>
       idAction(p?.id) && executionAction(p.execution) && urlAction(p.url) ? actions.imagePermise(p.id, p.execution, p.url) : false,
     "actions.accorder": (p: unknown) => {
-      const r = SchemaAccord.safeParse(p);
+      const r = GrantSchema.safeParse(p);
       return r.success && idAction(r.data.id) ? actions.accorder(r.data) : { ok: false, erreur: "Demande d'accord invalide" };
     },
     "actions.refuserAccord": (p: { id?: unknown }) => (idAction(p?.id) ? actions.refuserAccord(p.id) : undefined),
@@ -468,7 +468,7 @@ const rpc = createRpc({
       if (a.success && typeof p?.fenetre === "string") return sites.agir(a.data.id, a.data.action, p.fenetre);
     },
     "sites.memoireAccueil": (p: { id?: unknown }) => (typeof p?.id === "string" ? sites.memoireAccueil(p.id) : null),
-    "sites.noter": (p: { id?: unknown; cadre?: Cadre; favicon?: unknown }) => {
+    "sites.noter": (p: { id?: unknown; cadre?: FrameBounds; favicon?: unknown }) => {
       if (typeof p?.id === "string") sites.noter(p.id, { ...(p.cadre ? { cadre: p.cadre } : {}), ...(typeof p.favicon === "string" ? { favicon: p.favicon } : {}) });
     },
     "sites.memoireOp": (p: unknown) => sites.memoireOp(p),
@@ -502,20 +502,20 @@ const rpc = createRpc({
       }
     },
     "agent.ecrire": (p: { fenetre: string; d: string }) => sessions.ecrire(p.fenetre, p.d),
-    "agent.redimensionner": (p: { fenetre: string; taille: TailleTerminal }) => sessions.redimensionner(p.fenetre, p.taille),
+    "agent.redimensionner": (p: { fenetre: string; taille: TerminalSize }) => sessions.redimensionner(p.fenetre, p.taille),
     "agent.fermerFenetre": (p: { fenetre: string }) => {
       selections.delete(p.fenetre);
       actives.delete(p.fenetre);
       void sessions.fermerFenetre(p.fenetre);
     },
     prives: (p: { prives: string[]; actifPrive: boolean }) => bridge.setPrivate(p),
-    "politique.navigue": (p: { id: string; url: string }) => noyau?.politique.ongletNavigue(p.id, p.url),
-    "politique.ferme": (p: { id: string }) => noyau?.politique.ongletFerme(p.id),
-    "politique.couper": (p: { id: string; droit?: Parameters<Noyau["politique"]["couper"]>[1] }) => noyau?.politique.couper(p.id, p.droit),
-    "agent.envoi": (p: { onglet: TabInfo | null }) => void (p.onglet && noyau?.politique.interactionUtilisateur(p.onglet)),
+    "politique.navigue": (p: { id: string; url: string }) => kernel?.politique.ongletNavigue(p.id, p.url),
+    "politique.ferme": (p: { id: string }) => kernel?.politique.ongletFerme(p.id),
+    "politique.couper": (p: { id: string; droit?: Parameters<Kernel["politique"]["couper"]>[1] }) => kernel?.politique.couper(p.id, p.droit),
+    "agent.envoi": (p: { onglet: TabInfo | null }) => void (p.onglet && kernel?.politique.interactionUtilisateur(p.onglet)),
     // Opening the panel on a tab gives it to the agent and pre-fills the context, without sending it.
     "agent.panneauOuvert": (p: { fenetre: string; onglet: TabInfo }) => {
-      noyau?.politique.interactionUtilisateur(p.onglet);
+      kernel?.politique.interactionUtilisateur(p.onglet);
       if (sessions.active(p.fenetre)) sessions.ecrire(p.fenetre, contextPrefix(p.onglet.titre, p.onglet.url));
     },
     // Sent by the chrome on each host start, with the about:addons changes seen while no host ran (applied first:
@@ -535,7 +535,7 @@ const rpc = createRpc({
     // ongletLisibleParAgent): asked of the policy here, which knows an agent-opened tab before Firefox hears of it.
     "extensions.console": (p: { addonId?: unknown; m?: unknown; onglet?: { ongletId?: unknown; url?: unknown } | null }) => {
       const o = p?.onglet;
-      const readable = !!o && typeof o.ongletId === "string" && typeof o.url === "string" && noyau?.politique.peutLire({ id: o.ongletId, url: o.url, titre: "", espace: "" }) === true;
+      const readable = !!o && typeof o.ongletId === "string" && typeof o.url === "string" && kernel?.politique.peutLire({ id: o.ongletId, url: o.url, titre: "", espace: "" }) === true;
       extensions.noterConsole(p?.addonId, p?.m, o ? { lisible: readable } : null);
     },
     "extensions.plantage": (p: { addonId?: unknown; le?: unknown }) => extensions.plantage(p?.addonId, p?.le),
@@ -585,7 +585,7 @@ const sites = createSites({
   dataDir,
   adressesLocales: process.env.WEBAIOS_TEST_ADRESSES_LOCALES === "1",
   chrome: {
-    ouvrir: (s, cadre, tweaks) => rpc.request("sites.ouvrir", [s, cadre, tweaks]),
+    ouvrir: (s, frame, tweaks) => rpc.request("sites.ouvrir", [s, frame, tweaks]),
     fermer: (id) => rpc.request("sites.fermer", [id]),
     effacer: (id) => rpc.request("sites.effacer", [id]),
     mettreAJour: (s, tweaks) => rpc.request("sites.mettreAJour", [s, tweaks]),
@@ -598,7 +598,7 @@ const sites = createSites({
     accueilChange: (id) => rpc.notify("sites.accueilChange", [id]),
     cherche: (id, yes) => rpc.notify("sites.cherche", [id, yes]),
     avis: (id, a) => rpc.notify("sites.avis", [id, a]),
-    adresseChangee: (id, domains, depart, to) => rpc.notify("sites.adresseChangee", [id, domains, depart, to]),
+    adresseChangee: (id, domains, start, to) => rpc.notify("sites.adresseChangee", [id, domains, start, to]),
   },
   // The public read (a throwaway container, no profile): never the app's cookies nor the user's.
   lireLiens: async (page, signal) =>
@@ -612,10 +612,10 @@ const sites = createSites({
   notifierMemoire: (id, message) => rpc.notify("sites.memoire", { id, message }),
   // The agent loses its dev tools on the closed window; the app's grant holds for the conversation, until « Supprimer »
   // (an app made again under the same id asks for its card again).
-  surFermee: (id) => noyau?.politique.ongletFerme(`site:${id}`),
+  surFermee: (id) => kernel?.politique.ongletFerme(`site:${id}`),
   // Its remarks, review repository and comments go with it.
   surSupprimee: (id) => {
-    noyau?.politique.retirerLectureSite(id);
+    kernel?.politique.retirerLectureSite(id);
     design.siteDeleted(id);
   },
   // A snapshot taken between the start and the end of the deletion is erased again (an app made again starts afresh).
@@ -625,12 +625,12 @@ const sites = createSites({
 const apps = createApplicationsHost({
   chemins: paths,
   dataDir,
-  atelier,
+  atelier: workshop,
   chrome: {
-    ouvrir: (a, cadre) => rpc.request("apps.ouvrir", [a, cadre]),
-    fermer: (dossier) => rpc.request("apps.fermer", [dossier]),
-    montrer: (dossier) => rpc.request("apps.montrer", [dossier]),
-    effacer: (dossier) => rpc.request("apps.effacer", [dossier]),
+    ouvrir: (a, frame) => rpc.request("apps.ouvrir", [a, frame]),
+    fermer: (folder) => rpc.request("apps.fermer", [folder]),
+    montrer: (folder) => rpc.request("apps.montrer", [folder]),
+    effacer: (folder) => rpc.request("apps.effacer", [folder]),
   },
   // The tab is given to the agent when the text is written, then the panel opens.
   deboguer: (f, text, access) => {
@@ -640,12 +640,12 @@ const apps = createApplicationsHost({
       access &&
         (() => {
           const tab = access();
-          if (tab) noyau?.politique.interactionUtilisateur(tab);
+          if (tab) kernel?.politique.interactionUtilisateur(tab);
         }),
     );
     rpc.notify("design.donnerAgent", [f]);
   },
-  politique: () => noyau?.politique ?? null,
+  politique: () => kernel?.politique ?? null,
   // The Applications page reads the list again; design mode too (the running apps' ports may have changed); the review
   // takes a new app's first snapshot.
   diffuser: () => {
@@ -664,11 +664,11 @@ const design = createDesignHost({
   applis: () => apps.gestionnaire.liste(),
   preRemplir: (f, t) => sessions.preRemplir(f, t),
   chrome: { fenetreAgent: () => rpc.request("design.fenetreAgent"), donnerAgent: (f) => rpc.notify("design.donnerAgent", [f]) },
-  notifier,
+  notifier: notify,
   diffuser: () => (rpc.notify("externes.change"), rpc.notify("design.change")),
 });
 // Actions: the kernel and disk half; the chrome keeps the window state (private spaces, tabs, pace of links).
-const actions = createActionsHost({ chemins: paths, dossierActions, noyau: () => noyau, surChange: () => rpc.notify("actions.change") });
+const actions = createActionsHost({ chemins: paths, dossierActions: actionsFolder, noyau: () => kernel, surChange: () => rpc.notify("actions.change") });
 // The actions and components folders, watched outside the kernel: the page lists even without it.
 let actionsStop: (() => Promise<void>) | undefined;
 try {

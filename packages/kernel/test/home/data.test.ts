@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 import { mkdir, readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { writeData, writeWidgetState, readData, readWidgetState, changeWidgetState, deleteData } from "../../src/home/data.js";
-import { writeRun, writeMemory, listerExecutions, readMemory } from "../../src/index.js";
+import { writeRun, writeMemory, listRuns, readMemory } from "../../src/index.js";
 import { tempFolder } from "../helpers/temp.js";
 
 test("atomic write of the data and the state; default state when etat.json is missing or damaged", async () => {
@@ -25,10 +25,10 @@ test("atomic write of the data and the state; default state when etat.json is mi
 
 test("donnees.json is limited to 2 MB", async () => {
   const d = await tempFolder();
-  const gros = { t: "x".repeat(2 * 1024 * 1024) };
-  await expect(writeData(d, "w", gros)).rejects.toThrow("2 Mo");
+  const big = { t: "x".repeat(2 * 1024 * 1024) };
+  await expect(writeData(d, "w", big)).rejects.toThrow("2 Mo");
   await mkdir(join(d, "w"), { recursive: true });
-  await writeFile(join(d, "w", "donnees.json"), JSON.stringify(gros));
+  await writeFile(join(d, "w", "donnees.json"), JSON.stringify(big));
   expect(await readData(d, "w")).toBeNull();
 });
 
@@ -45,7 +45,7 @@ test("supprimerDonnees also erases the runs and the memory, and keeps etat.json"
   expect((await readdir(join(d, "w"))).sort()).toEqual(["etat.json"]);
   expect(await readData(d, "w")).toBeNull();
   expect(await readMemory(join(d, "w"))).toEqual({});
-  expect(await listerExecutions(join(d, "w"))).toEqual([]);
+  expect(await listRuns(join(d, "w"))).toEqual([]);
 });
 
 test("ecrireEtatWidget keeps the hours tracking when the written state has none, and replaces it when it has one", async () => {

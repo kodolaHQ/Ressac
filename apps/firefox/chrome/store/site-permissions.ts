@@ -1,4 +1,4 @@
-import type { Decision, WindowId, TabId, ProfileId, Issue, Permission } from "../../shared/model";
+import type { Decision, WindowId, TabId, ProfileId, Outcome, Permission } from "../../shared/model";
 import { DEFAULT_PROFILE } from "../../shared/model";
 
 export type SitePermission = Permission | "partage-ecran" | "drm" | "midi";
@@ -84,13 +84,13 @@ const defaultFiles: Files = {
 export function createSitePermissions(o: {
   dataDir: string;
   profiles: () => ProfileId[];
-  ask: (d: { ongletId: TabId | null; fenetreId: WindowId | null; origine: string; permissions: SitePermission[]; lien?: string }, signal?: AbortSignal) => Promise<Issue>;
+  ask: (d: { ongletId: TabId | null; fenetreId: WindowId | null; origine: string; permissions: SitePermission[]; lien?: string }, signal?: AbortSignal) => Promise<Outcome>;
   firefox: { set(profile: ProfileId, origin: string, p: SitePermission, d: Decision): void; remove(profile: ProfileId | null, origin: string | null): void };
   files?: Files;
 }): SitePermissions {
   const files = o.files ?? defaultFiles;
   const memo = new Map<ProfileId, Record<string, Decision>>();
-  const pending = new Map<string, Promise<Issue>>();
+  const pending = new Map<string, Promise<Outcome>>();
   let writes: Promise<void> = Promise.resolve();
   // A mirror failure (e.g. a hand-edited origin Firefox cannot parse) skips that entry, never the whole store.
   const mirror = (fn: () => void) => {

@@ -81,7 +81,7 @@ const terminalFocused = async () =>
   (await inUi<boolean>(m, "return !!doc.activeElement?.classList.contains('xterm-helper-textarea')", [], "agent"));
 const agentTabSelected = () => inUi<string | null>(m, "return doc.querySelector('[data-testid=\"onglet-agent\"]')?.getAttribute('aria-selected') ?? null");
 const waitAgentTab = () => waitUi(m, "return doc.querySelector('[data-testid=\"onglet-agent\"]')?.getAttribute('aria-selected') === 'true'");
-const blocTab = () => click(m, '.onglets-droite [role="tab"]', { text: "Bloc" });
+const blockTab = () => click(m, '.onglets-droite [role="tab"]', { text: "Bloc" });
 const count = (testid: string) => inUi<number>(m, `return doc.querySelectorAll('[data-testid="${testid}"]').length`);
 const waitCount = (testid: string, n: number) => waitUi(m, `return doc.querySelectorAll('[data-testid="${testid}"]').length === arguments[0]`, [n]);
 async function typeInTerminal(text: string): Promise<void> {
@@ -169,7 +169,7 @@ describe("the builder's Agent tab", () => {
     await shown();
     await terminalShows("faux agent prêt>");
     // Back to the Bloc tab, then ✦: the Agent tab again, the panel still open.
-    await blocTab();
+    await blockTab();
     expect(await agentTabSelected()).toBe("false");
     await click(m, '[data-testid="bouton-agent"]');
     await waitAgentTab();
@@ -221,7 +221,7 @@ describe("the builder's Agent tab", () => {
     await shown();
     await typeInTerminal("un");
     await terminalShows("reçu: un");
-    await blocTab();
+    await blockTab();
     expect(await agentTabSelected()).toBe("false");
     await click(m, '[data-testid="onglet-agent"]');
     await waitAgentTab();

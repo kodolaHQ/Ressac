@@ -9,12 +9,12 @@ import { definition as iaTrier } from "./ia-trier.js";
 import { definition as iaRediger } from "./ai-write.js";
 import { definition as code } from "./code.js";
 import { definition as sortie } from "./sortie.js";
-import type { DefinitionBloc } from "./common.js";
+import type { BlockDefinition } from "./common.js";
 
-export type { DefinitionBloc } from "./common.js";
+export type { BlockDefinition } from "./common.js";
 
 /** The block types known to the engine, by type. The container has one run module per type. */
-export const BLOCK_REGISTRY: ReadonlyMap<string, DefinitionBloc> = new Map(
+export const BLOCK_REGISTRY: ReadonlyMap<string, BlockDefinition> = new Map(
   [sourcePage, sourceFlux, sourceRecuperer, webChercher, listeNouveaux, listeDedoublonner, listeGarder, iaTrier, iaRediger, code, sortie].map(
     (d) => [d.type, d] as const,
   ),

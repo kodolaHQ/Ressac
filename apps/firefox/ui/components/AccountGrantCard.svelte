@@ -7,7 +7,7 @@
     domaines: domains,
     publiques: publics,
     profilsPourAccord: profilesForGrant,
-    autoriser,
+    autoriser: allow,
     fermer: close,
   }: {
     /** What asks for the grant: a home widget or an action. */
@@ -59,7 +59,7 @@
     {/if}
     <div class="boutons">
       <button onclick={close}>Annuler</button>
-      <button class="principal" disabled={!chosen} onclick={() => chosen && autoriser(chosen)}>Autoriser</button>
+      <button class="principal" disabled={!chosen} onclick={() => chosen && allow(chosen)}>Autoriser</button>
     </div>
   </div>
 </div>

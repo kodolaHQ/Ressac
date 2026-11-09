@@ -5,12 +5,12 @@ test("SessionAgent: echo via /bin/cat and end", async () => {
   const s = SessionAgent.demarrer(["/bin/cat"], { cols: 80, rows: 24 });
   expect(s.active).toBe(true);
   let received = "";
-  const vu = new Promise<void>((ok) => s.surDonnees((d) => { received += d; if (received.includes("bonjour")) ok(); }));
+  const seen = new Promise<void>((ok) => s.surDonnees((d) => { received += d; if (received.includes("bonjour")) ok(); }));
   s.ecrire("bonjour\r");
-  await vu;
-  const fin = new Promise<number>((ok) => s.surFin(ok));
+  await seen;
+  const end = new Promise<number>((ok) => s.surFin(ok));
   s.arreter();
-  await fin;
+  await end;
   expect(s.active).toBe(false);
 });
 
@@ -26,13 +26,13 @@ test("unsubscribing cuts the callbacks", async () => {
 });
 
 test("arreter also notifies the container (arreterDistant), only once", async () => {
-  let distants = 0;
-  const s = SessionAgent.demarrer(["/bin/cat"], { cols: 80, rows: 24, arreterDistant: () => void distants++ });
-  const fin = new Promise<number>((ok) => s.surFin(ok));
+  let remotes = 0;
+  const s = SessionAgent.demarrer(["/bin/cat"], { cols: 80, rows: 24, arreterDistant: () => void remotes++ });
+  const end = new Promise<number>((ok) => s.surFin(ok));
   s.arreter();
-  await fin;
+  await end;
   s.arreter();
-  expect(distants).toBe(1);
+  expect(remotes).toBe(1);
 });
 
 test("arreter hands back control once the agent is stopped in the container (⌘Q leaves none running)", async () => {

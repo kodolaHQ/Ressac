@@ -5,9 +5,9 @@ import { join } from "node:path";
 import { tempFolder } from "../helpers/temp.js";
 import { implicitWorkflow } from "../../src/workflows/validate.js";
 import { pathToFileURL } from "node:url";
-import { ENGINE, bloc, chain, lancer as lancerWorkflow, sortie, sentWorkflow } from "../helpers/engine.js";
+import { ENGINE, block, chain, launch as lancerWorkflow, output, sentWorkflow } from "../helpers/engine.js";
 
-const { BLOCS_LIVRES, LIMITE_GLOBALE_MS: GLOBAL_LIMIT_MS, echeanceDe: deadlineOf, executerWorkflow } = await import(pathToFileURL(join(ENGINE, "interpreteur.mjs")).href);
+const { BLOCS_LIVRES: SHIPPED_BLOCKS, LIMITE_GLOBALE_MS: GLOBAL_LIMIT_MS, echeanceDe: deadlineOf, executerWorkflow: runWorkflow } = await import(pathToFileURL(join(ENGINE, "interpreteur.mjs")).href);
 
 const SCRIPT = join(import.meta.dirname, "..", "..", "docker", "moteur", "recolteur.mjs");
 
@@ -15,23 +15,23 @@ type Call = { t: "appel"; n: number; f: string; a: any };
 type Responder = (call: Call) => Promise<{ ok: unknown } | { erreur: string }> | { ok: unknown } | { erreur: string };
 
 /** A widget that has only `recolte.mjs` (like the user's Gmail), launched the way the kernel does it. */
-async function lancer(code: string, reply: Responder = () => ({ ok: null }), config: unknown = {}) {
-  const dossier = await tempFolder();
-  await writeFile(join(dossier, "recolte.mjs"), code);
-  const child = spawn("node", [SCRIPT, dossier], { stdio: ["pipe", "pipe", "pipe"] });
+async function launch(code: string, reply: Responder = () => ({ ok: null }), config: unknown = {}) {
+  const folder = await tempFolder();
+  await writeFile(join(folder, "recolte.mjs"), code);
+  const child = spawn("node", [SCRIPT, folder], { stdio: ["pipe", "pipe", "pipe"] });
   let stderr = "";
   child.stderr.on("data", (d) => (stderr += d));
   const lignes: any[] = [];
   const calls: Call[] = [];
-  let tampon = "";
+  let buffer = "";
   const finished = new Promise<void>((ok) => child.on("close", () => ok()));
   child.stdout.on("data", (d) => {
-    tampon += d;
+    buffer += d;
     let i;
-    while ((i = tampon.indexOf("\n")) >= 0) {
-      const ligne = tampon.slice(0, i);
-      tampon = tampon.slice(i + 1);
-      const m = JSON.parse(ligne);
+    while ((i = buffer.indexOf("\n")) >= 0) {
+      const line = buffer.slice(0, i);
+      buffer = buffer.slice(i + 1);
+      const m = JSON.parse(line);
       lignes.push(m);
       if (m.t === "appel") {
         calls.push(m);
@@ -49,7 +49,7 @@ async function lancer(code: string, reply: Responder = () => ({ ok: null }), con
 
 describe("recolteur (implicit workflow of a lone recolte.mjs)", () => {
   it("a recolte.mjs that returns data produces { t: fin }", async () => {
-    const r = await lancer(
+    const r = await launch(
       `export default async (w) => ({ cfg: w.config, prec: w.precedent, quand: w.maintenant });`,
       undefined,
       { a: 1 },
@@ -61,7 +61,7 @@ describe("recolteur (implicit workflow of a lone recolte.mjs)", () => {
   });
 
   it("lirePage and kev go through numbered calls and receive the response", async () => {
-    const r = await lancer(
+    const r = await launch(
       `export default async (w) => {
         const p = await w.lirePage("https://a.fr/", { compte: true });
         const k = await w.kev("etat", { q: { type: "noul" } });
@@ -80,17 +80,17 @@ describe("recolteur (implicit workflow of a lone recolte.mjs)", () => {
   });
 
   it("a widget exception gives { t: echec } with the message", async () => {
-    const r = await lancer(`export default async () => { throw new Error("boum"); };`);
+    const r = await launch(`export default async () => { throw new Error("boum"); };`);
     expect(r.terminal).toEqual({ t: "echec", erreur: expect.stringContaining("boum") });
   });
 
   it("a result that is not JSON gives echec", async () => {
-    const r = await lancer(`export default async () => () => 1;`);
+    const r = await launch(`export default async () => () => 1;`);
     expect(r.terminal.t).toBe("echec");
   });
 
   it("a kernel { erreur } response becomes an exception in the widget", async () => {
-    const r = await lancer(
+    const r = await launch(
       `export default async (w) => { try { await w.recuperer("https://x.fr/"); } catch (e) { return { attrape: e.message }; } };`,
       () => ({ erreur: "domaine refusé" }),
     );
@@ -103,7 +103,7 @@ describe("recolteur (implicit workflow of a lone recolte.mjs)", () => {
       <item><title>Deux</title><link>https://a.fr/2</link></item></channel></rss>`;
     const atom = `<feed xmlns="http://www.w3.org/2005/Atom"><title>Atome</title>
       <entry><title>Un</title><link rel="alternate" href="https://b.fr/1"/><updated>2026-10-27T08:00:00Z</updated><summary><![CDATA[Le <i>résumé</i>]]></summary></entry></feed>`;
-    const r = await lancer(
+    const r = await launch(
       `export default async (w) => ({ rss: await w.lireFlux("https://a.fr/rss"), atom: await w.lireFlux("https://b.fr/atom") });`,
       (a) => {
         expect(a.f).toBe("recuperer");
@@ -122,18 +122,18 @@ describe("recolteur (implicit workflow of a lone recolte.mjs)", () => {
   });
 
   it("trier asks one noul question per element with the element in state, 8 at a time at most, and filters by threshold", async () => {
-    let enCours = 0;
+    let running = 0;
     let max = 0;
-    const r = await lancer(
+    const r = await launch(
       `export default async (w) => {
         const els = Array.from({ length: 20 }, (_, i) => ({ id: i, t: "el" + i }));
         return await w.trier(els, { question: "intéressant ?", texte: (e) => e.t, seuil: 0.5 });
       };`,
       async (a) => {
-        enCours++;
-        max = Math.max(max, enCours);
+        running++;
+        max = Math.max(max, running);
         await new Promise((ok) => setTimeout(ok, 15));
-        enCours--;
+        running--;
         const i = Number(a.a.state.slice(2));
         return { ok: { q: { type: "noul", noul: i / 20 } } };
       },
@@ -150,7 +150,7 @@ describe("recolteur (implicit workflow of a lone recolte.mjs)", () => {
   });
 
   it("a response over 4 MB rejects the call concerned with a clear error", async () => {
-    const r = await lancer(
+    const r = await launch(
       `export default async (w) => { try { await w.recuperer("https://x.fr/"); } catch (e) { return { attrape: e.message }; } };`,
       () => ({ ok: "x".repeat(4 * 1024 * 1024 + 10) }),
     );
@@ -158,7 +158,7 @@ describe("recolteur (implicit workflow of a lone recolte.mjs)", () => {
   });
 
   it("log written on stderr, never on stdout", async () => {
-    const r = await lancer(`export default async (w) => { w.journal("bonjour", { a: 1 }); console.log("direct"); return 1; };`);
+    const r = await launch(`export default async (w) => { w.journal("bonjour", { a: 1 }); console.log("direct"); return 1; };`);
     expect(r.stderr).toContain("bonjour");
     expect(r.stderr).toContain("direct");
     // stdout carries only the protocol: the implicit block's traces, the memory, the end.
@@ -172,13 +172,13 @@ describe("recolteur: duration limit (limiteMs)", () => {
   it("limiteMs 1000: no more element launched after 1 s", async () => {
     // Fake clock: the deadline of the debut line received at 0, each element lasts 300 ms, two at a time.
     let now = 0;
-    const lances: number[] = [];
+    const launched: number[] = [];
     const traces: any[] = [];
-    await executerWorkflow({
+    await runWorkflow({
       workflow: sentWorkflow(
         {
           version: 1,
-          blocs: [bloc("liste", "code", { source: "liste.mjs" }), bloc("cherche", "web.chercher", { requete: "{modele}", parElement: true }), sortie],
+          blocs: [block("liste", "code", { source: "liste.mjs" }), block("cherche", "web.chercher", { requete: "{modele}", parElement: true }), output],
           liens: chain("liste", "cherche", "sortie"),
         },
         { web: true, dureeMaxMinutes: 1, proprietaire: "widget" as const, saisie: false },
@@ -190,15 +190,15 @@ describe("recolteur: duration limit (limiteMs)", () => {
       echeance: deadlineOf({ t: "debut", limiteMs: 1000 }, 0),
       tracer: (m: unknown) => traces.push(m),
       appeler: async () => {
-        lances.push(now);
+        launched.push(now);
         await Promise.resolve();
         now += 300;
         return [];
       },
-      blocs: { ...BLOCS_LIVRES, code: { parElement: "non", executer: async () => ({ sortie: Array.from({ length: 20 }, (_, i) => ({ modele: `m${i}` })) }) } },
+      blocs: { ...SHIPPED_BLOCKS, code: { parElement: "non", executer: async () => ({ sortie: Array.from({ length: 20 }, (_, i) => ({ modele: `m${i}` })) }) } },
     });
     // Pairs launched at 0, 600; at 1200, nothing more.
-    expect(lances).toEqual([0, 0, 600, 600]);
+    expect(launched).toEqual([0, 0, 600, 600]);
     expect(traces.find((l) => l.t === "bloc" && l.id === "cherche" && l.etape === "fin")).toMatchObject({ statut: "partiel" });
     expect(traces).toContainEqual({ t: "journal", bloc: "cherche", texte: "temps écoulé : 16 élément(s) non lancé(s)" });
   });
@@ -207,7 +207,7 @@ describe("recolteur: duration limit (limiteMs)", () => {
     const r = await lancerWorkflow({
       workflow: {
         version: 1,
-        blocs: [bloc("liste", "code", { source: "liste.mjs" }), bloc("cherche", "web.chercher", { requete: "{modele}", parElement: true }), sortie],
+        blocs: [block("liste", "code", { source: "liste.mjs" }), block("cherche", "web.chercher", { requete: "{modele}", parElement: true }), output],
         liens: chain("liste", "cherche", "sortie"),
       },
       contexte: { web: true, dureeMaxMinutes: 1, proprietaire: "widget" as const, saisie: false },

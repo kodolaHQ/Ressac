@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { constants } from "node:fs";
 import { lstat, mkdir, open, realpath, rm, unlink, writeFile } from "node:fs/promises";
 import { basename, join, posix } from "node:path";
-import { CONTAINER_PATH, sessionConfigPath, pathInContainer, dossierSessions, spacePaths, type SpacePaths } from "./paths.js";
+import { CONTAINER_PATH, sessionConfigPath, pathInContainer, sessionsFolder, spacePaths, type SpacePaths } from "./paths.js";
 import { initSpace } from "./workspace/initialize.js";
 import { readHome } from "./home/lire.js";
 import type { HomeState, WidgetState, WidgetLu } from "./home/schemas.js";
@@ -10,7 +10,7 @@ import { writeWidgetState, readData, readWidgetState, deleteData } from "./home/
 import { watchHome } from "./home/watch.js";
 import { loadProfiles, buildCommand } from "./profiles/profile.js";
 import { writeMcpConfig, writeSessionConfig } from "./profiles/config-mcp.js";
-import { Atelier, DEFAULT_DOCKER_FOLDER, type WorkshopState } from "./container/workshop.js";
+import { Workshop, DEFAULT_DOCKER_FOLDER, type WorkshopState } from "./container/workshop.js";
 import { defaultRunner, type Runner } from "./container/runner.js";
 import { SessionAgent } from "./pty/session.js";
 import { AccessPolicy } from "./access/policy.js";
@@ -19,15 +19,15 @@ import type { ExtensionsTools } from "./mcp/extensions.js";
 import { startMcpServer, generateToken, type ActionsTools, type AppsTools, type SitesTools, type WidgetsTools, type OpenWorkflow } from "./mcp/server.js";
 import type { ProfileFiles } from "./mcp/devtools.js";
 import { DevToolsTracking } from "./devtools/tracking.js";
-import type { IaLocale } from "./ai/ia-locale.js";
+import type { LocalAi } from "./ai/ia-locale.js";
 import { createAiDispatcher } from "./ai/dispatcher.js";
-import { ID_EXECUTION, listerExecutions, lireExecution, type Execution } from "./workflows/executions.js";
+import { ID_EXECUTION, listRuns, readRun, type Execution } from "./workflows/executions.js";
 import { DEFAULT_PACING } from "./workflows/executer.js";
 import { WidgetsScheduler, type DirectState, type AttemptResult } from "./widgets/scheduler.js";
 import type { NotificationWidget } from "./widgets/nouveautes.js";
 import { grantRequired } from "./widgets/harvest.js";
-import { accorder, lireAccords, retirerAccord } from "./widgets/accords.js";
-import { lireAction, lireActions, type ActionLue } from "./actions/lire.js";
+import { giveGrant, readGrants, removeGrant } from "./widgets/accords.js";
+import { readAction, readActions, type ReadAction } from "./actions/lire.js";
 import { lastResult, readResult, forgetGoneActions, deleteDataAction } from "./actions/data.js";
 import { FileActions, type ActionsState, type ActionLaunch } from "./actions/file.js";
 import { ID_ACTION } from "./actions/schemas.js";
@@ -44,7 +44,7 @@ export class WorkshopError extends Error {
 }
 
 /** A single path segment, no climbing up: a file or project folder name. */
-const segmentSur = (s: string): boolean => s !== "" && s !== "." && s !== ".." && basename(s) === s && !s.includes("\\");
+const safeSegment = (s: string): boolean => s !== "" && s !== "." && s !== ".." && basename(s) === s && !s.includes("\\");
 
 /** Same items, same numbers of times, in any order. */
 const sameLists = (a: readonly string[], b: readonly string[]): boolean => {
@@ -58,7 +58,7 @@ export const PROFILING_FOLDER = "profilage";
 
 /** `.webaios/profilage` or `projets/<dossier>/.webaios/profilage`, in segments relative to the root. */
 const profilingFolder = (parts: string[]): boolean =>
-  parts.every(segmentSur) &&
+  parts.every(safeSegment) &&
   ((parts.length === 2 && parts[0] === ".webaios" && parts[1] === PROFILING_FOLDER) ||
     (parts.length === 4 && parts[0] === "projets" && parts[2] === ".webaios" && parts[3] === PROFILING_FOLDER));
 
@@ -80,24 +80,24 @@ export function profileFiles(paths: SpacePaths, privateFolder?: string): Profile
 
   /** Descends into the segments under the real root without following a link; creates the missing folders if `creer`. */
   async function descend(parts: string[], create: boolean, shown: string): Promise<string> {
-    let courant = await realpath(paths.racine);
+    let current = await realpath(paths.racine);
     for (const part of parts) {
-      courant = join(courant, part);
-      let info = await lstat(courant).catch((e) => {
+      current = join(current, part);
+      let info = await lstat(current).catch((e) => {
         if (code(e) === "ENOENT" && create) return null;
         throw code(e) === "ENOENT" ? new Error(`Profil introuvable : ${shown}`) : denial(shown);
       });
       if (!info) {
-        await mkdir(courant).catch((e) => {
+        await mkdir(current).catch((e) => {
           if (code(e) !== "EEXIST") throw e;
         });
-        info = await lstat(courant);
+        info = await lstat(current);
       }
       if (info.isSymbolicLink() || !info.isDirectory()) throw denial(shown);
     }
     // A link placed between two checks would be seen here.
-    if ((await realpath(courant)) !== courant) throw denial(shown);
-    return courant;
+    if ((await realpath(current)) !== current) throw denial(shown);
+    return current;
   }
 
   /** Container path → segments under the root, only for a file of a profiling folder. */
@@ -106,7 +106,7 @@ export function profileFiles(paths: SpacePaths, privateFolder?: string): Profile
     const normal = posix.normalize(containerPath);
     if (!posix.isAbsolute(containerPath) || !normal.startsWith(prefix)) throw denial(containerPath);
     const parts = normal.slice(prefix.length).split("/");
-    if (parts.length < 3 || !segmentSur(parts.at(-1)!) || !profilingFolder(parts.slice(0, -1))) throw denial(containerPath);
+    if (parts.length < 3 || !safeSegment(parts.at(-1)!) || !profilingFolder(parts.slice(0, -1))) throw denial(containerPath);
     return parts;
   };
 
@@ -122,15 +122,15 @@ export function profileFiles(paths: SpacePaths, privateFolder?: string): Profile
     let file: string;
     if (containerPath.startsWith(PRIVATE_PROFILE_PREFIX)) {
       const name = containerPath.slice(PRIVATE_PROFILE_PREFIX.length);
-      if (!segmentSur(name)) throw denial(containerPath);
-      const dossier = await realPrivateFolder(false).catch((e: unknown) => {
+      if (!safeSegment(name)) throw denial(containerPath);
+      const folder = await realPrivateFolder(false).catch((e: unknown) => {
         throw code(e) === "ENOENT" ? new Error(`Profil introuvable : ${containerPath}`) : e;
       });
-      file = join(dossier, name);
+      file = join(folder, name);
     } else {
       const parts = segments(containerPath);
-      const dossier = await descend(parts.slice(0, -1), false, containerPath);
-      file = join(dossier, parts.at(-1)!);
+      const folder = await descend(parts.slice(0, -1), false, containerPath);
+      file = join(folder, parts.at(-1)!);
     }
     const info = await lstat(file).catch(() => {
       throw new Error(`Profil introuvable : ${containerPath}`);
@@ -141,18 +141,18 @@ export function profileFiles(paths: SpacePaths, privateFolder?: string): Profile
 
   return {
     async ecrireProfil(o, name, content, built) {
-      if (!segmentSur(name)) throw new Error(`Nom de profil invalide : ${name}`);
+      if (!safeSegment(name)) throw new Error(`Nom de profil invalide : ${name}`);
       if (!built) {
         // « wx »: never over an existing file or link.
         await writeFile(join(await realPrivateFolder(true), name), content, { flag: "wx", mode: 0o600 });
         return PRIVATE_PROFILE_PREFIX + name;
       }
-      if (o.application !== undefined && !segmentSur(o.application)) throw new Error(`Dossier d'application invalide : ${o.application}`);
+      if (o.application !== undefined && !safeSegment(o.application)) throw new Error(`Dossier d'application invalide : ${o.application}`);
       const parts = o.application === undefined ? [".webaios", PROFILING_FOLDER] : ["projets", o.application, ".webaios", PROFILING_FOLDER];
       const containerPath = `${CONTAINER_PATH}/${[...parts, name].join("/")}`;
-      const dossier = await descend(parts, true, containerPath);
+      const folder = await descend(parts, true, containerPath);
       // « wx »: never over an existing file or link.
-      await writeFile(join(dossier, name), content, { flag: "wx" });
+      await writeFile(join(folder, name), content, { flag: "wx" });
       return containerPath;
     },
     async lireProfil(containerPath) {
@@ -191,13 +191,13 @@ export type PageAction = {
 };
 
 /** The actions: launched on demand, in their own queue, results and grants outside the workspace. */
-export interface ActionsNoyau {
-  lister(): Promise<ActionLue[]>;
+export interface KernelActions {
+  lister(): Promise<ReadAction[]>;
   /** Launches the action (trigger « manuelle » by default); if it is running or waiting already, returns that one (`deja`). */
   lancer(id: string, o: { saisie?: string; declencheur?: Execution["declencheur"] }): ActionLaunch;
   arreter(id: string): void;
   direct(): ActionsState;
-  surDirect(rappel: (e: ActionsState) => void): () => void;
+  surDirect(callback: (e: ActionsState) => void): () => void;
   executions(id: string): Promise<ResumeExecution[]>;
   execution(id: string, execution: string): Promise<Execution | null>;
   /** The result of this run (null: the last result), without relaunching anything; null if there is none. */
@@ -207,13 +207,13 @@ export interface ActionsNoyau {
   /** Withdraws the grant and erases runs, results and memory. */
   refuserAccord(id: string): Promise<void>;
   /** Builder try: a « -essai » run that does not become the last result. */
-  rejouer(id: string, origin: string, depart: string): ActionLaunch;
+  rejouer(id: string, origin: string, start: string): ActionLaunch;
   supprimerDonnees(id: string): Promise<void>;
 }
 
-export interface Noyau {
+export interface Kernel {
   chemins: SpacePaths;
-  actions: ActionsNoyau;
+  actions: KernelActions;
   politique: AccessPolicy;
   /** Name of the agent of this kernel's profile (the one that holds the accesses). */
   agent: string;
@@ -222,7 +222,7 @@ export interface Noyau {
   ouvrirSessionAgent(o: { cols: number; rows: number; fenetre?: string }): Promise<SessionAgent>;
   /** Widgets of the home page, with their data and state (stored outside the workspace). */
   lireAccueil(): Promise<HomeState>;
-  surveillerAccueil(rappel: () => void): () => Promise<void>;
+  surveillerAccueil(callback: () => void): () => Promise<void>;
   /** Harvests this widget right away, after the harvest in progress (trigger: « manuelle » by default). */
   recolterMaintenant(id: string, trigger?: Execution["declencheur"]): Promise<WidgetState & { execution?: string }>;
   /**
@@ -230,13 +230,13 @@ export interface Noyau {
    * `origine`, in the same queue as the harvests. Writes neither data, nor memory, nor state: only the try run.
    * Exception: a grant lost during the try follows the normal withdrawal path (data erased, `accord-requis`).
    */
-  rejouer(id: string, origin: string, depart: string): Promise<AttemptResult>;
+  rejouer(id: string, origin: string, start: string): Promise<AttemptResult>;
   /** The run (or try) that is running, its blocks along the traces, and the waiting requests. */
   direct(): DirectState;
   /** Called at each change of `direct()`; returns a way to unsubscribe. */
-  surDirect(rappel: (e: DirectState) => void): () => void;
+  surDirect(callback: (e: DirectState) => void): () => void;
   /** Local AI (Kev, Gemma) given by the browser; null without it. */
-  ia: IaLocale | null;
+  ia: LocalAi | null;
   /**
    * The user authorizes the widget to read with their account, in this login profile. The browser checked beforehand that this
    * profile is not that of a private space. `compte` and `publiques` are the domains shown to the user: refused if they are no
@@ -258,7 +258,7 @@ export async function createKernel(o: {
   /** Folder containing `modeles/` and `docker/` (by default, those of the package). */
   ressources?: string;
   /** Workshop shared with the browser (which also launches the applications); otherwise, the kernel creates its own. */
-  atelier?: Atelier;
+  atelier?: Workshop;
   /** MCP tools of the applications (launch, stop, log). */
   applications?: AppsTools;
   /** Ports on which a local demo opened by the agent is « built » (by default those of the container, plagePortsConteneur). */
@@ -276,7 +276,7 @@ export async function createKernel(o: {
    */
   dossierActions: string;
   /** Local AI for the harvests; stopped with the kernel. */
-  ia?: IaLocale;
+  ia?: LocalAi;
   /** Workflow engine, mounted in the harvest container (by default `<ressources>/docker/moteur`). */
   moteur?: string;
   /** The workflow open in a window's builder (MCP tool `workflow_ouvert`). */
@@ -293,26 +293,26 @@ export async function createKernel(o: {
   extensions?: ExtensionsTools;
   /** MCP tools of the site apps (provided by the browser). */
   sites?: SitesTools;
-}): Promise<Noyau> {
+}): Promise<Kernel> {
   const paths = spacePaths(o.racine);
-  const executer = o.executer ?? defaultRunner;
+  const run = o.executer ?? defaultRunner;
   await initSpace(paths, o.ressources ? join(o.ressources, "modeles") : undefined);
 
   const profileId = o.profilId ?? "claude";
   const profile = (await loadProfiles(paths)).profils.find((p) => p.id === profileId);
   if (!profile) throw new Error(`Profil d'agent inconnu : ${profileId}`);
 
-  const politique = new AccessPolicy(o.portConstruit ? { portConstruit: o.portConstruit } : {});
-  const { dossierWidgets } = o;
-  const { dossierActions } = o;
+  const policy = new AccessPolicy(o.portConstruit ? { portConstruit: o.portConstruit } : {});
+  const { dossierWidgets: widgetsFolder } = o;
+  const { dossierActions: actionsFolder } = o;
   // An action deleted (or put in the trash) since the last launch: its data and grant go.
-  await forgetGoneActions(paths, dossierActions).catch((e) => console.error("[webaios] oubli des actions disparues :", e));
-  const ia = o.ia ?? null;
+  await forgetGoneActions(paths, actionsFolder).catch((e) => console.error("[webaios] oubli des actions disparues :", e));
+  const ai = o.ia ?? null;
   // Access specific to this kernel, closed with it: a harvest still in flight at shutdown does not relaunch Kev.
-  const aiAccess = ia?.acces() ?? null;
+  const aiAccess = ai?.acces() ?? null;
   // A single dispatcher for the widgets and the actions: an action's calls go before those of the widgets.
   const aiDispatcher = aiAccess ? createAiDispatcher(aiAccess) : null;
-  const signaler = () => {
+  const report = () => {
     try {
       o.surChange?.();
     } catch (e) {
@@ -320,20 +320,20 @@ export async function createKernel(o: {
     }
   };
   const widget = async (id: string): Promise<WidgetLu | undefined> =>
-    (await readHome(paths, dossierWidgets)).widgets.find((w) => w.id === id);
+    (await readHome(paths, widgetsFolder)).widgets.find((w) => w.id === id);
   // Read by the agent through its MCP tools. A widget whose declaration is unreadable, or that has a recorded grant, counts
   // as reading with the user's account: its data may have been harvested with it.
   const widgetsTools: WidgetsTools = {
     async lire(id) {
       const w = await widget(id);
       if (!w) return null;
-      const accord = (await lireAccords(dossierWidgets))[id] !== undefined;
-      if ("erreur" in w) return { nom: id, compte: true, donnees: await readData(dossierWidgets, id) };
-      return { nom: w.declaration.nom, compte: accord || w.declaration.sources.compte.length > 0, donnees: w.donnees };
+      const grant = (await readGrants(widgetsFolder))[id] !== undefined;
+      if ("erreur" in w) return { nom: id, compte: true, donnees: await readData(widgetsFolder, id) };
+      return { nom: w.declaration.nom, compte: grant || w.declaration.sources.compte.length > 0, donnees: w.donnees };
     },
     recolter: (id) => scheduler.recolterMaintenant(id, "agent"),
-    executions: (id) => listerExecutions(join(dossierWidgets, id)),
-    execution: (id, execution) => lireExecution(join(dossierWidgets, id), execution),
+    executions: (id) => listRuns(join(widgetsFolder, id)),
+    execution: (id, execution) => readRun(join(widgetsFolder, id), execution),
   };
   // The browser keeps its dev tools from one kernel to the next: this one takes its own, which revokes those
   // of a previous kernel (its late calls are refused, its attachments drop).
@@ -344,24 +344,24 @@ export async function createKernel(o: {
   // user's account. `actions` is defined further down: these functions are only used once the server is launched.
   const actionsTools: ActionsTools = {
     async lire(id) {
-      const a = await lireAction(paths, id);
+      const a = await readAction(paths, id);
       if (!a) return null;
-      const accord = (await lireAccords(dossierActions))[id] !== undefined;
+      const grant = (await readGrants(actionsFolder))[id] !== undefined;
       if ("erreur" in a) return { nom: id, compte: true, saisie: null };
-      return { nom: a.declaration.nom, compte: accord || a.declaration.sources.compte.length > 0, saisie: a.declaration.saisie?.libelle ?? null };
+      return { nom: a.declaration.nom, compte: grant || a.declaration.sources.compte.length > 0, saisie: a.declaration.saisie?.libelle ?? null };
     },
     lancer: (id, input) => actions.lancer(id, { ...(input !== undefined ? { saisie: input } : {}), declencheur: "agent" }).fin,
     executions: (id) => actions.executions(id),
     async execution(id, execution) {
       const e = await actions.execution(id, execution);
       if (!e) return null;
-      const r = await readResult(dossierActions, id, execution);
+      const r = await readResult(actionsFolder, id, execution);
       return { ...e, plan: r?.plan ?? null };
     },
   };
   const server = await startMcpServer({
     pont: o.pont,
-    politique,
+    politique: policy,
     jeton: token,
     agent: profile.nom,
     profils: profileFiles(paths, o.dossierProfilage),
@@ -376,7 +376,7 @@ export async function createKernel(o: {
   try {
     // Session configs left by a crash: their tokens are worth nothing any more.
     // A failure does not prevent starting: dead tokens are harmless.
-    await rm(dossierSessions(paths), { recursive: true, force: true }).catch((e) => console.error("[webaios] purge des configs de session :", e));
+    await rm(sessionsFolder(paths), { recursive: true, force: true }).catch((e) => console.error("[webaios] purge des configs de session :", e));
     await writeMcpConfig(paths, profile.configMcp, { url: server.urlConteneur, jeton: token });
   } catch (e) {
     await server.arreter();
@@ -386,12 +386,12 @@ export async function createKernel(o: {
 
   // Navigation must never wait for Docker (spec §9): the first image build takes
   // minutes, and a failure (port in use…) only concerns the agent.
-  const atelier = o.atelier ?? new Atelier({ chemins: paths, executer, ...(o.ressources ? { dossierDocker: join(o.ressources, "docker") } : {}) });
+  const workshop = o.atelier ?? new Workshop({ chemins: paths, executer: run, ...(o.ressources ? { dossierDocker: join(o.ressources, "docker") } : {}) });
   // The container is prepared from launch. If it fails, the first session returns this failure rather than rebuilding
   // everything right away; the following ones (Réessayer) try again. Once successful, it is re-checked (quick probe).
   // Before any session, the agents left by a previous app are stopped.
-  const workshopReady = atelier.assurerDemarre().then(async (state) => {
-    if (state === "demarre") await atelier.arreterSessionsOrphelines();
+  const workshopReady = workshop.assurerDemarre().then(async (state) => {
+    if (state === "demarre") await workshop.arreterSessionsOrphelines();
     return state;
   });
   workshopReady.catch(() => {});
@@ -400,17 +400,17 @@ export async function createKernel(o: {
   const directSubscribers = new Set<(e: DirectState) => void>();
   const scheduler = new WidgetsScheduler({
     chemins: paths,
-    dossierWidgets,
+    dossierWidgets: widgetsFolder,
     moteur: engine,
-    atelier,
+    atelier: workshop,
     pont: o.pont,
     ia: aiAccess,
     ...(aiDispatcher ? { repartiteur: aiDispatcher } : {}),
-    surChange: signaler,
+    surChange: report,
     surDirect(e) {
-      for (const rappel of directSubscribers) {
+      for (const callback of directSubscribers) {
         try {
-          rappel(e);
+          callback(e);
         } catch (err) {
           console.error("[webaios] suivi en direct :", err);
         }
@@ -430,9 +430,9 @@ export async function createKernel(o: {
   const actionSubscribers = new Set<(e: ActionsState) => void>();
   const fileActions = new FileActions({
     chemins: paths,
-    dossierActions,
+    dossierActions: actionsFolder,
     moteur: engine,
-    atelier,
+    atelier: workshop,
     pont: o.pont,
     repartiteur: aiDispatcher,
     pret: workshopReady,
@@ -441,38 +441,38 @@ export async function createKernel(o: {
     menagement: DEFAULT_PACING,
     ...(o.urlRecherche !== undefined ? { urlRecherche: o.urlRecherche } : {}),
     surDirect(e) {
-      for (const rappel of actionSubscribers) {
+      for (const callback of actionSubscribers) {
         try {
-          rappel(e);
+          callback(e);
         } catch (err) {
           console.error("[webaios] suivi des actions :", err);
         }
       }
     },
   });
-  const actions: ActionsNoyau = {
-    lister: () => lireActions(paths),
+  const actions: KernelActions = {
+    lister: () => readActions(paths),
     lancer: (id, l) => fileActions.lancer(id, { saisie: l.saisie ?? null, declencheur: l.declencheur ?? "manuelle" }),
     arreter: (id) => void fileActions.arreter(id),
     direct: () => fileActions.direct(),
-    surDirect(rappel) {
-      actionSubscribers.add(rappel);
-      return () => void actionSubscribers.delete(rappel);
+    surDirect(callback) {
+      actionSubscribers.add(callback);
+      return () => void actionSubscribers.delete(callback);
     },
-    executions: async (id) => (ID_ACTION.test(id) ? listerExecutions(join(dossierActions, id)) : []),
-    execution: async (id, execution) => (ID_ACTION.test(id) && ID_EXECUTION.test(execution) ? lireExecution(join(dossierActions, id), execution) : null),
+    executions: async (id) => (ID_ACTION.test(id) ? listRuns(join(actionsFolder, id)) : []),
+    execution: async (id, execution) => (ID_ACTION.test(id) && ID_EXECUTION.test(execution) ? readRun(join(actionsFolder, id), execution) : null),
     async page(id, execution) {
       if (execution !== null && !ID_EXECUTION.test(execution)) return null;
-      const action = await lireAction(paths, id);
+      const action = await readAction(paths, id);
       if (!action) return null;
-      const r = execution === null ? await lastResult(dossierActions, id) : await readResult(dossierActions, id, execution);
-      const e = await lireExecution(join(dossierActions, id), r?.execution ?? execution ?? "");
+      const r = execution === null ? await lastResult(actionsFolder, id) : await readResult(actionsFolder, id, execution);
+      const e = await readRun(join(actionsFolder, id), r?.execution ?? execution ?? "");
       if (!e) return null;
       // Unreadable, or a grant still recorded (rewritten without account, its results may have been read with it): counts as
       // reading with the account (the most cautious, like the MCP tools and the images). Unreadable grants: same.
-      const accords = await lireAccords(dossierActions).catch(() => null);
-      const account = "erreur" in action || action.declaration.sources.compte.length > 0 || !accords || Object.hasOwn(accords, id);
-      const catalogue = [...BUILTIN_COMPONENTS, ...(await readAgentComponents(paths.composants)).valides];
+      const grants = await readGrants(actionsFolder).catch(() => null);
+      const account = "erreur" in action || action.declaration.sources.compte.length > 0 || !grants || Object.hasOwn(grants, id);
+      const catalog = [...BUILTIN_COMPONENTS, ...(await readAgentComponents(paths.composants)).valides];
       return {
         execution: e.id,
         debut: e.debut,
@@ -480,12 +480,12 @@ export async function createKernel(o: {
         saisie: r?.saisie ?? e.saisie ?? null,
         statut: e.statut,
         ...(e.erreur !== undefined ? { erreur: e.erreur } : {}),
-        page: r ? resolvePage(r.plan ?? { blocs: [] }, r.resultats, { compte: account, catalogue, secours: r.secours }) : null,
+        page: r ? resolvePage(r.plan ?? { blocs: [] }, r.resultats, { compte: account, catalogue: catalog, secours: r.secours }) : null,
         compte: account,
       };
     },
     async accorder({ id, profil: profileName, compte: shown, publiques: shownPublic }) {
-      const a = await lireAction(paths, id);
+      const a = await readAction(paths, id);
       if (!a) throw new Error(`Action inconnue : ${id}`);
       if ("erreur" in a) throw new Error(`Action illisible : ${a.erreur}`);
       const { compte: account, publiques: publics } = a.declaration.sources;
@@ -493,17 +493,17 @@ export async function createKernel(o: {
       if (!sameLists(account, shown) || !sameLists(publics, shownPublic)) {
         throw new Error(`La déclaration de l'action ${id} a changé depuis l'affichage de la demande : rien n'est accordé, relis la nouvelle demande.`);
       }
-      await accorder(dossierActions, id, { domaines: [...account].sort(), publiques: [...publics].sort(), profil: profileName });
+      await giveGrant(actionsFolder, id, { domaines: [...account].sort(), publiques: [...publics].sort(), profil: profileName });
     },
     async refuserAccord(id) {
-      await retirerAccord(dossierActions, id);
-      await deleteDataAction(dossierActions, id);
+      await removeGrant(actionsFolder, id);
+      await deleteDataAction(actionsFolder, id);
     },
-    rejouer: (id, origin, depart) => fileActions.essayer(id, origin, depart),
-    supprimerDonnees: (id) => deleteDataAction(dossierActions, id),
+    rejouer: (id, origin, start) => fileActions.essayer(id, origin, start),
+    supprimerDonnees: (id) => deleteDataAction(actionsFolder, id),
   };
-  const pont = o.pont;
-  const tracking = devTools ? new DevToolsTracking(politique, devTools, () => pont.listerOnglets()) : null;
+  const bridge = o.pont;
+  const tracking = devTools ? new DevToolsTracking(policy, devTools, () => bridge.listerOnglets()) : null;
 
   // Cleanups of the sessions with a window still open, also done at the kernel's shutdown.
   const openSessions = new Set<() => Promise<void>>();
@@ -511,23 +511,23 @@ export async function createKernel(o: {
   return {
     chemins: paths,
     actions,
-    politique,
+    politique: policy,
     agent: profile.nom,
-    etatAtelier: () => atelier.etat(),
+    etatAtelier: () => workshop.etat(),
     async ouvrirSessionAgent({ cols, rows, fenetre: win }) {
-      const premier = startup;
+      const first = startup;
       startup = null;
-      const tentative = premier ? premier.then(() => atelier.assurerDemarre()) : atelier.assurerDemarre();
+      const attempt = first ? first.then(() => workshop.assurerDemarre()) : workshop.assurerDemarre();
       let state: WorkshopState;
       try {
-        state = await tentative;
+        state = await attempt;
       } catch (e) {
         throw new WorkshopError("absent", (e as Error).message);
       }
       if (state !== "demarre") throw new WorkshopError(state);
       // New conversation: no authorization any more. The sessions share the MCP server and therefore the policy:
       // a session of another window also loses its accesses (it will ask again), rather than inheriting them.
-      politique.reinitialiser();
+      policy.reinitialiser();
       const id = randomBytes(8).toString("hex");
       // With a window: its own token and config, so that `workflow_ouvert` knows which one speaks (without a window,
       // dev CLI: the main config).
@@ -547,7 +547,7 @@ export async function createKernel(o: {
         const command = buildCommand(profile, "interactif", {
           mcpConfig: pathInContainer(win !== undefined ? configSession : paths.configMcp, paths),
         });
-        const session = SessionAgent.demarrer(atelier.commandeSession(id, command), { cols, rows, arreterDistant: () => atelier.arreterSession(id) });
+        const session = SessionAgent.demarrer(workshop.commandeSession(id, command), { cols, rows, arreterDistant: () => workshop.arreterSession(id) });
         openSessions.add(clean);
         session.surFin(() => {
           openSessions.delete(clean);
@@ -559,16 +559,16 @@ export async function createKernel(o: {
         throw e;
       }
     },
-    lireAccueil: () => readHome(paths, dossierWidgets),
-    surveillerAccueil: (rappel) => watchHome(paths, rappel),
+    lireAccueil: () => readHome(paths, widgetsFolder),
+    surveillerAccueil: (callback) => watchHome(paths, callback),
     recolterMaintenant: (id, trigger) => scheduler.recolterMaintenant(id, trigger),
-    rejouer: (id, origin, depart) => scheduler.rejouer(id, origin, depart),
+    rejouer: (id, origin, start) => scheduler.rejouer(id, origin, start),
     direct: () => scheduler.direct(),
-    surDirect(rappel) {
-      directSubscribers.add(rappel);
-      return () => void directSubscribers.delete(rappel);
+    surDirect(callback) {
+      directSubscribers.add(callback);
+      return () => void directSubscribers.delete(callback);
     },
-    ia,
+    ia: ai,
     async accorder({ id, profil: profileName, compte: shown, publiques: shownPublic }) {
       const w = await widget(id);
       if (!w) throw new Error(`Widget inconnu : ${id}`);
@@ -578,19 +578,19 @@ export async function createKernel(o: {
       if (!sameLists(account, shown) || !sameLists(publics, shownPublic)) {
         throw new Error(`La déclaration du widget ${id} a changé depuis l'affichage de la demande : rien n'est accordé, relis la nouvelle demande.`);
       }
-      await accorder(dossierWidgets, id, { domaines: [...account].sort(), publiques: [...publics].sort(), profil: profileName });
-      signaler();
+      await giveGrant(widgetsFolder, id, { domaines: [...account].sort(), publiques: [...publics].sort(), profil: profileName });
+      report();
       // The harvest takes time: it follows in the background and reports its own changes.
       scheduler.recolterMaintenant(id).catch((e) => console.error("[webaios] récolte après accord :", e));
     },
     async refuserAccord(id) {
-      await retirerAccord(dossierWidgets, id);
+      await removeGrant(widgetsFolder, id);
       // The data read with this account goes with the grant: without it, nothing protects it any more (account removed…).
-      await deleteData(dossierWidgets, id);
+      await deleteData(widgetsFolder, id);
       const w = await widget(id);
       if (w && !("erreur" in w) && w.declaration.sources.compte.length) {
-        const before = await readWidgetState(dossierWidgets, id);
-        await writeWidgetState(dossierWidgets, id, {
+        const before = await readWidgetState(widgetsFolder, id);
+        await writeWidgetState(widgetsFolder, id, {
           statut: "accord-requis",
           derniereMaj: before.derniereMaj,
           derniereTentative: before.derniereTentative,
@@ -598,14 +598,14 @@ export async function createKernel(o: {
           erreurNoyau: true,
         });
       }
-      signaler();
+      report();
     },
     async arreter() {
       tracking?.arreter();
       await Promise.all([...openSessions].map((clean) => clean()));
       openSessions.clear();
       // No access at all: the cards still displayed are removed, and a late answer grants nothing.
-      politique.reinitialiser();
+      policy.reinitialiser();
       await Promise.all([scheduler.arreter(), fileActions.arreterTout()]);
       await aiAccess?.fermer().catch((e) => console.error("[webaios] arrêt de l'IA locale :", e));
       await server.arreter();

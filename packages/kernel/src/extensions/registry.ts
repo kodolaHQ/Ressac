@@ -18,7 +18,7 @@ const ScopeSchema = z.object({
   scripts: z.boolean().optional(),
 });
 
-const EntreeSchema = z.object({
+const EntrySchema = z.object({
   source: z.enum(["store", "agent"]),
   idChrome: z.string().nullable(),
   nom: z.string(),
@@ -34,7 +34,7 @@ const EntreeSchema = z.object({
   consoleMasquee: z.array(z.string()).optional(),
 });
 
-export interface EntreeExtension {
+export interface ExtensionEntry {
   source: SourceExtension;
   /** Agent: null before the first load. */
   idChrome: string | null;
@@ -67,7 +67,7 @@ export interface EntreeExtension {
 export interface ExtensionsState {
   version: 1;
   toutesCoupees: boolean;
-  extensions: Record<string, EntreeExtension>;
+  extensions: Record<string, ExtensionEntry>;
   /**
    * Chromium ids of the agent's extensions whose service worker and pages console stays hidden from it (they
    * ran in a tab it cannot read). Survives the entry's deletion: a copy recreated at the same
@@ -99,18 +99,18 @@ export function extensionKey(source: SourceExtension, id: string): string {
 
 const empty = (): ExtensionsState => ({ version: 1, toutesCoupees: false, extensions: {} });
 
-function entreeDe(e: ExtensionsState, key: string): EntreeExtension {
+function entryOf(e: ExtensionsState, key: string): ExtensionEntry {
   const x = e.extensions[key];
   if (!x) throw new Error(`extension inconnue : ${key}`);
   return x;
 }
 
-function updateEntry(e: ExtensionsState, key: string, changer: (x: EntreeExtension) => EntreeExtension): ExtensionsState {
-  return { ...e, extensions: { ...e.extensions, [key]: changer(entreeDe(e, key)) } };
+function updateEntry(e: ExtensionsState, key: string, change: (x: ExtensionEntry) => ExtensionEntry): ExtensionsState {
+  return { ...e, extensions: { ...e.extensions, [key]: change(entryOf(e, key)) } };
 }
 
 export function enable(e: ExtensionsState, key: string, profile: ProfileId, privateProfiles: ReadonlySet<ProfileId>): ExtensionsState {
-  const x = entreeDe(e, key);
+  const x = entryOf(e, key);
   if (x.source === "agent" && privateProfiles.has(profile)) throw new Error(PRIVATE_PROFILE_ERROR);
   if (!x.accord) throw new Error(`extension sans accord : ${key}`);
   return updateEntry(e, key, (y) => (y.profils.includes(profile) ? y : { ...y, profils: [...y.profils, profile] }));
@@ -127,11 +127,11 @@ export function disableEverywhere(e: ExtensionsState, key: string): ExtensionsSt
   });
 }
 
-export function couperTout(e: ExtensionsState, yes: boolean): ExtensionsState {
+export function cutAll(e: ExtensionsState, yes: boolean): ExtensionsState {
   return { ...e, toutesCoupees: yes };
 }
 
-export function retirer(e: ExtensionsState, key: string): ExtensionsState {
+export function remove(e: ExtensionsState, key: string): ExtensionsState {
   const { [key]: _, ...rest } = e.extensions;
   return { ...e, extensions: rest };
 }
@@ -146,7 +146,7 @@ export function applyPrivateProfiles(
   privateProfiles: ReadonlySet<ProfileId>,
 ): { etat: ExtensionsState; retirees: { cle: string; profil: ProfileId }[] } {
   const removed: { cle: string; profil: ProfileId }[] = [];
-  const extensions: Record<string, EntreeExtension> = {};
+  const extensions: Record<string, ExtensionEntry> = {};
   for (const [key, x] of Object.entries(e.extensions)) {
     if (x.source !== "agent") {
       extensions[key] = x;
@@ -158,9 +158,9 @@ export function applyPrivateProfiles(
   return { etat: { ...e, extensions }, retirees: removed };
 }
 
-const file = (dossier: string) => join(dossier, "etat.json");
+const file = (folder: string) => join(folder, "etat.json");
 
-interface Lecture {
+interface Reading {
   etat: ExtensionsState;
   /** File present but unreadable, of unknown shape, or with entries that were ignored. */
   abime: boolean;
@@ -168,30 +168,30 @@ interface Lecture {
   futur: boolean;
 }
 
-async function lire(dossier: string): Promise<Lecture> {
+async function read(folder: string): Promise<Reading> {
   let text: string;
   try {
-    text = await readFile(file(dossier), "utf8");
+    text = await readFile(file(folder), "utf8");
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return { etat: empty(), abime: false, futur: false };
     throw error;
   }
-  let brut: unknown;
+  let raw: unknown;
   try {
-    brut = JSON.parse(text);
+    raw = JSON.parse(text);
   } catch {
     return { etat: empty(), abime: true, futur: false };
   }
-  if (!brut || typeof brut !== "object" || Array.isArray(brut)) return { etat: empty(), abime: true, futur: false };
-  const b = brut as { version?: unknown; toutesCoupees?: unknown; extensions?: unknown; consolesMasquees?: unknown };
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { etat: empty(), abime: true, futur: false };
+  const b = raw as { version?: unknown; toutesCoupees?: unknown; extensions?: unknown; consolesMasquees?: unknown };
   if (typeof b.version === "number" && b.version > 1) return { etat: empty(), abime: false, futur: true };
   if (b.version !== 1) return { etat: empty(), abime: true, futur: false };
-  const extensions: Record<string, EntreeExtension> = {};
+  const extensions: Record<string, ExtensionEntry> = {};
   let damaged = false;
   if (b.extensions && typeof b.extensions === "object" && !Array.isArray(b.extensions)) {
-    for (const [key, valeur] of Object.entries(b.extensions)) {
+    for (const [key, value] of Object.entries(b.extensions)) {
       const parsedKey = readKey(key);
-      const r = EntreeSchema.safeParse(valeur);
+      const r = EntrySchema.safeParse(value);
       if (parsedKey && r.success && r.data.source === parsedKey.source) extensions[key] = r.data;
       else damaged = true;
     }
@@ -206,8 +206,8 @@ async function lire(dossier: string): Promise<Lecture> {
  * The state of the file. Absent (ENOENT): empty state. Damaged or of a future version: empty state too, erasing nothing
  * (see `modifierEtatExtensions`). Throws for any read error other than ENOENT.
  */
-export async function readExtensionsState(dossier: string): Promise<ExtensionsState> {
-  return (await lire(dossier)).etat;
+export async function readExtensionsState(folder: string): Promise<ExtensionsState> {
+  return (await read(folder)).etat;
 }
 
 /** One write at a time per folder; temporary file then `rename`. */
@@ -220,30 +220,30 @@ const files = new Map<string, Promise<unknown>>();
  * being replaced; a file of a newer version refuses the write.
  */
 export function changeExtensionsState(
-  dossier: string,
-  changer: (e: ExtensionsState, privateProfiles: ReadonlySet<ProfileId>) => ExtensionsState,
+  folder: string,
+  change: (e: ExtensionsState, privateProfiles: ReadonlySet<ProfileId>) => ExtensionsState,
   privateProfiles: () => ReadonlySet<ProfileId>,
 ): Promise<ExtensionsState> {
-  const previous = files.get(dossier) ?? Promise.resolve();
+  const previous = files.get(folder) ?? Promise.resolve();
   const next = previous.catch(() => {}).then(async () => {
-    const lu = await lire(dossier);
+    const lu = await read(folder);
     if (lu.futur) throw new Error("état des extensions d'une version plus récente");
     const privates = privateProfiles();
-    const fresh = applyPrivateProfiles(changer(lu.etat, privates), privates).etat;
-    await mkdir(dossier, { recursive: true });
-    if (lu.abime) await copyFile(file(dossier), `${file(dossier)}.abime-${new Date().toISOString().replace(/[:.]/g, "-")}`);
-    const temp = `${file(dossier)}.${randomUUID()}.tmp`;
+    const fresh = applyPrivateProfiles(change(lu.etat, privates), privates).etat;
+    await mkdir(folder, { recursive: true });
+    if (lu.abime) await copyFile(file(folder), `${file(folder)}.abime-${new Date().toISOString().replace(/[:.]/g, "-")}`);
+    const temp = `${file(folder)}.${randomUUID()}.tmp`;
     try {
       await writeFile(temp, JSON.stringify(fresh, null, 2));
-      await rename(temp, file(dossier));
+      await rename(temp, file(folder));
     } finally {
       await rm(temp, { force: true });
     }
     return fresh;
   });
-  files.set(dossier, next);
+  files.set(folder, next);
   void next.finally(() => {
-    if (files.get(dossier) === next) files.delete(dossier);
+    if (files.get(folder) === next) files.delete(folder);
   }).catch(() => {});
   return next;
 }

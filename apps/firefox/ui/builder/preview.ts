@@ -13,8 +13,8 @@ export function previewData(o: {
 }): { donnees: unknown; mention: boolean } {
   const { choisie: chosen, detail, widget } = o;
   if (chosen && detail?.id === chosen.id) {
-    const sortie = detail.blocs.find((b) => b.type === "sortie");
-    if (sortie && sortie.sortie !== undefined && !sortie.sortieTronquee) return { donnees: sortie.sortie, mention: false };
+    const output = detail.blocs.find((b) => b.type === "sortie");
+    if (output && output.sortie !== undefined && !output.sortieTronquee) return { donnees: output.sortie, mention: false };
   }
   const lastTrue = o.liste.find((e) => !e.essai)?.id ?? null;
   if (!chosen || chosen.id === lastTrue) {

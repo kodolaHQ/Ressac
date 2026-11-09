@@ -1,39 +1,39 @@
 <script lang="ts">
-  import type { LigneExtension } from "../../shared/extensions";
-  import { activeDans, CONSOLE_UNLOCKED_PAGE, DISABLED_CRASHES, DISABLED_SCOPE } from "../../shared/extensions-messages";
+  import type { ExtensionLine } from "../../shared/extensions";
+  import { activeIn, CONSOLE_UNLOCKED_PAGE, DISABLED_CRASHES, DISABLED_SCOPE } from "../../shared/extensions-messages";
   import type { ExtensionResult } from "../../shared/api";
   import { api } from "../state.svelte";
 
   // Everything from a manifest or a console is shown as text (never {@html}): it is data.
-  let lignes = $state<LigneExtension[]>([]);
-  let coupees = $state(false);
+  let lignes = $state<ExtensionLine[]>([]);
+  let cuts = $state(false);
   let chargee = $state(false);
   let input = $state("");
   let message = $state<string | null>(null);
   let details = $state<Record<string, boolean>>({});
   /** Extension whose deletion awaits the user's confirmation. */
-  let toDelete = $state<LigneExtension | null>(null);
+  let toDelete = $state<ExtensionLine | null>(null);
   let request = 0;
 
-  async function charger() {
+  async function load() {
     const n = ++request;
     const [l, b] = await Promise.all([api.extensions.liste(), api.extensions.coupees()]);
     if (n !== request) return;
     lignes = l;
-    coupees = b;
+    cuts = b;
     chargee = true;
   }
 
   $effect(() => {
-    void charger();
-    return api.extensions.surChange(() => void charger());
+    void load();
+    return api.extensions.surChange(() => void load());
   });
 
   async function make(p: Promise<ExtensionResult>) {
     message = null;
     const r = await p;
     if (!r.ok) message = r.erreur;
-    await charger();
+    await load();
   }
 
   async function add(e: SubmitEvent) {
@@ -44,11 +44,11 @@
     const r = await api.extensions.installerStore(text);
     if (r.ok) input = "";
     else message = r.erreur;
-    await charger();
+    await load();
   }
 
   const date = (iso: string) => new Date(iso).toLocaleString("fr-FR", { dateStyle: "medium", timeStyle: "short" });
-  const spaces = (l: LigneExtension) => (l.espaces.length ? l.espaces.map((e) => `« ${e.nom} » (profil ${e.profil})`).join(", ") : l.applis.length ? "aucun" : "Active nulle part");
+  const spaces = (l: ExtensionLine) => (l.espaces.length ? l.espaces.map((e) => `« ${e.nom} » (profil ${e.profil})`).join(", ") : l.applis.length ? "aucun" : "Active nulle part");
 </script>
 
 <section class="extensions" data-testid="page-extensions" aria-label="Extensions">
@@ -59,7 +59,7 @@
         type="checkbox"
         role="switch"
         data-testid="couper-extensions"
-        checked={coupees}
+        checked={cuts}
         onchange={(e) => void make(api.extensions.toutCouper(e.currentTarget.checked))}
       />
       Désactiver toutes les extensions
@@ -73,7 +73,7 @@
     <button type="submit">Ajouter</button>
   </form>
   {#if message}<p class="message" role="status" data-testid="message-extensions">{message}</p>{/if}
-  {#if coupees}<p class="bandeau" role="status">Toutes les extensions sont désactivées : aucune n'est chargée, même après un redémarrage.</p>{/if}
+  {#if cuts}<p class="bandeau" role="status">Toutes les extensions sont désactivées : aucune n'est chargée, même après un redémarrage.</p>{/if}
   {#if chargee && lignes.length === 0}
     <p class="vide">Aucune extension. Ajoute-en une depuis le Chrome Web Store, ou demande à l'agent d'en écrire une.</p>
   {/if}
@@ -90,7 +90,7 @@
         <p>Droits : {l.droits.length ? l.droits.join(" · ") : "aucun"}</p>
         <p>Sites : {l.tousLesSites ? "tous les sites" : l.sites.length ? l.sites.join(", ") : "aucun"}</p>
         <p>Espaces : {spaces(l)}</p>
-        {#if l.applis.length}<p data-testid="extension-applis">{activeDans(l.applis)}</p>{/if}
+        {#if l.applis.length}<p data-testid="extension-applis">{activeIn(l.applis)}</p>{/if}
         {#if l.modifieeLe}<p class="doux">Modifiée le {date(l.modifieeLe)}</p>{/if}
         {#if l.nonPrisEnCharge.length}<p class="doux">Non pris en charge : {l.nonPrisEnCharge.join(", ")}</p>{/if}
         {#if l.erreurs.length}

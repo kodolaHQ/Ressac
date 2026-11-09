@@ -1,12 +1,12 @@
 import { spawn } from "node:child_process";
 import type { Readable, Writable } from "node:stream";
-import { HARVEST_DELAY_S, type Atelier } from "../container/workshop.js";
+import { HARVEST_DELAY_S, type Workshop } from "../container/workshop.js";
 import { toolsPath } from "../container/runner.js";
-import type { IaLocale } from "../ai/ia-locale.js";
+import type { LocalAi } from "../ai/ia-locale.js";
 import { ProfileDenied, type BrowserBridge } from "../mcp/pont.js";
 import {
   MAX_OPEN_READS,
-  MAX_RECHERCHES,
+  MAX_SEARCHES,
   SEARCHES_CAP,
   SEARCH_UNAVAILABLE,
   SEARCHES_STOPPED,
@@ -15,30 +15,30 @@ import {
   message,
   fetch,
   truncate,
-  verifierPage,
-  verifierUrl,
+  checkPage,
+  checkUrl,
 } from "./access.js";
-import { SEARCH_DENIED, UNREADABLE_RESULTS, URL_DUCKDUCKGO, extractResults, urlRecherche } from "./duckduckgo.js";
+import { SEARCH_DENIED, UNREADABLE_RESULTS, URL_DUCKDUCKGO, extractResults, searchUrl } from "./duckduckgo.js";
 import { streamingChain } from "./chain.js";
 import { Pacing, type ChangeHost } from "./pacing.js";
-import { ACTION_STOPPED, SORTIE_MAX_OCTETS, coupe, idExecution, type Execution, type TraceBloc } from "./executions.js";
+import { ACTION_STOPPED, OUTPUT_MAX_BYTES, cut, idExecution, type Execution, type BlockTrace } from "./executions.js";
 import { MEMORY_MAX_BYTES, paramsHash, type BlocksMemory } from "./memory.js";
 import {
   SearchWebArgs,
   ArgsGemma,
   ArgsKev,
-  ArgsLirePage,
+  ReadPageArgs,
   FetchArgs,
-  LIGNE_MAX_OCTETS,
+  LINE_MAX_BYTES,
   DATA_MAX_SIZE,
-  ligneDebut,
+  lineStart,
   memoryLine,
   responseLine,
   readHarvesterMessage,
   type HarvesterMessage,
 } from "./protocole.js";
 import { REPLAY_TOO_BIG } from "./replay.js";
-import type { GenreSortie, Owner } from "./schema.js";
+import type { OutputKind, Owner } from "./schema.js";
 import { WEB_REQUIRED, type ValidWorkflow } from "./validate.js";
 
 /** The run's process (the `docker run -i` client): its only channel with the kernel is stdin / stdout. */
@@ -54,11 +54,11 @@ export type ProcessLauncher = (cmd: string, args: string[]) => HarvestProcess;
 
 export const defaultLaunch: ProcessLauncher = (cmd, args) => {
   const child = spawn(cmd, args, { stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, PATH: toolsPath() } });
-  const fin = new Promise<number | null>((ok) => {
+  const end = new Promise<number | null>((ok) => {
     child.once("close", (code) => ok(code));
     child.once("error", () => ok(null));
   });
-  return { stdin: child.stdin, stdout: child.stdout, stderr: child.stderr, tuer: () => void child.kill("SIGKILL"), fin };
+  return { stdin: child.stdin, stdout: child.stdout, stderr: child.stderr, tuer: () => void child.kill("SIGKILL"), fin: end };
 };
 
 /** Kernel-side timeout; the container stops by itself after 180 s (+5 s). */
@@ -102,11 +102,11 @@ const MAX_CALLS_IN_FLIGHT = 32;
  * Effective kernel caps: an error (run, block, call) at 500 characters, the global log at 2000.
  * Those of the container (2000 characters per trace) and of the runs' write (2 KB per line) are only safety nets.
  */
-export const JOURNAL_MAX = 2000;
+export const LOG_MAX = 2000;
 export const MAX_ERROR = 500;
 /** Kernel remark when the returned blocks' memory is too big for its file. */
 export const MEMORY_NOT_KEPT = "Mémoire des blocs non gardée : plus de 3 Mo (l'ancienne reste)";
-const JOURNAL_BLOC_LIGNES = 200;
+const BLOCK_LOG_LINES = 200;
 const LOG_BLOCK_CHARS = 500;
 
 export interface WorkflowContext {
@@ -159,10 +159,10 @@ export type DirectTrace =
 export interface InfraWorkflow {
   /** Folder of the engine on the Mac (`docker/moteur`), mounted read-only. */
   moteur: string;
-  atelier: Pick<Atelier, "commandeRecolte" | "supprimerRecolte">;
+  atelier: Pick<Workshop, "commandeRecolte" | "supprimerRecolte">;
   lancer?: ProcessLauncher;
   /** null: no local AI, `kev` and `gemma` answer with an error. */
-  ia: Pick<IaLocale, "kev" | "gemma"> | null;
+  ia: Pick<LocalAi, "kev" | "gemma"> | null;
   pont: BrowserBridge;
   horloge: () => Date;
   delaiMs?: number;
@@ -183,8 +183,8 @@ export interface InfraWorkflow {
   surMemoire?: (m: BlocksMemory) => Promise<void>;
 }
 
-export type IssueWorkflow =
-  | { t: "fin"; sortie: { vers: GenreSortie; valeur: unknown }; memoire: BlocksMemory | null }
+export type WorkflowOutcome =
+  | { t: "fin"; sortie: { vers: OutputKind; valeur: unknown }; memoire: BlocksMemory | null }
   /**
    * `erreurDuCode`: the text comes from the container (the agent's code may have written it), not from the kernel. `memoire` (progressive
    * run only, absent otherwise): the last memory received, null if none.
@@ -207,7 +207,7 @@ type Stop = { statut: "erreur" | "accord-requis"; erreur: string };
 const NO_RESPONSE = Symbol("sans réponse");
 
 /** Trace of a block during the run, with what is needed to bound its log. */
-type TraceEnCours = TraceBloc & { commence: boolean; fini: boolean; coupees: number };
+type RunningTrace = BlockTrace & { commence: boolean; fini: boolean; coupees: number };
 
 /**
  * Runs a validated workflow in a container without network: sends `debut` (workflow, config, previous) and the
@@ -220,13 +220,13 @@ type TraceEnCours = TraceBloc & { commence: boolean; fini: boolean; coupees: num
  * its blocks), at least 4 s after the previous relayed one, with `faits ≤ total` and data of 2 MB at most: a
  * publication written by the agent's code outside the chain, or late, cannot overwrite the final output.
  */
-export async function executerWorkflow(
+export async function runWorkflow(
   ctx: WorkflowContext,
   infra: InfraWorkflow,
-): Promise<{ issue: IssueWorkflow; execution: Execution; journal: string }> {
+): Promise<{ issue: WorkflowOutcome; execution: Execution; journal: string }> {
   const clock = infra.horloge;
   const localUrls = infra.adressesLocales ?? false;
-  const debut = clock().toISOString();
+  const start = clock().toISOString();
   const { workflow, ordre: order } = ctx.valide;
   const replay = ctx.rejeu ?? null;
   // For a try, only the rerun blocks send traces, in run order.
@@ -240,7 +240,7 @@ export async function executerWorkflow(
   const delays = runDelays(ctx.dureeMaxMinutes);
   // The validated params of this run: the memory is only taken back if it was kept with the same ones.
   const hashes = new Map(workflow.blocs.map((b) => [b.id, paramsHash(b.parametres)]));
-  const traces = new Map<string, TraceEnCours>(
+  const traces = new Map<string, RunningTrace>(
     order.map((id) => [
       id,
       { id, type: types.get(id)!, statut: "pas-lance", debut: null, fin: null, elements: null, journal: [], commence: false, fini: false, coupees: 0 },
@@ -252,52 +252,52 @@ export async function executerWorkflow(
       if (t && !relaunches!.has(id)) Object.assign(t, { statut: "repris", elements });
     }
   }
-  let journal = "";
-  let remarque: string | null = null;
+  let log = "";
+  let remark: string | null = null;
   // Stopped by the caller's signal (an action's « Arrêter »): the run is « interrompue ».
   let stoppedBySignal = false;
 
-  const conclude = (issue: IssueWorkflow) => {
-    const blocs: TraceBloc[] = [...traces.values()].map(({ commence, fini: finished, coupees, ...t }) => {
-      const b: TraceBloc = { ...t };
+  const conclude = (outcome: WorkflowOutcome) => {
+    const blocks: BlockTrace[] = [...traces.values()].map(({ commence: started, fini: finished, coupees: cuts, ...t }) => {
+      const b: BlockTrace = { ...t };
       // Started without an end: the container stopped during the block (or was stopped on request).
-      if (commence && !finished) b.statut = stoppedBySignal ? "interrompu" : "echoue";
-      if (coupees > 0) b.journal = [`… ${coupees} lignes coupées`, ...t.journal];
+      if (started && !finished) b.statut = stoppedBySignal ? "interrompu" : "echoue";
+      if (cuts > 0) b.journal = [`… ${cuts} lignes coupées`, ...t.journal];
       return b;
     });
     const status: Execution["statut"] =
-      issue.t === "fin"
+      outcome.t === "fin"
         ? // A partial block, or one that did not finish (a `fin` that arrived before it): the output is not complete. For a
           // try, only the rerun blocks count.
-          blocs.every((b) => b.statut === "reussi" || (relaunches !== null && !relaunches.has(b.id))) ? "reussie" : "partielle"
-        : issue.t === "arret" && issue.statut === "accord-requis"
+          blocks.every((b) => b.statut === "reussi" || (relaunches !== null && !relaunches.has(b.id))) ? "reussie" : "partielle"
+        : outcome.t === "arret" && outcome.statut === "accord-requis"
           ? "accord-requis"
-          : issue.t === "arret" && stoppedBySignal
+          : outcome.t === "arret" && stoppedBySignal
             ? "interrompue"
             : "echouee";
     const execution: Execution = {
       version: 1,
-      id: idExecution(debut),
+      id: idExecution(start),
       proprietaire: ctx.proprietaire,
       declencheur: ctx.declencheur,
-      debut,
+      debut: start,
       fin: clock().toISOString(),
       statut: status,
-      blocs,
+      blocs: blocks,
     };
     if (ctx.saisie !== undefined) execution.saisie = ctx.saisie;
-    if (issue.t !== "fin") {
-      execution.erreur = issue.erreur;
-      if (issue.t === "arret" || !issue.erreurDuCode) execution.erreurNoyau = true;
+    if (outcome.t !== "fin") {
+      execution.erreur = outcome.erreur;
+      if (outcome.t === "arret" || !outcome.erreurDuCode) execution.erreurNoyau = true;
     }
-    if (remarque) {
-      journal = (journal ? journal + "\n" : "") + remarque;
+    if (remark) {
+      log = (log ? log + "\n" : "") + remark;
       // Also in the run, in the output block's log.
-      blocs.find((b) => b.id === ctx.valide.sortie.id)?.journal.push(remarque);
+      blocks.find((b) => b.id === ctx.valide.sortie.id)?.journal.push(remark);
     }
-    return { issue, execution, journal: journal.slice(-JOURNAL_MAX) };
+    return { issue: outcome, execution, journal: log.slice(-LOG_MAX) };
   };
-  const failure = (error: string, codeError: boolean): IssueWorkflow => ({ t: "echec", erreur: truncate(error, MAX_ERROR), erreurDuCode: codeError });
+  const failure = (error: string, codeError: boolean): WorkflowOutcome => ({ t: "echec", erreur: truncate(error, MAX_ERROR), erreurDuCode: codeError });
 
   // For an owner with an account, public reads are limited to the declared domains (empty: none).
   const hasAccount = ctx.sources.compte.length > 0;
@@ -307,14 +307,14 @@ export async function executerWorkflow(
   const pacing = infra.menagement ?? DEFAULT_PACING;
   // Raised at the stop or the end: a search or read still in the queue does not go out, and those in progress (bridge,
   // fetch) are abandoned. Specific to this run: the other runs' reads are not touched.
-  const finExecution = new AbortController();
-  let recherches = 0;
+  const runEnd = new AbortController();
+  let searches = 0;
   let searchDenied = false;
   let openReads = 0;
 
-  const debutLigne = ligneDebut({
+  const startLine = lineStart({
     precedent: ctx.precedent,
-    maintenant: debut,
+    maintenant: start,
     config: ctx.config ?? null,
     workflow: { blocs: workflow.blocs, liens: workflow.liens, ordre: order },
     ...(replay ? { rejeu: { relances: replay.relances, sorties: replay.sorties } } : {}),
@@ -324,7 +324,7 @@ export async function executerWorkflow(
     ...(ctx.avancement ? { avancement: true as const } : {}),
   });
   // Safety net: the caller measures before (`debutTropGros`) to refuse without writing anything; the harvester would refuse the line.
-  if (replay && Buffer.byteLength(debutLigne) > LIGNE_MAX_OCTETS) {
+  if (replay && Buffer.byteLength(startLine) > LINE_MAX_BYTES) {
     return conclude({ t: "arret", statut: "erreur", erreur: REPLAY_TOO_BIG });
   }
 
@@ -348,10 +348,10 @@ export async function executerWorkflow(
   let stop: Stop | null = null;
   let terminal: Extract<HarvesterMessage, { t: "fin" | "echec" }> | null = null;
   let receivedMemory: BlocksMemory | null = null;
-  let enVol = 0;
+  let inFlight = 0;
   // Relays to the caller (publications, memory), one after the other; all awaited before returning.
   let relais: Promise<void> = Promise.resolve();
-  const enFile = (f: () => Promise<void>) => {
+  const queued = (f: () => Promise<void>) => {
     relais = relais.then(f).catch(() => {});
   };
   let memoryRelayedTo: number | null = null;
@@ -373,7 +373,7 @@ export async function executerWorkflow(
   let outputDone = false;
   // Adoption happens in the relay queue, after the publications received before it: a memory is only safe
   // if the data it assumes shown has really been written (F1).
-  const adopterDansLaFile = async (t: { memoire: BlocksMemory | null; recueA: number }) => {
+  const adoptInQueue = async (t: { memoire: BlocksMemory | null; recueA: number }) => {
     if (!t.memoire || doubtfulMemory) return;
     const memory = t.memoire;
     safeMemory = memory;
@@ -383,7 +383,7 @@ export async function executerWorkflow(
       await onMemory(memory);
     }
   };
-  const adoptMemory = (t: { memoire: BlocksMemory | null; recueA: number }) => enFile(() => adopterDansLaFile(t));
+  const adoptMemory = (t: { memoire: BlocksMemory | null; recueA: number }) => queued(() => adoptInQueue(t));
   const releaseHeldMemory = () => {
     const t = heldMemory;
     heldMemory = null;
@@ -393,31 +393,31 @@ export async function executerWorkflow(
   const stopRun = (a: Stop) => {
     if (stop) return;
     stop = a;
-    finExecution.abort(new Error("Exécution arrêtée"));
+    runEnd.abort(new Error("Exécution arrêtée"));
     process.tuer();
   };
   const timer = setTimeout(() => stopRun({ statut: "erreur", erreur: "Délai dépassé" }), infra.delaiMs ?? delays.noyauMs);
-  const surSignal = () => {
+  const onSignal = () => {
     if (stop) return;
     stoppedBySignal = true;
     stopRun({ statut: "erreur", erreur: ACTION_STOPPED });
   };
-  ctx.signal?.addEventListener("abort", surSignal, { once: true });
+  ctx.signal?.addEventListener("abort", onSignal, { once: true });
 
   process.stdin.on("error", () => {});
-  process.stdin.write(debutLigne);
+  process.stdin.write(startLine);
   // Only the memory of this workflow's blocks, with their type; none for a try.
   process.stdin.write(memoryLine(replay ? {} : resumeMemory(ctx.memoire, types, hashes)));
   process.stderr.setEncoding("utf8");
   process.stderr.on("data", (d: string) => {
-    journal = (journal + d).slice(-JOURNAL_MAX);
+    log = (log + d).slice(-LOG_MAX);
   });
 
   const reply = (n: number, r: { ok: unknown } | { erreur: string }) => {
     if (stop || terminal || process.stdin.destroyed || process.stdin.writableEnded) return;
-    let ligne = responseLine(n, r);
-    if (Buffer.byteLength(ligne) > LIGNE_MAX_OCTETS) ligne = responseLine(n, { erreur: "Réponse trop grande (4 Mo maximum)" });
-    process.stdin.write(ligne);
+    let line = responseLine(n, r);
+    if (Buffer.byteLength(line) > LINE_MAX_BYTES) line = responseLine(n, { erreur: "Réponse trop grande (4 Mo maximum)" });
+    process.stdin.write(line);
   };
 
   /** Read options: for an owner with an account, the bridge receives the list of domains where it may navigate. */
@@ -426,7 +426,7 @@ export async function executerWorkflow(
     profil: profile,
     ...(hasAccount && domains ? { domaines: [...domains] } : {}),
     ...(localUrls ? { adressesLocales: true } : {}),
-    signal: finExecution.signal,
+    signal: runEnd.signal,
   });
 
   /**
@@ -437,32 +437,32 @@ export async function executerWorkflow(
     if (!web) return f();
     if (openReads >= MAX_OPEN_READS) throw new Error(TOO_MANY_READS);
     openReads++;
-    return pacing.lire(u.hostname, f, finExecution.signal);
+    return pacing.lire(u.hostname, f, runEnd.signal);
   };
 
-  const lirePage = async (a: unknown): Promise<unknown> => {
-    const { url, compte: account, defiler } = args(ArgsLirePage, a, "lirePage");
-    const defilement = defiler ? { defiler } : {};
-    const lire = infra.pont.lirePageInvisible?.bind(infra.pont);
-    if (!lire) throw new Error("Lecture de pages indisponible");
+  const readPage = async (a: unknown): Promise<unknown> => {
+    const { url, compte: account, defiler: scroll } = args(ReadPageArgs, a, "lirePage");
+    const scrolling = scroll ? { defiler: scroll } : {};
+    const read = infra.pont.lirePageInvisible?.bind(infra.pont);
+    if (!read) throw new Error("Lecture de pages indisponible");
     if (!account) {
-      const u = verifierUrl(url, publicDomains, localUrls);
-      signalerLecture(u);
-      const page = await openRead(u, (changeHost) => lire(u.href, { ...withDomains(null, publicDomains), ...defilement, ...(changeHost ? { changerHote: changeHost } : {}) }));
-      return verifierPage(page, publicDomains, localUrls);
+      const u = checkUrl(url, publicDomains, localUrls);
+      reportRead(u);
+      const page = await openRead(u, (changeHost) => read(u.href, { ...withDomains(null, publicDomains), ...scrolling, ...(changeHost ? { changerHote: changeHost } : {}) }));
+      return checkPage(page, publicDomains, localUrls);
     }
     // The domain must be declared in `compte`; the grant is re-read at each read (it may have been withdrawn).
-    const u = verifierUrl(url, ctx.sources.compte, localUrls);
-    const accord = await ctx.accord();
-    if (!accord) {
+    const u = checkUrl(url, ctx.sources.compte, localUrls);
+    const grant = await ctx.accord();
+    if (!grant) {
       stopRun({ statut: "accord-requis", erreur: ctx.messageAccordRequis });
       return NO_RESPONSE;
     }
     if (stop) return NO_RESPONSE;
-    signalerLecture(u);
+    reportRead(u);
     try {
-      const page = await lire(u.href, { ...withDomains(accord.profil, ctx.sources.compte), ...defilement });
-      return verifierPage(page, ctx.sources.compte, localUrls);
+      const page = await read(u.href, { ...withDomains(grant.profil, ctx.sources.compte), ...scrolling });
+      return checkPage(page, ctx.sources.compte, localUrls);
     } catch (e) {
       if (e instanceof ProfileDenied || (e as Error)?.name === "ProfilRefuse") {
         // The caller withdraws the grant (and what was read with it) before the stop: when it concludes, it no longer exists.
@@ -482,23 +482,23 @@ export async function executerWorkflow(
     // Refused here even if the validation let it through: a `code` block or a recolte.mjs may call chercherWeb.
     if (!web) throw new Error(WEB_REQUIRED);
     if (searchDenied) throw new Error(SEARCHES_STOPPED);
-    if (recherches >= MAX_RECHERCHES) throw new Error(SEARCHES_CAP);
-    const lireHtml = infra.pont.lireHtmlInvisible?.bind(infra.pont);
-    if (!lireHtml) throw new Error(SEARCH_UNAVAILABLE);
-    recherches++;
-    signalerLecture(SEARCH_HOST);
+    if (searches >= MAX_SEARCHES) throw new Error(SEARCHES_CAP);
+    const readHtml = infra.pont.lireHtmlInvisible?.bind(infra.pont);
+    if (!readHtml) throw new Error(SEARCH_UNAVAILABLE);
+    searches++;
+    reportRead(SEARCH_HOST);
     const r = await pacing.rechercher(
       async () => {
-        const { html } = await lireHtml(urlRecherche(request, infra.urlRecherche ?? URL_DUCKDUCKGO), {
+        const { html } = await readHtml(searchUrl(request, infra.urlRecherche ?? URL_DUCKDUCKGO), {
           ...(localUrls ? { adressesLocales: true } : {}),
-          signal: finExecution.signal,
+          signal: runEnd.signal,
         });
-        const lus = extractResults(html, Infinity);
+        const reads = extractResults(html, Infinity);
         // Marked before releasing the lane: a queued search sees the refusal before going out.
-        if ("refus" in lus) searchDenied = true;
-        return lus;
+        if ("refus" in reads) searchDenied = true;
+        return reads;
       },
-      finExecution.signal,
+      runEnd.signal,
       // A refusal that arrived during the wait: this one does not go out, and does not delay the next search.
       () => {
         if (searchDenied) throw new Error(SEARCHES_STOPPED);
@@ -513,26 +513,26 @@ export async function executerWorkflow(
   const processCall = async (f: string, a: unknown): Promise<unknown> => {
     switch (f) {
       case "lirePage":
-        return lirePage(a);
+        return readPage(a);
       case "recuperer": {
         const { url, format } = args(FetchArgs, a, "recuperer");
-        const u = verifierUrl(url, publicDomains, localUrls);
-        signalerLecture(u);
-        if (!web) return fetch(url, format ?? "texte", publicDomains, localUrls, finExecution.signal);
-        return openRead(u, (changeHost) => fetch(u.href, format ?? "texte", publicDomains, localUrls, finExecution.signal, changeHost));
+        const u = checkUrl(url, publicDomains, localUrls);
+        reportRead(u);
+        if (!web) return fetch(url, format ?? "texte", publicDomains, localUrls, runEnd.signal);
+        return openRead(u, (changeHost) => fetch(u.href, format ?? "texte", publicDomains, localUrls, runEnd.signal, changeHost));
       }
       case "chercherWeb":
         return searchWeb(a);
       case "kev": {
-        const corps = args(ArgsKev, a, "kev");
+        const body = args(ArgsKev, a, "kev");
         if (!infra.ia) throw new Error("IA locale indisponible");
         // Stop or delay: the in-flight call is abandoned and gives its place back to the shared AI.
-        return infra.ia.kev(corps, { signal: finExecution.signal });
+        return infra.ia.kev(body, { signal: runEnd.signal });
       }
       case "gemma": {
         const g = args(ArgsGemma, a, "gemma");
         if (!infra.ia) throw new Error("IA locale indisponible");
-        return infra.ia.gemma({ ...g, signal: finExecution.signal });
+        return infra.ia.gemma({ ...g, signal: runEnd.signal });
       }
       default:
         throw new Error(`Fonction inconnue : ${f}`);
@@ -545,7 +545,7 @@ export async function executerWorkflow(
   // the as-it-goes chain, whose blocks all start in a row then finish in order.
   let next = 0;
   /** Blocks started and not yet finished, in order: a single one, or the chain's blocks. */
-  const opened: TraceEnCours[] = [];
+  const opened: RunningTrace[] = [];
   /** An end of the chain has arrived: no more starts accepted until its blocks have all finished. */
   let closing = false;
   /** Between the last `debut` and the first `fin` of the chain: the only moment a publication counts. */
@@ -558,10 +558,10 @@ export async function executerWorkflow(
     }
   };
   /** An accepted read (URL host, or that of the web search), on the last block started and not finished. */
-  function signalerLecture(target: URL | string) {
-    const bloc = opened.at(-1);
+  function reportRead(target: URL | string) {
+    const block = opened.at(-1);
     const host = typeof target === "string" ? target : target.hostname.toLowerCase().replace(/\.+$/, "");
-    if (bloc) relay({ bloc: bloc.id, etape: "lecture", hote: host });
+    if (block) relay({ bloc: block.id, etape: "lecture", hote: host });
   }
   /** Per block: the time of the last relayed `avancement` line. */
   const progressRelayedTo = new Map<string, number>();
@@ -572,7 +572,7 @@ export async function executerWorkflow(
       const filtered = markMemory(m.memoire as BlocksMemory, types, hashes);
       const tooBig = Buffer.byteLength(JSON.stringify({ version: 1, blocs: filtered })) > MEMORY_MAX_BYTES;
       receivedMemory = tooBig ? null : filtered;
-      remarque = tooBig ? MEMORY_NOT_KEPT : null;
+      remark = tooBig ? MEMORY_NOT_KEPT : null;
       if (progressive && !outputDone) heldMemory = { memoire: tooBig ? null : filtered, recueA: clock().getTime() };
       return;
     }
@@ -580,18 +580,18 @@ export async function executerWorkflow(
       const held = heldMemory;
       heldMemory = null;
       const now = clock().getTime();
-      const surPublication = infra.surPublication;
+      const onPublish = infra.surPublication;
       const accepted =
         duringTheChain() &&
         m.faits <= m.total &&
         m.donnees !== undefined &&
         (publicationRelayedTo === null || now - publicationRelayedTo >= TOLERATED_PUBLICATIONS_GAP_MS) &&
         Buffer.byteLength(JSON.stringify(m.donnees)) <= DATA_MAX_SIZE &&
-        surPublication !== undefined;
+        onPublish !== undefined;
       if (!accepted) {
         // The container believes these items shown: its memory is no longer safe before the next accepted publication.
         if (progressive && (held || duringTheChain())) {
-          enFile(async () => {
+          queued(async () => {
             doubtfulMemory = true;
           });
         }
@@ -600,15 +600,15 @@ export async function executerWorkflow(
       publicationRelayedTo = now;
       const p: Publication = { donnees: m.donnees, faits: m.faits, total: m.total };
       // The data first, then the memory they make safe; a refused write leaves it doubtful.
-      enFile(async () => {
+      queued(async () => {
         try {
-          await surPublication!(p);
+          await onPublish!(p);
         } catch {
           doubtfulMemory = true;
           return;
         }
         doubtfulMemory = false;
-        if (held) await adopterDansLaFile(held);
+        if (held) await adoptInQueue(held);
       });
       return;
     }
@@ -617,7 +617,7 @@ export async function executerWorkflow(
       if (!t || (relaunches && !relaunches.has(m.bloc))) return;
       t.journal.push(truncate(m.texte, LOG_BLOCK_CHARS));
       // The room for the « … N lignes coupées » line is kept: 200 lines at most in all.
-      while (t.journal.length + (t.coupees > 0 ? 1 : 0) > JOURNAL_BLOC_LIGNES) {
+      while (t.journal.length + (t.coupees > 0 ? 1 : 0) > BLOCK_LOG_LINES) {
         t.journal.shift();
         t.coupees++;
       }
@@ -659,17 +659,17 @@ export async function executerWorkflow(
       t.elements = Array.isArray(m.sortie) ? m.sortie.length : null;
       // The kernel never keeps more than 256 KB of a block's output: beyond, the start of its JSON, marked.
       const text = JSON.stringify(m.sortie);
-      if (Buffer.byteLength(text) > SORTIE_MAX_OCTETS) {
-        t.sortie = coupe(text, SORTIE_MAX_OCTETS);
+      if (Buffer.byteLength(text) > OUTPUT_MAX_BYTES) {
+        t.sortie = cut(text, OUTPUT_MAX_BYTES);
         t.sortieTronquee = true;
       } else t.sortie = m.sortie;
     }
     relay({ bloc: m.id, etape: "fin", statut: m.statut, elements: t.elements });
   };
 
-  const processLine = (ligne: string) => {
-    if (stop || terminal || !ligne.trim()) return;
-    const m = readHarvesterMessage(ligne);
+  const processLine = (line: string) => {
+    if (stop || terminal || !line.trim()) return;
+    const m = readHarvesterMessage(line);
     if (!m) return; // A line outside the protocol (the code wrote on stdout) is ignored.
     // A held memory not followed by a publication: it only keeps items already shown. Followed by
     // `fin`, it is only used for the `fin` outcome: the final output, not yet written, may still be refused.
@@ -681,59 +681,59 @@ export async function executerWorkflow(
       return;
     }
     if (m.t !== "appel") return processTrace(m);
-    if (enVol >= MAX_CALLS_IN_FLIGHT) return reply(m.n, { erreur: "Trop d'appels en même temps" });
-    enVol++;
+    if (inFlight >= MAX_CALLS_IN_FLIGHT) return reply(m.n, { erreur: "Trop d'appels en même temps" });
+    inFlight++;
     // Calls are handled as soon as they arrive, in parallel; each answer carries its call's number.
     processCall(m.f, m.a)
       .then(
         (ok) => ok !== NO_RESPONSE && reply(m.n, { ok: ok ?? null }),
         (e) => reply(m.n, { erreur: truncate(message(e), MAX_ERROR) }),
       )
-      .finally(() => enVol--);
+      .finally(() => inFlight--);
   };
 
   // Line-by-line reading; a line of more than 4 MB stops the run before being accumulated in full.
-  let tampon: Buffer[] = [];
-  let taille = 0;
+  let buffer: Buffer[] = [];
+  let size = 0;
   process.stdout.on("data", (d: Buffer) => {
     if (stop) return;
-    let debutLigne = 0;
-    for (let i = d.indexOf(10); i >= 0; i = d.indexOf(10, debutLigne)) {
-      const chunk = d.subarray(debutLigne, i);
-      if (taille + chunk.length > LIGNE_MAX_OCTETS) return stopRun({ statut: "erreur", erreur: "Réponse trop grande" });
-      const ligne = Buffer.concat([...tampon, chunk]).toString("utf8");
-      tampon = [];
-      taille = 0;
-      debutLigne = i + 1;
-      processLine(ligne);
+    let startLine = 0;
+    for (let i = d.indexOf(10); i >= 0; i = d.indexOf(10, startLine)) {
+      const chunk = d.subarray(startLine, i);
+      if (size + chunk.length > LINE_MAX_BYTES) return stopRun({ statut: "erreur", erreur: "Réponse trop grande" });
+      const line = Buffer.concat([...buffer, chunk]).toString("utf8");
+      buffer = [];
+      size = 0;
+      startLine = i + 1;
+      processLine(line);
       if (stop) return;
     }
-    const rest = d.subarray(debutLigne);
+    const rest = d.subarray(startLine);
     if (!rest.length) return;
-    taille += rest.length;
-    if (taille > LIGNE_MAX_OCTETS) return stopRun({ statut: "erreur", erreur: "Réponse trop grande" });
-    tampon.push(Buffer.from(rest));
+    size += rest.length;
+    if (size > LINE_MAX_BYTES) return stopRun({ statut: "erreur", erreur: "Réponse trop grande" });
+    buffer.push(Buffer.from(rest));
   });
 
   const code = await process.fin;
   clearTimeout(timer);
-  ctx.signal?.removeEventListener("abort", surSignal);
-  finExecution.abort(new Error("Exécution finie"));
+  ctx.signal?.removeEventListener("abort", onSignal);
+  runEnd.abort(new Error("Exécution finie"));
   // The final output is written after the last publication.
   await relais;
   // Progressive run: the last memory received comes back with a failure or a stop.
-  const withMemory = <T extends IssueWorkflow>(issue: T): T => (progressive ? { ...issue, memoire: safeMemory } : issue);
-  const fin = terminal as HarvesterMessage | null;
+  const withMemory = <T extends WorkflowOutcome>(outcome: T): T => (progressive ? { ...outcome, memoire: safeMemory } : outcome);
+  const end = terminal as HarvesterMessage | null;
   const finalStop = stop as Stop | null;
   if (finalStop) {
     // Killing the docker client leaves the container running: we remove it.
     await infra.atelier.supprimerRecolte(ctx.proprietaire).catch(() => {});
     return conclude(withMemory({ t: "arret", ...finalStop }));
   }
-  if (fin?.t === "fin" && code === 0) {
-    return conclude({ t: "fin", sortie: { vers: ctx.valide.sortie.vers, valeur: fin.donnees }, memoire: receivedMemory });
+  if (end?.t === "fin" && code === 0) {
+    return conclude({ t: "fin", sortie: { vers: ctx.valide.sortie.vers, valeur: end.donnees }, memoire: receivedMemory });
   }
-  if (fin?.t === "echec") return conclude(withMemory(failure(fin.erreur, true)));
+  if (end?.t === "echec") return conclude(withMemory(failure(end.erreur, true)));
   if (code === 124) return conclude(withMemory(failure("Délai dépassé", false)));
   // The exit code is chosen by the agent's code: it could encode account data in it.
   return conclude(withMemory(failure(`La récolte s'est arrêtée sans résultat (code ${code ?? "aucun"})`, true)));

@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Executions } from "./executions.svelte";
-  import { TRIGGERS, elementsEnSortie, hour, STATUSES, TINTS } from "./labels";
+  import { TRIGGERS, outputElements, hour, STATUSES, TINTS } from "./labels";
 
   /**
    * The bottom bar: the last 8 runs (choosing one updates the badges, the « Bloc » tab and the preview) and
@@ -9,7 +9,7 @@
   let {
     executions,
     selection,
-    sortie,
+    sortie: output,
     rejouable: replayable,
   }: {
     executions: Executions;
@@ -42,7 +42,7 @@
             <span>{hour(e.debut)}</span>
             <span class="doux">{TRIGGERS[e.declencheur]}</span>
             <span>{STATUSES[e.statut]}</span>
-            {#if elements(elementsEnSortie(e, sortie))}<span class="doux">{elements(elementsEnSortie(e, sortie))}</span>{/if}
+            {#if elements(outputElements(e, output))}<span class="doux">{elements(outputElements(e, output))}</span>{/if}
             {#if e.essai}<span class="essai">essai</span>{/if}
           </button>
         </li>

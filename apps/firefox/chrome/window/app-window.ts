@@ -1,6 +1,6 @@
 // An agent app's window: browser.xhtml opened by store/apps.ts without a toolbar, marked from its creation, never a
 // WebAiOs main window. One <browser> (the app view, in the app's container), Firefox's tabs and toolbars hidden.
-import { sameOrigin, TAILLE_FAVICON } from "../../core/applications/favicon";
+import { sameOrigin, FAVICON_SIZE } from "../../core/applications/favicon";
 import { cutFrameNetwork } from "./frame-network";
 import { FIREFOX_COMMANDS, FIREFOX_KEYS, shortcutFor } from "./keys";
 import { protectView } from "./site-window";
@@ -13,7 +13,7 @@ type Apps = typeof import("../store/apps").apps;
 const appsModule = (): Apps => ChromeUtils.importESModule(STORE).apps;
 
 /** The app dossier this window was opened for (window.arguments[1], set by apps.open), or null. */
-export function appDossierOf(win: Window): string | null {
+export function appFolderOf(win: Window): string | null {
   const options = (win as any).arguments?.[1];
   return options instanceof Ci.nsIPropertyBag2 && options.hasKey(APP_WINDOW_KEY) ? options.getPropertyAsAString(APP_WINDOW_KEY) : null;
 }
@@ -69,7 +69,7 @@ export function closeAppPopup(win: Window): boolean {
  * The badge: a transparent chrome frame over the view's top right corner, sidebar.html?pastille=.
  * The page cannot see it (the view is remote); it gets only its app's access, through `webaiosOverlay`.
  */
-function addBadge(win: Window, apps: Apps, dossier: string): void {
+function addBadge(win: Window, apps: Apps, folder: string): void {
   const doc = win.document;
   const frame = doc.createElementNS("http://www.w3.org/1999/xhtml", "iframe") as HTMLIFrameElement & { webaiosOverlay?: unknown };
   frame.id = "webaios-app-badge";
@@ -82,17 +82,17 @@ function addBadge(win: Window, apps: Apps, dossier: string): void {
   if (!api) return;
   doc.getElementById("browser")!.append(frame);
   frame.webaiosOverlay = { api };
-  if (cutFrameNetwork(frame)) frame.src = "chrome://browser/content/webaios/sidebar.html?pastille=" + encodeURIComponent("app:" + dossier);
+  if (cutFrameNetwork(frame)) frame.src = "chrome://browser/content/webaios/sidebar.html?pastille=" + encodeURIComponent("app:" + folder);
 }
 
 /** Run at the window's DOMContentLoaded, before anything could claim it; the view is attached once Firefox's startup is done. */
-export function setupAppWindow(win: Window, dossier: string): void {
+export function setupAppWindow(win: Window, folder: string): void {
   const apps = appsModule();
   const app = apps.appOf(win);
   // Closed (stopped) while its window was opening.
-  if (app?.dossier !== dossier) return void win.close();
+  if (app?.dossier !== folder) return void win.close();
   const doc = win.document;
-  doc.documentElement.setAttribute("webaios-app", dossier);
+  doc.documentElement.setAttribute("webaios-app", folder);
   doc.getElementById("navigator-toolbox")!.hidden = true;
   routeOpens(win, apps);
   // Firefox's tab, address and history keys do nothing here; ⌘R reloads the view; ⌘W and ⇧⌘W close the window; ⌘N
@@ -142,7 +142,7 @@ export function setupAppWindow(win: Window, dossier: string): void {
     // at most TAILLE_FAVICON once re-encoded.
     gBrowser.addTabsProgressListener({
       onLinkIconAvailable(_browser: unknown, iconURL: unknown, originalURL: unknown) {
-        if (typeof iconURL !== "string" || !iconURL.startsWith("data:image/") || iconURL.length > TAILLE_FAVICON) return;
+        if (typeof iconURL !== "string" || !iconURL.startsWith("data:image/") || iconURL.length > FAVICON_SIZE) return;
         const source = String(originalURL ?? "");
         if (sameOrigin(source, app.origin) || source.startsWith("data:image/")) apps.note(win, { favicon: iconURL });
       },
@@ -160,6 +160,6 @@ export function setupAppWindow(win: Window, dossier: string): void {
     });
     view.addProgressListener(listener, Ci.nsIWebProgress.NOTIFY_LOCATION);
     apps.attach(win, view);
-    addBadge(win, apps, dossier);
+    addBadge(win, apps, folder);
   });
 }

@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from "vitest";
-import { actionsDataDir, EXECUTION, openAction, runsOnDisk, runStatuses, startActionServers, tid, uiQueries, waitNoyau, writePagesAction, writeResult, writeRunnableAction } from "./actions";
+import { actionsDataDir, EXECUTION, openAction, runsOnDisk, runStatuses, startActionServers, tid, uiQueries, waitKernel, writePagesAction, writeResult, writeRunnableAction } from "./actions";
 import { waitReady } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
@@ -73,7 +73,7 @@ it("session restore with an action tab: the last result shows, no run launched",
   await writeResult(dirs.dataDir, "annonces", EXECUTION, "2026-10-31T08:00:00.000Z", "Résultat gardé");
   const prompts = servers.ollama.prompts.length;
   let { m, q } = await launch();
-  await waitNoyau(m);
+  await waitKernel(m);
   await openAction(m, "annonces", "Annonces");
   await q.waitText(tid("bloc-titre"), "Résultat gardé", 30_000);
   await quit(m);
@@ -168,7 +168,7 @@ it("the Gmail widget (account, recolte.mjs) and a watch update as before while a
   await writePagesAction(dirs.dataDir, site);
   const { m } = await launch(1400);
   await untilEqual(() => shown(m, "gmail"), '{"exemple":"gmail"}');
-  await waitNoyau(m);
+  await waitKernel(m);
   await inUi(m, "void ui.webaios.actions.lancer('pages', null);");
   const running = async () => (await direct(m)).courantes.map((c) => c.action);
   await untilEqual(running, ["pages"]);
@@ -196,7 +196,7 @@ it("quitting during an action: after relaunch its run is « interrompue » in pr
   servers.settings.lenteurSiteMs = 6000;
   await writePagesAction(dirs.dataDir, servers.site.url);
   let { m, q } = await launch();
-  await waitNoyau(m);
+  await waitKernel(m);
   await openAction(m, "pages", "Pages");
   await click(m, tid("relancer-action"));
   await q.waitContains(tid("avancement-action"), "Lecture de 127.0.0.1…", 30_000);

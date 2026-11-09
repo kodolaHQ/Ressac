@@ -3,13 +3,13 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { AccessPolicy } from "../../src/access/policy.js";
 import type { HistoryResult } from "../../src/mcp/pont.js";
-import { PontFactice } from "../../src/mcp/pont-factice.js";
+import { FakeBridge } from "../../src/mcp/pont-factice.js";
 import { startMcpServer, generateToken } from "../../src/mcp/server.js";
 
 const token = generateToken();
 let server: Awaited<ReturnType<typeof startMcpServer>> | undefined;
 let client: Client | undefined;
-let pont: PontFactice;
+let bridge: FakeBridge;
 
 const runes: HistoryResult = {
   url: "https://svelte.dev/blog/runes",
@@ -26,9 +26,9 @@ const withoutText: HistoryResult = {
   extrait: "",
 };
 
-async function start(hist?: ConstructorParameters<typeof PontFactice>[1]["historique"]) {
-  pont = new PontFactice([], { actif: null, autoriser: false, ...(hist ? { historique: hist } : {}) });
-  server = await startMcpServer({ pont, politique: new AccessPolicy(), jeton: token });
+async function start(hist?: ConstructorParameters<typeof FakeBridge>[1]["historique"]) {
+  bridge = new FakeBridge([], { actif: null, autoriser: false, ...(hist ? { historique: hist } : {}) });
+  server = await startMcpServer({ pont: bridge, politique: new AccessPolicy(), jeton: token });
   client = new Client({ name: "test", version: "0" });
   await client.connect(
     new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${server.port}/mcp`), {
@@ -47,8 +47,8 @@ afterEach(async () => {
 
 const text = (r: Awaited<ReturnType<Client["callTool"]>>) =>
   (r.content as { type: string; text?: string }[]).map((c) => c.text ?? "").join("\n");
-const historyCalls = () => pont.appels.filter((a) => a.methode === "chercherHistorique").map((a) => a.args[0]);
-const requests = () => pont.appels.filter((a) => a.methode === "demanderAutorisation" || a.methode === "demanderOutilsDev").length;
+const historyCalls = () => bridge.appels.filter((a) => a.methode === "chercherHistorique").map((a) => a.args[0]);
+const requests = () => bridge.appels.filter((a) => a.methode === "demanderAutorisation" || a.methode === "demanderOutilsDev").length;
 
 test("without history in the bridge: the tools do not exist", async () => {
   const c = await start();

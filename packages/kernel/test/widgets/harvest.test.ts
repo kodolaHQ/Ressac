@@ -8,18 +8,18 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { spacePaths } from "../../src/paths.js";
 import { readHome } from "../../src/home/lire.js";
-import { Atelier, IMAGE } from "../../src/container/workshop.js";
+import { Workshop, IMAGE } from "../../src/container/workshop.js";
 import { DeclarationWidget, type WidgetLu } from "../../src/home/schemas.js";
 import { writeData, writeWidgetState, readWidgetState, deleteData } from "../../src/home/data.js";
-import { IaLocale } from "../../src/ai/ia-locale.js";
-import { PontFactice } from "../../src/mcp/pont-factice.js";
-import { accorder, lireAccords, retirerAccord } from "../../src/widgets/accords.js";
+import { LocalAi } from "../../src/ai/ia-locale.js";
+import { FakeBridge } from "../../src/mcp/pont-factice.js";
+import { giveGrant, readGrants, removeGrant } from "../../src/widgets/accords.js";
 import { kernelError, runAttempt, runHarvest, type ProcessLauncher } from "../../src/widgets/harvest.js";
 import { PROFILE_DENIED } from "../../src/workflows/executer.js";
-import { writeRun, attemptId, lireExecution, listerExecutions, type Execution } from "../../src/workflows/executions.js";
+import { writeRun, attemptId, readRun, listRuns, type Execution } from "../../src/workflows/executions.js";
 import { withMemory, writeMemory, readMemory } from "../../src/workflows/memory.js";
 import { Pacing } from "../../src/workflows/pacing.js";
-import { urlRecherche } from "../../src/workflows/duckduckgo.js";
+import { searchUrl } from "../../src/workflows/duckduckgo.js";
 import { tempFolder } from "../helpers/temp.js";
 import { fakeRunner } from "../helpers/fake-runner.js";
 import { fakeKev, fakeOllama, type FakeServer } from "../helpers/fake-ai.js";
@@ -30,7 +30,7 @@ const NOW = new Date("2026-10-28T10:00:00.000Z");
 const clock = () => NOW;
 
 const toClose: { fermer(): Promise<void> }[] = [];
-const aiToStop: IaLocale[] = [];
+const aiToStop: LocalAi[] = [];
 afterEach(async () => {
   await Promise.all(toClose.splice(0).map((s) => s.fermer()));
   await Promise.all(aiToStop.splice(0).map((i) => i.arreter()));
@@ -67,30 +67,30 @@ interface Context {
   commandes: string[][];
   tues: number;
   executer: ReturnType<typeof fakeRunner>;
-  atelier: Atelier;
+  atelier: Workshop;
   lancer: ProcessLauncher;
 }
 
 /** Creates a widget `id` (widget.json + recolte.mjs) and a launcher that runs the harvester locally, without docker. */
-async function preparer(id: string, code: string, sources = { compte: [] as string[], publiques: [] as string[] }, config: unknown = { a: 1 }): Promise<Context> {
+async function prepare(id: string, code: string, sources = { compte: [] as string[], publiques: [] as string[] }, config: unknown = { a: 1 }): Promise<Context> {
   const space = await tempFolder();
-  const dossier = join(space, "accueil", "widgets", id);
-  await mkdir(dossier, { recursive: true });
-  const brut = {
+  const folder = join(space, "accueil", "widgets", id);
+  await mkdir(folder, { recursive: true });
+  const raw = {
     nom: "Test",
     tailles: { min: { l: 1, h: 1 }, max: { l: 4, h: 4 }, defaut: { l: 2, h: 2 } },
     recolte: { minutes: 60 },
     sources,
     config,
   };
-  await writeFile(join(dossier, "widget.json"), JSON.stringify(brut));
-  await writeFile(join(dossier, "recolte.mjs"), code);
-  const declaration = DeclarationWidget.parse(brut);
-  const executer = fakeRunner([]);
+  await writeFile(join(folder, "widget.json"), JSON.stringify(raw));
+  await writeFile(join(folder, "recolte.mjs"), code);
+  const declaration = DeclarationWidget.parse(raw);
+  const run = fakeRunner([]);
   const ctx: Context = {
     widget: {
       id,
-      dossier,
+      dossier: folder,
       declaration,
       etat: { statut: "ok", derniereMaj: null, derniereTentative: null },
       donnees: null,
@@ -103,11 +103,11 @@ async function preparer(id: string, code: string, sources = { compte: [] as stri
     espace: space,
     commandes: [],
     tues: 0,
-    executer,
-    atelier: new Atelier({ chemins: spacePaths(space), docker: "docker", executer: executer.executer }),
+    executer: run,
+    atelier: new Workshop({ chemins: spacePaths(space), docker: "docker", executer: run.executer }),
     lancer: (cmd, args) => {
       ctx.commandes.push([cmd, ...args]);
-      const e = spawn(process.execPath, [SCRIPT, dossier], { stdio: ["pipe", "pipe", "pipe"] });
+      const e = spawn(process.execPath, [SCRIPT, folder], { stdio: ["pipe", "pipe", "pipe"] });
       return {
         stdin: e.stdin,
         stdout: e.stdout,
@@ -123,26 +123,26 @@ async function preparer(id: string, code: string, sources = { compte: [] as stri
   return ctx;
 }
 
-async function ia(o: { kev?: FakeServer; ollama?: FakeServer } = {}) {
-  const i = new IaLocale({ dossier: await tempFolder(), executer: fakeRunner([]).executer, kevUrl: o.kev?.url ?? "http://127.0.0.1:9", ollamaUrl: o.ollama?.url ?? "http://127.0.0.1:9" });
+async function ai(o: { kev?: FakeServer; ollama?: FakeServer } = {}) {
+  const i = new LocalAi({ dossier: await tempFolder(), executer: fakeRunner([]).executer, kevUrl: o.kev?.url ?? "http://127.0.0.1:9", ollamaUrl: o.ollama?.url ?? "http://127.0.0.1:9" });
   aiToStop.push(i);
   return i;
 }
 
-const pontLecture = (refuser: string[] = [], redirections?: Record<string, string>) =>
-  new PontFactice([], {
+const readBridge = (deny: string[] = [], redirections?: Record<string, string>) =>
+  new FakeBridge([], {
     actif: null,
     autoriser: false,
     lecture: {
       pages: [{ url: "https://app.daily.dev/", titre: "Fil", texte: "articles", liens: [{ texte: "a", url: "https://app.daily.dev/a" }] }],
-      refuser,
+      refuser: deny,
       redirections,
     },
   });
 
-const readCalls = (p: PontFactice) => p.appels.filter((a) => a.methode === "lirePageInvisible");
+const readCalls = (p: FakeBridge) => p.appels.filter((a) => a.methode === "lirePageInvisible");
 
-async function harvest(ctx: Context, o: { ia?: IaLocale | Pick<IaLocale, "kev" | "gemma">; pont?: PontFactice; delaiMs?: number } = {}) {
+async function harvest(ctx: Context, o: { ia?: LocalAi | Pick<LocalAi, "kev" | "gemma">; pont?: FakeBridge; delaiMs?: number } = {}) {
   return runHarvest({
     id: ctx.widget.id,
     widget: ctx.widget,
@@ -150,15 +150,15 @@ async function harvest(ctx: Context, o: { ia?: IaLocale | Pick<IaLocale, "kev" |
     moteur: ENGINE,
     atelier: ctx.atelier,
     lancer: ctx.lancer,
-    ia: (o.ia ?? (await ia())) as IaLocale,
-    pont: o.pont ?? pontLecture(),
+    ia: (o.ia ?? (await ai())) as LocalAi,
+    pont: o.pont ?? readBridge(),
     horloge: clock,
     delaiMs: o.delaiMs,
     adressesLocales: true,
   });
 }
 
-const optionsDe = (ctx: Context) => ({
+const optionsOf = (ctx: Context) => ({
   id: ctx.widget.id,
   widget: ctx.widget as WidgetLu,
   dossierWidgets: ctx.dossierWidgets,
@@ -166,12 +166,12 @@ const optionsDe = (ctx: Context) => ({
   atelier: ctx.atelier,
   lancer: ctx.lancer,
   ia: null,
-  pont: pontLecture(),
+  pont: readBridge(),
   horloge: clock,
   adressesLocales: true,
 });
 
-const lireJson = async (path: string) => JSON.parse(await readFile(path, "utf8"));
+const readJson = async (path: string) => JSON.parse(await readFile(path, "utf8"));
 
 describe("executerRecolte", () => {
   it("a successful harvest writes donnees.json and the ok state in dossierWidgets", async () => {
@@ -179,7 +179,7 @@ describe("executerRecolte", () => {
     const kev = await fakeKev({ q: { type: "noul", noul: 0.8 } });
     const ollama = await fakeOllama("bonjour");
     toClose.push(kev, ollama);
-    const ctx = await preparer(
+    const ctx = await prepare(
       "meteo",
       `export default async (w) => {
         const j = await w.recuperer("${web.url}/flux.json", { format: "json" });
@@ -191,8 +191,8 @@ describe("executerRecolte", () => {
       };`,
     );
     await writeData(ctx.dossierWidgets, "meteo", { ancien: true });
-    const pont = pontLecture();
-    const r = await harvest(ctx, { ia: await ia({ kev, ollama }), pont });
+    const bridge = readBridge();
+    const r = await harvest(ctx, { ia: await ai({ kev, ollama }), pont: bridge });
 
     const expected = {
       j: { x: 42 },
@@ -205,11 +205,11 @@ describe("executerRecolte", () => {
     };
     expect(r.etat.statut).toBe("ok");
     expect(r.donnees).toEqual(expected);
-    expect(await lireJson(join(ctx.dossierWidgets, "meteo", "donnees.json"))).toEqual(expected);
+    expect(await readJson(join(ctx.dossierWidgets, "meteo", "donnees.json"))).toEqual(expected);
     const state = await readWidgetState(ctx.dossierWidgets, "meteo");
     expect(state).toMatchObject({ statut: "ok", derniereMaj: NOW.toISOString(), derniereTentative: NOW.toISOString() });
     expect(state.journal).toContain("trace du widget");
-    expect(readCalls(pont)[0]!.args).toEqual(["https://app.daily.dev/", { profil: null, adressesLocales: true }]);
+    expect(readCalls(bridge)[0]!.args).toEqual(["https://app.daily.dev/", { profil: null, adressesLocales: true }]);
     // No cookie or identifier sent.
     expect(web.requetes[0]!.enTetes.cookie).toBeUndefined();
     expect(web.requetes[0]!.enTetes.authorization).toBeUndefined();
@@ -221,8 +221,8 @@ describe("executerRecolte", () => {
   });
 
   it("commandeRecolte mounts the widget as :ro, cuts the network (--network none) and mounts nothing else from the space", async () => {
-    const atelier = new Atelier({ chemins: spacePaths("/Users/t/WebAiOs"), docker: "/usr/local/bin/docker" });
-    const c = atelier.commandeRecolte("meteo", "/Users/t/WebAiOs/accueil/widgets/meteo", "/app/docker/moteur");
+    const workshop = new Workshop({ chemins: spacePaths("/Users/t/WebAiOs"), docker: "/usr/local/bin/docker" });
+    const c = workshop.commandeRecolte("meteo", "/Users/t/WebAiOs/accueil/widgets/meteo", "/app/docker/moteur");
     expect(c).toEqual([
       "/usr/local/bin/docker", "run", "-i", "--rm",
       "--name", "webaios-recolte-meteo",
@@ -241,18 +241,18 @@ describe("executerRecolte", () => {
     expect(volumes).toHaveLength(2);
     expect(volumes.every((v) => v.endsWith(":ro"))).toBe(true);
     expect(c.filter((x) => x.includes("/Users/t/WebAiOs")).every((x) => x.startsWith("/Users/t/WebAiOs/accueil/widgets/meteo:"))).toBe(true);
-    expect(() => atelier.commandeRecolte("../x", "/d", "/r")).toThrow();
-    expect(() => new Atelier({ chemins: spacePaths("/Users/t/WebAiOs"), docker: null }).commandeRecolte("meteo", "/d", "/r")).toThrow();
+    expect(() => workshop.commandeRecolte("../x", "/d", "/r")).toThrow();
+    expect(() => new Workshop({ chemins: spacePaths("/Users/t/WebAiOs"), docker: null }).commandeRecolte("meteo", "/d", "/r")).toThrow();
   });
 
   it("supprimerRecolte forces the container's removal", async () => {
-    const ctx = await preparer("meteo", "export default async () => 1;");
+    const ctx = await prepare("meteo", "export default async () => 1;");
     await ctx.atelier.supprimerRecolte("meteo");
     expect(ctx.executer.appels.map((a) => [a.commande, ...a.args])).toEqual([["docker", "rm", "-f", "webaios-recolte-meteo"]]);
   });
 
   it("a harvest that fails keeps the previous data and records the error and the log", async () => {
-    const ctx = await preparer("meteo", `export default async (w) => { console.log("avant l'erreur"); throw new Error("boum ${"x".repeat(900)}"); };`);
+    const ctx = await prepare("meteo", `export default async (w) => { console.log("avant l'erreur"); throw new Error("boum ${"x".repeat(900)}"); };`);
     await writeData(ctx.dossierWidgets, "meteo", { ancien: true });
     const r = await harvest(ctx);
     expect(r.etat.statut).toBe("erreur");
@@ -261,12 +261,12 @@ describe("executerRecolte", () => {
     expect(r.etat.erreur!.length).toBeLessThanOrEqual(500);
     expect(r.etat.journal).toContain("avant l'erreur");
     expect(r.etat.derniereTentative).toBe(NOW.toISOString());
-    expect(await lireJson(join(ctx.dossierWidgets, "meteo", "donnees.json"))).toEqual({ ancien: true });
+    expect(await readJson(join(ctx.dossierWidgets, "meteo", "donnees.json"))).toEqual({ ancien: true });
     expect(await readWidgetState(ctx.dossierWidgets, "meteo")).toEqual(r.etat);
   });
 
   it("the log keeps the last 2,000 characters of the error output", async () => {
-    const ctx = await preparer("meteo", `export default async (w) => { for (let i = 0; i < 500; i++) w.journal("ligne " + i); return 1; };`);
+    const ctx = await prepare("meteo", `export default async (w) => { for (let i = 0; i < 500; i++) w.journal("ligne " + i); return 1; };`);
     const r = await harvest(ctx);
     expect(r.etat.statut).toBe("ok");
     expect(r.etat.journal!.length).toBeLessThanOrEqual(2000);
@@ -275,26 +275,26 @@ describe("executerRecolte", () => {
   });
 
   it("a non-zero output without an end is an error", async () => {
-    const ctx = await preparer("meteo", `export default async () => { process.exit(3); };`);
+    const ctx = await prepare("meteo", `export default async () => { process.exit(3); };`);
     const r = await harvest(ctx);
     expect(r.etat.statut).toBe("erreur");
     expect(r.etat.erreur).toContain("3");
   });
 
   it("timeout exceeded: process killed, error state « Délai dépassé »", async () => {
-    const ctx = await preparer("lent", `export default () => new Promise(() => {});`);
+    const ctx = await prepare("lent", `export default () => new Promise(() => {});`);
     await writeData(ctx.dossierWidgets, "lent", { ancien: true });
-    const debut = Date.now();
+    const start = Date.now();
     const r = await harvest(ctx, { delaiMs: 600 });
-    expect(Date.now() - debut).toBeLessThan(5000);
+    expect(Date.now() - start).toBeLessThan(5000);
     expect(r.etat).toMatchObject({ statut: "erreur", erreur: "Délai dépassé" });
     expect(ctx.tues).toBeGreaterThan(0);
     expect(ctx.executer.appels.some((a) => a.args.join(" ") === "rm -f webaios-recolte-lent")).toBe(true);
-    expect(await lireJson(join(ctx.dossierWidgets, "lent", "donnees.json"))).toEqual({ ancien: true });
+    expect(await readJson(join(ctx.dossierWidgets, "lent", "donnees.json"))).toEqual({ ancien: true });
   });
 
   it("a line over 4 MB kills the harvest: « Réponse trop grande »", async () => {
-    const ctx = await preparer("gros", `export default async () => { process.stdout.write("x".repeat(5 * 1024 * 1024)); await new Promise(() => {}); };`);
+    const ctx = await prepare("gros", `export default async () => { process.stdout.write("x".repeat(5 * 1024 * 1024)); await new Promise(() => {}); };`);
     const r = await harvest(ctx);
     expect(r.etat).toMatchObject({ statut: "erreur", erreur: "Réponse trop grande" });
     expect(ctx.tues).toBeGreaterThan(0);
@@ -305,7 +305,7 @@ describe("executerRecolte", () => {
       "/lent": (res) => setTimeout(() => res.end("lent"), 300),
       "/vite": (res) => res.end("vite"),
     });
-    const ctx = await preparer(
+    const ctx = await prepare(
       "multi",
       `export default async (w) => Promise.all([w.recuperer("${web.url}/lent"), w.recuperer("${web.url}/vite"), w.recuperer("${web.url}/vite")]);`,
     );
@@ -314,7 +314,7 @@ describe("executerRecolte", () => {
   });
 
   it("recuperer: http(s) only, without credentials in the URL", async () => {
-    const ctx = await preparer(
+    const ctx = await prepare(
       "public",
       `const essai = (p) => p.then(() => "ok", (e) => e.message);
       export default async (w) => [
@@ -333,10 +333,10 @@ describe("executerRecolte", () => {
 
   it("recuperer: a local address is refused by default", async () => {
     const web = await webServer({ "/": (res) => res.end("secret local") });
-    const ctx = await preparer("public", `export default async (w) => w.recuperer("${web.url}/").catch((e) => e.message);`);
+    const ctx = await prepare("public", `export default async (w) => w.recuperer("${web.url}/").catch((e) => e.message);`);
     const r = await runHarvest({
       id: "public", widget: ctx.widget, dossierWidgets: ctx.dossierWidgets, moteur: ENGINE, atelier: ctx.atelier,
-      lancer: ctx.lancer, ia: await ia(), pont: pontLecture(), horloge: clock,
+      lancer: ctx.lancer, ia: await ai(), pont: readBridge(), horloge: clock,
     });
     expect(r.donnees).toMatch(/locale/);
     expect(web.requetes).toHaveLength(0);
@@ -344,42 +344,42 @@ describe("executerRecolte", () => {
 
   it("recuperer: « localhost. » (trailing dot) is a local address, refused", async () => {
     const web = await webServer({ "/": (res) => res.end("secret local") });
-    const ctx = await preparer(
+    const ctx = await prepare(
       "public",
       `const essai = (p) => p.then((x) => x, (e) => "refus: " + e.message);
       export default async (w) => [await essai(w.recuperer("http://localhost.:${web.port}/")), await essai(w.lirePage("http://localhost.:${web.port}/"))];`,
     );
-    const pont = pontLecture();
+    const bridge = readBridge();
     const r = await runHarvest({
       id: "public", widget: ctx.widget, dossierWidgets: ctx.dossierWidgets, moteur: ENGINE, atelier: ctx.atelier,
-      lancer: ctx.lancer, ia: await ia(), pont, horloge: clock,
+      lancer: ctx.lancer, ia: await ai(), pont: bridge, horloge: clock,
     });
     const [rec, page] = r.donnees as string[];
     expect(rec).toMatch(/^refus: .*locale/);
     expect(page).toMatch(/^refus: .*locale/);
     expect(web.requetes).toHaveLength(0);
-    expect(readCalls(pont)).toHaveLength(0);
+    expect(readCalls(bridge)).toHaveLength(0);
   });
 
   it("recuperer: response over 5 MB refused", async () => {
     const web = await webServer({ "/gros": (res) => res.end("x".repeat(5 * 1024 * 1024 + 10)) });
-    const ctx = await preparer("public", `export default async (w) => w.recuperer("${web.url}/gros").then((t) => t.length, (e) => e.message);`);
+    const ctx = await prepare("public", `export default async (w) => w.recuperer("${web.url}/gros").then((t) => t.length, (e) => e.message);`);
     const r = await harvest(ctx);
     expect(r.donnees).toMatch(/5 Mo/);
   });
 
   it("without lirePageInvisible, lirePage answers « Lecture de pages indisponible »", async () => {
-    const ctx = await preparer("public", `export default async (w) => w.lirePage("https://a.fr/").catch((e) => e.message);`);
-    const r = await harvest(ctx, { pont: new PontFactice([], { actif: null, autoriser: false }) });
+    const ctx = await prepare("public", `export default async (w) => w.lirePage("https://a.fr/").catch((e) => e.message);`);
+    const r = await harvest(ctx, { pont: new FakeBridge([], { actif: null, autoriser: false }) });
     expect(r.donnees).toBe("Lecture de pages indisponible");
   });
 
   it("widget without an account: lirePage with an account is refused", async () => {
-    const ctx = await preparer("public", `export default async (w) => w.lirePage("https://app.daily.dev/", { compte: true }).catch((e) => e.message);`);
-    const pont = pontLecture();
-    const r = await harvest(ctx, { pont });
+    const ctx = await prepare("public", `export default async (w) => w.lirePage("https://app.daily.dev/", { compte: true }).catch((e) => e.message);`);
+    const bridge = readBridge();
+    const r = await harvest(ctx, { pont: bridge });
     expect(r.donnees).toMatch(/non déclaré/);
-    expect(readCalls(pont)).toHaveLength(0);
+    expect(readCalls(bridge)).toHaveLength(0);
   });
 });
 
@@ -387,55 +387,55 @@ describe("executerRecolte, widget with an account", () => {
   const sources = { compte: ["app.daily.dev"], publiques: ["127.0.0.1"] };
 
   it("widget with an account: lirePage compte without a grant → accord-requis, no read", async () => {
-    const ctx = await preparer("daily", `export default async (w) => w.lirePage("https://app.daily.dev/", { compte: true });`, sources);
+    const ctx = await prepare("daily", `export default async (w) => w.lirePage("https://app.daily.dev/", { compte: true });`, sources);
     await writeData(ctx.dossierWidgets, "daily", { ancien: true });
-    const pont = pontLecture();
-    const r = await harvest(ctx, { pont });
+    const bridge = readBridge();
+    const r = await harvest(ctx, { pont: bridge });
     expect(r.etat.statut).toBe("accord-requis");
-    expect(readCalls(pont)).toHaveLength(0);
-    expect(await lireJson(join(ctx.dossierWidgets, "daily", "donnees.json"))).toEqual({ ancien: true });
+    expect(readCalls(bridge)).toHaveLength(0);
+    expect(await readJson(join(ctx.dossierWidgets, "daily", "donnees.json"))).toEqual({ ancien: true });
     expect((await readWidgetState(ctx.dossierWidgets, "daily")).statut).toBe("accord-requis");
   });
 
   it("grant removed during the harvest: the read with an account does not happen, accord-requis", async () => {
-    const ctx = await preparer(
+    const ctx = await prepare(
       "daily",
       `export default async (w) => { await w.kev("x", {}); return w.lirePage("https://app.daily.dev/", { compte: true }); };`,
       sources,
     );
-    await accorder(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "perso" });
-    const pont = pontLecture();
+    await giveGrant(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "perso" });
+    const bridge = readBridge();
     const fake = {
-      kev: async () => { await retirerAccord(ctx.dossierWidgets, "daily"); return {}; },
+      kev: async () => { await removeGrant(ctx.dossierWidgets, "daily"); return {}; },
       gemma: async () => "",
     };
-    const r = await harvest(ctx, { pont, ia: fake });
+    const r = await harvest(ctx, { pont: bridge, ia: fake });
     expect(r.etat.statut).toBe("accord-requis");
-    expect(readCalls(pont)).toHaveLength(0);
+    expect(readCalls(bridge)).toHaveLength(0);
   });
 
   it("with a valid grant, lirePage compte reads in the grant's profile", async () => {
-    const ctx = await preparer("daily", `export default async (w) => (await w.lirePage("https://app.daily.dev/", { compte: true })).texte;`, sources);
-    await accorder(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "perso" });
-    const pont = pontLecture();
-    const r = await harvest(ctx, { pont });
+    const ctx = await prepare("daily", `export default async (w) => (await w.lirePage("https://app.daily.dev/", { compte: true })).texte;`, sources);
+    await giveGrant(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "perso" });
+    const bridge = readBridge();
+    const r = await harvest(ctx, { pont: bridge });
     expect(r.etat.statut).toBe("ok");
     expect(r.donnees).toBe("articles");
-    expect(readCalls(pont)[0]!.args).toEqual(["https://app.daily.dev/", { profil: "perso", domaines: ["app.daily.dev"], adressesLocales: true }]);
+    expect(readCalls(bridge)[0]!.args).toEqual(["https://app.daily.dev/", { profil: "perso", domaines: ["app.daily.dev"], adressesLocales: true }]);
   });
 
   it("lirePage compte to a domain not declared as account is refused", async () => {
-    const ctx = await preparer("daily", `export default async (w) => w.lirePage("https://evil.fr/", { compte: true }).catch((e) => e.message);`, sources);
-    await accorder(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "perso" });
-    const pont = pontLecture();
-    const r = await harvest(ctx, { pont });
+    const ctx = await prepare("daily", `export default async (w) => w.lirePage("https://evil.fr/", { compte: true }).catch((e) => e.message);`, sources);
+    await giveGrant(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "perso" });
+    const bridge = readBridge();
+    const r = await harvest(ctx, { pont: bridge });
     expect(r.donnees).toMatch(/non déclaré/);
-    expect(readCalls(pont)).toHaveLength(0);
+    expect(readCalls(bridge)).toHaveLength(0);
   });
 
   it("widget with an account: recuperer to an undeclared domain is refused", async () => {
     const web = await webServer({ "/": (res) => res.end("ok") });
-    const ctx = await preparer(
+    const ctx = await prepare(
       "daily",
       `const essai = (p) => p.then((x) => x, (e) => "refus: " + e.message);
       export default async (w) => [
@@ -446,16 +446,16 @@ describe("executerRecolte, widget with an account", () => {
       ];`,
       sources,
     );
-    await accorder(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "perso" });
-    const pont = pontLecture();
-    const r = await harvest(ctx, { pont });
-    const [externe, otherName, page, declare] = r.donnees as string[];
-    expect(externe).toMatch(/^refus: .*non déclaré/);
+    await giveGrant(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "perso" });
+    const bridge = readBridge();
+    const r = await harvest(ctx, { pont: bridge });
+    const [external, otherName, page, declare] = r.donnees as string[];
+    expect(external).toMatch(/^refus: .*non déclaré/);
     expect(otherName).toMatch(/^refus: .*non déclaré/);
     expect(page).toMatch(/^refus: .*non déclaré/);
     expect(declare).toBe("ok");
     expect(web.requetes).toHaveLength(1);
-    expect(readCalls(pont)).toHaveLength(0);
+    expect(readCalls(bridge)).toHaveLength(0);
   });
 
   it("widget with an account: a redirect to an undeclared domain is refused", async () => {
@@ -465,13 +465,13 @@ describe("executerRecolte, widget with an account", () => {
       "/redir-ok": (res) => { res.writeHead(301, { location: "/fin" }); res.end(); },
       "/fin": (res) => res.end("arrivé"),
     });
-    const ctx = await preparer(
+    const ctx = await prepare(
       "daily",
       `const essai = (p) => p.then((x) => x, (e) => "refus: " + e.message);
       export default async (w) => [await essai(w.recuperer("${web.url}/redir")), await essai(w.recuperer("${web.url}/redir-ok"))];`,
       sources,
     );
-    await accorder(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "perso" });
+    await giveGrant(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "perso" });
     const r = await harvest(ctx);
     const [leak, ok] = r.donnees as string[];
     expect(leak).toMatch(/^refus: .*non déclaré/);
@@ -481,15 +481,15 @@ describe("executerRecolte, widget with an account", () => {
 
   it("widget with an account and without public ones: no public fetch", async () => {
     const web = await webServer({ "/": (res) => res.end("ok") });
-    const ctx = await preparer("daily", `export default async (w) => w.recuperer("${web.url}/").catch((e) => "refus: " + e.message);`, { compte: ["app.daily.dev"], publiques: [] });
-    await accorder(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: [], profil: "perso" });
+    const ctx = await prepare("daily", `export default async (w) => w.recuperer("${web.url}/").catch((e) => "refus: " + e.message);`, { compte: ["app.daily.dev"], publiques: [] });
+    await giveGrant(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: [], profil: "perso" });
     const r = await harvest(ctx);
     expect(r.donnees).toMatch(/^refus: .*non déclaré/);
     expect(web.requetes).toHaveLength(0);
   });
 
   it("a declared domain written with a trailing dot is the same domain", async () => {
-    const ctx = await preparer(
+    const ctx = await prepare(
       "daily",
       `const essai = (p) => p.then((x) => x.titre ?? x, (e) => "refus: " + e.message);
       export default async (w) => [
@@ -498,23 +498,23 @@ describe("executerRecolte, widget with an account", () => {
       ];`,
       sources,
     );
-    await accorder(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "perso" });
-    const pont = pontLecture();
-    const r = await harvest(ctx, { pont });
+    await giveGrant(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "perso" });
+    const bridge = readBridge();
+    const r = await harvest(ctx, { pont: bridge });
     const [declare, other] = r.donnees as string[];
     expect(declare).not.toMatch(/^refus/);
     expect(other).toMatch(/^refus: .*non déclaré/);
-    expect(readCalls(pont).map((a) => a.args[0])).toEqual(["https://app.daily.dev./"]);
+    expect(readCalls(bridge).map((a) => a.args[0])).toEqual(["https://app.daily.dev./"]);
   });
 
   it("lirePage compte redirected outside the account domains: refused, the text does not leave", async () => {
-    const ctx = await preparer(
+    const ctx = await prepare(
       "daily",
       `export default async (w) => w.lirePage("https://app.daily.dev/", { compte: true }).then((p) => p.texte, (e) => "refus: " + e.message);`,
       sources,
     );
-    await accorder(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "perso" });
-    const pont = new PontFactice([], {
+    await giveGrant(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "perso" });
+    const bridge = new FakeBridge([], {
       actif: null,
       autoriser: false,
       lecture: {
@@ -522,20 +522,20 @@ describe("executerRecolte, widget with an account", () => {
         redirections: { "https://app.daily.dev/": "https://evil.fr/vole" },
       },
     });
-    const r = await harvest(ctx, { pont });
+    const r = await harvest(ctx, { pont: bridge });
     expect(r.donnees).toMatch(/^refus: Page refusée.*evil\.fr/);
     expect(JSON.stringify(r.donnees)).not.toContain("texte secret");
-    expect(readCalls(pont)[0]!.args[1]).toEqual({ profil: "perso", domaines: ["app.daily.dev"], adressesLocales: true });
+    expect(readCalls(bridge)[0]!.args[1]).toEqual({ profil: "perso", domaines: ["app.daily.dev"], adressesLocales: true });
   });
 
   it("public lirePage of a widget with an account: public domains passed to the bridge, redirect outside the list refused", async () => {
-    const ctx = await preparer(
+    const ctx = await prepare(
       "daily",
       `export default async (w) => w.lirePage("http://127.0.0.1/?d=secret").then((p) => p.texte, (e) => "refus: " + e.message);`,
       sources,
     );
-    await accorder(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "perso" });
-    const pont = new PontFactice([], {
+    await giveGrant(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "perso" });
+    const bridge = new FakeBridge([], {
       actif: null,
       autoriser: false,
       lecture: {
@@ -543,67 +543,67 @@ describe("executerRecolte, widget with an account", () => {
         redirections: { "http://127.0.0.1/?d=secret": "https://evil.fr/?d=secret" },
       },
     });
-    const r = await harvest(ctx, { pont });
+    const r = await harvest(ctx, { pont: bridge });
     expect(r.donnees).toMatch(/^refus: Page refusée.*non déclaré/);
-    expect(readCalls(pont)[0]!.args[1]).toEqual({ profil: null, domaines: ["127.0.0.1"], adressesLocales: true });
+    expect(readCalls(bridge)[0]!.args[1]).toEqual({ profil: null, domaines: ["127.0.0.1"], adressesLocales: true });
   });
 
   it("without the adressesLocales option, the bridge does not receive adressesLocales (it then refuses local addresses)", async () => {
-    const ctx = await preparer("daily", `export default async (w) => (await w.lirePage("https://app.daily.dev/")).titre;`);
-    const pont = pontLecture();
-    const r = await runHarvest({ ...optionsDe(ctx), pont, adressesLocales: false });
+    const ctx = await prepare("daily", `export default async (w) => (await w.lirePage("https://app.daily.dev/")).titre;`);
+    const bridge = readBridge();
+    const r = await runHarvest({ ...optionsOf(ctx), pont: bridge, adressesLocales: false });
     expect(r.donnees).toBe("Fil");
-    expect(readCalls(pont)[0]!.args).toEqual(["https://app.daily.dev/", { profil: null }]);
+    expect(readCalls(bridge)[0]!.args).toEqual(["https://app.daily.dev/", { profil: null }]);
   });
 
   it("ProfilRefuse from the bridge: grant removed, state accord-requis", async () => {
-    const ctx = await preparer("daily", `export default async (w) => w.lirePage("https://app.daily.dev/", { compte: true });`, sources);
+    const ctx = await prepare("daily", `export default async (w) => w.lirePage("https://app.daily.dev/", { compte: true });`, sources);
     await writeData(ctx.dossierWidgets, "daily", { ancien: true });
-    await accorder(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "prive" });
-    await accorder(ctx.dossierWidgets, "autre", { domaines: ["a.fr"], publiques: [], profil: "perso" });
-    const r = await harvest(ctx, { pont: pontLecture(["prive"]) });
+    await giveGrant(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "prive" });
+    await giveGrant(ctx.dossierWidgets, "autre", { domaines: ["a.fr"], publiques: [], profil: "perso" });
+    const r = await harvest(ctx, { pont: readBridge(["prive"]) });
     expect(r.etat.statut).toBe("accord-requis");
     expect(r.etat.erreur).toBeTruthy();
-    expect(await lireAccords(ctx.dossierWidgets)).toEqual({ autre: { domaines: ["a.fr"], publiques: [], profil: "perso" } });
+    expect(await readGrants(ctx.dossierWidgets)).toEqual({ autre: { domaines: ["a.fr"], publiques: [], profil: "perso" } });
     // The data read with this account leaves with the grant.
     expect(existsSync(join(ctx.dossierWidgets, "daily", "donnees.json"))).toBe(false);
   });
 
   it("ProfilRefuse then account removed: the public harvest receives nothing of the account, nor does the home", async () => {
-    const ctx = await preparer("daily", `export default async (w) => w.lirePage("https://app.daily.dev/", { compte: true });`, sources);
+    const ctx = await prepare("daily", `export default async (w) => w.lirePage("https://app.daily.dev/", { compte: true });`, sources);
     await writeData(ctx.dossierWidgets, "daily", { secret: "du compte" });
-    await accorder(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "prive" });
-    expect((await harvest(ctx, { pont: pontLecture(["prive"]) })).etat.statut).toBe("accord-requis");
+    await giveGrant(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "prive" });
+    expect((await harvest(ctx, { pont: readBridge(["prive"]) })).etat.statut).toBe("accord-requis");
     // The agent removes the account: the widget becomes public again (neither account nor grant).
-    const brut = { nom: "Test", tailles: { min: { l: 1, h: 1 }, max: { l: 4, h: 4 }, defaut: { l: 2, h: 2 } }, recolte: { minutes: 60 }, sources: { compte: [], publiques: [] } };
-    await writeFile(join(ctx.widget.dossier, "widget.json"), JSON.stringify(brut));
+    const raw = { nom: "Test", tailles: { min: { l: 1, h: 1 }, max: { l: 4, h: 4 }, defaut: { l: 2, h: 2 } }, recolte: { minutes: 60 }, sources: { compte: [], publiques: [] } };
+    await writeFile(join(ctx.widget.dossier, "widget.json"), JSON.stringify(raw));
     await writeFile(join(ctx.widget.dossier, "recolte.mjs"), "export default async (w) => ({ prec: w.precedent });");
     const home = await readHome(spacePaths(ctx.espace), ctx.dossierWidgets);
     const lu = home.widgets.find((w) => w.id === "daily")!;
     expect("donnees" in lu && lu.donnees).toBeNull(); // what donnees_widget would return
-    const r = await runHarvest({ ...optionsDe(ctx), widget: lu });
+    const r = await runHarvest({ ...optionsOf(ctx), widget: lu });
     expect(r.donnees).toEqual({ prec: null });
   });
 
   it("declaration modified (domains changed): the grant is removed and the previous data erased", async () => {
-    const ctx = await preparer("daily", `export default async (w) => w.lirePage("https://app.daily.dev/", { compte: true });`, sources);
+    const ctx = await prepare("daily", `export default async (w) => w.lirePage("https://app.daily.dev/", { compte: true });`, sources);
     await writeData(ctx.dossierWidgets, "daily", { secret: "du compte" });
-    await accorder(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev", "ancien.dev"], publiques: ["127.0.0.1"], profil: "perso" });
+    await giveGrant(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev", "ancien.dev"], publiques: ["127.0.0.1"], profil: "perso" });
     const r = await harvest(ctx);
     expect(r.etat.statut).toBe("accord-requis");
-    expect(await lireAccords(ctx.dossierWidgets)).toEqual({});
+    expect(await readGrants(ctx.dossierWidgets)).toEqual({});
     expect(existsSync(join(ctx.dossierWidgets, "daily", "donnees.json"))).toBe(false);
   });
 
   it("account removed from the declaration with a recorded grant: grant removed, data erased, precedent null", async () => {
-    const ctx = await preparer("daily", `export default async (w) => ({ prec: w.precedent });`, { compte: [], publiques: [] });
+    const ctx = await prepare("daily", `export default async (w) => ({ prec: w.precedent });`, { compte: [], publiques: [] });
     await writeData(ctx.dossierWidgets, "daily", { secret: "du compte" });
-    await accorder(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "perso" });
+    await giveGrant(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "perso" });
     const r = await harvest(ctx);
     expect(r.etat.statut).toBe("ok");
     expect(r.donnees).toEqual({ prec: null });
-    expect(await lireAccords(ctx.dossierWidgets)).toEqual({});
-    expect(await lireJson(join(ctx.dossierWidgets, "daily", "donnees.json"))).toEqual({ prec: null });
+    expect(await readGrants(ctx.dossierWidgets)).toEqual({});
+    expect(await readJson(join(ctx.dossierWidgets, "daily", "donnees.json"))).toEqual({ prec: null });
   });
 
   it("erreurDuNoyau: fixed kernel messages recognized, widget text not", () => {
@@ -619,12 +619,12 @@ describe("executerRecolte, widget with an account", () => {
   });
 
   it("a grant whose domains no longer match the declaration is no longer valid", async () => {
-    const ctx = await preparer("daily", `export default async (w) => w.lirePage("https://app.daily.dev/", { compte: true });`, sources);
-    await accorder(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: [], profil: "perso" });
-    const pont = pontLecture();
-    const r = await harvest(ctx, { pont });
+    const ctx = await prepare("daily", `export default async (w) => w.lirePage("https://app.daily.dev/", { compte: true });`, sources);
+    await giveGrant(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: [], profil: "perso" });
+    const bridge = readBridge();
+    const r = await harvest(ctx, { pont: bridge });
     expect(r.etat.statut).toBe("accord-requis");
-    expect(readCalls(pont)).toHaveLength(0);
+    expect(readCalls(bridge)).toHaveLength(0);
   });
 
   it("error thrown by the widget: never marked as the kernel's, even when it imitates a kernel message", async () => {
@@ -632,12 +632,12 @@ describe("executerRecolte, widget with an account", () => {
       "Accord requis pour lire avec ton compte : " + (123456789).toString(36),
       "La récolte s'est arrêtée sans résultat (code 123456789)",
     ]) {
-      const ctx = await preparer(
+      const ctx = await prepare(
         "daily",
         `export default async (w) => { await w.lirePage("https://app.daily.dev/", { compte: true }); throw new Error(${JSON.stringify(imitation)}); };`,
         sources,
       );
-      await accorder(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "perso" });
+      await giveGrant(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "perso" });
       const r = await harvest(ctx);
       expect(r.etat).toMatchObject({ statut: "erreur", erreur: imitation });
       expect(r.etat.erreurNoyau).toBeUndefined();
@@ -646,34 +646,34 @@ describe("executerRecolte, widget with an account", () => {
   });
 
   it("errors written by the kernel: marked as such (grant required, timeout exceeded)", async () => {
-    const ctx = await preparer("daily", `export default async (w) => w.lirePage("https://app.daily.dev/", { compte: true });`, sources);
+    const ctx = await prepare("daily", `export default async (w) => w.lirePage("https://app.daily.dev/", { compte: true });`, sources);
     const r = await harvest(ctx);
     expect(r.etat).toMatchObject({ statut: "accord-requis", erreur: "Accord requis pour lire avec ton compte : app.daily.dev", erreurNoyau: true });
     expect((await readWidgetState(ctx.dossierWidgets, "daily")).erreurNoyau).toBe(true);
-    const lent = await preparer("lent", `export default () => new Promise(() => {});`);
-    expect((await harvest(lent, { delaiMs: 300 })).etat).toMatchObject({ statut: "erreur", erreur: "Délai dépassé", erreurNoyau: true });
+    const slow = await prepare("lent", `export default () => new Promise(() => {});`);
+    expect((await harvest(slow, { delaiMs: 300 })).etat).toMatchObject({ statut: "erreur", erreur: "Délai dépassé", erreurNoyau: true });
   });
 
   it("grant refused during the harvest, after the read with an account: nothing is written, accord-requis", async () => {
-    const ctx = await preparer(
+    const ctx = await prepare(
       "daily",
       `export default async (w) => { const p = await w.lirePage("https://app.daily.dev/", { compte: true }); await w.kev("x", {}); return p.texte; };`,
       sources,
     );
     await writeData(ctx.dossierWidgets, "daily", { ancien: true });
-    await accorder(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "perso" });
-    const pont = pontLecture();
+    await giveGrant(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "perso" });
+    const bridge = readBridge();
     // What refuserAccord does: grant removed, data erased.
     const fake = {
       kev: async () => {
-        await retirerAccord(ctx.dossierWidgets, "daily");
+        await removeGrant(ctx.dossierWidgets, "daily");
         await deleteData(ctx.dossierWidgets, "daily");
         return {};
       },
       gemma: async () => "",
     };
-    const r = await harvest(ctx, { pont, ia: fake });
-    expect(readCalls(pont)).toHaveLength(1);
+    const r = await harvest(ctx, { pont: bridge, ia: fake });
+    expect(readCalls(bridge)).toHaveLength(1);
     expect(r.etat).toMatchObject({ statut: "accord-requis", erreurNoyau: true });
     expect(r.donnees).toBeUndefined();
     expect(existsSync(join(ctx.dossierWidgets, "daily", "donnees.json"))).toBe(false);
@@ -687,12 +687,12 @@ describe("executerRecolte, widget with an account", () => {
 describe("executerRecolte, through the widget's workflow", () => {
   const sources = { compte: ["app.daily.dev"], publiques: ["127.0.0.1"] };
   const dataOf = (ctx: Context) => join(ctx.dossierWidgets, ctx.widget.id);
-  const executionDe = async (ctx: Context, id: string | undefined) => {
+  const runOf = async (ctx: Context, id: string | undefined) => {
     expect(id).toBeTruthy();
-    return (await lireExecution(dataOf(ctx), id!))!;
+    return (await readRun(dataOf(ctx), id!))!;
   };
   /** Replaces recolte.mjs with a workflow.json (and its files). */
-  async function enWorkflow(ctx: Context, workflow: unknown, files: Record<string, string> = {}) {
+  async function toWorkflow(ctx: Context, workflow: unknown, files: Record<string, string> = {}) {
     await rm(join(ctx.widget.dossier, "recolte.mjs"), { force: true });
     await writeFile(join(ctx.widget.dossier, "workflow.json"), typeof workflow === "string" ? workflow : JSON.stringify(workflow));
     for (const [name, text] of Object.entries(files)) await writeFile(join(ctx.widget.dossier, name), text);
@@ -717,7 +717,7 @@ describe("executerRecolte, through the widget's workflow", () => {
   }
 
   it("a widget with only recolte.mjs and an account runs as before: same data, same log, implicit run recolte → output", async () => {
-    const ctx = await preparer(
+    const ctx = await prepare(
       "gmail",
       `export default async (w) => {
         const p = await w.lirePage("https://app.daily.dev/", { compte: true });
@@ -727,18 +727,18 @@ describe("executerRecolte, through the widget's workflow", () => {
       sources,
     );
     await writeData(ctx.dossierWidgets, "gmail", { ancien: true });
-    await accorder(ctx.dossierWidgets, "gmail", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "perso" });
-    const pont = pontLecture();
-    const r = await harvest(ctx, { pont });
+    await giveGrant(ctx.dossierWidgets, "gmail", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "perso" });
+    const bridge = readBridge();
+    const r = await harvest(ctx, { pont: bridge });
     const expected = { texte: "articles", prec: { ancien: true }, cfg: { a: 1 }, quand: NOW.toISOString() };
     expect(r.etat).toMatchObject({ statut: "ok", derniereMaj: NOW.toISOString() });
     expect(r.donnees).toEqual(expected);
-    expect(await lireJson(join(ctx.dossierWidgets, "gmail", "donnees.json"))).toEqual(expected);
+    expect(await readJson(join(ctx.dossierWidgets, "gmail", "donnees.json"))).toEqual(expected);
     const state = await readWidgetState(ctx.dossierWidgets, "gmail");
     expect(state.statut).toBe("ok");
     expect(state.journal).toContain("courriels lus");
-    expect(readCalls(pont)[0]!.args).toEqual(["https://app.daily.dev/", { profil: "perso", domaines: ["app.daily.dev"], adressesLocales: true }]);
-    const e = await executionDe(ctx, r.execution);
+    expect(readCalls(bridge)[0]!.args).toEqual(["https://app.daily.dev/", { profil: "perso", domaines: ["app.daily.dev"], adressesLocales: true }]);
+    const e = await runOf(ctx, r.execution);
     expect(e).toMatchObject({ statut: "reussie", declencheur: "planifiee", proprietaire: { type: "widget", id: "gmail" }, debut: NOW.toISOString() });
     expect(e.blocs.map((b) => [b.id, b.type, b.statut])).toEqual([["recolte", "code", "reussi"], ["sortie", "sortie", "reussi"]]);
     expect(e.blocs[0]!.journal).toContain("courriels lus");
@@ -747,19 +747,19 @@ describe("executerRecolte, through the widget's workflow", () => {
     const failure = await harvest(ctx);
     expect(failure.etat).toMatchObject({ statut: "erreur", erreur: "Délai dépassé" });
     expect(failure.etat.erreurNoyau).toBeUndefined();
-    expect(await lireJson(join(ctx.dossierWidgets, "gmail", "donnees.json"))).toEqual(expected);
-    expect((await executionDe(ctx, failure.execution)).statut).toBe("echouee");
+    expect(await readJson(join(ctx.dossierWidgets, "gmail", "donnees.json"))).toEqual(expected);
+    expect((await runOf(ctx, failure.execution)).statut).toBe("echouee");
   });
 
   it("a workflow widget writes data, run and memory; the next harvest receives the memory", async () => {
-    const ctx = await preparer("flux", "");
-    await enWorkflow(ctx, NEW, { "liste.mjs": `export default async () => [{ id: 1 }, { id: 2 }];` });
+    const ctx = await prepare("flux", "");
+    await toWorkflow(ctx, NEW, { "liste.mjs": `export default async () => [{ id: 1 }, { id: 2 }];` });
     const r1 = await harvest(ctx);
     expect(r1.etat.statut).toBe("ok");
     expect(r1.donnees).toEqual([{ id: 1 }, { id: 2 }]);
-    expect(await lireJson(join(ctx.dossierWidgets, "flux", "donnees.json"))).toEqual([{ id: 1 }, { id: 2 }]);
+    expect(await readJson(join(ctx.dossierWidgets, "flux", "donnees.json"))).toEqual([{ id: 1 }, { id: 2 }]);
     expect((await readMemory(dataOf(ctx))).nouveaux?.type).toBe("liste.nouveaux");
-    const e = await executionDe(ctx, r1.execution);
+    const e = await runOf(ctx, r1.execution);
     expect(e.blocs.map((b) => [b.id, b.statut, b.elements])).toEqual([["liste", "reussi", 2], ["nouveaux", "reussi", 2], ["sortie", "reussi", 2]]);
     await writeFile(join(ctx.widget.dossier, "liste.mjs"), `export default async () => [{ id: 2 }, { id: 3 }];`);
     const r2 = await harvest(ctx);
@@ -767,8 +767,8 @@ describe("executerRecolte, through the widget's workflow", () => {
   });
 
   it("a run's memory is written under the widget's memory lock (the builder's erase lock)", async () => {
-    const ctx = await preparer("flux", "");
-    await enWorkflow(ctx, NEW, { "liste.mjs": `export default async () => [{ id: 1 }];` });
+    const ctx = await prepare("flux", "");
+    await toWorkflow(ctx, NEW, { "liste.mjs": `export default async () => [{ id: 1 }];` });
     let release!: () => void;
     const held = withMemory(dataOf(ctx), () => new Promise<void>((r) => (release = r)));
     let finished = false;
@@ -787,8 +787,8 @@ describe("executerRecolte, through the widget's workflow", () => {
 
   it("an invalid workflow.json: error state « Workflow invalide : … » marked erreurNoyau, data kept, no container launched, failed run written", async () => {
     for (const workflow of ['{"version":1,"blocs":[', { version: 1, blocs: [{ id: "x", type: "inconnu" }] }]) {
-      const ctx = await preparer("casse", "");
-      await enWorkflow(ctx, workflow);
+      const ctx = await prepare("casse", "");
+      await toWorkflow(ctx, workflow);
       await writeData(ctx.dossierWidgets, "casse", { ancien: true });
       const r = await harvest(ctx);
       expect(r.etat.statut).toBe("erreur");
@@ -796,8 +796,8 @@ describe("executerRecolte, through the widget's workflow", () => {
       expect(r.etat.erreurNoyau).toBe(true);
       expect(kernelError(r.etat.erreur!)).toBe(true);
       expect(ctx.commandes).toHaveLength(0);
-      expect(await lireJson(join(ctx.dossierWidgets, "casse", "donnees.json"))).toEqual({ ancien: true });
-      const e = await executionDe(ctx, r.execution);
+      expect(await readJson(join(ctx.dossierWidgets, "casse", "donnees.json"))).toEqual({ ancien: true });
+      const e = await runOf(ctx, r.execution);
       expect(e).toMatchObject({ statut: "echouee", erreurNoyau: true, blocs: [] });
       expect(e.erreur).toBe(r.etat.erreur);
     }
@@ -814,105 +814,105 @@ describe("executerRecolte, through the widget's workflow", () => {
       liens: [{ de: "liste", vers: "page" }, { de: "page", vers: "sortie" }],
     };
     const files = { "liste.mjs": "export default () => [{ id: 1 }];" };
-    const court = await preparer("court", "");
-    await enWorkflow(court, LONG, files);
-    const refuse = await harvest(court, { pont: pontLecture() });
-    expect(refuse.etat.erreur).toBe("Workflow invalide : page.budgetSecondes : 170 au plus");
-    expect(court.commandes).toHaveLength(0);
+    const short = await prepare("court", "");
+    await toWorkflow(short, LONG, files);
+    const deny = await harvest(short, { pont: readBridge() });
+    expect(deny.etat.erreur).toBe("Workflow invalide : page.budgetSecondes : 170 au plus");
+    expect(short.commandes).toHaveLength(0);
 
-    const long = await preparer("long", "");
+    const long = await prepare("long", "");
     long.widget.declaration.recolte = { minutes: 60, dureeMaxMinutes: 30 };
-    await enWorkflow(long, LONG, files);
-    const r = await harvest(long, { pont: pontLecture() });
+    await toWorkflow(long, LONG, files);
+    const r = await harvest(long, { pont: readBridge() });
     expect(long.commandes).toHaveLength(1);
     expect(r.etat.statut).toBe("ok");
   });
 
   it("grant removed during the run: no data, no run, no memory on disk at the end", async () => {
-    const ctx = await preparer("daily", "", sources);
-    await enWorkflow(ctx, NEW, {
+    const ctx = await prepare("daily", "", sources);
+    await toWorkflow(ctx, NEW, {
       "liste.mjs": `export default async (e, w) => [{ id: (await w.lirePage("https://app.daily.dev/", { compte: true })).texte }];`,
     });
     await writeData(ctx.dossierWidgets, "daily", { ancien: true });
-    await accorder(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "perso" });
-    const pont = pontLecture();
-    const lire = pont.lirePageInvisible!.bind(pont);
+    await giveGrant(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "perso" });
+    const bridge = readBridge();
+    const read = bridge.lirePageInvisible!.bind(bridge);
     // What refuserAccord does, during the read: the page read still reaches the widget.
-    pont.lirePageInvisible = async (...a: Parameters<typeof lire>) => {
-      await retirerAccord(ctx.dossierWidgets, "daily");
+    bridge.lirePageInvisible = async (...a: Parameters<typeof read>) => {
+      await removeGrant(ctx.dossierWidgets, "daily");
       await deleteData(ctx.dossierWidgets, "daily");
-      return lire(...a);
+      return read(...a);
     };
-    const r = await harvest(ctx, { pont });
-    expect(readCalls(pont)).toHaveLength(1);
+    const r = await harvest(ctx, { pont: bridge });
+    expect(readCalls(bridge)).toHaveLength(1);
     expect(r.etat).toMatchObject({ statut: "accord-requis", erreurNoyau: true });
     expect(r.donnees).toBeUndefined();
     expect(r.execution).toBeUndefined();
     expect(existsSync(join(ctx.dossierWidgets, "daily", "donnees.json"))).toBe(false);
     expect(existsSync(join(ctx.dossierWidgets, "daily", "memoire.json"))).toBe(false);
-    expect(await listerExecutions(dataOf(ctx))).toEqual([]);
+    expect(await listRuns(dataOf(ctx))).toEqual([]);
     expect((await readWidgetState(ctx.dossierWidgets, "daily")).statut).toBe("accord-requis");
   });
 
   it("profile refused: data, runs and memory erased", async () => {
-    const ctx = await preparer("daily", `export default async (w) => w.lirePage("https://app.daily.dev/", { compte: true });`, sources);
+    const ctx = await prepare("daily", `export default async (w) => w.lirePage("https://app.daily.dev/", { compte: true });`, sources);
     await writeData(ctx.dossierWidgets, "daily", { secret: "du compte" });
     await traces(ctx);
-    await accorder(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "prive" });
-    const r = await harvest(ctx, { pont: pontLecture(["prive"]) });
+    await giveGrant(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "prive" });
+    const r = await harvest(ctx, { pont: readBridge(["prive"]) });
     expect(r.etat).toMatchObject({ statut: "accord-requis", erreur: PROFILE_DENIED, erreurNoyau: true });
-    expect(await lireAccords(ctx.dossierWidgets)).toEqual({});
+    expect(await readGrants(ctx.dossierWidgets)).toEqual({});
     expect(existsSync(join(ctx.dossierWidgets, "daily", "donnees.json"))).toBe(false);
     expect(existsSync(join(ctx.dossierWidgets, "daily", "memoire.json"))).toBe(false);
-    expect(await listerExecutions(dataOf(ctx))).toEqual([]);
+    expect(await listRuns(dataOf(ctx))).toEqual([]);
   });
 
   it("stale grant (declaration changed): runs and memory erased along with the data", async () => {
-    const ctx = await preparer("daily", `export default async (w) => w.lirePage("https://app.daily.dev/", { compte: true });`, sources);
+    const ctx = await prepare("daily", `export default async (w) => w.lirePage("https://app.daily.dev/", { compte: true });`, sources);
     await writeData(ctx.dossierWidgets, "daily", { secret: "du compte" });
     await traces(ctx);
-    await accorder(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev", "ancien.dev"], publiques: ["127.0.0.1"], profil: "perso" });
+    await giveGrant(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev", "ancien.dev"], publiques: ["127.0.0.1"], profil: "perso" });
     const r = await harvest(ctx);
     expect(r.etat.statut).toBe("accord-requis");
     expect(existsSync(join(ctx.dossierWidgets, "daily", "donnees.json"))).toBe(false);
     expect(existsSync(join(ctx.dossierWidgets, "daily", "memoire.json"))).toBe(false);
     // Only the « accord requis » run of this time remains.
-    expect((await listerExecutions(dataOf(ctx))).map((e) => [e.id, e.statut])).toEqual([[r.execution, "accord-requis"]]);
+    expect((await listRuns(dataOf(ctx))).map((e) => [e.id, e.statut])).toEqual([[r.execution, "accord-requis"]]);
   });
 
   it("without a grant: accord-requis run, no block launched", async () => {
-    const ctx = await preparer("daily", `export default async (w) => w.lirePage("https://app.daily.dev/", { compte: true });`, sources);
+    const ctx = await prepare("daily", `export default async (w) => w.lirePage("https://app.daily.dev/", { compte: true });`, sources);
     const r = await harvest(ctx);
     expect(r.etat).toMatchObject({ statut: "accord-requis", erreur: "Accord requis pour lire avec ton compte : app.daily.dev", erreurNoyau: true });
     expect(ctx.commandes).toHaveLength(0);
-    const e = await executionDe(ctx, r.execution);
+    const e = await runOf(ctx, r.execution);
     expect(e).toMatchObject({ statut: "accord-requis", erreurNoyau: true, erreur: r.etat.erreur });
     expect(e.blocs.map((b) => [b.id, b.statut])).toEqual([["recolte", "pas-lance"], ["sortie", "pas-lance"]]);
   });
 
   it("without a grant, again: no new accord-requis run, the last one stands in", async () => {
-    const ctx = await preparer("daily", `export default async (w) => w.lirePage("https://app.daily.dev/", { compte: true });`, sources);
-    const premiere = await harvest(ctx);
+    const ctx = await prepare("daily", `export default async (w) => w.lirePage("https://app.daily.dev/", { compte: true });`, sources);
+    const first = await harvest(ctx);
     // An hour later: without the rule, a second run (other id) would be written.
     const later = () => new Date(NOW.getTime() + 3_600_000);
-    const seconde = await runHarvest({ ...optionsDe(ctx), horloge: later });
-    expect(seconde.etat.statut).toBe("accord-requis");
-    expect(seconde.execution).toBe(premiere.execution);
-    expect((await listerExecutions(dataOf(ctx))).map((e) => e.statut)).toEqual(["accord-requis"]);
+    const second = await runHarvest({ ...optionsOf(ctx), horloge: later });
+    expect(second.etat.statut).toBe("accord-requis");
+    expect(second.execution).toBe(first.execution);
+    expect((await listRuns(dataOf(ctx))).map((e) => e.statut)).toEqual(["accord-requis"]);
   });
 
   it("the run carries the requested trigger", async () => {
-    const ctx = await preparer("meteo", `export default async () => 1;`);
-    const r = await runHarvest({ ...optionsDe(ctx), declencheur: "agent" });
-    expect((await executionDe(ctx, r.execution)).declencheur).toBe("agent");
-    const m = await runHarvest({ ...optionsDe(ctx), declencheur: "manuelle" });
-    expect((await executionDe(ctx, m.execution)).declencheur).toBe("manuelle");
+    const ctx = await prepare("meteo", `export default async () => 1;`);
+    const r = await runHarvest({ ...optionsOf(ctx), declencheur: "agent" });
+    expect((await runOf(ctx, r.execution)).declencheur).toBe("agent");
+    const m = await runHarvest({ ...optionsOf(ctx), declencheur: "manuelle" });
+    expect((await runOf(ctx, m.execution)).declencheur).toBe("manuelle");
   });
 
   it("interrupted at the end: interrupted run", async () => {
-    const ctx = await preparer("lent", `export default () => new Promise(() => {});`);
-    const r = await runHarvest({ ...optionsDe(ctx), delaiMs: 300, interrompue: () => true });
-    const e = await executionDe(ctx, r.execution);
+    const ctx = await prepare("lent", `export default () => new Promise(() => {});`);
+    const r = await runHarvest({ ...optionsOf(ctx), delaiMs: 300, interrompue: () => true });
+    const e = await runOf(ctx, r.execution);
     // The message is the kernel's (not « Délai dépassé »); the started block is interrupted, the output never launched.
     expect(e).toMatchObject({ statut: "interrompue", erreur: "Interrompue : WebAiOs s'est arrêté", erreurNoyau: true });
     expect(e.blocs.map((b) => [b.id, b.statut])).toEqual([["recolte", "interrompu"], ["sortie", "pas-lance"]]);
@@ -923,7 +923,7 @@ describe("executerRecolte, through the widget's workflow", () => {
 describe("executerEssai", () => {
   const sources = { compte: ["app.daily.dev"], publiques: ["127.0.0.1"] };
   const dataOf = (ctx: Context) => join(ctx.dossierWidgets, ctx.widget.id);
-  async function enWorkflow(ctx: Context, workflow: unknown, files: Record<string, string> = {}) {
+  async function toWorkflow(ctx: Context, workflow: unknown, files: Record<string, string> = {}) {
     await rm(join(ctx.widget.dossier, "recolte.mjs"), { force: true });
     await writeFile(join(ctx.widget.dossier, "workflow.json"), JSON.stringify(workflow));
     for (const [name, text] of Object.entries(files)) await writeFile(join(ctx.widget.dossier, name), text);
@@ -946,24 +946,24 @@ describe("executerEssai", () => {
     }
     return r;
   };
-  const attempt = (ctx: Context, origin: string, depart: string, o: Partial<Parameters<typeof runAttempt>[0]> = {}) =>
-    runAttempt({ ...optionsDe(ctx), origine: origin, depart, ...o });
+  const attempt = (ctx: Context, origin: string, start: string, o: Partial<Parameters<typeof runAttempt>[0]> = {}) =>
+    runAttempt({ ...optionsOf(ctx), origine: origin, depart: start, ...o });
 
   it("a trial writes a -essai run with depart and origine, and touches neither data, memory nor state", async () => {
-    const ctx = await preparer("flux", "");
-    await enWorkflow(ctx, NEW, { "liste.mjs": `export default async () => [{ id: 1 }, { id: 2 }];` });
-    const reel = await runHarvest(optionsDe(ctx));
-    expect(reel.etat.statut).toBe("ok");
+    const ctx = await prepare("flux", "");
+    await toWorkflow(ctx, NEW, { "liste.mjs": `export default async () => [{ id: 1 }, { id: 2 }];` });
+    const real = await runHarvest(optionsOf(ctx));
+    expect(real.etat.statut).toBe("ok");
     expect((await readMemory(dataOf(ctx))).nouveaux).toBeDefined();
     const before = await snapshot(ctx);
     expect(Object.values(before).every((f) => f !== null)).toBe(true);
     // The list is not rerun: its output is taken from the original run.
     await writeFile(join(ctx.widget.dossier, "liste.mjs"), `export default async () => { throw new Error("relancée"); };`);
     const traces: unknown[] = [];
-    const r = await attempt(ctx, reel.execution!, "nouveaux", { surTrace: (t) => traces.push(t) });
+    const r = await attempt(ctx, real.execution!, "nouveaux", { surTrace: (t) => traces.push(t) });
     expect(r).toEqual({ ok: true, execution: attemptId(NOW.toISOString()), statut: "reussie" });
-    const e = (await lireExecution(dataOf(ctx), (r as { execution: string }).execution))!;
-    expect(e).toMatchObject({ declencheur: "rejeu", essai: { depart: "nouveaux", origine: reel.execution }, statut: "reussie" });
+    const e = (await readRun(dataOf(ctx), (r as { execution: string }).execution))!;
+    expect(e).toMatchObject({ declencheur: "rejeu", essai: { depart: "nouveaux", origine: real.execution }, statut: "reussie" });
     expect(e.blocs.map((b) => [b.id, b.statut, b.elements])).toEqual([["liste", "repris", 2], ["nouveaux", "reussi", 2], ["sortie", "reussi", 2]]);
     expect(traces).toEqual([
       { bloc: "nouveaux", etape: "debut" },
@@ -973,37 +973,37 @@ describe("executerEssai", () => {
     ]);
     expect(await snapshot(ctx)).toEqual(before);
     // The real run is still there, next to the trial.
-    expect((await listerExecutions(dataOf(ctx))).map((x) => x.id).sort()).toEqual([reel.execution, e.id].sort());
+    expect((await listRuns(dataOf(ctx))).map((x) => x.id).sort()).toEqual([real.execution, e.id].sort());
   });
 
   it("rejouer twice from the same block: the second trial starts from the first and takes the outputs of the real run", async () => {
-    const ctx = await preparer("flux", "");
-    await enWorkflow(ctx, NEW, { "liste.mjs": `export default async () => [{ id: 1 }, { id: 2 }];` });
-    const reel = await runHarvest(optionsDe(ctx));
+    const ctx = await prepare("flux", "");
+    await toWorkflow(ctx, NEW, { "liste.mjs": `export default async () => [{ id: 1 }, { id: 2 }];` });
+    const real = await runHarvest(optionsOf(ctx));
     await writeFile(join(ctx.widget.dossier, "liste.mjs"), `export default async () => { throw new Error("relancée"); };`);
-    const premier = await attempt(ctx, reel.execution!, "nouveaux");
-    if (!premier.ok) throw new Error(premier.erreur);
+    const first = await attempt(ctx, real.execution!, "nouveaux");
+    if (!first.ok) throw new Error(first.erreur);
     const later = new Date(NOW.getTime() + 60_000);
-    const second = await attempt(ctx, premier.execution, "nouveaux", { horloge: () => later });
+    const second = await attempt(ctx, first.execution, "nouveaux", { horloge: () => later });
     expect(second).toEqual({ ok: true, execution: attemptId(later.toISOString()), statut: "reussie" });
-    const e = (await lireExecution(dataOf(ctx), attemptId(later.toISOString())))!;
+    const e = (await readRun(dataOf(ctx), attemptId(later.toISOString())))!;
     // The named origin is the one the reused output comes from: the real run.
-    expect(e.essai).toEqual({ depart: "nouveaux", origine: reel.execution });
+    expect(e.essai).toEqual({ depart: "nouveaux", origine: real.execution });
     expect(e.blocs.map((b) => [b.id, b.statut, b.elements])).toEqual([["liste", "repris", 2], ["nouveaux", "reussi", 2], ["sortie", "reussi", 2]]);
     // Real run pruned: the refusal stays that of a missing output.
-    await rm(join(dataOf(ctx), "executions", `${reel.execution}.json`));
-    expect(await attempt(ctx, premier.execution, "nouveaux", { horloge: () => new Date(later.getTime() + 60_000) })).toEqual({
+    await rm(join(dataOf(ctx), "executions", `${real.execution}.json`));
+    expect(await attempt(ctx, first.execution, "nouveaux", { horloge: () => new Date(later.getTime() + 60_000) })).toEqual({
       ok: false, erreur: "Rejeu impossible : la sortie de « liste » manque dans cette exécution",
     });
   });
 
   it("a failing trial writes no error in the widget's state", async () => {
-    const ctx = await preparer("flux", "");
-    await enWorkflow(ctx, NEW, { "liste.mjs": `export default async () => [{ id: 1 }];` });
-    const reel = await runHarvest(optionsDe(ctx));
+    const ctx = await prepare("flux", "");
+    await toWorkflow(ctx, NEW, { "liste.mjs": `export default async () => [{ id: 1 }];` });
+    const real = await runHarvest(optionsOf(ctx));
     const before = await snapshot(ctx);
     await writeFile(join(ctx.widget.dossier, "liste.mjs"), `export default async () => { throw new Error("boum"); };`);
-    const r = await attempt(ctx, reel.execution!, "liste");
+    const r = await attempt(ctx, real.execution!, "liste");
     expect(r).toMatchObject({ ok: true, statut: "echouee" });
     expect(await snapshot(ctx)).toEqual(before);
     const state = await readWidgetState(ctx.dossierWidgets, "flux");
@@ -1012,7 +1012,7 @@ describe("executerEssai", () => {
   });
 
   it("trial of a widget with an account without a grant: refused with the grant message, no container, nothing written", async () => {
-    const ctx = await preparer("daily", `export default async (w) => w.lirePage("https://app.daily.dev/", { compte: true });`, sources);
+    const ctx = await prepare("daily", `export default async (w) => w.lirePage("https://app.daily.dev/", { compte: true });`, sources);
     const r = await attempt(ctx, "2026-10-27T08-00-00-000Z", "recolte");
     expect(r).toEqual({ ok: false, erreur: "Accord requis pour lire avec ton compte : app.daily.dev" });
     expect(ctx.commandes).toHaveLength(0);
@@ -1020,54 +1020,54 @@ describe("executerEssai", () => {
   });
 
   it("grant removed during the trial: no run on disk", async () => {
-    const ctx = await preparer(
+    const ctx = await prepare(
       "daily",
       `export default async (w) => { const p = await w.lirePage("https://app.daily.dev/", { compte: true }); await w.kev("x", {}); return p.texte; };`,
       sources,
     );
-    await accorder(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "perso" });
+    await giveGrant(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "perso" });
     const fake = { kev: async () => ({}), gemma: async () => "" };
-    const reel = await runHarvest({ ...optionsDe(ctx), ia: fake });
-    expect(reel.etat.statut).toBe("ok");
+    const real = await runHarvest({ ...optionsOf(ctx), ia: fake });
+    expect(real.etat.statut).toBe("ok");
     // What refuserAccord does, during the trial.
-    const retirer = {
+    const remove = {
       kev: async () => {
-        await retirerAccord(ctx.dossierWidgets, "daily");
+        await removeGrant(ctx.dossierWidgets, "daily");
         await deleteData(ctx.dossierWidgets, "daily");
         return {};
       },
       gemma: async () => "",
     };
-    const r = await attempt(ctx, reel.execution!, "recolte", { ia: retirer });
+    const r = await attempt(ctx, real.execution!, "recolte", { ia: remove });
     expect(r).toEqual({ ok: false, erreur: "Accord requis pour lire avec ton compte : app.daily.dev" });
-    expect(await listerExecutions(dataOf(ctx))).toEqual([]);
+    expect(await listRuns(dataOf(ctx))).toEqual([]);
     expect(existsSync(join(dataOf(ctx), "donnees.json"))).toBe(false);
   });
 
   it("trial refused by the replay plan: exact message, no container launched", async () => {
-    const ctx = await preparer("flux", "");
-    await enWorkflow(ctx, NEW, { "liste.mjs": `export default async () => [{ id: 1 }];` });
-    const reel = await runHarvest(optionsDe(ctx));
-    const lances = ctx.commandes.length;
+    const ctx = await prepare("flux", "");
+    await toWorkflow(ctx, NEW, { "liste.mjs": `export default async () => [{ id: 1 }];` });
+    const real = await runHarvest(optionsOf(ctx));
+    const launched = ctx.commandes.length;
     const before = await snapshot(ctx);
-    expect(await attempt(ctx, reel.execution!, "absent")).toEqual({ ok: false, erreur: "Rejeu impossible : le bloc « absent » n'est pas dans le workflow" });
+    expect(await attempt(ctx, real.execution!, "absent")).toEqual({ ok: false, erreur: "Rejeu impossible : le bloc « absent » n'est pas dans le workflow" });
     expect(await attempt(ctx, "2020-01-01T00-00-00-000Z", "liste")).toEqual({ ok: false, erreur: "Rejeu impossible : exécution introuvable" });
-    expect(ctx.commandes).toHaveLength(lances);
+    expect(ctx.commandes).toHaveLength(launched);
     expect(await snapshot(ctx)).toEqual(before);
-    expect(await listerExecutions(dataOf(ctx))).toHaveLength(1);
+    expect(await listRuns(dataOf(ctx))).toHaveLength(1);
   });
 
   it("trial whose reused outputs and previous one exceed 4 MB: refused, no container, nothing written", async () => {
-    const ctx = await preparer("gros", "");
+    const ctx = await prepare("gros", "");
     const upstream = Array.from({ length: 10 }, (_, i) => `a${i}`);
-    await enWorkflow(ctx, {
+    await toWorkflow(ctx, {
       version: 1,
       blocs: [
         ...upstream.map((id) => ({ id, type: "code", parametres: { source: "a.mjs" } })),
         { id: "tout", type: "code", parametres: { source: "a.mjs" } },
         { id: "sortie", type: "sortie", parametres: { vers: "widget" } },
       ],
-      liens: [...upstream.map((de) => ({ de, vers: "tout" })), { de: "tout", vers: "sortie" }],
+      liens: [...upstream.map((from) => ({ de: from, vers: "tout" })), { de: "tout", vers: "sortie" }],
     }, { "a.mjs": `export default async () => 1;` });
     await writeData(ctx.dossierWidgets, "gros", "x".repeat(1_900_000));
     const origin: Execution = {
@@ -1079,37 +1079,37 @@ describe("executerEssai", () => {
     const r = await attempt(ctx, origin.id, "tout");
     expect(r).toEqual({ ok: false, erreur: "Rejeu impossible : les sorties à reprendre dépassent 4 Mo" });
     expect(ctx.commandes).toHaveLength(0);
-    expect((await listerExecutions(dataOf(ctx))).map((e) => e.id)).toEqual([origin.id]);
+    expect((await listRuns(dataOf(ctx))).map((e) => e.id)).toEqual([origin.id]);
   });
 
   it("a widget without workflow.json (recolte.mjs alone): rejouer from the output takes the recolte output", async () => {
-    const ctx = await preparer("gmail", `export default async (w) => ({ texte: (await w.lirePage("https://app.daily.dev/", { compte: true })).texte });`, sources);
-    await accorder(ctx.dossierWidgets, "gmail", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "perso" });
-    const pont = pontLecture();
-    const reel = await runHarvest({ ...optionsDe(ctx), pont });
-    expect(reel.etat.statut).toBe("ok");
+    const ctx = await prepare("gmail", `export default async (w) => ({ texte: (await w.lirePage("https://app.daily.dev/", { compte: true })).texte });`, sources);
+    await giveGrant(ctx.dossierWidgets, "gmail", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "perso" });
+    const bridge = readBridge();
+    const real = await runHarvest({ ...optionsOf(ctx), pont: bridge });
+    expect(real.etat.statut).toBe("ok");
     const before = await snapshot(ctx);
     await writeFile(join(ctx.widget.dossier, "recolte.mjs"), `export default async () => { throw new Error("relancée"); };`);
-    const r = await attempt(ctx, reel.execution!, "sortie", { pont });
+    const r = await attempt(ctx, real.execution!, "sortie", { pont: bridge });
     expect(r).toMatchObject({ ok: true, statut: "reussie" });
-    const e = (await lireExecution(dataOf(ctx), (r as { execution: string }).execution))!;
+    const e = (await readRun(dataOf(ctx), (r as { execution: string }).execution))!;
     expect(e.blocs.map((b) => [b.id, b.statut])).toEqual([["recolte", "repris"], ["sortie", "reussi"]]);
-    expect(readCalls(pont)).toHaveLength(1);
+    expect(readCalls(bridge)).toHaveLength(1);
     expect(await snapshot(ctx)).toEqual(before);
     expect(existsSync(join(ctx.widget.dossier, "workflow.json"))).toBe(false);
   });
 
   it("stale grant at the start of a trial: grant removed, data erased, state accord-requis reported, no container", async () => {
-    const ctx = await preparer("daily", `export default async (w) => w.lirePage("https://app.daily.dev/", { compte: true });`, sources);
+    const ctx = await prepare("daily", `export default async (w) => w.lirePage("https://app.daily.dev/", { compte: true });`, sources);
     await writeData(ctx.dossierWidgets, "daily", { secret: "du compte" });
     const state = { statut: "ok" as const, derniereMaj: "2026-10-27T08:00:00.000Z", derniereTentative: "2026-10-27T08:00:00.000Z" };
     await writeWidgetState(ctx.dossierWidgets, "daily", state);
-    await accorder(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev", "ancien.dev"], publiques: ["127.0.0.1"], profil: "perso" });
-    const surChange = vi.fn();
-    const r = await attempt(ctx, "2026-10-27T08-00-00-000Z", "recolte", { surChange });
+    await giveGrant(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev", "ancien.dev"], publiques: ["127.0.0.1"], profil: "perso" });
+    const onChange = vi.fn();
+    const r = await attempt(ctx, "2026-10-27T08-00-00-000Z", "recolte", { surChange: onChange });
     expect(r).toEqual({ ok: false, erreur: "Accord requis pour lire avec ton compte : app.daily.dev" });
     expect(ctx.commandes).toHaveLength(0);
-    expect(await lireAccords(ctx.dossierWidgets)).toEqual({});
+    expect(await readGrants(ctx.dossierWidgets)).toEqual({});
     expect(existsSync(join(dataOf(ctx), "donnees.json"))).toBe(false);
     expect(await readWidgetState(ctx.dossierWidgets, "daily")).toEqual({
       ...state,
@@ -1117,33 +1117,33 @@ describe("executerEssai", () => {
       erreur: "Accord requis pour lire avec ton compte : app.daily.dev",
       erreurNoyau: true,
     });
-    expect(surChange).toHaveBeenCalled();
+    expect(onChange).toHaveBeenCalled();
   });
 
   it("profile refused during the trial: no run, grant removed, state accord-requis", async () => {
-    const ctx = await preparer("daily", `export default async (w) => (await w.lirePage("https://app.daily.dev/", { compte: true })).texte;`, sources);
-    await accorder(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "perso" });
-    const reel = await runHarvest(optionsDe(ctx));
-    expect(reel.etat.statut).toBe("ok");
-    await accorder(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "prive" });
-    const surChange = vi.fn();
-    const r = await attempt(ctx, reel.execution!, "recolte", { pont: pontLecture(["prive"]), surChange });
+    const ctx = await prepare("daily", `export default async (w) => (await w.lirePage("https://app.daily.dev/", { compte: true })).texte;`, sources);
+    await giveGrant(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "perso" });
+    const real = await runHarvest(optionsOf(ctx));
+    expect(real.etat.statut).toBe("ok");
+    await giveGrant(ctx.dossierWidgets, "daily", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "prive" });
+    const onChange = vi.fn();
+    const r = await attempt(ctx, real.execution!, "recolte", { pont: readBridge(["prive"]), surChange: onChange });
     expect(r).toEqual({ ok: false, erreur: PROFILE_DENIED });
-    expect(await listerExecutions(dataOf(ctx))).toEqual([]);
-    expect(await lireAccords(ctx.dossierWidgets)).toEqual({});
+    expect(await listRuns(dataOf(ctx))).toEqual([]);
+    expect(await readGrants(ctx.dossierWidgets)).toEqual({});
     expect(existsSync(join(dataOf(ctx), "donnees.json"))).toBe(false);
     expect(await readWidgetState(ctx.dossierWidgets, "daily")).toMatchObject({
       statut: "accord-requis",
       erreur: PROFILE_DENIED,
       erreurNoyau: true,
-      derniereMaj: reel.etat.derniereMaj,
-      derniereTentative: reel.etat.derniereTentative,
+      derniereMaj: real.etat.derniereMaj,
+      derniereTentative: real.etat.derniereTentative,
     });
-    expect(surChange).toHaveBeenCalled();
+    expect(onChange).toHaveBeenCalled();
   });
 
   it("interrupted during the trial: -essai run interrupted, neither data, memory nor state touched", async () => {
-    const ctx = await preparer("lent", `export default () => new Promise(() => {});`);
+    const ctx = await prepare("lent", `export default () => new Promise(() => {});`);
     await writeData(ctx.dossierWidgets, "lent", { ancien: true });
     await writeWidgetState(ctx.dossierWidgets, "lent", { statut: "ok", derniereMaj: "2026-10-27T08:00:00.000Z", derniereTentative: "2026-10-27T08:00:00.000Z" });
     const origin: Execution = {
@@ -1154,26 +1154,26 @@ describe("executerEssai", () => {
     const before = await snapshot(ctx);
     const r = await attempt(ctx, origin.id, "recolte", { delaiMs: 300, interrompue: () => true });
     expect(r).toEqual({ ok: true, execution: attemptId(NOW.toISOString()), statut: "interrompue" });
-    const e = (await lireExecution(dataOf(ctx), attemptId(NOW.toISOString())))!;
+    const e = (await readRun(dataOf(ctx), attemptId(NOW.toISOString())))!;
     expect(e).toMatchObject({ statut: "interrompue", erreur: "Interrompue : WebAiOs s'est arrêté", erreurNoyau: true });
     expect(e.blocs.map((b) => [b.id, b.statut])).toEqual([["recolte", "interrompu"], ["sortie", "pas-lance"]]);
     expect(await snapshot(ctx)).toEqual(before);
   });
 
   it("without a grant: a more recent trial does not prevent the last accord-requis run from standing in", async () => {
-    const ctx = await preparer("daily", `export default async (w) => w.lirePage("https://app.daily.dev/", { compte: true });`, sources);
-    const premiere = await runHarvest(optionsDe(ctx));
-    expect(premiere.etat.statut).toBe("accord-requis");
+    const ctx = await prepare("daily", `export default async (w) => w.lirePage("https://app.daily.dev/", { compte: true });`, sources);
+    const first = await runHarvest(optionsOf(ctx));
+    expect(first.etat.statut).toBe("accord-requis");
     const attemptWritten: Execution = {
       version: 1, id: "2026-10-28T11-00-00-000Z-essai", proprietaire: { type: "widget", id: "daily" }, declencheur: "rejeu",
-      essai: { depart: "recolte", origine: premiere.execution! },
+      essai: { depart: "recolte", origine: first.execution! },
       debut: "2026-10-28T11:00:00.000Z", fin: "2026-10-28T11:00:01.000Z", statut: "echouee", blocs: [],
     };
     await writeRun(dataOf(ctx), attemptWritten);
     const later = () => new Date(NOW.getTime() + 2 * 3_600_000);
-    const seconde = await runHarvest({ ...optionsDe(ctx), horloge: later });
-    expect(seconde.execution).toBe(premiere.execution);
-    expect((await listerExecutions(dataOf(ctx))).filter((e) => !e.essai)).toHaveLength(1);
+    const second = await runHarvest({ ...optionsOf(ctx), horloge: later });
+    expect(second.execution).toBe(first.execution);
+    expect((await listRuns(dataOf(ctx))).filter((e) => !e.essai)).toHaveLength(1);
   });
 });
 
@@ -1202,17 +1202,17 @@ describe("executerRecolte, watch (publications as it goes, memory kept, noveltie
    * A fake container that writes its lines one by one; a function (possibly async) is called instead
    * of a line. `recu`: what the kernel writes to it; `bloque`: it never exits on its own (only killed).
    */
-  const launcherSteps = (ctx: Context, pas: unknown[], o: { recu?: string[]; bloque?: boolean } = {}): ProcessLauncher => (cmd, args) => {
+  const launcherSteps = (ctx: Context, step: unknown[], o: { recu?: string[]; bloque?: boolean } = {}): ProcessLauncher => (cmd, args) => {
     ctx.commandes.push([cmd, ...args]);
     const stdout = new PassThrough();
     const stderr = new PassThrough();
     const stdin = new PassThrough();
     stdin.on("data", (d: Buffer) => o.recu?.push(d.toString()));
     let kill = () => {};
-    const fin = new Promise<number | null>((ok) => {
+    const end = new Promise<number | null>((ok) => {
       kill = () => ok(null);
       void (async () => {
-        for (const p of pas) {
+        for (const p of step) {
           await new Promise((r) => setImmediate(r));
           if (typeof p === "function") await p();
           else stdout.write(typeof p === "string" ? p : JSON.stringify(p) + "\n");
@@ -1229,7 +1229,7 @@ describe("executerRecolte, watch (publications as it goes, memory kept, noveltie
         ok(1);
       });
     });
-    return { stdin, stdout, stderr, tuer: () => kill(), fin };
+    return { stdin, stdout, stderr, tuer: () => kill(), fin: end };
   };
 
   /** A clock that the steps make advance. */
@@ -1237,15 +1237,15 @@ describe("executerRecolte, watch (publications as it goes, memory kept, noveltie
     let t = NOW.getTime();
     return { horloge: () => new Date(t), avancer: (ms: number) => () => void (t += ms) };
   };
-  const debutBloc = (id: string) => ({ t: "bloc", id, etape: "debut" });
-  const finBloc = (id: string, sortie: unknown) => ({ t: "bloc", id, etape: "fin", statut: "reussi", sortie });
+  const blockStart = (id: string) => ({ t: "bloc", id, etape: "debut" });
+  const blockEnd = (id: string, output: unknown) => ({ t: "bloc", id, etape: "fin", statut: "reussi", sortie: output });
   const pub = (data: unknown, done: number, total: number) => ({ t: "publication", donnees: data, faits: done, total });
-  const mem = (valeur: unknown) => ({ t: "memoire", memoire: { liste: { type: "code", valeur } } });
+  const mem = (value: unknown) => ({ t: "memoire", memoire: { liste: { type: "code", valeur: value } } });
   const A1 = { url: "https://a.example/1" };
   const A2 = { url: "https://a.example/2" };
   const A3 = { url: "https://a.example/3" };
   /** The start of a watch() run up to the opening of the chain (record). */
-  const beforeChain = (list: unknown[]) => [debutBloc("liste"), finBloc("liste", list), debutBloc("fiche")];
+  const beforeChain = (list: unknown[]) => [blockStart("liste"), blockEnd("liste", list), blockStart("fiche")];
   /** Waits until `f` is true (relays are written in the background). */
   async function wait(f: () => Promise<boolean>): Promise<void> {
     for (let i = 0; i < 200; i++) {
@@ -1262,18 +1262,18 @@ describe("executerRecolte, watch (publications as it goes, memory kept, noveltie
   }
 
   it("two publications write data and in-progress state with progress; the end writes the final result and removes the progress", async () => {
-    const ctx = await preparer("veille", "");
+    const ctx = await prepare("veille", "");
     await inWatch(ctx, { auFilDeLEau: true });
     await stateBefore(ctx);
     const { horloge: h, avancer: advance } = movableClock();
-    const vus: unknown[] = [];
+    const seen: unknown[] = [];
     const probe = (done: number) => async () => {
       await wait(progressIsWorth(ctx, done));
-      vus.push({ etat: await readWidgetState(ctx.dossierWidgets, "veille"), donnees: await lireJson(dataFile(ctx)) });
+      seen.push({ etat: await readWidgetState(ctx.dossierWidgets, "veille"), donnees: await readJson(dataFile(ctx)) });
     };
     let changes = 0;
     const r = await runHarvest({
-      ...optionsDe(ctx),
+      ...optionsOf(ctx),
       horloge: h,
       surChange: () => void changes++,
       lancer: launcherSteps(ctx, [
@@ -1285,13 +1285,13 @@ describe("executerRecolte, watch (publications as it goes, memory kept, noveltie
         mem(["1", "2"]),
         pub([A1, A2], 2, 2),
         probe(2),
-        finBloc("fiche", [A1, A2]),
-        debutBloc("sortie"),
-        finBloc("sortie", [A1, A2]),
+        blockEnd("fiche", [A1, A2]),
+        blockStart("sortie"),
+        blockEnd("sortie", [A1, A2]),
         { t: "fin", donnees: { final: [A1, A2] } },
       ]),
     });
-    expect(vus).toEqual([
+    expect(seen).toEqual([
       {
         etat: { statut: "en-cours", derniereMaj: LAST_UPDATE, derniereTentative: NOW.toISOString(), progression: { faits: 1, total: 2 }, avant: { statut: "ok" } },
         donnees: [A1],
@@ -1305,7 +1305,7 @@ describe("executerRecolte, watch (publications as it goes, memory kept, noveltie
     expect(changes).toBe(4);
     expect(r.etat.statut).toBe("ok");
     expect(r.donnees).toEqual({ final: [A1, A2] });
-    expect(await lireJson(dataFile(ctx))).toEqual({ final: [A1, A2] });
+    expect(await readJson(dataFile(ctx))).toEqual({ final: [A1, A2] });
     const state = await readWidgetState(ctx.dossierWidgets, "veille");
     expect(state.statut).toBe("ok");
     expect(state.progression).toBeUndefined();
@@ -1315,7 +1315,7 @@ describe("executerRecolte, watch (publications as it goes, memory kept, noveltie
   });
 
   it("failure after two publications: the last one stays, error state, the run's memory kept", async () => {
-    const ctx = await preparer("veille", "");
+    const ctx = await prepare("veille", "");
     await inWatch(ctx, { auFilDeLEau: true, dureeMaxMinutes: 30 });
     await stateBefore(ctx);
     await writeData(ctx.dossierWidgets, "veille", { ancien: true });
@@ -1323,7 +1323,7 @@ describe("executerRecolte, watch (publications as it goes, memory kept, noveltie
     const { horloge: h, avancer: advance } = movableClock();
     const received: string[] = [];
     const r = await runHarvest({
-      ...optionsDe(ctx),
+      ...optionsOf(ctx),
       horloge: h,
       lancer: launcherSteps(
         ctx,
@@ -1336,23 +1336,23 @@ describe("executerRecolte, watch (publications as it goes, memory kept, noveltie
     expect(ctx.commandes[0]!.slice(ctx.commandes[0]!.indexOf("timeout"), ctx.commandes[0]!.indexOf("timeout") + 4)).toEqual(["timeout", "-k", "5", "1830"]);
     expect(r.etat).toMatchObject({ statut: "erreur", erreur: "cassé", derniereMaj: LAST_UPDATE });
     expect(r.etat.progression).toBeUndefined();
-    expect(await lireJson(dataFile(ctx))).toEqual([A1, A2]);
+    expect(await readJson(dataFile(ctx))).toEqual([A1, A2]);
     const state = await readWidgetState(ctx.dossierWidgets, "veille");
     expect(state).toMatchObject({ statut: "erreur", derniereMaj: LAST_UPDATE });
     expect(state.progression).toBeUndefined();
     // The last safe memory (not only the one relayed along the way, the first).
     expect((await readMemory(dataOf(ctx))).liste?.valeur).toEqual(["1", "2"]);
-    expect((await lireExecution(dataOf(ctx), r.execution!))?.statut).toBe("echouee");
+    expect((await readRun(dataOf(ctx), r.execution!))?.statut).toBe("echouee");
   });
 
   it("F3: a publication never overwrites a state that is no longer in-progress (accord-requis written in the meantime)", async () => {
-    const ctx = await preparer("veille", "");
+    const ctx = await prepare("veille", "");
     await inWatch(ctx, { auFilDeLEau: true });
     await stateBefore(ctx);
     const { horloge: h } = movableClock();
-    let vu: unknown;
+    let seen: unknown;
     await runHarvest({
-      ...optionsDe(ctx),
+      ...optionsOf(ctx),
       horloge: h,
       lancer: launcherSteps(ctx, [
         ...beforeChain([A1, A2]),
@@ -1363,78 +1363,78 @@ describe("executerRecolte, watch (publications as it goes, memory kept, noveltie
         async () => {
           await wait(async () => existsSync(dataFile(ctx)));
           await new Promise((ok) => setTimeout(ok, 50));
-          vu = (await readWidgetState(ctx.dossierWidgets, "veille")).statut;
+          seen = (await readWidgetState(ctx.dossierWidgets, "veille")).statut;
         },
         { t: "echec", erreur: "cassé" },
       ]),
     });
-    expect(vu).toBe("accord-requis");
+    expect(seen).toBe("accord-requis");
   });
 
   it("final data over 2 MB: memoire.json stays the last memory relayed before the exit", async () => {
-    const ctx = await preparer("veille", "");
+    const ctx = await prepare("veille", "");
     await inWatch(ctx, { auFilDeLEau: true, dureeMaxMinutes: 30 });
     await stateBefore(ctx);
     const { horloge: h, avancer: advance } = movableClock();
     const r = await runHarvest({
-      ...optionsDe(ctx),
+      ...optionsOf(ctx),
       horloge: h,
       lancer: launcherSteps(ctx, [
         ...beforeChain([A1, A2, A3]),
         mem(["1"]),
         pub([A1], 1, 3),
         advance(40_000),
-        finBloc("fiche", [A1, A2, A3]),
-        debutBloc("sortie"),
-        finBloc("sortie", [A1, A2, A3]),
+        blockEnd("fiche", [A1, A2, A3]),
+        blockStart("sortie"),
+        blockEnd("sortie", [A1, A2, A3]),
         // Retains the keys of 2 and 3, which only the final output shows: it is refused.
         mem(["1", "2", "3"]),
         { t: "fin", donnees: "x".repeat(2 * 1024 * 1024 + 10) },
       ]),
     });
     expect(r.etat).toMatchObject({ statut: "erreur", erreur: "Données trop grosses (2 Mo au plus)" });
-    expect(await lireJson(dataFile(ctx))).toEqual([A1]);
+    expect(await readJson(dataFile(ctx))).toEqual([A1]);
     expect((await readMemory(dataOf(ctx))).liste?.valeur).toEqual(["1"]);
   });
 
   it("interrupted after a publication: published data and memory kept, run interrupted", async () => {
-    const ctx = await preparer("veille", "");
+    const ctx = await prepare("veille", "");
     await inWatch(ctx, { auFilDeLEau: true });
     const { horloge: h, avancer: advance } = movableClock();
     const r = await runHarvest({
-      ...optionsDe(ctx),
+      ...optionsOf(ctx),
       horloge: h,
       delaiMs: 500,
       interrompue: () => true,
       lancer: launcherSteps(ctx, [...beforeChain([A1, A2]), mem(["0"]), pub([], 0, 2), advance(5000), mem(["1"]), pub([A1], 1, 2), { t: "journal", bloc: "fiche", texte: "x" }], { bloque: true }),
     });
     expect(r.etat.statut).toBe("erreur");
-    expect(await lireJson(dataFile(ctx))).toEqual([A1]);
+    expect(await readJson(dataFile(ctx))).toEqual([A1]);
     expect((await readMemory(dataOf(ctx))).liste?.valeur).toEqual(["1"]);
-    expect((await lireExecution(dataOf(ctx), r.execution!))?.statut).toBe("interrompue");
+    expect((await readRun(dataOf(ctx), r.execution!))?.statut).toBe("interrompue");
   });
 
   it("widget without the new fields failing: memory not written (as before)", async () => {
-    const ctx = await preparer("veille", "");
+    const ctx = await prepare("veille", "");
     await inWatch(ctx);
     await writeMemory(dataOf(ctx), { liste: { type: "code", valeur: ["ancienne"] } });
     const before = await readFile(memoryFile(ctx), "utf8");
     const r = await runHarvest({
-      ...optionsDe(ctx),
-      lancer: launcherSteps(ctx, [debutBloc("liste"), mem(["1"]), finBloc("liste", [A1]), debutBloc("fiche"), { t: "echec", erreur: "cassé" }]),
+      ...optionsOf(ctx),
+      lancer: launcherSteps(ctx, [blockStart("liste"), mem(["1"]), blockEnd("liste", [A1]), blockStart("fiche"), { t: "echec", erreur: "cassé" }]),
     });
     expect(r.etat.statut).toBe("erreur");
     expect(await readFile(memoryFile(ctx), "utf8")).toBe(before);
   });
 
   it("widget with an account and auFilDeLEau: grant removed between two publications → data erased, accord-requis, nothing written anymore", async () => {
-    const ctx = await preparer("veille", "", { compte: ["app.daily.dev"], publiques: ["127.0.0.1"] });
+    const ctx = await prepare("veille", "", { compte: ["app.daily.dev"], publiques: ["127.0.0.1"] });
     await inWatch(ctx, { auFilDeLEau: true });
-    await accorder(ctx.dossierWidgets, "veille", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "perso" });
+    await giveGrant(ctx.dossierWidgets, "veille", { domaines: ["app.daily.dev"], publiques: ["127.0.0.1"], profil: "perso" });
     const { horloge: h, avancer: advance } = movableClock();
-    const vus: unknown[] = [];
+    const seen: unknown[] = [];
     const r = await runHarvest({
-      ...optionsDe(ctx),
+      ...optionsOf(ctx),
       horloge: h,
       lancer: launcherSteps(ctx, [
         ...beforeChain([A1, A2, A3]),
@@ -1443,7 +1443,7 @@ describe("executerRecolte, watch (publications as it goes, memory kept, noveltie
         async () => {
           await wait(progressIsWorth(ctx, 1));
           // What refuserAccord does, without the erasing: only the removal is seen by the run.
-          await retirerAccord(ctx.dossierWidgets, "veille");
+          await removeGrant(ctx.dossierWidgets, "veille");
         },
         advance(5000),
         mem(["1", "2"]),
@@ -1453,38 +1453,38 @@ describe("executerRecolte, watch (publications as it goes, memory kept, noveltie
         pub([A1, A2, A3], 3, 3),
         async () => {
           await new Promise((t) => setTimeout(t, 150));
-          vus.push({
+          seen.push({
             donnees: existsSync(dataFile(ctx)),
             memoire: existsSync(memoryFile(ctx)),
             progression: (await readWidgetState(ctx.dossierWidgets, "veille")).progression,
           });
         },
-        finBloc("fiche", [A1, A2, A3]),
-        debutBloc("sortie"),
-        finBloc("sortie", [A1, A2, A3]),
+        blockEnd("fiche", [A1, A2, A3]),
+        blockStart("sortie"),
+        blockEnd("sortie", [A1, A2, A3]),
         { t: "fin", donnees: [A1, A2, A3] },
       ]),
     });
     // After the removal, neither data nor memory, and the state no longer shows any publication.
-    expect(vus).toEqual([{ donnees: false, memoire: false, progression: { faits: 1, total: 3 } }]);
+    expect(seen).toEqual([{ donnees: false, memoire: false, progression: { faits: 1, total: 3 } }]);
     expect(r.etat).toMatchObject({ statut: "accord-requis", erreurNoyau: true });
     expect(r.donnees).toBeUndefined();
     expect(existsSync(dataFile(ctx))).toBe(false);
     expect(existsSync(memoryFile(ctx))).toBe(false);
-    expect(await listerExecutions(dataOf(ctx))).toEqual([]);
+    expect(await listRuns(dataOf(ctx))).toEqual([]);
     expect((await readWidgetState(ctx.dossierWidgets, "veille")).statut).toBe("accord-requis");
   });
 
   it("a trial of an auFilDeLEau widget writes neither data nor state (nor memory), even with dureeMaxMinutes; limiteMs sent, never progressive", async () => {
-    const ctx = await preparer("veille", "");
+    const ctx = await prepare("veille", "");
     await inWatch(ctx, { auFilDeLEau: true, dureeMaxMinutes: 30 });
     const { horloge: h, avancer: advance } = movableClock();
-    const reel = await runHarvest({
-      ...optionsDe(ctx),
+    const real = await runHarvest({
+      ...optionsOf(ctx),
       horloge: h,
-      lancer: launcherSteps(ctx, [...beforeChain([A1]), mem(["1"]), pub([A1], 1, 1), finBloc("fiche", [A1]), debutBloc("sortie"), finBloc("sortie", [A1]), { t: "fin", donnees: [A1] }]),
+      lancer: launcherSteps(ctx, [...beforeChain([A1]), mem(["1"]), pub([A1], 1, 1), blockEnd("fiche", [A1]), blockStart("sortie"), blockEnd("sortie", [A1]), { t: "fin", donnees: [A1] }]),
     });
-    expect(reel.etat.statut).toBe("ok");
+    expect(real.etat.statut).toBe("ok");
     const snapshot = async () => {
       const r: Record<string, { texte: string; mtime: number } | null> = {};
       for (const name of ["donnees.json", "memoire.json", "etat.json"]) {
@@ -1498,48 +1498,48 @@ describe("executerRecolte, watch (publications as it goes, memory kept, noveltie
     const received: string[] = [];
     advance(60_000)();
     const r = await runAttempt({
-      ...optionsDe(ctx),
+      ...optionsOf(ctx),
       horloge: h,
-      origine: reel.execution!,
+      origine: real.execution!,
       depart: "fiche",
       lancer: launcherSteps(
         ctx,
-        [debutBloc("fiche"), mem(["2"]), pub([A2], 1, 1), advance(5000), mem(["3"]), pub([A3], 1, 1), finBloc("fiche", [A2]), debutBloc("sortie"), finBloc("sortie", [A2]), { t: "fin", donnees: [A2] }],
+        [blockStart("fiche"), mem(["2"]), pub([A2], 1, 1), advance(5000), mem(["3"]), pub([A3], 1, 1), blockEnd("fiche", [A2]), blockStart("sortie"), blockEnd("sortie", [A2]), { t: "fin", donnees: [A2] }],
         { recu: received },
       ),
     });
     expect(r).toMatchObject({ ok: true, statut: "reussie" });
-    const debut = JSON.parse(received.join("").split("\n")[0]!);
-    expect(debut.limiteMs).toBe(1_800_000);
-    expect(debut.progressif).toBeUndefined();
+    const start = JSON.parse(received.join("").split("\n")[0]!);
+    expect(start.limiteMs).toBe(1_800_000);
+    expect(start.progressif).toBeUndefined();
     expect(await snapshot()).toEqual(before);
   });
 
   it("web: the search starts from urlRecherche, through the given throttle", async () => {
     const BASE = "https://ddg.test/html/";
     const html = `<div class="result"><a class="result__a" href="https://a.example/1">Titre</a><a class="result__snippet">Extrait</a></div>`;
-    const ctx = await preparer("veille", `export default async (w) => w.chercherWeb("clio", { nombre: 1 });`);
+    const ctx = await prepare("veille", `export default async (w) => w.chercherWeb("clio", { nombre: 1 });`);
     ctx.widget.declaration.sources.web = true;
     const pacing = new Pacing({ attendre: async () => {} });
     const search = vi.spyOn(pacing, "rechercher");
-    const pont = new PontFactice([], { actif: null, autoriser: false, lecture: { pages: [], html: { [urlRecherche("clio", BASE)]: html } } });
-    const r = await runHarvest({ ...optionsDe(ctx), pont, menagement: pacing, urlRecherche: BASE });
+    const bridge = new FakeBridge([], { actif: null, autoriser: false, lecture: { pages: [], html: { [searchUrl("clio", BASE)]: html } } });
+    const r = await runHarvest({ ...optionsOf(ctx), pont: bridge, menagement: pacing, urlRecherche: BASE });
     expect(r.donnees).toEqual([{ titre: "Titre", url: "https://a.example/1", extrait: "Extrait" }]);
     expect(search).toHaveBeenCalledTimes(1);
   });
 
   it("new ones: 3 listings of which 1 already in the previous data → 2; widget without notifier → absent", async () => {
     const code = `export default async () => [{ url: "https://a.example/1", prix: 12 }, { url: "https://a.example/2" }, { url: "https://a.example/3" }];`;
-    const ctx = await preparer("annonces", code);
+    const ctx = await prepare("annonces", code);
     ctx.widget.declaration.recolte = { minutes: 60, notifier: true };
     await writeData(ctx.dossierWidgets, "annonces", [{ url: "https://a.example/1", prix: 10 }]);
-    const r = await runHarvest(optionsDe(ctx));
+    const r = await runHarvest(optionsOf(ctx));
     expect(r.etat.statut).toBe("ok");
     expect(r.nouveaux).toBe(2);
 
-    const sans = await preparer("annonces", code);
-    await writeData(sans.dossierWidgets, "annonces", [{ url: "https://a.example/1", prix: 10 }]);
-    const r2 = await runHarvest(optionsDe(sans));
+    const without = await prepare("annonces", code);
+    await writeData(without.dossierWidgets, "annonces", [{ url: "https://a.example/1", prix: 10 }]);
+    const r2 = await runHarvest(optionsOf(without));
     expect(r2.etat.statut).toBe("ok");
     expect(r2).not.toHaveProperty("nouveaux");
   });

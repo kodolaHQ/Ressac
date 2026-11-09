@@ -1,6 +1,6 @@
 import type { z } from "zod";
 import { BLOCK_REGISTRY } from "./blocks/index.js";
-import { INVALID_WORKFLOW_PREFIX, Workflow, type GenreSortie } from "./schema.js";
+import { INVALID_WORKFLOW_PREFIX, Workflow, type OutputKind } from "./schema.js";
 
 export type ValidWorkflow = {
   /** The workflow, params filled with the default values. */
@@ -8,7 +8,7 @@ export type ValidWorkflow = {
   /** Run order: topological sort, ties broken in the order of the `blocs` array. */
   ordre: string[];
   predecesseurs: Record<string, string[]>;
-  sortie: { id: string; vers: GenreSortie };
+  sortie: { id: string; vers: OutputKind };
 };
 
 /**
@@ -28,7 +28,7 @@ export const STREAMING_ACTION = "sortie.auFilDeLEau : pas dans une action";
 export const WEB_REQUIRED = 'web.chercher : le widget doit déclarer "web": true';
 
 /** The `budgetSecondes` of a block without a maximum duration of the widget. */
-const BUDGET_MAX_SECONDES = 170;
+const BUDGET_MAX_SECONDS = 170;
 
 /** `bloc`: the id of the block concerned, when the error targets one. */
 export type ValidationResult = { ok: true; valide: ValidWorkflow } | { ok: false; erreur: string; bloc?: string };
@@ -36,10 +36,10 @@ export type ValidationResult = { ok: true; valide: ValidWorkflow } | { ok: false
 const ERROR_LENGTH_MAX = 300;
 
 /** A validation error, prefixed and bounded. */
-export function workflowError(cause: string, bloc?: string): { ok: false; erreur: string; bloc?: string } {
+export function workflowError(cause: string, block?: string): { ok: false; erreur: string; bloc?: string } {
   const text = INVALID_WORKFLOW_PREFIX + cause;
   const error = text.length > ERROR_LENGTH_MAX ? text.slice(0, ERROR_LENGTH_MAX - 1) + "…" : text;
-  return bloc === undefined ? { ok: false, erreur: error } : { ok: false, erreur: error, bloc };
+  return block === undefined ? { ok: false, erreur: error } : { ok: false, erreur: error, bloc: block };
 }
 
 const TYPES: Record<string, string> = {
@@ -51,7 +51,7 @@ const TYPES: Record<string, string> = {
   object: "objet attendu",
   record: "objet attendu",
 };
-const plural = (n: unknown, mot: string) => `${String(n)} ${mot}${Number(n) > 1 ? "s" : ""}`;
+const plural = (n: unknown, word: string) => `${String(n)} ${word}${Number(n) > 1 ? "s" : ""}`;
 
 /**
  * The message of a zod problem in short French, for the common cases. A message written in a schema (already in
@@ -78,8 +78,8 @@ function inFrench(p: z.core.$ZodIssue): string {
       return i.inclusive === false ? `doit être supérieur à ${String(n)}` : `au moins ${String(n)}`;
     }
     case "invalid_value": {
-      const valeurs = (Array.isArray(i.values) ? i.values : []).map((v) => JSON.stringify(v)).join(", ");
-      return Array.isArray(i.values) && i.values.length === 1 ? `${valeurs} attendu` : `une valeur parmi ${valeurs} attendue`;
+      const values = (Array.isArray(i.values) ? i.values : []).map((v) => JSON.stringify(v)).join(", ");
+      return Array.isArray(i.values) && i.values.length === 1 ? `${values} attendu` : `une valeur parmi ${values} attendue`;
     }
     case "unrecognized_keys":
       return "paramètre inconnu";
@@ -99,23 +99,23 @@ function firstProblem(error: z.ZodError, root?: string): string {
 }
 
 /** A cycle among the remaining blocks, named « a → b → a », starting from the first in the array order. */
-function nameCycle(restants: string[], predecessors: Record<string, string[]>): { texte: string; premier: string } {
-  const rest = new Set(restants);
-  const vus: string[] = [];
-  let courant = restants[0]!;
-  while (!vus.includes(courant)) {
-    vus.push(courant);
-    courant = predecessors[courant]!.find((p) => rest.has(p))!;
+function nameCycle(remaining: string[], predecessors: Record<string, string[]>): { texte: string; premier: string } {
+  const rest = new Set(remaining);
+  const seen: string[] = [];
+  let current = remaining[0]!;
+  while (!seen.includes(current)) {
+    seen.push(current);
+    current = predecessors[current]!.find((p) => rest.has(p))!;
   }
   // Going up the predecessors, we get the cycle backwards.
-  const cycle = vus.slice(vus.indexOf(courant)).reverse();
-  const depart = cycle.reduce((m, id, i) => (restants.indexOf(id) < restants.indexOf(cycle[m]!) ? i : m), 0);
-  const running = [...cycle.slice(depart), ...cycle.slice(0, depart)];
+  const cycle = seen.slice(seen.indexOf(current)).reverse();
+  const start = cycle.reduce((m, id, i) => (remaining.indexOf(id) < remaining.indexOf(cycle[m]!) ? i : m), 0);
+  const running = [...cycle.slice(start), ...cycle.slice(0, start)];
   return { texte: [...running, running[0]!].join(" → "), premier: running[0]! };
 }
 
-export function validateWorkflow(brut: unknown, ctx: ValidationContext = DEFAULT_CONTEXT): ValidationResult {
-  const lu = Workflow.safeParse(brut);
+export function validateWorkflow(raw: unknown, ctx: ValidationContext = DEFAULT_CONTEXT): ValidationResult {
+  const lu = Workflow.safeParse(raw);
   if (!lu.success) return workflowError(firstProblem(lu.error));
   const workflow = lu.data;
 
@@ -136,7 +136,7 @@ export function validateWorkflow(brut: unknown, ctx: ValidationContext = DEFAULT
     if (!params.success) return workflowError(firstProblem(params.error, b.id), b.id);
     b.parametres = params.data as Record<string, unknown>;
     const p = b.parametres;
-    const budgetMax = ctx.dureeMaxMinutes ? ctx.dureeMaxMinutes * 60 : BUDGET_MAX_SECONDES;
+    const budgetMax = ctx.dureeMaxMinutes ? ctx.dureeMaxMinutes * 60 : BUDGET_MAX_SECONDS;
     if (typeof p.budgetSecondes === "number" && p.budgetSecondes > budgetMax) {
       return workflowError(`${b.id}.budgetSecondes : ${budgetMax} au plus`, b.id);
     }
@@ -147,10 +147,10 @@ export function validateWorkflow(brut: unknown, ctx: ValidationContext = DEFAULT
 
   const predecessors: Record<string, string[]> = Object.fromEntries(workflow.blocs.map((b) => [b.id, []]));
   for (const l of workflow.liens) {
-    for (const bout of [l.de, l.vers]) {
-      if (!ids.has(bout)) {
-        const other = bout === l.de ? l.vers : l.de;
-        return workflowError(`lien vers un bloc absent : ${bout}`, ids.has(other) ? other : undefined);
+    for (const end of [l.de, l.vers]) {
+      if (!ids.has(end)) {
+        const other = end === l.de ? l.vers : l.de;
+        return workflowError(`lien vers un bloc absent : ${end}`, ids.has(other) ? other : undefined);
       }
     }
     if (!predecessors[l.vers]!.includes(l.de)) predecessors[l.vers]!.push(l.de);
@@ -160,36 +160,36 @@ export function validateWorkflow(brut: unknown, ctx: ValidationContext = DEFAULT
   if (sorties.length === 0) return workflowError("aucune sortie");
   if (sorties.length > 1) return workflowError(`plusieurs sorties : ${sorties.map((b) => b.id).join(", ")}`);
 
-  const paramsSortie = sorties[0]!.parametres as { vers: GenreSortie; auFilDeLEau?: boolean };
-  if (ctx.proprietaire === "widget" && paramsSortie.vers === "page") return workflowError(OUTPUT_PAGE_DENIED, sorties[0]!.id);
+  const outputParams = sorties[0]!.parametres as { vers: OutputKind; auFilDeLEau?: boolean };
+  if (ctx.proprietaire === "widget" && outputParams.vers === "page") return workflowError(OUTPUT_PAGE_DENIED, sorties[0]!.id);
   if (ctx.proprietaire === "action") {
-    if (paramsSortie.vers !== "page") return workflowError(OUTPUT_PAGE_REQUIRED, sorties[0]!.id);
-    if (paramsSortie.auFilDeLEau === true) return workflowError(STREAMING_ACTION, sorties[0]!.id);
+    if (outputParams.vers !== "page") return workflowError(OUTPUT_PAGE_REQUIRED, sorties[0]!.id);
+    if (outputParams.auFilDeLEau === true) return workflowError(STREAMING_ACTION, sorties[0]!.id);
   }
 
   // Kahn's sort: at each round, the first block (in array order) all of whose predecessors are placed.
   const order: string[] = [];
   const places = new Set<string>();
-  let restants = workflow.blocs.map((b) => b.id);
-  while (restants.length > 0) {
-    const next = restants.find((id) => predecessors[id]!.every((p) => places.has(p)));
+  let remaining = workflow.blocs.map((b) => b.id);
+  while (remaining.length > 0) {
+    const next = remaining.find((id) => predecessors[id]!.every((p) => places.has(p)));
     if (next === undefined) {
-      const cycle = nameCycle(restants, predecessors);
+      const cycle = nameCycle(remaining, predecessors);
       return workflowError(`cycle : ${cycle.texte}`, cycle.premier);
     }
     order.push(next);
     places.add(next);
-    restants = restants.filter((id) => id !== next);
+    remaining = remaining.filter((id) => id !== next);
   }
 
   // Last: the other errors (params, links, cycle) come first.
   for (const b of workflow.blocs) {
-    const entree = BLOCK_REGISTRY.get(b.type)!.entree;
-    const required = entree === "requise" || (entree === "parElement" && b.parametres.parElement === true);
+    const entry = BLOCK_REGISTRY.get(b.type)!.entree;
+    const required = entry === "requise" || (entry === "parElement" && b.parametres.parElement === true);
     if (required && predecessors[b.id]!.length === 0) return workflowError(`${b.id} : entrée manquante (relie un bloc avant lui)`, b.id);
   }
 
-  const to = paramsSortie.vers;
+  const to = outputParams.vers;
   return { ok: true, valide: { workflow, ordre: order, predecesseurs: predecessors, sortie: { id: sorties[0]!.id, vers: to } } };
 }
 

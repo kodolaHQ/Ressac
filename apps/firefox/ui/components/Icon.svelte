@@ -30,12 +30,12 @@
 </script>
 
 <script lang="ts">
-  let { nom: name, taille = 16 }: { nom: IconName; taille?: number } = $props();
+  let { nom: name, taille: size = 16 }: { nom: IconName; taille?: number } = $props();
 </script>
 
 <svg
-  width={taille}
-  height={taille}
+  width={size}
+  height={size}
   viewBox="0 0 24 24"
   fill="none"
   stroke="currentColor"

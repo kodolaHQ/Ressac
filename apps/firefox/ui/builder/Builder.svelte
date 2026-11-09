@@ -2,7 +2,7 @@
   import "@xyflow/svelte/dist/style.css";
   import { SvelteFlowProvider } from "@xyflow/svelte";
   import { untrack } from "svelte";
-  import type { CatalogueBloc, Owner } from "@webaios/kernel";
+  import type { BlockCatalogEntry, Owner } from "@webaios/kernel";
   import { focusAgent } from "../components/agent.svelte";
   import { api } from "../state.svelte";
   import { freeSlot } from "./add";
@@ -10,15 +10,15 @@
   import WidgetPreview from "../WidgetPreview.svelte";
   import RunsBar from "./RunsBar.svelte";
   import Canvas from "./Canvas.svelte";
-  import { targetKey, depotDe, launcherOf, sourceExecutionsDe } from "./target";
-  import { confirmerChangementDeBloc, keepBeforeClosing } from "./codes.svelte";
+  import { targetKey, repoOf, launcherOf, runsSourceOf } from "./target";
+  import { confirmBlockChange, keepBeforeClosing } from "./codes.svelte";
   import { createEdit, followDisappearances } from "./edition.svelte";
   import { Executions } from "./executions.svelte";
   import RunList from "./RunList.svelte";
   import AgentTab from "../AgentTab.svelte";
   import BlockTab from "./BlockTab.svelte";
   import Palette from "./Palette.svelte";
-  import { pastillesDe } from "./badges";
+  import { badgesOf } from "./badges";
 
   /**
    * The builder of a widget's workflow (page `webaios://workflow/<id>`) or an action's
@@ -33,20 +33,20 @@
   const id = targetKey(target);
 
   // Kept per window and per workflow: changing tab loses neither an invalid draft nor the history.
-  const edition = createEdit(id, depotDe(api.workflow));
+  const edit = createEdit(id, repoOf(api.workflow));
   followDisappearances(api.accueil);
   keepBeforeClosing();
   // svelte-ignore state_referenced_locally
-  const executions = new Executions(id, sourceExecutionsDe(api, target), launcherOf(api, target));
+  const executions = new Executions(id, runsSourceOf(api, target), launcherOf(api, target));
   /** What changes on disk: home for a widget, actions for an action. */
-  const surChange = isAction ? api.actions.surChange : api.accueil.surChange;
-  let catalogue = $state.raw<CatalogueBloc[]>([]);
-  const parType = $derived(new Map(catalogue.map((c) => [c.type, c])));
+  const onChange = isAction ? api.actions.surChange : api.accueil.surChange;
+  let catalog = $state.raw<BlockCatalogEntry[]>([]);
+  const byType = $derived(new Map(catalog.map((c) => [c.type, c])));
   /**
    * Items and status of each block at the chosen run (by default the latest real one, not a trial), replaced as the
    * traces come in by those of the running run of this widget.
    */
-  const pastilles = $derived(pastillesDe(executions.choisie, executions.enDirect));
+  const badges = $derived(badgesOf(executions.choisie, executions.enDirect));
   /** The block shown in the « Bloc » tab. */
   let selection = $state<string | null>(null);
   let canvas = $state<ReturnType<typeof Canvas>>();
@@ -60,48 +60,48 @@
     if (focusAgent.n !== agentRequests) rightTab = "agent";
   });
 
-  const name = $derived(edition.widget?.nom ?? edition.action?.nom ?? target.id);
+  const name = $derived(edit.widget?.nom ?? edit.action?.nom ?? target.id);
   /** The input requested by « ▶ Lancer » (action with an input): the small window is open. */
   let request = $state<{ libelle: string; valeur: string } | null>(null);
-  const aSortie = $derived(edition.brouillon?.blocs.some((b) => b.type === "sortie") ?? false);
-  const idSortie = $derived(edition.brouillon?.blocs.find((b) => b.type === "sortie")?.id);
+  const hasOutput = $derived(edit.brouillon?.blocs.some((b) => b.type === "sortie") ?? false);
+  const outputId = $derived(edit.brouillon?.blocs.find((b) => b.type === "sortie")?.id);
   const appState = $derived.by(() => {
-    const e = edition.etatEnregistrement;
+    const e = edit.etatEnregistrement;
     if (e === "enregistre") return "Enregistré";
     if (e === "en-cours") return "Enregistrement…";
     if ("invalide" in e) return `Non enregistré : ${e.invalide}`;
     return `Erreur d'enregistrement : ${e.erreur}`;
   });
 
-  const chargerExecutions = () => void executions.charger().catch(() => {});
+  const loadRuns = () => void executions.charger().catch(() => {});
 
   /** A block selected on the canvas; leaving unsaved code asks for confirmation. */
-  function select(bloc: string | null): void {
-    if (bloc === selection) return;
-    const courant = selection === null ? undefined : edition.brouillon?.blocs.find((b) => b.id === selection);
-    const source = courant?.type === "code" ? courant.parametres.source : undefined;
-    if (typeof source === "string" && !confirmerChangementDeBloc(id, source)) {
+  function select(block: string | null): void {
+    if (block === selection) return;
+    const current = selection === null ? undefined : edit.brouillon?.blocs.find((b) => b.id === selection);
+    const source = current?.type === "code" ? current.parametres.source : undefined;
+    if (typeof source === "string" && !confirmBlockChange(id, source)) {
       canvas?.selectionner(selection);
       return;
     }
-    selection = bloc;
-    api.workflow.selection(target, bloc);
+    selection = block;
+    api.workflow.selection(target, block);
   }
 
   $effect(() => untrack(() => {
     // No block is reported to the agent until the user has chosen one here.
     api.workflow.selection(target, null);
-    void api.workflow.catalogue().then((c) => (catalogue = c));
-    void edition.ouvrir();
-    chargerExecutions();
-    const finDirect = executions.suivre();
-    const fin = surChange(() => {
-      void edition.relire();
-      chargerExecutions();
+    void api.workflow.catalogue().then((c) => (catalog = c));
+    void edit.ouvrir();
+    loadRuns();
+    const endDirect = executions.suivre();
+    const end = onChange(() => {
+      void edit.relire();
+      loadRuns();
     });
     return () => {
-      fin();
-      finDirect();
+      end();
+      endDirect();
       api.workflow.selection(target, null);
     };
   }));
@@ -112,30 +112,30 @@
     const target = e.target as HTMLElement | null;
     if (target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))) return;
     e.preventDefault();
-    if (e.shiftKey) edition.retablir();
-    else edition.annuler();
+    if (e.shiftKey) edit.retablir();
+    else edit.annuler();
   }
 
   function add(type: string, position?: { x: number; y: number }): void {
-    const c = parType.get(type);
+    const c = byType.get(type);
     if (!c || !canvas) return;
-    const p = freeSlot(position ?? canvas.centre(), Object.values(edition.positions));
-    void edition.ajouter(c, p);
+    const p = freeSlot(position ?? canvas.centre(), Object.values(edit.positions));
+    void edit.ajouter(c, p);
   }
 
   /** « ▶ Lancer »: an action with an input asks for it first; empty, nothing goes out. */
-  function lancer(): void {
-    const input = edition.action?.saisie;
+  function launch(): void {
+    const input = edit.action?.saisie;
     if (input) request = { libelle: input.libelle, valeur: "" };
     else void executions.lancer().catch(() => {});
   }
 
   function confirmLaunch(e: SubmitEvent): void {
     e.preventDefault();
-    const valeur = request?.valeur.trim();
-    if (!valeur) return;
+    const value = request?.valeur.trim();
+    if (!value) return;
     request = null;
-    void executions.lancer(valeur).catch(() => {});
+    void executions.lancer(value).catch(() => {});
   }
 
   function requestedKey(e: KeyboardEvent): void {
@@ -150,7 +150,7 @@
   }
 
   function reorganize(): void {
-    edition.reorganiser();
+    edit.reorganiser();
     canvas?.ajusterVue();
   }
 </script>
@@ -166,33 +166,33 @@
         >Exécutions</button
       >
     </div>
-    <span class="etat" class:invalide={edition.etatEnregistrement !== "enregistre" && edition.etatEnregistrement !== "en-cours"} data-testid="etat-enregistrement"
+    <span class="etat" class:invalide={edit.etatEnregistrement !== "enregistre" && edit.etatEnregistrement !== "en-cours"} data-testid="etat-enregistrement"
       >{appState}</span
     >
     <div class="actions">
       <button data-testid="bouton-apercu" aria-pressed={previewOpen} onclick={() => (previewOpen = !previewOpen)}>{isAction ? "Aperçu de la page" : "Aperçu du widget"}</button>
-      <button data-testid="reorganiser" disabled={!edition.brouillon} onclick={reorganize}>Réorganiser</button>
-      <button class="lancer" data-testid="lancer" disabled={!edition.disqueValide || executions.occupe || edition.etatEnregistrement === "en-cours"} onclick={lancer}>
+      <button data-testid="reorganiser" disabled={!edit.brouillon} onclick={reorganize}>Réorganiser</button>
+      <button class="lancer" data-testid="lancer" disabled={!edit.disqueValide || executions.occupe || edit.etatEnregistrement === "en-cours"} onclick={launch}>
         {executions.occupe ? "Exécution…" : "▶ Lancer"}
       </button>
     </div>
   </header>
 
-  {#if edition.bandeau}
+  {#if edit.bandeau}
     <div class="bandeau" data-testid="bandeau-fichier" role="status">
-      {#if edition.bandeau === "proposer"}
+      {#if edit.bandeau === "proposer"}
         <span>L'agent a modifié le workflow pendant que le tien n'était pas enregistré.</span>
-        <button data-testid="prendre-version" onclick={() => edition.prendreVersionDisque()}>Prendre sa version</button>
-        <button data-testid="garder-mienne" onclick={() => edition.garderLaMienne()}>Garder la mienne</button>
+        <button data-testid="prendre-version" onclick={() => edit.prendreVersionDisque()}>Prendre sa version</button>
+        <button data-testid="garder-mienne" onclick={() => edit.garderLaMienne()}>Garder la mienne</button>
       {:else}
         <span>workflow.json est illisible sur le disque (l'agent est peut-être en train de l'écrire).</span>
-        <button data-testid="garder-mienne" onclick={() => edition.garderLaMienne()}>Garder la mienne</button>
+        <button data-testid="garder-mienne" onclick={() => edit.garderLaMienne()}>Garder la mienne</button>
       {/if}
     </div>
   {/if}
 
   <!-- The right pane: « Bloc » (only with a canvas) and « Agent », the window's agent conversation. -->
-  {#snippet volet(withBlock: boolean)}
+  {#snippet pane(withBlock: boolean)}
     <aside class="droite" class:agent={rightTab === "agent"} aria-label={rightTab === "agent" ? "Agent" : "Bloc"}>
       <div class="onglets-droite" role="tablist">
         {#if withBlock}
@@ -205,38 +205,38 @@
       {#if withBlock}
         <!-- The « Bloc » tab stays mounted, hidden: a setting or code being typed is not lost there. -->
         <div class="volet-bloc" hidden={rightTab !== "bloc"}>
-          <BlockTab widget={id} {edition} {executions} catalogue={parType} {selection} />
+          <BlockTab widget={id} edition={edit} {executions} catalogue={byType} {selection} />
         </div>
       {/if}
       {#if rightTab === "agent"}<AgentTab />{/if}
     </aside>
   {/snippet}
 
-  {#if edition.chargement === "chargement"}
+  {#if edit.chargement === "chargement"}
     <p class="doux message">Chargement…</p>
-  {:else if edition.chargement === "introuvable" || typeof edition.chargement === "object"}
+  {:else if edit.chargement === "introuvable" || typeof edit.chargement === "object"}
     <!-- Without a canvas, the agent stays there: it is up to it to repair or write the workflow. -->
     <div class="corps">
-      {#if edition.chargement === "introuvable"}
+      {#if edit.chargement === "introuvable"}
         <p class="doux message">
           {isAction ? "Cette action n'a pas de workflow (workflow.json), ou action.json est illisible." : "Ce widget n'a pas de workflow (ni workflow.json ni recolte.mjs)."}
         </p>
       {:else}
-        <p class="erreur message" data-testid="workflow-illisible">{edition.chargement.illisible}</p>
+        <p class="erreur message" data-testid="workflow-illisible">{edit.chargement.illisible}</p>
       {/if}
-      {@render volet(false)}
+      {@render pane(false)}
     </div>
   {:else}
     <SvelteFlowProvider>
       <div class="corps">
         {#if view === "executions"}<RunList {executions} onchoisie={() => (view = "workflow")} />{/if}
-        <Palette {catalogue} {aSortie} web={edition.widget?.web ?? edition.action?.web ?? false} action={isAction} onajouter={(type) => add(type)} />
+        <Palette catalogue={catalog} aSortie={hasOutput} web={edit.widget?.web ?? edit.action?.web ?? false} action={isAction} onajouter={(type) => add(type)} />
         <div class="zone-canevas">
           <Canvas
             bind:this={canvas}
-            {edition}
-            catalogue={parType}
-            {pastilles}
+            edition={edit}
+            catalogue={byType}
+            pastilles={badges}
             onselection={select}
             onajouter={(type, p) => add(type, p)}
           />
@@ -244,10 +244,10 @@
             {#if target.type === "action"}<ActionPreview id={target.id} {executions} />{:else}<WidgetPreview id={target.id} {executions} />{/if}
           {/if}
         </div>
-        {@render volet(true)}
+        {@render pane(true)}
       </div>
       {#if view === "workflow"}
-        <RunsBar {executions} {selection} sortie={idSortie} rejouable={edition.disqueValide && edition.etatEnregistrement !== "en-cours"} />
+        <RunsBar {executions} {selection} sortie={outputId} rejouable={edit.disqueValide && edit.etatEnregistrement !== "en-cours"} />
       {/if}
     </SvelteFlowProvider>
   {/if}

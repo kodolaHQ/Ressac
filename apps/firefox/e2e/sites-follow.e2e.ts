@@ -15,7 +15,7 @@ import { missingApi } from "./ui";
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 const HOSTS = ["vidola-a.localhost", "vidola-b.localhost", "pub.localhost", "adresses.localhost", "compte.localhost", "vidola.adresses.localhost"];
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const AVIS_CHANGE = "Vidola a changé d'adresse : vidola-b.localhost. Il faudra peut-être te reconnecter.";
+const NOTICE_CHANGED = "Vidola a changé d'adresse : vidola-b.localhost. Il faudra peut-être te reconnecter.";
 const UNCHANGED_NOTICE = "Vidola ne répond pas, et sa page de référence donne toujours la même adresse";
 const SERIES = '<title>The Bear</title><div class="shorts" id="shorts">shorts</div><p>épisode</p>';
 
@@ -150,7 +150,7 @@ describe("site app address follow", () => {
     server.couper("vidola-a.localhost");
     await openSite("t58");
     await viewAt("t58", b("/serie/the-bear"));
-    await expectText("t58", "site-avis", AVIS_CHANGE);
+    await expectText("t58", "site-avis", NOTICE_CHANGED);
     await expectText("t58", "site-domaine", "vidola-b.localhost");
     expect(addressFile("t58")).toMatchObject({ actuel: "vidola-b.localhost", anciens: ["vidola-a.localhost"] });
     expect(referenceReads()).toBe(1);
@@ -177,7 +177,7 @@ describe("site app address follow", () => {
     await expect.poll(() => homeFrame("t59", `return home.contentDocument.getElementById("series").textContent;`), { timeout: 15_000 }).toContain("The Bear");
     await barClick("t59", "site-entrer");
     await viewAt("t59", b("/serie/the-bear"));
-    await expectText("t59", "site-avis", AVIS_CHANGE);
+    await expectText("t59", "site-avis", NOTICE_CHANGED);
     await expect.poll(() => inSiteView(m, "t59", 'return getComputedStyle(document.getElementById("shorts")).display;').catch(() => null), { timeout: 15_000 }).toBe("none");
     await barClick("t59", "site-accueil");
     await expect.poll(() => homeFrame("t59", `return home.contentDocument.getElementById("domaine").textContent;`), { timeout: 15_000 }).toBe("vidola-b.localhost");
@@ -189,7 +189,7 @@ describe("site app address follow", () => {
   it("vidola-a redirects to pub.localhost (a parked domain) on opening: the follow starts (sites.spec.ts:1420)", async () => {
     await setup("t60", declaration(a("/parque")));
     await openSite("t60");
-    await expectText("t60", "site-avis", AVIS_CHANGE);
+    await expectText("t60", "site-avis", NOTICE_CHANGED);
     // The aimed path does not exist at vidola-b: it goes there anyway (the site answers there).
     await viewAt("t60", b("/parque"));
     expect(addressFile("t60")?.actuel).toBe("vidola-b.localhost");
@@ -291,7 +291,7 @@ describe("site app address follow", () => {
     expect(referenceReads()).toBe(0);
     parked = true;
     await barClick("t68", "site-recharger");
-    await expectText("t68", "site-avis", AVIS_CHANGE);
+    await expectText("t68", "site-avis", NOTICE_CHANGED);
     expect(referenceReads()).toBe(1);
     expect(server.requetes.some((r) => r.hote === "pub.localhost")).toBe(false);
   });

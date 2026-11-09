@@ -1,10 +1,10 @@
-import type { DroitDev } from "../access/policy.js";
+import type { DevRight } from "../access/policy.js";
 import type { CpuProfile } from "../devtools/summaries.js";
 import type { ChangeHost } from "../workflows/pacing.js";
-import type { PageLue } from "../workflows/protocole.js";
+import type { ReadPage } from "../workflows/protocole.js";
 
 /** The options of an invisible page read (see `PontNavigateur.lirePageInvisible`). */
-export interface OptionsLecturePage {
+export interface PageReadOptions {
   profil: string | null;
   domaines?: string[];
   adressesLocales?: boolean;
@@ -60,7 +60,7 @@ export interface BrowserBridge {
    * Shows the consent card; returns the granted rights (`[]` = denial). `signal` raised: the card no longer has
    * a subject (new conversation, kernel stopped), it is removed and the request answers `[]`.
    */
-  demanderOutilsDev?(o: TabInfo, d: { droits: DroitDev[]; raison: string; agent: string }, signal?: AbortSignal): Promise<DroitDev[]>;
+  demanderOutilsDev?(o: TabInfo, d: { droits: DevRight[]; raison: string; agent: string }, signal?: AbortSignal): Promise<DevRight[]>;
   /** The tab is in a private space: absent from listerOnglets, the agent has no access to it. */
   estPrive?(id: string): boolean;
   /** The tab the user is looking at is in a private space (ongletActif then returns null). */
@@ -91,7 +91,7 @@ export interface BrowserBridge {
    * or focus) as long as its height grows, at most `defiler` screens and within the same 30 s; the text read then goes
    * up to 100,000 characters and 1,000 links (20,000 and 400 without scrolling).
    */
-  lirePageInvisible?(url: string, o: OptionsLecturePage): Promise<PageLue>;
+  lirePageInvisible?(url: string, o: PageReadOptions): Promise<ReadPage>;
   /**
    * The HTML of a public page (`document.documentElement.outerHTML`, 2 MB at most): always the public session,
    * emptied before the read, never a profile or an account. Same guards as `lirePageInvisible` (http(s), local address
@@ -154,7 +154,7 @@ export interface BrowserDevTools {
   /** The raw `.heapsnapshot`. */
   instantaneMemoire(id: string, signal: AbortSignal): Promise<string>;
   executer(id: string, code: string, signal: AbortSignal): Promise<JsResult>;
-  recharger(id: string, sansCache: boolean): Promise<void>;
+  recharger(id: string, noCache: boolean): Promise<void>;
   /**
    * Access reserved to a kernel (the browser keeps its tools from one kernel to the next). Creating one revokes the previous:
    * its calls are refused and its attachments drop. `liberer` revokes this one (kernel stopped).

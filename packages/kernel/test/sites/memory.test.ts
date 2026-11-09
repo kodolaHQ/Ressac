@@ -3,7 +3,7 @@ import { readFile, rm, stat, writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as attendre } from "node:timers/promises";
 import {
-  KEY_INVALID, KEY_MAX, SITE_MEMORY_SIZE, MEMORY_DEPTH_MAX, MEMORY_WRITE_MS, MEMORY_FULL, SiteMemory, POSITIONS_MAX, VALEUR_NON_JSON,
+  KEY_INVALID, KEY_MAX, SITE_MEMORY_SIZE, MEMORY_DEPTH_MAX, MEMORY_WRITE_MS, MEMORY_FULL, SiteMemory, POSITIONS_MAX, NON_JSON_VALUE,
 } from "../../src/sites/memory.js";
 import { tempFolder } from "../helpers/temp.js";
 
@@ -62,7 +62,7 @@ test("fonction, cycle, undefined : VALEUR_NON_JSON", async () => {
   const cycle: Record<string, unknown> = {};
   cycle.soi = cycle;
   for (const v of [() => 1, cycle, undefined, 10n]) {
-    expect(m.retenir("k", v, null)).toEqual({ ok: false, erreur: VALEUR_NON_JSON });
+    expect(m.retenir("k", v, null)).toEqual({ ok: false, erreur: NON_JSON_VALUE });
   }
   expect(m.lire("k")).toBeNull();
 });
@@ -168,7 +168,7 @@ const nested = (n: number) => {
   for (let i = 0; i < n; i++) v = [v];
   return v;
 };
-const taille = (m: SiteMemory) => Buffer.byteLength(JSON.stringify(m.contenu()));
+const size = (m: SiteMemory) => Buffer.byteLength(JSON.stringify(m.contenu()));
 
 test("deeply nested, cyclic or reference-bomb value: refusal without an exception", async () => {
   const m = await open(await tempFolder());
@@ -195,7 +195,7 @@ test("noterPosition refuses a position that does not fit and keeps the total und
   expect(m.retenir("gros", "x".repeat(SITE_MEMORY_SIZE - 250), null)).toEqual({ ok: true });
   m.noterPosition("/" + "y".repeat(2000), 10, 100);
   expect(m.position("/" + "y".repeat(2000))).toBeNull();
-  expect(taille(m)).toBeLessThanOrEqual(SITE_MEMORY_SIZE);
+  expect(size(m)).toBeLessThanOrEqual(SITE_MEMORY_SIZE);
 });
 
 test("eviction follows quand, never the key order, and keeps the written position", async () => {
@@ -208,7 +208,7 @@ test("eviction follows quand, never the key order, and keeps the written positio
   m.noterPosition("c", 10, 100);
   expect(m.position("c")).not.toBeNull();
   expect(m.position("5")).toBeNull();
-  expect(taille(m)).toBeLessThanOrEqual(SITE_MEMORY_SIZE);
+  expect(size(m)).toBeLessThanOrEqual(SITE_MEMORY_SIZE);
 });
 
 test("a retenir at the limit with 500 positions stays fast", async () => {
@@ -222,14 +222,14 @@ test("a retenir at the limit with 500 positions stays fast", async () => {
 test("a re-read file is brought back to the bounds", async () => {
   const d = await tempFolder();
   await mkdir(join(d, "s"), { recursive: true });
-  const valeurs: Record<string, unknown> = {};
-  for (let i = 0; i < 4; i++) valeurs[`k${i}`] = { valeur: "x".repeat(100_000), adresse: null, quand: "2026-01-01T00:00:00Z" };
-  valeurs.profond = { valeur: nested(40), adresse: null, quand: "q" };
+  const values: Record<string, unknown> = {};
+  for (let i = 0; i < 4; i++) values[`k${i}`] = { valeur: "x".repeat(100_000), adresse: null, quand: "2026-01-01T00:00:00Z" };
+  values.profond = { valeur: nested(40), adresse: null, quand: "q" };
   const positions: Record<string, unknown> = {};
   for (let i = 0; i < 700; i++) positions[`/p${i}`] = { t: 1, duree: 100, quand: new Date(Date.UTC(2026, 0, 1, 0, 0, i)).toISOString() };
-  await writeFile(file(d), JSON.stringify({ version: 1, valeurs, positions }));
+  await writeFile(file(d), JSON.stringify({ version: 1, valeurs: values, positions }));
   const m = await open(d);
-  expect(taille(m)).toBeLessThanOrEqual(SITE_MEMORY_SIZE);
+  expect(size(m)).toBeLessThanOrEqual(SITE_MEMORY_SIZE);
   expect(m.lire("profond")).toBeNull();
   expect(m.lire("k0")).not.toBeNull();
   expect(m.lire("k3")).toBeNull();
@@ -271,8 +271,8 @@ test("write failure: the data stays and vider() retries", async () => {
   m.retenir("b", 2, null);
   await rm(join(d, "s"));
   await m.vider();
-  const brut = JSON.parse(await readFile(file(d), "utf8"));
-  expect([brut.valeurs.a.valeur, brut.valeurs.b.valeur]).toEqual([1, 2]);
+  const raw = JSON.parse(await readFile(file(d), "utf8"));
+  expect([raw.valeurs.a.valeur, raw.valeurs.b.valeur]).toEqual([1, 2]);
 });
 
 test("unknown version: read as empty, saved as .bak, not overwritten", async () => {
@@ -292,12 +292,12 @@ test("unknown version: read as empty, saved as .bak, not overwritten", async () 
 test("unknown version twice: the first .bak backup is not overwritten", async () => {
   const d = await tempFolder();
   await mkdir(join(d, "s"), { recursive: true });
-  const un = JSON.stringify({ version: 2, n: 1 });
+  const one = JSON.stringify({ version: 2, n: 1 });
   const two = JSON.stringify({ version: 2, n: 2 });
-  await writeFile(file(d), un);
+  await writeFile(file(d), one);
   await open(d);
   await writeFile(file(d), two);
   await open(d);
-  expect(await readFile(join(d, "s", "memoire.json.v2.bak"), "utf8")).toBe(un);
+  expect(await readFile(join(d, "s", "memoire.json.v2.bak"), "utf8")).toBe(one);
   expect(await readFile(join(d, "s", "memoire.json.v2.1.bak"), "utf8")).toBe(two);
 });

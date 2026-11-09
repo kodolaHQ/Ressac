@@ -509,11 +509,11 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("widget home spike", () => {
     await writeFile(path.join(widgets, "fuite-affichage", "widget.json"), JSON.stringify(declaration));
     await symlink("/etc/hosts", path.join(widgets, "fuite-affichage", "affichage.html"));
     const after = await readHome(paths, data);
-    const dossier = await realpath(path.join(widgets, "fuite-affichage"));
+    const folder = await realpath(path.join(widgets, "fuite-affichage"));
     const display = await realpath(path.join(widgets, "fuite-affichage", "affichage.html")).catch((e) => String(e));
     note("P6 confinement", {
       symlinkedJson: after.widgets.find((x) => x.id === "fuite"),
-      symlinkedAffichage: { dossier, reel: display, allowed: String(display).startsWith(dossier + path.sep) },
+      symlinkedAffichage: { dossier: folder, reel: display, allowed: String(display).startsWith(folder + path.sep) },
     });
 
     note(

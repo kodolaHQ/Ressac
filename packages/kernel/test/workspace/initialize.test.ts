@@ -5,9 +5,9 @@ import { join } from "node:path";
 import { spacePaths } from "../../src/paths.js";
 import { initSpace, DEFAULT_MODELS, HARVESTS_SHIPPED, DISPLAYS_SHIPPED, OLD_AGENTS } from "../../src/workspace/initialize.js";
 import { createHash } from "node:crypto";
-import { DeclarationWidget, Disposition } from "../../src/home/schemas.js";
-import { DeclarationSite, verifierDeclarationSite } from "../../src/sites/schemas.js";
-import { lireReference } from "../../src/pages/plan.js";
+import { DeclarationWidget, Layout } from "../../src/home/schemas.js";
+import { DeclarationSite, checkSiteDeclaration } from "../../src/sites/schemas.js";
+import { readReference } from "../../src/pages/plan.js";
 import { tempFolder } from "../helpers/temp.js";
 
 const sha256 = (content: string | Buffer) => createHash("sha256").update(content).digest("hex");
@@ -19,7 +19,7 @@ const START_FILES: Record<string, string[]> = {
   "daily-dev": ["widget.json", "exemple.json", "affichage.html", "workflow.json", "liens.mjs", "articles.mjs"],
 };
 /** The switch code: workflow.json and the template's .mjs files. */
-const CODE_DEPART = (id: string) => START_FILES[id]!.filter((f) => f === "workflow.json" || f.endsWith(".mjs"));
+const START_CODE = (id: string) => START_FILES[id]!.filter((f) => f === "workflow.json" || f.endsWith(".mjs"));
 
 const expectedList = [
   "AGENTS.md",
@@ -74,7 +74,7 @@ test("a new space gets the three starter widgets and the v2 layout", async () =>
   await initSpace(c);
   expect((await readdir(c.widgets)).sort()).toEqual(["actus-tech", "daily-dev", "meteo"]);
   expect(existsSync(c.blocs)).toBe(false);
-  const available = Disposition.parse(JSON.parse(await readFile(c.disposition, "utf8")));
+  const available = Layout.parse(JSON.parse(await readFile(c.disposition, "utf8")));
   expect(available.widgets.map((w) => w.id)).toEqual(["actus-tech", "daily-dev", "meteo"]);
   for (const id of ["meteo", "actus-tech", "daily-dev"]) {
     const d = DeclarationWidget.parse(JSON.parse(await readFile(join(c.widgets, id, "widget.json"), "utf8")));
@@ -93,12 +93,12 @@ test("existing blocks move to accueil/.corbeille/blocs-…, nothing is destroyed
   await initSpace(c);
   expect(existsSync(c.blocs)).toBe(false);
   const trash = join(c.accueil, ".corbeille");
-  const dossiers = await readdir(trash);
-  expect(dossiers).toHaveLength(1);
-  expect(dossiers[0]).toMatch(/^blocs-\d{4}-\d\d-\d\dT[^:]+$/);
-  expect(await readFile(join(trash, dossiers[0]!, "mien", "bloc.json"), "utf8")).toBe('{"a":1}');
-  expect(await readFile(join(trash, dossiers[0]!, "disposition.json"), "utf8")).toBe('{"ordre":["mien"]}');
-  expect(Disposition.safeParse(JSON.parse(await readFile(c.disposition, "utf8"))).success).toBe(true);
+  const folders = await readdir(trash);
+  expect(folders).toHaveLength(1);
+  expect(folders[0]).toMatch(/^blocs-\d{4}-\d\d-\d\dT[^:]+$/);
+  expect(await readFile(join(trash, folders[0]!, "mien", "bloc.json"), "utf8")).toBe('{"a":1}');
+  expect(await readFile(join(trash, folders[0]!, "disposition.json"), "utf8")).toBe('{"ordre":["mien"]}');
+  expect(Layout.safeParse(JSON.parse(await readFile(c.disposition, "utf8"))).success).toBe(true);
   expect(existsSync(join(c.widgets, "meteo", "widget.json"))).toBe(true);
   // A second launch sets nothing aside.
   await initSpace(c);
@@ -138,9 +138,9 @@ test("AGENTS.md, CLAUDE.md and the profile are recreated if missing", async () =
 test("two simultaneous initializations create each file only once", async () => {
   const c = spacePaths(await tempFolder());
   const [a, b] = await Promise.all([initSpace(c), initSpace(c)]);
-  const tous = [...a.crees, ...b.crees];
-  expect(new Set(tous).size).toBe(tous.length);
-  expect(tous.length).toBe(expectedList.length);
+  const all = [...a.crees, ...b.crees];
+  expect(new Set(all).size).toBe(all.length);
+  expect(all.length).toBe(expectedList.length);
 });
 
 test("a shipped AGENTS.md (its hash is known) is replaced by the current template", async () => {
@@ -179,20 +179,20 @@ test("the hash of every shipped version is kept: the list only grows", () => {
 
 test("the AGENTS.md template describes the design mode remarks of site apps", async () => {
   const text = await readFile(join(DEFAULT_MODELS, "AGENTS.md"), "utf8");
-  for (const motif of ["Remarques du mode design", "/workspace/.webaios/remarques/site-<id>/", "MutationObserver", "site-tiers", "accueil/"]) {
-    expect(text, motif).toContain(motif);
+  for (const pattern of ["Remarques du mode design", "/workspace/.webaios/remarques/site-<id>/", "MutationObserver", "site-tiers", "accueil/"]) {
+    expect(text, pattern).toContain(pattern);
   }
 });
 
 test("the site.json examples given in AGENTS.md (YouTube, Vidola) are valid for the site app schema", async () => {
   const text = await readFile(join(DEFAULT_MODELS, "AGENTS.md"), "utf8");
-  const blocs = [...text.matchAll(/```json site\.json:([a-z]+)\n([\s\S]*?)```/g)].map((m) => ({ nom: m[1]!, json: m[2]! }));
-  expect(blocs.map((b) => b.nom).sort()).toEqual(["vidola", "youtube"]);
-  for (const { nom: name, json } of blocs) {
+  const blocks = [...text.matchAll(/```json site\.json:([a-z]+)\n([\s\S]*?)```/g)].map((m) => ({ nom: m[1]!, json: m[2]! }));
+  expect(blocks.map((b) => b.nom).sort()).toEqual(["vidola", "youtube"]);
+  for (const { nom: name, json } of blocks) {
     const r = DeclarationSite.safeParse(JSON.parse(json));
     expect(r.success, `${name} : ${r.success ? "" : r.error.message}`).toBe(true);
     if (!r.success) continue;
-    expect(verifierDeclarationSite(r.data, { adressesLocales: false }), name).toBeNull();
+    expect(checkSiteDeclaration(r.data, { adressesLocales: false }), name).toBeNull();
     // Each declared tweak file is shown in AGENTS.md.
     for (const r2 of r.data.retouches) for (const f of [...r2.js, ...r2.css]) expect(text, `${name} : retouches/${f}`).toContain(`retouches/${f}`);
   }
@@ -200,12 +200,12 @@ test("the site.json examples given in AGENTS.md (YouTube, Vidola) are valid for 
 
 test("the references given as examples in AGENTS.md are valid for the plan reader", async () => {
   const text = await readFile(join(DEFAULT_MODELS, "AGENTS.md"), "utf8");
-  const blocs = [...text.matchAll(/```reference\n([\s\S]*?)```/g)].map((m) => m[1]!);
-  expect(blocs.length).toBeGreaterThan(0);
-  const references = blocs.flatMap((b) => b.split("\n").filter((l) => l.trim() !== ""));
+  const blocks = [...text.matchAll(/```reference\n([\s\S]*?)```/g)].map((m) => m[1]!);
+  expect(blocks.length).toBeGreaterThan(0);
+  const references = blocks.flatMap((b) => b.split("\n").filter((l) => l.trim() !== ""));
   expect(references.length).toBeGreaterThanOrEqual(3);
   for (const r of references) {
-    expect(lireReference(r), r).not.toHaveProperty("erreur");
+    expect(readReference(r), r).not.toHaveProperty("erreur");
   }
 });
 
@@ -217,7 +217,7 @@ const SHIPPED = join(import.meta.dirname, "shipped-harvests");
 async function spaceWithOldHarvest(id: string, harvest: string) {
   const c = spacePaths(await tempFolder());
   await initSpace(c);
-  for (const f of CODE_DEPART(id)) await rm(join(c.widgets, id, f));
+  for (const f of START_CODE(id)) await rm(join(c.widgets, id, f));
   await writeFile(join(c.widgets, id, "recolte.mjs"), harvest);
   return c;
 }
@@ -247,7 +247,7 @@ for (const file of readdirSync(join(import.meta.dirname, "shipped-harvests")).so
     const { crees } = await initSpace(c);
 
     expect(existsSync(join(c.widgets, id, "recolte.mjs"))).toBe(false);
-    for (const f of CODE_DEPART(id)) {
+    for (const f of START_CODE(id)) {
       expect(await readFile(join(c.widgets, id, f), "utf8"), f).toBe(await readFile(join(DEFAULT_MODELS, "widgets", id, f), "utf8"));
       expect(crees).toContain(join(c.widgets, id, f));
     }
@@ -270,7 +270,7 @@ test("a modified starter widget is left alone", async () => {
   const c = await spaceWithOldHarvest("actus-tech", modified);
   await initSpace(c);
   expect(await readFile(join(c.widgets, "actus-tech", "recolte.mjs"), "utf8")).toBe(modified);
-  for (const f of CODE_DEPART("actus-tech")) expect(existsSync(join(c.widgets, "actus-tech", f)), f).toBe(false);
+  for (const f of START_CODE("actus-tech")) expect(existsSync(join(c.widgets, "actus-tech", f)), f).toBe(false);
   expect(existsSync(join(c.accueil, ".corbeille"))).toBe(false);
 });
 
@@ -306,7 +306,7 @@ test("an interrupted switch (template workflow.json already there, shipped recol
   expect(trash).toHaveLength(1);
   expect(trash[0]).toMatch(/^daily-dev-recolte-/);
   expect(await readFile(join(c.accueil, ".corbeille", trash[0]!), "utf8")).toBe(old);
-  for (const f of CODE_DEPART("daily-dev")) {
+  for (const f of START_CODE("daily-dev")) {
     expect(await readFile(join(c.widgets, "daily-dev", f), "utf8"), f).toBe(await readFile(join(DEFAULT_MODELS, "widgets", "daily-dev", f), "utf8"));
   }
 });
@@ -336,22 +336,22 @@ test("an agent widget (gmail) is left alone, even with a shipped recolte.mjs", a
 test("a shipped recolte.mjs that is a symbolic link is not followed", async () => {
   const c = await spaceWithOldHarvest("meteo", "");
   await rm(join(c.widgets, "meteo", "recolte.mjs"));
-  const dehors = join(await tempFolder(), "recolte.mjs");
-  await writeFile(dehors, await readFile(join(SHIPPED, "meteo-4d4c5f1.mjs")));
-  await symlink(dehors, join(c.widgets, "meteo", "recolte.mjs"));
+  const outside = join(await tempFolder(), "recolte.mjs");
+  await writeFile(outside, await readFile(join(SHIPPED, "meteo-4d4c5f1.mjs")));
+  await symlink(outside, join(c.widgets, "meteo", "recolte.mjs"));
   await initSpace(c);
   expect(existsSync(join(c.widgets, "meteo", "workflow.json"))).toBe(false);
   expect((await lstat(join(c.widgets, "meteo", "recolte.mjs"))).isSymbolicLink()).toBe(true);
-  expect(existsSync(dehors)).toBe(true);
+  expect(existsSync(outside)).toBe(true);
 });
 
 test("a failed switch does not block the launch: the other widgets go through, the failed one retries at the next", async () => {
   const models = join(await tempFolder(), "modeles");
   await cp(DEFAULT_MODELS, models, { recursive: true });
   const c = await spaceWithOldHarvest("meteo", await readFile(join(SHIPPED, "meteo-4d4c5f1.mjs"), "utf8"));
-  for (const f of CODE_DEPART("actus-tech")) await rm(join(c.widgets, "actus-tech", f));
+  for (const f of START_CODE("actus-tech")) await rm(join(c.widgets, "actus-tech", f));
   await writeFile(join(c.widgets, "actus-tech", "recolte.mjs"), await readFile(join(SHIPPED, "actus-tech-4d4c5f1.mjs")));
-  for (const f of CODE_DEPART("daily-dev")) await rm(join(c.widgets, "daily-dev", f));
+  for (const f of START_CODE("daily-dev")) await rm(join(c.widgets, "daily-dev", f));
   await writeFile(join(c.widgets, "daily-dev", "recolte.mjs"), await readFile(join(SHIPPED, "daily-dev-4d4c5f1.mjs")));
   // daily-dev absent from the templates, and a meteo copy that fails (unreadable file).
   await rm(join(models, "widgets", "daily-dev"), { recursive: true });

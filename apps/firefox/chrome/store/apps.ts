@@ -2,7 +2,7 @@
 // its own container (`webaios-app-<dossier>`), kept on its origin (http://localhost:<port>) by the request guard and
 // the view policy of sites.ts. The host (noyau/applications.ts) owns the apps; this module owns their windows.
 import type { DesignState } from "../../shared/api";
-import type { Cadre, AccessState } from "../../shared/model";
+import type { FrameBounds, AccessState } from "../../shared/model";
 import { validFolder } from "./app-folder";
 import { HOST_EXITED, type AgentHost } from "../agent/host";
 import type { DesignService } from "./design";
@@ -37,7 +37,7 @@ let design: Pick<DesignService, "etat" | "toggle" | "openCart" | "relire"> | nul
 
 /** What the badge frame of an app window gets from the chrome (ui/badge-api.ts copies every value it hands over). */
 export interface BadgeChrome {
-  acces: { etat(): AccessState; couper(id: unknown, droit: unknown): void };
+  acces: { etat(): AccessState; couper(id: unknown, right: unknown): void };
   surAcces(cb: (e: AccessState) => void): () => void;
   pastilleTaille(openedApp: unknown): void;
   /** Its window's design mode (target `app`, from the window, never from the frame). */
@@ -129,7 +129,7 @@ export const apps = {
    * Opens the app's window on `http://localhost:<port>/`, or reloads the open one there (a relaunch, maybe on another
    * port: the guard follows the new origin). An invalid dossier opens nothing.
    */
-  open(a: { dossier: string; nom: string; port: number }, cadre: Cadre | null): void {
+  open(a: { dossier: string; nom: string; port: number }, frame: FrameBounds | null): void {
     if (typeof a?.dossier !== "string" || !validFolder(a.dossier) || typeof a.nom !== "string" || !Number.isInteger(a.port) || a.port <= 0 || a.port > 65535) return;
     const origin = `http://localhost:${a.port}`;
     const known = open.get(a.dossier);
@@ -143,7 +143,7 @@ export const apps = {
     const userContextId = appContainer(a.dossier);
     const marker = Cc["@mozilla.org/hash-property-bag;1"].createInstance(Ci.nsIWritablePropertyBag2);
     marker.setPropertyAsAString(APP_WINDOW_KEY, a.dossier);
-    const win = openInContainer(userContextId, marker, frameFeatures(cadre));
+    const win = openInContainer(userContextId, marker, frameFeatures(frame));
     const app: OpenApp = { dossier: a.dossier, nom: a.nom, origin, userContextId, window: win, view: null, wanted: false };
     open.set(a.dossier, app);
     const onClose = {
@@ -156,30 +156,30 @@ export const apps = {
     Services.ww.registerNotification(onClose);
   },
   /** A close WebAiOs wants (the app stopped): the page is not asked, the host is not told it was closed by the user. */
-  async close(dossier: string): Promise<void> {
-    const a = open.get(dossier);
+  async close(folder: string): Promise<void> {
+    const a = open.get(folder);
     if (a) await closeWindow(a);
   },
   /** « Ouvrir »: the window in front, not reloaded; false if the app has none. */
-  show(dossier: string): boolean {
-    const a = open.get(dossier);
+  show(folder: string): boolean {
+    const a = open.get(folder);
     if (!a || a.window.closed) return false;
     if (a.window.windowState === a.window.STATE_MINIMIZED) (a.window as any).restore();
     a.window.focus();
     return true;
   },
   /** « Supprimer »: the app's container (cookies, storage) is wiped. */
-  async erase(dossier: string): Promise<void> {
-    if (typeof dossier === "string" && validFolder(dossier)) await removeAppContainer(dossier);
+  async erase(folder: string): Promise<void> {
+    if (typeof folder === "string" && validFolder(folder)) await removeAppContainer(folder);
   },
   /**
    * « Afficher le dossier »: `<dataDir>/espace/projets/<dossier>` shown in the Finder, never opened (an `x.app` folder
    * would launch). One path segment only. WEBAIOS_TEST_REVEAL (e2e): the path is appended to
    * that file instead.
    */
-  reveal(dossier: string): void {
-    if (typeof dossier !== "string" || dossier === "" || dossier === "." || dossier === ".." || /[/\\\0]/.test(dossier) || !dataDir) return;
-    const path = PathUtils.join(dataDir, "espace", "projets", dossier);
+  reveal(folder: string): void {
+    if (typeof folder !== "string" || folder === "" || folder === "." || folder === ".." || /[/\\\0]/.test(folder) || !dataDir) return;
+    const path = PathUtils.join(dataDir, "espace", "projets", folder);
     const test = Services.env.get("WEBAIOS_TEST_REVEAL");
     if (test) return void IOUtils.writeUTF8(test, path + "\n", { mode: "appendOrCreate" }).catch((e: unknown) => console.warn("[apps] reveal not noted:", e));
     try {
@@ -224,16 +224,16 @@ export const apps = {
   note(win: Window, o: { frame?: boolean; favicon?: string }): void {
     const a = [...open.values()].find((x) => x.window === win);
     if (!a) return;
-    const cadre = o.frame ? frameOf(win) : null;
-    if (cadre) host?.notify("applications.noter", { dossier: a.dossier, cadre });
+    const frame = o.frame ? frameOf(win) : null;
+    if (frame) host?.notify("applications.noter", { dossier: a.dossier, cadre: frame });
     if (o.favicon) host?.notify("applications.noter", { dossier: a.dossier, favicon: o.favicon });
   },
   titleOf(a: Pick<OpenApp, "nom" | "view">): string {
     return String(a.view?.contentTitle ?? "").trim() || a.nom;
   },
   /** The app view's <browser> and its window. */
-  viewFor(dossier: string): { browser: any; window: Window } | undefined {
-    const a = open.get(dossier);
+  viewFor(folder: string): { browser: any; window: Window } | undefined {
+    const a = open.get(folder);
     return a?.view && !a.window.closed ? { browser: a.view, window: a.window } : undefined;
   },
   /** The open windows for the agent, seen as `app:<dossier>` tabs. */
@@ -246,8 +246,8 @@ export const apps = {
       });
   },
   /** Navigation on `app:`: in the window on the app's origin, else false (the bridge opens a tab). */
-  navigateForAgent(dossier: string, url: string): boolean {
-    const a = open.get(dossier);
+  navigateForAgent(folder: string, url: string): boolean {
+    const a = open.get(folder);
     if (!a?.view || !sameOrigin(url, a.origin)) return false;
     load(a, url);
     return true;
@@ -293,10 +293,10 @@ export const apps = {
    * that access and its menu change, its own app's design mode. Undefined if the window is not an app's.
    */
   badge(win: Window, size: (width: number, height: number) => void): BadgeChrome | undefined {
-    const dossier = apps.dossierOf(win);
-    if (!dossier) return undefined;
-    const id = "app:" + dossier;
-    const target = { type: "app" as const, dossier };
+    const folder = apps.dossierOf(win);
+    if (!folder) return undefined;
+    const id = "app:" + folder;
+    const target = { type: "app" as const, dossier: folder };
     // Never another tab's access.
     const own = (): AccessState => {
       const e = access();
@@ -326,8 +326,8 @@ export const apps = {
       acces: {
         etat: own,
         // Its own app's access only.
-        couper: (cut, droit) => {
-          if (cut === id && (droit === undefined || typeof droit === "string")) host?.notify("politique.couper", { id, droit });
+        couper: (cut, right) => {
+          if (cut === id && (right === undefined || typeof right === "string")) host?.notify("politique.couper", { id, droit: right });
         },
       },
       surAcces(cb) {
@@ -351,10 +351,10 @@ export const apps = {
   },
   /** The host's requests (noyau/applications.ts chrome), positional params. */
   handlers: {
-    "apps.ouvrir": ([a, cadre]: [{ dossier: string; nom: string; port: number }, Cadre | null]) => apps.open(a, cadre),
-    "apps.fermer": ([dossier]: [string]) => apps.close(dossier),
-    "apps.montrer": ([dossier]: [string]) => apps.show(dossier),
-    "apps.effacer": ([dossier]: [string]) => apps.erase(dossier),
+    "apps.ouvrir": ([a, frame]: [{ dossier: string; nom: string; port: number }, FrameBounds | null]) => apps.open(a, frame),
+    "apps.fermer": ([folder]: [string]) => apps.close(folder),
+    "apps.montrer": ([folder]: [string]) => apps.show(folder),
+    "apps.effacer": ([folder]: [string]) => apps.erase(folder),
   },
 };
 

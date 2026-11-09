@@ -9,17 +9,17 @@ import { ID_SITE, type DeclarationSite } from "./schemas.js";
  * What the user authorized for the tweaks of a site app: the domains, the login domains, the frame
  * patterns and the video resume at the time of the grant. Changing `correspond` or the code asks for nothing again.
  */
-export const DroitsSite = z.object({
+export const SiteRights = z.object({
   domaines: z.array(z.string()),
   connexion: z.array(z.string()),
   cadres: z.array(z.string()),
   reprise: z.boolean(),
 });
-export type DroitsSite = z.infer<typeof DroitsSite>;
+export type SiteRights = z.infer<typeof SiteRights>;
 
 export const siteGrantsFile = (profile: string) => join(profile, "sites-accords.json");
 
-function verifierId(id: string): void {
+function checkId(id: string): void {
   if (!ID_SITE.test(id)) throw new Error(`id d'appli de site invalide : ${id}`);
 }
 
@@ -50,7 +50,7 @@ export function grantNeeded(d: DeclarationSite): boolean {
   return d.retouches.length > 0 || d.reprise;
 }
 
-export function droitsDe(d: DeclarationSite): DroitsSite {
+export function rightsOf(d: DeclarationSite): SiteRights {
   return {
     domaines: unique(d.domaines.map((x) => x.toLowerCase())),
     connexion: unique(d.connexion.map((x) => x.toLowerCase())),
@@ -60,55 +60,55 @@ export function droitsDe(d: DeclarationSite): DroitsSite {
 }
 
 /** The grant covers the declaration if it asks for nothing more than what was granted. */
-export function grantCovers(a: DroitsSite | null, d: DeclarationSite): boolean {
+export function grantCovers(a: SiteRights | null, d: DeclarationSite): boolean {
   if (!a) return false;
-  const wanted = droitsDe(d);
-  const dans = (x: string[], y: string[]) => x.every((v) => y.includes(v));
+  const wanted = rightsOf(d);
+  const inside = (x: string[], y: string[]) => x.every((v) => y.includes(v));
   const granted = {
     domaines: a.domaines.map((x) => x.toLowerCase()),
     connexion: a.connexion.map((x) => x.toLowerCase()),
     cadres: a.cadres,
   };
   return (
-    dans(wanted.domaines, granted.domaines) &&
-    dans(wanted.connexion, granted.connexion) &&
-    dans(wanted.cadres, granted.cadres) &&
+    inside(wanted.domaines, granted.domaines) &&
+    inside(wanted.connexion, granted.connexion) &&
+    inside(wanted.cadres, granted.cadres) &&
     (!wanted.reprise || a.reprise)
   );
 }
 
 /** Without a prototype: an id like « constructor » or « __proto__ » has no grant and throws nothing. */
-async function lire(profile: string, strict: boolean): Promise<Record<string, DroitsSite>> {
-  const accords: Record<string, DroitsSite> = Object.create(null);
-  let brut: unknown;
+async function read(profile: string, strict: boolean): Promise<Record<string, SiteRights>> {
+  const grants: Record<string, SiteRights> = Object.create(null);
+  let raw: unknown;
   try {
-    brut = JSON.parse(await readFile(siteGrantsFile(profile), "utf8"));
+    raw = JSON.parse(await readFile(siteGrantsFile(profile), "utf8"));
   } catch (e) {
     // absent or damaged: no grant; any other failure (EMFILE, EACCES…) makes a write fail
     if (strict && !(e instanceof SyntaxError) && (e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
-    return accords;
+    return grants;
   }
-  if (!brut || typeof brut !== "object" || Array.isArray(brut)) return accords;
-  for (const [id, valeur] of Object.entries(brut)) {
-    const r = DroitsSite.safeParse(valeur);
-    if (ID_SITE.test(id) && r.success) accords[id] = r.data;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return grants;
+  for (const [id, value] of Object.entries(raw)) {
+    const r = SiteRights.safeParse(value);
+    if (ID_SITE.test(id) && r.success) grants[id] = r.data;
   }
-  return accords;
+  return grants;
 }
 
 /** The valid grants; an absent or damaged file counts as no grant. */
-export const lireAccordsSites = (profile: string): Promise<Record<string, DroitsSite>> => lire(profile, false);
+export const readSiteGrants = (profile: string): Promise<Record<string, SiteRights>> => read(profile, false);
 
 /** One write at a time per file: two simultaneous grants do not erase each other. */
 const files = new Map<string, Promise<unknown>>();
 
-function modifier(profile: string, changer: (a: Record<string, DroitsSite>) => void): Promise<void> {
+function modify(profile: string, change: (a: Record<string, SiteRights>) => void): Promise<void> {
   const key = siteGrantsFile(profile);
   const previous = files.get(key) ?? Promise.resolve();
   const next = previous.catch(() => {}).then(async () => {
-    const accords = await lire(profile, true);
-    changer(accords);
-    await writeAtomic(key, JSON.stringify({ ...accords }, null, 2));
+    const grants = await read(profile, true);
+    change(grants);
+    await writeAtomic(key, JSON.stringify({ ...grants }, null, 2));
   });
   files.set(key, next);
   void next.finally(() => {
@@ -117,17 +117,17 @@ function modifier(profile: string, changer: (a: Record<string, DroitsSite>) => v
   return next;
 }
 
-export async function accorderSite(profile: string, id: string, d: DeclarationSite): Promise<void> {
-  verifierId(id);
-  const droits = droitsDe(d);
-  return modifier(profile, (accords) => {
-    accords[id] = droits;
+export async function storeSiteGrant(profile: string, id: string, d: DeclarationSite): Promise<void> {
+  checkId(id);
+  const rights = rightsOf(d);
+  return modify(profile, (grants) => {
+    grants[id] = rights;
   });
 }
 
-export async function retirerAccordSite(profile: string, id: string): Promise<void> {
-  verifierId(id);
-  return modifier(profile, (accords) => {
-    delete accords[id];
+export async function removeSiteGrant(profile: string, id: string): Promise<void> {
+  checkId(id);
+  return modify(profile, (grants) => {
+    delete grants[id];
   });
 }

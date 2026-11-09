@@ -22,17 +22,17 @@ export const hour = (iso: string) => new Date(iso).toLocaleTimeString("fr-FR", {
 export const date = (iso: string) => new Date(iso).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "medium" });
 
 /** « 0,4 s », « 12 s », « 2 min 05 s »; « en cours » without an end. */
-export function duration(debut: string | null, fin: string | null): string {
-  if (!debut) return "—";
-  if (!fin) return "en cours";
-  const ms = Math.max(0, new Date(fin).getTime() - new Date(debut).getTime());
+export function duration(start: string | null, end: string | null): string {
+  if (!start) return "—";
+  if (!end) return "en cours";
+  const ms = Math.max(0, new Date(end).getTime() - new Date(start).getTime());
   if (ms < 10_000) return `${(ms / 1000).toLocaleString("fr-FR", { maximumFractionDigits: 1 })} s`;
   const s = Math.round(ms / 1000);
   return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${String(s % 60).padStart(2, "0")} s`;
 }
 
 /** Output items: those of the `sortie` block (an implicit workflow's last block too). */
-export function elementsEnSortie(e: ResumeExecution, sortie: string | undefined): number | null {
-  const b = (sortie === undefined ? undefined : e.blocs.find((x) => x.id === sortie)) ?? e.blocs.at(-1);
+export function outputElements(e: ResumeExecution, output: string | undefined): number | null {
+  const b = (output === undefined ? undefined : e.blocs.find((x) => x.id === output)) ?? e.blocs.at(-1);
   return b?.elements ?? null;
 }

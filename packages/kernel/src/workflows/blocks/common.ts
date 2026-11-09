@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 /** What the engine knows about a block type: its params schema and its relation to the « per item » mode. */
-export interface DefinitionBloc {
+export interface BlockDefinition {
   type: string;
   libelle: string;
   famille: BlockFamily;
@@ -52,7 +52,7 @@ export const ParamsPerElement = {
 export const Template = z.string().min(1).max(20_000);
 
 /** The `parElement` field and the fields that only make sense when it is true. */
-export const CHAMP_PAR_ELEMENT: FormField = {
+export const FIELD_PER_ELEMENT: FormField = {
   nom: "parElement",
   libelle: "Un élément à la fois",
   aide: "Applique le bloc à chaque élément de la liste reçue.",

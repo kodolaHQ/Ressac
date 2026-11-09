@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { CAPTURE_WARNING_SITE, UNAVAILABLE_DESIGN_SITE } from "../shared/design-guards";
 import { testActor } from "./agent-extensions";
-import { WITH_HOME, withHomeDeclaration, overlayOf, CONNEXION_PAGE, inStore, keyIn, openSite, siteExpr, siteKey, siteMouse, toSite, TUNING_PAGE, tuningDeclaration, viewExpr, viewPoint, OTHER_PAGE } from "./design-sites";
+import { WITH_HOME, withHomeDeclaration, overlayOf, LOGIN_PAGE, inStore, keyIn, openSite, siteExpr, siteKey, siteMouse, toSite, TUNING_PAGE, tuningDeclaration, viewExpr, viewPoint, OTHER_PAGE } from "./design-sites";
 import { waitFor, waitReady } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
@@ -29,7 +29,7 @@ beforeAll(async () => {
   server = await startSitesServer({ port: PORT });
   server.definir("tuning-a.localhost", "/", TUNING_PAGE);
   server.definir("tuning-a.localhost", "/autre", OTHER_PAGE);
-  server.definir("compte-tuning.localhost", "/connexion", CONNEXION_PAGE);
+  server.definir("compte-tuning.localhost", "/connexion", LOGIN_PAGE);
   const dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
   const profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
   dirs.push(dataDir, profile);

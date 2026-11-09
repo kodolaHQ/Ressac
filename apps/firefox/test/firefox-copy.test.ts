@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { GECKO_ID, VERSION_QUATRE } from "../host/extensions/amo";
+import { GECKO_ID, VERSION_FOUR } from "../host/extensions/amo";
 import { firefoxManifest, nextVersion, firefoxDenial } from "../host/extensions/firefox-copy";
 
 const dirs: string[] = [];
@@ -25,21 +25,21 @@ describe("Firefox copy", () => {
 
   it("refusals: gecko id written by the agent, four-part version, generated page name", () => {
     expect(firefoxDenial({ browser_specific_settings: { gecko: { id: "x@y" } } }, [])).toEqual([GECKO_ID]);
-    expect(firefoxDenial({ version: "1.2.3.4" }, [])).toEqual([VERSION_QUATRE]);
+    expect(firefoxDenial({ version: "1.2.3.4" }, [])).toEqual([VERSION_FOUR]);
     expect(firefoxDenial({ version: "1.2.3" }, ["_generated_background_page.html"])).toHaveLength(1);
     expect(firefoxDenial({ version: "1.2.3" }, ["fond.js"])).toEqual([]);
   });
 
   it("refusals: a right agent extensions cannot use, or a manifest key that grants a power", () => {
-    const droit = (n: string) => `Droit non pris en charge par WebAiOs : ${n}`;
+    const right = (n: string) => `Droit non pris en charge par WebAiOs : ${n}`;
     const allowed = ["scripting", "storage", "unlimitedStorage", "tabs", "contextMenus", "cookies", "webNavigation", "alarms", "offscreen", "clipboardRead", "clipboardWrite", "declarativeNetRequest", "declarativeNetRequestWithHostAccess", "declarativeNetRequestFeedback"];
     expect(firefoxDenial({ version: "1", permissions: allowed }, [])).toEqual([]);
     expect(firefoxDenial({ version: "1", permissions: ["storage", "identity", "notifications", "dns", "find", "activeTab", "https://x.test/*"] }, [])).toEqual(
-      ["identity", "notifications", "dns", "find", "activeTab", "https://x.test/*"].map(droit),
+      ["identity", "notifications", "dns", "find", "activeTab", "https://x.test/*"].map(right),
     );
-    expect(firefoxDenial({ version: "1", optional_permissions: ["menus"] }, [])).toEqual([droit("menus")]);
+    expect(firefoxDenial({ version: "1", optional_permissions: ["menus"] }, [])).toEqual([right("menus")]);
     expect(firefoxDenial({ version: "1", chrome_settings_overrides: {}, protocol_handlers: [], user_scripts: {} }, [])).toEqual(
-      ["chrome_settings_overrides", "protocol_handlers", "user_scripts"].map(droit),
+      ["chrome_settings_overrides", "protocol_handlers", "user_scripts"].map(right),
     );
   });
 

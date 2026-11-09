@@ -1,7 +1,7 @@
 import { z } from "zod";
-import { CHAMP_PAR_ELEMENT, fieldsPerElementOnly, Template, ParamsPerElement, type DefinitionBloc } from "./common.js";
+import { FIELD_PER_ELEMENT, fieldsPerElementOnly, Template, ParamsPerElement, type BlockDefinition } from "./common.js";
 
-export const definition: DefinitionBloc = {
+export const definition: BlockDefinition = {
   type: "source.recuperer",
   libelle: "Récupérer une adresse",
   famille: "Sources",
@@ -10,7 +10,7 @@ export const definition: DefinitionBloc = {
   champs: [
     { nom: "url", libelle: "Adresse", aide: "Les {chemins} sont remplacés par les valeurs de l'élément.", requis: true, genre: "gabarit" },
     { nom: "format", libelle: "Format", requis: false, defaut: "texte", genre: "choix", choix: ["texte", "json"] },
-    CHAMP_PAR_ELEMENT,
+    FIELD_PER_ELEMENT,
     ...fieldsPerElementOnly(),
     { nom: "champ", libelle: "Champ du résultat", requis: false, defaut: "contenu", genre: "texte" },
   ],

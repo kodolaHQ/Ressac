@@ -1,8 +1,8 @@
-import type { Warning, CatalogueBloc } from "@webaios/kernel";
-import type { ApiWebaios, EditionWorkflow } from "../../shared/api";
+import type { Warning, BlockCatalogEntry } from "@webaios/kernel";
+import type { ApiWebaios, WorkflowEdit } from "../../shared/api";
 import { CODE_MODEL, freshParams } from "./add";
 import { addBlock, move, History, sameDraft, followFile, toDraft, type Brouillon } from "./draft";
-import { disposer, shownPositions, sansDisposition } from "./layout";
+import { arrange, shownPositions, withoutLayout } from "./layout";
 import { isActionKey } from "./target";
 import { forgetRunChoices } from "./executions.svelte";
 
@@ -29,7 +29,7 @@ const sameJson = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringif
  * The editing state of a widget's workflow in this window: draft, history, validation, saving. Only a gesture from
  * the user goes through `modifier` (and so saves): opening, re-reading, rearranging or selecting never write.
  */
-export class Edition {
+export class Edit {
   brouillon = $state.raw<Brouillon | null>(null);
   validation = $state.raw<Validation>({ ok: true });
   avertissements = $state.raw<Warning[]>([]);
@@ -40,9 +40,9 @@ export class Edition {
   /** Displayed positions: the draft's, or the automatic layout of a workflow that has none. */
   positions = $state.raw<Record<string, Position>>({});
   chargement = $state.raw<Load>("chargement");
-  widget = $state.raw<NonNullable<EditionWorkflow["widget"]> | null>(null);
+  widget = $state.raw<NonNullable<WorkflowEdit["widget"]> | null>(null);
   /** What the action whose workflow this is declares; null for a widget. */
-  action = $state.raw<NonNullable<EditionWorkflow["action"]> | null>(null);
+  action = $state.raw<NonNullable<WorkflowEdit["action"]> | null>(null);
   origine = $state<"fichier" | "implicite">("fichier");
   /** The workflow on disk is valid: « Lancer » makes sense. */
   disqueValide = $state(false);
@@ -51,7 +51,7 @@ export class Edition {
 
   private historique: History | null = null;
   /** Disk version the banner offers. */
-  private versionDisque: { brouillon: Brouillon; lecture: EditionWorkflow } | null = null;
+  private versionDisque: { brouillon: Brouillon; lecture: WorkflowEdit } | null = null;
   /** Drafts sent for saving, not yet confirmed: their echo on disk is ignored. */
   private envoyes: Brouillon[] = [];
   private prochain: Brouillon | null = null;
@@ -78,7 +78,7 @@ export class Edition {
     this.charger(l);
   }
 
-  private charger(l: EditionWorkflow): void {
+  private charger(l: WorkflowEdit): void {
     this.widget = l.widget ?? null;
     this.action = l.action ?? null;
     this.origine = l.origine;
@@ -96,7 +96,7 @@ export class Edition {
   }
 
   /** Shows `disque` as read (validation and warnings of the disk); writes nothing. */
-  private adopterLecture(disk: Brouillon, l: EditionWorkflow): void {
+  private adopterLecture(disk: Brouillon, l: WorkflowEdit): void {
     this.brouillon = disk;
     this.positions = shownPositions(disk, this.positions);
     this.dernierConnu = disk;
@@ -197,11 +197,11 @@ export class Edition {
 
   /** End of a drag: `positions` are those of all displayed blocks; nothing is written if none moved. */
   deplacer(positions: Record<string, Position>): void {
-    const bouge = Object.entries(positions).some(([id, p]) => {
+    const moved = Object.entries(positions).some(([id, p]) => {
       const q = this.positions[id];
       return !q || q.x !== p.x || q.y !== p.y;
     });
-    if (!bouge) return;
+    if (!moved) return;
     this.positions = { ...this.positions, ...positions };
     this.changer((b) => b, true);
   }
@@ -219,7 +219,7 @@ export class Edition {
   }
 
   /** Adds a catalog block; a `code` block gets its file (template that returns its input) before existing. */
-  async ajouter(c: CatalogueBloc, position: Position): Promise<string> {
+  async ajouter(c: BlockCatalogEntry, position: Position): Promise<string> {
     if (!this.brouillon) return "";
     const params = freshParams(c);
     if (c.type === "code") {
@@ -283,7 +283,7 @@ export class Edition {
 
   /** Redoes the automatic layout: displayed positions only, nothing is saved. */
   reorganiser(): void {
-    if (this.brouillon) this.positions = disposer(this.brouillon);
+    if (this.brouillon) this.positions = arrange(this.brouillon);
   }
 
   /**
@@ -292,7 +292,7 @@ export class Edition {
    */
   private appliquer(b: Brouillon, hist = false): void {
     this.brouillon = b;
-    this.positions = shownPositions(b, hist && sansDisposition(b) ? null : this.positions);
+    this.positions = shownPositions(b, hist && withoutLayout(b) ? null : this.positions);
     if (this.bandeau === "proposer") {
       this.retenir(b);
       return;
@@ -365,13 +365,13 @@ export class Edition {
   }
 }
 
-function invalid(error: string, bloc?: string): SaveState {
+function invalid(error: string, block?: string): SaveState {
   const text = error.replace(UNSAVED_PREFIX, "");
-  return bloc === undefined ? { invalide: text } : { invalide: text, bloc };
+  return block === undefined ? { invalide: text } : { invalide: text, bloc: block };
 }
 
 /** One edit per widget and per window: changing tab loses neither an invalid draft nor the history. */
-const editions = new Map<string, Edition>();
+const edits = new Map<string, Edit>();
 
 /**
  * Forgets the edits of widgets no longer on home: a reused id never picks up the old history. Actions' edits (key
@@ -379,7 +379,7 @@ const editions = new Map<string, Edition>();
  */
 export function forgetEdits(presents: Iterable<string>): void {
   const ids = new Set(presents);
-  for (const id of [...editions.keys()]) if (!ids.has(id) && !isActionKey(id)) editions.delete(id);
+  for (const id of [...edits.keys()]) if (!ids.has(id) && !isActionKey(id)) edits.delete(id);
   forgetRunChoices(ids);
 }
 
@@ -397,11 +397,11 @@ export function followDisappearances(home: Pick<ApiWebaios["accueil"], "lire" | 
   });
 }
 
-export function createEdit(id: string, depot: Depot): Edition {
-  let e = editions.get(id);
+export function createEdit(id: string, depot: Depot): Edit {
+  let e = edits.get(id);
   if (!e) {
-    e = new Edition(id, depot);
-    editions.set(id, e);
+    e = new Edit(id, depot);
+    edits.set(id, e);
   }
   return e;
 }

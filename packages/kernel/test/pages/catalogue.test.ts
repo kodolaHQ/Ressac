@@ -16,9 +16,9 @@ describe("catalog of built-in components", () => {
 
   it("catalogueTexte cites table, its columns and « requis »", () => {
     const t = catalogText(BUILTIN_COMPONENTS);
-    const ligne = t.split("\n").find((l) => l.startsWith("tableau"))!;
-    expect(ligne).toContain("colonnes [{champ, libelle}] ≤8");
-    expect(ligne).toContain("requis");
+    const line = t.split("\n").find((l) => l.startsWith("tableau"))!;
+    expect(line).toContain("colonnes [{champ, libelle}] ≤8");
+    expect(line).toContain("requis");
   });
 
   it("catalogueTexte of the whole catalog is under 4,000 characters", () => {

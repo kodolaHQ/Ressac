@@ -4,7 +4,7 @@ import { mount } from "svelte";
 // Theme tokens.
 import "../ui/theme.css";
 import DesignApp from "../ui/DesignApp.svelte";
-import PastilleApp from "../ui/PastilleApp.svelte";
+import AppBadge from "../ui/PastilleApp.svelte";
 import App from "./App.svelte";
 import SiteWindow from "./SiteWindow.svelte";
 
@@ -18,7 +18,7 @@ else if (params.has("pastille") || params.has("calque")) {
   document.body.style.background = "transparent";
   const target = document.body.appendChild(Object.assign(document.createElement("div"), { id: "app" }));
   if (params.has("calque")) mount(DesignApp, { target });
-  else mount(PastilleApp, { target, props: { id: params.get("pastille") ?? "" } });
+  else mount(AppBadge, { target, props: { id: params.get("pastille") ?? "" } });
 } else {
   // BoutonDesign's chevron opens the menu on click, and MenuContextuel's window click listener would close it
   // at once (Applications.svelte stops the click for that reason): stopped here first, registered before the mount.

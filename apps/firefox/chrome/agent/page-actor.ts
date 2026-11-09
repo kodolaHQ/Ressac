@@ -32,22 +32,22 @@ export class WebAiOsPageChild extends JSWindowActorChild {
       }
       // Invisible reading. The parent bounds and checks what comes back.
       case "read": {
-        const vus = new Set<string>();
+        const seen = new Set<string>();
         const liens: { texte: string; url: string }[] = [];
         for (const a of doc.querySelectorAll("a[href]") as NodeListOf<HTMLAnchorElement>) {
           if (liens.length >= m.data.liens) break;
           const url = a.href;
-          if (typeof url !== "string" || !/^https?:/i.test(url) || vus.has(url)) continue;
-          vus.add(url);
+          if (typeof url !== "string" || !/^https?:/i.test(url) || seen.has(url)) continue;
+          seen.add(url);
           liens.push({ texte: (a.innerText || a.textContent || "").replace(/\s+/g, " ").trim(), url });
         }
         return { titre: doc.title, texte: (doc.body?.innerText ?? "").slice(0, m.data.texte), liens };
       }
       // The page's height, then one screen down: never a click, a key or focus; the page sees an ordinary scroll.
       case "scroll": {
-        const hauteur = el ? el.scrollHeight : 0;
+        const height = el ? el.scrollHeight : 0;
         (el ?? win).scrollBy(0, win.innerHeight || 900);
-        return { hauteur };
+        return { hauteur: height };
       }
       case "measure":
         if (!el) return { hauteur: 0, bas: true };

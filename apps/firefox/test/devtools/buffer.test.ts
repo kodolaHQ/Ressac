@@ -164,15 +164,15 @@ test("the caps are adjustable", () => {
 describe("extension contexts", () => {
   const context = (t: TabBuffer, id: number, origin: string) =>
     t.evenement("Runtime.executionContextCreated", { context: { id, origin, name: "x" } });
-  const logDans = (t: TabBuffer, id: number, text: string) =>
+  const logInside = (t: TabBuffer, id: number, text: string) =>
     t.evenement("Runtime.consoleAPICalled", { type: "log", args: [chain(text)], timestamp: 1000, executionContextId: id });
 
   test("a console.log from a chrome-extension:// context does not appear; the page's does", () => {
     const t = new TabBuffer();
     context(t, 1, "http://localhost:3000");
     context(t, 2, "chrome-extension://abcdefghijklmnopabcdefghijklmnop");
-    logDans(t, 2, "de l'extension");
-    logDans(t, 1, "de la page");
+    logInside(t, 2, "de l'extension");
+    logInside(t, 1, "de la page");
     expect(t.console().map((m) => m.texte)).toEqual(["de la page"]);
   });
 
@@ -189,7 +189,7 @@ describe("extension contexts", () => {
     const t = new TabBuffer();
     context(t, 2, "chrome-extension://abc");
     t.evenement("Runtime.executionContextDestroyed", { executionContextId: 2 });
-    logDans(t, 2, "visible");
+    logInside(t, 2, "visible");
     expect(t.console()).toHaveLength(1);
   });
 
@@ -215,7 +215,7 @@ describe("extension contexts", () => {
     context(t, 2, "chrome-extension://abc");
     t.evenement("Runtime.executionContextsCleared", {});
     context(t, 2, "http://localhost:3000");
-    logDans(t, 2, "de la page");
+    logInside(t, 2, "de la page");
     expect(t.console().map((m) => m.texte)).toEqual(["de la page"]);
   });
 

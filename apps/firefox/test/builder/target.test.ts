@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { targetOfKey, targetKey, directDesActions, isActionKey } from "../../ui/builder/target";
+import { targetOfKey, targetKey, actionsDirect, isActionKey } from "../../ui/builder/target";
 
 test("cleCible: a widget's id as is, action:<id> for an action, and back", () => {
   expect(targetKey({ type: "widget", id: "gitlab" })).toBe("gitlab");
@@ -11,7 +11,7 @@ test("cleCible: a widget's id as is, action:<id> for an action, and back", () =>
 });
 
 test("directDesActions: a current action becomes a run (or a trial) of its key, without its progress traces", () => {
-  const d = directDesActions({
+  const d = actionsDirect({
     courantes: [
       {
         action: "gitlab",

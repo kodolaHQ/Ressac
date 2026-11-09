@@ -28,12 +28,12 @@ export const BUILD_DELAY_MS = 20 * 60_000;
 
 /** Dockerfile folder in the package; a browser that embeds the kernel can provide another. */
 export const DEFAULT_DOCKER_FOLDER = join(import.meta.dirname, "..", "..", "docker");
-const dockerfile = (dossier: string) => join(dossier, "atelier.Dockerfile");
+const dockerfile = (folder: string) => join(folder, "atelier.Dockerfile");
 const HASH_LABEL = "webaios.dockerfile";
 
 /** Hash of the Dockerfile: the image and the container carry it as a label, to know whether they are up to date. */
-export function dockerfileHash(dossierDocker = DEFAULT_DOCKER_FOLDER): string {
-  return createHash("sha256").update(readFileSync(dockerfile(dossierDocker))).digest("hex").slice(0, 12);
+export function dockerfileHash(dockerFolder = DEFAULT_DOCKER_FOLDER): string {
+  return createHash("sha256").update(readFileSync(dockerfile(dockerFolder))).digest("hex").slice(0, 12);
 }
 
 function normalize(path: string): string {
@@ -58,9 +58,9 @@ export function harvestName(p: string | Owner): string {
 export const HARVEST_DELAY_S = 180;
 
 /** An app's folder goes into a grep expression between apostrophes: any dubious name is refused. */
-function dossierApplication(dossier: string): string {
-  if (!validFolder(dossier)) throw new Error(`dossier d'application invalide : ${dossier}`);
-  return dossier;
+function appFolder(folder: string): string {
+  if (!validFolder(folder)) throw new Error(`dossier d'application invalide : ${folder}`);
+  return folder;
 }
 
 export type WorkshopState = "docker-absent" | "absent" | "arrete" | "demarre";
@@ -92,7 +92,7 @@ export const VARIABLE_SESSION = "WEBAIOS_SESSION";
  * Sends HUP, then TERM, then KILL to the processes listed by the shell function `cibles` (pid, or -pgid for a group).
  * claude intercepts HUP and TERM without necessarily quitting: each signal has 2 s to act.
  */
-function escalade(targets: string): string[] {
+function escalate(targets: string): string[] {
   return [
     `cibles() { ${targets}; }`,
     // No « -- »: the kill of dash (the container's sh) refuses it, and the group would never be targeted.
@@ -104,8 +104,8 @@ function escalade(targets: string): string[] {
 }
 
 /** Processes that carry the mark `motif` (grep expression on a whole environment variable). */
-const marques = (motif: string) =>
-  `for d in /proc/[0-9]*; do grep -qzx '${motif}' "$d/environ" 2>/dev/null && echo "\${d#/proc/}"; done`;
+const marks = (pattern: string) =>
+  `for d in /proc/[0-9]*; do grep -qzx '${pattern}' "$d/environ" 2>/dev/null && echo "\${d#/proc/}"; done`;
 
 /** A text read as is by grep (basic expression): « my.app » does not target « myxapp ». */
 const literal = (text: string) => text.replace(/[\\.*[\]^$]/g, "\\$&");
@@ -118,19 +118,19 @@ export function sessionStopScript(f: string, id: string): string {
   return [
     `p=$(cat ${f} 2>/dev/null) || p=`,
     `rm -f ${f}`,
-    ...escalade(`[ -n "$p" ] && echo "-$p $p"; ${marques(`${VARIABLE_SESSION}=${id}`)}`),
+    ...escalate(`[ -n "$p" ] && echo "-$p $p"; ${marks(`${VARIABLE_SESSION}=${id}`)}`),
   ].join("\n");
 }
 
 /** Stops all marked sessions, whatever their window (see arreterSessionsOrphelines). */
 export function orphanStopScript(): string {
-  return ["rm -f /tmp/webaios-session-*.pid", ...escalade(marques(`${VARIABLE_SESSION}=.*`))].join("\n");
+  return ["rm -f /tmp/webaios-session-*.pid", ...escalate(marks(`${VARIABLE_SESSION}=.*`))].join("\n");
 }
 
 /** Mark of the processes of a launched app: never confused with that of sessions (`WEBAIOS_SESSION`). */
 export const VARIABLE_APPLICATION = "WEBAIOS_APP";
 
-export class Atelier {
+export class Workshop {
   private readonly chemins: SpacePaths;
   private readonly executer: Runner;
   private readonly docker: string | null;
@@ -268,23 +268,23 @@ export class Atelier {
    * log (rewritten at each launch) then evaluates the manifest's command: the folder and the command go as
    * arguments ($1, $2), never pasted into the script.
    */
-  commandeApplication(dossier: string, command: string, port: number): string[] {
-    dossierApplication(dossier);
+  commandeApplication(folder: string, command: string, port: number): string[] {
+    appFolder(folder);
     const logs = `${CONTAINER_PATH}/.webaios/journaux`;
     return this.commandeExec(
-      ["sh", "-c", `mkdir -p ${logs}; exec >"${logs}/$1.log" 2>&1; eval "$2"`, "webaios-app", dossier, command.replaceAll("{port}", String(port))],
-      { interactif: false, env: { [VARIABLE_APPLICATION]: dossier, PORT: String(port) }, dossier: `${CONTAINER_PATH}/projets/${dossier}` },
+      ["sh", "-c", `mkdir -p ${logs}; exec >"${logs}/$1.log" 2>&1; eval "$2"`, "webaios-app", folder, command.replaceAll("{port}", String(port))],
+      { interactif: false, env: { [VARIABLE_APPLICATION]: folder, PORT: String(port) }, dossier: `${CONTAINER_PATH}/projets/${folder}` },
     );
   }
 
   /** Stops app `dossier`: any process that carries its mark, even detached from the shell that launched it. */
-  async arreterApplication(dossier: string): Promise<void> {
-    if (this.docker) await this.lancer(["exec", containerName(), "sh", "-c", escalade(marques(`${VARIABLE_APPLICATION}=${literal(dossierApplication(dossier))}`)).join("\n")], PROBE_DELAY_MS);
+  async arreterApplication(folder: string): Promise<void> {
+    if (this.docker) await this.lancer(["exec", containerName(), "sh", "-c", escalate(marks(`${VARIABLE_APPLICATION}=${literal(appFolder(folder))}`)).join("\n")], PROBE_DELAY_MS);
   }
 
   /** At browser launch: apps of a previous life have nobody left to follow them. */
   async arreterApplicationsOrphelines(): Promise<void> {
-    if (this.docker) await this.lancer(["exec", containerName(), "sh", "-c", escalade(marques(`${VARIABLE_APPLICATION}=.*`)).join("\n")], PROBE_DELAY_MS);
+    if (this.docker) await this.lancer(["exec", containerName(), "sh", "-c", escalate(marks(`${VARIABLE_APPLICATION}=.*`)).join("\n")], PROBE_DELAY_MS);
   }
 
   commandeExec(argv: string[], o: { interactif: boolean; env?: Record<string, string>; dossier?: string }): string[] {

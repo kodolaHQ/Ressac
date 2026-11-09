@@ -18,31 +18,31 @@
   let widgets = $state.raw<ShownWidget[]>([]);
   let theme = $state.raw<HomeTheme | null>(null);
   /** The first read is done: the empty screen does not flash before it. */
-  let charge = $state(false);
+  let onLoaded = $state(false);
   // Overlapping reads (burst of changes): only the last one counts.
   let last = 0;
-  function charger() {
+  function load() {
     const n = ++last;
     api.accueil.lire().then(
-      ({ widgets: lus, theme: lu }) => {
+      ({ widgets: reads, theme: lu }) => {
         if (n !== last) return;
-        widgets = lus;
+        widgets = reads;
         theme = lu;
-        charge = true;
+        onLoaded = true;
         checkPending();
       },
       () => {},
     );
   }
   $effect(() => {
-    charger();
-    return api.accueil.surChange(charger);
+    load();
+    return api.accueil.surChange(load);
   });
 
   // The theme validated by the kernel only touches the home root, not the sidebar or the agent.
   const styleTheme = $derived(
     Object.entries(variablesTheme(theme))
-      .map(([key, valeur]) => `${key}: ${valeur}`)
+      .map(([key, value]) => `${key}: ${value}`)
       .join("; "),
   );
 
@@ -83,41 +83,41 @@
 
   /** Widgets whose read with the user's account was refused, during this page session. */
   let refuses = $state<Record<string, true>>({});
-  let aRetirer = $state<ShownWidget | null>(null);
-  let accordPour = $state<Extract<ShownWidget, { compte: string[] }> | null>(null);
+  let toRemove = $state<ShownWidget | null>(null);
+  let grantFor = $state<Extract<ShownWidget, { compte: string[] }> | null>(null);
   const name = (w: ShownWidget) => ("nom" in w ? w.nom : w.id);
 
   // Drag and resize: a live free preview, then the layout sent on release.
   let widthPx = $state(0);
-  let geste: { id: string; mode: "deplacer" | "taille"; x0: number; y0: number; depart: FreePlacement[]; p0: FreePlacement; tailles: { min: { l: number; h: number }; max: { l: number; h: number } } } | null =
+  let gesture: { id: string; mode: "deplacer" | "taille"; x0: number; y0: number; depart: FreePlacement[]; p0: FreePlacement; tailles: { min: { l: number; h: number }; max: { l: number; h: number } } } | null =
     null;
-  let enGeste = $state(false);
+  let inGesture = $state(false);
   let preview = $state.raw<FreePlacement[] | null>(null);
   let guides = $state.raw<{ x: number[]; y: number[] }>({ x: [], y: [] });
   const placements = $derived(new Map((preview ?? widgets.map((w) => w.placement)).map((p) => [p.id, p])));
-  const hauteur = $derived(Math.max(0, ...[...placements.values()].map((p) => p.y + p.h)));
+  const height = $derived(Math.max(0, ...[...placements.values()].map((p) => p.y + p.h)));
 
   function commencer(w: ShownWidget, mode: "deplacer" | "taille", e: PointerEvent) {
     if (e.button !== 0) return;
     e.preventDefault();
-    const depart = widgets.map((x) => x.placement);
-    const p0 = depart.find((p) => p.id === w.id);
+    const start = widgets.map((x) => x.placement);
+    const p0 = start.find((p) => p.id === w.id);
     if (!p0) return;
-    geste = {
+    gesture = {
       id: w.id,
       mode,
       x0: e.clientX,
       y0: e.clientY,
-      depart,
+      depart: start,
       p0,
       tailles: "tailles" in w ? { min: freeSizes(w.tailles.min), max: freeSizes(w.tailles.max) } : FREE_SIZES,
     };
-    enGeste = true;
-    preview = depart;
+    inGesture = true;
+    preview = start;
     guides = { x: [], y: [] };
   }
   function move(e: PointerEvent) {
-    const g = geste;
+    const g = gesture;
     if (!g) return;
     // Thousandths of the width for x/w, pixels for y/h.
     const dx = widthPx > 0 ? ((e.clientX - g.x0) / widthPx) * FREE_WIDTH : 0;
@@ -130,22 +130,22 @@
     guides = freeGuides({ p, autres: others, largeurPx: widthPx });
   }
   function finish(cancelled: boolean) {
-    if (!geste) return;
-    const { depart } = geste;
+    if (!gesture) return;
+    const { depart: start } = gesture;
     const final = preview;
-    geste = null;
-    enGeste = false;
+    gesture = null;
+    inGesture = false;
     preview = null;
     guides = { x: [], y: [] };
     if (cancelled || !final) return;
     const change = final.some((p, i) => {
-      const a = depart[i]!;
+      const a = start[i]!;
       return p.x !== a.x || p.y !== a.y || p.l !== a.l || p.h !== a.h;
     });
     if (!change) return;
     // Immediately on screen; the folder watch will confirm.
-    const parId = new Map(final.map((p) => [p.id, p]));
-    widgets = widgets.map((w) => ({ ...w, placement: parId.get(w.id) ?? w.placement }));
+    const byId = new Map(final.map((p) => [p.id, p]));
+    widgets = widgets.map((w) => ({ ...w, placement: byId.get(w.id) ?? w.placement }));
     api.accueil.placer(final);
   }
 </script>
@@ -154,7 +154,7 @@
 
 <section class="accueil" style={styleTheme} data-testid="accueil" data-theme={theme ? "agent" : "defaut"}>
   {#if widgets.length}
-    <div class="grille" class:geste={enGeste} bind:clientWidth={widthPx} style:height="{hauteur}px">
+    <div class="grille" class:geste={inGesture} bind:clientWidth={widthPx} style:height="{height}px">
       {#each widgets as widget (widget.id)}
         {@const p = placements.get(widget.id) ?? widget.placement}
         <div
@@ -167,12 +167,12 @@
           <HomeWidget
             {widget}
             placement={p}
-            geste={enGeste}
+            geste={inGesture}
             avertissement={warnings[widget.id] ?? null}
             refuse={!!refuses[widget.id]}
             commencer={(mode, e) => commencer(widget, mode, e)}
-            retirer={() => (aRetirer = widget)}
-            autoriser={() => "compte" in widget && (accordPour = widget)}
+            retirer={() => (toRemove = widget)}
+            autoriser={() => "compte" in widget && (grantFor = widget)}
             refuser={() => {
               // No wait: after a refusal, the kernel rewrites the same « accord-requis » state, so nothing would change on screen.
               refuses = { ...refuses, [widget.id]: true };
@@ -190,24 +190,24 @@
         <div class="guide guide-y" data-testid="guide-y" style:top="{y}px"></div>
       {/each}
     </div>
-  {:else if charge}
+  {:else if onLoaded}
     <p class="vide" data-testid="accueil-vide">Aucun widget pour l'instant. Demande à l'agent de créer le premier.</p>
   {/if}
 </section>
 
-{#if accordPour}
-  {@const target = accordPour}
+{#if grantFor}
+  {@const target = grantFor}
   <AccountGrantCard
     sujet="widget"
     profilsPourAccord={api.accueil.profilsPourAccord}
     nom={target.nom}
     domaines={target.compte}
     publiques={target.publiques}
-    fermer={() => (accordPour = null)}
+    fermer={() => (grantFor = null)}
     autoriser={(profile) => {
       // {@const} is re-read: after accordPour = null, cible is null. The grant covers exactly what was shown.
       const { id, compte: account, publiques: publics } = target;
-      accordPour = null;
+      grantFor = null;
       const { [id]: _, ...rest } = refuses;
       refuses = rest;
       act(id, () =>
@@ -218,7 +218,7 @@
             clearTimeout(waits.get(id)?.minuterie);
             waits.delete(id);
             warnings = { ...warnings, [id]: `Accord non enregistré : ${r.erreur}` };
-            charger();
+            load();
           },
           () => {},
         ),
@@ -227,18 +227,18 @@
   />
 {/if}
 
-{#if aRetirer}
-  {@const target = aRetirer}
+{#if toRemove}
+  {@const target = toRemove}
   <div class="voile">
     <div class="confirmation" role="alertdialog" aria-modal="true" data-testid="confirmation-retrait">
       <p>Retirer « {name(target)} » de la page d'accueil ?</p>
       <div class="boutons">
-        <button onclick={() => (aRetirer = null)}>Annuler</button>
+        <button onclick={() => (toRemove = null)}>Annuler</button>
         <button
           class="principal"
           onclick={() => {
             const id = target.id; // {@const} is re-read: after aRetirer = null, cible is null
-            aRetirer = null;
+            toRemove = null;
             widgets = widgets.filter((w) => w.id !== id);
             api.accueil.retirer(id);
           }}>Retirer</button

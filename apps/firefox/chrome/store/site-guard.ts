@@ -29,7 +29,7 @@ export interface BlockedNotice {
 /** `broadcast` sends the window's state, the mention in it: the first change at once, the last one always (deferred). */
 export function blockedNotice(broadcast: () => void): BlockedNotice {
   let url: string | null = null;
-  let avis: BarNotice | null = null;
+  let notice: BarNotice | null = null;
   let sent = 0;
   let timer: ReturnType<typeof setTimeout> | undefined;
   const send = () => {
@@ -39,15 +39,15 @@ export function blockedNotice(broadcast: () => void): BlockedNotice {
   };
   return {
     get avis() {
-      return avis;
+      return notice;
     },
     block(u) {
       const domain = httpHost(u);
       // Nothing to open in a tab: refused without a mention.
       if (!domain) return;
       url = u;
-      if (avis?.genre === "lien-bloque" && avis.domaine === domain) return;
-      avis = { genre: "lien-bloque", domaine: domain };
+      if (notice?.genre === "lien-bloque" && notice.domaine === domain) return;
+      notice = { genre: "lien-bloque", domaine: domain };
       if (timer) return;
       const wait = sent + NOTICE_GAP_MS - Date.now();
       if (wait <= 0) send();
@@ -56,12 +56,12 @@ export function blockedNotice(broadcast: () => void): BlockedNotice {
     take() {
       const u = url;
       url = null;
-      if (avis?.genre === "lien-bloque") avis = null;
+      if (notice?.genre === "lien-bloque") notice = null;
       return u;
     },
     clear() {
       url = null;
-      avis = null;
+      notice = null;
     },
     dispose() {
       clearTimeout(timer);

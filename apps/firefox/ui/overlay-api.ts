@@ -27,7 +27,7 @@ export function wrapOverlayApi(raw: OverlayApi, untilUnload: (unsubscribe: () =>
     retirer: (p, id) => copy(() => raw.retirer(p, id)),
     envoyer: (p) => copy(() => raw.envoyer(p)),
     lots: (p) => copy(() => raw.lots(p)),
-    traite: (p, lot) => copy(() => raw.traite(p, lot)),
+    traite: (p, batch) => copy(() => raw.traite(p, batch)),
     surChange: (cb) => untilUnload(raw.surChange(() => cb())),
   };
 }

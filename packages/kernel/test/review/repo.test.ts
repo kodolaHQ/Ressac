@@ -7,23 +7,23 @@ import { tempFolder } from "../helpers/temp.js";
 
 const GIT = process.env.WEBAIOS_GIT ?? "/usr/bin/git";
 let root: string;
-let dossier: string;
+let folder: string;
 let depot: string;
 let r: ReviewStore;
 
 beforeEach(async () => {
   root = await tempFolder();
-  dossier = join(root, "projet");
+  folder = join(root, "projet");
   depot = join(root, "prive", "p.git");
-  await mkdir(dossier, { recursive: true });
-  r = new ReviewStore({ depot, dossier });
+  await mkdir(folder, { recursive: true });
+  r = new ReviewStore({ depot, dossier: folder });
 });
 afterEach(async () => {
-  await chmod(dossier, 0o755).catch(() => {});
+  await chmod(folder, 0o755).catch(() => {});
   await rm(root, { recursive: true, force: true });
 });
 
-const write = (name: string, content: string | Buffer) => writeFile(join(dossier, name), content);
+const write = (name: string, content: string | Buffer) => writeFile(join(folder, name), content);
 const numbered = (n: number, f = (i: number) => `ligne ${i}`) => Array.from({ length: n }, (_, i) => f(i + 1)).join("\n") + "\n";
 
 describe("reference", () => {
@@ -37,7 +37,7 @@ describe("reference", () => {
     expect(await r.assurerReference()).toBe(false);
     const ref = execFileSync(GIT, ["--git-dir", depot, "rev-parse", "refs/webaios/relu"]).toString().trim();
     expect(ref).toMatch(/^[0-9a-f]{40,64}$/);
-    expect(await readdir(dossier)).toEqual(["a.txt"]);
+    expect(await readdir(folder)).toEqual(["a.txt"]);
   });
   test("retenir() then comparer(): no difference", async () => {
     await write("a.txt", "a\n");
@@ -58,7 +58,7 @@ describe("comparer and file", () => {
     await r.assurerReference();
     await write("m.txt", numbered(20, (i) => (i === 10 ? "changée" : `ligne ${i}`)));
     await write("n.txt", "un\ndeux\n");
-    await rm(join(dossier, "s.txt"));
+    await rm(join(folder, "s.txt"));
     const c = await r.comparer();
     expect(c.fichiers).toEqual([
       { chemin: "m.txt", statut: "modifie", ajouts: 1, suppressions: 1, affichable: true },
@@ -76,7 +76,7 @@ describe("comparer and file", () => {
   test("exclusions and the folder's .gitignore", async () => {
     await r.assurerReference();
     for (const d of ["node_modules", "dist", "build", ".next"]) {
-      await mkdir(join(dossier, d), { recursive: true });
+      await mkdir(join(folder, d), { recursive: true });
       await write(join(d, "x.js"), "x");
     }
     await write(".DS_Store", "x");
@@ -102,8 +102,8 @@ describe("comparer and file", () => {
     await write("long.txt", numbered(5001));
     await write("limite.txt", Buffer.alloc(1048576, 97));
     const c = await r.comparer();
-    const par = Object.fromEntries(c.fichiers.map((f) => [f.chemin, f.affichable]));
-    expect(par).toEqual({ "bin.dat": "binaire", "gros.txt": "trop-gros", "long.txt": "trop-gros", "limite.txt": true });
+    const by = Object.fromEntries(c.fichiers.map((f) => [f.chemin, f.affichable]));
+    expect(by).toEqual({ "bin.dat": "binaire", "gros.txt": "trop-gros", "long.txt": "trop-gros", "limite.txt": true });
     for (const n of ["bin.dat", "gros.txt", "long.txt"]) expect((await r.fichier(c, n)).blocs).toEqual([]);
   });
   test("a name that starts with « : » or contains « * » also passes the size check", async () => {
@@ -111,8 +111,8 @@ describe("comparer and file", () => {
     await write(":gros.txt", Buffer.alloc(1048577, 97));
     await write("gr*s.txt", Buffer.alloc(1048577, 98));
     const c = await r.comparer();
-    const par = Object.fromEntries(c.fichiers.map((f) => [f.chemin, f.affichable]));
-    expect(par).toEqual({ ":gros.txt": "trop-gros", "gr*s.txt": "trop-gros" });
+    const by = Object.fromEntries(c.fichiers.map((f) => [f.chemin, f.affichable]));
+    expect(by).toEqual({ ":gros.txt": "trop-gros", "gr*s.txt": "trop-gros" });
   });
   test("lignes(arbreCourant, chemin, 10, 12) rend ces trois lignes", async () => {
     await r.assurerReference();
@@ -129,22 +129,22 @@ describe("comparer and file", () => {
 });
 
 async function hash(base: string): Promise<string[]> {
-  const sortie: string[] = [];
+  const output: string[] = [];
   const works = async (d: string) => {
     for (const e of (await readdir(d, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name))) {
       const p = join(d, e.name);
       const s = await stat(p);
-      sortie.push(`${p}|${s.mtimeMs}|${e.isDirectory() ? "" : (await readFile(p)).toString("base64")}`);
+      output.push(`${p}|${s.mtimeMs}|${e.isDirectory() ? "" : (await readFile(p)).toString("base64")}`);
       if (e.isDirectory()) await works(p);
     }
   };
   await works(base);
-  return sortie;
+  return output;
 }
 
 describe("the project's repo is never touched", () => {
   test("folder with git, staged uncommitted and untracked: .git hash and status identical", async () => {
-    const g = (...a: string[]) => execFileSync(GIT, ["-C", dossier, ...a], { env: { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null" } }).toString();
+    const g = (...a: string[]) => execFileSync(GIT, ["-C", folder, ...a], { env: { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null" } }).toString();
     g("init", "-q");
     await write("c.txt", "c\n");
     g("add", "c.txt");
@@ -153,72 +153,72 @@ describe("the project's repo is never touched", () => {
     g("add", "i.txt");
     await write("n.txt", "n\n");
     const statusBefore = g("status", "--porcelain");
-    const before = await hash(join(dossier, ".git"));
+    const before = await hash(join(folder, ".git"));
     await r.assurerReference();
     await write("n.txt", "n2\n");
     const c = await r.comparer();
     expect(c.fichiers.map((f) => f.chemin).sort()).toEqual(["n.txt"]);
     await r.fichier(c, "n.txt");
     await r.retenir();
-    expect(await hash(join(dossier, ".git"))).toEqual(before);
+    expect(await hash(join(folder, ".git"))).toEqual(before);
     expect(g("status", "--porcelain")).toBe(statusBefore);
   });
   test("subfolder that is a repo: nothing of its .git read as a file, nothing written inside", async () => {
-    const sous = join(dossier, "sous");
-    await mkdir(sous);
-    execFileSync(GIT, ["-C", sous, "init", "-q"], { env: { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null" } });
-    await writeFile(join(sous, "f.txt"), "f\n");
-    const withCommit = join(dossier, "avec");
+    const sub = join(folder, "sous");
+    await mkdir(sub);
+    execFileSync(GIT, ["-C", sub, "init", "-q"], { env: { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null" } });
+    await writeFile(join(sub, "f.txt"), "f\n");
+    const withCommit = join(folder, "avec");
     await mkdir(withCommit);
     const env = { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null" };
     execFileSync(GIT, ["-C", withCommit, "init", "-q"], { env });
     await writeFile(join(withCommit, "h.txt"), "h\n");
     execFileSync(GIT, ["-C", withCommit, "add", "h.txt"], { env });
     execFileSync(GIT, ["-C", withCommit, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "x"], { env });
-    const before = [...(await hash(join(sous, ".git"))), ...(await hash(join(withCommit, ".git")))];
+    const before = [...(await hash(join(sub, ".git"))), ...(await hash(join(withCommit, ".git")))];
     await r.assurerReference();
-    await writeFile(join(sous, "f.txt"), "g\n");
+    await writeFile(join(sub, "f.txt"), "g\n");
     const c = await r.comparer();
     expect(c.fichiers.every((f) => !f.chemin.includes(".git/") && f.chemin !== "sous")).toBe(true);
     await r.retenir();
-    expect([...(await hash(join(sous, ".git"))), ...(await hash(join(withCommit, ".git")))]).toEqual(before);
+    expect([...(await hash(join(sub, ".git"))), ...(await hash(join(withCommit, ".git")))]).toEqual(before);
   });
 });
 
 describe("erreurs", () => {
   test("git absent : GIT_NECESSAIRE", async () => {
-    const sans = new ReviewStore({ depot, dossier, git: "/chemin/absent" });
-    await expect(sans.assurerReference()).rejects.toMatchObject({ raison: GIT_REQUIRED });
-    await expect(sans.assurerReference()).rejects.toBeInstanceOf(ReviewError);
+    const without = new ReviewStore({ depot, dossier: folder, git: "/chemin/absent" });
+    await expect(without.assurerReference()).rejects.toMatchObject({ raison: GIT_REQUIRED });
+    await expect(without.assurerReference()).rejects.toBeInstanceOf(ReviewError);
   });
   test("git whose --version fails: GIT_NECESSAIRE", async () => {
     const fake = join(root, "faux-git");
     await writeFile(fake, "#!/bin/sh\necho 'xcrun: error' >&2\nexit 1\n", { mode: 0o755 });
-    await expect(new ReviewStore({ depot, dossier, git: fake }).assurerReference()).rejects.toMatchObject({ raison: GIT_REQUIRED });
+    await expect(new ReviewStore({ depot, dossier: folder, git: fake }).assurerReference()).rejects.toMatchObject({ raison: GIT_REQUIRED });
   });
   test("WEBAIOS_GIT=/chemin/absent : GIT_NECESSAIRE", async () => {
     const before = process.env.WEBAIOS_GIT;
     process.env.WEBAIOS_GIT = "/chemin/absent";
     try {
-      await expect(new ReviewStore({ depot, dossier }).assurerReference()).rejects.toMatchObject({ raison: GIT_REQUIRED });
+      await expect(new ReviewStore({ depot, dossier: folder }).assurerReference()).rejects.toMatchObject({ raison: GIT_REQUIRED });
     } finally {
       if (before === undefined) delete process.env.WEBAIOS_GIT; else process.env.WEBAIOS_GIT = before;
     }
   });
   test.skipIf(process.getuid?.() === 0)("sous-dossier chmod 000 : ACCES_REFUSE", async () => {
     await write("a.txt", "a");
-    await mkdir(join(dossier, "sub"));
-    await writeFile(join(dossier, "sub", "x.txt"), "x");
-    await chmod(join(dossier, "sub"), 0o000);
+    await mkdir(join(folder, "sub"));
+    await writeFile(join(folder, "sub", "x.txt"), "x");
+    await chmod(join(folder, "sub"), 0o000);
     try {
       await expect(r.assurerReference()).rejects.toMatchObject({ raison: ACCESS_DENIED });
     } finally {
-      await chmod(join(dossier, "sub"), 0o755);
+      await chmod(join(folder, "sub"), 0o755);
     }
   });
   test.skipIf(process.getuid?.() === 0)("dossier chmod 000 : ACCES_REFUSE", async () => {
     await write("a.txt", "a");
-    await chmod(dossier, 0o000);
+    await chmod(folder, 0o000);
     await expect(r.assurerReference()).rejects.toMatchObject({ raison: ACCESS_DENIED });
   });
 });

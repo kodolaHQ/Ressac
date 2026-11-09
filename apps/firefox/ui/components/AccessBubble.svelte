@@ -1,12 +1,12 @@
 <script lang="ts">
   import { untrack } from "svelte";
-  import type { DroitDev, TabAccessState } from "@webaios/kernel";
+  import type { DevRight, TabAccessState } from "@webaios/kernel";
   import { access, accessApi } from "../access.svelte";
 
   let { id, etat: appState, ancre: anchor }: { id: string; etat: TabAccessState; ancre: HTMLElement } = $props();
 
-  const MARGE = 8;
-  const DROITS: Record<DroitDev, { icone: string; nom: string }> = {
+  const MARGIN = 8;
+  const RIGHTS: Record<DevRight, { icone: string; nom: string }> = {
     console: { icone: "👁", nom: "Console et erreurs" },
     reseau: { icone: "👁", nom: "Réseau" },
     performances: { icone: "👁", nom: "Performances et mémoire" },
@@ -21,7 +21,7 @@
     node.focus(); // the keyboard (Escape) targets the interface, not the page
     return { destroy: () => node.remove() };
   }
-  let hauteur = $state(0);
+  let height = $state(0);
   let windowW = $state(window.innerWidth);
   let windowH = $state(window.innerHeight);
   const place = $derived.by(() => {
@@ -30,9 +30,9 @@
     const column = anchor.closest("aside")?.getBoundingClientRect();
     const r = anchor.getBoundingClientRect();
     // Without a sidebar (app window badge), the bubble aligns with the badge's right edge.
-    const width = column ? Math.max(120, column.width - 2 * MARGE) : Math.max(120, Math.min(280, windowW - 2 * MARGE));
-    const gauche = column ? column.left + MARGE : Math.max(MARGE, r.right - width);
-    return { left: gauche, width: width, top: Math.max(MARGE, Math.min(r.bottom + 6, windowH - hauteur - MARGE)) };
+    const width = column ? Math.max(120, column.width - 2 * MARGIN) : Math.max(120, Math.min(280, windowW - 2 * MARGIN));
+    const left = column ? column.left + MARGIN : Math.max(MARGIN, r.right - width);
+    return { left: left, width: width, top: Math.max(MARGIN, Math.min(r.bottom + 6, windowH - height - MARGIN)) };
   });
   $effect(() => {
     // Read then written: without untrack, the effect would rerun itself.
@@ -43,7 +43,7 @@
 
 <svelte:window bind:innerWidth={windowW} bind:innerHeight={windowH} />
 
-<div class="bulle" tabindex="-1" use:subbody bind:clientHeight={hauteur} data-testid="bulle-acces" role="dialog" aria-label="Accès de l'agent" style:left="{place.left}px" style:top="{place.top}px" style:width="{place.width}px">
+<div class="bulle" tabindex="-1" use:subbody bind:clientHeight={height} data-testid="bulle-acces" role="dialog" aria-label="Accès de l'agent" style:left="{place.left}px" style:top="{place.top}px" style:width="{place.width}px">
   <h4>{access.agent} a accès à cet onglet</h4>
   <ul>
     {#if appState.lecture}
@@ -51,7 +51,7 @@
     {/if}
     {#each appState.droits as d (d)}
       <li data-ligne={d}>
-        <span>{DROITS[d].icone} {DROITS[d].nom}</span>
+        <span>{RIGHTS[d].icone} {RIGHTS[d].nom}</span>
         <button class="couper-droit" data-droit={d} onclick={() => accessApi.acces.couper(id, d)}>Couper</button>
       </li>
     {/each}

@@ -67,9 +67,9 @@ function timestamp(): string {
   return new Date().toISOString().replaceAll(":", "-");
 }
 
-async function renameIfPresent(de: string, to: string): Promise<void> {
+async function renameIfPresent(from: string, to: string): Promise<void> {
   try {
-    await rename(de, to);
+    await rename(from, to);
   } catch (e) {
     // Absent, or already moved by a simultaneous launch: nothing to do.
     if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
@@ -93,26 +93,26 @@ async function oldLayout(path: string): Promise<boolean> {
 
 /** Old blocks and the old layout are set aside in `accueil/.corbeille/blocs-<timestamp>`, never destroyed. */
 async function setAsideBlocks(c: SpacePaths): Promise<void> {
-  const blocs = existsSync(c.blocs);
+  const blocks = existsSync(c.blocs);
   const available = existsSync(c.disposition) && (await oldLayout(c.disposition));
-  if (!blocs && !available) return;
+  if (!blocks && !available) return;
   const target = join(c.accueil, ".corbeille", `blocs-${timestamp()}`);
   await mkdir(dirname(target), { recursive: true });
-  if (blocs) await renameIfPresent(c.blocs, target);
+  if (blocks) await renameIfPresent(c.blocs, target);
   if (available) {
     await mkdir(target, { recursive: true });
     await renameIfPresent(c.disposition, join(target, "disposition.json"));
   }
 }
 
-async function filesOf(dossier: string, prefix = ""): Promise<string[]> {
-  const sortie: string[] = [];
-  for (const e of await readdir(dossier, { withFileTypes: true })) {
+async function filesOf(folder: string, prefix = ""): Promise<string[]> {
+  const output: string[] = [];
+  for (const e of await readdir(folder, { withFileTypes: true })) {
     const rel = join(prefix, e.name);
-    if (e.isDirectory()) sortie.push(...(await filesOf(join(dossier, e.name), rel)));
-    else sortie.push(rel);
+    if (e.isDirectory()) output.push(...(await filesOf(join(folder, e.name), rel)));
+    else output.push(rel);
   }
-  return sortie;
+  return output;
 }
 
 /**
@@ -201,27 +201,27 @@ async function absent(path: string): Promise<boolean> {
  * the template's `workflow.json` already there (interrupted switch), only `recolte.mjs` is put away.
  */
 async function toggleStartWidget(c: SpacePaths, models: string, id: keyof typeof HARVESTS_SHIPPED): Promise<string[]> {
-  const dossier = join(c.widgets, id);
+  const folder = join(c.widgets, id);
   try {
-    if (!(await lstat(dossier)).isDirectory()) return [];
+    if (!(await lstat(folder)).isDirectory()) return [];
   } catch {
     return [];
   }
-  const harvest = await ordinaryFile(join(dossier, "recolte.mjs"));
+  const harvest = await ordinaryFile(join(folder, "recolte.mjs"));
   if (!harvest || !HARVESTS_SHIPPED[id].has(hash(harvest))) return [];
   // The template is read only afterwards: templates without this widget, and nothing moves.
   const model = join(models, "widgets", id);
   if (!existsSync(join(model, "workflow.json"))) return [];
-  if (!(await absent(join(dossier, "workflow.json")))) {
+  if (!(await absent(join(folder, "workflow.json")))) {
     // template's workflow.json already there: a switch interrupted before putting recolte.mjs away, which it finishes.
-    const present = await ordinaryFile(join(dossier, "workflow.json"));
+    const present = await ordinaryFile(join(folder, "workflow.json"));
     if (present && present.equals(await readFile(join(model, "workflow.json")))) await storeHarvest(c, id);
     return [];
   }
   const codes = (await readdir(model)).filter((f) => f.endsWith(".mjs")).sort();
   // A .mjs of the same name already there: only if identical to the template (an interrupted switch), otherwise it is the user's.
   for (const f of codes) {
-    const present = join(dossier, f);
+    const present = join(folder, f);
     if (await absent(present)) continue;
     const content = await ordinaryFile(present);
     if (!content || !content.equals(await readFile(join(model, f)))) return [];
@@ -230,7 +230,7 @@ async function toggleStartWidget(c: SpacePaths, models: string, id: keyof typeof
   const crees: string[] = [];
   // workflow.json last: it appears only once its code is in place.
   for (const f of [...codes, "workflow.json"]) {
-    const destination = join(dossier, f);
+    const destination = join(folder, f);
     try {
       await copyFile(join(model, f), destination, constants.COPYFILE_EXCL);
       crees.push(destination);

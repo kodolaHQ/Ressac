@@ -50,13 +50,13 @@ export function spacePaths(root?: string): SpacePaths {
 }
 
 /** Folder of the MCP configs specific to agent sessions (next to `configMcp`). */
-export function dossierSessions(c: SpacePaths): string {
+export function sessionsFolder(c: SpacePaths): string {
   return join(dirname(c.configMcp), "sessions");
 }
 
 /** MCP config specific to the agent session of a window (`<configMcp folder>/sessions/<session>.json`). */
 export function sessionConfigPath(c: SpacePaths, session: string): string {
-  return join(dossierSessions(c), `${session}.json`);
+  return join(sessionsFolder(c), `${session}.json`);
 }
 
 /** Translates a workspace path on the Mac into a path in the container. */

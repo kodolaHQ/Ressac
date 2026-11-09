@@ -21,17 +21,17 @@ const patch = [
 
 describe("parserDiff", () => {
   test("two-block patch: starts, counts, marks and old/new numbers of each line", () => {
-    const blocs = parserDiff(patch);
-    expect(blocs).toHaveLength(2);
-    expect(blocs[0]).toMatchObject({ ancienDebut: 1, ancienNombre: 3, nouveauDebut: 1, nouveauNombre: 3 });
-    expect(blocs[0]!.lignes).toEqual([
+    const blocks = parserDiff(patch);
+    expect(blocks).toHaveLength(2);
+    expect(blocks[0]).toMatchObject({ ancienDebut: 1, ancienNombre: 3, nouveauDebut: 1, nouveauNombre: 3 });
+    expect(blocks[0]!.lignes).toEqual([
       { marque: " ", texte: "a", ancien: 1, nouveau: 1 },
       { marque: "-", texte: "b", ancien: 2, nouveau: null },
       { marque: "+", texte: "B", ancien: null, nouveau: 2 },
       { marque: " ", texte: "c", ancien: 3, nouveau: 3 },
     ]);
-    expect(blocs[1]).toMatchObject({ ancienDebut: 10, ancienNombre: 2, nouveauDebut: 10, nouveauNombre: 3 });
-    expect(blocs[1]!.lignes.map((l) => [l.marque, l.ancien, l.nouveau])).toEqual([[" ", 10, 10], ["+", null, 11], [" ", 11, 12]]);
+    expect(blocks[1]).toMatchObject({ ancienDebut: 10, ancienNombre: 2, nouveauDebut: 10, nouveauNombre: 3 });
+    expect(blocks[1]!.lignes.map((l) => [l.marque, l.ancien, l.nouveau])).toEqual([[" ", 10, 10], ["+", null, 11], [" ", 11, 12]]);
   });
   test("a « \\ No newline at end of file » line is not a line", () => {
     expect(parserDiff(patch)[1]!.lignes).toHaveLength(3);

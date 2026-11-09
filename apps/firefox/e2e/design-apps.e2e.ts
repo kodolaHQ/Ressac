@@ -86,8 +86,8 @@ const hosts = () => inAppView<number>(m, "essai", `return document.querySelector
 async function appHandle(): Promise<string> {
   for (const end = Date.now() + 15_000; Date.now() < end; await sleep(100))
     for (const h of await windowHandles(m)) {
-      const dossier = await inWindow(m, h, () => m.execute<string | null>(`return document.documentElement.getAttribute("webaios-app");`)).catch(() => null);
-      if (dossier === "essai") return h;
+      const folder = await inWindow(m, h, () => m.execute<string | null>(`return document.documentElement.getAttribute("webaios-app");`)).catch(() => null);
+      if (folder === "essai") return h;
     }
   throw new Error("no essai window");
 }

@@ -7,10 +7,10 @@ export const COLUMNS = 12;
 export const ROW_PX = 90;
 export const GAP_PX = 12;
 
-type Taille = { l: number; h: number };
-export interface Tailles {
-  min: Taille;
-  max: Taille;
+type Size = { l: number; h: number };
+export interface Sizes {
+  min: Size;
+  max: Size;
 }
 
 /** `v` between `min` and `max`; if the bounds cross, the minimum wins. */
@@ -23,19 +23,19 @@ const overlap = (a: Placement, b: Placement) =>
  * (cascading). The result has no overlap; the list's order is kept.
  */
 function resolve(placements: Placement[], fixed: Placement): Placement[] {
-  const poses: Placement[] = [fixed];
+  const placed: Placement[] = [fixed];
   const others = placements
     .filter((q) => q.id !== fixed.id)
     .map((q) => ({ ...q }))
     .sort((a, b) => a.y - b.y || a.x - b.x);
   for (const q of others) {
-    for (let gene = poses.find((r) => overlap(q, r)); gene; gene = poses.find((r) => overlap(q, r))) {
-      q.y = gene.y + gene.h;
+    for (let blocker = placed.find((r) => overlap(q, r)); blocker; blocker = placed.find((r) => overlap(q, r))) {
+      q.y = blocker.y + blocker.h;
     }
-    poses.push(q);
+    placed.push(q);
   }
-  const parId = new Map(poses.map((q) => [q.id, q]));
-  return placements.map((q) => parId.get(q.id)!);
+  const byId = new Map(placed.map((q) => [q.id, q]));
+  return placements.map((q) => byId.get(q.id)!);
 }
 
 /** Puts widget `id` at (x, y), within the grid, and pushes down those it overlaps. */
@@ -47,13 +47,13 @@ export function move(placements: Placement[], id: string, x: number, y: number):
 }
 
 /** Changes widget `id`'s size, bounded by its min and max sizes and by the grid's right edge. */
-export function resize(placements: Placement[], id: string, l: number, h: number, tailles: Tailles): Placement[] {
+export function resize(placements: Placement[], id: string, l: number, h: number, sizes: Sizes): Placement[] {
   const target = placements.find((q) => q.id === id);
   if (!target) return placements;
-  const minL = Math.min(tailles.min.l, COLUMNS);
+  const minL = Math.min(sizes.min.l, COLUMNS);
   // The minimum does not fit before the right edge: the widget steps back.
   const x = Math.min(target.x, COLUMNS - minL);
-  const width = clamp(Math.round(l), minL, Math.min(tailles.max.l, COLUMNS - x));
-  const hauteur = clamp(Math.round(h), tailles.min.h, tailles.max.h);
-  return resolve(placements, { ...target, x, l: width, h: hauteur });
+  const width = clamp(Math.round(l), minL, Math.min(sizes.max.l, COLUMNS - x));
+  const height = clamp(Math.round(h), sizes.min.h, sizes.max.h);
+  return resolve(placements, { ...target, x, l: width, h: height });
 }

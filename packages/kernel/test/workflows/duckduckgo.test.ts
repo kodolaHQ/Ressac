@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { extractResults, urlRecherche } from "../../src/workflows/duckduckgo.js";
+import { extractResults, searchUrl } from "../../src/workflows/duckduckgo.js";
 
 const page = (name: string) => readFileSync(new URL(`./fixtures/duckduckgo/${name}`, import.meta.url), "utf8");
 
@@ -23,10 +23,10 @@ describe("extraireResultats", () => {
   });
 
   it("nombre 3: the first 3", () => {
-    const tous = extractResults(page("resultats.html"), 20);
+    const all = extractResults(page("resultats.html"), 20);
     const three = extractResults(page("resultats.html"), 3);
-    if (!("resultats" in tous) || !("resultats" in three)) throw new Error("attendu");
-    expect(three.resultats).toEqual(tous.resultats.slice(0, 3));
+    if (!("resultats" in all) || !("resultats" in three)) throw new Error("attendu");
+    expect(three.resultats).toEqual(all.resultats.slice(0, 3));
   });
 
   it("aucun-resultat.html: empty list", () => {
@@ -42,8 +42,8 @@ describe("extraireResultats", () => {
   });
 
   it("duplicate urls are dropped", () => {
-    const bloc = (u: string) => `<div class="result"><a class="result__a" href="${u}">T</a><a class="result__snippet">E</a></div>`;
-    const r = extractResults(bloc("https://a.example/") + bloc("https://a.example/") + bloc("https://b.example/"), 5);
+    const block = (u: string) => `<div class="result"><a class="result__a" href="${u}">T</a><a class="result__snippet">E</a></div>`;
+    const r = extractResults(block("https://a.example/") + block("https://a.example/") + block("https://b.example/"), 5);
     if (!("resultats" in r)) throw new Error("attendu");
     expect(r.resultats.map((x) => x.url)).toEqual(["https://a.example/", "https://b.example/"]);
   });
@@ -59,8 +59,8 @@ describe("extraireResultats", () => {
 });
 
 describe("extraireResultats: hostile pages and edge cases", () => {
-  const bloc = (titre: string, href = "https://a.example/", extrait = "E") =>
-    `<div class="result"><a class="result__a" href="${href}">${titre}</a><a class="result__snippet">${extrait}</a></div>`;
+  const block = (title: string, href = "https://a.example/", snippet = "E") =>
+    `<div class="result"><a class="result__a" href="${href}">${title}</a><a class="result__snippet">${snippet}</a></div>`;
   const fast = (html: string) => {
     const t = Date.now();
     const r = extractResults(html, 5);
@@ -69,7 +69,7 @@ describe("extraireResultats: hostile pages and edge cases", () => {
   };
 
   it("24 KB of « <div class=\" » repeated after a result: fast", () => {
-    fast(bloc("T") + '<div class="'.repeat(2000));
+    fast(block("T") + '<div class="'.repeat(2000));
   });
   it("54 KB of unclosed result__snippet tags: fast", () => {
     fast('<div class="result"><a class="result__a" href="https://a.example/">T</a>' + '<p class="result__snippet" '.repeat(2000));
@@ -77,26 +77,26 @@ describe("extraireResultats: hostile pages and edge cases", () => {
   });
   it("a 5 MB page is read without freezing", () => {
     fast("<".repeat(5 * 1024 * 1024));
-    fast(bloc("T") + "<a ".repeat(1_000_000));
+    fast(block("T") + "<a ".repeat(1_000_000));
   });
   it("« anomaly-modal » in a title or an excerpt is not a refusal", () => {
-    const r = extractResults(bloc("anomaly-modal challenge-form /anomaly.js", "https://a.example/", "challenge-form"), 5);
+    const r = extractResults(block("anomaly-modal challenge-form /anomaly.js", "https://a.example/", "challenge-form"), 5);
     expect(r).toMatchObject({ resultats: [{ url: "https://a.example/" }] });
   });
   it("real results win over a no-results marker; exact no-results only", () => {
-    expect(extractResults('<div class="no-results"></div>' + bloc("T"), 5)).toMatchObject({ resultats: [{ titre: "T" }] });
+    expect(extractResults('<div class="no-results"></div>' + block("T"), 5)).toMatchObject({ resultats: [{ titre: "T" }] });
     expect(extractResults('<div class="not-no-results"></div>', 5)).toEqual({ illisible: true });
   });
   it("the url is normalized: controls removed, non-http(s) and credentials refused", () => {
     const u = (v: string) => `//duckduckgo.com/l/?uddg=${encodeURIComponent(v)}`;
     const r = extractResults(
-      bloc("a", u("https://x.fr/a%0Ab")) + bloc("b", u("ftp://x.fr/")) + bloc("c", u("https://u:p@x.fr/")) + bloc("d", "//exemple.fr/"),
+      block("a", u("https://x.fr/a%0Ab")) + block("b", u("ftp://x.fr/")) + block("c", u("https://u:p@x.fr/")) + block("d", "//exemple.fr/"),
       9,
     );
     expect(r).toEqual({ resultats: [{ titre: "a", url: "https://x.fr/a%0Ab", extrait: "E" }] });
   });
   it("title and excerpt: controls, bidi and half-pairs removed", () => {
-    const r = extractResults(bloc("A&#8238;B&#x0;C&#xD800;D&#10;E", "https://a.example/", "x&#x202E;y"), 5);
+    const r = extractResults(block("A&#8238;B&#x0;C&#xD800;D&#10;E", "https://a.example/", "x&#x202E;y"), 5);
     expect(r).toMatchObject({ resultats: [{ titre: "A BCD E", extrait: "x y" }] });
   });
   it("an excerpt with a nested tag of the same name is not cut", () => {
@@ -107,7 +107,7 @@ describe("extraireResultats: hostile pages and edge cases", () => {
 
 describe("urlRecherche", () => {
   it("encodes « fiabilité Clio 4 »", () => {
-    expect(urlRecherche("fiabilité Clio 4")).toBe("https://html.duckduckgo.com/html/?q=fiabilit%C3%A9%20Clio%204");
-    expect(urlRecherche("a b", "http://127.0.0.1:1/")).toBe("http://127.0.0.1:1/?q=a%20b");
+    expect(searchUrl("fiabilité Clio 4")).toBe("https://html.duckduckgo.com/html/?q=fiabilit%C3%A9%20Clio%204");
+    expect(searchUrl("a b", "http://127.0.0.1:1/")).toBe("http://127.0.0.1:1/?q=a%20b");
   });
 });

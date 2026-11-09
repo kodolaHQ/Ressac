@@ -126,8 +126,8 @@ const stackFrames = (stack: unknown) => ({
     .map((m) => ({ functionName: m[1]!, url: m[2]!, lineNumber: Number(m[3]) - 1, columnNumber: Number(m[4]) - 1 })),
 });
 const withStack = (message: string, frames: ReturnType<typeof callFrames>) => {
-  const pile = stackText(frames);
-  return pile && !message.includes("\n    at ") ? `${message}\n${pile}` : message;
+  const stack = stackText(frames);
+  return stack && !message.includes("\n    at ") ? `${message}\n${stack}` : message;
 };
 
 /** An extension's content script writes in the tab's console (note D1): never the page's. */
@@ -289,7 +289,7 @@ export function createDevTools(o: {
   windows: WindowRegistry;
   isPrivate(tabId: string): boolean;
   sites?: { viewFor(id: string): { browser: any; window: Window } | undefined; markWanted(id: string): void; onClosed(cb: () => void): unknown };
-  apps?: { viewFor(dossier: string): { browser: any; window: Window } | undefined; onClosed(cb: () => void): unknown };
+  apps?: { viewFor(folder: string): { browser: any; window: Window } | undefined; onClosed(cb: () => void): unknown };
 }): DevTools {
   /** The top-level reload of the agent's dev tools; on a site app it is WebAiOs's load, so the M1 net spares it under the home. */
   const reloadTop = (id: string, s: { commands: any }, noCache: boolean) => {
@@ -578,10 +578,10 @@ export function createDevTools(o: {
         stop.abort();
       }
     },
-    async recharger(id: string, sansCache: boolean): Promise<void> {
+    async recharger(id: string, noCache: boolean): Promise<void> {
       const s = await session(id);
       // Resolves at dom-complete (note D4); a page that never finishes still answers.
-      await Promise.race([reloadTop(id, s, !!sansCache), sleep(NAVIGATION_TIMEOUT_MS)]);
+      await Promise.race([reloadTop(id, s, !!noCache), sleep(NAVIGATION_TIMEOUT_MS)]);
       if (s.dropped && originOf(urlOf(id)) !== s.origin) throw new Error(SITE_CHANGED_TEXT);
     },
     /** Gecko's profiler on the tab's process only (note D5), converted to a .cpuprofile; always stopped once started here. */

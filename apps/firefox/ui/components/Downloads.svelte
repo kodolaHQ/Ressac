@@ -5,11 +5,11 @@
 
   let { fermer: close }: { fermer: () => void } = $props();
 
-  function taille(octets: number): string {
-    if (octets < 1024) return `${octets} o`;
-    if (octets < 1024 ** 2) return `${(octets / 1024).toFixed(0)} Ko`;
-    if (octets < 1024 ** 3) return `${(octets / 1024 ** 2).toFixed(1)} Mo`;
-    return `${(octets / 1024 ** 3).toFixed(2)} Go`;
+  function size(bytes: number): string {
+    if (bytes < 1024) return `${bytes} o`;
+    if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(0)} Ko`;
+    if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(1)} Mo`;
+    return `${(bytes / 1024 ** 3).toFixed(2)} Go`;
   }
 
   const LABELS: Record<Download["etat"], string> = {
@@ -33,7 +33,7 @@
         <div class="infos">
           <span class="nom">{t.nom}</span>
           <span class="detail">
-            {LABELS[t.etat]} · {t.etat === "en-cours" && t.total ? `${taille(t.recus)} sur ${taille(t.total)}` : taille(t.recus)}
+            {LABELS[t.etat]} · {t.etat === "en-cours" && t.total ? `${size(t.recus)} sur ${size(t.total)}` : size(t.recus)}
           </span>
           {#if t.etat === "en-cours"}
             <progress max={t.total || undefined} value={t.total ? t.recus : undefined}></progress>

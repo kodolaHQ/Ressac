@@ -26,14 +26,14 @@ const alive = (pid: number) => {
   }
 };
 const waitUntilTrue = async (f: () => boolean, ms = 5000) => {
-  const fin = Date.now() + ms;
-  while (!f() && Date.now() < fin) await new Promise((r) => setTimeout(r, 20));
+  const end = Date.now() + ms;
+  while (!f() && Date.now() < end) await new Promise((r) => setTimeout(r, 20));
   return f();
 };
 
 test("cancelled (signal): the whole group is killed, children included, and the result says « annulé »", async () => {
-  const dossier = await mkdtemp(join(tmpdir(), "executeur-"));
-  const file = join(dossier, "pid");
+  const folder = await mkdtemp(join(tmpdir(), "executeur-"));
+  const file = join(folder, "pid");
   const controller = new AbortController();
   // sh launches a child (like git launches git-remote-https) and writes its pid.
   const r = defaultRunner("sh", ["-c", `sleep 300 & echo $! > ${file}; wait`], { signal: controller.signal });
@@ -46,12 +46,12 @@ test("cancelled (signal): the whole group is killed, children included, and the 
 });
 
 test("an already-cancelled signal launches nothing", async () => {
-  const dossier = await mkdtemp(join(tmpdir(), "executeur-"));
+  const folder = await mkdtemp(join(tmpdir(), "executeur-"));
   const controller = new AbortController();
   controller.abort();
-  const r = await defaultRunner("sh", ["-c", `touch ${join(dossier, "lance")}`], { signal: controller.signal });
+  const r = await defaultRunner("sh", ["-c", `touch ${join(folder, "lance")}`], { signal: controller.signal });
   expect(r.code).toBe(CODE_CANCELLED);
-  expect(existsSync(join(dossier, "lance"))).toBe(false);
+  expect(existsSync(join(folder, "lance"))).toBe(false);
 });
 
 test("with a (non-cancelled) signal: output, code, timeout and command not found stay the same", async () => {

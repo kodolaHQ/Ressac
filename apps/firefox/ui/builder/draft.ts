@@ -7,50 +7,50 @@ type Position = { x: number; y: number };
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
 /** Lenient reading of a `workflow.json` (or its received copy); null if the blocks are unusable. */
-export function toDraft(brut: unknown): Draft | null {
-  if (!isObject(brut) || !Array.isArray(brut.blocs)) return null;
-  const blocs: DraftBlock[] = [];
-  for (const b of brut.blocs) {
+export function toDraft(raw: unknown): Draft | null {
+  if (!isObject(raw) || !Array.isArray(raw.blocs)) return null;
+  const blocks: DraftBlock[] = [];
+  for (const b of raw.blocs) {
     if (!isObject(b) || typeof b.id !== "string" || typeof b.type !== "string") return null;
     const p = isObject(b.position) ? b.position : {};
-    const bloc: DraftBlock = {
+    const block: DraftBlock = {
       id: b.id,
       type: b.type,
       position: { x: typeof p.x === "number" && Number.isFinite(p.x) ? p.x : 0, y: typeof p.y === "number" && Number.isFinite(p.y) ? p.y : 0 },
       parametres: isObject(b.parametres) ? b.parametres : {},
     };
-    if (typeof b.nom === "string") bloc.nom = b.nom;
-    blocs.push(bloc);
+    if (typeof b.nom === "string") block.nom = b.nom;
+    blocks.push(block);
   }
-  const liens = Array.isArray(brut.liens)
-    ? brut.liens.flatMap((l) => (isObject(l) && typeof l.de === "string" && typeof l.vers === "string" ? [{ de: l.de, vers: l.vers }] : []))
+  const liens = Array.isArray(raw.liens)
+    ? raw.liens.flatMap((l) => (isObject(l) && typeof l.de === "string" && typeof l.vers === "string" ? [{ de: l.de, vers: l.vers }] : []))
     : [];
-  return { version: 1, blocs, liens };
+  return { version: 1, blocs: blocks, liens };
 }
 
 /** `ia.trier` → `ia-trier`, then `ia-trier-2`, … (40 characters at most). */
-export function idPourType(type: string, existing: Iterable<string>): string {
+export function idForType(type: string, existing: Iterable<string>): string {
   const taken = new Set(existing);
   const base = type.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "bloc";
-  const coupe = (s: string, suffix: string) => s.slice(0, 40 - suffix.length).replace(/-+$/, "") + suffix;
-  let id = coupe(base, "");
-  for (let n = 2; taken.has(id); n++) id = coupe(base, `-${n}`);
+  const cut = (s: string, suffix: string) => s.slice(0, 40 - suffix.length).replace(/-+$/, "") + suffix;
+  let id = cut(base, "");
+  for (let n = 2; taken.has(id); n++) id = cut(base, `-${n}`);
   return id;
 }
 
 export function addBlock(b: Draft, type: string, position: Position, params: Record<string, unknown>): { brouillon: Draft; id: string } {
   if (type === "sortie" && b.blocs.some((x) => x.type === "sortie")) return { brouillon: b, id: "" };
-  const id = idPourType(type, b.blocs.map((x) => x.id));
+  const id = idForType(type, b.blocs.map((x) => x.id));
   return { brouillon: { ...b, blocs: [...b.blocs, { id, type, position: { ...position }, parametres: params }] }, id };
 }
 
-export function relier(b: Draft, de: string, to: string): Draft {
-  if (de === to) return b;
-  if (b.liens.some((l) => l.de === de && l.vers === to)) return b;
+export function link(b: Draft, from: string, to: string): Draft {
+  if (from === to) return b;
+  if (b.liens.some((l) => l.de === from && l.vers === to)) return b;
   const ids = new Set(b.blocs.map((x) => x.id));
-  if (!ids.has(de) || !ids.has(to)) return b;
-  if (b.blocs.find((x) => x.id === de)!.type === "sortie") return b;
-  return { ...b, liens: [...b.liens, { de, vers: to }] };
+  if (!ids.has(from) || !ids.has(to)) return b;
+  if (b.blocs.find((x) => x.id === from)!.type === "sortie") return b;
+  return { ...b, liens: [...b.liens, { de: from, vers: to }] };
 }
 
 export function deleteBlocks(b: Draft, ids: Iterable<string>): Draft {
@@ -60,21 +60,21 @@ export function deleteBlocks(b: Draft, ids: Iterable<string>): Draft {
   return { ...b, blocs: b.blocs.filter((x) => !a.has(x.id)), liens: b.liens.filter((l) => !a.has(l.de) && !a.has(l.vers)) };
 }
 
-export function deleteLink(b: Draft, de: string, to: string): Draft {
-  const liens = b.liens.filter((l) => !(l.de === de && l.vers === to));
+export function deleteLink(b: Draft, from: string, to: string): Draft {
+  const liens = b.liens.filter((l) => !(l.de === from && l.vers === to));
   return liens.length === b.liens.length ? b : { ...b, liens };
 }
 
 /** Returns `b` itself when no position really changes (a click writes nothing). */
 export function move(b: Draft, positions: Record<string, Position>): Draft {
   let change = false;
-  const blocs = b.blocs.map((x) => {
+  const blocks = b.blocs.map((x) => {
     const p = positions[x.id];
     if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y) || (p.x === x.position.x && p.y === x.position.y)) return x;
     change = true;
     return { ...x, position: { x: p.x, y: p.y } };
   });
-  return change ? { ...b, blocs } : b;
+  return change ? { ...b, blocs: blocks } : b;
 }
 
 export function set(b: Draft, id: string, params: Record<string, unknown>): Draft {

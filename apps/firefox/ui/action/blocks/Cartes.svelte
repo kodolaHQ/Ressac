@@ -1,10 +1,10 @@
 <script lang="ts">
   import ImagePage from "../../ActionImage.svelte";
-  import LienPage from "../LienPage.svelte";
+  import PageLink from "../LienPage.svelte";
   import { andOthers, sections, type Collection, type PageContext, type ImagePage as Image, type LienPage as Lien } from "../types";
 
-  type Carte = { titre: string; sousTitre: string | null; image: Image; valeur: string | null; etiquettes: string[]; lien: Lien | null };
-  let { p, ctx }: { p: Collection<Carte>; ctx: PageContext } = $props();
+  type Card = { titre: string; sousTitre: string | null; image: Image; valeur: string | null; etiquettes: string[]; lien: Lien | null };
+  let { p, ctx }: { p: Collection<Card>; ctx: PageContext } = $props();
 </script>
 
 <div data-testid="bloc-cartes">
@@ -15,7 +15,7 @@
         <article class="pa-carte">
           {#if c.image}<ImagePage image={c.image} {ctx} />{/if}
           <div class="corps">
-            <span class="titre">{#if c.lien}<LienPage lien={c.lien} {ctx} />{:else}{c.titre}{/if}</span>
+            <span class="titre">{#if c.lien}<PageLink lien={c.lien} {ctx} />{:else}{c.titre}{/if}</span>
             {#if c.sousTitre}<span class="sous-titre">{c.sousTitre}</span>{/if}
             {#if c.valeur}<span class="valeur">{c.valeur}</span>{/if}
             {#if c.etiquettes.length}

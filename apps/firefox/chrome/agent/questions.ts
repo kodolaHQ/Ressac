@@ -1,6 +1,6 @@
-import type { DroitDev, TabInfo } from "../shims/kernel";
-import type { CarteExtension, GrantResponse } from "../../shared/extensions";
-import type { Decision, PendingRequest, WindowId, TabId, Issue, Permission } from "../../shared/model";
+import type { DevRight, TabInfo } from "../shims/kernel";
+import type { ExtensionCard, GrantResponse } from "../../shared/extensions";
+import type { Decision, PendingRequest, WindowId, TabId, Outcome, Permission } from "../../shared/model";
 import { SCHEMA_SITE } from "../../shared/sites";
 import { waitForRights, waitForOutcome, waitForResponse, QUESTION_DELAY_MS, allowedDecision, activeTabOf, originOf, staleQuestion, staleSiteQuestion } from "../../core/agent/pont";
 import type { SitePermission } from "../store/site-permissions";
@@ -12,7 +12,7 @@ export const SCHEMA_WIDGET = "webaios-widget";
 
 /** The agent's « lire l'onglet » and extension grant cards waiting for the user. */
 export class Questions {
-  private readonly open = new Map<string, { demande: PendingRequest; repondre: (d: Issue, droits?: DroitDev[]) => void }>();
+  private readonly open = new Map<string, { demande: PendingRequest; repondre: (d: Outcome, rights?: DevRight[]) => void }>();
   private readonly listeners = new Set<Listener>();
 
   /**
@@ -65,7 +65,7 @@ export class Questions {
    * The dev tools card: the rights ticked when allowed, `[]` on a refusal, after
    * DELAI_QUESTION_MS, on `signal`, or when the tab closes, turns private or goes to another site.
    */
-  askDevTools(o: TabInfo, d: { droits: DroitDev[]; raison: string; agent: string }, windowId: WindowId, signal?: AbortSignal): Promise<DroitDev[]> {
+  askDevTools(o: TabInfo, d: { droits: DevRight[]; raison: string; agent: string }, windowId: WindowId, signal?: AbortSignal): Promise<DevRight[]> {
     const tabId = activeTabOf(this.store.state, windowId)?.id ?? null;
     const fields = { ongletId: tabId, fenetreId: windowId, origine: originOf(o.url), permissions: ["outils-dev" as const], titre: o.titre, cible: o.id, droits: d.droits, raison: d.raison, agent: d.agent };
     if (this.stale({ id: "", ...fields })) return Promise.resolve([]);
@@ -92,16 +92,16 @@ export class Questions {
    * Shows the grant card of an agent extension (DemandeExtension) in the window; it falls (« retirée ») after
    * DELAI_QUESTION_MS, on `signal`, or when its space goes or turns private. A renforcée card needs « Je comprends ».
    */
-  async askExtension(carte: CarteExtension, windowId: WindowId, signal?: AbortSignal): Promise<GrantResponse> {
-    const fields = { ongletId: null, fenetreId: windowId, origine: carte.cle, permissions: ["extension" as const], extension: carte };
-    const issue = staleQuestion({ id: "", ...fields }, this.store.state)
+  async askExtension(card: ExtensionCard, windowId: WindowId, signal?: AbortSignal): Promise<GrantResponse> {
+    const fields = { ongletId: null, fenetreId: windowId, origine: card.cle, permissions: ["extension" as const], extension: card };
+    const outcome = staleQuestion({ id: "", ...fields }, this.store.state)
       ? "retiree"
       : await waitForOutcome((reply) => this.pose(fields, reply), QUESTION_DELAY_MS, signal);
-    return { accepte: issue === "autoriser", empreinte: carte.empreinte, ...(issue === "retiree" ? { retiree: true } : {}) };
+    return { accepte: outcome === "autoriser", empreinte: card.empreinte, ...(outcome === "retiree" ? { retiree: true } : {}) };
   }
 
   /** The console unlock card of an agent extension: Refuser is the default; it falls after DELAI_QUESTION_MS or on `signal`. */
-  askConsole(o: { nom: string; espaces: string[]; raison: string; agent: string }, windowId: WindowId, signal?: AbortSignal): Promise<Issue> {
+  askConsole(o: { nom: string; espaces: string[]; raison: string; agent: string }, windowId: WindowId, signal?: AbortSignal): Promise<Outcome> {
     const fields = { ongletId: null, fenetreId: windowId, origine: o.nom, permissions: ["console-extension" as const], titre: o.nom, raison: o.raison, agent: o.agent, espaces: o.espaces };
     return waitForOutcome((reply) => this.pose(fields, reply), QUESTION_DELAY_MS, signal);
   }
@@ -114,14 +114,14 @@ export class Questions {
   askSite(
     d: { ongletId: TabId | null; fenetreId: WindowId | null; origine: string; permissions: SitePermission[]; lien?: string },
     signal?: AbortSignal,
-  ): Promise<Issue> {
+  ): Promise<Outcome> {
     // The three Firefox-only kinds are not kernel Permissions: the UI never shows a site question (estDemandeAgent).
     const fields = { ongletId: d.ongletId, origine: d.origine, permissions: d.permissions as Permission[], ...(d.lien ? { lien: d.lien } : {}) };
     if (staleQuestion({ id: "", ...fields }, this.store.state)) return Promise.resolve("retiree");
     return waitForOutcome((reply) => this.pose(fields, reply), Infinity, signal);
   }
 
-  private pose(fields: Omit<PendingRequest, "id">, reply: (d: Issue, droits?: DroitDev[]) => void): () => void {
+  private pose(fields: Omit<PendingRequest, "id">, reply: (d: Outcome, rights?: DevRight[]) => void): () => void {
     const id = crypto.randomUUID();
     this.open.set(id, { demande: { id, ...fields }, repondre: reply });
     this.changed();
@@ -150,12 +150,12 @@ export class Questions {
   }
 
   /** `droits`: the rights ticked on a dev tools card. */
-  answer(id: string, d: Decision, o?: { confirme?: boolean }, droits?: DroitDev[]): void {
+  answer(id: string, d: Decision, o?: { confirme?: boolean }, rights?: DevRight[]): void {
     const q = this.open.get(id);
     if (!q) return;
     this.open.delete(id);
     // Copied into this realm: the UI's array dies with its document.
-    q.repondre(allowedDecision(q.demande, d, o?.confirme), droits && Array.from(droits, String) as DroitDev[]);
+    q.repondre(allowedDecision(q.demande, d, o?.confirme), rights && Array.from(rights, String) as DevRight[]);
     this.changed();
   }
 

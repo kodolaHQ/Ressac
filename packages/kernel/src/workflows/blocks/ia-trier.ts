@@ -1,10 +1,10 @@
 import { z } from "zod";
-import { fieldsPerElementOnly, Template, ParamsPerElement, type DefinitionBloc } from "./common.js";
+import { fieldsPerElementOnly, Template, ParamsPerElement, type BlockDefinition } from "./common.js";
 
 // ia.trier always scores item by item: `parElement` is not a param.
-const { parElement: _parElement, ...commonParams } = ParamsPerElement;
+const { parElement: _byElement, ...commonParams } = ParamsPerElement;
 
-export const definition: DefinitionBloc = {
+export const definition: BlockDefinition = {
   type: "ia.trier",
   libelle: "Trier avec Kev",
   famille: "IA",
@@ -16,7 +16,7 @@ export const definition: DefinitionBloc = {
     { nom: "seuil", libelle: "Seuil", requis: false, defaut: 0.5, genre: "nombre", min: 0, max: 1 },
     { nom: "champ", libelle: "Champ de la note", requis: false, defaut: "p", genre: "texte" },
     // ia.trier always scores item by item: the common fields do not carry the « only per item » mark.
-    ...fieldsPerElementOnly().map(({ parElementSeulement: _marque, ...c }) => c),
+    ...fieldsPerElementOnly().map(({ parElementSeulement: _mark, ...c }) => c),
   ],
   parElement: "toujours",
   chaine: false,

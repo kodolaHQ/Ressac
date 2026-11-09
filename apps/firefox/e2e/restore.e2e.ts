@@ -195,7 +195,7 @@ describe("restore at startup", () => {
   it("a v1 session (before configurable spaces) gets its tabs and essential back, and is rewritten as v2", async () => {
     fresh();
     dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
-    const tab = (id: string, url: string, lien: unknown = null) => ({ id, fenetreId: "f1", espaceId: "e1", url, titre: id, favicon: null, lien, ouvertParAgent: false, zoom: 1 });
+    const tab = (id: string, url: string, link: unknown = null) => ({ id, fenetreId: "f1", espaceId: "e1", url, titre: id, favicon: null, lien: link, ouvertParAgent: false, zoom: 1 });
     const v1 = {
       version: 1,
       espaces: [{ id: "e1", nom: "Perso", icone: "🏠", epingles: [] }],

@@ -1,62 +1,62 @@
 <script lang="ts">
   import type { PendingRequest } from "../../shared/model";
-  import type { CarteExtension } from "../../shared/extensions";
+  import type { ExtensionCard } from "../../shared/extensions";
   import { api } from "../state.svelte";
 
   // Everything from the manifest (name, version, sites, domains) is shown as text, never interpreted.
-  let { demande: request, carte }: { demande: PendingRequest; carte: CarteExtension } = $props();
+  let { demande: request, carte: card }: { demande: PendingRequest; carte: ExtensionCard } = $props();
 
   // Strengthened grant: « Activer » (and Enter, which clicks the primary button) has no effect until the box is checked.
   let included = $state(false);
-  const blocked = $derived(carte.renforce && !included);
+  const blocked = $derived(card.renforce && !included);
   const names = (list: string[]) => list.map((n) => `« ${n} »`).join(", ");
 
   /** The name comes from the manifest: bounded, and shown in its own element (it cannot read as the rest of the title). */
   const NAME_MAX = 60;
   const SITES_MAX = 20;
   const name = $derived.by(() => {
-    const car = [...carte.nom];
-    return car.length > NAME_MAX ? `${car.slice(0, NAME_MAX - 1).join("")}…` : carte.nom;
+    const car = [...card.nom];
+    return car.length > NAME_MAX ? `${car.slice(0, NAME_MAX - 1).join("")}…` : card.nom;
   });
   const sites = $derived(
-    carte.sites.length > SITES_MAX ? `${carte.sites.slice(0, SITES_MAX).join(", ")} et ${carte.sites.length - SITES_MAX} autres` : carte.sites.join(", "),
+    card.sites.length > SITES_MAX ? `${card.sites.slice(0, SITES_MAX).join(", ")} et ${card.sites.length - SITES_MAX} autres` : card.sites.join(", "),
   );
 </script>
 
 <div data-testid="demande-extension">
-  {#if carte.maj}
+  {#if card.maj}
     <h3>Mettre à jour <span class="nom" data-testid="carte-extension-nom">« {name} »</span> ?</h3>
-    <div class="discret">Version {carte.maj.de} → {carte.version}</div>
+    <div class="discret">Version {card.maj.de} → {card.version}</div>
   {:else}
-    <h3>Activer <span class="nom" data-testid="carte-extension-nom">« {name} »</span> dans « {carte.espace} » ?</h3>
+    <h3>Activer <span class="nom" data-testid="carte-extension-nom">« {name} »</span> dans « {card.espace} » ?</h3>
   {/if}
-  <div class="discret">{carte.source === "store" ? "Chrome Web Store" : "Écrite par l'agent"}</div>
+  <div class="discret">{card.source === "store" ? "Chrome Web Store" : "Écrite par l'agent"}</div>
 
-  {#if carte.droits.length > 0}
+  {#if card.droits.length > 0}
     <p class="titre">Ce qu'elle veut faire :</p>
     <ul>
-      {#each carte.droits as droit, i (i)}<li>{droit}</li>{/each}
+      {#each card.droits as right, i (i)}<li>{right}</li>{/each}
     </ul>
   {/if}
 
-  {#if carte.tousLesSites}
+  {#if card.tousLesSites}
     <p class="alerte" data-testid="carte-extension-tous-sites">Sur tous les sites que tu visites</p>
-  {:else if carte.sites.length > 0}
+  {:else if card.sites.length > 0}
     <p>Sur : {sites}</p>
   {/if}
 
-  {#if carte.autresEspaces.length > 0}
-    <p>Elle sera active aussi dans {names(carte.autresEspaces)} (même profil).</p>
+  {#if card.autresEspaces.length > 0}
+    <p>Elle sera active aussi dans {names(card.autresEspaces)} (même profil).</p>
   {/if}
 
-  {#if carte.remplaceAussi.length > 0}
-    <p class="alerte" data-testid="carte-extension-remplace">La nouvelle version remplacera aussi celle de {names(carte.remplaceAussi)}.</p>
+  {#if card.remplaceAussi.length > 0}
+    <p class="alerte" data-testid="carte-extension-remplace">La nouvelle version remplacera aussi celle de {names(card.remplaceAussi)}.</p>
   {/if}
 
-  {#if carte.source === "agent"}
-    {#if carte.reseau}
+  {#if card.source === "agent"}
+    {#if card.reseau}
       <p>
-        {carte.reseau.length === 0 ? "Elle ne peut rien envoyer vers internet." : `Elle pourra envoyer des données à : ${carte.reseau.join(", ")}.`}
+        {card.reseau.length === 0 ? "Elle ne peut rien envoyer vers internet." : `Elle pourra envoyer des données à : ${card.reseau.join(", ")}.`}
       </p>
     {/if}
     <p class="discret">
@@ -66,7 +66,7 @@
     <p class="discret">L'agent ne voit pas ce que cette extension lit sur les onglets que tu ne lui as pas partagés.</p>
   {/if}
 
-  {#if carte.renforce}
+  {#if card.renforce}
     <div class="renforce">
       <p id="carte-extension-avertissement">Elle pourra lire et modifier chaque page de cet espace, comptes connectés compris.</p>
       <label>

@@ -10,7 +10,7 @@ export function normalize(t: string): string {
 }
 
 /** The whole name, its words and the keywords, normalized. */
-function termes(a: ActionShown): string[] {
+function terms(a: ActionShown): string[] {
   const name = normalize(a.nom);
   return [...new Set([name, ...name.split(/[^\p{L}\p{N}]+/u).filter(Boolean), ...a.motsCles.map(normalize).filter(Boolean)])];
 }
@@ -28,11 +28,11 @@ function restAfter(text: string, term: string): string | null {
 export function suggestionsActions(text: string, actions: ActionShown[]): Suggestion[] {
   const q = normalize(text);
   if (!q) return [];
-  const brut = text.trim();
+  const raw = text.trim();
   const found: { s: Suggestion; exact: boolean; ordre: string }[] = [];
   for (const a of actions) {
     if (a.erreur) continue;
-    const t = termes(a);
+    const t = terms(a);
     const order = normalize(a.nom);
     if (t.some((x) => x.startsWith(q))) {
       found.push({ s: { id: a.id, nom: a.nom, saisie: null }, exact: t.includes(q), ordre: order });
@@ -42,7 +42,7 @@ export function suggestionsActions(text: string, actions: ActionShown[]): Sugges
     // The longest term first: « mes tickets » before « mes ».
     for (const term of [...t].sort((x, y) => y.length - x.length)) {
       if (!q.startsWith(`${term} `)) continue;
-      const rest = restAfter(brut, term);
+      const rest = restAfter(raw, term);
       if (rest === null) continue;
       found.push({ s: { id: a.id, nom: a.nom, saisie: rest || null }, exact: true, ordre: order });
       break;

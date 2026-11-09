@@ -11,7 +11,7 @@
    * frame's window (isTrusted), as for the widgets (CadreWidget.svelte).
    */
   let { id, api }: { id: string; api: ApiSite } = $props();
-  let cadre = $state<HTMLIFrameElement>();
+  let frame = $state<HTMLIFrameElement>();
   let src = $state<string | null>(null);
   const controller = window.parent.webaiosSiteWindow!;
 
@@ -19,7 +19,7 @@
   function ours(): boolean {
     let u: URL;
     try {
-      u = new URL(cadre?.contentDocument?.documentURI ?? "");
+      u = new URL(frame?.contentDocument?.documentURI ?? "");
     } catch {
       return false;
     }
@@ -29,7 +29,7 @@
 
   /** Opaque origin: the target can only be « * »; only this frame's document receives. */
   const send = (m: MessageToHome) => {
-    if (ours()) cadre?.contentWindow?.postMessage(m, "*");
+    if (ours()) frame?.contentWindow?.postMessage(m, "*");
   };
 
   const refresh = () =>
@@ -41,11 +41,11 @@
     );
 
   let gestureWindow: Window | null = null;
-  const geste = (e: Event) => e.isTrusted && ours() && controller.homeGesture();
+  const gesture = (e: Event) => e.isTrusted && ours() && controller.homeGesture();
 
   onMount(() => {
-    const surMessage = (e: Event) => {
-      if (!cadre || e.target !== cadre.contentWindow || !ours()) return;
+    const onMessage = (e: Event) => {
+      if (!frame || e.target !== frame.contentWindow || !ours()) return;
       let data: unknown;
       try {
         data = JSON.parse(String((e as CustomEvent).detail));
@@ -65,33 +65,33 @@
     };
     // The window root sees the events of the window's in-process frames, the `pret` sent while the home is parsed too.
     const root = (window as unknown as { windowRoot: EventTarget }).windowRoot;
-    (root.addEventListener as (t: string, l: EventListener, c: boolean, untrusted: boolean) => void)("webaios-home", surMessage, true, true);
+    (root.addEventListener as (t: string, l: EventListener, c: boolean, untrusted: boolean) => void)("webaios-home", onMessage, true, true);
     // An iframe of this chrome page never gets `load`: DOMFrameContentLoaded comes once the home's scripts have run.
-    const charge = (e: Event) => {
-      if (!cadre || e.target !== cadre) return;
+    const onLoaded = (e: Event) => {
+      if (!frame || e.target !== frame) return;
       // about:blank (the only other page guardHome lets load): back to its own page.
-      if (src && !ours()) return void (cadre.src = src);
-      gestureWindow?.removeEventListener("pointerdown", geste, true);
-      gestureWindow = (cadre.contentDocument?.defaultView as Window | null) ?? null;
-      gestureWindow?.addEventListener("pointerdown", geste, true);
+      if (src && !ours()) return void (frame.src = src);
+      gestureWindow?.removeEventListener("pointerdown", gesture, true);
+      gestureWindow = (frame.contentDocument?.defaultView as Window | null) ?? null;
+      gestureWindow?.addEventListener("pointerdown", gesture, true);
     };
-    document.addEventListener("DOMFrameContentLoaded", charge, true);
-    controller.guardHome(cadre!);
+    document.addEventListener("DOMFrameContentLoaded", onLoaded, true);
+    controller.guardHome(frame!);
     refresh();
     const endState = api.surEtat(refresh);
-    const fin = api.surMemoire(send);
+    const end = api.surMemoire(send);
     return () => {
-      root.removeEventListener("webaios-home", surMessage, true);
-      document.removeEventListener("DOMFrameContentLoaded", charge, true);
-      gestureWindow?.removeEventListener("pointerdown", geste, true);
+      root.removeEventListener("webaios-home", onMessage, true);
+      document.removeEventListener("DOMFrameContentLoaded", onLoaded, true);
+      gestureWindow?.removeEventListener("pointerdown", gesture, true);
       endState();
-      fin();
+      end();
     };
   });
 </script>
 
 <section class="accueil" data-testid="site-zone-accueil">
-  <iframe bind:this={cadre} data-testid="site-cadre-accueil" title="Accueil de l'appli" sandbox="allow-scripts" src={src ?? "about:blank"}></iframe>
+  <iframe bind:this={frame} data-testid="site-cadre-accueil" title="Accueil de l'appli" sandbox="allow-scripts" src={src ?? "about:blank"}></iframe>
   <footer>
     <button data-testid="site-entrer" onclick={() => api.entrer()}>{ENTER_THE_SITE}</button>
   </footer>

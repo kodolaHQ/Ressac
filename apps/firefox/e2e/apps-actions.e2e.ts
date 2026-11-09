@@ -24,23 +24,23 @@ afterEach(async () => {
   }
 });
 
-const project = (dossier: string) => path.join(p!.dataDir, "espace", "projets", dossier);
-const rowGone = (dossier: string, ms = 10_000) => waitUi(p!.m, "return !doc.querySelector(arguments[0])", [appRow(dossier)], ms);
-const rowShown = (dossier: string, ms = 10_000) => waitUi(p!.m, "return !!doc.querySelector(arguments[0])", [appRow(dossier)], ms);
-const rowText = (dossier: string) => inUi<string>(p!.m, "return doc.querySelector(arguments[0])?.textContent ?? ''", [appRow(dossier)]);
+const project = (folder: string) => path.join(p!.dataDir, "espace", "projets", folder);
+const rowGone = (folder: string, ms = 10_000) => waitUi(p!.m, "return !doc.querySelector(arguments[0])", [appRow(folder)], ms);
+const rowShown = (folder: string, ms = 10_000) => waitUi(p!.m, "return !!doc.querySelector(arguments[0])", [appRow(folder)], ms);
+const rowText = (folder: string) => inUi<string>(p!.m, "return doc.querySelector(arguments[0])?.textContent ?? ''", [appRow(folder)]);
 const filterText = (id: string) => inUi<string | null>(p!.m, "return doc.querySelector(arguments[0])?.textContent.replace(/\\s+/g, ' ').trim() ?? null", [`[data-testid="filtre-${id}"]`]);
 /** The page's own api call, as the component makes it. */
-const act = (dossier: string, action: string) => inUi(p!.m, "ui.webaios.applications.agir(arguments[0], arguments[1]);", [dossier, action]);
+const act = (folder: string, action: string) => inUi(p!.m, "ui.webaios.applications.agir(arguments[0], arguments[1]);", [folder, action]);
 const panelOpen = async () => !!(await state(p!.m)).fenetres[0]!.panneauAgentOuvert;
 /** The app's container (`userContextIdInternal.webaios-app-<dossier>`), or null. */
-const container = (dossier: string) =>
+const container = (folder: string) =>
   p!.m.execute<number | null>(
     `const { ContextualIdentityService: C } = ChromeUtils.importESModule("moz-src:///toolkit/components/contextualidentity/ContextualIdentityService.sys.mjs");
      return C.getPrivateIdentity("userContextIdInternal.webaios-app-" + arguments[0])?.userContextId ?? null;`,
-    [dossier],
+    [folder],
   );
-async function confirmDelete(dossier: string): Promise<void> {
-  await rowMenu(p!.m, dossier, "Supprimer");
+async function confirmDelete(folder: string): Promise<void> {
+  await rowMenu(p!.m, folder, "Supprimer");
   await click(p!.m, `${CONFIRM} button`, { text: "Supprimer" });
 }
 async function launchFromPage(): Promise<void> {

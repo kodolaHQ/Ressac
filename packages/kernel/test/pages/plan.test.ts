@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { MAX_BLOCS_PAGE, MAX_OPERATIONS, PlanPage, evaluate, readPath, lireReference } from "../../src/pages/plan.js";
+import { MAX_PAGE_BLOCKS, MAX_OPERATIONS, PlanPage, evaluate, readPath, readReference } from "../../src/pages/plan.js";
 
 const tickets = [
   { id: 1, projet: "B", priorite: "haute", titre: "a" },
@@ -15,7 +15,7 @@ const announcements = [
 ];
 const root = { tickets, annonces: announcements, priorité: "ok", sans: { x: 1 } };
 const val = (text: string, r: unknown = root) => {
-  const ref = lireReference(text);
+  const ref = readReference(text);
   if ("erreur" in ref) throw new Error(ref.erreur);
   return evaluate(ref, r);
 };
@@ -86,32 +86,32 @@ test("lireChemin: $ is the root", () => {
 test("accented key read", () => expect(val("priorité")).toEqual({ valeur: "ok" }));
 test("MAX_OPERATIONS", () => {
   expect(MAX_OPERATIONS).toBe(4);
-  expect(lireReference("garder(garder(garder(garder(t, 5), 5), 5), 5)")).toHaveProperty("ops");
-  expect(lireReference("garder(garder(garder(garder(garder(t, 5), 5), 5), 5), 5)")).toHaveProperty("erreur");
+  expect(readReference("garder(garder(garder(garder(t, 5), 5), 5), 5)")).toHaveProperty("ops");
+  expect(readReference("garder(garder(garder(garder(garder(t, 5), 5), 5), 5), 5)")).toHaveProperty("erreur");
 });
 test("garder 0 and 201 refused, 1 and 200 allowed", () => {
-  expect(lireReference("garder(t, 0)")).toHaveProperty("erreur");
-  expect(lireReference("garder(t, 201)")).toHaveProperty("erreur");
-  expect(lireReference("garder(t, 1)")).toHaveProperty("ops");
-  expect(lireReference("garder(t, 200)")).toHaveProperty("ops");
-  expect(lireReference("garder(t, 1.5)")).toHaveProperty("erreur");
+  expect(readReference("garder(t, 0)")).toHaveProperty("erreur");
+  expect(readReference("garder(t, 201)")).toHaveProperty("erreur");
+  expect(readReference("garder(t, 1)")).toHaveProperty("ops");
+  expect(readReference("garder(t, 200)")).toHaveProperty("ops");
+  expect(readReference("garder(t, 1.5)")).toHaveProperty("erreur");
 });
 test("10,000-character text refused", () => {
-  expect(lireReference("a".repeat(10_000))).toHaveProperty("erreur");
-  expect(lireReference("a".repeat(300))).toHaveProperty("chemin");
-  expect(lireReference("a".repeat(301))).toHaveProperty("erreur");
+  expect(readReference("a".repeat(10_000))).toHaveProperty("erreur");
+  expect(readReference("a".repeat(300))).toHaveProperty("chemin");
+  expect(readReference("a".repeat(301))).toHaveProperty("erreur");
 });
 test("syntaxe invalide", () => {
   for (const t of ["", "a.", ".a", "a b", "compter(", "compter(t", "compter(t))", "inconnue(t)", "garder(t)", "trier(t)", "filtrer(t, x)", "filtrer(t, x = )",
     'filtrer(t, x = "ab)', "regrouper(t)", "compter(t, x)", "trier(t, x, asc)", "$.a", "a..b", "a-b", "trier(t, a.)"]) {
-    expect(lireReference(t), t).toHaveProperty("erreur");
+    expect(readReference(t), t).toHaveProperty("erreur");
   }
 });
 test("the read ref: ops from the inside out", () => {
-  expect(lireReference('garder(trier(a.b, k, "desc"), 3)')).toEqual({
+  expect(readReference('garder(trier(a.b, k, "desc"), 3)')).toEqual({
     chemin: "a.b", ops: [{ op: "trier", champ: "k", desc: true }, { op: "garder", n: 3 }],
   });
-  expect(lireReference("filtrer(t, a.b ~ clio)")).toEqual({ chemin: "t", ops: [{ op: "filtrer", champ: "a.b", comparaison: "~", valeur: "clio" }] });
+  expect(readReference("filtrer(t, a.b ~ clio)")).toEqual({ chemin: "t", ops: [{ op: "filtrer", champ: "a.b", comparaison: "~", valeur: "clio" }] });
 });
 test("evaluer does not modify the results", () => {
   const copy = structuredClone(root);
@@ -120,35 +120,35 @@ test("evaluer does not modify the results", () => {
   expect(root).toEqual(copy);
 });
 test("10,000 elements in under 50 ms", () => {
-  const gros = { l: Array.from({ length: 10_000 }, (_, i) => ({ k: (i * 7919) % 10_000, g: i % 50 })) };
-  const ref = lireReference("garder(trier(l, k), 200)");
+  const big = { l: Array.from({ length: 10_000 }, (_, i) => ({ k: (i * 7919) % 10_000, g: i % 50 })) };
+  const ref = readReference("garder(trier(l, k), 200)");
   if ("erreur" in ref) throw new Error(ref.erreur);
   const t = performance.now();
-  evaluate(ref, gros);
-  const r2 = lireReference("regrouper(l, g)");
+  evaluate(ref, big);
+  const r2 = readReference("regrouper(l, g)");
   if ("erreur" in r2) throw new Error(r2.erreur);
-  evaluate(r2, gros);
+  evaluate(r2, big);
   expect(performance.now() - t).toBeLessThan(50);
 });
 
-const bloc = (component = "titre", extra: object = {}) => ({ composant: component, props: {}, ...extra });
+const block = (component = "titre", extra: object = {}) => ({ composant: component, props: {}, ...extra });
 test("PlanPage: unknown key removed", () => {
   const p = PlanPage.parse({ blocs: [{ composant: "titre", props: { texte: "x" }, truc: 1 }], autre: 2 });
   expect(p).toEqual({ blocs: [{ composant: "titre", props: { texte: "x" } }] });
 });
 test("PlanPage: 40 blocks allowed, 41 refused, counted with the children", () => {
-  expect(PlanPage.safeParse({ blocs: Array.from({ length: MAX_BLOCS_PAGE }, () => bloc()) }).success).toBe(true);
-  expect(PlanPage.safeParse({ blocs: Array.from({ length: 41 }, () => bloc()) }).success).toBe(false);
-  expect(PlanPage.safeParse({ blocs: [bloc("groupe", { blocs: Array.from({ length: 40 }, () => bloc()) })] }).success).toBe(false);
+  expect(PlanPage.safeParse({ blocs: Array.from({ length: MAX_PAGE_BLOCKS }, () => block()) }).success).toBe(true);
+  expect(PlanPage.safeParse({ blocs: Array.from({ length: 41 }, () => block()) }).success).toBe(false);
+  expect(PlanPage.safeParse({ blocs: [block("groupe", { blocs: Array.from({ length: 40 }, () => block()) })] }).success).toBe(false);
   expect(PlanPage.safeParse({ blocs: [] }).success).toBe(false);
 });
 test("PlanPage : profondeur", () => {
-  expect(PlanPage.safeParse({ blocs: [bloc("groupe", { blocs: [bloc("colonnes", { gauche: [bloc()], droite: [bloc()] })] })] }).success).toBe(true);
-  expect(PlanPage.safeParse({ blocs: [bloc("groupe", { blocs: [bloc("colonnes", { gauche: [bloc("groupe", { blocs: [bloc()] })] })] })] }).success).toBe(false);
+  expect(PlanPage.safeParse({ blocs: [block("groupe", { blocs: [block("colonnes", { gauche: [block()], droite: [block()] })] })] }).success).toBe(true);
+  expect(PlanPage.safeParse({ blocs: [block("groupe", { blocs: [block("colonnes", { gauche: [block("groupe", { blocs: [block()] })] })] })] }).success).toBe(false);
 });
 test("PlanPage: component and props", () => {
-  expect(PlanPage.safeParse({ blocs: [bloc("Titre")] }).success).toBe(false);
-  expect(PlanPage.safeParse({ blocs: [bloc("a".repeat(41))] }).success).toBe(false);
+  expect(PlanPage.safeParse({ blocs: [block("Titre")] }).success).toBe(false);
+  expect(PlanPage.safeParse({ blocs: [block("a".repeat(41))] }).success).toBe(false);
   expect(PlanPage.safeParse({ blocs: [{ composant: "t", props: Object.fromEntries(Array.from({ length: 21 }, (_, i) => [`k${i}`, 1])) }] }).success).toBe(false);
   expect(PlanPage.safeParse({ blocs: [{ composant: "t", props: [] }] }).success).toBe(false);
 });

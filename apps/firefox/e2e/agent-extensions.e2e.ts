@@ -14,8 +14,8 @@ import { startServer } from "./server";
 const HOST = "http://127.0.0.1/*";
 const manifest = (matches: string[]) => ({ manifest_version: 3, name: "Cacheur de l'agent", version: "1.0.0", content_scripts: [{ matches, css: ["cache.css"] }] });
 const CACHE = "#cache-moi { display: none !important; }\n";
-const CACHE_TOUT = "#cache-moi, #reste { display: none !important; }\n";
-const ACCORD = { permissions: [], hotes: [HOST], reseau: [], tousLesSites: false, scriptsTousLesSites: false, scripts: true };
+const CACHE_ALL = "#cache-moi, #reste { display: none !important; }\n";
+const GRANT = { permissions: [], hotes: [HOST], reseau: [], tousLesSites: false, scriptsTousLesSites: false, scripts: true };
 const ID = "cacheur@agent.webaios";
 
 let server: Awaited<ReturnType<typeof startServer>>;
@@ -79,7 +79,7 @@ describe("agent extensions: registry, signed install, restart", () => {
     const f = folders();
     writeAgentExtension(root(f.dataDir), "cacheur", { "manifest.json": manifest([HOST]), "cache.css": CACHE });
     // The registry as WebAiOs would write it, but in the agent's folder (and in the extension's own).
-    grant(root(f.dataDir), "cacheur", ACCORD);
+    grant(root(f.dataDir), "cacheur", GRANT);
     copyFileSync(path.join(root(f.dataDir), "extensions", "etat.json"), path.join(root(f.dataDir), "extensions", "cacheur", "etat.json"));
     const w = await launch(f);
     await settle(w);
@@ -91,13 +91,13 @@ describe("agent extensions: registry, signed install, restart", () => {
   it("granted: installed and active, version <agent version>.<counter>", async () => {
     const f = folders();
     writeAgentExtension(root(f.dataDir), "cacheur", { "manifest.json": manifest([HOST]), "cache.css": CACHE });
-    grant(f.dataDir, "cacheur", ACCORD);
+    grant(f.dataDir, "cacheur", GRANT);
     const w = await launch(f);
     await waitAddon(w, "1.0.0.1");
     expect(w.amo.envois.map((e) => [e.guid, e.version])).toEqual([[ID, "1.0.0.1"]]);
     // The registry is written once Firefox installed it: a moment after the add-on shows.
     await until(() => (registry(f.dataDir)["agent:cacheur"] as { idChrome?: string }).idChrome === ID);
-    expect(registry(f.dataDir)["agent:cacheur"]).toMatchObject({ idChrome: ID, accord: ACCORD, desactivee: null });
+    expect(registry(f.dataDir)["agent:cacheur"]).toMatchObject({ idChrome: ID, accord: GRANT, desactivee: null });
   });
 
   // The page half of extensions-agent.spec.ts:102: the page guard asks the background, which injects the CSS once the
@@ -105,7 +105,7 @@ describe("agent extensions: registry, signed install, restart", () => {
   it("granted: its content script hides #cache-moi", async () => {
     const f = folders();
     writeAgentExtension(root(f.dataDir), "cacheur", { "manifest.json": manifest([HOST]), "cache.css": CACHE });
-    grant(f.dataDir, "cacheur", ACCORD);
+    grant(f.dataDir, "cacheur", GRANT);
     const w = await launch(f);
     await waitAddon(w, "1.0.0.1");
     const tab = await openTab(w.marionette, `${server.url}/cache.html`);
@@ -122,7 +122,7 @@ describe("agent extensions: registry, signed install, restart", () => {
   it("quit during a signature: the previous version runs after restart, the change is signed again", async () => {
     const f = folders();
     writeAgentExtension(root(f.dataDir), "cacheur", { "manifest.json": manifest([HOST]), "cache.css": CACHE });
-    grant(f.dataDir, "cacheur", ACCORD);
+    grant(f.dataDir, "cacheur", GRANT);
     let w = await launch(f);
     await waitAddon(w, "1.0.0.1");
     await w.close();
@@ -131,7 +131,7 @@ describe("agent extensions: registry, signed install, restart", () => {
 
     w = await launch({ ...f, amo: { delaiMs: 60_000 } });
     await waitAddon(w, "1.0.0.1");
-    writeAgentExtension(root(f.dataDir), "cacheur", { "cache.css": CACHE_TOUT });
+    writeAgentExtension(root(f.dataDir), "cacheur", { "cache.css": CACHE_ALL });
     await until(() => existsSync(path.join(root(f.dataDir), ".webaios", "mcp.json")));
     // Never answered: the app quits during the signature.
     callTool(f.dataDir, "recharger_extension", { id: "cacheur" }).catch(() => {});
@@ -150,7 +150,7 @@ describe("agent extensions: registry, signed install, restart", () => {
   it("uninstalled from about:addons: gone from the registry", async () => {
     const f = folders();
     writeAgentExtension(root(f.dataDir), "cacheur", { "manifest.json": manifest([HOST]), "cache.css": CACHE });
-    grant(f.dataDir, "cacheur", ACCORD);
+    grant(f.dataDir, "cacheur", GRANT);
     const w = await launch(f);
     await waitAddon(w, "1.0.0.1");
     await w.marionette.execute(`return (async () => {
@@ -166,7 +166,7 @@ describe("agent extensions: registry, signed install, restart", () => {
   it("uninstalled from about:addons during an install of ours: gone from the registry, not installed back", async () => {
     const f = folders();
     writeAgentExtension(root(f.dataDir), "cacheur", { "manifest.json": manifest([HOST]), "cache.css": CACHE });
-    grant(f.dataDir, "cacheur", ACCORD);
+    grant(f.dataDir, "cacheur", GRANT);
     const w = await launch(f);
     await waitAddon(w, "1.0.0.1");
     await w.marionette.execute(`return (async () => {
@@ -178,7 +178,7 @@ describe("agent extensions: registry, signed install, restart", () => {
       } };
       AddonManager.addAddonListener(l);
     })();`);
-    writeAgentExtension(root(f.dataDir), "cacheur", { "cache.css": CACHE_TOUT });
+    writeAgentExtension(root(f.dataDir), "cacheur", { "cache.css": CACHE_ALL });
     await until(() => existsSync(path.join(root(f.dataDir), ".webaios", "mcp.json")));
     await callTool(f.dataDir, "recharger_extension", { id: "cacheur" }).catch(() => {});
     await until(() => !("agent:cacheur" in registry(f.dataDir)));
@@ -190,7 +190,7 @@ describe("agent extensions: registry, signed install, restart", () => {
   it("removed with about:addons' Remove (pending uninstall): gone from the registry, not back after a restart", async () => {
     const f = folders();
     writeAgentExtension(root(f.dataDir), "cacheur", { "manifest.json": manifest([HOST]), "cache.css": CACHE });
-    grant(f.dataDir, "cacheur", ACCORD);
+    grant(f.dataDir, "cacheur", GRANT);
     let w = await launch(f);
     await waitAddon(w, "1.0.0.1");
     await w.marionette.execute(`return (async () => {
@@ -213,7 +213,7 @@ describe("agent extensions: registry, signed install, restart", () => {
   it("an inactive grant is never installed nor active", async () => {
     const f = folders();
     writeAgentExtension(root(f.dataDir), "cacheur", { "manifest.json": manifest([HOST]), "cache.css": CACHE });
-    grant(f.dataDir, "cacheur", ACCORD, []);
+    grant(f.dataDir, "cacheur", GRANT, []);
     const w = await launch(f);
     await settle(w);
     expect(w.amo.envois.map((e) => e.version)).toEqual(["1.0.0.1"]);
@@ -223,7 +223,7 @@ describe("agent extensions: registry, signed install, restart", () => {
   it("uninstalled from about:addons while the host is down: not reinstalled when it starts again", async () => {
     const f = folders();
     writeAgentExtension(root(f.dataDir), "cacheur", { "manifest.json": manifest([HOST]), "cache.css": CACHE });
-    grant(f.dataDir, "cacheur", ACCORD);
+    grant(f.dataDir, "cacheur", GRANT);
     const w = await launch(f);
     await waitAddon(w, "1.0.0.1");
     const pid = await w.marionette.execute<number>(`return (async () => (await ChromeUtils.importESModule("${STORE}").ready).agent.pid)();`);

@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   compareMemory,
   LENGTH_MAX,
-  masquerEnTetes,
-  masquerUrl,
+  maskHeaders,
+  maskUrl,
   summarizeSnapshot,
   summarizeProfile,
   memoryText,
@@ -24,7 +24,7 @@ describe("tronquer", () => {
 
 describe("masquerEnTetes", () => {
   it("masks the four headers regardless of case", () => {
-    const r = masquerEnTetes({
+    const r = maskHeaders({
       Cookie: "a=1",
       "Set-Cookie": "b=2",
       AUTHORIZATION: "Bearer x",
@@ -43,20 +43,20 @@ describe("masquerEnTetes", () => {
 
 describe("masquerUrl", () => {
   it("masks the value of sensitive parameters", () => {
-    expect(masquerUrl("https://x.fr/p?access_token=abc&q=chat")).toBe(
+    expect(maskUrl("https://x.fr/p?access_token=abc&q=chat")).toBe(
       "https://x.fr/p?access_token=«masqué»&q=chat",
     );
   });
   it("also masks the fragment's parameters", () => {
-    expect(masquerUrl("https://x/cb#access_token=abc&state=1")).toBe(
+    expect(maskUrl("https://x/cb#access_token=abc&state=1")).toBe(
       "https://x/cb#access_token=«masqué»&state=1",
     );
   });
   it("leaves an invalid URL as is", () => {
-    expect(masquerUrl("pas une url")).toBe("pas une url");
+    expect(maskUrl("pas une url")).toBe("pas une url");
   });
   it("leaves a URL without a sensitive parameter intact", () => {
-    expect(masquerUrl("https://x.fr/p?q=chat")).toBe("https://x.fr/p?q=chat");
+    expect(maskUrl("https://x.fr/p?q=chat")).toBe("https://x.fr/p?q=chat");
   });
 });
 
@@ -109,11 +109,11 @@ describe("resumerProfil", () => {
 function snapshot(nodes: [string, string, number][]): string {
   const strings: string[] = [];
   const types = ["hidden", "array", "string", "object", "code", "closure", "regexp", "number", "native"];
-  const plat: number[] = [];
-  nodes.forEach(([type, name, taille], i) => {
+  const flat: number[] = [];
+  nodes.forEach(([type, name, size], i) => {
     let idx = strings.indexOf(name);
     if (idx < 0) idx = strings.push(name) - 1;
-    plat.push(types.indexOf(type), idx, i + 1, taille, 0, 0);
+    flat.push(types.indexOf(type), idx, i + 1, size, 0, 0);
   });
   return JSON.stringify({
     snapshot: {
@@ -122,7 +122,7 @@ function snapshot(nodes: [string, string, number][]): string {
         node_types: [types, "string", "number", "number", "number", "number"],
       },
     },
-    nodes: plat,
+    nodes: flat,
     strings,
   });
 }
@@ -170,7 +170,7 @@ const census = (objects: Record<string, [number, number]>, total: number): strin
   JSON.stringify({
     format: "webaios-firefox-census",
     total,
-    parConstructeur: Object.entries(objects).map(([name, [count, taille]]) => ({ nom: name, nombre: count, taille })),
+    parConstructeur: Object.entries(objects).map(([name, [count, size]]) => ({ nom: name, nombre: count, taille: size })),
   });
 
 describe("recensement Firefox", () => {

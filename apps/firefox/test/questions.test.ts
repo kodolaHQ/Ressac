@@ -33,25 +33,25 @@ it("an extension card: Activer answers accepte with the card's empreinte; a renf
   const questions = new Questions(store);
   const win = store.state.fenetres[0]!.id;
   const space = store.state.espaces[0]!;
-  const carte = {
+  const card = {
     cle: "agent:essai", nom: "Essai", source: "agent" as const, version: "1.0.0", droits: [], sites: [], tousLesSites: false, reseau: [],
     renforce: false, espace: space.nom, espaceId: space.id, autresEspaces: [], remplaceAussi: [], maj: null, empreinte: "e".repeat(64),
   };
-  let answer = questions.askExtension(carte, win);
-  expect(questions.pending()).toMatchObject([{ fenetreId: win, ongletId: null, permissions: ["extension"], extension: carte }]);
+  let answer = questions.askExtension(card, win);
+  expect(questions.pending()).toMatchObject([{ fenetreId: win, ongletId: null, permissions: ["extension"], extension: card }]);
   questions.answer(questions.pending()[0]!.id, "autoriser");
-  expect(await answer).toEqual({ accepte: true, empreinte: carte.empreinte });
+  expect(await answer).toEqual({ accepte: true, empreinte: card.empreinte });
 
-  answer = questions.askExtension({ ...carte, renforce: true }, win);
+  answer = questions.askExtension({ ...card, renforce: true }, win);
   questions.answer(questions.pending()[0]!.id, "autoriser");
-  expect(await answer).toEqual({ accepte: false, empreinte: carte.empreinte });
+  expect(await answer).toEqual({ accepte: false, empreinte: card.empreinte });
 
-  answer = questions.askExtension({ ...carte, renforce: true }, win);
+  answer = questions.askExtension({ ...card, renforce: true }, win);
   questions.answer(questions.pending()[0]!.id, "autoriser", { confirme: true });
-  expect(await answer).toEqual({ accepte: true, empreinte: carte.empreinte });
+  expect(await answer).toEqual({ accepte: true, empreinte: card.empreinte });
 
   // Its space gone: the card falls, « retirée ».
-  expect(await questions.askExtension({ ...carte, espaceId: "gone" }, win)).toEqual({ accepte: false, empreinte: carte.empreinte, retiree: true });
+  expect(await questions.askExtension({ ...card, espaceId: "gone" }, win)).toEqual({ accepte: false, empreinte: card.empreinte, retiree: true });
   expect(questions.pending()).toEqual([]);
 });
 

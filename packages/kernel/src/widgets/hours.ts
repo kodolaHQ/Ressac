@@ -45,14 +45,14 @@ export function dueHour(hours: readonly string[], tracking: WidgetState["heures"
  * The tracking after a real run started in slot `creneau` (and finished at `fin`, for a failure). Without a
  * slot (before the day's first hour), nothing changes: the previous day's tracking is not erased.
  */
-export function trackingAfter(tracking: WidgetState["heures"], slot: string | null, issue: HourOutcome, fin?: string): HoursTracking {
+export function trackingAfter(tracking: WidgetState["heures"], slot: string | null, outcome: HourOutcome, end?: string): HoursTracking {
   const current: HoursTracking = tracking ?? { faite: null, echecs: null };
-  if (!slot || issue === "sans-effet") return current;
-  if (issue === "reussie") {
+  if (!slot || outcome === "sans-effet") return current;
+  if (outcome === "reussie") {
     // The most recent slot done stays.
     if (current.faite != null && current.faite >= slot) return current;
     return { faite: slot, echecs: null };
   }
   const count = current.echecs?.heure === slot ? current.echecs.nombre + 1 : 1;
-  return { faite: current.faite, echecs: { heure: slot, nombre: count, ...(fin ? { fin } : {}) } };
+  return { faite: current.faite, echecs: { heure: slot, nombre: count, ...(end ? { fin: end } : {}) } };
 }

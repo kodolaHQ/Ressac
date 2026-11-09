@@ -11,9 +11,9 @@ export const UNLOCK_REASON_LENGTH = 200;
  * as text): the spaces of the profiles where it is active, which the unlock covers.
  */
 export const unlockedConsoleText = (name: string, spaces: readonly string[] = []) => {
-  const lieu =
+  const where =
     spaces.length === 0 ? "des profils où elle est active" : spaces.length === 1 ? `de l'espace « ${spaces[0]} »` : `des espaces ${spaces.map((e) => `« ${e} »`).join(", ")}`;
-  return `L'agent demande à voir toute la console de « ${name} » pour la corriger. Il verra ce que l'extension écrit dans sa console sur tous les onglets ${lieu}, y compris ceux que tu ne partages pas. Jusqu'à ce que tu le coupes ou qu'il ait fini.`;
+  return `L'agent demande à voir toute la console de « ${name} » pour la corriger. Il verra ce que l'extension écrit dans sa console sur tous les onglets ${where}, y compris ceux que tu ne partages pas. Jusqu'à ce que tu le coupes ou qu'il ait fini.`;
 };
 
 // ——— Extensions in a site app (plan 16) ———
@@ -25,4 +25,4 @@ export const SEES_SITE_PAGES = "Elle verra les pages de l'appli, connectées à 
 export const MANAGE_EXTENSIONS = "Gérer les extensions";
 export const APP_CLOSED = "Appli de site fermée : ouvre-la pour y activer une extension";
 /** The Extensions page: the site apps where it is active. */
-export const activeDans = (names: string[]) => `Active dans : ${names.join(", ")}`;
+export const activeIn = (names: string[]) => `Active dans : ${names.join(", ")}`;

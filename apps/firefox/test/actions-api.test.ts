@@ -8,7 +8,7 @@ import { HOST_EXITED, type AgentHost } from "../chrome/agent/host";
 import { createActionsApi, activeSpacePrivate } from "../ui/actions-api";
 
 const NONE = { courantes: [], enAttente: [] };
-const DEBUT = "2026-10-31T08:00:00.000Z";
+const START = "2026-10-31T08:00:00.000Z";
 
 /** A fake kernel host: answers by method (a missing one rejects, as a stopped host does), notes every call. */
 function fakeHost(answers: Record<string, (p: any) => unknown> = {}) {
@@ -218,7 +218,7 @@ describe("createActionsApi", () => {
 
   // Review Focus 2
   it("a private window gets no direct feed, list, page or image", async () => {
-    const running = { courantes: [{ action: "gitlab", debut: DEBUT, saisie: null, essai: false, etape: "workflow", blocs: {} }], enAttente: [] };
+    const running = { courantes: [{ action: "gitlab", debut: START, saisie: null, essai: false, etape: "workflow", blocs: {} }], enAttente: [] };
     const { F, api, calls, emit, etat: state, set, genId, media } = setup({
       "actions.liste": () => [{ id: "gitlab" }],
       "actions.page": () => ({ execution: "x" }),
@@ -343,14 +343,14 @@ describe("createActionsApi", () => {
   // One read of the host's pipe can hold both the refusal and the kernel's first acces: the acces listener runs before
   // the refusal's handler.
   it("a read refused just before the kernel's first acces, in the same read, reads again", async () => {
-    let refuse!: (e: Error) => void;
-    const { F, api, emit } = setup({ "actions.page": () => new Promise((_, no) => (refuse = no)) });
+    let deny!: (e: Error) => void;
+    const { F, api, emit } = setup({ "actions.page": () => new Promise((_, no) => (deny = no)) });
     const a = api(F);
     const change = vi.fn();
     a.surChange(change);
     const read = a.page("annonces", null);
-    await vi.waitFor(() => expect(refuse).toBeTypeOf("function"));
-    refuse(new Error("Le service des actions ne répond pas (agent arrêté ?)"));
+    await vi.waitFor(() => expect(deny).toBeTypeOf("function"));
+    deny(new Error("Le service des actions ne répond pas (agent arrêté ?)"));
     emit("acces");
     expect(await read).toBeNull();
     expect(change).toHaveBeenCalledTimes(1);
@@ -394,7 +394,7 @@ describe("createActionsApi", () => {
   });
 
   /** The host's preparer over a fixed set of actions (noyau/actions.ts), `running` already in the direct feed. */
-  const preparer = (running: string[] = []) => (p: { id: string; saisie: string | null }) => {
+  const prepare = (running: string[] = []) => (p: { id: string; saisie: string | null }) => {
     const names: Record<string, [string, boolean]> = { gitlab: ["GitLab", false], leboncoin: ["Leboncoin", true] };
     const a = names[p.id];
     if (!a) return { ok: false, erreur: "Action inconnue" };
@@ -404,7 +404,7 @@ describe("createActionsApi", () => {
 
   // actions.test.ts:402
   it("ouvrir opens the action's page titled with its name, then launches it", async () => {
-    const { F, api, calls, etat: state } = setup({ "actions.preparer": preparer(), "actions.lancer": () => ({ statut: "reussie", execution: "x" }) });
+    const { F, api, calls, etat: state } = setup({ "actions.preparer": prepare(), "actions.lancer": () => ({ statut: "reussie", execution: "x" }) });
     const a = api(F);
     expect(await a.ouvrir("gitlab", null)).toEqual({ ok: true });
     const tabs = Object.values(state().onglets);
@@ -417,7 +417,7 @@ describe("createActionsApi", () => {
 
   // actions.test.ts:413
   it("ouvrir without the required input opens the page and launches nothing; an unknown action is refused", async () => {
-    const { F, api, calls, etat: state } = setup({ "actions.preparer": preparer() });
+    const { F, api, calls, etat: state } = setup({ "actions.preparer": prepare() });
     const a = api(F);
     expect(await a.ouvrir("leboncoin", null)).toEqual({ ok: true });
     expect(await a.ouvrir("leboncoin", "  ")).toEqual({ ok: true });
@@ -428,7 +428,7 @@ describe("createActionsApi", () => {
 
   // actions.test.ts:423
   it("ouvrir on a running action opens its page and launches nothing", async () => {
-    const { F, api, calls, etat: state, set, genId } = setup({ "actions.preparer": preparer(["gitlab"]) });
+    const { F, api, calls, etat: state, set, genId } = setup({ "actions.preparer": prepare(["gitlab"]) });
     const a = api(F);
     expect(await a.ouvrir("gitlab", null)).toEqual({ ok: true });
     const page = Object.values(state().onglets)[0]!;
@@ -445,7 +445,7 @@ describe("createActionsApi", () => {
     expect(await stopped.api(stopped.F).ouvrir("gitlab", null)).toEqual({ ok: false, erreur: "Le service des actions ne répond pas (agent arrêté ?)" });
     expect(stopped.dispatched).toEqual([]);
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
-    const s = setup({ "actions.preparer": preparer() });
+    const s = setup({ "actions.preparer": prepare() });
     const a = s.api(s.F);
     const change = vi.fn();
     a.surChange(change);

@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { Action } from "../shared/api";
-import { openAction, runsOnDisk, startActionServers, tid, uiQueries, waitNoyau, writePagesAction, writeResult, writeRunnableAction } from "./actions";
+import { openAction, runsOnDisk, startActionServers, tid, uiQueries, waitKernel, writePagesAction, writeResult, writeRunnableAction } from "./actions";
 import { dispatch, state, waitReady } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
@@ -18,7 +18,7 @@ async function launch(env: Record<string, string> = {}) {
   const m = w.marionette;
   await m.setContext("chrome");
   await waitReady(m);
-  await waitNoyau(m);
+  await waitKernel(m);
   return { w, m, q: uiQueries(m) };
 }
 

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DeclaredSources, verifierSources } from "../home/schemas.js";
+import { DeclaredSources, checkSources } from "../home/schemas.js";
 
 export { WEB_WITH_ACCOUNT } from "../home/schemas.js";
 
@@ -20,5 +20,5 @@ export const DeclarationAction = z
     dureeMaxMinutes: z.number().int().min(1).max(60).optional(),
   })
   .strict()
-  .superRefine((d, ctx) => verifierSources(d.sources, ctx));
+  .superRefine((d, ctx) => checkSources(d.sources, ctx));
 export type DeclarationAction = z.infer<typeof DeclarationAction>;

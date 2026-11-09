@@ -1,12 +1,12 @@
 import { z } from "zod";
 import type { BlocksMemory } from "./memory.js";
-import type { Bloc, Lien } from "./schema.js";
+import type { Block, Link } from "./schema.js";
 
 /** Maximum size of a widget's data (its `donnees.json`, an as-it-goes publication). */
 export const DATA_MAX_SIZE = 2 * 1024 * 1024;
 
 /** Maximum size of a line of the harvester <-> kernel protocol. */
-export const LIGNE_MAX_OCTETS = 4 * 1024 * 1024;
+export const LINE_MAX_BYTES = 4 * 1024 * 1024;
 
 export const HarvesterFunction = z.enum(["lirePage", "recuperer", "kev", "gemma", "chercherWeb"]);
 export type HarvesterFunction = z.infer<typeof HarvesterFunction>;
@@ -46,7 +46,7 @@ export const HarvesterMessage = z.union([
 export type HarvesterMessage = z.infer<typeof HarvesterMessage>;
 
 /** What the container receives of a validated workflow: its blocks, its links and the run order. */
-export type SentWorkflow = { blocs: Bloc[]; liens: Lien[]; ordre: string[] };
+export type SentWorkflow = { blocs: Block[]; liens: Link[]; ordre: string[] };
 
 /** For a try: the blocks to rerun (in order) and the outputs taken from the original run, per block. */
 export type ReplaySent = { relances: string[]; sorties: Record<string, unknown> };
@@ -55,7 +55,7 @@ export type ReplaySent = { relances: string[]; sorties: Record<string, unknown> 
  * Harvester's standard input: the initial line (always with its workflow, implicit for a lone `recolte.mjs`),
  * then the blocks' memory, then the answers.
  */
-export const MessageNoyau = z.union([
+export const KernelMessage = z.union([
   z.object({
     t: z.literal("debut"),
     precedent: z.unknown(),
@@ -72,24 +72,24 @@ export const MessageNoyau = z.union([
   z.object({ t: z.literal("reponse"), n: z.number().int(), ok: z.unknown() }),
   z.object({ t: z.literal("reponse"), n: z.number().int(), erreur: z.string() }),
 ]);
-export type MessageNoyau = z.infer<typeof MessageNoyau>;
+export type KernelMessage = z.infer<typeof KernelMessage>;
 
 /** Arguments of the calls, depending on the function. */
 /** At most 20 screens scrolled by a page read (`defiler`). */
-export const DEFILER_MAX = 20;
-export const ArgsLirePage = z.object({ url: z.string(), compte: z.boolean().optional(), defiler: z.number().int().min(0).max(DEFILER_MAX).optional() });
+export const SCROLL_MAX = 20;
+export const ReadPageArgs = z.object({ url: z.string(), compte: z.boolean().optional(), defiler: z.number().int().min(0).max(SCROLL_MAX).optional() });
 export const FetchArgs = z.object({ url: z.string(), format: z.enum(["texte", "json"]).optional() });
 export const ArgsKev = z.object({ state: z.string(), questions: z.record(z.string(), z.unknown()) });
 /** Web search done by the kernel; answer: `{ titre, url, extrait }[]`, at most `nombre`. */
 export const SearchWebArgs = z.object({ requete: z.string().min(1).max(500), nombre: z.number().int().min(1).max(20) });
 export const ArgsGemma = z.object({ prompt: z.string(), images: z.array(z.string()).optional(), json: z.boolean().optional() });
 
-export type PageLue = { url: string; titre: string; texte: string; liens: { texte: string; url: string }[] };
+export type ReadPage = { url: string; titre: string; texte: string; liens: { texte: string; url: string }[] };
 
 /** Parses a line of the harvester's output; null if invalid. */
-export function readHarvesterMessage(ligne: string): HarvesterMessage | null {
+export function readHarvesterMessage(line: string): HarvesterMessage | null {
   try {
-    const r = HarvesterMessage.safeParse(JSON.parse(ligne));
+    const r = HarvesterMessage.safeParse(JSON.parse(line));
     return r.success ? r.data : null;
   } catch {
     return null;
@@ -100,7 +100,7 @@ export function responseLine(n: number, result: { ok: unknown } | { erreur: stri
   return JSON.stringify({ t: "reponse", n, ...result }) + "\n";
 }
 
-export type OptionsDebut = {
+export type StartOptions = {
   precedent: unknown;
   maintenant: string;
   config: unknown;
@@ -120,7 +120,7 @@ export type OptionsDebut = {
  * The `debut` line; the keys `rejeu`, `limiteMs`, `progressif`, `saisie` and `avancement` are only there if they are
  * given (the line of a widget without the new fields does not change).
  */
-export function ligneDebut(o: OptionsDebut): string {
+export function lineStart(o: StartOptions): string {
   return (
     JSON.stringify({
       t: "debut",
@@ -141,12 +141,12 @@ export function ligneDebut(o: OptionsDebut): string {
  * Bytes of the start line as it is sent (with, for a replay, the taken outputs): the harvester
  * refuses a line of more than `LIGNE_MAX_OCTETS`. To measure before launching a try, to refuse without writing anything.
  */
-export function octetsLigneDebut(o: OptionsDebut): number {
-  return Buffer.byteLength(ligneDebut(o));
+export function lineStartBytes(o: StartOptions): number {
+  return Buffer.byteLength(lineStart(o));
 }
 
-export function startTooBig(o: OptionsDebut): boolean {
-  return octetsLigneDebut(o) > LIGNE_MAX_OCTETS;
+export function startTooBig(o: StartOptions): boolean {
+  return lineStartBytes(o) > LINE_MAX_BYTES;
 }
 
 export function memoryLine(m: BlocksMemory): string {

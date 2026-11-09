@@ -11,7 +11,7 @@ const resume = (id: string, attempt = false): ResumeExecution => ({
   statut: "reussie",
   blocs: [],
 });
-const detail = (id: string, sortie: { sortie?: unknown; sortieTronquee?: true } | null): Execution =>
+const detail = (id: string, output: { sortie?: unknown; sortieTronquee?: true } | null): Execution =>
   ({
     id,
     version: 1,
@@ -22,7 +22,7 @@ const detail = (id: string, sortie: { sortie?: unknown; sortieTronquee?: true } 
     statut: "reussie",
     blocs: [
       { id: "tri", type: "ia.trier", statut: "reussi", debut: null, fin: null, elements: 1, journal: [], sortie: ["x"] },
-      ...(sortie ? [{ id: "fin", type: "sortie", statut: "reussi", debut: null, fin: null, elements: 1, journal: [], ...sortie }] : []),
+      ...(output ? [{ id: "fin", type: "sortie", statut: "reussi", debut: null, fin: null, elements: 1, journal: [], ...output }] : []),
     ],
   }) as Execution;
 const widget = { donnees: { vraies: 1 }, exemple: { exemple: 1 } };

@@ -12,9 +12,9 @@ async function space() {
   return c;
 }
 
-async function write(c: ReturnType<typeof spacePaths>, dossier: string, content: string) {
-  await mkdir(join(c.projets, dossier), { recursive: true });
-  await writeFile(join(c.projets, dossier, "webaios.json"), content);
+async function write(c: ReturnType<typeof spacePaths>, folder: string, content: string) {
+  await mkdir(join(c.projets, folder), { recursive: true });
+  await writeFile(join(c.projets, folder, "webaios.json"), content);
 }
 
 test("a project with a valid manifest", async () => {
@@ -41,12 +41,12 @@ test("without a manifest: sans fiche", async () => {
 test("cut manifest: sans fiche with the reason, then normal", async () => {
   const c = await space();
   await write(c, "a", '{"type":"app');
-  const [coupe] = await readProjects(c);
-  expect(coupe).toHaveProperty("sansFiche");
-  expect((coupe as { sansFiche: string }).sansFiche.startsWith("webaios.json invalide")).toBe(true);
+  const [cut] = await readProjects(c);
+  expect(cut).toHaveProperty("sansFiche");
+  expect((cut as { sansFiche: string }).sansFiche.startsWith("webaios.json invalide")).toBe(true);
   await write(c, "a", '{"type":"poc","lancement":"node s.mjs"}');
-  const [bon] = await readProjects(c);
-  expect(bon).toMatchObject({ nom: "a", manifeste: { type: "poc" } });
+  const [good] = await readProjects(c);
+  expect(good).toMatchObject({ nom: "a", manifeste: { type: "poc" } });
 });
 
 test("unknown type or empty launch: sans fiche", async () => {

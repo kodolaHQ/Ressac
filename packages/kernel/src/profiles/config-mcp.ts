@@ -1,7 +1,7 @@
 import { constants } from "node:fs";
 import { chmod, lstat, mkdir, open, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import { sessionConfigPath, dossierSessions, type SpacePaths } from "../paths.js";
+import { sessionConfigPath, sessionsFolder, type SpacePaths } from "../paths.js";
 import type { Profile } from "./profile.js";
 
 function configContent(format: Profile["configMcp"], server: { url: string; jeton: string }): string {
@@ -41,14 +41,14 @@ export async function writeSessionConfig(
   server: { url: string; jeton: string },
   session: string,
 ): Promise<void> {
-  const dossier = dossierSessions(c);
-  await mkdir(dirname(dossier), { recursive: true });
-  const info = await lstat(dossier).catch((e: NodeJS.ErrnoException) => {
+  const folder = sessionsFolder(c);
+  await mkdir(dirname(folder), { recursive: true });
+  const info = await lstat(folder).catch((e: NodeJS.ErrnoException) => {
     if (e.code === "ENOENT") return null;
     throw e;
   });
-  if (!info) await mkdir(dossier, { mode: 0o700 });
-  else if (!info.isDirectory()) throw new Error(`Dossier des sessions invalide (lien ou fichier) : ${dossier}`);
+  if (!info) await mkdir(folder, { mode: 0o700 });
+  else if (!info.isDirectory()) throw new Error(`Dossier des sessions invalide (lien ou fichier) : ${folder}`);
   const f = await open(sessionConfigPath(c, session), constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW, 0o600);
   try {
     await f.writeFile(configContent(format, server));

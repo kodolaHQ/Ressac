@@ -4,9 +4,9 @@ import { join } from "node:path";
 
 const root = join(import.meta.dirname, "..");
 
-function files(dossier: string): string[] {
-  return readdirSync(dossier, { withFileTypes: true }).flatMap((e) =>
-    e.isDirectory() ? files(join(dossier, e.name)) : [join(dossier, e.name)],
+function files(folder: string): string[] {
+  return readdirSync(folder, { withFileTypes: true }).flatMap((e) =>
+    e.isDirectory() ? files(join(folder, e.name)) : [join(folder, e.name)],
   );
 }
 

@@ -47,9 +47,9 @@ test("« gitlab bug » does not suggest GitLab (without an entry)", () => {
 });
 
 test("7 matching actions: 5", () => {
-  const sept = Array.from({ length: 7 }, (_, i) => action(`a${i}`, `Alpha ${i}`));
+  const seven = Array.from({ length: 7 }, (_, i) => action(`a${i}`, `Alpha ${i}`));
   expect(SUGGESTIONS_MAX).toBe(5);
-  expect(suggestionsActions("alp", sept)).toHaveLength(5);
+  expect(suggestionsActions("alp", seven)).toHaveLength(5);
 });
 
 test("empty text: []", () => {

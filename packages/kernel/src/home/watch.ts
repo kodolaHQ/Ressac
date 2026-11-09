@@ -5,15 +5,15 @@ import type { SpacePaths } from "../paths.js";
 const GROUPING_MS = 150;
 
 /** Calls `rappel` after each burst of changes in these folders (created if missing). Returns the stop. */
-function watchDirs(dossiers: string[], rappel: () => void): () => Promise<void> {
-  for (const d of dossiers) mkdirSync(d, { recursive: true });
+function watchDirs(folders: string[], callback: () => void): () => Promise<void> {
+  for (const d of folders) mkdirSync(d, { recursive: true });
   let timer: NodeJS.Timeout | undefined;
-  const observer = watch(dossiers, { ignoreInitial: true, ignored: (p) => p.endsWith(".tmp") || p.endsWith(".nouveau") });
+  const observer = watch(folders, { ignoreInitial: true, ignored: (p) => p.endsWith(".tmp") || p.endsWith(".nouveau") });
   // Chokidar emits its errors rather than throwing them: without a listener, they would be lost.
   observer.on("error", (e) => console.error("[webaios] la surveillance des dossiers a échoué :", e));
   observer.on("all", () => {
     clearTimeout(timer);
-    timer = setTimeout(rappel, GROUPING_MS);
+    timer = setTimeout(callback, GROUPING_MS);
   });
   return async () => {
     clearTimeout(timer);
@@ -22,11 +22,11 @@ function watchDirs(dossiers: string[], rappel: () => void): () => Promise<void> 
 }
 
 /** Calls `rappel` after each burst of changes in `accueil/`. Returns the stop function. */
-export function watchHome(c: SpacePaths, rappel: () => void): () => Promise<void> {
-  return watchDirs([c.accueil], rappel);
+export function watchHome(c: SpacePaths, callback: () => void): () => Promise<void> {
+  return watchDirs([c.accueil], callback);
 }
 
 /** Calls `rappel` after each burst of changes in `actions/` or `composants/`. Returns the stop function. */
-export function watchActions(c: SpacePaths, rappel: () => void): () => Promise<void> {
-  return watchDirs([c.actions, c.composants], rappel);
+export function watchActions(c: SpacePaths, callback: () => void): () => Promise<void> {
+  return watchDirs([c.actions, c.composants], callback);
 }

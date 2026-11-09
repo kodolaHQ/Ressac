@@ -16,12 +16,12 @@ import { click, inUi, missingApi, waitUi } from "./ui";
 // The Extensions page: the unlock on the page, Supprimer and Désactiver partout of an agent extension. The page lists the agent's extensions only
 // (plan decision 8); lister_extensions lists AMO add-ons too (decision 7).
 const HOST = "http://127.0.0.1/*";
-const ACCORD = { permissions: [], hotes: [HOST], reseau: [], tousLesSites: false, scriptsTousLesSites: false, scripts: true };
+const GRANT = { permissions: [], hotes: [HOST], reseau: [], tousLesSites: false, scriptsTousLesSites: false, scripts: true };
 const HIDER = {
   "manifest.json": { manifest_version: 3, name: "Cacheur de l'agent", version: "1.2", content_scripts: [{ matches: [HOST], css: ["cache.css"] }] },
   "cache.css": "#cache-moi { display: none !important; }\n",
 };
-const JOURNAL = {
+const LOG = {
   "manifest.json": { manifest_version: 3, name: "Journal de l'agent", version: "1.0.0", background: { service_worker: "fond.js" }, content_scripts: [{ matches: [HOST], js: ["contenu.js"] }] },
   "fond.js": 'console.log("fond démarré");\n',
   "contenu.js": 'console.log("contenu:" + location.pathname);\n',
@@ -53,10 +53,10 @@ const BROKEN_POPUP = {
   "popup.js": 'throw new Error("popup-cassee");\n',
 };
 const PAGE = '[data-testid="page-extensions"]';
-const LIGNE = '[data-testid="extension-page"]';
-const CARTE = '[data-testid="demande-extension"]';
+const LINE = '[data-testid="extension-page"]';
+const CARD = '[data-testid="demande-extension"]';
 const UNLOCK = '[data-testid="demande-console-extension"]';
-const MASQUES = "message(s) masqué(s) : venus d'onglets que tu ne peux pas lire";
+const HIDDEN = "message(s) masqué(s) : venus d'onglets que tu ne peux pas lire";
 
 let server: Awaited<ReturnType<typeof startServer>>;
 beforeAll(async () => (server = await startServer()));
@@ -114,15 +114,15 @@ async function openPage(m: Marionette): Promise<void> {
 }
 /** The page's row naming `nom` (its text), or null. */
 const row = (m: Marionette, name: string) =>
-  inUi<string | null>(m, `return [...doc.querySelectorAll(arguments[0])].find((l) => l.querySelector("b")?.textContent === arguments[1])?.textContent ?? null`, [LIGNE, name]);
+  inUi<string | null>(m, `return [...doc.querySelectorAll(arguments[0])].find((l) => l.querySelector("b")?.textContent === arguments[1])?.textContent ?? null`, [LINE, name]);
 /** Waits until the row naming `nom` is there (`present`) or gone. */
 const waitRow = (m: Marionette, name: string, present: boolean) =>
-  waitUi(m, `return [...doc.querySelectorAll(arguments[0])].some((l) => l.querySelector("b")?.textContent === arguments[1]) === arguments[2]`, [LIGNE, name, present], 15_000);
+  waitUi(m, `return [...doc.querySelectorAll(arguments[0])].some((l) => l.querySelector("b")?.textContent === arguments[1]) === arguments[2]`, [LINE, name, present], 15_000);
 /** Clicks the button `text` in the row naming `nom`. */
 async function rowButton(m: Marionette, name: string, text: string): Promise<void> {
-  await waitUi(m, `return [...doc.querySelectorAll(arguments[0])].some((l) => l.querySelector("b")?.textContent === arguments[1])`, [LIGNE, name]);
-  await inUi(m, `const l = [...doc.querySelectorAll(arguments[0])].find((l) => l.querySelector("b")?.textContent === arguments[1]); l.setAttribute("data-cible", "1");`, [LIGNE, name]);
-  await click(m, `${LIGNE}[data-cible="1"] button`, { text });
+  await waitUi(m, `return [...doc.querySelectorAll(arguments[0])].some((l) => l.querySelector("b")?.textContent === arguments[1])`, [LINE, name]);
+  await inUi(m, `const l = [...doc.querySelectorAll(arguments[0])].find((l) => l.querySelector("b")?.textContent === arguments[1]); l.setAttribute("data-cible", "1");`, [LINE, name]);
+  await click(m, `${LINE}[data-cible="1"] button`, { text });
   await inUi(m, `doc.querySelector('[data-cible="1"]')?.removeAttribute("data-cible")`);
 }
 /** Supprimer, then its confirmation. */
@@ -133,8 +133,8 @@ async function remove(m: Marionette, name: string): Promise<void> {
 /** demander_extension, then « Activer » on its card. */
 async function enabledByAgent(w: Launched, id: string, name: string): Promise<string> {
   const call = w.call("demander_extension", { id });
-  expect(await waitUi<string>(w.marionette, `return doc.querySelector(${JSON.stringify(CARTE)})?.textContent`, [], 15_000)).toContain(name);
-  await click(w.marionette, `${CARTE} button`, { text: "Activer" });
+  expect(await waitUi<string>(w.marionette, `return doc.querySelector(${JSON.stringify(CARD)})?.textContent`, [], 15_000)).toContain(name);
+  await click(w.marionette, `${CARD} button`, { text: "Activer" });
   return (await call).texte;
 }
 /** console_extension until it contains `expected`. */
@@ -150,7 +150,7 @@ async function consoleUntil(w: Launched, id: string, expected: string): Promise<
 describe("the Extensions page", () => {
   // extensions-interface.spec.ts:545
   it("lists source, the agent's version (without the counter), rights, sites and spaces; Détails opens", async () => {
-    const w = await launch({ prepare: (root, dataDir) => (writeAgentExtension(root, "cacheur", HIDER), grant(dataDir, "cacheur", ACCORD)) });
+    const w = await launch({ prepare: (root, dataDir) => (writeAgentExtension(root, "cacheur", HIDER), grant(dataDir, "cacheur", GRANT)) });
     const m = w.marionette;
     await waitActive(m, "cacheur@agent.webaios", true);
     expect((await agentAddons(m))[0]!.version).toBe("1.2.0.1");
@@ -163,7 +163,7 @@ describe("the Extensions page", () => {
     expect(text).toContain(`Sites : ${HOST}`);
     expect(text).toContain(`« ${(await activeSpace(m)).nom} » (profil defaut)`);
     await rowButton(m, "Cacheur de l'agent", "Détails");
-    await waitUi(m, `return !!doc.querySelector('${LIGNE} [data-testid="details-extension"]')`);
+    await waitUi(m, `return !!doc.querySelector('${LINE} [data-testid="details-extension"]')`);
     expect(await missingApi(m)).toEqual([]);
   });
 
@@ -180,7 +180,7 @@ describe("the Extensions page", () => {
 
   // extensions-interface.spec.ts:577
   it("« Désactiver toutes les extensions »: the agent's add-ons disabled, still after a restart; unticked, they run again", async () => {
-    const first = await launch({ prepare: (root, dataDir) => (writeAgentExtension(root, "cacheur", HIDER), grant(dataDir, "cacheur", ACCORD)) });
+    const first = await launch({ prepare: (root, dataDir) => (writeAgentExtension(root, "cacheur", HIDER), grant(dataDir, "cacheur", GRANT)) });
     let m = first.marionette;
     await waitActive(m, "cacheur@agent.webaios", true);
     await openPage(m);
@@ -245,19 +245,19 @@ describe("the Extensions page", () => {
   it("says « Console débloquée pour l'agent »; « Couper le déblocage » and refermer_console close it", async () => {
     const w = await launch({ agent: true });
     const m = w.marionette;
-    writeAgentExtension(w.racine, "journal", JOURNAL);
+    writeAgentExtension(w.racine, "journal", LOG);
     expect(await enabledByAgent(w, "journal", "Journal de l'agent")).toMatch(/^Activée/);
     await openTab(m, `${server.url}/a.html`);
-    await consoleUntil(w, "journal", MASQUES);
+    await consoleUntil(w, "journal", HIDDEN);
     await openPage(m);
     await waitRow(m, "Journal de l'agent", true);
     const unlock = async () => {
       const call = w.call("debloquer_console", { id: "journal", raison: "r" });
       await click(m, `${UNLOCK} button`, { text: "Débloquer" });
       expect((await call).texte).toContain("Console débloquée");
-      await waitUi(m, `return doc.querySelector('${LIGNE} [data-testid="console-debloquee"]')?.textContent === "Console débloquée pour l'agent"`);
+      await waitUi(m, `return doc.querySelector('${LINE} [data-testid="console-debloquee"]')?.textContent === "Console débloquée pour l'agent"`);
     };
-    const closed = () => waitUi(m, `return !doc.querySelector('${LIGNE} [data-testid="console-debloquee"]')`);
+    const closed = () => waitUi(m, `return !doc.querySelector('${LINE} [data-testid="console-debloquee"]')`);
     await unlock();
     await rowButton(m, "Journal de l'agent", "Couper le déblocage");
     await closed();
@@ -294,7 +294,7 @@ describe("crashes", () => {
     await rowButton(m, name, "Réactiver");
     await waitActive(m, `${id}@agent.webaios`, true);
     expect(registry(w.dataDir).extensions[`agent:${id}`]).toMatchObject({ profils: ["defaut"], desactivee: null });
-    await waitUi(m, `return ![...doc.querySelectorAll(arguments[0])].some((l) => l.textContent.includes(arguments[1]))`, [LIGNE, DISABLED_CRASHES]);
+    await waitUi(m, `return ![...doc.querySelectorAll(arguments[0])].some((l) => l.textContent.includes(arguments[1]))`, [LINE, DISABLED_CRASHES]);
   }
 
   it("a background that throws at load three times is disabled", { timeout: 120_000 }, async () => {

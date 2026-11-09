@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { Action } from "../shared/api";
 import { HOST_EXITED, HOST_STOPPED, type AgentHost } from "../chrome/agent/host";
 import { failureReason } from "../shared/design-guards";
-import { createExternesApi, createReviewApi } from "../ui/design-api";
+import { createExternalApi, createReviewApi } from "../ui/design-api";
 
 /** A fake kernel host: answers by method (a missing one rejects, as a stopped host does), notes every call. */
 function setup(answers: Record<string, (p: any) => unknown> = {}) {
@@ -22,7 +22,7 @@ function setup(answers: Record<string, (p: any) => unknown> = {}) {
     },
   } as Pick<AgentHost, "request" | "on">;
   const dispatched: Action[] = [];
-  const api = createExternesApi({ host, fenetre: "F", dispatch: (a) => void dispatched.push(a), untilUnload: (f) => f });
+  const api = createExternalApi({ host, fenetre: "F", dispatch: (a) => void dispatched.push(a), untilUnload: (f) => f });
   const emit = (method: string, p?: unknown) => listeners.get(method)?.forEach((cb) => cb(p));
   return { api, calls, dispatched, emit };
 }

@@ -263,15 +263,15 @@ describe("tweaks", () => {
     }
   });
 
-  for (const [cas, accord] of [
+  for (const [cas, grant] of [
     ["without accord", () => ({})],
     // The grant from before the frame pattern was added: it covers less than the declaration asks for.
     ["with an accord that covers less than the declaration", () => ({ vidola: { domaines: ["vidola-a.localhost"], connexion: ["compte.localhost"], cadres: [], reprise: false } })],
   ] as const)
     it(`${cas}: nothing is loaded before the card is answered, then neither the agent's CSS nor script in the page (sites.spec.ts:944)`, async () => {
-      const accords = path.join(dataDir, "sites-accords.json");
-      const before = readFileSync(accords, "utf8");
-      writeFileSync(accords, JSON.stringify(accord()));
+      const grants = path.join(dataDir, "sites-accords.json");
+      const before = readFileSync(grants, "utf8");
+      writeFileSync(grants, JSON.stringify(grant()));
       try {
         await openSite("vidola");
         await expect.poll(() => inStore<string | null>(`return store.sites.viewOf("vidola");`), { timeout: 15_000 }).toBe("accord");
@@ -288,7 +288,7 @@ describe("tweaks", () => {
         expect(await view('getComputedStyle(document.getElementById("shorts")).display')).toBe("block");
         expect(await view("document.documentElement.dataset.retenu ?? null")).toBeNull();
       } finally {
-        writeFileSync(accords, before);
+        writeFileSync(grants, before);
       }
     });
 

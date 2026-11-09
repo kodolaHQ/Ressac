@@ -2,23 +2,23 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync, type StatementSync } from "node:sqlite";
 import type { HistoryResult } from "@webaios/kernel";
-import type { Visite } from "../shared/model";
+import type { Visit } from "../shared/model";
 
-export type { HistoryResult as ResultatHistorique, Visite };
+export type { HistoryResult as ResultatHistorique, Visit };
 
 const COLUMNS = `url, titre, derniere_visite AS derniereVisite, visites, espace_id AS espaceId, prive,
   EXISTS (SELECT 1 FROM textes t WHERE t.url = visites.url AND t.espace_id = visites.espace_id) AS retenu`;
 
 /** Limits of the browsing memory (spec §6.3). */
 export const TEXT_MAX = 20_000; // characters per page
-export const RETENTION_JOURS = 183;
+export const RETENTION_DAYS = 183;
 export const BYTES_CAP = 1_000_000_000; // UTF-8 de `texte`, toutes pages confondues
 const AGENT_LIMIT = { defaut: 20, max: 50 };
 /** Words of the excerpt returned to the agent (64 at most for FTS5): about 300 characters. */
-const MOTS_EXTRAIT = 54;
+const SNIPPET_WORDS = 54;
 
 /** Lowercase without accents: « Été » and « ete » find each other (SQLite's LIKE only folds ASCII). */
-const plier = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+const fold = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
 
 /** Browsing history: one row per URL and per space, in `<profile>/historique.sqlite`. */
 export class History {
@@ -38,7 +38,7 @@ export class History {
     this.db = new DatabaseSync(path);
     this.db.exec("PRAGMA journal_mode = WAL;");
     this.migrer();
-    this.db.function("plier", { deterministic: true }, (s) => plier(String(s)));
+    this.db.function("plier", { deterministic: true }, (s) => fold(String(s)));
     this.req = {
       noter: this.db.prepare(`
         INSERT INTO visites (url, espace_id, titre, derniere_visite, prive) VALUES (?, ?, ?, ?, ?)
@@ -87,7 +87,7 @@ export class History {
         WHERE url = :url AND prive = 0 AND derniere_visite >= :depuis AND derniere_visite <= :jusqua
         ORDER BY derniere_visite DESC`),
       extrait: this.db.prepare(
-        `SELECT snippet(textes_fts, 2, '', '', '…', ${MOTS_EXTRAIT}) AS extrait FROM textes_fts WHERE textes_fts MATCH ? AND rowid = ?`,
+        `SELECT snippet(textes_fts, 2, '', '', '…', ${SNIPPET_WORDS}) AS extrait FROM textes_fts WHERE textes_fts MATCH ? AND rowid = ?`,
       ),
     };
   }
@@ -157,10 +157,10 @@ export class History {
   }
 
   /** The title often arrives after the navigation: it completes the visit without counting a new one. */
-  majTitre(url: string, spaceId: string, titre: string): void {
+  majTitre(url: string, spaceId: string, title: string): void {
     if (!this.db.isOpen) return;
-    this.req.majTitre.run(titre, url, spaceId);
-    this.req.majTitreTexte.run(titre, url, spaceId, titre);
+    this.req.majTitre.run(title, url, spaceId);
+    this.req.majTitreTexte.run(title, url, spaceId, title);
   }
 
   /** The space became private: all its already recorded visits become so, and their kept text is forgotten. */
@@ -192,7 +192,7 @@ export class History {
   purger(now = new Date()): void {
     if (!this.db.isOpen) return;
     this.transaction(() => {
-      this.req.purgerAvant.run(new Date(now.getTime() - RETENTION_JOURS * 86_400_000).toISOString());
+      this.req.purgerAvant.run(new Date(now.getTime() - RETENTION_DAYS * 86_400_000).toISOString());
       let total = Number((this.req.totalOctets.get() as { total: number }).total);
       if (total <= this.plafondOctets) return;
       const toForget: number[] = [];
@@ -222,15 +222,15 @@ export class History {
     if (!this.db.isOpen) return [];
     const limit = Math.max(1, Math.min(AGENT_LIMIT.max, Math.floor(q.limite ?? AGENT_LIMIT.defaut)));
     const period = { depuis: q.depuis?.toISOString() ?? "", jusqua: q.jusqua?.toISOString() ?? "\uffff" };
-    const mots = q.requete.split(/\s+/).filter(Boolean);
+    const words = q.requete.split(/\s+/).filter(Boolean);
     // Each word is a quoted FTS phrase: no query operator is interpreted.
-    const fts = mots.map((m) => `"${m.replaceAll('"', '""')}"`).join(" OR ");
-    const motifs = Object.fromEntries(mots.map((m, i) => [`m${i}`, `%${plier(m).replace(/[\\%_]/g, (c) => `\\${c}`)}%`]));
+    const fts = words.map((m) => `"${m.replaceAll('"', '""')}"`).join(" OR ");
+    const patterns = Object.fromEntries(words.map((m, i) => [`m${i}`, `%${fold(m).replace(/[\\%_]/g, (c) => `\\${c}`)}%`]));
     const inPeriod = "v.prive = 0 AND v.derniere_visite >= :depuis AND v.derniere_visite <= :jusqua";
-    const parTitreOuUrl = mots.length
-      ? mots.map((_, i) => `plier(v.url) LIKE :m${i} ESCAPE '\\' OR plier(v.titre) LIKE :m${i} ESCAPE '\\'`).join(" OR ")
+    const byTitleOrUrl = words.length
+      ? words.map((_, i) => `plier(v.url) LIKE :m${i} ESCAPE '\\' OR plier(v.titre) LIKE :m${i} ESCAPE '\\'`).join(" OR ")
       : "1";
-    const found = mots.length
+    const found = words.length
       ? `SELECT t.url, t.id, bm25(textes_fts) AS score FROM textes_fts
            JOIN textes t ON t.id = textes_fts.rowid
            JOIN visites v ON v.url = t.url AND v.espace_id = t.espace_id
@@ -242,7 +242,7 @@ export class History {
         candidates AS (
           SELECT url, MIN(score) AS score FROM (
             SELECT url, score FROM trouves
-            UNION ALL SELECT v.url, NULL FROM visites v WHERE ${inPeriod} AND (${parTitreOuUrl})
+            UNION ALL SELECT v.url, NULL FROM visites v WHERE ${inPeriod} AND (${byTitleOrUrl})
           ) GROUP BY url
         )
         SELECT c.url, c.score,
@@ -251,34 +251,34 @@ export class History {
         FROM candidates c
         ORDER BY c.score IS NULL, c.score, recente DESC
         LIMIT :limite`)
-      .all({ ...period, ...motifs, ...(mots.length ? { fts } : {}), limite: limit }) as { url: string; id: number | null }[];
+      .all({ ...period, ...patterns, ...(words.length ? { fts } : {}), limite: limit }) as { url: string; id: number | null }[];
     return lignes.map(({ url, id }) => {
-      const visites = this.req.visitesDe.all({ url, ...period }) as { titre: string; date: string; visites: number }[];
-      const extrait = id === null ? undefined : (this.req.extrait.get(fts, id) as { extrait: string } | undefined);
+      const visits = this.req.visitesDe.all({ url, ...period }) as { titre: string; date: string; visites: number }[];
+      const snippet = id === null ? undefined : (this.req.extrait.get(fts, id) as { extrait: string } | undefined);
       return {
         url,
-        titre: visites[0]!.titre,
-        derniereVisite: visites[0]!.date,
-        visites: visites.reduce((n, v) => n + v.visites, 0),
-        extrait: extrait?.extrait ?? "",
+        titre: visits[0]!.titre,
+        derniereVisite: visits[0]!.date,
+        visites: visits.reduce((n, v) => n + v.visites, 0),
+        extrait: snippet?.extrait ?? "",
       };
     });
   }
 
   /** Substring insensitive to case and accents on the URL and title; `%`, `_` and `\` are literal. */
-  rechercher(text: string, limit = 50, distinct = false): Visite[] {
+  rechercher(text: string, limit = 50, distinct = false): Visit[] {
     if (!this.db.isOpen) return [];
-    const motif = `%${plier(text).replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
-    return this.lignes(this.req[distinct ? "rechercherDistinctes" : "rechercher"].all(motif, motif, limit));
+    const pattern = `%${fold(text).replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+    return this.lignes(this.req[distinct ? "rechercherDistinctes" : "rechercher"].all(pattern, pattern, limit));
   }
 
-  recents(limit = 100): Visite[] {
+  recents(limit = 100): Visit[] {
     if (!this.db.isOpen) return [];
     return this.lignes(this.req.recents.all(limit));
   }
 
-  private lignes(brutes: Record<string, unknown>[]): Visite[] {
-    return brutes.map((l) => ({ ...l, prive: l.prive === 1, retenu: l.retenu === 1 }) as unknown as Visite);
+  private lignes(raw: Record<string, unknown>[]): Visit[] {
+    return raw.map((l) => ({ ...l, prive: l.prive === 1, retenu: l.retenu === 1 }) as unknown as Visit);
   }
 
   /** Erases the visits and kept text since `depuis` (everything without a date), and the text whose visit is erased. */

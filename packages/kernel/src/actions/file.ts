@@ -1,12 +1,12 @@
 import type { SpacePaths } from "../paths.js";
-import type { Atelier } from "../container/workshop.js";
+import type { Workshop } from "../container/workshop.js";
 import type { AiDispatcher } from "../ai/dispatcher.js";
 import type { BrowserBridge } from "../mcp/pont.js";
 import { WORKSHOP_STOPPED_ERROR, INTERRUPTED_ERROR } from "../widgets/harvest.js";
 import type { ProcessLauncher } from "../workflows/executer.js";
 import { ACTION_STOPPED, type Execution } from "../workflows/executions.js";
 import type { Pacing } from "../workflows/pacing.js";
-import { cutInput, executerAction, type OptionsAction, type LaunchResult, type TraceAction } from "./executer.js";
+import { cutInput, runAction, type OptionsAction, type LaunchResult, type TraceAction } from "./executer.js";
 
 /** Different actions running at the same time, at most. */
 export const CONCURRENT_ACTIONS = 2;
@@ -32,7 +32,7 @@ export interface OptionsFileActions {
   chemins: SpacePaths;
   dossierActions: string;
   moteur: string;
-  atelier: Pick<Atelier, "etat" | "commandeRecolte" | "supprimerRecolte">;
+  atelier: Pick<Workshop, "etat" | "commandeRecolte" | "supprimerRecolte">;
   lancer?: ProcessLauncher;
   pont: BrowserBridge;
   /** The dispatcher shared with the widgets; null without local AI. */
@@ -81,7 +81,7 @@ export class FileActions {
   private arrete = false;
 
   constructor(o: OptionsFileActions) {
-    this.o = { ...o, horloge: o.horloge ?? (() => new Date()), executer: o.executer ?? executerAction };
+    this.o = { ...o, horloge: o.horloge ?? (() => new Date()), executer: o.executer ?? runAction };
   }
 
   lancer(id: string, o: { saisie: string | null; declencheur: Execution["declencheur"] }): ActionLaunch {
@@ -89,8 +89,8 @@ export class FileActions {
   }
 
   /** Builder trial: replays from `depart` with the upstream outputs of run `origine`. */
-  essayer(id: string, origin: string, depart: string): ActionLaunch {
-    return this.demander(id, { saisie: null, declencheur: "rejeu", essai: { origine: origin, depart } });
+  essayer(id: string, origin: string, start: string): ActionLaunch {
+    return this.demander(id, { saisie: null, declencheur: "rejeu", essai: { origine: origin, depart: start } });
   }
 
   /** Stops this action's run (or removes it from the queue); false if it neither runs nor waits. */
@@ -120,11 +120,11 @@ export class FileActions {
    */
   async arreterTout(): Promise<void> {
     this.arrete = true;
-    const fins = [...this.parAction.values()].map((d) => d.fin.catch(() => {}));
+    const ends = [...this.parAction.values()].map((d) => d.fin.catch(() => {}));
     for (const id of [...this.parAction.keys()]) this.arreter(id);
     await this.supprimerConteneurs();
     let timer: NodeJS.Timeout | undefined;
-    await Promise.race([Promise.all(fins), new Promise((ok) => (timer = setTimeout(ok, this.o.attenteArretMs ?? STOP_WAIT_MS)))]);
+    await Promise.race([Promise.all(ends), new Promise((ok) => (timer = setTimeout(ok, this.o.attenteArretMs ?? STOP_WAIT_MS)))]);
     clearTimeout(timer);
     // Still not finished: their container may have started after the first deletion.
     await this.supprimerConteneurs();
@@ -197,14 +197,14 @@ export class FileActions {
   }
 
   private async executer(d: Request): Promise<LaunchResult> {
-    const debut = this.o.horloge().toISOString();
-    const tracking: DirectAction = { action: d.id, debut, saisie: d.saisie, essai: d.essai !== null, etape: "workflow", blocs: {} };
+    const start = this.o.horloge().toISOString();
+    const tracking: DirectAction = { action: d.id, debut: start, saisie: d.saisie, essai: d.essai !== null, etape: "workflow", blocs: {} };
     d.direct = tracking;
     this.signalerDirect();
     if ((await this.o.atelier.etat().catch(() => "absent")) !== "demarre") {
       return { statut: "echouee", erreur: WORKSHOP_STOPPED_ERROR, erreurNoyau: true };
     }
-    const surTrace = (t: TraceAction) => {
+    const onTrace = (t: TraceAction) => {
       if (d.direct !== tracking) return;
       const b = tracking.blocs[t.bloc];
       if (t.etape === "debut") tracking.blocs[t.bloc] = { statut: "en-cours", elements: null };
@@ -220,7 +220,7 @@ export class FileActions {
       this.signalerDirect();
     };
     // Each run has its own queue of AI calls, served before those of widgets.
-    const ia = this.o.repartiteur?.pour(`action:${d.id}:${debut}`, { prioritaire: true }) ?? null;
+    const ai = this.o.repartiteur?.pour(`action:${d.id}:${start}`, { prioritaire: true }) ?? null;
     try {
       return await this.o.executer({
         id: d.id,
@@ -230,12 +230,12 @@ export class FileActions {
         atelier: this.o.atelier,
         ...(this.o.lancer ? { lancer: this.o.lancer } : {}),
         pont: this.o.pont,
-        ia,
+        ia: ai,
         horloge: this.o.horloge,
         saisie: d.saisie,
         declencheur: d.declencheur,
         signal: d.ctl.signal,
-        surTrace,
+        surTrace: onTrace,
         surEtape: onStep,
         ...(d.essai ? { essai: d.essai } : {}),
         interrompue: () => this.arrete,
@@ -246,7 +246,7 @@ export class FileActions {
       });
     } finally {
       // Its calls still queued no longer leave: they would take the place of other runs.
-      ia?.oublier();
+      ai?.oublier();
       delete d.direct;
     }
   }

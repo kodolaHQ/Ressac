@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const ID = "reseau@agent.webaios";
-const ACCORD = { permissions: [], hotes: ["https://hote.test/*"], reseau: ["accorde.test"], tousLesSites: false, scriptsTousLesSites: false, scripts: false };
+const GRANT = { permissions: [], hotes: ["https://hote.test/*"], reseau: ["accorde.test"], tousLesSites: false, scriptsTousLesSites: false, scripts: false };
 const HOST = "0f7c6f4e-1111-4222-8333-444455556666";
 
 let observer: (subject: unknown) => void = () => {};
@@ -96,7 +96,7 @@ async function load(
   return Object.assign(x, { setSpaces });
 }
 const grant = (x: Awaited<ReturnType<typeof load>>, active = true) =>
-  x.handlers["extensions.portees"]!({ [ID]: { cle: "agent:reseau", accord: ACCORD, profils: ["defaut"], actif: active } }, new AbortController().signal);
+  x.handlers["extensions.portees"]!({ [ID]: { cle: "agent:reseau", accord: GRANT, profils: ["defaut"], actif: active } }, new AbortController().signal);
 
 beforeEach(() => parentApi.conduit.recv.set("APICall", firefoxRecv));
 afterEach(() => {
@@ -208,7 +208,7 @@ describe("agent extension checkpoints", () => {
   it("a profile turned private reloads at once, without the host, every tab an agent script was let into there", async () => {
     const x = await load({ 1: { attrs: ["webaios-tab-id"], url: "https://hote.test/a" }, 2: { attrs: ["webaios-tab-id"], url: "https://hote.test/b" } });
     x.handlers["extensions.portees"]!(
-      { [ID]: { cle: "agent:reseau", accord: ACCORD, profils: ["defaut"], actif: true }, "autre@agent.webaios": { cle: "agent:autre", accord: ACCORD, profils: ["defaut"], actif: true } },
+      { [ID]: { cle: "agent:reseau", accord: GRANT, profils: ["defaut"], actif: true }, "autre@agent.webaios": { cle: "agent:autre", accord: GRANT, profils: ["defaut"], actif: true } },
       new AbortController().signal,
     );
     x.check(ID, "estOnglet", 1);

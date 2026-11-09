@@ -2,7 +2,7 @@
 // keeps each app on its domains before any request leaves. The host (noyau/sites.ts) owns the data; this module owns
 // the windows.
 import type { DesignState } from "../../shared/api";
-import type { Cadre } from "../../shared/model";
+import type { FrameBounds } from "../../shared/model";
 import { INFO_NOTICE_DURATION_MS, HOME_OPEN_GAP_MS, ICON_MAX, type BarNotice, type SiteWindowState, type MessageToHome } from "../../shared/sites";
 import type { TweakError } from "../../core/sites/injection";
 import { decisionNavigation, openDecision, type NavigationContext } from "../../core/sites/navigation";
@@ -320,7 +320,7 @@ export function openInContainer(userContextId: number, marker: unknown, size: st
 }
 
 /** The frame kept, if it still meets a screen. */
-function visible(c: Cadre): boolean {
+function visible(c: FrameBounds): boolean {
   const screen = Cc["@mozilla.org/gfx/screenmanager;1"].getService(Ci.nsIScreenManager).screenForRect(c.x, c.y, c.largeur, c.hauteur);
   const [l, t, w, h] = [{ value: 0 }, { value: 0 }, { value: 0 }, { value: 0 }];
   screen.GetAvailRectDisplayPix(l, t, w, h);
@@ -328,22 +328,22 @@ function visible(c: Cadre): boolean {
 }
 
 /** The window's features: the kept frame (outer size), else 1200 × 800; 360 × 240 at least. */
-export function frameFeatures(cadre: Cadre | null | undefined): string {
-  const c = cadre && [cadre.x, cadre.y, cadre.largeur, cadre.hauteur].every(Number.isFinite) && visible(cadre) ? cadre : null;
+export function frameFeatures(frame: FrameBounds | null | undefined): string {
+  const c = frame && [frame.x, frame.y, frame.largeur, frame.hauteur].every(Number.isFinite) && visible(frame) ? frame : null;
   const width = Math.max(MIN.largeur, Math.round(c?.largeur ?? SIZE.largeur));
-  const hauteur = Math.max(MIN.hauteur, Math.round(c?.hauteur ?? SIZE.hauteur));
-  return `outerWidth=${width},outerHeight=${hauteur}${c ? `,left=${Math.round(c.x)},top=${Math.round(c.y)}` : ""}`;
+  const height = Math.max(MIN.hauteur, Math.round(c?.hauteur ?? SIZE.hauteur));
+  return `outerWidth=${width},outerHeight=${height}${c ? `,left=${Math.round(c.x)},top=${Math.round(c.y)}` : ""}`;
 }
 
 /** The window's frame (its normal bounds), or null while it is minimized or fullscreen. Still read at unload. */
-export function frameOf(win: Window): Cadre | null {
+export function frameOf(win: Window): FrameBounds | null {
   if (win.windowState === win.STATE_MINIMIZED || win.windowState === win.STATE_FULLSCREEN) return null;
   return { x: win.screenX, y: win.screenY, largeur: win.outerWidth, hauteur: win.outerHeight };
 }
 
 function noteFrame(s: OpenSite): void {
-  const cadre = frameOf(s.window);
-  if (cadre) host?.notify("sites.noter", { id: s.site.id, cadre });
+  const frame = frameOf(s.window);
+  if (frame) host?.notify("sites.noter", { id: s.site.id, cadre: frame });
 }
 
 function stateOf(s: OpenSite): SiteWindowState {
@@ -587,7 +587,7 @@ export const sites = {
    * Opens the app's window, or brings it to the front without reloading it (its declaration and domains are taken
    * over). False if the id is not a site app's.
    */
-  open(site: SiteChrome, cadre: Cadre | null | undefined, tweaks: TweaksRead): boolean {
+  open(site: SiteChrome, frame: FrameBounds | null | undefined, tweaks: TweaksRead): boolean {
     if (typeof site?.id !== "string" || !ID_SITE.test(site.id)) return false;
     const known = open.get(site.id);
     if (known && !known.window.closed) {
@@ -600,7 +600,7 @@ export const sites = {
     const userContextId = siteContainer(site.id);
     const marker = Cc["@mozilla.org/hash-property-bag;1"].createInstance(Ci.nsIWritablePropertyBag2);
     marker.setPropertyAsAString(SITE_WINDOW_KEY, site.id);
-    const win = openInContainer(userContextId, marker, frameFeatures(cadre));
+    const win = openInContainer(userContextId, marker, frameFeatures(frame));
     // The card first if the tweaks need their grant: the view loads nothing until it is answered (nextView).
     const s: OpenSite = { site, retouches: tweaks, erreurs: [], userContextId, window: win, view: null, vue: site.accordRequis ? "accord" : site.aAccueil ? "accueil" : "site", aCharger: null, aChargerAgent: false, loaded: false, listeners: new Set(), small: new Set(), blocked: [], notice: blockedNotice(() => broadcast(s)), home: null, lastHomeOpen: -Infinity, target: null, searching: false, hostNotice: null, wantNext: false, wanted: false };
     open.set(site.id, s);
@@ -792,11 +792,11 @@ export const sites = {
   infoNotice(id: string, text: string): void {
     const s = open.get(id);
     if (!s || s.window.closed || s.notice.avis?.genre === "lien-bloque") return;
-    const avis: BarNotice = { genre: "info", texte: text };
-    s.hostNotice = avis;
+    const notice: BarNotice = { genre: "info", texte: text };
+    s.hostNotice = notice;
     broadcast(s);
     setTimeout(() => {
-      if (s.hostNotice !== avis) return;
+      if (s.hostNotice !== notice) return;
       s.hostNotice = null;
       broadcast(s);
     }, INFO_NOTICE_DURATION_MS);
@@ -867,7 +867,7 @@ export const sites = {
   },
   /** The host's requests (noyau/sites.ts SitesChrome), positional params. */
   handlers: {
-    "sites.ouvrir": ([site, cadre, tweaks]: [SiteChrome, Cadre | null, TweaksRead]) => sites.open(site, cadre, tweaks),
+    "sites.ouvrir": ([site, frame, tweaks]: [SiteChrome, FrameBounds | null, TweaksRead]) => sites.open(site, frame, tweaks),
     "sites.fermer": ([id]: [string]) => sites.close(id),
     "sites.effacer": ([id]: [string]) => sites.erase(id),
     "sites.mettreAJour": ([site, tweaks]: [SiteChrome, TweaksRead]) => sites.update(site, tweaks),
@@ -892,13 +892,13 @@ export const sites = {
       s.hostNotice = a;
       broadcast(s);
     },
-    "sites.adresseChangee": ([id, domains, depart, to]: [string, string[], string, string]) => {
+    "sites.adresseChangee": ([id, domains, start, to]: [string, string[], string, string]) => {
       const s = open.get(id);
       if (!s || s.window.closed) return;
       // The card's « suivis »: the domains added by the follow (the host recomputes the same list).
       const declared = new Set(s.site.declaration.domaines.map((x) => x.toLowerCase()));
       const tracked = [...new Set(domains.map((x) => x.toLowerCase()).filter((x) => !declared.has(x)))];
-      s.site = { ...s.site, domaines: domains, depart, demande: { ...s.site.demande, suivis: tracked } };
+      s.site = { ...s.site, domaines: domains, depart: start, demande: { ...s.site.demande, suivis: tracked } };
       if (s.vue === "accord") {
         // The card is shown: the view loads nothing before the choice; a page already loaded was on the old domain.
         if (s.loaded) {

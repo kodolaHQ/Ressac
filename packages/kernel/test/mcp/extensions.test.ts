@@ -2,20 +2,20 @@ import { afterEach, expect, test } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { AccessPolicy } from "../../src/access/policy.js";
-import { PontFactice } from "../../src/mcp/pont-factice.js";
+import { FakeBridge } from "../../src/mcp/pont-factice.js";
 import { startMcpServer, generateToken } from "../../src/mcp/server.js";
 import {
   CONSOLE_BACKGROUND_HIDDEN,
-  CONSOLE_FOND_OBSERVE,
+  OBSERVED_BACKGROUND_CONSOLE,
   RELOAD_DETAIL_PREFIX,
   REQUEST_REMOVED,
   CONSOLE_REASON_LENGTH,
   EXTENSION_CONSOLE_PREFIX,
   DENIED_BY_USER,
-  RESERVE_AGENT,
+  AGENT_ONLY,
   hiddenTabs,
-  type ConsolePourAgent,
-  type ExtensionPourAgent,
+  type AgentConsole,
+  type AgentExtension,
   type ExtensionsTools,
 } from "../../src/mcp/extensions.js";
 
@@ -26,10 +26,10 @@ const token = generateToken();
 /** A fake `OutilsExtensions` that records its calls. */
 class FakeTools implements ExtensionsTools {
   appels: { methode: string; args: unknown[] }[] = [];
-  liste: ExtensionPourAgent[] = [];
+  liste: AgentExtension[] = [];
   reponseDemande: Awaited<ReturnType<ExtensionsTools["demander"]>> = { ok: true, espace: "Perso" };
   reponseDeblocage: Awaited<ReturnType<ExtensionsTools["debloquerConsole"]>> = { ok: true };
-  laConsole: ConsolePourAgent | null = { messages: [], masques: 0, fondMasque: false, fondObserve: false, debloquee: false };
+  laConsole: AgentConsole | null = { messages: [], masques: 0, fondMasque: false, fondObserve: false, debloquee: false };
   async lister() {
     this.appels.push({ methode: "lister", args: [] });
     return this.liste;
@@ -61,7 +61,7 @@ let tools: FakeTools;
 async function start(updateEntry = true, beatMs?: number) {
   tools = new FakeTools();
   server = await startMcpServer({
-    pont: new PontFactice([], { actif: null, autoriser: false }),
+    pont: new FakeBridge([], { actif: null, autoriser: false }),
     politique: new AccessPolicy(),
     jeton: token,
     agent: "Claude",
@@ -122,12 +122,12 @@ test("console_extension of a Store extension: RESERVE_AGENT, the console is not 
   await start();
   for (const id of [`store:${"a".repeat(32)}`, "b".repeat(32)]) {
     const r = await invoke("console_extension", { id });
-    expect(r.texte).toBe(RESERVE_AGENT);
+    expect(r.texte).toBe(AGENT_ONLY);
   }
-  expect(RESERVE_AGENT).toBe("Réservé aux extensions que tu as écrites.");
+  expect(AGENT_ONLY).toBe("Réservé aux extensions que tu as écrites.");
   expect(tools.appels.filter((a) => a.methode === "console")).toEqual([]);
   // Unblocking neither.
-  expect((await invoke("debloquer_console", { id: `store:${"a".repeat(32)}`, raison: "x" })).texte).toBe(RESERVE_AGENT);
+  expect((await invoke("debloquer_console", { id: `store:${"a".repeat(32)}`, raison: "x" })).texte).toBe(AGENT_ONLY);
   expect(tools.appels.filter((a) => a.methode === "debloquerConsole")).toEqual([]);
 });
 
@@ -151,20 +151,20 @@ test("console_extension: prefixed messages, masked ones counted, masked service 
   expect(CONSOLE_BACKGROUND_HIDDEN).toBe(
     "Console du service worker masquée : l'extension a tourné dans un onglet que tu ne peux pas lire. Demande à l'utilisateur de la débloquer (debloquer_console) si tu en as besoin pour corriger.",
   );
-  expect(text).not.toContain(CONSOLE_FOND_OBSERVE);
+  expect(text).not.toContain(OBSERVED_BACKGROUND_CONSOLE);
 });
 
 test("console_extension: service worker and pages always masked for an observing right — said in one sentence, with debloquer_console", async () => {
   await start();
   tools.laConsole = { messages: [], masques: 0, fondMasque: false, fondObserve: true, debloquee: false };
   const { texte: text } = await invoke("console_extension", { id: "cacheur" });
-  expect(text).toContain(CONSOLE_FOND_OBSERVE);
-  expect(CONSOLE_FOND_OBSERVE).toBe(
+  expect(text).toContain(OBSERVED_BACKGROUND_CONSOLE);
+  expect(OBSERVED_BACKGROUND_CONSOLE).toBe(
     "Console du service worker et des pages masquée : l'extension a un droit qui observe les onglets ou la navigation (tabs, webNavigation, cookies, history, topSites, sessions, bookmarks, activeTab, clipboardRead, contextMenus, declarativeNetRequestFeedback, sites, tous les sites), demande à l'utilisateur de la débloquer (debloquer_console) si tu en as besoin pour corriger.",
   );
-  expect(CONSOLE_FOND_OBSERVE.split(". ").length).toBe(1);
+  expect(OBSERVED_BACKGROUND_CONSOLE.split(". ").length).toBe(1);
   // It no longer depends on a tab open at the time of the message.
-  expect(CONSOLE_FOND_OBSERVE).not.toMatch(/écrits quand|pendant/);
+  expect(OBSERVED_BACKGROUND_CONSOLE).not.toMatch(/écrits quand|pendant/);
 });
 
 test("console_extension says in its description that the background is always masked for an observing right", async () => {
@@ -256,8 +256,8 @@ test("recharger_extension (AMO signature) sends progress notifications; lister_e
   expect(progress).toEqual([...progress].sort((a, b) => a - b));
   expect((r.content as { text: string }[])[0]!.text).toContain("etat : desactivee");
   // A tool that expects neither a signature nor a card stays silent: blocked, it falls on the client's timeout.
-  const lister = tools.lister.bind(tools);
-  tools.lister = async () => (await new Promise((r) => setTimeout(r, 150)), lister());
+  const listTool = tools.lister.bind(tools);
+  tools.lister = async () => (await new Promise((r) => setTimeout(r, 150)), listTool());
   const silent: number[] = [];
   await client!.callTool({ name: "lister_extensions", arguments: {} }, undefined, { onprogress: (p) => silent.push(p.progress) });
   expect(silent).toEqual([]);

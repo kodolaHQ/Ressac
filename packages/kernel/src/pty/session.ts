@@ -43,21 +43,21 @@ export class SessionAgent {
     if (this.actif) this.pty.resize(cols, rows);
   }
 
-  surDonnees(rappel: (d: string) => void): () => void {
-    const subscription = this.pty.onData(rappel);
+  surDonnees(callback: (d: string) => void): () => void {
+    const subscription = this.pty.onData(callback);
     return () => subscription.dispose();
   }
 
-  surFin(rappel: (code: number) => void): () => void {
-    const subscription = this.pty.onExit(({ exitCode }) => rappel(exitCode));
+  surFin(callback: (code: number) => void): () => void {
+    const subscription = this.pty.onExit(({ exitCode }) => callback(exitCode));
     return () => subscription.dispose();
   }
 
   /** Returns once the agent is stopped where it runs (the container), not only the local terminal. */
   async arreter(): Promise<void> {
     if (!this.actif) return;
-    const distant = Promise.resolve(this.arreterDistant?.()).catch(() => {});
+    const remote = Promise.resolve(this.arreterDistant?.()).catch(() => {});
     this.pty.kill();
-    await distant;
+    await remote;
   }
 }

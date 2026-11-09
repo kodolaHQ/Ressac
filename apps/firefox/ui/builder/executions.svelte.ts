@@ -9,9 +9,9 @@ export type SourceExecutions = Pick<ApiWebaios["accueil"], "executions" | "execu
  */
 export type Launcher = {
   lancer(key: string, input?: string | null): Promise<{ execution?: string; erreur?: string }>;
-  rejouer(key: string, execution: string, bloc: string): Promise<AttemptResult>;
+  rejouer(key: string, execution: string, block: string): Promise<AttemptResult>;
   direct(): Promise<DirectState>;
-  surDirect(rappel: (e: DirectState) => void): () => void;
+  surDirect(callback: (e: DirectState) => void): () => void;
 };
 
 /** The prefix of the kernel's refusals, reused for a request that fails on the way. */
@@ -75,7 +75,7 @@ export class Executions {
     let finished = false;
     // A pushed event is more recent than the initial read: the read never overwrites it.
     let received = false;
-    const fin = this.lanceur.surDirect((e) => {
+    const end = this.lanceur.surDirect((e) => {
       received = true;
       this.appliquerDirect(e);
     });
@@ -85,7 +85,7 @@ export class Executions {
       .catch(() => {});
     return () => {
       finished = true;
-      fin();
+      end();
     };
   }
 
@@ -150,13 +150,13 @@ export class Executions {
   }
 
   /** « Rejouer depuis ce bloc » with the upstream outputs of the chosen run; the returned trial is chosen. */
-  async rejouer(bloc: string): Promise<void> {
+  async rejouer(block: string): Promise<void> {
     const origin = this.choisie;
     if (!this.lanceur || this.occupe || !origin) return;
     this.demande = true;
     this.refus = null;
     try {
-      const r = await this.lanceur.rejouer(this.widget, origin.id, bloc);
+      const r = await this.lanceur.rejouer(this.widget, origin.id, block);
       if (r.ok) this.garder(r.execution);
       else this.refus = r.erreur;
     } catch (e) {

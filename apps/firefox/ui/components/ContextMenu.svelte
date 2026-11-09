@@ -6,22 +6,22 @@
 
 {#if menu.ouvert}
   <!-- Stays in the sidebar (the web view would cover a menu that overflows onto the content), except on an internal page. -->
-  {@const enBas = menu.ouvert.y > window.innerHeight / 2}
+  {@const atBottom = menu.ouvert.y > window.innerHeight / 2}
   <div
     class="menu"
     role="menu"
     style:left="{Math.min(menu.ouvert.x, (menu.ouvert.libre ? window.innerWidth : 240) - 170)}px"
-    style:top={enBas ? undefined : `${menu.ouvert.y}px`}
-    style:bottom={enBas ? `${window.innerHeight - menu.ouvert.y}px` : undefined}
+    style:top={atBottom ? undefined : `${menu.ouvert.y}px`}
+    style:bottom={atBottom ? `${window.innerHeight - menu.ouvert.y}px` : undefined}
   >
-    {#each menu.ouvert.entrees as entree (entree.libelle)}
+    {#each menu.ouvert.entrees as entry (entry.libelle)}
       <button
         role="menuitem"
         onclick={(e) => {
           e.stopPropagation();
           closeMenu();
-          entree.agir();
-        }}>{entree.libelle}</button
+          entry.agir();
+        }}>{entry.libelle}</button
       >
     {/each}
   </div>

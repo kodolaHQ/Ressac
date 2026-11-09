@@ -1,14 +1,14 @@
 import { WorkshopError } from "@webaios/kernel";
-import type { AgentPanelState, TailleTerminal } from "../../shared/api";
+import type { AgentPanelState, TerminalSize } from "../../shared/api";
 import type { WindowId } from "../../shared/model";
 
 /** Output kept per window, returned when the UI reloads: enough to find the conversation again. */
-export const TAMPON_MAX = 200_000;
+export const BUFFER_MAX = 200_000;
 /** The agent's output goes to the UI in batches: one IPC message per burst, not per pty chunk. */
 export const GROUPING_MS = 8;
 
 /** The last characters of an output, kept in chunks: appending never copies the whole buffer. */
-export class Tampon {
+export class SessionBuffer {
   private morceaux: string[] = [];
   private longueur = 0;
   private coupe = false;
@@ -20,13 +20,13 @@ export class Tampon {
     this.longueur += d.length;
     while (this.longueur > this.max) {
       this.coupe = true;
-      const premier = this.morceaux[0]!;
+      const first = this.morceaux[0]!;
       const tooMany = this.longueur - this.max;
-      if (premier.length <= tooMany) {
+      if (first.length <= tooMany) {
         this.morceaux.shift();
-        this.longueur -= premier.length;
+        this.longueur -= first.length;
       } else {
-        this.morceaux[0] = premier.slice(tooMany);
+        this.morceaux[0] = first.slice(tooMany);
         this.longueur -= tooMany;
       }
     }
@@ -35,8 +35,8 @@ export class Tampon {
   /** Replaying a cut buffer starts at a whole line: not in the middle of an escape sequence. */
   texte(): string {
     const s = this.morceaux.join("");
-    const ligne = this.coupe ? s.indexOf("\n") : -1;
-    return ligne >= 0 && ligne < s.length / 10 ? s.slice(ligne + 1) : s;
+    const line = this.coupe ? s.indexOf("\n") : -1;
+    return line >= 0 && line < s.length / 10 ? s.slice(line + 1) : s;
   }
 
   vider(): void {
@@ -56,78 +56,78 @@ export interface SessionLike {
   arreter(): void | Promise<void>;
 }
 
-interface Entree {
+interface Entry {
   session?: SessionLike;
-  tampon: Tampon;
+  tampon: SessionBuffer;
   /** Output not yet sent to the UI (see REGROUPEMENT_MS). */
   aEnvoyer: string;
   minuterie?: NodeJS.Timeout;
   demarrage?: Promise<void>;
   /** Last terminal size, to reopen the session identically (relancerTout). */
-  taille: TailleTerminal;
+  taille: TerminalSize;
   /** Text to put in the input as soon as the session is active (see preRemplir). */
   preRemplissage?: { texte: string; ecrit?: () => void };
 }
 
 /** One agent session per window (spec §8): it survives tab changes and the panel closing. */
 export class SessionsAgent {
-  private entrees = new Map<WindowId, Entree>();
+  private entrees = new Map<WindowId, Entry>();
 
   constructor(
     private readonly o: {
-      ouvrir: (f: WindowId, t: TailleTerminal) => Promise<SessionLike>;
-      envoyer: (f: WindowId, canal: "donnees" | "etat", v: string | AgentPanelState) => void;
+      ouvrir: (f: WindowId, t: TerminalSize) => Promise<SessionLike>;
+      envoyer: (f: WindowId, channel: "donnees" | "etat", v: string | AgentPanelState) => void;
       /** The user submits a message (Enter) in this window's terminal. */
       surEnvoi?: (f: WindowId) => void;
     },
   ) {}
 
   /** Idempotent: an active session returns its state and its buffer; otherwise a new session starts. */
-  demarrer(f: WindowId, taille: TailleTerminal): Promise<void> {
+  demarrer(f: WindowId, size: TerminalSize): Promise<void> {
     let e = this.entrees.get(f);
-    if (!e) this.entrees.set(f, (e = { tampon: new Tampon(TAMPON_MAX), aEnvoyer: "", taille }));
-    const entree = e;
-    entree.taille = taille;
-    if (entree.session?.active) {
-      entree.session.redimensionner(taille.cols, taille.rows);
+    if (!e) this.entrees.set(f, (e = { tampon: new SessionBuffer(BUFFER_MAX), aEnvoyer: "", taille: size }));
+    const entry = e;
+    entry.taille = size;
+    if (entry.session?.active) {
+      entry.session.redimensionner(size.cols, size.rows);
       this.o.envoyer(f, "etat", { etat: "actif" });
       // The buffer already contains the pending output: it is not sent a second time.
-      this.annulerEnvoi(entree);
-      const tampon = entree.tampon.texte();
-      if (tampon) this.o.envoyer(f, "donnees", tampon);
+      this.annulerEnvoi(entry);
+      const buffer = entry.tampon.texte();
+      if (buffer) this.o.envoyer(f, "donnees", buffer);
       return Promise.resolve();
     }
-    if (entree.demarrage) return entree.demarrage;
-    entree.tampon.vider();
-    this.annulerEnvoi(entree);
+    if (entry.demarrage) return entry.demarrage;
+    entry.tampon.vider();
+    this.annulerEnvoi(entry);
     this.o.envoyer(f, "etat", { etat: "preparation" });
-    entree.demarrage = this.o
-      .ouvrir(f, taille)
+    entry.demarrage = this.o
+      .ouvrir(f, size)
       .then(
         (s) => {
           // Window closed during startup: nobody will display this agent.
-          if (this.entrees.get(f) !== entree) return void s.arreter();
-          entree.session = s;
+          if (this.entrees.get(f) !== entry) return void s.arreter();
+          entry.session = s;
           s.surDonnees((d) => {
-            entree.tampon.ajouter(d);
-            entree.aEnvoyer += d;
-            entree.minuterie ??= setTimeout(() => this.envoyerSortie(f, entree), GROUPING_MS);
+            entry.tampon.ajouter(d);
+            entry.aEnvoyer += d;
+            entry.minuterie ??= setTimeout(() => this.envoyerSortie(f, entry), GROUPING_MS);
           });
           s.surFin((code) => {
             // Session replaced (relancerTout): its end is not that of the displayed conversation.
-            if (entree.session !== s) return;
-            this.envoyerSortie(f, entree);
-            entree.session = undefined;
+            if (entry.session !== s) return;
+            this.envoyerSortie(f, entry);
+            entry.session = undefined;
             this.o.envoyer(f, "etat", { etat: "termine", code });
           });
           this.o.envoyer(f, "etat", { etat: "actif" });
-          const p = entree.preRemplissage;
-          entree.preRemplissage = undefined;
+          const p = entry.preRemplissage;
+          entry.preRemplissage = undefined;
           if (p) this.ecrirePreRemplissage(s, p.texte, p.ecrit);
         },
         (err: Error) => {
           // Startup abandoned (window closed, relancerTout): its failure no longer concerns the panel.
-          if (this.entrees.get(f) !== entree) return;
+          if (this.entrees.get(f) !== entry) return;
           this.o.envoyer(
             f,
             "etat",
@@ -135,17 +135,17 @@ export class SessionsAgent {
           );
         },
       )
-      .finally(() => (entree.demarrage = undefined));
-    return entree.demarrage;
+      .finally(() => (entry.demarrage = undefined));
+    return entry.demarrage;
   }
 
-  private envoyerSortie(f: WindowId, e: Entree): void {
+  private envoyerSortie(f: WindowId, e: Entry): void {
     const d = e.aEnvoyer;
     this.annulerEnvoi(e);
     if (d && this.entrees.get(f) === e) this.o.envoyer(f, "donnees", d);
   }
 
-  private annulerEnvoi(e: Entree): void {
+  private annulerEnvoi(e: Entry): void {
     clearTimeout(e.minuterie);
     e.minuterie = undefined;
     e.aEnvoyer = "";
@@ -170,7 +170,7 @@ export class SessionsAgent {
   preRemplir(f: WindowId, text: string, written?: () => void): void {
     let e = this.entrees.get(f);
     if (e?.session?.active) return this.ecrirePreRemplissage(e.session, text, written);
-    if (!e) this.entrees.set(f, (e = { tampon: new Tampon(TAMPON_MAX), aEnvoyer: "", taille: { cols: 80, rows: 24 } }));
+    if (!e) this.entrees.set(f, (e = { tampon: new SessionBuffer(BUFFER_MAX), aEnvoyer: "", taille: { cols: 80, rows: 24 } }));
     e.preRemplissage = { texte: text, ...(written ? { ecrit: written } : {}) };
   }
 
@@ -179,7 +179,7 @@ export class SessionsAgent {
     s.ecrire(text);
   }
 
-  redimensionner(f: WindowId, t: TailleTerminal): void {
+  redimensionner(f: WindowId, t: TerminalSize): void {
     const e = this.entrees.get(f);
     if (e) e.taille = t;
     e?.session?.redimensionner(t.cols, t.rows);

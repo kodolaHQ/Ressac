@@ -182,12 +182,12 @@ async function launch() {
   await resolveLocalHosts(m, HOSTS);
 }
 /** Launches WebAiOs with the Vidola app written, `accord` given or not. */
-async function startVidola(accord: boolean) {
+async function startVidola(grant: boolean) {
   dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
   profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
   const s = siteVidola();
   writeSite(dataDir, "vidola", s);
-  if (accord) await grantSite(dataDir, "vidola", s.declaration);
+  if (grant) await grantSite(dataDir, "vidola", s.declaration);
   await launch();
 }
 

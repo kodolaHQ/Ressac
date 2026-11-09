@@ -16,13 +16,13 @@ export type Responder = (call: Call) => Promise<{ ok: unknown } | { erreur: stri
  * The workflow as the kernel sends it: validated (with what the widget declares, the earlier rules without it),
  * default parameters filled in, with the order.
  */
-export function sentWorkflow(brut: unknown, context: ValidationContext = DEFAULT_CONTEXT) {
-  const r = validateWorkflow(brut, context);
+export function sentWorkflow(raw: unknown, context: ValidationContext = DEFAULT_CONTEXT) {
+  const r = validateWorkflow(raw, context);
   if (!r.ok) throw new Error(r.erreur);
   return { blocs: r.valide.workflow.blocs, liens: r.valide.workflow.liens, ordre: r.valide.ordre };
 }
 
-export async function lancer(o: {
+export async function launch(o: {
   workflow: unknown;
   fichiers?: Record<string, string>;
   memoire?: BlocksMemory;
@@ -35,23 +35,23 @@ export async function lancer(o: {
   /** Keys added to the `debut` line (absent otherwise, like for a widget today). */
   debut?: { progressif?: true; limiteMs?: number; saisie?: string; avancement?: true };
 }) {
-  const dossier = await tempFolder();
-  await writeFile(join(dossier, "widget.json"), JSON.stringify({ config: { lu: "dans widget.json" } }));
-  for (const [name, content] of Object.entries(o.fichiers ?? {})) await writeFile(join(dossier, name), content);
-  const child = spawn("node", [SCRIPT, dossier], { stdio: ["pipe", "pipe", "pipe"] });
+  const folder = await tempFolder();
+  await writeFile(join(folder, "widget.json"), JSON.stringify({ config: { lu: "dans widget.json" } }));
+  for (const [name, content] of Object.entries(o.fichiers ?? {})) await writeFile(join(folder, name), content);
+  const child = spawn("node", [SCRIPT, folder], { stdio: ["pipe", "pipe", "pipe"] });
   let stderr = "";
   child.stderr.on("data", (d) => (stderr += d));
   const lignes: any[] = [];
   const calls: Call[] = [];
-  let tampon = "";
+  let buffer = "";
   const finished = new Promise<number | null>((ok) => child.on("close", (code) => ok(code)));
   child.stdout.on("data", (d) => {
-    tampon += d;
+    buffer += d;
     let i;
-    while ((i = tampon.indexOf("\n")) >= 0) {
-      const ligne = tampon.slice(0, i);
-      tampon = tampon.slice(i + 1);
-      const m = JSON.parse(ligne);
+    while ((i = buffer.indexOf("\n")) >= 0) {
+      const line = buffer.slice(0, i);
+      buffer = buffer.slice(i + 1);
+      const m = JSON.parse(line);
       lignes.push(m);
       if (m.t === "appel") {
         calls.push(m);
@@ -84,6 +84,6 @@ export async function lancer(o: {
   };
 }
 
-export const bloc = (id: string, type: string, params: Record<string, unknown> = {}) => ({ id, type, parametres: params });
+export const block = (id: string, type: string, params: Record<string, unknown> = {}) => ({ id, type, parametres: params });
 export const chain = (...ids: string[]) => ids.slice(1).map((to, i) => ({ de: ids[i]!, vers: to }));
-export const sortie = bloc("sortie", "sortie", { vers: "widget" });
+export const output = block("sortie", "sortie", { vers: "widget" });

@@ -3,7 +3,7 @@
   import DesignButton from "./DesignButton.svelte";
   import AccessBadge from "./AccessBadge.svelte";
   import Icon from "./Icon.svelte";
-  import type { WindowState, Visite } from "../../shared/model";
+  import type { WindowState, Visit } from "../../shared/model";
   import { accessOf, api, appState } from "../state.svelte";
 
   let { fenetre: win }: { fenetre: WindowState } = $props();
@@ -11,10 +11,10 @@
     const id = win.actif[win.espaceActif];
     return id ? appState.valeur?.onglets[id] : undefined;
   });
-  const droitsAgent = $derived(tab ? accessOf(tab.id) : undefined);
+  const agentRights = $derived(tab ? accessOf(tab.id) : undefined);
   let input = $state<string | null>(null); // non-null during editing
-  let champ: HTMLInputElement;
-  let suggestions = $state<Visite[]>([]);
+  let field: HTMLInputElement;
+  let suggestions = $state<Visit[]>([]);
   let chosen = $state(-1);
   let request = 0;
 
@@ -33,15 +33,15 @@
     chosen = -1;
   }
 
-  function aller(text: string) {
+  function go(text: string) {
     api.naviguer(tab?.id ?? null, text);
     input = null;
     closeSuggestions();
-    champ.blur();
+    field.blur();
   }
 
   function clavier(e: KeyboardEvent) {
-    if (e.key === "Escape") champ.blur();
+    if (e.key === "Escape") field.blur();
     else if (e.key === "ArrowDown" && suggestions.length) {
       e.preventDefault();
       chosen = (chosen + 1) % suggestions.length;
@@ -64,8 +64,8 @@
     e.preventDefault();
     const suggestion = suggestions[chosen];
     const text = suggestion?.url ?? input?.trim();
-    if (text) aller(text);
-    else champ.blur();
+    if (text) go(text);
+    else field.blur();
   }
 </script>
 
@@ -88,9 +88,9 @@
 <div class="ligne">
 <form onsubmit={validate}>
   <input
-    bind:this={champ}
+    bind:this={field}
     data-testid="barre-adresse"
-    class:avec-acces={droitsAgent}
+    class:avec-acces={agentRights}
     value={input ?? (tab ? hostName(tab.url) : "")}
     placeholder="Rechercher ou saisir une adresse"
     spellcheck="false"
@@ -113,7 +113,7 @@
     aria-controls="suggestions"
     aria-autocomplete="list"
   />
-  {#if tab && droitsAgent}<span class="acces"><AccessBadge id={tab.id} etat={droitsAgent} /></span>{/if}
+  {#if tab && agentRights}<span class="acces"><AccessBadge id={tab.id} etat={agentRights} /></span>{/if}
   {#if suggestions.length}
     <ul class="suggestions" id="suggestions" role="listbox">
       {#each suggestions as v, i (v.url)}
@@ -123,7 +123,7 @@
           aria-selected={i === chosen}
           onmousedown={(e) => {
             e.preventDefault();
-            aller(v.url);
+            go(v.url);
           }}
         >
           <span class="titre">{v.titre}</span>

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { untrack } from "svelte";
   import { api } from "../state.svelte";
-  import { depotDe, isActionKey } from "./target";
+  import { repoOf, isActionKey } from "./target";
   import { CodeFile } from "./codes.svelte";
   import { createEdit } from "./edition.svelte";
 
@@ -11,7 +11,7 @@
    */
   /** `widget`: the workflow's key (`cleCible`), a widget's or an action's. */
   let { widget, nom: name }: { widget: string; nom: string } = $props();
-  const depot = depotDe(api.workflow);
+  const depot = repoOf(api.workflow);
 
   // svelte-ignore state_referenced_locally
   // Once saved, the code may unblock the workflow refused for lack of this file (same edit as the builder).

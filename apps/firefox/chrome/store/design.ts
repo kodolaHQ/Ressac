@@ -17,11 +17,11 @@ import {
   cleanSource,
   targetKey,
   firefoxViewfinderScript,
-  HAUTEUR_MESSAGE,
+  MESSAGE_HEIGHT,
   MESSAGE_WIDTH,
   BASKET_WIDTH,
-  MARGE,
-  MARGE_MESSAGE,
+  MARGIN,
+  MESSAGE_MARGIN,
   bubbleSlot,
   rectCapture,
   SOURCE_TIMEOUT_MS,
@@ -344,7 +344,7 @@ export function createDesign(o: {
         // A tab outside the followed projects (the host said so): why nothing happens, nothing injected.
         if (r === null && t.type === "fenetre" && !sessions.has(key) && view(t)?.browser === v.browser) {
           const b = v.browser.getBoundingClientRect();
-          const place = { x: b.x + b.width - MARGE_MESSAGE - MESSAGE_WIDTH, y: b.y + MARGE_MESSAGE, width: MESSAGE_WIDTH, height: HAUTEUR_MESSAGE };
+          const place = { x: b.x + b.width - MESSAGE_MARGIN - MESSAGE_WIDTH, y: b.y + MESSAGE_MARGIN, width: MESSAGE_WIDTH, height: MESSAGE_HEIGHT };
           show(key, v.win, place, { mode: "message", message: UNAVAILABLE_DESIGN, projet: "", etiquette: "", source: null, destination: null, sansDestination: null, avertissement: null });
         }
         return;
@@ -465,8 +465,8 @@ export function createDesign(o: {
       if (!v || !r || cartAsks.get(targetKey(t)) !== n) return;
       const [l, h] = [v.win.innerWidth, v.win.innerHeight];
       // A site app's cart starts under its bar.
-      const y = t.type === "site" ? SITE_BAR_HEIGHT + MARGE : MARGE;
-      const place = { x: Math.max(0, l - MARGE - BASKET_WIDTH), y, width: Math.min(BASKET_WIDTH, l), height: Math.max(0, h - y - MARGE) };
+      const y = t.type === "site" ? SITE_BAR_HEIGHT + MARGIN : MARGIN;
+      const place = { x: Math.max(0, l - MARGIN - BASKET_WIDTH), y, width: Math.min(BASKET_WIDTH, l), height: Math.max(0, h - y - MARGIN) };
       show(targetKey(t), v.win, place, { mode: "panier", message: null, projet: r.projet.projet, etiquette: "", source: null, destination: r.destination, sansDestination: r.sansDestination, avertissement: null });
     },
 
@@ -542,8 +542,8 @@ export function overlayApi(
     async retirer(p, x) {
       if (allowed(p) && id(x)) await o.host.request("design.retirer", { projet: p, id: x });
     },
-    async traite(p, lot) {
-      if (allowed(p) && id(lot)) await o.host.request("design.traite", { projet: p, lot });
+    async traite(p, batch) {
+      if (allowed(p) && id(batch)) await o.host.request("design.traite", { projet: p, lot: batch });
     },
     envoyer: async (p) => (allowed(p) ? o.host.request<ExtensionResult>("design.envoyer", { projet: p }) : { ok: false, erreur: INVALID_REQUEST }),
     surChange(cb) {

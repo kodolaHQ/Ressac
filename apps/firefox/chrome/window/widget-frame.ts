@@ -24,7 +24,7 @@ export function displayUrl(id: string, mtime: number): string {
 }
 
 /** The folder of a widget's copies: `<dataDir>/webaios-widgets/<id>/`. */
-function dossierCopies(dataDir: string, id: string): string {
+function copiesFolder(dataDir: string, id: string): string {
   return PathUtils.join(dataDir, "webaios-widgets", id);
 }
 
@@ -32,17 +32,17 @@ function dossierCopies(dataDir: string, id: string): string {
  * The copies folder, created then confined to `<dataDir>/webaios-widgets`: a copies folder that is a symbolic
  * link is refused. Returns its real path, where the copies are written.
  */
-async function dossierCopiesConfine(dataDir: string, id: string): Promise<string | null> {
-  const dossier = dossierCopies(dataDir, id);
-  await IOUtils.makeDirectory(dossier, { createAncestors: true, ignoreExisting: true });
+async function confinedCopiesFolder(dataDir: string, id: string): Promise<string | null> {
+  const folder = copiesFolder(dataDir, id);
+  await IOUtils.makeDirectory(folder, { createAncestors: true, ignoreExisting: true });
   const root = realPath(PathUtils.join(dataDir, "webaios-widgets"));
-  const reel = realPath(dossier);
-  return root && reel && reel.startsWith(root + "/") ? reel : null;
+  const real = realPath(folder);
+  return root && real && real.startsWith(root + "/") ? real : null;
 }
 
 /** The sanitized copy of a display: `<dossierCopies>/affichage-<mtime>.html`. */
 export function copyPath(dataDir: string, id: string, mtime: number): string {
-  return PathUtils.join(dossierCopies(dataDir, id), `affichage-${mtime}.html`);
+  return PathUtils.join(copiesFolder(dataDir, id), `affichage-${mtime}.html`);
 }
 
 /**
@@ -64,12 +64,12 @@ function realPath(path: string): string | null {
 function sourcePath(dataDir: string, id: string): string | null {
   if (!ID_WIDGET.test(id)) return null;
   const widgetsDir = PathUtils.join(dataDir, "espace", "accueil", "widgets");
-  const dossier = PathUtils.join(widgetsDir, id);
+  const folder = PathUtils.join(widgetsDir, id);
   const root = realPath(widgetsDir);
-  const reelDossier = realPath(dossier);
-  const realFile = realPath(PathUtils.join(dossier, "affichage.html"));
-  if (!root || !reelDossier || !realFile) return null;
-  return reelDossier.startsWith(root + "/") && realFile.startsWith(reelDossier + "/") ? realFile : null;
+  const realFolder = realPath(folder);
+  const realFile = realPath(PathUtils.join(folder, "affichage.html"));
+  if (!root || !realFolder || !realFile) return null;
+  return realFolder.startsWith(root + "/") && realFile.startsWith(realFolder + "/") ? realFile : null;
 }
 
 /**
@@ -79,12 +79,12 @@ function sourcePath(dataDir: string, id: string): string | null {
  * its argument. The WebRTC globals go last: if an earlier step throws, `RTCPeerConnection` is still there, and the UI
  * (which only attaches its gesture listener when it is gone) records no click — the guard fails closed.
  */
-function widgetGuard(motif: string): void {
+function widgetGuard(pattern: string): void {
   const w = window as unknown as Record<string, any>;
-  const refuser = (what: string): never => {
+  const deny = (what: string): never => {
     throw new TypeError(`Refusé dans l'affichage d'un widget : ${what}`);
   };
-  const hint = new RegExp(motif, "i");
+  const hint = new RegExp(pattern, "i");
   const containsHint = (html: string) => {
     let before: string;
     let x = html;
@@ -100,9 +100,9 @@ function widgetGuard(motif: string): void {
   };
   // No catch: a policy that cannot be created fails the whole guard, and no link then opens.
   w.trustedTypes?.createPolicy("default", {
-    createHTML: (html: string) => (containsHint(String(html)) ? refuser("<link>, <meta http-equiv> ou règles de spéculation") : html),
-    createScript: () => refuser("code en texte (URL javascript:, gestionnaire en attribut, texte d'un script)"),
-    createScriptURL: () => refuser("script externe"),
+    createHTML: (html: string) => (containsHint(String(html)) ? deny("<link>, <meta http-equiv> ou règles de spéculation") : html),
+    createScript: () => deny("code en texte (URL javascript:, gestionnaire en attribut, texte d'un script)"),
+    createScriptURL: () => deny("script externe"),
   });
   const tags = ["link", "meta"];
   const localName = (n: unknown) => String(n).toLowerCase().split(":").pop() ?? "";
@@ -113,11 +113,11 @@ function widgetGuard(motif: string): void {
     Object.defineProperty(proto, name, { configurable: true, writable: true, value: f });
   };
   replace(D, "createElement", function (this: unknown, name: unknown, o?: unknown) {
-    if (tags.includes(localName(name))) return refuser(`<${String(name)}>`);
+    if (tags.includes(localName(name))) return deny(`<${String(name)}>`);
     return create.call(this, name, o);
   });
   replace(D, "createElementNS", function (this: unknown, ns: unknown, name: unknown, o?: unknown) {
-    if (tags.includes(localName(name))) return refuser(`<${String(name)}>`);
+    if (tags.includes(localName(name))) return deny(`<${String(name)}>`);
     return createNS.call(this, ns, name, o);
   });
   // Structural rule, whatever the path (createDocument then adoptNode, DOMParser, template, cloneNode…): no <link>
@@ -141,7 +141,7 @@ function widgetGuard(motif: string): void {
       const f = proto[name];
       if (typeof f !== "function") continue;
       replace(proto, name, function (this: unknown, ...a: unknown[]) {
-        if (a.some(forbiddenIn)) return refuser("<link> ou <meta> inséré dans la page");
+        if (a.some(forbiddenIn)) return deny("<link> ou <meta> inséré dans la page");
         return f.apply(this, a);
       });
     }
@@ -159,14 +159,14 @@ function widgetGuard(motif: string): void {
   const command = D.execCommand;
   if (typeof command === "function")
     replace(D, "execCommand", function (this: unknown, name: unknown, ...a: unknown[]) {
-      if (String(name).toLowerCase() === "inserthtml" && containsHint(String(a[1] ?? ""))) return refuser("<link>, <meta http-equiv> ou règles de spéculation");
+      if (String(name).toLowerCase() === "inserthtml" && containsHint(String(a[1] ?? ""))) return deny("<link>, <meta http-equiv> ou règles de spéculation");
       return command.call(this, name, ...a);
     });
   const R = w.CustomElementRegistry?.prototype;
   if (R) {
     const define = R.define;
     replace(R, "define", function (this: unknown, name: unknown, cls: unknown, o?: { extends?: unknown }) {
-      if (o && tags.includes(localName(o.extends))) return refuser(`élément qui étend <${String(o.extends)}>`);
+      if (o && tags.includes(localName(o.extends))) return deny(`élément qui étend <${String(o.extends)}>`);
       return define.call(this, name, cls, o);
     });
   }
@@ -237,12 +237,12 @@ export function displayServed(html: string, csp = CSP_WIDGET, extra = ""): strin
 }
 
 /** The widget's resource:// substitution, or `null` to remove it. */
-function substitute(id: string, dossier: string | null): void {
+function substitute(id: string, folder: string | null): void {
   const { FileUtils } = ChromeUtils.importESModule("resource://gre/modules/FileUtils.sys.mjs");
   Services.io
     .getProtocolHandler("resource")
     .QueryInterface(Ci.nsIResProtocolHandler)
-    .setSubstitution(substitutionName(id), dossier ? Services.io.newFileURI(new FileUtils.File(dossier)) : null);
+    .setSubstitution(substitutionName(id), folder ? Services.io.newFileURI(new FileUtils.File(folder)) : null);
 }
 
 /**
@@ -250,7 +250,7 @@ function substitute(id: string, dossier: string | null): void {
  * `resource://webaios-widget-<id>/` substitution. Returns the frame's URL, or null if the display is absent or leaves its
  * folder.
  */
-export async function preparerWidget(dataDir: string, id: string): Promise<string | null> {
+export async function prepareWidget(dataDir: string, id: string): Promise<string | null> {
   const source = sourcePath(dataDir, id);
   if (!source) return null;
   let mtime: number;
@@ -259,14 +259,14 @@ export async function preparerWidget(dataDir: string, id: string): Promise<strin
   } catch {
     return null;
   }
-  const dossier = dossierCopies(dataDir, id);
+  const folder = copiesFolder(dataDir, id);
   try {
-    const reel = await dossierCopiesConfine(dataDir, id);
-    if (!reel) {
+    const real = await confinedCopiesFolder(dataDir, id);
+    if (!real) {
       console.warn(`[widget] dossier de copies de ${id} hors de <dataDir>/webaios-widgets : refusé`);
       return null;
     }
-    const copy = PathUtils.join(reel, `affichage-${mtime}.html`);
+    const copy = PathUtils.join(real, `affichage-${mtime}.html`);
     // Same mtime: the copy already exists, it is not rewritten (the URL does not change).
     if (!(await IOUtils.exists(copy))) {
       // shortcut: the source is read by the realpath computed just before; a symlink swapped in by another process
@@ -277,11 +277,11 @@ export async function preparerWidget(dataDir: string, id: string): Promise<strin
       await IOUtils.writeUTF8(temp, displayServed(await IOUtils.readUTF8(source)), { flush: true });
       await IOUtils.move(temp, copy);
       // A single copy per widget: the previous one is removed.
-      for (const old of await IOUtils.getChildren(reel)) {
+      for (const old of await IOUtils.getChildren(real)) {
         if (old !== copy && /affichage-.*\.html$/.test(old)) await IOUtils.remove(old, { ignoreAbsent: true });
       }
     }
-    substitute(id, dossier);
+    substitute(id, folder);
   } catch (e) {
     console.error(`[widget] copie de ${id} impossible :`, e);
     return null;
@@ -297,5 +297,5 @@ export async function forgetWidget(dataDir: string, id: string): Promise<void> {
   } catch {
     // nothing to remove
   }
-  await IOUtils.remove(dossierCopies(dataDir, id), { recursive: true, ignoreAbsent: true }).catch(() => {});
+  await IOUtils.remove(copiesFolder(dataDir, id), { recursive: true, ignoreAbsent: true }).catch(() => {});
 }

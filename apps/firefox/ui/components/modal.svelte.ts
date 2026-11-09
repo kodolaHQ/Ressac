@@ -1,4 +1,4 @@
-import type { Bornes } from "../../shared/api";
+import type { BoundsRange } from "../../shared/api";
 import type { PendingRequest } from "../../shared/model";
 
 /**
@@ -6,7 +6,7 @@ import type { PendingRequest } from "../../shared/model";
  * ⌃Tab panel); above 0, the page's native view fades (it would cover them). `zone`: last bounds of the content area,
  * where to place the page's blurred capture.
  */
-export const modal = $state<{ masqueurs: number; zone: Bornes | null }>({ masqueurs: 0, zone: null });
+export const modal = $state<{ masqueurs: number; zone: BoundsRange | null }>({ masqueurs: 0, zone: null });
 
 /**
  * The agent's requests (read, dev tools, widget data) and the extensions' grant cards open as a modal; those from

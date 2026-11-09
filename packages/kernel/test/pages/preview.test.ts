@@ -12,8 +12,8 @@ describe("apercuResultats", () => {
   });
 
   it("2 MB of results: preview ≤ 6,000 characters, the tickets shape remains", () => {
-    const gros = { tickets: Array.from({ length: 10_000 }, (_, i) => ticket(i)), texte: "y".repeat(2_000_000) };
-    const s = resultsPreview(gros);
+    const big = { tickets: Array.from({ length: 10_000 }, (_, i) => ticket(i)), texte: "y".repeat(2_000_000) };
+    const s = resultsPreview(big);
     expect(s.length).toBeLessThanOrEqual(PREVIEW_MAX);
     expect(JSON.parse(s).forme.tickets).toContain("liste (10000) d'objets");
   });

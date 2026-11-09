@@ -6,7 +6,7 @@
   /** `app:<folder>`: the only id whose access this view shows. */
   let { id }: { id: string } = $props();
   const appState = $derived(accessOf(id));
-  const api = window.webaios as unknown as import("../shared/api").ApiPastille;
+  const api = window.webaios as unknown as import("../shared/api").BadgeApi;
   let menuOpen = $state(false);
   let design = $state<DesignState | null>(null);
   let root = $state<HTMLElement>();
@@ -21,12 +21,12 @@
     menuOpen = false;
     act();
   }
-  function dehors(e: PointerEvent) {
+  function outside(e: PointerEvent) {
     if (menuOpen && !root?.contains(e.target as Node)) menuOpen = false;
   }
 </script>
 
-<svelte:window onpointerdown={dehors} onblur={() => (menuOpen = false)} onkeydown={(e) => e.key === "Escape" && (menuOpen = false)} />
+<svelte:window onpointerdown={outside} onblur={() => (menuOpen = false)} onkeydown={(e) => e.key === "Escape" && (menuOpen = false)} />
 
 <main>
   <div class="ligne">

@@ -5,7 +5,7 @@
 // and the hosts it may script (`hotePermisAgent`).
 import type { Scope } from "@webaios/kernel";
 
-function lire(url: string): URL | null {
+function read(url: string): URL | null {
   try {
     return new URL(url);
   } catch {
@@ -14,8 +14,8 @@ function lire(url: string): URL | null {
 }
 
 /** `*` of a pattern path: any sequence of characters. */
-function pathCovered(motif: string, path: string): boolean {
-  const re = new RegExp("^" + motif.split("*").map((x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(".*") + "$");
+function pathCovered(pattern: string, path: string): boolean {
+  const re = new RegExp("^" + pattern.split("*").map((x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(".*") + "$");
   return re.test(path);
 }
 
@@ -23,10 +23,10 @@ function pathCovered(motif: string, path: string): boolean {
  * Does a Chrome host pattern (`<all_urls>`, `*://*.exemple.com/*`, `https://exemple.com/chemin*`) cover this
  * http(s) address? Without a port in the pattern, any port is covered (like Chrome).
  */
-export function patternCovers(motif: string, u: URL): boolean {
+export function patternCovers(pattern: string, u: URL): boolean {
   if (u.protocol !== "http:" && u.protocol !== "https:") return false;
-  if (motif === "<all_urls>") return true;
-  const m = /^(\*|https?|wss?):\/\/([^/]*)(\/.*)$/.exec(motif);
+  if (pattern === "<all_urls>") return true;
+  const m = /^(\*|https?|wss?):\/\/([^/]*)(\/.*)$/.exec(pattern);
   if (!m) return false;
   const [, schema, hostPattern, patternPath] = m as unknown as [string, string, string, string];
   if (schema !== "*" && `${schema}:` !== u.protocol) return false;
@@ -44,8 +44,8 @@ export function patternCovers(motif: string, u: URL): boolean {
 }
 
 /** A host of `accord.reseau` (exact name). */
-function inNetwork(u: URL, accord: Scope): boolean {
-  return accord.reseau.includes(u.hostname.toLowerCase());
+function inNetwork(u: URL, grant: Scope): boolean {
+  return grant.reseau.includes(u.hostname.toLowerCase());
 }
 
 /**
@@ -53,17 +53,17 @@ function inNetwork(u: URL, accord: Scope): boolean {
  * `chrome-extension://` page of itself, or http(s) to a host of `accord.reseau` or covered by `accord.hotes`. Everything
  * else is refused (`data:`, `javascript:`, `file:`, `blob:`, another extension…).
  */
-export function agentAllowedUrl(url: string, accord: Scope, idChrome: string): boolean {
-  const u = lire(url);
+export function agentAllowedUrl(url: string, grant: Scope, idChrome: string): boolean {
+  const u = read(url);
   if (!u) return false;
   if (u.protocol === "chrome-extension:") return u.host === idChrome;
   if (u.protocol !== "http:" && u.protocol !== "https:") return false;
   if (u.username || u.password) return false;
-  return inNetwork(u, accord) || accord.hotes.some((m) => patternCovers(m, u));
+  return inNetwork(u, grant) || grant.hotes.some((m) => patternCovers(m, u));
 }
 
 /** Is the tab at address `url` a site of the granted hosts (scripts, CSS)? */
-export function agentAllowedHost(url: string, accord: Scope): boolean {
-  const u = lire(url);
-  return !!u && accord.hotes.some((m) => patternCovers(m, u));
+export function agentAllowedHost(url: string, grant: Scope): boolean {
+  const u = read(url);
+  return !!u && grant.hotes.some((m) => patternCovers(m, u));
 }

@@ -4,7 +4,7 @@ import type { FormField, BlockFamily } from "./blocks/common.js";
 export type { FormField, BlockFamily } from "./blocks/common.js";
 
 /** A block type as the interface shows it: serializable (no function or zod schema), cloneable through IPC. */
-export type CatalogueBloc = {
+export type BlockCatalogEntry = {
   type: string;
   libelle: string;
   famille: BlockFamily;
@@ -17,8 +17,8 @@ export type CatalogueBloc = {
 const FAMILIES: BlockFamily[] = ["Sources", "Listes", "IA", "Logique/Code", "Sortie"];
 
 /** The block types, grouped by family then in registry order. */
-export function catalogueBlocs(): CatalogueBloc[] {
-  const blocs = [...BLOCK_REGISTRY.values()].map((d) => ({
+export function blockCatalog(): BlockCatalogEntry[] {
+  const blocks = [...BLOCK_REGISTRY.values()].map((d) => ({
     type: d.type,
     libelle: d.libelle,
     famille: d.famille,
@@ -27,5 +27,5 @@ export function catalogueBlocs(): CatalogueBloc[] {
     entree: d.entree,
     champs: structuredClone(d.champs),
   }));
-  return FAMILIES.flatMap((f) => blocs.filter((b) => b.famille === f));
+  return FAMILIES.flatMap((f) => blocks.filter((b) => b.famille === f));
 }

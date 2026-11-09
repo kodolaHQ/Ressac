@@ -65,13 +65,13 @@ async function wipe(profile: ProfileId): Promise<void> {
 export const removeSiteContainer = (id: string): Promise<void> => wipe(`site-${id}`);
 
 /** userContextId of agent app `dossier`'s private container (`userContextIdInternal.webaios-app-<dossier>`), created on first use. */
-export const appContainer = (dossier: string): number => containerFor(`app-${dossier}`);
+export const appContainer = (folder: string): number => containerFor(`app-${folder}`);
 
 /** Is this the container of an agent app (running or not)? The request guard refuses every page of one whose app is not open. */
 export const isAppContainer = (userContextId: number): boolean => hasPrefix(userContextId, "app-");
 
 /** « Supprimer »: agent app `dossier`'s cookies and storage are wiped, then its identity dropped. */
-export const removeAppContainer = (dossier: string): Promise<void> => wipe(`app-${dossier}`);
+export const removeAppContainer = (folder: string): Promise<void> => wipe(`app-${folder}`);
 
 /**
  * Public `webaios-<id>` identities left by older builds become internal in place (same userContextId, so cookies and storage stay;

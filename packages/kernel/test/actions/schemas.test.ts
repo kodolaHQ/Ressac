@@ -1,8 +1,8 @@
 import { expect, test } from "vitest";
 import { DeclarationAction, ID_ACTION, WEB_WITH_ACCOUNT } from "../../src/index.js";
 
-const message = (brut: unknown) => {
-  const r = DeclarationAction.safeParse(brut);
+const message = (raw: unknown) => {
+  const r = DeclarationAction.safeParse(raw);
   return r.success ? null : r.error.issues.map((i) => i.message).join(" | ");
 };
 

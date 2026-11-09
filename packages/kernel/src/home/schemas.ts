@@ -5,8 +5,8 @@ export { DATA_MAX_SIZE } from "../workflows/protocole.js";
 
 /** Lowercase host name (« news.ycombinator.com »). */
 const domain = z.string().regex(/^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/, "nom d'hôte en minuscules attendu");
-const cote = z.number().int().min(1).max(12);
-const taille = z.object({ l: cote, h: cote });
+const side = z.number().int().min(1).max(12);
+const size = z.object({ l: side, h: side });
 
 export const WEB_WITH_ACCOUNT = "web : impossible avec un compte (les données d'un compte ne doivent pas pouvoir partir vers un site inconnu)";
 
@@ -17,7 +17,7 @@ export const DeclaredSources = z
 export type DeclaredSources = z.infer<typeof DeclaredSources>;
 
 /** Refuses `web` with a `compte` (an account's data must not be able to go to an unknown site). */
-export function verifierSources(s: DeclaredSources, ctx: z.RefinementCtx): void {
+export function checkSources(s: DeclaredSources, ctx: z.RefinementCtx): void {
   if (s.web && s.compte.length > 0) {
     ctx.addIssue({ code: "custom", path: ["sources", "web"], message: WEB_WITH_ACCOUNT });
   }
@@ -45,14 +45,14 @@ export const DeclarationWidget = z
   .object({
     nom: z.string().min(1).max(60),
     description: z.string().default(""),
-    tailles: z.object({ min: taille, max: taille, defaut: taille }),
+    tailles: z.object({ min: size, max: size, defaut: size }),
     recolte: Harvest.optional(),
     // For a widget with `compte`, an empty `publiques` = no public fetch allowed (list applied by task 5).
     sources: DeclaredSources,
     config: z.unknown().optional(),
   })
   .superRefine((d, ctx) => {
-    verifierSources(d.sources, ctx);
+    checkSources(d.sources, ctx);
     const { min, max, defaut: defaultValue } = d.tailles;
     for (const axe of ["l", "h"] as const) {
       if (!(min[axe] <= defaultValue[axe] && defaultValue[axe] <= max[axe])) {
@@ -63,12 +63,12 @@ export const DeclarationWidget = z
 export type DeclarationWidget = z.infer<typeof DeclarationWidget>;
 
 export const Placement = z
-  .object({ id: z.string(), x: z.number().int().min(0), y: z.number().int().min(0), l: cote, h: cote })
+  .object({ id: z.string(), x: z.number().int().min(0), y: z.number().int().min(0), l: side, h: side })
   .refine((p) => p.x + p.l <= COLUMNS, "déborde de la grille");
 export type Placement = z.infer<typeof Placement>;
 
-export const Disposition = z.object({ version: z.literal(2), widgets: z.array(Placement) });
-export type Disposition = z.infer<typeof Disposition>;
+export const Layout = z.object({ version: z.literal(2), widgets: z.array(Placement) });
+export type Layout = z.infer<typeof Layout>;
 
 /** Thousandths of the home width: the 12-column grid loses its precision there. */
 export const FREE_WIDTH = 1000;

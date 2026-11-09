@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ShownWidget } from "../shared/api";
-import { DISPLAY_DENIED, CSP_WIDGET, displayServed, copyPath, forgetWidget, preparerWidget, displayUrl } from "../chrome/window/widget-frame";
+import { DISPLAY_DENIED, CSP_WIDGET, displayServed, copyPath, forgetWidget, prepareWidget, displayUrl } from "../chrome/window/widget-frame";
 import { NETWORK_HINTS_PATTERN } from "../shared/network-hints";
 import { serveDisplays } from "../ui/api";
 
@@ -28,7 +28,7 @@ beforeAll(() => {
       makeDirectory: async (p: string) => void mkdirSync(p, { recursive: true }),
       readUTF8: async (p: string) => readFileSync(p, "utf8"),
       writeUTF8: async (p: string, text: string) => writeFileSync(p, text),
-      move: async (de: string, to: string) => renameSync(de, to),
+      move: async (from: string, to: string) => renameSync(from, to),
       getChildren: async (p: string) => readdirSync(p).map((name) => join(p, name)),
       remove: async (p: string) => rmSync(p, { recursive: true, force: true }),
     },
@@ -74,7 +74,7 @@ describe("preparerWidget", () => {
   it("writes the sanitized copy, sets the substitution and returns the frame's URL", async () => {
     const source = join(widgets, "demo", "affichage.html");
     const mtime = Math.round(statSync(source).mtimeMs);
-    const url = await preparerWidget(root, "demo");
+    const url = await prepareWidget(root, "demo");
     expect(url).toBe(displayUrl("demo", mtime));
     const copy = readFileSync(copyPath(root, "demo", mtime), "utf8");
     expect(copy).toContain(`<meta http-equiv="Content-Security-Policy" content="${CSP_WIDGET}">`);
@@ -87,7 +87,7 @@ describe("preparerWidget", () => {
     const source = join(widgets, "refus", "affichage.html");
     writeFileSync(source, '<!doctype html><link rel="preload" href="https://exemple.test/x"><p>jamais</p>');
     const mtime = Math.round(statSync(source).mtimeMs);
-    expect(await preparerWidget(root, "refus")).toBe(displayUrl("refus", mtime));
+    expect(await prepareWidget(root, "refus")).toBe(displayUrl("refus", mtime));
     expect(readFileSync(copyPath(root, "refus", mtime), "utf8")).toBe(DISPLAY_DENIED);
   });
 
@@ -95,11 +95,11 @@ describe("preparerWidget", () => {
     const source = join(widgets, "demo", "affichage.html");
     const mtime = Math.round(statSync(source).mtimeMs);
     const copy = copyPath(root, "demo", mtime);
-    const premier = readFileSync(copy, "utf8");
+    const first = readFileSync(copy, "utf8");
     writeFileSync(source, "<!doctype html><title>réécrit</title>");
     utimesSync(source, new Date(mtime), new Date(mtime));
-    expect(await preparerWidget(root, "demo")).toBe(displayUrl("demo", mtime));
-    expect(readFileSync(copy, "utf8")).toBe(premier);
+    expect(await prepareWidget(root, "demo")).toBe(displayUrl("demo", mtime));
+    expect(readFileSync(copy, "utf8")).toBe(first);
   });
 
   it("removes the old copy when the source changes", async () => {
@@ -108,7 +108,7 @@ describe("preparerWidget", () => {
     const fresh = old + 5000;
     writeFileSync(source, "<!doctype html><title>nouveau</title>");
     utimesSync(source, new Date(fresh), new Date(fresh));
-    expect(await preparerWidget(root, "demo")).toBe(displayUrl("demo", fresh));
+    expect(await prepareWidget(root, "demo")).toBe(displayUrl("demo", fresh));
     expect(existsSync(copyPath(root, "demo", old))).toBe(false);
     expect(readFileSync(copyPath(root, "demo", fresh), "utf8")).toContain("<title>nouveau</title>");
     // The write is atomic: no temporary file remains.
@@ -116,28 +116,28 @@ describe("preparerWidget", () => {
   });
 
   it("refuses a copies folder that is an outgoing link", async () => {
-    const dehors = join(root, "copies-dehors");
-    mkdirSync(dehors);
+    const outside = join(root, "copies-dehors");
+    mkdirSync(outside);
     mkdirSync(join(widgets, "copie-lien"), { recursive: true });
     writeFileSync(join(widgets, "copie-lien", "affichage.html"), "<title>lien</title>");
-    symlinkSync(dehors, join(root, "webaios-widgets", "copie-lien"));
-    expect(await preparerWidget(root, "copie-lien")).toBeNull();
-    expect(readdirSync(dehors)).toEqual([]);
+    symlinkSync(outside, join(root, "webaios-widgets", "copie-lien"));
+    expect(await prepareWidget(root, "copie-lien")).toBeNull();
+    expect(readdirSync(outside)).toEqual([]);
   });
 
   it("refuses an affichage.html that is an outgoing link from the widget's folder", async () => {
     mkdirSync(join(widgets, "fuite"), { recursive: true });
     writeFileSync(join(widgets, "fuite", "widget.json"), "{}");
     symlinkSync(join(root, "secret.html"), join(widgets, "fuite", "affichage.html"));
-    expect(await preparerWidget(root, "fuite")).toBeNull();
+    expect(await prepareWidget(root, "fuite")).toBeNull();
   });
 
   it("refuses a widget folder that is an outgoing link", async () => {
-    const dehors = join(root, "dehors");
-    mkdirSync(dehors);
-    writeFileSync(join(dehors, "affichage.html"), "<title>dehors</title>");
-    symlinkSync(dehors, join(widgets, "evade"));
-    expect(await preparerWidget(root, "evade")).toBeNull();
+    const outside = join(root, "dehors");
+    mkdirSync(outside);
+    writeFileSync(join(outside, "affichage.html"), "<title>dehors</title>");
+    symlinkSync(outside, join(widgets, "evade"));
+    expect(await prepareWidget(root, "evade")).toBeNull();
   });
 });
 
@@ -145,7 +145,7 @@ describe("oublierWidget", () => {
   it("removes the substitution and the copies folder", async () => {
     mkdirSync(join(widgets, "oublie"), { recursive: true });
     writeFileSync(join(widgets, "oublie", "affichage.html"), "<title>oublie</title>");
-    await preparerWidget(root, "oublie");
+    await prepareWidget(root, "oublie");
     expect(substitutions.get("webaios-widget-oublie")).toBeTruthy();
     await forgetWidget(root, "oublie");
     expect(substitutions.get("webaios-widget-oublie")).toBeNull();
@@ -173,7 +173,7 @@ describe("servirAffichages", () => {
 });
 
 describe("affichageServi", () => {
-  const html = (corps: string) => `<!doctype html><html><head><title>démo</title></head><body>${corps}</body></html>`;
+  const html = (body: string) => `<!doctype html><html><head><title>démo</title></head><body>${body}</body></html>`;
 
   it("injects the CSP meta then the guard after the doctype, before any widget element", () => {
     const source = html("<script>document.title = 'ok'</script>");
@@ -188,8 +188,8 @@ describe("affichageServi", () => {
     // The network-hint rule is passed to the guard.
     expect(served).toContain(JSON.stringify(NETWORK_HINTS_PATTERN));
     // The serialized script is valid JavaScript (compiled, not run).
-    const debut = served.indexOf("<script>") + "<script>".length;
-    expect(() => new Function(served.slice(debut, endGuard))).not.toThrow();
+    const start = served.indexOf("<script>") + "<script>".length;
+    expect(() => new Function(served.slice(start, endGuard))).not.toThrow();
   });
 
   it("injects the same prefix into an HTML without a doctype", () => {

@@ -1,12 +1,12 @@
 import { z } from "zod";
-import { validFolder, ID_EXECUTION, ID_SITE, type Application, type Warning, type CatalogueBloc, type DeclarationWidget, type DirectState, type DraftRead, type SaveResult, type AttemptResult, type DroitDev, type AiState, type WidgetState, type Execution, type ResumeExecution, type ActionsState, type PageAction, type LaunchResult, type Owner } from "@webaios/kernel";
+import { validFolder, ID_EXECUTION, ID_SITE, type Application, type Warning, type BlockCatalogEntry, type DeclarationWidget, type DirectState, type DraftRead, type SaveResult, type AttemptResult, type DevRight, type AiState, type WidgetState, type Execution, type ResumeExecution, type ActionsState, type PageAction, type LaunchResult, type Owner } from "@webaios/kernel";
 import type { BatchState, ProjectId, ExternalProject, TrackedProject } from "@webaios/kernel";
 import { PROJECT_ID, type Comment, type DiffFile, type ModifiedFile } from "@webaios/kernel";
 import type { ActionShown } from "./actions";
 import type { ActionSite, SiteWindowState, MessageToHome, ShownSite } from "./sites";
-import type { ExtensionsBar, LigneExtension, SpaceExtensionLine, LigneExtensionSite } from "./extensions";
-import type { ZoneGauche } from "./revelation";
-import type { Decision, PendingRequest, AccessState, BrowserState, SpaceId, WindowId, TabId, Download, Visite } from "./model";
+import type { ExtensionsBar, ExtensionLine, SpaceExtensionLine, SiteExtensionLine } from "./extensions";
+import type { LeftZone } from "./revelation";
+import type { Decision, PendingRequest, AccessState, BrowserState, SpaceId, WindowId, TabId, Download, Visit } from "./model";
 
 const id = z.string().min(1);
 const engine = z.enum(["google", "duckduckgo", "qwant"]);
@@ -107,8 +107,8 @@ export const CommandSchema = z.union([
 ]);
 export type TabCommand = z.infer<typeof CommandSchema>["c"];
 
-export const SchemaBornes = z.object({ x: z.number(), y: z.number(), largeur: z.number(), hauteur: z.number() });
-export type Bornes = z.infer<typeof SchemaBornes>;
+export const BoundsSchema = z.object({ x: z.number(), y: z.number(), largeur: z.number(), hauteur: z.number() });
+export type BoundsRange = z.infer<typeof BoundsSchema>;
 
 export type Panel = "historique" | "telechargements";
 /**
@@ -126,25 +126,25 @@ export interface SearchResult {
 export interface ApiWebaios {
   fenetreId: WindowId;
   agir(action: Action): void;
-  surEtat(rappel: (e: BrowserState) => void): () => void;
+  surEtat(callback: (e: BrowserState) => void): () => void;
   /** `ongletId` null: the input opens a new tab (blank page). */
   naviguer(tabId: TabId | null, input: string): void;
   commande(tabId: TabId, c: TabCommand): void;
-  bornesContenu(b: Bornes): void;
+  bornesContenu(b: BoundsRange): void;
   /** macOS: the window buttons follow the sidebar (hidden with it in compact mode). */
-  boutonsFenetre(visibles: boolean): void;
+  boutonsFenetre(visible: boolean): void;
   /** Compact mode: over a web page, the mouse changes zone relative to the left edge (see revelation.ts). */
-  surZoneGauche(rappel: (zone: ZoneGauche) => void): () => void;
+  surZoneGauche(callback: (zone: LeftZone) => void): () => void;
   /** The menu asks to open a UI panel (⌘Y…). */
-  surPanneau(rappel: (p: Panel) => void): () => void;
-  surRaccourci(rappel: (r: ShortcutAction) => void): () => void;
-  surResultatRecherche(rappel: (r: SearchResult) => void): () => void;
+  surPanneau(callback: (p: Panel) => void): () => void;
+  surRaccourci(callback: (r: ShortcutAction) => void): () => void;
+  surResultatRecherche(callback: (r: SearchResult) => void): () => void;
   /** HTML fullscreen (video…): the UI fades away. */
-  surPleinEcran(rappel: (active: boolean) => void): () => void;
+  surPleinEcran(callback: (active: boolean) => void): () => void;
   historique: {
     /** `distinctes`: a single row per URL (address bar); otherwise one per URL and per space. */
-    rechercher(text: string, limit?: number, distinct?: boolean): Promise<Visite[]>;
-    recents(): Promise<Visite[]>;
+    rechercher(text: string, limit?: number, distinct?: boolean): Promise<Visit[]>;
+    recents(): Promise<Visit[]>;
     /** `depuis`: ISO date; absent, the whole history. */
     effacer(from?: string): Promise<void>;
     /** Forgets the text kept for a visit (a URL in a space), without deleting the visit. */
@@ -156,20 +156,20 @@ export interface ApiWebaios {
     montrer(id: string): void;
     annuler(id: string): void;
   };
-  surTelechargements(rappel: (list: Download[]) => void): () => void;
+  surTelechargements(callback: (list: Download[]) => void): () => void;
   permissions: {
     enAttente(): Promise<PendingRequest[]>;
     /** `o.confirme`: the « Je comprends » box of a hardened extension card is checked. */
-    repondre(id: string, decision: Decision, droits?: DroitDev[], o?: { confirme?: boolean }): void;
+    repondre(id: string, decision: Decision, rights?: DevRight[], o?: { confirme?: boolean }): void;
   };
-  surPermissions(rappel: (list: PendingRequest[]) => void): () => void;
+  surPermissions(callback: (list: PendingRequest[]) => void): () => void;
   /**
    * A modal opens: the keyboard returns to the UI, and the page shown by `ongletId` is captured (reduced JPEG data URL)
    * to stay visible, blurred, behind the modal. null: no page to show, or capture failed.
    */
   apercuPage(tabId: TabId | null): Promise<string | null>;
   /** This window's ⌃Tab panel: sent 200 ms after the first ⌃Tab if ⌃ is still held; null closes it. */
-  surPanneauOnglets(rappel: (p: TabsPanel | null) => void): () => void;
+  surPanneauOnglets(callback: (p: TabsPanel | null) => void): () => void;
   /** The ⌃Tab panel acts on the current cycle (no effect outside a cycle). */
   parcoursOnglets(m: TabCycleMessage): void;
   /** The command bar closes: the keyboard goes back to the displayed page (as soon as the UI shows it again). */
@@ -177,26 +177,26 @@ export interface ApiWebaios {
   /** This window's agent terminal. */
   agent: {
     /** Starts the session (or finds it again: its state and recent output are returned). */
-    demarrer(t: TailleTerminal): void;
+    demarrer(t: TerminalSize): void;
     ecrire(d: string): void;
-    redimensionner(t: TailleTerminal): void;
-    surDonnees(rappel: (d: string) => void): () => void;
-    surEtat(rappel: (e: AgentPanelState) => void): () => void;
+    redimensionner(t: TerminalSize): void;
+    surDonnees(callback: (d: string) => void): () => void;
+    surEtat(callback: (e: AgentPanelState) => void): () => void;
     /** Available agent profiles (the choice goes through the choisirProfilAgent action). */
     profils(): Promise<{ id: string; nom: string }[]>;
   };
   /** The agent's access to tabs (badges and bubble to cut it). */
   acces: {
     etat(): Promise<AccessState>;
-    couper(id: TabId, droit?: DroitDev): void;
+    couper(id: TabId, right?: DevRight): void;
   };
   /** The agent's access to a tab changed: the full state is broadcast again. */
-  surAcces(rappel: (e: AccessState) => void): () => void;
+  surAcces(callback: (e: AccessState) => void): () => void;
   /** Home page: the widgets of the agent space's accueil/widgets. */
   accueil: {
     lire(): Promise<ShownWidget[]>;
     /** A widget, its layout, its data or its state changed: re-read. */
-    surChange(rappel: () => void): () => void;
+    surChange(callback: () => void): () => void;
     /** New layout (all placed widgets); refused if a placement leaves the grid or targets an unknown id. */
     placer(placements: Placement[]): void;
     /** Puts the widget in the trash (accueil/.corbeille) and removes its grant. */
@@ -212,7 +212,7 @@ export interface ApiWebaios {
      * The user authorizes the widget to read with their account, in this profile. `compte` and `publiques`: exactly what the
      * card showed them; refused (with the error) if the declaration changed since.
      */
-    accorder(a: Accord): Promise<{ ok: true } | { ok: false; erreur: string }>;
+    accorder(a: Grant): Promise<{ ok: true } | { ok: false; erreur: string }>;
     /** The user refuses or removes the grant: the data read with the account is erased. */
     refuserAccord(id: string): void;
     /** « Mettre à jour maintenant ». */
@@ -227,33 +227,33 @@ export interface ApiWebaios {
    * (`webaios://workflow/action/<id>`, refused when the window's active space is private).
    */
   workflow: {
-    catalogue(): Promise<CatalogueBloc[]>;
+    catalogue(): Promise<BlockCatalogEntry[]>;
     /** null: unknown widget or action, or without a workflow. */
-    lire(target: Owner): Promise<EditionWorkflow | null>;
+    lire(target: Owner): Promise<WorkflowEdit | null>;
     enregistrer(target: Owner, draft: Draft): Promise<SaveResult & { avertissements: Warning[] }>;
     lireCode(target: Owner, name: string): Promise<{ texte: string } | { absent: true } | { erreur: string }>;
     enregistrerCode(target: Owner, name: string, text: string): Promise<{ ok: true } | { ok: false; erreur: string }>;
     /** A trial; for an action, its page shows in the preview, never as the latest result. */
-    rejouer(target: Owner, execution: string, bloc: string): Promise<AttemptResult>;
+    rejouer(target: Owner, execution: string, block: string): Promise<AttemptResult>;
     /**
      * Starts a real execution now; returns its id (absent if the agent is stopped or nothing ran). An action
      * receives `saisie` and may return the refusal (`erreur`: required input, required grant…).
      */
     lancer(target: Owner, input?: string | null): Promise<{ execution?: string; erreur?: string }>;
     /** The block selected in this window's builder (for workflow_ouvert). */
-    selection(target: Owner, bloc: string | null): void;
+    selection(target: Owner, block: string | null): void;
     /** The executions of the running widgets (those of actions: `actions.direct`). */
     direct(): Promise<DirectState>;
-    surDirect(rappel: (e: DirectState) => void): () => void;
+    surDirect(callback: (e: DirectState) => void): () => void;
   };
   /** Local AI (Kev and Gemma) of the harvests. */
   ia: {
     etat(): Promise<LocalAiStateShown>;
     /** Downloads Kev and Gemma (several gigabytes): only on a click by the user. */
     installer(): Promise<{ ok: boolean; erreur?: string }>;
-    surEtat(rappel: (e: LocalAiStateShown) => void): () => void;
+    surEtat(callback: (e: LocalAiStateShown) => void): () => void;
     /** A line of the install output. */
-    surProgres(rappel: (ligne: string) => void): () => void;
+    surProgres(callback: (line: string) => void): () => void;
   };
   /**
    * The actions (`~/WebAiOs/actions`) and their pages. Refused when the window's active space is private
@@ -262,7 +262,7 @@ export interface ApiWebaios {
   actions: {
     liste(): Promise<ActionShown[]>;
     /** An action, a component or a latest result changed: re-read. */
-    surChange(rappel: () => void): () => void;
+    surChange(callback: () => void): () => void;
     /**
      * Choosing a suggestion: the action's page opens (or the one showing the running execution) and the action is
      * started, unless it is already running or its required input is missing.
@@ -277,13 +277,13 @@ export interface ApiWebaios {
     /** A complete execution (blocks, outputs, logs), for the builder; null if it no longer exists. */
     execution(id: string, execution: string): Promise<Execution | null>;
     direct(): Promise<ActionsState>;
-    surDirect(rappel: (e: ActionsState) => void): () => void;
+    surDirect(callback: (e: ActionsState) => void): () => void;
     /** A link from the page: opened in a tab only if the address appears as is in the results. */
     ouvrirLien(id: string, execution: string, url: string): void;
     /** Login profiles a grant can use (never a private space's). */
     profilsPourAccord(): Promise<ProfileForGrant[]>;
     /** As for a widget; nothing is started (the user reruns from the page). */
-    accorder(a: Accord): Promise<{ ok: true } | { ok: false; erreur: string }>;
+    accorder(a: Grant): Promise<{ ok: true } | { ok: false; erreur: string }>;
     /** Removes the grant and erases executions, results and memory. */
     refuserAccord(id: string): Promise<void>;
     /** Puts the action in the trash (`actions/.corbeille`) and forgets its grant and its data. */
@@ -295,14 +295,14 @@ export interface ApiWebaios {
   applications: {
     liste(): Promise<ApplicationList>;
     /** A project or an app's state changed: re-read. */
-    surChange(rappel: () => void): () => void;
-    agir(dossier: string, action: ActionApplication): void;
+    surChange(callback: () => void): () => void;
+    agir(folder: string, action: ActionApplication): void;
   };
   /** « Sites » section of the Applications page: the site apps of the agent's space. */
   sites: {
     liste(): Promise<ShownSite[]>;
     /** A site app appeared, changed, opened or closed: re-read. */
-    surChange(rappel: () => void): () => void;
+    surChange(callback: () => void): () => void;
     agir(id: string, action: ActionSite): void;
   };
   extensions: {
@@ -316,9 +316,9 @@ export interface ApiWebaios {
     /** Enables or disables an extension in this space's profile (the agent without a grant goes through the card). */
     basculer(key: string, spaceId: SpaceId, active: boolean): Promise<{ ok: true } | { ok: false; erreur: string }>;
     /** The extension registry changed (or their errors): re-read. */
-    surChange(rappel: () => void): () => void;
+    surChange(callback: () => void): () => void;
     /** All the registry's extensions (Extensions page). */
-    liste(): Promise<LigneExtension[]>;
+    liste(): Promise<ExtensionLine[]>;
     /** Is « Désactiver toutes les extensions » in force? */
     coupees(): Promise<boolean>;
     /** The extensions loaded in the profile of this window's active space. */
@@ -339,7 +339,7 @@ export interface ApiWebaios {
   };
   /** Design mode of this window's active tab, and baskets of notes. */
   design: ApiDesign;
-  externes: ApiExternes;
+  externes: ExternalApi;
   relecture: ReviewApi;
 }
 
@@ -355,14 +355,14 @@ export interface ApplicationList {
 /** A single path segment: no separator, no `.`/`..`, no NUL. */
 const validSegment = (d: string) => d !== "" && d !== "." && d !== ".." && !/[/\\\0]/.test(d);
 /** Possible actions on a « Sans fiche » project whose folder name cannot be launched (`My Project`, `_tmp`…). */
-const SUR_TOUT_DOSSIER = new Set(["deboguer", "supprimer", "dossier"]);
+const WHOLE_FOLDER_ACTIONS = new Set(["deboguer", "supprimer", "dossier"]);
 
 export const SchemaActionApplication = z
   .object({
     dossier: z.string(),
     action: z.enum(["lancer", "arreter", "relancer", "ouvrir", "deboguer", "supprimer", "promouvoir", "dossier", "relire"]),
   })
-  .refine(({ dossier, action }) => (SUR_TOUT_DOSSIER.has(action) ? validSegment(dossier) : validFolder(dossier)));
+  .refine(({ dossier: folder, action }) => (WHOLE_FOLDER_ACTIONS.has(action) ? validSegment(folder) : validFolder(folder)));
 export type ActionApplication = z.infer<typeof SchemaActionApplication>["action"];
 
 /** An action on a site app: its id follows `ID_SITE` (never a path). */
@@ -416,7 +416,7 @@ export const TargetSchema = z.discriminatedUnion("type", [
  * Id of a block coming from the UI: bounded in size only (never a path). The engine validates the shape and names
  * the block at fault: an id written by the agent that it refuses must reach it.
  */
-export const SchemaBlocWorkflow = z.string().min(1).max(200);
+export const WorkflowBlockSchema = z.string().min(1).max(200);
 /** Name of a widget code file: a `.mjs` at the root of its folder. */
 export const NameCodeSchema = z.string().regex(/^[a-z0-9-]+\.mjs$/).max(64);
 /** Text of a `.mjs`: 256 KB at most (in bytes, as on write). */
@@ -430,7 +430,7 @@ export const DraftSchema = z.object({
   blocs: z
     .array(
       z.object({
-        id: SchemaBlocWorkflow,
+        id: WorkflowBlockSchema,
         type: z.string().min(1).max(200),
         nom: z.string().max(200).optional(),
         position: z.object({ x: z.number().finite(), y: z.number().finite() }),
@@ -438,7 +438,7 @@ export const DraftSchema = z.object({
       }),
     )
     .max(100),
-  liens: z.array(z.object({ de: SchemaBlocWorkflow, vers: SchemaBlocWorkflow })).max(400),
+  liens: z.array(z.object({ de: WorkflowBlockSchema, vers: WorkflowBlockSchema })).max(400),
 });
 
 /** The block selected in a window's builder, and the workflow (widget or action) where it is. */
@@ -451,13 +451,13 @@ export function builderSelection(v: unknown): BuilderSelection | null {
   const o = v as { cible?: unknown; bloc?: unknown } | null;
   const target = TargetSchema.safeParse(o?.cible);
   if (!target.success) return null;
-  const r = SchemaBlocWorkflow.safeParse(o?.bloc);
-  const bloc = r.success ? r.data : null;
-  return target.data.type === "widget" ? { widget: target.data.id, bloc } : { action: target.data.id, bloc };
+  const r = WorkflowBlockSchema.safeParse(o?.bloc);
+  const block = r.success ? r.data : null;
+  return target.data.type === "widget" ? { widget: target.data.id, bloc: block } : { action: target.data.id, bloc: block };
 }
 export type Draft = z.infer<typeof DraftSchema>;
 
-export type EditionWorkflow = DraftRead & {
+export type WorkflowEdit = DraftRead & {
   avertissements: Warning[];
   /** What `widget.json` declares, read-only; `recolte` null: the widget declares none. Absent for an action. */
   widget?: {
@@ -482,12 +482,12 @@ export type EditionWorkflow = DraftRead & {
 /** Id of an execution: its ISO start without « : » or « . » (never a path). */
 export const SchemaIdExecution = z.string().regex(ID_EXECUTION).max(64);
 const domain = z.string().min(1).max(253);
-export const SchemaAccord = z
+export const GrantSchema = z
   .object({ id: idWidget, profil: z.string().min(1).max(200), compte: z.array(domain).max(100), publiques: z.array(domain).max(100) })
   .strict();
-export type Accord = z.infer<typeof SchemaAccord>;
-export const SchemaTailleTerminal = z.object({ cols: z.number().int().min(2).max(1000), rows: z.number().int().min(2).max(1000) });
-export type TailleTerminal = z.infer<typeof SchemaTailleTerminal>;
+export type Grant = z.infer<typeof GrantSchema>;
+export const TerminalSizeSchema = z.object({ cols: z.number().int().min(2).max(1000), rows: z.number().int().min(2).max(1000) });
+export type TerminalSize = z.infer<typeof TerminalSizeSchema>;
 
 /** Place of a widget in the 12-column grid (rows of 90 px). */
 export interface Placement {
@@ -539,7 +539,7 @@ export interface LocalAiStateShown {
 }
 
 /** What an app window's badge UI gets (ui/badge-api.ts): the agent's access and its app's design mode. */
-export type ApiPastille = Pick<ApiWebaios, "acces" | "surAcces"> & {
+export type BadgeApi = Pick<ApiWebaios, "acces" | "surAcces"> & {
   /** Asks the main process to enlarge (bubble open) or shrink the badge's view. */
   pastilleTaille(opened: boolean): void;
   /** The design mode of the app window; « Panier » opens it in the window's overlay. */
@@ -552,7 +552,7 @@ export type ApiPastille = Pick<ApiWebaios, "acces" | "surAcces"> & {
  */
 export interface ApiSite {
   etat(): Promise<SiteWindowState | null>;
-  surEtat(rappel: (e: SiteWindowState) => void): () => void;
+  surEtat(callback: (e: SiteWindowState) => void): () => void;
   /** « Entrer dans le site »: the site view, loaded on the start address the first time only. */
   entrer(): void;
   /** ⌂: back to the home screen, the site page stays loaded underneath. */
@@ -573,7 +573,7 @@ export interface ApiSite {
   /** For the home screen: the app's memory and its resume positions (read), and the current domain. */
   memoire(): Promise<MessageToHome & { type: "memoire" }>;
   /** Each change of the app's memory; returns the unsubscribe. */
-  surMemoire(rappel: (m: MessageToHome & { type: "memoire" }) => void): () => void;
+  surMemoire(callback: (m: MessageToHome & { type: "memoire" }) => void): () => void;
   /**
    * The home asks for a site address (relative or on one of its domains): the site view goes there, on the
    * current domain. False if it is refused, or if another was just opened (one per `ECART_OUVERTURE_ACCUEIL_MS`).
@@ -584,19 +584,19 @@ export interface ApiSite {
   /** The bar's « Extensions » menu (plan 16): the Store extensions, enabled for this app only. */
   extensions: {
     /** The Store extensions, and their state in this app. */
-    liste(): Promise<LigneExtensionSite[]>;
+    liste(): Promise<SiteExtensionLine[]>;
     /** The switch: the site view is reloaded after a success (the already loaded page only). */
     basculer(key: string, active: boolean): Promise<ExtensionResult>;
     /** Partition `persist:site-<id>`, tab = id of the view in « site » view (otherwise null), and the loaded extensions. */
     barre(): Promise<ExtensionsBar>;
     /** `CANAUX.extensionsChange`; returns the unsubscribe. */
-    surChange(rappel: () => void): () => void;
+    surChange(callback: () => void): () => void;
     /** The Extensions page, in a main window. */
     gerer(): void;
     /** Height of the open menu panel under the bar (0: closed), bounded by `PANNEAU_EXTENSIONS_MAX`. */
-    panneau(hauteur: number): void;
+    panneau(height: number): void;
     /** The main process asks to close the menu (click in the site view, fullscreen); returns the unsubscribe. */
-    surFermer(rappel: () => void): () => void;
+    surFermer(callback: () => void): () => void;
   };
   /**
    * The app's design mode (plan 18), ✎ button and chevron of the bar: the main process recognizes the app by
@@ -607,7 +607,7 @@ export interface ApiSite {
     basculer(): void;
     relire(): void;
     ouvrirPanier(): void;
-    surChange(rappel: () => void): () => void;
+    surChange(callback: () => void): () => void;
   };
 }
 
@@ -650,10 +650,10 @@ export interface ApiDesign {
   retirer(project: ProjectId, id: string): Promise<void>;
   envoyer(project: ProjectId): Promise<ExtensionResult>;
   lots(project: ProjectId): Promise<BatchShown[]>;
-  traite(project: ProjectId, lot: string): Promise<void>;
+  traite(project: ProjectId, batch: string): Promise<void>;
   /** « Relire ce projet » (`app` and `externe` projects). */
   relire(): void;
-  surChange(rappel: () => void): () => void;
+  surChange(callback: () => void): () => void;
 }
 /** What the overlay shows: a note's bubble (targeted element) or an app window's basket. */
 export interface OverlayContext {
@@ -685,7 +685,7 @@ export interface ExternalsState {
   projets: (ExternalProject & { client: string | null; nomClient: string | null })[];
   clients: { id: string; nom: string; cree: string }[];
 }
-export interface ApiExternes {
+export interface ExternalApi {
   liste(): Promise<ExternalsState>;
   /** The command to copy into Claude Code's terminal: the token appears there only once. */
   brancher(name: string): Promise<{ commande: string }>;
@@ -693,7 +693,7 @@ export interface ApiExternes {
   oublier(id: string): Promise<void>;
   /** « Relire »: the project's review page. */
   relire(id: string): void;
-  surChange(rappel: () => void): () => void;
+  surChange(callback: () => void): () => void;
 }
 
 /** Review page: what it shows of a project (the diff since the last review), or why it cannot. */
@@ -714,7 +714,7 @@ export interface ReviewApi {
   /** The diff of one file of the token's comparison (never another path); a token no longer kept is refused. */
   fichier(project: ProjectId, token: string, path: string): Promise<DiffFile>;
   /** Lines `debut`..`fin` (from 1) of the current version of a file of the token's comparison. */
-  lignes(project: ProjectId, token: string, path: string, debut: number, fin: number): Promise<string[]>;
+  lignes(project: ProjectId, token: string, path: string, start: number, end: number): Promise<string[]>;
   /** The project's comments, as saved. */
   commentaires(project: ProjectId): Promise<Comment[]>;
   /** A comment on lines of a single block of the token's diff; the lines are read by the main process. */

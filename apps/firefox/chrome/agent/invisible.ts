@@ -1,6 +1,6 @@
 import type { ProfileId } from "../../shared/model";
 import { accumulateParts, HTML_MAX, readableProfiles, allowedUrl } from "../../core/agent/invisible-read";
-import { ProfileDenied, type OptionsLecturePage, type PageLue } from "../shims/kernel";
+import { ProfileDenied, type PageReadOptions, type ReadPage } from "../shims/kernel";
 import { containerFor } from "../store/containers";
 import type { Store } from "../store/store";
 import { guardContainer, localLiteral, watchReading } from "./local-guard";
@@ -20,11 +20,11 @@ const MAX_SCROLL_TEXT = 100_000;
 const MAX_SCROLL_LINKS = 1_000;
 const QUIET_SCROLL_MS = 1_000;
 const READING_MS = 250;
-const DEFILER_MAX = 20;
-const MAX_SAUTS = 5;
+const SCROLL_MAX = 20;
+const MAX_HOPS = 5;
 
 /** Waits for the turn of a host (the host's `lecture.changerHote`). */
-type WaitHost = (lecture: string, host: string, signal?: AbortSignal) => Promise<void>;
+type WaitHost = (reading: string, host: string, signal?: AbortSignal) => Promise<void>;
 
 /** A paced read stopped at a document of another site: to resume on `target` after that site's turn. */
 class Redirection extends Error {
@@ -186,7 +186,7 @@ async function createBrowser(userContextId: number, o: { private: boolean }): Pr
 async function load<T>(
   store: Store,
   url: string,
-  o: OptionsLecturePage & { menagee?: string },
+  o: PageReadOptions & { menagee?: string },
   signal: AbortSignal | undefined,
   reading: Reading<T>,
   screens: number,
@@ -233,7 +233,7 @@ async function load<T>(
       }
       // Another site (paced read): its turn is awaited holding no browser nor place, else two reads redirected to the
       // site of a third, itself waiting for a place, would block every read. A loop between sites fails fast.
-      if (jumps >= MAX_SAUTS) throw new Error("Trop de redirections");
+      if (jumps >= MAX_HOPS) throw new Error("Trop de redirections");
       await untilDeadline((s) => waitHost!(o.menagee!, new URL(redirection).hostname, s), deadline, signal);
       target = redirection;
     }
@@ -260,21 +260,21 @@ function untilDeadline<T>(f: (s: AbortSignal) => Promise<T>, deadline: number, s
 }
 
 /** The number of screens to scroll: an integer from 0 to 20 (anything else: 0). */
-function screensOf(defiler: unknown): number {
-  return typeof defiler === "number" && Number.isInteger(defiler) && defiler > 0 ? Math.min(defiler, DEFILER_MAX) : 0;
+function screensOf(scroll: unknown): number {
+  return typeof scroll === "number" && Number.isInteger(scroll) && scroll > 0 ? Math.min(scroll, SCROLL_MAX) : 0;
 }
 
 /** The page may have influenced everything but the types and the bounds. */
-function shapePage(url: string, p: Parts, b: Bounds): PageLue {
-  const liens: PageLue["liens"] = [];
-  const vus = new Set<string>();
+function shapePage(url: string, p: Parts, b: Bounds): ReadPage {
+  const liens: ReadPage["liens"] = [];
+  const seen = new Set<string>();
   for (const l of Array.isArray(p.liens) ? (p.liens as unknown[]) : []) {
     if (liens.length >= b.liens) break;
-    const brut = (l as { url?: unknown; texte?: unknown } | null) ?? {};
-    const lien = typeof brut.url === "string" ? brut.url : "";
-    if (!/^https?:\/\//i.test(lien) || vus.has(lien)) continue;
-    vus.add(lien);
-    liens.push({ texte: String(brut.texte ?? "").replace(/\s+/g, " ").trim(), url: lien });
+    const raw = (l as { url?: unknown; texte?: unknown } | null) ?? {};
+    const link = typeof raw.url === "string" ? raw.url : "";
+    if (!/^https?:\/\//i.test(link) || seen.has(link)) continue;
+    seen.add(link);
+    liens.push({ texte: String(raw.texte ?? "").replace(/\s+/g, " ").trim(), url: link });
   }
   return { url, titre: String(p.titre ?? ""), texte: String(p.texte ?? "").slice(0, b.texte), liens };
 }
@@ -283,10 +283,10 @@ function shapePage(url: string, p: Parts, b: Bounds): PageLue {
 export function readPage(
   store: Store,
   url: string,
-  o: OptionsLecturePage & { menagee?: string },
+  o: PageReadOptions & { menagee?: string },
   signal?: AbortSignal,
   waitHost?: WaitHost,
-): Promise<PageLue> {
+): Promise<ReadPage> {
   const screens = screensOf(o.defiler);
   const bounds = screens > 0 ? { texte: MAX_SCROLL_TEXT, liens: MAX_SCROLL_LINKS } : { texte: MAX_TEXT, liens: MAX_LIENS };
   return load(store, url, o, signal, {

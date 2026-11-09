@@ -1,10 +1,10 @@
 <script lang="ts">
   import type { ActionApplication, ApplicationShown, ApplicationList } from "../../shared/api";
-  import { confirmForget, confirmerSuppressionSite, FORGET_MEMORY, type ActionSite, type ShownSite } from "../../shared/sites";
+  import { confirmForget, confirmSiteDeletion, FORGET_MEMORY, type ActionSite, type ShownSite } from "../../shared/sites";
   import { api } from "../state.svelte";
   import Icon from "./Icon.svelte";
   import ExternalProjects from "./ExternalProjects.svelte";
-  import { openMenu, type EntreeMenu } from "./menu.svelte";
+  import { openMenu, type MenuEntry } from "./menu.svelte";
 
   type Filter = "tout" | "application" | "poc" | "sans-fiche" | "en-marche" | "arretee" | "erreur";
 
@@ -44,7 +44,7 @@
   let chargee = $state(false);
   let filter = $state<Filter>("tout");
   let text = $state("");
-  let champ: HTMLInputElement;
+  let field: HTMLInputElement;
   let request = 0;
   /** Project whose deletion awaits the user's confirmation. */
   let toDelete = $state<ApplicationShown | null>(null);
@@ -56,15 +56,15 @@
   let siteToForget = $state<ShownSite | null>(null);
   let siteToDelete = $state<ShownSite | null>(null);
 
-  async function chargerSites() {
+  async function loadSites() {
     const n = ++sitesRequest;
     const r = await api.sites.liste();
     if (n === sitesRequest) sites = r;
   }
 
   $effect(() => {
-    void chargerSites();
-    return api.sites.surChange(() => void chargerSites());
+    void loadSites();
+    return api.sites.surChange(() => void loadSites());
   });
 
   const actSite = (s: ShownSite, action: ActionSite) => api.sites.agir(s.id, action);
@@ -73,7 +73,7 @@
     return sites.filter((s) => !searches || [s.nom, s.id, s.domaine ?? "", s.description].some((x) => x.toLowerCase().includes(searches)));
   });
 
-  async function charger() {
+  async function load() {
     const n = ++request;
     const r = await api.applications.liste();
     if (n !== request) return;
@@ -82,10 +82,10 @@
   }
 
   $effect(() => {
-    void charger();
-    return api.applications.surChange(() => void charger());
+    void load();
+    return api.applications.surChange(() => void load());
   });
-  $effect(() => champ.focus());
+  $effect(() => field.focus());
 
   const account = (f: Filter) => data.applications.filter(FILTERS[f]).length;
   // A filter that disappears from the panel (no app in error anymore…) gives way to Tout.
@@ -105,7 +105,7 @@
       );
   });
 
-  const sansDocker = $derived(data.atelier === "docker-absent");
+  const withoutDocker = $derived(data.atelier === "docker-absent");
 
   const TYPES = { application: "Application", poc: "POC", "sans-fiche": "Sans fiche" } as const;
   const STATES = {
@@ -138,7 +138,7 @@
    * First line of a reason or an error, for a tooltip. A manifest refused by zod carries the list of problems as
    * multi-line JSON: we keep the first one.
    */
-  function court(reason: string | undefined): string | undefined {
+  function short(reason: string | undefined): string | undefined {
     if (!reason) return undefined;
     const m = /^(webaios\.json invalide : )(\[[\s\S]*)$/.exec(reason);
     if (m) {
@@ -155,24 +155,24 @@
   const act = (a: ApplicationShown, action: ActionApplication) => api.applications.agir(a.dossier, action);
 
   /** Visible buttons and ⋯ menu entries depending on the state (spec §5). */
-  function actions(a: ApplicationShown): { boutons: { libelle: string; action: ActionApplication; lance?: boolean }[]; menu: EntreeMenu[] } {
-    const entree = (label: string, action: ActionApplication): EntreeMenu => ({
+  function actions(a: ApplicationShown): { boutons: { libelle: string; action: ActionApplication; lance?: boolean }[]; menu: MenuEntry[] } {
+    const entry = (label: string, action: ActionApplication): MenuEntry => ({
       libelle: label,
       agir: () => (action === "supprimer" ? (toDelete = a) : act(a, action)),
     });
-    const promote = a.type === "poc" ? [entree("Passer en application", "promouvoir")] : [];
-    if (a.type === "sans-fiche") return { boutons: [{ libelle: "Déboguer", action: "deboguer" }], menu: [entree("Supprimer", "supprimer")] };
+    const promote = a.type === "poc" ? [entry("Passer en application", "promouvoir")] : [];
+    if (a.type === "sans-fiche") return { boutons: [{ libelle: "Déboguer", action: "deboguer" }], menu: [entry("Supprimer", "supprimer")] };
     switch (a.etat) {
       case "preparation":
       case "lancement":
-        return { boutons: [{ libelle: "Arrêter", action: "arreter" }], menu: [entree("Déboguer", "deboguer"), entree("Relire", "relire")] };
+        return { boutons: [{ libelle: "Arrêter", action: "arreter" }], menu: [entry("Déboguer", "deboguer"), entry("Relire", "relire")] };
       case "en-marche":
         return {
           boutons: [
             { libelle: "Ouvrir", action: "ouvrir" },
             { libelle: "Arrêter", action: "arreter" },
           ],
-          menu: [entree("Relancer", "relancer"), entree("Déboguer", "deboguer"), entree("Relire", "relire")],
+          menu: [entry("Relancer", "relancer"), entry("Déboguer", "deboguer"), entry("Relire", "relire")],
         };
       case "erreur":
         return {
@@ -181,7 +181,7 @@
             { libelle: "Déboguer", action: "deboguer" },
             { libelle: "Relire", action: "relire" },
           ],
-          menu: [entree("Supprimer", "supprimer"), ...promote],
+          menu: [entry("Supprimer", "supprimer"), ...promote],
         };
       case "arretee":
         return {
@@ -190,7 +190,7 @@
             { libelle: "Déboguer", action: "deboguer" },
             { libelle: "Relire", action: "relire" },
           ],
-          menu: [entree("Supprimer", "supprimer"), ...promote, entree("Afficher le dossier", "dossier")],
+          menu: [entry("Supprimer", "supprimer"), ...promote, entry("Afficher le dossier", "dossier")],
         };
     }
   }
@@ -210,9 +210,9 @@
   <div class="principal">
     <label class="recherche">
       <Icon nom="chercher" taille={14} />
-      <input bind:this={champ} bind:value={text} type="search" data-testid="recherche-applications" placeholder="Chercher une appli…" spellcheck="false" />
+      <input bind:this={field} bind:value={text} type="search" data-testid="recherche-applications" placeholder="Chercher une appli…" spellcheck="false" />
     </label>
-    {#if sansDocker}
+    {#if withoutDocker}
       <p class="bandeau" role="status">Docker n'est pas lancé. La liste reste visible, mais aucune appli ne peut être lancée.</p>
     {/if}
     {#if chargee && data.applications.length === 0 && sites.length === 0}
@@ -230,13 +230,13 @@
               <span>{details(a)}</span>
             </div>
             {#if a.type === "sans-fiche"}
-              <span class="etat" title={court(a.sansFiche)}><span class="pastille arretee"></span>Sans fiche</span>
+              <span class="etat" title={short(a.sansFiche)}><span class="pastille arretee"></span>Sans fiche</span>
             {:else}
-              <span class="etat" title={court(a.erreur)}><span class="pastille {a.etat}"></span>{STATES[a.etat]}</span>
+              <span class="etat" title={short(a.erreur)}><span class="pastille {a.etat}"></span>{STATES[a.etat]}</span>
             {/if}
             <div class="actions">
               {#each buttons as b (b.action)}
-                <button disabled={b.lance && sansDocker} onclick={() => act(a, b.action)}>{b.libelle}</button>
+                <button disabled={b.lance && withoutDocker} onclick={() => act(a, b.action)}>{b.libelle}</button>
               {/each}
               <button
                 class="options"
@@ -324,7 +324,7 @@
   {@const target = siteToDelete}
   <div class="voile">
     <div class="confirmation" role="alertdialog" aria-modal="true" data-testid="confirmation-suppression-site">
-      <p>{confirmerSuppressionSite(target.nom)}</p>
+      <p>{confirmSiteDeletion(target.nom)}</p>
       <div class="boutons">
         <button onclick={() => (siteToDelete = null)}>Annuler</button>
         <button

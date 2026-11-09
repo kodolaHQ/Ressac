@@ -20,15 +20,15 @@ import { parseManifest, messageFiles, type ManifestAnalysis } from "./manifest.j
 export const DEFAULT_GUARDS = join(import.meta.dirname, "..", "..", "extensions");
 
 export const FILES_MAX = 2000;
-export const TAILLE_MAX = 20 * 1024 * 1024;
+export const MAX_SIZE = 20 * 1024 * 1024;
 /** Files and folders counted together. */
-export const ENTREES_MAX = 5000;
+export const MAX_ENTRIES = 5000;
 export const DEPTH_MAX = 32;
 
 const PAGE_FIXES = "webaios-correctifs-page.js";
 const PAGE_GUARD = "webaios-garde-page.js";
 const KEEP_BACKGROUND = "webaios-garde-fond.js";
-const FOND = "webaios-fond.js";
+const BACKGROUND = "webaios-fond.js";
 const GUARDS = [PAGE_FIXES, PAGE_GUARD, KEEP_BACKGROUND];
 /** The scope of the copy (`reseau`, `hotes`) for the page guard: injected by executeScript and registerContentScripts. */
 const SCOPE = "webaios-portee.js";
@@ -90,96 +90,96 @@ interface Marker {
  * special file, a replacement during the read, or exceeding the limits gives a denial (the walk
  * stops).
  */
-async function lireDossier(source: string): Promise<{ fichiers: Map<string, Buffer>; refus: string[]; racine?: RootRead }> {
+async function readFolder(source: string): Promise<{ fichiers: Map<string, Buffer>; refus: string[]; racine?: RootRead }> {
   const files = new Map<string, Buffer>();
   const root = join(await realpath(dirname(source)), basename(source));
-  let taille = 0;
-  let entrees = 0;
-  const refuser = (message: string): never => {
+  let size = 0;
+  let entries = 0;
+  const deny = (message: string): never => {
     throw new ReadDenial(message);
   };
   const absolute = (rel: string) => (rel ? join(root, rel) : root);
-  const verifierDossiers = async (chain: Marker[]): Promise<void> => {
+  const checkFolders = async (chain: Marker[]): Promise<void> => {
     for (const d of chain) {
       const info = await lstat(absolute(d.chemin)).catch(() => null);
       if (!info?.isDirectory() || info.dev !== d.dev || info.ino !== d.ino) {
-        refuser(`Dossier remplacé pendant la lecture : ${d.chemin || "."}`);
+        deny(`Dossier remplacé pendant la lecture : ${d.chemin || "."}`);
       }
     }
   };
-  const readTextFile = async (path: string, vu: Marker): Promise<Buffer> => {
+  const readTextFile = async (path: string, seen: Marker): Promise<Buffer> => {
     let fh: FileHandle;
     try {
       fh = await open(absolute(path), READ_FLAGS);
     } catch (e) {
       const code = (e as NodeJS.ErrnoException).code ?? "";
-      if (LIENS.has(code)) refuser(`Lien symbolique refusé : ${path}`);
-      if (code === "ENOENT") refuser(`Fichier remplacé pendant la lecture : ${path}`);
+      if (LIENS.has(code)) deny(`Lien symbolique refusé : ${path}`);
+      if (code === "ENOENT") deny(`Fichier remplacé pendant la lecture : ${path}`);
       throw e;
     }
     try {
       const info = await fh.stat();
-      if (!info.isFile() || info.dev !== vu.dev || info.ino !== vu.ino) {
-        refuser(`Fichier remplacé pendant la lecture : ${path}`);
+      if (!info.isFile() || info.dev !== seen.dev || info.ino !== seen.ino) {
+        deny(`Fichier remplacé pendant la lecture : ${path}`);
       }
-      if (info.nlink !== 1) refuser(`Lien physique refusé : ${path}`);
-      const rest = TAILLE_MAX - taille;
+      if (info.nlink !== 1) deny(`Lien physique refusé : ${path}`);
+      const rest = MAX_SIZE - size;
       const chunks: Buffer[] = [];
       let lu = 0;
       for (;;) {
-        const tampon = Buffer.alloc(Math.min(64 * 1024, rest + 1 - lu));
-        const { bytesRead } = await fh.read(tampon, 0, tampon.length, null);
+        const buffer = Buffer.alloc(Math.min(64 * 1024, rest + 1 - lu));
+        const { bytesRead } = await fh.read(buffer, 0, buffer.length, null);
         if (bytesRead === 0) break;
-        chunks.push(tampon.subarray(0, bytesRead));
+        chunks.push(buffer.subarray(0, bytesRead));
         lu += bytesRead;
-        if (lu > rest) refuser(`Extension trop lourde : ${TAILLE_MAX / 1024 / 1024} Mo au plus`);
+        if (lu > rest) deny(`Extension trop lourde : ${MAX_SIZE / 1024 / 1024} Mo au plus`);
       }
-      taille += lu;
+      size += lu;
       return Buffer.concat(chunks);
     } finally {
       await fh.close();
     }
   };
   const walk = async (chain: Marker[]): Promise<void> => {
-    const dossier = chain[chain.length - 1]!;
+    const folder = chain[chain.length - 1]!;
     let names: string[];
     try {
-      names = (await readdir(absolute(dossier.chemin))).sort();
+      names = (await readdir(absolute(folder.chemin))).sort();
     } catch (e) {
       if (["ENOENT", ...LIENS].includes((e as NodeJS.ErrnoException).code ?? "")) {
-        refuser(`Dossier remplacé pendant la lecture : ${dossier.chemin || "."}`);
+        deny(`Dossier remplacé pendant la lecture : ${folder.chemin || "."}`);
       }
       throw e;
     }
-    await verifierDossiers(chain);
+    await checkFolders(chain);
     for (const name of names) {
-      const path = dossier.chemin ? `${dossier.chemin}/${name}` : name;
-      if (++entrees > ENTREES_MAX) refuser(`Trop d'entrées : ${ENTREES_MAX} fichiers et dossiers au plus`);
-      if (path.split("/").length > DEPTH_MAX) refuser(`Arborescence trop profonde : ${DEPTH_MAX} niveaux au plus`);
-      const info = await lstat(absolute(path)).catch(() => refuser(`Fichier remplacé pendant la lecture : ${path}`));
+      const path = folder.chemin ? `${folder.chemin}/${name}` : name;
+      if (++entries > MAX_ENTRIES) deny(`Trop d'entrées : ${MAX_ENTRIES} fichiers et dossiers au plus`);
+      if (path.split("/").length > DEPTH_MAX) deny(`Arborescence trop profonde : ${DEPTH_MAX} niveaux au plus`);
+      const info = await lstat(absolute(path)).catch(() => deny(`Fichier remplacé pendant la lecture : ${path}`));
       const marker = { chemin: path, dev: info.dev, ino: info.ino };
-      if (info.isSymbolicLink()) refuser(`Lien symbolique refusé : ${path}`);
+      if (info.isSymbolicLink()) deny(`Lien symbolique refusé : ${path}`);
       if (info.isDirectory()) {
         await walk([...chain, marker]);
         continue;
       }
-      if (!info.isFile()) refuser(`Fichier spécial refusé : ${path}`);
-      if (files.size >= FILES_MAX) refuser(`Trop de fichiers : ${FILES_MAX} au plus`);
+      if (!info.isFile()) deny(`Fichier spécial refusé : ${path}`);
+      if (files.size >= FILES_MAX) deny(`Trop de fichiers : ${FILES_MAX} au plus`);
       files.set(path, await readTextFile(path, marker));
-      await verifierDossiers(chain);
+      await checkFolders(chain);
     }
   };
-  let lue: RootRead | undefined;
+  let loaded: RootRead | undefined;
   try {
     const info = await lstat(root);
-    if (!info.isDirectory()) refuser("Le dossier de l'extension n'est pas un dossier");
-    lue = { chemin: root, dev: info.dev, ino: info.ino };
+    if (!info.isDirectory()) deny("Le dossier de l'extension n'est pas un dossier");
+    loaded = { chemin: root, dev: info.dev, ino: info.ino };
     await walk([{ chemin: "", dev: info.dev, ino: info.ino }]);
   } catch (e) {
-    if (e instanceof ReadDenial) return { fichiers: files, refus: [e.message], ...(lue ? { racine: lue } : {}) };
+    if (e instanceof ReadDenial) return { fichiers: files, refus: [e.message], ...(loaded ? { racine: loaded } : {}) };
     throw e;
   }
-  return { fichiers: files, refus: [], racine: lue };
+  return { fichiers: files, refus: [], racine: loaded };
 }
 
 function hashOf(files: Map<string, Buffer>): string {
@@ -193,17 +193,17 @@ function hashOf(files: Map<string, Buffer>): string {
 }
 
 /** Static DNR rules declared by the manifest, read among the folder's files (absent if unreadable). */
-function reglesDe(manifest: unknown, files: Map<string, Buffer>): Record<string, unknown> {
-  const regles: Record<string, unknown> = {};
+function rulesOf(manifest: unknown, files: Map<string, Buffer>): Record<string, unknown> {
+  const rules: Record<string, unknown> = {};
   const resources = object(object(manifest)?.declarative_net_request)?.rule_resources;
-  if (!Array.isArray(resources)) return regles;
+  if (!Array.isArray(resources)) return rules;
   for (const res of resources) {
     const path = object(res)?.path;
     if (typeof path !== "string") continue;
     const content = json(files.get(posix.normalize(path)));
-    if (content !== undefined) regles[path] = content;
+    if (content !== undefined) rules[path] = content;
   }
-  return regles;
+  return rules;
 }
 
 /** The files the background can inject into a page: each .js and .css of the agent, sorted (the index is the marker). */
@@ -228,17 +228,17 @@ function rewriteScripts(
   const denial: string[] = [];
   const sites: string[] = [];
   if (!Array.isArray(manifest.content_scripts)) return { refus: denial, sites };
-  const hint = new Map(table.map(([path, genre], i) => [`${genre}:${path}`, i]));
+  const hint = new Map(table.map(([path, kind], i) => [`${kind}:${path}`, i]));
   manifest.content_scripts = manifest.content_scripts.map((cs) => {
     const c = object(cs);
     if (!c) return cs;
     const markers: string[] = [];
-    for (const genre of ["css", "js"] as const) {
-      if (!Array.isArray(c[genre])) continue;
-      for (const brut of c[genre] as unknown[]) {
-        const path = typeof brut === "string" ? posix.normalize(brut.replace(/^\/+/, "")) : "";
-        const i = hint.get(`${genre}:${path}`);
-        if (!path || path.startsWith("..") || i === undefined) denial.push(`Script de contenu introuvable : ${String(brut)}`);
+    for (const kind of ["css", "js"] as const) {
+      if (!Array.isArray(c[kind])) continue;
+      for (const raw of c[kind] as unknown[]) {
+        const path = typeof raw === "string" ? posix.normalize(raw.replace(/^\/+/, "")) : "";
+        const i = hint.get(`${kind}:${path}`);
+        if (!path || path.startsWith("..") || i === undefined) denial.push(`Script de contenu introuvable : ${String(raw)}`);
         else markers.push(`${MARKERS}/${i}.js`);
       }
     }
@@ -266,7 +266,7 @@ function insertPageGuard(page: Buffer): Buffer {
 
 const DOCUMENTS_REFUSES = /\.(xhtml|xht|xml|xsl|xslt|mht|mhtml|svgz)$/i;
 const PAGES = /\.(html?|shtml)$/i;
-const MOTS_SVG = ["javascript:", "script", "foreignobject", "<!entity"];
+const SVG_WORDS = ["javascript:", "script", "foreignobject", "<!entity"];
 
 /** UTF-16 BOM (FF FE, FE FF) or UTF-32 (FF FE 00 00, 00 00 FE FF). */
 function bomUtf16Ou32(o: Buffer): boolean {
@@ -287,8 +287,8 @@ function svgDenial(content: Buffer): string | null {
   } catch {
     return "UTF-8 invalide";
   }
-  const mot = MOTS_SVG.find((m) => text.includes(m));
-  if (mot) return `contient « ${mot} »`;
+  const word = SVG_WORDS.find((m) => text.includes(m));
+  if (word) return `contient « ${word} »`;
   if (/\bon[a-z]+\s*=/i.test(text)) return "attribut on…=";
   return null;
 }
@@ -296,11 +296,11 @@ function svgDenial(content: Buffer): string | null {
 /** Denials specific to file content: reserved names, non-HTML documents, active SVGs, UTF-16/32 pages. */
 function filesDenial(files: Map<string, Buffer>): string[] {
   const denial: string[] = [];
-  const reserves = new Set([FOND, ...GUARDS]);
+  const reserved = new Set([BACKGROUND, ...GUARDS]);
   for (const [path, content] of files) {
     // Any top-level name in « webaios- »: guards, scope, markers (webaios-fichiers/).
-    const premier = path.split("/")[0]!.normalize("NFC").toLowerCase();
-    if (reserves.has(premier) || premier.startsWith("webaios-")) denial.push(`Nom de fichier réservé à WebAiOs : ${path}`);
+    const first = path.split("/")[0]!.normalize("NFC").toLowerCase();
+    if (reserved.has(first) || first.startsWith("webaios-")) denial.push(`Nom de fichier réservé à WebAiOs : ${path}`);
     const document = DOCUMENTS_REFUSES.exec(path);
     if (document) denial.push(`Type de fichier refusé (.${document[1]!.toLowerCase()}) : ${path}`);
     if (/\.svg$/i.test(path)) {
@@ -314,7 +314,7 @@ function filesDenial(files: Map<string, Buffer>): string[] {
   return denial;
 }
 
-const FOND_MINIMAL_AGENT = `// Généré par WebAiOs : l'extension n'a pas de fond ; celui-ci, le garde seul, active ses rulesets et onInstalled.\nimportScripts(${JSON.stringify(KEEP_BACKGROUND)});\n`;
+const AGENT_MINIMAL_BACKGROUND = `// Généré par WebAiOs : l'extension n'a pas de fond ; celui-ci, le garde seul, active ses rulesets et onInstalled.\nimportScripts(${JSON.stringify(KEEP_BACKGROUND)});\n`;
 function generatedBackground(original: string, module: boolean): string {
   const path = original.replace(/^(\.\/|\/)+/, "");
   const header = "// Généré par WebAiOs : le garde, puis le service worker de l'extension.\n";
@@ -351,27 +351,27 @@ export async function prepareCopy(o: {
   cible: string;
   dossierGardes: string;
 }): Promise<{ analyse: ManifestAnalysis; empreinte: string; racine?: RootRead }> {
-  const { fichiers: files, refus: folderDenial, racine: root } = await lireDossier(o.source);
-  const brut = json(files.get("manifest.json"));
-  const webaiosBrut = files.get("webaios.json");
-  const webaios = webaiosBrut === undefined ? undefined : (json(webaiosBrut) ?? "illisible");
-  const messages = messageFiles(brut).map((f) => json(files.get(f)));
-  const analyse = parseManifest(brut, { source: "agent", webaios, regles: reglesDe(brut, files), messages });
-  analyse.refus = [...folderDenial, ...filesDenial(files), ...analyse.refus];
+  const { fichiers: files, refus: folderDenial, racine: root } = await readFolder(o.source);
+  const raw = json(files.get("manifest.json"));
+  const rawWebaios = files.get("webaios.json");
+  const webaios = rawWebaios === undefined ? undefined : (json(rawWebaios) ?? "illisible");
+  const messages = messageFiles(raw).map((f) => json(files.get(f)));
+  const analysis = parseManifest(raw, { source: "agent", webaios, regles: rulesOf(raw, files), messages });
+  analysis.refus = [...folderDenial, ...filesDenial(files), ...analysis.refus];
   const hash = hashOf(files);
-  const lue = root ? { racine: root } : {};
-  if (analyse.refus.length > 0) return { analyse, empreinte: hash, ...lue };
+  const loaded = root ? { racine: root } : {};
+  if (analysis.refus.length > 0) return { analyse: analysis, empreinte: hash, ...loaded };
 
-  const manifest = { ...(brut as Manifest) };
+  const manifest = { ...(raw as Manifest) };
   delete manifest.key;
   delete manifest.update_url;
-  manifest.content_security_policy = { extension_pages: cspAgent(analyse.portee.reseau) };
-  const scope = `globalThis.__webaiosPortee(${JSON.stringify({ reseau: analyse.portee.reseau, hotes: analyse.portee.hotes })});`;
+  manifest.content_security_policy = { extension_pages: cspAgent(analysis.portee.reseau) };
+  const scope = `globalThis.__webaiosPortee(${JSON.stringify({ reseau: analysis.portee.reseau, hotes: analysis.portee.hotes })});`;
   const table = fileTable(files);
   const rewritten = rewriteScripts(manifest, table);
   if (rewritten.refus.length > 0) {
-    analyse.refus = [...analyse.refus, ...rewritten.refus];
-    return { analyse, empreinte: hash, ...lue };
+    analysis.refus = [...analysis.refus, ...rewritten.refus];
+    return { analyse: analysis, empreinte: hash, ...loaded };
   }
   if (rewritten.sites.length > 0) {
     // The background injects files through `scripting`, which asks for the right and the hosts of the content scripts (already
@@ -381,16 +381,16 @@ export async function prepareCopy(o: {
     const hosts = Array.isArray(manifest.host_permissions) ? (manifest.host_permissions as unknown[]) : [];
     manifest.host_permissions = [...hosts, ...rewritten.sites.filter((x) => !hosts.includes(x))];
   }
-  const fond = object(manifest.background);
-  let fondJs: string;
-  if (fond && typeof fond.service_worker === "string") {
-    fondJs = generatedBackground(fond.service_worker, fond.type === "module");
-    manifest.background = { ...fond, service_worker: FOND };
+  const background = object(manifest.background);
+  let backgroundJs: string;
+  if (background && typeof background.service_worker === "string") {
+    backgroundJs = generatedBackground(background.service_worker, background.type === "module");
+    manifest.background = { ...background, service_worker: BACKGROUND };
   } else {
     // Without a background, nothing would activate its rulesets or fire onInstalled (the guard runs in the background):
     // a minimal background, the guard alone, is declared.
-    fondJs = FOND_MINIMAL_AGENT;
-    manifest.background = { service_worker: FOND };
+    backgroundJs = AGENT_MINIMAL_BACKGROUND;
+    manifest.background = { service_worker: BACKGROUND };
   }
 
   const tmp = `${o.cible}.${randomUUID()}.tmp`;
@@ -414,12 +414,12 @@ export async function prepareCopy(o: {
     await writeFile(join(tmp, SCOPE), `${scope}\n`);
     await mkdir(join(tmp, MARKERS), { recursive: true });
     for (let i = 0; i < table.length; i++) await writeFile(join(tmp, MARKERS, `${i}.js`), `globalThis.__webaiosFichier(${i});\n`);
-    await writeFile(join(tmp, FOND), fondJs);
+    await writeFile(join(tmp, BACKGROUND), backgroundJs);
     await writeFile(join(tmp, "manifest.json"), JSON.stringify(manifest, null, 2));
     await replaceFolder(tmp, o.cible);
   } catch (e) {
     await rm(tmp, { recursive: true, force: true });
     throw e;
   }
-  return { analyse, empreinte: hash, ...lue };
+  return { analyse: analysis, empreinte: hash, ...loaded };
 }

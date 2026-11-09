@@ -10,12 +10,12 @@ function count(s: string): number | null {
   return /^-?\d+(\.\d+)?$/.test(t) ? Number(t) : null;
 }
 
-const cellule = (l: Record<string, string>, champ: string) => (Object.hasOwn(l, champ) ? (l[champ] ?? "") : "").trim();
+const cell = (l: Record<string, string>, field: string) => (Object.hasOwn(l, field) ? (l[field] ?? "") : "").trim();
 
-export function trierLignes(lignes: Record<string, string>[], champ: string, sens: "asc" | "desc"): Record<string, string>[] {
-  const sign = sens === "asc" ? 1 : -1;
+export function sortLines(lignes: Record<string, string>[], field: string, direction: "asc" | "desc"): Record<string, string>[] {
+  const sign = direction === "asc" ? 1 : -1;
   const keys = lignes.map((l, i) => {
-    const t = cellule(l, champ);
+    const t = cell(l, field);
     return { l, i, t, n: count(t) };
   });
   keys.sort((a, b) => {

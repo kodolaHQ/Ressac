@@ -5,7 +5,7 @@
 // nor the chrome.
 // Kept small: the build copies this file, so any change here needs a rebuild of the app (build:ui).
 import type { WebAiOsStore } from "../store";
-import type { InjectionCadre } from "../../shared/sites";
+import type { FrameInjection } from "../../shared/sites";
 import type { MemoryResponse } from "../../core/sites/injection";
 import { VIDEO_EVENTS, ResumeTracking } from "../../core/reprise";
 
@@ -43,7 +43,7 @@ function relayErrors(): void {
  * frame's address, place and view come from this actor's WindowGlobalParent.
  */
 export class WebAiOsSiteParent extends JSWindowActorParent {
-  async receiveMessage(m: { name: string; data?: unknown }): Promise<InjectionCadre | MemoryResponse | number | null> {
+  async receiveMessage(m: { name: string; data?: unknown }): Promise<FrameInjection | MemoryResponse | number | null> {
     if (!["injection", "memoire", "erreur", "position", "reprise"].includes(m.name)) return null;
     const { sites } = (await ChromeUtils.importESModule(STORE).ready) as WebAiOsStore;
     if (m.name === "injection") return sites.frameInjection(this.manager);
@@ -56,9 +56,9 @@ export class WebAiOsSiteParent extends JSWindowActorParent {
 }
 
 /** A reply of the expected shape, or null (nothing). */
-function valid(r: unknown): InjectionCadre | null {
+function valid(r: unknown): FrameInjection | null {
   if (!r || typeof r !== "object") return null;
-  const i = r as InjectionCadre;
+  const i = r as FrameInjection;
   return Array.isArray(i.css) && Array.isArray(i.js) && Array.isArray(i.hotes) ? i : null;
 }
 
@@ -87,7 +87,7 @@ export class WebAiOsSiteChild extends JSWindowActorChild {
     );
   }
 
-  private apply(i: InjectionCadre | null) {
+  private apply(i: FrameInjection | null) {
     if (!i) return;
     const win = this.contentWindow as any;
     for (const css of i.css)
@@ -140,7 +140,7 @@ export class WebAiOsSiteChild extends JSWindowActorChild {
     this.resumed = true;
     const win = this.contentWindow as any;
     const tracking = new ResumeTracking({
-      noter: (t, duration, fin) => this.sendAsyncMessage("position", { t, duree: duration, fin }),
+      noter: (t, duration, end) => this.sendAsyncMessage("position", { t, duree: duration, fin: end }),
       demander: async (duration) => {
         try {
           const p: unknown = await this.sendQuery("reprise", { duree: duration });
@@ -170,12 +170,12 @@ export class WebAiOsSiteChild extends JSWindowActorChild {
     const api = Cu.createObjectIn(sandbox, { defineAs: "webaiosSite" });
     for (const op of OPS)
       Cu.exportFunction(
-        (key: unknown, valeur: unknown) =>
+        (key: unknown, value: unknown) =>
           new sandbox.Promise((resolve: (v: unknown) => void, reject: (e: unknown) => void) => {
             let v: unknown;
             try {
               // A value the actor cannot copy (a function…): sent empty, the memory refuses it with its own message.
-              v = op === "retenir" ? Cu.cloneInto(Cu.waiveXrays(valeur), globalThis) : undefined;
+              v = op === "retenir" ? Cu.cloneInto(Cu.waiveXrays(value), globalThis) : undefined;
             } catch {
               v = undefined;
             }

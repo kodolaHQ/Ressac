@@ -102,40 +102,40 @@ const writeState = async (id: string, state: Record<string, unknown>) => {
 };
 
 /** A run's trace of one block. */
-const trace = (bloc: string, type: string, debut: string, fields: Record<string, unknown>) => ({
-  id: bloc,
+const trace = (block: string, type: string, start: string, fields: Record<string, unknown>) => ({
+  id: block,
   type,
   statut: "reussi",
-  debut,
-  fin: debut,
+  debut: start,
+  fin: start,
   elements: null,
   journal: [],
   ...fields,
 });
-async function writeExecution(owner: string, id: string, blocs: unknown[]): Promise<void> {
-  const debut = id.replace(/T(\d\d)-(\d\d)-(\d\d)-(\d{3})Z$/, "T$1:$2:$3.$4Z");
+async function writeExecution(owner: string, id: string, blocks: unknown[]): Promise<void> {
+  const start = id.replace(/T(\d\d)-(\d\d)-(\d\d)-(\d{3})Z$/, "T$1:$2:$3.$4Z");
   await mkdir(executionsOf(owner), { recursive: true });
   await writeFile(
     path.join(executionsOf(owner), `${id}.json`),
-    JSON.stringify({ version: 1, id, proprietaire: { type: "widget", id: owner }, declencheur: "planifiee", debut, fin: debut, statut: "reussie", blocs }),
+    JSON.stringify({ version: 1, id, proprietaire: { type: "widget", id: owner }, declencheur: "planifiee", debut: start, fin: start, statut: "reussie", blocs: blocks }),
   );
 }
 
 /** 30 blocks: six code sources, each followed by three lists, merged, then sorted and shaped. */
 function thirtyBlocks(): { workflow: { version: number; blocs: unknown[]; liens: unknown[] }; fichiers: Record<string, string> } {
-  const blocs: { id: string; type: string; parametres: Record<string, unknown> }[] = [];
+  const blocks: { id: string; type: string; parametres: Record<string, unknown> }[] = [];
   const liens: { de: string; vers: string }[] = [];
   const files: Record<string, string> = {};
   for (let i = 1; i <= 6; i++) {
-    blocs.push({ id: `source-${i}`, type: "code", parametres: { source: `source-${i}.mjs` } });
+    blocks.push({ id: `source-${i}`, type: "code", parametres: { source: `source-${i}.mjs` } });
     files[`source-${i}.mjs`] = `export default async () => [{ url: "https://exemple.invalid/${i}" }];`;
-    blocs.push({ id: `nouveaux-${i}`, type: "liste.nouveaux", parametres: { cle: "url" } });
-    blocs.push({ id: `dedoublonner-${i}`, type: "liste.dedoublonner", parametres: { cles: ["url"] } });
-    blocs.push({ id: `garder-${i}`, type: "liste.garder", parametres: { nombre: 10 } });
+    blocks.push({ id: `nouveaux-${i}`, type: "liste.nouveaux", parametres: { cle: "url" } });
+    blocks.push({ id: `dedoublonner-${i}`, type: "liste.dedoublonner", parametres: { cles: ["url"] } });
+    blocks.push({ id: `garder-${i}`, type: "liste.garder", parametres: { nombre: 10 } });
     liens.push({ de: `source-${i}`, vers: `nouveaux-${i}` }, { de: `nouveaux-${i}`, vers: `dedoublonner-${i}` }, { de: `dedoublonner-${i}`, vers: `garder-${i}` });
     liens.push({ de: `garder-${i}`, vers: "fusion" });
   }
-  blocs.push(
+  blocks.push(
     { id: "fusion", type: "code", parametres: { source: "fusion.mjs" } },
     { id: "tri", type: "ia.trier", parametres: { question: "Parle d'IA ?", texte: "{url}", seuil: 0.5 } },
     { id: "garder", type: "liste.garder", parametres: { nombre: 20 } },
@@ -146,7 +146,7 @@ function thirtyBlocks(): { workflow: { version: number; blocs: unknown[]; liens:
   files["fusion.mjs"] = "export default async (entrees) => Object.values(entrees).flat();";
   files["forme.mjs"] = "export default async (liens) => ({ liens });";
   liens.push({ de: "fusion", vers: "tri" }, { de: "tri", vers: "garder" }, { de: "garder", vers: "dedoublonner" }, { de: "dedoublonner", vers: "forme" }, { de: "forme", vers: "sortie" });
-  return { workflow: { version: 1, blocs, liens }, fichiers: files };
+  return { workflow: { version: 1, blocs: blocks, liens }, fichiers: files };
 }
 
 const TRUNCATED = "2026-10-29T10-00-00-000Z";
@@ -182,13 +182,13 @@ beforeAll(async () => {
   await writeWatch("rejouer");
   await dropState("rejouer");
   await writeWatch("tronque");
-  const debut = "2026-10-29T10:00:00.000Z";
+  const start = "2026-10-29T10:00:00.000Z";
   await writeExecution("tronque", TRUNCATED, [
-    trace("page", "source.page", debut, { sortie: { titre: "Liens" } }),
-    trace("liens", "code", debut, { elements: 2, sortie: '[{"texte":"Nouveau', sortieTronquee: true }),
-    trace("tri", "ia.trier", debut, { elements: 1, sortie: [] }),
-    trace("textes", "code", debut, { sortie: { liens: [] } }),
-    trace("sortie", "sortie", debut, { sortie: { liens: [] } }),
+    trace("page", "source.page", start, { sortie: { titre: "Liens" } }),
+    trace("liens", "code", start, { elements: 2, sortie: '[{"texte":"Nouveau', sortieTronquee: true }),
+    trace("tri", "ia.trier", start, { elements: 1, sortie: [] }),
+    trace("textes", "code", start, { sortie: { liens: [] } }),
+    trace("sortie", "sortie", start, { sortie: { liens: [] } }),
   ]);
   await writeWatch("grise", { slow: true });
   await dropState("grise");

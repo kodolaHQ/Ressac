@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { Action } from "../shared/api";
 import { writeAgentExtension } from "./extensions/fixtures";
-import { CONSOLE_BACKGROUND_HIDDEN, CONSOLE_FOND_OBSERVE, EXTENSION_CONSOLE_PREFIX } from "../../../packages/kernel/src/index";
+import { CONSOLE_BACKGROUND_HIDDEN, OBSERVED_BACKGROUND_CONSOLE, EXTENSION_CONSOLE_PREFIX } from "../../../packages/kernel/src/index";
 import { deniedSignature } from "../host/extensions/amo";
 import { agentAddons, launchWithAmo, openTab } from "./agent-extensions";
 import { dispatch, newWindow, state, waitFor, waitWindowCount } from "./firefox";
@@ -16,7 +16,7 @@ import { click, inUi, pressKeys, waitUi } from "./ui";
 
 // The agent's extension tools and their card (posed straight through the store's Questions; its answer is written to a file).
 const MODAL = '[data-testid="modale-demande"]';
-const CARTE = '[data-testid="demande-extension"]';
+const CARD = '[data-testid="demande-extension"]';
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 const HOST = "http://127.0.0.1/*";
 const PRIVATE_PROFILE_ERROR = "Donne à cet espace privé son propre profil pour y utiliser des extensions de l'agent";
@@ -25,12 +25,12 @@ const BACKGROUND_ONLY = {
   "fond.js": 'console.log("fond démarré");\n',
 };
 /** A background and a content script on HOTE that both write to the console. */
-const JOURNAL = {
+const LOG = {
   "manifest.json": { manifest_version: 3, name: "Journal de l'agent", version: "1.0.0", background: { service_worker: "fond.js" }, content_scripts: [{ matches: [HOST], js: ["contenu.js"] }] },
   "fond.js": 'console.log("fond démarré");\n',
   "contenu.js": 'console.log("contenu:" + location.pathname);\n',
 };
-const MASQUES = "message(s) masqué(s) : venus d'onglets que tu ne peux pas lire";
+const HIDDEN = "message(s) masqué(s) : venus d'onglets que tu ne peux pas lire";
 const UNLOCK = '[data-testid="demande-console-extension"]';
 const hider = (matches: string[]) => ({ manifest_version: 3, name: "Cacheur de l'agent", version: "1.0.0", content_scripts: [{ matches, css: ["cache.css"] }] });
 
@@ -55,9 +55,9 @@ async function launch(o: { amo?: Parameters<typeof launchWithAmo>[0]["amo"] } = 
   return { ...w, racine: path.join(dataDir, "espace"), call: (name: string, args: Record<string, unknown> = {}) => callTool(dataDir, name, args) };
 }
 
-const cardText = (m: Marionette) => waitUi<string>(m, `return doc.querySelector(${JSON.stringify(CARTE)})?.textContent`, [], 15_000);
+const cardText = (m: Marionette) => waitUi<string>(m, `return doc.querySelector(${JSON.stringify(CARD)})?.textContent`, [], 15_000);
 const cardGone = (m: Marionette) => waitUi(m, `return !doc.querySelector(${JSON.stringify(MODAL)})`);
-const enable = (m: Marionette) => click(m, `${CARTE} button`, { text: "Activer" });
+const enable = (m: Marionette) => click(m, `${CARD} button`, { text: "Activer" });
 const registry = (dataDir: string) => {
   const f = path.join(dataDir, "extensions", "etat.json");
   return existsSync(f) ? (JSON.parse(readFileSync(f, "utf8")) as { extensions: Record<string, unknown> }).extensions : {};
@@ -163,7 +163,7 @@ describe("the grant card", () => {
     const s = await state(m);
     const win = await m.execute<string>("return window.webaiosWindow.fenetreId");
     const space = s.espaces.find((e) => e.id === (champs.espaceId ?? s.fenetres.find((f) => f.id === win)!.espaceActif))!;
-    const carte = {
+    const card = {
       cle: "agent:essai", nom: "Essai", source: "agent", version: "1.0.0", droits: ["Modifier l'apparence et le contenu des pages"],
       sites: ["https://exemple.com/*"], tousLesSites: false, reseau: [], renforce: false, espace: space.nom, espaceId: space.id,
       autresEspaces: [], remplaceAussi: [], maj: null, empreinte: "0".repeat(64), ...champs,
@@ -174,7 +174,7 @@ describe("the grant card", () => {
         const s = await ChromeUtils.importESModule("${STORE}").ready;
         s.questions.askExtension(JSON.parse(arguments[0]), arguments[1]).then((r) => IOUtils.writeUTF8(arguments[2], JSON.stringify(r)));
       })();`,
-      [JSON.stringify(carte), win, file],
+      [JSON.stringify(card), win, file],
     );
     const response = () => (existsSync(file) ? (JSON.parse(readFileSync(file, "utf8")) as { accepte: boolean; retiree?: boolean }) : null);
     const wait = async () => {
@@ -217,7 +217,7 @@ describe("the grant card", () => {
   it("renforcée: Activer does nothing until the box is ticked; a « yes » without it is refused", async () => {
     const { m, reponse: response, attendre: wait } = await withCard({ renforce: true, tousLesSites: true, sites: ["<all_urls>"] });
     expect(await cardText(m)).toContain("Je comprends : elle lira toutes les pages de cet espace");
-    expect(await inUi(m, `return [...doc.querySelectorAll('${CARTE} button')].find((b) => b.textContent.includes("Activer")).disabled`)).toBe(true);
+    expect(await inUi(m, `return [...doc.querySelectorAll('${CARD} button')].find((b) => b.textContent.includes("Activer")).disabled`)).toBe(true);
     await enable(m);
     await new Promise((r) => setTimeout(r, 300));
     expect(response()).toBeNull();
@@ -260,7 +260,7 @@ describe("the grant card", () => {
     const first = (await m.command<{ value: string }>("WebDriver:GetWindowHandle")).value;
     const second = await newWindow(m);
     await m.command("WebDriver:SwitchToWindow", { handle: second, focus: false });
-    expect(await inUi(m, `return !!doc.querySelector(${JSON.stringify(CARTE)})`)).toBe(false);
+    expect(await inUi(m, `return !!doc.querySelector(${JSON.stringify(CARD)})`)).toBe(false);
     await m.command("WebDriver:SwitchToWindow", { handle: first, focus: false });
     await m.execute("window.close()");
     await waitWindowCount(m, 1);
@@ -274,9 +274,9 @@ describe("the grant card", () => {
   it("a card gone stale (space deleted) falls and counts as a refusal", async () => {
     const w = await launch();
     const windowId = await w.marionette.execute<string>("return window.webaiosWindow.fenetreId");
-    const lecture = (await dispatch(w.marionette, { type: "creerEspace", nom: "Lecture", icone: "📚", prive: false, profil: "defaut", fenetreId: windowId } as Action)).espaces.at(-1)!;
-    const { m, attendre: wait } = await withCard({ espaceId: lecture.id }, w);
-    await dispatch(m, { type: "supprimerEspace", id: lecture.id } as Action);
+    const reading = (await dispatch(w.marionette, { type: "creerEspace", nom: "Lecture", icone: "📚", prive: false, profil: "defaut", fenetreId: windowId } as Action)).espaces.at(-1)!;
+    const { m, attendre: wait } = await withCard({ espaceId: reading.id }, w);
+    await dispatch(m, { type: "supprimerEspace", id: reading.id } as Action);
     expect(await wait()).toMatchObject({ accepte: false, retiree: true });
     await cardGone(m);
   });
@@ -288,13 +288,13 @@ describe("the console", () => {
   afterAll(() => server?.close());
 
   /** The journal granted by its card, then a.html opened in a tab of the user's (not shared): its script writes there. */
-  async function journalInAnUnsharedTab() {
+  async function logInAnUnsharedTab() {
     const w = await launch();
-    writeAgentExtension(w.racine, "journal", JOURNAL);
+    writeAgentExtension(w.racine, "journal", LOG);
     expect(await enabledByAgent(w, "journal", "Journal de l'agent")).toMatch(/^Activée dans « .+ »\.$/);
     await cardGone(w.marionette);
     await openTab(w.marionette, `${server.url}/a.html`);
-    await consoleUntil(w, "journal", MASQUES);
+    await consoleUntil(w, "journal", HIDDEN);
     return w;
   }
   /** debloquer_console, then « Débloquer » on its card. */
@@ -306,7 +306,7 @@ describe("the console", () => {
   }
 
   it("console_extension leaves out a content script's console.log in an unshared tab, and counts it", async () => {
-    const w = await journalInAnUnsharedTab();
+    const w = await logInAnUnsharedTab();
     let text = (await w.call("console_extension", { id: "journal" })).texte;
     expect(text).not.toContain("contenu:/a.html");
     // It ran in an unshared tab: its background is masked too.
@@ -323,16 +323,16 @@ describe("the console", () => {
   });
 
   it("debloquer_console granted → whole; refermer_console → masked again", async () => {
-    const w = await journalInAnUnsharedTab();
+    const w = await logInAnUnsharedTab();
     const m = w.marionette;
     const call = w.call("debloquer_console", { id: "journal", raison: "le script de contenu ne trouve pas le bouton" });
-    const carte = await waitUi<string>(m, `return doc.querySelector(${JSON.stringify(UNLOCK)})?.textContent`, [], 15_000);
+    const card = await waitUi<string>(m, `return doc.querySelector(${JSON.stringify(UNLOCK)})?.textContent`, [], 15_000);
     const s = await state(m);
     const space = s.espaces.find((e) => e.id === s.fenetres[0]!.espaceActif)!.nom;
-    expect(carte).toContain(
+    expect(card).toContain(
       `L'agent demande à voir toute la console de « Journal de l'agent » pour la corriger. Il verra ce que l'extension écrit dans sa console sur tous les onglets de l'espace « ${space} », y compris ceux que tu ne partages pas. Jusqu'à ce que tu le coupes ou qu'il ait fini.`,
     );
-    expect(carte).toContain("le script de contenu ne trouve pas le bouton");
+    expect(card).toContain("le script de contenu ne trouve pas le bouton");
     // Refuser is the default button (Enter).
     expect(await inUi(m, `return [...doc.querySelectorAll('${UNLOCK} button')].find((b) => b.textContent.includes("Refuser")).hasAttribute("data-principal")`)).toBe(true);
     await click(m, `${UNLOCK} button`, { text: "Débloquer" });
@@ -355,7 +355,7 @@ describe("the console", () => {
     });
     expect(await enabledByAgent(w, "veilleur", "Veilleur de l'agent")).toMatch(/^Activée/);
     await cardGone(w.marionette);
-    await consoleUntil(w, "veilleur", CONSOLE_FOND_OBSERVE);
+    await consoleUntil(w, "veilleur", OBSERVED_BACKGROUND_CONSOLE);
     await new Promise((r) => setTimeout(r, 1000));
     const text = (await w.call("console_extension", { id: "veilleur" })).texte;
     expect(text).not.toContain("tic du fond");
@@ -368,8 +368,8 @@ describe("the console", () => {
     const w = await launch();
     const m = w.marionette;
     writeAgentExtension(w.racine, "journal", {
-      ...JOURNAL,
-      "manifest.json": { ...JOURNAL["manifest.json"], permissions: ["storage"] },
+      ...LOG,
+      "manifest.json": { ...LOG["manifest.json"], permissions: ["storage"] },
       "fond.js": `chrome.storage.local.set({ k: "secret-local" });
 const r = indexedDB.open("b", 1);
 r.onupgradeneeded = () => r.result.createObjectStore("s");
@@ -379,7 +379,7 @@ r.onsuccess = () => { const t = r.result.transaction("s", "readwrite"); t.object
     expect(await enabledByAgent(w, "journal", "Journal de l'agent")).toMatch(/^Activée/);
     await cardGone(m);
     await openTab(m, `${server.url}/a.html`);
-    await consoleUntil(w, "journal", MASQUES);
+    await consoleUntil(w, "journal", HIDDEN);
     // Removed from about:addons: « Supprimer » (decision 6).
     await m.execute(`return (async () => {
       const { AddonManager } = ChromeUtils.importESModule("resource://gre/modules/AddonManager.sys.mjs");

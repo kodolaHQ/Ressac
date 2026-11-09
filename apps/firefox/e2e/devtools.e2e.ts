@@ -73,7 +73,7 @@ let m: Marionette;
 let before: string[];
 const config = () => path.join(w.dataDir, "espace", ".webaios", "mcp.json");
 
-async function noyauUp(): Promise<void> {
+async function kernelUp(): Promise<void> {
   for (const deadline = Date.now() + 20_000; !existsSync(config()); await new Promise((r) => setTimeout(r, 100)))
     if (Date.now() > deadline) throw new Error("the noyau did not write its MCP config");
 }
@@ -85,7 +85,7 @@ beforeAll(async () => {
   m = w.marionette;
   await m.setContext("chrome");
   await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
-  await noyauUp();
+  await kernelUp();
   // The home page's panel starts the agent's session, which takes back every access: tools are called after it.
   await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('prêt>')", [], 20_000, "agent");
   before = await listening(m, w);
@@ -331,10 +331,10 @@ async function openThird(): Promise<string> {
 const cardText = () => waitUi<string>(m, `return doc.querySelector('${CARD}')?.textContent`);
 const cardGone = () => waitUi(m, `return !doc.querySelector('${MODAL}')`);
 const answerCard = (button: "Refuser" | "Autoriser la sélection") => click(m, `${CARD} button`, { text: button });
-const checked = (droit: string) => inUi<boolean>(m, `return doc.querySelector('${CARD} input[data-droit="${droit}"]').checked`);
+const checked = (right: string) => inUi<boolean>(m, `return doc.querySelector('${CARD} input[data-droit="${right}"]').checked`);
 /** Asks `droits` on the tab and allows them all on the card. */
-async function grant(id: string, droits: string[]): Promise<string> {
-  const pending = tool("demander_outils_dev", { id, droits, raison: "Essai de la pastille." });
+async function grant(id: string, rights: string[]): Promise<string> {
+  const pending = tool("demander_outils_dev", { id, droits: rights, raison: "Essai de la pastille." });
   await cardText();
   await answerCard("Autoriser la sélection");
   return pending;

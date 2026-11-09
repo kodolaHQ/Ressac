@@ -1,12 +1,12 @@
 import { expect, test } from "vitest";
-import { CONSOLE_MAX, ConsolesExtensions, CRASH_WINDOW_MS, PLANTAGES_MAX } from "../../core/extensions/consoles";
+import { CONSOLE_MAX, ConsolesExtensions, CRASH_WINDOW_MS, MAX_CRASHES } from "../../core/extensions/consoles";
 
 const ID = "a".repeat(32);
 const OTHER = "b".repeat(32);
 
 test("values: 500 messages, 3 crashes in 60 s", () => {
   expect(CONSOLE_MAX).toBe(500);
-  expect(PLANTAGES_MAX).toBe(3);
+  expect(MAX_CRASHES).toBe(3);
   expect(CRASH_WINDOW_MS).toBe(60_000);
 });
 
@@ -71,7 +71,7 @@ test("after the reminder, crashes restart from zero; oublier clears console and 
 // ——— Task 17: the console filtered for the agent ———
 
 const fresh = () => new ConsolesExtensions({ surPlantages: () => {} });
-const sans = { debloquee: false, tourneIllisible: false, observateur: false };
+const without = { debloquee: false, tourneIllisible: false, observateur: false };
 
 test("for the agent: a readable tab message is kept, an unreadable one is hidden and counted", () => {
   const c = fresh();
@@ -79,11 +79,11 @@ test("for the agent: a readable tab message is kept, an unreadable one is hidden
   c.noter(ID, { horodatage: 2, niveau: "log", texte: "onglet partagé" }, { lisible: true });
   c.noter(ID, { horodatage: 3, niveau: "error", texte: "secret" }, { lisible: false });
   c.noter(ID, { horodatage: 4, niveau: "log", texte: "secret 2" }, { lisible: false });
-  const r = c.pourAgent(ID, sans);
+  const r = c.pourAgent(ID, without);
   expect(r.messages.map((m) => m.texte)).toEqual(["fond", "onglet partagé"]);
   expect(r).toMatchObject({ masques: 2, fondMasque: false, fondObserve: false, debloquee: false });
-  expect(c.pourAgent(ID, { ...sans, depuis: 4 })).toMatchObject({ messages: [], masques: 1 });
-  expect(c.erreursPourAgent(ID, sans)).toEqual([]);
+  expect(c.pourAgent(ID, { ...without, depuis: 4 })).toMatchObject({ messages: [], masques: 1 });
+  expect(c.erreursPourAgent(ID, without)).toEqual([]);
   expect(c.erreurs(ID)).toEqual(["secret"]);
   expect(c.messages(ID)).toHaveLength(4);
 });
@@ -93,25 +93,25 @@ test("for the agent: ran in an unreadable tab (registry flag) → service worker
   c.noter(ID, { horodatage: 1, niveau: "log", texte: "avant" });
   c.noter(ID, { horodatage: 2, niveau: "error", texte: "lu dans l'onglet" });
   c.noter(ID, { horodatage: 3, niveau: "log", texte: "partagé" }, { lisible: true });
-  const r = c.pourAgent(ID, { ...sans, tourneIllisible: true });
+  const r = c.pourAgent(ID, { ...without, tourneIllisible: true });
   expect(r.fondMasque).toBe(true);
   expect(r.messages.map((m) => m.texte)).toEqual(["partagé"]);
-  expect(c.erreursPourAgent(ID, { ...sans, tourneIllisible: true })).toEqual([]);
+  expect(c.erreursPourAgent(ID, { ...without, tourneIllisible: true })).toEqual([]);
 });
 
 test("for the agent: with a right that observes (decided at read time), service worker and pages always hidden, even without a message; readable tabs pass", () => {
   const c = fresh();
   // No message: the reason is still given (the agent knows why it will see nothing).
-  expect(c.pourAgent(ID, { ...sans, observateur: true })).toMatchObject({ messages: [], fondObserve: true, fondMasque: false });
+  expect(c.pourAgent(ID, { ...without, observateur: true })).toMatchObject({ messages: [], fondObserve: true, fondMasque: false });
   c.noter(ID, { horodatage: 1, niveau: "log", texte: "fond" });
   c.noter(ID, { horodatage: 2, niveau: "error", texte: "fond erreur" });
   c.noter(ID, { horodatage: 3, niveau: "log", texte: "partagé" }, { lisible: true });
-  const r = c.pourAgent(ID, { ...sans, observateur: true });
+  const r = c.pourAgent(ID, { ...without, observateur: true });
   expect(r.messages.map((m) => m.texte)).toEqual(["partagé"]);
   expect(r).toMatchObject({ fondObserve: true, fondMasque: false });
-  expect(c.erreursPourAgent(ID, { ...sans, observateur: true })).toEqual([]);
+  expect(c.erreursPourAgent(ID, { ...without, observateur: true })).toEqual([]);
   // The same history, read without the right: everything passes (nothing is decided at write time).
-  expect(c.pourAgent(ID, sans).messages.map((m) => m.texte)).toEqual(["fond", "fond erreur", "partagé"]);
+  expect(c.pourAgent(ID, without).messages.map((m) => m.texte)).toEqual(["fond", "fond erreur", "partagé"]);
 });
 
 test("unlocked: nothing is hidden nor counted", () => {

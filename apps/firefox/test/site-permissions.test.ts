@@ -1,5 +1,5 @@
 import { beforeEach, expect, test, vi } from "vitest";
-import type { Issue } from "../shared/model";
+import type { Outcome } from "../shared/model";
 import { createSitePermissions, type SitePermission } from "../chrome/store/site-permissions";
 
 const DIR = "/data";
@@ -8,7 +8,7 @@ const meet = "https://meet.google.com";
 
 let disk: Map<string, string>;
 let questions: { ongletId: string | null; origine: string; permissions: SitePermission[]; lien?: string }[];
-let answer: Issue;
+let answer: Outcome;
 let calls: unknown[][];
 let profiles: string[];
 
@@ -97,7 +97,7 @@ test("question withdrawn without an answer (tab closed): denied this time, nothi
 });
 
 test("camera then camera + microphone before any answer: the camera is only asked once", async () => {
-  const replies: ((d: Issue) => void)[] = [];
+  const replies: ((d: Outcome) => void)[] = [];
   const p = make({ ask: (d) => (questions.push(d), new Promise((ok) => replies.push(ok))) });
   const video = p.handle(req("media", { mediaTypes: ["video"] }));
   const both = p.handle(req("media", { mediaTypes: ["video", "audio"] }));
@@ -251,7 +251,7 @@ test("removeProfile removes from Firefox right away, before the caller removes t
 });
 
 test("profile removed during a question: the late answer counts for the request, without a write or a copy", async () => {
-  const replies: ((d: Issue) => void)[] = [];
+  const replies: ((d: Outcome) => void)[] = [];
   const p = make({ ask: (d) => (questions.push(d), new Promise((ok) => replies.push(ok))) });
   await p.ready;
   const r = p.handle(req("notifications", { profil: "pro" }));

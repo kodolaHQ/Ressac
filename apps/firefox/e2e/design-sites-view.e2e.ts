@@ -13,7 +13,7 @@ import {
   WITH_HOME,
   withHomeDeclaration,
   overlayOf,
-  CONNEXION_PAGE,
+  LOGIN_PAGE,
   inStore,
   openSite,
   readPng,
@@ -58,7 +58,7 @@ beforeAll(async () => {
   server.definir("tuning-a.localhost", "/autre", OTHER_PAGE);
   server.definir("tuning-a.localhost", "/csp", (_req: unknown, res: ServerResponse) => void res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": CSP }).end(CSP_PAGE));
   server.definir("tuning-a.localhost", "/oop", TUNING_PAGE.replace("<script>", `<iframe id="cadre" src="http://127.0.0.1:${FRAME_PORT}/frame" style="width:300px;height:120px;border:0"></iframe><script>`));
-  server.definir("compte-tuning.localhost", "/connexion", CONNEXION_PAGE);
+  server.definir("compte-tuning.localhost", "/connexion", LOGIN_PAGE);
   server.definir("vidola-a.localhost", "/design", S5_PAGE);
   frames = await startServer({ port: FRAME_PORT, routes: { "/frame": (_req, res) => void res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }).end(FRAME_PAGE) } });
   const dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
@@ -95,7 +95,7 @@ const bubble = (id: string) =>
 const cart = (id: string) => inStore<number>(m, `return (await store.agent.request("design.suivi", { projet: "site-" + arguments[0] })).panier;`, [id]);
 const hosts = (id: string) => inSiteView<number>(m, id, `return document.getElementsByTagName("webaios-viseur").length;`).catch(() => -1);
 const overlayRect = (id: string) => overlayOf<{ x: number; y: number; width: number; height: number }>(m, id, "const r = f.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height };");
-const avis = (id: string) => inStore<{ genre: string; texte?: string } | null>(m, "return store.sites.controller(arguments[0]).state().avis;", [id]);
+const notice = (id: string) => inStore<{ genre: string; texte?: string } | null>(m, "return store.sites.controller(arguments[0]).state().avis;", [id]);
 const view = <T = unknown>(id: string, expr: string) => inSiteView<T>(m, id, `return ${expr};`).catch(() => null);
 const geometry = (id: string) =>
   m.execute<{ x: number; y: number; width: number; height: number; w: number; h: number; z: number }>(
@@ -322,18 +322,18 @@ describe("design mode, site target, the view", () => {
     await toggle("tuning");
     await sleep(300);
     expect(await hosts("tuning")).toBe(0);
-    expect(await avis("tuning")).toEqual({ genre: "info", texte: UNAVAILABLE_DESIGN_SITE });
+    expect(await notice("tuning")).toEqual({ genre: "info", texte: UNAVAILABLE_DESIGN_SITE });
     await view("tuning", "(void document.exitFullscreen(), 1)");
     await waitFor(m, `return ${siteExpr("tuning")}.document.documentElement.hasAttribute("inDOMFullscreen");`, (v) => v === false);
     await expect.poll(async () => (await state("tuning")).indisponible, { timeout: 10_000 }).toBeNull();
 
     // The window closing during the bubble: the mode and its overlay context are forgotten, the cart stays.
     const k = await cart("tuning");
-    const lien = await viewPoint(m, "tuning", "#lien");
-    await aimAt("tuning", lien);
+    const link = await viewPoint(m, "tuning", "#lien");
+    await aimAt("tuning", link);
     expect(await add("tuning", "lien")).toEqual({ ok: true });
     await expect.poll(() => hosts("tuning"), { timeout: 10_000 }).toBe(1);
-    await siteMouse(m, "tuning", lien);
+    await siteMouse(m, "tuning", link);
     await expect.poll(() => overlayRect("tuning"), { timeout: 10_000 }).not.toBeNull();
     await inStore(m, "await store.sites.close(arguments[0]); return 1;", ["tuning"]);
     await expect.poll(async () => (await state("tuning")).actif, { timeout: 10_000 }).toBe(false);
@@ -349,18 +349,18 @@ describe("design mode, site target, the view", () => {
     await expect.poll(async () => (await state("tuning")).indisponible, { timeout: 10_000 }).toBe(UNAVAILABLE_DESIGN_SITE);
     const t0 = Date.now();
     await toggle("tuning");
-    expect(await avis("tuning")).toEqual({ genre: "info", texte: UNAVAILABLE_DESIGN_SITE });
+    expect(await notice("tuning")).toEqual({ genre: "info", texte: UNAVAILABLE_DESIGN_SITE });
     await sleep(300);
     expect(await hosts("tuning")).toBe(0);
     expect((await state("tuning")).actif).toBe(false);
-    await expect.poll(() => avis("tuning"), { timeout: 10_000 }).toBeNull();
+    await expect.poll(() => notice("tuning"), { timeout: 10_000 }).toBeNull();
     expect(Date.now() - t0).toBeGreaterThanOrEqual(4500);
     // A blocked link's mention carries « Ouvrir dans un onglet »: the info never replaces it.
     await inStore(m, "store.sites.controller(arguments[0]).blocked(arguments[1]); return 1;", ["tuning", "http://ailleurs.localhost/"]);
-    expect((await avis("tuning"))?.genre).toBe("lien-bloque");
+    expect((await notice("tuning"))?.genre).toBe("lien-bloque");
     await toggle("tuning");
     await sleep(300);
-    expect((await avis("tuning"))?.genre).toBe("lien-bloque");
+    expect((await notice("tuning"))?.genre).toBe("lien-bloque");
     expect(await hosts("tuning")).toBe(0);
   });
 

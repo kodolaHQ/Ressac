@@ -14,7 +14,7 @@ import { click, inUi, waitUi } from "./ui";
 
 // The space settings' Extensions section (A7, N1, Review Focus 5), plus spec choice 2: an agent extension's content scripts run only in the spaces it is active in.
 const HOST = "http://127.0.0.1/*";
-const ACCORD = { permissions: [], hotes: [HOST], reseau: [], tousLesSites: false, scriptsTousLesSites: false, scripts: true };
+const GRANT = { permissions: [], hotes: [HOST], reseau: [], tousLesSites: false, scriptsTousLesSites: false, scripts: true };
 const PRIVATE_PROFILE_ERROR = "Donne à cet espace privé son propre profil pour y utiliser des extensions de l'agent";
 const HIDER = {
   "manifest.json": { manifest_version: 3, name: "Cacheur de l'agent", version: "1.0.0", content_scripts: [{ matches: [HOST], css: ["cache.css"] }] },
@@ -119,7 +119,7 @@ const reloaded = (m: Marionette, tab: string) =>
 
 describe("agent extensions per space", () => {
   it("active in space A only: its content script runs in A's tab, not in B's (another profile)", async () => {
-    const w = await launch((root, dataDir) => (writeAgentExtension(root, "cacheur", HIDER), grant(dataDir, "cacheur", ACCORD)));
+    const w = await launch((root, dataDir) => (writeAgentExtension(root, "cacheur", HIDER), grant(dataDir, "cacheur", GRANT)));
     const m = w.marionette;
     await waitActive(m, "cacheur@agent.webaios", true);
     const a = await openTab(m, `${server.url}/cache.html`);
@@ -132,7 +132,7 @@ describe("agent extensions per space", () => {
   });
 
   it("the extensions menu lists an agent extension only in the spaces where it runs", async () => {
-    const w = await launch((root, dataDir) => (writeAgentExtension(root, "cacheur", HIDER), grant(dataDir, "cacheur", ACCORD)));
+    const w = await launch((root, dataDir) => (writeAgentExtension(root, "cacheur", HIDER), grant(dataDir, "cacheur", GRANT)));
     const m = w.marionette;
     await waitActive(m, "cacheur@agent.webaios", true);
     await openTab(m, `${server.url}/cache.html`);
@@ -154,7 +154,7 @@ describe("agent extensions per space", () => {
       writeAgentExtension(root, "cacheur", HIDER);
       // A folder of the agent never granted is listed too, greyed the same.
       writeAgentExtension(root, "jamais-accordee", { "manifest.json": { manifest_version: 3, name: "Jamais", version: "1.0.0" } });
-      grant(dataDir, "cacheur", ACCORD, []);
+      grant(dataDir, "cacheur", GRANT, []);
     });
     const m = w.marionette;
     await setPrivate(m, true);
@@ -170,7 +170,7 @@ describe("agent extensions per space", () => {
 
   // extensions-interface.spec.ts:303
   it("ticking « Espace privé » shows the warning and the extensions disabled; after Enregistrer, the agent's extension no longer runs", async () => {
-    const w = await launch((root, dataDir) => (writeAgentExtension(root, "cacheur", HIDER), grant(dataDir, "cacheur", ACCORD)));
+    const w = await launch((root, dataDir) => (writeAgentExtension(root, "cacheur", HIDER), grant(dataDir, "cacheur", GRANT)));
     const m = w.marionette;
     await waitActive(m, "cacheur@agent.webaios", true);
     await until(() => registry(w.dataDir)["agent:cacheur"]?.idChrome === "cacheur@agent.webaios");
@@ -195,7 +195,7 @@ describe("agent extensions per space", () => {
 
   // extensions-interface.spec.ts:327
   it("creating a private space on a shared profile disables the agent's extension of that profile", async () => {
-    const w = await launch((root, dataDir) => (writeAgentExtension(root, "cacheur", HIDER), grant(dataDir, "cacheur", ACCORD)));
+    const w = await launch((root, dataDir) => (writeAgentExtension(root, "cacheur", HIDER), grant(dataDir, "cacheur", GRANT)));
     const m = w.marionette;
     await waitActive(m, "cacheur@agent.webaios", true);
     // Without the modal: the creerEspace action, as another window would send it.
@@ -206,7 +206,7 @@ describe("agent extensions per space", () => {
 
   // extensions-agent.spec.ts:1552
   it("A7 the space turns private: the open tabs its scripts run in are reloaded, the script stops", async () => {
-    const w = await launch((root, dataDir) => (writeAgentExtension(root, "tic", tic([HOST])), grant(dataDir, "tic", ACCORD)));
+    const w = await launch((root, dataDir) => (writeAgentExtension(root, "tic", tic([HOST])), grant(dataDir, "tic", GRANT)));
     const m = w.marionette;
     await waitActive(m, "tic@agent.webaios", true);
     const a = await openTab(m, `${server.url}/a.html`);
@@ -221,7 +221,7 @@ describe("agent extensions per space", () => {
 
   // extensions-agent.spec.ts:1576
   it("N1 disabled (broadened scope) then the space turns private: the tab its script ran in is reloaded", async () => {
-    const w = await launch((root, dataDir) => (writeAgentExtension(root, "tic", tic([HOST])), grant(dataDir, "tic", ACCORD)), { agent: true });
+    const w = await launch((root, dataDir) => (writeAgentExtension(root, "tic", tic([HOST])), grant(dataDir, "tic", GRANT)), { agent: true });
     const m = w.marionette;
     await waitActive(m, "tic@agent.webaios", true);
     const a = await openTab(m, `${server.url}/a.html`);
@@ -240,7 +240,7 @@ describe("agent extensions per space", () => {
   // A profile turned private reloads every agent-script tab of a profile turned private, « même ceux d'une
   // extension déjà retirée sans rechargement »: here switched off in A, still active (and enabled) for B's profile.
   it("switched off in A, active in B's profile: A turns private, the tab its script still runs in is reloaded", async () => {
-    const w = await launch((root, dataDir) => (writeAgentExtension(root, "tic", tic([HOST])), grant(dataDir, "tic", ACCORD)));
+    const w = await launch((root, dataDir) => (writeAgentExtension(root, "tic", tic([HOST])), grant(dataDir, "tic", GRANT)));
     const m = w.marionette;
     await waitActive(m, "tic@agent.webaios", true);
     const spaceA = (await activeSpace(m)).id;
@@ -263,7 +263,7 @@ describe("agent extensions per space", () => {
   });
 
   it("the host down: a space turned private still reloads the tab an agent script runs in", async () => {
-    const w = await launch((root, dataDir) => (writeAgentExtension(root, "tic", tic([HOST])), grant(dataDir, "tic", ACCORD)));
+    const w = await launch((root, dataDir) => (writeAgentExtension(root, "tic", tic([HOST])), grant(dataDir, "tic", GRANT)));
     const m = w.marionette;
     await waitActive(m, "tic@agent.webaios", true);
     const a = await openTab(m, `${server.url}/a.html`);

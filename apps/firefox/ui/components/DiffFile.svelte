@@ -13,12 +13,12 @@
     jeton: token,
     diff,
     commentaires: comments,
-    surChange,
+    surChange: onChange,
   }: { projet: string; jeton: string; diff: DiffFichier; commentaires: Commentaire[]; surChange: () => void } = $props();
 
-  type Bloc = DiffFichier["blocs"][number];
+  type Block = DiffFichier["blocs"][number];
   /** Position of a hunk line: its new number, the next line's for a removal (like the kernel). */
-  function position(b: Bloc, i: number): number {
+  function position(b: Block, i: number): number {
     for (let k = i; k < b.lignes.length; k++) {
       const n = b.lignes[k]!.nouveau;
       if (n !== null) return n;
@@ -33,31 +33,31 @@
   let error = $state<string | null>(null);
   let sending = $state(false);
 
-  const plage = $derived.by(() => {
+  const range = $derived.by(() => {
     if (!selection) return null;
     const b = diff.blocs[selection.bloc]!;
     const p1 = position(b, selection.ancre);
     const p2 = position(b, selection.bout);
-    const debut = Math.min(p1, p2);
-    const fin = Math.max(p1, p2);
+    const start = Math.min(p1, p2);
+    const end = Math.max(p1, p2);
     let last = -1;
     b.lignes.forEach((_, k) => {
       const p = position(b, k);
-      if (p >= debut && p <= fin) last = k;
+      if (p >= start && p <= end) last = k;
     });
-    return { bloc: selection.bloc, debut, fin, derniere: last };
+    return { bloc: selection.bloc, debut: start, fin: end, derniere: last };
   });
-  const chosen = (bloc: number, k: number) => {
-    if (!plage || plage.bloc !== bloc) return false;
-    const p = position(diff.blocs[bloc]!, k);
-    return p >= plage.debut && p <= plage.fin;
+  const chosen = (block: number, k: number) => {
+    if (!range || range.bloc !== block) return false;
+    const p = position(diff.blocs[block]!, k);
+    return p >= range.debut && p <= range.fin;
   };
 
   /** `+` pressed: a new range, or (Shift) the other end of the current range, refused outside its hunk. */
-  function aim(bloc: number, k: number, expand: boolean) {
+  function aim(block: number, k: number, expand: boolean) {
     error = null;
     if (expand && selection) {
-      if (selection.bloc !== bloc) {
+      if (selection.bloc !== block) {
         error = RANGE_OUTSIDE_BLOCK;
         selection = { ...selection, bout: selection.ancre };
         return;
@@ -66,12 +66,12 @@
       return;
     }
     if (!selection) text = "";
-    selection = { bloc, ancre: k, bout: k };
+    selection = { bloc: block, ancre: k, bout: k };
     dragged = true;
   }
   /** While dragging: the range follows the mouse, within the hunk only. */
-  function hover(bloc: number, k: number) {
-    if (dragged && selection && selection.bloc === bloc) selection = { ...selection, bout: k };
+  function hover(block: number, k: number) {
+    if (dragged && selection && selection.bloc === block) selection = { ...selection, bout: k };
   }
   function close() {
     selection = null;
@@ -79,13 +79,13 @@
     error = null;
   }
   async function validate() {
-    if (!plage || sending) return;
+    if (!range || sending) return;
     sending = true;
     try {
-      const r = await api.relecture.commenter(project, token, { fichier: diff.chemin, debut: plage.debut, fin: plage.fin, texte: text });
+      const r = await api.relecture.commenter(project, token, { fichier: diff.chemin, debut: range.debut, fin: range.fin, texte: text });
       if (r.ok) {
         close();
-        surChange();
+        onChange();
       } else error = r.erreur;
     } catch {
       error = "Le commentaire n'a pas pu être enregistré.";
@@ -105,112 +105,112 @@
 
   /** Each comment under the last shown line of its range (first hunk that has the line `fin`); otherwise at the top. */
   const places = $derived.by(() => {
-    const sous = new Map<string, Commentaire[]>();
+    const sub = new Map<string, Commentaire[]>();
     const elsewhere: Commentaire[] = [];
     for (const c of comments) {
-      let ou: string | null = null;
-      for (let i = 0; i < diff.blocs.length && ou === null; i++) {
+      let where: string | null = null;
+      for (let i = 0; i < diff.blocs.length && where === null; i++) {
         const b = diff.blocs[i]!;
         for (let k = b.lignes.length - 1; k >= 0; k--) {
           if (position(b, k) === c.fin) {
-            ou = `${i}:${k}`;
+            where = `${i}:${k}`;
             break;
           }
         }
       }
-      if (ou === null) elsewhere.push(c);
-      else sous.set(ou, [...(sous.get(ou) ?? []), c]);
+      if (where === null) elsewhere.push(c);
+      else sub.set(where, [...(sub.get(where) ?? []), c]);
     }
-    return { sous, ailleurs: elsewhere };
+    return { sous: sub, ailleurs: elsewhere };
   });
 
-  type Ligne = { marque: " " | "+" | "-"; texte: string; ancien: number | null; nouveau: number | null };
+  type Line = { marque: " " | "+" | "-"; texte: string; ancien: number | null; nouveau: number | null };
   /** Unfolded lines of each gap (before hunk i; i = number of hunks: after the last one). */
-  type Interval = { lignes: Ligne[]; fini: boolean };
+  type Interval = { lignes: Line[]; fini: boolean };
   let intervals = $state<Record<number, Interval>>({});
-  let charge = $state<number | null>(null);
+  let onLoaded = $state<number | null>(null);
 
-  const debutBloc = (b: DiffFichier["blocs"][number]) => (b.nouveauNombre === 0 ? b.nouveauDebut + 1 : b.nouveauDebut);
-  const finBloc = (b: DiffFichier["blocs"][number]) => (b.nouveauNombre === 0 ? b.nouveauDebut + 1 : b.nouveauDebut + b.nouveauNombre);
+  const blockStart = (b: DiffFichier["blocs"][number]) => (b.nouveauNombre === 0 ? b.nouveauDebut + 1 : b.nouveauDebut);
+  const blockEnd = (b: DiffFichier["blocs"][number]) => (b.nouveauNombre === 0 ? b.nouveauDebut + 1 : b.nouveauDebut + b.nouveauNombre);
 
   /** The hidden gap before hunk i: first new lines, last one (null: to the end of the file), old − new offset. */
   function cache(i: number): { debut: number; fin: number | null; decalage: number } | null {
-    const blocs = diff.blocs;
-    if (diff.statut === "supprime" || blocs.length === 0) return null;
-    if (i === blocs.length) {
+    const blocks = diff.blocs;
+    if (diff.statut === "supprime" || blocks.length === 0) return null;
+    if (i === blocks.length) {
       if (diff.statut === "ajoute") return null;
-      const d = blocs[i - 1]!;
-      return { debut: finBloc(d), fin: null, decalage: d.ancienDebut + d.ancienNombre - (d.nouveauDebut + d.nouveauNombre) };
+      const d = blocks[i - 1]!;
+      return { debut: blockEnd(d), fin: null, decalage: d.ancienDebut + d.ancienNombre - (d.nouveauDebut + d.nouveauNombre) };
     }
-    const b = blocs[i]!;
-    const debut = i === 0 ? 1 : finBloc(blocs[i - 1]!);
-    return { debut, fin: debutBloc(b) - 1, decalage: b.ancienDebut - b.nouveauDebut };
+    const b = blocks[i]!;
+    const start = i === 0 ? 1 : blockEnd(blocks[i - 1]!);
+    return { debut: start, fin: blockStart(b) - 1, decalage: b.ancienDebut - b.nouveauDebut };
   }
 
-  function restant(i: number): { debut: number; fin: number | null; decalage: number } | null {
+  function remaining(i: number): { debut: number; fin: number | null; decalage: number } | null {
     const c = cache(i);
     if (!c) return null;
     const already = intervals[i];
     if (already?.fini) return null;
-    const debut = c.debut + (already?.lignes.length ?? 0);
-    if (c.fin !== null && debut > c.fin) return null;
-    return { ...c, debut };
+    const start = c.debut + (already?.lignes.length ?? 0);
+    if (c.fin !== null && start > c.fin) return null;
+    return { ...c, debut: start };
   }
 
   async function expand(i: number) {
-    const r = restant(i);
-    if (!r || charge !== null) return;
-    charge = i;
+    const r = remaining(i);
+    if (!r || onLoaded !== null) return;
+    onLoaded = i;
     try {
-      const fin = r.fin === null ? r.debut + EXPANDED_LINES - 1 : Math.min(r.fin, r.debut + EXPANDED_LINES - 1);
-      const texts = await api.relecture.lignes(project, token, diff.chemin, r.debut, fin);
+      const end = r.fin === null ? r.debut + EXPANDED_LINES - 1 : Math.min(r.fin, r.debut + EXPANDED_LINES - 1);
+      const texts = await api.relecture.lignes(project, token, diff.chemin, r.debut, end);
       const already = intervals[i]?.lignes ?? [];
       const fresh = texts.map((text, k) => ({ marque: " " as const, texte: text, nouveau: r.debut + k, ancien: r.debut + k + r.decalage }));
       const all = [...already, ...fresh];
-      const finished = texts.length < fin - r.debut + 1 || (r.fin !== null && r.debut + texts.length > r.fin);
+      const finished = texts.length < end - r.debut + 1 || (r.fin !== null && r.debut + texts.length > r.fin);
       intervals = { ...intervals, [i]: { lignes: all, fini: finished } };
     } catch {
       intervals = { ...intervals, [i]: { lignes: intervals[i]?.lignes ?? [], fini: true } };
     } finally {
-      charge = null;
+      onLoaded = null;
     }
   }
 
-  const cls = (l: Ligne) => (l.marque === "+" ? "ajout" : l.marque === "-" ? "retrait" : "contexte");
+  const cls = (l: Line) => (l.marque === "+" ? "ajout" : l.marque === "-" ? "retrait" : "contexte");
 </script>
 
-{#snippet row(l: Ligne)}
+{#snippet row(l: Line)}
   <div class="ligne {cls(l)}" data-testid="ligne-diff" data-ancien={l.ancien ?? ""} data-nouveau={l.nouveau ?? ""}><span class="marge"></span><span class="num">{l.ancien ?? ""}</span><span class="num">{l.nouveau ?? ""}</span><span class="code">{l.texte}</span></div>
 {/snippet}
 
-{#snippet blockRow(l: Ligne, bloc: number, k: number)}
+{#snippet blockRow(l: Line, block: number, k: number)}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
     class="ligne {cls(l)}"
-    class:choisie={chosen(bloc, k)}
+    class:choisie={chosen(block, k)}
     data-testid="ligne-diff"
     data-ancien={l.ancien ?? ""}
     data-nouveau={l.nouveau ?? ""}
-    onmouseenter={() => hover(bloc, k)}
+    onmouseenter={() => hover(block, k)}
   ><span class="marge"><button
         class="ajouter"
         data-testid="ajouter-commentaire"
-        aria-label="Commenter la ligne {position(diff.blocs[bloc]!, k)}"
+        aria-label="Commenter la ligne {position(diff.blocs[block]!, k)}"
         title="Commenter (Maj+clic ou glisser : plusieurs lignes)"
         onmousedown={(e) => {
           if (e.button !== 0) return;
           e.preventDefault();
-          aim(bloc, k, e.shiftKey);
+          aim(block, k, e.shiftKey);
         }}
         onclick={(e) => {
           // Keyboard (Enter, Space): no mousedown.
-          if (e.detail === 0) aim(bloc, k, e.shiftKey);
+          if (e.detail === 0) aim(block, k, e.shiftKey);
         }}></button
       ></span><span class="num">{l.ancien ?? ""}</span><span class="num">{l.nouveau ?? ""}</span><span class="code">{l.texte}</span></div>
-  {#each places.sous.get(`${bloc}:${k}`) ?? [] as c (c.id)}<ReviewComment projet={project} commentaire={c} {surChange} />{/each}
-  {#if plage && plage.bloc === bloc && plage.derniere === k}
+  {#each places.sous.get(`${block}:${k}`) ?? [] as c (c.id)}<ReviewComment projet={project} commentaire={c} surChange={onChange} />{/each}
+  {#if range && range.bloc === block && range.derniere === k}
     <form class="formulaire" data-testid="formulaire-commentaire" onsubmit={(e) => { e.preventDefault(); void validate(); }}>
-      <div class="plage">{plage.debut === plage.fin ? `Ligne ${plage.debut}` : `Lignes ${plage.debut}–${plage.fin}`}</div>
+      <div class="plage">{range.debut === range.fin ? `Ligne ${range.debut}` : `Lignes ${range.debut}–${range.fin}`}</div>
       <!-- svelte-ignore a11y_autofocus -->
       <textarea bind:value={text} rows="3" autofocus placeholder="Commentaire (texte simple, Markdown montré tel quel)" onkeydown={key}></textarea>
       {#if error}<p class="erreur" data-testid="erreur-commentaire">{error}</p>{/if}
@@ -224,8 +224,8 @@
 
 {#snippet interval(i: number)}
   {#each intervals[i]?.lignes ?? [] as l (l.nouveau)}{@render row(l)}{/each}
-  {#if restant(i)}
-    <button class="deplier" data-testid="deplier-contexte" disabled={charge !== null} onclick={() => void expand(i)}>Afficher les lignes cachées</button>
+  {#if remaining(i)}
+    <button class="deplier" data-testid="deplier-contexte" disabled={onLoaded !== null} onclick={() => void expand(i)}>Afficher les lignes cachées</button>
   {/if}
 {/snippet}
 
@@ -233,7 +233,7 @@
 
 <section class="diff" data-testid="diff-fichier" aria-label="Diff de {diff.chemin}">
   <h3 class="chemin">{diff.chemin}</h3>
-  {#each places.ailleurs as c (c.id)}<ReviewComment projet={project} commentaire={c} {surChange} />{/each}
+  {#each places.ailleurs as c (c.id)}<ReviewComment projet={project} commentaire={c} surChange={onChange} />{/each}
   {#if diff.affichable !== true}
     <p class="non-affichable">{NOT_DISPLAYABLE[diff.affichable]}</p>
   {:else if diff.blocs.length === 0}

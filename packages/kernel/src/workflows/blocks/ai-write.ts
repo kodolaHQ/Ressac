@@ -1,7 +1,7 @@
 import { z } from "zod";
-import { CHAMP_PAR_ELEMENT, fieldsPerElementOnly, Template, ParamsPerElement, type DefinitionBloc } from "./common.js";
+import { FIELD_PER_ELEMENT, fieldsPerElementOnly, Template, ParamsPerElement, type BlockDefinition } from "./common.js";
 
-export const definition: DefinitionBloc = {
+export const definition: BlockDefinition = {
   type: "ia.rediger",
   libelle: "Rédiger avec Gemma",
   famille: "IA",
@@ -12,7 +12,7 @@ export const definition: DefinitionBloc = {
     { nom: "champ", libelle: "Champ de la réponse", requis: false, defaut: "texte", genre: "texte" },
     { nom: "json", libelle: "Réponse en JSON", requis: false, defaut: false, genre: "case" },
     { nom: "texteMax", libelle: "Taille maximale du texte", requis: false, defaut: 12_000, genre: "nombre", min: 1, max: 200_000, entier: true },
-    CHAMP_PAR_ELEMENT,
+    FIELD_PER_ELEMENT,
     ...fieldsPerElementOnly(),
   ],
   parElement: "option",

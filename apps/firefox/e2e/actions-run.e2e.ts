@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { openAction, runsOnDisk, startActionServers, tid, uiQueries, waitNoyau, writeAction, writePagesAction, writeResult, writeRunnableAction } from "./actions";
+import { openAction, runsOnDisk, startActionServers, tid, uiQueries, waitKernel, writeAction, writePagesAction, writeResult, writeRunnableAction } from "./actions";
 import { waitFor, waitReady } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
@@ -26,7 +26,7 @@ beforeAll(async () => {
   q = uiQueries(m);
   await m.setContext("chrome");
   await waitReady(m);
-  await waitNoyau(m);
+  await waitKernel(m);
 }, 60_000);
 beforeEach(() => servers.reset());
 afterAll(async () => {

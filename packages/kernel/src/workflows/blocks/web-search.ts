@@ -1,8 +1,8 @@
 import { z } from "zod";
-import { CHAMP_PAR_ELEMENT, fieldsPerElementOnly, Template, ParamsPerElement, type DefinitionBloc } from "./common.js";
+import { FIELD_PER_ELEMENT, fieldsPerElementOnly, Template, ParamsPerElement, type BlockDefinition } from "./common.js";
 
 /** Only for a widget that declares `"web": true` (validerWorkflow); the search is done by the kernel. */
-export const definition: DefinitionBloc = {
+export const definition: BlockDefinition = {
   type: "web.chercher",
   libelle: "Chercher sur le web",
   famille: "Sources",
@@ -11,7 +11,7 @@ export const definition: DefinitionBloc = {
   champs: [
     { nom: "requete", libelle: "Recherche", aide: "Les {chemins} sont remplacés par les valeurs de l'élément.", requis: true, defaut: "{titre}", genre: "gabarit" },
     { nom: "nombre", libelle: "Nombre de résultats", requis: false, defaut: 8, genre: "nombre", min: 1, max: 20, entier: true },
-    CHAMP_PAR_ELEMENT,
+    FIELD_PER_ELEMENT,
     ...fieldsPerElementOnly(),
     { nom: "champ", libelle: "Champ des résultats", requis: false, defaut: "recherche", genre: "texte" },
   ],

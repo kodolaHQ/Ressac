@@ -1,27 +1,27 @@
 <script lang="ts">
   import Icon from "./Icon.svelte";
   import { openMenu } from "./menu.svelte";
-  import type { WindowState, Visite } from "../../shared/model";
+  import type { WindowState, Visit } from "../../shared/model";
   import { api } from "../state.svelte";
 
   let { fenetre: win, fermer: close }: { fenetre: WindowState; fermer: () => void } = $props();
   let text = $state("");
-  let visites = $state<Visite[]>([]);
+  let visits = $state<Visit[]>([]);
   let clearChoice = $state(false);
-  let champ: HTMLInputElement;
+  let field: HTMLInputElement;
   let request = 0;
 
-  async function charger() {
+  async function load() {
     const n = ++request;
     const r = text.trim() ? await api.historique.rechercher(text.trim(), 200) : await api.historique.recents();
-    if (n === request) visites = r;
+    if (n === request) visits = r;
   }
 
   $effect(() => {
     void text;
-    void charger();
+    void load();
   });
-  $effect(() => champ.focus());
+  $effect(() => field.focus());
 
   function day(iso: string): string {
     const d = new Date(iso);
@@ -33,8 +33,8 @@
   }
 
   const groups = $derived.by(() => {
-    const g: { jour: string; visites: Visite[] }[] = [];
-    for (const v of visites) {
+    const g: { jour: string; visites: Visit[] }[] = [];
+    for (const v of visits) {
       const j = day(v.derniereVisite);
       if (g.at(-1)?.jour !== j) g.push({ jour: j, visites: [] });
       g.at(-1)!.visites.push(v);
@@ -42,10 +42,10 @@
     return g;
   });
 
-  async function effacer(from?: Date) {
+  async function clear(from?: Date) {
     clearChoice = false;
     await api.historique.effacer(from?.toISOString());
-    await charger();
+    await load();
   }
 
   function open(e: MouseEvent, url: string) {
@@ -54,9 +54,9 @@
     close();
   }
 
-  function menuVisite(e: MouseEvent, v: Visite) {
+  function visitMenu(e: MouseEvent, v: Visit) {
     if (!v.retenu) return;
-    openMenu(e, [{ libelle: "Oublier le texte retenu", agir: () => void api.historique.oublierTexte(v.url, v.espaceId).then(charger) }], { libre: true });
+    openMenu(e, [{ libelle: "Oublier le texte retenu", agir: () => void api.historique.oublierTexte(v.url, v.espaceId).then(load) }], { libre: true });
   }
 
     const dayStart = () => {
@@ -70,14 +70,14 @@
 <section class="historique" data-testid="historique" aria-label="Historique">
   <header>
     <h1>Historique</h1>
-    <input bind:this={champ} type="search" bind:value={text} placeholder="Rechercher dans l'historique" spellcheck="false" />
+    <input bind:this={field} type="search" bind:value={text} placeholder="Rechercher dans l'historique" spellcheck="false" />
     <div class="effacer">
       <button onclick={() => (clearChoice = !clearChoice)}>Effacer l'historique</button>
       {#if clearChoice}
         <div class="choix">
-          <button onclick={() => effacer(new Date(Date.now() - 3600_000))}>Dernière heure</button>
-          <button onclick={() => effacer(dayStart())}>Aujourd'hui</button>
-          <button onclick={() => effacer()}>Tout</button>
+          <button onclick={() => clear(new Date(Date.now() - 3600_000))}>Dernière heure</button>
+          <button onclick={() => clear(dayStart())}>Aujourd'hui</button>
+          <button onclick={() => clear()}>Tout</button>
         </div>
       {/if}
     </div>
@@ -88,7 +88,7 @@
     <ul>
       {#each g.visites as v (`${v.espaceId}|${v.url}`)}
         <li data-prive={v.prive ? "true" : undefined} data-retenu={v.retenu ? "true" : undefined}>
-          <a href={v.url} onclick={(e) => open(e, v.url)} oncontextmenu={(e) => menuVisite(e, v)}>
+          <a href={v.url} onclick={(e) => open(e, v.url)} oncontextmenu={(e) => visitMenu(e, v)}>
             <span class="heure">{new Date(v.derniereVisite).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</span>
             {#if v.prive}<span class="cadenas" title="Espace privé" aria-label="Espace privé">🔒</span>{/if}
             <span class="titre">{v.titre}</span>

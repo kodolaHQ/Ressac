@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  startUrl, relativeUrl, urlOnDomain, correspondMotif, effectiveDomains, hostInSite, tweaksFor,
+  startUrl, relativeUrl, urlOnDomain, matchesPattern, effectiveDomains, hostInSite, tweaksFor,
   findUrl, type UrlState,
 } from "../../src/sites/urls.js";
 import type { DeclarationSite } from "../../src/sites/schemas.js";
@@ -45,28 +45,28 @@ describe("adresseRelative", () => {
 
 describe("adresseSurDomaine", () => {
   const dom = ["vidola-a.example", "vidola-b.example"];
-  const depart = "https://vidola-b.example/accueil";
+  const start = "https://vidola-b.example/accueil";
   const o = { adressesLocales: false };
   it("a current one in numeric notation of a local address keeps the start's host", () => {
-    expect(urlOnDomain("/x", "0x7f.1", dom, depart, o)).toBe("https://vidola-b.example/x");
-    expect(urlOnDomain("/x", "2130706433", dom, depart, o)).toBe("https://vidola-b.example/x");
+    expect(urlOnDomain("/x", "0x7f.1", dom, start, o)).toBe("https://vidola-b.example/x");
+    expect(urlOnDomain("/x", "2130706433", dom, start, o)).toBe("https://vidola-b.example/x");
   });
   it("relative returned on the current domain", () => {
-    expect(urlOnDomain("/serie/x", "vidola-b.example", dom, depart, o)).toBe("https://vidola-b.example/serie/x");
+    expect(urlOnDomain("/serie/x", "vidola-b.example", dom, start, o)).toBe("https://vidola-b.example/serie/x");
   });
   it("absolute on the old domain moves to the current one", () => {
-    expect(urlOnDomain("https://www.vidola-a.example/serie/x?a=1", "vidola-b.example", dom, depart, o)).toBe("https://vidola-b.example/serie/x?a=1");
+    expect(urlOnDomain("https://www.vidola-a.example/serie/x?a=1", "vidola-b.example", dom, start, o)).toBe("https://vidola-b.example/serie/x?a=1");
   });
   it("the rest is refused", () => {
     for (const a of ["javascript:alert(1)", "//pub.example/x", "https://pub.example/", "/\\pub.example", "http://vidola-a.example/x", "https://u:p@vidola-a.example/", "", "x"])
-      expect(urlOnDomain(a, "vidola-b.example", dom, depart, o)).toBeNull();
+      expect(urlOnDomain(a, "vidola-b.example", dom, start, o)).toBeNull();
   });
   it("non-local http refused even in test; invalid current: start's host", () => {
     const t = { adressesLocales: true };
     expect(urlOnDomain("http://vidola-a.example/x", "vidola-b.example", dom, "http://vidola-b.example/", t)).toBeNull();
-    expect(urlOnDomain("/x", "evil.com/@x", dom, depart, o)).toBe("https://vidola-b.example/x");
-    expect(urlOnDomain("/x", "127.0.0.1", dom, depart, o)).toBe("https://vidola-b.example/x");
-    expect(urlOnDomain("/x", "", dom, depart, o)).toBe("https://vidola-b.example/x");
+    expect(urlOnDomain("/x", "evil.com/@x", dom, start, o)).toBe("https://vidola-b.example/x");
+    expect(urlOnDomain("/x", "127.0.0.1", dom, start, o)).toBe("https://vidola-b.example/x");
+    expect(urlOnDomain("/x", "", dom, start, o)).toBe("https://vidola-b.example/x");
   });
   it("keeps the start's scheme and port (tests)", () => {
     const d = "http://vidola-b.localhost:4321/";
@@ -77,32 +77,32 @@ describe("adresseSurDomaine", () => {
 
 describe("correspondMotif", () => {
   it("anchored wildcard", () => {
-    expect(correspondMotif("/series/*", "/series/the-bear?e=4")).toBe(true);
-    expect(correspondMotif("/series/*", "/x/series/a")).toBe(false);
-    expect(correspondMotif("/a.b", "/axb")).toBe(false);
-    expect(correspondMotif("https://*.clipsy.*/*", "https://www.clipsy.io/embed-1")).toBe(true);
-    expect(correspondMotif("https://*.clipsy.*/*", "https://clipsy.io.evil.com/")).toBe(false);
-    expect(correspondMotif("https://*.clipsy.*/*", "https://x.clipsy.evil.com/")).toBe(true);
+    expect(matchesPattern("/series/*", "/series/the-bear?e=4")).toBe(true);
+    expect(matchesPattern("/series/*", "/x/series/a")).toBe(false);
+    expect(matchesPattern("/a.b", "/axb")).toBe(false);
+    expect(matchesPattern("https://*.clipsy.*/*", "https://www.clipsy.io/embed-1")).toBe(true);
+    expect(matchesPattern("https://*.clipsy.*/*", "https://clipsy.io.evil.com/")).toBe(false);
+    expect(matchesPattern("https://*.clipsy.*/*", "https://x.clipsy.evil.com/")).toBe(true);
   });
   it("case-sensitive except the host", () => {
-    expect(correspondMotif("/Series/*", "/series/a")).toBe(false);
-    expect(correspondMotif("https://Lecteur.Example/*", "https://lecteur.example/A")).toBe(true);
+    expect(matchesPattern("/Series/*", "/series/a")).toBe(false);
+    expect(matchesPattern("https://Lecteur.Example/*", "https://lecteur.example/A")).toBe(true);
   });
 });
 
 describe("correspondMotif, cas hostiles", () => {
   const m = "https://*.clipsy.*/*";
   it("the host's wildcard does not pass / ? @ :", () => {
-    expect(correspondMotif(m, "https://evil.com/a.clipsy.b/z")).toBe(false);
-    expect(correspondMotif(m, "https://evil.com/?r=.clipsy.x/")).toBe(false);
-    expect(correspondMotif(m, "https://x.clipsy.io@evil.com/")).toBe(false);
-    expect(correspondMotif(m, "https://u:p@x.clipsy.io/")).toBe(false);
-    expect(correspondMotif(m, "http://x.clipsy.io/")).toBe(false);
+    expect(matchesPattern(m, "https://evil.com/a.clipsy.b/z")).toBe(false);
+    expect(matchesPattern(m, "https://evil.com/?r=.clipsy.x/")).toBe(false);
+    expect(matchesPattern(m, "https://x.clipsy.io@evil.com/")).toBe(false);
+    expect(matchesPattern(m, "https://u:p@x.clipsy.io/")).toBe(false);
+    expect(matchesPattern(m, "http://x.clipsy.io/")).toBe(false);
   });
   it("multiple wildcards without catastrophic backtracking", () => {
     const t0 = performance.now();
-    expect(correspondMotif("*a".repeat(8) + "b", "a".repeat(60))).toBe(false);
-    expect(correspondMotif("https://" + "*a".repeat(8) + "b/*", "https://" + "a".repeat(60) + "/")).toBe(false);
+    expect(matchesPattern("*a".repeat(8) + "b", "a".repeat(60))).toBe(false);
+    expect(matchesPattern("https://" + "*a".repeat(8) + "b/*", "https://" + "a".repeat(60) + "/")).toBe(false);
     expect(performance.now() - t0).toBeLessThan(50);
   });
 });
@@ -141,8 +141,8 @@ describe("retouchesPour", () => {
 describe("trouverAdresse: a real domain name", () => {
   const o = { page: "https://adresses.example/", motif: "vidola", adressesLocales: false };
   it("without a dot (intranet) or whose last label is numeric: refused, as in site.json", () => {
-    for (const lien of ["https://vidola/", "https://vidola-box/", "https://vidola.1/", "https://vidola.12/"]) {
-      expect(findUrl([lien], o), lien).toBeNull();
+    for (const link of ["https://vidola/", "https://vidola-box/", "https://vidola.1/", "https://vidola.12/"]) {
+      expect(findUrl([link], o), link).toBeNull();
     }
     expect(findUrl(["https://vidola-b.example/"], o)?.hostname).toBe("vidola-b.example");
   });

@@ -8,9 +8,9 @@ import {
   commentsFile,
   portTaken,
   externalProject,
-  type DossiersDesign,
+  type DesignFolders,
   type ExternalRegistry,
-  type Remarques,
+  type Remarks,
   type DeclarationResult,
 } from "@webaios/kernel";
 import type { ExternalsState } from "../../shared/api";
@@ -21,7 +21,7 @@ const NAME_MAX = 60;
 /** Reason displayed when the external MCP does not start (other than a taken port) or its registry is unreadable. */
 export const failureReason = (e: unknown): string => `Le MCP externe n'a pas pu démarrer : ${e instanceof Error ? e.message : String(e)}`;
 
-export interface ServiceExternes {
+export interface ExternalService {
   etat(): ExternalsState;
   brancher(name: string): Promise<{ commande: string }>;
   revoquer(id: string): Promise<void>;
@@ -35,15 +35,15 @@ export interface ServiceExternes {
  */
 export async function startExternals(o: {
   registre: ExternalRegistry;
-  remarques: Remarques;
-  dossiers: DossiersDesign;
+  remarques: Remarks;
+  dossiers: DesignFolders;
   port: number;
   plages: [number, number][];
   racineEspace: string;
   maison: string;
   /** Notification of a project's first declaration. */
   notifier(n: { titre: string; texte: string }): void;
-}): Promise<ServiceExternes> {
+}): Promise<ExternalService> {
   let server: { port: number; arreter(): Promise<void> } | null = null;
   let serverState: ExternalsState["serveur"];
   try {

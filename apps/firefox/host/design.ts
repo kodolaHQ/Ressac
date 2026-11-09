@@ -5,10 +5,10 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import {
-  destinationDe, batchState, PORT_MCP_EXTERNE, containerRanges, demoProject, projectForUrl, projectForAppWindow, projectForSite, ExternalRegistry, Remarques,
-  EMPTY_REMARK, SANS_CLIENT, type Application, type SpacePaths, type DesignContext, type Element, type ProjectId, type Lot, type TrackedProject,
+  destinationOf, batchState, EXTERNAL_MCP_PORT, containerRanges, demoProject, projectForUrl, projectForAppWindow, projectForSite, ExternalRegistry, Remarks,
+  EMPTY_REMARK, NO_CLIENT, type Application, type SpacePaths, type DesignContext, type Element, type ProjectId, type Batch, type TrackedProject,
 } from "../../../packages/kernel/src/index.ts";
-import { startExternals, failureReason, type ServiceExternes } from "../core/design/externes.ts";
+import { startExternals, failureReason, type ExternalService } from "../core/design/externes.ts";
 import { createSend } from "../core/design/send.ts";
 import type { ShownElement, ExternalsState, BatchShown, ExtensionResult } from "../shared/api.ts";
 import { ReviewService } from "./review.ts";
@@ -18,7 +18,7 @@ import {
 } from "../shared/design-guards.ts";
 
 /** The external MCP port: the asked one, else 5279; a bad value gives NaN, which the server refuses. */
-export const externalMcpPort = (v: string | undefined): number => Number(v ?? PORT_MCP_EXTERNE);
+export const externalMcpPort = (v: string | undefined): number => Number(v ?? EXTERNAL_MCP_PORT);
 
 export function textSource(s: DesignContext["source"]): string | null {
   if (!s) return null;
@@ -32,7 +32,7 @@ export function shownElement(e: Element): ShownElement {
     : { ...base, etiquette: `${e.contexte.fichier}:${e.contexte.debut}-${e.contexte.fin}`, source: e.contexte.fichier };
 }
 
-export function batchShown(l: Lot): BatchShown {
+export function batchShown(l: Batch): BatchShown {
   return { id: l.id, cree: l.cree, etat: batchState(l), destination: l.destination, elements: l.elements.map(shownElement) };
 }
 
@@ -80,27 +80,27 @@ export function createDesignHost(o: {
 }): DesignHost {
   // The batches of agent projects go in the space (the agent reads them); external projects' registries, review
   // repositories and batches go under <dataDir>/design, never mounted in the container.
-  const dossiers = { remarquesEspace: join(o.chemins.interne, "remarques"), prive: join(o.dataDir, "design") };
-  const remarques = new Remarques({ dossiers });
+  const folders = { remarquesEspace: join(o.chemins.interne, "remarques"), prive: join(o.dataDir, "design") };
+  const remarks = new Remarks({ dossiers: folders });
   let registry: ExternalRegistry | null = null;
-  let externes: ServiceExternes | null = null;
+  let externals: ExternalService | null = null;
   let failure: string | null = null;
 
   // The batch sent to the agent: one pre-filled line in its session, never sent. The chrome reopens a window if needed
   // and design.donnerAgent brings it to the front.
-  const batchSend = async (p: TrackedProject, lot: Lot): Promise<void> => {
+  const batchSend = async (p: TrackedProject, batch: Batch): Promise<void> => {
     if (p.type === "externe") return;
     const f = await o.chrome.fenetreAgent();
     await createSend({
       chemins: o.chemins,
       fenetreAgent: () => f ?? undefined,
-      dossierLot: (pr, l) => remarques.dossierLot(pr, l),
+      dossierLot: (pr, l) => remarks.dossierLot(pr, l),
       preRemplir: o.preRemplir,
       donnerLeTerminal: (w) => o.chrome.donnerAgent(w),
       devant: () => {},
-    })(p, lot);
+    })(p, batch);
   };
-  const review = new ReviewService({ dossiers, chemins: o.chemins, registre: () => registry, applis: o.applis, sites: o.sites, remarques, envoyer: batchSend });
+  const review = new ReviewService({ dossiers: folders, chemins: o.chemins, registre: () => registry, applis: o.applis, sites: o.sites, remarques: remarks, envoyer: batchSend });
 
   // The apps with a manifest, then the site apps, each through the review's queue.
   const takeOver = () => {
@@ -121,19 +121,19 @@ export function createDesignHost(o: {
   takeOver();
 
   // Handled and outdated batches are purged at start, then every 24 hours.
-  void remarques.purger().catch(() => undefined);
-  const purge = setInterval(() => void remarques.purger().catch(() => undefined), 24 * 60 * 60 * 1000);
+  void remarks.purger().catch(() => undefined);
+  const purge = setInterval(() => void remarks.purger().catch(() => undefined), 24 * 60 * 60 * 1000);
   purge.unref();
-  remarques.surChange(o.diffuser);
-  const started = ExternalRegistry.ouvrir(dossiers.prive)
+  remarks.surChange(o.diffuser);
+  const started = ExternalRegistry.ouvrir(folders.prive)
     .then((r) => {
       registry = r;
       r.surChange(o.diffuser);
       // Never another port when this one is held.
       return startExternals({
         registre: r,
-        remarques,
-        dossiers,
+        remarques: remarks,
+        dossiers: folders,
         port: o.port,
         plages: containerRanges(process.env.WEBAIOS_PORTS_APPS),
         // Stricter than the space root: nothing under the profile folder can be declared.
@@ -141,7 +141,7 @@ export function createDesignHost(o: {
         maison: o.maison ?? homedir(),
         notifier: o.notifier,
       }).then((service) => {
-        externes = service;
+        externals = service;
         o.diffuser();
       });
     })
@@ -155,8 +155,8 @@ export function createDesignHost(o: {
   const running = async () => (await o.applis()).flatMap((a) => (a.etat === "en-marche" && a.port !== undefined ? [{ dossier: a.dossier, nom: a.nom, port: a.port }] : []));
   const trackedProject = async (p: ProjectId): Promise<TrackedProject | null> => {
     if (p.startsWith("app-")) {
-      const dossier = p.slice(4);
-      return projectForAppWindow(dossier, (await running()).find((a) => a.dossier === dossier)?.nom ?? dossier);
+      const folder = p.slice(4);
+      return projectForAppWindow(folder, (await running()).find((a) => a.dossier === folder)?.nom ?? folder);
     }
     if (p.startsWith("site-")) {
       const id = p.slice(5);
@@ -168,7 +168,7 @@ export function createDesignHost(o: {
     return e ? { type: "externe", projet: p, dossier: e.dossier, nom: e.nom, client: e.client } : null;
   };
   const destination = (p: TrackedProject) => {
-    const d = destinationDe(p, registry?.clients() ?? []);
+    const d = destinationOf(p, registry?.clients() ?? []);
     return "libelle" in d ? { destination: d.libelle, sansDestination: null } : { destination: null, sansDestination: d.indisponible };
   };
   const tracking = async (p: Params): Promise<DesignTracking | null> => {
@@ -178,7 +178,7 @@ export function createDesignHost(o: {
     else if (p?.url === undefined && p?.projet !== undefined) project = await trackedProject(checkProject(p.projet));
     else throw new Error(INVALID_REQUEST);
     if (!project) return null;
-    const basket = (await remarques.panier(project.projet)).length;
+    const basket = (await remarks.panier(project.projet)).length;
     return { projet: project, panier: basket, ...destination(project), nom: project.type === "demo" ? `localhost:${project.port}` : project.nom };
   };
   const error = (e: unknown): ExtensionResult => ({ ok: false, erreur: e instanceof Error ? e.message : String(e) });
@@ -197,7 +197,7 @@ export function createDesignHost(o: {
     }
     if (text.trim() === "") return { ok: false, erreur: EMPTY_REMARK };
     try {
-      await remarques.ajouterAuPanier(project, { texte: text, contexte: context, capture });
+      await remarks.ajouterAuPanier(project, { texte: text, contexte: context, capture });
       return { ok: true };
     } catch (e) {
       return error(e);
@@ -207,17 +207,17 @@ export function createDesignHost(o: {
   const send = async (p: Params): Promise<ExtensionResult> => {
     if (!projectId(p?.projet)) return { ok: false, erreur: INVALID_REQUEST };
     const project = await trackedProject(p.projet);
-    if (!project) return { ok: false, erreur: SANS_CLIENT };
+    if (!project) return { ok: false, erreur: NO_CLIENT };
     let dest: { destination: "agent" | "mcp"; client?: string } = { destination: "agent" };
     if (project.type === "externe") {
-      const d = destinationDe(project, registry?.clients() ?? []);
-      if ("indisponible" in d || project.client === null) return { ok: false, erreur: SANS_CLIENT };
+      const d = destinationOf(project, registry?.clients() ?? []);
+      if ("indisponible" in d || project.client === null) return { ok: false, erreur: NO_CLIENT };
       dest = { destination: "mcp", client: project.client };
     }
     try {
-      const lot = await remarques.envoyerPanier(project.projet, dest);
+      const batch = await remarks.envoyerPanier(project.projet, dest);
       if (project.type === "site") await review.assurer(project.projet).catch(() => undefined);
-      await batchSend(project, lot);
+      await batchSend(project, batch);
       return { ok: true };
     } catch (e) {
       return error(e);
@@ -228,19 +228,19 @@ export function createDesignHost(o: {
 
   const handlers: Record<(typeof DESIGN_METHODS)[number], (p: Params) => unknown> = {
     "externes.liste": (): ExternalsState =>
-      externes?.etat() ?? { serveur: { etat: "eteint", raison: failure ?? "Le MCP externe démarre" }, projets: [], clients: [] },
+      externals?.etat() ?? { serveur: { etat: "eteint", raison: failure ?? "Le MCP externe démarre" }, projets: [], clients: [] },
     "externes.brancher": (p) => {
       const name = checkClientName(p?.nom);
-      if (!externes) throw new Error(failure ?? "Le MCP externe démarre");
-      return externes.brancher(name);
+      if (!externals) throw new Error(failure ?? "Le MCP externe démarre");
+      return externals.brancher(name);
     },
     // A bad id does nothing.
     "externes.revoquer": async (p) => {
-      if (typeof p?.id === "string" && CLIENT_ID.test(p.id)) await externes?.revoquer(p.id);
+      if (typeof p?.id === "string" && CLIENT_ID.test(p.id)) await externals?.revoquer(p.id);
     },
     "externes.oublier": async (p) => {
       if (typeof p?.id !== "string" || !EXTERNAL_ID.test(p.id)) return;
-      await externes?.oublier(p.id);
+      await externals?.oublier(p.id);
       review.oublier(`ext-${p.id}`);
     },
     "externes.nom": (p) => (typeof p?.id === "string" ? (registry?.projets().find((x) => x.id === p.id)?.nom ?? null) : null),
@@ -248,8 +248,8 @@ export function createDesignHost(o: {
     "relecture.fichier": (p) => review.fichier(checkProject(p?.projet), checkToken(p?.jeton), checkPath(p?.chemin)),
     "relecture.lignes": (p) => {
       const project = checkProject(p?.projet);
-      const [debut, fin] = checkLines(p?.debut, p?.fin);
-      return review.lignes(project, checkToken(p?.jeton), checkPath(p?.chemin), debut, fin);
+      const [start, end] = checkLines(p?.debut, p?.fin);
+      return review.lignes(project, checkToken(p?.jeton), checkPath(p?.chemin), start, end);
     },
     "relecture.commentaires": (p) => review.commentaires(checkProject(p?.projet)),
     "relecture.commenter": (p) => {
@@ -257,8 +257,8 @@ export function createDesignHost(o: {
       const c = p?.c;
       if (typeof c !== "object" || c === null) throw new Error("lignes invalides");
       const x = c as Record<string, unknown>;
-      const [debut, fin] = checkLines(x.debut, x.fin);
-      return review.commenter(project, checkToken(p?.jeton), { fichier: checkPath(x.fichier), debut, fin, texte: checkText(x.texte) });
+      const [start, end] = checkLines(x.debut, x.fin);
+      return review.commenter(project, checkToken(p?.jeton), { fichier: checkPath(x.fichier), debut: start, fin: end, texte: checkText(x.texte) });
     },
     "relecture.modifierCommentaire": (p) => review.modifierCommentaire(checkProject(p?.projet), checkComment(p?.id), checkText(p?.texte)),
     "relecture.resoudre": (p) => {
@@ -272,13 +272,13 @@ export function createDesignHost(o: {
     "design.suivi": tracking,
     "design.ajouter": add,
     // A bad project or id answers an empty list, or nothing.
-    "design.panier": async (p) => (projectId(p?.projet) ? (await remarques.panier(p.projet)).map(shownElement) : []),
-    "design.lots": async (p) => (projectId(p?.projet) ? (await remarques.lots(p.projet)).map(batchShown) : []),
+    "design.panier": async (p) => (projectId(p?.projet) ? (await remarks.panier(p.projet)).map(shownElement) : []),
+    "design.lots": async (p) => (projectId(p?.projet) ? (await remarks.lots(p.projet)).map(batchShown) : []),
     "design.retirer": async (p) => {
-      if (projectId(p?.projet) && id(p?.id)) await remarques.retirerDuPanier(p.projet, p.id);
+      if (projectId(p?.projet) && id(p?.id)) await remarks.retirerDuPanier(p.projet, p.id);
     },
     "design.traite": async (p) => {
-      if (projectId(p?.projet) && id(p?.lot)) await remarques.marquerLotTraite(p.projet, p.lot);
+      if (projectId(p?.projet) && id(p?.lot)) await remarks.marquerLotTraite(p.projet, p.lot);
     },
     "design.envoyer": send,
   };
@@ -290,7 +290,7 @@ export function createDesignHost(o: {
     siteDeleted: (id) => {
       const p = `site-${id}`;
       if (!ID_PROJECT.test(p)) return;
-      void remarques.oublier(p).catch((e) => console.error(`[design] remarques de ${id} non effacées :`, e));
+      void remarks.oublier(p).catch((e) => console.error(`[design] remarques de ${id} non effacées :`, e));
       void review.effacer(p).catch((e) => console.error(`[relecture] relecture de ${id} non effacée :`, e));
     },
     arreter: async () => {
@@ -298,7 +298,7 @@ export function createDesignHost(o: {
       clearTimeout(takeOverTimer);
       // A server still starting would otherwise outlive the host.
       await started;
-      await externes?.arreter();
+      await externals?.arreter();
     },
   };
 }

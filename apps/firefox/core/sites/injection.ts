@@ -1,11 +1,11 @@
-import { localUrl, relativeUrl, correspondMotif, tweaksFor, type DeclarationSite, type TweaksRead } from "@webaios/kernel";
+import { localUrl, relativeUrl, matchesPattern, tweaksFor, type DeclarationSite, type TweaksRead } from "@webaios/kernel";
 import {
   CONSOLE_TWEAK_SOURCE_MAX,
   CONSOLE_TWEAK_TEXT_MAX,
   CONSOLE_TWEAKS_TOTAL,
   MAX_TWEAK_ERRORS,
   tweakSource,
-  type InjectionCadre,
+  type FrameInjection,
 } from "../../shared/sites";
 
 /** What is needed to open a site app: its declaration read, its effective domains and its start address. */
@@ -26,9 +26,9 @@ export type OpenableSite = {
 export type TweakError = { quand: string; texte: string; source: string; sourceVerifiee: false };
 
 /** Nothing in this frame: no tweak, no bridge, no resume. */
-const nothing = (): InjectionCadre => ({ css: [], js: [], garde: null, hotes: [], pont: false, reprise: false });
+const nothing = (): FrameInjection => ({ css: [], js: [], garde: null, hotes: [], pont: false, reprise: false });
 
-function analyser(url: string): URL | null {
+function analyze(url: string): URL | null {
   try {
     return new URL(url);
   } catch {
@@ -40,8 +40,8 @@ function analyser(url: string): URL | null {
  * Tests only (`adressesLocales`): the test server has no TLS, and a `cadres` pattern always starts with
  * « https:// ». An http subframe of a local host is compared as if it were https.
  */
-function urlPourMotifs(url: string, localUrls: boolean): string {
-  const u = analyser(url);
+function urlForPatterns(url: string, localUrls: boolean): string {
+  const u = analyze(url);
   if (!localUrls || !u || u.protocol !== "http:" || !localUrl(u.hostname)) return url;
   return `https:${url.slice("http:".length)}`;
 }
@@ -51,13 +51,13 @@ function urlPourMotifs(url: string, localUrls: boolean): string {
  * declaration has `cadres` patterns, only in those matching them (the declared player, not an ad
  * frame); without a pattern, in all.
  */
-export function repriseDansCadre(d: DeclarationSite, cadre: { url: string; principal: boolean }, localUrls = false): boolean {
+export function resumeInFrame(d: DeclarationSite, frame: { url: string; principal: boolean }, localUrls = false): boolean {
   if (!d.reprise) return false;
-  if (cadre.principal) return true;
-  const motifs = d.retouches.flatMap((r) => (r.cadres === false ? [] : r.cadres));
-  if (motifs.length === 0) return true;
-  const url = urlPourMotifs(cadre.url, localUrls);
-  return motifs.some((m) => correspondMotif(m, url));
+  if (frame.principal) return true;
+  const patterns = d.retouches.flatMap((r) => (r.cadres === false ? [] : r.cadres));
+  if (patterns.length === 0) return true;
+  const url = urlForPatterns(frame.url, localUrls);
+  return patterns.some((m) => matchesPattern(m, url));
 }
 
 /**
@@ -67,41 +67,41 @@ export function repriseDansCadre(d: DeclarationSite, cadre: { url: string; princ
  * `webaiosSite`, the guard bounded to its host, only if the main page (`page`, that of the view) is on the site:
  * the frames of a login page receive nothing. Resume (WebAiOs code): see `repriseDansCadre`.
  */
-export function injectionPour(
+export function injectionFor(
   o: { site: OpenableSite; retouches: TweaksRead; accorde: boolean; garde: string; adressesLocales?: boolean },
-  cadre: { url: string; principal: boolean; page?: string | null },
-): InjectionCadre | null {
+  frame: { url: string; principal: boolean; page?: string | null },
+): FrameInjection | null {
   if (!o.accorde) return null;
   const { site } = o;
   const d = site.declaration;
   const localUrls = o.adressesLocales === true;
-  const u = analyser(cadre.url);
+  const u = analyze(frame.url);
   // https, or (tests) http of a local host; never credentials: like the tweak patterns.
   const allowed = !!u && !u.username && !u.password && (u.protocol === "https:" || (u.protocol === "http:" && localUrls && localUrl(u.hostname)));
   if (!u || !allowed) return nothing();
   // Main page outside the effective domains (login domain): it is not an app page.
-  if (cadre.principal && relativeUrl(cadre.url, site.domaines) === null) return nothing();
+  if (frame.principal && relativeUrl(frame.url, site.domaines) === null) return nothing();
   // Subframe of a page outside the effective domains (login), or of an unknown page: nothing either.
-  if (!cadre.principal && (!cadre.page || relativeUrl(cadre.page, site.domaines) === null)) return nothing();
+  if (!frame.principal && (!frame.page || relativeUrl(frame.page, site.domaines) === null)) return nothing();
   const host = u.hostname;
-  const kept = tweaksFor(d, cadre.principal ? cadre : { ...cadre, url: urlPourMotifs(cadre.url, localUrls) }, site.domaines, { adressesLocales: localUrls });
+  const kept = tweaksFor(d, frame.principal ? frame : { ...frame, url: urlForPatterns(frame.url, localUrls) }, site.domaines, { adressesLocales: localUrls });
   const css: string[] = [];
-  const js: InjectionCadre["js"] = [];
-  const vus = new Set<string>();
+  const js: FrameInjection["js"] = [];
+  const seen = new Set<string>();
   for (const r of kept) {
     for (const f of r.css) {
-      if (vus.has(`css:${f}`) || !Object.hasOwn(o.retouches.css, f)) continue;
-      vus.add(`css:${f}`);
+      if (seen.has(`css:${f}`) || !Object.hasOwn(o.retouches.css, f)) continue;
+      seen.add(`css:${f}`);
       css.push(o.retouches.css[f]!);
     }
     for (const f of r.js) {
-      if (vus.has(`js:${f}`) || !Object.hasOwn(o.retouches.js, f)) continue;
-      vus.add(`js:${f}`);
+      if (seen.has(`js:${f}`) || !Object.hasOwn(o.retouches.js, f)) continue;
+      seen.add(`js:${f}`);
       js.push({ code: o.retouches.js[f]!, nom: tweakSource(site.id, f) });
     }
   }
-  const hosts = cadre.principal ? site.domaines.flatMap((x) => [`https://*.${x}/*`, `https://${x}/*`]) : js.length > 0 ? [`https://${host}/*`] : [];
-  return { css, js, garde: js.length > 0 ? o.garde : null, hotes: hosts, pont: cadre.principal, reprise: repriseDansCadre(d, cadre, localUrls) };
+  const hosts = frame.principal ? site.domaines.flatMap((x) => [`https://*.${x}/*`, `https://${x}/*`]) : js.length > 0 ? [`https://${host}/*`] : [];
+  return { css, js, garde: js.length > 0 ? o.garde : null, hotes: hosts, pont: frame.principal, reprise: resumeInFrame(d, frame, localUrls) };
 }
 
 /**

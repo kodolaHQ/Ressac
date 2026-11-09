@@ -1,6 +1,6 @@
-import type { DroitDev } from "../access/policy.js";
+import type { DevRight } from "../access/policy.js";
 import type { CpuProfile } from "../devtools/summaries.js";
-import type { PageLue } from "../workflows/protocole.js";
+import type { ReadPage } from "../workflows/protocole.js";
 import {
   TabNotFound,
   PrivateTab,
@@ -9,7 +9,7 @@ import {
   type BrowserHistory,
   type MessageConsole,
   type TabInfo,
-  type OptionsLecturePage,
+  type PageReadOptions,
   type KeptPage,
   type BrowserDevTools,
   type BrowserBridge,
@@ -36,7 +36,7 @@ const PROFILE: CpuProfile = {
 };
 
 /** A minimal `.heapsnapshot`: `n` « Fuite » objects of 100 bytes. */
-function tas(n: number): string {
+function heap(n: number): string {
   const nodes: number[] = [];
   for (let i = 0; i < n; i++) nodes.push(3, 0, i + 1, 100, 0);
   return JSON.stringify({
@@ -115,7 +115,7 @@ class FakeDevTools implements BrowserDevTools {
     this.noter("instantaneMemoire", id);
     this.verifier(id);
     if (this.bloquer) return pending<string>(signal);
-    return tas(this.objetsTas);
+    return heap(this.objetsTas);
   }
 
   async executer(id: string, code: string, _signal: AbortSignal): Promise<JsResult> {
@@ -125,14 +125,14 @@ class FakeDevTools implements BrowserDevTools {
     return { valeur: JSON.stringify({ code }) };
   }
 
-  async recharger(id: string, sansCache: boolean) {
-    this.noter("recharger", id, sansCache);
+  async recharger(id: string, noCache: boolean) {
+    this.noter("recharger", id, noCache);
     this.verifier(id);
   }
 }
 
 /** Simulated browser: for the tests and the dev command. */
-export class PontFactice implements BrowserBridge {
+export class FakeBridge implements BrowserBridge {
   readonly appels: { methode: string; args: unknown[] }[] = [];
   private readonly onglets: TabInfo[];
   private actif: string | null;
@@ -142,7 +142,7 @@ export class PontFactice implements BrowserBridge {
   private readonly prives = new Set<string>();
   readonly outilsDev?: FakeDevTools;
   readonly historique?: BrowserHistory;
-  lirePageInvisible?: (url: string, o: OptionsLecturePage) => Promise<PageLue>;
+  lirePageInvisible?: (url: string, o: PageReadOptions) => Promise<ReadPage>;
   lireHtmlInvisible?: (url: string, o: { adressesLocales?: boolean; signal?: AbortSignal }) => Promise<{ url: string; html: string }>;
   /** Suspended reads in progress, by URL: `relacher` lets them finish. */
   private readonly suspendues = new Map<string, (() => void)[]>();
@@ -151,7 +151,7 @@ export class PontFactice implements BrowserBridge {
   private readonly sites: Record<string, string[]>;
   /** Site apps whose tweaks card is shown: navigating answers « en-attente ». */
   private readonly sitesEnAttente: Set<string>;
-  demanderOutilsDev?: (o: TabInfo, d: { droits: DroitDev[]; raison: string; agent: string }, signal?: AbortSignal) => Promise<DroitDev[]>;
+  demanderOutilsDev?: (o: TabInfo, d: { droits: DevRight[]; raison: string; agent: string }, signal?: AbortSignal) => Promise<DevRight[]>;
 
   /**
    * `outilsDev` provides the simulated dev tools; `accorderDev` also provides the consent card,
@@ -172,10 +172,10 @@ export class PontFactice implements BrowserBridge {
       actif: string | null;
       autoriser: boolean;
       outilsDev?: boolean;
-      accorderDev?: DroitDev[];
+      accorderDev?: DevRight[];
       bloquer?: boolean;
       historique?: { resultats: HistoryResult[]; textes?: KeptPage[]; erreur?: string };
-      lecture?: { pages: PageLue[]; html?: Record<string, string>; refuser?: string[]; redirections?: Record<string, string>; suspendues?: string[] };
+      lecture?: { pages: ReadPage[]; html?: Record<string, string>; refuser?: string[]; redirections?: Record<string, string>; suspendues?: string[] };
       donneesWidget?: boolean;
       sites?: Record<string, string[]>;
       sitesEnAttente?: string[];
@@ -208,43 +208,43 @@ export class PontFactice implements BrowserBridge {
         },
       };
     }
-    const lecture = o.lecture;
-    if (lecture) {
+    const reading = o.lecture;
+    if (reading) {
       const wait = async (url: string, signal: AbortSignal | undefined) => {
         if (signal?.aborted) throw signal.reason;
-        if (!lecture.suspendues?.includes(url)) return;
+        if (!reading.suspendues?.includes(url)) return;
         await new Promise<void>((ok, ko) => {
-          const fin = () => {
+          const end = () => {
             signal?.removeEventListener("abort", cancel);
             ok();
           };
           const cancel = () => {
-            this.suspendues.set(url, (this.suspendues.get(url) ?? []).filter((f) => f !== fin));
+            this.suspendues.set(url, (this.suspendues.get(url) ?? []).filter((f) => f !== end));
             this.noter("lectureAnnulee", url);
             ko(signal!.reason);
           };
-          this.suspendues.set(url, [...(this.suspendues.get(url) ?? []), fin]);
+          this.suspendues.set(url, [...(this.suspendues.get(url) ?? []), end]);
           signal?.addEventListener("abort", cancel, { once: true });
         });
       };
       this.lirePageInvisible = async (url, { signal, changerHote: changeHost, ...l }) => {
         this.noter("lirePageInvisible", url, { ...l });
         await wait(url, signal);
-        if (l.profil !== null && lecture.refuser?.includes(l.profil)) throw new ProfileDenied(l.profil);
-        const finale = lecture.redirections?.[url] ?? url;
+        if (l.profil !== null && reading.refuser?.includes(l.profil)) throw new ProfileDenied(l.profil);
+        const finalUrl = reading.redirections?.[url] ?? url;
         // Like the real bridge: a redirect to another host waits for `changerHote` before going out.
-        const host = new URL(finale).hostname;
+        const host = new URL(finalUrl).hostname;
         if (changeHost && host !== new URL(url).hostname) {
           this.noter("changerHote", host);
           await changeHost(host);
         }
-        const p = lecture.pages.find((x) => x.url === finale);
-        return p ? structuredClone(p) : { url: finale, titre: "", texte: "", liens: [] };
+        const p = reading.pages.find((x) => x.url === finalUrl);
+        return p ? structuredClone(p) : { url: finalUrl, titre: "", texte: "", liens: [] };
       };
       this.lireHtmlInvisible = async (url, { signal, ...l }) => {
         this.noter("lireHtmlInvisible", url, { ...l });
         await wait(url, signal);
-        return { url, html: lecture.html?.[url] ?? "" };
+        return { url, html: reading.html?.[url] ?? "" };
       };
     }
     const widgetData = o.donneesWidget;
@@ -254,11 +254,11 @@ export class PontFactice implements BrowserBridge {
         return widgetData;
       };
     }
-    const accorder = o.accorderDev;
-    if (accorder) {
+    const giveGrant = o.accorderDev;
+    if (giveGrant) {
       this.demanderOutilsDev = async (tab, d) => {
         this.noter("demanderOutilsDev", { ...tab }, d);
-        return [...accorder];
+        return [...giveGrant];
       };
     }
   }
@@ -294,7 +294,7 @@ export class PontFactice implements BrowserBridge {
   relacher(url: string): number {
     const list = this.suspendues.get(url) ?? [];
     this.suspendues.delete(url);
-    for (const fin of list) fin();
+    for (const end of list) end();
     return list.length;
   }
 

@@ -21,7 +21,7 @@ afterEach(async () => {
 
 const pageShown = (shown: boolean) => waitUi(p!.m, "return !!doc.querySelector(arguments[0]) === arguments[1]", [PAGE, shown]);
 const pageText = () => inUi<string>(p!.m, "return doc.querySelector(arguments[0])?.textContent ?? ''", [PAGE]);
-const rowText = (dossier: string) => inUi<string>(p!.m, "return doc.querySelector(arguments[0])?.textContent ?? ''", [appRow(dossier)]);
+const rowText = (folder: string) => inUi<string>(p!.m, "return doc.querySelector(arguments[0])?.textContent ?? ''", [appRow(folder)]);
 const filterText = (id: string) => inUi<string | null>(p!.m, "return doc.querySelector(arguments[0])?.textContent.replace(/\\s+/g, ' ').trim() ?? null", [`[data-testid="filtre-${id}"]`]);
 const rows = (n: number, ms = 10_000) => waitUi(p!.m, `return doc.querySelectorAll('[data-testid^="appli-"]').length === arguments[0];`, [n], ms);
 const pageTabs = async () => Object.values((await state(p!.m)).onglets).filter((o) => o.url === "webaios://applications").length;

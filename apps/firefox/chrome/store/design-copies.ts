@@ -19,10 +19,10 @@ export const SITE_BUBBLE_SIZE = { largeur: 320, hauteur: 190 };
 const BUBBLE_GAP = 6;
 // The unavailability message: 360×56, 12 px from the top and right of the tab's view.
 export const MESSAGE_WIDTH = 360;
-export const HAUTEUR_MESSAGE = 56;
-export const MARGE_MESSAGE = 12;
+export const MESSAGE_HEIGHT = 56;
+export const MESSAGE_MARGIN = 12;
 // An app window's cart, 340 px on the right, 12 px from the edges.
-export const MARGE = 12;
+export const MARGIN = 12;
 export const BASKET_WIDTH = 340;
 /** The unavailability message closes by itself after this. */
 export const MESSAGE_DURATION_MS = 4000;
@@ -38,17 +38,17 @@ export const targetKey = (c: DesignTarget): string =>
 export function bubbleSlot(
   rect: ViewfinderCapture["rect"],
   zoom: number,
-  bornes: Rectangle,
+  bounds: Rectangle,
   win: [number, number],
   o: { hautMin?: number; hauteur?: number } = {},
 ): Rectangle {
-  const hauteur = o.hauteur ?? BUBBLE_SIZE.hauteur;
+  const height = o.hauteur ?? BUBBLE_SIZE.hauteur;
   const clamp = (v: number, max: number) => Math.round(Math.max(0, Math.min(v, max)));
   return {
-    x: clamp(bornes.x + rect.x * zoom, win[0] - BUBBLE_SIZE.largeur),
-    y: Math.max(o.hautMin ?? 0, clamp(bornes.y + (rect.y + rect.hauteur) * zoom + BUBBLE_GAP, win[1] - hauteur)),
+    x: clamp(bounds.x + rect.x * zoom, win[0] - BUBBLE_SIZE.largeur),
+    y: Math.max(o.hautMin ?? 0, clamp(bounds.y + (rect.y + rect.hauteur) * zoom + BUBBLE_GAP, win[1] - height)),
     width: BUBBLE_SIZE.largeur,
-    height: hauteur,
+    height: height,
   };
 }
 

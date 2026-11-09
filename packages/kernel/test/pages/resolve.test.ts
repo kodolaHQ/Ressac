@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { BUILTIN_COMPONENTS, type ComponentDefinition } from "../../src/pages/catalogue.js";
-import type { BlocPlan, PlanPage } from "../../src/pages/plan.js";
+import type { PlanBlock, PlanPage } from "../../src/pages/plan.js";
 import { COMPONENT_UNAVAILABLE, ELEMENTS_MAX, TEXT_MAX, chainsOf, resolvePage, type RenderedBlock } from "../../src/pages/resolve.js";
 import { validatePlan } from "../../src/pages/validate.js";
 
@@ -14,7 +14,7 @@ const graph: ComponentDefinition = {
     empile: { genre: "case", description: "Empilé", requis: false },
   },
 };
-const catalogue = [...BUILTIN_COMPONENTS, graph];
+const catalog = [...BUILTIN_COMPONENTS, graph];
 const fr = new Intl.NumberFormat("fr-FR");
 
 const results = {
@@ -29,21 +29,21 @@ const results = {
   ],
 };
 
-const render = (blocs: BlocPlan[], o: { compte?: boolean; secours?: boolean; r?: unknown } = {}) =>
-  resolvePage({ blocs }, o.r ?? results, { compte: o.compte ?? false, catalogue, secours: o.secours ?? false });
-const un = (bloc: BlocPlan, o?: Parameters<typeof render>[1]) => render([bloc], o).blocs[0] as RenderedBlock & { props: Record<string, any> };
+const render = (blocks: PlanBlock[], o: { compte?: boolean; secours?: boolean; r?: unknown } = {}) =>
+  resolvePage({ blocs: blocks }, o.r ?? results, { compte: o.compte ?? false, catalogue: catalog, secours: o.secours ?? false });
+const one = (block: PlanBlock, o?: Parameters<typeof render>[1]) => render([block], o).blocs[0] as RenderedBlock & { props: Record<string, any> };
 
 describe("resoudrePage", () => {
   it("link whose url is in the results: url kept", () => {
-    const b = un({ composant: "lien", props: { objet: "projet", url: "url", champTexte: "nom" } });
+    const b = one({ composant: "lien", props: { objet: "projet", url: "url", champTexte: "nom" } });
     expect(b).toEqual({ composant: "lien", props: { lien: { texte: "WebAiOs", url: "https://gitlab.com/p" } } });
-    const t = un({ composant: "lien", props: { objet: "projet", url: "url", texte: "Le projet" } });
+    const t = one({ composant: "lien", props: { objet: "projet", url: "url", texte: "Le projet" } });
     expect(t.props.lien).toEqual({ texte: "Le projet", url: "https://gitlab.com/p" });
   });
 
   it("literal link written by Gemma: property refused at validation", () => {
     for (const url of ["https://tiers.example/?d=x", '"https://tiers.example/?d=" + nom', "javascript:alert(1)"]) {
-      const r = validatePlan({ blocs: [{ composant: "lien", props: { objet: "projet", url } }, { composant: "chiffre", props: { valeur: "compter(annonces)", libelle: "n" } }] }, { catalogue, resultats: results });
+      const r = validatePlan({ blocs: [{ composant: "lien", props: { objet: "projet", url } }, { composant: "chiffre", props: { valeur: "compter(annonces)", libelle: "n" } }] }, { catalogue: catalog, resultats: results });
       expect(r.ok).toBe(true);
       if (r.ok) {
         expect(r.plan.blocs.map((b) => b.composant)).toEqual(["chiffre"]);
@@ -54,33 +54,33 @@ describe("resoudrePage", () => {
 
   it("url javascript:, http://127.0.0.1, http://192.168.1.2 : url null", () => {
     const r = { liens: results.projet.pieges.map((u) => ({ u })) };
-    const b = un({ composant: "liste", props: { elements: "liens", titre: "u", lien: "u" } }, { r });
+    const b = one({ composant: "liste", props: { elements: "liens", titre: "u", lien: "u" } }, { r });
     expect(b.props.elements.map((l: any) => l.lien.url)).toEqual([null, null, null, null, null]);
     expect(b.props.elements.map((l: any) => l.lien.texte)).toEqual(results.projet.pieges);
   });
 
   it("a url absent from the results (read elsewhere): url null", () => {
-    const valeurs = { o: { u: "https://tiers.example/" } };
+    const values = { o: { u: "https://tiers.example/" } };
     // The same string is only « present » if it is among the strings of the results passed: here yes.
-    expect(un({ composant: "lien", props: { objet: "o", url: "u" } }, { r: valeurs }).props.lien.url).toBe("https://tiers.example/");
+    expect(one({ composant: "lien", props: { objet: "o", url: "u" } }, { r: values }).props.lien.url).toBe("https://tiers.example/");
     // A number or an object is not an address.
-    expect(un({ composant: "lien", props: { objet: "o", url: "u" } }, { r: { o: { u: 3 } } }).props.lien.url).toBeNull();
+    expect(one({ composant: "lien", props: { objet: "o", url: "u" } }, { r: { o: { u: 3 } } }).props.lien.url).toBeNull();
   });
 
   it("https image of an action without an account: { url }; with an account: neutral; over http: null", () => {
-    const carte = { composant: "cartes", props: { elements: "annonces", titre: "titre", image: "photo" } };
-    const sans = un(carte).props.elements.map((c: any) => c.image);
-    expect(sans).toEqual([{ url: "https://img.example/clio.jpg" }, null, null]);
-    const updateEntry = un(carte, { compte: true }).props.elements.map((c: any) => c.image);
+    const card = { composant: "cartes", props: { elements: "annonces", titre: "titre", image: "photo" } };
+    const without = one(card).props.elements.map((c: any) => c.image);
+    expect(without).toEqual([{ url: "https://img.example/clio.jpg" }, null, null]);
+    const updateEntry = one(card, { compte: true }).props.elements.map((c: any) => c.image);
     expect(updateEntry).toEqual([{ neutre: true }, { neutre: true }, null]);
-    const local = un(carte, { r: { annonces: [{ titre: "x", photo: "https://192.168.1.2/a.png" }] } }).props.elements[0].image;
+    const local = one(card, { r: { annonces: [{ titre: "x", photo: "https://192.168.1.2/a.png" }] } }).props.elements[0].image;
     expect(local).toBeNull();
   });
 
   it("titre « <img src=x onerror=…> » rendu en texte tel quel", () => {
     const html = "<img src=x onerror=alert(1)>";
-    expect(un({ composant: "titre", props: { texte: html } })).toEqual({ composant: "titre", props: { texte: html } });
-    const l = un({ composant: "liste", props: { elements: "x", titre: "t" } }, { r: { x: [{ t: html }] } });
+    expect(one({ composant: "titre", props: { texte: html } })).toEqual({ composant: "titre", props: { texte: html } });
+    const l = one({ composant: "liste", props: { elements: "x", titre: "t" } }, { r: { x: [{ t: html }] } });
     expect(l.props.elements[0].titre).toBe(html);
   });
 
@@ -97,7 +97,7 @@ describe("resoudrePage", () => {
   });
 
   it("regrouper given to cards: one section per value", () => {
-    const b = un({ composant: "cartes", props: { elements: "regrouper(annonces, marque)", titre: "titre", valeur: "prix", etiquettes: "tags" } });
+    const b = one({ composant: "cartes", props: { elements: "regrouper(annonces, marque)", titre: "titre", valeur: "prix", etiquettes: "tags" } });
     expect(b.props.elements).toBeUndefined();
     expect(b.props.groupes.map((g: any) => [g.valeur, g.elements.map((c: any) => c.titre)])).toEqual([["Renault", ["Clio", "Mégane"]], ["Peugeot", ["208"]]]);
     expect(b.props.groupes[0].elements[0].valeur).toBe(fr.format(7000));
@@ -107,13 +107,13 @@ describe("resoudrePage", () => {
 
   it("regrouper cut: 200 elements in total, the rest counted", () => {
     const l = Array.from({ length: 300 }, (_, i) => ({ t: `e${i}`, k: i % 2 ? "a" : "b" }));
-    const b = un({ composant: "liste", props: { elements: "regrouper(l, k)", titre: "t" } }, { r: { l } });
+    const b = one({ composant: "liste", props: { elements: "regrouper(l, k)", titre: "t" } }, { r: { l } });
     expect(b.props.groupes.reduce((n: number, g: any) => n + g.elements.length, 0)).toBe(ELEMENTS_MAX);
     expect(b.props.autres).toBe(100);
   });
 
   it("agent component: reference evaluated, field passed by its name", () => {
-    const b = un({ composant: "graphique-barres", props: { donnees: 'filtrer(annonces, marque = "Renault")', etiquette: "titre", titre: "Prix", max: 20000, empile: true } });
+    const b = one({ composant: "graphique-barres", props: { donnees: 'filtrer(annonces, marque = "Renault")', etiquette: "titre", titre: "Prix", max: 20000, empile: true } });
     expect(b.composant).toBe("graphique-barres");
     expect(b.props.donnees.map((a: any) => a.titre)).toEqual(["Clio", "Mégane"]);
     expect(b.props).toMatchObject({ etiquette: "titre", titre: "Prix", max: 20000, empile: true });
@@ -135,9 +135,9 @@ describe("resoudrePage", () => {
   });
 
   it("texts: numbers in fr-FR, long ones cut to TEXTE_MAX, simple values", () => {
-    expect(un({ composant: "chiffre", props: { valeur: "projet.total", libelle: "Total" } }).props).toEqual({ valeur: fr.format(1234.5), libelle: "Total" });
-    expect(un({ composant: "chiffre", props: { valeur: "compter(annonces)", libelle: "n" } }).props.valeur).toBe("3");
-    const long = un({ composant: "paragraphe", props: { valeur: "t" } }, { r: { t: "a".repeat(100_000) } });
+    expect(one({ composant: "chiffre", props: { valeur: "projet.total", libelle: "Total" } }).props).toEqual({ valeur: fr.format(1234.5), libelle: "Total" });
+    expect(one({ composant: "chiffre", props: { valeur: "compter(annonces)", libelle: "n" } }).props.valeur).toBe("3");
+    const long = one({ composant: "paragraphe", props: { valeur: "t" } }, { r: { t: "a".repeat(100_000) } });
     expect(long.props.texte.length).toBe(TEXT_MAX);
     expect(long.props.texte.endsWith("…")).toBe(true);
   });
@@ -182,8 +182,8 @@ describe("resoudrePage", () => {
   });
 
   it("damaged plan (no block list, nesting too deep): no exception", () => {
-    expect(resolvePage({} as PlanPage, results, { compte: false, catalogue, secours: false }).blocs).toEqual([]);
-    let b: BlocPlan = { composant: "titre", props: { texte: "fond" } };
+    expect(resolvePage({} as PlanPage, results, { compte: false, catalogue: catalog, secours: false }).blocs).toEqual([]);
+    let b: PlanBlock = { composant: "titre", props: { texte: "fond" } };
     for (let i = 0; i < 20_000; i++) b = { composant: "groupe", props: { titre: "g" }, blocs: [b] };
     expect(() => render([b])).not.toThrow();
   });

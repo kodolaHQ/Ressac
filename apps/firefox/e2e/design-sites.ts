@@ -17,7 +17,7 @@ export const viewExpr = (id: string) => `${siteWindowExpr(id)}.gBrowser.selected
 // The test pages and apps.
 export const TUNING_PAGE = `<title>Tuning</title><div id="banniere" class="cookies">Cookies ?</div><a id="lien" href="/autre">autre</a><ul id="films"><li class="affiche">Film 1</li><li class="affiche">Film 2</li></ul><script>window.reactions = []; document.addEventListener("click", () => reactions.push("clic"), true);</script>`;
 export const OTHER_PAGE = "<title>Autre</title>";
-export const CONNEXION_PAGE = "<title>Connexion</title>";
+export const LOGIN_PAGE = "<title>Connexion</title>";
 export const WITH_HOME = '<!doctype html><title>Accueil</title><h1 id="titre">Bienvenue</h1><p class="intro">Reprendre la série</p>';
 export const tuningDeclaration = (url: (host: string, path?: string) => string) => ({
   nom: "Tuning",

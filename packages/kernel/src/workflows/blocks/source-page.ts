@@ -1,8 +1,8 @@
 import { z } from "zod";
-import { DEFILER_MAX } from "../protocole.js";
-import { CHAMP_PAR_ELEMENT, fieldsPerElementOnly, Template, ParamsPerElement, type DefinitionBloc } from "./common.js";
+import { SCROLL_MAX } from "../protocole.js";
+import { FIELD_PER_ELEMENT, fieldsPerElementOnly, Template, ParamsPerElement, type BlockDefinition } from "./common.js";
 
-export const definition: DefinitionBloc = {
+export const definition: BlockDefinition = {
   type: "source.page",
   libelle: "Lire une page",
   famille: "Sources",
@@ -18,10 +18,10 @@ export const definition: DefinitionBloc = {
       requis: false,
       genre: "nombre",
       min: 0,
-      max: DEFILER_MAX,
+      max: SCROLL_MAX,
       entier: true,
     },
-    CHAMP_PAR_ELEMENT,
+    FIELD_PER_ELEMENT,
     ...fieldsPerElementOnly(),
     { nom: "champ", libelle: "Champ du résultat", requis: false, defaut: "page", genre: "texte" },
   ],
@@ -32,7 +32,7 @@ export const definition: DefinitionBloc = {
       url: Template,
       compte: z.boolean().default(false),
       // Without a default: the hash of the params of an existing block (its memory) does not change.
-      defiler: z.number().int().min(0).max(DEFILER_MAX).optional(),
+      defiler: z.number().int().min(0).max(SCROLL_MAX).optional(),
       ...ParamsPerElement,
       champ: z.string().min(1).max(40).default("page"),
     })

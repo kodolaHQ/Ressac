@@ -37,9 +37,9 @@ const SECONDS_LEVELS = ["co", "com", "net", "org", "gov", "edu", "ac", "gouv", "
  * True if the pattern covers all sites: <all_urls>, or a host (port removed, `*:*` included) `*`, `*.<a single label>`
  * (TLD wildcards) or `*.<common second level>.<2-letter country>` (`*.co.uk`).
  */
-export function motifTousLesSites(motif: string): boolean {
-  if (motif === "<all_urls>") return true;
-  const m = /^(\*|https?|wss?|ftp):\/\/([^/]*)(\/.*)?$/.exec(motif);
+export function allSitesPattern(pattern: string): boolean {
+  if (pattern === "<all_urls>") return true;
+  const m = /^(\*|https?|wss?|ftp):\/\/([^/]*)(\/.*)?$/.exec(pattern);
   if (!m) return false;
   const host = m[2]!.replace(/:[^:]*$/, "").toLowerCase();
   if (host === "*" || /^\*\.[^.*]+$/.test(host)) return true;
@@ -62,9 +62,9 @@ function emptyScope(): Scope {
   return { permissions: [], hotes: [], reseau: [], tousLesSites: false, scriptsTousLesSites: false };
 }
 
-function analyserRegles(
+function parseRules(
   manifest: Record<string, unknown>,
-  regles: Record<string, unknown>,
+  rules: Record<string, unknown>,
   denial: string[],
 ): void {
   const dnr = object(manifest.declarative_net_request);
@@ -76,16 +76,16 @@ function analyserRegles(
       denial.push(`Fichier de règles DNR refusé : chemin non permis « ${path} »`);
       continue;
     }
-    const list = regles[path] ?? regles[path.replace(/^\.\//, "")];
+    const list = rules[path] ?? rules[path.replace(/^\.\//, "")];
     if (!Array.isArray(list)) {
       denial.push(`Fichier de règles DNR illisible ou absent : ${path}`);
       continue;
     }
     list.forEach((r, i) => {
-      const regle = object(r);
-      if (!regle) return;
-      const num = typeof regle.id === "number" ? regle.id : i + 1;
-      const action = object(regle.action);
+      const rule = object(r);
+      if (!rule) return;
+      const num = typeof rule.id === "number" ? rule.id : i + 1;
+      const action = object(rule.action);
       const type = action?.type;
       if (type === "redirect" || type === "modifyHeaders") {
         denial.push(`Règle DNR refusée (${type}) dans ${path}, règle ${num}`);
@@ -123,7 +123,7 @@ function parseNetwork(webaios: unknown, denial: string[]): string[] {
 }
 
 /** The locales consulted for a French interface, before the manifest's `default_locale`. */
-const LOCALES_PREFEREES = ["fr", "fr_FR"];
+const PREFERRED_LOCALES = ["fr", "fr_FR"];
 /** A locale of `_locales/` (`en`, `pt_BR`, `es_419`): never a path. */
 const LOCALE = /^[A-Za-z]{2,3}(_[A-Za-z0-9]{2,8})?$/;
 
@@ -131,10 +131,10 @@ const LOCALE = /^[A-Za-z]{2,3}(_[A-Za-z0-9]{2,8})?$/;
  * The message catalogs to read to resolve `__MSG_…__` (paths relative to the extension folder), in
  * the order they are consulted: `fr`, `fr_FR`, then `default_locale` (if it is a locale, and not already listed).
  */
-export function messageFiles(brut: unknown): string[] {
-  const m = object(brut);
+export function messageFiles(raw: unknown): string[] {
+  const m = object(raw);
   const defaultValue = m && typeof m.default_locale === "string" && LOCALE.test(m.default_locale) ? [m.default_locale] : [];
-  return [...new Set([...LOCALES_PREFEREES, ...defaultValue])].map((l) => `_locales/${l}/messages.json`);
+  return [...new Set([...PREFERRED_LOCALES, ...defaultValue])].map((l) => `_locales/${l}/messages.json`);
 }
 
 /**
@@ -142,7 +142,7 @@ export function messageFiles(brut: unknown): string[] {
  * a key not found stays as is. `catalogues`: the content of the `messages.json` files in the order of `fichiersMessages`.
  */
 export function resolveMessages(text: string, catalogues: readonly unknown[]): string {
-  return text.replace(/__MSG_([A-Za-z0-9_@]+)__/g, (tout, key: string) => {
+  return text.replace(/__MSG_([A-Za-z0-9_@]+)__/g, (all, key: string) => {
     const wanted = key.toLowerCase();
     for (const c of catalogues) {
       const o = object(c);
@@ -152,12 +152,12 @@ export function resolveMessages(text: string, catalogues: readonly unknown[]): s
         if (typeof message === "string") return message;
       }
     }
-    return tout;
+    return all;
   });
 }
 
 export function parseManifest(
-  brut: unknown,
+  raw: unknown,
   o: {
     source: SourceExtension;
     webaios?: unknown;
@@ -166,7 +166,7 @@ export function parseManifest(
     messages?: readonly unknown[];
   },
 ): ManifestAnalysis {
-  const m = object(brut);
+  const m = object(raw);
   if (!m) {
     return {
       nom: "",
@@ -191,24 +191,24 @@ export function parseManifest(
 
   if (m.manifest_version !== 3) denial.push("Seules les extensions Manifest V3 sont prises en charge");
 
-  const permsBrutes = chains(m.permissions);
+  const rawPerms = chains(m.permissions);
   const rawHosts = chains(m.host_permissions);
   const scripts = Array.isArray(m.content_scripts) ? m.content_scripts : [];
   const matchesScripts: string[] = [];
-  let scriptsTous = false;
+  let allScripts = false;
   for (const cs of scripts) {
     const c = object(cs);
     if (!c) continue;
     const matches = chains(c.matches);
     matchesScripts.push(...matches);
-    if (matches.some((x) => motifTousLesSites(x))) scriptsTous = true;
+    if (matches.some((x) => allSitesPattern(x))) allScripts = true;
     if (agent && c.world === "MAIN") {
       denial.push('Script de contenu refusé : world "MAIN" n\'est pas permis');
     }
   }
 
-  const allHosts = [...rawHosts, ...matchesScripts, ...permsBrutes.filter((p) => p.includes("://") || p === "<all_urls>")];
-  const permissions = sortedUnique(permsBrutes.filter((p) => !p.includes("://") && p !== "<all_urls>"));
+  const allHosts = [...rawHosts, ...matchesScripts, ...rawPerms.filter((p) => p.includes("://") || p === "<all_urls>")];
+  const permissions = sortedUnique(rawPerms.filter((p) => !p.includes("://") && p !== "<all_urls>"));
   const hosts = sortedUnique(allHosts);
 
   if (agent) {
@@ -218,15 +218,15 @@ export function parseManifest(
     for (const key of AGENT_KEYS_DENIED) {
       if (key in m) denial.push(`Clé refusée : ${key}`);
     }
-    const fond = object(m.background);
-    if (fond) {
-      if ("scripts" in fond || "page" in fond) {
+    const background = object(m.background);
+    if (background) {
+      if ("scripts" in background || "page" in background) {
         denial.push("background refusé : seul « service_worker » est permis");
-      } else if ("service_worker" in fond && typeof fond.service_worker !== "string") {
+      } else if ("service_worker" in background && typeof background.service_worker !== "string") {
         denial.push("background.service_worker doit être un chemin de fichier");
       }
     }
-    analyserRegles(m, o.regles ?? {}, denial);
+    parseRules(m, o.regles ?? {}, denial);
     if (Array.isArray(m.optional_permissions) && m.optional_permissions.length > 0) {
       denial.push("optional_permissions refusé : déclare ces droits dans permissions");
     }
@@ -240,19 +240,19 @@ export function parseManifest(
     permissions,
     hotes: hosts,
     reseau: network,
-    tousLesSites: hosts.some((h) => motifTousLesSites(h)),
-    scriptsTousLesSites: scriptsTous,
+    tousLesSites: hosts.some((h) => allSitesPattern(h)),
+    scriptsTousLesSites: allScripts,
     scripts: scripts.length > 0,
   };
   return { nom: name, version, portee: scope, refus: denial, avertissements: warnings };
 }
 
 export function widenedScope(granted: Scope, fresh: Scope): boolean {
-  const manque = (a: string[], n: string[]) => n.some((x) => !a.includes(x));
+  const missing = (a: string[], n: string[]) => n.some((x) => !a.includes(x));
   return (
-    manque(granted.permissions, fresh.permissions) ||
-    manque(granted.hotes, fresh.hotes) ||
-    manque(granted.reseau, fresh.reseau) ||
+    missing(granted.permissions, fresh.permissions) ||
+    missing(granted.hotes, fresh.hotes) ||
+    missing(granted.reseau, fresh.reseau) ||
     (!granted.tousLesSites && fresh.tousLesSites) ||
     (!granted.scriptsTousLesSites && fresh.scriptsTousLesSites) ||
     (!granted.scripts && !!fresh.scripts)
@@ -287,9 +287,9 @@ export function grantStrengthened(p: Scope, source: SourceExtension): boolean {
 
 export function scopeLabels(p: Scope, source: SourceExtension): string[] {
   const has = (...names: string[]) => names.some((n) => p.permissions.includes(n));
-  const sortie: string[] = [];
+  const output: string[] = [];
   const added = (cond: boolean, text: string) => {
-    if (cond && !sortie.includes(text)) sortie.push(text);
+    if (cond && !output.includes(text)) output.push(text);
   };
   added(has("scripting") || p.scriptsTousLesSites || !!p.scripts, "Modifier l'apparence et le contenu des pages");
   added(p.permissions.some((x) => x.startsWith("declarativeNetRequest")), "Bloquer ou modifier des requêtes");
@@ -321,5 +321,5 @@ export function scopeLabels(p: Scope, source: SourceExtension): string[] {
     if (known.has(perm) || perm.startsWith("declarativeNetRequest")) continue;
     added(true, `Droit « ${perm} »`);
   }
-  return sortie;
+  return output;
 }

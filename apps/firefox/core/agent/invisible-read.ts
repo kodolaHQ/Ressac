@@ -18,10 +18,10 @@ const normalize = (host: string) => host.toLowerCase().replace(/\.+$/, "");
  * `adressesLocales`, tests only); with `domaines`, its host must be exactly one of them, as the
  * kernel checks (packages/kernel/src/widgets/recolte.ts, `verifierUrl`): a subdomain is not allowed there.
  */
-export function allowedUrl(brute: string, domains: readonly string[] | undefined, localUrls = false): boolean {
+export function allowedUrl(raw: string, domains: readonly string[] | undefined, localUrls = false): boolean {
   let u: URL;
   try {
-    u = new URL(brute);
+    u = new URL(raw);
   } catch {
     return false;
   }
@@ -47,23 +47,23 @@ interface PartsRead {
 export function accumulateParts(readings: unknown[]): PartsRead {
   let lignes: string[] = [];
   const liens = new Map<string, string>();
-  let titre: unknown = "";
-  let precedent: string[] | null = null;
+  let title: unknown = "";
+  let previous: string[] | null = null;
   for (const r of readings) {
     const p = (r ?? {}) as Partial<PartsRead>;
-    titre = p.titre ?? titre;
+    title = p.titre ?? title;
     const here = String(p.texte ?? "").split("\n");
-    if (precedent === null) lignes = [...here];
-    else lignes = addNext(lignes, precedent, here);
-    precedent = here;
+    if (previous === null) lignes = [...here];
+    else lignes = addNext(lignes, previous, here);
+    previous = here;
     for (const l of Array.isArray(p.liens) ? (p.liens as unknown[]) : []) {
-      const brut = (l as { url?: unknown; texte?: unknown } | null) ?? {};
-      if (typeof brut.url !== "string") continue;
-      const text = String(brut.texte ?? "");
-      if (text.length > (liens.get(brut.url)?.length ?? -1)) liens.set(brut.url, text);
+      const raw = (l as { url?: unknown; texte?: unknown } | null) ?? {};
+      if (typeof raw.url !== "string") continue;
+      const text = String(raw.texte ?? "");
+      if (text.length > (liens.get(raw.url)?.length ?? -1)) liens.set(raw.url, text);
     }
   }
-  return { titre, texte: lignes.join("\n"), liens: [...liens].map(([url, text]) => ({ url, texte: text })) };
+  return { titre: title, texte: lignes.join("\n"), liens: [...liens].map(([url, text]) => ({ url, texte: text })) };
 }
 
 /** Trailing lines of the previous snapshot that can be ignored for the realignment (« Chargement… », « Voir plus » button). */
@@ -72,39 +72,39 @@ const IGNORED_END = 3;
 /** `cumul` completed with what `ici` shows anew compared to `avant`, the previous snapshot. */
 function addNext(total: string[], before: string[], here: string[]): string[] {
   // Header: the first common lines.
-  let debut = 0;
-  while (debut < here.length && debut < before.length && here[debut] === before[debut]) debut++;
+  let start = 0;
+  while (start < here.length && start < before.length && here[start] === before[start]) start++;
   // Footer: the last common lines, but only as long as the line before is also the same. Otherwise the
   // list's last price, identical by chance from one screen to the next, would be taken for footer.
   let pied = 0;
-  const dernier = (t: string[], k: number) => t[t.length - 1 - k];
+  const last = (t: string[], k: number) => t[t.length - 1 - k];
   while (
-    here.length - pied - 1 > debut &&
-    before.length - pied - 1 > debut &&
-    dernier(here, pied) === dernier(before, pied) &&
-    dernier(here, pied + 1) === dernier(before, pied + 1)
+    here.length - pied - 1 > start &&
+    before.length - pied - 1 > start &&
+    last(here, pied) === last(before, pied) &&
+    last(here, pied + 1) === last(before, pied + 1)
   ) {
     pied++;
   }
-  const listBefore = before.slice(debut, before.length - pied);
-  const list = here.slice(debut, here.length - pied);
+  const listBefore = before.slice(start, before.length - pied);
+  const list = here.slice(start, here.length - pied);
   // The realignment: the longest end of the previous list (give or take a few lines) that starts the new list.
   let common = 0;
   for (let ignored = 0; ignored <= Math.min(IGNORED_END, listBefore.length) && common === 0; ignored++) {
-    const fin = listBefore.length - ignored;
+    const end = listBefore.length - ignored;
     // A single common line after ignored lines can be so by chance: at least two are then needed.
-    for (let k = Math.min(fin, list.length); k > (ignored > 0 ? 1 : 0); k--) {
+    for (let k = Math.min(end, list.length); k > (ignored > 0 ? 1 : 0); k--) {
       let same = true;
-      for (let j = 0; j < k && same; j++) same = listBefore[fin - k + j] === list[j];
+      for (let j = 0; j < k && same; j++) same = listBefore[end - k + j] === list[j];
       if (same) {
         common = k;
         break;
       }
     }
   }
-  const suite = list.slice(common);
-  if (suite.length === 0) return total;
+  const next = list.slice(common);
+  if (next.length === 0) return total;
   // Before the footer already kept, if it ends the accumulation.
   const footer = pied > 0 && total.slice(-pied).every((l, i) => l === here[here.length - pied + i]) ? pied : 0;
-  return [...total.slice(0, total.length - footer), ...suite, ...total.slice(total.length - footer)];
+  return [...total.slice(0, total.length - footer), ...next, ...total.slice(total.length - footer)];
 }

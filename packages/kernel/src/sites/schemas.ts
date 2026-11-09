@@ -7,7 +7,7 @@ export const TWEAK_MAX = 256 * 1024;
 export const TWEAKS_MAX_TOTAL = 1024 * 1024;
 
 export const URL_OUTSIDE_DOMAINS = "adresse : son domaine doit être dans domaines";
-export const CADRES_MOTIFS =
+export const FRAME_PATTERNS =
   'retouches.cadres : false, ou une liste de motifs d\'adresses complètes (ex. ["https://*.lecteur.example/*"])';
 export const PATH_MATCHES = 'retouches.correspond : des chemins qui commencent par « / » (ex. "/series/*")';
 export const tweakFileNotFound = (f: string) => `retouches : fichier introuvable ou trop gros : ${f}`;
@@ -38,17 +38,17 @@ const tweakPath = (extensions: RegExp, text: string) => z
   .regex(extensions, text)
   .refine((p) => !p.startsWith("/") && !p.split("/").some((s) => s === ".." || s === "." || s === ""), "chemin relatif sans « .. »");
 
-const motifCadre = z
+const framePattern = z
   .string()
   .max(500)
-  .refine((m) => m.startsWith("https://"), CADRES_MOTIFS);
+  .refine((m) => m.startsWith("https://"), FRAME_PATTERNS);
 
 const Tweak = z
   .object({
     correspond: z.array(z.string().max(500).refine((m) => m.startsWith("/"), PATH_MATCHES)).min(1).max(20),
     js: z.array(tweakPath(/^[A-Za-z0-9._/-]+\.(js|mjs)$/, "chemin relatif vers un .js ou .mjs")).max(20).default([]),
     css: z.array(tweakPath(/^[A-Za-z0-9._/-]+\.css$/, "chemin relatif vers un .css")).max(20).default([]),
-    cadres: z.union([z.literal(false), z.array(motifCadre).min(1).max(20)], { error: CADRES_MOTIFS }).default(false),
+    cadres: z.union([z.literal(false), z.array(framePattern).min(1).max(20)], { error: FRAME_PATTERNS }).default(false),
   })
   .strict();
 export type Tweak = z.infer<typeof Tweak>;
@@ -74,10 +74,10 @@ export const DeclarationSite = z
 export type DeclarationSite = z.infer<typeof DeclarationSite>;
 
 /** https, or (tests) http of a local host; never credentials; never a local address outside tests. */
-function urlAccepted(brute: string, localUrls: boolean): URL | null {
+function urlAccepted(raw: string, localUrls: boolean): URL | null {
   let u: URL;
   try {
-    u = new URL(brute);
+    u = new URL(raw);
   } catch {
     return null;
   }
@@ -97,14 +97,14 @@ export function trueDomain(h: string, localUrls: boolean): boolean {
 }
 
 /** The rules that the schema alone does not state: the address and the tracking page, and the address's domain. */
-export function verifierDeclarationSite(d: DeclarationSite, o: { adressesLocales: boolean }): string | null {
-  const depart = urlAccepted(d.adresse, o.adressesLocales);
-  if (!depart) return HTTPS_ONLY;
+export function checkSiteDeclaration(d: DeclarationSite, o: { adressesLocales: boolean }): string | null {
+  const start = urlAccepted(d.adresse, o.adressesLocales);
+  if (!start) return HTTPS_ONLY;
   if (d.suiviAdresse && !urlAccepted(d.suiviAdresse.page, o.adressesLocales)) return HTTPS_ONLY;
   const real = (h: string) => trueDomain(h, o.adressesLocales);
   if (![...d.domaines, ...d.connexion].every(real) || [...d.domaines, ...d.connexion].some((h) => h === "localhost" || h.endsWith(".")))
     return INVALID_DOMAIN;
-  const h = depart.hostname.toLowerCase();
+  const h = start.hostname.toLowerCase();
   if (!d.domaines.some((dom) => h === dom || h.endsWith(`.${dom}`))) return URL_OUTSIDE_DOMAINS;
   return null;
 }

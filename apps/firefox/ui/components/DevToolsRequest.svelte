@@ -1,13 +1,13 @@
 <script lang="ts">
   import { untrack } from "svelte";
-  import type { DroitDev } from "@webaios/kernel";
-  import { siteDe, type PendingRequest } from "../../shared/model";
+  import type { DevRight } from "@webaios/kernel";
+  import { siteOf, type PendingRequest } from "../../shared/model";
   import { api } from "../state.svelte";
 
   let { demande: request }: { demande: PendingRequest } = $props();
 
   // The four rights, in the card's order. `sensible`: the warning shown below.
-  const DROITS: { droit: DroitDev; icone: string; nom: string; detail: string; sensible?: string }[] = [
+  const RIGHTS: { droit: DevRight; icone: string; nom: string; detail: string; sensible?: string }[] = [
     { droit: "console", icone: "👁", nom: "Console et erreurs", detail: "Messages, erreurs JavaScript, avertissements" },
     { droit: "reseau", icone: "👁", nom: "Réseau", detail: "Requêtes et réponses de la page", sensible: "peut contenir des données de connexion" },
     { droit: "performances", icone: "👁", nom: "Performances et mémoire", detail: "Profilage, instantanés mémoire" },
@@ -16,18 +16,18 @@
 
   // Pre-checked: what the agent asked for; the user can add or remove some.
   // Initialized once: the list of requests is rebroadcast on each new question, without touching the selection.
-  let checked = $state<DroitDev[]>(untrack(() => [...(request.droits ?? [])]));
+  let checked = $state<DevRight[]>(untrack(() => [...(request.droits ?? [])]));
 
   // Never an exception here: an unreadable origin (about:blank, data:…) is shown as is.
-  const site = $derived(siteDe(request.origine));
-  const check = (droit: DroitDev, active: boolean) => (checked = active ? [...checked, droit] : checked.filter((d) => d !== droit));
+  const site = $derived(siteOf(request.origine));
+  const check = (right: DevRight, active: boolean) => (checked = active ? [...checked, right] : checked.filter((d) => d !== right));
 </script>
 
 <div data-testid="demande-outils-dev">
   <h3>{request.agent ?? "L'agent"} veut accéder aux outils de développement</h3>
   <div class="site">🔒 {site} · onglet « {request.titre ?? site} »</div>
   <div class="raison">« {request.raison} »</div>
-  {#each DROITS as d (d.droit)}
+  {#each RIGHTS as d (d.droit)}
     <label class="droit">
       <input type="checkbox" data-droit={d.droit} checked={checked.includes(d.droit)} onchange={(e) => check(d.droit, e.currentTarget.checked)} />
       <div>

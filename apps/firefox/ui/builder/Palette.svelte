@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { CatalogueBloc, BlockFamily } from "@webaios/kernel";
+  import type { BlockCatalogEntry, BlockFamily } from "@webaios/kernel";
   import { DRAG_BLOCK } from "./add";
 
   /**
@@ -7,14 +7,14 @@
    * the action, `action`) declares `"web": true`; without it, « Chercher sur le web » is greyed out (the validator would refuse it).
    */
   let {
-    catalogue,
-    aSortie,
+    catalogue: catalog,
+    aSortie: hasOutput,
     web,
     action = false,
     onajouter: onadd,
-  }: { catalogue: CatalogueBloc[]; aSortie: boolean; web: boolean; action?: boolean; onajouter: (type: string) => void } = $props();
+  }: { catalogue: BlockCatalogEntry[]; aSortie: boolean; web: boolean; action?: boolean; onajouter: (type: string) => void } = $props();
 
-  const SANS_WEB = $derived(
+  const NO_WEB = $derived(
     action
       ? 'L\'action doit déclarer "web": true dans ses sources (action.json) : demande-le à l\'agent.'
       : 'Le widget doit déclarer "web": true : demande-le à l\'agent.',
@@ -23,29 +23,29 @@
 
   let collapsed = $state<Partial<Record<BlockFamily, boolean>>>({});
   const families = $derived.by(() => {
-    const r = new Map<BlockFamily, CatalogueBloc[]>();
+    const r = new Map<BlockFamily, BlockCatalogEntry[]>();
     // A single output: it is no longer offered while there is one.
-    for (const c of catalogue) if (!(c.type === "sortie" && aSortie)) r.set(c.famille, [...(r.get(c.famille) ?? []), c]);
+    for (const c of catalog) if (!(c.type === "sortie" && hasOutput)) r.set(c.famille, [...(r.get(c.famille) ?? []), c]);
     return [...r];
   });
 </script>
 
 <nav class="palette" aria-label="Blocs">
-  {#each families as [family, blocs] (family)}
+  {#each families as [family, blocks] (family)}
     <section>
       <button class="famille" aria-expanded={!collapsed[family]} onclick={() => (collapsed[family] = !collapsed[family])}>
         <span class="chevron" class:replie={collapsed[family]}>▾</span>{family}
       </button>
       {#if !collapsed[family]}
         <ul>
-          {#each blocs as c (c.type)}
+          {#each blocks as c (c.type)}
             <li>
               <button
                 class="bloc"
                 draggable={!grayed(c.type)}
                 disabled={grayed(c.type)}
                 data-testid="palette-{c.type}"
-                title={grayed(c.type) ? SANS_WEB : c.description}
+                title={grayed(c.type) ? NO_WEB : c.description}
                 ondragstart={(e) => {
                   if (grayed(c.type)) return void e.preventDefault();
                   e.dataTransfer?.setData(DRAG_BLOCK, c.type);

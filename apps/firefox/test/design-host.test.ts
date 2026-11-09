@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpath
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { spacePaths, ReviewStore, reviewStore, SPACE_FOLDER, PORT_MCP_EXTERNE, externalProject, EMPTY_REMARK, SANS_CLIENT } from "../../../packages/kernel/src/index";
+import { spacePaths, ReviewStore, reviewStore, SPACE_FOLDER, EXTERNAL_MCP_PORT, externalProject, EMPTY_REMARK, NO_CLIENT } from "../../../packages/kernel/src/index";
 import { NO_WINDOW } from "../core/design/send";
 import { createDesignHost, DESIGN_METHODS, externalMcpPort, textSource, type DesignHost, type DesignTracking } from "../host/design";
 import { INVALID_REQUEST } from "../shared/design-guards";
@@ -19,7 +19,7 @@ afterEach(async () => {
 type Ext = { serveur: { etat: string; port?: number; raison?: string }; projets: { id: string; nom: string }[] };
 
 type App = { dossier: string; nom: string; type: "application" | "poc" | "sans-fiche"; creeLe: string; etat: "arretee" | "en-marche"; port?: number };
-const app = (dossier: string, type: App["type"] = "application"): App => ({ dossier, nom: dossier, type, creeLe: "2026-11-07T00:00:00.000Z", etat: "arretee" });
+const app = (folder: string, type: App["type"] = "application"): App => ({ dossier: folder, nom: folder, type, creeLe: "2026-11-07T00:00:00.000Z", etat: "arretee" });
 
 function prepare(o: { port?: number; fenetre?: string | null; sites?: { id: string; nom: string }[]; applis?: App[] } = {}) {
   const dataDir = realpathSync(mkdtempSync(join(tmpdir(), "webaios-design-")));
@@ -31,7 +31,7 @@ function prepare(o: { port?: number; fenetre?: string | null; sites?: { id: stri
   cleanup.push(() => rmSync(homeDir, { recursive: true, force: true }));
   const calls: string[] = [];
   const prefill = vi.fn((f: string, t: string) => void calls.push(`preRemplir ${f} ${t}`));
-  const notifier = vi.fn();
+  const notify = vi.fn();
   const chrome = {
     fenetreAgent: vi.fn(async () => (o.fenetre === undefined ? "f7" : o.fenetre)),
     donnerAgent: vi.fn((f: string) => void calls.push(`donnerAgent ${f}`)),
@@ -39,9 +39,9 @@ function prepare(o: { port?: number; fenetre?: string | null; sites?: { id: stri
   const sites = vi.fn(async () => o.sites ?? []);
   const apps = vi.fn(async () => o.applis ?? []);
   const diffuser = vi.fn();
-  const design = createDesignHost({ dataDir, chemins: paths, port: o.port ?? 0, maison: homeDir, sites, applis: apps, preRemplir: prefill, chrome, notifier, diffuser });
+  const design = createDesignHost({ dataDir, chemins: paths, port: o.port ?? 0, maison: homeDir, sites, applis: apps, preRemplir: prefill, chrome, notifier: notify, diffuser });
   cleanup.push(() => design.arreter());
-  return { dataDir, chemins: paths, maison: homeDir, design, preRemplir: prefill, notifier, chrome, sites, applis: apps, diffuser, calls };
+  return { dataDir, chemins: paths, maison: homeDir, design, preRemplir: prefill, notifier: notify, chrome, sites, applis: apps, diffuser, calls };
 }
 
 async function until<T>(f: () => Promise<T> | T, ok: (v: T) => boolean, ms = 10_000): Promise<T> {
@@ -78,12 +78,12 @@ async function callTool(d: DesignHost, name: string, args: Record<string, unknow
 
 /** A site app « tuning » with a changed file and one comment on it, ready for relecture.envoyer. */
 async function siteWithComment(s: ReturnType<typeof prepare>) {
-  const dossier = join(s.chemins.sites, "tuning");
-  mkdirSync(dossier, { recursive: true });
-  writeFileSync(join(dossier, "a.txt"), "un\n");
+  const folder = join(s.chemins.sites, "tuning");
+  mkdirSync(folder, { recursive: true });
+  writeFileSync(join(folder, "a.txt"), "un\n");
   const h = s.design.handlers;
   await h["relecture.ouvrir"]!({ projet: "site-tuning", jeton: null });
-  writeFileSync(join(dossier, "a.txt"), "deux\n");
+  writeFileSync(join(folder, "a.txt"), "deux\n");
   const v = (await h["relecture.ouvrir"]!({ projet: "site-tuning" })) as { etat: string; jeton: string };
   expect(v.etat).toBe("ok");
   expect(await h["relecture.commenter"]!({ projet: "site-tuning", jeton: v.jeton, c: { fichier: "a.txt", debut: 1, fin: 1, texte: "Plus\r\nclair" } })).toEqual({ ok: true });
@@ -92,7 +92,7 @@ async function siteWithComment(s: ReturnType<typeof prepare>) {
 describe("design host", { timeout: 20_000 }, () => {
   it("externalMcpPort: 5279 by default, NaN for a bad value", () => {
     expect(externalMcpPort(undefined)).toBe(5279);
-    expect(PORT_MCP_EXTERNE).toBe(5279);
+    expect(EXTERNAL_MCP_PORT).toBe(5279);
     expect(externalMcpPort("0")).toBe(0);
     expect(Number.isNaN(externalMcpPort("abc"))).toBe(true);
   });
@@ -114,10 +114,10 @@ describe("design host", { timeout: 20_000 }, () => {
 
   it("declaring <dataDir>, <dataDir>/design/x or <dataDir>/espace/projets/x is refused with DOSSIER_ESPACE", async () => {
     const s = prepare();
-    const dossiers = [s.dataDir, join(s.dataDir, "design", "x"), join(s.chemins.projets, "x")];
-    for (const d of dossiers.slice(1)) mkdirSync(d, { recursive: true });
-    for (const dossier of dossiers) {
-      const r = await callTool(s.design, "declarer_projet", { dossier, ports: [3000] });
+    const folders = [s.dataDir, join(s.dataDir, "design", "x"), join(s.chemins.projets, "x")];
+    for (const d of folders.slice(1)) mkdirSync(d, { recursive: true });
+    for (const folder of folders) {
+      const r = await callTool(s.design, "declarer_projet", { dossier: folder, ports: [3000] });
       expect(r.texte).toContain(SPACE_FOLDER);
     }
     expect((await list(s.design)).projets).toEqual([]);
@@ -127,11 +127,11 @@ describe("design host", { timeout: 20_000 }, () => {
   it("a folder that links into <dataDir> is refused with DOSSIER_ESPACE", async () => {
     const s = prepare();
     mkdirSync(join(s.dataDir, "design"), { recursive: true });
-    const dehors = realpathSync(mkdtempSync(join(tmpdir(), "webaios-lien-")));
-    cleanup.push(() => rmSync(dehors, { recursive: true, force: true }));
-    const lien = join(dehors, "lien");
-    symlinkSync(join(s.dataDir, "design"), lien);
-    const r = await callTool(s.design, "declarer_projet", { dossier: lien, ports: [3000] });
+    const outside = realpathSync(mkdtempSync(join(tmpdir(), "webaios-lien-")));
+    cleanup.push(() => rmSync(outside, { recursive: true, force: true }));
+    const link = join(outside, "lien");
+    symlinkSync(join(s.dataDir, "design"), link);
+    const r = await callTool(s.design, "declarer_projet", { dossier: link, ports: [3000] });
     expect(r.texte).toContain(SPACE_FOLDER);
     expect((await list(s.design)).projets).toEqual([]);
     expect(existsSync(join(s.dataDir, "design", "projets-externes.json"))).toBe(false);
@@ -213,8 +213,8 @@ describe("design host", { timeout: 20_000 }, () => {
     mkdirSync(project);
     for (let i = 0; i < 50; i++) writeFileSync(join(project, `f${i}.txt`), `${i}\n`);
     const id = "0123456789abcdef";
-    const dossiers = { remarquesEspace: join(s.chemins.interne, "remarques"), prive: join(s.dataDir, "design") };
-    const depot = reviewStore(dossiers, externalProject(id));
+    const folders = { remarquesEspace: join(s.chemins.interne, "remarques"), prive: join(s.dataDir, "design") };
+    const depot = reviewStore(folders, externalProject(id));
     const photo = new ReviewStore({ depot, dossier: project }).assurerReference().catch(() => undefined);
     await s.design.handlers["externes.oublier"]!({ id });
     await photo;
@@ -260,13 +260,13 @@ describe("design host", { timeout: 20_000 }, () => {
     await siteWithComment(s);
     await s.design.handlers["relecture.envoyer"]!({ projet: "site-tuning" });
     const review = join(s.dataDir, "design", "relecture");
-    const lots = join(s.chemins.interne, "remarques", "site-tuning");
+    const batches = join(s.chemins.interne, "remarques", "site-tuning");
     expect(existsSync(join(review, "site-tuning.git"))).toBe(true);
     expect(existsSync(join(review, "site-tuning.commentaires.json"))).toBe(true);
-    expect(existsSync(lots)).toBe(true);
+    expect(existsSync(batches)).toBe(true);
     rmSync(join(s.chemins.sites, "tuning"), { recursive: true });
     s.design.siteDeleted("tuning");
-    await until(() => [join(review, "site-tuning.git"), join(review, "site-tuning.commentaires.json"), lots].some(existsSync), (v) => !v);
+    await until(() => [join(review, "site-tuning.git"), join(review, "site-tuning.commentaires.json"), batches].some(existsSync), (v) => !v);
   });
 
   it("bad inputs are refused with their messages before the service", async () => {
@@ -341,7 +341,7 @@ describe("design host, the carts", { timeout: 20_000 }, () => {
 
   it("ajouter puts the remark and its PNG in the cart; a blank text gives REMARQUE_VIDE; 4001 characters, a non-PNG capture or a bad context give INVALID_REQUEST, nothing written", async () => {
     const { h, chemins: paths } = await withProjects();
-    const dossier = join(paths.interne, "remarques", "demo-15283");
+    const folder = join(paths.interne, "remarques", "demo-15283");
     const add = (o: Record<string, unknown>) => h["design.ajouter"]!({ projet: "demo-15283", texte: "Plus grand", contexte: context(), capture: PNG.toString("base64"), ...o });
     const refused = [
       { texte: "a".repeat(4001) },
@@ -357,16 +357,16 @@ describe("design host, the carts", { timeout: 20_000 }, () => {
     ];
     for (const r of refused) expect(await add(r), JSON.stringify(r).slice(0, 80)).toEqual({ ok: false, erreur: INVALID_REQUEST });
     expect(await add({ texte: "  \n" })).toEqual({ ok: false, erreur: EMPTY_REMARK });
-    expect(existsSync(dossier)).toBe(false);
+    expect(existsSync(folder)).toBe(false);
 
     expect(await add({ texte: "a".repeat(4000), contexte: context({ extra: "x", source: null }) })).toEqual({ ok: true });
     expect(await add({ capture: null, contexte: context({ source: { fichier: "src/A.svelte", ligne: 3, colonne: 0 } }) })).toEqual({ ok: true });
     const basket = (await h["design.panier"]!({ projet: "demo-15283" })) as { id: string; texte: string; source: string | null }[];
     expect(basket.map((e) => [e.texte.length, e.source])).toEqual([[4000, null], [10, "src/A.svelte:3"]]);
-    expect(readFileSync(join(dossier, `${basket[0]!.id}.png`))).toEqual(PNG);
-    expect(existsSync(join(dossier, `${basket[1]!.id}.png`))).toBe(false);
+    expect(readFileSync(join(folder, `${basket[0]!.id}.png`))).toEqual(PNG);
+    expect(existsSync(join(folder, `${basket[1]!.id}.png`))).toBe(false);
     // Only known keys are written.
-    expect(readFileSync(join(dossier, "panier.json"), "utf8")).not.toContain("extra");
+    expect(readFileSync(join(folder, "panier.json"), "utf8")).not.toContain("extra");
     expect(await tracking(h, { projet: "demo-15283" })).toMatchObject({ panier: 2 });
   });
 
@@ -374,8 +374,8 @@ describe("design host, the carts", { timeout: 20_000 }, () => {
     const { h, chemins: paths, chrome, calls, ext, design, dataDir } = await withProjects();
     await h["design.ajouter"]!({ projet: "demo-15283", texte: "Plus grand", contexte: context(), capture: null });
     expect(await h["design.envoyer"]!({ projet: "demo-15283" })).toEqual({ ok: true });
-    const dossier = join(paths.interne, "remarques", "demo-15283");
-    expect(readdirSync(dossier).filter((n) => existsSync(join(dossier, n, "lot.json")))).toHaveLength(1);
+    const folder = join(paths.interne, "remarques", "demo-15283");
+    expect(readdirSync(folder).filter((n) => existsSync(join(folder, n, "lot.json")))).toHaveLength(1);
     expect(chrome.fenetreAgent).toHaveBeenCalled();
     expect(calls).toEqual([expect.stringMatching(/^preRemplir f7 /), "donnerAgent f7"]);
     expect(await h["design.panier"]!({ projet: "demo-15283" })).toEqual([]);
@@ -386,8 +386,8 @@ describe("design host, the carts", { timeout: 20_000 }, () => {
     await h["externes.revoquer"]!({ id: client });
     await h["design.ajouter"]!({ projet: ext, texte: "x", contexte: context(), capture: null });
     chrome.fenetreAgent.mockClear();
-    expect(await h["design.envoyer"]!({ projet: ext })).toEqual({ ok: false, erreur: SANS_CLIENT });
-    expect(await h["design.envoyer"]!({ projet: "ext-0123456789abcdef" })).toEqual({ ok: false, erreur: SANS_CLIENT });
+    expect(await h["design.envoyer"]!({ projet: ext })).toEqual({ ok: false, erreur: NO_CLIENT });
+    expect(await h["design.envoyer"]!({ projet: "ext-0123456789abcdef" })).toEqual({ ok: false, erreur: NO_CLIENT });
     expect(await h["design.envoyer"]!({ projet: "../x" })).toEqual({ ok: false, erreur: INVALID_REQUEST });
     expect(chrome.fenetreAgent).not.toHaveBeenCalled();
     // An external project's cart stays under <dataDir>/design, never in the space.
@@ -406,17 +406,17 @@ describe("design host, the carts", { timeout: 20_000 }, () => {
     await h["design.retirer"]!({ projet: "demo-15283", id: a!.id });
     expect(((await h["design.panier"]!({ projet: "demo-15283" })) as { texte: string }[]).map((e) => e.texte)).toEqual(["b"]);
     await h["design.envoyer"]!({ projet: "demo-15283" });
-    const [lot] = (await h["design.lots"]!({ projet: "demo-15283" })) as { id: string; etat: string }[];
-    expect(await h["design.traite"]!({ projet: "demo-15283", lot: `${lot!.id}${"0".repeat(65 - lot!.id.length)}` })).toBeUndefined();
+    const [batch] = (await h["design.lots"]!({ projet: "demo-15283" })) as { id: string; etat: string }[];
+    expect(await h["design.traite"]!({ projet: "demo-15283", lot: `${batch!.id}${"0".repeat(65 - batch!.id.length)}` })).toBeUndefined();
     expect(await h["design.lots"]!({ projet: "demo-15283" })).toMatchObject([{ etat: "en-attente" }]);
-    await h["design.traite"]!({ projet: "demo-15283", lot: lot!.id });
+    await h["design.traite"]!({ projet: "demo-15283", lot: batch!.id });
     expect(await h["design.lots"]!({ projet: "demo-15283" })).toMatchObject([{ etat: "traite" }]);
     // A bad project answers as ipc.ts: an empty list, or nothing.
     for (const project of ["../x", 3, undefined]) {
       expect(await h["design.panier"]!({ projet: project })).toEqual([]);
       expect(await h["design.lots"]!({ projet: project })).toEqual([]);
       expect(await h["design.retirer"]!({ projet: project, id: "e-00000000" })).toBeUndefined();
-      expect(await h["design.traite"]!({ projet: project, lot: lot!.id })).toBeUndefined();
+      expect(await h["design.traite"]!({ projet: project, lot: batch!.id })).toBeUndefined();
     }
     expect(await h["design.panier"]!(null)).toEqual([]);
   });

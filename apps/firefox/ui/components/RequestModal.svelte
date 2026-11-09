@@ -2,7 +2,7 @@
   import { command } from "./command.svelte";
   import { onMount, tick, untrack } from "svelte";
   import { UNLOCK_REASON_LENGTH, unlockedConsoleText } from "../../shared/extensions-messages";
-  import { siteDe, type PendingRequest, type TabId } from "../../shared/model";
+  import { siteOf, type PendingRequest, type TabId } from "../../shared/model";
   import { api } from "../state.svelte";
   import ExtensionRequest from "./ExtensionRequest.svelte";
   import DevToolsRequest from "./DevToolsRequest.svelte";
@@ -14,7 +14,7 @@
   /** Enter only authorizes a card visible for at least this delay: a keystroke meant for the page is not a grant. */
   const ENTRY_DELAY_MS = 400;
 
-  let carte: HTMLElement;
+  let card: HTMLElement;
   let ready = $state(false);
   // Enter armed: the card has been visible since DELAI_ENTREE_MS (re-armed on each request from the queue).
   let armed = $state(false);
@@ -34,12 +34,12 @@
   /** The spaces the unlock covers: names given by the user, shown as text and bounded. */
   const extensionSpaces = $derived((request.espaces ?? []).slice(0, 20).map((e) => e.slice(0, 60)));
   const agentReason = $derived((request.raison ?? "").slice(0, UNLOCK_REASON_LENGTH));
-  const site = $derived(siteDe(request.origine));
+  const site = $derived(siteOf(request.origine));
 
   // A single opening for the whole queue: following requests replace the content, the page stays hidden.
   onMount(() => {
     const before = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    carte.focus();
+    card.focus();
     return () => {
       clearTimeout(entryTimer);
       // Focus goes back where it was, if it is still in the interface (not on the web page, which takes its own back):
@@ -55,7 +55,7 @@
     void request.id;
     untrack(armer);
     void tick().then(() => {
-      if (carte && !carte.contains(document.activeElement)) carte.focus();
+      if (card && !card.contains(document.activeElement)) card.focus();
     });
   });
 
@@ -65,9 +65,9 @@
     untrack(armer);
   });
 
-  const refuser = () => api.permissions.repondre(request.id, "refuser");
+  const deny = () => api.permissions.repondre(request.id, "refuser");
   const focusables = () =>
-    [...carte.querySelectorAll<HTMLElement>("button, input, [tabindex]:not([tabindex='-1'])")].filter((e) => !e.hasAttribute("disabled"));
+    [...card.querySelectorAll<HTMLElement>("button, input, [tabindex]:not([tabindex='-1'])")].filter((e) => !e.hasAttribute("disabled"));
 
   function clavier(e: KeyboardEvent) {
     // The command bar opened on top keeps the keyboard: the hidden modal reacts to nothing, even if focus has left the
@@ -75,14 +75,14 @@
     if (command.ouverte || e.isComposing) return;
     if (e.key === "Escape") {
       e.preventDefault();
-      refuser();
+      deny();
     } else if (e.key === "Enter") {
       // Card not visible yet, or only for too short a time: Enter does nothing, even on a button.
       if (!armed) return e.preventDefault();
       // A focused button keeps its own action; everywhere else (checkboxes included), Enter authorizes.
       if (e.target instanceof HTMLElement && e.target.closest("button")) return;
       e.preventDefault();
-      if (!e.repeat) carte.querySelector<HTMLButtonElement>("[data-principal]")?.click();
+      if (!e.repeat) card.querySelector<HTMLButtonElement>("[data-principal]")?.click();
     } else if (e.key === "Tab") {
       // Focus does not leave the modal: Tab loops over its controls.
       const list = focusables();
@@ -110,7 +110,7 @@
   />
   <div
     class="carte"
-    bind:this={carte}
+    bind:this={card}
     tabindex="-1"
     role="alertdialog"
     aria-modal="true"
@@ -139,7 +139,7 @@
           <!-- Never set without a card; if it were, nothing activates without having been shown. -->
           <div class="lecture">
             <p>Demande d'extension illisible.</p>
-            <div class="actions"><button data-principal onclick={refuser}>Refuser</button></div>
+            <div class="actions"><button data-principal onclick={deny}>Refuser</button></div>
           </div>
         {/if}
       {:else if consoleExtension}
@@ -148,7 +148,7 @@
           {#if agentReason}<p class="raison">Raison donnée par {request.agent ?? "l'agent"} : « {agentReason} »</p>{/if}
           <div class="actions">
             <!-- Enter refuses: showing the agent what an extension reads on unshared tabs takes a real click. -->
-            <button data-principal onclick={refuser}>Refuser</button>
+            <button data-principal onclick={deny}>Refuser</button>
             <button class="autoriser" onclick={() => api.permissions.repondre(request.id, "autoriser")}>Débloquer</button>
           </div>
         </div>
@@ -163,7 +163,7 @@
           {/if}
           <div class="actions">
             <!-- Enter refuses: showing the agent data read with the account takes a real click. -->
-            <button data-principal onclick={refuser}>Refuser</button>
+            <button data-principal onclick={deny}>Refuser</button>
             <button class="autoriser" onclick={() => api.permissions.repondre(request.id, "autoriser")}>Autoriser pour cette conversation</button>
           </div>
         </div>
@@ -171,7 +171,7 @@
         <div class="lecture" data-testid="demande-permission">
           <p>L'agent veut lire l'onglet « {request.titre ?? site} »</p>
           <div class="actions">
-            <button onclick={refuser}>Refuser</button>
+            <button onclick={deny}>Refuser</button>
             <button class="autoriser" data-principal onclick={() => api.permissions.repondre(request.id, "autoriser")}>Autoriser une fois</button>
           </div>
         </div>

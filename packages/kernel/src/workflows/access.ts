@@ -3,7 +3,7 @@ import http, { type IncomingMessage } from "node:http";
 import https from "node:https";
 import { isIP, type LookupFunction } from "node:net";
 import type { ChangeHost } from "./pacing.js";
-import type { PageLue } from "./protocole.js";
+import type { ReadPage } from "./protocole.js";
 
 // Container access to the outside, all kernel-side: verified URLs, raw fetch, page read and re-checked.
 
@@ -12,7 +12,7 @@ const FETCH_DELAY_MS = 20_000;
 const MAX_REDIRECTIONS = 5;
 
 /** Web searches and open reads (without `domaines`) of a run, at most. */
-export const MAX_RECHERCHES = 30;
+export const MAX_SEARCHES = 30;
 export const MAX_OPEN_READS = 100;
 // The first two are copied into docker/moteur/erreurs.mjs: the item is not run, it is not a failure.
 export const SEARCHES_CAP = "Plafond de recherches atteint (30 par exécution)";
@@ -48,12 +48,12 @@ export function localUrl(host: string): boolean {
  * Checks a URL requested by the harvest: http(s), no credentials, no local address, and, if `domaines` is
  * given, a host name exactly in this list. Returns the normalized URL, the one that will be read.
  */
-export function verifierUrl(brute: string, domains: readonly string[] | null, localUrls: boolean): URL {
+export function checkUrl(raw: string, domains: readonly string[] | null, localUrls: boolean): URL {
   let u: URL;
   try {
-    u = new URL(brute);
+    u = new URL(raw);
   } catch {
-    throw new Error(`URL invalide : ${truncate(brute, 200)}`);
+    throw new Error(`URL invalide : ${truncate(raw, 200)}`);
   }
   if (u.protocol !== "http:" && u.protocol !== "https:") throw new Error("Seules les URL http(s) sont permises");
   if (u.username || u.password) throw new Error("URL avec identifiants refusée");
@@ -68,36 +68,36 @@ export function verifierUrl(brute: string, domains: readonly string[] | null, lo
  * Resolution done at connection: a name that leads to the machine or the local network (« 127.0.0.1.nip.io », DNS
  * rebinding) is refused, even if only one of its addresses is.
  */
-export const lookupSansLocal: LookupFunction = (host, options, rappel) => {
+export const lookupWithoutLocal: LookupFunction = (host, options, callback) => {
   dns.lookup(host, { ...options, all: true }, (err, urls) => {
-    if (err) return rappel(err, "");
+    if (err) return callback(err, "");
     const locale = urls.find((a) => localUrl(a.address));
-    if (locale) return rappel(new Error(`Adresse locale refusée : ${host} (${locale.address})`), "");
-    if (options.all) return rappel(null, urls);
-    const [premiere] = urls;
-    if (!premiere) return rappel(new Error(`Nom introuvable : ${host}`), "");
-    rappel(null, premiere.address, premiere.family);
+    if (locale) return callback(new Error(`Adresse locale refusée : ${host} (${locale.address})`), "");
+    if (options.all) return callback(null, urls);
+    const [first] = urls;
+    if (!first) return callback(new Error(`Nom introuvable : ${host}`), "");
+    callback(null, first.address, first.family);
   });
 };
 
 // http(s) rather than fetch: fetch (undici) does not let us choose the resolution without the undici package.
-function demander(url: URL, localUrls: boolean, signal: AbortSignal): Promise<IncomingMessage> {
+function ask(url: URL, localUrls: boolean, signal: AbortSignal): Promise<IncomingMessage> {
   return new Promise((ok, ko) => {
-    const options = { signal, headers: { "user-agent": "node", accept: "*/*" }, ...(localUrls ? {} : { lookup: lookupSansLocal }) };
+    const options = { signal, headers: { "user-agent": "node", accept: "*/*" }, ...(localUrls ? {} : { lookup: lookupWithoutLocal }) };
     (url.protocol === "https:" ? https : http).get(url, options, ok).on("error", ko);
   });
 }
 
-async function lireCorps(r: IncomingMessage): Promise<Buffer> {
+async function readBody(r: IncomingMessage): Promise<Buffer> {
   if (Number(r.headers["content-length"]) > FETCH_MAX_BYTES) {
     r.destroy();
     throw new Error("Réponse trop grande (5 Mo maximum)");
   }
   const chunks: Buffer[] = [];
-  let taille = 0;
+  let size = 0;
   for await (const chunk of r as AsyncIterable<Buffer>) {
-    taille += chunk.byteLength;
-    if (taille > FETCH_MAX_BYTES) {
+    size += chunk.byteLength;
+    if (size > FETCH_MAX_BYTES) {
       r.destroy();
       throw new Error("Réponse trop grande (5 Mo maximum)");
     }
@@ -122,7 +122,7 @@ function untilSignal<T>(p: Promise<T>, signal: AbortSignal): Promise<T> {
  * (paced read): awaited before following a redirect to another host, within the 20 s delay.
  */
 export async function fetch(
-  brute: string,
+  raw: string,
   format: "texte" | "json",
   domains: readonly string[] | null,
   localUrls: boolean,
@@ -131,16 +131,16 @@ export async function fetch(
 ) {
   const delay = AbortSignal.timeout(FETCH_DELAY_MS);
   const deadline = stop ? AbortSignal.any([delay, stop]) : delay;
-  let url = verifierUrl(brute, domains, localUrls);
+  let url = checkUrl(raw, domains, localUrls);
   try {
     for (let redirections = 0; ; redirections++) {
-      const r = await demander(url, localUrls, deadline);
+      const r = await ask(url, localUrls, deadline);
       const target = r.headers.location;
       const status = r.statusCode ?? 0;
       if (status >= 300 && status < 400 && target) {
         r.destroy();
         if (redirections >= MAX_REDIRECTIONS) throw new Error("Trop de redirections");
-        const next = verifierUrl(new URL(target, url).href, domains, localUrls);
+        const next = checkUrl(new URL(target, url).href, domains, localUrls);
         // Waiting for the other site's turn counts in the delay, and yields to the stop.
         if (changeHost && next.hostname !== url.hostname) await untilSignal(changeHost(next.hostname), deadline);
         url = next;
@@ -150,7 +150,7 @@ export async function fetch(
         r.destroy();
         throw new Error(`HTTP ${status}`);
       }
-      const text = (await lireCorps(r)).toString("utf8");
+      const text = (await readBody(r)).toString("utf8");
       if (format === "texte") return text;
       try {
         return JSON.parse(text) as unknown;
@@ -166,9 +166,9 @@ export async function fetch(
 }
 
 /** The page's final address (after redirects) must respect the same rule; otherwise its text does not go out. */
-export function verifierPage(page: PageLue, domains: readonly string[] | null, localUrls: boolean): PageLue {
+export function checkPage(page: ReadPage, domains: readonly string[] | null, localUrls: boolean): ReadPage {
   try {
-    verifierUrl(String(page?.url), domains, localUrls);
+    checkUrl(String(page?.url), domains, localUrls);
   } catch (e) {
     throw new Error(`Page refusée : elle a mené hors des domaines permis (${message(e)})`);
   }

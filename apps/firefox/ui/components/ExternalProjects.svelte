@@ -11,17 +11,17 @@
   let error = $state<string | null>(null);
   let copy = $state(false);
 
-  async function charger() {
+  async function load() {
     const n = ++request;
     const r = await api.externes.liste();
     if (n === request) appState = r;
   }
   $effect(() => {
-    void charger();
-    return api.externes.surChange(() => void charger());
+    void load();
+    return api.externes.surChange(() => void load());
   });
 
-  async function brancher() {
+  async function connect() {
     error = null;
     try {
       const r = await api.externes.brancher(name ?? "");
@@ -36,7 +36,7 @@
     command = null;
     copy = false;
   }
-  async function copier() {
+  async function copyCommand() {
     if (command === null) return;
     try {
       await navigator.clipboard.writeText(command);
@@ -91,7 +91,7 @@
       <p>Colle cette commande dans un terminal : elle ne sera plus affichée.</p>
       <code data-testid="commande-branchement">{command}</code>
       <div class="actions">
-        <button data-testid="copier-commande" onclick={copier}>{copy ? "Copié" : "Copier"}</button>
+        <button data-testid="copier-commande" onclick={copyCommand}>{copy ? "Copié" : "Copier"}</button>
         <button data-testid="fermer-commande" onclick={closeCommand}>Fermer</button>
       </div>
     </div>
@@ -100,7 +100,7 @@
       class="formulaire"
       onsubmit={(e) => {
         e.preventDefault();
-        void brancher();
+        void connect();
       }}
     >
       <label>Nom du client <input data-testid="nom-brancher" bind:value={name} placeholder="Claude Code" maxlength="60" /></label>

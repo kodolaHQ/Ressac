@@ -17,7 +17,7 @@
   // The draft is shared state: the fields modify it in place.
   const draft = untrack(() => spaceSettings.brouillon)!;
 
-  let carte: HTMLElement;
+  let card: HTMLElement;
   let nameField: HTMLInputElement;
   let ready = $state(false);
 
@@ -38,22 +38,22 @@
       ? warnings({ id: draft.id, prive: draft.prive, profil: draft.profil }, spaces, lignes)
       : { privePartage: [], agentDesactivees: [] },
   );
-  async function chargerLignes() {
+  async function loadLines() {
     if (draft.id !== null) lignes = await api.extensions.pourEspace(draft.id);
   }
   $effect(() => {
     void linesKey;
-    void chargerLignes();
+    void loadLines();
   });
-  async function toggle(l: SpaceExtensionLine, champ: HTMLInputElement) {
+  async function toggle(l: SpaceExtensionLine, field: HTMLInputElement) {
     if (draft.id === null) return;
     extensionError = null;
-    const r = await api.extensions.basculer(l.cle, draft.id, champ.checked);
+    const r = await api.extensions.basculer(l.cle, draft.id, field.checked);
     if (!r.ok) extensionError = r.erreur;
-    await chargerLignes();
+    await loadLines();
     // The switch takes back what the registry says (card refused, error).
     const view = lignes?.find((x) => x.cle === l.cle);
-    if (view && champ.isConnected) champ.checked = view.active;
+    if (view && field.isConnected) field.checked = view.active;
   }
 
   // The choice no longer designates any profile (the state changed meanwhile): a new space goes back to « à choisir »,
@@ -70,9 +70,9 @@
   onMount(() => {
     const before = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     nameField.focus();
-    const finChange = api.extensions.surChange(() => void chargerLignes());
+    const endChange = api.extensions.surChange(() => void loadLines());
     return () => {
-      finChange();
+      endChange();
       // Focus goes back where it was, if it is still in the interface, when the rest is no longer inert.
       queueMicrotask(() => {
         if (before?.isConnected && before !== document.body) before.focus();
@@ -96,7 +96,7 @@
   }
 
   const focusables = () =>
-    [...carte.querySelectorAll<HTMLElement>("button, input, select")].filter((e) => !e.hasAttribute("disabled"));
+    [...card.querySelectorAll<HTMLElement>("button, input, select")].filter((e) => !e.hasAttribute("disabled"));
 
   // The web page does not have keyboard focus (the preview hands it back to the interface): Enter validates right away.
   function clavier(e: KeyboardEvent) {
@@ -130,7 +130,7 @@
 <!-- Under the command bar, nothing in the modal can take focus (native Tab from the page body). -->
 <div class="modale" class:prete={ready} data-testid="modale-espace" inert={!!command.ouverte}>
   <FrozenBackground ongletId={tabId} surPret={() => (ready = true)} />
-  <div class="carte" bind:this={carte} role="dialog" aria-modal="true" aria-labelledby="titre-espace">
+  <div class="carte" bind:this={card} role="dialog" aria-modal="true" aria-labelledby="titre-espace">
     <form onsubmit={validate}>
       <h2 id="titre-espace">{fresh ? "Nouvel espace" : "Réglages de l'espace"}</h2>
       <div class="champ">

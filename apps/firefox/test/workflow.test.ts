@@ -1,11 +1,11 @@
 import { expect, test } from "vitest";
-import { hasView, urlWorkflow, URL_APPLICATIONS, widgetDeUrlWorkflow } from "../shared/model";
+import { hasView, urlWorkflow, URL_APPLICATIONS, widgetOfWorkflowUrl } from "../shared/model";
 
 test("urlWorkflow and widgetDeUrlWorkflow: round trip, nothing else", () => {
   expect(urlWorkflow("meteo")).toBe("webaios://workflow/meteo");
-  expect(widgetDeUrlWorkflow("webaios://workflow/meteo")).toBe("meteo");
+  expect(widgetOfWorkflowUrl("webaios://workflow/meteo")).toBe("meteo");
   for (const url of ["webaios://workflow/", "webaios://workflow/../etat", "webaios://workflow/A", "webaios://applications", "https://workflow/meteo", "webaios://workflow/a/b"])
-    expect(widgetDeUrlWorkflow(url), url).toBeNull();
+    expect(widgetOfWorkflowUrl(url), url).toBeNull();
 });
 
 test("a webaios://workflow/… page has no view", () => {

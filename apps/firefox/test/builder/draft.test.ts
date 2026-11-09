@@ -1,9 +1,9 @@
 import { describe, expect, test } from "vitest";
-import { addBlock, move, History, idPourType, sameDraft, set, relier, rename, followFile, deleteBlocks, deleteLink, toDraft, type Brouillon } from "../../ui/builder/draft";
+import { addBlock, move, History, idForType, sameDraft, set, link, rename, followFile, deleteBlocks, deleteLink, toDraft, type Brouillon } from "../../ui/builder/draft";
 
 const empty = (): Brouillon => ({ version: 1, blocs: [], liens: [] });
-const bloc = (id: string, type = "code") => ({ id, type, position: { x: 0, y: 0 }, parametres: {} });
-const updateEntry = (blocs: Brouillon["blocs"], liens: Brouillon["liens"] = []): Brouillon => ({ version: 1, blocs, liens });
+const block = (id: string, type = "code") => ({ id, type, position: { x: 0, y: 0 }, parametres: {} });
+const updateEntry = (blocks: Brouillon["blocs"], liens: Brouillon["liens"] = []): Brouillon => ({ version: 1, blocs: blocks, liens });
 
 test("adding two ia.trier gives ia-trier then ia-trier-2", () => {
   const a = addBlock(empty(), "ia.trier", { x: 1, y: 2 }, {});
@@ -13,8 +13,8 @@ test("adding two ia.trier gives ia-trier then ia-trier-2", () => {
 });
 
 test("idPourType truncates to 40", () => {
-  expect(idPourType("a".repeat(60), []).length).toBe(40);
-  expect(idPourType("a".repeat(60), ["a".repeat(40)]).length).toBeLessThanOrEqual(40);
+  expect(idForType("a".repeat(60), []).length).toBe(40);
+  expect(idForType("a".repeat(60), ["a".repeat(40)]).length).toBeLessThanOrEqual(40);
 });
 
 test("a second output is not added", () => {
@@ -25,7 +25,7 @@ test("a second output is not added", () => {
 });
 
 test("supprimer output does nothing; supprimer a block removes its links", () => {
-  const b = updateEntry([bloc("a"), bloc("b"), bloc("sortie", "sortie")], [{ de: "a", vers: "b" }, { de: "b", vers: "sortie" }]);
+  const b = updateEntry([block("a"), block("b"), block("sortie", "sortie")], [{ de: "a", vers: "b" }, { de: "b", vers: "sortie" }]);
   expect(deleteBlocks(b, ["sortie"])).toBe(b);
   const c = deleteBlocks(b, ["b"]);
   expect(c.blocs.map((x) => x.id)).toEqual(["a", "sortie"]);
@@ -33,17 +33,17 @@ test("supprimer output does nothing; supprimer a block removes its links", () =>
 });
 
 test("relier refuses itself, a duplicate and a start from an output", () => {
-  const b = updateEntry([bloc("a"), bloc("b"), bloc("sortie", "sortie")]);
-  expect(relier(b, "a", "a")).toBe(b);
-  expect(relier(b, "sortie", "a")).toBe(b);
-  const c = relier(b, "a", "b");
+  const b = updateEntry([block("a"), block("b"), block("sortie", "sortie")]);
+  expect(link(b, "a", "a")).toBe(b);
+  expect(link(b, "sortie", "a")).toBe(b);
+  const c = link(b, "a", "b");
   expect(c.liens).toEqual([{ de: "a", vers: "b" }]);
-  expect(relier(c, "a", "b")).toBe(c);
+  expect(link(c, "a", "b")).toBe(c);
   expect(deleteLink(c, "a", "b").liens).toEqual([]);
 });
 
 test("renommer \"\" removes the name, 80 characters are cut to 60", () => {
-  const b = updateEntry([bloc("a")]);
+  const b = updateEntry([block("a")]);
   const n = rename(b, "a", "x".repeat(80));
   expect(n.blocs[0]!.nom).toHaveLength(60);
   const r = rename(n, "a", "");
@@ -51,11 +51,11 @@ test("renommer \"\" removes the name, 80 characters are cut to 60", () => {
 });
 
 test("regler replaces the params", () => {
-  expect(set(updateEntry([bloc("a")]), "a", { k: 1 }).blocs[0]!.parametres).toEqual({ k: 1 });
+  expect(set(updateEntry([block("a")]), "a", { k: 1 }).blocs[0]!.parametres).toEqual({ k: 1 });
 });
 
 test("deplacer: without a position change, returns the same draft", () => {
-  const b = updateEntry([bloc("a"), bloc("b")]);
+  const b = updateEntry([block("a"), block("b")]);
   expect(move(b, { a: { x: 0, y: 0 } })).toBe(b);
   expect(move(b, {})).toBe(b);
   const c = move(b, { a: { x: 5, y: 6 } });
@@ -64,7 +64,7 @@ test("deplacer: without a position change, returns the same draft", () => {
 });
 
 test("deplacer ignores non-finite positions", () => {
-  const b = updateEntry([bloc("a")]);
+  const b = updateEntry([block("a")]);
   expect(move(b, { a: { x: NaN, y: 1 } })).toBe(b);
   expect(move(b, { a: { x: 1, y: Infinity } })).toBe(b);
 });
@@ -77,13 +77,13 @@ test("versBrouillon is lenient", () => {
 });
 
 test("memeBrouillon ignores key order", () => {
-  const a = updateEntry([{ ...bloc("a"), parametres: { x: 1, y: 2 } }]);
-  const b = updateEntry([{ ...bloc("a"), parametres: { y: 2, x: 1 } }]);
+  const a = updateEntry([{ ...block("a"), parametres: { x: 1, y: 2 } }]);
+  const b = updateEntry([{ ...block("a"), parametres: { y: 2, x: 1 } }]);
   expect(sameDraft(a, b)).toBe(true);
 });
 
 describe("Historique", () => {
-  const state = (n: number): Brouillon => updateEntry([bloc(`b${n}`)]);
+  const state = (n: number): Brouillon => updateEntry([block(`b${n}`)]);
   test("annuler then rétablir returns the states in order", () => {
     const h = new History(state(0));
     h.faire(state(1)); h.faire(state(2));
@@ -102,10 +102,10 @@ describe("Historique", () => {
   test("101 states: the oldest goes", () => {
     const h = new History(state(0));
     for (let i = 1; i <= 100; i++) h.faire(state(i));
-    let dernier: Brouillon | null = null, n = 0;
-    for (let r = h.annuler(); r; r = h.annuler()) { dernier = r; n++; }
+    let last: Brouillon | null = null, n = 0;
+    for (let r = h.annuler(); r; r = h.annuler()) { last = r; n++; }
     expect(n).toBe(99);
-    expect(dernier).toEqual(state(1));
+    expect(last).toEqual(state(1));
   });
   test("reinitialiser clears the history", () => {
     const h = new History(state(0));
@@ -116,7 +116,7 @@ describe("Historique", () => {
 });
 
 describe("suivreFichier", () => {
-  const A = updateEntry([bloc("a")]), B = updateEntry([bloc("b")]), C = updateEntry([bloc("c")]), D = updateEntry([bloc("d")]);
+  const A = updateEntry([block("a")]), B = updateEntry([block("b")]), C = updateEntry([block("c")]), D = updateEntry([block("d")]);
   test("echo of our own write ignored", () => {
     expect(followFile({ local: A, dernierConnu: B, disque: B, envoyes: [] })).toBe("ignorer");
     expect(followFile({ local: A, dernierConnu: B, disque: A, envoyes: [] })).toBe("ignorer");

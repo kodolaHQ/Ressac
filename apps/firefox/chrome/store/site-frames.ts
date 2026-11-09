@@ -4,8 +4,8 @@
 import type { TweaksRead } from "../../../../packages/kernel/src/sites/lire";
 import { relativeUrl } from "../../../../packages/kernel/src/sites/urls";
 import GUARD from "../../../../packages/kernel/extensions/webaios-garde-page.js?raw";
-import { tweakSource, type InjectionCadre } from "../../shared/sites";
-import { addTweakConsole, injectionPour, repriseDansCadre, type TweakError, type MemoryResponse } from "../../core/sites/injection";
+import { tweakSource, type FrameInjection } from "../../shared/sites";
+import { addTweakConsole, injectionFor, resumeInFrame, type TweakError, type MemoryResponse } from "../../core/sites/injection";
 import { MEMORY_DENIAL } from "../../host/site-memory";
 import type { SiteChrome } from "../../host/sites";
 
@@ -45,15 +45,15 @@ function frameOf(wgp: any, view: any): { url: string; principal: boolean; page: 
 }
 
 /** The actor's "injection": null outside an open app's view or without its grant, else injectionPour. */
-export function frameInjection(wgp: any, s: FrameSite | undefined, localUrls: boolean): InjectionCadre | null {
+export function frameInjection(wgp: any, s: FrameSite | undefined, localUrls: boolean): FrameInjection | null {
   if (!s || s.site.accordRequis) return null;
   const f = frameOf(wgp, s.view);
   if (!f) return null;
-  const i = injectionPour({ site: s.site, retouches: s.retouches, accorde: true, garde: GUARD, adressesLocales: localUrls }, f.principal ? { url: f.url, principal: true } : f);
+  const i = injectionFor({ site: s.site, retouches: s.retouches, accorde: true, garde: GUARD, adressesLocales: localUrls }, f.principal ? { url: f.url, principal: true } : f);
   // A player written into an about:srcdoc / about:blank frame of an app page has no address of its own for injectionPour
   // (nothing is injected there), but the resume goes into it like into any other frame of that page.
   if (i && !f.principal && /^about:(srcdoc|blank)$/.test(f.url) && f.page !== null && relativeUrl(f.page, s.site.domaines) !== null)
-    i.reprise = repriseDansCadre(s.site.declaration, f, localUrls);
+    i.reprise = resumeInFrame(s.site.declaration, f, localUrls);
   return i;
 }
 
@@ -67,8 +67,8 @@ export async function frameMemory(wgp: any, s: FrameSite | undefined, sendReques
   const f = frameOf(wgp, s.view);
   const url = f?.principal ? relativeUrl(f.url, s.site.domaines) : null;
   if (url === null || !sendRequest || typeof sendRequest !== "object") return denial;
-  const { op, cle: key, valeur } = sendRequest as { op?: unknown; cle?: unknown; valeur?: unknown };
-  return request({ id: s.site.id, adresse: url, op, cle: key, valeur });
+  const { op, cle: key, valeur: value } = sendRequest as { op?: unknown; cle?: unknown; valeur?: unknown };
+  return request({ id: s.site.id, adresse: url, op, cle: key, valeur: value });
 }
 
 /**
@@ -79,9 +79,9 @@ export async function frameMemory(wgp: any, s: FrameSite | undefined, sendReques
  */
 export function frameError(s: FrameSite | undefined, e: unknown): void {
   if (!s || !e || typeof e !== "object") return;
-  const { texte: text, source, ligne } = e as { texte?: unknown; source?: unknown; ligne?: unknown };
+  const { texte: text, source, ligne: line } = e as { texte?: unknown; source?: unknown; ligne?: unknown };
   if (typeof text !== "string" || typeof source !== "string" || !source.startsWith(tweakSource(s.site.id, ""))) return;
-  const l = typeof ligne === "number" && Number.isInteger(ligne) && ligne > 0 ? ligne : 0;
+  const l = typeof line === "number" && Number.isInteger(line) && line > 0 ? line : 0;
   addTweakConsole(s.erreurs, { texte: text, source: l ? `${source}:${l}` : source }, new Date().toISOString());
 }
 
@@ -93,7 +93,7 @@ export function frameError(s: FrameSite | undefined, e: unknown): void {
 function resumePage(wgp: any, s: FrameSite | undefined, localUrls: boolean): { id: string; adresse: string } | null {
   if (!s || s.site.accordRequis) return null;
   const f = frameOf(wgp, s.view);
-  if (!f || !repriseDansCadre(s.site.declaration, f, localUrls)) return null;
+  if (!f || !resumeInFrame(s.site.declaration, f, localUrls)) return null;
   const url = f.principal ? relativeUrl(f.url, s.site.domaines) : f.page === null ? null : relativeUrl(f.page, s.site.domaines);
   return url === null ? null : { id: s.site.id, adresse: url };
 }
@@ -102,8 +102,8 @@ function resumePage(wgp: any, s: FrameSite | undefined, localUrls: boolean): { i
 export function framePosition(wgp: any, s: FrameSite | undefined, p: unknown, localUrls: boolean, notify: (p: object) => void): void {
   const page = p && typeof p === "object" ? resumePage(wgp, s, localUrls) : null;
   if (!page) return;
-  const { t, duree: duration, fin } = p as { t?: unknown; duree?: unknown; fin?: unknown };
-  notify({ ...page, cadre: `${wgp.browsingContext.id}:${wgp.innerWindowId}`, t, duree: duration, fin: fin === true });
+  const { t, duree: duration, fin: end } = p as { t?: unknown; duree?: unknown; fin?: unknown };
+  notify({ ...page, cadre: `${wgp.browsingContext.id}:${wgp.innerWindowId}`, t, duree: duration, fin: end === true });
 }
 
 /** The actor's "reprise": the position kept for the page, for a video of this duration (null if none). */

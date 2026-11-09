@@ -213,7 +213,7 @@ export function loadImage(open: OpenRequest, url: string, o: { permise: (url: st
   if (!o.permise(url)) return Promise.resolve(null);
   return new Promise((render) => {
     let finished = false;
-    let sauts = 0;
+    let hops = 0;
     let current = url;
     let request: ImageRequest | undefined;
     const finish = (v: { type: string; corps: Uint8Array } | null) => {
@@ -240,8 +240,8 @@ export function loadImage(open: OpenRequest, url: string, o: { permise: (url: st
           return finish(null);
         }
         // A hostile page could redirect to a third party, the machine or the local network: checked before going.
-        if (sauts >= REDIRECTIONS_IMAGE || !o.permise(next)) return finish(null);
-        sauts++;
+        if (hops >= REDIRECTIONS_IMAGE || !o.permise(next)) return finish(null);
+        hops++;
         current = next;
         request!.followRedirect();
       });
@@ -250,18 +250,18 @@ export function loadImage(open: OpenRequest, url: string, o: { permise: (url: st
         const type = first(r.headers["content-type"])?.split(";")[0]?.trim().toLowerCase() ?? "";
         if (r.statusCode < 200 || r.statusCode >= 300 || !TYPE_IMAGE.test(type) || Number(first(r.headers["content-length"]) ?? 0) > o.max) return finish(null);
         const chunks: Uint8Array[] = [];
-        let taille = 0;
+        let size = 0;
         r.on("data", (m) => {
           if (finished) return;
-          taille += m.length;
-          if (taille > o.max) return finish(null);
+          size += m.length;
+          if (size > o.max) return finish(null);
           chunks.push(m);
         });
         r.on("end", () => {
-          const corps = new Uint8Array(taille);
+          const body = new Uint8Array(size);
           let i = 0;
-          for (const m of chunks) corps.set(m, (i += m.length) - m.length);
-          finish({ type, corps });
+          for (const m of chunks) body.set(m, (i += m.length) - m.length);
+          finish({ type, corps: body });
         });
         r.on("error", () => finish(null));
         r.on("aborted", () => finish(null));

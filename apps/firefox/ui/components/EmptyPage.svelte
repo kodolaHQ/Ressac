@@ -11,12 +11,12 @@
 
   let { fenetre: win }: { fenetre: WindowState } = $props();
   let input = $state("");
-  let champ: HTMLInputElement;
+  let field: HTMLInputElement;
 
-  onMount(() => champ.focus());
+  onMount(() => field.focus());
   // The command bar closed onto home gives the keyboard back to it.
   $effect(() => {
-    if (focusEmptyPage.n > 0) untrack(() => champ?.focus());
+    if (focusEmptyPage.n > 0) untrack(() => field?.focus());
   });
 
   // Actions are not available in a private space (a missing space counts as private): the list is then not even
@@ -29,7 +29,7 @@
       actions = [];
       return;
     }
-    const charger = () => {
+    const load = () => {
       const n = ++last;
       api.actions.liste().then(
         (l) => {
@@ -38,8 +38,8 @@
         () => {},
       );
     };
-    charger();
-    return api.actions.surChange(charger);
+    load();
+    return api.actions.surChange(load);
   });
 
   // Escape closes the list until the next keystroke.
@@ -98,7 +98,7 @@
     }}
   >
     <input
-      bind:this={champ}
+      bind:this={field}
       bind:value={input}
       oninput={() => {
         closed = false;

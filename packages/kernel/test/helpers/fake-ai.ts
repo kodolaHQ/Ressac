@@ -56,11 +56,11 @@ export async function unreachableUrl(): Promise<string> {
 
 /** Fake Ollama that never answers /api/chat; `coupees` counts the requests abandoned by the client. */
 export async function fakeSilentOllama(): Promise<FakeServer & { coupees: () => number }> {
-  let coupees = 0;
+  let cuts = 0;
   const s = await start((_r, res) => {
     res.on("close", () => {
-      if (!res.writableEnded) coupees++;
+      if (!res.writableEnded) cuts++;
     });
   });
-  return { ...s, coupees: () => coupees };
+  return { ...s, coupees: () => cuts };
 }

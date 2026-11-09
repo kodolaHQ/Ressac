@@ -12,8 +12,8 @@ export const declarationWidget = (defaultValue = { l: 4, h: 4 }, extra: Record<s
 
 /** Writes `<widgets>/<id>/widget.json` (or the given raw text) and the side files. */
 export async function writeWidget(c: SpacePaths, id: string, content: unknown | string = declarationWidget(), files: Record<string, string> = {}) {
-  const dossier = join(c.widgets, id);
-  await mkdir(dossier, { recursive: true });
-  await writeFile(join(dossier, "widget.json"), typeof content === "string" ? content : JSON.stringify(content));
-  for (const [name, text] of Object.entries(files)) await writeFile(join(dossier, name), text);
+  const folder = join(c.widgets, id);
+  await mkdir(folder, { recursive: true });
+  await writeFile(join(folder, "widget.json"), typeof content === "string" ? content : JSON.stringify(content));
+  for (const [name, text] of Object.entries(files)) await writeFile(join(folder, name), text);
 }

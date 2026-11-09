@@ -85,7 +85,7 @@ async function waitSpaces<T>(read: (e: Space[]) => T, ok: (v: T) => boolean): Pr
 
 describe("space settings", () => {
   it("“+” opens “Nouvel espace”: not private, no profile chosen; “Créer” waits for the choice, then adds the space", async () => {
-    const travail = await create("Travail", "💼", false, "nouveau");
+    const work = await create("Travail", "💼", false, "nouveau");
     await click(m, '[data-testid="nouvel-espace"]');
     await modalOpen("Nouvel espace");
     expect(await fields()).toMatchObject({
@@ -107,7 +107,7 @@ describe("space settings", () => {
     await click(m, `${MODAL} button[type="submit"]`, { text: "Créer" });
     await modalClosed();
     const sets = await waitSpaces((l) => l.find((e) => e.nom === "Jeux"), (e) => !!e);
-    expect(sets).toMatchObject({ icone: "🎮", prive: false, profil: travail.profil });
+    expect(sets).toMatchObject({ icone: "🎮", prive: false, profil: work.profil });
     await waitUi(m, "return doc.querySelector(arguments[0])?.getAttribute('aria-current') === 'true'", [button(sets!.id)]);
 
     // « Nouveau profil » makes a profile of its own.
@@ -119,7 +119,7 @@ describe("space settings", () => {
     await pressKeys(m, "Enter");
     await modalClosed();
     const fresh = await waitSpaces((l) => l.find((e) => e.nom === "Neuf")?.profil, (p) => !!p);
-    expect([travail.profil, "defaut", "nouveau"]).not.toContain(fresh);
+    expect([work.profil, "defaut", "nouveau"]).not.toContain(fresh);
   });
 
   it("“Réglages” shows the space's values; private and its own profile are saved", async () => {
@@ -195,19 +195,19 @@ describe("space settings", () => {
     await waitSpaces((l) => l.some((e) => e.id === sets.id), (v) => !v);
     expect(await inUi(m, "return doc.querySelectorAll('[role=alertdialog]').length")).toBe(0);
 
-    const travail = await create("Travail", "💼", false, "nouveau");
-    await click(m, button(travail.id), { button: 2 });
+    const work = await create("Travail", "💼", false, "nouveau");
+    await click(m, button(work.id), { button: 2 });
     await click(m, '[role="menuitem"]', { text: "Supprimer" });
     const text = await waitUi<string>(m, "return doc.querySelector('[role=alertdialog]')?.textContent");
     expect(text).toContain("Travail");
     expect(text).toContain("Les connexions de cet espace seront perdues.");
     await click(m, "[role=alertdialog] button", { text: "Annuler" });
     await waitUi(m, "return !doc.querySelector('[role=alertdialog]')");
-    expect((await spaces()).some((e) => e.id === travail.id)).toBe(true);
-    await click(m, button(travail.id), { button: 2 });
+    expect((await spaces()).some((e) => e.id === work.id)).toBe(true);
+    await click(m, button(work.id), { button: 2 });
     await click(m, '[role="menuitem"]', { text: "Supprimer" });
     await click(m, "[role=alertdialog] button", { text: "Supprimer" });
-    await waitSpaces((l) => l.some((e) => e.id === travail.id), (v) => !v);
+    await waitSpaces((l) => l.some((e) => e.id === work.id), (v) => !v);
   });
 
   it("changing a space's profile reloads its tabs in the new container, and wipes the old profile no space uses any more", async () => {
@@ -215,7 +215,7 @@ describe("space settings", () => {
     // The default profile gets the cookie essai=1.
     await dispatch(m, { type: "ouvrirOnglet", fenetreId: await windowId(), url: server.url + "/cookie" });
     await waitFor<{ title: string }>(m, tab, (t) => t.title === "cookie");
-    const travail = await create("Travail", "💼", false, "nouveau");
+    const work = await create("Travail", "💼", false, "nouveau");
     await dispatch(m, { type: "ouvrirOnglet", fenetreId: await windowId(), url: server.url + "/lire-cookie" });
     const before = await waitFor<{ ctx: number; title: string }>(m, tab, (t) => t.title === "aucun");
     expect(before.ctx).not.toBe(0);
@@ -232,9 +232,9 @@ describe("space settings", () => {
     const oldCookies = `return Services.cookies.getCookiesWithOriginAttributes(JSON.stringify({ userContextId: ${before.ctx} })).length`;
     expect(await m.execute(oldCookies)).toBe(1);
     const container = `const { ContextualIdentityService } = ChromeUtils.importESModule("moz-src:///toolkit/components/contextualidentity/ContextualIdentityService.sys.mjs");
-      return !!ContextualIdentityService.getPrivateIdentity("userContextIdInternal.webaios-${travail.profil}");`;
+      return !!ContextualIdentityService.getPrivateIdentity("userContextIdInternal.webaios-${work.profil}");`;
     expect(await m.execute(container)).toBe(true);
-    await openSettings(travail.id);
+    await openSettings(work.id);
     await choose("Partagé avec « Perso »");
     await click(m, `${MODAL} button[type="submit"]`, { text: "Enregistrer" });
     await modalClosed();

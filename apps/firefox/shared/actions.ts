@@ -5,8 +5,8 @@ export const ACTIONS_IN_PRIVATE_SPACE = "Les actions ne sont pas disponibles dan
 /** The builder starts or replays an action that is already running (from its page, another window…): nothing goes out. */
 export const ACTION_ALREADY_RUNNING = "L'action tourne déjà";
 export const PENDING = "En attente : deux actions tournent déjà";
-export const MISE_EN_PAGE = "Mise en page…";
-export const lectureDe = (host: string) => `Lecture de ${host}…`;
+export const PAGE_LAYOUT = "Mise en page…";
+export const readingOf = (host: string) => `Lecture de ${host}…`;
 /** Copied from the kernel (pages/resoudre.ts; a test checks equality): the UI imports only types from it. */
 export const FALLBACK_MENTION = "mise en page simple";
 export const NO_RESULT = "Aucun résultat";

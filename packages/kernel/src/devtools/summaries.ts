@@ -2,8 +2,8 @@
 
 export const LENGTH_MAX = 2000;
 
-const MASQUE = "«masqué»";
-const EN_TETES_SECRETS = new Set(["cookie", "set-cookie", "authorization", "proxy-authorization"]);
+const MASK = "«masqué»";
+const SECRET_HEADERS = new Set(["cookie", "set-cookie", "authorization", "proxy-authorization"]);
 const SECRET_PARAM = /token|key|secret|password|auth|session|sig/i;
 
 /** Cuts a string that is too long and reports the cut. */
@@ -12,29 +12,29 @@ export function truncate(s: string, max = LENGTH_MAX): string {
 }
 
 /** Masks the headers that carry login data. */
-export function masquerEnTetes(h: Record<string, string>): Record<string, string> {
+export function maskHeaders(h: Record<string, string>): Record<string, string> {
   const r: Record<string, string> = {};
-  for (const [name, valeur] of Object.entries(h)) {
-    r[name] = EN_TETES_SECRETS.has(name.toLowerCase()) ? MASQUE : valeur;
+  for (const [name, value] of Object.entries(h)) {
+    r[name] = SECRET_HEADERS.has(name.toLowerCase()) ? MASK : value;
   }
   return r;
 }
 
 /** Masks, in a `name=value&…` sequence, the values whose name is sensitive. */
 function hidePairs(text: string): string {
-  return text.replace(/(^|[?&])([^=&?]*)=([^&]*)/g, (tout, sep: string, name: string) => {
+  return text.replace(/(^|[?&])([^=&?]*)=([^&]*)/g, (all, sep: string, name: string) => {
     let lu = name;
     try {
       lu = decodeURIComponent(name);
     } catch {
       // badly encoded name: compared as it is
     }
-    return SECRET_PARAM.test(lu) ? `${sep}${name}=${MASQUE}` : tout;
+    return SECRET_PARAM.test(lu) ? `${sep}${name}=${MASK}` : all;
   });
 }
 
 /** Masks the value of the sensitive params (query and fragment), without reformatting the rest of the URL. */
-export function masquerUrl(url: string): string {
+export function maskUrl(url: string): string {
   try {
     new URL(url);
   } catch {
@@ -51,7 +51,7 @@ export function masquerUrl(url: string): string {
 
 /** The http(s) URLs of a free text (console message, stack), masked as by `masquerUrl`. */
 export function hideUrlsInText(text: string): string {
-  return text.replace(/https?:\/\/[^\s"'`<>()[\]{}]+/gi, (url) => masquerUrl(url));
+  return text.replace(/https?:\/\/[^\s"'`<>()[\]{}]+/gi, (url) => maskUrl(url));
 }
 
 export interface CpuProfile {
@@ -86,9 +86,9 @@ export function summarizeProfile(p: CpuProfile, metrics: Record<string, number>,
     .slice(0, n)
     .map(({ noeud: node, us }) => {
       const { functionName, url, lineNumber } = node.callFrame;
-      const lieu = url ? ` (${url}:${lineNumber + 1})` : "";
+      const where = url ? ` (${url}:${lineNumber + 1})` : "";
       const pct = total > 0 ? (us / total) * 100 : 0;
-      return `${functionName || "(anonyme)"}${lieu} — ${rounded(us / 1000)} ms, ${rounded(pct)} %`;
+      return `${functionName || "(anonyme)"}${where} — ${rounded(us / 1000)} ms, ${rounded(pct)} %`;
     });
   const m = metrics;
   const extra: string[] = [];
@@ -119,37 +119,37 @@ export function summarizeSnapshot(json: string): MemorySummary {
     const { total, parConstructeur: byBuilder } = parse as FirefoxSnapshot;
     return { total, parConstructeur: [...byBuilder].sort((a, b) => b.taille - a.taille) };
   }
-  const brut = parse as unknown as {
+  const raw = parse as unknown as {
     snapshot: { meta: { node_fields: string[]; node_types: unknown[] } };
     nodes: number[];
     strings: string[];
   };
-  const { node_fields: champs, node_types: nodeTypes } = brut.snapshot.meta;
+  const { node_fields: champs, node_types: nodeTypes } = raw.snapshot.meta;
   const iType = champs.indexOf("type");
   const iName = champs.indexOf("name");
-  const iTaille = champs.indexOf("self_size");
+  const iSize = champs.indexOf("self_size");
   const typeNames = (nodeTypes[iType] as string[]) ?? [];
-  const pas = champs.length;
+  const step = champs.length;
   const groups = new Map<string, { nom: string; nombre: number; taille: number }>();
   let total = 0;
-  for (let i = 0; i + pas <= brut.nodes.length; i += pas) {
-    const taille = brut.nodes[i + iTaille] ?? 0;
-    total += taille;
-    if (!KEPT_TYPES.has(typeNames[brut.nodes[i + iType] ?? -1] ?? "")) continue;
+  for (let i = 0; i + step <= raw.nodes.length; i += step) {
+    const size = raw.nodes[i + iSize] ?? 0;
+    total += size;
+    if (!KEPT_TYPES.has(typeNames[raw.nodes[i + iType] ?? -1] ?? "")) continue;
     // a string's name is its content: it is not passed on
     const name =
-      typeNames[brut.nodes[i + iType] ?? -1] === "string"
+      typeNames[raw.nodes[i + iType] ?? -1] === "string"
         ? "(chaîne)"
-        : (brut.strings[brut.nodes[i + iName] ?? -1] ?? "");
+        : (raw.strings[raw.nodes[i + iName] ?? -1] ?? "");
     const g = groups.get(name) ?? { nom: name, nombre: 0, taille: 0 };
     g.nombre += 1;
-    g.taille += taille;
+    g.taille += size;
     groups.set(name, g);
   }
   return { total, parConstructeur: [...groups.values()].sort((a, b) => b.taille - a.taille) };
 }
 
-const ko = (octets: number): string => `${rounded(octets / 1024)} Ko`;
+const ko = (bytes: number): string => `${rounded(bytes / 1024)} Ko`;
 
 export function memoryText(r: MemorySummary, n = 20): string {
   const lignes = r.parConstructeur

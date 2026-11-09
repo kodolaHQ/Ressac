@@ -1,11 +1,11 @@
 import type { Decision, AccessState, WindowId, ProfileId } from "../../shared/model";
 import { privateTab, tabProfile, profilesInUse } from "../../shared/model";
-import { chargerSession, SessionRecorder } from "../../core/state/persistence";
+import { loadSession, SessionRecorder } from "../../core/state/persistence";
 import { bridgeHandlers, sendMirror, trackState } from "../agent/bridge";
 import { createHost, HOST_EXITED, type AgentHost } from "../agent/host";
 import { readHtml, readPage } from "../agent/invisible";
 import { Questions } from "../agent/questions";
-import type { OptionsLecturePage, PageLue } from "../shims/kernel";
+import type { PageReadOptions, ReadPage } from "../shims/kernel";
 import { apps, bindApps, type AgentApps } from "./apps";
 import { actionImage, releaseComponent, serveComponent } from "./action-media";
 import { createAgentExtensions, type AgentExtensions } from "./agent-extensions";
@@ -61,7 +61,7 @@ export interface WebAiOsStore extends Store {
   /** The real clicks in a widget's display: each lets that widget open one link (recorded by the UI's chrome listener). */
   readonly gestesWidgets: ReturnType<typeof gestureGuard<string>>;
   /** Invisible page reads (the bridge's lirePageInvisible / lireHtmlInvisible), exposed for the e2e tests. */
-  readPage(url: string, o: OptionsLecturePage, signal?: AbortSignal): Promise<PageLue>;
+  readPage(url: string, o: PageReadOptions, signal?: AbortSignal): Promise<ReadPage>;
   readHtml(url: string, o: { adressesLocales?: boolean }, signal?: AbortSignal): Promise<{ url: string; html: string }>;
   /** An action page's result images (`data:`, or null) and agent components (a resource:// copy per page showing it). */
   readonly actionMedia: { image(url: string): Promise<string | null>; serve(name: string): Promise<string | null>; release(name: string): Promise<void> };
@@ -120,7 +120,7 @@ const firefoxPermissions = {
 const dataDir =
   Services.env.get("WEBAIOS_DATA_DIR") || PathUtils.join(Services.dirsvc.get("Home", Ci.nsIFile).path, "WebAiOs-firefox", "data");
 
-const gestesWidgets = gestureGuard<string>();
+const widgetGestures = gestureGuard<string>();
 
 let uiNetState: UiNetworkState;
 
@@ -151,7 +151,7 @@ async function start(): Promise<WebAiOsStore> {
   await IOUtils.remove(PathUtils.join(dataDir, "webaios-composants"), { recursive: true, ignoreAbsent: true }).catch((e) => console.warn("[actions] copies non effacées :", e));
   migrateContainers();
   let setAside: string | null = null;
-  const store = createStore(await chargerSession(dataDir, (p) => (setAside = p)));
+  const store = createStore(await loadSession(dataDir, (p) => (setAside = p)));
   const questions = new Questions(store, () => sites.forAgent(), () => apps.forAgent());
   // A site app or agent app window closed: the agent's questions on it fall.
   sites.onClosed(() => questions.dropStale());
@@ -381,7 +381,7 @@ async function start(): Promise<WebAiOsStore> {
     get access() {
       return access;
     },
-    gestesWidgets,
+    gestesWidgets: widgetGestures,
     readPage: (url, o, signal) => readPage(store, url, o, signal),
     readHtml: (url, o, signal) => readHtml(store, url, o, signal),
     actionMedia: { image: actionImage, serve: (name) => serveComponent(dataDir, name), release: (name) => releaseComponent(dataDir, name) },

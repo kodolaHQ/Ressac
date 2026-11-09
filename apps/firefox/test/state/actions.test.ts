@@ -214,8 +214,8 @@ test("deleting the origin space of an essential open elsewhere: the other space 
   const B = e.espaces[1]!.id;
   ag({ type: "ouvrirFavori", fenetreId: F, genre: "essentiel", id: e.essentiels[0]!.id });
   ag({ type: "supprimerEspace", id: P });
-  const restant = active(B);
-  expect(restant === null || !!e.onglets[restant]).toBe(true);
+  const remaining = active(B);
+  expect(remaining === null || !!e.onglets[remaining]).toBe(true);
 });
 
 test("activerEspace keeps each space's own active tab", () => {
@@ -393,12 +393,12 @@ test("reglerEspace: several spaces display the tab under the old key, the first 
   const pro = e.espaces[2]!.id;
   ag({ type: "ouvrirFavori", fenetreId: F, genre: "essentiel", id: essential });
   ag({ type: "creerEspace", nom: "Impôts", icone: "🧾", prive: true, profil: bank.profil, fenetreId: F });
-  const impots = e.espaces[3]!.id;
+  const taxes = e.espaces[3]!.id;
   ag({ type: "ouvrirFavori", fenetreId: F, genre: "essentiel", id: essential });
   ag({ type: "reglerEspace", id: bank.id, nom: "Banque", icone: "🏦", prive: false, profil: bank.profil });
   expect(e.onglets[g]!.espaceId).toBe(pro);
   expect(active(pro)).toBe(g);
-  expect(active(impots)).toBe(g);
+  expect(active(taxes)).toBe(g);
   expect(active(bank.id)).toBeNull();
 });
 

@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { cleanCapture, cleanSource, firefoxViewfinderScript, BASKET_WIDTH, MARGE, bubbleSlot, rectCapture, sourceExpression, STOP_SCRIPT } from "../../chrome/store/design-copies";
+import { cleanCapture, cleanSource, firefoxViewfinderScript, BASKET_WIDTH, MARGIN, bubbleSlot, rectCapture, sourceExpression, STOP_SCRIPT } from "../../chrome/store/design-copies";
 import { testActor } from "../agent-extensions";
 import { armActor, HOOKS_PAGE, stopActor } from "../design";
 import { waitReady } from "../firefox";
@@ -465,12 +465,12 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
     const [vx, vy, vw, vh] = dims.view;
     const [l, h] = dims.inner;
     const barBottom = dims.bar[1]! + dims.bar[3]!;
-    const bornes = { x: vx!, y: vy!, width: vw!, height: vh! };
+    const bounds = { x: vx!, y: vy!, width: vw!, height: vh! };
     // The bubble of an element at the top of the page, and one of an element below a short window (placeBulle clamps up).
-    const top = bubbleSlot({ x: 10, y: 0, largeur: 50, hauteur: 10 }, 1, bornes, [l!, h!], { hautMin: vy! });
-    const clamped = bubbleSlot({ x: 10, y: 5000, largeur: 50, hauteur: 10 }, 1, bornes, [l!, 180], { hautMin: vy! });
-    const unclamped = bubbleSlot({ x: 10, y: 5000, largeur: 50, hauteur: 10 }, 1, bornes, [l!, 180]);
-    const cart = { x: Math.max(0, l! - MARGE - BASKET_WIDTH), y: barBottom + 12, width: Math.min(BASKET_WIDTH, l!), height: Math.max(0, h! - barBottom - 12 - MARGE) };
+    const top = bubbleSlot({ x: 10, y: 0, largeur: 50, hauteur: 10 }, 1, bounds, [l!, h!], { hautMin: vy! });
+    const clamped = bubbleSlot({ x: 10, y: 5000, largeur: 50, hauteur: 10 }, 1, bounds, [l!, 180], { hautMin: vy! });
+    const unclamped = bubbleSlot({ x: 10, y: 5000, largeur: 50, hauteur: 10 }, 1, bounds, [l!, 180]);
+    const cart = { x: Math.max(0, l! - MARGIN - BASKET_WIDTH), y: barBottom + 12, width: Math.min(BASKET_WIDTH, l!), height: Math.max(0, h! - barBottom - 12 - MARGIN) };
     note("S7 places", { dims, top, clamped, unclamped, cart });
     expect(clamped.y).toBeGreaterThanOrEqual(barBottom);
 

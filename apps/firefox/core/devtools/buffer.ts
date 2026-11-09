@@ -8,15 +8,15 @@ interface RemoteObject {
   description?: string;
 }
 
-interface Pile {
+interface Stack {
   callFrames?: { functionName?: string; url?: string; lineNumber?: number; columnNumber?: number }[];
-  parent?: Pile;
+  parent?: Stack;
 }
 
 const EXTENSION_ORIGIN = "chrome-extension://";
 
 /** A stack (parents included) has a frame in an extension script. */
-function pileDExtension(p: Pile | undefined): boolean {
+function extensionStack(p: Stack | undefined): boolean {
   for (let n = 0; p && n < 50; p = p.parent, n++) if (p.callFrames?.some((c) => c.url?.startsWith(EXTENSION_ORIGIN))) return true;
   return false;
 }
@@ -29,13 +29,13 @@ export function objectText(o: RemoteObject): string {
 }
 
 /** Stack in V8's format (`    at f (url:line:column)`), lines and columns counted from 1. */
-export function stackText(p: Pile | undefined): string | undefined {
-  const cadres = p?.callFrames ?? [];
-  if (!cadres.length) return undefined;
-  return cadres
+export function stackText(p: Stack | undefined): string | undefined {
+  const frames = p?.callFrames ?? [];
+  if (!frames.length) return undefined;
+  return frames
     .map((c) => {
-      const lieu = `${c.url ?? ""}:${(c.lineNumber ?? 0) + 1}:${(c.columnNumber ?? 0) + 1}`;
-      return c.functionName ? `    at ${c.functionName} (${lieu})` : `    at ${lieu}`;
+      const where = `${c.url ?? ""}:${(c.lineNumber ?? 0) + 1}:${(c.columnNumber ?? 0) + 1}`;
+      return c.functionName ? `    at ${c.functionName} (${where})` : `    at ${where}`;
     })
     .join("\n");
 }
@@ -56,7 +56,7 @@ const LOG_LEVELS: Record<string, MessageConsole["niveau"]> = {
 };
 
 /** Protocol timestamp (seconds, monotonic clock) → milliseconds. */
-const ms = (secondes: number) => secondes * 1000;
+const ms = (seconds: number) => seconds * 1000;
 
 /**
  * Console and network of a tab, drawn from the events of the developer tools protocol (Chrome DevTools
@@ -106,26 +106,26 @@ export class TabBuffer {
         this.contextesExtension.clear();
         return;
       case "Runtime.consoleAPICalled": {
-        if (this.contextesExtension.has(p.executionContextId) || pileDExtension(p.stackTrace)) return;
-        const pile = p.type === "error" || p.type === "assert" || p.type === "trace" ? stackText(p.stackTrace) : undefined;
+        if (this.contextesExtension.has(p.executionContextId) || extensionStack(p.stackTrace)) return;
+        const stack = p.type === "error" || p.type === "assert" || p.type === "trace" ? stackText(p.stackTrace) : undefined;
         this.ajouter({
           horodatage: p.timestamp ?? Date.now(),
           niveau: CONSOLE_LEVELS[p.type] ?? "log",
           texte: ((p.args ?? []) as RemoteObject[]).map(objectText).join(" "),
-          ...(pile ? { pile } : {}),
+          ...(stack ? { pile: stack } : {}),
         });
         return;
       }
       case "Runtime.exceptionThrown": {
         const d = p.exceptionDetails ?? {};
-        if (this.contextesExtension.has(d.executionContextId) || String(d.url ?? "").startsWith(EXTENSION_ORIGIN) || pileDExtension(d.stackTrace)) return;
+        if (this.contextesExtension.has(d.executionContextId) || String(d.url ?? "").startsWith(EXTENSION_ORIGIN) || extensionStack(d.stackTrace)) return;
         const description: string | undefined = d.exception?.description;
         // `text` says how it occurred (« Uncaught », « Uncaught (in promise) »), as in Chrome's console.
-        const valeur = description?.split("\n")[0] ?? (d.exception ? objectText(d.exception) : "");
-        const circumstance: string = d.text && !valeur.startsWith(d.text) ? d.text : "";
-        const text = [circumstance, valeur].filter(Boolean).join(" ") || "Exception";
-        const pile = stackText(d.stackTrace) ?? (description?.includes("\n") ? description.slice(description.indexOf("\n") + 1) : undefined);
-        this.ajouter({ horodatage: p.timestamp ?? Date.now(), niveau: "error", texte: text, ...(pile ? { pile } : {}) });
+        const value = description?.split("\n")[0] ?? (d.exception ? objectText(d.exception) : "");
+        const circumstance: string = d.text && !value.startsWith(d.text) ? d.text : "";
+        const text = [circumstance, value].filter(Boolean).join(" ") || "Exception";
+        const stack = stackText(d.stackTrace) ?? (description?.includes("\n") ? description.slice(description.indexOf("\n") + 1) : undefined);
+        this.ajouter({ horodatage: p.timestamp ?? Date.now(), niveau: "error", texte: text, ...(stack ? { pile: stack } : {}) });
         return;
       }
       case "Log.entryAdded": {
@@ -133,15 +133,15 @@ export class TabBuffer {
         // The CORS message (source « javascript ») has neither a request id nor a stack, and carries the page's address: only the requested
         // address, quoted in its text, links it to the extension request.
         const text = String(e.text ?? "");
-        if (this.requetesExtension.has(e.networkRequestId) || (e.category === "cors" && [...this.requetesExtension.values()].some((u) => u && text.includes(`'${u}'`))) || String(e.url ?? "").startsWith(EXTENSION_ORIGIN) || pileDExtension(e.stackTrace)) return;
-        const pile = stackText(e.stackTrace);
-        this.ajouter({ horodatage: e.timestamp ?? Date.now(), niveau: LOG_LEVELS[e.level] ?? "log", texte: String(e.text ?? ""), ...(pile ? { pile } : {}) });
+        if (this.requetesExtension.has(e.networkRequestId) || (e.category === "cors" && [...this.requetesExtension.values()].some((u) => u && text.includes(`'${u}'`))) || String(e.url ?? "").startsWith(EXTENSION_ORIGIN) || extensionStack(e.stackTrace)) return;
+        const stack = stackText(e.stackTrace);
+        this.ajouter({ horodatage: e.timestamp ?? Date.now(), niveau: LOG_LEVELS[e.level] ?? "log", texte: String(e.text ?? ""), ...(stack ? { pile: stack } : {}) });
         return;
       }
       case "Network.requestWillBeSent": {
         // Neither an extension's request (its URL, its document, its initiator or a parent stack), nor what follows (without an entry, its events are ignored).
         const i = p.initiator ?? {};
-        if ([p.request?.url, p.documentURL, i.url].some((u) => String(u ?? "").startsWith(EXTENSION_ORIGIN)) || pileDExtension(i.stack)) {
+        if ([p.request?.url, p.documentURL, i.url].some((u) => String(u ?? "").startsWith(EXTENSION_ORIGIN)) || extensionStack(i.stack)) {
           this.requetes.delete(p.requestId);
           this.debuts.delete(p.requestId);
           this.requetesExtension.delete(p.requestId);
@@ -186,8 +186,8 @@ export class TabBuffer {
       case "Network.loadingFailed": {
         const r = this.requetes.get(p.requestId);
         if (!r) return;
-        const debut = this.debuts.get(p.requestId);
-        if (debut !== undefined && p.timestamp !== undefined) r.dureeMs = Math.round(ms(p.timestamp - debut) * 1000) / 1000;
+        const start = this.debuts.get(p.requestId);
+        if (start !== undefined && p.timestamp !== undefined) r.dureeMs = Math.round(ms(p.timestamp - start) * 1000) / 1000;
         if (method === "Network.loadingFinished") r.taille = p.encodedDataLength;
         else r.erreur = p.errorText ?? (p.canceled ? "annulée" : "échec");
         return;

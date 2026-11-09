@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, afterEach, describe, expect, it } from "vitest";
 import type { Action } from "../shared/api";
-import type { Visite } from "../shared/model";
+import type { Visit } from "../shared/model";
 import { dispatch, inWindow, newWindow, state, waitFor } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
@@ -36,7 +36,7 @@ afterEach(async () => {
   }
 });
 
-const recents = () => inUi<Visite[]>(m, "return JSON.parse(JSON.stringify(await ui.webaios.historique.recents()));");
+const recents = () => inUi<Visit[]>(m, "return JSON.parse(JSON.stringify(await ui.webaios.historique.recents()));");
 const urls = async () => (await recents()).map((v) => v.url).sort();
 async function until<T>(read: () => Promise<T>, ok: (v: T) => boolean, ms = 10_000): Promise<T> {
   const deadline = Date.now() + ms;

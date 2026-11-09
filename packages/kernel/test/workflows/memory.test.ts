@@ -7,14 +7,14 @@ import { tempFolder } from "../helpers/temp.js";
 test("a memory over 3 MB is not written; a damaged memory reads as empty", async () => {
   const d = await tempFolder();
   expect(await readMemory(d)).toEqual({});
-  const petite = { tri: { type: "ia.trier", valeur: { cle: { p: 0.5 } } } };
-  expect(await writeMemory(d, petite)).toBe(true);
-  expect(await readMemory(d)).toEqual(petite);
+  const small = { tri: { type: "ia.trier", valeur: { cle: { p: 0.5 } } } };
+  expect(await writeMemory(d, small)).toBe(true);
+  expect(await readMemory(d)).toEqual(small);
   expect(await readdir(d)).toEqual(["memoire.json"]); // no .tmp left lying around
 
   const big = { tri: { type: "ia.trier", valeur: "x".repeat(MEMORY_MAX_BYTES) } };
   expect(await writeMemory(d, big)).toBe(false);
-  expect(await readMemory(d)).toEqual(petite); // nothing was overwritten
+  expect(await readMemory(d)).toEqual(small); // nothing was overwritten
 
   await writeFile(join(d, "memoire.json"), "{ abîmé");
   expect(await readMemory(d)).toEqual({});

@@ -9,12 +9,12 @@
   const MENU_DURATION_MS = 5000;
   let design = $state<DesignState | null>(null);
   let root = $state<HTMLElement | null>(null);
-  let lecture = 0;
+  let reading = 0;
 
   async function reread(): Promise<void> {
-    const n = ++lecture;
+    const n = ++reading;
     const e = await api.design.etat().catch(() => null);
-    if (n === lecture) design = e;
+    if (n === reading) design = e;
   }
 
   // Re-read on each window state received (view, page, full screen…) and on each change of the mode or the basket.

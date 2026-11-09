@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Action } from "../shared/api";
 import { callMcpTool } from "../test/mcp";
-import { actionsDataDir, listen, openAction, runsOnDisk, tid, uiQueries, waitNoyau, writeAction, type TestServer } from "./actions";
+import { actionsDataDir, listen, openAction, runsOnDisk, tid, uiQueries, waitKernel, writeAction, type TestServer } from "./actions";
 import { dispatch, state, waitReady } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
@@ -15,9 +15,9 @@ import { click, inUi, missingApi, pressKeys, waitUi } from "./ui";
 
 const GITLAB_INSTRUCTION = "Un tableau des tickets, les plus urgents d'abord";
 const NAME = "Tickets GitLab";
-const codeGitlab = (marque: string) => `export default async (_e, w) => [{ titre: "ticket-" + w.saisie + "-${marque}" }];`;
+const codeGitlab = (mark: string) => `export default async (_e, w) => [{ titre: "ticket-" + w.saisie + "-${mark}" }];`;
 /** An action with an input: a `code` block that gives the input (and `marque`), then the output to the page. */
-const writeGitlab = (id: string, marque = "un") =>
+const writeGitlab = (id: string, mark = "un") =>
   writeAction(w.dataDir, id, {
     nom: NAME,
     saisie: { libelle: "Projet" },
@@ -32,7 +32,7 @@ const writeGitlab = (id: string, marque = "un") =>
       ],
       liens: [{ de: "lire", vers: "sortie" }],
     },
-    fichiers: { "lire.mjs": codeGitlab(marque) },
+    fichiers: { "lire.mjs": codeGitlab(mark) },
   });
 const actionDir = (id: string) => path.join(w.dataDir, "espace", "actions", id);
 
@@ -80,7 +80,7 @@ beforeAll(async () => {
   q = uiQueries(m);
   await m.setContext("chrome");
   await waitReady(m);
-  await waitNoyau(m);
+  await waitKernel(m);
 }, 60_000);
 afterAll(async () => {
   expect(await missingApi(m)).toEqual([]);

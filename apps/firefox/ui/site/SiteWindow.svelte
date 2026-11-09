@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
   import SiteBar from "./SiteBar.svelte";
   import HomeFrame from "../SiteHomeFrame.svelte";
-  import CarteAccordSite from "./CarteAccordSite.svelte";
+  import SiteGrantCard from "./CarteAccordSite.svelte";
   import type { SiteWindowState } from "../../shared/sites";
   import type { ApiSite } from "../../shared/api";
 
@@ -11,11 +11,11 @@
   let appState = $state<SiteWindowState | null>(null);
 
   onMount(() => {
-    const fin = api.surEtat((e) => (appState = e));
+    const end = api.surEtat((e) => (appState = e));
     void api.etat().then((e) => {
       if (e && !appState) appState = e;
     });
-    return fin;
+    return end;
   });
   $effect(() => {
     if (appState) document.title = appState.nom;
@@ -28,7 +28,7 @@
   {#if appState.vue === "accueil"}
     <HomeFrame id={appState.id} {api} />
   {:else if appState.vue === "accord" && appState.accord}
-    <CarteAccordSite accord={appState.accord} accorder={(yes, hash) => api.accorder(yes, hash)} />
+    <SiteGrantCard accord={appState.accord} accorder={(yes, hash) => api.accorder(yes, hash)} />
   {/if}
 {/if}
 
