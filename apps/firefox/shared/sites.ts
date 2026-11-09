@@ -111,8 +111,8 @@ export const CONSOLE_RETOUCHES_TOTAL = 32_000;
 export const sourceRetouche = (id: string, fichier: string) => `webaios-retouche://${id}/${fichier}`;
 
 /**
- * Ce que le preload `site.js` pose dans un cadre de la vue d'une appli de site. `pont` : `webaiosSite` dans le monde des
- * retouches (cadre principal sur le site seulement) ; `reprise` : la reprise des vidéos (code de WebAiOs).
+ * What the site actor (chrome/agent/site-actor.ts) puts into a frame of a site app's view. `pont`: `webaiosSite` in the
+ * retouches' world (main frame on the site only); `reprise`: the video resume (WebAiOs's code).
  */
 export type InjectionCadre = { css: string[]; js: { code: string; nom: string }[]; garde: string | null; hotes: string[]; pont: boolean; reprise: boolean };
 

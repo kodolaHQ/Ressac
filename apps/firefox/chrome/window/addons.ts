@@ -94,7 +94,7 @@ export function createAddons(o: {
 
 /**
  * A site app's window (store/sites.ts): the add-ons' buttons for its one tab, the app view. Never an agent extension's
- * (they never run in an app, spec §4.9); enabled in the « site » view on a web page only, as Electron's bar shows them.
+ * (they never run in an app, spec §4.9); enabled in the « site » view on a web page only.
  * Its popups open on the app's bar; about:addons opens in a main window (the app window takes no tab).
  */
 export function createSiteAddons(win: Window, view: SiteWindowController): WindowAddons {
@@ -175,7 +175,7 @@ function addonsCore(o: {
       if (!o.shown(policy.id)) return [];
       const ba = actionOf(policy);
       const { extension } = policy;
-      // As Firefox's own panel and Electron's bar: an add-on without a button (content scripts only) is listed, greyed.
+      // As Firefox's own panel: an add-on without a button (content scripts only) is listed, greyed.
       if (!ba)
         return [
           {

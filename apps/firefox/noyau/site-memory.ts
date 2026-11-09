@@ -1,15 +1,15 @@
 import type { MemoireSite } from "../../../packages/noyau/src/index.ts";
 import type { ReponseMemoire } from "../core/sites/injection.ts";
 
-// The host's side of Electron's brancherInjection channels (main/sites/injection.ts): the chrome checks the sender
+// The host's side of the site apps' injection channels (core/sites/injection.ts): the chrome checks the sender
 // (the app view's main document), the accord and the relative address, the host does the memory work.
 
-/** Electron's REFUS_MEMOIRE, copied (injection.ts does not export it). */
+/** The refusal of a memory request from anywhere but the app's main page. */
 export const REFUS_MEMOIRE = "Mémoire de l'appli : seulement depuis la page principale de l'appli";
 
 type DemandeMemoire = { op: "retenir"; cle: string; valeur: unknown } | { op: "lire" | "oublier"; cle: string };
 
-/** Electron's demandeMemoire: the request's shape, or null. */
+/** The request's shape, or null. */
 function demandeMemoire(d: unknown): DemandeMemoire | null {
   if (!d || typeof d !== "object") return null;
   const { op, cle } = d as { op?: unknown; cle?: unknown };
@@ -19,7 +19,7 @@ function demandeMemoire(d: unknown): DemandeMemoire | null {
 }
 
 /**
- * `sites.memoireOp {id, adresse, op, cle, valeur?}`: Electron's memory handler past its sender checks. `memoire(id)`
+ * `sites.memoireOp {id, adresse, op, cle, valeur?}`: the memory work past the sender checks. `memoire(id)`
  * rejects while the app is being deleted: nothing is read or written then.
  */
 export async function memoireOp(memoire: (id: string) => Promise<MemoireSite>, brute: unknown): Promise<ReponseMemoire> {
@@ -37,7 +37,7 @@ export async function memoireOp(memoire: (id: string) => Promise<MemoireSite>, b
   return { ok: true };
 }
 
-/** Electron's ECART_DUREE_REPRISE_S and ECART_NOTE_CADRE_MS, copied (injection.ts imports electron; a drift test guards them). */
+/** Same video within 2 s of duration; a frame's position noted at most once a second. */
 export const ECART_DUREE_REPRISE_S = 2;
 export const ECART_NOTE_CADRE_MS = 1000;
 /** A frame key is "<browsingContext.id>:<innerWindowId>", from the chrome; anything longer is not one. */
@@ -51,7 +51,7 @@ type Cible = { id: string; adresse: string };
 const cibleDe = (p: { id?: unknown; adresse?: unknown }): Cible | null => (typeof p.id === "string" && typeof p.adresse === "string" ? { id: p.id, adresse: p.adresse } : null);
 
 /**
- * Electron's position and reprise channels (injection.ts:246-317) past their sender checks, which the chrome made (view,
+ * The position and reprise channels past their sender checks, which the chrome made (view,
  * accord, repriseDansCadre) and whose page address it gives. The host checks the accord again at each write.
  */
 export function creerPositions(o: {

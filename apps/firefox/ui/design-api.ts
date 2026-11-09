@@ -20,7 +20,7 @@ import {
 } from "../shared/design-guards";
 
 // The section « Projets externes » and the Review page over the noyau host's externes.* and relecture.* RPCs, with
-// ipc.ts's guards before any call.
+// the shared guards (shared/design-guards.ts) before any call.
 
 /** An error from the store's realm, made again in this one (`instanceof Error` fails across realms). */
 export const local = (e: unknown): Error => new Error(typeof (e as Error | null)?.message === "string" ? (e as Error).message : String(e));
@@ -74,7 +74,7 @@ export function createExternesApi(o: {
   };
 }
 
-/** The Review page: ipc.ts's brancherRelecture guards, then the handler of the same name; a rejection keeps its message. */
+/** The Review page: the shared guards, then the handler of the same name; a rejection keeps its message. */
 export function createRelectureApi(o: { host: Pick<AgentHost, "request"> }): ApiWebaios["relecture"] {
   const ask = <T>(method: string, params: Record<string, unknown>): Promise<T> =>
     o.host.request<T>(method, params).then(
@@ -123,7 +123,7 @@ export function createRelectureApi(o: { host: Pick<AgentHost, "request"> }): Api
 }
 
 /**
- * The design mode of this window's active tab (ipc.ts's « fenetre » origin): the target is this window, never an id
+ * The design mode of this window's active tab: the target is this window, never an id
  * the UI sends. A cart, batch or send is only for the project of the tab's state (projetPermis); the host checks again.
  */
 export function createDesignApi(o: { win: WindowController; untilUnload: (f: () => void) => () => void }): ApiDesign {

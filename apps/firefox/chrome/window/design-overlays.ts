@@ -4,7 +4,7 @@ import { overlayApi, type DesignOverlays, type DesignService, type DesignTarget 
 import { cleCible, DUREE_MESSAGE_MS } from "../store/design-copies";
 import { cutFrameNetwork } from "./frame-network";
 
-// Electron's Calques (main/design/calque.ts) as chrome frames of sidebar.html?calque (spike S3): an html:iframe in
+// The design mode's overlays as chrome frames of sidebar.html?calque (spike S3): an html:iframe in
 // #browser, over the remote page, transparent. Outside its rectangle the page keeps the mouse and the wheel. The page
 // cannot see it (the view is remote), and it gets only its target's ApiCalque, set by the chrome on the frame.
 // Bundled in the store (it outlives each window): every frame is made in the window `show` names.

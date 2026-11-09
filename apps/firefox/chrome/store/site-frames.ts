@@ -1,4 +1,4 @@
-// What goes into each frame of a site app's view (Electron's brancherInjection, main/sites/injection.ts): decided from
+// What goes into each frame of a site app's view (core/sites/injection.ts): decided from
 // the frame's WindowGlobalParent (its document's address, whether it is the view's main frame, the view's page), never
 // from what the frame says. Also the retouches' console and the memory relay to the host.
 import type { RetouchesLues } from "../../../../packages/noyau/src/sites/lire";
@@ -32,7 +32,7 @@ export function siteOfFrame<S extends { view: any }>(wgp: any, sites: Iterable<S
   return undefined;
 }
 
-/** The frame as Electron's cadreDe and pageDe see it, from its WindowGlobalParent; null if it is gone. */
+/** The frame as the injection sees it, from its WindowGlobalParent; null if it is gone. */
 function frameOf(wgp: any, view: any): { url: string; principal: boolean; page: string | null } | null {
   try {
     const url = wgp.documentURI?.spec;
@@ -44,7 +44,7 @@ function frameOf(wgp: any, view: any): { url: string; principal: boolean; page: 
   }
 }
 
-/** The actor's "injection": null outside an open app's view or without its accord, else Electron's injectionPour. */
+/** The actor's "injection": null outside an open app's view or without its accord, else injectionPour. */
 export function frameInjection(wgp: any, s: FrameSite | undefined, adressesLocales: boolean): InjectionCadre | null {
   if (!s || s.site.accordRequis) return null;
   const f = frameOf(wgp, s.view);
@@ -72,7 +72,7 @@ export async function frameMemory(wgp: any, s: FrameSite | undefined, demande: u
 }
 
 /**
- * Electron's console-message listener on the view: an error the actor relays from a frame of the app's view, whose
+ * The view's console: an error the actor relays from a frame of the app's view, whose
  * source is named as one of the app's retouches (`webaios-retouche://<id>/`), kept in its console, bounded. The frame is
  * known from its WindowGlobalParent (the caller's siteOfFrame): the sign-in window or another app naming its code so
  * reaches no app's console. The text comes from a web process: bounded by ajouterConsoleRetouche.
@@ -86,7 +86,7 @@ export function frameError(s: FrameSite | undefined, e: unknown): void {
 }
 
 /**
- * Electron's pageReprise: the app's id and the relative address of the view's top page, if the frame's app has its accord
+ * The app's id and the relative address of the view's top page, if the frame's app has its accord
  * and the resume goes into this frame (declaration, `cadres` patterns). The address is read at each request (a pushState
  * to another episode counts); a page off the app's domains (a sign-in page and its frames) has none.
  */

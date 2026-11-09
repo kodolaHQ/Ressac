@@ -139,7 +139,7 @@ export function homeViewfinder(frame: HTMLIFrameElement): { query(name: "arm" | 
     } catch {
       r = null;
     } finally {
-      // After a capture the rest of a double click is swallowed for 500 ms (Electron's __viseurAvaler); else at once.
+      // After a capture the rest of a double click is swallowed for 500 ms (__viseurAvaler); else at once.
       if (r) g.later(500);
       else g.off();
     }

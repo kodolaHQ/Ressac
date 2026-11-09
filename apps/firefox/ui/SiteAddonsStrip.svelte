@@ -2,9 +2,9 @@
   import type { ApiSite } from "../shared/api";
   import type { AddonButton } from "../chrome/window/addons";
 
-  // Electron's BoutonsExtensionsSite: the add-on buttons of the app's window (chrome/window/addons.ts createSiteAddons),
+  // The add-on buttons of the app's window (chrome/window/addons.ts createSiteAddons),
   // copied into this document. Only in the « site » view: on the home or the card a popup would have no page shown.
-  // `api` is Electron's prop, unused: ApiSite.extensions stays inert in Firefox.
+  // `api` is a prop of the frozen bar, unused: ApiSite.extensions stays inert in Firefox.
   let { surSite }: { api: ApiSite; surSite: boolean } = $props();
   const addons = window.parent.webaiosSiteWindow!.addons!;
   let buttons = $state<AddonButton[]>(structuredClone(addons.buttons()));

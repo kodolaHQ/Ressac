@@ -15,7 +15,7 @@ export const ACTION_INCONNUE = "Action inconnue";
 /** Une page `webaios://action/<id>/<exécution>` dont l'exécution a été effacée (ou n'a jamais existé). */
 export const RESULTAT_DISPARU = "Ce résultat n'existe plus";
 
-/** Images des résultats d'une action, cherchées par le process principal (voir main/agent/actions.ts). */
+/** An action's result images, fetched by the chrome (chrome/store/action-media.ts). */
 export const SCHEMA_IMAGE = "webaios-image";
 /** Composants de l'agent (`~/WebAiOs/composants/<nom>/composant.html`), servis sans réseau comme un widget. */
 export const SCHEMA_COMPOSANT = "webaios-composant";

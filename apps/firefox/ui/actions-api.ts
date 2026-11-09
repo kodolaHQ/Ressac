@@ -5,23 +5,23 @@ import { HOST_EXITED, type AgentHost } from "../chrome/agent/host";
 import type { WebAiOsStore } from "../chrome/store";
 import { profilsLisibles, profilsPourAccord } from "./accueil-profils";
 
-// The window half of Electron's creerServiceActions (main/agent/actions.ts): private spaces, dispatches, the pace of
+// The window half of the actions service: private spaces, dispatches, the pace of
 // links, the direct feed's filter and the accord profiles. The disk and noyau half is the host's (noyau/actions.ts).
 
-/** Copy of Electron's espaceActifPrive (drift test in test/actions-api.test.ts): a missing window or space counts as private. */
+/** A missing window or space counts as private. */
 export function espaceActifPrive(etat: Pick<EtatNavigateur, "espaces" | "fenetres">, f: IdFenetre): boolean {
   const fenetre = etat.fenetres.find((x) => x.id === f);
   return !fenetre || (etat.espaces.find((e) => e.id === fenetre.espaceActif)?.prive ?? true);
 }
 
-/** Electron's actions API, plus what the Firefox page asks the chrome for: result images and agent components. */
+/** The actions API, plus what the Firefox page asks the chrome for: result images and agent components. */
 export type ActionsFirefox = ApiWebaios["actions"] & {
   image(id: string, execution: string, url: string): Promise<string | null>;
   serveComponent(nom: string): Promise<string | null>;
   releaseComponent(nom: string): void;
 };
 
-// Electron's MESSAGE_SANS_NOYAU and AUCUNE_ACTION (main/agent/actions.ts, which this bundle cannot import).
+// Shown when the actions service has no noyau (same texts as noyau/actions.ts).
 const MESSAGE_SANS_NOYAU = "Le service des actions ne répond pas (agent arrêté ?)";
 const NO_ACTION = () => ({ courantes: [], enAttente: [] });
 
@@ -108,7 +108,7 @@ export function createActionsApi(o: {
       const offs = [host.on("actions.change", () => rappel()), host.on("accueil.change", () => rappel()), afterRestart(() => rappel())];
       return o.untilUnload(() => offs.forEach((f) => f()));
     },
-    // Electron's order, cut in two host calls: read without launching, check private again, open the page, then launch.
+    // Read without launching, check private again, open the page, then launch: in two host calls.
     async ouvrir(id, saisie) {
       if (prive()) return refus;
       const p = await ask<{ ok: true; nom: string; lancer: boolean } | { ok: false; erreur: string } | null>("actions.preparer", { id, saisie }, () => null);
@@ -129,7 +129,7 @@ export function createActionsApi(o: {
     execution: (id, execution) => ask("actions.execution", { id, execution }, () => null, true),
     direct: () => ask("actions.direct", undefined, NO_ACTION),
     surDirect(rappel) {
-      // Only while this window's space is not private, judged at each event (Electron's diffuserDirectActions).
+      // Only while this window's space is not private, judged at each event.
       const offFeed = host.on("actions.direct", (e) => !prive() && rappel(structuredClone(e)));
       // A host that started again sent no feed meanwhile: the runs are read again.
       const offs = [offFeed, afterRestart(() => void api.direct().then((e) => !prive() && rappel(e)))];
@@ -159,7 +159,7 @@ export function createActionsApi(o: {
       if (prive()) return refus;
       // Never a profile a private space uses: the state is read again at the moment of the accord.
       if (!profilsLisibles(o.state()!).includes(a.profil)) return { ok: false, erreur: "Ce profil ne peut pas servir à un accord" };
-      // A host that does not answer is Electron's missing noyau; the noyau's own refusals come back as answers.
+      // A host that does not answer means no noyau; the noyau's own refusals come back as answers.
       const r = await host.request<{ ok: true } | { ok: false; erreur: string }>("actions.accorder", a).then(
         (v) => structuredClone(v),
         () => ({ ok: false as const, erreur: MESSAGE_SANS_NOYAU }),
@@ -187,7 +187,7 @@ export function createActionsApi(o: {
       const nom = await ask<string | null>("actions.nom", { id }, () => null);
       if (nom && !prive()) o.dispatch({ type: "ouvrirWorkflow", fenetreId: fenetre, id, nom, proprietaire: "action" });
     },
-    // Electron's repondreImage, in two halves: the host's checks, then the store's anonymous load. Never from lastRead:
+    // A result image, in two halves: the host's checks, then the store's anonymous load. Never from lastRead:
     // a cached image would outlive a refusal (a deleted run, an accord given since).
     async image(id, execution, url) {
       if ((await ask("actions.imagePermise", { id, execution, url }, () => false)) !== true) return null;

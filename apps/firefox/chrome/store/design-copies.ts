@@ -1,5 +1,5 @@
-// The design mode's pure pieces of Electron (apps/navigateur/src/main/design/viseur.ts, frozen): imported where they are
-// exported, copied word for word where they are not (test/design-copies.test.ts checks the copies against Electron's text).
+// The design mode's pure pieces: core/design/viseur.ts's scriptViseur, adapted for the actor's guard, and the checks
+// on what comes back from the page.
 import type { ContexteDesign } from "../../../../packages/noyau/src/design/remarques";
 import type { CibleDesign } from "../../core/design/premier-plan";
 import { scriptViseur, type CaptureViseur } from "../../core/design/viseur";
@@ -53,9 +53,9 @@ export function placeBulle(
 }
 
 /**
- * Electron's scriptViseur without its own click listener: the actor's guard (design-actor.ts), in front of every page
+ * scriptViseur without its own click listener: the actor's guard (design-actor.ts), in front of every page
  * listener, hands it the clicked element through `globalThis.__viseurChoisir`, which `fin` deletes with `__viseurArret`.
- * Hover, Escape, swallowing and stop stay Electron's code. Throws when Electron's text changes.
+ * Hover, Escape, swallowing and stop stay scriptViseur's code. Throws when scriptViseur's text changes.
  */
 export function firefoxViewfinderScript(): string {
   let s = scriptViseur();
@@ -72,10 +72,10 @@ export function firefoxViewfinderScript(): string {
   return s;
 }
 
-// Electron's ARRET, not exported there.
+// Stops the viewfinder and its double-click swallowing in the page.
 export const STOP_SCRIPT = `typeof globalThis.__viseurArret === "function" && globalThis.__viseurArret(); typeof globalThis.__viseurAvaler === "function" && globalThis.__viseurAvaler()`;
 
-// Copied from viseur.ts, word for word (names included): not exported there.
+// Shape guards for what comes back from the page.
 const fini = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n);
 const chaine = (c: unknown, max = 1_000_000): c is string => typeof c === "string" && c.length <= max;
 const entierPositif = (n: unknown): n is number => typeof n === "number" && Number.isInteger(n) && n > 0;
@@ -106,7 +106,7 @@ export function cleanCapture(v: unknown): CaptureViseur | null {
 
 export const cleanSource = (r: unknown): ContexteDesign["source"] => sourceSaine(r);
 
-/** lireSource's expression (Electron's main world; here the actor's sandbox with Xrays waived): no effect, no global. */
+/** lireSource's expression (run in the actor's sandbox with Xrays waived): no effect, no global. */
 export function sourceExpression(selecteur: string): string {
   return `(() => {
     try {

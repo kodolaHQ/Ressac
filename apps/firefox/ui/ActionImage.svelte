@@ -2,9 +2,9 @@
   import type { ContextePage, ImagePage } from "../ui/action/types";
 
   /**
-   * Electron's ImagePage for Firefox: a result image, checked by the host then loaded by the chrome without cookies or
+   * A result image, checked by the host then loaded by the chrome without cookies or
    * referrer (ui/actions-api.ts image), shown as a `data:` URL. Neutral (an action with an account), pending, refused or
-   * undecodable: a neutral placeholder of the same size. Asked only once near the view, as Electron's loading="lazy".
+   * undecodable: a neutral placeholder of the same size. Asked only once near the view (lazy loading).
    */
   let { image, ctx }: { image: NonNullable<ImagePage>; ctx: ContextePage } = $props();
   let data = $state<string | null>(null);

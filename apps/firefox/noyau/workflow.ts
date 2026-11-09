@@ -24,11 +24,9 @@ import {
 import { cibleDeUrlWorkflow } from "../shared/modele.ts";
 import type { EditionWorkflow, SelectionConstructeur } from "../shared/api.ts";
 
-// The widget and action parts of Electron's main/agent/constructeur.ts, copied: it imports ./accueil, which imports electron, so the
-// Node host cannot import it. Same rules, same noyau calls.
+// The widget and action parts of the workflow builder.
 
-// Electron's IPC schemas (commun/api.ts), copied: api.ts re-exports "./canaux" without extension, which Node refuses.
-// Keep in sync: test/workflow-host.test.ts compares them.
+// The same schemas as shared/api.ts.
 const idWidget = z.string().regex(/^[a-z0-9-]+$/).max(100);
 const SchemaIdAction = z.string().regex(/^[a-z0-9-]{1,60}$/);
 export const SchemaCible = z.discriminatedUnion("type", [
@@ -221,8 +219,7 @@ export async function saveCode(chemins: CheminsEspace, id: string, nom: string, 
   }
 }
 
-// --- An action's workflow (`webaios://workflow/action/<id>`), Electron's constructeur.ts:187-276. Drift test in
-// test/workflow-host.test.ts.
+// --- An action's workflow (`webaios://workflow/action/<id>`).
 
 type ActionContext = { chemins: CheminsEspace; dossierActions: string };
 

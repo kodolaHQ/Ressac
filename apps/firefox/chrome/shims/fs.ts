@@ -28,7 +28,7 @@ export async function open(path: string, _mode: "w") {
   };
 }
 
-/** node:fs (sync): only imported by Electron's reseau.ts, for code that never runs in Firefox. */
+/** node:fs (sync): throws, no bundled code that runs in Firefox may call it. */
 export const realpathSync = (): never => {
   throw new Error("realpathSync is not available in Firefox");
 };

@@ -17,7 +17,7 @@ const errorName = (code: string | null) => (code ? (REFUSED[code] ?? code) : "Er
 type Champs = Extract<Action, { type: "majOnglet" }>["champs"];
 
 /**
- * Keeps the XUL tabs of one window in line with its WebAiOs tabs, like Electron's views: a XUL tab is created when its
+ * Keeps the XUL tabs of one window in line with its WebAiOs tabs: a XUL tab is created when its
  * WebAiOs tab first becomes active, kept until it leaves the state, and the startup tab parks the window (about:blank,
  * never removed) while no web page is displayed. Page events come back as majOnglet; tabs opened by pages and add-ons are adopted.
  */
@@ -121,13 +121,13 @@ export class TabSync {
 
   /**
    * The browser of a WebAiOs tab for the agent, even one never displayed: its XUL tab is created in the background
-   * (not selected), then loaded (15 s at most, as Electron's assurerVue).
+   * (not selected), then loaded (15 s at most).
    */
   async ensure(id: IdOnglet): Promise<any> {
     const state = this.store.state;
     const o = state.onglets[id];
     if (!o) throw new Error(`Onglet introuvable : ${id}`);
-    // shortcut: a XUL tab created for reading lives until its tab leaves the state (as Electron's views), upgrade when memory matters.
+    // shortcut: a XUL tab created for reading lives until its tab leaves the state, upgrade when memory matters.
     if (!this.tabs.has(id)) this.create(state, o);
     const browser = this.tabs.get(id).linkedBrowser;
     // A tab just created is still on its initial about:blank, its load not started yet.
@@ -163,13 +163,13 @@ export class TabSync {
     const active = f && f.actif[f.espaceActif];
     const onglet = active ? state.onglets[active] : undefined;
     const web = onglet && aUneVue(onglet.url) ? onglet : undefined;
-    // Gone, or now in another container: the page reopens from scratch at the same URL (Electron does the same).
+    // Gone, or now in another container: the page reopens from scratch at the same URL.
     for (const [id, tab] of [...this.tabs]) {
       const o = state.onglets[id];
       if (!o || this.containerOf(state, o) !== tab.userContextId) this.remove(id, tab);
     }
     if (web && !this.tabs.has(web.id)) this.create(state, web);
-    // A crashed or failed page is replaced by the UI's message (Electron's vues.ts).
+    // A crashed or failed page is replaced by the UI's message.
     const target = web && !web.plante && !web.erreur ? this.tabs.get(web.id) : this.parking;
     if (this.gBrowser.selectedTab !== target) this.select(() => (this.gBrowser.selectedTab = target));
   }

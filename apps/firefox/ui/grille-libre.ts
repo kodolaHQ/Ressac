@@ -102,8 +102,8 @@ export function redimensionnerLibre(o: {
   // Seuls les voisins sur les rangées actuelles barrent la largeur : un voisin plus bas est arrêté par le calcul de h.
   const vertical = (a: PlacementLibre) => a.id !== p.id && a.y < p.y + p.h && p.y < a.y + a.h;
   const bord = (depuis: number) => Math.min(LARGEUR_LIBRE, ...autres.filter((a) => vertical(a) && a.x >= depuis).map((a) => a.x));
-  // Le minimum ne tient pas avant le voisin (ou le bord droit) : le widget recule au lieu de descendre sous son
-  // minimum, comme la grille d'Electron. Il recule sans entrer dans un voisin à sa gauche.
+  // The minimum does not fit before the neighbour (or the right edge): the widget moves back instead of going under its
+  // minimum. It moves back without entering a neighbour on its left.
   const gauche = Math.max(0, ...autres.filter((a) => vertical(a) && a.x + a.l <= p.x).map((a) => a.x + a.l));
   const x = Math.max(gauche, Math.min(p.x, bord(p.x) - minL));
   const droite = bord(x);

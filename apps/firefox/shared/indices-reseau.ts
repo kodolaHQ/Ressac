@@ -3,7 +3,7 @@
  * `<link>` (dns-prefetch résout un nom choisi par le widget : les données partent dans la requête DNS), `<meta
  * http-equiv>` (x-dns-prefetch-control: on rallumerait la résolution des liens) et les règles de spéculation. Refusé
  * dans affichage.html (servi depuis une copie, widget-frame.ts) comme dans le HTML que l'affichage écrit (garde posée
- * en tête de la copie servie, widget-frame.ts). Copie de apps/navigateur/src/commun/indices-reseau.ts.
+ * en tête de la copie servie, widget-frame.ts).
  *
  * Sans import : la garde sérialisée dans la copie servie ne doit rien tirer d'autre.
  */

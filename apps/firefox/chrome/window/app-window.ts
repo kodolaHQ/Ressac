@@ -20,7 +20,7 @@ export function appDossierOf(win: Window): string | null {
 
 /**
  * Everything the app's pages would open elsewhere becomes a main window tab if it is http(s), nothing otherwise
- * (Electron's setWindowOpenHandler: deny, ouvrirOnglet): window.open, target=_blank and links from outside
+ * (deny, then a tab): window.open, target=_blank and links from outside
  * (browserDOMWindow), ⌘click, middle click and the context menu (openLinkIn). Printing keeps Firefox's own path.
  */
 function routeOpens(win: Window, apps: Apps): void {
@@ -28,7 +28,7 @@ function routeOpens(win: Window, apps: Apps): void {
   const route = (uri: any, params: unknown, where: number, flags: number, name: string, inFrame: "createContentWindowInFrame" | "openURIInFrame") => {
     if (where === Ci.nsIBrowserDOMWindow.OPEN_PRINT_BROWSER) return firefox[inFrame](uri, params, where, flags, name);
     apps.toTab(uri?.spec ?? "");
-    // Nothing opened by Firefox: window.open returns null, as Electron's denied open.
+    // Nothing opened by Firefox: window.open returns null, as for any denied open.
     throw Cr.NS_ERROR_ABORT;
   };
   (win as any).browserDOMWindow = {
@@ -55,7 +55,7 @@ function routeOpens(win: Window, apps: Apps): void {
 /**
  * A window an app's page opened with features (window.open(url, name, "width=…")): Firefox makes it without asking
  * browserDOMWindow, in the app's container. Closed at once, whatever it loads (about:blank and blob: never meet the
- * request guard): Electron refuses every window an app opens. True if it was one.
+ * request guard): an app opens no window of its own. True if it was one.
  */
 export function closeAppPopup(win: Window): boolean {
   const userContextId = Number(win.gBrowser?.selectedBrowser?.getAttribute("usercontextid") || 0);
@@ -66,7 +66,7 @@ export function closeAppPopup(win: Window): boolean {
 }
 
 /**
- * The badge (Electron's pastille): a transparent chrome frame over the view's top right corner, sidebar.html?pastille=.
+ * The badge: a transparent chrome frame over the view's top right corner, sidebar.html?pastille=.
  * The page cannot see it (the view is remote); it gets only its app's access, through `webaiosOverlay`.
  */
 function addBadge(win: Window, apps: Apps, dossier: string): void {
@@ -96,8 +96,7 @@ export function setupAppWindow(win: Window, dossier: string): void {
   doc.getElementById("navigator-toolbox")!.hidden = true;
   routeOpens(win, apps);
   // Firefox's tab, address and history keys do nothing here; ⌘R reloads the view; ⌘W and ⇧⌘W close the window; ⌘N
-  // opens a main window; ⇧⌘D toggles this window's design mode. ⌥⌘I stays Firefox's (the view's dev tools, Electron's
-  // openDevTools).
+  // opens a main window; ⇧⌘D toggles this window's design mode. ⌥⌘I stays Firefox's (the view's dev tools).
   for (const k of [...FIREFOX_KEYS, ...FIREFOX_COMMANDS, "goBackKb", "goForwardKb"]) doc.getElementById(k)?.setAttribute("disabled", "true");
   win.addEventListener(
     "keydown",
@@ -139,8 +138,8 @@ export function setupAppWindow(win: Window, dossier: string): void {
     // The page's title, else the app's name (never the address).
     gBrowser.getWindowTitleForBrowser = (b: any) => apps.titleOf({ nom: app.nom, view: b });
     gBrowser.updateTitlebar();
-    // The favicon Firefox shows, with its source address: kept only from the app's origin, or given as data:image/ (iso
-    // Electron's faviconEnDonnees), at most TAILLE_FAVICON once re-encoded.
+    // The favicon Firefox shows, with its source address: kept only from the app's origin, or given as data:image/,
+    // at most TAILLE_FAVICON once re-encoded.
     gBrowser.addTabsProgressListener({
       onLinkIconAvailable(_browser: unknown, iconURL: unknown, originalURL: unknown) {
         if (typeof iconURL !== "string" || !iconURL.startsWith("data:image/") || iconURL.length > TAILLE_FAVICON) return;

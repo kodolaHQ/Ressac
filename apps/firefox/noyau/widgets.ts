@@ -17,8 +17,7 @@ import {
 } from "../../../packages/noyau/src/index.ts";
 import type { WidgetAffiche } from "../shared/api.ts";
 
-// Copied from Electron's main/agent/accueil.ts (which imports electron, so the Node host cannot import it): same rules,
-// free placement (version 3) and the theme added.
+// The home page's widgets: free placement (version 3) and the theme.
 
 const ID_WIDGET = /^[a-z0-9-]+$/;
 /** L'URL du cadre : la copie assainie que la sidebar écrit, datée du mtime de la source (un nouveau mtime recharge). */

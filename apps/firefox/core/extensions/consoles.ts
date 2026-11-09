@@ -111,7 +111,7 @@ export class ConsolesExtensions {
   }
 }
 
-/** Le niveau d'un message de console d'Electron (nombre 0–3 des service workers, ou nom des pages). */
+/** A console message's level: a number 0–3 (service workers) or a name (pages). */
 export function niveauConsole(n: number | string): MessageConsole["niveau"] {
   if (n === 3 || n === "error") return "error";
   if (n === 2 || n === "warning") return "warn";

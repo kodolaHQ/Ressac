@@ -1,5 +1,5 @@
 <script lang="ts">
-  // Electron's ZoneContenu.svelte, its error and crash messages.
+  // The page's error and crash messages.
   import type { Onglet } from "../shared/modele";
   import { api } from "../ui/etat.svelte";
 

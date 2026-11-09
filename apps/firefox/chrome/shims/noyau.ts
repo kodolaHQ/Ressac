@@ -9,7 +9,7 @@ export { tronquer } from "../../../../packages/noyau/src/outils-dev/resumes";
 export type { DroitDev } from "../../../../packages/noyau/src/acces/politique";
 export type { ChangerHote } from "../../../../packages/noyau/src/workflows/menagement";
 export type { PageLue } from "../../../../packages/noyau/src/workflows/protocole";
-// Copied: design/remarques.ts imports node:crypto and node:fs. What Electron's main/design/viseur.ts imports, so it
+// Copied: design/remarques.ts imports node:crypto and node:fs. What core/design/viseur.ts imports, so it
 // loads as is in the store (test/shims.test.ts compares them with the originals).
 import { HTML_MAX, TRONQUE } from "../../shared/design-guards";
 export { HTML_MAX, TRONQUE };

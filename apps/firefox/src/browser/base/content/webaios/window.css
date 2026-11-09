@@ -103,7 +103,7 @@
   border-block-start: none !important;
 }
 
-/* A site's question (Electron's DemandePermission), above the page; colours from the UI's theme.css. */
+/* A site's question, above the page; colours from the UI's theme.css. */
 :root[webaios-main] #webaios-banner {
   --fond-actif: #3d3d47;
   --fond-barre: #26262c;
@@ -170,7 +170,7 @@
   flex: none;
 }
 
-/* The view right under the bar, as Electron's (Firefox draws a 1px line above the page). */
+/* The view right under the bar (Firefox draws a 1px line above the page). */
 :root[webaios-site] #tabbrowser-tabpanels .browserContainer {
   border-block-start: none;
 }

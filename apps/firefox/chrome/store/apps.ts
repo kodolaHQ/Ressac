@@ -1,4 +1,4 @@
-// Agent app windows (Electron's main/applications/fenetres.ts): one window per running app, the app's page alone, in
+// Agent app windows: one window per running app, the app's page alone, in
 // its own container (`webaios-app-<dossier>`), kept on its origin (http://localhost:<port>) by the request guard and
 // the view policy of sites.ts. The host (noyau/applications.ts) owns the apps; this module owns their windows.
 import type { EtatDesign } from "../../shared/api";
@@ -44,7 +44,7 @@ export interface BadgeChrome {
   design: { etat(): Promise<EtatDesign>; basculer(): void; panier(): void; relire(): void };
 }
 
-// Electron's fenetres.ts sizes: closed, the WebAiOs button alone or with the agent's access; open, its bubble or menu.
+// Badge sizes: closed, the WebAiOs button alone or with the agent's access; open, its bubble or menu.
 const BADGE = { closed: [48, 28], withAccess: [88, 28], open: [300, 320] } as const;
 
 const sameOrigin = (url: string, origin: string) => {
@@ -71,7 +71,7 @@ function load(a: OpenApp, url = a.origin + "/"): void {
 const PERMISSIONS = ["desktop-notification", "geo", "camera", "microphone", "screen", "midi", "midi-sysex", "xr", "persistent-storage", "storage-access"];
 
 /**
- * The app's code was not reviewed: no permission in its window (Electron's refuserPermissions). Its asks are already
+ * The app's code was not reviewed: no permission in its window. Its asks are already
  * refused (permission-hooks.ts: a <browser> with no WebAiOs tab); denied here too, so the page reads « denied ».
  */
 function denyPermissions(a: OpenApp): void {
@@ -174,7 +174,7 @@ export const apps = {
   },
   /**
    * « Afficher le dossier »: `<dataDir>/espace/projets/<dossier>` shown in the Finder, never opened (an `x.app` folder
-   * would launch). One path segment only (Electron's segmentValide). WEBAIOS_TEST_REVEAL (e2e): the path is appended to
+   * would launch). One path segment only. WEBAIOS_TEST_REVEAL (e2e): the path is appended to
    * that file instead.
    */
   reveal(dossier: string): void {
@@ -236,7 +236,7 @@ export const apps = {
     const a = open.get(dossier);
     return a?.view && !a.window.closed ? { browser: a.view, window: a.window } : undefined;
   },
-  /** The open windows for the agent (Electron's FenetresApplications.ouvertes), seen as `app:<dossier>` tabs. */
+  /** The open windows for the agent, seen as `app:<dossier>` tabs. */
   forAgent(): { dossier: string; titre: string; url: string }[] {
     return [...open.values()]
       .filter((a) => !a.window.closed)
@@ -245,7 +245,7 @@ export const apps = {
         return { dossier: a.dossier, titre: apps.titleOf(a), url: url && url !== "about:blank" ? url : a.origin + "/" };
       });
   },
-  /** Electron's naviguer on `app:`: in the window on the app's origin, else false (the bridge opens a tab). */
+  /** Navigation on `app:`: in the window on the app's origin, else false (the bridge opens a tab). */
   navigateForAgent(dossier: string, url: string): boolean {
     const a = open.get(dossier);
     if (!a?.view || !sameOrigin(url, a.origin)) return false;
@@ -289,7 +289,7 @@ export const apps = {
     return true;
   },
   /**
-   * The badge of an app window (Electron's pastille): only its own app's access (accesDe), the frame sized by `size` as
+   * The badge of an app window: only its own app's access (accesDe), the frame sized by `size` as
    * that access and its menu change, its own app's design mode. Undefined if the window is not an app's.
    */
   badge(win: Window, size: (width: number, height: number) => void): BadgeChrome | undefined {
@@ -297,7 +297,7 @@ export const apps = {
     if (!dossier) return undefined;
     const id = "app:" + dossier;
     const target = { type: "app" as const, dossier };
-    // Electron's accesDe: never another tab's access.
+    // Never another tab's access.
     const own = (): EtatAcces => {
       const e = access();
       const t = e.onglets[id];
@@ -325,7 +325,7 @@ export const apps = {
     return {
       acces: {
         etat: own,
-        // Its own app's access only (Electron's ipc.ts accesCouper for a badge).
+        // Its own app's access only.
         couper: (cut, droit) => {
           if (cut === id && (droit === undefined || typeof droit === "string")) host?.notify("politique.couper", { id, droit });
         },
@@ -344,7 +344,7 @@ export const apps = {
         etat: () => design!.etat(target),
         basculer: () => void design!.toggle(target),
         panier: () => void design!.openCart(target),
-        // Electron's design.relire: the Review page of any app, one without manifest included (service.ts:443).
+        // The Review page of any app, one without manifest included.
         relire: () => void design!.relire(target),
       },
     };

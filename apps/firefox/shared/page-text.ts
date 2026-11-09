@@ -1,5 +1,3 @@
-// Keep in sync with apps/navigateur/src/main/onglets/capture-texte.ts
-
 export function isYoutubeVideo(url: string): boolean {
   try {
     const u = new URL(url);
@@ -9,7 +7,7 @@ export function isYoutubeVideo(url: string): boolean {
   }
 }
 
-/** What the page actor reads (field names are Electron's PartiesPage). */
+/** What the page actor reads. */
 export interface PageParts {
   description?: string;
   corps: string;

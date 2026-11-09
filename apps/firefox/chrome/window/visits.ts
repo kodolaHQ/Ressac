@@ -4,14 +4,14 @@ import { TAB_ID } from "./tabs";
 
 const { LOCATION_CHANGE_ERROR_PAGE, LOCATION_CHANGE_SAME_DOCUMENT, STATE_START, STATE_STOP, STATE_IS_NETWORK } = Ci.nsIWebProgressListener;
 
-/** Electron's capture-texte.ts DELAI_CAPTURE: the page's text is read this long after it settled. */
+/** The page's text is read this long after it settled. */
 const CAPTURE_DELAY_MS = 1500;
 
 type Context = { espaceId: string; prive: boolean } | null;
 
 /**
  * For a top-level document response: its browser, and whether it is HTTP-authenticated (sent an Authorization header
- * or got a 401), as Electron's capture-texte.ts refuses a page after a `login` event. Parent-side: the progress
+ * or got a 401): the text of a signed-in page is never kept. Parent-side: the progress
  * listener only sees a RemoteWebProgressRequest, which has no request headers.
  */
 function topDocumentResponse(subject: any): { browser: any; auth: boolean } | null {
@@ -28,7 +28,7 @@ function topDocumentResponse(subject: any): { browser: any; auth: boolean } | nu
 /**
  * Notes the visits of this window's WebAiOs tabs: each committed top-level location (a redirect gives only its target,
  * an in-page change or pushState each new URL), then the title as the tab's label settles. The parking tab has no TAB_ID.
- * Also retains the page's text for the agent's memory, CAPTURE_DELAY_MS after a page settles (Electron's brancherCapture):
+ * Also retains the page's text for the agent's memory, CAPTURE_DELAY_MS after a page settles:
  * never for a private space, an error page or an authenticated one; URL and space are checked again after the read.
  */
 export function trackVisits(gBrowser: any, history: History, context: (id: string) => Context): void {

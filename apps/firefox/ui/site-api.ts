@@ -5,7 +5,7 @@ import { local } from "./design-api";
 const off = () => () => {};
 
 /**
- * Electron's ApiSite for the site bar (FenetreSite.svelte), on the window's controller. What comes out of the chrome is
+ * The API of the site bar (FenetreSite.svelte), on the window's controller. What comes out of the chrome is
  * copied (structuredClone): the bar never holds the store's objects. The extension members do nothing: the add-on
  * buttons read the window's own (SiteAddonsStrip.svelte, webaiosSiteWindow.addons), the extension menu is aliased away.
  * The design mode is the window's: the controller knows the app, the bar sends no target.
@@ -27,12 +27,12 @@ export function createSiteApi(c: SiteWindowController): ApiSite {
     recharger: () => c.reload(),
     ouvrirBloque: () => c.openBlocked(),
     chercherAdresse: () => c.findAddress(),
-    // Electron's IPC schema refuses a non-boolean choice and an unbounded fingerprint.
+    // Refuses a non-boolean choice and an unbounded fingerprint.
     accorder: async (oui, empreinte) => {
       if (typeof oui !== "boolean" || (empreinte !== undefined && (typeof empreinte !== "string" || empreinte.length > 128))) throw new Error("invalid accord request");
       await c.accord(oui, empreinte ?? "");
     },
-    // Electron's invoke rejects when the memory cannot be read: CadreAccueil then sends nothing.
+    // Rejects when the memory cannot be read: CadreAccueil then sends nothing.
     memoire: async () => {
       const m = await c.memory();
       if (!m) throw new Error("site app memory unavailable");
@@ -51,7 +51,7 @@ export function createSiteApi(c: SiteWindowController): ApiSite {
       surFermer: off,
     },
     design: {
-      // A host that does not answer: the last state again, as Electron's bar whose invoke never settles (spec §5.10);
+      // A host that does not answer: the last state again, never a rejection (spec §5.10);
       // BoutonDesignSite would grey ✎ on a rejection.
       etat: () =>
         Promise.resolve()

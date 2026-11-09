@@ -23,7 +23,7 @@ export interface WindowRegistry {
   get(fenetreId: IdFenetre): { window: Window; controller: WindowController } | undefined;
 }
 
-/** Electron's synchroniserFenetres and gardees: one full Firefox window per state window. */
+/** One full Firefox window per state window, and the kept ones. */
 export function createWindowRegistry(o: {
   store: Store;
   open(): Window | undefined;

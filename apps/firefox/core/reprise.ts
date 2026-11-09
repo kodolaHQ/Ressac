@@ -1,6 +1,6 @@
 /**
- * La reprise des vidéos à la minute, sans electron (testée seule) : ce que le preload `site.js` fait des événements des
- * `<video>` de chaque cadre. Rien n'importe le noyau ici : le preload en bac à sable ne charge que son propre fichier.
+ * Video resume at the minute (tested alone): what the site actor (chrome/agent/site-actor.ts) does with the events of
+ * each frame's `<video>`s. Nothing here imports the noyau: this file is bundled into the actor.
  */
 
 /** Une vidéo plus courte (publicité, aperçu) n'est ni suivie ni reprise. */

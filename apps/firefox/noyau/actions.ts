@@ -26,7 +26,7 @@ import {
 import type { ActionAffichee } from "../shared/actions.ts";
 import { urlOuvrable } from "../ui/accueil-profils.ts";
 
-// Copies of Electron's schemas (commun/api.ts, which cannot load in the host): drift test in test/actions-host.test.ts.
+// The same schemas as shared/api.ts.
 export const SchemaIdAction = z.string().regex(/^[a-z0-9-]{1,60}$/);
 export const SchemaSaisieAction = z.string().max(2000).nullable();
 const domaine = z.string().min(1).max(253);
@@ -35,17 +35,16 @@ export const SchemaAccord = z
   .strict();
 type Accord = z.infer<typeof SchemaAccord>;
 
-// The disk and noyau half of Electron's main/agent/actions.ts, which cannot load here (it imports electron).
-// Drift tests in test/actions-host.test.ts.
+// The disk and noyau half of the actions service.
 
 export const MESSAGE_SANS_NOYAU = "Le service des actions ne répond pas (agent arrêté ?)";
 const NO_ACTION: EtatActions = { courantes: [], enAttente: [] };
 
-/** Electron's adresseImagePermise: https only, never the machine. Keep in sync with chrome/store/action-media.ts. */
+/** https only, never the machine. Keep in sync with chrome/store/action-media.ts. */
 const imageAddressAllowed = (url: string) => url.startsWith("https://") && urlOuvrable(url);
 
 /**
- * The refusal half of Electron's repondreImage, up to the load: a result image is fetched only for a current action
+ * The refusal half of a result image's load: a result image is fetched only for a current action
  * without account, a kept run, and an https address present as is in its results, with no accord for the account.
  */
 export async function actionImageAllowed(
@@ -106,7 +105,7 @@ export async function readShownActions(c: CheminsEspace, dossierActions: string)
 
 type Prepared = { ok: true; nom: string; lancer: boolean } | { ok: false; erreur: string };
 
-/** Electron's creerServiceActions without the window state (private spaces, tabs, links' pace: the chrome's) and `agir`. */
+/** The actions service without the window state (private spaces, tabs, links' pace: the chrome's) and `agir`. */
 export function createActionsHost(o: {
   chemins: CheminsEspace;
   dossierActions: string;

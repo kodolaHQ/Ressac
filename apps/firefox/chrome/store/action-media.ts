@@ -8,7 +8,7 @@ import { containerRequests, isLink, loadImage, realPath, toDataUrl } from "./sit
 
 /** The noyau's COMPOSANT_HTML_MAX (pages/composants-agent.ts), copied: that module's node:fs imports have no shim in this bundle. Drift test in action-media.test.ts. */
 export const COMPOSANT_HTML_MAX = 256 * 1024;
-/** Electron's IMAGE_MAX (main/agent/actions.ts): the largest result image. */
+/** The largest result image. */
 export const ACTION_IMAGE_MAX = 5 * 1024 * 1024;
 
 /** The result images' private container, `userContextIdInternal.webaios-action-images`: never a space's, a profile's or the default one. */
@@ -24,10 +24,10 @@ export function actionImageTestUrl(url: string, origin: string | undefined): str
   return `${origin}/${u.host}${u.pathname}${u.search}`;
 }
 
-/** Electron's adresseImagePermise: https only, never the machine. */
+/** https only, never the machine. */
 const allowed = (u: string) => u.startsWith("https://") && urlOuvrable(u);
 
-/** A result image as a `data:` URL (Electron's repondreImage load: no cookie, no referrer, checked redirects), or null. */
+/** A result image as a `data:` URL (no cookie, no referrer, checked redirects), or null. */
 export async function actionImage(url: string): Promise<string | null> {
   const open = containerRequests(actionImagesContainer(), { anonymous: true });
   // Under the hook, an https redirect would be judged allowed and followed natively: test servers redirect to http.
@@ -46,7 +46,7 @@ export function componentBridge(): void {
   const Custom = w.CustomEvent;
   const dispatch = w.dispatchEvent.bind(w);
   w.parent = Object.freeze({ postMessage: (m: unknown) => void dispatch(new Custom("webaios-composant", { detail: stringify(m) })) });
-  // Firefox's leftover web `Components` (`interfaces` only): hidden for parity with Electron, where it is undefined.
+  // Firefox's leftover web `Components` (`interfaces` only): hidden, a component page never sees it.
   Object.defineProperty(w, "Components", { value: undefined, configurable: false, writable: false });
 }
 
@@ -77,8 +77,8 @@ function queued<T>(nom: string, f: () => Promise<T>): Promise<T> {
 }
 
 /**
- * One more page shows component `nom`: copies `<dataDir>/espace/composants/<nom>/composant.html` with Electron's rules
- * (repondreComposant: no symbolic link on the path, COMPOSANT_HTML_MAX at most) into
+ * One more page shows component `nom`: copies `<dataDir>/espace/composants/<nom>/composant.html` with these rules
+ * (no symbolic link on the path, COMPOSANT_HTML_MAX at most) into
  * `<dataDir>/webaios-composants/<nom>/composant-<mtime>.html` through affichageServi (the widgets' CSP and guard, then
  * the bridge; AFFICHAGE_REFUSE on a network hint), and returns its resource:// URL, or null. Each call is paired with a
  * releaseComponent, null or not.

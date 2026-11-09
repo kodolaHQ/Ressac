@@ -1,6 +1,6 @@
 import { origineDe, PREFIXE_SITE } from "../../core/agent/pont";
 
-/** Electron's PREFIXE_APP (main/agent/pont.ts, not exported). */
+/** An agent app window seen as a tab: `app:<dossier>`. */
 const PREFIXE_APP = "app:";
 import { TamponOnglet, textePile } from "../../core/outils-dev/tampon";
 import type { InstantaneFirefox, ProfilCpu } from "../../../../packages/noyau/src/outils-dev/resumes";
@@ -15,9 +15,9 @@ export const TEXTE_REVOQUE = "Ces outils de développement appartiennent à un a
 // in-process DevTools client per tab (CommandsFactory.forTab over DevToolsServer.connectPipe, the toolbox's own way), no
 // socket and no listener. It coexists with the person's own toolbox on the same tab (note D7): OutilsDevOccupes is never raised.
 
-/** Electron's TamponOnglet bound for the network (its console keeps 1000 messages, truncated by the noyau's tronquer). */
+/** The network buffer's bound (the console keeps 1000 messages, truncated by the noyau's tronquer). */
 const MAX_REQUESTS = 500;
-/** As Electron's DELAI_NAVIGATION_MS: a reload, or the new top-level target after a navigation. */
+/** A reload, or the new top-level target after a navigation. */
 const NAVIGATION_TIMEOUT_MS = 10_000;
 /** A running script cannot be stopped (note D3b): the call answers after this, its late result is dropped. */
 const EVAL_TIMEOUT_MS = 10_000;
@@ -28,14 +28,14 @@ const TRUNCATED = "… [tronqué]";
 const EXTENSION = "moz-extension://";
 export const TEXTE_DELAI = `Le code n'a pas répondu en ${EVAL_TIMEOUT_MS / 1000} s : son résultat sera ignoré.`;
 const TEXTE_SITE_CHANGE = "L'onglet a changé de site.";
-/** As Electron's DUREE_PROFIL_MS, DUREE_PROFIL_MAX_MS and DELAI_CHARGEMENT_MS. */
+/** Profile durations and the load wait. */
 const PROFILE_MS = 5000;
 const PROFILE_MAX_MS = 30_000;
 const PROFILE_LOAD_TIMEOUT_MS = 30_000;
 /** Services.profiler is one for the whole browser: the person's own session is never stopped for the agent. */
 export const TEXTE_PROFILEUR_OCCUPE =
   "Le profileur de Firefox est déjà en cours (about:profiling ou un autre profil de l'agent) : l'agent ne l'interrompt pas. Réessayez une fois qu'il est arrêté.";
-/** As Electron's lacher. */
+/** Told to the agent when its dev tools are detached from the tab. */
 const TEXTE_DETACHE = "Les outils de développement de l'agent ont été détachés de l'onglet.";
 
 export interface DevTools {
@@ -88,7 +88,7 @@ async function within<T>(p: Promise<T>, ms = NAVIGATION_TIMEOUT_MS): Promise<T> 
 }
 const grip = (g: any) => (g && typeof g.getGrip === "function" ? g.getGrip() : g);
 
-/** A grip as text, as Electron's texteObjet: a string as is, an Error by its message, another object by its class. */
+/** A grip as text: a string as is, an Error by its message, another object by its class. */
 function gripText(value: any): string {
   const g = grip(value);
   if (g === null || typeof g !== "object") return String(g);
@@ -113,7 +113,7 @@ function gripText(value: any): string {
 }
 
 type Frame = { functionName?: string; filename?: string; lineNumber?: number; columnNumber?: number };
-/** Firefox's frames (1-based) as the protocol's call frames (0-based) that Electron's textePile writes. */
+/** Firefox's frames (1-based) as the protocol's call frames (0-based) that textePile writes. */
 const callFrames = (frames: Frame[] | null | undefined) => ({
   callFrames: (frames ?? []).map((f) => ({ functionName: f.functionName ?? "", url: f.filename ?? "", lineNumber: (f.lineNumber ?? 1) - 1, columnNumber: (f.columnNumber ?? 1) - 1 })),
 });
@@ -134,7 +134,7 @@ const withStack = (message: string, frames: ReturnType<typeof callFrames>) => {
 const fromExtension = (file: unknown, frames: Frame[] | null | undefined) =>
   String(file ?? "").startsWith(EXTENSION) || !!frames?.some((f) => f.filename?.startsWith(EXTENSION));
 
-/** A console or error resource into Electron's buffer, as the protocol's events it reads. */
+/** A console or error resource into the tab's buffer, as the protocol's events it reads. */
 function feedConsole(buffer: TamponOnglet, r: any, TYPES: any): void {
   if (r.resourceType === TYPES.CONSOLE_MESSAGE) {
     if (fromExtension(r.filename, r.stacktrace)) return;
@@ -282,7 +282,7 @@ function abortError(signal: AbortSignal): unknown {
 
 /**
  * `sites`: the site app windows; an id `site:<id>` aims at the app view's <browser>, never its bar, home or card
- * (Electron's InspecteurCdp on vueSite). `apps`: the agent app windows; `app:<dossier>` aims at the app view's <browser>.
+ * `apps`: the agent app windows; `app:<dossier>` aims at the app view's <browser>.
  */
 export function createDevTools(o: {
   store: Store;
@@ -374,7 +374,7 @@ export function createDevTools(o: {
         },
       });
       const { TYPES } = resourceCommand;
-      // ignoreExistingResources: only what happens after the attachment, as Electron.
+      // ignoreExistingResources: only what happens after the attachment.
       await resourceCommand.watchResources([TYPES.CONSOLE_MESSAGE, TYPES.ERROR_MESSAGE, TYPES.NETWORK_EVENT, TYPES.DOCUMENT_EVENT], {
         ignoreExistingResources: true,
         onAvailable: (list: any[]) => {
@@ -469,7 +469,7 @@ export function createDevTools(o: {
     }
   }
 
-  /** The value as Electron gives it: JSON when it has one, read once more through `_self` (the code ran once), else a preview. */
+  /** The value as the protocol gives it: JSON when it has one, read once more through `_self` (the code ran once), else a preview. */
   async function valueText(s: Session, value: any): Promise<string> {
     const g = grip(value);
     if (g === null || typeof g !== "object") return JSON.stringify(g) ?? String(g);
@@ -580,7 +580,7 @@ export function createDevTools(o: {
     },
     async recharger(id: string, sansCache: boolean): Promise<void> {
       const s = await session(id);
-      // Resolves at dom-complete (note D4); a page that never finishes still answers, as Electron's.
+      // Resolves at dom-complete (note D4); a page that never finishes still answers.
       await Promise.race([reloadTop(id, s, !!sansCache), sleep(NAVIGATION_TIMEOUT_MS)]);
       if (s.dropped && origineDe(urlOf(id)) !== s.origin) throw new Error(TEXTE_SITE_CHANGE);
     },

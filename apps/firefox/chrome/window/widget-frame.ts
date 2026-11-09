@@ -1,12 +1,12 @@
 import { MOTIF_INDICES_RESEAU, contientIndiceReseau } from "../../shared/indices-reseau";
 
 /**
- * Electron's CSP (main/agent/accueil.ts), copied: a resource:// file cannot carry a response header, so the CSP is
+ * The widgets' CSP: a resource:// file cannot carry a response header, so the CSP is
  * injected as a `<meta http-equiv>` into the copy the sidebar writes.
  */
 export const CSP_WIDGET =
   "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:; connect-src 'none'; form-action 'none'; frame-src 'none'; require-trusted-types-for 'script'; trusted-types default";
-/** Servi à la place d'un affichage qui contient un indice réseau (copie d'indices-reseau.ts, Electron). */
+/** Served in place of a display that contains a network hint. */
 export const AFFICHAGE_REFUSE =
   '<!doctype html><meta charset="utf-8"><p style="font: 13px system-ui; color: #b44">Affichage refusé : il contient &lt;link&gt;, &lt;meta http-equiv&gt; ou des règles de spéculation, qui feraient sortir des données. Voir AGENTS.md.</p>';
 
@@ -73,7 +73,7 @@ function cheminSource(dataDir: string, id: string): string | null {
 }
 
 /**
- * Electron's `garde-widget.ts`, run in the page world from the served copy before the widget's own scripts. No
+ * The widget guard, run in the page world from the served copy before the widget's own scripts. No
  * `JSWindowActor`: measured, the actor's child never installs on these `resource://` frames in this Firefox. Self-contained
  * (no imports, no `win`: it uses the page's `window`), serialized with `toString()`, the network-hint pattern passed as
  * its argument. The WebRTC globals go last: if an earlier step throws, `RTCPeerConnection` is still there, and the UI

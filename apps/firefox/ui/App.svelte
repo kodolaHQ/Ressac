@@ -1,5 +1,5 @@
 <script lang="ts">
-  // Electron's App.svelte, reduced to step 2: sidebar, spaces, empty page, command bar. Web pages are Firefox's <browser>, under
+  // The window's UI: sidebar, spaces, empty page, command bar. Web pages are Firefox's <browser>, under
   // this transparent iframe; the iframe covers the whole window only when the UI shows more than its column.
   import { tick, untrack } from "svelte";
   import PageAction from "../ui/action/PageAction.svelte";
@@ -42,7 +42,7 @@
     const id = fenetre?.actif[fenetre.espaceActif];
     return id ? etat.valeur?.onglets[id] : undefined;
   });
-  // A crashed or failed page shows our message instead (the window parks, as Electron detaches its view).
+  // A crashed or failed page shows our message instead (the window parks its <browser>).
   const pageWeb = $derived(!!ongletActif && aUneVue(ongletActif.url) && !ongletActif.plante && !ongletActif.erreur);
   /** The history or downloads panel over the content area (⌘Y, ⇧⌘J, the sidebar's button); another tab closes it. */
   let panneau = $state<Panneau | null>(null);
@@ -53,7 +53,7 @@
   const basculerPanneau = (p: Panneau) => (panneau === p ? fermerPanneau() : (panneau = p));
   /** A widget's or an action's workflow builder is the active tab. */
   const cibleConstructeur = $derived(ongletActif ? cibleDeUrlWorkflow(ongletActif.url) : null);
-  // Electron's ZoneContenu: an action's page launches nothing when opened. Refused when the tab's space (or the one shown)
+  // An action's page launches nothing when opened. Refused when the tab's space (or the one shown)
   // is private; a space not found counts as private.
   const pageAction = $derived(ongletActif ? actionDeUrl(ongletActif.url) : null);
   const projetRelecture = $derived(ongletActif ? projetDeUrlRelecture(ongletActif.url) : null);
@@ -63,7 +63,7 @@
     return prive(fenetre?.espaceActif) || prive(ongletActif?.espaceId);
   });
   /**
-   * ⌘J or ✦ on a builder tab (Electron's agentDuConstructeur): its Agent tab. A UI panel over it closes first; the
+   * ⌘J or ✦ on a builder tab: its Agent tab. A UI panel over it closes first; the
    * request waits for the builder to mount again, so that it sees it.
    */
   function agentDuConstructeur(): void {
@@ -142,7 +142,7 @@
   const overlay = $derived(!!demandeAgent || !!reglagesEspace.brouillon || !!menu.ouvert || !!commande.ouverte || !!tabPanel);
   $effect(() => win.setFullWindow(overlay ? "window" : !pageWeb || !!panneau));
 
-  // Compact mode, as Electron's App: touching the left edge reveals the sidebar. Unlike Electron it floats over the page, which
+  // Compact mode: touching the left edge reveals the sidebar. It floats over the page, which
   // keeps its size: resizing a page on every frame of the slide would not be smooth.
   // The controller reports the mouse everywhere in the window; the decision is in revelation.ts.
   const compact = $derived(fenetre?.compact ?? false);
@@ -263,7 +263,7 @@
   /* Firefox's -webkit-app-region: the same areas. An overlay over the sidebar keeps its clicks. */
   .fenetre:not(.couverte) :global(.barre) { -moz-window-dragging: drag; }
   .fenetre :global(.barre :is(.navigation button, .ligne, .defilant, footer)) { -moz-window-dragging: no-drag; }
-  /* The Actions page's confirmation covers the window, its drag areas too (Electron's no-drag on its veil). */
+  /* The Actions page's confirmation covers the window, its drag areas too (no-drag on its veil). */
   .fenetre :global(:is([data-testid="voile-suppression-action"], [data-testid="confirmation-suppression-action"])) { -moz-window-dragging: no-drag; }
   .couche-commande { position: fixed; inset: 0; z-index: 100; }
   .fenetre {
@@ -285,9 +285,9 @@
   @media (prefers-reduced-motion: reduce) {
     .compact .colonne { transition: none; }
   }
-  /* Electron's .surface: the action page fills it (position: absolute), not the window. */
+  /* The action page fills it (position: absolute), not the window. */
   .contenu { position: relative; min-width: 0; min-height: 0; }
   .opaque { background: var(--fond); }
-  /* Electron's ZoneContenu. */
+  /* The page's error and crash messages. */
   .plante { display: grid; place-content: center; gap: 12px; height: 100%; text-align: center; color: var(--texte); }
 </style>

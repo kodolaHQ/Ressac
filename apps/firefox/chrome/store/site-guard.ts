@@ -1,8 +1,8 @@
-// The bar's « Lien vers X bloqué » mention of a site app (Electron's bloquer and diffuserAvis, main/sites/fenetres.ts).
+// The bar's « Lien vers X bloqué » mention of a site app.
 // The request guard itself is in sites.ts (one observer for every app container).
 import type { AvisBarre } from "../../shared/sites";
 
-/** Electron's ECART_AVIS_MS: at most one change of the mention per 500 ms. */
+/** At most one change of the mention per 500 ms. */
 export const NOTICE_GAP_MS = 500;
 
 /** The host of an http(s) address, else null (about:blank, javascript:, an unreadable address). */

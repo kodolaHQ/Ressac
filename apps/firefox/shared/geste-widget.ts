@@ -5,7 +5,6 @@ export const DELAI_GESTE_MS = 1500;
  * Un widget n'ouvre un lien que juste après un vrai clic dans son affichage. Le clic est vu dans le cadre du widget par
  * l'acteur (monde chrome, `isTrusted`), que le code du widget ne peut ni lire ni imiter, puis signalé au processus
  * parent. Seul le dernier geste de chaque fenêtre compte ; il permet un seul lien, au seul widget où il a eu lieu.
- * Copie de apps/navigateur/src/main/agent/geste-widget.ts.
  */
 export function gardienGestes<F>(maintenant: () => number = () => Date.now()) {
   const derniers = new Map<F, { t: number; widget: string }>();

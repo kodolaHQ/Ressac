@@ -20,7 +20,7 @@ export class WebAiOsExtensionParent extends JSWindowActorParent {
   }
 }
 
-/** Neutralised in a frame that is not one of the extension's own documents (about:blank, srcdoc): Electron's frames have none. */
+/** Neutralised in a frame that is not one of the extension's own documents (about:blank, srcdoc). */
 const FRAME_REMOVED = ["chrome", "browser", "RTCPeerConnection", "webkitRTCPeerConnection", "RTCDataChannel"];
 
 export class WebAiOsExtensionChild extends JSWindowActorChild {
@@ -43,7 +43,7 @@ export class WebAiOsExtensionChild extends JSWindowActorChild {
       );
     Object.freeze(Cu.waiveXrays(api));
     Object.defineProperty(win.wrappedJSObject, "__webaios", { value: api, writable: false, configurable: false, enumerable: false });
-    // As Electron's window-open handler: an agent page opens nothing itself (chrome.tabs.create, checked, does).
+    // An agent page opens nothing itself (chrome.tabs.create, checked, does).
     Object.defineProperty(win.wrappedJSObject, "open", { value: Cu.exportFunction(() => null, win), writable: false, configurable: false, enumerable: true });
     // An about:blank or srcdoc frame inherits the extension's principal, and Firefox gives it the whole extension API
     // without the copy's guard: none of it, nor WebRTC. Non-configurable, so Firefox's later lazy getter cannot come

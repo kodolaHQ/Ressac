@@ -21,7 +21,7 @@ export class RemoteBridge implements PontNavigateur {
   private prives = new Set<string>();
   private actifPrive = false;
 
-  /** The agent's history tools; absent, it has none. Same mapping as Electron's PontElectron. */
+  /** The agent's history tools; absent, it has none. */
   readonly historique?: HistoriqueNavigateur;
 
   constructor(
@@ -71,7 +71,7 @@ export class RemoteBridge implements PontNavigateur {
   naviguer = (id: string, url: string) => this.call<void | "en-attente">("naviguer", [id, url]);
   capturer = async (id: string) => Buffer.from(await this.call<string>("capturer", [id]), "base64");
   demanderAutorisation = (o: OngletInfo) => this.call<boolean>("demanderAutorisation", [o]);
-  // Taken down (signal) when a new conversation starts: no rights, as Electron's attendreDroits.
+  // Taken down (signal) when a new conversation starts: no rights.
   demanderOutilsDev = (o: OngletInfo, d: { droits: DroitDev[]; raison: string; agent: string }, signal?: AbortSignal) =>
     this.call<DroitDev[]>("demanderOutilsDev", [o, d], signal).catch((e) => {
       if (signal?.aborted) return [];

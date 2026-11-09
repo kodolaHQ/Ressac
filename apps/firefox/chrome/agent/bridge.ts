@@ -13,9 +13,9 @@ import { readHtml, readPage } from "./invisible";
 import type { Questions } from "./questions";
 
 const XHTML = "http://www.w3.org/1999/xhtml";
-/** Electron's PREFIXE_APP (main/agent/pont.ts, not exported): an agent app window seen as a tab. */
+/** An agent app window seen as a tab: `app:<dossier>`. */
 const PREFIXE_APP = "app:";
-/** As the page actor and Electron. */
+/** As the page actor. */
 const TEXT_MAX = 100_000;
 
 const internal = (o: Onglet) => o.url.startsWith("webaios:");
@@ -38,7 +38,7 @@ function activeWorkflows(state: EtatNavigateur): Record<IdFenetre, string | null
   return r;
 }
 
-/** The noyau's PontNavigateur, answered on the store and the windows' tabs (Electron's PontElectron). */
+/** The noyau's PontNavigateur, answered on the store and the windows' tabs. */
 export function bridgeHandlers(
   store: Store,
   questions: Questions,
@@ -88,7 +88,7 @@ export function bridgeHandlers(
     id.startsWith(PREFIXE_SITE) ? sites.viewFor(id.slice(PREFIXE_SITE.length)) : id.startsWith(PREFIXE_APP) ? apps.viewFor(id.slice(PREFIXE_APP.length)) : null;
   /**
    * Reads the view of a site app or agent app window: never a site app's bar, home or card, nor an app's badge or
-   * overlay. Closed, before or during the read: OngletIntrouvable (a clean answer, Electron's surVueSite). Undefined for
+   * overlay. Closed, before or during the read: OngletIntrouvable (a clean answer). Undefined for
    * any other id.
    */
   const onSiteView = <T>(id: string, read: (browser: any, win: Window) => Promise<T>): Promise<T> | undefined => {
@@ -120,7 +120,7 @@ export function bridgeHandlers(
     }
   };
 
-  /** The agent's demos open in the foreground, marked ✦. With no window open, in the kept one, as Electron. */
+  /** The agent's demos open in the foreground, marked ✦. With no window open, in the kept one. */
   const openTab = ([url, espace]: [string, string?]): OngletInfo => {
     const state = store.state;
     const f = state.fenetres.find((x) => x.id === windows.active()) ?? state.fenetres[0];
@@ -135,7 +135,7 @@ export function bridgeHandlers(
   };
 
   return {
-    // Decision 3, as Electron's fenetreAgent: no window open (the last one kept), no active tab.
+    // Decision 3: no window open (the last one kept), no active tab.
     ongletActif: ([fenetre]: [IdFenetre?] = []) => ongletActifDe(store.state, fenetre ?? windows.active()),
     listerOnglets: () => [...infosOnglets(store.state), ...apps.forAgent().map(ongletApplication), ...sites.forAgent().map(ongletSite)],
     ouvrirOnglet: openTab,
@@ -150,7 +150,7 @@ export function bridgeHandlers(
       if (id.startsWith(PREFIXE_APP)) {
         const dossier = id.slice(PREFIXE_APP.length);
         if (!apps.viewFor(dossier)) throw new OngletIntrouvable(id);
-        // The app window never leaves its origin: elsewhere, a tab of the main window (Electron's PontElectron.naviguer).
+        // The app window never leaves its origin: elsewhere, a tab of the main window.
         if (!apps.navigateForAgent(dossier, url)) openTab([url]);
         return;
       }
@@ -205,7 +205,7 @@ export function trackState(store: Store, host: AgentHost, windows: WindowRegistr
     const { navigues, fermes } = changementsPolitique(previous, state);
     for (const n of navigues) host.notify("politique.navigue", n);
     for (const id of fermes) host.notify("politique.ferme", { id });
-    // Opening the agent panel on a tab gives it to the agent and pre-fills its context (Electron's agent.ts).
+    // Opening the agent panel on a tab gives it to the agent and pre-fills its context.
     for (const f of state.fenetres) {
       const opened = f.panneauAgentOuvert && !previous.fenetres.find((x) => x.id === f.id)?.panneauAgentOuvert;
       const onglet = opened && ongletActifDe(state, f.id);

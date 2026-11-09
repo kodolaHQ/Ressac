@@ -1,7 +1,7 @@
 import { adresseLocale } from "@webaios/noyau";
 import type { EtatNavigateur, IdProfil } from "../../shared/modele";
 
-/** Au plus 2 Mo de HTML rendus par `lireHtmlInvisible`. */
+/** At most 2 MB of rendered HTML for an invisible HTML read. */
 export const HTML_MAX = 2 * 1024 * 1024;
 
 /** Les profils de connexion qu'une lecture peut utiliser : ceux de l'état qu'aucun espace privé n'utilise. */

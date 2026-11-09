@@ -9,7 +9,7 @@
   import { unitesLibres } from "./grille-libre";
 
   /**
-   * Electron's ApercuWidget: the floating preview of the widget as the home page shows it (same isolated frame), with
+   * The floating preview of the widget as the home page shows it (same isolated frame), with
    * the chosen run's data. The Firefox home places widgets freely: its placement is turned back into grid units.
    */
   let { id, executions }: { id: string; executions: Executions } = $props();

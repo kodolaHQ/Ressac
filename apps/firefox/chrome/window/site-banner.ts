@@ -4,12 +4,12 @@ import type { SitePermission } from "../store/site-permissions";
 import { bannerText } from "./banner-text";
 
 const XHTML = "http://www.w3.org/1999/xhtml";
-/** Electron's estDemandeAgent (modale.svelte.ts, not importable here: it holds runes): these open as the UI's modal. */
+/** These open as the UI's modal (as modale.svelte.ts's estDemandeAgent, not importable here: it holds runes). */
 const AGENT = ["lire-onglet", "outils-dev", "donnees-widget", "extension", "console-extension"];
 
 /**
- * Electron's DemandePermission: the site question of the displayed tab, above the page, which moves down by its height
- * (--webaios-banner). Electron's demandeDe picks it: the oldest question for this window or its active tab. Returns what
+ * The site question of the displayed tab, above the page, which moves down by its height
+ * (--webaios-banner): the oldest question for this window or its active tab. Returns what
  * takes it down.
  */
 export function mountSiteBanner(win: Window, store: WebAiOsStore, fenetreId: IdFenetre): () => void {

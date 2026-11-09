@@ -387,8 +387,8 @@ export async function preparerCopie(o: {
     fondJs = fondGenere(fond.service_worker, fond.type === "module");
     manifeste.background = { ...fond, service_worker: FOND };
   } else {
-    // Sans fond, rien n'activerait ses rulesets ni n'émettrait onInstalled (le preload des correctifs tourne dans le
-    // service worker) : un fond minimal, le garde seul, est déclaré.
+    // Without a background, nothing would activate its rulesets or fire onInstalled (the guard runs in the background):
+    // a minimal background, the guard alone, is declared.
     fondJs = FOND_MINIMAL_AGENT;
     manifeste.background = { service_worker: FOND };
   }

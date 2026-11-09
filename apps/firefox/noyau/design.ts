@@ -1,7 +1,7 @@
-// The host side of design mode: remarks, the external MCP server (Electron's demarrerExternes) and the review, started
-// with the host and without the agent's noyau, as main/index.ts:1074-1205. Each RPC input is checked again with
-// ipc.ts's guards (shared/design-guards.ts) before the service.
-// The noyau is imported first: Electron's externes.ts and envoi.ts load under tsx only once it is linked.
+// The host side of design mode: remarks, the external MCP server and the review, started
+// with the host and without the agent's noyau. Each RPC input is checked again with
+// the shared guards (shared/design-guards.ts) before the service.
+// The noyau is imported first: core/design/externes.ts and envoi.ts load under tsx only once it is linked.
 import { homedir } from "node:os";
 import { join } from "node:path";
 import {
@@ -17,7 +17,7 @@ import {
   DESIGN_ID_MAX, EXTERNAL_ID, ID_PROJECT, INVALID_REQUEST, REMARK_TEXT_MAX, URL_MAX,
 } from "../shared/design-guards.ts";
 
-/** The external MCP port: the asked one, else 5279; a bad value gives NaN, which the server refuses (as index.ts:1192). */
+/** The external MCP port: the asked one, else 5279; a bad value gives NaN, which the server refuses. */
 export const externalMcpPort = (v: string | undefined): number => Number(v ?? PORT_MCP_EXTERNE);
 
 // Copied from service.ts word for word (test/design-host.test.ts checks them): service.ts does not load under tsx.
@@ -103,7 +103,7 @@ export function createDesignHost(o: {
   };
   const review = new ReviewService({ dossiers, chemins: o.chemins, registre: () => registre, applis: o.applis, sites: o.sites, remarques, envoyer: envoiLot });
 
-  // As index.ts:1163-1175: the apps with a manifest, then the site apps, each through the review's queue.
+  // The apps with a manifest, then the site apps, each through the review's queue.
   const takeOver = () => {
     void o
       .applis()
@@ -137,7 +137,7 @@ export function createDesignHost(o: {
         dossiers,
         port: o.port,
         plages: plagesConteneur(process.env.WEBAIOS_PORTS_APPS),
-        // Stricter than Electron (the space root): nothing under the profile folder can be declared.
+        // Stricter than the space root: nothing under the profile folder can be declared.
         racineEspace: o.dataDir,
         maison: o.maison ?? homedir(),
         notifier: o.notifier,
@@ -152,7 +152,7 @@ export function createDesignHost(o: {
       o.diffuser();
     });
 
-  // ServiceDesign's project logic (service.ts:166-198): Electron's applis() is the running apps with a port.
+  // The design service's project logic: applis() is the running apps with a port.
   const running = async () => (await o.applis()).flatMap((a) => (a.etat === "en-marche" && a.port !== undefined ? [{ dossier: a.dossier, nom: a.nom, port: a.port }] : []));
   const projetSuivi = async (p: IdProjet): Promise<ProjetSuivi | null> => {
     if (p.startsWith("app-")) {
@@ -204,7 +204,7 @@ export function createDesignHost(o: {
       return erreur(e);
     }
   };
-  // ServiceDesign.envoyer (service.ts:476-494), with index.ts's site snapshot before the first batch.
+  // The design service's send, with a site snapshot before the first batch.
   const envoyer = async (p: Params): Promise<ResultatExtension> => {
     if (!projetId(p?.projet)) return { ok: false, erreur: INVALID_REQUEST };
     const projet = await projetSuivi(p.projet);
@@ -235,7 +235,7 @@ export function createDesignHost(o: {
       if (!externes) throw new Error(echec ?? "Le MCP externe démarre");
       return externes.brancher(nom);
     },
-    // A bad id does nothing, as ipc.ts.
+    // A bad id does nothing.
     "externes.revoquer": async (p) => {
       if (typeof p?.id === "string" && CLIENT_ID.test(p.id)) await externes?.revoquer(p.id);
     },
@@ -272,7 +272,7 @@ export function createDesignHost(o: {
     "relecture.relu": (p) => review.relu(checkProject(p?.projet), checkToken(p?.jeton)),
     "design.suivi": suivi,
     "design.ajouter": ajouter,
-    // A bad project or id answers as ipc.ts: an empty list, or nothing.
+    // A bad project or id answers an empty list, or nothing.
     "design.panier": async (p) => (projetId(p?.projet) ? (await remarques.panier(p.projet)).map(elementAffiche) : []),
     "design.lots": async (p) => (projetId(p?.projet) ? (await remarques.lots(p.projet)).map(lotAffiche) : []),
     "design.retirer": async (p) => {

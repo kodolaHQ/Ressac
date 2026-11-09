@@ -1,6 +1,6 @@
 import type { Cadre } from "../../shared/modele";
 
-/** Electron's cadreVisible: the recorded frame, rounded, if it still overlaps a screen (else the window would open out of sight). */
+/** The recorded frame, rounded, if it still overlaps a screen (else the window would open out of sight). */
 export function visibleFrame(c: Cadre | null, screens: { x: number; y: number; width: number; height: number }[]): Cadre | undefined {
   if (!c) return undefined;
   const r = { x: Math.round(c.x), y: Math.round(c.y), largeur: Math.round(c.largeur), hauteur: Math.round(c.hauteur) };

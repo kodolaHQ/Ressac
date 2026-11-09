@@ -7,18 +7,18 @@ export type Shortcut =
   | { type: "espace"; n: number }
   | { type: "naviguer"; c: "reculer" | "avancer" | "recharger" | "rechargerSansCache" }
   | { type: "parcourir"; delta: 1 | -1 }
-  /** ⌘J: the agent panel (Electron's menu item « Panneau agent »). */
+  /** ⌘J: the agent panel (menu item « Panneau agent »). */
   | { type: "agent" }
-  /** ⇧⌘S: the sidebar's compact mode (Electron's menu item « Mode compact »). */
+  /** ⇧⌘S: the sidebar's compact mode (menu item « Mode compact »). */
   | { type: "compact" }
-  /** ⌘Y, ⇧⌘J: a UI panel (Electron's menu items « Historique » and « Téléchargements »). */
+  /** ⌘Y, ⇧⌘J: a UI panel (menu items « Historique » and « Téléchargements »). */
   | { type: "panneau"; p: Panneau }
   /** ⌘N, ⇧⌘W: a WebAiOs window, through Firefox's own window opening and closing (the window registry binds them). */
   | { type: "fenetre" }
   | { type: "fermerFenetre" }
-  /** ⇧⌘A: the Applications page (Electron's menu item « Applications »), not Firefox's add-ons. */
+  /** ⇧⌘A: the Applications page (menu item « Applications »), not Firefox's add-ons. */
   | { type: "applications" }
-  /** ⇧⌘D: the design mode of the window in front (Electron's menu item « Mode design »), not Firefox's « bookmark all tabs ». */
+  /** ⇧⌘D: the design mode of the window in front (menu item « Mode design »), not Firefox's « bookmark all tabs ». */
   | { type: "design" }
   /** Firefox's next/previous tab keys walk every XUL tab, other spaces' too: consumed, nothing done. */
   | { type: "ignorer" };
@@ -46,7 +46,7 @@ const SHIFT_COMMAND: Record<string, Shortcut> = {
   d: { type: "design" },
 };
 
-/** The Electron menu accelerators (macOS: ⌘ is Meta). Digits are read on the physical key: ⌘1 types “&” in AZERTY. */
+/** WebAiOs's menu accelerators (macOS: ⌘ is Meta). Digits are read on the physical key: ⌘1 types “&” in AZERTY. */
 export function shortcutFor(e: Keys): Shortcut | null {
   // ShortcutUtils' PREVIOUS_TAB/NEXT_TAB (and ⌃⇧PageUp/PageDown, which move the tab) on macOS.
   if (

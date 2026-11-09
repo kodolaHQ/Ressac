@@ -1,6 +1,5 @@
-// Copies of Electron's design guards, loadable under tsx and in the sidebar bundle (no value import): main/ipc.ts keeps
-// its checks private and imports electron, ID_PROJET lives in a noyau file that needs node:crypto, raisonEchec in
-// externes.ts needs node:fs. test/review-host.test.ts compares each one with the original.
+// The design guards, loadable under tsx and in the sidebar bundle (no value import): ID_PROJET lives in a noyau file
+// that needs node:crypto, raisonEchec in core/design/externes.ts needs node:fs. test/review-host.test.ts checks them.
 import type { ContexteDesign } from "../../../packages/noyau/src/design/remarques";
 
 /** Copy of noyau's ID_PROJET. */
@@ -60,14 +59,14 @@ export function checkClientName(nom: unknown): string {
   return nom;
 }
 
-/** Copies of Electron's design texts: noyau's INDISPONIBLE_DESIGN, ipc.ts's invalide, service.ts's ajouter. */
+/** The design texts: the noyau's INDISPONIBLE_DESIGN, the invalid input's, the cart's. */
 export const UNAVAILABLE_DESIGN = "Le mode design marche sur les applis de l'agent, les applis de site et les projets branchés par un Claude Code";
 /** Copies of noyau's INDISPONIBLE_DESIGN_SITE and AVERTISSEMENT_CAPTURE_SITE (design/projets.ts). */
 export const UNAVAILABLE_DESIGN_SITE = "Le mode design marche dans les pages du site et sur l'accueil, pas sur la carte d'accord, une page de connexion ni en plein écran";
 export const CAPTURE_WARNING_SITE = "L'extrait et la capture de cet élément iront à l'agent.";
 export const INVALID_REQUEST = "Demande invalide";
 export const NOTHING_AIMED = "Aucun élément visé.";
-/** An element's or a batch's id (ipc.ts's `id.length <= 64`). */
+/** An element's or a batch's id (`id.length <= 64`). */
 export const DESIGN_ID_MAX = 64;
 /** Copies of noyau's HTML_MAX and TRONQUE: a context's html is at most a cut one. */
 export const HTML_MAX = 4096;

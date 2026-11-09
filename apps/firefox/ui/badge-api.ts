@@ -3,7 +3,7 @@ import type { BadgeChrome } from "../chrome/store/apps";
 import { local } from "./design-api";
 
 /**
- * Electron's ApiPastille for an app window's badge (PastilleApp.svelte), on what the chrome set on the frame
+ * The API of an app window's badge (PastilleApp.svelte), on what the chrome set on the frame
  * (store/apps.ts badge): its own app's access only. Every value from the chrome is copied into this realm, and a
  * rejection is made again here. Its design mode is its window's: the chrome knows the target, the badge sends none.
  */

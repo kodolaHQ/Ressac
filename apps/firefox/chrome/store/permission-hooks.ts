@@ -44,7 +44,7 @@ export function registerPermissionHooks(o: {
 }): () => void {
   /**
    * Asks the banner about `request` on `browser` and answers through `respond`. No question for an invisible read, a
-   * browser without a tab, or an opaque or unreadable origin (Electron's origineDe: file:, data:, the system principal…).
+   * browser without a tab, or an opaque or unreadable origin (file:, data:, the system principal…).
    * Returns what withdraws the question.
    */
   const ask = (browser: any, principal: any, request: Pick<SiteRequest, "kind" | "mediaTypes" | "lien">, respond: (ok: boolean) => void) => {
@@ -125,7 +125,7 @@ export function registerPermissionHooks(o: {
       });
   };
 
-  // Reading the clipboard: refused without a question, never Firefox's « Coller » menu (spike P8, Electron refuses it).
+  // Reading the clipboard: refused without a question, never Firefox's « Coller » menu (spike P8).
   const { ClipboardContextMenu } = ChromeUtils.importESModule("resource://gre/modules/ClipboardContextMenu.sys.mjs");
   const { PromptUtils } = ChromeUtils.importESModule("resource://gre/modules/PromptUtils.sys.mjs");
   const confirmUserPaste = ClipboardContextMenu.confirmUserPaste;

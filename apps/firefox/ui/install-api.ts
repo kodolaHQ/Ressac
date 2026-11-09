@@ -5,7 +5,7 @@ import { wrapOverlayApi } from "./overlay-api";
 import { createSiteApi, inertWebaios } from "./site-api";
 import type { BadgeChrome } from "../chrome/store/apps";
 
-// Imported first by sidebar.ts: navigateur's etat.svelte.ts reads window.webaios as it loads.
+// Imported first by sidebar.ts: ui/etat.svelte.ts reads window.webaios as it loads.
 // The controller sets the iframe's src only once it exists (chrome/window/index.ts, chrome/window/site-window.ts).
 // An app badge's frame and a design overlay's get their api on the frame element (chrome/window/app-window.ts,
 // chrome/window/design-overlays.ts), set before its src.

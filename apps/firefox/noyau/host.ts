@@ -12,7 +12,7 @@ process.stdout.on("error", () => {});
 process.on("unhandledRejection", (e) => console.error("[webaios] rejet non géré :", e));
 
 process.env.WEBAIOS_CONTENEUR ||= "webaios-atelier-firefox";
-// Two containers cannot publish the same host ports: the Electron app keeps 5280-5299.
+// The existing container's name and host ports: renaming them would orphan it.
 process.env.WEBAIOS_PORTS_CONTENEUR ||= "5300-5319";
 
 const { join } = await import("node:path");
@@ -60,12 +60,11 @@ if (!dataDir) {
 }
 const racine = join(dataDir, "espace");
 const chemins = cheminsEspace(racine);
-// Widgets' data, states and accords: outside the space, like Electron.
+// Widgets' data, states and accords: outside the space.
 const dossierWidgets = join(dataDir, "widgets");
 // Outside the agent's noyau: the history works even when the noyau does not start.
-// Electron's retenable (capture-texte.ts) can't be imported here: it needs the extensionless "../historique" import, which Node refuses.
 const MEMOIRE_BOUCLE = process.env.WEBAIOS_MEMOIRE_BOUCLE === "1";
-// Keep in sync with apps/navigateur/src/main/onglets/capture-texte.ts.
+// The pages whose text the history keeps for the agent's memory: http(s), never the machine (unless WEBAIOS_MEMOIRE_BOUCLE).
 const retenable = (url: string) => {
   try {
     const u = new URL(url);
@@ -88,9 +87,9 @@ const historique = (() => {
 const purge = setInterval(() => historique?.purger(), 6 * 60 * 60 * 1000);
 purge.unref();
 const duckduckgo = process.env.WEBAIOS_TEST_DUCKDUCKGO_URL;
-// Electron's MESSAGE_AGENT_ARRETE (main/index.ts, which imports electron, so it cannot be imported here).
+// Shown when the widgets service has no noyau.
 const MESSAGE_AGENT_ARRETE = "Le service des widgets ne répond pas (agent arrêté ?)";
-// Electron's ipc.ts answer to a bad builder argument.
+// The answer to a bad builder argument.
 const ARGUMENT_INVALIDE = { ok: false as const, erreur: "Argument invalide" };
 // The workflow builder: the block selected in each window, the workflow page each window shows (chrome's mirror).
 const selections = new Map<string, SelectionConstructeur>();
@@ -98,10 +97,10 @@ let actives = new Map<string, string>();
 const writes = new WriteQueue();
 const idAction = (v: unknown): v is string => SchemaIdAction.safeParse(v).success;
 const executionAction = (v: unknown): v is string => SchemaIdExecution.safeParse(v).success;
-// Electron's ipc.ts bound on a link.
+// A link's bound.
 const urlAction = (v: unknown): v is string => typeof v === "string" && v.length > 0 && v.length <= 8192;
 const contexteWidgets = { chemins, dossierWidgets };
-// Actions' runs, results, accords and refusals: outside the space, like Electron.
+// Actions' runs, results, accords and refusals: outside the space.
 const dossierActions = join(dataDir, "actions");
 const contexteActions = { chemins, dossierActions };
 // One container for the agent (whatever its profile) and the apps it launches: the noyau's own default (noyau.ts:389).
@@ -123,7 +122,7 @@ const diffuserAcces = () => {
   }, 50);
 };
 
-// The local AI for harvests: Gemma and the decision model both run in Ollama (Electron launches Kev instead; same
+// The local AI for harvests: Gemma and the decision model both run in Ollama (same
 // /v1/systemone answers). Nothing is installed here: a missing model fails with Ollama's answer.
 const ia = new IaLocale({ dossier: join(dataDir, "ia-locale"), executer: executeurParDefaut, modeleDecision: "pplx-decider-flash" });
 
@@ -215,7 +214,7 @@ let stopping: Promise<void> | undefined;
 const arreter = () =>
   (stopping ??= (async () => {
     // Started first (spike S8) but not awaited before the others: a slow docker must not eat the 5 s quit delay
-    // before the history is closed (Electron runs them side by side). Settled alone, as Electron's index.ts:1482:
+    // before the history is closed. Settled alone:
     // its failure never skips the stops below. WEBAIOS_TEST_ARRET_APPS_ECHOUE: tests only.
     const appsStopped = (process.env.WEBAIOS_TEST_ARRET_APPS_ECHOUE === "1" ? Promise.reject(new Error("arrêt des applis simulé")) : apps.arreter()).catch((e) =>
       console.error("[webaios] les applis ne se sont pas arrêtées :", e),
@@ -268,7 +267,7 @@ const rpc = createRpc({
       }
     },
     "acces.etat": etatAcces,
-    // Home page: the widgets of espace/accueil/widgets, their data and state, the validated theme. Electron's rules,
+    // Home page: the widgets of espace/accueil/widgets, their data and state, the validated theme,
     // with the free placement (version 3).
     "accueil.lire": async () => {
       const n = await pret;
@@ -297,7 +296,7 @@ const rpc = createRpc({
     },
     "accueil.placer": async (p: { placements?: unknown }) => {
       try {
-        // Un placement n'a pas besoin du noyau : les dossiers de l'espace suffisent (comme Electron).
+        // A placement needs no noyau: the space's folders are enough.
         const ids = (await lireAccueil(chemins, dossierWidgets)).widgets.map((w) => w.id);
         await placerWidgets(chemins, validerPlacements(p?.placements, ids));
       } catch (e) {
@@ -347,8 +346,8 @@ const rpc = createRpc({
     "accueil.executions": (p: { id?: unknown }) => executionsWidget(dossierWidgets, typeof p?.id === "string" ? p.id : ""),
     "accueil.execution": (p: { id?: unknown; execution?: unknown }) =>
       executionWidget(dossierWidgets, typeof p?.id === "string" ? p.id : "", typeof p?.execution === "string" ? p.execution : ""),
-    // The workflow builder, as Electron's main/index.ts, ipc.ts and constructeur.ts: inputs checked with the same
-    // schemas, a bad one answered with ipc.ts's shapes. The private-space refusal of an action is the chrome's (api.ts).
+    // The workflow builder: inputs checked with the shared
+    // schemas, a bad one answered with ARGUMENT_INVALIDE's shape. The private-space refusal of an action is the chrome's (api.ts).
     "workflow.catalogue": () => catalogueBlocs(),
     "workflow.lire": (p: { cible?: unknown }) => {
       const cible = SchemaCible.safeParse(p?.cible);
@@ -419,7 +418,7 @@ const rpc = createRpc({
       }
     },
     "workflow.direct": async () => (await pret)?.direct() ?? { courants: [], enAttente: [] },
-    // A bad selection is ignored, as Electron's IPC does.
+    // A bad selection is ignored.
     "workflow.selection": (p: { fenetre?: unknown; cible?: unknown; bloc?: unknown }) => {
       const s = selectionConstructeur(p);
       if (s && typeof p?.fenetre === "string") selections.set(p.fenetre, s);
@@ -428,8 +427,8 @@ const rpc = createRpc({
     "fenetres.actives": (p: Record<string, unknown> | null) => {
       actives = new Map(Object.entries(p ?? {}).filter((e): e is [string, string] => typeof e[1] === "string"));
     },
-    // Actions: what touches the noyau and the disk (the chrome keeps the window state). Inputs checked with Electron's
-    // schemas; a bad one gets Electron's empty answer.
+    // Actions: what touches the noyau and the disk (the chrome keeps the window state). Inputs checked with the shared
+    // schemas; a bad one gets an empty answer.
     "actions.liste": () => actions.liste(),
     "actions.preparer": (p: { id?: unknown; saisie?: unknown }) =>
       idAction(p?.id) && SchemaSaisieAction.safeParse(p.saisie ?? null).success ? actions.preparer(p.id, (p.saisie ?? null) as string | null) : { ok: false, erreur: ACTION_INCONNUE },
@@ -454,7 +453,7 @@ const rpc = createRpc({
     },
     "actions.refuserAccord": (p: { id?: unknown }) => (idAction(p?.id) ? actions.refuserAccord(p.id) : undefined),
     "actions.supprimer": (p: { id?: unknown }) => (idAction(p?.id) ? actions.supprimer(p.id) : { ok: false, erreur: "Demande invalide" }),
-    // Site apps (the window is the chrome's). A bad action is ignored, as Electron's IPC does.
+    // Site apps (the window is the chrome's). A bad action is ignored.
     // The open apps are known again: the Applications page reads them (it read « fermée » while the host was down).
     "sites.pret": () => sites.resynchroniser().then(() => rpc.notify("sites.change")),
     "sites.liste": () => sites.liste(),
@@ -526,7 +525,7 @@ const rpc = createRpc({
     "extensions.horsWebaios": (p: { addonId: string; quoi: "desinstallee" | "desactivee" }) =>
       extensions.horsWebaios(p.addonId, p.quoi),
     "extensions.aTourne": (p: { addonId: string; profil: string; lisible: boolean }) => extensions.aTourne(p.addonId, p.profil, p.lisible),
-    // A content script's message is readable only from a tab the agent can read as it is noted (Electron's
+    // A content script's message is readable only from a tab the agent can read as it is noted:
     // ongletLisibleParAgent): asked of the policy here, which knows an agent-opened tab before Firefox hears of it.
     "extensions.console": (p: { addonId?: unknown; m?: unknown; onglet?: { ongletId?: unknown; url?: unknown } | null }) => {
       const o = p?.onglet;
@@ -627,7 +626,7 @@ const apps = createApplicationsHost({
     montrer: (dossier) => rpc.request("apps.montrer", [dossier]),
     effacer: (dossier) => rpc.request("apps.effacer", [dossier]),
   },
-  // As Electron's agent.ts:258-275: the tab is given to the agent when the text is written, then the panel opens.
+  // The tab is given to the agent when the text is written, then the panel opens.
   deboguer: (f, texte, acces) => {
     sessions.preRemplir(
       f,
@@ -655,7 +654,7 @@ const design = createDesignHost({
   chemins,
   port: externalMcpPort(process.env.WEBAIOS_PORT_MCP_EXTERNE),
   sites: () => sites.liste().then((l) => l.map(({ id, nom }) => ({ id, nom }))),
-  // Every app, as Electron's gestionnaire.liste() (apps.liste() keeps the running ones only).
+  // Every app (apps.liste() keeps the running ones only).
   applis: () => apps.gestionnaire.liste(),
   preRemplir: (f, t) => sessions.preRemplir(f, t),
   chrome: { fenetreAgent: () => rpc.request("design.fenetreAgent"), donnerAgent: (f) => rpc.notify("design.donnerAgent", [f]) },
@@ -664,7 +663,7 @@ const design = createDesignHost({
 });
 // Actions: the noyau and disk half; the chrome keeps the window state (private spaces, tabs, pace of links).
 const actions = createActionsHost({ chemins, dossierActions, noyau: () => noyau, surChange: () => rpc.notify("actions.change") });
-// The actions and components folders, watched outside the noyau like Electron's agent.ts: the page lists even without it.
+// The actions and components folders, watched outside the noyau: the page lists even without it.
 let arretActions: (() => Promise<void>) | undefined;
 try {
   arretActions = surveillerActions(chemins, () => rpc.notify("actions.change"));

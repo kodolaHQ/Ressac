@@ -45,7 +45,7 @@ export interface AgentExtensions {
   readonly ready: Promise<void>;
   /** Settled once a host sent the grants (extensions.portees), or after SCOPES_WAIT_MS: then check refuses what it does not know. */
   scopesKnown(): Promise<void>;
-  /** As Electron's bar, which lists what a profile's session loaded: an agent add-on only where it runs; any other everywhere. */
+  /** The bar lists an agent add-on only where it runs; any other everywhere. */
   shownIn(addonId: string, profil: IdProfil, prive: boolean): boolean;
   /** `cb` after each new set of grants (extensions.portees). */
   onScopes(cb: () => void): () => void;
@@ -201,7 +201,7 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
     return onglet && espace ? { onglet, espace } : null;
   };
 
-  // The tabs each agent extension's scripts were let into (as Electron's suivreOnglet): a profile turned private reloads
+  // The tabs each agent extension's scripts were let into: a profile turned private reloads
   // them (rechargerOngletsAgent), whatever the extension's state now: switched off there, its scripts still run.
   const ran = new Map<string, Set<any>>();
   /** Reloads the tabs of `profils` that `addonId` (every agent extension if null) ran in; forgets the closed ones. */
@@ -252,7 +252,7 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
     if (!scope?.actif) return false;
     switch (kind) {
       case "urlPermise": {
-        // Relative: within the extension. Its own pages only; anything else as Electron's urlPermiseAgent.
+        // Relative: within the extension. Its own pages only; anything else through urlPermiseAgent.
         const host = WebExtensionPolicy.getByID(addonId)?.mozExtensionHostname;
         if (typeof value !== "string" || !host) return false;
         let u: URL;
@@ -269,11 +269,11 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
       }
       case "estOnglet": {
         // A WebAiOs tab of a non-private space, in the container of a profile where the extension is active (spec choice
-        // 2: its content scripts follow its spaces; Electron loads it in that profile's session only).
+        // 2: its content scripts follow its spaces).
         const tab = tabOf(value);
         const t = ongletDe(tab);
         if (!t || t.espace.prive || !scope.profils.includes(t.espace.profil) || tab.userContextId !== existingContainer(t.espace.profil)) return false;
-        // Its scripts will run there: a tab the agent cannot read masks its console for good (as Electron's aTourneDansOnglet).
+        // Its scripts will run there: a tab the agent cannot read masks its console for good.
         if (!access().onglets[t.onglet.id]?.lecture) masked(addonId, t.espace.profil);
         ran.set(addonId, (ran.get(addonId) ?? new Set()).add(tab));
         return true;
@@ -283,9 +283,9 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
   }
 
   /**
-   * A console message an agent extension wrote in a content process (spike S6), as Electron notes it: from the extension
+   * A console message an agent extension wrote in a content process (spike S6): from the extension
    * process, its own pages (`onglet` null); from a web process, a content script: the WebAiOs tab of a non-private space
-   * it came from (else none), whose readability the noyau decides as it notes it (its policy, as Electron's
+   * it came from (else none), whose readability the noyau decides as it notes it (its policy,
    * ongletLisibleParAgent). A web process is untrusted: the window must be one of its own, looked up here.
    */
   function relayConsole(from: { childID: number; remoteType: string }, data: unknown): void {
@@ -312,7 +312,7 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
     host().notify("extensions.console", { addonId: d.addonId, m, onglet });
   }
 
-  // The network guard beyond the copy's CSP, as Electron's equiperPagesAgent and more: every http(s) request an agent
+  // The network guard beyond the copy's CSP: every http(s) request an agent
   // extension loads or starts, of any type (navigation, window, a redirect of one, but also what Firefox's parent loads
   // for it, such as a notification icon, which no CSP sees), goes only where urlPermise says. Fail closed before the
   // grants arrive. Content scripts carry an expanded principal (no addonId): not concerned.
@@ -322,7 +322,7 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
     const addonId: string = info.loadingPrincipal?.addonId || info.triggeringPrincipal?.addonId || "";
     if (addonId.endsWith(SUFFIX) && !check(addonId, "urlPermise", channel.URI.spec)) channel.cancel(Cr.NS_BINDING_ABORTED);
   }, "http-on-modify-request");
-  // Electron has none of these, and Firefox grants activeTab to an MV3 extension on a click of its button, its menu
+  // Firefox grants activeTab to an MV3 extension on a click of its button, its menu
   // item or its command even without the right (originControls): refused in the parent, for every page of the agent's
   // extensions (background, popup, tabs), before Firefox looks at the call.
   // The conduit bound its recv methods at startup: its APICall entry is the one to wrap.
@@ -337,8 +337,8 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
   });
   // runtime.setUninstallURL: Firefox opens it with a null principal when the add-on goes, so it is read through
   // urlPermise then (null: no tab). Hooked on each agent extension as it starts, and on those already running.
-  // The parking tab is no tab for Electron: tabs.query, tabs.get, windows.getAll and the tab events never list it, even with the
-  // tabs right. Nor a tab of a private space: Electron never loads an agent extension in a private profile's session.
+  // The parking tab is no tab for an agent extension: tabs.query, tabs.get, windows.getAll and the tab events never list it, even with the
+  // tabs right. Nor a tab of a private space: an agent extension never runs in a private space.
   // canAccessTab is what Firefox's TabManager asks before it wraps any tab for the extension.
   const guardExtension = (extension: { id: string; uninstallURL: string | null; tabManager: { canAccessTab(tab: any): boolean } }) => {
     if (!extension?.id?.endsWith(SUFFIX)) return;

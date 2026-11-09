@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * Electron's CadreComposant for Firefox: an agent component in a sandboxed opaque frame (`sandbox="allow-scripts"`),
+   * An agent component in a sandboxed opaque frame (`sandbox="allow-scripts"`),
    * served from its sanitized resource:// copy (chrome/store/action-media.ts), served again on each actions.change (the
    * agent may have rewritten it: a new mtime, a new URL). It gets its props, the theme and its width by message; its
    * `parent.postMessage` reaches the chrome as a `webaios-composant` event (the copy's bridge), listened on the window

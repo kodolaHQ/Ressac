@@ -123,7 +123,7 @@ export interface ResultatRecherche {
   total: number;
 }
 
-/** API exposée à l'interface par le preload (`window.webaios`). */
+/** The API the UI gets as `window.webaios` (ui/install-api.ts). */
 export interface ApiWebaios {
   fenetreId: IdFenetre;
   agir(action: Action): void;
@@ -204,7 +204,7 @@ export interface ApiWebaios {
     retirer(id: string): void;
     /**
      * Lien demandé par l'affichage du widget `id` : http(s) seulement, dans un onglet de cette fenêtre. Ouvert seulement
-     * si un vrai clic de l'utilisateur vient de tomber dans l'affichage de ce widget (vu par le preload du cadre).
+     * if a real click of the user just landed in this widget's display (seen by the UI's listener on the frame).
      */
     ouvrir(url: string, id: string): void;
     /** Profils de connexion qu'un accord peut utiliser (jamais celui d'un espace privé). */
@@ -571,7 +571,7 @@ export interface EtatIaAffiche {
   verification?: { kev: boolean; uv: boolean; ollama: boolean; gemma: boolean };
 }
 
-/** Ce que l'interface de la pastille d'une fenêtre d'appli reçoit du preload : l'accès de l'agent et le mode design de son appli. */
+/** What an app window's badge UI gets (ui/badge-api.ts): the agent's access and its app's design mode. */
 export type ApiPastille = Pick<ApiWebaios, "acces" | "surAcces"> & {
   /** Demande au process principal d'agrandir (bulle ouverte) ou de rétrécir la vue de la pastille. */
   pastilleTaille(ouverte: boolean): void;

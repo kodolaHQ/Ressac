@@ -1,15 +1,8 @@
-// Le réseau des extensions de l'agent, fermé par défaut (spec §5, plan 12 tâche 12).
-//
-// Branche B (aucun `session.webRequest`) : la CSP imposée à la copie (`connect-src 'self' https://<reseau>`, noyau
-// `cspAgent`) suffit ; Electron 45 l'applique au service worker comme aux pages (mesuré : fetch, WebSocket, sendBeacon
-// bloqués). La tâche 1 avait choisi la branche A (un `onBeforeRequest` par session de profil, vérification par
-// l'initiateur), mais la tâche 12 a mesuré qu'un seul écouteur `session.webRequest` sur une session y coupe tout
-// `declarativeNetRequest` (règles statiques, dynamiques, de session : celles du Store comme celles de l'agent) : il
-// « coupe » donc quelque chose, ce qui, selon le plan, mène à la branche B. Voir
-// docs/superpowers/notes/2026-10-29-essai-webrequest.md (section « Tâche 12 »).
-// S'y ajoutent : navigations et ouvertures de ses pages (`brancherPagesAgent`), et les adresses que ses appels à
-// `tabs.create`, `tabs.update`, `windows.create` ouvrent (`urlPermiseAgent`, crochets du correctif de la bibliothèque
-// et garde webaios-garde-fond.js).
+// The agent extensions' network, closed by default (spec §5, plan 12 task 12): the copy's CSP (`connect-src 'self'
+// https://<reseau>`, noyau `cspAgent`) and the chrome's request guard (chrome/store/agent-extensions.ts) close it.
+// This module holds the pure checks the chrome asks: the addresses an agent extension's pages and its calls to
+// `tabs.create`, `tabs.update`, `windows.create` may open (`urlPermiseAgent`, asked by the guard webaios-garde-fond.js),
+// and the hosts it may script (`hotePermisAgent`).
 import type { Portee } from "@webaios/noyau";
 
 function lire(url: string): URL | null {

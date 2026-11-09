@@ -4,7 +4,7 @@
   import type { ApiSite } from "../shared/api";
 
   /**
-   * Electron's CadreAccueil for Firefox: the app's home screen, written by the agent, in a sandboxed opaque frame
+   * The app's home screen, written by the agent, in a sandboxed opaque frame
    * (`sandbox="allow-scripts"`) served from its sanitized copy (chrome/store/site-home.ts). Its `parent.postMessage`
    * reaches the chrome as a `webaios-home` event (the copy's bridge), listened above the frame on the window root,
    * before it loads. A message counts only from this frame showing this app's home; real presses are seen on the

@@ -1,8 +1,8 @@
 import type { ProfilPourAccord } from "../shared/api";
 import type { EtatNavigateur, IdFenetre } from "../shared/modele";
 
-// Pure copies of Electron's rules (main/agent/lecture-invisible.ts and accueil.ts): the sidebar bundle cannot import the
-// main-process files (electron) nor node:net.
+// Pure rules of the reads and the home page: the sidebar bundle cannot import
+// node:net.
 
 /** Les profils de connexion qu'une lecture peut utiliser : ceux de l'état qu'aucun espace privé n'utilise. */
 export function profilsLisibles(etat: Pick<EtatNavigateur, "profils" | "espaces">): string[] {

@@ -8,7 +8,7 @@ import { pacedTarget } from "./paced";
 
 const { ContextualIdentityService } = ChromeUtils.importESModule("moz-src:///toolkit/components/contextualidentity/ContextualIdentityService.sys.mjs");
 
-// Electron's limits (apps/navigateur/src/main/agent/lecture-invisible.ts).
+// Read limits: two reads at a time, 30 s each.
 const LECTURES_SIMULTANEES = 2;
 const DELAI_TOTAL_MS = 30_000;
 const TROP_LENTE = "Page trop lente : 30 s dépassées";
@@ -169,7 +169,7 @@ async function createBrowser(userContextId: number, o: { private: boolean }): Pr
       if (Date.now() > until) throw new Error("Préparation de la page impossible");
     await browser.browsingContext.currentWindowGlobal.getActor("WebAiOsReading").sendQuery("prepare");
     browser.browsingContext.mediaController?.mute();
-    // Not throttled as a background tab (Electron's backgroundThrottling: false).
+    // Not throttled as a background tab.
     browser.docShellIsActive = true;
     return { browser, close };
   } catch (e) {
@@ -264,7 +264,7 @@ function screensOf(defiler: unknown): number {
   return typeof defiler === "number" && Number.isInteger(defiler) && defiler > 0 ? Math.min(defiler, DEFILER_MAX) : 0;
 }
 
-/** Electron's `mettreEnForme` (not exported): the page may have influenced everything but the types and the bounds. */
+/** The page may have influenced everything but the types and the bounds. */
 function shapePage(url: string, p: Parts, b: Bounds): PageLue {
   const liens: PageLue["liens"] = [];
   const vus = new Set<string>();
@@ -305,7 +305,7 @@ export function readHtml(store: Store, url: string, o: { adressesLocales?: boole
 }
 
 /**
- * Electron's `lireDans`: loads `url`, waits for the load then 2 s of calm (until `deadline` at most), scrolls if asked,
+ * Loads `url`, waits for the load then 2 s of calm (until `deadline` at most), scrolls if asked,
  * reads. Every request is guarded (`watchReading`); a top-level navigation outside `allowed` stops the read.
  */
 function readIn<T>(
@@ -419,7 +419,7 @@ function readIn<T>(
       const raw = (await actor().sendQuery(name)) as { hauteur?: unknown; bas?: unknown } | null;
       return { hauteur: typeof raw?.hauteur === "number" ? raw.hauteur : 0, bas: raw?.bas === true };
     };
-    /** Electron's `defilerPuisLire`: one screen at a time until `screens`, the bottom of a page that stopped growing, or the forced read. */
+    /** One screen at a time until `screens`, the bottom of a page that stopped growing, or the forced read. */
     const scrollThenRead = async () => {
       if (done || inRead) return;
       inRead = true;

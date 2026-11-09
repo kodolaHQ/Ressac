@@ -38,7 +38,6 @@ import { AMO_URL, CLES_ABSENTES, ErreurSignature, lireCleAmo, signatureImpossibl
 import { carteDe, nonPrisEnCharge } from "./carte.ts";
 import { addonIdDe, manifesteFirefox, prochaineVersion, refusFirefox, SUFFIXE_ID, zipper } from "./copie-firefox.ts";
 
-// Keep in sync with apps/navigateur/src/main/extensions/agent.ts (texts and reperesDuChemin).
 export const DOSSIER_ABSENT = "Dossier absent";
 export const ACTIVATION_REFUSEE = "Activation refusée";
 export const ACTIVATION_RETIREE = DEMANDE_RETIREE;
@@ -47,10 +46,9 @@ const RETIREE_PENDANT_CARTE = "Extension retirée pendant la carte : rien n'est 
 const ESPACE_DISPARU = "Espace disparu pendant la carte : rien n'est activé";
 export const dossierAbsent = (id: string) => `${DOSSIER_ABSENT} : ~/WebAiOs/extensions/${id} n'existe plus (recrée-le, puis recharger_extension)`;
 export const SANS_ACCORD = "Extension sans accord : demande d'abord son activation";
-/** Firefox refused the signed .xpi (no Electron text: new, like decision 9's). */
+/** Firefox refused the signed .xpi. */
 export const installationImpossible = (m: string) => "Installation impossible : " + m.slice(0, 2000);
 
-// Keep in sync with apps/navigateur/src/main/extensions/service.ts (console unlock texts, DROITS_OBSERVATEURS).
 export const CONSOLE_PROFIL_PRIVE = "Extension active dans le profil d'un espace privé : sa console n'est jamais montrée à l'agent";
 export const DEBLOCAGE_INACTIVE = "Extension inactive ou désactivée : rien à débloquer (demande d'abord son activation)";
 export const DEBLOCAGE_CHANGE = "L'extension a changé pendant la carte : rien n'est débloqué";
@@ -63,7 +61,7 @@ export const DROITS_OBSERVATEURS = ["tabs", "webNavigation", "cookies", "history
   "declarativeNetRequestFeedback"];
 const NIVEAUX: readonly string[] = ["log", "info", "warn", "error", "debug"] satisfies MessageConsole["niveau"][];
 
-/** What the unlock card showed (Electron's LienDeblocage): the unlock holds only for that. */
+/** What the unlock card showed: the unlock holds only for that. */
 interface LienDeblocage {
   /** The profiles where it was active: active in another one ends it. */
   profils: string[];
@@ -110,7 +108,7 @@ const profilsPrivesDe = (n: Navigateur) => new Set(n.espaces.filter((e) => e.pri
 const memesReperes = (a: Repere[], b: Repere[]) =>
   a.length === b.length && a.every((x, i) => x.chemin === b[i]!.chemin && x.dev === b[i]!.dev && x.ino === b[i]!.ino);
 
-/** Why the console of `cle` cannot (or no longer) be unlocked, or null (Electron's refusDeblocage). */
+/** Why the console of `cle` cannot (or no longer) be unlocked, or null. */
 function refusDeblocage(e: EtatExtensions, prives: ReadonlySet<string>, cle: string): string | null {
   const x = e.extensions[cle];
   if (!x || x.source !== "agent") return `Extension inconnue : ${cle}`;
@@ -151,9 +149,9 @@ export class ExtensionsAgent {
   private readonly consoles = new ConsolesExtensions({
     surPlantages: (addonId) => void this.desactiverPlantages(addonId).catch((e: unknown) => console.error(`[extensions] ${addonId} non désactivée après ses plantages :`, e)),
   });
-  /** Consoles unlocked for the agent, by key: in memory only (quitting ends them), as Electron. */
+  /** Consoles unlocked for the agent, by key: in memory only (quitting ends them). */
   private readonly deblocages = new Map<string, LienDeblocage>();
-  /** The last refused startup or reload of each key (Electron's erreursAgent), shown until one passes. */
+  /** The last refused startup or reload of each key, shown until one passes. */
   private readonly erreursEnvoi = new Map<string, string>();
   /** Unlock cards shown, by key: one at a time, taken down if the extension leaves the registry or changes. */
   private readonly cartesDeblocage = new Map<string, { reponse: Promise<Issue>; retrait: AbortController; lien: LienDeblocage; attentes: number }>();
@@ -209,7 +207,7 @@ export class ExtensionsAgent {
     return r;
   }
 
-  /** The agent's extension tools (Electron's outilsAgent, service.ts). */
+  /** The agent's extension tools. */
   outils(): OutilsExtensions {
     return {
       lister: () => this.lister(),
@@ -242,7 +240,7 @@ export class ExtensionsAgent {
     this.consoles.plantage(addonId, typeof le === "number" && le <= maintenant ? le : maintenant);
   }
 
-  /** As Electron's desactiverPlantages: disabled everywhere (`DESACTIVEE_PLANTAGES`), shown on the page with « Réactiver ». */
+  /** Disabled everywhere after crashes (`DESACTIVEE_PLANTAGES`), shown on the page with « Réactiver ». */
   private async desactiverPlantages(addonId: string): Promise<void> {
     const cle = this.cle(addonId.slice(0, -SUFFIXE_ID.length))!;
     const r = await this.ecrireCle(cle, (e) => {
@@ -253,7 +251,7 @@ export class ExtensionsAgent {
     console.warn(`[extensions] ${cle} désactivée : ${DESACTIVEE_PLANTAGES}`);
   }
 
-  /** `console_extension` (Electron's consolePourAgent): filtered (unlocked: whole); null if not in the registry. */
+  /** `console_extension`: filtered (unlocked: whole); null if not in the registry. */
   private async consolePourAgent(id: string, depuis?: number): Promise<ConsolePourAgent | null> {
     const cle = this.cleAgent(id);
     const etat = await lireEtatExtensions(this.o.dossier);
@@ -264,7 +262,7 @@ export class ExtensionsAgent {
     return this.consoles.pourAgent(addonIdDe(this.id(cle)!), this.filtreAgent(etat, cle, depuis));
   }
 
-  /** Electron's filtreAgent: unlocked; ran in an unreadable tab (entry flag, or its add-on id kept after a removal); observing right. */
+  /** The console filter: unlocked; ran in an unreadable tab (entry flag, or its add-on id kept after a removal); observing right. */
   private filtreAgent(etat: EtatExtensions, cle: string, depuis?: number): FiltreAgent {
     const x = etat.extensions[cle];
     const a = x?.accord;
@@ -277,7 +275,7 @@ export class ExtensionsAgent {
   }
 
   /**
-   * `debloquer_console` (Electron's debloquerConsole): the unlock card, for an agent extension active somewhere, never
+   * `debloquer_console`: the unlock card, for an agent extension active somewhere, never
    * in a private space's profile, naming the spaces of its profiles. Granted: its console is whole for what the card
    * showed, until refermer_console or a registry write that ends it (verifierDeblocages).
    */
@@ -361,7 +359,7 @@ export class ExtensionsAgent {
     for (const [cle, carte] of this.cartesDeblocage) if (refusDeblocage(e, prives, cle) || lienRompu(e, cle, carte.lien)) carte.retrait.abort();
   }
 
-  /** `<id>` or `agent:<id>`, as Electron's cleAgentPour. */
+  /** `<id>` or `agent:<id>`. */
   private cleAgent(id: string): string | null {
     return this.cle(id.startsWith("agent:") ? id.slice("agent:".length) : id);
   }
@@ -390,7 +388,7 @@ export class ExtensionsAgent {
       .map(([cle, x]): ExtensionPourAgent => {
         const espaces = nav.espaces.filter((e) => x.profils.includes(e.profil));
         const id = this.id(cle);
-        // As Electron's listePourAgent: its kept error, its disabling, then its console's errors as console_extension filters them.
+        // Its kept error, its disabling, then its console's errors as console_extension filters them.
         const erreurs = [...(this.erreursEnvoi.has(cle) ? [this.erreursEnvoi.get(cle)!] : []), ...(x.desactivee ? [x.desactivee.raison === "plantages" ? DESACTIVEE_PLANTAGES : DESACTIVEE_PORTEE] : [])];
         if (id && !x.profils.some((p) => profilsPrives.has(p))) erreurs.push(...this.consoles.erreursPourAgent(addonIdDe(id), this.filtreAgent(etat, cle)).slice(-ERREURS_CONSOLE_PAGE));
         return {
@@ -407,7 +405,7 @@ export class ExtensionsAgent {
     return [...agent, ...modules];
   }
 
-  /** The Extensions page (Electron's liste, the agent's only): one row per registry entry, by name. */
+  /** The Extensions page (the agent's only): one row per registry entry, by name. */
   async liste(): Promise<LigneExtension[]> {
     const [nav, etat] = await Promise.all([this.navigateur(), lireEtatExtensions(this.o.dossier)]);
     const prives = profilsPrivesDe(nav);
@@ -512,7 +510,7 @@ export class ExtensionsAgent {
   }
 
   /**
-   * `demander_extension` (Electron's demanderPourAgent): the space named (id or name, never a private one), else the
+   * `demander_extension`: the space named (id or name, never a private one), else the
    * active space of the agent's window (or the foreground one); then the card, in that window.
    */
   private async demander(id: string, x: { espace?: string; fenetre: string | null; signal?: AbortSignal }): Promise<ResultatDemandeExtension> {
@@ -536,7 +534,7 @@ export class ExtensionsAgent {
   }
 
   /**
-   * As Electron's activation (agent.ts): private profile → refused without a card; already granted and active there →
+   * Activation: private profile → refused without a card; already granted and active there →
    * nothing asked. Else the copy is prepared and its card shown; accepted (the scope shown, the space still there and
    * not private), it is signed and installed on that scope, and only then granted and active in the space's profile.
    */
@@ -663,7 +661,7 @@ export class ExtensionsAgent {
   }
 
   /**
-   * The chrome saw it about to run in a tab of `profil` the agent cannot read (as Electron's aTourneDansOnglet): its
+   * The chrome saw it about to run in a tab of `profil` the agent cannot read: its
    * console stays masked to the agent there (`consoleMasquee`), and by add-on id (`consolesMasquees`, never emptied).
    */
   async aTourne(addonId: string, profil: string, lisible: boolean): Promise<void> {
@@ -682,7 +680,7 @@ export class ExtensionsAgent {
   }
 
   /**
-   * The chrome's private profiles (`extensions.profilsPrives`, as Electron's appliquerProfilsPrives): each agent extension
+   * The chrome's private profiles (`extensions.profilsPrives`): each agent extension
    * active in one is taken out of it, the tabs of those profiles where it ran are reloaded (A7: its scripts stop), and
    * it is disabled where it is active nowhere else.
    */
@@ -701,7 +699,7 @@ export class ExtensionsAgent {
   }
 
   /**
-   * The « Extensions » section of a space's settings (Electron's pourEspace, the agent's only): registry entries and the
+   * The « Extensions » section of a space's settings (the agent's only): registry entries and the
    * agent's folders never granted (their names only), seen from that space's profile.
    */
   async pourEspace(espaceId: string): Promise<LigneExtensionEspace[]> {
@@ -726,7 +724,7 @@ export class ExtensionsAgent {
   }
 
   /**
-   * A space settings' switch (Electron's basculer): off → taken out of the space's profile; on → refused in a private
+   * A space settings' switch: off → taken out of the space's profile; on → refused in a private
    * profile, through the card without a grant (or disabled for a broadened scope), else active there at once.
    */
   async basculer(cle: string, espaceId: string, actif: boolean, fenetre: string | null): Promise<{ ok: true } | { ok: false; erreur: string }> {
@@ -857,7 +855,7 @@ export class ExtensionsAgent {
   ): Promise<ResultatEnvoi> {
     const p = prepare ?? (await this.preparer(id));
     if (!p.ok) {
-      // As Electron: only a missing folder stops the running version.
+      // Only a missing folder stops the running version.
       if (p.refus.includes(DOSSIER_ABSENT)) await this.o.rpc.request("extensions.activer", { addonId: addonIdDe(id), actif: false });
       return { ok: false, erreur: p.refus.map((r) => (r === DOSSIER_ABSENT ? dossierAbsent(id) : r)).join(" ; "), refus: p.refus };
     }
@@ -881,7 +879,7 @@ export class ExtensionsAgent {
     const garde = await this.garde(id);
     if (garde?.empreinte === empreinte) {
       await effacer();
-      // A reload still counts as a new start (modifieeLe: its console unlock ends, as in Electron).
+      // A reload still counts as a new start (modifieeLe: its console unlock ends).
       if (!o.demarrage && !o.activer) await this.o.rpc.request("extensions.redemarrer", { addonId: addonIdDe(id) });
       else change = false;
     } else if (o.demarrage && garde && !(await this.actifApresEnvoi(cle))) {
@@ -1018,7 +1016,7 @@ export class ExtensionsAgent {
   }
 
   /**
-   * The controlled copy of `<dossierAgent>/<id>` in `copies/<id>.attente` (as Electron's preparerAgent: path without
+   * The controlled copy of `<dossierAgent>/<id>` in `copies/<id>.attente` (path without
    * links, checked before and after), plus the Firefox refusals. A refusal leaves no staging copy.
    */
   private async preparer(id: string): Promise<Preparation | { ok: false; refus: string[] }> {

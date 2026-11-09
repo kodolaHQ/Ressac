@@ -5,7 +5,7 @@
   import { api } from "../ui/etat.svelte";
   import { homeListForBuilder } from "./builder";
 
-  // Electron's builder page. Its own suivreDisparitions(api.accueil) comes second and is ignored (first call wins): the
+  // The builder page. Its own suivreDisparitions(api.accueil) comes second and is ignored (first call wins): the
   // Firefox home read also carries the theme.
   let { cible }: { cible: Proprietaire } = $props();
   suivreDisparitions(homeListForBuilder(api));

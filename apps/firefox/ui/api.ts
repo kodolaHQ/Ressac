@@ -13,14 +13,14 @@ import { ACTIONS_EN_ESPACE_PRIVE } from "../shared/actions";
 import { createActionsApi, espaceActifPrive, type ActionsFirefox } from "./actions-api";
 import { createDesignApi, createExternesApi, createRelectureApi } from "./design-api";
 
-/** What the Firefox page reads: Electron's widgets, plus the theme the frozen API did not carry. */
+/** What the Firefox page reads: the widgets, plus the theme the frozen API did not carry. */
 export interface AccueilLu {
   widgets: WidgetAffiche[];
   theme: ThemeAccueil | null;
 }
 
 /**
- * The Electron preload's API, with the home page's read widened to carry the theme and free placements (Task 7), and
+ * The UI's API, with the home page's read widened to carry the theme and free placements (Task 7), and
  * the actions' result images and components asked of the chrome.
  */
 export interface ApiFirefox extends Omit<ApiWebaios, "accueil" | "actions"> {
@@ -28,7 +28,7 @@ export interface ApiFirefox extends Omit<ApiWebaios, "accueil" | "actions"> {
   accueil: Omit<ApiWebaios["accueil"], "lire" | "placer"> & {
     lire(): Promise<AccueilLu>;
     placer(placements: PlacementLibre[]): void;
-    /** A real pointerdown in a widget's display, seen by the UI's chrome listener (no API in the frozen Electron type). */
+    /** A real pointerdown in a widget's display, seen by the UI's chrome listener (not in the frozen ApiWebaios type). */
     geste(id: string): void;
   };
   /** The design mode's cart column, opened or closed by App.svelte (ZoneContenu's rule), on the project of the active tab. */
@@ -45,7 +45,7 @@ declare global {
   }
 }
 
-// Electron's MESSAGE_AGENT_ARRETE, as noyau/host.ts retypes it (a Node module this bundle cannot import).
+// Same text as noyau/host.ts's (a Node module this bundle cannot import).
 const MESSAGE_AGENT_ARRETE = "Le service des widgets ne répond pas (agent arrêté ?)";
 
 /**
@@ -76,7 +76,7 @@ export async function servirAffichages(
 }
 
 /**
- * The Electron preload's `window.webaios`, on the Firefox window controller. What is not migrated yet (applications, sites,
+ * `window.webaios`, on the Firefox window controller. What is not migrated yet (applications, sites,
  * extensions, actions) answers empty; any other member is recorded in `window.webaiosMissingApi` and is undefined.
  */
 export function createApi(win: WindowController): ApiFirefox {
@@ -99,13 +99,13 @@ export function createApi(win: WindowController): ApiFirefox {
   /** An extension action in the noyau host; its answer copied into this realm, a failure given back as text. */
   const extension = (method: string, params: Record<string, unknown>) =>
     host.request<ResultatExtension>(method, params).then((r) => structuredClone(r), (e) => ({ ok: false as const, erreur: e instanceof Error ? e.message : String(e) }));
-  /** A host request answered in this realm; `fallback` when the host does not answer (Electron with no agent). */
+  /** A host request answered in this realm; `fallback` when the host does not answer (no agent). */
   const ask = <T>(method: string, params: unknown, fallback: T): Promise<T> => host.request<T>(method, params).then((r) => structuredClone(r), () => fallback);
   /** An action's builder in a window whose active space is private (or unknown), read at the moment of asking. */
   const privateAction = (cible: { type: string }) => cible.type === "action" && (!win.store.state || espaceActifPrive(win.store.state, fenetre));
   const api: Partial<ApiFirefox> = {
     fenetreId: win.fenetreId,
-    // A tab the user closes may ask first (Electron's ipc.ts sends fermerOnglet to Vues.fermer).
+    // A tab the user closes may ask first (beforeunload).
     agir: (action) => void (action.type === "fermerOnglet" ? win.closeTab(action.id) : win.store.dispatch(action)),
     surEtat(callback) {
       // The state lives in the store's realm: the UI always gets its own copy, made in this realm.
@@ -241,7 +241,7 @@ export function createApi(win: WindowController): ApiFirefox {
       },
       agir(dossier, action) {
         if (action === "dossier") return win.store.apps.reveal(dossier);
-        // Electron's index.ts relire: the app's Review page, under its name; a project without manifest has none.
+        // The app's Review page, under its name; a project without manifest has none.
         if (action === "relire") {
           if (!dossierValide(dossier)) return;
           return void api.applications!.liste()
@@ -266,7 +266,7 @@ export function createApi(win: WindowController): ApiFirefox {
       },
       agir(id, action) {
         if (action === "dossier") return win.store.sites.revealSite(id);
-        // Electron's index.ts relire: the app's Review page, under its name.
+        // The app's Review page, under its name.
         if (action === "relire")
           return void api.sites!.liste()
             .then((l) => win.store.dispatch({ type: "ouvrirRelecture", fenetreId: fenetre, projet: "site-" + id, nom: (l.find((s) => s.id === id)?.nom ?? id).slice(0, 80) }))
@@ -304,7 +304,7 @@ export function createApi(win: WindowController): ApiFirefox {
       installerStore: () => extension("extensions.installerStore", {}),
     } as Partial<ApiWebaios["extensions"]> as ApiWebaios["extensions"],
     // The workflow builder: its reads and writes in the noyau host. An action's is refused in a private space with the
-    // shapes of Electron's creerConstructeurActions; its reads are checked again once answered.
+    // shapes of the builder's answers; its reads are checked again once answered.
     workflow: {
       catalogue: () => ask("workflow.catalogue", undefined, []),
       lire: async (cible) => (privateAction(cible) ? null : ask("workflow.lire", { cible }, null).then((r) => (privateAction(cible) ? null : r))),

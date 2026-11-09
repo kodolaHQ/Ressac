@@ -1,4 +1,4 @@
-// The design mode in the chrome (spec §5.4-5.5): Electron's ServiceDesign (main/design/service.ts:142-468) on the
+// The design mode in the chrome (spec §5.4-5.5): the design service on the
 // WebAiOsDesign actor (chrome/agent/design-actor.ts, packaged: never changed here) and the targets' <browser>s.
 // The actor's limits are handled here: a frame's guard has no timeout (every frame guarded is unguarded on every exit),
 // a second arm may leave the first pending (never armed twice, stale answers dropped by generation), and its stop may
@@ -48,7 +48,7 @@ export interface DesignOverlays {
 export interface DesignService {
   etat(t: DesignTarget): Promise<EtatDesign>;
   toggle(t: DesignTarget): Promise<void>;
-  /** ⇧⌘D in `win`: Electron's choisirCibleDesign on that window; a site app's sign-in window: the avis in the app's bar. */
+  /** ⇧⌘D in `win`: the design target of that window; a site app's sign-in window: the avis in the app's bar. */
   shortcut(win: Window): void;
   stop(t: DesignTarget): Promise<void>;
   /** The bubble's « Ajouter ». */
@@ -121,7 +121,7 @@ const within = <T>(p: Promise<T>, ms: number, late: T): Promise<T> => {
 const sourceText = (s: ContexteDesign["source"]): string | null => (s ? (s.ligne !== undefined ? `${s.fichier}:${s.ligne}` : s.fichier) : null);
 
 /**
- * The element's PNG (base64, no prefix), as Electron's capturerElement: rectCapture's rectangle in view pixels × zoom,
+ * The element's PNG (base64, no prefix): rectCapture's rectangle in view pixels × zoom,
  * drawn by the page's WindowGlobal only (spike S2), then cut to round(size × dpr). null when empty or failed.
  */
 export async function capturePng(browser: any, rect: CaptureViseur["rect"], vue: CaptureViseur["vue"], wgp: any = browser.browsingContext?.currentWindowGlobal): Promise<string | null> {
@@ -269,7 +269,7 @@ export function createDesign(o: {
     s.unguardTimer = setTimeout(() => s.armed || unguardFrames(s), SWALLOW_MS);
     const capture = cleanCapture(r);
     if (!capture) return service.stop(s.target);
-    // A site app's pages: nothing is read in the page's world, the source stays unknown (Electron's armer). Its home is the agent's code: read.
+    // A site app's pages: nothing is read in the page's world, the source stays unknown. Its home is the agent's code: read.
     const site = s.target.type === "site" && !s.home;
     const source = site ? null : cleanSource(await within(s.query("source", { code: sourceExpression(capture.selecteur) }).catch(() => null), SOURCE_TIMEOUT_MS, null));
     if (!current(s, g)) return;
@@ -277,7 +277,7 @@ export function createDesign(o: {
     const png = await capturePng(s.browser, capture.rect, capture.vue, s.wgp);
     if (!current(s, g)) return;
     const { rect, ...contexte } = capture;
-    // Electron's address for the home (no served copy's token): the noyau tags such remarks [accueil] (pty/contexte.ts).
+    // The home's address as the noyau knows it (no served copy's token): it tags such remarks [accueil] (pty/contexte.ts).
     if (s.home && s.target.type === "site") contexte.adresse = `webaios-site://${s.target.id}${new URL(contexte.adresse).pathname}`;
     s.attente = { contexte: { ...contexte, source }, capture: png };
     const v = view(s.target);
@@ -334,7 +334,7 @@ export function createDesign(o: {
       // The page whose address gives the project, read with the address: the only one ever armed.
       const wgp = pageOf(v.browser);
       const r = await suivi(t, v, wgp).catch(() => undefined);
-      // A site app's view may have changed during the host's answer (⌂, fullscreen, a sign-in page): read again (Electron's aLancer).
+      // A site app's view may have changed during the host's answer (⌂, fullscreen, a sign-in page): read again.
       if (t.type === "site" && r && !sessions.has(key)) {
         const now = o.sites.designView(t.id);
         if (!now?.available) return o.sites.infoNotice(t.id, UNAVAILABLE_DESIGN_SITE);
@@ -464,7 +464,7 @@ export function createDesign(o: {
       const r = v ? await suivi(t, v).catch(() => null) : null;
       if (!v || !r || cartAsks.get(cleCible(t)) !== n) return;
       const [l, h] = [v.win.innerWidth, v.win.innerHeight];
-      // A site app's cart starts under its bar (Electron's margeHaute).
+      // A site app's cart starts under its bar.
       const y = t.type === "site" ? HAUTEUR_BARRE_SITE + MARGE : MARGE;
       const place = { x: Math.max(0, l - MARGE - LARGEUR_PANIER), y, width: Math.min(LARGEUR_PANIER, l), height: Math.max(0, h - y - MARGE) };
       show(cleCible(t), v.win, place, { mode: "panier", message: null, projet: r.projet.projet, etiquette: "", source: null, destination: r.destination, sansDestination: r.sansDestination, avertissement: null });
@@ -510,7 +510,7 @@ export function createDesign(o: {
 }
 
 /**
- * An overlay frame's ApiCalque (ipc.ts's « calque » origin): its target is the chrome's, never an id the frame sends.
+ * An overlay frame's ApiCalque: its target is the chrome's, never an id the frame sends.
  * A project is allowed only if it is the one the overlay shows (projetPermis); the host checks every bound again.
  * `modes`: what this frame shows. `annuler`: the frame's own (the cart column's « Fermer »), else the service's cancel.
  */

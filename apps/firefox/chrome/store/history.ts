@@ -18,7 +18,7 @@ export interface History {
 
 const historisable = (url: string) => /^https?:\/\//.test(url);
 
-/** Electron's history wiring (evenements.ts, index.ts): the visits live in the noyau host, which owns the SQLite file. */
+/** The visits live in the noyau host, which owns the SQLite file. */
 export function createHistory(store: Store, host: AgentHost): History {
   // A space turned private keeps its visits but marks them, even while no agent runs.
   store.subscribe((state, previous) => {

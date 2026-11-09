@@ -7,10 +7,10 @@ import type { SitePermission } from "../store/site-permissions";
 import type { Store } from "../store/store";
 
 type Listener = (pending: DemandeEnAttente[]) => void;
-/** Electron's SCHEMA_WIDGET (main/agent/accueil.ts, which imports electron): test/questions.test.ts guards the drift. */
+/** The scheme of a widget page's address. */
 export const SCHEMA_WIDGET = "webaios-widget";
 
-/** The agent's « lire l'onglet » and extension grant cards waiting for the user (Electron's `questions` in main/index.ts). */
+/** The agent's « lire l'onglet » and extension grant cards waiting for the user. */
 export class Questions {
   private readonly open = new Map<string, { demande: DemandeEnAttente; repondre: (d: Issue, droits?: DroitDev[]) => void }>();
   private readonly listeners = new Set<Listener>();
@@ -30,7 +30,7 @@ export class Questions {
 
   /**
    * A question that will never get a useful answer: its tab, or its site app window (`site:<id>`), is gone; its app
-   * window (`app:<dossier>`) is closed or on another origin (Electron's ecarterQuestionsCaduques).
+   * window (`app:<dossier>`) is closed or on another origin.
    */
   private stale(d: DemandeEnAttente): boolean {
     if (d.cible?.startsWith("app:")) {
@@ -62,7 +62,7 @@ export class Questions {
   }
 
   /**
-   * The dev tools card (Electron's demanderOutilsDev): the rights ticked when allowed, `[]` on a refusal, after
+   * The dev tools card: the rights ticked when allowed, `[]` on a refusal, after
    * DELAI_QUESTION_MS, on `signal`, or when the tab closes, turns private or goes to another site.
    */
   askDevTools(o: OngletInfo, d: { droits: DroitDev[]; raison: string; agent: string }, fenetreId: IdFenetre, signal?: AbortSignal): Promise<DroitDev[]> {
@@ -73,7 +73,7 @@ export class Questions {
   }
 
   /**
-   * The « donnees-widget » card (Electron's demanderDonneesWidget in main/index.ts): the agent wants a widget's, an
+   * The « donnees-widget » card: the agent wants a widget's, an
    * action's or a site app's data, read with the user's account. False after DELAI_QUESTION_MS or on `signal`.
    */
   askWidgetData(o: { id: string; nom: string; agent: string; genre?: "action" | "site" }, fenetreId: IdFenetre, signal?: AbortSignal): Promise<boolean> {
@@ -100,22 +100,22 @@ export class Questions {
     return { accepte: issue === "autoriser", empreinte: carte.empreinte, ...(issue === "retiree" ? { retiree: true } : {}) };
   }
 
-  /** The console unlock card of an agent extension (Electron's debloquerConsole): Refuser is the default; it falls after DELAI_QUESTION_MS or on `signal`. */
+  /** The console unlock card of an agent extension: Refuser is the default; it falls after DELAI_QUESTION_MS or on `signal`. */
   askConsole(o: { nom: string; espaces: string[]; raison: string; agent: string }, fenetreId: IdFenetre, signal?: AbortSignal): Promise<Issue> {
     const fields = { ongletId: null, fenetreId, origine: o.nom, permissions: ["console-extension" as const], titre: o.nom, raison: o.raison, agent: o.agent, espaces: o.espaces };
     return attendreIssue((repondre) => this.pose(fields, repondre), DELAI_QUESTION_MS, signal);
   }
 
   /**
-   * A site's question, shown as the banner on its tab (Electron's `demander`): no delay, it waits for the answer; it falls
-   * (« retiree ») on `signal` or when its tab closes. `fenetreId` is not kept: Electron's site questions have none, which
+   * A site's question, shown as the banner on its tab: no delay, it waits for the answer; it falls
+   * (« retiree ») on `signal` or when its tab closes. `fenetreId` is not kept: site questions with one
    * would show them on every tab of the window and move them with a closed window.
    */
   askSite(
     d: { ongletId: IdOnglet | null; fenetreId: IdFenetre | null; origine: string; permissions: SitePermission[]; lien?: string },
     signal?: AbortSignal,
   ): Promise<Issue> {
-    // The three Firefox-only kinds are not Electron Permissions: the UI never shows a site question (estDemandeAgent).
+    // The three Firefox-only kinds are not noyau Permissions: the UI never shows a site question (estDemandeAgent).
     const fields = { ongletId: d.ongletId, origine: d.origine, permissions: d.permissions as Permission[], ...(d.lien ? { lien: d.lien } : {}) };
     if (questionCaduque({ id: "", ...fields }, this.store.state)) return Promise.resolve("retiree");
     return attendreIssue((repondre) => this.pose(fields, repondre), Infinity, signal);
@@ -130,7 +130,7 @@ export class Questions {
     };
   }
 
-  /** A window closed: its questions move to `to` (on its active tab), or are refused without one (Electron's questionsFenetreFermee). */
+  /** A window closed: its questions move to `to` (on its active tab), or are refused without one. */
   windowClosed(closed: IdFenetre, to: IdFenetre | undefined): void {
     let changed = false;
     for (const [id, q] of this.open) {

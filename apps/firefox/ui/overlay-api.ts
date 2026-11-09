@@ -8,7 +8,7 @@ const untilWindowUnload = (unsubscribe: () => void) => {
 };
 
 /**
- * Electron's ApiCalque for a design overlay frame (DesignApp.svelte), on what the chrome set on the frame
+ * The API of a design overlay frame (DesignApp.svelte), on what the chrome set on the frame
  * (chrome/window/design-overlays.ts): every answer copied into this realm, every rejection made again here.
  */
 export function wrapOverlayApi(raw: ApiCalque, untilUnload: (unsubscribe: () => void) => () => void = untilWindowUnload): ApiCalque {

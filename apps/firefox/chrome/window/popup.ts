@@ -16,7 +16,7 @@ function popupSource(win: Window): IdOnglet | undefined {
 }
 
 /**
- * A popup stays a plain Firefox window (no address bar), as in Electron: its title always shows the site, against
+ * A popup stays a plain Firefox window (no address bar): its title always shows the site, against
  * phishing, and its target=_blank links become WebAiOs tabs right after the source tab. Run as the popup's document
  * loads, before its page can open anything.
  */

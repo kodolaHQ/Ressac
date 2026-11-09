@@ -1,5 +1,5 @@
 <script lang="ts">
-  // The agent panel of the window (Electron's App.svelte, its right column): Electron's PanneauAgent, in its own iframe.
+  // The agent panel of the window, in its own iframe.
   import { untrack } from "svelte";
   import PanneauAgent from "../ui/composants/PanneauAgent.svelte";
   import { focusAgent } from "../ui/composants/agent.svelte";
@@ -15,7 +15,7 @@
   });
   $effect(() => api.surRaccourci((r) => r === "agent" && focusAgent.n++));
 
-  // Electron's App.svelte: the panel is open by default on the home page (the agent's session starts there), and closes
+  // The panel is open by default on the home page (the agent's session starts there), and closes
   // when leaving it if it opened only for it. Closed by the user on the home page, it stays closed there until next launch.
   let panneauFermeSurAccueil = false;
   /** Opening asked by the home page, not back in the state yet (null: none). */

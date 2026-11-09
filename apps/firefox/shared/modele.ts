@@ -98,7 +98,7 @@ export type IdProfil = string;
 export const PROFIL_DEFAUT: IdProfil = "defaut";
 
 const PARTITION_DEFAUT = "persist:webaios";
-/** Partition Electron d'un profil de connexion : celle de toujours pour le profil par défaut (aucune connexion perdue). */
+/** A sign-in profile's session partition: the historic one for the default profile (no sign-in lost). */
 export function partitionDe(id: IdProfil): string {
   return id === PROFIL_DEFAUT ? PARTITION_DEFAUT : `${PARTITION_DEFAUT}-${id}`;
 }

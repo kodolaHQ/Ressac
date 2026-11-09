@@ -1,7 +1,7 @@
 import { siteDe } from "../../shared/modele";
 import type { SitePermission } from "../store/site-permissions";
 
-/** Electron's NOMS (DemandePermission.svelte), plus the three kinds of WebAiOs-Firefox. */
+/** The permission names the banner shows, plus the three kinds of WebAiOs-Firefox. */
 const NAMES: Record<SitePermission, string> = {
   "media-camera": "votre caméra",
   "media-micro": "votre micro",

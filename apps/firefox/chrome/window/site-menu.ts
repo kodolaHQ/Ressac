@@ -7,7 +7,7 @@ import { profilDOnglet } from "../../shared/modele";
 import type { WebAiOsStore } from "../store";
 
 /**
- * Electron's « Navigation » menu entry « Oublier les autorisations de ce site » (oublierAutorisations): forgets the
+ * The « Navigation » menu entry « Oublier les autorisations de ce site » (oublierAutorisations): forgets the
  * active tab's origin in its space's profile. A menu in this window's menu bar, before « Fenêtre » (spike P9).
  */
 export function mountSiteMenu(win: Window, store: WebAiOsStore, fenetreId: IdFenetre): void {

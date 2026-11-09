@@ -1,5 +1,5 @@
-// A site app's home screen, written by the agent in `<dataDir>/espace/sites/<id>/accueil/`: the served copy (Electron's
-// webaios-site: scheme, main/sites/accueil.ts, cannot be registered here: a resource:// substitution serves a sanitized
+// A site app's home screen, written by the agent in `<dataDir>/espace/sites/<id>/accueil/`: the served copy (a
+// webaios-site: scheme cannot be registered here: a resource:// substitution serves a sanitized
 // copy), and the site images it asks for, loaded in the app's container.
 import { IMAGE_SITE_MAX } from "../../shared/sites";
 import { adresseLocale } from "../../../../packages/noyau/src/workflows/acces";
@@ -7,19 +7,19 @@ import { hoteDansSite } from "../../../../packages/noyau/src/sites/adresses";
 import { ID_SITE } from "../../../../packages/noyau/src/sites/schemas";
 import { CSP_WIDGET, affichageServi } from "../window/widget-frame";
 
-/** Electron's FICHIER_ACCUEIL_MAX (main/sites/accueil.ts): the largest file of a home screen. */
+/** The largest file of a home screen. */
 export const FICHIER_ACCUEIL_MAX = 2 * 1024 * 1024;
-/** Copy of image-distante.ts REDIRECTIONS_IMAGE (that module imports electron's net). */
+/** The most redirects an image load follows. */
 export const REDIRECTIONS_IMAGE = 3;
 const DELAI_IMAGE_MS = 10_000;
 const TYPE_IMAGE = /^image\/[a-z0-9.+-]+$/;
-/** Electron's IMAGES_EN_MEME_TEMPS and IMAGES_EN_ATTENTE_MAX (main/sites/service.ts), per app. */
+/** Image loads per app: at once, and waiting at most. */
 const IMAGES_AT_ONCE = 4;
 const IMAGES_WAITING_MAX = 200;
 
 const DIRECTIVES_FICHIERS = new Set(["script-src", "style-src", "img-src", "font-src"]);
 /**
- * The extensions Electron serves (TYPES in main/sites/accueil.ts, drift test in site-home.test.ts): no other file is
+ * The extensions a home serves: no other file is
  * copied. resource:// picks a type from the extension, so an .xhtml or .xml would be a document without the home's CSP.
  */
 export const HOME_TYPES = new Set([".html", ".js", ".css", ".json", ".txt", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".avif", ".svg", ".ico", ".woff", ".woff2", ".ttf", ".otf"]);
@@ -27,8 +27,8 @@ const extension = (segment: string) => (segment.lastIndexOf(".") > 0 ? segment.s
 const substitution = (key: string) => `webaios-site-${key}`;
 
 /**
- * Electron's cspAccueilSite, with the served copy's files at `resource://webaios-site-<key>` (`key`: see serveHome) in
- * place of `webaios-site://<id>` (drift test in site-home.test.ts).
+ * The home's CSP, with the served copy's files at `resource://webaios-site-<key>` (`key`: see serveHome) in
+ * place of `webaios-site://<id>`.
  */
 export function cspAccueilFirefox(key: string): string {
   return CSP_WIDGET.split("; ")
@@ -37,7 +37,7 @@ export function cspAccueilFirefox(key: string): string {
 }
 
 /**
- * Electron's home pages call `parent.postMessage`; from a sandboxed opaque frame Firefox refuses it towards a chrome
+ * Home pages call `parent.postMessage`; from a sandboxed opaque frame Firefox refuses it towards a chrome
  * parent. Run first in the served copy (page world): `parent` (a [Replaceable] property) becomes an object whose
  * postMessage dispatches `webaios-home` on the frame's window, its detail the message as JSON, for the chrome to read.
  * Self-contained, serialized with toString().
@@ -88,10 +88,10 @@ function substitute(name: string, dir: string | null): void {
 }
 
 /**
- * Copies `<dataDir>/espace/sites/<id>/accueil/` into `<dataDir>/webaios-sites/<id>/<token>/` with Electron's
- * repondreAccueilSite rules: the app folder named exactly `id` (a case-insensitive disk would find « Vidola » for
+ * Copies `<dataDir>/espace/sites/<id>/accueil/` into `<dataDir>/webaios-sites/<id>/<token>/` with these
+ * rules: the app folder named exactly `id` (a case-insensitive disk would find « Vidola » for
  * « vidola »), no symbolic link anywhere on a path, no hidden segment, `FICHIER_ACCUEIL_MAX` at most per file,
- * only Electron's served types (HOME_TYPES); the `.html` pages go through homeServed. Points
+ * only the served types (HOME_TYPES); the `.html` pages go through homeServed. Points
  * `resource://webaios-site-<id>-<token>/` straight at that folder (the previous serve's substitution and folder go) and returns its `index.html`, or null (no home page, or a refused folder).
  * The token is random at each serve: the substitution is content-accessible (ALLOW_CONTENT_ACCESS, below), so neither
  * its host nor any root above it may be guessable by a web page.
@@ -188,8 +188,7 @@ export async function forgetHome(dataDir: string, id: string): Promise<void> {
   await IOUtils.remove(PathUtils.join(dataDir, "webaios-sites", id), { recursive: true, ignoreAbsent: true });
 }
 
-// --- Images: a copy of Electron's chargerImage (main/image-distante.ts), on Uint8Array instead of Buffer. Drift test
-// in site-home.test.ts.
+// --- Images: loaded through a channel, on Uint8Array.
 
 export interface ImageRequest {
   on(event: "redirect", cb: (status: number, method: string, to: string) => void): unknown;
@@ -209,7 +208,7 @@ export type OpenRequest = (url: string, o: { cookies: boolean }) => ImageRequest
 
 const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
 
-/** Electron's chargerImage. */
+/** Loads an image, following permitted redirects; null if refused, too big or not an image. */
 export function loadImage(ouvrir: OpenRequest, url: string, o: { permise: (url: string) => boolean; cookies: boolean; max: number }): Promise<{ type: string; corps: Uint8Array } | null> {
   if (!o.permise(url)) return Promise.resolve(null);
   return new Promise((rendre) => {
@@ -276,7 +275,7 @@ export function loadImage(ouvrir: OpenRequest, url: string, o: { permise: (url: 
   });
 }
 
-/** Electron's imagePermise: https on a domain of the app, http only to a local host (test domains), no credentials. */
+/** https on a domain of the app, http only to a local host (test domains), no credentials. */
 function imageAllowed(url: string, domaines: readonly string[]): boolean {
   try {
     const u = new URL(url);
@@ -288,7 +287,7 @@ function imageAllowed(url: string, domaines: readonly string[]): boolean {
 }
 
 /**
- * Electron's requetesDe, on a Firefox channel in the app's container (a content principal with its userContextId, so
+ * Requests on a Firefox channel in the app's container (a content principal with its userContextId, so
  * its cookies): redirects stop at the channel's event sink until the loader calls followRedirect during the event.
  * `anonymous` (an action's result images): LOAD_ANONYMOUS, no cookie sent or stored, kept by each redirected channel
  * (measured: plan 33 spike S2), and no cookie jar.
@@ -395,7 +394,7 @@ export function toDataUrl(image: { type: string; corps: Uint8Array }): string {
 const queues = new Map<number, { running: number; waiting: (() => void)[] }>();
 
 /**
- * A site image the home asks for, as a `data:` URL: Electron's imageSite, loaded in the app's container, at most
+ * A site image the home asks for, as a `data:` URL, loaded in the app's container, at most
  * IMAGES_AT_ONCE at once per app, IMAGES_WAITING_MAX waiting (more are refused). null if refused.
  */
 export async function siteImage(userContextId: number, url: string, domaines: string[]): Promise<string | null> {

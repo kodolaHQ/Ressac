@@ -1,5 +1,5 @@
 <script lang="ts">
-  // The site app window's bar: Electron's FenetreSite, frozen, on window.webaios.site (ui/site-api.ts).
+  // The site app window's bar: FenetreSite, frozen, on window.webaios.site (ui/site-api.ts).
   import FenetreSite from "../ui/site/FenetreSite.svelte";
 </script>
 

@@ -1,8 +1,8 @@
 import type { AgentHost } from "../agent/host";
 
-/** Electron's click on a notification (main/index.ts): the last used window is restored and focused, its tab unchanged. */
+/** A click on a notification: the last used window is restored and focused, its tab unchanged. */
 export function focusRecentWindow(wm = Services.wm): void {
-  // Electron reopens a window when none is left; Firefox keeps none to reopen here: nothing happens.
+  // With no window left, nothing happens: Firefox keeps none to reopen here.
   const w = wm.getMostRecentBrowserWindow();
   if (!w) return;
   if (w.windowState === w.STATE_MINIMIZED) w.restore();

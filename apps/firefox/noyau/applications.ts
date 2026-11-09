@@ -1,5 +1,5 @@
-// The agent's applications on the host side: Electron's demarrerApplications (main/applications/service.ts) without
-// electron. The gestionnaire, the Docker probe, the memory (applications.json), Supprimer, Passer en application and
+// The agent's applications on the host side. The gestionnaire, the Docker probe, the memory (applications.json),
+// Supprimer, Passer en application and
 // Déboguer live here; the window, its container and its guard are the chrome's, asked through `chrome`.
 import fs from "node:fs/promises";
 import { resolve, sep } from "node:path";
@@ -11,21 +11,18 @@ import type { ListeApplications } from "../shared/api.ts";
 import type { Cadre, IdFenetre } from "../shared/modele.ts";
 import { SiteSouvenirs } from "./sites.ts";
 
-// Copies: service.ts imports electron, and commun/api.ts and main/agent/pont.ts do not load under tsx.
-// test/host.test.ts guards their drift.
-
 /** Plage de ports `min-max` de WEBAIOS_PORTS_APPS (tests), sinon celle du noyau. */
 export function plageDePorts(valeur: string | undefined): [number, number] | undefined {
   const m = /^(\d+)-(\d+)$/.exec(valeur ?? "");
   return m ? [Number(m[1]), Number(m[2])] : undefined;
 }
 
-/** Electron's ongletApplication (main/agent/pont.ts): the app window seen as an `app:<dossier>` tab by the agent. */
+/** The app window seen as an `app:<dossier>` tab by the agent. */
 export const appTab = (a: { dossier: string; titre: string; url: string }): OngletInfo => ({ id: "app:" + a.dossier, titre: a.titre, url: a.url, espace: "", application: a.dossier });
 
 const segmentValide = (d: string) => d !== "" && d !== "." && d !== ".." && !/[/\\\0]/.test(d);
 const SUR_TOUT_DOSSIER = new Set(["deboguer", "supprimer", "dossier"]);
-/** Electron's IPC schema of an app action (commun/api.ts). */
+/** The schema of an app action (as shared/api.ts). */
 export const SchemaActionApplication = z
   .object({
     dossier: z.string(),
@@ -194,7 +191,7 @@ export function createApplicationsHost(o: {
         }),
       };
     },
-    // A bad input does nothing, as Electron's IPC.
+    // A bad input does nothing.
     "applications.agir": (p) => {
       const a = SchemaActionApplication.safeParse(p);
       if (a.success && typeof p?.fenetre === "string") agir(a.data.dossier, a.data.action, p.fenetre);
@@ -207,7 +204,7 @@ export function createApplicationsHost(o: {
       o.politique()?.ongletFerme("app:" + dossier);
       if (p?.parUtilisateur === true) void gestionnaire.arreter(dossier).catch(signaler(dossier, "arrêtée"));
     },
-    // An app window always shows what the agent built: « construite » again on its new origin (index.ts:1056-1063).
+    // An app window always shows what the agent built: « construite » again on its new origin.
     "applications.navigation": (p) => {
       const dossier = dossierDe(p);
       if (!dossier || typeof p?.url !== "string" || !fenetres.has(dossier)) return;

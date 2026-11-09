@@ -1,6 +1,4 @@
-// Copy of Electron's main/design/relecture.ts, body unchanged apart from the import paths, the class name and the
-// comments translated (test/review-host.test.ts compares behaviour): Node cannot load that file under tsx (its
-// "../../commun/modele" value import has no extension), so the host imports this one.
+// The design review behind the Review page, run by the host.
 import { lstat, realpath, rm } from "node:fs/promises";
 import { join, sep } from "node:path";
 import {

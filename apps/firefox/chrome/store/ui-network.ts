@@ -1,4 +1,4 @@
-// The UI's network (spec 2026-11-08-webaios-firefox-reseau-interfaces-design.md, Electron's reseau-interface.ts): nothing
+// The UI's network (spec 2026-11-08-webaios-firefox-reseau-interfaces-design.md): nothing
 // the UI shows (sidebar, agent panel, overlays, badges, site bar, widgets, components, site homes, their frames) loads
 // from http(s)/ws(s), whatever the host. A content policy refuses the opaque documents' loads before their channel
 // exists; an http-on-opening-request observer cancels the rest (the only layer of the system documents, which Firefox

@@ -1,4 +1,4 @@
-// Site app actor (Electron's preload/site.ts): in every frame of an open site app's container, the child asks the parent
+// Site app actor: in every frame of an open site app's container, the child asks the parent
 // what goes into its document; the parent decides from its own WindowGlobalParent (store/site-frames.ts), never from
 // what the frame says. The CSS is put as an author sheet; the scripts run in an Xray sandbox per document, as Firefox
 // runs an extension's content scripts: the sandbox sees the page's DOM through Xrays, neither the page's JS objects
@@ -14,7 +14,7 @@ const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 const SITE_FRAMES = "webaios-sites";
 const OPS = ["retenir", "lire", "oublier"] as const;
 const UNAVAILABLE = "Mémoire de l'appli indisponible";
-// Keep in sync with commun/sites.ts sourceRetouche.
+// Keep in sync with shared/sites.ts sourceRetouche.
 const SOURCE = "webaios-retouche://";
 
 /**
@@ -55,7 +55,7 @@ export class WebAiOsSiteParent extends JSWindowActorParent {
   }
 }
 
-/** Electron's demander: a reply of the expected shape, or null (nothing). */
+/** A reply of the expected shape, or null (nothing). */
 function valid(r: unknown): InjectionCadre | null {
   if (!r || typeof r !== "object") return null;
   const i = r as InjectionCadre;
@@ -129,7 +129,7 @@ export class WebAiOsSiteChild extends JSWindowActorChild {
   }
 
   /**
-   * Electron's brancherReprise, in this actor's own world (neither the page's nor the sandbox's): the events of the
+   * In this actor's own world (neither the page's nor the sandbox's): the events of the
    * document's videos, captured. Only a trusted event counts (an event the page dispatches is ignored). The position
    * is set through the Xray view, so the page cannot hook it.
    */

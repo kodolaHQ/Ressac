@@ -136,7 +136,7 @@ async function start(): Promise<WebAiOsStore> {
   Services.prefs.getDefaultBranch("").setBoolPref("media.eme.require-app-approval", true);
   Services.prefs.getDefaultBranch("").setIntPref("media.autoplay.default", 0);
   Services.prefs.getDefaultBranch("").setBoolPref("privacy.popups.showBrowserMessage", false);
-  // Fullscreen is granted without a question and, as in Electron, without Firefox's warning over the page (spike P8).
+  // Fullscreen is granted without a question and without Firefox's warning over the page (spike P8).
   Services.prefs.getDefaultBranch("").setIntPref("full-screen-api.warning.timeout", 0);
   // Mozilla's update server offers Widevine (DRM) only to a Firefox version: under WebAiOs's own version it answers
   // with no module, and no DRM site ever plays.
@@ -263,7 +263,7 @@ async function start(): Promise<WebAiOsStore> {
       questions.windowClosed(fenetre, windows.active());
       refreshMirror();
     },
-    // The agent follows the focused window at once, as Electron reads it live.
+    // The agent follows the focused window at once.
     onActivate: () => refreshMirror(),
   });
   // The agent's access to tabs, as the host last sent it (no access while no host runs).
@@ -279,7 +279,7 @@ async function start(): Promise<WebAiOsStore> {
       return !!o && ongletPrive(store.state, o);
     },
   });
-  // The last main window; with none open, one opens first (Electron's fenetreAgent() + rouvrir).
+  // The last main window; with none open, one opens first.
   async function mainWindow(): Promise<IdFenetre | undefined> {
     if (!windows.active()) {
       const win = BrowserWindowTracker.openWindow();
@@ -328,8 +328,8 @@ async function start(): Promise<WebAiOsStore> {
     },
   });
   // « Ouvrir dans un onglet » of a site app: a tab of the last main window, in its active space, brought to the front
-  // (Electron's ouvrirDansOnglet); with no main window open, one opens first.
-  // An agent app's link off its origin too (Electron's ouvrirDansOnglet).
+  // (« Ouvrir dans un onglet »); with no main window open, one opens first.
+  // An agent app's link off its origin too.
   const openInTab = async (url: string) => {
     if (!/^https?:\/\//.test(url)) return;
     const fenetreId = await mainWindow();
@@ -343,7 +343,7 @@ async function start(): Promise<WebAiOsStore> {
   bindApps(agent, openInTab, dataDir, { access: () => access, design });
   const history = createHistory(store, agent);
   registerAccueilNotifications(agent);
-  // A site app's downloads are cancelled (Electron's app sessions download nothing).
+  // A site app's downloads are cancelled: an app downloads nothing.
   const downloads = await createDownloads(isSiteContainer);
   refreshMirror = trackState(store, agent, windows);
   // Registered before any UI listener: the UI reads `access` once it is updated.

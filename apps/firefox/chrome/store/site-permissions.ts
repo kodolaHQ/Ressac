@@ -17,9 +17,9 @@ export interface SiteRequest {
 
 export interface SitePermissions {
   readonly ready: Promise<void>;
-  /** Electron's traiter: true = granted. Unknown kind: false, no question. */
+  /** true = granted. Unknown kind: false, no question. */
   handle(r: SiteRequest): Promise<boolean>;
-  /** Electron's verifier, synchronous, from the remembered decisions. */
+  /** Synchronous, from the remembered decisions. */
   check(profil: IdProfil, origine: string, kind: string, mediaType?: string): boolean;
   forget(profil: IdProfil, origine: string): Promise<void>;
   removeProfile(profil: IdProfil): Promise<void>;
@@ -36,7 +36,7 @@ const SIMPLE = new Set(["notifications", "geolocation", "drm", "midi", "partage-
 /** Asked every time, never remembered. */
 const NOT_KEPT = new Set<SitePermission>(["partage-ecran", "ouvrir-application"]);
 
-/** Same names as Electron's `traduire`, plus the three new kinds; [] = unknown. */
+/** The noyau's permission names, plus the three new kinds; [] = unknown. */
 function translate(kind: string, mediaTypes: readonly string[] = []): SitePermission[] {
   if (kind === "media") {
     const p: SitePermission[] = [];
@@ -49,10 +49,10 @@ function translate(kind: string, mediaTypes: readonly string[] = []): SitePermis
 
 const key = (origine: string, p: SitePermission) => `${origine} ${p}`;
 
-/** Electron's `fichierPermissions`: `permissions.json` for the default profile. */
+/** `permissions.json` for the default profile. */
 const fileOf = (dir: string, id: IdProfil) => `${dir}/${id === PROFIL_DEFAUT ? "permissions.json" : `permissions-${id}.json`}`;
 
-/** The same checks as Electron's zod schema: a flat record of "autoriser" | "refuser". */
+/** A flat record of "autoriser" | "refuser". */
 function parse(text: string): Record<string, Decision> | null {
   try {
     const v: unknown = JSON.parse(text);
@@ -80,7 +80,7 @@ const defaultFiles: Files = {
   remove: (path) => IOUtils.remove(path, { ignoreAbsent: true }),
 };
 
-/** Site permissions: asked once per (profile, origin, permission), kept in the profile's permissions file (Electron's format) and mirrored into Firefox. */
+/** Site permissions: asked once per (profile, origin, permission), kept in the profile's permissions file and mirrored into Firefox. */
 export function createSitePermissions(o: {
   dataDir: string;
   profiles: () => IdProfil[];

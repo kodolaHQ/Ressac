@@ -59,7 +59,7 @@
         ),
   );
 
-  // La taille réelle devient les unités que l'affichage reçoit dans postMessage (celles d'Electron).
+  // The real size becomes the grid units the display receives in postMessage.
   const taille = $derived(unitesLibres({ l: placement.l, h: placement.h }));
 
   function poignee(e: PointerEvent) {

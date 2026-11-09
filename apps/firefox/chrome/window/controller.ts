@@ -17,7 +17,7 @@ import { trackVisits } from "./visits";
 export interface WindowController {
   readonly fenetreId: IdFenetre;
   readonly store: WebAiOsStore;
-  /** Electron's naviguer: versUrl(input, moteur); a tab with a XUL tab loads it, one without gets majOnglet{url}; null opens a new tab. */
+  /** versUrl(input, moteur); a tab with a XUL tab loads it, one without gets majOnglet{url}; null opens a new tab. */
   navigate(ongletId: IdOnglet | null, input: string): void;
   /**
    * The agent's naviguer: an http(s) URL loaded with a content principal of the tab's container, without taking the
@@ -29,14 +29,14 @@ export interface WindowController {
   ensure(ongletId: IdOnglet): Promise<any>;
   command(ongletId: IdOnglet, c: "reculer" | "avancer" | "recharger" | "rechargerSansCache" | "arreter"): void;
   /**
-   * Electron's Vues.fermer: a tab the user closes. A page with unsaved changes (beforeunload) gets « Quitter ce site ? »
+   * A tab the user closes. A page with unsaved changes (beforeunload) gets « Quitter ce site ? »
    * first; a page that does not answer within 5 s is closed anyway. A crashed tab or one without a XUL tab closes now.
    */
   closeTab(ongletId: IdOnglet): Promise<void>;
   /** Keyboard back to the displayed page (no-op when no web page is displayed). */
   focusPage(): void;
   /**
-   * The UI iframe covers the whole window, agent panel included ("window": overlays, as Electron's single document),
+   * The UI iframe covers the whole window, agent panel included ("window": overlays, one document for the whole UI),
    * the window left of the agent panel (true: empty and internal pages) or only its 240 px column (false).
    */
   setFullWindow(full: boolean | "window"): void;
@@ -46,7 +46,7 @@ export interface WindowController {
   setSidebarVisible(visible: boolean): void;
   /** Width of the sidebar's column: 0 in compact mode. */
   sidebarWidth(): number;
-  /** Electron's surZoneGauche: where the mouse is against the left edge, sent when that changes. */
+  /** Where the mouse is against the left edge, sent when that changes. */
   onLeftZone(cb: (z: ZoneGauche) => void): () => void;
   /**
    * Notes whether the terminal or the page has the keyboard (an agent card is about to take it) and returns what gives
@@ -57,13 +57,13 @@ export interface WindowController {
   setAgentWidth(px: number): void;
   /** Opens the agent panel if it is closed (never closes it), gives it the keyboard and tells the UIs ("agent"). */
   openAgent(): void;
-  /** Electron's surRaccourci: shortcuts the UI handles (⌘T, ⌘L, ⌘W). */
+  /** Shortcuts the UI handles (⌘T, ⌘L, ⌘W). */
   onShortcut(cb: (r: Raccourci) => void): () => void;
-  /** Electron's surPanneau: ⌘Y, ⇧⌘J (a second press closes it, the UI toggles). */
+  /** ⌘Y, ⇧⌘J (a second press closes it, the UI toggles). */
   onPanel(cb: (p: Panneau) => void): () => void;
-  /** Electron's surPanneauOnglets: the ⌃Tab panel to show (null: closed). */
+  /** The ⌃Tab panel to show (null: closed). */
   onTabPanel(cb: (p: PanneauOnglets | null) => void): () => void;
-  /** Electron's parcoursOnglets: mouse, Escape and ⌃ release from the ⌃Tab panel. */
+  /** Mouse, Escape and ⌃ release from the ⌃Tab panel. */
   tabSwitch(m: MessageParcours): void;
   /** The sidebar's add-on strip: buttons, pins, popups and pending updates. */
   readonly addons: WindowAddons;
@@ -87,7 +87,7 @@ export function createController(
   // its state window (its tabs leave with it).
   const unsubscribe = [store.subscribe((state) => tabs.sync(state)), mountSiteBanner(window, store, fenetreId)];
   applyFrame(store.state.fenetres.find((f) => f.id === fenetreId)?.cadre ?? null);
-  // Size and position kept for the next start (grouped: a drag fires dozens of events), as Electron's noterCadre.
+  // Size and position kept for the next start (grouped: a drag fires dozens of events).
   let frameTimer: ReturnType<typeof setTimeout> | undefined;
   const recordFrame = () => {
     clearTimeout(frameTimer);
@@ -143,7 +143,7 @@ export function createController(
   const browserOf = (id: IdOnglet) => tabs.tab(id)?.linkedBrowser;
   /**
    * A crashed browser loads nothing: any navigation or command on a crashed tab puts a new XUL tab in its place, at `url`
-   * or the tab's own (as Electron's loadURL revives a crashed page). Back/forward history is lost with it.
+   * or the tab's own (a crashed page comes back by loading it again). Back/forward history is lost with it.
    */
   const revive = (id: IdOnglet, url?: string): boolean => {
     if (!store.state.onglets[id]?.plante) return false;
@@ -155,18 +155,18 @@ export function createController(
   const panelKeyListeners = new Set<(p: Panneau) => void>();
   const panelListeners = new Set<(p: PanneauOnglets | null) => void>();
   const leftZoneListeners = new Set<(z: ZoneGauche) => void>();
-  // ⌃Tab: recent order and the walk in progress, as in Electron. No page previews in step 2: cards show the icon.
+  // ⌃Tab: recent order and the walk in progress. No page previews in step 2: cards show the icon.
   const walk = new ParcoursOnglets({
     etat: () => store.state,
     agir: (a) => store.dispatch(a),
     envoyer: (_, p) => {
-      // Escape and the ⌃ release must reach the panel, as FondFige's capture does in Electron.
+      // Escape and the ⌃ release must reach the panel.
       if (p && document.activeElement !== frame) frame.focus();
       for (const cb of panelListeners) cb(p);
     },
     apercu: () => null,
     capturer: () => Promise.resolve(),
-    // Once the UI has dropped the panel: a command bar still open keeps the keyboard (Electron: the view is hidden).
+    // Once the UI has dropped the panel: a command bar still open keeps the keyboard (the page is not shown).
     rendreFocus: () => void setTimeout(() => !frame.hasAttribute("full") && controller.focusPage()),
     // Headless (e2e), no window ever has the focus: the walk is still tested there.
     estFocalisee: () => Services.focus.activeWindow === window || Services.env.exists("MOZ_HEADLESS"),
@@ -178,7 +178,7 @@ export function createController(
     const state = store.state;
     const f = state.fenetres.find((x) => x.id === fenetreId);
     const active = f?.actif[f.espaceActif];
-    // Electron's menu: ⌘W on the empty page closes the window, only if none of its spaces has a tab.
+    // ⌘W on the empty page closes the window, only if none of its spaces has a tab.
     if (s.type === "raccourci" && s.r === "fermerOnglet" && !active && !Object.values(state.onglets).some((o) => o.fenetreId === fenetreId))
       window.close();
     else if (s.type === "raccourci") {
@@ -198,10 +198,10 @@ export function createController(
       if (active) controller.command(active, s.c);
     } else if (s.type === "parcourir") walk.parcourir(fenetreId, s.delta);
     else if (s.type === "agent") {
-      // On a widget's builder tab: its Agent tab, beside the open panel (Electron shows the agent in that tab). An action's
+      // On a widget's builder tab: its Agent tab, beside the open panel (the agent shows in that tab). An action's
       // workflow tab shows the internal page (not ported): the plain toggle.
       if (active && cibleDeUrlWorkflow(state.onglets[active]?.url ?? "")?.type === "widget") return controller.openAgent();
-      // Electron's menu: toggle, then, opened from a web page, the keyboard goes to the terminal.
+      // Toggle, then, opened from a web page, the keyboard goes to the terminal.
       store.dispatch({ type: "basculerPanneauAgent", fenetreId });
       if (agentOpen(store.state)) {
         agentFrame.focus();
@@ -226,7 +226,7 @@ export function createController(
   };
   window.addEventListener("keydown", onKeyDown, true);
   window.addEventListener("keyup", onKeyUp, true);
-  // Compact mode, as Electron's Vues: the mouse in window px, noted on moves. The page may shift under a still mouse (the
+  // Compact mode: the mouse in window px, noted on moves. The page may shift under a still mouse (the
   // sidebar revealed); its last real position is what counts when it leaves the window.
   let zone: ZoneGauche | null = null;
   let lastX = Infinity;
@@ -263,7 +263,7 @@ export function createController(
     const fromTab = params?.openerBrowser && gBrowser.getTabForBrowser(params.openerBrowser)?.hasAttribute("webaios-tab-id");
     openLinkIn(url, where === "window" && fromTab ? "tab" : where, params);
   };
-  // Quitting asks no page, as Electron. Every quit path asks each window (CanClose) right after quit-application-requested,
+  // Quitting asks no page. Every quit path asks each window (CanClose) right after quit-application-requested,
   // unless an observer cancelled it. Closing one window keeps Firefox's question.
   let quit: { data: boolean } | undefined;
   // Every quit path calls Quit in the same task as its request (nsAppStartup::Quit, MacApplicationDelegate): a quit that a
@@ -283,7 +283,7 @@ export function createController(
   const asking = new Set<IdOnglet>();
   let sidebarWidth = LARGEUR_BARRE;
   for (const id of [...FIREFOX_KEYS, ...FIREFOX_COMMANDS]) document.getElementById(id)?.setAttribute("disabled", "true");
-  // The macOS menu bar fires View › Sidebar items by their own key (⇧⌘H) even with the <key> disabled; Electron has
+  // The macOS menu bar fires View › Sidebar items by their own key (⇧⌘H) even with the <key> disabled; WebAiOs has
   // no native sidebar, so every item is off, including the ones SidebarController adds or re-enables later.
   const sidebarMenu = document.getElementById("viewSidebarMenu");
   if (sidebarMenu) {
@@ -365,7 +365,7 @@ export function createController(
           {},
         ).catch(() => null);
         if (result?.getProperty("buttonNumClicked") === 0) close();
-        // Rester changes nothing, as Electron's window-modal dialog: the tab shown before comes back.
+        // Rester changes nothing, as a window-modal dialog: the tab shown before comes back.
         else if (before && before !== ongletId && store.state.onglets[before]) store.dispatch({ type: "activerOnglet", id: before });
       } finally {
         asking.delete(ongletId);

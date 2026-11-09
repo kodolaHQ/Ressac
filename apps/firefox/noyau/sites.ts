@@ -37,10 +37,9 @@ import { SuiviAdresse } from "../core/sites/suivi.ts";
 import { decisionOuverture } from "../core/sites/navigation.ts";
 import { creerPositions, memoireOp } from "./site-memory.ts";
 
-// The pure parts of Electron's main/sites/service.ts, copied: it imports electron, so the Node host cannot import it.
-// Same guards, same counters, same messages. Left to plan 32's later tasks: address tracking, accord, extensions.
+// The site apps service on the host side.
 
-/** Electron's IPC schema of a site app action (commun/api.ts, which Node cannot import): test/sites-host.test.ts compares them. */
+/** The schema of a site app action (as shared/api.ts). */
 export const SchemaActionSite = z.object({
   id: z.string().regex(ID_SITE),
   action: z.enum(["ouvrir", "modifier", "oublier", "dossier", "supprimer", "relire"]),
@@ -51,12 +50,12 @@ export type SiteChrome = SiteOuvrable & { demande: DemandeAccordSite; empreinte:
 
 const uniques = (l: string[]) => [...new Set(l)];
 
-/** Copy of Electron's empreinteDroits (main/sites/fenetres.ts): the fingerprint of the rights the declaration asks for. */
+/** The fingerprint of the rights the declaration asks for. */
 export function empreinteDroits(d: DeclarationSite): string {
   return createHash("sha256").update(JSON.stringify(droitsDe(d))).digest("hex");
 }
 
-/** Copy of Electron's demandeAccord (main/sites/fenetres.ts): what the accord card shows. */
+/** What the accord card shows. */
 export function demandeAccord(s: SiteOuvrable): DemandeAccordSite {
   const d = s.declaration;
   const declares = new Set(d.domaines.map((x) => x.toLowerCase()));
@@ -78,22 +77,22 @@ export interface SitesChrome {
   ouvrir(s: SiteChrome, cadre: Cadre | null, retouches: RetouchesLues): Promise<boolean>;
   fermer(id: string): Promise<void>;
   effacer(id: string): Promise<void>;
-  /** True if the page was reloaded (Electron's FenetresSites.mettreAJour). */
+  /** True if the page was reloaded. */
   mettreAJour(s: SiteChrome, retouches: RetouchesLues): Promise<boolean>;
   rechargerVue(id: string): Promise<void>;
   /** The retouches' console of the open app. */
   erreurs(id: string): Promise<ErreurRetouche[]>;
   /** The view the window shows, or null if it is not open. */
   vue(id: string): Promise<"accueil" | "accord" | "site" | null>;
-  /** The choice made on the card (Electron's apresAccord): `s` null for « Ouvrir sans retouches ». */
+  /** The choice made on the card: `s` null for « Ouvrir sans retouches ». */
   apresAccord(id: string, s: SiteChrome | null): Promise<void>;
   /** The state broadcast again (the card up to date). */
   rediffuser(id: string): Promise<void>;
   ouvertes(): Promise<string[]>;
   accueilChange(id: string): void;
-  /** A reading of the reference page starts or ends: the bar's button shows it (Electron's FenetresSites.cherche). */
+  /** A reading of the reference page starts or ends: the bar's button shows it. */
   cherche(id: string, oui: boolean): void;
-  /** The bar's mention (Electron's FenetresSites.avis). */
+  /** The bar's mention. */
   avis(id: string, a: AvisBarre | null): void;
   /** The follow found the new address: the open app takes its domains and start address, and the view goes to `vers`. */
   adresseChangee(id: string, domaines: string[], depart: string, vers: string): void;
@@ -107,7 +106,7 @@ export interface SitesHost {
   memoireAccueil(id: string): Promise<(MessageVersLAccueil & { type: "memoire" }) | null>;
   noter(id: string, x: { cadre?: Cadre; favicon?: string }): void;
   fermee(id: string): void;
-  /** « Autoriser » / « Ouvrir sans retouches » on the card (Electron's SitesService.accorder). */
+  /** « Autoriser » / « Ouvrir sans retouches » on the card. */
   accorder(id: string, oui: boolean, empreinte: string): Promise<void>;
   /** `webaiosSite` of an open app's main page; the chrome checked the sender, the accord and the address. */
   memoireOp(demande: unknown): Promise<ReponseMemoire>;
@@ -118,7 +117,7 @@ export interface SitesHost {
   chercherAdresse(id: string, url: string | null): Promise<void>;
   /** The open apps as last sent to the chrome. */
   sitesOuverts: Map<string, SiteChrome>;
-  /** Is the address on the open app's domains? (a navigation the agent asks for, Electron's adressePermise) */
+  /** Is the address on the open app's domains? (a navigation the agent asks for) */
   adressePermise(id: string, url: string): boolean;
   outils: OutilsSites;
   resynchroniser(): Promise<void>;
@@ -132,8 +131,8 @@ export interface SouvenirSite {
 }
 
 /**
- * Copy of Electron's MemoireApplications (main/applications/service.ts), file `sites.json`, 500 ms: what the browser keeps
- * of each site app (window frame, favicon). test/sites-host.test.ts guards the drift.
+ * File `sites.json`, written 500 ms after a change: what the browser keeps
+ * of each site app (window frame, favicon).
  */
 export class SiteSouvenirs {
   private donnees: Record<string, SouvenirSite> = Object.create(null);
@@ -250,9 +249,9 @@ export function createSites(o: {
   preRemplir(fenetre: string, texte: string): void;
   /** A home screen memory change (`sites.memoire`), for the subscribed window. */
   notifierMemoire(id: string, message: MessageVersLAccueil & { type: "memoire" }): void;
-  /** The app's window closed (Electron's surFermee). */
+  /** The app's window closed. */
   surFermee?(id: string): void;
-  /** « Supprimer » begins (Electron's surSupprimee): the agent's accord on the app falls. */
+  /** « Supprimer » begins: the agent's accord on the app falls. */
   surSupprimee?(id: string): void;
   /** The deletion `surSupprimee` began is over (folder in the trash, or failed): a review snapshot taken meanwhile is erased. */
   apresSuppression?(id: string): void;
@@ -263,7 +262,7 @@ export function createSites(o: {
   const lecture = { adressesLocales: o.adressesLocales };
   /** Windows open in the chrome: kept by `ouvrir`/`fermee`, recomputed by `resynchroniser`. */
   let ouvertes = new Set<string>();
-  /** The open apps as last sent to the chrome, and their retouches' files (Electron's `retouches`). */
+  /** The open apps as last sent to the chrome, and their retouches' files. */
   const sitesOuverts = new Map<string, SiteChrome>();
   const retouches = new Map<string, RetouchesLues>();
   const abonnements = new Map<string, () => void>();
@@ -337,7 +336,7 @@ export function createSites(o: {
     return { js: {}, css: {} };
   }
 
-  /** Electron's chercherAdresse (service.ts): the reference page says where the site is now; a notice says the result. */
+  /** The reference page says where the site is now; a notice says the result. */
   async function chercherAdresse(id: string, url: string | null): Promise<void> {
     const s = ouvertes.has(id) ? sitesOuverts.get(id) : undefined;
     const d = s?.declaration;
@@ -391,8 +390,7 @@ export function createSites(o: {
   }
 
   /**
-   * site.json ou un fichier de retouche a changé : l'appli ouverte est relue, puis sa page rechargée (Electron's relire,
-   * without the address tracking and the extensions, later tasks); seule la dernière relecture compte.
+   * site.json or a retouche file changed: the open app is read again, then its page reloaded; only the last read counts.
    */
   async function relire(id: string): Promise<void> {
     if (!ouvertes.has(id)) return;
@@ -416,7 +414,7 @@ export function createSites(o: {
     retouches.set(id, nouvelles);
     if (p) sitesOuverts.set(id, p.site);
     try {
-      // Electron reads its retouches map at each injection; the chrome holds its own copy, so it gets the new one even
+      // The chrome holds its own copy of the retouches map, so it gets the new one even
       // when site.json became invalid (with the app as it was). The card that comes back already reloads the page.
       const rechargee = await o.chrome.mettreAJour(p?.site ?? avant, nouvelles);
       if (relectures.get(id) === n && !pareil && !rechargee) await o.chrome.rechargerVue(id);
@@ -546,7 +544,7 @@ export function createSites(o: {
       if (!ouvertes.has(id)) forget(id);
       return false;
     }
-    // A deletion started while the chrome opened the window (Electron's open was synchronous): close it again.
+    // A deletion started while the chrome opened the window: close it again.
     if (!encore()) {
       await o.chrome.fermer(id).catch(() => {});
       return false;
