@@ -166,6 +166,12 @@ test("an AGENTS.md edited by the user is kept", async () => {
   expect(await readFile(join(c.racine, "AGENTS.md"), "utf8")).toBe(edite);
 });
 
+test("the AGENTS.md template is pinned: before editing it, add this hash to ANCIENS_AGENTS, then update the pin", async () => {
+  expect(sha256(await readFile(join(import.meta.dirname, "..", "..", "modeles", "AGENTS.md")))).toBe(
+    "1adea27921eb609aca3b73c58b690fe912c78a3eeba08a4c930f400862b6be36",
+  );
+});
+
 test("the hash of every shipped version is kept: the list only grows", () => {
   expect(ANCIENS_AGENTS.size).toBeGreaterThanOrEqual(36);
   expect(ANCIENS_AGENTS.has("eaf40a1f51b1e62226e5087c7d7a73cf8b48b84e1e4fb214e89a119d0eb71d96")).toBe(true);

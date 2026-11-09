@@ -137,7 +137,7 @@ describe("video resume", () => {
     expect(positions()).toEqual({});
   });
 
-  it("without accord (Ouvrir sans retouches): no position noted, nothing resumed (sites.spec.ts:1286)", async () => {
+  it("without a grant (« Ouvrir sans retouches »): no position noted, nothing resumed (sites.spec.ts:1286)", async () => {
     await start({ accord: false, positions: { "/episode/4": { t: 70, duree: 90 } } });
     await openSite("vidola");
     await expect.poll(() => inStore<string | null>(`return store.sites.viewOf("vidola");`), { timeout: 15_000 }).toBe("accord");

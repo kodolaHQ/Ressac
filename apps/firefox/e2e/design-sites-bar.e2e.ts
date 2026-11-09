@@ -151,7 +151,7 @@ it("unavailable on the grant card (the avis goes after 5 s); ⌂ stops the mode"
   await clickBar("avec-accueil", "site-accueil");
   await expect.poll(async () => (await bar("avec-accueil")).pressed, { timeout: 10_000 }).toBe("false");
   await expect.poll(() => hosts("avec-accueil"), { timeout: 10_000 }).toBe(0);
-  // (b) sans-accord on its accord card.
+  // (b) sans-accord on its grant card.
   await openSite(m, "sans-accord");
   await expect.poll(() => inSiteBar(m, "sans-accord", `return !!doc.querySelector('${tid("carte-accord-site")}');`), { timeout: 10_000 }).toBe(true);
   await verifyUnavailable("sans-accord");
