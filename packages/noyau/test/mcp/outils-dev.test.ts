@@ -496,7 +496,7 @@ test("fichiersProfils: a third-party site writes in the private folder and recei
 
 test("page without an origin (about:blank, data:, file:): immediate refusal, no card", async () => {
   await demarrer({ accorderDev: ["console"] });
-  for (const url of ["about:blank", "data:text/html,<p>x</p>", "file:///Users/user/a.html"]) {
+  for (const url of ["about:blank", "data:text/html,<p>x</p>", "file:///Users/someone/a.html"]) {
     const o = await pont.ouvrirOnglet(url);
     expect(await appeler("lire_console", { id: o.id })).toBe(REFUS);
     expect(await appeler("demander_outils_dev", { id: o.id, droits: ["console"], raison: "voir" })).toBe(REFUS);
