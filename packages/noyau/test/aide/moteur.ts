@@ -13,7 +13,7 @@ export type Appel = { t: "appel"; n: number; f: string; a: any };
 export type Repondeur = (appel: Appel) => Promise<{ ok: unknown } | { erreur: string }> | { ok: unknown } | { erreur: string };
 
 /**
- * The workflow as the core sends it: validated (with what the widget declares, the earlier rules without it),
+ * The workflow as the kernel sends it: validated (with what the widget declares, the earlier rules without it),
  * default parameters filled in, with the order.
  */
 export function workflowEnvoye(brut: unknown, contexte: ContexteValidation = CONTEXTE_PAR_DEFAUT) {

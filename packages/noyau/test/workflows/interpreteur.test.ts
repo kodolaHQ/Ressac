@@ -300,7 +300,7 @@ describe("interpreter: replay from a block", () => {
       rejeu: { relances: ["b", "sortie"], sorties: { src: [1, 2] } },
     });
     expect(r.code).toBe(0);
-    // No trace for src, and no memory returned: the core keeps none for a trial.
+    // No trace for src, and no memory returned: the kernel keeps none for a trial.
     expect(r.traces.map((l) => (l.t === "bloc" ? `${l.etape}:${l.id}` : l.t))).toEqual([
       "debut:b", "fin:b",
       "debut:sortie", "fin:sortie",
@@ -338,7 +338,7 @@ describe("interpreter: replay from a block", () => {
   });
 
   it("with replay, the interpreter ignores the received memory: liste.nouveaux lets everything through, reutiliser reuses nothing, no block returns a memory", async () => {
-    // The core sends an empty memory for a trial; the interpreter does not rely on it: even a received memory
+    // The kernel sends an empty memory for a trial; the interpreter does not rely on it: even a received memory
     // (including that of a block not relaunched) is neither read nor returned.
     const calcules: string[] = [];
     const r = await executer({
@@ -926,7 +926,7 @@ describe("interpreter: web.chercher", () => {
     expect(r.finBloc("sortie")).toMatchObject({ statut: "reussi" });
   });
 
-  it("after the core's first refusal, no more search: the remaining elements not launched, only one more line", async () => {
+  it("after the kernel's first refusal, no more search: the remaining elements not launched, only one more line", async () => {
     const vingt = Array.from({ length: 20 }, (_, i) => ({ marque: "M" + i, modele: "X" }));
     const r = await lancer({
       workflow: workflow({ reutiliser: "marque" }),
@@ -1325,7 +1325,7 @@ describe("interpreter: progressive run", () => {
     expect(r.resultat!.memoire.nv!.valeur).toEqual(["u0", "u1", "u2", "u3"].map((c) => [c, MAINTENANT]));
   });
 
-  it("progressive: element refused by the core (ElementNonLance): its key is not retained", async () => {
+  it("progressive: element refused by the kernel (ElementNonLance): its key is not retained", async () => {
     const r = await executer({
       progressif: true,
       entree: liste(3).map((e) => ({ ...e, url: `u${e.n}` })),
@@ -1510,7 +1510,7 @@ describe("interpreter: progressive run", () => {
     expect(memoires(r)).toEqual([]);
   });
 
-  it("reutiliser: if the in-progress computation of the same key is refused by the core, the second element does not relaunch it", async () => {
+  it("reutiliser: if the in-progress computation of the same key is refused by the kernel, the second element does not relaunch it", async () => {
     const lances: number[] = [];
     const r = await executer({
       entree: [{ modele: "Clio", n: 1 }, { modele: "Clio", n: 2 }],

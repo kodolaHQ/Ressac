@@ -252,7 +252,7 @@ describe("IaLocale", () => {
     expect(ollama.requetes).toHaveLength(0);
   });
 
-  it("a core's access: once closed, it refuses and stops Kev; another access relaunches Kev", async () => {
+  it("a kernel's access: once closed, it refuses and stops Kev; another access relaunches Kev", async () => {
     const dossier = await dossierTemporaire();
     await mkdir(join(dossier, "kev", ".git"), { recursive: true });
     const kev = garder(await fauxKev());
@@ -272,11 +272,11 @@ describe("IaLocale", () => {
     await premier.fermer();
     expect(arretes).toBe(1);
     expect(ia.etat().etat).toBe("arretee");
-    // A late harvest of the stopped core does not relaunch Kev.
+    // A late harvest of the stopped kernel does not relaunch Kev.
     await expect(premier.kev({ state: "", questions: {} })).rejects.toThrow("IA locale fermée");
     await expect(premier.gemma({ prompt: "x" })).rejects.toThrow("IA locale fermée");
     expect(lances).toBe(1);
-    // The next core (other agent profile) has its own access.
+    // The next kernel (other agent profile) has its own access.
     await ia.acces().kev({ state: "", questions: {} });
     expect(lances).toBe(2);
   });

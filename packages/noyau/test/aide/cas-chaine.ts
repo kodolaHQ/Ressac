@@ -1,4 +1,4 @@
-// Streaming chain cases: raw workflows (to validate) and expected chain. Shared between the core's rule
+// Streaming chain cases: raw workflows (to validate) and expected chain. Shared between the kernel's rule
 // (chaineAuFilDeLEau) and the container interpreter's one, which must return the same chain.
 
 type Bloc = { id: string; type: string; parametres: Record<string, unknown> };

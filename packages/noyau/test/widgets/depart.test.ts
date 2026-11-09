@@ -15,7 +15,7 @@ type Appel = { t: "appel"; n: number; f: string; a: any };
 type Repondeur = (appel: Appel) => Promise<{ ok: unknown } | { erreur: string }> | { ok: unknown } | { erreur: string };
 
 /**
- * Launches a template like the core: workflow.json read and validated by lireWorkflow, widget.json config in `debut`,
+ * Launches a template like the kernel: workflow.json read and validated by lireWorkflow, widget.json config in `debut`,
  * then the memory. `modifier` changes the workflow.json copy before the read.
  */
 async function lancer(
@@ -280,7 +280,7 @@ describe("starter widgets", () => {
     ];
     const r = await lancer("daily-dev", (a) => {
       if (a.f === "lirePage" && a.a.compte) return { ok: { url: "https://app.daily.dev/", titre: "d", texte: "", liens } };
-      // Redirected outside app.daily.dev: the core refuses the page (domain rule), like verifierPage.
+      // Redirected outside app.daily.dev: the kernel refuses the page (domain rule), like verifierPage.
       if (a.f === "lirePage" && a.a.url.endsWith("/abc")) return { erreur: "Page refusée : elle a mené hors des domaines permis (evil.example)" };
       if (a.f === "lirePage") return { ok: { url: a.a.url, titre: "x", texte: "contenu", liens: [] } };
       if (a.f === "kev") return { ok: { q: { type: "noul", noul: 0.9 } } };

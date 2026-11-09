@@ -332,7 +332,7 @@ describe("executerAction", () => {
     expect(await lireMemoire(join(b.dossierActions, "public"))).toEqual(avantMemoire);
   });
 
-  it("core stop during the layout: run interrupted, without a result", async () => {
+  it("kernel stop during the layout: run interrupted, without a result", async () => {
     const b = await preparer("simple", { nom: "S", sources: {} }, `export default async () => ({ tickets: [{ titre: "a" }] });`);
     const arret = new AbortController();
     let quitte = false;
@@ -381,7 +381,7 @@ describe("executerAction", () => {
     expect((await lireResultat(b2.dossierActions, "simple", r2.execution!))?.secours).toBe(true);
   });
 
-  it("core stop (interrompue): written run interrupted", async () => {
+  it("kernel stop (interrompue): written run interrupted", async () => {
     const b = await preparer("public", { nom: "P", sources: { publiques: ["gitlab.com"] } }, `export default async (e, w) => ({ tickets: [{ titre: (await w.lirePage("https://gitlab.com/tickets")).titre }] });`, {
       suspendues: ["https://gitlab.com/tickets"],
     });

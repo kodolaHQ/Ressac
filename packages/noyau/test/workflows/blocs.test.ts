@@ -31,7 +31,7 @@ const ATOM = `<feed xmlns="http://www.w3.org/2005/Atom"><title>Next</title>
 </feed>`;
 
 describe("shipped blocks", () => {
-  it("the container has exactly one module per core registry type, with the same per-element mode", () => {
+  it("the container has exactly one module per kernel registry type, with the same per-element mode", () => {
     expect(new Set(Object.keys(BLOCS_LIVRES))).toEqual(new Set(REGISTRE_BLOCS.keys()));
     for (const [type, d] of REGISTRE_BLOCS) expect([type, BLOCS_LIVRES[type].parElement]).toEqual([type, d.parElement]);
   });

@@ -1025,7 +1025,7 @@ describe("executerWorkflow: web search and open reads", () => {
 
 describe("executerWorkflow: a stop cancels the reads in progress", () => {
   const BASE = "https://ddg.test/html/";
-  /** A fake container: sends these calls, then waits to be killed; keeps what the core writes to it. */
+  /** A fake container: sends these calls, then waits to be killed; keeps what the kernel writes to it. */
   const conteneurAppels = (appels: { f: string; a: unknown }[]) => {
     const recu: string[] = [];
     let tuer = () => {};
@@ -1157,7 +1157,7 @@ describe("executerWorkflow: watch (duration, chain, publications, memory along t
   /**
    * A fake container that writes its lines one by one (a function is called in its place: advance the clock; a text
    * is written as is, several lines at once);
-   * `recu` receives what the core writes to it; `bloque`: it never exits on its own (only killed).
+   * `recu` receives what the kernel writes to it; `bloque`: it never exits on its own (only killed).
    */
   const lanceurPas = (pas: unknown[], o: { recu?: string[]; bloque?: boolean } = {}): LanceurProcessus => () => {
     const stdout = new PassThrough();
@@ -1631,7 +1631,7 @@ describe("executerWorkflow: watch (duration, chain, publications, memory along t
     });
   });
 
-  it("interpreteur.mjs's TAILLE_MAX_DONNEES equals the core's, re-exported by accueil", async () => {
+  it("interpreteur.mjs's TAILLE_MAX_DONNEES equals the kernel's, re-exported by accueil", async () => {
     const interpreteur = await import(pathToFileURL(join(MOTEUR, "interpreteur.mjs")).href);
     expect(interpreteur.TAILLE_MAX_DONNEES).toBe(TAILLE_MAX_DONNEES);
     expect(TAILLE_MAX_DONNEES_ACCUEIL).toBe(TAILLE_MAX_DONNEES);

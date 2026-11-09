@@ -380,7 +380,7 @@ test("the first check waits for the workshop to be ready: no « atelier arrêté
   await vi.waitFor(() => expect(recoltes).toEqual(["actus"]));
 });
 
-test("a harvest that throws an error after writing in-progress leaves a core error state", async () => {
+test("a harvest that throws an error after writing in-progress leaves a kernel error state", async () => {
   const { p, recolter, dossierWidgets, changements } = await preparer();
   await ecrireEtatWidget(dossierWidgets, "actus", { statut: "ok", derniereMaj: "2026-10-27T08:00:00.000Z", derniereTentative: "2026-10-27T08:00:00.000Z" });
   recolter.mockImplementation(async (o) => {

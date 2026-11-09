@@ -189,7 +189,7 @@ test("noyau: arreter() stops the scheduler and the local AI", async () => {
     await original.call(this);
     ordre.push("planificateur");
   });
-  // The core closes its own access to the AI (a late harvest does not restart Kev), not the shared AI.
+  // The kernel closes its own access to the AI (a late harvest does not restart Kev), not the shared AI.
   const acces = { kev: vi.fn(), gemma: vi.fn(), fermer: vi.fn(async () => void ordre.push("ia")) };
   const ia = { acces: () => acces, arreter: vi.fn() } as unknown as IaLocale;
   const n = await creerNoyau({ dossierWidgets: `${racine}-widgets`, dossierActions: `${racine}-actions`, pont: new PontFactice([], { actif: null, autoriser: false }), racine, executer, ia });
@@ -227,7 +227,7 @@ test("noyau: accorder records the grant (domains sorted), notifies and starts a 
   expect(surChange).toHaveBeenCalled();
   // Docker absent: the started harvest ends with « atelier arrêté ».
   await vi.waitFor(async () => expect((await lireEtatWidget(dossierWidgets, "daily")).statut).toBe("atelier-arrete"));
-  // Messages written by the core: marked as such (they can go out to the agent without a grant).
+  // Messages written by the kernel: marked as such (they can go out to the agent without a grant).
   expect((await lireEtatWidget(dossierWidgets, "daily")).erreurNoyau).toBe(true);
 
   surChange.mockClear();
@@ -339,7 +339,7 @@ test("a session opened for a window writes its own MCP config, deleted when the 
   await vi.waitFor(async () => expect(await readdir(dossier)).toEqual([]));
 });
 
-test("at core startup, session configs left behind by a crash are purged", async () => {
+test("at kernel startup, session configs left behind by a crash are purged", async () => {
   const racine = await dossierTemporaire();
   const dossier = join(cheminsEspace(racine).interne, "sessions");
   await mkdir(dossier, { recursive: true });

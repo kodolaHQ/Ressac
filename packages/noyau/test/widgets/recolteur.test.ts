@@ -14,7 +14,7 @@ const SCRIPT = join(import.meta.dirname, "..", "..", "docker", "moteur", "recolt
 type Appel = { t: "appel"; n: number; f: string; a: any };
 type Repondeur = (appel: Appel) => Promise<{ ok: unknown } | { erreur: string }> | { ok: unknown } | { erreur: string };
 
-/** A widget that has only `recolte.mjs` (like the user's Gmail), launched the way the core does it. */
+/** A widget that has only `recolte.mjs` (like the user's Gmail), launched the way the kernel does it. */
 async function lancer(code: string, repondre: Repondeur = () => ({ ok: null }), config: unknown = {}) {
   const dossier = await dossierTemporaire();
   await writeFile(join(dossier, "recolte.mjs"), code);
@@ -89,7 +89,7 @@ describe("recolteur (implicit workflow of a lone recolte.mjs)", () => {
     expect(r.terminal.t).toBe("echec");
   });
 
-  it("a core { erreur } response becomes an exception in the widget", async () => {
+  it("a kernel { erreur } response becomes an exception in the widget", async () => {
     const r = await lancer(
       `export default async (w) => { try { await w.recuperer("https://x.fr/"); } catch (e) { return { attrape: e.message }; } };`,
       () => ({ erreur: "domaine refusé" }),

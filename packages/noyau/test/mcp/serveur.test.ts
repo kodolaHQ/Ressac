@@ -499,7 +499,7 @@ test("without widgets: the tools do not exist", async () => {
   expect(noms).not.toContain("donnees_widget");
 });
 
-test("recolter_widget on a widget with an account without a grant: an error written by the widget does not leave, the core's does", async () => {
+test("recolter_widget on a widget with an account without a grant: an error written by the widget does not leave, the kernel's does", async () => {
   const { outils } = widgetsFactices();
   let erreur = "SECRET";
   let erreurNoyau: true | undefined;
@@ -520,13 +520,13 @@ test("recolter_widget on a widget with an account without a grant: an error writ
   expect(texte(await client.callTool({ name: "recolter_widget", arguments: { id: "meteo" } }))).toContain("SECRET public");
 });
 
-test("recolter_widget, widget with an account without a grant: a widget text that imitates the core does not leave, the real core message does", async () => {
+test("recolter_widget, widget with an account without a grant: a widget text that imitates the kernel does not leave, the real kernel message does", async () => {
   const { outils } = widgetsFactices();
   let etat: EtatWidget = { statut: "erreur", derniereMaj: null, derniereTentative: null };
   outils.recolter = async () => etat;
   await avecWidgets(outils);
   const recolter = async () => texte(await client.callTool({ name: "recolter_widget", arguments: { id: "daily" } }));
-  // Written by the widget (no core mark): they carry account data.
+  // Written by the widget (no kernel mark): they carry account data.
   for (const imitation of [
     "Accord requis pour lire avec ton compte : " + (123456789).toString(36),
     "La récolte s'est arrêtée sans résultat (code 123456789)",
@@ -536,10 +536,10 @@ test("recolter_widget, widget with an account without a grant: a widget text tha
     expect(t).not.toContain(imitation);
     expect(t).toContain(ERREUR_RESERVEE);
   }
-  // Written by the core: it leaves.
+  // Written by the kernel: it leaves.
   etat = { statut: "accord-requis", derniereMaj: null, derniereTentative: null, erreur: "Accord requis pour lire avec ton compte : app.daily.dev", erreurNoyau: true };
   expect(await recolter()).toContain("Accord requis pour lire avec ton compte : app.daily.dev");
-  // Marked as the core's but outside the fixed messages: reserved anyway.
+  // Marked as the kernel's but outside the fixed messages: reserved anyway.
   etat = { statut: "erreur", derniereMaj: null, derniereTentative: null, erreur: "SECRET", erreurNoyau: true };
   expect(await recolter()).not.toContain("SECRET");
 });
@@ -774,7 +774,7 @@ test("lancer_action on an action without an account: status reussie and run id, 
   expect(cartesDonnees()).toHaveLength(0);
 });
 
-test("lancer_action with an account and an error written by the code: ERREUR_RESERVEE_ACTION; core error: shown", async () => {
+test("lancer_action with an account and an error written by the code: ERREUR_RESERVEE_ACTION; kernel error: shown", async () => {
   const { outils, fixer } = actionsFactices();
   await avecActions(outils);
   fixer({ statut: "echouee", erreur: "SECRET du compte" });

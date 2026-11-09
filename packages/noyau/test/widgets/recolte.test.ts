@@ -606,7 +606,7 @@ describe("executerRecolte, widget with an account", () => {
     expect(await lireJson(join(ctx.dossierWidgets, "daily", "donnees.json"))).toEqual({ prec: null });
   });
 
-  it("erreurDuNoyau: fixed core messages recognized, widget text not", () => {
+  it("erreurDuNoyau: fixed kernel messages recognized, widget text not", () => {
     expect(erreurDuNoyau("Délai dépassé")).toBe(true);
     expect(erreurDuNoyau("Réponse trop grande")).toBe(true);
     expect(erreurDuNoyau("Accord requis pour lire avec ton compte : app.daily.dev")).toBe(true);
@@ -627,7 +627,7 @@ describe("executerRecolte, widget with an account", () => {
     expect(appelsLecture(pont)).toHaveLength(0);
   });
 
-  it("error thrown by the widget: never marked as the core's, even when it imitates a core message", async () => {
+  it("error thrown by the widget: never marked as the kernel's, even when it imitates a kernel message", async () => {
     for (const imitation of [
       "Accord requis pour lire avec ton compte : " + (123456789).toString(36),
       "La récolte s'est arrêtée sans résultat (code 123456789)",
@@ -645,7 +645,7 @@ describe("executerRecolte, widget with an account", () => {
     }
   });
 
-  it("errors written by the core: marked as such (grant required, timeout exceeded)", async () => {
+  it("errors written by the kernel: marked as such (grant required, timeout exceeded)", async () => {
     const ctx = await preparer("daily", `export default async (w) => w.lirePage("https://app.daily.dev/", { compte: true });`, sources);
     const r = await recolter(ctx);
     expect(r.etat).toMatchObject({ statut: "accord-requis", erreur: "Accord requis pour lire avec ton compte : app.daily.dev", erreurNoyau: true });
@@ -742,7 +742,7 @@ describe("executerRecolte, through the widget's workflow", () => {
     expect(e).toMatchObject({ statut: "reussie", declencheur: "planifiee", proprietaire: { type: "widget", id: "gmail" }, debut: MAINTENANT.toISOString() });
     expect(e.blocs.map((b) => [b.id, b.type, b.statut])).toEqual([["recolte", "code", "reussi"], ["sortie", "sortie", "reussi"]]);
     expect(e.blocs[0]!.journal).toContain("courriels lus");
-    // An error thrown by this widget stays its own: never marked as the core's.
+    // An error thrown by this widget stays its own: never marked as the kernel's.
     await writeFile(join(ctx.widget.dossier, "recolte.mjs"), `export default async () => { throw new Error("Délai dépassé"); };`);
     const echec = await recolter(ctx);
     expect(echec.etat).toMatchObject({ statut: "erreur", erreur: "Délai dépassé" });
@@ -913,7 +913,7 @@ describe("executerRecolte, through the widget's workflow", () => {
     const ctx = await preparer("lent", `export default () => new Promise(() => {});`);
     const r = await executerRecolte({ ...optionsDe(ctx), delaiMs: 300, interrompue: () => true });
     const e = await executionDe(ctx, r.execution);
-    // The message is the core's (not « Délai dépassé »); the started block is interrupted, the output never launched.
+    // The message is the kernel's (not « Délai dépassé »); the started block is interrupted, the output never launched.
     expect(e).toMatchObject({ statut: "interrompue", erreur: "Interrompue : WebAiOs s'est arrêté", erreurNoyau: true });
     expect(e.blocs.map((b) => [b.id, b.statut])).toEqual([["recolte", "interrompu"], ["sortie", "pas-lance"]]);
     expect(erreurDuNoyau(e.erreur!)).toBe(true);
@@ -1200,7 +1200,7 @@ describe("executerRecolte, watch (publications as it goes, memory kept, noveltie
 
   /**
    * A fake container that writes its lines one by one; a function (possibly async) is called instead
-   * of a line. `recu`: what the core writes to it; `bloque`: it never exits on its own (only killed).
+   * of a line. `recu`: what the kernel writes to it; `bloque`: it never exits on its own (only killed).
    */
   const lanceurPas = (ctx: Contexte, pas: unknown[], o: { recu?: string[]; bloque?: boolean } = {}): LanceurProcessus => (cmd, args) => {
     ctx.commandes.push([cmd, ...args]);
