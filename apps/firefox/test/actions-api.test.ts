@@ -98,7 +98,7 @@ describe("createActionsApi", () => {
     expect(await a.page("gitlab", null)).toBeNull();
     expect(await a.runs("gitlab")).toEqual([]);
     expect(await a.run("gitlab", "2026-10-31T08-00-00-000Z")).toBeNull();
-    expect(await a.direct()).toEqual(NONE);
+    expect(await a.live()).toEqual(NONE);
     await a.openLink("gitlab", "2026-10-31T08-00-00-000Z", "https://a.test/");
     expect(await a.profilesForGrant()).toEqual([]);
     expect(await a.grant({ id: "gitlab", profile: "default", account: ["gitlab.com"], public: [] })).toEqual({ ok: false, error: ACTIONS_IN_PRIVATE_SPACE });
@@ -177,7 +177,7 @@ describe("createActionsApi", () => {
     expect(await a.launch("x", null)).toEqual({ status: "invalid", error: "Le service des actions ne répond pas (agent arrêté ?)" });
     expect(await a.list()).toEqual([]);
     expect(await a.page("x", null)).toBeNull();
-    expect(await a.direct()).toEqual(NONE);
+    expect(await a.live()).toEqual(NONE);
   });
 
   it("accorder never uses a private space's profile, read again at the grant", async () => {
@@ -199,7 +199,7 @@ describe("createActionsApi", () => {
       ["actions.page", { run: "x" }, (b: Api) => b.page("gitlab", null), null],
       ["actions.runs", [{ id: "x" }], (b: Api) => b.runs("gitlab"), []],
       ["actions.run", { id: "x" }, (b: Api) => b.run("gitlab", "x"), null],
-      ["actions.live", running, (b: Api) => b.direct(), NONE],
+      ["actions.live", running, (b: Api) => b.live(), NONE],
       ["actions.launch", { status: "succeeded", run: "x" }, (b: Api) => b.launch("gitlab", null), { status: "invalid", error: ACTIONS_IN_PRIVATE_SPACE }],
       ["actions.name", "GitLab", (b: Api) => b.viewWorkflow("gitlab"), undefined],
       ["actions.linkAllowed", true, (b: Api) => b.openLink("gitlab", "x", "https://gitlab.com/1"), undefined],
@@ -248,7 +248,7 @@ describe("createActionsApi", () => {
     expect(await priv.list()).toEqual([]);
     expect(await priv.page("gitlab", null)).toBeNull();
     expect(await priv.image("gitlab", "x", "https://img.test/a.png")).toBeNull();
-    expect(await priv.direct()).toEqual(NONE);
+    expect(await priv.live()).toEqual(NONE);
     expect(calls).toEqual([]);
     expect(media.image).not.toHaveBeenCalled();
     expect(await pub.list()).toEqual([{ id: "gitlab" }]);
@@ -301,14 +301,14 @@ describe("createActionsApi", () => {
     };
     const { F, api, turnPrivate } = setup({ "actions.list": answer([{ id: "gitlab" }]), "actions.page": answer({ run: "x" }), "actions.runs": answer([{ id: "x" }]), "actions.live": answer({ running: [{ action: "gitlab" }], waiting: [] }) });
     const a = api(F);
-    await Promise.all([a.list(), a.page("gitlab", null), a.runs("gitlab"), a.direct()]);
+    await Promise.all([a.list(), a.page("gitlab", null), a.runs("gitlab"), a.live()]);
     up = false;
     expect(await a.list()).toEqual([{ id: "gitlab" }]);
     expect(await a.page("gitlab", null)).toEqual({ run: "x" });
     expect(await a.runs("gitlab")).toEqual([{ id: "x" }]);
     expect(await a.page("gitlab", "y")).toBeNull();
     // Nothing runs while no host runs.
-    expect(await a.direct()).toEqual(NONE);
+    expect(await a.live()).toEqual(NONE);
     // Never in a private space.
     turnPrivate();
     expect(await a.list()).toEqual([]);
@@ -478,15 +478,15 @@ describe("createActionsApi", () => {
     expect(await a.runs("gitlab")).toEqual([]);
     up = true;
     await a.list();
-    expect(await a.supprimer("gitlab")).toEqual({ ok: true });
+    expect(await a.delete("gitlab")).toEqual({ ok: true });
     up = false;
     expect(await a.list()).toEqual([]);
-    expect(await a.supprimer("gitlab")).toEqual({ ok: false, error: "Le service des actions ne répond pas (agent arrêté ?)" });
+    expect(await a.delete("gitlab")).toEqual({ ok: false, error: "Le service des actions ne répond pas (agent arrêté ?)" });
     expect(calls.filter((c) => c.method === "actions.denyGrant" || c.method === "actions.delete").map((c) => c.params)).toEqual([{ id: "gitlab" }, { id: "gitlab" }, { id: "gitlab" }]);
     calls.length = 0;
     turnPrivate();
     await a.denyGrant("gitlab");
-    expect(await a.supprimer("gitlab")).toEqual({ ok: false, error: ACTIONS_IN_PRIVATE_SPACE });
+    expect(await a.delete("gitlab")).toEqual({ ok: false, error: ACTIONS_IN_PRIVATE_SPACE });
     expect(await a.open("gitlab", null)).toEqual({ ok: false, error: ACTIONS_IN_PRIVATE_SPACE });
     expect(calls).toEqual([]);
   });

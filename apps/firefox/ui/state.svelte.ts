@@ -55,7 +55,7 @@ export const requests = $state<{ list: PendingRequest[] }>({ list: [] });
 api.onPermissions((list) => {
   requests.list = list;
 });
-void api.permissions.waiting().then((list) => {
+void api.permissions.pending().then((list) => {
   requests.list = list;
 });
 

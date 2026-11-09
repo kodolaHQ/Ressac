@@ -150,8 +150,8 @@ export function createApi(win: WindowController): ApiFirefox {
     // The visits live in the kernel host: the UI gets copies made in this realm.
     history: {
       search: (text, limit, distinct) => win.store.history.search(text, limit, distinct).then((v) => structuredClone(v)),
-      recents: () => win.store.history.recent().then((v) => structuredClone(v)),
-      erase: (from) => win.store.history.clear(from),
+      recent: () => win.store.history.recent().then((v) => structuredClone(v)),
+      clear: (from) => win.store.history.clear(from),
       forgetText: (url, spaceId) => win.store.history.forgetText(url, spaceId),
     },
     // The list lives in the store's realm: the UI gets copies made in this realm.
@@ -164,8 +164,8 @@ export function createApi(win: WindowController): ApiFirefox {
     onDownloads: (callback) => untilUnload(win.store.downloads.onChange((l) => callback(structuredClone(l)))),
     // The agent's cards and access badges live in the store's realm: the UI gets copies made in this realm.
     permissions: {
-      waiting: async () => structuredClone(win.store.questions.pending()),
-      reply: (id, d, rights, o) => win.store.questions.answer(id, d, o, rights),
+      pending: async () => structuredClone(win.store.questions.pending()),
+      answer: (id, d, rights, o) => win.store.questions.answer(id, d, o, rights),
     },
     onPermissions: (callback) => untilUnload(win.store.questions.onChange((l) => callback(structuredClone(l)))),
     access: {
@@ -239,7 +239,7 @@ export function createApi(win: WindowController): ApiFirefox {
         const offs = [host.on("apps.change", () => callback()), host.on(HOST_EXITED, () => callback()), host.on("home.change", () => callback())];
         return untilUnload(() => offs.forEach((f) => f()));
       },
-      dispatch(folder, action) {
+      act(folder, action) {
         if (action === "folder") return win.store.apps.reveal(folder);
         // The app's Review page, under its name; a project without manifest has none.
         if (action === "review") {
@@ -264,7 +264,7 @@ export function createApi(win: WindowController): ApiFirefox {
         const offs = [host.on("sites.change", () => callback()), host.on(HOST_EXITED, () => callback()), host.on("home.change", () => callback())];
         return untilUnload(() => offs.forEach((f) => f()));
       },
-      dispatch(id, action) {
+      act(id, action) {
         if (action === "folder") return win.store.sites.revealSite(id);
         // The app's Review page, under its name.
         if (action === "review")
@@ -294,12 +294,12 @@ export function createApi(win: WindowController): ApiFirefox {
       onChange: (callback) => untilUnload(host.on("extensions.change", () => callback())),
       // The Extensions page: the agent's extensions only (decision 8); AMO add-ons stay in about:addons.
       list: () => host.request<ExtensionLine[]>("extensions.list").then((l) => structuredClone(l), () => []),
-      cut: () => host.request<boolean>("extensions.allCut").then((b) => b === true, () => false),
+      allCut: () => host.request<boolean>("extensions.allCut").then((b) => b === true, () => false),
       disableEverywhere: (key) => extension("extensions.disableEverywhere", { key: key }),
-      supprimer: (key) => extension("extensions.remove", { key: key }),
+      remove: (key) => extension("extensions.remove", { key: key }),
       cutAll: (yes) => extension("extensions.cutAll", { yes: yes }),
       review: (key) => extension("extensions.review", { key: key, window: windowId }),
-      reactivate: (key) => extension("extensions.reenable", { key: key }),
+      reenable: (key) => extension("extensions.reenable", { key: key }),
       cutUnlock: (key) => extension("extensions.cutUnlock", { key: key }),
       installStore: () => extension("extensions.installStore", {}),
     } as Partial<ApiWebaios["extensions"]> as ApiWebaios["extensions"],
@@ -320,7 +320,7 @@ export function createApi(win: WindowController): ApiFirefox {
         privateAction(target) ? { ok: false, error: ACTIONS_IN_PRIVATE_SPACE } : ask("workflow.saveCode", { target: target, name: name, text: text }, { ok: false, error: AGENT_STOPPED_MESSAGE }),
       replay: async (target, run, block) =>
         privateAction(target) ? { ok: false, error: ACTIONS_IN_PRIVATE_SPACE } : ask("workflow.replay", { target: target, run: run, block: block }, { ok: false, error: AGENT_STOPPED_MESSAGE }),
-      launch: async (target, input) => (privateAction(target) ? { error: ACTIONS_IN_PRIVATE_SPACE } : ask("workflow.run", { target: target, input: input ?? null }, {})),
+      run: async (target, input) => (privateAction(target) ? { error: ACTIONS_IN_PRIVATE_SPACE } : ask("workflow.run", { target: target, input: input ?? null }, {})),
       selection(target, block) {
         // The host keeps it in memory only: resent on `access`, which a host sends once its kernel has started (and on policy
         // changes, harmless: the same selection again).
@@ -328,10 +328,10 @@ export function createApi(win: WindowController): ApiFirefox {
         lastSelection = { window: windowId, target: target, block: block };
         host.notify("workflow.selection", lastSelection);
       },
-      direct: () => ask("workflow.live", undefined, { running: [], waiting: [] }),
+      live: () => ask("workflow.live", undefined, { running: [], waiting: [] }),
       onLive(callback) {
         // A host that stopped or started again sent no feed meanwhile: the runs are read again.
-        const again = () => void api.workflow!.direct().then(callback);
+        const again = () => void api.workflow!.live().then(callback);
         const offs = [host.on("workflow.live", (e) => callback(structuredClone(e))), host.on(HOST_EXITED, again), host.on("home.change", again)];
         return untilUnload(() => offs.forEach((f) => f()));
       },

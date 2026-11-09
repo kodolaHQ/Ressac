@@ -63,7 +63,7 @@
     denial = null;
     if (c.kind === "grant") await api.actions.denyGrant(c.action.id);
     else {
-      const r = await api.actions.supprimer(c.action.id);
+      const r = await api.actions.delete(c.action.id);
       if (!r.ok) denial = r.error;
     }
     await load();

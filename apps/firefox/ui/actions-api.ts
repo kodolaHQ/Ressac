@@ -127,12 +127,12 @@ export function createActionsApi(o: {
     page: (id, run) => ask("actions.page", { id, run }, () => null, true),
     runs: (id) => ask("actions.runs", { id }, () => [], true),
     run: (id, run) => ask("actions.run", { id, run }, () => null, true),
-    direct: () => ask("actions.live", undefined, NO_ACTION),
+    live: () => ask("actions.live", undefined, NO_ACTION),
     onLive(callback) {
       // Only while this window's space is not private, judged at each event.
       const offFeed = host.on("actions.live", (e) => !isPrivate() && callback(structuredClone(e)));
       // A host that started again sent no feed meanwhile: the runs are read again.
-      const offs = [offFeed, afterRestart(() => void api.direct().then((e) => !isPrivate() && callback(e)))];
+      const offs = [offFeed, afterRestart(() => void api.live().then((e) => !isPrivate() && callback(e)))];
       return o.untilUnload(() => offs.forEach((f) => f()));
     },
     async openLink(id, run, url) {
@@ -174,7 +174,7 @@ export function createActionsApi(o: {
         (e) => ((hostDown = true), console.error(`[webaios] retrait de l'accord de l'action ${id} :`, e)),
       );
     },
-    async supprimer(id) {
+    async delete(id) {
       if (isPrivate()) return denial;
       const r = await host.request<{ ok: true } | { ok: false; error: string }>("actions.delete", { id }).then(
         (v) => structuredClone(v),

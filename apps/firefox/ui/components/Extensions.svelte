@@ -17,7 +17,7 @@
 
   async function load() {
     const n = ++request;
-    const [l, b] = await Promise.all([api.extensions.list(), api.extensions.cut()]);
+    const [l, b] = await Promise.all([api.extensions.list(), api.extensions.allCut()]);
     if (n !== request) return;
     lignes = l;
     cuts = b;
@@ -113,7 +113,7 @@
           {#if l.source === "agent" && l.disabled === DISABLED_SCOPE}
             <button onclick={() => void make(api.extensions.review(l.key))}>Revoir l'accord</button>
           {/if}
-          {#if l.disabled === DISABLED_CRASHES}<button onclick={() => void make(api.extensions.reactivate(l.key))}>Réactiver</button>{/if}
+          {#if l.disabled === DISABLED_CRASHES}<button onclick={() => void make(api.extensions.reenable(l.key))}>Réactiver</button>{/if}
           {#if l.consoleUnlocked}<button onclick={() => void make(api.extensions.cutUnlock(l.key))}>Couper le déblocage</button>{/if}
           <button disabled={l.spaces.length === 0 && l.siteApps.length === 0} onclick={() => void make(api.extensions.disableEverywhere(l.key))}>Désactiver partout</button>
           <button onclick={() => (toDelete = l)}>Supprimer</button>
@@ -139,7 +139,7 @@
           onclick={() => {
             const key = target.key; // {@const} is re-read: after toDelete = null, cible is null
             toDelete = null;
-            void make(api.extensions.supprimer(key));
+            void make(api.extensions.remove(key));
           }}>Supprimer</button
         >
       </div>

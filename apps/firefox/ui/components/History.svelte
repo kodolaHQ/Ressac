@@ -13,7 +13,7 @@
 
   async function load() {
     const n = ++request;
-    const r = text.trim() ? await api.history.search(text.trim(), 200) : await api.history.recents();
+    const r = text.trim() ? await api.history.search(text.trim(), 200) : await api.history.recent();
     if (n === request) visits = r;
   }
 
@@ -44,7 +44,7 @@
 
   async function clear(from?: Date) {
     clearChoice = false;
-    await api.history.erase(from?.toISOString());
+    await api.history.clear(from?.toISOString());
     await load();
   }
 

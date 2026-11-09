@@ -144,9 +144,9 @@ export interface ApiWebaios {
   history: {
     /** `distinctes`: a single row per URL (address bar); otherwise one per URL and per space. */
     search(text: string, limit?: number, distinct?: boolean): Promise<Visit[]>;
-    recents(): Promise<Visit[]>;
+    recent(): Promise<Visit[]>;
     /** `depuis`: ISO date; absent, the whole history. */
-    erase(from?: string): Promise<void>;
+    clear(from?: string): Promise<void>;
     /** Forgets the text kept for a visit (a URL in a space), without deleting the visit. */
     forgetText(url: string, spaceId: string): Promise<void>;
   };
@@ -158,9 +158,9 @@ export interface ApiWebaios {
   };
   onDownloads(callback: (list: Download[]) => void): () => void;
   permissions: {
-    waiting(): Promise<PendingRequest[]>;
+    pending(): Promise<PendingRequest[]>;
     /** `o.confirme`: the « Je comprends » box of a hardened extension card is checked. */
-    reply(id: string, decision: Decision, rights?: DevRight[], o?: { confirmed?: boolean }): void;
+    answer(id: string, decision: Decision, rights?: DevRight[], o?: { confirmed?: boolean }): void;
   };
   onPermissions(callback: (list: PendingRequest[]) => void): () => void;
   /**
@@ -239,11 +239,11 @@ export interface ApiWebaios {
      * Starts a real execution now; returns its id (absent if the agent is stopped or nothing ran). An action
      * receives `saisie` and may return the refusal (`error`: required input, required grant…).
      */
-    launch(target: Owner, input?: string | null): Promise<{ run?: string; error?: string }>;
+    run(target: Owner, input?: string | null): Promise<{ run?: string; error?: string }>;
     /** The block selected in this window's builder (for open_workflow). */
     selection(target: Owner, block: string | null): void;
     /** The executions of the running widgets (those of actions: `actions.live`). */
-    direct(): Promise<DirectState>;
+    live(): Promise<DirectState>;
     onLive(callback: (e: DirectState) => void): () => void;
   };
   /** Local AI (Kev and Gemma) of the harvests. */
@@ -276,7 +276,7 @@ export interface ApiWebaios {
     runs(id: string): Promise<ResumeExecution[]>;
     /** A complete execution (blocks, outputs, logs), for the builder; null if it no longer exists. */
     run(id: string, execution: string): Promise<Execution | null>;
-    direct(): Promise<ActionsState>;
+    live(): Promise<ActionsState>;
     onLive(callback: (e: ActionsState) => void): () => void;
     /** A link from the page: opened in a tab only if the address appears as is in the results. */
     openLink(id: string, execution: string, url: string): void;
@@ -287,7 +287,7 @@ export interface ApiWebaios {
     /** Removes the grant and erases executions, results and memory. */
     denyGrant(id: string): Promise<void>;
     /** Puts the action in the trash (`actions/.trash`) and forgets its grant and its data. */
-    supprimer(id: string): Promise<{ ok: true } | { ok: false; error: string }>;
+    delete(id: string): Promise<{ ok: true } | { ok: false; error: string }>;
     /** Opens the builder on the action's workflow. */
     viewWorkflow(id: string): void;
   };
@@ -296,14 +296,14 @@ export interface ApiWebaios {
     list(): Promise<ApplicationList>;
     /** A project or an app's state changed: re-read. */
     onChange(callback: () => void): () => void;
-    dispatch(folder: string, action: ActionApplication): void;
+    act(folder: string, action: ActionApplication): void;
   };
   /** « Sites » section of the Applications page: the site apps of the agent's space. */
   sites: {
     list(): Promise<ShownSite[]>;
     /** A site app appeared, changed, opened or closed: re-read. */
     onChange(callback: () => void): () => void;
-    dispatch(id: string, action: ActionSite): void;
+    act(id: string, action: ActionSite): void;
   };
   extensions: {
     /**
@@ -320,20 +320,20 @@ export interface ApiWebaios {
     /** All the registry's extensions (Extensions page). */
     list(): Promise<ExtensionLine[]>;
     /** Is « Désactiver toutes les extensions » in force? */
-    cut(): Promise<boolean>;
+    allCut(): Promise<boolean>;
     /** The extensions loaded in the profile of this window's active space. */
     bar(): Promise<ExtensionsBar>;
     pin(key: string, yes: boolean): Promise<ExtensionResult>;
     /** Removed from all profiles (the grant stays). */
     disableEverywhere(key: string): Promise<ExtensionResult>;
     /** Store: uninstalled; agent: grant and copy erased (the agent's folder stays). */
-    supprimer(key: string): Promise<ExtensionResult>;
+    remove(key: string): Promise<ExtensionResult>;
     /** « Désactiver toutes les extensions »: nothing is loaded while it is true, even after a restart. */
     cutAll(yes: boolean): Promise<ExtensionResult>;
     /** The card of the pending update (Store) or of the widened scope (agent), in this window. */
     review(key: string): Promise<ExtensionResult>;
     /** An extension disabled for its crashes starts again (where it was active). */
-    reactivate(key: string): Promise<ExtensionResult>;
+    reenable(key: string): Promise<ExtensionResult>;
     /** « Couper le déblocage » of an agent extension's console. */
     cutUnlock(key: string): Promise<ExtensionResult>;
   };

@@ -91,7 +91,7 @@
       received = true;
       direct = e;
     });
-    void api.actions.direct().then((e) => {
+    void api.actions.live().then((e) => {
       if (!received) direct = e;
     });
     return end;

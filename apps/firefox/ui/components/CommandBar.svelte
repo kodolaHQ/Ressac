@@ -160,8 +160,8 @@
       // Like the sidebar and ⌃Tab: an essential opens through its favorite (its tab may belong to a sibling space).
       const link = appState.value?.tabs[l.tab.id]?.link;
       api.dispatch(link?.type === "essential" ? { type: "openFavorite", windowId: win.id, kind: "essential", id: link.id } : { type: "activateTab", id: l.tab.id });
-    } else if (l.app.kind === "project") api.apps.dispatch(l.app.id, l.app.action);
-    else api.sites.dispatch(l.app.id, "open");
+    } else if (l.app.kind === "project") api.apps.act(l.app.id, l.app.action);
+    else api.sites.act(l.app.id, "open");
     closeCommand(true);
   }
 

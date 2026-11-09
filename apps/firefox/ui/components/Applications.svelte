@@ -67,7 +67,7 @@
     return api.sites.onChange(() => void loadSites());
   });
 
-  const actSite = (s: ShownSite, action: ActionSite) => api.sites.dispatch(s.id, action);
+  const actSite = (s: ShownSite, action: ActionSite) => api.sites.act(s.id, action);
   const lignesSites = $derived.by(() => {
     const searches = text.trim().toLowerCase();
     return sites.filter((s) => !searches || [s.name, s.id, s.domain ?? "", s.description].some((x) => x.toLowerCase().includes(searches)));
@@ -152,7 +152,7 @@
     return reason.split("\n")[0];
   }
 
-  const act = (a: ApplicationShown, action: ActionApplication) => api.apps.dispatch(a.folder, action);
+  const act = (a: ApplicationShown, action: ActionApplication) => api.apps.act(a.folder, action);
 
   /** Visible buttons and ⋯ menu entries depending on the state (spec §5). */
   function actions(a: ApplicationShown): { buttons: { label: string; action: ActionApplication; launched?: boolean }[]; menu: MenuEntry[] } {

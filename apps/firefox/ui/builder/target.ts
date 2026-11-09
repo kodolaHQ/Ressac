@@ -49,9 +49,9 @@ export function actionsDirect(e: ActionsState): DirectState {
 export function launcherOf(api: Pick<ApiWebaios, "workflow" | "actions">, target: Owner): Launcher {
   const w = api.workflow;
   const common = {
-    launch: (key: string, input?: string | null) => w.launch(targetOfKey(key), input),
+    launch: (key: string, input?: string | null) => w.run(targetOfKey(key), input),
     replay: (key: string, execution: string, block: string) => w.replay(targetOfKey(key), execution, block),
   };
-  if (target.type === "widget") return { ...common, direct: () => w.direct(), onLive: (r) => w.onLive(r) };
-  return { ...common, direct: () => api.actions.direct().then(actionsDirect), onLive: (r) => api.actions.onLive((e) => r(actionsDirect(e))) };
+  if (target.type === "widget") return { ...common, direct: () => w.live(), onLive: (r) => w.onLive(r) };
+  return { ...common, direct: () => api.actions.live().then(actionsDirect), onLive: (r) => api.actions.onLive((e) => r(actionsDirect(e))) };
 }

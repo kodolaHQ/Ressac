@@ -65,7 +65,7 @@
     untrack(armer);
   });
 
-  const deny = () => api.permissions.reply(request.id, "deny");
+  const deny = () => api.permissions.answer(request.id, "deny");
   const focusables = () =>
     [...card.querySelectorAll<HTMLElement>("button, input, [tabindex]:not([tabindex='-1'])")].filter((e) => !e.hasAttribute("disabled"));
 
@@ -149,7 +149,7 @@
           <div class="actions">
             <!-- Enter refuses: showing the agent what an extension reads on unshared tabs takes a real click. -->
             <button data-principal onclick={deny}>Refuser</button>
-            <button class="autoriser" onclick={() => api.permissions.reply(request.id, "allow")}>Débloquer</button>
+            <button class="autoriser" onclick={() => api.permissions.answer(request.id, "allow")}>Débloquer</button>
           </div>
         </div>
       {:else if widgetData}
@@ -164,7 +164,7 @@
           <div class="actions">
             <!-- Enter refuses: showing the agent data read with the account takes a real click. -->
             <button data-principal onclick={deny}>Refuser</button>
-            <button class="autoriser" onclick={() => api.permissions.reply(request.id, "allow")}>Autoriser pour cette conversation</button>
+            <button class="autoriser" onclick={() => api.permissions.answer(request.id, "allow")}>Autoriser pour cette conversation</button>
           </div>
         </div>
       {:else}
@@ -172,7 +172,7 @@
           <p>L'agent veut lire l'onglet « {request.title ?? site} »</p>
           <div class="actions">
             <button onclick={deny}>Refuser</button>
-            <button class="autoriser" data-principal onclick={() => api.permissions.reply(request.id, "allow")}>Autoriser une fois</button>
+            <button class="autoriser" data-principal onclick={() => api.permissions.answer(request.id, "allow")}>Autoriser une fois</button>
           </div>
         </div>
       {/if}
