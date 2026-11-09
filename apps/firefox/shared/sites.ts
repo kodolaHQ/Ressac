@@ -3,9 +3,6 @@ import type { EntreeMemoire, PositionVideo } from "@webaios/noyau";
 
 /** Messages et types de la fenêtre d'une appli de site, lus aussi par l'interface (`site.html`, page Applications). */
 
-/** Partition d'une appli de site : jamais celle d'un espace, d'une application ni d'une autre appli de site. */
-export const partitionSite = (id: string) => `persist:site-${id}`;
-
 /** Hauteur de la barre d'une fenêtre d'appli de site, en px : la vue du site est posée juste dessous. */
 export const HAUTEUR_BARRE_SITE = 36;
 
@@ -58,9 +55,6 @@ export type DemandeAccordSite = {
   empreinte: string;
 };
 
-/** Longueur d'une empreinte de droits (sha256 en hex). */
-export const EMPREINTE_ACCORD_LONGUEUR = 64;
-
 export type EtatFenetreSite = {
   id: string;
   nom: string;
@@ -81,8 +75,6 @@ export const ADRESSE_ACCUEIL_MAX = 2000;
 
 /** Schéma de l'écran d'accueil : `webaios-site://<id>/<chemin dans accueil/>`. */
 export const SCHEMA_SITE = "webaios-site";
-/** L'adresse de la page d'entrée de l'accueil de l'appli `id`. */
-export const urlAccueilSite = (id: string) => `${SCHEMA_SITE}://${id}/index.html`;
 /** Taille maximale d'une image du site demandée par l'accueil (rendue en `data:`). */
 export const IMAGE_SITE_MAX = 2 * 1024 * 1024;
 /** Écart minimal entre deux adresses ouvertes par l'accueil. */

@@ -20,7 +20,6 @@ import {
 /** The external MCP port: the asked one, else 5279; a bad value gives NaN, which the server refuses. */
 export const externalMcpPort = (v: string | undefined): number => Number(v ?? PORT_MCP_EXTERNE);
 
-// Copied from service.ts word for word (test/design-host.test.ts checks them): service.ts does not load under tsx.
 export function sourceTexte(s: ContexteDesign["source"]): string | null {
   if (!s) return null;
   return s.ligne !== undefined ? `${s.fichier}:${s.ligne}` : s.fichier;

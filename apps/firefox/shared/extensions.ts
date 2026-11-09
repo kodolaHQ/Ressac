@@ -1,8 +1,5 @@
 import type { SourceExtension } from "@webaios/noyau";
 
-/** Réponse à une saisie qui n'est ni un id d'extension, ni l'adresse de sa page du Chrome Web Store. */
-export const SAISIE_INVALIDE = "Adresse ou identifiant du Chrome Web Store attendu";
-
 // Dans un module sans dépendance au noyau : l'interface les importe (le noyau n'entre pas dans son bundle).
 export {
   activeDans,

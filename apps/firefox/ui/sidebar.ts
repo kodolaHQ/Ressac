@@ -1,7 +1,7 @@
 // First: ui/etat.svelte.ts reads window.webaios as soon as a component imports it.
 import "./install-api";
 import { mount } from "svelte";
-// Theme tokens (frozen: imported, never modified).
+// Theme tokens.
 import "../ui/theme.css";
 import DesignApp from "../ui/DesignApp.svelte";
 import PastilleApp from "../ui/PastilleApp.svelte";
@@ -20,7 +20,7 @@ else if (params.has("pastille") || params.has("calque")) {
   if (params.has("calque")) mount(DesignApp, { target });
   else mount(PastilleApp, { target, props: { id: params.get("pastille") ?? "" } });
 } else {
-  // BoutonDesign's chevron (frozen) opens the menu on click, and MenuContextuel's window click listener would close it
+  // BoutonDesign's chevron opens the menu on click, and MenuContextuel's window click listener would close it
   // at once (Applications.svelte stops the click for that reason): stopped here first, registered before the mount.
   window.addEventListener("click", (e) => {
     if ((e.target as Element | null)?.closest?.('button[aria-label="Menu du mode design"]')) e.stopImmediatePropagation();

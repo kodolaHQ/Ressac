@@ -515,7 +515,7 @@ export function createDesign(o: {
  * `modes`: what this frame shows. `annuler`: the frame's own (the cart column's « Fermer »), else the service's cancel.
  */
 // Trust boundary: the frame is a system-principal chrome document, so it could reach the chrome itself; this API is a
-// convention for the frozen UI, and the real guards are these chrome-side checks and the host's.
+// convention for the UI, and the real guards are these chrome-side checks and the host's.
 export function overlayApi(
   o: { design: DesignService; host: Pick<AgentHost, "request" | "on">; modes?: ContexteCalque["mode"][]; annuler?: () => void },
   t: DesignTarget,

@@ -17,23 +17,8 @@ export const RESULTAT_DISPARU = "Ce résultat n'existe plus";
 
 /** An action's result images, fetched by the chrome (chrome/store/action-media.ts). */
 export const SCHEMA_IMAGE = "webaios-image";
-/** Composants de l'agent (`~/WebAiOs/composants/<nom>/composant.html`), servis sans réseau comme un widget. */
-export const SCHEMA_COMPOSANT = "webaios-composant";
 
 export const urlImage = (id: string, execution: string, url: string) => `${SCHEMA_IMAGE}://${id}/${execution}?u=${encodeURIComponent(url)}`;
-export const urlComposant = (nom: string) => `${SCHEMA_COMPOSANT}://${nom}/composant.html`;
-
-const NOM_COMPOSANT = /^[a-z0-9-]{1,40}$/;
-/** Le composant dont `url` est le fichier (`webaios-composant://<nom>/composant.html`, paramètres permis), sinon null. */
-export function composantDuCadre(url: string): string | null {
-  let u: URL;
-  try {
-    u = new URL(url);
-  } catch {
-    return null;
-  }
-  return u.protocol === `${SCHEMA_COMPOSANT}:` && NOM_COMPOSANT.test(u.hostname) && u.pathname === "/composant.html" ? u.hostname : null;
-}
 
 /** Une action telle que la page « Actions » et les suggestions la montrent. */
 export type ActionAffichee = {

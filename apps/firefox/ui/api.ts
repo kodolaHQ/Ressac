@@ -13,7 +13,7 @@ import { ACTIONS_EN_ESPACE_PRIVE } from "../shared/actions";
 import { createActionsApi, espaceActifPrive, type ActionsFirefox } from "./actions-api";
 import { createDesignApi, createExternesApi, createRelectureApi } from "./design-api";
 
-/** What the Firefox page reads: the widgets, plus the theme the frozen API did not carry. */
+/** What the Firefox page reads: the widgets, plus the theme the ApiWebaios type does not carry. */
 export interface AccueilLu {
   widgets: WidgetAffiche[];
   theme: ThemeAccueil | null;
@@ -28,7 +28,7 @@ export interface ApiFirefox extends Omit<ApiWebaios, "accueil" | "actions"> {
   accueil: Omit<ApiWebaios["accueil"], "lire" | "placer"> & {
     lire(): Promise<AccueilLu>;
     placer(placements: PlacementLibre[]): void;
-    /** A real pointerdown in a widget's display, seen by the UI's chrome listener (not in the frozen ApiWebaios type). */
+    /** A real pointerdown in a widget's display, seen by the UI's chrome listener (not in the ApiWebaios type). */
     geste(id: string): void;
   };
   /** The design mode's cart column, opened or closed by App.svelte (ZoneContenu's rule), on the project of the active tab. */

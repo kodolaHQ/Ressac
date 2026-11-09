@@ -21,7 +21,7 @@ const NAMES: Record<SitePermission, string> = {
   midi: "utiliser vos appareils MIDI",
 };
 
-/** The banner's sentence, as DemandePermission.svelte: « <site> veut utiliser votre caméra et votre micro », the link cut at 120. */
+/** The banner's sentence: « <site> veut utiliser votre caméra et votre micro », the link cut at 120. */
 export function bannerText(d: { origine: string; permissions: readonly SitePermission[]; lien?: string }): string {
   const media = d.permissions.filter((p) => p.startsWith("media-")).map((p) => NAMES[p]);
   const others = d.permissions.filter((p) => !p.startsWith("media-")).map((p) => NAMES[p]);

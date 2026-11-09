@@ -172,13 +172,6 @@ export function profilsEnUsage(etat: Pick<EtatNavigateur, "profils" | "espaces">
   return new Set([...etat.profils.map((p) => p.id), ...etat.espaces.map((e) => e.profil)]);
 }
 
-/** Les profils de connexion en usage ont changé (comparés par identifiant, pas par référence). */
-export function profilsChanges(avant: EtatNavigateur, apres: EtatNavigateur): boolean {
-  const a = profilsEnUsage(avant);
-  const b = profilsEnUsage(apres);
-  return a.size !== b.size || [...a].some((id) => !b.has(id));
-}
-
 /**
  * L'espace où compter une visite (et le texte retenu) de l'onglet : celui qui l'affiche dans sa fenêtre — un essentiel
  * partagé est vu dans l'espace actif —, sinon le sien. Privé si cet espace ou celui de l'onglet l'est (inconnu : privé).

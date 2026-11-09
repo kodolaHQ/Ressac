@@ -10,7 +10,7 @@ export type { CaptureViseur };
 
 export const SOURCE_TIMEOUT_MS = 1500;
 
-// service.ts does not load in the store (the noyau's values, WebContentsView): copied word for word.
+// The design overlays' sizes and placement.
 type Rectangle = { x: number; y: number; width: number; height: number };
 /** La bulle d'une remarque : 320×170, sous l'élément. */
 export const TAILLE_BULLE = { largeur: 320, hauteur: 170 };
@@ -21,10 +21,10 @@ const ECART_BULLE = 6;
 export const LARGEUR_MESSAGE = 360;
 export const HAUTEUR_MESSAGE = 56;
 export const MARGE_MESSAGE = 12;
-// calque.ts: an app window's cart, 340 px on the right, 12 px from the edges.
+// An app window's cart, 340 px on the right, 12 px from the edges.
 export const MARGE = 12;
 export const LARGEUR_PANIER = 340;
-/** calque.ts: the unavailability message closes by itself after this. */
+/** The unavailability message closes by itself after this. */
 export const DUREE_MESSAGE_MS = 4000;
 
 /** Clé d'une cible, aussi l'argument de son calque. */
@@ -98,7 +98,7 @@ function sourceSaine(r: unknown): ContexteDesign["source"] {
   return { fichier: o.fichier, ...(entierPositif(o.ligne) ? { ligne: o.ligne } : {}), ...(entierPositif(o.colonne) ? { colonne: o.colonne } : {}) };
 }
 
-/** What armerViseur does with the script's answer: the shape checked, the html cut. */
+/** The viewfinder script's answer: the shape checked, the html cut. */
 export function cleanCapture(v: unknown): CaptureViseur | null {
   const c = propreCapture(v);
   return c ? { ...c, html: tronquerHtml(c.html) } : null;

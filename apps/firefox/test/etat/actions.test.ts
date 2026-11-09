@@ -2,7 +2,7 @@ import { beforeEach, expect, test } from "vitest";
 import { appliquer } from "../../core/etat/actions";
 import { etatInitial } from "../../core/etat/etat-initial";
 import { SchemaAction, type Action } from "../../shared/api";
-import { cleEspace, contexteHistorique, ongletPrive, profilsChanges, profilsEnUsage, profilDOnglet, aUneVue, URL_ACTIONS, URL_APPLICATIONS, URL_EXTENSIONS, urlAction, urlWorkflow, type EtatNavigateur, type Onglet } from "../../shared/modele";
+import { cleEspace, contexteHistorique, ongletPrive, profilsEnUsage, profilDOnglet, aUneVue, URL_ACTIONS, URL_APPLICATIONS, URL_EXTENSIONS, urlAction, urlWorkflow, type EtatNavigateur, type Onglet } from "../../shared/modele";
 
 let n = 0;
 const genId = () => `g${++n}`;
@@ -734,17 +734,10 @@ test("ouvrirWorkflow d'une action ouvre webaios://workflow/action/<id>", () => {
   expect(Object.values(e.onglets).map((o) => o.url)).toEqual(["webaios://workflow/action/gitlab", urlWorkflow("gitlab")]);
 });
 
-test("profilsEnUsage et profilsChanges : par identifiant, espaces compris", () => {
+test("profilsEnUsage : par identifiant, espaces compris", () => {
   const copie = structuredClone(e);
-  expect(profilsChanges(e, copie)).toBe(false);
   copie.espaces[0]!.profil = "autre";
   expect(profilsEnUsage(copie)).toEqual(new Set(["defaut", "autre"]));
-  expect(profilsChanges(e, copie)).toBe(true);
-  ag({ type: "creerEspace", nom: "Banque", icone: "🏦", prive: true, profil: "nouveau" });
-  const avant = e;
-  ag({ type: "reglerEspace", id: P, nom: "Maison", icone: "🏡", prive: false, profil: "defaut" });
-  expect(e.profils).not.toBe(avant.profils);
-  expect(profilsChanges(avant, e)).toBe(false);
 });
 
 // Plan 17, tâche 11 : la page Relecture d'un projet.

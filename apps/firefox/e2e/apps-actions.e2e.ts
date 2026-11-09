@@ -29,7 +29,7 @@ const rowGone = (dossier: string, ms = 10_000) => waitUi(p!.m, "return !doc.quer
 const rowShown = (dossier: string, ms = 10_000) => waitUi(p!.m, "return !!doc.querySelector(arguments[0])", [appRow(dossier)], ms);
 const rowText = (dossier: string) => inUi<string>(p!.m, "return doc.querySelector(arguments[0])?.textContent ?? ''", [appRow(dossier)]);
 const filterText = (id: string) => inUi<string | null>(p!.m, "return doc.querySelector(arguments[0])?.textContent.replace(/\\s+/g, ' ').trim() ?? null", [`[data-testid="filtre-${id}"]`]);
-/** The page's own api call, as the frozen component makes it. */
+/** The page's own api call, as the component makes it. */
 const agir = (dossier: string, action: string) => inUi(p!.m, "ui.webaios.applications.agir(arguments[0], arguments[1]);", [dossier, action]);
 const panelOpen = async () => !!(await state(p!.m)).fenetres[0]!.panneauAgentOuvert;
 /** The app's container (`userContextIdInternal.webaios-app-<dossier>`), or null. */

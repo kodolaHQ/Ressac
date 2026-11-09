@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { dossierValide, DROITS_DEV, ID_EXECUTION, ID_SITE, type Application, type Avertissement, type CatalogueBloc, type DeclarationWidget, type EtatDirect, type LectureBrouillon, type ResultatEnregistrement, type ResultatEssai, type DroitDev, type EtatIa, type EtatWidget, type Execution, type ResumeExecution, type EtatActions, type PageAction, type ResultatLancement, type Proprietaire } from "@webaios/noyau";
+import { dossierValide, ID_EXECUTION, ID_SITE, type Application, type Avertissement, type CatalogueBloc, type DeclarationWidget, type EtatDirect, type LectureBrouillon, type ResultatEnregistrement, type ResultatEssai, type DroitDev, type EtatIa, type EtatWidget, type Execution, type ResumeExecution, type EtatActions, type PageAction, type ResultatLancement, type Proprietaire } from "@webaios/noyau";
 import type { EtatLot, IdProjet, ProjetExterne, ProjetSuivi } from "@webaios/noyau";
 import { ID_PROJET, type Commentaire, type DiffFichier, type FichierModifie } from "@webaios/noyau";
 import type { ActionAffichee } from "./actions";
@@ -109,7 +109,6 @@ export type CommandeOnglet = z.infer<typeof SchemaCommande>["c"];
 
 export const SchemaBornes = z.object({ x: z.number(), y: z.number(), largeur: z.number(), hauteur: z.number() });
 export type Bornes = z.infer<typeof SchemaBornes>;
-export const SchemaBoutonsFenetre = z.object({ visibles: z.boolean() }).strict();
 
 export type Panneau = "historique" | "telechargements";
 /**
@@ -372,21 +371,6 @@ export const SchemaActionSite = z.object({
   action: z.enum(["ouvrir", "modifier", "oublier", "dossier", "supprimer", "relire"]),
 });
 
-export const SchemaActionTelechargement = z.object({ id, action: z.enum(["ouvrir", "montrer", "annuler"]) });
-/** `droits` : la sélection de l'utilisateur sur la carte des outils de développement (n'importe quel sous-ensemble des quatre droits). */
-export const SchemaReponsePermission = z.object({
-  id,
-  decision: z.enum(["autoriser", "refuser"]),
-  droits: z.array(z.enum(DROITS_DEV as [DroitDev, ...DroitDev[]])).optional(),
-  confirme: z.boolean().optional(),
-});
-
-/** Couper un droit de l'agent sur un onglet, ou tout son accès si `droit` est absent. */
-export const SchemaCouperAcces = z.object({ id, droit: z.enum(DROITS_DEV as [DroitDev, ...DroitDev[]]).optional() });
-
-/** Capture de la page affichée, pour le fond d'une modale : l'onglet que l'interface voit actif, ou aucun. */
-export const SchemaApercuPage = z.object({ ongletId: id.nullable() });
-
 /** Une carte du panneau ⌃Tab : `apercu` est une data URL JPEG, null si l'onglet n'a jamais été capturé. */
 export interface CartePanneauOnglets {
   id: IdOnglet;
@@ -409,9 +393,6 @@ export const SchemaMessageParcours = z.discriminatedUnion("type", [
 ]);
 export type MessageParcours = z.infer<typeof SchemaMessageParcours>;
 
-/** La pastille d'une fenêtre d'appli s'agrandit (bulle ouverte) ou se referme. */
-export const SchemaTaillePastille = z.object({ ouverte: z.boolean() });
-
 /** Ce que montre le panneau agent d'une fenêtre. */
 export type EtatPanneauAgent =
   | { etat: "preparation" }
@@ -420,9 +401,7 @@ export type EtatPanneauAgent =
   | { etat: "actif" }
   | { etat: "termine"; code: number };
 
-const COLONNES_GRILLE = 12;
 const idWidget = z.string().regex(/^[a-z0-9-]+$/).max(100);
-export const SchemaIdWidget = idWidget;
 /** Id d'une action (nom de son dossier sous `~/WebAiOs/actions`). */
 export const SchemaIdAction = z.string().regex(/^[a-z0-9-]{1,60}$/);
 /** Saisie d'une action venue de l'interface : bornée ici, coupée par le noyau. */
@@ -502,23 +481,11 @@ export type EditionWorkflow = LectureBrouillon & {
 };
 /** Id d'une exécution : son début ISO sans « : » ni « . » (jamais un chemin). */
 export const SchemaIdExecution = z.string().regex(ID_EXECUTION).max(64);
-const cote = z.number().int().min(1).max(COLONNES_GRILLE);
-/** Les placements de la grille de 12 colonnes : entiers, dans la grille, un seul par widget. */
-export const SchemaPlacements = z
-  .array(
-    z
-      .object({ id: idWidget, x: z.number().int().min(0).max(COLONNES_GRILLE - 1), y: z.number().int().min(0).max(10_000), l: cote, h: cote })
-      .strict()
-      .refine((p) => p.x + p.l <= COLONNES_GRILLE, "déborde de la grille"),
-  )
-  .max(500)
-  .refine((ps) => new Set(ps.map((p) => p.id)).size === ps.length, "widget placé deux fois");
 const domaine = z.string().min(1).max(253);
 export const SchemaAccord = z
   .object({ id: idWidget, profil: z.string().min(1).max(200), compte: z.array(domaine).max(100), publiques: z.array(domaine).max(100) })
   .strict();
 export type Accord = z.infer<typeof SchemaAccord>;
-export const SchemaOuvrirWidget = z.object({ url: z.string().min(1).max(8192), id: idWidget }).strict();
 export const SchemaTailleTerminal = z.object({ cols: z.number().int().min(2).max(1000), rows: z.number().int().min(2).max(1000) });
 export type TailleTerminal = z.infer<typeof SchemaTailleTerminal>;
 

@@ -3,7 +3,7 @@
 
   let { favicon, titre, taille = 16 }: { favicon: string | null; titre: string; taille?: number } = $props();
   let erreur = $state(false);
-  // L'interface n'a pas de réseau : un favicon http(s) passe par webaios-icone: (main/reseau-interface.ts).
+  // The UI has no network: an http(s) favicon goes through webaios-icone: (shared/icone.ts).
   const source = $derived(favicon ? urlIcone(favicon) : null);
 </script>
 

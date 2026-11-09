@@ -1,4 +1,4 @@
-/** Schéma par lequel l'interface (sans réseau) affiche les favicons des sites : main/reseau-interface.ts les cherche. */
+/** Scheme the UI (no network) uses for http(s) favicons. Nothing serves it in Firefox: such an icon fails to load. */
 export const SCHEMA_ICONE = "webaios-icone";
 
 /** L'adresse qu'utilise l'interface pour afficher le favicon `url` : http(s) passe par `webaios-icone:`, data: reste. */
