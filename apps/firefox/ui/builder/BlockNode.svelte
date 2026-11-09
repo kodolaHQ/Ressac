@@ -13,7 +13,7 @@
     input: boolean;
     output: boolean;
   };
-  export type BlockNode = Node<NodeData, "bloc">;
+  export type BlockNode = Node<NodeData, "block">;
 
   /** Badge color: the same scale as the home page. */
   const TINTS: Record<string, "ok" | "moyen" | "echec" | "neutre" | "en-cours"> = {

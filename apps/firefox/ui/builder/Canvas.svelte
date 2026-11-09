@@ -57,7 +57,7 @@
       const withoutInput = c?.input === "optional" && !(x.type === "code" && x.params.call !== "harvest");
       return {
         id: x.id,
-        type: "bloc" as const,
+        type: "block" as const,
         position: edit.positions[x.id] ?? x.position,
         selected: selected.has(x.id),
         deletable: x.type !== "output",
