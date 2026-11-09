@@ -68,8 +68,8 @@ test("the guard sees French binding names", () => {
 test("no binding or file name under apps/firefox and packages/kernel is French", (ctx) => {
   const r = spawnSync("git", ["ls-files", "apps/firefox", "packages/kernel"], { cwd: repoRoot, encoding: "utf8" });
   if (r.error || r.status !== 0) return ctx.skip();
-  // shortcut: docker/ and modeles/ (agent-facing API, shipped templates) and the engine's src/ are renamed with the formats (plan 41).
-  const files = r.stdout.split("\n").filter((f) => f && !/^packages\/kernel\/(docker|modeles)\/|^apps\/firefox\/src\//.test(f));
+  // shortcut: docker/ and modeles/ (agent-facing API, shipped templates), the migration fixtures (old data on purpose) and the engine's src/ are renamed with the formats (plan 41).
+  const files = r.stdout.split("\n").filter((f) => f && !/^packages\/kernel\/(docker|modeles|test\/migration\/fixtures)\/|^apps\/firefox\/src\//.test(f));
   const bad: string[] = [];
   for (const f of files) {
     if (/\.(ts|mts|js|mjs|cjs|svelte)$/.test(f) && french(f.split("/").pop()!).length) bad.push(`${f}: file name`);

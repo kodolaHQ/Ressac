@@ -117,8 +117,8 @@ describe("migrateKernel, full migration of every old format", async () => {
     expect(await readMemory(join(dataDir, "widgets/simple"))).toEqual({
       harvest: { type: "code", value: { vu: ["a"] }, hash: hashOfBlock("code", { source: "harvest.mjs", call: "harvest" }) },
     });
-    const ecrire = readJson(join(w, "actions/resume/workflow.json")).blocks.find((b: { id: string }) => b.id === "ecrire");
-    expect((await readMemory(join(dataDir, "actions/resume"))).ecrire).toEqual({ type: "ai.write", value: { reused: [["k", "v", "2026-11-01T00:00:00.000Z"]] }, hash: hashOfBlock("ai.write", ecrire.params) });
+    const writeBlock = readJson(join(w, "actions/resume/workflow.json")).blocks.find((b: { id: string }) => b.id === "ecrire");
+    expect((await readMemory(join(dataDir, "actions/resume"))).ecrire).toEqual({ type: "ai.write", value: { reused: [["k", "v", "2026-11-01T00:00:00.000Z"]] }, hash: hashOfBlock("ai.write", writeBlock.params) });
   });
 
   it("migrates runs and results, try suffix included", async () => {
