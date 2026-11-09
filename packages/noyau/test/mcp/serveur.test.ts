@@ -583,7 +583,7 @@ test("le détail d'une exécution d'un widget avec compte pose la carte ; refus�
   await avecWidgets(outils, { donneesWidget: false });
   let t = texte(await client.callTool({ name: "executions_widget", arguments: args }));
   expect(cartesDonnees()).toHaveLength(1);
-  expect(t.endsWith("\nUtilisateur a refusé de montrer le détail.")).toBe(true);
+  expect(t.endsWith("\nL'utilisateur a refusé de montrer le détail.")).toBe(true);
   expect(JSON.parse(t.slice(0, t.lastIndexOf("\n")))).toEqual({ id: args.execution, statut: "reussie" });
   expect(t).not.toContain("secret");
   await avecWidgets(outils, { donneesWidget: true });

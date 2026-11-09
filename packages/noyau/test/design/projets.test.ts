@@ -79,8 +79,8 @@ describe("destinationDe et fenêtre d'appli", () => {
     expect(destinationDe(projetPourFenetreApp("essai", "Essai"), [])).toEqual({ libelle: "l'agent" });
     expect(destinationDe({ type: "demo", projet: "demo-5280", port: 5280 }, [])).toEqual({ libelle: "l'agent" });
     const ext = { type: "externe" as const, projet: "ext-0123456789abcdef", dossier: "/x", nom: "x" };
-    const clients = [{ id: "c1", nom: "Mac de l'utilisateur", empreinte: "h", cree: "2026-11-02" }];
-    expect(destinationDe({ ...ext, client: "c1" }, clients)).toEqual({ libelle: "Claude Code (Mac de l'utilisateur)" });
+    const clients = [{ id: "c1", nom: "Mon Mac", empreinte: "h", cree: "2026-11-02" }];
+    expect(destinationDe({ ...ext, client: "c1" }, clients)).toEqual({ libelle: "Claude Code (Mon Mac)" });
     expect(destinationDe({ ...ext, client: null }, clients)).toEqual({ indisponible: SANS_CLIENT });
     expect(destinationDe({ ...ext, client: "révoqué" }, clients)).toEqual({ indisponible: SANS_CLIENT });
   });

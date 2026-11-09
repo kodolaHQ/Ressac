@@ -655,7 +655,7 @@ function enregistrerOutilsWidgets(
       const connue = await w.outils.execution(id, execution);
       if (!connue) return aucune;
       if (!(await demanderSiBesoin(id, widget))) {
-        return texte(`${json({ id: connue.id, statut: statutCache(connue.statut) })}\nUtilisateur a refusé de montrer le détail.`);
+        return texte(`${json({ id: connue.id, statut: statutCache(connue.statut) })}\nL'utilisateur a refusé de montrer le détail.`);
       }
       // Relue après l'accord : elle a pu être effacée pendant la question (accord retiré).
       const detail = await w.outils.execution(id, execution);
@@ -746,7 +746,7 @@ function enregistrerOutilsActions(
       const connue = await a.outils.execution(id, execution);
       if (!connue) return aucune;
       if (!(await demanderSiBesoin(id, action))) {
-        return texte(`${json({ id: connue.id, statut: statutCache(connue.statut) })}\nUtilisateur a refusé de montrer le détail.`);
+        return texte(`${json({ id: connue.id, statut: statutCache(connue.statut) })}\nL'utilisateur a refusé de montrer le détail.`);
       }
       // Relue après l'accord : elle a pu être effacée pendant la question (accord retiré).
       const detail = await a.outils.execution(id, execution);
