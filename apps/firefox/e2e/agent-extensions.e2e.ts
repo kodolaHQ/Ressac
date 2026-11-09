@@ -134,7 +134,7 @@ describe("agent extensions: registry, signed install, restart", () => {
     writeAgentExtension(root(f.dataDir), "cacheur", { "cache.css": CACHE_ALL });
     await until(() => existsSync(path.join(root(f.dataDir), ".webaios", "mcp.json")));
     // Never answered: the app quits during the signature.
-    callTool(f.dataDir, "recharger_extension", { id: "cacheur" }).catch(() => {});
+    callTool(f.dataDir, "reload_extension", { id: "cacheur" }).catch(() => {});
     const amo = w.amo;
     await until(() => amo.sends.some((e) => e.version === "1.0.0.2"));
     expect(await agentAddons(w.marionette)).toEqual([{ id: ID, version: "1.0.0.1", isActive: true }]);
@@ -180,7 +180,7 @@ describe("agent extensions: registry, signed install, restart", () => {
     })();`);
     writeAgentExtension(root(f.dataDir), "cacheur", { "cache.css": CACHE_ALL });
     await until(() => existsSync(path.join(root(f.dataDir), ".webaios", "mcp.json")));
-    await callTool(f.dataDir, "recharger_extension", { id: "cacheur" }).catch(() => {});
+    await callTool(f.dataDir, "reload_extension", { id: "cacheur" }).catch(() => {});
     await until(() => !("agent:cacheur" in registry(f.dataDir)));
     await settle(w);
     expect(await agentAddons(w.marionette)).toEqual([]);

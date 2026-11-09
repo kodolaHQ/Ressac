@@ -292,21 +292,21 @@ describe("the agent's site tools", () => {
     return l;
   }
 
-  it("lister_sites and ouvrir_site", async () => {
+  it("list_sites and open_site", async () => {
     const { dataDir } = await withAgent();
-    await expect.poll(async () => (await callTool(dataDir, "lister_sites")).text, { timeout: 15_000 }).toBe("vidola · Vidola · vidola-a.localhost · fermée");
-    expect(await callTool(dataDir, "ouvrir_site", { id: "vidola" })).toEqual({ text: "site:vidola", error: false });
+    await expect.poll(async () => (await callTool(dataDir, "list_sites")).text, { timeout: 15_000 }).toBe("vidola · Vidola · vidola-a.localhost · fermée");
+    expect(await callTool(dataDir, "open_site", { id: "vidola" })).toEqual({ text: "site:vidola", error: false });
     await waitFor(m, `return ${siteExpr("vidola")} !== undefined;`, (v) => v === true);
-    expect((await callTool(dataDir, "lister_sites")).text).toBe("vidola · Vidola · vidola-a.localhost · ouverte");
-    expect(await callTool(dataDir, "ouvrir_site", { id: "inconnu" })).toEqual({ text: SITE_UNKNOWN, error: true });
+    expect((await callTool(dataDir, "list_sites")).text).toBe("vidola · Vidola · vidola-a.localhost · ouverte");
+    expect(await callTool(dataDir, "open_site", { id: "inconnu" })).toEqual({ text: SITE_UNKNOWN, error: true });
   });
 
   // Plan 32 Task 5 brought the app's « donnees-widget » card (before it, no card and an immediate refusal). Refused, the
   // memory is not given (sites.spec.ts:1792); the accorded path is sites-agent.e2e.ts's port of :1799.
-  it("memoire_site shows the app's card; Refuser answers SITE_DENIED (sites.spec.ts:1792)", async () => {
+  it("site_memory shows the app's card; Refuser answers SITE_DENIED (sites.spec.ts:1792)", async () => {
     const { dataDir } = await withAgent((d) => (writeSite(d, "vidola", vidola()), writeMemory(d)));
-    await expect.poll(async () => (await callTool(dataDir, "lister_sites")).text, { timeout: 15_000 }).toContain("vidola");
-    const memory = callTool(dataDir, "memoire_site", { id: "vidola" });
+    await expect.poll(async () => (await callTool(dataDir, "list_sites")).text, { timeout: 15_000 }).toContain("vidola");
+    const memory = callTool(dataDir, "site_memory", { id: "vidola" });
     const card = '[data-testid="demande-donnees-widget"]';
     expect(await waitUi<string>(m, `return doc.querySelector(${JSON.stringify(`${card} [data-testid="demande-site"]`)})?.textContent`, [], 15_000)).toContain("« Vidola »");
     await click(m, `${card} button`, { text: "Refuser" });

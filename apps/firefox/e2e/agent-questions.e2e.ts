@@ -48,7 +48,7 @@ const answer = (button: "Refuser" | "Autoriser une fois") => click(m, `${CARD} b
 it("Refuser: the agent gets the refusal, and the page gets the keyboard back", async () => {
   const id = await openTab("/a.html");
   await m.execute("gBrowser.selectedBrowser.focus()");
-  const reading = call("lire_onglet", { id });
+  const reading = call("read_tab", { id });
   expect(await cardText()).toContain("L'agent veut lire l'onglet « Page A »");
   await answer("Refuser");
   expect((await reading).text).toBe(REFUSED);
@@ -64,7 +64,7 @@ it("the card covers the whole window, agent panel included, and gives the termin
   await waitFor(m, "return document.getElementById('webaios-agent').getBoundingClientRect().width", (v: number) => v > 0);
   await m.execute("document.getElementById('webaios-agent').focus()");
   expect(await m.execute("return document.activeElement?.id")).toBe("webaios-agent");
-  const reading = call("lire_onglet", { id });
+  const reading = call("read_tab", { id });
   await cardText();
   const sizes = await m.execute<{ frame: number; window: number; over: string }>(
     `return {
@@ -83,19 +83,19 @@ it("the card covers the whole window, agent panel included, and gives the termin
 
 it("Autoriser une fois: the page is read and the question does not come back for the same site", async () => {
   const id = await openTab("/texte.html");
-  const reading = call("lire_onglet", { id });
+  const reading = call("read_tab", { id });
   await cardText();
   await answer("Autoriser une fois");
   expect((await reading).text).toContain("Le chat dort");
   await cardGone();
-  expect((await call("lire_onglet", { id })).text).toContain("Le chat dort");
+  expect((await call("read_tab", { id })).text).toContain("Le chat dort");
   expect(await inUi(m, `return !!doc.querySelector(${JSON.stringify(CARD)})`)).toBe(false);
 });
 
 it("a tab never shown is loaded for reading", async () => {
   const id = await openTab("/texte.html", false);
   expect((await state(m)).tabs[id]).toBeTruthy();
-  const reading = call("lire_onglet", { id });
+  const reading = call("read_tab", { id });
   await cardText();
   await answer("Autoriser une fois");
   expect((await reading).text).toContain("Le chat dort");
@@ -103,7 +103,7 @@ it("a tab never shown is loaded for reading", async () => {
 
 it("a tab closed during the question: refused, card gone", async () => {
   const id = await openTab("/a.html");
-  const reading = call("lire_onglet", { id });
+  const reading = call("read_tab", { id });
   await cardText();
   await dispatch(m, { type: "fermerOnglet", id });
   expect((await reading).text).toBe(REFUSED);
@@ -112,7 +112,7 @@ it("a tab closed during the question: refused, card gone", async () => {
 
 it("a tab moved to a private space during the question: refused, card gone", async () => {
   const id = await openTab("/texte.html");
-  const reading = call("lire_onglet", { id });
+  const reading = call("read_tab", { id });
   await cardText();
   const s = await state(m);
   const e = s.spaces.find((x) => x.id === s.windows[0]!.activeSpace)!;
@@ -127,7 +127,7 @@ it("the access badge shows on a tab the agent reads and Couper removes it", asyn
   const id = await openTab("/texte.html");
   const badge = `[data-testid="onglet-${id}"] [data-testid="pastille-acces"]`;
   expect(await inUi(m, `return !!doc.querySelector(arguments[0])`, [badge])).toBe(false);
-  const reading = call("lire_onglet", { id });
+  const reading = call("read_tab", { id });
   await cardText();
   await answer("Autoriser une fois");
   await reading;
@@ -136,7 +136,7 @@ it("the access badge shows on a tab the agent reads and Couper removes it", asyn
   await click(m, '[data-testid="bulle-acces"] button', { text: "Couper l'accès" });
   await waitUi(m, `return !doc.querySelector(arguments[0]) && !doc.querySelector('[data-testid="bulle-acces"]')`, [badge]);
   // Cut: reading asks again.
-  const again = call("lire_onglet", { id });
+  const again = call("read_tab", { id });
   await cardText();
   await answer("Refuser");
   expect((await again).text).toBe(REFUSED);
@@ -161,12 +161,12 @@ async function togglePanel(): Promise<void> {
   await waitFor(m, "return !document.getElementById('webaios-agent').hidden", (v) => v === !was);
 }
 
-it("a tab visited without talking to the agent: page_courante asks", async () => {
+it("a tab visited without talking to the agent: current_page asks", async () => {
   await openTab("/a.html");
   await togglePanel();
   await togglePanel();
   await openTab("/b.html");
-  const reading = call("page_courante");
+  const reading = call("current_page");
   expect(await cardText()).toContain("L'agent veut lire l'onglet « Page B »");
   await answer("Refuser");
   expect((await reading).text).toBe(REFUSED);
@@ -182,7 +182,7 @@ it("sending a message from a tab shares it", async () => {
   await typeText(m, "salut");
   await pressKeys(m, "Enter");
   await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.replace(/\\u00a0/g, ' ').includes('reçu: salut')", [], 10_000, "agent");
-  expect((await call("page_courante")).text).toContain("Le chat dort");
+  expect((await call("current_page")).text).toContain("Le chat dort");
   expect(await inUi(m, `return !!doc.querySelector(${JSON.stringify(CARD)})`)).toBe(false);
 });
 
@@ -194,7 +194,7 @@ describe("several windows", () => {
     const active = await activeId();
     const other = Object.keys(handles).find((x) => x !== active)!;
     // Never answered: it falls when the app closes.
-    call("lire_onglet", { id }).catch(() => {});
+    call("read_tab", { id }).catch(() => {});
     await inWindow(m, handles[active]!, cardText);
     await new Promise((r) => setTimeout(r, 300));
     expect(await hasCard(handles[other]!)).toBe(false);
@@ -205,10 +205,10 @@ describe("several windows", () => {
     // Opening the panel on the tab gives it to the agent.
     if (!(await state(m)).windows[0]!.agentPanelOpen) await dispatch(m, { type: "basculerPanneauAgent", windowId: (await state(m)).windows[0]!.id });
     await waitFor(m, "return !document.getElementById('webaios-agent').hidden", (v) => v === true);
-    expect((await call("lire_onglet", { id })).text).toContain("Le chat dort");
+    expect((await call("read_tab", { id })).text).toContain("Le chat dort");
     const second = await newWindow(m);
     await inWindow(m, second, () => waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('prêt>')", [], 20_000, "agent"));
-    const reading = call("lire_onglet", { id });
+    const reading = call("read_tab", { id });
     const handles = Object.values(await handlesById());
     // One window at a time: Marionette has a single current window.
     const withCard = async () => {
@@ -232,7 +232,7 @@ describe("several windows", () => {
     const s = await dispatch(m, { type: "ouvrirOnglet", windowId: other, url: `${server.url}/a.html` });
     const id = Object.keys(s.tabs).find((x) => !before.has(x))!;
     let settled = 0;
-    const reading = call("lire_onglet", { id }).finally(() => (settled = Date.now()));
+    const reading = call("read_tab", { id }).finally(() => (settled = Date.now()));
     await inWindow(m, handles[active]!, cardText);
     await inWindow(m, handles[active]!, () => m.execute("window.close()"));
     await waitWindowCount(m, 1);
@@ -250,8 +250,8 @@ describe("several windows", () => {
     await pressClosing(m, "Meta+Shift+w");
     await waitWindowCount(m, 0);
     const start = Date.now();
-    expect((await call("lire_onglet", { id })).text).toBe(REFUSED);
+    expect((await call("read_tab", { id })).text).toBe(REFUSED);
     expect(Date.now() - start).toBeLessThan(2000);
-    expect((await call("page_courante")).text).toBe("Aucun onglet actif.");
+    expect((await call("current_page")).text).toBe("Aucun onglet actif.");
   });
 });

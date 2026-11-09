@@ -464,7 +464,7 @@ export async function runWorkflow(
       const page = await read(u.href, { ...withDomains(grant.profile, ctx.sources.account), ...scrolling });
       return checkPage(page, ctx.sources.account, localUrls);
     } catch (e) {
-      if (e instanceof ProfileDenied || (e as Error)?.name === "ProfilRefuse") {
+      if (e instanceof ProfileDenied || (e as Error)?.name === "ProfileDenied") {
         // The caller withdraws the grant (and what was read with it) before the stop: when it concludes, it no longer exists.
         try {
           await ctx.onProfileDenied();

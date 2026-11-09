@@ -19,8 +19,8 @@ function isLocal(url: string): boolean {
   }
 }
 
-export type DevRight = "console" | "reseau" | "performances" | "agir";
-export const DEV_RIGHTS: readonly DevRight[] = ["console", "reseau", "performances", "agir"];
+export type DevRight = "console" | "network" | "performance" | "act";
+export const DEV_RIGHTS: readonly DevRight[] = ["console", "network", "performance", "act"];
 
 export interface TabAccessState {
   read: boolean;

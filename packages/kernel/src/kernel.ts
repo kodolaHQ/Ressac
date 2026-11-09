@@ -39,7 +39,7 @@ import type { ResumeExecution } from "./workflows/executions.js";
 export class WorkshopError extends Error {
   constructor(readonly state: WorkshopState, detail?: string) {
     super(detail ?? (state === "docker-absent" ? "Docker n'est pas lancé" : `Conteneur indisponible (${state})`));
-    this.name = "ErreurAtelier";
+    this.name = "WorkshopError";
   }
 }
 
@@ -64,14 +64,14 @@ const profilingFolder = (parts: string[]): boolean =>
 
 const code = (e: unknown): string | undefined => (e as NodeJS.ErrnoException).code;
 
-/** Reference of a profile kept outside the workspace: `profil:<file name>`. */
-export const PRIVATE_PROFILE_PREFIX = "profil:";
+/** Reference of a profile kept outside the workspace: `profile:<file name>`. */
+export const PRIVATE_PROFILE_PREFIX = "profile:";
 
 /**
  * Raw profiles of the dev tools, written by the browser (spec §6). What the agent built goes into
  * the workspace: in the project for an application (`projets/<dossier>/.webaios/profilage`), in `.webaios/profilage`
  * otherwise. The profile of another site (its heap contains tokens and personal data) stays outside the mount, in
- * `dossierPrive` (the browser's profile), and the agent only gets a `profil:<nom>` reference. Only these folders
+ * `dossierPrive` (the browser's profile), and the agent only gets a `profile:<name>` reference. Only these folders
  * are read or erased. The workspace is mounted writable in the container: the agent can put symbolic links in it,
  * so no link is followed, neither in the folders nor for the file.
  */
@@ -279,7 +279,7 @@ export async function createKernel(o: {
   ai?: LocalAi;
   /** Workflow engine, mounted in the harvest container (by default `<ressources>/docker/moteur`). */
   engine?: string;
-  /** The workflow open in a window's builder (MCP tool `workflow_ouvert`). */
+  /** The workflow open in a window's builder (MCP tool `open_workflow`). */
   openWorkflow?: (win: string) => OpenWorkflow | null;
   /** Called after each write of a widget's state or data, and after a grant or its withdrawal. */
   onChange?: () => void;
@@ -529,7 +529,7 @@ export async function createKernel(o: {
       // a session of another window also loses its accesses (it will ask again), rather than inheriting them.
       policy.reset();
       const id = randomBytes(8).toString("hex");
-      // With a window: its own token and config, so that `workflow_ouvert` knows which one speaks (without a window,
+      // With a window: its own token and config, so that `open_workflow` knows which one speaks (without a window,
       // dev CLI: the main config).
       let sessionToken: string | undefined;
       const configSession = sessionConfigPath(paths, id);

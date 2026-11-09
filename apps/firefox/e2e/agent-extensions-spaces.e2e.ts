@@ -228,7 +228,7 @@ describe("agent extensions per space", () => {
     expect(await poll(() => ticks(m, a), (n) => n > 2)).toBeGreaterThan(2);
     // One more site: disabled, without a reload.
     writeAgentExtension(w.root, "tic", tic([HOST, "https://exemple.com/*"]));
-    expect((await w.call("recharger_extension", { id: "tic" })).text).toContain("desactivee");
+    expect((await w.call("reload_extension", { id: "tic" })).text).toContain("disabled");
     await waitActive(m, "tic@agent.webaios", false);
     await mark(m, a);
     await setPrivate(m, true);
@@ -281,7 +281,7 @@ describe("agent extensions per space", () => {
   it("an agent card taken down before the answer (the space turns private): « Demande retirée avant la réponse de l'utilisateur. »", async () => {
     const w = await launch((root) => writeAgentExtension(root, "cacheur", HIDER), { agent: true });
     const m = w.marionette;
-    const call = w.call("demander_extension", { id: "cacheur" });
+    const call = w.call("request_extension", { id: "cacheur" });
     await waitUi(m, `return doc.querySelector(${JSON.stringify(REQUEST)})?.textContent.includes("Cacheur de l'agent")`, [], 15_000);
     await setPrivate(m, true);
     expect((await call).text).toBe("Demande retirée avant la réponse de l'utilisateur.");

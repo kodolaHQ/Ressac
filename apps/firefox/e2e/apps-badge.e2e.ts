@@ -70,14 +70,14 @@ describe("one WebAiOs, essai and autre launched in each test", () => {
   }, 90_000);
   afterAll(() => closeAppsPage(p));
   afterEach(async () => {
-    for (const folder of ["essai", "autre"]) await callTool(p.dataDir, "arreter_application", { folder: folder }).catch(() => {});
+    for (const folder of ["essai", "autre"]) await callTool(p.dataDir, "stop_app", { folder: folder }).catch(() => {});
     await waitFor(m, `return [...Services.wm.getEnumerator("navigator:browser")].filter((w) => w.document.documentElement.hasAttribute("webaios-app")).length;`, (n) => n === 0);
     await waitFor(m, "for (const t of gBrowser.tabs.slice(1)) gBrowser.removeTab(t); return gBrowser.tabs.length;", (n) => n === 1);
   });
   /** App `dossier` launched with the agent's tool, its view loaded and its badge mounted. */
   async function launched(folder = "essai"): Promise<void> {
     if (folder === "essai") await launchAttempt(p.dataDir);
-    else expect((await callTool(p.dataDir, "lancer_application", { folder: folder })).text).toMatch(/en marche sur/);
+    else expect((await callTool(p.dataDir, "launch_app", { folder: folder })).text).toMatch(/en marche sur/);
     await waitFor(m, `const b = ${appWindowExpr(folder)}?.gBrowser.selectedBrowser; return !!b && b.currentURI.spec.startsWith("http://localhost:") && !b.webProgress.isLoadingDocument;`, (v) => v === true, 15_000);
     await expect.poll(() => place(m, folder), { timeout: 10_000 }).not.toBeNull();
   }
@@ -162,7 +162,7 @@ describe("one WebAiOs, essai and autre launched in each test", () => {
   // design.spec.ts:443-445
   it("agent access to the app shows in its badge, 88×28", async () => {
     await launched();
-    await expect.poll(async () => (await callTool(p.dataDir, "lire_onglet", { id: "app:essai" })).text, { timeout: 10_000 }).toContain("Titre : Essai essai");
+    await expect.poll(async () => (await callTool(p.dataDir, "read_tab", { id: "app:essai" })).text, { timeout: 10_000 }).toContain("Titre : Essai essai");
     await expect.poll(() => inBadge(m, "essai", `return doc.querySelectorAll('[data-testid="pastille-acces"]').length;`), { timeout: 10_000 }).toBe(1);
     await sized(m, "essai", 88, 28);
     expect(await badgeAccess(m, "essai")).toEqual(["app:essai"]);
@@ -172,7 +172,7 @@ describe("one WebAiOs, essai and autre launched in each test", () => {
   it("two apps: each badge gets its own app's access only", async () => {
     await launched("essai");
     await launched("autre");
-    await callTool(p.dataDir, "lire_onglet", { id: "app:essai" });
+    await callTool(p.dataDir, "read_tab", { id: "app:essai" });
     // What a change sends: each badge hears only its own app.
     const listen = (d: string) => inBadge(m, d, "const w = f.contentWindow; w.heard = []; w.webaios.surAcces((e) => w.heard.push(Object.keys(e.onglets).join(','))); return 1;");
     await listen("essai");

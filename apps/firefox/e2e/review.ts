@@ -29,7 +29,7 @@ export async function openApplications(m: Marionette): Promise<void> {
   await waitUi(m, "return !!doc.querySelector('[data-testid=\"projets-externes\"]')");
 }
 
-const COMMAND = /http:\/\/127\.0\.0\.1:(\d+)\/mcp-externe --header "Authorization: Bearer ([0-9a-f]{64})"/;
+const COMMAND = /http:\/\/127\.0\.0\.1:(\d+)\/mcp-external --header "Authorization: Bearer ([0-9a-f]{64})"/;
 
 /** « Brancher un Claude Code » (named `nom` if given), then the command shown, read with a regex. */
 export async function connectClient(m: Marionette, name?: string): Promise<{ command: string; port: number; token: string }> {
@@ -54,7 +54,7 @@ export async function connectClient(m: Marionette, name?: string): Promise<{ com
 
 export async function mcpClient(port: number, token: string): Promise<Client> {
   const c = new Client({ name: "essai", version: "1.0.0" });
-  await c.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}/mcp-externe`), { requestInit: { headers: { Authorization: `Bearer ${token}` } } }));
+  await c.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}/mcp-external`), { requestInit: { headers: { Authorization: `Bearer ${token}` } } }));
   return c;
 }
 
@@ -76,7 +76,7 @@ export async function declareProject(
   writeFileSync(join(folder, "logo.bin"), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
   const { port, token: token } = await connectClient(m);
   const client = await mcpClient(port, token);
-  await client.callTool({ name: "declarer_projet", arguments: { folder: folder, ports: o.ports ?? [18765] } });
+  await client.callTool({ name: "declare_project", arguments: { folder: folder, ports: o.ports ?? [18765] } });
   await waitUi(m, "return !!doc.querySelector('[data-testid=\"projet-externe\"]')", [], 15_000);
   const id = createHash("sha256").update(folder).digest("hex").slice(0, 16);
   for (const deadline = Date.now() + 15_000; o.snapshot !== false && !existsSync(reviewedRef(o.dataDir, `ext-${id}`)); await new Promise((r) => setTimeout(r, 100)))
@@ -84,10 +84,10 @@ export async function declareProject(
   return { folder: folder, id, port, token: token, client };
 }
 
-/** The status of a raw POST to `/mcp-externe` (node:http: any Host header goes out as given, which fetch does not promise). */
+/** The status of a raw POST to `/mcp-external` (node:http: any Host header goes out as given, which fetch does not promise). */
 export function rawStatus(port: number, headers: Record<string, string>): Promise<number> {
   return new Promise((ok, ko) => {
-    const req = request({ host: "127.0.0.1", port, path: "/mcp-externe", method: "POST", headers: { "Content-Type": "application/json", ...headers } }, (res) => {
+    const req = request({ host: "127.0.0.1", port, path: "/mcp-external", method: "POST", headers: { "Content-Type": "application/json", ...headers } }, (res) => {
       res.resume();
       ok(res.statusCode ?? 0);
     });

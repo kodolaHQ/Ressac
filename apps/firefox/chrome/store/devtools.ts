@@ -148,7 +148,7 @@ function feedConsole(buffer: TabBuffer, r: any, TYPES: any): void {
   }
   const e = r.pageError;
   if (!e || fromExtension(e.sourceName, e.stacktrace)) return;
-  // executer_js gives a rejection back with its stack (two-step evaluation): Firefox's « unhandled » report of it is not the page's.
+  // run_js gives a rejection back with its stack (two-step evaluation): Firefox's « unhandled » report of it is not the page's.
   if (e.isPromiseRejection && e.sourceName === "debugger eval code") return;
   const text = gripText(e.errorMessage).replace(/^uncaught exception: /, "");
   // A rejection's stack is not in `stacktrace` but in its exception (note D1).

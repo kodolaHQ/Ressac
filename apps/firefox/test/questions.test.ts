@@ -86,7 +86,7 @@ it("the dev tools card answers the ticked rights, [] on a refusal, on its signal
   const win = store.state.windows[0]!.id;
   store.dispatch({ type: "ouvrirOnglet", windowId: win, url: "https://a.test/", activate: true }, () => "t");
   const o = { id: "t", title: "A", url: "https://a.test/", space: "" };
-  const d = { rights: ["console" as const, "reseau" as const], reason: "Pourquoi.", agent: "Claude Code" };
+  const d = { rights: ["console" as const, "network" as const], reason: "Pourquoi.", agent: "Claude Code" };
   let answer = questions.askDevTools(o, d, win);
   expect(questions.pending()).toMatchObject([{ target: "t", origin: "https://a.test", permissions: ["outils-dev"], ...d }]);
   questions.answer(questions.pending()[0]!.id, "autoriser", undefined, ["console"]);

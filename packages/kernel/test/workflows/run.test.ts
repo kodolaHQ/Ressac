@@ -397,7 +397,7 @@ describe("executerWorkflow", () => {
     expect(b.deleted).toEqual(["essai", "essai"]);
   });
 
-  it("ProfileDenied: surProfilRefuse called, PROFILE_DENIED stop", async () => {
+  it("ProfileDenied: onProfileDenied called, PROFILE_DENIED stop", async () => {
     const bridge = new FakeBridge([], { active: null, allow: false, read: { pages: [], deny: ["perso"] } });
     const b = await bench(chain("a"), { "a.mjs": `export default async (e, w) => w.lirePage("https://app.daily.dev/", { compte: true });` }, { account: ["app.daily.dev"], grant: { profile: "perso" }, bridge: bridge });
     const r = await runWorkflow(b.ctx, b.infra);

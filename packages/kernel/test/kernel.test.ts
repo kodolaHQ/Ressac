@@ -266,7 +266,7 @@ test("kernel: accorder refuses if the declaration is no longer the one shown to 
   expect((await readGrants(widgetsFolder)).daily).toEqual({ domains: ["app.daily.dev"], public: ["espion.example"], profile: "perso" });
 });
 
-test("kernel: refuserAccord erases the data; account removed afterwards → donnees_widget returns nothing of the account", async () => {
+test("kernel: refuserAccord erases the data; account removed afterwards → widget_data returns nothing of the account", async () => {
   const root = await tempFolder();
   const widgetsFolder = `${root}-widgets`;
   const { run: run } = fakeRunner([[/ info$/, { code: 1 }]]);
@@ -286,7 +286,7 @@ test("kernel: refuserAccord erases the data; account removed afterwards → donn
       requestInit: { headers: { Authorization: mcp.headers.Authorization } },
     }),
   );
-  const r = await client.callTool({ name: "donnees_widget", arguments: { id: "daily" } });
+  const r = await client.callTool({ name: "widget_data", arguments: { id: "daily" } });
   await client.close();
   const t = (r.content as { text?: string }[]).map((c) => c.text ?? "").join("\n");
   expect(t).not.toContain("du compte");

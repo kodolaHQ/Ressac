@@ -227,7 +227,7 @@ it("Résoudre then « Marquer comme relu »: no file left, the resolved comment 
 });
 
 // relecture.spec.ts:352
-it("external project: « Envoyer 1 commentaire à Claude Code (…) », lire_remarques gives type relecture with file and lines; nothing is pre-filled", async () => {
+it("external project: « Envoyer 1 commentaire à Claude Code (…) », read_remarks gives type relecture with file and lines; nothing is pre-filled", async () => {
   await launch();
   const p = await declareProject(m, { dataDir: w!.dataDir });
   try {
@@ -240,7 +240,7 @@ it("external project: « Envoyer 1 commentaire à Claude Code (…) », lire_rem
     expect(await text(SEND)).toBe("Envoyer 1 commentaire à Claude Code (Claude Code)");
     await click(m, SEND);
     await waitText(COMMENT, "envoyé");
-    const t = textOf(await p.client.callTool({ name: "lire_remarques", arguments: { folder: p.folder } }));
+    const t = textOf(await p.client.callTool({ name: "read_remarks", arguments: { folder: p.folder } }));
     expect(t).toContain("(relecture, lot ");
     expect(t).toContain("texte de l'utilisateur : renommer");
     expect(t).toContain('Fichier : "app.js", lignes 2–2');
@@ -253,14 +253,14 @@ it("external project: « Envoyer 1 commentaire à Claude Code (…) », lire_rem
 });
 
 // externes.spec.ts:192 (sent from the Review page; the design basket is plan 35's)
-it("attendre_remarques started before the send returns the batch as soon as « Envoyer » is clicked", async () => {
+it("wait_for_remarks started before the send returns the batch as soon as « Envoyer » is clicked", async () => {
   await launch();
   const p = await pageOnAppJs(15);
   try {
     await click(m, extra(15));
     await comment("Bouton plus grand");
     const start = Date.now();
-    const waiting = p.client.callTool({ name: "attendre_remarques", arguments: { folder: p.folder, delay_s: 30 } });
+    const waiting = p.client.callTool({ name: "wait_for_remarks", arguments: { folder: p.folder, delay_s: 30 } });
     await new Promise((r) => setTimeout(r, 400));
     await click(m, SEND);
     expect(textOf(await waiting)).toContain("Bouton plus grand");

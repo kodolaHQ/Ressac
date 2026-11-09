@@ -103,7 +103,7 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
         return { version: addon.version };
       });
     },
-    // recharger_extension on an unchanged copy: the running add-on restarts as is (disable then enable), nothing re-signed.
+    // reload_extension on an unchanged copy: the running add-on restarts as is (disable then enable), nothing re-signed.
     "extensions.redemarrer": async (p: { addonId: string }) => {
       const addon = await AddonManager.getAddonByID(agentId(p.addonId));
       if (addon?.isActive) await own(addon.id, "desactivee", () => addon.reload());
@@ -132,7 +132,7 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
       const f = p.window && windows.get(p.window) ? p.window : windows.active();
       return f ? questions.askConsole(p, f, signal) : "retiree";
     },
-    // Firefox's own add-ons for lister_extensions (decision 7): AMO extensions, not the agent's, nor built-in, system or hidden ones.
+    // Firefox's own add-ons for list_extensions (decision 7): AMO extensions, not the agent's, nor built-in, system or hidden ones.
     "extensions.amo": async () =>
       (await AddonManager.getAddonsByTypes(["extension"]))
         .filter((a: { id: string; isBuiltin: boolean; isSystem: boolean; hidden: boolean }) => !a.id.endsWith(SUFFIX) && !a.isBuiltin && !a.isSystem && !a.hidden)

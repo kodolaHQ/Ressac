@@ -12,7 +12,7 @@ import { callMcpTool } from "../test/mcp";
 import { click, inUi, missingApi, pressKeys, typeText, waitUi } from "./ui";
 import { openBuilder, widgetDir, writeWidget } from "./workflows";
 
-// The workflow builder's Agent tab and `workflow_ouvert`. The
+// The workflow builder's Agent tab and `open_workflow`. The
 // Agent tab opens the window's agent panel instead of hosting its terminal: a check of the terminal in the tab becomes
 // « the panel is open, with one conversation » (one terminal, in the agent frame).
 
@@ -111,7 +111,7 @@ async function builder(id: string): Promise<void> {
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 const lastSessionConfig = () =>
   path.join(dataDir, "espace", (JSON.parse(read(path.join(dataDir, "espace", "faux-agent-args.json"))) as string[]).at(-1)!.replace(/^\/workspace\//, ""));
-const workflowOpen = async (config: string) => (await callMcpTool(path.join(dataDir, "espace"), "workflow_ouvert", {}, config)).text;
+const workflowOpen = async (config: string) => (await callMcpTool(path.join(dataDir, "espace"), "open_workflow", {}, config)).text;
 async function poll(read: () => Promise<string>, expected: string, ms = 10_000): Promise<void> {
   const deadline = Date.now() + ms;
   for (;;) {
@@ -294,8 +294,8 @@ describe("the builder's Agent tab", () => {
   });
 });
 
-describe("workflow_ouvert", () => {
-  it("workflow_ouvert (callTool with the token of this window's session) returns the widget and the selected block", async () => {
+describe("open_workflow", () => {
+  it("open_workflow (callTool with the token of this window's session) returns the widget and the selected block", async () => {
     await launch();
     await homeAgent();
     let session = lastSessionConfig();
@@ -303,27 +303,27 @@ describe("workflow_ouvert", () => {
     await poll(open, NO_WORKFLOW_OPEN);
 
     await builder("veille");
-    await poll(open, '{"widget":"veille","bloc":null}');
+    await poll(open, '{"widget":"veille","block":null}');
     await click(m, '[data-testid="noeud-tri"]');
-    await poll(open, '{"widget":"veille","bloc":"tri"}');
+    await poll(open, '{"widget":"veille","block":"tri"}');
     // The Agent tab changes nothing the agent knows.
     await click(m, '[data-testid="onglet-agent"]');
     await shown();
-    await poll(open, '{"widget":"veille","bloc":"tri"}');
+    await poll(open, '{"widget":"veille","block":"tri"}');
     // The host restarts (the panel's Réessayer): the window's new session still sees the selected block.
     await m.execute(`return (async () => { await (await ChromeUtils.importESModule("${STORE}").ready).agent.stop(); })();`);
     await click(m, "button", { text: "Réessayer", frame: "agent" });
     await waitFor(m, "return 1", () => lastSessionConfig() !== session, 20_000);
     session = lastSessionConfig();
-    await poll(open, '{"widget":"veille","bloc":"tri"}');
+    await poll(open, '{"widget":"veille","block":"tri"}');
     // The main token (no window) sees no builder.
-    expect((await callTool(dataDir, "workflow_ouvert")).text).toBe(NO_WORKFLOW_OPEN);
+    expect((await callTool(dataDir, "open_workflow")).text).toBe(NO_WORKFLOW_OPEN);
     // Builder left: nothing open.
     await newTab();
     await poll(open, NO_WORKFLOW_OPEN);
   });
 
-  it("workflow_ouvert per window: each window's session gets its own widget and block; a closed window's session is gone", async () => {
+  it("open_workflow per window: each window's session gets its own widget and block; a closed window's session is gone", async () => {
     await launch();
     await homeAgent();
     const a = lastSessionConfig();
@@ -339,8 +339,8 @@ describe("workflow_ouvert", () => {
       await click(m, '[data-testid="noeud-liens"]');
       return config;
     });
-    await poll(() => workflowOpen(a), '{"widget":"veille","bloc":"tri"}');
-    await poll(() => workflowOpen(b), '{"widget":"autre","bloc":"liens"}');
+    await poll(() => workflowOpen(a), '{"widget":"veille","block":"tri"}');
+    await poll(() => workflowOpen(b), '{"widget":"autre","block":"liens"}');
 
     // Closing the second window ends its session: its config goes and its token is refused; the first window keeps its own.
     const kept = path.join(dataDir, "session-b.json");
@@ -349,6 +349,6 @@ describe("workflow_ouvert", () => {
     await waitWindowCount(m, 1);
     for (const end = Date.now() + 10_000; existsSync(b); await sleep(100)) if (Date.now() > end) throw new Error("the closed window's session config stays");
     await expect(workflowOpen(kept)).rejects.toThrow();
-    expect(await workflowOpen(a)).toBe('{"widget":"veille","bloc":"tri"}');
+    expect(await workflowOpen(a)).toBe('{"widget":"veille","block":"tri"}');
   });
 });

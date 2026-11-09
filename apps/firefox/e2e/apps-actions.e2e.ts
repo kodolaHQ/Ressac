@@ -150,7 +150,7 @@ describe("Applications page actions", () => {
     expect(await panelOpen()).toBe(false);
     await rowMenu(m, "essai", "Déboguer");
     await expect.poll(() => agentInput(p!.dataDir), { timeout: 10_000 }).toContain("[application : Essai");
-    const read = await callTool(p.dataDir, "lire_onglet", { id: "app:essai" });
+    const read = await callTool(p.dataDir, "read_tab", { id: "app:essai" });
     expect(read.text).toContain("lien");
     for (const frame of ["sidebar", "agent"] as const)
       expect(await inUi<number>(m, `return doc.querySelectorAll('[data-testid="demande-permission"]').length;`, [], frame)).toBe(0);

@@ -46,10 +46,10 @@ export interface BrowserBridge {
   readText(id: string): Promise<{ text: string; selection?: string }>;
   openTab(url: string, space?: string): Promise<TabInfo>;
   /**
-   * `"en-attente"` (site app window only): the tweaks grant card is shown; the address will
+   * `"pending"` (site app window only): the tweaks grant card is shown; the address will
    * load after the user's choice.
    */
-  navigate(id: string, url: string): Promise<void | "en-attente">;
+  navigate(id: string, url: string): Promise<void | "pending">;
   /** PNG capture of the tab. */
   capture(id: string): Promise<Buffer>;
   /** Shows the request to the user; true if they accept. */
@@ -68,7 +68,7 @@ export interface BrowserBridge {
   /** History and kept text of the pages, made only of non-private visits (absent: no history tools). */
   history?: BrowserHistory;
   /**
-   * Reads a page in an invisible tab, without clicking or typing. `profil: null`: blank session, without any cookie;
+   * Reads a page in an invisible tab, without clicking or typing. `profile: null`: blank session, without any cookie;
    * otherwise the named login profile. Throws ProfileDenied if this profile is unknown or used by a private space.
    * Absent: no page reading for the widgets.
    *
@@ -169,7 +169,7 @@ export interface DevToolsOwner extends BrowserDevTools {
 export class TabNotFound extends Error {
   constructor(readonly id: string) {
     super(`Onglet introuvable : ${id}`);
-    this.name = "OngletIntrouvable";
+    this.name = "TabNotFound";
   }
 }
 
@@ -193,7 +193,7 @@ export interface KeptPage {
 
 /** What the browser provides to search the history: never a visit from a private space. */
 export interface BrowserHistory {
-  /** `depuis` and `jusqua`: ISO dates already checked by the kernel; `limite` between 1 and 50. */
+  /** `since` and `until`: ISO dates already checked by the kernel; `limit` between 1 and 50. */
   find(q: { query: string; since?: string; until?: string; limit: number }): Promise<HistoryResult[]>;
   /** The most recent kept text of the page, or null (unknown, or seen only in a private space). */
   read(url: string): Promise<KeptPage | null>;
@@ -205,14 +205,14 @@ export const PRIVATE_TEXT = "Cet onglet est dans un espace privé : l'agent n'y 
 export class PrivateTab extends Error {
   constructor(readonly id: string) {
     super(PRIVATE_TEXT);
-    this.name = "OngletPrive";
+    this.name = "PrivateTab";
   }
 }
 
 export class DevToolsBusy extends Error {
   constructor() {
     super("Les outils de développement de l'utilisateur sont ouverts sur cet onglet.");
-    this.name = "OutilsDevOccupes";
+    this.name = "DevToolsBusy";
   }
 }
 
@@ -220,6 +220,6 @@ export class DevToolsBusy extends Error {
 export class ProfileDenied extends Error {
   constructor(readonly profile: string) {
     super(`Profil de connexion refusé : ${profile}`);
-    this.name = "ProfilRefuse";
+    this.name = "ProfileDenied";
   }
 }

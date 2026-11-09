@@ -10,16 +10,16 @@ function setup(answer: () => Promise<unknown>) {
 }
 
 describe("RemoteBridge paced reads", () => {
-  it("sends an id as menagee, never changerHote nor signal, and relays the wait to the given changerHote", async () => {
+  it("sends an id as pacedId, never changeHost nor signal, and relays the wait to the given changeHost", async () => {
     let release!: () => void;
     const { calls, bridge } = setup(() => new Promise((r) => (release = () => r(page))));
     const ch = vi.fn(async () => {});
     const read = bridge.readPageInvisible("http://a.test/", { profile: null, changeHost: ch, signal: new AbortController().signal });
     const o = calls[0]!.params[1];
-    expect(typeof o.menagee).toBe("string");
-    expect(o).not.toHaveProperty("changerHote");
+    expect(typeof o.pacedId).toBe("string");
+    expect(o).not.toHaveProperty("changeHost");
     expect(o).not.toHaveProperty("signal");
-    await bridge.changeHost(o.menagee, "b.test");
+    await bridge.changeHost(o.pacedId, "b.test");
     expect(ch).toHaveBeenCalledWith("b.test");
     release();
     await read;
@@ -29,13 +29,13 @@ describe("RemoteBridge paced reads", () => {
     const ok = setup(async () => page);
     let id = "";
     ok.bridge.readPageInvisible("http://a.test/", { profile: null, changeHost: async () => {} }).then(() => {});
-    id = ok.calls[0]!.params[1].menagee;
+    id = ok.calls[0]!.params[1].pacedId;
     await new Promise((r) => setTimeout(r));
     await expect(ok.bridge.changeHost(id, "b.test")).rejects.toThrow("Lecture inconnue");
 
     const ko = setup(async () => Promise.reject(new Error("boom")));
     await expect(ko.bridge.readPageInvisible("http://a.test/", { profile: null, changeHost: async () => {} })).rejects.toThrow("boom");
-    await expect(ko.bridge.changeHost(ko.calls[0]!.params[1].menagee, "b.test")).rejects.toThrow("Lecture inconnue");
+    await expect(ko.bridge.changeHost(ko.calls[0]!.params[1].pacedId, "b.test")).rejects.toThrow("Lecture inconnue");
   });
 
   it("sends no menagee without changerHote", async () => {

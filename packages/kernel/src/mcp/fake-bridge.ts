@@ -149,7 +149,7 @@ export class FakeBridge implements BrowserBridge {
   askWidgetData?: (o: { id: string; name: string; agent: string; kind?: "action" | "site" }, signal?: AbortSignal) => Promise<boolean>;
   /** Domains of each site app (id → domains), for `adresseSitePermise`. */
   private readonly sites: Record<string, string[]>;
-  /** Site apps whose tweaks card is shown: navigating answers « en-attente ». */
+  /** Site apps whose tweaks card is shown: navigating answers « pending ». */
   private readonly pendingSites: Set<string>;
   askDevTools?: (o: TabInfo, d: { rights: DevRight[]; reason: string; agent: string }, signal?: AbortSignal) => Promise<DevRight[]>;
 
@@ -371,10 +371,10 @@ export class FakeBridge implements BrowserBridge {
     return { ...o };
   }
 
-  async navigate(id: string, url: string): Promise<void | "en-attente"> {
+  async navigate(id: string, url: string): Promise<void | "pending"> {
     this.note("naviguer", id, url);
     const o = this.find(id);
-    if (o.site !== undefined && this.pendingSites.has(o.site)) return "en-attente";
+    if (o.site !== undefined && this.pendingSites.has(o.site)) return "pending";
     o.url = url;
   }
 

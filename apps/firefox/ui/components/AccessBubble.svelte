@@ -8,9 +8,9 @@
   const MARGIN = 8;
   const RIGHTS: Record<DevRight, { icon: string; name: string }> = {
     console: { icon: "👁", name: "Console et erreurs" },
-    reseau: { icon: "👁", name: "Réseau" },
-    performances: { icon: "👁", name: "Performances et mémoire" },
-    agir: { icon: "⚡", name: "Agir sur la page" },
+    network: { icon: "👁", name: "Réseau" },
+    performance: { icon: "👁", name: "Performances et mémoire" },
+    act: { icon: "⚡", name: "Agir sur la page" },
   };
 
   // The web page (a native view) always covers the interface: the bubble stays in the sidebar column, under the

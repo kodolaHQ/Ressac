@@ -102,7 +102,7 @@ async function withAgentAndTab(): Promise<string> {
 }
 /** The agent asks to read the tab; the promise never rejects when the app closes at the end of the test. */
 function readTab(id: string): Promise<unknown> {
-  const p = callTool(w.dataDir, "lire_onglet", { id });
+  const p = callTool(w.dataDir, "read_tab", { id });
   p.catch(() => {});
   return p;
 }

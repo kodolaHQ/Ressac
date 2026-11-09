@@ -53,20 +53,20 @@ const requests = () => bridge.calls.filter((a) => a.method === "demanderAutorisa
 test("without history in the bridge: the tools do not exist", async () => {
   const c = await start();
   const names = (await c.listTools()).tools.map((t) => t.name);
-  expect(names).not.toContain("chercher_historique");
-  expect(names).not.toContain("lire_historique");
+  expect(names).not.toContain("search_history");
+  expect(names).not.toContain("read_history");
 });
 
 test("with history: both tools are listed", async () => {
   const c = await start({ results: [] });
   const names = (await c.listTools()).tools.map((t) => t.name);
-  expect(names).toContain("chercher_historique");
-  expect(names).toContain("lire_historique");
+  expect(names).toContain("search_history");
+  expect(names).toContain("read_history");
 });
 
-test("chercher_historique: title · url · date · N visits, then the excerpt; without an excerpt, no empty line", async () => {
+test("search_history: title · url · date · N visits, then the excerpt; without an excerpt, no empty line", async () => {
   const c = await start({ results: [runes, withoutText] });
-  const r = await c.callTool({ name: "chercher_historique", arguments: { query: "runes" } });
+  const r = await c.callTool({ name: "search_history", arguments: { query: "runes" } });
   expect(r.isError).toBeFalsy();
   expect(text(r)).toBe(
     [
@@ -80,10 +80,10 @@ test("chercher_historique: title · url · date · N visits, then the excerpt; w
   expect(requests()).toBe(0);
 });
 
-test("chercher_historique: limit beyond 50 brought back to 50, period passed on", async () => {
+test("search_history: limit beyond 50 brought back to 50, period passed on", async () => {
   const c = await start({ results: [runes] });
   await c.callTool({
-    name: "chercher_historique",
+    name: "search_history",
     arguments: { query: "runes", limit: 500, since: "2026-10-14T00:00:00Z", until: "2026-10-22T00:00:00Z" },
   });
   expect(historyCalls()).toEqual([
@@ -91,48 +91,48 @@ test("chercher_historique: limit beyond 50 brought back to 50, period passed on"
   ]);
 });
 
-test("chercher_historique: a lone date at the end of a period counts the whole day", async () => {
+test("search_history: a lone date at the end of a period counts the whole day", async () => {
   const c = await start({ results: [] });
-  await c.callTool({ name: "chercher_historique", arguments: { query: "runes", since: "2026-10-14", until: "2026-10-21" } });
+  await c.callTool({ name: "search_history", arguments: { query: "runes", since: "2026-10-14", until: "2026-10-21" } });
   expect(historyCalls()).toEqual([
     { query: "runes", limit: 20, since: "2026-10-14T00:00:00.000Z", until: "2026-10-21T23:59:59.999Z" },
   ]);
 });
 
-test("chercher_historique: an invalid date is a readable error that names the field, without a call to the bridge", async () => {
+test("search_history: an invalid date is a readable error that names the field, without a call to the bridge", async () => {
   const c = await start({ results: [runes] });
-  const r = await c.callTool({ name: "chercher_historique", arguments: { query: "runes", since: "la semaine dernière" } });
+  const r = await c.callTool({ name: "search_history", arguments: { query: "runes", since: "la semaine dernière" } });
   expect(r.isError).toBe(true);
-  expect(text(r)).toContain("depuis");
+  expect(text(r)).toContain("since");
   expect(text(r)).toContain("la semaine dernière");
-  const r2 = await c.callTool({ name: "chercher_historique", arguments: { query: "runes", until: "2026-13-45" } });
+  const r2 = await c.callTool({ name: "search_history", arguments: { query: "runes", until: "2026-13-45" } });
   expect(r2.isError).toBe(true);
-  expect(text(r2)).toContain("jusqua");
+  expect(text(r2)).toContain("until");
   expect(historyCalls()).toEqual([]);
 });
 
-test("chercher_historique: non-integer or zero limit refused", async () => {
+test("search_history: non-integer or zero limit refused", async () => {
   const c = await start({ results: [runes] });
   for (const limit of [0, 2.5, -3]) {
-    const r = await c.callTool({ name: "chercher_historique", arguments: { query: "runes", limit: limit } }).catch((e: Error) => e);
+    const r = await c.callTool({ name: "search_history", arguments: { query: "runes", limit: limit } }).catch((e: Error) => e);
     expect(r instanceof Error || r.isError === true).toBe(true);
   }
   expect(historyCalls()).toEqual([]);
 });
 
-test("chercher_historique: no result → Rien trouvé dans l'historique.", async () => {
+test("search_history: no result → Rien trouvé dans l'historique.", async () => {
   const c = await start({ results: [] });
-  const r = await c.callTool({ name: "chercher_historique", arguments: { query: "introuvable" } });
+  const r = await c.callTool({ name: "search_history", arguments: { query: "introuvable" } });
   expect(r.isError).toBeFalsy();
   expect(text(r)).toBe("Rien trouvé dans l'historique.");
 });
 
-test("lire_historique: retained text prefixed as data, without a request", async () => {
+test("read_history: retained text prefixed as data, without a request", async () => {
   const c = await start({
     results: [],
     texts: [{ url: runes.url, title: runes.title, date: runes.lastVisit, text: "Les runes sont arrivées." }],
   });
-  const r = await c.callTool({ name: "lire_historique", arguments: { url: runes.url } });
+  const r = await c.callTool({ name: "read_history", arguments: { url: runes.url } });
   expect(r.isError).toBeFalsy();
   expect(text(r)).toBe(
     [
@@ -147,16 +147,16 @@ test("lire_historique: retained text prefixed as data, without a request", async
   expect(requests()).toBe(0);
 });
 
-test("lire_historique: unknown page → Rien de retenu pour cette page.", async () => {
+test("read_history: unknown page → Rien de retenu pour cette page.", async () => {
   const c = await start({ results: [] });
-  const r = await c.callTool({ name: "lire_historique", arguments: { url: "https://inconnu.test/" } });
+  const r = await c.callTool({ name: "read_history", arguments: { url: "https://inconnu.test/" } });
   expect(r.isError).toBeFalsy();
   expect(text(r)).toBe("Rien de retenu pour cette page.");
 });
 
 test("a bridge error is a readable tool error", async () => {
   const c = await start({ results: [], error: "base fermée" });
-  const r = await c.callTool({ name: "chercher_historique", arguments: { query: "runes" } });
+  const r = await c.callTool({ name: "search_history", arguments: { query: "runes" } });
   expect(r.isError).toBe(true);
   expect(text(r)).toBe("Erreur : base fermée");
 });

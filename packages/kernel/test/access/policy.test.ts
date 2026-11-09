@@ -101,8 +101,8 @@ test("built: app:<folder> and localhost:5285 opened by the agent have the four r
   p.tabOpenedByAgent(app);
   p.tabOpenedByAgent(demo5285);
   p.tabOpenedByAgent(port3000);
-  expect(p.devRights(app)).toEqual(["console", "reseau", "performances", "agir"]);
-  expect(p.devRights(demo5285)).toEqual(["console", "reseau", "performances", "agir"]);
+  expect(p.devRights(app)).toEqual(["console", "network", "performance", "act"]);
+  expect(p.devRights(demo5285)).toEqual(["console", "network", "performance", "act"]);
   expect(p.isBuilt(demo5285)).toBe(true);
   expect(p.devRights(port3000)).toEqual([]);
   expect(p.isBuilt(port3000)).toBe(false);
@@ -141,8 +141,8 @@ test("built: leaving the origin removes the rights; navigating back to it (agent
 });
 
 test("accorderDev: only the checked rights; they drop on site change, on close, on reinitialiser", () => {
-  p.grantDev(github, ["console", "agir"], ["reseau"]);
-  expect(p.devRights(github)).toEqual(["console", "agir"]);
+  p.grantDev(github, ["console", "act"], ["network"]);
+  expect(p.devRights(github)).toEqual(["console", "act"]);
   p.tabNavigated(github.id, "https://mail.google.com/");
   expect(p.devRights(github)).toEqual([]);
   p.grantDev(github, ["console"], []);
@@ -154,28 +154,28 @@ test("accorderDev: only the checked rights; they drop on site change, on close, 
 });
 
 test("refusal: peutDemander false for a refused (tab, right) until interactionUtilisateur; another right stays requestable", () => {
-  p.grantDev(github, [], ["reseau"]);
-  expect(p.canAsk(github.id, "reseau")).toBe(false);
+  p.grantDev(github, [], ["network"]);
+  expect(p.canAsk(github.id, "network")).toBe(false);
   expect(p.canAsk(github.id, "console")).toBe(true);
   p.userInteraction(gmail);
-  expect(p.canAsk(github.id, "reseau")).toBe(true);
-  p.grantDev(github, [], ["reseau"]);
+  expect(p.canAsk(github.id, "network")).toBe(true);
+  p.grantDev(github, [], ["network"]);
   p.reset();
-  expect(p.canAsk(github.id, "reseau")).toBe(true);
+  expect(p.canAsk(github.id, "network")).toBe(true);
 });
 
 test("couper(id, \"agir\") removes that right only; couper(id) removes everything, reading included; a built one that is cut stays so until reinitialiser", () => {
   p.userInteraction(github);
-  p.grantDev(github, ["console", "agir"], []);
-  p.cut(github.id, "agir");
+  p.grantDev(github, ["console", "act"], []);
+  p.cut(github.id, "act");
   expect(p.devRights(github)).toEqual(["console"]);
   p.cut(github.id);
   expect(p.devRights(github)).toEqual([]);
   expect(p.canRead(github)).toBe(false);
 
   p.tabOpenedByAgent(demo);
-  p.cut(demo.id, "agir");
-  expect(p.devRights(demo)).toEqual(["console", "reseau", "performances"]);
+  p.cut(demo.id, "act");
+  expect(p.devRights(demo)).toEqual(["console", "network", "performance"]);
   p.cut(demo.id);
   expect(p.devRights(demo)).toEqual([]);
   p.navigationByAgent(demo.id, "http://localhost:5281/");
@@ -187,13 +187,13 @@ test("couper(id, \"agir\") removes that right only; couper(id) removes everythin
 test("etat(): reading, rights, built, enCours (utilisation true/false balanced)", () => {
   expect(p.state()).toEqual({});
   p.userInteraction(github);
-  p.grantDev(gmail, ["reseau"], []);
+  p.grantDev(gmail, ["network"], []);
   p.tabOpenedByAgent(demo);
   p.use(github.id, true);
   p.use(github.id, true);
   p.use(github.id, false);
   expect(p.state()[github.id]).toEqual({ read: true, rights: [], built: false, running: true });
-  expect(p.state()[gmail.id]).toEqual({ read: false, rights: ["reseau"], built: false, running: false });
+  expect(p.state()[gmail.id]).toEqual({ read: false, rights: ["network"], built: false, running: false });
   expect(p.state()[demo.id]).toEqual({ read: true, rights: [...DEV_RIGHTS], built: true, running: false });
   p.use(github.id, false);
   expect(p.state()[github.id]?.running).toBe(false);
@@ -239,11 +239,11 @@ test("cut built: relaunching the app (closing then reopening app:x) does not res
 
 test("cut demo: a new agent tab on the same origin has no right; another origin does; a single cut right stays cut", () => {
   p.tabOpenedByAgent(demo);
-  p.cut(demo.id, "agir");
+  p.cut(demo.id, "act");
   p.tabClosed(demo.id);
   const fresh: TabInfo = { ...demo, id: "4" };
   p.tabOpenedByAgent(fresh);
-  expect(p.devRights(fresh)).toEqual(["console", "reseau", "performances"]);
+  expect(p.devRights(fresh)).toEqual(["console", "network", "performance"]);
   p.cut(fresh.id);
   p.tabClosed(fresh.id);
   const still: TabInfo = { ...demo, id: "5" };

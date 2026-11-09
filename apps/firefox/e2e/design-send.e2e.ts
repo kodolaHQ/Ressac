@@ -190,7 +190,7 @@ describe("an external project", () => {
     await p?.client.close().catch(() => undefined);
   });
 
-  it("externes.spec.ts:163 a tab on the declared port: send to Claude Code, lire_remarques (text and image), batch read then treated with the note", async () => {
+  it("externes.spec.ts:163 a tab on the declared port: send to Claude Code, read_remarks (text and image), batch read then treated with the note", async () => {
     await activate(tab);
     const before = agentInput();
     await modeOn();
@@ -201,7 +201,7 @@ describe("an external project", () => {
     // Nothing in the agent's terminal: an external batch pre-fills nothing.
     await sleep(300);
     expect(agentInput()).toBe(before);
-    const read = await p.client.callTool({ name: "lire_remarques", arguments: { folder: p.folder } });
+    const read = await p.client.callTool({ name: "read_remarks", arguments: { folder: p.folder } });
     const image = (read.content as Content).find((x) => x.type === "image");
     expect(image?.mimeType).toBe("image/png");
     expect(Buffer.from(image!.data!, "base64").subarray(0, 8)).toEqual(PNG);
@@ -209,13 +209,13 @@ describe("an external project", () => {
     expect(text).toContain("Champ plus large");
     await expect.poll(batchList, { timeout: 10_000 }).toEqual([expect.objectContaining({ state: "lu" })]);
     const id = /Remarque (e-[0-9a-f]{8})/.exec(text)![1]!;
-    await p.client.callTool({ name: "marquer_traitee", arguments: { folder: p.folder, ids: [id], note: "corrigé" } });
+    await p.client.callTool({ name: "mark_handled", arguments: { folder: p.folder, ids: [id], note: "corrigé" } });
     await expect.poll(batchList, { timeout: 10_000 }).toEqual([expect.objectContaining({ state: "traite" })]);
     expect((await batchList())![0]!.text).toContain("corrigé");
     await modeOff();
   });
 
-  it("design.spec.ts:577 the spec's success on an external project: remarks, send, lire_remarques, the file changed, Relire ce projet, a comment, Marquer comme relu", { timeout: 90_000 }, async () => {
+  it("design.spec.ts:577 the spec's success on an external project: remarks, send, read_remarks, the file changed, Relire ce projet, a comment, Marquer comme relu", { timeout: 90_000 }, async () => {
     await activate(tab);
     await modeOn();
     await remark("#email", "input#email.champ", "refuser une adresse sans domaine");
@@ -224,7 +224,7 @@ describe("an external project", () => {
     await expect.poll(cartCount, { timeout: 10_000 }).toBe(2);
     await click(m, tid("envoyer-remarques"), { frame: "panel" });
     await expect.poll(cartCount, { timeout: 10_000 }).toBe(0);
-    const text = textOf(await p.client.callTool({ name: "lire_remarques", arguments: { folder: p.folder } }));
+    const text = textOf(await p.client.callTool({ name: "read_remarks", arguments: { folder: p.folder } }));
     expect(text).toContain("refuser une adresse sans domaine");
     expect(text).toContain("Bouton en vert");
     expect(text).toContain(`Élément : "#email"`);
@@ -253,7 +253,7 @@ describe("an external project", () => {
     await click(m, `${tid("formulaire-commentaire")} button`, { text: "Commenter" });
     await click(m, tid("envoyer-commentaires"));
     await waitUi(m, `return doc.querySelector('${tid("commentaire")}')?.textContent.includes("envoyé")`, [], 15_000);
-    const review = textOf(await p.client.callTool({ name: "lire_remarques", arguments: { folder: p.folder } }));
+    const review = textOf(await p.client.callTool({ name: "read_remarks", arguments: { folder: p.folder } }));
     expect(review).toContain('Fichier : "app.js", lignes 15–15');
     expect(review).toContain("garder le mot Envoyer");
     await click(m, tid("marquer-relu"));

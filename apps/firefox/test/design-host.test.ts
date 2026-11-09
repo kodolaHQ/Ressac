@@ -66,7 +66,7 @@ async function callTool(d: DesignHost, name: string, args: Record<string, unknow
   const { StreamableHTTPClientTransport } = await import("@modelcontextprotocol/sdk/client/streamableHttp.js");
   const client = new Client({ name: "test", version: "0" });
   await client.connect(
-    new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${server.port}/mcp-externe`), { requestInit: { headers: { Authorization: `Bearer ${token}` } } }),
+    new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${server.port}/mcp-external`), { requestInit: { headers: { Authorization: `Bearer ${token}` } } }),
   );
   try {
     const r = (await client.callTool({ name, arguments: args })) as { content: { text?: string }[]; isError?: boolean };
@@ -117,7 +117,7 @@ describe("design host", { timeout: 20_000 }, () => {
     const folders = [s.dataDir, join(s.dataDir, "design", "x"), join(s.paths.projects, "x")];
     for (const d of folders.slice(1)) mkdirSync(d, { recursive: true });
     for (const folder of folders) {
-      const r = await callTool(s.design, "declarer_projet", { folder: folder, ports: [3000] });
+      const r = await callTool(s.design, "declare_project", { folder: folder, ports: [3000] });
       expect(r.text).toContain(SPACE_FOLDER);
     }
     expect((await list(s.design)).projects).toEqual([]);
@@ -131,7 +131,7 @@ describe("design host", { timeout: 20_000 }, () => {
     cleanup.push(() => rmSync(outside, { recursive: true, force: true }));
     const link = join(outside, "lien");
     symlinkSync(join(s.dataDir, "design"), link);
-    const r = await callTool(s.design, "declarer_projet", { folder: link, ports: [3000] });
+    const r = await callTool(s.design, "declare_project", { folder: link, ports: [3000] });
     expect(r.text).toContain(SPACE_FOLDER);
     expect((await list(s.design)).projects).toEqual([]);
     expect(existsSync(join(s.dataDir, "design", "projets-externes.json"))).toBe(false);
@@ -142,8 +142,8 @@ describe("design host", { timeout: 20_000 }, () => {
     const s = prepare();
     const project = join(s.home, "projet");
     mkdirSync(project);
-    await callTool(s.design, "declarer_projet", { folder: project, ports: [3000], name: "Projet" });
-    await callTool(s.design, "declarer_projet", { folder: project, ports: [3001] });
+    await callTool(s.design, "declare_project", { folder: project, ports: [3000], name: "Projet" });
+    await callTool(s.design, "declare_project", { folder: project, ports: [3001] });
     expect(s.notify).toHaveBeenCalledTimes(1);
     expect(s.notify).toHaveBeenCalledWith({ title: "WebAiOs", text: "Claude Code a branché le projet Projet" });
     const e = await list(s.design);
@@ -165,7 +165,7 @@ describe("design host", { timeout: 20_000 }, () => {
     const project = join(s.home, "projet");
     mkdirSync(project);
     writeFileSync(join(project, "a.txt"), "un\n");
-    await callTool(s.design, "declarer_projet", { folder: project, ports: [3000] });
+    await callTool(s.design, "declare_project", { folder: project, ports: [3000] });
     const id = `ext-${(await list(s.design)).projects[0]!.id}`;
     const h = s.design.handlers;
     await until(() => h["review.open"]!({ project: id }) as Promise<{ state: string }>, (v) => v.state === "ok");
@@ -305,7 +305,7 @@ describe("design host, the carts", { timeout: 20_000 }, () => {
     const s = prepare({ siteApps: [{ ...app("essai"), name: "Essai", state: "en-marche", port: 15281 }, app("dort")], sites: [{ id: "x", name: "Site X" }], ...o });
     const project = join(s.home, "projet");
     mkdirSync(project);
-    await callTool(s.design, "declarer_projet", { folder: project, ports: [3000], name: "Projet" });
+    await callTool(s.design, "declare_project", { folder: project, ports: [3000], name: "Projet" });
     const ext = `ext-${(await list(s.design)).projects[0]!.id}`;
     return { ...s, ext, h: s.design.handlers };
   }

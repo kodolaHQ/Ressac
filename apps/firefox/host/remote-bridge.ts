@@ -56,10 +56,10 @@ export class RemoteBridge implements BrowserBridge {
       // The kernel expects an aborted read to reject with the signal's own reason.
       if (signal?.aborted) throw signal.reason;
       const x = e as Error & { id?: string; profile?: string };
-      if (x.name === "OngletIntrouvable") throw new TabNotFound(x.id!);
-      if (x.name === "OngletPrive") throw new PrivateTab(x.id!);
-      if (x.name === "ProfilRefuse") throw new ProfileDenied(x.profile!);
-      if (x.name === "OutilsDevOccupes") throw new DevToolsBusy();
+      if (x.name === "TabNotFound") throw new TabNotFound(x.id!);
+      if (x.name === "PrivateTab") throw new PrivateTab(x.id!);
+      if (x.name === "ProfileDenied") throw new ProfileDenied(x.profile!);
+      if (x.name === "DevToolsBusy") throw new DevToolsBusy();
       throw e;
     }
   }
@@ -68,7 +68,7 @@ export class RemoteBridge implements BrowserBridge {
   listTabs = () => this.call<TabInfo[]>("listerOnglets", []);
   readText = (id: string) => this.call<{ text: string; selection?: string }>("lireTexte", [id]);
   openTab = (url: string, space?: string) => this.call<TabInfo>("ouvrirOnglet", space === undefined ? [url] : [url, space]);
-  navigate = (id: string, url: string) => this.call<void | "en-attente">("naviguer", [id, url]);
+  navigate = (id: string, url: string) => this.call<void | "pending">("naviguer", [id, url]);
   capture = async (id: string) => Buffer.from(await this.call<string>("capturer", [id]), "base64");
   askPermission = (o: TabInfo) => this.call<boolean>("demanderAutorisation", [o]);
   // Taken down (signal) when a new conversation starts: no rights.

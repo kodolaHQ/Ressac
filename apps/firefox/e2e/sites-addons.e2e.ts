@@ -348,7 +348,7 @@ describe("add-ons and what the agent adds to the app", () => {
 });
 
 describe("the agent and the app's add-ons", () => {
-  it("lister_onglets lists no page of the app outside site:<id> (extensions-sites.spec.ts:1119)", async () => {
+  it("list_tabs lists no page of the app outside site:<id> (extensions-sites.spec.ts:1119)", async () => {
     await start();
     await installAddon(m, probe());
     await openAndWait();
@@ -356,7 +356,7 @@ describe("the agent and the app's add-ons", () => {
     for (const deadline = Date.now() + 20_000; !existsSync(config); await new Promise((r) => setTimeout(r, 100)))
       if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
     await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('prêt>')", [], 20_000, "agent");
-    const lines = (await callTool(dataDir, "lister_onglets")).text.split("\n");
+    const lines = (await callTool(dataDir, "list_tabs")).text.split("\n");
     expect(lines.filter((l) => l.includes("vidola-a.localhost"))).toEqual(["site:vidola · Vidola · vidola-a.localhost · appli de site"]);
     expect(Object.values((await state(m)).tabs).filter((o) => o.url.includes("vidola-a.localhost"))).toEqual([]);
   });

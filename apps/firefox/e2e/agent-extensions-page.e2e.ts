@@ -14,7 +14,7 @@ import { startServer } from "./server";
 import { click, inUi, missingApi, waitUi } from "./ui";
 
 // The Extensions page: the unlock on the page, Supprimer and Désactiver partout of an agent extension. The page lists the agent's extensions only
-// (plan decision 8); lister_extensions lists AMO add-ons too (decision 7).
+// (plan decision 8); list_extensions lists AMO add-ons too (decision 7).
 const HOST = "http://127.0.0.1/*";
 const GRANT = { permissions: [], hosts: [HOST], network: [], allSites: false, allSitesScripts: false, scripts: true };
 const HIDER = {
@@ -130,19 +130,19 @@ async function remove(m: Marionette, name: string): Promise<void> {
   await rowButton(m, name, "Supprimer");
   await click(m, '[data-testid="confirmation-suppression-extension"] button.confirmer');
 }
-/** demander_extension, then « Activer » on its card. */
+/** request_extension, then « Activer » on its card. */
 async function enabledByAgent(w: Launched, id: string, name: string): Promise<string> {
-  const call = w.call("demander_extension", { id });
+  const call = w.call("request_extension", { id });
   expect(await waitUi<string>(w.marionette, `return doc.querySelector(${JSON.stringify(CARD)})?.textContent`, [], 15_000)).toContain(name);
   await click(w.marionette, `${CARD} button`, { text: "Activer" });
   return (await call).text;
 }
-/** console_extension until it contains `expected`. */
+/** extension_console until it contains `expected`. */
 async function consoleUntil(w: Launched, id: string, expected: string): Promise<string> {
   let text = "";
   for (const deadline = Date.now() + 20_000; !text.includes(expected); await new Promise((r) => setTimeout(r, 200))) {
-    if (Date.now() > deadline) throw new Error(`console_extension never said ${JSON.stringify(expected)}: ${text}`);
-    text = (await w.call("console_extension", { id })).text;
+    if (Date.now() > deadline) throw new Error(`extension_console never said ${JSON.stringify(expected)}: ${text}`);
+    text = (await w.call("extension_console", { id })).text;
   }
   return text;
 }
@@ -242,7 +242,7 @@ describe("the Extensions page", () => {
   });
 
   // extensions-agent.spec.ts:1210, with the page open before: the unlock's start and end refresh it.
-  it("says « Console débloquée pour l'agent »; « Couper le déblocage » and refermer_console close it", async () => {
+  it("says « Console débloquée pour l'agent »; « Couper le déblocage » and lock_console close it", async () => {
     const w = await launch({ agent: true });
     const m = w.marionette;
     writeAgentExtension(w.root, "journal", LOG);
@@ -252,7 +252,7 @@ describe("the Extensions page", () => {
     await openPage(m);
     await waitRow(m, "Journal de l'agent", true);
     const unlock = async () => {
-      const call = w.call("debloquer_console", { id: "journal", reason: "r" });
+      const call = w.call("unlock_console", { id: "journal", reason: "r" });
       await click(m, `${UNLOCK} button`, { text: "Débloquer" });
       expect((await call).text).toContain("Console débloquée");
       await waitUi(m, `return doc.querySelector('${LINE} [data-testid="console-debloquee"]')?.textContent === "Console débloquée pour l'agent"`);
@@ -261,20 +261,20 @@ describe("the Extensions page", () => {
     await unlock();
     await rowButton(m, "Journal de l'agent", "Couper le déblocage");
     await closed();
-    expect((await w.call("console_extension", { id: "journal" })).text).not.toContain("contenu:/a.html");
+    expect((await w.call("extension_console", { id: "journal" })).text).not.toContain("contenu:/a.html");
     await unlock();
-    expect((await w.call("refermer_console", { id: "journal" })).text).toContain("refermée");
+    expect((await w.call("lock_console", { id: "journal" })).text).toContain("refermée");
     await closed();
   });
 });
 
-describe("lister_extensions", () => {
+describe("list_extensions", () => {
   it("lists an AMO add-on with source store", async () => {
     const w = await launch({ agent: true });
     const m = w.marionette;
     const id = await installAddon(m, button());
     const space = (await activeSpace(m)).name;
-    expect((await w.call("lister_extensions")).text).toContain(`store:${id} · Bouton de test · 1.0 · store · actives dans : ${space} · erreurs : aucune`);
+    expect((await w.call("list_extensions")).text).toContain(`store:${id} · Bouton de test · 1.0 · store · actives dans : ${space} · erreurs : aucune`);
     // Never on the page, which lists the agent's extensions only.
     await openPage(m);
     await waitUi(m, `return doc.querySelector(${JSON.stringify(PAGE)}).textContent.includes("Aucune extension.")`);
@@ -287,7 +287,7 @@ describe("crashes", () => {
     const m = w.marionette;
     await waitActive(m, `${id}@agent.webaios`, false);
     expect(registry(w.dataDir).extensions[`agent:${id}`]).toMatchObject({ profiles: ["defaut"], disabled: { reason: "plantages" } });
-    expect((await w.call("lister_extensions")).text).toContain(DISABLED_CRASHES);
+    expect((await w.call("list_extensions")).text).toContain(DISABLED_CRASHES);
     await openPage(m);
     await waitRow(m, name, true);
     expect(await row(m, name)).toContain(DISABLED_CRASHES);
@@ -303,17 +303,17 @@ describe("crashes", () => {
     // Each load's error, seen in its console before the next load: one crash each.
     const loads = async (n: number) => {
       for (const deadline = Date.now() + 20_000; ; await new Promise((r) => setTimeout(r, 200))) {
-        const text = (await w.call("console_extension", { id: "cassee" })).text;
+        const text = (await w.call("extension_console", { id: "cassee" })).text;
         if (text.split("fond-casse-au-chargement").length - 1 >= n) return;
         if (Date.now() > deadline) throw new Error(`fewer than ${n} load errors: ${text}`);
       }
     };
     expect(await enabledByAgent(w, "cassee", "Fond cassé")).toMatch(/^Activée/);
     await loads(1);
-    expect((await w.call("recharger_extension", { id: "cassee" })).text).toBe("etat : rechargee");
+    expect((await w.call("reload_extension", { id: "cassee" })).text).toBe("state : reloaded");
     await loads(2);
     expect(registry(w.dataDir).extensions["agent:cassee"]?.disabled).toBeNull();
-    expect((await w.call("recharger_extension", { id: "cassee" })).text).toBe("etat : rechargee");
+    expect((await w.call("reload_extension", { id: "cassee" })).text).toBe("state : reloaded");
     await disabledThenReactivated(w, "cassee", "Fond cassé");
   });
 
@@ -322,7 +322,7 @@ describe("crashes", () => {
     writeAgentExtension(w.root, "popup", BROKEN_POPUP);
     const errors = async (n: number) => {
       for (const deadline = Date.now() + 20_000; ; await new Promise((r) => setTimeout(r, 200))) {
-        const text = (await w.call("console_extension", { id: "popup" })).text;
+        const text = (await w.call("extension_console", { id: "popup" })).text;
         if (text.split("popup-cassee").length - 1 >= n) return;
         if (Date.now() > deadline) throw new Error(`fewer than ${n} popup errors: ${text}`);
       }
@@ -330,7 +330,7 @@ describe("crashes", () => {
     expect(await enabledByAgent(w, "popup", "Popup cassée")).toMatch(/^Activée/);
     await errors(1);
     for (let n = 2; n <= 3; n++) {
-      expect((await w.call("recharger_extension", { id: "popup" })).text).toBe("etat : rechargee");
+      expect((await w.call("reload_extension", { id: "popup" })).text).toBe("state : reloaded");
       await errors(n);
     }
     // Time for a crash count to reach the kernel.
@@ -352,9 +352,9 @@ describe("crashes", () => {
     };
     expect(await enabledByAgent(w, "boucle", "Fond qui boucle")).toMatch(/^Activée/);
     await killed();
-    expect((await w.call("recharger_extension", { id: "boucle" })).text).toBe("etat : rechargee");
+    expect((await w.call("reload_extension", { id: "boucle" })).text).toBe("state : reloaded");
     await killed();
-    expect((await w.call("recharger_extension", { id: "boucle" })).text).toBe("etat : rechargee");
+    expect((await w.call("reload_extension", { id: "boucle" })).text).toBe("state : reloaded");
     await killed();
     await disabledThenReactivated(w, "boucle", "Fond qui boucle");
   });

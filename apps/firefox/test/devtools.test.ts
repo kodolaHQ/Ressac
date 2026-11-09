@@ -45,15 +45,15 @@ const browserAt = (spec: string) => ({ currentURI: { spec } });
 it("a private tab is refused before its page is even looked up", async () => {
   const { devtools, loaded } = setup({ isPrivate: true });
   const { token } = devtools.owner();
-  await expect(devtools.call(token, "attach", ["t"])).rejects.toMatchObject({ name: "OngletPrive", id: "t" });
-  await expect(devtools.call(token, "console", ["t"])).rejects.toMatchObject({ name: "OngletPrive" });
+  await expect(devtools.call(token, "attach", ["t"])).rejects.toMatchObject({ name: "PrivateTab", id: "t" });
+  await expect(devtools.call(token, "console", ["t"])).rejects.toMatchObject({ name: "PrivateTab" });
   expect(loaded).toEqual([]);
   expect(devtools.attached()).toEqual([]);
 });
 
 it("an unknown tab: TabNotFound", async () => {
   const { devtools } = setup();
-  await expect(devtools.call(devtools.owner().token, "console", ["gone"])).rejects.toMatchObject({ name: "OngletIntrouvable", id: "gone" });
+  await expect(devtools.call(devtools.owner().token, "console", ["gone"])).rejects.toMatchObject({ name: "TabNotFound", id: "gone" });
 });
 
 it("a new owner revokes the previous one; a released owner is refused; a method not provided is refused", async () => {
@@ -155,7 +155,7 @@ it("a profile cut while its StartProfiler is still in flight stops the profiler 
   const cut = new AbortController();
   let active = false;
   (globalThis as any).Services = {
-    profile: {
+    profiler: {
       IsActive: () => active,
       StartProfiler: () => {
         cut.abort(); // cut right after the call, before the start lands
@@ -207,7 +207,7 @@ afterEach(() => {
 /** Services.profiler giving one empty GeckoMain thread of process 42, `pages` of tab 1. */
 function fakeProfiler(reflows: (number | undefined)[] = []) {
   (globalThis as any).Services = {
-    profile: {
+    profiler: {
       IsActive: () => false,
       StartProfiler: async () => {},
       StopProfiler: async () => {},

@@ -433,7 +433,7 @@ describe("the UI's network", () => {
     const refusals = (await uiRefusals(m)).join("\n");
     for (const what of ["bar-img.", "badge-img."]) expect(refusals, what).toContain(what);
     expect(await size()).toEqual([88, 28]);
-    await callTool(dataDir, "arreter_application", { folder: "essai" }).catch(() => {});
+    await callTool(dataDir, "stop_app", { folder: "essai" }).catch(() => {});
     await m.execute(`return (async () => { const store = await ChromeUtils.importESModule("${STORE}").ready; for (const id of store.sites.openIds()) await store.sites.close(id); })();`);
   });
 
@@ -526,7 +526,7 @@ describe("the UI's network", () => {
     // Behind the CSP, the net would refuse it too: the predicate judges the home the UI's.
     expect(await m.execute(`return ChromeUtils.importESModule("${STORE}").uiNetwork.isUiDocument(${home});`)).toBe(true);
     expect(refused.filter((r) => /netsite(-accueil)?\.localhost|\/page|localhost:/.test(r) || r.includes(`:${port}`))).toEqual([]);
-    await callTool(dataDir, "arreter_application", { folder: "essai" }).catch(() => {});
+    await callTool(dataDir, "stop_app", { folder: "essai" }).catch(() => {});
     await m.execute(`return (async () => { const store = await ChromeUtils.importESModule("${STORE}").ready; for (const id of store.sites.openIds()) await store.sites.close(id); })();`);
   });
 

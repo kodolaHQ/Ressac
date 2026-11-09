@@ -580,7 +580,7 @@ describe("runHarvest, widget with an account", () => {
     await writeFile(join(ctx.widget.folder, "recolte.mjs"), "export default async (w) => ({ prec: w.precedent });");
     const home = await readHome(spacePaths(ctx.space), ctx.widgetsFolder);
     const lu = home.widgets.find((w) => w.id === "daily")!;
-    expect("data" in lu && lu.data).toBeNull(); // what donnees_widget would return
+    expect("data" in lu && lu.data).toBeNull(); // what widget_data would return
     const r = await runHarvest({ ...optionsOf(ctx), widget: lu });
     expect(r.data).toEqual({ prev: null });
   });
@@ -680,7 +680,7 @@ describe("runHarvest, widget with an account", () => {
     expect((await readWidgetState(ctx.widgetsFolder, "daily")).status).toBe("accord-requis");
     const home = await readHome(spacePaths(ctx.space), ctx.widgetsFolder);
     const lu = home.widgets.find((w) => w.id === "daily")!;
-    expect("data" in lu && lu.data).toBeNull(); // what donnees_widget would return
+    expect("data" in lu && lu.data).toBeNull(); // what widget_data would return
   });
 });
 

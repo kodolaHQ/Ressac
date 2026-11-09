@@ -240,7 +240,7 @@ export interface ApiWebaios {
      * receives `saisie` and may return the refusal (`erreur`: required input, required grant…).
      */
     launch(target: Owner, input?: string | null): Promise<{ run?: string; error?: string }>;
-    /** The block selected in this window's builder (for workflow_ouvert). */
+    /** The block selected in this window's builder (for open_workflow). */
     selection(target: Owner, block: string | null): void;
     /** The executions of the running widgets (those of actions: `actions.direct`). */
     direct(): Promise<DirectState>;
@@ -444,7 +444,7 @@ export const DraftSchema = z.object({
 /** The block selected in a window's builder, and the workflow (widget or action) where it is. */
 export type BuilderSelection = { widget: string; block: string | null } | { action: string; block: string | null };
 /**
- * The block selected in the builder: an invalid block becomes « none » (`workflow_ouvert` never shows
+ * The block selected in the builder: an invalid block becomes « none » (`open_workflow` never shows
  * the old one); null, message ignored, if the target is invalid.
  */
 export function builderSelection(v: unknown): BuilderSelection | null {

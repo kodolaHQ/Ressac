@@ -44,7 +44,7 @@ export const ACTIVATION_REMOVED = REQUEST_REMOVED;
 export const ALL_CUT_AGENT = "Les extensions sont toutes désactivées : rien n'est activé";
 const REMOVED_DURING_CARD = "Extension retirée pendant la carte : rien n'est activé";
 const SPACE_GONE = "Espace disparu pendant la carte : rien n'est activé";
-export const folderAbsent = (id: string) => `${FOLDER_ABSENT} : ~/WebAiOs/extensions/${id} n'existe plus (recrée-le, puis recharger_extension)`;
+export const folderAbsent = (id: string) => `${FOLDER_ABSENT} : ~/WebAiOs/extensions/${id} n'existe plus (recrée-le, puis reload_extension)`;
 export const NO_GRANT = "Extension sans accord : demande d'abord son activation";
 /** Firefox refused the signed .xpi. */
 export const installationImpossible = (m: string) => "Installation impossible : " + m.slice(0, 2000);
@@ -251,7 +251,7 @@ export class ExtensionsAgent {
     console.warn(`[extensions] ${key} désactivée : ${DISABLED_CRASHES}`);
   }
 
-  /** `console_extension`: filtered (unlocked: whole); null if not in the registry. */
+  /** `extension_console`: filtered (unlocked: whole); null if not in the registry. */
   private async consoleForAgent(id: string, from?: number): Promise<AgentConsole | null> {
     const key = this.agentKey(id);
     const state = await readExtensionsState(this.o.folder);
@@ -275,9 +275,9 @@ export class ExtensionsAgent {
   }
 
   /**
-   * `debloquer_console`: the unlock card, for an agent extension active somewhere, never
+   * `unlock_console`: the unlock card, for an agent extension active somewhere, never
    * in a private space's profile, naming the spaces of its profiles. Granted: its console is whole for what the card
-   * showed, until refermer_console or a registry write that ends it (verifierDeblocages).
+   * showed, until lock_console or a registry write that ends it (verifierDeblocages).
    */
   private async unlockConsole(id: string, reason: string, x: { window: string | null; agent: string; signal?: AbortSignal }): Promise<ExtensionConsoleResult> {
     const key = this.agentKey(id);
@@ -347,7 +347,7 @@ export class ExtensionsAgent {
     return { ok: true };
   }
 
-  /** « Couper le déblocage » (Extensions page) or `refermer_console`: its console is filtered again. */
+  /** « Couper le déblocage » (Extensions page) or `lock_console`: its console is filtered again. */
   cutUnlock(key: string): ExtensionResult {
     if (this.unlocks.delete(key)) this.o.rpc.notify("extensions.change");
     return { ok: true };
@@ -388,7 +388,7 @@ export class ExtensionsAgent {
       .map(([key, x]): AgentExtension => {
         const spaces = nav.spaces.filter((e) => x.profiles.includes(e.profile));
         const id = this.id(key);
-        // Its kept error, its disabling, then its console's errors as console_extension filters them.
+        // Its kept error, its disabling, then its console's errors as extension_console filters them.
         const errors = [...(this.sendErrors.has(key) ? [this.sendErrors.get(key)!] : []), ...(x.disabled ? [x.disabled.reason === "plantages" ? DISABLED_CRASHES : DISABLED_SCOPE] : [])];
         if (id && !x.profiles.some((p) => privateProfiles.has(p))) errors.push(...this.consoles.errorsForAgent(addonIdOf(id), this.agentFilter(state, key)).slice(-PAGE_CONSOLE_ERRORS));
         return {
@@ -510,7 +510,7 @@ export class ExtensionsAgent {
   }
 
   /**
-   * `demander_extension`: the space named (id or name, never a private one), else the
+   * `request_extension`: the space named (id or name, never a private one), else the
    * active space of the agent's window (or the foreground one); then the card, in that window.
    */
   private async ask(id: string, x: { space?: string; window: string | null; signal?: AbortSignal }): Promise<ExtensionRequestResult> {
@@ -606,19 +606,19 @@ export class ExtensionsAgent {
     }
   }
 
-  /** `recharger_extension`: within its grant, signed and installed without a card; broadened, disabled (grant kept). */
-  private reload(id: string): Promise<{ state: "rechargee" | "desactivee" | "refusee"; detail: string[] }> {
+  /** `reload_extension`: within its grant, signed and installed without a card; broadened, disabled (grant kept). */
+  private reload(id: string): Promise<{ state: "reloaded" | "disabled" | "refused"; detail: string[] }> {
     const key = this.key(id);
-    if (!key) return Promise.resolve({ state: "refusee", detail: [`Identifiant d'extension invalide : ${id}`] });
+    if (!key) return Promise.resolve({ state: "refused", detail: [`Identifiant d'extension invalide : ${id}`] });
     // A card left open for it holds its queue: it falls first.
     this.cards.get(key)?.abort();
     return this.queued(key, async () => {
       const grant = (await readExtensionsState(this.o.folder)).extensions[key]?.grant;
-      if (!grant) return { state: "refusee" as const, detail: [NO_GRANT] };
+      if (!grant) return { state: "refused" as const, detail: [NO_GRANT] };
       const r = this.noteSend(key, await this.send(id, key, { grant: grant }));
-      if (r.ok) return { state: "rechargee" as const, detail: [] };
-      if (r.error === DISABLED_SCOPE) return { state: "desactivee" as const, detail: [DISABLED_SCOPE] };
-      return { state: "refusee" as const, detail: r.denial ?? [r.error] };
+      if (r.ok) return { state: "reloaded" as const, detail: [] };
+      if (r.error === DISABLED_SCOPE) return { state: "disabled" as const, detail: [DISABLED_SCOPE] };
+      return { state: "refused" as const, detail: r.denial ?? [r.error] };
     });
   }
 

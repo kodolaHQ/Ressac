@@ -63,7 +63,7 @@ afterAll(async () => {
   for (const d of [dataDir, profile]) if (d) await rm(d, { recursive: true, force: true });
 });
 afterEach(async () => {
-  await callTool(dataDir, "arreter_application", { folder: "essai" }).catch(() => {});
+  await callTool(dataDir, "stop_app", { folder: "essai" }).catch(() => {});
   await waitFor(m, `return [...Services.wm.getEnumerator("navigator:browser")].filter((w) => w.document.documentElement.hasAttribute("webaios-app")).length;`, (n) => n === 0);
   await waitFor(m, "for (const t of gBrowser.tabs.slice(1)) gBrowser.removeTab(t); return gBrowser.tabs.length;", (n) => n === 1);
   // Each test starts with an empty cart.
@@ -261,7 +261,7 @@ it("the agent reading the app window never sees the bubble's text", async () => 
   await aim("#email", "input#email.champ");
   await inApp(() => typeText(m, "texte secret"));
   await expect.poll(() => overlay<string>("return doc.querySelector('textarea').value;"), { timeout: 10_000 }).toBe("texte secret");
-  const read = (await callTool(dataDir, "lire_onglet", { id: "app:essai" })).text;
+  const read = (await callTool(dataDir, "read_tab", { id: "app:essai" })).text;
   expect(read).toContain("Inscription");
   expect(read).not.toContain("texte secret");
   expect(read).not.toContain("Ajouter au panier");
@@ -304,7 +304,7 @@ it("a relaunch on another port, closing the window, stopping the app: each stops
   await modeOn();
   await menu("Panier (1)");
   await expect.poll(sendText, { timeout: 10_000 }).toBe("Envoyer 1 remarque à l'agent");
-  await callTool(dataDir, "arreter_application", { folder: "essai" });
+  await callTool(dataDir, "stop_app", { folder: "essai" });
   await expect.poll(() => m.execute<boolean>(`return !${APP};`), { timeout: 10_000 }).toBe(true);
   await expect.poll(async () => (await designState()).active, { timeout: 10_000 }).toBe(false);
   expect(await svc("return d.overlayContext(t);")).toBeNull();

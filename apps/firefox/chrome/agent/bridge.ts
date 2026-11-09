@@ -28,7 +28,7 @@ function privateMirror(state: BrowserState, windows: WindowRegistry): { privateT
   return { privateTabs: Object.values(state.tabs).filter(isPrivate).map((o) => o.id), activePrivate: isPrivate(active ? state.tabs[active] : undefined) };
 }
 
-/** Each window's active tab URL, for `workflow_ouvert`: only a workflow page, never a web URL (null otherwise). */
+/** Each window's active tab URL, for `open_workflow`: only a workflow page, never a web URL (null otherwise). */
 function activeWorkflows(state: BrowserState): Record<WindowId, string | null> {
   const r: Record<WindowId, string | null> = {};
   for (const f of state.windows) {
@@ -144,8 +144,8 @@ export function bridgeHandlers(
         if (!sites.viewFor(id.slice(SITE_PREFIX.length))) throw new TabNotFound(id);
         // Never a tab instead: off the app's domains nothing loads (the kernel checked it already).
         const r = sites.navigateForAgent(id.slice(SITE_PREFIX.length), url);
-        if (r === "refuse") throw new Error(navigationOutsideSite(url));
-        return r === "en-attente" ? r : undefined;
+        if (r === "refused") throw new Error(navigationOutsideSite(url));
+        return r === "pending" ? r : undefined;
       }
       if (id.startsWith(APP_PREFIX)) {
         const folder = id.slice(APP_PREFIX.length);

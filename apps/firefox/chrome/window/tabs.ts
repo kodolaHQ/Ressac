@@ -188,7 +188,7 @@ export class TabSync {
     this.creating = true;
     try {
       const userContextId = this.containerOf(state, o);
-      // The URL may come from the agent (ouvrir_onglet, naviguer on a tab without one): a web page is never loaded with the
+      // The URL may come from the agent (open_tab, navigate on a tab without one): a web page is never loaded with the
       // system principal, whoever asked; internal pages (about:) need it.
       const triggeringPrincipal = /^https?:/i.test(o.url)
         ? Services.scriptSecurityManager.createContentPrincipal(Services.io.newURI(o.url), { userContextId })

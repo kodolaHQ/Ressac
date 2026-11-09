@@ -110,7 +110,7 @@ test("staleQuestion: an agent request only lapses with its target tab; a site pe
 });
 
 test("waitForRights: allow → the ticked rights; deny, deadline passed or allow with nothing → []", async () => {
-  await expect(waitForRights((reply) => (reply("autoriser", ["console", "agir"]), () => {}), 1000)).resolves.toEqual(["console", "agir"]);
+  await expect(waitForRights((reply) => (reply("autoriser", ["console", "act"]), () => {}), 1000)).resolves.toEqual(["console", "act"]);
   await expect(waitForRights((reply) => (reply("refuser", ["console"]), () => {}), 1000)).resolves.toEqual([]);
   await expect(waitForRights((reply) => (reply("autoriser"), () => {}), 1000)).resolves.toEqual([]);
   vi.useFakeTimers();

@@ -216,7 +216,7 @@ describe("tweaks", () => {
     expect(server.requests.filter((r) => r.host === "pub.localhost")).toEqual([]);
   });
 
-  it("a tweak that throws: erreurs_retouches has it, the page works (sites.spec.ts:886)", async () => {
+  it("a tweak that throws: tweak_errors has it, the page works (sites.spec.ts:886)", async () => {
     await openAt("vidola", "/serie/the-bear");
     await go("/erreur");
     await expect.poll(() => view("document.documentElement.dataset.apres ?? null")).toBe("oui");
@@ -229,7 +229,7 @@ describe("tweaks", () => {
     expect(await view('document.getElementById("p").textContent')).toBe("la page marche");
   });
 
-  it("a tweak that throws later (setTimeout) is in erreurs_retouches too, with its source; the console empties when the window closes", async () => {
+  it("a tweak that throws later (setTimeout) is in tweak_errors too, with its source; the console empties when the window closes", async () => {
     await openAt("vidola", "/serie/the-bear");
     await go("/erreur");
     await expect.poll(async () => (await errors()).find((e) => e.text.includes("plus tard"))?.source ?? null, { timeout: 10_000 }).toMatch(/^webaios-retouche:\/\/vidola\/apres\.js/);

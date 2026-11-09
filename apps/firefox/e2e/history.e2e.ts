@@ -139,7 +139,7 @@ describe("history noted in the kernel", () => {
     await open(`${base}/a.html`);
     await loaded("/a.html");
     await until(recents, (r) => r.some((x) => x.title === "Page A"));
-    expect((await callTool(w.dataDir, "chercher_historique", { query: "Page A" })).text).toContain(`${base}/a.html`);
+    expect((await callTool(w.dataDir, "search_history", { query: "Page A" })).text).toContain(`${base}/a.html`);
   });
 
   it("a space turned private while the host is down marks its visits once the host is back", async () => {
@@ -154,7 +154,7 @@ describe("history noted in the kernel", () => {
     await dispatch(m, { type: "reglerEspace", id: e.id, name: e.name, icon: e.icon, private: true, profile: e.profile } as Action);
     await host("await h.ensure();");
     expect((await until(recents, (r) => r.length === 1))[0]!.private).toBe(true);
-    expect((await callTool(w.dataDir, "chercher_historique", { query: "Page A" })).text).not.toContain("a.html");
+    expect((await callTool(w.dataDir, "search_history", { query: "Page A" })).text).not.toContain("a.html");
   });
 });
 
@@ -183,7 +183,7 @@ describe("the agent's memory retains page text", () => {
   it("the meta description is retained before the body", async () => {
     await open(`${base}/description`);
     await retained("/description");
-    const lu = (await callTool(w.dataDir, "lire_historique", { url: `${base}/description` })).text;
+    const lu = (await callTool(w.dataDir, "read_history", { url: `${base}/description` })).text;
     expect(lu).toMatch(/Resume des licornes\n\nCorps des licornes/);
   });
 

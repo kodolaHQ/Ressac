@@ -118,10 +118,10 @@ describe("the builder of an action", () => {
     // The agent knows it is the action's workflow, and the block chosen.
     // The window's agent session (the fake agent notes its arguments once started).
     await poll(() => existsSync(path.join(w.dataDir, "espace", "faux-agent-args.json")), (v) => v, "the agent session", 20_000);
-    const open = async () => (await callMcpTool(path.join(w.dataDir, "espace"), "workflow_ouvert", {}, lastSessionConfig())).text;
-    await poll(open, (t) => t === '{"action":"gitlab-a","bloc":null}', "workflow_ouvert", 20_000);
+    const open = async () => (await callMcpTool(path.join(w.dataDir, "espace"), "open_workflow", {}, lastSessionConfig())).text;
+    await poll(open, (t) => t === '{"action":"gitlab-a","block":null}', "open_workflow", 20_000);
     await click(m, tid("noeud-lire"));
-    await poll(open, (t) => t === '{"action":"gitlab-a","bloc":"lire"}', "workflow_ouvert", 20_000);
+    await poll(open, (t) => t === '{"action":"gitlab-a","block":"lire"}', "open_workflow", 20_000);
     // Opening and selecting write nothing in the action's folder.
     expect(snapshot(actionDir("gitlab-a"))).toEqual(before);
   });

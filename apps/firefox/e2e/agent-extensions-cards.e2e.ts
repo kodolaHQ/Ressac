@@ -68,75 +68,75 @@ const waitAddon = (m: Marionette, id: string, version: string) =>
     const a = await AddonManager.getAddonByID(${JSON.stringify(id)});
     return a && a.isActive ? a.version : null;
   })();`, (v) => v === version, 30_000);
-/** demander_extension, then « Activer » on its card once it names the extension. */
+/** request_extension, then « Activer » on its card once it names the extension. */
 async function enabledByAgent(w: Awaited<ReturnType<typeof launch>>, id: string, name: string): Promise<string> {
-  const call = w.call("demander_extension", { id });
+  const call = w.call("request_extension", { id });
   expect(await cardText(w.marionette)).toContain(name);
   await enable(w.marionette);
   return (await call).text;
 }
 
-/** console_extension until it contains `expected`. */
+/** extension_console until it contains `expected`. */
 async function consoleUntil(w: { call: (n: string, a: Record<string, unknown>) => Promise<{ text: string }> }, id: string, expected: string): Promise<string> {
   let text = "";
   for (const deadline = Date.now() + 15_000; !text.includes(expected); await new Promise((r) => setTimeout(r, 200))) {
-    if (Date.now() > deadline) throw new Error(`console_extension never said ${JSON.stringify(expected)}: ${text}`);
-    text = (await w.call("console_extension", { id })).text;
+    if (Date.now() > deadline) throw new Error(`extension_console never said ${JSON.stringify(expected)}: ${text}`);
+    text = (await w.call("extension_console", { id })).text;
   }
   return text;
 }
 
 describe("the agent's tools and their card", () => {
-  it("demander_extension shows the card; Activer: signed, installed, « Activée » ; lister_extensions shows it active", async () => {
+  it("request_extension shows the card; Activer: signed, installed, « Activée » ; list_extensions shows it active", async () => {
     const w = await launch();
     writeAgentExtension(w.root, "fond", BACKGROUND_ONLY);
     expect(await enabledByAgent(w, "fond", "Fond de l'agent")).toMatch(/^Activée dans « .+ »\.$/);
     expect(await agentAddons(w.marionette)).toEqual([{ id: "fond@agent.webaios", version: "1.0.0.1", isActive: true }]);
     await cardGone(w.marionette);
-    expect((await w.call("lister_extensions")).text).toMatch(/^agent:fond · Fond de l'agent · 1\.0\.0 · agent · actives dans : [^·]+ · erreurs : aucune$/m);
-    // console_extension gives its background's console.log.
+    expect((await w.call("list_extensions")).text).toMatch(/^agent:fond · Fond de l'agent · 1\.0\.0 · agent · actives dans : [^·]+ · erreurs : aucune$/m);
+    // extension_console gives its background's console.log.
     const text = await consoleUntil(w, "fond", "fond démarré");
     expect(text.startsWith(EXTENSION_CONSOLE_PREFIX)).toBe(true);
-    expect((await w.call("console_extension", { id: `store:${"a".repeat(32)}` })).text).toBe("Réservé aux extensions que tu as écrites.");
+    expect((await w.call("extension_console", { id: `store:${"a".repeat(32)}` })).text).toBe("Réservé aux extensions que tu as écrites.");
   });
 
-  it("demander_extension in a private space: refused without a card", async () => {
+  it("request_extension in a private space: refused without a card", async () => {
     const w = await launch();
     const m = w.marionette;
     writeAgentExtension(w.root, "fond", BACKGROUND_ONLY);
     const s = await state(m);
     const e = s.spaces.find((x) => x.id === s.windows[0]!.activeSpace)!;
     await dispatch(m, { type: "reglerEspace", id: e.id, name: e.name, icon: e.icon, private: true, profile: e.profile } as Action);
-    expect((await w.call("demander_extension", { id: "fond" })).text).toBe(PRIVATE_PROFILE_ERROR);
+    expect((await w.call("request_extension", { id: "fond" })).text).toBe(PRIVATE_PROFILE_ERROR);
     expect(await inUi(m, `return !!doc.querySelector(${JSON.stringify(MODAL)})`)).toBe(false);
     expect(w.amo.sends).toEqual([]);
   });
 
-  it("changed with a new site, recharger_extension disables it and says to call demander_extension; the card comes back", async () => {
+  it("changed with a new site, reload_extension disables it and says to call request_extension; the card comes back", async () => {
     const w = await launch();
     writeAgentExtension(w.root, "cacheur", { "manifest.json": hider([HOST]), "cache.css": "#cache-moi { display: none !important; }\n" });
     await enabledByAgent(w, "cacheur", "Cacheur de l'agent");
     writeAgentExtension(w.root, "cacheur", { "manifest.json": hider([HOST, "https://exemple.com/*"]) });
-    const r = (await w.call("recharger_extension", { id: "cacheur" })).text;
-    expect(r).toContain("etat : desactivee");
+    const r = (await w.call("reload_extension", { id: "cacheur" })).text;
+    expect(r).toContain("state : disabled");
     expect(r).toContain("Désactivée : elle demande plus de droits qu'accordé");
-    expect(r).toContain("demander_extension");
+    expect(r).toContain("request_extension");
     await waitFor(w.marionette, `return (async () => {
       const { AddonManager } = ChromeUtils.importESModule("resource://gre/modules/AddonManager.sys.mjs");
       return (await AddonManager.getAddonByID("cacheur@agent.webaios"))?.isActive;
     })();`, (v) => v === false);
     expect(await enabledByAgent(w, "cacheur", "Cacheur de l'agent")).toMatch(/^Activée dans « .+ »\.$/);
     await waitAddon(w.marionette, "cacheur@agent.webaios", "1.0.0.2");
-    expect((await w.call("lister_extensions")).text).toMatch(/^agent:cacheur · Cacheur de l'agent · 1\.0\.0 · agent · actives dans : [^·]+ · /m);
+    expect((await w.call("list_extensions")).text).toMatch(/^agent:cacheur · Cacheur de l'agent · 1\.0\.0 · agent · actives dans : [^·]+ · /m);
   });
 
-  it("changed without a new right: recharger_extension reloads it without a card, at the next version", async () => {
+  it("changed without a new right: reload_extension reloads it without a card, at the next version", async () => {
     const w = await launch();
     writeAgentExtension(w.root, "cacheur", { "manifest.json": hider([HOST]), "cache.css": "#cache-moi { display: none !important; }\n" });
     await enabledByAgent(w, "cacheur", "Cacheur de l'agent");
     await cardGone(w.marionette);
     writeAgentExtension(w.root, "cacheur", { "cache.css": "#cache-moi, #reste { display: none !important; }\n" });
-    expect((await w.call("recharger_extension", { id: "cacheur" })).text).toBe("etat : rechargee");
+    expect((await w.call("reload_extension", { id: "cacheur" })).text).toBe("state : reloaded");
     expect(await inUi(w.marionette, `return !!doc.querySelector(${JSON.stringify(MODAL)})`)).toBe(false);
     await waitAddon(w.marionette, "cacheur@agent.webaios", "1.0.0.2");
   });
@@ -297,35 +297,35 @@ describe("the console", () => {
     await consoleUntil(w, "journal", HIDDEN);
     return w;
   }
-  /** debloquer_console, then « Débloquer » on its card. */
+  /** unlock_console, then « Débloquer » on its card. */
   async function unlock(w: Awaited<ReturnType<typeof launch>>, id: string) {
-    const call = w.call("debloquer_console", { id, reason: "r" });
+    const call = w.call("unlock_console", { id, reason: "r" });
     await waitUi(w.marionette, `return !!doc.querySelector(${JSON.stringify(UNLOCK)})`, [], 15_000);
     await click(w.marionette, `${UNLOCK} button`, { text: "Débloquer" });
     expect((await call).text).toContain("Console débloquée");
   }
 
-  it("console_extension leaves out a content script's console.log in an unshared tab, and counts it", async () => {
+  it("extension_console leaves out a content script's console.log in an unshared tab, and counts it", async () => {
     const w = await logInAnUnsharedTab();
-    let text = (await w.call("console_extension", { id: "journal" })).text;
+    let text = (await w.call("extension_console", { id: "journal" })).text;
     expect(text).not.toContain("contenu:/a.html");
     // It ran in an unshared tab: its background is masked too.
     expect(text).toContain(CONSOLE_BACKGROUND_HIDDEN);
     expect(text).not.toContain("fond démarré");
     // A tab the agent opens itself is readable: its message passes, the other stays masked.
-    await w.call("ouvrir_onglet", { url: `${server.url}/b.html` });
+    await w.call("open_tab", { url: `${server.url}/b.html` });
     text = await consoleUntil(w, "journal", "contenu:/b.html");
     expect(text).not.toContain("contenu:/a.html");
     expect(text).toMatch(/^1 message\(s\) masqué\(s\)/m);
     // A reload does not reset the masking (its storage may have kept what it read).
-    expect((await w.call("recharger_extension", { id: "journal" })).text).toBe("etat : rechargee");
-    expect((await w.call("console_extension", { id: "journal" })).text).toContain(CONSOLE_BACKGROUND_HIDDEN);
+    expect((await w.call("reload_extension", { id: "journal" })).text).toBe("state : reloaded");
+    expect((await w.call("extension_console", { id: "journal" })).text).toContain(CONSOLE_BACKGROUND_HIDDEN);
   });
 
-  it("debloquer_console granted → whole; refermer_console → masked again", async () => {
+  it("unlock_console granted → whole; lock_console → masked again", async () => {
     const w = await logInAnUnsharedTab();
     const m = w.marionette;
-    const call = w.call("debloquer_console", { id: "journal", reason: "le script de contenu ne trouve pas le bouton" });
+    const call = w.call("unlock_console", { id: "journal", reason: "le script de contenu ne trouve pas le bouton" });
     const card = await waitUi<string>(m, `return doc.querySelector(${JSON.stringify(UNLOCK)})?.textContent`, [], 15_000);
     const s = await state(m);
     const space = s.spaces.find((e) => e.id === s.windows[0]!.activeSpace)!.name;
@@ -341,8 +341,8 @@ describe("the console", () => {
     expect(text).toContain("fond démarré");
     expect(text).not.toContain("message(s) masqué(s)");
     expect(text).not.toContain(CONSOLE_BACKGROUND_HIDDEN);
-    expect((await w.call("refermer_console", { id: "journal" })).text).toContain("refermée");
-    text = (await w.call("console_extension", { id: "journal" })).text;
+    expect((await w.call("lock_console", { id: "journal" })).text).toContain("refermée");
+    text = (await w.call("extension_console", { id: "journal" })).text;
     expect(text).not.toContain("contenu:/a.html");
     expect(text).toContain("message(s) masqué(s)");
   });
@@ -357,9 +357,9 @@ describe("the console", () => {
     await cardGone(w.marionette);
     await consoleUntil(w, "veilleur", OBSERVED_BACKGROUND_CONSOLE);
     await new Promise((r) => setTimeout(r, 1000));
-    const text = (await w.call("console_extension", { id: "veilleur" })).text;
+    const text = (await w.call("extension_console", { id: "veilleur" })).text;
     expect(text).not.toContain("tic du fond");
-    expect(text).toContain("debloquer_console");
+    expect(text).toContain("unlock_console");
     await unlock(w, "veilleur");
     await consoleUntil(w, "veilleur", "tic du fond");
   });

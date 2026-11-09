@@ -15,11 +15,11 @@ export const DENIED_BY_USER = "Refusée par l'utilisateur.";
 /** The card dropped without an answer from the user (timeout, new conversation, extension removed, window closed…). */
 export const REQUEST_REMOVED = "Demande retirée avant la réponse de l'utilisateur.";
 export const CONSOLE_BACKGROUND_HIDDEN =
-  "Console du service worker masquée : l'extension a tourné dans un onglet que tu ne peux pas lire. Demande à l'utilisateur de la débloquer (debloquer_console) si tu en as besoin pour corriger.";
+  "Console du service worker masquée : l'extension a tourné dans un onglet que tu ne peux pas lire. Demande à l'utilisateur de la débloquer (unlock_console) si tu en as besoin pour corriger.";
 export const OBSERVED_BACKGROUND_CONSOLE =
-  "Console du service worker et des pages masquée : l'extension a un droit qui observe les onglets ou la navigation (tabs, webNavigation, cookies, history, topSites, sessions, bookmarks, activeTab, clipboardRead, contextMenus, declarativeNetRequestFeedback, sites, tous les sites), demande à l'utilisateur de la débloquer (debloquer_console) si tu en as besoin pour corriger.";
+  "Console du service worker et des pages masquée : l'extension a un droit qui observe les onglets ou la navigation (tabs, webNavigation, cookies, history, topSites, sessions, bookmarks, activeTab, clipboardRead, contextMenus, declarativeNetRequestFeedback, sites, tous les sites), demande à l'utilisateur de la débloquer (unlock_console) si tu en as besoin pour corriger.";
 export const CONSOLE_UNLOCKED =
-  "Console débloquée par l'utilisateur : rien n'est masqué. Referme-la (refermer_console) dès que la correction est finie.";
+  "Console débloquée par l'utilisateur : rien n'est masqué. Referme-la (lock_console) dès que la correction est finie.";
 /** The content scripts' messages from tabs the agent cannot read, removed. */
 export const hiddenTabs = (n: number) => `${n} message(s) masqué(s) : venus d'onglets que tu ne peux pas lire`;
 /** Maximum length of the reason shown on the unlock card. */
@@ -71,7 +71,7 @@ export interface ExtensionsTools {
   list(): Promise<AgentExtension[]>;
   /** Shows the grant card to the user (without granting it) and waits for their answer; returns the space where it is activated. */
   ask(id: string, o: { space?: string; window: string | null; agent: string; signal?: AbortSignal }): Promise<ExtensionRequestResult>;
-  reload(id: string): Promise<{ state: "rechargee" | "desactivee" | "refusee"; detail: string[] }>;
+  reload(id: string): Promise<{ state: "reloaded" | "disabled" | "refused"; detail: string[] }>;
   /** null : extension inconnue. */
   console(id: string, from?: number): Promise<AgentConsole | null>;
   /** Unlock card to the user; granted, the console is no longer filtered until `refermerConsole` (or another end). */
@@ -158,7 +158,7 @@ export function registerExtensionsTools(
     };
 
   server.registerTool(
-    "lister_extensions",
+    "list_extensions",
     {
       description:
         "Extensions de WebAiOs (Chrome Web Store et les tiennes, ~/WebAiOs/extensions/<id>) : une ligne par extension, " +
@@ -173,7 +173,7 @@ export function registerExtensionsTools(
   );
 
   server.registerTool(
-    "demander_extension",
+    "request_extension",
     {
       description:
         "Demande à l'utilisateur d'activer ton extension ~/WebAiOs/extensions/<id> dans un espace (par défaut l'espace actif de ta " +
@@ -193,28 +193,28 @@ export function registerExtensionsTools(
   );
 
   server.registerTool(
-    "recharger_extension",
+    "reload_extension",
     {
       description:
         "Recharge ton extension après une modification de ~/WebAiOs/extensions/<id>. Sans nouveau droit, nouveau site ni " +
-        "nouvel accès au réseau, elle repart sans rien demander (etat : rechargee) ; sinon elle est désactivée (etat : " +
-        "desactivee) jusqu'à un nouvel accord ; un refus de la copie (etat : refusee) ne change rien.",
+        "nouvel accès au réseau, elle repart sans rien demander (state : reloaded) ; sinon elle est désactivée (state : " +
+        "disabled) jusqu'à un nouvel accord ; un refus de la copie (state : refused) ne change rien.",
       inputSchema: { id: ID_EXTENSION },
     },
     beating(protect(async ({ id }: { id: string }) => {
       const r = await tools.reload(id);
-      const lignes = [`etat : ${r.state}`, ...(r.detail.length ? [RELOAD_DETAIL_PREFIX, ...r.detail] : [])];
-      if (r.state === "desactivee") lignes.push("Appelle demander_extension pour redemander l'accord de l'utilisateur.");
-      return text(lignes.join("\n"), r.state === "refusee");
+      const lignes = [`state : ${r.state}`, ...(r.detail.length ? [RELOAD_DETAIL_PREFIX, ...r.detail] : [])];
+      if (r.state === "disabled") lignes.push("Appelle request_extension pour redemander l'accord de l'utilisateur.");
+      return text(lignes.join("\n"), r.state === "refused");
     })),
   );
 
   server.registerTool(
-    "console_extension",
+    "extension_console",
     {
       description:
         "Console de ton extension (service worker, pages, scripts de contenu) : horodatage (ms) · niveau · texte, à partir " +
-        "de `depuis` (ms) si donné. Les messages venus d'onglets que tu ne peux pas lire sont masqués et comptés. La console " +
+        "de `since` (ms) si donné. Les messages venus d'onglets que tu ne peux pas lire sont masqués et comptés. La console " +
         "du service worker et des pages est toujours masquée si l'extension a un droit qui observe les onglets ou la navigation " +
         "(tabs, webNavigation, cookies, history, topSites, sessions, bookmarks, activeTab, clipboardRead, contextMenus, " +
         "declarativeNetRequestFeedback, des sites ou tous les sites), et si elle a " +
@@ -241,12 +241,12 @@ export function registerExtensionsTools(
   );
 
   server.registerTool(
-    "debloquer_console",
+    "unlock_console",
     {
       description:
         "Demande à l'utilisateur de voir toute la console de ton extension pour la corriger, y compris ce qu'elle écrit depuis des " +
         "onglets qu'il ne te partage pas. Une carte lui montre ta raison (200 caractères au plus) et les espaces des profils " +
-        "où elle est active ; accordé, rien n'est plus masqué jusqu'à ce que tu appelles refermer_console (fais-le dès que la " +
+        "où elle est active ; accordé, rien n'est plus masqué jusqu'à ce que tu appelles lock_console (fais-le dès que la " +
         "correction est finie) ou qu'il le coupe. Le déblocage prend fin aussi si elle est activée dans un autre profil, " +
         "rechargée, supprimée ou recréée : redemande-le alors. " +
         "Jamais pour une extension du Store.",
@@ -258,7 +258,7 @@ export function registerExtensionsTools(
       const r = conversationRemoval(c.policy);
       try {
         const rep = await tools.unlockConsole(id, bounded, { window: c.window, agent: c.agent, signal: r.signal });
-        if (rep.ok) return text("Console débloquée : console_extension la rend entière. Appelle refermer_console dès que la correction est finie.");
+        if (rep.ok) return text("Console débloquée : extension_console la rend entière. Appelle lock_console dès que la correction est finie.");
         return failure(rep);
       } finally {
         r.end();
@@ -267,9 +267,9 @@ export function registerExtensionsTools(
   );
 
   server.registerTool(
-    "refermer_console",
+    "lock_console",
     {
-      description: "Referme le déblocage de la console de ton extension (debloquer_console) : à appeler dès que la correction est finie.",
+      description: "Referme le déblocage de la console de ton extension (unlock_console) : à appeler dès que la correction est finie.",
       inputSchema: { id: ID_EXTENSION },
     },
     protect(async ({ id }) => {

@@ -276,14 +276,14 @@ it("the page narrows by the panel width", async () => {
   expect(await m.execute("return document.getElementById('webaios-agent').getBoundingClientRect().left")).toBe(width - 420);
 });
 
-it("opening the panel on a tab shares it: page_courante reads without asking", async () => {
+it("opening the panel on a tab shares it: current_page reads without asking", async () => {
   await launch();
   // The session started on the home page: a new one would take the access back.
   await terminalShows("faux agent prêt>");
   await openTab("/texte.html");
   await toggleWithButton();
   await shown();
-  expect((await callTool(w!.dataDir, "page_courante")).text).toContain("Le chat dort");
+  expect((await callTool(w!.dataDir, "current_page")).text).toContain("Le chat dort");
 });
 
 describe("one agent session per window", () => {
@@ -364,7 +364,7 @@ describe("one agent session per window", () => {
     expect(alive(first)).toBe(true);
   });
 
-  it("focusing another window moves the agent there at once: page_courante reads its public tab, not the other's private one", async () => {
+  it("focusing another window moves the agent there at once: current_page reads its public tab, not the other's private one", async () => {
     await launch();
     await shown();
     await terminalShows("faux agent prêt>");
@@ -397,9 +397,9 @@ describe("one agent session per window", () => {
       if (titles.join() === "Page A,Texte") break;
       if (Date.now() > end) throw new Error(`pages not loaded: ${titles}`);
     }
-    expect((await callTool(w!.dataDir, "page_courante")).text).toBe("Cet onglet est dans un espace privé : l'agent n'y a pas accès.");
+    expect((await callTool(w!.dataDir, "current_page")).text).toBe("Cet onglet est dans un espace privé : l'agent n'y a pas accès.");
     // Focus B, with no state change.
     await focus(second);
-    expect((await callTool(w!.dataDir, "page_courante")).text).toContain("Le chat dort");
+    expect((await callTool(w!.dataDir, "current_page")).text).toContain("Le chat dort");
   });
 });

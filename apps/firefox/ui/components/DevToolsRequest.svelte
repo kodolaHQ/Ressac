@@ -9,9 +9,9 @@
   // The four rights, in the card's order. `sensible`: the warning shown below.
   const RIGHTS: { right: DevRight; icon: string; name: string; detail: string; sensitive?: string }[] = [
     { right: "console", icon: "👁", name: "Console et erreurs", detail: "Messages, erreurs JavaScript, avertissements" },
-    { right: "reseau", icon: "👁", name: "Réseau", detail: "Requêtes et réponses de la page", sensitive: "peut contenir des données de connexion" },
-    { right: "performances", icon: "👁", name: "Performances et mémoire", detail: "Profilage, instantanés mémoire" },
-    { right: "agir", icon: "⚡", name: "Agir sur la page", detail: "Exécuter du JavaScript, modifier le DOM, recharger", sensitive: "l'agent peut agir en ton nom sur ce site" },
+    { right: "network", icon: "👁", name: "Réseau", detail: "Requêtes et réponses de la page", sensitive: "peut contenir des données de connexion" },
+    { right: "performance", icon: "👁", name: "Performances et mémoire", detail: "Profilage, instantanés mémoire" },
+    { right: "act", icon: "⚡", name: "Agir sur la page", detail: "Exécuter du JavaScript, modifier le DOM, recharger", sensitive: "l'agent peut agir en ton nom sur ce site" },
   ];
 
   // Pre-checked: what the agent asked for; the user can add or remove some.

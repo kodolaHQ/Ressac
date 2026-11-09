@@ -24,7 +24,7 @@ describe("rpc", () => {
     });
     const e = await a.request("read").catch((x: unknown) => x);
     expect(e).toBeInstanceOf(Error);
-    expect(e).toMatchObject({ name: "OngletIntrouvable", id: "t9", message: "Onglet introuvable : t9" });
+    expect(e).toMatchObject({ name: "TabNotFound", id: "t9", message: "Onglet introuvable : t9" });
   });
 
   it("an error with a non-serializable property still reaches the requester", async () => {

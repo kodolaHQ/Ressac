@@ -96,7 +96,7 @@ async function freePort(): Promise<number> {
 it("« Brancher un Claude Code »: the command with the real port and a 64-hex token, gone on « Fermer »; clients-externes.json without the token", async () => {
   await launch();
   const { command: command, port, token: token } = await connectClient(m);
-  expect(command).toBe(`claude mcp add --transport http --scope user webaios-remarques http://127.0.0.1:${port}/mcp-externe --header "Authorization: Bearer ${token}"`);
+  expect(command).toBe(`claude mcp add --transport http --scope user webaios-remarks http://127.0.0.1:${port}/mcp-external --header "Authorization: Bearer ${token}"`);
   expect(port).toBeGreaterThan(0);
   expect(port).not.toBe(5279);
   await waitCount(tid("client-externe"), 1);
@@ -112,19 +112,19 @@ it("« Brancher un Claude Code »: the command with the real port and a 64-hex t
 });
 
 // externes.spec.ts:76
-it("declarer_projet: the projet-externe line shows; one notification only, even after a second declaration", async () => {
+it("declare_project: the projet-externe line shows; one notification only, even after a second declaration", async () => {
   await launch();
   const folder = projectDir("mon-site");
   const { port, token: token } = await connectClient(m);
   const c = await mcpClient(port, token);
   try {
-    const r = await c.callTool({ name: "declarer_projet", arguments: { folder: folder, ports: [18765] } });
+    const r = await c.callTool({ name: "declare_project", arguments: { folder: folder, ports: [18765] } });
     expect(textOf(r)).toContain("mon-site");
     await waitCount(tid("projet-externe"), 1);
     const line = (await text(tid("projet-externe")))!;
     for (const t of ["mon-site", folder, "18765", "Claude Code"]) expect(line).toContain(t);
     await expect.poll(() => readNotifications(notifications), { timeout: 10_000 }).toEqual([{ title: "WebAiOs", text: "Claude Code a branché le projet mon-site" }]);
-    await c.callTool({ name: "declarer_projet", arguments: { folder: folder, ports: [18765] } });
+    await c.callTool({ name: "declare_project", arguments: { folder: folder, ports: [18765] } });
     await new Promise((r) => setTimeout(r, 500));
     expect(readNotifications(notifications)).toHaveLength(1);
     expect(await count(tid("projet-externe"))).toBe(1);
@@ -140,7 +140,7 @@ it("Révoquer: the next call returns 401; the project line says « aucun client 
   try {
     await click(m, `${tid("client-externe")} button`, { text: "Révoquer" });
     await waitCount(tid("client-externe"), 0);
-    await expect(p.client.callTool({ name: "lire_remarques", arguments: { folder: p.folder } })).rejects.toMatchObject({ code: 401 });
+    await expect(p.client.callTool({ name: "read_remarks", arguments: { folder: p.folder } })).rejects.toMatchObject({ code: 401 });
     await waitUi(m, "return doc.querySelector('[data-testid=\"projet-externe\"]')?.textContent.includes('aucun client')");
   } finally {
     await p.client.close();
@@ -248,7 +248,7 @@ it("a folder under <dataDir> is refused with SPACE_FOLDER", async () => {
     // Existing folders: a missing one is refused earlier, for another reason.
     for (const d of inside) mkdirSync(d, { recursive: true });
     for (const folder of [w!.dataDir, ...inside]) {
-      const r = (await c.callTool({ name: "declarer_projet", arguments: { folder: folder, ports: [18765] } })) as { isError?: boolean };
+      const r = (await c.callTool({ name: "declare_project", arguments: { folder: folder, ports: [18765] } })) as { isError?: boolean };
       expect(textOf(r), folder).toContain(SPACE_FOLDER);
       expect(r.isError).toBe(true);
     }

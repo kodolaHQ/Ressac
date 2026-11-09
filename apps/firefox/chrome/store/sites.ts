@@ -802,18 +802,18 @@ export const sites = {
     }, INFO_NOTICE_DURATION_MS);
   },
   /** A load WebAiOs wants, on the app's domains only; kept for after the card. */
-  navigateForAgent(id: string, url: string): "charge" | "en-attente" | "refuse" {
+  navigateForAgent(id: string, url: string): "loaded" | "pending" | "refused" {
     const s = open.get(id);
-    if (!s?.view || s.window.closed || openDecision(url, context(s)) !== "dans-l-appli") return "refuse";
+    if (!s?.view || s.window.closed || openDecision(url, context(s)) !== "dans-l-appli") return "refused";
     if (s.viewState === "accord") {
       s.toLoad = url;
       s.agentToLoad = true;
-      return "en-attente";
+      return "pending";
     }
     loadInView(s, url);
     s.viewState = "site";
     broadcast(s);
-    return "charge";
+    return "loaded";
   },
   onClosed(cb: () => void): () => void {
     closeListeners.add(cb);

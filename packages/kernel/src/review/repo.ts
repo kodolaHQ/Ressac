@@ -19,7 +19,7 @@ const PATHS_BATCH = 200;
 export class ReviewError extends Error {
   constructor(readonly reason: typeof GIT_REQUIRED | typeof ACCESS_DENIED, detail?: string) {
     super(detail ? `${reason} : ${detail}` : reason);
-    this.name = "ErreurRelecture";
+    this.name = "ReviewError";
   }
 }
 
