@@ -60,18 +60,18 @@ export function trackVisits(gBrowser: any, history: History, context: (id: strin
     if (!c || c.prive || !/^https?:\/\//.test(url) || skipped.has(browser)) return;
     timers.set(browser, window.setTimeout(() => void retain(browser, id, url, c.espaceId).catch(() => {}), CAPTURE_DELAY_MS));
   };
-  const retain = async (browser: any, id: string, url: string, espaceId: string) => {
+  const retain = async (browser: any, id: string, url: string, spaceId: string) => {
     timers.delete(browser);
     const stillHere = () => {
       const c = context(id);
-      return browser.currentURI?.spec === url && c && !c.prive && c.espaceId === espaceId;
+      return browser.currentURI?.spec === url && c && !c.prive && c.espaceId === spaceId;
     };
     if (!stillHere()) return;
     const actor = browser.browsingContext.currentWindowGlobal.getActor("WebAiOsPage");
     const parts: PageParts | undefined = await actor.sendQuery("getParts", { video: isYoutubeVideo(url) });
     // An actor built before getParts existed answers nothing: fall back to the body text alone.
-    const texte = parts ? composeText(parts) : String((await actor.sendQuery("getText"))?.texte ?? "");
-    if (stillHere() && texte.trim()) history.retain({ url, espaceId, titre: browser.contentTitle || url, texte });
+    const text = parts ? composeText(parts) : String((await actor.sendQuery("getText"))?.texte ?? "");
+    if (stillHere() && text.trim()) history.retain({ url, espaceId: spaceId, titre: browser.contentTitle || url, texte: text });
   };
   gBrowser.addTabsProgressListener({
     onStateChange: (browser: any, progress: any, _request: unknown, flags: number, status: number) => {

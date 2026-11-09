@@ -9,22 +9,22 @@ import { pacedTarget } from "./paced";
 const { ContextualIdentityService } = ChromeUtils.importESModule("moz-src:///toolkit/components/contextualidentity/ContextualIdentityService.sys.mjs");
 
 // Read limits: two reads at a time, 30 s each.
-const LECTURES_SIMULTANEES = 2;
-const DELAI_TOTAL_MS = 30_000;
-const TROP_LENTE = "Page trop lente : 30 s dépassées";
-const MARGE_LECTURE_FORCEE_MS = 4_000;
-const CALME_MS = 2_000;
-const MAX_TEXTE = 20_000;
+const SIMULTANEOUS_READS = 2;
+const TOTAL_DELAY_MS = 30_000;
+const TOO_SLOW = "Page trop lente : 30 s dépassées";
+const FORCED_READ_MARGIN_MS = 4_000;
+const QUIET_MS = 2_000;
+const MAX_TEXT = 20_000;
 const MAX_LIENS = 400;
-const MAX_TEXTE_DEFILEE = 100_000;
-const MAX_LIENS_DEFILEE = 1_000;
-const CALME_DEFILEMENT_MS = 1_000;
-const RELEVE_MS = 250;
+const MAX_SCROLL_TEXT = 100_000;
+const MAX_SCROLL_LINKS = 1_000;
+const QUIET_SCROLL_MS = 1_000;
+const READING_MS = 250;
 const DEFILER_MAX = 20;
 const MAX_SAUTS = 5;
 
 /** Waits for the turn of a host (the host's `lecture.changerHote`). */
-type WaitHost = (lecture: string, hote: string, signal?: AbortSignal) => Promise<void>;
+type WaitHost = (lecture: string, host: string, signal?: AbortSignal) => Promise<void>;
 
 /** A paced read stopped at a document of another site: to resume on `target` after that site's turn. */
 class Redirection extends Error {
@@ -68,7 +68,7 @@ let running = 0;
 const queue: (() => void)[] = [];
 async function takePlace(signal?: AbortSignal): Promise<void> {
   signal?.throwIfAborted();
-  if (running < LECTURES_SIMULTANEES) {
+  if (running < SIMULTANEOUS_READS) {
     running++;
     return;
   }
@@ -192,11 +192,11 @@ async function load<T>(
   screens: number,
   waitHost?: WaitHost,
 ): Promise<T> {
-  const { profil, domaines } = o;
+  const { profil: profile, domaines: domains } = o;
   const allowLocal = o.adressesLocales === true;
-  const allowed = (u: string) => allowedUrl(u, domaines, true) && (allowLocal || !localLiteral(hostOf(u)));
+  const allowed = (u: string) => allowedUrl(u, domains, true) && (allowLocal || !localLiteral(hostOf(u)));
   const checkProfile = () => {
-    if (profil !== null && !readableProfiles(store.state).includes(profil)) throw new ProfileDenied(profil);
+    if (profile !== null && !readableProfiles(store.state).includes(profile)) throw new ProfileDenied(profile);
   };
   checkProfile();
   if (!allowed(url)) throw new Error(`Adresse refusée pour une lecture : ${hostOf(url)}`);
@@ -215,11 +215,11 @@ async function load<T>(
         // The state may have changed while waiting for a place.
         checkProfile();
         signal?.throwIfAborted();
-        if (jumps > 0 && Date.now() >= deadline) throw new Error(TROP_LENTE);
-        if (profil === null && publicId === undefined) await untilSignal(clearContainer((publicId = takePublic())), signal);
+        if (jumps > 0 && Date.now() >= deadline) throw new Error(TOO_SLOW);
+        if (profile === null && publicId === undefined) await untilSignal(clearContainer((publicId = takePublic())), signal);
         // Not raced with the signal: the browser must exist to be closed; readIn rejects at once if it aborted meanwhile.
-        opened = await createBrowser(publicId ?? containerFor(profil as ProfileId), { private: profil === null });
-        deadline ||= Date.now() + DELAI_TOTAL_MS;
+        opened = await createBrowser(publicId ?? containerFor(profile as ProfileId), { private: profile === null });
+        deadline ||= Date.now() + TOTAL_DELAY_MS;
         const page = await readIn(opened.browser, target, { allowed, allowLocal, paced }, reading, deadline, signal, screens);
         // The profile went to a private space during the read: what was read does not leave.
         checkProfile();
@@ -249,7 +249,7 @@ async function load<T>(
 /** Runs `f`, rejected with the too-slow error at `deadline` and with `signal.reason` if it aborts; `f`'s own signal aborts on either. */
 function untilDeadline<T>(f: (s: AbortSignal) => Promise<T>, deadline: number, signal?: AbortSignal): Promise<T> {
   const stop = new AbortController();
-  const timer = setTimeout(() => stop.abort(new Error(TROP_LENTE)), Math.max(0, deadline - Date.now()));
+  const timer = setTimeout(() => stop.abort(new Error(TOO_SLOW)), Math.max(0, deadline - Date.now()));
   const relay = () => stop.abort(signal!.reason);
   signal?.addEventListener("abort", relay, { once: true });
   if (signal?.aborted) relay();
@@ -288,7 +288,7 @@ export function readPage(
   waitHost?: WaitHost,
 ): Promise<PageLue> {
   const screens = screensOf(o.defiler);
-  const bounds = screens > 0 ? { texte: MAX_TEXTE_DEFILEE, liens: MAX_LIENS_DEFILEE } : { texte: MAX_TEXTE, liens: MAX_LIENS };
+  const bounds = screens > 0 ? { texte: MAX_SCROLL_TEXT, liens: MAX_SCROLL_LINKS } : { texte: MAX_TEXT, liens: MAX_LIENS };
   return load(store, url, o, signal, {
     read: (actor) => actor.sendQuery("read", bounds),
     shape: (u, raw) => shapePage(u, (raw ?? { titre: "", texte: "", liens: [] }) as Parts, bounds),
@@ -322,7 +322,7 @@ function readIn<T>(
     let loaded = false;
     let inRead = false;
     let loading = false;
-    const forcedAt = deadline - MARGE_LECTURE_FORCEE_MS;
+    const forcedAt = deadline - FORCED_READ_MARGIN_MS;
     let calm: ReturnType<typeof setTimeout> | undefined;
     let pause: ReturnType<typeof setTimeout> | undefined;
     let wake: (() => void) | undefined;
@@ -355,7 +355,7 @@ function readIn<T>(
     });
     const waitCalm = () => {
       clearTimeout(calm);
-      calm = setTimeout(() => void (screens > 0 ? scrollThenRead() : read()), CALME_MS);
+      calm = setTimeout(() => void (screens > 0 ? scrollThenRead() : read()), QUIET_MS);
     };
     const listener = {
       QueryInterface: ChromeUtils.generateQI(["nsIWebProgressListener", "nsISupportsWeakReference"]),
@@ -446,8 +446,8 @@ function readIn<T>(
               height = m.hauteur;
               since = now;
             }
-            if (now >= forcedAt || now - since >= CALME_DEFILEMENT_MS) break;
-            await sleep(Math.min(RELEVE_MS, forcedAt - now));
+            if (now >= forcedAt || now - since >= QUIET_SCROLL_MS) break;
+            await sleep(Math.min(READING_MS, forcedAt - now));
           }
           if (m.bas && m.hauteur <= before) break;
         }
@@ -464,7 +464,7 @@ function readIn<T>(
     const forced = setTimeout(() => {
       if (loaded) void read();
     }, Math.max(0, forcedAt - Date.now()));
-    const limit = setTimeout(() => finish({ error: new Error(TROP_LENTE) }), Math.max(0, deadline - Date.now()));
+    const limit = setTimeout(() => finish({ error: new Error(TOO_SLOW) }), Math.max(0, deadline - Date.now()));
     if (signal?.aborted) return abort();
     signal?.addEventListener("abort", abort, { once: true });
     // shortcut: a top-level navigation to a custom scheme (mailto:, an app's own) may show the external app dialog,

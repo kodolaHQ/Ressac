@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { cleanCapture, cleanSource, firefoxViewfinderScript, LARGEUR_PANIER, MARGE, placeBulle, rectCapture, sourceExpression, STOP_SCRIPT } from "../../chrome/store/design-copies";
+import { cleanCapture, cleanSource, firefoxViewfinderScript, BASKET_WIDTH, MARGE, bubbleSlot, rectCapture, sourceExpression, STOP_SCRIPT } from "../../chrome/store/design-copies";
 import { testActor } from "../agent-extensions";
 import { armActor, HOOKS_PAGE, stopActor } from "../design";
 import { waitReady } from "../firefox";
@@ -467,10 +467,10 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
     const barBottom = dims.bar[1]! + dims.bar[3]!;
     const bornes = { x: vx!, y: vy!, width: vw!, height: vh! };
     // The bubble of an element at the top of the page, and one of an element below a short window (placeBulle clamps up).
-    const top = placeBulle({ x: 10, y: 0, largeur: 50, hauteur: 10 }, 1, bornes, [l!, h!], { hautMin: vy! });
-    const clamped = placeBulle({ x: 10, y: 5000, largeur: 50, hauteur: 10 }, 1, bornes, [l!, 180], { hautMin: vy! });
-    const unclamped = placeBulle({ x: 10, y: 5000, largeur: 50, hauteur: 10 }, 1, bornes, [l!, 180]);
-    const cart = { x: Math.max(0, l! - MARGE - LARGEUR_PANIER), y: barBottom + 12, width: Math.min(LARGEUR_PANIER, l!), height: Math.max(0, h! - barBottom - 12 - MARGE) };
+    const top = bubbleSlot({ x: 10, y: 0, largeur: 50, hauteur: 10 }, 1, bornes, [l!, h!], { hautMin: vy! });
+    const clamped = bubbleSlot({ x: 10, y: 5000, largeur: 50, hauteur: 10 }, 1, bornes, [l!, 180], { hautMin: vy! });
+    const unclamped = bubbleSlot({ x: 10, y: 5000, largeur: 50, hauteur: 10 }, 1, bornes, [l!, 180]);
+    const cart = { x: Math.max(0, l! - MARGE - BASKET_WIDTH), y: barBottom + 12, width: Math.min(BASKET_WIDTH, l!), height: Math.max(0, h! - barBottom - 12 - MARGE) };
     note("S7 places", { dims, top, clamped, unclamped, cart });
     expect(clamped.y).toBeGreaterThanOrEqual(barBottom);
 
@@ -542,7 +542,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
     await inStore(`store.sites.controller(arguments[0]).home();`, [ID]);
     await expect.poll(() => m.execute(`return ${SITE}.document.documentElement.hasAttribute("webaios-site-home");`)).toBe(true);
     const homeRect = await inSiteBar<number[]>(m, ID, `const b = win.document.getElementById("webaios-site-bar").getBoundingClientRect(), h = doc.querySelector('[data-testid="site-cadre-accueil"]').getBoundingClientRect(); return [b.left + h.left, b.top + h.top, h.width, h.height];`);
-    const onHome = placeBulle({ x: 40, y: 60, largeur: 120, hauteur: 40 }, 1, { x: homeRect[0]!, y: homeRect[1]!, width: homeRect[2]!, height: homeRect[3]! }, [l!, h!], { hautMin: homeRect[1]! });
+    const onHome = bubbleSlot({ x: 40, y: 60, largeur: 120, hauteur: 40 }, 1, { x: homeRect[0]!, y: homeRect[1]!, width: homeRect[2]!, height: homeRect[3]! }, [l!, h!], { hautMin: homeRect[1]! });
     await show("bulle", onHome);
     const homeCheck = await check(onHome);
     note("S7 bubble over the home", { homeRect, onHome, ...(homeCheck as object) });

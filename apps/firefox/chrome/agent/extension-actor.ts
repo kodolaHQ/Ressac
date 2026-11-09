@@ -99,10 +99,10 @@ export class WebAiOsConsoleChild extends JSProcessActorChild {
   private start() {
     if (this.started) return;
     this.started = true;
-    const send = (addonId: string | null, niveau: string, texte: string, source: unknown, innerWindowID: unknown) => {
+    const send = (addonId: string | null, level: string, text: string, source: unknown, innerWindowID: unknown) => {
       if (!addonId) return;
       try {
-        this.sendAsyncMessage("console", { addonId, niveau, texte, source: String(source ?? ""), innerWindowID: Number(innerWindowID) || null });
+        this.sendAsyncMessage("console", { addonId, niveau: level, texte: text, source: String(source ?? ""), innerWindowID: Number(innerWindowID) || null });
       } catch {
         // The actor is gone (process shutting down).
       }

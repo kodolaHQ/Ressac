@@ -16,20 +16,20 @@ export interface WindowRegistry {
   claim(win: Window): { fenetreId: WindowId; first: boolean };
   /** The window is gone: calls onRelease first; among others, fermerFenetre; the last one, or any while
    *  Services.startup.shuttingDown, stays in the state (kept: the next claim takes it back). */
-  release(fenetreId: WindowId): void;
+  release(windowId: WindowId): void;
   /** Decision 3. undefined while no WebAiOs window is open. */
   active(): WindowId | undefined;
   /** The open window and its controller, if any. */
-  get(fenetreId: WindowId): { window: Window; controller: WindowController } | undefined;
+  get(windowId: WindowId): { window: Window; controller: WindowController } | undefined;
 }
 
 /** One full Firefox window per state window, and the kept ones. */
 export function createWindowRegistry(o: {
   store: Store;
   open(): Window | undefined;
-  onRelease(fenetreId: WindowId): void;
+  onRelease(windowId: WindowId): void;
   /** A bound window came to the front: active() may have changed. */
-  onActivate?(fenetreId: WindowId): void;
+  onActivate?(windowId: WindowId): void;
 }): WindowRegistry {
   const { store } = o;
   const bound = new Map<WindowId, Window>();
@@ -71,20 +71,20 @@ export function createWindowRegistry(o: {
     claim(win) {
       const first = !claimed;
       claimed = true;
-      let fenetreId = pickWindow(store.state, { bound: new Set(bound.keys()), kept, opening });
-      if (fenetreId) {
-        opening = opening.filter((id) => id !== fenetreId);
-        if (kept === fenetreId) kept = null;
-        bound.set(fenetreId, win);
+      let windowId = pickWindow(store.state, { bound: new Set(bound.keys()), kept, opening });
+      if (windowId) {
+        opening = opening.filter((id) => id !== windowId);
+        if (kept === windowId) kept = null;
+        bound.set(windowId, win);
       } else {
         const id: WindowId = crypto.randomUUID();
         const from = registry.active();
-        const espaceId = store.state.fenetres.find((f) => f.id === from)?.espaceActif;
+        const spaceId = store.state.fenetres.find((f) => f.id === from)?.espaceActif;
         bound.set(id, win);
-        store.dispatch({ type: "ouvrirFenetre", id, ...(espaceId ? { espaceId } : {}) });
-        fenetreId = id;
+        store.dispatch({ type: "ouvrirFenetre", id, ...(spaceId ? { espaceId: spaceId } : {}) });
+        windowId = id;
       }
-      const id = fenetreId;
+      const id = windowId;
       win.addEventListener("activate", () => {
         lastActive = id;
         o.onActivate?.(id);
@@ -92,11 +92,11 @@ export function createWindowRegistry(o: {
       openMissing(store.state);
       return { fenetreId: id, first };
     },
-    release(fenetreId) {
-      if (!bound.delete(fenetreId)) return;
-      if (lastActive === fenetreId) lastActive = undefined;
-      o.onRelease(fenetreId);
-      forget(fenetreId);
+    release(windowId) {
+      if (!bound.delete(windowId)) return;
+      if (lastActive === windowId) lastActive = undefined;
+      o.onRelease(windowId);
+      forget(windowId);
     },
     active() {
       const focused = Services.focus.activeWindow;
@@ -104,8 +104,8 @@ export function createWindowRegistry(o: {
       if (lastActive && bound.has(lastActive)) return lastActive;
       return store.state.fenetres.find((f) => bound.has(f.id))?.id;
     },
-    get(fenetreId) {
-      const window = bound.get(fenetreId);
+    get(windowId) {
+      const window = bound.get(windowId);
       const controller = window?.webaiosWindow;
       return window && controller ? { window, controller } : undefined;
     },

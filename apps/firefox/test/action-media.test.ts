@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { COMPONENT_HTML_MAX as NOYAU_COMPOSANT_HTML_MAX } from "../../../packages/noyau/src/pages/composants-agent";
-import { COMPOSANT_HTML_MAX, actionImage, actionImageTestUrl, releaseComponent, serveComponent } from "../chrome/store/action-media";
+import { COMPONENT_HTML_MAX, actionImage, actionImageTestUrl, releaseComponent, serveComponent } from "../chrome/store/action-media";
 
 vi.mock("../chrome/store/containers", () => ({ containerFor: (p: string) => (p === "action-images" ? 7 : -1) }));
 /** The URLs the action images' opener was asked for, and the options it was built with. */
@@ -110,7 +110,7 @@ describe("agent components", () => {
   };
 
   it("COMPOSANT_HTML_MAX is the kernel's", () => {
-    expect(COMPOSANT_HTML_MAX).toBe(NOYAU_COMPOSANT_HTML_MAX);
+    expect(COMPONENT_HTML_MAX).toBe(NOYAU_COMPOSANT_HTML_MAX);
   });
 
   it("a name outside ^[a-z0-9-]{1,40}$ gives null without reading the disk", async () => {

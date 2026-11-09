@@ -77,15 +77,15 @@ window.addEventListener(
     const ready: Promise<WebAiOsStore> = ChromeUtils.importESModule(STORE).ready;
     // After Firefox's own startup: a tab loaded before it (a restored tab) stays on about:blank.
     void Promise.all([ready, window.delayedStartupPromise]).then(([store]) => {
-      const { fenetreId, first } = store.windows.claim(window);
+      const { fenetreId: windowId, first } = store.windows.claim(window);
       try {
-        window.webaiosWindow = createController(window.gBrowser, frame, agentFrame, store, fenetreId);
+        window.webaiosWindow = createController(window.gBrowser, frame, agentFrame, store, windowId);
       } catch (e) {
         // Not a WebAiOs window after all: its state window must not stay bound to it.
-        store.windows.release(fenetreId);
+        store.windows.release(windowId);
         throw e;
       }
-      mountSiteMenu(window, store, fenetreId);
+      mountSiteMenu(window, store, windowId);
       // Once per start, in the first window only: the unreadable session was kept aside.
       if (first && store.setAside) {
         void window.gNotificationBox.appendNotification(

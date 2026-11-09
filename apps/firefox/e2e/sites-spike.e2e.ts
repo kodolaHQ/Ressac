@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { DeclarationSite, type TweaksRead } from "../../../packages/noyau/src/index";
 import { HOME_BRIDGE } from "../chrome/store/site-home";
-import { affichageServi } from "../chrome/window/widget-frame";
+import { displayServed } from "../chrome/window/widget-frame";
 import { testActor } from "./agent-extensions";
 import { state, waitFor } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
@@ -303,7 +303,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("site app spike", () => {
 
   it("(d) the test home page: unchanged, served by resource://, parent.postMessage both ways", async () => {
     // The served copy: the widget display's CSP and guard, then the bridge, then the home page as is.
-    const served = affichageServi(SITE_HOME).replace("<title>Accueil</title>", `${HOME_BRIDGE}<title>Accueil</title>`);
+    const served = displayServed(SITE_HOME).replace("<title>Accueil</title>", `${HOME_BRIDGE}<title>Accueil</title>`);
     const dir = path.join(w.dataDir, "webaios-sites", "vidola");
     await mkdir(dir, { recursive: true });
     await writeFile(path.join(dir, "index.html"), served);

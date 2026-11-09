@@ -3,7 +3,7 @@
 // the view policy of sites.ts. The host (noyau/applications.ts) owns the apps; this module owns their windows.
 import type { DesignState } from "../../shared/api";
 import type { Cadre, AccessState } from "../../shared/modele";
-import { dossierValide } from "./app-folder";
+import { validFolder } from "./app-folder";
 import { HOST_EXITED, type AgentHost } from "../agent/host";
 import type { DesignService } from "./design";
 import { appContainer, isAppContainer, removeAppContainer } from "./containers";
@@ -39,7 +39,7 @@ let design: Pick<DesignService, "etat" | "toggle" | "openCart" | "relire"> | nul
 export interface BadgeChrome {
   acces: { etat(): AccessState; couper(id: unknown, droit: unknown): void };
   surAcces(cb: (e: AccessState) => void): () => void;
-  pastilleTaille(ouverte: unknown): void;
+  pastilleTaille(openedApp: unknown): void;
   /** Its window's design mode (target `app`, from the window, never from the frame). */
   design: { etat(): Promise<DesignState>; basculer(): void; panier(): void; relire(): void };
 }
@@ -130,7 +130,7 @@ export const apps = {
    * port: the guard follows the new origin). An invalid dossier opens nothing.
    */
   open(a: { dossier: string; nom: string; port: number }, cadre: Cadre | null): void {
-    if (typeof a?.dossier !== "string" || !dossierValide(a.dossier) || typeof a.nom !== "string" || !Number.isInteger(a.port) || a.port <= 0 || a.port > 65535) return;
+    if (typeof a?.dossier !== "string" || !validFolder(a.dossier) || typeof a.nom !== "string" || !Number.isInteger(a.port) || a.port <= 0 || a.port > 65535) return;
     const origin = `http://localhost:${a.port}`;
     const known = open.get(a.dossier);
     if (known && !known.window.closed) {
@@ -170,7 +170,7 @@ export const apps = {
   },
   /** « Supprimer »: the app's container (cookies, storage) is wiped. */
   async erase(dossier: string): Promise<void> {
-    if (typeof dossier === "string" && dossierValide(dossier)) await removeAppContainer(dossier);
+    if (typeof dossier === "string" && validFolder(dossier)) await removeAppContainer(dossier);
   },
   /**
    * « Afficher le dossier »: `<dataDir>/espace/projets/<dossier>` shown in the Finder, never opened (an `x.app` folder
@@ -334,9 +334,9 @@ export const apps = {
         listeners.add(cb);
         return () => void listeners.delete(cb);
       },
-      pastilleTaille(ouverte) {
-        if (typeof ouverte !== "boolean") return;
-        opened = ouverte;
+      pastilleTaille(openedApp) {
+        if (typeof openedApp !== "boolean") return;
+        opened = openedApp;
         place();
       },
       design: {

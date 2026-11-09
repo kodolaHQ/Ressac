@@ -3,7 +3,7 @@
 // from what the frame says. Also the tweaks' console and the memory relay to the host.
 import type { TweaksRead } from "../../../../packages/noyau/src/sites/lire";
 import { relativeUrl } from "../../../../packages/noyau/src/sites/adresses";
-import GARDE from "../../../../packages/noyau/extensions/webaios-garde-page.js?raw";
+import GUARD from "../../../../packages/noyau/extensions/webaios-garde-page.js?raw";
 import { tweakSource, type InjectionCadre } from "../../shared/sites";
 import { addTweakConsole, injectionPour, repriseDansCadre, type TweakError, type MemoryResponse } from "../../core/sites/injection";
 import { MEMORY_DENIAL } from "../../noyau/site-memory";
@@ -45,15 +45,15 @@ function frameOf(wgp: any, view: any): { url: string; principal: boolean; page: 
 }
 
 /** The actor's "injection": null outside an open app's view or without its grant, else injectionPour. */
-export function frameInjection(wgp: any, s: FrameSite | undefined, adressesLocales: boolean): InjectionCadre | null {
+export function frameInjection(wgp: any, s: FrameSite | undefined, localUrls: boolean): InjectionCadre | null {
   if (!s || s.site.accordRequis) return null;
   const f = frameOf(wgp, s.view);
   if (!f) return null;
-  const i = injectionPour({ site: s.site, retouches: s.retouches, accorde: true, garde: GARDE, adressesLocales }, f.principal ? { url: f.url, principal: true } : f);
+  const i = injectionPour({ site: s.site, retouches: s.retouches, accorde: true, garde: GUARD, adressesLocales: localUrls }, f.principal ? { url: f.url, principal: true } : f);
   // A player written into an about:srcdoc / about:blank frame of an app page has no address of its own for injectionPour
   // (nothing is injected there), but the resume goes into it like into any other frame of that page.
   if (i && !f.principal && /^about:(srcdoc|blank)$/.test(f.url) && f.page !== null && relativeUrl(f.page, s.site.domaines) !== null)
-    i.reprise = repriseDansCadre(s.site.declaration, f, adressesLocales);
+    i.reprise = repriseDansCadre(s.site.declaration, f, localUrls);
   return i;
 }
 
@@ -61,14 +61,14 @@ export function frameInjection(wgp: any, s: FrameSite | undefined, adressesLocal
  * The actor's "memoire": only the view's main document, on the app's domains, with the grant; the host checks the
  * request's shape and does the memory work (noyau/site-memory.ts).
  */
-export async function frameMemory(wgp: any, s: FrameSite | undefined, demande: unknown, request: (p: object) => Promise<MemoryResponse>): Promise<MemoryResponse> {
-  const refus: MemoryResponse = { ok: false, erreur: MEMORY_DENIAL };
-  if (!s || s.site.accordRequis) return refus;
+export async function frameMemory(wgp: any, s: FrameSite | undefined, sendRequest: unknown, request: (p: object) => Promise<MemoryResponse>): Promise<MemoryResponse> {
+  const denial: MemoryResponse = { ok: false, erreur: MEMORY_DENIAL };
+  if (!s || s.site.accordRequis) return denial;
   const f = frameOf(wgp, s.view);
-  const adresse = f?.principal ? relativeUrl(f.url, s.site.domaines) : null;
-  if (adresse === null || !demande || typeof demande !== "object") return refus;
-  const { op, cle, valeur } = demande as { op?: unknown; cle?: unknown; valeur?: unknown };
-  return request({ id: s.site.id, adresse, op, cle, valeur });
+  const url = f?.principal ? relativeUrl(f.url, s.site.domaines) : null;
+  if (url === null || !sendRequest || typeof sendRequest !== "object") return denial;
+  const { op, cle: key, valeur } = sendRequest as { op?: unknown; cle?: unknown; valeur?: unknown };
+  return request({ id: s.site.id, adresse: url, op, cle: key, valeur });
 }
 
 /**
@@ -79,10 +79,10 @@ export async function frameMemory(wgp: any, s: FrameSite | undefined, demande: u
  */
 export function frameError(s: FrameSite | undefined, e: unknown): void {
   if (!s || !e || typeof e !== "object") return;
-  const { texte, source, ligne } = e as { texte?: unknown; source?: unknown; ligne?: unknown };
-  if (typeof texte !== "string" || typeof source !== "string" || !source.startsWith(tweakSource(s.site.id, ""))) return;
+  const { texte: text, source, ligne } = e as { texte?: unknown; source?: unknown; ligne?: unknown };
+  if (typeof text !== "string" || typeof source !== "string" || !source.startsWith(tweakSource(s.site.id, ""))) return;
   const l = typeof ligne === "number" && Number.isInteger(ligne) && ligne > 0 ? ligne : 0;
-  addTweakConsole(s.erreurs, { texte, source: l ? `${source}:${l}` : source }, new Date().toISOString());
+  addTweakConsole(s.erreurs, { texte: text, source: l ? `${source}:${l}` : source }, new Date().toISOString());
 }
 
 /**
@@ -90,25 +90,25 @@ export function frameError(s: FrameSite | undefined, e: unknown): void {
  * and the resume goes into this frame (declaration, `cadres` patterns). The address is read at each request (a pushState
  * to another episode counts); a page off the app's domains (a sign-in page and its frames) has none.
  */
-function resumePage(wgp: any, s: FrameSite | undefined, adressesLocales: boolean): { id: string; adresse: string } | null {
+function resumePage(wgp: any, s: FrameSite | undefined, localUrls: boolean): { id: string; adresse: string } | null {
   if (!s || s.site.accordRequis) return null;
   const f = frameOf(wgp, s.view);
-  if (!f || !repriseDansCadre(s.site.declaration, f, adressesLocales)) return null;
-  const adresse = f.principal ? relativeUrl(f.url, s.site.domaines) : f.page === null ? null : relativeUrl(f.page, s.site.domaines);
-  return adresse === null ? null : { id: s.site.id, adresse };
+  if (!f || !repriseDansCadre(s.site.declaration, f, localUrls)) return null;
+  const url = f.principal ? relativeUrl(f.url, s.site.domaines) : f.page === null ? null : relativeUrl(f.page, s.site.domaines);
+  return url === null ? null : { id: s.site.id, adresse: url };
 }
 
 /** The actor's "position": a video's position of the page, for the host (`cadre` is the frame's one-second step key). */
-export function framePosition(wgp: any, s: FrameSite | undefined, p: unknown, adressesLocales: boolean, notify: (p: object) => void): void {
-  const page = p && typeof p === "object" ? resumePage(wgp, s, adressesLocales) : null;
+export function framePosition(wgp: any, s: FrameSite | undefined, p: unknown, localUrls: boolean, notify: (p: object) => void): void {
+  const page = p && typeof p === "object" ? resumePage(wgp, s, localUrls) : null;
   if (!page) return;
-  const { t, duree, fin } = p as { t?: unknown; duree?: unknown; fin?: unknown };
-  notify({ ...page, cadre: `${wgp.browsingContext.id}:${wgp.innerWindowId}`, t, duree, fin: fin === true });
+  const { t, duree: duration, fin } = p as { t?: unknown; duree?: unknown; fin?: unknown };
+  notify({ ...page, cadre: `${wgp.browsingContext.id}:${wgp.innerWindowId}`, t, duree: duration, fin: fin === true });
 }
 
 /** The actor's "reprise": the position kept for the page, for a video of this duration (null if none). */
-export async function frameResume(wgp: any, s: FrameSite | undefined, duree: unknown, adressesLocales: boolean, request: (p: object) => Promise<number | null>): Promise<number | null> {
-  const page = resumePage(wgp, s, adressesLocales);
-  const d = duree && typeof duree === "object" ? (duree as { duree?: unknown }).duree : undefined;
+export async function frameResume(wgp: any, s: FrameSite | undefined, duration: unknown, localUrls: boolean, request: (p: object) => Promise<number | null>): Promise<number | null> {
+  const page = resumePage(wgp, s, localUrls);
+  const d = duration && typeof duration === "object" ? (duration as { duree?: unknown }).duree : undefined;
   return page && typeof d === "number" ? request({ ...page, duree: d }) : null;
 }

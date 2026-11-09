@@ -14,7 +14,7 @@ import type { Questions } from "./questions";
 
 const XHTML = "http://www.w3.org/1999/xhtml";
 /** An agent app window seen as a tab: `app:<dossier>`. */
-const PREFIXE_APP = "app:";
+const APP_PREFIX = "app:";
 /** As the page actor. */
 const TEXT_MAX = 100_000;
 
@@ -85,7 +85,7 @@ export function bridgeHandlers(
   };
   /** The view of a site app window (`site:<id>`) or of an agent app window (`app:<dossier>`); null for any other id. */
   const windowView = (id: string) =>
-    id.startsWith(SITE_PREFIX) ? sites.viewFor(id.slice(SITE_PREFIX.length)) : id.startsWith(PREFIXE_APP) ? apps.viewFor(id.slice(PREFIXE_APP.length)) : null;
+    id.startsWith(SITE_PREFIX) ? sites.viewFor(id.slice(SITE_PREFIX.length)) : id.startsWith(APP_PREFIX) ? apps.viewFor(id.slice(APP_PREFIX.length)) : null;
   /**
    * Reads the view of a site app or agent app window: never a site app's bar, home or card, nor an app's badge or
    * overlay. Closed, before or during the read: OngletIntrouvable (a clean answer). Undefined for
@@ -103,9 +103,9 @@ export function bridgeHandlers(
   const getText = async (browser: any) => {
     const r = await browser.browsingContext.currentWindowGlobal.getActor("WebAiOsPage").sendQuery("getText");
     // The child runs in a web process: its answer is not trusted.
-    const texte = String(r?.texte ?? "").slice(0, TEXT_MAX);
+    const text = String(r?.texte ?? "").slice(0, TEXT_MAX);
     const selection = String(r?.selection ?? "").slice(0, TEXT_MAX);
-    return selection ? { texte, selection } : { texte };
+    return selection ? { texte: text, selection } : { texte: text };
   };
   const snapshot = async (browser: any, win: Window) => {
     const bitmap = await browser.browsingContext.currentWindowGlobal.drawSnapshot(null, 1, "white");
@@ -121,14 +121,14 @@ export function bridgeHandlers(
   };
 
   /** The agent's demos open in the foreground, marked ✦. With no window open, in the kept one. */
-  const openTab = ([url, espace]: [string, string?]): TabInfo => {
+  const openTab = ([url, space]: [string, string?]): TabInfo => {
     const state = store.state;
     const f = state.fenetres.find((x) => x.id === windows.active()) ?? state.fenetres[0];
     if (!f) throw new Error("Aucune fenêtre ouverte");
-    const espaceId = resolveSpace(state, f, espace);
-    if (state.espaces.find((e) => e.id === espaceId)?.prive ?? true) throw new Error("Impossible d'ouvrir un onglet ici : l'espace actif est privé.");
+    const spaceId = resolveSpace(state, f, space);
+    if (state.espaces.find((e) => e.id === spaceId)?.prive ?? true) throw new Error("Impossible d'ouvrir un onglet ici : l'espace actif est privé.");
     const id = crypto.randomUUID();
-    store.dispatch({ type: "ouvrirOnglet", fenetreId: f.id, url, espaceId, activer: true, ouvertParAgent: true }, () => id);
+    store.dispatch({ type: "ouvrirOnglet", fenetreId: f.id, url, espaceId: spaceId, activer: true, ouvertParAgent: true }, () => id);
     if (!store.state.onglets[id]) throw new Error(`Impossible d'ouvrir ${url}`);
     store.dispatch({ type: "activerOnglet", id }); // also switches to its space
     return tabInfos(store.state).find((o) => o.id === id)!;
@@ -136,7 +136,7 @@ export function bridgeHandlers(
 
   return {
     // Decision 3: no window open (the last one kept), no active tab.
-    ongletActif: ([fenetre]: [WindowId?] = []) => activeTabOf(store.state, fenetre ?? windows.active()),
+    ongletActif: ([win]: [WindowId?] = []) => activeTabOf(store.state, win ?? windows.active()),
     listerOnglets: () => [...tabInfos(store.state), ...apps.forAgent().map(appTab), ...sites.forAgent().map(siteTab)],
     ouvrirOnglet: openTab,
     naviguer: ([id, url]: [string, string]) => {
@@ -147,8 +147,8 @@ export function bridgeHandlers(
         if (r === "refuse") throw new Error(navigationOutsideSite(url));
         return r === "en-attente" ? r : undefined;
       }
-      if (id.startsWith(PREFIXE_APP)) {
-        const dossier = id.slice(PREFIXE_APP.length);
+      if (id.startsWith(APP_PREFIX)) {
+        const dossier = id.slice(APP_PREFIX.length);
         if (!apps.viewFor(dossier)) throw new TabNotFound(id);
         // The app window never leaves its origin: elsewhere, a tab of the main window.
         if (!apps.navigateForAgent(dossier, url)) openTab([url]);
@@ -178,7 +178,7 @@ export function bridgeHandlers(
       return f ? questions.askWidgetData(o, f, signal) : false;
     },
     lirePageInvisible: ([url, o]: [string, OptionsLecturePage & { menagee?: string }], signal) =>
-      readPage(store, url, o, signal, (lecture, hote, s) => host().request("lecture.changerHote", { lecture, hote }, s)),
+      readPage(store, url, o, signal, (lecture, hostName, s) => host().request("lecture.changerHote", { lecture, hote: hostName }, s)),
     lireHtmlInvisible: ([url, o]: [string, { adressesLocales?: boolean }], signal) => readHtml(store, url, o ?? {}, signal),
     // The kernel's dev tools (RemoteBridge.outilsDev): one owner per kernel start, its token on every call.
     "outilsDev.owner": () => devtools.owner(),
@@ -202,14 +202,14 @@ export function trackState(store: Store, host: AgentHost, windows: WindowRegistr
   };
   store.subscribe((state, previous) => {
     refresh();
-    const { navigues, fermes } = changementsPolitique(previous, state);
-    for (const n of navigues) host.notify("politique.navigue", n);
+    const { navigues: navigated, fermes } = changementsPolitique(previous, state);
+    for (const n of navigated) host.notify("politique.navigue", n);
     for (const id of fermes) host.notify("politique.ferme", { id });
     // Opening the agent panel on a tab gives it to the agent and pre-fills its context.
     for (const f of state.fenetres) {
       const opened = f.panneauAgentOuvert && !previous.fenetres.find((x) => x.id === f.id)?.panneauAgentOuvert;
-      const onglet = opened && activeTabOf(state, f.id);
-      if (onglet) host.notify("agent.panneauOuvert", { fenetre: f.id, onglet });
+      const tab = opened && activeTabOf(state, f.id);
+      if (tab) host.notify("agent.panneauOuvert", { fenetre: f.id, onglet: tab });
     }
     if (state.reglages.profilAgent !== previous.reglages.profilAgent)
       host.request("changerProfil", { profilAgent: state.reglages.profilAgent }).catch((e) => console.error("[agent] profile change failed:", e));

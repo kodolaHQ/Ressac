@@ -5,9 +5,9 @@ import type { HomeTheme } from "../../../packages/noyau/src/accueil/theme.ts";
 import type { FreePlacement } from "../../../packages/noyau/src/accueil/schemas.ts";
 import type { Execution, ResumeExecution } from "../../../packages/noyau/src/workflows/executions.ts";
 import { HOST_EXITED } from "../chrome/agent/host";
-import { dossierValide } from "../chrome/store/app-folder";
+import { validFolder } from "../chrome/store/app-folder";
 import type { WindowController } from "../chrome/window/controller";
-import { oublierWidget, preparerWidget } from "../chrome/window/widget-frame";
+import { forgetWidget, preparerWidget } from "../chrome/window/widget-frame";
 import { profilsLisibles, profilsPourAccord, urlOuvrable } from "./accueil-profils";
 import { ACTIONS_IN_PRIVATE_SPACE } from "../shared/actions";
 import { createActionsApi, espaceActifPrive, type ActionsFirefox } from "./actions-api";
@@ -59,7 +59,7 @@ export async function servirAffichages(
   outil: {
     preparer: (dataDir: string, id: string) => Promise<string | null>;
     oublier: (dataDir: string, id: string) => Promise<void>;
-  } = { preparer: preparerWidget, oublier: oublierWidget },
+  } = { preparer: preparerWidget, oublier: forgetWidget },
 ): Promise<void> {
   const maintenant = new Set<string>();
   await Promise.all(
@@ -243,7 +243,7 @@ export function createApi(win: WindowController): ApiFirefox {
         if (action === "dossier") return win.store.apps.reveal(dossier);
         // The app's Review page, under its name; a project without manifest has none.
         if (action === "relire") {
-          if (!dossierValide(dossier)) return;
+          if (!validFolder(dossier)) return;
           return void api.applications!.liste()
             .then((l) => {
               const a = l.applications.find((x) => x.dossier === dossier);

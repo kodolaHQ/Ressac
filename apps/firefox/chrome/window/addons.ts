@@ -71,8 +71,8 @@ export function createAddons(o: {
     gBrowser: o.gBrowser,
     anchors: o.anchors,
     shown(id) {
-      const espace = activeSpace();
-      return !espace || o.store.agentExtensions.shownIn(id, espace.profil, espace.prive);
+      const space = activeSpace();
+      return !space || o.store.agentExtensions.shownIn(id, space.profil, space.prive);
     },
     page: () => !!o.tabs.displayed(),
     watch: [

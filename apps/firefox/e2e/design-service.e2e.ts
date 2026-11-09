@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { placeBulle, rectCapture } from "../chrome/store/design-copies";
+import { bubbleSlot, rectCapture } from "../chrome/store/design-copies";
 import { UNAVAILABLE_DESIGN } from "../shared/design-guards";
 import { openTab, testActor } from "./agent-extensions";
 import { pageLog, clearLog, startDesignServers, stopActor, trustedMouse } from "./design";
@@ -212,7 +212,7 @@ describe("design service", () => {
     const g = await m.execute<{ z: number; x: number; y: number; width: number; height: number; w: number; h: number }>(
       `const r = ${B}.getBoundingClientRect(); return { z: ${B}.fullZoom, x: r.x, y: r.y, width: r.width, height: r.height, w: window.innerWidth, h: window.innerHeight };`,
     );
-    expect(b.place).toEqual(placeBulle(r, g.z, g, [g.w, g.h]));
+    expect(b.place).toEqual(bubbleSlot(r, g.z, g, [g.w, g.h]));
     expect(await svc("return d.overlayContext(t);")).toEqual(b.ctx);
     // The bubble is open: the viewfinder waits; Annuler arms it again.
     expect(await hosts()).toBe(0);

@@ -10,21 +10,21 @@ export interface History {
   /** The agent's memory of a page: dropped by the kernel for a private visit or a loopback URL. */
   retain(r: { url: string; espaceId: string; titre: string; texte: string }): void;
   /** Never rejects: [] while the host is down. */
-  search(texte: string, limite?: number, distinctes?: boolean): Promise<Visite[]>;
+  search(text: string, limit?: number, distinct?: boolean): Promise<Visite[]>;
   recent(): Promise<Visite[]>;
-  clear(depuis?: string): Promise<void>;
-  forgetText(url: string, espaceId: string): Promise<void>;
+  clear(from?: string): Promise<void>;
+  forgetText(url: string, spaceId: string): Promise<void>;
 }
 
-const historisable = (url: string) => /^https?:\/\//.test(url);
+const historizable = (url: string) => /^https?:\/\//.test(url);
 
 /** The visits live in the kernel host, which owns the SQLite file. */
 export function createHistory(store: Store, host: AgentHost): History {
   // A space turned private keeps its visits but marks them, even while no agent runs.
   store.subscribe((state, previous) => {
-    for (const espaceId of spacesBecamePrivate(previous, state)) host.notify("historique.rendrePrive", { espaceId });
+    for (const spaceId of spacesBecamePrivate(previous, state)) host.notify("historique.rendrePrive", { espaceId: spaceId });
   });
-  const context = (id: TabId, url: string) => (historisable(url) ? historyContext(store.state, id) : null);
+  const context = (id: TabId, url: string) => (historizable(url) ? historyContext(store.state, id) : null);
   const ask = <T>(method: string, params: unknown, none: T) => host.request<T>(method, params).catch(() => none);
   return {
     visit(id, url, titre) {
@@ -36,9 +36,9 @@ export function createHistory(store: Store, host: AgentHost): History {
       if (c) host.notify("historique.titre", { url, espaceId: c.espaceId, titre });
     },
     retain: (r) => host.notify("historique.retenir", r),
-    search: (texte, limite, distinctes) => ask("historique.rechercher", { texte, limite, distinctes }, []),
+    search: (text, limit, distinct) => ask("historique.rechercher", { texte: text, limite: limit, distinctes: distinct }, []),
     recent: () => ask("historique.recents", {}, []),
-    clear: (depuis) => ask("historique.effacer", { depuis }, undefined),
-    forgetText: (url, espaceId) => ask("historique.oublierTexte", { url, espaceId }, undefined),
+    clear: (from) => ask("historique.effacer", { depuis: from }, undefined),
+    forgetText: (url, spaceId) => ask("historique.oublierTexte", { url, espaceId: spaceId }, undefined),
   };
 }

@@ -98,7 +98,7 @@ export class WebAiOsSiteChild extends JSWindowActorChild {
       }
     if (i.reprise === true) this.resume();
     if (i.js.length === 0 || typeof i.garde !== "string") return;
-    const garde = i.garde;
+    const kept = i.garde;
     const doc = this.document as any;
     const sandbox = Cu.Sandbox(doc.nodePrincipal, { sandboxPrototype: win, wantXrays: true, wantComponents: false, sameZoneAs: win, sandboxName: "WebAiOs · retouches" });
     // The page's own legacy `Components` shim (constants only) would show through the prototype: shadowed.
@@ -119,10 +119,10 @@ export class WebAiOsSiteChild extends JSWindowActorChild {
       }
     };
     // The guard first, alone: without it, none of the agent's scripts runs.
-    if (!run(garde, "webaios-garde-page.js") || !run(`__webaiosPortee(${JSON.stringify({ reseau: [], hotes: i.hotes })})`, "webaios-portee.js")) return;
+    if (!run(kept, "webaios-garde-page.js") || !run(`__webaiosPortee(${JSON.stringify({ reseau: [], hotes: i.hotes })})`, "webaios-portee.js")) return;
     if (i.pont) this.bridge(sandbox);
     const scripts = () => {
-      for (const { code, nom } of i.js) run(code, nom);
+      for (const { code, nom: name } of i.js) run(code, name);
     };
     if (doc.readyState === "loading") this.pending = scripts;
     else scripts();
@@ -139,11 +139,11 @@ export class WebAiOsSiteChild extends JSWindowActorChild {
     if (this.resumed) return;
     this.resumed = true;
     const win = this.contentWindow as any;
-    const suivi = new ResumeTracking({
-      noter: (t, duree, fin) => this.sendAsyncMessage("position", { t, duree, fin }),
-      demander: async (duree) => {
+    const tracking = new ResumeTracking({
+      noter: (t, duration, fin) => this.sendAsyncMessage("position", { t, duree: duration, fin }),
+      demander: async (duration) => {
         try {
-          const p: unknown = await this.sendQuery("reprise", { duree });
+          const p: unknown = await this.sendQuery("reprise", { duree: duration });
           return typeof p === "number" && Number.isFinite(p) ? p : null;
         } catch {
           return null;
@@ -157,7 +157,7 @@ export class WebAiOsSiteChild extends JSWindowActorChild {
         (e: any) => {
           const v = e.target;
           if (!e.isTrusted || !v || ChromeUtils.getClassName(v) !== "HTMLVideoElement") return;
-          void suivi.surEvenement(type, { currentTime: v.currentTime, duration: v.duration, cle: v }).then((p) => {
+          void tracking.surEvenement(type, { currentTime: v.currentTime, duration: v.duration, cle: v }).then((p) => {
             if (p !== null && p > 0) v.currentTime = p;
           });
         },
@@ -170,7 +170,7 @@ export class WebAiOsSiteChild extends JSWindowActorChild {
     const api = Cu.createObjectIn(sandbox, { defineAs: "webaiosSite" });
     for (const op of OPS)
       Cu.exportFunction(
-        (cle: unknown, valeur: unknown) =>
+        (key: unknown, valeur: unknown) =>
           new sandbox.Promise((resolve: (v: unknown) => void, reject: (e: unknown) => void) => {
             let v: unknown;
             try {
@@ -179,7 +179,7 @@ export class WebAiOsSiteChild extends JSWindowActorChild {
             } catch {
               v = undefined;
             }
-            const d = { op, cle: typeof cle === "string" ? cle : null, ...(op === "retenir" ? { valeur: v } : {}) };
+            const d = { op, cle: typeof key === "string" ? key : null, ...(op === "retenir" ? { valeur: v } : {}) };
             this.sendQuery("memoire", d).then(
               (r: any) => {
                 if (r?.ok === true) resolve(op === "lire" ? Cu.cloneInto(r.valeur, sandbox) : undefined);

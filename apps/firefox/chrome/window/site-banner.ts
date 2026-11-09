@@ -12,7 +12,7 @@ const AGENT = ["lire-onglet", "outils-dev", "donnees-widget", "extension", "cons
  * (--webaios-banner): the oldest question for this window or its active tab. Returns what
  * takes it down.
  */
-export function mountSiteBanner(win: Window, store: WebAiOsStore, fenetreId: WindowId): () => void {
+export function mountSiteBanner(win: Window, store: WebAiOsStore, windowId: WindowId): () => void {
   const doc = win.document;
   const el = <K extends keyof HTMLElementTagNameMap>(tag: K) => doc.createElementNS(XHTML, tag) as HTMLElementTagNameMap[K];
   const banner = el("div");
@@ -34,9 +34,9 @@ export function mountSiteBanner(win: Window, store: WebAiOsStore, fenetreId: Win
   refuse.addEventListener("click", () => shown && store.questions.answer(shown.id, "refuser"));
   allow.addEventListener("click", () => shown && store.questions.answer(shown.id, "autoriser"));
   const render = () => {
-    const f = store.state.fenetres.find((x) => x.id === fenetreId);
+    const f = store.state.fenetres.find((x) => x.id === windowId);
     const active = f?.actif[f.espaceActif];
-    const d = store.questions.pending().find((d) => (d.fenetreId ? d.fenetreId === fenetreId : d.ongletId === null || d.ongletId === active));
+    const d = store.questions.pending().find((d) => (d.fenetreId ? d.fenetreId === windowId : d.ongletId === null || d.ongletId === active));
     shown = d && !d.permissions.some((p) => AGENT.includes(p)) ? d : undefined;
     banner.hidden = !shown;
     if (shown) text.textContent = bannerText(shown as PendingRequest & { permissions: SitePermission[] });

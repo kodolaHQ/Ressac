@@ -2,4 +2,4 @@
 // chokidar, which the store bundle cannot load. test/containers.test.ts guards the drift.
 
 /** A folder launches only if its name passes in a shell command without quotes. */
-export const dossierValide = (dossier: string): boolean => /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(dossier);
+export const validFolder = (dossier: string): boolean => /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(dossier);

@@ -50,8 +50,8 @@ export class TabSync {
       if (this.fromAddon && options!.userContextId === undefined) {
         const state = this.store.state;
         const f = state.fenetres.find((x) => x.id === this.fenetreId);
-        const espace = f && state.espaces.find((e) => e.id === f.espaceActif);
-        if (espace) options!.userContextId = this.store.containerFor(espace.profil);
+        const space = f && state.espaces.find((e) => e.id === f.espaceActif);
+        if (space) options!.userContextId = this.store.containerFor(space.profil);
       }
       try {
         return addTab(uri, options);
@@ -77,8 +77,8 @@ export class TabSync {
         const failure = this.failures.get(browser);
         this.failures.delete(browser); // read once: an older failure (a download) must not name a later error page
         const code = browser.documentURI ? new URL(browser.documentURI.spec).searchParams.get("e") : null;
-        const erreur = flags & LOCATION_CHANGE_ERROR_PAGE ? (failure !== undefined ? ChromeUtils.getXPCOMErrorName(failure) : errorName(code)) : undefined;
-        this.update(gBrowser.getTabForBrowser(browser), { url: location.spec, ...this.history(browser), ...(erreur ? { erreur, chargement: false } : {}) });
+        const error = flags & LOCATION_CHANGE_ERROR_PAGE ? (failure !== undefined ? ChromeUtils.getXPCOMErrorName(failure) : errorName(code)) : undefined;
+        this.update(gBrowser.getTabForBrowser(browser), { url: location.spec, ...this.history(browser), ...(error ? { erreur: error, chargement: false } : {}) });
       },
       onStateChange: (browser: any, progress: any, _request: unknown, flags: number, status: number) => {
         if (!progress.isTopLevel || !(flags & STATE_IS_NETWORK)) return;
@@ -161,8 +161,8 @@ export class TabSync {
   sync(state: BrowserState): void {
     const f = state.fenetres.find((x) => x.id === this.fenetreId);
     const active = f && f.actif[f.espaceActif];
-    const onglet = active ? state.onglets[active] : undefined;
-    const web = onglet && hasView(onglet.url) ? onglet : undefined;
+    const tab = active ? state.onglets[active] : undefined;
+    const web = tab && hasView(tab.url) ? tab : undefined;
     // Gone, or now in another container: the page reopens from scratch at the same URL.
     for (const [id, tab] of [...this.tabs]) {
       const o = state.onglets[id];
@@ -251,7 +251,7 @@ export class TabSync {
     if (!opener && !this.fromAddon) return void queueMicrotask(() => tab.selected && this.sync(this.store.state));
     // A page's tab opens next to its source; an add-on's in the window's active space.
     const f = this.store.state.fenetres.find((x) => x.id === this.fenetreId);
-    const apres = opener ?? f?.actif[f.espaceActif];
+    const after = opener ?? f?.actif[f.espaceActif];
     const id: TabId = crypto.randomUUID();
     tab.setAttribute(TAB_ID, id);
     this.tabs.set(id, tab);
@@ -260,7 +260,7 @@ export class TabSync {
       if (this.tabs.get(id) !== tab) return;
       // The URL addTab is loading: sync replaces a tab opened in another container than its space's before it loads.
       const url = tab.linkedBrowser.userTypedValue || (tab.linkedBrowser.currentURI?.spec ?? "about:blank");
-      this.store.dispatch({ type: "ouvrirOnglet", fenetreId: this.fenetreId, url, apres, activer: tab.selected }, () => id);
+      this.store.dispatch({ type: "ouvrirOnglet", fenetreId: this.fenetreId, url, apres: after, activer: tab.selected }, () => id);
     });
   }
 

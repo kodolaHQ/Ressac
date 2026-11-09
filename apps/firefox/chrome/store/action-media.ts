@@ -2,12 +2,12 @@
 // and the agent's components, served as sanitized resource:// copies (the widget displays' mechanism, plan 27) with
 // the site home's parent.postMessage bridge (plan 31). Spike: docs/superpowers/notes/2026-11-06-actions-firefox-spike.md.
 import { urlOuvrable } from "../../ui/accueil-profils";
-import { CSP_WIDGET, affichageServi } from "../window/widget-frame";
+import { CSP_WIDGET, displayServed } from "../window/widget-frame";
 import { containerFor } from "./containers";
 import { containerRequests, isLink, loadImage, realPath, toDataUrl } from "./site-home";
 
 /** The kernel's COMPOSANT_HTML_MAX (pages/composants-agent.ts), copied: that module's node:fs imports have no shim in this bundle. Drift test in action-media.test.ts. */
-export const COMPOSANT_HTML_MAX = 256 * 1024;
+export const COMPONENT_HTML_MAX = 256 * 1024;
 /** The largest result image. */
 export const ACTION_IMAGE_MAX = 5 * 1024 * 1024;
 
@@ -53,14 +53,14 @@ export function componentBridge(): void {
 export const COMPONENT_BRIDGE = `<script>(${componentBridge.toString()})();</script>`;
 
 const NAME = /^[a-z0-9-]{1,40}$/;
-const substitution = (nom: string) => `webaios-composant-${nom}`;
-const copiesOf = (dataDir: string, nom: string) => PathUtils.join(dataDir, "webaios-composants", nom);
+const substitution = (name: string) => `webaios-composant-${name}`;
+const copiesOf = (dataDir: string, name: string) => PathUtils.join(dataDir, "webaios-composants", name);
 
-function substitute(nom: string, dir: string | null): void {
+function substitute(name: string, dir: string | null): void {
   const handler = Services.io.getProtocolHandler("resource").QueryInterface(Ci.nsIResProtocolHandler);
-  if (!dir) return handler.setSubstitution(substitution(nom), null);
+  if (!dir) return handler.setSubstitution(substitution(name), null);
   const { FileUtils } = ChromeUtils.importESModule("resource://gre/modules/FileUtils.sys.mjs");
-  handler.setSubstitution(substitution(nom), Services.io.newFileURI(new FileUtils.File(dir)));
+  handler.setSubstitution(substitution(name), Services.io.newFileURI(new FileUtils.File(dir)));
 }
 
 /** The pages showing each component, in every window. */
@@ -68,11 +68,11 @@ const refs = new Map<string, number>();
 /** Serves and releases of each component, one at a time (a release reaching zero must not race a serve's publish). */
 const queue = new Map<string, Promise<unknown>>();
 
-function queued<T>(nom: string, f: () => Promise<T>): Promise<T> {
-  const run = (queue.get(nom) ?? Promise.resolve()).then(f);
+function queued<T>(name: string, f: () => Promise<T>): Promise<T> {
+  const run = (queue.get(name) ?? Promise.resolve()).then(f);
   const settled = run.catch(() => {});
-  queue.set(nom, settled);
-  void settled.then(() => queue.get(nom) === settled && queue.delete(nom));
+  queue.set(name, settled);
+  void settled.then(() => queue.get(name) === settled && queue.delete(name));
   return run;
 }
 
@@ -84,58 +84,58 @@ function queued<T>(nom: string, f: () => Promise<T>): Promise<T> {
  * releaseComponent, null or not.
  * shortcut: checked by realpath then read by path (IOUtils has no O_NOFOLLOW), as serveHome; upgrade with it.
  */
-export function serveComponent(dataDir: string, nom: string): Promise<string | null> {
-  if (typeof nom !== "string" || !NAME.test(nom)) return Promise.resolve(null);
-  refs.set(nom, (refs.get(nom) ?? 0) + 1);
-  return queued(nom, async () => {
+export function serveComponent(dataDir: string, name: string): Promise<string | null> {
+  if (typeof name !== "string" || !NAME.test(name)) return Promise.resolve(null);
+  refs.set(name, (refs.get(name) ?? 0) + 1);
+  return queued(name, async () => {
     try {
       const components = PathUtils.join(dataDir, "espace", "composants");
       const componentsReal = realPath(components);
       // An exact name: a case-insensitive disk would find « Barres » for « barres ».
-      if (!componentsReal || isLink(components) || !(await IOUtils.getChildren(components)).some((c) => c.endsWith(`/${nom}`))) return null;
-      const source = PathUtils.join(components, nom, "composant.html");
-      if (realPath(source) !== PathUtils.join(componentsReal, nom, "composant.html")) return null;
+      if (!componentsReal || isLink(components) || !(await IOUtils.getChildren(components)).some((c) => c.endsWith(`/${name}`))) return null;
+      const source = PathUtils.join(components, name, "composant.html");
+      if (realPath(source) !== PathUtils.join(componentsReal, name, "composant.html")) return null;
       const info = await IOUtils.stat(source);
-      if (info.type !== "regular" || info.size > COMPOSANT_HTML_MAX) return null;
-      const bytes = await IOUtils.read(source, { maxBytes: COMPOSANT_HTML_MAX + 1 });
-      if (bytes.length > COMPOSANT_HTML_MAX) return null;
-      const copies = copiesOf(dataDir, nom);
+      if (info.type !== "regular" || info.size > COMPONENT_HTML_MAX) return null;
+      const bytes = await IOUtils.read(source, { maxBytes: COMPONENT_HTML_MAX + 1 });
+      if (bytes.length > COMPONENT_HTML_MAX) return null;
+      const copies = copiesOf(dataDir, name);
       await IOUtils.makeDirectory(copies, { createAncestors: true, ignoreExisting: true });
       // The copies stay inside <dataDir>/webaios-composants: a copies folder that is a link is refused.
       const root = realPath(PathUtils.join(dataDir, "webaios-composants"));
-      if (!root || realPath(copies) !== PathUtils.join(root, nom)) return null;
+      if (!root || realPath(copies) !== PathUtils.join(root, name)) return null;
       const file = `composant-${Math.round(info.lastModified)}.html`;
       const copy = PathUtils.join(copies, file);
       if (!(await IOUtils.exists(copy))) {
         // Atomic: a frame never reads a half-written copy.
         const tmp = `${copy}.${crypto.randomUUID()}.tmp`;
-        await IOUtils.writeUTF8(tmp, affichageServi(new TextDecoder().decode(bytes), CSP_WIDGET, COMPONENT_BRIDGE));
+        await IOUtils.writeUTF8(tmp, displayServed(new TextDecoder().decode(bytes), CSP_WIDGET, COMPONENT_BRIDGE));
         await IOUtils.move(tmp, copy);
       }
       // One copy per name: a frame still showing an older one has it loaded already.
       for (const old of await IOUtils.getChildren(copies)) if (old !== copy) await IOUtils.remove(old, { ignoreAbsent: true });
-      substitute(nom, copies);
-      return `resource://${substitution(nom)}/${file}`;
+      substitute(name, copies);
+      return `resource://${substitution(name)}/${file}`;
     } catch (e) {
-      console.error(`[actions] composant ${nom} non servi :`, e);
+      console.error(`[actions] composant ${name} non servi :`, e);
       return null;
     }
   });
 }
 
 /** One page less shows component `nom`: at zero, its substitution and its copies go. */
-export function releaseComponent(dataDir: string, nom: string): Promise<void> {
-  const n = refs.get(nom);
+export function releaseComponent(dataDir: string, name: string): Promise<void> {
+  const n = refs.get(name);
   if (!n) return Promise.resolve();
   if (n > 1) {
-    refs.set(nom, n - 1);
+    refs.set(name, n - 1);
     return Promise.resolve();
   }
-  refs.delete(nom);
-  return queued(nom, async () => {
+  refs.delete(name);
+  return queued(name, async () => {
     // A serve queued meanwhile counted again: it keeps its copy.
-    if (refs.has(nom)) return;
-    substitute(nom, null);
-    await IOUtils.remove(copiesOf(dataDir, nom), { recursive: true, ignoreAbsent: true });
+    if (refs.has(name)) return;
+    substitute(name, null);
+    await IOUtils.remove(copiesOf(dataDir, name), { recursive: true, ignoreAbsent: true });
   });
 }

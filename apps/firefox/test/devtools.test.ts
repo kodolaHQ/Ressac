@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { initialState } from "../core/etat/etat-initial";
-import { createDevTools, geckoToCpuProfile, TEXTE_REVOQUE } from "../chrome/store/devtools";
+import { createDevTools, geckoToCpuProfile, REVOKED_TEXT } from "../chrome/store/devtools";
 import { createStore } from "../chrome/store/store";
 import type { WindowRegistry } from "../chrome/store/windows";
 
@@ -60,13 +60,13 @@ it("a new owner revokes the previous one; a released owner is refused; a method 
   const { devtools } = setup();
   const first = devtools.owner().token;
   const second = devtools.owner().token;
-  await expect(devtools.call(first, "console", ["t"])).rejects.toThrow(TEXTE_REVOQUE);
+  await expect(devtools.call(first, "console", ["t"])).rejects.toThrow(REVOKED_TEXT);
   await expect(devtools.call(second, "attaches" as never, [])).rejects.toThrow("Pas encore disponible");
   await expect(devtools.call(second, "constructor" as never, [])).rejects.toThrow("Pas encore disponible");
   devtools.release(first); // not the current one: nothing happens
   await expect(devtools.call(second, "console", ["t"])).rejects.toThrow("no browser");
   devtools.release();
-  await expect(devtools.call(second, "console", ["t"])).rejects.toThrow(TEXTE_REVOQUE);
+  await expect(devtools.call(second, "console", ["t"])).rejects.toThrow(REVOKED_TEXT);
 });
 
 it("an old owner's call still loading its tab when a new owner comes attaches nothing", async () => {
@@ -76,7 +76,7 @@ it("an old owner's call still loading its tab when a new owner comes attaches no
   const old = devtools.call(devtools.owner().token, "console", ["t"]);
   devtools.owner();
   give(browserAt("http://127.0.0.1:5300/"));
-  await expect(old).rejects.toThrow(TEXTE_REVOQUE);
+  await expect(old).rejects.toThrow(REVOKED_TEXT);
   expect(devtools.attached()).toEqual([]);
   expect(clients.slice(before).every((c) => c.destroyed)).toBe(true);
 });

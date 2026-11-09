@@ -4,7 +4,7 @@ import type { ServerResponse } from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { placeBulle, rectCapture } from "../chrome/store/design-copies";
+import { bubbleSlot, rectCapture } from "../chrome/store/design-copies";
 import { CAPTURE_WARNING_SITE, UNAVAILABLE_DESIGN_SITE } from "../shared/design-guards";
 import { testActor } from "./agent-extensions";
 import { armActor, clearLog, CSP, CSP_PAGE, FRAME_PAGE, pageLog, trustedMouse } from "./design";
@@ -252,7 +252,7 @@ describe("design mode, site target, the view", () => {
     expect(await view("tuning", "window.reactions")).toEqual([]);
     const g = await geometry("tuning");
     expect(g.y).toBe(36);
-    const expected = placeBulle(r, 1, g, [g.w, g.h], { hautMin: 36, hauteur: 190 });
+    const expected = bubbleSlot(r, 1, g, [g.w, g.h], { hautMin: 36, hauteur: 190 });
     await expect.poll(() => calqueRect("tuning"), { timeout: 10_000 }).toEqual(expected);
     await expect
       .poll(() => calqueOf(m, "tuning", `return doc.querySelector('[data-testid="avertissement-bulle"]')?.textContent ?? null;`), { timeout: 10_000 })
@@ -377,7 +377,7 @@ describe("design mode, site target, the view", () => {
       expect(g.z).toBe(1.5);
       const before = new Set(pngs("vidola"));
       await aimAt("vidola", p);
-      const expected = placeBulle(r, 1.5, g, [g.w, g.h], { hautMin: 36, hauteur: 190 });
+      const expected = bubbleSlot(r, 1.5, g, [g.w, g.h], { hautMin: 36, hauteur: 190 });
       await expect.poll(() => calqueRect("vidola"), { timeout: 10_000 }).toEqual(expected);
       expect(expected.y).toBeGreaterThan(g.y + (r.y + r.hauteur) * 1.5);
       expect(await add("vidola", "zoom")).toEqual({ ok: true });

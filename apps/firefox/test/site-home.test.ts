@@ -2,8 +2,8 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { AFFICHAGE_REFUSE } from "../chrome/window/widget-frame";
-import { FICHIER_ACCUEIL_MAX, HOME_BRIDGE, cspAccueilFirefox, forgetHome, homeServed, loadImage, serveHome, type OpenRequest } from "../chrome/store/site-home";
+import { DISPLAY_DENIED } from "../chrome/window/widget-frame";
+import { HOME_FILE_MAX, HOME_BRIDGE, cspFirefoxHome, forgetHome, homeServed, loadImage, serveHome, type OpenRequest } from "../chrome/store/site-home";
 
 let root: string;
 let data: string;
@@ -91,7 +91,7 @@ const copied = (url: string, p: string, id = "vidola") => readFileSync(join(data
 describe("homeServed", () => {
   it("puts the CSP meta, the widgets' guard, then the bridge, after the doctype", () => {
     const s = homeServed("<!doctype html><title>Accueil</title><p>x</p>", "vidola");
-    const meta = `<meta http-equiv="Content-Security-Policy" content="${cspAccueilFirefox("vidola")}">`;
+    const meta = `<meta http-equiv="Content-Security-Policy" content="${cspFirefoxHome("vidola")}">`;
     expect(s.startsWith(`<!doctype html>${meta}<script>`)).toBe(true);
     const guard = s.indexOf("trustedTypes");
     const bridge = s.indexOf(HOME_BRIDGE);
@@ -101,13 +101,13 @@ describe("homeServed", () => {
   });
 
   it("is AFFICHAGE_REFUSE for a page with a network hint", () => {
-    expect(homeServed('<!doctype html><link rel="preload" href="https://x.test/">', "vidola")).toBe(AFFICHAGE_REFUSE);
+    expect(homeServed('<!doctype html><link rel="preload" href="https://x.test/">', "vidola")).toBe(DISPLAY_DENIED);
   });
 });
 
 describe("site home resources", () => {
   it("cspAccueilFirefox allows images from the site's resource:// origin only", () => {
-    expect(cspAccueilFirefox("vidola")).toContain("img-src data: resource://webaios-site-vidola;");
+    expect(cspFirefoxHome("vidola")).toContain("img-src data: resource://webaios-site-vidola;");
   });
 
   it("loadImage follows permitted redirects and keeps only small images", async () => {
@@ -217,7 +217,7 @@ describe("serveHome: a hostile home folder (Review Focus 3)", () => {
   });
 
   it("refuses a file of 2 MB + 1 and a hidden segment (.cache/x.js, .x)", async () => {
-    app({ "index.html": "<p>accueil</p>", "gros.png": Buffer.alloc(FICHIER_ACCUEIL_MAX + 1), "juste.png": Buffer.alloc(FICHIER_ACCUEIL_MAX), ".cache/x.js": "secret", ".x": "secret" });
+    app({ "index.html": "<p>accueil</p>", "gros.png": Buffer.alloc(HOME_FILE_MAX + 1), "juste.png": Buffer.alloc(HOME_FILE_MAX), ".cache/x.js": "secret", ".x": "secret" });
     const url = await serveHome(data, "vidola");
     expect(served(url!)).toEqual(["index.html", "juste.png"]);
   });
@@ -232,7 +232,7 @@ describe("serveHome: a hostile home folder (Review Focus 3)", () => {
   it("serves AFFICHAGE_REFUSE for an index.html with <link>", async () => {
     app({ "index.html": '<!doctype html><link rel="prefetch" href="https://x.test/"><p>accueil</p>' });
     const url = await serveHome(data, "vidola");
-    expect(copied(url!, "index.html")).toBe(AFFICHAGE_REFUSE);
+    expect(copied(url!, "index.html")).toBe(DISPLAY_DENIED);
   });
 
   it("never finds a « Vidola » folder for the id « vidola », nor a bad id", async () => {

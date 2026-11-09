@@ -15,19 +15,19 @@ import type { apps as Apps } from "./apps";
 import {
   cleanCapture,
   cleanSource,
-  cleCible,
+  targetKey,
   firefoxViewfinderScript,
   HAUTEUR_MESSAGE,
-  LARGEUR_MESSAGE,
-  LARGEUR_PANIER,
+  MESSAGE_WIDTH,
+  BASKET_WIDTH,
   MARGE,
   MARGE_MESSAGE,
-  placeBulle,
+  bubbleSlot,
   rectCapture,
   SOURCE_TIMEOUT_MS,
   sourceExpression,
   STOP_SCRIPT,
-  TAILLE_BULLE_SITE,
+  SITE_BUBBLE_SIZE,
   type CaptureViseur,
 } from "./design-copies";
 import { homeViewfinder } from "./design-home";
@@ -52,7 +52,7 @@ export interface DesignService {
   shortcut(win: Window): void;
   stop(t: DesignTarget): Promise<void>;
   /** The bubble's « Ajouter ». */
-  add(t: DesignTarget, texte: string): Promise<ExtensionResult>;
+  add(t: DesignTarget, text: string): Promise<ExtensionResult>;
   /** Bubble Annuler/Escape, message click, cart « Fermer ». */
   cancel(t: DesignTarget): void;
   openCart(t: DesignTarget): Promise<void>;
@@ -124,13 +124,13 @@ const sourceText = (s: DesignContext["source"]): string | null => (s ? (s.ligne 
  * The element's PNG (base64, no prefix): rectCapture's rectangle in view pixels × zoom,
  * drawn by the page's WindowGlobal only (spike S2), then cut to round(size × dpr). null when empty or failed.
  */
-export async function capturePng(browser: any, rect: CaptureViseur["rect"], vue: CaptureViseur["vue"], wgp: any = browser.browsingContext?.currentWindowGlobal): Promise<string | null> {
+export async function capturePng(browser: any, rect: CaptureViseur["rect"], view: CaptureViseur["vue"], wgp: any = browser.browsingContext?.currentWindowGlobal): Promise<string | null> {
   try {
     const win = browser.ownerDocument.defaultView;
     // The home's frame (an <iframe>) has no fullZoom.
     const zoom: number = browser.fullZoom ?? 1;
     const dpr: number = win.devicePixelRatio;
-    const r = rectCapture(rect, vue, zoom);
+    const r = rectCapture(rect, view, zoom);
     if (r.width <= 0 || r.height <= 0 || !wgp) return null;
     const bitmap = await wgp.drawSnapshot(new win.DOMRect(r.x / zoom, r.y / zoom, r.width / zoom, r.height / zoom), zoom * dpr, "white", { drawView: true });
     const canvas = win.document.createElementNS(XHTML, "canvas");
@@ -190,7 +190,7 @@ export function createDesign(o: {
   };
   const pageOf = (b: any) => b.browsingContext?.currentWindowGlobal;
   /** The project of the page's own document (`wgp`, the one armed), never of the <browser>'s address, which a commit moves first. */
-  const suivi = (t: DesignTarget, v: View, wgp: any = pageOf(v.browser)) =>
+  const tracking = (t: DesignTarget, v: View, wgp: any = pageOf(v.browser)) =>
     o.agent.request<DesignTracking | null>(
       "design.suivi",
       t.type === "fenetre" ? { url: String(wgp?.documentURI?.spec ?? "") } : t.type === "app" ? { projet: "app-" + t.dossier } : { projet: "site-" + t.id },
@@ -276,18 +276,18 @@ export function createDesign(o: {
     if (pageOf(s.browser) !== s.wgp) return service.stop(s.target);
     const png = await capturePng(s.browser, capture.rect, capture.vue, s.wgp);
     if (!current(s, g)) return;
-    const { rect, ...contexte } = capture;
+    const { rect, ...context } = capture;
     // The home's address as the kernel knows it (no served copy's token): it tags such remarks [accueil] (pty/contexte.ts).
-    if (s.home && s.target.type === "site") contexte.adresse = `webaios-site://${s.target.id}${new URL(contexte.adresse).pathname}`;
-    s.attente = { contexte: { ...contexte, source }, capture: png };
+    if (s.home && s.target.type === "site") context.adresse = `webaios-site://${s.target.id}${new URL(context.adresse).pathname}`;
+    s.attente = { contexte: { ...context, source }, capture: png };
     const v = view(s.target);
     if (v?.browser !== s.browser || pageOf(s.browser) !== s.wgp || s.win.closed) return service.stop(s.target);
     const b = s.target.type === "site" ? o.sites.designView(s.target.id)?.bounds : s.browser.getBoundingClientRect();
     if (!b) return service.stop(s.target);
     const bounds = { x: b.x, y: b.y, width: b.width, height: b.height };
     const win: [number, number] = [s.win.innerWidth, s.win.innerHeight];
-    const place = placeBulle(rect, s.browser.fullZoom ?? 1, bounds, win, site ? { hautMin: bounds.y, hauteur: TAILLE_BULLE_SITE.hauteur } : s.home ? { hautMin: bounds.y } : {});
-    show(s.key, s.win, place, { mode: "bulle", message: null, projet: s.projet.projet, etiquette: contexte.etiquette, source: sourceText(source), ...s.destination, avertissement: site ? CAPTURE_WARNING_SITE : null });
+    const place = bubbleSlot(rect, s.browser.fullZoom ?? 1, bounds, win, site ? { hautMin: bounds.y, hauteur: SITE_BUBBLE_SIZE.hauteur } : s.home ? { hautMin: bounds.y } : {});
+    show(s.key, s.win, place, { mode: "bulle", message: null, projet: s.projet.projet, etiquette: context.etiquette, source: sourceText(source), ...s.destination, avertissement: site ? CAPTURE_WARNING_SITE : null });
   }
 
   /** A throw anywhere after the arm (a bug, a window gone mid-way): the session stops, its frames unguarded. */
@@ -312,19 +312,19 @@ export function createDesign(o: {
     overlays: { show() {}, hide() {}, forget() {}, onColumnClosed: () => () => {} },
 
     async etat(t) {
-      const s = sessions.get(cleCible(t));
+      const s = sessions.get(targetKey(t));
       const v = s ? null : view(t);
       // A host that does not answer rejects: the button keeps its last state.
-      const r = s ? await o.agent.request<DesignTracking | null>("design.suivi", { projet: s.projet.projet }) : v ? await suivi(t, v) : null;
-      const projet = r?.projet ?? s?.projet ?? null;
-      if (!projet) return { actif: false, projet: null, indisponible: t.type === "site" ? UNAVAILABLE_DESIGN_SITE : UNAVAILABLE_DESIGN, destination: null, sansDestination: null, panier: 0, nom: "" };
+      const r = s ? await o.agent.request<DesignTracking | null>("design.suivi", { projet: s.projet.projet }) : v ? await tracking(t, v) : null;
+      const project = r?.projet ?? s?.projet ?? null;
+      if (!project) return { actif: false, projet: null, indisponible: t.type === "site" ? UNAVAILABLE_DESIGN_SITE : UNAVAILABLE_DESIGN, destination: null, sansDestination: null, panier: 0, nom: "" };
       // A site app: its project is known even where the mode does not start (card, sign-in page, fullscreen).
-      const indisponible = t.type === "site" && !s && !o.sites.designView(t.id)?.available ? UNAVAILABLE_DESIGN_SITE : null;
-      return { actif: !!s, projet, indisponible, destination: r?.destination ?? null, sansDestination: r?.sansDestination ?? null, panier: r?.panier ?? 0, nom: r?.nom ?? "" };
+      const unavailable = t.type === "site" && !s && !o.sites.designView(t.id)?.available ? UNAVAILABLE_DESIGN_SITE : null;
+      return { actif: !!s, projet: project, indisponible: unavailable, destination: r?.destination ?? null, sansDestination: r?.sansDestination ?? null, panier: r?.panier ?? 0, nom: r?.nom ?? "" };
     },
 
     async toggle(t) {
-      const key = cleCible(t);
+      const key = targetKey(t);
       if (sessions.has(key)) return service.stop(t);
       const site = t.type === "site" ? o.sites.designView(t.id) : null;
       // Unavailable in the site app's window: why, in its bar; nothing injected.
@@ -333,7 +333,7 @@ export function createDesign(o: {
       if (!v) return;
       // The page whose address gives the project, read with the address: the only one ever armed.
       const wgp = pageOf(v.browser);
-      const r = await suivi(t, v, wgp).catch(() => undefined);
+      const r = await tracking(t, v, wgp).catch(() => undefined);
       // A site app's view may have changed during the host's answer (⌂, fullscreen, a sign-in page): read again.
       if (t.type === "site" && r && !sessions.has(key)) {
         const now = o.sites.designView(t.id);
@@ -344,7 +344,7 @@ export function createDesign(o: {
         // A tab outside the followed projects (the host said so): why nothing happens, nothing injected.
         if (r === null && t.type === "fenetre" && !sessions.has(key) && view(t)?.browser === v.browser) {
           const b = v.browser.getBoundingClientRect();
-          const place = { x: b.x + b.width - MARGE_MESSAGE - LARGEUR_MESSAGE, y: b.y + MARGE_MESSAGE, width: LARGEUR_MESSAGE, height: HAUTEUR_MESSAGE };
+          const place = { x: b.x + b.width - MARGE_MESSAGE - MESSAGE_WIDTH, y: b.y + MARGE_MESSAGE, width: MESSAGE_WIDTH, height: HAUTEUR_MESSAGE };
           show(key, v.win, place, { mode: "message", message: UNAVAILABLE_DESIGN, projet: "", etiquette: "", source: null, destination: null, sansDestination: null, avertissement: null });
         }
         return;
@@ -398,22 +398,22 @@ export function createDesign(o: {
 
     shortcut(win) {
       const doc = win.document.documentElement;
-      const fenetreId = (win as any).webaiosWindow?.fenetreId as WindowId | undefined;
-      const main = !!fenetreId && o.windows.get(fenetreId)?.window === win;
-      const appli = o.apps.dossierOf(win);
-      const choix = chooseDesignTarget({
-        appli,
+      const windowId = (win as any).webaiosWindow?.fenetreId as WindowId | undefined;
+      const main = !!windowId && o.windows.get(windowId)?.window === win;
+      const app = o.apps.dossierOf(win);
+      const choice = chooseDesignTarget({
+        appli: app,
         site: doc.getAttribute("webaios-site") ?? undefined,
         petiteDeSite: doc.getAttribute("webaios-site-small") ?? undefined,
-        autreFenetre: !main && !appli,
-        fenetreActive: main ? fenetreId : undefined,
+        autreFenetre: !main && !app,
+        fenetreActive: main ? windowId : undefined,
       });
-      if (choix.type === "avis-site") o.sites.infoNotice(choix.id, UNAVAILABLE_DESIGN_SITE);
-      else if (choix.type === "cible") void service.toggle(choix.cible);
+      if (choice.type === "avis-site") o.sites.infoNotice(choice.id, UNAVAILABLE_DESIGN_SITE);
+      else if (choice.type === "cible") void service.toggle(choice.cible);
     },
 
     async stop(t) {
-      const s = sessions.get(cleCible(t));
+      const s = sessions.get(targetKey(t));
       if (!s) return;
       sessions.delete(s.key);
       s.generation++;
@@ -426,18 +426,18 @@ export function createDesign(o: {
       await disarm(s);
     },
 
-    async add(t, texte) {
-      const s = sessions.get(cleCible(t));
-      const attente = s?.attente;
-      if (!s || !attente) return { ok: false, erreur: NOTHING_AIMED };
+    async add(t, text) {
+      const s = sessions.get(targetKey(t));
+      const waiting = s?.attente;
+      if (!s || !waiting) return { ok: false, erreur: NOTHING_AIMED };
       let r: ExtensionResult;
       try {
-        r = await o.agent.request<ExtensionResult>("design.ajouter", { projet: s.projet.projet, texte, contexte: attente.contexte, capture: attente.capture });
+        r = await o.agent.request<ExtensionResult>("design.ajouter", { projet: s.projet.projet, texte: text, contexte: waiting.contexte, capture: waiting.capture });
       } catch (e) {
         // Spec §5.10: the call's error, the mode stays.
         return { ok: false, erreur: e instanceof Error ? e.message : String(e) };
       }
-      if (!r.ok || sessions.get(s.key) !== s || s.attente !== attente) return r;
+      if (!r.ok || sessions.get(s.key) !== s || s.attente !== waiting) return r;
       s.attente = null;
       hide(s.key, "bulle");
       giveKeyboard(s);
@@ -446,7 +446,7 @@ export function createDesign(o: {
     },
 
     cancel(t) {
-      const key = cleCible(t);
+      const key = targetKey(t);
       const s = sessions.get(key);
       if (!s?.attente) {
         hide(key, "message");
@@ -459,41 +459,41 @@ export function createDesign(o: {
     },
 
     async openCart(t) {
-      const n = askCart(cleCible(t));
+      const n = askCart(targetKey(t));
       const v = view(t);
-      const r = v ? await suivi(t, v).catch(() => null) : null;
-      if (!v || !r || cartAsks.get(cleCible(t)) !== n) return;
+      const r = v ? await tracking(t, v).catch(() => null) : null;
+      if (!v || !r || cartAsks.get(targetKey(t)) !== n) return;
       const [l, h] = [v.win.innerWidth, v.win.innerHeight];
       // A site app's cart starts under its bar.
       const y = t.type === "site" ? SITE_BAR_HEIGHT + MARGE : MARGE;
-      const place = { x: Math.max(0, l - MARGE - LARGEUR_PANIER), y, width: Math.min(LARGEUR_PANIER, l), height: Math.max(0, h - y - MARGE) };
-      show(cleCible(t), v.win, place, { mode: "panier", message: null, projet: r.projet.projet, etiquette: "", source: null, destination: r.destination, sansDestination: r.sansDestination, avertissement: null });
+      const place = { x: Math.max(0, l - MARGE - BASKET_WIDTH), y, width: Math.min(BASKET_WIDTH, l), height: Math.max(0, h - y - MARGE) };
+      show(targetKey(t), v.win, place, { mode: "panier", message: null, projet: r.projet.projet, etiquette: "", source: null, destination: r.destination, sansDestination: r.sansDestination, avertissement: null });
     },
 
     async relire(t) {
       const v = view(t);
-      const r = v ? await suivi(t, v).catch(() => null) : null;
+      const r = v ? await tracking(t, v).catch(() => null) : null;
       if (!r || r.projet.type === "demo") return;
-      const fenetreId = t.type === "fenetre" ? t.fenetreId : await o.mainWindow();
-      if (!fenetreId) return;
-      o.dispatch({ type: "ouvrirRelecture", fenetreId, projet: r.projet.projet, nom: r.nom.slice(0, 80) });
-      if (t.type !== "fenetre") o.toFront(fenetreId);
+      const windowId = t.type === "fenetre" ? t.fenetreId : await o.mainWindow();
+      if (!windowId) return;
+      o.dispatch({ type: "ouvrirRelecture", fenetreId: windowId, projet: r.projet.projet, nom: r.nom.slice(0, 80) });
+      if (t.type !== "fenetre") o.toFront(windowId);
     },
 
     overlayContext(t, modes = ["bulle", "panier", "message"]) {
-      const c = contexts.get(cleCible(t));
+      const c = contexts.get(targetKey(t));
       for (const mode of modes) if (c?.[mode]) return c[mode];
       return null;
     },
 
     closeOverlay(t, mode) {
-      const key = cleCible(t);
+      const key = targetKey(t);
       if (mode === "panier") askCart(key);
       hide(key, mode);
     },
 
     forget(t) {
-      const key = cleCible(t);
+      const key = targetKey(t);
       cartAsks.delete(key);
       void service.stop(t);
       contexts.delete(key);
@@ -532,9 +532,9 @@ export function overlayApi(
     );
   return {
     contexte: async () => o.design.overlayContext(t, o.modes),
-    async ajouter(texte) {
-      if (typeof texte !== "string" || texte.length > REMARK_TEXT_MAX) return { ok: false, erreur: INVALID_REQUEST };
-      return o.design.add(t, texte);
+    async ajouter(text) {
+      if (typeof text !== "string" || text.length > REMARK_TEXT_MAX) return { ok: false, erreur: INVALID_REQUEST };
+      return o.design.add(t, text);
     },
     annuler: () => (o.annuler ? o.annuler() : o.design.cancel(t)),
     panier: async (p) => (allowed(p) ? read<ShownElement[]>("design.panier", p) : []),

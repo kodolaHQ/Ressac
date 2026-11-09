@@ -1,7 +1,7 @@
 import type { OverlayContext } from "../../shared/api";
 import type { AgentHost } from "../agent/host";
 import { overlayApi, type DesignOverlays, type DesignService, type DesignTarget } from "../store/design";
-import { cleCible, DUREE_MESSAGE_MS } from "../store/design-copies";
+import { targetKey, MESSAGE_DURATION_MS } from "../store/design-copies";
 import { cutFrameNetwork } from "./frame-network";
 
 // The design mode's overlays as chrome frames of sidebar.html?calque (spike S3): an html:iframe in
@@ -38,7 +38,7 @@ export function createOverlays(o: { design: DesignService; host: Pick<AgentHost,
   const main = (key: string) => key.startsWith("fenetre:");
   const inColumn = (key: string, mode: Mode) => mode === "panier" && main(key);
   /** Calques.contexte's order; a main window's cart is in its column. */
-  const calqueModes = (key: string): Mode[] => (main(key) ? ["bulle", "message"] : ["bulle", "panier", "message"]);
+  const overlayModes = (key: string): Mode[] => (main(key) ? ["bulle", "message"] : ["bulle", "panier", "message"]);
 
   const columnClosed = (key: string) => {
     for (const cb of closedListeners.get(key) ?? [])
@@ -60,7 +60,7 @@ export function createOverlays(o: { design: DesignService; host: Pick<AgentHost,
     doc.getElementById("browser")!.append(f);
     const mayLoad = cutFrameNetwork(f);
     const t = targetOf(key);
-    const api = kind === "volet" ? overlayApi({ ...o, modes: ["panier"], annuler: () => columnClosed(key) }, t) : overlayApi({ ...o, modes: calqueModes(key) }, t);
+    const api = kind === "volet" ? overlayApi({ ...o, modes: ["panier"], annuler: () => columnClosed(key) }, t) : overlayApi({ ...o, modes: overlayModes(key) }, t);
     f.webaiosOverlay = { api };
     // A bubble shown while the frame still loads: the keyboard once its document is there.
     if (kind === "calque") f.addEventListener("load", () => ov.places.bulle && f.focus());
@@ -73,7 +73,7 @@ export function createOverlays(o: { design: DesignService; host: Pick<AgentHost,
   function layout(key: string, ov: Overlay) {
     const f = ov.calque;
     if (!f) return;
-    const mode = calqueModes(key).find((m) => ov.places[m]);
+    const mode = overlayModes(key).find((m) => ov.places[m]);
     if (!mode) return void (f.style.display = "none");
     const p = ov.places[mode]!;
     Object.assign(f.style, { left: `${p.x}px`, top: `${p.y}px`, width: `${p.width}px`, height: `${p.height}px`, display: "" });
@@ -104,7 +104,7 @@ export function createOverlays(o: { design: DesignService; host: Pick<AgentHost,
       if (ctx.mode === "message") {
         stopMessage(ov);
         const close = () => o.design.closeOverlay(t, "message");
-        ov.timer = setTimeout(close, DUREE_MESSAGE_MS);
+        ov.timer = setTimeout(close, MESSAGE_DURATION_MS);
         // The next key, in the UI or in the page (the chrome window sees the remote page's keys first).
         win.addEventListener("keydown", close, true);
         ov.offKeys = () => win.removeEventListener("keydown", close, true);
@@ -138,7 +138,7 @@ export function createOverlays(o: { design: DesignService; host: Pick<AgentHost,
     },
 
     onColumnClosed(t, cb) {
-      const key = cleCible(t);
+      const key = targetKey(t);
       const set = closedListeners.get(key) ?? new Set();
       closedListeners.set(key, set.add(cb));
       return () => void set.delete(cb);

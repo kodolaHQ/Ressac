@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { cleanCapture, cleanSource, cleCible, firefoxViewfinderScript, placeBulle, sourceExpression, TAILLE_BULLE_SITE } from "../chrome/store/design-copies";
+import { cleanCapture, cleanSource, targetKey, firefoxViewfinderScript, bubbleSlot, sourceExpression, SITE_BUBBLE_SIZE } from "../chrome/store/design-copies";
 
 const line = (text: string, start: string) => text.split("\n").find((l) => l.startsWith(start)) ?? `missing ${start}`;
 
@@ -43,10 +43,10 @@ describe("design copies", () => {
   });
 
   it("cleCible names a target; the site bubble has its size", () => {
-    expect(TAILLE_BULLE_SITE).toEqual({ largeur: 320, hauteur: 190 });
-    expect(cleCible({ type: "fenetre", fenetreId: "f1" })).toBe("fenetre:f1");
-    expect(cleCible({ type: "app", dossier: "essai" })).toBe("app:essai");
-    expect(cleCible({ type: "site", id: "tuning" })).toBe("site:tuning");
+    expect(SITE_BUBBLE_SIZE).toEqual({ largeur: 320, hauteur: 190 });
+    expect(targetKey({ type: "fenetre", fenetreId: "f1" })).toBe("fenetre:f1");
+    expect(targetKey({ type: "app", dossier: "essai" })).toBe("app:essai");
+    expect(targetKey({ type: "site", id: "tuning" })).toBe("site:tuning");
   });
 
   it("drift: the home's MOUSE (design-home.ts) is the actor's (design-actor.ts), word for word", () => {
@@ -57,12 +57,12 @@ describe("design copies", () => {
 
   it("placeBulle: under the element, bounded to the window", () => {
     const bornes = { x: 300, y: 50, width: 900, height: 750 };
-    expect(placeBulle({ x: 10, y: 20, largeur: 100, hauteur: 30 }, 1, bornes, [1200, 800])).toEqual({ x: 310, y: 106, width: 320, height: 170 });
-    expect(placeBulle({ x: 1000, y: 700, largeur: 50, hauteur: 30 }, 1, bornes, [1200, 800])).toEqual({ x: 880, y: 630, width: 320, height: 170 });
-    expect(placeBulle({ x: 10, y: 20, largeur: 100, hauteur: 30 }, 1, { x: 0, y: 356, width: 1200, height: 44 }, [1200, 400], { hautMin: 356, hauteur: 190 })).toEqual({ x: 10, y: 356, width: 320, height: 190 });
+    expect(bubbleSlot({ x: 10, y: 20, largeur: 100, hauteur: 30 }, 1, bornes, [1200, 800])).toEqual({ x: 310, y: 106, width: 320, height: 170 });
+    expect(bubbleSlot({ x: 1000, y: 700, largeur: 50, hauteur: 30 }, 1, bornes, [1200, 800])).toEqual({ x: 880, y: 630, width: 320, height: 170 });
+    expect(bubbleSlot({ x: 10, y: 20, largeur: 100, hauteur: 30 }, 1, { x: 0, y: 356, width: 1200, height: 44 }, [1200, 400], { hautMin: 356, hauteur: 190 })).toEqual({ x: 10, y: 356, width: 320, height: 190 });
     // A site app: an element at the bottom of a short window stays under the 36 px bar (y 36, not 10).
-    expect(placeBulle({ x: 10, y: 150, largeur: 50, hauteur: 20 }, 1, { x: 0, y: 36, width: 1200, height: 164 }, [1200, 200], { hautMin: 36, hauteur: 190 })).toEqual({ x: 10, y: 36, width: 320, height: 190 });
+    expect(bubbleSlot({ x: 10, y: 150, largeur: 50, hauteur: 20 }, 1, { x: 0, y: 36, width: 1200, height: 164 }, [1200, 200], { hautMin: 36, hauteur: 190 })).toEqual({ x: 10, y: 36, width: 320, height: 190 });
     // Zoomed 1.5: the CSS rect scaled into the window.
-    expect(placeBulle({ x: 100, y: 20, largeur: 100, hauteur: 30 }, 1.5, bornes, [1200, 800])).toEqual({ x: 450, y: 131, width: 320, height: 170 });
+    expect(bubbleSlot({ x: 100, y: 20, largeur: 100, hauteur: 30 }, 1.5, bornes, [1200, 800])).toEqual({ x: 450, y: 131, width: 320, height: 170 });
   });
 });

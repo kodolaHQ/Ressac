@@ -42,12 +42,12 @@ export function blockedNotice(broadcast: () => void): BlockedNotice {
       return avis;
     },
     block(u) {
-      const domaine = httpHost(u);
+      const domain = httpHost(u);
       // Nothing to open in a tab: refused without a mention.
-      if (!domaine) return;
+      if (!domain) return;
       url = u;
-      if (avis?.genre === "lien-bloque" && avis.domaine === domaine) return;
-      avis = { genre: "lien-bloque", domaine };
+      if (avis?.genre === "lien-bloque" && avis.domaine === domain) return;
+      avis = { genre: "lien-bloque", domaine: domain };
       if (timer) return;
       const wait = sent + NOTICE_GAP_MS - Date.now();
       if (wait <= 0) send();

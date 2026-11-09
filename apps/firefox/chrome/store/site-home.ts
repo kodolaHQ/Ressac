@@ -5,19 +5,19 @@ import { IMAGE_SITE_MAX } from "../../shared/sites";
 import { localUrl } from "../../../../packages/noyau/src/workflows/acces";
 import { hostInSite } from "../../../../packages/noyau/src/sites/adresses";
 import { ID_SITE } from "../../../../packages/noyau/src/sites/schemas";
-import { CSP_WIDGET, affichageServi } from "../window/widget-frame";
+import { CSP_WIDGET, displayServed } from "../window/widget-frame";
 
 /** The largest file of a home screen. */
-export const FICHIER_ACCUEIL_MAX = 2 * 1024 * 1024;
+export const HOME_FILE_MAX = 2 * 1024 * 1024;
 /** The most redirects an image load follows. */
 export const REDIRECTIONS_IMAGE = 3;
-const DELAI_IMAGE_MS = 10_000;
+const IMAGE_DELAY_MS = 10_000;
 const TYPE_IMAGE = /^image\/[a-z0-9.+-]+$/;
 /** Image loads per app: at once, and waiting at most. */
 const IMAGES_AT_ONCE = 4;
 const IMAGES_WAITING_MAX = 200;
 
-const DIRECTIVES_FICHIERS = new Set(["script-src", "style-src", "img-src", "font-src"]);
+const FILE_DIRECTIVES = new Set(["script-src", "style-src", "img-src", "font-src"]);
 /**
  * The extensions a home serves: no other file is
  * copied. resource:// picks a type from the extension, so an .xhtml or .xml would be a document without the home's CSP.
@@ -30,9 +30,9 @@ const substitution = (key: string) => `webaios-site-${key}`;
  * The home's CSP, with the served copy's files at `resource://webaios-site-<key>` (`key`: see serveHome) in
  * place of `webaios-site://<id>`.
  */
-export function cspAccueilFirefox(key: string): string {
+export function cspFirefoxHome(key: string): string {
   return CSP_WIDGET.split("; ")
-    .map((d) => (DIRECTIVES_FICHIERS.has(d.split(" ")[0]!) ? `${d} resource://${substitution(key)}` : d))
+    .map((d) => (FILE_DIRECTIVES.has(d.split(" ")[0]!) ? `${d} resource://${substitution(key)}` : d))
     .join("; ");
 }
 
@@ -54,7 +54,7 @@ export const HOME_BRIDGE = `<script>(${homeBridge.toString()})();</script>`;
 
 /** A page of the home: its copy's CSP, the widgets' guard, then the bridge, after the doctype; AFFICHAGE_REFUSE on a network hint. */
 export function homeServed(html: string, key: string): string {
-  return affichageServi(html, cspAccueilFirefox(key), HOME_BRIDGE);
+  return displayServed(html, cspFirefoxHome(key), HOME_BRIDGE);
 }
 
 /** `realpath` (nsIFile.normalize), or null. */
@@ -146,10 +146,10 @@ async function serveNow(dataDir: string, id: string): Promise<string | null> {
           continue;
         }
         // A named pipe or a device ("other") is never read.
-        if (info.type !== "regular" || info.size > FICHIER_ACCUEIL_MAX || !HOME_TYPES.has(extension(segment))) continue;
-        const bytes = await IOUtils.read(child, { maxBytes: FICHIER_ACCUEIL_MAX + 1 });
+        if (info.type !== "regular" || info.size > HOME_FILE_MAX || !HOME_TYPES.has(extension(segment))) continue;
+        const bytes = await IOUtils.read(child, { maxBytes: HOME_FILE_MAX + 1 });
         // A file that grew since stat is refused, never cut.
-        if (bytes.length > FICHIER_ACCUEIL_MAX) continue;
+        if (bytes.length > HOME_FILE_MAX) continue;
         if (/\.html$/i.test(segment)) await IOUtils.writeUTF8(out, homeServed(new TextDecoder().decode(bytes), key));
         else await IOUtils.write(out, bytes);
         if (top && segment === "index.html") index = true;
@@ -209,78 +209,78 @@ export type OpenRequest = (url: string, o: { cookies: boolean }) => ImageRequest
 const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
 
 /** Loads an image, following permitted redirects; null if refused, too big or not an image. */
-export function loadImage(ouvrir: OpenRequest, url: string, o: { permise: (url: string) => boolean; cookies: boolean; max: number }): Promise<{ type: string; corps: Uint8Array } | null> {
+export function loadImage(open: OpenRequest, url: string, o: { permise: (url: string) => boolean; cookies: boolean; max: number }): Promise<{ type: string; corps: Uint8Array } | null> {
   if (!o.permise(url)) return Promise.resolve(null);
-  return new Promise((rendre) => {
-    let fini = false;
+  return new Promise((render) => {
+    let finished = false;
     let sauts = 0;
-    let actuelle = url;
-    let requete: ImageRequest | undefined;
-    const finir = (v: { type: string; corps: Uint8Array } | null) => {
-      if (fini) return;
-      fini = true;
-      clearTimeout(minuterie);
+    let current = url;
+    let request: ImageRequest | undefined;
+    const finish = (v: { type: string; corps: Uint8Array } | null) => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
       if (v === null)
         try {
-          requete?.abort();
+          request?.abort();
         } catch {
           // already over
         }
-      rendre(v);
+      render(v);
     };
-    const minuterie = setTimeout(() => finir(null), DELAI_IMAGE_MS);
+    const timer = setTimeout(() => finish(null), IMAGE_DELAY_MS);
     try {
-      requete = ouvrir(url, { cookies: o.cookies });
-      requete.on("redirect", (_statut, _methode, vers) => {
-        if (fini) return;
-        let suivante: string;
+      request = open(url, { cookies: o.cookies });
+      request.on("redirect", (_status, _method, to) => {
+        if (finished) return;
+        let next: string;
         try {
-          suivante = new URL(vers, actuelle).href;
+          next = new URL(to, current).href;
         } catch {
-          return finir(null);
+          return finish(null);
         }
         // A hostile page could redirect to a third party, the machine or the local network: checked before going.
-        if (sauts >= REDIRECTIONS_IMAGE || !o.permise(suivante)) return finir(null);
+        if (sauts >= REDIRECTIONS_IMAGE || !o.permise(next)) return finish(null);
         sauts++;
-        actuelle = suivante;
-        requete!.followRedirect();
+        current = next;
+        request!.followRedirect();
       });
-      requete.on("response", (r) => {
-        if (fini) return;
+      request.on("response", (r) => {
+        if (finished) return;
         const type = first(r.headers["content-type"])?.split(";")[0]?.trim().toLowerCase() ?? "";
-        if (r.statusCode < 200 || r.statusCode >= 300 || !TYPE_IMAGE.test(type) || Number(first(r.headers["content-length"]) ?? 0) > o.max) return finir(null);
-        const morceaux: Uint8Array[] = [];
+        if (r.statusCode < 200 || r.statusCode >= 300 || !TYPE_IMAGE.test(type) || Number(first(r.headers["content-length"]) ?? 0) > o.max) return finish(null);
+        const chunks: Uint8Array[] = [];
         let taille = 0;
         r.on("data", (m) => {
-          if (fini) return;
+          if (finished) return;
           taille += m.length;
-          if (taille > o.max) return finir(null);
-          morceaux.push(m);
+          if (taille > o.max) return finish(null);
+          chunks.push(m);
         });
         r.on("end", () => {
           const corps = new Uint8Array(taille);
           let i = 0;
-          for (const m of morceaux) corps.set(m, (i += m.length) - m.length);
-          finir({ type, corps });
+          for (const m of chunks) corps.set(m, (i += m.length) - m.length);
+          finish({ type, corps });
         });
-        r.on("error", () => finir(null));
-        r.on("aborted", () => finir(null));
+        r.on("error", () => finish(null));
+        r.on("aborted", () => finish(null));
       });
-      requete.on("error", () => finir(null));
-      requete.on("abort", () => finir(null));
-      requete.end();
+      request.on("error", () => finish(null));
+      request.on("abort", () => finish(null));
+      request.end();
     } catch {
-      finir(null);
+      finish(null);
     }
   });
 }
 
 /** https on a domain of the app, http only to a local host (test domains), no credentials. */
-function imageAllowed(url: string, domaines: readonly string[]): boolean {
+function imageAllowed(url: string, domains: readonly string[]): boolean {
   try {
     const u = new URL(url);
     const scheme = u.protocol === "https:" || (u.protocol === "http:" && localUrl(u.hostname));
-    return scheme && !u.username && !u.password && hostInSite(u.hostname, domaines);
+    return scheme && !u.username && !u.password && hostInSite(u.hostname, domains);
   } catch {
     return false;
   }
@@ -397,7 +397,7 @@ const queues = new Map<number, { running: number; waiting: (() => void)[] }>();
  * A site image the home asks for, as a `data:` URL, loaded in the app's container, at most
  * IMAGES_AT_ONCE at once per app, IMAGES_WAITING_MAX waiting (more are refused). null if refused.
  */
-export async function siteImage(userContextId: number, url: string, domaines: string[]): Promise<string | null> {
+export async function siteImage(userContextId: number, url: string, domains: string[]): Promise<string | null> {
   let q = queues.get(userContextId);
   if (!q) queues.set(userContextId, (q = { running: 0, waiting: [] }));
   if (q.running < IMAGES_AT_ONCE) q.running++;
@@ -405,7 +405,7 @@ export async function siteImage(userContextId: number, url: string, domaines: st
   // The place is handed over by the one who frees it (running stays the same).
   else await new Promise<void>((ok) => q!.waiting.push(ok));
   try {
-    const image = await loadImage(containerRequests(userContextId), url, { permise: (u) => imageAllowed(u, domaines), cookies: true, max: IMAGE_SITE_MAX });
+    const image = await loadImage(containerRequests(userContextId), url, { permise: (u) => imageAllowed(u, domains), cookies: true, max: IMAGE_SITE_MAX });
     return image && toDataUrl(image);
   } finally {
     const next = q.waiting.shift();

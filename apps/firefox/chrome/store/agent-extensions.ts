@@ -46,7 +46,7 @@ export interface AgentExtensions {
   /** Settled once a host sent the grants (extensions.portees), or after SCOPES_WAIT_MS: then check refuses what it does not know. */
   scopesKnown(): Promise<void>;
   /** The bar lists an agent add-on only where it runs; any other everywhere. */
-  shownIn(addonId: string, profil: ProfileId, prive: boolean): boolean;
+  shownIn(addonId: string, profile: ProfileId, isPrivate: boolean): boolean;
   /** `cb` after each new set of grants (extensions.portees). */
   onScopes(cb: () => void): () => void;
   /** The extension actor's checkpoints (window.__webaios), for the add-on id read from the page's principal. */
@@ -60,8 +60,8 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
   // The add-on changes this module is making, as `<addonId> <quoi>`: only those AddonManager events are ours. A removal
   // in about:addons while we install or reload the same add-on is still the user's (an install fires no uninstall event).
   const ours = new Set<string>();
-  const own = async <T>(addonId: string, quoi: "desinstallee" | "desactivee", f: () => Promise<T>): Promise<T> => {
-    const key = `${addonId} ${quoi}`;
+  const own = async <T>(addonId: string, what: "desinstallee" | "desactivee", f: () => Promise<T>): Promise<T> => {
+    const key = `${addonId} ${what}`;
     ours.add(key);
     try {
       return await f();
@@ -146,10 +146,10 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
 
   // about:addons changes not acknowledged by a host: sent again with the next extensions.pret, so none is lost while no host runs.
   const pending = new Map<string, "desinstallee" | "desactivee">();
-  const send = (addonId: string, quoi: "desinstallee" | "desactivee") =>
+  const send = (addonId: string, what: "desinstallee" | "desactivee") =>
     host()
-      .request("extensions.horsWebaios", { addonId, quoi })
-      .then(() => pending.get(addonId) === quoi && pending.delete(addonId))
+      .request("extensions.horsWebaios", { addonId, quoi: what })
+      .then(() => pending.get(addonId) === what && pending.delete(addonId))
       .catch(() => {});
   AddonManager.addAddonListener({
     // about:addons' Remove is uninstall(true): only onUninstalling fires until the page unloads, maybe at quit. The
@@ -166,11 +166,11 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
     onOperationCancelled: (a: { id: string }) => void undone.add(a.id),
     onDisabled: (a: { id: string; temporarilyInstalled: boolean }) => outside(a, "desactivee"),
   });
-  function outside(addon: { id: string; temporarilyInstalled: boolean }, quoi: "desinstallee" | "desactivee") {
+  function outside(addon: { id: string; temporarilyInstalled: boolean }, what: "desinstallee" | "desactivee") {
     // Quitting unloads temporary add-ons: not a choice made in about:addons.
-    if (!addon.id.endsWith(SUFFIX) || ours.has(`${addon.id} ${quoi}`) || (addon.temporarilyInstalled && Services.startup.shuttingDown)) return;
-    pending.set(addon.id, quoi);
-    void send(addon.id, quoi);
+    if (!addon.id.endsWith(SUFFIX) || ours.has(`${addon.id} ${what}`) || (addon.temporarilyInstalled && Services.startup.shuttingDown)) return;
+    pending.set(addon.id, what);
+    void send(addon.id, what);
   }
 
   let scopes: Scopes = {};
@@ -195,18 +195,18 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
   };
 
   /** A WebAiOs tab's state entry and space; never the parking tab, never an invisible read (not a tab at all). */
-  const ongletDe = (tab: any) => {
-    const onglet = !tab || tab.hasAttribute?.(PARKING) ? undefined : store.state.onglets[tab.getAttribute?.(TAB_ID) ?? ""];
-    const espace = onglet && store.state.espaces.find((e) => e.id === onglet.espaceId);
-    return onglet && espace ? { onglet, espace } : null;
+  const tabModelOf = (tab: any) => {
+    const tabModel = !tab || tab.hasAttribute?.(PARKING) ? undefined : store.state.onglets[tab.getAttribute?.(TAB_ID) ?? ""];
+    const space = tabModel && store.state.espaces.find((e) => e.id === tabModel.espaceId);
+    return tabModel && space ? { onglet: tabModel, espace: space } : null;
   };
 
   // The tabs each agent extension's scripts were let into: a profile turned private reloads
   // them (rechargerOngletsAgent), whatever the extension's state now: switched off there, its scripts still run.
   const ran = new Map<string, Set<any>>();
   /** Reloads the tabs of `profils` that `addonId` (every agent extension if null) ran in; forgets the closed ones. */
-  const reloadTabs = (addonId: string | null, profils: readonly ProfileId[]) => {
-    const containers = new Set(profils.map(existingContainer).filter((c) => c !== null));
+  const reloadTabs = (addonId: string | null, profiles: readonly ProfileId[]) => {
+    const containers = new Set(profiles.map(existingContainer).filter((c) => c !== null));
     for (const [id, tabs] of ran)
       for (const tab of tabs) {
         if (!tab.isConnected || !tab.linkedBrowser) tabs.delete(tab);
@@ -238,12 +238,12 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
 
   // Once per extension and profile; a request that fails (no host) is sent again on the next check.
   const maskedSent = new Set<string>();
-  const masked = (addonId: string, profil: ProfileId) => {
-    const key = `${addonId}|${profil}`;
+  const masked = (addonId: string, profile: ProfileId) => {
+    const key = `${addonId}|${profile}`;
     if (maskedSent.has(key)) return;
     maskedSent.add(key);
     host()
-      .request("extensions.aTourne", { addonId, profil, lisible: false })
+      .request("extensions.aTourne", { addonId, profil: profile, lisible: false })
       .catch(() => maskedSent.delete(key));
   };
 
@@ -271,7 +271,7 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
         // A WebAiOs tab of a non-private space, in the container of a profile where the extension is active (spec choice
         // 2: its content scripts follow its spaces).
         const tab = tabOf(value);
-        const t = ongletDe(tab);
+        const t = tabModelOf(tab);
         if (!t || t.espace.prive || !scope.profils.includes(t.espace.profil) || tab.userContextId !== existingContainer(t.espace.profil)) return false;
         // Its scripts will run there: a tab the agent cannot read masks its console for good.
         if (!access().onglets[t.onglet.id]?.lecture) masked(addonId, t.espace.profil);
@@ -293,7 +293,7 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
     // Any installed agent add-on (its background runs before its grant is written): never an invented id.
     if (typeof d.addonId !== "string" || !d.addonId.endsWith(SUFFIX) || !WebExtensionPolicy.getByID(d.addonId)) return;
     if (typeof d.niveau !== "string" || typeof d.texte !== "string") return;
-    let onglet: { ongletId: string | null; url: string } | null = null;
+    let tabModel: { ongletId: string | null; url: string } | null = null;
     if (from.remoteType === "extension" && d.niveau === "error") {
       // Its background window's error (or console.error): half of a load error, the parent's console has the other.
       const wgp = typeof d.innerWindowID === "number" ? WindowGlobalParent.getByInnerWindowId(d.innerWindowID) : null;
@@ -303,13 +303,13 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
     if (from.remoteType !== "extension") {
       const wgp = typeof d.innerWindowID === "number" ? WindowGlobalParent.getByInnerWindowId(d.innerWindowID) : null;
       const browser = wgp?.domProcess?.childID === from.childID ? wgp.browsingContext.top.embedderElement : null;
-      const t = ongletDe(browser?.ownerDocument?.defaultView?.gBrowser?.getTabForBrowser(browser));
+      const t = tabModelOf(browser?.ownerDocument?.defaultView?.gBrowser?.getTabForBrowser(browser));
       // The address of the page that wrote it, as the parent knows it: never a later one the tab moved to.
       const url = wgp?.topWindowContext?.documentURI?.spec;
-      onglet = t && !t.espace.prive && typeof url === "string" ? { ongletId: t.onglet.id, url } : { ongletId: null, url: "" };
+      tabModel = t && !t.espace.prive && typeof url === "string" ? { ongletId: t.onglet.id, url } : { ongletId: null, url: "" };
     }
     const m = { horodatage: Date.now(), niveau: consoleLevel(d.niveau === "warn" ? "warning" : d.niveau), texte: d.texte.slice(0, CONSOLE_TEXT_MAX) };
-    host().notify("extensions.console", { addonId: d.addonId, m, onglet });
+    host().notify("extensions.console", { addonId: d.addonId, m, onglet: tabModel });
   }
 
   // The network guard beyond the copy's CSP: every http(s) request an agent
@@ -344,7 +344,7 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
     if (!extension?.id?.endsWith(SUFFIX)) return;
     const manager = extension.tabManager;
     const canAccess = manager.canAccessTab.bind(manager);
-    manager.canAccessTab = (tab) => !tab.hasAttribute(PARKING) && !ongletDe(tab)?.espace.prive && canAccess(tab);
+    manager.canAccessTab = (tab) => !tab.hasAttribute(PARKING) && !tabModelOf(tab)?.espace.prive && canAccess(tab);
     let url = extension.uninstallURL;
     Object.defineProperty(extension, "uninstallURL", {
       get: () => (url && check(extension.id, "urlPermise", url) ? url : null),
@@ -374,10 +374,10 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
     handlers,
     ready,
     scopesKnown,
-    shownIn(addonId, profil, prive) {
+    shownIn(addonId, profile, isPrivate) {
       if (!addonId.endsWith(SUFFIX)) return true;
       const scope = Object.hasOwn(scopes, addonId) ? scopes[addonId]! : null;
-      return !prive && !!scope?.actif && scope.profils.includes(profil);
+      return !isPrivate && !!scope?.actif && scope.profils.includes(profile);
     },
     onScopes(cb) {
       scopeListeners.add(cb);
@@ -387,7 +387,7 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
     relayConsole,
     hostStarted() {
       sendPrivate();
-      const sent = [...pending].map(([addonId, quoi]) => ({ addonId, quoi }));
+      const sent = [...pending].map(([addonId, what]) => ({ addonId, quoi: what }));
       const plantages = [...crashesPending];
       host()
         .request("extensions.pret", { horsWebaios: sent, plantages })

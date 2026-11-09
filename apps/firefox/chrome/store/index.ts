@@ -14,7 +14,7 @@ import { createOverlays } from "../window/design-overlays";
 import { createDevTools, type DevTools } from "./devtools";
 import { createDownloads, type DownloadsList } from "./downloads";
 import { createHistory, type History } from "./history";
-import { registerAccueilNotifications } from "./notifications";
+import { registerHomeNotifications } from "./notifications";
 import { containerFor, existingContainer, isSiteContainer, migrateContainers, removeContainer } from "./containers";
 import { registerPermissionHooks } from "./permission-hooks";
 import { createSitePermissions, type SitePermission, type SitePermissions } from "./site-permissions";
@@ -64,7 +64,7 @@ export interface WebAiOsStore extends Store {
   readPage(url: string, o: OptionsLecturePage, signal?: AbortSignal): Promise<PageLue>;
   readHtml(url: string, o: { adressesLocales?: boolean }, signal?: AbortSignal): Promise<{ url: string; html: string }>;
   /** An action page's result images (`data:`, or null) and agent components (a resource:// copy per page showing it). */
-  readonly actionMedia: { image(url: string): Promise<string | null>; serve(nom: string): Promise<string | null>; release(nom: string): Promise<void> };
+  readonly actionMedia: { image(url: string): Promise<string | null>; serve(name: string): Promise<string | null>; release(name: string): Promise<void> };
 }
 
 const PAGE_ACTOR = "chrome://browser/content/webaios/page-actor.sys.mjs";
@@ -166,9 +166,9 @@ async function start(): Promise<WebAiOsStore> {
     sitePermissions,
     tabOf: (browser) => {
       const win = browser.ownerDocument.defaultView;
-      const ongletId = win?.gBrowser?.getTabForBrowser(browser)?.getAttribute("webaios-tab-id") ?? win?.webaiosPopupSource;
-      const onglet = ongletId ? store.state.onglets[ongletId] : undefined;
-      return onglet ? { ongletId, fenetreId: onglet.fenetreId, profil: tabProfile(store.state, onglet) } : null;
+      const tabId = win?.gBrowser?.getTabForBrowser(browser)?.getAttribute("webaios-tab-id") ?? win?.webaiosPopupSource;
+      const tab = tabId ? store.state.onglets[tabId] : undefined;
+      return tab ? { ongletId: tabId, fenetreId: tab.fenetreId, profil: tabProfile(store.state, tab) } : null;
     },
     isInvisible: (browser) => browser.getAttribute("messagemanagergroup") === "webaios-reading",
   });
@@ -256,11 +256,11 @@ async function start(): Promise<WebAiOsStore> {
     store,
     open: () => BrowserWindowTracker.openWindow(),
     // The window's agent session stops with it; its questions go to the active window, or are refused.
-    onRelease: (fenetre) => {
-      agent.notify("agent.fermerFenetre", { fenetre });
+    onRelease: (win) => {
+      agent.notify("agent.fermerFenetre", { fenetre: win });
       // Its id comes back if it was the last window (kept): no overlay or cart context stays for it.
-      design.forget({ type: "fenetre", fenetreId: fenetre });
-      questions.windowClosed(fenetre, windows.active());
+      design.forget({ type: "fenetre", fenetreId: win });
+      questions.windowClosed(win, windows.active());
       refreshMirror();
     },
     // The agent follows the focused window at once.
@@ -297,8 +297,8 @@ async function start(): Promise<WebAiOsStore> {
     }
     return windows.active();
   }
-  const toFront = (fenetreId: WindowId) => {
-    const win = windows.get(fenetreId)?.window;
+  const toFront = (windowId: WindowId) => {
+    const win = windows.get(windowId)?.window;
     if (!win) return;
     if (win.windowState === win.STATE_MINIMIZED) (win as any).restore();
     win.focus();
@@ -313,9 +313,9 @@ async function start(): Promise<WebAiOsStore> {
       ...apps.handlers,
       // A review batch for the agent (noyau/design.ts): its window, then its panel with the keyboard, in front.
       "design.fenetreAgent": async () => (await mainWindow()) ?? null,
-      "design.donnerAgent": ([fenetre]: [WindowId]) => {
-        windows.get(fenetre)?.controller.openAgent();
-        toFront(fenetre);
+      "design.donnerAgent": ([win]: [WindowId]) => {
+        windows.get(win)?.controller.openAgent();
+        toFront(win);
       },
     },
     onStart: (notify) => {
@@ -332,17 +332,17 @@ async function start(): Promise<WebAiOsStore> {
   // An agent app's link off its origin too.
   const openInTab = async (url: string) => {
     if (!/^https?:\/\//.test(url)) return;
-    const fenetreId = await mainWindow();
-    if (!fenetreId) return;
-    store.dispatch({ type: "ouvrirOnglet", fenetreId, url });
-    toFront(fenetreId);
+    const windowId = await mainWindow();
+    if (!windowId) return;
+    store.dispatch({ type: "ouvrirOnglet", fenetreId: windowId, url });
+    toFront(windowId);
   };
   const design = createDesign({ agent, windows, apps, sites, dispatch: store.dispatch, mainWindow, toFront });
   bindSites(agent, dataDir, openInTab, design);
   design.overlays = createOverlays({ design, host: agent });
   bindApps(agent, openInTab, dataDir, { access: () => access, design });
   const history = createHistory(store, agent);
-  registerAccueilNotifications(agent);
+  registerHomeNotifications(agent);
   // A site app's downloads are cancelled: an app downloads nothing.
   const downloads = await createDownloads(isSiteContainer);
   refreshMirror = trackState(store, agent, windows);
@@ -384,7 +384,7 @@ async function start(): Promise<WebAiOsStore> {
     gestesWidgets,
     readPage: (url, o, signal) => readPage(store, url, o, signal),
     readHtml: (url, o, signal) => readHtml(store, url, o, signal),
-    actionMedia: { image: actionImage, serve: (nom) => serveComponent(dataDir, nom), release: (nom) => releaseComponent(dataDir, nom) },
+    actionMedia: { image: actionImage, serve: (name) => serveComponent(dataDir, name), release: (name) => releaseComponent(dataDir, name) },
   };
 }
 

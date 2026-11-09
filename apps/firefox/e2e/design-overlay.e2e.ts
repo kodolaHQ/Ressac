@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { placeBulle } from "../chrome/store/design-copies";
+import { bubbleSlot } from "../chrome/store/design-copies";
 import { INVALID_REQUEST } from "../shared/design-guards";
 import { openTab, testActor } from "./agent-extensions";
 import { startDesignServers, trustedMouse } from "./design";
@@ -305,7 +305,7 @@ describe("design overlay", () => {
       `const r = ${B}.getBoundingClientRect(); return { z: ${B}.fullZoom, x: r.x, y: r.y, width: r.width, height: r.height, w: window.innerWidth, h: window.innerHeight };`,
     );
     const f = (await frameOf("webaios-design-calque"))!;
-    const p = placeBulle(r, g.z, g, [g.w, g.h]);
+    const p = bubbleSlot(r, g.z, g, [g.w, g.h]);
     expect(f.rect).toEqual({ x: p.x, y: p.y, width: p.width, height: p.height });
     // Under the element as the chrome shows it (CSS px × zoom, from the view's edge).
     expect(f.rect.y).toBeGreaterThanOrEqual(g.y + (r.y + r.hauteur) * 1.5);

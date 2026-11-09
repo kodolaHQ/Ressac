@@ -50,14 +50,14 @@ export function registerPermissionHooks(o: {
   const ask = (browser: any, principal: any, request: Pick<SiteRequest, "kind" | "mediaTypes" | "lien">, respond: (ok: boolean) => void) => {
     const gone = new AbortController();
     const tab = browser && !o.isInvisible(browser) ? o.tabOf(browser) : null;
-    let origine = "null";
+    let origin = "null";
     try {
-      origine = new URL(principal.originNoSuffix).origin;
+      origin = new URL(principal.originNoSuffix).origin;
     } catch {}
-    if (!tab || origine === "null") return respond(false), gone;
+    if (!tab || origin === "null") return respond(false), gone;
     const unwatch = watchGone(browser, () => gone.abort());
     o.sitePermissions
-      .handle({ ...tab, origine, ...request, signal: gone.signal })
+      .handle({ ...tab, origine: origin, ...request, signal: gone.signal })
       .then(respond, () => respond(false))
       .finally(unwatch);
     return gone;

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ShownWidget } from "../shared/api";
-import { AFFICHAGE_REFUSE, CSP_WIDGET, affichageServi, cheminCopie, oublierWidget, preparerWidget, urlAffichage } from "../chrome/window/widget-frame";
+import { DISPLAY_DENIED, CSP_WIDGET, displayServed, copyPath, forgetWidget, preparerWidget, displayUrl } from "../chrome/window/widget-frame";
 import { NETWORK_HINTS_PATTERN } from "../shared/indices-reseau";
 import { servirAffichages } from "../ui/api";
 
@@ -65,8 +65,8 @@ afterAll(() => rmSync(racine, { recursive: true, force: true }));
 
 describe("served paths", () => {
   it("names the copy and its resource:// URL by the source's mtime", () => {
-    expect(urlAffichage("demo", 1730000000123)).toBe("resource://webaios-widget-demo/affichage-1730000000123.html");
-    expect(cheminCopie("/data", "demo", 42)).toBe("/data/webaios-widgets/demo/affichage-42.html");
+    expect(displayUrl("demo", 1730000000123)).toBe("resource://webaios-widget-demo/affichage-1730000000123.html");
+    expect(copyPath("/data", "demo", 42)).toBe("/data/webaios-widgets/demo/affichage-42.html");
   });
 });
 
@@ -75,8 +75,8 @@ describe("preparerWidget", () => {
     const source = join(widgets, "demo", "affichage.html");
     const mtime = Math.round(statSync(source).mtimeMs);
     const url = await preparerWidget(racine, "demo");
-    expect(url).toBe(urlAffichage("demo", mtime));
-    const copie = readFileSync(cheminCopie(racine, "demo", mtime), "utf8");
+    expect(url).toBe(displayUrl("demo", mtime));
+    const copie = readFileSync(copyPath(racine, "demo", mtime), "utf8");
     expect(copie).toContain(`<meta http-equiv="Content-Security-Policy" content="${CSP_WIDGET}">`);
     expect(copie).toContain("<title>démo</title>");
     expect(substitutions.get("webaios-widget-demo")).toBe(`file://${join(racine, "webaios-widgets", "demo")}`);
@@ -87,18 +87,18 @@ describe("preparerWidget", () => {
     const source = join(widgets, "refus", "affichage.html");
     writeFileSync(source, '<!doctype html><link rel="preload" href="https://exemple.test/x"><p>jamais</p>');
     const mtime = Math.round(statSync(source).mtimeMs);
-    expect(await preparerWidget(racine, "refus")).toBe(urlAffichage("refus", mtime));
-    expect(readFileSync(cheminCopie(racine, "refus", mtime), "utf8")).toBe(AFFICHAGE_REFUSE);
+    expect(await preparerWidget(racine, "refus")).toBe(displayUrl("refus", mtime));
+    expect(readFileSync(copyPath(racine, "refus", mtime), "utf8")).toBe(DISPLAY_DENIED);
   });
 
   it("does not rewrite the copy when the source's mtime does not change", async () => {
     const source = join(widgets, "demo", "affichage.html");
     const mtime = Math.round(statSync(source).mtimeMs);
-    const copie = cheminCopie(racine, "demo", mtime);
+    const copie = copyPath(racine, "demo", mtime);
     const premier = readFileSync(copie, "utf8");
     writeFileSync(source, "<!doctype html><title>réécrit</title>");
     utimesSync(source, new Date(mtime), new Date(mtime));
-    expect(await preparerWidget(racine, "demo")).toBe(urlAffichage("demo", mtime));
+    expect(await preparerWidget(racine, "demo")).toBe(displayUrl("demo", mtime));
     expect(readFileSync(copie, "utf8")).toBe(premier);
   });
 
@@ -108,9 +108,9 @@ describe("preparerWidget", () => {
     const nouveau = ancien + 5000;
     writeFileSync(source, "<!doctype html><title>nouveau</title>");
     utimesSync(source, new Date(nouveau), new Date(nouveau));
-    expect(await preparerWidget(racine, "demo")).toBe(urlAffichage("demo", nouveau));
-    expect(existsSync(cheminCopie(racine, "demo", ancien))).toBe(false);
-    expect(readFileSync(cheminCopie(racine, "demo", nouveau), "utf8")).toContain("<title>nouveau</title>");
+    expect(await preparerWidget(racine, "demo")).toBe(displayUrl("demo", nouveau));
+    expect(existsSync(copyPath(racine, "demo", ancien))).toBe(false);
+    expect(readFileSync(copyPath(racine, "demo", nouveau), "utf8")).toContain("<title>nouveau</title>");
     // The write is atomic: no temporary file remains.
     expect(readdirSync(join(racine, "webaios-widgets", "demo")).some((n) => n.endsWith(".tmp"))).toBe(false);
   });
@@ -147,7 +147,7 @@ describe("oublierWidget", () => {
     writeFileSync(join(widgets, "oublie", "affichage.html"), "<title>oublie</title>");
     await preparerWidget(racine, "oublie");
     expect(substitutions.get("webaios-widget-oublie")).toBeTruthy();
-    await oublierWidget(racine, "oublie");
+    await forgetWidget(racine, "oublie");
     expect(substitutions.get("webaios-widget-oublie")).toBeNull();
     expect(existsSync(join(racine, "webaios-widgets", "oublie"))).toBe(false);
   });
@@ -177,7 +177,7 @@ describe("affichageServi", () => {
 
   it("injects the CSP meta then the guard after the doctype, before any widget element", () => {
     const source = html("<script>document.title = 'ok'</script>");
-    const servi = affichageServi(source);
+    const servi = displayServed(source);
     const prefixe = `<!doctype html><meta http-equiv="Content-Security-Policy" content="${CSP_WIDGET}"><script>`;
     expect(servi.startsWith(prefixe)).toBe(true);
     expect(servi).toContain("<script>document.title = 'ok'</script>");
@@ -193,32 +193,32 @@ describe("affichageServi", () => {
   });
 
   it("injects the same prefix into an HTML without a doctype", () => {
-    const servi = affichageServi("<p>nu</p>");
+    const servi = displayServed("<p>nu</p>");
     expect(servi.startsWith(`<meta http-equiv="Content-Security-Policy" content="${CSP_WIDGET}"><script>`)).toBe(true);
     expect(servi.endsWith("</script><p>nu</p>")).toBe(true);
   });
 
   it("keeps the head comments and the doctype before the meta and the guard", () => {
-    const servi = affichageServi("<!-- x -->\n<!doctype html><p>nu</p>");
+    const servi = displayServed("<!-- x -->\n<!doctype html><p>nu</p>");
     expect(servi.startsWith(`<!-- x -->\n<!doctype html><meta http-equiv="Content-Security-Policy"`)).toBe(true);
     expect(servi.endsWith("</script><p>nu</p>")).toBe(true);
   });
 
   it("remplace par AFFICHAGE_REFUSE un <link>", () => {
-    expect(affichageServi(html('<link rel="preload" href="https://exemple.test/x">'))).toBe(AFFICHAGE_REFUSE);
+    expect(displayServed(html('<link rel="preload" href="https://exemple.test/x">'))).toBe(DISPLAY_DENIED);
   });
 
   it("replaces another http-equiv meta with AFFICHAGE_REFUSE", () => {
-    expect(affichageServi(html('<meta http-equiv="x-dns-prefetch-control" content="on">'))).toBe(AFFICHAGE_REFUSE);
+    expect(displayServed(html('<meta http-equiv="x-dns-prefetch-control" content="on">'))).toBe(DISPLAY_DENIED);
   });
 
   it("replaces speculation rules with AFFICHAGE_REFUSE", () => {
-    expect(affichageServi(html('<script type="speculationrules">{"prefetch":[]}</script>'))).toBe(AFFICHAGE_REFUSE);
+    expect(displayServed(html('<script type="speculationrules">{"prefetch":[]}</script>'))).toBe(DISPLAY_DENIED);
   });
 
   it("keeps intact an HTML that only talks about links and preloading", () => {
     const source = html("<p>A link can preload; speculation rules are a thing.</p>");
-    expect(affichageServi(source)).toContain("<p>A link can preload; speculation rules are a thing.</p>");
-    expect(affichageServi(source)).not.toBe(AFFICHAGE_REFUSE);
+    expect(displayServed(source)).toContain("<p>A link can preload; speculation rules are a thing.</p>");
+    expect(displayServed(source)).not.toBe(DISPLAY_DENIED);
   });
 });

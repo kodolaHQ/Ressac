@@ -38,7 +38,7 @@ export interface SiteWindowController {
   state(): SiteWindowState;
   onState(cb: (e: SiteWindowState) => void): () => void;
   /** « Autoriser » (oui) or « Ouvrir sans retouches » on the grant card; `empreinte` is the card's. */
-  accord(oui: boolean, empreinte: string): Promise<void>;
+  accord(yes: boolean, hash: string): Promise<void>;
   /** « Entrer dans le site »: the start address the first time only. */
   enter(): void;
   /** ⌂: the home screen; the site's page stays loaded behind it. */
@@ -58,7 +58,7 @@ export interface SiteWindowController {
    * The home screen asks for an address: on the current domain, just after a real
    * gesture in the home (consumed), one per ECART_OUVERTURE_ACCUEIL_MS; false if refused.
    */
-  openFromHome(adresse: string): boolean;
+  openFromHome(address: string): boolean;
   /** A site image for the home, as `data:`, loaded in the app's container; null if refused. */
   image(url: string): Promise<string | null>;
   /** The served copy's URL (re-served when the home's files change, then the state is broadcast), or null. */
@@ -330,9 +330,9 @@ function visible(c: Cadre): boolean {
 /** The window's features: the kept frame (outer size), else 1200 × 800; 360 × 240 at least. */
 export function frameFeatures(cadre: Cadre | null | undefined): string {
   const c = cadre && [cadre.x, cadre.y, cadre.largeur, cadre.hauteur].every(Number.isFinite) && visible(cadre) ? cadre : null;
-  const largeur = Math.max(MIN.largeur, Math.round(c?.largeur ?? SIZE.largeur));
+  const width = Math.max(MIN.largeur, Math.round(c?.largeur ?? SIZE.largeur));
   const hauteur = Math.max(MIN.hauteur, Math.round(c?.hauteur ?? SIZE.hauteur));
-  return `outerWidth=${largeur},outerHeight=${hauteur}${c ? `,left=${Math.round(c.x)},top=${Math.round(c.y)}` : ""}`;
+  return `outerWidth=${width},outerHeight=${hauteur}${c ? `,left=${Math.round(c.x)},top=${Math.round(c.y)}` : ""}`;
 }
 
 /** The window's frame (its normal bounds), or null while it is minimized or fullscreen. Still read at unload. */
@@ -396,9 +396,9 @@ function controllerOf(s: OpenSite): SiteWindowController {
       s.listeners.add(cb);
       return () => void s.listeners.delete(cb);
     },
-    async accord(oui, empreinte) {
-      if (open.get(id) !== s || typeof oui !== "boolean" || typeof empreinte !== "string" || empreinte.length > 128) return;
-      await host?.request("sites.accorder", { id, oui, empreinte });
+    async accord(yes, hash) {
+      if (open.get(id) !== s || typeof yes !== "boolean" || typeof hash !== "string" || hash.length > 128) return;
+      await host?.request("sites.accorder", { id, oui: yes, empreinte: hash });
     },
     enter() {
       if (s.vue === "accord") return;
@@ -440,11 +440,11 @@ function controllerOf(s: OpenSite): SiteWindowController {
       set.add(cb);
       return () => void set.delete(cb);
     },
-    openFromHome(adresse) {
-      if (open.get(id) !== s || typeof adresse !== "string") return false;
+    openFromHome(address) {
+      if (open.get(id) !== s || typeof address !== "string") return false;
       const now = Date.now();
       if (now - s.lastHomeOpen < HOME_OPEN_GAP_MS) return false;
-      const url = urlOnDomain(adresse, httpHost(s.site.depart) ?? "", s.site.domaines, s.site.depart, { adressesLocales: !!context(s).adressesLocales });
+      const url = urlOnDomain(address, httpHost(s.site.depart) ?? "", s.site.domaines, s.site.depart, { adressesLocales: !!context(s).adressesLocales });
       // Without a recent real gesture nothing opens: a home that asks on load would send back to the site at each ⌂.
       if (!url || !gestures.accepter(id, id) || s.vue !== "accueil") return false;
       loadInView(s, url);
@@ -587,11 +587,11 @@ export const sites = {
    * Opens the app's window, or brings it to the front without reloading it (its declaration and domains are taken
    * over). False if the id is not a site app's.
    */
-  open(site: SiteChrome, cadre: Cadre | null | undefined, retouches: TweaksRead): boolean {
+  open(site: SiteChrome, cadre: Cadre | null | undefined, tweaks: TweaksRead): boolean {
     if (typeof site?.id !== "string" || !ID_SITE.test(site.id)) return false;
     const known = open.get(site.id);
     if (known && !known.window.closed) {
-      sites.update(site, retouches);
+      sites.update(site, tweaks);
       if (known.window.windowState === known.window.STATE_MINIMIZED) (known.window as any).restore();
       known.window.focus();
       return true;
@@ -602,7 +602,7 @@ export const sites = {
     marker.setPropertyAsAString(SITE_WINDOW_KEY, site.id);
     const win = openInContainer(userContextId, marker, frameFeatures(cadre));
     // The card first if the tweaks need their grant: the view loads nothing until it is answered (nextView).
-    const s: OpenSite = { site, retouches, erreurs: [], userContextId, window: win, view: null, vue: site.accordRequis ? "accord" : site.aAccueil ? "accueil" : "site", aCharger: null, aChargerAgent: false, loaded: false, listeners: new Set(), small: new Set(), blocked: [], notice: blockedNotice(() => broadcast(s)), home: null, lastHomeOpen: -Infinity, target: null, searching: false, hostNotice: null, wantNext: false, wanted: false };
+    const s: OpenSite = { site, retouches: tweaks, erreurs: [], userContextId, window: win, view: null, vue: site.accordRequis ? "accord" : site.aAccueil ? "accueil" : "site", aCharger: null, aChargerAgent: false, loaded: false, listeners: new Set(), small: new Set(), blocked: [], notice: blockedNotice(() => broadcast(s)), home: null, lastHomeOpen: -Infinity, target: null, searching: false, hostNotice: null, wantNext: false, wanted: false };
     open.set(site.id, s);
     byContainer.set(userContextId, s);
     publishOpen();
@@ -646,12 +646,12 @@ export const sites = {
    * the tweaks it had. The grant is no longer needed: the next view. The home is gone: the site. True if the page was
    * reloaded.
    */
-  update(site: SiteChrome, retouches: TweaksRead): boolean {
+  update(site: SiteChrome, tweaks: TweaksRead): boolean {
     const s = open.get(site?.id);
     if (!s || s.window.closed) return false;
     const before = s.site;
     s.site = site;
-    s.retouches = retouches;
+    s.retouches = tweaks;
     s.view?.browsingContext?.sessionHistory?.evictAllDocumentViewers();
     let reloaded = false;
     // The hash is that of the rights asked (empreinteDroits).
@@ -714,8 +714,8 @@ export const sites = {
     frameError(siteOfFrame(wgp, open.values()), e);
   },
   /** The site actor's "memoire", for the frame of this WindowGlobalParent: relayed to the host. */
-  frameMemory(wgp: any, demande: unknown) {
-    return frameMemory(wgp, siteOfFrame(wgp, open.values()), demande, (p) => {
+  frameMemory(wgp: any, request: unknown) {
+    return frameMemory(wgp, siteOfFrame(wgp, open.values()), request, (p) => {
       if (!host) return Promise.reject(new Error("no host"));
       return host.request("sites.memoireOp", p);
     });
@@ -726,9 +726,9 @@ export const sites = {
     framePosition(wgp, s, p, !!(s && context(s).adressesLocales), (q) => host?.notify("sites.position", q));
   },
   /** The site actor's "reprise": the position to resume, from the host. */
-  frameResume(wgp: any, duree: unknown): Promise<number | null> {
+  frameResume(wgp: any, duration: unknown): Promise<number | null> {
     const s = siteOfFrame(wgp, open.values());
-    return frameResume(wgp, s, duree, !!(s && context(s).adressesLocales), (q) => (host ? host.request<number | null>("sites.reprise", q) : Promise.resolve(null)));
+    return frameResume(wgp, s, duration, !!(s && context(s).adressesLocales), (q) => (host ? host.request<number | null>("sites.reprise", q) : Promise.resolve(null)));
   },
   /** « Afficher le dossier »: the app's folder shown in the file manager. */
   revealSite(id: string): void {
@@ -780,19 +780,19 @@ export const sites = {
       }
     }
     const url: string = s.view.currentURI?.spec ?? "";
-    const hote = httpHost(url);
+    const host = httpHost(url);
     const available =
       !win.document.documentElement.hasAttribute("inDOMFullscreen") &&
       (s.vue === "accueil"
         ? home !== null
-        : s.vue === "site" && openDecision(url, context(s)) === "dans-l-appli" && hote !== null && !hostInSite(hote, context(s).connexion));
+        : s.vue === "site" && openDecision(url, context(s)) === "dans-l-appli" && host !== null && !hostInSite(host, context(s).connexion));
     return { win, nom: s.site.declaration.nom, vue: s.vue, browser: s.view, home, bounds, available };
   },
   /** A passing mention in the bar, gone after DUREE_AVIS_INFO_MS or at the next page; never over a blocked link's. */
-  infoNotice(id: string, texte: string): void {
+  infoNotice(id: string, text: string): void {
     const s = open.get(id);
     if (!s || s.window.closed || s.notice.avis?.genre === "lien-bloque") return;
-    const avis: BarNotice = { genre: "info", texte };
+    const avis: BarNotice = { genre: "info", texte: text };
     s.hostNotice = avis;
     broadcast(s);
     setTimeout(() => {
@@ -867,10 +867,10 @@ export const sites = {
   },
   /** The host's requests (noyau/sites.ts SitesChrome), positional params. */
   handlers: {
-    "sites.ouvrir": ([site, cadre, retouches]: [SiteChrome, Cadre | null, TweaksRead]) => sites.open(site, cadre, retouches),
+    "sites.ouvrir": ([site, cadre, tweaks]: [SiteChrome, Cadre | null, TweaksRead]) => sites.open(site, cadre, tweaks),
     "sites.fermer": ([id]: [string]) => sites.close(id),
     "sites.effacer": ([id]: [string]) => sites.erase(id),
-    "sites.mettreAJour": ([site, retouches]: [SiteChrome, TweaksRead]) => sites.update(site, retouches),
+    "sites.mettreAJour": ([site, tweaks]: [SiteChrome, TweaksRead]) => sites.update(site, tweaks),
     "sites.rechargerVue": ([id]: [string]) => sites.reloadView(id),
     "sites.erreurs": ([id]: [string]) => sites.errors(id),
     "sites.vue": ([id]: [string]) => sites.viewOf(id),
@@ -879,10 +879,10 @@ export const sites = {
     "sites.ouvertes": () => sites.openIds(),
     // The home's files changed: served again; the bar's home frame reads homeUrl on the state broadcast.
     // Address follow.
-    "sites.cherche": ([id, oui]: [string, boolean]) => {
+    "sites.cherche": ([id, yes]: [string, boolean]) => {
       const s = open.get(id);
       if (!s || s.window.closed) return;
-      s.searching = oui;
+      s.searching = yes;
       broadcast(s);
     },
     "sites.avis": ([id, a]: [string, BarNotice | null]) => {
@@ -892,22 +892,22 @@ export const sites = {
       s.hostNotice = a;
       broadcast(s);
     },
-    "sites.adresseChangee": ([id, domaines, depart, vers]: [string, string[], string, string]) => {
+    "sites.adresseChangee": ([id, domains, depart, to]: [string, string[], string, string]) => {
       const s = open.get(id);
       if (!s || s.window.closed) return;
       // The card's « suivis »: the domains added by the follow (the host recomputes the same list).
       const declared = new Set(s.site.declaration.domaines.map((x) => x.toLowerCase()));
-      const suivis = [...new Set(domaines.map((x) => x.toLowerCase()).filter((x) => !declared.has(x)))];
-      s.site = { ...s.site, domaines, depart, demande: { ...s.site.demande, suivis } };
+      const tracked = [...new Set(domains.map((x) => x.toLowerCase()).filter((x) => !declared.has(x)))];
+      s.site = { ...s.site, domaines: domains, depart, demande: { ...s.site.demande, suivis: tracked } };
       if (s.vue === "accord") {
         // The card is shown: the view loads nothing before the choice; a page already loaded was on the old domain.
         if (s.loaded) {
-          s.aCharger = vers;
+          s.aCharger = to;
           s.aChargerAgent = false;
         }
         return broadcast(s);
       }
-      loadInView(s, vers);
+      loadInView(s, to);
       broadcast(s);
     },
     "sites.accueilChange": ([id]: [string]) => {

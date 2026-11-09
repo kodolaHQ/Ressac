@@ -1,7 +1,7 @@
 import { originOf, SITE_PREFIX } from "../../core/agent/pont";
 
 /** An agent app window seen as a tab: `app:<dossier>`. */
-const PREFIXE_APP = "app:";
+const APP_PREFIX = "app:";
 import { TabBuffer, stackText } from "../../core/outils-dev/tampon";
 import type { FirefoxSnapshot, CpuProfile } from "../../../../packages/noyau/src/outils-dev/resumes";
 import { TabNotFound, PrivateTab, type BrowserDevTools, type NetworkRequest, type JsResult } from "../shims/noyau";
@@ -9,7 +9,7 @@ import type { Store } from "./store";
 import type { WindowRegistry } from "./windows";
 
 /** What a call through a revoked owner (a stopped agent's devtools) throws. */
-export const TEXTE_REVOQUE = "Ces outils de développement appartiennent à un agent arrêté.";
+export const REVOKED_TEXT = "Ces outils de développement appartiennent à un agent arrêté.";
 
 // The agent's dev tools on a tab, the Firefox side of the kernel's OutilsDevNavigateur (plan 28, note D1-D9): an
 // in-process DevTools client per tab (CommandsFactory.forTab over DevToolsServer.connectPipe, the toolbox's own way), no
@@ -26,17 +26,17 @@ const PROMISE_POLL_MS = 50;
 const BODY_MAX = 100_000;
 const TRUNCATED = "… [tronqué]";
 const EXTENSION = "moz-extension://";
-export const TEXTE_DELAI = `Le code n'a pas répondu en ${EVAL_TIMEOUT_MS / 1000} s : son résultat sera ignoré.`;
-const TEXTE_SITE_CHANGE = "L'onglet a changé de site.";
+export const DELAY_TEXT = `Le code n'a pas répondu en ${EVAL_TIMEOUT_MS / 1000} s : son résultat sera ignoré.`;
+const SITE_CHANGED_TEXT = "L'onglet a changé de site.";
 /** Profile durations and the load wait. */
 const PROFILE_MS = 5000;
 const PROFILE_MAX_MS = 30_000;
 const PROFILE_LOAD_TIMEOUT_MS = 30_000;
 /** Services.profiler is one for the whole browser: the person's own session is never stopped for the agent. */
-export const TEXTE_PROFILEUR_OCCUPE =
+export const PROFILER_BUSY_TEXT =
   "Le profileur de Firefox est déjà en cours (about:profiling ou un autre profil de l'agent) : l'agent ne l'interrompt pas. Réessayez une fois qu'il est arrêté.";
 /** Told to the agent when its dev tools are detached from the tab. */
-const TEXTE_DETACHE = "Les outils de développement de l'agent ont été détachés de l'onglet.";
+const DETACHED_TEXT = "Les outils de développement de l'agent ont été détachés de l'onglet.";
 
 export interface DevTools {
   /** One owner per kernel start: creating one revokes the previous (its calls throw TEXTE_REVOQUE, its attachments drop). */
@@ -192,12 +192,12 @@ type Leaf = { count: number; bytes: number };
 export function censusToSnapshot(census: Record<string, Leaf | Record<string, Leaf>>): FirefoxSnapshot {
   const byName = new Map<string, { nom: string; nombre: number; taille: number }>();
   let total = 0;
-  const add = (nom: string, l: Leaf) => {
-    const e = byName.get(nom) ?? { nom, nombre: 0, taille: 0 };
+  const add = (name: string, l: Leaf) => {
+    const e = byName.get(name) ?? { nom: name, nombre: 0, taille: 0 };
     e.nombre += l.count;
     e.taille += l.bytes;
     total += l.bytes;
-    byName.set(nom, e);
+    byName.set(name, e);
   };
   for (const [key, v] of Object.entries(census ?? {})) {
     if (typeof (v as Leaf).count === "number") add(key, v as Leaf);
@@ -272,8 +272,8 @@ export function geckoToCpuProfile(t: GeckoThread, categories: { name: string }[]
     if (!r.idle) taskMs += dur;
   });
   for (const n of nodes) if (!n.children!.length) delete n.children;
-  const profil: CpuProfile = { nodes, samples, timeDeltas, startTime: Math.round((times[0] ?? 0) * 1000), endTime: Math.round((times.at(-1) ?? 0) * 1000) };
-  return { profil, scriptMs, taskMs };
+  const profile: CpuProfile = { nodes, samples, timeDeltas, startTime: Math.round((times[0] ?? 0) * 1000), endTime: Math.round((times.at(-1) ?? 0) * 1000) };
+  return { profil: profile, scriptMs, taskMs };
 }
 
 function abortError(signal: AbortSignal): unknown {
@@ -297,9 +297,9 @@ export function createDevTools(o: {
     return s.commands.targetCommand.reloadTopLevelTarget(noCache);
   };
   /** A site app or agent app window, not a tab of the state. */
-  const isWindow = (id: string) => id.startsWith(SITE_PREFIX) || id.startsWith(PREFIXE_APP);
+  const isWindow = (id: string) => id.startsWith(SITE_PREFIX) || id.startsWith(APP_PREFIX);
   const siteView = (id: string) =>
-    id.startsWith(SITE_PREFIX) ? o.sites?.viewFor(id.slice(SITE_PREFIX.length)) : id.startsWith(PREFIXE_APP) ? o.apps?.viewFor(id.slice(PREFIXE_APP.length)) : undefined;
+    id.startsWith(SITE_PREFIX) ? o.sites?.viewFor(id.slice(SITE_PREFIX.length)) : id.startsWith(APP_PREFIX) ? o.apps?.viewFor(id.slice(APP_PREFIX.length)) : undefined;
   /** The page's address now: the app view's for a site app or agent app window, the tab's otherwise. */
   const urlOf = (id: string) => String((isWindow(id) ? siteView(id)?.browser.currentURI?.spec : o.store.state.onglets[id]?.url) ?? "");
   const entries = new Map<string, { browser: any; origin: string | null; session: Promise<Session> }>();
@@ -316,7 +316,7 @@ export function createDevTools(o: {
         s.dropped = true;
         s.leave();
         s.nextTarget.catch(() => {});
-        s.rejectNext(new Error(TEXTE_DETACHE));
+        s.rejectNext(new Error(DETACHED_TEXT));
         s.buffer.vider();
         s.requests.clear();
         s.headers.clear();
@@ -426,7 +426,7 @@ export function createDevTools(o: {
     const win = view ? view.window : tabWindow!.window;
     const browser = view ? view.browser : await tabWindow!.controller.ensure(id);
     check(); // closed or turned private while it loaded
-    if (gen !== generation) throw new Error(TEXTE_REVOQUE);
+    if (gen !== generation) throw new Error(REVOKED_TEXT);
     let e = entries.get(id);
     // Moved to another window (another browser), or on another site without its will-navigate heard (bfcache…).
     if (e && (e.browser !== browser || originOf(browser.currentURI.spec) !== e.origin)) {
@@ -453,7 +453,7 @@ export function createDevTools(o: {
   async function top(s: Session): Promise<any> {
     const t = s.commands.targetCommand.targetFront;
     if (t && !t.isDestroyed()) return t;
-    if (s.dropped) throw new Error(TEXTE_DETACHE);
+    if (s.dropped) throw new Error(DETACHED_TEXT);
     return within(s.nextTarget);
   }
 
@@ -516,7 +516,7 @@ export function createDevTools(o: {
       onAbort = () => ko(abortError(signal!));
       if (signal?.aborted) return onAbort();
       signal?.addEventListener("abort", onAbort, { once: true });
-      void s.gone.then(() => ko(new Error(s.siteChanged ? TEXTE_SITE_CHANGE : TEXTE_DETACHE)));
+      void s.gone.then(() => ko(new Error(s.siteChanged ? SITE_CHANGED_TEXT : DETACHED_TEXT)));
     });
     wait.catch(() => {});
     return { wait, done: () => signal?.removeEventListener("abort", onAbort) };
@@ -542,10 +542,10 @@ export function createDevTools(o: {
       );
       return [...s.requests.entries()].map(([key, r]) => requestOf(r, s.headers.get(key)));
     },
-    async corps(id: string, requete: string) {
+    async corps(id: string, request: string) {
       const s = await session(id);
-      const r = s.requests.get(String(requete));
-      if (!r) throw new Error(`Requête introuvable : ${requete}`);
+      const r = s.requests.get(String(request));
+      if (!r) throw new Error(`Requête introuvable : ${request}`);
       const { content } = await s.commands.client.request({ to: r.actor, type: "getResponseContent" });
       let text = content?.text;
       if (text && typeof text === "object" && text.type === "longString")
@@ -564,13 +564,13 @@ export function createDevTools(o: {
         const r = await Promise.race([
           work,
           new Promise<never>((_, ko) => {
-            timer = setTimeout(() => ko(new Error(TEXTE_DELAI)), EVAL_TIMEOUT_MS);
+            timer = setTimeout(() => ko(new Error(DELAY_TEXT)), EVAL_TIMEOUT_MS);
             onAbort = () => ko(abortError(signal!));
             signal?.addEventListener("abort", onAbort, { once: true });
           }),
         ]);
         // The code may have taken the page to another site: its answer is not worth anything there.
-        if (s.dropped && originOf(urlOf(id)) !== s.origin) throw new Error(TEXTE_SITE_CHANGE);
+        if (s.dropped && originOf(urlOf(id)) !== s.origin) throw new Error(SITE_CHANGED_TEXT);
         return r;
       } finally {
         clearTimeout(timer);
@@ -582,7 +582,7 @@ export function createDevTools(o: {
       const s = await session(id);
       // Resolves at dom-complete (note D4); a page that never finishes still answers.
       await Promise.race([reloadTop(id, s, !!sansCache), sleep(NAVIGATION_TIMEOUT_MS)]);
-      if (s.dropped && originOf(urlOf(id)) !== s.origin) throw new Error(TEXTE_SITE_CHANGE);
+      if (s.dropped && originOf(urlOf(id)) !== s.origin) throw new Error(SITE_CHANGED_TEXT);
     },
     /** Gecko's profiler on the tab's process only (note D5), converted to a .cpuprofile; always stopped once started here. */
     async profiler(id: string, opts: { dureeMs?: number; recharger?: boolean }, signal?: AbortSignal) {
@@ -590,7 +590,7 @@ export function createDevTools(o: {
       const s = await session(id);
       const wg = s.browser.browsingContext?.currentWindowGlobal;
       if (!wg) throw new Error("L'onglet n'a pas de page.");
-      if (profiling || Services.profiler.IsActive()) throw new Error(TEXTE_PROFILEUR_OCCUPE);
+      if (profiling || Services.profiler.IsActive()) throw new Error(PROFILER_BUSY_TEXT);
       const pid = wg.osPid;
       const c = cut(s, signal);
       try {
@@ -619,7 +619,7 @@ export function createDevTools(o: {
         const r = geckoToCpuProfile(main, proc.meta.categories, windows);
         const M = main.markers.schema;
         const mine = (d: any[]) => !d[M.data]?.innerWindowID || windows.has(d[M.data].innerWindowID);
-        const metriques: Record<string, number> = {
+        const metrics: Record<string, number> = {
           ScriptDuration: r.scriptMs / 1000,
           TaskDuration: r.taskMs / 1000,
           // One start (phase 2) and one end (3) per reflow, or one interval (1).
@@ -627,10 +627,10 @@ export function createDevTools(o: {
         };
         const target = await Promise.race([top(s).catch(() => null), c.wait]);
         const heap = target && (await Promise.race([within(target.getFront("memory").then((m: any) => m.measure())).catch(() => null), c.wait]));
-        if (heap) metriques.JSHeapUsedSize = heap.jsObjectsSize + heap.jsStringsSize + heap.jsOtherSize;
+        if (heap) metrics.JSHeapUsedSize = heap.jsObjectsSize + heap.jsStringsSize + heap.jsOtherSize;
         const nodes = grip((await Promise.race([within(run(s, 'document.getElementsByTagName("*").length')).catch(() => null), c.wait]))?.result);
-        if (typeof nodes === "number") metriques.Nodes = nodes;
-        return { profil: r.profil, metriques };
+        if (typeof nodes === "number") metrics.Nodes = nodes;
+        return { profil: r.profil, metriques: metrics };
       } finally {
         c.done();
       }
@@ -674,13 +674,13 @@ export function createDevTools(o: {
       dropAll();
     },
     async call(token, method, args, signal) {
-      if (token !== current) throw new Error(TEXTE_REVOQUE);
+      if (token !== current) throw new Error(REVOKED_TEXT);
       if (!Object.hasOwn(impl, method) || !Array.isArray(args)) throw new Error(`Pas encore disponible dans WebAiOs-Firefox : ${String(method)}`);
       const r = await (impl as Record<string, (...a: unknown[]) => Promise<unknown>>)[method]!(...args, signal);
       if (token !== current) {
         // An attachment that ended after the revocation is undone.
         if (method === "attacher") drop(String(args[0]));
-        throw new Error(TEXTE_REVOQUE);
+        throw new Error(REVOKED_TEXT);
       }
       return r;
     },

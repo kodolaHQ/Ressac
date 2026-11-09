@@ -13,41 +13,41 @@ export const SOURCE_TIMEOUT_MS = 1500;
 // The design overlays' sizes and placement.
 type Rectangle = { x: number; y: number; width: number; height: number };
 /** A note's bubble: 320×170, below the element. */
-export const TAILLE_BULLE = { largeur: 320, hauteur: 170 };
+export const BUBBLE_SIZE = { largeur: 320, hauteur: 170 };
 /** The bubble in a site app: 20 px more for the warning line. */
-export const TAILLE_BULLE_SITE = { largeur: 320, hauteur: 190 };
-const ECART_BULLE = 6;
+export const SITE_BUBBLE_SIZE = { largeur: 320, hauteur: 190 };
+const BUBBLE_GAP = 6;
 // The unavailability message: 360×56, 12 px from the top and right of the tab's view.
-export const LARGEUR_MESSAGE = 360;
+export const MESSAGE_WIDTH = 360;
 export const HAUTEUR_MESSAGE = 56;
 export const MARGE_MESSAGE = 12;
 // An app window's cart, 340 px on the right, 12 px from the edges.
 export const MARGE = 12;
-export const LARGEUR_PANIER = 340;
+export const BASKET_WIDTH = 340;
 /** The unavailability message closes by itself after this. */
-export const DUREE_MESSAGE_MS = 4000;
+export const MESSAGE_DURATION_MS = 4000;
 
 /** Key of a target, also the argument of its overlay. */
-export const cleCible = (c: DesignTarget): string =>
+export const targetKey = (c: DesignTarget): string =>
   c.type === "fenetre" ? `fenetre:${c.fenetreId}` : c.type === "app" ? `app:${c.dossier}` : `site:${c.id}`;
 
 /**
  * Placement of the bubble in the window: below the element (CSS rect × zoom, shifted by the bounds of the page's view), bounded
  * to the window, and never above `hautMin` (the bottom of a site app's bar).
  */
-export function placeBulle(
+export function bubbleSlot(
   rect: ViewfinderCapture["rect"],
   zoom: number,
   bornes: Rectangle,
-  fenetre: [number, number],
+  win: [number, number],
   o: { hautMin?: number; hauteur?: number } = {},
 ): Rectangle {
-  const hauteur = o.hauteur ?? TAILLE_BULLE.hauteur;
-  const borner = (v: number, max: number) => Math.round(Math.max(0, Math.min(v, max)));
+  const hauteur = o.hauteur ?? BUBBLE_SIZE.hauteur;
+  const clamp = (v: number, max: number) => Math.round(Math.max(0, Math.min(v, max)));
   return {
-    x: borner(bornes.x + rect.x * zoom, fenetre[0] - TAILLE_BULLE.largeur),
-    y: Math.max(o.hautMin ?? 0, borner(bornes.y + (rect.y + rect.hauteur) * zoom + ECART_BULLE, fenetre[1] - hauteur)),
-    width: TAILLE_BULLE.largeur,
+    x: clamp(bornes.x + rect.x * zoom, win[0] - BUBBLE_SIZE.largeur),
+    y: Math.max(o.hautMin ?? 0, clamp(bornes.y + (rect.y + rect.hauteur) * zoom + BUBBLE_GAP, win[1] - hauteur)),
+    width: BUBBLE_SIZE.largeur,
     height: hauteur,
   };
 }
@@ -76,41 +76,41 @@ export function firefoxViewfinderScript(): string {
 export const STOP_SCRIPT = `typeof globalThis.__viseurArret === "function" && globalThis.__viseurArret(); typeof globalThis.__viseurAvaler === "function" && globalThis.__viseurAvaler()`;
 
 // Shape guards for what comes back from the page.
-const fini = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n);
-const chaine = (c: unknown, max = 1_000_000): c is string => typeof c === "string" && c.length <= max;
-const entierPositif = (n: unknown): n is number => typeof n === "number" && Number.isInteger(n) && n > 0;
+const finished = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n);
+const chain = (c: unknown, max = 1_000_000): c is string => typeof c === "string" && c.length <= max;
+const positiveInteger = (n: unknown): n is number => typeof n === "number" && Number.isInteger(n) && n > 0;
 
 /** The isolated world is safe, but the shape is checked anyway: null if it is not the expected one. */
-function propreCapture(v: unknown): ViewfinderCapture | null {
+function tidyCapture(v: unknown): ViewfinderCapture | null {
   const c = v as Partial<ViewfinderCapture> | null;
   if (!c || typeof c !== "object" || !c.rect || !c.vue || !c.voisinage || !c.styles) return null;
-  if (![c.rect.x, c.rect.y, c.rect.largeur, c.rect.hauteur, c.vue.largeur, c.vue.hauteur].every(fini)) return null;
-  if (![c.selecteur, c.etiquette, c.html, c.adresse, c.voisinage.parent].every((x) => chaine(x))) return null;
-  if (!Array.isArray(c.voisinage.freres) || !c.voisinage.freres.every((f) => chaine(f))) return null;
-  if (!Object.values(c.styles).every((x) => chaine(x))) return null;
+  if (![c.rect.x, c.rect.y, c.rect.largeur, c.rect.hauteur, c.vue.largeur, c.vue.hauteur].every(finished)) return null;
+  if (![c.selecteur, c.etiquette, c.html, c.adresse, c.voisinage.parent].every((x) => chain(x))) return null;
+  if (!Array.isArray(c.voisinage.freres) || !c.voisinage.freres.every((f) => chain(f))) return null;
+  if (!Object.values(c.styles).every((x) => chain(x))) return null;
   return c as ViewfinderCapture;
 }
 
 /** What comes from the page's world is never trusted: short file, positive integer numbers, the rest is dropped. */
-function sourceSaine(r: unknown): DesignContext["source"] {
+function healthySource(r: unknown): DesignContext["source"] {
   const o = r as { fichier?: unknown; ligne?: unknown; colonne?: unknown } | null;
-  if (!o || typeof o !== "object" || !chaine(o.fichier, 1024) || o.fichier === "") return null;
-  return { fichier: o.fichier, ...(entierPositif(o.ligne) ? { ligne: o.ligne } : {}), ...(entierPositif(o.colonne) ? { colonne: o.colonne } : {}) };
+  if (!o || typeof o !== "object" || !chain(o.fichier, 1024) || o.fichier === "") return null;
+  return { fichier: o.fichier, ...(positiveInteger(o.ligne) ? { ligne: o.ligne } : {}), ...(positiveInteger(o.colonne) ? { colonne: o.colonne } : {}) };
 }
 
 /** The viewfinder script's answer: the shape checked, the html cut. */
 export function cleanCapture(v: unknown): ViewfinderCapture | null {
-  const c = propreCapture(v);
+  const c = tidyCapture(v);
   return c ? { ...c, html: truncateHtml(c.html) } : null;
 }
 
-export const cleanSource = (r: unknown): DesignContext["source"] => sourceSaine(r);
+export const cleanSource = (r: unknown): DesignContext["source"] => healthySource(r);
 
 /** lireSource's expression (run in the actor's sandbox with Xrays waived): no effect, no global. */
-export function sourceExpression(selecteur: string): string {
+export function sourceExpression(selector: string): string {
   return `(() => {
     try {
-      const el = document.querySelector(${JSON.stringify(selecteur)});
+      const el = document.querySelector(${JSON.stringify(selector)});
       if (!el) return null;
       const ds = el.getAttribute("data-source");
       if (ds) { const m = /^(.*?):(\\d+)(?::(\\d+))?$/.exec(ds); return m ? { fichier: m[1], ligne: Number(m[2]), ...(m[3] ? { colonne: Number(m[3]) } : {}) } : { fichier: ds }; }

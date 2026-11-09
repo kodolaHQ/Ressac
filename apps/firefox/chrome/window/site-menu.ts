@@ -10,7 +10,7 @@ import type { WebAiOsStore } from "../store";
  * The « Navigation » menu entry « Oublier les autorisations de ce site » (oublierAutorisations): forgets the
  * active tab's origin in its space's profile. A menu in this window's menu bar, before « Fenêtre » (spike P9).
  */
-export function mountSiteMenu(win: Window, store: WebAiOsStore, fenetreId: WindowId): void {
+export function mountSiteMenu(win: Window, store: WebAiOsStore, windowId: WindowId): void {
   const doc = win.document as Document & { createXULElement(tag: string): Element };
   const menu = doc.createXULElement("menu");
   menu.setAttribute("label", "Navigation");
@@ -19,7 +19,7 @@ export function mountSiteMenu(win: Window, store: WebAiOsStore, fenetreId: Windo
   item.id = "webaios-forget-permissions";
   item.setAttribute("label", "Oublier les autorisations de ce site");
   item.addEventListener("command", () => {
-    const f = store.state.fenetres.find((x) => x.id === fenetreId);
+    const f = store.state.fenetres.find((x) => x.id === windowId);
     const tab = f && store.state.onglets[f.actif[f.espaceActif] ?? ""];
     if (!tab) return;
     try {

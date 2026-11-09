@@ -20,9 +20,9 @@ export interface SitePermissions {
   /** true = granted. Unknown kind: false, no question. */
   handle(r: SiteRequest): Promise<boolean>;
   /** Synchronous, from the remembered decisions. */
-  check(profil: ProfileId, origine: string, kind: string, mediaType?: string): boolean;
-  forget(profil: ProfileId, origine: string): Promise<void>;
-  removeProfile(profil: ProfileId): Promise<void>;
+  check(profile: ProfileId, origin: string, kind: string, mediaType?: string): boolean;
+  forget(profile: ProfileId, origin: string): Promise<void>;
+  removeProfile(profile: ProfileId): Promise<void>;
 }
 
 interface Files {
@@ -31,7 +31,7 @@ interface Files {
   remove(path: string): Promise<void>;
 }
 
-const SANS_DEMANDE = new Set(["fullscreen", "clipboard-sanitized-write"]);
+const NO_REQUEST = new Set(["fullscreen", "clipboard-sanitized-write"]);
 const SIMPLE = new Set(["notifications", "geolocation", "drm", "midi", "partage-ecran"]);
 /** Asked every time, never remembered. */
 const NOT_KEPT = new Set<SitePermission>(["partage-ecran", "ouvrir-application"]);
@@ -47,7 +47,7 @@ function translate(kind: string, mediaTypes: readonly string[] = []): SitePermis
   return SIMPLE.has(kind) ? [kind as SitePermission] : [];
 }
 
-const key = (origine: string, p: SitePermission) => `${origine} ${p}`;
+const key = (origin: string, p: SitePermission) => `${origin} ${p}`;
 
 /** `permissions.json` for the default profile. */
 const fileOf = (dir: string, id: ProfileId) => `${dir}/${id === DEFAULT_PROFILE ? "permissions.json" : `permissions-${id}.json`}`;
@@ -85,7 +85,7 @@ export function createSitePermissions(o: {
   dataDir: string;
   profiles: () => ProfileId[];
   ask: (d: { ongletId: TabId | null; fenetreId: WindowId | null; origine: string; permissions: SitePermission[]; lien?: string }, signal?: AbortSignal) => Promise<Issue>;
-  firefox: { set(profil: ProfileId, origine: string, p: SitePermission, d: Decision): void; remove(profil: ProfileId | null, origine: string | null): void };
+  firefox: { set(profile: ProfileId, origin: string, p: SitePermission, d: Decision): void; remove(profile: ProfileId | null, origin: string | null): void };
   files?: Files;
 }): SitePermissions {
   const files = o.files ?? defaultFiles;
@@ -100,20 +100,20 @@ export function createSitePermissions(o: {
       console.warn("[site-permissions] not mirrored into Firefox:", e);
     }
   };
-  const of = (profil: ProfileId) => memo.get(profil) ?? memo.set(profil, {}).get(profil)!;
+  const of = (profile: ProfileId) => memo.get(profile) ?? memo.set(profile, {}).get(profile)!;
 
   // Writes are chained so two decisions never race on the temporary file.
-  const save = (profil: ProfileId) => {
-    const text = JSON.stringify(of(profil), null, 2);
-    writes = writes.then(() => files.write(fileOf(o.dataDir, profil), text)).catch((e) => console.error("[site-permissions] write failed:", e));
+  const save = (profile: ProfileId) => {
+    const text = JSON.stringify(of(profile), null, 2);
+    writes = writes.then(() => files.write(fileOf(o.dataDir, profile), text)).catch((e) => console.error("[site-permissions] write failed:", e));
     return writes;
   };
 
   const ready = (async () => {
     // Firefox starts empty: it is rebuilt from the files, so nothing it kept on its own outlives them.
     mirror(() => o.firefox.remove(null, null));
-    for (const profil of new Set([DEFAULT_PROFILE, ...o.profiles()])) {
-      const path = fileOf(o.dataDir, profil);
+    for (const profile of new Set([DEFAULT_PROFILE, ...o.profiles()])) {
+      const path = fileOf(o.dataDir, profile);
       const text = await files.read(path);
       if (text === null) continue;
       const decisions = parse(text);
@@ -121,10 +121,10 @@ export function createSitePermissions(o: {
         console.warn(`[site-permissions] ${path} invalid: no decision loaded`);
         continue;
       }
-      memo.set(profil, decisions);
+      memo.set(profile, decisions);
       for (const [k, d] of Object.entries(decisions)) {
         const i = k.lastIndexOf(" ");
-        mirror(() => o.firefox.set(profil, k.slice(0, i), k.slice(i + 1) as SitePermission, d));
+        mirror(() => o.firefox.set(profile, k.slice(0, i), k.slice(i + 1) as SitePermission, d));
       }
     }
   })();
@@ -133,57 +133,57 @@ export function createSitePermissions(o: {
     ready,
     async handle(r) {
       await ready;
-      if (SANS_DEMANDE.has(r.kind)) return true;
-      const { ongletId, fenetreId, origine, signal } = r;
+      if (NO_REQUEST.has(r.kind)) return true;
+      const { ongletId: tabId, fenetreId: windowId, origine: origin, signal } = r;
       // Handing a link to another application: asked every time, with the link in view.
       if (r.kind === "openExternal") {
         if (!r.lien) return false;
-        return (await o.ask({ ongletId, fenetreId, origine, permissions: ["ouvrir-application"], lien: r.lien }, signal)) === "autoriser";
+        return (await o.ask({ ongletId: tabId, fenetreId: windowId, origine: origin, permissions: ["ouvrir-application"], lien: r.lien }, signal)) === "autoriser";
       }
       const permissions = translate(r.kind, r.mediaTypes);
       if (permissions.length === 0) return false;
-      if (permissions.every((p) => NOT_KEPT.has(p))) return (await o.ask({ ongletId, fenetreId, origine, permissions }, signal)) === "autoriser";
+      if (permissions.every((p) => NOT_KEPT.has(p))) return (await o.ask({ ongletId: tabId, fenetreId: windowId, origine: origin, permissions }, signal)) === "autoriser";
       const decisions = of(r.profil);
-      const k = (p: SitePermission) => `${r.profil}\n${key(origine, p)}`;
-      const unknown = permissions.filter((p) => !decisions[key(origine, p)]);
+      const k = (p: SitePermission) => `${r.profil}\n${key(origin, p)}`;
+      const unknown = permissions.filter((p) => !decisions[key(origin, p)]);
       // One question pending per (profile, origin, permission): another banner already asks it.
       const fresh = unknown.filter((p) => !pending.has(k(p)));
       if (fresh.length) {
-        const answer = o.ask({ ongletId, fenetreId, origine, permissions: fresh }, signal);
+        const answer = o.ask({ ongletId: tabId, fenetreId: windowId, origine: origin, permissions: fresh }, signal);
         for (const p of fresh) pending.set(k(p), answer);
         const done = () => fresh.forEach((p) => pending.delete(k(p)));
         void answer.then((d) => {
           done();
           // Withdrawn without an answer (tab closed): refused this time, asked again next time.
           if (d === "retiree") return;
-          for (const p of fresh) decisions[key(origine, p)] = d;
+          for (const p of fresh) decisions[key(origin, p)] = d;
           // The profile was removed while the question was open: the answer holds for this request only.
           if (memo.get(r.profil) !== decisions) return;
-          for (const p of fresh) mirror(() => o.firefox.set(r.profil, origine, p, d));
+          for (const p of fresh) mirror(() => o.firefox.set(r.profil, origin, p, d));
           void save(r.profil);
         }, done);
       }
       await Promise.all(unknown.map((p) => pending.get(k(p))));
-      return permissions.every((p) => decisions[key(origine, p)] === "autoriser");
+      return permissions.every((p) => decisions[key(origin, p)] === "autoriser");
     },
-    check(profil, origine, kind, mediaType) {
-      if (SANS_DEMANDE.has(kind)) return true;
+    check(profile, origin, kind, mediaType) {
+      if (NO_REQUEST.has(kind)) return true;
       const permissions = translate(kind, mediaType ? [mediaType] : []);
-      return permissions.length > 0 && permissions.every((p) => memo.get(profil)?.[key(origine, p)] === "autoriser");
+      return permissions.length > 0 && permissions.every((p) => memo.get(profile)?.[key(origin, p)] === "autoriser");
     },
-    async forget(profil, origine) {
+    async forget(profile, origin) {
       await ready;
-      const decisions = of(profil);
-      for (const k of Object.keys(decisions)) if (k.startsWith(`${origine} `)) delete decisions[k];
-      mirror(() => o.firefox.remove(profil, origine));
-      await save(profil);
+      const decisions = of(profile);
+      for (const k of Object.keys(decisions)) if (k.startsWith(`${origin} `)) delete decisions[k];
+      mirror(() => o.firefox.remove(profile, origin));
+      await save(profile);
     },
-    async removeProfile(profil) {
+    async removeProfile(profile) {
       // Synchronously, before the caller removes the container: Firefox's entries are found through it.
-      memo.delete(profil);
-      mirror(() => o.firefox.remove(profil, null));
+      memo.delete(profile);
+      mirror(() => o.firefox.remove(profile, null));
       await ready;
-      await (writes = writes.then(() => files.remove(fileOf(o.dataDir, profil))).catch((e) => console.error("[site-permissions] remove failed:", e)));
+      await (writes = writes.then(() => files.remove(fileOf(o.dataDir, profile))).catch((e) => console.error("[site-permissions] remove failed:", e)));
     },
   };
 }

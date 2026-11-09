@@ -8,8 +8,8 @@ function popupSource(win: Window): TabId | undefined {
   let bc = win.gBrowser.selectedBrowser.browsingContext?.opener?.top;
   while (bc) {
     const browser = bc.embedderElement;
-    const ongletId = browser?.ownerDocument.defaultView?.gBrowser?.getTabForBrowser(browser)?.getAttribute("webaios-tab-id");
-    if (ongletId) return ongletId;
+    const tabId = browser?.ownerDocument.defaultView?.gBrowser?.getTabForBrowser(browser)?.getAttribute("webaios-tab-id");
+    if (tabId) return tabId;
     bc = bc.opener?.top;
   }
   return undefined;

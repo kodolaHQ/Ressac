@@ -18,21 +18,21 @@ export interface WindowController {
   readonly fenetreId: WindowId;
   readonly store: WebAiOsStore;
   /** versUrl(input, moteur); a tab with a XUL tab loads it, one without gets majOnglet{url}; null opens a new tab. */
-  navigate(ongletId: TabId | null, input: string): void;
+  navigate(tabId: TabId | null, input: string): void;
   /**
    * The agent's naviguer: an http(s) URL loaded with a content principal of the tab's container, without taking the
    * keyboard (the user may be typing in the agent panel). A tab without a XUL tab gets majOnglet{url}, loaded the same
    * way when TabSync creates its XUL tab.
    */
-  navigateForAgent(ongletId: TabId, url: string): void;
+  navigateForAgent(tabId: TabId, url: string): void;
   /** The browser of a tab for the agent, its XUL tab created in the background if needed and loaded (TabSync.ensure). */
-  ensure(ongletId: TabId): Promise<any>;
-  command(ongletId: TabId, c: "reculer" | "avancer" | "recharger" | "rechargerSansCache" | "arreter"): void;
+  ensure(tabId: TabId): Promise<any>;
+  command(tabId: TabId, c: "reculer" | "avancer" | "recharger" | "rechargerSansCache" | "arreter"): void;
   /**
    * A tab the user closes. A page with unsaved changes (beforeunload) gets « Quitter ce site ? »
    * first; a page that does not answer within 5 s is closed anyway. A crashed tab or one without a XUL tab closes now.
    */
-  closeTab(ongletId: TabId): Promise<void>;
+  closeTab(tabId: TabId): Promise<void>;
   /** Keyboard back to the displayed page (no-op when no web page is displayed). */
   focusPage(): void;
   /**
@@ -75,27 +75,27 @@ export function createController(
   frame: HTMLIFrameElement,
   agentFrame: HTMLIFrameElement,
   store: WebAiOsStore,
-  fenetreId: WindowId,
+  windowId: WindowId,
 ): WindowController {
-  const tabs = new TabSync(gBrowser, store, fenetreId);
+  const tabs = new TabSync(gBrowser, store, windowId);
   trackVisits(gBrowser, store.history, (id) => historyContext(store.state, id));
   // Prompts and add-on popups anchor on the sidebar, Firefox's toolbar being hidden (the action anchor: add-on popups).
   const anchors = setupAnchors(window, frame);
-  routeAddonsManager(window, store, fenetreId, tabs);
+  routeAddonsManager(window, store, windowId, tabs);
   tabs.sync(store.state);
   // The store outlives the window (macOS keeps running without one): drop this window's listeners when it goes, then
   // its state window (its tabs leave with it).
-  const unsubscribe = [store.subscribe((state) => tabs.sync(state)), mountSiteBanner(window, store, fenetreId)];
-  applyFrame(store.state.fenetres.find((f) => f.id === fenetreId)?.cadre ?? null);
+  const unsubscribe = [store.subscribe((state) => tabs.sync(state)), mountSiteBanner(window, store, windowId)];
+  applyFrame(store.state.fenetres.find((f) => f.id === windowId)?.cadre ?? null);
   // Size and position kept for the next start (grouped: a drag fires dozens of events).
   let frameTimer: ReturnType<typeof setTimeout> | undefined;
   const recordFrame = () => {
     clearTimeout(frameTimer);
     if (window.windowState === window.STATE_FULLSCREEN || window.windowState === window.STATE_MINIMIZED) return;
     const cadre = { x: window.screenX, y: window.screenY, largeur: window.outerWidth, hauteur: window.outerHeight };
-    const old = store.state.fenetres.find((f) => f.id === fenetreId)?.cadre;
+    const old = store.state.fenetres.find((f) => f.id === windowId)?.cadre;
     if (old && (Object.keys(cadre) as (keyof typeof cadre)[]).every((k) => old[k] === cadre[k])) return;
-    store.dispatch({ type: "cadrerFenetre", id: fenetreId, cadre });
+    store.dispatch({ type: "cadrerFenetre", id: windowId, cadre });
   };
   const planFrame = () => {
     clearTimeout(frameTimer);
@@ -110,12 +110,12 @@ export function createController(
       unsubscribe.forEach((u) => u());
       // ⌘Q: the session is written after the windows close, their frame must be in it.
       recordFrame();
-      store.windows.release(fenetreId);
+      store.windows.release(windowId);
     },
     { once: true },
   );
   // The agent panel: --webaios-agent is its width when open, 0 when closed (the page and the UI make room for it).
-  const agentOpen = (state: BrowserState) => !!state.fenetres.find((x) => x.id === fenetreId)?.panneauAgentOuvert;
+  const agentOpen = (state: BrowserState) => !!state.fenetres.find((x) => x.id === windowId)?.panneauAgentOuvert;
   const showAgent = (state: BrowserState) => {
     const open = agentOpen(state);
     // Closed while the terminal had the keyboard (⌘J, ✦): it goes back to the page, or to the UI when no page shows.
@@ -176,10 +176,10 @@ export function createController(
 
   const run = (s: Shortcut) => {
     const state = store.state;
-    const f = state.fenetres.find((x) => x.id === fenetreId);
+    const f = state.fenetres.find((x) => x.id === windowId);
     const active = f?.actif[f.espaceActif];
     // ⌘W on the empty page closes the window, only if none of its spaces has a tab.
-    if (s.type === "raccourci" && s.r === "fermerOnglet" && !active && !Object.values(state.onglets).some((o) => o.fenetreId === fenetreId))
+    if (s.type === "raccourci" && s.r === "fermerOnglet" && !active && !Object.values(state.onglets).some((o) => o.fenetreId === windowId))
       window.close();
     else if (s.type === "raccourci") {
       frame.focus(); // the UI field must get the keys typed next, even from a web page
@@ -187,30 +187,30 @@ export function createController(
     } else if (s.type === "panneau") {
       frame.focus();
       for (const cb of panelKeyListeners) cb(s.p);
-    } else if (s.type === "rouvrir") store.dispatch({ type: "rouvrirOngletFerme", fenetreId });
+    } else if (s.type === "rouvrir") store.dispatch({ type: "rouvrirOngletFerme", fenetreId: windowId });
     else if (s.type === "nieme") {
-      const action = toNth(state, fenetreId, s.n);
+      const action = toNth(state, windowId, s.n);
       if (action) store.dispatch(action);
     } else if (s.type === "espace") {
-      const espace = state.espaces[s.n - 1];
-      if (espace) store.dispatch({ type: "activerEspace", fenetreId, id: espace.id });
+      const space = state.espaces[s.n - 1];
+      if (space) store.dispatch({ type: "activerEspace", fenetreId: windowId, id: space.id });
     } else if (s.type === "naviguer") {
       if (active) controller.command(active, s.c);
-    } else if (s.type === "parcourir") walk.parcourir(fenetreId, s.delta);
+    } else if (s.type === "parcourir") walk.parcourir(windowId, s.delta);
     else if (s.type === "agent") {
       // On a widget's builder tab: its Agent tab, beside the open panel (the agent shows in that tab). An action's
       // workflow tab shows the internal page (not ported): the plain toggle.
       if (active && workflowUrlTarget(state.onglets[active]?.url ?? "")?.type === "widget") return controller.openAgent();
       // Toggle, then, opened from a web page, the keyboard goes to the terminal.
-      store.dispatch({ type: "basculerPanneauAgent", fenetreId });
+      store.dispatch({ type: "basculerPanneauAgent", fenetreId: windowId });
       if (agentOpen(store.state)) {
         agentFrame.focus();
         for (const cb of shortcutListeners) cb("agent");
       }
-    } else if (s.type === "compact") store.dispatch({ type: "basculerCompact", fenetreId });
+    } else if (s.type === "compact") store.dispatch({ type: "basculerCompact", fenetreId: windowId });
     else if (s.type === "fenetre") window.OpenBrowserWindow();
     else if (s.type === "fermerFenetre") window.close();
-    else if (s.type === "applications") store.dispatch({ type: "ouvrirApplications", fenetreId });
+    else if (s.type === "applications") store.dispatch({ type: "ouvrirApplications", fenetreId: windowId });
     else if (s.type === "design") store.design.shortcut(window);
   };
   // Capture on the window: our keys act before the page sees them (a page that swallows every key keeps none of them).
@@ -222,7 +222,7 @@ export function createController(
     run(s);
   };
   const onKeyUp = (e: KeyboardEvent) => {
-    if (e.key === "Control") walk.toucheRelachee(fenetreId);
+    if (e.key === "Control") walk.toucheRelachee(windowId);
   };
   window.addEventListener("keydown", onKeyDown, true);
   window.addEventListener("keyup", onKeyUp, true);
@@ -256,7 +256,7 @@ export function createController(
     });
   // ⌘Tab to another app during a walk: it ends without a tab change. Not "blur": moving the keyboard from a page to the UI
   // blurs the window too.
-  window.addEventListener("deactivate", () => walk.fenetreQuittee(fenetreId));
+  window.addEventListener("deactivate", () => walk.fenetreQuittee(windowId));
   // ⇧click asks Firefox for a new window: a page's link opens a background tab instead, as ⌘click (TabSync adopts it).
   const openLinkIn = window.openLinkIn;
   window.openLinkIn = (url, where, params) => {
@@ -297,33 +297,33 @@ export function createController(
   }
 
   const controller: WindowController = {
-    fenetreId,
+    fenetreId: windowId,
     store,
-    navigate(ongletId, input) {
+    navigate(tabId, input) {
       const url = toUrl(input, store.state.reglages.moteur);
       if (!url) return;
-      if (!ongletId) return void store.dispatch({ type: "ouvrirOnglet", fenetreId, url });
-      if (revive(ongletId, url)) return;
-      const browser = browserOf(ongletId);
-      if (!browser) return void store.dispatch({ type: "majOnglet", id: ongletId, champs: { url } });
+      if (!tabId) return void store.dispatch({ type: "ouvrirOnglet", fenetreId: windowId, url });
+      if (revive(tabId, url)) return;
+      const browser = browserOf(tabId);
+      if (!browser) return void store.dispatch({ type: "majOnglet", id: tabId, champs: { url } });
       // What the user typed in the address bar: Firefox loads it with the system principal too.
       browser.loadURI(Services.io.newURI(url), { triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal() });
       browser.focus();
     },
-    navigateForAgent(ongletId, url) {
+    navigateForAgent(tabId, url) {
       const uri = Services.io.newURI(url);
       if (!uri.schemeIs("http") && !uri.schemeIs("https")) throw new Error(`URL refusée (http ou https uniquement) : ${url}`);
       // Revived at its old URL, then loaded below like any agent load: never with the system principal.
-      revive(ongletId);
-      const tab = tabs.tab(ongletId);
-      if (!tab) return void store.dispatch({ type: "majOnglet", id: ongletId, champs: { url } });
+      revive(tabId);
+      const tab = tabs.tab(tabId);
+      if (!tab) return void store.dispatch({ type: "majOnglet", id: tabId, champs: { url } });
       const triggeringPrincipal = Services.scriptSecurityManager.createContentPrincipal(uri, { userContextId: tab.userContextId });
       tab.linkedBrowser.loadURI(uri, { triggeringPrincipal });
     },
-    ensure: (ongletId) => tabs.ensure(ongletId),
-    command(ongletId, c) {
-      if (c !== "arreter" && revive(ongletId)) return;
-      const browser = browserOf(ongletId);
+    ensure: (tabId) => tabs.ensure(tabId),
+    command(tabId, c) {
+      if (c !== "arreter" && revive(tabId)) return;
+      const browser = browserOf(tabId);
       if (!browser) return;
       if (c === "reculer") browser.goBack();
       else if (c === "avancer") browser.goForward();
@@ -331,12 +331,12 @@ export function createController(
       else if (c === "rechargerSansCache") browser.reloadWithFlags(Ci.nsIWebNavigation.LOAD_FLAGS_BYPASS_CACHE);
       else browser.stop();
     },
-    async closeTab(ongletId) {
-      const close = () => void store.dispatch({ type: "fermerOnglet", id: ongletId });
-      const browser = browserOf(ongletId);
-      if (!browser || store.state.onglets[ongletId]?.plante || !browser.hasBeforeUnload) return close();
-      if (asking.has(ongletId)) return;
-      asking.add(ongletId);
+    async closeTab(tabId) {
+      const close = () => void store.dispatch({ type: "fermerOnglet", id: tabId });
+      const browser = browserOf(tabId);
+      if (!browser || store.state.onglets[tabId]?.plante || !browser.hasBeforeUnload) return close();
+      if (asking.has(tabId)) return;
+      asking.add(tabId);
       try {
         // "dontUnload" only runs the page's beforeunload; false: it wants to ask. A failure (crash meanwhile) lets it go.
         const answer = browser.asyncPermitUnload("dontUnload").then((r: { permitUnload: boolean }) => r.permitUnload, () => true);
@@ -345,9 +345,9 @@ export function createController(
         clearTimeout(timer);
         if (permit) return close();
         // Firefox selects the tab its question opens on: the state follows, or the sidebar would show another tab as active.
-        const f = store.state.fenetres.find((x) => x.id === fenetreId);
+        const f = store.state.fenetres.find((x) => x.id === windowId);
         const before = f?.actif[f.espaceActif];
-        if (before !== ongletId) store.dispatch({ type: "activerOnglet", id: ongletId });
+        if (before !== tabId) store.dispatch({ type: "activerOnglet", id: tabId });
         const { prompt } = Services;
         const flags =
           prompt.BUTTON_POS_0 * prompt.BUTTON_TITLE_IS_STRING + prompt.BUTTON_POS_1 * prompt.BUTTON_TITLE_IS_STRING + prompt.BUTTON_POS_1_DEFAULT;
@@ -366,9 +366,9 @@ export function createController(
         ).catch(() => null);
         if (result?.getProperty("buttonNumClicked") === 0) close();
         // Rester changes nothing, as a window-modal dialog: the tab shown before comes back.
-        else if (before && before !== ongletId && store.state.onglets[before]) store.dispatch({ type: "activerOnglet", id: before });
+        else if (before && before !== tabId && store.state.onglets[before]) store.dispatch({ type: "activerOnglet", id: before });
       } finally {
-        asking.delete(ongletId);
+        asking.delete(tabId);
       }
     },
     focusPage() {
@@ -403,7 +403,7 @@ export function createController(
       if (agentOpen(store.state)) document.documentElement.style.setProperty("--webaios-agent", `${px}px`);
     },
     openAgent() {
-      if (!agentOpen(store.state)) store.dispatch({ type: "basculerPanneauAgent", fenetreId });
+      if (!agentOpen(store.state)) store.dispatch({ type: "basculerPanneauAgent", fenetreId: windowId });
       agentFrame.focus();
       for (const cb of shortcutListeners) cb("agent");
     },
@@ -419,8 +419,8 @@ export function createController(
       panelListeners.add(cb);
       return () => void panelListeners.delete(cb);
     },
-    tabSwitch: (m) => walk.message(fenetreId, m),
-    addons: createAddons({ win: window, gBrowser, tabs, anchors, store, fenetreId }),
+    tabSwitch: (m) => walk.message(windowId, m),
+    addons: createAddons({ win: window, gBrowser, tabs, anchors, store, fenetreId: windowId }),
   };
   return controller;
 }
