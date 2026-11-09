@@ -2,14 +2,15 @@ import { expect, test, vi } from "vitest";
 import { existsSync, readdirSync } from "node:fs";
 import { chmod, cp, lstat, mkdir, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { execFileSync } from "node:child_process";
 import { cheminsEspace } from "../../src/chemins.js";
-import { initialiserEspace, MODELES_PAR_DEFAUT, RECOLTES_LIVREES, AFFICHAGES_LIVREES } from "../../src/espace/initialiser.js";
+import { initialiserEspace, MODELES_PAR_DEFAUT, RECOLTES_LIVREES, AFFICHAGES_LIVREES, ANCIENS_AGENTS } from "../../src/espace/initialiser.js";
 import { createHash } from "node:crypto";
 import { DeclarationWidget, Disposition } from "../../src/accueil/schemas.js";
 import { DeclarationSite, verifierDeclarationSite } from "../../src/sites/schemas.js";
 import { lireReference } from "../../src/pages/plan.js";
 import { dossierTemporaire } from "../aide/temporaire.js";
+
+const sha256 = (contenu: string | Buffer) => createHash("sha256").update(contenu).digest("hex");
 
 /** Les fichiers des widgets de départ dans un espace neuf : des workflows, sans recolte.mjs. */
 const FICHIERS_DEPART: Record<string, string[]> = {
@@ -28,7 +29,7 @@ const attendus = [
   ".webaios/profils/claude.json",
 ];
 
-test("crée l'espace complet dans un dossier vide", async () => {
+test("creates the full space in an empty folder", async () => {
   const c = cheminsEspace(await dossierTemporaire());
   const { crees } = await initialiserEspace(c);
   for (const f of attendus) expect(existsSync(join(c.racine, f)), f).toBe(true);
@@ -40,7 +41,7 @@ test("crée l'espace complet dans un dossier vide", async () => {
   expect(crees.length).toBe(attendus.length);
 });
 
-test("n'écrase jamais un fichier existant", async () => {
+test("never overwrites an existing file", async () => {
   const c = cheminsEspace(await dossierTemporaire());
   await mkdir(c.accueil, { recursive: true });
   const perso = '{"version":2,"widgets":[]}';
@@ -53,13 +54,13 @@ test("n'écrase jamais un fichier existant", async () => {
   expect(crees).not.toContain(c.disposition);
 });
 
-test("idempotent : un second appel ne crée rien", async () => {
+test("idempotent: a second call creates nothing", async () => {
   const c = cheminsEspace(await dossierTemporaire());
   await initialiserEspace(c);
   expect((await initialiserEspace(c)).crees).toEqual([]);
 });
 
-test("AGENTS.md mentionne les éléments imposés", async () => {
+test("AGENTS.md mentions the required elements", async () => {
   const c = cheminsEspace(await dossierTemporaire());
   await initialiserEspace(c);
   const texte = await readFile(join(c.racine, "AGENTS.md"), "utf8");
@@ -68,7 +69,7 @@ test("AGENTS.md mentionne les éléments imposés", async () => {
   }
 });
 
-test("un espace neuf reçoit les trois widgets de départ et la disposition v2", async () => {
+test("a new space gets the three starter widgets and the v2 layout", async () => {
   const c = cheminsEspace(await dossierTemporaire());
   await initialiserEspace(c);
   expect((await readdir(c.widgets)).sort()).toEqual(["actus-tech", "daily-dev", "meteo"]);
@@ -84,7 +85,7 @@ test("un espace neuf reçoit les trois widgets de départ et la disposition v2",
   expect(daily.sources.compte).toEqual(["app.daily.dev"]);
 });
 
-test("des blocs existants partent dans accueil/.corbeille/blocs-…, rien n'est détruit", async () => {
+test("existing blocks move to accueil/.corbeille/blocs-…, nothing is destroyed", async () => {
   const c = cheminsEspace(await dossierTemporaire());
   await mkdir(join(c.blocs, "mien"), { recursive: true });
   await writeFile(join(c.blocs, "mien", "bloc.json"), '{"a":1}');
@@ -104,7 +105,7 @@ test("des blocs existants partent dans accueil/.corbeille/blocs-…, rien n'est 
   expect(await readdir(corbeille)).toHaveLength(1);
 });
 
-test("une disposition v3 (Firefox) est gardée au lancement", async () => {
+test("a v3 layout (Firefox) is kept at launch", async () => {
   const c = cheminsEspace(await dossierTemporaire());
   const perso = '{"version":3,"widgets":[{"id":"meteo","x":0,"y":0,"l":500,"h":180}]}';
   await mkdir(c.accueil, { recursive: true });
@@ -114,7 +115,7 @@ test("une disposition v3 (Firefox) est gardée au lancement", async () => {
   expect(existsSync(join(c.accueil, ".corbeille"))).toBe(false);
 });
 
-test("un widget de départ supprimé ne revient pas au lancement suivant", async () => {
+test("a deleted starter widget does not come back at the next launch", async () => {
   const c = cheminsEspace(await dossierTemporaire());
   await initialiserEspace(c);
   await rm(join(c.widgets, "meteo"), { recursive: true });
@@ -124,7 +125,7 @@ test("un widget de départ supprimé ne revient pas au lancement suivant", async
   expect(await readFile(c.disposition, "utf8")).toBe('{"version":2,"widgets":[]}');
 });
 
-test("AGENTS.md, CLAUDE.md et le profil sont recréés s'ils manquent", async () => {
+test("AGENTS.md, CLAUDE.md and the profile are recreated if missing", async () => {
   const c = cheminsEspace(await dossierTemporaire());
   await initialiserEspace(c);
   await rm(join(c.racine, "AGENTS.md"));
@@ -134,7 +135,7 @@ test("AGENTS.md, CLAUDE.md et le profil sont recréés s'ils manquent", async ()
   expect(existsSync(join(c.profils, "claude.json"))).toBe(true);
 });
 
-test("deux initialisations simultanées ne créent chaque fichier qu'une fois", async () => {
+test("two simultaneous initializations create each file only once", async () => {
   const c = cheminsEspace(await dossierTemporaire());
   const [a, b] = await Promise.all([initialiserEspace(c), initialiserEspace(c)]);
   const tous = [...a.crees, ...b.crees];
@@ -142,311 +143,42 @@ test("deux initialisations simultanées ne créent chaque fichier qu'une fois", 
   expect(tous.length).toBe(attendus.length);
 });
 
-test("un AGENTS.md resté au modèle d'origine est mis à jour, un AGENTS.md modifié par l'utilisateur est gardé", async () => {
+test("a shipped AGENTS.md (its hash is known) is replaced by the current template", async () => {
   const c = cheminsEspace(await dossierTemporaire());
   const modele = await readFile(join(MODELES_PAR_DEFAUT, "AGENTS.md"), "utf8");
-  // Version d'origine connue (HEAD avant le plan 4) : empreinte listée dans ANCIENS_AGENTS.
-  const ancien = await readFile(join(import.meta.dirname, "agents-ancien.md"), "utf8");
-  expect(createHash("sha256").update(ancien).digest("hex")).toBe(
-    "4cb44a141c2e0865ae472910b3f1026b918c2d09d12b96732b7a5556ffcc4681",
-  );
-  await writeFile(join(c.racine, "AGENTS.md"), ancien);
-  await initialiserEspace(c);
-  expect(await readFile(join(c.racine, "AGENTS.md"), "utf8")).toBe(modele);
-
-  await writeFile(join(c.racine, "AGENTS.md"), `${ancien}\nmes règles`);
-  await initialiserEspace(c);
-  expect(await readFile(join(c.racine, "AGENTS.md"), "utf8")).toBe(`${ancien}\nmes règles`);
-});
-
-test("initialiser : un AGENTS.md identique à l'ancien modèle est remplacé par le nouveau", async () => {
-  const c = cheminsEspace(await dossierTemporaire());
-  const modele = await readFile(join(MODELES_PAR_DEFAUT, "AGENTS.md"), "utf8");
-  // Modèle du plan 4 (avant les outils de développement) : empreinte listée dans ANCIENS_AGENTS.
-  const ancien = await readFile(join(import.meta.dirname, "agents-plan4.md"), "utf8");
-  expect(createHash("sha256").update(ancien).digest("hex")).toBe(
-    "3117019dee9b14b0cc47dd8aa33edcfbf8f476a9ea521479c15e7a0c1004eca1",
-  );
-  await writeFile(join(c.racine, "AGENTS.md"), ancien);
-  await initialiserEspace(c);
-  const apres = await readFile(join(c.racine, "AGENTS.md"), "utf8");
-  expect(apres).toBe(modele);
-  expect(apres).toContain("Outils de développement");
-});
-
-test("initialiser : un AGENTS.md identique au modèle du plan 5 est remplacé par le nouveau", async () => {
-  const c = cheminsEspace(await dossierTemporaire());
-  const modele = await readFile(join(MODELES_PAR_DEFAUT, "AGENTS.md"), "utf8");
-  // Premier modèle des outils de développement (f9462f5) : empreinte listée dans ANCIENS_AGENTS.
-  const ancien = await readFile(join(import.meta.dirname, "agents-plan5.md"), "utf8");
-  expect(createHash("sha256").update(ancien).digest("hex")).toBe(
-    "00d106e8d934a49848c9e30f569127b2ccbdde91954a98e9fad1c0914b7d822b",
-  );
-  await writeFile(join(c.racine, "AGENTS.md"), ancien);
-  await initialiserEspace(c);
-  const apres = await readFile(join(c.racine, "AGENTS.md"), "utf8");
-  expect(apres).toBe(modele);
-  expect(apres).toContain("sauf, pour déboguer, par `executer_js`");
-  expect(apres).toContain("sauf si l'utilisateur les a coupés");
-});
-
-test("initialiser : un AGENTS.md identique au modèle d'avant les espaces privés est remplacé par le nouveau", async () => {
-  const c = cheminsEspace(await dossierTemporaire());
-  const modele = await readFile(join(MODELES_PAR_DEFAUT, "AGENTS.md"), "utf8");
-  // Modèle de la fin du plan 5 (385a3a1) : empreinte listée dans ANCIENS_AGENTS.
-  const ancien = await readFile(join(import.meta.dirname, "agents-avant-plan6.md"), "utf8");
-  expect(createHash("sha256").update(ancien).digest("hex")).toBe(
-    "6e43cefaf3f1ad8f07dacf4165f66a360e1fd0c3cf3a54c9920de42be25b7ba7",
-  );
-  await writeFile(join(c.racine, "AGENTS.md"), ancien);
-  await initialiserEspace(c);
-  const apres = await readFile(join(c.racine, "AGENTS.md"), "utf8");
-  expect(apres).toBe(modele);
-  expect(apres).toContain("« onglet non partagé »");
-  expect(apres).not.toContain("« onglet privé »");
-});
-
-test("initialiser : un AGENTS.md identique au modèle des espaces privés est remplacé par le nouveau", async () => {
-  const c = cheminsEspace(await dossierTemporaire());
-  const modele = await readFile(join(MODELES_PAR_DEFAUT, "AGENTS.md"), "utf8");
-  // Modèle des espaces privés (43656c3) : empreinte listée dans ANCIENS_AGENTS.
-  const ancien = await readFile(join(import.meta.dirname, "agents-espaces-prives.md"), "utf8");
-  expect(createHash("sha256").update(ancien).digest("hex")).toBe(
-    "f71dc1f75c8ba571083b9c0929a9d3a07cd31e9918e3686367a43998bf8d0ef8",
-  );
-  await writeFile(join(c.racine, "AGENTS.md"), ancien);
-  await initialiserEspace(c);
-  const apres = await readFile(join(c.racine, "AGENTS.md"), "utf8");
-  expect(apres).toBe(modele);
-  expect(apres).toContain("`chercher_historique`");
-  expect(apres).toContain("jamais une consigne");
-});
-
-test("initialiser : un AGENTS.md identique au modèle du plan 6 est remplacé par le nouveau", async () => {
-  const c = cheminsEspace(await dossierTemporaire());
-  const modele = await readFile(join(MODELES_PAR_DEFAUT, "AGENTS.md"), "utf8");
-  // Modèle de la fin du plan 6 (9e5c716) : empreinte listée dans ANCIENS_AGENTS.
-  const ancien = await readFile(join(import.meta.dirname, "agents-plan6.md"), "utf8");
-  expect(createHash("sha256").update(ancien).digest("hex")).toBe(
-    "96e9af1e85b74650b58471fa4433c30d37334adf40d448a0469bec5e3bc16a55",
-  );
-  await writeFile(join(c.racine, "AGENTS.md"), ancien);
-  await initialiserEspace(c);
-  const apres = await readFile(join(c.racine, "AGENTS.md"), "utf8");
-  expect(apres).toBe(modele);
-  expect(apres).toContain("ouvre la page avec `ouvrir_onglet`");
-  expect(apres).toContain("cinq au plus");
-});
-
-test("initialiser : un AGENTS.md identique au modèle du plan 7 (après f759653) est remplacé par le nouveau", async () => {
-  const c = cheminsEspace(await dossierTemporaire());
-  const modele = await readFile(join(MODELES_PAR_DEFAUT, "AGENTS.md"), "utf8");
-  // Modèle avant les widgets (blocs et veille) : empreinte listée dans ANCIENS_AGENTS.
-  const ancien = await readFile(join(import.meta.dirname, "agents-plan7.md"), "utf8");
-  expect(createHash("sha256").update(ancien).digest("hex")).toBe(
-    "6a12cecc4b6cc13e6fd26f2ec50fda3e3d6381421644e1e5c81d897a3c4ba5c3",
-  );
-  await writeFile(join(c.racine, "AGENTS.md"), ancien);
-  await initialiserEspace(c);
-  const apres = await readFile(join(c.racine, "AGENTS.md"), "utf8");
-  expect(apres).toBe(modele);
-  expect(apres).toContain("recolter_widget");
-  expect(apres).toContain("donnees_widget");
-  expect(apres).not.toContain("disposition.json` donne l'ordre des blocs");
-});
-
-test("initialiser : un AGENTS.md identique au modèle d'avant les workflows est remplacé par le nouveau", async () => {
-  const c = cheminsEspace(await dossierTemporaire());
-  const modele = await readFile(join(MODELES_PAR_DEFAUT, "AGENTS.md"), "utf8");
-  // Modèle des widgets sans workflows : empreinte listée dans ANCIENS_AGENTS.
-  const ancien = await readFile(join(import.meta.dirname, "agents-plan8.md"), "utf8");
-  expect(createHash("sha256").update(ancien).digest("hex")).toBe(
-    "cf62b40d452d20d454d8d2b836a06c5acf9401b1017314c5f893a913ed37e1fd",
-  );
-  await writeFile(join(c.racine, "AGENTS.md"), ancien);
-  await initialiserEspace(c);
-  const apres = await readFile(join(c.racine, "AGENTS.md"), "utf8");
-  expect(apres).toBe(modele);
-  expect(apres).toContain("workflow.json");
-  expect(apres).toContain("executions_widget");
-});
-
-test("initialiser : un AGENTS.md identique au modèle du plan 8 est remplacé par le nouveau", async () => {
-  const c = cheminsEspace(await dossierTemporaire());
-  const modele = await readFile(join(MODELES_PAR_DEFAUT, "AGENTS.md"), "utf8");
-  // Modèle de la fin du plan 8 (e09ed17) : empreinte listée dans ANCIENS_AGENTS.
-  const ancien = await readFile(join(import.meta.dirname, "agents-livres", "AGENTS-e09ed17.md"), "utf8");
-  expect(createHash("sha256").update(ancien).digest("hex")).toBe(
-    "3866a3fd951eb95c9fee1aeae273a9a7eb5ad1b0e09ad8ee85a2f0b3190a634c",
-  );
-  await writeFile(join(c.racine, "AGENTS.md"), ancien);
-  await initialiserEspace(c);
-  const apres = await readFile(join(c.racine, "AGENTS.md"), "utf8");
-  expect(apres).toBe(modele);
-  expect(apres).toContain("workflow_ouvert");
-  expect(apres).toContain("constructeur");
-  expect(apres).not.toContain("Voir le workflow");
-  expect(apres).not.toContain("**Entrée d'un bloc** : `null` sans prédécesseur ;");
-});
-
-test("initialiser : un AGENTS.md identique au modèle du plan 9 est remplacé par le nouveau", async () => {
-  const c = cheminsEspace(await dossierTemporaire());
-  const modele = await readFile(join(MODELES_PAR_DEFAUT, "AGENTS.md"), "utf8");
-  // Modèle de la fin du plan 9 (f01722f) : empreinte listée dans ANCIENS_AGENTS.
-  const ancien = await readFile(join(import.meta.dirname, "agents-livres", "AGENTS-f01722f.md"), "utf8");
-  expect(createHash("sha256").update(ancien).digest("hex")).toBe(
-    "0ccf0a48a1f4b2d39d954382532e0db7e1a84c77640a7eaed7c08dbbfdb88c90",
-  );
-  await writeFile(join(c.racine, "AGENTS.md"), ancien);
-  await initialiserEspace(c);
-  const apres = await readFile(join(c.racine, "AGENTS.md"), "utf8");
-  expect(apres).toBe(modele);
-  for (const attendu of ["web.chercher", "auFilDeLEau", "dureeMaxMinutes", "garderJours", '"heures"', "chercherWeb"]) {
-    expect(apres).toContain(attendu);
-  }
-});
-
-test("initialiser : un AGENTS.md identique au modèle du plan 13 est remplacé par le nouveau", async () => {
-  const c = cheminsEspace(await dossierTemporaire());
-  const modele = await readFile(join(MODELES_PAR_DEFAUT, "AGENTS.md"), "utf8");
-  // Modèle de la fin du plan 13 (bda1ce9) : empreinte listée dans ANCIENS_AGENTS.
-  const ancien = await readFile(join(import.meta.dirname, "agents-livres", "AGENTS-bda1ce9.md"), "utf8");
-  expect(createHash("sha256").update(ancien).digest("hex")).toBe(
-    "1efeabab021d5ba8f9298cd91ee5c8b76d0fe6f677f2426ddb195421d140629b",
-  );
-  await writeFile(join(c.racine, "AGENTS.md"), ancien);
-  await initialiserEspace(c);
-  const apres = await readFile(join(c.racine, "AGENTS.md"), "utf8");
-  expect(apres).toBe(modele);
-  for (const attendu of [
-    "/workspace/extensions/",
-    "webaios.json",
-    "demander_extension",
-    "console_extension",
-    "debloquer_console",
-    "refermer_console",
-    "activeTab",
-    "leboncoin.fr",
-  ]) {
-    expect(apres).toContain(attendu);
-  }
-});
-
-// ——— Chaque version livrée du modèle AGENTS.md ———
-
-const AGENTS_LIVRES = join(import.meta.dirname, "agents-livres");
-const sha256 = (contenu: string | Buffer) => createHash("sha256").update(contenu).digest("hex");
-
-for (const fichier of readdirSync(AGENTS_LIVRES).sort()) {
-  test(`un AGENTS.md resté à une version livrée est remplacé par le modèle courant (${fichier})`, async () => {
-    const modele = await readFile(join(MODELES_PAR_DEFAUT, "AGENTS.md"), "utf8");
-    const ancien = await readFile(join(AGENTS_LIVRES, fichier), "utf8");
-    // La version courante n'a rien à remplacer.
-    if (ancien === modele) return;
-    const c = cheminsEspace(await dossierTemporaire());
-    await writeFile(join(c.racine, "AGENTS.md"), ancien);
-    const { crees } = await initialiserEspace(c);
-    expect(await readFile(join(c.racine, "AGENTS.md"), "utf8")).toBe(modele);
-    expect(crees).toContain(join(c.racine, "AGENTS.md"));
-  });
-}
-
-test("chaque version commitée du modèle AGENTS.md est dans agents-livres", async (ctx) => {
-  const git = (args: string[]) => execFileSync("git", args, { cwd: MODELES_PAR_DEFAUT, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
-  let commits: string[];
+  const ancien = "ancien modèle\n";
+  const h = sha256(ancien);
+  ANCIENS_AGENTS.add(h);
   try {
-    commits = git(["log", "--format=%h", "--", "AGENTS.md"]).split("\n").filter(Boolean);
-  } catch {
-    ctx.skip(); // Pas de git (archive, CI sans historique) : les fixtures suffisent.
-    return;
-  }
-  const modele = sha256(await readFile(join(MODELES_PAR_DEFAUT, "AGENTS.md")));
-  const livres = new Set(await Promise.all(readdirSync(AGENTS_LIVRES).map(async (f) => sha256(await readFile(join(AGENTS_LIVRES, f))))));
-  expect(commits.length).toBeGreaterThan(0);
-  for (const h of commits) {
-    const version = sha256(git(["show", `${h}:./AGENTS.md`]));
-    if (version === modele) continue;
-    expect(livres.has(version), `version ${h} absente de agents-livres (et sans doute de ANCIENS_AGENTS)`).toBe(true);
+    await writeFile(join(c.racine, "AGENTS.md"), ancien);
+    await initialiserEspace(c);
+    expect(await readFile(join(c.racine, "AGENTS.md"), "utf8")).toBe(modele);
+  } finally {
+    ANCIENS_AGENTS.delete(h);
   }
 });
 
-test("un AGENTS.md identique au modèle 28a1cac est remplacé par le nouveau", async () => {
+test("an AGENTS.md edited by the user is kept", async () => {
   const c = cheminsEspace(await dossierTemporaire());
-  const modele = await readFile(join(MODELES_PAR_DEFAUT, "AGENTS.md"), "utf8");
-  // Modèle d'avant les actions (28a1cac) : empreinte listée dans ANCIENS_AGENTS.
-  const ancien = await readFile(join(AGENTS_LIVRES, "AGENTS-28a1cac.md"), "utf8");
-  expect(sha256(ancien)).toBe("5f67ab38d6cb781fb6d823744d7c2198f33b74c734326f4b75dac7f3b88ca6b3");
-  await writeFile(join(c.racine, "AGENTS.md"), ancien);
+  const edite = "# Mes règles\nrien d'autre\n";
+  await writeFile(join(c.racine, "AGENTS.md"), edite);
   await initialiserEspace(c);
-  const apres = await readFile(join(c.racine, "AGENTS.md"), "utf8");
-  expect(apres).toBe(modele);
-  for (const motif of ["action.json", 'vers: "page"', "{saisie}", "miseEnPage", "composant.json", "lancer_action", "<svg"]) {
-    expect(apres, motif).toContain(motif);
-  }
+  expect(await readFile(join(c.racine, "AGENTS.md"), "utf8")).toBe(edite);
 });
 
-test("un AGENTS.md identique au modèle c19ad8d (avant les applis de site) est remplacé par le nouveau", async () => {
-  const c = cheminsEspace(await dossierTemporaire());
-  const modele = await readFile(join(MODELES_PAR_DEFAUT, "AGENTS.md"), "utf8");
-  // Modèle d'avant les applis de site (c19ad8d) : empreinte listée dans ANCIENS_AGENTS.
-  const ancien = await readFile(join(AGENTS_LIVRES, "AGENTS-c19ad8d.md"), "utf8");
-  expect(sha256(ancien)).toBe("7f7acaaff80c1afc24df9ee2582d7bdb9addfd8188967367681a4d37a8c8142e");
-  await writeFile(join(c.racine, "AGENTS.md"), ancien);
-  await initialiserEspace(c);
-  const apres = await readFile(join(c.racine, "AGENTS.md"), "utf8");
-  expect(apres).toBe(modele);
-  for (const motif of ["site.json", "webaiosSite.retenir", "suiviAdresse", "reprise", "ouvrir_site", "memoire_site", '{ type: "ouvrir"', "lister_sites", "erreurs_retouches"]) {
-    expect(apres, motif).toContain(motif);
-  }
+test("the hash of every shipped version is kept: the list only grows", () => {
+  expect(ANCIENS_AGENTS.size).toBeGreaterThanOrEqual(36);
+  expect(ANCIENS_AGENTS.has("eaf40a1f51b1e62226e5087c7d7a73cf8b48b84e1e4fb214e89a119d0eb71d96")).toBe(true);
 });
 
-test("un AGENTS.md identique au modèle 55902f3 (avant le thème de l'accueil) est remplacé par le nouveau", async () => {
-  const c = cheminsEspace(await dossierTemporaire());
-  const modele = await readFile(join(MODELES_PAR_DEFAUT, "AGENTS.md"), "utf8");
-  // Modèle d'avant le thème de l'accueil Firefox (55902f3) : empreinte listée dans ANCIENS_AGENTS.
-  const ancien = await readFile(join(AGENTS_LIVRES, "AGENTS-55902f3.md"), "utf8");
-  expect(sha256(ancien)).toBe("55902f3a55b0494f90112284ad0fb76b589165773b3a4b6979dedea41e5ad4b7");
-  await writeFile(join(c.racine, "AGENTS.md"), ancien);
-  await initialiserEspace(c);
-  const apres = await readFile(join(c.racine, "AGENTS.md"), "utf8");
-  expect(apres).toBe(modele);
-  expect(apres).toContain("Thème de l'accueil");
-});
-
-test("un AGENTS.md identique au modèle a37f286 (avant la disposition Firefox) est remplacé par le nouveau", async () => {
-  const c = cheminsEspace(await dossierTemporaire());
-  const modele = await readFile(join(MODELES_PAR_DEFAUT, "AGENTS.md"), "utf8");
-  // Modèle d'avant la disposition de l'accueil Firefox (a37f286) : empreinte listée dans ANCIENS_AGENTS.
-  const ancien = await readFile(join(AGENTS_LIVRES, "AGENTS-a37f286.md"), "utf8");
-  expect(sha256(ancien)).toBe("a37f2860c52cf15e21562f6b84c0b84f432f3841f091b04b60ad522ce9f5d58f");
-  await writeFile(join(c.racine, "AGENTS.md"), ancien);
-  await initialiserEspace(c);
-  const apres = await readFile(join(c.racine, "AGENTS.md"), "utf8");
-  expect(apres).toBe(modele);
-  for (const motif of ["disposition.json", "WebAiOs-Firefox"]) expect(apres, motif).toContain(motif);
-});
-
-test("un AGENTS.md identique au modèle abce272 (avant le lien Firefox) est remplacé par le nouveau", async () => {
-  const c = cheminsEspace(await dossierTemporaire());
-  const modele = await readFile(join(MODELES_PAR_DEFAUT, "AGENTS.md"), "utf8");
-  // Modèle d'avant le lien Firefox (abce272) : empreinte listée dans ANCIENS_AGENTS.
-  const ancien = await readFile(join(AGENTS_LIVRES, "AGENTS-abce272.md"), "utf8");
-  expect(sha256(ancien)).toBe("977bba92e8209de62e939b1235bdbcd3b368e2f222865205ba927c3ad8592f5b");
-  await writeFile(join(c.racine, "AGENTS.md"), ancien);
-  await initialiserEspace(c);
-  const apres = await readFile(join(c.racine, "AGENTS.md"), "utf8");
-  expect(apres).toBe(modele);
-  expect(apres).toContain("webaiosOuvrir");
-});
-
-test("le modèle AGENTS.md décrit les remarques du mode design des applis de site", async () => {
+test("the AGENTS.md template describes the design mode remarks of site apps", async () => {
   const texte = await readFile(join(MODELES_PAR_DEFAUT, "AGENTS.md"), "utf8");
   for (const motif of ["Remarques du mode design", "/workspace/.webaios/remarques/site-<id>/", "MutationObserver", "site-tiers", "accueil/"]) {
     expect(texte, motif).toContain(motif);
   }
 });
 
-test("les site.json donnés en exemple dans AGENTS.md (YouTube, Vidola) sont valides pour le schéma des applis de site", async () => {
+test("the site.json examples given in AGENTS.md (YouTube, Vidola) are valid for the site app schema", async () => {
   const texte = await readFile(join(MODELES_PAR_DEFAUT, "AGENTS.md"), "utf8");
   const blocs = [...texte.matchAll(/```json site\.json:([a-z]+)\n([\s\S]*?)```/g)].map((m) => ({ nom: m[1]!, json: m[2]! }));
   expect(blocs.map((b) => b.nom).sort()).toEqual(["vidola", "youtube"]);
@@ -460,7 +192,7 @@ test("les site.json donnés en exemple dans AGENTS.md (YouTube, Vidola) sont val
   }
 });
 
-test("les références données en exemple dans AGENTS.md sont valides pour le lecteur de plans", async () => {
+test("the references given as examples in AGENTS.md are valid for the plan reader", async () => {
   const texte = await readFile(join(MODELES_PAR_DEFAUT, "AGENTS.md"), "utf8");
   const blocs = [...texte.matchAll(/```reference\n([\s\S]*?)```/g)].map((m) => m[1]!);
   expect(blocs.length).toBeGreaterThan(0);
@@ -484,7 +216,7 @@ async function espaceAvecAncienneRecolte(id: string, recolte: string) {
   return c;
 }
 
-test("les 7 versions livrées de recolte.mjs ont les empreintes connues", async () => {
+test("the 7 shipped versions of recolte.mjs have the known hashes", async () => {
   const fichiers = (await readdir(LIVREES)).sort();
   expect(fichiers).toHaveLength(7);
   const empreintes: Record<string, string[]> = {};
@@ -500,7 +232,7 @@ test("les 7 versions livrées de recolte.mjs ont les empreintes connues", async 
 
 for (const fichier of readdirSync(join(import.meta.dirname, "recoltes-livrees")).sort()) {
   const id = fichier.replace(/-[0-9a-f]{7}\.mjs$/, "");
-  test(`un widget de départ non modifié passe en workflow, son recolte.mjs part à la corbeille (${fichier})`, async () => {
+  test(`an unmodified starter widget becomes a workflow, its recolte.mjs goes to the trash (${fichier})`, async () => {
     const ancienne = await readFile(join(LIVREES, fichier), "utf8");
     const c = await espaceAvecAncienneRecolte(id, ancienne);
     // Ce que l'utilisateur voit et règle n'est jamais touché.
@@ -525,7 +257,7 @@ for (const fichier of readdirSync(join(import.meta.dirname, "recoltes-livrees"))
   });
 }
 
-test("un widget de départ modifié n'est pas touché", async () => {
+test("a modified starter widget is left alone", async () => {
   const ancienne = await readFile(join(LIVREES, "actus-tech-4d4c5f1.mjs"), "utf8");
   const modifiee = ancienne.replace("const GARDER = 15;", "const GARDER = 20;");
   expect(modifiee).not.toBe(ancienne);
@@ -536,7 +268,7 @@ test("un widget de départ modifié n'est pas touché", async () => {
   expect(existsSync(join(c.accueil, ".corbeille"))).toBe(false);
 });
 
-test("un widget de départ qui a déjà son workflow.json, ou un .mjs à lui du même nom, n'est pas touché", async () => {
+test("a starter widget that already has its workflow.json, or its own .mjs of the same name, is left alone", async () => {
   const ancienne = await readFile(join(LIVREES, "meteo-4d4c5f1.mjs"), "utf8");
   const c = await espaceAvecAncienneRecolte("meteo", ancienne);
   await writeFile(join(c.widgets, "meteo", "workflow.json"), '{"version":1,"blocs":[],"liens":[]}');
@@ -555,7 +287,7 @@ test("un widget de départ qui a déjà son workflow.json, ou un .mjs à lui du 
   expect(existsSync(join(d.accueil, ".corbeille"))).toBe(false);
 });
 
-test("une bascule interrompue (workflow.json du modèle déjà là, recolte.mjs livré resté) range recolte.mjs", async () => {
+test("an interrupted switch (template workflow.json already there, shipped recolte.mjs left) puts recolte.mjs away", async () => {
   const ancienne = await readFile(join(LIVREES, "daily-dev-4d4c5f1.mjs"), "utf8");
   const c = cheminsEspace(await dossierTemporaire());
   await initialiserEspace(c);
@@ -573,7 +305,7 @@ test("une bascule interrompue (workflow.json du modèle déjà là, recolte.mjs 
   }
 });
 
-test("un widget de l'agent (gmail) n'est pas touché, même avec un recolte.mjs livré", async () => {
+test("an agent widget (gmail) is left alone, even with a shipped recolte.mjs", async () => {
   const c = cheminsEspace(await dossierTemporaire());
   await initialiserEspace(c);
   const gmail = join(c.widgets, "gmail");
@@ -595,7 +327,7 @@ test("un widget de l'agent (gmail) n'est pas touché, même avec un recolte.mjs 
   expect(existsSync(join(c.accueil, ".corbeille"))).toBe(false);
 });
 
-test("un recolte.mjs livré qui est un lien symbolique n'est pas suivi", async () => {
+test("a shipped recolte.mjs that is a symbolic link is not followed", async () => {
   const c = await espaceAvecAncienneRecolte("meteo", "");
   await rm(join(c.widgets, "meteo", "recolte.mjs"));
   const dehors = join(await dossierTemporaire(), "recolte.mjs");
@@ -607,7 +339,7 @@ test("un recolte.mjs livré qui est un lien symbolique n'est pas suivi", async (
   expect(existsSync(dehors)).toBe(true);
 });
 
-test("une bascule ratée ne bloque pas le lancement : les autres widgets passent, le raté réessaie au suivant", async () => {
+test("a failed switch does not block the launch: the other widgets go through, the failed one retries at the next", async () => {
   const modeles = join(await dossierTemporaire(), "modeles");
   await cp(MODELES_PAR_DEFAUT, modeles, { recursive: true });
   const c = await espaceAvecAncienneRecolte("meteo", await readFile(join(LIVREES, "meteo-4d4c5f1.mjs"), "utf8"));
@@ -641,7 +373,7 @@ test("une bascule ratée ne bloque pas le lancement : les autres widgets passent
   expect(existsSync(join(c.widgets, "meteo", "recolte.mjs"))).toBe(false);
 });
 
-test("un espace neuf reçoit les workflows", async () => {
+test("a new space gets the workflows", async () => {
   const c = cheminsEspace(await dossierTemporaire());
   await initialiserEspace(c);
   for (const [id, fichiers] of Object.entries(FICHIERS_DEPART)) {
@@ -654,7 +386,7 @@ test("un espace neuf reçoit les workflows", async () => {
 
 const AFFICHAGES = join(import.meta.dirname, "affichages-livres");
 
-test("les 6 versions livrées d'affichage.html ont les empreintes connues", async () => {
+test("the 6 shipped versions of affichage.html have the known hashes", async () => {
   const fichiers = (await readdir(AFFICHAGES)).sort();
   expect(fichiers).toHaveLength(6);
   const empreintes: Record<string, string[]> = {};
@@ -670,7 +402,7 @@ test("les 6 versions livrées d'affichage.html ont les empreintes connues", asyn
 
 for (const fichier of readdirSync(AFFICHAGES).sort()) {
   const id = fichier.replace(/-[0-9a-f]{7}\.html$/, "");
-  test(`un affichage de départ resté à une version livrée est remplacé par le modèle (${fichier})`, async () => {
+  test(`a starter display left at a shipped version is replaced by the template (${fichier})`, async () => {
     const ancien = await readFile(join(AFFICHAGES, fichier), "utf8");
     const c = cheminsEspace(await dossierTemporaire());
     await initialiserEspace(c);
@@ -685,7 +417,7 @@ for (const fichier of readdirSync(AFFICHAGES).sort()) {
   });
 }
 
-test("un affichage de départ modifié par l'utilisateur n'est pas touché", async () => {
+test("a starter display modified by the user is left alone", async () => {
   const ancien = await readFile(join(AFFICHAGES, "meteo-4d4c5f1.html"), "utf8");
   const modifie = `${ancien}\n<!-- le mien -->`;
   const c = cheminsEspace(await dossierTemporaire());

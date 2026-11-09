@@ -10,10 +10,10 @@ export const MODELES_PAR_DEFAUT = join(import.meta.dirname, "..", "..", "modeles
 
 /**
  * Empreintes sha256 des anciennes versions du modèle AGENTS.md. Un AGENTS.md qui en a une est resté tel
- * quel : il est remplacé par le modèle courant. À compléter à chaque nouvelle version du modèle : chaque version
- * commitée va dans `test/espace/agents-livres/` (un test le vérifie contre l'historique git).
+ * quel : il est remplacé par le modèle courant. À compléter à chaque nouvelle version du modèle : on ajoute
+ * l'empreinte de l'ancienne version (`shasum -a 256 modeles/AGENTS.md`) avant de la modifier.
  */
-const ANCIENS_AGENTS = new Set([
+export const ANCIENS_AGENTS = new Set([
   "4cb44a141c2e0865ae472910b3f1026b918c2d09d12b96732b7a5556ffcc4681",
   "fc35b4b096def3e0850796b6bf784947adb2092aad8f71da879865891fbb7a27",
   "3117019dee9b14b0cc47dd8aa33edcfbf8f476a9ea521479c15e7a0c1004eca1",
@@ -49,6 +49,7 @@ const ANCIENS_AGENTS = new Set([
   "a37f2860c52cf15e21562f6b84c0b84f432f3841f091b04b60ad522ce9f5d58f",
   "977bba92e8209de62e939b1235bdbcd3b368e2f222865205ba927c3ad8592f5b",
   "f38be067fe3d2554a6cbac4478ce6273fb67dbee0cbce8816afd744b41a1f823",
+  "eaf40a1f51b1e62226e5087c7d7a73cf8b48b84e1e4fb214e89a119d0eb71d96",
 ]);
 
 const empreinte = (contenu: Buffer) => createHash("sha256").update(contenu).digest("hex");
