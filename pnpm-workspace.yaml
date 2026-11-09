@@ -1,16 +1,11 @@
 packages:
   - "packages/*"
-  - "spikes/*"
   - "apps/*"
 allowBuilds:
-  electron: true
   esbuild: true
   node-pty: true
   sharp: true
   core-js-pure: false
-patchedDependencies:
-  electron-chrome-extensions@4.10.0: patches/electron-chrome-extensions@4.10.0.patch
-  electron-chrome-web-store@0.13.0: patches/electron-chrome-web-store@0.13.0.patch
 overrides:
   # surfer declares a git fork of is-apple-silicon (rejected by blockExoticSubdeps) but never imports it: the registry version is enough.
   is-apple-silicon: 1.1.2

@@ -4,7 +4,7 @@
 import type { EtatDesign } from "../../../navigateur/src/commun/api";
 import type { Cadre } from "../../../navigateur/src/commun/modele";
 import { DUREE_AVIS_INFO_MS, ECART_OUVERTURE_ACCUEIL_MS, ICONE_MAX, type AvisBarre, type EtatFenetreSite, type MessageVersLAccueil } from "../../../navigateur/src/commun/sites";
-import type { ErreurRetouche } from "../../../navigateur/src/main/sites/fenetres";
+import type { ErreurRetouche } from "../../../navigateur/src/main/sites/injection";
 import { decisionNavigation, decisionOuverture, type ContexteNavigation } from "../../../navigateur/src/main/sites/navigation";
 import { adresseRelative, adresseSurDomaine, hoteDansSite } from "../../../../packages/noyau/src/sites/adresses";
 import type { RetouchesLues } from "../../../../packages/noyau/src/sites/lire";

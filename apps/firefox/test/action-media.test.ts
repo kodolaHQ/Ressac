@@ -5,7 +5,6 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { COMPOSANT_HTML_MAX as NOYAU_COMPOSANT_HTML_MAX } from "../../../packages/noyau/src/pages/composants-agent";
 import { COMPOSANT_HTML_MAX, actionImage, actionImageTestUrl, releaseComponent, serveComponent } from "../chrome/store/action-media";
 
-vi.mock("electron", () => ({}));
 vi.mock("../chrome/store/containers", () => ({ containerFor: (p: string) => (p === "action-images" ? 7 : -1) }));
 /** The URLs the action images' opener was asked for, and the options it was built with. */
 const opened: string[] = [];

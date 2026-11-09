@@ -8,8 +8,6 @@ import type { BarreExtensions, LigneExtension, LigneExtensionEspace, LigneExtens
 import type { ZoneGauche } from "./revelation";
 import type { Decision, DemandeEnAttente, EtatAcces, EtatNavigateur, IdEspace, IdFenetre, IdOnglet, Telechargement, Visite } from "./modele";
 
-export { ARG_CALQUE, ARG_FENETRE, ARG_PASTILLE, ARG_SITE, CANAUX } from "./canaux";
-
 const id = z.string().min(1);
 const moteur = z.enum(["google", "duckduckgo", "qwant"]);
 

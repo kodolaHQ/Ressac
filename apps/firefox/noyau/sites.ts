@@ -32,8 +32,7 @@ import {
 } from "../../../packages/noyau/src/index.ts";
 import { adresseChangee, adresseInchangee, adresseIntrouvable, ICONE_MAX, modifierAvecAgent, type ActionSite, type AvisBarre, type DemandeAccordSite, type MessageVersLAccueil, type SiteAffiche } from "../../navigateur/src/commun/sites.ts";
 import type { Cadre } from "../../navigateur/src/commun/modele.ts";
-import type { ErreurRetouche, SiteOuvrable } from "../../navigateur/src/main/sites/fenetres.ts";
-import type { ReponseMemoire } from "../../navigateur/src/main/sites/injection.ts";
+import type { ErreurRetouche, ReponseMemoire, SiteOuvrable } from "../../navigateur/src/main/sites/injection.ts";
 import { SuiviAdresse } from "./site-follow.ts";
 import { decisionOuverture } from "./site-navigation.ts";
 import { creerPositions, memoireOp } from "./site-memory.ts";

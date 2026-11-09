@@ -1,10 +1,9 @@
 import { expect, test, vi } from "vitest";
-import { navigationHorsSite, OngletIntrouvable, OngletPrive } from "@webaios/noyau";
 import { appliquer } from "../../src/main/etat/actions";
 import { etatInitial } from "../../src/main/etat/etat-initial";
 import type { Action } from "../../src/commun/api";
 import { siteDe, type EtatNavigateur } from "../../src/commun/modele";
-import { attendreDroits, attendreReponse, changementsPolitique, decisionPermise, espacesDevenusPrives, infosOnglets, ongletActifDe, ongletSite, PontElectron, PREFIXE_SITE, questionCaduque, questionSiteCaduque, resoudreEspace, type FenetresSitesPourAgent } from "../../src/main/agent/pont";
+import { attendreDroits, attendreReponse, changementsPolitique, decisionPermise, espacesDevenusPrives, infosOnglets, ongletActifDe, ongletSite, PREFIXE_SITE, questionCaduque, questionSiteCaduque, resoudreEspace } from "../../src/main/agent/pont";
 
 /** Règle le caractère privé d'un espace, sans toucher au reste. */
 function reglerPrive(e: EtatNavigateur, ag: (a: Action) => unknown, id: string, prive: boolean) {
@@ -152,48 +151,6 @@ test("questionCaduque : une demande d'outils de développement tombe si l'onglet
   expect(questionCaduque({ ...dev, cible: "app:essai", origine: "http://localhost:15280" }, e())).toBe(false);
 });
 
-test("listerOnglets inclut les fenêtres d'application", async () => {
-  const { e } = preparer();
-  const wc = {} as never;
-  const vues = { naviguer: vi.fn(), lireTexte: vi.fn(), capturer: vi.fn(), lireTexteDe: vi.fn(async () => ({ texte: "Essai essai" })), capturerDe: vi.fn(async () => Buffer.from("png")) };
-  const pont = new PontElectron({
-    magasin: { etat: e() } as never,
-    vues: vues as never,
-    fenetreActive: () => undefined,
-    demander: async () => true,
-    applications: {
-      ouvertes: () => [{ dossier: "essai", titre: "Essai", url: "http://localhost:15280/" }],
-      webContents: (d) => (d === "essai" ? wc : undefined),
-    },
-  });
-  expect(await pont.listerOnglets()).toContainEqual({ id: "app:essai", titre: "Essai", url: "http://localhost:15280/", espace: "", application: "essai" });
-  expect((await pont.lireTexte("app:essai")).texte).toBe("Essai essai");
-  expect(vues.lireTexteDe).toHaveBeenCalledWith(wc);
-  expect((await pont.capturer("app:essai")).toString()).toBe("png");
-  await expect(pont.lireTexte("app:absente")).rejects.toThrow();
-  await expect(pont.naviguer("app:absente", "http://x.test/")).rejects.toThrow();
-});
-
-test("naviguer une fenêtre d'appli : sur son origine seulement, le reste s'ouvre dans un onglet", async () => {
-  const { e, ag, F } = preparer();
-  const wc = { loadURL: vi.fn(async () => {}) };
-  const pont = new PontElectron({
-    magasin: { get etat() { return e(); }, agir: ag } as never,
-    vues: {} as never,
-    fenetreActive: () => F,
-    demander: async () => true,
-    applications: {
-      ouvertes: () => [{ dossier: "essai", titre: "Essai", url: "http://localhost:15280/" }],
-      webContents: (d) => (d === "essai" ? (wc as never) : undefined),
-    },
-  });
-  await pont.naviguer("app:essai", "http://localhost:15280/autre");
-  expect(wc.loadURL).toHaveBeenCalledWith("http://localhost:15280/autre");
-  for (const url of ["https://exemple.test/", "http://localhost:15281/"]) await pont.naviguer("app:essai", url);
-  expect(wc.loadURL).toHaveBeenCalledTimes(1);
-  expect(Object.values(e().onglets).filter((o) => o.ouvertParAgent).map((o) => o.url)).toEqual(["https://exemple.test/", "http://localhost:15281/"]);
-});
-
 test("un onglet webaios: n'est ni listé ni actif pour l'agent", () => {
   const { e, ag, F } = preparer();
   const id = Object.values(e().onglets).find((o) => o.fenetreId === F)!.id;
@@ -283,83 +240,6 @@ test("questionCaduque : une demande de lecture tombe si l'onglet visé passe dan
   expect(questionCaduque(lecture, e())).toBe(true);
 });
 
-function pontSur(e: () => EtatNavigateur, ag: (a: Action) => unknown, F: string, vues: Record<string, unknown> = {}) {
-  return new PontElectron({
-    magasin: { get etat() { return e(); }, agir: ag } as never,
-    vues: vues as never,
-    fenetreActive: () => F,
-    demander: async () => true,
-    applications: { ouvertes: () => [], webContents: () => undefined },
-  });
-}
-
-test("PontElectron : l'espace actif privé n'accepte pas d'onglet de l'agent ; un nom d'espace privé vise l'espace actif", async () => {
-  const { e, ag, F } = preparer();
-  ag({ type: "creerEspace", nom: "Secret", icone: "🔒", prive: true, profil: "defaut" });
-  const pont = pontSur(e, ag, F);
-  const o = await pont.ouvrirOnglet("https://demo.test/", "Secret");
-  expect(e().onglets[o.id]!.espaceId).toBe(e().espaces[0]!.id);
-  reglerPrive(e(), ag, e().espaces[0]!.id, true);
-  const avant = Object.keys(e().onglets).length;
-  await expect(pont.ouvrirOnglet("https://demo.test/")).rejects.toThrow("Impossible d'ouvrir un onglet ici : l'espace actif est privé.");
-  expect(Object.keys(e().onglets)).toHaveLength(avant);
-});
-
-test("PontElectron : un onglet privé n'est ni lu, ni capturé, ni navigué, ni inspecté", async () => {
-  const { e, ag, F } = preparer();
-  const vues = { naviguer: vi.fn(), lireTexte: vi.fn(async () => ({ texte: "secret" })), capturer: vi.fn(async () => Buffer.from("png")), vue: vi.fn(() => ({}) as never) };
-  const pont = pontSur(e, ag, F, vues);
-  const a = Object.values(e().onglets).find((o) => o.url === "https://a.test/")!.id;
-  expect(pont.estPrive(a)).toBe(false);
-  expect(pont.ongletActifPrive()).toBe(false);
-  reglerPrive(e(), ag, e().espaces[0]!.id, true);
-  expect(pont.estPrive(a)).toBe(true);
-  expect(pont.estPrive("inconnu")).toBe(false);
-  expect(pont.ongletActifPrive()).toBe(true);
-  expect(await pont.ongletActif()).toBeNull();
-  expect(await pont.listerOnglets()).toEqual([]);
-  await expect(pont.lireTexte(a)).rejects.toBeInstanceOf(OngletPrive);
-  await expect(pont.capturer(a)).rejects.toBeInstanceOf(OngletPrive);
-  await expect(pont.naviguer(a, "https://x.test/")).rejects.toBeInstanceOf(OngletPrive);
-  await expect(pont.outilsDev.attacher(a)).rejects.toThrow();
-  expect(vues.lireTexte).not.toHaveBeenCalled();
-  expect(vues.capturer).not.toHaveBeenCalled();
-  expect(vues.naviguer).not.toHaveBeenCalled();
-  expect(vues.vue).not.toHaveBeenCalled();
-});
-
-test("PontElectron : un onglet devenu privé pendant sa lecture ou sa capture ne rend rien", async () => {
-  const { e, ag, F } = preparer();
-  const perso = e().espaces[0]!.id;
-  const vues = {
-    lireTexte: vi.fn(async () => (reglerPrive(e(), ag, perso, true), { texte: "secret" })),
-    capturer: vi.fn(async () => (reglerPrive(e(), ag, perso, true), Buffer.from("png"))),
-  };
-  const pont = pontSur(e, ag, F, vues);
-  const a = Object.values(e().onglets).find((o) => o.url === "https://a.test/")!.id;
-  await expect(pont.lireTexte(a)).rejects.toBeInstanceOf(OngletPrive);
-  reglerPrive(e(), ag, perso, false);
-  await expect(pont.capturer(a)).rejects.toBeInstanceOf(OngletPrive);
-});
-
-test("PontElectron : un onglet parti sur une autre origine pendant sa lecture ou sa capture ne rend rien", async () => {
-  const { e, ag, F } = preparer();
-  const a = Object.values(e().onglets).find((o) => o.url === "https://a.test/")!.id;
-  let reelle = "https://a.test/page";
-  const vues = {
-    lireTexte: vi.fn(async () => (ag({ type: "majOnglet", id: a, champs: { url: "https://banque.test/" } }), { texte: "solde" })),
-    capturer: vi.fn(async () => Buffer.from("png")),
-    vue: vi.fn(() => ({ getURL: () => reelle }) as never),
-  };
-  const pont = pontSur(e, ag, F, vues);
-  await expect(pont.lireTexte(a)).rejects.toThrow("changé de site");
-  ag({ type: "majOnglet", id: a, champs: { url: "https://a.test/" } });
-  expect((await pont.capturer(a)).toString()).toBe("png");
-  // L'état n'a pas encore suivi la redirection, la vue si.
-  reelle = "https://banque.test/";
-  await expect(pont.capturer(a)).rejects.toThrow("changé de site");
-});
-
 test("questionCaduque : une carte de lecture tombe quand son onglet change d'origine", () => {
   const { e, ag, F } = preparer();
   const a = Object.values(e().onglets).find((o) => o.url === "https://a.test/")!.id;
@@ -380,33 +260,6 @@ test("espacesDevenusPrives : seulement le passage de non privé à privé", () =
   expect(espacesDevenusPrives(prive, prive)).toEqual([]);
   reglerPrive(e(), ag, id, false);
   expect(espacesDevenusPrives(prive, e())).toEqual([]);
-});
-
-test("PontElectron : historique absent sans base ; sinon il délègue, les dates ISO en Date", async () => {
-  const { e, ag, F } = preparer();
-  expect(pontSur(e, ag, F).historique).toBeUndefined();
-  const resultat = { url: "https://svelte.dev/", titre: "Svelte", derniereVisite: "2026-10-21T09:00:00.000Z", visites: 2, extrait: "runes" };
-  const page = { url: "https://svelte.dev/", titre: "Svelte", date: "2026-10-21T09:00:00.000Z", texte: "Les runes." };
-  const base = { rechercherPourAgent: vi.fn(() => [resultat]), texteRetenu: vi.fn(() => page) };
-  const pont = new PontElectron({
-    magasin: { etat: e() } as never,
-    vues: {} as never,
-    fenetreActive: () => F,
-    demander: async () => true,
-    applications: { ouvertes: () => [], webContents: () => undefined },
-    historique: base,
-  });
-  expect(await pont.historique!.chercher({ requete: "runes", depuis: "2026-10-14T00:00:00.000Z", jusqua: "2026-10-21T23:59:59.999Z", limite: 5 })).toEqual([resultat]);
-  expect(base.rechercherPourAgent).toHaveBeenCalledWith({
-    requete: "runes",
-    depuis: new Date("2026-10-14T00:00:00.000Z"),
-    jusqua: new Date("2026-10-21T23:59:59.999Z"),
-    limite: 5,
-  });
-  await pont.historique!.chercher({ requete: "runes", limite: 20 });
-  expect(base.rechercherPourAgent).toHaveBeenLastCalledWith({ requete: "runes", limite: 20 });
-  expect(await pont.historique!.lire("https://svelte.dev/")).toEqual(page);
-  expect(base.texteRetenu).toHaveBeenCalledWith("https://svelte.dev/");
 });
 
 const carteExtension = (espaceId: string, source: "store" | "agent", renforce = false) => ({
@@ -458,109 +311,11 @@ test("decisionPermise : un « oui » à une carte renforcée sans la case coché
 
 // ——— Fenêtres d'applis de site (`site:<id>`) ———
 
-/** Une fenêtre d'appli de site ouverte (« vidola ») dont la vue du site est `vue`, fermable par le test. */
-function sitesFactices() {
-  let ouverte = true;
-  let enAttente = false;
-  const vue = { isDestroyed: () => !ouverte, loadURL: vi.fn() };
-  const charges: [string, string][] = [];
-  const sites: FenetresSitesPourAgent = {
-    ouvertes: () => (ouverte ? [{ id: "vidola", nom: "Vidola", url: "https://vidola-a.example/film/1", domaine: "vidola-a.example", empreinte: "e1" }] : []),
-    webContents: (id) => (ouverte && id === "vidola" ? (vue as never) : undefined),
-    adressePermise: (id, url) => ouverte && id === "vidola" && new URL(url).hostname === "vidola-a.example",
-    naviguer: (id, url) => {
-      if (!sites.adressePermise(id, url)) return "refuse";
-      if (enAttente) return "en-attente";
-      charges.push([id, url]);
-      return "charge";
-    },
-  };
-  return { sites, vue, charges, fermer: () => (ouverte = false), attendre: () => (enAttente = true) };
-}
-
 test("ongletSite : site:<id>, titre = nom de l'appli, espace vide, site, domaine actuel et empreinte de la déclaration renseignés", () => {
   expect(PREFIXE_SITE).toBe("site:");
   expect(ongletSite({ id: "vidola", nom: "Vidola", url: "https://compte.example/connexion", domaine: "vidola-a.example", empreinte: "e1" })).toEqual({
     id: "site:vidola", titre: "Vidola", url: "https://compte.example/connexion", espace: "", site: "vidola", domaine: "vidola-a.example", empreinte: "e1",
   });
-});
-
-test("PontElectron : les fenêtres d'applis de site sont listées, lues et capturées par la vue du site", async () => {
-  const { e, ag, F } = preparer();
-  const f = sitesFactices();
-  const vues = { lireTexteDe: vi.fn(async () => ({ texte: "Film 1" })), capturerDe: vi.fn(async () => Buffer.from("png")) };
-  const pont = new PontElectron({
-    magasin: { get etat() { return e(); }, agir: ag } as never,
-    vues: vues as never,
-    fenetreActive: () => F,
-    demander: async () => true,
-    applications: { ouvertes: () => [], webContents: () => undefined },
-    sites: f.sites,
-  });
-  expect(await pont.listerOnglets()).toContainEqual({ id: "site:vidola", titre: "Vidola", url: "https://vidola-a.example/film/1", espace: "", site: "vidola", domaine: "vidola-a.example", empreinte: "e1" });
-  expect((await pont.lireTexte("site:vidola")).texte).toBe("Film 1");
-  expect(vues.lireTexteDe).toHaveBeenCalledWith(f.vue);
-  expect((await pont.capturer("site:vidola")).toString()).toBe("png");
-  expect(vues.capturerDe).toHaveBeenCalledWith(f.vue);
-  expect(pont.adresseSitePermise("vidola", "https://vidola-a.example/film/2")).toBe(true);
-  expect(pont.adresseSitePermise("vidola", "https://pub.example/")).toBe(false);
-  expect(pont.adresseSitePermise("youtube", "https://vidola-a.example/")).toBe(false);
-  await expect(pont.lireTexte("site:youtube")).rejects.toBeInstanceOf(OngletIntrouvable);
-  // Fermée : introuvable, sans rien lire ; plus listée ; l'inspecteur ne trouve rien.
-  f.fermer();
-  await expect(pont.lireTexte("site:vidola")).rejects.toBeInstanceOf(OngletIntrouvable);
-  await expect(pont.capturer("site:vidola")).rejects.toBeInstanceOf(OngletIntrouvable);
-  await expect(pont.outilsDev.attacher("site:vidola")).rejects.toBeInstanceOf(OngletIntrouvable);
-  expect((await pont.listerOnglets()).some((o) => o.id === "site:vidola")).toBe(false);
-  expect(vues.lireTexteDe).toHaveBeenCalledTimes(1);
-});
-
-test("PontElectron : une vue de site fermée pendant la lecture rend « introuvable », pas une erreur brute", async () => {
-  const { e, ag, F } = preparer();
-  const f = sitesFactices();
-  const vues = {
-    lireTexteDe: vi.fn(async () => {
-      f.fermer();
-      throw new Error("Object has been destroyed");
-    }),
-  };
-  const pont = new PontElectron({
-    magasin: { get etat() { return e(); }, agir: ag } as never,
-    vues: vues as never,
-    fenetreActive: () => F,
-    demander: async () => true,
-    applications: { ouvertes: () => [], webContents: () => undefined },
-    sites: f.sites,
-  });
-  await expect(pont.lireTexte("site:vidola")).rejects.toBeInstanceOf(OngletIntrouvable);
-});
-
-test("PontElectron : naviguer une appli de site passe par sa fenêtre, sur ses domaines seulement ; jamais un onglet ouvert à la place", async () => {
-  const { e, ag, F } = preparer();
-  const f = sitesFactices();
-  const vues = { naviguer: vi.fn() };
-  const pont = new PontElectron({
-    magasin: { get etat() { return e(); }, agir: ag } as never,
-    vues: vues as never,
-    fenetreActive: () => F,
-    demander: async () => true,
-    applications: { ouvertes: () => [], webContents: () => undefined },
-    sites: f.sites,
-  });
-  const avant = Object.keys(e().onglets).length;
-  await pont.naviguer("site:vidola", "https://vidola-a.example/film/2");
-  expect(f.charges).toEqual([["vidola", "https://vidola-a.example/film/2"]]);
-  await expect(pont.naviguer("site:vidola", "https://pub.example/")).rejects.toThrow(navigationHorsSite("https://pub.example/"));
-  expect(f.charges).toHaveLength(1);
-  expect(f.vue.loadURL).not.toHaveBeenCalled();
-  expect(vues.naviguer).not.toHaveBeenCalled();
-  expect(Object.keys(e().onglets)).toHaveLength(avant);
-  // La carte des retouches est affichée : « en-attente », rien chargé.
-  f.attendre();
-  expect(await pont.naviguer("site:vidola", "https://vidola-a.example/film/4")).toBe("en-attente");
-  expect(f.charges).toHaveLength(1);
-  f.fermer();
-  await expect(pont.naviguer("site:vidola", "https://vidola-a.example/film/3")).rejects.toBeInstanceOf(OngletIntrouvable);
 });
 
 test("questionSiteCaduque : une question sur site:<id> tombe avec sa fenêtre ; celle des outils de développement aussi au départ vers une autre origine", () => {
@@ -573,14 +328,6 @@ test("questionSiteCaduque : une question sur site:<id> tombe avec sa fenêtre ; 
   // Ni une question sans cible site:, ni la carte de l'appli (sans cible).
   expect(questionSiteCaduque({ ...dev, cible: "app:essai" }, [])).toBe(false);
   expect(questionSiteCaduque({ id: "s", ongletId: null, origine: "webaios-site://vidola", permissions: ["donnees-widget" as const], site: "vidola" }, [])).toBe(false);
-});
-
-test("PontElectron sans fenêtres d'applis de site : aucune listée, aucune adresse permise", async () => {
-  const { e, ag, F } = preparer();
-  const pont = pontSur(e, ag, F);
-  expect((await pont.listerOnglets()).some((o) => o.id.startsWith("site:"))).toBe(false);
-  expect(pont.adresseSitePermise("vidola", "https://vidola-a.example/")).toBe(false);
-  await expect(pont.lireTexte("site:vidola")).rejects.toBeInstanceOf(OngletIntrouvable);
 });
 
 test("questionCaduque : une fenêtre d'appli de site n'est pas un onglet fermé (suivie à part)", () => {

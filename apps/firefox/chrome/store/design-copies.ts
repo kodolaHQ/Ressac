@@ -1,7 +1,7 @@
 // The design mode's pure pieces of Electron (apps/navigateur/src/main/design/viseur.ts, frozen): imported where they are
 // exported, copied word for word where they are not (test/design-copies.test.ts checks the copies against Electron's text).
 import type { ContexteDesign } from "../../../../packages/noyau/src/design/remarques";
-import type { CibleDesign } from "../../../navigateur/src/main/design/service";
+import type { CibleDesign } from "../../../navigateur/src/main/design/premier-plan";
 import { scriptViseur, type CaptureViseur } from "../../../navigateur/src/main/design/viseur";
 import { tronquerHtml } from "../shims/noyau";
 

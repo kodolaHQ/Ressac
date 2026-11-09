@@ -6,9 +6,6 @@ import { adresseLocale, hoteDansSite } from "@webaios/noyau";
  */
 export type ContexteNavigation = { domaines: readonly string[]; connexion: readonly string[]; adressesLocales?: boolean };
 
-/** Codes `did-fail-load` du cadre principal qui font chercher la nouvelle adresse (DNS, connexion refusée, coupée…). */
-export const ERREURS_RESEAU_SUIVI: readonly number[] = [-7, -100, -101, -102, -104, -105, -106, -109, -118, -137];
-
 /**
  * L'hôte d'une adresse web permise, ou null : javascript:, about:blank, file:, adresse illisible, identifiants dans
  * l'adresse, http hors mode test, hôte local hors mode test (défense en profondeur : les listes sont déjà vérifiées).
@@ -43,6 +40,3 @@ export function decisionOuverture(url: string, c: ContexteNavigation): "dans-l-a
   if (hoteDansSite(hote, c.domaines)) return "dans-l-appli";
   return hoteDansSite(hote, c.connexion) ? "petite-fenetre" : "bloquer";
 }
-
-/** Le site ne répond pas (et non : chargement abandonné, certificat refusé…). */
-export const erreurDeReseau = (code: number): boolean => ERREURS_RESEAU_SUIVI.includes(code);

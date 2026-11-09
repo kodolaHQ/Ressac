@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { decisionNavigation, decisionOuverture, erreurDeReseau, type ContexteNavigation } from "../../src/main/sites/navigation";
+import { decisionNavigation, decisionOuverture, type ContexteNavigation } from "../../src/main/sites/navigation";
 
 const c: ContexteNavigation = { domaines: ["vidola-a.example"], connexion: ["accounts.google.com"] };
 
@@ -33,14 +33,6 @@ test("ouvertures : le site dans l'appli, la connexion dans une petite fenêtre, 
   }
   // Un domaine à la fois du site et de la connexion reste dans l'appli.
   expect(decisionOuverture("https://vidola-a.example/", { ...c, connexion: ["vidola-a.example"] })).toBe("dans-l-appli");
-});
-
-test("erreurs de réseau qui déclenchent le suivi de l'adresse", () => {
-  expect(erreurDeReseau(-105)).toBe(true);
-  for (const code of [-7, -100, -101, -102, -104, -106, -109, -118, -137]) expect(erreurDeReseau(code)).toBe(true);
-  expect(erreurDeReseau(-3)).toBe(false); // abandon
-  expect(erreurDeReseau(-202)).toBe(false); // certificat
-  expect(erreurDeReseau(0)).toBe(false);
 });
 
 test("identifiants dans l'adresse : toujours bloqués, même vers le site", () => {

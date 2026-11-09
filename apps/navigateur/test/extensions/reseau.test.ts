@@ -1,15 +1,9 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createContext, runInContext, runInNewContext } from "node:vm";
-import { afterAll, expect, test, vi } from "vitest";
+import { expect, test, vi } from "vitest";
 import type { Portee } from "@webaios/noyau";
-
-vi.mock("electron", () => ({ app: { on: () => {} } }));
-
-const { urlPermiseAgent, hotePermisAgent, motifCouvre, equiperPagesAgent, idChromeDeDossier, voitOnglet, droitsOnglets } = await import(
-  "../../src/main/extensions/reseau"
-);
+import { hotePermisAgent, motifCouvre, urlPermiseAgent } from "../../src/main/extensions/reseau";
 
 const ID = "a".repeat(32);
 const AUTRE = "b".repeat(32);
@@ -60,143 +54,6 @@ test("hotePermisAgent : seulement les hôtes accordés (pas reseau)", () => {
   expect(hotePermisAgent("https://www.hote.test/", accord)).toBe(true);
   expect(hotePermisAgent("https://api.accorde.test/", accord)).toBe(false);
   expect(hotePermisAgent("about:blank", accord)).toBe(false);
-});
-
-const accordDe = (id: string) => (id === ID ? accord : id === "c".repeat(32) ? null : undefined);
-
-/** Une fausse vue : événements, gestionnaire d'ouverture, politique WebRTC. */
-function fausseVue(url: string) {
-  const ecouteurs = new Map<string, ((...a: unknown[]) => void)[]>();
-  const vue = {
-    url,
-    gestionnaire: null as null | ((d: unknown) => unknown),
-    politiques: [] as string[],
-    getURL: () => vue.url,
-    on(n: string, f: (...a: unknown[]) => void) {
-      ecouteurs.set(n, [...(ecouteurs.get(n) ?? []), f]);
-    },
-    setWindowOpenHandler(g: (d: unknown) => unknown) {
-      vue.gestionnaire = g;
-    },
-    setWebRTCIPHandlingPolicy(p: string) {
-      vue.politiques.push(p);
-    },
-    emettre(n: string, ...a: unknown[]) {
-      for (const f of ecouteurs.get(n) ?? []) f(...a);
-    },
-  };
-  return vue;
-}
-
-test("pages de l'agent : navigations hors accord refusées, ouvertures refusées (gestionnaire posé ensuite enveloppé), WebRTC sans UDP direct", () => {
-  const vue = fausseVue("");
-  equiperPagesAgent(vue as unknown as Electron.WebContents, accordDe);
-  // WebAiOs pose ensuite son gestionnaire d'onglet : il reste en vigueur pour les autres pages.
-  vue.setWindowOpenHandler(() => ({ action: "allow", tag: "onglets" }));
-  vue.url = "https://www.hote.test/";
-  expect(vue.gestionnaire!({ url: "https://autre.test/" })).toEqual({ action: "allow", tag: "onglets" });
-
-  vue.emettre("did-start-navigation", { url: `chrome-extension://${ID}/page.html`, isMainFrame: true, isSameDocument: false });
-  vue.url = `chrome-extension://${ID}/page.html`;
-  expect(vue.politiques).toEqual(["disable_non_proxied_udp"]);
-  expect(vue.gestionnaire!({ url: "https://api.accorde.test/" })).toEqual({ action: "deny" });
-
-  const naviguer = (evenement: string, url: string, ...plus: unknown[]) => {
-    let refusee = false;
-    const e = { preventDefault: () => (refusee = true), url, ...Object.assign({}, ...plus) };
-    if (evenement === "will-navigate") vue.emettre(evenement, e, url);
-    else vue.emettre(evenement, e);
-    return refusee;
-  };
-  expect(naviguer("will-navigate", "https://autre.test/?donnees=1")).toBe(true);
-  expect(naviguer("will-navigate", "data:text/html,x")).toBe(true);
-  expect(naviguer("will-navigate", "https://www.hote.test/")).toBe(false);
-  expect(naviguer("will-navigate", `chrome-extension://${ID}/autre.html`)).toBe(false);
-  expect(naviguer("will-frame-navigate", "https://autre.test/", { frame: { url: `chrome-extension://${ID}/page.html` } })).toBe(true);
-  expect(naviguer("will-frame-navigate", "https://api.accorde.test/", { frame: { url: `chrome-extension://${ID}/page.html` } })).toBe(false);
-
-  // L'utilisateur tape une autre adresse : la page n'est plus de l'agent, la politique revient.
-  vue.emettre("did-start-navigation", { url: "https://autre.test/", isMainFrame: true, isSameDocument: false });
-  vue.url = "https://autre.test/";
-  expect(vue.politiques).toEqual(["disable_non_proxied_udp", "default"]);
-  expect(naviguer("will-navigate", "https://n.importe.quoi/")).toBe(false);
-});
-
-test("pages de l'agent : une vue sans gestionnaire (popup d'action) en reçoit un qui refuse ; une page du Store n'est pas touchée", () => {
-  const popup = fausseVue("");
-  equiperPagesAgent(popup as unknown as Electron.WebContents, accordDe);
-  popup.emettre("did-start-navigation", { url: `chrome-extension://${ID}/popup.html`, isMainFrame: true, isSameDocument: false });
-  popup.url = `chrome-extension://${ID}/popup.html`;
-  expect(popup.gestionnaire!({ url: "https://www.hote.test/" })).toEqual({ action: "deny" });
-
-  const store = fausseVue("");
-  equiperPagesAgent(store as unknown as Electron.WebContents, accordDe);
-  store.emettre("did-start-navigation", { url: `chrome-extension://${AUTRE}/popup.html`, isMainFrame: true, isSameDocument: false });
-  store.url = `chrome-extension://${AUTRE}/popup.html`;
-  expect(store.gestionnaire).toBeNull();
-  expect(store.politiques).toEqual([]);
-  let refusee = false;
-  store.emettre("will-navigate", { preventDefault: () => (refusee = true) }, "https://autre.test/");
-  expect(refusee).toBe(false);
-});
-
-const temporaires: string[] = [];
-afterAll(() => {
-  for (const d of temporaires) rmSync(d, { recursive: true, force: true });
-});
-
-test("voitOnglet (sémantique de Chrome) : adresse et titre d'un onglet seulement avec « tabs » ou un hôte qui couvre son adresse", () => {
-  const sans = { permissions: ["storage"], hotes: [], tousLesSites: false };
-  expect(voitOnglet("https://banque.test/compte", sans, ID)).toBe(false);
-  expect(voitOnglet("https://banque.test/compte", { ...sans, permissions: ["tabs"] }, ID)).toBe(true);
-  const hotes = { ...sans, hotes: ["https://*.hote.test/*"] };
-  expect(voitOnglet("https://a.hote.test/x", hotes, ID)).toBe(true);
-  expect(voitOnglet("https://banque.test/compte", hotes, ID)).toBe(false);
-  expect(voitOnglet("https://banque.test/", { ...sans, tousLesSites: true }, ID)).toBe(true);
-  expect(voitOnglet("https://banque.test/", { ...sans, hotes: ["<all_urls>"] }, ID)).toBe(true);
-  // Ses propres pages : oui ; celles d'une autre extension, ou une adresse illisible : non.
-  expect(voitOnglet(`chrome-extension://${ID}/page.html`, sans, ID)).toBe(true);
-  expect(voitOnglet(`chrome-extension://${AUTRE}/page.html`, sans, ID)).toBe(false);
-  expect(voitOnglet("webaios://accueil", sans, ID)).toBe(false);
-  expect(voitOnglet(undefined, sans, ID)).toBe(false);
-});
-
-test("droitsOnglets : accord d'une extension de l'agent (null : rien), sinon le manifeste (MV3 host_permissions, MV2 permissions)", () => {
-  expect(droitsOnglets({ manifest: { permissions: ["tabs"] } }, null)).toEqual({ permissions: [], hotes: [], tousLesSites: false });
-  expect(droitsOnglets({ manifest: { permissions: ["tabs"] } }, accord)).toEqual({ permissions: ["tabs"], hotes: accord.hotes, tousLesSites: false });
-  expect(droitsOnglets({ manifest: { permissions: ["storage", "tabs"], host_permissions: ["https://x.test/*"] } }, undefined)).toEqual({
-    permissions: ["storage", "tabs"],
-    hotes: ["https://x.test/*"],
-    tousLesSites: false,
-  });
-  expect(droitsOnglets({ manifest: { manifest_version: 2, permissions: ["storage", "<all_urls>", "http://y.test/*", 3] } }, undefined)).toEqual({
-    permissions: ["storage"],
-    hotes: ["<all_urls>", "http://y.test/*"],
-    tousLesSites: false,
-  });
-  expect(droitsOnglets({ manifest: {} }, undefined)).toEqual({ permissions: [], hotes: [], tousLesSites: false });
-});
-
-test("idChromeDeDossier : 32 lettres de a à p, stable, propre au chemin réel", () => {
-  const d = mkdtempSync(join(tmpdir(), "webaios-id-"));
-  temporaires.push(d);
-  const id = idChromeDeDossier(d);
-  expect(id).toMatch(/^[a-p]{32}$/);
-  expect(idChromeDeDossier(d + "/")).toBe(id);
-  expect(idChromeDeDossier(join(d, "x"))).not.toBe(id);
-});
-
-test("idChromeDeDossier d'un dossier effacé (parent par un lien, comme /var → /private/var) : le même que quand il existait", () => {
-  const d = mkdtempSync(join(tmpdir(), "webaios-id-"));
-  temporaires.push(d);
-  const lien = `${d}-lien`;
-  temporaires.push(lien);
-  symlinkSync(d, lien);
-  const copie = join(lien, "copie");
-  mkdirSync(copie);
-  const id = idChromeDeDossier(copie);
-  rmSync(copie, { recursive: true });
-  expect(idChromeDeDossier(copie)).toBe(id);
 });
 
 // --- Le garde (packages/noyau/extensions/webaios-garde-fond.js), exécuté dans un contexte à part.

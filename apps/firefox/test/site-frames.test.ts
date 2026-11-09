@@ -1,11 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { DeclarationSite, type RetouchesLues } from "../../../packages/noyau/src/index";
 import { CONSOLE_RETOUCHES_TOTAL, ERREURS_RETOUCHES_MAX, type InjectionCadre } from "../../navigateur/src/commun/sites";
-import type { ErreurRetouche } from "../../navigateur/src/main/sites/fenetres";
+import type { ErreurRetouche } from "../../navigateur/src/main/sites/injection";
 import { REFUS_MEMOIRE } from "../noyau/site-memory";
 import type { SiteChrome } from "../noyau/sites";
 
-vi.mock("electron", () => ({ ipcMain: undefined }));
 const { frameError, framePosition, frameResume, frameInjection, frameMemory, siteOfFrame } = await import("../chrome/store/site-frames");
 
 // Electron's sender rules (test/sites/injection.test.ts, IPC part) on Firefox's WindowGlobalParent: what a frame gets

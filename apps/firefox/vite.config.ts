@@ -34,7 +34,6 @@ export default defineConfig(({ mode }) => {
           "node:fs/promises": shim("fs"),
           "node:fs": shim("fs"),
           "node:path": shim("path"),
-          electron: shim("electron"),
           "@webaios/noyau": shim("noyau"),
           "node:net": shim("net"),
           "node:url": shim("url"),

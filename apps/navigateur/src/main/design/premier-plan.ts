@@ -1,5 +1,6 @@
 import type { IdFenetre } from "../../commun/modele";
-import type { CibleDesign } from "./service";
+
+export type CibleDesign = { type: "fenetre"; fenetreId: IdFenetre } | { type: "app"; dossier: string } | { type: "site"; id: string };
 
 export type ChoixDesign = { type: "cible"; cible: CibleDesign } | { type: "avis-site"; id: string } | { type: "rien" };
 

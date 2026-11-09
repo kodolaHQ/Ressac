@@ -6,9 +6,6 @@ import { accorderSite, cheminsEspace, DeclarationSite, lireAccordsSites, Memoire
 import { modifierAvecAgent } from "../../navigateur/src/commun/sites";
 import { createSites, demandeAccord, empreinteDroits, SchemaActionSite, SiteSouvenirs, type SitesChrome } from "../noyau/sites";
 
-// Electron's fenetres.ts only for its empreinteDroits (the drift test): the window classes are never built.
-vi.mock("electron", () => new Proxy({ default: {} }, { get: (t, k) => (k in t ? t[k as "default"] : class {}), has: () => true }));
-
 // A gate on lireSite: while armed, the next call waits (a slow read, for the deletion race).
 const gate: { armed: boolean; reached: (() => void) | null; open: (() => void) | null } = { armed: false, reached: null, open: null };
 vi.mock("../../../packages/noyau/src/index", async (importOriginal) => {

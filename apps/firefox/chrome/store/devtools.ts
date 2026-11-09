@@ -2,12 +2,14 @@ import { origineDe, PREFIXE_SITE } from "../../../navigateur/src/main/agent/pont
 
 /** Electron's PREFIXE_APP (main/agent/pont.ts, not exported). */
 const PREFIXE_APP = "app:";
-import { TEXTE_REVOQUE } from "../../../navigateur/src/main/outils-dev/inspecteur";
 import { TamponOnglet, textePile } from "../../../navigateur/src/main/outils-dev/tampon";
 import type { InstantaneFirefox, ProfilCpu } from "../../../../packages/noyau/src/outils-dev/resumes";
 import { OngletIntrouvable, OngletPrive, type OutilsDevNavigateur, type RequeteReseau, type ResultatJs } from "../shims/noyau";
 import type { Store } from "./store";
 import type { WindowRegistry } from "./windows";
+
+/** What a call through a revoked owner (a stopped agent's devtools) throws. */
+export const TEXTE_REVOQUE = "Ces outils de développement appartiennent à un agent arrêté.";
 
 // The agent's dev tools on a tab, the Firefox side of the noyau's OutilsDevNavigateur (plan 28, note D1-D9): an
 // in-process DevTools client per tab (CommandsFactory.forTab over DevToolsServer.connectPipe, the toolbox's own way), no
