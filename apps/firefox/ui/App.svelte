@@ -26,7 +26,7 @@
   import { access, api, requestOf, appState, currentWindow, closeTab } from "./state.svelte";
   import { actionOfUrl, hasView, workflowUrlTarget, reviewUrlProject, URL_ACTIONS, URL_APPLICATIONS, URL_EXTENSIONS } from "../shared/model";
   import { ACTIONS_IN_PRIVATE_SPACE } from "../shared/actions";
-  import { hide, INITIAL_REVEAL, onZone, type LeftZone } from "../shared/revelation";
+  import { hide, INITIAL_REVEAL, onZone, type LeftZone } from "../shared/reveal";
   import type { Panel, TabsPanel as TabPanel } from "../shared/api";
   import type { ApiFirefox } from "./api";
   import InternalPage from "./InternalPage.svelte";
@@ -144,7 +144,7 @@
 
   // Compact mode: touching the left edge reveals the sidebar. It floats over the page, which
   // keeps its size: resizing a page on every frame of the slide would not be smooth.
-  // The controller reports the mouse everywhere in the window; the decision is in revelation.ts.
+  // The controller reports the mouse everywhere in the window; the decision is in reveal.ts.
   const compact = $derived(winState?.compact ?? false);
   let revealed = $state(false);
   let armed = INITIAL_REVEAL.armee;

@@ -3,7 +3,7 @@
   import { api } from "../state.svelte";
   import { repoOf, isActionKey } from "./target";
   import { CodeFile } from "./codes.svelte";
-  import { createEdit } from "./edition.svelte";
+  import { createEdit } from "./edit.svelte";
 
   /**
    * The `.mjs` file of a `code` block. Nothing is written on typing (the running widget would read half-written code):

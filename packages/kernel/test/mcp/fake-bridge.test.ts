@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { FakeBridge } from "../../src/mcp/pont-factice.js";
+import { FakeBridge } from "../../src/mcp/fake-bridge.js";
 
 test("lecture.html returns the URL's HTML and records the call", async () => {
   const bridge = new FakeBridge([], {

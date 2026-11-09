@@ -1,6 +1,6 @@
 import { beforeEach, expect, test, vi } from "vitest";
 import { DEV_RIGHTS, AccessPolicy } from "../../src/access/policy.js";
-import type { TabInfo } from "../../src/mcp/pont.js";
+import type { TabInfo } from "../../src/mcp/bridge.js";
 
 const github: TabInfo = { id: "1", titre: "svelte", url: "https://github.com/sveltejs/svelte", espace: "perso" };
 const gmail: TabInfo = { id: "2", titre: "Gmail", url: "https://mail.google.com/mail/u/0/", espace: "perso" };

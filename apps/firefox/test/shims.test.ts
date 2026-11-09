@@ -52,9 +52,9 @@ describe("node:url shim", () => {
 });
 
 describe("@webaios/kernel shim: what viewfinder.ts imports", () => {
-  it("drift: HTML_MAX, CAPTURE_MARGIN, VIEWFINDER_WORLD, USEFUL_STYLES, TRUNCATED and truncateHtml match design/remarques.ts", async () => {
+  it("drift: HTML_MAX, CAPTURE_MARGIN, VIEWFINDER_WORLD, USEFUL_STYLES, TRUNCATED and truncateHtml match design/remarks.ts", async () => {
     const shim = await import("../chrome/shims/kernel");
-    const real = await import("../../../packages/kernel/src/design/remarques");
+    const real = await import("../../../packages/kernel/src/design/remarks");
     for (const k of ["HTML_MAX", "CAPTURE_MARGIN", "VIEWFINDER_WORLD", "USEFUL_STYLES", "TRUNCATED"] as const) expect(shim[k], k).toEqual(real[k]);
     for (const h of ["", "a".repeat(4096), "b".repeat(4097)]) expect(shim.truncateHtml(h)).toBe(real.truncateHtml(h));
   });

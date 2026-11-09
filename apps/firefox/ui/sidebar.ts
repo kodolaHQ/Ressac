@@ -4,7 +4,7 @@ import { mount } from "svelte";
 // Theme tokens.
 import "../ui/theme.css";
 import DesignApp from "../ui/DesignApp.svelte";
-import AppBadge from "../ui/PastilleApp.svelte";
+import AppBadge from "./BadgeApp.svelte";
 import App from "./App.svelte";
 import SiteWindow from "./SiteWindow.svelte";
 

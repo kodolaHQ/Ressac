@@ -1,6 +1,6 @@
 <script lang="ts">
-  import PageLink from "../LienPage.svelte";
-  import { sortLines } from "../tri";
+  import PageLink from "../PageLink.svelte";
+  import { sortLines } from "../sort";
   import { andOthers, sections, type Collection, type PageContext, type LienPage as Lien } from "../types";
 
   type Line = { valeurs: Record<string, string>; lien: Lien | null };

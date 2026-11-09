@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { reviewUrl } from "../shared/model";
-import { THIRD_PARTY_SITE_WARNING } from "../../../packages/kernel/src/design/remarques";
+import { THIRD_PARTY_SITE_WARNING } from "../../../packages/kernel/src/design/remarks";
 import { testActor } from "./agent-extensions";
 import { overlayOf, inStore, openSite, siteKey, siteMouse, toSite, TUNING_PAGE, tuningDeclaration, viewExpr, viewPoint, OTHER_PAGE, LOGIN_PAGE } from "./design-sites";
 import { state, waitFor, waitReady } from "./firefox";

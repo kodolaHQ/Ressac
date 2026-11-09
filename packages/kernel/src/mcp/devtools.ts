@@ -11,7 +11,7 @@ import {
   memoryText,
   truncate,
 } from "../devtools/summaries.js";
-import { TabNotFound, PrivateTab, DevToolsBusy, PRIVATE_TEXT, type TabInfo, type BrowserDevTools, type BrowserBridge, type NetworkRequest } from "./pont.js";
+import { TabNotFound, PrivateTab, DevToolsBusy, PRIVATE_TEXT, type TabInfo, type BrowserDevTools, type BrowserBridge, type NetworkRequest } from "./bridge.js";
 
 export const TOOL_DENIAL_TEXT = "Accès refusé par l'utilisateur à cet outil sur cet onglet.";
 export const TEXT_CUT = "Accès coupé par l'utilisateur.";

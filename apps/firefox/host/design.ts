@@ -1,14 +1,14 @@
 // The host side of design mode: remarks, the external MCP server and the review, started
 // with the host and without the agent's kernel. Each RPC input is checked again with
 // the shared guards (shared/design-guards.ts) before the service.
-// The kernel is imported first: core/design/externes.ts and send.ts load under tsx only once it is linked.
+// The kernel is imported first: core/design/external.ts and send.ts load under tsx only once it is linked.
 import { homedir } from "node:os";
 import { join } from "node:path";
 import {
   destinationOf, batchState, EXTERNAL_MCP_PORT, containerRanges, demoProject, projectForUrl, projectForAppWindow, projectForSite, ExternalRegistry, Remarks,
   EMPTY_REMARK, NO_CLIENT, type Application, type SpacePaths, type DesignContext, type Element, type ProjectId, type Batch, type TrackedProject,
 } from "../../../packages/kernel/src/index.ts";
-import { startExternals, failureReason, type ExternalService } from "../core/design/externes.ts";
+import { startExternals, failureReason, type ExternalService } from "../core/design/external.ts";
 import { createSend } from "../core/design/send.ts";
 import type { ShownElement, ExternalsState, BatchShown, ExtensionResult } from "../shared/api.ts";
 import { ReviewService } from "./review.ts";

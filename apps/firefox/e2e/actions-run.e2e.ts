@@ -9,7 +9,7 @@ import { click, inUi, missingApi, waitUi } from "./ui";
 // on the Mac), a slow local site and a fake Ollama (Gemma) noting each prompt. Reopening a page launches nothing.
 
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
-/** The kernel's message for an action without workflow.json (actions/executer.ts). */
+/** The kernel's message for an action without workflow.json (actions/run.ts). */
 const WITHOUT_WORKFLOW = "Cette action n'a pas de workflow.json";
 
 let servers: Awaited<ReturnType<typeof startActionServers>>;

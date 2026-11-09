@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
   import SiteBar from "./SiteBar.svelte";
   import HomeFrame from "../SiteHomeFrame.svelte";
-  import SiteGrantCard from "./CarteAccordSite.svelte";
+  import SiteGrantCard from "./SiteGrantCard.svelte";
   import type { SiteWindowState } from "../../shared/sites";
   import type { ApiSite } from "../../shared/api";
 

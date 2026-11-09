@@ -2,20 +2,20 @@
   import type { RenderedBlock, RenderedPage } from "@webaios/kernel";
   import { NO_RESULT, FALLBACK_MENTION } from "../../shared/actions";
   import ComponentFrame from "../ActionComponentFrame.svelte";
-  import Cards from "./blocks/Cartes.svelte";
+  import Cards from "./blocks/Cards.svelte";
   import Champs from "./blocks/Champs.svelte";
   import Figure from "./blocks/Figure.svelte";
   import Figures from "./blocks/Figures.svelte";
   import Columns from "./blocks/Columns.svelte";
   import Boxed from "./blocks/Callout.svelte";
   import BlockError from "./blocks/BlockError.svelte";
-  import Labels from "./blocks/Etiquettes.svelte";
+  import Labels from "./blocks/Labels.svelte";
   import Group from "./blocks/Group.svelte";
-  import Link from "./blocks/Lien.svelte";
+  import Link from "./blocks/Link.svelte";
   import List from "./blocks/List.svelte";
   import Paragraph from "./blocks/Paragraph.svelte";
   import Tableau from "./blocks/Tableau.svelte";
-  import Title from "./blocks/Titre.svelte";
+  import Title from "./blocks/Title.svelte";
   import "./page.css";
   import type { PageContext } from "./types";
 

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import PageLink from "../LienPage.svelte";
+  import PageLink from "../PageLink.svelte";
   import { andOthers, sections, type Collection, type PageContext, type LienPage as Lien } from "../types";
 
   type Element = { titre: string; sousTitre: string | null; lien: Lien | null };

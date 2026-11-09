@@ -5,7 +5,7 @@ import { writePrivateJson } from "../design/atomic-write.js";
 import type { DiffFile } from "./repo.js";
 import { newPosition, type Block } from "./diff.js";
 
-/** Re-exported by design/remarques.ts (task 5), which does not redefine it. */
+/** Re-exported by design/remarks.ts (task 5), which does not redefine it. */
 export const EMPTY_REMARK = "Une remarque vide n'est pas acceptée.";
 
 export interface Comment {

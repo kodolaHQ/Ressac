@@ -221,7 +221,7 @@ Limits:
 - What the agent adds (plan 32):
   - **retouches** (`retouches/*.css`, `*.js`, `webaiosSite`): the actor's child asks its parent what goes into each frame (`sendQuery`); the parent decides from its own `WindowGlobalParent` (`chrome/store/site-frames.ts`, `injectionFor`), never from what the frame says, and only for the app's view (never the sign-in window or a tab). Memory goes to the host (`host/site-memory.ts`); the retouches' console is relayed per frame;
   - the **accord card**: the view stays `about:blank` until the choice; rights that grow bring it back;
-  - **video resume** (`ResumeTracking` of `core/reprise.ts` in the actor, positions kept by the host) and the **address follow** (`UrlTracking` of `core/sites/tracking.ts`);
+  - **video resume** (`ResumeTracking` of `core/resume.ts` in the actor, positions kept by the host) and the **address follow** (`UrlTracking` of `core/sites/tracking.ts`);
   - the **agent's tools** on `site:<id>` (`lister_onglets`, `lire_onglet`, `capture_ecran`, `naviguer`, dev tools) behind the app's « donnees-widget » card;
   - **add-on buttons** in the app bar (`createSiteAddons`, `ui/SiteAddonsStrip.svelte`); the view is protected from add-ons (no remove, move, adopt, `windows.remove`, non-http loads; the request guard's net).
 - The end-to-end scenario with AGENTS.md's examples: `e2e/sites-scenario.e2e.ts`. The manual checks of plan 32 are in `docs/superpowers/notes/2026-11-06-applis-de-site-firefox-spike.md` (« Plan 32 »).
@@ -280,7 +280,7 @@ The host runs the external MCP server (port 5279, `WEBAIOS_PORT_MCP_EXTERNE` cha
 
 - The « Projets externes » section of the Applications page connects a Claude Code (the command with the token shows once), declares projects, revokes a client, forgets a project. A project folder under the data folder is refused (`SPACE_FOLDER`). Registries, private repositories (`design/relecture/`) and batches (`design/remarques/`) live under `<dataDir>/design`, never in the space.
 - The Review page (`webaios://relecture`) shows the diff of an external project or of a site app since the last « Marquer comme relu ». Comments go to Claude Code (`lire_remarques`, `attendre_remarques`) or, for a site app, into the agent panel: the text waits there and Enter sends it (`design.fenetreAgent`, `design.donnerAgent`).
-- `host/review.ts` (the review service) and `shared/design-guards.ts` (the input checks) are tested by `test/review-host.test.ts`. `core/design/externes.ts` and `send.ts` are imported as is.
+- `host/review.ts` (the review service) and `shared/design-guards.ts` (the input checks) are tested by `test/review-host.test.ts`. `core/design/external.ts` and `send.ts` are imported as is.
 - Tests: `e2e/external-mcp.e2e.ts`, `e2e/review.e2e.ts`, `e2e/review-comments.e2e.ts`. The manual checks and the test ports (with their gaps) are in `docs/superpowers/notes/2026-11-06-mode-design-firefox.md` (« Plan 34 »).
 
 ## The UI's network

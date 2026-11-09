@@ -4,7 +4,7 @@ import { cp, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { tempFolder } from "../helpers/temp.js";
-import { readWorkflow } from "../../src/workflows/lire.js";
+import { readWorkflow } from "../../src/workflows/read.js";
 import type { BlocksMemory } from "../../src/workflows/memory.js";
 
 const SCRIPT = join(import.meta.dirname, "..", "..", "docker", "moteur", "recolteur.mjs");

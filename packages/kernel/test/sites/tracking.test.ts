@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 import { mkdir, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { startUrl, effectiveDomains } from "../../src/sites/urls.js";
-import { storeSiteGrant, readSiteGrants } from "../../src/sites/accords.js";
+import { storeSiteGrant, readSiteGrants } from "../../src/sites/grants.js";
 import { SiteMemory } from "../../src/sites/memory.js";
 import type { DeclarationSite } from "../../src/sites/schemas.js";
 import { changeUrl, readUrlState, deleteSiteData } from "../../src/sites/tracking.js";

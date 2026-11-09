@@ -3,7 +3,7 @@ import { expect, test } from "vitest";
 import type { Draft, WorkflowEdit } from "../../shared/api";
 import { CODE_MODEL, freshParams, freeSlot } from "../../ui/builder/add";
 import { set, link } from "../../ui/builder/draft";
-import { createEdit, Edit, AWAITING_CHOICE, forgetEdits, type Depot } from "../../ui/builder/edition.svelte";
+import { createEdit, Edit, AWAITING_CHOICE, forgetEdits, type Depot } from "../../ui/builder/edit.svelte";
 
 const block = (id: string, type: string, params: Record<string, unknown> = {}) => ({ id, type, position: { x: 0, y: 0 }, parametres: params });
 /** Workflow shipped without positions. */

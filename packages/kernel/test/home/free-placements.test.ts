@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 import { mkdir, writeFile } from "node:fs/promises";
 import { spacePaths } from "../../src/paths.js";
-import { readFreeLayout, placeMissingFree } from "../../src/home/lire.js";
+import { readFreeLayout, placeMissingFree } from "../../src/home/read.js";
 import { freeSizes, type FreePlacement } from "../../src/home/schemas.js";
 import { tempFolder } from "../helpers/temp.js";
 

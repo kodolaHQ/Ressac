@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BUILTIN_COMPONENTS, type ComponentDefinition } from "../../src/pages/catalogue.js";
+import { BUILTIN_COMPONENTS, type ComponentDefinition } from "../../src/pages/catalog.js";
 import type { PlanBlock, PlanPage } from "../../src/pages/plan.js";
 import { COMPONENT_UNAVAILABLE, ELEMENTS_MAX, TEXT_MAX, chainsOf, resolvePage, type RenderedBlock } from "../../src/pages/resolve.js";
 import { validatePlan } from "../../src/pages/validate.js";

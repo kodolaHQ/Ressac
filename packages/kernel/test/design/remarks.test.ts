@@ -1,7 +1,7 @@
 import { mkdir, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
-import { THIRD_PARTY_SITE_WARNING, FOLDER_LINK, HTML_MAX, EMPTY_BASKET, Remarks, TRUNCATED, batchState, truncateHtml, type DesignContext, type ReviewContext } from "../../src/design/remarques.js";
+import { THIRD_PARTY_SITE_WARNING, FOLDER_LINK, HTML_MAX, EMPTY_BASKET, Remarks, TRUNCATED, batchState, truncateHtml, type DesignContext, type ReviewContext } from "../../src/design/remarks.js";
 import { EMPTY_REMARK } from "../../src/review/comments.js";
 import { remarksFolder, type DesignFolders } from "../../src/design/projects.js";
 import { tempFolder } from "../helpers/temp.js";

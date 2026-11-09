@@ -12,7 +12,7 @@
   import Canvas from "./Canvas.svelte";
   import { targetKey, repoOf, launcherOf, runsSourceOf } from "./target";
   import { confirmBlockChange, keepBeforeClosing } from "./codes.svelte";
-  import { createEdit, followDisappearances } from "./edition.svelte";
+  import { createEdit, followDisappearances } from "./edit.svelte";
   import { Executions } from "./executions.svelte";
   import RunList from "./RunList.svelte";
   import AgentTab from "../AgentTab.svelte";

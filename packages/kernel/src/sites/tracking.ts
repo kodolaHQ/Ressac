@@ -2,7 +2,7 @@ import { readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 import { writeAtomic } from "../workflows/executions.js";
-import { removeSiteGrant } from "./accords.js";
+import { removeSiteGrant } from "./grants.js";
 import { effectiveDomains, type UrlState } from "./urls.js";
 import { ID_SITE, type DeclarationSite } from "./schemas.js";
 

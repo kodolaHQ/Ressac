@@ -1,7 +1,7 @@
 import { lstat, readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
-import { BUILTIN_COMPONENTS, type ComponentDefinition } from "./catalogue.js";
+import { BUILTIN_COMPONENTS, type ComponentDefinition } from "./catalog.js";
 
 // The agent's components: `<dossier>/<nom>/composant.json` + `composant.html`. Nothing is run here; errors are
 // fixed texts (the system's message would quote Mac paths).

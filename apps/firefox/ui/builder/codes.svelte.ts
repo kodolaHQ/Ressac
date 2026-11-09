@@ -1,6 +1,6 @@
 import { SvelteMap } from "svelte/reactivity";
 import { CODE_MODEL } from "./add";
-import type { Depot } from "./edition.svelte";
+import type { Depot } from "./edit.svelte";
 
 export type DepotCode = Pick<Depot, "lireCode" | "enregistrerCode">;
 

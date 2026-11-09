@@ -1,4 +1,4 @@
-import type { Batch } from "../design/remarques.js";
+import type { Batch } from "../design/remarks.js";
 
 const TITLE_LENGTH = 120;
 const URL_LENGTH = 300;

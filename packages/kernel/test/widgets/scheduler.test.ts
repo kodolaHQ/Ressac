@@ -7,11 +7,11 @@ import { spacePaths } from "../../src/paths.js";
 import { writeData, writeWidgetState, readData, readWidgetState, deleteData } from "../../src/home/data.js";
 import type { WidgetState } from "../../src/home/schemas.js";
 import type { WorkshopState } from "../../src/container/workshop.js";
-import { FakeBridge } from "../../src/mcp/pont-factice.js";
+import { FakeBridge } from "../../src/mcp/fake-bridge.js";
 import { kernelError, runHarvest, type ProcessLauncher, type HarvestOptions, type AttemptResult } from "../../src/widgets/harvest.js";
 import { writeRun, attemptId, listRuns, type Execution } from "../../src/workflows/executions.js";
 import { writeMemory } from "../../src/workflows/memory.js";
-import { giveGrant, readGrants } from "../../src/widgets/accords.js";
+import { giveGrant, readGrants } from "../../src/widgets/grants.js";
 import {
   WORKSHOP_STOPPED_ERROR,
   INTERNAL_HARVEST_ERROR,
@@ -26,15 +26,15 @@ import { Pacing } from "../../src/workflows/pacing.js";
 import { currentSlot } from "../../src/widgets/hours.js";
 import { AI_ABANDONED } from "../../src/ai/dispatcher.js";
 import type { NotificationWidget } from "../../src/widgets/nouveautes.js";
-import { readHome } from "../../src/home/lire.js";
+import { readHome } from "../../src/home/read.js";
 import type { SpacePaths } from "../../src/paths.js";
 import { declarationWidget, writeWidget } from "../helpers/home.js";
 import { tempFolder } from "../helpers/temp.js";
 
 /** Home reads in progress: a test waits until there are none left to know what a request has already read. */
 const reads = vi.hoisted(() => ({ enVol: 0 }));
-vi.mock("../../src/home/lire.js", async (original) => {
-  const m = await original<typeof import("../../src/home/lire.js")>();
+vi.mock("../../src/home/read.js", async (original) => {
+  const m = await original<typeof import("../../src/home/read.js")>();
   return {
     ...m,
     readHome: async (...a: Parameters<typeof m.readHome>) => {

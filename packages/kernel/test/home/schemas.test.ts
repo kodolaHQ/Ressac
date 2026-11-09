@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import { DeclarationWidget, WEB_WITH_ACCOUNT } from "../../src/home/schemas.js";
-import { readHome } from "../../src/home/lire.js";
+import { readHome } from "../../src/home/read.js";
 import { spacePaths } from "../../src/paths.js";
 import { mkdir } from "node:fs/promises";
 import { declarationWidget, writeWidget } from "../helpers/home.js";

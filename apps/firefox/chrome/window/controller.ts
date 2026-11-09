@@ -3,7 +3,7 @@ import { workflowUrlTarget, historyContext, AGENT_WIDTH_MAX, AGENT_WIDTH_MIN, BA
 import { toUrl } from "../../core/url";
 import { TabCycle } from "../../core/tab-cycle";
 import { toNth } from "../../core/raccourcis";
-import { leftZone, exitZone, type LeftZone } from "../../shared/revelation";
+import { leftZone, exitZone, type LeftZone } from "../../shared/reveal";
 import type { WebAiOsStore } from "../store";
 import { createAddons, type WindowAddons } from "./addons";
 import { routeAddonsManager } from "./addons-manager";

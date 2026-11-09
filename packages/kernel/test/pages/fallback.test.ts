@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { resolvePage } from "../../src/pages/resolve.js";
-import { BUILTIN_COMPONENTS } from "../../src/pages/catalogue.js";
+import { BUILTIN_COMPONENTS } from "../../src/pages/catalog.js";
 import { fallbackLayout } from "../../src/pages/fallback.js";
 import { validatePlan } from "../../src/pages/validate.js";
 

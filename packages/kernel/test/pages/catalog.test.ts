@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { catalogText, BUILTIN_COMPONENTS } from "../../src/pages/catalogue.js";
+import { catalogText, BUILTIN_COMPONENTS } from "../../src/pages/catalog.js";
 
 describe("catalog of built-in components", () => {
   it("each built-in component has a description and at least one required property or children", () => {

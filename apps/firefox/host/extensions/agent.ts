@@ -35,7 +35,7 @@ import type { Space, Outcome } from "../../shared/model.ts";
 import { ConsolesExtensions, type AgentFilter } from "../../core/extensions/consoles.ts";
 import type { Rpc } from "../../shared/rpc.ts";
 import { AMO_URL, KEYS_ABSENT, SignatureError, readAmoKey, signatureImpossible, sign } from "./amo.ts";
-import { cardOf, unsupported } from "./carte.ts";
+import { cardOf, unsupported } from "./card.ts";
 import { addonIdOf, firefoxManifest, nextVersion, firefoxDenial, ID_SUFFIX, zipper } from "./firefox-copy.ts";
 
 export const FOLDER_ABSENT = "Dossier absent";

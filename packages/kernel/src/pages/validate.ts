@@ -1,4 +1,4 @@
-import type { ComponentDefinition, Property } from "./catalogue.js";
+import type { ComponentDefinition, Property } from "./catalog.js";
 import { PlanPage, evaluate, readReference, readPath, type PlanBlock, type Group } from "./plan.js";
 
 // The validation of Gemma's plan, which is hostile data (it may have read a booby-trapped page). Nothing throws: an

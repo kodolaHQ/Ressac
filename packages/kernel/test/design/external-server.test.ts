@@ -4,10 +4,10 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { AccessPolicy } from "../../src/access/policy.js";
-import { FakeBridge } from "../../src/mcp/pont-factice.js";
+import { FakeBridge } from "../../src/mcp/fake-bridge.js";
 import { startMcpServer, generateToken } from "../../src/mcp/server.js";
-import { UNREADABLE_WARNING, ExternalRegistry } from "../../src/design/externes.js";
-import { Remarks, batchState, type DesignContext, type ReviewContext } from "../../src/design/remarques.js";
+import { UNREADABLE_WARNING, ExternalRegistry } from "../../src/design/external.js";
+import { Remarks, batchState, type DesignContext, type ReviewContext } from "../../src/design/remarks.js";
 import { externalProject, type DesignFolders } from "../../src/design/projects.js";
 import {
   NO_REMARK, PAGE_DATA_PREFIX, startExternalServer, undeclaredProject,

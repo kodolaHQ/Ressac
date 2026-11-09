@@ -10,7 +10,7 @@ export const readingOf = (host: string) => `Lecture de ${host}…`;
 /** Copied from the kernel (pages/resolve.ts; a test checks equality): the UI imports only types from it. */
 export const FALLBACK_MENTION = "mise en page simple";
 export const NO_RESULT = "Aucun résultat";
-/** Copied from the kernel (actions/executer.ts; same equality test). */
+/** Copied from the kernel (actions/run.ts; same equality test). */
 export const ACTION_UNKNOWN = "Action inconnue";
 /** A `webaios://action/<id>/<execution>` page whose execution was erased (or never existed). */
 export const RESULT_GONE = "Ce résultat n'existe plus";

@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ReviewStore, reviewStore, externalProject, ExternalRegistry, Remarks } from "@webaios/kernel";
-import { startExternals } from "../../core/design/externes";
+import { startExternals } from "../../core/design/external";
 
 const folders: string[] = [];
 const services: { arreter(): Promise<void> }[] = [];

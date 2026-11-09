@@ -1,6 +1,6 @@
 // The design mode's pure pieces: core/design/viewfinder.ts's scriptViseur, adapted for the actor's guard, and the checks
 // on what comes back from the page.
-import type { DesignContext } from "../../../../packages/kernel/src/design/remarques";
+import type { DesignContext } from "../../../../packages/kernel/src/design/remarks";
 import type { DesignTarget } from "../../core/design/foreground";
 import { viewfinderScript, type ViewfinderCapture } from "../../core/design/viewfinder";
 import { truncateHtml } from "../shims/kernel";

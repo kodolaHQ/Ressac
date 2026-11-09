@@ -1,5 +1,5 @@
 import type { AccessPolicy } from "../access/policy.js";
-import { DevToolsBusy, type TabInfo, type BrowserDevTools } from "../mcp/pont.js";
+import { DevToolsBusy, type TabInfo, type BrowserDevTools } from "../mcp/bridge.js";
 
 function originOf(url: string): string | null {
   try {

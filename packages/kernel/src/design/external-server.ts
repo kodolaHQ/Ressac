@@ -5,9 +5,9 @@ import { join } from "node:path";
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import type { ExternalRegistry } from "./externes.js";
+import type { ExternalRegistry } from "./external.js";
 import { externalProject, type ExternalClient, type ProjectId, type ExternalProject } from "./projects.js";
-import { batchState, type Batch, type Remarks } from "./remarques.js";
+import { batchState, type Batch, type Remarks } from "./remarks.js";
 
 export const EXTERNAL_MCP_PORT = 5279;
 export const WAIT_DELAY = { defaut: 60, max: 300 };

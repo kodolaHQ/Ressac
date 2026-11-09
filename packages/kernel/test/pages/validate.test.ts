@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BUILTIN_COMPONENTS, type ComponentDefinition } from "../../src/pages/catalogue.js";
+import { BUILTIN_COMPONENTS, type ComponentDefinition } from "../../src/pages/catalog.js";
 import { validatePlan } from "../../src/pages/validate.js";
 
 const tickets = [

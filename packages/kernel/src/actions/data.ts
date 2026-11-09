@@ -5,7 +5,7 @@ import type { SpacePaths } from "../paths.js";
 import { DATA_MAX_SIZE } from "../workflows/protocole.js";
 import { writeAtomic, ID_EXECUTION, listRuns } from "../workflows/executions.js";
 import { withMemory, clearRunsAndMemory } from "../workflows/memory.js";
-import { removeGrant } from "../widgets/accords.js";
+import { removeGrant } from "../widgets/grants.js";
 import { PlanPage } from "../pages/plan.js";
 import { ID_ACTION } from "./schemas.js";
 

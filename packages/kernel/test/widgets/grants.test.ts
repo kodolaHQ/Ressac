@@ -3,7 +3,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { DeclarationWidget } from "../../src/home/schemas.js";
 import { DeclarationAction } from "../../src/actions/schemas.js";
-import { grantValid, giveGrant, readGrants, removeGrant } from "../../src/widgets/accords.js";
+import { grantValid, giveGrant, readGrants, removeGrant } from "../../src/widgets/grants.js";
 import { tempFolder } from "../helpers/temp.js";
 
 const declaration = (account: string[], publics: string[]) =>

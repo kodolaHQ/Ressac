@@ -1,12 +1,12 @@
 import type { SpacePaths } from "../paths.js";
 import type { Workshop } from "../container/workshop.js";
 import type { AiDispatcher } from "../ai/dispatcher.js";
-import type { BrowserBridge } from "../mcp/pont.js";
+import type { BrowserBridge } from "../mcp/bridge.js";
 import { WORKSHOP_STOPPED_ERROR, INTERRUPTED_ERROR } from "../widgets/harvest.js";
-import type { ProcessLauncher } from "../workflows/executer.js";
+import type { ProcessLauncher } from "../workflows/run.js";
 import { ACTION_STOPPED, type Execution } from "../workflows/executions.js";
 import type { Pacing } from "../workflows/pacing.js";
-import { cutInput, runAction, type OptionsAction, type LaunchResult, type TraceAction } from "./executer.js";
+import { cutInput, runAction, type OptionsAction, type LaunchResult, type TraceAction } from "./run.js";
 
 /** Different actions running at the same time, at most. */
 export const CONCURRENT_ACTIONS = 2;

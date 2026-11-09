@@ -12,7 +12,7 @@
     "accord-requis": "Accord requis",
   };
 
-  /** Same text as the kernel (actions/executer.ts). */
+  /** Same text as the kernel (actions/run.ts). */
   const requiredInput = (label: string) => `Saisie requise : ${label}`;
 
   let list = $state<ActionShown[]>([]);

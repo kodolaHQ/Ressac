@@ -5,14 +5,14 @@ import { mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
 import { spacePaths, type SpacePaths } from "../../src/paths.js";
-import { FakeBridge } from "../../src/mcp/pont-factice.js";
-import { giveGrant, removeGrant } from "../../src/widgets/accords.js";
+import { FakeBridge } from "../../src/mcp/fake-bridge.js";
+import { giveGrant, removeGrant } from "../../src/widgets/grants.js";
 import { ACTION_STOPPED, readRun, listRuns } from "../../src/workflows/executions.js";
 import { withMemory, readMemory } from "../../src/workflows/memory.js";
-import type { ProcessLauncher, DirectTrace } from "../../src/workflows/executer.js";
+import type { ProcessLauncher, DirectTrace } from "../../src/workflows/run.js";
 import type { AiAccessRun } from "../../src/ai/dispatcher.js";
 import { lastResult, readResult } from "../../src/actions/data.js";
-import { ACTION_UNKNOWN, actionGrantRequired, runAction, requiredInput, type OptionsAction, type TraceAction } from "../../src/actions/executer.js";
+import { ACTION_UNKNOWN, actionGrantRequired, runAction, requiredInput, type OptionsAction, type TraceAction } from "../../src/actions/run.js";
 import { DeclarationAction } from "../../src/actions/schemas.js";
 import { tempFolder } from "../helpers/temp.js";
 

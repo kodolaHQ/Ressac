@@ -1,7 +1,7 @@
 import { lstat, readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { SpacePaths } from "../paths.js";
-import { exists, readRawWorkflow } from "../workflows/lire.js";
+import { exists, readRawWorkflow } from "../workflows/read.js";
 import { workflowError, validateWorkflow, type ValidationContext, type ValidWorkflow } from "../workflows/validate.js";
 import { DeclarationAction, ID_ACTION } from "./schemas.js";
 

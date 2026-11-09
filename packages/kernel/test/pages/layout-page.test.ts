@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GEMMA_JSON_INVALID } from "../../src/ai/dispatcher.js";
-import { BUILTIN_COMPONENTS } from "../../src/pages/catalogue.js";
+import { BUILTIN_COMPONENTS } from "../../src/pages/catalog.js";
 import { LAYOUT_DELAY_MS, layOut, pageLayoutPrompt, type GemmaAccess } from "../../src/pages/layout-page.js";
 
 const results = { tickets: [{ titre: "Panne", priorite: "haute" }, { titre: "Doc", priorite: "basse" }] };

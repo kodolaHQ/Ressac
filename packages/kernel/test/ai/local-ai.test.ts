@@ -3,7 +3,7 @@ import { AI_ABANDONED } from "../../src/ai/dispatcher.js";
 import { mkdir, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { LocalAi, launchAiProcess, type AiProcess } from "../../src/ai/ia-locale.js";
+import { LocalAi, launchAiProcess, type AiProcess } from "../../src/ai/local-ai.js";
 import { tempFolder } from "../helpers/temp.js";
 import { fakeRunner, type Response } from "../helpers/fake-runner.js";
 import type { Runner } from "../../src/container/runner.js";

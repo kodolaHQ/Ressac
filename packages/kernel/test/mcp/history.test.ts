@@ -2,8 +2,8 @@ import { afterEach, expect, test } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { AccessPolicy } from "../../src/access/policy.js";
-import type { HistoryResult } from "../../src/mcp/pont.js";
-import { FakeBridge } from "../../src/mcp/pont-factice.js";
+import type { HistoryResult } from "../../src/mcp/bridge.js";
+import { FakeBridge } from "../../src/mcp/fake-bridge.js";
 import { startMcpServer, generateToken } from "../../src/mcp/server.js";
 
 const token = generateToken();

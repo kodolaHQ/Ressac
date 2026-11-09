@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { AccessPolicy } from "../../src/access/policy.js";
-import { FakeBridge } from "../../src/mcp/pont-factice.js";
+import { FakeBridge } from "../../src/mcp/fake-bridge.js";
 import { startMcpServer, generateToken } from "../../src/mcp/server.js";
 import {
   CONSOLE_BACKGROUND_HIDDEN,

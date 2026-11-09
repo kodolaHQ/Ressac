@@ -1,4 +1,4 @@
-import type { LocalAi } from "./ia-locale.js";
+import type { LocalAi } from "./local-ai.js";
 
 /** Local AI calls in flight at the same time, all runs together. */
 export const AI_SIMULTANEOUS = 4;

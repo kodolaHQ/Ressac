@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import { appPrefix, contextPrefix, remarksPrefix } from "../../src/pty/context.js";
-import type { Batch } from "../../src/design/remarques.js";
+import type { Batch } from "../../src/design/remarks.js";
 
 test("exact prefix", () => {
   expect(contextPrefix("sveltejs/svelte", "https://github.com/sveltejs/svelte")).toBe(

@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { ShownWidget } from "../shared/api";
   import type { FreePlacement } from "../../../packages/kernel/src/home/schemas";
-  import WidgetFrame from "./CadreWidget.svelte";
+  import WidgetFrame from "./WidgetFrame.svelte";
   import Icon from "./components/Icon.svelte";
   import { nextRun } from "./components/next";
   import { freeUnits } from "./free-grid";

@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { BlockCatalogEntry } from "@webaios/kernel";
   import { availableFields } from "./fields";
-  import type { Edit } from "./edition.svelte";
+  import type { Edit } from "./edit.svelte";
   import CodeEditor from "./CodeEditor.svelte";
   import type { Executions } from "./executions.svelte";
   import BlockForm from "./BlockForm.svelte";

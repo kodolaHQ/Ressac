@@ -5,7 +5,7 @@ import { PROJECT_ID, type Comment, type DiffFile, type ModifiedFile } from "@web
 import type { ActionShown } from "./actions";
 import type { ActionSite, SiteWindowState, MessageToHome, ShownSite } from "./sites";
 import type { ExtensionsBar, ExtensionLine, SpaceExtensionLine, SiteExtensionLine } from "./extensions";
-import type { LeftZone } from "./revelation";
+import type { LeftZone } from "./reveal";
 import type { Decision, PendingRequest, AccessState, BrowserState, SpaceId, WindowId, TabId, Download, Visit } from "./model";
 
 const id = z.string().min(1);
@@ -133,7 +133,7 @@ export interface ApiWebaios {
   bornesContenu(b: BoundsRange): void;
   /** macOS: the window buttons follow the sidebar (hidden with it in compact mode). */
   boutonsFenetre(visible: boolean): void;
-  /** Compact mode: over a web page, the mouse changes zone relative to the left edge (see revelation.ts). */
+  /** Compact mode: over a web page, the mouse changes zone relative to the left edge (see reveal.ts). */
   surZoneGauche(callback: (zone: LeftZone) => void): () => void;
   /** The menu asks to open a UI panel (⌘Y…). */
   surPanneau(callback: (p: Panel) => void): () => void;

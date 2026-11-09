@@ -5,8 +5,8 @@ import { appendFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createKernel, WorkshopError } from "../kernel.js";
-import { FakeBridge } from "../mcp/pont-factice.js";
-import type { TabInfo, BrowserBridge } from "../mcp/pont.js";
+import { FakeBridge } from "../mcp/fake-bridge.js";
+import type { TabInfo, BrowserBridge } from "../mcp/bridge.js";
 
 const github: TabInfo = { id: "github", titre: "sveltejs/svelte", url: "https://github.com/sveltejs/svelte", espace: "perso" };
 const gmail: TabInfo = { id: "gmail", titre: "Gmail — Boîte de réception", url: "https://mail.google.com/mail/u/0/", espace: "perso" };

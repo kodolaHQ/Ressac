@@ -1,7 +1,7 @@
 import { readFile, realpath, stat } from "node:fs/promises";
 import { join, sep } from "node:path";
 import { writeAtomic } from "./executions.js";
-import { exists, readRawWorkflow } from "./lire.js";
+import { exists, readRawWorkflow } from "./read.js";
 import { withMemory, writeMemory, paramsHash, canonicalJson, readMemory } from "./memory.js";
 import { WORKFLOW_MAX_SIZE } from "./schema.js";
 import {

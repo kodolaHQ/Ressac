@@ -7,7 +7,7 @@
 import type { WebAiOsStore } from "../store";
 import type { FrameInjection } from "../../shared/sites";
 import type { MemoryResponse } from "../../core/sites/injection";
-import { VIDEO_EVENTS, ResumeTracking } from "../../core/reprise";
+import { VIDEO_EVENTS, ResumeTracking } from "../../core/resume";
 
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 // Keep in sync with store/sites.ts SITE_FRAMES.

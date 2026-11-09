@@ -1,7 +1,7 @@
 // What goes into each frame of a site app's view (core/sites/injection.ts): decided from
 // the frame's WindowGlobalParent (its document's address, whether it is the view's main frame, the view's page), never
 // from what the frame says. Also the tweaks' console and the memory relay to the host.
-import type { TweaksRead } from "../../../../packages/kernel/src/sites/lire";
+import type { TweaksRead } from "../../../../packages/kernel/src/sites/read";
 import { relativeUrl } from "../../../../packages/kernel/src/sites/urls";
 import GUARD from "../../../../packages/kernel/extensions/webaios-garde-page.js?raw";
 import { tweakSource, type FrameInjection } from "../../shared/sites";

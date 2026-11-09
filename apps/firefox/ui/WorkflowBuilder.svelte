@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Owner } from "../../../packages/kernel/src/index";
   import Builder from "./builder/Builder.svelte";
-  import { followDisappearances } from "./builder/edition.svelte";
+  import { followDisappearances } from "./builder/edit.svelte";
   import { api } from "./state.svelte";
   import { homeListForBuilder } from "./builder";
 

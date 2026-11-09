@@ -16,7 +16,7 @@ import {
   type NetworkRequest,
   type HistoryResult,
   type JsResult,
-} from "./pont.js";
+} from "./bridge.js";
 
 // Transparent 1×1 PNG.
 const PNG = Buffer.from(

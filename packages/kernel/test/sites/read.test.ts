@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { setTimeout as attendre } from "node:timers/promises";
 import { spacePaths } from "../../src/paths.js";
 import { SITE_ID_ERROR, tweakFileNotFound } from "../../src/sites/schemas.js";
-import { readTweaks, readSite, readSites, watchSites, type SiteLu } from "../../src/sites/lire.js";
+import { readTweaks, readSite, readSites, watchSites, type SiteLu } from "../../src/sites/read.js";
 import { tempFolder } from "../helpers/temp.js";
 
 const o = { adressesLocales: false };

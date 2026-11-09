@@ -3,7 +3,7 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   grantCovers, grantNeeded, storeSiteGrant, rightsOf, siteExtensionsHash, siteReadHash, readSiteGrants, removeSiteGrant,
-} from "../../src/sites/accords.js";
+} from "../../src/sites/grants.js";
 import type { DeclarationSite } from "../../src/sites/schemas.js";
 import { tempFolder } from "../helpers/temp.js";
 

@@ -8,7 +8,7 @@ import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { FakeBridge } from "../../src/mcp/pont-factice.js";
+import { FakeBridge } from "../../src/mcp/fake-bridge.js";
 import {
   RUN_DELAY_MS,
   MEMORY_GAP_MS,
@@ -19,7 +19,7 @@ import {
   type WorkflowContext,
   type InfraWorkflow,
   type ProcessLauncher,
-} from "../../src/workflows/executer.js";
+} from "../../src/workflows/run.js";
 import { OUTPUT_MAX_BYTES } from "../../src/workflows/executions.js";
 import { SEARCHES_CAP, SEARCHES_STOPPED, TOO_MANY_READS, fetch } from "../../src/workflows/access.js";
 import { SEARCH_DENIED, UNREADABLE_RESULTS, extractResults, searchUrl } from "../../src/workflows/duckduckgo.js";
@@ -36,7 +36,7 @@ import { spacePaths } from "../../src/paths.js";
 import { streamingChain } from "../../src/workflows/chain.js";
 import { ACTION_STOPPED } from "../../src/workflows/executions.js";
 import type { Owner } from "../../src/workflows/schema.js";
-import type { DirectTrace } from "../../src/workflows/executer.js";
+import type { DirectTrace } from "../../src/workflows/run.js";
 
 const ENGINE = join(import.meta.dirname, "..", "..", "docker", "moteur");
 const SCRIPT = join(ENGINE, "recolteur.mjs");
@@ -1638,7 +1638,7 @@ describe("executerWorkflow: watch (duration, chain, publications, memory along t
     expect(DATA_MAX_SIZE).toBe(2 * 1024 * 1024);
   });
 
-  it("executer.ts's PUBLICATIONS_GAP_MS and MEMORY_GAP_MS equal those of interpreteur.mjs", async () => {
+  it("run.ts's PUBLICATIONS_GAP_MS and MEMORY_GAP_MS equal those of interpreteur.mjs", async () => {
     const interpreter = await import(pathToFileURL(join(ENGINE, "interpreteur.mjs")).href);
     expect(PUBLICATIONS_GAP_MS).toBe(5000);
     expect(MEMORY_GAP_MS).toBe(30_000);

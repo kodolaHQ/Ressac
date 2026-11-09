@@ -3,11 +3,11 @@ import { join } from "node:path";
 import type { SpacePaths } from "../paths.js";
 import type { Workshop } from "../container/workshop.js";
 import type { AiAccessRun } from "../ai/dispatcher.js";
-import type { BrowserBridge } from "../mcp/pont.js";
-import { BUILTIN_COMPONENTS } from "../pages/catalogue.js";
+import type { BrowserBridge } from "../mcp/bridge.js";
+import { BUILTIN_COMPONENTS } from "../pages/catalog.js";
 import { readAgentComponents } from "../pages/agent-components.js";
 import { layOut } from "../pages/layout-page.js";
-import { grantValid, readGrants, removeGrant } from "../widgets/accords.js";
+import { grantValid, readGrants, removeGrant } from "../widgets/grants.js";
 import { originChain, markInterrupted } from "../widgets/harvest.js";
 import { message, truncate } from "../workflows/access.js";
 import {
@@ -19,7 +19,7 @@ import {
   type WorkflowOutcome,
   type ProcessLauncher,
   type DirectTrace,
-} from "../workflows/executer.js";
+} from "../workflows/run.js";
 import { ID_EXECUTION, writeRun, attemptId, type Execution } from "../workflows/executions.js";
 import type { Pacing } from "../workflows/pacing.js";
 import { withMemory, writeMemory, readMemory } from "../workflows/memory.js";
@@ -27,7 +27,7 @@ import { startTooBig } from "../workflows/protocole.js";
 import { REPLAY_TOO_BIG, replayPlan } from "../workflows/replay.js";
 import type { Owner } from "../workflows/schema.js";
 import { writeResult, deleteDataAction } from "./data.js";
-import { readAction, actionWorkflow } from "./lire.js";
+import { readAction, actionWorkflow } from "./read.js";
 import type { DeclarationAction } from "./schemas.js";
 
 export const ACTION_UNKNOWN = "Action inconnue";

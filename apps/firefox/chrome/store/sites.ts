@@ -7,7 +7,7 @@ import { INFO_NOTICE_DURATION_MS, HOME_OPEN_GAP_MS, ICON_MAX, type BarNotice, ty
 import type { TweakError } from "../../core/sites/injection";
 import { decisionNavigation, openDecision, type NavigationContext } from "../../core/sites/navigation";
 import { relativeUrl, urlOnDomain, hostInSite } from "../../../../packages/kernel/src/sites/urls";
-import type { TweaksRead } from "../../../../packages/kernel/src/sites/lire";
+import type { TweaksRead } from "../../../../packages/kernel/src/sites/read";
 import { ID_SITE } from "../../../../packages/kernel/src/sites/schemas";
 import type { SiteChrome } from "../../host/sites";
 import { gestureGuard } from "../../shared/widget-gesture";

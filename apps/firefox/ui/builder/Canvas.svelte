@@ -4,7 +4,7 @@
   import type { BlockCatalogEntry } from "@webaios/kernel";
   import { link, deleteBlocks, deleteLink } from "./draft";
   import { DRAG_BLOCK } from "./add";
-  import type { Edit } from "./edition.svelte";
+  import type { Edit } from "./edit.svelte";
   import BlockNode, { type BlockNode as Noeud } from "./BlockNode.svelte";
   import type { Badge } from "./badges";
 

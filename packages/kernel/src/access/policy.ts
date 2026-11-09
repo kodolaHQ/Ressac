@@ -1,4 +1,4 @@
-import type { TabInfo } from "../mcp/pont.js";
+import type { TabInfo } from "../mcp/bridge.js";
 import { containerPortRange } from "../container/workshop.js";
 
 function origin(url: string): string | null {

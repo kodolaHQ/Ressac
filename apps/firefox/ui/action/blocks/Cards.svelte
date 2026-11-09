@@ -1,6 +1,6 @@
 <script lang="ts">
   import ImagePage from "../../ActionImage.svelte";
-  import PageLink from "../LienPage.svelte";
+  import PageLink from "../PageLink.svelte";
   import { andOthers, sections, type Collection, type PageContext, type ImagePage as Image, type LienPage as Lien } from "../types";
 
   type Card = { titre: string; sousTitre: string | null; image: Image; valeur: string | null; etiquettes: string[]; lien: Lien | null };

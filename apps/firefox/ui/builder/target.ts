@@ -1,6 +1,6 @@
 import type { DirectWidget, ActionsState, DirectState, Owner } from "@webaios/kernel";
 import type { ApiWebaios } from "../../shared/api";
-import type { Depot } from "./edition.svelte";
+import type { Depot } from "./edit.svelte";
 import type { Launcher, SourceExecutions } from "./executions.svelte";
 
 const ACTION_PREFIX = "action:";

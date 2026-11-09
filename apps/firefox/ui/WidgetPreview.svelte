@@ -5,7 +5,7 @@
   import { GAP_PX, ROW_PX } from "./grille";
   import { previewData } from "./builder/preview";
   import type { Executions } from "./builder/executions.svelte";
-  import WidgetFrame from "./CadreWidget.svelte";
+  import WidgetFrame from "./WidgetFrame.svelte";
   import { freeUnits } from "./free-grid";
 
   /**

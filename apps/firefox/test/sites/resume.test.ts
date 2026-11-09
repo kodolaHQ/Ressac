@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { MIN_RESUME_DURATION_S, POSITION_GAP_MS, RESUME_BACKOFF_S, ResumeTracking } from "../../core/reprise";
+import { MIN_RESUME_DURATION_S, POSITION_GAP_MS, RESUME_BACKOFF_S, ResumeTracking } from "../../core/resume";
 
 /** A tracker with a test clock and the position the main process returns. */
 function tracking(known: number | null = null) {

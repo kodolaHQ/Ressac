@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 import {
   SPACE_FOLDER, FOLDER_NOT_FOUND, FOLDER_NOT_ABSOLUTE, FOLDER_TOO_LARGE, ExternalRegistry, deniedPort,
-} from "../../src/design/externes.js";
+} from "../../src/design/external.js";
 import { tempFolder } from "../helpers/temp.js";
 
 const RANGES: [number, number][] = [[5280, 5299], [15280, 15284]];

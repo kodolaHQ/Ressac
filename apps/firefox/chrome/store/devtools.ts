@@ -1,4 +1,4 @@
-import { originOf, SITE_PREFIX } from "../../core/agent/pont";
+import { originOf, SITE_PREFIX } from "../../core/agent/bridge";
 
 /** An agent app window seen as a tab: `app:<dossier>`. */
 const APP_PREFIX = "app:";

@@ -1,6 +1,6 @@
 import { localUrl } from "../workflows/access.js";
 import { emptyResults } from "./preview.js";
-import type { ComponentDefinition } from "./catalogue.js";
+import type { ComponentDefinition } from "./catalog.js";
 import { MAX_PAGE_BLOCKS, PAGE_DEPTH, evaluate, readPath, readReference, type PlanBlock, type Group, type PlanPage } from "./plan.js";
 
 // The resolution of a plan (validated, or re-read from a run) into a rendered page: references computed, fields read, texts

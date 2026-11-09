@@ -516,9 +516,9 @@ describe("interpreter: input and progress (actions)", () => {
     expect(widget.terminal).toEqual({ t: "fin", donnees: { saisie: null, aLaCle: false } });
   });
 
-  it("PROGRESS_GAP_MS equal in interpreteur.mjs and executer.ts", async () => {
+  it("PROGRESS_GAP_MS equal in interpreteur.mjs and run.ts", async () => {
     const interpreter = await import(pathToFileURL(join(ENGINE, "interpreteur.mjs")).href);
-    const { PROGRESS_GAP_MS } = await import("../../src/workflows/executer.js");
+    const { PROGRESS_GAP_MS } = await import("../../src/workflows/run.js");
     expect(PROGRESS_GAP_MS).toBe(1000);
     expect(interpreter.ECART_AVANCEMENT_MS).toBe(PROGRESS_GAP_MS);
   });

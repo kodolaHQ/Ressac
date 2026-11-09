@@ -2,9 +2,9 @@ import { join } from "node:path";
 import { writeData, writeWidgetState, readData, readWidgetState, changeWidgetState, deleteData } from "../home/data.js";
 import type { DeclarationWidget, WidgetState, WidgetLu } from "../home/schemas.js";
 import type { Workshop } from "../container/workshop.js";
-import type { LocalAi } from "../ai/ia-locale.js";
-import type { BrowserBridge } from "../mcp/pont.js";
-import { grantValid, readGrants, removeGrant } from "./accords.js";
+import type { LocalAi } from "../ai/local-ai.js";
+import type { BrowserBridge } from "../mcp/bridge.js";
+import { grantValid, readGrants, removeGrant } from "./grants.js";
 import { message, truncate } from "../workflows/access.js";
 import {
   MAX_ERROR,
@@ -18,9 +18,9 @@ import {
   type ProcessLauncher,
   type Publication,
   type DirectTrace,
-} from "../workflows/executer.js";
+} from "../workflows/run.js";
 import { writeRun, attemptId, idExecution, readRun, listRuns, type Execution, type BlockTrace } from "../workflows/executions.js";
-import { readWorkflow } from "../workflows/lire.js";
+import { readWorkflow } from "../workflows/read.js";
 import type { Pacing } from "../workflows/pacing.js";
 import { withMemory, writeMemory, readMemory, type BlocksMemory } from "../workflows/memory.js";
 import { countNew } from "./nouveautes.js";
@@ -31,7 +31,7 @@ import type { ValidationContext, ValidWorkflow } from "../workflows/validate.js"
 
 // Moved into the workflow engine; re-exported for the modules and tests that take them here.
 export { localUrl } from "../workflows/access.js";
-export { PROFILE_DENIED, defaultLaunch, type ProcessLauncher, type HarvestProcess } from "../workflows/executer.js";
+export { PROFILE_DENIED, defaultLaunch, type ProcessLauncher, type HarvestProcess } from "../workflows/run.js";
 
 export interface HarvestOptions {
   id: string;

@@ -5,7 +5,7 @@
   import AccountGrantCard from "../components/AccountGrantCard.svelte";
   import { api } from "../state.svelte";
   import ActionProgress from "./ActionProgress.svelte";
-  import ActionHeader from "./EnTeteAction.svelte";
+  import ActionHeader from "./ActionHeader.svelte";
   import PageRender from "./PageRender.svelte";
 
   /**

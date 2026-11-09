@@ -2,8 +2,8 @@ import { spawn } from "node:child_process";
 import type { Readable, Writable } from "node:stream";
 import { HARVEST_DELAY_S, type Workshop } from "../container/workshop.js";
 import { toolsPath } from "../container/runner.js";
-import type { LocalAi } from "../ai/ia-locale.js";
-import { ProfileDenied, type BrowserBridge } from "../mcp/pont.js";
+import type { LocalAi } from "../ai/local-ai.js";
+import { ProfileDenied, type BrowserBridge } from "../mcp/bridge.js";
 import {
   MAX_OPEN_READS,
   MAX_SEARCHES,

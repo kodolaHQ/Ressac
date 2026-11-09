@@ -2,7 +2,7 @@ import type { DevRight, TabInfo } from "../shims/kernel";
 import type { ExtensionCard, GrantResponse } from "../../shared/extensions";
 import type { Decision, PendingRequest, WindowId, TabId, Outcome, Permission } from "../../shared/model";
 import { SCHEMA_SITE } from "../../shared/sites";
-import { waitForRights, waitForOutcome, waitForResponse, QUESTION_DELAY_MS, allowedDecision, activeTabOf, originOf, staleQuestion, staleSiteQuestion } from "../../core/agent/pont";
+import { waitForRights, waitForOutcome, waitForResponse, QUESTION_DELAY_MS, allowedDecision, activeTabOf, originOf, staleQuestion, staleSiteQuestion } from "../../core/agent/bridge";
 import type { SitePermission } from "../store/site-permissions";
 import type { Store } from "../store/store";
 

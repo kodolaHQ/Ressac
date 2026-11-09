@@ -4,7 +4,7 @@ import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/proto
 import type { ServerNotification, ServerRequest } from "@modelcontextprotocol/sdk/types.js";
 import type { AccessPolicy } from "../access/policy.js";
 import { truncate } from "../devtools/summaries.js";
-import type { MessageConsole } from "./pont.js";
+import type { MessageConsole } from "./bridge.js";
 
 /** A Store extension: neither its console nor its unlocking for the agent. */
 export const AGENT_ONLY = "Réservé aux extensions que tu as écrites.";

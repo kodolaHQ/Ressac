@@ -2,7 +2,7 @@
   import { untrack } from "svelte";
   import type { BlockCatalogEntry } from "@webaios/kernel";
   import { set, rename, type Brouillon } from "./draft";
-  import type { Edit } from "./edition.svelte";
+  import type { Edit } from "./edit.svelte";
   import { shownFields, entryOf, paramsWith, textOf, type FormField } from "./form";
 
   type DraftBlock = Brouillon["blocs"][number];

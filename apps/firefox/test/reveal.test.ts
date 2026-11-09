@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hide, INITIAL_REVEAL, onZone, leftZone, exitZone, type Reveal, type LeftZone } from "../shared/revelation";
+import { hide, INITIAL_REVEAL, onZone, leftZone, exitZone, type Reveal, type LeftZone } from "../shared/reveal";
 
 /** Replays mouse positions (px from the left edge); a requested hide is applied right away. */
 function walk(xs: number[], start: Reveal = INITIAL_REVEAL): boolean[] {

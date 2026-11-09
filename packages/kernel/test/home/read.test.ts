@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 import { mkdir, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { spacePaths } from "../../src/paths.js";
-import { readHome } from "../../src/home/lire.js";
+import { readHome } from "../../src/home/read.js";
 import { tempFolder } from "../helpers/temp.js";
 import { declarationWidget, writeWidget } from "../helpers/home.js";
 

@@ -1,7 +1,7 @@
 import { GEMMA_JSON_INVALID } from "../ai/dispatcher.js";
 import { resultsPreview, emptyResults } from "./preview.js";
-import type { ComponentDefinition } from "./catalogue.js";
-import { catalogText } from "./catalogue.js";
+import type { ComponentDefinition } from "./catalog.js";
+import { catalogText } from "./catalog.js";
 import type { PlanPage } from "./plan.js";
 import { lastResortLayout, fallbackLayout } from "./fallback.js";
 import { validatePlan } from "./validate.js";

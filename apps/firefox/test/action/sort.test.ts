@@ -1,7 +1,7 @@
 import { ACTION_UNKNOWN as ACTION_INCONNUE_NOYAU, NO_RESULT as AUCUN_RESULTAT_NOYAU, FALLBACK_MENTION as MENTION_SECOURS_NOYAU } from "@webaios/kernel";
 import { expect, test } from "vitest";
 import { ACTION_UNKNOWN, NO_RESULT, FALLBACK_MENTION } from "../../shared/actions";
-import { sortLines } from "../../ui/action/tri";
+import { sortLines } from "../../ui/action/sort";
 
 const lignes = (...v: string[]) => v.map((x) => ({ c: x }));
 const values = (l: Record<string, string>[]) => l.map((x) => x.c);
