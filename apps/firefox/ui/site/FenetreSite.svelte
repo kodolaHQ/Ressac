@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import BarreSite from "./BarreSite.svelte";
-  import CadreAccueil from "./CadreAccueil.svelte";
+  import CadreAccueil from "../SiteHomeFrame.svelte";
   import CarteAccordSite from "./CarteAccordSite.svelte";
   import type { EtatFenetreSite } from "../../shared/sites";
   import type { ApiSite } from "../../shared/api";

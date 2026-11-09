@@ -1,5 +1,5 @@
 <script lang="ts">
-  import BarreExtensions from "./BarreExtensions.svelte";
+  import BarreExtensions from "../ExtensionsStrip.svelte";
   import BoutonDesign from "./BoutonDesign.svelte";
   import PastilleAcces from "./PastilleAcces.svelte";
   import Icone from "./Icone.svelte";

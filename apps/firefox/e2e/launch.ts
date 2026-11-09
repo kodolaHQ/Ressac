@@ -52,7 +52,7 @@ async function waitFor<T>(read: () => Promise<T | undefined>, ms: number, what: 
 }
 
 /**
- * Launches WebAiOs-Firefox headless (`headed` shows its window: the bench's visible pass only). Folders passed in are reused and kept (to restart on the same data); the others
+ * Launches WebAiOs-Firefox headless (`headed` shows its window). Folders passed in are reused and kept (to restart on the same data); the others
  * are temporary and deleted on close. `prefs` are appended to the profile's user.js. WEBAIOS_DATA_DIR is always set, so tests never touch the real data folder.
  * A data folder without a space's widgets folder gets the starter widgets without their harvest (`starterHarvests` keeps
  * them, and their real-web reads: prefer a local server).

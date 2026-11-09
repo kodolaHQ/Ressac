@@ -1,8 +1,0 @@
-<!doctype html><title>Bavarde</title>
-<p>Page qui parle quand on déclenche.</p>
-<script>
-  document.addEventListener("declencher", () => {
-    console.log("PAGE-LOG");
-    fetch("/texte.html?depuis-page").catch(() => {});
-  });
-</script>

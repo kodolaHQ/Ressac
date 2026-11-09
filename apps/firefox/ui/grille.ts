@@ -57,8 +57,3 @@ export function redimensionner(placements: Placement[], id: string, l: number, h
   const hauteur = borner(Math.round(h), tailles.min.h, tailles.max.h);
   return resoudre(placements, { ...cible, x, l: largeur, h: hauteur });
 }
-
-/** Nombre de cases (colonnes ou rangées) le plus proche d'une distance en pixels ; `taille` : celle d'une case sans l'écart. */
-export function versCase(px: number, taille: number): number {
-  return Math.round(px / (taille + ECART_PX)) || 0;
-}

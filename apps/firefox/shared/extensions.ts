@@ -1,5 +1,4 @@
-import { accordRenforce, empreintePortee, libellesPortee, type AnalyseManifeste, type SourceExtension } from "@webaios/noyau";
-import type { Espace, EtatNavigateur } from "./modele";
+import type { SourceExtension } from "@webaios/noyau";
 
 /** Réponse à une saisie qui n'est ni un id d'extension, ni l'adresse de sa page du Chrome Web Store. */
 export const SAISIE_INVALIDE = "Adresse ou identifiant du Chrome Web Store attendu";
@@ -73,32 +72,6 @@ export interface ReponseAccord {
   retiree?: boolean;
 }
 
-/** La carte d'accord d'une extension analysée, pour l'activer dans `espace` (pur). */
-export function carteDe(
-  a: AnalyseManifeste,
-  o: { cle: string; source: SourceExtension; espace: Espace; etat: EtatNavigateur; maj?: { de: string }; remplaceAussi?: string[] },
-): CarteExtension {
-  const p = a.portee;
-  return {
-    cle: o.cle,
-    nom: a.nom,
-    source: o.source,
-    version: a.version,
-    droits: libellesPortee(p, o.source),
-    sites: [...p.hotes],
-    tousLesSites: p.tousLesSites,
-    reseau: o.source === "agent" ? [...p.reseau] : null,
-    // Plus large que la règle « scripts sur tous les sites » : `scripting` avec un accès à tous les sites injecte partout.
-    renforce: accordRenforce(p, o.source),
-    espace: o.espace.nom,
-    espaceId: o.espace.id,
-    autresEspaces: o.etat.espaces.filter((e) => e.profil === o.espace.profil && e.id !== o.espace.id).map((e) => e.nom),
-    remplaceAussi: [...(o.remplaceAussi ?? [])],
-    maj: o.maj ? { de: o.maj.de } : null,
-    empreinte: empreintePortee(p),
-  };
-}
-
 /** Une ligne de la page Extensions (tout y est affiché en texte : c'est de la donnée venue d'un manifeste ou d'une console). */
 export interface LigneExtension {
   cle: string;
@@ -147,21 +120,4 @@ export interface BarreExtensions {
   /** Id de l'onglet affiché pour la bibliothèque (son `webContents.id`), ou null. */
   onglet: number | null;
   actions: { cle: string; idChrome: string; nom: string; epinglee: boolean }[];
-}
-
-/** Droits du manifeste que WebAiOs ne prend pas en charge (Electron ou WebAiOs ne les fournissent pas). */
-const DROITS_NON_PRIS = ["activeTab", "nativeMessaging", "userScripts", "sidePanel", "identity", "tabCapture", "desktopCapture", "pageCapture", "debugger", "proxy", "ttsEngine", "tts"];
-/** Clés du manifeste sans effet dans WebAiOs, et le nom montré. */
-const CLES_NON_PRISES: Record<string, string> = { side_panel: "sidePanel", devtools_page: "devtools_page", omnibox: "omnibox", chrome_url_overrides: "chrome_url_overrides" };
-
-/** Ce que le manifeste demande et que WebAiOs ne prend pas en charge, dans l'ordre des listes, sans doublon (pur). */
-export function nonPrisEnCharge(manifeste: unknown): string[] {
-  if (typeof manifeste !== "object" || manifeste === null) return [];
-  const m = manifeste as Record<string, unknown>;
-  const droits = new Set<string>();
-  for (const champ of ["permissions", "optional_permissions"])
-    if (Array.isArray(m[champ])) for (const d of m[champ] as unknown[]) if (typeof d === "string") droits.add(d);
-  const r: string[] = DROITS_NON_PRIS.filter((d) => droits.has(d));
-  for (const [cle, nom] of Object.entries(CLES_NON_PRISES)) if (Object.hasOwn(m, cle) && !r.includes(nom)) r.push(nom);
-  return r;
 }

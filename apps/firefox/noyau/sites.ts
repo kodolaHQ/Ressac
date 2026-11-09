@@ -33,8 +33,8 @@ import {
 import { adresseChangee, adresseInchangee, adresseIntrouvable, ICONE_MAX, modifierAvecAgent, type ActionSite, type AvisBarre, type DemandeAccordSite, type MessageVersLAccueil, type SiteAffiche } from "../shared/sites.ts";
 import type { Cadre } from "../shared/modele.ts";
 import type { ErreurRetouche, ReponseMemoire, SiteOuvrable } from "../core/sites/injection.ts";
-import { SuiviAdresse } from "./site-follow.ts";
-import { decisionOuverture } from "./site-navigation.ts";
+import { SuiviAdresse } from "../core/sites/suivi.ts";
+import { decisionOuverture } from "../core/sites/navigation.ts";
 import { creerPositions, memoireOp } from "./site-memory.ts";
 
 // The pure parts of Electron's main/sites/service.ts, copied: it imports electron, so the Node host cannot import it.

@@ -42,9 +42,6 @@ export function removeContainer(profile: IdProfil): void {
 /** userContextId of site app `id`'s private container (`userContextIdInternal.webaios-site-<id>`), created on first use. */
 export const siteContainer = (id: string): number => containerFor(`site-${id}`);
 
-/** userContextId of site app `id`'s container if it exists, else null: never creates one. */
-export const existingSiteContainer = (id: string): number | null => existingContainer(`site-${id}`);
-
 /** Is this a private container whose internal name starts with `webaios-<prefix>`? */
 function hasPrefix(userContextId: number, prefix: string): boolean {
   if (!userContextId) return false;
@@ -69,9 +66,6 @@ export const removeSiteContainer = (id: string): Promise<void> => wipe(`site-${i
 
 /** userContextId of agent app `dossier`'s private container (`userContextIdInternal.webaios-app-<dossier>`), created on first use. */
 export const appContainer = (dossier: string): number => containerFor(`app-${dossier}`);
-
-/** userContextId of agent app `dossier`'s container if it exists, else null: never creates one. */
-export const existingAppContainer = (dossier: string): number | null => existingContainer(`app-${dossier}`);
 
 /** Is this the container of an agent app (running or not)? The request guard refuses every page of one whose app is not open. */
 export const isAppContainer = (userContextId: number): boolean => hasPrefix(userContextId, "app-");

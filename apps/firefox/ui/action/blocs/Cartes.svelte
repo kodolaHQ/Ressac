@@ -1,5 +1,5 @@
 <script lang="ts">
-  import ImagePage from "../ImagePage.svelte";
+  import ImagePage from "../../ActionImage.svelte";
   import LienPage from "../LienPage.svelte";
   import { etAutres, sections, type Collection, type ContextePage, type ImagePage as Image, type LienPage as Lien } from "../types";
 

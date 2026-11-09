@@ -45,7 +45,6 @@ Invisible reads run in a windowless browser, in a private container cleared befo
 - Added a file to `src/`: `pnpm engine:import` (builds the UI first, so the generated sidebar files get linked), then `pnpm build:ui`.
 - Changed a `*.patch`, or anything compiled (C++, Rust, `jar.mn`): `pnpm engine:import`, then `pnpm build`.
 - Tests: `pnpm test` (unit), `pnpm e2e` (headless Firefox with a temporary profile, driven over Marionette).
-- Bench against the Electron app: `pnpm bench -- --out <file>.json` (invisible reads), `pnpm bench -- --headed --out <file>.json` (tab and space switches; opens windows and takes the focus). It runs Electron, Firefox, Electron, Firefox, Electron, Firefox, never together, and compares the medians. The bench tests are skipped unless `WEBAIOS_BENCH` is set.
 
 ## Data
 

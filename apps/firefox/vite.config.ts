@@ -5,9 +5,6 @@ import { defineConfig } from "vite";
 import { hostPath, nodePath, tsxPath } from "./scripts/paths";
 
 const shim = (name: string) => fileURLToPath(new URL(`chrome/shims/${name}.ts`, import.meta.url));
-// Electron components that step 2 does not migrate (imported as ./Name.svelte by the reused ones): Unavailable.svelte shows nothing.
-// The site bar: no design mode, no extension menu (no per-app activation, spec §4.9).
-const UNMIGRATED = ["IaLocale", "MenuExtensionsSite"];
 // Mounted only in a site app's bar: their styles are injected there, never bundled into the main UI's stylesheet.
 const INJECTED_CSS = ["/site/FenetreSite.svelte", "/ui/SiteAddonsStrip.svelte"];
 
@@ -90,25 +87,6 @@ export default defineConfig(({ mode }) => {
     plugins: [svelte({ dynamicCompileOptions: ({ filename }) => (INJECTED_CSS.some((f) => filename.endsWith(f)) ? { css: "injected" } : undefined) })],
     // Library mode leaves process.env.NODE_ENV in place (@xyflow/svelte reads it); a privileged page has no process.
     define: { "process.env.NODE_ENV": JSON.stringify("production") },
-    resolve: {
-      alias: [
-        // PageVide.svelte (frozen) imports ./Accueil.svelte: the home page has its own Firefox copy, so the name is
-        // redirected explicitly rather than left to resolve next to the frozen component.
-        { find: /^\.\/Accueil\.svelte$/, replacement: fileURLToPath(new URL("ui/Accueil.svelte", import.meta.url)) },
-        { find: /^\.\/BarreExtensions\.svelte$/, replacement: fileURLToPath(new URL("ui/ExtensionsStrip.svelte", import.meta.url)) },
-        // The builder (Constructeur.svelte, frozen): its Agent tab opens the side panel; its preview reads the Firefox home.
-        { find: /^\.\/OngletAgent\.svelte$/, replacement: fileURLToPath(new URL("ui/AgentTab.svelte", import.meta.url)) },
-        { find: /^\.\/ApercuWidget\.svelte$/, replacement: fileURLToPath(new URL("ui/ApercuWidget.svelte", import.meta.url)) },
-        // The site bar's home frame (FenetreSite.svelte, frozen): served by resource://, its messages through the bridge.
-        { find: /^\.\/CadreAccueil\.svelte$/, replacement: fileURLToPath(new URL("ui/SiteHomeFrame.svelte", import.meta.url)) },
-        // The site bar's add-on buttons (BarreSite.svelte, frozen): Firefox's add-ons of the app's window.
-        { find: /^\.\/BoutonsExtensionsSite\.svelte$/, replacement: fileURLToPath(new URL("ui/SiteAddonsStrip.svelte", import.meta.url)) },
-        // An action page's result image (Cartes.svelte, frozen): the host's checks, then the chrome's anonymous load.
-        { find: /^\.\.\/ImagePage\.svelte$/, replacement: fileURLToPath(new URL("ui/ActionImage.svelte", import.meta.url)) },
-        // An agent component in an action page (RenduPage.svelte, frozen): its resource:// copy, its messages through the bridge.
-        { find: /^\.\/CadreComposant\.svelte$/, replacement: fileURLToPath(new URL("ui/ActionComponentFrame.svelte", import.meta.url)) },
-      ].concat(UNMIGRATED.map((name) => ({ find: new RegExp(`^\\./${name}\\.svelte$`), replacement: fileURLToPath(new URL("ui/Unavailable.svelte", import.meta.url)) }))),
-    },
     build: {
       outDir,
       emptyOutDir: false,

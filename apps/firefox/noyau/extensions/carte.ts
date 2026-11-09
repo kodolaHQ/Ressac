@@ -2,7 +2,6 @@ import { accordRenforce, empreintePortee, libellesPortee, type AnalyseManifeste 
 import type { CarteExtension } from "../../shared/extensions.ts";
 import type { Espace } from "../../shared/modele.ts";
 
-// Keep in sync with apps/navigateur/src/commun/extensions.ts carteDe (that module does not load in the noyau host).
 /** The grant card of an agent extension, to activate it in `espace` (pure). */
 export function carteDe(
   a: AnalyseManifeste,
@@ -28,7 +27,7 @@ export function carteDe(
   };
 }
 
-// Keep in sync with apps/navigateur/src/commun/extensions.ts nonPrisEnCharge (the Extensions page's « Non pris en charge »).
+// Shown on the Extensions page as « Non pris en charge ».
 const DROITS_NON_PRIS = ["activeTab", "nativeMessaging", "userScripts", "sidePanel", "identity", "tabCapture", "desktopCapture", "pageCapture", "debugger", "proxy", "ttsEngine", "tts"];
 const CLES_NON_PRISES: Record<string, string> = { side_panel: "sidePanel", devtools_page: "devtools_page", omnibox: "omnibox", chrome_url_overrides: "chrome_url_overrides" };
 

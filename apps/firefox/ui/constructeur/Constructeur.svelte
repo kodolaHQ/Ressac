@@ -7,7 +7,7 @@
   import { api } from "../etat.svelte";
   import { placeLibre } from "./ajout";
   import ApercuAction from "./ApercuAction.svelte";
-  import ApercuWidget from "./ApercuWidget.svelte";
+  import ApercuWidget from "../ApercuWidget.svelte";
   import BarreExecutions from "./BarreExecutions.svelte";
   import Canevas from "./Canevas.svelte";
   import { cleCible, depotDe, lanceurDe, sourceExecutionsDe } from "./cible";
@@ -15,7 +15,7 @@
   import { creerEdition, suivreDisparitions } from "./edition.svelte";
   import { Executions } from "./executions.svelte";
   import ListeExecutions from "./ListeExecutions.svelte";
-  import OngletAgent from "./OngletAgent.svelte";
+  import OngletAgent from "../AgentTab.svelte";
   import OngletBloc from "./OngletBloc.svelte";
   import Palette from "./Palette.svelte";
   import { pastillesDe } from "./pastilles";

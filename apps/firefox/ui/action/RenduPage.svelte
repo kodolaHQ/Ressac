@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { BlocRendu, PageRendue } from "@webaios/noyau";
   import { AUCUN_RESULTAT, MENTION_SECOURS } from "../../shared/actions";
-  import CadreComposant from "./CadreComposant.svelte";
+  import CadreComposant from "../ActionComponentFrame.svelte";
   import Cartes from "./blocs/Cartes.svelte";
   import Champs from "./blocs/Champs.svelte";
   import Chiffre from "./blocs/Chiffre.svelte";

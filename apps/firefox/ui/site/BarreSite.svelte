@@ -1,8 +1,7 @@
 <script lang="ts">
   import Icone from "../composants/Icone.svelte";
   import BoutonDesignSite from "./BoutonDesignSite.svelte";
-  import BoutonsExtensionsSite from "./BoutonsExtensionsSite.svelte";
-  import MenuExtensionsSite from "./MenuExtensionsSite.svelte";
+  import BoutonsExtensionsSite from "../SiteAddonsStrip.svelte";
   import { HAUTEUR_BARRE_SITE, CHERCHER_ADRESSE, lienBloque, OUVRIR_DANS_UN_ONGLET, type EtatFenetreSite } from "../../shared/sites";
   import type { ApiSite } from "../../shared/api";
 
@@ -43,12 +42,10 @@
       {/if}
     </div>
   {/if}
-  <!-- À droite : le mode design (toutes vues), les boutons des extensions actives (vue « site » seulement), puis le menu
-       « Extensions » (toutes vues). -->
+  <!-- Right: the design mode (every view), then the active add-ons' buttons (« site » view only). -->
   <div class="extensions">
     <BoutonDesignSite {api} {etat} bind:menuOuvert={menuDesign} />
     <BoutonsExtensionsSite {api} {surSite} />
-    <MenuExtensionsSite {api} />
   </div>
 </header>
 

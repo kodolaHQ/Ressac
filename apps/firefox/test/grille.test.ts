@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { COLONNES, deplacer, ECART_PX, RANGEE_PX, redimensionner, versCase, type Placement } from "../ui/grille";
+import { COLONNES, deplacer, ECART_PX, RANGEE_PX, redimensionner, type Placement } from "../ui/grille";
 
 const p = (id: string, x: number, y: number, l: number, h: number): Placement => ({ id, x, y, l, h });
 const tailles = { min: { l: 2, h: 2 }, max: { l: 6, h: 4 } };
@@ -47,18 +47,6 @@ test("redimensionner pousse les widgets chevauchés", () => {
   const apres = redimensionner([p("a", 0, 0, 4, 2), p("b", 0, 2, 4, 2)], "a", 4, 4, tailles);
   expect(apres.find((q) => q.id === "b")).toEqual(p("b", 0, 4, 4, 2));
   sansChevauchement(apres);
-});
-
-test("versCase arrondit à la case la plus proche", () => {
-  const col = 80; // une case = 80 + 12 px
-  expect(versCase(0, col)).toBe(0);
-  expect(versCase(40, col)).toBe(0);
-  expect(versCase(50, col)).toBe(1);
-  expect(versCase(92, col)).toBe(1);
-  expect(versCase(250, col)).toBe(3);
-  expect(versCase(-20, col)).toBe(0);
-  expect(versCase(-60, col)).toBe(-1);
-  expect(versCase(102, RANGEE_PX)).toBe(1);
 });
 
 test("un widget plus large que la grille reste dans les 12 colonnes", () => {

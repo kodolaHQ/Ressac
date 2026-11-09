@@ -3,9 +3,8 @@
   import { onMount, untrack } from "svelte";
   import { focusPageVide } from "./commande.svelte";
   import { api, etat } from "../etat.svelte";
-  import Accueil from "./Accueil.svelte";
+  import Accueil from "../Accueil.svelte";
   import Essentiels from "./Essentiels.svelte";
-  import IaLocale from "./IaLocale.svelte";
   import SuggestionsActions from "./SuggestionsActions.svelte";
   import { suggestionsActions } from "./suggestions";
   import type { ActionAffichee } from "../../shared/actions";
@@ -91,7 +90,6 @@
 </script>
 
 <div class="page-vide" data-testid="page-vide">
-  <div class="ia-locale"><IaLocale /></div>
   <form
     onsubmit={(e) => {
       e.preventDefault();
@@ -129,7 +127,6 @@
 
 <style>
   .page-vide { position: relative; display: flex; flex-direction: column; align-items: center; gap: 32px; padding-top: 12vh; height: 100%; box-sizing: border-box; overflow-y: auto; }
-  .ia-locale { position: absolute; top: 12px; right: 16px; }
   form { width: min(560px, 80%); }
   input { width: 100%; box-sizing: border-box; padding: 12px 16px; font-size: 16px; border-radius: 10px; border: 1px solid var(--bord); background: var(--fond-barre); color: var(--texte); outline: none; }
   .refus { margin: 6px 4px 0; color: var(--en-erreur); font-size: 13px; }
