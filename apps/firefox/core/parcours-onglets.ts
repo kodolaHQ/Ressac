@@ -4,24 +4,24 @@ import { creerRegroupeur } from "./onglets/regroupeur";
 import { ongletsParcourables } from "../shared/onglets-parcourables";
 import { avancer, demarrer, fenetreVisible, noterUtilisation, ordreRecent, retirer, type Parcours } from "./recents";
 
-/** Le panneau n'apparaît que si ⌃ est encore enfoncé après ce délai (un aller-retour rapide ne le fait pas clignoter). */
+/** The panel appears only if ⌃ is still held after this delay (a quick back-and-forth does not make it blink). */
 const DELAI_PANNEAU_MS = 200;
-/** Capture de l'onglet devenu actif, après coup : elle ne retarde jamais le changement d'onglet. */
+/** Capture of the tab that became active, after the fact: it never delays the tab change. */
 const DELAI_CAPTURE_MS = 1000;
 
 interface EnCours {
   p: Parcours;
   minuteur: ReturnType<typeof setTimeout> | undefined;
-  /** Le panneau a été envoyé à l'interface (il faudra lui envoyer null). */
+  /** The panel was sent to the UI (null will have to be sent to it). */
   visible: boolean;
 }
 
 /**
- * ⌃Tab façon Zen, côté process principal : ordre d'utilisation récente par fenêtre, parcours tant que ⌃ est enfoncé,
- * onglet activé seulement au relâchement de ⌃ (ou à un clic dans le panneau).
+ * ⌃Tab Zen-style, main process side: most-recently-used order per window, cycling while ⌃ is held,
+ * tab activated only on ⌃ release (or on a click in the panel).
  */
 export class ParcoursOnglets {
-  /** Onglets utilisés, du plus récent au plus ancien, par fenêtre. */
+  /** Tabs used, from most to least recent, per window. */
   private historiques = new Map<IdFenetre, IdOnglet[]>();
   private actifs = new Map<IdFenetre, IdOnglet | null>();
   private parcours = new Map<IdFenetre, EnCours>();
@@ -35,11 +35,11 @@ export class ParcoursOnglets {
       envoyer(fenetreId: IdFenetre, p: PanneauOnglets | null): void;
       apercu(id: IdOnglet): string | null;
       capturer(fenetreId: IdFenetre): Promise<void>;
-      /** Rend le clavier à la page affichée dans la fenêtre (l'interface l'a pris pour la capture du fond du panneau). */
+      /** Gives the keyboard back to the page displayed in the window (the UI took it to capture the panel's background). */
       rendreFocus(fenetreId: IdFenetre): void;
       /**
-       * La fenêtre principale a le focus. Sinon (outils de développement détachés…), le relâchement de ⌃ n'y arriverait
-       * jamais et la fenêtre ne perdrait pas le focus : un parcours y resterait bloqué.
+       * The main window has focus. Otherwise (detached developer tools…), the release of ⌃ would never reach it
+       * and the window would not lose focus: a cycle would stay stuck there.
        */
       estFocalisee(fenetreId: IdFenetre): boolean;
       delaiMs?: number;
@@ -49,7 +49,7 @@ export class ParcoursOnglets {
     this.captures = creerRegroupeur(DELAI_CAPTURE_MS, (f) => void this.o.capturer(f).catch(() => {}));
   }
 
-  /** ⌃Tab (1) ou ⌃⇧Tab (-1) depuis le menu. */
+  /** ⌃Tab (1) or ⌃⇧Tab (-1) from the menu. */
   parcourir(fenetreId: IdFenetre, delta: 1 | -1): void {
     const courant = this.parcours.get(fenetreId);
     if (courant) {
@@ -59,11 +59,11 @@ export class ParcoursOnglets {
     }
     const p = demarrer(ordreRecent(this.o.etat(), fenetreId, this.historiques.get(fenetreId) ?? []), delta);
     if (!p) return;
-    // Fenêtre sans le focus : bascule immédiate, comme un appui bref, sans parcours ni panneau.
+    // Window without focus: immediate switch, like a brief press, without cycle or panel.
     if (!this.o.estFocalisee(fenetreId)) return this.o.agir(this.activation(fenetreId, p.liste[p.selection]!));
     const enCours: EnCours = { p, minuteur: undefined, visible: false };
     this.parcours.set(fenetreId, enCours);
-    // L'onglet affiché a pu changer depuis sa dernière capture : sa carte doit être à jour.
+    // The displayed tab may have changed since its last capture: its card must be up to date.
     void this.o.capturer(fenetreId).catch(() => {});
     enCours.minuteur = setTimeout(() => {
       enCours.minuteur = undefined;
@@ -73,13 +73,13 @@ export class ParcoursOnglets {
     }, this.delaiMs);
   }
 
-  /** ⌃ relâché dans la fenêtre (interface ou page) : active la sélection. Sans effet hors parcours. */
+  /** ⌃ released in the window (UI or page): activates the selection. No effect outside a cycle. */
   toucheRelachee(fenetreId: IdFenetre): void {
     const c = this.parcours.get(fenetreId);
     if (c) this.terminer(fenetreId, c.p.liste[c.p.selection]);
   }
 
-  /** Message du panneau (déjà validé par zod). */
+  /** Message from the panel (already validated by zod). */
   message(fenetreId: IdFenetre, m: MessageParcours): void {
     const c = this.parcours.get(fenetreId);
     if (!c) return;
@@ -103,17 +103,17 @@ export class ParcoursOnglets {
     }
   }
 
-  /** Échap : fermer sans changer d'onglet. */
+  /** Esc: close without changing tab. */
   annuler(fenetreId: IdFenetre): void {
     if (this.parcours.has(fenetreId)) this.terminer(fenetreId, undefined);
   }
 
-  /** La fenêtre perd le focus (⌘Tab vers une autre appli) : fermer sans changer d'onglet ni reprendre le focus. */
+  /** The window loses focus (⌘Tab to another app): close without changing tab or taking back focus. */
   fenetreQuittee(fenetreId: IdFenetre): void {
     if (this.parcours.has(fenetreId)) this.terminer(fenetreId, undefined, false);
   }
 
-  /** À chaque nouvel état : utilisation des onglets, onglets sortis des parcours, fenêtres disparues. */
+  /** At each new state: tab usage, tabs removed from the cycles, vanished windows. */
   surEtat(etat: EtatNavigateur): void {
     const presentes = new Set(etat.fenetres.map((f) => f.id));
     for (const f of etat.fenetres) {
@@ -137,7 +137,7 @@ export class ParcoursOnglets {
       }
     }
     for (const [f, c] of this.parcours) {
-      // Fermé, parti dans une autre fenêtre ou hors de l'espace affiché : l'onglet sort du parcours.
+      // Closed, moved to another window or outside the displayed space: the tab leaves the cycle.
       const permis = new Set(presentes.has(f) ? ongletsParcourables(etat, f) : []);
       let p: Parcours | null = c.p;
       for (const id of c.p.liste) if (p && !permis.has(id)) p = retirer(p, id);
@@ -150,7 +150,7 @@ export class ParcoursOnglets {
     }
   }
 
-  /** `focus` : rendre le clavier à la page affichée si le panneau l'avait pris, une fois l'onglet changé. */
+  /** `focus`: give the keyboard back to the displayed page if the panel had taken it, once the tab has changed. */
   private terminer(fenetreId: IdFenetre, activer: IdOnglet | undefined, focus = true): void {
     const c = this.parcours.get(fenetreId);
     if (!c) return;
@@ -162,8 +162,8 @@ export class ParcoursOnglets {
   }
 
   /**
-   * Comme la barre latérale : un essentiel s'ouvre par son favori, qui le montre dans l'espace affiché (son onglet peut
-   * appartenir à un espace frère de même clé, qu'activerOnglet rendrait actif à la place).
+   * Like the sidebar: an essential opens through its favorite, which shows it in the displayed space (its tab may
+   * belong to a sibling space with the same key, which activerOnglet would make active instead).
    */
   private activation(fenetreId: IdFenetre, id: IdOnglet): Action {
     const lien = this.o.etat().onglets[id]?.lien;

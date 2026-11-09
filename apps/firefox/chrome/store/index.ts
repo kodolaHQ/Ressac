@@ -34,9 +34,9 @@ export interface WebAiOsStore extends Store {
   flush(): Promise<void>;
   /** userContextId of a login profile: 0 for PROFIL_DEFAUT, an internal container otherwise (created on first use). */
   containerFor(profile: IdProfil): number;
-  /** The Node host running the noyau, started with the store. */
+  /** The Node host running the kernel, started with the store. */
   readonly agent: AgentHost;
-  /** The noted visits, kept by the noyau host. */
+  /** The noted visits, kept by the kernel host. */
   readonly history: History;
   /** The session's downloads, followed from Firefox's own list (not kept across a restart). */
   readonly downloads: DownloadsList;
@@ -46,11 +46,11 @@ export interface WebAiOsStore extends Store {
   readonly windows: WindowRegistry;
   /** What sites may do (notifications, position, camera, micro, MIDI, DRM, screen), asked once per profile and origin. */
   readonly sitePermissions: SitePermissions;
-  /** The agent's extensions as Firefox add-ons, installed and switched as the noyau host says. */
+  /** The agent's extensions as Firefox add-ons, installed and switched as the kernel host says. */
   readonly agentExtensions: AgentExtensions;
   /** The agent's access to tabs, as the host last sent it (no access while no host runs). */
   readonly access: EtatAcces;
-  /** The agent's dev tools on tabs, owned by the running noyau. */
+  /** The agent's dev tools on tabs, owned by the running kernel. */
   readonly devtools: DevTools;
   /** The site apps' windows (never WebAiOs windows), opened and closed as the host asks. */
   readonly sites: SiteApps;
@@ -350,7 +350,7 @@ async function start(): Promise<WebAiOsStore> {
   agent.on("acces", (e: EtatAcces) => (access = e));
   agent.on(HOST_EXITED, () => {
     access = { agent: access.agent, onglets: {} };
-    // Its noyau is gone: nothing stays attached for it, and its apps' windows close (its successor stops the orphans).
+    // Its kernel is gone: nothing stays attached for it, and its apps' windows close (its successor stops the orphans).
     devtools.release();
     apps.closeAll();
   });

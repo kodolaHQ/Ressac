@@ -155,7 +155,7 @@ export const apps = {
     };
     Services.ww.registerNotification(onClose);
   },
-  /** A close WebAiOs wants (the app stopped): the page is not asked, the host is not told « par the owner ». */
+  /** A close WebAiOs wants (the app stopped): the page is not asked, the host is not told it was closed by the user. */
   async close(dossier: string): Promise<void> {
     const a = open.get(dossier);
     if (a) await closeWindow(a);

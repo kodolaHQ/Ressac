@@ -1,6 +1,6 @@
 import { tronquer, type MessageConsole, type RequeteReseau } from "@webaios/noyau";
 
-/** Valeur d'un argument de console ou d'une exception (Runtime.RemoteObject du protocole). */
+/** Value of a console argument or an exception (the protocol's Runtime.RemoteObject). */
 interface ObjetDistant {
   type?: string;
   value?: unknown;
@@ -15,20 +15,20 @@ interface Pile {
 
 const ORIGINE_EXTENSION = "chrome-extension://";
 
-/** Une pile (parentes comprises) a un cadre dans un script d'extension. */
+/** A stack (parents included) has a frame in an extension script. */
 function pileDExtension(p: Pile | undefined): boolean {
   for (let n = 0; p && n < 50; p = p.parent, n++) if (p.callFrames?.some((c) => c.url?.startsWith(ORIGINE_EXTENSION))) return true;
   return false;
 }
 
-/** Texte d'une valeur distante : la chaîne telle quelle, le JSON d'une valeur sérialisée, sinon sa description. */
+/** Text of a remote value: the string as is, the JSON of a serialized value, otherwise its description. */
 export function texteObjet(o: ObjetDistant): string {
   if (o.type === "undefined") return "undefined";
   if (o.value !== undefined) return typeof o.value === "string" ? o.value : JSON.stringify(o.value);
   return o.unserializableValue ?? o.description ?? String(o.type ?? "");
 }
 
-/** Pile au format de V8 (`    at f (url:ligne:colonne)`), lignes et colonnes comptées à partir de 1. */
+/** Stack in V8's format (`    at f (url:line:column)`), lines and columns counted from 1. */
 export function textePile(p: Pile | undefined): string | undefined {
   const cadres = p?.callFrames ?? [];
   if (!cadres.length) return undefined;
@@ -55,28 +55,28 @@ const NIVEAUX_JOURNAL: Record<string, MessageConsole["niveau"]> = {
   error: "error",
 };
 
-/** Horodatage du protocole (secondes, horloge monotone) → millisecondes. */
+/** Protocol timestamp (seconds, monotonic clock) → milliseconds. */
 const ms = (secondes: number) => secondes * 1000;
 
 /**
- * Console et réseau d'un onglet, tirés des événements du protocole des outils de développement (Chrome DevTools
- * Protocol). Pur : l'inspecteur lui passe les événements, il garde les plus récents.
+ * Console and network of a tab, drawn from the events of the developer tools protocol (Chrome DevTools
+ * Protocol). Pure: the inspector passes it the events, it keeps the most recent.
  */
 export class TamponOnglet {
   private messages: MessageConsole[] = [];
-  /** Par id de requête, dans l'ordre d'envoi. */
+  /** By request id, in sending order. */
   private readonly requetes = new Map<string, RequeteReseau>();
-  /** Début de chaque requête, sur l'horloge monotone du protocole (pour la durée). */
+  /** Start of each request, on the protocol's monotonic clock (for the duration). */
   private readonly debuts = new Map<string, number>();
   private readonly maxConsole: number;
   private readonly maxReseau: number;
   private readonly depuis: number;
-  /** Ids des requêtes d'extension écartées (les plus récentes) : leurs entrées de journal (échec, CORS) le sont aussi. */
+  /** Ids of the discarded extension requests (the most recent): their log entries (failure, CORS) are too. */
   private readonly requetesExtension = new Map<string, string>();
-  /** Contextes d'exécution venus d'une extension (scripts de contenu, monde isolé) : rien de ce qu'ils disent n'est retenu. */
+  /** Execution contexts coming from an extension (content scripts, isolated world): nothing they say is kept. */
   private readonly contextesExtension = new Set<number>();
 
-  /** `depuis` : heure de l'attachement (ms) ; les messages plus anciens, rejoués par le protocole, sont écartés. */
+  /** `depuis`: attach time (ms); older messages, replayed by the protocol, are discarded. */
   constructor(o: { maxConsole?: number; maxReseau?: number; depuis?: number } = {}) {
     this.maxConsole = o.maxConsole ?? 1000;
     this.maxReseau = o.maxReseau ?? 500;
@@ -90,13 +90,13 @@ export class TamponOnglet {
   }
 
   evenement(methode: string, params: unknown): void {
-    const p = (params ?? {}) as Record<string, any>; // forme libre du protocole
+    const p = (params ?? {}) as Record<string, any>; // free-form protocol shape
     switch (methode) {
       case "Runtime.executionContextCreated": {
         const c = p.context ?? {};
         if (typeof c.id !== "number") return;
         if (String(c.origin ?? "").startsWith(ORIGINE_EXTENSION)) this.contextesExtension.add(c.id);
-        else this.contextesExtension.delete(c.id); // l'id est reparti de zéro avec un autre contexte
+        else this.contextesExtension.delete(c.id); // the id restarted from zero with another context
         return;
       }
       case "Runtime.executionContextDestroyed":
@@ -120,7 +120,7 @@ export class TamponOnglet {
         const d = p.exceptionDetails ?? {};
         if (this.contextesExtension.has(d.executionContextId) || String(d.url ?? "").startsWith(ORIGINE_EXTENSION) || pileDExtension(d.stackTrace)) return;
         const description: string | undefined = d.exception?.description;
-        // `text` dit comment elle est survenue (« Uncaught », « Uncaught (in promise) »), comme dans la console de Chrome.
+        // `text` says how it occurred (« Uncaught », « Uncaught (in promise) »), as in Chrome's console.
         const valeur = description?.split("\n")[0] ?? (d.exception ? texteObjet(d.exception) : "");
         const circonstance: string = d.text && !valeur.startsWith(d.text) ? d.text : "";
         const texte = [circonstance, valeur].filter(Boolean).join(" ") || "Exception";
@@ -130,8 +130,8 @@ export class TamponOnglet {
       }
       case "Log.entryAdded": {
         const e = p.entry ?? {};
-        // Le message CORS (source « javascript ») n'a ni id de requête ni pile, et porte l'adresse de la page : seule l'adresse
-        // demandée, citée dans son texte, le relie à la requête d'extension.
+        // The CORS message (source « javascript ») has neither a request id nor a stack, and carries the page's address: only the requested
+        // address, quoted in its text, links it to the extension request.
         const texte = String(e.text ?? "");
         if (this.requetesExtension.has(e.networkRequestId) || (e.category === "cors" && [...this.requetesExtension.values()].some((u) => u && texte.includes(`'${u}'`))) || String(e.url ?? "").startsWith(ORIGINE_EXTENSION) || pileDExtension(e.stackTrace)) return;
         const pile = textePile(e.stackTrace);
@@ -139,7 +139,7 @@ export class TamponOnglet {
         return;
       }
       case "Network.requestWillBeSent": {
-        // Ni la requête d'une extension (son URL, son document, son initiateur ou une pile parente), ni ce qui suit (sans entrée, ses événements sont ignorés).
+        // Neither an extension's request (its URL, its document, its initiator or a parent stack), nor what follows (without an entry, its events are ignored).
         const i = p.initiator ?? {};
         if ([p.request?.url, p.documentURL, i.url].some((u) => String(u ?? "").startsWith(ORIGINE_EXTENSION)) || pileDExtension(i.stack)) {
           this.requetes.delete(p.requestId);
@@ -153,7 +153,7 @@ export class TamponOnglet {
           return;
         }
         this.requetesExtension.delete(p.requestId);
-        // Une redirection garde l'id : la requête est remplacée par sa suite.
+        // A redirect keeps the id: the request is replaced by its continuation.
         this.requetes.delete(p.requestId);
         this.requetes.set(p.requestId, {
           id: p.requestId,
@@ -177,7 +177,7 @@ export class TamponOnglet {
         if (!r) return;
         r.statut = p.response?.status;
         r.enTetesReponse = { ...p.response?.headers };
-        // Les en-têtes réellement envoyés (cookies compris) ne sont connus qu'ici.
+        // The headers actually sent (cookies included) are only known here.
         if (p.response?.requestHeaders) r.enTetesRequete = { ...p.response.requestHeaders };
         if (p.type) r.type = p.type;
         return;
@@ -195,7 +195,7 @@ export class TamponOnglet {
     }
   }
 
-  /** La page a été rechargée (ou a navigué sur le même site) : les messages restent, avec une ligne pour le signaler. */
+  /** The page was reloaded (or navigated on the same site): the messages stay, with a line to flag it. */
   rechargement(): void {
     this.ajouter({ horodatage: Date.now(), niveau: "info", texte: "— page rechargée —" });
   }

@@ -17,7 +17,7 @@ export const alertObserver = {
 };
 
 /**
- * The noyau host is Node and cannot call Cc: it sends `accueil.notification` over the RPC. The alert goes through the
+ * The kernel host is Node and cannot call Cc: it sends `accueil.notification` over the RPC. The alert goes through the
  * system alerts service only (note P4: `Services.alerts` does not exist, and the XUL fallback opens a window).
  */
 export function registerAccueilNotifications(agent: Pick<AgentHost, "on">): () => void {

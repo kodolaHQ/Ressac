@@ -26,7 +26,7 @@ import type { ActionAffichee } from "../shared/actions.ts";
 import type { Accord } from "../shared/api.ts";
 import { urlOuvrable } from "../ui/accueil-profils.ts";
 
-// The disk and noyau half of the actions service.
+// The disk and kernel half of the actions service.
 
 export const MESSAGE_SANS_NOYAU = "Le service des actions ne répond pas (agent arrêté ?)";
 const NO_ACTION: EtatActions = { courantes: [], enAttente: [] };
@@ -36,7 +36,7 @@ const imageAddressAllowed = (url: string) => url.startsWith("https://") && urlOu
 
 /**
  * The refusal half of a result image's load: a result image is fetched only for a current action
- * without account, a kept run, and an https address present as is in its results, with no accord for the account.
+ * without account, a kept run, and an https address present as is in its results, with no grant for the account.
  */
 export async function actionImageAllowed(
   o: { dossierActions: string; lireAction: (id: string) => Promise<ActionLue | null> },
@@ -47,7 +47,7 @@ export async function actionImageAllowed(
   if (!ID_ACTION.test(id) || execution.length > 64 || !ID_EXECUTION.test(execution) || !url || !imageAddressAllowed(url)) return false;
   const action = await o.lireAction(id);
   if (!action || "erreur" in action || action.declaration.sources.compte.length > 0) return false;
-  // An action rewritten without account may keep results read with it: an accord still there is enough to refuse.
+  // An action rewritten without account may keep results read with it: an grant still there is enough to refuse.
   const accords = await lireAccords(o.dossierActions).catch(() => null);
   if (!accords || Object.hasOwn(accords, id)) return false;
   const [resultat, exec] = await Promise.all([lireResultat(o.dossierActions, id, execution), lireExecution(join(o.dossierActions, id), execution)]);
@@ -61,7 +61,7 @@ export async function linkAllowed(dossierActions: string, id: string, execution:
   return !!r && chainesDe(r.resultats).has(url);
 }
 
-/** The action's folder goes to actions/.corbeille (nothing is destroyed), then `oublier` drops its accord and data. */
+/** The action's folder goes to actions/.corbeille (nothing is destroyed), then `oublier` drops its grant and data. */
 export async function trashAction(c: CheminsEspace, id: string, oublier: (id: string) => Promise<void>): Promise<void> {
   if (!ID_ACTION.test(id)) throw new Error(`id d'action invalide : ${id}`);
   const corbeille = join(c.actions, ".corbeille");
@@ -70,7 +70,7 @@ export async function trashAction(c: CheminsEspace, id: string, oublier: (id: st
   await oublier(id);
 }
 
-/** The disk's actions, ready to show: declaration, accord and last real run. Read without the noyau. */
+/** The disk's actions, ready to show: declaration, grant and last real run. Read without the kernel. */
 export async function readShownActions(c: CheminsEspace, dossierActions: string): Promise<ActionAffichee[]> {
   const [lues, accords] = await Promise.all([lireActions(c), lireAccords(dossierActions).catch(() => ({}) as Record<string, unknown>)]);
   return Promise.all(
@@ -170,7 +170,7 @@ export function createActionsHost(o: {
       const saisieManque = !("erreur" in a) && !!a.declaration.saisie && !saisie?.trim();
       return { ok: true, nom: nomDe(a), lancer: !tourne && !saisieManque };
     },
-    /** The action's name for « Voir le workflow », read without the noyau. */
+    /** The action's name for « Voir le workflow », read without the kernel. */
     async nom(id: string): Promise<string | null> {
       const a = await lire(id);
       return a ? nomDe(a).slice(0, 60) : null;
@@ -185,7 +185,7 @@ export function createActionsHost(o: {
     },
     async page(id: string, execution: string | null): Promise<PageAction | null> {
       const noyau = o.noyau();
-      // Refused, not null (« no result »): a page read before the noyau started reads again on its first `acces`.
+      // Refused, not null (« no result »): a page read before the kernel started reads again on its first `acces`.
       if (!noyau) throw new Error(MESSAGE_SANS_NOYAU);
       return (await noyau.actions.page(id, execution)) ?? null;
     },
@@ -208,7 +208,7 @@ export function createActionsHost(o: {
       const noyau = o.noyau();
       if (!noyau) return { ok: false, erreur: MESSAGE_SANS_NOYAU };
       try {
-        // The noyau refuses if the declaration is no longer the one the card showed.
+        // The kernel refuses if the declaration is no longer the one the card showed.
         await noyau.actions.accorder(a);
         return { ok: true };
       } catch (e) {

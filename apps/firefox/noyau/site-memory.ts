@@ -2,7 +2,7 @@ import type { MemoireSite } from "../../../packages/noyau/src/index.ts";
 import type { ReponseMemoire } from "../core/sites/injection.ts";
 
 // The host's side of the site apps' injection channels (core/sites/injection.ts): the chrome checks the sender
-// (the app view's main document), the accord and the relative address, the host does the memory work.
+// (the app view's main document), the grant and the relative address, the host does the memory work.
 
 /** The refusal of a memory request from anywhere but the app's main page. */
 export const REFUS_MEMOIRE = "Mémoire de l'appli : seulement depuis la page principale de l'appli";
@@ -52,7 +52,7 @@ const cibleDe = (p: { id?: unknown; adresse?: unknown }): Cible | null => (typeo
 
 /**
  * The position and reprise channels past their sender checks, which the chrome made (view,
- * accord, repriseDansCadre) and whose page address it gives. The host checks the accord again at each write.
+ * grant, repriseDansCadre) and whose page address it gives. The host checks the grant again at each write.
  */
 export function creerPositions(o: {
   memoire(id: string): Promise<MemoireSite>;
@@ -84,7 +84,7 @@ export function creerPositions(o: {
       const ecrire = () =>
         o.memoire(cible.id).then(
           (m) => {
-            // Forgotten or deleted since the note, or accord withdrawn: nothing is written.
+            // Forgotten or deleted since the note, or grant withdrawn: nothing is written.
             if (generation(cible.id) !== generationRecue || !o.accorde(cible.id)) return;
             const retenue = m.position(cible.adresse);
             if (retenue && !memeDuree(retenue.duree, duree)) return;

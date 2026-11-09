@@ -23,7 +23,7 @@ import {
 
 const MAX_FERMES = 20;
 
-/** Brouillon modifiable : chaque gestionnaire renvoie false pour laisser l'état inchangé (même référence). */
+/** Mutable draft: each handler returns false to leave the state unchanged (same reference). */
 type Brouillon = EtatNavigateur;
 
 function fenetre(d: Brouillon, id: string): EtatFenetre | undefined {
@@ -59,8 +59,8 @@ function ouvrir(
   f: EtatFenetre,
   a: { url: string; espaceId?: IdEspace; activer?: boolean; ouvertParAgent?: boolean; apres?: IdOnglet },
 ): Onglet | null {
-  // Un lien ouvert depuis un onglet reste dans l'espace de cet onglet (son profil de connexion), même en arrière-plan ;
-  // un essentiel, partagé entre espaces, ouvre dans l'espace affiché s'il y est l'onglet actif.
+  // A link opened from a tab stays in that tab's space (its login profile), even in the background;
+  // an essential, shared between spaces, opens in the displayed space if it is the active tab there.
   const parent = a.apres && f.actif[f.espaceActif] !== a.apres ? d.onglets[a.apres]?.espaceId : undefined;
   const esp = a.espaceId ?? parent ?? f.espaceActif;
   if (!d.espaces.some((e) => e.id === esp)) return null;
@@ -72,7 +72,7 @@ function ouvrir(
   return o;
 }
 
-/** Active la page interne `url` de la fenêtre (dans son espace) si elle est déjà ouverte, sinon l'ouvre. */
+/** Activates the window's internal page `url` (in its space) if already open, otherwise opens it. */
 function ouvrirPageInterne(d: Brouillon, genId: () => string, fenetreId: string, url: string, titre: string): boolean {
   const f = fenetre(d, fenetreId);
   if (!f) return false;
@@ -82,7 +82,7 @@ function ouvrirPageInterne(d: Brouillon, genId: () => string, fenetreId: string,
     if (!existant) continue;
     const o = d.onglets[existant]!;
     if (f.espaceActif === esp && f.actif[esp] === existant && o.titre === titre) return false;
-    // Le widget a pu être renommé depuis : le titre suit.
+    // The widget may have been renamed since: the title follows.
     o.titre = titre;
     f.actif[esp] = existant;
     f.espaceActif = esp;
@@ -94,9 +94,9 @@ function ouvrirPageInterne(d: Brouillon, genId: () => string, fenetreId: string,
 }
 
 /**
- * Active la page de l'action `id` de la fenêtre (onglet dont l'URL est celle de l'action, avec ou sans exécution) si elle
- * est ouverte dans un espace non privé, sinon l'ouvre dans l'espace actif s'il n'est pas privé. `execution` change l'URL
- * de cet onglet (un résultat précis).
+ * Activates the window's page of action `id` (tab whose URL is the action's, with or without execution) if it
+ * is open in a non-private space, otherwise opens it in the active space if not private. `execution` changes the URL
+ * of that tab (a specific result).
  */
 function ouvrirAction(d: Brouillon, genId: () => string, a: { fenetreId: string; id: string; nom: string; execution?: string }): boolean {
   const f = fenetre(d, a.fenetreId);
@@ -109,7 +109,7 @@ function ouvrirAction(d: Brouillon, genId: () => string, a: { fenetreId: string;
     const o = d.onglets[existant]!;
     const url = a.execution ? urlAction(a.id, a.execution) : o.url;
     if (f.espaceActif === esp && f.actif[esp] === existant && o.titre === a.nom && o.url === url) return false;
-    // L'action a pu être renommée depuis : le titre suit.
+    // The action may have been renamed since: the title follows.
     o.titre = a.nom;
     o.url = url;
     f.actif[esp] = existant;
@@ -122,12 +122,12 @@ function ouvrirAction(d: Brouillon, genId: () => string, a: { fenetreId: string;
   return !!o;
 }
 
-/** Un onglet d'essentiel peut être affiché dans plusieurs espaces : les autres espaces le lâchent. */
+/** An essential's tab can be displayed in several spaces: the other spaces release it. */
 function lacherAilleurs(f: EtatFenetre, o: Onglet) {
   for (const [esp, id] of Object.entries(f.actif)) if (id === o.id && esp !== o.espaceId) f.actif[esp] = null;
 }
 
-/** Un favori retiré : ses onglets liés redeviennent des onglets normaux, en fin de liste de leur espace. */
+/** A removed favorite: its linked tabs become normal tabs again, at the end of their space's list. */
 function delier(d: Brouillon, favoriId: string) {
   for (const o of Object.values(d.onglets)) {
     if (o.lien?.id !== favoriId) continue;
@@ -139,7 +139,7 @@ function delier(d: Brouillon, favoriId: string) {
   }
 }
 
-/** Transforme un onglet normal en onglet lié à un nouveau favori. */
+/** Turns a normal tab into a tab linked to a new favorite. */
 function lierAFavori(d: Brouillon, genId: () => string, o: Onglet, type: "essentiel" | "epingle"): Favori {
   const favori: Favori = { id: genId(), url: o.url, titre: o.titre, favicon: o.favicon };
   o.lien = { type, id: favori.id };
@@ -148,7 +148,7 @@ function lierAFavori(d: Brouillon, genId: () => string, o: Onglet, type: "essent
   return favori;
 }
 
-/** Le profil de connexion demandé : « nouveau » en crée un ; un profil inconnu donne null. */
+/** The requested login profile: « nouveau » creates one; an unknown profile gives null. */
 function profilDemande(d: Brouillon, genId: () => string, profil: IdProfil): IdProfil | null {
   if (profil === "nouveau") {
     const id = genId();
@@ -158,15 +158,15 @@ function profilDemande(d: Brouillon, genId: () => string, profil: IdProfil): IdP
   return d.profils.some((p) => p.id === profil) ? profil : null;
 }
 
-/** Un profil de connexion qu'aucun espace n'utilise plus disparaît, le profil par défaut compris. */
+/** A login profile that no space uses anymore disappears, the default profile included. */
 function retirerProfilsInutilises(d: Brouillon) {
   d.profils = d.profils.filter((p) => d.espaces.some((e) => e.profil === p.id));
 }
 
 /**
- * Un espace change de clé : chacun de ses onglets qu'un autre espace de l'ancienne clé affiche passe à cet espace
- * (le premier dans l'ordre des espaces), qui l'a vu sous cette clé ; l'espace changé le lâche.
- * Ainsi un onglet vu dans un espace privé ne devient jamais lisible parce qu'un autre espace cesse de l'être.
+ * A space changes key: each of its tabs that another space with the old key displays passes to that space
+ * (the first in space order), which saw it under that key; the changed space releases it.
+ * So a tab seen in a private space never becomes readable because another space stops being so.
  */
 function transmettreAffiches(d: Brouillon, espaceId: IdEspace, ancienneCle: string) {
   for (const f of d.fenetres)
@@ -186,7 +186,7 @@ function transmettreAffiches(d: Brouillon, espaceId: IdEspace, ancienneCle: stri
     }
 }
 
-/** Un espace n'affiche l'onglet d'un autre espace (un essentiel) que s'ils ont la même clé. */
+/** A space displays another space's tab (an essential) only if they have the same key. */
 function lacherIncompatibles(d: Brouillon) {
   for (const f of d.fenetres)
     for (const [esp, id] of Object.entries(f.actif)) {
@@ -234,7 +234,7 @@ function gerer(d: Brouillon, a: Action, genId: () => string): boolean {
       const f = o && fenetre(d, o.fenetreId);
       if (!o || !f) return false;
       const l = liste(f, o.espaceId).filter((x) => x !== o.id);
-      if (l.length === liste(f, o.espaceId).length) return false; // onglet lié : pas dans la liste
+      if (l.length === liste(f, o.espaceId).length) return false; // linked tab: not in the list
       l.splice(Math.max(0, Math.min(a.index, l.length)), 0, o.id);
       f.ordre[o.espaceId] = l;
       return true;
@@ -251,7 +251,7 @@ function gerer(d: Brouillon, a: Action, genId: () => string): boolean {
     }
     case "majOnglet": {
       const o = d.onglets[a.id];
-      // Les pages émettent souvent les mêmes valeurs : rien de changé, rien à rediffuser.
+      // Pages often emit the same values: nothing changed, nothing to rebroadcast.
       if (!o || Object.entries(a.champs).every(([k, v]) => o[k as keyof Onglet] === v)) return false;
       Object.assign(o, a.champs);
       return true;
@@ -266,8 +266,8 @@ function gerer(d: Brouillon, a: Action, genId: () => string): boolean {
           ? d.essentiels.find((x) => x.id === a.id)
           : d.espaces.flatMap((e) => e.epingles).find((x) => x.id === a.id);
       if (!favori || !espaceDuFavori) return false;
-      // Un essentiel a un seul onglet par fenêtre, partagé par les espaces de même clé (profil de connexion, privé) ;
-      // un épinglé appartient à son espace.
+      // An essential has a single tab per window, shared by spaces with the same key (login profile, private);
+      // a pinned tab belongs to its space.
       const existant = Object.values(d.onglets).find(
         (o) =>
           o.fenetreId === f.id &&
@@ -347,7 +347,7 @@ function gerer(d: Brouillon, a: Action, genId: () => string): boolean {
       for (const f of d.fenetres) {
         delete f.ordre[a.id];
         delete f.actif[a.id];
-        // Un essentiel venu de l'espace supprimé a disparu avec lui.
+        // An essential coming from the deleted space disappeared with it.
         for (const [esp, id] of Object.entries(f.actif)) if (id && !d.onglets[id]) f.actif[esp] = null;
         f.fermesRecemment = f.fermesRecemment.filter((x) => x.espaceId !== a.id);
         if (f.espaceActif === a.id) f.espaceActif = d.espaces[0]!.id;
@@ -379,7 +379,7 @@ function gerer(d: Brouillon, a: Action, genId: () => string): boolean {
       const fermee = fenetre(d, a.id);
       if (d.fenetres.length <= 1 || !fermee) return false;
       d.fenetres = d.fenetres.filter((f) => f.id !== a.id);
-      // Ses onglets normaux restent récupérables (⇧⌘T) depuis la fenêtre restante, le plus récent en tête.
+      // Its normal tabs stay recoverable (⇧⌘T) from the remaining window, most recent first.
       const restante = d.fenetres[0]!;
       const recuperes = Object.values(fermee.ordre)
         .flat()
@@ -415,20 +415,20 @@ function gerer(d: Brouillon, a: Action, genId: () => string): boolean {
       f.panneauAgentOuvert = !f.panneauAgentOuvert;
       return true;
     }
-    // Une seule page Applications par fenêtre : on y revient (dans son espace) plutôt que d'en ouvrir une deuxième.
+    // A single Applications page per window: go back to it (in its space) rather than open a second one.
     case "ouvrirApplications":
       return ouvrirPageInterne(d, genId, a.fenetreId, URL_APPLICATIONS, "Applications");
     case "ouvrirExtensions":
       return ouvrirPageInterne(d, genId, a.fenetreId, URL_EXTENSIONS, "Extensions");
-    // De même, une seule page « Voir le workflow » par widget et par fenêtre.
+    // Likewise, a single « Voir le workflow » page per widget and per window.
     case "ouvrirWorkflow":
       return ouvrirPageInterne(d, genId, a.fenetreId, a.proprietaire === "action" ? PREFIXE_WORKFLOW_ACTION + a.id : urlWorkflow(a.id), `Workflow — ${a.nom}`);
-    // Une seule page par action et par fenêtre (quel que soit le résultat montré), et une seule page « Actions ».
+    // A single page per action and per window (whatever result is shown), and a single « Actions » page.
     case "ouvrirAction":
       return ouvrirAction(d, genId, a);
     case "ouvrirActions":
       return ouvrirPageInterne(d, genId, a.fenetreId, URL_ACTIONS, "Actions");
-    // Ouvrir le panneau sur un onglet le donne à l'agent : la page d'accueil ne l'ouvre que si elle est encore affichée.
+    // Opening the panel on a tab gives it to the agent: the home page opens it only if it is still displayed.
     case "panneauAgentAccueil": {
       const f = fenetre(d, a.fenetreId);
       if (!f || f.panneauAgentOuvert === a.ouvert || (a.ouvert && f.actif[f.espaceActif])) return false;
@@ -450,13 +450,13 @@ function gerer(d: Brouillon, a: Action, genId: () => string): boolean {
       d.reglages.largeurPanneauAgent = largeur;
       return true;
     }
-    // Une seule page Relecture par projet et par fenêtre.
+    // A single Review page per project and per window.
     case "ouvrirRelecture":
       return ouvrirPageInterne(d, genId, a.fenetreId, urlRelecture(a.projet), `Relecture — ${a.nom}`);
   }
 }
 
-/** Seule façon de faire évoluer l'état : pure, ne mute jamais `etat`. */
+/** The only way to evolve the state: pure, never mutates `etat`. */
 export function appliquer(etat: EtatNavigateur, action: Action, genId: () => string = randomUUID): EtatNavigateur {
   const brouillon = structuredClone(etat);
   return gerer(brouillon, action, genId) ? brouillon : etat;

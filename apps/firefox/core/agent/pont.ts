@@ -8,18 +8,18 @@ const info = (etat: EtatNavigateur, o: Onglet): OngletInfo => ({
   espace: etat.espaces.find((e) => e.id === o.espaceId)?.nom ?? "",
 });
 
-/** Pages internes de WebAiOs (`webaios:`) : l'agent ne les voit jamais. */
+/** WebAiOs internal pages (`webaios:`): the agent never sees them. */
 const interne = (o: Onglet) => o.url.startsWith("webaios:");
 
-/** L'agent voit l'onglet : ni page interne, ni onglet d'un espace privé (spec §3.3). */
+/** The agent sees the tab: neither an internal page, nor a tab of a private space (spec §3.3). */
 const visible = (etat: EtatNavigateur, o: Onglet) => !interne(o) && !ongletPrive(etat, o);
 
-/** Tous les onglets, toutes fenêtres confondues, tels que l'agent les voit. */
+/** All the tabs, all windows combined, as the agent sees them. */
 export function infosOnglets(etat: EtatNavigateur): OngletInfo[] {
   return Object.values(etat.onglets).filter((o) => visible(etat, o)).map((o) => info(etat, o));
 }
 
-/** L'onglet que l'utilisateur regarde dans la fenêtre, page interne comprise. */
+/** The tab the user is looking at in the window, internal page included. */
 function ongletAffiche(etat: EtatNavigateur, fenetreId: IdFenetre | undefined): Onglet | undefined {
   const f = etat.fenetres.find((x) => x.id === fenetreId);
   const id = f?.actif[f.espaceActif];
@@ -31,7 +31,7 @@ export function ongletActifDe(etat: EtatNavigateur, fenetreId: IdFenetre | undef
   return o && visible(etat, o) ? info(etat, o) : null;
 }
 
-/** L'espace demandé par l'agent : par id, puis par nom (sans casse), sinon l'espace actif. Un espace privé compte comme inconnu. */
+/** The space requested by the agent: by id, then by name (case-insensitive), otherwise the active space. A private space counts as unknown. */
 export function resoudreEspace(etat: EtatNavigateur, f: EtatFenetre, espace?: string): IdEspace {
   if (!espace) return f.espaceActif;
   const ouverts = etat.espaces.filter((x) => !x.prive);
@@ -40,8 +40,8 @@ export function resoudreEspace(etat: EtatNavigateur, f: EtatFenetre, espace?: st
 }
 
 /**
- * Ce que la politique d'accès doit apprendre d'un changement d'état : navigations et fermetures. Un onglet passé dans
- * un espace privé est fermé pour l'agent : lecture et outils de développement tombent.
+ * What the access policy must learn from a state change: navigations and closings. A tab moved into
+ * a private space is closed to the agent: read and developer tools drop.
  */
 export function changementsPolitique(avant: EtatNavigateur, apres: EtatNavigateur): { navigues: { id: string; url: string }[]; fermes: string[] } {
   const navigues: { id: string; url: string }[] = [];
@@ -54,45 +54,45 @@ export function changementsPolitique(avant: EtatNavigateur, apres: EtatNavigateu
   return { navigues, fermes };
 }
 
-/** Les espaces qui viennent de passer de non privé à privé (le sens inverse ne change rien à l'historique). */
+/** The spaces that just went from non-private to private (the reverse changes nothing in the history). */
 export function espacesDevenusPrives(avant: EtatNavigateur, apres: EtatNavigateur): string[] {
   return apres.espaces.filter((n) => n.prive && avant.espaces.some((o) => o.id === n.id && !o.prive)).map((n) => n.id);
 }
 
 /**
- * Une question qui ne recevra plus de réponse utile : son onglet visé est fermé. Une demande de l'agent s'affiche
- * dans sa fenêtre, quel que soit l'onglet affiché : fermer celui-ci ne la concerne pas.
+ * A question that will no longer get a useful answer: its targeted tab is closed. An agent request is displayed
+ * in its window, whatever tab is displayed: closing that one does not concern it.
  */
 export function questionCaduque(d: DemandeEnAttente, etat: EtatNavigateur): boolean {
-  // Carte d'accord d'une extension : elle tombe avec son espace ; celle de l'agent aussi quand le profil de l'espace
-  // devient privé (aucune extension de l'agent n'y est chargée). Retrait du registre et coupure : ServiceExtensions.
+  // An extension's grant card: it drops with its space; the agent's also when the space's profile
+  // becomes private (no agent extension is loaded there). Registry removal and cut-off: ServiceExtensions.
   if (d.extension) {
     const espace = etat.espaces.find((e) => e.id === d.extension!.espaceId);
     if (!espace) return true;
     if (d.extension.source === "agent" && etat.espaces.some((e) => e.profil === espace.profil && e.prive)) return true;
   }
-  // Une fenêtre d'appli (`app:<dossier>`) ou d'appli de site (`site:<id>`) n'est pas un onglet : sa fermeture et ses
-  // navigations sont suivies à part.
+  // An app window (`app:<folder>`) or site app window (`site:<id>`) is not a tab: its closing and its
+  // navigations are tracked separately.
   const fenetre = d.cible !== undefined && (d.cible.startsWith(PREFIXE_APP) || d.cible.startsWith(PREFIXE_SITE));
   const onglet = d.cible && !fenetre ? etat.onglets[d.cible] : undefined;
   if (d.cible && !fenetre && !onglet) return true;
-  // Passé dans un espace privé : l'agent n'y a plus accès, la question n'a plus d'objet.
+  // Moved into a private space: the agent no longer has access there, the question is moot.
   if (onglet && ongletPrive(etat, onglet)) return true;
-  // Les droits portent sur le site que l'utilisateur a vu : l'onglet est parti ailleurs, la carte tombe.
+  // The rights cover the site the user saw: the tab went elsewhere, the card drops.
   if (onglet && (d.permissions.includes("outils-dev") || d.permissions.includes("lire-onglet")) && origineDe(onglet.url) !== d.origine) return true;
   return !d.fenetreId && d.ongletId !== null && !etat.onglets[d.ongletId];
 }
 
 /**
- * La décision retenue pour une réponse de l'interface : un « oui » à une carte d'extension renforcée n'est reçu que s'il
- * porte la case « Je comprends » cochée (`confirme`) ; sinon c'est un refus, quel que soit ce qu'affiche l'interface.
+ * The decision kept for a UI answer: a « yes » to a hardened extension card is received only if it
+ * carries the « Je comprends » box checked (`confirme`); otherwise it is a refusal, whatever the UI shows.
  */
 export function decisionPermise(d: DemandeEnAttente, decision: Decision, confirme?: boolean): Decision {
   if (decision === "autoriser" && d.extension?.renforce && confirme !== true) return "refuser";
   return decision;
 }
 
-/** L'origine d'une URL, ou l'URL telle quelle si elle n'en a pas. */
+/** The origin of a URL, or the URL as is if it has none. */
 export function origineDe(url: string): string {
   try {
     return new URL(url).origin;
@@ -101,13 +101,13 @@ export function origineDe(url: string): string {
   }
 }
 
-/** Une demande de lecture sans réponse au bout de ce délai est refusée : l'agent ne reste pas bloqué. */
+/** A read request with no answer after this delay is refused: the agent does not stay blocked. */
 export const DELAI_QUESTION_MS = 120_000;
 
 /**
- * Pose une question à l'utilisateur et attend sa réponse. `poser` affiche la question, reçoit de quoi y répondre, et
- * renvoie de quoi la retirer (appelé si le délai expire, ou si `signal` est levé : la réponse est alors un refus).
- * `delaiMs` vaut `Infinity` pour une question sans délai.
+ * Asks the user a question and waits for their answer. `poser` displays the question, receives what is needed to answer it, and
+ * returns what is needed to withdraw it (called if the delay expires, or if `signal` is raised: the answer is then a refusal).
+ * `delaiMs` is `Infinity` for a question with no delay.
  */
 export function attendreReponse(
   poser: (repondre: (d: Issue) => void) => () => void,
@@ -118,8 +118,8 @@ export function attendreReponse(
 }
 
 /**
- * Comme `attendreReponse`, mais dit si la question est tombée sans réponse de l'utilisateur (« retiree » : délai, `signal`,
- * ou retirée par celui qui l'a posée).
+ * Like `attendreReponse`, but tells whether the question lapsed without an answer from the user (« retiree »: delay, `signal`,
+ * or withdrawn by whoever asked it).
  */
 export function attendreIssue(
   poser: (repondre: (d: Issue) => void) => () => void,
@@ -141,7 +141,7 @@ export function attendreIssue(
       retirer();
       repondre("retiree");
     };
-    // `Infinity` : aucun délai (une question venue d'un clic de l'utilisateur attend sa réponse).
+    // `Infinity`: no delay (a question coming from a click by the user waits for their answer).
     const minuterie = Number.isFinite(delaiMs) ? setTimeout(abandon, delaiMs) : undefined;
     const retirer = poser(repondre);
     signal?.addEventListener("abort", abandon, { once: true });
@@ -149,8 +149,8 @@ export function attendreIssue(
 }
 
 /**
- * Comme `attendreReponse`, pour la carte des outils de développement : renvoie les droits cochés si l'utilisateur autorise,
- * `[]` s'il refuse, si le délai expire ou si `signal` est levé (la carte est alors retirée).
+ * Like `attendreReponse`, for the developer tools card: returns the checked rights if the user allows,
+ * `[]` if they refuse, if the delay expires or if `signal` is raised (the card is then withdrawn).
  */
 export function attendreDroits(
   poser: (repondre: (d: Issue, droits?: DroitDev[]) => void) => () => void,
@@ -179,18 +179,18 @@ export function attendreDroits(
 }
 
 const PREFIXE_APP = "app:";
-/** Id d'onglet, pour l'agent, de la fenêtre d'une appli de site : `site:<id>`. */
+/** Tab id, for the agent, of a site app's window: `site:<id>`. */
 export const PREFIXE_SITE = "site:";
 
-/** La fenêtre d'une appli de site vue comme un onglet `site:<id>` : son titre est le nom de l'appli, jamais celui de la page. */
+/** A site app's window seen as a `site:<id>` tab: its title is the app's name, never the page's. */
 export function ongletSite(s: { id: string; nom: string; url: string; domaine: string; empreinte: string }): OngletInfo {
   return { id: PREFIXE_SITE + s.id, titre: s.nom, url: s.url, espace: "", site: s.id, domaine: s.domaine, empreinte: s.empreinte };
 }
 
 /**
- * Une question de l'agent sur une fenêtre d'appli de site (`cible: site:<id>`) qui n'a plus d'objet : la fenêtre est
- * fermée, ou (outils de développement) sa page est partie sur une autre origine. La carte de l'appli (sans cible) n'est
- * pas concernée : son accord vaut pour l'appli, fenêtre ouverte ou non.
+ * A question from the agent about a site app window (`cible: site:<id>`) that is moot: the window is
+ * closed, or (developer tools) its page went to another origin. The app's card (without a target) is not
+ * concerned: its grant is valid for the app, window open or not.
  */
 export function questionSiteCaduque(d: DemandeEnAttente, ouvertes: { id: string; url: string }[]): boolean {
   if (!d.cible?.startsWith(PREFIXE_SITE)) return false;
@@ -198,7 +198,7 @@ export function questionSiteCaduque(d: DemandeEnAttente, ouvertes: { id: string;
   return !site || (d.permissions.includes("outils-dev") && origineDe(site.url) !== d.origine);
 }
 
-/** La fenêtre d'une appli vue comme un onglet `app:<dossier>` par l'agent. */
+/** An app's window seen as an `app:<folder>` tab by the agent. */
 export function ongletApplication(a: { dossier: string; titre: string; url: string }): OngletInfo {
   return { id: PREFIXE_APP + a.dossier, titre: a.titre, url: a.url, espace: "", application: a.dossier };
 }

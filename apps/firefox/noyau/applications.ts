@@ -11,7 +11,7 @@ import { SchemaActionApplication, type ListeApplications } from "../shared/api.t
 import type { Cadre, IdFenetre } from "../shared/modele.ts";
 import { SiteSouvenirs } from "./sites.ts";
 
-/** Plage de ports `min-max` de WEBAIOS_PORTS_APPS (tests), sinon celle du noyau. */
+/** `min-max` port range from WEBAIOS_PORTS_APPS (tests), otherwise the kernel's. */
 export function plageDePorts(valeur: string | undefined): [number, number] | undefined {
   const m = /^(\d+)-(\d+)$/.exec(valeur ?? "");
   return m ? [Number(m[1]), Number(m[2])] : undefined;
@@ -49,9 +49,9 @@ export function createApplicationsHost(o: {
   const memoire = new SiteSouvenirs(o.dataDir, 500, "applications.json");
   /** Open windows, by dossier: their last known title and address (the chrome tells, `applications.navigation`). */
   const fenetres = new Map<string, { titre: string; url: string }>();
-  /** Lancements en cours par dossier : une appli relancée passe par « arretee » sans que sa fenêtre doive se fermer. */
+  /** Launches in progress per folder: a relaunched app goes through « arretee » without its window having to close. */
   const enCours = new Map<string, number>();
-  /** Dernier lancement demandé par dossier : il ne se résout qu'après ceux d'avant (le gestionnaire les enchaîne). */
+  /** Last launch requested per folder: it resolves only after the earlier ones (the manager chains them). */
   const derniers = new Map<string, Promise<unknown>>();
   const delai = Number(process.env.WEBAIOS_DELAI_APP_MS);
   const ports = plageDePorts(process.env.WEBAIOS_PORTS_APPS);
@@ -61,13 +61,13 @@ export function createApplicationsHost(o: {
     fenetres.delete(dossier);
     void o.chrome.fermer(dossier).catch(signaler(dossier, "fermée"));
   };
-  /** Ferme la fenêtre d'une appli qui n'est plus en marche, sauf pendant un lancement (qui décidera à sa fin). */
+  /** Closes the window of an app that is no longer running, except during a launch (which will decide at its end). */
   const suivreEtat = (dossier: string) => {
     const etat = gestionnaire.etatDe(dossier);
     if ((etat === "arretee" || etat === "erreur") && !enCours.get(dossier) && fenetres.has(dossier)) fermer(dossier);
   };
 
-  // Les lancements viennent de l'agent (outil MCP) comme de la page des applis : tous passent par ici.
+  // Launches come from the agent (MCP tool) as from the apps page: all go through here.
   class Gestionnaire extends GestionnaireApplications {
     override lancer(dossier: string): Promise<Application> {
       enCours.set(dossier, (enCours.get(dossier) ?? 0) + 1);
@@ -76,7 +76,7 @@ export function createApplicationsHost(o: {
       void fin
         .then(
           (a) => {
-            // Lancée, ou relancée : la fenêtre s'ouvre ou se recharge sur le nouveau port.
+            // Launched, or relaunched: the window opens or reloads on the new port.
             if (a.etat === "en-marche" && a.port !== undefined) {
               fenetres.set(dossier, { titre: fenetres.get(dossier)?.titre ?? a.nom, url: `http://localhost:${a.port}/` });
               void o.chrome.ouvrir({ dossier, nom: a.nom, port: a.port }, memoire.lire(dossier).cadre ?? null).catch(signaler(dossier, "ouverte"));
@@ -106,20 +106,20 @@ export function createApplicationsHost(o: {
       o.diffuser();
     },
   });
-  // Une fois par vie de l'hôte, en tâche de fond : les fenêtres n'attendent jamais Docker.
+  // Once per host life, in the background: windows never wait for Docker.
   gestionnaire.demarrer().catch((e) => console.error("[applications] démarrage impossible :", e));
-  // La liste ne l'attend jamais : la page est relue quand l'état de Docker change.
+  // The list never waits for it: the page is re-read when Docker's state changes.
   const docker = new SondeDocker({ sonder: () => o.atelier.etat(), surChange: o.diffuser });
 
-  /** Efface le dossier, le conteneur et son souvenir ; refusé tant que l'appli tourne ou démarre. */
+  /** Erases the folder, the container and its memory; refused while the app runs or starts. */
   async function supprimer(dossier: string): Promise<void> {
     const etat = gestionnaire.etatDe(dossier);
     if (etat !== "arretee" && etat !== "erreur") throw new Error(`appli ${etat}`);
-    // Le nom vient d'un projet « Sans fiche » quelconque : seul un dossier direct de projets/ est effacé.
+    // The name comes from any « Sans fiche » project: only a direct folder of projets/ is erased.
     const projets = resolve(o.chemins.projets);
     const cible = resolve(projets, dossier);
     if (!cible.startsWith(projets + sep) || cible.slice(projets.length + 1).includes(sep)) throw new Error(`${cible} hors de ${projets}`);
-    // L'arrêt annule les lancements qui n'ont pas commencé, et on attend que le dernier ait rendu la main.
+    // Stopping cancels the launches that have not started, and we wait for the last one to hand back control.
     await gestionnaire.arreter(dossier);
     await derniers.get(dossier)?.catch(() => {});
     await fs.rm(cible, { recursive: true, force: true });
@@ -132,7 +132,7 @@ export function createApplicationsHost(o: {
   async function deboguer(dossier: string, fenetre: IdFenetre): Promise<void> {
     const a = (await gestionnaire.liste()).find((x) => x.dossier === dossier);
     if (!a) return;
-    // Fenêtre ouverte = appli en marche : l'agent peut la lire sans demander, si elle l'est toujours quand le texte s'écrit.
+    // Open window = running app: the agent can read it without asking, if it still is when the text is written.
     const acces = () => {
       const f = fenetres.get(dossier);
       return f && appTab({ dossier, ...f });
@@ -143,7 +143,7 @@ export function createApplicationsHost(o: {
 
   const agir = (dossier: string, action: z.infer<typeof SchemaActionApplication>["action"], fenetre: IdFenetre): void => {
     switch (action) {
-      // Relancer = lancer une appli en marche ou en erreur : le gestionnaire arrête d'abord l'instance en cours.
+      // Relaunch = launch a running or errored app: the manager first stops the running instance.
       case "lancer":
       case "relancer":
         void gestionnaire.lancer(dossier).catch(signaler(dossier, "lancée"));

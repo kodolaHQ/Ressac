@@ -1,34 +1,34 @@
 import { BORD_REVELATION, LARGEUR_BARRE, MARGE_BARRE, SORTIE_GAUCHE } from "./modele";
 
 /**
- * Mode compact : où est la souris par rapport au bord gauche de la fenêtre. « bord » révèle la barre, « barre » la
- * garde ouverte (la barre et une marge à sa droite), « loin » la referme.
+ * Compact mode: where the mouse is relative to the window's left edge. « bord » reveals the bar, « barre »
+ * keeps it open (the bar and a margin to its right), « loin » closes it again.
  */
 export type ZoneGauche = "bord" | "barre" | "loin";
 
-/** Zone de la souris à `x` px du bord gauche de la fenêtre. */
+/** Mouse zone at `x` px from the window's left edge. */
 export function zoneGauche(x: number): ZoneGauche {
   if (x < BORD_REVELATION) return "bord";
   return x < LARGEUR_BARRE + MARGE_BARRE ? "barre" : "loin";
 }
 
-/** Zone d'une souris qui sort d'une surface (page, interface) après avoir été vue en dernier à `x` : un geste rapide vers la gauche compte comme le bord. */
+/** Zone of a mouse leaving a surface (page, UI) after last being seen at `x`: a fast gesture to the left counts as the edge. */
 export function zoneSortie(x: number): ZoneGauche {
   return x < SORTIE_GAUCHE ? "bord" : zoneGauche(x);
 }
 
 export interface Revelation {
   revelee: boolean;
-  /** La souris a quitté le bord depuis le dernier masquage : y revenir révèle de nouveau la barre. */
+  /** The mouse left the edge since the last hiding: returning to it reveals the bar again. */
   armee: boolean;
 }
 
 export const REVELATION_INITIALE: Revelation = { revelee: false, armee: true };
 
 /**
- * La souris passe dans `zone`. Hystérésis : la barre se révèle au bord, reste ouverte sur elle-même et sa marge, et ne
- * se referme (`masquer`, après un court délai) qu'au-delà ; une souris restée au bord après un masquage doit le quitter
- * avant de la révéler de nouveau. Ainsi la page qui se décale sous une souris immobile ne fait pas clignoter la barre.
+ * The mouse moves into `zone`. Hysteresis: the bar is revealed at the edge, stays open over itself and its margin, and only
+ * closes (`masquer`, after a short delay) beyond that; a mouse left at the edge after a hiding must leave it
+ * before revealing it again. So the page shifting under a still mouse does not make the bar blink.
  */
 export function surZone(r: Revelation, zone: ZoneGauche): Revelation & { masquer: boolean } {
   const armee = r.armee || zone !== "bord";
@@ -36,7 +36,7 @@ export function surZone(r: Revelation, zone: ZoneGauche): Revelation & { masquer
   return { revelee: zone === "bord" && armee, armee, masquer: false };
 }
 
-/** La barre se masque alors que la souris est dans `zone`. */
+/** The bar hides while the mouse is in `zone`. */
 export function masquer(zone: ZoneGauche): Revelation {
   return { revelee: false, armee: zone !== "bord" };
 }

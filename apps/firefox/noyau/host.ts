@@ -19,7 +19,7 @@ const { join } = await import("node:path");
 const { createInterface } = await import("node:readline");
 const { appendFileSync } = await import("node:fs");
 const { stat } = await import("node:fs/promises");
-// Imported after the env is set and stdout redirected: nothing in the noyau can write to stdout at load time.
+// Imported after the env is set and stdout redirected: nothing in the kernel can write to stdout at load time.
 const { ACTION_INCONNUE, Atelier, catalogueBlocs, chargerProfils, cheminsEspace, creerNoyau, executeurParDefaut, IaLocale, lireAccueil, lireDispositionLibre, lireTheme, Menagement, prefixeContexte, retirerAccord, supprimerDonnees, surveillerActions } = await import("../../../packages/noyau/src/index.ts");
 const { SessionsAgent } = await import("../core/agent/sessions.ts");
 const { Historique } = await import("../core/historique.ts");
@@ -66,9 +66,9 @@ if (!dataDir) {
 }
 const racine = join(dataDir, "espace");
 const chemins = cheminsEspace(racine);
-// Widgets' data, states and accords: outside the space.
+// Widgets' data, states and grants: outside the space.
 const dossierWidgets = join(dataDir, "widgets");
-// Outside the agent's noyau: the history works even when the noyau does not start.
+// Outside the agent's kernel: the history works even when the kernel does not start.
 const MEMOIRE_BOUCLE = process.env.WEBAIOS_MEMOIRE_BOUCLE === "1";
 // The pages whose text the history keeps for the agent's memory: http(s), never the machine (unless WEBAIOS_MEMOIRE_BOUCLE).
 const retenable = (url: string) => {
@@ -93,7 +93,7 @@ const historique = (() => {
 const purge = setInterval(() => historique?.purger(), 6 * 60 * 60 * 1000);
 purge.unref();
 const duckduckgo = process.env.WEBAIOS_TEST_DUCKDUCKGO_URL;
-// Shown when the widgets service has no noyau.
+// Shown when the widgets service has no kernel.
 const MESSAGE_AGENT_ARRETE = "Le service des widgets ne répond pas (agent arrêté ?)";
 // The answer to a bad builder argument.
 const ARGUMENT_INVALIDE = { ok: false as const, erreur: "Argument invalide" };
@@ -106,10 +106,10 @@ const executionAction = (v: unknown): v is string => SchemaIdExecution.safeParse
 // A link's bound.
 const urlAction = (v: unknown): v is string => typeof v === "string" && v.length > 0 && v.length <= 8192;
 const contexteWidgets = { chemins, dossierWidgets };
-// Actions' runs, results, accords and refusals: outside the space.
+// Actions' runs, results, grants and refusals: outside the space.
 const dossierActions = join(dataDir, "actions");
 const contexteActions = { chemins, dossierActions };
-// One container for the agent (whatever its profile) and the apps it launches: the noyau's own default (noyau.ts:389).
+// One container for the agent (whatever its profile) and the apps it launches: the kernel's own default (kernel.ts:389).
 const atelier = new Atelier({ chemins });
 
 let noyau: Noyau | null = null;
@@ -154,7 +154,7 @@ const lancerNoyau = (profilId: string): Promise<Noyau | null> => {
     atelier,
     applications: apps.gestionnaire,
     workflowOuvert: (f) => workflowOpen(actives.get(f), selections.get(f)),
-    // Widgets and actions wrote something, or an accord changed: the page reads again.
+    // Widgets and actions wrote something, or an grant changed: the page reads again.
     surChange: () => rpc.notify("accueil.change"),
     notifier,
     ...(process.env.WEBAIOS_TEST_ADRESSES_LOCALES === "1" ? { adressesLocales: true } : {}),
@@ -177,7 +177,7 @@ const lancerNoyau = (profilId: string): Promise<Noyau | null> => {
         console.error("[webaios] la surveillance de l'accueil n'a pas démarré :", e);
       }
       diffuserAcces();
-      // Each noyau start (a restart included): what the pages read while it was down is read again.
+      // Each kernel start (a restart included): what the pages read while it was down is read again.
       rpc.notify("accueil.change");
       return n;
     },
@@ -206,7 +206,7 @@ const demarrer = async () => {
 };
 
 let profil: string | null = null;
-// Another profile: a new noyau (command, MCP config) and a new agent in every panel. Never two noyaux at once:
+// Another profile: a new kernel (command, MCP config) and a new agent in every panel. Never two noyaux at once:
 // two MCP servers would write the same mcp.json.
 const changerProfil = (profilAgent: string) => {
   const relancer = profil !== null;
@@ -256,7 +256,7 @@ const sessions = new SessionsAgent({
 const rpc = createRpc({
   send: (line) => void writeStdout(line + "\n"),
   handlers: {
-    // Repeated with the same profile: the running noyau stays (its sessions with it); a failed start is retried.
+    // Repeated with the same profile: the running kernel stays (its sessions with it); a failed start is retried.
     demarrer: async (p: { profilAgent: string }) => {
       if (profil === p.profilAgent && (await pret)) return demarrer();
       return changerProfil(p.profilAgent);
@@ -264,7 +264,7 @@ const rpc = createRpc({
     changerProfil: (p: { profilAgent: string }) => changerProfil(p.profilAgent),
     "agent.demarrer": (p: { fenetre: string; taille: TailleTerminal }) => sessions.demarrer(p.fenetre, p.taille),
     "agent.profils": async () => {
-      // The noyau writes the default profile while it starts: the panel may ask before that.
+      // The kernel writes the default profile while it starts: the panel may ask before that.
       await pret;
       try {
         return (await chargerProfils(chemins)).profils.map((x) => ({ id: x.id, nom: x.nom }));
@@ -287,12 +287,12 @@ const rpc = createRpc({
             try {
               mtimes[w.id] = Math.round((await stat(join(w.dossier, "affichage.html"))).mtimeMs);
             } catch {
-              // affichage.html supprimé entre-temps : la prochaine lecture le dira
+              // affichage.html deleted in the meantime: the next read will tell
             }
           }),
         );
         const [placements, theme] = await Promise.all([lireDispositionLibre(n.chemins), lireTheme(n.chemins)]);
-        // Un thème invalide garde le défaut : il est signalé, jamais réécrit.
+        // An invalid theme keeps the default: it is reported, never rewritten.
         if (theme.erreur) console.warn(`[webaios] ${theme.erreur}`);
         return versWidgetsAffiches({ etat, placements, theme: theme.theme, mtimes });
       } catch (e) {
@@ -302,18 +302,18 @@ const rpc = createRpc({
     },
     "accueil.placer": async (p: { placements?: unknown }) => {
       try {
-        // A placement needs no noyau: the space's folders are enough.
+        // A placement needs no kernel: the space's folders are enough.
         const ids = (await lireAccueil(chemins, dossierWidgets)).widgets.map((w) => w.id);
         await placerWidgets(chemins, validerPlacements(p?.placements, ids));
       } catch (e) {
         console.error("[webaios] disposition non écrite :", e);
-        // L'interface a déjà montré l'aperçu du geste : elle relit l'ancienne disposition au lieu de le laisser à l'écran.
+        // The UI already showed the gesture's preview: it re-reads the old layout instead of leaving it on screen.
         rpc.notify("accueil.change");
       }
     },
     "accueil.retirer": (p: { id?: unknown }) => {
       const id = typeof p?.id === "string" ? p.id : "";
-      // L'accord et les données lues avec le compte partent avec le widget (par le noyau, qui écrit aussi les accords).
+      // The grant and the data read with the account leave with the widget (through the kernel, which also writes the grants).
       void retirerWidget(chemins, id, async (w) => {
         const n = await pret;
         if (n) return n.refuserAccord(w);
@@ -328,12 +328,12 @@ const rpc = createRpc({
       const n = await pret;
       if (!n) return { ok: false as const, erreur: MESSAGE_AGENT_ARRETE };
       try {
-        // Le noyau refuse si la déclaration n'est plus celle que la carte a montrée.
+        // The kernel refuses if the declaration is no longer the one the card showed.
         await n.accorder(p);
         return { ok: true as const };
       } catch (e) {
         console.error(`[webaios] accord du widget ${p?.id} :`, e);
-        // L'interface relit la page : la nouvelle demande s'affiche.
+        // The UI re-reads the page: the new request is displayed.
         rpc.notify("accueil.change");
         return { ok: false as const, erreur: (e as Error).message };
       }
@@ -348,7 +348,7 @@ const rpc = createRpc({
       if (!n || typeof p?.id !== "string") return;
       await n.recolterMaintenant(p.id).catch((e) => console.error(`[webaios] récolte du widget ${p.id} :`, e));
     },
-    // Lues sans le noyau, comme la page d'accueil : les exécutions, hors de l'espace.
+    // Read without the kernel, like the home page: the executions, outside the space.
     "accueil.executions": (p: { id?: unknown }) => executionsWidget(dossierWidgets, typeof p?.id === "string" ? p.id : ""),
     "accueil.execution": (p: { id?: unknown; execution?: unknown }) =>
       executionWidget(dossierWidgets, typeof p?.id === "string" ? p.id : "", typeof p?.execution === "string" ? p.execution : ""),
@@ -399,7 +399,7 @@ const rpc = createRpc({
         ? { ok: true as const, execution: r.execution, statut: r.statut }
         : { ok: false as const, erreur: r.erreur ?? "Rejeu impossible" };
     },
-    // Bad input or no noyau: {} (the page then selects no run); a failed run throws nothing.
+    // Bad input or no kernel: {} (the page then selects no run); a failed run throws nothing.
     "workflow.lancer": async (p: { cible?: unknown; saisie?: unknown }) => {
       const cible = SchemaCible.safeParse(p?.cible);
       const saisie = SchemaSaisieAction.safeParse(p?.saisie ?? null);
@@ -433,7 +433,7 @@ const rpc = createRpc({
     "fenetres.actives": (p: Record<string, unknown> | null) => {
       actives = new Map(Object.entries(p ?? {}).filter((e): e is [string, string] => typeof e[1] === "string"));
     },
-    // Actions: what touches the noyau and the disk (the chrome keeps the window state). Inputs checked with the shared
+    // Actions: what touches the kernel and the disk (the chrome keeps the window state). Inputs checked with the shared
     // schemas; a bad one gets an empty answer.
     "actions.liste": () => actions.liste(),
     "actions.preparer": (p: { id?: unknown; saisie?: unknown }) =>
@@ -557,7 +557,7 @@ const rpc = createRpc({
       parCle(p, (cle) => extensions.revoir(cle, typeof p.fenetre === "string" ? p.fenetre : null)),
     "extensions.toutCouper": (p: { oui?: unknown }) => extensions.toutCouper(p?.oui === true),
     "extensions.installerStore": () => ({ ok: false, erreur: STORE_ABSENT }),
-    // The RPC signal is ignored on purpose: the noyau's Menagement hands the lane back (partie=false) when the read has already ended, and rpc.ts drops a late answer.
+    // The RPC signal is ignored on purpose: the kernel's Menagement hands the lane back (partie=false) when the read has already ended, and rpc.ts drops a late answer.
     "lecture.changerHote": (p: { lecture: string; hote: string }) => bridge.changerHote(p.lecture, p.hote),
     // Tests only: a paced read through a Menagement shared by the calls, as a workflow's web widget does.
     ...(process.env.WEBAIOS_TEST_LECTURE_MENAGEE === "1"
@@ -577,7 +577,7 @@ const bridge = new RemoteBridge(rpc, historique, (site, url) => sites.adressePer
 const menagementTest = new Menagement();
 /** A page request on one extension key: a malformed one is refused as text. */
 const parCle = <T,>(p: { cle?: unknown } | undefined, f: (cle: string) => T) => (typeof p?.cle === "string" ? f(p.cle) : { ok: false as const, erreur: "Paramètres invalides" });
-// Outside the agent's noyau, like the history: granted extensions run even when the noyau does not start.
+// Outside the agent's kernel, like the history: granted extensions run even when the kernel does not start.
 const extensions = new ExtensionsAgent({ dossier: join(dataDir, "extensions"), dossierAgent: chemins.extensions, rpc });
 // Site apps: the Node side (list, memory, deletion); the windows are the chrome's, asked through the RPC.
 const sites = createSites({
@@ -610,7 +610,7 @@ const sites = createSites({
   },
   preRemplir: (f, t) => sessions.preRemplir(f, t),
   notifierMemoire: (id, message) => rpc.notify("sites.memoire", { id, message }),
-  // The agent loses its dev tools on the closed window; the app's accord holds for the conversation, until « Supprimer »
+  // The agent loses its dev tools on the closed window; the app's grant holds for the conversation, until « Supprimer »
   // (an app made again under the same id asks for its card again).
   surFermee: (id) => noyau?.politique.ongletFerme(`site:${id}`),
   // Its remarks, review repository and comments go with it.
@@ -654,7 +654,7 @@ const apps = createApplicationsHost({
     design.appsChanged();
   },
 });
-// Design mode: remarks, the external MCP server and the review, without waiting for the noyau.
+// Design mode: remarks, the external MCP server and the review, without waiting for the kernel.
 const design = createDesignHost({
   dataDir,
   chemins,
@@ -667,9 +667,9 @@ const design = createDesignHost({
   notifier,
   diffuser: () => (rpc.notify("externes.change"), rpc.notify("design.change")),
 });
-// Actions: the noyau and disk half; the chrome keeps the window state (private spaces, tabs, pace of links).
+// Actions: the kernel and disk half; the chrome keeps the window state (private spaces, tabs, pace of links).
 const actions = createActionsHost({ chemins, dossierActions, noyau: () => noyau, surChange: () => rpc.notify("actions.change") });
-// The actions and components folders, watched outside the noyau: the page lists even without it.
+// The actions and components folders, watched outside the kernel: the page lists even without it.
 let arretActions: (() => Promise<void>) | undefined;
 try {
   arretActions = surveillerActions(chemins, () => rpc.notify("actions.change"));

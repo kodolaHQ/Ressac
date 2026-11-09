@@ -1,39 +1,39 @@
 import type { ConsolePourAgent, MessageConsole } from "@webaios/noyau";
 
-/** Messages gardés par extension : les plus anciens tombent. */
+/** Messages kept per extension: the oldest drop. */
 export const CONSOLE_MAX = 500;
-/** `PLANTAGES_MAX` plantages en `FENETRE_PLANTAGES_MS` : l'extension est désactivée partout. */
+/** `PLANTAGES_MAX` crashes in `FENETRE_PLANTAGES_MS`: the extension is disabled everywhere. */
 export const PLANTAGES_MAX = 3;
 export const FENETRE_PLANTAGES_MS = 60_000;
 
 /**
- * Un message noté : `onglet` pour un script de contenu (la vue d'onglet d'où il vient était-elle lisible par l'agent
- * quand il a été écrit ?), null pour le service worker et les pages de l'extension.
+ * A recorded message: `onglet` for a content script (was the tab view it comes from readable by the agent
+ * when it was written?), null for the service worker and the extension's pages.
  */
 interface Entree {
   m: MessageConsole;
   onglet: { lisible: boolean } | null;
 }
 
-/** Ce que l'agent peut voir d'une console : le registre (drapeau « a tourné ») et le déblocage décident avec elle. */
+/** What the agent can see of a console: the registry (« has run » flag) and the unlock decide with it. */
 export interface FiltreAgent {
   depuis?: number;
   debloquee: boolean;
-  /** L'extension a tourné dans un onglet que l'agent ne peut pas lire (drapeau du registre, jamais remis à zéro). */
+  /** The extension ran in a tab the agent cannot read (registry flag, never reset). */
   tourneIllisible: boolean;
-  /** L'extension a un droit qui observe les onglets ou la navigation : son service worker et ses pages, toujours masqués. */
+  /** The extension has a right that observes tabs or navigation: its service worker and pages, always masked. */
   observateur: boolean;
 }
 
 /**
- * Consoles des extensions (service worker, pages `chrome-extension://`, scripts de contenu dans les onglets), par id
- * Chromium, en mémoire, et décompte de leurs plantages (pages d'extension disparues hors `clean-exit`, échecs de
- * `loadExtension`). Ce qui est noté vient de l'extension : de la donnée, affichée en texte, jamais une consigne.
+ * Consoles of the extensions (service worker, `chrome-extension://` pages, content scripts in tabs), by Chromium
+ * id, in memory, and count of their crashes (extension pages gone other than `clean-exit`, `loadExtension`
+ * failures). What is recorded comes from the extension: data, displayed as text, never an instruction.
  *
- * Pour l'agent (spec §5, console filtrée), `pourAgent` retire les messages des onglets qu'il ne pouvait pas lire ; ceux
- * du service worker et des pages, tous si l'extension a tourné dans un tel onglet (`tourneIllisible`) ou si elle a un
- * droit qui observe les onglets ou la navigation (`observateur`). Décidé à la lecture, jamais à l'écriture : un message
- * gardé puis écrit plus tard ne passe pas. L'utilisateur (page Extensions) voit tout.
+ * For the agent (spec §5, filtered console), `pourAgent` removes the messages of tabs it could not read; those
+ * of the service worker and pages, all of them if the extension ran in such a tab (`tourneIllisible`) or if it has a
+ * right that observes tabs or navigation (`observateur`). Decided at read time, never at write time: a message
+ * kept and then written later does not pass. The user (Extensions page) sees everything.
  */
 export class ConsolesExtensions {
   private consoles = new Map<string, Entree[]>();
@@ -41,12 +41,12 @@ export class ConsolesExtensions {
 
   constructor(
     private readonly o: {
-      /** `PLANTAGES_MAX` plantages en `FENETRE_PLANTAGES_MS`. */
+      /** `PLANTAGES_MAX` crashes within `FENETRE_PLANTAGES_MS`. */
       surPlantages(idChrome: string): void;
     },
   ) {}
 
-  /** `onglet` : le message vient d'un script de contenu dans une vue d'onglet, lisible ou non par l'agent. */
+  /** `onglet`: the message comes from a content script in a tab view, readable or not by the agent. */
   noter(idChrome: string, m: MessageConsole, onglet?: { lisible: boolean }): void {
     let liste = this.consoles.get(idChrome);
     if (!liste) this.consoles.set(idChrome, (liste = []));
@@ -54,18 +54,18 @@ export class ConsolesExtensions {
     if (liste.length > CONSOLE_MAX) liste.splice(0, liste.length - CONSOLE_MAX);
   }
 
-  /** Les messages gardés (copie), ceux d'horodatage ≥ `depuis` si donné : tous (page Extensions). */
+  /** The kept messages (copy), those with timestamp ≥ `depuis` if given: all (Extensions page). */
   messages(idChrome: string, depuis?: number): MessageConsole[] {
     const liste = (this.consoles.get(idChrome) ?? []).map((e) => e.m);
     return depuis === undefined ? liste : liste.filter((m) => m.horodatage >= depuis);
   }
 
-  /** Les textes des messages de niveau `error` gardés : tous (page Extensions). */
+  /** The texts of the kept `error`-level messages: all (Extensions page). */
   erreurs(idChrome: string): string[] {
     return (this.consoles.get(idChrome) ?? []).filter((e) => e.m.niveau === "error").map((e) => e.m.texte);
   }
 
-  /** Ce que l'agent voit de la console (copie), ceux d'horodatage ≥ `depuis` si donné. */
+  /** What the agent sees of the console (copy), those with timestamp ≥ `depuis` if given. */
   pourAgent(idChrome: string, f: FiltreAgent): ConsolePourAgent {
     const depuis = f.depuis;
     const liste = (this.consoles.get(idChrome) ?? []).filter((e) => depuis === undefined || e.m.horodatage >= depuis);
@@ -84,14 +84,14 @@ export class ConsolesExtensions {
     return { messages, masques, fondMasque, fondObserve, debloquee: false };
   }
 
-  /** Les textes des messages de niveau `error` que l'agent peut voir (même filtre que `pourAgent`). */
+  /** The texts of the `error`-level messages the agent can see (same filter as `pourAgent`). */
   erreursPourAgent(idChrome: string, f: FiltreAgent): string[] {
     return this.pourAgent(idChrome, f).messages.filter((m) => m.niveau === "error").map((m) => m.texte);
   }
 
   /**
-   * Un plantage à `horodatage` (ms) : au `PLANTAGES_MAX`-ième dans `FENETRE_PLANTAGES_MS` (bornes comprises), le rappel
-   * est appelé une fois et le décompte repart de zéro.
+   * A crash at `horodatage` (ms): at the `PLANTAGES_MAX`-th within `FENETRE_PLANTAGES_MS` (bounds included), the callback
+   * is called once and the count restarts from zero.
    */
   plantage(idChrome: string, horodatage: number): void {
     const recents = (this.plantages.get(idChrome) ?? []).filter((t) => horodatage - t <= FENETRE_PLANTAGES_MS);
@@ -104,7 +104,7 @@ export class ConsolesExtensions {
     this.plantages.set(idChrome, recents);
   }
 
-  /** L'extension est supprimée ou réactivée : sa console et ses plantages sont oubliés. */
+  /** The extension is deleted or re-enabled: its console and its crashes are forgotten. */
   oublier(idChrome: string): void {
     this.consoles.delete(idChrome);
     this.plantages.delete(idChrome);

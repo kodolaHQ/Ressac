@@ -9,18 +9,18 @@ export type { ResultatHistorique, Visite };
 const COLONNES = `url, titre, derniere_visite AS derniereVisite, visites, espace_id AS espaceId, prive,
   EXISTS (SELECT 1 FROM textes t WHERE t.url = visites.url AND t.espace_id = visites.espace_id) AS retenu`;
 
-/** Limites de la mémoire de navigation (spec §6.3). */
-export const TEXTE_MAX = 20_000; // caractères par page
+/** Limits of the browsing memory (spec §6.3). */
+export const TEXTE_MAX = 20_000; // characters per page
 export const RETENTION_JOURS = 183;
 export const PLAFOND_OCTETS = 1_000_000_000; // UTF-8 de `texte`, toutes pages confondues
 const LIMITE_AGENT = { defaut: 20, max: 50 };
-/** Mots de l'extrait rendu à l'agent (64 au plus pour FTS5) : environ 300 caractères. */
+/** Words of the excerpt returned to the agent (64 at most for FTS5): about 300 characters. */
 const MOTS_EXTRAIT = 54;
 
-/** Minuscules sans accents : « Été » et « ete » se retrouvent (LIKE de SQLite ne plie que l'ASCII). */
+/** Lowercase without accents: « Été » and « ete » find each other (SQLite's LIKE only folds ASCII). */
 const plier = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
 
-/** Historique de navigation : une ligne par URL et par espace, dans `<profil>/historique.sqlite`. */
+/** Browsing history: one row per URL and per space, in `<profile>/historique.sqlite`. */
 export class Historique {
   private db: DatabaseSync;
   private req: Record<
@@ -49,7 +49,7 @@ export class Historique {
         SELECT ${COLONNES} FROM visites
         WHERE plier(url) LIKE ? ESCAPE '\\' OR plier(titre) LIKE ? ESCAPE '\\'
         ORDER BY visites DESC, derniere_visite DESC LIMIT ?`),
-      // Une seule ligne par URL, la mieux classée, choisie en SQL pour que le LIMIT compte des URL.
+      // A single row per URL, the best ranked, chosen in SQL so that the LIMIT counts URLs.
       rechercherDistinctes: this.db.prepare(`
         SELECT ${COLONNES} FROM (
           SELECT *, ROW_NUMBER() OVER (PARTITION BY url ORDER BY visites DESC, derniere_visite DESC) AS rang FROM visites
@@ -92,7 +92,7 @@ export class Historique {
     };
   }
 
-  /** Crée la table, ou migre l'ancienne (clé `url` seule) : lignes gardées, espace `""` (aucun), non privées. */
+  /** Creates the table, or migrates the old one (`url` key alone): rows kept, space `""` (none), non-private. */
   private migrer(): void {
     const colonnes = (this.db.prepare("PRAGMA table_info(visites)").all() as { name: string }[]).map((c) => c.name);
     const nouvelle = `(
@@ -116,8 +116,8 @@ export class Historique {
           ALTER TABLE visites_v2 RENAME TO visites;`);
       }
       this.db.exec("CREATE INDEX IF NOT EXISTS visites_date ON visites (derniere_visite)");
-      // Texte retenu : une ligne par URL et par espace. L'index FTS5 lit son contenu dans `textes` (rien n'est stocké
-      // deux fois) ; les déclencheurs le tiennent à jour quelle que soit la méthode qui écrit ou efface.
+      // Kept text: one row per URL and per space. The FTS5 index reads its content from `textes` (nothing is stored
+      // twice); the triggers keep it up to date whichever method writes or erases.
       this.db.exec(`
         CREATE TABLE IF NOT EXISTS textes (
           id INTEGER PRIMARY KEY,
@@ -152,18 +152,18 @@ export class Historique {
   }
 
   noter(v: { url: string; titre: string; espaceId: string; prive: boolean; date?: Date }): void {
-    if (!this.db.isOpen) return; // une page peut encore naviguer pendant la sortie
+    if (!this.db.isOpen) return; // a page can still navigate during the exit
     this.req.noter.run(v.url, v.espaceId, v.titre, (v.date ?? new Date()).toISOString(), v.prive ? 1 : 0);
   }
 
-  /** Le titre arrive souvent après la navigation : il complète la visite sans en compter une nouvelle. */
+  /** The title often arrives after the navigation: it completes the visit without counting a new one. */
   majTitre(url: string, espaceId: string, titre: string): void {
     if (!this.db.isOpen) return;
     this.req.majTitre.run(titre, url, espaceId);
     this.req.majTitreTexte.run(titre, url, espaceId, titre);
   }
 
-  /** L'espace est devenu privé : toutes ses visites déjà notées le deviennent, et leur texte retenu est oublié. */
+  /** The space became private: all its already recorded visits become so, and their kept text is forgotten. */
   rendrePrive(espaceId: string): void {
     if (!this.db.isOpen) return;
     this.transaction(() => {
@@ -172,23 +172,23 @@ export class Historique {
     });
   }
 
-  /** Retient le texte d'une page (tronqué à TEXTE_MAX caractères), en remplaçant celui de la visite précédente. */
+  /** Keeps a page's text (truncated to TEXTE_MAX characters), replacing that of the previous visit. */
   retenir(r: { url: string; espaceId: string; titre: string; texte: string; date?: Date }): void {
     if (!this.db.isOpen) return;
-    if (this.req.estPrive.get(r.url, r.espaceId)) return; // défense : rien n'est retenu d'une visite privée
+    if (this.req.estPrive.get(r.url, r.espaceId)) return; // defense: nothing is kept from a private visit
     let texte = r.texte.slice(0, TEXTE_MAX);
-    if (/[\uD800-\uDBFF]$/.test(texte)) texte = texte.slice(0, -1); // pas de moitié de caractère
+    if (/[\uD800-\uDBFF]$/.test(texte)) texte = texte.slice(0, -1); // no half character
     const date = (r.date ?? new Date()).toISOString();
     this.req.retenir.run(r.url, r.espaceId, r.titre, date, texte, Buffer.byteLength(texte, "utf8"));
   }
 
-  /** Oublie le texte d'une visite sans effacer la visite. */
+  /** Forgets a visit's text without erasing the visit. */
   oublierTexte(url: string, espaceId: string): void {
     if (!this.db.isOpen) return;
     this.req.oublierTexte.run(url, espaceId);
   }
 
-  /** Oublie le texte de plus de RETENTION_JOURS jours, puis le plus ancien tant que le total dépasse le plafond. */
+  /** Forgets text older than RETENTION_JOURS days, then the oldest while the total exceeds the cap. */
   purger(maintenant = new Date()): void {
     if (!this.db.isOpen) return;
     this.transaction(() => {
@@ -205,25 +205,25 @@ export class Historique {
     });
   }
 
-  /** Le texte retenu le plus récent de cette URL, hors visites privées. */
+  /** The most recent kept text of this URL, excluding private visits. */
   texteRetenu(url: string): { url: string; titre: string; date: string; texte: string } | null {
     if (!this.db.isOpen) return null;
     return (this.req.texteRetenu.get(url) as { url: string; titre: string; date: string; texte: string } | undefined) ?? null;
   }
 
   /**
-   * Recherche pour l'agent, faite des seules visites non privées (dans [depuis, jusqua]), une ligne par URL.
-   * Chaque mot de la requête est cherché séparément (OU) : dans le texte retenu, le titre et l'URL par l'index plein
-   * texte, et en sous-chaîne pliée dans le titre et l'URL de toute visite (une visite sans texte se trouve aussi).
-   * Classement : les pages trouvées par l'index d'abord (bm25, puis la plus récente), puis celles trouvées par leur
-   * seul titre ou URL, de la plus récente à la plus ancienne. Une requête vide rend les plus récentes.
+   * Search for the agent, made of non-private visits only (within [depuis, jusqua]), one row per URL.
+   * Each word of the query is searched separately (OR): in the kept text, the title and the URL through the full-text
+   * index, and as a folded substring in the title and URL of any visit (a visit without text is found too).
+   * Ranking: pages found by the index first (bm25, then the most recent), then those found by their
+   * title or URL alone, from most to least recent. An empty query returns the most recent.
    */
   rechercherPourAgent(q: { requete: string; depuis?: Date; jusqua?: Date; limite?: number }): ResultatHistorique[] {
     if (!this.db.isOpen) return [];
     const limite = Math.max(1, Math.min(LIMITE_AGENT.max, Math.floor(q.limite ?? LIMITE_AGENT.defaut)));
     const periode = { depuis: q.depuis?.toISOString() ?? "", jusqua: q.jusqua?.toISOString() ?? "\uffff" };
     const mots = q.requete.split(/\s+/).filter(Boolean);
-    // Chaque mot est une phrase FTS entre guillemets : aucun opérateur de la requête n'est interprété.
+    // Each word is a quoted FTS phrase: no query operator is interpreted.
     const fts = mots.map((m) => `"${m.replaceAll('"', '""')}"`).join(" OR ");
     const motifs = Object.fromEntries(mots.map((m, i) => [`m${i}`, `%${plier(m).replace(/[\\%_]/g, (c) => `\\${c}`)}%`]));
     const dansPeriode = "v.prive = 0 AND v.derniere_visite >= :depuis AND v.derniere_visite <= :jusqua";
@@ -265,7 +265,7 @@ export class Historique {
     });
   }
 
-  /** Sous-chaîne insensible à la casse et aux accents sur l'URL et le titre ; `%`, `_` et `\` sont littéraux. */
+  /** Substring insensitive to case and accents on the URL and title; `%`, `_` and `\` are literal. */
   rechercher(texte: string, limite = 50, distinctes = false): Visite[] {
     if (!this.db.isOpen) return [];
     const motif = `%${plier(texte).replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
@@ -281,7 +281,7 @@ export class Historique {
     return brutes.map((l) => ({ ...l, prive: l.prive === 1, retenu: l.retenu === 1 }) as unknown as Visite);
   }
 
-  /** Efface les visites et le texte retenu depuis `depuis` (tout sans date), et le texte dont la visite est effacée. */
+  /** Erases the visits and kept text since `depuis` (everything without a date), and the text whose visit is erased. */
   effacer(depuis?: Date): void {
     if (!this.db.isOpen) return;
     this.transaction(() => {

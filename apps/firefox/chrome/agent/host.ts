@@ -6,14 +6,14 @@ export const HOST_STOPPED = "Le noyau de l'agent s'est arrêté.";
 export const HOST_EXITED = "$/exited";
 const STOP_TIMEOUT_MS = 5_000;
 
-/** The Node process running the noyau (apps/firefox/noyau/host.ts), spoken to in JSON-RPC over its stdin and stdout. */
+/** The Node process running the kernel (apps/firefox/noyau/host.ts), spoken to in JSON-RPC over its stdin and stdout. */
 export interface AgentHost {
   request<T>(method: string, params?: unknown, signal?: AbortSignal): Promise<T>;
   /** Dropped while no host runs. */
   notify(method: string, params?: unknown): void;
   /** A notification from the host. */
   on(method: string, cb: (params: any) => void): () => void;
-  /** Starts the host if it is not running, then its noyau (`demarrer`, a no-op when it already runs on that profile). */
+  /** Starts the host if it is not running, then its kernel (`demarrer`, a no-op when it already runs on that profile). */
   ensure(): Promise<void>;
   /** `arreter` (5 s at most), then the process is killed. */
   stop(): Promise<void>;

@@ -10,10 +10,10 @@ const SCHEMAS_ACCEPTES = ["http:", "https:", "file:", "about:"];
 const LOCAL = /^(localhost|\d{1,3}(\.\d{1,3}){3})(:\d+)?(\/.*)?$/i;
 const DOMAINE = /^[^\s]+\.[a-z]{2,}(:\d+)?(\/.*)?$/i;
 
-/** L'URL normalisée, ou `null` si elle ne s'analyse pas (« http:// » seul, port hors limites…). */
+/** The normalized URL, or `null` if it does not parse (« http:// » alone, port out of range…). */
 const analyser = (texte: string) => (URL.canParse(texte) ? new URL(texte).href : null);
 
-/** Transforme ce que l'utilisateur tape dans la barre d'adresse en URL ; `null` si la saisie est refusée. */
+/** Turns what the user types in the address bar into a URL; `null` if the input is refused. */
 export function versUrl(saisie: string, moteur: MoteurRecherche): string | null {
   const texte = saisie.trim();
   if (!texte) return null;
@@ -26,6 +26,6 @@ export function versUrl(saisie: string, moteur: MoteurRecherche): string | null 
     const url = analyser(`${LOCAL.test(texte) ? "http" : "https"}://${texte}`);
     if (url) return url;
   }
-  // Ni URL ni domaine valide : on cherche le texte tel quel.
+  // Neither a URL nor a valid domain: search the text as is.
   return MOTEURS[moteur].replace("%s", encodeURIComponent(texte));
 }

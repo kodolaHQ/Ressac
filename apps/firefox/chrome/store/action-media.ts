@@ -6,7 +6,7 @@ import { CSP_WIDGET, affichageServi } from "../window/widget-frame";
 import { containerFor } from "./containers";
 import { containerRequests, isLink, loadImage, realPath, toDataUrl } from "./site-home";
 
-/** The noyau's COMPOSANT_HTML_MAX (pages/composants-agent.ts), copied: that module's node:fs imports have no shim in this bundle. Drift test in action-media.test.ts. */
+/** The kernel's COMPOSANT_HTML_MAX (pages/composants-agent.ts), copied: that module's node:fs imports have no shim in this bundle. Drift test in action-media.test.ts. */
 export const COMPOSANT_HTML_MAX = 256 * 1024;
 /** The largest result image. */
 export const ACTION_IMAGE_MAX = 5 * 1024 * 1024;

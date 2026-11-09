@@ -38,7 +38,7 @@ function activeWorkflows(state: EtatNavigateur): Record<IdFenetre, string | null
   return r;
 }
 
-/** The noyau's PontNavigateur, answered on the store and the windows' tabs. */
+/** The kernel's PontNavigateur, answered on the store and the windows' tabs. */
 export function bridgeHandlers(
   store: Store,
   questions: Questions,
@@ -142,7 +142,7 @@ export function bridgeHandlers(
     naviguer: ([id, url]: [string, string]) => {
       if (id.startsWith(PREFIXE_SITE)) {
         if (!sites.viewFor(id.slice(PREFIXE_SITE.length))) throw new OngletIntrouvable(id);
-        // Never a tab instead: off the app's domains nothing loads (the noyau checked it already).
+        // Never a tab instead: off the app's domains nothing loads (the kernel checked it already).
         const r = sites.navigateForAgent(id.slice(PREFIXE_SITE.length), url);
         if (r === "refuse") throw new Error(navigationHorsSite(url));
         return r === "en-attente" ? r : undefined;
@@ -165,13 +165,13 @@ export function bridgeHandlers(
       const f = windows.active();
       return f ? questions.ask(o, f, signal) : false;
     },
-    // The dev tools card, in the active window; refused with none to show it. The noyau takes it down (signal) when a
+    // The dev tools card, in the active window; refused with none to show it. The kernel takes it down (signal) when a
     // new conversation starts.
     demanderOutilsDev: ([o, d]: [OngletInfo, { droits: DroitDev[]; raison: string; agent: string }], signal) => {
       const f = windows.active();
       return f ? questions.askDevTools(o, d, f, signal) : [];
     },
-    // The « donnees-widget » card in the active window; refused with none to show it. The noyau takes it down (signal)
+    // The « donnees-widget » card in the active window; refused with none to show it. The kernel takes it down (signal)
     // when a new conversation starts.
     demanderDonneesWidget: ([o]: [{ id: string; nom: string; agent: string; genre?: "action" | "site" }], signal) => {
       const f = windows.active();
@@ -180,7 +180,7 @@ export function bridgeHandlers(
     lirePageInvisible: ([url, o]: [string, OptionsLecturePage & { menagee?: string }], signal) =>
       readPage(store, url, o, signal, (lecture, hote, s) => host().request("lecture.changerHote", { lecture, hote }, s)),
     lireHtmlInvisible: ([url, o]: [string, { adressesLocales?: boolean }], signal) => readHtml(store, url, o ?? {}, signal),
-    // The noyau's dev tools (RemoteBridge.outilsDev): one owner per noyau start, its token on every call.
+    // The kernel's dev tools (RemoteBridge.outilsDev): one owner per kernel start, its token on every call.
     "outilsDev.owner": () => devtools.owner(),
     "outilsDev.call": ([token, method, args]: Parameters<DevTools["call"]>, signal) => devtools.call(token, method, args, signal),
     "outilsDev.release": ([token]: [string]) => devtools.release(String(token)),

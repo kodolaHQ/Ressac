@@ -10,7 +10,7 @@ const SchemaFavori = z.object({ id: z.string(), url: z.string(), titre: z.string
 
 const SchemaEspaceV1 = z.object({ id: z.string(), nom: z.string(), icone: z.string(), epingles: z.array(SchemaFavori) });
 
-/** Les champs communs aux versions 1 et 2. */
+/** The fields common to versions 1 and 2. */
 const SchemaCommun = z
   .object({
     essentiels: z.array(SchemaFavori),
@@ -47,7 +47,7 @@ const SchemaCommun = z
     }),
   });
 
-/** Version 1 : avant les espaces privés et les profils de connexion. */
+/** Version 1: before private spaces and login profiles. */
 const SchemaV1 = SchemaCommun.extend({ version: z.literal(1), espaces: z.array(SchemaEspaceV1).min(1) });
 const SchemaV2 = SchemaCommun.extend({
   version: z.literal(2),
@@ -56,21 +56,21 @@ const SchemaV2 = SchemaCommun.extend({
 });
 const SchemaSession = z.discriminatedUnion("version", [SchemaV1, SchemaV2]);
 
-/** Lit une session enregistrée, quelle que soit sa version, en version 2. */
+/** Reads a saved session, whatever its version, as version 2. */
 function enV2(lu: z.infer<typeof SchemaSession>): z.infer<typeof SchemaV2> {
   if (lu.version === 2) {
-    // Un profil de connexion qu'utilise un espace est toujours listé : sinon il serait pris pour un profil à effacer.
+    // A login profile used by a space is always listed: otherwise it would be taken for a profile to erase.
     const manquants = [...new Set(lu.espaces.map((e) => e.profil))].filter((id) => !lu.profils.some((p) => p.id === id));
     return manquants.length ? { ...lu, profils: [...lu.profils, ...manquants.map((id) => ({ id }))] } : lu;
   }
-  // Les espaces d'avant restent visibles de l'agent, sur la partition de toujours : aucune connexion n'est perdue.
+  // The earlier spaces stay visible to the agent, on the always-used partition: no login is lost.
   return { ...lu, version: 2, espaces: lu.espaces.map((e) => ({ ...e, prive: false, profil: PROFIL_DEFAUT })), profils: [{ id: PROFIL_DEFAUT }] };
 }
 
-/** Les champs volatils d'un onglet ne sont pas enregistrés : ils repartent de leur valeur par défaut. */
+/** A tab's volatile fields are not saved: they restart from their default value. */
 const VOLATILS = { chargement: false, peutReculer: false, peutAvancer: false, plante: false, erreur: null };
 
-/** Met le fichier de session de côté sous un nom unique : le prochain enregistrement ne l'écrasera pas. Rend ce nom. */
+/** Sets the session file aside under a unique name: the next save will not overwrite it. Returns that name. */
 async function mettreDeCote(chemin: string, raison: "corrompu" | "illisible"): Promise<string | null> {
   const horodatage = new Date().toISOString().replace(/[:.]/g, "-");
   for (let i = 0; ; i++) {
@@ -86,14 +86,14 @@ async function mettreDeCote(chemin: string, raison: "corrompu" | "illisible"): P
   }
 }
 
-/** `garde` reçoit le nom sous lequel une session illisible a été mise de côté, pour le dire à l'utilisateur. */
+/** `garde` receives the name under which an unreadable session was set aside, to tell the user. */
 export async function chargerSession(dossier: string, garde?: (chemin: string) => void): Promise<EtatNavigateur> {
   const chemin = join(dossier, FICHIER);
   let texte: string;
   try {
     texte = await fs.readFile(chemin, "utf8");
   } catch (e) {
-    // Absent : premier lancement. Sinon (droits…), on le garde plutôt que de l'écraser au prochain enregistrement.
+    // Absent: first launch. Otherwise (permissions…), keep it rather than overwrite it at the next save.
     const nom = (e as NodeJS.ErrnoException).code !== "ENOENT" && (await mettreDeCote(chemin, "illisible"));
     if (nom) garde?.(nom);
     return etatInitial();
@@ -111,11 +111,11 @@ export async function chargerSession(dossier: string, garde?: (chemin: string) =
   }
 }
 
-/** Enregistre la session au plus une fois par `delaiMs`, de façon atomique (fichier temporaire + rename). */
+/** Saves the session at most once per `delaiMs`, atomically (temporary file + rename). */
 export class EnregistreurSession {
   private enAttente: EtatNavigateur | null = null;
   private minuterie: NodeJS.Timeout | undefined;
-  /** Écritures enchaînées, jamais simultanées. */
+  /** Chained writes, never simultaneous. */
   private ecriture: Promise<void> = Promise.resolve();
   private numero = 0;
 
@@ -129,7 +129,7 @@ export class EnregistreurSession {
     this.minuterie ??= setTimeout(() => void this.vider(), this.delaiMs);
   }
 
-  /** Écrit l'état en attente ; attend toujours la fin des écritures en cours (la sortie de l'app en dépend). */
+  /** Writes the pending state; always waits for the end of the writes in progress (the app's exit depends on it). */
   vider(): Promise<void> {
     clearTimeout(this.minuterie);
     this.minuterie = undefined;
@@ -140,7 +140,7 @@ export class EnregistreurSession {
         .then(() => this.ecrire(etat))
         .catch((e) => {
           console.error("[session] écriture impossible :", e);
-          // Réessayé à la prochaine écriture ou à la sortie, sauf si un état plus récent est déjà là.
+          // Retried at the next write or at exit, unless a more recent state is already there.
           this.enAttente ??= etat;
         });
     }
@@ -158,7 +158,7 @@ export class EnregistreurSession {
       const fichier = await fs.open(temporaire, "w");
       try {
         await fichier.writeFile(JSON.stringify({ ...etat, onglets }, null, 2));
-        await fichier.sync(); // sur disque avant le rename : une coupure de courant ne laisse pas un fichier vide
+        await fichier.sync(); // on disk before the rename: a power cut does not leave an empty file
       } finally {
         await fichier.close();
       }

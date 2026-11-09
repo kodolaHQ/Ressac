@@ -37,7 +37,7 @@ export function publishSiteFrames(map: Map<number, string>): void {
 export interface SiteWindowController {
   state(): EtatFenetreSite;
   onState(cb: (e: EtatFenetreSite) => void): () => void;
-  /** « Autoriser » (oui) or « Ouvrir sans retouches » on the accord card; `empreinte` is the card's. */
+  /** « Autoriser » (oui) or « Ouvrir sans retouches » on the grant card; `empreinte` is the card's. */
   accord(oui: boolean, empreinte: string): Promise<void>;
   /** « Entrer dans le site »: the start address the first time only. */
   enter(): void;
@@ -88,9 +88,9 @@ export interface SiteDesignView {
 
 interface OpenSite {
   site: SiteChrome;
-  /** The app's retouches' files, as the host last read them. */
+  /** The app's tweaks' files, as the host last read them. */
   retouches: RetouchesLues;
-  /** The retouches' console (site-frames.ts frameError), until the window closes. */
+  /** The tweaks' console (site-frames.ts frameError), until the window closes. */
   erreurs: ErreurRetouche[];
   userContextId: number;
   window: Window;
@@ -382,7 +382,7 @@ function nextView(s: OpenSite): void {
 
 function broadcast(s: OpenSite): void {
   if (s.window.closed) return;
-  // The bar's frame covers the window on the home screen and on the accord card (window.css): the view stays behind.
+  // The bar's frame covers the window on the home screen and on the grant card (window.css): the view stays behind.
   s.window.document.documentElement.toggleAttribute("webaios-site-home", s.vue !== "site");
   const e = stateOf(s);
   for (const cb of s.listeners) cb(e);
@@ -479,7 +479,7 @@ function controllerOf(s: OpenSite): SiteWindowController {
       relire: () => void design!.relire({ type: "site", id }),
       openCart: () => void design!.openCart({ type: "site", id }),
       onChange(cb) {
-        // accueil.change: sent at each noyau start, so a restarted host is read again.
+        // accueil.change: sent at each kernel start, so a restarted host is read again.
         const offs = [...["design.change", "accueil.change", HOST_EXITED].map((m) => host!.on(m, () => cb())), design!.onChange(cb)];
         return () => offs.forEach((f) => f());
       },
@@ -601,7 +601,7 @@ export const sites = {
     const marker = Cc["@mozilla.org/hash-property-bag;1"].createInstance(Ci.nsIWritablePropertyBag2);
     marker.setPropertyAsAString(SITE_WINDOW_KEY, site.id);
     const win = openInContainer(userContextId, marker, frameFeatures(cadre));
-    // The card first if the retouches need their accord: the view loads nothing until it is answered (nextView).
+    // The card first if the tweaks need their grant: the view loads nothing until it is answered (nextView).
     const s: OpenSite = { site, retouches, erreurs: [], userContextId, window: win, view: null, vue: site.accordRequis ? "accord" : site.aAccueil ? "accueil" : "site", aCharger: null, aChargerAgent: false, loaded: false, listeners: new Set(), small: new Set(), blocked: [], notice: blockedNotice(() => broadcast(s)), home: null, lastHomeOpen: -Infinity, target: null, searching: false, hostNotice: null, wantNext: false, wanted: false };
     open.set(site.id, s);
     byContainer.set(userContextId, s);
@@ -640,10 +640,10 @@ export const sites = {
     if (dataDir) await forgetHome(dataDir, id);
   },
   /**
-   * Site.json or a retouche changed, or the app is opened again. The open app takes its new
-   * declaration, domains and retouches (its bfcache is dropped), without showing. The rights grew (the accord no longer
+   * Site.json or a tweak changed, or the app is opened again. The open app takes its new
+   * declaration, domains and tweaks (its bfcache is dropped), without showing. The rights grew (the grant no longer
    * covers, or new rights after « Ouvrir sans retouches »): the card comes back and the loaded page is reloaded, without
-   * the retouches it had. The accord is no longer needed: the next view. The home is gone: the site. True if the page was
+   * the tweaks it had. The grant is no longer needed: the next view. The home is gone: the site. True if the page was
    * reloaded.
    */
   update(site: SiteChrome, retouches: RetouchesLues): boolean {
@@ -668,14 +668,14 @@ export const sites = {
     broadcast(s);
     return reloaded;
   },
-  /** The choice made on the card (the accord, if given, is already kept in `site`). Nothing if the card is not shown. */
+  /** The choice made on the card (the grant, if given, is already kept in `site`). Nothing if the card is not shown. */
   afterAccord(id: string, site: SiteChrome | null): void {
     const s = open.get(id);
     if (!s || s.window.closed || s.vue !== "accord") return;
     if (site) s.site = site;
-    // The accord given does not cover today's declaration (site.json rewritten meanwhile): the card stays.
+    // The grant given does not cover today's declaration (site.json rewritten meanwhile): the card stays.
     if (site?.accordRequis) return broadcast(s);
-    // A page already loaded (without retouches) is reloaded to receive them.
+    // A page already loaded (without tweaks) is reloaded to receive them.
     const reload = site !== null && s.loaded && s.aCharger === null;
     nextView(s);
     if (reload) reloadView(s);
@@ -695,12 +695,12 @@ export const sites = {
     const s = open.get(id);
     if (s) s.wantNext = true;
   },
-  /** The view's page reloaded, if it was ever loaded (its retouches changed). */
+  /** The view's page reloaded, if it was ever loaded (its tweaks changed). */
   reloadView(id: string): void {
     const s = open.get(id);
     if (s?.loaded && !s.window.closed) reloadView(s);
   },
-  /** The retouches' console of the open app, or none. */
+  /** The tweaks' console of the open app, or none. */
   errors(id: string): ErreurRetouche[] {
     return [...(open.get(id)?.erreurs ?? [])];
   },
@@ -709,7 +709,7 @@ export const sites = {
     const s = siteOfFrame(wgp, open.values());
     return frameInjection(wgp, s, !!(s && context(s).adressesLocales));
   },
-  /** The site actor's "erreur": a retouche's error in the frame of this WindowGlobalParent. */
+  /** The site actor's "erreur": a tweak's error in the frame of this WindowGlobalParent. */
   frameError(wgp: any, e: unknown): void {
     frameError(siteOfFrame(wgp, open.values()), e);
   },
@@ -743,7 +743,7 @@ export const sites = {
   },
   /**
    * The open windows for the agent: `url` the page shown, `domaine` the app's current
-   * one (its start address's), `empreinte` today's declaration's, to which the agent's accord is tied.
+   * one (its start address's), `empreinte` today's declaration's, to which the agent's grant is tied.
    */
   forAgent(): { id: string; nom: string; url: string; domaine: string; empreinte: string }[] {
     return [...open.values()]

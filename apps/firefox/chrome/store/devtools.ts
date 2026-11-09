@@ -11,18 +11,18 @@ import type { WindowRegistry } from "./windows";
 /** What a call through a revoked owner (a stopped agent's devtools) throws. */
 export const TEXTE_REVOQUE = "Ces outils de développement appartiennent à un agent arrêté.";
 
-// The agent's dev tools on a tab, the Firefox side of the noyau's OutilsDevNavigateur (plan 28, note D1-D9): an
+// The agent's dev tools on a tab, the Firefox side of the kernel's OutilsDevNavigateur (plan 28, note D1-D9): an
 // in-process DevTools client per tab (CommandsFactory.forTab over DevToolsServer.connectPipe, the toolbox's own way), no
 // socket and no listener. It coexists with the person's own toolbox on the same tab (note D7): OutilsDevOccupes is never raised.
 
-/** The network buffer's bound (the console keeps 1000 messages, truncated by the noyau's tronquer). */
+/** The network buffer's bound (the console keeps 1000 messages, truncated by the kernel's tronquer). */
 const MAX_REQUESTS = 500;
 /** A reload, or the new top-level target after a navigation. */
 const NAVIGATION_TIMEOUT_MS = 10_000;
 /** A running script cannot be stopped (note D3b): the call answers after this, its late result is dropped. */
 const EVAL_TIMEOUT_MS = 10_000;
 const PROMISE_POLL_MS = 50;
-/** The noyau truncates a body at 2000 characters: no need to carry more. */
+/** The kernel truncates a body at 2000 characters: no need to carry more. */
 const BODY_MAX = 100_000;
 const TRUNCATED = "… [tronqué]";
 const EXTENSION = "moz-extension://";
@@ -39,7 +39,7 @@ export const TEXTE_PROFILEUR_OCCUPE =
 const TEXTE_DETACHE = "Les outils de développement de l'agent ont été détachés de l'onglet.";
 
 export interface DevTools {
-  /** One owner per noyau start: creating one revokes the previous (its calls throw TEXTE_REVOQUE, its attachments drop). */
+  /** One owner per kernel start: creating one revokes the previous (its calls throw TEXTE_REVOQUE, its attachments drop). */
   owner(): { token: string };
   /** Revokes that owner (the current one when no token is given: its host is gone). */
   release(token?: string): void;
@@ -635,7 +635,7 @@ export function createDevTools(o: {
         c.done();
       }
     },
-    /** The memory actor's census (note D6), as the noyau's InstantaneFirefox: classes, never a string's content. */
+    /** The memory actor's census (note D6), as the kernel's InstantaneFirefox: classes, never a string's content. */
     async instantaneMemoire(id: string, signal?: AbortSignal): Promise<string> {
       if (signal?.aborted) throw abortError(signal);
       const s = await session(id);

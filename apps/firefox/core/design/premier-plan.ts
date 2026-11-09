@@ -5,10 +5,10 @@ export type CibleDesign = { type: "fenetre"; fenetreId: IdFenetre } | { type: "a
 export type ChoixDesign = { type: "cible"; cible: CibleDesign } | { type: "avis-site"; id: string } | { type: "rien" };
 
 /**
- * La fenêtre que vise ⌘⇧D, d'après ce qui est au premier plan (spec §4.3) : une fenêtre d'appli de l'agent, puis une
- * fenêtre d'appli de site, puis une petite fenêtre d'une appli de site (le message va dans la barre de l'appli parente,
- * rien ne bascule) ; une autre fenêtre qui n'est pas une fenêtre principale ne vise rien (jamais l'onglet de la fenêtre
- * principale qui est derrière) ; sinon, la fenêtre principale active.
+ * The window targeted by ⌘⇧D, according to what is in the foreground (spec §4.3): an agent app window, then a
+ * site app window, then a small window of a site app (the message goes in the parent app's bar,
+ * nothing switches); another window that is not a main window targets nothing (never the tab of the main
+ * window that is behind); otherwise, the active main window.
  */
 export function choisirCibleDesign(o: { appli?: string; site?: string; petiteDeSite?: string; autreFenetre: boolean; fenetreActive?: IdFenetre }): ChoixDesign {
   if (o.appli) return { type: "cible", cible: { type: "app", dossier: o.appli } };

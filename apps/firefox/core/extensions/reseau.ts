@@ -1,5 +1,5 @@
 // The agent extensions' network, closed by default (spec §5, plan 12 task 12): the copy's CSP (`connect-src 'self'
-// https://<reseau>`, noyau `cspAgent`) and the chrome's request guard (chrome/store/agent-extensions.ts) close it.
+// https://<reseau>`, kernel `cspAgent`) and the chrome's request guard (chrome/store/agent-extensions.ts) close it.
 // This module holds the pure checks the chrome asks: the addresses an agent extension's pages and its calls to
 // `tabs.create`, `tabs.update`, `windows.create` may open (`urlPermiseAgent`, asked by the guard webaios-garde-fond.js),
 // and the hosts it may script (`hotePermisAgent`).
@@ -13,15 +13,15 @@ function lire(url: string): URL | null {
   }
 }
 
-/** `*` d'un chemin de motif : n'importe quelle suite de caractères. */
+/** `*` of a pattern path: any sequence of characters. */
 function cheminCouvre(motif: string, chemin: string): boolean {
   const re = new RegExp("^" + motif.split("*").map((x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(".*") + "$");
   return re.test(chemin);
 }
 
 /**
- * Un motif d'hôte de Chrome (`<all_urls>`, `*://*.exemple.com/*`, `https://exemple.com/chemin*`) couvre-t-il cette
- * adresse http(s) ? Sans port dans le motif, tout port est couvert (comme Chrome).
+ * Does a Chrome host pattern (`<all_urls>`, `*://*.exemple.com/*`, `https://exemple.com/chemin*`) cover this
+ * http(s) address? Without a port in the pattern, any port is covered (like Chrome).
  */
 export function motifCouvre(motif: string, u: URL): boolean {
   if (u.protocol !== "http:" && u.protocol !== "https:") return false;
@@ -43,15 +43,15 @@ export function motifCouvre(motif: string, u: URL): boolean {
   return cheminCouvre(cheminMotif, u.pathname + u.search);
 }
 
-/** Un hôte de `accord.reseau` (nom exact). */
+/** A host of `accord.reseau` (exact name). */
 function dansReseau(u: URL, accord: Portee): boolean {
   return accord.reseau.includes(u.hostname.toLowerCase());
 }
 
 /**
- * Une adresse qu'une extension de l'agent peut ouvrir (onglet, fenêtre, navigation de ses pages) : une page
- * `chrome-extension://` d'elle-même, ou http(s) vers un hôte de `accord.reseau` ou couvert par `accord.hotes`. Tout le
- * reste est refusé (`data:`, `javascript:`, `file:`, `blob:`, une autre extension…).
+ * An address an agent extension may open (tab, window, navigation of its pages): a
+ * `chrome-extension://` page of itself, or http(s) to a host of `accord.reseau` or covered by `accord.hotes`. Everything
+ * else is refused (`data:`, `javascript:`, `file:`, `blob:`, another extension…).
  */
 export function urlPermiseAgent(url: string, accord: Portee, idChrome: string): boolean {
   const u = lire(url);
@@ -62,7 +62,7 @@ export function urlPermiseAgent(url: string, accord: Portee, idChrome: string): 
   return dansReseau(u, accord) || accord.hotes.some((m) => motifCouvre(m, u));
 }
 
-/** L'onglet à l'adresse `url` est-il un site des hôtes accordés (scripts, CSS) ? */
+/** Is the tab at address `url` a site of the granted hosts (scripts, CSS)? */
 export function hotePermisAgent(url: string, accord: Portee): boolean {
   const u = lire(url);
   return !!u && accord.hotes.some((m) => motifCouvre(m, u));

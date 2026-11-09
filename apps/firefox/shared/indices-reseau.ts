@@ -1,17 +1,17 @@
 /**
- * Ce qui, dans le HTML d'un affichage de widget, ferait sortir quelque chose de la machine sans passer par la CSP :
- * `<link>` (dns-prefetch résout un nom choisi par le widget : les données partent dans la requête DNS), `<meta
- * http-equiv>` (x-dns-prefetch-control: on rallumerait la résolution des liens) et les règles de spéculation. Refusé
- * dans affichage.html (servi depuis une copie, widget-frame.ts) comme dans le HTML que l'affichage écrit (garde posée
- * en tête de la copie servie, widget-frame.ts).
+ * What, in the HTML of a widget display, would make something leave the machine without going through the CSP:
+ * `<link>` (dns-prefetch resolves a name chosen by the widget: the data leaves in the DNS request), `<meta
+ * http-equiv>` (x-dns-prefetch-control: link resolution would be turned back on) and speculation rules. Refused
+ * in affichage.html (served from a copy, widget-frame.ts) as in the HTML that the display writes (guard placed
+ * at the top of the served copy, widget-frame.ts).
  *
- * Sans import : la garde sérialisée dans la copie servie ne doit rien tirer d'autre.
+ * No imports: the guard serialized into the served copy must pull nothing else.
  */
 export const MOTIF_INDICES_RESEAU = "<\\s*link(?![a-z0-9-])|http-equiv|speculationrules";
 
 /**
- * Décode ce qui peut cacher un `<` dans un attribut (`srcdoc="&lt;link …"`, y compris imbriqué : `&amp;lt;`) avant de
- * chercher le motif. Un faux positif (le mot dans un texte) refuse seulement l'affichage : l'agent le réécrit.
+ * Decodes what can hide a `<` in an attribute (`srcdoc="&lt;link …"`, including nested: `&amp;lt;`) before
+ * looking for the pattern. A false positive (the word in a text) only refuses the display: the agent rewrites it.
  */
 export function contientIndiceReseau(html: string): boolean {
   let avant: string;

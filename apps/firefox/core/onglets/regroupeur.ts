@@ -1,4 +1,4 @@
-/** Regroupe les demandes répétées par clé : `faire(cle)` n'a lieu qu'une fois, `delaiMs` après la dernière. */
+/** Groups repeated requests by key: `faire(cle)` happens only once, `delaiMs` after the last one. */
 export function creerRegroupeur(delaiMs: number, faire: (cle: string) => void) {
   const minuteurs = new Map<string, ReturnType<typeof setTimeout>>();
   return {

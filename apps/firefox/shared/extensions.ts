@@ -1,6 +1,6 @@
 import type { SourceExtension } from "@webaios/noyau";
 
-// Dans un module sans dépendance au noyau : l'interface les importe (le noyau n'entre pas dans son bundle).
+// In a module with no dependency on the kernel: the UI imports them (the kernel does not enter its bundle).
 export {
   activeDans,
   APPLI_FERMEE,
@@ -15,106 +15,106 @@ export {
   VOIT_LES_PAGES_SITE,
 } from "./extensions-messages";
 
-/** Une ligne de la section « Extensions » des réglages d'un espace (tout y est affiché en texte). */
+/** A row of the « Extensions » section of a space's settings (everything is displayed as text there). */
 export interface LigneExtensionEspace {
   cle: string;
   nom: string;
   source: "store" | "agent";
-  /** Active dans le profil de cet espace. */
+  /** Active in this space's profile. */
   active: boolean;
-  /** Si active : les noms des autres espaces du même profil, où elle tourne aussi. */
+  /** If active: the names of the other spaces of the same profile, where it also runs. */
   aussiDans: string[];
-  /** Non null : l'interrupteur est désactivé, et cette phrase dit pourquoi. */
+  /** Non null: the switch is disabled, and this sentence says why. */
   grisee: string | null;
-  /** Les profils où elle est active (pour prévenir de ce que change un espace privé). */
+  /** The profiles where it is active (to warn about what a private space changes). */
   profils: string[];
 }
 
-/** Ce que montre la carte d'accord d'une extension (DemandeExtension.svelte) : tout y est affiché en texte. */
+/** What an extension's grant card shows (DemandeExtension.svelte): everything is displayed as text there. */
 export interface CarteExtension {
   cle: string;
   nom: string;
   source: SourceExtension;
   version: string;
-  /** Libellés de la portée (`libellesPortee`), dans leur ordre. */
+  /** Labels of the scope (`libellesPortee`), in their order. */
   droits: string[];
   sites: string[];
   tousLesSites: boolean;
-  /** Agent : domaines où elle peut envoyer (`[]` : nulle part) ; Store : null. */
+  /** Agent: domains it can send to (`[]`: nowhere); Store: null. */
   reseau: string[] | null;
-  /** Accord renforcé : une case à cocher avant « Activer ». */
+  /** Hardened grant: a checkbox before « Activer ». */
   renforce: boolean;
-  /** Nom de l'espace où elle est activée. */
+  /** Name of the space where it is enabled. */
   espace: string;
-  /** Son id : la carte tombe si l'espace disparaît (ou, pour l'agent, si son profil devient privé). */
+  /** Its id: the card drops if the space disappears (or, for the agent, if its profile becomes private). */
   espaceId: string;
-  /** Les autres espaces du même profil, où elle sera active aussi. */
+  /** The other spaces of the same profile, where it will be active too. */
   autresEspaces: string[];
   /**
-   * Agent : les espaces (d'autres profils) où elle tourne déjà avec un accord plus étroit ; la nouvelle version, plus
-   * large, les remplacera aussi (« La nouvelle version remplacera aussi celle de … »).
+   * Agent: the spaces (of other profiles) where it already runs with a narrower grant; the new, wider version
+   * will replace them too (« La nouvelle version remplacera aussi celle de … »).
    */
   remplaceAussi: string[];
-  /** Mise à jour : la version installée. */
+  /** Update: the installed version. */
   maj: { de: string } | null;
-  /** `empreintePortee` de la portée montrée : l'appelant n'écrit l'accord que pour une portée de même empreinte. */
+  /** `empreintePortee` of the shown scope: the caller writes the grant only for a scope with the same hash. */
   empreinte: string;
 }
 
-/** Réponse de la carte : `empreinte` est celle de la portée montrée (la première carte, si la demande l'a rejointe). */
+/** The card's answer: `empreinte` is that of the shown scope (the first card, if the request joined it). */
 export interface ReponseAccord {
   accepte: boolean;
   empreinte: string;
-  /** La carte est tombée (ou n'a pas été montrée) sans réponse de l'utilisateur. */
+  /** The card dropped (or was not shown) without an answer from the user. */
   retiree?: boolean;
 }
 
-/** Une ligne de la page Extensions (tout y est affiché en texte : c'est de la donnée venue d'un manifeste ou d'une console). */
+/** A row of the Extensions page (everything is displayed as text there: it is data coming from a manifest or a console). */
 export interface LigneExtension {
   cle: string;
   nom: string;
   source: SourceExtension;
   version: string;
-  /** Libellés de la portée accordée (`libellesPortee`). */
+  /** Labels of the granted scope (`libellesPortee`). */
   droits: string[];
   sites: string[];
   tousLesSites: boolean;
-  /** Les espaces dont le profil l'a active. */
+  /** The spaces whose profile enabled it. */
   espaces: { nom: string; profil: string }[];
-  /** Erreurs de préparation, de chargement, de mise à jour, et erreurs de sa console. */
+  /** Preparation, loading, update errors, and errors of its console. */
   erreurs: string[];
-  /** Agent : dernière copie rechargée (ISO). */
+  /** Agent: last reloaded copy (ISO). */
   modifieeLe: string | null;
-  /** Le message de sa désactivation (`DESACTIVEE_PLANTAGES`, `DESACTIVEE_PORTEE`), ou null. */
+  /** The message of its deactivation (`DESACTIVEE_PLANTAGES`, `DESACTIVEE_PORTEE`), or null. */
   desactivee: string | null;
-  /** Store : la version d'une mise à jour qui attend l'accord de l'utilisateur. */
+  /** Store: the version of an update waiting for the user's grant. */
   majEnAttente: string | null;
-  /** Droits et clés du manifeste que WebAiOs ne prend pas en charge. */
+  /** Manifest rights and keys that WebAiOs does not support. */
   nonPrisEnCharge: string[];
   epinglee: boolean;
-  /** Agent : L'utilisateur a débloqué sa console pour l'agent (en mémoire, jusqu'à ce que l'un d'eux la referme). */
+  /** Agent: the user unlocked its console for the agent (in memory, until one of them closes it again). */
   consoleDebloquee: boolean;
-  /** Store : les noms des applis de site où elle est active (l'id si le nom manque). */
+  /** Store: the names of the site apps where it is active (the id if the name is missing). */
   applis: string[];
 }
 
-/** Une ligne du menu « Extensions » d'une appli de site (extensions du Store seulement ; tout y est affiché en texte). */
+/** A row of a site app's « Extensions » menu (Store extensions only; everything is displayed as text there). */
 export interface LigneExtensionSite {
   cle: string;
   nom: string;
-  /** Activée pour l'empreinte des domaines de l'appli d'aujourd'hui. */
+  /** Enabled for the hash of the app's current domains. */
   active: boolean;
-  /** Activée, mais pour d'autres domaines (`DOMAINES_CHANGES_EXTENSION`) : rien n'est chargé. */
+  /** Enabled, but for other domains (`DOMAINES_CHANGES_EXTENSION`): nothing is loaded. */
   domainesChanges: boolean;
-  /** `TOUTES_COUPEES_AGENT`, `DESACTIVEE_PLANTAGES`, `DESACTIVEE_PORTEE` : l'interrupteur est grisé ; sinon null. */
+  /** `TOUTES_COUPEES_AGENT`, `DESACTIVEE_PLANTAGES`, `DESACTIVEE_PORTEE`: the switch is greyed out; otherwise null. */
   indisponible: string | null;
 }
 
-/** La barre d'une fenêtre : les extensions chargées dans le profil de son espace actif. */
+/** A window's bar: the extensions loaded in the profile of its active space. */
 export interface BarreExtensions {
-  /** Partition de la session du profil (attribut `partition` des `<button is="browser-action">`). */
+  /** Partition of the profile's session (`partition` attribute of the `<button is="browser-action">`). */
   partition: string;
-  /** Id de l'onglet affiché pour la bibliothèque (son `webContents.id`), ou null. */
+  /** Id of the tab displayed for the library (its `webContents.id`), or null. */
   onglet: number | null;
   actions: { cle: string; idChrome: string; nom: string; epinglee: boolean }[];
 }

@@ -1,7 +1,7 @@
 import type { EtatNavigateur, IdFenetre, IdOnglet } from "../shared/modele";
 import { ongletsParcourables } from "../shared/onglets-parcourables";
 
-/** L'onglet actif en tête, puis l'historique (récent d'abord) restreint aux onglets parcourables, puis le reste. */
+/** The active tab first, then the history (most recent first) restricted to the cycle-able tabs, then the rest. */
 export function ordreRecent(etat: EtatNavigateur, fenetreId: IdFenetre, historique: readonly IdOnglet[]): IdOnglet[] {
   const f = etat.fenetres.find((x) => x.id === fenetreId);
   const parcourables = ongletsParcourables(etat, fenetreId);
@@ -16,7 +16,7 @@ export function ordreRecent(etat: EtatNavigateur, fenetreId: IdFenetre, historiq
   return resultat;
 }
 
-/** Nouveau tableau avec `id` en tête, sans doublon. */
+/** New array with `id` first, without duplicates. */
 export function noterUtilisation(historique: IdOnglet[], id: IdOnglet): IdOnglet[] {
   return [id, ...historique.filter((x) => x !== id)];
 }
@@ -33,7 +33,7 @@ export function avancer(p: Parcours, delta: 1 | -1): Parcours {
   return { ...p, selection: (p.selection + delta + n) % n };
 }
 
-/** Retire un onglet fermé pendant le parcours ; null s'il en reste moins de 2. */
+/** Removes a tab closed during the cycle; null if fewer than 2 remain. */
 export function retirer(p: Parcours, id: IdOnglet): Parcours | null {
   const i = p.liste.indexOf(id);
   if (i < 0) return p;
@@ -43,7 +43,7 @@ export function retirer(p: Parcours, id: IdOnglet): Parcours | null {
   return { liste, selection: Math.min(selection, liste.length - 1) };
 }
 
-/** Indices [debut, fin) d'une fenêtre de `taille` cartes contenant la sélection, collée au début tant que possible. */
+/** Indices [debut, fin) of a window of `taille` cards containing the selection, stuck to the start as long as possible. */
 export function fenetreVisible(p: Parcours, taille = 7): { debut: number; fin: number } {
   const n = p.liste.length;
   if (n <= taille) return { debut: 0, fin: n };

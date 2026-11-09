@@ -1,4 +1,4 @@
-/** Favicon au plus, en octets : il est gardé dans applications.json. */
+/** Favicon at most, in bytes: it is kept in applications.json. */
 export const TAILLE_FAVICON = 64 * 1024;
 
 export function memeOrigine(a: string, b: string): boolean {

@@ -1,4 +1,4 @@
-// Copy of the noyau's dossierValide (packages/noyau/src/applications/manifeste.ts): that file imports node:fs and
+// Copy of the kernel's dossierValide (packages/noyau/src/applications/manifeste.ts): that file imports node:fs and
 // chokidar, which the store bundle cannot load. test/containers.test.ts guards the drift.
 
 /** A folder launches only if its name passes in a shell command without quotes. */

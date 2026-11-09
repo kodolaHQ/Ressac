@@ -13,24 +13,24 @@ export const AFFICHAGE_REFUSE =
 const ID_WIDGET = /^[a-z0-9-]+$/;
 const PREFIXE = "webaios-widget-";
 
-/** Le nom de la substitution resource:// d'un widget : `webaios-widget-<id>`. */
+/** The name of a widget's resource:// substitution: `webaios-widget-<id>`. */
 function nomSubstitution(id: string): string {
   return `${PREFIXE}${id}`;
 }
 
-/** L'URL du cadre : la copie assainie, datée du mtime de la source (un nouveau mtime recharge le cadre). */
+/** The frame's URL: the sanitized copy, dated with the source's mtime (a new mtime reloads the frame). */
 export function urlAffichage(id: string, mtime: number): string {
   return `resource://${PREFIXE}${id}/affichage-${mtime}.html`;
 }
 
-/** Le dossier des copies d'un widget : `<dataDir>/webaios-widgets/<id>/`. */
+/** The folder of a widget's copies: `<dataDir>/webaios-widgets/<id>/`. */
 function dossierCopies(dataDir: string, id: string): string {
   return PathUtils.join(dataDir, "webaios-widgets", id);
 }
 
 /**
- * Le dossier des copies, créé puis confiné à `<dataDir>/webaios-widgets` : un dossier de copies qui est un lien
- * symbolique est refusé. Rend son vrai chemin, où les copies sont écrites.
+ * The copies folder, created then confined to `<dataDir>/webaios-widgets`: a copies folder that is a symbolic
+ * link is refused. Returns its real path, where the copies are written.
  */
 async function dossierCopiesConfine(dataDir: string, id: string): Promise<string | null> {
   const dossier = dossierCopies(dataDir, id);
@@ -40,14 +40,14 @@ async function dossierCopiesConfine(dataDir: string, id: string): Promise<string
   return racine && reel && reel.startsWith(racine + "/") ? reel : null;
 }
 
-/** La copie assainie d'un affichage : `<dossierCopies>/affichage-<mtime>.html`. */
+/** The sanitized copy of a display: `<dossierCopies>/affichage-<mtime>.html`. */
 export function cheminCopie(dataDir: string, id: string, mtime: number): string {
   return PathUtils.join(dossierCopies(dataDir, id), `affichage-${mtime}.html`);
 }
 
 /**
- * `realpath`, en synchrone (`nsIFile.normalize`). L'agent écrit dans les dossiers des widgets : un lien symbolique ne
- * doit pas y montrer un fichier du Mac.
+ * `realpath`, synchronous (`nsIFile.normalize`). The agent writes in the widgets' folders: a symbolic link must not
+ * show a Mac file there.
  */
 function cheminReel(chemin: string): string | null {
   try {
@@ -60,7 +60,7 @@ function cheminReel(chemin: string): string | null {
   }
 }
 
-/** Le vrai chemin de `<dataDir>/espace/accueil/widgets/<id>/affichage.html`, confiné au dossier du widget. */
+/** The real path of `<dataDir>/espace/accueil/widgets/<id>/affichage.html`, confined to the widget's folder. */
 function cheminSource(dataDir: string, id: string): string | null {
   if (!ID_WIDGET.test(id)) return null;
   const widgetsDir = PathUtils.join(dataDir, "espace", "accueil", "widgets");
@@ -225,9 +225,9 @@ const SCRIPT_GARDE = `<script>(${gardeWidget.toString()})(${JSON.stringify(MOTIF
 const PREFIXE_DOC = /^\s*(?:<!--[\s\S]*?-->\s*)*(?:<!doctype[^>]*>\s*)?/i;
 
 /**
- * Le texte servi : la meta CSP (`csp`) puis la garde, puis `extra` (le pont d'un accueil d'appli), après un éventuel
- * doctype (le doctype reste le premier jeton, pas de mode quirks) et avant tout autre élément ; AFFICHAGE_REFUSE si le
- * HTML contient un indice réseau.
+ * The served text: the CSP meta (`csp`) then the guard, then `extra` (an app home's bridge), after any
+ * doctype (the doctype stays the first token, no quirks mode) and before any other element; AFFICHAGE_REFUSE if the
+ * HTML contains a network hint.
  */
 export function affichageServi(html: string, csp = CSP_WIDGET, extra = ""): string {
   if (contientIndiceReseau(html)) return AFFICHAGE_REFUSE;
@@ -236,7 +236,7 @@ export function affichageServi(html: string, csp = CSP_WIDGET, extra = ""): stri
   return `${prefixe}${meta}${SCRIPT_GARDE}${extra}${html.slice(prefixe.length)}`;
 }
 
-/** La substitution resource:// du widget, ou `null` pour la retirer. */
+/** The widget's resource:// substitution, or `null` to remove it. */
 function substituer(id: string, dossier: string | null): void {
   const { FileUtils } = ChromeUtils.importESModule("resource://gre/modules/FileUtils.sys.mjs");
   Services.io
@@ -246,9 +246,9 @@ function substituer(id: string, dossier: string | null): void {
 }
 
 /**
- * Prépare l'affichage d'un widget : écrit sa copie assainie si le mtime de la source a changé, puis pose la
- * substitution `resource://webaios-widget-<id>/`. Rend l'URL du cadre, ou null si l'affichage est absent ou sort de son
- * dossier.
+ * Prepares a widget's display: writes its sanitized copy if the source's mtime changed, then sets the
+ * `resource://webaios-widget-<id>/` substitution. Returns the frame's URL, or null if the display is absent or leaves its
+ * folder.
  */
 export async function preparerWidget(dataDir: string, id: string): Promise<string | null> {
   const source = cheminSource(dataDir, id);
@@ -267,16 +267,16 @@ export async function preparerWidget(dataDir: string, id: string): Promise<strin
       return null;
     }
     const copie = PathUtils.join(reel, `affichage-${mtime}.html`);
-    // Même mtime : la copie existe déjà, on ne la réécrit pas (l'URL ne change pas).
+    // Same mtime: the copy already exists, it is not rewritten (the URL does not change).
     if (!(await IOUtils.exists(copie))) {
       // shortcut: the source is read by the realpath computed just before; a symlink swapped in by another process
       // between the check and the read is still followed (IOUtils has no O_NOFOLLOW). Upgrade if the widgets folder can
       // be written by an untrusted process.
-      // Écriture atomique (motif de site-permissions.ts) : un cadre ne lit jamais une copie à moitié écrite.
+      // Atomic write (pattern of site-permissions.ts): a frame never reads a half-written copy.
       const temporaire = `${copie}.${crypto.randomUUID()}.tmp`;
       await IOUtils.writeUTF8(temporaire, affichageServi(await IOUtils.readUTF8(source)), { flush: true });
       await IOUtils.move(temporaire, copie);
-      // Une seule copie par widget : la précédente est retirée.
+      // A single copy per widget: the previous one is removed.
       for (const ancien of await IOUtils.getChildren(reel)) {
         if (ancien !== copie && /affichage-.*\.html$/.test(ancien)) await IOUtils.remove(ancien, { ignoreAbsent: true });
       }
@@ -289,13 +289,13 @@ export async function preparerWidget(dataDir: string, id: string): Promise<strin
   return urlAffichage(id, mtime);
 }
 
-/** Le widget n'existe plus : retire sa substitution et son dossier de copies (au mieux). */
+/** The widget no longer exists: removes its substitution and its copies folder (best effort). */
 export async function oublierWidget(dataDir: string, id: string): Promise<void> {
   if (!ID_WIDGET.test(id)) return;
   try {
     substituer(id, null);
   } catch {
-    // rien à retirer
+    // nothing to remove
   }
   await IOUtils.remove(dossierCopies(dataDir, id), { recursive: true, ignoreAbsent: true }).catch(() => {});
 }

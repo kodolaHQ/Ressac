@@ -4,19 +4,19 @@ import type { EtatNavigateur, IdProfil } from "../../shared/modele";
 /** At most 2 MB of rendered HTML for an invisible HTML read. */
 export const HTML_MAX = 2 * 1024 * 1024;
 
-/** Les profils de connexion qu'une lecture peut utiliser : ceux de l'état qu'aucun espace privé n'utilise. */
+/** The login profiles a read can use: those of the state that no private space uses. */
 export function profilsLisibles(etat: Pick<EtatNavigateur, "profils" | "espaces">): IdProfil[] {
   const prives = new Set(etat.espaces.filter((e) => e.prive).map((e) => e.profil));
   return etat.profils.map((p) => p.id).filter((id) => !prives.has(id));
 }
 
-/** Un nom d'hôte comparable : en minuscules, sans point final (`exemple.test.` est `exemple.test`). */
+/** A comparable host name: lowercase, without a trailing dot (`exemple.test.` is `exemple.test`). */
 const normaliser = (hote: string) => hote.toLowerCase().replace(/\.+$/, "");
 
 /**
- * L'URL peut être chargée : http(s) seulement, jamais une adresse de la machine ou du réseau local (sauf
- * `adressesLocales`, tests seulement) ; avec `domaines`, son hôte doit être l'un d'eux exactement, comme le vérifie le
- * noyau (packages/noyau/src/widgets/recolte.ts, `verifierUrl`) : un sous-domaine n'y est pas permis.
+ * The URL may be loaded: http(s) only, never an address of the machine or the local network (except
+ * `adressesLocales`, tests only); with `domaines`, its host must be exactly one of them, as the
+ * kernel checks (packages/noyau/src/widgets/recolte.ts, `verifierUrl`): a subdomain is not allowed there.
  */
 export function urlPermise(brute: string, domaines: readonly string[] | undefined, adressesLocales = false): boolean {
   let u: URL;
@@ -37,12 +37,12 @@ interface PartiesLues {
 }
 
 /**
- * Réunit les relevés d'une page défilée. Une liste virtualisée (Leboncoin) retire de la page les éléments sortis de
- * l'écran : la lecture finale n'en montre que les derniers. Chaque relevé est comparé au précédent : l'en-tête et le
- * pied de page communs sont mis de côté, puis la liste du nouveau relevé est recalée sur la fin de celle du précédent
- * (ce qu'ils ont en commun), et seule la suite, nouvelle, est ajoutée, avant le pied de page. Rien n'est dédoublonné
- * ligne à ligne : un même prix ou un même libellé d'un élément à l'autre reste. Les liens sont réunis par adresse, avec
- * le plus long texte vu. Le titre est celui de la lecture finale. Les plafonds s'appliquent ensuite, à la mise en forme.
+ * Merges the snapshots of a scrolled page. A virtualized list (Leboncoin) removes from the page the items that left
+ * the screen: the final read shows only the last ones. Each snapshot is compared to the previous one: the common header and
+ * footer are set aside, then the new snapshot's list is realigned on the end of the previous one's
+ * (what they have in common), and only the new remainder is added, before the footer. Nothing is deduplicated
+ * line by line: the same price or the same label from one item to the next stays. Links are merged by address, with
+ * the longest text seen. The title is that of the final read. The caps then apply, at formatting.
  */
 export function cumulerParties(releves: unknown[]): PartiesLues {
   let lignes: string[] = [];
@@ -66,16 +66,16 @@ export function cumulerParties(releves: unknown[]): PartiesLues {
   return { titre, texte: lignes.join("\n"), liens: [...liens].map(([url, texte]) => ({ url, texte })) };
 }
 
-/** Lignes de fin du relevé précédent qu'on peut ignorer pour le recalage (« Chargement… », bouton « Voir plus »). */
+/** Trailing lines of the previous snapshot that can be ignored for the realignment (« Chargement… », « Voir plus » button). */
 const FIN_IGNOREE = 3;
 
-/** `cumul` complété de ce que `ici` montre de nouveau par rapport à `avant`, le relevé précédent. */
+/** `cumul` completed with what `ici` shows anew compared to `avant`, the previous snapshot. */
 function ajouterSuite(cumul: string[], avant: string[], ici: string[]): string[] {
-  // En-tête : les premières lignes communes.
+  // Header: the first common lines.
   let debut = 0;
   while (debut < ici.length && debut < avant.length && ici[debut] === avant[debut]) debut++;
-  // Pied de page : les dernières lignes communes, mais seulement tant que la ligne d'avant est aussi la même. Sinon le
-  // dernier prix de la liste, pareil par hasard d'un écran à l'autre, serait pris pour du pied de page.
+  // Footer: the last common lines, but only as long as the line before is also the same. Otherwise the
+  // list's last price, identical by chance from one screen to the next, would be taken for footer.
   let pied = 0;
   const dernier = (t: string[], k: number) => t[t.length - 1 - k];
   while (
@@ -88,11 +88,11 @@ function ajouterSuite(cumul: string[], avant: string[], ici: string[]): string[]
   }
   const listeAvant = avant.slice(debut, avant.length - pied);
   const liste = ici.slice(debut, ici.length - pied);
-  // Le recalage : la plus longue fin de la liste d'avant (à quelques lignes près) qui commence la nouvelle liste.
+  // The realignment: the longest end of the previous list (give or take a few lines) that starts the new list.
   let commun = 0;
   for (let ignorees = 0; ignorees <= Math.min(FIN_IGNOREE, listeAvant.length) && commun === 0; ignorees++) {
     const fin = listeAvant.length - ignorees;
-    // Une seule ligne commune après des lignes ignorées peut l'être par hasard : il en faut alors au moins deux.
+    // A single common line after ignored lines can be so by chance: at least two are then needed.
     for (let k = Math.min(fin, liste.length); k > (ignorees > 0 ? 1 : 0); k--) {
       let pareil = true;
       for (let j = 0; j < k && pareil; j++) pareil = listeAvant[fin - k + j] === liste[j];
@@ -104,7 +104,7 @@ function ajouterSuite(cumul: string[], avant: string[], ici: string[]): string[]
   }
   const suite = liste.slice(commun);
   if (suite.length === 0) return cumul;
-  // Avant le pied de page déjà gardé, s'il termine le cumul.
+  // Before the footer already kept, if it ends the accumulation.
   const piedGarde = pied > 0 && cumul.slice(-pied).every((l, i) => l === ici[ici.length - pied + i]) ? pied : 0;
   return [...cumul.slice(0, cumul.length - piedGarde), ...suite, ...cumul.slice(cumul.length - piedGarde)];
 }

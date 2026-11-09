@@ -3,7 +3,7 @@ import { INTERVALLE_SUIVI_MS } from "../../shared/sites";
 
 export type ResultatSuivi = { t: "change"; domaine: string; etat: EtatAdresse } | { t: "introuvable" } | { t: "inchangee" } | { t: "trop-tot" };
 
-/** L'hôte d'une adresse, en minuscules et sans point final ; "" si elle est illisible. */
+/** The host of an address, lowercase and without a trailing dot; "" if it is unreadable. */
 function hoteDe(url: string): string {
   try {
     return new URL(url).hostname.toLowerCase().replace(/\.+$/, "");
@@ -13,17 +13,17 @@ function hoteDe(url: string): string {
 }
 
 /**
- * Le suivi de l'adresse d'une appli de site : quand le site ne répond plus, la page de référence (publique, hostile)
- * est lue pour y trouver le nouveau domaine. Au plus une lecture par `INTERVALLE_SUIVI_MS` et par appli, qu'elle ait
- * réussi ou non (un clic en boucle ne lit rien de plus). Rien ne change sans lien valable selon `trouverAdresse`.
+ * Tracking of a site app's address: when the site no longer answers, the reference page (public, hostile)
+ * is read to find the new domain. At most one read per `INTERVALLE_SUIVI_MS` and per app, whether it
+ * succeeded or not (a click in a loop reads nothing more). Nothing changes without a valid link according to `trouverAdresse`.
  */
 export class SuiviAdresse {
-  /** Dernière lecture commencée, par appli. */
+  /** Last read started, per app. */
   private readonly dernieres = new Map<string, number>();
 
   constructor(
     private readonly o: {
-      /** Les liens de la page de référence, lus sans cookies ni profil. */
+      /** The links of the reference page, read without cookies or profile. */
       lireLiens(page: string, signal?: AbortSignal): Promise<string[]>;
       dossierSites: string;
       adressesLocales: boolean;
@@ -31,7 +31,7 @@ export class SuiviAdresse {
     },
   ) {}
 
-  /** L'appli est supprimée : la prochaine appli au même id repart sans lecture récente. */
+  /** The app is deleted: the next app with the same id restarts without a recent read. */
   oublier(id: string): void {
     this.dernieres.delete(id);
   }
@@ -42,7 +42,7 @@ export class SuiviAdresse {
     const maintenant = this.o.maintenant();
     const derniere = this.dernieres.get(id);
     if (derniere !== undefined && maintenant - derniere < INTERVALLE_SUIVI_MS) return { t: "trop-tot" };
-    // Noté avant la lecture : une seconde demande pendant celle-ci ne lit rien.
+    // Noted before the read: a second request during it reads nothing.
     this.dernieres.set(id, maintenant);
     let liens: string[];
     try {
@@ -55,7 +55,7 @@ export class SuiviAdresse {
     if (!trouvee) return { t: "introuvable" };
     if (signal?.aborted) return { t: "introuvable" };
     const courant = await lireEtatAdresse(this.o.dossierSites, id);
-    // Annulée pendant la relecture de l'état (suppression de l'appli) : rien n'est écrit.
+    // Cancelled during the re-reading of the state (app deletion): nothing is written.
     if (signal?.aborted) return { t: "introuvable" };
     const actuel = courant?.actuel ?? hoteDe(d.adresse);
     if (trouvee.hostname === actuel) return { t: "inchangee" };

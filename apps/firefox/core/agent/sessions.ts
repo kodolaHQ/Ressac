@@ -2,12 +2,12 @@ import { ErreurAtelier } from "@webaios/noyau";
 import type { EtatPanneauAgent, TailleTerminal } from "../../shared/api";
 import type { IdFenetre } from "../../shared/modele";
 
-/** Sortie gardée par fenêtre, renvoyée quand l'interface se recharge : de quoi retrouver la conversation. */
+/** Output kept per window, returned when the UI reloads: enough to find the conversation again. */
 export const TAMPON_MAX = 200_000;
-/** La sortie de l'agent part vers l'interface par paquets : un message IPC par rafale, pas par morceau du pty. */
+/** The agent's output goes to the UI in batches: one IPC message per burst, not per pty chunk. */
 export const REGROUPEMENT_MS = 8;
 
-/** Les derniers caractères d'une sortie, gardés par morceaux : ajouter ne recopie jamais tout le tampon. */
+/** The last characters of an output, kept in chunks: appending never copies the whole buffer. */
 export class Tampon {
   private morceaux: string[] = [];
   private longueur = 0;
@@ -32,7 +32,7 @@ export class Tampon {
     }
   }
 
-  /** Le rejeu d'un tampon coupé commence à une ligne entière : pas au milieu d'une séquence d'échappement. */
+  /** Replaying a cut buffer starts at a whole line: not in the middle of an escape sequence. */
   texte(): string {
     const s = this.morceaux.join("");
     const ligne = this.coupe ? s.indexOf("\n") : -1;
@@ -46,7 +46,7 @@ export class Tampon {
   }
 }
 
-/** Ce que le gestionnaire utilise d'une SessionAgent du noyau. */
+/** What the manager uses of a kernel SessionAgent. */
 export interface SessionLike {
   readonly active: boolean;
   ecrire(d: string): void;
@@ -59,17 +59,17 @@ export interface SessionLike {
 interface Entree {
   session?: SessionLike;
   tampon: Tampon;
-  /** Sortie pas encore envoyée à l'interface (voir REGROUPEMENT_MS). */
+  /** Output not yet sent to the UI (see REGROUPEMENT_MS). */
   aEnvoyer: string;
   minuterie?: NodeJS.Timeout;
   demarrage?: Promise<void>;
-  /** Dernière taille du terminal, pour rouvrir la session à l'identique (relancerTout). */
+  /** Last terminal size, to reopen the session identically (relancerTout). */
   taille: TailleTerminal;
-  /** Texte à mettre dans la saisie dès que la session sera active (voir preRemplir). */
+  /** Text to put in the input as soon as the session is active (see preRemplir). */
   preRemplissage?: { texte: string; ecrit?: () => void };
 }
 
-/** Une session d'agent par fenêtre (spec §8) : elle survit aux changements d'onglet et à la fermeture du panneau. */
+/** One agent session per window (spec §8): it survives tab changes and the panel closing. */
 export class SessionsAgent {
   private entrees = new Map<IdFenetre, Entree>();
 
@@ -77,12 +77,12 @@ export class SessionsAgent {
     private readonly o: {
       ouvrir: (f: IdFenetre, t: TailleTerminal) => Promise<SessionLike>;
       envoyer: (f: IdFenetre, canal: "donnees" | "etat", v: string | EtatPanneauAgent) => void;
-      /** L'utilisateur valide un message (Entrée) dans le terminal de cette fenêtre. */
+      /** The user submits a message (Enter) in this window's terminal. */
       surEnvoi?: (f: IdFenetre) => void;
     },
   ) {}
 
-  /** Idempotent : une session active renvoie son état et son tampon ; sinon une nouvelle session démarre. */
+  /** Idempotent: an active session returns its state and its buffer; otherwise a new session starts. */
   demarrer(f: IdFenetre, taille: TailleTerminal): Promise<void> {
     let e = this.entrees.get(f);
     if (!e) this.entrees.set(f, (e = { tampon: new Tampon(TAMPON_MAX), aEnvoyer: "", taille }));
@@ -91,7 +91,7 @@ export class SessionsAgent {
     if (entree.session?.active) {
       entree.session.redimensionner(taille.cols, taille.rows);
       this.o.envoyer(f, "etat", { etat: "actif" });
-      // Le tampon contient déjà la sortie en attente : elle n'est pas renvoyée une seconde fois.
+      // The buffer already contains the pending output: it is not sent a second time.
       this.annulerEnvoi(entree);
       const tampon = entree.tampon.texte();
       if (tampon) this.o.envoyer(f, "donnees", tampon);
@@ -105,7 +105,7 @@ export class SessionsAgent {
       .ouvrir(f, taille)
       .then(
         (s) => {
-          // Fenêtre fermée pendant le démarrage : personne n'affichera cet agent.
+          // Window closed during startup: nobody will display this agent.
           if (this.entrees.get(f) !== entree) return void s.arreter();
           entree.session = s;
           s.surDonnees((d) => {
@@ -114,7 +114,7 @@ export class SessionsAgent {
             entree.minuterie ??= setTimeout(() => this.envoyerSortie(f, entree), REGROUPEMENT_MS);
           });
           s.surFin((code) => {
-            // Session remplacée (relancerTout) : sa fin n'est pas celle de la conversation affichée.
+            // Session replaced (relancerTout): its end is not that of the displayed conversation.
             if (entree.session !== s) return;
             this.envoyerSortie(f, entree);
             entree.session = undefined;
@@ -126,7 +126,7 @@ export class SessionsAgent {
           if (p) this.ecrirePreRemplissage(s, p.texte, p.ecrit);
         },
         (err: Error) => {
-          // Démarrage abandonné (fenêtre fermée, relancerTout) : son échec ne concerne plus le panneau.
+          // Startup abandoned (window closed, relancerTout): its failure no longer concerns the panel.
           if (this.entrees.get(f) !== entree) return;
           this.o.envoyer(
             f,
@@ -163,9 +163,9 @@ export class SessionsAgent {
   }
 
   /**
-   * Met un texte dans la saisie de l'agent, sans l'envoyer : tout de suite si la session est active, sinon dès qu'elle
-   * le devient (un seul texte en attente par fenêtre, le dernier gagne). `ecrit` est appelé juste avant l'écriture,
-   * session ouverte : un accès accordé là survit à la remise à zéro de la politique par l'ouverture de la session.
+   * Puts a text in the agent's input, without sending it: right away if the session is active, otherwise as soon as it
+   * becomes so (a single pending text per window, the last wins). `ecrit` is called just before writing,
+   * session open: an access granted there survives the policy's reset by the session opening.
    */
   preRemplir(f: IdFenetre, texte: string, ecrit?: () => void): void {
     let e = this.entrees.get(f);
@@ -185,10 +185,10 @@ export class SessionsAgent {
     e?.session?.redimensionner(t.cols, t.rows);
   }
 
-  /** Changement de profil : chaque fenêtre qui avait un agent en retrouve un nouveau, à la même taille. */
+  /** Profile change: every window that had an agent gets a new one, at the same size. */
   async relancerTout(): Promise<void> {
     const anciennes = [...this.entrees];
-    // De nouvelles entrées : un démarrage encore en cours sur l'ancien noyau sera abandonné à son arrivée.
+    // New entries: a startup still in progress on the old kernel will be abandoned when it arrives.
     this.entrees.clear();
     for (const [, e] of anciennes) {
       this.annulerEnvoi(e);
@@ -199,7 +199,7 @@ export class SessionsAgent {
     await Promise.all(anciennes.map(([f, e]) => this.demarrer(f, e.taille)));
   }
 
-  /** Rend la main une fois l'agent arrêté dans le conteneur. */
+  /** Hands control back once the agent is stopped in the container. */
   async fermerFenetre(f: IdFenetre): Promise<void> {
     const e = this.entrees.get(f);
     if (e) this.annulerEnvoi(e);

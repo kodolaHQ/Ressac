@@ -3,25 +3,25 @@ import type { IdFenetre } from "../../shared/modele";
 
 export interface OptionsEnvoi {
   chemins: CheminsEspace;
-  /** La fenêtre principale que l'agent considère comme active. */
+  /** The main window the agent considers active. */
   fenetreAgent(): IdFenetre | undefined;
   dossierLot(p: IdProjet, lot: string): string;
-  /** `agent.preRemplir` : ouvre le panneau et met le texte dans la saisie, sans l'envoyer. */
+  /** `agent.preRemplir`: opens the panel and puts the text in the input, without sending it. */
   preRemplir(f: IdFenetre, texte: string): void;
-  /** Comme ⌘J : le terminal de l'agent prend le clavier. */
+  /** Like ⌘J: the agent's terminal takes the keyboard. */
   donnerLeTerminal(f: IdFenetre): void;
-  /** La fenêtre principale passe devant (sans effet en mode invisible). */
+  /** The main window comes to the front (no effect in invisible mode). */
   devant(f: IdFenetre): void;
-  /** Aucune fenêtre principale : en rouvrir une (comme la page Relecture), qui reçoit le texte. */
+  /** No main window: reopen one (like the Review page), which receives the text. */
   rouvrir?(): void;
 }
 
-/** Aucune fenêtre principale, même rouverte : le lot est écrit, mais rien n'a pu être pré-rempli. */
+/** No main window, even reopened: the batch is written, but nothing could be pre-filled. */
 export const AUCUNE_FENETRE = "Aucune fenêtre principale pour l'agent : le lot est enregistré, rouvre une fenêtre pour le lui donner.";
 
 /**
- * Après l'écriture d'un lot : pour un lot de l'agent (appli, démo), une ligne est pré-remplie dans sa session, jamais
- * envoyée. Un projet externe n'a rien de plus : son lot est déjà dans la file du Claude Code branché.
+ * After writing a batch: for an agent batch (app, demo), a line is pre-filled in its session, never
+ * sent. An external project has nothing more: its batch is already in the queue of the connected Claude Code.
  */
 export function creerEnvoi(o: OptionsEnvoi): (p: ProjetSuivi, lot: Lot) => Promise<void> {
   return async (p, lot) => {

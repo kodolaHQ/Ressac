@@ -1,10 +1,10 @@
-/** Ce que la page Applications dit de Docker. */
+/** What the Applications page says about Docker. */
 export type EtatDocker = "ok" | "docker-absent";
 
 /**
- * Sonde de Docker pour la page Applications : une seule à la fois, son résultat resservi pendant `fraicheurMs`. La liste
- * n'attend jamais la sonde (`docker info` peut prendre 30 s quand Docker démarre) : `valeur()` rend le dernier état
- * connu et relance la sonde s'il a vieilli ; `surChange` est appelé quand la sonde trouve un autre état.
+ * Docker probe for the Applications page: only one at a time, its result reused during `fraicheurMs`. The list
+ * never waits for the probe (`docker info` can take 30 s when Docker starts): `valeur()` returns the last known
+ * state and restarts the probe if it has aged; `surChange` is called when the probe finds another state.
  */
 export class SondeDocker {
   private connu: EtatDocker = "ok";

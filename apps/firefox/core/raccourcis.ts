@@ -3,7 +3,7 @@ import type { EtatNavigateur, IdFenetre } from "../shared/modele";
 
 type Element = { favori: string } | { onglet: string };
 
-/** Ce que la barre latérale affiche, de haut en bas : épinglés de l'espace, puis ses onglets. */
+/** What the sidebar displays, top to bottom: the space's pinned tabs, then its tabs. */
 function elementsAffiches(etat: EtatNavigateur, fenetreId: IdFenetre): { elements: Element[]; courant: number } {
   const f = etat.fenetres.find((x) => x.id === fenetreId);
   const espace = f && etat.espaces.find((e) => e.id === f.espaceActif);
@@ -20,7 +20,7 @@ function versElement(fenetreId: IdFenetre, x: Element | undefined): Action | nul
   return "onglet" in x ? { type: "activerOnglet", id: x.onglet } : { type: "ouvrirFavori", fenetreId, genre: "epingle", id: x.favori };
 }
 
-/** ⌘1…⌘8 : n-ième élément affiché ; ⌘9 : le dernier. */
+/** ⌘1…⌘8: n-th displayed item; ⌘9: the last. */
 export function versNieme(etat: EtatNavigateur, fenetreId: IdFenetre, n: number): Action | null {
   const { elements } = elementsAffiches(etat, fenetreId);
   return versElement(fenetreId, n === 9 ? elements.at(-1) : elements[n - 1]);

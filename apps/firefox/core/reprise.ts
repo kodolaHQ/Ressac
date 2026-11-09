@@ -1,13 +1,13 @@
 /**
  * Video resume at the minute (tested alone): what the site actor (chrome/agent/site-actor.ts) does with the events of
- * each frame's `<video>`s. Nothing here imports the noyau: this file is bundled into the actor.
+ * each frame's `<video>`s. Nothing here imports the kernel: this file is bundled into the actor.
  */
 
-/** Une vidéo plus courte (publicité, aperçu) n'est ni suivie ni reprise. */
+/** A shorter video (ad, preview) is neither tracked nor resumed. */
 export const DUREE_MIN_REPRISE_S = 60;
-/** Pendant la lecture, une position notée au plus toutes les 10 s. */
+/** During playback, a position noted at most every 10 s. */
 export const ECART_POSITION_MS = 10_000;
-/** Reprendre un peu avant l'endroit quitté. */
+/** Resume a little before the place left. */
 export const RECUL_REPRISE_S = 5;
 
 export type EvenementVideo = "loadedmetadata" | "play" | "timeupdate" | "pause" | "ended";
@@ -16,23 +16,23 @@ export const EVENEMENTS_VIDEO: readonly EvenementVideo[] = ["loadedmetadata", "p
 type Etat = { reglee: boolean; derniere: number | null };
 
 export class SuiviReprise {
-  /** Par élément : sa reprise est-elle réglée (demandée et rendue), et quand sa position a-t-elle été notée. */
+  /** Per element: is its resume settled (requested and returned), and when was its position noted. */
   private readonly etats = new WeakMap<object, Etat>();
 
   constructor(
     private readonly o: {
-      /** `fin` : la vidéo est allée au bout (`ended`). */
+      /** `fin`: the video went to the end (`ended`). */
       noter(t: number, duree: number, fin: boolean): void;
-      /** La position retenue pour la page, si elle appartient à une vidéo de cette durée (décidé par le main). */
+      /** The position kept for the page, if it belongs to a video of this duration (decided by the main process). */
       demander(duree: number): Promise<number | null>;
       maintenant(): number;
     },
   ) {}
 
   /**
-   * Un événement d'un élément (`cle`) : la position à donner à `currentTime`, ou null. Au premier événement où la durée
-   * est connue et assez longue, la position de la page est demandée avec sa durée, une seule fois par élément ; rien n'est noté avant
-   * qu'elle soit rendue (un `timeupdate` à 0 s n'écrase pas la position retenue).
+   * An element's event (`cle`): the position to give to `currentTime`, or null. At the first event where the duration
+   * is known and long enough, the page's position is requested with its duration, once per element; nothing is noted before
+   * it is returned (a `timeupdate` at 0 s does not overwrite the kept position).
    */
   async surEvenement(type: EvenementVideo, v: { currentTime: number; duration: number; cle: object }): Promise<number | null> {
     const { currentTime: t, duration: duree } = v;
@@ -65,7 +65,7 @@ export class SuiviReprise {
     try {
       this.o.noter(t, duree, fin);
     } catch {
-      // une position est un confort
+      // a position is a convenience
     }
   }
 }

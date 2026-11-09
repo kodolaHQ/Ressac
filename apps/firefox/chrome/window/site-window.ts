@@ -82,7 +82,7 @@ const isSiteTab = (tab: any) => !!tab?.ownerDocument?.documentElement && ["webai
  * The app view is never a tab add-ons can close, move out, add to, or send off the web (spec §4.9). Its window has one
  * tab, the view: removing or detaching it is refused, and so is any new tab. tabs.update goes through
  * fixupAndLoadURIString: refused unless the view shows the site (never the page hidden under the home or
- * the accord card) and the address is http(s). WebAiOs's own loads (the system principal) pass. Its reload, goBack and
+ * the grant card) and the address is http(s). WebAiOs's own loads (the system principal) pass. Its reload, goBack and
  * goForward are stopped by the request guard (store/sites.ts). windows.remove of this window is refused;
  * WebAiOs's own close() calls, ⌘W and the window's close button still close it.
  * `showsPage`: may an add-on load in the view now (an agent app's window: always; the guard keeps it on its origin)?

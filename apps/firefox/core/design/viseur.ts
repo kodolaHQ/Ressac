@@ -6,8 +6,8 @@ export interface CaptureViseur extends Omit<ContexteDesign, "source"> {
 type RectCss = CaptureViseur["rect"];
 
 /**
- * Code du monde isolé : pose le viseur, résout avec la capture du clic (ou null : Échap, arrêt). L'arrêt est exposé
- * dans une variable du monde isolé (`__viseurArret`), invisible de la page. La page ne voit aucun événement de souris.
+ * Isolated world code: sets up the targeter, resolves with the click's capture (or null: Esc, stop). The stop is exposed
+ * in a variable of the isolated world (`__viseurArret`), invisible to the page. The page sees no mouse event.
  */
 export function scriptViseur(): string {
   return `(() => {
@@ -125,8 +125,8 @@ export function scriptViseur(): string {
 }
 
 /**
- * Rect CSS de l'élément élargi de la marge, en pixels de la vue (× zoom), borné à la vue et arrondi, puis décalé de
- * `decalage` (la place d'un cadre dans sa page).
+ * CSS rect of the element widened by the margin, in view pixels (× zoom), bounded to the view and rounded, then shifted by
+ * `decalage` (the position of a frame in its page).
  */
 export function rectCapture(rect: RectCss, vue: { largeur: number; hauteur: number }, zoom: number, decalage = { x: 0, y: 0 }): { x: number; y: number; width: number; height: number } {
   const gauche = Math.max(0, Math.round(rect.x * zoom - MARGE_CAPTURE));

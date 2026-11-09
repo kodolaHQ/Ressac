@@ -1,8 +1,8 @@
-// The design guards, loadable under tsx and in the sidebar bundle (no value import): ID_PROJET lives in a noyau file
+// The design guards, loadable under tsx and in the sidebar bundle (no value import): ID_PROJET lives in a kernel file
 // that needs node:crypto, raisonEchec in core/design/externes.ts needs node:fs. test/review-host.test.ts checks them.
 import type { ContexteDesign } from "../../../packages/noyau/src/design/remarques";
 
-/** Copy of noyau's ID_PROJET. */
+/** Copy of kernel's ID_PROJET. */
 export const ID_PROJECT = /^(app-[A-Za-z0-9][A-Za-z0-9._-]*|ext-[0-9a-f]{16}|demo-\d{1,5}|site-[a-z0-9][a-z0-9-]{0,59})$/;
 export const EXTERNAL_ID = /^[0-9a-f]{16}$/;
 export const CLIENT_ID = /^[0-9a-f-]{8,64}$/;
@@ -59,16 +59,16 @@ export function checkClientName(nom: unknown): string {
   return nom;
 }
 
-/** The design texts: the noyau's INDISPONIBLE_DESIGN, the invalid input's, the cart's. */
+/** The design texts: the kernel's INDISPONIBLE_DESIGN, the invalid input's, the cart's. */
 export const UNAVAILABLE_DESIGN = "Le mode design marche sur les applis de l'agent, les applis de site et les projets branchés par un Claude Code";
-/** Copies of noyau's INDISPONIBLE_DESIGN_SITE and AVERTISSEMENT_CAPTURE_SITE (design/projets.ts). */
+/** Copies of kernel's INDISPONIBLE_DESIGN_SITE and AVERTISSEMENT_CAPTURE_SITE (design/projets.ts). */
 export const UNAVAILABLE_DESIGN_SITE = "Le mode design marche dans les pages du site et sur l'accueil, pas sur la carte d'accord, une page de connexion ni en plein écran";
 export const CAPTURE_WARNING_SITE = "L'extrait et la capture de cet élément iront à l'agent.";
 export const INVALID_REQUEST = "Demande invalide";
 export const NOTHING_AIMED = "Aucun élément visé.";
 /** An element's or a batch's id (`id.length <= 64`). */
 export const DESIGN_ID_MAX = 64;
-/** Copies of noyau's HTML_MAX and TRONQUE: a context's html is at most a cut one. */
+/** Copies of kernel's HTML_MAX and TRONQUE: a context's html is at most a cut one. */
 export const HTML_MAX = 4096;
 export const TRONQUE = "… [tronqué]";
 /** A capture's PNG, decoded (mine: an element's capture is far smaller). */

@@ -115,7 +115,7 @@ export class Questions {
     d: { ongletId: IdOnglet | null; fenetreId: IdFenetre | null; origine: string; permissions: SitePermission[]; lien?: string },
     signal?: AbortSignal,
   ): Promise<Issue> {
-    // The three Firefox-only kinds are not noyau Permissions: the UI never shows a site question (estDemandeAgent).
+    // The three Firefox-only kinds are not kernel Permissions: the UI never shows a site question (estDemandeAgent).
     const fields = { ongletId: d.ongletId, origine: d.origine, permissions: d.permissions as Permission[], ...(d.lien ? { lien: d.lien } : {}) };
     if (questionCaduque({ id: "", ...fields }, this.store.state)) return Promise.resolve("retiree");
     return attendreIssue((repondre) => this.pose(fields, repondre), Infinity, signal);

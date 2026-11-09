@@ -18,9 +18,9 @@ const UNAVAILABLE = "Mémoire de l'appli indisponible";
 const SOURCE = "webaios-retouche://";
 
 /**
- * The retouches' errors, seen in this content process (the parent's copy of a forwarded error has no window id): each
+ * The tweaks' errors, seen in this content process (the parent's copy of a forwarded error has no window id): each
  * goes to the parent through its own window's actor, so the parent knows its frame from its WindowGlobalParent.
- * Started once per process, by the first document that runs retouches.
+ * Started once per process, by the first document that runs tweaks.
  */
 let listening = false;
 function relayErrors(): void {
@@ -110,7 +110,7 @@ export class WebAiOsSiteChild extends JSWindowActorChild {
         Cu.evalInSandbox(code, sandbox, "latest", name, 1);
         return true;
       } catch (e: any) {
-        // Reported with the script's own source and this window's id, so it reaches the retouches' console (never
+        // Reported with the script's own source and this window's id, so it reaches the tweaks' console (never
         // console.error, which would name this file). Cu.reportError would carry no window id from here.
         const err = Cc["@mozilla.org/scripterror;1"].createInstance(Ci.nsIScriptError);
         err.initWithWindowID(String(e), String(e?.fileName ?? name), Number(e?.lineNumber) || 0, Number(e?.columnNumber) || 0, Ci.nsIScriptError.errorFlag, "content javascript", innerWindowId);

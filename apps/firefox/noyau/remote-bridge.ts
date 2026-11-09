@@ -16,7 +16,7 @@ import {
 import type { Historique } from "../core/historique.ts";
 import type { Rpc } from "../shared/rpc.ts";
 
-/** The noyau's browser bridge, answered by Firefox over JSON-RPC. Only the private-tab mirror lives here. */
+/** The kernel's browser bridge, answered by Firefox over JSON-RPC. Only the private-tab mirror lives here. */
 export class RemoteBridge implements PontNavigateur {
   private prives = new Set<string>();
   private actifPrive = false;
@@ -32,7 +32,7 @@ export class RemoteBridge implements PontNavigateur {
   ) {
     if (h)
       this.historique = {
-        // The noyau checked the ISO dates and bounded the limit.
+        // The kernel checked the ISO dates and bounded the limit.
         chercher: async ({ requete, depuis, jusqua, limite }) =>
           h.rechercherPourAgent({
             requete,
@@ -53,7 +53,7 @@ export class RemoteBridge implements PontNavigateur {
     try {
       return await this.rpc.request<T>(method, params, signal);
     } catch (e) {
-      // The noyau expects an aborted read to reject with the signal's own reason.
+      // The kernel expects an aborted read to reject with the signal's own reason.
       if (signal?.aborted) throw signal.reason;
       const x = e as Error & { id?: string; profil?: string };
       if (x.name === "OngletIntrouvable") throw new OngletIntrouvable(x.id!);
@@ -77,7 +77,7 @@ export class RemoteBridge implements PontNavigateur {
       if (signal?.aborted) return [];
       throw e;
     });
-  // The noyau keeps the accord for the conversation and takes the card down (signal) when a new one starts: refused then.
+  // The kernel keeps the grant for the conversation and takes the card down (signal) when a new one starts: refused then.
   demanderDonneesWidget = (o: { id: string; nom: string; agent: string; genre?: "action" | "site" }, signal?: AbortSignal) =>
     this.call<boolean>("demanderDonneesWidget", [o], signal).catch((e) => {
       if (signal?.aborted) return false;
@@ -89,7 +89,7 @@ export class RemoteBridge implements PontNavigateur {
 
   /**
    * The tab dev tools, run by Firefox (chrome/store/devtools.ts). Only an owner's are usable: Firefox keeps its
-   * attachments across noyau starts, a new owner revokes the previous one.
+   * attachments across kernel starts, a new owner revokes the previous one.
    */
   readonly outilsDev: OutilsDevNavigateur = {
     // Without an owner's token Firefox refuses every call.
@@ -137,7 +137,7 @@ export class RemoteBridge implements PontNavigateur {
     }
   };
 
-  /** Firefox asks to wait for another site's turn: answered when the noyau's Menagement lets the read go. */
+  /** Firefox asks to wait for another site's turn: answered when the kernel's Menagement lets the read go. */
   changerHote(lecture: string, hote: string): Promise<void> {
     const f = this.lecturesMenagees.get(lecture);
     return f ? f(hote) : Promise.reject(new Error("Lecture inconnue"));

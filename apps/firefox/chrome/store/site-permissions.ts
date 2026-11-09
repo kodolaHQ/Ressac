@@ -36,7 +36,7 @@ const SIMPLE = new Set(["notifications", "geolocation", "drm", "midi", "partage-
 /** Asked every time, never remembered. */
 const NOT_KEPT = new Set<SitePermission>(["partage-ecran", "ouvrir-application"]);
 
-/** The noyau's permission names, plus the three new kinds; [] = unknown. */
+/** The kernel's permission names, plus the three new kinds; [] = unknown. */
 function translate(kind: string, mediaTypes: readonly string[] = []): SitePermission[] {
   if (kind === "media") {
     const p: SitePermission[] = [];

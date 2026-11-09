@@ -1,7 +1,7 @@
 import type { EtatNavigateur, IdFenetre, IdOnglet } from "./modele";
 import { cleEspace } from "./modele";
 
-/** Onglets ouverts que l'espace actif peut afficher, dans l'ordre de la barre latérale : essentiels, épinglés, puis les autres. */
+/** Open tabs the active space can display, in the sidebar order: essentials, pinned, then the others. */
 export function ongletsParcourables(etat: EtatNavigateur, fenetreId: IdFenetre): IdOnglet[] {
   const f = etat.fenetres.find((x) => x.id === fenetreId);
   const espace = f && etat.espaces.find((x) => x.id === f.espaceActif);

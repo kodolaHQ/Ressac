@@ -37,7 +37,7 @@ export type CheckKind = "urlPermise" | "hotePermis" | "estOnglet";
 type Scopes = Record<string, { cle: string; accord: Portee; profils: IdProfil[]; actif: boolean }>;
 
 export interface AgentExtensions {
-  /** The requests the noyau host sends about its extensions (extensions.*, navigateur.espaces). */
+  /** The requests the kernel host sends about its extensions (extensions.*, navigateur.espaces). */
   readonly handlers: Record<string, Handler>;
   /** Each new host process: extensions.pret, with the about:addons changes it has not acknowledged yet. */
   hostStarted(): void;
@@ -51,11 +51,11 @@ export interface AgentExtensions {
   onScopes(cb: () => void): () => void;
   /** The extension actor's checkpoints (window.__webaios), for the add-on id read from the page's principal. */
   check(addonId: string, kind: CheckKind, value: unknown): boolean;
-  /** The console actor's message from content process `from`: relayed to the noyau for an installed agent extension. */
+  /** The console actor's message from content process `from`: relayed to the kernel for an installed agent extension. */
   relayConsole(from: { childID: number; remoteType: string }, data: unknown): void;
 }
 
-/** Firefox's side of the agent's extensions: the noyau host decides, this installs, enables, disables, uninstalls. */
+/** Firefox's side of the agent's extensions: the kernel host decides, this installs, enables, disables, uninstalls. */
 export function createAgentExtensions(store: Store, windows: WindowRegistry, questions: Questions, host: () => AgentHost, access: () => EtatAcces): AgentExtensions {
   // The add-on changes this module is making, as `<addonId> <quoi>`: only those AddonManager events are ours. A removal
   // in about:addons while we install or reload the same add-on is still the user's (an install fires no uninstall event).
@@ -88,7 +88,7 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
         if (!p.actif && !present.userDisabled) await present.disable();
         let path = p.xpi;
         if (p.temporaire) {
-          // A temporary add-on is read from its file for as long as it runs: a copy of ours, which the noyau moves.
+          // A temporary add-on is read from its file for as long as it runs: a copy of ours, which the kernel moves.
           const dir = PathUtils.join(PathUtils.tempDir, "webaios-agent-addons");
           await IOUtils.makeDirectory(dir, { ignoreExisting: true });
           path = PathUtils.join(dir, `${id}-${p.version}.xpi`);
@@ -114,7 +114,7 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
       await own(addon.id, "desactivee", () => (p.actif ? addon.enable() : addon.disable()));
     },
     // `unlessUndone`: a removal from about:addons; kept (false) only if its Undo came. An add-on present again without an
-    // Undo was installed back by the noyau before the removal reached it: uninstalled again.
+    // Undo was installed back by the kernel before the removal reached it: uninstalled again.
     "extensions.desinstaller": async (p: { addonId: string; unlessUndone?: boolean }) => {
       const addon = await AddonManager.getAddonByID(agentId(p.addonId));
       if (addon && p.unlessUndone && undone.has(addon.id)) return false;
@@ -153,7 +153,7 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
       .catch(() => {});
   AddonManager.addAddonListener({
     // about:addons' Remove is uninstall(true): only onUninstalling fires until the page unloads, maybe at quit. The
-    // removal is handled from it; the noyau completes the uninstall unless Undo came first.
+    // removal is handled from it; the kernel completes the uninstall unless Undo came first.
     onUninstalling: (a: { id: string; temporarilyInstalled: boolean; pendingOperations: number }) => {
       undone.delete(a.id);
       if (!(a.pendingOperations & AddonManager.PENDING_UNINSTALL)) uninstalling.add(a.id);
@@ -220,7 +220,7 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
     if (typeof p?.addonId === "string" && Array.isArray(p.profils)) reloadTabs(p.addonId, p.profils);
   };
 
-  // A profile turned private: its agent-script tabs reload here at once, host or not; the noyau takes it out of the
+  // A profile turned private: its agent-script tabs reload here at once, host or not; the kernel takes it out of the
   // registry (extensions.profilsPrives, sent at each change of that set, and at each host start).
   const privateProfiles = () => [...new Set(store.state.espaces.filter((e) => e.prive).map((e) => e.profil))].sort();
   const sendPrivate = () => host().notify("extensions.profilsPrives", { prives: privateProfiles() });
@@ -285,7 +285,7 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
   /**
    * A console message an agent extension wrote in a content process (spike S6): from the extension
    * process, its own pages (`onglet` null); from a web process, a content script: the WebAiOs tab of a non-private space
-   * it came from (else none), whose readability the noyau decides as it notes it (its policy,
+   * it came from (else none), whose readability the kernel decides as it notes it (its policy,
    * ongletLisibleParAgent). A web process is untrusted: the window must be one of its own, looked up here.
    */
   function relayConsole(from: { childID: number; remoteType: string }, data: unknown): void {

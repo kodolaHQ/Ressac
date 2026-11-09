@@ -136,7 +136,7 @@ export function porteesDe(e: EtatExtensions): Portees {
 }
 
 /**
- * The agent's extensions (registry `<dossier>/etat.json`, copies, signed .xpi), kept in the noyau host; the chrome
+ * The agent's extensions (registry `<dossier>/etat.json`, copies, signed .xpi), kept in the kernel host; the chrome
  * installs, enables, disables or uninstalls by RPC. One operation at a time per extension.
  */
 export class ExtensionsAgent {

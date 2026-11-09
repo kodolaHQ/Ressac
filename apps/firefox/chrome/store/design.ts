@@ -277,7 +277,7 @@ export function createDesign(o: {
     const png = await capturePng(s.browser, capture.rect, capture.vue, s.wgp);
     if (!current(s, g)) return;
     const { rect, ...contexte } = capture;
-    // The home's address as the noyau knows it (no served copy's token): it tags such remarks [accueil] (pty/contexte.ts).
+    // The home's address as the kernel knows it (no served copy's token): it tags such remarks [accueil] (pty/contexte.ts).
     if (s.home && s.target.type === "site") contexte.adresse = `webaios-site://${s.target.id}${new URL(contexte.adresse).pathname}`;
     s.attente = { contexte: { ...contexte, source }, capture: png };
     const v = view(s.target);
@@ -547,7 +547,7 @@ export function overlayApi(
     },
     envoyer: async (p) => (allowed(p) ? o.host.request<ResultatExtension>("design.envoyer", { projet: p }) : { ok: false, erreur: INVALID_REQUEST }),
     surChange(cb) {
-      // accueil.change: sent at each noyau start (noyau/host.ts), so a restarted host's cart is read again.
+      // accueil.change: sent at each kernel start (noyau/host.ts), so a restarted host's cart is read again.
       const offs = [...["design.change", "accueil.change"].map((m) => o.host.on(m, () => cb())), o.design.onChange(cb)];
       return () => offs.forEach((f) => f());
     },

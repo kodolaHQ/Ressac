@@ -11,7 +11,7 @@ import type { Decision, DemandeEnAttente, EtatAcces, EtatNavigateur, IdEspace, I
 const id = z.string().min(1);
 const moteur = z.enum(["google", "duckduckgo", "qwant"]);
 
-/** Les actions, validées à l'entrée du process principal : le schéma est la source du type. */
+/** The actions, validated at the entry of the main process: the schema is the source of the type. */
 export const SchemaAction = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("ouvrirOnglet"),
@@ -23,7 +23,7 @@ export const SchemaAction = z.discriminatedUnion("type", [
     apres: id.optional(),
   }),
   z.object({ type: z.literal("fermerOnglet"), id }),
-  // garderEspace : l'onglet devient celui de son espace sans que la fenêtre change d'espace (demande d'une extension).
+  // garderEspace: the tab becomes its space's tab without the window changing space (an extension's request).
   z.object({ type: z.literal("activerOnglet"), id, garderEspace: z.boolean().optional() }),
   z.object({ type: z.literal("deplacerOnglet"), id, index: z.number().int() }),
   z.object({ type: z.literal("rouvrirOngletFerme"), fenetreId: id }),
@@ -49,7 +49,7 @@ export const SchemaAction = z.discriminatedUnion("type", [
   z.object({ type: z.literal("desepingler"), espaceId: id, favoriId: id }),
   z.object({ type: z.literal("ajouterEssentiel"), id }),
   z.object({ type: z.literal("retirerEssentiel"), favoriId: id }),
-  /** `profil` : un profil de connexion existant, ou « nouveau » pour en créer un propre à l'espace. */
+  /** `profil`: an existing login profile, or « nouveau » to create one specific to the space. */
   z.object({ type: z.literal("creerEspace"), nom: z.string().min(1), icone: z.string().min(1), prive: z.boolean(), profil: id, fenetreId: id.optional() }),
   z.object({ type: z.literal("reglerEspace"), id, nom: z.string().min(1), icone: z.string().min(1), prive: z.boolean(), profil: id }),
   z.object({ type: z.literal("supprimerEspace"), id }),
@@ -64,22 +64,22 @@ export const SchemaAction = z.discriminatedUnion("type", [
   z.object({ type: z.literal("afficherPageVide"), fenetreId: id }),
   z.object({ type: z.literal("basculerCompact"), fenetreId: id }),
   z.object({ type: z.literal("basculerPanneauAgent"), fenetreId: id }),
-  /** Active la page Applications de l'espace actif, ou l'ouvre. */
+  /** Activates the Applications page of the active space, or opens it. */
   z.object({ type: z.literal("ouvrirApplications"), fenetreId: id }),
-  /** Active la page Extensions de cette fenêtre, ou l'ouvre (comme Applications). */
+  /** Activates this window's Extensions page, or opens it (like Applications). */
   z.object({ type: z.literal("ouvrirExtensions"), fenetreId: id }),
-  /** Active la page « Voir le workflow » du widget `id` dans cette fenêtre, ou l'ouvre. */
+  /** Activates the « Voir le workflow » page of widget `id` in this window, or opens it. */
   z.object({
     type: z.literal("ouvrirWorkflow"),
     fenetreId: id,
     id: z.string().regex(/^[a-z0-9-]+$/).max(100),
     nom: z.string().max(60),
-    /** Le workflow d'une action (`webaios://workflow/action/<id>`) plutôt que celui d'un widget. */
+    /** An action's workflow (`webaios://workflow/action/<id>`) rather than a widget's. */
     proprietaire: z.literal("action").optional(),
   }),
   /**
-   * Active la page de l'action `id` dans cette fenêtre (un onglet `webaios://action/<id>[/…]`, dans un espace non privé),
-   * ou l'ouvre ; `execution` y montre ce résultat-là.
+   * Activates the page of action `id` in this window (a `webaios://action/<id>[/…]` tab, in a non-private space),
+   * or opens it; `execution` shows that result there.
    */
   z.object({
     type: z.literal("ouvrirAction"),
@@ -88,14 +88,14 @@ export const SchemaAction = z.discriminatedUnion("type", [
     nom: z.string().max(60),
     execution: z.string().regex(ID_EXECUTION).max(64).optional(),
   }),
-  /** Active la page « Actions » de cette fenêtre, ou l'ouvre. */
+  /** Activates this window's « Actions » page, or opens it. */
   z.object({ type: z.literal("ouvrirActions"), fenetreId: id }),
-  /** Ouverture et fermeture automatiques du panneau par la page d'accueil (pas une action de l'utilisateur). */
+  /** Automatic opening and closing of the panel by the home page (not an action of the user). */
   z.object({ type: z.literal("panneauAgentAccueil"), fenetreId: id, ouvert: z.boolean() }),
   z.object({ type: z.literal("choisirMoteur"), moteur }),
   z.object({ type: z.literal("choisirProfilAgent"), profil: z.string().regex(/^[\w-]+$/).max(64) }),
   z.object({ type: z.literal("largeurPanneauAgent"), largeur: z.number().finite() }),
-  /** Active la page Relecture du projet dans cette fenêtre, ou l'ouvre (une par projet et par fenêtre). */
+  /** Activates this window's project Review page, or opens it (one per project and per window). */
   z.object({ type: z.literal("ouvrirRelecture"), fenetreId: id, projet: z.string().regex(ID_PROJET), nom: z.string().max(80) }),
 ]);
 export type Action = z.infer<typeof SchemaAction>;
@@ -112,8 +112,8 @@ export type Bornes = z.infer<typeof SchemaBornes>;
 
 export type Panneau = "historique" | "telechargements";
 /**
- * Raccourcis du menu destinés à l'interface (la page web a souvent le focus). `fermerOnglet` : ⌘W sur le constructeur,
- * qui demande d'abord si du code n'est pas enregistré.
+ * Menu shortcuts meant for the UI (the web page often has focus). `fermerOnglet`: ⌘W on the builder,
+ * which first asks whether some code is unsaved.
  */
 export type Raccourci = "rechercher" | "chercherSuivant" | "chercherPrecedent" | "adresse" | "commande" | "agent" | "fermerOnglet";
 export interface ResultatRecherche {
@@ -127,27 +127,27 @@ export interface ApiWebaios {
   fenetreId: IdFenetre;
   agir(action: Action): void;
   surEtat(rappel: (e: EtatNavigateur) => void): () => void;
-  /** `ongletId` null : la saisie ouvre un nouvel onglet (page vide). */
+  /** `ongletId` null: the input opens a new tab (blank page). */
   naviguer(ongletId: IdOnglet | null, saisie: string): void;
   commande(ongletId: IdOnglet, c: CommandeOnglet): void;
   bornesContenu(b: Bornes): void;
-  /** macOS : les boutons de la fenêtre suivent la barre latérale (cachés avec elle en mode compact). */
+  /** macOS: the window buttons follow the sidebar (hidden with it in compact mode). */
   boutonsFenetre(visibles: boolean): void;
-  /** Mode compact : au-dessus d'une page web, la souris change de zone par rapport au bord gauche (voir revelation.ts). */
+  /** Compact mode: over a web page, the mouse changes zone relative to the left edge (see revelation.ts). */
   surZoneGauche(rappel: (zone: ZoneGauche) => void): () => void;
-  /** Le menu demande d'ouvrir un panneau de l'interface (⌘Y…). */
+  /** The menu asks to open a UI panel (⌘Y…). */
   surPanneau(rappel: (p: Panneau) => void): () => void;
   surRaccourci(rappel: (r: Raccourci) => void): () => void;
   surResultatRecherche(rappel: (r: ResultatRecherche) => void): () => void;
-  /** Plein écran HTML (vidéo…) : l'interface s'efface. */
+  /** HTML fullscreen (video…): the UI fades away. */
   surPleinEcran(rappel: (actif: boolean) => void): () => void;
   historique: {
-    /** `distinctes` : une seule ligne par URL (barre d'adresse) ; sinon une par URL et par espace. */
+    /** `distinctes`: a single row per URL (address bar); otherwise one per URL and per space. */
     rechercher(texte: string, limite?: number, distinctes?: boolean): Promise<Visite[]>;
     recents(): Promise<Visite[]>;
-    /** `depuis` : date ISO ; absent, tout l'historique. */
+    /** `depuis`: ISO date; absent, the whole history. */
     effacer(depuis?: string): Promise<void>;
-    /** Oublie le texte retenu d'une visite (une URL dans un espace), sans effacer la visite. */
+    /** Forgets the text kept for a visit (a URL in a space), without deleting the visit. */
     oublierTexte(url: string, espaceId: string): Promise<void>;
   };
   telechargements: {
@@ -159,185 +159,185 @@ export interface ApiWebaios {
   surTelechargements(rappel: (liste: Telechargement[]) => void): () => void;
   permissions: {
     enAttente(): Promise<DemandeEnAttente[]>;
-    /** `o.confirme` : la case « Je comprends » d'une carte d'extension renforcée est cochée. */
+    /** `o.confirme`: the « Je comprends » box of a hardened extension card is checked. */
     repondre(id: string, decision: Decision, droits?: DroitDev[], o?: { confirme?: boolean }): void;
   };
   surPermissions(rappel: (liste: DemandeEnAttente[]) => void): () => void;
   /**
-   * Une modale s'ouvre : le clavier revient à l'interface, et la page affichée par `ongletId` est capturée (data URL
-   * JPEG réduite) pour rester visible, floutée, derrière la modale. null : pas de page à montrer, ou capture ratée.
+   * A modal opens: the keyboard returns to the UI, and the page shown by `ongletId` is captured (reduced JPEG data URL)
+   * to stay visible, blurred, behind the modal. null: no page to show, or capture failed.
    */
   apercuPage(ongletId: IdOnglet | null): Promise<string | null>;
-  /** Panneau ⌃Tab de cette fenêtre : envoyé 200 ms après le premier ⌃Tab si ⌃ est encore enfoncé ; null le ferme. */
+  /** This window's ⌃Tab panel: sent 200 ms after the first ⌃Tab if ⌃ is still held; null closes it. */
   surPanneauOnglets(rappel: (p: PanneauOnglets | null) => void): () => void;
-  /** Le panneau ⌃Tab agit sur le parcours en cours (sans effet hors parcours). */
+  /** The ⌃Tab panel acts on the current cycle (no effect outside a cycle). */
   parcoursOnglets(m: MessageParcours): void;
-  /** La barre de commande se ferme : le clavier retourne à la page affichée (dès que l'interface la remontre). */
+  /** The command bar closes: the keyboard goes back to the displayed page (as soon as the UI shows it again). */
   rendreFocusPage(): void;
-  /** Terminal de l'agent de cette fenêtre. */
+  /** This window's agent terminal. */
   agent: {
-    /** Démarre la session (ou la retrouve : son état et sa sortie récente sont renvoyés). */
+    /** Starts the session (or finds it again: its state and recent output are returned). */
     demarrer(t: TailleTerminal): void;
     ecrire(d: string): void;
     redimensionner(t: TailleTerminal): void;
     surDonnees(rappel: (d: string) => void): () => void;
     surEtat(rappel: (e: EtatPanneauAgent) => void): () => void;
-    /** Profils d'agent disponibles (le choix passe par l'action choisirProfilAgent). */
+    /** Available agent profiles (the choice goes through the choisirProfilAgent action). */
     profils(): Promise<{ id: string; nom: string }[]>;
   };
-  /** Accès de l'agent aux onglets (pastilles et bulle pour le couper). */
+  /** The agent's access to tabs (badges and bubble to cut it). */
   acces: {
     etat(): Promise<EtatAcces>;
     couper(id: IdOnglet, droit?: DroitDev): void;
   };
-  /** L'accès de l'agent à un onglet a changé : l'état complet est rediffusé. */
+  /** The agent's access to a tab changed: the full state is broadcast again. */
   surAcces(rappel: (e: EtatAcces) => void): () => void;
-  /** Page d'accueil : les widgets de accueil/widgets de l'espace de l'agent. */
+  /** Home page: the widgets of the agent space's accueil/widgets. */
   accueil: {
     lire(): Promise<WidgetAffiche[]>;
-    /** Un widget, sa disposition, ses données ou son état ont changé : relire. */
+    /** A widget, its layout, its data or its state changed: re-read. */
     surChange(rappel: () => void): () => void;
-    /** Nouvelle disposition (tous les widgets placés) ; refusée si un placement sort de la grille ou vise un id inconnu. */
+    /** New layout (all placed widgets); refused if a placement leaves the grid or targets an unknown id. */
     placer(placements: Placement[]): void;
-    /** Met le widget à la corbeille (accueil/.corbeille) et retire son accord. */
+    /** Puts the widget in the trash (accueil/.corbeille) and removes its grant. */
     retirer(id: string): void;
     /**
-     * Lien demandé par l'affichage du widget `id` : http(s) seulement, dans un onglet de cette fenêtre. Ouvert seulement
+     * Link requested by the display of widget `id`: http(s) only, in a tab of this window. Opened only
      * if a real click of the user just landed in this widget's display (seen by the UI's listener on the frame).
      */
     ouvrir(url: string, id: string): void;
-    /** Profils de connexion qu'un accord peut utiliser (jamais celui d'un espace privé). */
+    /** Login profiles a grant can use (never a private space's). */
     profilsPourAccord(): Promise<ProfilPourAccord[]>;
     /**
-     * L'utilisateur autorise le widget à lire avec son compte, dans ce profil. `compte` et `publiques` : exactement ce que la
-     * carte lui a montré ; refusé (avec l'erreur) si la déclaration a changé depuis.
+     * The user authorizes the widget to read with their account, in this profile. `compte` and `publiques`: exactly what the
+     * card showed them; refused (with the error) if the declaration changed since.
      */
     accorder(a: Accord): Promise<{ ok: true } | { ok: false; erreur: string }>;
-    /** L'utilisateur refuse ou retire l'accord : les données lues avec le compte sont effacées. */
+    /** The user refuses or removes the grant: the data read with the account is erased. */
     refuserAccord(id: string): void;
     /** « Mettre à jour maintenant ». */
     recolter(id: string): void;
-    /** Les dernières exécutions du widget, la plus récente d'abord. */
+    /** The widget's latest executions, most recent first. */
     executions(id: string): Promise<ResumeExecution[]>;
-    /** Une exécution complète (blocs, sorties, journaux) ; null si elle n'existe plus ou si l'id est invalide. */
+    /** A complete execution (blocks, outputs, logs); null if it no longer exists or the id is invalid. */
     execution(id: string, execution: string): Promise<Execution | null>;
   };
   /**
-   * Constructeur visuel des workflows : celui d'un widget (page `webaios://workflow/<id>`) ou d'une action
-   * (`webaios://workflow/action/<id>`, refusé quand l'espace actif de la fenêtre est privé).
+   * The visual builder of workflows: a widget's (page `webaios://workflow/<id>`) or an action's
+   * (`webaios://workflow/action/<id>`, refused when the window's active space is private).
    */
   workflow: {
     catalogue(): Promise<CatalogueBloc[]>;
-    /** null : widget ou action inconnus, ou sans workflow. */
+    /** null: unknown widget or action, or without a workflow. */
     lire(cible: Proprietaire): Promise<EditionWorkflow | null>;
     enregistrer(cible: Proprietaire, brouillon: Brouillon): Promise<ResultatEnregistrement & { avertissements: Avertissement[] }>;
     lireCode(cible: Proprietaire, nom: string): Promise<{ texte: string } | { absent: true } | { erreur: string }>;
     enregistrerCode(cible: Proprietaire, nom: string, texte: string): Promise<{ ok: true } | { ok: false; erreur: string }>;
-    /** Un essai ; pour une action, sa page se voit dans l'aperçu, jamais comme dernier résultat. */
+    /** A trial; for an action, its page shows in the preview, never as the latest result. */
     rejouer(cible: Proprietaire, execution: string, bloc: string): Promise<ResultatEssai>;
     /**
-     * Lance une vraie exécution maintenant ; rend son id (absent si l'agent est arrêté ou si rien n'a tourné). Une action
-     * reçoit `saisie` et peut rendre le refus (`erreur` : saisie requise, accord requis…).
+     * Starts a real execution now; returns its id (absent if the agent is stopped or nothing ran). An action
+     * receives `saisie` and may return the refusal (`erreur`: required input, required grant…).
      */
     lancer(cible: Proprietaire, saisie?: string | null): Promise<{ execution?: string; erreur?: string }>;
-    /** Le bloc sélectionné dans le constructeur de cette fenêtre (pour workflow_ouvert). */
+    /** The block selected in this window's builder (for workflow_ouvert). */
     selection(cible: Proprietaire, bloc: string | null): void;
-    /** Les exécutions des widgets qui tournent (celles des actions : `actions.direct`). */
+    /** The executions of the running widgets (those of actions: `actions.direct`). */
     direct(): Promise<EtatDirect>;
     surDirect(rappel: (e: EtatDirect) => void): () => void;
   };
-  /** IA locale (Kev et Gemma) des récoltes. */
+  /** Local AI (Kev and Gemma) of the harvests. */
   ia: {
     etat(): Promise<EtatIaAffiche>;
-    /** Télécharge Kev et Gemma (plusieurs gigaoctets) : seulement sur un clic de l'utilisateur. */
+    /** Downloads Kev and Gemma (several gigabytes): only on a click by the user. */
     installer(): Promise<{ ok: boolean; erreur?: string }>;
     surEtat(rappel: (e: EtatIaAffiche) => void): () => void;
-    /** Une ligne de la sortie de l'installation. */
+    /** A line of the install output. */
     surProgres(rappel: (ligne: string) => void): () => void;
   };
   /**
-   * Les actions (`~/WebAiOs/actions`) et leurs pages. Refusé quand l'espace actif de la fenêtre est privé
-   * (`ACTIONS_EN_ESPACE_PRIVE`, ou rien : `[]`, `null`).
+   * The actions (`~/WebAiOs/actions`) and their pages. Refused when the window's active space is private
+   * (`ACTIONS_EN_ESPACE_PRIVE`, or nothing: `[]`, `null`).
    */
   actions: {
     liste(): Promise<ActionAffichee[]>;
-    /** Une action, un composant ou un dernier résultat a changé : relire. */
+    /** An action, a component or a latest result changed: re-read. */
     surChange(rappel: () => void): () => void;
     /**
-     * Le choix d'une suggestion : la page de l'action s'ouvre (ou celle qui montre l'exécution en cours) et l'action est
-     * lancée, sauf si elle tourne déjà ou que sa saisie requise manque.
+     * Choosing a suggestion: the action's page opens (or the one showing the running execution) and the action is
+     * started, unless it is already running or its required input is missing.
      */
     ouvrir(id: string, saisie: string | null): Promise<{ ok: true } | { ok: false; erreur: string }>;
-    /** « Relancer » depuis la page : rend l'issue de l'exécution, à sa fin. */
+    /** « Relancer » from the page: returns the outcome of the execution, when it ends. */
     lancer(id: string, saisie: string | null): Promise<ResultatLancement>;
     arreter(id: string): void;
-    /** Ce résultat (null : le dernier), sans rien relancer ; null s'il n'y en a pas. */
+    /** This result (null: the latest), without rerunning anything; null if there is none. */
     page(id: string, execution: string | null): Promise<PageAction | null>;
     executions(id: string): Promise<ResumeExecution[]>;
-    /** Une exécution complète (blocs, sorties, journaux), pour le constructeur ; null si elle n'existe plus. */
+    /** A complete execution (blocks, outputs, logs), for the builder; null if it no longer exists. */
     execution(id: string, execution: string): Promise<Execution | null>;
     direct(): Promise<EtatActions>;
     surDirect(rappel: (e: EtatActions) => void): () => void;
-    /** Un lien de la page : ouvert dans un onglet seulement si l'adresse figure telle quelle dans les résultats. */
+    /** A link from the page: opened in a tab only if the address appears as is in the results. */
     ouvrirLien(id: string, execution: string, url: string): void;
-    /** Profils de connexion qu'un accord peut utiliser (jamais celui d'un espace privé). */
+    /** Login profiles a grant can use (never a private space's). */
     profilsPourAccord(): Promise<ProfilPourAccord[]>;
-    /** Comme pour un widget ; rien n'est lancé (L'utilisateur relance depuis la page). */
+    /** As for a widget; nothing is started (the user reruns from the page). */
     accorder(a: Accord): Promise<{ ok: true } | { ok: false; erreur: string }>;
-    /** Retire l'accord et efface exécutions, résultats et mémoire. */
+    /** Removes the grant and erases executions, results and memory. */
     refuserAccord(id: string): Promise<void>;
-    /** Met l'action à la corbeille (`actions/.corbeille`) et oublie son accord et ses données. */
+    /** Puts the action in the trash (`actions/.corbeille`) and forgets its grant and its data. */
     supprimer(id: string): Promise<{ ok: true } | { ok: false; erreur: string }>;
-    /** Ouvre le constructeur sur le workflow de l'action. */
+    /** Opens the builder on the action's workflow. */
     voirWorkflow(id: string): void;
   };
-  /** Page Applications (projets de l'espace de l'agent). */
+  /** Applications page (projects of the agent's space). */
   applications: {
     liste(): Promise<ListeApplications>;
-    /** Un projet ou l'état d'une appli a changé : relire. */
+    /** A project or an app's state changed: re-read. */
     surChange(rappel: () => void): () => void;
     agir(dossier: string, action: ActionApplication): void;
   };
-  /** Section « Sites » de la page Applications : les applis de site de l'espace de l'agent. */
+  /** « Sites » section of the Applications page: the site apps of the agent's space. */
   sites: {
     liste(): Promise<SiteAffiche[]>;
-    /** Une appli de site est apparue, a changé, s'est ouverte ou fermée : relire. */
+    /** A site app appeared, changed, opened or closed: re-read. */
     surChange(rappel: () => void): () => void;
     agir(id: string, action: ActionSite): void;
   };
   extensions: {
     /**
-     * Installe une extension du Chrome Web Store (adresse de sa page ou id) dans l'espace actif de cette fenêtre, après la
-     * carte d'accord. Saisie illisible : « Adresse ou identifiant du Chrome Web Store attendu ».
+     * Installs a Chrome Web Store extension (its page address or id) in this window's active space, after the
+     * grant card. Unreadable input: « Adresse ou identifiant du Chrome Web Store attendu ».
      */
     installerStore(saisie: string): Promise<{ ok: true } | { ok: false; erreur: string }>;
-    /** Les extensions installées ou accordées, et les dossiers de l'agent jamais accordés, vus depuis cet espace. */
+    /** The installed or granted extensions, and the agent's folders never granted, seen from this space. */
     pourEspace(espaceId: IdEspace): Promise<LigneExtensionEspace[]>;
-    /** Active ou désactive une extension dans le profil de cet espace (l'agent sans accord passe par la carte). */
+    /** Enables or disables an extension in this space's profile (the agent without a grant goes through the card). */
     basculer(cle: string, espaceId: IdEspace, actif: boolean): Promise<{ ok: true } | { ok: false; erreur: string }>;
-    /** Le registre des extensions a changé (ou leurs erreurs) : relire. */
+    /** The extension registry changed (or their errors): re-read. */
     surChange(rappel: () => void): () => void;
-    /** Toutes les extensions du registre (page Extensions). */
+    /** All the registry's extensions (Extensions page). */
     liste(): Promise<LigneExtension[]>;
-    /** « Désactiver toutes les extensions » est-il en vigueur ? */
+    /** Is « Désactiver toutes les extensions » in force? */
     coupees(): Promise<boolean>;
-    /** Les extensions chargées dans le profil de l'espace actif de cette fenêtre. */
+    /** The extensions loaded in the profile of this window's active space. */
     barre(): Promise<BarreExtensions>;
     epingler(cle: string, oui: boolean): Promise<ResultatExtension>;
-    /** Retirée de tous les profils (l'accord reste). */
+    /** Removed from all profiles (the grant stays). */
     desactiverPartout(cle: string): Promise<ResultatExtension>;
-    /** Store : désinstallée ; agent : accord et copie effacés (le dossier de l'agent reste). */
+    /** Store: uninstalled; agent: grant and copy erased (the agent's folder stays). */
     supprimer(cle: string): Promise<ResultatExtension>;
-    /** « Désactiver toutes les extensions » : rien n'est chargé tant que c'est vrai, même après un redémarrage. */
+    /** « Désactiver toutes les extensions »: nothing is loaded while it is true, even after a restart. */
     toutCouper(oui: boolean): Promise<ResultatExtension>;
-    /** La carte de la mise à jour en attente (Store) ou de la portée élargie (agent), dans cette fenêtre. */
+    /** The card of the pending update (Store) or of the widened scope (agent), in this window. */
     revoir(cle: string): Promise<ResultatExtension>;
-    /** Une extension désactivée pour ses plantages repart (là où elle était active). */
+    /** An extension disabled for its crashes starts again (where it was active). */
     reactiver(cle: string): Promise<ResultatExtension>;
-    /** « Couper le déblocage » de la console d'une extension de l'agent. */
+    /** « Couper le déblocage » of an agent extension's console. */
     couperDeblocage(cle: string): Promise<ResultatExtension>;
   };
-  /** Mode design de l'onglet actif de cette fenêtre, et paniers de remarques. */
+  /** Design mode of this window's active tab, and baskets of notes. */
   design: ApiDesign;
   externes: ApiExternes;
   relecture: ApiRelecture;
@@ -346,15 +346,15 @@ export interface ApiWebaios {
 
 export type ResultatExtension = { ok: true } | { ok: false; erreur: string };
 
-/** Une appli telle que la page l'affiche : ce que dit le gestionnaire, et ce que le navigateur en a retenu. */
+/** An app as the page displays it: what the manager says, and what the browser kept of it. */
 export type ApplicationAffichee = Application & { favicon?: string; dernierLancement?: string };
 export interface ListeApplications {
   atelier: "ok" | "docker-absent";
   applications: ApplicationAffichee[];
 }
-/** Un seul segment de chemin : ni séparateur, ni `.`/`..`, ni NUL. */
+/** A single path segment: no separator, no `.`/`..`, no NUL. */
 const segmentValide = (d: string) => d !== "" && d !== "." && d !== ".." && !/[/\\\0]/.test(d);
-/** Actions possibles sur un projet « Sans fiche » dont le nom de dossier n'est pas lançable (`My Project`, `_tmp`…). */
+/** Possible actions on a « Sans fiche » project whose folder name cannot be launched (`My Project`, `_tmp`…). */
 const SUR_TOUT_DOSSIER = new Set(["deboguer", "supprimer", "dossier"]);
 
 export const SchemaActionApplication = z
@@ -365,25 +365,25 @@ export const SchemaActionApplication = z
   .refine(({ dossier, action }) => (SUR_TOUT_DOSSIER.has(action) ? segmentValide(dossier) : dossierValide(dossier)));
 export type ActionApplication = z.infer<typeof SchemaActionApplication>["action"];
 
-/** Une action sur une appli de site : son id suit `ID_SITE` (jamais un chemin). */
+/** An action on a site app: its id follows `ID_SITE` (never a path). */
 export const SchemaActionSite = z.object({
   id: z.string().regex(ID_SITE),
   action: z.enum(["ouvrir", "modifier", "oublier", "dossier", "supprimer", "relire"]),
 });
 
-/** Une carte du panneau ⌃Tab : `apercu` est une data URL JPEG, null si l'onglet n'a jamais été capturé. */
+/** A card of the ⌃Tab panel: `apercu` is a JPEG data URL, null if the tab was never captured. */
 export interface CartePanneauOnglets {
   id: IdOnglet;
   titre: string;
   favicon: string | null;
   apercu: string | null;
 }
-/** Panneau ⌃Tab : au plus 7 cartes (fenêtre glissante), `selection` est un indice dans `cartes`. */
+/** ⌃Tab panel: at most 7 cards (sliding window), `selection` is an index into `cartes`. */
 export interface PanneauOnglets {
   cartes: CartePanneauOnglets[];
   selection: number;
 }
-/** Messages du panneau ⌃Tab vers le process principal (Échap, clic, survol, Tab au clavier de l'interface). */
+/** Messages from the ⌃Tab panel to the main process (Esc, click, hover, Tab on the UI's keyboard). */
 export const SchemaMessageParcours = z.discriminatedUnion("type", [
   z.object({ type: z.literal("valider") }),
   z.object({ type: z.literal("annuler") }),
@@ -393,7 +393,7 @@ export const SchemaMessageParcours = z.discriminatedUnion("type", [
 ]);
 export type MessageParcours = z.infer<typeof SchemaMessageParcours>;
 
-/** Ce que montre le panneau agent d'une fenêtre. */
+/** What a window's agent panel shows. */
 export type EtatPanneauAgent =
   | { etat: "preparation" }
   | { etat: "docker-absent" }
@@ -402,28 +402,28 @@ export type EtatPanneauAgent =
   | { etat: "termine"; code: number };
 
 const idWidget = z.string().regex(/^[a-z0-9-]+$/).max(100);
-/** Id d'une action (nom de son dossier sous `~/WebAiOs/actions`). */
+/** Id of an action (name of its folder under `~/WebAiOs/actions`). */
 export const SchemaIdAction = z.string().regex(/^[a-z0-9-]{1,60}$/);
-/** Saisie d'une action venue de l'interface : bornée ici, coupée par le noyau. */
+/** Input of an action coming from the UI: bounded here, cut by the kernel. */
 export const SchemaSaisieAction = z.string().max(2000).nullable();
-/** Ce qu'ouvre le constructeur : le workflow d'un widget ou celui d'une action. */
+/** What the builder opens: a widget's workflow or an action's. */
 export const SchemaCible = z.discriminatedUnion("type", [
   z.object({ type: z.literal("widget"), id: idWidget }).strict(),
   z.object({ type: z.literal("action"), id: SchemaIdAction }).strict(),
 ]);
 
 /**
- * Id d'un bloc venu de l'interface : borné en taille seulement (jamais un chemin). Le moteur valide la forme et nomme
- * le bloc en cause : un id écrit par l'agent qu'il refuse doit lui parvenir.
+ * Id of a block coming from the UI: bounded in size only (never a path). The engine validates the shape and names
+ * the block at fault: an id written by the agent that it refuses must reach it.
  */
 export const SchemaBlocWorkflow = z.string().min(1).max(200);
-/** Nom d'un fichier de code du widget : un `.mjs` à la racine de son dossier. */
+/** Name of a widget code file: a `.mjs` at the root of its folder. */
 export const SchemaNomCode = z.string().regex(/^[a-z0-9-]+\.mjs$/).max(64);
-/** Texte d'un `.mjs` : 256 Ko au plus (en octets, comme à l'écriture). */
+/** Text of a `.mjs`: 256 KB at most (in bytes, as on write). */
 export const SchemaCodeWorkflow = z.string().max(256 * 1024).refine((t) => new TextEncoder().encode(t).length <= 256 * 1024, "code trop gros");
 /**
- * Brouillon du constructeur : borné mais pas forcément valide pour le moteur (c'est `enregistrerWorkflow` qui répond).
- * Les paramètres restent libres : le moteur les valide.
+ * Builder draft: bounded but not necessarily valid for the engine (`enregistrerWorkflow` answers).
+ * The parameters stay free: the engine validates them.
  */
 export const SchemaBrouillon = z.object({
   version: z.literal(1),
@@ -441,11 +441,11 @@ export const SchemaBrouillon = z.object({
   liens: z.array(z.object({ de: SchemaBlocWorkflow, vers: SchemaBlocWorkflow })).max(400),
 });
 
-/** Le bloc sélectionné dans le constructeur d'une fenêtre, et le workflow (widget ou action) où il l'est. */
+/** The block selected in a window's builder, and the workflow (widget or action) where it is. */
 export type SelectionConstructeur = { widget: string; bloc: string | null } | { action: string; bloc: string | null };
 /**
- * Le bloc sélectionné dans le constructeur : un bloc invalide devient « aucun » (`workflow_ouvert` ne montre jamais
- * l'ancien) ; null, message ignoré, si la cible est invalide.
+ * The block selected in the builder: an invalid block becomes « none » (`workflow_ouvert` never shows
+ * the old one); null, message ignored, if the target is invalid.
  */
 export function selectionConstructeur(v: unknown): SelectionConstructeur | null {
   const o = v as { cible?: unknown; bloc?: unknown } | null;
@@ -459,7 +459,7 @@ export type Brouillon = z.infer<typeof SchemaBrouillon>;
 
 export type EditionWorkflow = LectureBrouillon & {
   avertissements: Avertissement[];
-  /** Ce que `widget.json` déclare, en lecture seule ; `recolte` null : le widget n'en déclare pas. Absent pour une action. */
+  /** What `widget.json` declares, read-only; `recolte` null: the widget declares none. Absent for an action. */
   widget?: {
     nom: string;
     compte: string[];
@@ -468,7 +468,7 @@ export type EditionWorkflow = LectureBrouillon & {
     web: boolean;
     recolte: { minutes: number | null; heures: string[]; dureeMaxMinutes: number | null; notifier: boolean } | null;
   };
-  /** Ce que `action.json` déclare, en lecture seule (jamais écrit par WebAiOs). Absent pour un widget. */
+  /** What `action.json` declares, read-only (never written by WebAiOs). Absent for a widget. */
   action?: {
     nom: string;
     compte: string[];
@@ -479,7 +479,7 @@ export type EditionWorkflow = LectureBrouillon & {
     dureeMaxMinutes: number | null;
   };
 };
-/** Id d'une exécution : son début ISO sans « : » ni « . » (jamais un chemin). */
+/** Id of an execution: its ISO start without « : » or « . » (never a path). */
 export const SchemaIdExecution = z.string().regex(ID_EXECUTION).max(64);
 const domaine = z.string().min(1).max(253);
 export const SchemaAccord = z
@@ -489,7 +489,7 @@ export type Accord = z.infer<typeof SchemaAccord>;
 export const SchemaTailleTerminal = z.object({ cols: z.number().int().min(2).max(1000), rows: z.number().int().min(2).max(1000) });
 export type TailleTerminal = z.infer<typeof SchemaTailleTerminal>;
 
-/** Place d'un widget dans la grille de 12 colonnes (rangées de 90 px). */
+/** Place of a widget in the 12-column grid (rows of 90 px). */
 export interface Placement {
   id: string;
   x: number;
@@ -498,40 +498,40 @@ export interface Placement {
   h: number;
 }
 
-/** Un widget de la page d'accueil, tel que l'interface l'affiche. */
+/** A home page widget, as the UI displays it. */
 export type WidgetAffiche =
   | {
       id: string;
       nom: string;
       placement: Placement;
       tailles: DeclarationWidget["tailles"];
-      /** `webaios-widget://<id>/affichage.html?v=<mtime>`, ou null tant que l'agent n'a pas écrit l'affichage. */
+      /** `webaios-widget://<id>/affichage.html?v=<mtime>`, or null until the agent has written the display. */
       src: string | null;
       donnees: unknown | null;
       exemple: unknown | null;
       etat: EtatWidget;
-      /** Domaines lus avec le compte de l'utilisateur (vide : sources publiques seulement). */
+      /** Domains read with the user's account (empty: public sources only). */
       compte: string[];
-      /** Domaines publics que le widget peut contacter ; pour un widget avec compte, couverts par le même accord. */
+      /** Public domains the widget may contact; for a widget with an account, covered by the same grant. */
       publiques: string[];
-      /** Le widget a une récolte (`workflow.json` ou `recolte.mjs`) : son menu propose « Voir / modifier le workflow ». */
+      /** The widget has a harvest (`workflow.json` or `recolte.mjs`): its menu offers « Voir / modifier le workflow ». */
       aRecolte: boolean;
-      /** Heures fixes de la récolte (« HH:MM »), vide sans elles. */
+      /** Fixed times of the harvest (« HH:MM »), empty without them. */
       heures: string[];
-      /** Fréquence de la récolte en minutes, null sans elle. */
+      /** Harvest frequency in minutes, null without it. */
       minutes: number | null;
     }
   | { id: string; erreur: string; placement: Placement };
 
 export interface ProfilPourAccord {
   id: string;
-  /** « Profil de « Perso, Travail » » : les espaces qui l'utilisent. */
+  /** « Profil de « Perso, Travail » »: the spaces that use it. */
   libelle: string;
-  /** Le profil de l'espace actif de la fenêtre, s'il peut servir. */
+  /** The profile of the window's active space, if it can be used. */
   parDefaut: boolean;
 }
 
-/** État de l'IA locale pour l'indicateur ; `verification` : ce qui est en place (absent si non vérifié). */
+/** State of the local AI for the indicator; `verification`: what is in place (absent if not checked). */
 export interface EtatIaAffiche {
   etat: EtatIa;
   erreur?: string;
@@ -540,67 +540,67 @@ export interface EtatIaAffiche {
 
 /** What an app window's badge UI gets (ui/badge-api.ts): the agent's access and its app's design mode. */
 export type ApiPastille = Pick<ApiWebaios, "acces" | "surAcces"> & {
-  /** Demande au process principal d'agrandir (bulle ouverte) ou de rétrécir la vue de la pastille. */
+  /** Asks the main process to enlarge (bubble open) or shrink the badge's view. */
   pastilleTaille(ouverte: boolean): void;
-  /** Le mode design de la fenêtre d'appli ; « Panier » l'ouvre dans le calque de la fenêtre. */
+  /** The design mode of the app window; « Panier » opens it in the window's overlay. */
   design: { etat(): Promise<EtatDesign>; basculer(): void; panier(): void; relire(): void };
 };
 
 /**
- * L'unique API de l'interface d'une fenêtre d'appli de site (`site.html`). Le process principal reconnaît l'appli à
- * l'expéditeur, jamais à ce que l'interface dit.
+ * The single API of a site app window's UI (`site.html`). The main process recognizes the app by
+ * the sender, never by what the UI says.
  */
 export interface ApiSite {
   etat(): Promise<EtatFenetreSite | null>;
   surEtat(rappel: (e: EtatFenetreSite) => void): () => void;
-  /** « Entrer dans le site » : la vue du site, chargée sur l'adresse de départ la première fois seulement. */
+  /** « Entrer dans le site »: the site view, loaded on the start address the first time only. */
   entrer(): void;
-  /** ⌂ : retour à l'écran d'accueil, la page du site reste chargée dessous. */
+  /** ⌂: back to the home screen, the site page stays loaded underneath. */
   accueil(): void;
   precedent(): void;
   suivant(): void;
   recharger(): void;
-  /** « Ouvrir dans un onglet » : le dernier lien bloqué, dans un onglet de la fenêtre principale. */
+  /** « Ouvrir dans un onglet »: the last blocked link, in a tab of the main window. */
   ouvrirBloque(): void;
-  /** « Chercher la nouvelle adresse » : lit la page de référence (au plus une fois par minute) ; sans effet si l'appli n'en a pas. */
+  /** « Chercher la nouvelle adresse »: reads the reference page (at most once a minute); no effect if the app has none. */
   chercherAdresse(): void;
   /**
-   * La carte d'accord des retouches. oui : l'accord est retenu, puis la vue suivante (accueil ou site) avec retouches ;
-   * non : la vue suivante sans retouches ni reprise, pour cette ouverture seulement (la carte revient à la prochaine).
-   * `empreinte` : celle de la carte cliquée ; si les droits ont changé depuis, rien n'est accordé et la carte revient à jour.
+   * The tweaks grant card. yes: the grant is kept, then the next view (home or site) with tweaks;
+   * no: the next view without tweaks or resume, for this opening only (the card comes back at the next one).
+   * `empreinte`: that of the clicked card; if the rights changed since, nothing is granted and the card comes back up to date.
    */
   accorder(oui: boolean, empreinte: string): Promise<void>;
-  /** Pour l'écran d'accueil : la mémoire de l'appli et ses positions de reprise (lecture), et le domaine actuel. */
+  /** For the home screen: the app's memory and its resume positions (read), and the current domain. */
   memoire(): Promise<MessageVersLAccueil & { type: "memoire" }>;
-  /** Chaque changement de la mémoire de l'appli ; renvoie le désabonnement. */
+  /** Each change of the app's memory; returns the unsubscribe. */
   surMemoire(rappel: (m: MessageVersLAccueil & { type: "memoire" }) => void): () => void;
   /**
-   * L'accueil demande une adresse du site (relative ou sur un de ses domaines) : la vue du site y va, sur le domaine
-   * actuel. Faux si elle est refusée, ou si une autre vient d'être ouverte (une par `ECART_OUVERTURE_ACCUEIL_MS`).
+   * The home asks for a site address (relative or on one of its domains): the site view goes there, on the
+   * current domain. False if it is refused, or if another was just opened (one per `ECART_OUVERTURE_ACCUEIL_MS`).
    */
   ouvrir(adresse: string): Promise<boolean>;
-  /** Une image d'un domaine de l'appli, chargée avec sa session, en `data:` ; null si elle est refusée. */
+  /** An image of an app domain, loaded with its session, as `data:`; null if it is refused. */
   image(url: string): Promise<string | null>;
-  /** Le menu « Extensions » de la barre (plan 16) : les extensions du Store, activées pour cette appli seulement. */
+  /** The bar's « Extensions » menu (plan 16): the Store extensions, enabled for this app only. */
   extensions: {
-    /** Les extensions du Store, et leur état dans cette appli. */
+    /** The Store extensions, and their state in this app. */
     liste(): Promise<LigneExtensionSite[]>;
-    /** L'interrupteur : la vue du site est rechargée après une réussite (la page déjà chargée seulement). */
+    /** The switch: the site view is reloaded after a success (the already loaded page only). */
     basculer(cle: string, actif: boolean): Promise<ResultatExtension>;
-    /** Partition `persist:site-<id>`, onglet = id de la vue en vue « site » (sinon null), et les extensions chargées. */
+    /** Partition `persist:site-<id>`, tab = id of the view in « site » view (otherwise null), and the loaded extensions. */
     barre(): Promise<BarreExtensions>;
-    /** `CANAUX.extensionsChange` ; renvoie le désabonnement. */
+    /** `CANAUX.extensionsChange`; returns the unsubscribe. */
     surChange(rappel: () => void): () => void;
-    /** La page Extensions, dans une fenêtre principale. */
+    /** The Extensions page, in a main window. */
     gerer(): void;
-    /** La hauteur du panneau du menu ouvert sous la barre (0 : fermé), bornée à `PANNEAU_EXTENSIONS_MAX`. */
+    /** Height of the open menu panel under the bar (0: closed), bounded by `PANNEAU_EXTENSIONS_MAX`. */
     panneau(hauteur: number): void;
-    /** Le process principal demande de fermer le menu (clic dans la vue du site, plein écran) ; renvoie le désabonnement. */
+    /** The main process asks to close the menu (click in the site view, fullscreen); returns the unsubscribe. */
     surFermer(rappel: () => void): () => void;
   };
   /**
-   * Le mode design de l'appli (plan 18), bouton ✎ et chevron de la barre : le process principal reconnaît l'appli à
-   * l'expéditeur. `surChange` écoute seulement `CANAUX.designChange` (le compteur suit), sans aucune action.
+   * The app's design mode (plan 18), ✎ button and chevron of the bar: the main process recognizes the app by
+   * the sender. `surChange` only listens to `CANAUX.designChange` (the counter follows), without any action.
    */
   design: {
     etat(): Promise<EtatDesign>;
@@ -611,22 +611,22 @@ export interface ApiSite {
   };
 }
 
-/** Le mode design d'une cible (onglet actif d'une fenêtre, ou fenêtre d'appli). */
+/** The design mode of a target (a window's active tab, or an app window). */
 export interface EtatDesign {
   actif: boolean;
   projet: ProjetSuivi | null;
-  /** Raison pour laquelle le mode design n'est pas proposé ici ; null s'il l'est. */
+  /** Reason why design mode is not offered here; null if it is. */
   indisponible: string | null;
-  /** « l'agent », « Claude Code (<nom>) » ; null si personne ne peut recevoir les remarques. */
+  /** « l'agent », « Claude Code (<nom>) »; null if nobody can receive the notes. */
   destination: string | null;
-  /** Pourquoi `destination` est null (aucun Claude Code branché). */
+  /** Why `destination` is null (no Claude Code connected). */
   sansDestination: string | null;
-  /** Nombre de remarques dans le panier du projet. */
+  /** Number of notes in the project's basket. */
   panier: number;
-  /** Nom du projet à afficher. */
+  /** Name of the project to display. */
   nom: string;
 }
-/** Une remarque telle que le panier et l'historique l'affichent : du texte, jamais du HTML. */
+/** A note as the basket and the history display it: text, never HTML. */
 export interface ElementAffiche {
   id: string;
   type: "design" | "relecture";
@@ -644,42 +644,42 @@ export interface LotAffiche {
 }
 export interface ApiDesign {
   etat(): Promise<EtatDesign>;
-  /** ⌘⇧D : sans effet là où le mode est indisponible. */
+  /** ⌘⇧D: no effect where the mode is unavailable. */
   basculer(): void;
   panier(projet: IdProjet): Promise<ElementAffiche[]>;
   retirer(projet: IdProjet, id: string): Promise<void>;
   envoyer(projet: IdProjet): Promise<ResultatExtension>;
   lots(projet: IdProjet): Promise<LotAffiche[]>;
   traite(projet: IdProjet, lot: string): Promise<void>;
-  /** « Relire ce projet » (projets `app` et `externe`). */
+  /** « Relire ce projet » (`app` and `externe` projects). */
   relire(): void;
   surChange(rappel: () => void): () => void;
 }
-/** Ce que montre le calque : la bulle d'une remarque (élément visé) ou le panier d'une fenêtre d'appli. */
+/** What the overlay shows: a note's bubble (targeted element) or an app window's basket. */
 export interface ContexteCalque {
-  /** « message » : pourquoi ⌘⇧D ne fait rien dans l'onglet (projet vide, jamais de panier). */
+  /** « message »: why ⌘⇧D does nothing in the tab (empty project, never a basket). */
   mode: "bulle" | "panier" | "message";
-  /** Le texte du mode « message » ; null ailleurs. */
+  /** The text of the « message » mode; null elsewhere. */
   message: string | null;
   projet: IdProjet;
   etiquette: string;
   source: string | null;
   destination: string | null;
   sansDestination: string | null;
-  /** Bulle d'une appli de site : ce qui ira à l'agent (extrait, capture) ; null ailleurs. */
+  /** Bubble of a site app: what will go to the agent (excerpt, capture); null elsewhere. */
   avertissement: string | null;
 }
-/** L'unique API du calque du mode design (`design.html`) ; le process principal reconnaît sa cible à l'expéditeur. */
+/** The single API of the design mode overlay (`design.html`); the main process recognizes its target by the sender. */
 export type ApiCalque = {
   contexte(): Promise<ContexteCalque | null>;
   ajouter(texte: string): Promise<ResultatExtension>;
-  /** Échap ou « Annuler » dans la bulle ; « Fermer » du panier. */
+  /** Esc or « Annuler » in the bubble; « Fermer » of the basket. */
   annuler(): void;
 } & Pick<ApiDesign, "panier" | "retirer" | "envoyer" | "lots" | "traite" | "surChange">;
-/** Texte d'une remarque : borné à l'entrée du process principal. */
+/** Text of a note: bounded at the entry of the main process. */
 export const TEXTE_REMARQUE_MAX = 4000;
 
-/** Section « Projets externes » de la page Applications : le MCP externe, ses projets et ses clients (jamais un jeton). */
+/** « Projets externes » section of the Applications page: the external MCP, its projects and its clients (never a token). */
 export interface EtatExternes {
   serveur: { etat: "pret"; port: number } | { etat: "eteint"; raison: string };
   projets: (ProjetExterne & { client: string | null; nomClient: string | null })[];
@@ -687,43 +687,43 @@ export interface EtatExternes {
 }
 export interface ApiExternes {
   liste(): Promise<EtatExternes>;
-  /** La commande à copier dans le terminal du Claude Code : le jeton n'y paraît qu'une fois. */
+  /** The command to copy into Claude Code's terminal: the token appears there only once. */
   brancher(nom: string): Promise<{ commande: string }>;
   revoquer(id: string): Promise<void>;
   oublier(id: string): Promise<void>;
-  /** « Relire » : la page de relecture du projet. */
+  /** « Relire »: the project's review page. */
   relire(id: string): void;
   surChange(rappel: () => void): () => void;
 }
 
-/** Page Relecture : ce qu'elle montre d'un projet (le diff depuis la dernière relecture), ou pourquoi elle ne le peut pas. */
+/** Review page: what it shows of a project (the diff since the last review), or why it cannot. */
 export type VueRelecture =
   | {
       etat: "ok"; nom: string; jeton: string; comparaison: { fichiers: FichierModifie[] }; commentaires: Commentaire[];
-      /** À qui vont les commentaires (« l'agent », « Claude Code (…) ») ; sinon pourquoi ils ne peuvent pas partir. */
+      /** Who the comments go to (« l'agent », « Claude Code (…) »); otherwise why they cannot be sent. */
       destination: string | null; sansDestination: string | null;
     }
   | { etat: "indisponible"; nom: string; raison: string };
 export type { DiffFichier, FichierModifie, Commentaire };
 export interface ApiRelecture {
   /**
-   * Compare le projet à sa dernière relecture et rend le jeton de cette comparaison (gardée par le process principal).
-   * Avec le jeton d'une comparaison encore gardée : celle-là, sans comparer de nouveau ; « Rafraîchir » n'en passe pas.
+   * Compares the project to its last review and returns the token of that comparison (kept by the main process).
+   * With the token of a comparison still kept: that one, without comparing again; « Rafraîchir » does not pass one.
    */
   ouvrir(projet: IdProjet, jeton?: string): Promise<VueRelecture>;
-  /** Le diff d'un fichier de la comparaison du jeton (jamais un autre chemin) ; un jeton qui n'est plus gardé est refusé. */
+  /** The diff of one file of the token's comparison (never another path); a token no longer kept is refused. */
   fichier(projet: IdProjet, jeton: string, chemin: string): Promise<DiffFichier>;
-  /** Lignes `debut`..`fin` (à partir de 1) de la version courante d'un fichier de la comparaison du jeton. */
+  /** Lines `debut`..`fin` (from 1) of the current version of a file of the token's comparison. */
   lignes(projet: IdProjet, jeton: string, chemin: string, debut: number, fin: number): Promise<string[]>;
-  /** Les commentaires du projet, tels qu'enregistrés. */
+  /** The project's comments, as saved. */
   commentaires(projet: IdProjet): Promise<Commentaire[]>;
-  /** Un commentaire sur des lignes d'un seul bloc du diff du jeton ; les lignes sont lues par le process principal. */
+  /** A comment on lines of a single block of the token's diff; the lines are read by the main process. */
   commenter(projet: IdProjet, jeton: string, c: { fichier: string; debut: number; fin: number; texte: string }): Promise<ResultatExtension>;
   modifierCommentaire(projet: IdProjet, id: string, texte: string): Promise<void>;
   resoudre(projet: IdProjet, id: string, resolu: boolean): Promise<void>;
   supprimerCommentaire(projet: IdProjet, id: string): Promise<void>;
-  /** Les commentaires non résolus partent en un lot (agent : pré-rempli, jamais envoyé ; externe : file du MCP). */
+  /** Unresolved comments go out as one batch (agent: pre-filled, never sent; external: MCP queue). */
   envoyer(projet: IdProjet): Promise<ResultatExtension>;
-  /** « Marquer comme relu » : retient l'arbre montré par la comparaison du jeton, puis rend une nouvelle comparaison. */
+  /** « Marquer comme relu »: keeps the tree shown by the token's comparison, then returns a new comparison. */
   relu(projet: IdProjet, jeton: string): Promise<VueRelecture>;
 }

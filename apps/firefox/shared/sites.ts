@@ -1,18 +1,18 @@
 import { z } from "zod";
 import type { EntreeMemoire, PositionVideo } from "@webaios/noyau";
 
-/** Messages et types de la fenêtre d'une appli de site, lus aussi par l'interface (`site.html`, page Applications). */
+/** Messages and types of a site app's window, also read by the UI (`site.html`, Applications page). */
 
-/** Hauteur de la barre d'une fenêtre d'appli de site, en px : la vue du site est posée juste dessous. */
+/** Height of a site app window's bar, in px: the site view is placed right below it. */
 export const HAUTEUR_BARRE_SITE = 36;
 
-/** Hauteur au plus, en px, du panneau du menu « Extensions » de la barre (plan 16) : il repousse la vue du site d'autant. */
+/** Maximum height, in px, of the bar's « Extensions » menu panel (plan 16): it pushes the site view down by as much. */
 export const PANNEAU_EXTENSIONS_MAX = 320;
 
-/** Au plus une lecture de la page de référence par minute et par appli. */
+/** At most one read of the reference page per minute and per app. */
 export const INTERVALLE_SUIVI_MS = 60_000;
 
-/** Taille maximale de l'icône déclarée par une appli de site. */
+/** Maximum size of the icon declared by a site app. */
 export const ICONE_MAX = 256 * 1024;
 
 export const ENTRER_DANS_LE_SITE = "Entrer dans le site";
@@ -33,12 +33,12 @@ export const confirmerSuppressionSite = (nom: string) =>
 export const modifierAvecAgent = (id: string) => `Appli de site ~/WebAiOs/sites/${id}/ : `;
 
 export type AvisBarre =
-  | { genre: "lien-bloque"; domaine: string } // l'URL bloquée reste dans le main
+  | { genre: "lien-bloque"; domaine: string } // the blocked URL stays in the main process
   | { genre: "adresse-changee" | "introuvable" | "inchangee"; texte: string }
-  /** Une mention passagère (le mode design indisponible ici…), effacée après `DUREE_AVIS_INFO_MS` ou à la page suivante. */
+  /** A transient notice (design mode unavailable here…), cleared after `DUREE_AVIS_INFO_MS` or at the next page. */
   | { genre: "info"; texte: string };
 
-/** Durée d'affichage d'une mention `info` dans la barre, en ms. */
+/** Display duration of an `info` notice in the bar, in ms. */
 export const DUREE_AVIS_INFO_MS = 5000;
 
 export type DemandeAccordSite = {
@@ -49,9 +49,9 @@ export type DemandeAccordSite = {
   reprise: boolean;
   fichiers: string[];
   correspond: string[];
-  /** Domaines où le site a été retrouvé par le suivi de l'adresse (hors `domaines`) : les retouches y tournent aussi. */
+  /** Domains where the site was found again by address tracking (outside `domaines`): the tweaks run there too. */
   suivis: string[];
-  /** sha256 (hex) des droits demandés (`droitsDe`) : « Autoriser » ne vaut que pour ceux que la carte a montrés. */
+  /** sha256 (hex) of the requested rights (`droitsDe`): « Autoriser » only applies to those the card showed. */
   empreinte: string;
 };
 
@@ -64,23 +64,23 @@ export type EtatFenetreSite = {
   peutReculer: boolean;
   peutAvancer: boolean;
   suivi: boolean;
-  /** Une lecture de la page de référence est en cours (le bouton « Chercher la nouvelle adresse » attend). */
+  /** A read of the reference page is in progress (the « Chercher la nouvelle adresse » button is waiting). */
   recherche: boolean;
   avis: AvisBarre | null;
   accord: DemandeAccordSite | null;
 };
 
-/** Longueur maximale d'une adresse demandée par l'accueil (ouvrir, image). */
+/** Maximum length of an address requested by the home (open, image). */
 export const ADRESSE_ACCUEIL_MAX = 2000;
 
-/** Schéma de l'écran d'accueil : `webaios-site://<id>/<chemin dans accueil/>`. */
+/** Home screen scheme: `webaios-site://<id>/<path in accueil/>`. */
 export const SCHEMA_SITE = "webaios-site";
-/** Taille maximale d'une image du site demandée par l'accueil (rendue en `data:`). */
+/** Maximum size of a site image requested by the home (rendered as `data:`). */
 export const IMAGE_SITE_MAX = 2 * 1024 * 1024;
-/** Écart minimal entre deux adresses ouvertes par l'accueil. */
+/** Minimum gap between two addresses opened by the home. */
 export const ECART_OUVERTURE_ACCUEIL_MS = 1000;
 
-/** Ce que l'accueil (cadre isolé, code de l'agent) peut demander : rien d'autre n'est relayé. */
+/** What the home (isolated frame, the agent's code) may request: nothing else is relayed. */
 export const MessageDeLAccueil = z.discriminatedUnion("type", [
   z.strictObject({ type: z.literal("pret") }),
   z.strictObject({ type: z.literal("ouvrir"), adresse: z.string().max(ADRESSE_ACCUEIL_MAX) }),
@@ -92,19 +92,19 @@ export type MessageVersLAccueil =
   | { type: "memoire"; valeurs: Record<string, EntreeMemoire>; positions: Record<string, PositionVideo>; domaine: string }
   | { type: "image"; n: number; data: string | null };
 
-/** Erreurs de console des retouches gardées par appli ouverte (les plus récentes). */
+/** Console errors of the tweaks kept per open app (the most recent). */
 export const ERREURS_RETOUCHES_MAX = 50;
-/** Longueur gardée du texte d'un message de console des retouches, et de sa source. */
+/** Kept length of the text of a tweak console message, and of its source. */
 export const CONSOLE_RETOUCHE_TEXTE_MAX = 2000;
 export const CONSOLE_RETOUCHE_SOURCE_MAX = 500;
-/** Total des textes gardés par appli ouverte : au-delà, les plus anciens sont oubliés. */
+/** Total of the kept texts per open app: beyond it, the oldest are forgotten. */
 export const CONSOLE_RETOUCHES_TOTAL = 32_000;
-/** Préfixe des sources des retouches (`webaios-retouche://<id>/<fichier>`), pour reconnaître leurs messages de console. */
+/** Prefix of the tweaks' sources (`webaios-retouche://<id>/<file>`), to recognize their console messages. */
 export const sourceRetouche = (id: string, fichier: string) => `webaios-retouche://${id}/${fichier}`;
 
 /**
  * What the site actor (chrome/agent/site-actor.ts) puts into a frame of a site app's view. `pont`: `webaiosSite` in the
- * retouches' world (main frame on the site only); `reprise`: the video resume (WebAiOs's code).
+ * tweaks' world (main frame on the site only); `reprise`: the video resume (WebAiOs's code).
  */
 export type InjectionCadre = { css: string[]; js: { code: string; nom: string }[]; garde: string | null; hotes: string[]; pont: boolean; reprise: boolean };
 

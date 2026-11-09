@@ -20,17 +20,17 @@ import type { WidgetAffiche } from "../shared/api.ts";
 // The home page's widgets: free placement (version 3) and the theme.
 
 const ID_WIDGET = /^[a-z0-9-]+$/;
-/** L'URL du cadre : la copie assainie que la sidebar écrit, datée du mtime de la source (un nouveau mtime recharge). */
+/** The frame's URL: the sanitized copy that the sidebar writes, dated with the source's mtime (a new mtime reloads). */
 function urlAffichage(id: string, mtime: number): string {
   return `resource://webaios-widget-${id}/affichage-${mtime}.html`;
 }
-/** Taille donnée à un widget illisible (sans déclaration), pour qu'il garde une place et montre son erreur. */
+/** Size given to an unreadable widget (without declaration), so that it keeps a place and shows its error. */
 const TAILLE_WIDGET_ILLISIBLE = { l: 4, h: 2 };
 
 /**
- * Ce que l'interface affiche : chaque widget à sa place, avec ses données, son exemple et son état. `placements` : ce que
- * dit disposition.json ; les widgets absents sont posés au premier trou. `mtimes` : date de affichage.html par widget,
- * pour forcer le rechargement du cadre quand l'agent le réécrit.
+ * What the UI displays: each widget in its place, with its data, its example and its state. `placements`: what
+ * disposition.json says; absent widgets are placed in the first gap. `mtimes`: date of affichage.html per widget,
+ * to force the frame to reload when the agent rewrites it.
  */
 export function versWidgetsAffiches(o: {
   etat: EtatAccueil;
@@ -70,9 +70,9 @@ export function versWidgetsAffiches(o: {
 }
 
 /**
- * Une disposition envoyée par l'interface : entiers, dans l'accueil, un widget connu, une seule fois, sans
- * chevauchement. Refusée en bloc sinon (l'interface relit alors l'ancienne disposition) : `lireDispositionLibre`
- * renvoie [] pour une disposition chevauchante, et l'écrire effacerait tout le placement au prochain lecture.
+ * A layout sent by the UI: integers, within the home, a known widget, only once, without
+ * overlap. Refused as a whole otherwise (the UI then re-reads the old layout): `lireDispositionLibre`
+ * returns [] for an overlapping layout, and writing it would erase the whole placement at the next read.
  */
 export function validerPlacements(brut: unknown, ids: readonly string[]): PlacementLibre[] {
   if (!Array.isArray(brut)) throw new Error("placements invalides : liste attendue");
@@ -99,7 +99,7 @@ export function validerPlacements(brut: unknown, ids: readonly string[]): Placem
   return placements;
 }
 
-/** Écritures de disposition.json une par une, dans l'ordre des demandes : aucune ne lit l'état qu'une autre va changer. */
+/** Writes to disposition.json one by one, in request order: none reads the state another is about to change. */
 const fileDisposition = new Map<string, Promise<void>>();
 function enSerie(c: CheminsEspace, ecrire: () => Promise<void>): Promise<void> {
   const suite = (fileDisposition.get(c.disposition) ?? Promise.resolve()).then(ecrire);
@@ -116,14 +116,14 @@ async function ecrireDisposition(c: CheminsEspace, widgets: readonly PlacementLi
   await rename(temporaire, c.disposition);
 }
 
-/** La nouvelle disposition, déjà validée : écriture atomique, en série (deux glissers rapprochés ne se perdent pas). */
+/** The new layout, already validated: atomic write, in series (two close drags are not lost). */
 export function placerWidgets(c: CheminsEspace, placements: readonly PlacementLibre[]): Promise<void> {
   return enSerie(c, () => ecrireDisposition(c, placements));
 }
 
 /**
- * L'utilisateur retire un widget : son dossier part dans accueil/.corbeille (rien n'est détruit), sa place est libérée et
- * `oublier` retire son accord et ses données (un widget recréé sous le même id ne doit pas hériter de l'accord).
+ * The user removes a widget: its folder goes to accueil/.corbeille (nothing is destroyed), its place is freed and
+ * `oublier` removes its grant and its data (a widget recreated under the same id must not inherit the grant).
  */
 export async function retirerWidget(c: CheminsEspace, id: string, oublier: (id: string) => Promise<void>): Promise<void> {
   if (!ID_WIDGET.test(id)) throw new Error(`id de widget invalide : ${id}`);
@@ -137,13 +137,13 @@ export async function retirerWidget(c: CheminsEspace, id: string, oublier: (id: 
   await oublier(id);
 }
 
-/** Les exécutions gardées d'un widget (`<dossierWidgets>/<id>`), hors de l'espace ; rien pour un id invalide. */
+/** The kept executions of a widget (`<dossierWidgets>/<id>`), outside the space; nothing for an invalid id. */
 export async function executionsWidget(dossierWidgets: string, id: string): Promise<ResumeExecution[]> {
   if (!ID_WIDGET.test(id)) return [];
   return listerExecutions(join(dossierWidgets, id));
 }
 
-/** Une exécution d'un widget ; null si l'un des deux ids est invalide (jamais un chemin) ou si elle n'existe plus. */
+/** An execution of a widget; null if one of the two ids is invalid (never a path). */
 export async function executionWidget(dossierWidgets: string, id: string, execution: string): Promise<Execution | null> {
   if (!ID_WIDGET.test(id) || !ID_EXECUTION.test(execution)) return null;
   return lireExecution(join(dossierWidgets, id), execution);

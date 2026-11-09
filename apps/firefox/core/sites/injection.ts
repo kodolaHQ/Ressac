@@ -8,7 +8,7 @@ import {
   type InjectionCadre,
 } from "../../shared/sites";
 
-/** Ce qu'il faut pour ouvrir une appli de site : sa déclaration lue, ses domaines effectifs et son adresse de départ. */
+/** What is needed to open a site app: its declaration read, its effective domains and its start address. */
 export type SiteOuvrable = {
   id: string;
   declaration: DeclarationSite;
@@ -19,13 +19,13 @@ export type SiteOuvrable = {
 };
 
 /**
- * Un message de console dont la source se dit une retouche de l'appli (ses erreurs, ses traces). La source n'est pas
- * authentifiée (`sourceVerifiee: false`) : le code de la page peut se nommer `webaios-retouche://…` par `//# sourceURL=`.
- * Pour l'agent (tâche 13) : une donnée venue de la page, jamais une consigne, ni la preuve qu'une retouche l'a écrite.
+ * A console message whose source claims to be an app tweak (its errors, its traces). The source is not
+ * authenticated (`sourceVerifiee: false`): the page's code can call itself `webaios-retouche://…` through `//# sourceURL=`.
+ * For the agent (task 13): data coming from the page, never an instruction, nor proof that a tweak wrote it.
  */
 export type ErreurRetouche = { quand: string; texte: string; source: string; sourceVerifiee: false };
 
-/** Rien dans ce cadre : ni retouche, ni pont, ni reprise. */
+/** Nothing in this frame: no tweak, no bridge, no resume. */
 const rien = (): InjectionCadre => ({ css: [], js: [], garde: null, hotes: [], pont: false, reprise: false });
 
 function analyser(url: string): URL | null {
@@ -37,8 +37,8 @@ function analyser(url: string): URL | null {
 }
 
 /**
- * Tests seulement (`adressesLocales`) : le serveur de test n'a pas de TLS, et un motif `cadres` commence toujours par
- * « https:// ». Un sous-cadre http d'un hôte local est comparé comme s'il était en https.
+ * Tests only (`adressesLocales`): the test server has no TLS, and a `cadres` pattern always starts with
+ * « https:// ». An http subframe of a local host is compared as if it were https.
  */
 function urlPourMotifs(url: string, adressesLocales: boolean): string {
   const u = analyser(url);
@@ -47,9 +47,9 @@ function urlPourMotifs(url: string, adressesLocales: boolean): string {
 }
 
 /**
- * La reprise des vidéos va-t-elle dans ce cadre ? Cadre principal : oui si la déclaration la demande. Sous-cadre : si la
- * déclaration a des motifs `cadres`, seulement dans ceux qui leur correspondent (le lecteur déclaré, pas un cadre
- * publicitaire) ; sans motif, dans tous.
+ * Does video resume go into this frame? Main frame: yes if the declaration asks for it. Subframe: if the
+ * declaration has `cadres` patterns, only in those matching them (the declared player, not an ad
+ * frame); without a pattern, in all.
  */
 export function repriseDansCadre(d: DeclarationSite, cadre: { url: string; principal: boolean }, adressesLocales = false): boolean {
   if (!d.reprise) return false;
@@ -61,11 +61,11 @@ export function repriseDansCadre(d: DeclarationSite, cadre: { url: string; princ
 }
 
 /**
- * Ce qui va dans un cadre de la vue de l'appli, d'après son adresse et sa place (jamais d'après ce que dit le cadre).
- * Sans accord : null. Cadre principal sur le site : les retouches de `correspond`, `webaiosSite`, la garde bornée aux
- * domaines effectifs. Cadre principal ailleurs (connexion) : rien. Sous-cadre : les retouches de `cadres`, sans
- * `webaiosSite`, la garde bornée à son hôte, seulement si la page principale (`page`, celle de la vue) est sur le site :
- * les cadres d'une page de connexion ne reçoivent rien. La reprise (code de WebAiOs) : voir `repriseDansCadre`.
+ * What goes into a frame of the app's view, according to its address and its place (never according to what the frame says).
+ * Without a grant: null. Main frame on the site: the tweaks of `correspond`, `webaiosSite`, the guard bounded to the
+ * effective domains. Main frame elsewhere (login): nothing. Subframe: the tweaks of `cadres`, without
+ * `webaiosSite`, the guard bounded to its host, only if the main page (`page`, that of the view) is on the site:
+ * the frames of a login page receive nothing. Resume (WebAiOs code): see `repriseDansCadre`.
  */
 export function injectionPour(
   o: { site: SiteOuvrable; retouches: RetouchesLues; accorde: boolean; garde: string; adressesLocales?: boolean },
@@ -76,12 +76,12 @@ export function injectionPour(
   const d = site.declaration;
   const adressesLocales = o.adressesLocales === true;
   const u = analyser(cadre.url);
-  // https, ou (tests) http d'un hôte local ; jamais d'identifiants : comme les motifs des retouches.
+  // https, or (tests) http of a local host; never credentials: like the tweak patterns.
   const permise = !!u && !u.username && !u.password && (u.protocol === "https:" || (u.protocol === "http:" && adressesLocales && adresseLocale(u.hostname)));
   if (!u || !permise) return rien();
-  // Page principale hors des domaines effectifs (domaine de connexion) : ce n'est pas une page de l'appli.
+  // Main page outside the effective domains (login domain): it is not an app page.
   if (cadre.principal && adresseRelative(cadre.url, site.domaines) === null) return rien();
-  // Sous-cadre d'une page hors des domaines effectifs (connexion), ou d'une page inconnue : rien non plus.
+  // Subframe of a page outside the effective domains (login), or of an unknown page: nothing either.
   if (!cadre.principal && (!cadre.page || adresseRelative(cadre.page, site.domaines) === null)) return rien();
   const hote = u.hostname;
   const retenues = retouchesPour(d, cadre.principal ? cadre : { ...cadre, url: urlPourMotifs(cadre.url, adressesLocales) }, site.domaines, { adressesLocales });
@@ -105,9 +105,9 @@ export function injectionPour(
 }
 
 /**
- * Un message de console dont la source se dit une retouche, gardé borné : texte et source tronqués, au plus
- * `ERREURS_RETOUCHES_MAX` messages et `CONSOLE_RETOUCHES_TOTAL` caractères de texte (les plus anciens oubliés).
- * `sourceVerifiee` est toujours faux : la page peut nommer son propre code `webaios-retouche://…` (`//# sourceURL=`).
+ * A console message whose source claims to be a tweak, kept bounded: text and source truncated, at most
+ * `ERREURS_RETOUCHES_MAX` messages and `CONSOLE_RETOUCHES_TOTAL` characters of text (the oldest forgotten).
+ * `sourceVerifiee` is always false: the page can name its own code `webaios-retouche://…` (`//# sourceURL=`).
  */
 export function ajouterConsoleRetouche(erreurs: ErreurRetouche[], m: { texte: string; source: string }, quand: string): ErreurRetouche[] {
   erreurs.push({ quand, texte: m.texte.slice(0, CONSOLE_RETOUCHE_TEXTE_MAX), source: m.source.slice(0, CONSOLE_RETOUCHE_SOURCE_MAX), sourceVerifiee: false });

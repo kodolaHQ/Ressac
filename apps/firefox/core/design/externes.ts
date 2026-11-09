@@ -18,7 +18,7 @@ import type { EtatExternes } from "../../shared/api";
 const NOM_PAR_DEFAUT = "Claude Code";
 const NOM_MAX = 60;
 
-/** Raison affichée quand le MCP externe ne démarre pas (autrement qu'un port pris) ou que son registre est illisible. */
+/** Reason displayed when the external MCP does not start (other than a taken port) or its registry is unreadable. */
 export const raisonEchec = (e: unknown): string => `Le MCP externe n'a pas pu démarrer : ${e instanceof Error ? e.message : String(e)}`;
 
 export interface ServiceExternes {
@@ -30,8 +30,8 @@ export interface ServiceExternes {
 }
 
 /**
- * Le MCP externe : le serveur local (jamais un autre port que celui demandé), la déclaration d'un projet par un Claude
- * Code (registre, première photo de relecture, notification) et les gestes de la page Applications.
+ * The external MCP: the local server (never another port than the one requested), a project's declaration by a Claude
+ * Code (registry, first review snapshot, notification) and the Applications page's gestures.
  */
 export async function demarrerExternes(o: {
   registre: RegistreExternes;
@@ -41,7 +41,7 @@ export async function demarrerExternes(o: {
   plages: [number, number][];
   racineEspace: string;
   maison: string;
-  /** Notification de la première déclaration d'un projet. */
+  /** Notification of a project's first declaration. */
   notifier(n: { titre: string; texte: string }): void;
 }): Promise<ServiceExternes> {
   let serveur: { port: number; arreter(): Promise<void> } | null = null;
@@ -54,7 +54,7 @@ export async function demarrerExternes(o: {
       declarer: async (client, d): Promise<ResultatDeclaration> => {
         const r = await o.registre.declarer(client.id, d, { plages: o.plages, racineEspace: o.racineEspace, maison: o.maison });
         if (r.lisible) {
-          // La première photo de la relecture se prend en tâche de fond : une erreur n'empêche pas la déclaration.
+          // The review's first snapshot is taken in the background: an error does not prevent the declaration.
           const id = projetExterne(r.projet.id);
           void new DepotRelecture({ depot: depotRelecture(o.dossiers, id), dossier: r.projet.dossier })
             .assurerReference()
@@ -66,7 +66,7 @@ export async function demarrerExternes(o: {
     });
     etatServeur = { etat: "pret", port: serveur.port };
   } catch (e) {
-    // Port pris ou toute autre erreur : la section le dit, jamais « démarre » sans fin.
+    // Port taken or any other error: the section says so, never « démarre » endlessly.
     if ((e as NodeJS.ErrnoException).code === "EADDRINUSE") etatServeur = { etat: "eteint", raison: portPris(o.port) };
     else {
       console.error("[externes] démarrage impossible :", e);
@@ -95,7 +95,7 @@ export async function demarrerExternes(o: {
       await o.registre.oublier(id);
       await o.remarques.oublier(projet);
       await Promise.all([
-        // Par la file du dépôt : passe après une première photo en cours, qui sinon le recréerait.
+        // Through the repository queue: goes after a first snapshot in progress, which would otherwise recreate it.
         new DepotRelecture({ depot: depotRelecture(o.dossiers, projet), dossier: o.racineEspace }).supprimer(),
         rm(fichierCommentaires(o.dossiers, projet), { force: true }),
       ]);

@@ -12,9 +12,9 @@ export const SOURCE_TIMEOUT_MS = 1500;
 
 // The design overlays' sizes and placement.
 type Rectangle = { x: number; y: number; width: number; height: number };
-/** La bulle d'une remarque : 320×170, sous l'élément. */
+/** A note's bubble: 320×170, below the element. */
 export const TAILLE_BULLE = { largeur: 320, hauteur: 170 };
-/** La bulle dans une appli de site : 20 px de plus pour la ligne d'avertissement. */
+/** The bubble in a site app: 20 px more for the warning line. */
 export const TAILLE_BULLE_SITE = { largeur: 320, hauteur: 190 };
 const ECART_BULLE = 6;
 // The unavailability message: 360×56, 12 px from the top and right of the tab's view.
@@ -27,13 +27,13 @@ export const LARGEUR_PANIER = 340;
 /** The unavailability message closes by itself after this. */
 export const DUREE_MESSAGE_MS = 4000;
 
-/** Clé d'une cible, aussi l'argument de son calque. */
+/** Key of a target, also the argument of its overlay. */
 export const cleCible = (c: CibleDesign): string =>
   c.type === "fenetre" ? `fenetre:${c.fenetreId}` : c.type === "app" ? `app:${c.dossier}` : `site:${c.id}`;
 
 /**
- * Place de la bulle dans la fenêtre : sous l'élément (rect CSS × zoom, décalé des bornes de la vue de la page), bornée
- * à la fenêtre, et jamais au-dessus de `hautMin` (le bas de la barre d'une appli de site).
+ * Placement of the bubble in the window: below the element (CSS rect × zoom, shifted by the bounds of the page's view), bounded
+ * to the window, and never above `hautMin` (the bottom of a site app's bar).
  */
 export function placeBulle(
   rect: CaptureViseur["rect"],
@@ -80,7 +80,7 @@ const fini = (n: unknown): n is number => typeof n === "number" && Number.isFini
 const chaine = (c: unknown, max = 1_000_000): c is string => typeof c === "string" && c.length <= max;
 const entierPositif = (n: unknown): n is number => typeof n === "number" && Number.isInteger(n) && n > 0;
 
-/** Le monde isolé est sûr, mais la forme est vérifiée quand même : null si elle n'est pas celle attendue. */
+/** The isolated world is safe, but the shape is checked anyway: null if it is not the expected one. */
 function propreCapture(v: unknown): CaptureViseur | null {
   const c = v as Partial<CaptureViseur> | null;
   if (!c || typeof c !== "object" || !c.rect || !c.vue || !c.voisinage || !c.styles) return null;
@@ -91,7 +91,7 @@ function propreCapture(v: unknown): CaptureViseur | null {
   return c as CaptureViseur;
 }
 
-/** Ce qui vient du monde de la page n'est jamais cru : fichier court, numéros entiers positifs, le reste est écarté. */
+/** What comes from the page's world is never trusted: short file, positive integer numbers, the rest is dropped. */
 function sourceSaine(r: unknown): ContexteDesign["source"] {
   const o = r as { fichier?: unknown; ligne?: unknown; colonne?: unknown } | null;
   if (!o || typeof o !== "object" || !chaine(o.fichier, 1024) || o.fichier === "") return null;
