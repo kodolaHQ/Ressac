@@ -8,7 +8,7 @@ import { ID_PROJET, dossierRemarques, type DossiersDesign, type IdProjet } from 
 export const PANIER_VIDE = "Le panier est vide.";
 export const HTML_MAX = 4096;
 export const MARGE_CAPTURE = 16;
-/** Monde isolé du viseur (999 est celui de la lecture du texte). */
+/** Isolated world of the viewfinder (999 is that of text reading). */
 export const MONDE_VISEUR = 1999;
 export const STYLES_UTILES = [
   "color", "background-color", "font-family", "font-size", "font-weight", "line-height", "text-align", "width", "height",
@@ -18,7 +18,7 @@ export const STYLES_UTILES = [
 ] as const;
 export const TRONQUE = "… [tronqué]";
 export const JOURS_PURGE = 30;
-/** Un dossier des remarques côté espace est un lien symbolique (le conteneur y écrit) : rien n'est écrit au bout. */
+/** A remarks folder on the space side is a symbolic link (the container writes there): nothing is written at the end. */
 export const DOSSIER_LIEN = "dossier des remarques refusé : lien symbolique";
 
 export interface ContexteDesign {
@@ -50,7 +50,7 @@ export function tronquerHtml(html: string): string {
   return html.length > HTML_MAX ? html.slice(0, HTML_MAX) + TRONQUE : html;
 }
 
-/** Côté espace (lu par l'agent du conteneur) : atomique, modes par défaut. Côté privé : 0o700/0o600. */
+/** Space side (read by the container's agent): atomic, default modes. Private side: 0o700/0o600. */
 async function ecrireAtomique(fichier: string, contenu: string | Buffer, prive: boolean): Promise<void> {
   const dossier = dirname(fichier);
   if (prive) {
@@ -63,7 +63,7 @@ async function ecrireAtomique(fichier: string, contenu: string | Buffer, prive: 
   await rename(temporaire, fichier);
 }
 
-/** Le JSON peut venir du conteneur : ids d'éléments valides, capture seulement `<id>.png`. */
+/** The JSON may come from the container: valid element ids, capture only `<id>.png`. */
 function assainir(v: unknown): Element[] {
   if (!Array.isArray(v)) return [];
   const sortie: Element[] = [];
@@ -90,7 +90,7 @@ export class Remarques {
     this.maintenant = o.maintenant ?? (() => new Date());
   }
 
-  /** Visible pour les tests : nombre d'attentes encore enregistrées. */
+  /** Visible for tests: number of waits still registered. */
   nombreAttentes(): number {
     let n = 0;
     for (const s of this.attentes.values()) n += s.size;
@@ -104,8 +104,8 @@ export class Remarques {
   private estPrive(p: IdProjet): boolean { return p.startsWith("ext-"); }
 
   /**
-   * Avant d'écrire côté espace (monté en écriture dans le conteneur) : ni `.webaios`, ni la racine des remarques, ni le
-   * dossier du projet, ni celui du lot ne sont des liens symboliques (un absent sera créé en vrai dossier).
+   * Before writing on the space side (mounted writable in the container): neither `.webaios`, nor the remarks root, nor the
+   * project folder, nor the batch's are symbolic links (a missing one will be created as a real folder).
    */
   private async sansLien(p: IdProjet, lot?: string): Promise<void> {
     if (this.estPrive(p)) return;

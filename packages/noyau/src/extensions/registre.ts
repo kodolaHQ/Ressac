@@ -36,30 +36,30 @@ const EntreeSchema = z.object({
 
 export interface EntreeExtension {
   source: SourceExtension;
-  /** Agent : null avant le premier chargement. */
+  /** Agent: null before the first load. */
   idChrome: string | null;
   nom: string;
   version: string;
-  /** Portée acceptée par l'utilisateur ; null : jamais accordée. */
+  /** Scope accepted by the user; null: never granted. */
   accord: Portee | null;
-  /** Profils où l'extension est active. */
+  /** Profiles where the extension is active. */
   profils: IdProfil[];
   epinglee: boolean;
-  /** ISO ; agent : dernière copie rechargée. */
+  /** ISO; agent: last copy reloaded. */
   modifieeLe: string | null;
   desactivee: { raison: "portee-elargie" | "plantages"; le: string } | null;
   /** Store. */
   majEnAttente: { version: string; portee: Portee; chemin: string } | null;
-  /** Dernière version démarrée dans chaque profil. */
+  /** Last version started in each profile. */
   vues: Record<IdProfil, string>;
   /**
-   * Store : applis de site où elle est active, avec l'empreinte de leurs domaines (`empreinteExtensionsSite`) au moment
-   * de l'activation. Absent : aucune.
+   * Store: site apps where it is active, with the fingerprint of their domains (`empreinteExtensionsSite`) at the time
+   * of activation. Absent: none.
    */
   applis?: Record<IdSite, string>;
   /**
-   * Agent : profils où elle a tourné dans un onglet que l'agent ne peut pas lire. Sa console de service worker et de
-   * pages lui reste masquée ; jamais remis à zéro (son stockage a pu garder ce qu'elle y a lu), effacé avec l'entrée.
+   * Agent: profiles where it ran in a tab the agent cannot read. Its service worker and pages console
+   * stays hidden from it; never reset (its storage may have kept what it read there), erased with the entry.
    */
   consoleMasquee?: IdProfil[];
 }
@@ -69,9 +69,9 @@ export interface EtatExtensions {
   toutesCoupees: boolean;
   extensions: Record<string, EntreeExtension>;
   /**
-   * Ids Chromium des extensions de l'agent dont la console de service worker et de pages lui reste masquée (elles ont
-   * tourné dans un onglet qu'il ne peut pas lire). Survit à la suppression de l'entrée : une copie recréée au même
-   * endroit a le même id. Jamais vidé.
+   * Chromium ids of the agent's extensions whose service worker and pages console stays hidden from it (they
+   * ran in a tab it cannot read). Survives the entry's deletion: a copy recreated at the same
+   * place has the same id. Never emptied.
    */
   consolesMasquees?: string[];
 }
@@ -140,7 +140,7 @@ export function epingler(e: EtatExtensions, cle: string, oui: boolean): EtatExte
   return avec(e, cle, (y) => ({ ...y, epinglee: oui }));
 }
 
-/** Retire chaque extension de l'agent des profils privés ; celles du Store restent. */
+/** Removes each agent extension from private profiles; the Store ones stay. */
 export function appliquerProfilsPrives(
   e: EtatExtensions,
   profilsPrives: ReadonlySet<IdProfil>,
@@ -162,9 +162,9 @@ const fichier = (dossier: string) => join(dossier, "etat.json");
 
 interface Lecture {
   etat: EtatExtensions;
-  /** Fichier présent mais illisible, de forme inconnue, ou dont des entrées ont été ignorées. */
+  /** File present but unreadable, of unknown shape, or with entries that were ignored. */
   abime: boolean;
-  /** Fichier d'une version plus récente : lecture vide, écriture refusée. */
+  /** File of a newer version: empty read, write denied. */
   futur: boolean;
 }
 
@@ -203,21 +203,21 @@ async function lire(dossier: string): Promise<Lecture> {
 }
 
 /**
- * L'état du fichier. Absent (ENOENT) : état vide. Abîmé ou de version future : état vide aussi, sans rien effacer
- * (voir `modifierEtatExtensions`). Lève pour toute erreur de lecture autre que ENOENT.
+ * The state of the file. Absent (ENOENT): empty state. Damaged or of a future version: empty state too, erasing nothing
+ * (see `modifierEtatExtensions`). Throws for any read error other than ENOENT.
  */
 export async function lireEtatExtensions(dossier: string): Promise<EtatExtensions> {
   return (await lire(dossier)).etat;
 }
 
-/** Une écriture à la fois par dossier ; fichier temporaire puis `rename`. */
+/** One write at a time per folder; temporary file then `rename`. */
 const files = new Map<string, Promise<unknown>>();
 
 /**
- * Modifie l'état, une écriture à la fois. `changer` reçoit l'état et les profils privés ; `profilsPrives` est un
- * fournisseur évalué DANS la modification sérialisée (jamais capturé avant), et `appliquerProfilsPrives` est
- * rappliqué au résultat. Un fichier abîmé (ou aux entrées ignorées) est copié en `etat.json.abime-<horodatage>` avant
- * d'être remplacé ; un fichier de version plus récente refuse l'écriture.
+ * Modifies the state, one write at a time. `changer` receives the state and the private profiles; `profilsPrives` is a
+ * provider evaluated INSIDE the serialized modification (never captured before), and `appliquerProfilsPrives` is
+ * re-applied to the result. A damaged file (or one with ignored entries) is copied to `etat.json.abime-<timestamp>` before
+ * being replaced; a file of a newer version refuses the write.
  */
 export function modifierEtatExtensions(
   dossier: string,

@@ -4,12 +4,12 @@ import type { CheminsEspace } from "../chemins.js";
 
 const REGROUPEMENT_MS = 150;
 
-/** Appelle `rappel` après chaque rafale de changements dans ces dossiers (créés s'ils manquent). Renvoie l'arrêt. */
+/** Calls `rappel` after each burst of changes in these folders (created if missing). Returns the stop. */
 function surveiller(dossiers: string[], rappel: () => void): () => Promise<void> {
   for (const d of dossiers) mkdirSync(d, { recursive: true });
   let minuterie: NodeJS.Timeout | undefined;
   const observateur = watch(dossiers, { ignoreInitial: true, ignored: (p) => p.endsWith(".tmp") || p.endsWith(".nouveau") });
-  // Chokidar émet ses erreurs plutôt que de les lancer : sans écouteur, elles seraient perdues.
+  // Chokidar emits its errors rather than throwing them: without a listener, they would be lost.
   observateur.on("error", (e) => console.error("[webaios] la surveillance des dossiers a échoué :", e));
   observateur.on("all", () => {
     clearTimeout(minuterie);
@@ -21,12 +21,12 @@ function surveiller(dossiers: string[], rappel: () => void): () => Promise<void>
   };
 }
 
-/** Appelle `rappel` après chaque rafale de changements dans `accueil/`. Renvoie la fonction d'arrêt. */
+/** Calls `rappel` after each burst of changes in `accueil/`. Returns the stop function. */
 export function surveillerAccueil(c: CheminsEspace, rappel: () => void): () => Promise<void> {
   return surveiller([c.accueil], rappel);
 }
 
-/** Appelle `rappel` après chaque rafale de changements dans `actions/` ou `composants/`. Renvoie la fonction d'arrêt. */
+/** Calls `rappel` after each burst of changes in `actions/` or `composants/`. Returns the stop function. */
 export function surveillerActions(c: CheminsEspace, rappel: () => void): () => Promise<void> {
   return surveiller([c.actions, c.composants], rappel);
 }

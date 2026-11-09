@@ -22,7 +22,7 @@ async function lireDeclaration(dossier: string): Promise<{ declaration: Declarat
     if (s.size > TAILLE_MAX_ACTION_JSON) return { erreur: `action.json dépasse ${TAILLE_MAX_ACTION_JSON / 1024} Ko` };
     brut = JSON.parse(await readFile(fichier, "utf8"));
   } catch (e) {
-    // Texte fixe : le message du système citerait des chemins du Mac.
+    // Fixed text: the system's message would quote Mac paths.
     return { erreur: e instanceof SyntaxError ? "action.json illisible (pas du JSON valide)" : "action.json illisible" };
   }
   const r = DeclarationAction.safeParse(brut);
@@ -39,11 +39,11 @@ async function lireUne(c: CheminsEspace, id: string): Promise<ActionLue> {
   return { id, dossier, declaration: lu.declaration, aWorkflow: await existe(join(dossier, "workflow.json")) };
 }
 
-/** Les actions du disque, triées par nom ; une action cassée est signalée, elle n'empêche pas de lire les autres. */
+/** Actions on disk, sorted by name; a broken action is reported, it does not prevent reading the others. */
 export async function lireActions(c: CheminsEspace): Promise<ActionLue[]> {
   let noms: string[];
   try {
-    // `isDirectory` est faux pour un lien symbolique : un lien vers un dossier est ignoré.
+    // `isDirectory` is false for a symbolic link: a link to a folder is ignored.
     noms = (await readdir(c.actions, { withFileTypes: true })).filter((e) => e.isDirectory() && ID_ACTION.test(e.name)).map((e) => e.name).sort();
   } catch {
     return [];
@@ -51,7 +51,7 @@ export async function lireActions(c: CheminsEspace): Promise<ActionLue[]> {
   return Promise.all(noms.map((id) => lireUne(c, id)));
 }
 
-/** Une action par son id ; null si le dossier n'existe pas (ou est un lien symbolique, ou un nom invalide). */
+/** An action by its id; null if the folder does not exist (or is a symbolic link, or an invalid name). */
 export async function lireAction(c: CheminsEspace, id: string): Promise<ActionLue | null> {
   if (!ID_ACTION.test(id)) return null;
   try {
@@ -62,12 +62,12 @@ export async function lireAction(c: CheminsEspace, id: string): Promise<ActionLu
   return lireUne(c, id);
 }
 
-/** Ce que la déclaration de l'action change aux règles de son workflow. */
+/** What the action's declaration changes to the rules of its workflow. */
 export function contexteValidationAction(d: DeclarationAction): ContexteValidation {
   return { web: d.sources.web, dureeMaxMinutes: d.dureeMaxMinutes ?? null, proprietaire: "action", saisie: d.saisie !== undefined };
 }
 
-/** Le workflow d'une action : `workflow.json` seulement (pas de workflow implicite d'un `recolte.mjs`). Rien n'est exécuté. */
+/** An action's workflow: `workflow.json` only (no implicit workflow from a `recolte.mjs`). Nothing is run. */
 export async function workflowDeLAction(
   a: ActionLue,
 ): Promise<{ t: "ok"; valide: WorkflowValide } | { t: "invalide" | "illisible"; erreur: string } | { t: "absent" }> {

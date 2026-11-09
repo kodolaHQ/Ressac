@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { chmod, mkdir, rename, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 
-/** Écrit un JSON en atomique (temporaire puis rename) : dossier 0o700, fichier 0o600. */
+/** Writes a JSON atomically (temporary then rename): folder 0o700, file 0o600. */
 export async function ecrireJsonPrive(fichier: string, donnees: unknown): Promise<void> {
   const dossier = dirname(fichier);
   await mkdir(dossier, { recursive: true, mode: 0o700 });

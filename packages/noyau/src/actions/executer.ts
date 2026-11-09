@@ -32,40 +32,40 @@ import type { DeclarationAction } from "./schemas.js";
 
 export const ACTION_INCONNUE = "Action inconnue";
 export const saisieRequise = (libelle: string) => `Saisie requise : ${libelle}`;
-/** Même texte que pour un widget. */
+/** Same text as for a widget. */
 export const accordRequisAction = (d: DeclarationAction) => `Accord requis pour lire avec ton compte : ${d.sources.compte.join(", ")}`;
 export const ACTION_SANS_WORKFLOW = "Cette action n'a pas de workflow.json";
 export const RESULTAT_TROP_GROS = "Résultats trop gros pour être gardés";
-/** Longueur maximale de la saisie gardée (celle d'`Execution.saisie`). */
+/** Maximum length of the kept input (that of `Execution.saisie`). */
 export const SAISIE_MAX = 200;
 
-/** L'issue d'un lancement : `invalide` quand rien n'a tourné (action inconnue, workflow invalide, saisie absente…). */
+/** The outcome of a launch: `invalide` when nothing ran (unknown action, invalid workflow, missing input…). */
 export type ResultatLancement = { statut: Execution["statut"] | "invalide"; execution?: string; erreur?: string; erreurNoyau?: true };
 
-/** Une trace du workflow d'une action, avec le type de son bloc (la page montre son libellé du catalogue). */
+/** A trace of an action's workflow, with its block type (the page shows its label from the catalog). */
 export type TraceAction = TraceDirecte & { type?: string };
 
 export interface OptionsAction {
   id: string;
   chemins: CheminsEspace;
-  /** Exécutions, résultats, mémoire et accords des actions, hors de l'espace (`<profil>/actions`). */
+  /** Runs, results, memory and grants of actions, outside the workspace (`<profile>/actions`). */
   dossierActions: string;
   moteur: string;
   atelier: Pick<Atelier, "commandeRecolte" | "supprimerRecolte">;
   lancer?: LanceurProcessus;
   pont: PontNavigateur;
-  /** L'accès de cette exécution à l'IA locale (prioritaire), pour les blocs et la mise en page ; null sans IA. */
+  /** This run's access to the local AI (priority), for blocks and layout; null without AI. */
   ia: AccesIaExecution | null;
   horloge?: () => Date;
   saisie: string | null;
   declencheur: Execution["declencheur"];
-  /** « Arrêter » : levé pendant le workflow, l'exécution est interrompue ; pendant la mise en page, celle de secours. */
+  /** « Stop »: raised during the workflow, the run is interrupted; during the layout, the fallback one. */
   signal: AbortSignal;
   surTrace(t: TraceAction): void;
   surEtape(e: "mise-en-page"): void;
-  /** Un essai du constructeur : rejoue depuis `depart` avec les sorties amont de l'exécution `origine`. */
+  /** A builder trial: replays from `depart` with the upstream outputs of run `origine`. */
   essai?: { origine: string; depart: string };
-  /** Vrai quand le noyau s'arrête : l'exécution est alors « interrompue » par WebAiOs, pas par l'utilisateur. */
+  /** True when the kernel stops: the run is then « interrupted » by WebAiOs, not by the user. */
   interrompue?: () => boolean;
   adressesLocales?: boolean;
   menagement?: Menagement;
@@ -73,10 +73,10 @@ export interface OptionsAction {
   delaiMiseEnPageMs?: number;
 }
 
-/** La saisie telle qu'elle est gardée et envoyée : sans espaces autour, `SAISIE_MAX` caractères au plus ; null si vide. */
+/** The input as it is kept and sent: trimmed, at most `SAISIE_MAX` characters; null if empty. */
 export function couperSaisie(saisie: string | null | undefined): string | null {
   let s = (saisie ?? "").trim().slice(0, SAISIE_MAX);
-  // Pas de moitié de caractère au bout.
+  // No half character at the end.
   if (/[\uD800-\uDBFF]$/.test(s)) s = s.slice(0, -1);
   s = s.trimEnd();
   return s === "" ? null : s;
@@ -84,7 +84,7 @@ export function couperSaisie(saisie: string | null | undefined): string | null {
 
 const refus = (erreur: string, noyau = true): ResultatLancement => ({ statut: "invalide", erreur, ...(noyau ? { erreurNoyau: true as const } : {}) });
 
-/** Comme `accordEnRegle` des widgets : un accord périmé est retiré, et ce qui a été lu avec effacé. */
+/** Like the widgets' `accordEnRegle`: a stale grant is withdrawn, and what was read with it erased. */
 async function accordEnRegle(dossierActions: string, id: string, d: DeclarationAction): Promise<boolean> {
   const enregistre = (await lireAccords(dossierActions))[id];
   if (enregistre !== undefined && !accordValide(d, enregistre)) {
@@ -95,17 +95,17 @@ async function accordEnRegle(dossierActions: string, id: string, d: DeclarationA
 }
 
 /**
- * Lance une action : son workflow dans le conteneur, puis la mise en page de son résultat par Gemma (de secours sans
- * elle). Gardés, dans l'ordre : l'exécution, le résultat, la mémoire (jamais pour un essai). Rien n'est écrit quand
- * l'action n'a pas pu tourner. Pour une action avec compte, l'accord est relu après chaque écriture : retiré, tout ce
- * qui a été lu avec part. Une action dont le dossier a disparu pendant ne garde rien.
+ * Launches an action: its workflow in the container, then the layout of its result by Gemma (a fallback without
+ * it). Kept, in order: the run, the result, the memory (never for a trial). Nothing is written when
+ * the action could not run. For an action with an account, the grant is re-read after each write: withdrawn, everything
+ * read with it goes. An action whose folder disappeared meanwhile keeps nothing.
  */
 export async function executerAction(o: OptionsAction): Promise<ResultatLancement> {
   const { id, chemins, dossierActions } = o;
   const horloge = o.horloge ?? (() => new Date());
   const action = await lireAction(chemins, id);
   if (!action) return refus(ACTION_INCONNUE);
-  // L'erreur de lecture d'action.json en cite le contenu (noms de clés) : elle n'est pas un texte fixe du noyau.
+  // The read error of action.json quotes its content (key names): it is not a fixed kernel text.
   if ("erreur" in action) return refus(action.erreur, false);
   const wf = await workflowDeLAction(action);
   if (wf.t === "absent") return refus(ACTION_SANS_WORKFLOW);
@@ -116,7 +116,7 @@ export async function executerAction(o: OptionsAction): Promise<ResultatLancemen
   const proprietaire: Proprietaire = { type: "action", id };
   const typesBlocs = new Map(valide.workflow.blocs.map((b) => [b.id, b.type]));
 
-  // Un essai reprend les sorties amont d'une exécution : sa saisie aussi, à défaut d'une nouvelle.
+  // A trial resumes the upstream outputs of a run: its input too, in the absence of a new one.
   const rejeu = o.essai ? await chaineOrigine(dossierDonnees, o.essai.origine) : null;
   const saisie = declaration.saisie ? couperSaisie(o.saisie ?? rejeu?.[0]?.saisie ?? null) : null;
   if (declaration.saisie && saisie === null) return refus(saisieRequise(declaration.saisie.libelle));
@@ -165,7 +165,7 @@ export async function executerAction(o: OptionsAction): Promise<ResultatLancemen
       dossierFichiers: action.dossier,
       config: null,
       precedent: null,
-      // Un essai ne reçoit ni ne garde aucune mémoire.
+      // A trial neither receives nor keeps any memory.
       memoire: plan ? {} : await lireMemoire(dossierDonnees),
       ...contexteAccord,
       declencheur: o.declencheur,
@@ -196,7 +196,7 @@ export async function executerAction(o: OptionsAction): Promise<ResultatLancemen
 
   const accordRetire = async () => declaration.sources.compte.length > 0 && !accordValide(declaration, (await lireAccords(dossierActions))[id]);
   const presente = async () => (await lireAction(chemins, id)) !== null;
-  // Ce que cette exécution a écrit : seul ce qui peut être repris si l'action a disparu entre-temps.
+  // What this run wrote: only what can be taken back if the action disappeared in the meantime.
   let executionEcrite = false;
   let resultatEcrit = false;
   const garderExecution = async () => {
@@ -204,9 +204,9 @@ export async function executerAction(o: OptionsAction): Promise<ResultatLancemen
     executionEcrite = true;
   };
   /**
-   * Ce qui a été lu avec le compte part avec l'accord (tout l'historique). Une action introuvable (supprimée, ou dossier
-   * des actions démonté un moment, illisible…) ne garde rien de cette exécution, mais son historique reste : l'effacer
-   * revient à `oublierActionsDisparues`, au démarrage, qui sait reconnaître un dossier des actions absent.
+   * What was read with the account goes with the grant (the whole history). An action not found (deleted, or actions folder
+   * unmounted for a while, unreadable…) keeps nothing of this run, but its history stays: erasing it
+   * is up to `oublierActionsDisparues`, at startup, which can recognize an absent actions folder.
    */
   const perdue = async (): Promise<ResultatLancement | null> => {
     if (await accordRetire()) {
@@ -248,8 +248,8 @@ export async function executerAction(o: OptionsAction): Promise<ResultatLancemen
   });
   const pendant = await perdue();
   if (pendant) return pendant;
-  // WebAiOs s'arrête pendant la mise en page : l'exécution est interrompue, sans résultat ni mémoire. (« Arrêter » de
-  // L'utilisateur, lui, garde le résultat avec la mise en page de secours.)
+  // WebAiOs stops during the layout: the run is interrupted, with no result or memory. (The user's « Stop »,
+  // on the other hand, keeps the result with the fallback layout.)
   if (o.interrompue?.() === true) {
     marquerInterrompue(execution);
     await garderExecution();
@@ -261,7 +261,7 @@ export async function executerAction(o: OptionsAction): Promise<ResultatLancemen
     await ecrireResultat(dossierActions, id, { version: 1, execution: execution.id, saisie, resultats, plan: page.plan, secours: page.secours, vide: page.vide });
     resultatEcrit = true;
   } catch (e) {
-    // Trop gros (ou disque) : l'exécution échoue côté noyau, sans résultat.
+    // Too big (or disk): the run fails kernel-side, with no result.
     console.error(`[webaios] résultat de l'action ${id} :`, message(e));
     execution.statut = "echouee";
     execution.erreur = RESULTAT_TROP_GROS;
@@ -273,8 +273,8 @@ export async function executerAction(o: OptionsAction): Promise<ResultatLancemen
   if (apresResultat) return apresResultat;
 
   if (!plan && issue.memoire) {
-    // Relu sous le verrou de la mémoire : une suppression qui s'est glissée depuis ne la laisse pas écrite (l'effacement
-    // des données de l'action passe par ce même verrou).
+    // Re-read under the memory lock: a deletion that slipped in since does not leave it written (the erasure
+    // of the action's data goes through this same lock).
     const gardee = await avecMemoire(
       dossierDonnees,
       async () => (await accordRetire()) || !(await presente()) || (await ecrireMemoire(dossierDonnees, issue.memoire!)),
@@ -287,14 +287,14 @@ export async function executerAction(o: OptionsAction): Promise<ResultatLancemen
   return (await perdue()) ?? conclusion();
 }
 
-/** Retire l'exécution et le résultat écrits par cette exécution seulement (mêmes chemins que `executions.ts` et `donnees.ts`). */
+/** Removes the run and result written by this run only (same paths as `executions.ts` and `donnees.ts`). */
 async function oublierCetteExecution(dossierDonnees: string, execution: string, ecrits: { execution: boolean; resultat: boolean }): Promise<void> {
   if (!ID_EXECUTION.test(execution)) return;
   if (ecrits.resultat) await rm(join(dossierDonnees, "resultats", `${execution}.json`), { force: true }).catch(() => {});
   if (ecrits.execution) await rm(join(dossierDonnees, "executions", `${execution}.json`), { force: true }).catch(() => {});
 }
 
-/** Le message d'une action qui attend un nouvel accord : celui du moteur s'il s'est arrêté pour ça (profil refusé…). */
+/** The message of an action waiting for a new grant: the engine's if it stopped for that (profile denied…). */
 function messageRefus(issue: IssueWorkflow, d: DeclarationAction): string {
   return issue.t === "arret" && issue.statut === "accord-requis" ? issue.erreur : accordRequisAction(d);
 }

@@ -3,10 +3,10 @@ import { join } from "node:path";
 import { z } from "zod";
 import type { CheminsEspace } from "../chemins.js";
 
-/** Couleur #rrggbb : ni nom, ni rgba, pour que la page puisse l'appliquer telle quelle. */
+/** #rrggbb color: no name, no rgba, so the page can apply it as is. */
 const couleur = z.string().regex(/^#[0-9a-fA-F]{6}$/, "couleur #rrggbb attendue");
 
-/** Thème de la page d'accueil, écrit par l'agent ; la page Firefox l'applique, absent ou invalide elle garde le défaut. */
+/** Home page theme, written by the agent; the Firefox page applies it, absent or invalid it keeps the default. */
 export const ThemeAccueil = z.object({
   version: z.literal(1),
   fond: couleur.optional(),
@@ -21,7 +21,7 @@ export const ThemeAccueil = z.object({
 }).strict();
 export type ThemeAccueil = z.infer<typeof ThemeAccueil>;
 
-/** theme : null si absent. erreur : présent et invalide (le défaut s'applique, le fichier n'est jamais réécrit). */
+/** theme: null if absent. erreur: present and invalid (the default applies, the file is never rewritten). */
 export async function lireTheme(c: CheminsEspace): Promise<{ theme: ThemeAccueil | null; erreur?: string }> {
   let brut: unknown;
   try {

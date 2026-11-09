@@ -8,23 +8,23 @@ export interface ResultatExecution {
   stderr: string;
 }
 
-/** `signal` : annule la commande (tout son groupe de processus est tué), le résultat a alors le code CODE_ANNULE. */
+/** `signal`: cancels the command (its whole process group is killed), the result then has the code CODE_ANNULE. */
 export type Executeur = (commande: string, args: string[], opts?: { delaiMs?: number; signal?: AbortSignal }) => Promise<ResultatExecution>;
 
-/** Code renvoyé quand le délai est dépassé (même convention que timeout(1)). */
+/** Code returned when the timeout is exceeded (same convention as timeout(1)). */
 export const CODE_DELAI_DEPASSE = 124;
 
-/** Code renvoyé quand la commande est annulée par son signal (128 + SIGTERM). */
+/** Code returned when the command is cancelled by its signal (128 + SIGTERM). */
 export const CODE_ANNULE = 143;
 
-/** Délai entre SIGTERM et SIGKILL quand un groupe annulé ne s'arrête pas. */
+/** Delay between SIGTERM and SIGKILL when a cancelled group does not stop. */
 const DELAI_KILL_ANNULE_MS = 2000;
 
-/** Groupes de processus encore vivants : tués de façon synchrone si le process Node sort sans les arrêter. */
+/** Process groups still alive: killed synchronously if the Node process exits without stopping them. */
 const groupesVivants = new Set<number>();
 let sortieBranchee = false;
 
-/** Envoie `signal` à tout le groupe `pid` ; faux si le groupe est déjà mort (0 : simple vérification). */
+/** Sends `signal` to the whole group `pid`; false if the group is already dead (0: simple check). */
 export function tuerGroupe(pid: number, signal: NodeJS.Signals | 0): boolean {
   try {
     process.kill(-pid, signal);
@@ -34,7 +34,7 @@ export function tuerGroupe(pid: number, signal: NodeJS.Signals | 0): boolean {
   }
 }
 
-/** Retient un groupe lancé en `detached` : s'il vit encore quand le process Node sort, il est tué (SIGKILL). */
+/** Remembers a group launched `detached`: if it is still alive when the Node process exits, it is killed (SIGKILL). */
 export function retenirGroupe(pid: number): void {
   groupesVivants.add(pid);
   if (sortieBranchee) return;
@@ -48,18 +48,18 @@ export function oublierGroupe(pid: number): void {
   groupesVivants.delete(pid);
 }
 
-/** Dossiers où vivent docker et ses assistants (identifiants) quand l'app est lancée depuis le Finder. */
+/** Folders where docker and its helpers (credentials) live when the app is launched from the Finder. */
 export const DOSSIERS_OUTILS = [
   "/usr/local/bin",
   "/opt/homebrew/bin",
   join(homedir(), ".orbstack", "bin"),
-  join(homedir(), ".docker", "bin"), // Docker Desktop installé par utilisateur
+  join(homedir(), ".docker", "bin"), // Docker Desktop installed per user
 ];
 
-/** PATH enrichi des dossiers d'outils (l'app lancée depuis le Finder a un PATH minimal). */
+/** PATH enriched with tool folders (the app launched from the Finder has a minimal PATH). */
 export const cheminOutils = (): string => [process.env.PATH ?? "", ...DOSSIERS_OUTILS].filter(Boolean).join(":");
 
-/** Lance une commande sans jamais lever d'exception : un échec se lit dans `code`. */
+/** Launches a command without ever throwing: a failure reads in `code`. */
 export const executeurParDefaut: Executeur = (commande, args, opts = {}) => {
   if (opts.signal) return executerAnnulable(commande, args, opts.signal, opts.delaiMs);
   return new Promise((resoudre) => {
@@ -80,9 +80,9 @@ export const executeurParDefaut: Executeur = (commande, args, opts = {}) => {
 };
 
 /**
- * Variante annulable : la commande vit dans son propre groupe de processus (git lance git-remote-https, uv ses
- * compilations ; execFile ne sait pas en créer un). Annuler, ou dépasser le délai, envoie SIGTERM au groupe, puis
- * SIGKILL après 2 s s'il vit encore ; si Node sort avant, le groupe est tué à la sortie.
+ * Cancellable variant: the command lives in its own process group (git launches git-remote-https, uv its
+ * compilations; execFile cannot create one). Cancelling, or exceeding the timeout, sends SIGTERM to the group, then
+ * SIGKILL after 2 s if it is still alive; if Node exits before, the group is killed at exit.
  */
 function executerAnnulable(commande: string, args: string[], signal: AbortSignal, delaiMs?: number): Promise<ResultatExecution> {
   return new Promise((resoudre) => {

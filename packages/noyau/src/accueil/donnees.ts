@@ -4,8 +4,8 @@ import { join } from "node:path";
 import { effacerExecutionsEtMemoire } from "../workflows/memoire.js";
 import { ETAT_WIDGET_PAR_DEFAUT, EtatWidget, TAILLE_MAX_DONNEES } from "./schemas.js";
 
-// Un nom temporaire propre à chaque écriture : deux écritures simultanées (refus d'un accord pendant une récolte)
-// ne se marchent pas dessus.
+// A temporary name specific to each write: two simultaneous writes (a grant denied during a harvest)
+// do not trample each other.
 async function ecrireAtomique(cible: string, texte: string): Promise<void> {
   await mkdir(join(cible, ".."), { recursive: true });
   const temporaire = `${cible}.${randomUUID()}.tmp`;
@@ -17,7 +17,7 @@ async function ecrireAtomique(cible: string, texte: string): Promise<void> {
   }
 }
 
-/** Données récoltées d'un widget, ou null si absentes, abîmées ou trop grosses (plus de 2 Mo). */
+/** Harvested data of a widget, or null if absent, damaged or too big (over 2 MB). */
 export async function lireDonnees(dossierWidgets: string, id: string): Promise<unknown | null> {
   const chemin = join(dossierWidgets, id, "donnees.json");
   try {
@@ -34,7 +34,7 @@ export async function ecrireDonnees(dossierWidgets: string, id: string, donnees:
   await ecrireAtomique(join(dossierWidgets, id, "donnees.json"), texte);
 }
 
-/** Efface les données récoltées, les exécutions et la mémoire des blocs (par exemple quand l'accord d'un compte est retiré). */
+/** Erases the harvested data, runs and block memory (for example when an account's grant is withdrawn). */
 export async function supprimerDonnees(dossierWidgets: string, id: string): Promise<void> {
   if (!/^[a-z0-9-]+$/.test(id)) throw new Error(`id de widget invalide : ${id}`);
   await rm(join(dossierWidgets, id, "donnees.json"), { force: true });
@@ -45,12 +45,12 @@ export async function lireEtatWidget(dossierWidgets: string, id: string): Promis
   try {
     return EtatWidget.parse(JSON.parse(await readFile(join(dossierWidgets, id, "etat.json"), "utf8")));
   } catch {
-    // etat.json absent ou abîmé : on repart de l'état par défaut.
+    // etat.json absent or damaged: start again from the default state.
     return { ...ETAT_WIDGET_PAR_DEFAUT };
   }
 }
 
-/** Par widget, la dernière écriture de son état : la suivante l'attend (chacune relit ce qu'elle garde). */
+/** Per widget, the last write of its state: the next one waits for it (each re-reads what it keeps). */
 const ecrituresEtat = new Map<string, Promise<unknown>>();
 
 function sousVerrouEtat<T>(dossierWidgets: string, id: string, f: () => Promise<T>): Promise<T> {
@@ -65,19 +65,19 @@ function sousVerrouEtat<T>(dossierWidgets: string, id: string, f: () => Promise<
 }
 
 async function ecrireEtatSansVerrou(dossierWidgets: string, id: string, etat: EtatWidget): Promise<void> {
-  // Le suivi des heures survit à toutes les écritures d'état (en-cours, erreur, accord, atelier arrêté).
+  // Hour tracking survives all state writes (running, error, grant, workshop stopped).
   const final = etat.heures ? etat : { ...etat, ...(await heuresActuelles(dossierWidgets, id)) };
   await ecrireAtomique(join(dossierWidgets, id, "etat.json"), JSON.stringify(final, null, 2));
 }
 
-/** Les écritures de l'état d'un widget passent l'une après l'autre : aucune ne perd le suivi des heures d'une autre. */
+/** Writes of a widget's state go one after the other: none loses another's hour tracking. */
 export function ecrireEtatWidget(dossierWidgets: string, id: string, etat: EtatWidget): Promise<void> {
   return sousVerrouEtat(dossierWidgets, id, () => ecrireEtatSansVerrou(dossierWidgets, id, etat));
 }
 
 /**
- * Relit l'état du widget et écrit ce que `f` en fait, sans qu'aucune autre écriture de son état ne passe entre les
- * deux. `f` rend null : rien n'est écrit. Rend l'état écrit (ou null).
+ * Re-reads the widget's state and writes what `f` makes of it, with no other write of its state slipping in between
+ * the two. `f` returns null: nothing is written. Returns the written state (or null).
  */
 export function modifierEtatWidget(dossierWidgets: string, id: string, f: (etat: EtatWidget) => EtatWidget | null): Promise<EtatWidget | null> {
   return sousVerrouEtat(dossierWidgets, id, async () => {

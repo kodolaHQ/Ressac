@@ -10,7 +10,7 @@ function origine(url: string): string | null {
   }
 }
 
-/** Les démos de l'agent tournent dans le conteneur et s'ouvrent en local. */
+/** The agent's demos run in the container and open locally. */
 function estLocale(url: string): boolean {
   try {
     return ["localhost", "127.0.0.1", "[::1]"].includes(new URL(url).hostname);
@@ -29,44 +29,44 @@ export interface EtatAccesOnglet {
   enCours: boolean;
 }
 
-/** Ports des démos de l'agent par défaut : ceux du conteneur. */
+/** Default ports of the agent's demos: those of the container. */
 const portDemo = (port: number): boolean => {
   const [min, max] = plagePortsConteneur();
   return port >= min && port <= max;
 };
 
 /**
- * Ce que l'agent a le droit de lire (spec §8.2) : un onglet que l'utilisateur lui a donné, depuis lequel
- * il lui a parlé, ou une démo locale que l'agent a ouverte lui-même. Un site extérieur ouvert par
- * l'agent (Gmail, sa banque…) reste soumis à demande. Une autorisation vaut pour un site (origine) :
- * si l'utilisateur change de site, elle tombe.
+ * What the agent may read (spec §8.2): a tab the user gave it, from which the user
+ * spoke to it, or a local demo the agent opened itself. An outside site opened by
+ * the agent (Gmail, its bank…) still needs a request. A permission holds for one site (origin):
+ * if the user changes site, it lapses.
  */
 export class PolitiqueAcces {
-  /** id d'onglet → origine autorisée */
+  /** tab id → authorized origin */
   private readonly autorisations = new Map<string, string>();
-  /** id d'onglet → origine où l'agent a construit ce qu'il montre */
+  /** tab id → origin where the agent built what it shows */
   private readonly construites = new Map<string, string>();
-  /** id d'onglet → droits accordés par l'utilisateur, valables pour une origine */
+  /** tab id → rights granted by the user, valid for one origin */
   private readonly droits = new Map<string, { origine: string; liste: Set<DroitDev> }>();
-  /** id d'onglet → droits refusés, non redemandables avant le prochain message de l'utilisateur */
+  /** tab id → rights denied, not askable again before the user's next message */
   private readonly refus = new Map<string, Set<DroitDev>>();
-  /** id d'onglet → droits coupés (une construite le reste jusqu'à la prochaine conversation) */
+  /** tab id → rights cut (a built one stays cut until the next conversation) */
   private readonly coupes = new Map<string, Set<DroitDev>>();
   /**
-   * Droits coupés sur ce que l'agent a construit, par fenêtre d'appli (`app:<dossier>`) et par origine : ils survivent
-   * à la fermeture de l'onglet, pour que l'agent ne retrouve pas ses droits en relançant l'appli ou en rouvrant sa démo.
+   * Rights cut on what the agent built, by app window (`app:<folder>`) and by origin: they survive
+   * the tab closing, so the agent does not get its rights back by relaunching the app or reopening its demo.
    */
   private readonly coupesConstruites = new Map<string, Set<DroitDev>>();
-  /** id d'onglet → nombre d'outils en cours */
+  /** tab id → number of tools running */
   private readonly utilisations = new Map<string, number>();
-  /** Widgets avec compte dont l'utilisateur a montré les données à l'agent (carte « donnees-widget »), pour cette conversation. */
+  /** Widgets with an account whose data the user showed the agent (card « donnees-widget »), for this conversation. */
   private readonly donneesWidgets = new Set<string>();
   /**
-   * Applis de site que l'utilisateur a ouvertes à l'agent (pages et mémoire), pour cette conversation, et l'empreinte de leur
-   * déclaration au moment de la carte (`empreinteLectureSite` ; null si le navigateur n'en donne pas).
+   * Site apps the user opened to the agent (pages and memory), for this conversation, and the fingerprint of their
+   * declaration when the card was shown (`empreinteLectureSite`; null if the browser gives none).
    */
   private readonly sitesLus = new Map<string, string | null>();
-  /** Retraits de l'accord de lecture par appli (suppressions) : une carte posée avant l'un d'eux n'accorde rien. */
+  /** Withdrawals of the read grant per app (deletions): a card posted before one of them grants nothing. */
   private readonly retraitsSites = new Map<string, number>();
   private readonly ecouteurs = new Set<() => void>();
   private numeroConversation = 0;
@@ -101,21 +101,21 @@ export class PolitiqueAcces {
     this.utilisations.delete(id);
   }
 
-  /** Numéro de la conversation en cours : change à chaque `reinitialiser()`. Une réponse d'une conversation passée ne vaut rien. */
+  /** Number of the current conversation: changes on every `reinitialiser()`. A reply from a past conversation is worth nothing. */
   get conversation(): number {
     return this.numeroConversation;
   }
 
-  /** Abonnement aux changements ; renvoie le désabonnement. */
+  /** Subscription to changes; returns the unsubscribe. */
   surChange(rappel: () => void): () => void {
     this.ecouteurs.add(rappel);
     return () => void this.ecouteurs.delete(rappel);
   }
 
-  /** Marque l'onglet comme construit par l'agent (fenêtre d'application, ou démo locale sur un port de l'agent). */
+  /** Marks the tab as built by the agent (app window, or local demo on an agent port). */
   construite(o: OngletInfo): void {
     const org = origine(o.url);
-    // Une appli de site n'est jamais ce que l'agent a construit (pas de droits d'office), même servie en local.
+    // A site app is never what the agent built (no rights by default), even served locally.
     if (!org || o.site !== undefined || !(o.application || this.qualifie(o.url))) return;
     if (this.construites.get(o.id) === org) return;
     this.construites.set(o.id, org);
@@ -127,7 +127,7 @@ export class PolitiqueAcces {
     return org !== null && this.construites.get(o.id) === org;
   }
 
-  /** Clés sous lesquelles une coupe d'une construite est retenue : la fenêtre d'appli, et l'origine. */
+  /** Keys under which a cut on a built one is kept: the app window, and the origin. */
   private clesConstruite(id: string, org: string): string[] {
     return id.startsWith("app:") ? [id, org] : [org];
   }
@@ -144,13 +144,13 @@ export class PolitiqueAcces {
     );
   }
 
-  /** Droits d'outils de développement valables maintenant pour cet onglet ; aucun sur une appli de site sans son accord. */
+  /** Development tool rights valid now for this tab; none on a site app without its grant. */
   droitsDev(o: OngletInfo): DroitDev[] {
     if (o.site !== undefined && !this.lectureSiteAccordee(o.site, o.empreinte)) return [];
     return this.droitsDe(o.id, origine(o.url), this.estConstruite(o));
   }
 
-  /** L'utilisateur a coché `accordes` et laissé `refuses` : ces derniers ne sont plus demandables d'ici son prochain message. */
+  /** The user ticked `accordes` and left `refuses`: the latter are no longer askable until the user's next message. */
   accorderDev(o: OngletInfo, accordes: DroitDev[], refuses: DroitDev[]): void {
     const org = origine(o.url);
     if (org) {
@@ -171,7 +171,7 @@ export class PolitiqueAcces {
     return !this.refus.get(id)?.has(d);
   }
 
-  /** Coupe un droit, ou tout (lecture comprise) si `d` est absent. */
+  /** Cuts one right, or all (read included) if `d` is absent. */
   couper(id: string, d?: DroitDev): void {
     const cibles = d ? [d] : DROITS_DEV;
     const construite = this.construites.get(id);
@@ -184,7 +184,7 @@ export class PolitiqueAcces {
     this.change();
   }
 
-  /** Un outil démarre (`true`) ou se termine (`false`) sur l'onglet : sert au battement de l'indicateur. */
+  /** A tool starts (`true`) or ends (`false`) on the tab: drives the indicator's pulse. */
   utilisation(id: string, actif: boolean): void {
     const n = Math.max(0, (this.utilisations.get(id) ?? 0) + (actif ? 1 : -1));
     if (n) this.utilisations.set(id, n);
@@ -192,7 +192,7 @@ export class PolitiqueAcces {
     this.change();
   }
 
-  /** Onglets sur lesquels l'agent a la lecture, un droit, ou un outil en cours. */
+  /** Tabs on which the agent has read access, a right, or a running tool. */
   etat(): Record<string, EtatAccesOnglet> {
     const ids = new Set([...this.autorisations.keys(), ...this.construites.keys(), ...this.droits.keys(), ...this.utilisations.keys()]);
     const r: Record<string, EtatAccesOnglet> = {};
@@ -207,7 +207,7 @@ export class PolitiqueAcces {
   }
 
   private autoriser(o: OngletInfo): boolean {
-    // La fenêtre d'une appli de site ne s'ouvre que par l'accord de l'appli (accorderLectureSite), jamais par une origine.
+    // A site app window only opens through the app's grant (accorderLectureSite), never through an origin.
     if (o.site !== undefined) return false;
     const org = origine(o.url);
     if (!org || this.autorisations.get(o.id) === org) return false;
@@ -215,7 +215,7 @@ export class PolitiqueAcces {
     return true;
   }
 
-  /** L'utilisateur a autorisé la lecture : la pastille suit. */
+  /** The user authorized reading: the badge follows. */
   accorder(o: OngletInfo): void {
     if (this.autoriser(o)) this.change();
   }
@@ -232,7 +232,7 @@ export class PolitiqueAcces {
     this.change();
   }
 
-  /** L'agent a navigué lui-même un onglet auquel il avait accès : l'accès suit sur le même site ou vers une démo locale. */
+  /** The agent navigated a tab it had access to itself: access follows on the same site or to a local demo. */
   navigationParAgent(id: string, url: string): void {
     const org = origine(url);
     this.quitterOrigine(id, org);
@@ -244,13 +244,13 @@ export class PolitiqueAcces {
     this.change();
   }
 
-  /** Les droits de développement et la marque « construite » ne survivent pas à un changement d'origine. */
+  /** Development rights and the « built » mark do not survive an origin change. */
   private quitterOrigine(id: string, org: string | null): void {
     if (this.droits.get(id)?.origine !== org) this.droits.delete(id);
     if (this.construites.get(id) !== org) this.construites.delete(id);
   }
 
-  /** Navigation faite par l'utilisateur : changer de site retire l'autorisation. */
+  /** Navigation done by the user: changing site removes the authorization. */
   ongletNavigue(id: string, url: string): void {
     const org = origine(url);
     if (this.autorisations.get(id) !== org) this.autorisations.delete(id);
@@ -264,8 +264,8 @@ export class PolitiqueAcces {
   }
 
   /**
-   * Une appli de site (`o.site`) se lit seulement avec son accord, quelle que soit l'origine de sa page : une
-   * autorisation donnée à un onglet du même domaine ne l'ouvre pas.
+   * A site app (`o.site`) is read only with its grant, whatever the origin of its page: an
+   * authorization given to a tab of the same domain does not open it.
    */
   peutLire(o: OngletInfo): boolean {
     if (o.site !== undefined) return this.lectureSiteAccordee(o.site, o.empreinte);
@@ -273,7 +273,7 @@ export class PolitiqueAcces {
     return org !== null && this.autorisations.get(o.id) === org;
   }
 
-  /** L'utilisateur montre à l'agent les données de ce widget avec compte, jusqu'à la prochaine conversation. */
+  /** The user shows the agent the data of this widget with an account, until the next conversation. */
   accorderDonneesWidget(id: string): void {
     this.donneesWidgets.add(id);
     this.change();
@@ -283,7 +283,7 @@ export class PolitiqueAcces {
     return this.donneesWidgets.has(id);
   }
 
-  /** Comme pour un widget, avec une clé à part : accorder les résultats d'une action n'accorde pas ceux d'un widget du même nom. */
+  /** As for a widget, with a separate key: granting an action's results does not grant those of a widget of the same name. */
   accorderDonneesAction(id: string): void {
     this.donneesWidgets.add(`action:${id}`);
     this.change();
@@ -294,8 +294,8 @@ export class PolitiqueAcces {
   }
 
   /**
-   * L'utilisateur ouvre l'appli de site `id` à l'agent (ses pages et sa mémoire), jusqu'à la prochaine conversation, telle que
-   * la carte la montrait (`empreinte` de sa déclaration) : une autre empreinte ensuite ne compte pas.
+   * The user opens the site app `id` to the agent (its pages and memory), until the next conversation, as
+   * the card showed it (`empreinte` of its declaration): a different fingerprint afterwards does not count.
    */
   accorderLectureSite(id: string, empreinte?: string): void {
     const e = empreinte ?? null;
@@ -304,14 +304,14 @@ export class PolitiqueAcces {
     this.change();
   }
 
-  /** L'accord de lecture de l'appli tient-il, pour la déclaration d'empreinte `empreinte` (celle d'aujourd'hui) ? */
+  /** Does the app's read grant hold, for the declaration fingerprint `empreinte` (today's)? */
   lectureSiteAccordee(id: string, empreinte?: string): boolean {
     return this.sitesLus.has(id) && this.sitesLus.get(id) === (empreinte ?? null);
   }
 
   /**
-   * L'appli de site est supprimée : son accord de lecture tombe, et ses cartes encore en attente (toutes conversations)
-   * sont retirées et valent refus. Une appli recréée au même id redemande la carte.
+   * The site app is deleted: its read grant lapses, and its cards still pending (all conversations)
+   * are withdrawn and count as denials. An app recreated with the same id asks for the card again.
    */
   retirerLectureSite(id: string): void {
     this.sitesLus.delete(id);
@@ -319,12 +319,12 @@ export class PolitiqueAcces {
     this.change();
   }
 
-  /** Nombre de retraits de l'accord de lecture de l'appli : une carte le relève à sa pose. */
+  /** Number of withdrawals of the app's read grant: a card reads it when posted. */
   retraitsLectureSite(id: string): number {
     return this.retraitsSites.get(id) ?? 0;
   }
 
-  /** Nouvelle conversation : plus aucune autorisation, refus ni coupe. Les « construites » restent : elles tiennent à l'onglet. */
+  /** New conversation: no more authorizations, denials or cuts. The « built » ones stay: they belong to the tab. */
   reinitialiser(): void {
     this.autorisations.clear();
     this.droits.clear();

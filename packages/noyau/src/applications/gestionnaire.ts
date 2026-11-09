@@ -6,13 +6,13 @@ import type { CheminsEspace } from "../chemins.js";
 import { plagePortsConteneur, type Atelier } from "../conteneur/atelier.js";
 import { dossierValide, lireProjets, surveillerProjets, type ProjetLu } from "./manifeste.js";
 
-/** Délai laissé à une appli pour répondre sur son port avant « En erreur ». */
+/** Time an app has to answer on its port before « En erreur ». */
 export const DELAI_PRET_MS = 60_000;
 const INTERVALLE_SONDE_MS = 250;
 const LIGNES_ERREUR = 20;
 export const MESSAGE_PLUS_DE_PORT = "Plus de port libre : arrête une application.";
 
-/** `preparation` : le conteneur démarre. */
+/** `preparation`: the container starts. */
 export type EtatApplication = "arretee" | "preparation" | "lancement" | "en-marche" | "erreur";
 
 export interface Application {
@@ -27,7 +27,7 @@ export interface Application {
   erreur?: string;
 }
 
-/** Lance le client `docker exec` d'une appli ; argv[0] est la CLI docker. */
+/** Launches an app's `docker exec` client; argv[0] is the docker CLI. */
 export type Lanceur = (argv: string[]) => { surFin(r: (code: number | null) => void): void; tuer(): void };
 
 const lanceurParDefaut: Lanceur = (argv) => {
@@ -45,8 +45,8 @@ const lanceurParDefaut: Lanceur = (argv) => {
 };
 
 /**
- * Une réponse HTTP quelconque : un serveur écoute. Connexion refusée ou coupée : port libre (le proxy de Docker accepte
- * la connexion sur un port publié puis la coupe si rien n'écoute dans le conteneur). Le reste : port pris par autre chose.
+ * Any HTTP response: a server is listening. Connection refused or cut: free port (Docker's proxy accepts
+ * the connection on a published port then cuts it if nothing listens in the container). The rest: port taken by something else.
  */
 export function sonderParDefaut(port: number): Promise<"http" | "occupe" | "libre"> {
   return new Promise((resoudre) => {
@@ -62,7 +62,7 @@ export function sonderParDefaut(port: number): Promise<"http" | "occupe" | "libr
 
 type Issue = { type: "pret" } | { type: "fin"; code: number | null } | { type: "delai" } | { type: "arret" };
 
-/** Un lancement en cours ou en marche. `arret` : l'arrêt a été demandé, la fin du processus n'est plus une erreur. */
+/** A launch in progress or running. `arret`: the stop was requested, the end of the process is no longer an error. */
 interface Lancement {
   arret: boolean;
   processus?: ReturnType<Lanceur>;
@@ -86,17 +86,17 @@ export class GestionnaireApplications {
   private readonly sonder: (port: number) => Promise<"http" | "occupe" | "libre">;
   private readonly surChange: () => void;
   private readonly suivis = new Map<string, Suivi>();
-  /** Dernier lancement demandé par dossier : deux lancements d'une même appli se suivent. */
+  /** Last launch requested per folder: two launches of the same app follow each other. */
   private readonly files = new Map<string, Promise<unknown>>();
   /**
-   * Nombre d'arrêts demandés par dossier. Un lancement note ce nombre quand il est demandé : s'il a changé quand le
-   * lancement commence vraiment (attente dans la file, lecture des projets), l'arrêt le visait aussi.
+   * Number of stops requested per folder. A launch notes this number when requested: if it changed when the
+   * launch really starts (waiting in the queue, reading projects), the stop targeted it too.
    */
   private readonly arrets = new Map<string, number>();
   private finSurveillance?: () => Promise<void>;
   /**
-   * Scripts d'arrêt en cours par dossier, et ménage des orphelins au démarrage : ils visent les processus par leur
-   * marque, à chaque signal. Un lancement les attend avant de démarrer son processus, sinon il serait tué avec l'ancien.
+   * Stop scripts in progress per folder, and cleanup of orphans at startup: they target processes by their
+   * mark, at each signal. A launch awaits them before starting its process, otherwise it would be killed with the old one.
    */
   private readonly arretsEnCours = new Map<string, Promise<void>>();
   private menage: Promise<void> = Promise.resolve();
@@ -107,7 +107,7 @@ export class GestionnaireApplications {
     lanceur?: Lanceur;
     ports?: [number, number];
     delaiPretMs?: number;
-    /** Pour les tests : l'écart entre deux sondes du port. */
+    /** For tests: the gap between two port probes. */
     intervalleSondeMs?: number;
     sonder?: (port: number) => Promise<"http" | "occupe" | "libre">;
     surChange?: () => void;
@@ -122,11 +122,11 @@ export class GestionnaireApplications {
     this.surChange = o.surChange ?? (() => {});
   }
 
-  /** À appeler une fois par vie du navigateur : les applis d'une vie précédente sont arrêtées. */
+  /** To be called once per browser life: apps of a previous life are stopped. */
   async demarrer(): Promise<void> {
-    // D'abord la surveillance : le ménage attend Docker, parfois longtemps, et la page doit suivre les projets d'ici là.
+    // Watching first: the cleanup waits for Docker, sometimes a long time, and the page must follow the projects until then.
     this.finSurveillance ??= surveillerProjets(this.chemins, () => this.surChange());
-    // Noté tout de suite : un lancement demandé pendant ce ménage l'attend.
+    // Noted right away: a launch requested during this cleanup waits for it.
     this.menage = (async () => {
       if ((await this.atelier.etat()) === "demarre") await this.atelier.arreterApplicationsOrphelines();
     })();
@@ -138,7 +138,7 @@ export class GestionnaireApplications {
     this.finSurveillance = undefined;
   }
 
-  /** État en mémoire d'une appli, sans lire le disque. */
+  /** In-memory state of an app, without reading the disk. */
   etatDe(dossier: string): EtatApplication {
     return this.suivis.get(dossier)?.etat ?? "arretee";
   }
@@ -167,7 +167,7 @@ export class GestionnaireApplications {
     this.surChange();
   }
 
-  /** Se résout à « en-marche », « erreur », ou « arretee » si l'appli est arrêtée entre-temps. Relance une appli en marche. */
+  /** Resolves to « en-marche », « erreur », or « arretee » if the app is stopped in the meantime. Restarts a running app. */
   lancer(dossier: string): Promise<Application> {
     const jeton = this.arrets.get(dossier) ?? 0;
     const suite = (this.files.get(dossier) ?? Promise.resolve()).catch(() => {}).then(() => this.lancerMaintenant(dossier, jeton));
@@ -179,7 +179,7 @@ export class GestionnaireApplications {
     const projet = (await lireProjets(this.chemins)).find((p) => p.dossier === dossier);
     if (!projet) throw new Error(`Projet inconnu : ${dossier}`);
     if (!("manifeste" in projet)) throw new Error(`Projet sans fiche, impossible à lancer (${projet.sansFiche}) : ${dossier}`);
-    // Relance : arrêt interne de l'instance en cours, qui ne compte pas comme un arrêt demandé.
+    // Restart: internal stop of the current instance, which does not count as a requested stop.
     if (this.suivis.get(dossier)?.lancement) await this.arreterLancement(dossier);
     if ((this.arrets.get(dossier) ?? 0) !== jeton) {
       if (this.etatDe(dossier) !== "arretee") this.changer(dossier, { etat: "arretee" });
@@ -187,7 +187,7 @@ export class GestionnaireApplications {
     }
 
     const l: Lancement = { arret: false };
-    /** État final du lancement, sauf si l'arrêt a été demandé entre-temps (l'appli est alors « arretee »). */
+    /** Final state of the launch, unless the stop was requested in the meantime (the app is then « arretee »). */
     const fin = (s: Suivi) => {
       if (!l.arret) this.changer(dossier, s);
       return this.vue(projet);
@@ -247,7 +247,7 @@ export class GestionnaireApplications {
       case "delai": {
         const erreur = await this.avecJournal(dossier, `L'application ne répond pas sur le port ${port} après ${Math.round(this.delaiPretMs / 1000)} s.`);
         if (l.arret) return this.vue(projet);
-        // Arrêt demandé avant de tuer : la fin du processus ne remplace pas ce message.
+        // Stop requested before killing: the end of the process does not replace this message.
         l.arret = true;
         this.changer(dossier, { etat: "erreur", erreur });
         await this.atelier.arreterApplication(dossier);
@@ -257,7 +257,7 @@ export class GestionnaireApplications {
     }
   }
 
-  /** Le processus s'est terminé sans demande d'arrêt : pendant le lancement ou en marche, c'est une erreur. */
+  /** The process ended without a stop request: during launch or running, it is an error. */
   private async finInattendue(dossier: string, l: Lancement, code: number | null): Promise<void> {
     const erreur = await this.avecJournal(dossier, `Arrêtée avec le code ${code ?? "inconnu"}`);
     if (l.arret || this.suivis.get(dossier)?.lancement !== l) return;
@@ -270,20 +270,20 @@ export class GestionnaireApplications {
     return fin ? `${message}\n${fin}` : message;
   }
 
-  /** Premier port de la plage ni pris par une appli suivie, ni occupé sur la machine. */
+  /** First port of the range neither taken by a tracked app nor busy on the machine. */
   private async choisirPort(): Promise<number | null> {
     const pris = (p: number) =>
       [...this.suivis.values()].some((s) => s.port === p && (s.etat === "lancement" || s.etat === "en-marche"));
     for (let p = this.ports[0]; p <= this.ports[1]; p++) {
       if (pris(p)) continue;
       const r = await this.sonder(p);
-      // Revérifié après la sonde : un autre lancement a pu le prendre entre-temps.
+      // Re-checked after the probe: another launch may have taken it in the meantime.
       if (r === "libre" && !pris(p)) return p;
     }
     return null;
   }
 
-  /** Arrête l'appli, et annule ses lancements demandés mais pas encore commencés. */
+  /** Stops the app, and cancels its launches requested but not yet started. */
   async arreter(dossier: string): Promise<void> {
     this.arrets.set(dossier, (this.arrets.get(dossier) ?? 0) + 1);
     await this.arreterLancement(dossier);
@@ -305,10 +305,10 @@ export class GestionnaireApplications {
     l.processus?.tuer();
   }
 
-  /** Projet supprimé : son état (une erreur, un port) ne doit pas réapparaître sur un projet recréé sous ce nom. */
+  /** Project deleted: its state (an error, a port) must not reappear on a project recreated under that name. */
   oublier(dossier: string): void {
     const s = this.suivis.get(dossier);
-    // Un lancement en cours garde son état : c'est à l'arrêt de le finir.
+    // A launch in progress keeps its state: it is up to the stop to finish it.
     if (!s || s.lancement) return;
     this.suivis.delete(dossier);
     this.surChange();
@@ -319,7 +319,7 @@ export class GestionnaireApplications {
     await Promise.all([...dossiers].map((d) => this.arreter(d)));
   }
 
-  /** Les `lignes` dernières lignes du journal de l'appli (lu sur le Mac), vide s'il n'existe pas. */
+  /** The last `lignes` lines of the app's log (read on the Mac), empty if it does not exist. */
   async journal(dossier: string, lignes = 50): Promise<string> {
     if (!dossierValide(dossier)) throw new Error(`dossier d'application invalide : ${dossier}`);
     let contenu: string;

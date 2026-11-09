@@ -10,12 +10,12 @@ export type EtatIa = "non-installee" | "arretee" | "demarrage" | "active" | "err
 export interface ProcessusIa {
   arreter(): void;
   surSortie(rappel: (code: number | null) => void): void;
-  /** Facultatif : reçoit chaque ligne de sortie (stdout et stderr), pour les messages d'erreur. */
+  /** Optional: receives each output line (stdout and stderr), for error messages. */
   surLigne?(rappel: (ligne: string) => void): void;
 }
 
 export interface OptionsIaLocale {
-  /** `<profil du navigateur>/ia-locale` ; Kev y est cloné dans `kev/`. */
+  /** `<browser profile>/ia-locale`; Kev is cloned there in `kev/`. */
   dossier: string;
   executer: Executeur;
   lancer?: (cmd: string, args: string[], o: { cwd: string }) => ProcessusIa;
@@ -27,11 +27,11 @@ export interface OptionsIaLocale {
   inactiviteMs?: number;
   horloge?: () => number;
   surEtat?: (e: EtatIa, erreur?: string) => void;
-  /** Pas d'interrogation de /v1/models au démarrage (500 ms par défaut). */
+  /** Polling interval of /v1/models at startup (500 ms by default). */
   sondageMs?: number;
-  /** Pas de contrôle de l'inactivité (5 s par défaut). */
+  /** Inactivity check interval (5 s by default). */
   verifInactiviteMs?: number;
-  /** Attente maximale, à la fermeture, de la fin d'une installation annulée (3 s par défaut). */
+  /** Maximum wait, at close, for a cancelled install to finish (3 s by default). */
   delaiAnnulationMs?: number;
 }
 
@@ -44,13 +44,13 @@ const DELAI_DEMARRAGE_MS = 180_000;
 const DELAI_KEV_MS = 60_000;
 const DELAI_GEMMA_MS = 120_000;
 
-/** Délai entre SIGTERM et SIGKILL quand Kev (son groupe) ne s'arrête pas. */
+/** Delay between SIGTERM and SIGKILL when Kev (its group) does not stop. */
 const DELAI_KILL_MS = 5000;
 
 /**
- * Lance la commande dans son propre groupe de processus (`uv run` lance un enfant Python : tuer uv seul le laisserait
- * orphelin). `arreter` envoie SIGTERM au groupe, puis SIGKILL après `delaiKillMs` s'il vit encore. Si le process Node
- * sort sans arrêter le groupe, il est tué à la sortie.
+ * Launches the command in its own process group (`uv run` launches a Python child: killing uv alone would leave it
+ * orphaned). `arreter` sends SIGTERM to the group, then SIGKILL after `delaiKillMs` if it is still alive. If the Node process
+ * exits without stopping the group, it is killed at exit.
  */
 export function lancerProcessusIa(cmd: string, args: string[], o: { cwd: string; delaiKillMs?: number }): ProcessusIa {
   const enfant = spawn(cmd, args, { cwd: o.cwd, env: { ...process.env, PATH: cheminOutils() }, stdio: ["ignore", "pipe", "pipe"], detached: true });
@@ -68,7 +68,7 @@ export function lancerProcessusIa(cmd: string, args: string[], o: { cwd: string;
         oublierGroupe(pid);
         return;
       }
-      // Le groupe peut survivre au premier processus (un enfant qui ignore SIGTERM) : on vérifie le groupe, pas `sorti`.
+      // The group may outlive the first process (a child that ignores SIGTERM): we check the group, not `sorti`.
       const minuterie = setTimeout(() => {
         tuerGroupe(pid, "SIGKILL");
         oublierGroupe(pid);
@@ -102,9 +102,9 @@ export function lancerProcessusIa(cmd: string, args: string[], o: { cwd: string;
 
 const lancerParDefaut: NonNullable<OptionsIaLocale["lancer"]> = (cmd, args, o) => lancerProcessusIa(cmd, args, o);
 
-/** Le délai de l'appel, et le signal de l'appelant s'il y en a un. */
+/** The call's timeout, and the caller's signal if there is one. */
 const delaiEt = (ms: number, signal?: AbortSignal) => (signal ? AbortSignal.any([AbortSignal.timeout(ms), signal]) : AbortSignal.timeout(ms));
-/** Le signal de l'appelant est levé : l'appel est abandonné (sinon l'erreur d'origine). */
+/** The caller's signal is raised: the call is abandoned (otherwise the original error). */
 const verifierAbandon = (signal?: AbortSignal) => {
   if (signal?.aborted) throw new Error(IA_ABANDONNEE);
 };
@@ -113,12 +113,12 @@ const attendre = (ms: number) => new Promise<void>((ok) => setTimeout(ok, ms));
 
 export const ERREUR_IA_FERMEE = "IA locale fermée";
 export const ERREUR_INSTALLATION_ANNULEE = "Installation annulée";
-/** Attente maximale de la fin d'une installation annulée quand l'app quitte. */
+/** Maximum wait for a cancelled install to finish when the app quits. */
 const DELAI_ANNULATION_MS = 3000;
 
 /**
- * L'IA locale vue par un noyau. Une fois `fermer()` appelé (arrêt du noyau), ses appels sont refusés : une récolte en
- * retard ne relance pas Kev. Le noyau suivant (autre profil d'agent) reçoit un nouvel accès.
+ * Local AI as seen by a kernel. Once `fermer()` is called (kernel shutdown), its calls are refused: a late
+ * harvest does not relaunch Kev. The next kernel (another agent profile) gets a new access.
  */
 export interface AccesIa {
   kev: IaLocale["kev"];
@@ -134,11 +134,11 @@ export class IaLocale {
   private minuteur?: NodeJS.Timeout;
   private dernierUsage = 0;
   private generation = 0;
-  /** Fermée (le navigateur quitte) : plus rien ne démarre Kev ni n'appelle Ollama. */
+  /** Closed (the browser quits): nothing starts Kev or calls Ollama anymore. */
   private fermee = false;
-  /** Installation en cours : son annulation et sa fin (réussie ou non). */
+  /** Install in progress: its cancellation and its end (successful or not). */
   private installation?: { controleur: AbortController; fin: Promise<unknown> };
-  // Modifiable : l'adresse de Kev, imposée par WEBAIOS_KEV_URL ou calculée depuis le port.
+  // Modifiable: Kev's address, imposed by WEBAIOS_KEV_URL or computed from the port.
   private kevUrl: string;
   private readonly kevImposee: boolean;
   private readonly ollamaUrl: string;
@@ -182,16 +182,16 @@ export class IaLocale {
         const { models } = (await r.json()) as { models?: { name?: string }[] };
         gemma = (models ?? []).some((m) => m.name === MODELE_GEMMA);
       }
-    } catch { /* injoignable */ }
+    } catch { /* unreachable */ }
     return { kev, uv, ollama, gemma };
   }
 
-  /** Dossier où Kev est cloné avant d'être renommé en `kev/` : un clone interrompu n'y laisse jamais un dépôt partiel. */
+  /** Folder where Kev is cloned before being renamed to `kev/`: an interrupted clone never leaves a partial repo there. */
   private get dossierClone() { return join(this.o.dossier, "kev.clone-en-cours"); }
 
   /**
-   * Installe Kev et Gemma. Annulée par `annulerInstallation()` ou `fermer()` : la commande en cours est tuée (tout son
-   * groupe), aucune suivante ne part, un clone partiel est effacé, et la promesse est rejetée « Installation annulée ».
+   * Installs Kev and Gemma. Cancelled by `annulerInstallation()` or `fermer()`: the current command is killed (its whole
+   * group), none follows, a partial clone is erased, and the promise is rejected « Installation annulée ».
    */
   installer(progres: (ligne: string) => void): Promise<void> {
     if (this.fermee) return Promise.reject(new Error(ERREUR_IA_FERMEE));
@@ -204,7 +204,7 @@ export class IaLocale {
     return fin;
   }
 
-  /** Annule l'installation en cours, s'il y en a une (sans attendre sa fin). */
+  /** Cancels the install in progress, if there is one (without waiting for its end). */
   annulerInstallation(): void {
     this.installation?.controleur.abort();
   }
@@ -228,8 +228,8 @@ export class IaLocale {
     };
     // 1. uv
     if ((await lancer("uv", ["--version"], 10_000)).code !== 0) throw new Error("installe uv : brew install uv");
-    // 2. dépôt Kev au commit pinné, cloné à côté puis renommé. Le dossier de clonage n'appartient qu'à ce code : le reste
-    // d'un clone interrompu (app tuée avant d'avoir pu l'effacer) est effacé avant de recloner.
+    // 2. Kev repo at the pinned commit, cloned aside then renamed. The clone folder belongs only to this code: what is left
+    // of an interrupted clone (app killed before it could erase it) is erased before recloning.
     if (!existsSync(join(this.dossierKev, ".git"))) {
       await rm(this.dossierClone, { recursive: true, force: true });
       try {
@@ -245,11 +245,11 @@ export class IaLocale {
     if (tete.code !== 0 || tete.stdout.trim() !== COMMIT_KEV) {
       throw new Error(`Le commit de Kev n'est pas celui attendu (${COMMIT_KEV}) : ${tete.stdout.trim() || tete.stderr.trim()}`);
     }
-    // 3. dépendances (une synchronisation interrompue est reprise par la suivante, ou par `uv run` au démarrage de Kev)
+    // 3. dependencies (an interrupted sync is resumed by the next one, or by `uv run` at Kev's start)
     const sync = await lancer("uv", ["sync", "--extra", "serve", "--project", this.dossierKev]);
     if (sync.code !== 0) throw new Error(`uv sync a échoué : ${sync.stderr.trim()}`);
-    // 4. modèle Gemma. Tuer `ollama pull` coupe sa requête au serveur Ollama, qui arrête le téléchargement et garde ses
-    // morceaux pour la reprise : ils sont à Ollama (partagés avec l'utilisateur), on n'y touche pas.
+    // 4. Gemma model. Killing `ollama pull` cuts its request to the Ollama server, which stops the download and keeps its
+    // chunks for resuming: they are Ollama's (shared with the user), we do not touch them.
     const tire = await lancer("ollama", ["pull", MODELE_GEMMA]);
     if (tire.code !== 0) throw new Error(`ollama pull a échoué : ${tire.stderr.trim()}`);
   }
@@ -326,12 +326,12 @@ export class IaLocale {
     }
   }
 
-  /** Arrête Kev pour de bon : kev() et gemma() sont refusés ensuite (arreter(), lui, laisse relancer). */
+  /** Stops Kev for good: kev() and gemma() are refused afterwards (arreter(), on the other hand, allows a relaunch). */
   async fermer(): Promise<void> {
     this.fermee = true;
     const installation = this.installation;
     if (installation) {
-      // L'app quitte : l'installation est annulée ; son nettoyage est attendu, mais jamais plus que le délai.
+      // The app quits: the install is cancelled; its cleanup is awaited, but never longer than the delay.
       installation.controleur.abort();
       let minuterie: NodeJS.Timeout | undefined;
       const delai = new Promise<void>((ok) => (minuterie = setTimeout(ok, this.o.delaiAnnulationMs ?? DELAI_ANNULATION_MS)));
@@ -341,10 +341,10 @@ export class IaLocale {
     await this.arreter();
   }
 
-  /** Un accès pour un noyau, fermé avec lui (voir AccesIa). */
+  /** An access for a kernel, closed with it (see AccesIa). */
   acces(): AccesIa {
     let ferme = false;
-    // Vérifié avant l'appel : kev() lance Kev de façon synchrone, avant sa première attente ; fermer() l'arrête ensuite.
+    // Checked before the call: kev() launches Kev synchronously, before its first await; fermer() stops it afterwards.
     return {
       kev: (corps, o) => (ferme ? Promise.reject(new Error(ERREUR_IA_FERMEE)) : this.kev(corps, o)),
       gemma: (o) => (ferme ? Promise.reject(new Error(ERREUR_IA_FERMEE)) : this.gemma(o)),
@@ -400,7 +400,7 @@ export class IaLocale {
     const pas = this.o.sondageMs ?? 500;
     const fin = Date.now() + DELAI_DEMARRAGE_MS;
     while (Date.now() < fin) {
-      if (gen !== this.generation) return; // arreter() est passé par là
+      if (gen !== this.generation) return; // arreter() came through here
       if (mort) {
         const msg = `Kev n'a pas démarré : ${lignes.slice(-5).join("\n") || `code ${sortie}`}`;
         this.changer("erreur", msg);
@@ -415,7 +415,7 @@ export class IaLocale {
           this.surveillerInactivite();
           return;
         }
-      } catch { /* pas encore prêt */ }
+      } catch { /* not ready yet */ }
       await attendre(pas);
     }
     if (gen !== this.generation) return;

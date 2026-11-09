@@ -9,7 +9,7 @@ import { retirerAccord } from "../widgets/accords.js";
 import { PlanPage } from "../pages/plan.js";
 import { ID_ACTION } from "./schemas.js";
 
-/** Ce qu'une exécution d'action a rendu : ses résultats, la mise en page choisie pour eux et comment elle l'a été. */
+/** What an action run returned: its results, the layout chosen for them and how it was chosen. */
 export type ResultatAction = {
   version: 1;
   execution: string;
@@ -20,7 +20,7 @@ export type ResultatAction = {
   vide: boolean;
 };
 
-/** Marge au-delà des données du workflow : le plan, la saisie et l'enveloppe. */
+/** Margin beyond the workflow's data: the plan, the input and the envelope. */
 export const RESULTAT_MARGE_OCTETS = 256 * 1024;
 export const RESULTAT_MAX_OCTETS = TAILLE_MAX_DONNEES + RESULTAT_MARGE_OCTETS;
 
@@ -37,8 +37,8 @@ const FichierResultat = z.object({
 const dossierResultats = (dossierDonnees: string) => join(dossierDonnees, "resultats");
 
 /**
- * `<dossierActions>/<id>/resultats/<execution>.json`, écrit après l'exécution du même id. Ne garde que les résultats
- * dont l'exécution est gardée (essais compris). Trop gros : rien n'est écrit et l'appel échoue.
+ * `<actionsFolder>/<id>/resultats/<run>.json`, written after the run of the same id. Keeps only the results
+ * of runs that are kept (trials included). Too big: nothing is written and the call fails.
  */
 export async function ecrireResultat(dossierActions: string, id: string, r: ResultatAction): Promise<void> {
   if (!ID_ACTION.test(id)) throw new Error(`id d'action invalide : ${id}`);
@@ -54,7 +54,7 @@ export async function ecrireResultat(dossierActions: string, id: string, r: Resu
   try {
     noms = await readdir(dossier);
   } catch {
-    // dossier disparu entre-temps
+    // folder gone in the meantime
   }
   for (const nom of noms) {
     if (nom.endsWith(".json") && !gardees.has(nom.slice(0, -5))) await rm(join(dossier, nom), { force: true });
@@ -72,7 +72,7 @@ export async function lireResultat(dossierActions: string, id: string, execution
   }
 }
 
-/** Le résultat de la plus récente vraie exécution (pas un essai) qui en a un. */
+/** The result of the most recent real run (not a trial) that has one. */
 export async function dernierResultat(dossierActions: string, id: string): Promise<ResultatAction | null> {
   if (!ID_ACTION.test(id)) return null;
   for (const e of await listerExecutions(join(dossierActions, id))) {
@@ -83,7 +83,7 @@ export async function dernierResultat(dossierActions: string, id: string): Promi
   return null;
 }
 
-/** Efface exécutions, résultats et mémoire d'une action (accord retiré, action supprimée). */
+/** Erases runs, results and memory of an action (grant withdrawn, action deleted). */
 export async function supprimerDonneesAction(dossierActions: string, id: string): Promise<void> {
   if (!ID_ACTION.test(id)) throw new Error(`id d'action invalide : ${id}`);
   const dossier = join(dossierActions, id);
@@ -91,18 +91,18 @@ export async function supprimerDonneesAction(dossierActions: string, id: string)
     await effacerExecutionsEtMemoire(dossier);
     await rm(dossierResultats(dossier), { recursive: true, force: true });
   });
-  // Le dossier de l'action part s'il est vide ; ce que WebAiOs n'y a pas mis reste.
+  // The action's folder goes if empty; what WebAiOs did not put there stays.
   await rmdir(dossier).catch(() => {});
 }
 
 /**
- * Au démarrage : pour chaque `<dossierActions>/<id>` sans `~/WebAiOs/actions/<id>` (action supprimée ou mise à la
- * corbeille), données et accord sont effacés. Les actions encore là, et ce qui n'est pas un dossier d'action, restent.
+ * At startup: for each `<actionsFolder>/<id>` without `~/WebAiOs/actions/<id>` (action deleted or put in the
+ * trash), data and grant are erased. Actions still there, and what is not an action folder, stay.
  */
 export async function oublierActionsDisparues(c: CheminsEspace, dossierActions: string): Promise<void> {
   let entrees;
   try {
-    // Dossier des actions introuvable (espace déplacé, volume démonté) : on ne sait rien, rien n'est effacé.
+    // Actions folder not found (workspace moved, volume unmounted): nothing is known, nothing is erased.
     if (!(await stat(c.actions)).isDirectory()) return;
     await readdir(c.actions);
     entrees = await readdir(dossierActions, { withFileTypes: true });

@@ -1,16 +1,16 @@
 import type { IaLocale } from "./ia-locale.js";
 
-/** Appels à l'IA locale en vol en même temps, toutes exécutions confondues. */
+/** Local AI calls in flight at the same time, all runs together. */
 export const IA_SIMULTANES = 4;
-/** Refus d'un appel d'une exécution terminée (abandonnée, tuée, arrêt du noyau) : il ne part plus vers l'IA. */
+/** Denial of a call from a finished run (abandoned, killed, kernel shutdown): it no longer goes to the AI. */
 export const IA_ABANDONNEE = "Appel à l'IA abandonné : l'exécution est terminée";
-/** Gemma appelée avec `json: true` a répondu un texte qui n'est pas du JSON (la mise en page retente alors une fois). */
+/** Gemma called with `json: true` answered with a text that is not JSON (the layout then retries once). */
 export const GEMMA_JSON_INVALIDE = "Gemma n'a pas rendu du JSON valide";
 
 type AccesIa = Pick<IaLocale, "kev" | "gemma">;
-/** `auDemarrage` : appelé quand l'appel part vraiment vers l'IA. `signal` levé en file : refusé sans partir ; en vol : transmis. */
+/** `auDemarrage`: called when the call really goes to the AI. `signal` raised in the queue: denied without leaving; in flight: forwarded. */
 export type OptionsAppelIa = { auDemarrage?: () => void; signal?: AbortSignal };
-/** La vue d'une exécution ; `oublier` (à sa fin) refuse ses appels encore en file et ceux qui viendraient après. */
+/** A run's view; `oublier` (at its end) denies its calls still queued and those that would come after. */
 export type AccesIaExecution = {
   kev(corps: Parameters<IaLocale["kev"]>[0], o?: OptionsAppelIa): ReturnType<IaLocale["kev"]>;
   gemma(g: Parameters<IaLocale["gemma"]>[0], o?: OptionsAppelIa): ReturnType<IaLocale["gemma"]>;
@@ -23,23 +23,23 @@ type Appel = {
   ok: (v: unknown) => void;
   ko: (e: unknown) => void;
   auDemarrage?: () => void;
-  /** Détache l'écoute du signal (au départ de l'appel ou à son refus). */
+  /** Detaches the signal listener (at the call's departure or its denial). */
   detacher: () => void;
 };
 type File = { prioritaire: boolean; appels: Appel[] };
 
 /**
- * Sert les appels à l'IA locale à tour de rôle entre les exécutions : chaque `cle` (une exécution) a sa file, et quand
- * une place se libère, elle va à la file suivante qui attend. Une veille qui enchaîne les appels n'affame donc pas un
- * widget court. Les files prioritaires (les actions, lancées à la demande) qui attendent passent avant les autres, à tour
- * de rôle entre elles ; un appel en vol n'est jamais interrompu. `simultanes` appels au plus en vol ; une erreur ne
- * bloque ni sa file ni les autres.
+ * Serves local AI calls in turn between runs: each `cle` (a run) has its queue, and when
+ * a slot frees up, it goes to the next queue that waits. A watch that chains calls therefore does not starve a short
+ * widget. Priority queues (actions, launched on demand) that wait go before the others, in
+ * turn among themselves; a call in flight is never interrupted. At most `simultanes` calls in flight; an error blocks
+ * neither its queue nor the others.
  */
 export function creerRepartiteurIa(ia: AccesIa, o: { simultanes?: number } = {}): RepartiteurIa {
   const simultanes = o.simultanes ?? IA_SIMULTANES;
-  /** Appels en attente, par exécution ; une clé sans appel en attente n'y est plus. */
+  /** Pending calls, per run; a key with no pending call is no longer there. */
   const files = new Map<string, File>();
-  /** Les clés qui attendent, dans l'ordre où elles seront servies : les prioritaires d'abord. */
+  /** The keys that wait, in the order they will be served: priority ones first. */
   const tours = { prioritaire: [] as string[], normal: [] as string[] };
   const tourDe = (f: File) => (f.prioritaire ? tours.prioritaire : tours.normal);
   let enVol = 0;
@@ -61,7 +61,7 @@ export function creerRepartiteurIa(ia: AccesIa, o: { simultanes?: number } = {})
       else files.delete(cle);
       appel.detacher();
       enVol++;
-      // `then` attrape aussi une erreur levée tout de suite par l'appel.
+      // `then` also catches an error thrown right away by the call.
       Promise.resolve()
         .then(() => {
           try {

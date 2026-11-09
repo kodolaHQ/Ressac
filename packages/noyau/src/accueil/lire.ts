@@ -16,7 +16,7 @@ import {
 
 const ID_WIDGET = /^[a-z0-9-]+$/;
 
-/** Lit un JSON de l'espace en refusant un lien symbolique qui sortirait du dossier du widget. */
+/** Reads a JSON of the workspace, refusing a symbolic link that would leave the widget's folder. */
 async function lireJsonDans(dossier: string, nom: string): Promise<unknown> {
   const [racine, reel] = await Promise.all([realpath(dossier), realpath(join(dossier, nom))]);
   if (!reel.startsWith(racine + sep)) throw new Error(`${nom} sort du dossier du widget`);
@@ -35,7 +35,7 @@ async function lireWidget(c: CheminsEspace, dossierWidgets: string, id: string):
   try {
     exemple = await lireJsonDans(dossier, "exemple.json");
   } catch {
-    // exemple.json absent ou abîmé : pas d'exemple.
+    // exemple.json absent or damaged: no example.
   }
   const [donnees, etat] = await Promise.all([lireDonnees(dossierWidgets, id), lireEtatWidget(dossierWidgets, id)]);
   const aWorkflow = existsSync(join(dossier, "workflow.json"));
@@ -52,7 +52,7 @@ async function lireWidget(c: CheminsEspace, dossierWidgets: string, id: string):
   };
 }
 
-/** Placements lisibles de disposition.json. L'ancien format (`{ ordre }`) ou un fichier abîmé donne []. */
+/** Readable placements of disposition.json. The old format (`{ ordre }`) or a damaged file gives []. */
 async function lirePlacements(c: CheminsEspace): Promise<Placement[]> {
   try {
     const brut = JSON.parse(await readFile(c.disposition, "utf8")) as { version?: unknown; widgets?: unknown };
@@ -70,7 +70,7 @@ type Rectangle = { x: number; y: number; l: number; h: number };
 
 const chevauche = (a: Rectangle, b: Rectangle) => a.x < b.x + b.l && b.x < a.x + a.l && a.y < b.y + b.h && b.y < a.y + a.h;
 
-/** Première place libre : rangées de haut en bas, puis colonnes de gauche à droite. */
+/** First free spot: rows from top to bottom, then columns left to right. */
 function premierePlace(occupes: Rectangle[], l: number, h: number): { x: number; y: number } {
   for (let y = 0; ; y++) {
     for (let x = 0; x + l <= COLONNES; x++) {
@@ -80,14 +80,14 @@ function premierePlace(occupes: Rectangle[], l: number, h: number): { x: number;
 }
 
 /**
- * Place chaque widget présent sur le disque. Un placement valide est gardé ; un widget sans
- * placement, ou dont le placement chevauche un autre, est posé à la première place libre.
+ * Places each widget present on disk. A valid placement is kept; a widget with no
+ * placement, or whose placement overlaps another, is put at the first free spot.
  */
 export function placerManquants(ids: string[], voulus: Placement[], defauts: Map<string, { l: number; h: number }>): Placement[] {
   const retenus: Placement[] = [];
   const dejaVus = new Set<string>();
   for (const p of voulus) {
-    if (!defauts.has(p.id) || dejaVus.has(p.id)) continue; // id inconnu ou doublon : ignoré
+    if (!defauts.has(p.id) || dejaVus.has(p.id)) continue; // unknown id or duplicate: ignored
     dejaVus.add(p.id);
     if (!retenus.some((r) => chevauche(r, p))) retenus.push(p);
   }
@@ -104,8 +104,8 @@ const PAS_X = 8;
 const PAS_Y = 8;
 
 /**
- * Les x essayés : 0, le bord droit de chaque widget posé (un trou peut commencer exactement là, hors des pas de 8 ‰),
- * puis les pas de 8 ‰ et le dernier x collé au bord.
+ * The x values tried: 0, the right edge of each placed widget (a gap can start exactly there, off the 8 ‰ steps),
+ * then the 8 ‰ steps and the last x flush with the edge.
  */
 function abscissesLibres(occupes: Rectangle[], xMax: number): number[] {
   const xs = new Set<number>([0, xMax]);
@@ -114,7 +114,7 @@ function abscissesLibres(occupes: Rectangle[], xMax: number): number[] {
   return [...xs].sort((a, b) => a - b);
 }
 
-/** Première place libre en unités libres : les x ci-dessus, et en y 0, les bas des widgets posés, puis les pas de 8 px. */
+/** First free spot in free units: the x values above, and for y 0, the bottoms of placed widgets, then the 8 px steps. */
 function premierePlaceLibre(occupes: Rectangle[], l: number, h: number): { x: number; y: number } {
   const xMax = LARGEUR_LIBRE - l;
   const xs = abscissesLibres(occupes, xMax);
@@ -122,13 +122,13 @@ function premierePlaceLibre(occupes: Rectangle[], l: number, h: number): { x: nu
     for (const x of xs) {
       if (!occupes.some((o) => chevauche(o, { x, y, l, h }))) return { x, y };
     }
-    // Un bas de widget peut tomber entre deux pas (90 px de haut, y = 90) : on l'essaie aussi.
+    // A widget's bottom can fall between two steps (90 px high, y = 90): try it too.
     const bas = occupes.map((o) => o.y + o.h).filter((b) => b > y);
     y = bas.length > 0 ? Math.min(y + PAS_Y, ...bas) : y + PAS_Y;
   }
 }
 
-/** Placements de disposition.json en unités libres. Une autre version, un fichier abîmé ou un chevauchement donne []. */
+/** Placements of disposition.json in free units. Another version, a damaged file or an overlap gives []. */
 export async function lireDispositionLibre(c: CheminsEspace): Promise<PlacementLibre[]> {
   try {
     const dispo = DispositionLibre.safeParse(JSON.parse(await readFile(c.disposition, "utf8")));
@@ -142,8 +142,8 @@ export async function lireDispositionLibre(c: CheminsEspace): Promise<PlacementL
 }
 
 /**
- * Même contrat que placerManquants, en unités libres : un placement voulu valide est gardé, un id inconnu ou un
- * doublon est ignoré, et chaque widget absent est posé au premier trou sans chevauchement.
+ * Same contract as placerManquants, in free units: a valid wanted placement is kept, an unknown id or a
+ * duplicate is ignored, and each missing widget is put at the first hole with no overlap.
  */
 export function placerManquantsLibre(
   ids: readonly string[],
@@ -170,7 +170,7 @@ export function placerManquantsLibre(
   return retenus;
 }
 
-/** Lit la page d'accueil. Un widget cassé est signalé, il n'empêche pas de lire les autres. */
+/** Reads the home page. A broken widget is reported, it does not prevent reading the others. */
 export async function lireAccueil(c: CheminsEspace, dossierWidgets: string): Promise<EtatAccueil> {
   if (!existsSync(c.widgets)) return { disposition: [], widgets: [] };
   const ids = (await readdir(c.widgets, { withFileTypes: true }))
@@ -178,7 +178,7 @@ export async function lireAccueil(c: CheminsEspace, dossierWidgets: string): Pro
     .map((e) => e.name)
     .sort();
   const widgets = await Promise.all(ids.map((id) => lireWidget(c, dossierWidgets, id)));
-  // Un widget en erreur n'a pas de taille connue : il n'est pas placé.
+  // A widget in error has no known size: it is not placed.
   const defauts = new Map(widgets.flatMap((w) => ("declaration" in w ? [[w.id, w.declaration.tailles.defaut] as const] : [])));
   const disposition = placerManquants(ids, await lirePlacements(c), defauts);
   return { disposition, widgets };

@@ -30,7 +30,7 @@ const texte = (text: string, isError = false): Resultat => ({ content: [{ type: 
 export interface ResultatDeclaration { projet: ProjetExterne; avertissement?: string }
 
 const VALEUR_MAX = 300;
-/** Une valeur venue de la page ou d'un fichier : tronquée puis échappée (plus de saut de ligne ni de guillemet libre). */
+/** A value from the page or a file: truncated then escaped (no more line breaks or free quotes). */
 const donnee = (v: string): string => JSON.stringify(v.length > VALEUR_MAX ? v.slice(0, VALEUR_MAX) : v);
 
 export async function rendreLots(lots: Lot[], lireCapture: (lot: string, nom: string) => Promise<Buffer | null>): Promise<Contenu> {
@@ -122,15 +122,15 @@ function creerServeur(o: {
       if (!projet) return texte(projetNonDeclare(d));
       const id = projetExterne(projet.id);
       const delai = Math.min(DELAI_ATTENTE.max, Math.max(1, delai_s ?? DELAI_ATTENTE.defaut));
-      // L'attente est posée avant la lecture : un lot envoyé entre les deux ne se perd pas.
+      // The wait is set before the read: a batch sent between the two is not lost.
       const arret = new AbortController();
       const coupe = (): void => arret.abort();
       o.signal.addEventListener("abort", coupe, { once: true });
       if (o.signal.aborted) arret.abort();
       const attente = remarques.attendre(id, delai * 1000, arret.signal);
       try {
-        // Seul un lot encore jamais lu rend tout de suite : des lots déjà « lu » mais non traités feraient sinon
-        // tourner en boucle un agent qui rappelle attendre_remarques.
+        // Only a batch never read yet returns right away: batches already « read » but not processed would otherwise
+        // loop an agent that calls attendre_remarques again.
         const nouveau = (await remarques.lots(id)).some((l) => l.destination === "mcp" && etatLot(l) === "en-attente");
         if (!nouveau) {
           await attente;
@@ -170,7 +170,7 @@ export async function demarrerServeurExterne(o: {
 }): Promise<{ port: number; arreter(): Promise<void> }> {
   let portReel = 0;
   const http = createServer(async (req: IncomingMessage, res: ServerResponse) => {
-    // Ordre voulu : Origin (un navigateur), Host (DNS rebinding), jeton, chemin.
+    // Wanted order: Origin (a browser), Host (DNS rebinding), token, path.
     if (req.headers.origin !== undefined) return res.writeHead(403).end();
     const hote = (req.headers.host ?? "").toLowerCase();
     if (hote !== `127.0.0.1:${portReel}` && hote !== `localhost:${portReel}`) return res.writeHead(403).end();
@@ -181,7 +181,7 @@ export async function demarrerServeurExterne(o: {
     const arret = new AbortController();
     const serveur = creerServeur({ registre: o.registre, remarques: o.remarques, client, signal: arret.signal, declarer: o.declarer });
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
-    // Fermeture de la réponse (client parti compris) : les attentes en cours sont abandonnées.
+    // Response closing (client gone included): the waits in progress are abandoned.
     res.on("close", () => {
       arret.abort();
       void transport.close();

@@ -43,7 +43,7 @@ async function lire<T>(fichier: string, schema: z.ZodType<T>): Promise<T[]> {
     if (!Array.isArray(valeur)) throw new Error("liste attendue");
     return valeur.map((v) => schema.parse(v));
   } catch {
-    try { await copyFile(fichier, `${fichier}.abime-${new Date().toISOString().replace(/[:.]/g, "-")}`); } catch { /* copie au mieux */ }
+    try { await copyFile(fichier, `${fichier}.abime-${new Date().toISOString().replace(/[:.]/g, "-")}`); } catch { /* best-effort copy */ }
     return [];
   }
 }
@@ -72,7 +72,7 @@ export class RegistreExternes {
     return ecrireJsonPrive(join(this.prive, nom), donnees);
   }
 
-  // Calcule le nouvel état, l'écrit (clients d'abord), puis seulement le adopte en mémoire.
+  // Computes the new state, writes it (clients first), and only then adopts it in memory.
   private modifier<T>(calcul: () => { projets?: ProjetExterne[]; clients?: ClientExterne[]; resultat: T }): Promise<T> {
     const tache = this.ecritures.then(async () => {
       const { projets, clients, resultat } = calcul();
@@ -80,7 +80,7 @@ export class RegistreExternes {
       if (projets) await this.ecrireFichier(FICHIER_PROJETS, projets);
       if (clients) this.lesClients = clients;
       if (projets) this.liste = projets;
-      for (const e of [...this.ecouteurs]) { try { e(); } catch { /* un écouteur ne bloque pas */ } }
+      for (const e of [...this.ecouteurs]) { try { e(); } catch { /* a listener does not block */ } }
       return resultat;
     });
     this.ecritures = tache.catch(() => undefined);
@@ -129,10 +129,10 @@ export class RegistreExternes {
       if (!(await stat(reel)).isDirectory()) throw new Error("pas un dossier");
     } catch { throw new Error(DOSSIER_INTROUVABLE); }
     let maison = o.maison;
-    try { maison = await realpath(o.maison); } catch { /* chemin brut */ }
+    try { maison = await realpath(o.maison); } catch { /* raw path */ }
     if (reel === sep || reel === maison || reel === o.maison) throw new Error(DOSSIER_TROP_LARGE);
     let espace = o.racineEspace;
-    try { espace = await realpath(o.racineEspace); } catch { /* chemin brut */ }
+    try { espace = await realpath(o.racineEspace); } catch { /* raw path */ }
     if (dedans(reel, espace) || dedans(reel, o.racineEspace)) throw new Error(DOSSIER_ESPACE);
     if (d.ports.length < 1 || d.ports.length > 10) throw new Error("Entre 1 et 10 ports.");
     for (const p of d.ports) {

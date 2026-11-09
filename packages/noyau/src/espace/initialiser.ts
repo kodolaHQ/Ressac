@@ -5,13 +5,13 @@ import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { CheminsEspace } from "../chemins.js";
 
-/** Dossier des modèles du paquet ; un navigateur qui embarque le noyau peut en fournir un autre. */
+/** Templates folder of the package; a browser that embeds the kernel can provide another. */
 export const MODELES_PAR_DEFAUT = join(import.meta.dirname, "..", "..", "modeles");
 
 /**
- * Empreintes sha256 des anciennes versions du modèle AGENTS.md. Un AGENTS.md qui en a une est resté tel
- * quel : il est remplacé par le modèle courant. À compléter à chaque nouvelle version du modèle : on ajoute
- * l'empreinte de l'ancienne version (`shasum -a 256 modeles/AGENTS.md`) avant de la modifier.
+ * sha256 fingerprints of old versions of the AGENTS.md template. An AGENTS.md that has one is left as
+ * is: it is replaced by the current template. To complete with each new template version: add
+ * the old version's fingerprint (`shasum -a 256 modeles/AGENTS.md`) before modifying it.
  */
 export const ANCIENS_AGENTS = new Set([
   "4cb44a141c2e0865ae472910b3f1026b918c2d09d12b96732b7a5556ffcc4681",
@@ -62,7 +62,7 @@ async function agentsRestePourAncien(chemin: string): Promise<boolean> {
   }
 }
 
-/** Horodatage ISO sans « : » (valable comme nom de dossier). */
+/** ISO timestamp without « : » (valid as a folder name). */
 function horodatage(): string {
   return new Date().toISOString().replaceAll(":", "-");
 }
@@ -71,7 +71,7 @@ async function renommerSiPresent(de: string, vers: string): Promise<void> {
   try {
     await rename(de, vers);
   } catch (e) {
-    // Absent, ou déjà déplacé par un lancement simultané : rien à faire.
+    // Absent, or already moved by a simultaneous launch: nothing to do.
     if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
   }
 }
@@ -91,7 +91,7 @@ async function dispositionAncienne(chemin: string): Promise<boolean> {
   }
 }
 
-/** Les anciens blocs et l'ancienne disposition sont mis de côté dans `accueil/.corbeille/blocs-<horodatage>`, jamais détruits. */
+/** Old blocks and the old layout are set aside in `accueil/.corbeille/blocs-<timestamp>`, never destroyed. */
 async function mettreDeCoteLesBlocs(c: CheminsEspace): Promise<void> {
   const blocs = existsSync(c.blocs);
   const dispo = existsSync(c.disposition) && (await dispositionAncienne(c.disposition));
@@ -116,8 +116,8 @@ async function fichiersDe(dossier: string, prefixe = ""): Promise<string[]> {
 }
 
 /**
- * Fichier modèle → destination dans l'espace. Les widgets de départ ne sont posés que si `accueil/widgets/`
- * n'existe pas : un widget supprimé par l'utilisateur ne doit pas revenir.
+ * Template file → destination in the workspace. Starter widgets are only placed if `accueil/widgets/`
+ * does not exist: a widget deleted by the user must not come back.
  */
 async function correspondances(c: CheminsEspace, modeles: string): Promise<[string, string][]> {
   const paires: [string, string][] = [
@@ -133,8 +133,8 @@ async function correspondances(c: CheminsEspace, modeles: string): Promise<[stri
 }
 
 /**
- * Empreintes sha256 de chaque version livrée du `recolte.mjs` des widgets de départ (avant les workflows). Un
- * widget de départ dont le `recolte.mjs` en a une est resté tel quel : il passe en workflow au lancement.
+ * sha256 fingerprints of each shipped version of the starter widgets' `recolte.mjs` (before workflows). A
+ * starter widget whose `recolte.mjs` has one is left as is: it switches to a workflow at launch.
  */
 export const RECOLTES_LIVREES: Record<"meteo" | "actus-tech" | "daily-dev", ReadonlySet<string>> = {
   meteo: new Set(["c30b449bd9bce4addd59be19e0bdf7bf4010bdc796ce29ca57805be536652f98"]),
@@ -151,9 +151,9 @@ export const RECOLTES_LIVREES: Record<"meteo" | "actus-tech" | "daily-dev", Read
 };
 
 /**
- * Empreintes sha256 des versions livrées de l'`affichage.html` des widgets de départ, avant les formes Firefox
- * (écoute sans comparer `e.source`, liens par `webaiosOuvrir`). Un affichage resté à l'une d'elles est remplacé par le
- * modèle courant ; un affichage modifié par l'utilisateur ou l'agent (empreinte inconnue) n'est pas touché.
+ * sha256 fingerprints of the shipped versions of the starter widgets' `affichage.html`, before the Firefox forms
+ * (listening without comparing `e.source`, links through `webaiosOuvrir`). A display left at one of them is replaced by the
+ * current template; a display modified by the user or the agent (unknown fingerprint) is not touched.
  */
 export const AFFICHAGES_LIVREES: Record<"meteo" | "actus-tech" | "daily-dev", ReadonlySet<string>> = {
   meteo: new Set([
@@ -170,7 +170,7 @@ export const AFFICHAGES_LIVREES: Record<"meteo" | "actus-tech" | "daily-dev", Re
   ]),
 };
 
-/** Le contenu d'un fichier ordinaire (jamais un lien symbolique) ; null s'il est absent ou autre chose. */
+/** The content of an ordinary file (never a symbolic link); null if it is absent or something else. */
 async function fichierOrdinaire(chemin: string): Promise<Buffer | null> {
   try {
     if (!(await lstat(chemin)).isFile()) return null;
@@ -191,11 +191,11 @@ async function absent(chemin: string): Promise<boolean> {
 }
 
 /**
- * Bascule un widget de départ resté tel que livré (`recolte.mjs` d'une version connue, sans `workflow.json`) vers
- * son modèle en workflow : les `.mjs` puis `workflow.json` du modèle sont copiés sans rien écraser, puis
- * `recolte.mjs` part dans `accueil/.corbeille/<id>-recolte-<horodatage>.mjs`. Un widget modifié, ou dont un fichier
- * du modèle existe déjà avec un autre contenu, n'est pas touché. Rien d'autre que ce dossier et la corbeille. Avec
- * déjà le `workflow.json` du modèle (bascule interrompue), seul `recolte.mjs` est rangé.
+ * Switches a starter widget left as shipped (`recolte.mjs` of a known version, without `workflow.json`) to
+ * its workflow template: the template's `.mjs` then `workflow.json` are copied without overwriting anything, then
+ * `recolte.mjs` goes to `accueil/.corbeille/<id>-recolte-<timestamp>.mjs`. A modified widget, or one where a file
+ * of the template already exists with other content, is not touched. Nothing other than this folder and the trash. With
+ * the template's `workflow.json` already there (interrupted switch), only `recolte.mjs` is put away.
  */
 async function basculerWidgetDeDepart(c: CheminsEspace, modeles: string, id: keyof typeof RECOLTES_LIVREES): Promise<string[]> {
   const dossier = join(c.widgets, id);
@@ -206,17 +206,17 @@ async function basculerWidgetDeDepart(c: CheminsEspace, modeles: string, id: key
   }
   const recolte = await fichierOrdinaire(join(dossier, "recolte.mjs"));
   if (!recolte || !RECOLTES_LIVREES[id].has(empreinte(recolte))) return [];
-  // Le modèle n'est lu qu'ensuite : des modèles sans ce widget, et rien ne bouge.
+  // The template is read only afterwards: templates without this widget, and nothing moves.
   const modele = join(modeles, "widgets", id);
   if (!existsSync(join(modele, "workflow.json"))) return [];
   if (!(await absent(join(dossier, "workflow.json")))) {
-    // workflow.json du modèle déjà là : une bascule interrompue avant de ranger recolte.mjs, qu'elle finit.
+    // template's workflow.json already there: a switch interrupted before putting recolte.mjs away, which it finishes.
     const present = await fichierOrdinaire(join(dossier, "workflow.json"));
     if (present && present.equals(await readFile(join(modele, "workflow.json")))) await rangerRecolte(c, id);
     return [];
   }
   const codes = (await readdir(modele)).filter((f) => f.endsWith(".mjs")).sort();
-  // Un .mjs du même nom déjà là : seulement s'il est identique au modèle (une bascule interrompue), sinon il est à l'utilisateur.
+  // A .mjs of the same name already there: only if identical to the template (an interrupted switch), otherwise it is the user's.
   for (const f of codes) {
     const present = join(dossier, f);
     if (await absent(present)) continue;
@@ -225,7 +225,7 @@ async function basculerWidgetDeDepart(c: CheminsEspace, modeles: string, id: key
   }
 
   const crees: string[] = [];
-  // workflow.json en dernier : il n'apparaît qu'une fois son code en place.
+  // workflow.json last: it appears only once its code is in place.
   for (const f of [...codes, "workflow.json"]) {
     const destination = join(dossier, f);
     try {
@@ -239,7 +239,7 @@ async function basculerWidgetDeDepart(c: CheminsEspace, modeles: string, id: key
   return crees;
 }
 
-/** `recolte.mjs` d'un widget de départ basculé part dans `accueil/.corbeille/<id>-recolte-<horodatage>.mjs`. */
+/** `recolte.mjs` of a switched starter widget goes to `accueil/.corbeille/<id>-recolte-<timestamp>.mjs`. */
 async function rangerRecolte(c: CheminsEspace, id: string): Promise<void> {
   const corbeille = join(c.accueil, ".corbeille");
   await mkdir(corbeille, { recursive: true });
@@ -247,8 +247,8 @@ async function rangerRecolte(c: CheminsEspace, id: string): Promise<void> {
 }
 
 /**
- * Remplace l'`affichage.html` d'un widget de départ resté à une version livrée (empreinte connue) par celui du modèle.
- * Un affichage modifié, un lien symbolique ou un widget absent ne sont pas touchés.
+ * Replaces the `affichage.html` of a starter widget left at a shipped version (known fingerprint) with the template's.
+ * A modified display, a symbolic link or an absent widget are not touched.
  */
 async function migrerAffichageDeDepart(c: CheminsEspace, modeles: string, id: keyof typeof AFFICHAGES_LIVREES): Promise<boolean> {
   const fichier = join(c.widgets, id, "affichage.html");
@@ -260,7 +260,7 @@ async function migrerAffichageDeDepart(c: CheminsEspace, modeles: string, id: ke
   return true;
 }
 
-/** Crée l'espace de travail à partir des modèles, sans écraser un fichier existant (sauf un AGENTS.md d'un ancien modèle). */
+/** Creates the workspace from the templates, without overwriting an existing file (except an AGENTS.md of an old template). */
 export async function initialiserEspace(c: CheminsEspace, modeles = MODELES_PAR_DEFAUT): Promise<{ crees: string[] }> {
   const crees: string[] = [];
   await mettreDeCoteLesBlocs(c);
@@ -269,7 +269,7 @@ export async function initialiserEspace(c: CheminsEspace, modeles = MODELES_PAR_
     if (existsSync(destination) && !miseAJour) continue;
     await mkdir(dirname(destination), { recursive: true });
     try {
-      // COPYFILE_EXCL : si le fichier apparaît entre-temps, on ne l'écrase pas.
+      // COPYFILE_EXCL: if the file appears in the meantime, we do not overwrite it.
       await copyFile(join(modeles, modele), destination, miseAJour ? 0 : constants.COPYFILE_EXCL);
       crees.push(destination);
     } catch (e) {
@@ -277,7 +277,7 @@ export async function initialiserEspace(c: CheminsEspace, modeles = MODELES_PAR_
     }
   }
   for (const id of Object.keys(AFFICHAGES_LIVREES) as (keyof typeof AFFICHAGES_LIVREES)[]) {
-    // Au mieux, widget par widget : un affichage raté ne bloque jamais le lancement.
+    // Best effort, widget by widget: a failed display never blocks launch.
     try {
       if (await migrerAffichageDeDepart(c, modeles, id)) crees.push(join(c.widgets, id, "affichage.html"));
     } catch (e) {
@@ -285,7 +285,7 @@ export async function initialiserEspace(c: CheminsEspace, modeles = MODELES_PAR_
     }
   }
   for (const id of Object.keys(RECOLTES_LIVREES) as (keyof typeof RECOLTES_LIVREES)[]) {
-    // Au mieux, widget par widget : une bascule ratée ne bloque jamais le lancement (le widget garde son recolte.mjs).
+    // Best effort, widget by widget: a failed switch never blocks launch (the widget keeps its recolte.mjs).
     try {
       crees.push(...(await basculerWidgetDeDepart(c, modeles, id)));
     } catch (e) {

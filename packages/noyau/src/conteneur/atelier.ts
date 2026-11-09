@@ -21,17 +21,17 @@ export function plagePortsConteneur(): [number, number] {
   const [min, max] = m ? [Number(m[1]), Number(m[2])] : [0, 0];
   return min >= 1024 && max <= 65535 && min <= max ? [min, max] : [5280, 5299];
 }
-/** Les sondes docker ne doivent pas bloquer si Docker Desktop est coincé au démarrage. */
+/** The docker probes must not block if Docker Desktop is stuck at startup. */
 const DELAI_SONDE_MS = 30_000;
-/** Première construction : téléchargement de l'image de base et installation de l'agent. Au-delà, c'est bloqué. */
+/** First build: download of the base image and install of the agent. Beyond that, it is blocked. */
 export const DELAI_CONSTRUCTION_MS = 20 * 60_000;
 
-/** Dossier du Dockerfile dans le paquet ; un navigateur qui embarque le noyau peut en fournir un autre. */
+/** Dockerfile folder in the package; a browser that embeds the kernel can provide another. */
 export const DOSSIER_DOCKER_PAR_DEFAUT = join(import.meta.dirname, "..", "..", "docker");
 const dockerfile = (dossier: string) => join(dossier, "atelier.Dockerfile");
 const LABEL_EMPREINTE = "webaios.dockerfile";
 
-/** Empreinte du Dockerfile : l'image et le conteneur la portent en label, pour savoir s'ils sont à jour. */
+/** Fingerprint of the Dockerfile: the image and the container carry it as a label, to know whether they are up to date. */
 export function empreinteDockerfile(dossierDocker = DOSSIER_DOCKER_PAR_DEFAUT): string {
   return createHash("sha256").update(readFileSync(dockerfile(dossierDocker))).digest("hex").slice(0, 12);
 }
@@ -45,8 +45,8 @@ function normaliser(chemin: string): string {
 }
 
 /**
- * Nom du conteneur d'une exécution : `webaios-recolte-<id>` pour un widget (un id seul est celui d'un widget),
- * `webaios-action-<id>` pour une action. L'id entre dans un nom docker, on refuse tout id douteux.
+ * Name of a run's container: `webaios-recolte-<id>` for a widget (a bare id is a widget's),
+ * `webaios-action-<id>` for an action. The id goes into a docker name, any dubious id is refused.
  */
 export function nomRecolte(p: string | Proprietaire): string {
   const { type, id } = typeof p === "string" ? { type: "widget" as const, id: p } : p;
@@ -54,10 +54,10 @@ export function nomRecolte(p: string | Proprietaire): string {
   return type === "widget" ? `webaios-recolte-${id}` : `webaios-action-${id}`;
 }
 
-/** Durée maximale d'une récolte dans son conteneur (secondes), avant SIGTERM puis SIGKILL 5 s après. */
+/** Maximum duration of a harvest in its container (seconds), before SIGTERM then SIGKILL 5 s later. */
 export const DELAI_RECOLTE_S = 180;
 
-/** Le dossier d'une appli entre dans une expression grep entre apostrophes : on refuse tout nom douteux. */
+/** An app's folder goes into a grep expression between apostrophes: any dubious name is refused. */
 function dossierApplication(dossier: string): string {
   if (!dossierValide(dossier)) throw new Error(`dossier d'application invalide : ${dossier}`);
   return dossier;
@@ -65,7 +65,7 @@ function dossierApplication(dossier: string): string {
 
 export type EtatAtelier = "docker-absent" | "absent" | "arrete" | "demarre";
 
-/** Cherche la CLI docker dans le PATH puis aux emplacements connus (Finder n'a pas le PATH du shell). */
+/** Looks for the docker CLI in the PATH then at known locations (Finder does not have the shell's PATH). */
 export function trouverDocker(
   env: NodeJS.ProcessEnv = process.env,
   existe: (chemin: string) => boolean = existsSync,
@@ -85,17 +85,17 @@ function fichierSession(id: string): string {
   return `/tmp/webaios-session-${id}.pid`;
 }
 
-/** Variable posée sur chaque session : tout ce que l'agent lance en hérite, même détaché de son groupe (nohup, setsid). */
+/** Variable set on each session: everything the agent launches inherits it, even detached from its group (nohup, setsid). */
 export const VARIABLE_SESSION = "WEBAIOS_SESSION";
 
 /**
- * Envoie HUP, puis TERM, puis KILL aux processus que liste la fonction shell `cibles` (pid, ou -pgid pour un groupe).
- * claude intercepte HUP et TERM sans forcément quitter : chaque signal a 2 s pour agir.
+ * Sends HUP, then TERM, then KILL to the processes listed by the shell function `cibles` (pid, or -pgid for a group).
+ * claude intercepts HUP and TERM without necessarily quitting: each signal has 2 s to act.
  */
 function escalade(cibles: string): string[] {
   return [
     `cibles() { ${cibles}; }`,
-    // Pas de « -- » : le kill de dash (sh du conteneur) le refuse, et le groupe ne serait jamais visé.
+    // No « -- »: the kill of dash (the container's sh) refuses it, and the group would never be targeted.
     `signaler() { for c in $(cibles); do kill -$1 "$c" 2>/dev/null; done; }`,
     `vivant() { for c in $(cibles); do kill -0 "$c" 2>/dev/null && return 0; done; return 1; }`,
     `for s in HUP TERM; do signaler $s; i=0; while [ $i -lt 20 ] && vivant; do sleep 0.1; i=$((i + 1)); done; vivant || exit 0; done`,
@@ -103,16 +103,16 @@ function escalade(cibles: string): string[] {
   ];
 }
 
-/** Processus qui portent la marque `motif` (expression grep sur une variable d'environnement entière). */
+/** Processes that carry the mark `motif` (grep expression on a whole environment variable). */
 const marques = (motif: string) =>
   `for d in /proc/[0-9]*; do grep -qzx '${motif}' "$d/environ" 2>/dev/null && echo "\${d#/proc/}"; done`;
 
-/** Un texte lu tel quel par grep (expression de base) : « my.app » ne vise pas « myxapp ». */
+/** A text read as is by grep (basic expression): « my.app » does not target « myxapp ». */
 const litteral = (texte: string) => texte.replace(/[\\.*[\]^$]/g, "\\$&");
 
 /**
- * Arrête la session `id` dont le PID est noté dans `f` : son groupe (l'agent et ce qu'il a lancé), et tout processus
- * qui porte sa marque (un serveur de démo détaché par l'agent).
+ * Stops session `id` whose PID is noted in `f`: its group (the agent and what it launched), and any process
+ * that carries its mark (a demo server detached by the agent).
  */
 export function scriptArretSession(f: string, id: string): string {
   return [
@@ -122,12 +122,12 @@ export function scriptArretSession(f: string, id: string): string {
   ].join("\n");
 }
 
-/** Arrête toutes les sessions marquées, quelle que soit leur fenêtre (voir arreterSessionsOrphelines). */
+/** Stops all marked sessions, whatever their window (see arreterSessionsOrphelines). */
 export function scriptArretOrphelins(): string {
   return ["rm -f /tmp/webaios-session-*.pid", ...escalade(marques(`${VARIABLE_SESSION}=.*`))].join("\n");
 }
 
-/** Marque des processus d'une appli lancée : jamais confondue avec celle des sessions (`WEBAIOS_SESSION`). */
+/** Mark of the processes of a launched app: never confused with that of sessions (`WEBAIOS_SESSION`). */
 export const VARIABLE_APPLICATION = "WEBAIOS_APP";
 
 export class Atelier {
@@ -135,7 +135,7 @@ export class Atelier {
   private readonly executer: Executeur;
   private readonly docker: string | null;
   private readonly dossierDocker: string;
-  /** Démarrage en cours, partagé : deux fenêtres qui ouvrent un agent ne construisent pas deux fois l'image. */
+  /** Startup in progress, shared: two windows opening an agent do not build the image twice. */
   private demarrage: Promise<EtatAtelier> | null = null;
 
   constructor(o: { chemins: CheminsEspace; executer?: Executeur; docker?: string | null; dossierDocker?: string }) {
@@ -156,7 +156,7 @@ export class Atelier {
     return r.stdout.trim() === "true" ? "demarre" : "arrete";
   }
 
-  /** Le conteneur existant est-il monté sur la bonne racine et construit depuis le Dockerfile actuel ? */
+  /** Is the existing container mounted on the right root and built from the current Dockerfile? */
   private async conteneurAJour(empreinte: string): Promise<boolean> {
     const format = `{{range .Mounts}}{{if eq .Destination "${CHEMIN_CONTENEUR}"}}{{.Source}}{{end}}{{end}}|{{index .Config.Labels "${LABEL_EMPREINTE}"}}`;
     const r = await this.lancer(["inspect", "-f", format, nomConteneur()], DELAI_SONDE_MS);
@@ -173,8 +173,8 @@ export class Atelier {
     let etat = await this.etat();
     if (etat === "docker-absent") return etat;
     const empreinte = empreinteDockerfile(this.dossierDocker);
-    // Un conteneur créé sur un autre dossier ou avec un ancien Dockerfile est recréé ; /workspace et
-    // le volume des identifiants sont conservés, seule la couche du conteneur est perdue.
+    // A container created on another folder or with an old Dockerfile is recreated; /workspace and
+    // the credentials volume are kept, only the container layer is lost.
     if (etat !== "absent" && !(await this.conteneurAJour(empreinte))) {
       await this.lancer(["rm", "-f", nomConteneur()], DELAI_SONDE_MS);
       etat = "absent";
@@ -212,13 +212,13 @@ export class Atelier {
   }
 
   /**
-   * Exécution d'un workflow, dans un conteneur jetable sans réseau : il ne voit que le dossier des fichiers et le dossier du
-   * moteur (celui du récolteur et de ses modules), en lecture seule, et ne parle au noyau que par son entrée et sa
-   * sortie standard (`-i`). `delaiS` : le conteneur est arrêté après ce délai (+5 s pour finir).
+   * Run of a workflow, in a disposable container with no network: it sees only the files folder and the
+   * engine folder (that of the harvester and its modules), read-only, and talks to the kernel only through its standard input and
+   * output (`-i`). `delaiS`: the container is stopped after this delay (+5 s to finish).
    */
   commandeRecolte(proprietaire: string | Proprietaire, dossierFichiers: string, moteur: string, delaiS: number = DELAI_RECOLTE_S): string[] {
     if (!this.docker) throw new Error("Docker introuvable");
-    // « : » changerait le sens de -v (cible, options) : un tel chemin ne peut pas être monté sans risque.
+    // « : » would change the meaning of -v (target, options): such a path cannot be mounted safely.
     for (const c of [dossierFichiers, moteur]) if (c.includes(":")) throw new Error(`chemin non montable : ${c}`);
     return [
       this.docker, "run", "-i", "--rm",
@@ -236,14 +236,14 @@ export class Atelier {
     ];
   }
 
-  /** Tuer le client `docker run` ne suffit pas : le conteneur est supprimé de force. */
+  /** Killing the `docker run` client is not enough: the container is force-deleted. */
   async supprimerRecolte(proprietaire: string | Proprietaire): Promise<void> {
     if (this.docker) await this.lancer(["rm", "-f", nomRecolte(proprietaire)], DELAI_SONDE_MS);
   }
 
   /**
-   * Session interactive de l'agent : le shell note son PID dans le conteneur avant de devenir l'agent (exec), pour
-   * que `arreterSession` puisse l'y tuer. Tuer le client `docker exec` local laisserait l'agent tourner.
+   * Interactive agent session: the shell notes its PID in the container before becoming the agent (exec), so
+   * that `arreterSession` can kill it there. Killing the local `docker exec` client would leave the agent running.
    */
   commandeSession(id: string, argv: string[]): string[] {
     const f = fichierSession(id);
@@ -256,17 +256,17 @@ export class Atelier {
   }
 
   /**
-   * Au lancement de l'app : les agents (et leurs serveurs) d'une app précédente qui n'a pas pu les arrêter (tuée net,
-   * plantée) n'ont plus de fenêtre. Une seule app tourne à la fois sur l'atelier.
+   * At app launch: the agents (and their servers) of a previous app that could not stop them (killed outright,
+   * crashed) have no window anymore. Only one app runs at a time on the workshop.
    */
   async arreterSessionsOrphelines(): Promise<void> {
     if (this.docker) await this.lancer(["exec", nomConteneur(), "sh", "-c", scriptArretOrphelins()], DELAI_SONDE_MS);
   }
 
   /**
-   * Application d'un projet, lancée dans son dossier avec sa marque et son port. Le shell redirige tout vers le
-   * journal (réécrit à chaque lancement) puis évalue la commande du manifeste : le dossier et la commande passent en
-   * arguments ($1, $2), jamais collés dans le script.
+   * Application of a project, launched in its folder with its mark and its port. The shell redirects everything to the
+   * log (rewritten at each launch) then evaluates the manifest's command: the folder and the command go as
+   * arguments ($1, $2), never pasted into the script.
    */
   commandeApplication(dossier: string, commande: string, port: number): string[] {
     dossierApplication(dossier);
@@ -277,12 +277,12 @@ export class Atelier {
     );
   }
 
-  /** Arrête l'appli `dossier` : tout processus qui porte sa marque, même détaché du shell qui l'a lancée. */
+  /** Stops app `dossier`: any process that carries its mark, even detached from the shell that launched it. */
   async arreterApplication(dossier: string): Promise<void> {
     if (this.docker) await this.lancer(["exec", nomConteneur(), "sh", "-c", escalade(marques(`${VARIABLE_APPLICATION}=${litteral(dossierApplication(dossier))}`)).join("\n")], DELAI_SONDE_MS);
   }
 
-  /** Au lancement du navigateur : les applis d'une vie précédente n'ont plus personne pour les suivre. */
+  /** At browser launch: apps of a previous life have nobody left to follow them. */
   async arreterApplicationsOrphelines(): Promise<void> {
     if (this.docker) await this.lancer(["exec", nomConteneur(), "sh", "-c", escalade(marques(`${VARIABLE_APPLICATION}=.*`)).join("\n")], DELAI_SONDE_MS);
   }

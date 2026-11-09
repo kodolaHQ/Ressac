@@ -8,7 +8,7 @@ export interface Portee {
   reseau: string[];
   tousLesSites: boolean;
   scriptsTousLesSites: boolean;
-  /** Vrai si le manifeste déclare des content_scripts (absent : faux). */
+  /** True if the manifest declares content_scripts (absent: false). */
   scripts?: boolean;
 }
 
@@ -31,11 +31,11 @@ const PERMISSIONS_REFUSEES_AGENT = [
   "proxy",
 ];
 const CLES_REFUSEES_AGENT = ["externally_connectable", "sandbox", "chrome_url_overrides", "devtools_page"];
-/** Seconds niveaux courants sous un domaine de pays (`*.co.uk`, `*.com.au`, `*.gouv.fr`…) : leur joker vaut « tous les sites ». */
+/** Common second levels under a country domain (`*.co.uk`, `*.com.au`, `*.gouv.fr`…): their wildcard means « all sites ». */
 const SECONDS_NIVEAUX = ["co", "com", "net", "org", "gov", "edu", "ac", "gouv", "ne", "or"];
 /**
- * Vrai si le motif couvre tous les sites : <all_urls>, ou un hôte (port retiré, `*:*` compris) `*`, `*.<un seul label>`
- * (jokers de TLD) ou `*.<second niveau courant>.<pays à 2 lettres>` (`*.co.uk`).
+ * True if the pattern covers all sites: <all_urls>, or a host (port removed, `*:*` included) `*`, `*.<a single label>`
+ * (TLD wildcards) or `*.<common second level>.<2-letter country>` (`*.co.uk`).
  */
 export function motifTousLesSites(motif: string): boolean {
   if (motif === "<all_urls>") return true;
@@ -122,14 +122,14 @@ function analyserReseau(webaios: unknown, refus: string[]): string[] {
   return uniquesTries(valides);
 }
 
-/** Les locales consultées pour une interface en français, avant la `default_locale` du manifeste. */
+/** The locales consulted for a French interface, before the manifest's `default_locale`. */
 const LOCALES_PREFEREES = ["fr", "fr_FR"];
-/** Une locale de `_locales/` (`en`, `pt_BR`, `es_419`) : jamais un chemin. */
+/** A locale of `_locales/` (`en`, `pt_BR`, `es_419`): never a path. */
 const LOCALE = /^[A-Za-z]{2,3}(_[A-Za-z0-9]{2,8})?$/;
 
 /**
- * Les catalogues de messages à lire pour résoudre `__MSG_…__` (chemins relatifs au dossier de l'extension), dans
- * l'ordre où on les consulte : `fr`, `fr_FR`, puis `default_locale` (si c'est une locale, et pas déjà listée).
+ * The message catalogs to read to resolve `__MSG_…__` (paths relative to the extension folder), in
+ * the order they are consulted: `fr`, `fr_FR`, then `default_locale` (if it is a locale, and not already listed).
  */
 export function fichiersMessages(brut: unknown): string[] {
   const m = objet(brut);
@@ -138,8 +138,8 @@ export function fichiersMessages(brut: unknown): string[] {
 }
 
 /**
- * `__MSG_cle__` remplacé par le message du premier catalogue qui a la clé (sans tenir compte de la casse, comme Chrome) ;
- * une clé introuvable reste telle quelle. `catalogues` : le contenu des `messages.json` dans l'ordre de `fichiersMessages`.
+ * `__MSG_key__` replaced by the message of the first catalog that has the key (case-insensitive, like Chrome);
+ * a key not found stays as is. `catalogues`: the content of the `messages.json` files in the order of `fichiersMessages`.
  */
 export function resoudreMessages(texte: string, catalogues: readonly unknown[]): string {
   return texte.replace(/__MSG_([A-Za-z0-9_@]+)__/g, (tout, cle: string) => {
@@ -162,7 +162,7 @@ export function analyserManifeste(
     source: SourceExtension;
     webaios?: unknown;
     regles?: Record<string, unknown>;
-    /** Le contenu des catalogues de `fichiersMessages` (absent ou illisible : `undefined`), pour un nom `__MSG_…__`. */
+    /** The content of the catalogs of `fichiersMessages` (absent or unreadable: `undefined`), for a `__MSG_…__` name. */
     messages?: readonly unknown[];
   },
 ): AnalyseManifeste {
@@ -184,7 +184,7 @@ export function analyserManifeste(
   const version = typeof m.version === "string" ? m.version : "";
   if (!nomBrut) refus.push("Manifeste sans « name »");
   if (!version) refus.push("Manifeste sans « version »");
-  // Sans message pour la clé : l'id du message plutôt que `__MSG_…__`.
+  // No message for the key: the message id rather than `__MSG_…__`.
   const resolu = resoudreMessages(nomBrut, o.messages ?? []);
   const msg = /^__MSG_(.+)__$/.exec(resolu);
   const nom = msg ? msg[1]! : resolu;
@@ -260,9 +260,9 @@ export function porteeElargie(accordee: Portee, nouvelle: Portee): boolean {
 }
 
 /**
- * Empreinte d'une portée (sha-256 hexadécimal d'un JSON canonique : clés triées, listes triées, `scripts` absent = faux).
- * La carte d'accord la porte : un appelant n'enregistre l'accord que si la portée qu'il écrit a la même empreinte que
- * celle montrée à l'utilisateur.
+ * Fingerprint of a scope (hexadecimal sha-256 of a canonical JSON: sorted keys, sorted lists, `scripts` absent = false).
+ * The grant card carries it: a caller records the grant only if the scope it writes has the same fingerprint as
+ * the one shown to the user.
  */
 export function empreintePortee(p: Portee): string {
   const triee = (l: string[]) => [...l].sort();
@@ -277,7 +277,7 @@ export function empreintePortee(p: Portee): string {
   return createHash("sha256").update(canonique).digest("hex");
 }
 
-/** Accord renforcé (agent) : scripts partout, ou injection possible partout via `scripting`. */
+/** Reinforced grant (agent): scripts everywhere, or injection possible everywhere through `scripting`. */
 export function accordRenforce(p: Portee, source: SourceExtension): boolean {
   return (
     source === "agent" &&

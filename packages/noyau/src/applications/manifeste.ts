@@ -16,7 +16,7 @@ const urlWeb = z.string().refine((u) => {
   }
 }, "URL http(s) attendue");
 
-/** Les champs inconnus sont conservés (`passthrough`) pour que la réécriture ne les perde pas. */
+/** Unknown fields are kept (`passthrough`) so the rewrite does not lose them. */
 export const Manifeste = z
   .object({
     nom: z.string().optional(),
@@ -32,7 +32,7 @@ export type ProjetLu = { dossier: string; chemin: string; creeLe: string; nom: s
   | { sansFiche: string }
 );
 
-/** Un dossier se lance seulement si son nom passe dans une commande shell sans guillemets. */
+/** A folder is launched only if its name passes in a shell command without quotes. */
 export function dossierValide(dossier: string): boolean {
   return NOM_DOSSIER.test(dossier);
 }
@@ -59,7 +59,7 @@ async function lireProjet(c: CheminsEspace, dossier: string): Promise<ProjetLu> 
   }
 }
 
-/** Liste les projets. Un manifeste absent ou cassé donne un projet « sans fiche », jamais une erreur. */
+/** Lists the projects. A missing or broken manifest gives a project « sans fiche », never an error. */
 export async function lireProjets(c: CheminsEspace): Promise<ProjetLu[]> {
   let entrees;
   try {
@@ -74,7 +74,7 @@ export async function lireProjets(c: CheminsEspace): Promise<ProjetLu[]> {
   return Promise.all(dossiers.map((d) => lireProjet(c, d)));
 }
 
-/** Appelle `rappel` après chaque rafale de changements des projets. Renvoie la fonction d'arrêt. */
+/** Calls `rappel` after each burst of changes of the projects. Returns the stop function. */
 export function surveillerProjets(c: CheminsEspace, rappel: () => void): () => Promise<void> {
   mkdirSync(c.projets, { recursive: true });
   let minuterie: NodeJS.Timeout | undefined;
@@ -96,7 +96,7 @@ export function surveillerProjets(c: CheminsEspace, rappel: () => void): () => P
   };
 }
 
-/** Change le type d'un projet en gardant les autres champs du manifeste. */
+/** Changes a project's type, keeping the other fields of the manifest. */
 export async function ecrireType(c: CheminsEspace, dossier: string, type: "application" | "poc"): Promise<void> {
   const cible = join(c.projets, dossier, "webaios.json");
   const manifeste = Manifeste.parse(JSON.parse(await readFile(cible, "utf8")));

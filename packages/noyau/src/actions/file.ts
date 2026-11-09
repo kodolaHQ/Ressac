@@ -8,23 +8,23 @@ import { ACTION_ARRETEE, type Execution } from "../workflows/executions.js";
 import type { Menagement } from "../workflows/menagement.js";
 import { couperSaisie, executerAction, type OptionsAction, type ResultatLancement, type TraceAction } from "./executer.js";
 
-/** Actions différentes qui tournent en même temps, au plus. */
+/** Different actions running at the same time, at most. */
 export const ACTIONS_SIMULTANEES = 2;
 export const ERREUR_ACTION_INTERNE = "Action impossible : erreur interne du navigateur";
 const ATTENTE_ARRET_MS = 15_000;
 
-/** Une action qui tourne, d'après ses traces : ce que sa page montre pendant l'exécution. */
+/** A running action, from its traces: what its page shows during the run. */
 export type DirectAction = {
   action: string;
   debut: string;
   saisie: string | null;
   essai: boolean;
   etape: "workflow" | "mise-en-page";
-  /** `type` : celui du bloc dans le workflow (son libellé est celui du catalogue). */
+  /** `type`: that of the block in the workflow (its label is the catalog's). */
   blocs: Record<string, { statut: "en-cours" | "reussi" | "partiel" | "echoue"; elements: number | null; faits?: number; total?: number; hote?: string; type?: string }>;
 };
 export type EtatActions = { courantes: DirectAction[]; enAttente: { action: string; depuis: string }[] };
-/** `deja` : l'action tournait (ou attendait) déjà ; `fin` est celle de cette exécution-là. */
+/** `deja`: the action was already running (or waiting); `fin` is that of this run. */
 export type LancementAction = { deja: boolean; fin: Promise<ResultatLancement> };
 export type { ResultatLancement };
 
@@ -35,20 +35,20 @@ export interface OptionsFileActions {
   atelier: Pick<Atelier, "etat" | "commandeRecolte" | "supprimerRecolte">;
   lancer?: LanceurProcessus;
   pont: PontNavigateur;
-  /** Le répartiteur partagé avec les widgets ; null sans IA locale. */
+  /** The dispatcher shared with the widgets; null without local AI. */
   repartiteur: Pick<RepartiteurIa, "pour"> | null;
   horloge?: () => Date;
-  /** Démarrage de l'atelier : aucune action ne part avant. */
+  /** Workshop start: no action leaves before. */
   pret?: Promise<unknown>;
-  /** Appelé à chaque changement de `direct()` ; doit rendre la main tout de suite. */
+  /** Called on each change of `direct()`; must return control right away. */
   surDirect?: (e: EtatActions) => void;
   adressesLocales?: boolean;
   menagement?: Menagement;
   urlRecherche?: string;
   delaiMiseEnPageMs?: number;
-  /** Attente bornée des actions en cours à l'arrêt (15 s par défaut). */
+  /** Bounded wait for running actions at shutdown (15 s by default). */
   attenteArretMs?: number;
-  /** Tests : remplace l'exécution réelle d'une action. */
+  /** Tests: replaces the real run of an action. */
   executer?: (o: OptionsAction) => Promise<ResultatLancement>;
 }
 
@@ -60,23 +60,23 @@ type Demande = {
   ctl: AbortController;
   fin: Promise<ResultatLancement>;
   depuis: string;
-  /** Présent pendant l'attente d'une place : la donne (true) ou y renonce (false). */
+  /** Present while waiting for a slot: grants it (true) or gives up (false). */
   placer?: (ok: boolean) => void;
   direct?: DirectAction;
 };
 
 /**
- * La file des actions, à part de celle des récoltes de widgets (une action n'attend jamais une récolte) : au plus
- * `ACTIONS_SIMULTANEES` actions différentes en même temps, les suivantes attendent leur tour ; une seule exécution à la
- * fois par action (une demande pendant qu'elle tourne ou attend rend celle-là).
+ * The actions queue, apart from that of widget harvests (an action never waits for a harvest): at most
+ * `ACTIONS_SIMULTANEES` different actions at the same time, the next ones wait their turn; only one run at a
+ * time per action (a request while it runs or waits returns that one).
  */
 export class FileActions {
   private readonly o: OptionsFileActions & { horloge: () => Date; executer: (o: OptionsAction) => Promise<ResultatLancement> };
-  /** Par action, sa demande en attente ou en cours. */
+  /** Per action, its pending or running request. */
   private readonly parAction = new Map<string, Demande>();
-  /** Les demandes qui ont une place (elles tournent), dans l'ordre où elles l'ont eue. */
+  /** Requests that have a slot (they run), in the order they got it. */
   private enCours: Demande[] = [];
-  /** Les demandes qui attendent une place. */
+  /** Requests waiting for a slot. */
   private attente: Demande[] = [];
   private arrete = false;
 
@@ -88,12 +88,12 @@ export class FileActions {
     return this.demander(id, { saisie: couperSaisie(o.saisie), declencheur: o.declencheur, essai: null });
   }
 
-  /** Essai du constructeur : rejoue depuis `depart` avec les sorties amont de l'exécution `origine`. */
+  /** Builder trial: replays from `depart` with the upstream outputs of run `origine`. */
   essayer(id: string, origine: string, depart: string): LancementAction {
     return this.demander(id, { saisie: null, declencheur: "rejeu", essai: { origine, depart } });
   }
 
-  /** Arrête l'exécution de cette action (ou la retire de la file) ; faux si elle ne tourne ni n'attend. */
+  /** Stops this action's run (or removes it from the queue); false if it neither runs nor waits. */
   arreter(id: string): boolean {
     const d = this.parAction.get(id);
     if (!d) return false;
@@ -107,7 +107,7 @@ export class FileActions {
   }
 
   direct(): EtatActions {
-    // Une copie : l'appelant ne voit pas bouger l'état suivi, et ne peut pas le modifier.
+    // A copy: the caller does not see the tracked state move, and cannot modify it.
     return structuredClone({
       courantes: this.enCours.flatMap((d) => (d.direct ? [d.direct] : [])),
       enAttente: this.attente.map((d) => ({ action: d.id, depuis: d.depuis })),
@@ -115,8 +115,8 @@ export class FileActions {
   }
 
   /**
-   * Arrêt du noyau : toutes les actions sont arrêtées (celles qui tournent écrivent une exécution « interrompue »),
-   * leurs conteneurs supprimés, et elles sont attendues de façon bornée. Plus rien ne part ensuite.
+   * Kernel shutdown: all actions are stopped (those running write an « interrupted » run),
+   * their containers deleted, and they are awaited in a bounded way. Nothing leaves afterwards.
    */
   async arreterTout(): Promise<void> {
     this.arrete = true;
@@ -126,7 +126,7 @@ export class FileActions {
     let minuterie: NodeJS.Timeout | undefined;
     await Promise.race([Promise.all(fins), new Promise((ok) => (minuterie = setTimeout(ok, this.o.attenteArretMs ?? ATTENTE_ARRET_MS)))]);
     clearTimeout(minuterie);
-    // Toujours pas finies : leur conteneur a pu démarrer après la première suppression.
+    // Still not finished: their container may have started after the first deletion.
     await this.supprimerConteneurs();
   }
 
@@ -139,7 +139,7 @@ export class FileActions {
     if (existante) return { deja: true, fin: existante.fin };
     if (this.arrete) return { deja: false, fin: Promise.resolve(this.arretee()) };
     const d: Demande = { id, ...o, ctl: new AbortController(), fin: Promise.resolve(this.arretee()), depuis: this.o.horloge().toISOString() };
-    // La demande quitte la carte avant que sa fin soit rendue : une demande faite après la fin repart.
+    // The request leaves the map before its end is returned: a request made after the end starts again.
     d.fin = this.derouler(d).finally(() => {
       if (this.parAction.get(id) === d) this.parAction.delete(id);
     });
@@ -147,7 +147,7 @@ export class FileActions {
     return { deja: false, fin: d.fin };
   }
 
-  /** Arrêtée avant d'avoir tourné : rien n'est écrit. */
+  /** Stopped before running: nothing is written. */
   private arretee(): ResultatLancement {
     return { statut: "interrompue", erreur: this.arrete ? ERREUR_INTERROMPUE : ACTION_ARRETEE, erreurNoyau: true };
   }
@@ -163,13 +163,13 @@ export class FileActions {
         this.liberer(d);
       }
     } catch (e) {
-      // Le texte de l'exception peut citer ce que l'action a lu : seul un message fixe du noyau est rendu.
+      // The exception text may quote what the action read: only a fixed kernel message is returned.
       console.error(`[webaios] action ${d.id} :`, e);
       return { statut: "echouee", erreur: ERREUR_ACTION_INTERNE, erreurNoyau: true };
     }
   }
 
-  /** Prend une place, ou attend la sienne ; faux si la demande est arrêtée entre-temps. */
+  /** Takes a slot, or waits for its own; false if the request is stopped in the meantime. */
   private place(d: Demande): Promise<boolean> {
     if (this.enCours.length < ACTIONS_SIMULTANEES) {
       this.enCours.push(d);
@@ -219,7 +219,7 @@ export class FileActions {
       suivi.etape = e;
       this.signalerDirect();
     };
-    // Chaque exécution a sa file d'appels à l'IA, servie avant celles des widgets.
+    // Each run has its own queue of AI calls, served before those of widgets.
     const ia = this.o.repartiteur?.pour(`action:${d.id}:${debut}`, { prioritaire: true }) ?? null;
     try {
       return await this.o.executer({
@@ -245,13 +245,13 @@ export class FileActions {
         ...(this.o.delaiMiseEnPageMs !== undefined ? { delaiMiseEnPageMs: this.o.delaiMiseEnPageMs } : {}),
       });
     } finally {
-      // Ses appels encore en file ne partent plus : ils prendraient la place des autres exécutions.
+      // Its calls still queued no longer leave: they would take the place of other runs.
       ia?.oublier();
       delete d.direct;
     }
   }
 
-  /** Une erreur du rappel ne doit jamais arrêter une exécution. */
+  /** An error from the callback must never stop a run. */
   private signalerDirect(): void {
     if (!this.o.surDirect) return;
     try {

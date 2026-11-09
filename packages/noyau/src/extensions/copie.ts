@@ -16,12 +16,12 @@ import {
 import { basename, dirname, join, posix } from "node:path";
 import { analyserManifeste, fichiersMessages, type AnalyseManifeste } from "./manifeste.js";
 
-/** Dossier des gardes livrés avec le noyau ; un navigateur qui embarque le noyau peut en fournir un autre. */
+/** Folder of the guards shipped with the kernel; a browser that embeds the kernel can provide another. */
 export const GARDES_PAR_DEFAUT = join(import.meta.dirname, "..", "..", "extensions");
 
 export const FICHIERS_MAX = 2000;
 export const TAILLE_MAX = 20 * 1024 * 1024;
-/** Fichiers et dossiers comptés ensemble. */
+/** Files and folders counted together. */
 export const ENTREES_MAX = 5000;
 export const PROFONDEUR_MAX = 32;
 
@@ -30,16 +30,16 @@ const GARDE_PAGE = "webaios-garde-page.js";
 const GARDE_FOND = "webaios-garde-fond.js";
 const FOND = "webaios-fond.js";
 const GARDES = [CORRECTIFS_PAGE, GARDE_PAGE, GARDE_FOND];
-/** La portée de la copie (`reseau`, `hotes`) pour la garde de page : injectée par executeScript et registerContentScripts. */
+/** The scope of the copy (`reseau`, `hotes`) for the page guard: injected by executeScript and registerContentScripts. */
 const PORTEE = "webaios-portee.js";
 /**
- * Un repère par fichier .js ou .css de l'agent (`webaios-fichiers/<n>.js` : `__webaiosFichier(n)`). Les scripts de contenu
- * (manifeste et registerContentScripts) ne déclarent que les gardes et ces repères ; le garde du fond injecte les vrais
- * fichiers après la réponse du processus principal (un onglet), par la table mise en tête de webaios-garde-fond.js.
+ * A marker per .js or .css file of the agent (`webaios-fichiers/<n>.js`: `__webaiosFichier(n)`). Content scripts
+ * (manifest and registerContentScripts) declare only the guards and these markers; the background guard injects the real
+ * files after the main process's reply (a tab), through the table put at the head of webaios-garde-fond.js.
  */
 const REPERES = "webaios-fichiers";
 
-/** CSP d'une copie de l'agent : `connect-src` ne s'ouvre qu'aux domaines de `reseau`, en https et en wss (WebSocket). */
+/** CSP of an agent copy: `connect-src` opens only to the domains of `reseau`, over https and wss (WebSocket). */
 export function cspAgent(reseau: readonly string[]): string {
   return (
     "default-src 'self'; script-src 'self'; object-src 'none'; connect-src 'self'" +
@@ -54,7 +54,7 @@ function objet(v: unknown): Record<string, unknown> | null {
   return v !== null && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
 }
 
-/** JSON d'un fichier (BOM toléré) ; `undefined` s'il est illisible. */
+/** JSON of a file (BOM tolerated); `undefined` if it is unreadable. */
 function json(contenu: Buffer | undefined): unknown {
   if (!contenu) return undefined;
   try {
@@ -67,10 +67,10 @@ function json(contenu: Buffer | undefined): unknown {
 class RefusLecture extends Error {}
 
 const LIENS = new Set(["ELOOP", "EMLINK", "ENOTDIR"]);
-// O_NOFOLLOW : un lien à la place du fichier fait échouer l'ouverture ; O_NONBLOCK : un tube ne bloque pas.
+// O_NOFOLLOW: a link in place of the file makes the open fail; O_NONBLOCK: a pipe does not block.
 const DRAPEAUX_LECTURE = constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK;
 
-/** Le dossier source réellement lu (chemin résolu, dev/ino) : l'appelant vérifie que c'est celui qu'il a contrôlé. */
+/** The source folder actually read (resolved path, dev/ino): the caller checks it is the one it vetted. */
 export interface RacineLue {
   chemin: string;
   dev: number;
@@ -84,11 +84,11 @@ interface Repere {
 }
 
 /**
- * Fichiers ordinaires du dossier (chemins relatifs en `/`), lus sans suivre aucun lien. Chaque fichier est ouvert
- * en `O_NOFOLLOW` et doit être celui vu par `lstat` (même dev/ino), sans autre lien physique ; chaque dossier doit
- * rester le même pendant sa lecture, et les dossiers parents sont revérifiés après chaque fichier. Un lien, un
- * fichier spécial, un remplacement pendant la lecture, ou un dépassement des limites donne un refus (le parcours
- * s'arrête).
+ * Ordinary files of the folder (relative paths with `/`), read without following any link. Each file is opened
+ * with `O_NOFOLLOW` and must be the one seen by `lstat` (same dev/ino), with no other hard link; each folder must
+ * stay the same during its read, and the parent folders are re-checked after each file. A link, a
+ * special file, a replacement during the read, or exceeding the limits gives a denial (the walk
+ * stops).
  */
 async function lireDossier(source: string): Promise<{ fichiers: Map<string, Buffer>; refus: string[]; racine?: RacineLue }> {
   const fichiers = new Map<string, Buffer>();
@@ -192,7 +192,7 @@ function empreinteDe(fichiers: Map<string, Buffer>): string {
   return h.digest("hex");
 }
 
-/** Règles DNR statiques déclarées par le manifeste, lues parmi les fichiers du dossier (absentes si illisibles). */
+/** Static DNR rules declared by the manifest, read among the folder's files (absent if unreadable). */
 function reglesDe(manifeste: unknown, fichiers: Map<string, Buffer>): Record<string, unknown> {
   const regles: Record<string, unknown> = {};
   const ressources = objet(objet(manifeste)?.declarative_net_request)?.rule_resources;
@@ -206,7 +206,7 @@ function reglesDe(manifeste: unknown, fichiers: Map<string, Buffer>): Record<str
   return regles;
 }
 
-/** Les fichiers que le fond peut injecter dans une page : chaque .js et .css de l'agent, triés (l'indice est le repère). */
+/** The files the background can inject into a page: each .js and .css of the agent, sorted (the index is the marker). */
 function tableDesFichiers(fichiers: Map<string, Buffer>): [string, "js" | "css"][] {
   const table: [string, "js" | "css"][] = [];
   for (const chemin of [...fichiers.keys()].sort()) {
@@ -217,9 +217,9 @@ function tableDesFichiers(fichiers: Map<string, Buffer>): [string, "js" | "css"]
 }
 
 /**
- * Chaque entrée `content_scripts[i]` ne déclare plus que les gardes, la portée et un repère par fichier (CSS d'abord,
- * puis JS, dans l'ordre du manifeste) ; son `css` est retiré. Rien de l'agent n'y est collé : ses fichiers sont injectés
- * par le fond après la réponse. Refus : un fichier absent ou hors du dossier. Rend aussi les sites de ces entrées.
+ * Each `content_scripts[i]` entry declares only the guards, the scope and a marker per file (CSS first,
+ * then JS, in manifest order); its `css` is removed. Nothing of the agent's is pasted in: its files are injected
+ * by the background after the reply. Denial: a file that is absent or outside the folder. Also returns the sites of these entries.
  */
 function reecrireScripts(
   manifeste: Manifeste,
@@ -254,8 +254,8 @@ const BALISE_GARDE = Buffer.from(`<script src="/${GARDE_FOND}"></script>`);
 const BOM = Buffer.from([0xef, 0xbb, 0xbf]);
 
 /**
- * Préfixe les octets d'une page HTML par le garde de fond (après un BOM et un `<!doctype …>` placés tout au
- * début) : rien ne peut le précéder, ni commentaire, ni `<base>`, ni changement d'encodage ; le reste est intact.
+ * Prefixes the bytes of an HTML page with the background guard (after a BOM and a `<!doctype …>` placed at the very
+ * start): nothing can precede it, no comment, no `<base>`, no encoding change; the rest is intact.
  */
 function insererGardePage(page: Buffer): Buffer {
   let position = page.subarray(0, 3).equals(BOM) ? 3 : 0;
@@ -268,7 +268,7 @@ const DOCUMENTS_REFUSES = /\.(xhtml|xht|xml|xsl|xslt|mht|mhtml|svgz)$/i;
 const PAGES = /\.(html?|shtml)$/i;
 const MOTS_SVG = ["javascript:", "script", "foreignobject", "<!entity"];
 
-/** BOM UTF-16 (FF FE, FE FF) ou UTF-32 (FF FE 00 00, 00 00 FE FF). */
+/** UTF-16 BOM (FF FE, FE FF) or UTF-32 (FF FE 00 00, 00 00 FE FF). */
 function bomUtf16Ou32(o: Buffer): boolean {
   return (
     (o[0] === 0xff && o[1] === 0xfe) ||
@@ -277,7 +277,7 @@ function bomUtf16Ou32(o: Buffer): boolean {
   );
 }
 
-/** Règle fermée : la raison du refus d'un SVG, ou null s'il est accepté. */
+/** Closed rule: the reason for denying an SVG, or null if it is accepted. */
 function refusSvg(contenu: Buffer): string | null {
   if (bomUtf16Ou32(contenu)) return "encodage UTF-16 ou UTF-32";
   if (contenu.includes(0)) return "octet NUL";
@@ -293,12 +293,12 @@ function refusSvg(contenu: Buffer): string | null {
   return null;
 }
 
-/** Refus propres au contenu des fichiers : noms réservés, documents hors HTML, SVG actifs, pages en UTF-16/32. */
+/** Denials specific to file content: reserved names, non-HTML documents, active SVGs, UTF-16/32 pages. */
 function refusFichiers(fichiers: Map<string, Buffer>): string[] {
   const refus: string[] = [];
   const reserves = new Set([FOND, ...GARDES]);
   for (const [chemin, contenu] of fichiers) {
-    // Tout nom de premier niveau en « webaios- » : gardes, portée, repères (webaios-fichiers/).
+    // Any top-level name in « webaios- »: guards, scope, markers (webaios-fichiers/).
     const premier = chemin.split("/")[0]!.normalize("NFC").toLowerCase();
     if (reserves.has(premier) || premier.startsWith("webaios-")) refus.push(`Nom de fichier réservé à WebAiOs : ${chemin}`);
     const document = DOCUMENTS_REFUSES.exec(chemin);
@@ -322,7 +322,7 @@ function fondGenere(original: string, module: boolean): string {
   return `${entete}importScripts(${JSON.stringify(GARDE_FOND)}, ${JSON.stringify(chemin)});\n`;
 }
 
-/** Met `nouveau` à la place de `cible` : deux renommages (un dossier non vide ne se remplace pas d'un coup). */
+/** Puts `nouveau` in place of `cible`: two renames (a non-empty folder cannot be replaced in one go). */
 async function remplacerDossier(nouveau: string, cible: string): Promise<void> {
   const ancien = `${cible}.${randomUUID()}.ancienne`;
   let deplace = false;
@@ -342,9 +342,9 @@ async function remplacerDossier(nouveau: string, cible: string): Promise<void> {
 }
 
 /**
- * Copie contrôlée d'une extension de l'agent : `source` est lu sans suivre aucun lien, analysé, et s'il n'y a
- * aucun refus, la copie (CSP imposée, gardes en tête, `webaios.json`, `key` et `update_url` retirés) remplace
- * `cible` d'un coup. Avec un refus, rien n'est écrit.
+ * Controlled copy of an agent extension: `source` is read without following any link, analyzed, and if there is
+ * no denial, the copy (CSP imposed, guards at the head, `webaios.json`, `key` and `update_url` removed) replaces
+ * `cible` in one go. With a denial, nothing is written.
  */
 export async function preparerCopie(o: {
   source: string;
@@ -374,8 +374,8 @@ export async function preparerCopie(o: {
     return { analyse, empreinte, ...lue };
   }
   if (reecrits.sites.length > 0) {
-    // Le fond injecte les fichiers par `scripting`, qui demande le droit et les hôtes des scripts de contenu (déjà
-    // accordés : la portée compte ces sites). Seule la copie les porte, l'analyse reste celle de la source.
+    // The background injects files through `scripting`, which asks for the right and the hosts of the content scripts (already
+    // granted: the scope counts these sites). Only the copy carries them, the analysis stays that of the source.
     const permissions = Array.isArray(manifeste.permissions) ? (manifeste.permissions as unknown[]) : [];
     if (!permissions.includes("scripting")) manifeste.permissions = [...permissions, "scripting"];
     const hotes = Array.isArray(manifeste.host_permissions) ? (manifeste.host_permissions as unknown[]) : [];
@@ -406,7 +406,7 @@ export async function preparerCopie(o: {
       );
     }
     for (const g of GARDES) await copyFile(join(o.dossierGardes, g), join(tmp, g));
-    // La table en tête du garde de fond : elle est lue avant tout script de l'extension, qui ne peut plus la changer.
+    // The table at the head of the background guard: it is read before any script of the extension, which can no longer change it.
     await writeFile(
       join(tmp, GARDE_FOND),
       Buffer.concat([Buffer.from(`const __webaiosFichiers = ${JSON.stringify(table)};\n`), await readFile(join(o.dossierGardes, GARDE_FOND))]),
