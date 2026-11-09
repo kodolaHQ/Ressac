@@ -725,7 +725,7 @@ export const sites = {
     const s = siteOfFrame(wgp, open.values());
     framePosition(wgp, s, p, !!(s && context(s).localAddresses), (q) => host?.notify("sites.position", q));
   },
-  /** The site actor's "reprise": the position to resume, from the host. */
+  /** The site actor's "resume": the position to resume, from the host. */
   frameResume(wgp: any, duration: unknown): Promise<number | null> {
     const s = siteOfFrame(wgp, open.values());
     return frameResume(wgp, s, duration, !!(s && context(s).localAddresses), (q) => (host ? host.request<number | null>("sites.resume", q) : Promise.resolve(null)));

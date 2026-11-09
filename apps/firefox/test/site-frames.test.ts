@@ -43,7 +43,7 @@ describe("frameInjection", () => {
   it("the view's main frame gets its tweaks and webaiosSite; a sub-frame only what `cadres` gives, without it", () => {
     const { v, s } = app();
     const i = frameInjection(v.main, siteOfFrame(v.main, [s]), false)!;
-    expect(i).toMatchObject({ css: [".shorts{display:none}"], js: [{ code: "window.a = 1", name: "webaios-retouche://vidola/a.js" }], bridge: true });
+    expect(i).toMatchObject({ css: [".shorts{display:none}"], js: [{ code: "window.a = 1", name: "webaios-tweak://vidola/a.js" }], bridge: true });
     expect(i.guard).toContain("__webaiosScope");
     const reader = v.frame("https://www.lecteur.example/v");
     expect(frameInjection(reader, siteOfFrame(reader, [s]), false)).toMatchObject({ js: [{ code: "window.l = 1" }], bridge: false, hosts: ["https://www.lecteur.example/*"] });
@@ -92,13 +92,13 @@ describe("frameInjection", () => {
 });
 
 describe("frameMemory", () => {
-  const req = { op: "retenir", key: "k", value: 1 };
+  const req = { op: "remember", key: "k", value: 1 };
 
   it("the view's main page: relayed with the app's id and the page's relative address", async () => {
     const { v, s } = app({ url: "https://vidola-b.example/serie/the-bear?e=4" });
     const request = vi.fn(async () => ({ ok: true as const }));
     expect(await frameMemory(v.main, siteOfFrame(v.main, [s]), req, request)).toEqual({ ok: true });
-    expect(request).toHaveBeenCalledWith({ id: "vidola", url: "/serie/the-bear?e=4", op: "retenir", key: "k", value: 1 });
+    expect(request).toHaveBeenCalledWith({ id: "vidola", url: "/serie/the-bear?e=4", op: "remember", key: "k", value: 1 });
   });
 
   it("refused to a sub-frame, the sign-in window, a page off the site, without the grant, and a non-object request", async () => {
@@ -126,23 +126,23 @@ describe("the tweaks' console", () => {
     const b = app({ id: "autre" });
     const small = browser(PAGE);
     const both = [a.s, b.s];
-    frameError(siteOfFrame(a.v.main, both), err("webaios-retouche://vidola/a.js"));
-    frameError(siteOfFrame(b.v.frame("https://www.lecteur.example/v"), both), err("webaios-retouche://autre/b.js"));
+    frameError(siteOfFrame(a.v.main, both), err("webaios-tweak://vidola/a.js"));
+    frameError(siteOfFrame(b.v.frame("https://www.lecteur.example/v"), both), err("webaios-tweak://autre/b.js"));
     // B's page names its code as A's tweak; the sign-in window too; an ordinary source; malformed relays.
-    frameError(siteOfFrame(b.v.main, both), err("webaios-retouche://vidola/x.js"));
-    frameError(siteOfFrame(small.main, both), err("webaios-retouche://vidola/x.js"));
+    frameError(siteOfFrame(b.v.main, both), err("webaios-tweak://vidola/x.js"));
+    frameError(siteOfFrame(small.main, both), err("webaios-tweak://vidola/x.js"));
     frameError(siteOfFrame(a.v.main, both), err("https://vidola-b.example/app.js"));
-    for (const bad of [null, "x", { text: 1, source: "webaios-retouche://vidola/a.js" }, { text: "t" }]) frameError(a.s, bad);
-    expect(a.s.errors).toEqual([{ when: expect.any(String), text: "boum", source: "webaios-retouche://vidola/a.js:3", sourceVerified: false }]);
-    expect(b.s.errors.map((e) => e.source)).toEqual(["webaios-retouche://autre/b.js:3"]);
+    for (const bad of [null, "x", { text: 1, source: "webaios-tweak://vidola/a.js" }, { text: "t" }]) frameError(a.s, bad);
+    expect(a.s.errors).toEqual([{ when: expect.any(String), text: "boum", source: "webaios-tweak://vidola/a.js:3", sourceVerified: false }]);
+    expect(b.s.errors.map((e) => e.source)).toEqual(["webaios-tweak://autre/b.js:3"]);
   });
 
   it("is bounded: 50 messages at most, the total text bounded", () => {
     const { s } = app();
-    for (let i = 0; i < MAX_TWEAK_ERRORS + 10; i++) frameError(s, err("webaios-retouche://vidola/a.js", `e${i}`));
+    for (let i = 0; i < MAX_TWEAK_ERRORS + 10; i++) frameError(s, err("webaios-tweak://vidola/a.js", `e${i}`));
     expect(s.errors).toHaveLength(MAX_TWEAK_ERRORS);
     expect(s.errors[0]!.text).toBe("e10");
-    for (let i = 0; i < 40; i++) frameError(s, err("webaios-retouche://vidola/a.js", "x".repeat(5000)));
+    for (let i = 0; i < 40; i++) frameError(s, err("webaios-tweak://vidola/a.js", "x".repeat(5000)));
     expect(s.errors.reduce((t, e) => t + e.text.length, 0)).toBeLessThanOrEqual(CONSOLE_TWEAKS_TOTAL);
   });
 });

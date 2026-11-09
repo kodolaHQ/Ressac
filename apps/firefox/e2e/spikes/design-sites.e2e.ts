@@ -44,14 +44,14 @@ document.addEventListener("keydown", (e) => log.keys.push((e.target && e.target.
 const hook = (o, k) => { try { const f = o[k]; o[k] = function (...a) { log.hooked.push(k); return f.apply(this, a); }; } catch {} };
 hook(Element.prototype, "attachShadow"); hook(Document.prototype, "createElement"); hook(Element.prototype, "getBoundingClientRect");
 hook(window, "getComputedStyle"); hook(Document.prototype, "querySelectorAll"); hook(CSS, "escape");
-globalThis.__viseurArret = () => log.fake++; globalThis.__viseurAvaler = () => log.fake++; globalThis.__viseurChoisir = () => log.fake++;
+globalThis.__viewfinderStop = () => log.fake++; globalThis.__viewfinderSwallow = () => log.fake++; globalThis.__viewfinderPick = () => log.fake++;
 globalThis.__retoucheSecret = "r";
 R.dataset.retouche = "oui";
 document.addEventListener("essai", () => {
-  const hosts = document.getElementsByTagName("webaios-viseur");
+  const hosts = document.getElementsByTagName("webaios-viewfinder");
   const pw = document.getElementById("mdp");
   R.dataset.sonde = JSON.stringify({ log, hosts: hosts.length, shadow: hosts[0] ? String(hosts[0].shadowRoot) : "none", closed: hosts[0] ? typeof hosts[0].openOrClosedShadowRoot : "none",
-    pw: pw.value, pwAttr: String(pw.getAttribute("value")), fakeIsMine: globalThis.__viseurArret.toString().includes("log.fake") });
+    pw: pw.value, pwAttr: String(pw.getAttribute("value")), fakeIsMine: globalThis.__viewfinderStop.toString().includes("log.fake") });
 });`;
 
 /** The agent's home (its own code): listens first on its window, keeps a global, a green target with a data-source. */
@@ -185,7 +185,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
 
     // The viewfinder's sandbox, probed through the shipped actor's arm (its code is the parent's to send).
     const probe = `(() => ({ webaiosSite: typeof webaiosSite, portee: typeof __webaiosScope, fichier: typeof __webaiosFile, retoucheSecret: typeof __retoucheSecret,
-      pageSecret: typeof pageSecret, arret: typeof __viseurArret, Components: typeof Components, ChromeUtils: typeof ChromeUtils, Services: typeof Services,
+      pageSecret: typeof pageSecret, arret: typeof __viewfinderStop, Components: typeof Components, ChromeUtils: typeof ChromeUtils, Services: typeof Services,
       pwLength: document.getElementById("mdp").value.length,
       nativeValue: String(Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").get).includes("[native code]"),
       nativeAttach: String(Element.prototype.attachShadow).includes("[native code]"), nativeQsa: String(Document.prototype.querySelectorAll).includes("[native code]") }))()`;
@@ -199,7 +199,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
     const pageKeys0 = await view<string[]>("Object.keys(window)");
     await view("(window.log.hooked.length = 0, 1)");
     const a = await armActor(m, VIEW);
-    await expect.poll(() => view("document.getElementsByTagName('webaios-viseur').length"), { timeout: 10_000 }).toBe(1);
+    await expect.poll(() => view("document.getElementsByTagName('webaios-viewfinder').length"), { timeout: 10_000 }).toBe(1);
     const during = await tweak();
     note("S5 retouche while aiming", during);
     expect(during.pw).toBe("");
@@ -241,7 +241,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
     expect(pageKeys1?.filter((k) => !pageKeys0?.includes(k))).toEqual([]);
     await sleep(600);
     // The tweak's world and the page's world after: no viewfinder global, no host.
-    expect(await view("document.getElementsByTagName('webaios-viseur').length")).toBe(0);
+    expect(await view("document.getElementsByTagName('webaios-viewfinder').length")).toBe(0);
     const pageTypeof = await view<string>(
       `(() => { const s = document.createElement("script"); s.textContent = "document.documentElement.dataset.vu = [typeof webaiosSite, typeof __webaiosScope, typeof __retoucheSecret].join()"; document.documentElement.append(s); s.remove(); return document.documentElement.dataset.vu; })()`,
     );
@@ -250,7 +250,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
 
     // Escape (trusted) while aiming ends it with null; the tweak does not see it.
     const e = await armActor(m, VIEW);
-    await expect.poll(() => view("document.getElementsByTagName('webaios-viseur').length"), { timeout: 10_000 }).toBe(1);
+    await expect.poll(() => view("document.getElementsByTagName('webaios-viewfinder').length"), { timeout: 10_000 }).toBe(1);
     await siteKey("Escape");
     const esc = await e.result(3000);
     note("S5 Escape", { esc, tweakKeys: (await tweak()).log.keys });
@@ -309,9 +309,9 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
            if (!e.isTrusted || !inHome(e)) return;
            e.preventDefault();
            e.stopImmediatePropagation();
-           if (e.type === "click" && e.button === 0 && !picked && typeof sb.__viseurChoisir === "function") { picked = true; sb.__viseurChoisir(e.target); }
+           if (e.type === "click" && e.button === 0 && !picked && typeof sb.__viewfinderPick === "function") { picked = true; sb.__viewfinderPick(e.target); }
          };
-         const key = (e) => { if (!e.isTrusted || e.key !== "Escape" || !inHome(e)) return; e.preventDefault(); e.stopImmediatePropagation(); if (typeof sb.__viseurArret === "function") sb.__viseurArret(); };
+         const key = (e) => { if (!e.isTrusted || e.key !== "Escape" || !inHome(e)) return; e.preventDefault(); e.stopImmediatePropagation(); if (typeof sb.__viewfinderStop === "function") sb.__viewfinderStop(); };
          for (const t of ${JSON.stringify(MOUSE)}) handler.addEventListener(t, mouse, true);
          handler.addEventListener("keydown", key, true);
          let timer;
@@ -321,12 +321,12 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
        s.arm = (code) => {
          s.guard();
          s.result = "pending";
-         CU.evalInSandbox(code, sb, "latest", "chrome://browser/content/webaios/webaios-viseur.js", 1).then(
+         CU.evalInSandbox(code, sb, "latest", "chrome://browser/content/webaios/webaios-viewfinder.js", 1).then(
            (r) => { s.result = r ? JSON.parse(JSON.stringify(r)) : null; r ? s.later() : s.unguard(); },
            (e) => { s.result = { e: String(e) }; s.unguard(); },
          );
        };
-       s.stop = (code) => { try { CU.evalInSandbox(code, sb, "latest", "chrome://browser/content/webaios/webaios-viseur-arret.js", 1); s.stopped = "ok"; } catch (e) { s.stopped = String(e); } s.unguard(); };
+       s.stop = (code) => { try { CU.evalInSandbox(code, sb, "latest", "chrome://browser/content/webaios/webaios-viewfinder-stop.js", 1); s.stopped = "ok"; } catch (e) { s.stopped = String(e); } s.unguard(); };
        return { handlerIsFrame: handler === home, handlerIsBar: handler === win.document.getElementById("webaios-site-bar"), handlerIsRoot: handler === win.windowRoot,
          handler: ChromeUtils.getClassName(handler) + (handler.localName ? ":" + handler.localName : ""),
          principal: { isNull: hdoc.nodePrincipal.isNullPrincipal, origin: hdoc.nodePrincipal.origin }, uri: String(hdoc.documentURI).replace(/-[0-9a-f]{32}/, "-<token>"),
@@ -365,10 +365,10 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
       );
     const state = () => inSiteBar<any>(m, ID, `const s = win.__s6;
       if (Components.utils.isDeadWrapper(s.hdoc) || !s.hdoc.defaultView) return { dead: true, result: s.result, seen: s.seen.slice(), frameConnected: !Components.utils.isDeadWrapper(s.home) && s.home.isConnected };
-      const host = s.hdoc.querySelector("webaios-viseur"); const sh = host?.openOrClosedShadowRoot;
+      const host = s.hdoc.querySelector("webaios-viewfinder"); const sh = host?.openOrClosedShadowRoot;
       const st = (el) => el && { display: el.style.display, left: el.style.left, top: el.style.top, width: el.style.width, height: el.style.height, text: el.textContent };
-      return { result: s.result, hosts: s.hdoc.querySelectorAll("webaios-viseur").length, pageShadow: String(host?.wrappedJSObject?.shadowRoot ?? "none"), cadre: st(sh?.children[0]), etiquette: st(sh?.children[1]),
-        log: JSON.parse(JSON.stringify(s.hwin.wrappedJSObject.log)), seen: s.seen.slice(), sbGlobals: typeof s.sb.__viseurArret };`);
+      return { result: s.result, hosts: s.hdoc.querySelectorAll("webaios-viewfinder").length, pageShadow: String(host?.wrappedJSObject?.shadowRoot ?? "none"), cadre: st(sh?.children[0]), etiquette: st(sh?.children[1]),
+        log: JSON.parse(JSON.stringify(s.hwin.wrappedJSObject.log)), seen: s.seen.slice(), sbGlobals: typeof s.sb.__viewfinderStop };`);
     await inSiteBar(m, ID, `win.__s6.arm(arguments[0]); return 1;`, [firefoxViewfinderScript()]);
     await expect.poll(async () => (await state()).hosts, { timeout: 5000 }).toBe(1);
     await siteMouse(await homePoint("#nue"), { move: true });

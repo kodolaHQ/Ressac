@@ -64,7 +64,7 @@ const state = () => svc<{ active: boolean; basket: number; project: { project: s
 /** The UI's own api.design.toggle(), as ✎ will call it. */
 const toggle = () => inUi(m, "ui.webaios.design.toggle(); return 1;");
 const inPage = <T = unknown>(script: string) => inBrowser<T>(m, B, script);
-const hosts = () => inPage<number>(`return document.querySelectorAll("webaios-viseur").length;`);
+const hosts = () => inPage<number>(`return document.querySelectorAll("webaios-viewfinder").length;`);
 
 async function open(p = "/"): Promise<void> {
   await openTab(m, `${servers.page}${p}`);

@@ -224,7 +224,7 @@ describe("video resume", () => {
     writeSite(dataDir, "vidola", {
       declaration: declaration("/episode/4", { tweaks: [{ matches: ["/episode/*"], js: ["m.js"] }] }),
       files: {
-        "tweaks/m.js": 'document.addEventListener("essai", () => webaiosSite.retenir("k", 1).then(() => (document.documentElement.dataset.r = "ok"), (e) => (document.documentElement.dataset.r = "refus:" + e.message)));',
+        "tweaks/m.js": 'document.addEventListener("essai", () => webaiosSite.remember("k", 1).then(() => (document.documentElement.dataset.r = "ok"), (e) => (document.documentElement.dataset.r = "refus:" + e.message)));',
       },
     });
     await openAndWait("/episode/4");
@@ -238,7 +238,7 @@ describe("video resume", () => {
       return view("document.documentElement.dataset.r");
     };
     expect(await keep()).toBe("ok");
-    await expect.poll(() => JSON.parse(readFileSync(memoryFile(), "utf8")).valeurs.k?.valeur ?? null, { timeout: 10_000 }).toBe(1);
+    await expect.poll(() => JSON.parse(readFileSync(memoryFile(), "utf8")).values.k?.value ?? null, { timeout: 10_000 }).toBe(1);
     // Resume: a player created now (the page reloaded) is told the kept position by the new host.
     await view("(window.marque = 1, location.reload(), 1)");
     await expect.poll(() => view("window.marque === undefined && document.readyState !== 'loading'"), { timeout: 15_000 }).toBe(true);

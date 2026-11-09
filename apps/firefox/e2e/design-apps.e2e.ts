@@ -80,7 +80,7 @@ const svc = <R = unknown>(body: string, args: unknown[] = []) =>
 const designState = () => svc<{ active: boolean; basket: number; project: { project: string } | null }>("return await d.state(t);");
 /** The host's cart of app-essai (whether its window is open or not). */
 const cart = () => svc<number>(`return (await store.agent.request("design.tracking", { project: "app-essai" })).basket;`);
-const hosts = () => inAppView<number>(m, "essai", `return document.querySelectorAll("webaios-viseur").length;`).catch(() => -1);
+const hosts = () => inAppView<number>(m, "essai", `return document.querySelectorAll("webaios-viewfinder").length;`).catch(() => -1);
 
 /** The essai window's chrome handle (Marionette's chrome context), waited for. */
 async function appHandle(): Promise<string> {
@@ -235,7 +235,7 @@ it("⇧⌘D in the app window toggles its own mode, never the main window's tab"
   await expect.poll(hosts, { timeout: 10_000 }).toBe(1);
   expect((await svc<{ active: boolean }>("return await d.state(main);")).active).toBe(false);
   expect(await svc("return d.overlayContext(main);")).toBeNull();
-  expect(await inBrowser<number>(m, VIEW, `return document.querySelectorAll("webaios-viseur").length;`)).toBe(0);
+  expect(await inBrowser<number>(m, VIEW, `return document.querySelectorAll("webaios-viewfinder").length;`)).toBe(0);
   // Firefox's « bookmark all tabs » stays off in the app window.
   expect(await m.execute(`return ["bookmarkAllTabsKb", "Browser:BookmarkAllTabs"].map((id) => ${APP}.document.getElementById(id)?.getAttribute("disabled"));`)).toEqual(["true", "true"]);
   expect((await windowHandles(m)).length).toBe(handles);

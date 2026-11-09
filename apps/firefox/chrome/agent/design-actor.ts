@@ -28,7 +28,7 @@ export class WebAiOsDesignChild extends JSWindowActorChild {
   private viewfinder(): any {
     if (!this.viewfinderSandbox) {
       const win = this.contentWindow;
-      this.viewfinderSandbox = Cu.Sandbox((this.document as any).nodePrincipal, { sandboxPrototype: win, wantXrays: true, wantComponents: false, sameZoneAs: win, sandboxName: "WebAiOs · viseur" });
+      this.viewfinderSandbox = Cu.Sandbox((this.document as any).nodePrincipal, { sandboxPrototype: win, wantXrays: true, wantComponents: false, sameZoneAs: win, sandboxName: "WebAiOs · viewfinder" });
       // The page's legacy `Components` shim would show through the prototype.
       Object.defineProperty(this.viewfinderSandbox, "Components", { value: undefined });
     }
@@ -51,14 +51,14 @@ export class WebAiOsDesignChild extends JSWindowActorChild {
       e.preventDefault();
       e.stopImmediatePropagation();
       // Gecko also sends `click` to chrome listeners for the middle and right buttons (the page gets auxclick).
-      if (sandbox && e.type === "click" && e.button === 0 && !picked && (e.target as Node | null)?.ownerDocument === doc && typeof sandbox.__viseurChoisir === "function") {
+      if (sandbox && e.type === "click" && e.button === 0 && !picked && (e.target as Node | null)?.ownerDocument === doc && typeof sandbox.__viewfinderPick === "function") {
         picked = true;
         try {
-          sandbox.__viseurChoisir(e.target);
+          sandbox.__viewfinderPick(e.target);
         } catch {
           // A failed pick ends the viewfinder (its query answers null) rather than leave the page swallowed.
           try {
-            if (typeof sandbox.__viseurArret === "function") sandbox.__viseurArret();
+            if (typeof sandbox.__viewfinderStop === "function") sandbox.__viewfinderStop();
           } finally {
             unguard();
           }
@@ -69,13 +69,13 @@ export class WebAiOsDesignChild extends JSWindowActorChild {
       if (!e.isTrusted || e.key !== "Escape") return;
       e.preventDefault();
       e.stopImmediatePropagation();
-      if (typeof sandbox.__viseurArret === "function") sandbox.__viseurArret();
+      if (typeof sandbox.__viewfinderStop === "function") sandbox.__viewfinderStop();
     };
     // A page kept in the bfcache is never destroyed (no didDestroy): leaving it ends the viewfinder and the guard.
     const hide = (e: Event) => {
       if (!e.isTrusted || e.target !== doc) return;
       try {
-        if (sandbox && typeof sandbox.__viseurArret === "function") sandbox.__viseurArret();
+        if (sandbox && typeof sandbox.__viewfinderStop === "function") sandbox.__viewfinderStop();
       } finally {
         unguard();
       }
@@ -100,9 +100,9 @@ export class WebAiOsDesignChild extends JSWindowActorChild {
     const guard = this.guard(sandbox);
     let r: unknown = null;
     try {
-      r = await Cu.evalInSandbox(code, sandbox, "latest", "webaios-viseur.js", 1);
+      r = await Cu.evalInSandbox(code, sandbox, "latest", "webaios-viewfinder.js", 1);
     } finally {
-      // After a capture the rest of a double click is swallowed for 500 ms (Electron's __viseurAvaler); else at once.
+      // After a capture the rest of a double click is swallowed for 500 ms (Electron's __viewfinderSwallow); else at once.
       if (r) guard.later(500);
       else guard.unguard();
     }
@@ -121,8 +121,8 @@ export class WebAiOsDesignChild extends JSWindowActorChild {
       case "arm":
         return top ? this.arm(code) : null;
       case "stop":
-        if (this.viewfinderSandbox) Cu.evalInSandbox(code, this.viewfinderSandbox, "latest", "webaios-viseur-arret.js", 1);
-        // Also ends the 500 ms swallow after a capture, as Electron's ARRET does with __viseurAvaler.
+        if (this.viewfinderSandbox) Cu.evalInSandbox(code, this.viewfinderSandbox, "latest", "webaios-viewfinder-stop.js", 1);
+        // Also ends the 500 ms swallow after a capture, as Electron's ARRET does with __viewfinderSwallow.
         this.unguardCurrent?.();
         return true;
       // lireSource's expression in the page's own world (Xrays waived), in a sandbox thrown away after.

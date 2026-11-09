@@ -101,7 +101,7 @@ describe("agent extensions: registry, signed install, restart", () => {
   });
 
   // The page half of extensions-agent.spec.ts:102: the page guard asks the background, which injects the CSS once the
-  // extension actor answers estOnglet for this WebAiOs tab.
+  // extension actor answers isTab for this WebAiOs tab.
   it("granted: its content script hides #cache-moi", async () => {
     const f = folders();
     writeAgentExtension(root(f.dataDir), "cacheur", { "manifest.json": manifest([HOST]), "cache.css": CACHE });

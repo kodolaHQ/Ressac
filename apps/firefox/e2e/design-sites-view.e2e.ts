@@ -93,7 +93,7 @@ const add = (id: string, text: string) => inStore<{ ok: boolean }>(m, "return aw
 const bubble = (id: string) =>
   inStore<{ label: string; source: string | null; warning: string | null; project: string } | null>(m, 'return store.design.overlayContext(arguments[0], ["bubble"]);', [T(id)]);
 const cart = (id: string) => inStore<number>(m, `return (await store.agent.request("design.tracking", { project: "site-" + arguments[0] })).basket;`, [id]);
-const hosts = (id: string) => inSiteView<number>(m, id, `return document.getElementsByTagName("webaios-viseur").length;`).catch(() => -1);
+const hosts = (id: string) => inSiteView<number>(m, id, `return document.getElementsByTagName("webaios-viewfinder").length;`).catch(() => -1);
 const overlayRect = (id: string) => overlayOf<{ x: number; y: number; width: number; height: number }>(m, id, "const r = f.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height };");
 const notice = (id: string) => inStore<{ kind: string; text?: string } | null>(m, "return store.sites.controller(arguments[0]).state().avis;", [id]);
 const view = <T = unknown>(id: string, expr: string) => inSiteView<T>(m, id, `return ${expr};`).catch(() => null);

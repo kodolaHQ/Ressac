@@ -106,8 +106,8 @@ const view = (id: string) => inStore<string | null>(m, "return store.sites.viewO
 /** `body` with `f` the home's frame, `hdoc` its document and `hwin` its window (chrome access). */
 const inHome = <T = unknown>(id: string, body: string, args: unknown[] = []) =>
   inSiteBar<T>(m, id, `const f = doc.querySelector('${FRAME}'), hdoc = f?.contentDocument, hwin = hdoc?.defaultView; ${body}`, args);
-const homeHosts = (id: string) => inHome<number>(id, `return hdoc ? hdoc.getElementsByTagName("webaios-viseur").length : -1;`).catch(() => -1);
-const viewHosts = (id: string) => inSiteView<number>(m, id, `return document.getElementsByTagName("webaios-viseur").length;`).catch(() => 0);
+const homeHosts = (id: string) => inHome<number>(id, `return hdoc ? hdoc.getElementsByTagName("webaios-viewfinder").length : -1;`).catch(() => -1);
+const viewHosts = (id: string) => inSiteView<number>(m, id, `return document.getElementsByTagName("webaios-viewfinder").length;`).catch(() => 0);
 const homeLog = (id: string) => inHome<{ early: string[]; reactions: string[]; keys: string[] }>(id, "return JSON.parse(JSON.stringify(hwin.wrappedJSObject.log));");
 const homeKeys = (id: string) => inHome<string[]>(id, "return Object.keys(hwin.wrappedJSObject);");
 /** Code run in the home's own world (its principal, Xrays waived): what the agent's home could do itself. */
@@ -275,9 +275,9 @@ describe("design mode on a site app's home", () => {
     await expect.poll(() => homeHosts("sonde"), { timeout: 10_000 }).toBe(1);
     await siteMouse(m, "sonde", await homePoint(m, "sonde", "#nue"), { move: true });
     await expect
-      .poll(() => inHome<string | null>("sonde", `const sh = hdoc.querySelector("webaios-viseur")?.openOrClosedShadowRoot; return sh?.children[1]?.textContent ?? null;`), { timeout: 10_000 })
+      .poll(() => inHome<string | null>("sonde", `const sh = hdoc.querySelector("webaios-viewfinder")?.openOrClosedShadowRoot; return sh?.children[1]?.textContent ?? null;`), { timeout: 10_000 })
       .toBe("p#nue");
-    expect(await inHome("sonde", `return String(hdoc.querySelector("webaios-viseur").wrappedJSObject.shadowRoot);`)).toBe("null");
+    expect(await inHome("sonde", `return String(hdoc.querySelector("webaios-viewfinder").wrappedJSObject.shadowRoot);`)).toBe("null");
     await siteMouse(m, "sonde", await homePoint(m, "sonde", "#nue"), { button: 1 });
     await siteMouse(m, "sonde", await homePoint(m, "sonde", "#nue"), { button: 2 });
     await sleep(500);

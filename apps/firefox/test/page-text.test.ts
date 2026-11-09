@@ -17,7 +17,7 @@ it("composeText: description then body, empty parts omitted", () => {
 });
 
 it("composeText: a YouTube video gives title, channel and description, without the rest of the page", () => {
-  expect(composeText({ video: { title: "My video", chain: "My channel", description: "What it is about" }, body: "comments…" })).toBe(
+  expect(composeText({ video: { title: "My video", channel: "My channel", description: "What it is about" }, body: "comments…" })).toBe(
     "My video\n\nMy channel\n\nWhat it is about",
   );
 });

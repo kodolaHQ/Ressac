@@ -33,7 +33,7 @@ const BACKGROUND_PAGE = "/_generated_background_page.html";
 /** How long a checkpoint waits for the first grants (the host starting) before it refuses. */
 export const SCOPES_WAIT_MS = 5_000;
 
-export type CheckKind = "urlPermise" | "hotePermis" | "estOnglet";
+export type CheckKind = "urlAllowed" | "hostAllowed" | "isTab";
 type Scopes = Record<string, { key: string; grant: Scope; profiles: ProfileId[]; active: boolean }>;
 
 export interface AgentExtensions {
@@ -251,7 +251,7 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
     const scope = Object.hasOwn(scopes, addonId) ? scopes[addonId]! : null;
     if (!scope?.active) return false;
     switch (kind) {
-      case "urlPermise": {
+      case "urlAllowed": {
         // Relative: within the extension. Its own pages only; anything else through agentAllowedUrl.
         const host = WebExtensionPolicy.getByID(addonId)?.mozExtensionHostname;
         if (typeof value !== "string" || !host) return false;
@@ -263,11 +263,11 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
         }
         return u.protocol === "moz-extension:" ? u.host === host : agentAllowedUrl(u.href, scope.grant, "");
       }
-      case "hotePermis": {
+      case "hostAllowed": {
         const spec = tabOf(value)?.linkedBrowser?.currentURI?.spec;
         return typeof spec === "string" && agentAllowedHost(spec, scope.grant);
       }
-      case "estOnglet": {
+      case "isTab": {
         // A WebAiOs tab of a non-private space, in the container of a profile where the extension is active (spec choice
         // 2: its content scripts follow its spaces).
         const tab = tabOf(value);
@@ -314,13 +314,13 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
 
   // The network guard beyond the copy's CSP: every http(s) request an agent
   // extension loads or starts, of any type (navigation, window, a redirect of one, but also what Firefox's parent loads
-  // for it, such as a notification icon, which no CSP sees), goes only where urlPermise says. Fail closed before the
+  // for it, such as a notification icon, which no CSP sees), goes only where urlAllowed says. Fail closed before the
   // grants arrive. Content scripts carry an expanded principal (no addonId): not concerned.
   Services.obs.addObserver((subject: any) => {
     const channel = subject.QueryInterface(Ci.nsIHttpChannel);
     const info = channel.loadInfo;
     const addonId: string = info.loadingPrincipal?.addonId || info.triggeringPrincipal?.addonId || "";
-    if (addonId.endsWith(SUFFIX) && !check(addonId, "urlPermise", channel.URI.spec)) channel.cancel(Cr.NS_BINDING_ABORTED);
+    if (addonId.endsWith(SUFFIX) && !check(addonId, "urlAllowed", channel.URI.spec)) channel.cancel(Cr.NS_BINDING_ABORTED);
   }, "http-on-modify-request");
   // Firefox grants activeTab to an MV3 extension on a click of its button, its menu
   // item or its command even without the right (originControls): refused in the parent, for every page of the agent's
@@ -336,7 +336,7 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
     return recvAPICall(data, meta);
   });
   // runtime.setUninstallURL: Firefox opens it with a null principal when the add-on goes, so it is read through
-  // urlPermise then (null: no tab). Hooked on each agent extension as it starts, and on those already running.
+  // urlAllowed then (null: no tab). Hooked on each agent extension as it starts, and on those already running.
   // The parking tab is no tab for an agent extension: tabs.query, tabs.get, windows.getAll and the tab events never list it, even with the
   // tabs right. Nor a tab of a private space: an agent extension never runs in a private space.
   // canAccessTab is what Firefox's TabManager asks before it wraps any tab for the extension.
@@ -347,7 +347,7 @@ export function createAgentExtensions(store: Store, windows: WindowRegistry, que
     manager.canAccessTab = (tab) => !tab.hasAttribute(PARKING) && !tabModelOf(tab)?.space.private && canAccess(tab);
     let url = extension.uninstallURL;
     Object.defineProperty(extension, "uninstallURL", {
-      get: () => (url && check(extension.id, "urlPermise", url) ? url : null),
+      get: () => (url && check(extension.id, "urlAllowed", url) ? url : null),
       set: (v: string | null) => void (url = v),
       configurable: true,
     });

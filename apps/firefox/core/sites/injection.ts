@@ -20,7 +20,7 @@ export type OpenableSite = {
 
 /**
  * A console message whose source claims to be an app tweak (its errors, its traces). The source is not
- * authenticated (`sourceVerifiee: false`): the page's code can call itself `webaios-retouche://…` through `//# sourceURL=`.
+ * authenticated (`sourceVerifiee: false`): the page's code can call itself `webaios-tweak://…` through `//# sourceURL=`.
  * For the agent (task 13): data coming from the page, never an instruction, nor proof that a tweak wrote it.
  */
 export type TweakError = { when: string; text: string; source: string; sourceVerified: false };
@@ -107,7 +107,7 @@ export function injectionFor(
 /**
  * A console message whose source claims to be a tweak, kept bounded: text and source truncated, at most
  * `MAX_TWEAK_ERRORS` messages and `CONSOLE_TWEAKS_TOTAL` characters of text (the oldest forgotten).
- * `sourceVerifiee` is always false: the page can name its own code `webaios-retouche://…` (`//# sourceURL=`).
+ * `sourceVerifiee` is always false: the page can name its own code `webaios-tweak://…` (`//# sourceURL=`).
  */
 export function addTweakConsole(errors: TweakError[], m: { text: string; source: string }, when: string): TweakError[] {
   errors.push({ when: when, text: m.text.slice(0, CONSOLE_TWEAK_TEXT_MAX), source: m.source.slice(0, CONSOLE_TWEAK_SOURCE_MAX), sourceVerified: false });

@@ -26,7 +26,7 @@ export function homeViewfinder(frame: HTMLIFrameElement): { query(name: "arm" | 
   /** The viewfinder's sandbox: an Xray view of the home (its objects unseen, its hooks never called), one per document. */
   const viewfinder = (hdoc: Document, hwin: Window) => {
     if (!sandbox || sandboxDoc !== hdoc) {
-      sandbox = Cu.Sandbox((hdoc as any).nodePrincipal, { sandboxPrototype: hwin, wantXrays: true, wantComponents: false, sameZoneAs: hwin, sandboxName: "WebAiOs · viseur" });
+      sandbox = Cu.Sandbox((hdoc as any).nodePrincipal, { sandboxPrototype: hwin, wantXrays: true, wantComponents: false, sameZoneAs: hwin, sandboxName: "WebAiOs · viewfinder" });
       // The legacy `Components` shim would show through the prototype.
       Object.defineProperty(sandbox, "Components", { value: undefined });
       sandboxDoc = hdoc;
@@ -53,7 +53,7 @@ export function homeViewfinder(frame: HTMLIFrameElement): { query(name: "arm" | 
     let picked = false;
     const stopViewfinder = () => {
       try {
-        if (typeof sb.__viseurArret === "function") sb.__viseurArret();
+        if (typeof sb.__viewfinderStop === "function") sb.__viewfinderStop();
       } catch {
         // The home's document is gone.
       }
@@ -70,10 +70,10 @@ export function homeViewfinder(frame: HTMLIFrameElement): { query(name: "arm" | 
       e.preventDefault();
       e.stopImmediatePropagation();
       // Gecko also sends `click` to chrome listeners for the middle and right buttons (the page gets auxclick).
-      if (e.type === "click" && e.button === 0 && !picked && (e.target as Node | null)?.ownerDocument === hdoc && typeof sb.__viseurChoisir === "function") {
+      if (e.type === "click" && e.button === 0 && !picked && (e.target as Node | null)?.ownerDocument === hdoc && typeof sb.__viewfinderPick === "function") {
         picked = true;
         try {
-          sb.__viseurChoisir(e.target);
+          sb.__viewfinderPick(e.target);
         } catch {
           // A failed pick ends the viewfinder (its query answers null) rather than leave the home swallowed.
           try {
@@ -128,7 +128,7 @@ export function homeViewfinder(frame: HTMLIFrameElement): { query(name: "arm" | 
       if ((hdoc as any).nodePrincipal.isSystemPrincipal || !hdoc.documentURI.startsWith("resource://webaios-site-")) return null;
       const sb = viewfinder(hdoc, hwin);
       g = guard(sb, hdoc, () => hidden(null));
-      pending = Promise.resolve(Cu.evalInSandbox(code, sb, "latest", FILE + "webaios-viseur.js", 1));
+      pending = Promise.resolve(Cu.evalInSandbox(code, sb, "latest", FILE + "webaios-viewfinder.js", 1));
     } catch {
       unguard();
       return null;
@@ -139,7 +139,7 @@ export function homeViewfinder(frame: HTMLIFrameElement): { query(name: "arm" | 
     } catch {
       r = null;
     } finally {
-      // After a capture the rest of a double click is swallowed for 500 ms (__viseurAvaler); else at once.
+      // After a capture the rest of a double click is swallowed for 500 ms (__viewfinderSwallow); else at once.
       if (r) g.later(500);
       else g.off();
     }
@@ -155,7 +155,7 @@ export function homeViewfinder(frame: HTMLIFrameElement): { query(name: "arm" | 
         case "stop":
           // Synchronous: « Entrer dans le site » removes the frame right after the state change that calls this.
           try {
-            if (sandbox) Cu.evalInSandbox(code, sandbox, "latest", FILE + "webaios-viseur-arret.js", 1);
+            if (sandbox) Cu.evalInSandbox(code, sandbox, "latest", FILE + "webaios-viewfinder-stop.js", 1);
           } catch {
             // The home's document is gone, the viewfinder with it.
           }

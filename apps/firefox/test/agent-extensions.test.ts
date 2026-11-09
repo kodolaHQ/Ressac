@@ -118,10 +118,10 @@ describe("agent extension checkpoints", () => {
     expect(parentApi.sent[0]).toEqual({ childId: 1, callId: 7, path: "tabs.captureVisibleTab", error: { message: "tabs.captureVisibleTab non pris en charge par WebAiOs" } });
   });
 
-  it("check: urlPermise accepts its own moz-extension host and a granted network domain only", async () => {
+  it("check: urlAllowed accepts its own moz-extension host and a granted network domain only", async () => {
     const x = await load();
     grant(x);
-    const ok = (v: unknown) => x.check(ID, "urlPermise", v);
+    const ok = (v: unknown) => x.check(ID, "urlAllowed", v);
     expect(ok(`moz-extension://${HOST}/page.html`)).toBe(true);
     expect(ok("page.html")).toBe(true);
     expect(ok("https://accorde.test/x")).toBe(true);
@@ -129,14 +129,14 @@ describe("agent extension checkpoints", () => {
     for (const refused of ["data:text/html,x", "javascript:alert(1)", "moz-extension://autre-hote/page.html", "https://autre.test/", "https://u:p@accorde.test/", 42, null])
       expect(ok(refused)).toBe(false);
     // Not granted, not active, or not answered yet: nothing passes.
-    expect(x.check("autre@agent.webaios", "urlPermise", "https://accorde.test/")).toBe(false);
+    expect(x.check("autre@agent.webaios", "urlAllowed", "https://accorde.test/")).toBe(false);
     grant(x, false);
     expect(ok("https://accorde.test/")).toBe(false);
   });
 
   it("check: nothing passes before the grants are known; a checkpoint waits for them at most SCOPES_WAIT_MS", async () => {
     const x = await load();
-    expect(x.check(ID, "urlPermise", "https://accorde.test/")).toBe(false);
+    expect(x.check(ID, "urlAllowed", "https://accorde.test/")).toBe(false);
     vi.useFakeTimers();
     try {
       let waited = false;
@@ -145,7 +145,7 @@ describe("agent extension checkpoints", () => {
       expect(waited).toBe(false);
       await vi.advanceTimersByTimeAsync(200);
       expect(waited).toBe(true);
-      expect(x.check(ID, "urlPermise", "https://accorde.test/")).toBe(false);
+      expect(x.check(ID, "urlAllowed", "https://accorde.test/")).toBe(false);
       // Once sent, no wait, and no timer armed per call.
       grant(x);
       await vi.advanceTimersByTimeAsync(0);
@@ -159,7 +159,7 @@ describe("agent extension checkpoints", () => {
     }
   });
 
-  it("check: hotePermis reads the tab's address, estOnglet a WebAiOs tab only (never the parking tab)", async () => {
+  it("check: hostAllowed reads the tab's address, isTab a WebAiOs tab only (never the parking tab)", async () => {
     const x = await load({
       1: { attrs: ["webaios-tab-id"], url: "https://hote.test/a" },
       2: { attrs: ["webaios-tab-id"], url: "https://autre.test/" },
@@ -167,34 +167,34 @@ describe("agent extension checkpoints", () => {
       4: { attrs: [], url: "https://hote.test/b" },
     });
     grant(x);
-    expect([1, 2, 4, 99, "1"].map((t) => x.check(ID, "hotePermis", t))).toEqual([true, false, true, false, false]);
-    expect([1, 2, 3, 4, 99].map((t) => x.check(ID, "estOnglet", t))).toEqual([true, true, false, false, false]);
+    expect([1, 2, 4, 99, "1"].map((t) => x.check(ID, "hostAllowed", t))).toEqual([true, false, true, false, false]);
+    expect([1, 2, 3, 4, 99].map((t) => x.check(ID, "isTab", t))).toEqual([true, true, false, false, false]);
   });
 
-  it("check: estOnglet is false in a private space; a tab the agent cannot read sends extensions.aTourne once per profile", async () => {
+  it("check: isTab is false in a private space; a tab the agent cannot read sends extensions.aTourne once per profile", async () => {
     const requests: unknown[][] = [];
     const tab = { attrs: ["webaios-tab-id"], url: "https://hote.test/a" };
     const x = await load({ 1: tab, 2: tab, 5: tab }, { read: ["onglet-1"], requests });
     grant(x);
-    expect(x.check(ID, "estOnglet", 5)).toBe(false);
-    expect(x.check(ID, "estOnglet", 1)).toBe(true);
+    expect(x.check(ID, "isTab", 5)).toBe(false);
+    expect(x.check(ID, "isTab", 1)).toBe(true);
     expect(requests).toEqual([]);
-    expect(x.check(ID, "estOnglet", 2)).toBe(true);
-    expect(x.check(ID, "estOnglet", 2)).toBe(true);
+    expect(x.check(ID, "isTab", 2)).toBe(true);
+    expect(x.check(ID, "isTab", 2)).toBe(true);
     expect(requests).toEqual([["extensions.ran", { addonId: ID, profile: "default", readable: false }]]);
   });
 
-  it("check: estOnglet is false in a profile where the extension is not active, or in a container not its space's", async () => {
+  it("check: isTab is false in a profile where the extension is not active, or in a container not its space's", async () => {
     const x = await load({ 1: { attrs: ["webaios-tab-id"], url: "https://hote.test/a" }, 2: { attrs: ["webaios-tab-id"], url: "https://hote.test/a", ctx: 3 }, 6: { attrs: ["webaios-tab-id"], url: "https://hote.test/a" } });
     grant(x);
-    expect([1, 2, 6].map((t) => x.check(ID, "estOnglet", t))).toEqual([true, false, false]);
+    expect([1, 2, 6].map((t) => x.check(ID, "isTab", t))).toEqual([true, false, false]);
   });
 
   it("extensions.rechargerOnglets reloads, once, the tabs of those profiles its scripts were let into, even after a navigation", async () => {
     const tab3: FakeTab = { attrs: ["webaios-tab-id"], url: "https://hote.test/c" };
     const x = await load({ 1: { attrs: ["webaios-tab-id"], url: "https://hote.test/a" }, 2: { attrs: ["webaios-tab-id"], url: "https://hote.test/b" }, 3: tab3, 4: { attrs: ["webaios-tab-id"], url: "https://hote.test/d" } });
     grant(x);
-    for (const t of [1, 3, 4]) x.check(ID, "estOnglet", t);
+    for (const t of [1, 3, 4]) x.check(ID, "isTab", t);
     tab3.doc = 2;
     const reload = (p: unknown) => x.handlers["extensions.reloadTabs"]!(p, new AbortController().signal);
     reload({ addonId: "autre@agent.webaios", profiles: ["default"] });
@@ -211,8 +211,8 @@ describe("agent extension checkpoints", () => {
       { [ID]: { key: "agent:reseau", grant: GRANT, profiles: ["default"], active: true }, "autre@agent.webaios": { key: "agent:autre", grant: GRANT, profiles: ["default"], active: true } },
       new AbortController().signal,
     );
-    x.check(ID, "estOnglet", 1);
-    x.check("autre@agent.webaios", "estOnglet", 2);
+    x.check(ID, "isTab", 1);
+    x.check("autre@agent.webaios", "isTab", 2);
     // Switched off there since (out of its profiles): its script still runs, the tab reloads all the same.
     grant(x);
     x.setSpaces([{ id: "e1", private: false, profile: "default" }, { id: "e2", private: true, profile: "secret" }, { id: "e3", private: false, profile: "autre" }]);

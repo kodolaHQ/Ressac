@@ -26,7 +26,7 @@ const racine = document.documentElement;
 racine.dataset.monde = JSON.stringify({ require: typeof require, ipcRenderer: typeof ipcRenderer, process: typeof process, pont: typeof webaiosSite,
   Components: typeof Components, ChromeUtils: typeof ChromeUtils, Services: typeof Services });
 document.body.dataset.retouche = "oui";
-webaiosSite.retenir("encours.the-bear", { titre: "The Bear", episode: "S2E4" }).then(() => (racine.dataset.retenu = "oui"), (e) => (racine.dataset.retenu = "refus:" + e.message));
+webaiosSite.remember("encours.the-bear", { titre: "The Bear", episode: "S2E4" }).then(() => (racine.dataset.retenu = "oui"), (e) => (racine.dataset.retenu = "refus:" + e.message));
 const repondre = (p) => p.then((r) => (racine.dataset.resultat = "ok:" + r), (e) => (racine.dataset.resultat = "refus:" + (e && e.message)));
 document.addEventListener("essai", () => {
   const c = racine.dataset.commande;
@@ -36,8 +36,8 @@ document.addEventListener("essai", () => {
   else if (c === "elargir") {
     __webaiosScope({ network: [racine.dataset.pubHote], hosts: ["<all_urls>"] });
     repondre(Promise.resolve().then(() => fetch(racine.dataset.pub)).then((r) => r.status));
-  } else if (c === "non-json") repondre(webaiosSite.retenir("f", () => 1));
-  else if (c === "lire") repondre(webaiosSite.lire("encours.the-bear").then((v) => JSON.stringify(v)));
+  } else if (c === "non-json") repondre(webaiosSite.remember("f", () => 1));
+  else if (c === "lire") repondre(webaiosSite.read("encours.the-bear").then((v) => JSON.stringify(v)));
 });`;
 
 let server: Awaited<ReturnType<typeof startSitesServer>>;
@@ -61,7 +61,7 @@ const vidola = () => ({
 });
 /** The second app (Review Focus 2): its own domain, memory and console. */
 const other = () => ({ name: "Autre", url: url("/serie/b", "vidola-b.localhost"), domains: ["vidola-b.localhost"], tweaks: [{ matches: ["/serie/*"], js: ["b.js"] }] });
-const B_JS = 'webaiosSite.retenir("b", 1).then(() => (document.documentElement.dataset.retenu = "oui")); throw new Error("erreur de B");';
+const B_JS = 'webaiosSite.remember("b", 1).then(() => (document.documentElement.dataset.retenu = "oui")); throw new Error("erreur de B");';
 
 const inStore = <T = unknown>(body: string, args: unknown[] = []) =>
   m.execute<T>(`return (async () => { const store = await ChromeUtils.importESModule("${STORE}").ready; ${body} })();`, args);
@@ -155,10 +155,10 @@ describe("tweaks", () => {
     await expect.poll(() => view('getComputedStyle(document.getElementById("shorts")).display')).toBe("none");
   });
 
-  it('a JS tweak remembers encours.the-bear through webaiosSite.retenir; the memory read by the test has adresse "/serie/the-bear" (sites.spec.ts:815)', async () => {
+  it('a JS tweak remembers encours.the-bear through webaiosSite.remember; the memory read by the test has adresse "/serie/the-bear" (sites.spec.ts:815)', async () => {
     await openAt("vidola", "/serie/the-bear");
     await expect.poll(() => view("document.documentElement.dataset.retenu")).toBe("oui");
-    await expect.poll(() => memory("vidola")?.valeurs?.["encours.the-bear"] ?? null, { timeout: 5000 }).toMatchObject({ value: { title: "The Bear", episode: "S2E4" }, url: "/serie/the-bear" });
+    await expect.poll(() => memory("vidola")?.values?.["encours.the-bear"] ?? null, { timeout: 5000 }).toMatchObject({ value: { titre: "The Bear", episode: "S2E4" }, url: "/serie/the-bear" });
     expect(await command("lire")).toBe('ok:{"titre":"The Bear","episode":"S2E4"}');
     // A non-JSON value: the memory's named refusal.
     expect(await command("non-json")).toBe("refus:Valeur refusée : JSON seulement");
@@ -223,7 +223,7 @@ describe("tweaks", () => {
     await expect.poll(async () => (await errors()).map((e) => e.text).join("\n"), { timeout: 10_000 }).toContain("retouche cassée");
     await expect.poll(async () => (await errors()).map((e) => e.text).join("\n"), { timeout: 10_000 }).toContain("plus tard");
     const e = (await errors()).find((x) => x.text.includes("retouche cassée"))!;
-    expect(e.source).toMatch(/^webaios-retouche:\/\/vidola\/erreur\.js/);
+    expect(e.source).toMatch(/^webaios-tweak:\/\/vidola\/erreur\.js/);
     // The source says it is a tweak: nothing proves it (the page can name itself so).
     expect(e.sourceVerified).toBe(false);
     expect(await view('document.getElementById("p").textContent')).toBe("la page marche");
@@ -232,7 +232,7 @@ describe("tweaks", () => {
   it("a tweak that throws later (setTimeout) is in tweak_errors too, with its source; the console empties when the window closes", async () => {
     await openAt("vidola", "/serie/the-bear");
     await go("/erreur");
-    await expect.poll(async () => (await errors()).find((e) => e.text.includes("plus tard"))?.source ?? null, { timeout: 10_000 }).toMatch(/^webaios-retouche:\/\/vidola\/apres\.js/);
+    await expect.poll(async () => (await errors()).find((e) => e.text.includes("plus tard"))?.source ?? null, { timeout: 10_000 }).toMatch(/^webaios-tweak:\/\/vidola\/apres\.js/);
     await inStore(`await store.sites.close("vidola");`);
     expect(await errors()).toEqual([]);
   });
@@ -246,7 +246,7 @@ describe("tweaks", () => {
   it("the memory channel failing: the bridge rejects without asking again (one call) (sites.spec.ts:911)", async () => {
     await openAt("vidola", "/serie/the-bear");
     await expect.poll(() => view("document.documentElement.dataset.retenu")).toBe("oui");
-    // The relay to the host fails: the chrome's request to sites.memoireOp throws.
+    // The relay to the host fails: the chrome's request to sites.memoryOp throws.
     await inStore(`const request = store.agent.request;
       store.__memoryCalls = [];
       store.__request = request;
@@ -257,7 +257,7 @@ describe("tweaks", () => {
       // A value that cannot be copied is never sent as is, and the error is not asked again.
       expect(await command("non-json")).toMatch(/^refus:/);
       expect(await inStore<number>(`return store.__memoryCalls.length;`)).toBeLessThanOrEqual(2);
-      expect(await inStore<unknown>(`return store.__memoryCalls.at(-1)?.valeur ?? null;`)).toBeNull();
+      expect(await inStore<unknown>(`return store.__memoryCalls.at(-1)?.value ?? null;`)).toBeNull();
     } finally {
       await inStore(`store.agent.request = store.__request;`);
     }
@@ -318,10 +318,10 @@ describe("tweaks", () => {
     expect((await errors("autre")).map((e) => e.text).join("\n")).not.toContain("retouche cassée");
     // A's tweak never ran in B's view, nor its CSS.
     expect(await view("document.body.dataset.retouche ?? null", { id: "autre" })).toBeNull();
-    await expect.poll(() => memory("autre")?.valeurs ?? null, { timeout: 5000 }).toMatchObject({ b: { value: 1, url: "/serie/b" } });
-    expect(Object.keys(memory("autre").valeurs)).toEqual(["b"]);
-    await expect.poll(() => memory("vidola")?.valeurs ?? null, { timeout: 5000 }).toHaveProperty(["encours.the-bear"]);
-    expect(memory("vidola").valeurs).not.toHaveProperty("b");
+    await expect.poll(() => memory("autre")?.values ?? null, { timeout: 5000 }).toMatchObject({ b: { value: 1, url: "/serie/b" } });
+    expect(Object.keys(memory("autre").values)).toEqual(["b"]);
+    await expect.poll(() => memory("vidola")?.values ?? null, { timeout: 5000 }).toHaveProperty(["encours.the-bear"]);
+    expect(memory("vidola").values).not.toHaveProperty("b");
   });
 
   // Last: it rewrites the app's tweak.

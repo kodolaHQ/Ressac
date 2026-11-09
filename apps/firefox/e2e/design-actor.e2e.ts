@@ -47,7 +47,7 @@ async function open(p: string): Promise<void> {
   await m.execute(`${B}.focus();`);
 }
 const inPage = <T = unknown>(script: string) => inBrowser<T>(m, B, script);
-const hosts = () => inPage<number>(`return document.querySelectorAll("webaios-viseur").length;`);
+const hosts = () => inPage<number>(`return document.querySelectorAll("webaios-viewfinder").length;`);
 /** Arms the viewfinder and waits for its host element. */
 async function arm() {
   const a = await armActor(m, B);
@@ -102,7 +102,7 @@ describe("design viewfinder actor", () => {
     const clean = async () => {
       expect(await hosts()).toBe(0);
       expect(await inPage("return Object.keys(window.wrappedJSObject ?? window).sort();")).toEqual(keys);
-      expect(await inPage("const w = window.wrappedJSObject ?? window; return [typeof w.__viseurArret, typeof w.__viseurAvaler, typeof w.__viseurChoisir];")).toEqual(["undefined", "undefined", "undefined"]);
+      expect(await inPage("const w = window.wrappedJSObject ?? window; return [typeof w.__viewfinderStop, typeof w.__viewfinderSwallow, typeof w.__viewfinderPick];")).toEqual(["undefined", "undefined", "undefined"]);
     };
     let a = await arm();
     await pressKeys(m, "Escape");
@@ -131,7 +131,7 @@ describe("design viewfinder actor", () => {
     expect(await readSource(m, B, "#nue")).toEqual({ file: "a.svelte" });
     await pageSets(`Object.defineProperty(document.querySelector("#nue"), "__svelte_meta", { get() { throw new Error("no"); } })`);
     expect(await readSource(m, B, "#nue")).toBeNull();
-    expect(await inPage("return Object.keys(window.wrappedJSObject ?? window).filter((k) => /viseur|webaios/i.test(k));")).toEqual([]);
+    expect(await inPage("return Object.keys(window.wrappedJSObject ?? window).filter((k) => /viewfinder|webaios/i.test(k));")).toEqual([]);
   });
 
   // design.spec.ts:174
@@ -277,7 +277,7 @@ describe("design viewfinder actor", () => {
     await sleep(100);
     expect((await pageLog(m, B)).reactions).toContain("click:email");
     await afterSwallow();
-    a = await armActor(m, B, `globalThis.__viseurChoisir = () => { throw new Error("pick"); }; new Promise((ok) => (globalThis.__viseurArret = () => ok(null)))`);
+    a = await armActor(m, B, `globalThis.__viewfinderPick = () => { throw new Error("pick"); }; new Promise((ok) => (globalThis.__viewfinderStop = () => ok(null)))`);
     await sleep(100);
     await trustedMouse(m, B, "#envoyer");
     expect(await a.result()).toEqual({ r: null });

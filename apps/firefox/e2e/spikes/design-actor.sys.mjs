@@ -4,7 +4,7 @@
 import { clearTimeout, setTimeout } from "resource://gre/modules/Timer.sys.mjs";
 
 // Stops the viewfinder and its swallowing, if armed.
-const ARRET = `typeof globalThis.__viseurArret === "function" && globalThis.__viseurArret(); typeof globalThis.__viseurAvaler === "function" && globalThis.__viseurAvaler()`;
+const ARRET = `typeof globalThis.__viewfinderStop === "function" && globalThis.__viewfinderStop(); typeof globalThis.__viewfinderSwallow === "function" && globalThis.__viewfinderSwallow()`;
 
 const clone = (v) => {
   try {
@@ -25,7 +25,7 @@ export class WebAiOsSpikeDesignChild extends JSWindowActorChild {
   viewfinder() {
     if (!this.sb) {
       const win = this.contentWindow;
-      this.sb = Cu.Sandbox(this.document.nodePrincipal, { sandboxPrototype: win, wantXrays: true, wantComponents: false, sameZoneAs: win, sandboxName: "WebAiOs · viseur (spike)" });
+      this.sb = Cu.Sandbox(this.document.nodePrincipal, { sandboxPrototype: win, wantXrays: true, wantComponents: false, sameZoneAs: win, sandboxName: "WebAiOs · viewfinder (spike)" });
       // As the tweaks' sandbox: the page's legacy `Components` shim would show through the prototype.
       Object.defineProperty(this.sb, "Components", { value: undefined });
     }
@@ -41,7 +41,7 @@ export class WebAiOsSpikeDesignChild extends JSWindowActorChild {
   /**
    * Capture listeners on this tab's chrome event handler: the first target of every event of the tab's documents, so
    * no page listener (window or document, capture or not) runs before them. A trusted event is stopped there; a trusted
-   * primary click hands its target to the viewfinder (`__viseurChoisir`), a trusted Escape stops it. Untrusted events
+   * primary click hands its target to the viewfinder (`__viewfinderPick`), a trusted Escape stops it. Untrusted events
    * (made by the page) pass untouched. Other keys reach the page.
    */
   async armGuarded(code) {
@@ -58,9 +58,9 @@ export class WebAiOsSpikeDesignChild extends JSWindowActorChild {
       e.preventDefault();
       e.stopImmediatePropagation();
       // Gecko also sends `click` for the middle and right buttons to chrome listeners (content gets auxclick): primary only.
-      if (e.type === "click" && e.button === 0 && !picked && inTop && typeof sb.__viseurChoisir === "function") {
+      if (e.type === "click" && e.button === 0 && !picked && inTop && typeof sb.__viewfinderPick === "function") {
         picked = true;
-        sb.__viseurChoisir(e.target);
+        sb.__viewfinderPick(e.target);
       }
     };
     const key = (e) => {
@@ -68,7 +68,7 @@ export class WebAiOsSpikeDesignChild extends JSWindowActorChild {
       seen.push("keydown:Escape");
       e.preventDefault();
       e.stopImmediatePropagation();
-      if (typeof sb.__viseurArret === "function") sb.__viseurArret();
+      if (typeof sb.__viewfinderStop === "function") sb.__viewfinderStop();
     };
     for (const t of MOUSE) h.addEventListener(t, mouse, true);
     h.addEventListener("keydown", key, true);
@@ -81,7 +81,7 @@ export class WebAiOsSpikeDesignChild extends JSWindowActorChild {
     });
     let r = null;
     try {
-      r = await Cu.evalInSandbox(code, sb, "latest", "webaios-viseur.js", 1);
+      r = await Cu.evalInSandbox(code, sb, "latest", "webaios-viewfinder.js", 1);
     } finally {
       // After a capture, the rest of a double click is swallowed for 500 ms; else at once.
       if (r) timer = setTimeout(unguard, 500);
@@ -102,9 +102,9 @@ export class WebAiOsSpikeDesignChild extends JSWindowActorChild {
         return { remoteType: Services.appinfo.remoteType, processType: Services.appinfo.processType, top: this.browsingContext.top === this.browsingContext, uri: this.document.documentURI };
       // The viewfinder script, as is; the promise's value is the query's answer (never a spontaneous message).
       case "arm":
-        return clone(await Cu.evalInSandbox(d.code, this.viewfinder(), "latest", "webaios-viseur.js", 1));
+        return clone(await Cu.evalInSandbox(d.code, this.viewfinder(), "latest", "webaios-viewfinder.js", 1));
       case "stop":
-        Cu.evalInSandbox(ARRET, this.viewfinder(), "latest", "webaios-viseur-arret.js", 1);
+        Cu.evalInSandbox(ARRET, this.viewfinder(), "latest", "webaios-viewfinder-stop.js", 1);
         return true;
       // A probe in the viewfinder's sandbox (what it sees).
       case "probe":
@@ -139,10 +139,10 @@ export class WebAiOsSpikeDesignChild extends JSWindowActorChild {
       }
       // Test only: the viewfinder's host elements, read through Xrays (works under any CSP).
       case "hosts":
-        return this.document.querySelectorAll("webaios-viseur").length;
+        return this.document.querySelectorAll("webaios-viewfinder").length;
       // Test only: the hover frame and its label, inside the closed shadow root (system principal reads it).
       case "frame": {
-        const host = this.document.querySelector("webaios-viseur");
+        const host = this.document.querySelector("webaios-viewfinder");
         const root = host?.openOrClosedShadowRoot;
         if (!root) return null;
         const [cadre, etiquette] = root.children;

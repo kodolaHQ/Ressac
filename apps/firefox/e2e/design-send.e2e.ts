@@ -59,7 +59,7 @@ const svc = <R = unknown>(body: string, args: unknown[] = []) =>
     args,
   );
 const state = () => svc<{ active: boolean; basket: number }>("return await d.state(t);");
-const hosts = () => inBrowser<number>(m, B, `return document.querySelectorAll("webaios-viseur").length;`);
+const hosts = () => inBrowser<number>(m, B, `return document.querySelectorAll("webaios-viewfinder").length;`);
 
 async function open(url: string): Promise<string> {
   const id = await openTab(m, url);

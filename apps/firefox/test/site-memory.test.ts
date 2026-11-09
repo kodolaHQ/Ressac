@@ -20,22 +20,22 @@ beforeEach(async () => {
   memory = await SiteMemory.open(mkdtempSync(join(tmpdir(), "site-memory-")), "vidola");
 });
 
-test("retenir takes the address the chrome gives; lire, oublier", async () => {
-  expect(await op({ op: "retenir", key: "encours.the-bear", value: { title: "The Bear" }, url: "/serie/the-bear?e=4" })).toEqual({ ok: true });
+test("remember takes the address the chrome gives; read, forget", async () => {
+  expect(await op({ op: "remember", key: "encours.the-bear", value: { title: "The Bear" }, url: "/serie/the-bear?e=4" })).toEqual({ ok: true });
   expect(memory.content().values["encours.the-bear"]).toMatchObject({ value: { title: "The Bear" }, url: "/serie/the-bear?e=4" });
-  expect(await op({ op: "lire", key: "encours.the-bear" })).toEqual({ ok: true, value: { title: "The Bear" } });
-  expect(await op({ op: "lire", key: "absente" })).toEqual({ ok: true, value: null });
-  expect(await op({ op: "oublier", key: "encours.the-bear" })).toEqual({ ok: true });
+  expect(await op({ op: "read", key: "encours.the-bear" })).toEqual({ ok: true, value: { title: "The Bear" } });
+  expect(await op({ op: "read", key: "absente" })).toEqual({ ok: true, value: null });
+  expect(await op({ op: "forget", key: "encours.the-bear" })).toEqual({ ok: true });
   expect(memory.content().values).toEqual({});
 });
 
 test("the memory's named refusals (key, non-JSON value)", async () => {
-  expect(await op({ op: "retenir", key: "", value: 1 })).toEqual({ ok: false, error: KEY_INVALID });
-  expect(await op({ op: "retenir", key: "x", value: undefined })).toEqual({ ok: false, error: NON_JSON_VALUE });
+  expect(await op({ op: "remember", key: "", value: 1 })).toEqual({ ok: false, error: KEY_INVALID });
+  expect(await op({ op: "remember", key: "x", value: undefined })).toEqual({ ok: false, error: NON_JSON_VALUE });
 });
 
 test("a malformed request is refused, nothing written", async () => {
-  for (const d of [{ op: "effacer", key: "x" }, { op: "lire", key: 3 }, { op: "retenir", key: "x", value: 1, url: 4 }, { op: "retenir", key: "x", value: 1, id: null }])
+  for (const d of [{ op: "effacer", key: "x" }, { op: "read", key: 3 }, { op: "remember", key: "x", value: 1, url: 4 }, { op: "remember", key: "x", value: 1, id: null }])
     expect(await op(d)).toEqual({ ok: false, error: MEMORY_DENIAL });
   for (const d of [null, "x", 3]) expect(await memoryOp(async () => memory, d)).toEqual({ ok: false, error: MEMORY_DENIAL });
   expect(memory.content().values).toEqual({});
@@ -43,7 +43,7 @@ test("a malformed request is refused, nothing written", async () => {
 
 test("memory refused by the service (app being deleted): the memory's refusal, nothing written", async () => {
   denied = true;
-  for (const o of ["retenir", "lire", "oublier"]) expect(await op({ op: o, key: "x", value: 1 })).toEqual({ ok: false, error: MEMORY_DENIAL });
+  for (const o of ["remember", "read", "forget"]) expect(await op({ op: o, key: "x", value: 1 })).toEqual({ ok: false, error: MEMORY_DENIAL });
   expect(memory.content().values).toEqual({});
 });
 

@@ -80,7 +80,7 @@ async function open(p: string, base = servers.page): Promise<void> {
   await m.execute(`${B}.focus();`);
 }
 const inPage = <T = unknown>(script: string) => inBrowser<T>(m, B, script);
-const hosts = () => inPage<number>(`return document.querySelectorAll("webaios-viseur").length;`);
+const hosts = () => inPage<number>(`return document.querySelectorAll("webaios-viewfinder").length;`);
 const bubbles = () => m.execute<{ place: { x: number; y: number; width: number; height: number }; ctx: { label: string; source: string | null; project: string; mode: string } }[]>(
   `return window.__overlay.filter((e) => e.op === "show" && e.ctx.mode === "bubble");`,
 );
@@ -289,7 +289,7 @@ describe("design service", () => {
     await open("/");
     await toggle();
     await expect.poll(hosts, { timeout: 10_000 }).toBe(1);
-    expect(await inBrowser<number>(m, "window.__designTabA.linkedBrowser", `return document.querySelectorAll("webaios-viseur").length;`)).toBe(0);
+    expect(await inBrowser<number>(m, "window.__designTabA.linkedBrowser", `return document.querySelectorAll("webaios-viewfinder").length;`)).toBe(0);
     await stopMode();
   });
 

@@ -32,7 +32,7 @@ export const HOOKS_PAGE = DESIGN_PAGE.replace(
   hook(Element.prototype, "attachShadow"); hook(Document.prototype, "createElement"); hook(EventTarget.prototype, "addEventListener");
   hook(window, "getComputedStyle"); hook(Element.prototype, "getBoundingClientRect"); hook(CSS, "escape"); hook(Document.prototype, "querySelectorAll");
   const then = Promise.prototype.then; Promise.prototype.then = function (...a) { log.hooked.push("then"); return then.apply(this, a); };
-  window.__viseurArret = () => log.fakeStop++; window.__viseurAvaler = () => log.fakeStop++; window.__viseurChoisir = () => log.fakeStop++;
+  window.__viewfinderStop = () => log.fakeStop++; window.__viewfinderSwallow = () => log.fakeStop++; window.__viewfinderPick = () => log.fakeStop++;
   addEventListener("load", () => (log.hooked.length = 0));
 </script>`,
 );

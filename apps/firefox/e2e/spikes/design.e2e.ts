@@ -40,7 +40,7 @@ const HOOKS = DESIGN.replace(
   hook(Element.prototype, "attachShadow"); hook(Document.prototype, "createElement"); hook(EventTarget.prototype, "addEventListener");
   hook(window, "getComputedStyle"); hook(Element.prototype, "getBoundingClientRect"); hook(CSS, "escape"); hook(Document.prototype, "querySelectorAll");
   const then = Promise.prototype.then; Promise.prototype.then = function (...a) { hooked.push("then"); return then.apply(this, a); };
-  window.__viseurArret = () => fakeStop++; window.__viseurAvaler = () => fakeStop++;
+  window.__viewfinderStop = () => fakeStop++; window.__viewfinderSwallow = () => fakeStop++;
   addEventListener("load", () => (hooked.length = 0));
 </script>`,
 );
@@ -57,18 +57,18 @@ const OVERLAY = '<head><style>html, body { margin: 0; background: transparent; }
 const FRAMED = DESIGN.replace("</body>", '<iframe id="cadre" style="width:300px;height:100px" srcdoc="<button id=dans>dans</button><script>window.vu = []; for (const t of [\'mousedown\', \'click\']) addEventListener(t, (e) => vu.push(t + \':\' + e.isTrusted), true)</script>"></iframe></body>');
 /**
  * The viewfinder script with the S1 fix: no click listener of its own; the actor's guard hands it the clicked element
- * (`__viseurChoisir`). Everything else (hover, Escape, swallowing, stop) is unchanged.
+ * (`__viewfinderPick`). Everything else (hover, Escape, swallowing, stop) is unchanged.
  */
 function guardedScript(): string {
   let s = viewfinderScript();
   const edits: [string, string][] = [
     ['      window.removeEventListener("click", surClic, true);\n', ""],
-    ["if (globalThis.__viseurArret === arret) delete globalThis.__viseurArret;", "if (globalThis.__viseurArret === arret) { delete globalThis.__viseurArret; delete globalThis.__viseurChoisir; }"],
+    ["if (globalThis.__viewfinderStop === arret) delete globalThis.__viewfinderStop;", "if (globalThis.__viewfinderStop === arret) { delete globalThis.__viewfinderStop; delete globalThis.__viewfinderPick; }"],
     ["const surClic = (e) => {\n      if (!e.isTrusted) return;\n      bloque(e);\n      const el = e.target;", "const choisir = (el) => {"],
-    ['window.addEventListener("click", surClic, true);', "globalThis.__viseurChoisir = choisir;"],
+    ['window.addEventListener("click", surClic, true);', "globalThis.__viewfinderPick = choisir;"],
   ];
   for (const [a, b] of edits) {
-    if (!s.includes(a)) throw new Error(`scriptViseur changed: ${a}`);
+    if (!s.includes(a)) throw new Error(`viewfinderScript changed: ${a}`);
     s = s.replace(a, b);
   }
   return s;
@@ -204,7 +204,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode spikes (plan 35)", () =
     expect(frame.cadre.display).toBe("block");
     expect(frame.etiquette.text).toBe("input#email.champ");
     // What the page sees of the host: no shadow root.
-    expect(await inPage("document.querySelector('webaios-viseur').shadowRoot")).toBeNull();
+    expect(await inPage("document.querySelector('webaios-viewfinder').shadowRoot")).toBeNull();
     await mouse("#envoyer");
     const c = await result();
     note("S1 capture #envoyer", { ...c.r, html: c.r?.html?.slice(0, 60), styles: Object.keys(c.r?.styles ?? {}).length });
@@ -274,7 +274,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode spikes (plan 35)", () =
     expect(r).toEqual({ r: null });
     expect(await ask("hosts")).toBe(0);
     expect(await inPage("Object.keys(window).sort()")).toEqual(keys);
-    expect(await inPage("[typeof window.__viseurArret, typeof window.__viseurAvaler]")).toEqual(["undefined", "undefined"]);
+    expect(await inPage("[typeof window.__viewfinderStop, typeof window.__viewfinderSwallow]")).toEqual(["undefined", "undefined"]);
     // The parent's stop (ARRET) also ends it with null.
     await arm();
     await sleep(100);
@@ -783,7 +783,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode spikes (plan 35)", () =
     expect(bad2.kept).toEqual({ file: "a.svelte" });
     expect(throwing.kept).toBeNull();
     const after = await inPage<string[]>("Object.keys(window).sort()");
-    expect(after.filter((k) => /viseur|webaios/i.test(k))).toEqual([]);
+    expect(after.filter((k) => /viewfinder|webaios/i.test(k))).toEqual([]);
     note("S4 page globals added (the test's own getterRuns only)", after.filter((k) => !keys.includes(k)));
   });
 

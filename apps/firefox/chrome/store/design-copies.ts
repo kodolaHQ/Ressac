@@ -1,4 +1,4 @@
-// The design mode's pure pieces: core/design/viewfinder.ts's scriptViseur, adapted for the actor's guard, and the checks
+// The design mode's pure pieces: core/design/viewfinder.ts's viewfinderScript, adapted for the actor's guard, and the checks
 // on what comes back from the page.
 import type { DesignContext } from "../../../../packages/kernel/src/design/remarks";
 import type { DesignTarget } from "../../core/design/foreground";
@@ -53,27 +53,27 @@ export function bubbleSlot(
 }
 
 /**
- * scriptViseur without its own click listener: the actor's guard (design-actor.ts), in front of every page
- * listener, hands it the clicked element through `globalThis.__viseurChoisir`, which `fin` deletes with `__viseurArret`.
- * Hover, Escape, swallowing and stop stay scriptViseur's code. Throws when scriptViseur's text changes.
+ * viewfinderScript without its own click listener: the actor's guard (design-actor.ts), in front of every page
+ * listener, hands it the clicked element through `globalThis.__viewfinderPick`, which `fin` deletes with `__viewfinderStop`.
+ * Hover, Escape, swallowing and stop stay viewfinderScript's code. Throws when viewfinderScript's text changes.
  */
 export function firefoxViewfinderScript(): string {
   let s = viewfinderScript();
   const edits: [string, string][] = [
     ['      window.removeEventListener("click", surClic, true);\n', ""],
-    ["if (globalThis.__viseurArret === arret) delete globalThis.__viseurArret;", "if (globalThis.__viseurArret === arret) { delete globalThis.__viseurArret; delete globalThis.__viseurChoisir; }"],
+    ["if (globalThis.__viewfinderStop === arret) delete globalThis.__viewfinderStop;", "if (globalThis.__viewfinderStop === arret) { delete globalThis.__viewfinderStop; delete globalThis.__viewfinderPick; }"],
     ["const surClic = (e) => {\n      if (!e.isTrusted) return;\n      bloque(e);\n      const el = e.target;", "const choisir = (el) => {"],
-    ['window.addEventListener("click", surClic, true);', "globalThis.__viseurChoisir = choisir;"],
+    ['window.addEventListener("click", surClic, true);', "globalThis.__viewfinderPick = choisir;"],
   ];
   for (const [a, b] of edits) {
-    if (!s.includes(a)) throw new Error(`scriptViseur changed: ${a}`);
+    if (!s.includes(a)) throw new Error(`viewfinderScript changed: ${a}`);
     s = s.replace(a, b);
   }
   return s;
 }
 
 // Stops the viewfinder and its double-click swallowing in the page.
-export const STOP_SCRIPT = `typeof globalThis.__viseurArret === "function" && globalThis.__viseurArret(); typeof globalThis.__viseurAvaler === "function" && globalThis.__viseurAvaler()`;
+export const STOP_SCRIPT = `typeof globalThis.__viewfinderStop === "function" && globalThis.__viewfinderStop(); typeof globalThis.__viewfinderSwallow === "function" && globalThis.__viewfinderSwallow()`;
 
 // Shape guards for what comes back from the page.
 const finished = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n);

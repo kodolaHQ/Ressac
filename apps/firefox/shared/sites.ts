@@ -99,8 +99,8 @@ export const CONSOLE_TWEAK_TEXT_MAX = 2000;
 export const CONSOLE_TWEAK_SOURCE_MAX = 500;
 /** Total of the kept texts per open app: beyond it, the oldest are forgotten. */
 export const CONSOLE_TWEAKS_TOTAL = 32_000;
-/** Prefix of the tweaks' sources (`webaios-retouche://<id>/<file>`), to recognize their console messages. */
-export const tweakSource = (id: string, file: string) => `webaios-retouche://${id}/${file}`;
+/** Prefix of the tweaks' sources (`webaios-tweak://<id>/<file>`), to recognize their console messages. */
+export const tweakSource = (id: string, file: string) => `webaios-tweak://${id}/${file}`;
 
 /**
  * What the site actor (chrome/agent/site-actor.ts) puts into a frame of a site app's view. `pont`: `webaiosSite` in the

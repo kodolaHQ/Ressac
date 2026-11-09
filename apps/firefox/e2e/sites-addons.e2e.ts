@@ -323,7 +323,7 @@ describe("add-ons and what the agent adds to the app", () => {
       vidola: {
         declaration: series(),
         files: {
-          "tweaks/serie.js": `webaiosSite.retenir("encours.the-bear", ${JSON.stringify(KEPT)}).then(() => (document.documentElement.dataset.retenu = "oui"));`,
+          "tweaks/serie.js": `webaiosSite.remember("encours.the-bear", ${JSON.stringify(KEPT)}).then(() => (document.documentElement.dataset.retenu = "oui"));`,
           "tweaks/cacher.css": ".shorts { display: none; }",
         },
       },

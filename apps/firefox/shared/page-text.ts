@@ -11,12 +11,12 @@ export function isYoutubeVideo(url: string): boolean {
 export interface PageParts {
   description?: string;
   body: string;
-  video?: { title?: string; chain?: string; description?: string };
+  video?: { title?: string; channel?: string; description?: string };
 }
 
 /** The retained text of a page: its non-empty parts, separated by a blank line. */
 export function composeText(p: PageParts): string {
-  const parts = p.video ? [p.video.title, p.video.chain, p.video.description] : [p.description, p.body];
+  const parts = p.video ? [p.video.title, p.video.channel, p.video.description] : [p.description, p.body];
   return parts
     .map((s) => s?.trim() ?? "")
     .filter(Boolean)

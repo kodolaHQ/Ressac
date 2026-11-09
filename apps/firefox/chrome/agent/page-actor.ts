@@ -24,7 +24,7 @@ export class WebAiOsPageChild extends JSWindowActorChild {
             body: "",
             video: {
               title: text("h1.ytd-watch-metadata") || doc.title,
-              chain: text("ytd-watch-metadata #channel-name a") || text("#owner #channel-name a"),
+              channel: text("ytd-watch-metadata #channel-name a") || text("#owner #channel-name a"),
               description: text("#description") || description,
             },
           };
@@ -35,13 +35,13 @@ export class WebAiOsPageChild extends JSWindowActorChild {
         const seen = new Set<string>();
         const links: { text: string; url: string }[] = [];
         for (const a of doc.querySelectorAll("a[href]") as NodeListOf<HTMLAnchorElement>) {
-          if (links.length >= m.data.liens) break;
+          if (links.length >= m.data.links) break;
           const url = a.href;
           if (typeof url !== "string" || !/^https?:/i.test(url) || seen.has(url)) continue;
           seen.add(url);
           links.push({ text: (a.innerText || a.textContent || "").replace(/\s+/g, " ").trim(), url });
         }
-        return { title: doc.title, text: (doc.body?.innerText ?? "").slice(0, m.data.texte), liens: links };
+        return { title: doc.title, text: (doc.body?.innerText ?? "").slice(0, m.data.text), links };
       }
       // The page's height, then one screen down: never a click, a key or focus; the page sees an ordinary scroll.
       case "scroll": {

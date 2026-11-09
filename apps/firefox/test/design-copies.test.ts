@@ -8,8 +8,8 @@ const line = (text: string, start: string) => text.split("\n").find((l) => l.sta
 describe("design copies", () => {
   it("the Firefox viewfinder script: no click listener of its own, the guard hands it the element", () => {
     const s = firefoxViewfinderScript();
-    expect(s).toContain("globalThis.__viseurChoisir = choisir;");
-    expect(s).toContain("delete globalThis.__viseurChoisir;");
+    expect(s).toContain("globalThis.__viewfinderPick = choisir;");
+    expect(s).toContain("delete globalThis.__viewfinderPick;");
     expect(s).not.toContain('window.addEventListener("click", surClic, true)');
   });
 

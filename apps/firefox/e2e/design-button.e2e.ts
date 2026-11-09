@@ -63,7 +63,7 @@ const svc = <R = unknown>(body: string, args: unknown[] = []) =>
     args,
   );
 const designState = () => svc<{ active: boolean; basket: number; project: { project: string } | null }>("return await d.state(t);");
-const hosts = () => inBrowser<number>(m, B, `return document.querySelectorAll("webaios-viseur").length;`);
+const hosts = () => inBrowser<number>(m, B, `return document.querySelectorAll("webaios-viewfinder").length;`);
 const button = () =>
   inUi<{ disabled: boolean; title: string; pressed: string; count: string | null } | null>(
     m,

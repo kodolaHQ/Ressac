@@ -8,7 +8,7 @@ import type { CheckKind } from "../store/agent-extensions";
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 // Keep in sync with host/extensions/firefox-copy.ts ID_SUFFIX.
 const SUFFIX = "@agent.webaios";
-const KINDS: readonly string[] = ["urlPermise", "hotePermis", "estOnglet"] satisfies CheckKind[];
+const KINDS: readonly string[] = ["urlAllowed", "hostAllowed", "isTab"] satisfies CheckKind[];
 
 export class WebAiOsExtensionParent extends JSWindowActorParent {
   async receiveMessage(m: { name: string; data?: unknown }): Promise<boolean> {

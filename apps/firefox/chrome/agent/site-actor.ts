@@ -12,10 +12,10 @@ import { VIDEO_EVENTS, ResumeTracking } from "../../core/resume";
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 // Keep in sync with store/sites.ts SITE_FRAMES.
 const SITE_FRAMES = "webaios-sites";
-const OPS = ["retenir", "lire", "oublier"] as const;
+const OPS = ["remember", "read", "forget"] as const;
 const UNAVAILABLE = "Mémoire de l'appli indisponible";
 // Keep in sync with shared/sites.ts tweakSource.
-const SOURCE = "webaios-retouche://";
+const SOURCE = "webaios-tweak://";
 
 /**
  * The tweaks' errors, seen in this content process (the parent's copy of a forwarded error has no window id): each
@@ -30,7 +30,7 @@ function relayErrors(): void {
     observe(m: any) {
       if (!(m instanceof Ci.nsIScriptError) || !String(m.sourceName).startsWith(SOURCE) || !m.innerWindowID) return;
       try {
-        WindowGlobalChild.getByInnerWindowId(m.innerWindowID)?.getActor("WebAiOsSite").sendAsyncMessage("erreur", { text: String(m.errorMessage), source: String(m.sourceName), line: Number(m.lineNumber) || 0 });
+        WindowGlobalChild.getByInnerWindowId(m.innerWindowID)?.getActor("WebAiOsSite").sendAsyncMessage("error", { text: String(m.errorMessage), source: String(m.sourceName), line: Number(m.lineNumber) || 0 });
       } catch {
         // The window or its actor is gone.
       }
@@ -44,11 +44,11 @@ function relayErrors(): void {
  */
 export class WebAiOsSiteParent extends JSWindowActorParent {
   async receiveMessage(m: { name: string; data?: unknown }): Promise<FrameInjection | MemoryResponse | number | null> {
-    if (!["injection", "memoire", "erreur", "position", "reprise"].includes(m.name)) return null;
+    if (!["injection", "memory", "error", "position", "resume"].includes(m.name)) return null;
     const { sites } = (await ChromeUtils.importESModule(STORE).ready) as WebAiOsStore;
     if (m.name === "injection") return sites.frameInjection(this.manager);
-    if (m.name === "memoire") return sites.frameMemory(this.manager, m.data);
-    if (m.name === "reprise") return sites.frameResume(this.manager, m.data);
+    if (m.name === "memory") return sites.frameMemory(this.manager, m.data);
+    if (m.name === "resume") return sites.frameResume(this.manager, m.data);
     if (m.name === "position") sites.framePosition(this.manager, m.data);
     else sites.frameError(this.manager, m.data);
     return null;
@@ -100,7 +100,7 @@ export class WebAiOsSiteChild extends JSWindowActorChild {
     if (i.js.length === 0 || typeof i.guard !== "string") return;
     const kept = i.guard;
     const doc = this.document as any;
-    const sandbox = Cu.Sandbox(doc.nodePrincipal, { sandboxPrototype: win, wantXrays: true, wantComponents: false, sameZoneAs: win, sandboxName: "WebAiOs · retouches" });
+    const sandbox = Cu.Sandbox(doc.nodePrincipal, { sandboxPrototype: win, wantXrays: true, wantComponents: false, sameZoneAs: win, sandboxName: "WebAiOs · tweaks" });
     // The page's own legacy `Components` shim (constants only) would show through the prototype: shadowed.
     Object.defineProperty(sandbox, "Components", { value: undefined });
     relayErrors();
@@ -143,7 +143,7 @@ export class WebAiOsSiteChild extends JSWindowActorChild {
       note: (t, duration, end) => this.sendAsyncMessage("position", { t, duration: duration, end: end }),
       ask: async (duration) => {
         try {
-          const p: unknown = await this.sendQuery("reprise", { duration: duration });
+          const p: unknown = await this.sendQuery("resume", { duration: duration });
           return typeof p === "number" && Number.isFinite(p) ? p : null;
         } catch {
           return null;
@@ -175,15 +175,15 @@ export class WebAiOsSiteChild extends JSWindowActorChild {
             let v: unknown;
             try {
               // A value the actor cannot copy (a function…): sent empty, the memory refuses it with its own message.
-              v = op === "retenir" ? Cu.cloneInto(Cu.waiveXrays(value), globalThis) : undefined;
+              v = op === "remember" ? Cu.cloneInto(Cu.waiveXrays(value), globalThis) : undefined;
             } catch {
               v = undefined;
             }
-            const d = { op, key: typeof key === "string" ? key : null, ...(op === "retenir" ? { value: v } : {}) };
-            this.sendQuery("memoire", d).then(
+            const d = { op, key: typeof key === "string" ? key : null, ...(op === "remember" ? { value: v } : {}) };
+            this.sendQuery("memory", d).then(
               (r: any) => {
-                if (r?.ok === true) resolve(op === "lire" ? Cu.cloneInto(r.valeur, sandbox) : undefined);
-                else reject(new sandbox.Error(typeof r?.erreur === "string" ? r.erreur : UNAVAILABLE));
+                if (r?.ok === true) resolve(op === "read" ? Cu.cloneInto(r.value, sandbox) : undefined);
+                else reject(new sandbox.Error(typeof r?.error === "string" ? r.error : UNAVAILABLE));
               },
               // Never asked again: the parent's error is not a value's.
               () => reject(new sandbox.Error(UNAVAILABLE)),

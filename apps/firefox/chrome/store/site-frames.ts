@@ -73,7 +73,7 @@ export async function frameMemory(wgp: any, s: FrameSite | undefined, sendReques
 
 /**
  * The view's console: an error the actor relays from a frame of the app's view, whose
- * source is named as one of the app's tweaks (`webaios-retouche://<id>/`), kept in its console, bounded. The frame is
+ * source is named as one of the app's tweaks (`webaios-tweak://<id>/`), kept in its console, bounded. The frame is
  * known from its WindowGlobalParent (the caller's siteOfFrame): the sign-in window or another app naming its code so
  * reaches no app's console. The text comes from a web process: bounded by addTweakConsole.
  */
@@ -106,7 +106,7 @@ export function framePosition(wgp: any, s: FrameSite | undefined, p: unknown, lo
   notify({ ...page, frame: `${wgp.browsingContext.id}:${wgp.innerWindowId}`, t, duration: duration, end: end === true });
 }
 
-/** The actor's "reprise": the position kept for the page, for a video of this duration (null if none). */
+/** The actor's "resume": the position kept for the page, for a video of this duration (null if none). */
 export async function frameResume(wgp: any, s: FrameSite | undefined, duration: unknown, localUrls: boolean, request: (p: object) => Promise<number | null>): Promise<number | null> {
   const page = resumePage(wgp, s, localUrls);
   const d = duration && typeof duration === "object" ? (duration as { duration?: unknown }).duration : undefined;

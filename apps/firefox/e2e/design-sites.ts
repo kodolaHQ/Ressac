@@ -52,14 +52,14 @@ document.addEventListener("keydown", (e) => log.keys.push((e.target && e.target.
 const hook = (o, k) => { try { const f = o[k]; o[k] = function (...a) { log.hooked.push(k); return f.apply(this, a); }; } catch {} };
 hook(Element.prototype, "attachShadow"); hook(Document.prototype, "createElement"); hook(Element.prototype, "getBoundingClientRect");
 hook(window, "getComputedStyle"); hook(Document.prototype, "querySelectorAll"); hook(CSS, "escape");
-globalThis.__viseurArret = () => log.fake++; globalThis.__viseurAvaler = () => log.fake++; globalThis.__viseurChoisir = () => log.fake++;
+globalThis.__viewfinderStop = () => log.fake++; globalThis.__viewfinderSwallow = () => log.fake++; globalThis.__viewfinderPick = () => log.fake++;
 globalThis.__retoucheSecret = "r";
 R.dataset.retouche = "oui";
 document.addEventListener("essai", () => {
-  const hosts = document.getElementsByTagName("webaios-viseur");
+  const hosts = document.getElementsByTagName("webaios-viewfinder");
   const pw = document.getElementById("mdp");
   R.dataset.sonde = JSON.stringify({ log, hosts: hosts.length, shadow: hosts[0] ? String(hosts[0].shadowRoot) : "none", closed: hosts[0] ? typeof hosts[0].openOrClosedShadowRoot : "none",
-    pw: pw.value, pwAttr: String(pw.getAttribute("value")), fakeIsMine: globalThis.__viseurArret.toString().includes("log.fake") });
+    pw: pw.value, pwAttr: String(pw.getAttribute("value")), fakeIsMine: globalThis.__viewfinderStop.toString().includes("log.fake") });
 });`;
 
 /** Runs `body` (an async function body) with `store` the chrome's store. */

@@ -7,19 +7,19 @@ import type { MemoryResponse } from "../core/sites/injection.ts";
 /** The refusal of a memory request from anywhere but the app's main page. */
 export const MEMORY_DENIAL = "Mémoire de l'appli : seulement depuis la page principale de l'appli";
 
-type MemoryRequest = { op: "retenir"; key: string; value: unknown } | { op: "lire" | "oublier"; key: string };
+type MemoryRequest = { op: "remember"; key: string; value: unknown } | { op: "read" | "forget"; key: string };
 
 /** The request's shape, or null. */
 function memoryRequest(d: unknown): MemoryRequest | null {
   if (!d || typeof d !== "object") return null;
   const { op, key: key } = d as { op?: unknown; key?: unknown };
   if (typeof key !== "string") return null;
-  if (op === "retenir") return { op, key: key, value: (d as { value?: unknown }).value };
-  return op === "lire" || op === "oublier" ? { op, key: key } : null;
+  if (op === "remember") return { op, key: key, value: (d as { value?: unknown }).value };
+  return op === "read" || op === "forget" ? { op, key: key } : null;
 }
 
 /**
- * `sites.memoireOp {id, adresse, op, cle, valeur?}`: the memory work past the sender checks. `memoire(id)`
+ * `sites.memoryOp {id, url, op, key, value?}`: the memory work past the sender checks. `memory(id)`
  * rejects while the app is being deleted: nothing is read or written then.
  */
 export async function memoryOp(memory: (id: string) => Promise<SiteMemory>, raw: unknown): Promise<MemoryResponse> {
@@ -28,11 +28,11 @@ export async function memoryOp(memory: (id: string) => Promise<SiteMemory>, raw:
   if (typeof p.id !== "string" || typeof p.url !== "string" || !d) return { ok: false, error: MEMORY_DENIAL };
   const m = await memory(p.id).catch(() => null);
   if (!m) return { ok: false, error: MEMORY_DENIAL };
-  if (d.op === "retenir") {
+  if (d.op === "remember") {
     const r = m.keep(d.key, d.value, p.url);
     return r.ok ? { ok: true } : r;
   }
-  if (d.op === "lire") return { ok: true, value: m.read(d.key) };
+  if (d.op === "read") return { ok: true, value: m.read(d.key) };
   m.forget(d.key);
   return { ok: true };
 }
@@ -51,8 +51,8 @@ type Target = { id: string; url: string };
 const targetOf = (p: { id?: unknown; url?: unknown }): Target | null => (typeof p.id === "string" && typeof p.url === "string" ? { id: p.id, url: p.url } : null);
 
 /**
- * The position and reprise channels past their sender checks, which the chrome made (view,
- * grant, repriseDansCadre) and whose page address it gives. The host checks the grant again at each write.
+ * The position and resume channels past their sender checks, which the chrome made (view,
+ * grant, resumeInFrame) and whose page address it gives. The host checks the grant again at each write.
  */
 export function createPositions(o: {
   memory(id: string): Promise<SiteMemory>;

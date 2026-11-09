@@ -67,7 +67,7 @@ const agentInput = () => {
 const TERMINAL = "(doc.querySelector('.xterm-rows')?.textContent ?? '').replace(/\\u00a0/g, ' ')";
 
 const designState = () => inStore<{ active: boolean; basket: number }>(m, "return await store.design.etat(arguments[0]);", [T]);
-const hosts = () => inSiteView<number>(m, ID, `return document.getElementsByTagName("webaios-viseur").length;`).catch(() => -1);
+const hosts = () => inSiteView<number>(m, ID, `return document.getElementsByTagName("webaios-viewfinder").length;`).catch(() => -1);
 const view = <R = unknown>(expr: string) => inSiteView<R>(m, ID, `return ${expr};`).catch(() => null);
 const bar = () =>
   inSiteBar<{ pressed: string | null; count: string | null; grant: boolean }>(

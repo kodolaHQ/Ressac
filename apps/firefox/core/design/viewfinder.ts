@@ -7,18 +7,18 @@ type RectCss = ViewfinderCapture["rect"];
 
 /**
  * Isolated world code: sets up the targeter, resolves with the click's capture (or null: Esc, stop). The stop is exposed
- * in a variable of the isolated world (`__viseurArret`), invisible to the page. The page sees no mouse event.
+ * in a variable of the isolated world (`__viewfinderStop`), invisible to the page. The page sees no mouse event.
  */
 export function viewfinderScript(): string {
   return `(() => {
-  if (typeof globalThis.__viseurArret === "function") globalThis.__viseurArret();
+  if (typeof globalThis.__viewfinderStop === "function") globalThis.__viewfinderStop();
   // A new arming removes the click swallowing left by the previous capture: it has its own listeners.
-  if (typeof globalThis.__viseurAvaler === "function") globalThis.__viseurAvaler();
+  if (typeof globalThis.__viewfinderSwallow === "function") globalThis.__viewfinderSwallow();
   const STYLES = ${JSON.stringify(USEFUL_STYLES)};
   const HTML_MAX = ${HTML_MAX};
   const TRONQUE = ${JSON.stringify(TRUNCATED)};
   return new Promise((resolve) => {
-    const hote = document.createElement("webaios-viseur");
+    const hote = document.createElement("webaios-viewfinder");
     const ombre = hote.attachShadow({ mode: "closed" });
     const base = "position:fixed;pointer-events:none;z-index:2147483647;";
     const cadre = document.createElement("div");
@@ -81,15 +81,15 @@ export function viewfinderScript(): string {
         const avaler = () => {
           clearTimeout(minuterie);
           for (const t of TYPES_SOURIS) window.removeEventListener(t, surSouris, true);
-          if (globalThis.__viseurAvaler === avaler) delete globalThis.__viseurAvaler;
+          if (globalThis.__viewfinderSwallow === avaler) delete globalThis.__viewfinderSwallow;
         };
         const minuterie = setTimeout(avaler, 500);
-        globalThis.__viseurAvaler = avaler;
+        globalThis.__viewfinderSwallow = avaler;
       }
       window.removeEventListener("mousemove", surMove, true);
       window.removeEventListener("keydown", surTouche, true);
       hote.remove();
-      if (globalThis.__viseurArret === arret) delete globalThis.__viseurArret;
+      if (globalThis.__viewfinderStop === arret) delete globalThis.__viewfinderStop;
       resolve(valeur);
     };
     const arret = () => fin(null);
@@ -119,7 +119,7 @@ export function viewfinderScript(): string {
     window.addEventListener("click", surClic, true);
     window.addEventListener("mousemove", surMove, true);
     window.addEventListener("keydown", surTouche, true);
-    globalThis.__viseurArret = arret;
+    globalThis.__viewfinderStop = arret;
   });
 })()`;
 }

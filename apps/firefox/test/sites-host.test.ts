@@ -396,7 +396,7 @@ describe("tweaks", () => {
 
   it("memoireOp: only an open app with its grant; the address is the chrome's", async () => {
     const m = mount();
-    const op = { id: "vidola", url: "/serie/x", op: "retenir", key: "k", value: 1 };
+    const op = { id: "vidola", url: "/serie/x", op: "remember", key: "k", value: 1 };
     expect(await m.sites.memoryOp(op)).toMatchObject({ ok: false });
     await m.sites.openById("vidola");
     // reprise: true asks for the grant.
@@ -405,10 +405,10 @@ describe("tweaks", () => {
     await storeSiteGrant(m.dataDir, "vidola", DeclarationSite.parse(declaration));
     await m.sites.openById("vidola");
     expect(await m.sites.memoryOp(op)).toEqual({ ok: true });
-    expect(await m.sites.memoryOp({ ...op, op: "lire" })).toEqual({ ok: true, value: 1 });
+    expect(await m.sites.memoryOp({ ...op, op: "read" })).toEqual({ ok: true, value: 1 });
     expect((await m.sites.tools.memory("vidola"))!.values.k).toMatchObject({ url: "/serie/x" });
     m.sites.closed("vidola");
-    expect(await m.sites.memoryOp({ ...op, op: "lire" })).toMatchObject({ ok: false });
+    expect(await m.sites.memoryOp({ ...op, op: "read" })).toMatchObject({ ok: false });
   });
 
   it("position and reprise: only an open app with its grant; « Oublier » drops a note waiting for its second", async () => {
@@ -516,10 +516,10 @@ describe("outils", () => {
     await mem.clear();
     expect((await m.sites.tools.memory("vidola"))!.values).toHaveProperty("serie");
     // Closed: no console. Open: the chrome's.
-    m.setErrors([{ when: "q", text: "boum", source: "webaios-retouche://vidola/a.js:1", sourceVerified: false }]);
+    m.setErrors([{ when: "q", text: "boum", source: "webaios-tweak://vidola/a.js:1", sourceVerified: false }]);
     expect(await m.sites.tools.errors("vidola")).toEqual([]);
     await m.sites.openById("vidola");
-    expect(await m.sites.tools.errors("vidola")).toEqual([{ when: "q", text: "boum", source: "webaios-retouche://vidola/a.js:1", sourceVerified: false }]);
+    expect(await m.sites.tools.errors("vidola")).toEqual([{ when: "q", text: "boum", source: "webaios-tweak://vidola/a.js:1", sourceVerified: false }]);
     expect(await m.sites.tools.memory("inconnu")).toBeNull();
     expect(await m.sites.tools.errors("inconnu")).toBeNull();
     expect(await m.sites.tools.open("inconnu")).toBe(false);

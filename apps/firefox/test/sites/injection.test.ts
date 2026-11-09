@@ -38,7 +38,7 @@ test("main frame on /series/x: the tweak's js and css, bridge true, hosts of the
   const i = injectionFor(updateEntry(), { url: "https://vidola-b.example/series/x", main: true });
   expect(i).toEqual({
     css: [".shorts{display:none}"],
-    js: [{ code: "window.a = 1", name: "webaios-retouche://vidola/a.js" }],
+    js: [{ code: "window.a = 1", name: "webaios-tweak://vidola/a.js" }],
     guard: GUARD,
     hosts: ["https://*.vidola-a.example/*", "https://vidola-a.example/*", "https://*.vidola-b.example/*", "https://vidola-b.example/*"],
     bridge: true,
@@ -69,7 +69,7 @@ test("lecteur.localhost sub-frame outside the declared frame patterns: nothing, 
 
 test("sub-frame matching cadres: js, bridge false", () => {
   const i = injectionFor(updateEntry(), { url: "https://www.lecteur.example/v/1", main: false, page: PAGE })!;
-  expect(i.js).toEqual([{ code: "window.l = 1", name: "webaios-retouche://vidola/lecteur.js" }]);
+  expect(i.js).toEqual([{ code: "window.l = 1", name: "webaios-tweak://vidola/lecteur.js" }]);
   expect(i.guard).toBe(GUARD);
   expect(i.bridge).toBe(false);
   expect(i.hosts).toEqual(["https://www.lecteur.example/*"]);
@@ -123,7 +123,7 @@ test("a grant covering fewer rights than the declaration (frames added): no inje
 
 test("tweaks console: text truncated to 2000 characters, source to 500, total bounded, 50 at most, never verified", () => {
   const l: ReturnType<typeof addTweakConsole> = [];
-  addTweakConsole(l, { text: "a".repeat(10_000), source: "webaios-retouche://vidola/" + "b".repeat(1000) }, "t");
+  addTweakConsole(l, { text: "a".repeat(10_000), source: "webaios-tweak://vidola/" + "b".repeat(1000) }, "t");
   expect(l[0]!.text).toHaveLength(2000);
   expect(l[0]!.source).toHaveLength(500);
   expect(l[0]!.sourceVerified).toBe(false);
