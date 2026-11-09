@@ -129,6 +129,33 @@ describe("migration to the English formats (store half, then the kernel's)", () 
     }
   });
 
+  it("a workspace/ next to the old espace/: the kernel half stops before any write, and the agent says why", { timeout: 60_000 }, async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "webaios-migration-"));
+    const dataDir = path.join(root, "data");
+    try {
+      await oldDataDir(dataDir, `${server.url}/a.html`);
+      // Made by a launch of an in-between version.
+      await mkdir(path.join(dataDir, "workspace"));
+      const w = await launchWebAiOs({ dataDir, env: { WEBAIOS_TEST_AMO_URL: "http://127.0.0.1:9" }, starterHarvests: true });
+      const m = w.marionette;
+      await m.setContext("chrome");
+      await waitReady(m);
+      const ensure = await m.execute<string>(
+        `return (async () => (await ChromeUtils.importESModule("${STORE}").ready).agent.ensure().then(() => "started", (e) => e.message))();`,
+      );
+      expect(ensure).toContain("Le noyau de l'agent ne démarre pas");
+      expect(ensure).toContain(`${path.join(dataDir, "espace")} et ${path.join(dataDir, "workspace")} existent tous les deux`);
+      await w.close();
+      const marker = JSON.parse(await readFile(path.join(dataDir, ".format-version"), "utf8"));
+      expect([marker.store, marker.kernel ?? 1]).toEqual([2, 1]);
+      expect(await readdir(path.join(dataDir, "workspace"))).toEqual([]);
+      expect(existsSync(path.join(dataDir, "espace/accueil"))).toBe(true);
+      expect(existsSync(path.join(dataDir, "migration-anglais.md"))).toBe(false);
+    } finally {
+      await rm(root, { recursive: true, force: true, maxRetries: 5 }).catch(() => {});
+    }
+  });
+
   it("a backup that fails: nothing migrated, the error shown, the host never started", { timeout: 60_000 }, async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "webaios-migration-"));
     const dataDir = path.join(root, "data");

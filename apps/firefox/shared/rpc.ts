@@ -21,6 +21,8 @@ interface Message {
 }
 
 export const CANCEL = "$/cancel";
+/** The host's last notification before it exits on a refusal (data not migrated…): `{ message }`, in French for the user. */
+export const HOST_FATAL = "$/fatal";
 
 export function createRpc(o: { send(line: string): void; handlers: Record<string, Handler> }): Rpc {
   let next = 1;

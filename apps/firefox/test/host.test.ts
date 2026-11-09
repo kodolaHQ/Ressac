@@ -10,7 +10,7 @@ import { PRIVATE_TEXT } from "../../../packages/kernel/src/mcp/bridge";
 import { RESIGN } from "../../../packages/kernel/src/migration/extensions";
 import { DISABLED_CRASHES } from "../shared/extensions-messages";
 import { hostPath, nodePath, tsxPath } from "../scripts/paths";
-import { createRpc, type Handler, type Rpc } from "../shared/rpc";
+import { createRpc, HOST_FATAL, type Handler, type Rpc } from "../shared/rpc";
 import { installationImpossible, NOTHING_TO_REVIEW } from "../host/extensions/agent";
 import { KEYS_ABSENT, deniedSignature } from "../host/extensions/amo";
 import type { ExtensionCard, GrantResponse } from "../shared/extensions";
@@ -157,11 +157,14 @@ describe("agent host", { timeout: 30_000 }, () => {
     rmSync(notes, { force: true });
   });
 
-  it("old data the store has not backed up: the host stops, nothing written", async () => {
-    const h = startHost({}, (d) => cpSync(MIGRATION_FIXTURE, d, { recursive: true }));
+  it("old data the store has not backed up: the host stops, nothing written, and tells Firefox why first", async () => {
+    const fatal: unknown[] = [];
+    const h = startHost({}, (d) => cpSync(MIGRATION_FIXTURE, d, { recursive: true }), { handlers: { [HOST_FATAL]: (p: unknown) => void fatal.push(p) } });
     expect(await h.exited).toBe(2);
     expect(existsSync(join(h.dataDir, "espace"))).toBe(true);
     expect(h.stderr()).toContain("copie de sauvegarde");
+    await until(() => fatal.length > 0);
+    expect(fatal).toEqual([{ message: expect.stringMatching(/^Le noyau de l'agent ne démarre pas : .*copie de sauvegarde/) }]);
   });
 
   it("a private tab is hidden from the agent", async () => {
