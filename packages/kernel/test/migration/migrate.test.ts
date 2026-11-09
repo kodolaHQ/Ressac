@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
@@ -22,6 +22,7 @@ import { validateWorkflow } from "../../src/workflows/validate.js";
 import { spacePaths } from "../../src/paths.js";
 import { DEFAULT_MODELS, initSpace } from "../../src/workspace/initialize.js";
 import { FutureFormatError, StoreNotMigratedError, migrateKernel, readMarker } from "../../src/migration/index.js";
+import { RESIGN } from "../../src/migration/extensions.js";
 import { fakeDocker, oldDataDir, readJson, snapshot } from "./helpers.js";
 
 const now = () => new Date("2026-11-09T12:00:00.000Z");
@@ -316,5 +317,26 @@ describe("migrateKernel refuses", () => {
     expect((await migrateKernel({ dataDir, docker: fakeDocker({ fail: true }), now })).status).toBe("done");
     expect(readFileSync(join(dataDir, "migration-anglais.md"), "utf8")).toContain("docker rm -f webaios-atelier-firefox : Cannot connect to the Docker daemon");
     expect((await readMarker(dataDir)).kernel).toBe(2);
+  });
+});
+
+describe("migrateKernel, agent extensions signed with the old guards", () => {
+  it("are marked to sign again (never re-stamped) and listed in the report", async () => {
+    const { dataDir } = await oldDataDir();
+    // The old copy's guard files (their names are also in the .xpi's zip directory).
+    writeFileSync(join(dataDir, "extensions/copies/bloqueur/webaios-garde-fond.js"), "const w = globalThis.__webaios; w.urlPermise(u);");
+    writeFileSync(join(dataDir, "extensions/signes/bloqueur.xpi"), "PK\x03\x04webaios-garde-fond.jsPK\x01\x02webaios-garde-page.js");
+    await migrateKernel({ dataDir, docker: fakeDocker(), now });
+    expect(readJson(join(dataDir, "extensions/signed/bloqueur.json"))).toEqual({ version: "1.0.3", hash: RESIGN });
+    const report = readFileSync(join(dataDir, "migration-anglais.md"), "utf8");
+    expect(report).toContain("## Extensions de l'agent à signer de nouveau");
+    expect(report).toContain("- `workspace/extensions/bloqueur`");
+  });
+
+  it("the old guard API alone in the copy is enough", async () => {
+    const { dataDir } = await oldDataDir();
+    writeFileSync(join(dataDir, "extensions/copies/bloqueur/background.js"), "__webaios.hotePermis(tab)");
+    await migrateKernel({ dataDir, docker: fakeDocker(), now });
+    expect(readJson(join(dataDir, "extensions/signed/bloqueur.json")).hash).toBe(RESIGN);
   });
 });

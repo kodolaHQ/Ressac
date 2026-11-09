@@ -1,70 +1,56 @@
 import fs from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
-import { DEFAULT_PROFILE, type BrowserState } from "../../shared/model";
+import type { BrowserState } from "../../shared/model";
 import { initialState } from "./initial-state";
 
 const FILE = "session.json";
 
 const FavoriteSchema = z.object({ id: z.string(), url: z.string(), title: z.string(), favicon: z.string().nullable() });
 
-const SpaceV1Schema = z.object({ id: z.string(), name: z.string(), icon: z.string(), pinned: z.array(FavoriteSchema) });
+const SpaceSchema = z.object({ id: z.string(), name: z.string(), icon: z.string(), pinned: z.array(FavoriteSchema), private: z.boolean(), profile: z.string().min(1) });
 
-/** The fields common to versions 1 and 2. */
-const CommonSchema = z
-  .object({
-    essentials: z.array(FavoriteSchema),
-    tabs: z.record(
-      z.string(),
+/** Version 3, the English formats (versions 1 and 2, French, are rewritten by the data migration: chrome/store/migration.ts). */
+const SchemaSession = z.object({
+  version: z.literal(3),
+  spaces: z.array(SpaceSchema).min(1),
+  profiles: z.array(z.object({ id: z.string().min(1) })),
+  essentials: z.array(FavoriteSchema),
+  tabs: z.record(
+    z.string(),
+    z.object({
+      id: z.string(),
+      windowId: z.string(),
+      spaceId: z.string(),
+      url: z.string(),
+      title: z.string(),
+      favicon: z.string().nullable(),
+      link: z.object({ type: z.enum(["essential", "pinned"]), id: z.string() }).nullable(),
+      openedByAgent: z.boolean(),
+      zoom: z.number(),
+    }),
+  ),
+  windows: z
+    .array(
       z.object({
         id: z.string(),
-        windowId: z.string(),
-        spaceId: z.string(),
-        url: z.string(),
-        title: z.string(),
-        favicon: z.string().nullable(),
-        link: z.object({ type: z.enum(["essential", "pinned"]), id: z.string() }).nullable(),
-        openedByAgent: z.boolean(),
-        zoom: z.number(),
+        activeSpace: z.string(),
+        order: z.record(z.string(), z.array(z.string())),
+        active: z.record(z.string(), z.string().nullable()),
+        compact: z.boolean(),
+        agentPanelOpen: z.boolean(),
+        recentlyClosed: z.array(z.object({ url: z.string(), spaceId: z.string() })),
+        frame: z.object({ x: z.number(), y: z.number(), width: z.number(), height: z.number() }).nullable().default(null),
       }),
-    ),
-    windows: z
-      .array(
-        z.object({
-          id: z.string(),
-          activeSpace: z.string(),
-          order: z.record(z.string(), z.array(z.string())),
-          active: z.record(z.string(), z.string().nullable()),
-          compact: z.boolean(),
-          agentPanelOpen: z.boolean(),
-          recentlyClosed: z.array(z.object({ url: z.string(), spaceId: z.string() })),
-          frame: z.object({ x: z.number(), y: z.number(), width: z.number(), height: z.number() }).nullable().default(null),
-        }),
-      )
-      .min(1),
-    settings: z.object({ engine: z.enum(["google", "duckduckgo", "qwant"]), agentProfile: z.string().min(1).default("claude"),
-      agentPanelWidth: z.number().default(420),
-    }),
-  });
-
-/** Version 1: before private spaces and login profiles. */
-const SchemaV1 = CommonSchema.extend({ version: z.literal(1), spaces: z.array(SpaceV1Schema).min(1) });
-const SchemaV2 = CommonSchema.extend({
-  version: z.literal(2),
-  spaces: z.array(SpaceV1Schema.extend({ private: z.boolean(), profile: z.string().min(1) })).min(1),
-  profiles: z.array(z.object({ id: z.string().min(1) })),
+    )
+    .min(1),
+  settings: z.object({ engine: z.enum(["google", "duckduckgo", "qwant"]), agentProfile: z.string().min(1).default("claude"), agentPanelWidth: z.number().default(420) }),
 });
-const SchemaSession = z.discriminatedUnion("version", [SchemaV1, SchemaV2]);
 
-/** Reads a saved session, whatever its version, as version 2. */
-function toV2(lu: z.infer<typeof SchemaSession>): z.infer<typeof SchemaV2> {
-  if (lu.version === 2) {
-    // A login profile used by a space is always listed: otherwise it would be taken for a profile to erase.
-    const missing = [...new Set(lu.spaces.map((e) => e.profile))].filter((id) => !lu.profiles.some((p) => p.id === id));
-    return missing.length ? { ...lu, profiles: [...lu.profiles, ...missing.map((id) => ({ id }))] } : lu;
-  }
-  // The earlier spaces stay visible to the agent, on the always-used partition: no login is lost.
-  return { ...lu, version: 2, spaces: lu.spaces.map((e) => ({ ...e, private: false, profile: DEFAULT_PROFILE })), profiles: [{ id: DEFAULT_PROFILE }] };
+/** A login profile used by a space is always listed: otherwise it would be taken for a profile to erase. */
+function withProfiles(lu: z.infer<typeof SchemaSession>): z.infer<typeof SchemaSession> {
+  const missing = [...new Set(lu.spaces.map((e) => e.profile))].filter((id) => !lu.profiles.some((p) => p.id === id));
+  return missing.length ? { ...lu, profiles: [...lu.profiles, ...missing.map((id) => ({ id }))] } : lu;
 }
 
 /** A tab's volatile fields are not saved: they restart from their default value. */
@@ -99,7 +85,7 @@ export async function loadSession(folder: string, kept?: (path: string) => void)
     return initialState();
   }
   try {
-    const lu = toV2(SchemaSession.parse(JSON.parse(text)));
+    const lu = withProfiles(SchemaSession.parse(JSON.parse(text)));
     return {
       ...lu,
       tabs: Object.fromEntries(Object.entries(lu.tabs).map(([id, o]) => [id, { ...o, ...VOLATILE }])),

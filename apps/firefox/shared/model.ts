@@ -138,7 +138,7 @@ export interface WindowState {
 }
 
 export interface BrowserState {
-  version: 2;
+  version: 3;
   /** Au moins un espace. */
   spaces: Space[];
   /** The login profiles used by at least one space. */

@@ -4,7 +4,7 @@ declare const IOUtils: {
   writeUTF8(path: string, text: string, options?: { flush?: boolean; mode?: "overwrite" | "append" | "appendOrCreate" | "create" }): Promise<number>;
   exists(path: string): Promise<boolean>;
   move(from: string, to: string): Promise<void>;
-  copy(from: string, to: string): Promise<void>;
+  copy(from: string, to: string, options?: { noOverwrite?: boolean; recursive?: boolean }): Promise<void>;
   makeDirectory(path: string, options?: { createAncestors?: boolean; ignoreExisting?: boolean }): Promise<void>;
   remove(path: string, options?: { ignoreAbsent?: boolean; recursive?: boolean }): Promise<void>;
   stat(path: string): Promise<{ lastModified: number; size: number; type: "regular" | "directory" | "other" }>;
@@ -12,7 +12,7 @@ declare const IOUtils: {
   write(path: string, data: Uint8Array): Promise<number>;
   getChildren(path: string): Promise<string[]>;
 };
-declare const PathUtils: { join(...parts: string[]): string; readonly tempDir: string };
+declare const PathUtils: { join(...parts: string[]): string; filename(path: string): string; readonly tempDir: string };
 declare const Services: any;
 declare const Ci: any;
 declare const Cr: any;

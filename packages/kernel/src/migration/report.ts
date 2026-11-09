@@ -88,6 +88,13 @@ export async function writeReport(ctx: Ctx, verifyFailures: { path: string; erro
   if (await agentsEdited(ctx)) {
     parts.push("## AGENTS.md", "Ton `workspace/AGENTS.md` a été modifié : il est laissé tel quel et cite encore les anciens noms. Le modèle à jour est dans le paquet de WebAiOs (`modeles/AGENTS.md`).");
   }
+  if (ctx.resign.length) {
+    parts.push(
+      "## Extensions de l'agent à signer de nouveau",
+      "Leur version signée contient les anciens gardes, qui ne fonctionnent plus : elles sont marquées à signer de nouveau. L'agent doit les signer de nouveau : WebAiOs les renvoie à AMO, avec ta clé, au prochain démarrage où elles sont actives, comme après un changement de leur source.",
+      list(ctx.resign),
+    );
+  }
   if (ctx.unreadable.length) parts.push("## Fichiers illisibles, laissés tels quels", list(ctx.unreadable));
   if (ctx.conflicts.length) parts.push("## Anciens fichiers laissés (le nouveau nom existe déjà)", list(ctx.conflicts));
   if (verifyFailures.length) {

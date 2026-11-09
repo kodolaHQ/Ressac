@@ -40,27 +40,7 @@ test("round trip: identical, apart from volatile fields reset to defaults", asyn
   expect(reviewed).toEqual(expected);
 });
 
-/** The same state as a browser from before configurable spaces saved it (version 1). */
-function toV1(state: BrowserState): unknown {
-  const { profiles: _profiles, ...rest } = structuredClone(state);
-  return { ...rest, version: 1, spaces: rest.spaces.map(({ private: _private, profile: _profile, ...e }) => e) };
-}
-
-test("session v1 → v2: non-private spaces on the default sign-in profile, tabs intact", async () => {
-  const d = folder();
-  const state = richState();
-  writeFileSync(join(d, "session.json"), JSON.stringify(toV1(state)));
-  const e = await loadSession(d);
-  expect(e.version).toBe(2);
-  expect(e.profiles).toEqual([{ id: "default" }]);
-  for (const space of e.spaces) expect(space).toMatchObject({ private: false, profile: "default" });
-  const expected = structuredClone(state);
-  for (const o of Object.values(expected.tabs)) Object.assign(o, { loading: false, canGoBack: false, canGoForward: false, crashed: false, error: null });
-  expect(e).toEqual(expected);
-  expect(set_aside(d, ".corrupt")).toEqual([]);
-});
-
-test("session v2 with a private space and a second sign-in profile: identical round trip", async () => {
+test("session v3 with a private space and a second sign-in profile: identical round trip", async () => {
   const d = folder();
   let n = 100;
   const g = () => `h${++n}`;
@@ -70,7 +50,7 @@ test("session v2 with a private space and a second sign-in profile: identical ro
   recorder.schedule(state);
   await recorder.clear();
   const reviewed = await loadSession(d);
-  expect(reviewed.version).toBe(2);
+  expect(reviewed.version).toBe(3);
   expect(reviewed.profiles).toEqual(state.profiles);
   expect(reviewed.spaces).toEqual(state.spaces);
 });
@@ -78,7 +58,7 @@ test("session v2 with a private space and a second sign-in profile: identical ro
 test("a session saved before the windows' frame loads (frame = null)", async () => {
   const d = folder();
   const old = structuredClone(initialState()) as unknown as { windows: Record<string, unknown>[] };
-  for (const f of old.windows) delete f.cadre;
+  for (const f of old.windows) delete f.frame;
   writeFileSync(join(d, "session.json"), JSON.stringify(old));
   const e = await loadSession(d);
   expect(e.windows[0]!.frame).toBeNull();
@@ -112,7 +92,7 @@ test("corrupted session: the name of the file set aside is returned to warn the 
 
 test("unknown version → initial state and file set aside", async () => {
   const d = folder();
-  writeFileSync(join(d, "session.json"), JSON.stringify({ ...richState(), version: 3 }));
+  writeFileSync(join(d, "session.json"), JSON.stringify({ ...richState(), version: 4 }));
   const e = await loadSession(d);
   expect(e.tabs).toEqual({});
   expect(set_aside(d, ".corrupt")).toHaveLength(1);

@@ -93,3 +93,26 @@ export function migrateContainers(): void {
   }
   if (changed) ContextualIdentityService.saveSoon();
 }
+
+/**
+ * Login profile `from`'s container becomes `to`'s in place (same userContextId, so cookies and storage stay), unless
+ * `to` already has one. shortcut: edits ContextualIdentityService._identities; recheck after a Firefox upgrade.
+ */
+export function renameContainer(from: ProfileId, to: ProfileId): boolean {
+  ContextualIdentityService.ensureDataReady();
+  const list: { public: boolean; name: string }[] = ContextualIdentityService._identities;
+  const found = list.find((i) => !i.public && i.name === internalName(from));
+  if (!found || list.some((i) => !i.public && i.name === internalName(to))) return false;
+  found.name = internalName(to);
+  ContextualIdentityService.saveSoon();
+  return true;
+}
+
+/** What the data migration does to the profile's containers (a fake in the unit tests). */
+export interface ContainerService {
+  /** Public identities of older builds made internal (migrateContainers). */
+  migrate(): void;
+  rename(from: ProfileId, to: ProfileId): boolean;
+}
+
+export const containers: ContainerService = { migrate: migrateContainers, rename: renameContainer };

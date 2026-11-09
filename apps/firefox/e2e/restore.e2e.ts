@@ -192,23 +192,23 @@ describe("restore at startup", () => {
     expect((await state(m)).settings.engine).toBe("qwant");
   });
 
-  it("a v1 session (before configurable spaces) gets its tabs and essential back, and is rewritten as v2", async () => {
+  it("a v1 session (before configurable spaces, French formats) gets its tabs and essential back, and is rewritten as v3", async () => {
     fresh();
     dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
-    const tab = (id: string, url: string, link: unknown = null) => ({ id, windowId: "f1", spaceId: "e1", url, title: id, favicon: null, link: link, openedByAgent: false, zoom: 1 });
+    const tab = (id: string, url: string, lien: unknown = null) => ({ id, fenetreId: "f1", espaceId: "e1", url, titre: id, favicon: null, lien, ouvertParAgent: false, zoom: 1 });
     const v1 = {
       version: 1,
-      spaces: [{ id: "e1", name: "Perso", icon: "🏠", pinned: [] }],
-      essentials: [{ id: "fav-c", url: `${server.url}/texte.html`, title: "Texte", favicon: null }],
-      tabs: {
+      espaces: [{ id: "e1", nom: "Perso", icone: "🏠", epingles: [] }],
+      essentiels: [{ id: "fav-c", url: `${server.url}/texte.html`, titre: "Texte", favicon: null }],
+      onglets: {
         "o-a": tab("o-a", `${server.url}/a.html`),
         "o-b": tab("o-b", `${server.url}/b.html`),
-        "o-c": tab("o-c", `${server.url}/texte.html`, { type: "essential", id: "fav-c" }),
+        "o-c": tab("o-c", `${server.url}/texte.html`, { type: "essentiel", id: "fav-c" }),
       },
-      windows: [
-        { id: "f1", activeSpace: "e1", order: { e1: ["o-a", "o-b"] }, active: { e1: "o-b" }, compact: false, agentPanelOpen: false, recentlyClosed: [], frame: null },
+      fenetres: [
+        { id: "f1", espaceActif: "e1", ordre: { e1: ["o-a", "o-b"] }, actif: { e1: "o-b" }, compact: false, panneauAgentOuvert: false, fermesRecemment: [], cadre: null },
       ],
-      settings: { engine: "google", agentProfile: "claude", agentPanelWidth: 420 },
+      reglages: { moteur: "google", profilAgent: "claude", largeurPanneauAgent: 420 },
     };
     const file = path.join(dataDir, "session.json");
     await writeFile(file, JSON.stringify(v1));
@@ -216,12 +216,16 @@ describe("restore at startup", () => {
     await waitUi(m, "return doc.querySelectorAll('[data-testid^=\"onglet-\"]').length === 2");
     await waitFor(m, "return gBrowser.selectedBrowser.contentTitle", (t) => t === "Page B");
     const read = async () => JSON.parse(await readFile(file, "utf8"));
-    for (const end = Date.now() + 10_000; (await read()).version !== 2; await new Promise((r) => setTimeout(r, 100)))
-      if (Date.now() > end) throw new Error("the session was not rewritten as v2");
+    // The migration's backup, beside the data folder: removed with it.
+    const backups = (await readdir(path.dirname(dataDir))).filter((n) => n.startsWith(`${path.basename(dataDir)}.avant-anglais-`));
+    await Promise.all(backups.map((n) => rm(path.join(path.dirname(dataDir), n), { recursive: true, force: true })));
+    expect(backups.length).toBeGreaterThan(0);
+    for (const end = Date.now() + 10_000; (await read()).version !== 3; await new Promise((r) => setTimeout(r, 100)))
+      if (Date.now() > end) throw new Error("the session was not rewritten as v3");
     const written = await read();
     expect(written.profiles).toEqual([{ id: "default" }]);
     expect(Object.keys(written.tabs).sort()).toEqual(["o-a", "o-b", "o-c"]);
-    expect(written.essentials).toEqual(v1.essentials);
+    expect(written.essentials).toEqual([{ id: "fav-c", url: `${server.url}/texte.html`, title: "Texte", favicon: null }]);
     expect(written.tabs["o-c"].link).toEqual({ type: "essential", id: "fav-c" });
     // The essential opens on its tab from before, in the default container.
     await click(m, '[data-testid="favori-fav-c"]');

@@ -64,6 +64,7 @@ export async function migrateKernel(o: {
     changed: 0,
     unreadable: [],
     conflicts: [],
+    resign: [],
     dockerErrors: [],
     written: [],
     checkpoint: async (label) => void (await o.checkpoint?.(label)),

@@ -1,7 +1,7 @@
 {
   "name": "WebAiOs",
   "vendor": "WebAiOs",
-  "appId": "fr.webaios.navigateur",
+  "appId": "fr.webaios.browser",
   "binaryName": "webaios",
   "version": {
     "product": "firefox",

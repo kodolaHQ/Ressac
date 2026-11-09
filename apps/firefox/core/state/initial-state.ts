@@ -4,7 +4,7 @@ import { DEFAULT_PROFILE, type BrowserState } from "../../shared/model";
 export function initialState(genId: () => string = randomUUID): BrowserState {
   const space = genId();
   return {
-    version: 2,
+    version: 3,
     spaces: [{ id: space, name: "Perso", icon: "🏠", pinned: [], private: false, profile: DEFAULT_PROFILE }],
     profiles: [{ id: DEFAULT_PROFILE }],
     essentials: [],
