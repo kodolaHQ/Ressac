@@ -44,7 +44,7 @@ describe("frameInjection", () => {
     const { v, s } = app();
     const i = frameInjection(v.main, siteOfFrame(v.main, [s]), false)!;
     expect(i).toMatchObject({ css: [".shorts{display:none}"], js: [{ code: "window.a = 1", name: "webaios-retouche://vidola/a.js" }], bridge: true });
-    expect(i.guard).toContain("__webaiosPortee");
+    expect(i.guard).toContain("__webaiosScope");
     const reader = v.frame("https://www.lecteur.example/v");
     expect(frameInjection(reader, siteOfFrame(reader, [s]), false)).toMatchObject({ js: [{ code: "window.l = 1" }], bridge: false, hosts: ["https://www.lecteur.example/*"] });
     const pub = v.frame("https://pub.example/x");

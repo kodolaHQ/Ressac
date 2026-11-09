@@ -7,7 +7,7 @@ export const COLUMNS = 12;
 export const ROW_PX = 90;
 export const GAP_PX = 12;
 
-type Size = { l: number; h: number };
+type Size = { w: number; h: number };
 export interface Sizes {
   min: Size;
   max: Size;
@@ -16,7 +16,7 @@ export interface Sizes {
 /** `v` between `min` and `max`; if the bounds cross, the minimum wins. */
 const clamp = (v: number, min: number, max: number) => Math.max(Math.min(v, max), min);
 const overlap = (a: Placement, b: Placement) =>
-  a.x < b.x + b.l && b.x < a.x + a.l && a.y < b.y + b.h && b.y < a.y + a.h;
+  a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 
 /**
  * Widget `fixe` keeps its place; the others, taken from top to bottom, go down just under what they overlap
@@ -42,7 +42,7 @@ function resolve(placements: Placement[], fixed: Placement): Placement[] {
 export function move(placements: Placement[], id: string, x: number, y: number): Placement[] {
   const target = placements.find((q) => q.id === id);
   if (!target) return placements;
-  const fixed = { ...target, x: clamp(Math.round(x), 0, COLUMNS - target.l), y: Math.max(0, Math.round(y)) };
+  const fixed = { ...target, x: clamp(Math.round(x), 0, COLUMNS - target.w), y: Math.max(0, Math.round(y)) };
   return resolve(placements, fixed);
 }
 
@@ -50,10 +50,10 @@ export function move(placements: Placement[], id: string, x: number, y: number):
 export function resize(placements: Placement[], id: string, l: number, h: number, sizes: Sizes): Placement[] {
   const target = placements.find((q) => q.id === id);
   if (!target) return placements;
-  const minL = Math.min(sizes.min.l, COLUMNS);
+  const minL = Math.min(sizes.min.w, COLUMNS);
   // The minimum does not fit before the right edge: the widget steps back.
   const x = Math.min(target.x, COLUMNS - minL);
-  const width = clamp(Math.round(l), minL, Math.min(sizes.max.l, COLUMNS - x));
+  const width = clamp(Math.round(l), minL, Math.min(sizes.max.w, COLUMNS - x));
   const height = clamp(Math.round(h), sizes.min.h, sizes.max.h);
-  return resolve(placements, { ...target, x, l: width, h: height });
+  return resolve(placements, { ...target, x, w: width, h: height });
 }

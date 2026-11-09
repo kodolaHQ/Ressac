@@ -26,8 +26,8 @@
   let commentsRequest = 0;
   let diffRequest = 0;
 
-  const STATUSES = { ajoute: "+", supprime: "−", modifie: "~" } as const;
-  const LABELS = { ajoute: "ajouté", supprime: "supprimé", modifie: "modifié" } as const;
+  const STATUSES = { added: "+", deleted: "−", modified: "~" } as const;
+  const LABELS = { added: "ajouté", deleted: "supprimé", modified: "modifié" } as const;
 
   /** `garder`: the tab's comparison if it is still kept; otherwise (« Rafraîchir ») a new one. */
   async function load(keep: boolean) {
@@ -201,8 +201,8 @@
   .fichier { display: flex; align-items: center; gap: 8px; text-align: left; border: none; background: transparent; padding: 4px 6px; }
   .fichier.choisi { background: var(--fond-actif); }
   .statut { width: 12px; font-family: ui-monospace, Menlo, monospace; font-weight: 700; }
-  .statut.ajoute { color: var(--en-marche); }
-  .statut.supprime { color: var(--en-erreur); }
+  .statut.added { color: var(--en-marche); }
+  .statut.deleted { color: var(--en-erreur); }
   .nom-fichier { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .compte { font-size: 11px; color: var(--texte-doux); white-space: nowrap; }
   .commentaires { list-style: none; margin: 0; padding: 0; font-size: 12px; }

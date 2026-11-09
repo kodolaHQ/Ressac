@@ -45,15 +45,15 @@ beforeAll(async () => {
   dataDir = await mkdtemp(join(os.tmpdir(), "webaios-data-"));
   profile = await mkdtemp(join(os.tmpdir(), "webaios-firefox-"));
   writeProject(dataDir, "essai", { manifest: { name: "Essai" }, server: "form" });
-  writeFileSync(join(dataDir, "espace", "projets", "essai", "serveur.mjs"), SERVER);
-  writeAppJs(join(dataDir, "espace", "projets", "essai"), LINES);
+  writeFileSync(join(dataDir, "workspace", "projects", "essai", "serveur.mjs"), SERVER);
+  writeAppJs(join(dataDir, "workspace", "projects", "essai"), LINES);
   const a = testActor(profile);
   w = await launchWebAiOs({ dataDir, profile, env: { ...APPS_ENV(BLOCK), ...a.env }, prefs: a.prefs });
   m = w.marionette;
   await m.setContext("chrome");
   await waitReady(m);
   // Not expect.poll: run from beforeAll.
-  for (const end = Date.now() + 15_000; !existsSync(join(dataDir, "espace", ".webaios", "mcp.json")); await sleep(100))
+  for (const end = Date.now() + 15_000; !existsSync(join(dataDir, "workspace", ".webaios", "mcp.json")); await sleep(100))
     if (Date.now() > end) throw new Error("the MCP server did not start");
 }, 120_000);
 afterAll(async () => {
@@ -161,7 +161,7 @@ it("design.spec.ts:426 an app window launched from the Applications page: the We
   const windowId = (await state(m)).windows[0]!.id;
   await dispatch(m, { type: "ouvrirApplications", windowId: windowId });
   await rowButton(m, "essai", "Lancer");
-  await rowState(m, "essai", "en-marche", 15_000);
+  await rowState(m, "essai", "running", 15_000);
   await expect.poll(() => inAppView<string>(m, "essai", "return document.title;").catch(() => null), { timeout: 15_000 }).toBe("Inscription");
   // The app launched is « built »: the agent has access (88×28). Cut, the WebAiOs button stays alone (48×28).
   await expect.poll(() => badge<number>(`return doc.querySelectorAll('${tid("pastille-acces")}').length;`), { timeout: 10_000 }).toBe(1);
@@ -185,7 +185,7 @@ it("design.spec.ts:426 an app window launched from the Applications page: the We
     await m.execute(`const win = ${APP}, r = win.document.getElementById("webaios-design-calque").getBoundingClientRect(); return [Math.round(win.innerWidth - r.right), Math.round(r.top), Math.round(r.width), Math.round(win.innerHeight - r.bottom)];`),
   ).toEqual([12, 12, 340, 12]);
   expect(await inAppView<number>(m, "essai", "return innerWidth;")).toBe(width);
-  expect(readdirSync(join(dataDir, "espace", ".webaios", "remarques"))).toEqual(["app-essai"]);
+  expect(readdirSync(join(dataDir, "workspace", ".webaios", "remarks"))).toEqual(["app-essai"]);
 });
 
 it("design.spec.ts:529 app window essai: sending from the overlay pre-fills the main window's terminal", async () => {
@@ -199,7 +199,7 @@ it("design.spec.ts:529 app window essai: sending from the overlay pre-fills the 
   await inApp(() => click(m, tid("envoyer-remarques"), { frame: "overlay" }));
   await waitFor(m, "return !document.getElementById('webaios-agent').hidden", (v) => v === true);
   await expect.poll(() => agentInput(dataDir).slice(before.length), { timeout: 20_000 }).toContain("appli Essai (/workspace/projects/essai)");
-  expect(agentInput(dataDir)).toContain("/workspace/.webaios/remarques/app-essai/");
+  expect(agentInput(dataDir)).toContain("/workspace/.webaios/remarks/app-essai/");
   await sleep(300);
   expect(agentInput(dataDir)).not.toContain("\r");
   await expect.poll(() => overlay<number>(`return doc.querySelectorAll('${tid("lot-envoye")}').length;`), { timeout: 10_000 }).toBe(1);

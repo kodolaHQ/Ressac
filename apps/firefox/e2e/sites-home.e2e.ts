@@ -162,10 +162,10 @@ function writeMemory(id: string, current?: string): void {
   mkdirSync(dir, { recursive: true });
   const when = new Date().toISOString();
   writeFileSync(
-    path.join(dir, "memoire.json"),
+    path.join(dir, "memory.json"),
     JSON.stringify({ version: 1, values: { "encours.the-bear": { value: { title: "The Bear", episode: "S2E4" }, url: "/serie/the-bear?e=4", when: when } }, positions: {} }),
   );
-  if (current) writeFileSync(path.join(dir, "adresse.json"), JSON.stringify({ current: current, previous: ["vidola-a.localhost"], since: when }));
+  if (current) writeFileSync(path.join(dir, "url.json"), JSON.stringify({ current: current, previous: ["vidola-a.localhost"], since: when }));
 }
 
 beforeAll(async () => {
@@ -185,11 +185,11 @@ beforeAll(async () => {
   // Documents with scripts that would run without the home's CSP (no meta in them) if the frame loaded them.
   const svg = `<svg xmlns="http://www.w3.org/2000/svg"><image href="${url("/espion-svg-img")}" width="1" height="1"/><script>fetch("${url("/espion-svg-fetch")}")</script></svg>`;
   const xhtml = `<html xmlns="http://www.w3.org/1999/xhtml"><body><img src="${url("/espion-xhtml-img")}"/><script>fetch("${url("/espion-xhtml-fetch")}")</script></body></html>`;
-  writeSite(dataDir, "vidola", { declaration, files: { "accueil/index.html": HOME, "accueil/img/logo.png": PNG, "accueil/app.js": "window.appJs = 1;", "accueil/style.css": "p { color: red; }", "accueil/x.svg": svg, "accueil/x.xhtml": xhtml } });
-  writeSite(dataDir, "demenage", { declaration: { ...declaration, name: "Déménagé" }, files: { "accueil/index.html": HOME } });
-  writeSite(dataDir, "auto", { declaration: { ...declaration, name: "Auto" }, files: { "accueil/index.html": AUTO } });
-  writeSite(dataDir, "tube", { declaration: { ...declaration, name: "Tube" }, files: { "accueil/index.html": "<p>accueil</p>" } });
-  writeSite(dataDir, "autre", { declaration: { name: "Autre", url: url("/", "vidola-b.localhost"), domains: ["vidola-b.localhost"] }, files: { "accueil/index.html": "<p>autre</p>" } });
+  writeSite(dataDir, "vidola", { declaration, files: { "home/index.html": HOME, "home/img/logo.png": PNG, "home/app.js": "window.appJs = 1;", "home/style.css": "p { color: red; }", "home/x.svg": svg, "home/x.xhtml": xhtml } });
+  writeSite(dataDir, "demenage", { declaration: { ...declaration, name: "Déménagé" }, files: { "home/index.html": HOME } });
+  writeSite(dataDir, "auto", { declaration: { ...declaration, name: "Auto" }, files: { "home/index.html": AUTO } });
+  writeSite(dataDir, "tube", { declaration: { ...declaration, name: "Tube" }, files: { "home/index.html": "<p>accueil</p>" } });
+  writeSite(dataDir, "autre", { declaration: { name: "Autre", url: url("/", "vidola-b.localhost"), domains: ["vidola-b.localhost"] }, files: { "home/index.html": "<p>autre</p>" } });
   writeMemory("vidola");
   writeMemory("auto");
   writeMemory("demenage", "vidola-b.localhost");

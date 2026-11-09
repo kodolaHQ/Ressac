@@ -6,22 +6,22 @@ const ticket = (i: number) => ({ title: `Ticket ${i} ` + "x".repeat(200), priori
 describe("resultsPreview", () => {
   it("describes the shape of a list of objects and keeps 3 examples", () => {
     const a = JSON.parse(resultsPreview({ tickets: Array.from({ length: 23 }, (_, i) => ticket(i)) }));
-    expect(a.forme.tickets).toBe("liste (23) d'objets { titre: texte, priorite: texte, url: texte }");
-    expect(a.exemples.tickets).toHaveLength(3);
-    expect(a.exemples.tickets[0].titre.length).toBeLessThanOrEqual(121);
+    expect(a.shape.tickets).toBe("liste (23) d'objets { title: texte, priority: texte, url: texte }");
+    expect(a.examples.tickets).toHaveLength(3);
+    expect(a.examples.tickets[0].title.length).toBeLessThanOrEqual(121);
   });
 
   it("2 MB of results: preview ≤ 6,000 characters, the tickets shape remains", () => {
     const big = { tickets: Array.from({ length: 10_000 }, (_, i) => ticket(i)), text: "y".repeat(2_000_000) };
     const s = resultsPreview(big);
     expect(s.length).toBeLessThanOrEqual(PREVIEW_MAX);
-    expect(JSON.parse(s).forme.tickets).toContain("liste (10000) d'objets");
+    expect(JSON.parse(s).shape.tickets).toContain("liste (10000) d'objets");
   });
 
   it("a 100,000-character text is cut to 120", () => {
     const a = JSON.parse(resultsPreview({ page: "z".repeat(100_000) }));
-    expect(a.exemples.page.length).toBeLessThanOrEqual(121);
-    expect(a.exemples.page.startsWith("zzz")).toBe(true);
+    expect(a.examples.page.length).toBeLessThanOrEqual(121);
+    expect(a.examples.page.startsWith("zzz")).toBe(true);
   });
 
   it("30 nesting levels: bounded, no error", () => {

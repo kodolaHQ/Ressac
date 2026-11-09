@@ -31,7 +31,7 @@ async function launch(
     await writeFile(join(folder, "workflow.json"), JSON.stringify(w));
   }
   const lu = (await readWorkflow(folder))!;
-  expect(lu.origin).toBe("fichier");
+  expect(lu.origin).toBe("file");
   const r = lu.result;
   if (!r.ok) throw new Error(r.error);
   const declaration = JSON.parse(await readFile(join(folder, "widget.json"), "utf8"));

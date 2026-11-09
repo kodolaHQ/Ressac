@@ -34,31 +34,31 @@
   {#each blocks ?? [] as b, i (i)}
     {#if "message" in b}
       <BlockError message={b.message} />
-    {:else if b.component === "titre"}
+    {:else if b.component === "title"}
       <Title p={p(b)} />
-    {:else if b.component === "paragraphe"}
+    {:else if b.component === "paragraph"}
       <Paragraph p={p(b)} />
-    {:else if b.component === "encadre"}
+    {:else if b.component === "callout"}
       <Boxed p={p(b)} />
-    {:else if b.component === "chiffre"}
+    {:else if b.component === "figure"}
       <Figure p={p(b)} />
-    {:else if b.component === "chiffres"}
+    {:else if b.component === "figures"}
       <Figures p={p(b)} />
-    {:else if b.component === "liste"}
+    {:else if b.component === "list"}
       <List p={p(b)} {ctx} />
-    {:else if b.component === "cartes"}
+    {:else if b.component === "cards"}
       <Cards p={p(b)} {ctx} />
-    {:else if b.component === "tableau"}
+    {:else if b.component === "table"}
       <Tableau p={p(b)} {ctx} />
-    {:else if b.component === "champs"}
+    {:else if b.component === "fields"}
       <Champs p={p(b)} />
-    {:else if b.component === "etiquettes"}
+    {:else if b.component === "tags"}
       <Labels p={p(b)} />
-    {:else if b.component === "lien"}
+    {:else if b.component === "link"}
       <Link p={p(b)} {ctx} />
-    {:else if b.component === "groupe"}
+    {:else if b.component === "group"}
       <Group p={p(b)}><div class="pa-blocs">{@render list(b.blocks)}</div></Group>
-    {:else if b.component === "colonnes"}
+    {:else if b.component === "columns"}
       <Columns>
         {#snippet left()}{@render list(b.left)}{/snippet}
         {#snippet right()}{@render list(b.right)}{/snippet}

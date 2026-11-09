@@ -21,12 +21,12 @@ function watchDirs(folders: string[], callback: () => void): () => Promise<void>
   };
 }
 
-/** Calls `rappel` after each burst of changes in `accueil/`. Returns the stop function. */
+/** Calls `rappel` after each burst of changes in `home/`. Returns the stop function. */
 export function watchHome(c: SpacePaths, callback: () => void): () => Promise<void> {
   return watchDirs([c.home], callback);
 }
 
-/** Calls `rappel` after each burst of changes in `actions/` or `composants/`. Returns the stop function. */
+/** Calls `rappel` after each burst of changes in `actions/` or `components/`. Returns the stop function. */
 export function watchActions(c: SpacePaths, callback: () => void): () => Promise<void> {
   return watchDirs([c.actions, c.components], callback);
 }

@@ -21,19 +21,19 @@ const TASKS = [
   { name: "Charlie", priority: 2, state: "ouvert" },
 ];
 const DEMO_BLOCKS: Block[] = [
-  { component: "titre", props: { text: "<b>gras</b>" } },
-  { component: "paragraphe", props: { text: "Trois tâches cette semaine." } },
-  { component: "encadre", props: { level: "attention", title: "À voir", items: "taches", field: "nom" } },
-  { component: "chiffre", props: { value: "compter(taches)", label: "Tâches" } },
-  { component: "chiffres", props: { figures: [{ value: "compter(taches)", label: "En tout" }, { value: "resume.ouvertes", label: "Ouvertes" }] } },
-  { component: "liste", props: { items: "taches", title: "nom", subtitle: "etat", link: "url" } },
-  { component: "cartes", props: { items: "taches", title: "nom", value: "priorite", tags: "etat" } },
-  { component: "tableau", props: { items: "taches", columns: [{ field: "nom", label: "Nom" }, { field: "priorite", label: "Priorité" }] } },
-  { component: "champs", props: { object: "resume" } },
-  { component: "etiquettes", props: { items: "taches", field: "etat" } },
-  { component: "lien", props: { object: "resume", url: "source", text: "La source" } },
-  { component: "groupe", props: { title: "Détails" }, blocks: [{ component: "paragraphe", props: { text: "Dans le groupe." } }] },
-  { component: "colonnes", props: {}, left: [{ component: "paragraphe", props: { text: "À gauche." } }], right: [{ component: "paragraphe", props: { text: "À droite." } }] },
+  { component: "title", props: { text: "<b>gras</b>" } },
+  { component: "paragraph", props: { text: "Trois tâches cette semaine." } },
+  { component: "callout", props: { level: "warning", title: "À voir", items: "taches", field: "nom" } },
+  { component: "figure", props: { value: "count(taches)", label: "Tâches" } },
+  { component: "figures", props: { figures: [{ value: "count(taches)", label: "En tout" }, { value: "resume.ouvertes", label: "Ouvertes" }] } },
+  { component: "list", props: { items: "taches", title: "nom", subtitle: "etat", link: "url" } },
+  { component: "cards", props: { items: "taches", title: "nom", value: "priorite", tags: "etat" } },
+  { component: "table", props: { items: "taches", columns: [{ field: "nom", label: "Nom" }, { field: "priorite", label: "Priorité" }] } },
+  { component: "fields", props: { object: "resume" } },
+  { component: "tags", props: { items: "taches", field: "etat" } },
+  { component: "link", props: { object: "resume", url: "source", text: "La source" } },
+  { component: "group", props: { title: "Détails" }, blocks: [{ component: "paragraph", props: { text: "Dans le groupe." } }] },
+  { component: "columns", props: {}, left: [{ component: "paragraph", props: { text: "À gauche." } }], right: [{ component: "paragraph", props: { text: "À droite." } }] },
 ];
 const DEMO_RESULTS = { tasks: TASKS, resume: { openSites: 2, week: "44", source: "https://exemple.invalide/source" } };
 
@@ -78,7 +78,7 @@ beforeAll(async () => {
   await waitReady(m);
   await writeActionWithResult(w.dataDir, "demo", { name: "Démo", results: DEMO_RESULTS, blocks: DEMO_BLOCKS, fallback: true });
   await writeActionWithResult(w.dataDir, "simple", { name: "Simple", results: DEMO_RESULTS, blocks: DEMO_BLOCKS });
-  const cards: Block[] = [{ component: "cartes", props: { items: "photos", title: "titre", image: "photo" } }];
+  const cards: Block[] = [{ component: "cards", props: { items: "photos", title: "titre", image: "photo" } }];
   await writeActionWithResult(w.dataDir, "courrier", {
     name: "Courrier",
     account: ["mail.exemple.fr"],
@@ -101,14 +101,14 @@ beforeAll(async () => {
     name: "Graphe",
     results: { sales: sales },
     blocks: [
-      { component: "titre", props: { text: "Priorités" } },
+      { component: "title", props: { text: "Priorités" } },
       { component: "barres", props: { values: "ventes", title: "Ventes" } },
       { component: "absent", props: {} },
-      { component: "paragraphe", props: { text: "Après le composant." } },
+      { component: "paragraph", props: { text: "Après le composant." } },
     ],
   });
-  await writeActionWithResult(w.dataDir, "ecrit", { name: "Ecrit", results: { n: 1 }, blocks: [{ component: "titre", props: { text: "Ecrit" } }, { component: "ecrit", props: {} }] });
-  await writeActionWithResult(w.dataDir, "sonde", { name: "Sonde", results: { n: 1 }, blocks: [{ component: "titre", props: { text: "Sonde" } }, { component: "sonde", props: {} }] });
+  await writeActionWithResult(w.dataDir, "ecrit", { name: "Ecrit", results: { n: 1 }, blocks: [{ component: "title", props: { text: "Ecrit" } }, { component: "ecrit", props: {} }] });
+  await writeActionWithResult(w.dataDir, "sonde", { name: "Sonde", results: { n: 1 }, blocks: [{ component: "title", props: { text: "Sonde" } }, { component: "sonde", props: {} }] });
   await writeActionWithResult(w.dataDir, "images", { name: "Images", results: { snapshots: Object.entries(PHOTOS).map(([title, snapshot]) => ({ title: title, photo: snapshot })) }, blocks: cards });
 }, 60_000);
 
@@ -256,7 +256,7 @@ describe("action page rendering", () => {
         "const f = doc.querySelector(arguments[0]); const d = f.contentDocument; return { src: f.src, uri: d.documentURI, titre: d.getElementById('titre').textContent, body: d.body.className, texts: [...d.querySelectorAll('text')].map((t) => t.textContent) };",
         [FRAME],
       );
-      expect(frame.src).toMatch(/^resource:\/\/webaios-composant-barres\/composant-\d+\.html$/);
+      expect(frame.src).toMatch(/^resource:\/\/webaios-component-barres\/component-\d+\.html$/);
       expect(frame.uri).toBe(frame.src);
       expect(frame).toMatchObject({ title: "Ventes", body: "sombre" });
       expect(frame.texts.slice(0, 4)).toEqual(["Lundi", "1", "Mardi", "2"]);
@@ -278,14 +278,14 @@ describe("action page rendering", () => {
     await waitUi(m, "return Math.round(doc.querySelector(arguments[0]).getBoundingClientRect().height) === 300;", [FRAME], 15_000);
     const first = await inUi<string>(m, "return doc.querySelector(arguments[0]).contentDocument.documentURI;", [FRAME]);
     // The agent rewrites it: a new mtime, a new copy.
-    const html = path.join(w.dataDir, "espace", "composants", "ecrit", "composant.html");
+    const html = path.join(w.dataDir, "workspace", "components", "ecrit", "component.html");
     await writeComponent(w.dataDir, "ecrit", { description: "Hauteur fixe", properties: {}, html: sized(400) });
     const later = new Date(Date.now() + 5000);
     await utimes(html, later, later);
     await waitUi(m, "const f = doc.querySelector(arguments[0]); return f.contentDocument?.documentURI !== arguments[1] && Math.round(f.getBoundingClientRect().height) === 400;", [FRAME, first], 15_000);
     const second = await inUi<string>(m, "return doc.querySelector(arguments[0]).contentDocument.documentURI;", [FRAME]);
-    expect(second).toMatch(/^resource:\/\/webaios-composant-ecrit\/composant-\d+\.html$/);
-    const copies = path.join(w.dataDir, "webaios-composants", "ecrit");
+    expect(second).toMatch(/^resource:\/\/webaios-component-ecrit\/component-\d+\.html$/);
+    const copies = path.join(w.dataDir, "webaios-components", "ecrit");
     expect(readdirSync(copies)).toEqual([path.basename(second)]);
     // Its link was not opened: components open none.
     expect(Object.values((await state(m)).tabs).some((o) => o.url.includes("from-component"))).toBe(false);
@@ -316,7 +316,7 @@ describe("action page rendering", () => {
       `return (async () => {
         const h = Services.io.getProtocolHandler("resource").QueryInterface(Ci.nsIResProtocolHandler);
         const load = await fetch(arguments[0]).then((r) => "status " + r.status, (e) => e.name);
-        return { substitution: h.hasSubstitution("webaios-composant-ecrit"), load };
+        return { substitution: h.hasSubstitution("webaios-component-ecrit"), load };
       })();`,
       [second],
     );
@@ -328,7 +328,7 @@ describe("action page rendering", () => {
     reached.requests.length = 0;
     reached.connections = 0;
     await openActionPage(m, "sonde", "Sonde");
-    await waitUi(m, "return doc.querySelector(arguments[0])?.contentDocument?.documentURI?.startsWith('resource://webaios-composant-sonde/');", [FRAME], 15_000);
+    await waitUi(m, "return doc.querySelector(arguments[0])?.contentDocument?.documentURI?.startsWith('resource://webaios-component-sonde/');", [FRAME], 15_000);
     // The probe tries at once, then navigates itself to the server after 1.5 s.
     await sleep(3000);
     expect(reached).toEqual({ requests: [], connections: 0 });

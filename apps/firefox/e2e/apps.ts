@@ -53,15 +53,15 @@ createServer((req, res) => {
 };
 
 /**
- * Writes a project: `<dataDir>/espace/projets/<dossier>/` with `serveur.mjs` and, if `manifeste` is given,
- * `webaios.json` (a string is written as is; an object completes `{ type: "application", lancement: "node serveur.mjs" }`).
+ * Writes a project: `<dataDir>/workspace/projects/<dossier>/` with `serveur.mjs` and, if `manifeste` is given,
+ * `webaios.json` (a string is written as is; an object completes `{ type: "app", launch: "node serveur.mjs" }`).
  */
 export function writeProject(dataDir: string, folder: string, o: { manifest?: object | string; server?: keyof typeof SERVERS } = {}): void {
-  const dir = join(dataDir, "espace", "projets", folder);
+  const dir = join(dataDir, "workspace", "projects", folder);
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, "serveur.mjs"), SERVERS[o.server ?? "ok"](folder));
   if (o.manifest === undefined) return;
-  writeFileSync(join(dir, "webaios.json"), typeof o.manifest === "string" ? o.manifest : JSON.stringify({ type: "application", launch: "node serveur.mjs", ...o.manifest }));
+  writeFileSync(join(dir, "webaios.json"), typeof o.manifest === "string" ? o.manifest : JSON.stringify({ type: "app", launch: "node serveur.mjs", ...o.manifest }));
 }
 
 /** Launches app « essai » with the agent's tool; returns its port. */
@@ -79,15 +79,15 @@ export const appWindowExpr = (folder: string) =>
 export const inAppView = <T>(m: Marionette, folder: string, script: string, o: { frame?: number; gesture?: boolean } = {}): Promise<T> =>
   inBrowser<T>(m, `${appWindowExpr(folder)}.gBrowser.selectedBrowser`, script, o);
 
-/** The fake docker's stop scripts so far (`<dataDir>/espace/faux-docker-arrets.log`). */
+/** The fake docker's stop scripts so far (`<dataDir>/workspace/faux-docker-arrets.log`). */
 export const stopsLog = (dataDir: string): string => {
-  const f = join(dataDir, "espace", "faux-docker-arrets.log");
+  const f = join(dataDir, "workspace", "faux-docker-arrets.log");
   return existsSync(f) ? readFileSync(f, "utf8") : "";
 };
 
 /** afterEach: kills the fake apps' process groups a failed test left on their ports (applications.spec.ts:9-20). */
 export function killFakeApps(dataDir: string): void {
-  const dir = join(dataDir, "espace");
+  const dir = join(dataDir, "workspace");
   for (const f of existsSync(dir) ? readdirSync(dir) : [])
     if (/^faux-docker-app-.*\.pid$/.test(f))
       try {
@@ -107,9 +107,9 @@ export async function answers(port: number): Promise<boolean> {
   }
 }
 
-/** What the fake agent got as input (`<dataDir>/espace/faux-agent-entree.txt`): a pre-filled text without \r was never sent. */
+/** What the fake agent got as input (`<dataDir>/workspace/faux-agent-entree.txt`): a pre-filled text without \r was never sent. */
 export const agentInput = (dataDir: string): string => {
-  const f = join(dataDir, "espace", "faux-agent-entree.txt");
+  const f = join(dataDir, "workspace", "faux-agent-entree.txt");
   return existsSync(f) ? readFileSync(f, "utf8") : "";
 };
 
@@ -144,7 +144,7 @@ export async function openAppsPage(
   const m = w.marionette;
   await m.setContext("chrome");
   await waitReady(m);
-  await expect.poll(() => existsSync(join(dataDir, "espace", ".webaios", "mcp.json")), { timeout: 15_000 }).toBe(true);
+  await expect.poll(() => existsSync(join(dataDir, "workspace", ".webaios", "mcp.json")), { timeout: 15_000 }).toBe(true);
   if (o.page ?? true) {
     await dispatch(m, { type: "ouvrirApplications", windowId: (await state(m)).windows[0]!.id });
     await waitUi(m, "return !!doc.querySelector('[data-testid=\"page-applications\"]')");

@@ -61,10 +61,10 @@ export async function linkAllowed(actionsFolder: string, id: string, execution: 
   return !!r && chainsOf(r.results).has(url);
 }
 
-/** The action's folder goes to actions/.corbeille (nothing is destroyed), then `oublier` drops its grant and data. */
+/** The action's folder goes to actions/.trash (nothing is destroyed), then `oublier` drops its grant and data. */
 export async function trashAction(c: SpacePaths, id: string, forget: (id: string) => Promise<void>): Promise<void> {
   if (!ID_ACTION.test(id)) throw new Error(`id d'action invalide : ${id}`);
-  const trash = join(c.actions, ".corbeille");
+  const trash = join(c.actions, ".trash");
   await mkdir(trash, { recursive: true });
   await rename(join(c.actions, id), join(trash, `${id}-${Date.now()}`));
   await forget(id);
@@ -75,7 +75,7 @@ export async function readShownActions(c: SpacePaths, actionsFolder: string): Pr
   const [alreadyRead, grants] = await Promise.all([readActions(c), readGrants(actionsFolder).catch(() => ({}) as Record<string, unknown>)]);
   return Promise.all(
     alreadyRead.map(async (a): Promise<ActionShown> => {
-      const last = (await listRuns(join(actionsFolder, a.id))).find((e) => !e.attempt && !e.id.endsWith("-essai"));
+      const last = (await listRuns(join(actionsFolder, a.id))).find((e) => !e.attempt && !e.id.endsWith("-attempt"));
       const lastRun = last ? { run: last.id, start: last.start, status: last.status } : null;
       if ("error" in a) return { id: a.id, name: a.id, description: "", keywords: [], input: null, account: [], public: [], grant: false, last: lastRun, error: a.error };
       const d = a.declaration;
@@ -109,7 +109,7 @@ export function createActionsHost(o: {
   /** Per action, the last launch refused without writing anything: the page cannot read it on disk, `liste` gives it. */
   const launchDenial = new Map<string, { error: string; when: string }>();
   // Kept on disk next to the runs: a refusal survives a restart.
-  const denialFile = join(o.actionsFolder, "refus-lancement.json");
+  const denialFile = join(o.actionsFolder, "launch-denials.json");
   const onLoaded = readFile(denialFile, "utf8").then(
     (t) => {
       const lu: unknown = JSON.parse(t);
@@ -177,8 +177,8 @@ export function createActionsHost(o: {
     },
     async launch(id: string, input: string | null): Promise<LaunchResult> {
       const kernel = o.kernel();
-      if (!kernel) return { status: "invalide", error: NO_KERNEL_MESSAGE };
-      return followLaunch(id, kernel.actions.launch(id, { ...(input?.trim() ? { input: input } : {}), trigger: "manuelle" }).end);
+      if (!kernel) return { status: "invalid", error: NO_KERNEL_MESSAGE };
+      return followLaunch(id, kernel.actions.launch(id, { ...(input?.trim() ? { input: input } : {}), trigger: "manual" }).end);
     },
     stop(id: string): void {
       o.kernel()?.actions.stop(id);

@@ -39,7 +39,7 @@ const declaration = (start = a("/serie/the-bear"), extra: object = {}) => ({
   ...extra,
 });
 const addressFile = (id: string) => {
-  const f = path.join(dataDir, "sites", id, "adresse.json");
+  const f = path.join(dataDir, "sites", id, "url.json");
   return existsSync(f) ? (JSON.parse(readFileSync(f, "utf8")) as { current: string; previous: string[] }) : null;
 };
 
@@ -166,10 +166,10 @@ describe("site app address follow", () => {
 
   it("a /serie/* tweak applies on vidola-b; the memory kept on vidola-a reopens from the home on vidola-b (sites.spec.ts:1384)", async () => {
     const decl = declaration(a("/serie/the-bear"), { tweaks: [{ matches: ["/serie/*"], css: ["cacher.css"] }] });
-    await setup("t59", decl, { "accueil/index.html": SITE_HOME, "retouches/cacher.css": ".shorts { display: none; }" }, { grant: true });
+    await setup("t59", decl, { "home/index.html": SITE_HOME, "tweaks/cacher.css": ".shorts { display: none; }" }, { grant: true });
     mkdirSync(path.join(dataDir, "sites", "t59"), { recursive: true });
     writeFileSync(
-      path.join(dataDir, "sites", "t59", "memoire.json"),
+      path.join(dataDir, "sites", "t59", "memory.json"),
       JSON.stringify({ version: 1, values: { "encours.the-bear": { value: { title: "The Bear" }, url: "/serie/the-bear?e=4", when: new Date().toISOString() } }, positions: {} }),
     );
     server.cut("vidola-a.localhost");

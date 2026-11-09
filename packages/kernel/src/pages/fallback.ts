@@ -45,7 +45,7 @@ function simpleFields(elements: Dict[]): { field: string; imageUrl: boolean; tex
 function listBlock(list: unknown[], ref: string): PlanBlock | null {
   if (list.length === 0) return null;
   const sample = list.slice(0, SAMPLE);
-  if (sample.every(simple)) return block("etiquettes", { values: ref });
+  if (sample.every(simple)) return block("tags", { values: ref });
   const objects = sample.filter(isObject);
   if (objects.length === 0) return null;
   const champs = simpleFields(objects);
@@ -59,43 +59,43 @@ function listBlock(list: unknown[], ref: string): PlanBlock | null {
     const subtitle = texts.find((c) => c !== title);
     const value = byName(names, VALUE_NAMES);
     const props: Record<string, unknown> = { items: ref, title: title, image };
-    if (subtitle) props.sousTitre = subtitle;
-    if (value && value !== title) props.valeur = value;
-    if (link) props.lien = link;
-    return block("cartes", props);
+    if (subtitle) props.subtitle = subtitle;
+    if (value && value !== title) props.value = value;
+    if (link) props.link = link;
+    return block("cards", props);
   }
   const props: Record<string, unknown> = {
     items: ref,
     columns: names.slice(0, COLUMNS).map((field) => ({ field: field, label: cut(field, LABEL_MAX) })),
   };
-  if (link) props.lien = link;
-  return block("tableau", props);
+  if (link) props.link = link;
+  return block("table", props);
 }
 
 function objectBlocks(o: Dict): PlanBlock[] {
-  const blocks: PlanBlock[] = [block("titre", { text: "Résultats" })];
+  const blocks: PlanBlock[] = [block("title", { text: "Résultats" })];
   for (const key of Object.keys(o)) {
     if (blocks.length >= KEYS_MAX * 2) break;
     if (!keyValid(key)) continue;
     const v = o[key];
-    if (typeof v === "number" && Number.isFinite(v)) blocks.push(block("chiffre", { value: key, label: cut(key, LABEL_MAX) }));
-    else if (typeof v === "string" && v !== "" || typeof v === "boolean") blocks.push(block("paragraphe", { value: key }));
+    if (typeof v === "number" && Number.isFinite(v)) blocks.push(block("figure", { value: key, label: cut(key, LABEL_MAX) }));
+    else if (typeof v === "string" && v !== "" || typeof v === "boolean") blocks.push(block("paragraph", { value: key }));
     else if (Array.isArray(v)) {
       const b = listBlock(v, key);
-      if (b) blocks.push(block("titre", { text: cut(key, TITLE_MAX) }), b);
+      if (b) blocks.push(block("title", { text: cut(key, TITLE_MAX) }), b);
     } else if (isObject(v)) {
-      if (Object.keys(v).some((k) => keyValid(k) && simple(v[k]))) blocks.push(block("champs", { object: key }));
+      if (Object.keys(v).some((k) => keyValid(k) && simple(v[k]))) blocks.push(block("fields", { object: key }));
     }
   }
   // Keys that a reference cannot write: their plain fields are read through the whole object.
-  const reference = () => blocks.some((b) => b.component !== "titre");
-  if (Object.keys(o).some((k) => !keyValid(k) && simple(o[k]))) blocks.push(block("champs", { object: "$" }));
+  const reference = () => blocks.some((b) => b.component !== "title");
+  if (Object.keys(o).some((k) => !keyValid(k) && simple(o[k]))) blocks.push(block("fields", { object: "$" }));
   if (!reference()) blocks.push(LAST_RESORT);
   return blocks;
 }
 
 /** The last resort: all the results in a bounded text. Reference "$", so always valid. */
-const LAST_RESORT = block("paragraphe", { value: "$" });
+const LAST_RESORT = block("paragraph", { value: "$" });
 export const lastResortLayout = (): PlanPage => ({ blocks: [{ ...LAST_RESORT, props: { ...LAST_RESORT.props } }] });
 
 export function fallbackLayout(results: unknown): PlanPage {
@@ -104,7 +104,7 @@ export function fallbackLayout(results: unknown): PlanPage {
     return b ? { blocks: [b] } : lastResortLayout();
   }
   if (isObject(results)) return { blocks: objectBlocks(results) };
-  if (typeof results === "number") return { blocks: [block("chiffre", { value: "$", label: "Résultat" })] };
-  if (simple(results)) return { blocks: [block("paragraphe", { value: "$" })] };
+  if (typeof results === "number") return { blocks: [block("figure", { value: "$", label: "Résultat" })] };
+  if (simple(results)) return { blocks: [block("paragraph", { value: "$" })] };
   return lastResortLayout();
 }

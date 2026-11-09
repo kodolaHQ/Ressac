@@ -23,7 +23,7 @@ function mount() {
   const o = {
     paths: paths,
     agentWindow: vi.fn(() => "f7"),
-    batchFolder: vi.fn((p: string, l: string) => `${paths.internal}/remarques/${p}/${l}`),
+    batchFolder: vi.fn((p: string, l: string) => `${paths.internal}/remarks/${p}/${l}`),
     prefill: vi.fn(),
     giveTerminal: vi.fn(),
     toFront: vi.fn(),
@@ -38,7 +38,7 @@ test("app: preRemplir receives the agent's window and the text, never a \r; exte
   const [f, text] = o.prefill.mock.calls[0]!;
   expect(f).toBe("f7");
   expect(text).toContain("appli Essai (/workspace/projects/essai)");
-  expect(text).toContain("/workspace/.webaios/remarques/app-essai/20261102T101500Z-ab12/lot.json] ");
+  expect(text).toContain("/workspace/.webaios/remarks/app-essai/20261102T101500Z-ab12/batch.json] ");
   expect(text).not.toMatch(/[\r\n]/);
   expect(o.giveTerminal).toHaveBeenCalledWith("f7");
   expect(o.toFront).toHaveBeenCalledWith("f7");
@@ -70,7 +70,7 @@ test("site: preRemplir receives the site app, its folder and the batch path, wit
   const [f, text] = o.prefill.mock.calls[0]!;
   expect(f).toBe("f7");
   expect(text).toContain('appli de site "Tuning" (/workspace/sites/tuning/)');
-  expect(text).toContain("/workspace/.webaios/remarques/site-tuning/20261102T101500Z-ab12/lot.json] ");
+  expect(text).toContain("/workspace/.webaios/remarks/site-tuning/20261102T101500Z-ab12/batch.json] ");
   expect(text).not.toMatch(/[\r\n]/);
   expect(o.giveTerminal).toHaveBeenCalledWith("f7");
   expect(o.toFront).toHaveBeenCalledWith("f7");

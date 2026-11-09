@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import { BUILTIN_COMPONENTS, type ComponentDefinition } from "./catalog.js";
 
-// The agent's components: `<dossier>/<nom>/composant.json` + `composant.html`. Nothing is run here; errors are
+// The agent's components: `<folder>/<name>/component.json` + `component.html`. Nothing is run here; errors are
 // fixed texts (the system's message would quote Mac paths).
 
 export const COMPONENT_HTML_MAX = 256 * 1024;
@@ -20,7 +20,7 @@ export const ComponentDeclaration = z
       .record(
         z.string().regex(PROPERTY_NAME),
         z.object({
-          kind: z.enum(["reference", "champ", "texte", "nombre", "case"]),
+          kind: z.enum(["reference", "field", "text", "number", "checkbox"]),
           description: z.string().min(1).max(200),
           required: z.boolean().default(false),
         }).strict(),
@@ -49,29 +49,29 @@ async function readTextFile(file: string, name: string, max: number, absent: str
 }
 
 async function readOne(folder: string, name: string): Promise<ComponentDefinition | string> {
-  const json = await readTextFile(join(folder, name, "composant.json"), "composant.json", JSON_MAX, "composant.json absent");
+  const json = await readTextFile(join(folder, name, "component.json"), "component.json", JSON_MAX, "component.json absent");
   if ("error" in json) return json.error;
   let raw: unknown;
   try {
     raw = JSON.parse(json.text);
   } catch {
-    return "composant.json illisible (pas du JSON valide)";
+    return "component.json illisible (pas du JSON valide)";
   }
   // zod silently ignores a « __proto__ » key: we look at the raw keys beforehand.
   const props = (raw as { properties?: unknown } | null)?.properties;
   if (props && typeof props === "object" && Object.keys(props).some((k) => !PROPERTY_NAME.test(k))) {
-    return "composant.json invalide : proprietes : nom de propriété non valide";
+    return "component.json invalide : properties : nom de propriété non valide";
   }
   const r = ComponentDeclaration.safeParse(raw);
   if (!r.success) {
     const i = r.error.issues[0]!;
-    const t = `composant.json invalide : ${[...i.path, i.message].join(" : ")}`;
+    const t = `component.json invalide : ${[...i.path, i.message].join(" : ")}`;
     return t.length > MAX_ERROR ? t.slice(0, MAX_ERROR - 1) + "…" : t;
   }
   const d = r.data;
-  if (d.name !== name) return "composant.json : le nom doit être celui du dossier";
-  if (BUILTIN_NAMES.has(d.name)) return "composant.json : ce nom est celui d'un composant intégré";
-  const html = await readTextFile(join(folder, name, "composant.html"), "composant.html", COMPONENT_HTML_MAX, "composant.html absent");
+  if (d.name !== name) return "component.json : le nom doit être celui du dossier";
+  if (BUILTIN_NAMES.has(d.name)) return "component.json : ce nom est celui d'un composant intégré";
+  const html = await readTextFile(join(folder, name, "component.html"), "component.html", COMPONENT_HTML_MAX, "component.html absent");
   if ("error" in html) return html.error;
   return { name: d.name, description: d.description, properties: d.properties, origin: "agent" };
 }

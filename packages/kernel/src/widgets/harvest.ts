@@ -118,10 +118,10 @@ export function kernelError(error: string): boolean {
 type WidgetWorkflow =
   | { t: "ok"; valid: ValidWorkflow; declaration: DeclarationWidget }
   /** The widget is unreadable: its error may quote its files. */
-  | { t: "illisible"; error: string }
+  | { t: "unreadable"; error: string }
   | { t: "absent" }
   /** workflow.json half-written, unknown block, cycle… (validator message, truncated). */
-  | { t: "invalide"; error: string };
+  | { t: "invalid"; error: string };
 
 /** What the widget's declaration changes to the rules of its workflow. */
 export function validationContext(d: DeclarationWidget): ValidationContext {
@@ -129,10 +129,10 @@ export function validationContext(d: DeclarationWidget): ValidationContext {
 }
 
 async function widgetWorkflow(widget: WidgetLu): Promise<WidgetWorkflow> {
-  if ("error" in widget) return { t: "illisible", error: widget.error };
+  if ("error" in widget) return { t: "unreadable", error: widget.error };
   const lu = await readWorkflow(widget.folder, validationContext(widget.declaration));
   if (!lu) return { t: "absent" };
-  if (!lu.result.ok) return { t: "invalide", error: truncate(lu.result.error, MAX_ERROR) };
+  if (!lu.result.ok) return { t: "invalid", error: truncate(lu.result.error, MAX_ERROR) };
   return { t: "ok", valid: lu.result.valid, declaration: widget.declaration };
 }
 
@@ -159,9 +159,9 @@ async function validGrant(widgetsFolder: string, id: string, declaration: Declar
  */
 async function markGrantRequired(o: HarvestOptions, error: string): Promise<void> {
   const before = await readWidgetState(o.widgetsFolder, o.id);
-  if (before.status === "accord-requis") return;
+  if (before.status === "grant-required") return;
   await writeWidgetState(o.widgetsFolder, o.id, {
-    status: "accord-requis",
+    status: "grant-required",
     lastUpdate: before.lastUpdate,
     lastAttempt: before.lastAttempt,
     error: truncate(error, MAX_ERROR),
@@ -216,7 +216,7 @@ function infraOf(o: HarvestOptions, clock: () => Date): Parameters<typeof runWor
 
 /** Kernel stop: the run did not fail, it is interrupted; a block started without an end is interrupted. */
 export function markInterrupted(execution: Execution): void {
-  execution.status = "interrompue";
+  execution.status = "interrupted";
   execution.error = INTERRUPTED_ERROR;
   execution.kernelError = true;
   execution.blocks = execution.blocks.map((b) => (b.start !== null && b.end === null ? { ...b, status: "interrupted" } : b));
@@ -224,14 +224,14 @@ export function markInterrupted(execution: Execution): void {
 
 /** Status and error from before a run (those from before the previous one, if it did not finish itself). */
 function stateBeforeRun(e: WidgetState): NonNullable<WidgetState["before"]> {
-  if (e.status === "en-cours") return e.before ?? { status: "ok" };
+  if (e.status === "running") return e.before ?? { status: "ok" };
   return { status: e.status, ...(e.error !== undefined ? { error: e.error } : {}), ...(e.kernelError ? { kernelError: true as const } : {}) };
 }
 
 /**
  * A widget's harvest: the run of its workflow (`workflow.json`, or `harvest.mjs` alone, as an implicit workflow)
- * by the engine, which writes nothing. Here, what is kept: `etat.json` (en-cours at the start), and depending on the outcome
- * `donnees.json`, `memoire.json` and the run. For a widget with an account, the grant is re-read after each write:
+ * by the engine, which writes nothing. Here, what is kept: `state.json` (running at the start), and depending on the outcome
+ * `data.json`, `memory.json` and the run. For a widget with an account, the grant is re-read after each write:
  * withdrawn, everything read with it goes (data, runs, memory) and the widget waits for a new grant.
  */
 export async function runHarvest(o: HarvestOptions): Promise<HarvestResult> {
@@ -240,12 +240,12 @@ export async function runHarvest(o: HarvestOptions): Promise<HarvestResult> {
   const clock = o.clock ?? (() => new Date());
   const dataFolder = join(widgetsFolder, id);
   const owner: Owner = { type: "widget", id };
-  const trigger = o.trigger ?? "planifiee";
+  const trigger = o.trigger ?? "scheduled";
   const previous = await readWidgetState(widgetsFolder, id);
   const start = clock().toISOString();
   // The previous state, kept during the run: restored at the next startup if WebAiOs stops abruptly.
   const before = stateBeforeRun(previous);
-  await writeWidgetState(widgetsFolder, id, { status: "en-cours", lastUpdate: previous.lastUpdate, lastAttempt: start, before: before });
+  await writeWidgetState(widgetsFolder, id, { status: "running", lastUpdate: previous.lastUpdate, lastAttempt: start, before: before });
   o.onChange?.();
 
   /** `erreurWidget`: the error text comes from the widget or the container (otherwise, it is written by the kernel). */
@@ -295,10 +295,10 @@ export async function runHarvest(o: HarvestOptions): Promise<HarvestResult> {
 
   const lu = await widgetWorkflow(widget);
   // The widget's read error may quote its files: it counts as written by the widget.
-  if (lu.t === "illisible") return conclude({ status: "erreur", error: lu.error, widgetError: true });
-  if (lu.t === "absent") return conclude({ status: "erreur", error: NO_WORKFLOW_ERROR });
+  if (lu.t === "unreadable") return conclude({ status: "error", error: lu.error, widgetError: true });
+  if (lu.t === "absent") return conclude({ status: "error", error: NO_WORKFLOW_ERROR });
   // workflow.json half-written, unknown block, cycle…: no container is launched, the data stays.
-  if (lu.t === "invalide") return conclude({ status: "erreur", error: lu.error, run: await withoutContainer("echouee", lu.error, []) });
+  if (lu.t === "invalid") return conclude({ status: "error", error: lu.error, run: await withoutContainer("failed", lu.error, []) });
   const { valid: valid, declaration } = lu;
   // A widget that reads with the user's account only runs with their grant (an expired grant is withdrawn, with its data).
   if (!(await validGrant(widgetsFolder, id, declaration)).can) {
@@ -306,7 +306,7 @@ export async function runHarvest(o: HarvestOptions): Promise<HarvestResult> {
     // Already waiting for a grant at the last run: not one more at each scheduling (they would push
     // the history of the real runs out), the last one stands in. Tries do not count.
     const last = (await listRuns(dataFolder)).find((e) => !e.attempt);
-    if (last?.status === "accord-requis") return conclude({ status: "accord-requis", error: error, run: last.id });
+    if (last?.status === "grant-required") return conclude({ status: "grant-required", error: error, run: last.id });
     const notRun: BlockTrace[] = valid.order.map((b) => ({
       id: b,
       type: valid.workflow.blocks.find((x) => x.id === b)!.type,
@@ -316,7 +316,7 @@ export async function runHarvest(o: HarvestOptions): Promise<HarvestResult> {
       items: null,
       log: [],
     }));
-    return conclude({ status: "accord-requis", error: error, run: await withoutContainer("accord-requis", error, notRun) });
+    return conclude({ status: "grant-required", error: error, run: await withoutContainer("grant-required", error, notRun) });
   }
 
   // The grant may have been withdrawn during the run (refuserAccord erases everything), or during a write from here (it may have
@@ -345,7 +345,7 @@ export async function runHarvest(o: HarvestOptions): Promise<HarvestResult> {
     const progress = { done: p.done, total: p.total };
     // Only on top of this run's en-cours: an accord-requis written in the meantime (refuserAccord) stays.
     await changeWidgetState(widgetsFolder, id, (e) =>
-      e.status === "en-cours" ? { status: "en-cours", lastUpdate: previous.lastUpdate, lastAttempt: start, progress, before: before } : null,
+      e.status === "running" ? { status: "running", lastUpdate: previous.lastUpdate, lastAttempt: start, progress, before: before } : null,
     );
     if (await closeIfGrantRemoved()) return;
     o.onChange?.();
@@ -376,7 +376,7 @@ export async function runHarvest(o: HarvestOptions): Promise<HarvestResult> {
 
   const denied = async () => {
     await deleteData(widgetsFolder, id);
-    return conclude({ status: "accord-requis", error: denialMessage(outcome, declaration) });
+    return conclude({ status: "grant-required", error: denialMessage(outcome, declaration) });
   };
   /**
    * Failure or stop: the run is written; the data (previous, or published along the way) stays. The
@@ -400,10 +400,10 @@ export async function runHarvest(o: HarvestOptions): Promise<HarvestResult> {
       if (outcome.output.to === "widget") await writeData(widgetsFolder, id, outcome.output.value);
     } catch (e) {
       // Data refused (too big…): the previous ones stay, the run fails kernel-side.
-      execution.status = "echouee";
+      execution.status = "failed";
       execution.error = truncate(message(e), MAX_ERROR);
       execution.kernelError = true;
-      return concludeWithoutData(execution, { status: "erreur", error: execution.error, log: log });
+      return concludeWithoutData(execution, { status: "error", error: execution.error, log: log });
     }
     if (await removedGrant()) return denied();
     if (outcome.memory) {
@@ -426,10 +426,10 @@ export async function runHarvest(o: HarvestOptions): Promise<HarvestResult> {
 
   // Kernel stop (exit, profile change): the run did not fail, it is interrupted.
   // Its error is the kernel's (not the irrelevant one of the killed container); a block started without an end is interrupted.
-  const interrupted = o.interrupted?.() === true && execution.status !== "accord-requis";
+  const interrupted = o.interrupted?.() === true && execution.status !== "grant-required";
   if (interrupted) markInterrupted(execution);
   // Progressive run: its last safe memory is kept (never when it stops for lack of a grant).
-  const memory = outcome.t === "stop" && outcome.status === "accord-requis" ? null : outcome.memory;
+  const memory = outcome.t === "stop" && outcome.status === "grant-required" ? null : outcome.memory;
   return outcome.t === "stop"
     ? concludeWithoutData(execution, { status: outcome.status, error: outcome.error, log: log }, memory)
     : // The provenance comes from the engine: `erreurNoyau` absent, the text may have been written by the widget's code.
@@ -437,16 +437,16 @@ export async function runHarvest(o: HarvestOptions): Promise<HarvestResult> {
       concludeWithoutData(
         execution,
         interrupted
-          ? { status: "erreur", error: INTERRUPTED_ERROR, log: log }
-          : { status: "erreur", error: outcome.error, widgetError: !execution.kernelError, log: log },
+          ? { status: "error", error: INTERRUPTED_ERROR, log: log }
+          : { status: "error", error: outcome.error, widgetError: !execution.kernelError, log: log },
         memory,
       );
 }
 
 /**
  * A builder try: replays the widget's workflow from block `depart`, taking from run
- * `origine` the output of the upstream blocks. What the try produces never touches `etat.json`, `donnees.json` nor
- * `memoire.json`: only the `-essai` run is kept (a failed try shows no error on the home). Like
+ * `origine` the output of the upstream blocks. What the try produces never touches `state.json`, `data.json` nor
+ * `memory.json`: only the `-attempt` run is kept (a failed try shows no error on the home). Like
  * a harvest, a widget with an account only runs with the user's grant. Only exception: a grant lost because of
  * the try (expired at the start, profile refused, withdrawn meanwhile) follows the normal withdrawal path — everything read with it
  * goes, try included, and the widget goes to `accord-requis`.
@@ -495,7 +495,7 @@ export async function runAttempt(o: HarvestOptions & { origin: string; start: st
       // A try neither receives nor keeps any memory.
       memory: {},
       ...grantContext(widgetsFolder, id, declaration),
-      trigger: "rejeu",
+      trigger: "replay",
       replay: { ...replay, resumed: plan.resumed },
       ...(maxDurationMinutes !== undefined ? { maxDurationMinutes: maxDurationMinutes } : {}),
     },
@@ -517,7 +517,7 @@ export async function runAttempt(o: HarvestOptions & { origin: string; start: st
 
   execution.id = attemptId(execution.start);
   execution.attempt = { start: o.start, origin: plan.origin };
-  if (outcome.t !== "end" && o.interrupted?.() === true && execution.status !== "accord-requis") markInterrupted(execution);
+  if (outcome.t !== "end" && o.interrupted?.() === true && execution.status !== "grant-required") markInterrupted(execution);
   await writeRun(dataFolder, execution);
   const after = await removed();
   if (after) return after;
@@ -543,7 +543,7 @@ export async function originChain(dataFolder: string, id: string): Promise<[Exec
 
 /** The message of a widget waiting for a new grant: the engine's if it stopped for that (profile refused…). */
 function denialMessage(outcome: WorkflowOutcome, declaration: DeclarationWidget): string {
-  return outcome.t === "stop" && outcome.status === "accord-requis" ? outcome.error : grantRequired(declaration);
+  return outcome.t === "stop" && outcome.status === "grant-required" ? outcome.error : grantRequired(declaration);
 }
 
 function add(log: string, line: string): string {

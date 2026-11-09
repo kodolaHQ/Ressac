@@ -25,7 +25,7 @@ const pageWorld = (code: string) => `const s = document.createElement("script");
 /** The probe script of (c): what the sandbox sees, then the password field's value when the test asks. */
 const PROBE = `
 const seen = { Components: typeof Components, ChromeUtils: typeof ChromeUtils, Services: typeof Services, require: typeof require, process: typeof process,
-  secret: typeof secret, windowSecret: typeof window.secret, portee: typeof __webaiosPortee, href: location.href };
+  secret: typeof secret, windowSecret: typeof window.secret, portee: typeof __webaiosScope, href: location.href };
 window.probeVar = 1;
 var probeGlobal = 2;
 document.documentElement.setAttribute("data-probe", JSON.stringify(seen));
@@ -50,7 +50,7 @@ const probePage = (frame: string) => `<!doctype html><title>Sonde</title>
   window.secret = "s3cret";
   for (const t of [window, document]) t.addEventListener("DOMContentLoaded", (e) => e.stopImmediatePropagation(), true);
   document.addEventListener("probe-check", () => document.documentElement.setAttribute("data-page", JSON.stringify({
-    probeVar: typeof window.probeVar, probeGlobal: typeof window.probeGlobal, injectedBySandbox: typeof window.injectedBySandbox, portee: typeof window.__webaiosPortee, pwLength: document.getElementById("pw").value.length })));
+    probeVar: typeof window.probeVar, probeGlobal: typeof window.probeGlobal, injectedBySandbox: typeof window.injectedBySandbox, portee: typeof window.__webaiosScope, pwLength: document.getElementById("pw").value.length })));
 </script>
 <input type="password" id="pw">${frame ? `<iframe src="${frame}"></iframe>` : ""}`;
 

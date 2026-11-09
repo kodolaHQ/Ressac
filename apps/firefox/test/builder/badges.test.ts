@@ -3,7 +3,7 @@ import type { DirectWidget, Execution } from "@webaios/kernel";
 import { badgesOf } from "../../ui/builder/badges";
 
 const trace = (id: string, status: string, items: number | null) => ({ id, type: "code", status: status, start: null, end: null, items: items, log: [] });
-const exec = { version: 1, id: "e", owner: { type: "widget", id: "w" }, trigger: "manuelle", start: "d", end: null, status: "reussie", blocks: [trace("a", "succeeded", 3), trace("b", "not-run", null)] } as unknown as Execution;
+const exec = { version: 1, id: "e", owner: { type: "widget", id: "w" }, trigger: "manual", start: "d", end: null, status: "succeeded", blocks: [trace("a", "succeeded", 3), trace("b", "not-run", null)] } as unknown as Execution;
 
 test("badgesOf: the live replaces the status of the chosen run for the blocks in progress", () => {
   const direct: DirectWidget = { widget: "w", kind: "execution", start: "d", blocks: { b: { status: "running", items: null } } };

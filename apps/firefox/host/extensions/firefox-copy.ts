@@ -7,8 +7,8 @@ import { GECKO_ID, VERSION_FOUR } from "./amo";
 export const ID_SUFFIX = "@agent.webaios";
 export const addonIdOf = (folder: string) => `${folder}${ID_SUFFIX}`;
 
-const KEEP_BACKGROUND = "webaios-garde-fond.js";
-const BACKGROUND = "webaios-fond.js";
+const KEEP_BACKGROUND = "webaios-background-guard.js";
+const BACKGROUND = "webaios-background.js";
 const GENERATED_PAGE = "_generated_background_page.html";
 const SANDBOX = "sandbox allow-scripts allow-same-origin allow-forms allow-modals";
 
@@ -47,7 +47,7 @@ export function firefoxDenial(manifest: Record<string, unknown>, files: readonly
 /**
  * The copy's manifest for Firefox (decisions 2, 3): gecko id, background.scripts, version `<a>.<b>.<c>.<n>`. Pure.
  * `m` is prepareCopy's manifest; `fondOriginal` (required, so a forgotten argument cannot drop the background) is the agent's `background.service_worker` (only the generated
- * webaios-fond.js knows it after the copy), used for a classic background.
+ * webaios-background.js knows it after the copy), used for a classic background.
  */
 export function firefoxManifest(m: Record<string, unknown>, folder: string, n: number, originalBackground: string | undefined): Record<string, unknown> {
   const background = object(m.background);

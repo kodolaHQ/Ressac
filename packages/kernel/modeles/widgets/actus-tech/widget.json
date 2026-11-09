@@ -3,15 +3,15 @@
   "description": "Les infos tech importantes du moment, triées selon tes centres d'intérêt",
   "sizes": {
     "min": {
-      "l": 2,
+      "w": 2,
       "h": 2
     },
     "max": {
-      "l": 12,
+      "w": 12,
       "h": 10
     },
     "default": {
-      "l": 6,
+      "w": 6,
       "h": 5
     }
   },

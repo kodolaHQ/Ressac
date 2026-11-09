@@ -47,7 +47,7 @@
     try {
       const [list, page, executions] = await Promise.all([api.actions.list(), api.actions.page(id, execution), api.actions.runs(id)]);
       if (g !== generation) return;
-      const kept = executions.filter((e) => !e.attempt && !e.id.endsWith("-essai"));
+      const kept = executions.filter((e) => !e.attempt && !e.id.endsWith("-attempt"));
       const mostRecent = kept[0];
       const withoutResult =
         execution === null && mostRecent && mostRecent.id !== page?.run && (!page || mostRecent.start > page.start)

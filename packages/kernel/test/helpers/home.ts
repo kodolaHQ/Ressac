@@ -3,10 +3,10 @@ import { join } from "node:path";
 import type { SpacePaths } from "../../src/paths.js";
 
 /** Valid widget declaration, with an editable default size. */
-export const declarationWidget = (defaultValue = { l: 4, h: 4 }, extra: Record<string, unknown> = {}) => ({
+export const declarationWidget = (defaultValue = { w: 4, h: 4 }, extra: Record<string, unknown> = {}) => ({
   name: "Widget",
   description: "Un widget de test",
-  sizes: { min: { l: 1, h: 1 }, max: { l: 12, h: 8 }, default: defaultValue },
+  sizes: { min: { w: 1, h: 1 }, max: { w: 12, h: 8 }, default: defaultValue },
   ...extra,
 });
 

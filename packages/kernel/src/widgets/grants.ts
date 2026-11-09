@@ -4,8 +4,8 @@ import { join } from "node:path";
 import { z } from "zod";
 
 /**
- * The user's grant for a widget to read with its account: the `compte` and `publiques` domains of the declaration at the
- * time of the grant, and the chosen login profile. Stored in `<dossierWidgets>/accords.json` (`<dossierActions>/accords.json` for the actions), outside the workspace.
+ * The user's grant for a widget to read with its account: the `account` and `public` domains of the declaration at the
+ * time of the grant, and the chosen login profile. Stored in `<widgetsFolder>/grants.json` (`<actionsFolder>/grants.json` for the actions), outside the workspace.
  */
 export const Grant = z.object({
   domains: z.array(z.string()),
@@ -15,7 +15,7 @@ export const Grant = z.object({
 export type Grant = z.infer<typeof Grant>;
 
 const ID = /^[a-z0-9-]+$/;
-const file = (widgetsFolder: string) => join(widgetsFolder, "accords.json");
+const file = (widgetsFolder: string) => join(widgetsFolder, "grants.json");
 
 function checkId(id: string): void {
   if (!ID.test(id)) throw new Error(`id de widget invalide : ${id}`);

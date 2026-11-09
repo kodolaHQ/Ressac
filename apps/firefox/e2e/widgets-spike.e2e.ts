@@ -477,19 +477,19 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("widget home spike", () => {
   });
 
   it("P6: the host's folders (espace/accueil, <dataDir>/widgets), read by the shared kernel, symlinks kept inside", { timeout: 120_000 }, async () => {
-    const root = path.join(w.dataDir, "espace");
-    const home = path.join(root, "accueil");
+    const root = path.join(w.dataDir, "workspace");
+    const home = path.join(root, "home");
     const widgets = path.join(home, "widgets");
     const data = path.join(w.dataDir, "widgets");
-    const declaration = { name: "Démo", sizes: { min: { l: 3, h: 2 }, max: { l: 6, h: 4 }, default: { l: 3, h: 2 } }, sources: { account: [], public: [], web: false } };
+    const declaration = { name: "Démo", sizes: { min: { w: 3, h: 2 }, max: { w: 6, h: 4 }, default: { w: 3, h: 2 } }, sources: { account: [], public: [], web: false } };
     await mkdir(path.join(widgets, "demo"), { recursive: true });
     await writeFile(path.join(widgets, "demo", "widget.json"), JSON.stringify(declaration));
     await writeFile(path.join(widgets, "demo", "display.html"), "<!doctype html><title>démo</title>");
     await writeFile(path.join(widgets, "demo", "example.json"), JSON.stringify({ ok: true }));
     await mkdir(path.join(data, "demo"), { recursive: true });
-    await writeFile(path.join(data, "demo", "donnees.json"), JSON.stringify({ n: 1 }));
-    await writeFile(path.join(data, "demo", "etat.json"), JSON.stringify({ status: "ok", lastUpdate: null, lastAttempt: null }));
-    await writeFile(path.join(home, "disposition.json"), JSON.stringify({ version: 2, widgets: [{ id: "demo", x: 0, y: 0, l: 3, h: 2 }] }));
+    await writeFile(path.join(data, "demo", "data.json"), JSON.stringify({ n: 1 }));
+    await writeFile(path.join(data, "demo", "state.json"), JSON.stringify({ status: "ok", lastUpdate: null, lastAttempt: null }));
+    await writeFile(path.join(home, "layout.json"), JSON.stringify({ version: 2, widgets: [{ id: "demo", x: 0, y: 0, w: 3, h: 2 }] }));
     await writeFile(path.join(home, "theme.json"), JSON.stringify({ version: 1, background: "#101014", radius: 6 }));
 
     const paths = spacePaths(root);
@@ -528,8 +528,8 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("widget home spike", () => {
     const tree = async (dir: string) => readdir(dir).catch(() => []);
     note("P6 host files", {
       space: await tree(path.join(root, ".webaios")),
-      profiles: await tree(path.join(root, ".webaios", "profils")),
-      history: await readFile(path.join(w.dataDir, "historique.sqlite"), "utf8").then(() => true, () => false),
+      profiles: await tree(path.join(root, ".webaios", "profiles")),
+      history: await readFile(path.join(w.dataDir, "history.sqlite"), "utf8").then(() => true, () => false),
     });
   });
 
@@ -559,7 +559,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("widget home spike", () => {
     });
 
     const fakeDocker = (() => {
-      const env = { ...process.env, PATH: `${FAKE_TOOLS}${path.delimiter}${process.env.PATH ?? ""}`, WEBAIOS_ROOT: path.join(w.dataDir, "espace") };
+      const env = { ...process.env, PATH: `${FAKE_TOOLS}${path.delimiter}${process.env.PATH ?? ""}`, WEBAIOS_ROOT: path.join(w.dataDir, "workspace") };
       try {
         return { ok: true, out: execFileSync("docker", ["inspect", "webaios-workshop-firefox"], { env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim().slice(0, 120) };
       } catch (e: any) {
@@ -572,7 +572,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("widget home spike", () => {
       fakeTools: FAKE_TOOLS,
       container: "webaios-workshop-firefox",
       ports: "5300-5319",
-      harvestStates: (await readHome(spacePaths(path.join(w.dataDir, "espace")), path.join(w.dataDir, "widgets"))).widgets.flatMap((x) => ("error" in x ? [] : [{ id: x.id, state: x.state }])),
+      harvestStates: (await readHome(spacePaths(path.join(w.dataDir, "workspace")), path.join(w.dataDir, "widgets"))).widgets.flatMap((x) => ("error" in x ? [] : [{ id: x.id, state: x.state }])),
     });
   });
 });

@@ -286,7 +286,7 @@ export interface ApiWebaios {
     grant(a: Grant): Promise<{ ok: true } | { ok: false; error: string }>;
     /** Removes the grant and erases executions, results and memory. */
     denyGrant(id: string): Promise<void>;
-    /** Puts the action in the trash (`actions/.corbeille`) and forgets its grant and its data. */
+    /** Puts the action in the trash (`actions/.trash`) and forgets its grant and its data. */
     supprimer(id: string): Promise<{ ok: true } | { ok: false; error: string }>;
     /** Opens the builder on the action's workflow. */
     viewWorkflow(id: string): void;
@@ -494,7 +494,7 @@ export interface Placement {
   id: string;
   x: number;
   y: number;
-  l: number;
+  w: number;
   h: number;
 }
 
@@ -629,7 +629,7 @@ export interface DesignState {
 /** A note as the basket and the history display it: text, never HTML. */
 export interface ShownElement {
   id: string;
-  type: "design" | "relecture";
+  type: "design" | "review";
   label: string;
   text: string;
   source: string | null;

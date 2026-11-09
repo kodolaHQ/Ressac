@@ -3,8 +3,8 @@ import path from "node:path";
 import type { Marionette } from "./marionette";
 import { click, inUi, waitUi } from "./ui";
 
-/** A widget's folder in the space: `<dataDir>/espace/accueil/widgets/<id>`. */
-export const widgetDir = (dataDir: string, id: string) => path.join(dataDir, "espace", "accueil", "widgets", id);
+/** A widget's folder in the space: `<dataDir>/workspace/home/widgets/<id>`. */
+export const widgetDir = (dataDir: string, id: string) => path.join(dataDir, "workspace", "home", "widgets", id);
 
 /** A display that shows the data it gets by postMessage (`#donnees`). */
 const DISPLAY = `<!doctype html><meta charset="utf-8"><pre id="donnees"></pre>
@@ -31,7 +31,7 @@ export async function writeWidget(
     JSON.stringify({
       name: o.name,
       description: "",
-      sizes: { min: { l: 2, h: 1 }, max: { l: 6, h: 4 }, default: { l: 3, h: 2 } },
+      sizes: { min: { w: 2, h: 1 }, max: { w: 6, h: 4 }, default: { w: 3, h: 2 } },
       sources: { account: [], public: [], web: false },
       ...(o.harvest ? { harvest: o.harvest } : {}),
       ...o.declaration,
@@ -43,7 +43,7 @@ export async function writeWidget(
   const state = path.join(dataDir, "widgets", id);
   await mkdir(state, { recursive: true });
   const now = new Date().toISOString();
-  await writeFile(path.join(state, "etat.json"), JSON.stringify({ status: "ok", lastUpdate: now, lastAttempt: now }));
+  await writeFile(path.join(state, "state.json"), JSON.stringify({ status: "ok", lastUpdate: now, lastAttempt: now }));
 }
 
 /** The widget's workflow.json as on disk. */

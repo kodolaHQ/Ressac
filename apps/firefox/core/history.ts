@@ -20,7 +20,7 @@ const SNIPPET_WORDS = 54;
 /** Lowercase without accents: « Été » and « ete » find each other (SQLite's LIKE only folds ASCII). */
 const fold = (s: string) => s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
 
-/** Browsing history: one row per URL and per space, in `<profile>/historique.sqlite`. */
+/** Browsing history: one row per URL and per space, in `<profile>/history.sqlite`. */
 export class History {
   private db: DatabaseSync;
   private req: Record<

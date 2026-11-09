@@ -85,7 +85,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("actions spike", () => {
   it("S1: AGENTS.md's « barres » draws with its props; its height reaches the chrome on the window root", async () => {
     const r = await mount("barres", { title: "Ventes", values: [{ label: "Lundi", value: 3 }, { label: "Mardi", value: 5 }] }, 500);
     note("S1 barres", r);
-    expect(r.src).toMatch(/^resource:\/\/webaios-composant-barres\/composant-\d+\.html$/);
+    expect(r.src).toMatch(/^resource:\/\/webaios-component-barres\/component-\d+\.html$/);
     expect(r.origin).toBe("null");
     expect(r.titre).toBe("Ventes");
     expect(r.rects).toBe(2);
@@ -95,7 +95,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("actions spike", () => {
     const after = await chrome(
       m,
       `const h = Services.io.getProtocolHandler("resource").QueryInterface(Ci.nsIResProtocolHandler);
-      return { substitution: h.hasSubstitution("webaios-composant-barres"), copies: await IOUtils.exists(PathUtils.join(arguments[0], "webaios-composants", "barres")) };`,
+      return { substitution: h.hasSubstitution("webaios-component-barres"), copies: await IOUtils.exists(PathUtils.join(arguments[0], "webaios-components", "barres")) };`,
       [w.dataDir],
     );
     note("S1 after release", after);

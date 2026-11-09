@@ -40,15 +40,15 @@ export type DirectState = { running: DirectWidget[]; waiting: string[] };
 
 /** Beyond this maximum duration (in minutes), a widget runs in the long lane. */
 export const LONG_ROUTE_MINUTES = 3;
-export type Route = "courte" | "longue";
+export type Route = "short" | "long";
 
 /**
  * The watches (`dureeMaxMinutes` > 3) have their own lane: one at a time in the application, without holding back the short
  * widgets, which keep theirs.
  */
 export function routeOf(w: WidgetLu): Route {
-  if ("error" in w) return "courte";
-  return (w.declaration.harvest?.maxDurationMinutes ?? 0) > LONG_ROUTE_MINUTES ? "longue" : "courte";
+  if ("error" in w) return "short";
+  return (w.declaration.harvest?.maxDurationMinutes ?? 0) > LONG_ROUTE_MINUTES ? "long" : "short";
 }
 
 /** Returned by a request whose widget changed lanes while it was waiting. */
@@ -75,13 +75,13 @@ export function widgetOf(w: WidgetLu, now: Date, o: { onLaunch: boolean }): bool
   if ("error" in w || !w.hasHarvest || !w.declaration.harvest) return false;
   const { minutes, hours: hours } = w.declaration.harvest;
   const { status: status, lastUpdate: lastUpdate, lastAttempt: lastAttempt } = w.state;
-  if (status === "accord-requis") return false;
+  if (status === "grant-required") return false;
   const byHour = hours !== undefined && dueHour(hours, w.state.hours, lastAttempt, now);
-  if (status === "en-cours") return o.onLaunch && (minutes !== undefined || byHour);
+  if (status === "running") return o.onLaunch && (minutes !== undefined || byHour);
   if (byHour) return true;
   if (minutes === undefined) return false; // fixed hours only: never due by frequency
   if (age(lastUpdate, now) < minutes * MINUTE) return false;
-  return status !== "erreur" || age(lastAttempt, now) >= RETRY_ERROR_MS;
+  return status !== "error" || age(lastAttempt, now) >= RETRY_ERROR_MS;
 }
 
 export type Harvester = (o: HarvestOptions) => Promise<HarvestResult>;
@@ -136,7 +136,7 @@ export class WidgetsScheduler {
   private readonly o: SchedulerOptions & { clock: () => Date; intervalMs: number; harvest: Harvester; harvestAttempt: Tryer };
   private timer: NodeJS.Timeout | undefined;
   /** One harvest at a time per lane: each harvest chains onto the previous one of its lane. */
-  private files: Record<Route, Promise<unknown>> = { courte: Promise.resolve(), longue: Promise.resolve() };
+  private files: Record<Route, Promise<unknown>> = { short: Promise.resolve(), long: Promise.resolve() };
   /** Per widget, the last request (waiting or in progress, all lanes): the next one waits for it. */
   private perWidget = new Map<string, Promise<unknown>>();
   /** Per widget, its long-lane requests (or whose lane is not yet chosen) waiting or in progress. */
@@ -281,7 +281,7 @@ export class WidgetsScheduler {
   /** The widget's lane from its declaration read now (short if unknown or unreadable). */
   private async currentRoute(id: string): Promise<Route> {
     const w = (await this.widgets().catch(() => [])).find((x) => x.id === id);
-    return w ? routeOf(w) : "courte";
+    return w ? routeOf(w) : "short";
   }
 
   /**
@@ -316,8 +316,8 @@ export class WidgetsScheduler {
     for (const d of folders) {
       if (!d.isDirectory() || !ID_WIDGET.test(d.name)) continue;
       const restored = await changeWidgetState(widgetsFolder, d.name, (e) => {
-        if (e.status !== "en-cours") return null;
-        const before = e.before && e.before.status !== "en-cours" && e.before.status !== "accord-requis" ? e.before : { status: "ok" as const };
+        if (e.status !== "running") return null;
+        const before = e.before && e.before.status !== "running" && e.before.status !== "grant-required" ? e.before : { status: "ok" as const };
         return { ...before, lastUpdate: e.lastUpdate, lastAttempt: e.lastAttempt, ...(e.hours ? { hours: e.hours } : {}) };
       }).catch((e) => {
         console.error(`[webaios] état du widget ${d.name} :`, e);
@@ -338,18 +338,18 @@ export class WidgetsScheduler {
 
   /** `widgetDu`, where a widget reset at startup counts, at launch, as still en-cours. */
   private isDue(w: WidgetLu, o: { onLaunch: boolean }): boolean {
-    const interrupted = o.onLaunch && this.interrupted.has(w.id) && !("error" in w) && w.state.status !== "accord-requis";
-    return widgetOf(interrupted ? { ...w, state: { ...w.state, status: "en-cours" } } : w, this.o.clock(), o);
+    const interrupted = o.onLaunch && this.interrupted.has(w.id) && !("error" in w) && w.state.status !== "grant-required";
+    return widgetOf(interrupted ? { ...w, state: { ...w.state, status: "running" } } : w, this.o.clock(), o);
   }
 
   private async checkNow(o: { onLaunch: boolean }): Promise<string[]> {
     await this.waitReady();
     if (this.stopped) return [];
-    await this.chain("courte", () => this.forgetMissingWidgets());
+    await this.chain("short", () => this.forgetMissingWidgets());
     // The long ones first: launched without being waited for, they do not stay behind the short ones of this check.
     const due = (await this.widgets())
       .filter((w) => this.isDue(w, o))
-      .sort((a, b) => Number(routeOf(b) === "longue") - Number(routeOf(a) === "longue"));
+      .sort((a, b) => Number(routeOf(b) === "long") - Number(routeOf(a) === "long"));
     if (!due.length) return [];
     const harvests: string[] = [];
     for (const entry of due) {
@@ -368,10 +368,10 @@ export class WidgetsScheduler {
           return false;
         }
         if (this.stopped) return false;
-        await this.harvest(w, "planifiee");
+        await this.harvest(w, "scheduled");
         return true;
       });
-      if (route === "longue") {
+      if (route === "long") {
         tache.catch((e) => console.error(`[webaios] récolte du widget ${id} :`, e));
         continue;
       }
@@ -440,15 +440,15 @@ export class WidgetsScheduler {
    */
   private only<T>(id: string, route: Route | "a-choisir", f: (route: Route) => Promise<T | OtherRoute>): Promise<T> {
     // A request whose lane is not yet chosen counts as long: a check does not wait for it.
-    let counted = route !== "courte";
+    let counted = route !== "short";
     if (counted) this.countLong(id, 1);
     const previous = this.perWidget.get(id) ?? Promise.resolve();
     const tache = previous.then(async () => {
       try {
         let v = route === "a-choisir" ? await this.currentRoute(id) : route;
         for (;;) {
-          if (counted !== (v === "longue")) {
-            counted = v === "longue";
+          if (counted !== (v === "long")) {
+            counted = v === "long";
             this.countLong(id, counted ? 1 : -1);
           }
           const planned = v;
@@ -476,9 +476,9 @@ export class WidgetsScheduler {
   /** Without a workshop, nothing runs: the widget keeps its data and says so (a single write). */
   private async markWorkshopStopped(w: WidgetLu): Promise<WidgetState> {
     const before = await readWidgetState(this.o.widgetsFolder, w.id);
-    if (before.status === "atelier-arrete") return before;
+    if (before.status === "workshop-stopped") return before;
     const state: WidgetState = {
-      status: "atelier-arrete",
+      status: "workshop-stopped",
       lastUpdate: before.lastUpdate,
       lastAttempt: before.lastAttempt,
       error: WORKSHOP_STOPPED_ERROR,
@@ -527,7 +527,7 @@ export class WidgetsScheduler {
    * `fin`: the end of the run, from which the wait before a retry counts.
    */
   private async noteTime(id: string, slot: string | null, outcome: HourOutcome, end: Date): Promise<HoursTracking | null> {
-    if (!slot || outcome === "sans-effet") return null;
+    if (!slot || outcome === "no-effect") return null;
     try {
       const state = await changeWidgetState(this.o.widgetsFolder, id, (e) => ({ ...e, hours: trackingAfter(e.hours, slot, outcome, end.toISOString()) }));
       this.o.onChange?.();
@@ -557,20 +557,20 @@ export class WidgetsScheduler {
       state = this.stopped
         ? before
         : // `derniereTentative` is always the start of the attempt, as in the harvest.
-          { status: "erreur", lastUpdate: before.lastUpdate, lastAttempt: start.toISOString(), error: INTERNAL_HARVEST_ERROR, kernelError: true };
+          { status: "error", lastUpdate: before.lastUpdate, lastAttempt: start.toISOString(), error: INTERNAL_HARVEST_ERROR, kernelError: true };
       await writeWidgetState(this.o.widgetsFolder, w.id, state);
       this.o.onChange?.();
-      return { result: state, issue: this.stopped ? "sans-effet" : "echec" };
+      return { result: state, issue: this.stopped ? "no-effect" : "failure" };
     }
     // Kernel stop during the harvest (exit, profile change): it did not fail, it will resume later.
-    if (this.stopped && state.status === "erreur") {
+    if (this.stopped && state.status === "error") {
       await writeWidgetState(this.o.widgetsFolder, w.id, before);
       this.o.onChange?.();
-      return { result: { ...before, ...(run ? { run } : {}) }, issue: "sans-effet" };
+      return { result: { ...before, ...(run ? { run } : {}) }, issue: "no-effect" };
     }
     if (state.status === "ok" && fresh !== undefined && fresh > 0) this.notifyEnd(w, fresh);
     // Grant required, workshop stopped: the run did not really take place.
-    const outcome: HourOutcome = state.status === "ok" ? "reussie" : state.status === "erreur" ? "echec" : "sans-effet";
+    const outcome: HourOutcome = state.status === "ok" ? "succeeded" : state.status === "error" ? "failure" : "no-effect";
     return { result: { ...state, ...(run ? { run } : {}) }, issue: outcome };
   }
 
@@ -590,7 +590,7 @@ export class WidgetsScheduler {
    * Harvests this widget right away (after the harvest in progress) and returns its new state, with the id of the written run
    * (none if nothing ran: workshop stopped, kernel stopping, grant withdrawn meanwhile).
    */
-  async harvestNow(id: string, trigger: Execution["trigger"] = "manuelle"): Promise<WidgetState & { run?: string }> {
+  async harvestNow(id: string, trigger: Execution["trigger"] = "manual"): Promise<WidgetState & { run?: string }> {
     const request = this.request(id);
     await this.waitReady();
     try {
@@ -627,7 +627,7 @@ export class WidgetsScheduler {
           return await this.follow(
             id,
             "essai",
-            (onTrace, ai) => this.o.harvestAttempt({ ...this.harvestOptions(w, onTrace, ai), trigger: "rejeu", origin: origin, start: start }),
+            (onTrace, ai) => this.o.harvestAttempt({ ...this.harvestOptions(w, onTrace, ai), trigger: "replay", origin: origin, start: start }),
             (r) => (r.ok ? r.run : undefined),
           );
         } catch (e) {
@@ -654,7 +654,7 @@ export class WidgetsScheduler {
     this.stopped = true;
     await this.deleteContainers();
     // Bounded: quitting the browser must not wait for a harvest that escaped the shutdown.
-    const all = Promise.all([this.files.courte, this.files.longue, ...this.perWidget.values()].map((x) => x.catch(() => {})));
+    const all = Promise.all([this.files.short, this.files.long, ...this.perWidget.values()].map((x) => x.catch(() => {})));
     let timer: NodeJS.Timeout | undefined;
     await Promise.race([all, new Promise((ok) => (timer = setTimeout(ok, this.o.stopWaitMs ?? STOP_WAIT_MS)))]);
     clearTimeout(timer);

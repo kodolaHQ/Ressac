@@ -27,7 +27,7 @@ const EntrySchema = z.object({
   profiles: z.array(z.string()),
   pinned: z.boolean(),
   modifiedAt: z.string().nullable(),
-  disabled: z.object({ reason: z.enum(["portee-elargie", "plantages"]), at: z.string() }).nullable(),
+  disabled: z.object({ reason: z.enum(["scope-widened", "crashes"]), at: z.string() }).nullable(),
   pendingUpdate: z.object({ version: z.string(), scope: ScopeSchema, path: z.string() }).nullable(),
   seenVersions: z.record(z.string(), z.string()),
   siteApps: z.record(z.string(), z.string()).optional(),
@@ -47,7 +47,7 @@ export interface ExtensionEntry {
   pinned: boolean;
   /** ISO; agent: last copy reloaded. */
   modifiedAt: string | null;
-  disabled: { reason: "portee-elargie" | "plantages"; at: string } | null;
+  disabled: { reason: "scope-widened" | "crashes"; at: string } | null;
   /** Store. */
   pendingUpdate: { version: string; scope: Scope; path: string } | null;
   /** Last version started in each profile. */
@@ -158,7 +158,7 @@ export function applyPrivateProfiles(
   return { state: { ...e, extensions }, removed: removed };
 }
 
-const file = (folder: string) => join(folder, "etat.json");
+const file = (folder: string) => join(folder, "state.json");
 
 interface Reading {
   state: ExtensionsState;
@@ -216,7 +216,7 @@ const files = new Map<string, Promise<unknown>>();
 /**
  * Modifies the state, one write at a time. `changer` receives the state and the private profiles; `profilsPrives` is a
  * provider evaluated INSIDE the serialized modification (never captured before), and `appliquerProfilsPrives` is
- * re-applied to the result. A damaged file (or one with ignored entries) is copied to `etat.json.abime-<timestamp>` before
+ * re-applied to the result. A damaged file (or one with ignored entries) is copied to `state.json.damaged-<timestamp>` before
  * being replaced; a file of a newer version refuses the write.
  */
 export function changeExtensionsState(
@@ -231,7 +231,7 @@ export function changeExtensionsState(
     const privates = privateProfiles();
     const fresh = applyPrivateProfiles(change(lu.state, privates), privates).state;
     await mkdir(folder, { recursive: true });
-    if (lu.damaged) await copyFile(file(folder), `${file(folder)}.abime-${new Date().toISOString().replace(/[:.]/g, "-")}`);
+    if (lu.damaged) await copyFile(file(folder), `${file(folder)}.damaged-${new Date().toISOString().replace(/[:.]/g, "-")}`);
     const temp = `${file(folder)}.${randomUUID()}.tmp`;
     try {
       await writeFile(temp, JSON.stringify(fresh, null, 2));

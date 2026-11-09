@@ -1,9 +1,9 @@
 import { expect, test } from "vitest";
 import { COLUMNS, move, GAP_PX, ROW_PX, resize, type Placement } from "../ui/grille";
 
-const p = (id: string, x: number, y: number, l: number, h: number): Placement => ({ id, x, y, l, h });
-const sizes = { min: { l: 2, h: 2 }, max: { l: 6, h: 4 } };
-const overlap = (a: Placement, b: Placement) => a.x < b.x + b.l && b.x < a.x + a.l && a.y < b.y + b.h && b.y < a.y + a.h;
+const p = (id: string, x: number, y: number, w: number, h: number): Placement => ({ id, x, y, w, h });
+const sizes = { min: { w: 2, h: 2 }, max: { w: 6, h: 4 } };
+const overlap = (a: Placement, b: Placement) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 function withoutOverlap(ps: Placement[]) {
   for (const a of ps) for (const b of ps) if (a !== b) expect(overlap(a, b), `${a.id} / ${b.id}`).toBe(false);
 }
@@ -51,9 +51,9 @@ test("redimensionner pushes overlapped widgets", () => {
 
 test("a widget wider than the grid stays within the 12 columns", () => {
   expect(move([p("a", 0, 0, 14, 2)], "a", 3, 0)[0]).toMatchObject({ x: 0 });
-  const large = { min: { l: 14, h: 2 }, max: { l: 14, h: 2 } };
+  const large = { min: { w: 14, h: 2 }, max: { w: 14, h: 2 } };
   expect(resize([p("a", 5, 0, 4, 2)], "a", 4, 2, large)[0]).toEqual(p("a", 0, 0, 12, 2));
   // Inconsistent bounds (min > max): the minimum wins.
-  const inconsistent = { min: { l: 2, h: 5 }, max: { l: 6, h: 3 } };
+  const inconsistent = { min: { w: 2, h: 5 }, max: { w: 6, h: 3 } };
   expect(resize([p("a", 0, 0, 4, 2)], "a", 4, 2, inconsistent)[0]).toEqual(p("a", 0, 0, 4, 5));
 });

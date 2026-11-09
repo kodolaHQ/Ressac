@@ -3,7 +3,7 @@ import { join, sep } from "node:path";
 import { WORKFLOW_MAX_SIZE } from "./schema.js";
 import { DEFAULT_CONTEXT, workflowError, validateWorkflow, implicitWorkflow, type ValidationContext, type ValidationResult } from "./validate.js";
 
-export type WorkflowLu = { origin: "fichier" | "implicite"; result: ValidationResult };
+export type WorkflowLu = { origin: "file" | "implicit"; result: ValidationResult };
 
 /** The name exists in the folder, even as a broken symbolic link (a broken workflow.json is invalid, not absent). */
 export async function exists(path: string): Promise<boolean> {
@@ -40,10 +40,10 @@ async function readTextFile(folder: string, ctx: ValidationContext): Promise<Val
  */
 export async function readWorkflow(filesFolder: string, ctx: ValidationContext = DEFAULT_CONTEXT): Promise<WorkflowLu | null> {
   if (await exists(join(filesFolder, "workflow.json"))) {
-    return { origin: "fichier", result: await readTextFile(filesFolder, ctx) };
+    return { origin: "file", result: await readTextFile(filesFolder, ctx) };
   }
   if (await exists(join(filesFolder, "harvest.mjs"))) {
-    return { origin: "implicite", result: validateWorkflow(implicitWorkflow(), ctx) };
+    return { origin: "implicit", result: validateWorkflow(implicitWorkflow(), ctx) };
   }
   return null;
 }

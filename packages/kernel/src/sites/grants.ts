@@ -17,7 +17,7 @@ export const SiteRights = z.object({
 });
 export type SiteRights = z.infer<typeof SiteRights>;
 
-export const siteGrantsFile = (profile: string) => join(profile, "sites-accords.json");
+export const siteGrantsFile = (profile: string) => join(profile, "site-grants.json");
 
 function checkId(id: string): void {
   if (!ID_SITE.test(id)) throw new Error(`id d'appli de site invalide : ${id}`);

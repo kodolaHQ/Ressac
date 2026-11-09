@@ -4,7 +4,7 @@
 // exists; an http-on-opening-request observer cancels the rest (the only layer of the system documents, which Firefox
 // exempts from content policies); a PeerConnection:request observer denies their WebRTC. Measured: spikes S1–S3.
 
-export const UI_PREFIXES: readonly string[] = ["chrome://browser/content/webaios/", "resource://webaios-widget-", "resource://webaios-composant-", "resource://webaios-site-"];
+export const UI_PREFIXES: readonly string[] = ["chrome://browser/content/webaios/", "resource://webaios-widget-", "resource://webaios-component-", "resource://webaios-site-"];
 const BLOCKED = /^(https?|wss?):/i;
 
 /** http, https, ws, wss whatever the host; `view-source:` prefixes are stripped first. Every other scheme passes. */

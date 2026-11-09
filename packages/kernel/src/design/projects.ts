@@ -38,10 +38,10 @@ export const demoProject = (port: number): ProjectId => `demo-${port}`;
 export const externalId = (realFolder: string): string => createHash("sha256").update(realFolder).digest("hex").slice(0, 16);
 
 export function remarksFolder(d: DesignFolders, p: ProjectId): string {
-  return p.startsWith("ext-") ? join(d.private, "remarques", p) : join(d.spaceRemarks, p);
+  return p.startsWith("ext-") ? join(d.private, "remarks", p) : join(d.spaceRemarks, p);
 }
-export const reviewStore = (d: DesignFolders, p: ProjectId): string => join(d.private, "relecture", `${p}.git`);
-export const commentsFile = (d: DesignFolders, p: ProjectId): string => join(d.private, "relecture", `${p}.commentaires.json`);
+export const reviewStore = (d: DesignFolders, p: ProjectId): string => join(d.private, "review", `${p}.git`);
+export const commentsFile = (d: DesignFolders, p: ProjectId): string => join(d.private, "review", `${p}.comments.json`);
 
 function readRange(text: string): [number, number] | null {
   const m = /^(\d{1,5})-(\d{1,5})$/.exec(text.trim());

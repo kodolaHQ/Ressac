@@ -7,7 +7,7 @@ import type { Marionette } from "./marionette";
 import { inUi, waitUi } from "./ui";
 
 // Action helpers. Declarations live in the space
-// (`<dataDir>/espace/actions/<id>/`, `<dataDir>/espace/composants/<nom>/`); runs, results and agreements outside it.
+// (`<dataDir>/workspace/actions/<id>/`, `<dataDir>/workspace/components/<nom>/`); runs, results and agreements outside it.
 
 /** The execution every written result belongs to (actions.spec.ts EXECUTION). */
 export const EXECUTION = "2026-10-31T08-00-00-000Z";
@@ -31,9 +31,9 @@ export interface TestAction {
   files?: Record<string, string>;
 }
 
-/** Writes an action into `<dataDir>/espace/actions/<id>/`. */
+/** Writes an action into `<dataDir>/workspace/actions/<id>/`. */
 export async function writeAction(dataDir: string, id: string, a: TestAction): Promise<void> {
-  const dir = path.join(dataDir, "espace", "actions", id);
+  const dir = path.join(dataDir, "workspace", "actions", id);
   await mkdir(dir, { recursive: true });
   const { workflow, files: files, sources, ...keys } = a;
   const declaration = { ...keys, sources: { account: sources?.account ?? [], public: sources?.public ?? [], ...(sources?.web !== undefined ? { web: sources.web } : {}) } };
@@ -42,19 +42,19 @@ export async function writeAction(dataDir: string, id: string, a: TestAction): P
   for (const [name, text] of Object.entries(files ?? {})) await writeFile(path.join(dir, name), text);
 }
 
-/** An agent component: `composant.json` (without `nom`, taken from the folder) and `composant.html` (aide.ts ComposantTest). */
+/** An agent component: `component.json` (without `nom`, taken from the folder) and `component.html` (aide.ts ComposantTest). */
 export interface TestComponent {
   description: string;
   properties: Record<string, { kind: string; description: string; required?: boolean }>;
   html: string;
 }
 
-/** Writes a component into `<dataDir>/espace/composants/<nom>/`. */
+/** Writes a component into `<dataDir>/workspace/components/<nom>/`. */
 export async function writeComponent(dataDir: string, name: string, c: TestComponent): Promise<void> {
-  const dir = path.join(dataDir, "espace", "composants", name);
+  const dir = path.join(dataDir, "workspace", "components", name);
   await mkdir(dir, { recursive: true });
-  await writeFile(path.join(dir, "composant.json"), JSON.stringify({ name: name, description: c.description, properties: c.properties }));
-  await writeFile(path.join(dir, "composant.html"), c.html);
+  await writeFile(path.join(dir, "component.json"), JSON.stringify({ name: name, description: c.description, properties: c.properties }));
+  await writeFile(path.join(dir, "component.html"), c.html);
 }
 
 /** AGENTS.md:660's « barres » example, unchanged. */
@@ -128,14 +128,14 @@ export async function writeActionWithResult(
 ): Promise<void> {
   await writeAction(dataDir, id, { name: o.name, sources: { account: o.account ?? [] } });
   const data = path.join(actionsDataDir(dataDir), id);
-  await mkdir(path.join(data, "executions"), { recursive: true });
-  await mkdir(path.join(data, "resultats"), { recursive: true });
+  await mkdir(path.join(data, "runs"), { recursive: true });
+  await mkdir(path.join(data, "results"), { recursive: true });
   await writeFile(
-    path.join(data, "executions", `${EXECUTION}.json`),
-    JSON.stringify({ version: 1, id: EXECUTION, owner: { type: "action", id }, trigger: "manuelle", start: "2026-10-31T08:00:00.000Z", end: "2026-10-31T08:00:05.000Z", status: "reussie", blocks: [] }),
+    path.join(data, "runs", `${EXECUTION}.json`),
+    JSON.stringify({ version: 1, id: EXECUTION, owner: { type: "action", id }, trigger: "manual", start: "2026-10-31T08:00:00.000Z", end: "2026-10-31T08:00:05.000Z", status: "succeeded", blocks: [] }),
   );
   await writeFile(
-    path.join(data, "resultats", `${EXECUTION}.json`),
+    path.join(data, "results", `${EXECUTION}.json`),
     JSON.stringify({ version: 1, run: EXECUTION, input: null, results: o.results, plan: { blocks: o.blocks }, fallback: o.fallback ?? false, empty: false }),
   );
 }
@@ -195,28 +195,28 @@ export const writePagesAction = (dataDir: string, siteUrl: string, id = "pages",
 
 /** Finished runs written on disk for this action, without temporary files. */
 export async function runsOnDisk(dataDir: string, id: string): Promise<string[]> {
-  const dir = path.join(actionsDataDir(dataDir), id, "executions");
+  const dir = path.join(actionsDataDir(dataDir), id, "runs");
   return (await readdir(dir).catch(() => [])).filter((f) => f.endsWith(".json")).sort();
 }
 
 /** The status of each finished run on disk, oldest first. */
 export async function runStatuses(dataDir: string, id: string): Promise<string[]> {
-  const dir = path.join(actionsDataDir(dataDir), id, "executions");
+  const dir = path.join(actionsDataDir(dataDir), id, "runs");
   return Promise.all((await runsOnDisk(dataDir, id)).map(async (f) => (JSON.parse(await readFile(path.join(dir, f), "utf8")) as { status: string }).status));
 }
 
 /** A finished run and its result (a title), written on disk. */
 export async function writeResult(dataDir: string, id: string, run: string, start: string, title: string, input: string | null = null): Promise<void> {
   const data = path.join(actionsDataDir(dataDir), id);
-  await mkdir(path.join(data, "executions"), { recursive: true });
-  await mkdir(path.join(data, "resultats"), { recursive: true });
+  await mkdir(path.join(data, "runs"), { recursive: true });
+  await mkdir(path.join(data, "results"), { recursive: true });
   await writeFile(
-    path.join(data, "executions", `${run}.json`),
-    JSON.stringify({ version: 1, id: run, owner: { type: "action", id }, trigger: "manuelle", start: start, end: start, status: "reussie", ...(input ? { input: input } : {}), blocks: [] }),
+    path.join(data, "runs", `${run}.json`),
+    JSON.stringify({ version: 1, id: run, owner: { type: "action", id }, trigger: "manual", start: start, end: start, status: "succeeded", ...(input ? { input: input } : {}), blocks: [] }),
   );
   await writeFile(
-    path.join(data, "resultats", `${run}.json`),
-    JSON.stringify({ version: 1, execution: run, input: input, results: { title: title }, plan: { blocks: [{ component: "titre", props: { text: title } }] }, fallback: false, empty: false }),
+    path.join(data, "results", `${run}.json`),
+    JSON.stringify({ version: 1, execution: run, input: input, results: { title: title }, plan: { blocks: [{ component: "title", props: { text: title } }] }, fallback: false, empty: false }),
   );
 }
 
@@ -279,7 +279,7 @@ export const LBC_ADS = [
 export const adPhoto = (n: number) => `https://img.leboncoin.exemple/photos/${n}.jpg`;
 
 /** The fake Gemma's plan for a layout request: a title, then the list of pages read (actions.spec.ts PLAN_GEMMA). */
-export const GEMMA_PLAN = { blocks: [{ component: "titre", props: { text: "Pages lues" } }, { component: "liste", props: { items: "$", title: "page.titre" } }] };
+export const GEMMA_PLAN = { blocks: [{ component: "title", props: { text: "Pages lues" } }, { component: "list", props: { items: "$", title: "page.titre" } }] };
 /** The start of the layout prompt (pages/layout-page.ts). */
 export const LAYOUT_PROMPT = "Tu mets en page le résultat d'une action pour l'utilisateur.";
 

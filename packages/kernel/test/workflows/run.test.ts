@@ -121,7 +121,7 @@ async function bench(
         b.denialPending++;
       },
       grantRequiredMessage: "Accord requis pour lire avec ton compte : app.daily.dev",
-      trigger: "manuelle",
+      trigger: "manual",
     },
     infra: {
       engine: ENGINE,
@@ -185,10 +185,10 @@ describe("executerWorkflow", () => {
       version: 1,
       id: "2026-10-29T10-00-00-000Z",
       owner: { type: "widget", id: "essai" },
-      trigger: "manuelle",
+      trigger: "manual",
       start: NOW.toISOString(),
       end: NOW.toISOString(),
-      status: "reussie",
+      status: "succeeded",
     });
     expect(r.run.error).toBeUndefined();
     expect(r.run.blocks).toEqual([
@@ -226,7 +226,7 @@ describe("executerWorkflow", () => {
     );
     const r = await runWorkflow(b.ctx, b.infra);
     expect(r.issue.t).toBe("end");
-    expect(r.run.status).toBe("partielle");
+    expect(r.run.status).toBe("partial");
     expect(r.run.blocks.map((x) => x.status)).toEqual(["succeeded", "partial", "succeeded"]);
     expect(r.run.blocks[1]!.output).toEqual([{ url: `${web.url}/a`, content: "contenu a" }, { url: `${web.url}/absente` }]);
     expect(r.run.blocks[1]!.log.join("\n")).toMatch(/404/);
@@ -239,7 +239,7 @@ describe("executerWorkflow", () => {
     });
     const r = await runWorkflow(b.ctx, b.infra);
     expect(r.issue).toEqual({ t: "failure", error: "cassé : x", codeError: true });
-    expect(r.run.status).toBe("echouee");
+    expect(r.run.status).toBe("failed");
     expect(r.run.error).toBe("cassé : x");
     expect(r.run.kernelError).toBeUndefined();
     expect(r.run.blocks).toEqual([
@@ -374,7 +374,7 @@ describe("executerWorkflow", () => {
     });
     const r = await runWorkflow(b.ctx, b.infra);
     expect(r.issue).toMatchObject({ t: "end", output: { value: { length: 1024 * 1024 } } });
-    expect(r.run.status).toBe("reussie");
+    expect(r.run.status).toBe("succeeded");
     const [huge, medium, short] = r.run.blocks;
     expect(huge).toMatchObject({ status: "succeeded", outputTruncated: true });
     expect(huge!.output).toBeUndefined();
@@ -390,8 +390,8 @@ describe("executerWorkflow", () => {
     const bridge = new FakeBridge([], { active: null, allow: false, read: { pages: [] } });
     const b = await bench(chain("a"), { "a.mjs": `export default async (e, w) => w.readPage("https://app.daily.dev/", { account: true });` }, { account: ["app.daily.dev"], grant: null, bridge: bridge });
     const r = await runWorkflow(b.ctx, b.infra);
-    expect(r.issue).toEqual({ t: "stop", status: "accord-requis", error: "Accord requis pour lire avec ton compte : app.daily.dev" });
-    expect(r.run).toMatchObject({ status: "accord-requis", error: "Accord requis pour lire avec ton compte : app.daily.dev", kernelError: true });
+    expect(r.issue).toEqual({ t: "stop", status: "grant-required", error: "Accord requis pour lire avec ton compte : app.daily.dev" });
+    expect(r.run).toMatchObject({ status: "grant-required", error: "Accord requis pour lire avec ton compte : app.daily.dev", kernelError: true });
     expect(r.run.blocks[0]!.status).toBe("failed");
     expect(bridge.calls.filter((a) => a.method === "lirePageInvisible")).toHaveLength(0);
     expect(b.deleted).toEqual(["essai", "essai"]);
@@ -402,8 +402,8 @@ describe("executerWorkflow", () => {
     const b = await bench(chain("a"), { "a.mjs": `export default async (e, w) => w.readPage("https://app.daily.dev/", { account: true });` }, { account: ["app.daily.dev"], grant: { profile: "perso" }, bridge: bridge });
     const r = await runWorkflow(b.ctx, b.infra);
     expect(b.denialPending).toBe(1);
-    expect(r.issue).toEqual({ t: "stop", status: "accord-requis", error: PROFILE_DENIED });
-    expect(r.run.status).toBe("accord-requis");
+    expect(r.issue).toEqual({ t: "stop", status: "grant-required", error: PROFILE_DENIED });
+    expect(r.run.status).toBe("grant-required");
   });
 
   it("an early fin written by the code: partial run, following blocks pas-lance", async () => {
@@ -417,7 +417,7 @@ describe("executerWorkflow", () => {
     });
     const r = await runWorkflow(b.ctx, b.infra);
     expect(r.issue).toMatchObject({ t: "end", output: { value: "tôt" } });
-    expect(r.run.status).toBe("partielle");
+    expect(r.run.status).toBe("partial");
     expect(r.run.blocks.map((x) => x.status)).toEqual(["failed", "not-run", "not-run"]);
   });
 
@@ -431,8 +431,8 @@ describe("executerWorkflow", () => {
     let reads = 0;
     b.ctx.grant = async () => (reads++ === 0 ? { profile: "perso" } : null);
     const r = await runWorkflow(b.ctx, b.infra);
-    expect(r.issue).toEqual({ t: "stop", status: "accord-requis", error: "Accord requis pour lire avec ton compte : app.daily.dev" });
-    expect(r.run.status).toBe("accord-requis");
+    expect(r.issue).toEqual({ t: "stop", status: "grant-required", error: "Accord requis pour lire avec ton compte : app.daily.dev" });
+    expect(r.run.status).toBe("grant-required");
     expect(bridge.calls.filter((a) => a.method === "lirePageInvisible")).toHaveLength(1);
     expect(b.deleted).toEqual(["essai", "essai"]);
   });
@@ -513,8 +513,8 @@ describe("executerWorkflow", () => {
     const start = Date.now();
     const r = await runWorkflow(b.ctx, b.infra);
     expect(Date.now() - start).toBeLessThan(5000);
-    expect(r.issue).toEqual({ t: "stop", status: "erreur", error: "Délai dépassé" });
-    expect(r.run).toMatchObject({ status: "echouee", error: "Délai dépassé", kernelError: true });
+    expect(r.issue).toEqual({ t: "stop", status: "error", error: "Délai dépassé" });
+    expect(r.run).toMatchObject({ status: "failed", error: "Délai dépassé", kernelError: true });
     expect(r.run.blocks.map((x) => x.status)).toEqual(["failed", "not-run"]);
     expect(b.killed).toBeGreaterThan(0);
     expect(b.deleted).toEqual(["essai", "essai"]);
@@ -610,12 +610,12 @@ describe("executerWorkflow", () => {
         "b.mjs": `export default async () => { throw new Error("b lancé"); };`,
         "c.mjs": `export default async (entree) => entree.map((e) => e.x * 10);`,
       });
-      b.ctx.trigger = "rejeu";
+      b.ctx.trigger = "replay";
       b.ctx.replay = replayFromC;
       const r = await runWorkflow(b.ctx, b.infra);
       expect(r.issue).toEqual({ t: "end", output: { to: "widget", value: [10, 20] }, memory: null });
-      expect(r.run.status).toBe("reussie");
-      expect(r.run.trigger).toBe("rejeu");
+      expect(r.run.status).toBe("succeeded");
+      expect(r.run.trigger).toBe("replay");
       expect(r.run.blocks).toEqual([
         { id: "a", type: "code", status: "not-run", start: null, end: null, items: null, log: [] },
         { id: "b", type: "code", status: "resumed", start: null, end: null, items: 2, log: [] },
@@ -643,7 +643,7 @@ describe("executerWorkflow", () => {
       const relayed: unknown[] = [];
       b.infra.onTrace = (t) => relayed.push(t);
       const r = await runWorkflow(b.ctx, b.infra);
-      expect(r.run.status).toBe("reussie");
+      expect(r.run.status).toBe("succeeded");
       expect(r.run.blocks.map((x) => [x.id, x.status])).toEqual([["a", "not-run"], ["b", "resumed"], ["c", "succeeded"], ["sortie", "succeeded"]]);
       expect(r.run.blocks[0]!.log).toEqual([]);
       expect(r.run.blocks[1]).toMatchObject({ items: 2, log: [], start: null });
@@ -673,10 +673,10 @@ describe("executerWorkflow", () => {
       const b = await bench(chain("a", "b", "c"));
       b.ctx.replay = { ...replayFromC, outputs: { b: "x".repeat(LINE_MAX_BYTES) } };
       const r = await runWorkflow(b.ctx, b.infra);
-      expect(r.issue).toEqual({ t: "stop", status: "erreur", error: REPLAY_TOO_BIG });
+      expect(r.issue).toEqual({ t: "stop", status: "error", error: REPLAY_TOO_BIG });
       expect(REPLAY_TOO_BIG).toBe("Rejeu impossible : les sorties à reprendre dépassent 4 Mo");
       expect(b.commands).toEqual([]);
-      expect(r.run).toMatchObject({ status: "echouee", error: REPLAY_TOO_BIG, kernelError: true });
+      expect(r.run).toMatchObject({ status: "failed", error: REPLAY_TOO_BIG, kernelError: true });
     });
   });
 
@@ -709,15 +709,15 @@ describe("executerWorkflow", () => {
     };
     const r = await runWorkflow(b.ctx, b.infra);
     expect(r.issue).toMatchObject({ t: "end", output: { value: 1 } });
-    expect(r.run.status).toBe("reussie");
+    expect(r.run.status).toBe("succeeded");
   });
 
   it("the container impossible to launch: erreur stop, failed run without a launched block", async () => {
     const b = await bench(chain("a"));
     b.infra.workshop = { harvestCommand: () => { throw new Error("Docker introuvable"); }, deleteHarvest: async () => {} };
     const r = await runWorkflow(b.ctx, b.infra);
-    expect(r.issue).toEqual({ t: "stop", status: "erreur", error: "Récolte impossible à lancer : Docker introuvable" });
-    expect(r.run.status).toBe("echouee");
+    expect(r.issue).toEqual({ t: "stop", status: "error", error: "Récolte impossible à lancer : Docker introuvable" });
+    expect(r.run.status).toBe("failed");
     expect(r.run.blocks.every((x) => x.status === "not-run")).toBe(true);
   });
 });
@@ -998,7 +998,7 @@ describe("executerWorkflow: web search and open reads", () => {
       { web: true, pacing: pacing, delayMs: 300 },
     );
     const r = await runWorkflow(b.ctx, b.infra);
-    expect(r.issue).toEqual({ t: "stop", status: "erreur", error: "Délai dépassé" });
+    expect(r.issue).toEqual({ t: "stop", status: "error", error: "Délai dépassé" });
     // The gap elapses after the stop: the queued read does not leave.
     t += 10_000;
     for (const ok of pending.splice(0)) ok();
@@ -1065,7 +1065,7 @@ describe("executerWorkflow: a stop cancels the reads in progress", () => {
     ]);
     const b = await bench(chain("a"), {}, { bridge: bridge, account: ["app.daily.dev"], public: ["pages.example", "127.0.0.1"], grant: { profile: "perso" }, delayMs: 300, launch: c.launch });
     const r = await runWorkflow(b.ctx, b.infra);
-    expect(r.issue).toEqual({ t: "stop", status: "erreur", error: "Délai dépassé" });
+    expect(r.issue).toEqual({ t: "stop", status: "error", error: "Délai dépassé" });
     await vi.waitFor(() => {
       expect(cancelledList(bridge).sort()).toEqual(["https://app.daily.dev/b", "https://pages.example/a"]);
       expect(closed).toEqual(["/lent"]);
@@ -1125,7 +1125,7 @@ describe("executerWorkflow: a stop cancels the reads in progress", () => {
     ]);
     const b = await bench(chain("a"), {}, { bridge: bridge, delayMs: 300, launch: c.launch });
     prepare(b);
-    expect((await runWorkflow(b.ctx, b.infra)).issue).toEqual({ t: "stop", status: "erreur", error: "Délai dépassé" });
+    expect((await runWorkflow(b.ctx, b.infra)).issue).toEqual({ t: "stop", status: "error", error: "Délai dépassé" });
     await vi.waitFor(() => expect(cancelledList(bridge).sort()).toEqual(["https://pages.example/1", searchUrl("a", BASE)].sort()));
     // Another run on the same throttle: neither the host's lane nor the searches' lane stays taken.
     const next = await bench(
@@ -1225,7 +1225,7 @@ describe("executerWorkflow: watch (duration, chain, publications, memory along t
   const blockEnd = (id: string, output: unknown = [{ url: "https://a.example/1" }], status = "succeeded") => ({ t: "block", id, step: "end", status: status, output: output });
   const pub = (data: unknown, done: number, total: number) => ({ t: "publication", data: data, done: done, total });
   const attempt = (b: Bench) => {
-    b.ctx.trigger = "rejeu";
+    b.ctx.trigger = "replay";
     b.ctx.replay = { reruns: [...b.ctx.valid.order], outputs: {}, resumed: {} };
   };
 
@@ -1316,7 +1316,7 @@ describe("executerWorkflow: watch (duration, chain, publications, memory along t
     const relayed: unknown[] = [];
     inChain.infra.onTrace = (t) => relayed.push(t);
     const r = await runWorkflow(inChain.ctx, inChain.infra);
-    expect(r.run.status).toBe("reussie");
+    expect(r.run.status).toBe("succeeded");
     expect(r.run.blocks.find((x) => x.id === "fiche")!.log).toEqual(["lu"]);
     expect(relayed).toEqual([
       { block: "liste", step: "start" },
@@ -1488,8 +1488,8 @@ describe("executerWorkflow: watch (duration, chain, publications, memory along t
       );
       return (await runWorkflow(b.ctx, b.infra)).issue;
     };
-    expect(await launchWith(30)).toEqual({ t: "stop", status: "erreur", error: "Délai dépassé", memory: { liste: { type: "code", value: 7, hash: hash } } });
-    expect(await launchWith(undefined)).toEqual({ t: "stop", status: "erreur", error: "Délai dépassé" });
+    expect(await launchWith(30)).toEqual({ t: "stop", status: "error", error: "Délai dépassé", memory: { liste: { type: "code", value: 7, hash: hash } } });
+    expect(await launchWith(undefined)).toEqual({ t: "stop", status: "error", error: "Délai dépassé" });
   });
 
   describe("the memory that precedes a publication follows its fate (R34)", () => {
@@ -1745,8 +1745,8 @@ describe("executerWorkflow: input, progress, reads and stop (actions)", () => {
     };
     const r = await runWorkflow(b.ctx, b.infra);
     expect(tue).toBe(1);
-    expect(r.issue).toEqual({ t: "stop", status: "erreur", error: ACTION_STOPPED });
-    expect(r.run).toMatchObject({ status: "interrompue", error: ACTION_STOPPED, kernelError: true });
+    expect(r.issue).toEqual({ t: "stop", status: "error", error: ACTION_STOPPED });
+    expect(r.run).toMatchObject({ status: "interrupted", error: ACTION_STOPPED, kernelError: true });
     expect(r.run.blocks[0]!.status).toBe("interrupted");
     expect(b.deleted).toEqual(["action:gitlab", "action:gitlab"]);
   });
@@ -1758,7 +1758,7 @@ describe("executerWorkflow: input, progress, reads and stop (actions)", () => {
     b.ctx.signal = stop.signal;
     const r = await runWorkflow(b.ctx, b.infra);
     expect(b.commands).toEqual([]);
-    expect(r.run).toMatchObject({ status: "interrompue", error: ACTION_STOPPED, kernelError: true });
+    expect(r.run).toMatchObject({ status: "interrupted", error: ACTION_STOPPED, kernelError: true });
   });
 
   it("an avancement line with faits > total is rejected", async () => {

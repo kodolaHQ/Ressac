@@ -79,7 +79,7 @@ async function renameIfPresent(from: string, to: string): Promise<void> {
 }
 
 /**
- * A `disposition.json` in another format (old `{ ordre }` or unknown version). v2 (the 12-column grid) and v3 (the free
+ * A `layout.json` in another format (old `{ ordre }` or unknown version). v2 (the 12-column grid) and v3 (the free
  * layout) are kept. Unreadable: left in place.
  */
 async function oldLayout(path: string): Promise<boolean> {
@@ -93,17 +93,17 @@ async function oldLayout(path: string): Promise<boolean> {
   }
 }
 
-/** Old blocks and the old layout are set aside in `accueil/.corbeille/blocs-<timestamp>`, never destroyed. */
+/** Old blocks and the old layout are set aside in `home/.trash/blocks-<timestamp>`, never destroyed. */
 async function setAsideBlocks(c: SpacePaths): Promise<void> {
   const blocks = existsSync(c.blocks);
   const available = existsSync(c.layout) && (await oldLayout(c.layout));
   if (!blocks && !available) return;
-  const target = join(c.home, ".corbeille", `blocs-${timestamp()}`);
+  const target = join(c.home, ".trash", `blocks-${timestamp()}`);
   await mkdir(dirname(target), { recursive: true });
   if (blocks) await renameIfPresent(c.blocks, target);
   if (available) {
     await mkdir(target, { recursive: true });
-    await renameIfPresent(c.layout, join(target, "disposition.json"));
+    await renameIfPresent(c.layout, join(target, "layout.json"));
   }
 }
 
@@ -118,7 +118,7 @@ async function filesOf(folder: string, prefix = ""): Promise<string[]> {
 }
 
 /**
- * Template file → destination in the workspace. Starter widgets are only placed if `accueil/widgets/`
+ * Template file → destination in the workspace. Starter widgets are only placed if `home/widgets/`
  * does not exist: a widget deleted by the user must not come back.
  */
 async function matches(c: SpacePaths, models: string): Promise<[string, string][]> {
@@ -126,7 +126,7 @@ async function matches(c: SpacePaths, models: string): Promise<[string, string][
     ["AGENTS.md", join(c.root, "AGENTS.md")],
     ["CLAUDE.md", join(c.root, "CLAUDE.md")],
     ["agent-profile.json", join(c.profiles, "claude.json")],
-    ["disposition.json", c.layout],
+    ["layout.json", c.layout],
   ];
   if (!existsSync(c.widgets)) {
     for (const f of await filesOf(join(models, "widgets"))) pairs.push([join("widgets", f), join(c.widgets, f)]);
@@ -201,7 +201,7 @@ async function absent(path: string): Promise<boolean> {
 /**
  * Switches a starter widget left as shipped (`harvest.mjs` of a known version, without `workflow.json`) to
  * its workflow template: the template's `.mjs` then `workflow.json` are copied without overwriting anything, then
- * `harvest.mjs` goes to `accueil/.corbeille/<id>-harvest-<timestamp>.mjs`. A modified widget, or one where a file
+ * `harvest.mjs` goes to `home/.trash/<id>-harvest-<timestamp>.mjs`. A modified widget, or one where a file
  * of the template already exists with other content, is not touched. Nothing other than this folder and the trash. With
  * the template's `workflow.json` already there (interrupted switch), only `harvest.mjs` is put away.
  */
@@ -247,9 +247,9 @@ async function toggleStartWidget(c: SpacePaths, models: string, id: keyof typeof
   return crees;
 }
 
-/** `harvest.mjs` of a switched starter widget goes to `accueil/.corbeille/<id>-harvest-<timestamp>.mjs`. */
+/** `harvest.mjs` of a switched starter widget goes to `home/.trash/<id>-harvest-<timestamp>.mjs`. */
 async function storeHarvest(c: SpacePaths, id: string): Promise<void> {
-  const trash = join(c.home, ".corbeille");
+  const trash = join(c.home, ".trash");
   await mkdir(trash, { recursive: true });
   await renameIfPresent(join(c.widgets, id, "harvest.mjs"), join(trash, `${id}-harvest-${timestamp()}.mjs`));
 }
@@ -332,5 +332,5 @@ export const STARTER_SHIPPED: Readonly<Record<string, ReadonlySet<string>>> = {
   "widgets/actus-tech/exemple.json": new Set(["42d0fb1b8bd8058874ec5e013cbce8f8c947f5cf291658c06dea41b4145b7374"]),
   "widgets/daily-dev/exemple.json": new Set(["2ffbfc83f5a42f86cd28e0923bf8be3436dac6ca9978fe9a427fde13fd57024d"]),
   "widgets/meteo/exemple.json": new Set(["8ed39a293d42d0b94a18857b255a0b31f183b506f9a1c83b527d4333db175a3c"]),
-  "disposition.json": new Set(["d93b209599be900cb2670d010d3bf8fb713752aa87cf2359d88db4aa8ce95797"]),
+  "layout.json": new Set(["d93b209599be900cb2670d010d3bf8fb713752aa87cf2359d88db4aa8ce95797"]),
 };

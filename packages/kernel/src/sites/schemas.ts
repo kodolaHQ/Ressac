@@ -6,16 +6,16 @@ export const SITE_JSON_MAX = 64 * 1024;
 export const TWEAK_MAX = 256 * 1024;
 export const TWEAKS_MAX_TOTAL = 1024 * 1024;
 
-export const URL_OUTSIDE_DOMAINS = "adresse : son domaine doit être dans domaines";
+export const URL_OUTSIDE_DOMAINS = "url : son domaine doit être dans domains";
 export const FRAME_PATTERNS =
-  'retouches.cadres : false, ou une liste de motifs d\'adresses complètes (ex. ["https://*.lecteur.example/*"])';
-export const PATH_MATCHES = 'retouches.correspond : des chemins qui commencent par « / » (ex. "/series/*")';
-export const tweakFileNotFound = (f: string) => `retouches : fichier introuvable ou trop gros : ${f}`;
-export const INVALID_DOMAIN = "domaines, connexion : de vrais noms de domaine (avec un point), jamais une adresse IP ni locale";
+  'tweaks.frames : false, ou une liste de motifs d\'adresses complètes (ex. ["https://*.lecteur.example/*"])';
+export const PATH_MATCHES = 'tweaks.matches : des chemins qui commencent par « / » (ex. "/series/*")';
+export const tweakFileNotFound = (f: string) => `tweaks : fichier introuvable ou trop gros : ${f}`;
+export const INVALID_DOMAIN = "domains, login : de vrais noms de domaine (avec un point), jamais une adresse IP ni locale";
 export const SITE_ID_ERROR = "nom de dossier non pris en charge : minuscules, chiffres et tirets seulement, 60 caractères au plus (ex. mon-site)";
 /** The id serves as host of `webaios-site://<id>` and as partition `persist:site-<id>`. */
 export const ID_SITE = /^[a-z0-9][a-z0-9-]{0,59}$/;
-export const HTTPS_ONLY = "adresse : https seulement, jamais une adresse locale";
+export const HTTPS_ONLY = "url : https seulement, jamais une adresse locale";
 
 /** A host in lowercase: no scheme, no wildcard, no port, no path. */
 const host = z
@@ -90,7 +90,7 @@ function urlAccepted(raw: string, localUrls: boolean): URL | null {
 
 /**
  * A real domain name for a site: no IP address, no name without a dot (intranet), no numeric last label, no
- * local address (except `adressesLocales`, tests only). Same rule for `domaines`, `connexion` and the followed address.
+ * local address (except `localAddresses`, tests only). Same rule for `domains`, `login` and the followed address.
  */
 export function trueDomain(h: string, localUrls: boolean): boolean {
   return !isIP(h) && h.includes(".") && !/\.\d+$/.test(h) && (localUrls || !localUrl(h));

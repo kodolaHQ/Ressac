@@ -31,7 +31,7 @@ test("watchActions follows ~/WebAiOs/actions and components, once per burst", as
   await sleep(500);
   expect(calls).toBe(1);
   await mkdir(join(c.components, "barres"), { recursive: true });
-  await writeFile(join(c.components, "barres", "composant.html"), "<svg/>");
+  await writeFile(join(c.components, "barres", "component.html"), "<svg/>");
   await sleep(500);
   await stop();
   expect(calls).toBe(2);

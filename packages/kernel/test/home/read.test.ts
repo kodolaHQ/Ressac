@@ -13,30 +13,30 @@ async function space() {
   return { c, widgetsFolder: widgetsFolder };
 }
 
-test("reads the widgets and their placement from disposition.json", async () => {
+test("reads the widgets and their placement from layout.json", async () => {
   const { c, widgetsFolder: widgetsFolder } = await space();
   await writeWidget(c, "a");
   await writeWidget(c, "b");
-  const layout = { version: 2, widgets: [{ id: "b", x: 0, y: 0, l: 3, h: 2 }, { id: "a", x: 5, y: 1, l: 4, h: 4 }, { id: "fantome", x: 0, y: 9, l: 1, h: 1 }] };
+  const layout = { version: 2, widgets: [{ id: "b", x: 0, y: 0, w: 3, h: 2 }, { id: "a", x: 5, y: 1, w: 4, h: 4 }, { id: "fantome", x: 0, y: 9, w: 1, h: 1 }] };
   await writeFile(c.layout, JSON.stringify(layout));
   const state = await readHome(c, widgetsFolder);
   expect(state.widgets.map((w) => w.id)).toEqual(["a", "b"]);
   expect(state.layout).toEqual([
-    { id: "b", x: 0, y: 0, l: 3, h: 2 },
-    { id: "a", x: 5, y: 1, l: 4, h: 4 },
+    { id: "b", x: 0, y: 0, w: 3, h: 2 },
+    { id: "a", x: 5, y: 1, w: 4, h: 4 },
   ]);
 });
 
 test("a widget without a placement is put at the first free spot, at its default size", async () => {
   const { c, widgetsFolder: widgetsFolder } = await space();
-  await writeWidget(c, "a", declarationWidget({ l: 4, h: 2 }));
-  await writeWidget(c, "b", declarationWidget({ l: 6, h: 3 }));
-  await writeWidget(c, "c", declarationWidget({ l: 3, h: 1 }));
-  await writeFile(c.layout, JSON.stringify({ version: 2, widgets: [{ id: "a", x: 0, y: 0, l: 4, h: 2 }] }));
+  await writeWidget(c, "a", declarationWidget({ w: 4, h: 2 }));
+  await writeWidget(c, "b", declarationWidget({ w: 6, h: 3 }));
+  await writeWidget(c, "c", declarationWidget({ w: 3, h: 1 }));
+  await writeFile(c.layout, JSON.stringify({ version: 2, widgets: [{ id: "a", x: 0, y: 0, w: 4, h: 2 }] }));
   const { layout: layout } = await readHome(c, widgetsFolder);
-  expect(layout).toContainEqual({ id: "a", x: 0, y: 0, l: 4, h: 2 });
-  expect(layout).toContainEqual({ id: "b", x: 4, y: 0, l: 6, h: 3 });
-  expect(layout).toContainEqual({ id: "c", x: 0, y: 2, l: 3, h: 1 }); // 10 + 3 would overflow: next row
+  expect(layout).toContainEqual({ id: "a", x: 0, y: 0, w: 4, h: 2 });
+  expect(layout).toContainEqual({ id: "b", x: 4, y: 0, w: 6, h: 3 });
+  expect(layout).toContainEqual({ id: "c", x: 0, y: 2, w: 3, h: 1 }); // 10 + 3 would overflow: next row
 });
 
 test("a placement that overlaps or overflows is moved", async () => {
@@ -46,13 +46,13 @@ test("a placement that overlaps or overflows is moved", async () => {
   await writeWidget(c, "c");
   await writeFile(
     c.layout,
-    JSON.stringify({ version: 2, widgets: [{ id: "a", x: 0, y: 0, l: 4, h: 4 }, { id: "b", x: 2, y: 2, l: 4, h: 4 }, { id: "c", x: 10, y: 0, l: 4, h: 4 }] }),
+    JSON.stringify({ version: 2, widgets: [{ id: "a", x: 0, y: 0, w: 4, h: 4 }, { id: "b", x: 2, y: 2, w: 4, h: 4 }, { id: "c", x: 10, y: 0, w: 4, h: 4 }] }),
   );
   const { layout: layout } = await readHome(c, widgetsFolder);
   expect(layout).toEqual([
-    { id: "a", x: 0, y: 0, l: 4, h: 4 },
-    { id: "b", x: 4, y: 0, l: 4, h: 4 },
-    { id: "c", x: 8, y: 0, l: 4, h: 4 },
+    { id: "a", x: 0, y: 0, w: 4, h: 4 },
+    { id: "b", x: 4, y: 0, w: 4, h: 4 },
+    { id: "c", x: 8, y: 0, w: 4, h: 4 },
   ]);
 });
 
@@ -74,12 +74,12 @@ test("an invalid widget.json gives a WidgetLu in error without preventing the ot
 
 test("a layout in the old format ({ ordre }) is ignored: everything is placed again", async () => {
   const { c, widgetsFolder: widgetsFolder } = await space();
-  await writeWidget(c, "b", declarationWidget({ l: 6, h: 2 }));
-  await writeWidget(c, "a", declarationWidget({ l: 6, h: 2 }));
+  await writeWidget(c, "b", declarationWidget({ w: 6, h: 2 }));
+  await writeWidget(c, "a", declarationWidget({ w: 6, h: 2 }));
   await writeFile(c.layout, JSON.stringify({ order: ["b", "a"] }));
   expect((await readHome(c, widgetsFolder)).layout).toEqual([
-    { id: "a", x: 0, y: 0, l: 6, h: 2 },
-    { id: "b", x: 6, y: 0, l: 6, h: 2 },
+    { id: "a", x: 0, y: 0, w: 6, h: 2 },
+    { id: "b", x: 6, y: 0, w: 6, h: 2 },
   ]);
   await writeFile(c.layout, "n'importe quoi");
   expect((await readHome(c, widgetsFolder)).layout).toHaveLength(2);
@@ -87,14 +87,14 @@ test("a layout in the old format ({ ordre }) is ignored: everything is placed ag
 
 test("the data and the state come from dossierWidgets, never from the space", async () => {
   const { c, widgetsFolder: widgetsFolder } = await space();
-  const state = { status: "erreur", lastUpdate: null, lastAttempt: "2026-10-28T07:00:00.000Z", error: "boum" };
-  await writeWidget(c, "w", declarationWidget(), { "donnees.json": '{"piege":true}', "etat.json": JSON.stringify({ ...state, error: "piège" }) });
+  const state = { status: "error", lastUpdate: null, lastAttempt: "2026-10-28T07:00:00.000Z", error: "boum" };
+  await writeWidget(c, "w", declarationWidget(), { "data.json": '{"piege":true}', "state.json": JSON.stringify({ ...state, error: "piège" }) });
   const w0 = (await readHome(c, widgetsFolder)).widgets[0]!;
   expect("data" in w0 && w0.data).toBeNull();
   expect("state" in w0 && w0.state).toEqual({ status: "ok", lastUpdate: null, lastAttempt: null });
   await mkdir(join(widgetsFolder, "w"), { recursive: true });
-  await writeFile(join(widgetsFolder, "w", "donnees.json"), '{"n":1}');
-  await writeFile(join(widgetsFolder, "w", "etat.json"), JSON.stringify(state));
+  await writeFile(join(widgetsFolder, "w", "data.json"), '{"n":1}');
+  await writeFile(join(widgetsFolder, "w", "state.json"), JSON.stringify(state));
   const w1 = (await readHome(c, widgetsFolder)).widgets[0]!;
   expect("data" in w1 && w1.data).toEqual({ n: 1 });
   expect("state" in w1 && w1.state).toEqual(state);

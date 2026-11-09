@@ -91,7 +91,7 @@ const marginClick = () =>
 const cardInFocus = () => inUi<boolean>(m, "return !!doc.activeElement?.closest('[data-testid=\"modale-demande\"]')");
 /** The agent is up and a user tab (not shared with it) is shown: what makes it ask to read the tab. */
 async function withAgentAndTab(): Promise<string> {
-  const config = join(w.dataDir, "espace", ".webaios", "mcp.json");
+  const config = join(w.dataDir, "workspace", ".webaios", "mcp.json");
   for (const deadline = Date.now() + 20_000; !existsSync(config); await new Promise((r) => setTimeout(r, 100)))
     if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
   // The home page's panel starts the agent's session, which takes back every access: the tool is called after it.
@@ -144,7 +144,7 @@ describe("Command bar", () => {
     try {
       writeSite(dataDir, "vidola", {
         declaration: { name: "Vidola", url: sites.url("vidola-a.localhost", "/"), domains: ["vidola-a.localhost"], login: [] },
-        files: { "accueil/index.html": SITE_HOME },
+        files: { "home/index.html": SITE_HOME },
       });
       const actor = testActor(profile);
       w = await launchWebAiOs({ dataDir, profile, env: { WEBAIOS_TEST_LOCAL_ADDRESSES: "1", ...actor.env }, prefs: actor.prefs });

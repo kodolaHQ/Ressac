@@ -9,7 +9,7 @@ import { tempFolder } from "../helpers/temp.js";
 const declaration = (account: string[], publics: string[]) =>
   DeclarationWidget.parse({
     name: "W",
-    sizes: { min: { l: 1, h: 1 }, max: { l: 4, h: 4 }, default: { l: 2, h: 2 } },
+    sizes: { min: { w: 1, h: 1 }, max: { w: 4, h: 4 }, default: { w: 2, h: 2 } },
     sources: { account: account, public: publics },
   });
 
@@ -23,7 +23,7 @@ describe("grants", () => {
       daily: { domains: ["app.daily.dev"], public: [], profile: "p1" },
       autre: { domains: ["a.fr"], public: ["b.fr"], profile: "p2" },
     });
-    expect(JSON.parse(await readFile(join(d, "accords.json"), "utf8")).daily.profil).toBe("p1");
+    expect(JSON.parse(await readFile(join(d, "grants.json"), "utf8")).daily.profile).toBe("p1");
     await removeGrant(d, "daily");
     expect(Object.keys(await readGrants(d))).toEqual(["autre"]);
   });
@@ -38,9 +38,9 @@ describe("grants", () => {
 
   it("a damaged file or invalid entries are ignored", async () => {
     const d = await tempFolder();
-    await writeFile(join(d, "accords.json"), "{pas du json");
+    await writeFile(join(d, "grants.json"), "{pas du json");
     expect(await readGrants(d)).toEqual({});
-    await writeFile(join(d, "accords.json"), JSON.stringify({ ok: { domains: ["a.fr"], public: [], profile: "p" }, ko: { profile: 3 } }));
+    await writeFile(join(d, "grants.json"), JSON.stringify({ ok: { domains: ["a.fr"], public: [], profile: "p" }, ko: { profile: 3 } }));
     expect(Object.keys(await readGrants(d))).toEqual(["ok"]);
   });
 

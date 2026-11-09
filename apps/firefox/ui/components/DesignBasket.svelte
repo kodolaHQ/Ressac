@@ -32,7 +32,7 @@
     }
   }
 
-  const STATES = { "en-attente": "en attente", lu: "lu", traite: "traité" } as const;
+  const STATES = { pending: "en attente", read: "lu", handled: "traité" } as const;
   const hour = (iso: string) => {
     const d = new Date(iso);
     return Number.isNaN(d.getTime()) ? "" : d.toLocaleString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
@@ -104,7 +104,7 @@
             <div class="tete">
               <span class="etat">{STATES[l.state]}</span>
               <span class="quand">{hour(l.created)} · {l.destination === "agent" ? "agent" : "Claude Code"} · {l.items.length}</span>
-              {#if l.destination === "agent" && l.state !== "traite"}
+              {#if l.destination === "agent" && l.state !== "handled"}
                 <button class="traite" onclick={() => void markProcessed(l.id)}>Traité</button>
               {/if}
             </div>

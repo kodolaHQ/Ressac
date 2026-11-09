@@ -42,7 +42,7 @@ const hosts: Host[] = [];
 function startHost(env: Record<string, string> = {}, prepare?: (dataDir: string) => void, o: { dataDir?: string; handlers?: Record<string, Handler> } = {}): Host {
   const dataDir = o.dataDir ?? realpathSync(mkdtempSync(join(tmpdir(), "webaios-host-")));
   prepare?.(dataDir);
-  const root = join(dataDir, "espace");
+  const root = join(dataDir, "workspace");
   const log = join(dataDir, "docker.log");
   const { WEBAIOS_CONTAINER: _, WEBAIOS_CONTAINER_PORTS: __, ...parent } = process.env;
   const child = spawn(nodePath, ["--import", tsxPath, hostPath], {
@@ -180,8 +180,8 @@ describe("agent host", { timeout: 30_000 }, () => {
 
   it("agent.profils asked while the kernel starts lists the default profile it prepares", async () => {
     const h = startHost();
-    mkdirSync(join(h.root, ".webaios", "profils"), { recursive: true });
-    writeFileSync(join(h.root, ".webaios", "profils", "autre.json"), JSON.stringify({ id: "autre", name: "Autre", interactive: ["a"], nonInteractive: ["a"], mcpConfig: "claude-json" }));
+    mkdirSync(join(h.root, ".webaios", "profiles"), { recursive: true });
+    writeFileSync(join(h.root, ".webaios", "profiles", "autre.json"), JSON.stringify({ id: "autre", name: "Autre", interactive: ["a"], nonInteractive: ["a"], mcpConfig: "claude-json" }));
     const started = h.rpc.request("demarrer", { agentProfile: "claude" });
     expect((await h.rpc.request<{ id: string }[]>("agent.profils")).map((p) => p.id)).toEqual(["autre", "claude"]);
     await started;
@@ -190,7 +190,7 @@ describe("agent host", { timeout: 30_000 }, () => {
   it("demarrer with another profile restarts the sessions", async () => {
     const h = startHost();
     await h.rpc.request("demarrer", { agentProfile: "claude" });
-    const profiles = join(h.root, ".webaios", "profils");
+    const profiles = join(h.root, ".webaios", "profiles");
     writeFileSync(join(profiles, "autre.json"), readFileSync(join(profiles, "claude.json"), "utf8").replace('"id": "claude"', '"id": "autre"'));
     await h.rpc.request("agent.demarrer", { window: "f1", size: { cols: 80, rows: 24 } });
     await until(() => h.data().includes("faux agent prêt>"));
@@ -286,7 +286,7 @@ describe("agent host", { timeout: 30_000 }, () => {
     const site = { id: "site:vidola", title: "Vidola", url: "https://vidola.test/", space: "", site: "vidola", domain: "vidola.test", hash: "e" };
     const navigations: string[] = [];
     const h = startHost({}, (dataDir) => {
-      const folder = join(dataDir, "espace", "sites", "vidola");
+      const folder = join(dataDir, "workspace", "sites", "vidola");
       mkdirSync(folder, { recursive: true });
       writeFileSync(join(folder, "site.json"), JSON.stringify({ name: "Vidola", url: "https://vidola.test/", domains: ["vidola.test"], login: ["compte.test"] }));
     }, {
@@ -366,7 +366,7 @@ describe("history", { timeout: 30_000 }, () => {
 
   it("an unreadable history database leaves the host and the agent running, without history", async () => {
     // A directory where the SQLite file should be: opening it throws.
-    const h = startHost({}, (d) => mkdirSync(join(d, "historique.sqlite")));
+    const h = startHost({}, (d) => mkdirSync(join(d, "history.sqlite")));
     visit(h, "https://a.test/", "Page A");
     expect(await h.rpc.request("historique.recents", {})).toEqual([]);
     expect(await h.rpc.request("historique.rechercher", { text: "page" })).toEqual([]);
@@ -399,9 +399,9 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     return a;
   };
 
-  /** The agent's source in `<dataDir>/espace/extensions/ma-ext`: a classic service worker and a content script CSS. */
+  /** The agent's source in `<dataDir>/workspace/extensions/ma-ext`: a classic service worker and a content script CSS. */
   const source = (dataDir: string, o: { hosts?: string[]; css?: string } = {}) => {
-    const dir = join(dataDir, "espace", "extensions", "ma-ext");
+    const dir = join(dataDir, "workspace", "extensions", "ma-ext");
     mkdirSync(dir, { recursive: true });
     const manifest = { manifest_version: 3, name: "Cacheur", version: "1.0.0", background: { service_worker: "fond.js" }, content_scripts: [{ matches: o.hosts ?? [HOST], css: ["cache.css"] }] };
     writeFileSync(join(dir, "manifest.json"), JSON.stringify(manifest));
@@ -411,9 +411,9 @@ describe("agent extensions", { timeout: 60_000 }, () => {
   const grant = (dataDir: string, profiles = ["defaut"], grant: unknown = GRANT) => {
     mkdirSync(join(dataDir, "extensions"), { recursive: true });
     const entry = { source: "agent", addonId: null, name: "Cacheur", version: "1.0.0", grant: grant, profiles: profiles, pinned: false, modifiedAt: null, disabled: null, pendingUpdate: null, seenVersions: {} };
-    writeFileSync(join(dataDir, "extensions", "etat.json"), JSON.stringify({ version: 1, allCut: false, extensions: { "agent:ma-ext": entry } }));
+    writeFileSync(join(dataDir, "extensions", "state.json"), JSON.stringify({ version: 1, allCut: false, extensions: { "agent:ma-ext": entry } }));
   };
-  const entry = (dataDir: string) => (JSON.parse(readFileSync(join(dataDir, "extensions", "etat.json"), "utf8")) as { extensions: Record<string, any> }).extensions["agent:ma-ext"];
+  const entry = (dataDir: string) => (JSON.parse(readFileSync(join(dataDir, "extensions", "state.json"), "utf8")) as { extensions: Record<string, any> }).extensions["agent:ma-ext"];
 
   /**
    * Firefox's side, as the chrome does it: an inactive add-on is never installed fresh, the same version is not
@@ -512,7 +512,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     const f = firefox();
     const h = launch(amo, f, { prepare });
     await h.rpc.request("extensions.pret", {});
-    expect(f.installs[0]!.manifest.background).toEqual({ scripts: ["webaios-garde-fond.js", "fond.js"] });
+    expect(f.installs[0]!.manifest.background).toEqual({ scripts: ["webaios-background-guard.js", "fond.js"] });
     expect(f.installs[0]!.manifest.browser_specific_settings.gecko.id).toBe(ID);
   });
 
@@ -535,7 +535,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     await h.rpc.request("extensions.pret", {});
     expect(amo.sends).toHaveLength(2);
     expect(f.installs).toHaveLength(2);
-    expect(entry(h.dataDir)).toMatchObject({ grant: GRANT, disabled: { reason: "portee-elargie" } });
+    expect(entry(h.dataDir)).toMatchObject({ grant: GRANT, disabled: { reason: "scope-widened" } });
     expect(f.activations).toEqual([{ addonId: ID, active: false }]);
   });
 
@@ -553,7 +553,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     expect(await tool(h, "reload_extension", { id: "ma-ext" })).toBe("state : reloaded");
     expect(amo.sends.map((e) => e.version)).toEqual(["1.0.0.1", "1.0.0.2"]);
     expect(f.installs.at(-1)!.version).toBe("1.0.0.2");
-    expect(JSON.parse(readFileSync(join(h.dataDir, "extensions", "signes", "ma-ext.json"), "utf8")).version).toBe("1.0.0.2");
+    expect(JSON.parse(readFileSync(join(h.dataDir, "extensions", "signed", "ma-ext.json"), "utf8")).version).toBe("1.0.0.2");
   });
 
   it("a failed signature leaves the running version", async () => {
@@ -567,9 +567,9 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     expect(r).toContain("state : refused");
     expect(r).toContain(deniedSignature("Validation failed: eval"));
     expect(r).not.toContain("test-secret");
-    expect(JSON.parse(readFileSync(join(h.dataDir, "extensions", "signes", "ma-ext.json"), "utf8")).version).toBe("1.0.0.1");
+    expect(JSON.parse(readFileSync(join(h.dataDir, "extensions", "signed", "ma-ext.json"), "utf8")).version).toBe("1.0.0.1");
     expect(f.installs).toHaveLength(1);
-    expect(existsSync(join(h.dataDir, "extensions", "signes", "ma-ext.xpi"))).toBe(true);
+    expect(existsSync(join(h.dataDir, "extensions", "signed", "ma-ext.xpi"))).toBe(true);
   });
 
   it("removed from about:addons: grant deleted, never reinstalled", async () => {
@@ -580,7 +580,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     h.rpc.notify("extensions.horsWebaios", { addonId: ID, what: "desinstallee" });
     await until(() => entry(h.dataDir) === undefined);
     await until(() => JSON.stringify(f.scopes.at(-1)) === "{}");
-    expect(existsSync(join(h.dataDir, "extensions", "signes", "ma-ext.xpi"))).toBe(false);
+    expect(existsSync(join(h.dataDir, "extensions", "signed", "ma-ext.xpi"))).toBe(false);
     await stop(h);
     h = launch(amo, f, { dataDir: h.dataDir });
     await h.rpc.request("extensions.pret", {});
@@ -599,7 +599,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     await h.rpc.request("extensions.horsWebaios", { addonId: ID, what: "desinstallee" });
     expect(requests).toEqual([{ addonId: ID, unlessUndone: true }]);
     expect(entry(h.dataDir)).toMatchObject({ grant: GRANT, profiles: ["defaut"] });
-    expect(existsSync(join(h.dataDir, "extensions", "signes", "ma-ext.xpi"))).toBe(true);
+    expect(existsSync(join(h.dataDir, "extensions", "signed", "ma-ext.xpi"))).toBe(true);
   });
 
   it("source changed while closed, active nowhere: nothing sent at startup, signed when next activated", async () => {
@@ -624,7 +624,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     const f = firefox();
     const h = launch(amo, f, { prepare });
     await h.rpc.request("extensions.pret", {});
-    const registry = () => JSON.parse(readFileSync(join(h.dataDir, "extensions", "etat.json"), "utf8"));
+    const registry = () => JSON.parse(readFileSync(join(h.dataDir, "extensions", "state.json"), "utf8"));
     await h.rpc.request("extensions.aTourne", { addonId: ID, profile: "defaut", readable: true });
     expect(entry(h.dataDir)?.consoleMasquee).toBeUndefined();
     for (let i = 0; i < 2; i++) await h.rpc.request("extensions.aTourne", { addonId: ID, profile: "defaut", readable: false });
@@ -703,7 +703,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     expect(f.calls.every((a) => a.active === false)).toBe(true);
     expect(f.installs).toEqual([]);
     expect(f.activations.some((a) => a.active)).toBe(false);
-    expect(existsSync(join(h.dataDir, "extensions", "signes", "ma-ext.xpi"))).toBe(true);
+    expect(existsSync(join(h.dataDir, "extensions", "signed", "ma-ext.xpi"))).toBe(true);
   });
 
   it("a removal seen while the host was down comes with pret: not reinstalled, grant deleted", async () => {
@@ -720,9 +720,9 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     const amo = await fakeAmo();
     const f = firefox();
     // A directory where the registry should be: reading it throws.
-    const h = launch(amo, f, { prepare: (d) => (source(d), mkdirSync(join(d, "extensions", "etat.json"), { recursive: true })) });
+    const h = launch(amo, f, { prepare: (d) => (source(d), mkdirSync(join(d, "extensions", "state.json"), { recursive: true })) });
     await expect(h.rpc.request("extensions.pret", {})).rejects.toThrow();
-    rmSync(join(h.dataDir, "extensions", "etat.json"), { recursive: true });
+    rmSync(join(h.dataDir, "extensions", "state.json"), { recursive: true });
     grant(h.dataDir);
     await h.rpc.request("extensions.pret", {});
     expect(f.installs).toHaveLength(1);
@@ -734,7 +734,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     f.broken = true;
     const h = launch(amo, f, { prepare });
     expect(await tool(h, "reload_extension", { id: "ma-ext" })).toContain(installationImpossible("boom"));
-    expect(existsSync(join(h.dataDir, "extensions", "signes", "ma-ext.json"))).toBe(false);
+    expect(existsSync(join(h.dataDir, "extensions", "signed", "ma-ext.json"))).toBe(false);
   });
 
   it("extensions.profilsPrives: the profile leaves the grant, its tabs reloaded, the add-on disabled; a profile not in use changes nothing", async () => {
@@ -754,7 +754,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     const amo = await fakeAmo();
     const f = firefox();
     f.spaces.push({ id: "e2", name: "Lecture", profile: "defaut", private: false }, { id: "e3", name: "Secret", profile: "secret", private: true });
-    const h = launch(amo, f, { prepare: (d) => (prepare(d), mkdirSync(join(d, "espace", "extensions", "jamais"), { recursive: true })) });
+    const h = launch(amo, f, { prepare: (d) => (prepare(d), mkdirSync(join(d, "workspace", "extensions", "jamais"), { recursive: true })) });
     await h.rpc.request("extensions.pret", {});
     const line = { key: "agent:ma-ext", name: "Cacheur", source: "agent", active: true, alsoIn: ["Lecture"], greyedOut: null, profiles: ["defaut"] };
     const never = { key: "agent:jamais", name: "jamais", source: "agent", active: false, alsoIn: [], greyedOut: null, profiles: [] };
@@ -792,7 +792,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     const grant = f.handlers["extensions.grant"]!;
     const install = f.handlers["extensions.install"]!;
     const withoutGrant: boolean[] = [];
-    const notGranted = () => !existsSync(join(h.dataDir, "extensions", "etat.json")) || !entry(h.dataDir)?.accord;
+    const notGranted = () => !existsSync(join(h.dataDir, "extensions", "state.json")) || !entry(h.dataDir)?.accord;
     f.handlers["extensions.grant"] = (p, s) => (withoutGrant.push(notGranted()), grant(p, s));
     f.handlers["extensions.install"] = (p, s) => (withoutGrant.push(notGranted()), install(p, s));
     const h = launch(amo, f, { prepare: source });
@@ -833,7 +833,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     const h = launch(amo, f, {
       prepare: (d) => {
         source(d);
-        const path = join(d, "espace", "extensions", "ma-ext", "manifest.json");
+        const path = join(d, "workspace", "extensions", "ma-ext", "manifest.json");
         writeFileSync(path, JSON.stringify({ ...JSON.parse(readFileSync(path, "utf8")), permissions: ["nativeMessaging"] }));
       },
     });
@@ -851,7 +851,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     const r = await tool(h, "reload_extension", { id: "ma-ext" });
     expect(r).toContain("state : disabled");
     expect(r).toContain("request_extension");
-    expect(entry(h.dataDir)).toMatchObject({ grant: GRANT, disabled: { reason: "portee-elargie" } });
+    expect(entry(h.dataDir)).toMatchObject({ grant: GRANT, disabled: { reason: "scope-widened" } });
     expect(f.activations.at(-1)).toEqual({ addonId: ID, active: false });
     expect(await tool(h, "request_extension", { id: "ma-ext" })).toBe("Activée dans « Perso ».");
     expect(f.cards).toHaveLength(2);
@@ -882,7 +882,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     const f = firefox();
     const h = launch(amo, f, { prepare: source });
     expect(await tool(h, "request_extension", { id: "ma-ext" })).toBe("Activée dans « Perso ».");
-    const path = join(h.dataDir, "espace", "extensions", "ma-ext", "manifest.json");
+    const path = join(h.dataDir, "workspace", "extensions", "ma-ext", "manifest.json");
     const before = readFileSync(path, "utf8");
     writeFileSync(path, JSON.stringify({ ...JSON.parse(before), permissions: ["nativeMessaging"] }));
     expect(await tool(h, "reload_extension", { id: "ma-ext" })).toContain("state : refused");
@@ -923,7 +923,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     await h.rpc.request("extensions.pret", {});
     source(h.dataDir, { hosts: [HOST, "https://exemple.com/*"] });
     expect(await tool(h, "request_extension", { id: "ma-ext", space: "Travail" })).toBe(PRIVATE_PROFILE_ERROR);
-    expect(entry(h.dataDir)).toMatchObject({ grant: GRANT, profiles: ["defaut"], disabled: { reason: "portee-elargie" } });
+    expect(entry(h.dataDir)).toMatchObject({ grant: GRANT, profiles: ["defaut"], disabled: { reason: "scope-widened" } });
     expect(f.activations.at(-1)).toEqual({ addonId: ID, active: false });
   });
 
@@ -938,7 +938,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     };
     const h = launch(amo, f, { prepare: source });
     expect(await tool(h, "request_extension", { id: "ma-ext", space: "Travail" })).toBe("Espace disparu pendant la carte : rien n'est activé");
-    expect(existsSync(join(h.dataDir, "extensions", "etat.json")) && entry(h.dataDir)).toBeFalsy();
+    expect(existsSync(join(h.dataDir, "extensions", "state.json")) && entry(h.dataDir)).toBeFalsy();
     expect(f.uninstalls).toEqual([ID]);
   });
 
@@ -955,7 +955,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     await h.rpc.request("agent.demarrer", { window: "f1", size: { cols: 80, rows: 24 } });
     expect(await call).toBe(REQUEST_REMOVED);
     expect(amo.sends).toEqual([]);
-    expect(existsSync(join(h.dataDir, "extensions", "etat.json")) && entry(h.dataDir)).toBeFalsy();
+    expect(existsSync(join(h.dataDir, "extensions", "state.json")) && entry(h.dataDir)).toBeFalsy();
     expect(existsSync(join(h.dataDir, "extensions", "copies", "ma-ext.attente"))).toBe(false);
   });
   it("three crashes in a minute disable it everywhere; Réactiver brings it back", async () => {
@@ -969,7 +969,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     expect(await tool(h, "list_extensions")).toContain("erreurs : aucune");
     h.rpc.notify("extensions.plantage", { addonId: ID });
     await until(() => f.activations.at(-1)?.active === false);
-    expect(entry(h.dataDir)).toMatchObject({ profiles: ["defaut"], disabled: { reason: "plantages" } });
+    expect(entry(h.dataDir)).toMatchObject({ profiles: ["defaut"], disabled: { reason: "crashes" } });
     expect(await tool(h, "list_extensions")).toContain(`erreurs : ${DISABLED_CRASHES}`);
     expect((await h.rpc.request<{ disabled: string | null }[]>("extensions.liste"))[0]!.disabled).toBe(DISABLED_CRASHES);
     expect(await h.rpc.request("extensions.reactiver", { key: "agent:ma-ext" })).toEqual({ ok: true });
@@ -990,7 +990,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     expect(entry(h.dataDir)).toMatchObject({ disabled: null });
     h.rpc.notify("extensions.plantage", { addonId: ID, at: t + 1000 });
     await until(() => f.activations.at(-1)?.active === false);
-    expect(entry(h.dataDir)).toMatchObject({ disabled: { reason: "plantages" } });
+    expect(entry(h.dataDir)).toMatchObject({ disabled: { reason: "crashes" } });
   });
 });
 
@@ -1000,7 +1000,7 @@ describe("agent applications", { timeout: 30_000 }, () => {
   type List = { workshop: string; apps: { folder: string; state: string; port?: number; favicon?: string; lastLaunch?: string }[] };
   /** Writes a project with an "ok" server: projets/essai, named Essai. */
   const writeAttempt = (dataDir: string) => {
-    const path = join(dataDir, "espace", "projets", "essai");
+    const path = join(dataDir, "workspace", "projects", "essai");
     mkdirSync(path, { recursive: true });
     writeFileSync(
       join(path, "serveur.mjs"),
@@ -1011,7 +1011,7 @@ createServer((req, res) => {
 }).listen(Number(process.env.PORT));
 `,
     );
-    writeFileSync(join(path, "webaios.json"), JSON.stringify({ type: "application", launch: "node serveur.mjs", name: "Essai" }));
+    writeFileSync(join(path, "webaios.json"), JSON.stringify({ type: "app", launch: "node serveur.mjs", name: "Essai" }));
   };
   /** A host with the essai project and a fake chrome noting the apps.* requests. */
   const startApps = (env: Record<string, string> = {}, handlers: Record<string, Handler> = {}) => {
@@ -1035,7 +1035,7 @@ createServer((req, res) => {
   const launched = async (h: Host, chrome: { openings: unknown[] }) => {
     act(h, "lancer");
     await until(() => chrome.openings.length > 0, 20_000);
-    expect((await attempt(h))?.state).toBe("en-marche");
+    expect((await attempt(h))?.state).toBe("running");
   };
 
   it("applications.liste lists essai with atelier ok, without waiting for docker", async () => {
@@ -1045,7 +1045,7 @@ createServer((req, res) => {
     const l = await list(h);
     expect(Date.now() - t).toBeLessThan(4000);
     expect(l.workshop).toBe("ok");
-    expect(l.apps).toEqual([expect.objectContaining({ folder: "essai", name: "Essai", state: "arretee" })]);
+    expect(l.apps).toEqual([expect.objectContaining({ folder: "essai", name: "Essai", state: "stopped" })]);
   });
 
   it("lancer asks the chrome to open the app on a port of WEBAIOS_APP_PORTS, and notes dernierLancement", async () => {
@@ -1067,10 +1067,10 @@ createServer((req, res) => {
     h.rpc.notify("applications.fenetreFermee", { folder: "essai", byUser: false });
     await new Promise((r) => setTimeout(r, 500));
     expect(stops(h).slice(before.length)).not.toContain("WEBAIOS_APP=essai");
-    expect((await attempt(h))?.state).toBe("en-marche");
+    expect((await attempt(h))?.state).toBe("running");
     h.rpc.notify("applications.fenetreFermee", { folder: "essai", byUser: true });
     await until(() => stops(h).slice(before.length).includes("WEBAIOS_APP=essai"));
-    expect((await attempt(h))?.state).toBe("arretee");
+    expect((await attempt(h))?.state).toBe("stopped");
   });
 
   it("supprimer is refused while running, and for ../x", async () => {
@@ -1081,24 +1081,24 @@ createServer((req, res) => {
     act(h, "supprimer", "../x");
     await new Promise((r) => setTimeout(r, 500));
     await list(h);
-    expect(existsSync(join(h.root, "projets", "essai", "webaios.json"))).toBe(true);
+    expect(existsSync(join(h.root, "projects", "essai", "webaios.json"))).toBe(true);
     expect(existsSync(join(h.root, "x"))).toBe(true);
     expect(chrome.erased).toEqual([]);
   });
 
   it("supprimer erases the folder, the memory and asks apps.effacer", async () => {
     const { h, chrome } = startApps();
-    const memory = join(h.dataDir, "applications.json");
+    const memory = join(h.dataDir, "apps.json");
     h.rpc.notify("applications.noter", { folder: "essai", frame: { x: 1, y: 2, width: 300, height: 200 } });
     await until(() => existsSync(memory) && readFileSync(memory, "utf8").includes("essai"));
     act(h, "supprimer");
-    await until(() => !existsSync(join(h.root, "projets", "essai")));
+    await until(() => !existsSync(join(h.root, "projects", "essai")));
     await until(() => chrome.erased.length > 0);
     expect(chrome.erased).toEqual(["essai"]);
     await until(() => !readFileSync(memory, "utf8").includes("essai"));
     expect((await list(h)).apps).toEqual([]);
     // Outside the container's mount.
-    expect(existsSync(join(h.root, "applications.json"))).toBe(false);
+    expect(existsSync(join(h.root, "apps.json"))).toBe(false);
   });
 
   it("noter keeps a data:image favicon of 64 KB at most", async () => {

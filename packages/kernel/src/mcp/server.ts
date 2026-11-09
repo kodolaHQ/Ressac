@@ -437,7 +437,7 @@ function createToolsServer(
       },
       protect(async ({ folder: folder }) => {
         const app = await applications.launch(folder);
-        if (app.state === "erreur") return text(`Application ${folder} en erreur : ${app.error ?? "inconnue"}`, true);
+        if (app.state === "error") return text(`Application ${folder} en erreur : ${app.error ?? "inconnue"}`, true);
         const url = `http://localhost:${app.port}`;
         // The window opens right after launch: we wait for it a little, without blocking if it does not come. Relaunched on
         // another port, it still shows the old one while reloading: access only targets the new one.
@@ -630,9 +630,9 @@ function registerWidgetsTools(
     }),
   );
 
-  // For a widget with an account and no grant, "partielle" is announced "reussie": the status comes from traces the widget's
+  // For a widget with an account and no grant, "partial" is announced "succeeded": the status comes from traces the widget's
   // code could forge, and only reussie, échouée, interrompue and accord requis are shown.
-  const hiddenStatus = (status: Execution["status"]) => (status === "partielle" ? "reussie" : status);
+  const hiddenStatus = (status: Execution["status"]) => (status === "partial" ? "succeeded" : status);
 
   server.registerTool(
     "widget_runs",
@@ -694,7 +694,7 @@ function registerActionsTools(
   }
 
   const json = (x: unknown) => JSON.stringify(x, null, 2);
-  const hiddenStatus = (status: Execution["status"]) => (status === "partielle" ? "reussie" : status);
+  const hiddenStatus = (status: Execution["status"]) => (status === "partial" ? "succeeded" : status);
 
   server.registerTool(
     "launch_action",
@@ -708,7 +708,7 @@ function registerActionsTools(
     protect(async ({ id, input: input }) => {
       const before = await read(id);
       if (before.input !== null && (input === undefined || input.trim() === "")) {
-        return text(json({ status: "invalide", error: requiredInput(before.input) }));
+        return text(json({ status: "invalid", error: requiredInput(before.input) }));
       }
       const end = await a.tools.launch(id, input);
       const after = (await a.tools.read(id)) ?? before;

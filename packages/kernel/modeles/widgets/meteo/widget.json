@@ -3,15 +3,15 @@
   "description": "Le temps qu'il fait chez toi, heure par heure puis jour par jour",
   "sizes": {
     "min": {
-      "l": 2,
+      "w": 2,
       "h": 2
     },
     "max": {
-      "l": 6,
+      "w": 6,
       "h": 4
     },
     "default": {
-      "l": 3,
+      "w": 3,
       "h": 2
     }
   },

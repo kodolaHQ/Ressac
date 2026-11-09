@@ -55,7 +55,7 @@ export function withMemory<T>(dataFolder: string, f: () => Promise<T>): Promise<
 
 /** The blocks' memory, or empty if absent, damaged or too big. */
 export async function readMemory(dataFolder: string): Promise<BlocksMemory> {
-  const path = join(dataFolder, "memoire.json");
+  const path = join(dataFolder, "memory.json");
   try {
     if ((await stat(path)).size > MEMORY_MAX_BYTES) return {};
     return MemoryFile.parse(JSON.parse(await readFile(path, "utf8"))).blocks as BlocksMemory;
@@ -68,7 +68,7 @@ export async function readMemory(dataFolder: string): Promise<BlocksMemory> {
 export async function writeMemory(dataFolder: string, m: BlocksMemory): Promise<boolean> {
   const text = JSON.stringify({ version: 1, blocks: m });
   if (Buffer.byteLength(text) > MEMORY_MAX_BYTES) return false;
-  const target = join(dataFolder, "memoire.json");
+  const target = join(dataFolder, "memory.json");
   await mkdir(dataFolder, { recursive: true });
   const temp = `${target}.${randomUUID()}.tmp`;
   try {
@@ -82,6 +82,6 @@ export async function writeMemory(dataFolder: string, m: BlocksMemory): Promise<
 
 /** Erases the runs and the memory (grant withdrawal, widget removed). */
 export async function clearRunsAndMemory(dataFolder: string): Promise<void> {
-  await rm(join(dataFolder, "executions"), { recursive: true, force: true });
-  await rm(join(dataFolder, "memoire.json"), { force: true });
+  await rm(join(dataFolder, "runs"), { recursive: true, force: true });
+  await rm(join(dataFolder, "memory.json"), { force: true });
 }

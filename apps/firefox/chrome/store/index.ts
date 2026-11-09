@@ -148,7 +148,7 @@ async function start(): Promise<WebAiOsStore> {
   // The site apps' served home copies too (the same sanitizer).
   await IOUtils.remove(PathUtils.join(dataDir, "webaios-sites"), { recursive: true, ignoreAbsent: true }).catch((e) => console.warn("[sites] copies non effacées :", e));
   // The agent components' copies too.
-  await IOUtils.remove(PathUtils.join(dataDir, "webaios-composants"), { recursive: true, ignoreAbsent: true }).catch((e) => console.warn("[actions] copies non effacées :", e));
+  await IOUtils.remove(PathUtils.join(dataDir, "webaios-components"), { recursive: true, ignoreAbsent: true }).catch((e) => console.warn("[actions] copies non effacées :", e));
   migrateContainers();
   let setAside: string | null = null;
   const store = createStore(await loadSession(dataDir, (p) => (setAside = p)));

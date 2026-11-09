@@ -16,7 +16,7 @@ export const HomeTheme = z.object({
   accent: color.optional(),
   border: color.optional(),
   radius: z.number().int().min(0).max(24).optional(),
-  space: z.number().int().min(0).max(24).optional(),
+  spacing: z.number().int().min(0).max(24).optional(),
   font: z.enum(["system", "serif", "mono"]).optional(),
 }).strict();
 export type HomeTheme = z.infer<typeof HomeTheme>;

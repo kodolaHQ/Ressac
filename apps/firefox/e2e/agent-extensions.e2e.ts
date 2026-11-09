@@ -34,14 +34,14 @@ const folders = () => {
   dirs.push(d.dataDir, d.profile);
   return d;
 };
-const root = (dataDir: string) => path.join(dataDir, "espace");
+const root = (dataDir: string) => path.join(dataDir, "workspace");
 const launch = async (o: Parameters<typeof launchWithAmo>[0]) => {
   const w = await launchWithAmo(o);
   opened.push(w);
   return w;
 };
 const registry = (dataDir: string) =>
-  (JSON.parse(readFileSync(path.join(dataDir, "extensions", "etat.json"), "utf8")) as { extensions: Record<string, unknown> }).extensions;
+  (JSON.parse(readFileSync(path.join(dataDir, "extensions", "state.json"), "utf8")) as { extensions: Record<string, unknown> }).extensions;
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 /** The first host answered extensions.pret: every granted extension is handled. */
 const settle = (w: LaunchedWebAiOs) =>
@@ -80,7 +80,7 @@ describe("agent extensions: registry, signed install, restart", () => {
     writeAgentExtension(root(f.dataDir), "cacheur", { "manifest.json": manifest([HOST]), "cache.css": CACHE });
     // The registry as WebAiOs would write it, but in the agent's folder (and in the extension's own).
     grant(root(f.dataDir), "cacheur", GRANT);
-    copyFileSync(path.join(root(f.dataDir), "extensions", "etat.json"), path.join(root(f.dataDir), "extensions", "cacheur", "etat.json"));
+    copyFileSync(path.join(root(f.dataDir), "extensions", "state.json"), path.join(root(f.dataDir), "extensions", "cacheur", "state.json"));
     const w = await launch(f);
     await settle(w);
     expect(await agentAddons(w.marionette)).toEqual([]);
@@ -139,7 +139,7 @@ describe("agent extensions: registry, signed install, restart", () => {
     await until(() => amo.sends.some((e) => e.version === "1.0.0.2"));
     expect(await agentAddons(w.marionette)).toEqual([{ id: ID, version: "1.0.0.1", isActive: true }]);
     await w.close();
-    expect(JSON.parse(readFileSync(path.join(f.dataDir, "extensions", "signes", "cacheur.json"), "utf8")).version).toBe("1.0.0.1");
+    expect(JSON.parse(readFileSync(path.join(f.dataDir, "extensions", "signed", "cacheur.json"), "utf8")).version).toBe("1.0.0.1");
 
     w = await launch(f);
     await waitAddon(w, "1.0.0.3");

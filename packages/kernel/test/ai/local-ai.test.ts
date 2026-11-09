@@ -20,7 +20,7 @@ const keep = <T extends FakeServer>(s: T) => (toClose.push(s), s);
 const fast = { pollMs: 10, idleCheckMs: 10 };
 /** Successful fake git clone: creates the repo in the clone folder. */
 const clone = (folder: string) => async (): Promise<Response> => {
-  await mkdir(join(folder, "kev.clone-en-cours", ".git"), { recursive: true });
+  await mkdir(join(folder, "kev.clone-in-progress", ".git"), { recursive: true });
   return { code: 0 };
 };
 
@@ -295,9 +295,9 @@ describe("LocalAi", () => {
     const cmds = calls.map((a) => [a.command, ...a.args].join(" "));
     expect(cmds[0]).toBe("uv --version");
     // Cloned alongside then renamed: an interrupted clone never leaves a half-filled `kev/.git`.
-    expect(cmds[1]).toBe(`git clone --depth 1 --branch kev-1.0 https://github.com/jaredpalmer/kev.git ${join(folder, "kev.clone-en-cours")}`);
+    expect(cmds[1]).toBe(`git clone --depth 1 --branch kev-1.0 https://github.com/jaredpalmer/kev.git ${join(folder, "kev.clone-in-progress")}`);
     expect(existsSync(join(folder, "kev", ".git"))).toBe(true);
-    expect(existsSync(join(folder, "kev.clone-en-cours"))).toBe(false);
+    expect(existsSync(join(folder, "kev.clone-in-progress"))).toBe(false);
     expect(cmds.some((c) => c.includes("rev-parse HEAD"))).toBe(true);
     expect(cmds.findIndex((c) => c.startsWith("uv sync --extra serve"))).toBeGreaterThan(1);
     expect(cmds.at(-1)).toBe("ollama pull gemma4:e4b-mlx");
@@ -357,7 +357,7 @@ describe("LocalAi : quitter annule l'installation", () => {
     await expect(installation).rejects.toThrow("Installation annulée");
     expect(fake.received[0]?.aborted).toBe(true);
     expect(existsSync(join(folder, "kev"))).toBe(false);
-    expect(existsSync(join(folder, "kev.clone-en-cours"))).toBe(false);
+    expect(existsSync(join(folder, "kev.clone-in-progress"))).toBe(false);
     await expect(ai.install(() => {})).rejects.toThrow("IA locale fermée");
 
     // Next launch: new LocalAi, the install restarts from the beginning.
@@ -403,12 +403,12 @@ describe("LocalAi : quitter annule l'installation", () => {
     const start = Date.now();
     await ai.close();
     expect(Date.now() - start).toBeLessThan(1000);
-    expect(existsSync(join(folder, "kev.clone-en-cours", ".git"))).toBe(true); // the deaf process still holds its files
+    expect(existsSync(join(folder, "kev.clone-in-progress", ".git"))).toBe(true); // the deaf process still holds its files
 
     const seenByClone: boolean[] = [];
     const { run: run } = fakeRunner([
       [/^git clone/, async () => {
-        seenByClone.push(existsSync(join(folder, "kev.clone-en-cours")));
+        seenByClone.push(existsSync(join(folder, "kev.clone-in-progress")));
         return clone(folder)();
       }],
       [/rev-parse HEAD/, { code: 0, stdout: COMMIT }],

@@ -136,7 +136,7 @@ export function scopesOf(e: ExtensionsState): Scopes {
 }
 
 /**
- * The agent's extensions (registry `<dossier>/etat.json`, copies, signed .xpi), kept in the kernel host; the chrome
+ * The agent's extensions (registry `<dossier>/state.json`, copies, signed .xpi), kept in the kernel host; the chrome
  * installs, enables, disables or uninstalls by RPC. One operation at a time per extension.
  */
 export class ExtensionsAgent {
@@ -167,8 +167,8 @@ export class ExtensionsAgent {
     // First: the chrome's checkpoints wait for it (an add-on kept by Firefox starts before this host).
     this.o.rpc.notify("extensions.portees", scopesOf(await readExtensionsState(this.o.folder)));
     for (const [sub, rest] of [
-      ["copies", /\.(tmp|ancienne|attente)$/],
-      ["signes", /\.(attente|envoi)\.xpi$/],
+      ["copies", /\.(tmp|ancienne|pending)$/],
+      ["signed", /\.(pending|upload)\.xpi$/],
     ] as const) {
       const names = await readdir(join(this.o.folder, sub)).catch(() => [] as string[]);
       for (const name of names) if (rest.test(name)) await rm(join(this.o.folder, sub, name), { recursive: true, force: true }).catch(() => undefined);
@@ -245,7 +245,7 @@ export class ExtensionsAgent {
     const key = this.key(addonId.slice(0, -ID_SUFFIX.length))!;
     const r = await this.writeKey(key, (e) => {
       const x = e.extensions[key]!;
-      return x.disabled ? e : { ...e, extensions: { ...e.extensions, [key]: { ...x, disabled: { reason: "plantages" as const, at: new Date().toISOString() } } } };
+      return x.disabled ? e : { ...e, extensions: { ...e.extensions, [key]: { ...x, disabled: { reason: "crashes" as const, at: new Date().toISOString() } } } };
     });
     if (!r.ok) throw new Error(r.error);
     console.warn(`[extensions] ${key} désactivée : ${DISABLED_CRASHES}`);
@@ -389,7 +389,7 @@ export class ExtensionsAgent {
         const spaces = nav.spaces.filter((e) => x.profiles.includes(e.profile));
         const id = this.id(key);
         // Its kept error, its disabling, then its console's errors as extension_console filters them.
-        const errors = [...(this.sendErrors.has(key) ? [this.sendErrors.get(key)!] : []), ...(x.disabled ? [x.disabled.reason === "plantages" ? DISABLED_CRASHES : DISABLED_SCOPE] : [])];
+        const errors = [...(this.sendErrors.has(key) ? [this.sendErrors.get(key)!] : []), ...(x.disabled ? [x.disabled.reason === "crashes" ? DISABLED_CRASHES : DISABLED_SCOPE] : [])];
         if (id && !x.profiles.some((p) => privateProfiles.has(p))) errors.push(...this.consoles.errorsForAgent(addonIdOf(id), this.agentFilter(state, key)).slice(-PAGE_CONSOLE_ERRORS));
         return {
           key: key,
@@ -416,7 +416,7 @@ export class ExtensionsAgent {
       const manifest = await readFile(join(this.o.folder, "copies", id, "manifest.json"), "utf8").then((t) => JSON.parse(t) as unknown, () => null);
       // The granted scope; without a grant (never for a loaded entry), the manifest's on disk.
       const scope = x.grant ?? parseManifest(manifest, { source: "agent" }).scope;
-      const disabled = x.disabled ? (x.disabled.reason === "plantages" ? DISABLED_CRASHES : DISABLED_SCOPE) : null;
+      const disabled = x.disabled ? (x.disabled.reason === "crashes" ? DISABLED_CRASHES : DISABLED_SCOPE) : null;
       lignes.push({
         key: key,
         name: x.name,
@@ -467,7 +467,7 @@ export class ExtensionsAgent {
   async reactivate(key: string): Promise<ExtensionResult> {
     const r = await this.writeKey(key, (e) => {
       const x = e.extensions[key]!;
-      return x.disabled?.reason === "plantages" ? { ...e, extensions: { ...e.extensions, [key]: { ...x, disabled: null } } } : e;
+      return x.disabled?.reason === "crashes" ? { ...e, extensions: { ...e.extensions, [key]: { ...x, disabled: null } } } : e;
     });
     const id = this.id(key);
     if (r.ok && id) this.consoles.forget(addonIdOf(id));
@@ -481,7 +481,7 @@ export class ExtensionsAgent {
     const x = state.extensions[key];
     if (!id || !x) return { ok: false, error: `Extension inconnue : ${key}` };
     if (state.allCut) return { ok: false, error: REVIEW_DURING_OUTAGE };
-    if (x.disabled?.reason !== "portee-elargie") return { ok: false, error: NOTHING_TO_REVIEW };
+    if (x.disabled?.reason !== "scope-widened") return { ok: false, error: NOTHING_TO_REVIEW };
     const nav = await this.browser();
     const privates = privateProfilesOf(nav);
     const active = nav.windows.find((f) => f.id === win)?.activeSpace;
@@ -545,7 +545,7 @@ export class ExtensionsAgent {
     const state = await readExtensionsState(this.o.folder);
     if (state.allCut) return { ok: false, error: ALL_CUT_AGENT };
     const known = state.extensions[key];
-    if (known?.disabled?.reason === "plantages") return { ok: false, error: DISABLED_CRASHES };
+    if (known?.disabled?.reason === "crashes") return { ok: false, error: DISABLED_CRASHES };
     if (known?.grant && !known.disabled && known.profiles.includes(profile)) {
       // Already granted and active: nothing asked again, but a folder gone is said.
       const path = await pathMarkers(this.o.agentFolder, id);
@@ -646,7 +646,7 @@ export class ExtensionsAgent {
       await this.edit((e) => (key in e.extensions ? remove(e, key) : e));
       this.consoles.forget(addonIdOf(id));
       this.sendErrors.delete(key);
-      for (const f of [join("copies", id), join("copies", `${id}.attente`), join("signes", `${id}.xpi`), join("signes", `${id}.json`)])
+      for (const f of [join("copies", id), join("copies", `${id}.pending`), join("signed", `${id}.xpi`), join("signed", `${id}.json`)])
         await rm(join(this.o.folder, f), { recursive: true, force: true });
     });
   }
@@ -755,7 +755,7 @@ export class ExtensionsAgent {
     return write((e, privates) => {
       if (e.allCut) throw new Error(ALL_CUT_AGENT);
       const d = e.extensions[key]?.disabled;
-      if (d) throw new Error(d.reason === "plantages" ? DISABLED_CRASHES : DISABLED_SCOPE);
+      if (d) throw new Error(d.reason === "crashes" ? DISABLED_CRASHES : DISABLED_SCOPE);
       return enable(e, key, profile, privates);
     });
   }
@@ -812,7 +812,7 @@ export class ExtensionsAgent {
     const active = await this.active(key);
     if (active && this.toSign.delete(key)) return this.signEnabled(id, key);
     const kept = await this.guard(id);
-    if (kept) await this.install(id, join(this.o.folder, "signes", `${id}.xpi`), kept.version, active);
+    if (kept) await this.install(id, join(this.o.folder, "signed", `${id}.xpi`), kept.version, active);
     await this.o.rpc.request("extensions.activer", { addonId: addonIdOf(id), active: active });
   }
 
@@ -828,12 +828,12 @@ export class ExtensionsAgent {
   private async activeAfterSend(key: string): Promise<boolean> {
     const e = await readExtensionsState(this.o.folder);
     const x = e.extensions[key];
-    return activeIn(e, x?.disabled?.reason === "portee-elargie" ? { ...x, disabled: null } : x);
+    return activeIn(e, x?.disabled?.reason === "scope-widened" ? { ...x, disabled: null } : x);
   }
 
-  /** The last signed and installed version (`signes/<id>.json`), if its .xpi is there. */
+  /** The last signed and installed version (`signed/<id>.json`), if its .xpi is there. */
   private async guard(id: string): Promise<{ version: string; hash: string } | null> {
-    const signs = join(this.o.folder, "signes");
+    const signs = join(this.o.folder, "signed");
     if (!(await lstat(join(signs, `${id}.xpi`)).then(() => true, () => false))) return null;
     return readFile(join(signs, `${id}.json`), "utf8").then((t) => JSON.parse(t) as { version: string; hash: string }, () => null);
   }
@@ -865,14 +865,14 @@ export class ExtensionsAgent {
       await clear();
       await this.edit((e) => {
         const x = e.extensions[key];
-        if (!x || x.disabled?.reason === "portee-elargie") return e;
-        return { ...e, extensions: { ...e.extensions, [key]: { ...x, disabled: { reason: "portee-elargie", at: new Date().toISOString() } } } };
+        if (!x || x.disabled?.reason === "scope-widened") return e;
+        return { ...e, extensions: { ...e.extensions, [key]: { ...x, disabled: { reason: "scope-widened", at: new Date().toISOString() } } } };
       });
       await this.apply(id, key);
       return { ok: false, error: DISABLED_SCOPE };
     }
 
-    const signs = join(this.o.folder, "signes");
+    const signs = join(this.o.folder, "signed");
     let change = true;
     // Unchanged since the last signing (startup, a grant in another profile, or a reload): appliquer below reinstalls
     // the kept .xpi if it is missing, nothing is sent; a reload restarts the running one.
@@ -933,7 +933,7 @@ export class ExtensionsAgent {
             version: analysis.version,
             grant: o.grant,
             modifiedAt: now,
-            disabled: base.disabled?.reason === "plantages" ? base.disabled : null,
+            disabled: base.disabled?.reason === "crashes" ? base.disabled : null,
           };
           return enable({ ...e, extensions: { ...e.extensions, [key]: entry } }, key, a.profile, privates);
         });
@@ -954,7 +954,7 @@ export class ExtensionsAgent {
         version: analysis.version,
         modifiedAt: change || !x.modifiedAt ? now : x.modifiedAt,
         // Back within its grant: it runs again. Not after crashes (re-enabled by hand).
-        disabled: x.disabled?.reason === "portee-elargie" && !widenedScope(x.grant, analysis.scope) ? null : x.disabled,
+        disabled: x.disabled?.reason === "scope-widened" && !widenedScope(x.grant, analysis.scope) ? null : x.disabled,
       };
       return { ...e, extensions: { ...e.extensions, [key]: entry } };
     });
@@ -974,7 +974,7 @@ export class ExtensionsAgent {
         await this.edit((e) => {
           const y = e.extensions[key];
           if (!y || y.disabled) return e;
-          return { ...e, extensions: { ...e.extensions, [key]: { ...y, disabled: { reason: "portee-elargie", at: new Date().toISOString() } } } };
+          return { ...e, extensions: { ...e.extensions, [key]: { ...y, disabled: { reason: "scope-widened", at: new Date().toISOString() } } } };
         });
       await this.apply(id, key);
     } catch (e) {
@@ -983,7 +983,7 @@ export class ExtensionsAgent {
     }
   }
 
-  /** nextVersion → firefoxManifest → zipper → signer (signes/<id>.attente.xpi) → extensions.installer → signes/<id>.xpi. */
+  /** nextVersion → firefoxManifest → zipper → signer (signed/<id>.pending.xpi) → extensions.installer → signed/<id>.xpi. */
   private async signAndInstall(id: string, p: { staging: string; originalBackground: string | undefined }, active: boolean): Promise<{ ok: true; version: string } | { ok: false; error: string }> {
     const amoKey = await readAmoKey(this.env);
     if (!amoKey) return { ok: false, error: KEYS_ABSENT };
@@ -992,9 +992,9 @@ export class ExtensionsAgent {
     const manifest = firefoxManifest(JSON.parse(await readFile(path, "utf8")), id, n, p.originalBackground);
     await writeFile(path, JSON.stringify(manifest, null, 2));
     const version = String(manifest.version);
-    const signs = join(this.o.folder, "signes");
-    const sending = join(signs, `${id}.envoi.xpi`);
-    const waiting = join(signs, `${id}.attente.xpi`);
+    const signs = join(this.o.folder, "signed");
+    const sending = join(signs, `${id}.upload.xpi`);
+    const waiting = join(signs, `${id}.pending.xpi`);
     await mkdir(signs, { recursive: true });
     try {
       await zipper(p.staging, sending);
@@ -1016,11 +1016,11 @@ export class ExtensionsAgent {
   }
 
   /**
-   * The controlled copy of `<dossierAgent>/<id>` in `copies/<id>.attente` (path without
+   * The controlled copy of `<dossierAgent>/<id>` in `copies/<id>.pending` (path without
    * links, checked before and after), plus the Firefox refusals. A refusal leaves no staging copy.
    */
   private async prepare(id: string): Promise<Preparation | { ok: false; denial: string[] }> {
-    const staging = join(this.o.folder, "copies", `${id}.attente`);
+    const staging = join(this.o.folder, "copies", `${id}.pending`);
     const deny = async (denial: string[]) => (await rm(staging, { recursive: true, force: true }), { ok: false as const, denial: denial });
     await rm(staging, { recursive: true, force: true });
     const before = await pathMarkers(this.o.agentFolder, id);
@@ -1049,8 +1049,8 @@ export class ExtensionsAgent {
       const manifest = JSON.parse(await readFile(join(staging, "manifest.json"), "utf8"));
       const denial = firefoxDenial(manifest, await readdir(staging, { recursive: true }));
       if (denial.length > 0) return deny(denial);
-      // The original classic background, read from the copy's own generated webaios-fond.js (never the agent's folder again).
-      const background = /^importScripts\("webaios-garde-fond\.js", ("(?:[^"\\]|\\.)*")\);$/m.exec(await readFile(join(staging, "webaios-fond.js"), "utf8"));
+      // The original classic background, read from the copy's own generated webaios-background.js (never the agent's folder again).
+      const background = /^importScripts\("webaios-background-guard\.js", ("(?:[^"\\]|\\.)*")\);$/m.exec(await readFile(join(staging, "webaios-background.js"), "utf8"));
       return { ok: true, analysis: r.analysis, hash: r.hash, staging, originalBackground: background ? (JSON.parse(background[1]!) as string) : undefined };
     } catch (e) {
       return deny([`Copie impossible : ${(e as Error).message}`]);

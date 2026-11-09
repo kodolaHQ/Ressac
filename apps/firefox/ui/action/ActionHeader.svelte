@@ -43,11 +43,11 @@
     return Number.isNaN(d.getTime()) ? iso : FORMAT.format(d);
   };
   const STATUSES: Record<Execution["status"], string> = {
-    reussie: "réussie",
-    partielle: "partielle",
-    echouee: "échouée",
-    interrompue: "interrompue",
-    "accord-requis": "accord requis",
+    succeeded: "réussie",
+    partial: "partielle",
+    failed: "échouée",
+    interrupted: "interrompue",
+    "grant-required": "accord requis",
   };
 
   function validate() {

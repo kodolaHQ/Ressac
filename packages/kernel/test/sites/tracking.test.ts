@@ -53,10 +53,10 @@ test("deleteSiteData erases memory, address and grant of that site only", async 
     await storeSiteGrant(p, id, decl);
   }
   await deleteSiteData(p, "a");
-  expect(await exists(join(ds, "a", "memoire.json"))).toBe(false);
+  expect(await exists(join(ds, "a", "memory.json"))).toBe(false);
   expect(await readUrlState(ds, "a")).toBeNull();
   expect(Object.keys(await readSiteGrants(p))).toEqual(["b"]);
-  expect(await exists(join(ds, "b", "memoire.json"))).toBe(true);
+  expect(await exists(join(ds, "b", "memory.json"))).toBe(true);
   expect(await readUrlState(ds, "b")).not.toBeNull();
   await mkdir(ds, { recursive: true });
   await writeFile(join(ds, "x"), "");
@@ -67,7 +67,7 @@ test("deleteSiteData removes the whole folder, .bak included", async () => {
   const p = await tempFolder();
   const ds = join(p, "sites");
   await mkdir(join(ds, "a"), { recursive: true });
-  await writeFile(join(ds, "a", "memoire.json.bak"), "x");
+  await writeFile(join(ds, "a", "memory.json.bak"), "x");
   await deleteSiteData(p, "a");
   expect(await exists(join(ds, "a"))).toBe(false);
 });

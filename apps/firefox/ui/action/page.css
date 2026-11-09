@@ -28,8 +28,8 @@
 
 .pa-encadre { border-radius: 8px; padding: 10px 14px; border-left: 3px solid var(--accent); }
 .pa-encadre.info { background: var(--info-fond); border-left-color: var(--acces-lecture); }
-.pa-encadre.avis { background: var(--avis-fond); border-left-color: var(--accent); }
-.pa-encadre.attention { background: var(--attention-fond); border-left-color: var(--en-cours); }
+.pa-encadre.notice { background: var(--avis-fond); border-left-color: var(--accent); }
+.pa-encadre.warning { background: var(--attention-fond); border-left-color: var(--en-cours); }
 .pa-encadre strong { display: block; margin-bottom: 2px; }
 .pa-encadre p { margin: 0; overflow-wrap: anywhere; }
 .pa-encadre ul { margin: 6px 0 0; padding-left: 18px; }

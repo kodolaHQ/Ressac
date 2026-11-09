@@ -80,7 +80,7 @@ export function createDesignHost(o: {
 }): DesignHost {
   // The batches of agent projects go in the space (the agent reads them); external projects' registries, review
   // repositories and batches go under <dataDir>/design, never mounted in the container.
-  const folders = { spaceRemarks: join(o.paths.internal, "remarques"), private: join(o.dataDir, "design") };
+  const folders = { spaceRemarks: join(o.paths.internal, "remarks"), private: join(o.dataDir, "design") };
   const remarks = new Remarks({ folders: folders });
   let registry: ExternalRegistry | null = null;
   let externals: ExternalService | null = null;
@@ -106,7 +106,7 @@ export function createDesignHost(o: {
   const takeOver = () => {
     void o
       .siteApps()
-      .then((l) => review.handle(l.filter((a) => a.type !== "sans-fiche").map((a) => a.folder)))
+      .then((l) => review.handle(l.filter((a) => a.type !== "no-manifest").map((a) => a.folder)))
       .catch((e) => console.error("[relecture] prise en charge :", e));
     void o
       .sites()
@@ -152,7 +152,7 @@ export function createDesignHost(o: {
     });
 
   // The design service's project logic: applis() is the running apps with a port.
-  const running = async () => (await o.siteApps()).flatMap((a) => (a.state === "en-marche" && a.port !== undefined ? [{ folder: a.folder, name: a.name, port: a.port }] : []));
+  const running = async () => (await o.siteApps()).flatMap((a) => (a.state === "running" && a.port !== undefined ? [{ folder: a.folder, name: a.name, port: a.port }] : []));
   const trackedProject = async (p: ProjectId): Promise<TrackedProject | null> => {
     if (p.startsWith("app-")) {
       const folder = p.slice(4);

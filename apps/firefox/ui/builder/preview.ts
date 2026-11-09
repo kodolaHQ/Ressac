@@ -18,7 +18,7 @@ export function previewData(o: {
   }
   const lastTrue = o.list.find((e) => !e.attempt)?.id ?? null;
   if (!chosen || chosen.id === lastTrue) {
-    const succeeded = !chosen || chosen.status === "reussie" || chosen.status === "partielle";
+    const succeeded = !chosen || chosen.status === "succeeded" || chosen.status === "partial";
     if (widget.data != null) return { data: widget.data, mention: !succeeded };
     return { data: widget.example, mention: chosen !== null };
   }

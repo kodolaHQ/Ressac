@@ -735,7 +735,7 @@ export const sites = {
     if (typeof id !== "string" || !ID_SITE.test(id) || !dataDir) return;
     try {
       const f = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
-      f.initWithPath(PathUtils.join(dataDir, "espace", "sites", id));
+      f.initWithPath(PathUtils.join(dataDir, "workspace", "sites", id));
       f.reveal();
     } catch (e) {
       console.warn("[sites] dossier non affiché :", e);

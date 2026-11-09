@@ -11,50 +11,50 @@ export interface SpacePaths {
   widgets: string;
   layout: string;
   projects: string;
-  /** Dossier interne `.webaios` (profils, config MCP). */
+  /** Internal folder `.webaios` (profiles, MCP config). */
   internal: string;
   profiles: string;
   mcpConfig: string;
-  /** Logs of the launched applications (`<dossier>.log`). */
+  /** Logs of the launched applications (`<folder>.log`). */
   logs: string;
-  /** Extensions written by the agent (`<dossier>/manifest.json`); nothing found there grants a right. */
+  /** Extensions written by the agent (`<folder>/manifest.json`); nothing found there grants a right. */
   extensions: string;
-  /** Actions (`<dossier>/action.json`, workflow.json); their data, results and grants are outside the workspace. */
+  /** Actions (`<folder>/action.json`, workflow.json); their data, results and grants are outside the workspace. */
   actions: string;
-  /** Page components written by the agent (`<dossier>/composant.json`). */
+  /** Page components written by the agent (`<folder>/component.json`). */
   components: string;
-  /** Site apps written by the agent (`<id>/site.json`, `accueil/`, `retouches/`); WebAiOs never writes there. */
+  /** Site apps written by the agent (`<id>/site.json`, `home/`, `tweaks/`); WebAiOs never writes there. */
   sites: string;
 }
 
 export function spacePaths(root?: string): SpacePaths {
   const r = root ?? process.env.WEBAIOS_ROOT ?? join(homedir(), "WebAiOs");
-  const home = join(r, "accueil");
+  const home = join(r, "home");
   const internal = join(r, ".webaios");
   return {
     root: r,
     home: home,
-    blocks: join(home, "blocs"),
+    blocks: join(home, "blocks"),
     widgets: join(home, "widgets"),
-    layout: join(home, "disposition.json"),
-    projects: join(r, "projets"),
+    layout: join(home, "layout.json"),
+    projects: join(r, "projects"),
     internal: internal,
-    profiles: join(internal, "profils"),
+    profiles: join(internal, "profiles"),
     mcpConfig: join(internal, "mcp.json"),
-    logs: join(internal, "journaux"),
+    logs: join(internal, "logs"),
     extensions: join(r, "extensions"),
     actions: join(r, "actions"),
-    components: join(r, "composants"),
+    components: join(r, "components"),
     sites: join(r, "sites"),
   };
 }
 
-/** Folder of the MCP configs specific to agent sessions (next to `configMcp`). */
+/** Folder of the MCP configs specific to agent sessions (next to `mcpConfig`). */
 export function sessionsFolder(c: SpacePaths): string {
   return join(dirname(c.mcpConfig), "sessions");
 }
 
-/** MCP config specific to the agent session of a window (`<configMcp folder>/sessions/<session>.json`). */
+/** MCP config specific to the agent session of a window (`<mcpConfig folder>/sessions/<session>.json`). */
 export function sessionConfigPath(c: SpacePaths, session: string): string {
   return join(sessionsFolder(c), `${session}.json`);
 }

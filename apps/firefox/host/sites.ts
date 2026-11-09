@@ -231,7 +231,7 @@ export async function readIcon(folder: string, path: string): Promise<string | n
 
 export function createSites(o: {
   paths: SpacePaths;
-  /** The profile folder: `sites/<id>/` (memory, address), `sites.json`, `sites-accords.json`. */
+  /** The profile folder: `sites/<id>/` (memory, address), `sites.json`, `site-grants.json`. */
   dataDir: string;
   localAddresses: boolean;
   chrome: SitesChrome;
@@ -421,7 +421,7 @@ export function createSites(o: {
     stopWatching = watchSites(o.paths, (id, what) => {
       // The « Sites » section of the Applications page re-reads the list (app written, changed or removed by the agent).
       if (what === "declaration") o.broadcast();
-      if (what === "accueil") {
+      if (what === "home") {
         if (opened.has(id)) o.chrome.homeChange(id);
       } else void reread(id);
     });
@@ -430,7 +430,7 @@ export function createSites(o: {
   }
 
   function memory(id: string): Promise<SiteMemory> {
-    // During a deletion, the memory is neither reopened nor written (memoire.json does not come back).
+    // During a deletion, the memory is neither reopened nor written (memory.json does not come back).
     if (deletions.has(id)) return Promise.reject(new Error(`appli de site en cours de suppression : ${id}`));
     let m = memories.get(id);
     if (!m) {
@@ -469,7 +469,7 @@ export function createSites(o: {
   }
 
   /**
-   * « Oublier ce que l'appli a retenu »: the memory is erased (memoire.json deleted; the open home receives an
+   * « Oublier ce que l'appli a retenu »: the memory is erased (memory.json deleted; the open home receives an
    * empty memory). Without an open window, the memory is not kept.
    */
   async function forgetSite(id: string): Promise<void> {
@@ -508,7 +508,7 @@ export function createSites(o: {
       siteRecords.forget(id);
       if (!(await realFolder(id))) return;
       try {
-        const trash = join(o.paths.sites, ".corbeille");
+        const trash = join(o.paths.sites, ".trash");
         await mkdir(trash, { recursive: true });
         await rename(join(o.paths.sites, id), join(trash, `${id}-${Date.now()}`));
       } catch (e) {

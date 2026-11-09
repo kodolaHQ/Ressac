@@ -24,7 +24,7 @@ afterEach(async () => {
   }
 });
 
-const project = (folder: string) => path.join(p!.dataDir, "espace", "projets", folder);
+const project = (folder: string) => path.join(p!.dataDir, "workspace", "projects", folder);
 const rowGone = (folder: string, ms = 10_000) => waitUi(p!.m, "return !doc.querySelector(arguments[0])", [appRow(folder)], ms);
 const rowShown = (folder: string, ms = 10_000) => waitUi(p!.m, "return !!doc.querySelector(arguments[0])", [appRow(folder)], ms);
 const rowText = (folder: string) => inUi<string>(p!.m, "return doc.querySelector(arguments[0])?.textContent ?? ''", [appRow(folder)]);
@@ -45,7 +45,7 @@ async function confirmDelete(folder: string): Promise<void> {
 }
 async function launchFromPage(): Promise<void> {
   await rowButton(p!.m, "essai", "Lancer");
-  await rowState(p!.m, "essai", "en-marche", 15_000);
+  await rowState(p!.m, "essai", "running", 15_000);
 }
 
 describe("Applications page actions", () => {
@@ -56,7 +56,7 @@ describe("Applications page actions", () => {
     // Launched once: its container exists.
     await launchFromPage();
     await rowButton(m, "essai", "Arrêter");
-    await rowState(m, "essai", "arretee");
+    await rowState(m, "essai", "stopped");
     expect(await container("essai")).not.toBeNull();
     await rowMenu(m, "essai", "Supprimer");
     const text = await waitUi<string>(m, "return doc.querySelector(arguments[0])?.textContent", [CONFIRM]);
@@ -87,7 +87,7 @@ describe("Applications page actions", () => {
     await sleep(500);
     expect(existsSync(path.join(project("essai"), "webaios.json"))).toBe(true);
     expect(existsSync(project("zod"))).toBe(true);
-    await rowState(m, "essai", "en-marche");
+    await rowState(m, "essai", "running");
   });
 
   // applications.spec.ts:476
@@ -104,7 +104,7 @@ describe("Applications page actions", () => {
     const read = () => (existsSync(reveals) ? readFileSync(reveals, "utf8") : "");
     await expect.poll(read, { timeout: 10_000 }).not.toBe("");
     await sleep(300);
-    expect(read()).toBe(path.join(p.dataDir, "espace", "projets", "x.app") + "\n");
+    expect(read()).toBe(path.join(p.dataDir, "workspace", "projects", "x.app") + "\n");
     expect({ windows: await windows(), tabs: await tabs() }).toEqual(before);
     await rm(reveals, { force: true });
   });
@@ -112,12 +112,12 @@ describe("Applications page actions", () => {
   // applications.spec.ts:497
   it("Passer en application rewrites the manifest and moves the row", async () => {
     p = await openAppsPage(BLOCK);
-    await expect.poll(() => filterText("application"), { timeout: 10_000 }).toBe("Applications 1");
+    await expect.poll(() => filterText("app"), { timeout: 10_000 }).toBe("Applications 1");
     await rowMenu(p.m, "zod", "Passer en application");
     const manifest = () => JSON.parse(readFileSync(path.join(project("zod"), "webaios.json"), "utf8")) as { type: string; origin?: string };
-    await expect.poll(() => manifest().type, { timeout: 10_000 }).toBe("application");
+    await expect.poll(() => manifest().type, { timeout: 10_000 }).toBe("app");
     expect(manifest().origin).toBe("https://github.com/colinhacks/zod");
-    await expect.poll(() => filterText("application"), { timeout: 10_000 }).toBe("Applications 2");
+    await expect.poll(() => filterText("app"), { timeout: 10_000 }).toBe("Applications 2");
     expect(await rowText("zod")).toContain("Application");
   });
 
@@ -170,12 +170,12 @@ describe("Applications page actions", () => {
   it("a project made again after Supprimer does not keep the old error", async () => {
     p = await openAppsPage(BLOCK, { projects: false, prepare: (d) => writeProject(d, "essai", { manifest: { name: "Essai" }, server: "crashed" }) });
     await rowButton(p.m, "essai", "Lancer");
-    await rowState(p.m, "essai", "erreur", 15_000);
+    await rowState(p.m, "essai", "error", 15_000);
     await confirmDelete("essai");
     await rowGone("essai");
     writeProject(p.dataDir, "essai", { manifest: { name: "Essai" } });
     await rowShown("essai");
-    await rowState(p.m, "essai", "arretee");
+    await rowState(p.m, "essai", "stopped");
   });
 
   // applications.spec.ts:576
@@ -184,12 +184,12 @@ describe("Applications page actions", () => {
     p = await openAppsPage(BLOCK, { env: { FAKE_DOCKER_SLOW: "1" } });
     await rowButton(p.m, "essai", "Lancer");
     const clicked = Date.now();
-    await rowState(p.m, "essai", "arretee");
+    await rowState(p.m, "essai", "stopped");
     await confirmDelete("essai");
     await expect.poll(() => existsSync(project("essai")), { timeout: 15_000 }).toBe(false);
     // Well after Docker's answer (8 s after the click): no process was launched for the deleted app.
     await sleep(Math.max(0, clicked + 14_000 - Date.now()));
-    expect(existsSync(path.join(p.dataDir, "espace", "faux-docker-app-essai.pid"))).toBe(false);
+    expect(existsSync(path.join(p.dataDir, "workspace", "faux-docker-app-essai.pid"))).toBe(false);
     expect(existsSync(project("essai"))).toBe(false);
   });
 });

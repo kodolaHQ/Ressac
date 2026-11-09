@@ -71,7 +71,7 @@ async function writeTree(dir: string, files: Record<string, string | Buffer>): P
 
 /**
  * The base copy of SOURCE, then by hand what plan 25's decisions 2 and 3 add for Firefox: gecko id,
- * version `1.0.0.<n>`, background `scripts: [guard, original]` (webaios-fond.js dropped). `extra` is merged into the
+ * version `1.0.0.<n>`, background `scripts: [guard, original]` (webaios-background.js dropped). `extra` is merged into the
  * manifest last (what AMO turns out to require). Returns the zipped .xpi path and the copy's manifest.
  */
 async function firefoxCopy(o: { id: string; n: number; extra?: Record<string, unknown>; guards?: boolean; files?: Record<string, string> }): Promise<{ xpi: string; manifest: Record<string, any> }> {
@@ -84,12 +84,12 @@ async function firefoxCopy(o: { id: string; n: number; extra?: Record<string, un
   const gecko = { id: o.id, ...((o.extra?.gecko as object) ?? {}) };
   manifest.browser_specific_settings = { gecko };
   manifest.version = `1.0.0.${o.n}`;
-  manifest.background = { scripts: ["webaios-garde-fond.js", "background.js"] };
+  manifest.background = { scripts: ["webaios-background-guard.js", "background.js"] };
   for (const [k, v] of Object.entries(o.extra ?? {})) if (k !== "gecko") manifest[k] = v;
-  await rm(path.join(target, "webaios-fond.js"));
+  await rm(path.join(target, "webaios-background.js"));
   if (o.guards === false) {
     // Control variant: the same extension without any WebAiOs file, to tell a guard rejection from anything else.
-    for (const f of ["webaios-garde-fond.js", "webaios-garde-page.js", "webaios-correctifs-page.js", "webaios-portee.js", "webaios-fichiers"]) await rm(path.join(target, f), { recursive: true, force: true });
+    for (const f of ["webaios-background-guard.js", "webaios-page-guard.js", "webaios-page-fixes.js", "webaios-scope.js", "webaios-files"]) await rm(path.join(target, f), { recursive: true, force: true });
     manifest.background = { scripts: ["background.js"] };
     manifest.content_scripts = [{ matches: ["http://127.0.0.1/*"], js: ["content.js"] }];
   }
@@ -322,7 +322,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("agent extensions spike", () => {
       await ready(m);
       const facts = `
 const facts = { pathname: location.pathname, importScripts: typeof importScripts, clients: typeof clients, self: typeof self,
-  storagePromise: chrome.storage.local.get("x") instanceof Promise, browser: typeof browser, guardTable: typeof __webaiosFichiers,
+  storagePromise: chrome.storage.local.get("x") instanceof Promise, browser: typeof browser, guardTable: typeof __webaiosFiles,
   guardedExecuteScript: Object.getOwnPropertyDescriptor(chrome.scripting ?? {}, "executeScript")?.writable === false,
   guardedTabsCreate: Object.getOwnPropertyDescriptor(chrome.tabs ?? {}, "create")?.writable === false };
 chrome.storage.local.set({ facts });

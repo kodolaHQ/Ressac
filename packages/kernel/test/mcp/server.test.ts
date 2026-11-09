@@ -259,7 +259,7 @@ const appTodo: TabInfo = { id: "app:todo", title: "Todo", url: "http://localhost
 
 function fakeApp(r: Partial<Application>, calls: string[] = []): AppsTools {
   return {
-    launch: async (d) => (calls.push(`lancer ${d}`), { folder: d, name: d, type: "application", createdAt: "", state: "en-marche", ...r }),
+    launch: async (d) => (calls.push(`lancer ${d}`), { folder: d, name: d, type: "app", createdAt: "", state: "running", ...r }),
     stop: async (d) => void calls.push(`arreter ${d}`),
     log: async (d) => (calls.push(`journal ${d}`), "ligne 1\nligne 2"),
   };
@@ -281,7 +281,7 @@ async function withApplications(apps: AppsTools, tabs: TabInfo[], appTabDelayMs 
 }
 
 test("launch_app: port and tab, access granted", async () => {
-  await withApplications(fakeApp({ state: "en-marche", port: 5280 }), [appTodo]);
+  await withApplications(fakeApp({ state: "running", port: 5280 }), [appTodo]);
   const r = await client.callTool({ name: "launch_app", arguments: { folder: "todo" } });
   expect(text(r)).toBe("Application todo en marche sur http://localhost:5280 (onglet app:todo).");
   expect(text(await client.callTool({ name: "read_tab", arguments: { id: "app:todo" } }))).toContain("Texte de Todo");
@@ -289,14 +289,14 @@ test("launch_app: port and tab, access granted", async () => {
 });
 
 test("launch_app: without a tab after the delay, text without a tab and no access granted", async () => {
-  await withApplications(fakeApp({ state: "en-marche", port: 5280 }), [], 50);
+  await withApplications(fakeApp({ state: "running", port: 5280 }), [], 50);
   const r = await client.callTool({ name: "launch_app", arguments: { folder: "todo" } });
   expect(text(r)).toBe("Application todo en marche sur http://localhost:5280.");
   expect(r.isError).toBeFalsy();
 });
 
 test("launch_app: relaunch on another port, the access targets the new port, not the old one still displayed", async () => {
-  await withApplications(fakeApp({ state: "en-marche", port: 5281 }), [appTodo], 2000);
+  await withApplications(fakeApp({ state: "running", port: 5281 }), [appTodo], 2000);
   // The window already exists, on the old port (5280), and only reloads on the third glance.
   let views = 0;
   const fresh = { ...appTodo, url: "http://localhost:5281/" };
@@ -309,14 +309,14 @@ test("launch_app: relaunch on another port, the access targets the new port, not
 });
 
 test("launch_app: window left on the old port after the delay, no access granted", async () => {
-  await withApplications(fakeApp({ state: "en-marche", port: 5281 }), [appTodo], 50);
+  await withApplications(fakeApp({ state: "running", port: 5281 }), [appTodo], 50);
   const r = await client.callTool({ name: "launch_app", arguments: { folder: "todo" } });
   expect(text(r)).toBe("Application todo en marche sur http://localhost:5281.");
   expect(text(await client.callTool({ name: "read_tab", arguments: { id: "app:todo" } }))).toBe("Accès refusé par l'utilisateur à cet onglet.");
 });
 
 test("navigate an app window to another site: tab opened, the window and its access stay", async () => {
-  await withApplications(fakeApp({ state: "en-marche", port: 5280 }), [appTodo]);
+  await withApplications(fakeApp({ state: "running", port: 5280 }), [appTodo]);
   await client.callTool({ name: "launch_app", arguments: { folder: "todo" } });
   const r = await client.callTool({ name: "navigate", arguments: { id: "app:todo", url: "https://exemple.test/" } });
   const isOpen = bridge.calls.find((a) => a.method === "ouvrirOnglet");
@@ -331,7 +331,7 @@ test("navigate an app window to another site: tab opened, the window and its acc
 });
 
 test("launch_app in error: error text and log, erreur: true", async () => {
-  await withApplications(fakeApp({ state: "erreur", error: "port occupé" }), []);
+  await withApplications(fakeApp({ state: "error", error: "port occupé" }), []);
   const r = await client.callTool({ name: "launch_app", arguments: { folder: "todo" } });
   expect(r.isError).toBe(true);
   expect(text(r)).toBe("Application todo en erreur : port occupé");
@@ -361,11 +361,11 @@ test("without applications: the tools do not exist", async () => {
 // --- Widgets ---
 
 function fakeRuns(id: string): Execution[] {
-  const base = { version: 1 as const, owner: { type: "widget" as const, id }, trigger: "manuelle" as const, start: "2026-10-28T10:00:00.000Z", end: "2026-10-28T10:00:07.000Z" };
+  const base = { version: 1 as const, owner: { type: "widget" as const, id }, trigger: "manual" as const, start: "2026-10-28T10:00:00.000Z", end: "2026-10-28T10:00:07.000Z" };
   const block = { id: "flux", type: "source.feed", status: "succeeded" as const, start: base.start, end: base.end, items: 12 };
   return [
-    { ...base, id: "2026-10-28T10-00-00-000Z", status: "partielle", blocks: [{ ...block, output: [{ title: "secret du compte" }], log: ["journal secret"] }] },
-    { ...base, id: "2026-10-27T10-00-00-000Z", status: "echouee", error: "erreur secrete", blocks: [{ ...block, status: "failed", error: "erreur secrete", log: [] }] },
+    { ...base, id: "2026-10-28T10-00-00-000Z", status: "partial", blocks: [{ ...block, output: [{ title: "secret du compte" }], log: ["journal secret"] }] },
+    { ...base, id: "2026-10-27T10-00-00-000Z", status: "failed", error: "erreur secrete", blocks: [{ ...block, status: "failed", error: "erreur secrete", log: [] }] },
   ];
 }
 
@@ -504,7 +504,7 @@ test("harvest_widget on a widget with an account without a grant: an error writt
   let error = "SECRET";
   let kernelFailure: true | undefined;
   tools.harvest = async () => ({
-    status: "erreur", lastUpdate: null, lastAttempt: null, error: error, log: "SECRET", ...(kernelFailure ? { kernelError: kernelFailure } : {}),
+    status: "error", lastUpdate: null, lastAttempt: null, error: error, log: "SECRET", ...(kernelFailure ? { kernelError: kernelFailure } : {}),
   });
   await withWidgets(tools);
   let t = text(await client.callTool({ name: "harvest_widget", arguments: { id: "daily" } }));
@@ -522,7 +522,7 @@ test("harvest_widget on a widget with an account without a grant: an error writt
 
 test("harvest_widget, widget with an account without a grant: a widget text that imitates the kernel does not leave, the real kernel message does", async () => {
   const { tools: tools } = fakeWidgets();
-  let state: WidgetState = { status: "erreur", lastUpdate: null, lastAttempt: null };
+  let state: WidgetState = { status: "error", lastUpdate: null, lastAttempt: null };
   tools.harvest = async () => state;
   await withWidgets(tools);
   const harvest = async () => text(await client.callTool({ name: "harvest_widget", arguments: { id: "daily" } }));
@@ -531,16 +531,16 @@ test("harvest_widget, widget with an account without a grant: a widget text that
     "Accord requis pour lire avec ton compte : " + (123456789).toString(36),
     "La récolte s'est arrêtée sans résultat (code 123456789)",
   ]) {
-    state = { status: "erreur", lastUpdate: null, lastAttempt: null, error: imitation };
+    state = { status: "error", lastUpdate: null, lastAttempt: null, error: imitation };
     const t = await harvest();
     expect(t).not.toContain(imitation);
     expect(t).toContain(RESERVED_ERROR);
   }
   // Written by the kernel: it leaves.
-  state = { status: "accord-requis", lastUpdate: null, lastAttempt: null, error: "Accord requis pour lire avec ton compte : app.daily.dev", kernelError: true };
+  state = { status: "grant-required", lastUpdate: null, lastAttempt: null, error: "Accord requis pour lire avec ton compte : app.daily.dev", kernelError: true };
   expect(await harvest()).toContain("Accord requis pour lire avec ton compte : app.daily.dev");
   // Marked as the kernel's but outside the fixed messages: reserved anyway.
-  state = { status: "erreur", lastUpdate: null, lastAttempt: null, error: "SECRET", kernelError: true };
+  state = { status: "error", lastUpdate: null, lastAttempt: null, error: "SECRET", kernelError: true };
   expect(await harvest()).not.toContain("SECRET");
 });
 
@@ -553,7 +553,7 @@ test("widget_runs of a widget without an account returns durations, elements, ou
   expect(list).toContain(WIDGET_DATA_PREFIX);
   expect(list).toContain('"items": 12');
   expect(list).toContain('"end": "2026-10-28T10:00:07.000Z"');
-  expect(list).toContain('"status": "partielle"');
+  expect(list).toContain('"status": "partial"');
   const detail = text(await client.callTool({ name: "widget_runs", arguments: { id: "meteo", run: "2026-10-28T10-00-00-000Z" } }));
   expect(detail).toContain(WIDGET_DATA_PREFIX);
   expect(detail).toContain("secret du compte");
@@ -569,8 +569,8 @@ test("widget_runs of a widget with an account without a grant returns only { id,
   const body = JSON.parse(t.slice(0, t.indexOf(HIDDEN_RUNS_NOTICE)));
   // « partielle » is reported as « reussie »: this status comes from traces the widget's code could forge.
   expect(body).toEqual([
-    { id: "2026-10-28T10-00-00-000Z", status: "reussie" },
-    { id: "2026-10-27T10-00-00-000Z", status: "echouee" },
+    { id: "2026-10-28T10-00-00-000Z", status: "succeeded" },
+    { id: "2026-10-27T10-00-00-000Z", status: "failed" },
   ]);
   expect(t).not.toContain("secret");
   expect(t).not.toContain("items");
@@ -584,7 +584,7 @@ test("the detail of a run of a widget with an account puts up the card; refused,
   let t = text(await client.callTool({ name: "widget_runs", arguments: args }));
   expect(dataCards()).toHaveLength(1);
   expect(t.endsWith("\nL'utilisateur a refusé de montrer le détail.")).toBe(true);
-  expect(JSON.parse(t.slice(0, t.lastIndexOf("\n")))).toEqual({ id: args.run, status: "reussie" });
+  expect(JSON.parse(t.slice(0, t.lastIndexOf("\n")))).toEqual({ id: args.run, status: "succeeded" });
   expect(t).not.toContain("secret");
   await withWidgets(tools, { widgetData: true });
   t = text(await client.callTool({ name: "widget_runs", arguments: args }));
@@ -722,7 +722,7 @@ test("a provider that throws: NO_WORKFLOW_OPEN", async () => {
 /** Two actions: « veille » (without an account, input « sujet ») and « courrier » (reads with the user's account). */
 function fakeActions() {
   const launched: { id: string; input?: string }[] = [];
-  let result: LaunchResult = { status: "reussie", run: "2026-10-28T10-00-00-000Z" };
+  let result: LaunchResult = { status: "succeeded", run: "2026-10-28T10-00-00-000Z" };
   const tools: ActionsTools = {
     async read(id) {
       if (id === "veille") return { name: "Veille", account: false, input: "Sujet" };
@@ -738,7 +738,7 @@ function fakeActions() {
     },
     async run(id, execution) {
       const e = fakeRuns(id).find((x) => x.id === execution);
-      return e ? { ...e, plan: { blocks: [{ component: "titre", props: { text: "plan secret du compte" } }] } } : null;
+      return e ? { ...e, plan: { blocks: [{ component: "title", props: { text: "plan secret du compte" } }] } } : null;
     },
   };
   return { tools: tools, launchedList: launched, set: (r: LaunchResult) => (result = r) };
@@ -770,21 +770,21 @@ test("launch_action on an action without an account: status reussie and run id, 
   const r = await client.callTool({ name: "launch_action", arguments: { id: "veille", input: "clio lyon" } });
   expect(r.isError).toBeFalsy();
   expect(launched).toEqual([{ id: "veille", input: "clio lyon" }]);
-  expect(JSON.parse(text(r))).toEqual({ status: "reussie", run: "2026-10-28T10-00-00-000Z" });
+  expect(JSON.parse(text(r))).toEqual({ status: "succeeded", run: "2026-10-28T10-00-00-000Z" });
   expect(dataCards()).toHaveLength(0);
 });
 
 test("launch_action with an account and an error written by the code: RESERVED_ACTION_ERROR; kernel error: shown", async () => {
   const { tools: tools, set: fixer } = fakeActions();
   await withActions(tools);
-  fixer({ status: "echouee", error: "SECRET du compte" });
+  fixer({ status: "failed", error: "SECRET du compte" });
   let t = text(await client.callTool({ name: "launch_action", arguments: { id: "courrier" } }));
   expect(t).not.toContain("SECRET");
   expect(t).toContain(RESERVED_ACTION_ERROR);
   expect(t).not.toContain("widget_data");
-  fixer({ status: "echouee", error: "SECRET du compte", kernelError: true });
+  fixer({ status: "failed", error: "SECRET du compte", kernelError: true });
   expect(text(await client.callTool({ name: "launch_action", arguments: { id: "courrier" } }))).not.toContain("SECRET");
-  fixer({ status: "accord-requis", error: "Accord requis pour lire avec ton compte : mail.test", kernelError: true });
+  fixer({ status: "grant-required", error: "Accord requis pour lire avec ton compte : mail.test", kernelError: true });
   t = text(await client.callTool({ name: "launch_action", arguments: { id: "courrier" } }));
   expect(t).toContain("Accord requis pour lire avec ton compte : mail.test");
   expect(dataCards()).toHaveLength(0);
@@ -794,10 +794,10 @@ test("launch_action with an account: the actions' fixed messages pass, not an id
   const { tools: tools, set: fixer } = fakeActions();
   await withActions(tools);
   for (const error of [ACTION_WITHOUT_WORKFLOW, ACTION_STOPPED, RESULT_TOO_BIG, INTERNAL_ACTION_ERROR, ACTION_UNKNOWN]) {
-    fixer({ status: "echouee", error: error, kernelError: true });
+    fixer({ status: "failed", error: error, kernelError: true });
     expect(JSON.parse(text(await client.callTool({ name: "launch_action", arguments: { id: "courrier" } }))).error).toBe(error);
     // Without `erreurNoyau`, the same text could have been written by the action's code: reserved.
-    fixer({ status: "echouee", error: error });
+    fixer({ status: "failed", error: error });
     expect(JSON.parse(text(await client.callTool({ name: "launch_action", arguments: { id: "courrier" } }))).error).toBe(RESERVED_ACTION_ERROR);
   }
   expect(RESERVED_ACTION_ERROR).not.toBe(RESERVED_ERROR);
@@ -825,8 +825,8 @@ test("action_runs with an account without a grant: statuses only (partielle → 
   await withActions(tools, { widgetData: true });
   const t = text(await client.callTool({ name: "action_runs", arguments: { id: "courrier" } }));
   expect(JSON.parse(t.split("\n").slice(0, -1).join("\n"))).toEqual([
-    { id: "2026-10-28T10-00-00-000Z", status: "reussie" },
-    { id: "2026-10-27T10-00-00-000Z", status: "echouee" },
+    { id: "2026-10-28T10-00-00-000Z", status: "succeeded" },
+    { id: "2026-10-27T10-00-00-000Z", status: "failed" },
   ]);
   expect(t).toContain(HIDDEN_ACTION_RUNS_NOTICE);
   expect(t).not.toContain("secret");
@@ -848,7 +848,7 @@ test("action_runs, detail: action-kind card, refusal → status only; grant → 
   let t = text(await client.callTool({ name: "action_runs", arguments: { id: "courrier", run: "2026-10-28T10-00-00-000Z" } }));
   expect(dataCards()).toHaveLength(1);
   expect(dataCards()[0]!.args[0]).toEqual({ id: "courrier", name: "Courrier", agent: "Claude", kind: "action" });
-  expect(t).toContain('"status": "reussie"');
+  expect(t).toContain('"status": "succeeded"');
   expect(t).toContain("L'utilisateur a refusé de montrer le détail.");
   expect(t).not.toContain("secret");
 

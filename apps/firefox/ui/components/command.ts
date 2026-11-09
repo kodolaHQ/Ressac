@@ -99,8 +99,8 @@ export function defaultParam(url: string | null | undefined): string {
 export const PARAM_MAX = 2000;
 
 export function projectSiteApp(a: ApplicationShown): SiteApp | null {
-  if (a.type === "sans-fiche") return null;
-  return { kind: "projet", id: a.folder, name: a.name, action: a.state === "en-marche" ? "ouvrir" : "lancer", favicon: a.favicon ?? null };
+  if (a.type === "no-manifest") return null;
+  return { kind: "projet", id: a.folder, name: a.name, action: a.state === "running" ? "ouvrir" : "lancer", favicon: a.favicon ?? null };
 }
 
 export function siteSiteApp(s: ShownSite): SiteApp {

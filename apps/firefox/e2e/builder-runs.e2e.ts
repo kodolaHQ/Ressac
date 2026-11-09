@@ -61,7 +61,7 @@ const reads = new Map<string, number>();
 
 /** The widget's data folder, outside the space (state, executions, memory). */
 const dataOf = (id: string) => path.join(dataDir, "widgets", id);
-const executionsOf = (id: string) => path.join(dataOf(id), "executions");
+const executionsOf = (id: string) => path.join(dataOf(id), "runs");
 const readJson = async (file: string) => JSON.parse(await readFile(file, "utf8"));
 /** A file's content, or null if it does not exist. */
 const content = (file: string) => readFile(file, "utf8").catch(() => null);
@@ -98,7 +98,7 @@ const writeWatch = (id: string, o: { slow?: boolean; declaration?: Record<string
 const dropState = (id: string) => rm(dataOf(id), { recursive: true });
 const writeState = async (id: string, state: Record<string, unknown>) => {
   await mkdir(dataOf(id), { recursive: true });
-  await writeFile(path.join(dataOf(id), "etat.json"), JSON.stringify(state));
+  await writeFile(path.join(dataOf(id), "state.json"), JSON.stringify(state));
 };
 
 /** A run's trace of one block. */
@@ -117,7 +117,7 @@ async function writeExecution(owner: string, id: string, blocks: unknown[]): Pro
   await mkdir(executionsOf(owner), { recursive: true });
   await writeFile(
     path.join(executionsOf(owner), `${id}.json`),
-    JSON.stringify({ version: 1, id, owner: { type: "widget", id: owner }, trigger: "planifiee", start: start, end: start, status: "reussie", blocks: blocks }),
+    JSON.stringify({ version: 1, id, owner: { type: "widget", id: owner }, trigger: "scheduled", start: start, end: start, status: "succeeded", blocks: blocks }),
   );
 }
 
@@ -205,7 +205,7 @@ beforeAll(async () => {
   // The grant is missing and was just asked: no run starts at launch.
   const now = new Date().toISOString();
   await writeState("gmail", {
-    status: "accord-requis",
+    status: "grant-required",
     lastUpdate: now,
     lastAttempt: now,
     error: "Accord requis pour lire avec ton compte : 127.0.0.1",
@@ -409,9 +409,9 @@ describe("the workflow builder's runs", () => {
     await poll(() => thresholdOf("rejouer"), 0.05);
     await saved();
     const before = {
-      data: await content(path.join(dir, "donnees.json")),
-      memory: await content(path.join(dir, "memoire.json")),
-      state: await content(path.join(dir, "etat.json")),
+      data: await content(path.join(dir, "data.json")),
+      memory: await content(path.join(dir, "memory.json")),
+      state: await content(path.join(dir, "state.json")),
     };
     expect(before.data).not.toBeNull();
     const pages = reads.get("rejouer") ?? 0;
@@ -420,7 +420,7 @@ describe("the workflow builder's runs", () => {
 
     await click(m, tid("rejouer"));
     await poll(async () => (await runs("rejouer")).length, 2, 20_000);
-    const trial = (await runs("rejouer")).find((f) => f.includes("-essai"))!.replace(/\.json$/, "");
+    const trial = (await runs("rejouer")).find((f) => f.includes("-attempt"))!.replace(/\.json$/, "");
     const button = tid(`execution-${trial}`);
     await waitContains(button, "essai");
     await waitPressed(button);
@@ -444,9 +444,9 @@ describe("the workflow builder's runs", () => {
 
     // The page was not read again; neither the data, the memory nor the widget's state moved.
     expect(reads.get("rejouer")).toBe(pages);
-    expect(await content(path.join(dir, "donnees.json"))).toBe(before.data);
-    expect(await content(path.join(dir, "memoire.json"))).toBe(before.memory);
-    expect(await content(path.join(dir, "etat.json"))).toBe(before.state);
+    expect(await content(path.join(dir, "data.json"))).toBe(before.data);
+    expect(await content(path.join(dir, "memory.json"))).toBe(before.memory);
+    expect(await content(path.join(dir, "state.json"))).toBe(before.state);
 
     // The « Exécutions » tab: all of them, the trial marked with its starting block; choosing one goes back to the canvas.
     await click(m, tid("vue-executions"));
@@ -468,7 +468,7 @@ describe("the workflow builder's runs", () => {
       await click(m, tid("rejouer"));
       await poll(async () => (await runs("rejouer")).length, n, 20_000);
       await waitCount(tid("refus-rejeu"), 0);
-      const last = (await runs("rejouer")).filter((f) => f.includes("-essai")).at(-1)!.replace(/\.json$/, "");
+      const last = (await runs("rejouer")).filter((f) => f.includes("-attempt")).at(-1)!.replace(/\.json$/, "");
       await waitPressed(tid(`execution-${last}`));
       await waitText(tid("pastille-tri"), "2");
       expect((await readJson(path.join(executionsOf("rejouer"), `${last}.json`))).essai).toEqual({ start: "tri", origin: origin });
@@ -516,7 +516,7 @@ describe("the workflow builder's runs", () => {
     // The home page settled: what it may have written at launch does not count.
     await sleep(1500);
     const before = { space: await snapshot(dir, true), data: await snapshot(dataOf("gmail"), true) };
-    expect(before.data.some((f) => f.startsWith("etat.json:"))).toBe(true);
+    expect(before.data.some((f) => f.startsWith("state.json:"))).toBe(true);
 
     await openBuilder(m, "gmail");
     await waitContains(tid("noeud-recolte"), "code");
@@ -566,11 +566,11 @@ describe("the workflow builder's runs", () => {
     await harvest("simple");
     await poll(async () => (await runs("simple")).length, 2, 20_000);
     const last = await readJson(path.join(executionsOf("simple"), (await runs("simple")).at(-1)!));
-    expect(last.statut).toBe("reussie");
-    expect(last.declencheur).toBe("manuelle");
+    expect(last.status).toBe("succeeded");
+    expect(last.declencheur).toBe("manual");
     await poll(() => homeData("simple"), '{"bon":true}');
-    expect(await readJson(path.join(dataOf("simple"), "donnees.json"))).toEqual({ good: true });
-    expect((await readJson(path.join(dataOf("simple"), "etat.json"))).statut).toBe("ok");
+    expect(await readJson(path.join(dataOf("simple"), "data.json"))).toEqual({ good: true });
+    expect((await readJson(path.join(dataOf("simple"), "state.json"))).status).toBe("ok");
   });
 
   it("the agent writes a cut-off workflow.json: the canvas stays, the banner says « illisible », the widget shows « Workflow invalide : … »", async () => {
@@ -592,7 +592,7 @@ describe("the workflow builder's runs", () => {
     await click(m, tid("nouvel-onglet"));
     await harvest("coupe");
     await waitContains(tid("widget-coupe"), "Workflow invalide : ", 20_000);
-    expect((await readJson(path.join(dataOf("coupe"), "etat.json"))).erreur).toMatch(/^Workflow invalide : /);
+    expect((await readJson(path.join(dataOf("coupe"), "state.json"))).erreur).toMatch(/^Workflow invalide : /);
   });
 
   it("a 30-block workflow opens readable: no node overlaps, all in view after fitView", async () => {

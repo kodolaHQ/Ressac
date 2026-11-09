@@ -47,7 +47,7 @@ function setup(answers: Record<string, (p: any) => unknown> = {}) {
     state = apply(state, a, genId);
   };
   const fake = fakeHost(answers);
-  const media = { image: vi.fn(async (_url: string): Promise<string | null> => "data:image/png;base64,"), serve: vi.fn(async (name: string): Promise<string | null> => `resource://webaios-composant-${name}/composant-1.html`), release: vi.fn(async (_name: string) => {}) };
+  const media = { image: vi.fn(async (_url: string): Promise<string | null> => "data:image/png;base64,"), serve: vi.fn(async (name: string): Promise<string | null> => `resource://webaios-component-${name}/component-1.html`), release: vi.fn(async (_name: string) => {}) };
   const unloads: (() => void)[] = [];
   const api = (win: string) =>
     createActionsApi({
@@ -93,7 +93,7 @@ describe("createActionsApi", () => {
     const direct = vi.fn();
     a.onLive(direct);
     expect(await a.list()).toEqual([]);
-    expect(await a.launch("gitlab", null)).toEqual({ status: "invalide", error: ACTIONS_IN_PRIVATE_SPACE });
+    expect(await a.launch("gitlab", null)).toEqual({ status: "invalid", error: ACTIONS_IN_PRIVATE_SPACE });
     a.stop("gitlab");
     expect(await a.page("gitlab", null)).toBeNull();
     expect(await a.runs("gitlab")).toEqual([]);
@@ -157,13 +157,13 @@ describe("createActionsApi", () => {
 
   // actions.test.ts:452
   it("voirWorkflow opens the builder on the action; lancer and arreter go to the kernel", async () => {
-    const { F, api, calls, state: state } = setup({ "actions.nom": (p) => (p.id === "gitlab" ? "GitLab" : null), "actions.lancer": () => ({ status: "reussie", run: "x" }) });
+    const { F, api, calls, state: state } = setup({ "actions.nom": (p) => (p.id === "gitlab" ? "GitLab" : null), "actions.lancer": () => ({ status: "succeeded", run: "x" }) });
     const a = api(F);
     await a.viewWorkflow("gitlab");
     expect(Object.values(state().tabs)[0]).toMatchObject({ url: "webaios://workflow/action/gitlab", title: "Workflow — GitLab" });
     await a.viewWorkflow("inconnue");
     expect(Object.values(state().tabs)).toHaveLength(1);
-    expect(await a.launch("leboncoin", "clio")).toEqual({ status: "reussie", run: "x" });
+    expect(await a.launch("leboncoin", "clio")).toEqual({ status: "succeeded", run: "x" });
     a.stop("leboncoin");
     expect(calls.filter((c) => c.method === "actions.lancer" || c.method === "actions.arreter")).toEqual([
       { method: "actions.lancer", params: { id: "leboncoin", input: "clio" } },
@@ -174,7 +174,7 @@ describe("createActionsApi", () => {
   it("a stopped host gives the answers without a kernel", async () => {
     const { F, api } = setup();
     const a = api(F);
-    expect(await a.launch("x", null)).toEqual({ status: "invalide", error: "Le service des actions ne répond pas (agent arrêté ?)" });
+    expect(await a.launch("x", null)).toEqual({ status: "invalid", error: "Le service des actions ne répond pas (agent arrêté ?)" });
     expect(await a.list()).toEqual([]);
     expect(await a.page("x", null)).toBeNull();
     expect(await a.direct()).toEqual(NONE);
@@ -200,7 +200,7 @@ describe("createActionsApi", () => {
       ["actions.executions", [{ id: "x" }], (b: Api) => b.runs("gitlab"), []],
       ["actions.execution", { id: "x" }, (b: Api) => b.run("gitlab", "x"), null],
       ["actions.direct", running, (b: Api) => b.direct(), NONE],
-      ["actions.lancer", { status: "reussie", run: "x" }, (b: Api) => b.launch("gitlab", null), { status: "invalide", error: ACTIONS_IN_PRIVATE_SPACE }],
+      ["actions.lancer", { status: "succeeded", run: "x" }, (b: Api) => b.launch("gitlab", null), { status: "invalid", error: ACTIONS_IN_PRIVATE_SPACE }],
       ["actions.nom", "GitLab", (b: Api) => b.viewWorkflow("gitlab"), undefined],
       ["actions.lienPermis", true, (b: Api) => b.openLink("gitlab", "x", "https://gitlab.com/1"), undefined],
       ["actions.imagePermise", true, (b: Api) => b.image("gitlab", "x", "https://img.test/a.png"), null],
@@ -384,7 +384,7 @@ describe("createActionsApi", () => {
   // Review Focus 1
   it("a window turned private while the host reads opens and launches nothing", async () => {
     let turn = () => {};
-    const s = setup({ "actions.preparer": () => (turn(), { ok: true, name: "GitLab", launch: true }), "actions.lancer": () => ({ status: "reussie", run: "x" }) });
+    const s = setup({ "actions.preparer": () => (turn(), { ok: true, name: "GitLab", launch: true }), "actions.lancer": () => ({ status: "succeeded", run: "x" }) });
     turn = () => s.turnPrivate();
     s.dispatched.length = 0;
     expect(await s.api(s.F).open("gitlab", null)).toEqual({ ok: false, error: ACTIONS_IN_PRIVATE_SPACE });
@@ -404,7 +404,7 @@ describe("createActionsApi", () => {
 
   // actions.test.ts:402
   it("ouvrir opens the action's page titled with its name, then launches it", async () => {
-    const { F, api, calls, state: state } = setup({ "actions.preparer": prepare(), "actions.lancer": () => ({ status: "reussie", run: "x" }) });
+    const { F, api, calls, state: state } = setup({ "actions.preparer": prepare(), "actions.lancer": () => ({ status: "succeeded", run: "x" }) });
     const a = api(F);
     expect(await a.open("gitlab", null)).toEqual({ ok: true });
     const tabs = Object.values(state().tabs);
@@ -494,7 +494,7 @@ describe("createActionsApi", () => {
   it("components: each serve is paired with one store release; a private space serves none; unload releases what is left", async () => {
     const s = setup();
     const a = s.api(s.F);
-    expect(await a.serveComponent("barres")).toBe("resource://webaios-composant-barres/composant-1.html");
+    expect(await a.serveComponent("barres")).toBe("resource://webaios-component-barres/component-1.html");
     await a.serveComponent("barres");
     await a.serveComponent("ecrit");
     a.releaseComponent("barres");
@@ -513,7 +513,7 @@ describe("createActionsApi", () => {
     // Turned private while the store serves: null, and the reference taken is still released.
     const t = setup();
     const c = t.api(t.F);
-    t.media.serve.mockImplementationOnce(async () => (t.turnPrivate(), "resource://webaios-composant-x/composant-1.html"));
+    t.media.serve.mockImplementationOnce(async () => (t.turnPrivate(), "resource://webaios-component-x/component-1.html"));
     expect(await c.serveComponent("x")).toBeNull();
     c.releaseComponent("x");
     expect(t.media.release).toHaveBeenCalledWith("x");

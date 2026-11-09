@@ -25,11 +25,11 @@ function displayUrl(id: string, mtime: number): string {
   return `resource://webaios-widget-${id}/display-${mtime}.html`;
 }
 /** Size given to an unreadable widget (without declaration), so that it keeps a place and shows its error. */
-const UNREADABLE_WIDGET_SIZE = { l: 4, h: 2 };
+const UNREADABLE_WIDGET_SIZE = { w: 4, h: 2 };
 
 /**
  * What the UI displays: each widget in its place, with its data, its example and its state. `placements`: what
- * disposition.json says; absent widgets are placed in the first gap. `mtimes`: date of display.html per widget,
+ * layout.json says; absent widgets are placed in the first gap. `mtimes`: date of display.html per widget,
  * to force the frame to reload when the agent rewrites it.
  */
 export function toShownWidgets(o: {
@@ -92,14 +92,14 @@ export function validatePlacements(raw: unknown, ids: readonly string[]): FreePl
     const a = placements[i]!;
     for (let j = i + 1; j < placements.length; j++) {
       const b = placements[j]!;
-      if (a.x < b.x + b.l && b.x < a.x + a.l && a.y < b.y + b.h && b.y < a.y + a.h)
+      if (a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h)
         throw new Error(`widgets qui se chevauchent : ${a.id} et ${b.id}`);
     }
   }
   return placements;
 }
 
-/** Writes to disposition.json one by one, in request order: none reads the state another is about to change. */
+/** Writes to layout.json one by one, in request order: none reads the state another is about to change. */
 const layoutQueue = new Map<string, Promise<void>>();
 function inSeries(c: SpacePaths, write: () => Promise<void>): Promise<void> {
   const next = (layoutQueue.get(c.layout) ?? Promise.resolve()).then(write);
@@ -122,14 +122,14 @@ export function placeWidgets(c: SpacePaths, placements: readonly FreePlacement[]
 }
 
 /**
- * The user removes a widget: its folder goes to accueil/.corbeille (nothing is destroyed), its place is freed and
+ * The user removes a widget: its folder goes to accueil/.trash (nothing is destroyed), its place is freed and
  * `oublier` removes its grant and its data (a widget recreated under the same id must not inherit the grant).
  */
 export async function removeWidget(c: SpacePaths, id: string, forget: (id: string) => Promise<void>): Promise<void> {
   if (!ID_WIDGET.test(id)) throw new Error(`id de widget invalide : ${id}`);
   await inSeries(c, async () => {
     const remaining = (await readFreeLayout(c)).filter((p) => p.id !== id);
-    const trash = join(c.home, ".corbeille");
+    const trash = join(c.home, ".trash");
     await mkdir(trash, { recursive: true });
     await rename(join(c.widgets, id), join(trash, `${id}-${Date.now()}`));
     await writeLayout(c, remaining);

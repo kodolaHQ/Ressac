@@ -136,9 +136,9 @@
   /** The hidden gap before hunk i: first new lines, last one (null: to the end of the file), old − new offset. */
   function cache(i: number): { start: number; end: number | null; offset: number } | null {
     const blocks = diff.blocks;
-    if (diff.status === "supprime" || blocks.length === 0) return null;
+    if (diff.status === "deleted" || blocks.length === 0) return null;
     if (i === blocks.length) {
-      if (diff.status === "ajoute") return null;
+      if (diff.status === "added") return null;
       const d = blocks[i - 1]!;
       return { start: blockEnd(d), end: null, offset: d.oldStart + d.oldCount - (d.newStart + d.newCount) };
     }

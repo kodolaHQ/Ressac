@@ -3,7 +3,7 @@
 // from what the frame says. Also the tweaks' console and the memory relay to the host.
 import type { TweaksRead } from "../../../../packages/kernel/src/sites/read";
 import { relativeUrl } from "../../../../packages/kernel/src/sites/urls";
-import GUARD from "../../../../packages/kernel/extensions/webaios-garde-page.js?raw";
+import GUARD from "../../../../packages/kernel/extensions/webaios-page-guard.js?raw";
 import { tweakSource, type FrameInjection } from "../../shared/sites";
 import { addTweakConsole, injectionFor, resumeInFrame, type TweakError, type MemoryResponse } from "../../core/sites/injection";
 import { MEMORY_DENIAL } from "../../host/site-memory";

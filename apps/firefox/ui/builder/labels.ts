@@ -1,21 +1,21 @@
 import type { Execution, ResumeExecution } from "@webaios/kernel";
 
 /** Labels of a run, for the runs bar and a block's tab. */
-export const TRIGGERS: Record<Execution["trigger"], string> = { planifiee: "Planifiée", manuelle: "Manuelle", agent: "Par l'agent", rejeu: "Essai" };
+export const TRIGGERS: Record<Execution["trigger"], string> = { scheduled: "Planifiée", manual: "Manuelle", agent: "Par l'agent", replay: "Essai" };
 export const STATUSES: Record<Execution["status"], string> = {
-  reussie: "Réussie",
-  partielle: "Partielle",
-  echouee: "Échouée",
-  interrompue: "Interrompue",
-  "accord-requis": "Accord requis",
+  succeeded: "Réussie",
+  partial: "Partielle",
+  failed: "Échouée",
+  interrupted: "Interrompue",
+  "grant-required": "Accord requis",
 };
 /** Color of a run's badge: the same scale as the blocks. */
 export const TINTS: Record<Execution["status"], "ok" | "moyen" | "echec"> = {
-  reussie: "ok",
-  partielle: "moyen",
-  "accord-requis": "moyen",
-  echouee: "echec",
-  interrompue: "echec",
+  succeeded: "ok",
+  partial: "moyen",
+  "grant-required": "moyen",
+  failed: "echec",
+  interrupted: "echec",
 };
 
 export const hour = (iso: string) => new Date(iso).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });

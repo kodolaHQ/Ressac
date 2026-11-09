@@ -74,7 +74,7 @@ afterEach(async () => {
 async function launch(o: { prepare?: (root: string, dataDir: string) => void; agent?: boolean; dirs?: { dataDir: string; profile: string }; env?: Record<string, string> } = {}) {
   const d = o.dirs ?? { dataDir: mkdtempSync(path.join(os.tmpdir(), "webaios-data-")), profile: mkdtempSync(path.join(os.tmpdir(), "webaios-firefox-")) };
   if (!o.dirs) dirs.push(d.dataDir, d.profile);
-  const root = path.join(d.dataDir, "espace");
+  const root = path.join(d.dataDir, "workspace");
   o.prepare?.(root, d.dataDir);
   const w = await launchWithAmo({ ...d, env: o.env });
   opened.push(w);
@@ -89,7 +89,7 @@ async function launch(o: { prepare?: (root: string, dataDir: string) => void; ag
 type Launched = Awaited<ReturnType<typeof launch>>;
 
 const registry = (dataDir: string) => {
-  const f = path.join(dataDir, "extensions", "etat.json");
+  const f = path.join(dataDir, "extensions", "state.json");
   return existsSync(f) ? (JSON.parse(readFileSync(f, "utf8")) as { allCut: boolean; extensions: Record<string, { profiles: string[]; disabled?: unknown }> }) : { allCut: false, extensions: {} };
 };
 const waitActive = (m: Marionette, id: string, active: boolean) =>
@@ -286,7 +286,7 @@ describe("crashes", () => {
   async function disabledThenReactivated(w: Launched, id: string, name: string): Promise<void> {
     const m = w.marionette;
     await waitActive(m, `${id}@agent.webaios`, false);
-    expect(registry(w.dataDir).extensions[`agent:${id}`]).toMatchObject({ profiles: ["defaut"], disabled: { reason: "plantages" } });
+    expect(registry(w.dataDir).extensions[`agent:${id}`]).toMatchObject({ profiles: ["defaut"], disabled: { reason: "crashes" } });
     expect((await w.call("list_extensions")).text).toContain(DISABLED_CRASHES);
     await openPage(m);
     await waitRow(m, name, true);

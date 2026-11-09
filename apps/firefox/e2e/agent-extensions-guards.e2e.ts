@@ -472,14 +472,14 @@ document.body.append(" AGENT-VU ");
   "injecte.js": `document.getElementById("mdp").value + "|" + document.getElementById("texte").value;\n`,
   "fond.js": `// Il tente de répondre « onglet » à la garde de page à sa place : le garde du fond ne le lui laisse pas voir.
 chrome.runtime.onMessage.addListener((m, _e, repondre) => {
-  if (m && m.webaios === "contexte") repondre({ onglet: true });
+  if (m && m.webaios === "context") repondre({ tab: true });
 });
 // Et par la méthode du prototype de l'événement, prise à part.
 let porteur = chrome.runtime.onMessage;
 while (porteur && !Object.prototype.hasOwnProperty.call(Object.getPrototypeOf(porteur) || {}, "addListener")) porteur = Object.getPrototypeOf(porteur);
 const ajouterNatif = porteur ? Object.getPrototypeOf(porteur).addListener : chrome.runtime.onMessage.addListener;
 ajouterNatif.call(chrome.runtime.onMessage, (m, _e, repondre) => {
-  if (m && m.webaios === "contexte") repondre({ onglet: true });
+  if (m && m.webaios === "context") repondre({ tab: true });
 });
 // Où sont les méthodes de l'événement, et sont-elles celles du garde (non configurables) ?
 const porteurs = [];
@@ -548,7 +548,7 @@ async function launchAgent(name: string, files: Record<string, string | object>,
   const id = `${name}@agent.webaios`;
   const f = { dataDir: mkdtempSync(path.join(os.tmpdir(), "webaios-data-")), profile: mkdtempSync(path.join(os.tmpdir(), "webaios-firefox-")) };
   dirs.push(f.dataDir, f.profile);
-  writeAgentExtension(path.join(f.dataDir, "espace"), name, files);
+  writeAgentExtension(path.join(f.dataDir, "workspace"), name, files);
   grant(f.dataDir, name, access);
   const prefs = {
     "network.proxy.type": 1,
@@ -578,7 +578,7 @@ async function launchAgent(name: string, files: Record<string, string | object>,
 
 /** The background's startup tries are over (its block rule set): the results it kept, read from its page. */
 const backgroundResults = async (w: LaunchedWebAiOs & { uuid: string }) =>
-  JSON.parse((await extensionPage(w.marionette, `moz-extension://${w.uuid}/resultats.html`, 0)).title) as Record<string, unknown>;
+  JSON.parse((await extensionPage(w.marionette, `moz-extension://${w.uuid}/results.html`, 0)).title) as Record<string, unknown>;
 
 /**
  * Opens a page of the extension in a tab, waits until its title leaves « attente », then `ms` more; returns its title
@@ -762,7 +762,7 @@ describe("agent extensions: network guard", () => {
     const f = { dataDir: mkdtempSync(path.join(os.tmpdir(), "webaios-data-")), profile: mkdtempSync(path.join(os.tmpdir(), "webaios-firefox-")) };
     dirs.push(f.dataDir, f.profile);
     const perms = ["cookies", "declarativeNetRequest", "storage", "tabs", "identity", "notifications", "dns", "find"];
-    writeAgentExtension(path.join(f.dataDir, "espace"), "reseau", { ...EXTENSION_NETWORK, "manifest.json": { ...EXTENSION_NETWORK["manifest.json"], permissions: perms } });
+    writeAgentExtension(path.join(f.dataDir, "workspace"), "reseau", { ...EXTENSION_NETWORK, "manifest.json": { ...EXTENSION_NETWORK["manifest.json"], permissions: perms } });
     grant(f.dataDir, "reseau", { ...NETWORK_GRANT, permissions: perms });
     const w = await launchWithAmo(f);
     opened.push(w);
@@ -1104,7 +1104,7 @@ noter();`,
     // A tab the agent was never given: not readable.
     const tab = await openTab(m, "https://hote.test/formulaire?masque");
     expect((await poll(() => seenByAgent(m, tab), (v) => v?.ecoute === true))?.ecoute).toBe(true);
-    const registry = () => JSON.parse(readFileSync(path.join(w.dataDir, "extensions", "etat.json"), "utf8"));
+    const registry = () => JSON.parse(readFileSync(path.join(w.dataDir, "extensions", "state.json"), "utf8"));
     await until(() => registry().consolesMasquees?.includes("garde@agent.webaios"));
     expect(registry().extensions["agent:garde"].consoleMasquee).toEqual(["defaut"]);
     expect(registry().consolesMasquees).toEqual(["garde@agent.webaios"]);

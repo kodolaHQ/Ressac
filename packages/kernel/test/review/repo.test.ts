@@ -61,12 +61,12 @@ describe("comparer and file", () => {
     await rm(join(folder, "s.txt"));
     const c = await r.compare();
     expect(c.files).toEqual([
-      { path: "m.txt", status: "modifie", additions: 1, deletions: 1, displayable: true },
-      { path: "n.txt", status: "ajoute", additions: 2, deletions: 0, displayable: true },
-      { path: "s.txt", status: "supprime", additions: 0, deletions: 2, displayable: true },
+      { path: "m.txt", status: "modified", additions: 1, deletions: 1, displayable: true },
+      { path: "n.txt", status: "added", additions: 2, deletions: 0, displayable: true },
+      { path: "s.txt", status: "deleted", additions: 0, deletions: 2, displayable: true },
     ]);
     const f = await r.file(c, "m.txt");
-    expect(f.status).toBe("modifie");
+    expect(f.status).toBe("modified");
     expect(f.blocks).toHaveLength(1);
     const b = f.blocks[0]!;
     expect(b).toMatchObject({ oldStart: 7, oldCount: 7, newStart: 7, newCount: 7 });
@@ -103,7 +103,7 @@ describe("comparer and file", () => {
     await write("limite.txt", Buffer.alloc(1048576, 97));
     const c = await r.compare();
     const by = Object.fromEntries(c.files.map((f) => [f.path, f.displayable]));
-    expect(by).toEqual({ "bin.dat": "binaire", "gros.txt": "trop-gros", "long.txt": "trop-gros", "limite.txt": true });
+    expect(by).toEqual({ "bin.dat": "binary", "gros.txt": "too-big", "long.txt": "too-big", "limite.txt": true });
     for (const n of ["bin.dat", "gros.txt", "long.txt"]) expect((await r.file(c, n)).blocks).toEqual([]);
   });
   test("a name that starts with « : » or contains « * » also passes the size check", async () => {
@@ -112,7 +112,7 @@ describe("comparer and file", () => {
     await write("gr*s.txt", Buffer.alloc(1048577, 98));
     const c = await r.compare();
     const by = Object.fromEntries(c.files.map((f) => [f.path, f.displayable]));
-    expect(by).toEqual({ ":gros.txt": "trop-gros", "gr*s.txt": "trop-gros" });
+    expect(by).toEqual({ ":gros.txt": "too-big", "gr*s.txt": "too-big" });
   });
   test("lignes(arbreCourant, chemin, 10, 12) rend ces trois lignes", async () => {
     await r.ensureReference();

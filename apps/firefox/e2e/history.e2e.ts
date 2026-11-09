@@ -134,7 +134,7 @@ describe("history noted in the kernel", () => {
   });
 
   it("the agent finds a visited page by its title", async () => {
-    const config = join(w.dataDir, "espace", ".webaios", "mcp.json");
+    const config = join(w.dataDir, "workspace", ".webaios", "mcp.json");
     await until(async () => existsSync(config), Boolean, 20_000);
     await open(`${base}/a.html`);
     await loaded("/a.html");

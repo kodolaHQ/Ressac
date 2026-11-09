@@ -120,11 +120,11 @@ try { f.contentWindow.location.href = "http://${p}-${d}-nav.${SFX}:${HTTP}/s2/${
 </script>`;
 
 function widgetFiles(dataDir: string, id: string, display: string): void {
-  const dir = path.join(dataDir, "espace/accueil/widgets", id);
+  const dir = path.join(dataDir, "espace/home/widgets", id);
   mkdirSync(dir, { recursive: true });
   writeFileSync(
     path.join(dir, "widget.json"),
-    JSON.stringify({ name: id, description: "", sizes: { min: { l: 2, h: 1 }, max: { l: 6, h: 4 }, default: { l: 3, h: 2 } }, sources: { account: [], public: [], web: false } }),
+    JSON.stringify({ name: id, description: "", sizes: { min: { w: 2, h: 1 }, max: { w: 6, h: 4 }, default: { w: 3, h: 2 } }, sources: { account: [], public: [], web: false } }),
   );
   writeFileSync(path.join(dir, "display.html"), display);
 }
@@ -217,7 +217,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("the UI's network, spikes S1–S3", 
     widgetFiles(dataDir, "sonde", hintsWidget("a"));
     writeSite(dataDir, "netsite", {
       declaration: { name: "Netsite", url: `http://netsite.localhost:${HTTP}/page`, domains: ["netsite.localhost"] },
-      files: { "accueil/index.html": '<!doctype html><meta charset="utf-8"><p id="h">accueil</p>' },
+      files: { "home/index.html": '<!doctype html><meta charset="utf-8"><p id="h">accueil</p>' },
     });
     const actor = testActor(profile);
     w = await launchWebAiOs({
@@ -234,7 +234,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("the UI's network, spikes S1–S3", 
       `const res = Services.io.getProtocolHandler("resource").QueryInterface(Ci.nsIResProtocolHandler);
        const { FileUtils } = ChromeUtils.importESModule("resource://gre/modules/FileUtils.sys.mjs");
        res.setSubstitution("webaios-spike-net", Services.io.newFileURI(new FileUtils.File(arguments[0])));
-       for (const n of ["webaios-spike-page", "webaios-composant-spike", "webaios-site-spike"]) res.setSubstitution(n, Services.io.newFileURI(new FileUtils.File(arguments[1])));`,
+       for (const n of ["webaios-spike-page", "webaios-component-spike", "webaios-site-spike"]) res.setSubstitution(n, Services.io.newFileURI(new FileUtils.File(arguments[1])));`,
       [import.meta.dirname, pages],
     );
     await chrome("N.install();");
@@ -374,7 +374,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("the UI's network, spikes S1–S3", 
        await step("wd", () => N.insertLoads(wd, p + "-wd", sfx));
        await step("wb", async () => N.insertLoads((await N.addFrame(wd)).contentDocument, p + "-wb", sfx));
        await step("wsd", async () => { const f = await N.addFrame(wd, { srcdoc: "<p>s</p>" }); return [f.contentDocument.documentURI, N.insertLoads(f.contentDocument, p + "-wsd", sfx)]; });
-       for (const [d, sub] of [["cp", "webaios-composant-spike"], ["tp", "webaios-spike-page"]])
+       for (const [d, sub] of [["cp", "webaios-component-spike"], ["tp", "webaios-spike-page"]])
          await step(d, async () => { const f = await N.addFrame(sb, { sandbox: "allow-scripts" }, "resource://" + sub + "/s2-" + p + "-" + d + ".html"); return [f.contentDocument.documentURI, N.insertLoads(f.contentDocument, p + "-" + d, sfx)]; });
        await step("bar", () => (bar ? [bar.documentURI, N.insertLoads(bar, p + "-bar", sfx)] : "no bar"));
        await step("sh", () => (home ? [home.documentURI, N.insertLoads(home, p + "-sh", sfx)] : "no home"));

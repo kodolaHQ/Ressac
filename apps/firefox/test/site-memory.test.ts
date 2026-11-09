@@ -180,7 +180,7 @@ test("a note received before forget is dropped, delayed write included", async (
   deferred.shift()!.f();
   await new Promise((r) => setTimeout(r, 1500));
   expect(memory.content().positions).toEqual({});
-  expect(existsSync(join(folder, "vidola", "memoire.json"))).toBe(false);
+  expect(existsSync(join(folder, "vidola", "memory.json"))).toBe(false);
   // A fresh note after the forgetting is kept again.
   clock += 2000;
   await note({ t: 30, duration: 90 });

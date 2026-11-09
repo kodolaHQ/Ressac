@@ -22,7 +22,7 @@ export function variablesTheme(t: HomeTheme | null): Record<string, string> {
     if (typeof color === "string" && COLOR.test(color)) variables[`--accueil-${suffix}`] = color;
   }
   if (Number.isInteger(t.radius) && t.radius! >= 0 && t.radius! <= 24) variables["--accueil-rayon"] = `${t.radius}px`;
-  if (Number.isInteger(t.space) && t.space! >= 0 && t.space! <= 24) variables["--accueil-espace"] = `${t.space}px`;
+  if (Number.isInteger(t.spacing) && t.spacing! >= 0 && t.spacing! <= 24) variables["--accueil-espace"] = `${t.spacing}px`;
   // hasOwn: « toString » or « constructor » must not pass for a font.
   if (t.font && Object.hasOwn(FONTS, t.font)) variables["--accueil-police"] = FONTS[t.font];
   return variables;

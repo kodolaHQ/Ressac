@@ -48,18 +48,18 @@ async function launch(o: { amo?: Parameters<typeof launchWithAmo>[0]["amo"] } = 
   dirs.push(dataDir, profile);
   const w = await launchWithAmo({ dataDir, profile, ...o });
   opened.push(w);
-  const config = path.join(dataDir, "espace", ".webaios", "mcp.json");
+  const config = path.join(dataDir, "workspace", ".webaios", "mcp.json");
   for (const deadline = Date.now() + 20_000; !existsSync(config); await new Promise((r) => setTimeout(r, 100)))
     if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
   await waitUi(w.marionette, "return doc.querySelector('.xterm-rows')?.textContent.includes('prêt>')", [], 20_000, "agent");
-  return { ...w, root: path.join(dataDir, "espace"), call: (name: string, args: Record<string, unknown> = {}) => callTool(dataDir, name, args) };
+  return { ...w, root: path.join(dataDir, "workspace"), call: (name: string, args: Record<string, unknown> = {}) => callTool(dataDir, name, args) };
 }
 
 const cardText = (m: Marionette) => waitUi<string>(m, `return doc.querySelector(${JSON.stringify(CARD)})?.textContent`, [], 15_000);
 const cardGone = (m: Marionette) => waitUi(m, `return !doc.querySelector(${JSON.stringify(MODAL)})`);
 const enable = (m: Marionette) => click(m, `${CARD} button`, { text: "Activer" });
 const registry = (dataDir: string) => {
-  const f = path.join(dataDir, "extensions", "etat.json");
+  const f = path.join(dataDir, "extensions", "state.json");
   return existsSync(f) ? (JSON.parse(readFileSync(f, "utf8")) as { extensions: Record<string, unknown> }).extensions : {};
 };
 const waitAddon = (m: Marionette, id: string, version: string) =>

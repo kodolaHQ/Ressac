@@ -1,7 +1,7 @@
 <script lang="ts">
   import { andOthers } from "../types";
 
-  let { p }: { p: { level: "info" | "avis" | "attention"; title: string | null; text: string | null; items: string[] | null; others: number } } = $props();
+  let { p }: { p: { level: "info" | "notice" | "warning"; title: string | null; text: string | null; items: string[] | null; others: number } } = $props();
 </script>
 
 <div class="pa-encadre {p.level}" data-testid="bloc-encadre" role="note">

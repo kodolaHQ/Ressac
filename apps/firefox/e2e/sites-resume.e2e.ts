@@ -28,8 +28,8 @@ const declaration = (start = "/episode/4", extra: object = {}) => ({ name: "Vido
 
 const inStore = <T = unknown>(body: string, args: unknown[] = []) =>
   m.execute<T>(`return (async () => { const store = await ChromeUtils.importESModule("${STORE}").ready; ${body} })();`, args);
-const memoryFile = (id = "vidola") => path.join(dataDir, "sites", id, "memoire.json");
-/** memoire.json's positions (written 500 ms after a change), or null. */
+const memoryFile = (id = "vidola") => path.join(dataDir, "sites", id, "memory.json");
+/** memory.json's positions (written 500 ms after a change), or null. */
 const positions = (id = "vidola"): Record<string, { t: number; duration: number }> | null => (existsSync(memoryFile(id)) ? JSON.parse(readFileSync(memoryFile(id), "utf8")).positions : null);
 const viewUrl = (id: string) => m.execute<string | null>(`return ${siteWindowExpr(id)}?.gBrowser?.selectedBrowser.currentURI?.spec ?? null;`);
 const view = <T = unknown>(code: string, o: { frame?: number } = {}) => inSiteView<T>(m, "vidola", `return ${code};`, { frame: o.frame }).catch(() => null);
@@ -224,7 +224,7 @@ describe("video resume", () => {
     writeSite(dataDir, "vidola", {
       declaration: declaration("/episode/4", { tweaks: [{ matches: ["/episode/*"], js: ["m.js"] }] }),
       files: {
-        "retouches/m.js": 'document.addEventListener("essai", () => webaiosSite.retenir("k", 1).then(() => (document.documentElement.dataset.r = "ok"), (e) => (document.documentElement.dataset.r = "refus:" + e.message)));',
+        "tweaks/m.js": 'document.addEventListener("essai", () => webaiosSite.retenir("k", 1).then(() => (document.documentElement.dataset.r = "ok"), (e) => (document.documentElement.dataset.r = "refus:" + e.message)));',
       },
     });
     await openAndWait("/episode/4");

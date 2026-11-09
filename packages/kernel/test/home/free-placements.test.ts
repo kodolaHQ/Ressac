@@ -12,14 +12,14 @@ async function space() {
 }
 
 test("freeSizes converts 3 × 2 units to 250 ‰ × 180 px", () => {
-  expect(freeSizes({ l: 3, h: 2 })).toEqual({ l: 250, h: 180 });
+  expect(freeSizes({ w: 3, h: 2 })).toEqual({ w: 250, h: 180 });
 });
 
 test("lireDispositionLibre reads version 3 and returns [] for version 2, a damaged file or an overlap", async () => {
   const c = await space();
   const widgets = [
-    { id: "a", x: 0, y: 0, l: 500, h: 90 },
-    { id: "b", x: 500, y: 0, l: 500, h: 90 },
+    { id: "a", x: 0, y: 0, w: 500, h: 90 },
+    { id: "b", x: 500, y: 0, w: 500, h: 90 },
   ];
   await writeFile(c.layout, JSON.stringify({ version: 3, widgets }));
   expect(await readFreeLayout(c)).toEqual(widgets);
@@ -32,58 +32,58 @@ test("lireDispositionLibre reads version 3 and returns [] for version 2, a damag
 
   await writeFile(
     c.layout,
-    JSON.stringify({ version: 3, widgets: [{ id: "a", x: 400, y: 0, l: 500, h: 90 }, { id: "b", x: 500, y: 0, l: 500, h: 90 }] }),
+    JSON.stringify({ version: 3, widgets: [{ id: "a", x: 400, y: 0, w: 500, h: 90 }, { id: "b", x: 500, y: 0, w: 500, h: 90 }] }),
   );
   expect(await readFreeLayout(c)).toEqual([]);
 });
 
 test("placeMissingFree keeps a valid wanted placement and ignores an unknown id or a duplicate", () => {
-  const defaults = new Map([["a", { l: 500, h: 90 }]]);
+  const defaults = new Map([["a", { w: 500, h: 90 }]]);
   const wanted: FreePlacement[] = [
-    { id: "a", x: 500, y: 0, l: 500, h: 90 },
-    { id: "fantome", x: 0, y: 0, l: 500, h: 90 },
-    { id: "a", x: 0, y: 0, l: 500, h: 90 },
+    { id: "a", x: 500, y: 0, w: 500, h: 90 },
+    { id: "fantome", x: 0, y: 0, w: 500, h: 90 },
+    { id: "a", x: 0, y: 0, w: 500, h: 90 },
   ];
-  expect(placeMissingFree(["a"], wanted, defaults)).toEqual([{ id: "a", x: 500, y: 0, l: 500, h: 90 }]);
+  expect(placeMissingFree(["a"], wanted, defaults)).toEqual([{ id: "a", x: 500, y: 0, w: 500, h: 90 }]);
 });
 
 test("placeMissingFree puts widgets without a position at the first gap, without overlap", () => {
   const defaults = new Map([
-    ["a", { l: 500, h: 90 }],
-    ["b", { l: 500, h: 90 }],
+    ["a", { w: 500, h: 90 }],
+    ["b", { w: 500, h: 90 }],
   ]);
   expect(placeMissingFree(["a", "b"], [], defaults)).toEqual([
-    { id: "a", x: 0, y: 0, l: 500, h: 90 },
-    { id: "b", x: 500, y: 0, l: 500, h: 90 },
+    { id: "a", x: 0, y: 0, w: 500, h: 90 },
+    { id: "b", x: 500, y: 0, w: 500, h: 90 },
   ]);
 });
 
 test("placeMissingFree places below when the row is full", () => {
   const defaults = new Map([
-    ["a", { l: 500, h: 90 }],
-    ["b", { l: 500, h: 90 }],
-    ["c", { l: 500, h: 90 }],
+    ["a", { w: 500, h: 90 }],
+    ["b", { w: 500, h: 90 }],
+    ["c", { w: 500, h: 90 }],
   ]);
   expect(placeMissingFree(["a", "b", "c"], [], defaults)).toEqual([
-    { id: "a", x: 0, y: 0, l: 500, h: 90 },
-    { id: "b", x: 500, y: 0, l: 500, h: 90 },
-    { id: "c", x: 0, y: 90, l: 500, h: 90 },
+    { id: "a", x: 0, y: 0, w: 500, h: 90 },
+    { id: "b", x: 500, y: 0, w: 500, h: 90 },
+    { id: "c", x: 0, y: 90, w: 500, h: 90 },
   ]);
 });
 
 test("placeMissingFree puts a widget in the gap at a neighbor's right edge", () => {
   // a = 0…250, b = 500…750: the gap starts exactly at 250, off the 8 ‰ steps.
   const defaults = new Map([
-    ["a", { l: 250, h: 180 }],
-    ["b", { l: 250, h: 180 }],
-    ["nouveau", { l: 250, h: 180 }],
+    ["a", { w: 250, h: 180 }],
+    ["b", { w: 250, h: 180 }],
+    ["nouveau", { w: 250, h: 180 }],
   ]);
   const wanted = [
-    { id: "a", x: 0, y: 0, l: 250, h: 180 },
-    { id: "b", x: 500, y: 0, l: 250, h: 180 },
+    { id: "a", x: 0, y: 0, w: 250, h: 180 },
+    { id: "b", x: 500, y: 0, w: 250, h: 180 },
   ];
   expect(placeMissingFree(["a", "b", "nouveau"], wanted, defaults)).toEqual([
     ...wanted,
-    { id: "nouveau", x: 250, y: 0, l: 250, h: 180 },
+    { id: "nouveau", x: 250, y: 0, w: 250, h: 180 },
   ]);
 });

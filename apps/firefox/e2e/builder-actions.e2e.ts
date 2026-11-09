@@ -34,7 +34,7 @@ const writeGitlab = (id: string, mark = "un") =>
     },
     files: { "lire.mjs": codeGitlab(mark) },
   });
-const actionDir = (id: string) => path.join(w.dataDir, "espace", "actions", id);
+const actionDir = (id: string) => path.join(w.dataDir, "workspace", "actions", id);
 
 let w: LaunchedWebAiOs;
 let m: Marionette;
@@ -57,7 +57,7 @@ async function poll<T>(read: () => Promise<T> | T, ok: (v: T) => boolean, what: 
 const snapshot = (dir: string) => readdirSync(dir).map((f) => `${f}:${statSync(path.join(dir, f)).mtimeMs}`).sort();
 const readJson = async (file: string) => JSON.parse(await readFile(file, "utf8"));
 const lastSessionConfig = () =>
-  path.join(w.dataDir, "espace", (JSON.parse(readFileSync(path.join(w.dataDir, "espace", "faux-agent-args.json"), "utf8")) as string[]).at(-1)!.replace(/^\/workspace\//, ""));
+  path.join(w.dataDir, "workspace", (JSON.parse(readFileSync(path.join(w.dataDir, "workspace", "faux-agent-args.json"), "utf8")) as string[]).at(-1)!.replace(/^\/workspace\//, ""));
 async function setPrivate(isPrivate: boolean): Promise<void> {
   const s = await state(m);
   const e = s.spaces.find((x) => x.id === s.windows[0]!.activeSpace)!;
@@ -117,8 +117,8 @@ describe("the builder of an action", () => {
     );
     // The agent knows it is the action's workflow, and the block chosen.
     // The window's agent session (the fake agent notes its arguments once started).
-    await poll(() => existsSync(path.join(w.dataDir, "espace", "faux-agent-args.json")), (v) => v, "the agent session", 20_000);
-    const open = async () => (await callMcpTool(path.join(w.dataDir, "espace"), "open_workflow", {}, lastSessionConfig())).text;
+    await poll(() => existsSync(path.join(w.dataDir, "workspace", "faux-agent-args.json")), (v) => v, "the agent session", 20_000);
+    const open = async () => (await callMcpTool(path.join(w.dataDir, "workspace"), "open_workflow", {}, lastSessionConfig())).text;
     await poll(open, (t) => t === '{"action":"gitlab-a","block":null}', "open_workflow", 20_000);
     await click(m, tid("noeud-lire"));
     await poll(open, (t) => t === '{"action":"gitlab-a","block":"lire"}', "open_workflow", 20_000);
@@ -154,7 +154,7 @@ describe("the builder of an action", () => {
     await waitUi(m, "return doc.querySelector(arguments[0]).getAttribute('aria-pressed') === 'true';", [button], 30_000);
     expect(await q.text(button)).toContain("Manuelle");
     await q.waitText(tid("pastille-lire"), "1");
-    expect(await readJson(path.join(actionsDataDir(w.dataDir), "gitlab-b", "executions", file!))).toMatchObject({ trigger: "manuelle", input: "webaios", status: "reussie" });
+    expect(await readJson(path.join(actionsDataDir(w.dataDir), "gitlab-b", "runs", file!))).toMatchObject({ trigger: "manual", input: "webaios", status: "succeeded" });
     // The preview shows this run's page (the agent's components are never loaded there).
     await click(m, tid("bouton-apercu"));
     await q.waitContains(tid("apercu-action"), "ticket-webaios-un", 30_000);
@@ -168,15 +168,15 @@ describe("the builder of an action", () => {
     await inUi(m, "void ui.webaios.actions.lancer('gitlab-c', 'webaios');");
     const [file] = await poll(() => runsOnDisk(w.dataDir, "gitlab-c"), (l) => l.length === 1, "the real run");
     const origin = file!.replace(/\.json$/, "");
-    const run = await poll(() => readJson(path.join(actionsDataDir(w.dataDir), "gitlab-c", "executions", file!)), (e) => e.statut !== "en-cours", "its end", 60_000);
-    expect(run.statut).toBe("reussie");
+    const run = await poll(() => readJson(path.join(actionsDataDir(w.dataDir), "gitlab-c", "runs", file!)), (e) => e.status !== "running", "its end", 60_000);
+    expect(run.status).toBe("succeeded");
     await waitUi(m, "return doc.querySelector(arguments[0])?.getAttribute('aria-pressed') === 'true';", [tid(`execution-${origin}`)], 30_000);
     // The code changes: the trial shows it, the real run does not.
     await writeFile(path.join(actionDir("gitlab-c"), "lire.mjs"), codeGitlab("deux"));
     await click(m, tid("noeud-lire"));
     await waitUi(m, "return doc.querySelector(arguments[0])?.disabled === false;", [tid("rejouer")]);
     await click(m, tid("rejouer"));
-    const trials = () => runsOnDisk(w.dataDir, "gitlab-c").then((l) => l.filter((f) => f.includes("-essai")));
+    const trials = () => runsOnDisk(w.dataDir, "gitlab-c").then((l) => l.filter((f) => f.includes("-attempt")));
     const [trialFile] = await poll(trials, (l) => l.length === 1, "one trial");
     const trial = trialFile!.replace(/\.json$/, "");
     const button = tid(`execution-${trial}`);

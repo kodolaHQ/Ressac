@@ -47,7 +47,7 @@ test("removeSiteGrant then readSiteGrants: absent; file in the profile, simultan
   const p = await tempFolder();
   await Promise.all([storeSiteGrant(p, "a", base), storeSiteGrant(p, "b", base)]);
   expect(Object.keys(await readSiteGrants(p)).sort()).toEqual(["a", "b"]);
-  expect(JSON.parse(await readFile(join(p, "sites-accords.json"), "utf8")).a.domaines).toEqual(["vidola-a.example"]);
+  expect(JSON.parse(await readFile(join(p, "site-grants.json"), "utf8")).a.domains).toEqual(["vidola-a.example"]);
   await removeSiteGrant(p, "a");
   expect(Object.keys(await readSiteGrants(p))).toEqual(["b"]);
   await expect(storeSiteGrant(p, "../x", base)).rejects.toThrow();
@@ -61,7 +61,7 @@ test("ids constructor, toString, __proto__: no grant, nothing throws", async () 
     expect(() => grantCovers(a[id] ?? null, base)).not.toThrow();
   }
   await storeSiteGrant(p, "constructor", base);
-  await writeFile(join(p, "sites-accords.json"), JSON.stringify({ constructor: rightsOf(base) }));
+  await writeFile(join(p, "site-grants.json"), JSON.stringify({ constructor: rightsOf(base) }));
   expect((await readSiteGrants(p))["constructor"]).toEqual(rightsOf(base));
   expect((await readSiteGrants(p))["toString"]).toBeUndefined();
 });
@@ -69,11 +69,11 @@ test("ids constructor, toString, __proto__: no grant, nothing throws", async () 
 test("failing read (neither absent nor damaged): the write fails without erasing the other grants", async () => {
   const p = await tempFolder();
   await storeSiteGrant(p, "a", base);
-  await rm(join(p, "sites-accords.json"));
-  await mkdir(join(p, "sites-accords.json")); // read a folder: EISDIR
+  await rm(join(p, "site-grants.json"));
+  await mkdir(join(p, "site-grants.json")); // read a folder: EISDIR
   await expect(storeSiteGrant(p, "b", base)).rejects.toThrow();
-  await rm(join(p, "sites-accords.json"), { recursive: true });
-  await writeFile(join(p, "sites-accords.json"), "{abîmé");
+  await rm(join(p, "site-grants.json"), { recursive: true });
+  await writeFile(join(p, "site-grants.json"), "{abîmé");
   await storeSiteGrant(p, "c", base); // damaged: starts from zero
   expect(Object.keys(await readSiteGrants(p))).toEqual(["c"]);
 });

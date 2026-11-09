@@ -7,7 +7,7 @@ import {
 } from "../../src/sites/memory.js";
 import { tempFolder } from "../helpers/temp.js";
 
-const file = (d: string) => join(d, "s", "memoire.json");
+const file = (d: string) => join(d, "s", "memory.json");
 let n = 0;
 const clock = () => new Date(Date.UTC(2026, 0, 1) + n++ * 1000).toISOString();
 const open = (d: string) => SiteMemory.open(d, "s", { now: clock });
@@ -35,7 +35,7 @@ test("the write is deferred by at most ECRITURE_MEMOIRE_MS and grouped", async (
   m.keep("b", 2, null);
   expect(await exists(file(d))).toBe(false);
   await sleep(MEMORY_WRITE_MS + 300);
-  expect(JSON.parse(await readFile(file(d), "utf8")).valeurs).toMatchObject({ a: { value: 1 }, b: { value: 2 } });
+  expect(JSON.parse(await readFile(file(d), "utf8")).values).toMatchObject({ a: { value: 1 }, b: { value: 2 } });
 });
 
 test("300 KB value: MEMORY_FULL, memory unchanged", async () => {
@@ -108,7 +108,7 @@ test("600 positions: 500 kept, the 100 oldest gone", async () => {
   expect(m.position("/v/599")).not.toBeNull();
 });
 
-test("damaged memoire.json: empty memory, then cleanly rewritten", async () => {
+test("damaged memory.json: empty memory, then cleanly rewritten", async () => {
   const d = await tempFolder();
   await mkdir(join(d, "s"), { recursive: true });
   await writeFile(file(d), "{pas du json");
@@ -116,7 +116,7 @@ test("damaged memoire.json: empty memory, then cleanly rewritten", async () => {
   expect(m.content()).toEqual({ version: 1, values: {}, positions: {} });
   m.keep("a", 1, null);
   await m.clear();
-  expect(JSON.parse(await readFile(file(d), "utf8")).valeurs.a.valeur).toBe(1);
+  expect(JSON.parse(await readFile(file(d), "utf8")).values.a.value).toBe(1);
   await writeFile(file(d), JSON.stringify({ version: 1, values: { a: 3 }, positions: [] }));
   expect((await open(d)).content().values).toEqual({});
 });
@@ -198,7 +198,7 @@ test("noterPosition refuses a position that does not fit and keeps the total und
   expect(size(m)).toBeLessThanOrEqual(SITE_MEMORY_SIZE);
 });
 
-test("eviction follows quand, never the key order, and keeps the written position", async () => {
+test("eviction follows when, never the key order, and keeps the written position", async () => {
   const m = await open(await tempFolder());
   m.notePosition("b", 10, 100);
   m.notePosition("5", 10, 100);
@@ -272,7 +272,7 @@ test("write failure: the data stays and vider() retries", async () => {
   await rm(join(d, "s"));
   await m.clear();
   const raw = JSON.parse(await readFile(file(d), "utf8"));
-  expect([raw.valeurs.a.valeur, raw.valeurs.b.valeur]).toEqual([1, 2]);
+  expect([raw.values.a.value, raw.values.b.value]).toEqual([1, 2]);
 });
 
 test("unknown version: read as empty, saved as .bak, not overwritten", async () => {
@@ -282,11 +282,11 @@ test("unknown version: read as empty, saved as .bak, not overwritten", async () 
   await writeFile(file(d), future);
   const m = await open(d);
   expect(m.content().values).toEqual({});
-  expect(await readFile(join(d, "s", "memoire.json.v2.bak"), "utf8")).toBe(future);
+  expect(await readFile(join(d, "s", "memory.json.v2.bak"), "utf8")).toBe(future);
   m.keep("a", 1, null);
   await m.clear();
   expect(JSON.parse(await readFile(file(d), "utf8")).version).toBe(1);
-  expect(await readFile(join(d, "s", "memoire.json.v2.bak"), "utf8")).toBe(future);
+  expect(await readFile(join(d, "s", "memory.json.v2.bak"), "utf8")).toBe(future);
 });
 
 test("unknown version twice: the first .bak backup is not overwritten", async () => {
@@ -298,6 +298,6 @@ test("unknown version twice: the first .bak backup is not overwritten", async ()
   await open(d);
   await writeFile(file(d), two);
   await open(d);
-  expect(await readFile(join(d, "s", "memoire.json.v2.bak"), "utf8")).toBe(one);
-  expect(await readFile(join(d, "s", "memoire.json.v2.1.bak"), "utf8")).toBe(two);
+  expect(await readFile(join(d, "s", "memory.json.v2.bak"), "utf8")).toBe(one);
+  expect(await readFile(join(d, "s", "memory.json.v2.1.bak"), "utf8")).toBe(two);
 });

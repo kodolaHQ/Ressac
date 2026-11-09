@@ -12,8 +12,8 @@ const trace = (id: string, extra: Partial<BlockTrace> = {}): BlockTrace => ({
   id, type: "code", status: "succeeded", start: null, end: null, items: 3, log: [], output: { from: id }, ...extra,
 });
 const origin = (changes: Record<string, Partial<BlockTrace>> = {}, without: string[] = []): Execution => ({
-  version: 1, id: "2026-10-29T08-00-00-000Z", owner: { type: "widget", id: "w" }, trigger: "manuelle",
-  start: "2026-10-29T08:00:00.000Z", end: null, status: "reussie",
+  version: 1, id: "2026-10-29T08-00-00-000Z", owner: { type: "widget", id: "w" }, trigger: "manual",
+  start: "2026-10-29T08:00:00.000Z", end: null, status: "succeeded",
   blocks: valid.order.filter((id) => !without.includes(id)).map((id) => trace(id, changes[id])),
 });
 const error = (p: ReturnType<typeof replayPlan>) => (p.ok ? "accepté à tort" : p.error);
@@ -61,18 +61,18 @@ test("refusal: upstream output reused (the origin is itself a trial)", () => {
 });
 
 test("refusal: upstream output reused and the trial's origin pruned", () => {
-  const attempt = { ...origin({ pages: { status: "resumed", output: undefined } }), id: "e1-essai", attempt: { start: "resumes", origin: "reel" } };
+  const attempt = { ...origin({ pages: { status: "resumed", output: undefined } }), id: "e1-attempt", attempt: { start: "resumes", origin: "reel" } };
   expect(error(replayPlan(valid, attempt, "resumes", []))).toBe("Rejeu impossible : la sortie de « pages » manque dans cette exécution");
 });
 
 const attemptOf = (id: string, from: string, changes: Record<string, Partial<BlockTrace>>): Execution => ({
-  ...origin(changes), id, trigger: "rejeu", attempt: { start: "resumes", origin: from },
+  ...origin(changes), id, trigger: "replay", attempt: { start: "resumes", origin: from },
 });
 const resumedWithout = { status: "resumed", output: undefined } as const;
 
 test("rejouer from the same block starting from a trial reuses the outputs of its origin, which it names", () => {
   const real = { ...origin({ pages: { items: 8, output: "p-reel" }, top: { items: 15, output: "t-reel" } }), id: "reel" };
-  const attempt = attemptOf("e1-essai", "reel", { pages: { ...resumedWithout, items: 8 }, top: { ...resumedWithout, items: 15 } });
+  const attempt = attemptOf("e1-attempt", "reel", { pages: { ...resumedWithout, items: 8 }, top: { ...resumedWithout, items: 15 } });
   const p = replayPlan(valid, attempt, "resumes", [real]);
   if (!p.ok) throw new Error(p.error);
   expect(p.reruns).toEqual(["resumes", "articles", "sortie"]);
@@ -83,8 +83,8 @@ test("rejouer from the same block starting from a trial reuses the outputs of it
 
 test("a trial of a trial goes back up the chain to the real run", () => {
   const real = { ...origin({ top: { output: "t-reel" }, pages: { output: "p-reel" } }), id: "reel" };
-  const e1 = attemptOf("e1-essai", "reel", { top: resumedWithout, pages: resumedWithout });
-  const e2 = attemptOf("e2-essai", "e1-essai", { top: resumedWithout, pages: resumedWithout });
+  const e1 = attemptOf("e1-attempt", "reel", { top: resumedWithout, pages: resumedWithout });
+  const e2 = attemptOf("e2-attempt", "e1-attempt", { top: resumedWithout, pages: resumedWithout });
   const p = replayPlan(valid, e2, "resumes", [e1, real]);
   if (!p.ok) throw new Error(p.error);
   expect(p.outputs).toEqual({ pages: "p-reel", top: "t-reel" });
@@ -94,16 +94,16 @@ test("a trial of a trial goes back up the chain to the real run", () => {
 test("mixed outputs (relaunched by the trial, reused from its origin): the named origin is the trial", () => {
   const real = { ...origin({ top: { output: "t-reel" } }), id: "reel" };
   // The trial started from « a-resumer »: top is reused, pages ran in the trial.
-  const e1 = attemptOf("e1-essai", "reel", { stream: resumedWithout, unique: resumedWithout, sort: resumedWithout, top: resumedWithout, pages: { output: "p-essai" } });
+  const e1 = attemptOf("e1-attempt", "reel", { stream: resumedWithout, unique: resumedWithout, sort: resumedWithout, top: resumedWithout, pages: { output: "p-attempt" } });
   const p = replayPlan(valid, e1, "resumes", [real]);
   if (!p.ok) throw new Error(p.error);
-  expect(p.outputs).toEqual({ pages: "p-essai", top: "t-reel" });
-  expect(p.origin).toBe("e1-essai");
+  expect(p.outputs).toEqual({ pages: "p-attempt", top: "t-reel" });
+  expect(p.origin).toBe("e1-attempt");
 });
 
 test("refusal: output reused from the trial's origin truncated", () => {
   const real = { ...origin({ top: { outputTruncated: true, output: "[{…" } }), id: "reel" };
-  const attempt = attemptOf("e1-essai", "reel", { top: resumedWithout, pages: resumedWithout });
+  const attempt = attemptOf("e1-attempt", "reel", { top: resumedWithout, pages: resumedWithout });
   expect(error(replayPlan(valid, attempt, "resumes", [real]))).toBe("Rejeu impossible : la sortie de « top » a été tronquée dans cette exécution");
 });
 

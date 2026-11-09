@@ -24,8 +24,8 @@ const clock = () => new Date((instant += 1000));
 
 const PLAN = {
   blocks: [
-    { component: "titre", props: { text: "Tickets" } },
-    { component: "liste", props: { items: "tickets", title: "title" } },
+    { component: "title", props: { text: "Tickets" } },
+    { component: "list", props: { items: "tickets", title: "title" } },
   ],
 };
 
@@ -113,7 +113,7 @@ const options = (b: Bench, id: string, o: Partial<OptionsAction> = {}): OptionsA
   ai: fakeGemma(),
   clock: clock,
   input: null,
-  trigger: "manuelle",
+  trigger: "manual",
   signal: new AbortController().signal,
   onTrace: () => {},
   onStep: () => {},
@@ -132,10 +132,10 @@ describe("runAction", () => {
     const ai = fakeGemma();
     const steps: string[] = [];
     const r = await runAction(options(b, "gitlab", { ai: ai, onStep: (e) => steps.push(e) }));
-    expect(r).toMatchObject({ status: "reussie" });
+    expect(r).toMatchObject({ status: "succeeded" });
     expect(r.run).toBeDefined();
     const e = await readRun(join(b.actionsFolder, "gitlab"), r.run!);
-    expect(e).toMatchObject({ status: "reussie", owner: { type: "action", id: "gitlab" }, trigger: "manuelle" });
+    expect(e).toMatchObject({ status: "succeeded", owner: { type: "action", id: "gitlab" }, trigger: "manual" });
     const res = await readResult(b.actionsFolder, "gitlab", r.run!);
     expect(res).toEqual({
       version: 1,
@@ -155,7 +155,7 @@ describe("runAction", () => {
   it("without a grant: accord-requis, no container launched, nothing written", async () => {
     const b = await prepare("gitlab", GITLAB, CODE_GITLAB);
     const r = await runAction(options(b, "gitlab"));
-    expect(r).toEqual({ status: "accord-requis", error: actionGrantRequired(DeclarationAction.parse(GITLAB)), kernelError: true });
+    expect(r).toEqual({ status: "grant-required", error: actionGrantRequired(DeclarationAction.parse(GITLAB)), kernelError: true });
     expect(r.error).toBe("Accord requis pour lire avec ton compte : gitlab.com");
     expect(b.commands).toEqual([]);
     expect(existsSync(join(b.actionsFolder, "gitlab"))).toBe(false);
@@ -165,17 +165,17 @@ describe("runAction", () => {
     const b = await prepare("gitlab", GITLAB, CODE_GITLAB);
     await gitlabGrant(b);
     const first = await runAction(options(b, "gitlab"));
-    expect(first.status).toBe("reussie");
+    expect(first.status).toBe("succeeded");
     await writeFile(join(b.folder, "action.json"), JSON.stringify({ ...GITLAB, sources: { account: ["gitlab.com", "github.com"] } }));
     const r = await runAction(options(b, "gitlab"));
-    expect(r.status).toBe("accord-requis");
+    expect(r.status).toBe("grant-required");
     expect(await listRuns(join(b.actionsFolder, "gitlab"))).toEqual([]);
   });
 
   it("unknown action: ACTION_UNKNOWN, nothing written", async () => {
     const b = await prepare("gitlab", GITLAB, CODE_GITLAB);
     const r = await runAction(options(b, "absente"));
-    expect(r).toMatchObject({ status: "invalide", error: ACTION_UNKNOWN });
+    expect(r).toMatchObject({ status: "invalid", error: ACTION_UNKNOWN });
     expect(existsSync(join(b.actionsFolder, "absente"))).toBe(false);
   });
 
@@ -183,7 +183,7 @@ describe("runAction", () => {
     const b = await prepare("cassee", { name: "C", sources: {} }, `export default async () => 1;`);
     await writeFile(join(b.folder, "workflow.json"), "{pas du json");
     const r = await runAction(options(b, "cassee"));
-    expect(r.status).toBe("invalide");
+    expect(r.status).toBe("invalid");
     expect(r.error).toBeTruthy();
     expect(b.commands).toEqual([]);
     expect(existsSync(join(b.actionsFolder, "cassee"))).toBe(false);
@@ -193,7 +193,7 @@ describe("runAction", () => {
     const b = await prepare("leboncoin", { name: "Leboncoin", sources: {}, input: { label: "Recherche" } }, `export default async (e, w) => ({ q: w.input });`);
     for (const input of [null, "   "]) {
       const r = await runAction(options(b, "leboncoin", { input: input }));
-      expect(r).toEqual({ status: "invalide", error: requiredInput("Recherche"), kernelError: true });
+      expect(r).toEqual({ status: "invalid", error: requiredInput("Recherche"), kernelError: true });
     }
     expect(requiredInput("Recherche")).toBe("Saisie requise : Recherche");
     expect(b.commands).toEqual([]);
@@ -202,7 +202,7 @@ describe("runAction", () => {
   it("« clio lyon » arrives in debut.saisie and in Execution.saisie", async () => {
     const b = await prepare("leboncoin", { name: "Leboncoin", sources: {}, input: { label: "Recherche" } }, `export default async (e, w) => ({ announcements: [{ title: w.input }] });`);
     const r = await runAction(options(b, "leboncoin", { input: "  clio lyon  " }));
-    expect(r.status).toBe("reussie");
+    expect(r.status).toBe("succeeded");
     const e = await readRun(join(b.actionsFolder, "leboncoin"), r.run!);
     expect(e?.input).toBe("clio lyon");
     const res = await readResult(b.actionsFolder, "leboncoin", r.run!);
@@ -216,7 +216,7 @@ describe("runAction", () => {
   it("an input that is too long is cut to 200 characters", async () => {
     const b = await prepare("leboncoin", { name: "Leboncoin", sources: {}, input: { label: "Recherche" } }, `export default async (e, w) => ({ announcements: [{ title: w.input }] });`);
     const r = await runAction(options(b, "leboncoin", { input: "x".repeat(500) }));
-    expect(r.status).toBe("reussie");
+    expect(r.status).toBe("succeeded");
     expect((await readRun(join(b.actionsFolder, "leboncoin"), r.run!))?.input).toBe("x".repeat(200));
   });
 
@@ -224,7 +224,7 @@ describe("runAction", () => {
     const b = await prepare("vide", { name: "V", sources: {} }, `export default async () => ({ tickets: [] });`);
     const ai = fakeGemma();
     const r = await runAction(options(b, "vide", { ai: ai }));
-    expect(r.status).toBe("reussie");
+    expect(r.status).toBe("succeeded");
     const res = await readResult(b.actionsFolder, "vide", r.run!);
     expect(res).toMatchObject({ empty: true, plan: null, fallback: false });
     expect(ai.calls).toEqual([]);
@@ -233,7 +233,7 @@ describe("runAction", () => {
   it("Gemma absente : plan de secours, secours true", async () => {
     const b = await prepare("simple", { name: "S", sources: {} }, `export default async () => ({ tickets: [{ title: "a" }] });`);
     const r = await runAction(options(b, "simple", { ai: null }));
-    expect(r.status).toBe("reussie");
+    expect(r.status).toBe("succeeded");
     const res = await readResult(b.actionsFolder, "simple", r.run!);
     expect(res?.fallback).toBe(true);
     expect(res?.plan?.blocks.length).toBeGreaterThan(0);
@@ -250,10 +250,10 @@ describe("runAction", () => {
       end,
     ];
     const r = await runAction(options(b, "memo", { launch: launcherLines(lignes({ t: "end", data: { tickets: [{ title: "a" }] } })) }));
-    expect(r.status).toBe("reussie");
+    expect(r.status).toBe("succeeded");
     expect((await readMemory(join(b.actionsFolder, "memo"))).lire).toMatchObject({ type: "code", value: { seen: 1 } });
     const failure = await runAction(options(b, "memo", { launch: launcherLines([{ t: "memory", memory: { lire: { type: "code", value: { seen: 2 } } } }, { t: "failure", error: "cassé" }]) }));
-    expect(failure.status).toBe("echouee");
+    expect(failure.status).toBe("failed");
     expect((await readMemory(join(b.actionsFolder, "memo"))).lire).toMatchObject({ value: { seen: 1 } });
   });
 
@@ -272,7 +272,7 @@ describe("runAction", () => {
     let release!: () => void;
     const held = withMemory(dataFolder, () => new Promise<void>((ok) => (release = ok)));
     const end = runAction(options(b, "memo", { launch: launcherLines(lignes) }));
-    await waitUntil(() => existsSync(join(dataFolder, "resultats")));
+    await waitUntil(() => existsSync(join(dataFolder, "results")));
     // The time the re-read that follows the result takes: the action is still there.
     await new Promise((ok) => setTimeout(ok, 200));
     await rm(b.folder, { recursive: true, force: true });
@@ -292,7 +292,7 @@ describe("runAction", () => {
     await removeGrant(b.actionsFolder, "gitlab");
     b.bridge.release("https://gitlab.com/tickets");
     const r = await end;
-    expect(r.status).toBe("accord-requis");
+    expect(r.status).toBe("grant-required");
     expect(r.run).toBeUndefined();
     expect(await listRuns(join(b.actionsFolder, "gitlab"))).toEqual([]);
     expect(await lastResult(b.actionsFolder, "gitlab")).toBeNull();
@@ -308,7 +308,7 @@ describe("runAction", () => {
     b.bridge.release("https://gitlab.com/tickets");
     const r = await end;
     expect(r.run).toBeUndefined();
-    expect(r.status).toBe("invalide");
+    expect(r.status).toBe("invalid");
     expect(r.error).toBe(ACTION_UNKNOWN);
     expect(await listRuns(join(b.actionsFolder, "public"))).toEqual([]);
   });
@@ -316,7 +316,7 @@ describe("runAction", () => {
   it("actions folder missing for a moment during the run: nothing is written, the history stays", async () => {
     const b = await prepare("public", { name: "P", sources: { public: ["gitlab.com"] } }, `export default async (e, w) => ({ tickets: [{ title: (await w.readPage("https://gitlab.com/tickets")).titre }] });`);
     const first = await runAction(options(b, "public"));
-    expect(first.status).toBe("reussie");
+    expect(first.status).toBe("succeeded");
     const beforeMemory = await readMemory(join(b.actionsFolder, "public"));
     // During the second one's layout, the actions folder disappears (volume unmounted, renamed…).
     const elsewhere = `${b.c.actions}-ailleurs`;
@@ -326,7 +326,7 @@ describe("runAction", () => {
     });
     const r = await runAction(options(b, "public", { ai: ai }));
     await rename(elsewhere, b.c.actions);
-    expect(r).toMatchObject({ status: "invalide", error: ACTION_UNKNOWN });
+    expect(r).toMatchObject({ status: "invalid", error: ACTION_UNKNOWN });
     expect((await listRuns(join(b.actionsFolder, "public"))).map((e) => e.id)).toEqual([first.run]);
     expect((await lastResult(b.actionsFolder, "public"))?.run).toBe(first.run);
     expect(await readMemory(join(b.actionsFolder, "public"))).toEqual(beforeMemory);
@@ -347,8 +347,8 @@ describe("runAction", () => {
         }),
     );
     const r = await runAction(options(b, "simple", { ai: ai, signal: stop.signal, interrupted: () => quit }));
-    expect(r).toMatchObject({ status: "interrompue", error: "Interrompue : WebAiOs s'est arrêté", kernelError: true });
-    expect(await readRun(join(b.actionsFolder, "simple"), r.run!)).toMatchObject({ status: "interrompue" });
+    expect(r).toMatchObject({ status: "interrupted", error: "Interrompue : WebAiOs s'est arrêté", kernelError: true });
+    expect(await readRun(join(b.actionsFolder, "simple"), r.run!)).toMatchObject({ status: "interrupted" });
     expect(await readResult(b.actionsFolder, "simple", r.run!)).toBeNull();
   });
 
@@ -361,9 +361,9 @@ describe("runAction", () => {
     await waitUntil(() => b.bridge.calls.some((a) => a.method === "lirePageInvisible"));
     stop.abort();
     const r = await end;
-    expect(r).toMatchObject({ status: "interrompue", error: ACTION_STOPPED, kernelError: true });
+    expect(r).toMatchObject({ status: "interrupted", error: ACTION_STOPPED, kernelError: true });
     const e = await readRun(join(b.actionsFolder, "public"), r.run!);
-    expect(e).toMatchObject({ status: "interrompue", error: ACTION_STOPPED });
+    expect(e).toMatchObject({ status: "interrupted", error: ACTION_STOPPED });
     expect(await readResult(b.actionsFolder, "public", r.run!)).toBeNull();
 
     // During the layout: Gemma waits, the stop gives the fallback layout.
@@ -377,7 +377,7 @@ describe("runAction", () => {
         }),
     );
     const r2 = await runAction(options(b2, "simple", { ai: ai, signal: arret2.signal }));
-    expect(r2.status).toBe("reussie");
+    expect(r2.status).toBe("succeeded");
     expect((await readResult(b2.actionsFolder, "simple", r2.run!))?.fallback).toBe(true);
   });
 
@@ -390,9 +390,9 @@ describe("runAction", () => {
     await waitUntil(() => b.bridge.calls.some((a) => a.method === "lirePageInvisible"));
     stop.abort();
     const r = await end;
-    expect(r.status).toBe("interrompue");
+    expect(r.status).toBe("interrupted");
     const e = await readRun(join(b.actionsFolder, "public"), r.run!);
-    expect(e).toMatchObject({ status: "interrompue", error: "Interrompue : WebAiOs s'est arrêté", kernelError: true });
+    expect(e).toMatchObject({ status: "interrupted", error: "Interrompue : WebAiOs s'est arrêté", kernelError: true });
   });
 
   it("the workflow's traces are relayed", async () => {
@@ -404,17 +404,17 @@ describe("runAction", () => {
     expect(traces.every((t) => t.type === (t.block === "lire" ? "code" : "output"))).toBe(true);
   });
 
-  it("trial: -essai run, result written, neither memory nor last result changed", async () => {
+  it("trial: -attempt run, result written, neither memory nor last result changed", async () => {
     const b = await prepare("simple", { name: "S", sources: {} }, `export default async () => ({ tickets: [{ title: "a" }] });`);
     const real = await runAction(options(b, "simple"));
-    expect(real.status).toBe("reussie");
+    expect(real.status).toBe("succeeded");
     const memoryBefore = await readMemory(join(b.actionsFolder, "simple"));
     const ai = fakeGemma();
-    const r = await runAction(options(b, "simple", { ai: ai, trigger: "rejeu", attempt: { origin: real.run!, start: "lire" } }));
-    expect(r.status).toBe("reussie");
-    expect(r.run).toMatch(/-essai$/);
+    const r = await runAction(options(b, "simple", { ai: ai, trigger: "replay", attempt: { origin: real.run!, start: "lire" } }));
+    expect(r.status).toBe("succeeded");
+    expect(r.run).toMatch(/-attempt$/);
     const e = await readRun(join(b.actionsFolder, "simple"), r.run!);
-    expect(e).toMatchObject({ trigger: "rejeu", attempt: { start: "lire", origin: real.run } });
+    expect(e).toMatchObject({ trigger: "replay", attempt: { start: "lire", origin: real.run } });
     expect((await readResult(b.actionsFolder, "simple", r.run!))?.plan).toEqual(PLAN);
     expect((await lastResult(b.actionsFolder, "simple"))?.run).toBe(real.run);
     expect(await readMemory(join(b.actionsFolder, "simple"))).toEqual(memoryBefore);
@@ -422,8 +422,8 @@ describe("runAction", () => {
 
   it("trial from a missing run: refused, nothing written", async () => {
     const b = await prepare("simple", { name: "S", sources: {} }, `export default async () => ({ tickets: [{ title: "a" }] });`);
-    const r = await runAction(options(b, "simple", { trigger: "rejeu", attempt: { origin: "2020-01-01T00-00-00-000Z", start: "lire" } }));
-    expect(r.status).toBe("invalide");
+    const r = await runAction(options(b, "simple", { trigger: "replay", attempt: { origin: "2020-01-01T00-00-00-000Z", start: "lire" } }));
+    expect(r.status).toBe("invalid");
     expect(b.commands).toEqual([]);
   });
 });

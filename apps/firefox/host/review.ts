@@ -96,7 +96,7 @@ export class ReviewService {
 
   /**
    * An agent app's folder, if it is a real folder under the projects folder: never a symlink (the container writes
-   * into ~/WebAiOs/projets and could plant a link to the home folder there).
+   * into ~/WebAiOs/projects and could plant a link to the home folder there).
    */
   private async appFolder(d: string): Promise<string | null> {
     const folder = join(this.o.paths.projects, d);
@@ -266,7 +266,7 @@ export class ReviewService {
   /** Lines of the current version (never of a deleted or non-displayable file). */
   async lines(p: ProjectId, token: string, path: string, start: number, end: number): Promise<string[]> {
     const g = this.guard(p, token, path);
-    if (g.file.status === "supprime" || g.file.displayable !== true) return [];
+    if (g.file.status === "deleted" || g.file.displayable !== true) return [];
     const a = Math.max(1, Math.floor(start));
     const b = Math.min(Math.floor(end), a + LIGNES_MAX - 1);
     if (b < a) return [];

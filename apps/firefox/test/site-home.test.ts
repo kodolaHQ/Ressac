@@ -66,7 +66,7 @@ let n = 0;
 /** A fresh data dir with app `id`'s home files (path → content). */
 function app(files: Record<string, string | Buffer>, id = "vidola", folder = id): string {
   data = join(root, `d${++n}`);
-  const home = join(data, "espace", "sites", folder, "accueil");
+  const home = join(data, "workspace", "sites", folder, "home");
   mkdirSync(home, { recursive: true });
   for (const [p, c] of Object.entries(files)) {
     mkdirSync(join(home, p, ".."), { recursive: true });
@@ -210,8 +210,8 @@ describe("serveHome: a hostile home folder (Review Focus 3)", () => {
     const elsewhere = join(root, `ailleurs-${n}`);
     mkdirSync(elsewhere);
     writeFileSync(join(elsewhere, "index.html"), "<p>dehors</p>");
-    rmSync(join(data, "espace", "sites", "vidola", "accueil"), { recursive: true });
-    symlinkSync(elsewhere, join(data, "espace", "sites", "vidola", "accueil"));
+    rmSync(join(data, "workspace", "sites", "vidola", "home"), { recursive: true });
+    symlinkSync(elsewhere, join(data, "workspace", "sites", "vidola", "home"));
     expect(await serveHome(data, "vidola")).toBeNull();
     expect(existsSync(join(data, "webaios-sites"))).toBe(false);
   });

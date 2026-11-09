@@ -20,7 +20,7 @@ const urlWeb = z.string().refine((u) => {
 export const Manifest = z
   .object({
     name: z.string().optional(),
-    type: z.enum(["application", "poc"]),
+    type: z.enum(["app", "poc"]),
     launch: z.string().min(1),
     origin: urlWeb.optional(),
   })
@@ -97,7 +97,7 @@ export function watchProjects(c: SpacePaths, callback: () => void): () => Promis
 }
 
 /** Changes a project's type, keeping the other fields of the manifest. */
-export async function writeType(c: SpacePaths, folder: string, type: "application" | "poc"): Promise<void> {
+export async function writeType(c: SpacePaths, folder: string, type: "app" | "poc"): Promise<void> {
   const target = join(c.projects, folder, "webaios.json");
   const manifest = Manifest.parse(JSON.parse(await readFile(target, "utf8")));
   const temp = `${target}.${process.pid}.tmp`;

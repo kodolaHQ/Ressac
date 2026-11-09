@@ -64,10 +64,10 @@ export function remarksPrefix(r: {
             ? `appli ${truncate(clean(p.name), TITLE_LENGTH)} (/workspace/projects/${clean(p.folder)})`
             : `démo http://localhost:${Math.trunc(p.port)}`
         } :`;
-  const queue = ` — détail et captures : ${clean(r.batchPath)}/lot.json] `;
+  const queue = ` — détail et captures : ${clean(r.batchPath)}/batch.json] `;
   const items = r.batch.items.map((e, i) => {
     const text = truncate(clean(e.text), REMARK_LENGTH);
-    if (e.type === "relecture") return clean(`${i + 1}) ${datum(e.context.file)}:${Math.trunc(e.context.start)}-${Math.trunc(e.context.end)} : « ${text} »`);
+    if (e.type === "review") return clean(`${i + 1}) ${datum(e.context.file)}:${Math.trunc(e.context.start)}-${Math.trunc(e.context.end)} : « ${text} »`);
     const s = e.context.source;
     const source = s ? ` (${datum(`${s.file}${s.line !== undefined ? `:${Math.trunc(s.line)}` : ""}`)})` : "";
     return clean(`${i + 1}) ${ofHome(e) ? "[accueil] " : ""}${datum(e.context.label)} : « ${text} »${source}`);

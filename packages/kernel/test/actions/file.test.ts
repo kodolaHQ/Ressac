@@ -61,7 +61,7 @@ function kept() {
     ends.set(o.id, d.resolve);
     return d.promise;
   };
-  const release = (id: string) => ends.get(id)!({ status: "reussie", run: `ex-${id}` });
+  const release = (id: string) => ends.get(id)!({ status: "succeeded", run: `ex-${id}` });
   return { run: run, launchedList: launched, release: release };
 }
 
@@ -78,8 +78,8 @@ describe("FileActions", () => {
     expect(CONCURRENT_ACTIONS).toBe(2);
     const r = kept();
     const { f } = await prepare({ run: r.run });
-    const a = f.launch("a", { input: null, trigger: "manuelle" });
-    const b = f.launch("b", { input: "clio lyon", trigger: "manuelle" });
+    const a = f.launch("a", { input: null, trigger: "manual" });
+    const b = f.launch("b", { input: "clio lyon", trigger: "manual" });
     const c = f.launch("c", { input: null, trigger: "agent" });
     await waitUntil(() => r.launchedList.length === 2);
     expect(r.launchedList.map((o) => o.id)).toEqual(["a", "b"]);
@@ -89,7 +89,7 @@ describe("FileActions", () => {
     expect(d.waiting.map((x) => x.action)).toEqual(["c"]);
     expect(a.already || b.already || c.already).toBe(false);
     r.release("a");
-    expect(await a.end).toEqual({ status: "reussie", run: "ex-a" });
+    expect(await a.end).toEqual({ status: "succeeded", run: "ex-a" });
     await waitUntil(() => r.launchedList.length === 3);
     expect(f.direct().waiting).toEqual([]);
     r.release("b");
@@ -101,8 +101,8 @@ describe("FileActions", () => {
   it("relaunching a running action returns deja: true and the same end", async () => {
     const r = kept();
     const { f } = await prepare({ run: r.run });
-    const first = f.launch("a", { input: null, trigger: "manuelle" });
-    const second = f.launch("a", { input: "autre", trigger: "manuelle" });
+    const first = f.launch("a", { input: null, trigger: "manual" });
+    const second = f.launch("a", { input: "autre", trigger: "manual" });
     expect(second.already).toBe(true);
     expect(second.end).toBe(first.end);
     expect(f.try("a", "x", "y").already).toBe(true);
@@ -110,7 +110,7 @@ describe("FileActions", () => {
     r.release("a");
     await first.end;
     // Finished: a new request goes through.
-    const third = f.launch("a", { input: null, trigger: "manuelle" });
+    const third = f.launch("a", { input: null, trigger: "manual" });
     expect(third.already).toBe(false);
     await waitUntil(() => r.launchedList.length === 2);
     r.release("a");
@@ -120,12 +120,12 @@ describe("FileActions", () => {
   it("a waiting action that is stopped leaves the queue without running", async () => {
     const r = kept();
     const { f } = await prepare({ run: r.run });
-    f.launch("a", { input: null, trigger: "manuelle" });
-    f.launch("b", { input: null, trigger: "manuelle" });
-    const c = f.launch("c", { input: null, trigger: "manuelle" });
+    f.launch("a", { input: null, trigger: "manual" });
+    f.launch("b", { input: null, trigger: "manual" });
+    const c = f.launch("c", { input: null, trigger: "manual" });
     await waitUntil(() => r.launchedList.length === 2);
     expect(f.stop("c")).toBe(true);
-    expect((await c.end).status).toBe("interrompue");
+    expect((await c.end).status).toBe("interrupted");
     expect(f.direct().waiting).toEqual([]);
     expect(f.stop("inconnue")).toBe(false);
     // A running action receives the signal.
@@ -139,7 +139,7 @@ describe("FileActions", () => {
     const r = kept();
     const ready = deferred<void>();
     const { f } = await prepare({ run: r.run, ready: ready.promise });
-    f.launch("a", { input: null, trigger: "manuelle" });
+    f.launch("a", { input: null, trigger: "manual" });
     await new Promise((ok) => setTimeout(ok, 20));
     expect(r.launchedList).toEqual([]);
     ready.resolve();
@@ -160,7 +160,7 @@ describe("FileActions", () => {
       },
     };
     const { f } = await prepare({ run: r.run, dispatcher: spy });
-    const a = f.launch("a", { input: null, trigger: "manuelle" });
+    const a = f.launch("a", { input: null, trigger: "manual" });
     await waitUntil(() => r.launchedList.length === 1);
     expect(r.launchedList[0]!.ai).not.toBeNull();
     expect(keys).toHaveLength(1);
@@ -192,10 +192,10 @@ describe("FileActions", () => {
     });
     const harvest = p.harvestNow("lent");
     await waitUntil(() => harvestStarted);
-    const a = f.launch("a", { input: null, trigger: "manuelle" });
+    const a = f.launch("a", { input: null, trigger: "manual" });
     await waitUntil(() => r.launchedList.length === 1);
     r.release("a");
-    expect((await a.end).status).toBe("reussie");
+    expect((await a.end).status).toBe("succeeded");
     keptHarvest.resolve();
     await harvest;
     await p.stop();
@@ -204,7 +204,7 @@ describe("FileActions", () => {
   it("lecture and avancement traces fill direct()", async () => {
     const r = kept();
     const { f, directs } = await prepare({ run: r.run });
-    const a = f.launch("a", { input: null, trigger: "manuelle" });
+    const a = f.launch("a", { input: null, trigger: "manual" });
     await waitUntil(() => r.launchedList.length === 1);
     const o = r.launchedList[0]!;
     o.onTrace({ block: "lire", step: "start" });
@@ -229,7 +229,7 @@ describe("FileActions", () => {
   it("the block type relayed by the trace goes into direct()", async () => {
     const r = kept();
     const { f } = await prepare({ run: r.run });
-    const a = f.launch("a", { input: null, trigger: "manuelle" });
+    const a = f.launch("a", { input: null, trigger: "manual" });
     await waitUntil(() => r.launchedList.length === 1);
     const o = r.launchedList[0]!;
     o.onTrace({ block: "trier", step: "start", type: "ai.sort" });
@@ -264,15 +264,15 @@ describe("FileActions", () => {
         return { stdin: e.stdin, stdout: e.stdout, stderr: e.stderr, kill: () => void e.kill("SIGKILL"), end: new Promise((ok) => e.on("close", (x) => ok(x))) };
       },
     });
-    const a = f.launch("public", { input: null, trigger: "manuelle" });
+    const a = f.launch("public", { input: null, trigger: "manual" });
     await waitUntil(() => bridge.calls.some((x) => x.method === "lirePageInvisible"));
     await f.stopAll();
     const r = await a.end;
-    expect(r.status).toBe("interrompue");
+    expect(r.status).toBe("interrupted");
     const e = await readRun(join(actionsFolder, "public"), r.run!);
-    expect(e).toMatchObject({ status: "interrompue", error: "Interrompue : WebAiOs s'est arrêté", kernelError: true });
+    expect(e).toMatchObject({ status: "interrupted", error: "Interrompue : WebAiOs s'est arrêté", kernelError: true });
     expect(deleted).toContainEqual({ type: "action", id: "public" });
     // After the stop, nothing leaves anymore.
-    expect((await f.launch("public", { input: null, trigger: "manuelle" }).end).status).toBe("interrompue");
+    expect((await f.launch("public", { input: null, trigger: "manual" }).end).status).toBe("interrupted");
   });
 });

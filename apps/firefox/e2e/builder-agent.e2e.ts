@@ -62,7 +62,7 @@ async function launch(): Promise<void> {
 
 const read = (file: string) => (existsSync(file) ? readFileSync(file, "utf8") : "");
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const agentInput = () => read(path.join(dataDir, "espace", "faux-agent-entree.txt"));
+const agentInput = () => read(path.join(dataDir, "workspace", "faux-agent-entree.txt"));
 /** The terminal's text (xterm's DOM renderer, in the agent frame), spaces normalised. */
 const TERMINAL = "(doc.querySelector('.xterm-rows')?.textContent ?? '').replace(/\\u00a0/g, ' ')";
 const terminalShows = (text: string) => waitUi(m, `return ${TERMINAL}.includes(arguments[0])`, [text], 20_000, "agent");
@@ -110,8 +110,8 @@ async function builder(id: string): Promise<void> {
 /** The agent session's own MCP config of the window whose agent started last (the fake agent logs its args). */
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
 const lastSessionConfig = () =>
-  path.join(dataDir, "espace", (JSON.parse(read(path.join(dataDir, "espace", "faux-agent-args.json"))) as string[]).at(-1)!.replace(/^\/workspace\//, ""));
-const workflowOpen = async (config: string) => (await callMcpTool(path.join(dataDir, "espace"), "open_workflow", {}, config)).text;
+  path.join(dataDir, "workspace", (JSON.parse(read(path.join(dataDir, "workspace", "faux-agent-args.json"))) as string[]).at(-1)!.replace(/^\/workspace\//, ""));
+const workflowOpen = async (config: string) => (await callMcpTool(path.join(dataDir, "workspace"), "open_workflow", {}, config)).text;
 async function poll(read: () => Promise<string>, expected: string, ms = 10_000): Promise<void> {
   const deadline = Date.now() + ms;
   for (;;) {

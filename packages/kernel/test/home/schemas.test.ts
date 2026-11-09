@@ -37,7 +37,7 @@ test("recolte accepts hours alone, minutes alone, both; refuses neither, invalid
   expect(withHarvest({ minutes: 60, hours: ["07:00"], maxDurationMinutes: 30, notify: true }).success).toBe(true);
   const denial = withHarvest({});
   expect(denial.success).toBe(false);
-  if (!denial.success) expect(denial.error.issues[0]!.message).toBe("minutes ou heures attendu");
+  if (!denial.success) expect(denial.error.issues[0]!.message).toBe("minutes ou hours attendu");
   expect(withHarvest({ maxDurationMinutes: 5 }).success).toBe(false);
   expect(withHarvest({ hours: ["7:00"] }).success).toBe(false);
   expect(withHarvest({ hours: ["24:00"] }).success).toBe(false);

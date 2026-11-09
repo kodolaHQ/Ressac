@@ -15,12 +15,12 @@ afterEach(async () => {
 async function prepare(port: number) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "webaios-externes-")));
   folders.push(root);
-  const designFolders = { spaceRemarks: join(root, "espace", ".webaios", "remarques"), private: join(root, "prive") };
+  const designFolders = { spaceRemarks: join(root, "workspace", ".webaios", "remarks"), private: join(root, "prive") };
   mkdirSync(designFolders.private, { recursive: true });
   const registry = await ExternalRegistry.open(designFolders.private);
   const service = await startExternals({
     registry: registry, remarks: new Remarks({ folders: designFolders }), folders: designFolders, port, ranges: [],
-    spaceRoot: join(root, "espace"), home: root, notify: () => undefined,
+    spaceRoot: join(root, "workspace"), home: root, notify: () => undefined,
   });
   services.push(service);
   return { root: root, designFolders: designFolders, service };

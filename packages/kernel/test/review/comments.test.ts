@@ -55,7 +55,7 @@ describe("ReviewComments", () => {
   const raw = { file: "f.txt", start: 1, end: 1, lines: [L(" ", "a")], text: "à revoir" };
   async function depot() {
     const folder = await tempFolder();
-    return { file: join(folder, "p", "x.commentaires.json") };
+    return { file: join(folder, "p", "x.comments.json") };
   }
 
   test("file without a diff (diff null): the comment stays, attached to the file, ligneChangee true", async () => {

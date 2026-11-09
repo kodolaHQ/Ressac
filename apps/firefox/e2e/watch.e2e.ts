@@ -168,7 +168,7 @@ async function writeWatch(): Promise<void> {
     name: "Veille voitures",
     harvest: { hours: ["07:00"], maxDurationMinutes: 30, notify: true },
     declaration: {
-      sizes: { min: { l: 3, h: 3 }, max: { l: 12, h: 8 }, default: { l: 6, h: 5 } },
+      sizes: { min: { w: 3, h: 3 }, max: { w: 12, h: 8 }, default: { w: 6, h: 5 } },
       sources: { account: [], public: [], web: true },
       config: { search: `${site.url}/recherche`, criteria: "citadine fiable, moins de 100 000 km, moins de 8 000 €" },
     },
@@ -213,7 +213,7 @@ async function writeWatch(): Promise<void> {
   });
   // « Up to date, hour of the day done »: no run starts by itself during the test.
   const now = new Date().toISOString();
-  await writeJson(path.join(dataDir, "widgets", "voitures", "etat.json"), {
+  await writeJson(path.join(dataDir, "widgets", "voitures", "state.json"), {
     status: "ok",
     lastUpdate: now,
     lastAttempt: now,
@@ -259,14 +259,14 @@ async function harvest(m: Marionette, id: string): Promise<void> {
 
 type Ad = { title: string; url: string; mark: string; model: string; sheet?: { text: string }; reliability?: unknown[]; notice?: string };
 const watchData = (): Ad[] | null => {
-  const f = path.join(dataDir, "widgets", "voitures", "donnees.json");
+  const f = path.join(dataDir, "widgets", "voitures", "data.json");
   return existsSync(f) ? readJson(f) : null;
 };
 
 type Run = { status: string; trigger: string; blocks: { id: string; status: string; log: string[] }[] };
 /** The widget's runs, oldest first. */
 const runs = (id = "voitures"): Run[] => {
-  const dir = path.join(dataDir, "widgets", id, "executions");
+  const dir = path.join(dataDir, "widgets", id, "runs");
   if (!existsSync(dir)) return [];
   // A temporary file (`.tmp`) may be renamed between the listing and the read: only finished files count, and a file
   // gone meanwhile is skipped.
@@ -322,7 +322,7 @@ it("watch end to end: the widget fills in as it goes (counter seen), a search by
   );
   // Then all, with their page, reliability and opinion.
   await until(() => runs().length, (n) => n === 1, 60_000);
-  expect(runs()[0]!.status).toBe("reussie");
+  expect(runs()[0]!.status).toBe("succeeded");
   const ads = watchData()!;
   expect(ads.map((a) => a.url).sort()).toEqual([1, 2, 3, 4, 5].map(adUrl).sort());
   for (const a of ads) {
@@ -345,14 +345,14 @@ it("watch end to end: the widget fills in as it goes (counter seen), a search by
 it("second run: no already-seen listing, no search for an already studied model, no notification", async () => {
   await writeWatch();
   const m = await launchWatch();
-  expect((await runWatch(m)).status).toBe("reussie");
+  expect((await runWatch(m)).status).toBe("succeeded");
   expect(watchData()).toHaveLength(5);
   await until(notifications, (n) => n.length === 1);
 
   const from = site.log.length;
   const promptsBefore = ollama.prompts.length;
   const second = await runWatch(m);
-  expect(second.status).toBe("reussie");
+  expect(second.status).toBe("succeeded");
   // Nothing new: no ad page read again, no search, no opinion asked; the widget shows the empty list.
   expect(adReads(from)).toEqual([]);
   expect(searches(from)).toEqual([]);
@@ -369,7 +369,7 @@ it("a listing whose page fails comes back at the next run", async () => {
   const m = await launchWatch();
   settings.failingPages.add(3);
   const first = await runWatch(m);
-  expect(first.status).toBe("partielle");
+  expect(first.status).toBe("partial");
   expect(blockStatus(first, "fiche")).toBe("partial");
   const withoutPage = watchData()!.find((a) => a.url === adUrl(3))!;
   expect(withoutPage.sheet).toBeUndefined();
@@ -379,7 +379,7 @@ it("a listing whose page fails comes back at the next run", async () => {
   settings.failingPages.clear();
   const from = site.log.length;
   const second = await runWatch(m);
-  expect(second.status).toBe("reussie");
+  expect(second.status).toBe("succeeded");
   expect(adReads(from)).toEqual(["/annonce/3"]);
   expect(searches(from)).toEqual([]);
   const back = watchData()!;
@@ -407,7 +407,7 @@ it("a long watch in progress does not prevent a short widget from updating", asy
   await harvest(m, "court");
   await untilEqual(() => shown(m, "court"), '{"court":true}', 15_000);
   // Still running: the short widget did not wait for the watch's end.
-  expect(readJson(path.join(dataDir, "widgets", "voitures", "etat.json")).statut).toBe("en-cours");
+  expect(readJson(path.join(dataDir, "widgets", "voitures", "state.json")).status).toBe("running");
   expect(runs()).toEqual([]);
 }, 120_000);
 
@@ -422,7 +422,7 @@ it("DuckDuckGo shows a check: a single request sent, notice without reliability,
   expect(searches(from)).toHaveLength(1);
   expect(blockStatus(run, "fiabilite")).toBe("partial");
   expect(run.blocks.find((b) => b.id === "fiabilite")!.log.join("\n")).toContain("Recherche refusée par DuckDuckGo (vérification anti-robot)");
-  expect(run.status).toBe("partielle");
+  expect(run.status).toBe("partial");
   // No ad has a reliability; the opinion is written without ({fiabilite?}, see AGENTS.md).
   const ads = watchData()!;
   expect(ads).toHaveLength(5);
@@ -445,7 +445,7 @@ it("DuckDuckGo shows a check: a single request sent, notice without reliability,
   // DuckDuckGo answers again: the ads failed in `fiabilite` come back, this time with their reliability.
   settings.ddg = "resultats.html";
   const second = await runWatch(m);
-  expect(second.status).toBe("reussie");
+  expect(second.status).toBe("succeeded");
   const again = watchData()!;
   expect(again.map((a) => a.url).sort()).toEqual([1, 2, 3, 4, 5].map(adUrl).sort());
   for (const a of again) expect(a.reliability?.length).toBeGreaterThan(0);
@@ -466,12 +466,12 @@ it('the Gmail widget (account, harvest.mjs) updates as before; with "web": true 
   };
   await writeWidget(dataDir, "gmail", gmail);
   // The grant, already given.
-  await writeJson(path.join(dataDir, "widgets", "accords.json"), { gmail: { domains: ["127.0.0.1"], public: [], profile: "defaut" } });
+  await writeJson(path.join(dataDir, "widgets", "grants.json"), { gmail: { domains: ["127.0.0.1"], public: [], profile: "defaut" } });
   const m = await launchWatch();
   await harvest(m, "gmail");
   await untilEqual(() => shown(m, "gmail"), '{"titre":"Court"}', 20_000);
-  expect(readJson(path.join(dataDir, "widgets", "gmail", "etat.json")).statut).toBe("ok");
-  expect(runs("gmail").map((e) => e.status)).toEqual(["reussie"]);
+  expect(readJson(path.join(dataDir, "widgets", "gmail", "state.json")).status).toBe("ok");
+  expect(runs("gmail").map((e) => e.status)).toEqual(["succeeded"]);
 
   // The agent adds "web": true: the widget is refused, with the exact message, and gains no access.
   const from = site.log.length;
@@ -495,7 +495,7 @@ it("quitting during the watch: on relaunch, the published listings are there, th
   expect(published.length).toBeLessThan(5);
   for (const a of published) expect(a.notice).toBe("Bonne affaire.");
   // The run is written « interrompue »; no notification for an interrupted run.
-  expect(runs().map((e) => e.status)).toEqual(["interrompue"]);
+  expect(runs().map((e) => e.status)).toEqual(["interrupted"]);
   expect(notifications()).toEqual([]);
 
   settings.gemmaDelayMs = 0;
@@ -503,9 +503,9 @@ it("quitting during the watch: on relaunch, the published listings are there, th
   await untilEqual(() => shown(second, "voitures"), JSON.stringify(watchData()));
   expect(watchData()!.map((a) => a.url)).toEqual(published.map((a) => a.url));
   // The state is no longer « en cours » (back to the one before), and nothing was started again.
-  await untilEqual(() => readJson(path.join(dataDir, "widgets", "voitures", "etat.json")).statut, "ok");
+  await untilEqual(() => readJson(path.join(dataDir, "widgets", "voitures", "state.json")).status, "ok");
   await untilEqual(() => progress(second, "voitures"), null);
-  expect(runs().map((e) => e.status)).toEqual(["interrompue"]);
+  expect(runs().map((e) => e.status)).toEqual(["interrupted"]);
 }, 120_000);
 
 it("a click on the notification brings the last window to the front, with no tab switch", async () => {

@@ -112,7 +112,7 @@ async function harvest(m: Marionette, id: string): Promise<void> {
 }
 /** The widget's finished runs, oldest first. */
 const widgetRuns = (id: string) => {
-  const dir = path.join(widgetsDir(id), "executions");
+  const dir = path.join(widgetsDir(id), "runs");
   if (!existsSync(dir)) return [];
   return readdirSync(dir)
     .filter((f) => f.endsWith(".json"))
@@ -163,8 +163,8 @@ it("the Gmail widget (account, harvest.mjs) and a watch update as before while a
   });
   // « Up to date, hour of the day done »: the watch does not harvest by itself.
   const now = new Date().toISOString();
-  await writeFile(path.join(widgetsDir("veille"), "etat.json"), JSON.stringify({ status: "ok", lastUpdate: now, lastAttempt: now, hours: { done: "9999-12-31T23:59", failures: null } }));
-  await writeFile(path.join(dirs.dataDir, "widgets", "accords.json"), JSON.stringify({ gmail: { domains: ["127.0.0.1"], public: [], profile: "defaut" } }));
+  await writeFile(path.join(widgetsDir("veille"), "state.json"), JSON.stringify({ status: "ok", lastUpdate: now, lastAttempt: now, hours: { done: "9999-12-31T23:59", failures: null } }));
+  await writeFile(path.join(dirs.dataDir, "widgets", "grants.json"), JSON.stringify({ gmail: { domains: ["127.0.0.1"], public: [], profile: "defaut" } }));
   await writePagesAction(dirs.dataDir, site);
   const { m } = await launch(1400);
   await untilEqual(() => shown(m, "gmail"), '{"exemple":"gmail"}');
@@ -176,7 +176,7 @@ it("the Gmail widget (account, harvest.mjs) and a watch update as before while a
   await harvest(m, "gmail");
   await harvest(m, "veille");
   await untilEqual(() => shown(m, "gmail"), '{"titre":"Court"}');
-  await untilEqual(() => widgetRuns("veille").map((e) => e.status), ["reussie"]);
+  await untilEqual(() => widgetRuns("veille").map((e) => e.status), ["succeeded"]);
   const watch = JSON.parse((await shown(m, "veille")) || "null") as { title: string; notice: string }[];
   expect(watch.map((a) => [a.title, a.notice])).toEqual([
     ["Vélo de course", "Bonne affaire."],
@@ -185,10 +185,10 @@ it("the Gmail widget (account, harvest.mjs) and a watch update as before while a
   // The action was still running during both updates.
   expect(await running()).toEqual(["pages"]);
   // The widgets' runs stayed a widget's.
-  expect(widgetRuns("gmail").map((e) => e.status)).toEqual(["reussie"]);
+  expect(widgetRuns("gmail").map((e) => e.status)).toEqual(["succeeded"]);
   for (const id of ["gmail", "veille"]) expect(widgetRuns(id)[0]!.owner).toEqual({ type: "widget", id });
-  expect(JSON.parse(readFileSync(path.join(widgetsDir("gmail"), "etat.json"), "utf8")).statut).toBe("ok");
-  await untilEqual(() => runStatuses(dirs.dataDir, "pages"), ["reussie"], 60_000);
+  expect(JSON.parse(readFileSync(path.join(widgetsDir("gmail"), "state.json"), "utf8")).status).toBe("ok");
+  await untilEqual(() => runStatuses(dirs.dataDir, "pages"), ["succeeded"], 60_000);
 });
 
 // actions.spec.ts:1635
@@ -202,9 +202,9 @@ it("quitting during an action: after relaunch its run is « interrompue » in pr
   await q.waitContains(tid("avancement-action"), "Lecture de 127.0.0.1…", 30_000);
   await quit(m);
   // The run is written « interrompue » on the stop; no result is kept for it.
-  expect(await runStatuses(dirs.dataDir, "pages")).toEqual(["interrompue"]);
+  expect(await runStatuses(dirs.dataDir, "pages")).toEqual(["interrupted"]);
   const [execution] = (await runsOnDisk(dirs.dataDir, "pages")).map((f) => f.replace(/\.json$/, ""));
-  expect(existsSync(path.join(actionsDataDir(dirs.dataDir), "pages", "resultats", `${execution}.json`))).toBe(false);
+  expect(existsSync(path.join(actionsDataDir(dirs.dataDir), "pages", "results", `${execution}.json`))).toBe(false);
 
   servers.settings.siteSlownessMs = 0;
   ({ m, q } = await launch());
@@ -213,5 +213,5 @@ it("quitting during an action: after relaunch its run is « interrompue » in pr
   await click(m, tid("resultats-precedents"));
   await q.waitContains(tid(`resultat-${execution}`), "interrompue", 30_000);
   await sleep(500);
-  expect(await runStatuses(dirs.dataDir, "pages")).toEqual(["interrompue"]);
+  expect(await runStatuses(dirs.dataDir, "pages")).toEqual(["interrupted"]);
 });

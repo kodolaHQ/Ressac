@@ -13,7 +13,7 @@ const block = (id: string, output?: unknown): BlockTrace => ({
 });
 const execution = (start: string, blocks: BlockTrace[] = []): Execution => ({
   version: 1, id: idExecution(start), owner: { type: "widget", id: "w" },
-  trigger: "manuelle", start: start, end: start, status: "reussie", blocks: blocks,
+  trigger: "manual", start: start, end: start, status: "succeeded", blocks: blocks,
 });
 const timestamp = (i: number) => new Date(Date.UTC(2026, 9, 29, 8, 0, i)).toISOString();
 
@@ -40,7 +40,7 @@ test("a run file never exceeds 4 MB: the biggest outputs go first", async () => 
   const blocks = Array.from({ length: 20 }, (_, i) => block(`b${i}`, "x".repeat(250 * 1024 - 2 - i)));
   const e = execution(timestamp(0), blocks);
   await writeRun(d, e);
-  const file = join(d, "executions", `${e.id}.json`);
+  const file = join(d, "runs", `${e.id}.json`);
   expect((await stat(file)).size).toBeLessThanOrEqual(RUN_MAX_BYTES);
   const loaded = (await readRun(d, e.id))!;
   const without = loaded.blocks.filter((b) => b.output === undefined);
@@ -53,7 +53,7 @@ test("a run file never exceeds 4 MB: the biggest outputs go first", async () => 
 test("only the last 20 runs are kept", async () => {
   const d = await tempFolder();
   for (let i = 0; i < 25; i++) await writeRun(d, execution(timestamp(i)));
-  const names = (await readdir(join(d, "executions"))).sort();
+  const names = (await readdir(join(d, "runs"))).sort();
   expect(names).toHaveLength(20);
   expect(names[0]).toBe(`${idExecution(timestamp(5))}.json`);
   expect(names).not.toContain(`${idExecution(timestamp(4))}.json`);
@@ -64,11 +64,11 @@ test("listRuns returns the most recent first and ignores a damaged file", async 
   await writeRun(d, execution(timestamp(1), [block("a", 1)]));
   await writeRun(d, execution(timestamp(3)));
   await writeRun(d, execution(timestamp(2)));
-  await writeFile(join(d, "executions", `${idExecution(timestamp(9))}.json`), "{ abîmé");
+  await writeFile(join(d, "runs", `${idExecution(timestamp(9))}.json`), "{ abîmé");
   const list = await listRuns(d);
   expect(list.map((r) => r.id)).toEqual([timestamp(3), timestamp(2), timestamp(1)].map(idExecution));
   expect(list[2]).toEqual({
-    id: idExecution(timestamp(1)), trigger: "manuelle", start: timestamp(1), end: timestamp(1), status: "reussie",
+    id: idExecution(timestamp(1)), trigger: "manual", start: timestamp(1), end: timestamp(1), status: "succeeded",
     blocks: [{ id: "a", status: "succeeded", items: null }],
   });
   expect(await listRuns(await tempFolder())).toEqual([]);
@@ -76,11 +76,11 @@ test("listRuns returns the most recent first and ignores a damaged file", async 
 
 test("readRun refuses an id that leaves the folder", async () => {
   const d = await tempFolder();
-  await writeFile(join(d, "etat.json"), "{}");
+  await writeFile(join(d, "state.json"), "{}");
   expect(await readRun(d, "../etat")).toBeNull();
   expect(await readRun(d, "a/b")).toBeNull();
   expect(await readRun(d, idExecution(timestamp(0)))).toBeNull();
-  expect(await readFile(join(d, "etat.json"), "utf8")).toBe("{}");
+  expect(await readFile(join(d, "state.json"), "utf8")).toBe("{}");
 });
 
 test("huge logs and errors are bounded: the file stays under 4 MB", async () => {
@@ -91,7 +91,7 @@ test("huge logs and errors are bounded: the file stays under 4 MB", async () => 
   }));
   const e = { ...execution(timestamp(0), blocks), error: "E".repeat(1024 * 1024) };
   await writeRun(d, e);
-  expect((await stat(join(d, "executions", `${e.id}.json`))).size).toBeLessThanOrEqual(RUN_MAX_BYTES);
+  expect((await stat(join(d, "runs", `${e.id}.json`))).size).toBeLessThanOrEqual(RUN_MAX_BYTES);
   const loaded = (await readRun(d, e.id))!;
   expect(Buffer.byteLength(loaded.error!)).toBeLessThanOrEqual(2048);
   expect(Buffer.byteLength(loaded.blocks[0]!.error!)).toBeLessThanOrEqual(2048);
@@ -103,29 +103,29 @@ test("listRuns does not re-read an unchanged file (same date, same size), re-rea
   const d = await tempFolder();
   const e = execution(timestamp(1), [block("a")]);
   await writeRun(d, e);
-  const path = join(d, "executions", `${e.id}.json`);
+  const path = join(d, "runs", `${e.id}.json`);
   // A round date, which utimes can restore identically.
   const date = new Date("2026-10-29T08:00:00.000Z");
   await utimes(path, date, date);
-  expect((await listRuns(d)).map((x) => x.status)).toEqual(["reussie"]);
+  expect((await listRuns(d)).map((x) => x.status)).toEqual(["succeeded"]);
   // Same size, same date: the file is not re-read (the kept summary stays).
-  await writeFile(path, (await readFile(path, "utf8")).replace('"reussie"', '"echouee"'));
+  await writeFile(path, (await readFile(path, "utf8")).replace('"succeeded"', '"partial"  ')); // same size: the status is renamed, whitespace pads it
   await utimes(path, date, date);
-  expect((await listRuns(d)).map((x) => x.status)).toEqual(["reussie"]);
+  expect((await listRuns(d)).map((x) => x.status)).toEqual(["succeeded"]);
   // Date changed: re-read.
   await utimes(path, date, new Date(date.getTime() + 5000));
-  expect((await listRuns(d)).map((x) => x.status)).toEqual(["echouee"]);
+  expect((await listRuns(d)).map((x) => x.status)).toEqual(["partial"]);
   // Erased: no longer listed.
   await rm(path);
   expect(await listRuns(d)).toEqual([]);
 });
 
 const attempt = (start: string): Execution => ({
-  ...execution(start), id: attemptId(start), trigger: "rejeu", attempt: { start: "b", origin: idExecution(timestamp(0)) },
+  ...execution(start), id: attemptId(start), trigger: "replay", attempt: { start: "b", origin: idExecution(timestamp(0)) },
 });
 
-test("attemptId adds -essai to the run's identifier", () => {
-  expect(attemptId("2026-10-29T08:00:01.234Z")).toBe("2026-10-29T08-00-01-234Z-essai");
+test("attemptId adds -attempt to the run's identifier", () => {
+  expect(attemptId("2026-10-29T08:00:01.234Z")).toBe("2026-10-29T08-00-01-234Z-attempt");
 });
 
 test("25 trials and 25 real runs: 10 trials and 20 real ones kept", async () => {
@@ -134,9 +134,9 @@ test("25 trials and 25 real runs: 10 trials and 20 real ones kept", async () => 
     await writeRun(d, attempt(timestamp(i)));
     await writeRun(d, execution(timestamp(i)));
   }
-  const names = (await readdir(join(d, "executions"))).sort();
-  expect(names.filter((n) => n.endsWith("-essai.json"))).toHaveLength(KEPT_ATTEMPTS);
-  expect(names.filter((n) => !n.endsWith("-essai.json"))).toHaveLength(20);
+  const names = (await readdir(join(d, "runs"))).sort();
+  expect(names.filter((n) => n.endsWith("-attempt.json"))).toHaveLength(KEPT_ATTEMPTS);
+  expect(names.filter((n) => !n.endsWith("-attempt.json"))).toHaveLength(20);
   expect(names).toContain(`${attemptId(timestamp(24))}.json`);
   expect(names).not.toContain(`${attemptId(timestamp(14))}.json`);
   expect(names).toContain(`${idExecution(timestamp(5))}.json`);
@@ -146,8 +146,8 @@ test("a series of trials drives out no real run", async () => {
   const d = await tempFolder();
   for (let i = 0; i < 20; i++) await writeRun(d, execution(timestamp(i)));
   for (let i = 20; i < 60; i++) await writeRun(d, attempt(timestamp(i)));
-  const names = await readdir(join(d, "executions"));
-  expect(names.filter((n) => !n.endsWith("-essai.json"))).toHaveLength(20);
+  const names = await readdir(join(d, "runs"));
+  expect(names.filter((n) => !n.endsWith("-attempt.json"))).toHaveLength(20);
   expect(names).toContain(`${idExecution(timestamp(0))}.json`);
 });
 
@@ -160,17 +160,17 @@ test("listRuns marks the trials", async () => {
   expect(list.find((r) => r.id === idExecution(timestamp(1)))!.attempt).toBeUndefined();
 });
 
-test("readRun accepts <timestamp>-essai and refuses ../x-essai", async () => {
+test("readRun accepts <timestamp>-attempt and refuses ../x-attempt", async () => {
   const d = await tempFolder();
   await writeRun(d, attempt(timestamp(3)));
-  expect((await readRun(d, attemptId(timestamp(3))))!.trigger).toBe("rejeu");
+  expect((await readRun(d, attemptId(timestamp(3))))!.trigger).toBe("replay");
   // Regression guard (R21): already true before the widening of ID_EXECUTION.
-  await writeFile(join(d, "x-essai.json"), "{}");
-  expect(await readRun(d, "../x-essai")).toBeNull();
-  expect(await readRun(d, "x-essai")).toBeNull();
-  expect(ID_EXECUTION.test("2026-10-29T08-00-00-000Z-essai")).toBe(true);
-  expect(ID_EXECUTION.test("2026-10-29T08-00-00-000Z-essai/../x")).toBe(false);
-  expect(ID_EXECUTION.test("2026-10-29T08-00-00-000Z-essai-essai")).toBe(false);
+  await writeFile(join(d, "x-attempt.json"), "{}");
+  expect(await readRun(d, "../x-attempt")).toBeNull();
+  expect(await readRun(d, "x-attempt")).toBeNull();
+  expect(ID_EXECUTION.test("2026-10-29T08-00-00-000Z-attempt")).toBe(true);
+  expect(ID_EXECUTION.test("2026-10-29T08-00-00-000Z-attempt/../x")).toBe(false);
+  expect(ID_EXECUTION.test("2026-10-29T08-00-00-000Z-attempt-attempt")).toBe(false);
 });
 
 test("clearRunsAndMemory also erases the trials", async () => {

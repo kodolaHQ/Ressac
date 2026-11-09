@@ -119,7 +119,7 @@ export class WebAiOsSiteChild extends JSWindowActorChild {
       }
     };
     // The guard first, alone: without it, none of the agent's scripts runs.
-    if (!run(kept, "webaios-garde-page.js") || !run(`__webaiosPortee(${JSON.stringify({ network: [], hosts: i.hosts })})`, "webaios-portee.js")) return;
+    if (!run(kept, "webaios-page-guard.js") || !run(`__webaiosScope(${JSON.stringify({ network: [], hosts: i.hosts })})`, "webaios-scope.js")) return;
     if (i.bridge) this.bridge(sandbox);
     const scripts = () => {
       for (const { code, name: name } of i.js) run(code, name);

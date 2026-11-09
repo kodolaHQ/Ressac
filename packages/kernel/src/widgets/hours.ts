@@ -7,7 +7,7 @@ export const MAX_HOUR_RETRIES = 3;
 
 export type HoursTracking = NonNullable<WidgetState["hours"]>;
 /** What a real run does to the tracking: succeeded or partial, failed, or nothing (interrupted, grant, workshop). */
-export type HourOutcome = "reussie" | "echec" | "sans-effet";
+export type HourOutcome = "succeeded" | "failure" | "no-effect";
 
 const two = (n: number) => String(n).padStart(2, "0");
 
@@ -47,8 +47,8 @@ export function dueHour(hours: readonly string[], tracking: WidgetState["hours"]
  */
 export function trackingAfter(tracking: WidgetState["hours"], slot: string | null, outcome: HourOutcome, end?: string): HoursTracking {
   const current: HoursTracking = tracking ?? { done: null, failures: null };
-  if (!slot || outcome === "sans-effet") return current;
-  if (outcome === "reussie") {
+  if (!slot || outcome === "no-effect") return current;
+  if (outcome === "succeeded") {
     // The most recent slot done stays.
     if (current.done != null && current.done >= slot) return current;
     return { done: slot, failures: null };

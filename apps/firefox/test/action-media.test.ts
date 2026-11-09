@@ -105,8 +105,8 @@ describe("action result images", () => {
 describe("agent components", () => {
   const data = () => join(root, "data");
   const write = (name: string, html: string) => {
-    mkdirSync(join(data(), "espace", "composants", name), { recursive: true });
-    writeFileSync(join(data(), "espace", "composants", name, "composant.html"), html);
+    mkdirSync(join(data(), "workspace", "components", name), { recursive: true });
+    writeFileSync(join(data(), "workspace", "components", name, "component.html"), html);
   };
 
   it("COMPONENT_HTML_MAX is the kernel's", () => {
@@ -121,19 +121,19 @@ describe("agent components", () => {
   it("serves one sanitized copy per name, kept until its last page lets it go", async () => {
     write("barres", "<!doctype html><p>barres</p>");
     const url = await serveComponent(data(), "barres");
-    expect(url).toMatch(/^resource:\/\/webaios-composant-barres\/composant-\d+\.html$/);
-    const copies = join(data(), "webaios-composants", "barres");
+    expect(url).toMatch(/^resource:\/\/webaios-component-barres\/component-\d+\.html$/);
+    const copies = join(data(), "webaios-components", "barres");
     const served = readFileSync(join(copies, new URL(url!).pathname.slice(1)), "utf8");
     expect(served).toContain('http-equiv="Content-Security-Policy"');
     expect(served).toContain("webaios-composant");
     expect(served).toContain('defineProperty(w, "Components"');
-    expect(substitutions.get("webaios-composant-barres")).toBe(`file://${copies}`);
+    expect(substitutions.get("webaios-component-barres")).toBe(`file://${copies}`);
     expect(await serveComponent(data(), "barres")).toBe(url);
     expect(readdirSync(copies)).toHaveLength(1);
     await releaseComponent(data(), "barres");
-    expect(substitutions.get("webaios-composant-barres")).toBe(`file://${copies}`);
+    expect(substitutions.get("webaios-component-barres")).toBe(`file://${copies}`);
     await releaseComponent(data(), "barres");
-    expect(substitutions.get("webaios-composant-barres")).toBeNull();
+    expect(substitutions.get("webaios-component-barres")).toBeNull();
     expect(existsSync(copies)).toBe(false);
   });
 

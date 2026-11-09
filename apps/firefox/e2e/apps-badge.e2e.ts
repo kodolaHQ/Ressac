@@ -55,8 +55,8 @@ describe("one WebAiOs, essai and autre launched in each test", () => {
     const profile = await mkdtemp(join(os.tmpdir(), "webaios-firefox-"));
     // relecture.spec.ts:20-27: essai with app.js (30 lines) and logo.bin; autre a second application; vieux without manifest.
     writeProject(dataDir, "essai", { manifest: { name: "Essai" } });
-    writeAppJs(join(dataDir, "espace", "projets", "essai"), LINES);
-    writeFileSync(join(dataDir, "espace", "projets", "essai", "logo.bin"), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+    writeAppJs(join(dataDir, "workspace", "projects", "essai"), LINES);
+    writeFileSync(join(dataDir, "workspace", "projects", "essai", "logo.bin"), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
     writeProject(dataDir, "autre", { manifest: { name: "Autre" } });
     writeProject(dataDir, "vieux");
     const w = await launchWebAiOs({ dataDir, profile, env: APPS_ENV(BLOCK) });
@@ -65,7 +65,7 @@ describe("one WebAiOs, essai and autre launched in each test", () => {
     await m.setContext("chrome");
     await waitReady(m);
     // Not expect.poll: run from beforeAll.
-    for (const end = Date.now() + 15_000; !existsSync(join(dataDir, "espace", ".webaios", "mcp.json")); await sleep(100))
+    for (const end = Date.now() + 15_000; !existsSync(join(dataDir, "workspace", ".webaios", "mcp.json")); await sleep(100))
       if (Date.now() > end) throw new Error("the MCP server did not start");
   }, 90_000);
   afterAll(() => closeAppsPage(p));
@@ -83,9 +83,9 @@ describe("one WebAiOs, essai and autre launched in each test", () => {
   }
 
   // relecture.spec.ts:52
-  it("at start the first photo of essai exists (refs/webaios/relu under <dataDir>/design/relecture/app-essai.git) and no .git appears in projets/essai", async () => {
+  it("at start the first photo of essai exists (refs/webaios/relu under <dataDir>/design/review/app-essai.git) and no .git appears in projets/essai", async () => {
     await expect.poll(() => existsSync(reviewedRef(p.dataDir, "app-essai")), { timeout: 15_000 }).toBe(true);
-    const projects = join(p.dataDir, "espace", "projets");
+    const projects = join(p.dataDir, "workspace", "projects");
     expect(readdirSync(join(projects, "essai")).sort()).toEqual(["app.js", "logo.bin", "serveur.mjs", "webaios.json"]);
     expect(existsSync(join(projects, ".git"))).toBe(false);
     // A project without manifest gets no snapshot.

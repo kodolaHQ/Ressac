@@ -65,14 +65,14 @@ const declarationYoutube = () => {
 const siteVidola = () => ({
   declaration: declarationVidola(),
   files: {
-    "accueil/index.html": block("`accueil/index.html`, minimal"),
-    "accueil/accueil.js": block("`accueil/accueil.js`"),
-    "retouches/en-cours.js": block("`retouches/en-cours.js`"),
+    "home/index.html": block("`home/index.html`, minimal"),
+    "home/home.js": block("`home/home.js`"),
+    "tweaks/en-cours.js": block("`tweaks/en-cours.js`"),
   },
 });
 const siteYoutube = () => ({
   declaration: declarationYoutube(),
-  files: { "retouches/sans-shorts.css": cssOf("sans-shorts.css"), "retouches/sans-shorts.js": block("`retouches/sans-shorts.js`") },
+  files: { "tweaks/sans-shorts.css": cssOf("sans-shorts.css"), "tweaks/sans-shorts.js": block("`tweaks/sans-shorts.js`") },
 });
 
 const inStore = <T = unknown>(body: string, args: unknown[] = []) =>
@@ -92,7 +92,7 @@ const waitPlayer = () => expect.poll(() => player("v ? v.duration : 0"), { timeo
 /** The player at `t`, then a trusted play and pause there. */
 const seekThenPause = (t: number) => player(`(v.currentTime = ${t}, v.play().catch(() => {}), v.pause(), v.currentTime)`);
 const memory = (): { values: Record<string, { value: Record<string, unknown>; url: string }>; positions: Record<string, { t: number }> } | null => {
-  const f = path.join(dataDir, "sites", "vidola", "memoire.json");
+  const f = path.join(dataDir, "sites", "vidola", "memory.json");
   return existsSync(f) ? JSON.parse(readFileSync(f, "utf8")) : null;
 };
 const bar = <T = unknown>(id: string, body: string) => inSiteBar<T>(m, id, `if (!doc.querySelector('[data-testid="barre-site"]') && !doc.querySelector('[data-testid="carte-accord-site"]')) return null; ${body}`);

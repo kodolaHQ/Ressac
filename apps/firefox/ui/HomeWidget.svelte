@@ -49,7 +49,7 @@
   });
   // Never for a widget waiting for the user's grant: nothing goes out without them.
   const next = $derived(
-    "error" in widget || widget.state.status === "accord-requis"
+    "error" in widget || widget.state.status === "grant-required"
       ? null
       : nextRun(
           widget.hours,
@@ -60,7 +60,7 @@
   );
 
   // The real size becomes the grid units the display receives in postMessage.
-  const size = $derived(freeUnits({ l: placement.l, h: placement.h }));
+  const size = $derived(freeUnits({ w: placement.w, h: placement.h }));
 
   function handle(e: PointerEvent) {
     if (e.target instanceof Element && e.target.closest("button")) return;
@@ -77,17 +77,17 @@
       <p class="illisible">Widget « {widget.id} » illisible : {widget.error}</p>
     {:else}
       <h2 data-testid="titre-widget">{widget.name}</h2>
-      {#if widget.state.status === "en-cours"}
+      {#if widget.state.status === "running"}
         {#if widget.state.progress}
           <span class="badge" data-testid="progression">mise à jour… {widget.state.progress.done} / {widget.state.progress.total}</span>
         {:else}
           <span class="badge">mise à jour…</span>
         {/if}
-      {:else if widget.state.status === "erreur"}
+      {:else if widget.state.status === "error"}
         <span class="badge echec" title={widget.state.log ?? ""}
           >échec du {date(widget.state.lastAttempt)} : {widget.state.error ?? "erreur inconnue"}</span
         >
-      {:else if widget.state.status === "atelier-arrete"}
+      {:else if widget.state.status === "workshop-stopped"}
         <span class="badge echec">mise à jour impossible : atelier arrêté</span>
       {:else if next}
         <span class="badge doux" data-testid="prochaine">prochaine : {next}</span>
@@ -111,7 +111,7 @@
     </div>
   </header>
   {#if !("error" in widget)}
-    {#if widget.state.status === "accord-requis" && !denied}
+    {#if widget.state.status === "grant-required" && !denied}
       <div class="bandeau" data-testid="bandeau-accord">
         <span
           >Ce widget veut lire {widget.account.join(", ")} avec ton compte{#if widget.public.length}, et pourra contacter : {widget.public.join(", ")}{:else}, et ne contactera aucun autre site{/if}.</span

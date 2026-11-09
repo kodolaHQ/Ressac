@@ -331,7 +331,7 @@ describe("design overlay", () => {
     await modeOff();
   });
 
-  it("design.spec.ts:379 two remarks, reload then restart: the mode is off, the cart stays (<dataDir>/espace/.webaios/remarques/demo-15308)", { timeout: 120_000 }, async () => {
+  it("design.spec.ts:379 two remarks, reload then restart: the mode is off, the cart stays (<dataDir>/workspace/.webaios/remarks/demo-15308)", { timeout: 120_000 }, async () => {
     await open();
     const n = (await state()).basket;
     await modeOn();
@@ -348,7 +348,7 @@ describe("design overlay", () => {
     await expect.poll(async () => (await state()).basket, { timeout: 15_000 }).toBe(n + 2);
     expect((await state()).active).toBe(false);
     expect(await columnShown()).toBe(false);
-    const file = path.join(dataDir, "espace", ".webaios", "remarques", PROJECT, "panier.json");
+    const file = path.join(dataDir, "workspace", ".webaios", "remarks", PROJECT, "basket.json");
     expect(existsSync(file)).toBe(true);
     expect(JSON.parse(readFileSync(file, "utf8"))).toHaveLength(n + 2);
   });

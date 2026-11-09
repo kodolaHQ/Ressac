@@ -71,9 +71,9 @@ async function launch(prefs: Record<string, string | number | boolean> = {}) {
   const dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
   const profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
   dirs.push(dataDir, profile);
-  writeSite(dataDir, "avec-accueil", { declaration: withHomeDeclaration(url), files: { "accueil/index.html": WITH_HOME } });
-  writeSite(dataDir, "sonde", { declaration: declarationProbe(), files: { "accueil/index.html": HOME } });
-  writeSite(dataDir, "tuning", { declaration: tuningDeclaration(url), files: { "retouches/tuning.css": "/* rien */" } });
+  writeSite(dataDir, "avec-accueil", { declaration: withHomeDeclaration(url), files: { "home/index.html": WITH_HOME } });
+  writeSite(dataDir, "sonde", { declaration: declarationProbe(), files: { "home/index.html": HOME } });
+  writeSite(dataDir, "tuning", { declaration: tuningDeclaration(url), files: { "tweaks/tuning.css": "/* rien */" } });
   await grantSite(dataDir, "tuning", tuningDeclaration(url));
   const a = testActor(profile);
   w = await launchWebAiOs({ dataDir, profile, env: { WEBAIOS_TEST_LOCAL_ADDRESSES: "1", ...a.env }, prefs: { ...a.prefs, ...prefs } });
@@ -140,7 +140,7 @@ const projectFiles = (id: string) =>
   (readdirSync(w.dataDir, { recursive: true }) as string[]).filter((f) => f.includes(`site-${id}`) && !f.includes(".git")).map((f) => path.join(w.dataDir, f)).filter((f) => statSync(f).isFile());
 const pngs = (id: string) => projectFiles(id).filter((f) => f.endsWith(".png"));
 const agentInput = () => {
-  const f = path.join(w.dataDir, "espace", "faux-agent-entree.txt");
+  const f = path.join(w.dataDir, "workspace", "faux-agent-entree.txt");
   return existsSync(f) ? readFileSync(f, "utf8") : "";
 };
 
@@ -191,10 +191,10 @@ describe("design mode on a site app's home", () => {
     await overlayOf(m, "avec-accueil", `doc.querySelector('${tid("envoyer-remarques")}').click(); return 1;`);
     await expect.poll(agentInput, { timeout: 20_000 }).toContain("les remarques [accueil] visent son écran d'accueil, à changer dans accueil/");
     expect(agentInput()).toContain('1) [accueil] "h1#titre" : « Titre plus gros »');
-    const dir = path.join(w.dataDir, "espace", ".webaios", "remarques", "site-avec-accueil");
+    const dir = path.join(w.dataDir, "workspace", ".webaios", "remarks", "site-avec-accueil");
     const [batch] = readdirSync(dir).filter((n) => /^\d{8}T\d{6}Z-[0-9a-f]{4}$/.test(n));
-    const content = JSON.parse(readFileSync(path.join(dir, batch!, "lot.json"), "utf8"));
-    expect(content.elements[0].contexte.adresse).toBe("webaios-site://avec-accueil/index.html");
+    const content = JSON.parse(readFileSync(path.join(dir, batch!, "batch.json"), "utf8"));
+    expect(content.items[0].context.url).toBe("webaios-site://avec-accueil/index.html");
     expect(readdirSync(path.join(dir, batch!)).filter((n) => n.endsWith(".png"))).toHaveLength(1);
   });
 
@@ -347,7 +347,7 @@ describe("design mode on a site app's home", () => {
   it("the home re-served while aiming: the mode stops", async () => {
     await homeOn("sonde");
     const errors0 = await m.execute<number>(`return Services.console.getMessageArray().filter((x) => /dead object/.test(String(x.message ?? x))).length;`);
-    writeFileSync(path.join(w.dataDir, "espace", "sites", "sonde", "accueil", "index.html"), HOME.replace("<title>Accueil</title>", "<title>Accueil 2</title>"));
+    writeFileSync(path.join(w.dataDir, "workspace", "sites", "sonde", "home", "index.html"), HOME.replace("<title>Accueil</title>", "<title>Accueil 2</title>"));
     await expect.poll(async () => (await bar("sonde")).pressed, { timeout: 10_000 }).toBe("false");
     expect((await state("sonde")).active).toBe(false);
     await expect.poll(() => inHome("sonde", "return hdoc?.readyState === 'complete' ? hdoc.title : null;"), { timeout: 15_000 }).toBe("Accueil 2");

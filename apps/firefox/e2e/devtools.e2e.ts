@@ -71,7 +71,7 @@ let third: Awaited<ReturnType<typeof startDemo>>;
 let w: LaunchedWebAiOs;
 let m: Marionette;
 let before: string[];
-const config = () => path.join(w.dataDir, "espace", ".webaios", "mcp.json");
+const config = () => path.join(w.dataDir, "workspace", ".webaios", "mcp.json");
 
 async function kernelUp(): Promise<void> {
   for (const deadline = Date.now() + 20_000; !existsSync(config()); await new Promise((r) => setTimeout(r, 100)))
@@ -605,7 +605,7 @@ it("the user's devtools open on the tab: they stay usable, and the agent reads t
   await poll(() => tool("read_console", { id }), (t) => t.includes("apres-boite"));
 }, 60_000);
 
-const PROFILING = () => path.join(w.dataDir, "espace", ".webaios", "profilage");
+const PROFILING = () => path.join(w.dataDir, "workspace", ".webaios", "profiling");
 const profiles = () => (existsSync(PROFILING()) ? readdirSync(PROFILING()) : []);
 const profilerActive = () => m.execute<boolean>("return Services.profiler.IsActive();");
 
@@ -616,9 +616,9 @@ it("demo: profile_performance (2 s) returns a summary with the page's costly fun
     const r = await tool("profile_performance", { id, duration_s: 2 });
     expect(r).toMatch(/^busyLoop \(http:\/\/127\.0\.0\.1:\d+\/:\d+\) — [\d.]+ ms, [\d.]+ %$/m);
     for (const metric of ["Nodes", "JSHeapUsedSize", "LayoutCount", "ScriptDuration", "TaskDuration"]) expect(r).toContain(`${metric} : `);
-    const relPath = /Profil : \/workspace\/(\.webaios\/profilage\/\S+\.cpuprofile)$/m.exec(r)?.[1];
+    const relPath = /Profil : \/workspace\/(\.webaios\/profiling\/\S+\.cpuprofile)$/m.exec(r)?.[1];
     expect(relPath, r).toBeDefined();
-    const profile = JSON.parse(readFileSync(path.join(w.dataDir, "espace", relPath!), "utf8"));
+    const profile = JSON.parse(readFileSync(path.join(w.dataDir, "workspace", relPath!), "utf8"));
     expect(profile.nodes.some((n: { callFrame: { functionName: string } }) => n.callFrame.functionName === "busyLoop")).toBe(true);
     expect(profile.samples.length).toBe(profile.timeDeltas.length);
     expect(await profilerActive()).toBe(false);
@@ -632,7 +632,7 @@ it("demo: profile_performance with recharger returns a summary", async () => {
   const r = await tool("profile_performance", { id, reload: true });
   expect(r).toMatch(/^busyLoop \(/m);
   expect(r).toContain("ScriptDuration : ");
-  expect(r).toMatch(/Profil : \/workspace\/\.webaios\/profilage\/\S+\.cpuprofile$/m);
+  expect(r).toMatch(/Profil : \/workspace\/\.webaios\/profiling\/\S+\.cpuprofile$/m);
   expect(await profilerActive()).toBe(false);
 }, 60_000);
 
@@ -654,7 +654,7 @@ it("demo: two memory_snapshot then compare_memory: the type the page makes grow 
   const snapshot = async () => {
     const r = await tool("memory_snapshot", { id });
     expect(r).toMatch(/^Total : [\d.]+ Ko$/m);
-    const relPath = /Instantané : (\/workspace\/\.webaios\/profilage\/\S+\.heapsnapshot)$/m.exec(r)?.[1];
+    const relPath = /Instantané : (\/workspace\/\.webaios\/profiling\/\S+\.heapsnapshot)$/m.exec(r)?.[1];
     expect(relPath, r).toBeDefined();
     return relPath!;
   };
@@ -673,7 +673,7 @@ it("third-party: the file goes into the profiling folder and the agent receives 
   const r = await tool("profile_performance", { id, duration_s: 0.5 });
   const name = /^Profil : profile:(\S+\.cpuprofile)$/m.exec(r)?.[1];
   expect(name, r).toBeDefined();
-  expect(existsSync(path.join(w.dataDir, "profilage", name!))).toBe(true);
+  expect(existsSync(path.join(w.dataDir, "profiling", name!))).toBe(true);
   // Nothing of the third-party site in the space the agent reads.
   expect(profiles()).toEqual(before);
 }, 60_000);

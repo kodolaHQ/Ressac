@@ -16,16 +16,16 @@ const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(v,
 const snapX = (x: number) => Math.round(x / STEP_X) * STEP_X;
 const snapY = (y: number) => Math.round(y / STEP_Y) * STEP_Y;
 
-const overlap = (a: FreePlacement, b: FreePlacement) => a.x < b.x + b.l && b.x < a.x + a.l && a.y < b.y + b.h && b.y < a.y + a.h;
+const overlap = (a: FreePlacement, b: FreePlacement) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 
 /** Declared sizes (units 1…12) to free units (thousandths, pixels): the copy of the kernel's `freeSizes`. */
-export function freeSizes(t: { l: number; h: number }): { l: number; h: number } {
-  return { l: Math.max(1, Math.round((t.l * FREE_WIDTH) / COLUMNS)), h: Math.max(1, t.h * ROW_PX) };
+export function freeSizes(t: { w: number; h: number }): { w: number; h: number } {
+  return { w: Math.max(1, Math.round((t.w * FREE_WIDTH) / COLUMNS)), h: Math.max(1, t.h * ROW_PX) };
 }
 
 /** The reverse: the real size (thousandths, pixels) in rounded units, for `postMessage`. */
-export function freeUnits(t: { l: number; h: number }): { l: number; h: number } {
-  return { l: Math.max(1, Math.round((t.l * COLUMNS) / FREE_WIDTH)), h: Math.max(1, Math.round(t.h / ROW_PX)) };
+export function freeUnits(t: { w: number; h: number }): { w: number; h: number } {
+  return { w: Math.max(1, Math.round((t.w * COLUMNS) / FREE_WIDTH)), h: Math.max(1, Math.round(t.h / ROW_PX)) };
 }
 
 /**
@@ -37,7 +37,7 @@ export function freeUnits(t: { l: number; h: number }): { l: number; h: number }
 export function moveFree(o: { p: FreePlacement; x: number; y: number; others: readonly FreePlacement[]; widthPx: number }): FreePlacement {
   const { p, others: others, widthPx: widthPx } = o;
   // The pointer's target, fixed: bounds reached along the way do not change the gesture's direction.
-  const targetX = clamp(snapX(o.x), 0, FREE_WIDTH - p.l);
+  const targetX = clamp(snapX(o.x), 0, FREE_WIDTH - p.w);
   const targetY = Math.max(0, snapY(o.y));
   const dx = targetX - p.x;
   const dy = targetY - p.y;
@@ -51,11 +51,11 @@ export function moveFree(o: { p: FreePlacement; x: number; y: number; others: re
     // neighbor while the home edge brings the widget back onto it (we then stop at the near edge).
     const clampX = () => {
       if (dx > 0) {
-        if (targetX >= blocker.x + blocker.l && !overlap({ ...p, x: targetX, y }, blocker)) x = targetX;
-        else x = Math.min(x, Math.max(p.x, blocker.x - p.l));
+        if (targetX >= blocker.x + blocker.w && !overlap({ ...p, x: targetX, y }, blocker)) x = targetX;
+        else x = Math.min(x, Math.max(p.x, blocker.x - p.w));
       } else if (dx < 0) {
-        if (targetX + p.l <= blocker.x && !overlap({ ...p, x: targetX, y }, blocker)) x = targetX;
-        else x = Math.min(p.x, Math.max(x, blocker.x + blocker.l));
+        if (targetX + p.w <= blocker.x && !overlap({ ...p, x: targetX, y }, blocker)) x = targetX;
+        else x = Math.min(p.x, Math.max(x, blocker.x + blocker.w));
       }
     };
     const clampY = () => {
@@ -78,7 +78,7 @@ export function moveFree(o: { p: FreePlacement; x: number; y: number; others: re
     }
   }
   // A stop on a left edge coming from the right may aim at home's right edge: we stay there.
-  x = clamp(x, 0, FREE_WIDTH - p.l);
+  x = clamp(x, 0, FREE_WIDTH - p.w);
   return { ...p, x, y };
 }
 
@@ -89,14 +89,14 @@ export function moveFree(o: { p: FreePlacement; x: number; y: number; others: re
  */
 export function resizeFree(o: {
   p: FreePlacement;
-  l: number;
+  w: number;
   h: number;
-  min: { l: number; h: number };
-  max: { l: number; h: number };
+  min: { w: number; h: number };
+  max: { w: number; h: number };
   others: readonly FreePlacement[];
 }): FreePlacement {
   const { p, min, max, others: others } = o;
-  const minL = Math.max(1, Math.min(min.l, FREE_WIDTH));
+  const minL = Math.max(1, Math.min(min.w, FREE_WIDTH));
   // Requested height: it tells which neighbors cross the height during the width computation.
   const wantedH = clamp(snapY(o.h), Math.max(1, min.h), max.h);
   // Only neighbors on the current rows block the width: a lower neighbor is stopped by the h computation.
@@ -104,21 +104,21 @@ export function resizeFree(o: {
   const edge = (from: number) => Math.min(FREE_WIDTH, ...others.filter((a) => vertical(a) && a.x >= from).map((a) => a.x));
   // The minimum does not fit before the neighbour (or the right edge): the widget moves back instead of going under its
   // minimum. It moves back without entering a neighbour on its left.
-  const left = Math.max(0, ...others.filter((a) => vertical(a) && a.x + a.l <= p.x).map((a) => a.x + a.l));
+  const left = Math.max(0, ...others.filter((a) => vertical(a) && a.x + a.w <= p.x).map((a) => a.x + a.w));
   const x = Math.max(left, Math.min(p.x, edge(p.x) - minL));
   const right = edge(x);
   const xFinal = Math.max(left, Math.min(x, right - minL));
-  const maxL = Math.max(1, Math.min(max.l, right - xFinal));
-  const l = clamp(snapX(o.l), Math.max(1, Math.min(minL, maxL)), maxL);
+  const maxL = Math.max(1, Math.min(max.w, right - xFinal));
+  const w = clamp(snapX(o.w), Math.max(1, Math.min(minL, maxL)), maxL);
   // Growing downward touches a neighbor as soon as the widths cross, whether it is on the left or the right.
   const below = others
-    .filter((a) => a.id !== p.id && a.x < xFinal + l && xFinal < a.x + a.l && a.y >= p.y)
+    .filter((a) => a.id !== p.id && a.x < xFinal + w && xFinal < a.x + a.w && a.y >= p.y)
     .map((a) => a.y - p.y);
   const hMax = Math.max(1, Math.min(max.h, ...below));
   return {
     ...p,
     x: xFinal,
-    l,
+    w,
     h: clamp(wantedH, Math.max(1, min.h), hMax),
   };
 }
@@ -132,12 +132,12 @@ export function freeGuides(o: { p: FreePlacement; others: readonly FreePlacement
   const { p, others: others, widthPx: widthPx } = o;
   const px = (thousandths: number) => (thousandths / FREE_WIDTH) * widthPx;
   const otherXs = others.filter((a) => a.id !== p.id);
-  const targetXs = [0, widthPx / 2, widthPx, ...otherXs.flatMap((a) => [px(a.x), px(a.x + a.l / 2), px(a.x + a.l)])];
+  const targetXs = [0, widthPx / 2, widthPx, ...otherXs.flatMap((a) => [px(a.x), px(a.x + a.w / 2), px(a.x + a.w)])];
   const targetYs = otherXs.flatMap((a) => [a.y, a.y + a.h / 2, a.y + a.h]);
   const aligned = (values: number[], targets: number[], tolerance: number) =>
     [...new Set(values.filter((v) => targets.some((c) => Math.abs(c - v) <= tolerance)).map((v) => Math.round(v * 100) / 100))];
   return {
-    x: aligned([px(p.x), px(p.x + p.l / 2), px(p.x + p.l)], targetXs, (STEP_X * widthPx) / FREE_WIDTH),
+    x: aligned([px(p.x), px(p.x + p.w / 2), px(p.x + p.w)], targetXs, (STEP_X * widthPx) / FREE_WIDTH),
     y: aligned([p.y, p.y + p.h / 2, p.y + p.h], targetYs, STEP_Y),
   };
 }

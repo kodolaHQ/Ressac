@@ -767,7 +767,7 @@ test("reviewUrlProject refuses webaios://relecture/../x and webaios://relecture/
   // The UI copies follow the kernel.
   const { NOT_DISPLAYABLE } = await import("../../shared/model");
   const { BINARY_FILE, FILE_TOO_BIG } = await import("@webaios/kernel");
-  expect(NOT_DISPLAYABLE).toEqual({ binary: BINARY_FILE, "trop-gros": FILE_TOO_BIG });
+  expect(NOT_DISPLAYABLE).toEqual({ binary: BINARY_FILE, "too-big": FILE_TOO_BIG });
   const { PAGE_LINE_CHANGED } = await import("../../shared/model");
   const { LINE_CHANGED } = await import("@webaios/kernel");
   expect(PAGE_LINE_CHANGED).toBe(LINE_CHANGED);

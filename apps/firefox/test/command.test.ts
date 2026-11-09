@@ -55,12 +55,12 @@ test("history without the active URL", () => {
   expect(h.map((x) => (x as { url: string }).url)).toEqual(["https://d.fr/"]);
 });
 
-const project = (o: Partial<ApplicationShown>): ApplicationShown => ({ folder: "d", name: "N", type: "application", createdAt: "", state: "en-marche", favicon: "f.png", ...o }) as ApplicationShown;
+const project = (o: Partial<ApplicationShown>): ApplicationShown => ({ folder: "d", name: "N", type: "app", createdAt: "", state: "running", favicon: "f.png", ...o }) as ApplicationShown;
 
 test("projectSiteApp", () => {
-  expect(projectSiteApp(project({ type: "sans-fiche" }))).toBeNull();
+  expect(projectSiteApp(project({ type: "no-manifest" }))).toBeNull();
   expect(projectSiteApp(project({}))).toEqual({ kind: "projet", id: "d", name: "N", action: "ouvrir", favicon: "f.png" });
-  expect(projectSiteApp(project({ state: "arretee" }))?.action).toBe("lancer");
+  expect(projectSiteApp(project({ state: "stopped" }))?.action).toBe("lancer");
 });
 
 test("siteSiteApp", () => {
@@ -100,7 +100,7 @@ test("default parameter: the web address displayed without an anchor, nothing fo
 });
 
 test("empty field: the home first, then the actions (last launched first) and the open tabs without the displayed tab", () => {
-  const launched = (id: string, name: string, start: string): ActionShown => ({ ...action(id, name), last: { run: start, start: start, status: "reussie" } as ActionShown["last"] });
+  const launched = (id: string, name: string, start: string): ActionShown => ({ ...action(id, name), last: { run: start, start: start, status: "succeeded" } as ActionShown["last"] });
   const S: CommandSources = {
     actions: [action("b", "Bravo"), launched("z", "Zulu", "2026-11-02T10:00:00Z"), action("a", "Alpha"), { ...action("x", "Cassée"), error: "invalide" }, withEntry("r", "Résumé", "Vidéo"), action("c", "Charlie")],
     tabs: [1, 2, 3, 4, 5, 6, 7].map((i) => tab(`o${i}`, `Onglet ${i}`)),

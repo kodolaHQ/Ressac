@@ -19,7 +19,7 @@ const site: OpenableSite = {
   id: "vidola",
   declaration,
   hasHome: false,
-  // vidola-a: the old domain; vidola-b: the current one (the profile's adresse.json).
+  // vidola-a: the old domain; vidola-b: the current one (the profile's url.json).
   domains: ["vidola-a.example", "vidola-b.example"],
   start: "https://vidola-b.example/",
   grantRequired: false,

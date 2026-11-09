@@ -391,7 +391,7 @@ describe("the workflow builder", () => {
     await home();
     const data = () => inUi<string>(m, `return doc.querySelector('[data-testid="widget-run"] iframe')?.contentDocument?.getElementById("donnees")?.textContent ?? ""`);
     await poll(data, '{"liens":["Nouveau modèle IA"]}', 20_000);
-    const executions = path.join(dataOf("run"), "executions");
+    const executions = path.join(dataOf("run"), "runs");
     expect(await readdir(executions)).toHaveLength(1);
 
     await openBuilder(m, "run");
@@ -408,7 +408,7 @@ describe("the workflow builder", () => {
     await poll(async () => (await readdir(executions)).length, 2, 20_000);
     await waitUi(m, `return ${q("lancer")}?.disabled === false`, [], 20_000);
     const last = (await readdir(executions)).sort().at(-1)!;
-    expect((await readJson(path.join(executions, last))).declencheur).toBe("manuelle");
+    expect((await readJson(path.join(executions, last))).declencheur).toBe("manual");
     // Running does not write the workflow.
     expect(await readWorkflow(dataDir, "run")).toEqual(WATCH_WORKFLOW);
   });
@@ -520,7 +520,7 @@ describe("the workflow builder", () => {
   });
 
   it("changing ia.trier's threshold in the Bloc tab rewrites workflow.json and erases that block's memory only", async () => {
-    const memory = path.join(dataOf("seuil"), "memoire.json");
+    const memory = path.join(dataOf("seuil"), "memory.json");
     await writeFile(memory, JSON.stringify({ version: 1, blocks: { sort: { type: "ai.sort", value: { seen: ["a"] } }, texts: { type: "code", value: { seen: ["b"] } } } }));
     await builder("seuil");
     // No block selected: the widget's panel, read only.
@@ -675,7 +675,7 @@ describe("the workflow builder", () => {
       log: [],
       ...fields,
     });
-    const dir = path.join(dataOf("img"), "executions");
+    const dir = path.join(dataOf("img"), "runs");
     await mkdir(dir, { recursive: true });
     await writeFile(
       path.join(dir, `${id}.json`),
@@ -683,10 +683,10 @@ describe("the workflow builder", () => {
         version: 1,
         id,
         owner: { type: "widget", id: "img" },
-        trigger: "planifiee",
+        trigger: "scheduled",
         start: start,
         end: "2026-10-29T10:00:02.000Z",
-        status: "partielle",
+        status: "partial",
         blocks: [
           trace("page", "source.page", { output: { title: trap } }),
           trace("liens", "code", { items: 1, output: [{ text: trap, url: "https://exemple.invalid/" }], log: [trap] }),

@@ -95,7 +95,7 @@ describe("extension registry", () => {
   });
 });
 
-describe("fichier etat.json", () => {
+describe("fichier state.json", () => {
   it("two simultaneous modifications keep both changes", async () => {
     const folder = await tempFolder();
     const add = (key: string) =>
@@ -105,11 +105,11 @@ describe("fichier etat.json", () => {
     expect(Object.keys(lu.extensions).sort()).toEqual(["agent:a", "agent:b", "agent:c"]);
   });
 
-  it("a damaged etat.json reads as empty and is not rewritten as long as nothing changes", async () => {
+  it("a damaged state.json reads as empty and is not rewritten as long as nothing changes", async () => {
     const folder = await tempFolder();
-    await writeFile(join(folder, "etat.json"), "{pas du json");
+    await writeFile(join(folder, "state.json"), "{pas du json");
     expect(await readExtensionsState(folder)).toEqual({ version: 1, allCut: false, extensions: {} });
-    expect(await readFile(join(folder, "etat.json"), "utf8")).toBe("{pas du json");
+    expect(await readFile(join(folder, "state.json"), "utf8")).toBe("{pas du json");
     expect(await readExtensionsState(join(folder, "absent"))).toEqual({ version: 1, allCut: false, extensions: {} });
   });
 
@@ -117,7 +117,7 @@ describe("fichier etat.json", () => {
     const folder = await tempFolder();
     const good = entry("agent", { grant: { ...scope, scripts: true } });
     await writeFile(
-      join(folder, "etat.json"),
+      join(folder, "state.json"),
       JSON.stringify({ version: 1, allCut: true, extensions: { [A]: good, "agent:BAD": good, "agent:x": { name: 1 } } }),
     );
     const lu = await readExtensionsState(folder);
@@ -130,7 +130,7 @@ describe("fichier etat.json", () => {
     const folder = await tempFolder();
     const id = "b".repeat(32);
     await writeFile(
-      join(folder, "etat.json"),
+      join(folder, "state.json"),
       JSON.stringify({ version: 1, allCut: false, extensions: { [A]: entry("agent") }, hiddenConsoles: [id, "pas-un-id", 3, "garde@agent.webaios", "garde@autre.org"] }),
     );
     const lu = await readExtensionsState(folder);
@@ -142,8 +142,8 @@ describe("fichier etat.json", () => {
     expect(reviewed.hiddenConsoles).toEqual([id, "garde@agent.webaios"]);
   });
 
-  const written = (folder: string, content: string) => writeFile(join(folder, "etat.json"), content);
-  const backups = async (folder: string) => (await readdir(folder)).filter((f) => f.startsWith("etat.json.abime-"));
+  const written = (folder: string, content: string) => writeFile(join(folder, "state.json"), content);
+  const backups = async (folder: string) => (await readdir(folder)).filter((f) => f.startsWith("state.json.damaged-"));
   const addition = (key: string) => (e: ExtensionsState) => ({ ...e, extensions: { ...e.extensions, [key]: entry("agent") } });
   const withoutPrivate = () => none;
 
@@ -155,7 +155,7 @@ describe("fichier etat.json", () => {
     await expect(changeExtensionsState(folder, addition("agent:b"), withoutPrivate)).rejects.toThrow(
       "état des extensions d'une version plus récente",
     );
-    expect(await readFile(join(folder, "etat.json"), "utf8")).toBe(original);
+    expect(await readFile(join(folder, "state.json"), "utf8")).toBe(original);
     expect(await backups(folder)).toEqual([]);
   });
 
@@ -182,7 +182,7 @@ describe("fichier etat.json", () => {
 
   it("only ENOENT reads as empty: another read error throws", async () => {
     const folder = await tempFolder();
-    await mkdir(join(folder, "etat.json"));
+    await mkdir(join(folder, "state.json"));
     await expect(readExtensionsState(folder)).rejects.toThrow();
     await expect(changeExtensionsState(folder, addition("agent:b"), withoutPrivate)).rejects.toThrow();
   });
@@ -190,7 +190,7 @@ describe("fichier etat.json", () => {
   it("a leftover temporary is ignored", async () => {
     const folder = await tempFolder();
     await written(folder, JSON.stringify(state({ [A]: entry("agent") })));
-    await writeFile(join(folder, "etat.json.xyz.tmp"), "reste");
+    await writeFile(join(folder, "state.json.xyz.tmp"), "reste");
     const lu = await changeExtensionsState(folder, addition("agent:b"), withoutPrivate);
     expect(Object.keys(lu.extensions).sort()).toEqual(["agent:b", A]);
     expect(await backups(folder)).toEqual([]);
@@ -224,17 +224,17 @@ describe("fichier etat.json", () => {
     expect(lu.extensions["agent:b"]!.profiles).toEqual([]);
   });
 
-  it("applis survives modifierEtatExtensions and the re-read; an etat.json without applis re-reads without an .abime-* copy", async () => {
+  it("applis survives modifierEtatExtensions and the re-read; an state.json without applis re-reads without an .damaged-* copy", async () => {
     const folder = await tempFolder();
     await mkdir(folder, { recursive: true });
-    await writeFile(join(folder, "etat.json"), JSON.stringify(state({ [S]: entry("store") })));
+    await writeFile(join(folder, "state.json"), JSON.stringify(state({ [S]: entry("store") })));
     expect((await readExtensionsState(folder)).extensions[S]!.siteApps).toBeUndefined();
     await changeExtensionsState(folder, (e) => e, () => none);
-    expect((await readdir(folder)).filter((f) => f.includes(".abime-"))).toEqual([]);
+    expect((await readdir(folder)).filter((f) => f.includes(".damaged-"))).toEqual([]);
     await changeExtensionsState(folder, (e) => ({ ...e, extensions: { ...e.extensions, [S]: { ...e.extensions[S]!, siteApps: { vidola: "e1" } } } }), () => none);
     expect((await readExtensionsState(folder)).extensions[S]!.siteApps).toEqual({ vidola: "e1" });
     await changeExtensionsState(folder, (e) => e, () => none);
     expect((await readExtensionsState(folder)).extensions[S]!.siteApps).toEqual({ vidola: "e1" });
-    expect((await readdir(folder)).filter((f) => f.includes(".abime-"))).toEqual([]);
+    expect((await readdir(folder)).filter((f) => f.includes(".damaged-"))).toEqual([]);
   });
 });

@@ -15,7 +15,7 @@ const substitutions = new Map<string, string | null>();
 // The module runs in chrome in Firefox (IOUtils/PathUtils/Services/Cc/Ci globals): here, the same ones, on node:fs.
 beforeAll(() => {
   root = mkdtempSync(join(tmpdir(), "webaios-widget-frame-"));
-  widgets = join(root, "espace", "accueil", "widgets");
+  widgets = join(root, "workspace", "home", "widgets");
   mkdirSync(join(widgets, "demo"), { recursive: true });
   writeFileSync(join(widgets, "demo", "display.html"), "<!doctype html><title>démo</title>");
   // A Mac file, outside the widgets folder.

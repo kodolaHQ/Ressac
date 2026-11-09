@@ -154,7 +154,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
     const dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
     const profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
     dirs.push(dataDir, profile);
-    writeSite(dataDir, ID, { declaration: vidola(), files: { "retouches/sonde.js": TWEAK, "retouches/cacher.css": ".cache { display: none; }", "accueil/index.html": HOME } });
+    writeSite(dataDir, ID, { declaration: vidola(), files: { "tweaks/sonde.js": TWEAK, "tweaks/cacher.css": ".cache { display: none; }", "home/index.html": HOME } });
     await grantSite(dataDir, ID, vidola());
     const a = testActor(profile);
     w = await launchWebAiOs({ dataDir, profile, env: { WEBAIOS_TEST_LOCAL_ADDRESSES: "1", ...a.env }, prefs: a.prefs });
@@ -184,7 +184,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
     expect(before.pw).toBe("");
 
     // The viewfinder's sandbox, probed through the shipped actor's arm (its code is the parent's to send).
-    const probe = `(() => ({ webaiosSite: typeof webaiosSite, portee: typeof __webaiosPortee, fichier: typeof __webaiosFichier, retoucheSecret: typeof __retoucheSecret,
+    const probe = `(() => ({ webaiosSite: typeof webaiosSite, portee: typeof __webaiosScope, fichier: typeof __webaiosFile, retoucheSecret: typeof __retoucheSecret,
       pageSecret: typeof pageSecret, arret: typeof __viseurArret, Components: typeof Components, ChromeUtils: typeof ChromeUtils, Services: typeof Services,
       pwLength: document.getElementById("mdp").value.length,
       nativeValue: String(Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").get).includes("[native code]"),
@@ -243,9 +243,9 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
     // The tweak's world and the page's world after: no viewfinder global, no host.
     expect(await view("document.getElementsByTagName('webaios-viseur').length")).toBe(0);
     const pageTypeof = await view<string>(
-      `(() => { const s = document.createElement("script"); s.textContent = "document.documentElement.dataset.vu = [typeof webaiosSite, typeof __webaiosPortee, typeof __retoucheSecret].join()"; document.documentElement.append(s); s.remove(); return document.documentElement.dataset.vu; })()`,
+      `(() => { const s = document.createElement("script"); s.textContent = "document.documentElement.dataset.vu = [typeof webaiosSite, typeof __webaiosScope, typeof __retoucheSecret].join()"; document.documentElement.append(s); s.remove(); return document.documentElement.dataset.vu; })()`,
     );
-    note("S5 page world typeof webaiosSite, __webaiosPortee, __retoucheSecret", pageTypeof);
+    note("S5 page world typeof webaiosSite, __webaiosScope, __retoucheSecret", pageTypeof);
     expect(pageTypeof).toBe("undefined,undefined,undefined");
 
     // Escape (trusted) while aiming ends it with null; the tweak does not see it.

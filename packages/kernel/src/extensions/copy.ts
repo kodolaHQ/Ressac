@@ -25,19 +25,19 @@ export const MAX_SIZE = 20 * 1024 * 1024;
 export const MAX_ENTRIES = 5000;
 export const DEPTH_MAX = 32;
 
-const PAGE_FIXES = "webaios-correctifs-page.js";
-const PAGE_GUARD = "webaios-garde-page.js";
-const KEEP_BACKGROUND = "webaios-garde-fond.js";
-const BACKGROUND = "webaios-fond.js";
+const PAGE_FIXES = "webaios-page-fixes.js";
+const PAGE_GUARD = "webaios-page-guard.js";
+const KEEP_BACKGROUND = "webaios-background-guard.js";
+const BACKGROUND = "webaios-background.js";
 const GUARDS = [PAGE_FIXES, PAGE_GUARD, KEEP_BACKGROUND];
 /** The scope of the copy (`reseau`, `hotes`) for the page guard: injected by executeScript and registerContentScripts. */
-const SCOPE = "webaios-portee.js";
+const SCOPE = "webaios-scope.js";
 /**
- * A marker per .js or .css file of the agent (`webaios-fichiers/<n>.js`: `__webaiosFichier(n)`). Content scripts
+ * A marker per .js or .css file of the agent (`webaios-files/<n>.js`: `__webaiosFile(n)`). Content scripts
  * (manifest and registerContentScripts) declare only the guards and these markers; the background guard injects the real
- * files after the main process's reply (a tab), through the table put at the head of webaios-garde-fond.js.
+ * files after the main process's reply (a tab), through the table put at the head of webaios-background-guard.js.
  */
-const MARKERS = "webaios-fichiers";
+const MARKERS = "webaios-files";
 
 /** CSP of an agent copy: `connect-src` opens only to the domains of `reseau`, over https and wss (WebSocket). */
 export function cspAgent(network: readonly string[]): string {
@@ -298,7 +298,7 @@ function filesDenial(files: Map<string, Buffer>): string[] {
   const denial: string[] = [];
   const reserved = new Set([BACKGROUND, ...GUARDS]);
   for (const [path, content] of files) {
-    // Any top-level name in « webaios- »: guards, scope, markers (webaios-fichiers/).
+    // Any top-level name in « webaios- »: guards, scope, markers (webaios-files/).
     const first = path.split("/")[0]!.normalize("NFC").toLowerCase();
     if (reserved.has(first) || first.startsWith("webaios-")) denial.push(`Nom de fichier réservé à WebAiOs : ${path}`);
     const document = DOCUMENTS_REFUSES.exec(path);
@@ -366,7 +366,7 @@ export async function prepareCopy(o: {
   delete manifest.key;
   delete manifest.update_url;
   manifest.content_security_policy = { extension_pages: cspAgent(analysis.scope.network) };
-  const scope = `globalThis.__webaiosPortee(${JSON.stringify({ network: analysis.scope.network, hosts: analysis.scope.hosts })});`;
+  const scope = `globalThis.__webaiosScope(${JSON.stringify({ network: analysis.scope.network, hosts: analysis.scope.hosts })});`;
   const table = fileTable(files);
   const rewritten = rewriteScripts(manifest, table);
   if (rewritten.denial.length > 0) {
@@ -409,11 +409,11 @@ export async function prepareCopy(o: {
     // The table at the head of the background guard: it is read before any script of the extension, which can no longer change it.
     await writeFile(
       join(tmp, KEEP_BACKGROUND),
-      Buffer.concat([Buffer.from(`const __webaiosFichiers = ${JSON.stringify(table)};\n`), await readFile(join(o.keptFolder, KEEP_BACKGROUND))]),
+      Buffer.concat([Buffer.from(`const __webaiosFiles = ${JSON.stringify(table)};\n`), await readFile(join(o.keptFolder, KEEP_BACKGROUND))]),
     );
     await writeFile(join(tmp, SCOPE), `${scope}\n`);
     await mkdir(join(tmp, MARKERS), { recursive: true });
-    for (let i = 0; i < table.length; i++) await writeFile(join(tmp, MARKERS, `${i}.js`), `globalThis.__webaiosFichier(${i});\n`);
+    for (let i = 0; i < table.length; i++) await writeFile(join(tmp, MARKERS, `${i}.js`), `globalThis.__webaiosFile(${i});\n`);
     await writeFile(join(tmp, BACKGROUND), backgroundJs);
     await writeFile(join(tmp, "manifest.json"), JSON.stringify(manifest, null, 2));
     await replaceFolder(tmp, o.target);

@@ -77,13 +77,13 @@ export function resolveLocalHosts(m: Marionette, hosts: string[]): Promise<unkno
 /** A test site app: `site.json` (an object, written as JSON; a string, as is) and other files. */
 export interface SiteTest {
   declaration: object | string;
-  /** Paths relative to the app's folder (`accueil/index.html`, `retouches/a.js`…) → content. */
+  /** Paths relative to the app's folder (`home/index.html`, `tweaks/a.js`…) → content. */
   files?: Record<string, string | Buffer>;
 }
 
-/** Writes a site app into `<dataDir>/espace/sites/<id>/` (what the agent would write there). */
+/** Writes a site app into `<dataDir>/workspace/sites/<id>/` (what the agent would write there). */
 export function writeSite(dataDir: string, id: string, s: SiteTest): void {
-  const folder = path.join(dataDir, "espace", "sites", id);
+  const folder = path.join(dataDir, "workspace", "sites", id);
   mkdirSync(folder, { recursive: true });
   writeFileSync(path.join(folder, "site.json"), typeof s.declaration === "string" ? s.declaration : JSON.stringify(s.declaration));
   for (const [relPath, content] of Object.entries(s.files ?? {})) {
@@ -92,7 +92,7 @@ export function writeSite(dataDir: string, id: string, s: SiteTest): void {
   }
 }
 
-/** « Autoriser » done ahead (`<dataDir>/sites-accords.json`), by the kernel's own grantSite: the app opens granted. */
+/** « Autoriser » done ahead (`<dataDir>/site-grants.json`), by the kernel's own grantSite: the app opens granted. */
 export const grantSite = (dataDir: string, id: string, declaration: object): Promise<void> => storeSiteGrant(dataDir, id, DeclarationSite.parse(declaration));
 
 /** The test home page: it shows the memory it receives and notes every message. */

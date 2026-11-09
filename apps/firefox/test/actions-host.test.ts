@@ -41,7 +41,7 @@ function space(declarations: Record<string, object>): { c: SpacePaths; actionsFo
 /** A kept run of the action, with its results; gives its id. */
 async function run(actionsFolder: string, id: string, results: unknown, start = START): Promise<string> {
   const ex = idExecution(start);
-  const e: Execution = { version: 1, id: ex, owner: { type: "action", id }, trigger: "manuelle", start: start, end: start, status: "reussie", blocks: [] };
+  const e: Execution = { version: 1, id: ex, owner: { type: "action", id }, trigger: "manual", start: start, end: start, status: "succeeded", blocks: [] };
   await writeRun(join(actionsFolder, id), e);
   await writeResult(actionsFolder, id, { version: 1, run: ex, input: null, results: results, plan: null, fallback: true, empty: false });
   return ex;
@@ -95,10 +95,10 @@ describe("pure helpers", () => {
     const forgotten: string[] = [];
     await trashAction(c, "gitlab", async (id) => void forgotten.push(id));
     expect(existsSync(join(c.actions, "gitlab"))).toBe(false);
-    const trash = readdirSync(join(c.actions, ".corbeille"));
+    const trash = readdirSync(join(c.actions, ".trash"));
     expect(trash).toHaveLength(1);
     expect(trash[0]).toMatch(/^gitlab-\d+$/);
-    expect(readFileSync(join(c.actions, ".corbeille", trash[0]!, "action.json"), "utf8")).toContain("GitLab");
+    expect(readFileSync(join(c.actions, ".trash", trash[0]!, "action.json"), "utf8")).toContain("GitLab");
     expect(forgotten).toEqual(["gitlab"]);
     await expect(trashAction(c, "../x", async () => {})).rejects.toThrow();
   });
@@ -117,12 +117,12 @@ describe("pure helpers", () => {
     expect(list[0]).toMatchObject({ id: "cassee", name: "cassee", keywords: [], input: null, account: [], grant: false, last: null });
     expect(list[0]!.error).toBeTruthy();
     expect(list[1]).toEqual({ id: "gitlab", name: "GitLab", description: "Mes tickets", keywords: ["tickets"], input: null, account: ["gitlab.com"], public: [], grant: false, last: null });
-    expect(list[2]).toEqual({ id: "leboncoin", name: "Leboncoin", description: "", keywords: [], input: { label: "Recherche" }, account: [], public: [], grant: false, last: { run: ex, start: START, status: "reussie" } });
+    expect(list[2]).toEqual({ id: "leboncoin", name: "Leboncoin", description: "", keywords: [], input: { label: "Recherche" }, account: [], public: [], grant: false, last: { run: ex, start: START, status: "succeeded" } });
   });
 });
 
 /** A fake kernel of the actions: notes the launches and stops. */
-function fakeKernel(direct: ActionsState = { running: [], waiting: [] }, outcome: LaunchResult | Promise<LaunchResult> = { status: "reussie", run: "x" }) {
+function fakeKernel(direct: ActionsState = { running: [], waiting: [] }, outcome: LaunchResult | Promise<LaunchResult> = { status: "succeeded", run: "x" }) {
   const launched: { id: string; input?: string }[] = [];
   const stoppedList: string[] = [];
   /** Stops and grant removals, in order. */
@@ -186,11 +186,11 @@ describe("lancer, refusals and deletion", () => {
     const { h, launchedOnes: launched, stopped: stoppedList, create: create } = host();
     expect(await create(null).name("gitlab")).toBe("GitLab");
     expect(await h.name("absente")).toBeNull();
-    expect(await h.launch("leboncoin", "clio")).toEqual({ status: "reussie", run: "x" });
+    expect(await h.launch("leboncoin", "clio")).toEqual({ status: "succeeded", run: "x" });
     h.stop("leboncoin");
     expect(launched).toEqual([{ id: "leboncoin", input: "clio" }]);
     expect(stoppedList).toEqual(["leboncoin"]);
-    expect(await create(null).launch("gitlab", null)).toEqual({ status: "invalide", error: NO_KERNEL_MESSAGE });
+    expect(await create(null).launch("gitlab", null)).toEqual({ status: "invalid", error: NO_KERNEL_MESSAGE });
   });
 
   it("executions and execution read the disk without the kernel and refuse bad ids; page is refused", async () => {
@@ -209,7 +209,7 @@ describe("lancer, refusals and deletion", () => {
 
   // actions.test.ts:462
   it("a launch refused without a run written is shown by the list, until a more recent run", async () => {
-    const outcome: LaunchResult = { status: "echouee", error: "Docker n'est pas démarré", kernelError: true };
+    const outcome: LaunchResult = { status: "failed", error: "Docker n'est pas démarré", kernelError: true };
     const { h, actionsFolder: actionsFolder, changes, forward: advance } = host({ issue: outcome });
     await h.launch("gitlab", null);
     expect(changes()).toBe(1);
@@ -222,11 +222,11 @@ describe("lancer, refusals and deletion", () => {
 
   // actions.test.ts:476
   it("a launch refusal survives a restart; launching again clears it from the disk too", async () => {
-    const outcome: LaunchResult = { status: "echouee", error: "Docker n'est pas démarré", kernelError: true };
+    const outcome: LaunchResult = { status: "failed", error: "Docker n'est pas démarré", kernelError: true };
     const { h, create: create } = host({ issue: outcome });
     await h.launch("gitlab", null);
     await expect.poll(async () => (await h.list()).find((a) => a.id === "gitlab")?.denial).toBe("Docker n'est pas démarré");
-    const after = create(fakeKernel(undefined, { status: "reussie", run: "x" }).kernel);
+    const after = create(fakeKernel(undefined, { status: "succeeded", run: "x" }).kernel);
     await expect.poll(async () => (await after.list()).find((a) => a.id === "gitlab")?.denial).toBe("Docker n'est pas démarré");
     await after.launch("gitlab", null);
     await expect.poll(async () => (await create().list()).find((a) => a.id === "gitlab")?.denial).toBeUndefined();
@@ -234,7 +234,7 @@ describe("lancer, refusals and deletion", () => {
 
   // actions.test.ts:491
   it("deleting also clears the refusal from the disk: an action made again has none at the next start", async () => {
-    const outcome: LaunchResult = { status: "echouee", error: "Docker n'est pas démarré", kernelError: true };
+    const outcome: LaunchResult = { status: "failed", error: "Docker n'est pas démarré", kernelError: true };
     const { h, c, create: create } = host({ issue: outcome });
     await h.launch("gitlab", null);
     await expect.poll(async () => (await h.list()).find((a) => a.id === "gitlab")?.denial).toBe("Docker n'est pas démarré");
@@ -251,7 +251,7 @@ describe("lancer, refusals and deletion", () => {
 
   // actions.test.ts:508
   it("lancer notes a refusal without a run; an outcome with a run leaves none", async () => {
-    const { h, changes } = host({ issue: { status: "invalide", error: "Cette action n'a pas de workflow.json", kernelError: true } });
+    const { h, changes } = host({ issue: { status: "invalid", error: "Cette action n'a pas de workflow.json", kernelError: true } });
     await h.launch("gitlab", null);
     expect((await h.list()).find((a) => a.id === "gitlab")?.denial).toBe("Cette action n'a pas de workflow.json");
     expect((await h.launch("gitlab", null)).error).toBe("Cette action n'a pas de workflow.json");
@@ -280,7 +280,7 @@ describe("lancer, refusals and deletion", () => {
     const { h, changes } = host({ issue: outcome });
     void h.launch("gitlab", null);
     expect(await h.supprimer("gitlab")).toEqual({ ok: true });
-    finish({ status: "echouee", error: "Action inconnue", kernelError: true });
+    finish({ status: "failed", error: "Action inconnue", kernelError: true });
     await new Promise((ok) => setTimeout(ok, 0));
     expect(changes()).toBe(0);
     expect((await h.list()).find((a) => a.id === "gitlab")?.denial).toBeUndefined();

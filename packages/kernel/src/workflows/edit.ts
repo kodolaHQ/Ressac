@@ -22,7 +22,7 @@ export const CODE_NAME = /^[a-z0-9-]+\.mjs$/;
 const WIDGET_NOT_FOUND = "Widget introuvable";
 
 export type DraftRead = {
-  origin: "fichier" | "implicite";
+  origin: "file" | "implicit";
   /** null: not JSON, unreadable, over 256 KB, or a link that leaves the folder. */
   raw: unknown | null;
   validation: { ok: true } | { ok: false; error: string; block?: string };
@@ -59,12 +59,12 @@ async function folderExists(folder: string): Promise<boolean> {
 export async function readDraft(filesFolder: string, ctx: ValidationContext = DEFAULT_CONTEXT): Promise<DraftRead | null> {
   if (await exists(join(filesFolder, "workflow.json"))) {
     const lu = await readRawWorkflow(filesFolder);
-    if ("error" in lu) return { origin: "fichier", raw: null, validation: resume(workflowError(lu.error)) };
-    return { origin: "fichier", raw: lu.raw, validation: resume(validateWorkflow(lu.raw, ctx)) };
+    if ("error" in lu) return { origin: "file", raw: null, validation: resume(workflowError(lu.error)) };
+    return { origin: "file", raw: lu.raw, validation: resume(validateWorkflow(lu.raw, ctx)) };
   }
   if (await exists(join(filesFolder, "harvest.mjs"))) {
     const raw = implicitWorkflow();
-    return { origin: "implicite", raw: raw, validation: resume(validateWorkflow(raw, ctx)) };
+    return { origin: "implicit", raw: raw, validation: resume(validateWorkflow(raw, ctx)) };
   }
   return null;
 }

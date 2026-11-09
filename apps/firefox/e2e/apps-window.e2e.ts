@@ -41,7 +41,7 @@ async function start(o: { server?: "ok" | "crashed" } = {}): Promise<Instance> {
   await m.setContext("chrome");
   await waitReady(m);
   // Not expect.poll: also run from beforeAll.
-  for (const end = Date.now() + 15_000; !existsSync(path.join(dataDir, "espace", ".webaios", "mcp.json")); await sleep(100))
+  for (const end = Date.now() + 15_000; !existsSync(path.join(dataDir, "workspace", ".webaios", "mcp.json")); await sleep(100))
     if (Date.now() > end) throw new Error("the MCP server did not start");
   return { w, m, dataDir };
 }
@@ -111,7 +111,7 @@ describe("one WebAiOs, the app launched in each test", () => {
     for (const folder of ["essai", "autre"]) await callTool(i.dataDir, "stop_app", { folder: folder }).catch(() => {});
     await waitFor(m, `return [...Services.wm.getEnumerator("navigator:browser")].filter((w) => w.document.documentElement.hasAttribute("webaios-app")).length;`, (n) => n === 0);
     await waitFor(m, "for (const t of gBrowser.tabs.slice(1)) gBrowser.removeTab(t); return gBrowser.tabs.length;", (n) => n === 1);
-    await expect.poll(async () => (await list(m)).apps.filter((a) => a.state !== "arretee" && a.state !== "erreur").length, { timeout: 10_000 }).toBe(0);
+    await expect.poll(async () => (await list(m)).apps.filter((a) => a.state !== "stopped" && a.state !== "error").length, { timeout: 10_000 }).toBe(0);
   });
   async function launched(): Promise<void> {
     port = await launchAttempt(i.dataDir);
@@ -244,9 +244,9 @@ describe("one WebAiOs, the app launched in each test", () => {
     await m.execute(`${app}.close();`);
     await expect.poll(() => appWindows(m), { timeout: 10_000 }).toBe(0);
     // Under <dataDir>, never in <dataDir>/espace that the container mounts.
-    const memory = path.join(i.dataDir, "applications.json");
+    const memory = path.join(i.dataDir, "apps.json");
     await expect.poll(() => existsSync(memory) && JSON.parse(readFileSync(memory, "utf8")).essai?.cadre, { timeout: 10_000 }).toMatchObject({ width: 640, height: 480 });
-    expect(existsSync(path.join(i.dataDir, "espace", "applications.json"))).toBe(false);
+    expect(existsSync(path.join(i.dataDir, "workspace", "apps.json"))).toBe(false);
     await launched();
     expect(await m.execute(`return [${app}.outerWidth, ${app}.outerHeight];`)).toEqual([640, 480]);
   });

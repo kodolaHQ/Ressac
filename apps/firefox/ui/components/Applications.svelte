@@ -6,18 +6,18 @@
   import ExternalProjects from "./ExternalProjects.svelte";
   import { openMenu, type MenuEntry } from "./menu.svelte";
 
-  type Filter = "tout" | "application" | "poc" | "sans-fiche" | "en-marche" | "arretee" | "erreur";
+  type Filter = "tout" | "app" | "poc" | "no-manifest" | "running" | "stopped" | "error";
 
   /** Running in the panel's sense: everything that is neither stopped nor in error. */
-  const active = (a: ApplicationShown) => a.state === "en-marche" || a.state === "lancement" || a.state === "preparation";
+  const active = (a: ApplicationShown) => a.state === "running" || a.state === "launching" || a.state === "preparing";
   const FILTERS: Record<Filter, (a: ApplicationShown) => boolean> = {
     tout: () => true,
-    application: (a) => a.type === "application",
+    app: (a) => a.type === "app",
     poc: (a) => a.type === "poc",
-    "sans-fiche": (a) => a.type === "sans-fiche",
-    "en-marche": active,
-    arretee: (a) => a.state === "arretee",
-    erreur: (a) => a.state === "erreur",
+    "no-manifest": (a) => a.type === "no-manifest",
+    running: active,
+    stopped: (a) => a.state === "stopped",
+    error: (a) => a.state === "error",
   };
   /** « Sans fiche » and « En erreur » only appear if they hold at least one project. */
   const GROUPS: { title: string; filters: { id: Filter; label: string; ifPresent?: boolean }[] }[] = [
@@ -25,17 +25,17 @@
       title: "Type",
       filters: [
         { id: "tout", label: "Tout" },
-        { id: "application", label: "Applications" },
+        { id: "app", label: "Applications" },
         { id: "poc", label: "POC et tests" },
-        { id: "sans-fiche", label: "Sans fiche", ifPresent: true },
+        { id: "no-manifest", label: "Sans fiche", ifPresent: true },
       ],
     },
     {
       title: "État",
       filters: [
-        { id: "en-marche", label: "En marche" },
-        { id: "arretee", label: "Arrêtées" },
-        { id: "erreur", label: "En erreur", ifPresent: true },
+        { id: "running", label: "En marche" },
+        { id: "stopped", label: "Arrêtées" },
+        { id: "error", label: "En erreur", ifPresent: true },
       ],
     },
   ];
@@ -107,13 +107,13 @@
 
   const withoutDocker = $derived(data.workshop === "docker-absent");
 
-  const TYPES = { application: "Application", poc: "POC", "sans-fiche": "Sans fiche" } as const;
+  const TYPES = { app: "Application", poc: "POC", "no-manifest": "Sans fiche" } as const;
   const STATES = {
-    arretee: "Arrêtée",
-    preparation: "Préparation de l'atelier…",
-    lancement: "Lancement…",
-    "en-marche": "En marche",
-    erreur: "En erreur",
+    stopped: "Arrêtée",
+    preparing: "Préparation de l'atelier…",
+    launching: "Lancement…",
+    running: "En marche",
+    error: "En erreur",
   } as const;
 
   /** « hier », « il y a 3 j », « 22 oct. » */
@@ -161,12 +161,12 @@
       dispatch: () => (action === "supprimer" ? (toDelete = a) : act(a, action)),
     });
     const promote = a.type === "poc" ? [entry("Passer en application", "promouvoir")] : [];
-    if (a.type === "sans-fiche") return { buttons: [{ label: "Déboguer", action: "deboguer" }], menu: [entry("Supprimer", "supprimer")] };
+    if (a.type === "no-manifest") return { buttons: [{ label: "Déboguer", action: "deboguer" }], menu: [entry("Supprimer", "supprimer")] };
     switch (a.state) {
-      case "preparation":
-      case "lancement":
+      case "preparing":
+      case "launching":
         return { buttons: [{ label: "Arrêter", action: "arreter" }], menu: [entry("Déboguer", "deboguer"), entry("Relire", "relire")] };
-      case "en-marche":
+      case "running":
         return {
           buttons: [
             { label: "Ouvrir", action: "ouvrir" },
@@ -174,7 +174,7 @@
           ],
           menu: [entry("Relancer", "relancer"), entry("Déboguer", "deboguer"), entry("Relire", "relire")],
         };
-      case "erreur":
+      case "error":
         return {
           buttons: [
             { label: "Relancer", action: "relancer", launched: true },
@@ -183,7 +183,7 @@
           ],
           menu: [entry("Supprimer", "supprimer"), ...promote],
         };
-      case "arretee":
+      case "stopped":
         return {
           buttons: [
             { label: "Lancer", action: "lancer", launched: true },
@@ -229,8 +229,8 @@
               <b>{a.name}</b>
               <span>{details(a)}</span>
             </div>
-            {#if a.type === "sans-fiche"}
-              <span class="etat" title={short(a.noManifest)}><span class="pastille arretee"></span>Sans fiche</span>
+            {#if a.type === "no-manifest"}
+              <span class="etat" title={short(a.noManifest)}><span class="pastille stopped"></span>Sans fiche</span>
             {:else}
               <span class="etat" title={short(a.error)}><span class="pastille {a.state}"></span>{STATES[a.state]}</span>
             {/if}
@@ -268,9 +268,9 @@
                 <span>{s.domain ?? s.id}</span>
               </div>
               {#if s.error !== undefined}
-                <span class="etat" title={s.error}><span class="pastille erreur"></span>Sans fiche</span>
+                <span class="etat" title={s.error}><span class="pastille error"></span>Sans fiche</span>
               {:else}
-                <span class="etat"><span class="pastille {s.open ? 'en-marche' : 'arretee'}"></span>{s.open ? "Ouverte" : "Fermée"}</span>
+                <span class="etat"><span class="pastille {s.open ? 'running' : 'stopped'}"></span>{s.open ? "Ouverte" : "Fermée"}</span>
               {/if}
               {#if s.error !== undefined}
                 <span class="erreur-site" data-testid="site-{s.id}-erreur">{s.error}</span>
@@ -388,9 +388,9 @@
   .nom span { display: block; font-size: 12px; color: var(--texte-doux); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .etat { display: flex; align-items: center; gap: 6px; width: 170px; flex: none; font-size: 12px; white-space: nowrap; }
   .pastille { width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--arretee); }
-  .pastille.en-marche { background: var(--en-marche); }
-  .pastille.lancement, .pastille.preparation { background: var(--en-cours); }
-  .pastille.erreur { background: var(--en-erreur); }
+  .pastille.running { background: var(--en-marche); }
+  .pastille.launching, .pastille.preparing { background: var(--en-cours); }
+  .pastille.error { background: var(--en-erreur); }
   .actions { display: flex; gap: 6px; flex: none; }
   .actions button { padding: 4px 10px; border-radius: 6px; border: 1px solid var(--bord); background: var(--fond-barre); color: var(--texte); font-size: 12px; }
   .actions button:hover:not(:disabled) { background: var(--fond-survol); }

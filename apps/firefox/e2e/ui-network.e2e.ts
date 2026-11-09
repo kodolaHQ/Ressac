@@ -273,7 +273,7 @@ describe("the UI's network", () => {
     writeSite(dataDir, "netsite", { declaration: netsite });
     await grantSite(dataDir, "netsite", netsite);
     const withHome = { name: "Netsite accueil", url: `http://netsite-accueil.localhost:${HTTP}/page`, domains: ["netsite-accueil.localhost"] };
-    writeSite(dataDir, "netsite-accueil", { declaration: withHome, files: { "accueil/index.html": '<!doctype html><meta charset="utf-8"><p id="h">accueil</p>' } });
+    writeSite(dataDir, "netsite-accueil", { declaration: withHome, files: { "home/index.html": '<!doctype html><meta charset="utf-8"><p id="h">accueil</p>' } });
     await grantSite(dataDir, "netsite-accueil", withHome);
     w = await launchWebAiOs({ dataDir, prefs: NET_PREFS, env: { ...netEnv(logDir), WEBAIOS_TEST_LOCAL_ADDRESSES: "1", ...APPS_ENV([15370, 15374]) } });
     m = w.marionette;
@@ -402,7 +402,7 @@ describe("the UI's network", () => {
   });
 
   it("the five UI frames are cut before they load", { timeout: 120_000 }, async () => {
-    await expect.poll(() => existsSync(path.join(dataDir, "espace", ".webaios", "mcp.json")), { timeout: 15_000 }).toBe(true);
+    await expect.poll(() => existsSync(path.join(dataDir, "workspace", ".webaios", "mcp.json")), { timeout: 15_000 }).toBe(true);
     await launchAttempt(dataDir);
     await m.execute(`return (async () => { const store = await ChromeUtils.importESModule("${STORE}").ready; await store.agent.request("sites.agir", { id: "netsite", action: "ouvrir", fenetre: store.state.fenetres[0].id }); })();`);
     const frames = () =>

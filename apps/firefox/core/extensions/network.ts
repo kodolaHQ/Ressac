@@ -1,7 +1,7 @@
 // The agent extensions' network, closed by default (spec §5, plan 12 task 12): the copy's CSP (`connect-src 'self'
 // https://<reseau>`, kernel `cspAgent`) and the chrome's request guard (chrome/store/agent-extensions.ts) close it.
 // This module holds the pure checks the chrome asks: the addresses an agent extension's pages and its calls to
-// `tabs.create`, `tabs.update`, `windows.create` may open (`agentAllowedUrl`, asked by the guard webaios-garde-fond.js),
+// `tabs.create`, `tabs.update`, `windows.create` may open (`agentAllowedUrl`, asked by the guard webaios-background-guard.js),
 // and the hosts it may script (`agentAllowedHost`).
 import type { Scope } from "@webaios/kernel";
 

@@ -4,11 +4,11 @@ import { Executions, forgetRunChoices, type Launcher, type SourceExecutions } fr
 
 const resume = (id: string, attempt = false): ResumeExecution => ({
   id,
-  trigger: attempt ? "rejeu" : "planifiee",
+  trigger: attempt ? "replay" : "scheduled",
   ...(attempt ? { attempt: { start: "tri", origin: "a" } } : {}),
   start: "2026-10-29T10:00:00.000Z",
   end: "2026-10-29T10:00:01.000Z",
-  status: "reussie",
+  status: "succeeded",
   blocks: [{ id: "tri", status: "succeeded", items: 1 }],
 });
 const complete = (r: ResumeExecution): Execution =>
@@ -29,7 +29,7 @@ function fake(list: ResumeExecution[]) {
 }
 
 test("by default, the last real run (not a trial) and its detail", async () => {
-  const f = fake([resume("c-essai", true), resume("b"), resume("a")]);
+  const f = fake([resume("c-attempt", true), resume("b"), resume("a")]);
   const x = new Executions("w", f.source);
   await x.load();
   expect(x.chosen?.id).toBe("b");
@@ -37,7 +37,7 @@ test("by default, the last real run (not a trial) and its detail", async () => {
 });
 
 test("no real run: nothing chosen", async () => {
-  const f = fake([resume("c-essai", true)]);
+  const f = fake([resume("c-attempt", true)]);
   const x = new Executions("w", f.source);
   await x.load();
   expect(x.chosen).toBeNull();
@@ -128,8 +128,8 @@ function falseLauncher(f: ReturnType<typeof fake>) {
     replay: async (id, execution, block) => {
       calls.push(`rejouer ${id} ${execution} ${block}`);
       if (block === "page") return { ok: false, error: "Rejeu impossible : la sortie de « liens » a été tronquée dans cette exécution" };
-      f.state.list = [resume("e-essai", true), ...f.state.list];
-      return { ok: true, run: "e-essai", status: "reussie" };
+      f.state.list = [resume("e-attempt", true), ...f.state.list];
+      return { ok: true, run: "e-attempt", status: "succeeded" };
     },
   };
   return { launcher: launcher, calls: calls, emit: (e: DirectState) => callbacks.forEach((r) => r(e)), callbacks: callbacks, finish: () => finish?.() };
@@ -256,8 +256,8 @@ test("Rejouer from a block: the returned trial is chosen; refused, the message s
   await x.replay("tri");
   expect(l.calls.at(-1)).toBe("rejouer w a tri");
   expect(x.denial).toBeNull();
-  expect(x.chosen?.id).toBe("e-essai");
-  expect(x.detail?.id).toBe("e-essai");
+  expect(x.chosen?.id).toBe("e-attempt");
+  expect(x.detail?.id).toBe("e-attempt");
 });
 
 test("Rejouer without a chosen run or during a run: no request", async () => {
@@ -343,9 +343,9 @@ test("▶ Lancer that returns the last real run: the default choice resumes, the
   await x.launch();
   expect(x.chosen?.id).toBe("nouvelle");
   expect(x.wanted).toBeNull();
-  f.state.list = [resume("planifiee"), ...f.state.list];
+  f.state.list = [resume("scheduled"), ...f.state.list];
   await x.load();
-  expect(x.chosen?.id).toBe("planifiee");
+  expect(x.chosen?.id).toBe("scheduled");
 });
 
 test("a choice made by another builder of the widget (tab left during Lancer) is picked up again on reload", async () => {

@@ -96,7 +96,7 @@ describe("ui-network", () => {
     const opaque = (precursor: string) => ({ isSystemPrincipal: false, spec: "moz-nullprincipal:{1}", precursorMain: { isSystemPrincipal: false, spec: precursor } });
     expect(N.isUiLoad(wt({ isSystemPrincipal: true, spec: "" })), "a system document").toBe(true);
     expect(N.isUiLoad(wt(opaque("resource://webaios-widget-a/display-1.html"))), "a served widget").toBe(true);
-    expect(N.isUiLoad(wt({ isSystemPrincipal: false, spec: "resource://webaios-composant-c/composant-1.html", precursorMain: null })), "a component").toBe(true);
+    expect(N.isUiLoad(wt({ isSystemPrincipal: false, spec: "resource://webaios-component-c/component-1.html", precursorMain: null })), "a component").toBe(true);
     expect(N.isUiLoad(wt({ isSystemPrincipal: false, spec: "https://a.example/", precursorMain: null })), "a tab").toBe(false);
     expect(N.isUiLoad(wt(opaque("https://a.example/"))), "a sandboxed tab frame").toBe(false);
     expect(N.isUiLoad({ ...wt({ isSystemPrincipal: true, spec: "" }), externalContentPolicyType: 3 }), "a system image without context (an action image)").toBe(false);

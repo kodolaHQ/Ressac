@@ -99,7 +99,7 @@ async function pageOnAppJs(...n: number[]) {
 }
 
 const agentInput = () => {
-  const f = path.join(w!.dataDir, "espace", "faux-agent-entree.txt");
+  const f = path.join(w!.dataDir, "workspace", "faux-agent-entree.txt");
   return existsSync(f) ? readFileSync(f, "utf8") : "";
 };
 const TERMINAL = "(doc.querySelector('.xterm-rows')?.textContent ?? '').replace(/\\u00a0/g, ' ')";
@@ -121,8 +121,8 @@ const SITE = { declaration: { name: "Essai", url: "https://essai.example/", doma
 /** A site app « essai » (app.js, line 15 changed after its first photo), its Review page open on app.js. */
 async function siteOnAppJs(): Promise<void> {
   await launch({ prepare: (d) => writeSite(d, "essai", SITE) });
-  await expect.poll(() => existsSync(path.join(w!.dataDir, "design", "relecture", "site-essai.git", "refs", "webaios", "relu")), { timeout: 15_000 }).toBe(true);
-  writeAppJs(path.join(w!.dataDir, "espace", "sites", "essai"), modified(15));
+  await expect.poll(() => existsSync(path.join(w!.dataDir, "design", "review", "site-essai.git", "refs", "webaios", "relu")), { timeout: 15_000 }).toBe(true);
+  writeAppJs(path.join(w!.dataDir, "workspace", "sites", "essai"), modified(15));
   await click(m, tid("site-essai-relire"));
   await waitUi(m, `return !!doc.querySelector('${PAGE}')`);
   await openFile("app.js");
@@ -147,12 +147,12 @@ it("+ on line 15 of app.js, « garder l'ancien nom »: a comment under the line;
   await waitFor(m, "return !document.getElementById('webaios-agent').hidden", (v) => v === true);
   await waitUi(m, `return ${TERMINAL}.includes(arguments[0])`, [sent], 20_000, "agent");
   await expect.poll(agentInput, { timeout: 10_000 }).toContain(sent);
-  expect(agentInput()).toContain("/workspace/.webaios/remarques/site-essai/");
+  expect(agentInput()).toContain("/workspace/.webaios/remarks/site-essai/");
   await new Promise((r) => setTimeout(r, 300));
   expect(agentInput()).not.toContain("\r");
   await waitText(COMMENT, "envoyé");
-  const batches = path.join(w!.dataDir, "espace", ".webaios", "remarques", "site-essai");
-  expect(filesOf(batches).some((f) => f.endsWith("lot.json"))).toBe(true);
+  const batches = path.join(w!.dataDir, "workspace", ".webaios", "remarks", "site-essai");
+  expect(filesOf(batches).some((f) => f.endsWith("batch.json"))).toBe(true);
 });
 
 // relecture.spec.ts:278
@@ -271,7 +271,7 @@ it("wait_for_remarks started before the send returns the batch as soon as « Env
 });
 
 // externes.spec.ts:258
-it("no file of the external project (registries, repository, batches) appears under <dataDir>/espace/; its batch is under <dataDir>/design/remarques/ext-<id>/", async () => {
+it("no file of the external project (registries, repository, batches) appears under <dataDir>/workspace/; its batch is under <dataDir>/design/remarks/ext-<id>/", async () => {
   await launch();
   const p = await pageOnAppJs(15);
   try {
@@ -280,11 +280,11 @@ it("no file of the external project (registries, repository, batches) appears un
     await click(m, SEND);
     await waitText(COMMENT, "envoyé");
     await new Promise((r) => setTimeout(r, 800));
-    for (const f of filesOf(path.join(w!.dataDir, "espace"))) {
+    for (const f of filesOf(path.join(w!.dataDir, "workspace"))) {
       expect(f, f).not.toMatch(/externes|relecture|ext-[0-9a-f]{16}/);
       if (statSync(f).isFile() && statSync(f).size < 2_000_000) expect(readFileSync(f, "utf8"), f).not.toContain(p.token);
     }
-    expect(filesOf(path.join(w!.dataDir, "design", "remarques", `ext-${p.id}`)).some((f) => f.endsWith("lot.json"))).toBe(true);
+    expect(filesOf(path.join(w!.dataDir, "design", "remarks", `ext-${p.id}`)).some((f) => f.endsWith("batch.json"))).toBe(true);
   } finally {
     await p.client.close();
   }
@@ -316,13 +316,13 @@ it("deleting the site app erases its review repo and comments", { timeout: 60_00
   await siteOnAppJs();
   await click(m, extra(15));
   await comment("garder l'ancien nom");
-  const review = path.join(w!.dataDir, "design", "relecture");
-  await expect.poll(() => existsSync(path.join(review, "site-essai.commentaires.json")), { timeout: 10_000 }).toBe(true);
+  const review = path.join(w!.dataDir, "design", "review");
+  await expect.poll(() => existsSync(path.join(review, "site-essai.comments.json")), { timeout: 10_000 }).toBe(true);
   await openApplications(m);
   await click(m, tid("site-essai-supprimer"));
   await click(m, tid("confirmer-suppression-site"));
   await expect
-    .poll(() => existsSync(path.join(review, "site-essai.git")) || existsSync(path.join(review, "site-essai.commentaires.json")), { timeout: 15_000 })
+    .poll(() => existsSync(path.join(review, "site-essai.git")) || existsSync(path.join(review, "site-essai.comments.json")), { timeout: 15_000 })
     .toBe(false);
 });
 

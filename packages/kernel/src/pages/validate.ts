@@ -19,16 +19,16 @@ export type ValidationResult = { ok: true; plan: PlanPage; discarded: string[] }
 class Gap extends Error {}
 
 /** Expected kind of a reference's value, per built-in component and property. */
-const EXPECTED: Record<string, "liste" | "objet" | "simple"> = {
-  "paragraphe.valeur": "simple", "chiffre.valeur": "simple", "encadre.elements": "liste",
-  "liste.elements": "liste", "cartes.elements": "liste", "tableau.elements": "liste",
-  "champs.objet": "objet", "etiquettes.valeurs": "liste", "etiquettes.elements": "liste", "lien.objet": "objet",
+const EXPECTED: Record<string, "list" | "object" | "simple"> = {
+  "paragraph.value": "simple", "figure.value": "simple", "callout.items": "list",
+  "list.items": "list", "cards.items": "list", "table.items": "list",
+  "fields.object": "object", "tags.values": "list", "tags.items": "list", "link.object": "object",
 };
 /** The property that carries the items where its fields are read. */
 const SOURCE: Record<string, string> = {
-  framed: "elements", list: "elements", cards: "elements", table: "elements", tags: "elements", link: "objet", fields: "objet",
+  callout: "items", list: "items", cards: "items", table: "items", tags: "items", link: "object", fields: "object",
 };
-const CHILDREN: Record<string, ("blocks" | "left" | "right")[]> = { groupe: ["blocks"], colonnes: ["left", "right"] };
+const CHILDREN: Record<string, ("blocks" | "left" | "right")[]> = { group: ["blocks"], columns: ["left", "right"] };
 
 function cut(s: string): string {
   return s.length > MAX_ERROR ? s.slice(0, MAX_ERROR - 1) + "…" : s;
@@ -57,17 +57,17 @@ const primitive = (v: unknown) => v === null || typeof v === "string" || typeof 
 const present = (props: Record<string, unknown>, name: string) => Object.hasOwn(props, name) && props[name] !== undefined && props[name] !== null;
 
 /** A reference read and computed; its value checked according to `attendu`. */
-function checkReference(text: unknown, expected: "liste" | "objet" | "simple" | undefined, results: unknown) {
+function checkReference(text: unknown, expected: "list" | "object" | "simple" | undefined, results: unknown) {
   if (typeof text !== "string") throw new Gap("référence attendue (un texte)");
   const ref = readReference(text);
   if ("error" in ref) throw new Gap(ref.error);
   const r = evaluate(ref, results);
   if ("error" in r) throw new Gap(r.error);
   const v = r.value;
-  if (expected === "liste" && !Array.isArray(v)) throw new Gap("liste attendue");
-  if (expected === "objet" && (v === null || typeof v !== "object" || Array.isArray(v))) throw new Gap("objet attendu");
+  if (expected === "list" && !Array.isArray(v)) throw new Gap("liste attendue");
+  if (expected === "object" && (v === null || typeof v !== "object" || Array.isArray(v))) throw new Gap("objet attendu");
   if (expected === "simple" && !primitive(v)) throw new Gap("valeur simple attendue");
-  return { text: text, value: v, grouped: ref.ops.at(-1)?.op === "regrouper" };
+  return { text: text, value: v, grouped: ref.ops.at(-1)?.op === "group" };
 }
 
 /** A field: a path relative to an item, never a reference nor a free text (an address written by Gemma fails here). */
@@ -104,7 +104,7 @@ function checkProps(def: ComponentDefinition, raw: Record<string, unknown>, resu
   const values: Record<string, { value: unknown; grouped: boolean }> = {};
   const fieldsToCheck: { name: string; field: string }[] = [];
   let reference = false;
-  const builtIn = def.origin === "integre";
+  const builtIn = def.origin === "builtin";
 
   for (const [name, pr] of Object.entries(def.properties) as [string, Property][]) {
     if (!present(raw, name)) {
@@ -116,29 +116,29 @@ function checkProps(def: ComponentDefinition, raw: Record<string, unknown>, resu
       switch (pr.kind) {
         case "reference": {
           // « $ » given to a paragraph: all the results as compact text, the last-resort layout.
-          const expected = builtIn && !(def.name === "paragraphe" && v === "$") ? EXPECTED[`${def.name}.${name}`] : undefined;
+          const expected = builtIn && !(def.name === "paragraph" && v === "$") ? EXPECTED[`${def.name}.${name}`] : undefined;
           const r = checkReference(v, expected, results);
           props[name] = r.text;
           values[name] = r;
           reference = true;
           break;
         }
-        case "champ":
+        case "field":
           props[name] = readField(v);
           fieldsToCheck.push({ name: name, field: props[name] as string });
           break;
-        case "texte":
+        case "text":
           props[name] = checkText(v, pr.max ?? AGENT_TEXT_MAX);
           break;
-        case "nombre":
+        case "number":
           if (typeof v !== "number" || !Number.isFinite(v)) throw new Gap("nombre attendu");
           props[name] = v;
           break;
-        case "case":
+        case "checkbox":
           if (typeof v !== "boolean") throw new Gap("vrai ou faux attendu");
           props[name] = v;
           break;
-        case "choix": {
+        case "choice": {
           const choice = pr.choices ?? [];
           if (typeof v !== "string" || !choice.includes(v)) {
             throw new Gap(`${choice.slice(0, -1).join(", ")}${choice.length > 1 ? " ou " : ""}${choice.at(-1) ?? ""} attendu`);
@@ -146,25 +146,25 @@ function checkProps(def: ComponentDefinition, raw: Record<string, unknown>, resu
           props[name] = v;
           break;
         }
-        case "colonnes": {
-          const forme = "{ champ, libelle }";
+        case "columns": {
+          const forme = "{ field, label }";
           props[name] = checkList(v, pr.max ?? 8, forme).map((e) => {
             const o = objectOf(e, forme);
-            const field = readField(o.champ);
-            const label = present(o, "libelle") ? checkText(o.libelle, LABEL_MAX) : field;
+            const field = readField(o.field);
+            const label = present(o, "label") ? checkText(o.label, LABEL_MAX) : field;
             fieldsToCheck.push({ name: name, field: field });
             return { field: field, label: label };
           });
           break;
         }
-        case "chiffres": {
-          const forme = "{ valeur, libelle }";
+        case "figures": {
+          const forme = "{ value, label }";
           props[name] = checkList(v, pr.max ?? 6, forme).map((e) => {
             const o = objectOf(e, forme);
-            if (!present(o, "valeur")) throw new Gap("valeur requise");
-            if (!present(o, "libelle")) throw new Gap("libelle requis");
-            const value = checkReference(o.valeur, "simple", results).text;
-            return { value: value, label: checkText(o.libelle, LABEL_MAX) };
+            if (!present(o, "value")) throw new Gap("value requise");
+            if (!present(o, "label")) throw new Gap("label requis");
+            const value = checkReference(o.value, "simple", results).text;
+            return { value: value, label: checkText(o.label, LABEL_MAX) };
           });
           reference = true;
           break;
@@ -203,19 +203,19 @@ function elementsOf(loaded: { value: unknown; grouped: boolean }): unknown[] {
 function applyRules(name: string, props: Record<string, unknown>): void {
   const a = (k: string) => Object.hasOwn(props, k);
   switch (name) {
-    case "paragraphe":
-      if (!a("texte") && !a("valeur")) throw new Gap("texte ou valeur attendu");
-      if (a("valeur")) delete props.texte;
+    case "paragraph":
+      if (!a("text") && !a("value")) throw new Gap("text ou value attendu");
+      if (a("value")) delete props.text;
       break;
-    case "etiquettes":
-      if (a("valeurs")) { delete props.elements; delete props.champ; break; }
-      if (!a("elements") || !a("champ")) throw new Gap("valeurs, ou elements avec champ, attendu");
+    case "tags":
+      if (a("values")) { delete props.items; delete props.field; break; }
+      if (!a("items") || !a("field")) throw new Gap("values, ou items avec field, attendu");
       break;
-    case "encadre":
-      if (a("elements") !== a("champ")) throw new Gap("elements et champ vont ensemble");
+    case "callout":
+      if (a("items") !== a("field")) throw new Gap("items et field vont ensemble");
       break;
-    case "lien":
-      if (a("champTexte")) delete props.texte;
+    case "link":
+      if (a("textField")) delete props.text;
       break;
   }
 }
@@ -250,7 +250,7 @@ function validateBlocks(blocks: PlanBlock[], ctx: Context): PlanBlock[] {
     }
     if (v.reference) ctx.references++;
     const kept: PlanBlock = { component: b.component, props: v.props };
-    const children = def.origin === "integre" ? (CHILDREN[def.name] ?? []) : [];
+    const children = def.origin === "builtin" ? (CHILDREN[def.name] ?? []) : [];
     for (const key of ["blocks", "left", "right"] as const) {
       const list = b[key];
       if (list === undefined) continue;

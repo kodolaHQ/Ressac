@@ -39,7 +39,7 @@ beforeAll(async () => {
   const dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
   const profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
   dirs.push(dataDir, profile);
-  writeSite(dataDir, ID, { declaration: tuningDeclaration(url), files: { "retouches/tuning.css": "/* rien */" } });
+  writeSite(dataDir, ID, { declaration: tuningDeclaration(url), files: { "tweaks/tuning.css": "/* rien */" } });
   await grantSite(dataDir, ID, tuningDeclaration(url));
   const a = testActor(profile);
   w = await launchWebAiOs({ dataDir, profile, env: { WEBAIOS_TEST_LOCAL_ADDRESSES: "1", ...a.env }, prefs: a.prefs });
@@ -57,8 +57,8 @@ afterEach(async () => {
   await inStore(m, `if (!store.sites.openIds().includes(arguments[0].id)) return 1; await store.design.stop(arguments[0]); store.design.closeOverlay(arguments[0], "panier"); return 1;`, [T]).catch(() => undefined);
 });
 
-const space = () => path.join(w.dataDir, "espace");
-const remarksDir = () => path.join(space(), ".webaios", "remarques", `site-${ID}`);
+const space = () => path.join(w.dataDir, "workspace");
+const remarksDir = () => path.join(space(), ".webaios", "remarks", `site-${ID}`);
 const batches = () => (existsSync(remarksDir()) ? readdirSync(remarksDir()).filter((n) => BATCH.test(n)) : []);
 const agentInput = () => {
   const f = path.join(space(), "faux-agent-entree.txt");
@@ -133,14 +133,14 @@ it("two remarks on tuning then send from the cart: text pre-filled without Enter
   await waitFor(m, "return !document.getElementById('webaios-agent').hidden", (v) => v === true);
   await waitUi(m, `return ${TERMINAL}.includes("faux agent prêt>")`, [], 20_000, "agent");
   await expect.poll(agentInput, { timeout: 15_000 }).toMatch(/^\[remarques de .+ — appli de site "Tuning" \(\/workspace\/sites\/tuning\/\) : site tiers/);
-  expect(agentInput()).toContain("/workspace/.webaios/remarques/site-tuning/");
+  expect(agentInput()).toContain("/workspace/.webaios/remarks/site-tuning/");
   await sleep(300);
   expect(agentInput()).not.toContain("\r");
   const batchList = batches();
   expect(batchList).toHaveLength(1);
-  const batch = JSON.parse(readFileSync(path.join(remarksDir(), batchList[0]!, "lot.json"), "utf8"));
-  expect(batch.origine).toBe("site-tiers");
-  expect(batch.avertissement).toBe(THIRD_PARTY_SITE_WARNING);
+  const batch = JSON.parse(readFileSync(path.join(remarksDir(), batchList[0]!, "batch.json"), "utf8"));
+  expect(batch.origin).toBe("third-party-site");
+  expect(batch.warning).toBe(THIRD_PARTY_SITE_WARNING);
   expect(readdirSync(path.join(remarksDir(), batchList[0]!)).filter((n) => n.endsWith(".png"))).toHaveLength(2);
   await expect.poll(async () => (await bar()).count, { timeout: 10_000 }).toBeNull();
   await expect.poll(() => inOverlay<number>(`return doc.querySelectorAll('${tid("remarque-panier")}').length;`), { timeout: 10_000 }).toBe(0);
@@ -154,7 +154,7 @@ it("tweak changed during the mode: the view reloads without the grant card, the 
   await modeOn();
   await remark("#banniere", "div#banniere.cookies", "cache ça", "1");
   await view("(window.__avant = 1, 1)");
-  writeFileSync(path.join(space(), "sites", ID, "retouches", "tuning.css"), "#banniere { display: none }");
+  writeFileSync(path.join(space(), "sites", ID, "tweaks", "tuning.css"), "#banniere { display: none }");
   await expect
     .poll(
       async () => {
@@ -174,14 +174,14 @@ it("tweak changed during the mode: the view reloads without the grant card, the 
 it("after site.json and the tweak changed, « Relire ce projet » of the chevron brings the same Review page, no second tab", async () => {
   await expect.poll(() => existsSync(reviewedRef(w.dataDir, `site-${ID}`)), { timeout: 15_000 }).toBe(true);
   writeFileSync(path.join(space(), "sites", ID, "site.json"), JSON.stringify({ ...tuningDeclaration(url), description: "Sans bannière" }));
-  writeFileSync(path.join(space(), "sites", ID, "retouches", "tuning.css"), "#banniere { display: none } /* 2 */");
+  writeFileSync(path.join(space(), "sites", ID, "tweaks", "tuning.css"), "#banniere { display: none } /* 2 */");
   await openSite(m, ID);
   await chevron("site-menu-design-relire");
   const PAGE = tid("page-relecture");
   await waitUi(m, `return !!doc.querySelector('${PAGE}')`, [], 15_000);
   await waitUi(m, `return doc.querySelectorAll('${tid("fichier-relecture")}').length === 2`, [], 15_000);
   const names = await inUi<string[]>(m, `return [...doc.querySelectorAll('${tid("fichier-relecture")} .nom-fichier')].map((e) => e.textContent).sort();`);
-  expect(names).toEqual(["retouches/tuning.css", "site.json"]);
+  expect(names).toEqual(["tweaks/tuning.css", "site.json"]);
   expect((await reviewTabs()).map((o) => o.title)).toEqual(["Relecture — Tuning"]);
   // Another tab, then « Relire ce projet » again: the same page comes back.
   await openApplications(m);
@@ -231,7 +231,7 @@ it("the host stopped: ✎ keeps its last state, ⌘⇧D does nothing, Ajouter sh
 
 // design-sites.spec.ts:538
 it("Supprimer with a remark in the cart and a batch sent: remarks and review repo erased; tuning made again: empty cart, new reference", { timeout: 90_000 }, async () => {
-  const review = path.join(w.dataDir, "design", "relecture");
+  const review = path.join(w.dataDir, "design", "review");
   await expect.poll(() => existsSync(reviewedRef(w.dataDir, `site-${ID}`)), { timeout: 15_000 }).toBe(true);
   const old = readFileSync(reviewedRef(w.dataDir, `site-${ID}`), "utf8");
   await toSite(m, ID);
@@ -253,9 +253,9 @@ it("Supprimer with a remark in the cart and a batch sent: remarks and review rep
   await waitUi(m, `return !doc.querySelector('${tid(`site-${ID}`)}')`, [], 15_000);
   await expect.poll(() => existsSync(remarksDir()), { timeout: 15_000 }).toBe(false);
   await expect.poll(() => existsSync(path.join(review, `site-${ID}.git`)), { timeout: 15_000 }).toBe(false);
-  expect(existsSync(path.join(review, `site-${ID}.commentaires.json`))).toBe(false);
+  expect(existsSync(path.join(review, `site-${ID}.comments.json`))).toBe(false);
   // Made again with the same id (another tweak: another tree, so another photo if the old one is gone).
-  writeSite(w.dataDir, ID, { declaration: tuningDeclaration(url), files: { "retouches/tuning.css": "/* neuve */" } });
+  writeSite(w.dataDir, ID, { declaration: tuningDeclaration(url), files: { "tweaks/tuning.css": "/* neuve */" } });
   await waitUi(m, `return !!doc.querySelector('${tid(`site-${ID}`)}')`, [], 15_000);
   await expect.poll(() => existsSync(reviewedRef(w.dataDir, `site-${ID}`)), { timeout: 15_000 }).toBe(true);
   expect(readFileSync(reviewedRef(w.dataDir, `site-${ID}`), "utf8")).not.toBe(old);

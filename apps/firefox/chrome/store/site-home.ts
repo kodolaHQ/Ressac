@@ -1,4 +1,4 @@
-// A site app's home screen, written by the agent in `<dataDir>/espace/sites/<id>/accueil/`: the served copy (a
+// A site app's home screen, written by the agent in `<dataDir>/workspace/sites/<id>/home/`: the served copy (a
 // webaios-site: scheme cannot be registered here: a resource:// substitution serves a sanitized
 // copy), and the site images it asks for, loaded in the app's container.
 import { IMAGE_SITE_MAX } from "../../shared/sites";
@@ -88,7 +88,7 @@ function substitute(name: string, dir: string | null): void {
 }
 
 /**
- * Copies `<dataDir>/espace/sites/<id>/accueil/` into `<dataDir>/webaios-sites/<id>/<token>/` with these
+ * Copies `<dataDir>/workspace/sites/<id>/home/` into `<dataDir>/webaios-sites/<id>/<token>/` with these
  * rules: the app folder named exactly `id` (a case-insensitive disk would find « Vidola » for
  * « vidola »), no symbolic link anywhere on a path, no hidden segment, `FICHIER_ACCUEIL_MAX` at most per file,
  * only the served types (HOME_TYPES); the `.html` pages go through homeServed. Points
@@ -115,12 +115,12 @@ const serving = new Map<string, Promise<unknown>>();
 async function serveNow(dataDir: string, id: string): Promise<string | null> {
   if (typeof id !== "string" || !ID_SITE.test(id)) return null;
   try {
-    const sites = PathUtils.join(dataDir, "espace", "sites");
+    const sites = PathUtils.join(dataDir, "workspace", "sites");
     const sitesReal = realPath(sites);
     if (!sitesReal || isLink(sites) || !(await IOUtils.getChildren(sites)).some((c) => name(c) === id)) return null;
-    const source = PathUtils.join(sites, id, "accueil");
+    const source = PathUtils.join(sites, id, "home");
     // realpath resolves every link on the path: if it differs from the expected path, a link (or another case) is there.
-    const expected = PathUtils.join(sitesReal, id, "accueil");
+    const expected = PathUtils.join(sitesReal, id, "home");
     if (realPath(source) !== expected) return null;
     const token = Services.uuid.generateUUID().toString().replace(/[{}-]/g, "");
     const key = `${id}-${token}`;

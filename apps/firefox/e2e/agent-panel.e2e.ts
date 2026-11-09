@@ -74,7 +74,7 @@ it("the home page's panel runs the real CLI with the session's MCP config", asyn
   await launch();
   await shown();
   await terminalShows("faux agent prêt>");
-  expect(JSON.parse(read(join(w!.dataDir, "espace", "faux-agent-args.json")))).toEqual([
+  expect(JSON.parse(read(join(w!.dataDir, "workspace", "faux-agent-args.json")))).toEqual([
     "claude",
     "--dangerously-skip-permissions",
     "--mcp-config",
@@ -88,7 +88,7 @@ it("a huge output does not freeze the UI", async () => {
   await send("inonder");
   // 1 MB later, the command has scrolled off the screen and the prompt is back at the bottom.
   await waitUi(m, `const t = ${TERMINAL.slice("return ".length)}; return !t.includes("reçu: inonder") && t.includes("prêt>")`, [], 20_000, "agent");
-  expect(read(join(w!.dataDir, "espace", "faux-agent-entree.txt"))).toContain("inonder\r");
+  expect(read(join(w!.dataDir, "workspace", "faux-agent-entree.txt"))).toContain("inonder\r");
   await click(m, '[data-testid="nouvel-onglet"]');
   await waitUi(m, "return !!doc.querySelector('[data-testid=\"page-vide\"]')", [], 10_000);
 });
@@ -101,18 +101,18 @@ it("a container that cannot start → error and Réessayer", async () => {
   await retryButton();
 });
 
-it("a second profile in .webaios/profils appears in the panel; choosing it restarts the agent with its command", async () => {
+it("a second profile in .webaios/profiles appears in the panel; choosing it restarts the agent with its command", async () => {
   const dataDir = mkdtempSync(join(os.tmpdir(), "webaios-data-"));
   try {
-    mkdirSync(join(dataDir, "espace", ".webaios", "profils"), { recursive: true });
+    mkdirSync(join(dataDir, "workspace", ".webaios", "profiles"), { recursive: true });
     writeFileSync(
-      join(dataDir, "espace", ".webaios", "profils", "autre.json"),
+      join(dataDir, "workspace", ".webaios", "profiles", "autre.json"),
       JSON.stringify({ id: "autre", name: "Autre", interactive: ["autre-agent", "--mcp", "{mcpConfig}"], nonInteractive: ["autre-agent", "-p", "{consigne}"], mcpConfig: "claude-json" }),
     );
     await launch(undefined, dataDir);
     await shown();
     await terminalShows("faux agent prêt>");
-    const pidFile = join(dataDir, "espace", "faux-agent-pid");
+    const pidFile = join(dataDir, "workspace", "faux-agent-pid");
     const first = read(pidFile);
     const select = '[data-testid="profil-agent"]';
     expect(await waitUi(m, "const o = [...(doc.querySelector(arguments[0])?.options ?? [])].map((x) => x.textContent.trim()); return o.length && o", [select], 10_000, "agent")).toEqual([
@@ -121,7 +121,7 @@ it("a second profile in .webaios/profils appears in the panel; choosing it resta
     ]);
     await inUi(m, "const s = doc.querySelector(arguments[0]); s.value = 'autre'; s.dispatchEvent(new ui.Event('change', { bubbles: true }));", [select], "agent");
     await waitFor(m, "return 1", () => read(pidFile) !== "" && read(pidFile) !== first, 20_000);
-    expect(JSON.parse(read(join(dataDir, "espace", "faux-agent-args.json")))).toEqual(["autre-agent", "--mcp", expect.stringMatching(SESSION_CONFIG)]);
+    expect(JSON.parse(read(join(dataDir, "workspace", "faux-agent-args.json")))).toEqual(["autre-agent", "--mcp", expect.stringMatching(SESSION_CONFIG)]);
     await terminalShows("faux agent prêt>");
     expect(await inUi(m, "return doc.querySelector('[data-testid=\"panneau-agent\"]').textContent", [], "agent")).not.toContain("L'agent s'est arrêté.");
   } finally {
@@ -157,7 +157,7 @@ it("typing reaches the agent", async () => {
 it("each key reaches the agent once and shows once, also after closing and reopening the panel", async () => {
   await launch();
   await homeAgent();
-  const input = join(w!.dataDir, "espace", "faux-agent-entree.txt");
+  const input = join(w!.dataDir, "workspace", "faux-agent-entree.txt");
   await typeText(m, "xyz");
   await terminalShows("prêt> xyz");
   // Time for a second copy to arrive.
@@ -191,7 +191,7 @@ it("a keypress after a keydown the terminal consumed is not sent again (macOS, p
     [],
     "agent",
   );
-  const input = join(w!.dataDir, "espace", "faux-agent-entree.txt");
+  const input = join(w!.dataDir, "workspace", "faux-agent-entree.txt");
   await waitFor(m, "return 1", () => read(input).length >= 3);
   await new Promise((r) => setTimeout(r, 500));
   expect(read(input)).toBe("xyz");
@@ -202,7 +202,7 @@ it("after Réessayer, each key still reaches the agent once and shows once", asy
   await shown();
   await click(m, "button", { text: "Réessayer", frame: "agent" });
   await homeAgent();
-  const input = join(w!.dataDir, "espace", "faux-agent-entree.txt");
+  const input = join(w!.dataDir, "workspace", "faux-agent-entree.txt");
   await typeText(m, "xyz");
   await terminalShows("prêt> xyz");
   await new Promise((r) => setTimeout(r, 500));
@@ -213,7 +213,7 @@ it("after Réessayer, each key still reaches the agent once and shows once", asy
 it("agent quits → Relancer starts a new one", async () => {
   await launch();
   await homeAgent();
-  const pidFile = join(w!.dataDir, "espace", "faux-agent-pid");
+  const pidFile = join(w!.dataDir, "workspace", "faux-agent-pid");
   const first = read(pidFile);
   await send("quitter");
   await waitUi(m, "return doc.querySelector('[data-testid=\"panneau-agent\"]').textContent.includes(\"L'agent s'est arrêté.\")", [], 10_000, "agent");
@@ -258,7 +258,7 @@ it("⌘J opens the panel and focuses the terminal", async () => {
   await waitUi(m, "return doc.activeElement?.classList.contains('xterm-helper-textarea')", [], 10_000, "agent");
   // Keys typed next go to the agent, after the context prefix opening the panel wrote.
   await send("clavier");
-  const input = join(w!.dataDir, "espace", "faux-agent-entree.txt");
+  const input = join(w!.dataDir, "workspace", "faux-agent-entree.txt");
   await waitFor(m, "return 1", () => read(input).includes(`[contexte : Page A — ${server.url}/a.html] clavier\r`));
   await pressKeys(m, "Meta+j");
   await hidden();
@@ -287,7 +287,7 @@ it("opening the panel on a tab shares it: current_page reads without asking", as
 });
 
 describe("one agent session per window", () => {
-  const pidFile = () => join(w!.dataDir, "espace", "faux-agent-pid");
+  const pidFile = () => join(w!.dataDir, "workspace", "faux-agent-pid");
   const alive = (pid: number) => {
     try {
       process.kill(pid, 0);
@@ -303,7 +303,7 @@ describe("one agent session per window", () => {
       if (Date.now() > deadline) throw new Error(`the agent ${pid} still runs`);
       await new Promise((r) => setTimeout(r, 100));
     }
-    const log = join(w!.dataDir, "espace", "faux-docker-arrets.log");
+    const log = join(w!.dataDir, "workspace", "faux-docker-arrets.log");
     for (const end = Date.now() + 10_000; !/webaios-session-[0-9a-f]+\.pid[\s\S]*signaler KILL/.test(read(log)); await new Promise((r) => setTimeout(r, 100)))
       if (Date.now() > end) throw new Error(`no kill logged: ${read(log)}`);
   };

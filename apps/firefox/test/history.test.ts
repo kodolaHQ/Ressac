@@ -10,7 +10,7 @@ let path: string;
 const date = (iso: string) => new Date(iso);
 
 beforeEach(() => {
-  path = join(mkdtempSync(join(tmpdir(), "webaios-hist-")), "historique.sqlite");
+  path = join(mkdtempSync(join(tmpdir(), "webaios-hist-")), "history.sqlite");
   h = new History(path);
 });
 afterEach(() => h.close());
@@ -121,7 +121,7 @@ test("rendrePrive marks only this space's rows", () => {
 
 test("old schema (url key alone): rows kept, empty space, non-private", () => {
   h.close();
-  const old = join(mkdtempSync(join(tmpdir(), "webaios-hist-")), "historique.sqlite");
+  const old = join(mkdtempSync(join(tmpdir(), "webaios-hist-")), "history.sqlite");
   const db = new DatabaseSync(old);
   db.exec(`CREATE TABLE visites (url TEXT PRIMARY KEY, titre TEXT NOT NULL, derniere_visite TEXT NOT NULL, visites INTEGER NOT NULL DEFAULT 1);
     INSERT INTO visites VALUES ('https://vieux.fr/', 'Vieux', '2026-01-01T00:00:00.000Z', 3);`);

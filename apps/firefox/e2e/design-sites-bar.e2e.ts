@@ -33,9 +33,9 @@ beforeAll(async () => {
   const dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
   const profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
   dirs.push(dataDir, profile);
-  writeSite(dataDir, "tuning", { declaration: tuningDeclaration(url), files: { "retouches/tuning.css": "/* rien */" } });
-  writeSite(dataDir, "avec-accueil", { declaration: withHomeDeclaration(url), files: { "accueil/index.html": WITH_HOME } });
-  writeSite(dataDir, "sans-accord", { declaration: { ...tuningDeclaration(url), name: "Sans accord" }, files: { "retouches/tuning.css": "/* rien */" } });
+  writeSite(dataDir, "tuning", { declaration: tuningDeclaration(url), files: { "tweaks/tuning.css": "/* rien */" } });
+  writeSite(dataDir, "avec-accueil", { declaration: withHomeDeclaration(url), files: { "home/index.html": WITH_HOME } });
+  writeSite(dataDir, "sans-accord", { declaration: { ...tuningDeclaration(url), name: "Sans accord" }, files: { "tweaks/tuning.css": "/* rien */" } });
   await grantSite(dataDir, "tuning", tuningDeclaration(url));
   const a = testActor(profile);
   // An element's fullscreen without a gesture (as design-sites-view.e2e.ts).

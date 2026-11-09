@@ -74,7 +74,7 @@ async function readOne(c: SpacePaths, id: string, o: { localAddresses: boolean }
   if ("error" in lu) return { id, folder: folder, error: lu.error };
   let hasHome = false;
   try {
-    hasHome = (await lstat(join(folder, "accueil", "index.html"))).isFile();
+    hasHome = (await lstat(join(folder, "home", "index.html"))).isFile();
   } catch {
     // no home
   }
@@ -107,13 +107,13 @@ export async function readSite(c: SpacePaths, id: string, o: { localAddresses: b
   return readOne(c, id, o);
 }
 
-/** The files cited by the tweaks, read under `retouches/`: never a link, never outside the folder, bounded. */
+/** The files cited by the tweaks, read under `tweaks/`: never a link, never outside the folder, bounded. */
 export async function readTweaks(s: Extract<SiteLu, { declaration: DeclarationSite }>): Promise<TweaksRead | { error: string }> {
-  const base = join(s.folder, "retouches");
-  const missing = { error: "retouches : dossier de l'appli introuvable" };
+  const base = join(s.folder, "tweaks");
+  const missing = { error: "tweaks : dossier de l'appli introuvable" };
   let realRoot: string;
   try {
-    // Neither the app's folder nor `retouches/` can be a link (even replaced since the site was read).
+    // Neither the app's folder nor `tweaks/` can be a link (even replaced since the site was read).
     if (!(await lstat(s.folder)).isDirectory()) return missing;
     const realFolder = await realpath(s.folder);
     if (!(await lstat(base)).isDirectory()) throw new Error("pas un dossier");
@@ -149,11 +149,11 @@ export async function readTweaks(s: Extract<SiteLu, { declaration: DeclarationSi
 
 /**
  * Calls `rappel(id, quoi)` after each burst of changes: « declaration » (site.json, or the folder itself
- * appearing or disappearing), « retouches » or « accueil ». Returns the stop function.
+ * appearing or disappearing), « tweaks » or « home ». Returns the stop function.
  */
 export function watchSites(
   c: SpacePaths,
-  callback: (id: string, what: "declaration" | "retouches" | "accueil") => void,
+  callback: (id: string, what: "declaration" | "tweaks" | "home") => void,
 ): () => Promise<void> {
   mkdirSync(c.sites, { recursive: true });
   const timers = new Map<string, NodeJS.Timeout>();
@@ -166,11 +166,11 @@ export function watchSites(
     const parts = path.slice(c.sites.length).split(/[\\/]/).filter(Boolean);
     const id = parts[0];
     if (!id || id.startsWith(".")) return;
-    let what: "declaration" | "retouches" | "accueil" | null = null;
+    let what: "declaration" | "tweaks" | "home" | null = null;
     if (parts.length === 1) what = event === "addDir" || event === "unlinkDir" ? "declaration" : null;
     else if (parts[1] === "site.json" && parts.length === 2) what = "declaration";
-    else if (parts[1] === "retouches") what = "retouches";
-    else if (parts[1] === "accueil") what = "accueil";
+    else if (parts[1] === "tweaks") what = "tweaks";
+    else if (parts[1] === "home") what = "home";
     if (!what) return;
     const key = `${id}\0${what}`;
     clearTimeout(timers.get(key));

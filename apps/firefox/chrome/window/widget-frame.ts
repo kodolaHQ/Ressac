@@ -60,10 +60,10 @@ function realPath(path: string): string | null {
   }
 }
 
-/** The real path of `<dataDir>/espace/accueil/widgets/<id>/display.html`, confined to the widget's folder. */
+/** The real path of `<dataDir>/workspace/home/widgets/<id>/display.html`, confined to the widget's folder. */
 function sourcePath(dataDir: string, id: string): string | null {
   if (!ID_WIDGET.test(id)) return null;
-  const widgetsDir = PathUtils.join(dataDir, "espace", "accueil", "widgets");
+  const widgetsDir = PathUtils.join(dataDir, "workspace", "home", "widgets");
   const folder = PathUtils.join(widgetsDir, id);
   const root = realPath(widgetsDir);
   const realFolder = realPath(folder);

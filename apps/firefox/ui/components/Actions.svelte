@@ -5,11 +5,11 @@
   import Icon from "./Icon.svelte";
 
   const STATUSES: Record<Execution["status"], string> = {
-    reussie: "Réussie",
-    partielle: "Partielle",
-    echouee: "Échouée",
-    interrompue: "Interrompue",
-    "accord-requis": "Accord requis",
+    succeeded: "Réussie",
+    partial: "Partielle",
+    failed: "Échouée",
+    interrupted: "Interrompue",
+    "grant-required": "Accord requis",
   };
 
   /** Same text as the kernel (actions/run.ts). */

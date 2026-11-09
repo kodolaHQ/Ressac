@@ -25,8 +25,8 @@ const ProjectSchema = z.object({
 });
 const SchemaClient = z.object({ id: z.string(), name: z.string(), hash: z.string(), created: z.string() });
 
-const PROJECTS_FILE = "projets-externes.json";
-const CLIENTS_FILE = "clients-externes.json";
+const PROJECTS_FILE = "external-projects.json";
+const CLIENTS_FILE = "external-clients.json";
 
 export interface OptionsDeclaration { ranges: [number, number][]; spaceRoot: string; home: string }
 
@@ -43,7 +43,7 @@ async function read<T>(file: string, schema: z.ZodType<T>): Promise<T[]> {
     if (!Array.isArray(value)) throw new Error("liste attendue");
     return value.map((v) => schema.parse(v));
   } catch {
-    try { await copyFile(file, `${file}.abime-${new Date().toISOString().replace(/[:.]/g, "-")}`); } catch { /* best-effort copy */ }
+    try { await copyFile(file, `${file}.damaged-${new Date().toISOString().replace(/[:.]/g, "-")}`); } catch { /* best-effort copy */ }
     return [];
   }
 }

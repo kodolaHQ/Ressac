@@ -6,7 +6,7 @@ export { DATA_MAX_SIZE } from "../workflows/protocol.js";
 /** Lowercase host name (« news.ycombinator.com »). */
 const domain = z.string().regex(/^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/, "nom d'hôte en minuscules attendu");
 const side = z.number().int().min(1).max(12);
-const size = z.object({ l: side, h: side });
+const size = z.object({ w: side, h: side });
 
 export const WEB_WITH_ACCOUNT = "web : impossible avec un compte (les données d'un compte ne doivent pas pouvoir partir vers un site inconnu)";
 
@@ -16,7 +16,7 @@ export const DeclaredSources = z
   .default({ account: [], public: [], web: false });
 export type DeclaredSources = z.infer<typeof DeclaredSources>;
 
-/** Refuses `web` with a `compte` (an account's data must not be able to go to an unknown site). */
+/** Refuses `web` with an `account` (an account's data must not be able to go to an unknown site). */
 export function checkSources(s: DeclaredSources, ctx: z.RefinementCtx): void {
   if (s.web && s.account.length > 0) {
     ctx.addIssue({ code: "custom", path: ["sources", "web"], message: WEB_WITH_ACCOUNT });
@@ -34,10 +34,10 @@ const Harvest = z
   })
   .superRefine((r, ctx) => {
     if (r.minutes === undefined && r.hours === undefined) {
-      ctx.addIssue({ code: "custom", message: "minutes ou heures attendu" });
+      ctx.addIssue({ code: "custom", message: "minutes ou hours attendu" });
     }
     if (r.hours && new Set(r.hours).size !== r.hours.length) {
-      ctx.addIssue({ code: "custom", path: ["heures"], message: "heures en double" });
+      ctx.addIssue({ code: "custom", path: ["hours"], message: "hours en double" });
     }
   });
 
@@ -47,24 +47,24 @@ export const DeclarationWidget = z
     description: z.string().default(""),
     sizes: z.object({ min: size, max: size, default: size }),
     harvest: Harvest.optional(),
-    // For a widget with `compte`, an empty `publiques` = no public fetch allowed (list applied by task 5).
+    // For a widget with `account`, an empty `public` = no public fetch allowed (list applied by task 5).
     sources: DeclaredSources,
     config: z.unknown().optional(),
   })
   .superRefine((d, ctx) => {
     checkSources(d.sources, ctx);
     const { min, max, default: defaultValue } = d.sizes;
-    for (const axe of ["l", "h"] as const) {
+    for (const axe of ["w", "h"] as const) {
       if (!(min[axe] <= defaultValue[axe] && defaultValue[axe] <= max[axe])) {
-        ctx.addIssue({ code: "custom", path: ["tailles"], message: `min ≤ defaut ≤ max exigé (${axe})` });
+        ctx.addIssue({ code: "custom", path: ["sizes"], message: `min ≤ default ≤ max exigé (${axe})` });
       }
     }
   });
 export type DeclarationWidget = z.infer<typeof DeclarationWidget>;
 
 export const Placement = z
-  .object({ id: z.string(), x: z.number().int().min(0), y: z.number().int().min(0), l: side, h: side })
-  .refine((p) => p.x + p.l <= COLUMNS, "déborde de la grille");
+  .object({ id: z.string(), x: z.number().int().min(0), y: z.number().int().min(0), w: side, h: side })
+  .refine((p) => p.x + p.w <= COLUMNS, "déborde de la grille");
 export type Placement = z.infer<typeof Placement>;
 
 export const Layout = z.object({ version: z.literal(2), widgets: z.array(Placement) });
@@ -76,19 +76,19 @@ export const FREE_WIDTH = 1000;
 export const ROW_PX = 90;
 
 export const FreePlacement = z
-  .object({ id: z.string(), x: z.number().int().min(0).max(FREE_WIDTH), y: z.number().int().min(0), l: z.number().int().min(1).max(FREE_WIDTH), h: z.number().int().min(1) })
-  .refine((p) => p.x + p.l <= FREE_WIDTH, "déborde de l'accueil");
+  .object({ id: z.string(), x: z.number().int().min(0).max(FREE_WIDTH), y: z.number().int().min(0), w: z.number().int().min(1).max(FREE_WIDTH), h: z.number().int().min(1) })
+  .refine((p) => p.x + p.w <= FREE_WIDTH, "déborde de l'accueil");
 export type FreePlacement = z.infer<typeof FreePlacement>;
 
 export const FreeLayout = z.object({ version: z.literal(3), widgets: z.array(FreePlacement) });
 export type FreeLayout = z.infer<typeof FreeLayout>;
 
 /** Converts a declared size in units (1…12) to free units. */
-export function freeSizes(t: { l: number; h: number }): { l: number; h: number } {
-  return { l: Math.round((t.l * FREE_WIDTH) / COLUMNS), h: t.h * ROW_PX };
+export function freeSizes(t: { w: number; h: number }): { w: number; h: number } {
+  return { w: Math.round((t.w * FREE_WIDTH) / COLUMNS), h: t.h * ROW_PX };
 }
 
-const WidgetStatus = z.enum(["ok", "en-cours", "erreur", "accord-requis", "atelier-arrete"]);
+const WidgetStatus = z.enum(["ok", "running", "error", "grant-required", "workshop-stopped"]);
 
 export const WidgetState = z.object({
   status: WidgetStatus,
@@ -107,12 +107,12 @@ export const WidgetState = z.object({
   hours: z
     .object({
       done: z.string().nullable(),
-      /** `fin`: the end of the last failure, from which the 15 min before the retry count. */
+      /** `end`: the end of the last failure, from which the 15 min before the retry count. */
       failures: z.object({ hour: z.string(), count: z.number().int().min(0), end: z.string().optional() }).nullable(),
     })
     .optional(),
   /**
-   * During a run (status en-cours): the previous state, put back at the next start if WebAiOs stopped
+   * During a run (status running): the previous state, put back at the next start if WebAiOs stopped
    * abruptly. Never displayed; absent outside a run.
    */
   before: z.object({ status: WidgetStatus, error: z.string().optional(), kernelError: z.literal(true).optional() }).optional(),

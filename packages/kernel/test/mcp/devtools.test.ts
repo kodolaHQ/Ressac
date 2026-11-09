@@ -49,7 +49,7 @@ async function start(o: {
   });
   policy = new AccessPolicy();
   root = await tempFolder();
-  isPrivate = join(await tempFolder(), "profilage");
+  isPrivate = join(await tempFolder(), "profiling");
   const profiles = { ...profileFiles(spacePaths(root), isPrivate), ...o.profiles };
   server = await startMcpServer({ bridge: bridge, policy: policy, token: token, agent: "Claude", profiles: profiles });
   client = new Client({ name: "test", version: "0" });
@@ -200,17 +200,17 @@ test("profile_performance: on a third-party site, the .cpuprofile stays outside 
   const reference = /Profil : (profile:\S+\.cpuprofile)$/.exec(r)?.[1];
   expect(reference).toMatch(/^profile:[^:/]+-profile_performance\.cpuprofile$/);
   expect(existsSync(join(isPrivate, reference!.slice("profile:".length)))).toBe(true);
-  expect(existsSync(join(root, ".webaios", "profilage"))).toBe(false);
+  expect(existsSync(join(root, ".webaios", "profiling"))).toBe(false);
 
   // a built app writes in its project
   policy.tabOpenedByAgent(appTodo);
   const app = await invoke("profile_performance", { id: "app:todo", reload: true });
-  expect(app).toMatch(/Profil : \/workspace\/projets\/todo\/\.webaios\/profilage\/\S+\.cpuprofile/);
-  // a built demo, in .webaios/profilage
+  expect(app).toMatch(/Profil : \/workspace\/projects\/todo\/\.webaios\/profiling\/\S+\.cpuprofile/);
+  // a built demo, in .webaios/profiling
   const demo = await bridge.openTab("http://localhost:5281/");
   policy.tabOpenedByAgent(demo);
   const d = await invoke("profile_performance", { id: demo.id, duration_s: 1 });
-  expect(d).toMatch(/Profil : \/workspace\/\.webaios\/profilage\/\S+\.cpuprofile$/);
+  expect(d).toMatch(/Profil : \/workspace\/\.webaios\/profiling\/\S+\.cpuprofile$/);
 });
 
 test("memory_snapshot then compare_memory", async () => {
@@ -230,14 +230,14 @@ test("memory_snapshot then compare_memory", async () => {
   expect(await invoke("compare_memory", { id: "github", a: "/workspace/AGENTS.md", b: pathB })).toBe(
     "Instantané illisible : /workspace/AGENTS.md.",
   );
-  expect(await invoke("compare_memory", { id: "github", a: "/workspace/.webaios/profilage/../mcp.json", b: pathB })).toBe(
-    "Instantané illisible : /workspace/.webaios/profilage/../mcp.json.",
+  expect(await invoke("compare_memory", { id: "github", a: "/workspace/.webaios/profiling/../mcp.json", b: pathB })).toBe(
+    "Instantané illisible : /workspace/.webaios/profiling/../mcp.json.",
   );
   // a file in the folder that is not a snapshot: never its content in the answer
-  await mkdir(join(root, ".webaios", "profilage"), { recursive: true });
-  await writeFile(join(root, ".webaios", "profilage", "faux.heapsnapshot"), "secret de l'utilisateur");
-  const fake = await invoke("compare_memory", { id: "github", a: "/workspace/.webaios/profilage/faux.heapsnapshot", b: pathB });
-  expect(fake).toBe("Instantané illisible : /workspace/.webaios/profilage/faux.heapsnapshot.");
+  await mkdir(join(root, ".webaios", "profiling"), { recursive: true });
+  await writeFile(join(root, ".webaios", "profiling", "faux.heapsnapshot"), "secret de l'utilisateur");
+  const fake = await invoke("compare_memory", { id: "github", a: "/workspace/.webaios/profiling/faux.heapsnapshot", b: pathB });
+  expect(fake).toBe("Instantané illisible : /workspace/.webaios/profiling/faux.heapsnapshot.");
   // a reference never leaves the private folder
   for (const ref of ["profile:../x.heapsnapshot", "profile:", "profile:inconnu.heapsnapshot"]) {
     expect(await invoke("compare_memory", { id: "github", a: ref, b: pathB })).toBe(`Instantané illisible : ${ref}.`);
@@ -266,12 +266,12 @@ test("cut while the profile is being written: the partial file is erased", async
     grantDev: ["performance"],
     profiles: {
       writeProfile: async (_o, name, content) => {
-        const folder = join(root, ".webaios", "profilage");
+        const folder = join(root, ".webaios", "profiling");
         await mkdir(folder, { recursive: true });
         await writeFile(join(folder, name), content);
         written = join(folder, name);
         policy.cut("github");
-        return `/workspace/.webaios/profilage/${name}`;
+        return `/workspace/.webaios/profiling/${name}`;
       },
     },
   });
@@ -343,10 +343,10 @@ test("profileFiles: refuses a path outside the profile folders", async () => {
   const r = await tempFolder();
   const p = profileFiles(spacePaths(r));
   const path = await p.writeProfile(appTodo, "x.heapsnapshot", "{}", true);
-  expect(path).toBe("/workspace/projets/todo/.webaios/profilage/x.heapsnapshot");
+  expect(path).toBe("/workspace/projects/todo/.webaios/profiling/x.heapsnapshot");
   expect(await p.readProfile(path)).toBe("{}");
   await p.deleteProfile(path);
-  expect(existsSync(join(r, "projets", "todo", ".webaios", "profilage", "x.heapsnapshot"))).toBe(false);
+  expect(existsSync(join(r, "projects", "todo", ".webaios", "profiling", "x.heapsnapshot"))).toBe(false);
   for (const fake of ["/workspace/AGENTS.md", "/workspace/.webaios/mcp.json", "/workspace/projets/todo/../../.webaios/mcp.json", "/etc/passwd", "relatif.cpuprofile"]) {
     await expect(p.readProfile(fake)).rejects.toThrow();
     await expect(p.deleteProfile(fake)).rejects.toThrow();
@@ -355,7 +355,7 @@ test("profileFiles: refuses a path outside the profile folders", async () => {
   await expect(p.writeProfile(github, "../y.cpuprofile", "{}", true)).rejects.toThrow();
   // without a private folder, a third-party site's profile is not saved (never in the space)
   await expect(p.writeProfile(github, "z.cpuprofile", "{}", false)).rejects.toThrow(/indisponible/);
-  expect(existsSync(join(r, ".webaios", "profilage", "z.cpuprofile"))).toBe(false);
+  expect(existsSync(join(r, ".webaios", "profiling", "z.cpuprofile"))).toBe(false);
 });
 
 test("profileFiles: a profiling folder as a symbolic link is refused, on write as on read", async () => {
@@ -363,16 +363,16 @@ test("profileFiles: a profiling folder as a symbolic link is refused, on write a
   const outside = await tempFolder();
   await writeFile(join(outside, "x.heapsnapshot"), "secret");
   await mkdir(join(r, ".webaios"), { recursive: true });
-  await symlink(outside, join(r, ".webaios", "profilage"));
+  await symlink(outside, join(r, ".webaios", "profiling"));
   const p = profileFiles(spacePaths(r));
   await expect(p.writeProfile(github, "y.cpuprofile", "{}", true)).rejects.toThrow(/hors des profils/);
   expect(existsSync(join(outside, "y.cpuprofile"))).toBe(false);
-  await expect(p.readProfile("/workspace/.webaios/profilage/x.heapsnapshot")).rejects.toThrow(/hors des profils/);
-  await expect(p.deleteProfile("/workspace/.webaios/profilage/x.heapsnapshot")).rejects.toThrow(/hors des profils/);
+  await expect(p.readProfile("/workspace/.webaios/profiling/x.heapsnapshot")).rejects.toThrow(/hors des profils/);
+  await expect(p.deleteProfile("/workspace/.webaios/profiling/x.heapsnapshot")).rejects.toThrow(/hors des profils/);
   expect(existsSync(join(outside, "x.heapsnapshot"))).toBe(true);
   // a link higher up (the project folder) too
-  await mkdir(join(r, "projets"), { recursive: true });
-  await symlink(outside, join(r, "projets", "todo"));
+  await mkdir(join(r, "projects"), { recursive: true });
+  await symlink(outside, join(r, "projects", "todo"));
   await expect(p.writeProfile(appTodo, "z.cpuprofile", "{}", true)).rejects.toThrow(/hors des profils/);
   expect(existsSync(join(outside, ".webaios"))).toBe(false);
 });
@@ -382,12 +382,12 @@ test("profileFiles: a file as a symbolic link is neither read, nor erased, nor o
   const outside = await tempFolder();
   const target = join(outside, "cible.txt");
   await writeFile(target, "secret");
-  const folder = join(r, ".webaios", "profilage");
+  const folder = join(r, ".webaios", "profiling");
   await mkdir(folder, { recursive: true });
   await symlink(target, join(folder, "lien.heapsnapshot"));
   const p = profileFiles(spacePaths(r));
-  await expect(p.readProfile("/workspace/.webaios/profilage/lien.heapsnapshot")).rejects.toThrow(/hors des profils/);
-  await expect(p.deleteProfile("/workspace/.webaios/profilage/lien.heapsnapshot")).rejects.toThrow(/hors des profils/);
+  await expect(p.readProfile("/workspace/.webaios/profiling/lien.heapsnapshot")).rejects.toThrow(/hors des profils/);
+  await expect(p.deleteProfile("/workspace/.webaios/profiling/lien.heapsnapshot")).rejects.toThrow(/hors des profils/);
   await expect(p.writeProfile(github, "lien.heapsnapshot", "écrasé", true)).rejects.toThrow();
   expect(await readFile(target, "utf8")).toBe("secret");
   expect(existsSync(join(folder, "lien.heapsnapshot"))).toBe(true);
@@ -477,7 +477,7 @@ test("cut answers right away even if the bridge ignores the signal; its late res
 
 test("profileFiles: a third-party site writes in the private folder and receives a reference profile:<name>", async () => {
   const r = await tempFolder();
-  const folder = join(await tempFolder(), "profilage");
+  const folder = join(await tempFolder(), "profiling");
   const p = profileFiles(spacePaths(r), folder);
   const ref = await p.writeProfile(github, "x.heapsnapshot", "{}", false);
   expect(ref).toBe("profile:x.heapsnapshot");

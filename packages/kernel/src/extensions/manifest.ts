@@ -106,16 +106,16 @@ function parseNetwork(webaios: unknown, denial: string[]): string[] {
     denial.push("webaios.json : contenu invalide");
     return [];
   }
-  if (o.reseau === undefined) return [];
-  if (!Array.isArray(o.reseau)) {
-    denial.push("webaios.json : « reseau » doit être une liste de domaines");
+  if (o.network === undefined) return [];
+  if (!Array.isArray(o.network)) {
+    denial.push("webaios.json : « network » doit être une liste de domaines");
     return [];
   }
-  if (o.reseau.length > NETWORK_MAX) {
-    denial.push(`webaios.json : ${NETWORK_MAX} domaines au plus (${o.reseau.length} demandés)`);
+  if (o.network.length > NETWORK_MAX) {
+    denial.push(`webaios.json : ${NETWORK_MAX} domaines au plus (${o.network.length} demandés)`);
   }
   const valid: string[] = [];
-  for (const d of o.reseau) {
+  for (const d of o.network) {
     if (typeof d === "string" && DOMAIN.test(d)) valid.push(d);
     else denial.push(`webaios.json : domaine invalide « ${String(d)} »`);
   }

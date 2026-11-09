@@ -60,8 +60,8 @@ export async function mcpClient(port: number, token: string): Promise<Client> {
 
 export const textOf = (r: unknown): string => ((r as { content: { type: string; text?: string }[] }).content ?? []).map((x) => x.text ?? "").join("\n");
 
-/** The review repository's `relu` ref of a project, under `<dataDir>/design/relecture/`. */
-export const reviewedRef = (dataDir: string, project: string) => join(dataDir, "design", "relecture", `${project}.git`, "refs", "webaios", "relu");
+/** The review repository's `relu` ref of a project, under `<dataDir>/design/review/`. */
+export const reviewedRef = (dataDir: string, project: string) => join(dataDir, "design", "review", `${project}.git`, "refs", "webaios", "relu");
 
 /**
  * Connects a client and declares a project folder holding `app.js` (LINES) and `logo.bin`, then waits for its line and

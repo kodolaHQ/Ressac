@@ -18,9 +18,9 @@ function checkId(id: string): void {
   if (!ID_SITE.test(id)) throw new Error(`id d'appli de site invalide : ${id}`);
 }
 
-const urlFile = (sitesFolder: string, id: string) => join(sitesFolder, id, "adresse.json");
+const urlFile = (sitesFolder: string, id: string) => join(sitesFolder, id, "url.json");
 
-/** `<dossierSites>/<id>/adresse.json`; absent or damaged: null (the site keeps its declared domains). */
+/** `<sitesFolder>/<id>/url.json`; absent or damaged: null (the site keeps its declared domains). */
 export async function readUrlState(sitesFolder: string, id: string): Promise<UrlState | null> {
   checkId(id);
   try {

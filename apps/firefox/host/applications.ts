@@ -1,4 +1,4 @@
-// The agent's applications on the host side. The gestionnaire, the Docker probe, the memory (applications.json),
+// The agent's applications on the host side. The gestionnaire, the Docker probe, the memory (apps.json),
 // Supprimer, Passer en application and
 // Déboguer live here; the window, its container and its guard are the chrome's, asked through `chrome`.
 import fs from "node:fs/promises";
@@ -46,7 +46,7 @@ export function createApplicationsHost(o: {
   broadcast(): void;
 }): ApplicationsHost {
   // Under <dataDir>, never in <dataDir>/espace that the container mounts.
-  const memory = new SiteRecords(o.dataDir, 500, "applications.json");
+  const memory = new SiteRecords(o.dataDir, 500, "apps.json");
   /** Open windows, by dossier: their last known title and address (the chrome tells, `applications.navigation`). */
   const windows = new Map<string, { title: string; url: string }>();
   /** Launches in progress per folder: a relaunched app goes through « arretee » without its window having to close. */
@@ -64,7 +64,7 @@ export function createApplicationsHost(o: {
   /** Closes the window of an app that is no longer running, except during a launch (which will decide at its end). */
   const followState = (folder: string) => {
     const state = manager.stateOf(folder);
-    if ((state === "arretee" || state === "erreur") && !running.get(folder) && windows.has(folder)) close(folder);
+    if ((state === "stopped" || state === "error") && !running.get(folder) && windows.has(folder)) close(folder);
   };
 
   // Launches come from the agent (MCP tool) as from the apps page: all go through here.
@@ -77,7 +77,7 @@ export function createApplicationsHost(o: {
         .then(
           (a) => {
             // Launched, or relaunched: the window opens or reloads on the new port.
-            if (a.state === "en-marche" && a.port !== undefined) {
+            if (a.state === "running" && a.port !== undefined) {
               windows.set(folder, { title: windows.get(folder)?.title ?? a.name, url: `http://localhost:${a.port}/` });
               void o.chrome.open({ folder: folder, name: a.name, port: a.port }, memory.read(folder).frame ?? null).catch(report(folder, "ouverte"));
               memory.note(folder, { lastLaunch: new Date().toISOString() });
@@ -114,7 +114,7 @@ export function createApplicationsHost(o: {
   /** Erases the folder, the container and its memory; refused while the app runs or starts. */
   async function remove(folder: string): Promise<void> {
     const state = manager.stateOf(folder);
-    if (state !== "arretee" && state !== "erreur") throw new Error(`appli ${state}`);
+    if (state !== "stopped" && state !== "error") throw new Error(`appli ${state}`);
     // The name comes from any « Sans fiche » project: only a direct folder of projets/ is erased.
     const projects = resolve(o.paths.projects);
     const target = resolve(projects, folder);
@@ -137,7 +137,7 @@ export function createApplicationsHost(o: {
       const f = windows.get(folder);
       return f && appTab({ folder: folder, ...f });
     };
-    const text = appPrefix({ name: a.name, folder: folder, noManifest: a.type === "sans-fiche", running: access() !== undefined });
+    const text = appPrefix({ name: a.name, folder: folder, noManifest: a.type === "no-manifest", running: access() !== undefined });
     o.debug(win, text, access() ? access : undefined);
   }
 
@@ -158,7 +158,7 @@ export function createApplicationsHost(o: {
         void remove(folder).catch(report(folder, "supprimée"));
         return;
       case "promouvoir":
-        void writeType(o.paths, folder, "application").then(o.broadcast).catch(report(folder, "promue"));
+        void writeType(o.paths, folder, "app").then(o.broadcast).catch(report(folder, "promue"));
         return;
       case "deboguer":
         void debug(folder, win).catch(report(folder, "déboguée"));
@@ -221,7 +221,7 @@ export function createApplicationsHost(o: {
   return {
     manager: manager,
     handlers,
-    list: async () => (await manager.list()).filter((a) => a.state === "en-marche" && a.port !== undefined),
+    list: async () => (await manager.list()).filter((a) => a.state === "running" && a.port !== undefined),
     async stop() {
       try {
         await manager.stopAll();

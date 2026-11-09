@@ -96,10 +96,10 @@ describe("the Actions page", () => {
           await writeResult(d, id, EXECUTION, YESTERDAY, "Secret");
         }
         const grant = { domains: ["127.0.0.1"], public: [], profile: "defaut" };
-        await writeFile(path.join(actionsDataDir(d), "accords.json"), JSON.stringify({ account: grant, grant: grant }));
+        await writeFile(path.join(actionsDataDir(d), "grants.json"), JSON.stringify({ account: grant, grant: grant }));
         // actions.spec.ts:1122
-        await mkdir(path.join(d, "espace", "actions", "cassee"), { recursive: true });
-        await writeFile(path.join(d, "espace", "actions", "cassee", "action.json"), "{ pas du json");
+        await mkdir(path.join(d, "workspace", "actions", "cassee"), { recursive: true });
+        await writeFile(path.join(d, "workspace", "actions", "cassee", "action.json"), "{ pas du json");
       }),
     60_000,
   );
@@ -180,16 +180,16 @@ describe("the Actions page", () => {
     await click(m, tid("supprimer-compte"));
     await click(m, tid("confirmer-suppression-action"));
     await q.waitCount(tid("ligne-action-compte"), 0);
-    expect((await readdir(path.join(w.dataDir, "espace", "actions", ".corbeille"))).some((f) => f.startsWith("compte-"))).toBe(true);
-    expect(existsSync(path.join(w.dataDir, "espace", "actions", "compte"))).toBe(false);
+    expect((await readdir(path.join(w.dataDir, "workspace", "actions", ".trash"))).some((f) => f.startsWith("compte-"))).toBe(true);
+    expect(existsSync(path.join(w.dataDir, "workspace", "actions", "compte"))).toBe(false);
     expect(existsSync(path.join(actionsDataDir(w.dataDir), "compte"))).toBe(false);
-    expect(Object.keys(JSON.parse(await readFile(path.join(actionsDataDir(w.dataDir), "accords.json"), "utf8")))).not.toContain("compte");
+    expect(Object.keys(JSON.parse(await readFile(path.join(actionsDataDir(w.dataDir), "grants.json"), "utf8")))).not.toContain("compte");
     await visible(tid("ligne-action-tickets"));
   });
 
   // actions.spec.ts:1097
   it("removing the grant: the button goes, results erased", async () => {
-    const result = path.join(actionsDataDir(w.dataDir), "accord", "resultats", `${EXECUTION}.json`);
+    const result = path.join(actionsDataDir(w.dataDir), "accord", "results", `${EXECUTION}.json`);
     await openActionsPage();
     await click(m, tid("retirer-accord-accord"));
     // Annuler keeps the grant and the results.

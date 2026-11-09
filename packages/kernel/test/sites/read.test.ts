@@ -52,10 +52,10 @@ test("an invalid declaration or one that fails checkSiteDeclaration is an error"
 test("aAccueil true only with accueil/index.html", async () => {
   const c = await space();
   await site(c, "avec", decl("Avec"));
-  await mkdir(join(c.sites, "avec", "accueil"), { recursive: true });
-  await writeFile(join(c.sites, "avec", "accueil", "index.html"), "<p>");
+  await mkdir(join(c.sites, "avec", "home"), { recursive: true });
+  await writeFile(join(c.sites, "avec", "home", "index.html"), "<p>");
   await site(c, "sans", decl("Sans"));
-  await mkdir(join(c.sites, "sans", "accueil", "index.html"), { recursive: true });
+  await mkdir(join(c.sites, "sans", "home", "index.html"), { recursive: true });
   expect(withDeclaration(await readSite(c, "avec", o)).hasHome).toBe(true);
   expect(withDeclaration(await readSite(c, "sans", o)).hasHome).toBe(false);
 });
@@ -88,10 +88,10 @@ test("readSites: sites folder absent", async () => {
 test("readTweaks : contenus lus", async () => {
   const c = await space();
   await site(c, "r", decl("R", { tweaks: [{ matches: ["/*"], js: ["a.js", "sous/b.js"], css: ["c.css"] }, { matches: ["/x"], js: ["a.js"] }] }));
-  await mkdir(join(c.sites, "r", "retouches", "sous"), { recursive: true });
-  await writeFile(join(c.sites, "r", "retouches", "a.js"), "A");
-  await writeFile(join(c.sites, "r", "retouches", "sous", "b.js"), "B");
-  await writeFile(join(c.sites, "r", "retouches", "c.css"), "C");
+  await mkdir(join(c.sites, "r", "tweaks", "sous"), { recursive: true });
+  await writeFile(join(c.sites, "r", "tweaks", "a.js"), "A");
+  await writeFile(join(c.sites, "r", "tweaks", "sous", "b.js"), "B");
+  await writeFile(join(c.sites, "r", "tweaks", "c.css"), "C");
   expect(await readTweaks(withDeclaration(await readSite(c, "r", o)))).toEqual({ js: { "a.js": "A", "sous/b.js": "B" }, css: { "c.css": "C" } });
 });
 
@@ -100,15 +100,15 @@ test("readTweaks : fichier absent, lien symbolique vers /etc/hosts, fichier de 3
   await site(c, "r", decl("R", { tweaks: [{ matches: ["/*"], js: ["a.js"] }] }));
   const s = withDeclaration(await readSite(c, "r", o));
   expect(await readTweaks(s)).toEqual({ error: tweakFileNotFound("a.js") });
-  await mkdir(join(c.sites, "r", "retouches"), { recursive: true });
-  await symlink("/etc/hosts", join(c.sites, "r", "retouches", "a.js"));
+  await mkdir(join(c.sites, "r", "tweaks"), { recursive: true });
+  await symlink("/etc/hosts", join(c.sites, "r", "tweaks", "a.js"));
   expect(await readTweaks(s)).toEqual({ error: tweakFileNotFound("a.js") });
-  await writeFile(join(c.sites, "r", "retouches", "b.js"), "x".repeat(300 * 1024));
+  await writeFile(join(c.sites, "r", "tweaks", "b.js"), "x".repeat(300 * 1024));
   const big = withDeclaration({ ...s, declaration: { ...s.declaration, tweaks: [{ matches: ["/*"], js: ["b.js"], css: [], frames: false }] } });
   expect(await readTweaks(big)).toEqual({ error: tweakFileNotFound("b.js") });
   // Five 250 KB files: each passes, the total (1.2 MB) does not.
   const names = ["m1.js", "m2.js", "m3.js", "m4.js", "m5.js"];
-  for (const n of names) await writeFile(join(c.sites, "r", "retouches", n), "x".repeat(250 * 1024));
+  for (const n of names) await writeFile(join(c.sites, "r", "tweaks", n), "x".repeat(250 * 1024));
   const total = withDeclaration({ ...s, declaration: { ...s.declaration, tweaks: [{ matches: ["/*"], js: names, css: [], frames: false }] } });
   expect(await readTweaks(total)).toMatchObject({ error: expect.stringContaining("fichier introuvable ou trop gros") });
 });
@@ -118,31 +118,31 @@ test("readTweaks: a retouches/ folder that is a link outside the site is refused
   await site(c, "r", decl("R", { tweaks: [{ matches: ["/*"], js: ["a.js"] }] }));
   const outside = await tempFolder();
   await writeFile(join(outside, "a.js"), "secret");
-  await symlink(outside, join(c.sites, "r", "retouches"));
+  await symlink(outside, join(c.sites, "r", "tweaks"));
   expect(await readTweaks(withDeclaration(await readSite(c, "r", o)))).toEqual({ error: tweakFileNotFound("a.js") });
 });
 
 test("watchSites signals « retouches » when retouches/a.js changes and « declaration » for site.json", async () => {
   const c = await space();
   await site(c, "w", decl("W"));
-  await mkdir(join(c.sites, "w", "retouches"), { recursive: true });
-  await mkdir(join(c.sites, "w", ".corbeille"), { recursive: true });
+  await mkdir(join(c.sites, "w", "tweaks"), { recursive: true });
+  await mkdir(join(c.sites, "w", ".trash"), { recursive: true });
   const seen: string[] = [];
   const stop = watchSites(c, (id, what) => seen.push(`${id}:${what}`));
   await sleep(400);
-  await writeFile(join(c.sites, "w", "retouches", "a.js"), "1");
+  await writeFile(join(c.sites, "w", "tweaks", "a.js"), "1");
   await sleep(600);
-  expect(seen).toContain("w:retouches");
+  expect(seen).toContain("w:tweaks");
   expect(seen).not.toContain("w:declaration");
   await writeFile(join(c.sites, "w", "site.json"), decl("W2"));
   await sleep(600);
   expect(seen).toContain("w:declaration");
-  await mkdir(join(c.sites, "w", "accueil"), { recursive: true });
-  await writeFile(join(c.sites, "w", "accueil", "index.html"), "<p>");
+  await mkdir(join(c.sites, "w", "home"), { recursive: true });
+  await writeFile(join(c.sites, "w", "home", "index.html"), "<p>");
   await sleep(600);
-  expect(seen).toContain("w:accueil");
+  expect(seen).toContain("w:home");
   const before = seen.length;
-  await writeFile(join(c.sites, "w", ".corbeille", "x.json"), "{}");
+  await writeFile(join(c.sites, "w", ".trash", "x.json"), "{}");
   await sleep(600);
   expect(seen.length).toBe(before);
   await stop();
@@ -153,8 +153,8 @@ test("readTweaks: app folder replaced by a link after readSite", async () => {
   await site(c, "r", decl("R", { tweaks: [{ matches: ["/*"], js: ["a.js"] }] }));
   const s = withDeclaration(await readSite(c, "r", o));
   const outside = await tempFolder();
-  await mkdir(join(outside, "retouches"));
-  await writeFile(join(outside, "retouches", "a.js"), "secret");
+  await mkdir(join(outside, "tweaks"));
+  await writeFile(join(outside, "tweaks", "a.js"), "secret");
   await rename(join(c.sites, "r"), join(c.sites, "r-ancien"));
   await symlink(outside, join(c.sites, "r"));
   expect(await readTweaks(s)).toMatchObject({ error: expect.any(String) });
@@ -165,24 +165,24 @@ test("readTweaks: a subfolder of retouches/ linking to the outside is refused", 
   await site(c, "r", decl("R", { tweaks: [{ matches: ["/*"], js: ["sous/a.js"] }] }));
   const outside = await tempFolder();
   await writeFile(join(outside, "a.js"), "secret");
-  await mkdir(join(c.sites, "r", "retouches"), { recursive: true });
-  await symlink(outside, join(c.sites, "r", "retouches", "sous"));
+  await mkdir(join(c.sites, "r", "tweaks"), { recursive: true });
+  await symlink(outside, join(c.sites, "r", "tweaks", "sous"));
   expect(await readTweaks(withDeclaration(await readSite(c, "r", o)))).toEqual({ error: tweakFileNotFound("sous/a.js") });
 });
 
 test("readTweaks: a file cited by several tweaks is read only once", async () => {
   const c = await space();
   await site(c, "r", decl("R", { tweaks: [{ matches: ["/*"], js: ["a.js"], css: ["a.css"] }, { matches: ["/x"], js: ["a.js"], css: ["a.css"] }] }));
-  await mkdir(join(c.sites, "r", "retouches"), { recursive: true });
-  await writeFile(join(c.sites, "r", "retouches", "a.js"), "J");
-  await writeFile(join(c.sites, "r", "retouches", "a.css"), "C");
+  await mkdir(join(c.sites, "r", "tweaks"), { recursive: true });
+  await writeFile(join(c.sites, "r", "tweaks", "a.js"), "J");
+  await writeFile(join(c.sites, "r", "tweaks", "a.css"), "C");
   expect(await readTweaks(withDeclaration(await readSite(c, "r", o)))).toEqual({ js: { "a.js": "J" }, css: { "a.css": "C" } });
 });
 
 test("readTweaks: a tweak file that is a directory is refused", async () => {
   const c = await space();
   await site(c, "r", decl("R", { tweaks: [{ matches: ["/*"], js: ["a.js"] }] }));
-  await mkdir(join(c.sites, "r", "retouches", "a.js"), { recursive: true });
+  await mkdir(join(c.sites, "r", "tweaks", "a.js"), { recursive: true });
   expect(await readTweaks(withDeclaration(await readSite(c, "r", o)))).toEqual({ error: tweakFileNotFound("a.js") });
 });
 

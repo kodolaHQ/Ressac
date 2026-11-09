@@ -22,14 +22,14 @@ describe("review service", () => {
   function prepare() {
     const root = realpathSync(mkdtempSync(join(tmpdir(), "webaios-review-")));
     dirs.push(root);
-    const projects = join(root, "projets");
+    const projects = join(root, "projects");
     const sites = join(root, "sites");
     mkdirSync(join(projects, "essai"), { recursive: true });
-    mkdirSync(join(sites, "tuning", "retouches"), { recursive: true });
+    mkdirSync(join(sites, "tuning", "tweaks"), { recursive: true });
     writeFileSync(join(projects, "essai", "a.txt"), "un\n");
     writeFileSync(join(sites, "tuning", "site.json"), "{}\n");
-    writeFileSync(join(sites, "tuning", "retouches", "tuning.css"), "/* rien */\n");
-    const folders = { spaceRemarks: join(root, "remarques"), private: join(root, "prive") };
+    writeFileSync(join(sites, "tuning", "tweaks", "tuning.css"), "/* rien */\n");
+    const folders = { spaceRemarks: join(root, "remarks"), private: join(root, "prive") };
     const remarks = new Remarks({ folders: folders });
     const sent: { project: TrackedProject; batch: Batch }[] = [];
     const registry = {
@@ -41,7 +41,7 @@ describe("review service", () => {
       sites: async () => [{ id: "tuning", name: "Tuning" }], remarks: remarks,
       send: async (project, batch) => void sent.push({ project: project, batch: batch }),
     });
-    const review = join(folders.private, "relecture");
+    const review = join(folders.private, "review");
     return { service, remarks: remarks, sent, root, projects: projects, sites, review: review, write: (t: string, n = "a.txt") => writeFileSync(join(projects, "essai", n), t) };
   }
   /** Opens once so the project's first snapshot is taken, writes `before` first; returns after `after` is written. */
@@ -138,8 +138,8 @@ describe("review service", () => {
     expect(batches).toHaveLength(1);
     expect(batches[0]).toMatchObject({ destination: "mcp" });
     expect(batches[0]!.items.map((e) => ({ type: e.type, text: e.text, context: e.context }))).toEqual([
-      { type: "relecture", text: "garder l'ancien nom", context: { file: "a.txt", start: 15, end: 15, lines: [{ mark: "-", text: "ligne 15" }, { mark: "+", text: "ligne 15 modifiée" }] } },
-      { type: "relecture", text: "et ici", context: { file: "a.txt", start: 13, end: 14, lines: [{ mark: " ", text: "ligne 13" }, { mark: " ", text: "ligne 14" }] } },
+      { type: "review", text: "garder l'ancien nom", context: { file: "a.txt", start: 15, end: 15, lines: [{ mark: "-", text: "ligne 15" }, { mark: "+", text: "ligne 15 modifiée" }] } },
+      { type: "review", text: "et ici", context: { file: "a.txt", start: 13, end: 14, lines: [{ mark: " ", text: "ligne 13" }, { mark: " ", text: "ligne 14" }] } },
     ]);
     expect(s.sent).toHaveLength(1);
     expect(s.sent[0]!.project).toMatchObject({ type: "externe", project: EXT, client: "client-0001" });
@@ -230,12 +230,12 @@ describe("review service", () => {
 
   it("envoyer of a site follows projectForSite", async () => {
     const s = prepare();
-    const css = join(s.sites, "tuning", "retouches", "tuning.css");
+    const css = join(s.sites, "tuning", "tweaks", "tuning.css");
     writeFileSync(css, Array.from({ length: 5 }, (_, i) => `/* ${i} */`).join("\n") + "\n");
     await s.service.handleSites(["tuning"]);
     writeFileSync(css, ["/* 0 */", "/* 1 */", "a { color: red }", "/* 3 */", "/* 4 */"].join("\n") + "\n");
     const v = ok(await s.service.open("site-tuning"));
-    expect(await s.service.comment("site-tuning", v.token, { file: "retouches/tuning.css", start: 3, end: 3, text: "plus doux" })).toEqual({ ok: true });
+    expect(await s.service.comment("site-tuning", v.token, { file: "tweaks/tuning.css", start: 3, end: 3, text: "plus doux" })).toEqual({ ok: true });
     expect(await s.service.send("site-tuning")).toEqual({ ok: true });
     expect(s.sent[0]!.project).toEqual({ type: "site", project: "site-tuning", id: "tuning", name: "Tuning" });
   });
@@ -246,10 +246,10 @@ describe("review service", () => {
     writeFileSync(join(s.sites, "tuning", "site.json"), '{"a":1}\n');
     const v = ok(await s.service.open("site-tuning"));
     expect(await s.service.comment("site-tuning", v.token, { file: "site.json", start: 1, end: 1, text: "à voir" })).toEqual({ ok: true });
-    expect(existsSync(join(s.review, "site-tuning.commentaires.json"))).toBe(true);
+    expect(existsSync(join(s.review, "site-tuning.comments.json"))).toBe(true);
     await s.service.erase("site-tuning");
     expect(existsSync(join(s.review, "site-tuning.git"))).toBe(false);
-    expect(existsSync(join(s.review, "site-tuning.commentaires.json"))).toBe(false);
+    expect(existsSync(join(s.review, "site-tuning.comments.json"))).toBe(false);
     await expect(s.service.file("site-tuning", v.token, "site.json")).rejects.toThrow(UNKNOWN_COMPARISON);
     expect(await s.service.comments("site-tuning")).toEqual([]);
     await s.service.ensure("site-tuning");
@@ -269,7 +269,7 @@ describe("review service", () => {
     const late = s.service.handleSites(["tuning"]);
     await Promise.all([late, s.service.erase("site-tuning")]);
     expect(existsSync(join(s.review, "site-tuning.git"))).toBe(false);
-    expect(existsSync(join(s.review, "site-tuning.commentaires.json"))).toBe(false);
+    expect(existsSync(join(s.review, "site-tuning.comments.json"))).toBe(false);
     await s.service.handleSites(["tuning"]);
     expect(existsSync(join(s.review, "site-tuning.git"))).toBe(false);
   });

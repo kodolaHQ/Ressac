@@ -43,7 +43,7 @@ export class Edit {
   widget = $state.raw<NonNullable<WorkflowEdit["widget"]> | null>(null);
   /** What the action whose workflow this is declares; null for a widget. */
   action = $state.raw<NonNullable<WorkflowEdit["action"]> | null>(null);
-  origin = $state<"fichier" | "implicite">("fichier");
+  origin = $state<"file" | "implicit">("file");
   /** The workflow on disk is valid: « Lancer » makes sense. */
   diskValid = $state(false);
   /** Canvas view, kept when the tab changes (no reframing on return). */

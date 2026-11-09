@@ -40,7 +40,7 @@ export const RESULT_TOO_BIG = "Résultats trop gros pour être gardés";
 export const INPUT_MAX = 200;
 
 /** The outcome of a launch: `invalide` when nothing ran (unknown action, invalid workflow, missing input…). */
-export type LaunchResult = { status: Execution["status"] | "invalide"; run?: string; error?: string; kernelError?: true };
+export type LaunchResult = { status: Execution["status"] | "invalid"; run?: string; error?: string; kernelError?: true };
 
 /** A trace of an action's workflow, with its block type (the page shows its label from the catalog). */
 export type TraceAction = DirectTrace & { type?: string };
@@ -82,7 +82,7 @@ export function cutInput(input: string | null | undefined): string | null {
   return s === "" ? null : s;
 }
 
-const denial = (error: string, kernel = true): LaunchResult => ({ status: "invalide", error: error, ...(kernel ? { kernelError: true as const } : {}) });
+const denial = (error: string, kernel = true): LaunchResult => ({ status: "invalid", error: error, ...(kernel ? { kernelError: true as const } : {}) });
 
 /** Like the widgets' `accordEnRegle`: a stale grant is withdrawn, and what was read with it erased. */
 async function validGrant(actionsFolder: string, id: string, d: DeclarationAction): Promise<boolean> {
@@ -109,7 +109,7 @@ export async function runAction(o: OptionsAction): Promise<LaunchResult> {
   if ("error" in action) return denial(action.error, false);
   const wf = await actionWorkflow(action);
   if (wf.t === "absent") return denial(ACTION_WITHOUT_WORKFLOW);
-  if (wf.t !== "ok") return denial(truncate(wf.error, MAX_ERROR), wf.t !== "illisible");
+  if (wf.t !== "ok") return denial(truncate(wf.error, MAX_ERROR), wf.t !== "unreadable");
   const { valid: valid } = wf;
   const { declaration } = action;
   const dataFolder = join(actionsFolder, id);
@@ -122,7 +122,7 @@ export async function runAction(o: OptionsAction): Promise<LaunchResult> {
   if (declaration.input && input === null) return denial(requiredInput(declaration.input.label));
 
   if (!(await validGrant(actionsFolder, id, declaration))) {
-    return { status: "accord-requis", error: actionGrantRequired(declaration), kernelError: true };
+    return { status: "grant-required", error: actionGrantRequired(declaration), kernelError: true };
   }
 
   let plan: Extract<ReturnType<typeof replayPlan>, { ok: true }> | null = null;
@@ -211,7 +211,7 @@ export async function runAction(o: OptionsAction): Promise<LaunchResult> {
   const lost = async (): Promise<LaunchResult | null> => {
     if (await removedGrant()) {
       await deleteDataAction(actionsFolder, id);
-      return { status: "accord-requis", error: denialMessage(outcome, declaration), kernelError: true };
+      return { status: "grant-required", error: denialMessage(outcome, declaration), kernelError: true };
     }
     if (!(await present())) {
       await forgetThisRun(dataFolder, execution.id, { run: runWritten, result: writtenResult });
@@ -230,7 +230,7 @@ export async function runAction(o: OptionsAction): Promise<LaunchResult> {
   });
 
   if (outcome.t !== "end") {
-    if (o.interrupted?.() === true && execution.status !== "accord-requis") markInterrupted(execution);
+    if (o.interrupted?.() === true && execution.status !== "grant-required") markInterrupted(execution);
     await keepRun();
     return (await lost()) ?? conclusion();
   }
@@ -263,7 +263,7 @@ export async function runAction(o: OptionsAction): Promise<LaunchResult> {
   } catch (e) {
     // Too big (or disk): the run fails kernel-side, with no result.
     console.error(`[webaios] résultat de l'action ${id} :`, message(e));
-    execution.status = "echouee";
+    execution.status = "failed";
     execution.error = RESULT_TOO_BIG;
     execution.kernelError = true;
     await keepRun();
@@ -290,12 +290,12 @@ export async function runAction(o: OptionsAction): Promise<LaunchResult> {
 /** Removes the run and result written by this run only (same paths as `executions.ts` and `data.ts`). */
 async function forgetThisRun(dataFolder: string, execution: string, written: { run: boolean; result: boolean }): Promise<void> {
   if (!ID_EXECUTION.test(execution)) return;
-  if (written.result) await rm(join(dataFolder, "resultats", `${execution}.json`), { force: true }).catch(() => {});
-  if (written.run) await rm(join(dataFolder, "executions", `${execution}.json`), { force: true }).catch(() => {});
+  if (written.result) await rm(join(dataFolder, "results", `${execution}.json`), { force: true }).catch(() => {});
+  if (written.run) await rm(join(dataFolder, "runs", `${execution}.json`), { force: true }).catch(() => {});
 }
 
 /** The message of an action waiting for a new grant: the engine's if it stopped for that (profile denied…). */
 function denialMessage(outcome: WorkflowOutcome, d: DeclarationAction): string {
-  return outcome.t === "stop" && outcome.status === "accord-requis" ? outcome.error : actionGrantRequired(d);
+  return outcome.t === "stop" && outcome.status === "grant-required" ? outcome.error : actionGrantRequired(d);
 }
 

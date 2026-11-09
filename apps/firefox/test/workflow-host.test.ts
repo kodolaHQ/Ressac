@@ -24,10 +24,10 @@ const workflow = {
 function mount() {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "workflow-host-")));
   dirs.push(root);
-  const paths = spacePaths(join(root, "espace"));
+  const paths = spacePaths(join(root, "workspace"));
   const folder = join(paths.widgets, "veille");
   mkdirSync(folder, { recursive: true });
-  const decl = { name: "Veille", sizes: { min: { l: 1, h: 1 }, max: { l: 4, h: 4 }, default: { l: 2, h: 2 } }, sources: { account: [], public: ["x.test"] } };
+  const decl = { name: "Veille", sizes: { min: { w: 1, h: 1 }, max: { w: 4, h: 4 }, default: { w: 2, h: 2 } }, sources: { account: [], public: ["x.test"] } };
   writeFileSync(join(folder, "widget.json"), JSON.stringify(decl));
   writeFileSync(join(folder, "workflow.json"), JSON.stringify(workflow));
   return { root: root, paths: paths, folder: folder, c: { paths: paths, widgetsFolder: join(root, "widgets") } };
@@ -37,7 +37,7 @@ describe("widget workflow edition", () => {
   it("reads the blocks, saves a valid draft, refuses an invalid one without touching the file", async () => {
     const m = mount();
     const e = await readEdit(m.c, "veille");
-    expect(e).toMatchObject({ origin: "fichier", validation: { ok: true }, widget: { name: "Veille" } });
+    expect(e).toMatchObject({ origin: "file", validation: { ok: true }, widget: { name: "Veille" } });
     expect((e?.raw as typeof workflow).blocks.map((b) => b.id)).toEqual(["page", "sortie"]);
     const moved = { ...workflow, blocks: [{ ...workflow.blocks[0]!, position: { x: 5, y: 5 } }, workflow.blocks[1]!] };
     expect(await saveEdit(m.c, "veille", moved)).toMatchObject({ ok: true, warnings: [] });
@@ -134,7 +134,7 @@ describe("fenetres.actives mirror", () => {
 function mountAction(decl: object) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "workflow-action-")));
   dirs.push(root);
-  const paths = spacePaths(join(root, "espace"));
+  const paths = spacePaths(join(root, "workspace"));
   const folder = join(paths.actions, "gitlab");
   mkdirSync(folder, { recursive: true });
   writeFileSync(join(folder, "action.json"), JSON.stringify(decl));

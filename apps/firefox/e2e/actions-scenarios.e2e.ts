@@ -62,11 +62,11 @@ const TICKETS = "tickets-gitlab";
 /** Gemma's plan for the tickets: a key figure, the most urgent in a box, the table by priority (actions.spec.ts:1193). */
 const TICKETS_PLAN = {
   blocks: [
-    { component: "chiffre", props: { value: "compter(filtrer(tickets, priorite = urgent))", label: "Tickets urgents" } },
-    { component: "encadre", props: { level: "attention", title: "À traiter d'abord", items: "garder(filtrer(tickets, priorite = urgent), 3)", field: "titre" } },
+    { component: "figure", props: { value: "count(filter(tickets, priorite = urgent))", label: "Tickets urgents" } },
+    { component: "callout", props: { level: "warning", title: "À traiter d'abord", items: "keep(filter(tickets, priorite = urgent), 3)", field: "titre" } },
     {
-      component: "tableau",
-      props: { items: "regrouper(tickets, priorite)", columns: [{ field: "titre", label: "Ticket" }, { field: "projet", label: "Projet" }], link: "url" },
+      component: "table",
+      props: { items: "regroup(tickets, priorite)", columns: [{ field: "titre", label: "Ticket" }, { field: "projet", label: "Projet" }], link: "url" },
     },
   ],
 };
@@ -154,7 +154,7 @@ beforeAll(async () => {
   for (const id of ["un", "deux", "trois"]) await writePagesAction(d, site, id, `Pages ${id}`);
   const grant = { domains: ["127.0.0.1"], public: [], profile: "defaut" };
   await mkdir(actionsDataDir(d), { recursive: true });
-  await writeFile(path.join(actionsDataDir(d), "accords.json"), JSON.stringify({ hostile: grant, [TICKETS]: grant }));
+  await writeFile(path.join(actionsDataDir(d), "grants.json"), JSON.stringify({ hostile: grant, [TICKETS]: grant }));
   for (const id of ["annonces-leboncoin", "hostile", TICKETS, "taches", "un", "deux", "trois"]) await waitUi(m, "return (await ui.webaios.actions.liste()).some((a) => a.id === arguments[0]);", [id], 30_000);
 }, 90_000);
 beforeEach(async () => {
@@ -190,7 +190,7 @@ describe("action scenarios", () => {
     expect(prompts).toHaveLength(1);
     expect(prompts[0]).toContain("Connexion impossible");
     expect(prompts[0]).toContain(`<<<CONSIGNE\n${TICKETS_LAYOUT}\nCONSIGNE>>>`);
-    expect(await newStatuses(TICKETS, before)).toEqual(["reussie"]);
+    expect(await newStatuses(TICKETS, before)).toEqual(["succeeded"]);
   });
 
   // actions.spec.ts:1264
@@ -200,7 +200,7 @@ describe("action scenarios", () => {
     await openAction(m, TICKETS, "Tickets GitLab");
     await click(m, tid("relancer-action"));
     // The page may already show an earlier test's tickets: wait for this run's end on disk.
-    for (const deadline = Date.now() + 60_000; JSON.stringify(await newStatuses(TICKETS, before.length)) !== '["reussie"]'; await sleep(200))
+    for (const deadline = Date.now() + 60_000; JSON.stringify(await newStatuses(TICKETS, before.length)) !== '["succeeded"]'; await sleep(200))
       if (Date.now() > deadline) throw new Error(`no finished run: ${JSON.stringify(await newStatuses(TICKETS, before.length))}`);
     await waitTicketsPage();
     const [yesterday] = (await runsOnDisk(w.dataDir, TICKETS)).filter((f) => !before.includes(f)).map((f) => f.replace(/\.json$/, ""));
@@ -238,7 +238,7 @@ describe("action scenarios", () => {
     const prompts = layoutPrompts(from);
     expect(prompts).toHaveLength(2);
     expect(prompts[1]).toContain("la réponse n'est pas du JSON valide");
-    expect(await runStatuses(w.dataDir, "taches")).toEqual(["reussie"]);
+    expect(await runStatuses(w.dataDir, "taches")).toEqual(["succeeded"]);
   });
 
   // actions.spec.ts:1474
@@ -258,14 +258,14 @@ describe("action scenarios", () => {
     await visible(tid("rendu-page"), 60_000);
     await q.waitContains(tid("bloc-liste"), "Page 3", 30_000);
     for (const id of ["un", "deux", "trois"])
-      for (const deadline = Date.now() + 60_000; JSON.stringify(await runStatuses(w.dataDir, id)) !== '["reussie"]'; await sleep(200))
+      for (const deadline = Date.now() + 60_000; JSON.stringify(await runStatuses(w.dataDir, id)) !== '["succeeded"]'; await sleep(200))
         if (Date.now() > deadline) throw new Error(`${id}: ${JSON.stringify(await runStatuses(w.dataDir, id))}`);
   });
 
   // actions.spec.ts:1334
   it("Leboncoin « leboncoin clio lyon »: the input reaches the URL read, cards with photos loaded", { timeout: 120_000 }, async () => {
     servers.settings.plan = {
-      blocks: [{ component: "cartes", props: { items: "trier(annonces, prix)", title: "titre", subtitle: "ville", value: "prix", image: "photo", link: "url" } }],
+      blocks: [{ component: "cards", props: { items: "sort(annonces, prix)", title: "titre", subtitle: "ville", value: "prix", image: "photo", link: "url" } }],
     };
     // A cookie on the image host (127.0.0.1), set by a tab of the default container: an image load must not send it.
     await m.execute(
@@ -322,13 +322,13 @@ describe("action scenarios", () => {
     const title = `<img src=${site}/tiers?d=titre>Tickets`;
     servers.settings.plan = {
       blocks: [
-        { component: "titre", props: { text: title } },
+        { component: "title", props: { text: title } },
         // An address composed by Gemma: a field is only a name, this block is dropped.
-        { component: "lien", props: { object: "compte", url: `"${site}/tiers?d=" + jeton`, text: "Ouvrir" } },
+        { component: "link", props: { object: "compte", url: `"${site}/tiers?d=" + jeton`, text: "Ouvrir" } },
         // A field holding no address: the link stays text.
-        { component: "lien", props: { object: "compte", url: "jeton", text: "Voir le jeton" } },
+        { component: "link", props: { object: "compte", url: "jeton", text: "Voir le jeton" } },
         // A results address to the (local) test server: inert. An action with an account's image: neutral.
-        { component: "cartes", props: { items: "tickets", title: "titre", image: "photo", link: "fuite" } },
+        { component: "cards", props: { items: "tickets", title: "titre", image: "photo", link: "fuite" } },
       ],
     };
     const since = servers.site.log.length;

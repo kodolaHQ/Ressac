@@ -173,13 +173,13 @@ export const apps = {
     if (typeof folder === "string" && validFolder(folder)) await removeAppContainer(folder);
   },
   /**
-   * « Afficher le dossier »: `<dataDir>/espace/projets/<dossier>` shown in the Finder, never opened (an `x.app` folder
+   * « Afficher le dossier »: `<dataDir>/workspace/projects/<dossier>` shown in the Finder, never opened (an `x.app` folder
    * would launch). One path segment only. WEBAIOS_TEST_REVEAL (e2e): the path is appended to
    * that file instead.
    */
   reveal(folder: string): void {
     if (typeof folder !== "string" || folder === "" || folder === "." || folder === ".." || /[/\\\0]/.test(folder) || !dataDir) return;
-    const path = PathUtils.join(dataDir, "espace", "projets", folder);
+    const path = PathUtils.join(dataDir, "workspace", "projects", folder);
     const test = Services.env.get("WEBAIOS_TEST_REVEAL");
     if (test) return void IOUtils.writeUTF8(test, path + "\n", { mode: "appendOrCreate" }).catch((e: unknown) => console.warn("[apps] reveal not noted:", e));
     try {

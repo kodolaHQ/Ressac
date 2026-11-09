@@ -16,7 +16,7 @@ interface PlacementTest {
   id: string;
   x: number;
   y: number;
-  l: number;
+  w: number;
   h: number;
 }
 
@@ -28,12 +28,12 @@ interface TestGrant {
 
 type TestGrants = Record<string, TestGrant>;
 
-const ROOT = (dataDir: string) => path.join(dataDir, "espace");
-const HOME = (dataDir: string) => path.join(ROOT(dataDir), "accueil");
+const ROOT = (dataDir: string) => path.join(dataDir, "workspace");
+const HOME = (dataDir: string) => path.join(ROOT(dataDir), "home");
 const WIDGETS = (dataDir: string) => path.join(dataDir, "widgets");
-const GRANTS = (dataDir: string) => path.join(WIDGETS(dataDir), "accords.json");
-const STATE = (dataDir: string, id: string) => path.join(WIDGETS(dataDir), id, "etat.json");
-const DATA = (dataDir: string, id: string) => path.join(WIDGETS(dataDir), id, "donnees.json");
+const GRANTS = (dataDir: string) => path.join(WIDGETS(dataDir), "grants.json");
+const STATE = (dataDir: string, id: string) => path.join(WIDGETS(dataDir), id, "state.json");
+const DATA = (dataDir: string, id: string) => path.join(WIDGETS(dataDir), id, "data.json");
 
 async function writeWidget(dataDir: string, id: string, o: { name: string; display: string; declaration?: Record<string, unknown> }): Promise<void> {
   const folder = path.join(HOME(dataDir), "widgets", id);
@@ -43,7 +43,7 @@ async function writeWidget(dataDir: string, id: string, o: { name: string; displ
     JSON.stringify({
       name: o.name,
       description: "",
-      sizes: { min: { l: 2, h: 1 }, max: { l: 6, h: 4 }, default: { l: 3, h: 2 } },
+      sizes: { min: { w: 2, h: 1 }, max: { w: 6, h: 4 }, default: { w: 3, h: 2 } },
       sources: { account: [], public: [], web: false },
       ...o.declaration,
     }),
@@ -56,11 +56,11 @@ async function writeHarvest(dataDir: string, id: string, code: string): Promise<
 }
 
 async function writeLayout(dataDir: string, widgets: PlacementTest[]): Promise<void> {
-  await writeFile(path.join(HOME(dataDir), "disposition.json"), JSON.stringify({ version: 3, widgets }));
+  await writeFile(path.join(HOME(dataDir), "layout.json"), JSON.stringify({ version: 3, widgets }));
 }
 
 async function readLayout(dataDir: string): Promise<PlacementTest[]> {
-  return JSON.parse(await readFile(path.join(HOME(dataDir), "disposition.json"), "utf8")).widgets;
+  return JSON.parse(await readFile(path.join(HOME(dataDir), "layout.json"), "utf8")).widgets;
 }
 
 async function readJson<T>(file: string): Promise<T> {
@@ -89,7 +89,7 @@ async function wait<T>(read: () => Promise<T>, ok: (v: T) => boolean, what: stri
 /**
  * A drag or a resize, through pointer events sent directly in the interface. The gesture does not depend on
  * `isTrusted` (only the widget's links do, and they go through `synthesizeMouseEvent`): this test covers the
- * placement and the writing of disposition.json.
+ * placement and the writing of layout.json.
  */
 async function drag(m: Marionette, selection: string, dx: number, dy: number): Promise<void> {
   await inUi(
@@ -234,16 +234,16 @@ describe("the home page", () => {
     await writeJson(DATA(dataDir, "retrait"), { old: "compte" });
     await writeJson(GRANTS(dataDir), { removal: { domains: ["exemple.invalid"], public: [], profile: "defaut" } });
     await writeLayout(dataDir, [
-      { id: "alpha", x: 0, y: 0, l: 250, h: 180 },
-      { id: "beta", x: 500, y: 0, l: 250, h: 180 },
-      { id: "refus", x: 0, y: 200, l: 250, h: 180 },
-      { id: "lien", x: 500, y: 200, l: 250, h: 180 },
-      { id: "compte", x: 0, y: 400, l: 250, h: 180 },
-      { id: "sans-accord", x: 500, y: 400, l: 250, h: 180 },
-      { id: "lent", x: 0, y: 600, l: 250, h: 180 },
-      { id: "echec", x: 500, y: 600, l: 250, h: 180 },
-      { id: "veille", x: 0, y: 800, l: 250, h: 180 },
-      { id: "retrait", x: 500, y: 800, l: 250, h: 180 },
+      { id: "alpha", x: 0, y: 0, w: 250, h: 180 },
+      { id: "beta", x: 500, y: 0, w: 250, h: 180 },
+      { id: "refus", x: 0, y: 200, w: 250, h: 180 },
+      { id: "lien", x: 500, y: 200, w: 250, h: 180 },
+      { id: "compte", x: 0, y: 400, w: 250, h: 180 },
+      { id: "sans-accord", x: 500, y: 400, w: 250, h: 180 },
+      { id: "lent", x: 0, y: 600, w: 250, h: 180 },
+      { id: "echec", x: 500, y: 600, w: 250, h: 180 },
+      { id: "veille", x: 0, y: 800, w: 250, h: 180 },
+      { id: "retrait", x: 500, y: 800, w: 250, h: 180 },
     ]);
     // A test notification is a file, never a macOS bubble.
     w = await launchWebAiOs({ dataDir, env: { WEBAIOS_TEST_NOTIFICATIONS: notifications } });
@@ -318,7 +318,7 @@ describe("the home page", () => {
     const alpha = after.find((p) => p.id === "alpha")!;
     const beta = after.find((p) => p.id === "beta")!;
     expect(alpha.x).toBeGreaterThan(0);
-    expect(alpha.x + alpha.l).toBeLessThanOrEqual(1000);
+    expect(alpha.x + alpha.w).toBeLessThanOrEqual(1000);
     // Alpha goes beyond bêta: it cannot be dropped on another widget, but the drag flies over it.
     expect(alpha.x).toBe(750);
     expect(beta).toEqual(betaBefore);
@@ -331,15 +331,15 @@ describe("the home page", () => {
       () => readLayout(dataDir).catch(() => [] as PlacementTest[]),
       (ps) => {
         const b = ps.find((p) => p.id === "beta");
-        return !!b && (b.l > 250 || b.h > 180);
+        return !!b && (b.w > 250 || b.h > 180);
       },
       "l'écriture du redimensionnement",
     );
     const beta = after.find((p) => p.id === "beta")!;
-    expect(beta.l).toBeGreaterThanOrEqual(167); // min: 2 units
-    expect(beta.l).toBeLessThanOrEqual(500); // max: 6 units
+    expect(beta.w).toBeGreaterThanOrEqual(167); // min: 2 units
+    expect(beta.w).toBeLessThanOrEqual(500); // max: 6 units
     expect(beta.h).toBeLessThanOrEqual(360);
-    expect(beta.x + beta.l).toBeLessThanOrEqual(1000);
+    expect(beta.x + beta.w).toBeLessThanOrEqual(1000);
   });
 
   it("a <link> in the display is replaced by DISPLAY_DENIED", async () => {
@@ -442,7 +442,7 @@ describe("the home page", () => {
     expect(await inUi<boolean>(m, `return !!doc.querySelector('[data-testid="widget-sans-accord"] [data-testid="bandeau-accord"]');`)).toBe(false);
     await wait(() => readGrants(dataDir), (a) => a["sans-accord"] === undefined, "le retrait de l'accord refusé");
     await wait(async () => existsSync(DATA(dataDir, "sans-accord")), (present) => !present, "le retrait des données du refus");
-    expect(await readJson<{ status: string }>(STATE(dataDir, "sans-accord"))).toMatchObject({ status: "accord-requis" });
+    expect(await readJson<{ status: string }>(STATE(dataDir, "sans-accord"))).toMatchObject({ status: "grant-required" });
   });
 
   it("a grant that names an invalid profile asks again: the harvest refuses it, the grant and its data go away", async () => {
@@ -455,7 +455,7 @@ describe("the home page", () => {
     await waitUi(m, `return !!doc.querySelector('[data-testid="widget-compte"] [data-testid="bandeau-accord"]');`, [], 20_000);
     expect((await readGrants(dataDir)).compte).toBeUndefined();
     expect(existsSync(DATA(dataDir, "compte"))).toBe(false);
-    expect(await readJson<{ status: string }>(STATE(dataDir, "compte"))).toMatchObject({ status: "accord-requis" });
+    expect(await readJson<{ status: string }>(STATE(dataDir, "compte"))).toMatchObject({ status: "grant-required" });
     // The new request offers a profile again.
     await click(m, '[data-testid="widget-compte"] [data-testid="bandeau-accord"] button', { text: "Autoriser…" });
     const profiles = await waitUi<[string, boolean][]>(m, `const rs = [...doc.querySelectorAll('[data-testid="carte-accord"] input[type="radio"]')]; return rs.length ? rs.map((r) => [r.value, r.checked]) : null;`);
@@ -499,7 +499,7 @@ describe("the home page", () => {
     const text = await wait(() => widgetText(m, "echec"), (t) => t.includes("échec du") && t.includes("boum"), "l'échec de la récolte", 20_000);
     expect(text).toContain("échec du");
     expect(existsSync(DATA(dataDir, "echec"))).toBe(false);
-    expect(await readJson<{ status: string; error: string }>(STATE(dataDir, "echec"))).toMatchObject({ status: "erreur", error: "boum" });
+    expect(await readJson<{ status: string; error: string }>(STATE(dataDir, "echec"))).toMatchObject({ status: "error", error: "boum" });
   });
 
   it("a news harvest writes its notification into WEBAIOS_TEST_NOTIFICATIONS", async () => {
@@ -524,7 +524,7 @@ describe("the home page", () => {
     await click(m, '[data-testid="confirmation-retrait"] button', { text: "Retirer" });
     await waitUi(m, `return !doc.querySelector('[data-testid="widget-retrait"]');`, [], 15_000);
     const trash = await wait(
-      () => readdir(path.join(HOME(dataDir), ".corbeille")).catch(() => [] as string[]),
+      () => readdir(path.join(HOME(dataDir), ".trash")).catch(() => [] as string[]),
       (names) => names.some((n) => n.startsWith("retrait-")),
       "le dossier du widget dans la corbeille",
     );
@@ -599,7 +599,7 @@ describe("the home page, workshop stopped", () => {
     // Data from a previous harvest, and a due state: the launch check must keep them.
     await writeJson(DATA(dataDir, "veille"), { old: true });
     await writeJson(STATE(dataDir, "veille"), { status: "ok", lastUpdate: "2026-01-01T00:00:00.000Z", lastAttempt: "2026-01-01T00:00:00.000Z" });
-    await writeLayout(dataDir, [{ id: "veille", x: 0, y: 0, l: 250, h: 180 }]);
+    await writeLayout(dataDir, [{ id: "veille", x: 0, y: 0, w: 250, h: 180 }]);
     w = await launchWebAiOs({ dataDir, env: { FAKE_DOCKER_ABSENT: "1" } });
     m = w.marionette;
     await m.setContext("chrome");
@@ -616,7 +616,7 @@ describe("the home page, workshop stopped", () => {
     // « Mettre à jour maintenant » launches nothing either: nothing changes, the interface says so after its delay.
     await harvest(m, "veille");
     await wait(() => widgetText(m, "veille"), (t) => t.includes("Sans effet pour l'instant"), "l'action sans effet", 12_000);
-    expect(await readJson<{ status: string }>(STATE(dataDir, "veille"))).toMatchObject({ status: "atelier-arrete" });
+    expect(await readJson<{ status: string }>(STATE(dataDir, "veille"))).toMatchObject({ status: "workshop-stopped" });
     expect(await readJson(DATA(dataDir, "veille"))).toEqual({ old: true });
     // The page stays displayed.
     expect(await inUi<string[]>(m, `return [...doc.querySelectorAll('[data-testid="titre-widget"]')].map((e) => e.textContent);`)).toEqual(["Veille"]);

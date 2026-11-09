@@ -19,7 +19,7 @@ async function writeAtomic(target: string, text: string): Promise<void> {
 
 /** Harvested data of a widget, or null if absent, damaged or too big (over 2 MB). */
 export async function readData(widgetsFolder: string, id: string): Promise<unknown | null> {
-  const path = join(widgetsFolder, id, "donnees.json");
+  const path = join(widgetsFolder, id, "data.json");
   try {
     if ((await stat(path)).size > DATA_MAX_SIZE) return null;
     return JSON.parse(await readFile(path, "utf8"));
@@ -31,21 +31,21 @@ export async function readData(widgetsFolder: string, id: string): Promise<unkno
 export async function writeData(widgetsFolder: string, id: string, data: unknown): Promise<void> {
   const text = JSON.stringify(data ?? null);
   if (Buffer.byteLength(text) > DATA_MAX_SIZE) throw new Error("Données trop grosses (2 Mo au plus)");
-  await writeAtomic(join(widgetsFolder, id, "donnees.json"), text);
+  await writeAtomic(join(widgetsFolder, id, "data.json"), text);
 }
 
 /** Erases the harvested data, runs and block memory (for example when an account's grant is withdrawn). */
 export async function deleteData(widgetsFolder: string, id: string): Promise<void> {
   if (!/^[a-z0-9-]+$/.test(id)) throw new Error(`id de widget invalide : ${id}`);
-  await rm(join(widgetsFolder, id, "donnees.json"), { force: true });
+  await rm(join(widgetsFolder, id, "data.json"), { force: true });
   await clearRunsAndMemory(join(widgetsFolder, id));
 }
 
 export async function readWidgetState(widgetsFolder: string, id: string): Promise<WidgetState> {
   try {
-    return WidgetState.parse(JSON.parse(await readFile(join(widgetsFolder, id, "etat.json"), "utf8")));
+    return WidgetState.parse(JSON.parse(await readFile(join(widgetsFolder, id, "state.json"), "utf8")));
   } catch {
-    // etat.json absent or damaged: start again from the default state.
+    // state.json absent or damaged: start again from the default state.
     return { ...DEFAULT_WIDGET_STATE };
   }
 }
@@ -67,7 +67,7 @@ function stateUnderLock<T>(widgetsFolder: string, id: string, f: () => Promise<T
 async function writeStateWithoutLock(widgetsFolder: string, id: string, state: WidgetState): Promise<void> {
   // Hour tracking survives all state writes (running, error, grant, workshop stopped).
   const final = state.hours ? state : { ...state, ...(await currentHours(widgetsFolder, id)) };
-  await writeAtomic(join(widgetsFolder, id, "etat.json"), JSON.stringify(final, null, 2));
+  await writeAtomic(join(widgetsFolder, id, "state.json"), JSON.stringify(final, null, 2));
 }
 
 /** Writes of a widget's state go one after the other: none loses another's hour tracking. */

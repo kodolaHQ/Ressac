@@ -11,8 +11,8 @@ export const ACTION_STOPPED = "Arrêtée à ta demande";
 export const KEPT_RUNS = 20;
 /** Tries (builder replays) have their own quota: they never push out a real run. */
 export const KEPT_ATTEMPTS = 10;
-export const ID_EXECUTION = /^[0-9TZ-]+(?:-essai)?$/;
-const ATTEMPT_SUFFIX = "-essai";
+export const ID_EXECUTION = /^[0-9TZ-]+(?:-attempt)?$/;
+const ATTEMPT_SUFFIX = "-attempt";
 
 export const BlockTrace = z.object({
   id: z.string(),
@@ -36,12 +36,12 @@ export const Execution = z.object({
   owner: z.object({ type: z.enum(["widget", "action"]), id: z.string() }),
   // The input of an action launched with a text (clio lyon).
   input: z.string().max(200).optional(),
-  trigger: z.enum(["planifiee", "manuelle", "agent", "rejeu"]),
+  trigger: z.enum(["scheduled", "manual", "agent", "replay"]),
   // Only for a try: the start block and the run whose upstream outputs are taken.
   attempt: z.object({ start: z.string(), origin: z.string() }).optional(),
   start: z.string(),
   end: z.string().nullable(),
-  status: z.enum(["reussie", "partielle", "echouee", "interrompue", "accord-requis"]),
+  status: z.enum(["succeeded", "partial", "failed", "interrupted", "grant-required"]),
   error: z.string().optional(),
   kernelError: z.literal(true).optional(),
   blocks: z.array(BlockTrace),
@@ -57,14 +57,14 @@ export function idExecution(startIso: string): string {
   return startIso.replace(/[:.]/g, "-");
 }
 
-/** A try's identifier: that of the run that has the same start, followed by « -essai ». */
+/** A try's identifier: that of the run that has the same start, followed by « -attempt ». */
 export function attemptId(startIso: string): string {
   return idExecution(startIso) + ATTEMPT_SUFFIX;
 }
 
-const runsFolder = (dataFolder: string) => join(dataFolder, "executions");
+const runsFolder = (dataFolder: string) => join(dataFolder, "runs");
 
-// A temporary name specific to each write, as for donnees.json.
+// A temporary name specific to each write, as for data.json.
 export async function writeAtomic(target: string, text: string): Promise<void> {
   await mkdir(join(target, ".."), { recursive: true });
   const temp = `${target}.${randomUUID()}.tmp`;

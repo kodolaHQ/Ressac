@@ -53,14 +53,14 @@ const sameLists = (a: readonly string[], b: readonly string[]): boolean => {
   return x.length === y.length && x.every((v, i) => v === y[i]);
 };
 
-/** Folder of the dev tools' raw profiles (distinct from `.webaios/profils`, that of the agent profiles). */
-export const PROFILING_FOLDER = "profilage";
+/** Folder of the dev tools' raw profiles (distinct from `.webaios/profiles`, that of the agent profiles). */
+export const PROFILING_FOLDER = "profiling";
 
-/** `.webaios/profilage` or `projets/<dossier>/.webaios/profilage`, in segments relative to the root. */
+/** `.webaios/profiling` or `projects/<folder>/.webaios/profiling`, in segments relative to the root. */
 const profilingFolder = (parts: string[]): boolean =>
   parts.every(safeSegment) &&
   ((parts.length === 2 && parts[0] === ".webaios" && parts[1] === PROFILING_FOLDER) ||
-    (parts.length === 4 && parts[0] === "projets" && parts[2] === ".webaios" && parts[3] === PROFILING_FOLDER));
+    (parts.length === 4 && parts[0] === "projects" && parts[2] === ".webaios" && parts[3] === PROFILING_FOLDER));
 
 const code = (e: unknown): string | undefined => (e as NodeJS.ErrnoException).code;
 
@@ -69,7 +69,7 @@ export const PRIVATE_PROFILE_PREFIX = "profile:";
 
 /**
  * Raw profiles of the dev tools, written by the browser (spec §6). What the agent built goes into
- * the workspace: in the project for an application (`projets/<dossier>/.webaios/profilage`), in `.webaios/profilage`
+ * the workspace: in the project for an application (`projects/<folder>/.webaios/profiling`), in `.webaios/profiling`
  * otherwise. The profile of another site (its heap contains tokens and personal data) stays outside the mount, in
  * `dossierPrive` (the browser's profile), and the agent only gets a `profile:<name>` reference. Only these folders
  * are read or erased. The workspace is mounted writable in the container: the agent can put symbolic links in it,
@@ -148,7 +148,7 @@ export function profileFiles(paths: SpacePaths, privateFolder?: string): Profile
         return PRIVATE_PROFILE_PREFIX + name;
       }
       if (o.app !== undefined && !safeSegment(o.app)) throw new Error(`Dossier d'application invalide : ${o.app}`);
-      const parts = o.app === undefined ? [".webaios", PROFILING_FOLDER] : ["projets", o.app, ".webaios", PROFILING_FOLDER];
+      const parts = o.app === undefined ? [".webaios", PROFILING_FOLDER] : ["projects", o.app, ".webaios", PROFILING_FOLDER];
       const containerPath = `${CONTAINER_PATH}/${[...parts, name].join("/")}`;
       const folder = await descend(parts, true, containerPath);
       // « wx »: never over an existing file or link.
@@ -206,7 +206,7 @@ export interface KernelActions {
   grant(o: { id: string; profile: string; account: string[]; public: string[] }): Promise<void>;
   /** Withdraws the grant and erases runs, results and memory. */
   denyGrant(id: string): Promise<void>;
-  /** Builder try: a « -essai » run that does not become the last result. */
+  /** Builder try: a « -attempt » run that does not become the last result. */
   replay(id: string, origin: string, start: string): ActionLaunch;
   deleteData(id: string): Promise<void>;
 }
@@ -265,7 +265,7 @@ export async function createKernel(o: {
   portBuilt?: (port: number) => boolean;
   /**
    * Host folder, outside the mounted workspace, for the raw profiles of the sites the agent did not build (the
-   * browser gives `<profil>/profilage`). Absent, these profiles are not saved.
+   * browser gives `<profile>/profiling`). Absent, these profiles are not saved.
    */
   profilingFolder?: string;
   /** Folder of the widgets' data, states and grants, outside the workspace (the browser gives `<profil>/widgets`). */
@@ -452,7 +452,7 @@ export async function createKernel(o: {
   });
   const actions: KernelActions = {
     list: () => readActions(paths),
-    launch: (id, l) => fileActions.launch(id, { input: l.input ?? null, trigger: l.trigger ?? "manuelle" }),
+    launch: (id, l) => fileActions.launch(id, { input: l.input ?? null, trigger: l.trigger ?? "manual" }),
     stop: (id) => void fileActions.stop(id),
     direct: () => fileActions.direct(),
     onLive(callback) {
@@ -591,7 +591,7 @@ export async function createKernel(o: {
       if (w && !("error" in w) && w.declaration.sources.account.length) {
         const before = await readWidgetState(widgetsFolder, id);
         await writeWidgetState(widgetsFolder, id, {
-          status: "accord-requis",
+          status: "grant-required",
           lastUpdate: before.lastUpdate,
           lastAttempt: before.lastAttempt,
           error: grantRequired(w.declaration),

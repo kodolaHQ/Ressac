@@ -24,7 +24,7 @@ beforeEach(async () => {
   await m.setContext("chrome");
   await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
   // The kernel is up once its MCP config is written.
-  const config = join(w.dataDir, "espace", ".webaios", "mcp.json");
+  const config = join(w.dataDir, "workspace", ".webaios", "mcp.json");
   for (const deadline = Date.now() + 20_000; !existsSync(config); await new Promise((r) => setTimeout(r, 100)))
     if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
   // The home page's panel starts the agent's session, which takes back every access: tools are called after it.
@@ -51,7 +51,7 @@ async function setActiveSpacePrivate(isPrivate: boolean): Promise<void> {
 }
 
 it("at startup the kernel prepares its space in the data dir and MCP answers", async () => {
-  expect(existsSync(join(w.dataDir, "espace", "AGENTS.md"))).toBe(true);
+  expect(existsSync(join(w.dataDir, "workspace", "AGENTS.md"))).toBe(true);
   expect(await call("list_tabs")).toEqual({ text: "Aucun onglet ouvert.", error: false });
 });
 

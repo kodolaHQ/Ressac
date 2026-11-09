@@ -85,7 +85,7 @@ async function pageOnAppJs(n: number) {
 }
 
 // relecture.spec.ts:52
-it("at start the first photo is taken (refs/webaios/relu under <dataDir>/design/relecture/ext-<id>.git) and no .git appears in the project folder", async () => {
+it("at start the first photo is taken (refs/webaios/relu under <dataDir>/design/review/ext-<id>.git) and no .git appears in the project folder", async () => {
   await launch();
   const p = await declareProject(m, { dataDir: w!.dataDir });
   try {
@@ -249,12 +249,12 @@ it("reopening the shown file (a second click in the list) does not close the com
 });
 
 // Spec §5.3: the Sites card's « Relire » opens the Review page, no longer the internal page.
-it("at start the site app's first photo exists under <dataDir>/design/relecture/site-<id>.git; Relire of its Sites card opens the page with the changed file", async () => {
+it("at start the site app's first photo exists under <dataDir>/design/review/site-<id>.git; Relire of its Sites card opens the page with the changed file", async () => {
   await launch({
     prepare: (d) => writeSite(d, "essai", { declaration: { name: "Essai", url: "https://essai.example/", domains: ["essai.example"] }, files: { "app.js": LINES.join("\n") + "\n" } }),
   });
   await expect.poll(() => existsSync(reviewedRef(w!.dataDir, "site-essai")), { timeout: 15_000 }).toBe(true);
-  writeAppJs(path.join(w!.dataDir, "espace", "sites", "essai"), modified(15));
+  writeAppJs(path.join(w!.dataDir, "workspace", "sites", "essai"), modified(15));
   await click(m, tid("site-essai-relire"));
   await waitUi(m, `return !!doc.querySelector('${PAGE}')`);
   expect((await reviewTabs("site-essai")).map((o) => o.title)).toEqual(["Relecture — Essai"]);
@@ -284,8 +284,8 @@ it("forgetting a project under its open Review page: Rafraîchir says projet inc
     );
     await click(m, `${tid("formulaire-commentaire")} button`, { text: "Commenter" });
     await waitCount(tid("commentaire-relecture"), 1);
-    const reviewDir = path.join(w!.dataDir, "design", "relecture");
-    const comments = path.join(reviewDir, `${project}.commentaires.json`);
+    const reviewDir = path.join(w!.dataDir, "design", "review");
+    const comments = path.join(reviewDir, `${project}.comments.json`);
     expect(existsSync(comments)).toBe(true);
     await backToApplications();
     await click(m, `${tid("projet-externe")} button`, { text: "Oublier" });

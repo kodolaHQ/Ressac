@@ -70,10 +70,10 @@ export function actionValidationContext(d: DeclarationAction): ValidationContext
 /** An action's workflow: `workflow.json` only (no implicit workflow from a `harvest.mjs`). Nothing is run. */
 export async function actionWorkflow(
   a: ReadAction,
-): Promise<{ t: "ok"; valid: ValidWorkflow } | { t: "invalide" | "illisible"; error: string } | { t: "absent" }> {
-  if ("error" in a) return { t: "illisible", error: a.error };
+): Promise<{ t: "ok"; valid: ValidWorkflow } | { t: "invalid" | "unreadable"; error: string } | { t: "absent" }> {
+  if ("error" in a) return { t: "unreadable", error: a.error };
   if (!(await exists(join(a.folder, "workflow.json")))) return { t: "absent" };
   const lu = await readRawWorkflow(a.folder);
   const r = "error" in lu ? workflowError(lu.error) : validateWorkflow(lu.raw, actionValidationContext(a.declaration));
-  return r.ok ? { t: "ok", valid: r.valid } : { t: "invalide", error: r.error };
+  return r.ok ? { t: "ok", valid: r.valid } : { t: "invalid", error: r.error };
 }

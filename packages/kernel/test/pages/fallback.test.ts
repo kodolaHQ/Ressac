@@ -9,8 +9,8 @@ const tickets = [
   { title: "Doc", priority: "basse", url: "https://gitlab.com/t/2", author: { name: "Bob" } },
 ];
 const announcements = [
-  { title: "Vélo", price: 120, snapshot: "https://img.example/1.jpg", link: "https://lbc.fr/1" },
-  { title: "Table", price: 40, snapshot: "https://img.example/2.jpg", link: "https://lbc.fr/2" },
+  { titre: "Vélo", prix: 120, photo: "https://img.example/1.jpg", lien: "https://lbc.fr/1" },
+  { titre: "Table", prix: 40, photo: "https://img.example/2.jpg", lien: "https://lbc.fr/2" },
 ];
 const valid = (r: unknown) => validatePlan(fallbackLayout(r), { catalog: BUILTIN_COMPONENTS, results: r });
 const components = (r: unknown) => fallbackLayout(r).blocks.map((b) => b.component);
@@ -19,44 +19,44 @@ describe("fallbackLayout", () => {
   it("list of listings with https…jpg photo: cards", () => {
     const plan = fallbackLayout(announcements);
     expect(plan.blocks).toHaveLength(1);
-    expect(plan.blocks[0]).toMatchObject({ component: "cartes", props: { items: "$", title: "titre", image: "photo", link: "lien" } });
+    expect(plan.blocks[0]).toMatchObject({ component: "cards", props: { items: "$", title: "titre", image: "photo", link: "lien" } });
   });
 
   it("an image recognized by its address, without a field named image", () => {
-    const r = [{ name: "A", visual: "https://x.fr/a.png", a: 1 }];
-    expect(fallbackLayout(r).blocks[0]).toMatchObject({ component: "cartes", props: { image: "visuel" } });
+    const r = [{ nom: "A", visuel: "https://x.fr/a.png", a: 1 }];
+    expect(fallbackLayout(r).blocks[0]).toMatchObject({ component: "cards", props: { image: "visuel" } });
   });
 
   it("liste de tickets : tableau, lien = url", () => {
     const plan = fallbackLayout(tickets);
-    expect(plan.blocks[0]).toMatchObject({ component: "tableau", props: { items: "$", link: "url" } });
-    expect((plan.blocks[0]!.props.colonnes as unknown[]).length).toBe(3);
+    expect(plan.blocks[0]).toMatchObject({ component: "table", props: { items: "$", link: "url" } });
+    expect((plan.blocks[0]!.props.columns as unknown[]).length).toBe(3);
   });
 
   it("the table keeps the first 6 simple fields", () => {
     const r = [{ a: 1, b: 2, c: 3, d: 4, e: 5, f: 6, g: 7, h: { x: 1 } }];
-    expect((fallbackLayout(r).blocks[0]!.props.colonnes as unknown[]).length).toBe(6);
+    expect((fallbackLayout(r).blocks[0]!.props.columns as unknown[]).length).toBe(6);
   });
 
   it("list of texts: labels", () => {
-    expect(components(["a", "b"])).toEqual(["etiquettes"]);
+    expect(components(["a", "b"])).toEqual(["tags"]);
   });
 
   it("objet { total: 3, tickets: [...] } : titre, chiffre, tableau", () => {
     const c = components({ total: 3, tickets });
-    expect(c[0]).toBe("titre");
-    expect(c).toContain("chiffre");
-    expect(c).toContain("tableau");
+    expect(c[0]).toBe("title");
+    expect(c).toContain("figure");
+    expect(c).toContain("table");
   });
 
   it("objet de champs simples : champs ; texte : paragraphe", () => {
-    expect(components({ project: { name: "W", url: "https://x.fr" } })).toContain("champs");
-    expect(components({ resume: "bonjour" })).toContain("paragraphe");
+    expect(components({ project: { name: "W", url: "https://x.fr" } })).toContain("fields");
+    expect(components({ resume: "bonjour" })).toContain("paragraph");
   });
 
   it("texte seul : paragraphe ; nombre seul : chiffre", () => {
-    expect(fallbackLayout("bonjour").blocks[0]).toMatchObject({ component: "paragraphe", props: { value: "$" } });
-    expect(fallbackLayout(42).blocks[0]).toMatchObject({ component: "chiffre", props: { value: "$" } });
+    expect(fallbackLayout("bonjour").blocks[0]).toMatchObject({ component: "paragraph", props: { value: "$" } });
+    expect(fallbackLayout(42).blocks[0]).toMatchObject({ component: "figure", props: { value: "$" } });
   });
 
   it("each fallback passes validatePlan", () => {
@@ -83,14 +83,14 @@ describe("fallback: never an empty page when there are results", () => {
   for (const [name, r] of cas) {
     it(`${name}: valid and visible`, () => {
       const plan = fallbackLayout(r);
-      expect(plan.blocks.some((b) => b.component !== "titre")).toBe(true);
+      expect(plan.blocks.some((b) => b.component !== "title")).toBe(true);
       expect(validatePlan(plan, { catalog: BUILTIN_COMPONENTS, results: r }).ok).toBe(true);
       const page = resolvePage(plan, r, { account: false, catalog: BUILTIN_COMPONENTS, fallback: true });
       const visible = page.blocks.some((b) => {
         const p = (b as { props?: Record<string, unknown> }).props ?? {};
-        if (b.component === "paragraphe") return typeof p.texte === "string" && p.texte.length > 0;
-        if (b.component === "champs") return Array.isArray(p.champs) && p.champs.length > 0;
-        return b.component !== "titre" && b.component !== "erreur";
+        if (b.component === "paragraph") return typeof p.text === "string" && p.text.length > 0;
+        if (b.component === "fields") return Array.isArray(p.fields) && p.fields.length > 0;
+        return b.component !== "title" && b.component !== "error";
       });
       expect(visible).toBe(true);
     });

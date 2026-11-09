@@ -131,7 +131,7 @@ function createExternalServer(o: {
       try {
         // Only a batch never read yet returns right away: batches already « read » but not processed would otherwise
         // loop an agent that calls wait_for_remarks again.
-        const fresh = (await remarks.batches(id)).some((l) => l.destination === "mcp" && batchState(l) === "en-attente");
+        const fresh = (await remarks.batches(id)).some((l) => l.destination === "mcp" && batchState(l) === "pending");
         if (!fresh) {
           await waiting;
           if (o.signal.aborted) return text(NO_REMARK);

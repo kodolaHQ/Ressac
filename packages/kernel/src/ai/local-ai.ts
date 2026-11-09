@@ -15,7 +15,7 @@ export interface AiProcess {
 }
 
 export interface LocalAiOptions {
-  /** `<browser profile>/ia-locale`; Kev is cloned there in `kev/`. */
+  /** `<browser profile>/local-ai`; Kev is cloned there in `kev/`. */
   folder: string;
   run: Runner;
   launch?: (cmd: string, args: string[], o: { cwd: string }) => AiProcess;
@@ -187,7 +187,7 @@ export class LocalAi {
   }
 
   /** Folder where Kev is cloned before being renamed to `kev/`: an interrupted clone never leaves a partial repo there. */
-  private get cloneFolder() { return join(this.o.folder, "kev.clone-en-cours"); }
+  private get cloneFolder() { return join(this.o.folder, "kev.clone-in-progress"); }
 
   /**
    * Installs Kev and Gemma. Cancelled by `annulerInstallation()` or `fermer()`: the current command is killed (its whole

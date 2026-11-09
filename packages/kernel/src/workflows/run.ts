@@ -191,7 +191,7 @@ export type WorkflowOutcome =
    */
   | { t: "failure"; error: string; codeError: boolean; memory?: BlocksMemory | null }
   /** Stopped by the kernel (delay, grant, profile refused, answer too big…): the text is the kernel's. `memory`: same. */
-  | { t: "stop"; status: "erreur" | "accord-requis"; error: string; memory?: BlocksMemory | null };
+  | { t: "stop"; status: "error" | "grant-required"; error: string; memory?: BlocksMemory | null };
 
 function args<T>(schema: { safeParse(x: unknown): { success: true; data: T } | { success: false } }, a: unknown, f: string): T {
   const r = schema.safeParse(a);
@@ -202,7 +202,7 @@ function args<T>(schema: { safeParse(x: unknown): { success: true; data: T } | {
 /** The pacing shared by all the kernel's runs, when the caller gives none. */
 export const DEFAULT_PACING = new Pacing();
 
-type Stop = { status: "erreur" | "accord-requis"; error: string };
+type Stop = { status: "error" | "grant-required"; error: string };
 /** The run is stopped: the call receives no answer. */
 const NO_RESPONSE = Symbol("sans réponse");
 
@@ -269,12 +269,12 @@ export async function runWorkflow(
       outcome.t === "end"
         ? // A partial block, or one that did not finish (a `fin` that arrived before it): the output is not complete. For a
           // try, only the rerun blocks count.
-          blocks.every((b) => b.status === "succeeded" || (relaunches !== null && !relaunches.has(b.id))) ? "reussie" : "partielle"
-        : outcome.t === "stop" && outcome.status === "accord-requis"
-          ? "accord-requis"
+          blocks.every((b) => b.status === "succeeded" || (relaunches !== null && !relaunches.has(b.id))) ? "succeeded" : "partial"
+        : outcome.t === "stop" && outcome.status === "grant-required"
+          ? "grant-required"
           : outcome.t === "stop" && stoppedBySignal
-            ? "interrompue"
-            : "echouee";
+            ? "interrupted"
+            : "failed";
     const run: Execution = {
       version: 1,
       id: idExecution(start),
@@ -325,7 +325,7 @@ export async function runWorkflow(
   });
   // Safety net: the caller measures before (`startTooBig`) to refuse without writing anything; the harvester would refuse the line.
   if (replay && Buffer.byteLength(startLine) > LINE_MAX_BYTES) {
-    return conclude({ t: "stop", status: "erreur", error: REPLAY_TOO_BIG });
+    return conclude({ t: "stop", status: "error", error: REPLAY_TOO_BIG });
   }
 
   // A container of the same name left by an abrupt stop would make `docker run` fail (125); the queues only launch
@@ -334,7 +334,7 @@ export async function runWorkflow(
   // Stopped before even leaving: nothing is launched.
   if (ctx.signal?.aborted) {
     stoppedBySignal = true;
-    return conclude({ t: "stop", status: "erreur", error: ACTION_STOPPED });
+    return conclude({ t: "stop", status: "error", error: ACTION_STOPPED });
   }
 
   let process: HarvestProcess;
@@ -342,7 +342,7 @@ export async function runWorkflow(
     const [cmd, ...argv] = infra.workshop.harvestCommand(ctx.owner, ctx.filesFolder, infra.engine, delays.containerS);
     process = (infra.launch ?? defaultLaunch)(cmd!, argv);
   } catch (e) {
-    return conclude({ t: "stop", status: "erreur", error: `Récolte impossible à lancer : ${message(e)}` });
+    return conclude({ t: "stop", status: "error", error: `Récolte impossible à lancer : ${message(e)}` });
   }
 
   let stop: Stop | null = null;
@@ -396,11 +396,11 @@ export async function runWorkflow(
     runEnd.abort(new Error("Exécution arrêtée"));
     process.kill();
   };
-  const timer = setTimeout(() => stopRun({ status: "erreur", error: "Délai dépassé" }), infra.delayMs ?? delays.kernelMs);
+  const timer = setTimeout(() => stopRun({ status: "error", error: "Délai dépassé" }), infra.delayMs ?? delays.kernelMs);
   const onSignal = () => {
     if (stop) return;
     stoppedBySignal = true;
-    stopRun({ status: "erreur", error: ACTION_STOPPED });
+    stopRun({ status: "error", error: ACTION_STOPPED });
   };
   ctx.signal?.addEventListener("abort", onSignal, { once: true });
 
@@ -455,7 +455,7 @@ export async function runWorkflow(
     const u = checkUrl(url, ctx.sources.account, localUrls);
     const grant = await ctx.grant();
     if (!grant) {
-      stopRun({ status: "accord-requis", error: ctx.grantRequiredMessage });
+      stopRun({ status: "grant-required", error: ctx.grantRequiredMessage });
       return NO_RESPONSE;
     }
     if (stop) return NO_RESPONSE;
@@ -469,7 +469,7 @@ export async function runWorkflow(
         try {
           await ctx.onProfileDenied();
         } finally {
-          stopRun({ status: "accord-requis", error: PROFILE_DENIED });
+          stopRun({ status: "grant-required", error: PROFILE_DENIED });
         }
         return NO_RESPONSE;
       }
@@ -700,7 +700,7 @@ export async function runWorkflow(
     let startLine = 0;
     for (let i = d.indexOf(10); i >= 0; i = d.indexOf(10, startLine)) {
       const chunk = d.subarray(startLine, i);
-      if (size + chunk.length > LINE_MAX_BYTES) return stopRun({ status: "erreur", error: "Réponse trop grande" });
+      if (size + chunk.length > LINE_MAX_BYTES) return stopRun({ status: "error", error: "Réponse trop grande" });
       const line = Buffer.concat([...buffer, chunk]).toString("utf8");
       buffer = [];
       size = 0;
@@ -711,7 +711,7 @@ export async function runWorkflow(
     const rest = d.subarray(startLine);
     if (!rest.length) return;
     size += rest.length;
-    if (size > LINE_MAX_BYTES) return stopRun({ status: "erreur", error: "Réponse trop grande" });
+    if (size > LINE_MAX_BYTES) return stopRun({ status: "error", error: "Réponse trop grande" });
     buffer.push(Buffer.from(rest));
   });
 

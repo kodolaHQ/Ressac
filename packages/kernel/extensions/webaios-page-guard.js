@@ -1,10 +1,10 @@
 // WebAiOs: guard of the content scripts of the agent's extensions (passwords, context, network). Task 13 of plan 12.
 //
 // Runs in the extension's isolated world, before its scripts. A content script of the agent (manifest or
-// `scripting.registerContentScripts`) only declares WebAiOs files: `webaios-correctifs-page.js`, this guard,
-// `webaios-portee.js` (the granted scope), then one marker per agent file (`webaios-fichiers/<n>.js`, which calls
-// `__webaiosFichier(n)`). The guard then asks the background: `chrome.runtime.sendMessage({ webaios: "contexte",
-// fichiers })`. The background guard asks the main process whether the sender is a tab view (never an invisible
+// `scripting.registerContentScripts`) only declares WebAiOs files: `webaios-page-fixes.js`, this guard,
+// `webaios-scope.js` (the granted scope), then one marker per agent file (`webaios-files/<n>.js`, which calls
+// `__webaiosFile(n)`). The guard then asks the background: `chrome.runtime.sendMessage({ webaios: "context",
+// files })`. The background guard asks the main process whether the sender is a tab view (never an invisible
 // read); only then does it inject these files, CSS then JS, into the exact document that asked, through
 // `scripting` (in this same world, after this guard). Nothing of the agent is pasted into a WebAiOs file: there is
 // no wrapper to close. Consequence: `run_at` becomes "after the answer" (a round trip to the background), and without an
@@ -59,7 +59,7 @@
   const g = globalThis;
   const descripteur = Object.getOwnPropertyDescriptor;
   // Already set in this world (another entry, executeScript): own property, which a named element of the page does not make.
-  if (descripteur(g, "__webaiosFichier")) return;
+  if (descripteur(g, "__webaiosFile")) return;
   const appliquer = Reflect.apply;
   const construire = Reflect.construct;
   const definir = Object.defineProperty;
@@ -121,10 +121,10 @@
     }
     return r;
   };
-  figerSur(g, "__webaiosPortee", (p) => {
+  figerSur(g, "__webaiosScope", (p) => {
     if (portee !== null || p === null || typeof p !== "object") return;
-    const reseau = descripteur(p, "reseau");
-    const hotes = descripteur(p, "hotes");
+    const reseau = descripteur(p, "network");
+    const hotes = descripteur(p, "hosts");
     portee = { __proto__: null, reseau: chaines(reseau && reseau.value), hotes: chaines(hotes && hotes.value) };
   });
   const c = g.chrome;
@@ -140,7 +140,7 @@
     return m && typeof m.value === "string" ? m.value : "erreur inconnue";
   };
 
-  // The markers (`webaios-fichiers/<n>.js`) deposit the index of each agent file; once the task is done, the
+  // The markers (`webaios-files/<n>.js`) deposit the index of each agent file; once the task is done, the
   // guard asks the background to inject them. The requests go one after the other (the order of the files is kept).
   const aDemander = [];
   let prevu = false;
@@ -174,11 +174,11 @@
       };
       try {
         appliquer(envoyer, runtime, [
-          { __proto__: null, webaios: "contexte", fichiers: lot },
+          { __proto__: null, webaios: "context", files: lot },
           (r) => {
             // Read during the callback: otherwise Chromium writes "Unchecked runtime.lastError".
             const erreur = derniereErreur();
-            const d = r !== null && typeof r === "object" ? descripteur(r, "onglet") : undefined;
+            const d = r !== null && typeof r === "object" ? descripteur(r, "tab") : undefined;
             if (d && "value" in d) return finir();
             relancer(erreur || "pas de réponse du fond");
           },
@@ -189,7 +189,7 @@
     };
     essayer();
   };
-  figerSur(g, "__webaiosFichier", (n) => {
+  figerSur(g, "__webaiosFile", (n) => {
     if (typeof n !== "number") return;
     aDemander[aDemander.length] = n;
     if (prevu) return;

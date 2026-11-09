@@ -5,7 +5,7 @@
 
 const { setTimeout } = ChromeUtils.importESModule("resource://gre/modules/Timer.sys.mjs");
 
-const UI_PREFIXES = ["chrome://browser/content/webaios/", "resource://webaios-widget-", "resource://webaios-composant-", "resource://webaios-site-"];
+const UI_PREFIXES = ["chrome://browser/content/webaios/", "resource://webaios-widget-", "resource://webaios-component-", "resource://webaios-site-"];
 const BLOCKED_SCHEMES = new Set(["http", "https", "ws", "wss"]);
 
 /** policy: off | log | reject; observer: off | log | cancel; webrtc: off | deny. */

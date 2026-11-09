@@ -1,24 +1,24 @@
 // WebAiOs: guard of the service worker and the pages of the agent's extensions (DNR, scripting, tabs, context).
-// Loaded before the original script by webaios-fond.js and as the first script of each HTML page (classic script or
-// module: no top-level declaration, except the `__webaiosFichiers` table that the copy writes at the top). Task 12 of plan 12 (task 13 adds the frame guard to it).
+// Loaded before the original script by webaios-background.js and as the first script of each HTML page (classic script or
+// module: no top-level declaration, except the `__webaiosFiles` table that the copy writes at the top). Task 12 of plan 12 (task 13 adds the frame guard to it).
 //
 // - Dynamic and session DNR rules: `redirect`, `modifyHeaders`, `regexSubstitution`, `transform` refused.
 // - `tabs.create`, `tabs.update`, `windows.create`: the address is first submitted to the main process
-//   (`globalThis.__webaios.urlPermise`, set by the fixes' preload), which checks again on opening.
+//   (`globalThis.__webaios.urlAllowed`, set by the fixes' preload), which checks again on opening.
 // - `scripting.executeScript` / `insertCSS`, `tabs.executeScript` / `insertCSS`: the target tab must be a tab
-//   view (`__webaios.estOnglet`: never an invisible read) and a site of the granted hosts (`__webaios.hotePermis`);
+//   view (`__webaios.isTab`: never an invisible read) and a site of the granted hosts (`__webaios.hostAllowed`);
 //   these native calls have no other checkpoint. `target.documentIds` is refused (the guard would not know which
 //   tab is targeted), `world: "MAIN"` too (out of reach of the page guard). The named files must be, byte
-//   for byte, agent files listed by the copy (`__webaiosFichiers`, written at the top of this file): no
+//   for byte, agent files listed by the copy (`__webaiosFiles`, written at the top of this file): no
 //   `..`, no absolute path, no WebAiOs file. `executeScript` (and `tabs.executeScript`) first injects
-//   `webaios-correctifs-page.js`, `webaios-garde-page.js` and `webaios-portee.js`; with `func`, these files first,
+//   `webaios-page-fixes.js`, `webaios-page-guard.js` and `webaios-scope.js`; with `func`, these files first,
 //   then the function in the documents that received them (`documentIds` returned by the first call; a missing id:
 //   refusal, no fallback).
 // - `scripting.registerContentScripts` / `updateContentScripts`: like the copied manifest's entries, they only register
-//   the guards then markers (`webaios-fichiers/<n>.js`, CSS first); `getRegisteredContentScripts` returns the
+//   the guards then markers (`webaios-files/<n>.js`, CSS first); `getRegisteredContentScripts` returns the
 //   agent's files, and an update of only one of `js` / `css` takes the other from the current registration.
 // - `runtime.onMessage`: in the service worker only (an open page of the extension would inject a second
-//   time), answers `{ webaios: "contexte", fichiers }` (the page guard) with `{ onglet }`; if it is a tab, first injects, through the captured native functions, the CSS then the JS (guards first) of these markers into the
+//   time), answers `{ webaios: "context", files }` (the page guard) with `{ tab }`; if it is a tab, first injects, through the captured native functions, the CSS then the JS (guards first) of these markers into the
 //   exact document of the sender (`documentIds`, otherwise its frame). The extension's listeners never see this
 //   message (they cannot answer in the guard's place).
 // - WebRTC removed.
@@ -54,9 +54,9 @@
   const w = g.__webaios;
   if (!c) return;
   // Captured now: the extension can no longer replace them afterwards for the guard.
-  const urlPermiseNatif = w && typeof w.urlPermise === "function" ? w.urlPermise : null;
-  const hotePermisNatif = w && typeof w.hotePermis === "function" ? w.hotePermis : null;
-  const estOngletNatif = w && typeof w.estOnglet === "function" ? w.estOnglet : null;
+  const urlPermiseNatif = w && typeof w.urlAllowed === "function" ? w.urlAllowed : null;
+  const hotePermisNatif = w && typeof w.hostAllowed === "function" ? w.hostAllowed : null;
+  const estOngletNatif = w && typeof w.isTab === "function" ? w.isTab : null;
   const WM = WeakMap;
   const wmGet = WeakMap.prototype.get;
   const wmSet = WeakMap.prototype.set;
@@ -323,13 +323,13 @@
 
   // --- Scripts and styles placed in a tab
   const ONGLET_REFUSE = "Onglet refusé par WebAiOs";
-  const GARDES_PAGE = ["webaios-correctifs-page.js", "webaios-garde-page.js", "webaios-portee.js"];
-  const REPERES = "webaios-fichiers/";
+  const GARDES_PAGE = ["webaios-page-fixes.js", "webaios-page-guard.js", "webaios-scope.js"];
+  const REPERES = "webaios-files/";
   // The table written by the copy at the top of this file: every .js and .css of the agent, the index is its marker. The
   // paths are compared as they are to this list (key in an object without a prototype): no splitting, no
   // normalization by a method the extension could replace. Without a table (outside the copy), no file is allowed.
   // eslint-disable-next-line no-undef
-  const tableBrute = typeof __webaiosFichiers !== "undefined" && estListe(__webaiosFichiers) ? __webaiosFichiers : [];
+  const tableBrute = typeof __webaiosFiles !== "undefined" && estListe(__webaiosFiles) ? __webaiosFiles : [];
   // Without a prototype, and read only for an integer within its bounds: an index outside the table never reads
   // `Object.prototype` or `Array.prototype` (which the extension can fill).
   const table = creer(null);
@@ -699,7 +699,7 @@
     const estContexte = (m) => {
       if (m === null || typeof m !== "object") return false;
       const d = descripteur(m, "webaios");
-      return !!d && descripteur(d, "value") !== undefined && d.value === "contexte";
+      return !!d && descripteur(d, "value") !== undefined && d.value === "context";
     };
     // The first listener: set before any extension script, in the service worker only. In a page, the
     // message is only hidden from the extension's listeners (below), with no answer.
@@ -708,7 +708,7 @@
         if (!estContexte(m)) return undefined;
         const reponse = (v) => {
           try {
-            repondre({ onglet: v === true });
+            repondre({ tab: v === true });
           } catch {
             // The content script is gone.
           }
@@ -723,7 +723,7 @@
         // The requested markers: indexes of the table, CSS and JS separate in their order.
         const css = [];
         const js = [];
-        const demandes = lirePropre(m, "fichiers");
+        const demandes = lirePropre(m, "files");
         if (demandes !== TROU && demandes !== undefined) {
           let liste;
           try {

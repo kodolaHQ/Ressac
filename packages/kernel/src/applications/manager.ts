@@ -13,12 +13,12 @@ const ERROR_LINES = 20;
 export const NO_PORT_LEFT_MESSAGE = "Plus de port libre : arrête une application.";
 
 /** `preparation`: the container starts. */
-export type AppState = "arretee" | "preparation" | "lancement" | "en-marche" | "erreur";
+export type AppState = "stopped" | "preparing" | "launching" | "running" | "error";
 
 export interface Application {
   folder: string;
   name: string;
-  type: "application" | "poc" | "sans-fiche";
+  type: "app" | "poc" | "no-manifest";
   origin?: string;
   noManifest?: string;
   createdAt: string;
@@ -140,7 +140,7 @@ export class ApplicationManager {
 
   /** In-memory state of an app, without reading the disk. */
   stateOf(folder: string): AppState {
-    return this.tracked.get(folder)?.state ?? "arretee";
+    return this.tracked.get(folder)?.state ?? "stopped";
   }
 
   async list(): Promise<Application[]> {
@@ -155,8 +155,8 @@ export class ApplicationManager {
       createdAt: p.createdAt,
       ...("manifest" in p
         ? { type: p.manifest.type, ...(p.manifest.origin ? { origin: p.manifest.origin } : {}) }
-        : { type: "sans-fiche" as const, noManifest: p.noManifest }),
-      state: s?.state ?? "arretee",
+        : { type: "no-manifest" as const, noManifest: p.noManifest }),
+      state: s?.state ?? "stopped",
       ...(s?.port !== undefined ? { port: s.port } : {}),
       ...(s?.error !== undefined ? { error: s.error } : {}),
     };
@@ -182,7 +182,7 @@ export class ApplicationManager {
     // Restart: internal stop of the current instance, which does not count as a requested stop.
     if (this.tracked.get(folder)?.launch) await this.stopLaunch(folder);
     if ((this.stops.get(folder) ?? 0) !== token) {
-      if (this.stateOf(folder) !== "arretee") this.change(folder, { state: "arretee" });
+      if (this.stateOf(folder) !== "stopped") this.change(folder, { state: "stopped" });
       return this.view(project);
     }
 
@@ -198,21 +198,21 @@ export class ApplicationManager {
       let state = await this.workshop.state();
       if (l.stop) return this.view(project);
       if (state !== "docker-absent" && state !== "demarre") {
-        this.change(folder, { state: "preparation", launch: l });
+        this.change(folder, { state: "preparing", launch: l });
         state = await this.workshop.ensureStarted();
         if (l.stop) return this.view(project);
       }
-      if (state === "docker-absent") return end({ state: "erreur", error: "Docker n'est pas lancé." });
+      if (state === "docker-absent") return end({ state: "error", error: "Docker n'est pas lancé." });
     } catch (e) {
-      return end({ state: "erreur", error: (e as Error).message });
+      return end({ state: "error", error: (e as Error).message });
     }
 
     await Promise.all([this.paced, this.stopsRunning.get(folder)].map((p) => p?.catch(() => {})));
     if (l.stop) return this.view(project);
     const port = await this.choosePort();
     if (l.stop) return this.view(project);
-    if (port === null) return end({ state: "erreur", error: NO_PORT_LEFT_MESSAGE });
-    this.change(folder, { state: "lancement", port, launch: l });
+    if (port === null) return end({ state: "error", error: NO_PORT_LEFT_MESSAGE });
+    this.change(folder, { state: "launching", port, launch: l });
 
     const outcome = new Promise<Outcome>((r) => (l.wake = r));
     l.process = this.launcher(this.workshop.appCommand(folder, project.manifest.launch, port));
@@ -240,7 +240,7 @@ export class ApplicationManager {
       case "arret":
         return this.view(project);
       case "pret":
-        return end({ state: "en-marche", port, launch: l });
+        return end({ state: "running", port, launch: l });
       case "fin":
         await this.unexpectedEnd(folder, l, i.code);
         return this.view(project);
@@ -249,7 +249,7 @@ export class ApplicationManager {
         if (l.stop) return this.view(project);
         // Stop requested before killing: the end of the process does not replace this message.
         l.stop = true;
-        this.change(folder, { state: "erreur", error: error });
+        this.change(folder, { state: "error", error: error });
         await this.workshop.stopApp(folder);
         l.process.kill();
         return this.view(project);
@@ -262,7 +262,7 @@ export class ApplicationManager {
     const error = await this.withLog(folder, `Arrêtée avec le code ${code ?? "inconnu"}`);
     if (l.stop || this.tracked.get(folder)?.launch !== l) return;
     l.stop = true;
-    this.change(folder, { state: "erreur", error: error });
+    this.change(folder, { state: "error", error: error });
   }
 
   private async withLog(folder: string, message: string): Promise<string> {
@@ -273,7 +273,7 @@ export class ApplicationManager {
   /** First port of the range neither taken by a tracked app nor busy on the machine. */
   private async choosePort(): Promise<number | null> {
     const taken = (p: number) =>
-      [...this.tracked.values()].some((s) => s.port === p && (s.state === "lancement" || s.state === "en-marche"));
+      [...this.tracked.values()].some((s) => s.port === p && (s.state === "launching" || s.state === "running"));
     for (let p = this.ports[0]; p <= this.ports[1]; p++) {
       if (taken(p)) continue;
       const r = await this.probe(p);
@@ -293,7 +293,7 @@ export class ApplicationManager {
     const l = this.tracked.get(folder)?.launch;
     if (!l) return;
     l.stop = true;
-    this.change(folder, { state: "arretee" });
+    this.change(folder, { state: "stopped" });
     l.wake?.({ type: "arret" });
     const stop = this.workshop.stopApp(folder);
     this.stopsRunning.set(folder, stop);

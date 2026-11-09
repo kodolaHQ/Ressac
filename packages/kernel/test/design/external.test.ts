@@ -31,7 +31,7 @@ describe("ExternalRegistry", () => {
     expect(r.tokenClient(token)?.id).toBe(client.id);
     expect(r.tokenClient("autre")).toBeNull();
     expect(r.tokenClient("")).toBeNull();
-    const raw = await readFile(join(c.private, "clients-externes.json"), "utf8");
+    const raw = await readFile(join(c.private, "external-clients.json"), "utf8");
     expect(raw).not.toContain(token);
     expect(raw).toContain(client.hash);
     expect((await r.connect("  ")).client.name).toBe("Claude Code");
@@ -44,8 +44,8 @@ describe("ExternalRegistry", () => {
     const r = await ExternalRegistry.open(c.private);
     const { client } = await r.connect("x");
     await r.declare(client.id, { folder: await c.project("p"), ports: [4321] }, c.options);
-    expect((await stat(join(c.private, "clients-externes.json"))).mode & 0o777).toBe(0o600);
-    expect((await stat(join(c.private, "projets-externes.json"))).mode & 0o777).toBe(0o600);
+    expect((await stat(join(c.private, "external-clients.json"))).mode & 0o777).toBe(0o600);
+    expect((await stat(join(c.private, "external-projects.json"))).mode & 0o777).toBe(0o600);
     expect((await stat(c.private)).mode & 0o777).toBe(0o700);
   });
 
@@ -73,7 +73,7 @@ describe("ExternalRegistry", () => {
     await expect(denial("/")).rejects.toThrow(FOLDER_TOO_LARGE);
     await expect(denial(c.home)).rejects.toThrow(FOLDER_TOO_LARGE);
     await expect(denial(c.spaceRoot)).rejects.toThrow(SPACE_FOLDER);
-    const sub = join(c.spaceRoot, "projets", "x");
+    const sub = join(c.spaceRoot, "projects", "x");
     await mkdir(sub, { recursive: true });
     await expect(denial(sub)).rejects.toThrow(SPACE_FOLDER);
     const dotdot = join(c.spaceRoot, "..x", "p");
@@ -151,11 +151,11 @@ describe("ExternalRegistry", () => {
     } finally { await chmod(folder, 0o700); }
   });
 
-  test("a clients-externes.json under racineEspace/.webaios is never read", async () => {
+  test("a external-clients.json under racineEspace/.webaios is never read", async () => {
     const c = await frame();
     const token = "jeton-pose-par-l-agent";
     await mkdir(join(c.spaceRoot, ".webaios"), { recursive: true });
-    await writeFile(join(c.spaceRoot, ".webaios", "clients-externes.json"), JSON.stringify([
+    await writeFile(join(c.spaceRoot, ".webaios", "external-clients.json"), JSON.stringify([
       { id: "pirate", name: "p", hash: createHash("sha256").update(token).digest("hex"), created: "2026-11-02T10:00:00Z" },
     ]));
     const r = await ExternalRegistry.open(c.private);
@@ -163,13 +163,13 @@ describe("ExternalRegistry", () => {
     expect(r.tokenClient(token)).toBeNull();
   });
 
-  test("an unreadable file is copied to .abime-<date> and the registry starts empty again", async () => {
+  test("an unreadable file is copied to .damaged-<date> and the registry starts empty again", async () => {
     const c = await frame();
     await mkdir(c.private, { recursive: true });
-    await writeFile(join(c.private, "projets-externes.json"), "{pas du json");
+    await writeFile(join(c.private, "external-projects.json"), "{pas du json");
     const r = await ExternalRegistry.open(c.private);
     expect(r.projects()).toEqual([]);
-    expect((await readdir(c.private)).some((f) => f.startsWith("projets-externes.json.abime-"))).toBe(true);
+    expect((await readdir(c.private)).some((f) => f.startsWith("external-projects.json.damaged-"))).toBe(true);
   });
 
   test("oublier removes the project; surChange is called after each write", async () => {
@@ -191,7 +191,7 @@ describe("ExternalRegistry", () => {
     const c = await frame();
     const r = await ExternalRegistry.open(c.private);
     const { client, token: token } = await r.connect("x");
-    const file = join(c.private, "clients-externes.json");
+    const file = join(c.private, "external-clients.json");
     const content = await readFile(file, "utf8");
     await rm(file);
     await mkdir(join(file, "bloque"), { recursive: true }); // the file's rename on this folder fails

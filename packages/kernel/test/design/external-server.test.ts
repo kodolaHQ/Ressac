@@ -30,7 +30,7 @@ afterEach(async () => {
 
 async function frame() {
   const base = await tempFolder();
-  const folders: DesignFolders = { spaceRemarks: join(base, "WebAiOs/.webaios/remarques"), private: join(base, "design") };
+  const folders: DesignFolders = { spaceRemarks: join(base, "WebAiOs/.webaios/remarks"), private: join(base, "design") };
   const homeDir = join(base, "maison");
   const spaceRoot = join(base, "WebAiOs");
   await mkdir(homeDir, { recursive: true });
@@ -181,7 +181,7 @@ describe("serveur MCP externe", () => {
     const id = externalProject((await k.registry.projectOf(client.id, folder))!.id);
     await k.remarks.sendReview(id, [{ text: "Pourquoi ?", context: rel }], { destination: "mcp", client: client.id });
     const t = text(await call(c, "read_remarks", { folder: folder }));
-    expect(t).toContain("(relecture, lot ");
+    expect(t).toContain("(review, lot ");
     expect(t).toContain('Fichier : "a.ts", lignes 2–3');
     expect(t).toContain("+const x = 1;");
   });
@@ -200,7 +200,7 @@ describe("serveur MCP externe", () => {
     expect(text(await call(b.c, "mark_handled", { folder: folder, ids: [e.id] }))).toBe(undeclaredProject(folder));
     const after = (await k.remarks.batches(id))[0]!;
     expect(after.read).toBeUndefined();
-    expect(batchState(after)).toBe("en-attente");
+    expect(batchState(after)).toBe("pending");
     expect(after.id).toBe(batch.id);
   });
 
@@ -214,12 +214,12 @@ describe("serveur MCP externe", () => {
     const e2 = await k.remarks.addToBasket(id, { text: "b", context: ctx(), capture: null });
     await k.remarks.sendBasket(id, { destination: "mcp", client: client.id });
     await call(c, "read_remarks", { folder: folder });
-    expect(batchState((await k.remarks.batches(id))[0]!)).toBe("lu");
+    expect(batchState((await k.remarks.batches(id))[0]!)).toBe("read");
     const r = await call(c, "mark_handled", { folder: folder, ids: [e1.id, e2.id, "e-00000000"], note: "fait" });
     expect(text(r)).toContain("2 élément(s) marqué(s) traité(s).");
     expect(text(r)).toContain("e-00000000");
     const batch = (await k.remarks.batches(id))[0]!;
-    expect(batchState(batch)).toBe("traite");
+    expect(batchState(batch)).toBe("handled");
     expect(batch.items[0]!.handled?.note).toBe("fait");
     expect(text(await call(c, "read_remarks", { folder: folder }))).toBe(NO_REMARK);
   });

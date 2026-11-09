@@ -90,7 +90,7 @@ export class FileActions {
 
   /** Builder trial: replays from `depart` with the upstream outputs of run `origine`. */
   try(id: string, origin: string, start: string): ActionLaunch {
-    return this.ask(id, { input: null, trigger: "rejeu", attempt: { origin: origin, start: start } });
+    return this.ask(id, { input: null, trigger: "replay", attempt: { origin: origin, start: start } });
   }
 
   /** Stops this action's run (or removes it from the queue); false if it neither runs nor waits. */
@@ -149,7 +149,7 @@ export class FileActions {
 
   /** Stopped before running: nothing is written. */
   private stopped(): LaunchResult {
-    return { status: "interrompue", error: this.isStopped ? INTERRUPTED_ERROR : ACTION_STOPPED, kernelError: true };
+    return { status: "interrupted", error: this.isStopped ? INTERRUPTED_ERROR : ACTION_STOPPED, kernelError: true };
   }
 
   private async unroll(d: Request): Promise<LaunchResult> {
@@ -165,7 +165,7 @@ export class FileActions {
     } catch (e) {
       // The exception text may quote what the action read: only a fixed kernel message is returned.
       console.error(`[webaios] action ${d.id} :`, e);
-      return { status: "echouee", error: INTERNAL_ACTION_ERROR, kernelError: true };
+      return { status: "failed", error: INTERNAL_ACTION_ERROR, kernelError: true };
     }
   }
 
@@ -202,7 +202,7 @@ export class FileActions {
     d.direct = tracking;
     this.signalDirect();
     if ((await this.o.workshop.state().catch(() => "absent")) !== "demarre") {
-      return { status: "echouee", error: WORKSHOP_STOPPED_ERROR, kernelError: true };
+      return { status: "failed", error: WORKSHOP_STOPPED_ERROR, kernelError: true };
     }
     const onTrace = (t: TraceAction) => {
       if (d.direct !== tracking) return;

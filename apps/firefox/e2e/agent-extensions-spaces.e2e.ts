@@ -46,7 +46,7 @@ async function launch(prepare: (root: string, dataDir: string) => void = () => {
   const dataDir = mkdtempSync(path.join(os.tmpdir(), "webaios-data-"));
   const profile = mkdtempSync(path.join(os.tmpdir(), "webaios-firefox-"));
   dirs.push(dataDir, profile);
-  const root = path.join(dataDir, "espace");
+  const root = path.join(dataDir, "workspace");
   prepare(root, dataDir);
   const w = await launchWithAmo({ dataDir, profile });
   opened.push(w);
@@ -60,7 +60,7 @@ async function launch(prepare: (root: string, dataDir: string) => void = () => {
 }
 
 const registry = (dataDir: string) => {
-  const f = path.join(dataDir, "extensions", "etat.json");
+  const f = path.join(dataDir, "extensions", "state.json");
   return existsSync(f) ? (JSON.parse(readFileSync(f, "utf8")) as { extensions: Record<string, { profiles: string[]; addonId: string | null }> }).extensions : {};
 };
 /** The agent's add-on `id` installed and active (or not) in Firefox. */

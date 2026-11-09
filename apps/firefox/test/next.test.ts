@@ -42,7 +42,7 @@ test("minutes and hours: the nearest of the two (derniereMaj + minutes, or the n
 // after the last attempt (or the end of the failure), never « now ».
 const iso = (h: number, m = 0) => a(h, m).toISOString();
 const inError = (lastAttempt: string | null, hours?: { done: string | null; failures: { hour: string; count: number; end?: string } | null }) => ({
-  status: "erreur" as const,
+  status: "error" as const,
   lastAttempt: lastAttempt,
   ...(hours ? { hours: hours } : {}),
 });

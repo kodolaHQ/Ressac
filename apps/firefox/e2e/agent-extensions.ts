@@ -5,11 +5,11 @@ import { dispatch, state, waitFor } from "./firefox";
 import { launchWebAiOs, type LaunchedWebAiOs } from "./launch";
 import type { Marionette } from "./marionette";
 
-/** Writes `<dataDir>/extensions/etat.json` (WebAiOs's registry) with a grant on `agent:<id>`, before a launch. */
+/** Writes `<dataDir>/extensions/state.json` (WebAiOs's registry) with a grant on `agent:<id>`, before a launch. */
 export function grant(dataDir: string, id: string, grant: unknown, profiles: string[] = ["defaut"]): void {
   mkdirSync(path.join(dataDir, "extensions"), { recursive: true });
   const entry = { source: "agent", addonId: null, name: id, version: "1.0.0", grant: grant, profiles: profiles, pinned: false, modifiedAt: null, disabled: null, pendingUpdate: null, seenVersions: {} };
-  writeFileSync(path.join(dataDir, "extensions", "etat.json"), JSON.stringify({ version: 1, allCut: false, extensions: { [`agent:${id}`]: entry } }));
+  writeFileSync(path.join(dataDir, "extensions", "state.json"), JSON.stringify({ version: 1, allCut: false, extensions: { [`agent:${id}`]: entry } }));
 }
 
 export type FakeAmo = Awaited<ReturnType<typeof startFakeAmo>>;

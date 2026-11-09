@@ -56,12 +56,12 @@ test("agentAllowedHost: only the granted hosts (not reseau)", () => {
   expect(agentAllowedHost("about:blank", grant)).toBe(false);
 });
 
-// --- The guard (packages/kernel/extensions/webaios-garde-fond.js), run in a separate context.
+// --- The guard (packages/kernel/extensions/webaios-background-guard.js), run in a separate context.
 
-const pathGuard = join(import.meta.dirname, "..", "..", "..", "..", "packages", "kernel", "extensions", "webaios-garde-fond.js");
+const pathGuard = join(import.meta.dirname, "..", "..", "..", "..", "packages", "kernel", "extensions", "webaios-background-guard.js");
 
 /** The table the copy puts at the head of the background guard: the agent's .js and .css files (the index is the marker). */
-const TABLE = `const __webaiosFichiers = ${JSON.stringify([["a.js", "js"], ["b.js", "js"], ["c/d.js", "js"], ["s.css", "css"], ["x.js", "js"]])};\n`;
+const TABLE = `const __webaiosFiles = ${JSON.stringify([["a.js", "js"], ["b.js", "js"], ["c/d.js", "js"], ["s.css", "css"], ["x.js", "js"]])};\n`;
 
 function guardContext(
   allowed: { urls?: string[]; tabs?: number[]; nonTabs?: number[] } = {},
@@ -244,8 +244,8 @@ test("guard: Object.prototype.get or .value added after its load break neither t
   const ctx = createContext({});
   runInContext(
     `globalThis.chrome = { runtime: {}, declarativeNetRequest: {
-       updateDynamicRules(o) { __noter(JSON.stringify(o)); return Promise.resolve("natif"); },
-       updateSessionRules(o) { __noter(JSON.stringify(o)); return Promise.resolve("natif"); } } };`,
+       updateDynamicRules(o) { __note(JSON.stringify(o)); return Promise.resolve("natif"); },
+       updateSessionRules(o) { __note(JSON.stringify(o)); return Promise.resolve("natif"); } } };`,
     Object.assign(ctx, { __note: (x: string) => received.push(JSON.parse(x)) }),
   );
   runInContext(readFileSync(pathGuard, "utf8"), ctx);
@@ -255,7 +255,7 @@ test("guard: Object.prototype.get or .value added after its load break neither t
       Object.prototype.value = "pollue";
       const r = {};
       try { await chrome.declarativeNetRequest.updateDynamicRules({ addRules: [{ id: 2, action: { type: "block" } }] }); r.block = "acceptee"; } catch (e) { r.block = e.message; }
-      r.rappel = await new Promise((ok) => chrome.declarativeNetRequest.updateDynamicRules({ addRules: [{ id: 1, action: { type: "redirect" } }] }, () => ok(chrome.runtime.lastError && chrome.runtime.lastError.message)));
+      r.callback = await new Promise((ok) => chrome.declarativeNetRequest.updateDynamicRules({ addRules: [{ id: 1, action: { type: "redirect" } }] }, () => ok(chrome.runtime.lastError && chrome.runtime.lastError.message)));
       delete Object.prototype.get;
       delete Object.prototype.value;
       return r;
@@ -271,9 +271,9 @@ test("guard: a sparse list is refused (an accessor on Array.prototype[0] is neve
   const ctx = createContext({});
   runInContext(
     `globalThis.chrome = { runtime: {}, declarativeNetRequest: {
-       updateDynamicRules(o) { __noter(JSON.stringify(o)); return Promise.resolve("natif"); },
-       updateSessionRules(o) { __noter(JSON.stringify(o)); return Promise.resolve("natif"); } },
-       tabs: { create(o) { __noter(JSON.stringify(o)); return Promise.resolve({ id: 1 }); } } };`,
+       updateDynamicRules(o) { __note(JSON.stringify(o)); return Promise.resolve("natif"); },
+       updateSessionRules(o) { __note(JSON.stringify(o)); return Promise.resolve("natif"); } },
+       tabs: { create(o) { __note(JSON.stringify(o)); return Promise.resolve({ id: 1 }); } } };`,
     Object.assign(ctx, { __note: (x: string) => received.push(JSON.parse(x)) }),
   );
   runInContext(readFileSync(pathGuard, "utf8"), ctx);
@@ -293,7 +293,7 @@ test("guard: a sparse list is refused (an accessor on Array.prototype[0] is neve
       try { await chrome.tabs.create({ url: undefined, liste: autres }); r.tabs = "acceptee"; } catch (e) { r.tabs = e.message; }
       delete Array.prototype[0];
       await chrome.declarativeNetRequest.updateDynamicRules({ addRules: [block, block] });
-      r.lus = lus;
+      r.read = lus;
       return r;
     })()`,
     ctx,
@@ -313,8 +313,8 @@ test("guard: replacing Promise.prototype.then, Function.prototype.apply, Array.i
   const ctx = createContext({});
   runInContext(
     `globalThis.chrome = { runtime: {}, declarativeNetRequest: {
-       updateDynamicRules(o) { __noter(JSON.stringify(o)); return Promise.resolve("natif"); },
-       updateSessionRules(o) { __noter(JSON.stringify(o)); return Promise.resolve("natif"); } } };`,
+       updateDynamicRules(o) { __note(JSON.stringify(o)); return Promise.resolve("natif"); },
+       updateSessionRules(o) { __note(JSON.stringify(o)); return Promise.resolve("natif"); } } };`,
     Object.assign(ctx, { __note: (x: string) => received.push(JSON.parse(x)) }),
   );
   runInContext(readFileSync(pathGuard, "utf8"), ctx);
@@ -341,7 +341,7 @@ test("guard: replacing Promise.prototype.then, Function.prototype.apply, Array.i
       }
       Promise.prototype.then = vrai;
       Function.prototype.apply = appliquer;
-      return { refus, voles: vole.length };
+      return { denial: refus, stolen: vole.length };
     })()`,
     ctx,
   );
@@ -351,8 +351,8 @@ test("guard: replacing Promise.prototype.then, Function.prototype.apply, Array.i
 
 // --- Task 13: scripts placed by the background, content scripts' context.
 
-const PAGE_GUARDS = ["webaios-correctifs-page.js", "webaios-garde-page.js", "webaios-portee.js"];
-const marker = (n: number) => `webaios-fichiers/${n}.js`;
+const PAGE_GUARDS = ["webaios-page-fixes.js", "webaios-page-guard.js", "webaios-scope.js"];
+const marker = (n: number) => `webaios-files/${n}.js`;
 
 test("guard: executeScript / insertCSS to a view that is not a tab (invisible read): « Onglet refusé par WebAiOs »; documentIds, world MAIN, without tabId: refused", async () => {
   const { chrome, calls: calls } = guardContext({ tabs: [4, 6], nonTabs: [6] });
@@ -380,7 +380,7 @@ test("guard: executeScript({ files }): only files from the table, guards first; 
     d.files ? [{ frameId: 0, ...(withoutDocument ? {} : { documentId: "D0" }) }, { frameId: 3, documentId: "D3" }] : [{ frameId: 0, result: 2 }],
   );
   const g = guardContext({ tabs: [4] }, { executeScript: native });
-  for (const f of ["inconnu.js", "../a.js", "/a.js", "./a.js", "s.css", "webaios-garde-page.js"]) {
+  for (const f of ["inconnu.js", "../a.js", "/a.js", "./a.js", "s.css", "webaios-page-guard.js"]) {
     await expect(g.chrome.scripting.executeScript({ target: { tabId: 4 }, files: [f] }), f).rejects.toThrow(`Arguments refusés par WebAiOs (fichier refusé : ${f})`);
   }
   expect(native).not.toHaveBeenCalled();
@@ -418,7 +418,7 @@ test("guard: registerContentScripts / updateContentScripts only register the gua
   // The extension poisons what a split would consult, then tries to get a file outside the table registered.
   // The prototype of the guard world's strings (the context's `String` is vitest's: not touched).
   runInContext('const S = "".__proto__; S[Symbol.split] = () => ["a.js"]; S.split = () => ["a.js"]; S.indexOf = () => -1; S.slice = () => "a.js";', ctx as object);
-  for (const js of ["../a.js", "x/../../a.js", "/a.js", "./a.js", "a\\b.js", "", "webaios-garde-page.js", "inconnu.js", "s.css"]) {
+  for (const js of ["../a.js", "x/../../a.js", "/a.js", "./a.js", "a\\b.js", "", "webaios-page-guard.js", "inconnu.js", "s.css"]) {
     await expect(chrome.scripting.registerContentScripts([{ id: "x", matches: ["https://hote.test/*"], js: [js] }]), js).rejects.toThrow(
       `Arguments refusés par WebAiOs (fichier refusé : ${js})`,
     );
@@ -460,7 +460,7 @@ test("guard: tabs.executeScript (MV2) first passes the page guards in the same f
 
 test("guard: on the context's request, the background injects the markers' files (CSS then JS, guards first) in the sender's exact document, only if it is a tab", async () => {
   const { chrome, calls: calls, emit: emit } = guardContext({ nonTabs: [6] });
-  expect(await emit({ webaios: "contexte", files: [3, 0, 2] }, { tab: { id: 4 }, frameId: 2, documentId: "D" })).toEqual({ tab: true });
+  expect(await emit({ webaios: "context", files: [3, 0, 2] }, { tab: { id: 4 }, frameId: 2, documentId: "D" })).toEqual({ tab: true });
   const target = { tabId: 4, documentIds: ["D"] };
   expect(calls).toEqual([
     ["scripting.insertCSS", [{ target, files: ["s.css"] }]],
@@ -468,14 +468,14 @@ test("guard: on the context's request, the background injects the markers' files
   ]);
   // Without documentId: the sender's frame.
   calls.length = 0;
-  expect(await emit({ webaios: "contexte", files: [0] }, { tab: { id: 4 }, frameId: 2 })).toEqual({ tab: true });
+  expect(await emit({ webaios: "context", files: [0] }, { tab: { id: 4 }, frameId: 2 })).toEqual({ tab: true });
   expect(calls).toEqual([["scripting.executeScript", [{ target: { tabId: 4, frameIds: [2] }, files: [...PAGE_GUARDS, "a.js"], injectImmediately: true }]]]);
   // An invisible read, an unknown marker, an index that is not a number: nothing is injected.
   calls.length = 0;
-  expect(await emit({ webaios: "contexte", files: [0, 3] }, { tab: { id: 6 }, frameId: 0, documentId: "I" })).toEqual({ tab: false });
-  expect(await emit({ webaios: "contexte", files: [99] }, { tab: { id: 4 }, frameId: 0, documentId: "D" })).toEqual({ tab: false });
-  expect(await emit({ webaios: "contexte", files: ["0"] }, { tab: { id: 4 }, frameId: 0, documentId: "D" })).toEqual({ tab: false });
-  expect(await emit({ webaios: "contexte", files: [0] }, {})).toEqual({ tab: false });
+  expect(await emit({ webaios: "context", files: [0, 3] }, { tab: { id: 6 }, frameId: 0, documentId: "I" })).toEqual({ tab: false });
+  expect(await emit({ webaios: "context", files: [99] }, { tab: { id: 4 }, frameId: 0, documentId: "D" })).toEqual({ tab: false });
+  expect(await emit({ webaios: "context", files: ["0"] }, { tab: { id: 4 }, frameId: 0, documentId: "D" })).toEqual({ tab: false });
+  expect(await emit({ webaios: "context", files: [0] }, {})).toEqual({ tab: false });
   expect(calls).toEqual([]);
 });
 
@@ -483,8 +483,8 @@ test("guard: in an agent page (popup, options), the context is neither answered 
   const { chrome, calls: calls, emit: emit } = guardContext({}, {}, { page: true });
   const seen: unknown[] = [];
   (chrome.runtime.onMessage as { addListener(f: unknown): void }).addListener((m: unknown) => void seen.push(m));
-  expect(await emit({ webaios: "contexte", files: [3, 0] }, { tab: { id: 4 }, frameId: 0, documentId: "D" })).toBe("aucune réponse");
-  expect(await emit({ webaios: "contexte" }, { tab: { id: 4 } })).toBe("aucune réponse");
+  expect(await emit({ webaios: "context", files: [3, 0] }, { tab: { id: 4 }, frameId: 0, documentId: "D" })).toBe("aucune réponse");
+  expect(await emit({ webaios: "context" }, { tab: { id: 4 } })).toBe("aucune réponse");
   expect(calls).toEqual([]);
   expect(seen).toEqual([]);
 });
@@ -494,12 +494,12 @@ test("guard: an index outside the table (poisoned prototypes, negative, fraction
   // In the guard's world: what `table[n]` would read through the prototype chain for an n outside the table.
   runInContext('const faux = { genre: "js", chemin: "hors-liste.js" }; ({}).__proto__[999] = faux; [].__proto__[5] = faux; ({}).__proto__["-1"] = faux; ({}).__proto__["1.5"] = faux;', ctx as object);
   for (const n of [999, 5, -1, 1.5]) {
-    expect(await emit({ webaios: "contexte", files: [n] }, { tab: { id: 4 }, frameId: 0, documentId: "D" }), String(n)).toEqual({ tab: false });
+    expect(await emit({ webaios: "context", files: [n] }, { tab: { id: 4 }, frameId: 0, documentId: "D" }), String(n)).toEqual({ tab: false });
   }
   expect(calls).toEqual([]);
 });
 
-test("guard: onMessage answers { webaios: \"contexte\" } with estOnglet(sender.tab.id); the agent's listeners never see that message", async () => {
+test("guard: onMessage answers { webaios: \"context\" } with isTab(sender.tab.id); the agent's listeners never see that message", async () => {
   const { chrome, emit: emit } = guardContext({ nonTabs: [6] });
   const seen: unknown[] = [];
   // The agent tries to answer « onglet » itself in the guard's place.
@@ -510,16 +510,16 @@ test("guard: onMessage answers { webaios: \"contexte\" } with estOnglet(sender.t
   const onMessage = chrome.runtime.onMessage as { addListener(f: unknown): void; removeListener(f: unknown): void; hasListener(f: unknown): boolean };
   onMessage.addListener(agent);
   expect(onMessage.hasListener(agent)).toBe(true);
-  expect(await emit({ webaios: "contexte" }, { tab: { id: 6 } })).toEqual({ tab: false });
-  expect(await emit({ webaios: "contexte" }, { tab: { id: 4 } })).toEqual({ tab: true });
-  expect(await emit({ webaios: "contexte" }, {})).toEqual({ tab: false });
+  expect(await emit({ webaios: "context" }, { tab: { id: 6 } })).toEqual({ tab: false });
+  expect(await emit({ webaios: "context" }, { tab: { id: 4 } })).toEqual({ tab: true });
+  expect(await emit({ webaios: "context" }, {})).toEqual({ tab: false });
   // Through the prototype's method, taken apart: always wrapped.
   const byProto = (m: unknown, _e: unknown, reply: (x: unknown) => void) => {
     seen.push(m);
     reply({ tab: true });
   };
   (Object.getPrototypeOf(onMessage) as { addListener: Function }).addListener.call(onMessage, byProto);
-  expect(await emit({ webaios: "contexte" }, { tab: { id: 6 } })).toEqual({ tab: false });
+  expect(await emit({ webaios: "context" }, { tab: { id: 6 } })).toEqual({ tab: false });
   expect(seen).toEqual([]);
   (Object.getPrototypeOf(onMessage) as { removeListener: Function }).removeListener.call(onMessage, byProto);
   // The other messages reach it.

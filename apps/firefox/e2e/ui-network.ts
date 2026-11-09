@@ -91,11 +91,11 @@ export async function resolvedNames(logDir: string): Promise<string[]> {
 
 /** A widget `id` of the space's home with display `html`, and optional example data (example.json). */
 export function widgetFiles(dataDir: string, id: string, html: string, example?: unknown): void {
-  const dir = path.join(dataDir, "espace/accueil/widgets", id);
+  const dir = path.join(dataDir, "espace/home/widgets", id);
   mkdirSync(dir, { recursive: true });
   writeFileSync(
     path.join(dir, "widget.json"),
-    JSON.stringify({ name: id, description: "", sizes: { min: { l: 2, h: 1 }, max: { l: 6, h: 4 }, default: { l: 3, h: 2 } }, sources: { account: [], public: [], web: false } }),
+    JSON.stringify({ name: id, description: "", sizes: { min: { w: 2, h: 1 }, max: { w: 6, h: 4 }, default: { w: 3, h: 2 } }, sources: { account: [], public: [], web: false } }),
   );
   writeFileSync(path.join(dir, "display.html"), html);
   if (example !== undefined) writeFileSync(path.join(dir, "example.json"), JSON.stringify(example));

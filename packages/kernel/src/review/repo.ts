@@ -23,7 +23,7 @@ export class ReviewError extends Error {
   }
 }
 
-export interface ModifiedFile { path: string; status: "ajoute" | "modifie" | "supprime"; additions: number; deletions: number; displayable: true | "binaire" | "trop-gros" }
+export interface ModifiedFile { path: string; status: "added" | "modified" | "deleted"; additions: number; deletions: number; displayable: true | "binary" | "too-big" }
 export interface Comparison { reviewedTree: string; currentTree: string; files: ModifiedFile[] }
 export interface DiffFile { path: string; status: ModifiedFile["status"]; displayable: ModifiedFile["displayable"]; blocks: Block[] }
 
@@ -188,7 +188,7 @@ export class ReviewStore {
         if (!meta[0]?.startsWith(":")) break;
         if (meta[0] === ":160000" || meta[1] === "160000") continue;
         const s = meta[4]![0];
-        statuses.set(path, s === "A" ? "ajoute" : s === "D" ? "supprime" : "modifie");
+        statuses.set(path, s === "A" ? "added" : s === "D" ? "deleted" : "modified");
       }
       if (statuses.size === 0) return { reviewedTree: reviewed, currentTree: current, files: [] };
 
@@ -201,7 +201,7 @@ export class ReviewStore {
 
       const paths = [...statuses.keys()];
       const sizes = new Map<string, number>();
-      for (const [tree, filter] of [[reviewed, (c: string) => statuses.get(c) === "supprime"], [current, (c: string) => statuses.get(c) !== "supprime"]] as const) {
+      for (const [tree, filter] of [[reviewed, (c: string) => statuses.get(c) === "deleted"], [current, (c: string) => statuses.get(c) !== "deleted"]] as const) {
         const wanted = paths.filter(filter);
         for (let i = 0; i < wanted.length; i += PATHS_BATCH) {
           const output = await this.g(["ls-tree", "-r", "-l", "-z", tree, "--", ...wanted.slice(i, i + PATHS_BATCH).map((c) => `:(literal)${c}`)]);
@@ -217,8 +217,8 @@ export class ReviewStore {
       const files: ModifiedFile[] = paths.sort().map((path) => {
         const n = nums.get(path) ?? { additions: 0, deletions: 0, binary: false };
         const displayable: ModifiedFile["displayable"] = n.binary
-          ? "binaire"
-          : (sizes.get(path) ?? 0) > BYTES_LIMIT || n.additions + n.deletions > DIFF_LINES_LIMIT ? "trop-gros" : true;
+          ? "binary"
+          : (sizes.get(path) ?? 0) > BYTES_LIMIT || n.additions + n.deletions > DIFF_LINES_LIMIT ? "too-big" : true;
         return { path: path, status: statuses.get(path)!, additions: n.additions, deletions: n.deletions, displayable: displayable };
       });
       return { reviewedTree: reviewed, currentTree: current, files: files };

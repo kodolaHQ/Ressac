@@ -34,7 +34,7 @@ document.addEventListener("essai", () => {
   else if (c === "fetch-pub") repondre(Promise.resolve().then(() => fetch(racine.dataset.pub)).then((r) => r.status));
   else if (c === "fetch-site") repondre(fetch("/film/2").then((r) => r.status));
   else if (c === "elargir") {
-    __webaiosPortee({ reseau: [racine.dataset.pubHote], hotes: ["<all_urls>"] });
+    __webaiosScope({ network: [racine.dataset.pubHote], hosts: ["<all_urls>"] });
     repondre(Promise.resolve().then(() => fetch(racine.dataset.pub)).then((r) => r.status));
   } else if (c === "non-json") repondre(webaiosSite.retenir("f", () => 1));
   else if (c === "lire") repondre(webaiosSite.lire("encours.the-bear").then((v) => JSON.stringify(v)));
@@ -74,7 +74,7 @@ const pageTypeof = (name: string) =>
   view<string>(`(() => { const s = document.createElement("script"); s.textContent = "document.documentElement.dataset.vu = typeof " + ${JSON.stringify(name)}; document.documentElement.append(s); s.remove(); return document.documentElement.dataset.vu; })()`);
 const errors = (id = "vidola") => inStore<{ text: string; source: string; sourceVerified: boolean }[]>(`return store.sites.errors(arguments[0]);`, [id]);
 const memory = (id: string) => {
-  const f = path.join(dataDir, "sites", id, "memoire.json");
+  const f = path.join(dataDir, "sites", id, "memory.json");
   return existsSync(f) ? JSON.parse(readFileSync(f, "utf8")) : null;
 };
 
@@ -116,14 +116,14 @@ beforeAll(async () => {
   writeSite(dataDir, "vidola", {
     declaration: vidola(),
     files: {
-      "retouches/serie.js": TWEAK_SERIES,
-      "retouches/cacher.css": ".shorts { display: none; }",
-      "retouches/cadre.js": 'document.documentElement.dataset.cadre = "oui"; document.documentElement.dataset.pont = typeof webaiosSite;',
-      "retouches/erreur.js": 'throw new Error("retouche cassée");',
-      "retouches/apres.js": 'document.documentElement.dataset.apres = "oui"; setTimeout(() => { throw new Error("plus tard"); });',
+      "tweaks/serie.js": TWEAK_SERIES,
+      "tweaks/cacher.css": ".shorts { display: none; }",
+      "tweaks/cadre.js": 'document.documentElement.dataset.cadre = "oui"; document.documentElement.dataset.pont = typeof webaiosSite;',
+      "tweaks/erreur.js": 'throw new Error("retouche cassée");',
+      "tweaks/apres.js": 'document.documentElement.dataset.apres = "oui"; setTimeout(() => { throw new Error("plus tard"); });',
     },
   });
-  writeSite(dataDir, "autre", { declaration: other(), files: { "retouches/b.js": B_JS } });
+  writeSite(dataDir, "autre", { declaration: other(), files: { "tweaks/b.js": B_JS } });
   await grantSite(dataDir, "vidola", vidola());
   await grantSite(dataDir, "autre", other());
   const actor = testActor(profile);
@@ -176,7 +176,7 @@ describe("tweaks", () => {
     await openAt("vidola", "/serie/the-bear");
     await expect.poll(() => view("document.body.dataset.retouche")).toBe("oui");
     expect(await pageTypeof("window.webaiosSite")).toBe("undefined");
-    expect(await pageTypeof("__webaiosPortee")).toBe("undefined");
+    expect(await pageTypeof("__webaiosScope")).toBe("undefined");
   });
 
   it('in the lecteur.localhost sub-frame matching cadres: the tweak runs, typeof webaiosSite === "undefined" (sites.spec.ts:844)', async () => {
@@ -207,7 +207,7 @@ describe("tweaks", () => {
     expect(await command("mdp")).toBe("valeur:");
   });
 
-  it("__webaiosPortee called again with <all_urls>: fetch to pub.localhost still rejected (sites.spec.ts:876)", async () => {
+  it("__webaiosScope called again with <all_urls>: fetch to pub.localhost still rejected (sites.spec.ts:876)", async () => {
     await openAt("vidola", "/serie/the-bear");
     await expect.poll(() => view("document.body.dataset.retouche")).toBe("oui");
     await view(`(document.documentElement.dataset.pub = ${JSON.stringify(url("/x", "pub.localhost"))}, document.documentElement.dataset.pubHote = "pub.localhost", 1)`);
@@ -269,7 +269,7 @@ describe("tweaks", () => {
     ["with an accord that covers less than the declaration", () => ({ vidola: { domains: ["vidola-a.localhost"], login: ["compte.localhost"], frames: [], resume: false } })],
   ] as const)
     it(`${cas}: nothing is loaded before the card is answered, then neither the agent's CSS nor script in the page (sites.spec.ts:944)`, async () => {
-      const grants = path.join(dataDir, "sites-accords.json");
+      const grants = path.join(dataDir, "site-grants.json");
       const before = readFileSync(grants, "utf8");
       writeFileSync(grants, JSON.stringify(grant()));
       try {
@@ -329,7 +329,7 @@ describe("tweaks", () => {
     await openAt("vidola", "/serie/the-bear");
     await expect.poll(() => view("document.body.dataset.retouche")).toBe("oui");
     await view("(window.marque = 1, 1)");
-    writeFileSync(path.join(dataDir, "espace", "sites", "vidola", "retouches", "serie.js"), 'document.documentElement.dataset.version = "2";');
+    writeFileSync(path.join(dataDir, "workspace", "sites", "vidola", "tweaks", "serie.js"), 'document.documentElement.dataset.version = "2";');
     await expect.poll(() => view("document.documentElement.dataset.version ?? null"), { timeout: 10_000 }).toBe("2");
     expect(await view("window.marque ?? null")).toBeNull();
   });

@@ -3,15 +3,15 @@
   "description": "Ton fil « Pour toi » de daily.dev, les articles les plus intéressants résumés",
   "sizes": {
     "min": {
-      "l": 2,
+      "w": 2,
       "h": 2
     },
     "max": {
-      "l": 12,
+      "w": 12,
       "h": 10
     },
     "default": {
-      "l": 6,
+      "w": 6,
       "h": 5
     }
   },

@@ -118,7 +118,7 @@ async function remark(sel: string, label: string, text: string) {
 }
 
 const agentInput = () => {
-  const f = path.join(w.dataDir, "espace", "faux-agent-entree.txt");
+  const f = path.join(w.dataDir, "workspace", "faux-agent-entree.txt");
   return existsSync(f) ? readFileSync(f, "utf8") : "";
 };
 const TERMINAL = "(doc.querySelector('.xterm-rows')?.textContent ?? '').replace(/\\u00a0/g, ' ')";
@@ -136,21 +136,21 @@ describe("to the agent", () => {
     await waitFor(m, "return !document.getElementById('webaios-agent').hidden", (v) => v === true);
     await waitUi(m, `return ${TERMINAL}.includes("faux agent prêt>")`, [], 20_000, "agent");
     await expect.poll(agentInput, { timeout: 10_000 }).toMatch(new RegExp(`^\\[remarques de .+ — démo http://(localhost|127\\.0\\.0\\.1):${PORT} : 1\\) `));
-    expect(agentInput()).toContain(`/workspace/.webaios/remarques/demo-${PORT}/`);
+    expect(agentInput()).toContain(`/workspace/.webaios/remarks/demo-${PORT}/`);
     await sleep(300);
     expect(agentInput()).not.toContain("\r");
-    const dir = path.join(w.dataDir, "espace", ".webaios", "remarques", `demo-${PORT}`);
+    const dir = path.join(w.dataDir, "workspace", ".webaios", "remarks", `demo-${PORT}`);
     const batches = readdirSync(dir).filter((n) => /^\d{8}T\d{6}Z-[0-9a-f]{4}$/.test(n));
     expect(batches).toHaveLength(1);
-    expect(existsSync(path.join(dir, batches[0]!, "lot.json"))).toBe(true);
+    expect(existsSync(path.join(dir, batches[0]!, "batch.json"))).toBe(true);
     expect(readdirSync(path.join(dir, batches[0]!)).filter((n) => n.endsWith(".png"))).toHaveLength(2);
-    expect(agentInput()).toContain(`/workspace/.webaios/remarques/demo-${PORT}/${batches[0]}/lot.json] `);
+    expect(agentInput()).toContain(`/workspace/.webaios/remarks/demo-${PORT}/${batches[0]}/batch.json] `);
     await expect.poll(cartCount, { timeout: 10_000 }).toBe(0);
-    await expect.poll(batchList, { timeout: 10_000 }).toEqual([expect.objectContaining({ state: "en-attente", handled: true })]);
+    await expect.poll(batchList, { timeout: 10_000 }).toEqual([expect.objectContaining({ state: "pending", handled: true })]);
     expect((await batchList())![0]!.text).toContain("en attente");
     expect((await batchList())![0]!.text).toContain("input#email.champ");
     await click(m, `${tid("lot-envoye")} button`, { frame: "panel", text: "Traité" });
-    await expect.poll(batchList, { timeout: 10_000 }).toEqual([expect.objectContaining({ state: "traite", handled: false })]);
+    await expect.poll(batchList, { timeout: 10_000 }).toEqual([expect.objectContaining({ state: "handled", handled: false })]);
     expect((await batchList())![0]!.text).toContain("traité");
     await modeOff();
   });
@@ -197,7 +197,7 @@ describe("an external project", () => {
     await remark("#email", "input#email.champ", "Champ plus large");
     await expect.poll(sendText, { timeout: 10_000 }).toBe("Envoyer 1 remarque à Claude Code (Claude Code)");
     await click(m, tid("envoyer-remarques"), { frame: "panel" });
-    await expect.poll(batchList, { timeout: 10_000 }).toEqual([expect.objectContaining({ state: "en-attente" })]);
+    await expect.poll(batchList, { timeout: 10_000 }).toEqual([expect.objectContaining({ state: "pending" })]);
     // Nothing in the agent's terminal: an external batch pre-fills nothing.
     await sleep(300);
     expect(agentInput()).toBe(before);
@@ -207,10 +207,10 @@ describe("an external project", () => {
     expect(Buffer.from(image!.data!, "base64").subarray(0, 8)).toEqual(PNG);
     const text = textOf(read);
     expect(text).toContain("Champ plus large");
-    await expect.poll(batchList, { timeout: 10_000 }).toEqual([expect.objectContaining({ state: "lu" })]);
+    await expect.poll(batchList, { timeout: 10_000 }).toEqual([expect.objectContaining({ state: "read" })]);
     const id = /Remarque (e-[0-9a-f]{8})/.exec(text)![1]!;
     await p.client.callTool({ name: "mark_handled", arguments: { folder: p.folder, ids: [id], note: "corrigé" } });
-    await expect.poll(batchList, { timeout: 10_000 }).toEqual([expect.objectContaining({ state: "traite" })]);
+    await expect.poll(batchList, { timeout: 10_000 }).toEqual([expect.objectContaining({ state: "handled" })]);
     expect((await batchList())![0]!.text).toContain("corrigé");
     await modeOff();
   });

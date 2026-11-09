@@ -70,7 +70,7 @@ export function nextRun(
   const last = instant(frequency.lastUpdate);
   if (!Number.isNaN(last)) markers.push(last + frequency.minutes * MINUTE);
   const attempt = instant(appState?.lastAttempt);
-  if (appState?.status === "erreur" && !Number.isNaN(attempt)) markers.push(attempt + RETRY_MS);
+  if (appState?.status === "error" && !Number.isNaN(attempt)) markers.push(attempt + RETRY_MS);
   const byFrequency = new Date(Math.max(...markers));
   // To the minute: the second is not shown.
   byFrequency.setSeconds(0, 0);

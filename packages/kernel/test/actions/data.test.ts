@@ -11,7 +11,7 @@ import { tempFolder } from "../helpers/temp.js";
 const timestamp = (i: number) => new Date(Date.UTC(2026, 9, 31, 8, 0, i)).toISOString();
 const execution = (start: string, attempt = false): Execution => ({
   version: 1, id: attempt ? attemptId(start) : idExecution(start), owner: { type: "action", id: "a" },
-  trigger: "manuelle", start: start, end: start, status: "reussie", blocks: [],
+  trigger: "manual", start: start, end: start, status: "succeeded", blocks: [],
 });
 const result = (id: string, results: unknown = { n: 1 }): ActionResult => ({
   version: 1, run: id, input: null, results: results, plan: null, fallback: false, empty: false,
@@ -69,8 +69,8 @@ test("a huge result is refused, a damaged file is ignored", async () => {
   await writeRun(join(d, "a"), e);
   await expect(writeResult(d, "a", result(e.id, "x".repeat(DATA_MAX_SIZE + 300 * 1024)))).rejects.toThrow();
   expect(await readResult(d, "a", e.id)).toBeNull();
-  await mkdir(join(d, "a", "resultats"), { recursive: true });
-  await writeFile(join(d, "a", "resultats", `${e.id}.json`), "{x");
+  await mkdir(join(d, "a", "results"), { recursive: true });
+  await writeFile(join(d, "a", "results", `${e.id}.json`), "{x");
   expect(await readResult(d, "a", e.id)).toBeNull();
 });
 
@@ -78,9 +78,9 @@ test("deleteDataAction erases runs, results and memory", async () => {
   const d = await tempFolder();
   const id = await add(d, timestamp(0));
   await writeMemory(join(d, "a"), { b: { type: "t", value: 1 } });
-  for (const f of ["executions", "resultats", "memoire.json"]) expect(existsSync(join(d, "a", f)), f).toBe(true);
+  for (const f of ["runs", "results", "memory.json"]) expect(existsSync(join(d, "a", f)), f).toBe(true);
   await deleteDataAction(d, "a");
-  for (const f of ["executions", "resultats", "memoire.json"]) expect(existsSync(join(d, "a", f)), f).toBe(false);
+  for (const f of ["runs", "results", "memory.json"]) expect(existsSync(join(d, "a", f)), f).toBe(false);
   expect(await readResult(d, "a", id)).toBeNull();
 });
 
@@ -97,7 +97,7 @@ test("oublierActionsDisparues erases the data and grant of an action whose folde
   }
   await forgetGoneActions(c, actionsFolder);
   expect(existsSync(join(actionsFolder, "disparue"))).toBe(false);
-  expect(existsSync(join(actionsFolder, "vivante", "resultats"))).toBe(true);
+  expect(existsSync(join(actionsFolder, "vivante", "results"))).toBe(true);
   expect(Object.keys(await readGrants(actionsFolder))).toEqual(["vivante"]);
 });
 
@@ -109,7 +109,7 @@ test("oublierActionsDisparues: without an actions folder (space moved), data and
   await writeResult(actionsFolder, "x", result(e.id));
   await giveGrant(actionsFolder, "x", { domains: ["gitlab.com"], public: [], profile: "p" });
   await forgetGoneActions(c, actionsFolder);
-  expect(existsSync(join(actionsFolder, "x", "resultats"))).toBe(true);
+  expect(existsSync(join(actionsFolder, "x", "results"))).toBe(true);
   expect(Object.keys(await readGrants(actionsFolder))).toEqual(["x"]);
 });
 
@@ -126,7 +126,7 @@ test("oublierActionsDisparues: a symbolic link named like the action is not the 
 test("a well-formed plan is re-read; a malformed plan makes the result be rejected", async () => {
   const d = await tempFolder();
   const id = idExecution(timestamp(0));
-  const plan = { blocks: [{ component: "titre", props: { text: "x" } }] };
+  const plan = { blocks: [{ component: "title", props: { text: "x" } }] };
   await writeRun(join(d, "a"), execution(timestamp(0)));
   await writeResult(d, "a", { ...result(id), plan });
   expect((await readResult(d, "a", id))?.plan).toEqual(plan);

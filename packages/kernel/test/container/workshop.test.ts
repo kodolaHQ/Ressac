@@ -282,14 +282,14 @@ test("arreterApplication: the dot in a folder name is not a grep wildcard", asyn
 
 test("commandeRecolte mounts the engine read-only and launches /opt/webaios/engine/harvester.mjs", () => {
   const workshop = new Workshop({ paths: paths, docker: "/usr/local/bin/docker" });
-  const c = workshop.harvestCommand("meteo", "/Users/t/WebAiOs/accueil/widgets/meteo", "/app/docker/engine");
+  const c = workshop.harvestCommand("meteo", "/Users/t/WebAiOs/home/widgets/meteo", "/app/docker/engine");
   expect(c).toEqual([
     "/usr/local/bin/docker", "run", "-i", "--rm",
     "--name", "webaios-harvest-meteo",
     "--network", "none",
     "--read-only",
     "--tmpfs", "/tmp",
-    "-v", "/Users/t/WebAiOs/accueil/widgets/meteo:/widget:ro",
+    "-v", "/Users/t/WebAiOs/home/widgets/meteo:/widget:ro",
     "-v", "/app/docker/engine:/opt/webaios/engine:ro",
     "--memory", "512m",
     "--pids-limit", "128",

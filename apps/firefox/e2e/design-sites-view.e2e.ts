@@ -64,9 +64,9 @@ beforeAll(async () => {
   const dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
   const profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
   dirs.push(dataDir, profile);
-  writeSite(dataDir, "tuning", { declaration: tuningDeclaration(url), files: { "retouches/tuning.css": "/* rien */" } });
-  writeSite(dataDir, "avec-accueil", { declaration: withHomeDeclaration(url), files: { "accueil/index.html": WITH_HOME } });
-  writeSite(dataDir, "vidola", { declaration: vidola(), files: { "retouches/sonde.js": TWEAK, "retouches/cacher.css": ".cache { display: none; }" } });
+  writeSite(dataDir, "tuning", { declaration: tuningDeclaration(url), files: { "tweaks/tuning.css": "/* rien */" } });
+  writeSite(dataDir, "avec-accueil", { declaration: withHomeDeclaration(url), files: { "home/index.html": WITH_HOME } });
+  writeSite(dataDir, "vidola", { declaration: vidola(), files: { "tweaks/sonde.js": TWEAK, "tweaks/cacher.css": ".cache { display: none; }" } });
   await grantSite(dataDir, "tuning", tuningDeclaration(url));
   await grantSite(dataDir, "vidola", vidola());
   const a = testActor(profile);
@@ -130,7 +130,7 @@ describe("design mode, site target, the view", () => {
     expect(await view("vidola", `getComputedStyle(document.querySelector(".cache")).display`)).toBe("none");
     await expect.poll(() => view("vidola", "document.documentElement.dataset.retouche ?? null"), { timeout: 10_000 }).toBe("oui");
     // The viewfinder's sandbox, probed through the shipped actor (the one the service arms).
-    const probe = `(() => ({ webaiosSite: typeof webaiosSite, portee: typeof __webaiosPortee, fichier: typeof __webaiosFichier, retoucheSecret: typeof __retoucheSecret,
+    const probe = `(() => ({ webaiosSite: typeof webaiosSite, portee: typeof __webaiosScope, fichier: typeof __webaiosFile, retoucheSecret: typeof __retoucheSecret,
       Components: typeof Components, ChromeUtils: typeof ChromeUtils, Services: typeof Services }))()`;
     const sees = await (await armActor(m, viewExpr("vidola"), probe)).result();
     expect(sees).toEqual({ r: { webaiosSite: "undefined", scope: "undefined", file: "undefined", tweakSecret: "undefined", Components: "undefined", ChromeUtils: "undefined", Services: "undefined" } });
@@ -199,7 +199,7 @@ describe("design mode, site target, the view", () => {
     expect(keys1?.filter((k) => !keys0?.includes(k))).toEqual([]);
     const pageTypeof = await view<string>(
       "vidola",
-      `(() => { const s = document.createElement("script"); s.textContent = "document.documentElement.dataset.vu = [typeof webaiosSite, typeof __webaiosPortee, typeof __retoucheSecret].join()"; document.documentElement.append(s); s.remove(); return document.documentElement.dataset.vu; })()`,
+      `(() => { const s = document.createElement("script"); s.textContent = "document.documentElement.dataset.vu = [typeof webaiosSite, typeof __webaiosScope, typeof __retoucheSecret].join()"; document.documentElement.append(s); s.remove(); return document.documentElement.dataset.vu; })()`,
     );
     expect(pageTypeof).toBe("undefined,undefined,undefined");
   });

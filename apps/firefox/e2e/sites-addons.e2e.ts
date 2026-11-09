@@ -81,11 +81,11 @@ let profile: string;
 const url = (p: string, host = "vidola-a.localhost") => server.url(host, p);
 const vidola = (extra: object = {}) => ({ name: "Vidola", url: url("/pubs"), domains: ["vidola-a.localhost"], login: ["compte.localhost"], ...extra });
 /** An app with a home screen (the « accueil » view on opening). */
-const withHome = (): SiteTest => ({ declaration: { ...vidola(), name: "Tube" }, files: { "accueil/index.html": "<p>accueil</p>" } });
+const withHome = (): SiteTest => ({ declaration: { ...vidola(), name: "Tube" }, files: { "home/index.html": "<p>accueil</p>" } });
 /** Tweaks without an grant, so the grant card shows on opening. */
 const withCard = (): SiteTest => ({
   declaration: { ...vidola({ tweaks: [{ matches: ["/pubs"], js: ["a.js"] }] }), name: "Carte" },
-  files: { "retouches/a.js": 'document.body.dataset.retouche = "oui";' },
+  files: { "tweaks/a.js": 'document.body.dataset.retouche = "oui";' },
 });
 
 const inStore = <T = unknown>(body: string, args: unknown[] = []) =>
@@ -312,7 +312,7 @@ describe("add-ons and what the agent adds to the app", () => {
       tweaks: [{ matches: ["/serie/*"], js: ["serie.js"], css: ["cacher.css"] }],
     });
   const memory = () => {
-    const f = path.join(dataDir, "sites", "vidola", "memoire.json");
+    const f = path.join(dataDir, "sites", "vidola", "memory.json");
     return existsSync(f) ? (JSON.parse(readFileSync(f, "utf8")) as { values: Record<string, { value: unknown; url: string }>; positions: Record<string, { t: number; duration: number }> }) : null;
   };
 
@@ -323,8 +323,8 @@ describe("add-ons and what the agent adds to the app", () => {
       vidola: {
         declaration: series(),
         files: {
-          "retouches/serie.js": `webaiosSite.retenir("encours.the-bear", ${JSON.stringify(KEPT)}).then(() => (document.documentElement.dataset.retenu = "oui"));`,
-          "retouches/cacher.css": ".shorts { display: none; }",
+          "tweaks/serie.js": `webaiosSite.retenir("encours.the-bear", ${JSON.stringify(KEPT)}).then(() => (document.documentElement.dataset.retenu = "oui"));`,
+          "tweaks/cacher.css": ".shorts { display: none; }",
         },
       },
     };
@@ -352,7 +352,7 @@ describe("the agent and the app's add-ons", () => {
     await start();
     await installAddon(m, probe());
     await openAndWait();
-    const config = path.join(dataDir, "espace", ".webaios", "mcp.json");
+    const config = path.join(dataDir, "workspace", ".webaios", "mcp.json");
     for (const deadline = Date.now() + 20_000; !existsSync(config); await new Promise((r) => setTimeout(r, 100)))
       if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
     await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('prêt>')", [], 20_000, "agent");
@@ -365,7 +365,7 @@ describe("the agent and the app's add-ons", () => {
     dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
     profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
     const host = "http://vidola-a.localhost/*";
-    writeAgentExtension(path.join(dataDir, "espace"), "cacheur", {
+    writeAgentExtension(path.join(dataDir, "workspace"), "cacheur", {
       "manifest.json": { manifest_version: 3, name: "Cacheur de l'agent", version: "1.0.0", content_scripts: [{ matches: [host], css: ["cache.css"] }] },
       "cache.css": "#banniere { display: none !important; }\n",
     });

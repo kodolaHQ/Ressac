@@ -128,7 +128,7 @@ describe("AMO client", () => {
       expect(r.analysis.denial).toEqual([]);
       const raw = JSON.parse(readFileSync(join(staging, "manifest.json"), "utf8"));
       expect(firefoxDenial(raw, readdirSync(staging, { recursive: true }) as string[])).toEqual([]);
-      const f = /^importScripts\("webaios-garde-fond\.js", ("(?:[^"\\]|\\.)*")\);$/m.exec(readFileSync(join(staging, "webaios-fond.js"), "utf8"));
+      const f = /^importScripts\("webaios-background-guard\.js", ("(?:[^"\\]|\\.)*")\);$/m.exec(readFileSync(join(staging, "webaios-background.js"), "utf8"));
       const manifest = firefoxManifest(raw, folder, n, f ? (JSON.parse(f[1]!) as string) : undefined);
       writeFileSync(join(staging, "manifest.json"), JSON.stringify(manifest, null, 2));
       const xpi = join(d, `${n}.xpi`);

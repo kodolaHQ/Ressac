@@ -53,8 +53,8 @@ export function componentBridge(): void {
 export const COMPONENT_BRIDGE = `<script>(${componentBridge.toString()})();</script>`;
 
 const NAME = /^[a-z0-9-]{1,40}$/;
-const substitution = (name: string) => `webaios-composant-${name}`;
-const copiesOf = (dataDir: string, name: string) => PathUtils.join(dataDir, "webaios-composants", name);
+const substitution = (name: string) => `webaios-component-${name}`;
+const copiesOf = (dataDir: string, name: string) => PathUtils.join(dataDir, "webaios-components", name);
 
 function substitute(name: string, dir: string | null): void {
   const handler = Services.io.getProtocolHandler("resource").QueryInterface(Ci.nsIResProtocolHandler);
@@ -77,9 +77,9 @@ function queued<T>(name: string, f: () => Promise<T>): Promise<T> {
 }
 
 /**
- * One more page shows component `nom`: copies `<dataDir>/espace/composants/<nom>/composant.html` with these rules
+ * One more page shows component `nom`: copies `<dataDir>/workspace/components/<nom>/component.html` with these rules
  * (no symbolic link on the path, COMPONENT_HTML_MAX at most) into
- * `<dataDir>/webaios-composants/<nom>/composant-<mtime>.html` through displayServed (the widgets' CSP and guard, then
+ * `<dataDir>/webaios-components/<nom>/component-<mtime>.html` through displayServed (the widgets' CSP and guard, then
  * the bridge; DISPLAY_DENIED on a network hint), and returns its resource:// URL, or null. Each call is paired with a
  * releaseComponent, null or not.
  * shortcut: checked by realpath then read by path (IOUtils has no O_NOFOLLOW), as serveHome; upgrade with it.
@@ -89,22 +89,22 @@ export function serveComponent(dataDir: string, name: string): Promise<string | 
   refs.set(name, (refs.get(name) ?? 0) + 1);
   return queued(name, async () => {
     try {
-      const components = PathUtils.join(dataDir, "espace", "composants");
+      const components = PathUtils.join(dataDir, "workspace", "components");
       const componentsReal = realPath(components);
       // An exact name: a case-insensitive disk would find « Barres » for « barres ».
       if (!componentsReal || isLink(components) || !(await IOUtils.getChildren(components)).some((c) => c.endsWith(`/${name}`))) return null;
-      const source = PathUtils.join(components, name, "composant.html");
-      if (realPath(source) !== PathUtils.join(componentsReal, name, "composant.html")) return null;
+      const source = PathUtils.join(components, name, "component.html");
+      if (realPath(source) !== PathUtils.join(componentsReal, name, "component.html")) return null;
       const info = await IOUtils.stat(source);
       if (info.type !== "regular" || info.size > COMPONENT_HTML_MAX) return null;
       const bytes = await IOUtils.read(source, { maxBytes: COMPONENT_HTML_MAX + 1 });
       if (bytes.length > COMPONENT_HTML_MAX) return null;
       const copies = copiesOf(dataDir, name);
       await IOUtils.makeDirectory(copies, { createAncestors: true, ignoreExisting: true });
-      // The copies stay inside <dataDir>/webaios-composants: a copies folder that is a link is refused.
-      const root = realPath(PathUtils.join(dataDir, "webaios-composants"));
+      // The copies stay inside <dataDir>/webaios-components: a copies folder that is a link is refused.
+      const root = realPath(PathUtils.join(dataDir, "webaios-components"));
       if (!root || realPath(copies) !== PathUtils.join(root, name)) return null;
-      const file = `composant-${Math.round(info.lastModified)}.html`;
+      const file = `component-${Math.round(info.lastModified)}.html`;
       const copy = PathUtils.join(copies, file);
       if (!(await IOUtils.exists(copy))) {
         // Atomic: a frame never reads a half-written copy.

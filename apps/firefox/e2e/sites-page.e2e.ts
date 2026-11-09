@@ -41,9 +41,9 @@ afterEach(async () => {
 const url = (p: string, host = "vidola-a.localhost") => server.url(host, p);
 const vidola = (home = true): SiteTest => ({
   declaration: { name: "Vidola", url: url("/"), domains: ["vidola-a.localhost"], login: [] },
-  ...(home ? { files: { "accueil/index.html": SITE_HOME } } : {}),
+  ...(home ? { files: { "home/index.html": SITE_HOME } } : {}),
 });
-const memory = (dataDir: string, id = "vidola") => path.join(dataDir, "sites", id, "memoire.json");
+const memory = (dataDir: string, id = "vidola") => path.join(dataDir, "sites", id, "memory.json");
 function writeMemory(dataDir: string, id = "vidola"): void {
   mkdirSync(path.join(dataDir, "sites", id), { recursive: true });
   writeFileSync(
@@ -124,7 +124,7 @@ const section = (dataDir: string) => {
   writeSite(dataDir, "autre", { declaration: { name: "Autre", url: url("/", "vidola-b.localhost"), domains: ["vidola-b.localhost"] } });
   writeSite(dataDir, "casse", { declaration: "{ pas du json" });
   mkdirSync(path.join(dataDir, "sites", "autre"), { recursive: true });
-  writeFileSync(path.join(dataDir, "sites", "autre", "adresse.json"), JSON.stringify({ current: "vidola-c.localhost", previous: ["vidola-b.localhost"], since: new Date().toISOString() }));
+  writeFileSync(path.join(dataDir, "sites", "autre", "url.json"), JSON.stringify({ current: "vidola-c.localhost", previous: ["vidola-b.localhost"], since: new Date().toISOString() }));
 };
 
 describe("Applications page, Sites section", () => {
@@ -170,7 +170,7 @@ describe("Applications page, Sites section", () => {
     await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes(arguments[0])", [text], 20_000, "agent");
   });
 
-  it("Oublier ce que l'appli a retenu (confirmed): memoire.json gone, the open home no longer shows the series", async () => {
+  it("Oublier ce que l'appli a retenu (confirmed): memory.json gone, the open home no longer shows the series", async () => {
     const { dataDir } = await launch({ prepare: (d) => (section(d), writeMemory(d)) });
     await click(m, '[data-testid="site-vidola-ouvrir"]');
     await waitFor(m, `return ${siteExpr("vidola")} !== undefined;`, (v) => v === true);
@@ -187,7 +187,7 @@ describe("Applications page, Sites section", () => {
     await expect.poll(() => existsSync(memory(dataDir)), { timeout: 10_000 }).toBe(false);
     await expect.poll(() => series("vidola"), { timeout: 10_000 }).toBe("");
     // The app's folder is not touched.
-    expect(existsSync(path.join(dataDir, "espace", "sites", "vidola", "site.json"))).toBe(true);
+    expect(existsSync(path.join(dataDir, "workspace", "sites", "vidola", "site.json"))).toBe(true);
   });
 
   it("Supprimer (confirmed): cookie and memory gone, window closed, folder in sites/.corbeille, the row goes; an app recreated under the same id starts empty", async () => {
@@ -198,21 +198,21 @@ describe("Applications page, Sites section", () => {
     await expect.poll(() => cookies("vidola"), { timeout: 10_000 }).toContain("essai=vidola-a.localhost");
     writeMemory(dataDir);
     mkdirSync(path.join(dataDir, "sites", "vidola"), { recursive: true });
-    writeFileSync(path.join(dataDir, "sites", "vidola", "adresse.json"), JSON.stringify({ current: "vidola-a.localhost", previous: [], since: null }));
+    writeFileSync(path.join(dataDir, "sites", "vidola", "url.json"), JSON.stringify({ current: "vidola-a.localhost", previous: [], since: null }));
     await click(m, '[data-testid="site-vidola-supprimer"]');
     expect(await waitUi<string>(m, "return doc.querySelector('[data-testid=\"confirmation-suppression-site\"]')?.textContent")).toContain("Supprimer « Vidola » ?");
     await click(m, '[data-testid="confirmation-suppression-site"] button', { text: "Annuler" });
     await waitUi(m, "return !doc.querySelector('[data-testid=\"confirmation-suppression-site\"]')");
-    expect(existsSync(path.join(dataDir, "espace", "sites", "vidola"))).toBe(true);
+    expect(existsSync(path.join(dataDir, "workspace", "sites", "vidola"))).toBe(true);
     await click(m, '[data-testid="site-vidola-supprimer"]');
     await click(m, '[data-testid="confirmer-suppression-site"]');
     await gone("vidola");
     expect(await windows("vidola")).toBe(0);
     expect(await cookies("vidola")).toEqual([]);
-    expect(existsSync(path.join(dataDir, "espace", "sites", "vidola"))).toBe(false);
-    expect(readdirSync(path.join(dataDir, "espace", "sites", ".corbeille")).filter((n) => /^vidola-\d+$/.test(n))).toHaveLength(1);
+    expect(existsSync(path.join(dataDir, "workspace", "sites", "vidola"))).toBe(false);
+    expect(readdirSync(path.join(dataDir, "workspace", "sites", ".trash")).filter((n) => /^vidola-\d+$/.test(n))).toHaveLength(1);
     expect(existsSync(memory(dataDir))).toBe(false);
-    expect(existsSync(path.join(dataDir, "sites", "vidola", "adresse.json"))).toBe(false);
+    expect(existsSync(path.join(dataDir, "sites", "vidola", "url.json"))).toBe(false);
     // Recreated under the same id: no cookie, no memory, no kept address.
     writeSite(dataDir, "vidola", vidola(false));
     await rowText("vidola");
@@ -286,7 +286,7 @@ describe("Applications page, Sites section", () => {
 describe("the agent's site tools", () => {
   async function withAgent(prepare: (dataDir: string) => void = (d) => writeSite(d, "vidola", vidola())) {
     const l = await launch({ prepare, page: false });
-    const config = path.join(l.dataDir, "espace", ".webaios", "mcp.json");
+    const config = path.join(l.dataDir, "workspace", ".webaios", "mcp.json");
     for (const deadline = Date.now() + 20_000; !existsSync(config); await sleep(100)) if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
     await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('prêt>')", [], 20_000, "agent");
     return l;

@@ -37,8 +37,8 @@
       ? previewData({ chosen: executions.chosen, detail: executions.detail, list: executions.list, widget: shown })
       : null,
   );
-  const size = $derived(shown ? freeUnits(shown.placement) : { l: 1, h: 1 });
-  const width = $derived(Math.min(480, size.l * COLUMN_PX + (size.l - 1) * GAP_PX));
+  const size = $derived(shown ? freeUnits(shown.placement) : { w: 1, h: 1 });
+  const width = $derived(Math.min(480, size.w * COLUMN_PX + (size.w - 1) * GAP_PX));
   const height = $derived(Math.min(360, size.h * ROW_PX + (size.h - 1) * GAP_PX));
 </script>
 

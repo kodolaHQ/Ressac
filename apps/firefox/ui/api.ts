@@ -247,7 +247,7 @@ export function createApi(win: WindowController): ApiFirefox {
           return void api.apps!.list()
             .then((l) => {
               const a = l.apps.find((x) => x.folder === folder);
-              if (a && a.type !== "sans-fiche") win.store.dispatch({ type: "ouvrirRelecture", windowId: windowId, project: "app-" + folder, name: a.name.slice(0, 80) });
+              if (a && a.type !== "no-manifest") win.store.dispatch({ type: "ouvrirRelecture", windowId: windowId, project: "app-" + folder, name: a.name.slice(0, 80) });
             })
             .catch((e) => console.error("[webaios] app review :", e));
         }

@@ -226,14 +226,14 @@ test("kernel: accorder records the grant (domains sorted), notifies and starts a
   expect((await readGrants(widgetsFolder)).daily).toEqual({ domains: ["a.dev", "b.dev"], public: ["y.com", "z.com"], profile: "perso" });
   expect(onChange).toHaveBeenCalled();
   // Docker absent: the started harvest ends with « atelier arrêté ».
-  await vi.waitFor(async () => expect((await readWidgetState(widgetsFolder, "daily")).status).toBe("atelier-arrete"));
+  await vi.waitFor(async () => expect((await readWidgetState(widgetsFolder, "daily")).status).toBe("workshop-stopped"));
   // Messages written by the kernel: marked as such (they can go out to the agent without a grant).
   expect((await readWidgetState(widgetsFolder, "daily")).kernelError).toBe(true);
 
   onChange.mockClear();
   await kernel.denyGrant("daily");
   expect((await readGrants(widgetsFolder)).daily).toBeUndefined();
-  expect(await readWidgetState(widgetsFolder, "daily")).toMatchObject({ status: "accord-requis", kernelError: true });
+  expect(await readWidgetState(widgetsFolder, "daily")).toMatchObject({ status: "grant-required", kernelError: true });
   expect(onChange).toHaveBeenCalled();
 });
 
@@ -383,7 +383,7 @@ async function createWithActions(prepareSpace?: (root: string, actionsFolder: st
 }
 
 const executionAction = (id: string, start: string): Execution => ({
-  version: 1, id: idExecution(start), owner: { type: "action", id }, trigger: "manuelle", start: start, end: start, status: "reussie", blocks: [],
+  version: 1, id: idExecution(start), owner: { type: "action", id }, trigger: "manual", start: start, end: start, status: "succeeded", blocks: [],
 });
 
 test("kernel.actions: page(id, null) returns the last resolved result; page of an unknown run: null", async () => {
@@ -394,12 +394,12 @@ test("kernel.actions: page(id, null) returns the last resolved result; page of a
   });
   const e = executionAction("gitlab", "2026-10-31T08:00:00.000Z");
   await writeRun(join(actionsFolder, "gitlab"), { ...e, input: "x" });
-  const plan = { blocks: [{ component: "liste", props: { items: "tickets", title: "title" } }] };
+  const plan = { blocks: [{ component: "list", props: { items: "tickets", title: "title" } }] };
   await writeResult(actionsFolder, "gitlab", { version: 1, run: e.id, input: "x", results: { tickets: [{ title: "A" }] }, plan, fallback: false, empty: false });
   const p = await n.actions.page("gitlab", null);
-  expect(p).toMatchObject({ run: e.id, start: e.start, end: e.end, input: "x", status: "reussie", account: true });
+  expect(p).toMatchObject({ run: e.id, start: e.start, end: e.end, input: "x", status: "succeeded", account: true });
   expect(p!.page).toMatchObject({ fallback: false, empty: false });
-  expect(p!.page!.blocks[0]).toMatchObject({ component: "liste" });
+  expect(p!.page!.blocks[0]).toMatchObject({ component: "list" });
   expect(await n.actions.page("gitlab", e.id)).toEqual(p);
   expect(await n.actions.page("gitlab", "2020-01-01T00-00-00-000Z")).toBeNull();
   expect(await n.actions.page("absente", null)).toBeNull();
@@ -420,7 +420,7 @@ test("kernel.actions: page() of an action rewritten without an account but still
   });
   const e = executionAction("gitlab", "2026-10-31T08:00:00.000Z");
   await writeRun(join(actionsFolder, "gitlab"), e);
-  const plan = { blocks: [{ component: "liste", props: { items: "tickets", title: "titre", image: "image" } }] };
+  const plan = { blocks: [{ component: "list", props: { items: "tickets", title: "title", image: "image" } }] };
   await writeResult(actionsFolder, "gitlab", { version: 1, run: e.id, input: null, results: { tickets: [{ title: "A", image: "https://img.test/a.png" }] }, plan, fallback: false, empty: false });
   expect(await n.actions.page("gitlab", null)).toMatchObject({ run: e.id, account: true });
 });

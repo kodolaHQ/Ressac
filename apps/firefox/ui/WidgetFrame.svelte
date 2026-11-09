@@ -15,7 +15,7 @@
   }: {
     widget: { id: string; name: string; src: string | null };
     data: unknown;
-    size: { l: number; h: number };
+    size: { w: number; h: number };
     state: { status: string; lastUpdate: string | null };
   } = $props();
 
@@ -30,7 +30,7 @@
       {
         type: "widget",
         data: $state.snapshot(data),
-        size: { l: size.l, h: size.h },
+        size: { w: size.w, h: size.h },
         px: { width: width, height: height },
         state: { status: appState.status, lastUpdate: appState.lastUpdate },
       },
@@ -39,7 +39,7 @@
   }
   // On each change of data, state or size (loading goes through DOMFrameContentLoaded).
   $effect(() => {
-    void [data, appState.status, appState.lastUpdate, size.l, size.h, width, height];
+    void [data, appState.status, appState.lastUpdate, size.w, size.h, width, height];
     send();
   });
 

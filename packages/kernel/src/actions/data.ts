@@ -34,10 +34,10 @@ const ResultFile = z.object({
   empty: z.boolean(),
 });
 
-const resultsFolder = (dataFolder: string) => join(dataFolder, "resultats");
+const resultsFolder = (dataFolder: string) => join(dataFolder, "results");
 
 /**
- * `<actionsFolder>/<id>/resultats/<run>.json`, written after the run of the same id. Keeps only the results
+ * `<actionsFolder>/<id>/results/<run>.json`, written after the run of the same id. Keeps only the results
  * of runs that are kept (trials included). Too big: nothing is written and the call fails.
  */
 export async function writeResult(actionsFolder: string, id: string, r: ActionResult): Promise<void> {
@@ -76,7 +76,7 @@ export async function readResult(actionsFolder: string, id: string, execution: s
 export async function lastResult(actionsFolder: string, id: string): Promise<ActionResult | null> {
   if (!ID_ACTION.test(id)) return null;
   for (const e of await listRuns(join(actionsFolder, id))) {
-    if (e.attempt || e.id.endsWith("-essai")) continue;
+    if (e.attempt || e.id.endsWith("-attempt")) continue;
     const r = await readResult(actionsFolder, id, e.id);
     if (r) return r;
   }

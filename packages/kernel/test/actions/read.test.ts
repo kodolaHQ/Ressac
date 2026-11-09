@@ -48,7 +48,7 @@ test("a symbolic-link, hidden or invalidly named folder is ignored", async () =>
   const elsewhere = await tempFolder();
   await writeFile(join(elsewhere, "action.json"), JSON.stringify({ name: "L", sources: {} }));
   await symlink(elsewhere, join(c.actions, "lien"));
-  await writeFile(join(c.actions, "fichier"), "x");
+  await writeFile(join(c.actions, "file"), "x");
   expect((await readActions(c)).map((a) => a.id)).toEqual(["bonne"]);
   expect(await readAction(c, "lien")).toBeNull();
 });
@@ -85,12 +85,12 @@ test("actionWorkflow : harvest.mjs seul → absent ; workflow vers widget → in
   const only = (await readAction(c, "seul"))!;
   expect(await actionWorkflow(only)).toEqual({ t: "absent" });
   const wrong = await actionWorkflow((await readAction(c, "mauvaise"))!);
-  expect(wrong.t).toBe("invalide");
+  expect(wrong.t).toBe("invalid");
   expect((wrong as { error: string }).error).toContain(OUTPUT_PAGE_REQUIRED);
   const good = await actionWorkflow((await readAction(c, "bonne"))!);
   expect(good.t).toBe("ok");
   const broken = await actionWorkflow((await readAction(c, "cassee"))!);
-  expect(broken.t).toBe("illisible");
+  expect(broken.t).toBe("unreadable");
   const b = (await readAction(c, "bonne"))!;
   if ("error" in b) throw new Error("lue en erreur");
   expect(actionValidationContext(b.declaration)).toEqual({ web: false, maxDurationMinutes: 5, owner: "action", input: true });

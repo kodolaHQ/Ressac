@@ -64,7 +64,7 @@ if (!dataDir) {
   console.error("[webaios] WEBAIOS_DATA_DIR manquant");
   process.exit(2);
 }
-const root = join(dataDir, "espace");
+const root = join(dataDir, "workspace");
 const paths = spacePaths(root);
 // Widgets' data, states and grants: outside the space.
 const widgetsFolder = join(dataDir, "widgets");
@@ -82,7 +82,7 @@ const keepable = (url: string) => {
 // A broken database must not take the agent down: no history then (empty answers, no agent tools).
 const hist = (() => {
   try {
-    const h = new History(join(dataDir, "historique.sqlite"));
+    const h = new History(join(dataDir, "history.sqlite"));
     h.purge();
     return h;
   } catch (e) {
@@ -130,7 +130,7 @@ const broadcastAccess = () => {
 
 // The local AI for harvests: Gemma and the decision model both run in Ollama (same
 // /v1/systemone answers). Nothing is installed here: a missing model fails with Ollama's answer.
-const ai = new LocalAi({ folder: join(dataDir, "ia-locale"), run: defaultRunner, decisionModel: "pplx-decider-flash" });
+const ai = new LocalAi({ folder: join(dataDir, "local-ai"), run: defaultRunner, decisionModel: "pplx-decider-flash" });
 
 // The host is Node and cannot call Cc: in tests it writes the file, otherwise the chrome store shows the alert.
 const notify = (n: { title: string; text: string }) => {
@@ -148,7 +148,7 @@ const launchKernel = (profileId: string): Promise<Kernel | null> => {
     widgetsFolder: widgetsFolder,
     actionsFolder: actionsFolder,
     ai: ai,
-    profilingFolder: join(dataDir, "profilage"),
+    profilingFolder: join(dataDir, "profiling"),
     extensions: extensions.tools(),
     sites: sites.tools,
     workshop: workshop,
@@ -273,7 +273,7 @@ const rpc = createRpc({
       }
     },
     "acces.etat": accessState,
-    // Home page: the widgets of espace/accueil/widgets, their data and state, the validated theme,
+    // Home page: the widgets of espace/home/widgets, their data and state, the validated theme,
     // with the free placement (version 3).
     "accueil.lire": async () => {
       const n = await ready;
@@ -395,7 +395,7 @@ const rpc = createRpc({
       const l = n.actions.replay(target.data.id, execution.data, block.data);
       if (l.already) return { ok: false as const, error: ACTION_ALREADY_RUNNING };
       const r = await l.end;
-      return r.status !== "invalide" && r.run !== undefined
+      return r.status !== "invalid" && r.run !== undefined
         ? { ok: true as const, run: r.run, status: r.status }
         : { ok: false as const, error: r.error ?? "Rejeu impossible" };
     },
@@ -409,14 +409,14 @@ const rpc = createRpc({
       const id = target.data.id;
       if (target.data.type === "action") {
         // A different input while the action runs is not lost silently.
-        const l = n.actions.launch(id, { ...(input.data?.trim() ? { input: input.data } : {}), trigger: "manuelle" });
+        const l = n.actions.launch(id, { ...(input.data?.trim() ? { input: input.data } : {}), trigger: "manual" });
         if (l.already) return { error: ACTION_ALREADY_RUNNING };
         const r = await l.end;
         if (r.run !== undefined) return { run: r.run };
         return r.error !== undefined ? { error: r.error } : {};
       }
       try {
-        const r = await n.harvestNow(id, "manuelle");
+        const r = await n.harvestNow(id, "manual");
         return r.run === undefined ? {} : { run: r.run };
       } catch (e) {
         console.error(`[webaios] exécution du widget ${id} :`, e);
@@ -442,7 +442,7 @@ const rpc = createRpc({
     "actions.lancer": (p: { id?: unknown; input?: unknown }) =>
       idAction(p?.id) && ActionInputSchema.safeParse(p.input ?? null).success
         ? actions.launch(p.id, (p.input ?? null) as string | null)
-        : { status: "invalide", error: "Demande invalide" },
+        : { status: "invalid", error: "Demande invalide" },
     "actions.arreter": (p: { id?: unknown }) => void (idAction(p?.id) && actions.stop(p.id)),
     "actions.page": (p: { id?: unknown; run?: unknown }) =>
       idAction(p?.id) && (p.run === null || executionAction(p.run)) ? actions.page(p.id, p.run) : null,

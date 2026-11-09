@@ -210,7 +210,7 @@ export async function readActionEdit(c: ActionContext, id: string): Promise<Work
     if (!d || "error" in d) return null;
     const decl = d.declaration;
     const l = await readDraft(d.folder, actionValidationContext(decl));
-    if (!l || l.origin !== "fichier") return null;
+    if (!l || l.origin !== "file") return null;
     return {
       ...l,
       warnings: l.raw === null ? [] : actionWarnings(l.raw, decl),

@@ -10,15 +10,15 @@ test("a memory over 3 MB is not written; a damaged memory reads as empty", async
   const small = { sort: { type: "ai.sort", value: { key: { p: 0.5 } } } };
   expect(await writeMemory(d, small)).toBe(true);
   expect(await readMemory(d)).toEqual(small);
-  expect(await readdir(d)).toEqual(["memoire.json"]); // no .tmp left lying around
+  expect(await readdir(d)).toEqual(["memory.json"]); // no .tmp left lying around
 
   const big = { sort: { type: "ai.sort", value: "x".repeat(MEMORY_MAX_BYTES) } };
   expect(await writeMemory(d, big)).toBe(false);
   expect(await readMemory(d)).toEqual(small); // nothing was overwritten
 
-  await writeFile(join(d, "memoire.json"), "{ abîmé");
+  await writeFile(join(d, "memory.json"), "{ abîmé");
   expect(await readMemory(d)).toEqual({});
-  await writeFile(join(d, "memoire.json"), JSON.stringify({ version: 2, blocks: {} }));
+  await writeFile(join(d, "memory.json"), JSON.stringify({ version: 2, blocks: {} }));
   expect(await readMemory(d)).toEqual({});
 });
 

@@ -58,7 +58,7 @@ async function start(sites: Record<string, object> = { vidola: vidola() }, prepa
   await m.setContext("chrome");
   await waitReady(m);
   await resolveLocalHosts(m, HOSTS);
-  const config = path.join(dataDir, "espace", ".webaios", "mcp.json");
+  const config = path.join(dataDir, "workspace", ".webaios", "mcp.json");
   for (const deadline = Date.now() + 20_000; !existsSync(config); await new Promise((r) => setTimeout(r, 100)))
     if (Date.now() > deadline) throw new Error("the kernel did not write its MCP config");
   await waitUi(m, "return doc.querySelector('.xterm-rows')?.textContent.includes('prêt>')", [], 20_000, "agent");
@@ -204,7 +204,7 @@ describe("the agent on a site app window", () => {
     // Deleted then made again under the same id, as it was: the grant is taken back, the card comes back.
     await inStore(`await store.agent.request("sites.agir", { id: "vidola", action: "supprimer", fenetre: store.state.fenetres[0].id });`);
     await expect.poll(() => siteWindowCount(m, "vidola"), { timeout: 10_000 }).toBe(0);
-    await expect.poll(() => existsSync(path.join(dataDir, "espace", "sites", "vidola")), { timeout: 10_000 }).toBe(false);
+    await expect.poll(() => existsSync(path.join(dataDir, "workspace", "sites", "vidola")), { timeout: 10_000 }).toBe(false);
     writeSite(dataDir, "vidola", { declaration: vidola(["vidola-a.localhost", "mail.localhost"]) });
     const memory = call("site_memory", { id: "vidola" });
     expect(await cardText()).toContain("« Vidola »");
@@ -217,7 +217,7 @@ describe("the agent on a site app window", () => {
       const folder = path.join(dataDir, "sites", "vidola");
       mkdirSync(folder, { recursive: true });
       writeFileSync(
-        path.join(folder, "memoire.json"),
+        path.join(folder, "memory.json"),
         JSON.stringify({ version: 1, values: { "encours.the-bear": { value: { title: "The Bear" }, url: "/serie/the-bear?e=4", when: new Date().toISOString() } }, positions: {} }),
       );
     });
@@ -242,7 +242,7 @@ describe("the agent on a site app window", () => {
     await start({ vidola: vidola() }, () => {
       const folder = path.join(dataDir, "sites", "vidola");
       mkdirSync(folder, { recursive: true });
-      writeFileSync(path.join(folder, "memoire.json"), JSON.stringify({ version: 1, values: { "encours.the-bear": { value: { title: "The Bear" }, url: EPISODE, when: new Date().toISOString() } }, positions: {} }));
+      writeFileSync(path.join(folder, "memory.json"), JSON.stringify({ version: 1, values: { "encours.the-bear": { value: { title: "The Bear" }, url: EPISODE, when: new Date().toISOString() } }, positions: {} }));
     });
     await openAndWait();
     const list = (await call("list_tabs")).text;
@@ -262,12 +262,12 @@ describe("the agent on a site app window", () => {
     expect(await call("navigate", { id: "site:vidola", url: pub })).toEqual({ text: `L'appli de site ne va que sur ses domaines : ${pub} refusée.`, error: true });
     expect(await viewUrl()).toBe(url("/"));
     expect(server.requests.some((r) => r.host === "pub.localhost" && r.path === "/x")).toBe(false);
-    expect(existsSync(path.join(dataDir, "sites", "vidola", "memoire.json"))).toBe(true);
+    expect(existsSync(path.join(dataDir, "sites", "vidola", "memory.json"))).toBe(true);
   });
 
   it("open_site then read_tab on the app: the card shows, the grant gives the text; tweak_errors returns the open app's console", async () => {
     await start({ flemmix: flemmix() }, async () => {
-      writeSite(dataDir, "flemmix", { declaration: flemmix(), files: { "retouches/casse.js": 'throw new Error("retouche cassée");' } });
+      writeSite(dataDir, "flemmix", { declaration: flemmix(), files: { "tweaks/casse.js": 'throw new Error("retouche cassée");' } });
       await grantSite(dataDir, "flemmix", flemmix());
     });
     expect((await call("open_site", { id: "flemmix" })).text).toBe("site:flemmix");
@@ -284,7 +284,7 @@ describe("the agent on a site app window", () => {
 
   it("recharger on site:<id> while the app shows its home reaches the server (the view's load is wanted)", async () => {
     await start({ vidola: vidola() }, async () => {
-      writeSite(dataDir, "vidola", { declaration: vidola(), files: { "accueil/index.html": "<p>accueil</p>" } });
+      writeSite(dataDir, "vidola", { declaration: vidola(), files: { "home/index.html": "<p>accueil</p>" } });
     });
     await openSite();
     const view = () => m.execute<string>(`return ${siteWindowExpr("vidola")}.webaiosSiteWindow.state().vue;`);

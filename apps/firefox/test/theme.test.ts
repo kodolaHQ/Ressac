@@ -10,7 +10,7 @@ describe("variablesTheme", () => {
   });
 
   it("returns the radius, the space and the font in CSS units", () => {
-    expect(variablesTheme({ version: 1, radius: 12, space: 8, font: "serif" })).toEqual({
+    expect(variablesTheme({ version: 1, radius: 12, spacing: 8, font: "serif" })).toEqual({
       "--accueil-rayon": "12px",
       "--accueil-espace": "8px",
       "--accueil-police": "serif",

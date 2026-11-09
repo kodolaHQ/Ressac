@@ -4,11 +4,11 @@ import { previewData } from "../../ui/builder/preview";
 
 const resume = (id: string, attempt = false): ResumeExecution => ({
   id,
-  trigger: attempt ? "rejeu" : "manuelle",
+  trigger: attempt ? "replay" : "manual",
   ...(attempt ? { attempt: { start: "tri", origin: "a" } } : {}),
   start: "d",
   end: "f",
-  status: "reussie",
+  status: "succeeded",
   blocks: [],
 });
 const detail = (id: string, output: { output?: unknown; outputTruncated?: true } | null): Execution =>
@@ -16,10 +16,10 @@ const detail = (id: string, output: { output?: unknown; outputTruncated?: true }
     id,
     version: 1,
     owner: { type: "widget", id: "w" },
-    trigger: "manuelle",
+    trigger: "manual",
     start: "d",
     end: "f",
-    status: "reussie",
+    status: "succeeded",
     blocks: [
       { id: "tri", type: "ai.sort", status: "succeeded", start: null, end: null, items: 1, log: [], output: ["x"] },
       ...(output ? [{ id: "fin", type: "output", status: "succeeded", start: null, end: null, items: 1, log: [], ...output }] : []),
@@ -28,12 +28,12 @@ const detail = (id: string, output: { output?: unknown; outputTruncated?: true }
 const widget = { data: { real: 1 }, example: { example: 1 } };
 
 test("the output of the chosen run's output block (a trial included)", () => {
-  const r = previewData({ chosen: resume("e-essai", true), detail: detail("e-essai", { output: { attempt: 1 } }), list: [resume("e-essai", true), resume("a")], widget });
+  const r = previewData({ chosen: resume("e-attempt", true), detail: detail("e-attempt", { output: { attempt: 1 } }), list: [resume("e-attempt", true), resume("a")], widget });
   expect(r).toEqual({ data: { attempt: 1 }, mention: false });
 });
 
 test("truncated or missing output, last real run: the widget's data", () => {
-  const list = [resume("e-essai", true), resume("b"), resume("a")];
+  const list = [resume("e-attempt", true), resume("b"), resume("a")];
   expect(previewData({ chosen: resume("b"), detail: detail("b", { output: '{"coupé', outputTruncated: true }), list: list, widget })).toEqual({
     data: { real: 1 },
     mention: false,
@@ -56,8 +56,8 @@ test("no run: the widget's data as on the home, without a mention", () => {
 });
 
 test("last real run that did not succeed: the widget's data, with the mention", () => {
-  const failed = { ...resume("b"), status: "echouee" as const };
+  const failed = { ...resume("b"), status: "failed" as const };
   expect(previewData({ chosen: failed, detail: detail("b", null), list: [failed, resume("a")], widget })).toEqual({ data: { real: 1 }, mention: true });
-  const partial = { ...resume("b"), status: "partielle" as const };
+  const partial = { ...resume("b"), status: "partial" as const };
   expect(previewData({ chosen: partial, detail: null, list: [partial], widget })).toEqual({ data: { real: 1 }, mention: false });
 });

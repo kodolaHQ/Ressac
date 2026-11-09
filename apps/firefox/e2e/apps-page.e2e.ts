@@ -89,18 +89,18 @@ describe("Applications page", () => {
     await rows(3);
     for (const [filter, text] of [
       ["tout", "Tout 3"],
-      ["application", "Applications 1"],
+      ["app", "Applications 1"],
       ["poc", "POC et tests 1"],
-      ["sans-fiche", "Sans fiche 1"],
-      ["arretee", "Arrêtées 3"],
+      ["no-manifest", "Sans fiche 1"],
+      ["stopped", "Arrêtées 3"],
     ] as const)
       await expect.poll(() => filterText(filter), { timeout: 10_000 }).toBe(text);
-    expect(await filterText("erreur")).toBeNull();
+    expect(await filterText("error")).toBeNull();
     expect(await rowText("zod")).toContain("github.com/colinhacks/zod");
     expect(await rowText("zod")).toContain("POC");
     expect(await rowText("essai")).toContain("Application");
     expect(await rowText("vieux")).toContain("Sans fiche");
-    await rowState(p.m, "essai", "arretee");
+    await rowState(p.m, "essai", "stopped");
   });
 
   // applications.spec.ts:340
@@ -125,10 +125,10 @@ describe("Applications page", () => {
     p = await openAppsPage(BLOCK, { slow: true });
     const m = p.m;
     await rowButton(m, "essai", "Lancer");
-    await rowState(m, "essai", "lancement");
-    await rowState(m, "essai", "en-marche", 15_000);
+    await rowState(m, "essai", "launching");
+    await rowState(m, "essai", "running", 15_000);
     expect(await rowText("essai")).toMatch(/port 1528[5-9]/);
-    await expect.poll(() => filterText("en-marche"), { timeout: 10_000 }).toBe("En marche 1");
+    await expect.poll(() => filterText("running"), { timeout: 10_000 }).toBe("En marche 1");
     await waitFor(m, `return !!${appWindowExpr("essai")}?.gBrowser.selectedBrowser.currentURI.spec.startsWith("http://localhost:");`, (v) => v === true, 15_000);
     await waitFor(m, `return !${appWindowExpr("essai")}.gBrowser.selectedBrowser.webProgress.isLoadingDocument;`, (v) => v === true);
     // « Ouvrir » brings the window to the front without reloading it.
@@ -137,7 +137,7 @@ describe("Applications page", () => {
     await sleep(300);
     expect(await inAppView(m, "essai", "return window.marque;")).toBe(1);
     await rowButton(m, "essai", "Arrêter");
-    await rowState(m, "essai", "arretee");
+    await rowState(m, "essai", "stopped");
     await expect.poll(appWindows, { timeout: 10_000 }).toBe(0);
   });
 

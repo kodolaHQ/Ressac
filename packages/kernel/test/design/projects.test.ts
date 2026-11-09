@@ -62,15 +62,15 @@ describe("ids", () => {
 });
 
 describe("dossiers", () => {
-  const d: DesignFolders = { spaceRemarks: "/r/.webaios/remarques", private: "/u/design" };
+  const d: DesignFolders = { spaceRemarks: "/r/.webaios/remarks", private: "/u/design" };
   test("remarksFolder", () => {
-    expect(remarksFolder(d, "ext-0123456789abcdef")).toBe("/u/design/remarques/ext-0123456789abcdef");
-    expect(remarksFolder(d, "app-essai")).toBe("/r/.webaios/remarques/app-essai");
-    expect(remarksFolder(d, "demo-5280")).toBe("/r/.webaios/remarques/demo-5280");
+    expect(remarksFolder(d, "ext-0123456789abcdef")).toBe("/u/design/remarks/ext-0123456789abcdef");
+    expect(remarksFolder(d, "app-essai")).toBe("/r/.webaios/remarks/app-essai");
+    expect(remarksFolder(d, "demo-5280")).toBe("/r/.webaios/remarks/demo-5280");
   });
-  test("reviewStore and commentsFile under prive/relecture", () => {
-    expect(reviewStore(d, "app-essai")).toBe("/u/design/relecture/app-essai.git");
-    expect(commentsFile(d, "ext-0123456789abcdef")).toBe("/u/design/relecture/ext-0123456789abcdef.commentaires.json");
+  test("reviewStore and commentsFile under prive/review", () => {
+    expect(reviewStore(d, "app-essai")).toBe("/u/design/review/app-essai.git");
+    expect(commentsFile(d, "ext-0123456789abcdef")).toBe("/u/design/review/ext-0123456789abcdef.comments.json");
   });
 });
 
@@ -92,7 +92,7 @@ describe("projet de site", () => {
     for (const ko of ["site-", "site-A", "site-../x", "site--x", `site-${"a".repeat(61)}`, "site-a_b"]) expect(PROJECT_ID.test(ko)).toBe(false);
   });
   test("remarksFolder on the space side, destination the agent, exact messages", () => {
-    const d: DesignFolders = { spaceRemarks: "/e/remarques", private: "/p" };
+    const d: DesignFolders = { spaceRemarks: "/e/remarks", private: "/p" };
     expect(remarksFolder(d, "site-tuning")).toBe(join(d.spaceRemarks, "site-tuning"));
     expect(projectForSite("tuning", "Tuning")).toEqual({ type: "site", project: "site-tuning", id: "tuning", name: "Tuning" });
     expect(destinationOf(projectForSite("tuning", "Tuning"), [])).toEqual({ label: "l'agent" });

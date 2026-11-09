@@ -37,7 +37,7 @@ function fake(initial: unknown, files: Record<string, string> = {}) {
     const raw = state.readable ? structuredClone(state.disk) : null;
     const v = raw === null ? { ok: false as const, error: "Workflow invalide : JSON coupé" } : validateWorkflow(structuredClone(raw));
     return {
-      origin: "fichier",
+      origin: "file",
       raw: raw,
       validation: v.ok ? { ok: true } : { ok: false, error: v.error, ...(v.block ? { block: v.block } : {}) },
       warnings: [],

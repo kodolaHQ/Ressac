@@ -34,8 +34,8 @@ const declaration = (extra: { login?: string[] } = {}) => ({
   resume: true,
 });
 const A_JS = 'document.body.dataset.retouche = "oui";';
-const FILES = { "retouches/a.js": A_JS, "retouches/cacher.css": ".shorts { display: none; }" };
-const grantsFile = () => path.join(dataDir, "sites-accords.json");
+const FILES = { "tweaks/a.js": A_JS, "tweaks/cacher.css": ".shorts { display: none; }" };
+const grantsFile = () => path.join(dataDir, "site-grants.json");
 const grants = (): Record<string, unknown> => (existsSync(grantsFile()) ? JSON.parse(readFileSync(grantsFile(), "utf8")) : {});
 
 const inStore = <T = unknown>(body: string, args: unknown[] = []) =>
@@ -61,7 +61,7 @@ const heading = () => inSiteBar<string | null>(m, "vidola", `return doc.querySel
 const click = (testid: string, id = "vidola") =>
   inSiteBar(m, id, `for (let i = 0; i < 100 && !doc.querySelector('[data-testid="' + arguments[0] + '"]'); i++) await new Promise((r) => setTimeout(r, 100)); doc.querySelector('[data-testid="' + arguments[0] + '"]').click(); return true;`, [testid]);
 const barApi = <T>(body: string, args: unknown[] = []) => inSiteBar<T>(m, "vidola", `const site = doc.defaultView.webaios.site; ${body}`, args);
-const rewriteDeclaration = (d: object) => writeFileSync(path.join(dataDir, "espace", "sites", "vidola", "site.json"), JSON.stringify(d));
+const rewriteDeclaration = (d: object) => writeFileSync(path.join(dataDir, "workspace", "sites", "vidola", "site.json"), JSON.stringify(d));
 
 /** Opens the app and waits for its card. */
 async function openToCard() {
@@ -99,7 +99,7 @@ afterAll(async () => {
 beforeEach(async () => {
   server.requests.splice(0);
   writeSite(dataDir, "vidola", { declaration: declaration(), files: FILES });
-  rmSync(path.join(dataDir, "espace", "sites", "vidola", "accueil"), { recursive: true, force: true });
+  rmSync(path.join(dataDir, "workspace", "sites", "vidola", "home"), { recursive: true, force: true });
   rmSync(path.join(dataDir, "sites", "vidola"), { recursive: true, force: true });
   writeFileSync(grantsFile(), "{}");
 });
@@ -138,7 +138,7 @@ describe("grant card", () => {
     expect(await card()).toBeNull();
     expect(await shorts()).toBe("block");
     expect(await tweak()).toBeNull();
-    const memory = path.join(dataDir, "sites", "vidola", "memoire.json");
+    const memory = path.join(dataDir, "sites", "vidola", "memory.json");
     expect(!existsSync(memory) || Object.keys(JSON.parse(readFileSync(memory, "utf8")).positions).length === 0).toBe(true);
     expect(grants().vidola).toBeFalsy();
     // Refusing counts for this open only.
@@ -165,7 +165,7 @@ describe("grant card", () => {
     await openToCard();
     await click("accorder-site");
     await expect.poll(() => tweak(), { timeout: 15_000 }).toBe("oui");
-    writeFileSync(path.join(dataDir, "espace", "sites", "vidola", "retouches", "a.js"), 'document.body.dataset.retouche = "v2";');
+    writeFileSync(path.join(dataDir, "workspace", "sites", "vidola", "tweaks", "a.js"), 'document.body.dataset.retouche = "v2";');
     await expect.poll(() => tweak(), { timeout: 10_000 }).toBe("v2");
     expect(await card()).toBeNull();
     expect((await viewState())?.visible).toBe(true);
@@ -229,7 +229,7 @@ describe("grant card", () => {
   it("the domains added by address tracking are named on the card (sites.spec.ts:1137)", async () => {
     const dir = path.join(dataDir, "sites", "vidola");
     mkdirSync(dir, { recursive: true });
-    writeFileSync(path.join(dir, "adresse.json"), JSON.stringify({ current: "vidola-b.localhost", previous: ["vidola-a.localhost"], since: new Date().toISOString() }));
+    writeFileSync(path.join(dir, "url.json"), JSON.stringify({ current: "vidola-b.localhost", previous: ["vidola-a.localhost"], since: new Date().toISOString() }));
     await openToCard();
     expect(await card("accord-site-suivis")).toContain("vidola-b.localhost");
     expect(await card("accord-site-suivis")).not.toContain("vidola-a.localhost");
@@ -281,8 +281,8 @@ describe("grant card", () => {
 
   it("rewriting site.json to add a home while the card shows: the home comes after the choice, never before", async () => {
     await openToCard();
-    mkdirSync(path.join(dataDir, "espace", "sites", "vidola", "accueil"), { recursive: true });
-    writeFileSync(path.join(dataDir, "espace", "sites", "vidola", "accueil", "index.html"), "<p>accueil</p>");
+    mkdirSync(path.join(dataDir, "workspace", "sites", "vidola", "home"), { recursive: true });
+    writeFileSync(path.join(dataDir, "workspace", "sites", "vidola", "home", "index.html"), "<p>accueil</p>");
     // A home-only change is not a reread: the declaration's rewrite is.
     rewriteDeclaration(declaration());
     await expect.poll(async () => (await state()).hasHome, { timeout: 10_000 }).toBe(true);
@@ -310,7 +310,7 @@ describe("home frame", () => {
   </script>`;
 
   it("a home frame cannot reach the controller nor post an grant (sites.spec.ts:1149)", async () => {
-    writeSite(dataDir, "vidola", { declaration: declaration(), files: { ...FILES, "accueil/index.html": HOME } });
+    writeSite(dataDir, "vidola", { declaration: declaration(), files: { ...FILES, "home/index.html": HOME } });
     await openToCard();
     expect(await state().then((s) => s.view)).toBe("accord");
     const hash = (await state()).grant!.hash;
@@ -339,10 +339,10 @@ describe("home frame", () => {
   });
 
   it("reopening an app whose home has gone: the view goes to the site (sites.spec.ts:1187)", async () => {
-    writeSite(dataDir, "vidola", { declaration: { name: "Tube", url: url("/serie/the-bear"), domains: ["vidola-a.localhost"] }, files: { "accueil/index.html": "<p>accueil</p>" } });
+    writeSite(dataDir, "vidola", { declaration: { name: "Tube", url: url("/serie/the-bear"), domains: ["vidola-a.localhost"] }, files: { "home/index.html": "<p>accueil</p>" } });
     await openSite();
     await expect.poll(async () => (await state()).view, { timeout: 15_000 }).toBe("accueil");
-    rmSync(path.join(dataDir, "espace", "sites", "vidola", "accueil"), { recursive: true });
+    rmSync(path.join(dataDir, "workspace", "sites", "vidola", "home"), { recursive: true });
     await openSite();
     await expect.poll(() => viewUrl(), { timeout: 15_000 }).toBe(url("/serie/the-bear"));
     expect((await viewState())?.visible).toBe(true);

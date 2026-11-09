@@ -47,7 +47,7 @@ test("a valid workflow is written atomically and re-read identical", async () =>
   expect((await readFile(join(files, "workflow.json"), "utf8")).endsWith("}\n")).toBe(true);
   expect((await readdir(files)).sort()).toEqual(["a.mjs", "workflow.json"]); // no .tmp
   const lu = await readDraft(files);
-  expect(lu).toMatchObject({ origin: "fichier", raw: wf(), validation: { ok: true } });
+  expect(lu).toMatchObject({ origin: "file", raw: wf(), validation: { ok: true } });
 });
 
 test("an invalid workflow writes nothing and returns the error with the block concerned", async () => {
@@ -77,7 +77,7 @@ test("saving the same workflow writes nothing (ecrit false, mtime unchanged)", a
 test("the implicit one saved as is writes nothing; modified, it creates workflow.json and harvest.mjs stays", async () => {
   await writeFile(join(files, "harvest.mjs"), "export default () => []");
   const before = await readDraft(files);
-  expect(before).toMatchObject({ origin: "implicite", raw: implicitWorkflow(), validation: { ok: true } });
+  expect(before).toMatchObject({ origin: "implicit", raw: implicitWorkflow(), validation: { ok: true } });
   expect((await readdir(files)).sort()).toEqual(["a.mjs", "harvest.mjs"]); // lire writes nothing
   expect(await rec(before!.raw)).toEqual({ ok: true, written: false, memoryErased: [] });
   expect((await readdir(files)).sort()).toEqual(["a.mjs", "harvest.mjs"]);
@@ -142,13 +142,13 @@ test("the erase waits for the memory lock (held by the runs) and goes before the
   expect(await readMemory(data)).toEqual({ a: { type: "code", value: "fraiche" } });
 });
 
-test("nothing to erase: memoire.json is not rewritten", async () => {
+test("nothing to erase: memory.json is not rewritten", async () => {
   await rec(wf());
   await writeMemory(data, { a: { type: "code", value: 1 } });
   const past = new Date("2020-01-01T00:00:00Z");
-  await utimes(join(data, "memoire.json"), past, past);
+  await utimes(join(data, "memory.json"), past, past);
   expect(await rec(wf("titre"))).toEqual({ ok: true, written: true, memoryErased: [] });
-  expect((await stat(join(data, "memoire.json"))).mtime).toEqual(past);
+  expect((await stat(join(data, "memory.json"))).mtime).toEqual(past);
 });
 
 test("changing the implicit one's parameters also erases the memory (compared to the implicit one)", async () => {
@@ -165,7 +165,7 @@ test("workflow.json symbolic link to the outside: refused, the target is not tou
   await symlink(outside, join(files, "workflow.json"));
   expect(await rec(wf())).toMatchObject({ ok: false });
   expect(await readFile(outside, "utf8")).toBe("intact");
-  expect(await readDraft(files)).toMatchObject({ origin: "fichier", raw: null, validation: { ok: false } });
+  expect(await readDraft(files)).toMatchObject({ origin: "file", raw: null, validation: { ok: false } });
 });
 
 test("over 256 KB: refused; widget folder missing: Widget introuvable", async () => {
@@ -182,9 +182,9 @@ test("readDraft returns the JSON even invalid, null for a cut JSON, the implicit
   const invalid = { ...wf(), links: [] };
   await writeFile(join(files, "workflow.json"), JSON.stringify(invalid));
   const l = await readDraft(files);
-  expect(l).toMatchObject({ origin: "fichier", raw: invalid, validation: { ok: false, block: "n" } });
+  expect(l).toMatchObject({ origin: "file", raw: invalid, validation: { ok: false, block: "n" } });
   await writeFile(join(files, "workflow.json"), '{ "version": 1, "blo');
-  expect(await readDraft(files)).toMatchObject({ origin: "fichier", raw: null, validation: { ok: false } });
+  expect(await readDraft(files)).toMatchObject({ origin: "file", raw: null, validation: { ok: false } });
   await writeFile(join(files, "workflow.json"), " ".repeat(300 * 1024));
   expect(await readDraft(files)).toMatchObject({ raw: null, validation: { ok: false } });
 });

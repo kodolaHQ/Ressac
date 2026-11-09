@@ -12,7 +12,7 @@
   const NO_EFFECT_DELAY_MS = 6000;
   const NO_EFFECT = "Sans effet pour l'instant : le service des widgets ne répond pas (agent arrêté ?).";
   // An unreadable widget has no declared sizes: it may take whatever room it wants.
-  const FREE_SIZES = { min: { l: 1, h: 1 }, max: { l: FREE_WIDTH, h: 1000 } };
+  const FREE_SIZES = { min: { w: 1, h: 1 }, max: { w: FREE_WIDTH, h: 1000 } };
 
   // Replaced as a whole on each read: no deep proxy (the data goes to the frames as is).
   let widgets = $state.raw<ShownWidget[]>([]);
@@ -89,7 +89,7 @@
 
   // Drag and resize: a live free preview, then the layout sent on release.
   let widthPx = $state(0);
-  let gesture: { id: string; mode: "deplacer" | "taille"; x0: number; y0: number; start: FreePlacement[]; p0: FreePlacement; sizes: { min: { l: number; h: number }; max: { l: number; h: number } } } | null =
+  let gesture: { id: string; mode: "deplacer" | "taille"; x0: number; y0: number; start: FreePlacement[]; p0: FreePlacement; sizes: { min: { w: number; h: number }; max: { w: number; h: number } } } | null =
     null;
   let inGesture = $state(false);
   let preview = $state.raw<FreePlacement[] | null>(null);
@@ -125,7 +125,7 @@
     const others = g.start.filter((q) => q.id !== g.id);
     const p = g.mode === "deplacer"
       ? moveFree({ p: g.p0, x: g.p0.x + dx, y: g.p0.y + dy, others: others, widthPx: widthPx })
-      : resizeFree({ p: g.p0, l: g.p0.l + dx, h: g.p0.h + dy, min: g.sizes.min, max: g.sizes.max, others: others });
+      : resizeFree({ p: g.p0, w: g.p0.w + dx, h: g.p0.h + dy, min: g.sizes.min, max: g.sizes.max, others: others });
     preview = g.start.map((q) => (q.id === g.id ? p : q));
     guides = freeGuides({ p, others: others, widthPx: widthPx });
   }
@@ -140,7 +140,7 @@
     if (cancelled || !final) return;
     const change = final.some((p, i) => {
       const a = start[i]!;
-      return p.x !== a.x || p.y !== a.y || p.l !== a.l || p.h !== a.h;
+      return p.x !== a.x || p.y !== a.y || p.w !== a.w || p.h !== a.h;
     });
     if (!change) return;
     // Immediately on screen; the folder watch will confirm.
@@ -161,7 +161,7 @@
           class="case"
           style:left="{p.x / 10}%"
           style:top="{p.y}px"
-          style:width="{p.l / 10}%"
+          style:width="{p.w / 10}%"
           style:height="{p.h}px"
         >
           <HomeWidget

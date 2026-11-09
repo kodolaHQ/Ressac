@@ -30,7 +30,7 @@ export function workflowUrlTarget(url: string): Owner | null {
 export const URL_ACTIONS = "webaios://actions";
 /** Page of an action: `webaios://action/<id>` (the latest result) or `webaios://action/<id>/<execution>`. */
 export const ACTION_PREFIX = "webaios://action/";
-const ID_EXECUTION = /^[0-9TZ-]+(?:-essai)?$/;
+const ID_EXECUTION = /^[0-9TZ-]+(?:-attempt)?$/;
 export const urlAction = (id: string, execution?: string) => ACTION_PREFIX + id + (execution ? `/${execution}` : "");
 /** The action (and execution) of an action page, or null if the URL is not one (never a path). */
 export function actionOfUrl(url: string): { id: string; run: string | null } | null {
@@ -147,7 +147,7 @@ export interface BrowserState {
   essentials: Favorite[];
   tabs: Record<TabId, Tab>;
   windows: WindowState[];
-  settings: { engine: SearchEngine; /** Profil d'agent (fichier .webaios/profils/<id>.json). */ agentProfile: string;
+  settings: { engine: SearchEngine; /** Profil d'agent (fichier .webaios/profiles/<id>.json). */ agentProfile: string;
     /** Width of the agent panel, in pixels (the user sets it by dragging its left edge). */
     agentPanelWidth: number;
   };
@@ -295,7 +295,7 @@ export function reviewUrlProject(url: string): string | null {
 /** Context lines loaded at once by « déplier » on the Review page. */
 export const EXPANDED_LINES = 20;
 /** What the Review page displays in place of a file that cannot be displayed (copies of `BINARY_FILE`/`FILE_TOO_BIG`). */
-export const NOT_DISPLAYABLE = { binaire: "fichier binaire", "trop-gros": "fichier trop gros pour la relecture" } as const;
+export const NOT_DISPLAYABLE = { binary: "fichier binaire", "too-big": "fichier trop gros pour la relecture" } as const;
 /** What a comment displays when its lines changed (copy of the kernel's `LIGNE_CHANGEE`). */
 export const PAGE_LINE_CHANGED = "la ligne a changé";
 /** A comment covers displayed lines of a single block of the diff, without a gap (page and main process). */

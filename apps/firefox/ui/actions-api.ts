@@ -120,7 +120,7 @@ export function createActionsApi(o: {
       if (p.launch) host.request("actions.lancer", { id, input: input }).catch((e) => ((hostDown = true), console.error(`[webaios] action ${id} :`, e)));
       return { ok: true };
     },
-    launch: (id, input) => ask("actions.lancer", { id, input: input }, () => ({ status: "invalide" as const, error: isPrivate() ? ACTIONS_IN_PRIVATE_SPACE : NO_KERNEL_MESSAGE })),
+    launch: (id, input) => ask("actions.lancer", { id, input: input }, () => ({ status: "invalid" as const, error: isPrivate() ? ACTIONS_IN_PRIVATE_SPACE : NO_KERNEL_MESSAGE })),
     stop(id) {
       if (!isPrivate()) host.notify("actions.arreter", { id });
     },

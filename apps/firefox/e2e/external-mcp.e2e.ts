@@ -93,7 +93,7 @@ async function freePort(): Promise<number> {
 }
 
 // externes.spec.ts:50
-it("« Brancher un Claude Code »: the command with the real port and a 64-hex token, gone on « Fermer »; clients-externes.json without the token", async () => {
+it("« Brancher un Claude Code »: the command with the real port and a 64-hex token, gone on « Fermer »; external-clients.json without the token", async () => {
   await launch();
   const { command: command, port, token: token } = await connectClient(m);
   expect(command).toBe(`claude mcp add --transport http --scope user webaios-remarks http://127.0.0.1:${port}/mcp-external --header "Authorization: Bearer ${token}"`);
@@ -101,7 +101,7 @@ it("« Brancher un Claude Code »: the command with the real port and a 64-hex t
   expect(port).not.toBe(5279);
   await waitCount(tid("client-externe"), 1);
   expect(await text(tid("client-externe"))).toContain("Claude Code");
-  const file = path.join(w!.dataDir, "design", "clients-externes.json");
+  const file = path.join(w!.dataDir, "design", "external-clients.json");
   expect(statSync(file).mode & 0o777).toBe(0o600);
   const content = readFileSync(file, "utf8");
   expect(content).toContain(sha256(token));
@@ -148,7 +148,7 @@ it("Révoquer: the next call returns 401; the project line says « aucun client 
 });
 
 // externes.spec.ts:230 (the section's part; the ✎ button is plan 35's)
-it("Oublier: the line goes, with ext-<id>.git and its comments under <dataDir>/design/relecture/", async () => {
+it("Oublier: the line goes, with ext-<id>.git and its comments under <dataDir>/design/review/", async () => {
   await launch();
   const p = await declareProject(m, { dataDir: w!.dataDir });
   try {
@@ -161,8 +161,8 @@ it("Oublier: the line goes, with ext-<id>.git and its comments under <dataDir>/d
       [project],
     );
     expect(r.ok).toBe(true);
-    const review = path.join(w!.dataDir, "design", "relecture");
-    const comments = path.join(review, `${project}.commentaires.json`);
+    const review = path.join(w!.dataDir, "design", "review");
+    const comments = path.join(review, `${project}.comments.json`);
     expect(existsSync(comments)).toBe(true);
     await click(m, `${tid("projet-externe")} button`, { text: "Oublier" });
     await waitCount(tid("projet-externe"), 0);
@@ -211,7 +211,7 @@ it("a foreign Host, an Origin header, no token, the kernel's main token and a se
   expect(await rawStatus(port, { Host: `evil.localhost:${port}` })).toBe(403);
   expect(await rawStatus(port, { Host: host, Origin: `http://127.0.0.1:${port}` })).toBe(403);
   expect(await rawStatus(port, { Host: host })).toBe(401);
-  const space = path.join(w!.dataDir, "espace");
+  const space = path.join(w!.dataDir, "workspace");
   const auth = (config: string) => JSON.parse(readFileSync(config, "utf8")).mcpServers.webaios.headers.Authorization as string;
   const mainConfig = path.join(space, ".webaios", "mcp.json");
   await expect.poll(() => existsSync(mainConfig), { timeout: 20_000 }).toBe(true);
@@ -244,7 +244,7 @@ it("a folder under <dataDir> is refused with SPACE_FOLDER", async () => {
   const { port, token: token } = await connectClient(m);
   const c = await mcpClient(port, token);
   try {
-    const inside = [path.join(w!.dataDir, "design", "x"), path.join(w!.dataDir, "espace", "projets", "x")];
+    const inside = [path.join(w!.dataDir, "design", "x"), path.join(w!.dataDir, "workspace", "projects", "x")];
     // Existing folders: a missing one is refused earlier, for another reason.
     for (const d of inside) mkdirSync(d, { recursive: true });
     for (const folder of [w!.dataDir, ...inside]) {

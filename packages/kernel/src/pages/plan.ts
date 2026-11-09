@@ -12,11 +12,11 @@ const KEEP_MAX = 200;
 export const NO_VALUE = "(sans valeur)";
 
 export type Operation =
-  | { op: "compter" }
-  | { op: "trier"; field: string; desc: boolean }
-  | { op: "garder"; n: number }
-  | { op: "filtrer"; field: string; comparison: "=" | "~" | ">" | "<"; value: string | number }
-  | { op: "regrouper"; field: string };
+  | { op: "count" }
+  | { op: "sort"; field: string; desc: boolean }
+  | { op: "keep"; n: number }
+  | { op: "filter"; field: string; comparison: "=" | "~" | ">" | "<"; value: string | number }
+  | { op: "group"; field: string };
 /** `ops`: from the inside to the outside. */
 export type Reference = { path: string; ops: Operation[] };
 export type Group<T> = { value: string; items: T[] };
@@ -24,9 +24,9 @@ export type Group<T> = { value: string; items: T[] };
 // ---- Reading references ----
 
 type Token =
-  | { t: "mot"; v: string }
-  | { t: "nombre"; v: number }
-  | { t: "texte"; v: string }
+  | { t: "word"; v: string }
+  | { t: "number"; v: number }
+  | { t: "text"; v: string }
   | { t: "sym"; v: "(" | ")" | "," | "." | "$" | "=" | "~" | ">" | "<" };
 
 const WORD = /^[\p{L}\p{N}_]+$/u;
@@ -41,23 +41,23 @@ function split(text: string): Token[] | string {
     if (c === '"') {
       const end = text.indexOf('"', i + 1);
       if (end < 0) return "texte entre guillemets non fermé";
-      tokens.push({ t: "texte", v: text.slice(i + 1, end) });
+      tokens.push({ t: "text", v: text.slice(i + 1, end) });
       i = end + 1;
       continue;
     }
     const count = /^-?\d+(?:\.\d+)?(?![\p{L}\p{N}_])/u.exec(text.slice(i));
-    if (count) { tokens.push({ t: "nombre", v: Number(count[0]) }); i += count[0].length; continue; }
+    if (count) { tokens.push({ t: "number", v: Number(count[0]) }); i += count[0].length; continue; }
     let j = i;
     while (j < text.length && WORD.test(text[j]!)) j++;
     if (j === i) return `caractère inattendu « ${c} »`;
-    tokens.push({ t: "mot", v: text.slice(i, j) });
+    tokens.push({ t: "word", v: text.slice(i, j) });
     i = j;
   }
   return tokens;
 }
 
 class PlanError extends Error {}
-const OPERATIONS = ["compter", "trier", "garder", "filtrer", "regrouper"];
+const OPERATIONS = ["count", "sort", "keep", "filter", "group"];
 
 class Reader {
   private i = 0;
@@ -70,14 +70,14 @@ class Reader {
   }
   done(): boolean { return this.i >= this.tokens.length; }
 
-  /** A path of `mot` segments separated by dots (whole numbers allowed: list indexes). */
+  /** A path of `word` segments separated by dots (whole numbers allowed: list indexes). */
   private segments(): string {
     const chunks: string[] = [];
     for (;;) {
       const j = this.peek();
       let seg: string;
-      if (j?.t === "mot") seg = j.v;
-      else if (j?.t === "nombre" && Number.isInteger(j.v) && j.v >= 0) seg = String(j.v);
+      if (j?.t === "word") seg = j.v;
+      else if (j?.t === "number" && Number.isInteger(j.v) && j.v >= 0) seg = String(j.v);
       else throw new PlanError("nom de champ attendu");
       this.i++;
       chunks.push(seg);
@@ -93,7 +93,7 @@ class Reader {
     if (this.sym("$")) { this.i++; return { path: "$", ops: [] }; }
     const j = this.tokens[this.i];
     const next = this.tokens[this.i + 1];
-    if (j?.t === "mot" && OPERATIONS.includes(j.v) && next?.t === "sym" && next.v === "(") {
+    if (j?.t === "word" && OPERATIONS.includes(j.v) && next?.t === "sym" && next.v === "(") {
       this.i += 2;
       const inner = this.reference();
       const op = this.arguments(j.v);
@@ -109,41 +109,41 @@ class Reader {
 
   private arguments(name: string): Operation {
     switch (name) {
-      case "compter": return { op: "compter" };
-      case "regrouper": this.comma(); return { op: "regrouper", field: this.field() };
-      case "trier": {
+      case "count": return { op: "count" };
+      case "group": this.comma(); return { op: "group", field: this.field() };
+      case "sort": {
         this.comma();
         const field = this.field();
         let desc = false;
         if (this.sym(",")) {
           this.i++;
           const j = this.peek();
-          if ((j?.t === "texte" || j?.t === "mot") && j.v === "desc") { desc = true; this.i++; }
-          else throw new PlanError('seul "desc" est permis comme troisième argument de trier');
+          if ((j?.t === "text" || j?.t === "word") && j.v === "desc") { desc = true; this.i++; }
+          else throw new PlanError('seul "desc" est permis comme troisième argument de sort');
         }
-        return { op: "trier", field: field, desc };
+        return { op: "sort", field: field, desc };
       }
-      case "garder": {
+      case "keep": {
         this.comma();
         const j = this.peek();
-        if (j?.t !== "nombre" || !Number.isInteger(j.v) || j.v < 1 || j.v > KEEP_MAX) {
-          throw new PlanError(`garder : un entier de 1 à ${KEEP_MAX} est attendu`);
+        if (j?.t !== "number" || !Number.isInteger(j.v) || j.v < 1 || j.v > KEEP_MAX) {
+          throw new PlanError(`keep : un entier de 1 à ${KEEP_MAX} est attendu`);
         }
         this.i++;
-        return { op: "garder", n: j.v };
+        return { op: "keep", n: j.v };
       }
       default: {
         this.comma();
         const field = this.field();
         const c = this.peek();
-        if (c?.t !== "sym" || !["=", "~", ">", "<"].includes(c.v)) throw new PlanError("filtrer : = ~ > ou < attendu");
+        if (c?.t !== "sym" || !["=", "~", ">", "<"].includes(c.v)) throw new PlanError("filter : = ~ > ou < attendu");
         this.i++;
         const v = this.peek();
-        if (v?.t !== "nombre" && v?.t !== "texte" && v?.t !== "mot") throw new PlanError("filtrer : valeur attendue");
+        if (v?.t !== "number" && v?.t !== "text" && v?.t !== "word") throw new PlanError("filter : valeur attendue");
         this.i++;
         const comparison = c.v as "=" | "~" | ">" | "<";
-        if ((comparison === ">" || comparison === "<") && v.t !== "nombre") throw new PlanError("filtrer : un nombre est attendu avec > et <");
-        return { op: "filtrer", field: field, comparison: comparison, value: v.v };
+        if ((comparison === ">" || comparison === "<") && v.t !== "number") throw new PlanError("filter : un nombre est attendu avec > et <");
+        return { op: "filter", field: field, comparison: comparison, value: v.v };
       }
     }
   }
@@ -201,9 +201,9 @@ function countOf(v: unknown): number | null {
 function apply(op: Operation, entry: unknown): unknown {
   if (!Array.isArray(entry)) throw new PlanError(`${op.op} : liste attendue`);
   switch (op.op) {
-    case "compter": return entry.length;
-    case "garder": return entry.slice(0, op.n);
-    case "trier": {
+    case "count": return entry.length;
+    case "keep": return entry.slice(0, op.n);
+    case "sort": {
       const keys = entry.map((e, i) => ({ e, i, k: readPath(e, op.field) }));
       const direction = op.desc ? -1 : 1;
       keys.sort((x, y) => {
@@ -213,7 +213,7 @@ function apply(op: Operation, entry: unknown): unknown {
       });
       return keys.map((c) => c.e);
     }
-    case "filtrer": {
+    case "filter": {
       const { field: field, comparison: comparison, value: value } = op;
       const searches = comparison === "~" ? normalize(String(value)) : "";
       return entry.filter((e) => {
@@ -225,7 +225,7 @@ function apply(op: Operation, entry: unknown): unknown {
         return n !== null && (comparison === ">" ? n > (value as number) : n < (value as number));
       });
     }
-    case "regrouper": {
+    case "group": {
       const groups = new Map<string, unknown[]>();
       for (const e of entry) {
         const v = readPath(e, op.field);
@@ -267,7 +267,7 @@ const PlanBlockSchema: z.ZodType<PlanBlock> = z.lazy(() =>
   }),
 );
 
-const CONTAINERS = ["groupe", "colonnes"];
+const CONTAINERS = ["group", "columns"];
 
 /** Total number of blocks, and greatest nesting depth of containers (the page does not count). */
 function measure(blocks: PlanBlock[], level: number): { total: number; tooMuch: boolean } {

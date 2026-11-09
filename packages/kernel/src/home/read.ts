@@ -52,7 +52,7 @@ async function readWidget(c: SpacePaths, widgetsFolder: string, id: string): Pro
   };
 }
 
-/** Readable placements of disposition.json. The old format (`{ ordre }`) or a damaged file gives []. */
+/** Readable placements of layout.json. The old format (`{ ordre }`) or a damaged file gives []. */
 async function readPlacements(c: SpacePaths): Promise<Placement[]> {
   try {
     const raw = JSON.parse(await readFile(c.layout, "utf8")) as { version?: unknown; widgets?: unknown };
@@ -66,15 +66,15 @@ async function readPlacements(c: SpacePaths): Promise<Placement[]> {
   }
 }
 
-type Rectangle = { x: number; y: number; l: number; h: number };
+type Rectangle = { x: number; y: number; w: number; h: number };
 
-const overlaps = (a: Rectangle, b: Rectangle) => a.x < b.x + b.l && b.x < a.x + a.l && a.y < b.y + b.h && b.y < a.y + a.h;
+const overlaps = (a: Rectangle, b: Rectangle) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 
 /** First free spot: rows from top to bottom, then columns left to right. */
-function firstPlace(busy: Rectangle[], l: number, h: number): { x: number; y: number } {
+function firstPlace(busy: Rectangle[], w: number, h: number): { x: number; y: number } {
   for (let y = 0; ; y++) {
-    for (let x = 0; x + l <= COLUMNS; x++) {
-      if (!busy.some((o) => overlaps(o, { x, y, l, h }))) return { x, y };
+    for (let x = 0; x + w <= COLUMNS; x++) {
+      if (!busy.some((o) => overlaps(o, { x, y, w, h }))) return { x, y };
     }
   }
 }
@@ -83,7 +83,7 @@ function firstPlace(busy: Rectangle[], l: number, h: number): { x: number; y: nu
  * Places each widget present on disk. A valid placement is kept; a widget with no
  * placement, or whose placement overlaps another, is put at the first free spot.
  */
-export function placeMissing(ids: string[], wanted: Placement[], defaults: Map<string, { l: number; h: number }>): Placement[] {
+export function placeMissing(ids: string[], wanted: Placement[], defaults: Map<string, { w: number; h: number }>): Placement[] {
   const kept: Placement[] = [];
   const alreadySeen = new Set<string>();
   for (const p of wanted) {
@@ -94,8 +94,8 @@ export function placeMissing(ids: string[], wanted: Placement[], defaults: Map<s
   const toPlace = [...wanted.map((p) => p.id), ...ids].filter((id, i, all) => defaults.has(id) && all.indexOf(id) === i && !kept.some((r) => r.id === id));
   for (const id of toPlace) {
     const old = wanted.find((p) => p.id === id);
-    const { l, h } = old ?? defaults.get(id)!;
-    kept.push({ id, ...firstPlace(kept, l, h), l, h });
+    const { w, h } = old ?? defaults.get(id)!;
+    kept.push({ id, ...firstPlace(kept, w, h), w, h });
   }
   return kept;
 }
@@ -110,17 +110,17 @@ const STEP_Y = 8;
 function freeXs(busy: Rectangle[], xMax: number): number[] {
   const xs = new Set<number>([0, xMax]);
   for (let x = STEP_X; x < xMax; x += STEP_X) xs.add(x);
-  for (const o of busy) if (o.x + o.l <= xMax) xs.add(o.x + o.l);
+  for (const o of busy) if (o.x + o.w <= xMax) xs.add(o.x + o.w);
   return [...xs].sort((a, b) => a - b);
 }
 
 /** First free spot in free units: the x values above, and for y 0, the bottoms of placed widgets, then the 8 px steps. */
-function firstFreeSlot(busy: Rectangle[], l: number, h: number): { x: number; y: number } {
-  const xMax = FREE_WIDTH - l;
+function firstFreeSlot(busy: Rectangle[], w: number, h: number): { x: number; y: number } {
+  const xMax = FREE_WIDTH - w;
   const xs = freeXs(busy, xMax);
   for (let y = 0; ; ) {
     for (const x of xs) {
-      if (!busy.some((o) => overlaps(o, { x, y, l, h }))) return { x, y };
+      if (!busy.some((o) => overlaps(o, { x, y, w, h }))) return { x, y };
     }
     // A widget's bottom can fall between two steps (90 px high, y = 90): try it too.
     const bottom = busy.map((o) => o.y + o.h).filter((b) => b > y);
@@ -128,7 +128,7 @@ function firstFreeSlot(busy: Rectangle[], l: number, h: number): { x: number; y:
   }
 }
 
-/** Placements of disposition.json in free units. Another version, a damaged file or an overlap gives []. */
+/** Placements of layout.json in free units. Another version, a damaged file or an overlap gives []. */
 export async function readFreeLayout(c: SpacePaths): Promise<FreePlacement[]> {
   try {
     const available = FreeLayout.safeParse(JSON.parse(await readFile(c.layout, "utf8")));
@@ -148,7 +148,7 @@ export async function readFreeLayout(c: SpacePaths): Promise<FreePlacement[]> {
 export function placeMissingFree(
   ids: readonly string[],
   wanted: readonly FreePlacement[],
-  defaults: ReadonlyMap<string, { l: number; h: number }>,
+  defaults: ReadonlyMap<string, { w: number; h: number }>,
 ): FreePlacement[] {
   const parses = wanted.flatMap((p) => {
     const v = FreePlacement.safeParse(p);
@@ -164,8 +164,8 @@ export function placeMissingFree(
   const toPlace = [...parses.map((p) => p.id), ...ids].filter((id, i, all) => defaults.has(id) && all.indexOf(id) === i && !kept.some((r) => r.id === id));
   for (const id of toPlace) {
     const old = parses.find((p) => p.id === id);
-    const { l, h } = old ?? defaults.get(id)!;
-    kept.push({ id, ...firstFreeSlot(kept, l, h), l, h });
+    const { w, h } = old ?? defaults.get(id)!;
+    kept.push({ id, ...firstFreeSlot(kept, w, h), w, h });
   }
   return kept;
 }
