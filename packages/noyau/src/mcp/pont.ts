@@ -38,7 +38,7 @@ export interface OngletInfo {
   empreinte?: string;
 }
 
-/** What the browser gives the noyau. */
+/** What the browser gives the kernel. */
 export interface PontNavigateur {
   ongletActif(): Promise<OngletInfo | null>;
   listerOnglets(): Promise<OngletInfo[]>;

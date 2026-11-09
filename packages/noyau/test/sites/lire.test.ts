@@ -170,7 +170,7 @@ test("lireRetouches: a subfolder of retouches/ linking to the outside is refused
   expect(await lireRetouches(avecDeclaration(await lireSite(c, "r", o)))).toEqual({ erreur: fichierRetoucheIntrouvable("sous/a.js") });
 });
 
-test("lireRetouches: a file cited by several retouches is read only once", async () => {
+test("lireRetouches: a file cited by several tweaks is read only once", async () => {
   const c = await espace();
   await site(c, "r", decl("R", { retouches: [{ correspond: ["/*"], js: ["a.js"], css: ["a.css"] }, { correspond: ["/x"], js: ["a.js"], css: ["a.css"] }] }));
   await mkdir(join(c.sites, "r", "retouches"), { recursive: true });
@@ -179,7 +179,7 @@ test("lireRetouches: a file cited by several retouches is read only once", async
   expect(await lireRetouches(avecDeclaration(await lireSite(c, "r", o)))).toEqual({ js: { "a.js": "J" }, css: { "a.css": "C" } });
 });
 
-test("lireRetouches: a retouche file that is a directory is refused", async () => {
+test("lireRetouches: a tweak file that is a directory is refused", async () => {
   const c = await espace();
   await site(c, "r", decl("R", { retouches: [{ correspond: ["/*"], js: ["a.js"] }] }));
   await mkdir(join(c.sites, "r", "retouches", "a.js"), { recursive: true });

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-/** Calls a tool of the noyau's MCP server like the container's agent would, with the main token (`.webaios/mcp.json`) or a session's `config`. */
+/** Calls a tool of the kernel's MCP server like the container's agent would, with the main token (`.webaios/mcp.json`) or a session's `config`. */
 export async function appelerOutil(
   racine: string,
   nom: string,

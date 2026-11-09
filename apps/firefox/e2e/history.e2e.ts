@@ -53,7 +53,7 @@ const open = (url: string, fenetreId?: string) =>
 const loaded = (path: string) =>
   waitFor(m, `return gBrowser.tabs.some((t) => t.linkedBrowser.currentURI.spec.endsWith(${JSON.stringify(path)}) && !t.linkedBrowser.webProgress.isLoadingDocument)`, (v) => v === true);
 
-describe("history noted in the noyau", () => {
+describe("history noted in the kernel", () => {
   it("two visited pages are in the history, once each", async () => {
     await open(`${base}/a.html`);
     await loaded("/a.html");

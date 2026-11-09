@@ -187,7 +187,7 @@ test("the site.json examples given in AGENTS.md (YouTube, Vidola) are valid for 
     expect(r.success, `${nom} : ${r.success ? "" : r.error.message}`).toBe(true);
     if (!r.success) continue;
     expect(verifierDeclarationSite(r.data, { adressesLocales: false }), nom).toBeNull();
-    // Each declared retouche file is shown in AGENTS.md.
+    // Each declared tweak file is shown in AGENTS.md.
     for (const r2 of r.data.retouches) for (const f of [...r2.js, ...r2.css]) expect(texte, `${nom} : retouches/${f}`).toContain(`retouches/${f}`);
   }
 });

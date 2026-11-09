@@ -19,7 +19,7 @@ import {
   raisonEchec,
 } from "../shared/design-guards";
 
-// The section « Projets externes » and the Review page over the noyau host's externes.* and relecture.* RPCs, with
+// The section « Projets externes » and the Review page over the kernel host's externes.* and relecture.* RPCs, with
 // the shared guards (shared/design-guards.ts) before any call.
 
 /** An error from the store's realm, made again in this one (`instanceof Error` fails across realms). */
@@ -45,7 +45,7 @@ export function createExternesApi(o: {
         (e) => ({ serveur: { etat: "eteint" as const, raison: raisonEchec(local(e)) }, projets: [], clients: [] }),
       ),
     surChange(cb) {
-      // accueil.change: the host sends it at each noyau start.
+      // accueil.change: the host sends it at each kernel start.
       const offs = ["externes.change", HOST_EXITED, "accueil.change"].map((m) => host.on(m, () => cb()));
       return o.untilUnload(() => offs.forEach((f) => f()));
     },
@@ -151,7 +151,7 @@ export function createDesignApi(o: { win: WindowController; untilUnload: (f: () 
     },
     envoyer: async (p) => ((await allowed(p)) ? copy(host.request<ResultatExtension>("design.envoyer", { projet: p })) : { ok: false, erreur: INVALID_REQUEST }),
     surChange(cb) {
-      // accueil.change: the host sends it at each noyau start.
+      // accueil.change: the host sends it at each kernel start.
       const offs = [...["design.change", HOST_EXITED, "accueil.change"].map((m) => host.on(m, () => cb())), design.onChange(() => cb())];
       return o.untilUnload(() => offs.forEach((f) => f()));
     },

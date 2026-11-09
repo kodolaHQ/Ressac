@@ -7,7 +7,7 @@ import type { Marionette } from "./marionette";
 import { waitUi } from "./ui";
 
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
-// The noyau's gap between two reads of a site: a request must come at least this long (minus clock slack) after the previous.
+// The kernel's gap between two reads of a site: a request must come at least this long (minus clock slack) after the previous.
 const GAP_MS = 900;
 
 interface Site {
@@ -49,7 +49,7 @@ let w: LaunchedWebAiOs;
 let m: Marionette;
 const urlA = (p: string) => `http://site-a.test:${a.port}${p}`;
 const urlB = (p: string) => `http://site-b.test:${b.port}${p}`;
-// site-c is a third name for the first server: another site for the noyau, the same test server.
+// site-c is a third name for the first server: another site for the kernel, the same test server.
 const urlC = (p: string) => `http://site-c.test:${a.port}${p}`;
 
 beforeAll(async () => {
@@ -78,7 +78,7 @@ beforeEach(() => {
 });
 
 type Outcome = { ok: { url: string; texte: string }; at: number } | { err: string; at: number };
-/** A paced read through the host's test hook (the noyau's Menagement), resolving when it ends. */
+/** A paced read through the host's test hook (the kernel's Menagement), resolving when it ends. */
 const paced = (url: string) =>
   m.execute<Outcome>(
     `return (async () => {
@@ -140,7 +140,7 @@ describe("paced reads", () => {
     // A slow read of site-b holds its lane (1.5 s, then one gap): the waits below end long after the plain read.
     const holder = paced(urlB("/page?slow"));
     await waitFor(m, "return 0", () => b.hits.length === 1, 20_000);
-    // Two sites, so the noyau queues neither before the chrome: both reads sit in the chrome's wait together
+    // Two sites, so the kernel queues neither before the chrome: both reads sit in the chrome's wait together
     // (site-b's lane serves them one gap apart, the first not before one gap after the read above).
     const waiting = [paced(urlA(`/302?to=${to}`)), paced(urlC(`/302?to=${to}`))];
     await waitFor(m, "return 0", () => a.hits.filter((h) => h.path === "/302").length === 2, 20_000);

@@ -11,12 +11,12 @@ import type { Marionette } from "./marionette";
 import { click, inUi } from "./ui";
 import { writeWidget } from "./workflows";
 
-// The watch end to end: all local. An ad site, a fake DuckDuckGo (the noyau tests'
+// The watch end to end: all local. An ad site, a fake DuckDuckGo (the kernel tests'
 // saved pages), a fake Kev and a fake Ollama. No real notification: test mode writes them to a file in the data folder.
 // Plus the click on a notification.
 
 const FIXTURES_DDG = path.resolve(import.meta.dirname, "../../../packages/noyau/test/workflows/fixtures/duckduckgo");
-/** The noyau's exact message (accueil/schemas.ts, WEB_AVEC_COMPTE). */
+/** The kernel's exact message (accueil/schemas.ts, WEB_AVEC_COMPTE). */
 const WEB_AVEC_COMPTE = "web : impossible avec un compte (les données d'un compte ne doivent pas pouvoir partir vers un site inconnu)";
 
 interface Server {
@@ -465,7 +465,7 @@ it('the Gmail widget (account, recolte.mjs) updates as before; with "web": true 
     },
   };
   await writeWidget(dataDir, "gmail", gmail);
-  // The accord, already given.
+  // The grant, already given.
   await writeJson(path.join(dataDir, "widgets", "accords.json"), { gmail: { domaines: ["127.0.0.1"], publiques: [], profil: "defaut" } });
   const m = await launchWatch();
   await harvest(m, "gmail");

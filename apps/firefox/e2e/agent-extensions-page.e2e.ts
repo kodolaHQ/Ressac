@@ -333,7 +333,7 @@ describe("crashes", () => {
       expect((await w.call("recharger_extension", { id: "popup" })).texte).toBe("etat : rechargee");
       await errors(n);
     }
-    // Time for a crash count to reach the noyau.
+    // Time for a crash count to reach the kernel.
     await new Promise((r) => setTimeout(r, 1000));
     expect(registry(w.dataDir).extensions["agent:popup"]?.desactivee).toBeNull();
     expect(await agentAddons(w.marionette)).toEqual([expect.objectContaining({ id: "popup@agent.webaios", isActive: true })]);

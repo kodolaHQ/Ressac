@@ -144,7 +144,7 @@ it("⇧⌘D in tuning: viewfinder in the view, a click on #lien does nothing, bu
 });
 
 // design-sites.spec.ts:298
-it("unavailable on the accord card (the avis goes after 5 s); ⌂ stops the mode", async () => {
+it("unavailable on the grant card (the avis goes after 5 s); ⌂ stops the mode", async () => {
   // (a) avec-accueil: the site entered from the home, the mode on, then ⌂: it stops.
   await toSite(m, "avec-accueil");
   await modeOn("avec-accueil");

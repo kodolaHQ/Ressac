@@ -305,7 +305,7 @@ describe("design guards", () => {
     for (const bad of ["a".repeat(201), 5]) expect(() => g.checkClientName(bad)).toThrow("Nom invalide");
   });
 
-  it("design texts and bounds are noyau's", () => {
+  it("design texts and bounds are kernel's", () => {
     expect(g.UNAVAILABLE_DESIGN).toBe(INDISPONIBLE_DESIGN);
     expect([g.UNAVAILABLE_DESIGN_SITE, g.CAPTURE_WARNING_SITE]).toEqual([INDISPONIBLE_DESIGN_SITE, AVERTISSEMENT_CAPTURE_SITE]);
     expect([g.HTML_MAX, g.TRONQUE]).toEqual([HTML_MAX, TRONQUE]);

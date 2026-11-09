@@ -40,7 +40,7 @@ export const S5_PAGE = HOOKS_PAGE.replace('<button type="submit" id="envoyer">',
 );
 
 /**
- * Spike S5's retouche, run in WebAiOsSite's sandbox after the password guard: it listens first (window capture), hooks
+ * Spike S5's tweak, run in WebAiOsSite's sandbox after the password guard: it listens first (window capture), hooks
  * the prototypes the viewfinder calls (in its own world), fakes the viewfinder's globals, and on « essai » writes what
  * it sees into the DOM.
  */

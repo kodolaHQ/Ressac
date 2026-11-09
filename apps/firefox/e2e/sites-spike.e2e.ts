@@ -256,7 +256,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("site app spike", () => {
   }, 240_000);
 
   it("(c) the sandbox: no chrome, no page world, password hidden, after a stopped DOMContentLoaded", async () => {
-    // Plan 32: the probe is the app's retouche, in the page and in the lecteur.localhost frame (its `cadres`).
+    // Plan 32: the probe is the app's tweak, in the page and in the lecteur.localhost frame (its `cadres`).
     const lecteur = server.url("lecteur.localhost", "/*").replace(/^http:/, "https:");
     await openSite(rules(undefined, [{ correspond: ["/sonde"], js: ["sonde.js"], cadres: [lecteur] }]), { js: { "sonde.js": PROBE }, css: {} });
     const sonde = server.url("vidola-a.localhost", "/sonde");

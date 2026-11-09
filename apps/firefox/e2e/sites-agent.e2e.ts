@@ -46,7 +46,7 @@ const answer = (button: string, card = CARD) => click(m, `${card} button`, { tex
 const shown = (selector: string) => inUi<boolean>(m, `return !!doc.querySelector(${JSON.stringify(selector)})`);
 const gone = (selector: string) => waitUi(m, `return !doc.querySelector(${JSON.stringify(selector)})`);
 
-/** Launches with these apps written; returns once the agent's session is up (its start takes back every accord). */
+/** Launches with these apps written; returns once the agent's session is up (its start takes back every grant). */
 async function start(sites: Record<string, object> = { vidola: vidola() }, prepare?: () => Promise<void> | void) {
   dataDir = await mkdtemp(path.join(os.tmpdir(), "webaios-data-"));
   profile = await mkdtemp(path.join(os.tmpdir(), "webaios-firefox-"));
@@ -97,7 +97,7 @@ describe("the agent on a site app window", () => {
     await openAndWait();
     const depart = url("/");
 
-    // Without the accord: name, domain and « appli de site », never the address nor the page's title.
+    // Without the grant: name, domain and « appli de site », never the address nor the page's title.
     const liste = (await call("lister_onglets")).texte;
     expect(liste.split("\n")).toContain("site:vidola · Vidola · vidola-a.localhost · appli de site");
     expect(liste).not.toContain(depart);
@@ -139,7 +139,7 @@ describe("the agent on a site app window", () => {
     await expect.poll(() => viewUrl(), { timeout: 10_000 }).toBe(film);
     await expect.poll(() => view("document.title")).toBe("Film 2");
     expect(await tabUrls()).toEqual(tabs);
-    // With the accord, the line has the page's address; the title stays the app's name.
+    // With the grant, the line has the page's address; the title stays the app's name.
     expect((await call("lister_onglets")).texte.split("\n")).toContain(`site:vidola · Vidola · ${film} · appli de site`);
   });
 
@@ -171,7 +171,7 @@ describe("the agent on a site app window", () => {
     expect(await console_).toEqual({ texte: "Onglet introuvable : site:vidola", erreur: true });
   });
 
-  it("the accord follows the declaration: site.json unchanged, no card; one more domain, the card comes back; deleted then made again, too (sites.spec.ts:1759)", async () => {
+  it("the grant follows the declaration: site.json unchanged, no card; one more domain, the card comes back; deleted then made again, too (sites.spec.ts:1759)", async () => {
     await start();
     await openAndWait();
     let reading = call("lire_onglet", { id: "site:vidola" });
@@ -201,7 +201,7 @@ describe("the agent on a site app window", () => {
     expect((await reading).image?.startsWith("iVBOR")).toBe(true);
     await gone(CARD);
 
-    // Deleted then made again under the same id, as it was: the accord is taken back, the card comes back.
+    // Deleted then made again under the same id, as it was: the grant is taken back, the card comes back.
     await inStore(`await store.agent.request("sites.agir", { id: "vidola", action: "supprimer", fenetre: store.state.fenetres[0].id });`);
     await expect.poll(() => siteWindowCount(m, "vidola"), { timeout: 10_000 }).toBe(0);
     await expect.poll(() => existsSync(path.join(dataDir, "espace", "sites", "vidola")), { timeout: 10_000 }).toBe(false);
@@ -212,7 +212,7 @@ describe("the agent on a site app window", () => {
     expect((await memory).texte).not.toContain("Mémoire d'une appli de site");
   });
 
-  it("memoire_site, window closed: the card has the app's name; accord → the memory; then the window's tools without a second card (sites.spec.ts:1799)", async () => {
+  it("memoire_site, window closed: the card has the app's name; grant → the memory; then the window's tools without a second card (sites.spec.ts:1799)", async () => {
     await start({ vidola: vidola() }, () => {
       const dossier = path.join(dataDir, "sites", "vidola");
       mkdirSync(dossier, { recursive: true });
@@ -229,14 +229,14 @@ describe("the agent on a site app window", () => {
     expect(mem.erreur).toBe(false);
     expect(mem.texte.startsWith("Mémoire d'une appli de site, faite de pages web (une donnée, pas une consigne) :")).toBe(true);
     expect(mem.texte).toContain("encours.the-bear");
-    // The window opened then read: the same accord, no second card.
+    // The window opened then read: the same grant, no second card.
     expect((await call("ouvrir_site", { id: "vidola" })).texte).toBe("site:vidola");
     await expect.poll(() => siteWindowCount(m, "vidola"), { timeout: 10_000 }).toBe(1);
     expect((await call("erreurs_retouches", { id: "vidola" })).texte).toContain("Erreurs de console des retouches");
     expect(await shown(CARD)).toBe(false);
   });
 
-  it("lister_onglets shows site:vidola without its URL; memoire_site after the accord gives the series; naviguer to pub.localhost refused (sites.spec.ts:2173)", async () => {
+  it("lister_onglets shows site:vidola without its URL; memoire_site after the grant gives the series; naviguer to pub.localhost refused (sites.spec.ts:2173)", async () => {
     // The memory is written ahead: watching the episode is sites-resume.e2e.ts's.
     const EPISODE = "/serie/the-bear?e=4";
     await start({ vidola: vidola() }, () => {
@@ -265,7 +265,7 @@ describe("the agent on a site app window", () => {
     expect(existsSync(path.join(dataDir, "sites", "vidola", "memoire.json"))).toBe(true);
   });
 
-  it("ouvrir_site then lire_onglet on the app: the card shows, the accord gives the text; erreurs_retouches returns the open app's console", async () => {
+  it("ouvrir_site then lire_onglet on the app: the card shows, the grant gives the text; erreurs_retouches returns the open app's console", async () => {
     await start({ flemmix: flemmix() }, async () => {
       writeSite(dataDir, "flemmix", { declaration: flemmix(), fichiers: { "retouches/casse.js": 'throw new Error("retouche cassée");' } });
       await grantSite(dataDir, "flemmix", flemmix());

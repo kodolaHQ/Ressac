@@ -14,7 +14,7 @@ import { openApplications, reviewedRef } from "./review";
 import { grantSite, inSiteBar, inSiteView, resolveLocalHosts, startSitesServer, writeSite } from "./sites";
 import { click, inUi, waitUi } from "./ui";
 
-// Plan 36 Task 4: a site app's design mode down the whole path: the send to the agent, the retouche's reload, the
+// Plan 36 Task 4: a site app's design mode down the whole path: the send to the agent, the tweak's reload, the
 // review from the chevron, the deletion, and the host stopped (spec §5.10). App tuning,
 // one launch, the tests in order. Block 15360-15364: sites on 15360.
 
@@ -149,7 +149,7 @@ it("two remarks on tuning then send from the cart: text pre-filled without Enter
 });
 
 // design-sites.spec.ts:444
-it("retouche changed during the mode: the view reloads without the accord card, the rule applies, the mode is off, the cart stays", async () => {
+it("tweak changed during the mode: the view reloads without the grant card, the rule applies, the mode is off, the cart stays", async () => {
   await toSite(m, ID);
   await modeOn();
   await remark("#banniere", "div#banniere.cookies", "cache ça", "1");
@@ -171,7 +171,7 @@ it("retouche changed during the mode: the view reloads without the accord card, 
 });
 
 // design-sites.spec.ts:507, the chevron half (the card half is review.e2e.ts:252)
-it("after site.json and the retouche changed, « Relire ce projet » of the chevron brings the same Review page, no second tab", async () => {
+it("after site.json and the tweak changed, « Relire ce projet » of the chevron brings the same Review page, no second tab", async () => {
   await expect.poll(() => existsSync(reviewedRef(w.dataDir, `site-${ID}`)), { timeout: 15_000 }).toBe(true);
   writeFileSync(path.join(space(), "sites", ID, "site.json"), JSON.stringify({ ...tuningDeclaration(url), description: "Sans bannière" }));
   writeFileSync(path.join(space(), "sites", ID, "retouches", "tuning.css"), "#banniere { display: none } /* 2 */");
@@ -235,7 +235,7 @@ it("Supprimer with a remark in the cart and a batch sent: remarks and review rep
   await expect.poll(() => existsSync(reviewedRef(w.dataDir, `site-${ID}`)), { timeout: 15_000 }).toBe(true);
   const old = readFileSync(reviewedRef(w.dataDir, `site-${ID}`), "utf8");
   await toSite(m, ID);
-  // A batch sent (with the retouche test's remark; #banniere is hidden by the retouche: #lien)…
+  // A batch sent (with the tweak test's remark; #banniere is hidden by the tweak: #lien)…
   const sent = batches().length;
   expect((await etat()).panier).toBe(1);
   await modeOn();
@@ -254,7 +254,7 @@ it("Supprimer with a remark in the cart and a batch sent: remarks and review rep
   await expect.poll(() => existsSync(remarksDir()), { timeout: 15_000 }).toBe(false);
   await expect.poll(() => existsSync(path.join(relecture, `site-${ID}.git`)), { timeout: 15_000 }).toBe(false);
   expect(existsSync(path.join(relecture, `site-${ID}.commentaires.json`))).toBe(false);
-  // Made again with the same id (another retouche: another tree, so another photo if the old one is gone).
+  // Made again with the same id (another tweak: another tree, so another photo if the old one is gone).
   writeSite(w.dataDir, ID, { declaration: tuningDeclaration(url), fichiers: { "retouches/tuning.css": "/* neuve */" } });
   await waitUi(m, `return !!doc.querySelector('${tid(`site-${ID}`)}')`, [], 15_000);
   await expect.poll(() => existsSync(reviewedRef(w.dataDir, `site-${ID}`)), { timeout: 15_000 }).toBe(true);

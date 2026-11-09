@@ -32,7 +32,7 @@ const S5_PAGE = HOOKS_PAGE.replace('<button type="submit" id="envoyer">', '<inpu
 );
 
 /**
- * The agent's retouche, run in WebAiOsSite's sandbox after the password guard: it listens first (window capture), hooks
+ * The agent's tweak, run in WebAiOsSite's sandbox after the password guard: it listens first (window capture), hooks
  * the prototypes the viewfinder calls (in its own world), fakes the viewfinder's globals, and on « essai » writes
  * what it sees into the DOM. It never calls a hooked function itself.
  */
@@ -103,7 +103,7 @@ async function viewPoint(sel: string): Promise<{ x: number; y: number }> {
   return { x: b.x + c.x * b.z, y: b.y + c.y * b.z };
 }
 
-/** The retouche's answer to « essai ». */
+/** The tweak's answer to « essai ». */
 async function retouche(): Promise<any> {
   await view(`(document.documentElement.dataset.sonde = "", document.dispatchEvent(new Event("essai")), 1)`);
   return JSON.parse(String(await view("document.documentElement.dataset.sonde")));
@@ -126,7 +126,7 @@ async function openApp(): Promise<void> {
   await expect.poll(vue, { timeout: 15_000 }).not.toBeNull();
 }
 
-/** The site's page in the view, retouches run. */
+/** The site's page in the view, tweaks run. */
 async function toSite(): Promise<void> {
   await openApp();
   if ((await vue()) !== "site") await inStore(`store.sites.controller(arguments[0]).enter();`, [ID]);
@@ -170,7 +170,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
     for (const d of dirs) await rm(d, { recursive: true, force: true });
   });
 
-  it("S5: the viewfinder in the view with retouches active: two sandboxes apart, password guard holds, page sees nothing, capture is the page's", async () => {
+  it("S5: the viewfinder in the view with tweaks active: two sandboxes apart, password guard holds, page sees nothing, capture is the page's", async () => {
     await toSite();
     await view(`(document.getElementById("mdp").value = "hunter2", 1)`);
     const info = await m.execute(
@@ -205,7 +205,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
     expect(during.pw).toBe("");
     expect(during.shadow).toBe("null");
     expect(during.fakeIsMine).toBe(true);
-    // Hover, then the keyboard while aiming: a key on the password field never reaches the retouche, one on #email does.
+    // Hover, then the keyboard while aiming: a key on the password field never reaches the tweak, one on #email does.
     await siteMouse(pEmail, { move: true });
     await view(`(document.getElementById("mdp").focus(), 1)`);
     await m.execute(`${SITE}.focus(); ${VIEW}.focus();`);
@@ -240,7 +240,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
     expect(page.fakeStop).toBe(0);
     expect(pageKeys1?.filter((k) => !pageKeys0?.includes(k))).toEqual([]);
     await sleep(600);
-    // The retouche's world and the page's world after: no viewfinder global, no host.
+    // The tweak's world and the page's world after: no viewfinder global, no host.
     expect(await view("document.getElementsByTagName('webaios-viseur').length")).toBe(0);
     const pageTypeof = await view<string>(
       `(() => { const s = document.createElement("script"); s.textContent = "document.documentElement.dataset.vu = [typeof webaiosSite, typeof __webaiosPortee, typeof __retoucheSecret].join()"; document.documentElement.append(s); s.remove(); return document.documentElement.dataset.vu; })()`,
@@ -248,7 +248,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("design mode in site apps, spikes S5
     note("S5 page world typeof webaiosSite, __webaiosPortee, __retoucheSecret", pageTypeof);
     expect(pageTypeof).toBe("undefined,undefined,undefined");
 
-    // Escape (trusted) while aiming ends it with null; the retouche does not see it.
+    // Escape (trusted) while aiming ends it with null; the tweak does not see it.
     const e = await armActor(m, VIEW);
     await expect.poll(() => view("document.getElementsByTagName('webaios-viseur').length"), { timeout: 10_000 }).toBe(1);
     await siteKey("Escape");

@@ -140,7 +140,7 @@ export async function writeActionWithResult(
   );
 }
 
-/** Opens action `id`'s page in a tab of the first window, once the noyau serves it: nothing is launched. */
+/** Opens action `id`'s page in a tab of the first window, once the kernel serves it: nothing is launched. */
 export async function openActionPage(m: Marionette, id: string, nom: string, execution = EXECUTION): Promise<void> {
   await waitUi(m, "return ui.webaios.actions.page(arguments[0], arguments[1]).then((p) => p !== null);", [id, execution], 30_000);
   await dispatch(m, { type: "ouvrirAction", fenetreId: (await state(m)).fenetres[0]!.id, id, nom, execution });
@@ -150,7 +150,7 @@ export async function openActionPage(m: Marionette, id: string, nom: string, exe
 /** What the UI says when the actions service does not answer. */
 export const WITHOUT_NOYAU = "Le service des actions ne répond pas (agent arrêté ?)";
 
-/** Waits until the noyau serves the actions: an unknown action is then refused as such. */
+/** Waits until the kernel serves the actions: an unknown action is then refused as such. */
 export async function waitNoyau(m: Marionette): Promise<void> {
   await waitUi(m, "return ui.webaios.actions.lancer('inconnue-du-test', null).then((r) => r.erreur !== arguments[0]);", [WITHOUT_NOYAU], 30_000);
 }

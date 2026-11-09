@@ -11,7 +11,7 @@ import type { Marionette } from "./marionette";
 import { click, inUi, missingApi, pressKeys, waitUi } from "./ui";
 
 // The « Actions » page of the sidebar: lists, launches, opens the
-// builder, deletes, removes the accord. The actions are written before the launch, on one data folder for the file.
+// builder, deletes, removes the grant. The actions are written before the launch, on one data folder for the file.
 
 const TICKETS_NOM = "Mes tickets GitLab à traiter";
 const HIER = "2026-10-30T08:00:00.000Z";
@@ -90,7 +90,7 @@ describe("the Actions page", () => {
     () =>
       launch(async (d) => {
         await writeTwoActions(d);
-        // An action that reads with the account, its accord given and a result (actions.spec.ts:1063, :1097).
+        // An action that reads with the account, its grant given and a result (actions.spec.ts:1063, :1097).
         for (const id of ["compte", "accord"]) {
           await writeRunnableAction(d, id, { nom: "Avec compte", compte: ["127.0.0.1"], code: "export default async () => [{ page: { titre: 'x' } }];" });
           await writeResult(d, id, EXECUTION, HIER, "Secret");
@@ -114,7 +114,7 @@ describe("the Actions page", () => {
     expect(await q.text(tid("dernier-tickets"))).toContain("Réussie");
     expect(await q.text(tid("ligne-action-leboncoin"))).toContain("Leboncoin");
     expect(await q.text(tid("dernier-leboncoin"))).toContain("Jamais lancée");
-    // No accord: no « Retirer l'accord ».
+    // No grant: no « Retirer l'accord ».
     expect(await q.count(tid("retirer-accord-tickets"))).toBe(0);
   });
 
@@ -154,7 +154,7 @@ describe("the Actions page", () => {
   });
 
   // actions.spec.ts:1063
-  it("Supprimer: the folder goes to actions/.corbeille, the accord and results are erased, the line goes", async () => {
+  it("Supprimer: the folder goes to actions/.corbeille, the grant and results are erased, the line goes", async () => {
     await openActionsPage();
     await visible(tid("retirer-accord-compte"));
     await click(m, tid("supprimer-compte"));
@@ -188,11 +188,11 @@ describe("the Actions page", () => {
   });
 
   // actions.spec.ts:1097
-  it("removing the accord: the button goes, results erased", async () => {
+  it("removing the grant: the button goes, results erased", async () => {
     const result = path.join(actionsDataDir(w.dataDir), "accord", "resultats", `${EXECUTION}.json`);
     await openActionsPage();
     await click(m, tid("retirer-accord-accord"));
-    // Annuler keeps the accord and the results.
+    // Annuler keeps the grant and the results.
     await click(m, tid("annuler-suppression-action"));
     await visible(tid("retirer-accord-accord"));
     expect(existsSync(result)).toBe(true);

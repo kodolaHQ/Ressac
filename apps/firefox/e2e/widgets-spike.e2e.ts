@@ -476,7 +476,7 @@ describe.skipIf(!process.env.WEBAIOS_SPIKE)("widget home spike", () => {
     note("P5 srcdoc in the sidebar (sidebar CSP inherited)", { ...inSidebar, page: done(inSidebar.title) });
   });
 
-  it("P6: the host's folders (espace/accueil, <dataDir>/widgets), read by the shared noyau, symlinks kept inside", { timeout: 120_000 }, async () => {
+  it("P6: the host's folders (espace/accueil, <dataDir>/widgets), read by the shared kernel, symlinks kept inside", { timeout: 120_000 }, async () => {
     const racine = path.join(w.dataDir, "espace");
     const accueil = path.join(racine, "accueil");
     const widgets = path.join(accueil, "widgets");

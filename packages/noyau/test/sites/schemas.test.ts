@@ -25,13 +25,13 @@ const messages = (v: unknown) => {
   return r.success ? [] : r.error.issues.map((i) => i.message);
 };
 
-test("the Vidola example (domains, suiviAdresse, retouches with frames, reprise) is accepted", () => {
+test("the Vidola example (domains, suiviAdresse, tweaks with frames, reprise) is accepted", () => {
   const r = DeclarationSite.safeParse(vidola);
   expect(r.success).toBe(true);
   if (r.success) expect(r.data.connexion).toEqual([]);
 });
 
-test("the YouTube example (login, css retouche that hides Shorts) is accepted", () => {
+test("the YouTube example (login, css tweak that hides Shorts) is accepted", () => {
   const r = DeclarationSite.safeParse({
     nom: "YouTube",
     adresse: "https://www.youtube.com/",
@@ -55,7 +55,7 @@ test('correspond "series/*" donne CORRESPOND_CHEMIN', () => {
   expect(messages({ ...vidola, retouches: [{ correspond: ["series/*"] }] })).toContain(CORRESPOND_CHEMIN);
 });
 
-test("a retouche path with .. or absolute is refused", () => {
+test("a tweak path with .. or absolute is refused", () => {
   for (const js of ["../x.js", "a/../x.js", "/x.js"]) {
     expect(DeclarationSite.safeParse({ ...vidola, retouches: [{ correspond: ["/*"], js: [js] }] }).success, js).toBe(false);
   }

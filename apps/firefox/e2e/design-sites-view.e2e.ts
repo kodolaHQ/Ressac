@@ -35,7 +35,7 @@ import { startServer } from "./server";
 import { grantSite, inSiteView, resolveLocalHosts, startSitesServer, writeSite } from "./sites";
 
 // Plan 36 Task 1: the design service's `site` target in a site app's view (spike S5), driven through store.design with
-// the real overlays. Apps: tuning, vidola (spike S5's hostile page and retouche),
+// the real overlays. Apps: tuning, vidola (spike S5's hostile page and tweak),
 // avec-accueil (a home). Block 15345-15349: sites on 15345, a frame of another origin on 127.0.0.1:15346.
 
 const PORT = 15345;
@@ -118,14 +118,14 @@ const projectFiles = (id: string) =>
   (readdirSync(w.dataDir, { recursive: true }) as string[]).filter((f) => f.includes(`site-${id}`) && !f.includes(".git")).map((f) => path.join(w.dataDir, f)).filter((f) => statSync(f).isFile());
 const pngs = (id: string) => projectFiles(id).filter((f) => f.endsWith(".png"));
 
-/** The retouche's answer to « essai ». */
+/** The tweak's answer to « essai ». */
 async function retouche(): Promise<any> {
   await view("vidola", `(document.documentElement.dataset.sonde = "", document.dispatchEvent(new Event("essai")), 1)`);
   return JSON.parse(String(await view("vidola", "document.documentElement.dataset.sonde")));
 }
 
 describe("design mode, site target, the view", () => {
-  it("two sandboxes in one page: the viewfinder and a retouche never see each other", async () => {
+  it("two sandboxes in one page: the viewfinder and a tweak never see each other", async () => {
     await toSite(m, "vidola", "/design");
     expect(await view("vidola", `getComputedStyle(document.querySelector(".cache")).display`)).toBe("none");
     await expect.poll(() => view("vidola", "document.documentElement.dataset.retouche ?? null"), { timeout: 10_000 }).toBe("oui");
@@ -159,7 +159,7 @@ describe("design mode, site target, the view", () => {
     await toggle("vidola");
     await expect.poll(() => hosts("vidola"), { timeout: 10_000 }).toBe(1);
     expect((await retouche()).pw).toBe("");
-    // A key on the password field while aiming reaches the field, never the retouche; one on #email does.
+    // A key on the password field while aiming reaches the field, never the tweak; one on #email does.
     await view("vidola", `(document.getElementById("mdp").focus(), 1)`);
     await m.execute(`${siteExpr("vidola")}.focus(); ${viewExpr("vidola")}.focus();`);
     await view("vidola", `(document.getElementById("mdp").focus(), 1)`);

@@ -27,7 +27,7 @@ export function createSiteApi(c: SiteWindowController): ApiSite {
     recharger: () => c.reload(),
     ouvrirBloque: () => c.openBlocked(),
     chercherAdresse: () => c.findAddress(),
-    // Refuses a non-boolean choice and an unbounded fingerprint.
+    // Refuses a non-boolean choice and an unbounded hash.
     accorder: async (oui, empreinte) => {
       if (typeof oui !== "boolean" || (empreinte !== undefined && (typeof empreinte !== "string" || empreinte.length > 128))) throw new Error("invalid accord request");
       await c.accord(oui, empreinte ?? "");

@@ -246,7 +246,7 @@ describe("video resume", () => {
     // And a note after the restart is written.
     expect(await seekThenPause(80)).toBeCloseTo(80, 0);
     await expect.poll(() => positions()?.["/episode/4"]?.t ?? null, { timeout: 10_000 }).toBeCloseTo(80, 0);
-    // The retouches' console is the chrome's: still there.
+    // The tweaks' console is the chrome's: still there.
     expect(await inStore<unknown[]>(`return store.sites.errors("vidola");`)).toEqual([]);
   });
 });

@@ -64,7 +64,7 @@ async function setPrivate(prive: boolean): Promise<void> {
   if (e.prive !== prive) await dispatch(m, { type: "reglerEspace", id: e.id, nom: e.nom, icone: e.icone, prive, profil: e.profil } as Action);
 }
 
-/** Opens the action's builder from its page (« Voir le workflow »), once the noyau serves the actions. */
+/** Opens the action's builder from its page (« Voir le workflow »), once the kernel serves the actions. */
 async function openActionBuilder(id: string): Promise<void> {
   await openAction(m, id, NOM);
   await click(m, tid("voir-workflow"));

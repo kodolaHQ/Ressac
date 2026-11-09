@@ -26,7 +26,7 @@ export class WebAiOsSpikeDesignChild extends JSWindowActorChild {
     if (!this.sb) {
       const win = this.contentWindow;
       this.sb = Cu.Sandbox(this.document.nodePrincipal, { sandboxPrototype: win, wantXrays: true, wantComponents: false, sameZoneAs: win, sandboxName: "WebAiOs · viseur (spike)" });
-      // As the retouches' sandbox: the page's legacy `Components` shim would show through the prototype.
+      // As the tweaks' sandbox: the page's legacy `Components` shim would show through the prototype.
       Object.defineProperty(this.sb, "Components", { value: undefined });
     }
     return this.sb;

@@ -202,7 +202,7 @@ beforeAll(async () => {
       "exemple.json": JSON.stringify({ exemple: "gmail" }),
     },
   });
-  // The accord is missing and was just asked: no run starts at launch.
+  // The grant is missing and was just asked: no run starts at launch.
   const now = new Date().toISOString();
   await writeState("gmail", {
     statut: "accord-requis",

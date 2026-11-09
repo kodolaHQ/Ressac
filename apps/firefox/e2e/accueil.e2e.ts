@@ -551,7 +551,7 @@ describe("the home page", () => {
 
 });
 
-// Widgets with no harvest: nothing the new noyau does writes, so only its start can make the page read again.
+// Widgets with no harvest: nothing the new kernel does writes, so only its start can make the page read again.
 describe("the home page after a host restart", () => {
   let dataDir: string;
   let w: LaunchedWebAiOs;

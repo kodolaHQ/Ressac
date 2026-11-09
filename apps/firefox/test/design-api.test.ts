@@ -4,7 +4,7 @@ import { HOST_EXITED, HOST_STOPPED, type AgentHost } from "../chrome/agent/host"
 import { raisonEchec } from "../shared/design-guards";
 import { createExternesApi, createRelectureApi } from "../ui/design-api";
 
-/** A fake noyau host: answers by method (a missing one rejects, as a stopped host does), notes every call. */
+/** A fake kernel host: answers by method (a missing one rejects, as a stopped host does), notes every call. */
 function setup(answers: Record<string, (p: any) => unknown> = {}) {
   const calls: { method: string; params: unknown }[] = [];
   const listeners = new Map<string, Set<(p: unknown) => void>>();

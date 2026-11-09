@@ -18,7 +18,7 @@ describe("container names", () => {
   });
 });
 
-it("the chrome's dossierValide is the noyau's", () => {
+it("the chrome's dossierValide is the kernel's", () => {
   for (const d of ["essai", "My-app_2.0", "a", "", ".", "..", ".cache", "-x", "a b", "a/b", "a\\b", "é", "a;b", "a$(x)", "__proto__"]) expect(dossierValide(d), d).toBe(noyau(d));
   const source = readFileSync(new URL("../../../packages/noyau/src/applications/manifeste.ts", import.meta.url), "utf8");
   expect(source).toContain("const NOM_DOSSIER = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;");

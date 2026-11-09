@@ -164,7 +164,7 @@ describe("site app address follow", () => {
     expect(server.requetes.some((r) => r.hote === "vidola-a.localhost")).toBe(false);
   });
 
-  it("a /serie/* retouche applies on vidola-b; the memory kept on vidola-a reopens from the home on vidola-b (sites.spec.ts:1384)", async () => {
+  it("a /serie/* tweak applies on vidola-b; the memory kept on vidola-a reopens from the home on vidola-b (sites.spec.ts:1384)", async () => {
     const decl = declaration(a("/serie/the-bear"), { retouches: [{ correspond: ["/serie/*"], css: ["cacher.css"] }] });
     await setup("t59", decl, { "accueil/index.html": SITE_HOME, "retouches/cacher.css": ".shorts { display: none; }" }, { grant: true });
     mkdirSync(path.join(dataDir, "sites", "t59"), { recursive: true });

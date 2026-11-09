@@ -180,7 +180,7 @@ test("arreter: new conversation for the policy (pending cards drop) and dev tool
   expect(n).toBe(2);
 });
 
-test("noyau: arreter() stops the scheduler and the local AI", async () => {
+test("kernel: arreter() stops the scheduler and the local AI", async () => {
   const racine = await dossierTemporaire();
   const { executer } = executeurFactice([[/ info$/, { code: 1 }]]);
   const ordre: string[] = [];
@@ -200,7 +200,7 @@ test("noyau: arreter() stops the scheduler and the local AI", async () => {
   planif.mockRestore();
 });
 
-test("noyau: lireAccueil reads the widgets; ia is null without local AI", async () => {
+test("kernel: lireAccueil reads the widgets; ia is null without local AI", async () => {
   const racine = await dossierTemporaire();
   const { executer } = executeurFactice([[/ info$/, { code: 1 }]]);
   noyau = await creerNoyau({ dossierWidgets: `${racine}-widgets`, dossierActions: `${racine}-actions`, pont: new PontFactice([], { actif: null, autoriser: false }), racine, executer });
@@ -210,7 +210,7 @@ test("noyau: lireAccueil reads the widgets; ia is null without local AI", async 
   expect(noyau.ia).toBeNull();
 });
 
-test("noyau: accorder records the grant (domains sorted), notifies and starts a harvest; refuserAccord removes it", async () => {
+test("kernel: accorder records the grant (domains sorted), notifies and starts a harvest; refuserAccord removes it", async () => {
   const racine = await dossierTemporaire();
   const dossierWidgets = `${racine}-widgets`;
   const { executer } = executeurFactice([[/ info$/, { code: 1 }]]);
@@ -237,7 +237,7 @@ test("noyau: accorder records the grant (domains sorted), notifies and starts a 
   expect(surChange).toHaveBeenCalled();
 });
 
-test("noyau: accorder refuses a widget without an account", async () => {
+test("kernel: accorder refuses a widget without an account", async () => {
   const racine = await dossierTemporaire();
   const { executer } = executeurFactice([[/ info$/, { code: 1 }]]);
   noyau = await creerNoyau({ dossierWidgets: `${racine}-widgets`, dossierActions: `${racine}-actions`, pont: new PontFactice([], { actif: null, autoriser: false }), racine, executer });
@@ -245,7 +245,7 @@ test("noyau: accorder refuses a widget without an account", async () => {
   await expect(noyau.accorder({ id: "meteo", profil: "perso", compte: [], publiques: [] })).rejects.toThrow(/compte/);
 });
 
-test("noyau: accorder refuses if the declaration is no longer the one shown to the user (account or public ones)", async () => {
+test("kernel: accorder refuses if the declaration is no longer the one shown to the user (account or public ones)", async () => {
   const racine = await dossierTemporaire();
   const dossierWidgets = `${racine}-widgets`;
   const { executer } = executeurFactice([[/ info$/, { code: 1 }]]);
@@ -266,7 +266,7 @@ test("noyau: accorder refuses if the declaration is no longer the one shown to t
   expect((await lireAccords(dossierWidgets)).daily).toEqual({ domaines: ["app.daily.dev"], publiques: ["espion.example"], profil: "perso" });
 });
 
-test("noyau: refuserAccord erases the data; account removed afterwards → donnees_widget returns nothing of the account", async () => {
+test("kernel: refuserAccord erases the data; account removed afterwards → donnees_widget returns nothing of the account", async () => {
   const racine = await dossierTemporaire();
   const dossierWidgets = `${racine}-widgets`;
   const { executer } = executeurFactice([[/ info$/, { code: 1 }]]);
@@ -293,7 +293,7 @@ test("noyau: refuserAccord erases the data; account removed afterwards → donne
   expect(t).toContain("Aucune donnée");
 });
 
-test("noyau: rejouer goes through the scheduler queue; surDirect follows the queue and unsubscribes", async () => {
+test("kernel: rejouer goes through the scheduler queue; surDirect follows the queue and unsubscribes", async () => {
   const n = await creerSansDocker();
   await ecrireWidget(n.chemins, "meteo", declarationWidget(undefined, { recolte: { minutes: 60 } }), { "recolte.mjs": "export default () => 1" });
   const vus: unknown[] = [];

@@ -15,7 +15,7 @@ import { cleanupXpis, installAddon, uninstallAddon } from "./addons";
 import { click, inUi, pressKeys, waitUi } from "./ui";
 import { TEXTE_COUPE, TEXTE_SITE_CHANGE } from "../../../packages/noyau/src/mcp/outils-dev";
 
-// Which one the noyau answers depends on whether the new page committed before it read the tab list.
+// Which one the kernel answers depends on whether the new page committed before it read the tab list.
 const CUT_BY_OWN_NAVIGATION = [TEXTE_COUPE, TEXTE_SITE_CHANGE];
 
 // The agent's dev tools on a WebAiOs-Firefox tab (plan 28, task 3): console, network,
@@ -39,7 +39,7 @@ if (log) { console.log("tag-" + log); fetch("/data.json?log=" + log); }
 console.log("page chargée");
 </script>`;
 
-/** The demo server, on a random port given to the noyau as its demo range (never the real 5300-5319 of a running WebAiOs). */
+/** The demo server, on a random port given to the kernel as its demo range (never the real 5300-5319 of a running WebAiOs). */
 async function startDemo(): Promise<{ port: number; url: string; hits: string[]; close(): Promise<void> }> {
   const hits: string[] = [];
   const server: Server = createServer((req, res) => {
@@ -695,7 +695,7 @@ async function profileCutBySiteChange(leave: (id: string) => Promise<unknown>, t
 }
 
 it("navigating to another site during profiler_performances: the call answers the cut text, no partial file", async () => {
-  // localhost: another origin, still the agent's demo (its port). The noyau cuts the right before the load commits.
+  // localhost: another origin, still the agent's demo (its port). The kernel cuts the right before the load commits.
   await profileCutBySiteChange(async (id) => expect(await tool("naviguer", { id, url: `http://localhost:${demo.port}/` })).toContain("→"), CUT_BY_OWN_NAVIGATION);
 }, 60_000);
 
@@ -723,7 +723,7 @@ it("the host restarts: the new kernel does not see the old messages", async () =
   await waitFor(m, `return (async () => (await ChromeUtils.importESModule("${STORE}").ready).agent.pid)();`, (v) => v === null);
   await m.execute(`return (async () => { await (await ChromeUtils.importESModule("${STORE}").ready).agent.ensure().catch(() => {}); })();`);
   await poll(async () => (existsSync(config()) ? readFileSync(config(), "utf8") : oldConfig), (c) => c !== oldConfig, 20_000);
-  // The new noyau knows nothing of this tab: given to the agent, then navigated by it (same page), it is its demo again.
+  // The new kernel knows nothing of this tab: given to the agent, then navigated by it (same page), it is its demo again.
   const url = `${demo.url}/`;
   await m.execute(`return (async () => (await ChromeUtils.importESModule("${STORE}").ready).agent.notify("agent.envoi", { onglet: { id: arguments[0], url: arguments[1], titre: "Démo", espace: "" } }))();`, [id, url]);
   await poll(() => tool("naviguer", { id, url }), (t) => t.includes("→"));

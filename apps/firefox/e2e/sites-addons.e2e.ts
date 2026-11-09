@@ -82,7 +82,7 @@ const url = (p: string, host = "vidola-a.localhost") => server.url(host, p);
 const vidola = (extra: object = {}) => ({ nom: "Vidola", adresse: url("/pubs"), domaines: ["vidola-a.localhost"], connexion: ["compte.localhost"], ...extra });
 /** An app with a home screen (the « accueil » view on opening). */
 const withHome = (): SiteTest => ({ declaration: { ...vidola(), nom: "Tube" }, fichiers: { "accueil/index.html": "<p>accueil</p>" } });
-/** Retouches without an accord, so the accord card shows on opening. */
+/** Tweaks without an grant, so the grant card shows on opening. */
 const withCard = (): SiteTest => ({
   declaration: { ...vidola({ retouches: [{ correspond: ["/pubs"], js: ["a.js"] }] }), nom: "Carte" },
   fichiers: { "retouches/a.js": 'document.body.dataset.retouche = "oui";' },
@@ -197,7 +197,7 @@ describe("add-ons in a site app window", () => {
     expect(await view("location.protocol")).toBe("http:");
   });
 
-  it("no add-on button on the home screen nor on the accord card (extensions-sites.spec.ts:542)", async () => {
+  it("no add-on button on the home screen nor on the grant card (extensions-sites.spec.ts:542)", async () => {
     await start({ sites: { tube: withHome(), carte: withCard() } });
     await installAddon(m, probe());
     // Home.
@@ -211,7 +211,7 @@ describe("add-ons in a site app window", () => {
     await expect.poll(() => stripButtons("tube"), { timeout: 10_000 }).toBe(1);
     await m.execute(`${siteWindowExpr("tube")}.webaiosSiteWindow.home()`);
     await expect.poll(() => stripButtons("tube"), { timeout: 10_000 }).toBe(0);
-    // Accord card.
+    // Grant card.
     await openSite("carte");
     await expect.poll(() => siteState("carte").then((s) => s.vue), { timeout: 15_000 }).toBe("accord");
     await new Promise((r) => setTimeout(r, 500));
@@ -316,7 +316,7 @@ describe("add-ons and what the agent adds to the app", () => {
     return existsSync(f) ? (JSON.parse(readFileSync(f, "utf8")) as { valeurs: Record<string, { valeur: unknown; adresse: string }>; positions: Record<string, { t: number; duree: number }> }) : null;
   };
 
-  it("with an add-on running in the view: the CSS retouche hides .shorts, the memory receives encours.the-bear, the resume notes the position (extensions-sites.spec.ts:1018, adapted)", async () => {
+  it("with an add-on running in the view: the CSS tweak hides .shorts, the memory receives encours.the-bear, the resume notes the position (extensions-sites.spec.ts:1018, adapted)", async () => {
     server.definir("vidola-a.localhost", SERIE, `<title>The Bear</title><div class="shorts" id="shorts">shorts</div><video id="v" muted autoplay preload="auto" src="${url("/silence-90.wav", "lecteur.localhost")}"></video>`);
     server.definir("lecteur.localhost", "/silence-90.wav", serveWav(silenceWav(90)));
     const sites = {
@@ -335,7 +335,7 @@ describe("add-ons and what the agent adds to the app", () => {
     // The add-ons run in the view (the marker's content script); both are in the bar, the marker greyed (no action).
     await expect.poll(() => view("document.getElementById('addon-mark')?.textContent ?? null"), { timeout: 10_000 }).toBe("MARQUE-MODULE");
     await expect.poll(() => stripButtons(), { timeout: 10_000 }).toBe(2);
-    // The retouches.
+    // The tweaks.
     expect(await view("getComputedStyle(document.getElementById('shorts')).display")).toBe("none");
     await expect.poll(() => view("document.documentElement.dataset.retenu ?? null"), { timeout: 10_000 }).toBe("oui");
     await expect.poll(() => memory()?.valeurs["encours.the-bear"] ?? null, { timeout: 10_000 }).toMatchObject({ valeur: RETENU, adresse: SERIE });

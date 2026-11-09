@@ -654,7 +654,7 @@ export const sites = {
     s.retouches = retouches;
     s.view?.browsingContext?.sessionHistory?.evictAllDocumentViewers();
     let reloaded = false;
-    // The fingerprint is that of the rights asked (empreinteDroits).
+    // The hash is that of the rights asked (empreinteDroits).
     const grown = before.demande.empreinte !== site.demande.empreinte;
     if (site.accordRequis && s.vue !== "accord" && (!before.accordRequis || grown)) {
       s.vue = "accord";

@@ -12,7 +12,7 @@ const base: DeclarationSite = {
   connexion: [], retouches: [{ correspond: ["/series/*"], js: ["a.js"], css: [], cadres: ["https://*.clipsy.*/*"] }], reprise: false,
 };
 
-test("without retouche or reprise: no grant needed", () => {
+test("without tweak or reprise: no grant needed", () => {
   expect(accordNecessaire({ ...base, retouches: [] })).toBe(false);
   expect(accordNecessaire(base)).toBe(true);
   expect(accordNecessaire({ ...base, retouches: [], reprise: true })).toBe(true);
@@ -23,7 +23,7 @@ test("droitsDe: union of the frame patterns", () => {
   expect(droitsDe(d).cadres).toEqual(["https://*.clipsy.*/*", "https://x.example/*"]);
 });
 
-test("granted then retouches code changed: still covers", () => {
+test("granted then tweaks code changed: still covers", () => {
   const a = droitsDe(base);
   expect(accordCouvre(a, { ...base, retouches: [{ ...base.retouches[0]!, js: ["autre.js", "encore.js"] }] })).toBe(true);
   expect(accordCouvre(null, base)).toBe(false);
@@ -94,7 +94,7 @@ test("empreinteLectureSite: name, domains and login; the order and case of the d
   expect(empreinteLectureSite({ ...avec, domaines: [], connexion: ["vidola-a.example", "compte.example"] })).not.toBe(e);
 });
 
-test("empreinteExtensionsSite: stable for another name, other retouches, another reprise, another order or another case; changes with one more domain", () => {
+test("empreinteExtensionsSite: stable for another name, other tweaks, another reprise, another order or another case; changes with one more domain", () => {
   const e = empreinteExtensionsSite(base);
   expect(e).toMatch(/^[0-9a-f]{64}$/);
   expect(empreinteExtensionsSite({ ...base, nom: "Autre", retouches: [], reprise: true })).toBe(e);

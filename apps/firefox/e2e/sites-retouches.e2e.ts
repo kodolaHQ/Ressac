@@ -10,7 +10,7 @@ import type { Marionette } from "./marionette";
 import { grantSite, inBrowser, inSiteBar, inSiteView, resolveLocalHosts, siteWindowExpr, startSitesServer, writeSite } from "./sites";
 import { missingApi } from "./ui";
 
-// Plan 32 Task 1: the agent's retouches in each frame of a site app's view (Xray sandbox per document), plus the
+// Plan 32 Task 1: the agent's tweaks in each frame of a site app's view (Xray sandbox per document), plus the
 // sign-in window and two apps side by side.
 
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
@@ -18,7 +18,7 @@ const HOSTS = ["vidola-a.localhost", "vidola-b.localhost", "pub.localhost", "lec
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
- * A series retouche with a world probe, with Firefox's chrome globals added (spec §1): it hides
+ * A series tweak with a world probe, with Firefox's chrome globals added (spec §1): it hides
  * `.shorts` (CSS), remembers the episode, notes what it sees of its world in the DOM, and answers the test's commands.
  */
 const RETOUCHE_SERIE = `
@@ -69,7 +69,7 @@ const openSite = (id: string) => inStore(`await store.agent.request("sites.agir"
 const viewUrl = (id: string) => m.execute<string | null>(`return ${siteWindowExpr(id)}?.gBrowser?.selectedBrowser.currentURI?.spec ?? null;`);
 /** An expression in app `id`'s view (its `frame`-th frame), null while it cannot run. */
 const view = <T = unknown>(expr: string, o: { id?: string; frame?: number } = {}) => inSiteView<T>(m, o.id ?? "vidola", `return ${expr};`, { frame: o.frame }).catch(() => null);
-/** `typeof name` in the page's own world (a <script> of the page; the test's script has Xrays, like a retouche). */
+/** `typeof name` in the page's own world (a <script> of the page; the test's script has Xrays, like a tweak). */
 const pageTypeof = (name: string) =>
   view<string>(`(() => { const s = document.createElement("script"); s.textContent = "document.documentElement.dataset.vu = typeof " + ${JSON.stringify(name)}; document.documentElement.append(s); s.remove(); return document.documentElement.dataset.vu; })()`);
 const errors = (id = "vidola") => inStore<{ texte: string; source: string; sourceVerifiee: boolean }[]>(`return store.sites.errors(arguments[0]);`, [id]);
@@ -89,7 +89,7 @@ const go = async (chemin: string) => {
   await expect.poll(() => viewUrl("vidola"), { timeout: 10_000 }).toBe(url(chemin));
 };
 
-/** The test's command to the retouche, then its answer. */
+/** The test's command to the tweak, then its answer. */
 async function command(c: string): Promise<string | null> {
   await view(`(document.documentElement.dataset.resultat = "", document.documentElement.dataset.commande = ${JSON.stringify(c)}, document.dispatchEvent(new Event("essai")), 1)`);
   await expect.poll(() => view("document.documentElement.dataset.resultat")).not.toBe("");
@@ -149,13 +149,13 @@ afterEach(async () => {
   }
 });
 
-describe("retouches", () => {
-  it("a CSS retouche hides .shorts in the page (display none) (sites.spec.ts:809)", async () => {
+describe("tweaks", () => {
+  it("a CSS tweak hides .shorts in the page (display none) (sites.spec.ts:809)", async () => {
     await openAt("vidola", "/serie/the-bear");
     await expect.poll(() => view('getComputedStyle(document.getElementById("shorts")).display')).toBe("none");
   });
 
-  it('a JS retouche remembers encours.the-bear through webaiosSite.retenir; the memory read by the test has adresse "/serie/the-bear" (sites.spec.ts:815)', async () => {
+  it('a JS tweak remembers encours.the-bear through webaiosSite.retenir; the memory read by the test has adresse "/serie/the-bear" (sites.spec.ts:815)', async () => {
     await openAt("vidola", "/serie/the-bear");
     await expect.poll(() => view("document.documentElement.dataset.retenu")).toBe("oui");
     await expect.poll(() => memory("vidola")?.valeurs?.["encours.the-bear"] ?? null, { timeout: 5000 }).toMatchObject({ valeur: { titre: "The Bear", episode: "S2E4" }, adresse: "/serie/the-bear" });
@@ -164,7 +164,7 @@ describe("retouches", () => {
     expect(await command("non-json")).toBe("refus:Valeur refusée : JSON seulement");
   });
 
-  it('in the retouche: typeof require, ipcRenderer, process, Components, ChromeUtils, Services are "undefined" (sites.spec.ts:828)', async () => {
+  it('in the tweak: typeof require, ipcRenderer, process, Components, ChromeUtils, Services are "undefined" (sites.spec.ts:828)', async () => {
     await openAt("vidola", "/serie/the-bear");
     await expect.poll(() => view("document.documentElement.dataset.monde")).toBeTruthy();
     expect(JSON.parse(String(await view("document.documentElement.dataset.monde")))).toEqual({
@@ -179,16 +179,16 @@ describe("retouches", () => {
     expect(await pageTypeof("__webaiosPortee")).toBe("undefined");
   });
 
-  it('in the lecteur.localhost sub-frame matching cadres: the retouche runs, typeof webaiosSite === "undefined" (sites.spec.ts:844)', async () => {
+  it('in the lecteur.localhost sub-frame matching cadres: the tweak runs, typeof webaiosSite === "undefined" (sites.spec.ts:844)', async () => {
     await openAt("vidola", "/serie/the-bear");
     await go("/lecteur");
     await expect.poll(() => view("document.documentElement.dataset.cadre ?? null", { frame: 0 }), { timeout: 10_000 }).toBe("oui");
     expect(await view("document.documentElement.dataset.pont", { frame: 0 })).toBe("undefined");
-    // The frame's retouche does not go into the main page (/lecteur is in no « correspond »).
+    // The frame's tweak does not go into the main page (/lecteur is in no « correspond »).
     expect(await view("document.documentElement.dataset.cadre ?? null")).toBeNull();
   });
 
-  it("the retouche's fetch to pub.localhost is rejected, no request received; to the site, allowed (sites.spec.ts:855)", async () => {
+  it("the tweak's fetch to pub.localhost is rejected, no request received; to the site, allowed (sites.spec.ts:855)", async () => {
     await openAt("vidola", "/serie/the-bear");
     await expect.poll(() => view("document.body.dataset.retouche")).toBe("oui");
     await view(`(document.documentElement.dataset.pub = ${JSON.stringify(url("/x", "pub.localhost"))}, 1)`);
@@ -199,7 +199,7 @@ describe("retouches", () => {
     expect(server.requetes.some((r) => r.hote === "vidola-a.localhost" && r.chemin === "/film/2")).toBe(true);
   });
 
-  it('a password field filled by the test: the retouche reads "" (sites.spec.ts:867)', async () => {
+  it('a password field filled by the test: the tweak reads "" (sites.spec.ts:867)', async () => {
     await openAt("vidola", "/serie/the-bear");
     await expect.poll(() => view("document.body.dataset.retouche")).toBe("oui");
     await view('(document.getElementById("mdp").value = "secret", 1)');
@@ -216,7 +216,7 @@ describe("retouches", () => {
     expect(server.requetes.filter((r) => r.hote === "pub.localhost")).toEqual([]);
   });
 
-  it("a retouche that throws: erreurs_retouches has it, the page works (sites.spec.ts:886)", async () => {
+  it("a tweak that throws: erreurs_retouches has it, the page works (sites.spec.ts:886)", async () => {
     await openAt("vidola", "/serie/the-bear");
     await go("/erreur");
     await expect.poll(() => view("document.documentElement.dataset.apres ?? null")).toBe("oui");
@@ -224,12 +224,12 @@ describe("retouches", () => {
     await expect.poll(async () => (await errors()).map((e) => e.texte).join("\n"), { timeout: 10_000 }).toContain("plus tard");
     const e = (await errors()).find((x) => x.texte.includes("retouche cassée"))!;
     expect(e.source).toMatch(/^webaios-retouche:\/\/vidola\/erreur\.js/);
-    // The source says it is a retouche: nothing proves it (the page can name itself so).
+    // The source says it is a tweak: nothing proves it (the page can name itself so).
     expect(e.sourceVerifiee).toBe(false);
     expect(await view('document.getElementById("p").textContent')).toBe("la page marche");
   });
 
-  it("a retouche that throws later (setTimeout) is in erreurs_retouches too, with its source; the console empties when the window closes", async () => {
+  it("a tweak that throws later (setTimeout) is in erreurs_retouches too, with its source; the console empties when the window closes", async () => {
     await openAt("vidola", "/serie/the-bear");
     await go("/erreur");
     await expect.poll(async () => (await errors()).find((e) => e.texte.includes("plus tard"))?.source ?? null, { timeout: 10_000 }).toMatch(/^webaios-retouche:\/\/vidola\/apres\.js/);
@@ -237,7 +237,7 @@ describe("retouches", () => {
     expect(await errors()).toEqual([]);
   });
 
-  it("a page that calls stopImmediatePropagation on DOMContentLoaded (window, capture): the retouche runs (sites.spec.ts:901)", async () => {
+  it("a page that calls stopImmediatePropagation on DOMContentLoaded (window, capture): the tweak runs (sites.spec.ts:901)", async () => {
     await openAt("vidola", "/serie/the-bear");
     await go("/serie/bloque");
     await expect.poll(() => view("document.body.dataset.retouche ?? null"), { timeout: 10_000 }).toBe("oui");
@@ -265,7 +265,7 @@ describe("retouches", () => {
 
   for (const [cas, accord] of [
     ["without accord", () => ({})],
-    // The accord from before the frame pattern was added: it covers less than the declaration asks for.
+    // The grant from before the frame pattern was added: it covers less than the declaration asks for.
     ["with an accord that covers less than the declaration", () => ({ vidola: { domaines: ["vidola-a.localhost"], connexion: ["compte.localhost"], cadres: [], reprise: false } })],
   ] as const)
     it(`${cas}: nothing is loaded before the card is answered, then neither the agent's CSS nor script in the page (sites.spec.ts:944)`, async () => {
@@ -292,13 +292,13 @@ describe("retouches", () => {
       }
     });
 
-  it("the sign-in window gets no retouche, no webaiosSite and no resume (Review Focus 1)", async () => {
+  it("the sign-in window gets no tweak, no webaiosSite and no resume (Review Focus 1)", async () => {
     await openAt("vidola", "/serie/the-bear");
     await expect.poll(() => view("document.documentElement.dataset.retenu")).toBe("oui");
     await inStore(`store.sites.routeOpen("vidola", arguments[0]);`, [url("/connexion", "compte.localhost")]);
     const small = `[...Services.wm.getEnumerator("navigator:browser")].find((x) => x.document.documentElement.getAttribute("webaios-site-small") === "vidola")?.gBrowser.selectedBrowser`;
     await expect.poll(() => m.execute(`return ${small}?.currentURI?.spec ?? null;`), { timeout: 10_000 }).toBe(url("/connexion", "compte.localhost"));
-    // In the same container, on a page of the app that its retouches match.
+    // In the same container, on a page of the app that its tweaks match.
     await inBrowser(m, small, `location.href = ${JSON.stringify(url("/serie/the-bear"))}; return 1;`);
     await expect.poll(() => m.execute(`const b = ${small}; return b && !b.webProgress.isLoadingDocument ? b.currentURI.spec : null;`), { timeout: 10_000 }).toBe(url("/serie/the-bear"));
     await expect.poll(() => inBrowser(m, small, "return document.readyState;").catch(() => null)).toBe("complete");
@@ -306,7 +306,7 @@ describe("retouches", () => {
     expect(await inBrowser(m, small, 'return [document.body.dataset.retouche ?? null, document.documentElement.dataset.retenu ?? null, getComputedStyle(document.getElementById("shorts")).display];')).toEqual([null, null, "block"]);
   });
 
-  it("two open apps never share retouches, memory or console (Review Focus 2)", async () => {
+  it("two open apps never share tweaks, memory or console (Review Focus 2)", async () => {
     await openAt("vidola", "/serie/the-bear");
     await openAt("autre", "/serie/b", "vidola-b.localhost");
     await expect.poll(() => view("document.documentElement.dataset.retenu", { id: "autre" })).toBe("oui");
@@ -316,7 +316,7 @@ describe("retouches", () => {
     await expect.poll(async () => (await errors()).map((e) => e.texte).join("\n"), { timeout: 10_000 }).toContain("retouche cassée");
     expect((await errors()).map((e) => e.texte).join("\n")).not.toContain("erreur de B");
     expect((await errors("autre")).map((e) => e.texte).join("\n")).not.toContain("retouche cassée");
-    // A's retouche never ran in B's view, nor its CSS.
+    // A's tweak never ran in B's view, nor its CSS.
     expect(await view("document.body.dataset.retouche ?? null", { id: "autre" })).toBeNull();
     await expect.poll(() => memory("autre")?.valeurs ?? null, { timeout: 5000 }).toMatchObject({ b: { valeur: 1, adresse: "/serie/b" } });
     expect(Object.keys(memory("autre").valeurs)).toEqual(["b"]);
@@ -324,7 +324,7 @@ describe("retouches", () => {
     expect(memory("vidola").valeurs).not.toHaveProperty("b");
   });
 
-  // Last: it rewrites the app's retouche.
+  // Last: it rewrites the app's tweak.
   it("rewriting retouches/serie.js: the view reloads and the new code runs (sites.spec.ts:919)", async () => {
     await openAt("vidola", "/serie/the-bear");
     await expect.poll(() => view("document.body.dataset.retouche")).toBe("oui");

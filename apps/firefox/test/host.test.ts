@@ -117,7 +117,7 @@ afterEach(async () => {
 });
 
 describe("agent host", { timeout: 30_000 }, () => {
-  it("the host starts the external MCP without the noyau", async () => {
+  it("the host starts the external MCP without the kernel", async () => {
     const h = startHost();
     let e: { serveur: { etat: string; port?: number } } | undefined;
     const end = Date.now() + 10_000;
@@ -164,7 +164,7 @@ describe("agent host", { timeout: 30_000 }, () => {
     await until(() => h.donnees().includes("bonjour"));
   });
 
-  it("a repeat demarrer with the same profile keeps the noyau and its sessions", async () => {
+  it("a repeat demarrer with the same profile keeps the kernel and its sessions", async () => {
     const h = startHost();
     await h.rpc.request("demarrer", { profilAgent: "claude" });
     await h.rpc.request("agent.demarrer", { fenetre: "f1", taille: { cols: 80, rows: 24 } });
@@ -178,7 +178,7 @@ describe("agent host", { timeout: 30_000 }, () => {
     expect(readFileSync(join(h.racine, "faux-docker-arrets.log"), "utf8")).toBe(arrets);
   });
 
-  it("agent.profils asked while the noyau starts lists the default profile it prepares", async () => {
+  it("agent.profils asked while the kernel starts lists the default profile it prepares", async () => {
     const h = startHost();
     mkdirSync(join(h.racine, ".webaios", "profils"), { recursive: true });
     writeFileSync(join(h.racine, ".webaios", "profils", "autre.json"), JSON.stringify({ id: "autre", nom: "Autre", interactif: ["a"], nonInteractif: ["a"], configMcp: "claude-json" }));
@@ -325,8 +325,8 @@ describe("history", { timeout: 30_000 }, () => {
   // A notification runs a microtask after its line, a request at once: a round trip lets the notifications before it land.
   const settle = (h: Host) => h.rpc.request("acces.etat");
 
-  it("noted visits are searched, cleared and survive the agent's noyau", async () => {
-    // No docker, no demarrer: the history must not need the agent's noyau.
+  it("noted visits are searched, cleared and survive the agent's kernel", async () => {
+    // No docker, no demarrer: the history must not need the agent's kernel.
     const h = startHost();
     visit(h, "https://a.test/", "Page A");
     h.rpc.notify("historique.titre", { url: "https://a.test/", espaceId: "e1", titre: "Page A bis" });
@@ -417,7 +417,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
 
   /**
    * Firefox's side, as the chrome does it: an inactive add-on is never installed fresh, the same version is not
-   * reinstalled. Notes each real install (with the .xpi's hash and manifest, read before the noyau moves it), every
+   * reinstalled. Notes each real install (with the .xpi's hash and manifest, read before the kernel moves it), every
    * installer call, activation and uninstall. `casse`: installs throw.
    */
   const firefox = () => {
@@ -474,7 +474,7 @@ describe("agent extensions", { timeout: 60_000 }, () => {
     const cles: Record<string, string> = o.cles === false ? {} : { WEBAIOS_TEST_AMO_CLES: "user:1:abc:test-secret" };
     return startHost({ WEBAIOS_TEST_AMO_URL: amo.url, ...cles }, o.prepare, { dataDir: o.dataDir, handlers: f.handlers });
   };
-  /** An agent tool, once the noyau runs. */
+  /** An agent tool, once the kernel runs. */
   const outil = async (h: Host, nom: string, args: Record<string, unknown> = {}) => {
     await h.rpc.request("demarrer", { profilAgent: "claude" });
     return (await appelerOutil(h.racine, nom, args)).texte;

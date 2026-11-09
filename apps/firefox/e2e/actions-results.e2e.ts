@@ -7,7 +7,7 @@ import type { Marionette } from "./marionette";
 import { click, inUi, missingApi, waitUi } from "./ui";
 
 // An action page's outcomes: a stopped workshop, empty results, an account
-// accord, a private space, a closed tab, a run or an action that no longer exists.
+// grant, a private space, a closed tab, a run or an action that no longer exists.
 
 let servers: Awaited<ReturnType<typeof startActionServers>>;
 const launched: LaunchedWebAiOs[] = [];
@@ -65,14 +65,14 @@ describe("action results", () => {
   });
 
   // actions.spec.ts:682
-  it("an account action without accord: the card, then the run after the accord", { timeout: 60_000 }, async () => {
+  it("an account action without grant: the card, then the run after the grant", { timeout: 60_000 }, async () => {
     await writeRunnableAction(w.dataDir, "courrier", { nom: "Courrier", compte: ["127.0.0.1"], code: `export default async () => ({ messages: [{ sujet: "Bonjour" }] });` });
     await openAction(m, "courrier", "Courrier");
     const card = tid("carte-accord");
     await q.waitText(`${card} :is(h1, h2, h3, h4)`, "Autoriser l'action « Courrier » à lire avec ton compte");
     expect((await q.text(`${card} ${tid("accord-compte")}`))?.trim()).toBe("Cette action veut lire 127.0.0.1 avec ton compte, connecté avec le profil choisi.");
     expect(await q.value(`${card} input[type="radio"]:checked`)).toBe("defaut");
-    // Nothing runs until the accord.
+    // Nothing runs until the grant.
     await new Promise((r) => setTimeout(r, 500));
     expect(await runsOnDisk(w.dataDir, "courrier")).toEqual([]);
     await click(m, `${card} button`, { text: "Autoriser" });

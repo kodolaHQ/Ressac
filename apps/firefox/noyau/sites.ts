@@ -38,12 +38,12 @@ import { creerPositions, memoireOp } from "./site-memory.ts";
 
 // The site apps service on the host side.
 
-/** The app as the chrome gets it: what opens, its grant card, and its fingerprint (lister_onglets). */
+/** The app as the chrome gets it: what opens, its grant card, and its hash (lister_onglets). */
 export type SiteChrome = SiteOuvrable & { demande: DemandeAccordSite; empreinte: string };
 
 const uniques = (l: string[]) => [...new Set(l)];
 
-/** The fingerprint of the rights the declaration asks for. */
+/** The hash of the rights the declaration asks for. */
 export function empreinteDroits(d: DeclarationSite): string {
   return createHash("sha256").update(JSON.stringify(droitsDe(d))).digest("hex");
 }

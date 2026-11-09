@@ -6,7 +6,7 @@ import type { WebAiOsStore } from "../chrome/store";
 import { profilsLisibles, profilsPourAccord } from "./accueil-profils";
 
 // The window half of the actions service: private spaces, dispatches, the pace of
-// links, the direct feed's filter and the accord profiles. The disk and noyau half is the host's (noyau/actions.ts).
+// links, the direct feed's filter and the grant profiles. The disk and kernel half is the host's (noyau/actions.ts).
 
 /** A missing window or space counts as private. */
 export function espaceActifPrive(etat: Pick<EtatNavigateur, "espaces" | "fenetres">, f: IdFenetre): boolean {
@@ -21,7 +21,7 @@ export type ActionsFirefox = ApiWebaios["actions"] & {
   releaseComponent(nom: string): void;
 };
 
-// Shown when the actions service has no noyau (same texts as noyau/actions.ts).
+// Shown when the actions service has no kernel (same texts as noyau/actions.ts).
 const MESSAGE_SANS_NOYAU = "Le service des actions ne répond pas (agent arrêté ?)";
 const NO_ACTION = () => ({ courantes: [], enAttente: [] });
 
@@ -60,7 +60,7 @@ export function createActionsApi(o: {
         return structuredClone(v);
       },
       () => {
-        // An acces handled meanwhile may be the noyau's first, read with this refusal in one go: read again now.
+        // An acces handled meanwhile may be the kernel's first, read with this refusal in one go: read again now.
         if (accesSeen !== seen) readAgain();
         else hostDown = true;
         return keep && lastRead.has(key) ? structuredClone(lastRead.get(key) as T) : empty();
@@ -70,7 +70,7 @@ export function createActionsApi(o: {
   };
   /**
    * The host stopped, or did not answer this API (a page opened while it was down): the first `acces`, sent once its
-   * noyau runs again, calls the subscribers back once. Meanwhile pages keep their last read; later `acces` (each policy
+   * kernel runs again, calls the subscribers back once. Meanwhile pages keep their last read; later `acces` (each policy
    * change) are ignored.
    */
   const restarted = new Set<() => void>();
@@ -84,7 +84,7 @@ export function createActionsApi(o: {
       readAgain();
     }),
   );
-  /** An action's accord or folder is gone: none of its cached reads, nor the cached list, may come back. */
+  /** An action's grant or folder is gone: none of its cached reads, nor the cached list, may come back. */
   const forget = (id: string) => {
     for (const key of lastRead.keys()) {
       const [method, params] = JSON.parse(key) as [string, { id?: string } | undefined];
@@ -157,9 +157,9 @@ export function createActionsApi(o: {
     },
     async accorder(a) {
       if (prive()) return refus;
-      // Never a profile a private space uses: the state is read again at the moment of the accord.
+      // Never a profile a private space uses: the state is read again at the moment of the grant.
       if (!profilsLisibles(o.state()!).includes(a.profil)) return { ok: false, erreur: "Ce profil ne peut pas servir à un accord" };
-      // A host that does not answer means no noyau; the noyau's own refusals come back as answers.
+      // A host that does not answer means no kernel; the kernel's own refusals come back as answers.
       const r = await host.request<{ ok: true } | { ok: false; erreur: string }>("actions.accorder", a).then(
         (v) => structuredClone(v),
         () => ({ ok: false as const, erreur: MESSAGE_SANS_NOYAU }),
@@ -168,7 +168,7 @@ export function createActionsApi(o: {
     },
     async refuserAccord(id) {
       if (prive()) return;
-      // The host stops the run first, then erases the accord and the results.
+      // The host stops the run first, then erases the grant and the results.
       await host.request("actions.refuserAccord", { id }).then(
         () => forget(id),
         (e) => ((hostDown = true), console.error(`[webaios] retrait de l'accord de l'action ${id} :`, e)),
@@ -188,7 +188,7 @@ export function createActionsApi(o: {
       if (nom && !prive()) o.dispatch({ type: "ouvrirWorkflow", fenetreId: fenetre, id, nom, proprietaire: "action" });
     },
     // A result image, in two halves: the host's checks, then the store's anonymous load. Never from lastRead:
-    // a cached image would outlive a refusal (a deleted run, an accord given since).
+    // a cached image would outlive a refusal (a deleted run, an grant given since).
     async image(id, execution, url) {
       if ((await ask("actions.imagePermise", { id, execution, url }, () => false)) !== true) return null;
       const data = await o.media.image(url);

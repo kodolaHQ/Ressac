@@ -9,7 +9,7 @@ import { click, inUi, missingApi, waitUi } from "./ui";
 // on the Mac), a slow local site and a fake Ollama (Gemma) noting each prompt. Reopening a page launches nothing.
 
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
-/** The noyau's message for an action without workflow.json (actions/executer.ts). */
+/** The kernel's message for an action without workflow.json (actions/executer.ts). */
 const WITHOUT_WORKFLOW = "Cette action n'a pas de workflow.json";
 
 let servers: Awaited<ReturnType<typeof startActionServers>>;
@@ -163,7 +163,7 @@ describe("action runs", () => {
     expect(await q.text(tid("nom-action"))).toBe("Pages");
     expect(await q.count(tid("avancement-action"))).toBe(1);
     await m.execute(`return (async () => { await (await ChromeUtils.importESModule("${STORE}").ready).agent.ensure(); })();`);
-    // Once the noyau runs again (`acces`), the feed is read again: nothing runs. Only that read clears the progress.
+    // Once the kernel runs again (`acces`), the feed is read again: nothing runs. Only that read clears the progress.
     await q.waitCount(tid("avancement-action"), 0, 30_000);
     // The page works again without reopening the tab: a new run shows its progress, then its page.
     servers.settings.lenteurSiteMs = 1500;

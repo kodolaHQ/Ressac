@@ -23,7 +23,7 @@ beforeEach(async () => {
   m = w.marionette;
   await m.setContext("chrome");
   await waitFor(m, "return !!window.webaiosWindow && gBrowser.tabs.some((t) => t.hasAttribute('webaios-parking'))", (v) => v === true);
-  // The noyau is up once its MCP config is written.
+  // The kernel is up once its MCP config is written.
   const config = join(w.dataDir, "espace", ".webaios", "mcp.json");
   for (const deadline = Date.now() + 20_000; !existsSync(config); await new Promise((r) => setTimeout(r, 100)))
     if (Date.now() > deadline) throw new Error("the noyau did not write its MCP config");
@@ -50,7 +50,7 @@ async function setActiveSpacePrivate(prive: boolean): Promise<void> {
   await dispatch(m, { type: "reglerEspace", id: e.id, nom: e.nom, icone: e.icone, prive, profil: e.profil } as Action);
 }
 
-it("at startup the noyau prepares its space in the data dir and MCP answers", async () => {
+it("at startup the kernel prepares its space in the data dir and MCP answers", async () => {
   expect(existsSync(join(w.dataDir, "espace", "AGENTS.md"))).toBe(true);
   expect(await call("lister_onglets")).toEqual({ texte: "Aucun onglet ouvert.", erreur: false });
 });

@@ -48,7 +48,7 @@ async function executer(dossierActions: string, id: string, resultats: unknown, 
 }
 
 describe("input schemas", () => {
-  it("accept and refuse these ids, inputs and accords", () => {
+  it("accept and refuse these ids, inputs and grants", () => {
     const accord = { id: "gitlab", profil: "defaut", compte: ["gitlab.com"], publiques: [] };
     const ok = (sc: { safeParse: (v: unknown) => { success: boolean } }, vs: unknown[]) => vs.map((v) => sc.safeParse(v).success);
     expect(ok(SchemaIdAction, ["gitlab", "a-1", "", "Git_Lab", "../x", "a".repeat(60), "a".repeat(61), 3, null])).toEqual([true, true, false, false, false, true, false, false, false]);
@@ -67,7 +67,7 @@ describe("actionImageAllowed", () => {
   });
 
   // actions.test.ts:202
-  it("refuses an action that has an account accord, even if its declaration no longer has an account", async () => {
+  it("refuses an action that has an account grant, even if its declaration no longer has an account", async () => {
     const { c, dossierActions } = espace({ reecrite: { nom: "Réécrite", sources: { web: true } } });
     const image = "https://img.test/a.jpg";
     const ex = await executer(dossierActions, "reecrite", { photo: image });
@@ -104,7 +104,7 @@ describe("pure helpers", () => {
   });
 
   // actions.test.ts:309
-  it("readShownActions: declaration, accord, last result (not a trial), broken action flagged", async () => {
+  it("readShownActions: declaration, grant, last result (not a trial), broken action flagged", async () => {
     const { c, dossierActions } = espace({
       gitlab: { nom: "GitLab", description: "Mes tickets", motsCles: ["tickets"], sources: { compte: ["gitlab.com"] } },
       leboncoin: { nom: "Leboncoin", saisie: { libelle: "Recherche" }, sources: { web: true } },
@@ -121,11 +121,11 @@ describe("pure helpers", () => {
   });
 });
 
-/** A fake noyau of the actions: notes the launches and stops. */
+/** A fake kernel of the actions: notes the launches and stops. */
 function fauxNoyau(direct: EtatActions = { courantes: [], enAttente: [] }, issue: ResultatLancement | Promise<ResultatLancement> = { statut: "reussie", execution: "x" }) {
   const lances: { id: string; saisie?: string }[] = [];
   const arretes: string[] = [];
-  /** Stops and accord removals, in order. */
+  /** Stops and grant removals, in order. */
   const appels: string[] = [];
   const actions = {
     lancer: (id: string, o: { saisie?: string }): LancementAction => {
@@ -173,7 +173,7 @@ describe("preparer", () => {
   });
 
   // actions.test.ts:423
-  it("an unknown action or a missing noyau is refused", async () => {
+  it("an unknown action or a missing kernel is refused", async () => {
     const { h } = host();
     expect(await h.preparer("inconnue", null)).toEqual({ ok: false, erreur: "Action inconnue" });
     expect(await h.preparer("../x", null)).toEqual({ ok: false, erreur: "Action inconnue" });
@@ -182,7 +182,7 @@ describe("preparer", () => {
 });
 
 describe("lancer, refusals and deletion", () => {
-  it("nom is read without the noyau; lancer and arreter go to the noyau", async () => {
+  it("nom is read without the kernel; lancer and arreter go to the kernel", async () => {
     const { h, lances, arretes, creer } = host();
     expect(await creer(null).nom("gitlab")).toBe("GitLab");
     expect(await h.nom("absente")).toBeNull();
@@ -193,7 +193,7 @@ describe("lancer, refusals and deletion", () => {
     expect(await creer(null).lancer("gitlab", null)).toEqual({ statut: "invalide", erreur: MESSAGE_SANS_NOYAU });
   });
 
-  it("executions and execution read the disk without the noyau and refuse bad ids; page is refused", async () => {
+  it("executions and execution read the disk without the kernel and refuse bad ids; page is refused", async () => {
     const { creer, dossierActions } = host();
     const ex = await executer(dossierActions, "gitlab", { a: 1 });
     const h = creer(null);
@@ -203,7 +203,7 @@ describe("lancer, refusals and deletion", () => {
     expect(await h.execution("gitlab", "../x")).toBeNull();
     expect(await h.execution("../x", ex)).toBeNull();
     expect(await h.direct()).toEqual({ courantes: [], enAttente: [] });
-    // The page is the noyau's: refused without it, so the chrome reads it again once the noyau runs.
+    // The page is the kernel's: refused without it, so the chrome reads it again once the kernel runs.
     await expect(h.page("gitlab", null)).rejects.toThrow(MESSAGE_SANS_NOYAU);
   });
 
@@ -263,7 +263,7 @@ describe("lancer, refusals and deletion", () => {
   });
 
   // actions.test.ts:523
-  it("deleting and removing the accord stop the running action first", async () => {
+  it("deleting and removing the grant stop the running action first", async () => {
     const { h, appels } = host();
     await h.refuserAccord("gitlab");
     expect(appels).toEqual(["arreter:gitlab", "refuserAccord:gitlab"]);
@@ -286,7 +286,7 @@ describe("lancer, refusals and deletion", () => {
     expect((await h.liste()).find((a) => a.id === "gitlab")?.refus).toBeUndefined();
   });
 
-  it("accorder answers the noyau's refusal as an error", async () => {
+  it("accorder answers the kernel's refusal as an error", async () => {
     const { h, creer } = host();
     expect(await h.accorder({ id: "gitlab", profil: "defaut", compte: ["gitlab.com"], publiques: [] })).toEqual({ ok: true });
     expect(await creer(null).accorder({ id: "gitlab", profil: "defaut", compte: [], publiques: [] })).toEqual({ ok: false, erreur: MESSAGE_SANS_NOYAU });

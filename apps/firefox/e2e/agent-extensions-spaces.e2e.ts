@@ -39,7 +39,7 @@ afterEach(async () => {
 });
 
 /**
- * WebAiOs with the fake AMO; `prepare` writes the agent's folder and the registry first. `agent`: the noyau's MCP
+ * WebAiOs with the fake AMO; `prepare` writes the agent's folder and the registry first. `agent`: the kernel's MCP
  * config written and the agent's session started (a new conversation takes down the cards asked before it).
  */
 async function launch(prepare: (racine: string, dataDir: string) => void = () => {}, o: { agent?: boolean } = {}) {
@@ -161,7 +161,7 @@ describe("agent extensions per space", () => {
     const e = await activeSpace(m);
     await openSettings(m, e.id);
     for (const nom of ["cacheur", "jamais-accordee"]) expect(await line(m, nom)).toMatchObject({ disabled: true, text: expect.stringContaining(ERREUR_PROFIL_PRIVE) });
-    // The noyau refuses too, without the switch.
+    // The kernel refuses too, without the switch.
     expect(await inUi(m, "return ui.webaios.extensions.basculer('agent:cacheur', arguments[0], true).then((r) => JSON.parse(JSON.stringify(r)))", [e.id])).toEqual({
       ok: false,
       erreur: ERREUR_PROFIL_PRIVE,

@@ -182,10 +182,10 @@ it("a port held elsewhere: the section says so, « Brancher » is greyed, and no
     await waitText(tid("raison-externes"), `Le port ${port} est pris : le MCP externe est éteint.`, 15_000);
     expect(await brancherDisabled()).toBe(true);
     // No fallback: no port of the host answers like the external server (Origin → 403 before any token, as the
-    // noyau's own server answers 401).
+    // kernel's own server answers 401).
     const pid = (await waitFor<number | null>(m, `return (async () => (await ChromeUtils.importESModule("${STORE}").ready).agent.pid)();`, (v) => v !== null))!;
     const ports = listeningPorts(pid);
-    // The noyau MCP server at least: lsof does see the host's sockets.
+    // The kernel MCP server at least: lsof does see the host's sockets.
     expect(ports.length).toBeGreaterThan(0);
     for (const p of ports) {
       const host = `127.0.0.1:${p}`;
@@ -204,7 +204,7 @@ it("an invalid port (WEBAIOS_PORT_MCP_EXTERNE=abc): the section says the externa
   expect(await brancherDisabled()).toBe(true);
 });
 
-it("a foreign Host, an Origin header, no token, the noyau's main token and a session token are refused", { timeout: 90_000 }, async () => {
+it("a foreign Host, an Origin header, no token, the kernel's main token and a session token are refused", { timeout: 90_000 }, async () => {
   await launch();
   const { port } = await connectClient(m);
   const host = `127.0.0.1:${port}`;

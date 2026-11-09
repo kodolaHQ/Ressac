@@ -191,7 +191,7 @@ async function startVidola(accord: boolean) {
   await launch();
 }
 
-/** Opened Vidola (accord given), enter the site, sign in, watch the episode until 1:10 then pause. */
+/** Opened Vidola (grant given), enter the site, sign in, watch the episode until 1:10 then pause. */
 async function watch(host = "vidola-a.localhost") {
   await barClick("vidola", "site-entrer");
   await waitUrl(url(host, "/"));
@@ -338,7 +338,7 @@ describe("end to end (AGENTS.md's examples)", () => {
     await inSiteBar(m, "youtube", `doc.querySelector('[data-testid="accorder-site"]').click(); return true;`);
     await waitUrl(url("youtube.localhost", "/"), "youtube");
     await expect.poll(shelves, { timeout: 10_000 }).toEqual(["none", "none", "retiré", true]);
-    // The menu is built later: the retouche's observer removes the late entry too.
+    // The menu is built later: the tweak's observer removes the late entry too.
     await view(`(document.body.insertAdjacentHTML("beforeend", '<ytd-guide-entry-renderer id="tard"><a title="Shorts">Shorts</a></ytd-guide-entry-renderer>'), 1)`, "youtube");
     await expect.poll(() => view('document.getElementById("tard") === null', "youtube")).toBe(true);
     await view("(location.href = '/connexion', 1)", "youtube");
@@ -348,7 +348,7 @@ describe("end to end (AGENTS.md's examples)", () => {
     await w!.close();
     w = undefined;
 
-    // A restart on the same profile: the sign-in holds, the accord too (no card), .shorts stays hidden.
+    // A restart on the same profile: the sign-in holds, the grant too (no card), .shorts stays hidden.
     server.requetes.splice(0);
     await launch();
     await openSite("youtube");

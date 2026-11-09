@@ -6,7 +6,7 @@ import { CLE_INVALIDE, MemoireSite, VALEUR_NON_JSON } from "../../../packages/no
 import { creerPositions, memoireOp, REFUS_MEMOIRE } from "../noyau/site-memory";
 
 // The site memory, on the host's memoireOp: the sender checks
-// (sub-frame, sign-in window, page off the site, no accord) are the chrome's, in site-frames.test.ts.
+// (sub-frame, sign-in window, page off the site, no grant) are the chrome's, in site-frames.test.ts.
 
 let memoire: MemoireSite;
 let refusee: boolean;
@@ -48,7 +48,7 @@ test("memory refused by the service (app being deleted): the memory's refusal, n
 });
 
 // --- Video resume: the positions, on the host's creerPositions. The
-// sender checks (view, accord, repriseDansCadre, page address) are the chrome's, in site-frames.test.ts.
+// sender checks (view, grant, repriseDansCadre, page address) are the chrome's, in site-frames.test.ts.
 
 let accorde: boolean;
 let horloge: number;
@@ -79,7 +79,7 @@ test("position: noted under the page's address, from the player's frame as from 
   expect(Object.keys(memoire.contenu().positions)).toEqual(["/episode/4?s=1"]);
 });
 
-test("position: refused without accord, and for invalid values", async () => {
+test("position: refused without grant, and for invalid values", async () => {
   accorde = false;
   await plusTard({ t: 70, duree: 90 });
   accorde = true;
@@ -187,7 +187,7 @@ test("a note received before forget is dropped, delayed write included", async (
   expect(memoire.position("/episode/4")?.t).toBe(30);
 });
 
-test("accord withdrawn before the delayed write: the note is not written", async () => {
+test("grant withdrawn before the delayed write: the note is not written", async () => {
   await note({ t: 70, duree: 90 });
   horloge += 300;
   await note({ t: 75, duree: 90 });

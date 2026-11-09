@@ -357,14 +357,14 @@ describe("watching", () => {
   });
 });
 
-describe("retouches", () => {
+describe("tweaks", () => {
   const avecRetouches = { ...declaration, retouches: [{ correspond: ["/*"], js: ["a.js"], css: ["a.css"] }] };
   const ecrire = (m: ReturnType<typeof mount>, f: string, texte: string) => {
     mkdirSync(join(m.chemins.sites, "vidola", "retouches"), { recursive: true });
     writeFileSync(join(m.chemins.sites, "vidola", "retouches", f), texte);
   };
 
-  it("opens with the retouches' files, the accord card and the fingerprint", async () => {
+  it("opens with the tweaks' files, the grant card and the hash", async () => {
     const m = mount();
     m.write("vidola", JSON.stringify(avecRetouches));
     ecrire(m, "a.js", "window.a = 1");
@@ -394,12 +394,12 @@ describe("retouches", () => {
     expect(m.calls.recharges).toEqual(["vidola"]);
   });
 
-  it("memoireOp: only an open app with its accord; the address is the chrome's", async () => {
+  it("memoireOp: only an open app with its grant; the address is the chrome's", async () => {
     const m = mount();
     const op = { id: "vidola", adresse: "/serie/x", op: "retenir", cle: "k", valeur: 1 };
     expect(await m.sites.memoireOp(op)).toMatchObject({ ok: false });
     await m.sites.ouvrirParId("vidola");
-    // reprise: true asks for the accord.
+    // reprise: true asks for the grant.
     expect(await m.sites.memoireOp(op)).toMatchObject({ ok: false });
     m.sites.fermee("vidola");
     await accorderSite(m.dataDir, "vidola", DeclarationSite.parse(declaration));
@@ -411,7 +411,7 @@ describe("retouches", () => {
     expect(await m.sites.memoireOp({ ...op, op: "lire" })).toMatchObject({ ok: false });
   });
 
-  it("position and reprise: only an open app with its accord; « Oublier » drops a note waiting for its second", async () => {
+  it("position and reprise: only an open app with its grant; « Oublier » drops a note waiting for its second", async () => {
     const m = mount();
     const note = (t: number) => m.sites.position({ id: "vidola", cadre: "1:2", adresse: "/episode/4", t, duree: 90 });
     await m.sites.ouvrirParId("vidola");
@@ -447,7 +447,7 @@ describe("accorder", () => {
   }
   const accords = (m: { dataDir: string }) => lireAccordsSites(m.dataDir);
 
-  it("with the card's fingerprint: writes the accord, tells the chrome (accord now covers), reads again without reloading", async () => {
+  it("with the card's hash: writes the grant, tells the chrome (grant now covers), reads again without reloading", async () => {
     const { m, site } = await ouverte();
     expect(site.accordRequis).toBe(true);
     await m.sites.accorder("vidola", true, site.demande.empreinte);
@@ -458,7 +458,7 @@ describe("accorder", () => {
     expect(m.calls.recharges).toEqual([]);
   });
 
-  it("a stale fingerprint: nothing is written, the chrome shows the card again", async () => {
+  it("a stale hash: nothing is written, the chrome shows the card again", async () => {
     const { m } = await ouverte();
     await m.sites.accorder("vidola", true, "0".repeat(64));
     expect(await accords(m)).toEqual({});
@@ -466,7 +466,7 @@ describe("accorder", () => {
     expect(m.calls.rediffuser).toEqual(["vidola"]);
   });
 
-  it("« Ouvrir sans retouches »: the next view without any accord", async () => {
+  it("« Ouvrir sans retouches »: the next view without any grant", async () => {
     const { m, site } = await ouverte();
     await m.sites.accorder("vidola", false, site.demande.empreinte);
     expect(await accords(m)).toEqual({});
@@ -505,7 +505,7 @@ describe("accorder", () => {
 });
 
 describe("outils", () => {
-  it("lister carries the fingerprint, memoire returns the content, erreurs is empty, an unknown app is null", async () => {
+  it("lister carries the hash, memoire returns the content, erreurs is empty, an unknown app is null", async () => {
     const m = mount();
     const l = await m.sites.outils.lister();
     expect(l.find((s) => s.id === "vidola")!.empreinte).toMatch(/\S/);
@@ -543,7 +543,7 @@ describe("site rights, card and memory", () => {
     expect(empreinteDroits(DeclarationSite.parse({ ...demandee, description: "autre" }))).toBe(empreinteDroits(d));
   });
 
-  it("demandeAccord gives the card (e2e 43): rights, files without duplicates, followed domains, fingerprint", () => {
+  it("demandeAccord gives the card (e2e 43): rights, files without duplicates, followed domains, hash", () => {
     const d = DeclarationSite.parse(demandee);
     const carte = demandeAccord({ id: "vidola", declaration: d, aAccueil: false, domaines: ["vidola-a.example", "VIDOLA-C.example"], depart: "https://vidola-a.example/", accordRequis: true });
     expect(carte).toEqual({

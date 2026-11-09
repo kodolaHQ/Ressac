@@ -13,7 +13,7 @@ const declaration = (compte: string[], publiques: string[]) =>
     sources: { compte, publiques },
   });
 
-describe("accords", () => {
+describe("grants", () => {
   it("accorder then lireAccords, retirerAccord", async () => {
     const d = await dossierTemporaire();
     expect(await lireAccords(d)).toEqual({});

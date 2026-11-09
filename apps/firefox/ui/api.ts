@@ -210,7 +210,7 @@ export function createApi(win: WindowController): ApiFirefox {
       },
       profilsPourAccord: async () => profilsPourAccord(win.store.state, fenetre),
       accorder: async (a) => {
-        // The state is read again at the moment of the accord: never a private space's profile.
+        // The state is read again at the moment of the grant: never a private space's profile.
         if (!profilsLisibles(win.store.state).includes(a.profil)) return { ok: false as const, erreur: "Ce profil ne peut pas servir à un accord" };
         return host.request<{ ok: true } | { ok: false; erreur: string }>("accueil.accorder", a).then(
           (r) => structuredClone(r),
@@ -322,7 +322,7 @@ export function createApi(win: WindowController): ApiFirefox {
         privateAction(cible) ? { ok: false, erreur: ACTIONS_EN_ESPACE_PRIVE } : ask("workflow.rejouer", { cible, execution, bloc }, { ok: false, erreur: MESSAGE_AGENT_ARRETE }),
       lancer: async (cible, saisie) => (privateAction(cible) ? { erreur: ACTIONS_EN_ESPACE_PRIVE } : ask("workflow.lancer", { cible, saisie: saisie ?? null }, {})),
       selection(cible, bloc) {
-        // The host keeps it in memory only: resent on `acces`, which a host sends once its noyau has started (and on policy
+        // The host keeps it in memory only: resent on `acces`, which a host sends once its kernel has started (and on policy
         // changes, harmless: the same selection again).
         if (!lastSelection) untilUnload(host.on("acces", () => host.notify("workflow.selection", lastSelection)));
         lastSelection = { fenetre, cible, bloc };
@@ -336,7 +336,7 @@ export function createApi(win: WindowController): ApiFirefox {
         return untilUnload(() => offs.forEach((f) => f()));
       },
     },
-    // The actions: the window state's half here (private spaces, dispatches), the disk and noyau's in the host.
+    // The actions: the window state's half here (private spaces, dispatches), the disk and kernel's in the host.
     actions: createActionsApi({ state: () => win.store.state, dispatch: (a) => win.store.dispatch(a), host, fenetre, untilUnload, media: win.store.actionMedia }),
   };
   return new Proxy(api, {

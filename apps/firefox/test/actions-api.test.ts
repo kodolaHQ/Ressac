@@ -10,7 +10,7 @@ import { createActionsApi, espaceActifPrive } from "../ui/actions-api";
 const NONE = { courantes: [], enAttente: [] };
 const DEBUT = "2026-10-31T08:00:00.000Z";
 
-/** A fake noyau host: answers by method (a missing one rejects, as a stopped host does), notes every call. */
+/** A fake kernel host: answers by method (a missing one rejects, as a stopped host does), notes every call. */
 function fakeHost(answers: Record<string, (p: any) => unknown> = {}) {
   const calls: { method: string; params: unknown }[] = [];
   const listeners = new Map<string, Set<(p: unknown) => void>>();
@@ -156,7 +156,7 @@ describe("createActionsApi", () => {
   });
 
   // actions.test.ts:452
-  it("voirWorkflow opens the builder on the action; lancer and arreter go to the noyau", async () => {
+  it("voirWorkflow opens the builder on the action; lancer and arreter go to the kernel", async () => {
     const { F, api, calls, etat } = setup({ "actions.nom": (p) => (p.id === "gitlab" ? "GitLab" : null), "actions.lancer": () => ({ statut: "reussie", execution: "x" }) });
     const a = api(F);
     await a.voirWorkflow("gitlab");
@@ -171,7 +171,7 @@ describe("createActionsApi", () => {
     ]);
   });
 
-  it("a stopped host gives the answers without a noyau", async () => {
+  it("a stopped host gives the answers without a kernel", async () => {
     const { F, api } = setup();
     const a = api(F);
     expect(await a.lancer("x", null)).toEqual({ statut: "invalide", erreur: "Le service des actions ne répond pas (agent arrêté ?)" });
@@ -180,7 +180,7 @@ describe("createActionsApi", () => {
     expect(await a.direct()).toEqual(NONE);
   });
 
-  it("accorder never uses a private space's profile, read again at the accord", async () => {
+  it("accorder never uses a private space's profile, read again at the grant", async () => {
     const { F, api, calls, etat, set, genId } = setup({ "actions.accorder": () => ({ ok: true }) });
     set(appliquer(etat(), { type: "creerEspace", nom: "Banque", icone: "🏦", prive: true, profil: "nouveau", fenetreId: F }, genId));
     const banque = etat().espaces.find((e) => e.prive)!.profil;
@@ -275,7 +275,7 @@ describe("createActionsApi", () => {
     expect(await b.image("gitlab", "x", "https://img.test/a.png")).toBeNull();
   });
 
-  it("surChange calls back on actions.change and the home's resync; after a host exit, once on its noyau's start", () => {
+  it("surChange calls back on actions.change and the home's resync; after a host exit, once on its kernel's start", () => {
     const { F, api, emit } = setup();
     const cb = vi.fn();
     const off = api(F).surChange(cb);
@@ -340,9 +340,9 @@ describe("createActionsApi", () => {
     expect(change).toHaveBeenCalledTimes(1);
   });
 
-  // One read of the host's pipe can hold both the refusal and the noyau's first acces: the acces listener runs before
+  // One read of the host's pipe can hold both the refusal and the kernel's first acces: the acces listener runs before
   // the refusal's handler.
-  it("a read refused just before the noyau's first acces, in the same read, reads again", async () => {
+  it("a read refused just before the kernel's first acces, in the same read, reads again", async () => {
     let refuse!: (e: Error) => void;
     const { F, api, emit } = setup({ "actions.page": () => new Promise((_, no) => (refuse = no)) });
     const a = api(F);
@@ -370,7 +370,7 @@ describe("createActionsApi", () => {
     expect(calls).toEqual([]);
   });
 
-  it("accorder: a stopped host is a missing noyau; a window turned private meanwhile is refused", async () => {
+  it("accorder: a stopped host is a missing kernel; a window turned private meanwhile is refused", async () => {
     const stopped = setup();
     expect(await stopped.api(stopped.F).accorder({ id: "gitlab", profil: "defaut", compte: ["gitlab.com"], publiques: [] })).toEqual({
       ok: false,
@@ -440,7 +440,7 @@ describe("createActionsApi", () => {
     expect(launched(calls)).toEqual([]);
   });
 
-  it("ouvrir: a stopped host is a missing noyau; a failed launch goes to the console and reads again on the next acces", async () => {
+  it("ouvrir: a stopped host is a missing kernel; a failed launch goes to the console and reads again on the next acces", async () => {
     const stopped = setup();
     expect(await stopped.api(stopped.F).ouvrir("gitlab", null)).toEqual({ ok: false, erreur: "Le service des actions ne répond pas (agent arrêté ?)" });
     expect(stopped.dispatched).toEqual([]);
@@ -473,7 +473,7 @@ describe("createActionsApi", () => {
     await Promise.all([a.page("gitlab", null), a.executions("gitlab"), a.liste()]);
     await a.refuserAccord("gitlab");
     up = false;
-    // The results were erased with the accord: a stopped host gives no stale page back.
+    // The results were erased with the grant: a stopped host gives no stale page back.
     expect(await a.page("gitlab", null)).toBeNull();
     expect(await a.executions("gitlab")).toEqual([]);
     up = true;

@@ -1040,7 +1040,7 @@ test("naviguer outside the site without a grant: the app's card first; refused �
   expect(appelsPont("naviguer")).toHaveLength(0);
 });
 
-test("naviguer during the retouches card: NAVIGATION_SITE_EN_ATTENTE, never « fait »", async () => {
+test("naviguer during the tweaks card: NAVIGATION_SITE_EN_ATTENTE, never « fait »", async () => {
   await avecSite({ donneesWidget: true, enAttente: ["vidola"] });
   const r = await client.callTool({ name: "naviguer", arguments: { id: "site:vidola", url: "https://vidola-a.example/film/2" } });
   expect(texte(r)).toBe(NAVIGATION_SITE_EN_ATTENTE);

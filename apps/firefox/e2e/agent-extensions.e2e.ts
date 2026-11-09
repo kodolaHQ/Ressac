@@ -126,7 +126,7 @@ describe("agent extensions: registry, signed install, restart", () => {
     let w = await launch(f);
     await waitAddon(w, "1.0.0.1");
     await w.close();
-    // Written again by the next noyau: its own port and token.
+    // Written again by the next kernel: its own port and token.
     rmSync(path.join(racine(f.dataDir), ".webaios", "mcp.json"));
 
     w = await launch({ ...f, amo: { delaiMs: 60_000 } });
@@ -162,7 +162,7 @@ describe("agent extensions: registry, signed install, restart", () => {
   });
 
   // A removal landing while WebAiOs still installs the add-on (Firefox's onInstalled comes before install() resolves):
-  // it is the user's, not WebAiOs's; the noyau must not install it back.
+  // it is the user's, not WebAiOs's; the kernel must not install it back.
   it("uninstalled from about:addons during an install of ours: gone from the registry, not installed back", async () => {
     const f = folders();
     ecrireExtensionAgent(racine(f.dataDir), "cacheur", { "manifest.json": manifeste([HOTE]), "cache.css": CACHE });
@@ -197,7 +197,7 @@ describe("agent extensions: registry, signed install, restart", () => {
       const { AddonManager } = ChromeUtils.importESModule("resource://gre/modules/AddonManager.sys.mjs");
       await (await AddonManager.getAddonByID(${JSON.stringify(ID)})).uninstall(true);
     })();`);
-    // The noyau writes the registry after a round trip: under the full parallel suite it can take more than 15 s.
+    // The kernel writes the registry after a round trip: under the full parallel suite it can take more than 15 s.
     await until(() => !("agent:cacheur" in registry(f.dataDir)), 30_000);
     expect(await agentAddons(w.marionette)).toEqual([]);
     await w.close();

@@ -10,7 +10,7 @@ import type { Marionette } from "./marionette";
 import { inSiteBar, inSiteView, resolveLocalHosts, siteWindowExpr, startSitesServer, writeSite } from "./sites";
 import { missingApi } from "./ui";
 
-// Plan 32 Task 2: the « Autoriser les retouches » accord card. No no-drag buttons:
+// Plan 32 Task 2: the « Autoriser les retouches » grant card. No no-drag buttons:
 // the bar keeps Firefox's native title bar, nothing drags it.
 
 const STORE = "chrome://browser/content/webaios/store.sys.mjs";
@@ -111,8 +111,8 @@ afterEach(async () => {
   }
 });
 
-describe("accord card", () => {
-  it("first open of an app with retouches: the card lists domains, sign-in, files and resume; the site view is hidden and loads nothing (sites.spec.ts:1007)", async () => {
+describe("grant card", () => {
+  it("first open of an app with tweaks: the card lists domains, sign-in, files and resume; the site view is hidden and loads nothing (sites.spec.ts:1007)", async () => {
     await openToCard();
     expect(await heading()).toBe("Autoriser les retouches de « Vidola » ?");
     expect(await card("accord-site-domaines")).toContain("vidola-a.localhost");
@@ -180,19 +180,19 @@ describe("accord card", () => {
     await expect.poll(() => card(), { timeout: 10_000 }).not.toBeNull();
     expect(await card("accord-site-connexion")).toContain("autre-compte.localhost");
     expect((await viewState())?.visible).toBe(false);
-    // The page is reloaded behind the card, without retouches.
+    // The page is reloaded behind the card, without tweaks.
     await expect.poll(() => view("window.marque ?? null"), { timeout: 10_000 }).toBeNull();
     await expect.poll(() => view("document.readyState")).toBe("complete");
     await sleep(300);
     expect(await retouche()).toBeNull();
     expect(await shorts()).toBe("block");
-    // Allow again: the page reloads with its retouches.
+    // Allow again: the page reloads with its tweaks.
     await click("accorder-site");
     await expect.poll(() => shorts(), { timeout: 10_000 }).toBe("none");
     expect((await viewState())?.visible).toBe(true);
   });
 
-  it("opening the open window again after the accord was removed: the card comes back, the page reloaded without retouches (sites.spec.ts:1096)", async () => {
+  it("opening the open window again after the grant was removed: the card comes back, the page reloaded without tweaks (sites.spec.ts:1096)", async () => {
     await openToCard();
     await click("accorder-site");
     await expect.poll(() => shorts(), { timeout: 15_000 }).toBe("none");
@@ -209,7 +209,7 @@ describe("accord card", () => {
     expect(await m.execute<number>(`return [...Services.wm.getEnumerator("navigator:browser")].filter((w) => w.document.documentElement.getAttribute("webaios-site") === "vidola").length;`)).toBe(1);
   });
 
-  it("Allow with the fingerprint of v1 after v2 was written: nothing is granted, the card stays and shows v2 (sites.spec.ts:1115)", async () => {
+  it("Allow with the hash of v1 after v2 was written: nothing is granted, the card stays and shows v2 (sites.spec.ts:1115)", async () => {
     await openToCard();
     const v1 = (await state()).accord!.empreinte;
     expect(v1).toMatch(/^[0-9a-f]{64}$/);
@@ -220,7 +220,7 @@ describe("accord card", () => {
     expect(accords().vidola).toBeFalsy();
     expect(await card("accord-site-connexion")).toContain("evil.localhost");
     expect((await viewState())?.visible).toBe(false);
-    // With the fingerprint of the card up to date, the click grants.
+    // With the hash of the card up to date, the click grants.
     await click("accorder-site");
     await expect.poll(() => shorts(), { timeout: 15_000 }).toBe("none");
     expect((accords().vidola as { connexion: string[] }).connexion).toEqual(["compte.localhost", "evil.localhost"]);
@@ -235,7 +235,7 @@ describe("accord card", () => {
     expect(await card("accord-site-suivis")).not.toContain("vidola-a.localhost");
   });
 
-  it("the choice is refused from the bar's invalid requests: a fingerprint that is not a bounded string rejects, nothing is granted (sites.spec.ts:1149)", async () => {
+  it("the choice is refused from the bar's invalid requests: a hash that is not a bounded string rejects, nothing is granted (sites.spec.ts:1149)", async () => {
     await openToCard();
     const refus = await barApi<string>(`return site.accorder(true, "x".repeat(200)).then(() => "accepted", (e) => e.message);`);
     expect(refus).toBe("invalid accord request");
@@ -247,7 +247,7 @@ describe("accord card", () => {
   });
 
   it("nothing in the site view, a sub-frame or the home frame reaches the bar's controller: nothing is granted (sites.spec.ts:1149)", async () => {
-    // A live page behind the card: allowed once, then the accord removed and the app opened again.
+    // A live page behind the card: allowed once, then the grant removed and the app opened again.
     await openToCard();
     await click("accorder-site");
     await expect.poll(() => shorts(), { timeout: 15_000 }).toBe("none");
@@ -293,7 +293,7 @@ describe("accord card", () => {
 });
 
 describe("home frame", () => {
-  // The home's own script tries what a forged request would: reach the bar's controller, post an accord.
+  // The home's own script tries what a forged request would: reach the bar's controller, post an grant.
   const HOME = `<!doctype html><title>Accueil</title><p>accueil</p><script>
     addEventListener("message", (e) => {
       if (!e.data || e.data.essai !== "attaque") return;
@@ -309,7 +309,7 @@ describe("home frame", () => {
     parent.postMessage({ type: "pret" }, "*");
   </script>`;
 
-  it("a home frame cannot reach the controller nor post an accord (sites.spec.ts:1149)", async () => {
+  it("a home frame cannot reach the controller nor post an grant (sites.spec.ts:1149)", async () => {
     writeSite(dataDir, "vidola", { declaration: declaration(), fichiers: { ...FILES, "accueil/index.html": HOME } });
     await openToCard();
     expect(await state().then((s) => s.vue)).toBe("accord");

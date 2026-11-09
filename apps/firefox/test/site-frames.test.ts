@@ -40,7 +40,7 @@ function app(o: { accordRequis?: boolean; id?: string; url?: string } = {}) {
 }
 
 describe("frameInjection", () => {
-  it("the view's main frame gets its retouches and webaiosSite; a sub-frame only what `cadres` gives, without it", () => {
+  it("the view's main frame gets its tweaks and webaiosSite; a sub-frame only what `cadres` gives, without it", () => {
     const { v, s } = app();
     const i = frameInjection(v.main, siteOfFrame(v.main, [s]), false)!;
     expect(i).toMatchObject({ css: [".shorts{display:none}"], js: [{ code: "window.a = 1", nom: "webaios-retouche://vidola/a.js" }], pont: true });
@@ -59,7 +59,7 @@ describe("frameInjection", () => {
     expect(frameInjection(small.frame("https://www.lecteur.example/v"), siteOfFrame(small.frame("x"), [s]), false)).toBeNull();
   });
 
-  it("without the accord: null; about:blank and about:srcdoc get nothing; a page off the site gives its frames nothing", () => {
+  it("without the grant: null; about:blank and about:srcdoc get nothing; a page off the site gives its frames nothing", () => {
     const { v, s } = app({ accordRequis: true });
     expect(frameInjection(v.main, siteOfFrame(v.main, [s]), false)).toBeNull();
     const ok = app();
@@ -72,7 +72,7 @@ describe("frameInjection", () => {
     expect(frameInjection(f, siteOfFrame(f, [login.s]), false)).toMatchObject({ js: [], reprise: false });
   });
 
-  it("an about:srcdoc player frame of an app page gets the resume when the app declares no cadres, never the retouches", () => {
+  it("an about:srcdoc player frame of an app page gets the resume when the app declares no cadres, never the tweaks", () => {
     const sans = app();
     const free = { ...sans.s, site: { ...sans.s.site, declaration: DeclarationSite.parse({ ...declaration, retouches: [{ correspond: ["/series/*"], js: ["a.js"] }] }) } };
     const f = sans.v.frame("about:srcdoc");
@@ -101,7 +101,7 @@ describe("frameMemory", () => {
     expect(request).toHaveBeenCalledWith({ id: "vidola", adresse: "/serie/the-bear?e=4", op: "retenir", cle: "k", valeur: 1 });
   });
 
-  it("refused to a sub-frame, the sign-in window, a page off the site, without the accord, and a non-object request", async () => {
+  it("refused to a sub-frame, the sign-in window, a page off the site, without the grant, and a non-object request", async () => {
     const request = vi.fn(async () => ({ ok: true as const }));
     const { v, s } = app();
     const refus = { ok: false, erreur: REFUS_MEMOIRE };
@@ -118,17 +118,17 @@ describe("frameMemory", () => {
   });
 });
 
-describe("the retouches' console", () => {
+describe("the tweaks' console", () => {
   const err = (source: string, texte = "boum") => ({ texte, source, ligne: 3 });
 
-  it("keeps the app's retouche errors relayed from its view, never another app's nor the sign-in window's", () => {
+  it("keeps the app's tweak errors relayed from its view, never another app's nor the sign-in window's", () => {
     const a = app();
     const b = app({ id: "autre" });
     const small = browser(PAGE);
     const both = [a.s, b.s];
     frameError(siteOfFrame(a.v.main, both), err("webaios-retouche://vidola/a.js"));
     frameError(siteOfFrame(b.v.frame("https://www.lecteur.example/v"), both), err("webaios-retouche://autre/b.js"));
-    // B's page names its code as A's retouche; the sign-in window too; an ordinary source; malformed relays.
+    // B's page names its code as A's tweak; the sign-in window too; an ordinary source; malformed relays.
     frameError(siteOfFrame(b.v.main, both), err("webaios-retouche://vidola/x.js"));
     frameError(siteOfFrame(small.main, both), err("webaios-retouche://vidola/x.js"));
     frameError(siteOfFrame(a.v.main, both), err("https://vidola-b.example/app.js"));
@@ -170,7 +170,7 @@ describe("framePosition and frameResume", () => {
     expect(note(v, s, main, { t: 72, duree: 90, fin: true })).toEqual([{ id: "vidola", adresse: "/episode/4?s=1", cadre: "2:11", t: 72, duree: 90, fin: true }]);
   });
 
-  it("refused without accord, for a frame the resume does not go into, outside the view, off the site, or a malformed message", () => {
+  it("refused without grant, for a frame the resume does not go into, outside the view, off the site, or a malformed message", () => {
     const { v, s } = app();
     const lecteur = withIds(v.frame(LECTEUR), 5, 77);
     expect(note(v, { ...s, site: { ...s.site, accordRequis: true } } as never, lecteur, { t: 70, duree: 90 })).toEqual([]);

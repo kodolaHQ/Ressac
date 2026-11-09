@@ -43,7 +43,7 @@ async function openPage(p: string, titre: string): Promise<string> {
     if (Date.now() > deadline) throw new Error(`${url} not loaded`);
   return url;
 }
-/** The action is in the list the noyau gives. */
+/** The action is in the list the kernel gives. */
 const listed = (id: string) => waitUi(m, "return (await ui.webaios.actions.liste()).some((a) => a.id === arguments[0]);", [id], 30_000);
 /** Opens the empty page (« Nouvel onglet »), its field focused. */
 async function emptyPage(): Promise<void> {

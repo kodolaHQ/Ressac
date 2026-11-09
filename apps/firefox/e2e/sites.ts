@@ -92,7 +92,7 @@ export function writeSite(dataDir: string, id: string, s: SiteTest): void {
   }
 }
 
-/** « Autoriser » done ahead (`<dataDir>/sites-accords.json`), by the noyau's own accorderSite: the app opens granted. */
+/** « Autoriser » done ahead (`<dataDir>/sites-accords.json`), by the kernel's own accorderSite: the app opens granted. */
 export const grantSite = (dataDir: string, id: string, declaration: object): Promise<void> => accorderSite(dataDir, id, DeclarationSite.parse(declaration));
 
 /** The test home page: it shows the memory it receives and notes every message. */
