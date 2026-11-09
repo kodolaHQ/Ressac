@@ -3,8 +3,8 @@
   import { GLISSER_BLOC } from "./ajout";
 
   /**
-   * Les blocs par famille : un clic en pose un au centre de la vue, un glisser là où on le lâche. `web` : le widget (ou
-   * l'action, `action`) déclare `"web": true` ; sans lui, « Chercher sur le web » est grisé (le validateur le refuserait).
+   * Blocks by family: a click drops one at the center of the view, a drag where it is released. `web`: the widget (or
+   * the action, `action`) declares `"web": true`; without it, « Chercher sur le web » is greyed out (the validator would refuse it).
    */
   let {
     catalogue,
@@ -24,7 +24,7 @@
   let repliees = $state<Partial<Record<FamilleBloc, boolean>>>({});
   const familles = $derived.by(() => {
     const r = new Map<FamilleBloc, CatalogueBloc[]>();
-    // Une seule sortie : elle n'est plus proposée tant qu'il y en a une.
+    // A single output: it is no longer offered while there is one.
     for (const c of catalogue) if (!(c.type === "sortie" && aSortie)) r.set(c.famille, [...(r.get(c.famille) ?? []), c]);
     return [...r];
   });

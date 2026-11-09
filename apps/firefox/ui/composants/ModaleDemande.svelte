@@ -8,15 +8,15 @@
   import DemandeOutilsDev from "./DemandeOutilsDev.svelte";
   import FondFige from "./FondFige.svelte";
 
-  /** `ongletId` : la page affichée à l'ouverture, capturée pour le fond (null : aucune, ou un panneau la cache). */
+  /** `ongletId`: the page shown at opening, captured for the background (null: none, or a panel hides it). */
   let { demande, ongletId }: { demande: DemandeEnAttente; ongletId: IdOnglet | null } = $props();
 
-  /** Entrée n'autorise qu'une carte visible depuis ce délai : une frappe destinée à la page ne vaut pas accord. */
+  /** Enter only authorizes a card visible for at least this delay: a keystroke meant for the page is not a grant. */
   const DELAI_ENTREE_MS = 400;
 
   let carte: HTMLElement;
   let prete = $state(false);
-  // Entrée armée : la carte est visible depuis DELAI_ENTREE_MS (réarmée à chaque demande de la file).
+  // Enter armed: the card has been visible since DELAI_ENTREE_MS (re-armed on each request from the queue).
   let armee = $state(false);
   let minuterieEntree: ReturnType<typeof setTimeout> | undefined;
   function armer() {
@@ -29,28 +29,28 @@
   const donneesWidget = $derived(demande.permissions.includes("donnees-widget"));
   const extension = $derived(demande.permissions.includes("extension"));
   const consoleExtension = $derived(demande.permissions.includes("console-extension"));
-  /** Nom de l'extension (manifeste) et raison de l'agent : des données, affichées en texte et bornées. */
+  /** Extension name (manifest) and agent reason: data, shown as text and bounded. */
   const nomExtension = $derived((demande.titre ?? demande.origine).slice(0, 60));
-  /** Les espaces que couvre le déblocage : des noms donnés par l'utilisateur, affichés en texte et bornés. */
+  /** The spaces the unlock covers: names given by the user, shown as text and bounded. */
   const espacesExtension = $derived((demande.espaces ?? []).slice(0, 20).map((e) => e.slice(0, 60)));
   const raisonAgent = $derived((demande.raison ?? "").slice(0, LONGUEUR_RAISON_DEBLOCAGE));
   const site = $derived(siteDe(demande.origine));
 
-  // Une seule ouverture pour toute la file : les demandes suivantes remplacent le contenu, la page reste cachée.
+  // A single opening for the whole queue: following requests replace the content, the page stays hidden.
   onMount(() => {
     const avant = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     carte.focus();
     return () => {
       clearTimeout(minuterieEntree);
-      // Le focus revient où il était, s'il est encore dans l'interface (pas sur la page web, qui reprend le sien) :
-      // après la mise à jour, quand le reste de l'interface n'est plus inerte.
+      // Focus goes back where it was, if it is still in the interface (not on the web page, which takes its own back):
+      // after the update, when the rest of the interface is no longer inert.
       queueMicrotask(() => {
         if (avant?.isConnected && avant !== document.body) avant.focus();
       });
     };
   });
 
-  // Demande suivante de la file : son contenu remplace l'ancien, le focus reste dans la modale.
+  // Next request in the queue: its content replaces the old one, focus stays in the modal.
   $effect(() => {
     void demande.id;
     untrack(armer);
@@ -59,7 +59,7 @@
     });
   });
 
-  // La barre de commande ouverte ou refermée par-dessus réarme Entrée : la frappe qui l'a fermée ne vaut pas accord.
+  // The command bar opened or closed on top re-arms Enter: the keystroke that closed it is not a grant.
   $effect(() => {
     void commande.ouverte;
     untrack(armer);
@@ -70,21 +70,21 @@
     [...carte.querySelectorAll<HTMLElement>("button, input, [tabindex]:not([tabindex='-1'])")].filter((e) => !e.hasAttribute("disabled"));
 
   function clavier(e: KeyboardEvent) {
-    // La barre de commande ouverte par-dessus garde le clavier : la modale cachée ne réagit à rien, même si le focus a
-    // quitté le champ de la barre (ni Entrée, ni Échap avant que le panneau ⌃Tab ne prenne la main, ni Tab).
+    // The command bar opened on top keeps the keyboard: the hidden modal reacts to nothing, even if focus has left the
+    // bar's field (neither Enter, nor Escape before the ⌃Tab panel takes over, nor Tab).
     if (commande.ouverte || e.isComposing) return;
     if (e.key === "Escape") {
       e.preventDefault();
       refuser();
     } else if (e.key === "Enter") {
-      // Carte pas encore visible, ou depuis trop peu : Entrée ne fait rien, même sur un bouton.
+      // Card not visible yet, or only for too short a time: Enter does nothing, even on a button.
       if (!armee) return e.preventDefault();
-      // Un bouton qui a le focus garde sa propre action ; partout ailleurs (cases comprises), Entrée autorise.
+      // A focused button keeps its own action; everywhere else (checkboxes included), Enter authorizes.
       if (e.target instanceof HTMLElement && e.target.closest("button")) return;
       e.preventDefault();
       if (!e.repeat) carte.querySelector<HTMLButtonElement>("[data-principal]")?.click();
     } else if (e.key === "Tab") {
-      // Le focus ne quitte pas la modale : Tab boucle sur ses commandes.
+      // Focus does not leave the modal: Tab loops over its controls.
       const liste = focusables();
       if (liste.length === 0) return e.preventDefault();
       const i = liste.indexOf(document.activeElement as HTMLElement);
@@ -99,7 +99,7 @@
 
 <svelte:window onkeydown={clavier} />
 
-<!-- Sous la barre de commande, rien de la modale ne peut prendre le focus (Tab natif depuis le corps de la page). -->
+<!-- Under the command bar, nothing in the modal can take focus (native Tab from the page body). -->
 <div class="modale" class:prete data-testid="modale-demande" data-armee={armee || undefined} inert={!!commande.ouverte}>
   <FondFige
     {ongletId}
@@ -136,7 +136,7 @@
         {#if demande.extension}
           <DemandeExtension {demande} carte={demande.extension} />
         {:else}
-          <!-- Jamais posée sans carte ; si c'était le cas, rien ne s'active sans avoir été montré. -->
+          <!-- Never set without a card; if it were, nothing activates without having been shown. -->
           <div class="lecture">
             <p>Demande d'extension illisible.</p>
             <div class="actions"><button data-principal onclick={refuser}>Refuser</button></div>
@@ -147,7 +147,7 @@
           <p>{texteDeblocageConsole(nomExtension, espacesExtension)}</p>
           {#if raisonAgent}<p class="raison">Raison donnée par {demande.agent ?? "l'agent"} : « {raisonAgent} »</p>{/if}
           <div class="actions">
-            <!-- Entrée refuse : montrer à l'agent ce qu'une extension lit sur des onglets non partagés demande un vrai clic. -->
+            <!-- Enter refuses: showing the agent what an extension reads on unshared tabs takes a real click. -->
             <button data-principal onclick={refuser}>Refuser</button>
             <button class="autoriser" onclick={() => api.permissions.repondre(demande.id, "autoriser")}>Débloquer</button>
           </div>
@@ -162,7 +162,7 @@
             <p>L'agent veut voir les données du widget « {demande.titre ?? demande.widget} » (lues avec ton compte).</p>
           {/if}
           <div class="actions">
-            <!-- Entrée refuse : montrer à l'agent des données lues avec le compte demande un vrai clic. -->
+            <!-- Enter refuses: showing the agent data read with the account takes a real click. -->
             <button data-principal onclick={refuser}>Refuser</button>
             <button class="autoriser" onclick={() => api.permissions.repondre(demande.id, "autoriser")}>Autoriser pour cette conversation</button>
           </div>

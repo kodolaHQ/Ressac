@@ -3,18 +3,18 @@ import { COLONNE_PX, RANGEE_PX } from "./disposition";
 
 type Position = { x: number; y: number };
 
-/** Le fichier d'un bloc `code` neuf : il rend son entrée telle quelle. */
+/** The file of a new `code` block: it returns its input as is. */
 export const MODELE_CODE = "export default async (entree, webaios) => {\n  return entree;\n};\n";
 
 /**
- * Paramètres d'un bloc neuf : les champs requis qui ont une valeur neutre au catalogue (`liste.garder` : 10…). Un bloc
- * neuf non relié n'échoue alors que sur son entrée ; une adresse, sans valeur neutre, reste à remplir.
+ * Parameters of a new block: the required fields that have a neutral value in the catalog (`liste.garder`: 10…). A
+ * new unlinked block then only fails on its input; an address, with no neutral value, is left to fill in.
  */
 export function parametresNeufs(c: CatalogueBloc): Record<string, unknown> {
   return Object.fromEntries(c.champs.filter((f) => f.requis && f.defaut !== undefined).map((f) => [f.nom, structuredClone(f.defaut)]));
 }
 
-/** `point`, ou la première place libre en dessous (un bloc posé au centre ne recouvre pas un bloc affiché). */
+/** `point`, or the first free place below it (a block dropped at the center does not cover a displayed block). */
 export function placeLibre(point: Position, occupees: Iterable<Position>): Position {
   const prises = [...occupees];
   const libre = (p: Position) => prises.every((q) => Math.abs(q.x - p.x) >= COLONNE_PX * 0.9 || Math.abs(q.y - p.y) >= RANGEE_PX * 0.9);
@@ -23,5 +23,5 @@ export function placeLibre(point: Position, occupees: Iterable<Position>): Posit
   return p;
 }
 
-/** Type MIME d'un bloc glissé depuis la palette. */
+/** MIME type of a block dragged from the palette. */
 export const GLISSER_BLOC = "application/x-webaios-bloc";

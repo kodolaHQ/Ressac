@@ -1,10 +1,10 @@
 /**
- * Le tri d'un tableau de la page d'une action, au clic sur un en-tête. Les cellules sont des textes déjà mis en forme
- * (nombres en fr-FR : « 1 200 », « 2,5 ») : un nombre se compare en nombre, un texte avec `localeCompare("fr")`, les
- * nombres avant les textes, et une cellule vide reste à la fin quel que soit le sens.
+ * The sort of an action page's table, on a header click. Cells are already formatted texts (numbers in fr-FR:
+ * « 1 200 », « 2,5 »): a number compares as a number, a text with `localeCompare("fr")`, numbers before texts, and
+ * an empty cell stays last whatever the direction.
  */
 
-/** La valeur d'une cellule qui s'écrit comme un nombre en fr-FR, sinon null. */
+/** The value of a cell written as an fr-FR number, otherwise null. */
 function nombre(s: string): number | null {
   const t = s.replace(/[\s  ]/g, "").replace(",", ".").replace(/^[−–]/, "-");
   return /^-?\d+(\.\d+)?$/.test(t) ? Number(t) : null;

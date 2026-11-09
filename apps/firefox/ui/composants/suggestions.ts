@@ -4,18 +4,18 @@ export const SUGGESTIONS_MAX = 5;
 
 export type Suggestion = { id: string; nom: string; saisie: string | null };
 
-/** Sans accents ni casse, espaces resserrés. */
+/** Without accents or case, spaces tightened. */
 export function normaliser(t: string): string {
   return t.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().replace(/\s+/g, " ").trim();
 }
 
-/** Le nom entier, ses mots et les mots-clés, normalisés. */
+/** The whole name, its words and the keywords, normalized. */
 function termes(a: ActionAffichee): string[] {
   const nom = normaliser(a.nom);
   return [...new Set([nom, ...nom.split(/[^\p{L}\p{N}]+/u).filter(Boolean), ...a.motsCles.map(normaliser).filter(Boolean)])];
 }
 
-/** Le reste du texte tapé (tel quel, coupé) après le terme normalisé `terme` et une espace ; null si le texte ne commence pas ainsi. */
+/** The rest of the typed text (as is, trimmed) after the normalized term `terme` and a space; null if the text does not start that way. */
 function resteApres(texte: string, terme: string): string | null {
   for (let i = 1; i < texte.length; i++) {
     if (!/\s/.test(texte[i]!)) continue;
@@ -24,7 +24,7 @@ function resteApres(texte: string, terme: string): string | null {
   return null;
 }
 
-/** Les actions qui correspondent au texte du nouvel onglet : par nom ou mot-clé, ou, avec saisie, « terme reste-de-la-saisie ». */
+/** The actions matching the new tab's text: by name or keyword, or, with an input, « terme reste-de-la-saisie ». */
 export function suggestionsActions(texte: string, actions: ActionAffichee[]): Suggestion[] {
   const q = normaliser(texte);
   if (!q) return [];
@@ -39,7 +39,7 @@ export function suggestionsActions(texte: string, actions: ActionAffichee[]): Su
       continue;
     }
     if (!a.saisie) continue;
-    // Le terme le plus long d'abord : « mes tickets » avant « mes ».
+    // The longest term first: « mes tickets » before « mes ».
     for (const terme of [...t].sort((x, y) => y.length - x.length)) {
       if (!q.startsWith(`${terme} `)) continue;
       const reste = resteApres(brut, terme);

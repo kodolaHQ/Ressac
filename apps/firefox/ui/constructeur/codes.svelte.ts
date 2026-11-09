@@ -4,17 +4,17 @@ import type { Depot } from "./edition.svelte";
 
 export type DepotCode = Pick<Depot, "lireCode" | "enregistrerCode">;
 
-/** `base` : le texte du disque quand le brouillon a commencé (null : fichier absent), pour voir un changement de l'agent. */
+/** `base`: the text on disk when the draft began (null: file missing), to spot a change by the agent. */
 type BrouillonCode = { texte: string; base: string | null };
 
 /**
- * Les codes non enregistrés de cette fenêtre, par `<widget>/<fichier>` : ils survivent au changement de bloc et
- * d'onglet ; seul « Enregistrer le code » les écrit.
+ * This window's unsaved codes, by `<widget>/<file>`: they survive block and tab changes; only « Enregistrer le code »
+ * writes them.
  */
 const brouillons = new SvelteMap<string, BrouillonCode>();
 const cleCode = (widget: string, nom: string) => `${widget}/${nom}`;
 
-/** Fichiers dont le code n'est pas enregistré : ceux du widget (noms), ou tous (`<widget>/<fichier>`). */
+/** Files whose code is not saved: the widget's (names), or all (`<widget>/<file>`). */
 export function codesNonEnregistres(widget?: string): string[] {
   const cles = [...brouillons.keys()];
   if (widget === undefined) return cles;
@@ -22,25 +22,25 @@ export function codesNonEnregistres(widget?: string): string[] {
 }
 
 /**
- * Abandonne les brouillons des widgets dont plus aucun onglet du constructeur n'est ouvert dans la fenêtre (onglet
- * fermé par l'agent, espace fermé…) : la fenêtre ne retient jamais sa fermeture pour un code qu'on ne voit plus.
+ * Drops the drafts of widgets with no builder tab left open in the window (tab closed by the agent, space
+ * closed…): the window never holds back its closing for code that can no longer be seen.
  */
 export function garderCodesDe(ouverts: Iterable<string>): void {
   const w = new Set(ouverts);
   for (const c of [...brouillons.keys()]) if (!w.has(c.slice(0, c.indexOf("/")))) brouillons.delete(c);
 }
 
-/** Abandonne les brouillons d'un widget (onglet fermé malgré tout), ou tous. */
+/** Drops a widget's drafts (tab closed anyway), or all of them. */
 export function oublierCodes(widget?: string): void {
   for (const c of [...brouillons.keys()]) if (widget === undefined || c.startsWith(`${widget}/`)) brouillons.delete(c);
 }
 
-/** Le fichier `.mjs` d'un bloc `code` tel que l'éditeur le montre : texte du disque, ou brouillon de l'utilisateur. */
+/** The `.mjs` file of a `code` block as the editor shows it: text on disk, or the user's draft. */
 export class FichierCode {
-  /** Texte sur le disque ; null : absent ; undefined : pas encore lu. */
+  /** Text on disk; null: missing; undefined: not read yet. */
   disque = $state<string | null | undefined>(undefined);
   erreur = $state<string | null>(null);
-  /** Le fichier a changé sur le disque depuis le début du brouillon : bandeau [Recharger] [Garder le mien]. */
+  /** The file changed on disk since the draft began: [Recharger] [Garder le mien] banner. */
   changeSurDisque = $state(false);
   enregistrement = $state(false);
   private lecture = 0;
@@ -49,7 +49,7 @@ export class FichierCode {
     readonly widget: string,
     readonly nom: string,
     private readonly depot: DepotCode,
-    /** Après chaque enregistrement réussi (le workflow refusé faute de ce fichier peut repartir). */
+    /** After each successful save (the workflow refused for lack of this file may start again). */
     private readonly apresEnregistrement?: (nom: string) => void,
   ) {}
 
@@ -61,17 +61,17 @@ export class FichierCode {
     return brouillons.get(this.cle)?.texte ?? this.disque ?? MODELE_CODE;
   }
 
-  /** Brouillon tapé par l'utilisateur (changer de bloc ou fermer demande confirmation). */
+  /** Draft typed by the user (changing block or closing asks for confirmation). */
   get aBrouillon(): boolean {
     return brouillons.has(this.cle);
   }
 
-  /** Un brouillon, ou un fichier absent (le modèle affiché n'existe pas encore). */
+  /** A draft, or a missing file (the shown template does not exist yet). */
   get nonEnregistre(): boolean {
     return this.aBrouillon || this.disque === null;
   }
 
-  /** (Re)lit le fichier ; un brouillon n'est jamais remplacé, seulement signalé si le disque a changé sous lui. */
+  /** (Re)reads the file; a draft is never replaced, only flagged if the disk changed under it. */
   async lire(): Promise<void> {
     const n = ++this.lecture;
     const l = await this.depot.lireCode(this.widget, this.nom);
@@ -89,7 +89,7 @@ export class FichierCode {
       return;
     }
     if (t !== null && b.texte === t) {
-      // Le disque a rejoint le brouillon (l'agent a écrit la même chose) : plus rien à enregistrer.
+      // The disk caught up with the draft (the agent wrote the same thing): nothing left to save.
       brouillons.delete(this.cle);
       this.changeSurDisque = false;
       return;
@@ -106,7 +106,7 @@ export class FichierCode {
     } else brouillons.set(this.cle, { texte, base: b ? b.base : this.disque });
   }
 
-  /** « Enregistrer le code » et ⌘S : seulement quand il y a quelque chose à écrire. */
+  /** « Enregistrer le code » and ⌘S: only when there is something to write. */
   async enregistrer(): Promise<void> {
     if (!this.nonEnregistre || this.enregistrement || this.disque === undefined) return;
     const texte = this.texte;
@@ -121,7 +121,7 @@ export class FichierCode {
       this.disque = texte;
       this.changeSurDisque = false;
       const b = brouillons.get(this.cle);
-      // Une frappe pendant l'écriture reste un brouillon, sur la base de ce qui vient d'être écrit.
+      // A keystroke during the write stays a draft, based on what was just written.
       if (!b || b.texte === texte) brouillons.delete(this.cle);
       else brouillons.set(this.cle, { texte: b.texte, base: texte });
       this.apresEnregistrement?.(this.nom);
@@ -132,13 +132,13 @@ export class FichierCode {
     }
   }
 
-  /** Bandeau : abandonner le brouillon pour le fichier du disque. */
+  /** Banner: drop the draft for the file on disk. */
   recharger(): void {
     brouillons.delete(this.cle);
     this.changeSurDisque = false;
   }
 
-  /** Bandeau : garder le brouillon ; il remplacera la version du disque à l'enregistrement. */
+  /** Banner: keep the draft; it will replace the disk version on save. */
   garderLeMien(): void {
     const b = brouillons.get(this.cle);
     if (b && this.disque !== undefined) brouillons.set(this.cle, { texte: b.texte, base: this.disque });
@@ -146,13 +146,13 @@ export class FichierCode {
   }
 }
 
-/** Changer de bloc avec le code de `nom` non enregistré : L'utilisateur confirme (le brouillon reste gardé). */
+/** Changing block with `nom`'s code unsaved: the user confirms (the draft stays kept). */
 export function confirmerChangementDeBloc(widget: string, nom: string): boolean {
   if (!brouillons.has(cleCode(widget, nom))) return true;
   return confirm(`Le code de ${nom} n'est pas enregistré. Changer de bloc quand même ? Il reste gardé dans cette fenêtre.`);
 }
 
-/** Fermer le constructeur du widget avec du code non enregistré : L'utilisateur confirme, et le brouillon est abandonné. */
+/** Closing the widget's builder with unsaved code: the user confirms, and the draft is dropped. */
 export function confirmerFermeture(widget: string): boolean {
   const noms = codesNonEnregistres(widget);
   if (noms.length === 0) return true;
@@ -163,8 +163,8 @@ export function confirmerFermeture(widget: string): boolean {
 
 let garde = false;
 /**
- * Une fois par fenêtre : la fermer avec du code non enregistré passe par « beforeunload » (le process principal demande
- * alors confirmation).
+ * Once per window: closing it with unsaved code goes through « beforeunload » (the main process then asks for
+ * confirmation).
  */
 export function garderAvantFermeture(): void {
   if (garde) return;

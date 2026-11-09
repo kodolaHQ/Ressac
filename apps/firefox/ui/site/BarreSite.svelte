@@ -6,14 +6,14 @@
   import type { ApiSite } from "../../shared/api";
 
   let { etat, api }: { etat: EtatFenetreSite; api: ApiSite } = $props();
-  /** macOS : les boutons de la fenêtre sont dans la barre, à gauche. */
+  /** macOS: the window buttons are in the bar, on the left. */
   const mac = navigator.userAgent.includes("Mac");
   const surSite = $derived(etat.vue === "site");
-  /** Le chevron du mode design déplie ses entrées à la place du titre. */
+  /** The design mode chevron unfolds its entries in place of the title. */
   let menuDesign = $state(false);
 </script>
 
-<!-- Le fond se glisse (déplace la fenêtre) ; chaque bouton et la mention sont cliquables (no-drag). -->
+<!-- The background is draggable (moves the window); each button and the mention are clickable (no-drag). -->
 <header data-testid="barre-site" class:mac style:height="{HAUTEUR_BARRE_SITE}px">
   <nav>
     <button data-testid="site-precedent" aria-label="Reculer" disabled={!surSite || !etat.peutReculer} onclick={() => api.precedent()}><Icone nom="reculer" /></button>
@@ -64,7 +64,7 @@
   .chercher:disabled { opacity: 0.5; }
   .chercher:hover:not(:disabled) { background: var(--fond-survol); color: var(--texte); }
   .avis { display: flex; align-items: center; gap: 8px; flex: none; max-width: 60%; padding: 3px 4px 3px 10px; border-radius: 6px; background: var(--attention-fond); color: var(--texte); font-size: 12px; -webkit-app-region: no-drag; }
-  /* Une mention passagère (info) : sans fond d'alerte. */
+  /* A transient mention (info): without an alert background. */
   .avis[data-genre="info"] { background: none; color: var(--texte-doux); }
   .avis span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .avis button { all: unset; padding: 2px 8px; border-radius: 5px; background: var(--fond-actif); color: var(--texte); white-space: nowrap; -webkit-app-region: no-drag; }

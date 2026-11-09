@@ -5,18 +5,18 @@
   import { modale } from "./modale.svelte";
 
   /**
-   * Fond d'une modale de la fenêtre : la page affichée à l'ouverture (`ongletId`, null : aucune, ou un panneau la
-   * cache), figée et floutée, sous un voile. `surPret` : la capture est prise (ou abandonnée), la modale peut s'afficher.
+   * Background of a window modal: the page shown at opening (`ongletId`, null: none, or a panel hides it), frozen
+   * and blurred, under a veil. `surPret`: the capture is taken (or abandoned), the modal can show.
    */
   let { ongletId, surPret }: { ongletId: IdOnglet | null; surPret: () => void } = $props();
 
-  /** Au-delà, la page s'efface sans capture : la modale ne doit pas attendre. */
+  /** Beyond that, the page fades without a capture: the modal must not wait. */
   const ATTENTE_APERCU_MS = 1000;
 
   let apercu = $state<string | null>(null);
-  // Zone de la page au moment de la capture : l'image y reste, même si la fenêtre change ensuite de taille.
+  // Page area at capture time: the image stays there, even if the window is resized afterwards.
   let zone = $state(untrack(() => modale.zone));
-  // L'onglet capturé : si un autre s'affiche (ou un panneau), l'image figée n'est plus la bonne page.
+  // The captured tab: if another one shows (or a panel), the frozen image is no longer the right page.
   const ongletCapture = untrack(() => ongletId);
   $effect(() => {
     if (ongletId !== ongletCapture) apercu = null;
@@ -24,14 +24,14 @@
 
   onMount(() => {
     let finie = false;
-    // Ce fond compte parmi les masqueurs dès que la capture est prise (ou abandonnée), et s'en retire une seule fois.
+    // This background counts among the maskers once the capture is taken (or abandoned), and removes itself only once.
     let masque = false;
     const ouvrir = (url: string | null) => {
       if (finie) return;
       finie = true;
       apercu = url;
       zone = modale.zone;
-      // La capture est prise : la vue native peut s'effacer derrière la modale.
+      // The capture is taken: the native view can fade behind the modal.
       masque = true;
       modale.masqueurs++;
       surPret();

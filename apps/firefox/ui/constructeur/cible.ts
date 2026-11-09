@@ -6,15 +6,15 @@ import type { Lanceur, SourceExecutions } from "./executions.svelte";
 const PREFIXE_ACTION = "action:";
 
 /**
- * La clé d'un workflow dans les états de la fenêtre (éditions, codes non enregistrés, exécution choisie) : l'id d'un
- * widget tel quel, `action:<id>` pour une action (un widget et une action du même nom ne se mélangent pas).
+ * A workflow's key in the window states (edits, unsaved codes, chosen run): a widget's id as is, `action:<id>` for
+ * an action (a widget and an action with the same name do not get mixed up).
  */
 export const cleCible = (c: Proprietaire): string => (c.type === "widget" ? c.id : PREFIXE_ACTION + c.id);
 export const cibleDeCle = (cle: string): Proprietaire =>
   cle.startsWith(PREFIXE_ACTION) ? { type: "action", id: cle.slice(PREFIXE_ACTION.length) } : { type: "widget", id: cle };
 export const estCleAction = (cle: string): boolean => cle.startsWith(PREFIXE_ACTION);
 
-/** Lecture et écriture du workflow et de ses codes, adressées par clé. */
+/** Reading and writing the workflow and its codes, addressed by key. */
 export function depotDe(w: Pick<ApiWebaios["workflow"], "lire" | "enregistrer" | "lireCode" | "enregistrerCode">): Depot {
   return {
     lire: (cle) => w.lire(cibleDeCle(cle)),
@@ -24,13 +24,13 @@ export function depotDe(w: Pick<ApiWebaios["workflow"], "lire" | "enregistrer" |
   };
 }
 
-/** Les exécutions d'un widget (rangées avec l'accueil) ou d'une action. */
+/** The runs of a widget (stored with home) or of an action. */
 export function sourceExecutionsDe(api: Pick<ApiWebaios, "accueil" | "actions">, cible: Proprietaire): SourceExecutions {
   if (cible.type === "widget") return api.accueil;
   return { executions: () => api.actions.executions(cible.id), execution: (_cle, e) => api.actions.execution(cible.id, e) };
 }
 
-/** Ce qui tourne, vu comme pour les widgets : une action courante devient une exécution (ou un essai) de sa clé. */
+/** What is running, seen as for widgets: a current action becomes a run (or a trial) of its key. */
 export function directDesActions(e: EtatActions): EtatDirect {
   return {
     courants: e.courantes.map(
@@ -45,7 +45,7 @@ export function directDesActions(e: EtatActions): EtatDirect {
   };
 }
 
-/** « ▶ Lancer », « Rejouer » et le suivi en direct : ceux des widgets, ou ceux des actions. */
+/** « ▶ Lancer », « Rejouer » and live tracking: the widgets', or the actions'. */
 export function lanceurDe(api: Pick<ApiWebaios, "workflow" | "actions">, cible: Proprietaire): Lanceur {
   const w = api.workflow;
   const commun = {

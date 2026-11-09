@@ -2,8 +2,8 @@ import type { EtatDesign } from "../../shared/api";
 import { api } from "../etat.svelte";
 
 /**
- * Le mode design de l'onglet affiché dans cette fenêtre (relu à chaque changement diffusé, et quand l'onglet ou son
- * adresse change), et le panier demandé par « Panier » (ouvert même hors du mode).
+ * The design mode of the tab shown in this window (re-read on each broadcast change, and when the tab or its address
+ * changes), and the basket requested by « Panier » (open even outside the mode).
  */
 export const design = $state<{ etat: EtatDesign | null; panierDemande: boolean }>({ etat: null, panierDemande: false });
 
@@ -14,7 +14,7 @@ export async function relireDesign(): Promise<void> {
     const e = await api.design.etat();
     if (n === requete) design.etat = e;
   } catch {
-    // Process principal pas prêt : la prochaine diffusion relira.
+    // Main process not ready: the next broadcast will re-read.
   }
 }
 

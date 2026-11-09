@@ -3,8 +3,8 @@
   import type { ContextePage, LienPage } from "./types";
 
   /**
-   * Un lien de la page : un bouton, jamais un `<a href>` (le process principal n'ouvre l'adresse que si elle figure telle
-   * quelle dans les résultats). Sans adresse permise, le texte seul.
+   * A page link: a button, never an `<a href>` (the main process only opens the address if it appears as is in the
+   * results). Without a permitted address, the text alone.
    */
   let { lien, ctx }: { lien: LienPage; ctx: ContextePage } = $props();
 </script>

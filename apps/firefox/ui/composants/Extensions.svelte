@@ -4,14 +4,14 @@
   import type { ResultatExtension } from "../../shared/api";
   import { api } from "../etat.svelte";
 
-  // Tout ce qui vient d'un manifeste ou d'une console est affiché en texte (jamais {@html}) : c'est de la donnée.
+  // Everything from a manifest or a console is shown as text (never {@html}): it is data.
   let lignes = $state<LigneExtension[]>([]);
   let coupees = $state(false);
   let chargee = $state(false);
   let saisie = $state("");
   let message = $state<string | null>(null);
   let details = $state<Record<string, boolean>>({});
-  /** Extension dont la suppression attend la confirmation de l'utilisateur. */
+  /** Extension whose deletion awaits the user's confirmation. */
   let aSupprimer = $state<LigneExtension | null>(null);
   let requete = 0;
 
@@ -137,7 +137,7 @@
         <button
           class="confirmer"
           onclick={() => {
-            const cle = cible.cle; // {@const} se relit : après aSupprimer = null, cible vaut null
+            const cle = cible.cle; // {@const} is re-read: after aSupprimer = null, cible is null
             aSupprimer = null;
             void faire(api.extensions.supprimer(cle));
           }}>Supprimer</button

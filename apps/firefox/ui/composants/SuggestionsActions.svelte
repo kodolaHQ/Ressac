@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Suggestion } from "./suggestions";
 
-  /** Les actions proposées, puis la ligne habituelle (recherche ou adresse) : `choisie` = -1 : aucun choix. */
+  /** The proposed actions, then the usual row (search or address): `choisie` = -1: no choice. */
   let {
     suggestions,
     ligneHabituelle,

@@ -19,7 +19,7 @@
     fenetre: EtatFenetre;
     cachee?: boolean;
     basculerPanneau?: (p: Panneau) => void;
-    /** ✦ sur un onglet constructeur : son onglet « Agent » (au lieu du panneau latéral). */
+    /** ✦ on a builder tab: its « Agent » tab (instead of the side panel). */
     agentDuConstructeur?: () => void;
   } = $props();
   const enCours = $derived(telechargements.liste.filter((t) => t.etat === "en-cours"));
@@ -33,7 +33,7 @@
     return id ? etat.valeur?.onglets[id] : undefined;
   });
   const lienActif = $derived(ongletActif?.lien?.id);
-  // Dans le constructeur, l'agent a son onglet « Agent » : ✦ l'y montre (comme ⌘J), le panneau latéral n'y paraît pas.
+  // In the builder, the agent has its « Agent » tab: ✦ shows it there (like ⌘J), the side panel does not appear.
   const constructeur = $derived(!!ongletActif && cibleDeUrlWorkflow(ongletActif.url) !== null);
 </script>
 

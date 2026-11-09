@@ -1,11 +1,11 @@
 import type { ThemeAccueil } from "../../../packages/noyau/src/accueil/theme";
 
-// Le thème validé par le noyau devient des variables CSS sur la racine de l'accueil ; absent, l'accueil garde les
-// variables de l'application (et suit le mode clair/sombre). Une couleur est revérifiée ici : rien d'autre qu'un
-// #rrggbb ne doit atteindre le style, même si l'objet n'a pas été validé.
+// The theme validated by the kernel becomes CSS variables on the home root; when absent, home keeps the
+// application's variables (and follows light/dark mode). A color is re-checked here: nothing but a
+// #rrggbb must reach the style, even if the object was not validated.
 const COULEUR = /^#[0-9a-f]{6}$/i;
 
-/** Clé du thème → suffixe de la variable `--accueil-*`. */
+/** Theme key → suffix of the `--accueil-*` variable. */
 const COULEURS = { fond: "fond", carte: "carte", texte: "texte", texteDoux: "texte-doux", accent: "accent", bord: "bord" } as const;
 
 const POLICES = {
@@ -23,7 +23,7 @@ export function variablesTheme(t: ThemeAccueil | null): Record<string, string> {
   }
   if (Number.isInteger(t.rayon) && t.rayon! >= 0 && t.rayon! <= 24) variables["--accueil-rayon"] = `${t.rayon}px`;
   if (Number.isInteger(t.espace) && t.espace! >= 0 && t.espace! <= 24) variables["--accueil-espace"] = `${t.espace}px`;
-  // hasOwn : « toString » ou « constructor » ne doivent pas passer pour une police.
+  // hasOwn: « toString » or « constructor » must not pass for a font.
   if (t.police && Object.hasOwn(POLICES, t.police)) variables["--accueil-police"] = POLICES[t.police];
   return variables;
 }

@@ -1,6 +1,6 @@
 /*
- * Le design system de la page d'une action : seulement les couleurs de theme.css (clair et sombre). Mise en page
- * fluide, à toutes les largeurs d'onglet : les règles de largeur suivent la page (requêtes de conteneur), pas la fenêtre.
+ * The design system of an action page: only the colors of theme.css (light and dark). Fluid layout, at every tab
+ * width: the width rules follow the page (container queries), not the window.
  */
 .page-action {
   container-type: inline-size;

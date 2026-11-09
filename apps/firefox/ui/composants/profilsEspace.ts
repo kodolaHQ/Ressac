@@ -1,9 +1,9 @@
 import { PROFIL_DEFAUT, type Espace, type IdEspace, type IdProfil, type ProfilConnexion } from "../../shared/modele";
 
-/** Choix du profil de connexion d'un espace, tel que `creerEspace` et `reglerEspace` le reçoivent. */
+/** Choice of a space's sign-in profile, as `creerEspace` and `reglerEspace` receive it. */
 export type ChoixProfil = IdProfil | "nouveau";
 
-/** Aucun profil choisi encore : un nouvel espace n'en présélectionne pas, l'utilisateur choisit (« Créer » attend). */
+/** No profile chosen yet: a new space does not preselect one, the user chooses (« Créer » waits). */
 export const PROFIL_A_CHOISIR = "";
 
 export interface OptionProfil {
@@ -12,10 +12,10 @@ export interface OptionProfil {
 }
 
 /**
- * Les profils de connexion qu'on peut donner à un espace (`espaceId`, null pour un nouvel espace) : « Nouveau profil »
- * pour un nouvel espace, « Son propre profil » pour un espace existant, puis un « Partagé avec « … » » par profil
- * qu'utilise au moins un autre espace. « Son propre profil » garde le profil actuel de l'espace s'il est seul à
- * l'utiliser (en créer un nouveau effacerait ses connexions).
+ * The sign-in profiles that can be given to a space (`espaceId`, null for a new space): « Nouveau profil » for a new
+ * space, « Son propre profil » for an existing space, then a « Partagé avec « … » » per profile used by at least one
+ * other space. « Son propre profil » keeps the space's current profile if it is the only one using it (creating a
+ * new one would erase its sign-ins).
  */
 export function optionsProfil(espaces: Espace[], profils: ProfilConnexion[], espaceId: IdEspace | null): OptionProfil[] {
   const regle = espaces.find((e) => e.id === espaceId);
@@ -28,12 +28,12 @@ export function optionsProfil(espaces: Espace[], profils: ProfilConnexion[], esp
   return [{ valeur: propre, libelle: regle ? "Son propre profil" : "Nouveau profil" }, ...partages];
 }
 
-/** Supprimer cet espace efface ses connexions : il est le dernier à utiliser un profil autre que celui par défaut. */
+/** Deleting this space erases its sign-ins: it is the last one using a profile other than the default. */
 export function perdConnexions(espaces: Espace[], espace: Espace): boolean {
   return espace.profil !== PROFIL_DEFAUT && !espaces.some((e) => e.id !== espace.id && e.profil === espace.profil);
 }
 
-/** Régler l'espace `espaceId` sur le profil `choix` efface ses connexions : il quitte un profil dont il était le dernier. */
+/** Setting space `espaceId` to profile `choix` erases its sign-ins: it leaves a profile it was the last one on. */
 export function choixPerdConnexions(espaces: Espace[], espaceId: IdEspace | null, choix: ChoixProfil): boolean {
   const espace = espaces.find((e) => e.id === espaceId);
   return !!espace && choix !== espace.profil && perdConnexions(espaces, espace);

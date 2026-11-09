@@ -12,18 +12,18 @@
     "accord-requis": "Accord requis",
   };
 
-  /** Même texte que le noyau (actions/executer.ts). */
+  /** Same text as the kernel (actions/executer.ts). */
   const saisieRequise = (libelle: string) => `Saisie requise : ${libelle}`;
 
   let liste = $state<ActionAffichee[]>([]);
   let chargee = $state(false);
   let requete = 0;
-  /** Action dont la saisie est demandée en ligne (« Lancer »), et ce que l'utilisateur y tape. */
+  /** Action whose input is asked inline (« Lancer »), and what the user types in it. */
   let saisieDe = $state<string | null>(null);
   let saisie = $state("");
-  /** Action dont la suppression attend la confirmation de l'utilisateur. */
+  /** Action whose deletion awaits the user's confirmation. */
   let aConfirmer = $state<{ action: ActionAffichee; genre: "supprimer" | "accord" } | null>(null);
-  /** Refus rendu par le process principal (ouverture, suppression), montré au-dessus de la liste. */
+  /** Refusal returned by the main process (open, delete), shown above the list. */
   let refus = $state<string | null>(null);
 
   async function charger() {
@@ -41,7 +41,7 @@
 
   async function lancer(a: ActionAffichee, texte: string | null) {
     refus = null;
-    // Saisie requise et vide : le champ reste ouvert avec son message, rien n'est lancé.
+    // Input required and empty: the field stays open with its message, nothing is launched.
     if (a.saisie && !texte?.trim()) {
       refus = saisieRequise(a.saisie.libelle);
       return;

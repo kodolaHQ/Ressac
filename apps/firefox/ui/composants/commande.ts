@@ -9,17 +9,17 @@ export type AppliSource = { genre: "projet" | "site"; id: string; nom: string; a
 export type SourcesCommande = { actions: ActionAffichee[]; onglets: OngletSource[]; applis: AppliSource[]; historique: Visite[] };
 export type LigneCommande =
   | { type: "defaut"; texte: string; libelle: string }
-  /** `parametre` : le libellé de la saisie que l'action déclare (null : elle n'en attend pas). */
+  /** `parametre`: the label of the input the action declares (null: it expects none). */
   | { type: "action"; id: string; nom: string; saisie: string | null; parametre: string | null }
   | { type: "onglet"; onglet: OngletSource }
   | { type: "appli"; appli: AppliSource }
   | { type: "historique"; url: string; titre: string };
 
 export const LIMITES = { actions: 3, onglets: 3, applis: 3, historique: 5 } as const;
-/** Champ vide : ce que la barre propose avant toute frappe. */
+/** Empty field: what the bar offers before any keystroke. */
 export const LIMITES_VIDE = { actions: 4, onglets: 5 } as const;
 
-/** Les actions proposées champ vide : les dernières lancées d'abord, puis les autres par nom ; les invalides écartées. */
+/** The actions offered with an empty field: the most recently launched first, then the others by name; invalid ones dropped. */
 function actionsRecentes(actions: ActionAffichee[]): ActionAffichee[] {
   return actions
     .filter((a) => !a.erreur)
@@ -28,8 +28,8 @@ function actionsRecentes(actions: ActionAffichee[]): ActionAffichee[] {
 }
 
 /**
- * Les lignes de la barre de commande, dans l'ordre : défaut, actions, onglets, applis, historique. Champ vide : l'accueil
- * en tête (Entrée y mène), puis des actions et les onglets ouverts, sans l'onglet affiché (`ongletAffiche`).
+ * The command bar's rows, in order: default, actions, tabs, apps, history. Empty field: home first (Enter leads
+ * there), then actions and the open tabs, without the shown tab (`ongletAffiche`).
  */
 export function lignesCommande(texte: string, sources: SourcesCommande, urlActive: string | null, ongletAffiche: IdOnglet | null = null): LigneCommande[] {
   const t = texte.trim();
@@ -62,22 +62,22 @@ export type Section = "actions" | "onglets" | "applis" | "historique";
 
 export const TITRES_SECTIONS: Record<Section, string> = { actions: "Actions", onglets: "Onglets ouverts", applis: "Applis", historique: "Historique" };
 
-/** La section d'une ligne : la ligne par défaut n'en a pas, elle reste en tête sans titre. */
+/** A row's section: the default row has none, it stays first without a title. */
 export function sectionDe(l: LigneCommande): Section | null {
   return l.type === "defaut" ? null : l.type === "action" ? "actions" : l.type === "onglet" ? "onglets" : l.type === "appli" ? "applis" : "historique";
 }
 
-/** Le titre à poser avant la ligne `i` : celui de sa section quand elle en ouvre une, null sinon. */
+/** The title to put before row `i`: its section's when it opens one, null otherwise. */
 export function titreAvant(lignes: LigneCommande[], i: number): string | null {
   const s = sectionDe(lignes[i]!);
   return s !== null && (i === 0 || sectionDe(lignes[i - 1]!) !== s) ? TITRES_SECTIONS[s] : null;
 }
 
-/** Une action à qui il manque sa saisie : la barre la demande avant de lancer. */
+/** An action missing its input: the bar asks for it before launching. */
 export const demandeParametre = (l: LigneCommande): l is Extract<LigneCommande, { type: "action" }> & { parametre: string } =>
   l.type === "action" && l.parametre !== null && l.saisie === null;
 
-/** Le paramètre proposé d'office : l'adresse de la page affichée, si c'est une page web (sans son ancre). */
+/** The parameter proposed by default: the shown page's address, if it is a web page (without its anchor). */
 export function parametreParDefaut(url: string | null | undefined): string {
   if (!url) return "";
   let u: URL;
@@ -88,14 +88,14 @@ export function parametreParDefaut(url: string | null | undefined): string {
   }
   if (u.protocol !== "http:" && u.protocol !== "https:") return "";
   u.hash = "";
-  // Des identifiants dans l'adresse ne partent pas vers l'action.
+  // Credentials in the address are not sent to the action.
   u.username = "";
   u.password = "";
   const texte = u.toString();
   return texte.length <= PARAMETRE_MAX ? texte : "";
 }
 
-/** La longueur que le service des actions accepte pour une saisie (SchemaSaisieAction). */
+/** The length the actions service accepts for an input (SchemaSaisieAction). */
 export const PARAMETRE_MAX = 2000;
 
 export function appliSourceDeProjet(a: ApplicationAffichee): AppliSource | null {

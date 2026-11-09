@@ -1,7 +1,7 @@
 const MAX = 50;
 const estObjet = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
-/** Champs proposés dans un gabarit : clés du premier élément (ou de l'objet), puis `config.<clé>`. */
+/** Fields offered in a template: keys of the first item (or of the object), then `config.<key>`. */
 export function champsDisponibles(sortieAmont: unknown, config: unknown): string[] {
   const exemple = Array.isArray(sortieAmont) ? sortieAmont[0] : sortieAmont;
   const champs = estObjet(exemple) ? Object.keys(exemple) : [];

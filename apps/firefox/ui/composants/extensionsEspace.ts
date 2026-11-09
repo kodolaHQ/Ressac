@@ -1,6 +1,6 @@
 import type { Espace, IdEspace, IdProfil } from "../../shared/modele";
 
-/** Ce qu'il faut savoir d'une extension pour avertir : où elle est active. */
+/** What must be known about an extension to warn: where it is active. */
 export interface ExtensionDuProfil {
   cle: string;
   nom: string;
@@ -9,10 +9,10 @@ export interface ExtensionDuProfil {
 }
 
 /**
- * Ce que l'enregistrement du brouillon (`b`, `id` null : un nouvel espace) change pour les extensions du profil
- * choisi. `privePartage` : les noms des autres espaces de ce profil, quand le brouillon est privé et qu'une extension y
- * est active (elle y tourne aussi : seul un profil à lui l'en protège). `agentDesactivees` : les extensions de l'agent
- * actives dans ce profil, que le processus principal désactive dès qu'un espace du profil est privé.
+ * What saving the draft (`b`, `id` null: a new space) changes for the chosen profile's extensions. `privePartage`:
+ * the names of the profile's other spaces, when the draft is private and an extension is active in it (it runs there
+ * too: only a profile of its own protects it). `agentDesactivees`: the agent's extensions active in this profile,
+ * which the main process disables as soon as a space of the profile is private.
  */
 export function avertissements(
   b: { id: IdEspace | null; prive: boolean; profil: IdProfil },

@@ -20,13 +20,13 @@
   import type { ContextePage } from "./types";
 
   /**
-   * Une page rendue (résolue par le noyau : références calculées, liens et images vérifiés). Tout s'affiche en texte,
-   * jamais en HTML. `composants` faux (aperçu) : les composants de l'agent ne sont pas chargés, un cadre neutre les remplace.
+   * A rendered page (resolved by the kernel: references computed, links and images checked). Everything shows as text,
+   * never as HTML. `composants` false (preview): the agent's components are not loaded, a neutral frame replaces them.
    */
   let { page, action, execution, composants = true }: { page: PageRendue; action: string; execution: string; composants?: boolean } = $props();
   const ctx: ContextePage = $derived({ action, execution });
 
-  // Les props d'un bloc sont typées par chaque composant (formes fixées par pages/resoudre.ts du noyau).
+  // A block's props are typed by each component (shapes fixed by the kernel's pages/resoudre.ts).
   const p = (b: BlocRendu) => ("props" in b ? b.props : {}) as never;
 </script>
 

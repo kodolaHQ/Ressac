@@ -2,8 +2,8 @@
   import type { Execution, ResumeExecution } from "@webaios/noyau";
 
   /**
-   * Ce que le bloc a produit à l'exécution choisie : statut, durée, éléments, erreur, journal et sortie repliable. Tout
-   * vient d'une page ou du code de l'agent : affiché en texte, jamais en HTML.
+   * What the block produced at the chosen run: status, duration, items, error, log and collapsible output. Everything
+   * comes from a page or the agent's code: shown as text, never as HTML.
    */
   let {
     bloc,
@@ -23,8 +23,8 @@
 
   const trace = $derived(execution?.id === choisie?.id ? execution?.blocs.find((b) => b.id === bloc) : undefined);
   /**
-   * La sortie n'est mise en forme qu'une fois le repli ouvert (elle peut peser 256 Ko) : le repli ouvert, par exécution et
-   * par bloc. Une autre exécution recrée un repli fermé, sans JSON ; la même exécution relue (finie entre-temps) le garde.
+   * The output is only formatted once the fold is open (it can weigh 256 KB): the open fold, per run and per block.
+   * Another run recreates a closed fold, without JSON; the same run re-read (finished meanwhile) keeps it.
    */
   const cle = $derived(trace && execution ? `${execution.id}/${trace.id}` : null);
   let ouverteSur = $state<string | null>(null);

@@ -4,19 +4,19 @@
   import IconeSite from "./IconeSite.svelte";
 
   /**
-   * Panneau ⌃Tab : les onglets récents en cartes d'aperçu, la sélection entourée. Le process principal tient le parcours
-   * (ordre, sélection, relâchement de ⌃) ; le panneau ne fait que l'afficher et lui renvoyer souris, Échap et ⌃ relâché.
+   * ⌃Tab panel: recent tabs as preview cards, the selection outlined. The main process holds the traversal (order,
+   * selection, ⌃ release); the panel only displays it and sends back mouse, Escape and ⌃ release.
    */
   let { panneau }: { panneau: PanneauOnglets } = $props();
 
   const envoyer = api.parcoursOnglets;
 
   /**
-   * La souris ne choisit une carte qu'après un vrai mouvement : le panneau qui apparaît (ou change de cartes) sous une
-   * souris immobile ne doit pas voler la sélection du clavier. Chromium envoie alors des déplacements à la même place.
+   * The mouse only picks a card after a real movement: a panel that appears (or changes cards) under a still mouse
+   * must not steal the keyboard selection. Chromium then sends moves at the same place.
    */
   let place: { x: number; y: number } | null = null;
-  /** Le déplacement en cours de traitement a vraiment bougé (noté en capture, avant la carte). */
+  /** The move being processed really moved (noted in capture, before the card). */
   let bouge = false;
   const noterPlace = (e: PointerEvent) => {
     bouge = !!place && (place.x !== e.screenX || place.y !== e.screenY);
@@ -24,11 +24,11 @@
   };
 </script>
 
-<!-- En capture : le panneau passe avant tout le reste (modale, historique…), et Échap ne ferme que lui. -->
+<!-- In capture: the panel goes before everything else (modal, history…), and Escape only closes it. -->
 <svelte:window
   onpointermovecapture={noterPlace}
   onkeyup={(e) => {
-    // Redondant avec le `before-input-event` de l'interface (sans effet hors parcours) : le panneau ne reste jamais bloqué.
+    // Redundant with the interface's `before-input-event` (no effect outside a traversal): the panel never stays stuck.
     if (e.key === "Control") envoyer({ type: "valider" });
   }}
   onkeydowncapture={(e) => {
@@ -37,8 +37,8 @@
       e.stopImmediatePropagation();
       envoyer({ type: "annuler" });
     }
-    // ⌃Tab et ⌃⇧Tab : l'accélérateur du menu avance déjà le parcours, interface au focus comprise. Rien à envoyer ici
-    // (ce serait un double pas), et surtout pas de preventDefault : une touche consommée par la page n'atteint plus le menu.
+    // ⌃Tab and ⌃⇧Tab: the menu accelerator already advances the traversal, interface focus included. Nothing to send here
+    // (it would be a double step), and above all no preventDefault: a key consumed by the page no longer reaches the menu.
   }}
 />
 
@@ -73,7 +73,7 @@
   .panneau {
     position: fixed;
     inset: 0;
-    /* Au-dessus des modales (100) : une demande de l'agent arrivée pendant le parcours ne le couvre pas. */
+    /* Above the modals (100): an agent request arriving during the traversal does not cover it. */
     z-index: 101;
     display: flex;
     align-items: center;

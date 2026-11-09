@@ -1,10 +1,9 @@
 import type { Execution, ResumeExecution } from "@webaios/noyau";
 
 /**
- * Les données de l'aperçu du widget pour l'exécution choisie : la sortie de son bloc `sortie` si elle est gardée en
- * entier ; sinon, pour la dernière vraie exécution (ou sans exécution), les données du widget — avec la mention si cette
- * exécution n'a pas abouti (elles viennent alors d'une exécution plus ancienne) ; sinon l'exemple, avec la mention
- * « données non gardées ».
+ * The widget preview's data for the chosen run: the output of its `sortie` block if it is kept in full; otherwise,
+ * for the latest real run (or without a run), the widget's data — with the mention if that run did not complete (they
+ * then come from an older run); otherwise the example, with the mention « données non gardées ».
  */
 export function donneesApercu(o: {
   choisie: ResumeExecution | null;

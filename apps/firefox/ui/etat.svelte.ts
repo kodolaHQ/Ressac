@@ -6,12 +6,12 @@ import { confirmerFermeture, garderCodesDe } from "./constructeur/codes.svelte";
 // Typed as the shared ApiWebaios: ui/api.ts declares window.webaios as its wider ApiFirefox.
 export const api = (window as unknown as { webaios: ApiWebaios }).webaios;
 
-/** Copie locale de l'état diffusé par le process principal ; ne se modifie que via `api.agir`. */
+/** Local copy of the state broadcast by the main process; only modified through `api.agir`. */
 export const etat = $state<{ valeur: EtatNavigateur | null }>({ valeur: null });
 
 api.surEtat((e) => {
   etat.valeur = e;
-  // Le code non enregistré d'un constructeur dont l'onglet est parti, par n'importe quel chemin, est abandonné.
+  // The unsaved code of a builder whose tab is gone, by any path, is dropped.
   garderCodesDe(
     Object.values(e.onglets).flatMap((o) => {
       const cible = o.fenetreId === api.fenetreId ? cibleDeUrlWorkflow(o.url) : null;
@@ -20,14 +20,14 @@ api.surEtat((e) => {
   );
 });
 
-/** L'état de la fenêtre qui affiche cette interface. */
+/** The state of the window showing this interface. */
 export function fenetreCourante(): EtatFenetre | undefined {
   return etat.valeur?.fenetres.find((f) => f.id === api.fenetreId);
 }
 
 /**
- * Fermeture d'un onglet voulue par l'utilisateur (bouton, menu, clic du milieu, ⌘W) : le constructeur d'un widget avec du code
- * non enregistré demande d'abord, sauf si un autre onglet de la fenêtre montre le même constructeur.
+ * Closing a tab wanted by the user (button, menu, middle click, ⌘W): a widget's builder with unsaved code asks first,
+ * unless another tab of the window shows the same builder.
  */
 export function fermerOnglet(id: IdOnglet): void {
   const o = etat.valeur?.onglets[id];
@@ -39,7 +39,7 @@ export function fermerOnglet(id: IdOnglet): void {
   api.agir({ type: "fermerOnglet", id });
 }
 
-/** Téléchargements de la session, le plus récent en tête. */
+/** The session's downloads, most recent first. */
 export const telechargements = $state<{ liste: Telechargement[] }>({ liste: [] });
 
 api.surTelechargements((liste) => {
@@ -49,7 +49,7 @@ void api.telechargements.liste().then((liste) => {
   telechargements.liste = liste;
 });
 
-/** Questions d'autorisation des sites, en attente d'une réponse. */
+/** Site permission questions, awaiting an answer. */
 export const demandes = $state<{ liste: DemandeEnAttente[] }>({ liste: [] });
 
 api.surPermissions((liste) => {
@@ -60,9 +60,9 @@ void api.permissions.enAttente().then((liste) => {
 });
 
 /**
- * La question à poser maintenant dans cette fenêtre, une à la fois dans l'ordre d'arrivée. Une popup pose ses questions
- * sur l'onglet qui l'a ouverte (ongletId) ; sans onglet connu, sur l'onglet actif. Une question de l'agent vise une
- * fenêtre (la sienne), quel que soit l'onglet affiché.
+ * The question to ask now in this window, one at a time in order of arrival. A popup asks its questions on the tab
+ * that opened it (ongletId); with no known tab, on the active tab. An agent question targets a window (its own),
+ * whatever the shown tab.
  */
 export function demandeDe(fenetre: EtatFenetre | undefined, onglet: Onglet | undefined): DemandeEnAttente | undefined {
   return demandes.liste.find((d) => (d.fenetreId ? d.fenetreId === fenetre?.id : d.ongletId === null || d.ongletId === onglet?.id));

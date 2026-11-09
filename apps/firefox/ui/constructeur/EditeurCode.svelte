@@ -6,26 +6,26 @@
   import { creerEdition } from "./edition.svelte";
 
   /**
-   * Le fichier `.mjs` d'un bloc `code`. Rien n'est écrit à la frappe (le widget en marche lirait un code à moitié écrit) :
-   * « Enregistrer le code » ou ⌘S l'écrit. Le code ne s'exécute jamais ici, il n'est que du texte.
+   * The `.mjs` file of a `code` block. Nothing is written on typing (the running widget would read half-written code):
+   * « Enregistrer le code » or ⌘S writes it. The code never runs here, it is only text.
    */
-  /** `widget` : la clé du workflow (`cleCible`), celui d'un widget ou d'une action. */
+  /** `widget`: the workflow's key (`cleCible`), a widget's or an action's. */
   let { widget, nom }: { widget: string; nom: string } = $props();
   const depot = depotDe(api.workflow);
 
   // svelte-ignore state_referenced_locally
-  // Enregistré, le code peut débloquer le workflow refusé faute de ce fichier (même édition que le constructeur).
+  // Once saved, the code may unblock the workflow refused for lack of this file (same edit as the builder).
   const fichier = new FichierCode(widget, nom, depot, (n) => creerEdition(widget, depot).codeEnregistre(n));
 
   $effect(() =>
     untrack(() => {
       void fichier.lire();
-      // L'agent écrit peut-être le fichier : relu à chaque changement de l'accueil (ou des actions).
+      // The agent may be writing the file: re-read on each change of home (or of the actions).
       return (estCleAction(widget) ? api.actions.surChange : api.accueil.surChange)(() => void fichier.lire());
     }),
   );
 
-  /** ⌘S : enregistre le code (sans menu : la page n'a pas de « Enregistrer » à elle), sauf tapé dans le terminal de l'agent. */
+  /** ⌘S: saves the code (no menu: the page has no « Enregistrer » of its own), except when typed in the agent's terminal. */
   function touche(e: KeyboardEvent): void {
     if (!e.metaKey || e.altKey || e.ctrlKey || e.shiftKey || e.key.toLowerCase() !== "s") return;
     if (e.target instanceof Element && e.target.closest(".xterm")) return;

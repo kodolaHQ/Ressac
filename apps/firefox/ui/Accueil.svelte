@@ -8,18 +8,18 @@
   import { deplacerLibre, guidesLibres, LARGEUR_LIBRE, redimensionnerLibre, taillesLibres } from "./grille-libre";
   import { variablesTheme } from "./theme";
 
-  /** Délai au-delà duquel une action sans aucun changement de la page est signalée (service des widgets absent…). */
+  /** How long an action may leave the page unchanged before a warning shows (widget service missing…). */
   const DELAI_SANS_EFFET_MS = 6000;
   const SANS_EFFET = "Sans effet pour l'instant : le service des widgets ne répond pas (agent arrêté ?).";
-  // Un widget illisible n'a pas de tailles déclarées : il peut prendre la place qu'il veut.
+  // An unreadable widget has no declared sizes: it may take whatever room it wants.
   const TAILLES_LIBRES = { min: { l: 1, h: 1 }, max: { l: LARGEUR_LIBRE, h: 1000 } };
 
-  // Remplacée d'un bloc à chaque lecture : pas de proxy profond (les données partent telles quelles vers les cadres).
+  // Replaced as a whole on each read: no deep proxy (the data goes to the frames as is).
   let widgets = $state.raw<WidgetAffiche[]>([]);
   let theme = $state.raw<ThemeAccueil | null>(null);
-  /** La première lecture est passée : l'écran vide ne clignote pas avant elle. */
+  /** The first read is done: the empty screen does not flash before it. */
   let charge = $state(false);
-  // Lectures qui se croisent (rafale de changements) : seule la dernière compte.
+  // Overlapping reads (burst of changes): only the last one counts.
   let derniere = 0;
   function charger() {
     const n = ++derniere;
@@ -39,7 +39,7 @@
     return api.accueil.surChange(charger);
   });
 
-  // Le thème validé par le noyau ne touche que la racine de l'accueil, pas la barre latérale ni l'agent.
+  // The theme validated by the kernel only touches the home root, not the sidebar or the agent.
   const styleTheme = $derived(
     Object.entries(variablesTheme(theme))
       .map(([cle, valeur]) => `${cle}: ${valeur}`)
@@ -47,8 +47,8 @@
   );
 
   /**
-   * Actions envoyées sans réponse possible (accorder, mettre à jour) : un avertissement si l'état de CE widget ne bouge
-   * pas. Seul un changement de ce widget (état, données, ou son retrait) lève l'attente et l'avertissement.
+   * Actions sent with no possible reply (grant, update): a warning if THIS widget's state does not move. Only a change
+   * of this widget (state, data, or its removal) lifts the wait and the warning.
    */
   const attentes = new Map<string, { signature: string; minuterie: ReturnType<typeof setTimeout> }>();
   let avertissements = $state<Record<string, string>>({});
@@ -65,7 +65,7 @@
     clearTimeout(attentes.get(id)?.minuterie);
     sansAvertissement(id);
     action();
-    // L'attente reste après l'avertissement : c'est le changement du widget qui les lève tous deux.
+    // The wait stays after the warning: it is the widget's change that lifts both.
     const minuterie = setTimeout(() => (avertissements = { ...avertissements, [id]: SANS_EFFET }), DELAI_SANS_EFFET_MS);
     attentes.set(id, { signature: signature(id), minuterie });
   }
@@ -81,13 +81,13 @@
     for (const a of attentes.values()) clearTimeout(a.minuterie);
   });
 
-  /** Widgets dont l'utilisateur a refusé la lecture avec son compte, pendant cette session de la page. */
+  /** Widgets whose read with the user's account was refused, during this page session. */
   let refuses = $state<Record<string, true>>({});
   let aRetirer = $state<WidgetAffiche | null>(null);
   let accordPour = $state<Extract<WidgetAffiche, { compte: string[] }> | null>(null);
   const nom = (w: WidgetAffiche) => ("nom" in w ? w.nom : w.id);
 
-  // Glisser et redimensionner : un aperçu libre en direct, puis la disposition envoyée au relâchement.
+  // Drag and resize: a live free preview, then the layout sent on release.
   let largeurPx = $state(0);
   let geste: { id: string; mode: "deplacer" | "taille"; x0: number; y0: number; depart: PlacementLibre[]; p0: PlacementLibre; tailles: { min: { l: number; h: number }; max: { l: number; h: number } } } | null =
     null;
@@ -119,7 +119,7 @@
   function bouger(e: PointerEvent) {
     const g = geste;
     if (!g) return;
-    // Millièmes de la largeur pour x/l, pixels pour y/h.
+    // Thousandths of the width for x/w, pixels for y/h.
     const dx = largeurPx > 0 ? ((e.clientX - g.x0) / largeurPx) * LARGEUR_LIBRE : 0;
     const dy = e.clientY - g.y0;
     const autres = g.depart.filter((q) => q.id !== g.id);
@@ -143,7 +143,7 @@
       return p.x !== a.x || p.y !== a.y || p.l !== a.l || p.h !== a.h;
     });
     if (!change) return;
-    // Tout de suite à l'écran ; la surveillance du dossier confirmera.
+    // Immediately on screen; the folder watch will confirm.
     const parId = new Map(final.map((p) => [p.id, p]));
     widgets = widgets.map((w) => ({ ...w, placement: parId.get(w.id) ?? w.placement }));
     api.accueil.placer(final);
@@ -174,7 +174,7 @@
             retirer={() => (aRetirer = widget)}
             autoriser={() => "compte" in widget && (accordPour = widget)}
             refuser={() => {
-              // Pas d'attente : après un refus, le noyau réécrit le même état « accord-requis », rien ne changerait à l'écran.
+              // No wait: after a refusal, the kernel rewrites the same « accord-requis » state, so nothing would change on screen.
               refuses = { ...refuses, [widget.id]: true };
               api.accueil.refuserAccord(widget.id);
             }}
@@ -205,7 +205,7 @@
     publiques={cible.publiques}
     fermer={() => (accordPour = null)}
     autoriser={(profil) => {
-      // {@const} se relit : après accordPour = null, cible vaut null. L'accord porte exactement sur ce qui a été montré.
+      // {@const} is re-read: after accordPour = null, cible is null. The grant covers exactly what was shown.
       const { id, compte, publiques } = cible;
       accordPour = null;
       const { [id]: _, ...reste } = refuses;
@@ -214,7 +214,7 @@
         api.accueil.accorder({ id, profil, compte: [...compte], publiques: [...publiques] }).then(
           (r) => {
             if (r.ok) return;
-            // Refusé (la demande a changé entre-temps…) : rien n'est accordé, le bandeau montre la nouvelle demande.
+            // Refused (the request changed meanwhile…): nothing is granted, the banner shows the new request.
             clearTimeout(attentes.get(id)?.minuterie);
             attentes.delete(id);
             avertissements = { ...avertissements, [id]: `Accord non enregistré : ${r.erreur}` };
@@ -237,7 +237,7 @@
         <button
           class="principal"
           onclick={() => {
-            const id = cible.id; // {@const} se relit : après aRetirer = null, cible vaut null
+            const id = cible.id; // {@const} is re-read: after aRetirer = null, cible is null
             aRetirer = null;
             widgets = widgets.filter((w) => w.id !== id);
             api.accueil.retirer(id);
@@ -249,7 +249,7 @@
 {/if}
 
 <style>
-  /* Les variables du thème de l'agent, posées sur cette racine seulement ; sans thème, celles de l'application. */
+  /* The agent theme variables, set on this root only; without a theme, the application's. */
   .accueil {
     --accueil-fond: var(--fond);
     --accueil-carte: var(--fond-barre);
@@ -268,11 +268,11 @@
     color: var(--accueil-texte);
     font-family: var(--accueil-police);
   }
-  /* Placement libre : left/largeur en millièmes de la largeur, top/hauteur en pixels. */
+  /* Free placement: left/width in thousandths of the width, top/height in pixels. */
   .grille { position: relative; }
   .case { position: absolute; padding: calc(var(--accueil-espace) / 2); box-sizing: border-box; }
   .grille.geste { user-select: none; }
-  /* Pendant un geste, les cadres des widgets ne doivent pas capter la souris. */
+  /* During a gesture, the widget frames must not capture the mouse. */
   .grille.geste :global(iframe) { pointer-events: none; }
   .guide { position: absolute; z-index: 4; pointer-events: none; background: var(--accueil-accent); opacity: 0.6; }
   .guide-x { top: 0; bottom: 0; width: 1px; }

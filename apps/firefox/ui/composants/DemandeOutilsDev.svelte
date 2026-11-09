@@ -6,7 +6,7 @@
 
   let { demande }: { demande: DemandeEnAttente } = $props();
 
-  // Les quatre droits, dans l'ordre de la carte. `sensible` : l'avertissement affiché en dessous.
+  // The four rights, in the card's order. `sensible`: the warning shown below.
   const DROITS: { droit: DroitDev; icone: string; nom: string; detail: string; sensible?: string }[] = [
     { droit: "console", icone: "👁", nom: "Console et erreurs", detail: "Messages, erreurs JavaScript, avertissements" },
     { droit: "reseau", icone: "👁", nom: "Réseau", detail: "Requêtes et réponses de la page", sensible: "peut contenir des données de connexion" },
@@ -14,11 +14,11 @@
     { droit: "agir", icone: "⚡", nom: "Agir sur la page", detail: "Exécuter du JavaScript, modifier le DOM, recharger", sensible: "l'agent peut agir en ton nom sur ce site" },
   ];
 
-  // Pré-coché : ce que l'agent a demandé ; l'utilisateur peut en ajouter ou en retirer.
-  // Initialisé une fois : la liste des demandes est rediffusée à chaque nouvelle question, sans toucher à la sélection.
+  // Pre-checked: what the agent asked for; the user can add or remove some.
+  // Initialized once: the list of requests is rebroadcast on each new question, without touching the selection.
   let coches = $state<DroitDev[]>(untrack(() => [...(demande.droits ?? [])]));
 
-  // Jamais d'exception ici : une origine illisible (about:blank, data:…) est affichée telle quelle.
+  // Never an exception here: an unreadable origin (about:blank, data:…) is shown as is.
   const site = $derived(siteDe(demande.origine));
   const cocher = (droit: DroitDev, actif: boolean) => (coches = actif ? [...coches, droit] : coches.filter((d) => d !== droit));
 </script>

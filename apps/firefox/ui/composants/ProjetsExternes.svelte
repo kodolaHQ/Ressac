@@ -4,9 +4,9 @@
 
   let etat = $state<EtatExternes | null>(null);
   let requete = 0;
-  /** Saisie du nom du client avant la commande ; null quand le formulaire est fermé. */
+  /** Client name input before the command; null when the form is closed. */
   let nom = $state<string | null>(null);
-  /** La commande de branchement, affichée une fois (jeton compris) ; effacée à la fermeture. */
+  /** The hookup command, shown once (token included); cleared on close. */
   let commande = $state<string | null>(null);
   let erreur = $state<string | null>(null);
   let copie = $state(false);

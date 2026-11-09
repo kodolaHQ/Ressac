@@ -1,5 +1,5 @@
 <script lang="ts" module>
-  /** Tracés au trait sur une grille de 24, pour que toutes les icônes aient la même taille et la même épaisseur. */
+  /** Line strokes on a 24 grid, so all icons have the same size and thickness. */
   const TRACES = {
     reculer: ["M19 12H5", "m12 19-7-7 7-7"],
     avancer: ["M5 12h14", "m12 5 7 7-7 7"],

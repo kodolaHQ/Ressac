@@ -2,7 +2,7 @@ import type { Placement } from "../shared/api";
 
 export type { Placement };
 
-/** La grille libre de la page d'accueil : 12 colonnes, rangées de 90 px, 12 px entre les cases. */
+/** The free grid of the home page: 12 columns, 90 px rows, 12 px between cells. */
 export const COLONNES = 12;
 export const RANGEE_PX = 90;
 export const ECART_PX = 12;
@@ -13,14 +13,14 @@ export interface Tailles {
   max: Taille;
 }
 
-/** `v` entre `min` et `max` ; si les bornes se croisent, le minimum l'emporte. */
+/** `v` between `min` and `max`; if the bounds cross, the minimum wins. */
 const borner = (v: number, min: number, max: number) => Math.max(Math.min(v, max), min);
 const chevauchent = (a: Placement, b: Placement) =>
   a.x < b.x + b.l && b.x < a.x + a.l && a.y < b.y + b.h && b.y < a.y + a.h;
 
 /**
- * Le widget `fixe` garde sa place ; les autres, pris de haut en bas, descendent juste sous ce qu'ils chevauchent
- * (en cascade). Le résultat n'a aucun chevauchement ; l'ordre de la liste est conservé.
+ * Widget `fixe` keeps its place; the others, taken from top to bottom, go down just under what they overlap
+ * (cascading). The result has no overlap; the list's order is kept.
  */
 function resoudre(placements: Placement[], fixe: Placement): Placement[] {
   const poses: Placement[] = [fixe];
@@ -38,7 +38,7 @@ function resoudre(placements: Placement[], fixe: Placement): Placement[] {
   return placements.map((q) => parId.get(q.id)!);
 }
 
-/** Pose le widget `id` en (x, y), dans la grille, et pousse vers le bas ceux qu'il chevauche. */
+/** Puts widget `id` at (x, y), within the grid, and pushes down those it overlaps. */
 export function deplacer(placements: Placement[], id: string, x: number, y: number): Placement[] {
   const cible = placements.find((q) => q.id === id);
   if (!cible) return placements;
@@ -46,12 +46,12 @@ export function deplacer(placements: Placement[], id: string, x: number, y: numb
   return resoudre(placements, fixe);
 }
 
-/** Change la taille du widget `id`, bornée par ses tailles min et max et par le bord droit de la grille. */
+/** Changes widget `id`'s size, bounded by its min and max sizes and by the grid's right edge. */
 export function redimensionner(placements: Placement[], id: string, l: number, h: number, tailles: Tailles): Placement[] {
   const cible = placements.find((q) => q.id === id);
   if (!cible) return placements;
   const minL = Math.min(tailles.min.l, COLONNES);
-  // Le minimum ne tient pas avant le bord droit : le widget recule.
+  // The minimum does not fit before the right edge: the widget steps back.
   const x = Math.min(cible.x, COLONNES - minL);
   const largeur = borner(Math.round(l), minL, Math.min(tailles.max.l, COLONNES - x));
   const hauteur = borner(Math.round(h), tailles.min.h, tailles.max.h);

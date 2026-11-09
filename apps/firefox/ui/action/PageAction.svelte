@@ -9,34 +9,34 @@
   import RenduPage from "./RenduPage.svelte";
 
   /**
-   * La page `webaios://action/<id>[/<exécution>]` : le résultat demandé (le dernier sans `execution`), l'avancement d'une
-   * exécution en cours, les états (accord, erreur, vide, jamais lancée). L'ouvrir, la recharger ou la restaurer ne lance
-   * jamais rien : seuls « Lancer »/« Relancer » (ou Entrée dans la saisie) et l'accord du compte lancent l'action.
+   * The page `webaios://action/<id>[/<run>]`: the requested result (the latest without `execution`), the progress of a
+   * running run, the states (grant, error, empty, never run). Opening, reloading or restoring it never launches
+   * anything: only « Lancer »/« Relancer » (or Enter in the input) and the account grant launch the action.
    */
   let { id, execution }: { id: string; execution: string | null } = $props();
 
-  /** undefined : pas encore lue ; null : l'action n'existe pas (ou plus). */
+  /** undefined: not read yet; null: the action does not exist (or no longer). */
   let action = $state<ActionAffichee | null | undefined>(undefined);
-  /** undefined : pas encore lu ; null : aucun résultat (jamais lancée, ou l'exécution demandée n'existe plus). */
+  /** undefined: not read yet; null: no result (never run, or the requested run no longer exists). */
   let lue = $state<PageAction | null | undefined>(undefined);
   let precedentes = $state<ResumeExecution[] | null>(null);
   /**
-   * Sans exécution demandée : la plus récente, quand elle n'a pas donné de résultat (échec, arrêt) et qu'elle est plus
-   * récente que le dernier résultat. Son message s'affiche au-dessus de ce résultat, comme un widget en erreur.
+   * Without a requested run: the most recent one, when it gave no result (failure, stop) and is more recent than the
+   * last result. Its message shows above that result, like a widget in error.
    */
   let derniereSansResultat = $state<PageAction | null>(null);
   let direct = $state<EtatActions>({ courantes: [], enAttente: [] });
-  /** Un lancement demandé depuis cette page, dont l'issue n'est pas encore revenue. */
+  /** A launch requested from this page, whose outcome has not come back yet. */
   let lancement = $state(false);
   let erreurLancement = $state<string | null>(null);
   let saisie = $state("");
-  /** L'exécution dont la saisie a rempli le champ (le champ n'est pas réécrit pendant que l'utilisateur tape). */
+  /** The run whose input filled the field (the field is not rewritten while the user types). */
   let saisieDe: string | null = null;
   let carteOuverte = $state(true);
 
   let generation = 0;
   let relecture: ReturnType<typeof setTimeout> | undefined;
-  /** Relectures faites (au plus RELECTURES_MAX) ; plus aucune une fois que le noyau a servi une page. */
+  /** Re-reads done (at most RELECTURES_MAX); none once the kernel has served a page. */
   let relectures = 0;
   let noyauPret = false;
   const RELECTURES_MAX = 15;
@@ -63,8 +63,8 @@
         saisieDe = montree.execution;
         saisie = montree.saisie ?? "";
       }
-      // Au démarrage (session restaurée), l'agent n'est peut-être pas prêt : l'action ou ses résultats ne sont pas encore
-      // servis alors que des exécutions sont sur le disque. Relu un peu plus tard (lecture seule, rien n'est lancé).
+      // At startup (restored session), the agent may not be ready: the action or its results are not served yet
+      // while runs are on disk. Re-read a bit later (read only, nothing is launched).
       if (page || sansResultat) noyauPret = true;
       const incomplet = action === null || (gardees.length > 0 && !page && !sansResultat);
       if (incomplet && !noyauPret && relectures < RELECTURES_MAX) {
@@ -101,9 +101,9 @@
   const enAttente = $derived(direct.enAttente.some((a) => a.action === id));
   const tourne = $derived(courante !== null || enAttente);
   const besoinAccord = $derived(!!action && action.compte.length > 0 && !action.accord);
-  /** L'issue d'un lancement refusé sans rien écrire : celle de cette page, sinon celle d'une suggestion ou de « Lancer ». */
+  /** The outcome of a launch refused without writing anything: this page's, otherwise a suggestion's or « Lancer »'s. */
   const erreurAffichee = $derived(erreurLancement ?? action?.refus ?? null);
-  // Une exécution vient de finir (vue par direct) : son résultat est relu.
+  // A run just finished (seen through direct): its result is re-read.
   let tournait = false;
   $effect(() => {
     if (tournait && !tourne) void charger();
@@ -116,12 +116,12 @@
     lancement = true;
     try {
       const r = await api.actions.lancer(id, action.saisie ? saisie : null);
-      // Rien d'écrit (atelier arrêté, workflow.json absent ou invalide, accord requis…) : la page ne pourrait pas le relire.
+      // Nothing written (workshop stopped, workflow.json missing or invalid, grant required…): the page could not re-read it.
       if (!r.execution) {
         erreurLancement = r.erreur ?? "L'action n'a pas pu être lancée";
         carteOuverte = true;
       } else if (execution !== null && r.execution && r.execution !== execution) {
-        // La page montrait un résultat précis : elle passe à celui-ci.
+        // The page showed a specific result: it switches to this one.
         api.agir({ type: "ouvrirAction", fenetreId: api.fenetreId, id, nom: action.nom, execution: r.execution });
       }
     } catch (e) {
@@ -135,7 +135,7 @@
   async function accorder(profil: string) {
     if (!action) return;
     carteOuverte = false;
-    // L'accord porte exactement sur ce que la carte a montré.
+    // The grant covers exactly what the card showed.
     const r = await api.actions.accorder({ id, profil, compte: [...action.compte], publiques: [...action.publiques] });
     if (!r.ok) {
       erreurLancement = `Accord non enregistré : ${r.erreur}`;
@@ -144,7 +144,7 @@
     }
     erreurLancement = null;
     await charger();
-    // Une fois accordé, l'exécution part (si la saisie requise est là).
+    // Once granted, the run starts (if the required input is there).
     if (action && !besoinAccord && (!action.saisie || saisie.trim())) void lancer();
   }
 

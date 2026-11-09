@@ -2,8 +2,8 @@
   import { AUTORISER, SANS_RETOUCHES, titreAccordRetouches, type DemandeAccordSite } from "../../shared/sites";
 
   /**
-   * La carte d'accord des retouches de l'appli, dans sa fenêtre : ce que l'agent demande (domaines, connexion, cadres,
-   * reprise) et ce qu'il injecte. Tout vient de site.json, écrit par l'agent : affiché en texte, jamais en HTML.
+   * The grant card for the app's tweaks, in its window: what the agent asks for (domains, sign-in, frames,
+   * resume) and what it injects. Everything comes from site.json, written by the agent: shown as text, never as HTML.
    */
   let { accord, accorder }: { accord: DemandeAccordSite; accorder: (oui: boolean, empreinte: string) => Promise<void> } = $props();
   let enCours = $state(false);
@@ -11,7 +11,7 @@
   const choisir = (oui: boolean) => {
     if (enCours) return;
     enCours = true;
-    // L'empreinte des droits affichés : le main n'accorde que ceux-là.
+    // The hash of the rights shown: the main process only grants those.
     void accorder(oui, accord.empreinte).finally(() => (enCours = false));
   };
 </script>

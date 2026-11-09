@@ -11,8 +11,8 @@
   import SortieBloc from "./SortieBloc.svelte";
 
   /**
-   * L'onglet « Bloc » : le bloc sélectionné (réglages, code, sortie), ou le widget (l'action) quand aucun ne l'est.
-   * `widget` : la clé du workflow (`cleCible`).
+   * The « Bloc » tab: the selected block (settings, code, output), or the widget (the action) when none is.
+   * `widget`: the workflow's key (`cleCible`).
    */
   let {
     widget,
@@ -27,7 +27,7 @@
   const erreur = $derived(!edition.validation.ok && bloc && edition.validation.bloc === bloc.id ? edition.validation.erreur : null);
   const avertissements = $derived(bloc ? edition.avertissements.filter((a) => a.bloc === bloc.id) : []);
 
-  /** Champs proposés dans un gabarit : ceux de la sortie du bloc amont à l'exécution choisie, puis la configuration. */
+  /** Fields offered in a template: those of the upstream block's output at the chosen run, then the configuration. */
   const disponibles = $derived.by(() => {
     const d = executions.detail;
     if (!bloc || !d) return null;

@@ -5,22 +5,22 @@ import type { EtatPanneauAgent } from "../../shared/api";
 import { api } from "../etat.svelte";
 
 /**
- * Le terminal de l'agent de la fenêtre : **un seul** xterm, abonné une seule fois aux données de la session. Le panneau
- * latéral et l'onglet « Agent » du constructeur l'affichent tour à tour en déplaçant son élément d'un hôte à l'autre :
- * deux terminaux recevraient deux fois la sortie et répondraient deux fois.
+ * The window's agent terminal: **a single** xterm, subscribed only once to the session's data. The side panel and
+ * the builder's « Agent » tab display it in turn by moving its element from one host to the other: two terminals
+ * would receive the output twice and answer twice.
  */
 
-/** Ce que montre l'agent de la fenêtre (préparation, actif, erreur…), le même pour tous les hôtes. */
+/** What the window's agent shows (preparing, active, error…), the same for all hosts. */
 export const agent = $state<{ etat: EtatPanneauAgent }>({ etat: { etat: "preparation" } });
 
 let terminal: Terminal | undefined;
 let ajustement: FitAddon | undefined;
-/** Où xterm s'est ouvert : cet élément passe d'un hôte à l'autre, xterm reste dedans. */
+/** Where xterm opened: this element moves from one host to another, xterm stays inside. */
 let element: HTMLDivElement | undefined;
-/** Hôtes attachés, le dernier affiche le terminal ; en détacher un rend le terminal au précédent. */
+/** Attached hosts, the last one shows the terminal; detaching one gives the terminal back to the previous one. */
 const hotes: HTMLElement[] = [];
 
-// Une session qui repart (Relancer, changement de profil) efface l'écran de la précédente.
+// A restarting session (Relancer, profile change) clears the previous one's screen.
 const finEtat = api.agent.surEtat((e) => {
   if (e.etat === "preparation" && agent.etat.etat !== "preparation") terminal?.reset();
   agent.etat = e;
@@ -29,7 +29,7 @@ let finDonnees: (() => void) | undefined;
 
 const taille = () => ({ cols: Math.max(2, terminal?.cols ?? 80), rows: Math.max(2, terminal?.rows ?? 24) });
 
-/** Le terminal naît au premier hôte affiché (il faut une taille pour le mesurer) ; la session de la fenêtre démarre avec lui. */
+/** The terminal is born at the first shown host (a size is needed to measure it); the window's session starts with it. */
 function creer(hote: HTMLElement): void {
   element = document.createElement("div");
   element.style.cssText = "position: absolute; inset: 6px;";
@@ -45,8 +45,8 @@ function creer(hote: HTMLElement): void {
 }
 
 /**
- * Affiche le terminal dans `hote` (positionné, sans marge intérieure : le terminal en garde une de 6 px) ; le rend à
- * l'hôte précédent quand on appelle la fonction rendue.
+ * Shows the terminal in `hote` (positioned, without inner padding: the terminal keeps a 6 px one); gives it back to
+ * the previous host when the returned function is called.
  */
 export function attacher(hote: HTMLElement): () => void {
   hotes.push(hote);
@@ -65,7 +65,7 @@ export function attacher(hote: HTMLElement): () => void {
   };
 }
 
-/** Recalcule colonnes et lignes pour l'hôte affiché ; un hôte caché (sans taille) n'est pas mesuré. */
+/** Recomputes columns and rows for the shown host; a hidden host (without a size) is not measured. */
 export function ajuster(): void {
   const hote = hotes.at(-1);
   if (!terminal || !ajustement || !hote || hote.clientWidth === 0 || hote.clientHeight === 0) return;
@@ -82,14 +82,14 @@ export function aLeFocus(): boolean {
   return !!terminal?.textarea && terminal.textarea === document.activeElement;
 }
 
-/** Nouvelle session (Réessayer, Relancer) : l'écran repart de zéro. */
+/** New session (Réessayer, Relancer): the screen starts from scratch. */
 export function reinitialiser(): void {
   terminal?.reset();
   api.agent.demarrer(taille());
 }
 
-// Rechargement à chaud (développement) : l'ancien module rend ses abonnements et son terminal, sinon la sortie de
-// l'agent s'écrirait dans un terminal fantôme en plus du nouveau.
+// Hot reload (development): the old module gives back its subscriptions and its terminal, otherwise the agent's
+// output would be written to a ghost terminal in addition to the new one.
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
     finEtat();

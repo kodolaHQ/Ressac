@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { EditionWorkflow } from "../../shared/api";
 
-  /** Le widget, en lecture seule : ses sources et sa configuration ne s'éditent pas dans le constructeur. */
+  /** The widget, read-only: its sources and configuration are not edited in the builder. */
   let { widget }: { widget: NonNullable<EditionWorkflow["widget"]> | null } = $props();
 
   const config = $derived(widget ? JSON.stringify(widget.config ?? null, null, 2) : "");

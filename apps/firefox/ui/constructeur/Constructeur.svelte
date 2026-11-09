@@ -21,47 +21,47 @@
   import { pastillesDe } from "./pastilles";
 
   /**
-   * Le constructeur du workflow d'un widget (page `webaios://workflow/<id>`) ou d'une action
-   * (`webaios://workflow/action/<id>`) : même canevas ; une action a son panneau, sa saisie au lancement et l'aperçu de
-   * sa page.
+   * The builder of a widget's workflow (page `webaios://workflow/<id>`) or an action's
+   * (`webaios://workflow/action/<id>`): same canvas; an action has its panel, its input at launch and its page
+   * preview.
    */
   let { cible }: { cible: Proprietaire } = $props();
   // svelte-ignore state_referenced_locally
   const estAction = cible.type === "action";
-  /** La clé de ce workflow dans les états de la fenêtre (éditions, codes, exécution choisie). */
+  /** This workflow's key in the window states (edits, codes, chosen run). */
   // svelte-ignore state_referenced_locally
   const id = cleCible(cible);
 
-  // Gardée par fenêtre et par workflow : changer d'onglet ne perd ni un brouillon invalide ni l'historique.
+  // Kept per window and per workflow: changing tab loses neither an invalid draft nor the history.
   const edition = creerEdition(id, depotDe(api.workflow));
   suivreDisparitions(api.accueil);
   garderAvantFermeture();
   // svelte-ignore state_referenced_locally
   const executions = new Executions(id, sourceExecutionsDe(api, cible), lanceurDe(api, cible));
-  /** Ce qui change sur le disque : l'accueil pour un widget, les actions pour une action. */
+  /** What changes on disk: home for a widget, actions for an action. */
   const surChange = estAction ? api.actions.surChange : api.accueil.surChange;
   let catalogue = $state.raw<CatalogueBloc[]>([]);
   const parType = $derived(new Map(catalogue.map((c) => [c.type, c])));
   /**
-   * Éléments et statut de chaque bloc à l'exécution choisie (par défaut la dernière vraie, pas un essai), remplacés au
-   * fil des traces par ceux de l'exécution de ce widget qui tourne.
+   * Items and status of each block at the chosen run (by default the latest real one, not a trial), replaced as the
+   * traces come in by those of the running run of this widget.
    */
   const pastilles = $derived(pastillesDe(executions.choisie, executions.enDirect));
-  /** Le bloc affiché dans l'onglet « Bloc ». */
+  /** The block shown in the « Bloc » tab. */
   let selection = $state<string | null>(null);
   let canevas = $state<ReturnType<typeof Canevas>>();
   let vue = $state<"workflow" | "executions">("workflow");
   let apercuOuvert = $state(false);
-  /** Onglet du volet de droite : le bloc sélectionné, ou la conversation de l'agent de la fenêtre. */
+  /** Right pane tab: the selected block, or the window's agent conversation. */
   let ongletDroit = $state<"bloc" | "agent">("bloc");
-  // ⌘J ou ✦ pendant que le constructeur est affiché : l'onglet « Agent », dont le terminal prend le clavier.
+  // ⌘J or ✦ while the builder is shown: the « Agent » tab, whose terminal takes the keyboard.
   const demandesAgent = untrack(() => focusAgent.n);
   $effect(() => {
     if (focusAgent.n !== demandesAgent) ongletDroit = "agent";
   });
 
   const nom = $derived(edition.widget?.nom ?? edition.action?.nom ?? cible.id);
-  /** La saisie demandée par « ▶ Lancer » (action avec une saisie) : la petite fenêtre est ouverte. */
+  /** The input requested by « ▶ Lancer » (action with an input): the small window is open. */
   let demande = $state<{ libelle: string; valeur: string } | null>(null);
   const aSortie = $derived(edition.brouillon?.blocs.some((b) => b.type === "sortie") ?? false);
   const idSortie = $derived(edition.brouillon?.blocs.find((b) => b.type === "sortie")?.id);
@@ -75,7 +75,7 @@
 
   const chargerExecutions = () => void executions.charger().catch(() => {});
 
-  /** Un bloc sélectionné sur le canevas ; quitter un code non enregistré demande confirmation. */
+  /** A block selected on the canvas; leaving unsaved code asks for confirmation. */
   function selectionner(bloc: string | null): void {
     if (bloc === selection) return;
     const courant = selection === null ? undefined : edition.brouillon?.blocs.find((b) => b.id === selection);
@@ -89,7 +89,7 @@
   }
 
   $effect(() => untrack(() => {
-    // Aucun bloc n'est signalé à l'agent tant que l'utilisateur n'en a pas choisi un ici.
+    // No block is reported to the agent until the user has chosen one here.
     api.workflow.selection(cible, null);
     void api.workflow.catalogue().then((c) => (catalogue = c));
     void edition.ouvrir();
@@ -106,7 +106,7 @@
     };
   }));
 
-  /** ⌘Z / ⇧⌘Z : annuler et rétablir le canevas, sauf dans un champ de texte (il garde les siens). */
+  /** ⌘Z / ⇧⌘Z: undo and redo the canvas, except in a text field (it keeps its own). */
   function touche(e: KeyboardEvent): void {
     if (!e.metaKey || e.altKey || e.ctrlKey || e.key.toLowerCase() !== "z") return;
     const cible = e.target as HTMLElement | null;
@@ -123,7 +123,7 @@
     void edition.ajouter(c, p);
   }
 
-  /** « ▶ Lancer » : une action qui a une saisie la demande d'abord ; vide, rien ne part. */
+  /** « ▶ Lancer »: an action with an input asks for it first; empty, nothing goes out. */
   function lancer(): void {
     const saisie = edition.action?.saisie;
     if (saisie) demande = { libelle: saisie.libelle, valeur: "" };
@@ -144,7 +144,7 @@
     demande = null;
   }
 
-  /** Le champ prend le clavier à l'ouverture de la petite fenêtre. */
+  /** The field takes the keyboard when the small window opens. */
   function focaliser(n: HTMLInputElement): void {
     n.focus();
   }
@@ -191,7 +191,7 @@
     </div>
   {/if}
 
-  <!-- Le volet de droite : « Bloc » (seulement avec un canevas) et « Agent », la conversation de l'agent de la fenêtre. -->
+  <!-- The right pane: « Bloc » (only with a canvas) and « Agent », the window's agent conversation. -->
   {#snippet volet(avecBloc: boolean)}
     <aside class="droite" class:agent={ongletDroit === "agent"} aria-label={ongletDroit === "agent" ? "Agent" : "Bloc"}>
       <div class="onglets-droite" role="tablist">
@@ -203,7 +203,7 @@
         >
       </div>
       {#if avecBloc}
-        <!-- L'onglet « Bloc » reste monté, caché : un réglage ou du code en cours de frappe n'y est pas perdu. -->
+        <!-- The « Bloc » tab stays mounted, hidden: a setting or code being typed is not lost there. -->
         <div class="volet-bloc" hidden={ongletDroit !== "bloc"}>
           <OngletBloc widget={id} {edition} {executions} catalogue={parType} {selection} />
         </div>
@@ -215,7 +215,7 @@
   {#if edition.chargement === "chargement"}
     <p class="doux message">Chargement…</p>
   {:else if edition.chargement === "introuvable" || typeof edition.chargement === "object"}
-    <!-- Sans canevas, l'agent reste là : c'est à lui de réparer ou d'écrire le workflow. -->
+    <!-- Without a canvas, the agent stays there: it is up to it to repair or write the workflow. -->
     <div class="corps">
       {#if edition.chargement === "introuvable"}
         <p class="doux message">
@@ -289,7 +289,7 @@
   .corps { position: relative; flex: 1; display: flex; min-height: 0; }
   .zone-canevas { position: relative; flex: 1; min-width: 0; min-height: 0; display: flex; }
   .droite { width: 320px; flex: none; display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--bord); background: var(--fond-barre); }
-  /* La largeur du panneau latéral (--agent, posée par App) : le terminal garde ses colonnes en passant de l'un à l'autre. */
+  /* The side panel's width (--agent, set by App): the terminal keeps its columns when moving from one to the other. */
   .droite.agent { width: var(--agent, 420px); }
   .volet-bloc { flex: 1; display: flex; flex-direction: column; min-height: 0; }
   .volet-bloc[hidden] { display: none; }

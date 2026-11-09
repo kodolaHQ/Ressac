@@ -14,13 +14,13 @@
   let champ: HTMLInputElement;
 
   onMount(() => champ.focus());
-  // La barre de commande refermée sur l'accueil y rend le clavier.
+  // The command bar closed onto home gives the keyboard back to it.
   $effect(() => {
     if (focusPageVide.n > 0) untrack(() => champ?.focus());
   });
 
-  // Les actions ne sont pas disponibles dans un espace privé (un espace introuvable compte comme privé) : la liste n'est
-  // alors même pas demandée.
+  // Actions are not available in a private space (a missing space counts as private): the list is then not even
+  // requested.
   const enPrive = $derived(etat.valeur?.espaces.find((e) => e.id === fenetre.espaceActif)?.prive ?? true);
   let actions = $state.raw<ActionAffichee[]>([]);
   let derniere = 0;
@@ -42,7 +42,7 @@
     return api.actions.surChange(charger);
   });
 
-  // Échap ferme la liste jusqu'à la prochaine frappe.
+  // Escape closes the list until the next keystroke.
   let fermee = $state(false);
   let choisie = $state(-1);
   const suggestions = $derived(enPrive || fermee ? [] : suggestionsActions(saisie, actions));

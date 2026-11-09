@@ -8,10 +8,10 @@
   type BlocBrouillon = Brouillon["blocs"][number];
 
   /**
-   * Les réglages d'un bloc, tirés de son catalogue. Une case ou une liste de choix s'enregistre aussitôt ; un champ de
-   * texte à la perte du focus ou après 400 ms sans frappe ; un nombre à la perte du focus ou sur Entrée seulement (une
-   * valeur de passage comme « 0. » effacerait la mémoire du bloc). Une seule entrée d'historique par champ édité.
-   * Sans geste de l'utilisateur, rien n'est écrit (sélectionner un bloc n'enregistre rien).
+   * A block's settings, drawn from its catalog. A checkbox or a choice list saves right away; a text field on focus
+   * loss or after 400 ms without typing; a number on focus loss or on Enter only (a transient value like « 0. » would
+   * erase the block's memory). A single history entry per edited field.
+   * Without a gesture from the user, nothing is written (selecting a block saves nothing).
    */
   let { edition, bloc, catalogue, disponibles }: { edition: Edition; bloc: BlocBrouillon; catalogue: CatalogueBloc; disponibles: string[] | null } =
     $props();
@@ -22,9 +22,9 @@
   const id = bloc.id;
 
   const champs = $derived(champsAffiches(catalogue, bloc.parametres));
-  /** Texte des champs en cours d'édition (focus) ; les autres montrent la valeur du bloc. */
+  /** Text of the fields being edited (focus); the others show the block's value. */
   let saisies = $state<Record<string, string>>({});
-  /** Texte au focus, puis au dernier enregistrement : un champ quitté sans changement n'écrit rien. */
+  /** Text at focus, then at the last save: a field left unchanged writes nothing. */
   const initiales: Record<string, string> = {};
   const seances: Record<string, number> = {};
   let seance = 0;
@@ -35,7 +35,7 @@
     minuteries.delete(nom);
     const t = saisies[nom];
     if (t === undefined || t === initiales[nom]) return;
-    // Revenir ensuite à la valeur d'avant est un changement, qui s'enregistre.
+    // Going back to the previous value afterwards is a change, which is saved.
     initiales[nom] = t;
     const fusion = `${id}/${nom}/${seances[nom]}`;
     if (nom === NOM) {
@@ -62,7 +62,7 @@
     clearTimeout(minuteries.get(nom));
     minuteries.set(nom, setTimeout(() => valider(nom), ATTENTE_MS));
   }
-  /** Nombre : la saisie est retenue, enregistrée seulement à la perte du focus ou sur Entrée. */
+  /** Number: the input is held, saved only on focus loss or on Enter. */
   function noter(nom: string, texte: string): void {
     if (saisies[nom] === undefined) entrer(nom, texte);
     saisies[nom] = texte;
@@ -72,7 +72,7 @@
     delete saisies[nom];
   }
 
-  /** Case ou liste de choix : enregistrée aussitôt. */
+  /** Checkbox or choice list: saved right away. */
   function choisir(f: ChampFormulaire, v: string | boolean): void {
     edition.modifier((b) => {
       const x = b.blocs.find((y) => y.id === id);
@@ -81,7 +81,7 @@
     });
   }
 
-  // Le bloc change ou l'onglet se ferme pendant une frappe : elle est enregistrée, pas perdue.
+  // The block changes or the tab closes during typing: it is saved, not lost.
   $effect(() => () => untrack(() => [...minuteries.keys()].forEach(valider)));
 
   const texteChamp = (f: ChampFormulaire) => saisies[f.nom] ?? texteDe(f, bloc.parametres[f.nom]);
@@ -144,13 +144,13 @@
             placeholder={texteDe(f, f.defaut)}
             onfocus={(e) => entrer(f.nom, e.currentTarget.value)}
             oninput={(e) => {
-              // Une saisie illisible (« - ») se lit comme vide : la clé ne doit pas partir pour autant.
+              // An unreadable input (« - ») reads as empty: the key must not go out for that.
               if (!e.currentTarget.validity.badInput) noter(f.nom, e.currentTarget.value);
             }}
             onkeydown={(e) => e.key === "Enter" && valider(f.nom)}
             onblur={(e) => {
               quitter(f.nom);
-              // Restée illisible : le champ remontre la valeur du bloc.
+              // Still unreadable: the field shows the block's value again.
               if (e.currentTarget.validity.badInput) e.currentTarget.value = texteDe(f, bloc.parametres[f.nom]);
             }}
           />

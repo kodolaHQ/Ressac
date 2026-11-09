@@ -3,8 +3,8 @@
   import { DECLENCHEURS, elementsEnSortie, heure, STATUTS, TEINTES } from "./libelles";
 
   /**
-   * La barre du bas : les 8 dernières exécutions (en choisir une met à jour les pastilles, l'onglet « Bloc » et
-   * l'aperçu) et « Rejouer depuis ce bloc ». Un refus s'affiche en texte sous la barre.
+   * The bottom bar: the last 8 runs (choosing one updates the badges, the « Bloc » tab and the preview) and
+   * « Rejouer depuis ce bloc ». A refusal shows as text under the bar.
    */
   let {
     executions,
@@ -13,11 +13,11 @@
     rejouable,
   }: {
     executions: Executions;
-    /** Le bloc sélectionné sur le canevas. */
+    /** The block selected on the canvas. */
     selection: string | null;
-    /** Id du bloc `sortie` du workflow (ses éléments sont ceux de l'exécution). */
+    /** Id of the workflow's `sortie` block (its items are the run's). */
     sortie: string | undefined;
-    /** Le workflow enregistré est valide et rien n'est en cours d'enregistrement. */
+    /** The saved workflow is valid and nothing is being saved. */
     rejouable: boolean;
   } = $props();
 

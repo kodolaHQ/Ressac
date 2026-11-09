@@ -1,5 +1,5 @@
 <script lang="ts" module>
-  /** Le jeton de la comparaison montrée par chaque onglet : une page remontée la retrouve telle quelle. */
+  /** The token of the comparison shown by each tab: a remounted page finds it as is. */
   const jetons = new Map<string, string>();
 </script>
 
@@ -9,9 +9,8 @@
   import DiffFichier from "./DiffFichier.svelte";
 
   /**
-   * La page Relecture d'un projet : ce qui a changé depuis la dernière relecture, avec des commentaires sur les lignes.
-   * La comparaison est faite à l'ouverture et gardée telle quelle jusqu'à « Rafraîchir » ; « Marquer comme relu »
-   * retient ce qu'elle montre.
+   * A project's Review page: what changed since the last review, with comments on lines. The comparison is made at
+   * opening and kept as is until « Rafraîchir »; « Marquer comme relu » records what it shows.
    */
   let { projet, ongletId }: { projet: string; ongletId: string } = $props();
   let jeton = $state<string | null>(null);
@@ -30,7 +29,7 @@
   const STATUTS = { ajoute: "+", supprime: "−", modifie: "~" } as const;
   const LIBELLES = { ajoute: "ajouté", supprime: "supprimé", modifie: "modifié" } as const;
 
-  /** `garder` : la comparaison de l'onglet si elle est encore gardée ; sinon (« Rafraîchir ») une nouvelle. */
+  /** `garder`: the tab's comparison if it is still kept; otherwise (« Rafraîchir ») a new one. */
   async function charger(garder: boolean) {
     const n = ++requete;
     enCours = true;
@@ -45,7 +44,7 @@
     }
   }
 
-  /** Une comparaison reçue (ouverture, « Rafraîchir », « Marquer comme relu ») : son jeton, ses fichiers, ses commentaires. */
+  /** A received comparison (opening, « Rafraîchir », « Marquer comme relu »): its token, its files, its comments. */
   async function montrer(v: VueRelecture) {
     ++requeteCommentaires;
     vue = v;
@@ -54,13 +53,13 @@
     if (jeton) jetons.set(ongletId, jeton);
     else jetons.delete(ongletId);
     const fichiers = v.etat === "ok" ? v.comparaison.fichiers : [];
-    // Le fichier choisi reste choisi s'il est encore modifié ; sinon le premier.
+    // The chosen file stays chosen if it is still modified; otherwise the first one.
     const garde = fichiers.find((f) => f.chemin === choisi) ?? fichiers[0];
     choisi = garde?.chemin ?? null;
     await afficher(choisi);
   }
 
-  /** Les commentaires relus après un changement (ajout, modification, recollage d'un fichier affiché). */
+  /** Comments re-read after a change (add, edit, reattachment of a shown file). */
   async function rechargerCommentaires() {
     const n = ++requeteCommentaires;
     try {
@@ -103,7 +102,7 @@
     }
   }
 
-  /** Rouvrir le fichier déjà affiché relit le même diff (même jeton) : l'affichage, avec son commentaire en cours, n'est pas remonté. */
+  /** Reopening the file already shown re-reads the same diff (same token): the display, with its comment in progress, is not remounted. */
   async function afficher(chemin: string | null) {
     const n = ++requeteDiff;
     choisi = chemin;
@@ -115,7 +114,7 @@
     try {
       const d = await api.relecture.fichier(projet, jeton, chemin);
       if (n === requeteDiff) diff = d;
-      // L'ouverture du fichier a recollé ses commentaires au diff.
+      // Opening the file reattached its comments to the diff.
       await rechargerCommentaires();
     } catch {
       if (n === requeteDiff) {

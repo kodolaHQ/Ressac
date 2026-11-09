@@ -8,7 +8,7 @@
 
   type Filtre = "tout" | "application" | "poc" | "sans-fiche" | "en-marche" | "arretee" | "erreur";
 
-  /** En marche au sens du volet : tout ce qui n'est ni arrêté ni en erreur. */
+  /** Running in the panel's sense: everything that is neither stopped nor in error. */
   const active = (a: ApplicationAffichee) => a.etat === "en-marche" || a.etat === "lancement" || a.etat === "preparation";
   const FILTRES: Record<Filtre, (a: ApplicationAffichee) => boolean> = {
     tout: () => true,
@@ -19,7 +19,7 @@
     arretee: (a) => a.etat === "arretee",
     erreur: (a) => a.etat === "erreur",
   };
-  /** « Sans fiche » et « En erreur » n'apparaissent que s'ils comptent au moins un projet. */
+  /** « Sans fiche » and « En erreur » only appear if they hold at least one project. */
   const GROUPES: { titre: string; filtres: { id: Filtre; libelle: string; siPresent?: boolean }[] }[] = [
     {
       titre: "Type",
@@ -46,13 +46,13 @@
   let texte = $state("");
   let champ: HTMLInputElement;
   let requete = 0;
-  /** Projet dont la suppression attend la confirmation de l'utilisateur. */
+  /** Project whose deletion awaits the user's confirmation. */
   let aSupprimer = $state<ApplicationAffichee | null>(null);
 
-  /** Les applis de site (section « Sites ») : relues à chaque changement de la liste ou de leur état. */
+  /** The site apps (« Sites » section): re-read on each change of the list or of their state. */
   let sites = $state<SiteAffiche[]>([]);
   let requeteSites = 0;
-  /** Appli de site dont l'oubli ou la suppression attend la confirmation de l'utilisateur. */
+  /** Site app whose forgetting or deletion awaits the user's confirmation. */
   let siteAOublier = $state<SiteAffiche | null>(null);
   let siteASupprimer = $state<SiteAffiche | null>(null);
 
@@ -88,10 +88,10 @@
   $effect(() => champ.focus());
 
   const compte = (f: Filtre) => donnees.applications.filter(FILTRES[f]).length;
-  // Un filtre qui disparaît du volet (plus aucune appli en erreur…) laisse la place à Tout.
+  // A filter that disappears from the panel (no app in error anymore…) gives way to Tout.
   const filtreEffectif = $derived(GROUPES.flatMap((g) => g.filtres).some((x) => x.id === filtre && (!x.siPresent || compte(x.id) > 0)) ? filtre : "tout");
 
-  /** En marche d'abord, puis le dernier lancement le plus récent, puis la création la plus récente. */
+  /** Running first, then the most recent last launch, then the most recent creation. */
   const lignes = $derived.by(() => {
     const cherche = texte.trim().toLowerCase();
     return donnees.applications
@@ -135,8 +135,8 @@
   }
 
   /**
-   * Première ligne d'une raison ou d'une erreur, pour une bulle d'aide. Un manifeste refusé par zod porte la liste
-   * des problèmes en JSON sur plusieurs lignes : on garde le premier.
+   * First line of a reason or an error, for a tooltip. A manifest refused by zod carries the list of problems as
+   * multi-line JSON: we keep the first one.
    */
   function court(raison: string | undefined): string | undefined {
     if (!raison) return undefined;
@@ -146,7 +146,7 @@
         const [p] = JSON.parse(m[2]!) as { path?: (string | number)[]; message?: string }[];
         if (p?.message) return `${m[1]}${p.path?.length ? `${p.path.join(".")} : ` : ""}${p.message}`;
       } catch {
-        // Pas du JSON : première ligne.
+        // Not JSON: first line.
       }
     }
     return raison.split("\n")[0];
@@ -154,7 +154,7 @@
 
   const agir = (a: ApplicationAffichee, action: ActionApplication) => api.applications.agir(a.dossier, action);
 
-  /** Boutons visibles et entrées du menu ⋯ selon l'état (spec §5). */
+  /** Visible buttons and ⋯ menu entries depending on the state (spec §5). */
   function actions(a: ApplicationAffichee): { boutons: { libelle: string; action: ActionApplication; lance?: boolean }[]; menu: EntreeMenu[] } {
     const entree = (libelle: string, action: ActionApplication): EntreeMenu => ({
       libelle,
@@ -243,7 +243,7 @@
                 aria-label="Plus d'actions"
                 title="Plus d'actions"
                 onclick={(e) => {
-                  e.stopPropagation(); // la fenêtre refermerait aussitôt le menu
+                  e.stopPropagation(); // the window would close the menu right away
                   ouvrirMenu(e, menu, { libre: true });
                 }}><Icone nom="options" /></button
               >
@@ -351,7 +351,7 @@
         <button
           class="confirmer"
           onclick={() => {
-            const a = cible; // {@const} se relit : après aSupprimer = null, cible vaut null
+            const a = cible; // {@const} is re-read: after aSupprimer = null, cible is null
             aSupprimer = null;
             agir(a, "supprimer");
           }}>Supprimer</button

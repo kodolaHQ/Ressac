@@ -10,14 +10,14 @@
     redimensionner,
   }: {
     visible: boolean;
-    /** Dans l'onglet « Agent » du constructeur : sans poignée de largeur, toujours affiché dans son hôte. */
+    /** In the builder's « Agent » tab: no width handle, always shown in its host. */
     integre?: boolean;
-    /** L'utilisateur tire le bord gauche : largeur voulue en pixels ; `fin` au lâcher. */
+    /** The user drags the left edge: wanted width in pixels; `fin` on release. */
     redimensionner?: (largeur: number, fin: boolean) => void;
   } = $props();
   let section: HTMLElement;
 
-  /** Tirer le bord gauche : la capture garde le pointeur même au-dessus de la page web voisine. */
+  /** Dragging the left edge: the capture keeps the pointer even over the neighboring web page. */
   function tirer(e: PointerEvent) {
     const poignee = e.currentTarget as HTMLElement;
     poignee.setPointerCapture(e.pointerId);
@@ -43,13 +43,13 @@
   $effect(() => {
     if (visible) api.agent.profils().then((p) => (profils = p), () => {});
   });
-  // Un seul profil : rien à choisir. Le menu reste si le profil choisi a disparu, pour pouvoir en changer.
+  // A single profile: nothing to choose. The menu stays if the chosen profile has disappeared, so it can be changed.
   const choixProfil = $derived(profils.length >= 2 || (profils.length > 0 && !profils.some((p) => p.id === profilAgent)));
 
-  // Le terminal de la fenêtre vient ici à la première ouverture de ce panneau, puis y reste attaché : fermer le panneau
-  // ne fait que le cacher, la conversation continue. L'onglet « Agent » l'emprunte le temps d'être affiché.
-  // Redevenir visible (en quittant le constructeur, la page d'accueil qui le rouvre) ne prend pas le clavier : une
-  // frappe suivie d'Entrée partirait à l'agent. Seule une demande explicite (focusAgent) le donne au terminal.
+  // The window's terminal comes here on the first opening of this panel, then stays attached: closing the panel only
+  // hides it, the conversation goes on. The « Agent » tab borrows it while it is shown.
+  // Becoming visible again (leaving the builder, the home page reopening it) does not take the keyboard: a keystroke
+  // followed by Enter would go to the agent. Only an explicit request (focusAgent) gives it to the terminal.
   let detacher: (() => void) | undefined;
   $effect(() => () => detacher?.());
   $effect(() => {
@@ -61,14 +61,14 @@
     return () => obs.disconnect();
   });
 
-  // Dernière demande de focus servie. Une demande faite pendant que ce panneau est caché ne le concerne pas (⌘J dans le
-  // constructeur vise son onglet « Agent ») : elle est écartée. L'onglet « Agent », lui, s'affiche toujours à la demande
-  // de l'utilisateur (clic, ⌘J, ✦) : il prend le clavier dès qu'il est monté.
+  // Last focus request served. A request made while this panel is hidden does not concern it (⌘J in the builder
+  // targets its « Agent » tab): it is dropped. The « Agent » tab, though, always shows on the user's request (click,
+  // ⌘J, ✦): it takes the keyboard as soon as it is mounted.
   // svelte-ignore state_referenced_locally
   let servie = integre ? -1 : untrack(() => focusAgent.n);
 
-  // ⌘J depuis une page web : le clavier passe de la page à l'interface. Pendant ce passage, Chromium ignore un
-  // focus demandé trop tôt : on le redemande peu après si le terminal ne l'a pas.
+  // ⌘J from a web page: the keyboard goes from the page to the interface. During this handover, Chromium ignores a
+  // focus requested too early: it is requested again shortly after if the terminal does not have it.
   $effect(() => {
     const n = focusAgent.n;
     if (!visible) {
@@ -125,7 +125,7 @@
   header { padding: 6px 8px; border-bottom: 1px solid var(--bord); }
   select { padding: 2px 6px; border-radius: 6px; border: 1px solid var(--bord); background: var(--fond-actif); color: var(--texte); font-size: 12px; }
   button { margin: 0 12px 12px; align-self: flex-start; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--bord); background: var(--fond-actif); color: var(--texte); }
-  /* Le terminal (terminalAgent) s'y place en absolu, à 6 px du bord. */
+  /* The terminal (terminalAgent) is placed in it absolutely, 6 px from the edge. */
   .terminal { position: relative; flex: 1; min-height: 0; background: #1e1e22; }
   .terminal.masque { visibility: hidden; }
 </style>

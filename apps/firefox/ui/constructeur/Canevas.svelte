@@ -8,9 +8,9 @@
   import NoeudBloc, { type NoeudBloc as Noeud } from "./NoeudBloc.svelte";
   import type { Pastille } from "./pastilles";
 
-  /** Moitié d'un bloc affiché : un bloc posé est centré sur le point visé. */
+  /** Half of a displayed block: a dropped block is centered on the targeted point. */
   const DEMI = { x: 100, y: 30 };
-  /** Assez petit pour qu'un workflow de 30 blocs (une dizaine de colonnes) tienne entier dans la vue à l'ouverture. */
+  /** Small enough for a 30-block workflow (about ten columns) to fit whole in the view on opening. */
   const MIN_ZOOM = 0.2;
 
   let {
@@ -33,10 +33,10 @@
   let nodes = $state.raw<Noeud[]>([]);
   let edges = $state.raw<Edge[]>([]);
 
-  /** Un bloc est en train d'être glissé : le canevas n'est pas redessiné sous la souris, seulement à la fin. */
+  /** A block is being dragged: the canvas is not redrawn under the mouse, only at the end. */
   let reporte = false;
 
-  /** Nœuds et liens tirés du brouillon (la sélection affichée est gardée). */
+  /** Nodes and links drawn from the draft (the shown selection is kept). */
   function reconstruire(): void {
     const b = edition.brouillon;
     if (!b) return;
@@ -53,7 +53,7 @@
     const erreur = edition.validation.ok ? null : edition.validation.erreur;
     nodes = b.blocs.map((x) => {
       const c = catalogue.get(x.type);
-      // Un bloc à entrée facultative sans entrée n'a pas de poignée d'entrée, sauf un `code` qui lit son entrée.
+      // A block with an optional input but no input has no input handle, except a `code` that reads its input.
       const sansEntree = c?.entree === "facultative" && !(x.type === "code" && x.parametres.appel !== "recolte");
       return {
         id: x.id,
@@ -82,7 +82,7 @@
 
   function relie(c: Connection): void {
     edition.modifier((b) => relier(b, c.source, c.target));
-    // Un lien refusé (depuis la sortie, en double…) disparaît.
+    // A refused link (from the output, duplicate…) disappears.
     reconstruire();
   }
 
@@ -93,7 +93,7 @@
 
   function deplace(): void {
     edition.deplacer(Object.fromEntries(nodes.map((n) => [n.id, { x: Math.round(n.position.x), y: Math.round(n.position.y) }])));
-    // Un changement arrivé pendant le glisser (fichier, pastilles) est dessiné maintenant.
+    // A change that arrived during the drag (file, badges) is drawn now.
     if (reporte) setTimeout(reconstruire, 0);
   }
 
@@ -105,14 +105,14 @@
     onajouter(type, { x: p.x - DEMI.x, y: p.y - DEMI.y });
   }
 
-  /** Centre de la vue, en coordonnées du canevas (coin haut gauche d'un bloc centré). */
+  /** Center of the view, in canvas coordinates (top-left corner of a centered block). */
   export function centre(): { x: number; y: number } {
     const r = zone.getBoundingClientRect();
     const p = flow.screenToFlowPosition({ x: r.x + r.width / 2, y: r.y + r.height / 2 });
     return { x: p.x - DEMI.x, y: p.y - DEMI.y };
   }
 
-  /** Remet la sélection affichée sur `id` (un changement de bloc refusé par l'utilisateur). */
+  /** Puts the shown selection back on `id` (a block change refused by the user). */
   export function selectionner(id: string | null): void {
     nodes = nodes.map((n) => (n.selected === (n.id === id) ? n : { ...n, selected: n.id === id }));
   }

@@ -8,7 +8,7 @@
 
   function menu(ev: MouseEvent) {
     const entrees: EntreeMenu[] = [{ libelle: "Panier", agir: () => (design.panierDemande = true) }];
-    // Tâche 11 : la relecture des applis de l'agent et des projets externes.
+    // Task 11: the review of the agent's apps and external projects.
     if (e?.projet && e.projet.type !== "demo") entrees.push({ libelle: "Relire ce projet", agir: () => api.design.relire() });
     ouvrirMenu(ev, entrees);
   }

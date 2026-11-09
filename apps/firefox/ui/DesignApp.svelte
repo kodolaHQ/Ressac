@@ -13,7 +13,7 @@
     const n = ++requete;
     const c = await api.contexte().catch(() => null);
     if (n !== requete) return;
-    // Une nouvelle bulle (autre élément) repart d'un texte vide.
+    // A new bubble (another element) starts from an empty text.
     if (c?.mode !== "bulle" || contexte?.mode !== "bulle" || c.etiquette !== contexte.etiquette || c.source !== contexte.source) {
       texte = "";
       erreur = null;
@@ -59,7 +59,7 @@
     </div>
   </div>
 {:else if contexte?.mode === "message"}
-  <!-- Non interactif : seul le clic le ferme (comme la frappe suivante, côté process principal). -->
+  <!-- Not interactive: only a click closes it (like the next keystroke, on the main process side). -->
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
   <div class="message" data-testid="message-design" role="status" onclick={() => api.annuler()}>{contexte.message}</div>
 {:else if contexte?.mode === "panier"}

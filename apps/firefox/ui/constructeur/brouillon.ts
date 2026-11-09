@@ -6,7 +6,7 @@ type Position = { x: number; y: number };
 
 const estObjet = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
-/** Lecture indulgente d'un `workflow.json` (ou de sa copie reçue) ; null si les blocs sont inutilisables. */
+/** Lenient reading of a `workflow.json` (or its received copy); null if the blocks are unusable. */
 export function versBrouillon(brut: unknown): Brouillon | null {
   if (!estObjet(brut) || !Array.isArray(brut.blocs)) return null;
   const blocs: BlocBrouillon[] = [];
@@ -28,7 +28,7 @@ export function versBrouillon(brut: unknown): Brouillon | null {
   return { version: 1, blocs, liens };
 }
 
-/** `ia.trier` → `ia-trier`, puis `ia-trier-2`, … (40 caractères au plus). */
+/** `ia.trier` → `ia-trier`, then `ia-trier-2`, … (40 characters at most). */
 export function idPourType(type: string, existants: Iterable<string>): string {
   const pris = new Set(existants);
   const base = type.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "bloc";
@@ -65,7 +65,7 @@ export function supprimerLien(b: Brouillon, de: string, vers: string): Brouillon
   return liens.length === b.liens.length ? b : { ...b, liens };
 }
 
-/** Rend `b` lui-même quand aucune position ne change vraiment (un clic n'écrit rien). */
+/** Returns `b` itself when no position really changes (a click writes nothing). */
 export function deplacer(b: Brouillon, positions: Record<string, Position>): Brouillon {
   let change = false;
   const blocs = b.blocs.map((x) => {
@@ -101,12 +101,12 @@ function canonique(v: unknown): unknown {
 }
 export const memeBrouillon = (a: Brouillon, b: Brouillon): boolean => JSON.stringify(canonique(a)) === JSON.stringify(canonique(b));
 
-/** Pile d'états pour annuler / rétablir ; `max` états au plus, le courant compris. */
+/** Stack of states for undo / redo; at most `max` states, the current one included. */
 export class Historique {
   courant: Brouillon;
   private passe: Brouillon[] = [];
   private futur: Brouillon[] = [];
-  /** Clé de fusion du dernier état fait : un état fait avec la même clé le remplace (frappes d'un même champ). */
+  /** Merge key of the last made state: a state made with the same key replaces it (keystrokes of the same field). */
   private fusion: string | null = null;
   constructor(initial: Brouillon, private readonly max = 100) {
     this.courant = initial;
@@ -146,8 +146,8 @@ export class Historique {
 }
 
 /**
- * Que faire quand `workflow.json` change sur le disque ?
- * `envoyes` : brouillons partis à l'enregistrement et pas encore confirmés (leur écho est ignoré).
+ * What to do when `workflow.json` changes on disk?
+ * `envoyes`: drafts sent for saving and not yet confirmed (their echo is ignored).
  */
 export function suivreFichier(o: { local: Brouillon; dernierConnu: Brouillon | null; disque: Brouillon | null; envoyes?: Brouillon[] }): "ignorer" | "adopter" | "proposer" | "illisible" {
   const { local, dernierConnu, disque } = o;

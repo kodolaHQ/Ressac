@@ -2,8 +2,8 @@
   import type { Execution, ResumeExecution } from "@webaios/noyau";
 
   /**
-   * L'en-tête de la page d'une action : son nom, sa saisie, « Relancer » (« Lancer » sans résultat encore), « Voir le
-   * workflow », l'heure du résultat affiché et le menu des résultats précédents. Rien n'est lancé sans un clic (ou Entrée).
+   * An action page's header: its name, its input, « Relancer » (« Lancer » when there is no result yet), « Voir le
+   * workflow », the time of the shown result and the menu of previous results. Nothing is launched without a click (or Enter).
    */
   let {
     nom,
@@ -18,16 +18,16 @@
     choisir,
   }: {
     nom: string;
-    /** Le texte du champ, pré-rempli de la saisie du résultat affiché. */
+    /** The field's text, pre-filled with the shown result's input. */
     saisie?: string;
-    /** Libellé de la saisie déclarée ; null : l'action n'en a pas. */
+    /** Label of the declared input; null: the action has none. */
     libelleSaisie: string | null;
-    /** Début de l'exécution affichée ; null : aucune. */
+    /** Start of the shown run; null: none. */
     debut: string | null;
-    /** Une exécution de l'action tourne ou attend : pas de second lancement. */
+    /** A run of the action is running or waiting: no second launch. */
     occupee: boolean;
     dejaLancee: boolean;
-    /** Exécutions gardées (pas les essais), la plus récente d'abord ; null tant que non lues. */
+    /** Kept runs (not the trials), most recent first; null until read. */
     precedentes: ResumeExecution[] | null;
     lancer: () => void;
     voirWorkflow: () => void;
@@ -54,7 +54,7 @@
     if (!occupee && !saisieManquante) lancer();
   }
 
-  // Le menu se ferme au clic ailleurs et à Échap.
+  // The menu closes on a click elsewhere and on Escape.
   $effect(() => {
     if (!menuOuvert) return;
     const fermer = (e: Event) => {

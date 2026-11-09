@@ -12,7 +12,7 @@
     return id ? etat.valeur?.onglets[id] : undefined;
   });
   const droitsAgent = $derived(onglet ? accesDe(onglet.id) : undefined);
-  let saisie = $state<string | null>(null); // non nul pendant l'édition
+  let saisie = $state<string | null>(null); // non-null during editing
   let champ: HTMLInputElement;
   let suggestions = $state<Visite[]>([]);
   let choisie = $state(-1);
@@ -143,7 +143,7 @@
   .navigation button:disabled { opacity: 0.35; }
   .navigation .compact { margin-left: auto; }
   .navigation .compact[aria-pressed="true"] { color: var(--accent); }
-  /* La pastille : un fond sous sa première rangée (champ et extensions), le panneau des extensions passe à la ligne dessous. */
+  /* The badge: a background under its first row (field and extensions), the extensions panel wraps to the line below. */
   .ligne { position: relative; z-index: 1; display: flex; align-items: center; flex-wrap: wrap; -webkit-app-region: no-drag; }
   .ligne::before { content: ""; position: absolute; z-index: -1; inset: 0 0 auto; height: 34px; box-sizing: border-box; border-radius: 10px; border: 1px solid transparent; background: var(--fond-survol); }
   .ligne:has(input:focus)::before { border-color: var(--accent); background: var(--fond); }

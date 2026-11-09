@@ -3,15 +3,15 @@
   import type { CarteExtension } from "../../shared/extensions";
   import { api } from "../etat.svelte";
 
-  // Tout ce qui vient du manifeste (nom, version, sites, domaines) est affiché en texte, jamais interprété.
+  // Everything from the manifest (name, version, sites, domains) is shown as text, never interpreted.
   let { demande, carte }: { demande: DemandeEnAttente; carte: CarteExtension } = $props();
 
-  // Accord renforcé : « Activer » (et Entrée, qui clique le bouton principal) reste sans effet tant que la case n'est pas cochée.
+  // Strengthened grant: « Activer » (and Enter, which clicks the primary button) has no effect until the box is checked.
   let compris = $state(false);
   const bloque = $derived(carte.renforce && !compris);
   const noms = (liste: string[]) => liste.map((n) => `« ${n} »`).join(", ");
 
-  /** Le nom vient du manifeste : borné, et montré dans son propre élément (il ne peut pas se lire comme la suite du titre). */
+  /** The name comes from the manifest: bounded, and shown in its own element (it cannot read as the rest of the title). */
   const NOM_MAX = 60;
   const SITES_MAX = 20;
   const nom = $derived.by(() => {
@@ -76,7 +76,7 @@
     </div>
   {/if}
 
-  <!-- Entrée refuse (Refuser est le bouton principal) : activer une extension demande un vrai clic. -->
+  <!-- Enter refuses (Refuser is the primary button): enabling an extension takes a real click. -->
   <div class="actions">
     <button data-principal onclick={() => api.permissions.repondre(demande.id, "refuser")}>Refuser</button>
     <button

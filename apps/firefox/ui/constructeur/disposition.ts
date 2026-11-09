@@ -4,19 +4,19 @@ export const COLONNE_PX = 260;
 export const RANGEE_PX = 110;
 type Position = { x: number; y: number };
 
-/** Au moins deux blocs, tous à la même position : le fichier n'a jamais été disposé. */
+/** At least two blocks, all at the same position: the file was never laid out. */
 export function sansDisposition(b: Brouillon): boolean {
   if (b.blocs.length < 2) return false;
   const { x, y } = b.blocs[0]!.position;
   return b.blocs.every((p) => p.position.x === x && p.position.y === y);
 }
 
-/** Colonne de chaque bloc : plus long chemin depuis une racine, liens fermant un cycle ignorés. */
+/** Column of each block: longest path from a root, links closing a cycle ignored. */
 function colonnes(b: Brouillon): Map<string, number> {
   const ids = new Set(b.blocs.map((x) => x.id));
   const suivants = new Map<string, string[]>();
   for (const l of b.liens) if (ids.has(l.de) && ids.has(l.vers) && l.de !== l.vers) suivants.set(l.de, [...(suivants.get(l.de) ?? []), l.vers]);
-  // Parcours en profondeur : un lien vers un bloc en cours de visite ferme un cycle.
+  // Depth-first traversal: a link to a block being visited closes a cycle.
   const etat = new Map<string, 1 | 2>();
   const retenus = new Map<string, string[]>();
   const ordre: string[] = [];

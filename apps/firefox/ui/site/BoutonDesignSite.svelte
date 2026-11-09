@@ -2,9 +2,9 @@
   import type { ApiSite, EtatDesign } from "../../shared/api";
   import type { EtatFenetreSite } from "../../shared/sites";
 
-  // Le mode design de l'appli (plan 18) : ✎ (⌘⇧D), son compteur, et le chevron « Panier » / « Relire ce projet ». Une liste
-  // sous la barre serait cachée par la vue du site : les deux entrées se déplient dans la barre, à la place du titre
-  // (`menuOuvert`, lu par la barre), et se replient au choix, à Échap, au clic ailleurs dans la barre ou après 5 s.
+  // The app's design mode (plan 18): ✎ (⌘⇧D), its counter, and the « Panier » / « Relire ce projet » chevron. A list
+  // under the bar would be hidden by the site's view: both entries unfold in the bar, in place of the title
+  // (`menuOuvert`, read by the bar), and fold back on choice, on Escape, on a click elsewhere in the bar or after 5 s.
   let { api, etat, menuOuvert = $bindable(false) }: { api: ApiSite; etat: EtatFenetreSite; menuOuvert?: boolean } = $props();
   const DUREE_MENU_MS = 5000;
   let design = $state<EtatDesign | null>(null);
@@ -17,7 +17,7 @@
     if (n === lecture) design = e;
   }
 
-  // Relu à chaque état de la fenêtre reçu (vue, page, plein écran…) et à chaque changement du mode ou du panier.
+  // Re-read on each window state received (view, page, full screen…) and on each change of the mode or the basket.
   $effect(() => {
     void etat;
     void relire();
@@ -27,7 +27,7 @@
   const actif = $derived(design?.actif ?? false);
   const indisponible = $derived(!design || design.indisponible !== null);
 
-  // Replié seul après 5 s.
+  // Folds back by itself after 5 s.
   $effect(() => {
     if (!menuOuvert) return;
     const minuterie = setTimeout(() => (menuOuvert = false), DUREE_MENU_MS);
@@ -62,7 +62,7 @@
     onclick={() => api.design.basculer()}
     >✎{#if design && design.panier > 0}<span class="compteur" data-testid="site-compteur-panier">{design.panier}</span>{/if}</button
   >
-  <!-- Toujours actif : le panier et la relecture restent accessibles là où le mode ne se lance pas (accueil, carte…). -->
+  <!-- Always active: the basket and the review stay reachable where the mode does not start (home, card…). -->
   <button class="chevron" data-testid="site-menu-design" aria-label="Menu du mode design" aria-expanded={menuOuvert} onclick={() => (menuOuvert = !menuOuvert)}>▾</button>
 </span>
 

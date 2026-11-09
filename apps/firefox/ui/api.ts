@@ -96,7 +96,7 @@ export function createApi(win: WindowController): ApiFirefox {
   /** The widgets whose display this document prepared: the others' substitutions and copies are cleared. */
   const prepares = new Set<string>();
   const failed = (message: string) => localStates.forEach((cb) => cb({ etat: "erreur", message }));
-  /** An extension action in the noyau host; its answer copied into this realm, a failure given back as text. */
+  /** An extension action in the kernel host; its answer copied into this realm, a failure given back as text. */
   const extension = (method: string, params: Record<string, unknown>) =>
     host.request<ResultatExtension>(method, params).then((r) => structuredClone(r), (e) => ({ ok: false as const, erreur: e instanceof Error ? e.message : String(e) }));
   /** A host request answered in this realm; `fallback` when the host does not answer (no agent). */
@@ -117,7 +117,7 @@ export function createApi(win: WindowController): ApiFirefox {
     surPanneau: (callback) => untilUnload(win.onPanel(callback)),
     surPanneauOnglets: (callback) => untilUnload(win.onTabPanel((p) => callback(p && structuredClone(p)))),
     surZoneGauche: (callback) => untilUnload(win.onLeftZone(callback)),
-    // The window's terminal session, in the noyau host. Its output and states are routed by window.
+    // The window's terminal session, in the kernel host. Its output and states are routed by window.
     agent: {
       demarrer(taille) {
         // Starts the host again if it stopped (Réessayer after a crash).
@@ -147,7 +147,7 @@ export function createApi(win: WindowController): ApiFirefox {
     commande: (id, c) => void (typeof c === "string" && c !== "finRecherche" && c !== "outils" && win.command(id, c)),
     rendreFocusPage: () => win.focusPage(),
     apercuPage: async () => null,
-    // The visits live in the noyau host: the UI gets copies made in this realm.
+    // The visits live in the kernel host: the UI gets copies made in this realm.
     historique: {
       rechercher: (texte, limite, distinctes) => win.store.history.search(texte, limite, distinctes).then((v) => structuredClone(v)),
       recents: () => win.store.history.recent().then((v) => structuredClone(v)),
@@ -181,7 +181,7 @@ export function createApi(win: WindowController): ApiFirefox {
         offExit();
       });
     },
-    // The home page: widgets, their data and state, and the agent's theme, all kept by the noyau host.
+    // The home page: widgets, their data and state, and the agent's theme, all kept by the kernel host.
     accueil: {
       lire: async () => {
         let r: AccueilLu;
@@ -230,7 +230,7 @@ export function createApi(win: WindowController): ApiFirefox {
           () => null,
         ),
     },
-    // The agent's applications, kept by the noyau host (its windows through the chrome). The host checks every action
+    // The agent's applications, kept by the kernel host (its windows through the chrome). The host checks every action
     // with SchemaActionApplication; « Afficher le dossier » is the chrome's (one path segment), « Relire » the UI's.
     applications: {
       liste: () => ask<ListeApplications>("applications.liste", undefined, { atelier: "ok", applications: [] }),
@@ -255,7 +255,7 @@ export function createApi(win: WindowController): ApiFirefox {
         host.notify("applications.agir", { dossier, action, fenetre });
       },
     },
-    // The site apps, kept by the noyau host (its window actions go through the chrome); « Afficher le dossier » and
+    // The site apps, kept by the kernel host (its window actions go through the chrome); « Afficher le dossier » and
     // « Relire » are the UI's own.
     sites: {
       liste: () => ask<SiteAffiche[]>("sites.liste", undefined, []),
@@ -275,9 +275,9 @@ export function createApi(win: WindowController): ApiFirefox {
         if (action === "modifier") win.openAgent();
       },
     },
-    // The section « Projets externes »: the external MCP server, kept by the noyau host.
+    // The section « Projets externes »: the external MCP server, kept by the kernel host.
     externes: createExternesApi({ host, fenetre, dispatch: (a) => win.store.dispatch(a), untilUnload }),
-    // The Review page: its comparisons and comments, kept by the noyau host.
+    // The Review page: its comparisons and comments, kept by the kernel host.
     relecture: createRelectureApi({ host }),
     // The design mode of this window's tab; its cart column is a chrome frame (chrome/window/design-overlays.ts).
     design: createDesignApi({ win, untilUnload }),
@@ -287,7 +287,7 @@ export function createApi(win: WindowController): ApiFirefox {
       else if (ouvert === false) win.store.design.closeOverlay(t, "panier");
     },
     surVoletFerme: (callback) => untilUnload(win.store.design.overlays.onColumnClosed({ type: "fenetre", fenetreId: fenetre }, () => callback())),
-    // The agent's extensions, kept by the noyau host: what the reused space modal, empty page and command bar call.
+    // The agent's extensions, kept by the kernel host: what the reused space modal, empty page and command bar call.
     extensions: {
       pourEspace: (espaceId) => host.request<LigneExtensionEspace[]>("extensions.pourEspace", { espaceId }).then((l) => structuredClone(l), () => []),
       basculer: (cle, espaceId, actif) => extension("extensions.basculer", { cle, espaceId, actif, fenetre }),
@@ -303,7 +303,7 @@ export function createApi(win: WindowController): ApiFirefox {
       couperDeblocage: (cle) => extension("extensions.couperDeblocage", { cle }),
       installerStore: () => extension("extensions.installerStore", {}),
     } as Partial<ApiWebaios["extensions"]> as ApiWebaios["extensions"],
-    // The workflow builder: its reads and writes in the noyau host. An action's is refused in a private space with the
+    // The workflow builder: its reads and writes in the kernel host. An action's is refused in a private space with the
     // shapes of the builder's answers; its reads are checked again once answered.
     workflow: {
       catalogue: () => ask("workflow.catalogue", undefined, []),

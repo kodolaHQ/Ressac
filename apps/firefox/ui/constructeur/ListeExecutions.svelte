@@ -2,7 +2,7 @@
   import type { Executions } from "./executions.svelte";
   import { date, DECLENCHEURS, duree, STATUTS, TEINTES } from "./libelles";
 
-  /** L'onglet « Exécutions » : tout l'historique gardé, essais marqués avec leur bloc de départ. En choisir une y revient. */
+  /** The « Exécutions » tab: the whole kept history, trials marked with their starting block. Choosing one goes back there. */
   let { executions, onchoisie }: { executions: Executions; onchoisie: () => void } = $props();
 
   const choisie = $derived(executions.choisie?.id ?? null);

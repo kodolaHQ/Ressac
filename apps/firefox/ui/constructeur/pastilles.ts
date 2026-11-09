@@ -3,8 +3,7 @@ import type { DirectWidget } from "@webaios/noyau";
 export type Pastille = { statut: string; elements: number | null };
 
 /**
- * Statut de chaque bloc : celui de l'exécution choisie (complète ou résumée), remplacé par le direct pour les blocs en
- * cours.
+ * Status of each block: the chosen run's (full or summarized), replaced by the live state for blocks in progress.
  */
 export function pastillesDe(execution: { blocs: { id: string; statut: string; elements: number | null }[] } | null, direct: DirectWidget | null): Record<string, Pastille> {
   const sortie: Record<string, Pastille> = {};

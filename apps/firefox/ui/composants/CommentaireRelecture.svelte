@@ -3,7 +3,7 @@
   import { LIGNE_CHANGEE_PAGE } from "../../shared/modele";
   import { api } from "../etat.svelte";
 
-  /** Un commentaire de relecture sous ses lignes : son texte tel quel (Markdown non rendu), son état, ses actions. */
+  /** A review comment under its lines: its text as is (Markdown not rendered), its state, its actions. */
   let { projet, commentaire: c, surChange }: { projet: string; commentaire: Commentaire; surChange: () => void } = $props();
 
   let edition = $state<string | null>(null);

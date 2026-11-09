@@ -20,13 +20,13 @@
     voirWorkflow,
   }: {
     widget: WidgetAffiche;
-    /** La place affichée (celle de l'aperçu pendant un glisser). */
+    /** The place shown (the preview's during a drag). */
     placement: PlacementLibre;
-    /** Un glisser ou un redimensionnement est en cours sur la grille : le cadre ne capte pas la souris. */
+    /** A drag or resize is under way on the grid: the frame does not capture the mouse. */
     geste: boolean;
-    /** L'action demandée n'a rien changé (service des widgets absent…). */
+    /** The requested action changed nothing (widget service missing…). */
     avertissement: string | null;
-    /** L'utilisateur a refusé la lecture avec son compte : le bandeau ne revient pas. */
+    /** The user refused the read with their account: the banner does not come back. */
     refuse: boolean;
     commencer: (mode: "deplacer" | "taille", e: PointerEvent) => void;
     retirer: () => void;
@@ -41,13 +41,13 @@
 
   let menuOuvert = $state(false);
 
-  /** Relue chaque minute : « prochaine : … » passe d'aujourd'hui à demain sans attendre un changement du widget. */
+  /** Re-read every minute: « prochaine : … » goes from today to tomorrow without waiting for a widget change. */
   let maintenant = $state(new Date());
   $effect(() => {
     const minuterie = setInterval(() => (maintenant = new Date()), 60_000);
     return () => clearInterval(minuterie);
   });
-  // Jamais pour un widget qui attend l'accord de l'utilisateur : rien ne part sans lui.
+  // Never for a widget waiting for the user's grant: nothing goes out without them.
   const prochaine = $derived(
     "erreur" in widget || widget.etat.statut === "accord-requis"
       ? null
@@ -70,7 +70,7 @@
 </script>
 
 <article class="widget" class:geste data-testid="widget-{widget.id}">
-  <!-- L'en-tête sert de poignée de déplacement : le cadre du widget avale les événements de la souris. -->
+  <!-- The header is the drag handle: the widget's frame swallows the mouse events. -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <header onpointerdown={poignee}>
     {#if "erreur" in widget}
@@ -148,7 +148,7 @@
     overflow: hidden;
     color: var(--accueil-texte);
   }
-  /* Ombre plus discrète sur fond clair. */
+  /* Softer shadow on a light background. */
   @media (prefers-color-scheme: light) {
     .widget { box-shadow: 0 1px 6px rgb(0 0 0 / 0.08); }
   }
@@ -168,9 +168,9 @@
   .bandeau button { padding: 3px 10px; border-radius: 6px; border: 1px solid var(--accueil-bord); background: var(--accueil-fond); color: var(--accueil-texte); font-size: 12px; cursor: pointer; }
   .bandeau button:first-of-type { background: var(--accueil-accent); border-color: var(--accueil-accent); color: white; }
   .avertissement { margin: 0; padding: 4px 12px; font-size: 12px; }
-  /* Pendant un glisser, le cadre (dans CadreWidget) ne capte pas la souris. */
+  /* During a drag, the frame (in CadreWidget) does not capture the mouse. */
   .geste :global(iframe) { pointer-events: none; }
-  /* La poignée ne se voit qu'au survol de la carte (le rendu le plus sobre). */
+  /* The handle only shows on card hover (the most sober look). */
   .poignee-taille { position: absolute; right: 0; bottom: 0; width: 14px; height: 14px; cursor: nwse-resize; z-index: 2; opacity: 0;
     background: linear-gradient(135deg, transparent 50%, var(--accueil-texte-doux) 50%, var(--accueil-texte-doux) 60%, transparent 60%, transparent 75%, var(--accueil-texte-doux) 75%, var(--accueil-texte-doux) 85%, transparent 85%); }
   .widget:hover .poignee-taille { opacity: 1; }

@@ -4,8 +4,8 @@ import { estCleAction } from "./cible";
 
 export type SourceExecutions = Pick<ApiWebaios["accueil"], "executions" | "execution">;
 /**
- * « ▶ Lancer », « Rejouer depuis ce bloc » et le suivi en direct, adressés par la clé du workflow (`cleCible`). `lancer`
- * rend le refus d'une action (`erreur`) ; celui d'un widget n'en rend jamais.
+ * « ▶ Lancer », « Rejouer depuis ce bloc » and live tracking, addressed by the workflow's key (`cleCible`). `lancer`
+ * returns an action's refusal (`erreur`); a widget's never returns one.
  */
 export type Lanceur = {
   lancer(cle: string, saisie?: string | null): Promise<{ execution?: string; erreur?: string }>;
@@ -14,45 +14,44 @@ export type Lanceur = {
   surDirect(rappel: (e: EtatDirect) => void): () => void;
 };
 
-/** Le préfixe des refus du noyau, repris pour une demande qui échoue en route. */
+/** The prefix of the kernel's refusals, reused for a request that fails on the way. */
 const PREFIXE_REJEU = "Rejeu impossible : ";
 
 const memeJson = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
-/** Le choix de l'utilisateur, par widget et par fenêtre : changer d'onglet ne le perd pas. */
+/** The user's choice, per widget and per window: changing tab does not lose it. */
 const choix = new Map<string, string>();
 
-/** Oublie le choix des widgets qui ne sont plus sur l'accueil (celui d'une action, clé `action:<id>`, reste). */
+/** Forgets the choice of widgets no longer on home (an action's, key `action:<id>`, stays). */
 export function oublierChoixExecutions(presents: Iterable<string>): void {
   const ids = new Set(presents);
   for (const id of [...choix.keys()]) if (!ids.has(id) && !estCleAction(id)) choix.delete(id);
 }
 
 /**
- * Les exécutions du widget dans le constructeur et celle qui est choisie (pastilles, onglet « Bloc », aperçu) : par
- * défaut la dernière vraie exécution (pas un essai) ; après « Lancer », la nouvelle ; après « Rejouer », l'essai. Choisir
- * n'écrit rien.
+ * The widget's runs in the builder and the chosen one (badges, « Bloc » tab, preview): by default the latest real
+ * run (not a trial); after « Lancer », the new one; after « Rejouer », the trial. Choosing writes nothing.
  */
 export class Executions {
   liste = $state.raw<ResumeExecution[]>([]);
-  /** Choix de l'utilisateur ; null : la dernière vraie exécution. */
+  /** The user's choice; null: the latest real run. */
   voulue = $state<string | null>(null);
-  /** L'exécution choisie complète (sorties, journaux) ; null tant qu'elle n'est pas lue ou s'il n'y en a pas. */
+  /** The full chosen run (outputs, logs); null until it is read or if there is none. */
   detail = $state.raw<Execution | null>(null);
-  /** L'exécution choisie n'a pas pu être lue (chassée entre la liste et le détail, ou erreur). */
+  /** The chosen run could not be read (evicted between the list and the detail, or error). */
   introuvable = $state(false);
-  /** Ce qui tourne en ce moment (tous widgets confondus, une exécution par voie) et ce qui attend dans les files. */
+  /** What is running right now (all widgets together, one run per lane) and what waits in the queues. */
   direct = $state.raw<EtatDirect>({ courants: [], enAttente: [] });
-  /** Le dernier refus de « Rejouer » (ou de « Lancer » pour une action), en texte. */
+  /** The latest refusal of « Rejouer » (or « Lancer » for an action), as text. */
   refus = $state<string | null>(null);
-  /** Une demande « Lancer » ou « Rejouer » de ce constructeur n'a pas encore répondu. */
+  /** A « Lancer » or « Rejouer » request from this builder has not answered yet. */
   private demande = $state(false);
   readonly choisie: ResumeExecution | null = $derived(
     (this.voulue === null ? undefined : this.liste.find((e) => e.id === this.voulue)) ?? this.liste.find((e) => !e.essai) ?? null,
   );
-  /** L'exécution (ou l'essai) de ce widget qui tourne en ce moment. */
+  /** The run (or trial) of this widget that is running right now. */
   readonly enDirect: DirectWidget | null = $derived.by(() => this.direct.courants.find((c) => c.widget === this.widget) ?? null);
-  /** Une seule exécution à la fois par widget : « Lancer » et « Rejouer » attendent. */
+  /** Only one run at a time per widget: « Lancer » and « Rejouer » wait. */
   readonly occupe: boolean = $derived.by(() => this.demande || this.enDirect !== null || this.direct.enAttente.includes(this.widget));
   private requeteListe = 0;
   private requeteDetail = 0;
@@ -65,16 +64,16 @@ export class Executions {
     this.voulue = choix.get(widget) ?? null;
   }
 
-  /** Relit la liste (à l'ouverture et à chaque changement de l'accueil) ; une exécution choisie disparue est oubliée. */
+  /** Re-reads the list (at opening and on each change of home); a chosen run that disappeared is forgotten. */
   async charger(): Promise<void> {
     return this.chargerListe(true);
   }
 
-  /** Suit l'état en direct ; rend de quoi arrêter. */
+  /** Follows the live state; returns what is needed to stop. */
   suivre(): () => void {
     if (!this.lanceur) return () => {};
     let fini = false;
-    // Un événement poussé est plus récent que la lecture initiale : celle-ci ne l'écrase jamais.
+    // A pushed event is more recent than the initial read: the read never overwrites it.
     let recu = false;
     const fin = this.lanceur.surDirect((e) => {
       recu = true;
@@ -91,8 +90,8 @@ export class Executions {
   }
 
   /**
-   * Les blocs non finis ne sont pas relayés à la fin d'une exécution : quand celle de ce widget s'arrête (ou laisse la
-   * place à la suivante), la vue se recale sur l'exécution écrite au lieu de garder des pastilles « en cours ».
+   * Unfinished blocks are not relayed at the end of a run: when this widget's run stops (or gives way to the next
+   * one), the view realigns on the written run instead of keeping « en cours » badges.
    */
   private appliquerDirect(e: EtatDirect): void {
     const avant = this.enDirect;
@@ -101,13 +100,13 @@ export class Executions {
     if (avant && (!apres || apres.debut !== avant.debut || apres.genre !== avant.genre)) void this.charger().catch(() => {});
   }
 
-  /** `relire` : un détail introuvable fait relire la liste une fois (l'exécution est sans doute partie). */
+  /** `relire`: a missing detail makes the list be re-read once (the run is probably gone). */
   private async chargerListe(relire: boolean): Promise<void> {
     const n = ++this.requeteListe;
     const l = await this.source.executions(this.widget);
     if (n !== this.requeteListe) return;
     if (!memeJson(l, this.liste)) this.liste = l;
-    // Un autre constructeur de ce widget dans la fenêtre (onglet quitté pendant « Lancer ») a pu changer le choix.
+    // Another builder of this widget in the window (tab left during « Lancer ») may have changed the choice.
     const garde = choix.get(this.widget) ?? null;
     if (garde !== this.voulue) this.voulue = garde;
     if (this.voulue !== null && !l.some((e) => e.id === this.voulue)) this.garder(null);
@@ -127,9 +126,9 @@ export class Executions {
   }
 
   /**
-   * « ▶ Lancer » (avec la saisie d'une action) : une vraie exécution, choisie à sa fin ; sans id rendu (agent arrêté,
-   * refus d'une action, montré), le choix reste. Si c'est la
-   * dernière vraie, le choix redevient celui par défaut : les exécutions suivantes le reprennent.
+   * « ▶ Lancer » (with an action's input): a real run, chosen when it ends; without a returned id (agent stopped,
+   * action refusal, shown), the choice stays. If it is the latest real one, the choice goes back to the default: the
+   * following runs take it over.
    */
   async lancer(saisie?: string | null): Promise<void> {
     if (!this.lanceur || this.occupe) return;
@@ -150,7 +149,7 @@ export class Executions {
     if (execution !== undefined && this.voulue === execution && this.liste.find((e) => !e.essai)?.id === execution) this.garder(null);
   }
 
-  /** « Rejouer depuis ce bloc » avec les sorties amont de l'exécution choisie ; l'essai rendu est choisi. */
+  /** « Rejouer depuis ce bloc » with the upstream outputs of the chosen run; the returned trial is chosen. */
   async rejouer(bloc: string): Promise<void> {
     const origine = this.choisie;
     if (!this.lanceur || this.occupe || !origine) return;
@@ -168,7 +167,7 @@ export class Executions {
     await this.charger();
   }
 
-  /** false : le détail de l'exécution choisie n'a pas pu être lu (`introuvable`). */
+  /** false: the chosen run's detail could not be read (`introuvable`). */
   private async chargerDetail(): Promise<boolean> {
     const r = this.choisie;
     const n = ++this.requeteDetail;
@@ -177,7 +176,7 @@ export class Executions {
       this.introuvable = false;
       return true;
     }
-    // Déjà lue et inchangée (même fin, même statut) : rien à redemander.
+    // Already read and unchanged (same end, same status): nothing to request again.
     const d = this.detail;
     if (d && d.id === r.id && d.fin === r.fin && d.statut === r.statut) return true;
     let e: Execution | null;

@@ -4,15 +4,15 @@ import type { EtatNavigateur, IdFenetre } from "../shared/modele";
 // Pure rules of the reads and the home page: the sidebar bundle cannot import
 // node:net.
 
-/** Les profils de connexion qu'une lecture peut utiliser : ceux de l'état qu'aucun espace privé n'utilise. */
+/** The sign-in profiles a read may use: those of the state that no private space uses. */
 export function profilsLisibles(etat: Pick<EtatNavigateur, "profils" | "espaces">): string[] {
   const prives = new Set(etat.espaces.filter((e) => e.prive).map((e) => e.profil));
   return etat.profils.map((p) => p.id).filter((id) => !prives.has(id));
 }
 
 /**
- * Les profils qu'un accord peut utiliser : jamais celui d'un espace privé (même partagé avec un espace non privé).
- * Coché par défaut : celui de l'espace actif de la fenêtre, s'il est lisible.
+ * The profiles a grant may use: never a private space's (even shared with a non-private space).
+ * Checked by default: the window's active space's, if it is readable.
  */
 export function profilsPourAccord(etat: Pick<EtatNavigateur, "profils" | "espaces" | "fenetres">, fenetreId: IdFenetre | undefined): ProfilPourAccord[] {
   const fenetre = etat.fenetres.find((f) => f.id === fenetreId);
@@ -23,10 +23,10 @@ export function profilsPourAccord(etat: Pick<EtatNavigateur, "profils" | "espace
   });
 }
 
-/** Copie de `isIP` (chrome/shims/net.ts) : 4 ou 6 seulement, sans node:net. */
+/** Copy of `isIP` (chrome/shims/net.ts): 4 or 6 only, without node:net. */
 const estIp = (h: string): 0 | 4 | 6 => (/^(\d{1,3}\.){3}\d{1,3}$/.test(h) ? 4 : h.includes(":") && /^[0-9a-f:.]+$/i.test(h) ? 6 : 0);
 
-/** Copie de `adresseLocale` (packages/noyau/src/workflows/acces.ts). */
+/** Copy of `adresseLocale` (packages/noyau/src/workflows/acces.ts). */
 export function adresseLocale(hote: string): boolean {
   const h = hote.replace(/^\[|\]$/g, "").toLowerCase().replace(/\.+$/, "");
   if (!h || h === "localhost" || /\.(localhost|local|internal|home\.arpa)$/.test(h)) return true;
@@ -39,7 +39,7 @@ export function adresseLocale(hote: string): boolean {
   return false;
 }
 
-/** Seul un lien http(s) d'un widget s'ouvre : ni `javascript:`, ni `file:`, ni une adresse de la machine (urlOuvrable). */
+/** Only a widget's http(s) link opens: no `javascript:`, no `file:`, no machine address (urlOuvrable). */
 export function urlOuvrable(brute: string): boolean {
   let u: URL;
   try {

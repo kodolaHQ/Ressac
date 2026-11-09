@@ -6,7 +6,7 @@
   type Ligne = { valeurs: Record<string, string>; lien: Lien | null };
   let { p, ctx }: { p: Collection<Ligne> & { colonnes: { champ: string; libelle: string }[] }; ctx: ContextePage } = $props();
 
-  /** Clic sur un en-tête : tri croissant ; second clic sur le même : sens inverse. */
+  /** Click on a header: ascending sort; second click on the same one: reverse order. */
   let tri = $state<{ champ: string; sens: "asc" | "desc" } | null>(null);
   const avecLien = $derived(sections(p).some((s) => s.elements.some((l) => l.lien)));
   const triees = $derived(

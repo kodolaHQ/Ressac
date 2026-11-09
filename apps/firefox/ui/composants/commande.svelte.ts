@@ -1,8 +1,8 @@
 import { api } from "../etat.svelte";
 
 /**
- * Barre de commande (⌘T, ⌘L). `mode` : "nouveau" ouvre dans un nouvel onglet, "actif" remplace la page de l'onglet
- * actif. `texte` : saisie de départ. Chaque ouverture crée un nouvel objet : rouvrir en cours de route réinitialise la saisie.
+ * Command bar (⌘T, ⌘L). `mode`: "nouveau" opens in a new tab, "actif" replaces the active tab's page. `texte`:
+ * starting input. Each opening creates a new object: reopening midway resets the input.
  */
 export const commande = $state<{ ouverte: null | { mode: "nouveau" | "actif"; texte: string } }>({ ouverte: null });
 
@@ -11,12 +11,12 @@ export function ouvrirCommande(mode: "nouveau" | "actif", texte = ""): void {
 }
 
 /**
- * Compteur que la page vide surveille : chaque hausse lui rend le clavier (sur l'accueil, pas de vue native à qui le
- * rendre). Sans effet quand la page vide n'est pas montée (un onglet ou un panneau est affiché).
+ * Counter the empty page watches: each increase gives it the keyboard back (on home, there is no native view to give
+ * it to). No effect when the empty page is not mounted (a tab or a panel is shown).
  */
 export const focusPageVide = $state({ n: 0 });
 
-/** `rendreFocus` : le clavier retourne à la page affichée (Échap, clic sur le voile, validation) ou au champ de l'accueil. */
+/** `rendreFocus`: the keyboard returns to the shown page (Escape, click on the veil, validation) or to the home field. */
 export function fermerCommande(rendreFocus = false): void {
   if (!commande.ouverte) return;
   commande.ouverte = null;

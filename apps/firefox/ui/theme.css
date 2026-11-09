@@ -7,22 +7,22 @@
   --texte-doux: #9a9aa6;
   --accent: #8b7cf6;
   --bord: #3a3a42;
-  /* États des applications (pastilles) et actions destructrices. */
+  /* App states (badges) and destructive actions. */
   --en-marche: #4fbf6a;
   --en-cours: #e0a23a;
   --en-erreur: #e5736b;
   --arretee: #77777f;
-  /* Pastille d'accès de l'agent : lit / inspecte, agit. */
+  /* Agent access badge: reads / inspects, acts. */
   --acces-lecture: #7aa7ff;
   --acces-lecture-fond: #2d6cdf33;
   --acces-agir: #fbbf24;
   --acces-agir-fond: #f59e0b33;
   --acces-couper: #c2410c;
   --acces-couper-survol: #ea580c;
-  /* Modales : le voile qui assombrit la fenêtre, l'ombre de la carte. */
+  /* Modals: the veil that darkens the window, the card's shadow. */
   --voile: rgb(0 0 0 / 0.45);
   --ombre-modale: 0 18px 50px rgb(0 0 0 / 0.5);
-  /* Encadrés de la page d'une action : info, avis, attention. */
+  /* Callouts of an action's page: info, notice, warning. */
   --info-fond: #2d6cdf2e;
   --avis-fond: #8b7cf62e;
   --attention-fond: #e0a23a2e;

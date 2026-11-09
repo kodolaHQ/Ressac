@@ -7,7 +7,7 @@
   let ouverte = $state(false);
   let racine = $state<HTMLSpanElement>();
 
-  /** Un clic ailleurs (hors de la pastille et de sa bulle) ou Échap referme la bulle. */
+  /** A click elsewhere (outside the badge and its bubble) or Escape closes the bubble. */
   function dehors(e: PointerEvent) {
     if (ouverte && !racine?.contains(e.target as Node) && !(e.target as Element).closest?.('[data-testid="bulle-acces"]')) ouverte = false;
   }
@@ -25,7 +25,7 @@
     aria-expanded={ouverte}
     draggable="false"
     onclick={(e) => {
-      e.stopPropagation(); // ne pas activer l'onglet
+      e.stopPropagation(); // do not activate the tab
       ouverte = !ouverte;
     }}
     onkeydown={(e) => e.stopPropagation()}

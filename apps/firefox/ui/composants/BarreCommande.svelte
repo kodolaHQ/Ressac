@@ -24,8 +24,8 @@
   import Icone, { type NomIcone } from "./Icone.svelte";
 
   /**
-   * Barre de commande (⌘T, ⌘L) : une boîte au-dessus de la page figée et floutée (FondFige, monté par App). Le champ est
-   * monté tout de suite : la frappe qui suit le raccourci n'attend pas la capture.
+   * Command bar (⌘T, ⌘L): a box above the frozen, blurred page (FondFige, mounted by App). The field is mounted right
+   * away: the keystroke following the shortcut does not wait for the capture.
    */
   let {
     fenetre,
@@ -35,20 +35,20 @@
   }: {
     fenetre: EtatFenetre;
     ongletActif: Onglet | undefined;
-    /** Le panneau ⌃Tab est ouvert par-dessus : il garde Échap. */
+    /** The ⌃Tab panel is open on top: it keeps Escape. */
     cede: boolean;
-    /** Ferme le panneau de l'interface (historique…) posé sur la page. */
+    /** Closes the interface panel (history…) laid over the page. */
     fermerPanneau: () => void;
   } = $props();
 
-  // Les actions ne sont pas disponibles dans un espace privé (un espace introuvable compte comme privé), comme sur la page vide.
+  // Actions are not available in a private space (a missing space counts as private), like on the empty page.
   const enPrive = $derived(etat.valeur?.espaces.find((e) => e.id === fenetre.espaceActif)?.prive ?? true);
   let actions = $state.raw<ActionAffichee[]>([]);
   let projets = $state.raw<AppliSource[]>([]);
   let sites = $state.raw<AppliSource[]>([]);
   let historique = $state.raw<Visite[]>([]);
 
-  /** Relit une source au démarrage et à chacun de ses changements ; seule la dernière réponse compte. */
+  /** Re-reads a source at startup and on each of its changes; only the last reply counts. */
   function suivre<T>(lire: () => Promise<T>, poser: (v: T) => void, surChange: (rappel: () => void) => () => void): () => void {
     let derniere = 0;
     const charger = () => {
@@ -72,7 +72,7 @@
   $effect(() => suivre(() => api.applications.liste(), (l) => (projets = l.applications.map(appliSourceDeProjet).filter((a) => a !== null)), (r) => api.applications.surChange(r)));
   $effect(() => suivre(() => api.sites.liste(), (l) => (sites = l.map(appliSourceDeSite)), (r) => api.sites.surChange(r)));
 
-  // Les onglets que l'espace actif affiche : même portée que ⌃Tab.
+  // The tabs the active space shows: same scope as ⌃Tab.
   const onglets = $derived.by<OngletSource[]>(() => {
     const e = etat.valeur;
     if (!e) return [];
@@ -88,7 +88,7 @@
   let refus = $state("");
   let requete = 0;
 
-  // L'historique est redemandé à chaque frappe ; une réponse arrivée après une frappe plus récente est ignorée.
+  // History is requested again on each keystroke; a reply that arrives after a more recent keystroke is ignored.
   $effect(() => {
     const t = texte.trim();
     const n = ++requete;
@@ -105,24 +105,24 @@
   let choisieBrute = $state(0);
   let champ: HTMLInputElement | undefined = $state();
 
-  /** Une action choisie qui attend sa saisie : la barre la demande dans un second champ, la liste se cache. */
+  /** A chosen action awaiting its input: the bar asks for it in a second field, the list hides. */
   let parametre = $state<{ id: string; nom: string; libelle: string } | null>(null);
   let valeurParametre = $state("");
   let champParametre: HTMLInputElement | undefined = $state();
 
   const mode = $derived(commande.ouverte?.mode ?? "nouveau");
   const lignes: LigneCommande[] = $derived(lignesCommande(texte, sources, mode === "actif" ? (ongletActif?.url ?? null) : null, ongletActif?.id ?? null));
-  // Une source arrivée tard peut raccourcir la liste : la sélection reste sur une ligne qui existe (la première sinon).
+  // A late source may shorten the list: the selection stays on a row that exists (the first otherwise).
   const choisie = $derived(choisieBrute >= 0 && choisieBrute < lignes.length ? choisieBrute : 0);
   const choisir = (i: number) => (choisieBrute = i);
 
-  // Une action lancée : une seconde Entrée ne la relance pas, et sa réponse arrivée après une fermeture ou une autre
-  // ouverture (chacune est un nouvel objet) est ignorée.
+  // An action launched: a second Enter does not relaunch it, and its reply arriving after a close or another
+  // opening (each is a new object) is ignored.
   let actionEnCours = false;
-  /** Change à chaque lancement et à chaque passage liste ↔ saisie : la réponse d'un lancement abandonné est ignorée. */
+  /** Changes on each launch and each list ↔ input switch: the reply of an abandoned launch is ignored. */
   let lancement = 0;
 
-  // À chaque ouverture (la première, ou une réouverture dans l'autre mode) : saisie de départ, tout sélectionné en mode « actif ».
+  // On each opening (the first, or a reopening in the other mode): starting input, all selected in « actif » mode.
   $effect(() => {
     const o = commande.ouverte;
     if (!o) return;
@@ -137,15 +137,15 @@
     });
   });
 
-  /** Seule fonction qui agit : une ligne choisie (Entrée ou clic). */
+  /** The only function that acts: a chosen row (Enter or click). */
   function executer(l: LigneCommande) {
     const cible = mode === "actif" ? (ongletActif?.id ?? null) : null;
     if (l.type === "defaut" && l.texte === "") {
-      // Accueil : sans effet s'il est déjà affiché ; un panneau de l'interface posé dessus se referme.
+      // Home: no effect if it is already shown; an interface panel laid over it closes.
       api.agir({ type: "afficherPageVide", fenetreId: fenetre.id });
       fermerPanneau();
       fermerCommande();
-      // Déjà sur l'accueil, il n'est pas remonté : son champ reprend le clavier (et le prend en se montant sinon).
+      // Already on home, it is not remounted: its field takes the keyboard back (and takes it when mounting otherwise).
       focusPageVide.n++;
       return;
     }
@@ -157,7 +157,7 @@
     if (l.type === "defaut") api.naviguer(cible, l.texte);
     else if (l.type === "historique") api.naviguer(cible, l.url);
     else if (l.type === "onglet") {
-      // Comme la barre latérale et ⌃Tab : un essentiel s'ouvre par son favori (son onglet peut être celui d'un espace frère).
+      // Like the sidebar and ⌃Tab: an essential opens through its favorite (its tab may belong to a sibling space).
       const lien = etat.valeur?.onglets[l.onglet.id]?.lien;
       api.agir(lien?.type === "essentiel" ? { type: "ouvrirFavori", fenetreId: fenetre.id, genre: "essentiel", id: lien.id } : { type: "activerOnglet", id: l.onglet.id });
     } else if (l.appli.genre === "projet") api.applications.agir(l.appli.id, l.appli.action);
@@ -165,7 +165,7 @@
     fermerCommande(true);
   }
 
-  /** Ouvre la page de l'action et la lance avec `saisie` (sans saisie requise et absente : la page la demande). */
+  /** Opens the action's page and launches it with `saisie` (without a required input and absent: the page asks for it). */
   function lancerAction(id: string, saisie: string | null) {
     if (actionEnCours) return;
     const o = commande.ouverte;
@@ -187,7 +187,7 @@
     );
   }
 
-  /** Passe à la saisie de l'action, préremplie avec l'adresse de la page affichée, toute sélectionnée. */
+  /** Switches to the action's input, prefilled with the shown page's address, all selected. */
   function entrerParametre(l: Extract<LigneCommande, { type: "action" }> & { parametre: string }) {
     lancement++;
     actionEnCours = false;
@@ -200,7 +200,7 @@
     });
   }
 
-  // La page affichée navigue pendant la saisie : l'adresse proposée suit, tant que l'utilisateur ne l'a pas retouchée.
+  // The shown page navigates during input: the proposed address follows, as long as the user has not edited it.
   const defautParametre = $derived(parametreParDefaut(ongletActif?.url));
   let prerempli = "";
   $effect(() => {
@@ -214,7 +214,7 @@
     });
   });
 
-  /** Revient à la liste, le texte tapé intact. */
+  /** Goes back to the list, the typed text intact. */
   function sortirParametre() {
     lancement++;
     actionEnCours = false;
@@ -228,7 +228,7 @@
     if (e.key === "Enter") {
       if (!e.repeat) lancerAction(parametre.id, valeurParametre.trim() || null);
     } else if (e.key === "Backspace" && valeurParametre === "") {
-      // Une touche tenue efface le champ sans revenir à la liste (ni effacer ensuite le texte tapé).
+      // A held key clears the field without going back to the list (nor clearing the typed text afterwards).
       if (!e.repeat) sortirParametre();
     }
     else if (e.key !== "Tab") return;
@@ -237,9 +237,9 @@
   }
 
   /**
-   * Les touches que la barre traite s'arrêtent ici : les modales cachées dessous (demande de l'agent, réglages d'un
-   * espace) écoutent la fenêtre et agiraient sinon sur ce qu'on ne voit pas. Tab et ⇧Tab ne font rien : le clavier
-   * reste dans le champ, rien derrière le voile ne peut le prendre.
+   * The keys the bar handles stop here: the modals hidden below (agent request, space settings) listen to the window
+   * and would otherwise act on what cannot be seen. Tab and ⇧Tab do nothing: the keyboard stays in the field, nothing
+   * behind the veil can take it.
    */
   function touche(e: KeyboardEvent) {
     if (e.isComposing) return;
@@ -249,7 +249,7 @@
       const l = lignes[choisie];
       if (l && !e.repeat) executer(l);
     } else if (e.key === "Tab") {
-      // Tab sur une action qui attend sa saisie : on la donne tout de suite, comme Entrée.
+      // Tab on an action awaiting its input: it is given right away, like Enter.
       const l = lignes[choisie];
       if (l && demandeParametre(l) && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) entrerParametre(l);
     } else return;
@@ -259,7 +259,7 @@
 
   const libelle = (l: LigneCommande): string =>
     l.type === "defaut" ? l.libelle : l.type === "action" ? l.nom : l.type === "onglet" ? l.onglet.titre : l.type === "appli" ? l.appli.nom : l.titre || l.url;
-  // L'historique ne retient pas de favicon : celui du site, à l'adresse habituelle (sauf visite privée, rien n'en sort).
+  // History keeps no favicon: the site's, at the usual address (except in a private visit, nothing leaves).
   const faviconVisite = (url: string): string | null =>
     /^https?:\/\//i.test(url) && historique.some((v) => v.url === url && !v.prive) ? `${new URL(url).origin}/favicon.ico` : null;
   const favicon = (l: LigneCommande): string | null =>
@@ -292,15 +292,15 @@
             : "horloge";
 </script>
 
-<!-- En capture : la barre passe avant tout le reste (modale, historique…), et Échap ne ferme qu'elle. -->
+<!-- In capture: the bar goes before everything else (modal, history…), and Escape only closes it. -->
 <svelte:window
   onblur={() => fermerCommande()}
   onkeydowncapture={(e) => {
     if (e.key !== "Escape" || cede) return;
     e.preventDefault();
     e.stopImmediatePropagation();
-    // Dans la saisie d'une action, Échap revient d'abord à la liste.
-    // Une touche tenue ne fait que ce premier pas.
+    // In an action's input, Escape first goes back to the list.
+    // A held key only does that first step.
     if (parametre) {
       if (!e.repeat) sortirParametre();
     } else if (!e.repeat) fermerCommande(true);
@@ -309,7 +309,7 @@
 
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 <div class="fond" onclick={(e) => e.target === e.currentTarget && fermerCommande(true)}>
-  <!-- Un clic dans la boîte hors du champ (marge, lignes, refus) ne lui prend pas le focus ; le clic d'une ligne agit quand même. -->
+  <!-- A click in the box outside the field (margin, rows, refusal) does not take its focus; a row's click still acts. -->
   <div class="boite" data-testid="barre-commande" role="dialog" aria-label="Barre de commande" tabindex="-1" onmousedown={(e) => !(e.target instanceof HTMLInputElement) && e.preventDefault()}>
     {#if parametre}
       <div class="ligne-parametre">

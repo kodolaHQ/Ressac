@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { ApiDesign, ElementAffiche, LotAffiche } from "../../shared/api";
 
-  /** Le panier d'un projet : ses remarques, et l'envoi à sa destination. */
+  /** A project's basket: its remarks, and sending to its destination. */
   let {
     api,
     projet,

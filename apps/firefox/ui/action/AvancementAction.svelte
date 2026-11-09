@@ -5,15 +5,15 @@
   import { api } from "../etat.svelte";
 
   /**
-   * L'avancement d'une exécution de l'action, vu par `direct()` : une ligne par bloc commencé (« Lecture de … » pour un
-   * bloc qui lit, sinon le libellé du catalogue de son type ; le compteur « 7 / 12 » d'un bloc par élément), puis
-   * « Mise en page… » ; en file : « En attente ».
-   * `courante` null et `enAttente` faux : rien à montrer.
+   * The progress of an action run, as seen by `direct()`: one line per started block (« Lecture de … » for a block that
+   * reads, otherwise the catalog label of its type; the « 7 / 12 » counter of a per-item block), then
+   * « Mise en page… »; queued: « En attente ».
+   * `courante` null and `enAttente` false: nothing to show.
    */
   let { courante, enAttente, arreter }: { courante: DirectAction | null; enAttente: boolean; arreter: () => void } = $props();
 
-  // Le noyau oublie le compte d'un bloc par élément à sa fin : la ligne garde le dernier vu (« 3 / 3 »). Une nouvelle
-  // exécution remonte ce composant (clé sur son début), rien ne se mélange.
+  // The kernel forgets a per-item block's count when it ends: the line keeps the last one seen (« 3 / 3 »). A new
+  // run remounts this component (keyed on its start), nothing gets mixed up.
   let comptes = $state<Record<string, { faits: number; total: number }>>({});
   $effect(() => {
     for (const [id, b] of Object.entries(courante?.blocs ?? {})) {
@@ -24,7 +24,7 @@
     }
   });
   const lignes = $derived(Object.entries(courante?.blocs ?? {}).map(([id, b]) => ({ id, ...b, compte: b.total !== undefined ? { faits: b.faits ?? 0, total: b.total } : comptes[id] })));
-  /** Le libellé du catalogue de chaque type de bloc ; l'id du bloc tant qu'il n'est pas lu (ou type inconnu). */
+  /** The catalog label of each block type; the block id until it is read (or unknown type). */
   let libelles = $state.raw<ReadonlyMap<string, string>>(new Map());
   $effect(() =>
     untrack(() => {

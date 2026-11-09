@@ -13,12 +13,12 @@
     agir: { icone: "⚡", nom: "Agir sur la page" },
   };
 
-  // La page web (une vue native) couvre toujours l'interface : la bulle reste dans la colonne de la barre latérale,
-  // sous la pastille, et ne dépasse pas le bas de la fenêtre. Elle se replace si la fenêtre change de taille.
-  /** Déplace la bulle sous <body> : un ancêtre transformé ou rogné ferait de lui son repère `fixed`. */
+  // The web page (a native view) always covers the interface: the bubble stays in the sidebar column, under the
+  // badge, and does not go past the bottom of the window. It repositions if the window is resized.
+  /** Moves the bubble under <body>: a transformed or clipped ancestor would make it the `fixed` reference. */
   function souscorps(noeud: HTMLElement) {
     document.body.append(noeud);
-    noeud.focus(); // le clavier (Échap) vise l'interface, pas la page
+    noeud.focus(); // the keyboard (Escape) targets the interface, not the page
     return { destroy: () => noeud.remove() };
   }
   let hauteur = $state(0);
@@ -29,13 +29,13 @@
     void fenetreH;
     const colonne = ancre.closest("aside")?.getBoundingClientRect();
     const r = ancre.getBoundingClientRect();
-    // Sans barre latérale (pastille d'une fenêtre d'appli), la bulle s'aligne sur le bord droit de la pastille.
+    // Without a sidebar (app window badge), the bubble aligns with the badge's right edge.
     const largeur = colonne ? Math.max(120, colonne.width - 2 * MARGE) : Math.max(120, Math.min(280, fenetreW - 2 * MARGE));
     const gauche = colonne ? colonne.left + MARGE : Math.max(MARGE, r.right - largeur);
     return { left: gauche, width: largeur, top: Math.max(MARGE, Math.min(r.bottom + 6, fenetreH - hauteur - MARGE)) };
   });
   $effect(() => {
-    // Lu puis écrit : sans untrack, l'effet se relancerait lui-même.
+    // Read then written: without untrack, the effect would rerun itself.
     untrack(() => acces.bullesOuvertes++);
     return () => untrack(() => acces.bullesOuvertes--);
   });

@@ -3,15 +3,15 @@ import type { ApiPastille } from "../shared/api";
 import type { EtatAcces } from "../shared/modele";
 
 /**
- * Seule partie de l'API que partagent l'interface d'une fenêtre et la pastille d'une fenêtre d'appli (dont le preload
- * n'expose que cela) : ce module ne doit rien lire d'autre sur `window.webaios`.
+ * The only part of the API shared by a window's interface and an app window's badge (whose preload exposes nothing
+ * else): this module must read nothing else on `window.webaios`.
  */
 export const apiAcces: Pick<ApiPastille, "acces" | "surAcces"> = window.webaios;
 
-/** Accès de l'agent aux onglets (id d'onglet → ce qu'il peut lire ou faire), et nom de l'agent qui les détient. */
+/** The agent's access to tabs (tab id → what it can read or do), and the name of the agent holding them. */
 export const acces = $state<{ liste: Record<string, EtatAccesOnglet>; agent: string; bullesOuvertes: number }>({ liste: {}, agent: "L'agent", bullesOuvertes: 0 });
 
-let diffuse = false; // une diffusion est plus récente que la réponse initiale : celle-ci est ignorée
+let diffuse = false; // a broadcast is newer than the initial reply: the reply is ignored
 const appliquerAcces = (e: EtatAcces) => {
   acces.liste = e.onglets;
   acces.agent = e.agent;
@@ -24,7 +24,7 @@ void apiAcces.acces.etat().then((e) => {
   if (!diffuse) appliquerAcces(e);
 });
 
-/** L'accès de l'agent à cet onglet, s'il lit la page ou détient un droit (un outil en cours seul ne montre rien). */
+/** The agent's access to this tab, if it reads the page or holds a right (a running tool alone shows nothing). */
 export function accesDe(id: string): EtatAccesOnglet | undefined {
   const e = acces.liste[id];
   return e && (e.lecture || e.droits.length) ? e : undefined;

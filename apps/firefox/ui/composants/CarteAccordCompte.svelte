@@ -10,12 +10,12 @@
     autoriser,
     fermer,
   }: {
-    /** Ce qui demande l'accord : un widget de l'accueil ou une action. */
+    /** What asks for the grant: a home widget or an action. */
     sujet: "widget" | "action";
     nom: string;
     domaines: string[];
     publiques: string[];
-    /** Les profils proposés (jamais celui d'un espace privé), lus par le service du sujet. */
+    /** The profiles offered (never a private space's), read by the subject's service. */
     profilsPourAccord: () => Promise<ProfilPourAccord[]>;
     autoriser: (profil: string) => void;
     fermer: () => void;

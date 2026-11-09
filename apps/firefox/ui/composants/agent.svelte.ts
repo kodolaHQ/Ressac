@@ -1,2 +1,2 @@
-/** Demandes de focus du terminal de l'agent (⌘J) : chaque incrément le lui donne. */
+/** Focus requests for the agent's terminal (⌘J): each increment gives it the focus. */
 export const focusAgent = $state({ n: 0 });

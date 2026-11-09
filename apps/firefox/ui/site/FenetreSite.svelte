@@ -6,7 +6,7 @@
   import type { EtatFenetreSite } from "../../shared/sites";
   import type { ApiSite } from "../../shared/api";
 
-  /** L'unique API de cette page : le process principal sait de quelle appli elle est l'interface. */
+  /** The only API of this page: the main process knows which app it is the interface of. */
   const api = (window as unknown as { webaios: { site: ApiSite } }).webaios.site;
   let etat = $state<EtatFenetreSite | null>(null);
 
@@ -24,7 +24,7 @@
 
 {#if etat}
   <BarreSite {etat} {api} />
-  <!-- Sous la barre : la vue du site (posée par le process principal) en vue « site », l'accueil sinon. -->
+  <!-- Under the bar: the site's view (set by the main process) in « site » view, home otherwise. -->
   {#if etat.vue === "accueil"}
     <CadreAccueil id={etat.id} {api} />
   {:else if etat.vue === "accord" && etat.accord}

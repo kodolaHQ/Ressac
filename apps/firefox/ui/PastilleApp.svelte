@@ -3,14 +3,14 @@
   import { acces, accesDe } from "./acces.svelte";
   import PastilleAcces from "./composants/PastilleAcces.svelte";
 
-  /** `app:<dossier>` : l'unique id dont cette vue montre l'accès. */
+  /** `app:<folder>`: the only id whose access this view shows. */
   let { id }: { id: string } = $props();
   const etat = $derived(accesDe(id));
   const api = window.webaios as unknown as import("../shared/api").ApiPastille;
   let menuOuvert = $state(false);
   let design = $state<EtatDesign | null>(null);
   let racine = $state<HTMLElement>();
-  // La vue grandit tant que la bulle ou le menu est ouvert, et ne gêne l'appli que pendant ce temps.
+  // The view grows while the bubble or the menu is open, and only gets in the app's way during that time.
   $effect(() => api.pastilleTaille(acces.bullesOuvertes > 0 || menuOuvert));
 
   async function basculerMenu() {

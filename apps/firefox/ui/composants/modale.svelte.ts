@@ -2,14 +2,15 @@ import type { Bornes } from "../../shared/api";
 import type { DemandeEnAttente } from "../../shared/modele";
 
 /**
- * Modale d'une demande de l'agent, montée au niveau de la fenêtre. `masqueurs` : nombre de fonds figés montés (modale,
- * panneau ⌃Tab) ; au-dessus de 0, la vue native de la page s'efface (elle les couvrirait). `zone` : dernières bornes de la zone de contenu, où placer la capture floutée de la page.
+ * Modal for an agent request, mounted at window level. `masqueurs`: number of mounted frozen backgrounds (modal,
+ * ⌃Tab panel); above 0, the page's native view fades (it would cover them). `zone`: last bounds of the content area,
+ * where to place the page's blurred capture.
  */
 export const modale = $state<{ masqueurs: number; zone: Bornes | null }>({ masqueurs: 0, zone: null });
 
 /**
- * Les demandes de l'agent (lecture, outils de développement, données d'un widget) et les cartes d'accord des extensions
- * s'ouvrent en modale ; celles des sites restent un bandeau.
+ * The agent's requests (read, dev tools, widget data) and the extensions' grant cards open as a modal; those from
+ * sites stay a banner.
  */
 export const estDemandeAgent = (d: DemandeEnAttente) =>
   d.permissions.includes("lire-onglet") ||

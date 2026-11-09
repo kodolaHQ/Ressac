@@ -2,8 +2,8 @@
   import type { EditionWorkflow } from "../../shared/api";
 
   /**
-   * L'action, en lecture seule : `action.json` n'est jamais écrit par WebAiOs (ses sources, sa saisie et sa consigne de
-   * mise en page se changent en le demandant à l'agent). Tout s'affiche en texte.
+   * The action, read-only: `action.json` is never written by WebAiOs (its sources, its input and its page layout
+   * instruction are changed by asking the agent). Everything shows as text.
    */
   let { action }: { action: NonNullable<EditionWorkflow["action"]> | null } = $props();
 </script>

@@ -9,9 +9,9 @@ import { oublierChoixExecutions } from "./executions.svelte";
 type Position = { x: number; y: number };
 export type Validation = { ok: true } | { ok: false; erreur: string; bloc?: string };
 export type EtatEnregistrement = "enregistre" | "en-cours" | { invalide: string; bloc?: string } | { erreur: string };
-/** `illisible` : `workflow.json` n'est pas lisible à l'ouverture (JSON coupé…) ; `introuvable` : ni widget ni récolte. */
+/** `illisible`: `workflow.json` is not readable at opening (truncated JSON…); `introuvable`: neither widget nor harvest. */
 export type Chargement = "chargement" | "pret" | "introuvable" | { illisible: string };
-/** Lecture et écriture du workflow, adressées par la clé du workflow (`cleCible`). */
+/** Reading and writing the workflow, addressed by the workflow's key (`cleCible`). */
 export type Depot = {
   lire(cle: string): ReturnType<ApiWebaios["workflow"]["lire"]>;
   enregistrer(cle: string, brouillon: Brouillon): ReturnType<ApiWebaios["workflow"]["enregistrer"]>;
@@ -21,42 +21,41 @@ export type Depot = {
 export type Viewport = { x: number; y: number; zoom: number };
 
 const PREFIXE_NON_ENREGISTRE = /^Non enregistré : /;
-/** Un geste pendant que le bandeau propose la version de l'agent : rien ne part avant le choix de l'utilisateur. */
+/** A gesture while the banner offers the agent's version: nothing goes out before the user's choice. */
 export const EN_ATTENTE_DU_CHOIX = "l'agent a modifié le workflow, choisis une version";
 const memeJson = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
 /**
- * L'état d'édition du workflow d'un widget dans cette fenêtre : brouillon, historique, validation, enregistrement.
- * Seul un geste de l'utilisateur passe par `modifier` (et donc enregistre) : ouvrir, relire, réorganiser ou sélectionner
- * n'écrivent jamais.
+ * The editing state of a widget's workflow in this window: draft, history, validation, saving. Only a gesture from
+ * the user goes through `modifier` (and so saves): opening, re-reading, rearranging or selecting never write.
  */
 export class Edition {
   brouillon = $state.raw<Brouillon | null>(null);
   validation = $state.raw<Validation>({ ok: true });
   avertissements = $state.raw<Avertissement[]>([]);
   etatEnregistrement = $state.raw<EtatEnregistrement>("enregistre");
-  /** La dernière version vue sur le disque (ou confirmée par un enregistrement). */
+  /** The latest version seen on disk (or confirmed by a save). */
   dernierConnu = $state.raw<Brouillon | null>(null);
   bandeau = $state<null | "proposer" | "illisible">(null);
-  /** Positions affichées : celles du brouillon, ou la disposition automatique d'un workflow qui n'en a pas. */
+  /** Displayed positions: the draft's, or the automatic layout of a workflow that has none. */
   positions = $state.raw<Record<string, Position>>({});
   chargement = $state.raw<Chargement>("chargement");
   widget = $state.raw<NonNullable<EditionWorkflow["widget"]> | null>(null);
-  /** Ce que déclare l'action dont c'est le workflow ; null pour un widget. */
+  /** What the action whose workflow this is declares; null for a widget. */
   action = $state.raw<NonNullable<EditionWorkflow["action"]> | null>(null);
   origine = $state<"fichier" | "implicite">("fichier");
-  /** Le workflow sur le disque est valide : « Lancer » a un sens. */
+  /** The workflow on disk is valid: « Lancer » makes sense. */
   disqueValide = $state(false);
-  /** Vue du canevas, gardée quand l'onglet change (pas de recadrage au retour). */
+  /** Canvas view, kept when the tab changes (no reframing on return). */
   viewport: Viewport | null = null;
 
   private historique: Historique | null = null;
-  /** Version du disque que le bandeau propose. */
+  /** Disk version the banner offers. */
   private versionDisque: { brouillon: Brouillon; lecture: EditionWorkflow } | null = null;
-  /** Brouillons partis à l'enregistrement, pas encore confirmés : leur écho sur le disque est ignoré. */
+  /** Drafts sent for saving, not yet confirmed: their echo on disk is ignored. */
   private envoyes: Brouillon[] = [];
   private prochain: Brouillon | null = null;
-  /** Brouillon retenu pendant le bandeau « proposer » : envoyé par « Garder la mienne », abandonné sinon. */
+  /** Draft held during the « proposer » banner: sent by « Garder la mienne », dropped otherwise. */
   private retenu: Brouillon | null = null;
   private enregistrementEnCours = false;
   private lecture = 0;
@@ -66,7 +65,7 @@ export class Edition {
     private readonly depot: Depot,
   ) {}
 
-  /** Première lecture ; ensuite, `relire`. */
+  /** First read; afterwards, `relire`. */
   async ouvrir(): Promise<void> {
     if (this.chargement !== "chargement") return this.relire();
     const n = ++this.lecture;
@@ -96,7 +95,7 @@ export class Edition {
     this.chargement = "pret";
   }
 
-  /** Affiche `disque` tel que lu (validation et avertissements du disque) ; n'écrit rien. */
+  /** Shows `disque` as read (validation and warnings of the disk); writes nothing. */
   private adopterLecture(disque: Brouillon, l: EditionWorkflow): void {
     this.brouillon = disque;
     this.positions = positionsAffichees(disque, this.positions);
@@ -109,12 +108,12 @@ export class Edition {
     this.versionDisque = null;
   }
 
-  /** `workflow.json` a peut-être changé (l'agent l'écrit, ou c'est l'écho d'un enregistrement) : n'écrit rien. */
+  /** `workflow.json` may have changed (the agent writes it, or it is the echo of a save): writes nothing. */
   async relire(): Promise<void> {
     const n = ++this.lecture;
     const l = await this.depot.lire(this.id);
     if (n !== this.lecture) return;
-    // L'agent réécrit peut-être widget.json (ou action.json) : le canevas reste tel quel.
+    // The agent may be rewriting widget.json (or action.json): the canvas stays as is.
     if (!l) return;
     this.widget = l.widget ?? null;
     this.action = l.action ?? null;
@@ -141,7 +140,7 @@ export class Edition {
       this.bandeau = "proposer";
       return;
     }
-    // Ignorer : le disque est le brouillon, sa dernière version connue ou un écho.
+    // Ignore: the disk is the draft, its last known version or an echo.
     this.origine = l.origine;
     if (memeBrouillon(disque!, this.brouillon)) {
       this.dernierConnu = disque;
@@ -149,7 +148,7 @@ export class Edition {
       this.bandeau = null;
       this.versionDisque = null;
       if (this.retenu) {
-        // Le disque a rejoint le brouillon retenu : plus rien à choisir ni à envoyer.
+        // The disk caught up with the held draft: nothing left to choose or send.
         this.retenu = null;
         this.etatEnregistrement = l.validation.ok ? "enregistre" : invalide(l.validation.erreur, l.validation.bloc);
       }
@@ -163,7 +162,7 @@ export class Edition {
     }
   }
 
-  /** Bandeau : abandonner le brouillon pour la version du disque. */
+  /** Banner: drop the draft for the disk version. */
   prendreVersionDisque(): void {
     const v = this.versionDisque;
     if (!v || !this.historique) return;
@@ -175,8 +174,8 @@ export class Edition {
   }
 
   /**
-   * Bandeau : garder le brouillon. Il part à l'enregistrement (retenu par un geste, ou valide) et remplace alors la
-   * version du disque ; invalide, il est refusé et rien n'est écrit.
+   * Banner: keep the draft. It goes to saving (held by a gesture, or valid) and then replaces the disk version;
+   * invalid, it is refused and nothing is written.
    */
   garderLaMienne(): void {
     if (this.versionDisque) this.dernierConnu = this.versionDisque.brouillon;
@@ -188,15 +187,15 @@ export class Edition {
   }
 
   /**
-   * Un geste de l'utilisateur : appliqué au brouillon, retenu dans l'historique, enregistré. Les positions affichées sont
-   * figées avec lui (un workflow sans disposition garde celle qu'on voit, sans saut ensuite). `fusion` : les gestes
-   * successifs de même clé (frappes d'un même champ) ne font qu'une entrée d'historique.
+   * A gesture from the user: applied to the draft, kept in the history, saved. The displayed positions are frozen with
+   * it (a workflow without a layout keeps the one we see, with no jump afterwards). `fusion`: successive gestures with
+   * the same key (keystrokes of the same field) make only one history entry.
    */
   modifier(f: (b: Brouillon) => Brouillon, fusion?: string): void {
     this.changer(f, false, fusion);
   }
 
-  /** Fin d'un glisser : `positions` sont celles de tous les blocs affichés ; rien n'est écrit si aucune n'a bougé. */
+  /** End of a drag: `positions` are those of all displayed blocks; nothing is written if none moved. */
   deplacer(positions: Record<string, Position>): void {
     const bouge = Object.entries(positions).some(([id, p]) => {
       const q = this.positions[id];
@@ -207,7 +206,7 @@ export class Edition {
     this.changer((b) => b, true);
   }
 
-  /** `figer` : les positions affichées seules suffisent à enregistrer (un glisser) ; sinon il faut que `f` change le brouillon. */
+  /** `figer`: the displayed positions alone are enough to save (a drag); otherwise `f` must change the draft. */
   private changer(f: (b: Brouillon) => Brouillon, figer: boolean, fusion?: string): void {
     const avant = this.brouillon;
     if (!avant || !this.historique) return;
@@ -219,13 +218,13 @@ export class Edition {
     this.appliquer(apres);
   }
 
-  /** Ajoute un bloc du catalogue ; un bloc `code` reçoit son fichier (modèle qui rend son entrée) avant d'exister. */
+  /** Adds a catalog block; a `code` block gets its file (template that returns its input) before existing. */
   async ajouter(c: CatalogueBloc, position: Position): Promise<string> {
     if (!this.brouillon) return "";
     const parametres = parametresNeufs(c);
     if (c.type === "code") {
       const source = await this.fichierLibre(c.type);
-      // Jamais le fichier d'un autre : sans nom libre (ou sans pouvoir écrire le modèle), le bloc n'est pas ajouté.
+      // Never another block's file: without a free name (or without being able to write the template), the block is not added.
       if (!source) {
         this.etatEnregistrement = { erreur: "aucun nom de fichier libre pour le bloc Code" };
         return "";
@@ -246,7 +245,7 @@ export class Edition {
     return id;
   }
 
-  /** `<id>.mjs` du futur bloc, ou le suivant libre : jamais un fichier existant ni un fichier d'un autre bloc. */
+  /** `<id>.mjs` of the future block, or the next free one: never an existing file nor another block's file. */
   private async fichierLibre(type: string): Promise<string | null> {
     const b = this.brouillon!;
     const { id } = ajouterBloc(b, type, { x: 0, y: 0 }, {});
@@ -262,8 +261,8 @@ export class Edition {
   }
 
   /**
-   * Le fichier `source` vient d'être enregistré : si le brouillon a été refusé faute de ce fichier (bloc `code` en cause
-   * qui le lit), il repart à l'enregistrement. Sinon rien (aucun écho du disque ne le ferait).
+   * The file `source` was just saved: if the draft was refused for lack of this file (a `code` block reading it is
+   * the cause), it goes to saving again. Otherwise nothing (no disk echo would do it).
    */
   codeEnregistre(source: string): void {
     const v = this.validation;
@@ -282,14 +281,14 @@ export class Edition {
     if (b) this.appliquer(b, true);
   }
 
-  /** Refait la disposition automatique : positions affichées seulement, rien n'est enregistré. */
+  /** Redoes the automatic layout: displayed positions only, nothing is saved. */
   reorganiser(): void {
     if (this.brouillon) this.positions = disposer(this.brouillon);
   }
 
   /**
-   * `historique` : retour à un état passé ; sans disposition, il reprend la disposition automatique (pas les positions
-   * affichées, qui garderaient le déplacement annulé).
+   * `historique`: return to a past state; without a layout, it takes the automatic layout again (not the displayed
+   * positions, which would keep the undone move).
    */
   private appliquer(b: Brouillon, historique = false): void {
     this.brouillon = b;
@@ -303,7 +302,7 @@ export class Edition {
     this.enregistrer(b);
   }
 
-  /** Le bandeau propose la version de l'agent (relu après chaque attente : il a pu apparaître entre-temps). */
+  /** The banner offers the agent's version (re-read after each wait: it may have appeared meanwhile). */
   private choixAttendu(): boolean {
     return this.bandeau === "proposer";
   }
@@ -313,7 +312,7 @@ export class Edition {
     this.etatEnregistrement = { invalide: EN_ATTENTE_DU_CHOIX };
   }
 
-  /** Les enregistrements partent un par un ; un brouillon dépassé avant son départ n'est pas envoyé. */
+  /** Saves go out one by one; a draft outdated before its turn is not sent. */
   private enregistrer(b: Brouillon): void {
     this.prochain = b;
     this.etatEnregistrement = "en-cours";
@@ -325,7 +324,7 @@ export class Edition {
     try {
       while (this.prochain) {
         if (this.bandeau === "proposer") {
-          // Le bandeau est apparu entre-temps : ce brouillon attend le choix de l'utilisateur.
+          // The banner appeared meanwhile: this draft awaits the user's choice.
           this.retenir(this.prochain);
           this.prochain = null;
           break;
@@ -346,7 +345,7 @@ export class Edition {
         }
         if (this.prochain) continue;
         if (this.choixAttendu()) {
-          // Le bandeau est apparu pendant le vol : l'en-tête garde l'attente du choix de l'utilisateur.
+          // The banner appeared in flight: the header keeps waiting for the user's choice.
           this.etatEnregistrement = { invalide: EN_ATTENTE_DU_CHOIX };
         } else if (!("ok" in r)) {
           this.etatEnregistrement = { erreur: r.erreur };
@@ -371,12 +370,12 @@ function invalide(erreur: string, bloc?: string): EtatEnregistrement {
   return bloc === undefined ? { invalide: texte } : { invalide: texte, bloc };
 }
 
-/** Une édition par widget et par fenêtre : changer d'onglet ne perd ni un brouillon invalide ni l'historique. */
+/** One edit per widget and per window: changing tab loses neither an invalid draft nor the history. */
 const editions = new Map<string, Edition>();
 
 /**
- * Oublie l'édition des widgets qui ne sont plus sur l'accueil : un id réutilisé ne reprend jamais l'ancien historique.
- * Celles des actions (clé `action:<id>`) ne dépendent pas de l'accueil : elles restent.
+ * Forgets the edits of widgets no longer on home: a reused id never picks up the old history. Actions' edits (key
+ * `action:<id>`) do not depend on home: they stay.
  */
 export function oublierEditions(presents: Iterable<string>): void {
   const ids = new Set(presents);
@@ -385,14 +384,14 @@ export function oublierEditions(presents: Iterable<string>): void {
 }
 
 let suivi = false;
-/** Une fois par fenêtre : à chaque changement de l'accueil, les éditions des widgets partis sont oubliées. */
+/** Once per window: on each change of home, the edits of departed widgets are forgotten. */
 export function suivreDisparitions(accueil: Pick<ApiWebaios["accueil"], "lire" | "surChange">): void {
   if (suivi) return;
   suivi = true;
   accueil.surChange(() => {
     void accueil
       .lire()
-      // Une liste vide est plutôt un accueil illisible un instant : rien n'est oublié sur elle.
+      // An empty list is more likely a home unreadable for a moment: nothing is forgotten on it.
       .then((ws) => ws.length > 0 && oublierEditions(ws.map((w) => w.id)))
       .catch(() => {});
   });

@@ -9,7 +9,7 @@
   let { fenetre }: { fenetre: EtatFenetre } = $props();
   const ordre = $derived(fenetre.ordre[fenetre.espaceActif] ?? []);
   const actif = $derived(fenetre.actif[fenetre.espaceActif]);
-  /** Point de dépôt : avant ou après l'onglet survolé, selon la moitié sous la souris (le trait le montre). */
+  /** Drop point: before or after the hovered tab, depending on the half under the mouse (the line shows it). */
   let survol = $state<{ index: number; apres: boolean } | null>(null);
 
   function deposer(e: DragEvent, index: number) {
@@ -17,7 +17,7 @@
     survol = null;
     const id = e.dataTransfer?.getData("application/x-webaios-onglet");
     if (!id) return;
-    // deplacerOnglet compte sans l'onglet déplacé : venir d'au-dessus décale la cible d'un cran.
+    // deplacerOnglet counts without the moved tab: coming from above shifts the target by one.
     const position = index + (apres ? 1 : 0);
     api.agir({ type: "deplacerOnglet", id, index: ordre.indexOf(id) < position ? position - 1 : position });
   }

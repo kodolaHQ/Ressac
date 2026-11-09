@@ -3,11 +3,11 @@
   import type { Pastille } from "./pastilles";
 
   export type DonneesNoeud = {
-    /** Nom du bloc, ou son id. */
+    /** Block name, or its id. */
     titre: string;
     type: string;
     pastille: Pastille | null;
-    /** Message du validateur quand il vise ce bloc. */
+    /** Validator message when it targets this block. */
     erreur: string | null;
     avertissements: string[];
     entree: boolean;
@@ -15,7 +15,7 @@
   };
   export type NoeudBloc = Node<DonneesNoeud, "bloc">;
 
-  /** Couleur d'une pastille : la même échelle que la page d'accueil. */
+  /** Badge color: the same scale as the home page. */
   const TEINTES: Record<string, "ok" | "moyen" | "echec" | "neutre" | "en-cours"> = {
     reussi: "ok",
     partiel: "moyen",

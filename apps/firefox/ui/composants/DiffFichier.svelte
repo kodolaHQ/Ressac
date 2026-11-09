@@ -5,8 +5,8 @@
   import CommentaireRelecture from "./CommentaireRelecture.svelte";
 
   /**
-   * Le diff unifié d'un fichier ; les lignes cachées entre les blocs se déplient par 20. Le code reste en lecture seule :
-   * le `+` de la marge ouvre un commentaire sur une ligne d'un bloc (Maj+clic ou glisser étendent la plage, dans le bloc).
+   * A file's unified diff; the lines hidden between hunks unfold by 20. The code stays read-only: the margin's `+`
+   * opens a comment on a hunk line (Shift+click or drag extend the range, within the hunk).
    */
   let {
     projet,
@@ -17,7 +17,7 @@
   }: { projet: string; jeton: string; diff: DiffFichier; commentaires: Commentaire[]; surChange: () => void } = $props();
 
   type Bloc = DiffFichier["blocs"][number];
-  /** Position d'une ligne d'un bloc : son numéro nouveau, celui de la ligne suivante pour un retrait (comme le noyau). */
+  /** Position of a hunk line: its new number, the next line's for a removal (like the kernel). */
   function position(b: Bloc, i: number): number {
     for (let k = i; k < b.lignes.length; k++) {
       const n = b.lignes[k]!.nouveau;
@@ -26,7 +26,7 @@
     return b.nouveauDebut + b.nouveauNombre;
   }
 
-  /** La plage en cours : son bloc, la ligne d'ancrage et l'autre bout (indices dans le bloc). */
+  /** The range in progress: its hunk, the anchor line and the other end (indices in the hunk). */
   let selection = $state<{ bloc: number; ancre: number; bout: number } | null>(null);
   let glisse = $state(false);
   let texte = $state("");
@@ -53,7 +53,7 @@
     return p >= plage.debut && p <= plage.fin;
   };
 
-  /** `+` pressé : une nouvelle plage, ou (Maj) l'autre bout de la plage en cours, refusé hors de son bloc. */
+  /** `+` pressed: a new range, or (Shift) the other end of the current range, refused outside its hunk. */
   function viser(bloc: number, k: number, etendre: boolean) {
     erreur = null;
     if (etendre && selection) {
@@ -69,7 +69,7 @@
     selection = { bloc, ancre: k, bout: k };
     glisse = true;
   }
-  /** En glissant : la plage suit la souris, dans le bloc seulement. */
+  /** While dragging: the range follows the mouse, within the hunk only. */
   function survol(bloc: number, k: number) {
     if (glisse && selection && selection.bloc === bloc) selection = { ...selection, bout: k };
   }
@@ -103,7 +103,7 @@
     }
   }
 
-  /** Chaque commentaire sous la dernière ligne affichée de sa plage (premier bloc qui a la ligne `fin`) ; sinon en tête. */
+  /** Each comment under the last shown line of its range (first hunk that has the line `fin`); otherwise at the top. */
   const places = $derived.by(() => {
     const sous = new Map<string, Commentaire[]>();
     const ailleurs: Commentaire[] = [];
@@ -125,7 +125,7 @@
   });
 
   type Ligne = { marque: " " | "+" | "-"; texte: string; ancien: number | null; nouveau: number | null };
-  /** Lignes dépliées de chaque intervalle (avant le bloc i ; i = nombre de blocs : après le dernier). */
+  /** Unfolded lines of each gap (before hunk i; i = number of hunks: after the last one). */
   type Intervalle = { lignes: Ligne[]; fini: boolean };
   let intervalles = $state<Record<number, Intervalle>>({});
   let charge = $state<number | null>(null);
@@ -133,7 +133,7 @@
   const debutBloc = (b: DiffFichier["blocs"][number]) => (b.nouveauNombre === 0 ? b.nouveauDebut + 1 : b.nouveauDebut);
   const finBloc = (b: DiffFichier["blocs"][number]) => (b.nouveauNombre === 0 ? b.nouveauDebut + 1 : b.nouveauDebut + b.nouveauNombre);
 
-  /** L'intervalle caché avant le bloc i : premières lignes nouvelles, dernière (null : jusqu'à la fin du fichier), décalage ancien − nouveau. */
+  /** The hidden gap before hunk i: first new lines, last one (null: to the end of the file), old − new offset. */
   function cache(i: number): { debut: number; fin: number | null; decalage: number } | null {
     const blocs = diff.blocs;
     if (diff.statut === "supprime" || blocs.length === 0) return null;
@@ -203,7 +203,7 @@
           viser(bloc, k, e.shiftKey);
         }}
         onclick={(e) => {
-          // Clavier (Entrée, Espace) : pas de mousedown.
+          // Keyboard (Enter, Space): no mousedown.
           if (e.detail === 0) viser(bloc, k, e.shiftKey);
         }}></button
       ></span><span class="num">{l.ancien ?? ""}</span><span class="num">{l.nouveau ?? ""}</span><span class="code">{l.texte}</span></div>
@@ -258,7 +258,7 @@
   .ligne.choisie { box-shadow: inset 3px 0 0 var(--accent, #3b82f6); background: color-mix(in srgb, var(--accent, #3b82f6) 14%, transparent); }
   .marge { display: flex; align-items: center; justify-content: center; }
   .ajouter { width: 16px; height: 16px; padding: 0; border: none; border-radius: 4px; background: var(--accent, #3b82f6); color: white; font-size: 12px; line-height: 16px; cursor: pointer; opacity: 0; }
-  /* Le « + » par CSS : il n'entre pas dans le texte de la ligne. */
+  /* The « + » through CSS: it does not enter the line's text. */
   .ajouter::before { content: "+"; }
   .ligne:hover .ajouter, .ajouter:focus-visible { opacity: 1; }
   .formulaire { margin: 4px 8px 8px 106px; padding: 8px; border: 1px solid var(--bord); border-radius: 6px; background: var(--fond); font-family: system-ui, sans-serif; display: flex; flex-direction: column; gap: 6px; }

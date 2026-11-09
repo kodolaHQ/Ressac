@@ -1,7 +1,7 @@
 import type { IdEspace } from "../../shared/modele";
 import type { ChoixProfil } from "./profilsEspace";
 
-/** Réglages d'un espace en cours dans la modale (`id` null : un nouvel espace). */
+/** Settings of a space in progress in the modal (`id` null: a new space). */
 export interface BrouillonEspace {
   id: IdEspace | null;
   nom: string;
@@ -11,7 +11,7 @@ export interface BrouillonEspace {
 }
 
 /**
- * Modale des réglages d'un espace, montée au niveau de la fenêtre (App.svelte). Le brouillon vit ici : si une demande
- * de l'agent passe devant, la modale se referme le temps de la demande et revient avec ce qui était saisi.
+ * Modal for a space's settings, mounted at window level (App.svelte). The draft lives here: if an agent request comes
+ * in front, the modal closes for the time of the request and comes back with what was typed.
  */
 export const reglagesEspace = $state<{ brouillon: BrouillonEspace | null }>({ brouillon: null });

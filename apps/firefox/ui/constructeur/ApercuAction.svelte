@@ -6,14 +6,14 @@
   import type { Executions } from "./executions.svelte";
 
   /**
-   * L'aperçu flottant de l'action : la page de l'exécution choisie dans la liste (un essai compris), en petit. Lire une
-   * page ne relance rien ; un essai n'y devient jamais le dernier résultat de l'action. Les composants de l'agent n'y
-   * sont pas chargés (un cadre neutre les remplace).
+   * The action's floating preview: the page of the run chosen in the list (a trial included), small. Reading a page
+   * relaunches nothing; a trial never becomes the action's latest result there. The agent's components are not loaded
+   * there (a neutral frame replaces them).
    */
   let { id, executions }: { id: string; executions: Executions } = $props();
 
   let lue = $state.raw<PageAction | null | undefined>(undefined);
-  /** L'exécution choisie, et ce qui en change la page (sa fin, son statut). */
+  /** The chosen run, and what changes its page (its end, its status). */
   const voulue = $derived(executions.choisie ? `${executions.choisie.id}|${executions.choisie.fin}|${executions.choisie.statut}` : null);
   let requete = 0;
   $effect(() => {

@@ -7,7 +7,7 @@
   import { reglagesEspace } from "./reglagesEspace.svelte";
 
   let { fenetre }: { fenetre: EtatFenetre } = $props();
-  /** Espace à supprimer en attente de confirmation (il contient des onglets, ou il emporte des connexions). */
+  /** Space to delete awaiting confirmation (it contains tabs, or it takes sign-ins with it). */
   let aSupprimer = $state<{ espace: Espace; onglets: number; connexions: boolean } | null>(null);
 
   function supprimer(espace: Espace) {
@@ -17,7 +17,7 @@
     else api.agir({ type: "supprimerEspace", id: espace.id });
   }
 
-  // Un réglage garde le profil actuel de l'espace (seul ou partagé) ; un nouvel espace n'en a aucun : L'utilisateur choisit.
+  // A setting keeps the space's current profile (alone or shared); a new space has none: the user chooses.
   const regler = (espace: Espace) =>
     (reglagesEspace.brouillon = { id: espace.id, nom: espace.nom, icone: espace.icone, prive: espace.prive, profil: espace.profil });
   function creer() {
