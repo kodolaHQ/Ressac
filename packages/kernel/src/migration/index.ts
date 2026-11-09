@@ -1,4 +1,4 @@
-import { writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { DEFAULT_MODELS } from "../workspace/initialize.js";
 import { migrateActions, migrateComponents } from "./actions.js";
@@ -28,6 +28,8 @@ export class StoreNotMigratedError extends Error {
   }
 }
 
+const IN_PROGRESS = "# Passage des données aux noms anglais : en cours";
+
 const oldData = async (dataDir: string) =>
   (await kind(join(dataDir, "espace"))) !== null || (await kind(join(dataDir, "historique.sqlite"))) !== null;
 
@@ -53,9 +55,11 @@ export async function migrateKernel(o: {
     return { status: "already", report: null };
   }
   const reportFile = join(o.dataDir, REPORT_FILE);
-  // No old data (and no cut run, which leaves its report): the data is already in the new format. Renaming it again
-  // would rename the user's own names that match old ones (a workflow field `avis`, a `{titre}` template).
-  if (!old && (await kind(reportFile)) === null) {
+  // A cut run leaves the in-progress stub; a finished one, its full report (kept, so not a sign of a cut).
+  const cut = (await readFile(reportFile, "utf8").catch(() => "")).startsWith(IN_PROGRESS);
+  // No old data and no cut run: the data is already in the new format. Renaming it again would rename the user's own
+  // names that match old ones (a workflow field `avis`, a `{titre}` template).
+  if (!old && !cut) {
     await writeMarkerHalf(o.dataDir, "kernel", KNOWN_FORMAT);
     return { status: "already", report: null };
   }
@@ -83,8 +87,8 @@ export async function migrateKernel(o: {
     written: [],
     checkpoint: async (label) => void (await o.checkpoint?.(label)),
   };
-  // Its presence says, after a cut, that old data was found: the full report is then written again at the end.
-  if (old && (await kind(reportFile)) === null) await writeFile(reportFile, "# Passage des données aux noms anglais : en cours\n");
+  // The stub says, after a cut, that old data was found: the run goes on and the full report replaces it at the end.
+  if (old && !cut) await writeFile(reportFile, `${IN_PROGRESS}\n`);
   const models = o.models ?? DEFAULT_MODELS;
   const steps: [string, () => Promise<void>][] = [
     ["tree", () => migrateTree(ctx)],

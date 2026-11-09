@@ -338,6 +338,23 @@ describe("migrateKernel refuses", () => {
     }
   });
 
+  it("the marker deleted after a real migration (the report stays): nothing rewritten", async () => {
+    const { dataDir } = await oldDataDir();
+    await migrateKernel({ dataDir, docker: fakeDocker(), now });
+    // The user's own names that match old ones, written after the migration.
+    const file = join(dataDir, "workspace/home/widgets/veille/workflow.json");
+    writeFileSync(file, JSON.stringify({ version: 1, blocks: [{ id: "avis", type: "ai.write", params: { field: "avis", prompt: "{titre}" } }], links: [] }));
+    // `.format-version` deleted: the store half writes its own marker again.
+    writeFileSync(join(dataDir, ".format-version"), JSON.stringify({ store: 2 }));
+    const { [".format-version"]: _, ...before } = snapshot(dataDir);
+    const docker = fakeDocker();
+    expect(await migrateKernel({ dataDir, docker, now })).toEqual({ status: "already", report: null });
+    const { [".format-version"]: __, ...after } = snapshot(dataDir);
+    expect(after).toEqual(before);
+    expect(await readMarker(dataDir)).toEqual({ store: 2, kernel: 2 });
+    expect(docker.calls).toEqual([]);
+  });
+
   it("JSON files of an unexpected shape (null): listed and left, the rest migrated", async () => {
     const { dataDir } = await oldDataDir();
     writeFileSync(join(dataDir, "widgets/simple/memoire.json"), "null");
