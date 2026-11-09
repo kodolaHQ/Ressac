@@ -1,6 +1,6 @@
 {
   "svelte": {
-    "command": "/Users/user/Documents/projet-perso/WebAiOs/.claude/marketplace-local/plugins/svelte-lsp/node_modules/.bin/svelteserver",
+    "command": "${CLAUDE_PROJECT_DIR}/.claude/marketplace-local/plugins/svelte-lsp/node_modules/.bin/svelteserver",
     "args": ["--stdio"],
     "extensionToLanguage": { ".svelte": "svelte" }
   }

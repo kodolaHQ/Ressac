@@ -1,18 +1,18 @@
 {
   "name": "webaios-local",
   "owner": {
-    "name": "user L"
+    "name": "WebAiOs"
   },
   "plugins": [
     {
       "name": "tsgo-lsp",
       "source": "./plugins/tsgo-lsp",
-      "description": "LSP intégré de TypeScript 7 (tsc --lsp), qui remplace tsserver"
+      "description": "TypeScript 7's built-in LSP (tsc --lsp), in place of tsserver"
     },
     {
       "name": "svelte-lsp",
       "source": "./plugins/svelte-lsp",
-      "description": "svelte-language-server pour les fichiers .svelte"
+      "description": "svelte-language-server for .svelte files"
     }
   ]
 }
